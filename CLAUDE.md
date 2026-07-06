@@ -36,6 +36,12 @@ Never run the full test suite inside a red-green loop; never mock Flowable respo
 join logic (dockerized engine only — `engine-harness` skill).
 
 ## Iron rules
+- Schema comes from Flyway ONLY: `V1__init.sql` before any JPA entity; `ddl-auto=validate`
+  in every profile including tests. Never auto-DDL.
+- Never insert rows into engine (`ACT_*`) tables — not even in tests. Seed strictly over
+  REST (TEST-STRATEGY §10); speed via `R1/PT1S` retry cycles, scale via lowered caps/stubs.
+- Stage 0 aggregations use count-only/`size=1` queries and the dedicated DLQ scan — never
+  the grid-search plan.
 - The BFF whitelists engine paths; no generic proxy route, ever.
 - Every mutating endpoint follows ALL the `corrective-actions` rails (audit, RBAC tier,
   guard, no auto-retry, per-item bulk reporting).

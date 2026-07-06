@@ -116,6 +116,13 @@ and engine timestamps only (§9). Runs on **all three compose profiles**. Captur
 engine image tag and re-captured on every image bump. The R-NFR-02 reference dataset is
 S2-generated nightly, bounded by the operating envelope (≤5k DLQ); anything larger is
 S1-stubbed, never seeded.
+**Raw SQL/JDBC insertion into engine tables is REJECTED as a seeding mechanism** — Flowable
+job/execution rows carry invariants (execution linkage, revision counters, exception byte
+arrays) that hand-built rows can violate, encoding states no real engine produces: the
+quiet-lie class applied to test data. Speed comes from `R1/PT1S` retry cycles and parallel
+REST seeding; *scale* comes from lowering the caps under test (`dlq-scan-cap: 50`) or
+S1 stubs — never from bypassing the engine. The seconds-fast feedback loop is preserved by
+construction, not by a backdoor.
 
 **S3 — Production, read-only observation.** Production engines are validation targets,
 **never data generators**: registered `mode: read-only` (R-GOV-04) under a dedicated

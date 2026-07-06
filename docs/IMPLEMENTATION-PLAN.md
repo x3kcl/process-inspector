@@ -51,12 +51,22 @@ or Dockerfile exist yet; landing them is part of M2a's gate.
 - **Omnibox** (`GET /api/resolve`).
 - **Triage landing**: engine health strip, status counts, failure groups by normalized error
   signature with click-through, curated system views, recent-operations placeholder.
+  **Aggregation-independence constraint (binding):** Stage 0 aggregations NEVER reuse the
+  M2a grid-search plan to count — status counts come from query `total`s (`size=1`),
+  job-lane counts from the management-collection totals trick, and error groups from the
+  dedicated capped DLQ/RETRYING scan legs. Fetching grid rows to count them is a rejected
+  implementation (it defeats the cache, the caps, and do-no-harm at once).
 - **Done when:** from the landing, one click on an error group reaches a pre-filtered list;
   opening a stuck instance shows why it's stuck without any click; the link pastes into a
   ticket and reopens the same view.
 
 ## M4 — Corrective actions + audit + RBAC + Postgres
 - **Postgres** joins the deployable: audit log, notes.
+- **Build-order constraint (binding):** `Flyway V1__init.sql` FIRST → JPA entities SECOND →
+  repositories THIRD. Hibernate `ddl-auto=validate` in EVERY profile including tests —
+  schema comes from Flyway only, never from auto-DDL; the Java layer aligns to the database
+  reality, not the other way around. (The audit table's grants, partitions and hash-chain
+  column exist only if the schema is authored, not generated.)
 - Single-target verb catalog tiers 0–3 (SPEC §5): retry / retry-now / trigger-timer /
   unstick-event / suspend-activate / edit-variable (typed, old→new diff, old value audited) /
   complete-task / suspend-definition / terminate-delete (cascade enumeration) /
