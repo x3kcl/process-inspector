@@ -4,6 +4,7 @@ import { QueryClient, QueryClientProvider } from '@tanstack/react-query'
 import { Navigate, RouterProvider, createBrowserRouter, useSearchParams } from 'react-router'
 import { ApiError } from './api/client'
 import { InspectPage } from './inspect/InspectPage'
+import { AuditLogPage } from './ops/AuditLogPage'
 import { SearchPage } from './search/SearchPage'
 import { hasSearch } from './search/urlState'
 import { Shell } from './shell/Shell'
@@ -42,6 +43,7 @@ const router = createBrowserRouter([
       { index: true, element: <HomeRoute /> },
       { path: 'search', element: <SearchPage /> },
       { path: 'inspect/:engineId/:instanceId', element: <InspectPage /> },
+      { path: 'audit', element: <AuditLogPage /> },
     ],
   },
 ])

@@ -5,6 +5,7 @@ import { ApiError } from '../api/client'
 import { HeaderStrip } from '../components/HeaderStrip'
 import { SignIn } from '../components/SignIn'
 import { ToastProvider } from '../components/toast'
+import { OpsDrawer } from '../ops/OpsDrawer'
 import { Omnibox } from './Omnibox'
 
 /**
@@ -23,11 +24,15 @@ export function Shell() {
               Flowable Process Inspector
             </Link>
           </h1>
+          <Link to="/audit" className="topbar-link">
+            Ops log
+          </Link>
           <Omnibox />
           <HeaderStrip />
         </header>
         {authRequired && <SignIn />}
         <Outlet />
+        <OpsDrawer />
       </div>
     </ToastProvider>
   )

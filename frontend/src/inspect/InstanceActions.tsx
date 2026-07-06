@@ -12,7 +12,7 @@ import { VERBS, actionGate, needsTwoStepConfirm } from '../actions/catalog'
 import { cascadeVictims } from '../actions/cascade'
 import { problemBanner } from '../actions/problem'
 import type { ActionProblem } from '../actions/problem'
-import { currentRoleHint } from '../lib/roleHint'
+import { roleOn, useMe } from '../api/me'
 import { useToast } from '../components/toast'
 
 interface Props {
@@ -26,7 +26,8 @@ export function InstanceActions({ engineId, instanceId, vitals, engine }: Props)
   const toast = useToast()
   const action = useInstanceAction(engineId, instanceId)
   const [terminateOpen, setTerminateOpen] = useState(false)
-  const roleHint = currentRoleHint()
+  const me = useMe()
+  const roleHint = roleOn(me.data, engineId)
   const ended = vitals.flags?.ended === true || vitals.endTime !== undefined
   const suspended = vitals.status === 'SUSPENDED' || vitals.flags?.suspended === true
   const environment = engine?.environment

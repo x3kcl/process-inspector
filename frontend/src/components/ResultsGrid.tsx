@@ -1,4 +1,4 @@
-import { useCallback, useMemo, useRef, useState } from 'react'
+import { useCallback, useEffect, useMemo, useRef, useState } from 'react'
 import { AgGridReact } from 'ag-grid-react'
 import type { CustomCellRendererProps } from 'ag-grid-react'
 import type { ColDef, RowSelectionOptions, SelectionChangedEvent } from 'ag-grid-community'
@@ -16,15 +16,29 @@ interface Props {
   /** engineId → engine, for the env band on each row (rows only carry engineId/color). */
   enginesById: Map<string, EngineDto>
   onOpenDetails: (row: ProcessInstanceRow) => void
+  /** M5: the selected rows flow up to the bulk action bar (SPEC §7). */
+  onSelectionRows?: (rows: ProcessInstanceRow[]) => void
+  /** Bump to clear the selection imperatively (after a bulk submit). */
+  deselectSignal?: number
 }
 
 /**
  * M2c snapshot grid — AG Grid COMMUNITY only (ADR-002): selection count is our own
  * footer, ID copy is an explicit button, filtering lives in the search rail.
  */
-export function ResultsGrid({ response, enginesById, onOpenDetails }: Props) {
+export function ResultsGrid({
+  response,
+  enginesById,
+  onOpenDetails,
+  onSelectionRows,
+  deselectSignal,
+}: Props) {
   const gridRef = useRef<AgGridReact<ProcessInstanceRow>>(null)
   const [selectedCount, setSelectedCount] = useState(0)
+
+  useEffect(() => {
+    if (deselectSignal !== undefined && deselectSignal > 0) gridRef.current?.api.deselectAll()
+  }, [deselectSignal])
 
   const columns = useMemo<ColDef<ProcessInstanceRow>[]>(
     () => [
@@ -111,9 +125,14 @@ export function ResultsGrid({ response, enginesById, onOpenDetails }: Props) {
     [],
   )
 
-  const onSelectionChanged = useCallback((event: SelectionChangedEvent<ProcessInstanceRow>) => {
-    setSelectedCount(event.api.getSelectedRows().length)
-  }, [])
+  const onSelectionChanged = useCallback(
+    (event: SelectionChangedEvent<ProcessInstanceRow>) => {
+      const rows = event.api.getSelectedRows()
+      setSelectedCount(rows.length)
+      onSelectionRows?.(rows)
+    },
+    [onSelectionRows],
+  )
 
   const clearSelection = useCallback(() => {
     gridRef.current?.api.deselectAll()

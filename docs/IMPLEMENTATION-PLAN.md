@@ -254,19 +254,57 @@ OPERATIONS.md §8.
   values for variable edits). Pure logic vitest-covered (problem/catalog/cascade/ticket/
   editState/diff — 125 tests green); `npm run lint` + `npm run build` (watermark +
   enterprise guards) clean.
-- **Still open in M4:** ops log page (`GET /api/audit` global surface); a `/api/me`
-  endpoint so role-greying stops depending on the dev-ladder username heuristic;
-  execution-local (step-local) variable edits (needs a scoped read/CAS leg in the BFF);
-  the §4a offered follow-on "Retry the failed job?" after a successful edit; audit-row
-  config events for scope-mapping reloads (M4 logs them); `X-Forwarded-User` engine
-  attribution; R-AUD-07 ticketId validation/linkify; per-engine `audit-payload` modes,
-  retention purge + DB role grants (OPERATIONS §6 — provisioning, not schema).
+- **M4 stragglers landed 2026-07-06 (same-day follow-up session):** `GET /api/me`
+  (username + highest ladder role per engine via the SAME RbacAuthorizer resolution the
+  guards use) with the SPA's role-greying switched from the dev-ladder username heuristic
+  to it (`api/me.ts`, per-engine `roleOn`; unknown role stays optimistic); the global
+  ops-log page at `/audit` (AG Grid over `GET /api/audit`, actor/action/since filters,
+  target column deep-links to the instance's Audit tab); the §4a offered follow-on —
+  after a successful edit-variable on a FAILED instance a sticky toast offers "Retry the
+  failed job?" (live dead-letter re-check first; offered, never automatic).
+- **Still open in M4:** execution-local (step-local) variable edits (needs a scoped
+  read/CAS leg in the BFF); audit-row config events for scope-mapping reloads (M4 logs
+  them); `X-Forwarded-User` engine attribution; R-AUD-07 ticketId validation/linkify;
+  per-engine `audit-payload` modes, retention purge + DB role grants (OPERATIONS §6 —
+  provisioning, not schema).
 
 ## M5 — Bulk + hardening (v1 close-out; the former M6)
 - Grid-selection bulk as a **persisted tracked job** (R-SEM-10: state machine, startup
   reconciliation → INTERRUPTED, circuit-open dispatch pause, aggregate readout), cap 200,
   intersection-of-valid-actions, protected-instance auto-exclusion, acknowledgment gate over
   partial result sets, per-item report with the full outcome-class set.
+- **Grid-selection bulk LANDED 2026-07-06** (backend + frontend, Playwright-proven live:
+  real 2-item bulk retry → drawer COMPLETED → per-item `ok` → audit envelope + item rows
+  in the ops log). Backend: Flyway `V2__bulk_job.sql` (bulk_job + bulk_job_item, CHECK-
+  constrained states) → JPA → `BulkJobService` — submit (cap 200, v1 verb whitelist
+  retry-job/suspend/activate/trigger-timer, protected targets settled `skipped_protected`
+  at submit, fail-closed envelope audit row) → sequential per-item fan-out through the
+  FULL single-target guard chain (per-item audit/RBAC/guards reused, outcome mapping:
+  guard-gone→`skipped`, engine-rejected→`failed`, timeout legs→`unknown`, never
+  auto-retried; retry-job resolves the instance's CURRENT dead-letter jobs at dispatch =
+  built-in precondition recheck), cancel (stops dispatching), startup INTERRUPTED sweep
+  (dispatched→unknown, pending→not_run), verify-now per-verb precondition predicates;
+  endpoints `POST/GET /api/bulk[/{id}]`, `…/cancel`, `…/items/{ordinal}/verify` (ARCH §4).
+  `ProcessInstanceRow.protectedInstance` (batched registry lookup per page; null =
+  store unreachable). Frontend: checkbox selection on the M2c grid feeding the pure
+  Intersection-Rule module (`bulk/intersection.ts`, tested: strict per-verb intersection,
+  disabled-with-reason naming the first offending row, protected auto-exclusion badge,
+  200-cap copy), pinned bulk bar, submit modal with scope enumeration (count, per-engine
+  split, expandable ID list) doubling as the partial-result acknowledgment gate
+  ("engine X excluded — proceed anyway?" checkbox required when engines failed or scans
+  truncated), and the Shell-mounted operations drawer — hydrated from `GET /api/bulk`
+  (server-persisted ⇒ survives navigation AND refresh), NO optimistic state anywhere,
+  polling tightens only while a job is live; state-machine chips, aggregate "N of M
+  dispatched" readout, per-item sub-table, cancel, per-unknown Verify-now, and
+  "continue as new job" pre-scoped to `not_run`+`failed` with `continuedFrom` lineage.
+  **v1 deviations (deliberate, revisit in M5 close-out):** live progress is short-poll,
+  not yet `GET /api/stream` SSE; a circuit-open mid-job fails items cleanly per item
+  instead of PAUSING dispatch (R-SEM-11's pause semantics pending); destructive bulk
+  (terminate) deferred to the tier-4 wizard; per-engine parallel dispatch + stagger
+  pending (sequential = the conservative floor). WIRE GOTCHA: Jackson serializes absent
+  DTO fields as JSON null while openapi-typescript types them `?: undefined` — guard
+  with `typeof x === 'string'` / `?? undefined`, never bare `!== undefined` (a null
+  `continuedFrom` crashed the drawer until guarded).
 - Security test plan execution (TEST-STRATEGY §5, independent tester); performance scenarios
   P1/P2/P4; UAT sessions (R-TEST-08); operator quick-start + RUNBOOK.md; break-glass;
   release gate per SPEC §13.

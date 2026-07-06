@@ -10,6 +10,13 @@ export interface ToastInput {
   text: string
   /** Deep-links "view audit" to the instance's Audit & Notes tab. */
   auditPath?: string
+  /**
+   * An OFFERED follow-on (§4a/§5.1: offered, never automatic) — e.g. "Retry the failed
+   * job?" after a successful variable edit. Clicking dismisses the toast and runs it.
+   */
+  action?: { label: string; run: () => void }
+  /** Follow-on offers outlive the default auto-dismiss so a human can consider them. */
+  sticky?: boolean
 }
 
 interface Toast extends ToastInput {
@@ -17,6 +24,7 @@ interface Toast extends ToastInput {
 }
 
 const DISMISS_MS = 8000
+const STICKY_DISMISS_MS = 30_000
 
 const ToastContext = createContext<(toast: ToastInput) => void>(() => undefined)
 
@@ -38,7 +46,7 @@ export function ToastProvider({ children }: { children: ReactNode }) {
       setToasts((current) => [...current, { ...input, id }])
       window.setTimeout(() => {
         dismiss(id)
-      }, DISMISS_MS)
+      }, input.sticky === true ? STICKY_DISMISS_MS : DISMISS_MS)
     },
     [dismiss],
   )
@@ -66,6 +74,18 @@ function ToastCard({ toast, onDismiss }: { toast: Toast; onDismiss: (id: number)
         {toast.kind === 'success' ? '✓' : '✗'}
       </span>
       <span className="toast-text">{toast.text}</span>
+      {toast.action !== undefined && (
+        <button
+          type="button"
+          className="toast-action"
+          onClick={() => {
+            onDismiss(toast.id)
+            toast.action?.run()
+          }}
+        >
+          {toast.action.label}
+        </button>
+      )}
       {toast.auditPath !== undefined && !onAuditTab && (
         <Link className="toast-audit-link" to={toast.auditPath}>
           view audit

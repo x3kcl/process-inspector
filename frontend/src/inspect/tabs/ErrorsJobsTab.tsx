@@ -12,7 +12,7 @@ import { problemBanner } from '../../actions/problem'
 import { CopyButton } from '../../components/CopyButton'
 import { useToast } from '../../components/toast'
 import { formatDateTime } from '../../lib/format'
-import { currentRoleHint } from '../../lib/roleHint'
+import { roleOn, useMe } from '../../api/me'
 import type { TabProps } from '../InspectPage'
 import { useInstanceJobs } from '../useInstanceQueries'
 
@@ -288,7 +288,8 @@ function JobActions({
     () => (engines.data ?? []).find((candidate) => candidate.id === engineId),
     [engines.data, engineId],
   )
-  const roleHint = currentRoleHint()
+  const me = useMe()
+  const roleHint = roleOn(me.data, engineId)
   const environment = engine?.environment
   const auditPath = `/inspect/${engineId}/${encodeURIComponent(instanceId)}?tab=audit`
 

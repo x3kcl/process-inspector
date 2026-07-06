@@ -3,6 +3,7 @@ import { useNavigate } from 'react-router'
 import type { EngineDto, ProcessInstanceRow } from '../api/model'
 import { ApiError } from '../api/client'
 import { useEngines } from '../api/useEngines'
+import { BulkBar } from '../bulk/BulkBar'
 import { PartialResultsBanner } from '../components/PartialResultsBanner'
 import { ResultsGrid } from '../components/ResultsGrid'
 import { SearchRail } from '../components/SearchRail'
@@ -22,6 +23,14 @@ export function SearchPage() {
   const results = useSearchResults(request)
   const [railCollapsed, setRailCollapsed] = useState(false)
   const collapsedForParams = useRef<string | null>(null)
+  // M5 bulk selection (SPEC §7): checkbox rows flow into the intersection bar.
+  const [selectedRows, setSelectedRows] = useState<ProcessInstanceRow[]>([])
+  const [deselectSignal, setDeselectSignal] = useState(0)
+
+  // A fresh result set invalidates the old selection — never act on a stale snapshot.
+  useEffect(() => {
+    setSelectedRows([])
+  }, [results.dataUpdatedAt])
 
   // SPEC §4: the rail collapses to chips once a search runs — once per distinct search,
   // so re-expanding it to tweak filters is never fought by a refetch.
@@ -97,10 +106,21 @@ export function SearchPage() {
             void results.refetch()
           }}
         />
+        <BulkBar
+          selected={selectedRows}
+          failedEngines={summary.failed}
+          truncated={summary.truncated.length > 0}
+          onSubmitted={() => {
+            setSelectedRows([])
+            setDeselectSignal((n) => n + 1)
+          }}
+        />
         <ResultsGrid
           response={results.data}
           enginesById={enginesById}
           onOpenDetails={openDetails}
+          onSelectionRows={setSelectedRows}
+          deselectSignal={deselectSignal}
         />
       </section>
     </main>

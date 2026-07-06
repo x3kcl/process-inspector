@@ -6,11 +6,12 @@
 // UI — the ledger re-renders from re-fetched server truth via the mutation's
 // invalidation.
 import { Suspense, lazy, useMemo, useState } from 'react'
-import { useQuery } from '@tanstack/react-query'
-import { useInstanceAction } from '../../../api/actions'
+import { useQuery, useQueryClient } from '@tanstack/react-query'
+import { dispatchInstanceAction, useInstanceAction } from '../../../api/actions'
 import type { ActionRequest } from '../../../api/actions'
+import { ActionError } from '../../../api/actions'
 import type { EngineDto, InstanceDetail } from '../../../api/model'
-import { fetchInstanceVariable } from '../../../api/queries'
+import { fetchInstanceJobs, fetchInstanceVariable } from '../../../api/queries'
 import { problemBanner } from '../../../actions/problem'
 import { EnvBadge } from '../../../components/EnvBadge'
 import { Segmented } from '../../../components/Segmented'
@@ -141,6 +142,7 @@ function EditorSession({
 }) {
   const toast = useToast()
   const action = useInstanceAction(engineId, instanceId)
+  const queryClient = useQueryClient()
   const lockedType: EditableType = asEditableType(declaredType) ?? inferType(originalValue)
 
   // Type lock (§4a): changing the base type needs the explicit per-session unlock.
@@ -258,10 +260,61 @@ function EditorSession({
             auditPath,
           })
           onClose()
+          offerFollowOnRetry()
         },
         // Failures render inside the verify modal (CAS gets its replacement panel).
       },
     )
+  }
+
+  /**
+   * §4a/§5.1 follow-on — the #1 incident sequence is edit-the-poisoned-variable THEN
+   * retry the dead-letter job. OFFERED, never automatic: a sticky toast with an explicit
+   * button, only when the instance is actually FAILED with a dead-letter job right now.
+   */
+  const offerFollowOnRetry = () => {
+    if (vitals?.status !== 'FAILED') return
+    fetchInstanceJobs({ engineId, instanceId })
+      .then((jobs) => {
+        const deadLetter = jobs.deadLetter ?? []
+        const jobId = deadLetter[0]?.id
+        if (jobId === undefined) return
+        toast({
+          kind: 'success',
+          text:
+            deadLetter.length === 1
+              ? `This case is still FAILED — job ${jobId} is dead-lettered.`
+              : `This case is still FAILED with ${String(deadLetter.length)} dead-letter jobs.`,
+          sticky: true,
+          action: {
+            label: `Retry the failed job?`,
+            run: () => {
+              dispatchInstanceAction(engineId, instanceId, 'retry-job', { jobId })
+                .then(async (result) => {
+                  toast({
+                    kind: 'success',
+                    text: result.deltaStatement ?? `job ${jobId} moved back to the executable queue`,
+                    auditPath,
+                  })
+                  await queryClient.invalidateQueries({ queryKey: ['instance', engineId, instanceId] })
+                  await queryClient.invalidateQueries({ queryKey: ['audit', engineId, instanceId] })
+                })
+                .catch((error: unknown) => {
+                  toast({
+                    kind: 'error',
+                    text:
+                      error instanceof ActionError
+                        ? problemBanner(error.problem)
+                        : String(error),
+                  })
+                })
+            },
+          },
+        })
+      })
+      .catch(() => {
+        // The offer is best-effort decoration; a failed jobs read stays silent.
+      })
   }
 
   const businessKey = vitals?.businessKey

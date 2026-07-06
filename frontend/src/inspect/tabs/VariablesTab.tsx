@@ -1,6 +1,8 @@
 import { useMemo, useState } from 'react'
 import type { InstanceVariables, VariableDto } from '../../api/model'
 import { fetchInstanceVariable } from '../../api/queries'
+import { roleOn, useMe } from '../../api/me'
+import { roleAtLeast } from '../../actions/catalog'
 import { useEngines } from '../../api/useEngines'
 import type { TabProps } from '../InspectPage'
 import { useInstanceVariables, useInstanceVitals } from '../useInstanceQueries'
@@ -19,6 +21,7 @@ import { buildLedger } from '../variables/ledger'
 export default function VariablesTab({ engineId, instanceId, selectedActivityId }: TabProps) {
   const query = useInstanceVariables(engineId, instanceId)
   const engines = useEngines()
+  const me = useMe()
   const vitals = useInstanceVitals(engineId, instanceId)
   const [fullValues, setFullValues] = useState<Record<string, unknown>>({})
   const [loadingFullName, setLoadingFullName] = useState<string>()
@@ -63,13 +66,20 @@ export default function VariablesTab({ engineId, instanceId, selectedActivityId 
   }
 
   const instanceEnded = query.data.source === 'HISTORIC'
-  const gateFor = (row: LedgerRow) =>
-    editGateReason({
+  const role = roleOn(me.data, engineId)
+  const gateFor = (row: LedgerRow) => {
+    // §4a Entry gate order: role first (from /api/me — the same resolution the BFF
+    // enforces), then the state/type gates. Unknown role stays optimistic.
+    if (role !== null && !roleAtLeast(role, 'OPERATOR')) {
+      return 'editing values requires the OPERATOR role on this engine'
+    }
+    return editGateReason({
       engineType: row.entry.engineType,
       scope: row.entry.scope,
       instanceEnded,
       engineMode: engine?.mode,
     })
+  }
 
   return (
     <div className="variables-tab">

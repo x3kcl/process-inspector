@@ -20,6 +20,70 @@ export interface paths {
         patch?: never;
         trace?: never;
     };
+    "/api/bulk": {
+        parameters: {
+            query?: never;
+            header?: never;
+            path?: never;
+            cookie?: never;
+        };
+        get: operations["recent"];
+        put?: never;
+        post: operations["submit"];
+        delete?: never;
+        options?: never;
+        head?: never;
+        patch?: never;
+        trace?: never;
+    };
+    "/api/bulk/{id}": {
+        parameters: {
+            query?: never;
+            header?: never;
+            path?: never;
+            cookie?: never;
+        };
+        get: operations["get"];
+        put?: never;
+        post?: never;
+        delete?: never;
+        options?: never;
+        head?: never;
+        patch?: never;
+        trace?: never;
+    };
+    "/api/bulk/{id}/cancel": {
+        parameters: {
+            query?: never;
+            header?: never;
+            path?: never;
+            cookie?: never;
+        };
+        get?: never;
+        put?: never;
+        post: operations["cancel"];
+        delete?: never;
+        options?: never;
+        head?: never;
+        patch?: never;
+        trace?: never;
+    };
+    "/api/bulk/{id}/items/{ordinal}/verify": {
+        parameters: {
+            query?: never;
+            header?: never;
+            path?: never;
+            cookie?: never;
+        };
+        get?: never;
+        put?: never;
+        post: operations["verify"];
+        delete?: never;
+        options?: never;
+        head?: never;
+        patch?: never;
+        trace?: never;
+    };
     "/api/definitions/{engineId}/{definitionId}/actions/{verb}": {
         parameters: {
             query?: never;
@@ -244,6 +308,22 @@ export interface paths {
         patch?: never;
         trace?: never;
     };
+    "/api/me": {
+        parameters: {
+            query?: never;
+            header?: never;
+            path?: never;
+            cookie?: never;
+        };
+        get: operations["me"];
+        put?: never;
+        post?: never;
+        delete?: never;
+        options?: never;
+        head?: never;
+        patch?: never;
+        trace?: never;
+    };
     "/api/resolve": {
         parameters: {
             query?: never;
@@ -337,6 +417,53 @@ export interface components {
             ticketId?: string;
             /** Format: date-time */
             ts?: string;
+        };
+        BulkItemDto: {
+            /** Format: uuid */
+            auditId?: string;
+            detail?: string;
+            engineId?: string;
+            /** Format: date-time */
+            finishedAt?: string;
+            instanceId?: string;
+            jobRef?: string;
+            /** Format: int32 */
+            ordinal?: number;
+            state?: string;
+        };
+        BulkJobDto: {
+            /** Format: uuid */
+            continuedFrom?: string;
+            /** Format: date-time */
+            finishedAt?: string;
+            /** Format: uuid */
+            id?: string;
+            items?: components["schemas"]["BulkItemDto"][];
+            reason?: string;
+            state?: string;
+            /** Format: date-time */
+            submittedAt?: string;
+            submittedBy?: string;
+            tallies?: {
+                [key: string]: number;
+            };
+            ticketId?: string;
+            /** Format: int32 */
+            totalItems?: number;
+            verb?: string;
+        };
+        BulkSubmitRequest: {
+            /** Format: uuid */
+            continuedFrom?: string;
+            items?: components["schemas"]["BulkTarget"][];
+            reason?: string;
+            ticketId?: string;
+            verb?: string;
+        };
+        BulkTarget: {
+            engineId?: string;
+            instanceId?: string;
+            jobId?: string;
         };
         CreateNote: {
             body: string;
@@ -526,6 +653,13 @@ export interface components {
             /** Format: int64 */
             timer?: number;
         };
+        MeDto: {
+            engineRoles?: {
+                [key: string]: string;
+            };
+            role?: string;
+            username?: string;
+        };
         NoteDto: {
             author?: string;
             body?: string;
@@ -556,6 +690,7 @@ export interface components {
             processDefinitionKey?: string;
             processDefinitionName?: string;
             processInstanceId?: string;
+            protectedInstance?: boolean;
             scopeType?: string;
             startTime?: string;
             /** @enum {string} */
@@ -738,6 +873,119 @@ export interface operations {
                 };
                 content: {
                     "*/*": components["schemas"]["AuditEntryDto"][];
+                };
+            };
+        };
+    };
+    recent: {
+        parameters: {
+            query?: {
+                limit?: number;
+            };
+            header?: never;
+            path?: never;
+            cookie?: never;
+        };
+        requestBody?: never;
+        responses: {
+            /** @description OK */
+            200: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "*/*": components["schemas"]["BulkJobDto"][];
+                };
+            };
+        };
+    };
+    submit: {
+        parameters: {
+            query?: never;
+            header?: never;
+            path?: never;
+            cookie?: never;
+        };
+        requestBody: {
+            content: {
+                "application/json": components["schemas"]["BulkSubmitRequest"];
+            };
+        };
+        responses: {
+            /** @description OK */
+            200: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "*/*": components["schemas"]["BulkJobDto"];
+                };
+            };
+        };
+    };
+    get: {
+        parameters: {
+            query?: never;
+            header?: never;
+            path: {
+                id: string;
+            };
+            cookie?: never;
+        };
+        requestBody?: never;
+        responses: {
+            /** @description OK */
+            200: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "*/*": components["schemas"]["BulkJobDto"];
+                };
+            };
+        };
+    };
+    cancel: {
+        parameters: {
+            query?: never;
+            header?: never;
+            path: {
+                id: string;
+            };
+            cookie?: never;
+        };
+        requestBody?: never;
+        responses: {
+            /** @description OK */
+            200: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "*/*": components["schemas"]["BulkJobDto"];
+                };
+            };
+        };
+    };
+    verify: {
+        parameters: {
+            query?: never;
+            header?: never;
+            path: {
+                id: string;
+                ordinal: number;
+            };
+            cookie?: never;
+        };
+        requestBody?: never;
+        responses: {
+            /** @description OK */
+            200: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "*/*": components["schemas"]["BulkItemDto"];
                 };
             };
         };
@@ -1100,6 +1348,26 @@ export interface operations {
                 };
                 content: {
                     "*/*": components["schemas"]["VariableDto"];
+                };
+            };
+        };
+    };
+    me: {
+        parameters: {
+            query?: never;
+            header?: never;
+            path?: never;
+            cookie?: never;
+        };
+        requestBody?: never;
+        responses: {
+            /** @description OK */
+            200: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "*/*": components["schemas"]["MeDto"];
                 };
             };
         };
