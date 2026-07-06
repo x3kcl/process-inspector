@@ -1,0 +1,28 @@
+# Rung-4 registry for TriageAggregationIT: engine-a REACHED THROUGH A WIREMOCK PROXY so
+# the request journal can prove cache hits make zero engine calls. Every response is the
+# real flowable-rest wire shape (transparent proxying — never a stub; engine-harness iron
+# rule). TRIAGE_PROXY_PORT is registered by the test via @DynamicPropertySource.
+#
+# dlq-scan-cap is 500 (not the search profiles' truncation-sized 50): the dev engines
+# accumulate failed instances across local runs, and this suite asserts per-version
+# counts that a truncated scan could legitimately drop.
+inspector:
+  fanout-parallelism: 4
+  engines:
+    - id: engine-a
+      name: "Engine A (triage harness)"
+      base-url: "http://localhost:${TRIAGE_PROXY_PORT}/flowable-rest/service"
+      environment: dev
+      accent-color: "#2e86de"
+      enabled: true
+      mode: read-write
+      auth:
+        type: basic
+        username: rest-admin
+        password-ref: ENGINE_A_PASSWORD
+      timeouts:
+        connect-ms: 2000
+        read-ms: 10000
+        write-ms: 10000
+      max-page-size: 10
+      dlq-scan-cap: 500

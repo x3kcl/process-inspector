@@ -45,6 +45,12 @@
       <artifactId>resilience4j-spring-boot3</artifactId>
       <version>${resilience4j.version}</version>
     </dependency>
+    <!-- The Stage 0 triage-aggregation cache (ARCH §2.2, thundering-herd protection).
+         Version managed by spring-boot-dependencies. -->
+    <dependency>
+      <groupId>com.github.ben-manes.caffeine</groupId>
+      <artifactId>caffeine</artifactId>
+    </dependency>
 
     <dependency>
       <groupId>org.springframework.boot</groupId>

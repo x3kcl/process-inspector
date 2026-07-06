@@ -163,6 +163,10 @@ JPA table when runtime CRUD of engines is wanted (v2).
 
 ```yaml
 inspector:
+  triage:                            # Stage 0 landing knobs (SPEC §4)
+    cache-ttl-s: 20                  # aggregation cache TTL — thundering-herd protection
+    refresh-min-interval-s: 10       # Refresh-bypass throttle (per user once auth lands, M4+)
+    stacktrace-sample-cap: 25        # representative stacktrace fetches per round (group refinement)
   engines:
     - id: orders-prod                # stable slug, used in composite IDs — never rename
       name: "Orders µService (PROD)" # display name
@@ -209,7 +213,7 @@ surfaced by `GET /api/engines` and pushed to the health strip via SSE.
 | `GET  /api/engines` | Registry + live health/capabilities/job-lane counts (no secrets) |
 | `GET  /api/resolve?q=…` | **Omnibox**: any ID kind or business key → matching instances across engines |
 | `POST /api/search` | Fan-out instance search (`SearchRequest`; URL-serializable) |
-| `GET  /api/triage/failure-groups` | DLQ + failing jobs grouped by normalized error signature, counts per engine/definition-version |
+| `GET  /api/triage[?refresh=true]` | Stage 0 dashboard: engine health strip (M1 probe state), global + per-engine status counts (query totals, `size=1`), DLQ + RETRYING jobs grouped by normalized error signature with per-engine/per-definition-version counts (sibling versions zero-filled), per-engine honesty envelope (`ok/error/dlqScan`). Served from the 20s Caffeine cache (single-flight); `refresh=true` bypasses, throttled 1/10s |
 | `GET  /api/instances/{engineId}/{id}` | Details composite: vitals, executions, activities, tasks, event subscriptions, hierarchy |
 | `GET/PUT /api/instances/{engineId}/{id}/variables[/…]` | Type-aware view/edit (incl. per-execution); serializables read-only; list responses byte-capped with an on-demand full-value fetch (an edit always operates on the fetched full value); writes are compare-and-set — `expectedOldValue` ⇒ 409 + fresh re-render on mismatch (R-SEM-09); UI contract: SPEC §4a |
 | `GET  /api/instances/{engineId}/{id}/jobs` | Four lanes (executable/timer/suspended/deadletter); stacktrace on expand |

@@ -1,7 +1,10 @@
 package io.inspector.dto;
 
+import io.inspector.config.InspectorProperties;
 import io.inspector.registry.EngineCapabilities;
 import io.inspector.registry.EngineHealth;
+import java.time.Instant;
+import java.util.Locale;
 
 /**
  * The Stage 0 health-strip entry for one engine: registry identity + live health,
@@ -23,4 +26,26 @@ public record EngineDto(
         EngineHealth.JobLanes jobLanes, // null when unknown/degraded
         Long oldestExecutableJobAge, // seconds; null when the lane is empty/unknown
         Long overdueTimers, // null when unknown
-        String healthError) {}
+        String healthError) {
+
+    /** The one registry-config + live-health mapping, shared by /api/engines and /api/triage. */
+    public static EngineDto from(InspectorProperties.EngineConfig config, EngineHealth health) {
+        return new EngineDto(
+                config.id(),
+                config.name(),
+                config.environment().name().toLowerCase(Locale.ROOT),
+                config.accentColor(),
+                config.modeOrDefault().name().toLowerCase(Locale.ROOT).replace('_', '-'),
+                config.tenantId(),
+                health.reachable(),
+                health.version(),
+                health.checkedAtEpochMs() > 0
+                        ? Instant.ofEpochMilli(health.checkedAtEpochMs()).toString()
+                        : null,
+                health.capabilities(),
+                health.jobLanes(),
+                health.oldestExecutableJobAgeSec(),
+                health.overdueTimers(),
+                health.error());
+    }
+}

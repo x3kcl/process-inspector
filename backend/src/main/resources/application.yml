@@ -39,6 +39,12 @@ inspector:
   fanout-parallelism: 8
   # superProcessInstanceId chain-walk bound for the failed-in-subprocess roll-up (ARCH §2.3).
   hierarchy-max-depth: 10
+  # Stage 0 triage landing (SPEC §4): aggregation cache TTL (thundering-herd protection),
+  # Refresh-bypass throttle, and the cap on representative stacktrace fetches per round.
+  triage:
+    cache-ttl-s: 20
+    refresh-min-interval-s: 10
+    stacktrace-sample-cap: 25
   engines:
     - id: engine-a
       name: "Engine A (demo)"

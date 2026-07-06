@@ -83,7 +83,7 @@ OPERATIONS.md §8.
   mid-demo degrades to a labeled partial result; a 10k-DLQ engine shows the truncation badge
   instead of lying.
 
-## M3 — Instance detail (full-page route) + triage landing
+## M3 — Instance detail (full-page route) + triage landing  *(triage-aggregation backend landed; UI + detail page open)*
 - **Detail page `/inspect/{engineId}/{id}`** (deep-linkable now, not M6): vitals header with
   "why stuck" strip (exception first line, retries state, waiting-for subscriptions/timers);
   **read-only bpmn-js diagram** (pulled forward from M5) with token + dead-letter markers,
@@ -99,6 +99,15 @@ OPERATIONS.md §8.
   job-lane counts from the management-collection totals trick, and error groups from the
   dedicated capped DLQ/RETRYING scan legs. Fetching grid rows to count them is a rejected
   implementation (it defeats the cache, the caps, and do-no-harm at once).
+- **Triage backend (landed):** `GET /api/triage` (ARCH §4) — `ErrorSignatureNormalizer`
+  (R-SEM-03 algo v1; golden corpus captured live via `docker/capture-error-corpus.py`,
+  gated by `ErrorSignatureGoldenCorpusTest`), `TriageAggregationService` (virtual-thread
+  fan-out; status counts from `size=1` totals incl. historic `finished:true` for COMPLETED;
+  failure-lane scans with one representative-stacktrace refinement per group; definition
+  sibling-version zero-fill), 20s single-flight Caffeine cache + throttled `refresh=true`
+  bypass (`inspector.triage` knobs). Proven on all three profiles: `TriageAggregationIT`
+  (WireMock transparent proxy — request-journal proof of cache hits and `size:1` wire
+  bodies), `Triage7IT` (Jakarta error-shape drift), `TriageLegacyIT` (6.3.1 legs).
 - **Done when:** from the landing, one click on an error group reaches a pre-filtered list;
   opening a stuck instance shows why it's stuck without any click; the link pastes into a
   ticket and reopens the same view.

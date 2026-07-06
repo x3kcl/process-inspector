@@ -178,6 +178,27 @@ public class FlowableEngineClient {
                         .body(FlowablePage.class));
     }
 
+    /**
+     * GET /management/{lane}/{jobId}/exception-stacktrace — plain-text stacktrace, used by
+     * the triage aggregation to refine ONE representative job per error group into its
+     * root-cause class (R-SEM-03 unwrap). Null when the job is gone (retried/deleted
+     * between scan and fetch — an acceptable snapshot race, the group falls back to its
+     * message-only signature).
+     */
+    public String jobExceptionStacktrace(EngineConfig engine, JobLaneKind lane, String jobId) {
+        try {
+            return guarded(
+                    engine,
+                    () -> client(engine)
+                            .get()
+                            .uri(lane.path + "/{jobId}/exception-stacktrace", jobId)
+                            .retrieve()
+                            .body(String.class));
+        } catch (HttpClientErrorException.NotFound e) {
+            return null;
+        }
+    }
+
     /** GET /management/engine — health + version probe. */
     @SuppressWarnings("unchecked")
     public Map<String, Object> engineInfo(EngineConfig engine) {

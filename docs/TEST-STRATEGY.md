@@ -33,10 +33,13 @@ regressions.
 
 ## 4. Golden files: the signature normalizer (R-SEM-03)
 Versioned corpus ≥30 real exception payloads **per engine major** (6.x, 7.x), captured from
-live compose profiles (never hand-written), committed under
-`backend/src/test/resources/error-signatures/{6.x,7.x}/` with expected signatures + group
-assignments. CI asserts zero unparseable + exact mapping. A normalizer change must bump
-`algoVersion`, regenerate goldens, and show the grouping diff in the PR. Image bumps
+live compose profiles by `docker/capture-error-corpus.py` (never hand-written; it deploys
+the organically-failing error-zoo seeds and harvests message + stacktrace per job),
+committed under `backend/src/test/resources/error-signatures/{6.x,7.x}/corpus.json`.
+`ErrorSignatureGoldenCorpusTest` is the CI gate: zero unparseable entries, the exact
+kind→root-class mapping, one-signature-per-kind grouping (the ID-stripping proof), and
+cross-major hash convergence for tail-bearing 7.x messages. A normalizer change must bump
+`algoVersion`, re-run the capture, and show the grouping diff in the PR. Image bumps
 re-capture the corpus before capability sign-off.
 
 ## 5. Security testing (R-TEST-06)

@@ -1,5 +1,6 @@
 package io.inspector.config;
 
+import com.github.benmanes.caffeine.cache.Ticker;
 import java.time.Clock;
 import org.springframework.context.annotation.Bean;
 import org.springframework.context.annotation.Configuration;
@@ -14,5 +15,11 @@ public class TimeConfig {
     @Bean
     public Clock clock() {
         return Clock.systemUTC();
+    }
+
+    /** The Caffeine analogue of the Clock bean: cache-expiry time is injectable too. */
+    @Bean
+    public Ticker caffeineTicker() {
+        return Ticker.systemTicker();
     }
 }

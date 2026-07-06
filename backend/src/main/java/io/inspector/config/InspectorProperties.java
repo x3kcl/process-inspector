@@ -20,6 +20,7 @@ import org.springframework.validation.annotation.Validated;
 public record InspectorProperties(
         Integer fanoutParallelism,
         Integer hierarchyMaxDepth,
+        @Valid Triage triage,
         @Valid List<EngineConfig> engines) {
     /** Engine ids are stable slugs used in composite instance IDs (R-SEM-08) — never rename. */
     public static final String ENGINE_ID_PATTERN = "^[a-z0-9][a-z0-9._-]{0,63}$";
@@ -27,6 +28,29 @@ public record InspectorProperties(
     /** superProcessInstanceId chain-walk bound (ARCH §2.3) — lowered in test profiles. */
     public int hierarchyMaxDepthOrDefault() {
         return hierarchyMaxDepth != null ? hierarchyMaxDepth : 10;
+    }
+
+    public Triage triageOrDefault() {
+        return triage != null ? triage : new Triage(null, null, null);
+    }
+
+    /**
+     * Stage 0 triage knobs (SPEC §4/§9): 20s aggregation cache TTL (thundering-herd
+     * protection — spec-pinned default), Refresh bypass throttled to one per 10s, and
+     * the cap on representative stacktrace fetches used to refine error groups.
+     */
+    public record Triage(Integer cacheTtlS, Integer refreshMinIntervalS, Integer stacktraceSampleCap) {
+        public int cacheTtlSOrDefault() {
+            return cacheTtlS != null ? cacheTtlS : 20;
+        }
+
+        public int refreshMinIntervalSOrDefault() {
+            return refreshMinIntervalS != null ? refreshMinIntervalS : 10;
+        }
+
+        public int stacktraceSampleCapOrDefault() {
+            return stacktraceSampleCap != null ? stacktraceSampleCap : 25;
+        }
     }
 
     public InspectorProperties {
