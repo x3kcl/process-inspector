@@ -5,6 +5,7 @@ import io.inspector.config.InspectorProperties.EngineConfig;
 import org.springframework.stereotype.Component;
 import org.springframework.web.server.ResponseStatusException;
 
+import java.util.LinkedHashMap;
 import java.util.List;
 import java.util.Map;
 import java.util.concurrent.ConcurrentHashMap;
@@ -20,18 +21,15 @@ import static org.springframework.http.HttpStatus.NOT_FOUND;
 @Component
 public class EngineRegistry {
 
-    /** Mutable runtime state per engine — populated by the health probe, not by config. */
-    public record EngineHealth(boolean reachable, String version, String error, long checkedAtEpochMs) {
-        public static EngineHealth unknown() { return new EngineHealth(false, null, "not probed yet", 0); }
-    }
-
     private final Map<String, EngineConfig> engines;
     private final Map<String, EngineHealth> health = new ConcurrentHashMap<>();
 
     public EngineRegistry(InspectorProperties props) {
+        // LinkedHashMap: the health strip and every fan-out follow registry YAML order.
         this.engines = props.engines().stream()
                 .filter(EngineConfig::enabled)
-                .collect(Collectors.toUnmodifiableMap(EngineConfig::id, Function.identity()));
+                .collect(Collectors.toMap(EngineConfig::id, Function.identity(),
+                        (a, b) -> a, LinkedHashMap::new));
         engines.keySet().forEach(id -> health.put(id, EngineHealth.unknown()));
     }
 

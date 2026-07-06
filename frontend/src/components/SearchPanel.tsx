@@ -51,7 +51,7 @@ export function SearchPanel({ engines, busy, onSearch }: Props) {
               checked={engineIds.includes(e.id)}
               onChange={() => setEngineIds(toggle(engineIds, e.id))}
             />
-            <span className="engine-dot" style={{ background: e.color }} />
+            <span className="engine-dot" style={{ background: e.accentColor }} />
             {e.name}
             <span className={e.reachable ? 'health ok' : 'health down'}>
               {e.reachable ? '●' : '○'}

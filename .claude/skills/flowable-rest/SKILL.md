@@ -47,6 +47,15 @@ multi-tenant engines. Never trust an engine-side "state" field for FAILED.
 `{"action":"move"}` → back to the executable queue with fresh retries. Force-fire a timer early
 the same way on `/management/timer-jobs/{jobId}`.
 
+⚠ Wire-format gotchas (proven on flowable-rest 6.8):
+- **Date query params take WHOLE seconds only** — `dueBefore=…T06:20:00Z` works,
+  `…T06:20:00.000Z` is a 400 ("Failed to parse date"). `Instant.toString()` emits millis
+  when non-zero: truncate to seconds before building the URL.
+- **Job sort fields**: the job collections accept `id, dueDate, executionId,
+  processInstanceId, retries, tenantId` — `createTime` is NOT accepted (400). Oldest
+  executable job = `sort=dueDate&order=asc`; compute age from the row's
+  `dueDate ?? createTime`, floored at 0.
+
 ## 4. Corrective-action catalog (exact calls — keep in sync with SPECIFICATION §D)
 | Action | Call |
 |---|---|

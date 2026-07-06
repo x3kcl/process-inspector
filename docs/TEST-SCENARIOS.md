@@ -32,10 +32,10 @@ never *replaces* the L4 proof for join/status semantics (iron rule, `engine-harn
 | FIX-PROC-01 | `demoOrder` | straight-through service task, expression `${true}` | COMPLETED |
 | FIX-PROC-02 | `demoUserTask` | parks on a user task (assignee/candidate group per `validate-bpmn` §4) | ACTIVE; task fixtures; suspend target; variable-edit target |
 | FIX-PROC-03 | `demoTimerWait` | intermediate timer, duration from variable `${dueDuration}` | timer lane; "waiting for timer <due>"; timers-due-in-window (R-BAU-08) |
-| FIX-PROC-04 | `demoFailingFast` | `flowable:async="true"` service task, expression `${amount / divisor}` with `divisor=0`; `failedJobRetryTimeCycle="R1/PT1S"` | dead-letter job in seconds; **the recovery arc**: edit `divisor`→1, retry, completes |
+| FIX-PROC-04 | `demoFailingPayment` | `flowable:async="true"` service task, expression `${amount % divisor}` with `divisor=0`; `failedJobRetryTimeCycle="R1/PT1S"` | dead-letter job in seconds; **the recovery arc**: edit `divisor`→1, retry, completes |
 | FIX-PROC-05 | `demoFailingRetry` | same expression; `failedJobRetryTimeCycle="R10/PT1H"` | RETRYING pinned in the **timer table** (`withException`), stable for 1 h (R-TEST-07) |
-| FIX-PROC-06 | `demoParent` | call activity → `demoFailingFast` child, businessKey propagated | `failedInSubprocess` roll-up, depth 1 |
-| FIX-PROC-07 | `demoRecursive` | self-recursive call activity, `depth+1` in-parameter, recurses while `depth < maxDepth`; calls `demoFailingFast` at the leaf | hierarchy chains of arbitrary depth; roll-up at limit / limit+1 |
+| FIX-PROC-06 | `demoParent` | call activity → `demoFailingPayment` child, businessKey propagated | `failedInSubprocess` roll-up, depth 1 |
+| FIX-PROC-07 | `demoRecursive` | self-recursive call activity, `depth+1` in-parameter, recurses while `depth < maxDepth`; calls `demoFailingPayment` at the leaf | hierarchy chains of arbitrary depth; roll-up at limit / limit+1 |
 | FIX-PROC-08 | `demoEventWait` | event-based gateway: message catch `PaymentReceived` vs signal catch `RetryBatch` | event subscriptions visible; unstick targets |
 | FIX-PROC-09 | `demoMultiInstance` | MI subprocess over collection variable | execution-local loop variables; change-state MI-body refusal |
 | FIX-PROC-10 | `demoParallelJoin` | parallel split → two user tasks → join | parallel-join change-state warning |
@@ -56,7 +56,7 @@ never *replaces* the L4 proof for join/status semantics (iron rule, `engine-harn
 | roll-up at depth limit / limit+1 | FIX-PROC-07 with `maxDepth` = limit, then limit+1 | FIX-STATUS-08 |
 | cycle guard | L1 over a fixture parent-map — **the sanctioned never-mock exception** (real engines cannot produce cycles, R-TEST-07) | FIX-STATUS-09 |
 | CMMN rows filtered | FIX-CASE-01 alongside BPMN failures on the same engine | FIX-STATUS-10 |
-| tenant threading | FIX-TENANT-01: deploy `demoOrder`+`demoFailingFast` under `tenant-a` and `tenant-b`; failures seeded only in `tenant-a` | FIX-STATUS-11 |
+| tenant threading | FIX-TENANT-01: deploy `demoOrder`+`demoFailingPayment` under `tenant-a` and `tenant-b`; failures seeded only in `tenant-a` | FIX-STATUS-11 |
 
 ### 1.3 Data-shape recipes (S2, applied to running instances)
 

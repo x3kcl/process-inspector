@@ -13,6 +13,12 @@ docker compose -f docker/docker-compose.dev.yml up -d   # engine-a :8081, engine
 # creds: rest-admin / test  (flowable/flowable-rest:6.8.0)
 curl -fsS -u rest-admin:test http://localhost:8081/flowable-rest/service/management/engine
 ```
+The 6.x pair is the `flowable-6` profile, activated by default via `docker/.env`
+(`COMPOSE_PROFILES=flowable-6`). Extras: `--profile flowable-7` = Flowable 7.1 on :8083
+(same context path/creds); `--profile postgres` = the BFF's M4 DB on :5433. Seed with
+`bash docker/seed.sh` (idempotent BY KEY — after editing a process file, redeploy manually
+or `down -v`). Integration tests are failsafe `*IT` classes: `mvn test` needs no docker,
+`mvn verify` needs this stack up.
 BFF: `export ENGINE_A_PASSWORD=test ENGINE_B_PASSWORD=test; cd backend && mvn spring-boot:run`
 (:8085). UI: `cd frontend && npm install && npm run dev` (:5173, proxies `/api`).
 

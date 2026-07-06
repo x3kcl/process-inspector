@@ -1,0 +1,48 @@
+# Rung-3 test registry (unit-test-patterns / engine-harness doctrine):
+# - both engines point at a CLOSED port (nothing listens on :1) — wiring tests must not
+#   need docker;
+# - the same "engine" registered twice as dev and prod is the guard-ladder fixture;
+# - truncation knobs lowered (max-page-size 10, dlq-scan-cap 50);
+# - breaker window shrunk (2 calls, 500ms open) so breaker tests bound their waits.
+resilience4j:
+  circuitbreaker:
+    configs:
+      engine:
+        sliding-window-type: COUNT_BASED
+        sliding-window-size: 2
+        minimum-number-of-calls: 2
+        failure-rate-threshold: 50
+        wait-duration-in-open-state: 500ms
+        permitted-number-of-calls-in-half-open-state: 2
+        record-exceptions:
+          - org.springframework.web.client.ResourceAccessException
+          - org.springframework.web.client.HttpServerErrorException
+        ignore-exceptions:
+          - org.springframework.web.client.HttpClientErrorException
+
+inspector:
+  fanout-parallelism: 4
+  engines:
+    - id: probe-dev
+      name: "Probe engine (dev twin)"
+      base-url: "http://localhost:1/flowable-rest/service"
+      environment: dev
+      accent-color: "#2e86de"
+      enabled: true
+      mode: read-write
+      auth:
+        type: none
+      max-page-size: 10
+      dlq-scan-cap: 50
+
+    - id: probe-prod
+      name: "Probe engine (prod twin)"
+      base-url: "http://localhost:1/flowable-rest/service"
+      environment: prod
+      accent-color: "#e74c3c"
+      enabled: true
+      mode: read-only
+      auth:
+        type: none
+      max-page-size: 10
+      dlq-scan-cap: 50

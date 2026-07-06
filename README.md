@@ -20,25 +20,45 @@ instances across **multiple independent Flowable engines** — strictly via the 
 ```
 backend/    Spring Boot 3 BFF — Engine Registry, health probe, fan-out search aggregator (M1+M2)
 frontend/   Vite + React + TS — Search panel, AG-Grid results, split-pane shell (M2)
-docker/     Two demo flowable-rest engines for local development (M0)
+docker/     Dev harness: compose profiles, seed BPMN (docker/processes/), seed.sh (M0)
 ```
 
 ## Quick start
 
 ```bash
-# 1. Two demo Flowable engines on :8081/:8082
+# 1. Two demo Flowable 6.8 engines on :8081/:8082 (the default profile, flowable-6 —
+#    selected by docker/.env COMPOSE_PROFILES; the CLI --profile flag overrides it)
 docker compose -f docker/docker-compose.dev.yml up -d
 
-# 2. BFF on :8085 (engine credentials come from the environment, never from config)
+# Optional extras:
+docker compose -f docker/docker-compose.dev.yml --profile flowable-7 up -d   # Flowable 7.1 on :8083
+docker compose -f docker/docker-compose.dev.yml --profile postgres up -d     # BFF DB (M4) on :5433
+
+# 2. Seed demo processes (idempotent, REST-only): demoOrder + demoFailingPayment
+#    (the latter dead-letters itself organically — the standing DLQ demo fixture)
+bash docker/seed.sh                                          # engine-a
+bash docker/seed.sh http://localhost:8082/flowable-rest/service   # engine-b too, if wanted
+
+# 3. BFF on :8085 (engine credentials come from the environment, never from config)
 export ENGINE_A_PASSWORD=test ENGINE_B_PASSWORD=test
 cd backend && mvn spring-boot:run
 
-# 3. UI on :5173 (proxies /api to the BFF)
+# 4. UI on :5173 (proxies /api to the BFF)
 cd frontend && npm install && npm run dev
 ```
 
 Registered engines live in `backend/src/main/resources/application.yml` under `inspector.engines`
-(see ARCHITECTURE.md §3 for the full field reference).
+(see ARCHITECTURE.md §3 for the full field reference). `GET :8085/api/engines` is the Stage 0
+health strip: reachability, version, capability flags, the four job-lane counts and the
+executor-starvation alarms per engine.
+
+### Backend tests
+
+```bash
+cd backend
+mvn test      # unit ladder (rungs 1–3 + ArchUnit no-sleep rule) — no docker needed
+mvn verify    # + dockerized integration tests (*IT) — requires the flowable-6 harness up
+```
 
 ## Status
 

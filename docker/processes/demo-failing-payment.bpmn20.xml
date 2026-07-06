@@ -9,16 +9,17 @@
              expressionLanguage="http://www.w3.org/1999/XPath"
              targetNamespace="http://inspector.io/demo">
 
-  <!-- Deliberately-failing async task: start with integer variables amount=100, divisor=0
-       and ${amount / divisor} throws ArithmeticException. R1/PT1S = one retry after ~1s,
-       then the job dead-letters ORGANICALLY (never seeded via SQL). Recovery arc:
-       set divisor to a non-zero value, move the dead-letter job, instance completes. -->
+  <!-- Deliberately-failing async task: start with integer variables amount=100, divisor=0.
+       NOTE: EL '/' coerces to Double (100/0 = Infinity, no error) — '%' coerces integers
+       to Long, so ${amount % divisor} genuinely throws ArithmeticException. R1/PT1S = one
+       retry after ~1s, then the job dead-letters ORGANICALLY (never seeded via SQL).
+       Recovery arc: set divisor to a non-zero value, move the dead-letter job, completes. -->
   <process id="demoFailingPayment" name="Demo Failing Payment" isExecutable="true">
     <startEvent id="start"/>
     <sequenceFlow id="flow1" sourceRef="start" targetRef="chargePayment"/>
     <serviceTask id="chargePayment" name="Charge payment"
                  flowable:async="true"
-                 flowable:expression="${amount / divisor}"
+                 flowable:expression="${amount % divisor}"
                  flowable:failedJobRetryTimeCycle="R1/PT1S"/>
     <sequenceFlow id="flow2" sourceRef="chargePayment" targetRef="end"/>
     <endEvent id="end"/>

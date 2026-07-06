@@ -13,18 +13,31 @@ REQUIREMENTS-REGISTER IDs they discharge. The authoritative CI merge-gate list i
 OPERATIONS.md §8. **Status correction:** M0's "CI" claim was ahead of reality — no workflows
 or Dockerfile exist yet; landing them is part of M2a's gate.
 
-## M0 — Scaffold *(done)*
-- Repo layout, CI, docker-compose dev harness (2× `flowable/flowable-rest`).
-- **Addition:** a second compose profile pinned to an **older Flowable image** so the
-  capability cliffs (change-state 6.4+, migration ~6.5+, external-worker 6.8+) are exercised
-  in CI; seed processes incl. the deliberately-failing async task (see `validate-bpmn` skill).
+## M0 — Scaffold *(harness done; CI/Dockerfile remain M2a's gate)*
+- Repo layout, docker-compose dev harness. Profiles in `docker/docker-compose.dev.yml`
+  (project name `process-inspector`): **`flowable-6`** (engine-a/engine-b, 6.8.0,
+  :8081/:8082 — default via `docker/.env` `COMPOSE_PROFILES`), **`flowable-7`**
+  (`flowable/flowable-rest:7.1.0`, :8083, same context path + admin env vars),
+  **`postgres`** (postgres:16, :5433 — container only until M4, no JPA/Flyway).
+- Seed processes under `docker/processes/` + idempotent `docker/seed.sh` (REST-only):
+  `demoOrder` (straight-through) and `demoFailingPayment` (async, `${amount % divisor}`,
+  `R1/PT1S` → organic dead-letter; EL `/` never throws — see `validate-bpmn` skill).
+- **Still open (slice-0):** pre-6.4 `legacy` profile for the capability-cliff CI matrix;
+  the remaining FIX-PROC seed catalog; CI workflows + root Dockerfile (M2a gate).
 
-## M1 — Engine Registry + health  *(bootstrapped)*
-- Registry YAML binding + env-ref secrets; per-engine `RestClient`; scheduled health probe.
-- **Extend:** capability probes per ARCH §2.5 (changeState/migration/externalWorkerJobs/
-  scopeType/activityHistory); job-lane counts + oldest-executable-job-age + overdue-timers
-  via the `size=1` total trick.
-- **Done when:** header strip shows each engine with env-colored badge, version, lanes.
+## M1 — Engine Registry + health  *(backend landed; header-strip UI open)*
+- Registry YAML binding per ARCH §3 (environment/mode enums, engine-id slug validation,
+  duplicate-id fail-fast, `write-ms`, `dlq-scan-cap`, `alarm-thresholds`) + env-ref secrets.
+- Per-engine `RestClient` on the JDK HttpClient (no redirects) wrapped in per-engine
+  Resilience4j circuit breakers (shared config `engine`); open breaker degrades that
+  engine's entry, never the request.
+- Scheduled health probe (30s, virtual-thread fan-out): version, capability flags per
+  ARCH §2.5, four job-lane counts + oldest-executable-job-age + overdue-timers via the
+  `size=1` total trick — all surfaced by `GET /api/engines`.
+- Proven by `EngineHealthIT` against the dockerized 6.8 engine (organic dead-letter via
+  `demoFailingPayment`; fail→retry→DLQ measures ~45s on engine defaults — bound waits at 60s).
+- **Done when:** header strip shows each engine with env-colored badge, version, lanes
+  *(frontend part — open)*.
 
 ## M2 — Search & results  *(bootstrapped — needs the correctness rework)*
 - **M2a (fix before anything else):** rewrite the status join per ARCH §2.3 — DLQ-driven

@@ -87,7 +87,10 @@ scenarios, capability matrix cross. Weekly: image rescan; monthly: base-image re
 (CycloneDX) attached to releases.
 
 ## 9. Compose profiles
-Dev engine profiles (6.x current / pre-6.4 / 7.x) + **`prod-like`** (release image +
+Dev engine profiles in `docker/docker-compose.dev.yml`: **`flowable-6`** (6.8.0 pair,
+default via `docker/.env` `COMPOSE_PROFILES`) / **`flowable-7`** (7.1.0, :8083) /
+**`postgres`** (:5433); a pre-6.4 `legacy` profile is still to land. Plus **`prod-like`**
+(release image +
 Postgres + OIDC stub + reverse proxy with SSE buffering off, forwarded headers on) — the
 M4 dual-auth path, Flyway, and proxy behavior are exercised before prod, not in it.
 Secrets per target: compose `.env` mode 600 gitignored; k8s `Secret` via `envFrom`.

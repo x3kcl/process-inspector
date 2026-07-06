@@ -4,6 +4,9 @@
 #
 # Usage: docker/seed.sh [engine-base-url]
 #   default engine-base-url: http://localhost:8081/flowable-rest/service
+#
+# Idempotency is BY KEY: editing a process file does not redeploy it here — reset the
+# harness (docker compose down -v) or deploy the new version manually.
 set -euo pipefail
 
 ENGINE="${1:-http://localhost:8081/flowable-rest/service}"

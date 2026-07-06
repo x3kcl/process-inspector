@@ -6,7 +6,7 @@ export interface EngineInfo {
   id: string
   name: string
   environment: string
-  color: string
+  accentColor: string
   reachable: boolean
   engineVersion: string | null
   healthError: string | null

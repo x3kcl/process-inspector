@@ -38,7 +38,7 @@ export default function App() {
         <div className="engine-badges">
           {engines.map((e) => (
             <span key={e.id} className={`badge ${e.reachable ? 'ok' : 'down'}`} title={e.healthError ?? e.engineVersion ?? ''}>
-              <span className="engine-dot" style={{ background: e.color }} />
+              <span className="engine-dot" style={{ background: e.accentColor }} />
               {e.id} {e.reachable ? `· v${e.engineVersion ?? '?'}` : '· DOWN'}
             </span>
           ))}
