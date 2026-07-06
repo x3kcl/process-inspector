@@ -5,7 +5,7 @@
 // VariableEntry; components consume only the derived rows.
 import { formatDateTime } from '../../lib/format'
 
-/** Presentation view-model — bound to the generated DTO by an adapter when it lands. */
+/** Presentation view-model over the generated VariableDto (adapter in VariablesTab). */
 export interface VariableEntry {
   name: string
   /** The engine's declared type (string/long/integer/short/double/boolean/date/json/serializable/null…). */
@@ -16,6 +16,12 @@ export interface VariableEntry {
   executionLabel?: string
   /** ISO timestamp of the last write, when the engine surfaces it. */
   lastModified?: string
+  /** Server-truncated: the value exceeded the 256 KiB preview cap and shipped as null. */
+  truncated?: boolean
+  /** Serialized size the server measured — shown next to the truncation notice. */
+  sizeBytes?: number
+  /** The user pulled the full value through the escape hatch — expansion is unblocked. */
+  fullyLoaded?: boolean
 }
 
 /** Plain-language type chips (SPEC §4) — the engine term belongs in the glossary tooltip. */
@@ -26,6 +32,12 @@ const NUMBER_TYPES = new Set(['long', 'integer', 'short', 'double', 'number'])
 
 export function typeChip(entry: VariableEntry): TypeChip {
   const engineType = entry.engineType?.toLowerCase()
+  // A truncated value shipped as null but IS NOT empty — chip from the declared type.
+  if (entry.truncated === true && entry.fullyLoaded !== true) {
+    if (engineType === 'string') return 'text'
+    if (engineType === 'serializable') return 'Java object'
+    return 'structured'
+  }
   if (entry.value === null || entry.value === undefined || engineType === 'null') return 'empty'
   if (engineType === 'boolean' || typeof entry.value === 'boolean') return 'yes-no'
   if (engineType !== undefined && NUMBER_TYPES.has(engineType)) return 'number'
@@ -59,6 +71,16 @@ const PREVIEW_CHAR_CAP = 140
 export const EXPAND_BYTE_CAP = 256 * 1024
 
 export function valuePreview(entry: VariableEntry): ValuePreview {
+  // SPEC §4 size safeguard: over-cap values never ship in the ledger — the row states
+  // the fact + size; "load full value" is the explicit escape hatch next to it.
+  if (entry.truncated === true && entry.fullyLoaded !== true) {
+    const size = entry.sizeBytes !== undefined ? ` (${formatBytes(entry.sizeBytes)})` : ''
+    return {
+      text: `value exceeds the 256 KiB preview cap${size}`,
+      muted: true,
+      expandable: false,
+    }
+  }
   const chip = typeChip(entry)
   switch (chip) {
     case 'empty':

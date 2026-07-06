@@ -85,6 +85,34 @@ describe('valuePreview — never a raw JSON wall (R-UXQ-13)', () => {
   })
 })
 
+describe('server-truncated rows (SPEC §4 size safeguards)', () => {
+  const truncated = entry({
+    name: 'payload',
+    engineType: 'json',
+    value: null, // the server ships null for over-cap values
+    truncated: true,
+    sizeBytes: 412 * 1024,
+  })
+
+  it('a truncated null is NOT an empty chip — the declared type wins', () => {
+    expect(typeChip(truncated)).toBe('structured')
+    expect(typeChip({ ...truncated, engineType: 'string' })).toBe('text')
+  })
+
+  it('states the cap and the real size instead of pretending emptiness', () => {
+    const preview = valuePreview(truncated)
+    expect(preview.text).toContain('exceeds the 256 KiB preview cap')
+    expect(preview.text).toContain('412 KiB')
+    expect(preview.expandable).toBe(false)
+  })
+
+  it('after the explicit full load, the value renders through the normal pipeline', () => {
+    const loaded = { ...truncated, value: { huge: true }, fullyLoaded: true }
+    expect(typeChip(loaded)).toBe('structured')
+    expect(valuePreview(loaded).expandable).toBe(true)
+  })
+})
+
 describe('structuredSummary / formatBytes', () => {
   it('summarizes arrays with item counts', () => {
     expect(structuredSummary([1, 2, 3, 4])).toMatch(/^array · 4 items · /)

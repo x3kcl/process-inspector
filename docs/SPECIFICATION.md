@@ -281,6 +281,12 @@ gap here: [link]" is the ticket-handover primitive.
   - **Errors & Jobs** — Flowable's **four job lanes kept distinct** (executable / timer /
     suspended / dead-letter): the lane IS the diagnosis. Per-job: retries, create time,
     exception (stacktrace fetched on expand), and the verbs (§5).
+  - **Tasks** — the instance's user tasks, **completed AND open in one ledger**: task name
+    + activity id, derived state (ACTIVE / SUSPENDED / COMPLETED — suspension read live,
+    never trusted from history), live assignee/owner, created / due / completed times with
+    duration. Historic-first (an open task is a historic row without an end time) unioned
+    with the runtime rows, so an engine with dialed-down task history still shows its open
+    tasks; list truncation carries the engine-exact total. Complete/reassign verbs per §5.
   - **Hierarchy** — call-activity parent/child tree (both directions); child failures
     surface here and on the parent's status. Tree resolution has a **max-depth limit**
     (default 10) with an explicit "depth limit reached — expand further" affordance —

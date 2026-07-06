@@ -651,10 +651,68 @@ button.primary:disabled {
 .composite-id {
   font-size: 13px;
 }
-.vitals-pending {
-  margin: 6px 0 0;
-  font-size: 12px;
+.vitals-grid {
+  display: flex;
+  flex-wrap: wrap;
+  gap: 6px 22px;
+  margin-top: 8px;
+  font-size: 13px;
+  align-items: baseline;
+}
+.vital {
+  display: inline-flex;
+  align-items: baseline;
+  gap: 6px;
+}
+.vital-label {
+  font-size: 11px;
+  text-transform: uppercase;
+  letter-spacing: 0.04em;
   color: #8395a7;
+}
+.version-chip {
+  font-size: 11px;
+  border: 1px solid #d2dae2;
+  border-radius: 8px;
+  padding: 0 6px;
+  color: #576574;
+}
+.open-logs {
+  font-size: 12px;
+  white-space: nowrap;
+}
+.why-stuck {
+  margin-top: 8px;
+  padding: 8px 10px;
+  border-left: 3px solid #c0392b;
+  background: #fdf3f2;
+  border-radius: 0 6px 6px 0;
+}
+.why-stuck-headline {
+  margin: 0;
+  font-size: 13px;
+}
+.why-stuck-headline code {
+  color: #922b21;
+  word-break: break-word;
+}
+.why-stuck-meta {
+  margin: 4px 0 0;
+  font-size: 12px;
+  color: #576574;
+}
+.waiting-for {
+  margin: 8px 0 0;
+  font-size: 12px;
+  color: #576574;
+}
+.waiting-chip {
+  display: inline-block;
+  border: 1px solid #d2dae2;
+  border-radius: 10px;
+  padding: 1px 8px;
+  margin: 0 4px 2px 0;
+  background: #f5f8fa;
 }
 .diagram-slot {
   min-height: 220px;
@@ -711,9 +769,227 @@ button.primary:disabled {
   padding: 12px 16px;
   overflow: auto;
 }
-.pending-contract {
+/* ---- errors & jobs lanes ---- */
+.job-lane {
+  border: 1px solid #d2dae2;
+  border-radius: 8px;
+  margin-bottom: 8px;
+  padding: 6px 10px;
+  background: #fff;
+}
+.job-lane > summary {
+  cursor: pointer;
+  font-weight: 600;
+  font-size: 13px;
+}
+.lane-diagnosis {
+  font-weight: 400;
+  font-size: 12px;
+  color: #8395a7;
+  margin-left: 8px;
+}
+.lane-deadLetter > summary {
+  color: #922b21;
+}
+.exception-cell .exception-first-line {
+  word-break: break-word;
+  margin-right: 6px;
+}
+.element-id {
+  font-size: 11px;
+  color: #8395a7;
+}
+.stacktrace {
+  max-height: 320px;
+}
+
+/* ---- hierarchy tree ---- */
+.hier-tree {
+  list-style: none;
+  margin: 4px 0 0;
+  padding-left: 18px;
+  border-left: 1px dotted #d2dae2;
+}
+.hier-tree.hier-root {
+  padding-left: 0;
+  border-left: 0;
+}
+.hier-node {
+  margin: 4px 0;
+  font-size: 13px;
+}
+.hier-row {
+  display: inline-flex;
+  align-items: baseline;
+  gap: 8px;
+  flex-wrap: wrap;
+}
+.hier-requested > .hier-row {
+  background: #eef6fb;
+  border-radius: 6px;
+  padding: 2px 6px;
+}
+.hier-key {
+  font-size: 12px;
+  color: #576574;
+}
+.hier-times {
+  font-size: 11px;
+}
+
+/* ---- timeline bars ---- */
+.tl-rows {
+  display: flex;
+  flex-direction: column;
+  gap: 2px;
+}
+.tl-row {
+  display: grid;
+  grid-template-columns: minmax(180px, 1.2fr) 3fr 90px;
+  align-items: center;
+  gap: 10px;
+  font-size: 12px;
+  padding: 2px 0;
+}
+.tl-track {
+  position: relative;
+  height: 12px;
+  background: #f1f4f7;
+  border-radius: 6px;
+  overflow: hidden;
+}
+.tl-bar {
+  position: absolute;
+  top: 0;
+  bottom: 0;
+  background: #2e86de;
+  border-radius: 6px;
+  min-width: 3px;
+}
+.tl-ongoing .tl-bar {
+  background: repeating-linear-gradient(45deg, #2e86de, #2e86de 6px, #7fb3ea 6px, #7fb3ea 12px);
+}
+.tl-duration {
+  text-align: right;
+  white-space: nowrap;
+}
+
+/* ---- lazy json tree ---- */
+.json-tree {
+  font-family: ui-monospace, monospace;
+  font-size: 12px;
+  background: #f7f9fb;
+  border-radius: 6px;
+  padding: 8px 10px;
+  max-height: 420px;
+  overflow: auto;
+}
+.json-children {
+  list-style: none;
+  margin: 0;
+  padding-left: 18px;
+}
+.json-toggle {
+  border: 0;
+  background: none;
+  cursor: pointer;
+  font: inherit;
+  padding: 1px 2px;
+  display: inline-flex;
+  gap: 6px;
+  align-items: baseline;
+}
+.json-toggle:hover {
+  background: #eef2f5;
+  border-radius: 4px;
+}
+.json-key {
+  color: #1b4f72;
+}
+.json-key::after {
+  content: ':';
+  color: #8395a7;
+}
+.json-summary {
+  color: #8395a7;
+}
+.json-leaf {
+  display: inline-flex;
+  gap: 6px;
+  align-items: baseline;
+}
+.json-string {
+  color: #196f3d;
+  word-break: break-word;
+}
+
+/* ---- omnibox resolve panel ---- */
+.omnibox {
+  position: relative;
+}
+.omnibox-pending {
+  position: absolute;
+  right: 10px;
+  top: 50%;
+  transform: translateY(-50%);
+  font-size: 11px;
+  color: #8395a7;
+}
+.omnibox-panel {
+  position: absolute;
+  top: calc(100% + 4px);
+  left: 0;
+  right: 0;
+  min-width: 420px;
+  z-index: 30;
+  background: #fff;
+  border: 1px solid #d2dae2;
+  border-radius: 8px;
+  box-shadow: 0 8px 24px rgba(30, 39, 46, 0.18);
+  padding: 8px 10px;
+  color: #1e272e;
+}
+.omnibox-matches {
+  list-style: none;
+  margin: 0;
+  padding: 0;
+  max-height: 320px;
+  overflow: auto;
+}
+.omnibox-match {
+  display: flex;
+  align-items: baseline;
+  gap: 8px;
+  flex-wrap: wrap;
+  width: 100%;
   text-align: left;
-  max-width: 720px;
+  border: 0;
+  background: none;
+  padding: 6px 6px;
+  cursor: pointer;
+  border-radius: 6px;
+  font-size: 12px;
+  color: inherit;
+}
+.omnibox-match:hover {
+  background: #eef2f5;
+}
+.match-kind {
+  font-size: 11px;
+  text-transform: uppercase;
+  letter-spacing: 0.03em;
+  color: #576574;
+  border: 1px solid #d2dae2;
+  border-radius: 8px;
+  padding: 0 6px;
+  white-space: nowrap;
+}
+.omnibox-reachability {
+  margin: 6px 0 0;
+  font-size: 11px;
+  color: #8395a7;
+  border-top: 1px solid #eef2f5;
+  padding-top: 6px;
 }
 
 /* ---- variable ledger + audit tables ---- */

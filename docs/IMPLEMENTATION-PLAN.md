@@ -104,7 +104,7 @@ OPERATIONS.md §8.
   mid-demo degrades to a labeled partial result; a 10k-DLQ engine shows the truncation badge
   instead of lying.
 
-## M3 — Instance detail (full-page route) + triage landing  *(backend landed 2026-07-06 incl. detail-data endpoints + `/api/resolve`; frontend tab binding open)*
+## M3 — Instance detail (full-page route) + triage landing  *(LANDED 2026-07-06: backend incl. `…/tasks` + `/api/resolve`, frontend fully bound)*
 - **Detail page `/inspect/{engineId}/{id}`** (deep-linkable now, not M6): vitals header with
   "why stuck" strip (exception first line, retries state, waiting-for subscriptions/timers);
   **read-only bpmn-js diagram** (pulled forward from M5) with token + dead-letter markers,
@@ -142,8 +142,25 @@ OPERATIONS.md §8.
   `definitionVersion` (concrete-id pushdown) and `signatureHash` (refinement-bridge
   drill-down) — error-group drill-throughs can now carry the exact signature + version.
   Proven by `DetailResolveIT` + extended `SearchServiceIT`/`TriageAggregationIT` (full
-  matrix green). **Still open:** `…/tasks` (the Tasks tab keeps its contract-pending
-  state), binding the pending frontend tabs to the new endpoints, omnibox → `/api/resolve`.
+  matrix green). `…/tasks` (historic ∪ runtime user-task ledger, derived
+  ACTIVE/SUSPENDED/COMPLETED state) and the vitals `telemetryUrl` (registry
+  `telemetry-url-template` rendered with url-encoded values; absent → no field) landed
+  2026-07-06.
+- **Frontend binding (landed 2026-07-06):** vitals header (definition+version, status chip,
+  business key, started/duration, why-stuck strip, waiting-for chips, "open logs" when
+  `telemetryUrl` present) + diagram bound live; all tabs bound via per-segment TanStack
+  Query hooks (fetch-on-tab-open): Variables (DTO→ledger adapter, server-truncated rows
+  carry the explicit "load full value" hatch via `…/variables/{name}`, structured expand =
+  lazy paged JsonTree — never raw-JSON-primary) · Errors & Jobs (four lanes with
+  lane-diagnosis captions, stacktrace fetch-on-expand) · Tasks · Hierarchy (recursive tree,
+  depth/breadth cap indicators, per-node FAILED badges, node links) · Timeline (duration
+  bars scaled to the instance window, ongoing bars hatched, child links). Omnibox →
+  `GET /api/resolve`: one ID-kind match navigates to Stage 2, business-key matches land on
+  a pre-filtered `/search`, ambiguity renders the disambiguation panel with the
+  "resolved against N of M engines" honesty line; composite `engine:id` still short-circuits
+  client-side. Proven live via Playwright smoke against the dev stack.
+  **Still open (M3 slivers):** copy-for-ticket button, diagram↔tab selection sync,
+  per-job "open logs" links in the Errors & Jobs tab (vitals-level link is live).
 - **Triage landing**: engine health strip, status counts, failure groups by normalized error
   signature with click-through, curated system views, recent-operations placeholder.
   **Aggregation-independence constraint (binding):** Stage 0 aggregations NEVER reuse the

@@ -1,6 +1,8 @@
 package io.inspector.dto;
 
 import com.fasterxml.jackson.annotation.JsonInclude;
+import io.swagger.v3.oas.annotations.media.ArraySchema;
+import io.swagger.v3.oas.annotations.media.Schema;
 import java.util.List;
 
 /**
@@ -34,5 +36,9 @@ public record InstanceHierarchy(
             boolean requested, // marks the instance the operator navigated from
             long childTotal, // exact engine-reported child count (may exceed the render cap)
             boolean childrenTruncated, // childTotal > rendered children ("+N more — not shown")
+            // Self-referential collections defeat springdoc's inference (they emit
+            // unknown[]); a $ref — not implementation=, which recurses to StackOverflow —
+            // keeps the generated TS contract recursive.
+            @ArraySchema(schema = @Schema(ref = "#/components/schemas/HierarchyNode"))
             List<HierarchyNode> children) {}
 }

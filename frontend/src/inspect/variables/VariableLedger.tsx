@@ -1,6 +1,7 @@
 import { useState } from 'react'
 import { CopyButton } from '../../components/CopyButton'
 import { formatDateTime } from '../../lib/format'
+import { JsonTree } from './JsonTree'
 import type { LedgerGroup, LedgerRow } from './ledger'
 import { EXPAND_BYTE_CAP, serializedBytes } from './ledger'
 
@@ -8,14 +9,24 @@ interface Props {
   groups: LedgerGroup[]
   /** Execution label navigated in from the diagram selection — that group auto-expands. */
   focusExecutionLabel?: string
+  /** The >256 KiB escape hatch: fetch the FULL value for a server-truncated row. */
+  onLoadFull?: (row: LedgerRow) => void
+  /** Name currently being fetched through the hatch — its button shows progress. */
+  loadingFullName?: string
 }
 
 /**
  * The typed variable ledger (SPEC §4, R-UXQ-13): name · plain-language type chip · typed
  * value preview · scope · last-modified. Raw text is the per-row copy escape hatch, never
- * the presentation. Structured bodies render only on explicit expand, capped by size.
+ * the presentation. Structured bodies render only on explicit expand, as a LAZY read-only
+ * tree, capped by size.
  */
-export function VariableLedger({ groups, focusExecutionLabel }: Props) {
+export function VariableLedger({
+  groups,
+  focusExecutionLabel,
+  onLoadFull,
+  loadingFullName,
+}: Props) {
   if (groups.length === 0) {
     return <div className="zero-state">This instance carries no variables.</div>
   }
@@ -29,13 +40,25 @@ export function VariableLedger({ groups, focusExecutionLabel }: Props) {
             group.scope === 'process' ||
             (focusExecutionLabel !== undefined && group.label.includes(focusExecutionLabel))
           }
+          onLoadFull={onLoadFull}
+          loadingFullName={loadingFullName}
         />
       ))}
     </div>
   )
 }
 
-function LedgerGroupSection({ group, defaultOpen }: { group: LedgerGroup; defaultOpen: boolean }) {
+function LedgerGroupSection({
+  group,
+  defaultOpen,
+  onLoadFull,
+  loadingFullName,
+}: {
+  group: LedgerGroup
+  defaultOpen: boolean
+  onLoadFull?: (row: LedgerRow) => void
+  loadingFullName?: string
+}) {
   return (
     <details className="ledger-group" open={defaultOpen}>
       <summary>
@@ -56,7 +79,12 @@ function LedgerGroupSection({ group, defaultOpen }: { group: LedgerGroup; defaul
         </thead>
         <tbody>
           {group.rows.map((row) => (
-            <LedgerRowView key={`${group.label}:${row.entry.name}`} row={row} />
+            <LedgerRowView
+              key={`${group.label}:${row.entry.name}`}
+              row={row}
+              onLoadFull={onLoadFull}
+              loadingFull={loadingFullName === row.entry.name}
+            />
           ))}
         </tbody>
       </table>
@@ -64,10 +92,21 @@ function LedgerGroupSection({ group, defaultOpen }: { group: LedgerGroup; defaul
   )
 }
 
-function LedgerRowView({ row }: { row: LedgerRow }) {
+function LedgerRowView({
+  row,
+  onLoadFull,
+  loadingFull,
+}: {
+  row: LedgerRow
+  onLoadFull?: (row: LedgerRow) => void
+  loadingFull: boolean
+}) {
   const [expanded, setExpanded] = useState(false)
   const bytes = row.preview.expandable ? serializedBytes(row.entry.value) : 0
-  const expandBlocked = bytes > EXPAND_BYTE_CAP
+  // The client-side guard mirrors the server cap; a value the user EXPLICITLY pulled
+  // through the hatch renders regardless — the tree is lazy, so it stays bounded.
+  const expandBlocked = bytes > EXPAND_BYTE_CAP && row.entry.fullyLoaded !== true
+  const truncatedPending = row.entry.truncated === true && row.entry.fullyLoaded !== true
   return (
     <>
       <tr>
@@ -92,6 +131,19 @@ function LedgerRowView({ row }: { row: LedgerRow }) {
         </td>
         <td className={`ledger-value${row.preview.muted ? ' value-muted' : ''}`}>
           {row.preview.text}
+          {truncatedPending && onLoadFull !== undefined && row.entry.scope === 'process' && (
+            <button
+              type="button"
+              className="copy-btn"
+              disabled={loadingFull}
+              title="fetch the complete value from the engine — this is the explicit escape hatch for over-cap values"
+              onClick={() => {
+                onLoadFull(row)
+              }}
+            >
+              {loadingFull ? 'loading…' : 'load full value'}
+            </button>
+          )}
           {row.preview.expandable && (
             <button
               type="button"
@@ -99,7 +151,7 @@ function LedgerRowView({ row }: { row: LedgerRow }) {
               disabled={expandBlocked}
               title={
                 expandBlocked
-                  ? 'value exceeds the preview cap — "load full value" arrives with the detail API'
+                  ? 'value exceeds the 256 KiB preview cap — use "copy raw" instead'
                   : undefined
               }
               onClick={() => {
@@ -119,8 +171,13 @@ function LedgerRowView({ row }: { row: LedgerRow }) {
       {expanded && !expandBlocked && (
         <tr className="ledger-expansion">
           <td colSpan={6}>
-            {/* Read-only body, rendered ONLY on explicit expand (SPEC §4 lazy rule). */}
-            <pre className="value-body">{rawCopyText(row)}</pre>
+            {/* Rendered ONLY on explicit expand (SPEC §4 lazy rule): structured values
+                get the lazy read-only tree, long text a plain block — never raw JSON. */}
+            {typeof row.entry.value === 'object' && row.entry.value !== null ? (
+              <JsonTree value={row.entry.value} />
+            ) : (
+              <pre className="value-body">{rawCopyText(row)}</pre>
+            )}
           </td>
         </tr>
       )}

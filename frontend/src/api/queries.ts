@@ -2,10 +2,19 @@ import { api, ApiError } from './client'
 import type {
   AuditEntryDto,
   EngineDto,
+  InstanceDetail,
+  InstanceDiagram,
+  InstanceHierarchy,
+  InstanceJobs,
+  InstanceTasks,
+  InstanceTimeline,
+  InstanceVariables,
   NoteDto,
+  ResolveResponse,
   SearchRequest,
   SearchResponse,
   TriageDashboardResponse,
+  VariableDto,
 } from './model'
 
 export async function fetchEngines(): Promise<EngineDto[]> {
@@ -44,6 +53,104 @@ export async function fetchInstanceNotes(engineId: string, instanceId: string): 
   const { data, error, response } = await api.GET('/api/instances/{engineId}/{instanceId}/notes', {
     params: { path: { engineId, instanceId } },
   })
+  if (data === undefined) throw new ApiError(response.status, error)
+  return data
+}
+
+/* ---------- Stage 2 detail reads (M3) — one fetcher per endpoint ---------- */
+
+type InstancePath = { engineId: string; instanceId: string }
+
+export async function fetchInstanceVitals(path: InstancePath): Promise<InstanceDetail> {
+  const { data, error, response } = await api.GET('/api/instances/{engineId}/{instanceId}', {
+    params: { path },
+  })
+  if (data === undefined) throw new ApiError(response.status, error)
+  return data
+}
+
+export async function fetchInstanceDiagram(path: InstancePath): Promise<InstanceDiagram> {
+  const { data, error, response } = await api.GET(
+    '/api/instances/{engineId}/{instanceId}/diagram',
+    { params: { path } },
+  )
+  if (data === undefined) throw new ApiError(response.status, error)
+  return data
+}
+
+export async function fetchInstanceVariables(path: InstancePath): Promise<InstanceVariables> {
+  const { data, error, response } = await api.GET(
+    '/api/instances/{engineId}/{instanceId}/variables',
+    { params: { path } },
+  )
+  if (data === undefined) throw new ApiError(response.status, error)
+  return data
+}
+
+/** The escape hatch behind a >256 KiB truncated ledger row — explicit fetch only. */
+export async function fetchInstanceVariable(
+  path: InstancePath,
+  name: string,
+): Promise<VariableDto> {
+  const { data, error, response } = await api.GET(
+    '/api/instances/{engineId}/{instanceId}/variables/{name}',
+    { params: { path: { ...path, name } } },
+  )
+  if (data === undefined) throw new ApiError(response.status, error)
+  return data
+}
+
+export async function fetchInstanceJobs(path: InstancePath): Promise<InstanceJobs> {
+  const { data, error, response } = await api.GET('/api/instances/{engineId}/{instanceId}/jobs', {
+    params: { path },
+  })
+  if (data === undefined) throw new ApiError(response.status, error)
+  return data
+}
+
+/** Plain-text stacktrace, fetched on expand (SPEC §4) — never eagerly per row. */
+export async function fetchJobStacktrace(
+  path: InstancePath,
+  jobId: string,
+  lane: string,
+): Promise<string> {
+  const { data, error, response } = await api.GET(
+    '/api/instances/{engineId}/{instanceId}/jobs/{jobId}/stacktrace',
+    { params: { path: { ...path, jobId }, query: { lane } }, parseAs: 'text' },
+  )
+  if (data === undefined) throw new ApiError(response.status, error)
+  return data
+}
+
+export async function fetchInstanceTasks(path: InstancePath): Promise<InstanceTasks> {
+  const { data, error, response } = await api.GET('/api/instances/{engineId}/{instanceId}/tasks', {
+    params: { path },
+  })
+  if (data === undefined) throw new ApiError(response.status, error)
+  return data
+}
+
+export async function fetchInstanceHierarchy(path: InstancePath): Promise<InstanceHierarchy> {
+  const { data, error, response } = await api.GET(
+    '/api/instances/{engineId}/{instanceId}/hierarchy',
+    { params: { path } },
+  )
+  if (data === undefined) throw new ApiError(response.status, error)
+  return data
+}
+
+export async function fetchInstanceTimeline(path: InstancePath): Promise<InstanceTimeline> {
+  const { data, error, response } = await api.GET(
+    '/api/instances/{engineId}/{instanceId}/timeline',
+    { params: { path } },
+  )
+  if (data === undefined) throw new ApiError(response.status, error)
+  return data
+}
+
+/** The omnibox resolver (R-SEM-04): one pasted string across all reachable engines. */
+export async function resolveQuery(q: string): Promise<ResolveResponse> {
+  const { data, error, response } = await api.GET('/api/resolve', { params: { query: { q } } })
   if (data === undefined) throw new ApiError(response.status, error)
   return data
 }

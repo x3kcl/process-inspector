@@ -16,6 +16,31 @@ export type PerEngineTriage = components['schemas']['PerEngineTriage']
 export type AuditEntryDto = components['schemas']['AuditEntryDto']
 export type NoteDto = components['schemas']['NoteDto']
 
+// Stage 2 detail contract (M3)
+export type InstanceDetail = components['schemas']['InstanceDetail']
+export type CurrentActivity = components['schemas']['CurrentActivity']
+export type WhyStuck = components['schemas']['WhyStuck']
+export type WaitState = components['schemas']['WaitState']
+export type InstanceDiagram = components['schemas']['InstanceDiagram']
+export type InstanceVariables = components['schemas']['InstanceVariables']
+export type VariableDto = components['schemas']['VariableDto']
+export type ExecutionScope = components['schemas']['ExecutionScope']
+export type InstanceJobs = components['schemas']['InstanceJobs']
+export type JobDto = components['schemas']['JobDto']
+export type InstanceTasks = components['schemas']['InstanceTasks']
+export type TaskDto = components['schemas']['TaskDto']
+export type InstanceHierarchy = components['schemas']['InstanceHierarchy']
+export type HierarchyNode = components['schemas']['HierarchyNode']
+export type InstanceTimeline = components['schemas']['InstanceTimeline']
+export type TimelineActivity = components['schemas']['TimelineActivity']
+export type ResolveResponse = components['schemas']['ResolveResponse']
+export type ResolveMatch = components['schemas']['ResolveMatch']
+export type EngineProbe = components['schemas']['EngineProbe']
+
+/** The four engine job queues, in render order: the diagnosis lane first (SPEC §4). */
+export const JOB_LANES = ['deadLetter', 'executable', 'timer', 'suspended'] as const
+export type JobLaneId = (typeof JOB_LANES)[number]
+
 export type InstanceStatus = NonNullable<ProcessInstanceRow['status']>
 
 export const ALL_STATUSES: readonly InstanceStatus[] = [

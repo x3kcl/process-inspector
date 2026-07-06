@@ -419,7 +419,7 @@ export interface components {
             businessKey?: string;
             /** Format: int64 */
             childTotal?: number;
-            children?: unknown[];
+            children?: components["schemas"]["HierarchyNode"][];
             childrenTruncated?: boolean;
             definitionKey?: string;
             definitionName?: string;
