@@ -50,7 +50,13 @@ public class SecurityConfig {
         return http.csrf(csrf -> csrf.csrfTokenRepository(CookieCsrfTokenRepository.withHttpOnlyFalse())
                         .csrfTokenRequestHandler(new CsrfTokenRequestAttributeHandler())
                         .ignoringRequestMatchers(request -> request.getHeader("Authorization") != null))
-                .authorizeHttpRequests(auth -> auth.requestMatchers("/actuator/health/**", "/error", "/login")
+                .authorizeHttpRequests(auth -> auth.requestMatchers(
+                                "/actuator/health/**",
+                                "/error",
+                                "/login",
+                                // R-SEM-15: the OpenAPI contract feeds frontend codegen; it
+                                // describes the surface (no data, no secrets) so it stays open.
+                                "/v3/api-docs/**")
                         .permitAll()
                         .anyRequest()
                         .authenticated())

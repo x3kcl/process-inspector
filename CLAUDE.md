@@ -16,9 +16,11 @@ sections in the same change — see the `spec-sync` skill. Read the relevant ski
   bulkhead (do-no-harm, SPEC §2). JPA + Flyway + Postgres 16; Caffeine for the triage cache.
 - React **18** + TypeScript **≥5** `strict` + Vite, Node 22. TanStack Query v5,
   React Router v7, AG Grid Community, bpmn-js.
-- API contract: springdoc-openapi → generated `types.gen.ts` via `openapi-typescript`
-  (committed; regenerate after DTO changes — CI fails on diff). Never hand-edit generated
-  types; never hand-write a parallel DTO.
+- API contract: springdoc-openapi (`GET /v3/api-docs` on the running BFF) → generated
+  `frontend/src/api/schema.d.ts` via `npm run gen:api` (committed; regenerate after DTO
+  changes; all calls go through the singleton `openapi-fetch` client in
+  `frontend/src/api/client.ts`). Never hand-edit generated types; never hand-write a
+  parallel DTO or fetch wrapper.
 
 ## Build & test — SCOPED commands only in the iteration loop
 ```bash

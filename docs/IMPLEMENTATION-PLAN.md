@@ -33,11 +33,18 @@ OPERATIONS.md §8.
   integration matrix over the three engine profiles, gated by `docker/smoke-test.sh`
   bounded readiness probes) and the root multi-stage `Dockerfile` (maven builder →
   `eclipse-temurin:21-jre-alpine`, non-root, `SERVER_PORT=8080`).
+- **Frontend toolchain landed (slice-0 close-out):** `package-lock.json`; ESLint 9 flat
+  config (typescript-eslint strict-type-checked + react-hooks) + Prettier; Vitest
+  (`npm test`); springdoc on the BFF (`/v3/api-docs`, key-ordered, permitted
+  unauthenticated) → `npm run gen:api` regenerates the committed
+  `frontend/src/api/schema.d.ts`; singleton `openapi-fetch` client (hand-written
+  `types.ts`/`api.ts` deleted); `check:no-enterprise` build gate beside the watermark gate.
 - **Still open (slice-0):** remaining FIX-PROC seeds (recursive / event-wait /
-  multi-instance / parallel-join / CMMN case); frontend `package-lock.json` + ESLint;
-  the OPERATIONS §8 "still to land" gate list.
+  multi-instance / parallel-join / CMMN case); the OpenAPI CI drift gate
+  (`gen:api` + `git diff --exit-code` needs a booted BFF in the workflow); the
+  OPERATIONS §8 "still to land" gate list.
 
-## M1 — Engine Registry + health  *(backend landed; header-strip UI open)*
+## M1 — Engine Registry + health  *(landed, incl. the header-strip UI)*
 - Registry YAML binding per ARCH §3 (environment/mode enums, engine-id slug validation,
   duplicate-id fail-fast, `write-ms`, `dlq-scan-cap`, `alarm-thresholds`) + env-ref secrets.
 - Per-engine `RestClient` on the JDK HttpClient (no redirects) wrapped in per-engine
@@ -51,9 +58,12 @@ OPERATIONS.md §8.
   at 60s), `EngineHealth7IT` (7.1, same full arc on the Jakarta wire shapes) and
   `EngineHealthLegacyIT` (6.3.1, capability cliff: all four version caps reported absent).
 - **Done when:** header strip shows each engine with env-colored badge, version, lanes
-  *(frontend part — open)*.
+  *(landed: `HeaderStrip` off the shared 30s `/api/engines` poll — literal PROD/TEST/DEV
+  token + distinct border per band, accent color demoted to a dot, four lanes with DLQ
+  alarm, oldest-exec/overdue-timer alarms, unreachable engines render as warning cards
+  without blanking healthy ones)*.
 
-## M2 — Search & results  *(M2a landed; M2b backend landed; M2b UI + M2c open)*
+## M2 — Search & results  *(landed: M2a + M2b + M2c incl. the UI)*
 - **M2a (landed, backend):** the status join per ARCH §2.3 — status = flags
   (`InstanceStatusFlags` + derived primary chip incl. RETRYING), DLQ-driven inverted plan
   for FAILED/RETRYING-only requests (bounded exhaustive paging, definition pushdown,
@@ -75,9 +85,18 @@ OPERATIONS.md §8.
   compiled-criteria echo + copy-as-cURL (`criteriaEcho`/`curl` envelope fields, pure
   `CriteriaEcho`), unindexed-variable-scan `log.warn` guardrail, 400 on bad filter input.
   Proven on all three profiles (`SearchServiceIT` +8, `Search7IT` +1, `SearchLegacyIT` +2).
-  *Still open in M2b:* **URL-encoded search state** (frontend) + rendering the echo/cURL.
-- **M2c:** grid columns (definition version, failure time, status badges), snapshot "as of"
-  header + Refresh, partial-result banner + lower-bound labeling.
+  *M2b UI landed:* the collapsible search rail with the full filter set; **URL-encoded
+  search state** (typed codec `frontend/src/search/urlState.ts`, round-trip vitest-proven;
+  the URL is the single source of truth and a shared link replays the search); rail
+  collapses to criteria chips after a search; server `criteriaEcho` + copyable `curl`
+  rendered verbatim; `statusCounts` facets on the status checkboxes (`≥ n` under
+  truncation).
+- **M2c (landed):** grid columns (env-badged engine, copyable process ID, definition +
+  version, failure time, status chip + secondary flag badges), snapshot "as of" header +
+  manual Refresh (client-stamped — `/api/search` has no server `asOf`), partial-result
+  banner + lower-bound labeling from `perEngine` (`ok/error`, `dlqScan`/`failingScan`
+  `truncated@N`, fetched<total overflow), the SPEC §10a distinct zero states, custom
+  selection footer (AG Grid Community, enterprise-import build gate).
 - **Done when:** a search over 2 engines returns correctly-flagged rows incl. a
   failed-in-subprocess parent and a FAILING (retries-left) instance; killing an engine
   mid-demo degrades to a labeled partial result; a 10k-DLQ engine shows the truncation badge

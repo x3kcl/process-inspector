@@ -28,6 +28,12 @@ spring:
       # PG "PARTITIONED TABLE" relations and validate would fail on a correct schema.
       hibernate.hbm2ddl.extra_physical_table_types: PARTITIONED TABLE
 
+# R-SEM-15: deterministic OpenAPI output — sorted keys + stable pretty-printing so the
+# committed frontend/src/api/schema.d.ts only diffs when the API surface changes.
+springdoc:
+  writer-with-order-by-keys: true
+  writer-with-default-pretty-printer: true
+
 # Shared circuit-breaker config; the client creates one instance PER ENGINE ID so a sick
 # engine fast-fails alone (do-no-harm, ARCHITECTURE §2.2). wait-duration < probe period
 # (30s) so the scheduled health probe drives half-open recovery.

@@ -76,6 +76,21 @@ mvn verify    # + dockerized integration tests (*IT) — requires the FULL engin
 #  a down engine fails loudly with the compose command — never a silent skip)
 ```
 
+### Frontend tests & codegen
+
+```bash
+cd frontend
+npm test             # vitest (URL-state codec, partial-results/zero-state derivations)
+npm run lint         # ESLint strict-type-checked — CI hard failure
+npm run format:check # Prettier — CI hard failure
+npm run build        # watermark + no-enterprise guards, tsc, vite build
+npm run gen:api      # regenerate src/api/schema.d.ts from the RUNNING BFF's /v3/api-docs
+                     # (commit the result after any backend DTO change)
+```
+
+Sign-in in dev uses the BFF's built-in ladder users (`viewer`/`responder`/`operator`/`admin`,
+password `dev` unless `INSPECTOR_DEV_PASSWORD` is set).
+
 ## Status
 
 Bootstrap stage: **M1 (registry + health) and M2 (fan-out search + results grid) are coded**;

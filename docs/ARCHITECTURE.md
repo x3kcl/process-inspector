@@ -228,6 +228,7 @@ surfaced by `GET /api/engines` and pushed to the health strip via SSE.
 | `POST /api/playbooks` · `GET /api/playbooks` · `POST /api/playbooks/{id}/replay` | **Remediation playbooks** (v2): record = distill the exemplar's audit rows into a verb sequence; replay = a bulk job whose items run the sequence with per-step precondition rechecks |
 | `GET  /api/audit` | Global operations log (filterable) |
 | `GET  /api/stream` | SSE: engine health, bulk-job progress (the BFF is the event source; no engine polling relay) |
+| `GET  /v3/api-docs` | The OpenAPI contract (springdoc, key-ordered + fixed info version for deterministic codegen); the only unauthenticated API route besides health — it describes the surface, never data. Source of `frontend/src/api/schema.d.ts` via `npm run gen:api` (R-SEM-15) |
 
 The BFF **whitelists** engine paths — never a blind proxy. flowable-rest authorization is
 effectively binary (`access-rest-api`), so **BFF RBAC is the only real permission layer**;

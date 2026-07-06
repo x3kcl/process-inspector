@@ -642,9 +642,12 @@ and would rewrite working M1/M2 code for no capability gain); Go/FastAPI/Kotlin 
   + Postgres 16 (audit repository insert-only). Spring Security **dual profile**: form/basic
   (dev) / OIDC via `oauth2-client` (prod), one `GrantedAuthoritiesMapper` claim→role,
   `@PreAuthorize` mirroring the guard ladder, cookie CSRF for the SPA. SSE via `SseEmitter`.
-- **Contract:** springdoc-openapi from the Java record DTOs (single source of truth) →
-  **`openapi-typescript`** generated types + `openapi-fetch` client in the frontend,
-  committed; CI regenerates and **fails on diff** — cross-language drift is a build failure.
+- **Contract:** springdoc-openapi from the Java record DTOs (single source of truth),
+  served at `/v3/api-docs` (key-ordered, fixed info version → deterministic output) →
+  **`openapi-typescript`** generated `frontend/src/api/schema.d.ts` (`npm run gen:api`
+  against a running BFF) + the singleton `openapi-fetch` client, committed; CI regenerates
+  and **fails on diff** — cross-language drift is a build failure *(drift gate in CI still
+  to land — needs a booted BFF in the workflow)*.
 - **Frontend:** React 18 + TypeScript `strict` + Vite (Node 22 LTS, npm). **TanStack Query
   v5** — polling drives all v1 liveness (health strip, drawer); **SSE arrives in v1.x with
   tracked bulk** (R-SEM-14 resolves the earlier v1/v1.x ambiguity; lifecycle contract —

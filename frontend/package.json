@@ -5,21 +5,38 @@
   "type": "module",
   "scripts": {
     "dev": "vite",
-    "build": "npm run check:watermark && tsc -b && vite build",
+    "build": "npm run check:watermark && npm run check:enterprise && tsc -b && vite build",
     "check:watermark": "node scripts/check-bpmn-watermark.mjs",
+    "check:enterprise": "node scripts/check-no-enterprise.mjs",
+    "gen:api": "openapi-typescript http://localhost:8085/v3/api-docs -o src/api/schema.d.ts",
+    "lint": "eslint .",
+    "format": "prettier --write .",
+    "format:check": "prettier --check .",
+    "test": "vitest run",
     "preview": "vite preview"
   },
   "dependencies": {
+    "@tanstack/react-query": "^5.101.2",
     "ag-grid-community": "^32.2.0",
     "ag-grid-react": "^32.2.0",
+    "openapi-fetch": "^0.17.0",
     "react": "^18.3.1",
-    "react-dom": "^18.3.1"
+    "react-dom": "^18.3.1",
+    "react-router": "^7.18.1"
   },
   "devDependencies": {
+    "@eslint/js": "^10.0.1",
     "@types/react": "^18.3.3",
     "@types/react-dom": "^18.3.0",
-    "@vitejs/plugin-react": "^4.3.1",
+    "@vitejs/plugin-react": "^5.2.0",
+    "eslint": "^10.6.0",
+    "eslint-config-prettier": "^10.1.8",
+    "eslint-plugin-react-hooks": "^7.1.1",
+    "openapi-typescript": "^7.13.0",
+    "prettier": "^3.9.4",
     "typescript": "^5.5.3",
-    "vite": "^5.4.0"
+    "typescript-eslint": "^8.62.1",
+    "vite": "^7.3.6",
+    "vitest": "^4.1.10"
   }
 }
