@@ -74,7 +74,15 @@ column; nightly runs the full cross.
   always from engine responses**, never BFF receive time; ages floored at 0.
 - Curated-view thresholds are config (test profile: seconds, not days).
 - RETRYING pinned deterministically: seed task `flowable:failedJobRetryTimeCycle="R10/PT1H"`;
-  fast-DLQ seeding: `R1/PT1S`. Poll-with-deadline, never fixed sleeps.
+  fast-DLQ seeding: `R1/PT1S`.
+- **Anti-flakiness doctrine (enforced, not advisory):** `Thread.sleep()` in any test is a
+  hard failure — an **ArchUnit rule in the unit suite** bans `Thread.sleep`/`TimeUnit.sleep`
+  from test classes, so a PR containing a fixed sleep fails CI before review. All
+  time-dependent assertions use Awaitility with explicit bounds
+  (`atMost` sized to the awaited state, explicit `pollInterval`), and `untilAsserted`
+  evaluates **real state** — the flowable-rest endpoint or the BFF's own API, never a mock
+  interaction or local variable. Awaitility never wraps a mutation (poll reads only).
+  Canonical idiom + sizing table: `engine-harness` skill.
 - Truncation tested with test-registry `dlq-scan-cap: 50`, `max-page-size: 10` (never by
   seeding 10k jobs).
 - Hierarchy depth via one self-recursive seed process (`depth < maxDepth` in-parameter);

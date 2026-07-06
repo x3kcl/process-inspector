@@ -48,6 +48,11 @@ fixture catalog) and `docs/OPERATIONS.md` §8 (the CI gate table). Reference for
    `environment: dev` and `environment: prod` (guard-ladder fixture).
 7. **Spotless + ESLint config** wired as build failures (they're pinned in SPEC §10 but
    not yet configured).
+8. **Anti-flakiness enforcement**: add Awaitility (test scope) and ArchUnit; write the
+   ArchUnit rule test banning `Thread.sleep`/`TimeUnit.sleep` from all test classes
+   (red-first: prove it fails on a deliberate violation, then remove the violation). Every
+   integration test in this slice uses the Awaitility idiom from the `engine-harness`
+   skill — bounded `atMost` + `pollInterval`, asserting against real engine/BFF state.
 
 **Register IDs discharged:** R-SEM-08, R-NFR-07, R-TEST-04 (catalog realized), R-TEST-07
 (hooks: caps, retry cycles, dual registration), R-OPS-06 (gate table partially live —

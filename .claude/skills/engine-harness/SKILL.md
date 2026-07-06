@@ -28,6 +28,32 @@ over a fixture parent-map containing a loop — real engines cannot produce a cy
 `superProcessInstanceId` chain, so the iron rule is unsatisfiable there. The depth *limit*
 stays rung 4 (recursive seed process, configurable max-depth low in the test profile).
 
+## Anti-flakiness doctrine — ABSOLUTE rules for every integration test
+
+1. **`Thread.sleep()` in any test is a hard failure.** Never wait for async jobs, timers,
+   retries, dead-letter transitions, SSE events, or cache expiry with a fixed sleep. This
+   is mechanically enforced: an ArchUnit rule in the unit suite fails any test class
+   calling `Thread.sleep` (and `TimeUnit.sleep`) — a PR containing one fails CI before
+   review.
+2. **Awaitility is the only wait primitive.** All time-dependent assertions go through
+   `org.awaitility.Awaitility` with explicit bounds — never default/unbounded waits:
+   ```java
+   await().atMost(5, TimeUnit.SECONDS)
+          .pollInterval(200, TimeUnit.MILLISECONDS)
+          .untilAsserted(() -> {
+              var jobs = engineClient.deadLetterJobs(instanceId);
+              assertThat(jobs).extracting("id").contains(expectedJobId);
+          });
+   ```
+   Size `atMost` to the state being awaited (fast-DLQ `R1/PT1S` ⇒ 5s; retry-exhaustion
+   with defaults ⇒ 45s), never a blanket 60s.
+3. **`untilAsserted` evaluates REAL state** — the actual flowable-rest endpoint or the
+   BFF's own aggregation/endpoint, proving the data flushed all the way through (engine DB
+   → REST → join → DTO). Never assert on a test-local variable, a mock interaction, or an
+   intermediate cache as a proxy for engine state.
+4. **Awaitility never wraps a mutation.** Poll reads only; a verb that fires inside a
+   polling lambda can double-execute. Mutate once, then await the observable consequence.
+
 ## Deterministic-state recipes (from the embedded-tester review; details TEST-STRATEGY §9)
 - **RETRYING (failing, retries left)** is a ~10s race with engine defaults — pin it with
   `flowable:failedJobRetryTimeCycle="R10/PT1H"` on the seed task; poll-with-deadline, never

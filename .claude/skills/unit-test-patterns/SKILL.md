@@ -41,4 +41,7 @@ mvn verify                                  # before claiming done — full suit
   everywhere in tests — add new fields via a builder/factory in test-support, not by editing
   20 constructor call sites.
 - **No time bombs**: anything time-based (health probe scheduling, timeouts) takes a Clock
-  or is tested via the envelope it produces, never with sleeps.
+  or is tested via the envelope it produces, never with sleeps. `Thread.sleep()` in ANY
+  test is a hard failure (ArchUnit-enforced); time-dependent assertions use Awaitility
+  with explicit `atMost`/`pollInterval` bounds, asserting against real engine/BFF state —
+  full doctrine in the `engine-harness` skill.

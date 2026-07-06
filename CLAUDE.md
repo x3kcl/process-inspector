@@ -42,6 +42,8 @@ join logic (dockerized engine only — `engine-harness` skill).
   REST (TEST-STRATEGY §10); speed via `R1/PT1S` retry cycles, scale via lowered caps/stubs.
 - Stage 0 aggregations use count-only/`size=1` queries and the dedicated DLQ scan — never
   the grid-search plan.
+- `Thread.sleep()` in any test = hard failure (ArchUnit-enforced). Time-dependent asserts
+  use Awaitility with explicit bounds against REAL engine/BFF state; never poll a mutation.
 - The BFF whitelists engine paths; no generic proxy route, ever.
 - Every mutating endpoint follows ALL the `corrective-actions` rails (audit, RBAC tier,
   guard, no auto-retry, per-item bulk reporting).
