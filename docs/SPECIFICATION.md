@@ -1,6 +1,6 @@
 # 📄 SPECIFICATION — Flowable Multi-Instance Process Inspector
 
-Status: **v2.0 (refined product spec)** · Owner: workflow platform team ·
+Status: **v3.2** · Owner: workflow platform team ·
 Inspired by IBM BAW Process Inspector; refined against Camunda Operate/Cockpit, Temporal,
 Flowable Control, Conductor/Orkes, Airflow and Step Functions, and a four-seat design review
 (workflow-engine expert, senior support engineer, lead developer, UX expert — see
@@ -110,7 +110,14 @@ checklist).
   (adds tiers 3–4). Deployments MAY override the role→verb matrix with per-verb grants
   `(role, verb, engineId, tenantId)`; tooltips cite the missing grant. OIDC delivers
   identity + coarse groups only; the group→scope mapping is BFF-owned, change-audited
-  config (ADR-003 names the pilot IdP and its claim contract).
+  config (ADR-003 names the pilot IdP and its claim contract). **Mapping storage decided
+  (R-SAFE-12):** the mapping lives in a **separately mounted, hot-reloaded file** (same
+  mechanism as `password-file` refs: re-read on a ≤60 s TTL, content-hash change logged as
+  an audited config event) — NOT inside `application.yml`. Adding an engineer to a scope
+  mid-incident is a mounted-file edit applied within a minute, no pipeline run, no restart;
+  the platform-administrator SLA is stated in the runbook ("scope grant effective ≤5 min").
+  If even that path is unavailable, break-glass (§6) is the fallback. A CRUD UI over the
+  same store is v2, with its own guard tier.
 - **Protected instances** (R-SAFE-05) — L3+ may mark a composite ID or definition key
   `protected` (reason required; setting/removing is tier-3, audited). Below the configured
   role floor, ALL verbs are disabled-with-reason ("protected — L3 action required");
@@ -258,7 +265,12 @@ gap here: [link]" is the ticket-handover primitive.
     surface here and on the parent's status. Tree resolution has a **max-depth limit**
     (default 10) with an explicit "depth limit reached — expand further" affordance —
     a deeply nested or looping call-activity structure must not recurse the BFF or the UI
-    into the ground.
+    into the ground. **Breadth is capped too** (R-SEM-19): max 50 children rendered per
+    node ("+9,950 more — not shown [load next 50]") — a parallel multi-instance call
+    activity can spawn 10,000 children, and a 10,000-node tree locks the browser thread.
+    The BFF's roll-up scan uses count-only queries beyond the render cap; counts stay
+    exact, rendering stays bounded, and capped breadth carries the standard lower-bound
+    labeling on any derived aggregate.
   - **Timeline** — historic activity instances as duration bars with call-activity
     sub-lanes; failing activity annotated with live job state. (Per-retry gaps are not
     reconstructable from Flowable history — not promised.)
@@ -389,6 +401,30 @@ The second-most-asked 3am question after "why is it stuck" gets a one-click answ
 | **2** — flow surgery, single target | Confirm + **required reason** + plan-as-a-sentence + raw REST body preview. |
 | **3** — destructive, single target | Modal restates the target **server-fresh** (warns if state changed since the grid snapshot), enumerates cascade victims, environment color band. Required reason. On prod: **typed token = the business key** (target-specific — never a generic "yes"/"DELETE"). Cancel-focused; Enter never submits. |
 | **4** — destructive, bulk | Wizard: scope enumeration (count, per-engine split, expandable list; filter-based selections re-resolved at submit with drift shown) → required reason → prod: **type the count** → async tracked job. **Refuse-unscoped**: no destructive bulk without at least one narrowing filter. |
+
+**Synchronous mutations inherit the §7 UNKNOWN discipline — the dual-write rule
+(R-SEM-18).** Fail-closed (§9) covers pre-flight; the post-flight leg has its own failure
+mode: audit row written `PENDING` → engine call succeeds → the outcome UPDATE to Postgres
+fails. The token *did* move. The UI must therefore never render a generic 500 for a
+dispatched mutation: it renders **"Action dispatched — outcome verification failed"**, the
+audit row stays in outcome `unknown`, and the standard **Verify now** affordance (R-SAFE-09)
+applies to single-target actions exactly as to bulk items. Audit row lifecycle is normative:
+`PENDING → ok | failed | unknown`; a PENDING row older than `write-ms` + grace is swept to
+`unknown` by the startup/periodic reconciler (same sweep as bulk INTERRUPTED, §7). The
+guard-ladder error copy distinguishes the three cases: refused pre-flight (nothing
+happened), engine rejected (nothing happened, engine's words quoted), dispatched-unverified
+(assume it happened until verified).
+
+**Break-glass — normative semantics (R-SAFE-11).** The break-glass account (OPERATIONS §7)
+exists for one scenario: the IdP is down during a P1. It bypasses **authentication and the
+group→scope mapping only** — the session gets ADMIN-global scope, including protected
+instances. It does **not** bypass: the guard ladder (typed tokens, server-fresh
+restatement), read-only engine mode (an engine-owner contract, not an emergency lever), the
+path whitelist, or audit (fail-closed applies). Under break-glass, a **reason ≥10 chars is
+mandatory on EVERY verb including tier 0**, and any `require-second-approval` requirement
+is waived (the second approver may be locked out too) — waived approvals are flagged on the
+audit row. Every break-glass action carries `breakGlass: true`, appears first in the shift
+report, banners every page, and fires the alert channel on login.
 
 Cross-cutting: environment (`dev|test|prod`) drives a consistent color band on badges,
 headers, and inside every confirm modal (freeform per-engine colors are demoted to a subtle
@@ -531,6 +567,16 @@ and would rewrite working M1/M2 code for no capability gain); Go/FastAPI/Kotlin 
   `@WebMvcTest` + `spring-security-test` for per-endpoint RBAC/guard tiers · Vitest + RTL +
   MSW (reusing OpenAPI types) · **Playwright** E2E against the full compose stack (smoke in
   PR CI, matrix nightly) — Playwright is also the agent's autonomous visual feedback loop.
+- **Test data (staged, normative):** three stages, each with hard rules —
+  **S1 synthetic** (fixture builders + stub payloads; allowed only for pure logic and
+  client-fault shapes incl. scale that must never be seeded for real; forbidden for
+  join/status/paging semantics), **S2 engine-generated** (all engine semantics proven
+  against data generated strictly over REST on the dockerized compose profiles; captured
+  corpora committed with the engine image tag, re-captured on bump), **S3 production
+  read-only** (prod engines are observation-only validation targets — never seeded, never
+  mutated, never load-tested; prod payloads enter the repo only via the sanitized
+  golden-corpus pipeline). Rules: TEST-STRATEGY §10; scenario + fixture catalog:
+  [TEST-SCENARIOS.md](TEST-SCENARIOS.md) (`TS-*`/`FIX-*` IDs, per-scenario stage tags).
 - **Lint/format as CI hard failures** (essential when an agent writes most code): Spotless
   (palantir-java-format) · ESLint strict-type-checked + Prettier.
 - **Packaging:** one image, multi-stage (Vite build → jar `static/` → `temurin:21-jre`
@@ -651,6 +697,17 @@ and would rewrite working M1/M2 code for no capability gain); Go/FastAPI/Kotlin 
   team lead; data-classification one-pager approved; zero open Sev1/Sev2.
 
 ## Change log
+- **v3.2** — Operator feedback round 4: dual-write rule (§6 — sync mutations inherit UNKNOWN;
+  audit lifecycle PENDING→ok|failed|unknown; "dispatched — outcome verification failed",
+  never a bare 500); break-glass normative semantics (§6 — what it bypasses and what it
+  never does); group→scope mapping = hot-reloaded mounted file with ≤5 min grant SLA (§2);
+  hierarchy breadth cap 50/node (§4); audit-integrity CI suite vs real Postgres
+  (TEST-STRATEGY §11, R-TEST-10). Register R-SEM-18/19, R-SAFE-11/12, R-TEST-10.
+- **v3.1** — §10: staged test-data pipeline made normative (S1 synthetic / S2 engine-
+  generated on the compose profiles / S3 production read-only observation). New companion
+  doc: TEST-SCENARIOS.md (scenario catalog `TS-*` + fixture catalog `FIX-*`, mapped to the
+  SPEC §3 flag matrix and the register); TEST-STRATEGY gains §10 (generation rules) and
+  points its §6 fixture catalog at TEST-SCENARIOS §1.
 - **v3.0** — 14-seat review board (PO, BA, lead dev, architect, DevOps, test manager,
   embedded tester, UX expert, 2 usability testers, support team lead, support engineer, L3,
   L2 — see DESIGN-REVIEW round 3). New: §0 glossary + FAILING→RETRYING display rename;

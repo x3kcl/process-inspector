@@ -52,6 +52,8 @@ collision`), an owner (lead dev), and a purpose. The SPEC §3 flag matrix maps t
 an empty cell is a visible coverage gap. Mandatory cells: each flag alone, each collision,
 roll-up at depth 1/limit/limit+1, RETRYING in job+timer tables, CMMN rows, tenant threading.
 Capture scripts live in `docker/`; captured fixtures carry the engine image tag.
+The catalog is realized in [TEST-SCENARIOS.md](TEST-SCENARIOS.md) §1 (fixtures `FIX-*`) with
+the scenario mapping (`TS-*`) in its §§2–12.
 
 ## 7. Performance scenarios (R-TEST-05, replaces "Load-test fan-out")
 | # | Scenario | Threshold | When |
@@ -87,7 +89,66 @@ column; nightly runs the full cross.
 - OpenAPI gate determinism: maven-plugin export, sorted keys, fixed info.version, exact
   version pins. SSE contract asserted against the documented event catalog (not OpenAPI).
 
-## 10. UAT & soak (R-TEST-08/09)
+## 10. Test-data generation — three stages (normative; R-TEST-04/07)
+Test data moves toward reality as the confidence claim grows. Each stage has hard rules;
+mixing stages silently is a doc/test bug. Scenario catalog:
+[TEST-SCENARIOS.md](TEST-SCENARIOS.md) (stages tagged per scenario).
+
+**S1 — Synthetic (ladder rungs 1–3 only).** Hand-built fixture objects via builders (never
+raw JSON blobs) for pure join/merge/filter logic; WireMock/MockWebServer payloads for
+client-fault shapes only — timeouts, 5xx, breaker cycling, truncated pages, hostile
+messages, and scale that must never be seeded for real (the 50k-DLQ P2 stub). Synthetic
+wire payloads are **forbidden for join/status/paging semantics** (the never-mock-Flowable
+iron rule); the two sanctioned exceptions are the hierarchy cycle-guard (real engines
+cannot produce cycles) and CMMN-row filtering where a profile lacks CMMN REST. Determinism:
+seeded builders, the `Clock` bean, no wall-clock reads. Replaying a **captured** corpus
+(§4) in CI is S1 execution of S2-provenance data — capture provenance is what makes it
+legitimate.
+
+**S2 — Generated real data on the dockerized engines (rung 4 + E2E).** All engine
+semantics are proven against data *generated* on real `flowable-rest` containers, strictly
+over REST (deploy → start → mutate), by idempotent seed scripts in `docker/` plus per-test
+setup classes — never by hand-crafted DB rows or mocked responses. Every status/collision
+is manufactured per the recipes in TEST-SCENARIOS §1.2 (fast-DLQ `R1/PT1S`, pinned RETRYING
+`R10/PT1H`, suspend-after-dead-letter, recursive depth seeding), with poll-with-deadline
+and engine timestamps only (§9). Runs on **all three compose profiles**. Captured corpora
+(error signatures, capability snapshots, 7.x error JSON) are S2 outputs committed with the
+engine image tag and re-captured on every image bump. The R-NFR-02 reference dataset is
+S2-generated nightly, bounded by the operating envelope (≤5k DLQ); anything larger is
+S1-stubbed, never seeded.
+
+**S3 — Production, read-only observation.** Production engines are validation targets,
+**never data generators**: registered `mode: read-only` (R-GOV-04) under a dedicated
+read-only credential; no seeding, no mutation, no load generation; scan caps enforced.
+Checks (TEST-SCENARIOS §12): shadow status validation via "explain this status" evidence
+(mismatch = Sev1 by taxonomy §3), signature-normalizer coverage over the real DLQ,
+operating-envelope and latency observation, capability-probe and clock-skew verification.
+Prod payloads enter the repo only through the sanitized golden-corpus pipeline
+(secret/PII scrub + named approval, R-AUD-03). S3 is observational — it files defects,
+never gates CI.
+
+## 11. Audit-integrity suite (R-TEST-10 — merge-gating, S2 + Testcontainers)
+The fail-closed audit rule and the dual-write UNKNOWN rule (SPEC §6/§9, R-AUD-01,
+R-SEM-18) are the system's integrity spine and get their own named CI suite, run against
+**real PostgreSQL** (Testcontainers) — stateful DB failure modes are exactly what H2 or
+mocks hide:
+- **Fail-closed proof:** Postgres stopped/unreachable → a tier-1 mutation is REFUSED before
+  any engine call (assert via WireMock: zero requests received); error names Postgres.
+- **Dual-write proof:** audit `PENDING` written → engine call succeeds (WireMock) →
+  Postgres killed before the outcome UPDATE → response is "dispatched — outcome
+  verification failed" (never a bare 500), row remains/recovers to `unknown`, Verify-now
+  reclassifies it.
+- **Pool exhaustion:** Hikari pool saturated (hold all connections in-test) → mutations
+  queue/fail-closed per config, reads degrade gracefully, `audit_insert_failures_total`
+  increments.
+- **Transaction rollback:** a failed audit transaction never half-commits (row count
+  invariant before/after).
+- **Reconciler sweep:** stale `PENDING` rows older than `write-ms`+grace are swept to
+  `unknown` on startup.
+These scenarios are S1/S2 hybrids (WireMock engine + real Postgres) and merge-gating from
+M4 (OPERATIONS §8 gate 3 is this suite).
+
+## 12. UAT & soak (R-TEST-08/09)
 UAT at M6: ≥3 practicing support engineers, scripted incident scenarios from the fixture
 catalog, ≥80% unassisted completion; trust-breaking observations file as Sev1/Sev2. Weekly
 post-M6 soak: 4h mixed load with engine kills + BFF restart mid-bulk; assert breaker cycling,
