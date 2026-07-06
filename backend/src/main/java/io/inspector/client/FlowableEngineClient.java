@@ -291,6 +291,228 @@ public class FlowableEngineClient {
         }
     }
 
+    /* ---------- M4 corrective-action calls (flowable-rest skill §4 catalog) ----------
+     *
+     * Mutations run on the write client (write-ms budget, R-NFR-07) through the same
+     * per-engine breaker + bulkhead. They are NEVER retried here or anywhere upstream —
+     * a timed-out mutation is reported UNKNOWN, not re-fired (corrective-actions skill §4).
+     */
+
+    /** GET /management/{lane}/{jobId} — server-fresh job restatement before a job verb. Null = gone. */
+    @SuppressWarnings("unchecked")
+    public Map<String, Object> getJob(EngineConfig engine, JobLaneKind lane, String jobId) {
+        try {
+            return guarded(
+                    engine,
+                    () -> client(engine)
+                            .get()
+                            .uri(lane.path + "/{jobId}", jobId)
+                            .retrieve()
+                            .body(Map.class));
+        } catch (HttpClientErrorException.NotFound e) {
+            return null;
+        }
+    }
+
+    /** POST /management/deadletter-jobs/{jobId} {"action":"move"} — retry: DLQ → executable queue. */
+    public void moveDeadLetterJob(EngineConfig engine, String jobId) {
+        mutate(
+                engine,
+                () -> writeClient(engine)
+                        .post()
+                        .uri(JobLaneKind.DEADLETTER.path + "/{jobId}", jobId)
+                        .contentType(MediaType.APPLICATION_JSON)
+                        .body(Map.of("action", "move"))
+                        .retrieve()
+                        .toBodilessEntity());
+    }
+
+    /** POST /management/timer-jobs/{jobId} {"action":"move"} — fire a timer now. */
+    public void moveTimerJob(EngineConfig engine, String jobId) {
+        mutate(
+                engine,
+                () -> writeClient(engine)
+                        .post()
+                        .uri(JobLaneKind.TIMER.path + "/{jobId}", jobId)
+                        .contentType(MediaType.APPLICATION_JSON)
+                        .body(Map.of("action", "move"))
+                        .retrieve()
+                        .toBodilessEntity());
+    }
+
+    /** DELETE /management/deadletter-jobs/{jobId} — discard a dead-letter job (orphans the execution). */
+    public void deleteDeadLetterJob(EngineConfig engine, String jobId) {
+        mutate(
+                engine,
+                () -> writeClient(engine)
+                        .delete()
+                        .uri(JobLaneKind.DEADLETTER.path + "/{jobId}", jobId)
+                        .retrieve()
+                        .toBodilessEntity());
+    }
+
+    /** PUT /runtime/process-instances/{id} {"action":"suspend"|"activate"}. */
+    public void suspendOrActivateInstance(EngineConfig engine, String processInstanceId, String action) {
+        mutate(
+                engine,
+                () -> writeClient(engine)
+                        .put()
+                        .uri("/runtime/process-instances/{id}", processInstanceId)
+                        .contentType(MediaType.APPLICATION_JSON)
+                        .body(Map.of("action", action))
+                        .retrieve()
+                        .toBodilessEntity());
+    }
+
+    /** DELETE /runtime/process-instances/{id}?deleteReason= — terminate/delete (irreversible). */
+    public void deleteProcessInstance(EngineConfig engine, String processInstanceId, String deleteReason) {
+        mutate(
+                engine,
+                () -> writeClient(engine)
+                        .delete()
+                        .uri(uri -> uri.path("/runtime/process-instances/{id}")
+                                .queryParam("deleteReason", deleteReason)
+                                .build(processInstanceId))
+                        .retrieve()
+                        .toBodilessEntity());
+    }
+
+    /** GET /runtime/process-instances/{id}/variables/{name} — the CAS pre-read (typed row). Null = absent. */
+    @SuppressWarnings("unchecked")
+    public Map<String, Object> getInstanceVariable(EngineConfig engine, String processInstanceId, String name) {
+        try {
+            return guarded(
+                    engine,
+                    () -> client(engine)
+                            .get()
+                            .uri("/runtime/process-instances/{id}/variables/{name}", processInstanceId, name)
+                            .retrieve()
+                            .body(Map.class));
+        } catch (HttpClientErrorException.NotFound e) {
+            return null;
+        }
+    }
+
+    /**
+     * PUT /runtime/process-instances/{id}/variables/{name} — typed single-variable write.
+     * The declared type is preserved by the caller (string-ifying an integer breaks
+     * gateways downstream — flowable-rest skill §2).
+     */
+    public void putInstanceVariable(
+            EngineConfig engine, String processInstanceId, String name, Map<String, Object> typedVariable) {
+        mutate(
+                engine,
+                () -> writeClient(engine)
+                        .put()
+                        .uri("/runtime/process-instances/{id}/variables/{name}", processInstanceId, name)
+                        .contentType(MediaType.APPLICATION_JSON)
+                        .body(typedVariable)
+                        .retrieve()
+                        .toBodilessEntity());
+    }
+
+    /** GET /runtime/tasks/{taskId} — server-fresh task restatement. Null = gone/completed. */
+    @SuppressWarnings("unchecked")
+    public Map<String, Object> getTask(EngineConfig engine, String taskId) {
+        try {
+            return guarded(
+                    engine,
+                    () -> client(engine)
+                            .get()
+                            .uri("/runtime/tasks/{taskId}", taskId)
+                            .retrieve()
+                            .body(Map.class));
+        } catch (HttpClientErrorException.NotFound e) {
+            return null;
+        }
+    }
+
+    /** POST /runtime/tasks/{taskId} {"action":"complete","variables":[…]} — complete with data. */
+    public void completeTask(EngineConfig engine, String taskId, List<Map<String, Object>> variables) {
+        Map<String, Object> body = variables == null || variables.isEmpty()
+                ? Map.of("action", "complete")
+                : Map.of("action", "complete", "variables", variables);
+        mutate(
+                engine,
+                () -> writeClient(engine)
+                        .post()
+                        .uri("/runtime/tasks/{taskId}", taskId)
+                        .contentType(MediaType.APPLICATION_JSON)
+                        .body(body)
+                        .retrieve()
+                        .toBodilessEntity());
+    }
+
+    /** GET /runtime/executions/{executionId} — server-fresh execution restatement. Null = gone. */
+    @SuppressWarnings("unchecked")
+    public Map<String, Object> getExecution(EngineConfig engine, String executionId) {
+        try {
+            return guarded(
+                    engine,
+                    () -> client(engine)
+                            .get()
+                            .uri("/runtime/executions/{executionId}", executionId)
+                            .retrieve()
+                            .body(Map.class));
+        } catch (HttpClientErrorException.NotFound e) {
+            return null;
+        }
+    }
+
+    /**
+     * POST /runtime/executions/{executionId} — deliver what a waiting execution is
+     * blocked on: {"action":"messageEventReceived","messageName":…} /
+     * {"action":"signalEventReceived","signalName":…} / {"action":"trigger"}.
+     */
+    public void executionAction(EngineConfig engine, String executionId, Map<String, Object> body) {
+        mutate(
+                engine,
+                () -> writeClient(engine)
+                        .put()
+                        .uri("/runtime/executions/{executionId}", executionId)
+                        .contentType(MediaType.APPLICATION_JSON)
+                        .body(body)
+                        .retrieve()
+                        .toBodilessEntity());
+    }
+
+    /** GET /repository/process-definitions/{definitionId} — server-fresh definition restatement. */
+    @SuppressWarnings("unchecked")
+    public Map<String, Object> getProcessDefinition(EngineConfig engine, String definitionId) {
+        try {
+            return guarded(
+                    engine,
+                    () -> client(engine)
+                            .get()
+                            .uri("/repository/process-definitions/{id}", definitionId)
+                            .retrieve()
+                            .body(Map.class));
+        } catch (HttpClientErrorException.NotFound e) {
+            return null;
+        }
+    }
+
+    /**
+     * PUT /repository/process-definitions/{definitionId} {"action":"suspend"|"activate",
+     * "includeProcessInstances":…} — the "bad deploy" brake (SPEC §5 tier 3).
+     */
+    public void suspendOrActivateDefinition(
+            EngineConfig engine, String definitionId, String action, boolean includeProcessInstances) {
+        mutate(
+                engine,
+                () -> writeClient(engine)
+                        .put()
+                        .uri("/repository/process-definitions/{id}", definitionId)
+                        .contentType(MediaType.APPLICATION_JSON)
+                        .body(Map.of("action", action, "includeProcessInstances", includeProcessInstances))
+                        .retrieve()
+                        .toBodilessEntity());
+    }
+
+    private void mutate(EngineConfig engine, Supplier<?> call) {
+        guarded(engine, call);
+    }
+
     /* ---------- Generic paged Flowable response envelope ---------- */
 
     /**

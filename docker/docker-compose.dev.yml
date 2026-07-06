@@ -10,8 +10,9 @@
 #   legacy      — one pre-6.4 engine (:8084, Flowable 6.3.1) so the capability cliffs
 #                 (change-state 6.4+, migration 6.5+, external-worker/scopeType 6.8+)
 #                 are exercised against an engine that really lacks them.
-#   postgres    — the BFF's own database (M4: audit/annotations). Container only for now;
-#                 the backend has no JPA/Flyway wiring yet.
+#   postgres    — the BFF's own database (M4: audit log, notes, protected instances).
+#                 In the default profile set since M4: the backend runs Flyway
+#                 (V1__init.sql) + ddl-auto=validate against it at startup.
 #
 # docker/.env must never contain secrets — it only selects default profiles.
 # Default credentials of the flowable/flowable-rest images: rest-admin / test

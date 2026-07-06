@@ -26,3 +26,14 @@ inspector:
         write-ms: 10000
       max-page-size: 10
       dlq-scan-cap: 500
+
+# M4: this profile is docker-free / engine-only — the BFF Postgres is NOT part of the
+# context. DB autoconfig is excluded (repository beans are provided as mocks via
+# io.inspector.support.NoDbTestSupport); the real-schema path (Flyway + ddl-auto=validate)
+# is proven by the Testcontainers-backed *IT suite (it-actions profile).
+spring:
+  autoconfigure:
+    exclude:
+      - org.springframework.boot.autoconfigure.jdbc.DataSourceAutoConfiguration
+      - org.springframework.boot.autoconfigure.orm.jpa.HibernateJpaAutoConfiguration
+      - org.springframework.boot.autoconfigure.flyway.FlywayAutoConfiguration

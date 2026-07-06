@@ -592,7 +592,9 @@ tree, not just the root.
   truncated+flagged, breakGlass, approvedBy)`; indexes `(engineId, instanceId, ts)` + `(ts)`;
   monthly range partitions. One row per bulk item + one for the envelope. Written whether
   the engine call succeeded or failed — and **fail-closed** (R-AUD-01): if the audit INSERT
-  fails, a tier ≥1 mutation is not issued. Tier-1 variable edits are compare-and-set
+  fails, a tier ≥1 mutation is not issued *(the v1 implementation is deliberately stricter:
+  fail-closed applies to ALL tiers including 0 — an unaudited queue move is still an
+  attribution hole, and R-AUD-01 states a floor, not a ceiling)*. Tier-1 variable edits are compare-and-set
   (R-SEM-09): the request carries `expectedOldValue`; mismatch ⇒ 409 + fresh re-render.
 - **Data protection** (R-AUD-03): variable payloads in audit rows and notes are potentially
   personal data. Retention default 400 days with an audited purge; per-engine `audit-payload:
@@ -797,6 +799,10 @@ and would rewrite working M1/M2 code for no capability gain); Go/FastAPI/Kotlin 
   team lead; data-classification one-pager approved; zero open Sev1/Sev2.
 
 ## Change log
+- **v3.4** — M4 backend implementation note (§9): fail-closed (R-AUD-01) is applied to ALL
+  tiers including 0 in v1 — the spec floor (tier ≥1) stays normative, the implementation
+  is deliberately stricter. New definition-scoped actions route recorded in ARCHITECTURE
+  §4 (`/api/definitions/{engineId}/{definitionId}/actions/{verb}`).
 - **v3.3** — Variable editor designed (web-design + usability panel, DESIGN-REVIEW
   addendum): §4 Variables tab re-spec'd as a typed ledger (never raw-JSON-primary;
   Flowable Control anti-pattern banned); new §4a shared change-set editor — form-first

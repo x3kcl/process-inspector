@@ -1,0 +1,48 @@
+# Rung-4 registry for the M4 corrective-action ITs (flowable-6 profile, engine-a :8081).
+#
+# This is the REAL-DB profile: no DB autoconfig exclusions — Flyway runs V1__init.sql
+# against a Testcontainers Postgres 16 (datasource injected via @DynamicPropertySource),
+# and Hibernate validates against that schema (ddl-auto=validate from application.yml).
+#
+# Two registrations, one real engine (the sanctioned same-engine-twice trick):
+#   engine-a      — dev/read-write: the happy-path verbs
+#   engine-a-prod — SAME engine tagged prod: every prod-only guard branch (typed token,
+#                   tier-1 reason requirement) runs against one stack
+inspector:
+  fanout-parallelism: 4
+  engines:
+    - id: engine-a
+      name: "Engine A (actions harness)"
+      base-url: "http://localhost:8081/flowable-rest/service"
+      environment: dev
+      accent-color: "#2e86de"
+      enabled: true
+      mode: read-write
+      auth:
+        type: basic
+        username: rest-admin
+        password-ref: ENGINE_A_PASSWORD
+      timeouts:
+        connect-ms: 2000
+        read-ms: 10000
+        write-ms: 10000
+      max-page-size: 10
+      dlq-scan-cap: 500
+
+    - id: engine-a-prod
+      name: "Engine A (prod twin)"
+      base-url: "http://localhost:8081/flowable-rest/service"
+      environment: prod
+      accent-color: "#e74c3c"
+      enabled: true
+      mode: read-write
+      auth:
+        type: basic
+        username: rest-admin
+        password-ref: ENGINE_A_PASSWORD
+      timeouts:
+        connect-ms: 2000
+        read-ms: 10000
+        write-ms: 10000
+      max-page-size: 10
+      dlq-scan-cap: 500

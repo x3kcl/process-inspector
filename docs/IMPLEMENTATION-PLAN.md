@@ -112,7 +112,7 @@ OPERATIONS.md §8.
   opening a stuck instance shows why it's stuck without any click; the link pastes into a
   ticket and reopens the same view.
 
-## M4 — Corrective actions + audit + RBAC + Postgres
+## M4 — Corrective actions + audit + RBAC + Postgres  *(backend landed 2026-07-06; UI open)*
 - **Postgres** joins the deployable: audit log, notes.
 - **Build-order constraint (binding):** `Flyway V1__init.sql` FIRST → JPA entities SECOND →
   repositories THIRD. Hibernate `ddl-auto=validate` in EVERY profile including tests —
@@ -133,6 +133,25 @@ OPERATIONS.md §8.
   completes) with the delta toast shown, the reason recorded, and the action visible in the
   instance's Audit tab; a VIEWER sees every action greyed with the right tooltip.
 - **Deferred out of M4:** task reassign (v1.x — not an incident verb).
+- **Backend landed (2026-07-06):** Flyway `V1__init.sql` (audit_entry range-partitioned +
+  append-only guard trigger + chain_hash, instance_note, protected_instance) → JPA →
+  repositories, `ddl-auto=validate` in every profile; fail-closed audit
+  (**applied to ALL tiers incl. 0** — stricter than the R-AUD-01 minimum: an unaudited
+  queue move is still an attribution hole) with the full `PENDING → ok|failed|unknown`
+  lifecycle, dispatched-unverified error, and the stale-PENDING reconciler sweep; dual
+  auth profile (basic/form dev · `oidc` OIDC) + 4-role ladder + hot-reloaded group→scope
+  mapping file (R-SAFE-12) resolved at check time; verbs tier 0/1/3 (retry-job,
+  trigger-timer, suspend/activate, edit-variable CAS, complete-task, unstick-event,
+  terminate-delete, delete-deadletter, suspend/activate-definition) behind the full guard
+  chain (scoped RBAC, read-only engine, protected instance, §6 reason ladder, tier-3 prod
+  typed token vs server-fresh state); audit/notes read surface (payload role-gated
+  OPERATOR+, secret-name redaction, 32 KiB snippet cap); Testcontainers-Postgres IT suite
+  incl. the kill-Postgres-mid-test fail-closed proof and the CAS-conflict arc.
+- **Still open in M4:** the UI half of the done-when (Audit tab, ops log page, delta
+  toasts, greyed-with-reason); audit-row config events for scope-mapping reloads (M4 logs
+  them); `X-Forwarded-User` engine attribution; R-AUD-07 ticketId validation/linkify;
+  per-engine `audit-payload` modes, retention purge + DB role grants (OPERATIONS §6 —
+  provisioning, not schema).
 
 ## M5 — Bulk + hardening (v1 close-out; the former M6)
 - Grid-selection bulk as a **persisted tracked job** (R-SEM-10: state machine, startup

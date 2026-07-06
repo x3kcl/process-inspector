@@ -5,6 +5,7 @@ import static org.awaitility.Awaitility.await;
 
 import com.fasterxml.jackson.databind.JsonNode;
 import io.inspector.support.EngineSeed;
+import io.inspector.support.NoDbTestSupport;
 import java.util.concurrent.TimeUnit;
 import org.junit.jupiter.api.BeforeAll;
 import org.junit.jupiter.api.Test;
@@ -12,6 +13,7 @@ import org.junit.jupiter.api.TestInstance;
 import org.springframework.beans.factory.annotation.Autowired;
 import org.springframework.boot.test.context.SpringBootTest;
 import org.springframework.boot.test.web.client.TestRestTemplate;
+import org.springframework.context.annotation.Import;
 import org.springframework.test.context.ActiveProfiles;
 import org.springframework.web.client.RestClient;
 
@@ -27,6 +29,8 @@ import org.springframework.web.client.RestClient;
 @SpringBootTest(webEnvironment = SpringBootTest.WebEnvironment.RANDOM_PORT, properties = "ENGINE_LEGACY_PASSWORD=test")
 @ActiveProfiles("it-legacy-triage")
 @TestInstance(TestInstance.Lifecycle.PER_CLASS)
+// M4: docker-free profile — DB autoconfig excluded, repositories mocked (NoDbTestSupport).
+@Import(NoDbTestSupport.class)
 class TriageLegacyIT {
 
     private static final String ENGINE = "http://localhost:8084/flowable-rest/service";
@@ -39,6 +43,7 @@ class TriageLegacyIT {
 
     @BeforeAll
     void seedOrganically() {
+        rest = rest.withBasicAuth("admin", "dev"); // M4: the BFF now requires auth on every /api route
         engine = EngineSeed.requireReachable(ENGINE, "--profile legacy");
         EngineSeed.deployIfMissing(engine, "demoFailingPayment", EngineSeed.FAILING_PAYMENT_BPMN);
         EngineSeed.deployIfMissing(engine, "demoUserTask", EngineSeed.USER_TASK_BPMN);

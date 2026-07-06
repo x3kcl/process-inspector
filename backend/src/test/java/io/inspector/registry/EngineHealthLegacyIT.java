@@ -5,12 +5,14 @@ import static org.assertj.core.api.Assertions.assertThat;
 import com.fasterxml.jackson.databind.JsonNode;
 import com.fasterxml.jackson.databind.ObjectMapper;
 import io.inspector.support.EngineSeed;
+import io.inspector.support.NoDbTestSupport;
 import org.junit.jupiter.api.BeforeAll;
 import org.junit.jupiter.api.Test;
 import org.junit.jupiter.api.TestInstance;
 import org.springframework.beans.factory.annotation.Autowired;
 import org.springframework.boot.test.context.SpringBootTest;
 import org.springframework.boot.test.web.client.TestRestTemplate;
+import org.springframework.context.annotation.Import;
 import org.springframework.test.context.ActiveProfiles;
 
 /**
@@ -24,6 +26,8 @@ import org.springframework.test.context.ActiveProfiles;
 @SpringBootTest(webEnvironment = SpringBootTest.WebEnvironment.RANDOM_PORT, properties = "ENGINE_LEGACY_PASSWORD=test")
 @ActiveProfiles("it-legacy")
 @TestInstance(TestInstance.Lifecycle.PER_CLASS)
+// M4: docker-free profile — DB autoconfig excluded, repositories mocked (NoDbTestSupport).
+@Import(NoDbTestSupport.class)
 class EngineHealthLegacyIT {
 
     private static final String ENGINE = "http://localhost:8084/flowable-rest/service";
@@ -39,6 +43,7 @@ class EngineHealthLegacyIT {
 
     @BeforeAll
     void requireEngine() {
+        rest = rest.withBasicAuth("admin", "dev"); // M4: the BFF now requires auth on every /api route
         EngineSeed.requireReachable(ENGINE, "--profile legacy");
     }
 

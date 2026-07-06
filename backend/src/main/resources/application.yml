@@ -6,6 +6,28 @@ spring:
     virtual:
       enabled: true   # SPEC §10: blocking style on virtual threads, no WebFlux
 
+  # M4: the BFF-owned Postgres (audit log, notes, protected instances) — the compose
+  # `postgres` profile on :5433 for dev. Password via env ref only (iron rule); the
+  # default matches the dev compose container.
+  datasource:
+    url: ${INSPECTOR_DB_URL:jdbc:postgresql://localhost:5433/inspector}
+    username: ${INSPECTOR_DB_USER:inspector}
+    password: ${INSPECTOR_DB_PASSWORD:inspector}
+    hikari:
+      # OPERATIONS §6: pool sized explicitly. connection-timeout kept short so the
+      # fail-closed audit refusal (R-AUD-01) answers in seconds, not Hikari's 30s default.
+      maximum-pool-size: 20
+      connection-timeout: 3000
+  jpa:
+    # Schema comes from Flyway ONLY (V1__init.sql) — validate in EVERY profile.
+    hibernate:
+      ddl-auto: validate
+    open-in-view: false
+    properties:
+      # audit_entry is a partitioned table; without this the validator does not see
+      # PG "PARTITIONED TABLE" relations and validate would fail on a correct schema.
+      hibernate.hbm2ddl.extra_physical_table_types: PARTITIONED TABLE
+
 # Shared circuit-breaker config; the client creates one instance PER ENGINE ID so a sick
 # engine fast-fails alone (do-no-harm, ARCHITECTURE §2.2). wait-duration < probe period
 # (30s) so the scheduled health probe drives half-open recovery.

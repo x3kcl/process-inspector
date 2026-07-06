@@ -8,10 +8,13 @@ import io.inspector.config.InspectorProperties;
 import io.inspector.config.InspectorProperties.EngineEnvironment;
 import io.inspector.config.InspectorProperties.EngineMode;
 import io.inspector.registry.EngineHealthService;
+import io.inspector.support.NoDbTestSupport;
+import org.junit.jupiter.api.BeforeEach;
 import org.junit.jupiter.api.Test;
 import org.springframework.beans.factory.annotation.Autowired;
 import org.springframework.boot.test.context.SpringBootTest;
 import org.springframework.boot.test.web.client.TestRestTemplate;
+import org.springframework.context.annotation.Import;
 import org.springframework.http.HttpStatus;
 import org.springframework.http.ResponseEntity;
 import org.springframework.test.context.ActiveProfiles;
@@ -23,10 +26,18 @@ import org.springframework.test.context.ActiveProfiles;
  */
 @SpringBootTest(webEnvironment = SpringBootTest.WebEnvironment.RANDOM_PORT)
 @ActiveProfiles("test")
+// M4: docker-free profile — DB autoconfig excluded, repositories mocked (NoDbTestSupport).
+@Import(NoDbTestSupport.class)
 class EnginesApiSpringTest {
 
     @Autowired
     TestRestTemplate rest;
+
+    @BeforeEach
+    void authenticate() {
+        // M4: the BFF now requires auth on every /api route
+        rest = rest.withBasicAuth("admin", "dev");
+    }
 
     @Autowired
     InspectorProperties props;

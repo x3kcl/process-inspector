@@ -11,6 +11,7 @@ import com.fasterxml.jackson.databind.JsonNode;
 import com.fasterxml.jackson.databind.ObjectMapper;
 import com.github.tomakehurst.wiremock.WireMockServer;
 import io.inspector.support.EngineSeed;
+import io.inspector.support.NoDbTestSupport;
 import java.util.List;
 import java.util.concurrent.TimeUnit;
 import org.junit.jupiter.api.AfterAll;
@@ -23,6 +24,7 @@ import org.junit.jupiter.api.TestMethodOrder;
 import org.springframework.beans.factory.annotation.Autowired;
 import org.springframework.boot.test.context.SpringBootTest;
 import org.springframework.boot.test.web.client.TestRestTemplate;
+import org.springframework.context.annotation.Import;
 import org.springframework.test.context.ActiveProfiles;
 import org.springframework.test.context.DynamicPropertyRegistry;
 import org.springframework.test.context.DynamicPropertySource;
@@ -48,6 +50,8 @@ import org.springframework.web.client.RestClient;
 @ActiveProfiles("it-triage")
 @TestInstance(TestInstance.Lifecycle.PER_CLASS)
 @TestMethodOrder(OrderAnnotation.class)
+// M4: docker-free profile — DB autoconfig excluded, repositories mocked (NoDbTestSupport).
+@Import(NoDbTestSupport.class)
 class TriageAggregationIT {
 
     private static final String ENGINE = "http://localhost:8081/flowable-rest/service";
@@ -78,6 +82,7 @@ class TriageAggregationIT {
 
     @BeforeAll
     void seedOrganically() {
+        rest = rest.withBasicAuth("admin", "dev"); // M4: the BFF now requires auth on every /api route
         engine = EngineSeed.requireReachable(ENGINE, "");
         EngineSeed.deployIfMissing(engine, "demoFailingPayment", EngineSeed.FAILING_PAYMENT_BPMN);
         EngineSeed.deployIfMissing(engine, "demoFailingRetry", EngineSeed.FAILING_RETRY_BPMN);

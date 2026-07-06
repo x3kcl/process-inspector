@@ -219,6 +219,19 @@ public final class EngineSeed {
         return ((Number) page.get("total")).longValue();
     }
 
+    /** First dead-letter job id of an instance, or null while none exists yet. */
+    @SuppressWarnings("unchecked")
+    public static String deadLetterJobIdFor(RestClient engine, String processInstanceId) {
+        Map<String, Object> page = engine.get()
+                .uri("/management/deadletter-jobs?processInstanceId=" + processInstanceId)
+                .retrieve()
+                .body(Map.class);
+        List<Map<String, Object>> data = (List<Map<String, Object>>) page.get("data");
+        return data == null || data.isEmpty()
+                ? null
+                : String.valueOf(data.get(0).get("id"));
+    }
+
     public static long deadLetterCountFor(RestClient engine, String processInstanceId) {
         Map<String, Object> page = engine.get()
                 .uri("/management/deadletter-jobs?processInstanceId=" + processInstanceId)

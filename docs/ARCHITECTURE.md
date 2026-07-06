@@ -220,6 +220,7 @@ surfaced by `GET /api/engines` and pushed to the health strip via SSE.
 | `GET  /api/instances/{engineId}/{id}/timeline` | Historic activity instances (Gantt rows, call-activity sub-lanes) |
 | `GET  /api/instances/{engineId}/{id}/audit` · `…/notes` | Per-instance action history + notes (CRUD) |
 | `POST /api/instances/{engineId}/{id}/actions/{verb}` | Verb catalog (SPEC §5); guard tier + reason enforced server-side |
+| `POST /api/definitions/{engineId}/{definitionId}/actions/{verb}` | Definition-scoped verbs (`suspend-definition` / `activate-definition`, tier 3) — same guard rails, typed token = the definition key |
 | `GET  /api/instances/{engineId}/{id}/diagram` | BPMN XML + active/failed activity IDs for bpmn-js |
 | `POST /api/bulk/{verb}` | v1: composite-ID list; v1.x: `{filter:…}` select-all — creates a tracked job |
 | `GET  /api/bulk/jobs[/{jobId}]` · `POST …/cancel` | Job state + persisted per-item report |
