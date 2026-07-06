@@ -44,3 +44,19 @@ Registered engines live in `backend/src/main/resources/application.yml` under `i
 
 Bootstrap stage: **M1 (registry + health) and M2 (fan-out search + results grid) are coded**;
 details panel, corrective actions, diagram and bulk ops follow the implementation plan.
+
+## License
+
+Licensed under the **Apache License, Version 2.0** — see [LICENSE](LICENSE) and
+[NOTICE](NOTICE). Apache-2.0 was chosen to match the project's dependency ecosystem
+(Spring, Flowable) and for its explicit patent grant.
+
+This codebase was developed with substantial AI assistance (Anthropic's Claude) under
+human direction and review. Anthropic's terms assign output rights to the customer;
+under Swiss copyright law purely machine-generated fragments may not attract copyright,
+so the license applies to all protectable subject matter without warranting copyright
+subsistence in any individual fragment (details in NOTICE).
+
+Third-party note: bpmn-js, when bundled, is used under the
+[bpmn.io license](https://bpmn.io/license/) — the "Powered by bpmn.io" watermark must
+remain visible and unmodified.

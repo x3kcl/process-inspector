@@ -1,0 +1,23 @@
+Process Inspector
+Copyright 2026 Process Inspector contributors
+
+Licensed under the Apache License, Version 2.0 (see LICENSE).
+
+AI-assisted development disclosure
+----------------------------------
+This codebase was developed with substantial AI assistance (Anthropic's
+Claude) under human direction, specification, and review. Under Anthropic's
+Commercial Terms of Service, Anthropic assigns its right, title and interest
+(if any) in such outputs to the customer. Under Swiss copyright law
+(Art. 2 URG), purely machine-generated fragments may not attract copyright;
+the Apache License 2.0 applies to all protectable subject matter in this
+work, and no warranty is made as to the subsistence of copyright in any
+individual fragment (see the LICENSE "AS IS" disclaimer).
+
+Third-party components
+----------------------
+This project depends on third-party components under their own licenses,
+including Spring Boot and Flowable (Apache-2.0), React and AG Grid Community
+(MIT), and — when bundled — bpmn-js under the bpmn.io license, which requires
+that the "Powered by bpmn.io" watermark remain visible and unmodified
+(https://bpmn.io/license/).
