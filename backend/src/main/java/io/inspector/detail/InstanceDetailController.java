@@ -5,6 +5,7 @@ import io.inspector.dto.InstanceDetail;
 import io.inspector.dto.InstanceDiagram;
 import io.inspector.dto.InstanceHierarchy;
 import io.inspector.dto.InstanceJobs;
+import io.inspector.dto.InstanceTasks;
 import io.inspector.dto.InstanceTimeline;
 import io.inspector.dto.InstanceVariables;
 import io.inspector.dto.InstanceVariables.VariableDto;
@@ -89,6 +90,13 @@ public class InstanceDetailController {
                     "unknown job lane '" + lane + "' — one of EXECUTABLE, TIMER, SUSPENDED, DEADLETTER");
         }
         return detail.jobStacktrace(engineId, instanceId, jobId, kind);
+    }
+
+    /** User tasks, completed AND open — historic ∪ runtime, suspension state derived. */
+    @GetMapping("/tasks")
+    @PreAuthorize("@rbac.atLeastOn(authentication, 'VIEWER', #engineId)")
+    public InstanceTasks tasks(@PathVariable String engineId, @PathVariable String instanceId) {
+        return detail.tasks(engineId, instanceId);
     }
 
     /** The call-activity tree, both directions — depth 10 / breadth 50, counts exact. */

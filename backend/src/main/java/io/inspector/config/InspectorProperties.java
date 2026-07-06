@@ -73,6 +73,9 @@ public record InspectorProperties(
             String accentColor,
             boolean enabled,
             String tenantId,
+            // OPTIONAL APM/logs deep-link template (SPEC §4): {processInstanceId},
+            // {executionId}, {businessKey}, {failureTime} placeholders. Absent → no link.
+            String telemetryUrlTemplate,
             @Valid Auth auth,
             EngineMode mode,
             @Valid Timeouts timeouts,

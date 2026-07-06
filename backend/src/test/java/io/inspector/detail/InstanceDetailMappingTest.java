@@ -4,6 +4,7 @@ import static org.assertj.core.api.Assertions.assertThat;
 
 import io.inspector.client.FlowableEngineClient.JobLaneKind;
 import io.inspector.dto.InstanceJobs.JobDto;
+import io.inspector.dto.InstanceTasks.TaskDto;
 import io.inspector.dto.InstanceTimeline.TimelineActivity;
 import io.inspector.dto.InstanceVariables.VariableDto;
 import java.util.HashMap;
@@ -110,6 +111,66 @@ class InstanceDetailMappingTest {
         assertThat(dto.lane()).isEqualTo("DEADLETTER");
         assertThat(dto.retries()).isZero();
         assertThat(dto.elementId()).isEqualTo("chargePayment");
+    }
+
+    /* ---------- task rows: historic ∪ runtime ---------- */
+
+    @Test
+    void taskRowsMergeHistoricAndRuntimeLegs_runtimeWinsLiveFields() {
+        TaskDto merged = InstanceDetailService.taskRow(
+                Map.of(
+                        "id", "t-1",
+                        "name", "Approve order",
+                        "taskDefinitionKey", "approveOrder",
+                        "assignee", "stale-from-history",
+                        "startTime", "2026-07-06T09:00:00Z"),
+                Map.of("id", "t-1", "assignee", "kermit", "suspended", false));
+        assertThat(merged.state()).isEqualTo(TaskDto.STATE_ACTIVE);
+        assertThat(merged.assignee()).isEqualTo("kermit"); // the LIVE assignee, not the snapshot
+        assertThat(merged.createTime()).isEqualTo("2026-07-06T09:00:00Z");
+        assertThat(merged.taskDefinitionKey()).isEqualTo("approveOrder");
+        assertThat(merged.endTime()).isNull();
+    }
+
+    @Test
+    void completedBeatsSuspended_andHistoricOnlyRowsComplete() {
+        TaskDto completed = InstanceDetailService.taskRow(
+                Map.of(
+                        "id", "t-2",
+                        "startTime", "2026-07-06T09:00:00Z",
+                        "endTime", "2026-07-06T09:05:00Z",
+                        "durationInMillis", 300000),
+                null);
+        assertThat(completed.state()).isEqualTo(TaskDto.STATE_COMPLETED);
+        assertThat(completed.durationMs()).isEqualTo(300000L);
+    }
+
+    @Test
+    void suspendedRuntimeRowsSurfaceAsSuspended_evenWithoutHistory() {
+        TaskDto suspended = InstanceDetailService.taskRow(
+                null, Map.of("id", "t-3", "name", "Review", "createTime", "2026-07-06T10:00:00Z", "suspended", true));
+        assertThat(suspended.state()).isEqualTo(TaskDto.STATE_SUSPENDED);
+        assertThat(suspended.createTime()).isEqualTo("2026-07-06T10:00:00Z"); // runtime field name
+    }
+
+    /* ---------- the telemetry deep link ---------- */
+
+    @Test
+    void telemetryTemplateRendersWithEncodedValues_absentTemplateMeansNoLink() {
+        String url = InstanceDetailService.renderTelemetryUrl(
+                "https://kibana/discover#/?_a=(query:'{processInstanceId} {businessKey}{executionId}')&t={failureTime}",
+                "pi-1",
+                "order 42/a",
+                "2026-07-06T09:00:00Z");
+        assertThat(url)
+                .isEqualTo("https://kibana/discover#/?_a=(query:'pi-1 order+42%2Fa')&t=2026-07-06T09%3A00%3A00Z");
+        assertThat(InstanceDetailService.renderTelemetryUrl(null, "pi-1", null, null))
+                .isNull();
+        assertThat(InstanceDetailService.renderTelemetryUrl("  ", "pi-1", null, null))
+                .isNull();
+        // Null values render empty, never the literal "null" into someone's APM query.
+        assertThat(InstanceDetailService.renderTelemetryUrl("q={businessKey}", "pi-1", null, null))
+                .isEqualTo("q=");
     }
 
     @Test

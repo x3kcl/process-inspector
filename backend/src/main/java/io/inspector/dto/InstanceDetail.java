@@ -29,6 +29,8 @@ public record InstanceDetail(
         InstanceStatusFlags flags,
         InstanceStatus status, // flags.primaryStatus(), serialized for the chip
         String superProcessInstanceId, // non-null on a call-activity child
+        String telemetryUrl, // engine's telemetry-url-template rendered for THIS instance;
+        // null when no template is configured (SPEC §4: absent template → no link)
         List<CurrentActivity> currentActivities, // unfinished activities; empty when ended
         WhyStuck whyStuck,
         List<WaitState> waitingFor) {

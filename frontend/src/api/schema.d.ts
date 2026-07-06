@@ -180,6 +180,22 @@ export interface paths {
         patch?: never;
         trace?: never;
     };
+    "/api/instances/{engineId}/{instanceId}/tasks": {
+        parameters: {
+            query?: never;
+            header?: never;
+            path?: never;
+            cookie?: never;
+        };
+        get: operations["tasks"];
+        put?: never;
+        post?: never;
+        delete?: never;
+        options?: never;
+        head?: never;
+        patch?: never;
+        trace?: never;
+    };
     "/api/instances/{engineId}/{instanceId}/timeline": {
         parameters: {
             query?: never;
@@ -436,6 +452,7 @@ export interface components {
             /** @enum {string} */
             status?: "ACTIVE" | "SUSPENDED" | "COMPLETED" | "FAILED" | "RETRYING";
             superProcessInstanceId?: string;
+            telemetryUrl?: string;
             tenantId?: string;
             waitingFor?: components["schemas"]["WaitState"][];
             whyStuck?: components["schemas"]["WhyStuck"];
@@ -467,6 +484,12 @@ export interface components {
             hasDeadLetterJobs?: boolean;
             hasFailingJobs?: boolean;
             suspended?: boolean;
+        };
+        InstanceTasks: {
+            tasks?: components["schemas"]["TaskDto"][];
+            /** Format: int64 */
+            total?: number;
+            truncated?: boolean;
         };
         InstanceTimeline: {
             activities?: components["schemas"]["TimelineActivity"][];
@@ -593,6 +616,19 @@ export interface components {
             statusCounts?: {
                 [key: string]: number;
             };
+        };
+        TaskDto: {
+            assignee?: string;
+            createTime?: string;
+            dueDate?: string;
+            /** Format: int64 */
+            durationMs?: number;
+            endTime?: string;
+            id?: string;
+            name?: string;
+            owner?: string;
+            state?: string;
+            taskDefinitionKey?: string;
         };
         TimelineActivity: {
             activityId?: string;
@@ -971,6 +1007,29 @@ export interface operations {
                 };
                 content: {
                     "*/*": components["schemas"]["NoteDto"];
+                };
+            };
+        };
+    };
+    tasks: {
+        parameters: {
+            query?: never;
+            header?: never;
+            path: {
+                engineId: string;
+                instanceId: string;
+            };
+            cookie?: never;
+        };
+        requestBody?: never;
+        responses: {
+            /** @description OK */
+            200: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "*/*": components["schemas"]["InstanceTasks"];
                 };
             };
         };

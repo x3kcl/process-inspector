@@ -188,6 +188,14 @@ class DetailResolveIT {
         assertThat(whyStuck.get("deadLetterJobs").asInt()).isGreaterThanOrEqualTo(1);
         assertThat(whyStuck.get("failureTime").asText()).isNotBlank();
 
+        // TS-DET-12: engine-a configures a telemetry template — the rendered deep link
+        // carries this instance; engines without a template serialize NO field at all.
+        assertThat(child.get("telemetryUrl").asText())
+                .startsWith("https://logs.example/discover?pi=" + childId)
+                .contains("bk=" + businessKey);
+        JsonNode tiny = get("/api/instances/engine-tiny/" + childId);
+        assertThat(tiny.has("telemetryUrl")).isFalse();
+
         // The parent is ACTIVE at its call activity — no why-stuck of its own, but the
         // subprocess flag is on and the current activity names where it waits.
         JsonNode parent = get("/api/instances/engine-a/" + parentId);
@@ -288,6 +296,28 @@ class DetailResolveIT {
         ResponseEntity<String> badLane = rest.getForEntity(
                 "/api/instances/engine-a/" + childId + "/jobs/" + jobId + "/stacktrace?lane=BOGUS", String.class);
         assertThat(badLane.getStatusCode()).isEqualTo(HttpStatus.BAD_REQUEST);
+    }
+
+    /* ================= Task 3: tasks — historic ∪ runtime ================= */
+
+    @Test
+    void tasksListTheParkedUserTaskLive_andCompletedInstancesAnswerEmpty() {
+        JsonNode body = get("/api/instances/engine-a/" + userTaskId + "/tasks");
+
+        assertThat(body.get("tasks")).hasSize(1);
+        assertThat(body.get("truncated").asBoolean()).isFalse();
+        JsonNode task = body.get("tasks").get(0);
+        assertThat(task.get("name").asText()).isEqualTo("Review order");
+        assertThat(task.get("taskDefinitionKey").asText()).isEqualTo("reviewOrder");
+        assertThat(task.get("assignee").asText()).isEqualTo("rest-admin");
+        assertThat(task.get("state").asText()).isEqualTo("ACTIVE");
+        assertThat(task.get("createTime").asText()).isNotBlank();
+        assertThat(task.has("endTime")).isFalse(); // open task: no endTime, never a fake one
+
+        // The COMPLETED order ran service tasks only — an explicit empty page, not a 404.
+        JsonNode completed = get("/api/instances/engine-a/" + completedId + "/tasks");
+        assertThat(completed.get("tasks")).isEmpty();
+        assertThat(completed.get("total").asLong()).isZero();
     }
 
     /* ================= Task 3: hierarchy + timeline ================= */

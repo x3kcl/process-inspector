@@ -17,6 +17,8 @@ import io.inspector.dto.InstanceHierarchy.HierarchyNode;
 import io.inspector.dto.InstanceJobs;
 import io.inspector.dto.InstanceJobs.JobDto;
 import io.inspector.dto.InstanceStatusFlags;
+import io.inspector.dto.InstanceTasks;
+import io.inspector.dto.InstanceTasks.TaskDto;
 import io.inspector.dto.InstanceTimeline;
 import io.inspector.dto.InstanceTimeline.TimelineActivity;
 import io.inspector.dto.InstanceVariables;
@@ -116,9 +118,33 @@ public class InstanceDetailService {
                 flags,
                 flags.primaryStatus(),
                 str(historic, "superProcessInstanceId"),
+                renderTelemetryUrl(
+                        engine.telemetryUrlTemplate(),
+                        instanceId,
+                        str(historic, "businessKey"),
+                        whyStuck != null ? whyStuck.failureTime() : null),
                 current,
                 whyStuck,
                 waitingFor);
+    }
+
+    /**
+     * The "open logs" deep link (SPEC §4): the engine's OPTIONAL telemetry URL template
+     * with placeholder VALUES url-encoded in place. Absent template → null → no link,
+     * never a broken guess. {@code {executionId}} renders empty at instance level — most
+     * APM queries treat an empty term as a no-op filter.
+     */
+    static String renderTelemetryUrl(
+            String template, String processInstanceId, String businessKey, String failureTime) {
+        if (template == null || template.isBlank()) return null;
+        return template.replace("{processInstanceId}", encodeValue(processInstanceId))
+                .replace("{executionId}", "")
+                .replace("{businessKey}", encodeValue(businessKey))
+                .replace("{failureTime}", encodeValue(failureTime));
+    }
+
+    private static String encodeValue(String value) {
+        return value == null ? "" : java.net.URLEncoder.encode(value, StandardCharsets.UTF_8);
     }
 
     /* ================= diagram ================= */
@@ -322,6 +348,84 @@ public class InstanceDetailService {
                 str(job, "executionId"),
                 str(job, "processDefinitionId"),
                 str(job, "tenantId"));
+    }
+
+    /* ================= tasks — historic ∪ runtime ================= */
+
+    /**
+     * The instance's user tasks, completed AND open (SPEC §4). Historic-first: the
+     * historic-task table carries open tasks as rows with a null endTime, so one leg
+     * already covers the whole lifecycle. The runtime leg then enriches open rows with
+     * live-only state (suspension) and adds any task the history level hides — same
+     * union doctrine as {@link #currentActivities}.
+     */
+    public InstanceTasks tasks(String engineId, String instanceId) {
+        EngineConfig engine = registry.require(engineId);
+        Map<String, Object> historic = requireHistoric(engine, instanceId);
+
+        Map<String, Map<String, Object>> runtimeById = new LinkedHashMap<>();
+        if (str(historic, "endTime") == null) {
+            for (Map<String, Object> task : flowable.listRuntimeTasks(engine, instanceId, engine.maxPageSizeOrDefault())
+                    .dataOrEmpty()) {
+                String id = str(task, "id");
+                if (id != null) runtimeById.put(id, task);
+            }
+        }
+
+        long historicTotal = 0;
+        Map<String, TaskDto> rows = new LinkedHashMap<>();
+        try {
+            FlowablePage page = flowable.listHistoricTaskInstances(engine, instanceId, engine.maxPageSizeOrDefault());
+            historicTotal = page.total();
+            for (Map<String, Object> task : page.dataOrEmpty()) {
+                String id = str(task, "id");
+                if (id == null) continue;
+                rows.put(id, taskRow(task, runtimeById.get(id)));
+            }
+        } catch (Exception ex) {
+            // Task history below audit level (legal engine config) — the runtime leg
+            // still renders the open tasks; degrade, never 500.
+            log.debug("Historic-task leg unavailable on {}: {}", engine.id(), ex.toString());
+        }
+        for (Map.Entry<String, Map<String, Object>> entry : runtimeById.entrySet()) {
+            rows.computeIfAbsent(entry.getKey(), id -> taskRow(null, entry.getValue()));
+        }
+
+        List<TaskDto> tasks = rows.values().stream()
+                .sorted(Comparator.comparing(TaskDto::createTime, Comparator.nullsLast(Comparator.naturalOrder())))
+                .toList();
+        long total = Math.max(historicTotal, tasks.size());
+        return new InstanceTasks(tasks, total, total > tasks.size());
+    }
+
+    /**
+     * One task row from whichever legs answered. Field names differ per leg — historic
+     * rows say {@code startTime}, runtime rows say {@code createTime}; only the runtime
+     * row knows {@code suspended}. COMPLETED beats SUSPENDED beats ACTIVE.
+     */
+    static TaskDto taskRow(Map<String, Object> historic, Map<String, Object> runtime) {
+        Map<String, Object> h = historic != null ? historic : Map.of();
+        Map<String, Object> r = runtime != null ? runtime : Map.of();
+        String endTime = str(h, "endTime");
+        String state = endTime != null
+                ? TaskDto.STATE_COMPLETED
+                : Boolean.TRUE.equals(r.get("suspended")) ? TaskDto.STATE_SUSPENDED : TaskDto.STATE_ACTIVE;
+        Object duration = h.get("durationInMillis");
+        return new TaskDto(
+                first(str(h, "id"), str(r, "id")),
+                first(str(h, "name"), str(r, "name")),
+                first(str(h, "taskDefinitionKey"), str(r, "taskDefinitionKey")),
+                first(str(r, "assignee"), str(h, "assignee")),
+                first(str(r, "owner"), str(h, "owner")),
+                first(str(h, "startTime"), str(r, "createTime")),
+                endTime,
+                first(str(h, "dueDate"), str(r, "dueDate")),
+                duration instanceof Number n ? n.longValue() : null,
+                state);
+    }
+
+    private static String first(String preferred, String fallback) {
+        return preferred != null ? preferred : fallback;
     }
 
     /* ================= hierarchy — bounded, both directions ================= */

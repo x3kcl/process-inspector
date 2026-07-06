@@ -321,6 +321,43 @@ public class FlowableEngineClient {
                         .body(FlowablePage.class));
     }
 
+    /**
+     * GET /history/historic-task-instances?processInstanceId= — the instance's user tasks,
+     * COMPLETED and OPEN alike (an open task is a historic row with a null endTime). No
+     * engine-side sort: the accepted sort fields differ across 6.x/7.x, so callers order
+     * by start time in the BFF.
+     */
+    public FlowablePage listHistoricTaskInstances(EngineConfig engine, String processInstanceId, int size) {
+        return guarded(
+                engine,
+                () -> client(engine)
+                        .get()
+                        .uri(uri -> uri.path("/history/historic-task-instances")
+                                .queryParam("processInstanceId", processInstanceId)
+                                .queryParam("size", size)
+                                .build())
+                        .retrieve()
+                        .body(FlowablePage.class));
+    }
+
+    /**
+     * GET /runtime/tasks?processInstanceId= — the live task rows: suspension state,
+     * delegation, claim time. Also the only leg that sees tasks on an engine whose task
+     * history is dialed below audit level.
+     */
+    public FlowablePage listRuntimeTasks(EngineConfig engine, String processInstanceId, int size) {
+        return guarded(
+                engine,
+                () -> client(engine)
+                        .get()
+                        .uri(uri -> uri.path("/runtime/tasks")
+                                .queryParam("processInstanceId", processInstanceId)
+                                .queryParam("size", size)
+                                .build())
+                        .retrieve()
+                        .body(FlowablePage.class));
+    }
+
     /** GET /history/historic-task-instances/{id} — task resolution incl. completed tasks. Null = unknown. */
     @SuppressWarnings("unchecked")
     public Map<String, Object> getHistoricTaskInstance(EngineConfig engine, String taskId) {

@@ -20,12 +20,13 @@ public final class TestEngines {
 
     public static EngineConfig engine(String id, String baseUrl, Auth auth, Timeouts timeouts) {
         return new EngineConfig(
-                id, id, baseUrl, EngineEnvironment.DEV, null, true, null, auth, null, timeouts, null, null, null);
+                id, id, baseUrl, EngineEnvironment.DEV, null, true, null, null, auth, null, timeouts, null, null, null);
     }
 
     /** Guard-ladder fixtures (M4): environment drives reason/token strictness, mode the R-GOV-04 gate. */
     public static EngineConfig engine(String id, String baseUrl, EngineEnvironment environment, EngineMode mode) {
-        return new EngineConfig(id, id, baseUrl, environment, null, true, null, null, mode, null, null, null, null);
+        return new EngineConfig(
+                id, id, baseUrl, environment, null, true, null, null, null, mode, null, null, null, null);
     }
 
     public static Auth basicAuth(String username, String passwordRef) {

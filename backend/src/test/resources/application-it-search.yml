@@ -26,6 +26,9 @@ inspector:
         connect-ms: 2000
         read-ms: 10000
         write-ms: 10000
+      # TS-DET-12 fixture: vitals must render this template into telemetryUrl with the
+      # placeholder VALUES url-encoded; engine-tiny has no template → no field.
+      telemetry-url-template: "https://logs.example/discover?pi={processInstanceId}&bk={businessKey}&t={failureTime}"
       max-page-size: 10
       # Generous headroom: the dev engine accumulates dead-letter jobs across local runs,
       # and a truncated engine-a scan would flake the roll-up assertions. Truncation is
