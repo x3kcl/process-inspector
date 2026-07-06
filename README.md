@@ -10,7 +10,10 @@ instances across **multiple independent Flowable engines** — strictly via the 
 | [docs/SPECIFICATION.md](docs/SPECIFICATION.md) | The product spec **v2.0** (design principles, status model, three-stage UI, verb catalog, guard ladder, release train) |
 | [docs/ARCHITECTURE.md](docs/ARCHITECTURE.md) | Multi-instance design: BFF topology, composite IDs, fan-out with partial results, the corrected FAILED/dead-letter status join, **Engine Registry data model** |
 | [docs/IMPLEMENTATION-PLAN.md](docs/IMPLEMENTATION-PLAN.md) | Milestones M0–M6 + v1.x/v2 release train, module by module |
-| [docs/DESIGN-REVIEW.md](docs/DESIGN-REVIEW.md) | Provenance of v2.0: IBM BAW + competitor research, four-seat expert panel findings |
+| [docs/DESIGN-REVIEW.md](docs/DESIGN-REVIEW.md) | Provenance: research, the four-seat panel (v2.0), tech-stack ADRs (v2.2), the 14-seat board (v3.0) |
+| [docs/REQUIREMENTS-REGISTER.md](docs/REQUIREMENTS-REGISTER.md) | All board-accepted requirements, ID'd and prioritized (MUST-v1 / SHOULD-v1.x / COULD-v2) |
+| [docs/TEST-STRATEGY.md](docs/TEST-STRATEGY.md) | Risk-ranked coverage floors, milestone gates, defect taxonomy, perf/security plans, testability hooks |
+| [docs/OPERATIONS.md](docs/OPERATIONS.md) | Running the Inspector itself: health, telemetry, recovery, threat model, CI gates, runbook index |
 
 ## Repo layout
 

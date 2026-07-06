@@ -23,6 +23,23 @@ variable typing MUST each have an integration test against the dockerized `flowa
 header shape, timeout handling, error envelopes) — never for status derivation or paging
 semantics. Wire-shape drift between Flowable versions is exactly what mocks hide.
 
+**Documented exception (R-TEST-07):** the hierarchy **cycle-guard** is tested at rung 1
+over a fixture parent-map containing a loop — real engines cannot produce a cyclic
+`superProcessInstanceId` chain, so the iron rule is unsatisfiable there. The depth *limit*
+stays rung 4 (recursive seed process, configurable max-depth low in the test profile).
+
+## Deterministic-state recipes (from the embedded-tester review; details TEST-STRATEGY §9)
+- **RETRYING (failing, retries left)** is a ~10s race with engine defaults — pin it with
+  `flowable:failedJobRetryTimeCycle="R10/PT1H"` on the seed task; poll-with-deadline, never
+  sleep. **Fast DLQ seeding**: `R1/PT1S` dead-letters in ~1s.
+- **Truncation**: test registry uses `dlq-scan-cap: 50`, `max-page-size: 10` — never seed
+  10k jobs.
+- **Guard-ladder E2E**: register the SAME docker engine twice (`environment: dev` and
+  `prod`) so every prod-only guard branch runs on one stack; drift fixtures via out-of-band
+  engine mutation from Playwright (direct engine REST, bypassing the BFF).
+- **Breakers**: per-engine test profile (window 2, open 500ms) + WireMock fault/scenario
+  recipes; assert cache hits don't count against the breaker.
+
 ## Seeding test states
 Deploy over REST (`POST /repository/deployments`, multipart `.bpmn20.xml`), then start
 instances (`POST /runtime/process-instances` `{"processDefinitionKey":…,"variables":[…]}`).

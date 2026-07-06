@@ -100,6 +100,42 @@ app) and a **Claude expert** (with what stacks does an AI coding agent perform b
   requirement, flap-team alignment, and the Claude expert's iteration-speed concern
   addressed by its own recommended mitigations. SPECIFICATION §10 is the decided form.
 
+## Round 3 (v3.0) — the 14-seat review board
+
+Seats: product owner, business analyst, lead developer, architect, DevOps engineer, test
+manager, embedded tester, usability expert, two usability testers (junior-L2 and senior-L3
+personas, spec-only cognitive walkthroughs), support team lead, day-shift support engineer,
+L3, L2. ~130 findings, deduplicated into **REQUIREMENTS-REGISTER.md** (the ID'd, prioritized
+register); test governance → **TEST-STRATEGY.md**; inspector operability → **OPERATIONS.md**.
+
+**The four recurring diagnoses:**
+1. *"Technically excellent, product-blind"* (PO) — no KPIs, release gate, rollout ramp,
+   compliance path, or license audit existed. → §13, read-only mode, ADR-002/003, re-cut §12.
+2. *"Adjectives where numbers belong"* (BA) — every cap/latency/threshold was unquantified
+   and untestable. → R-NFR-01..07 quantified service levels.
+3. *"Protects the engines, silent about itself"* (architect + DevOps + team lead) — the BFF
+   is the most credentialed box in the estate with no threat model, telemetry, recovery,
+   break-glass, or pager. → OPERATIONS.md.
+4. *"Protects the instance from the operator, not the operators as an organization"*
+   (team lead + L2) — no role granularity below OPERATOR, no approvals, no training gate,
+   no reporting. → RESPONDER role, protected instances, proposal inbox, shift report.
+
+**Conflicts resolved:**
+- PO's v1 re-cut (flow surgery out of the v1 gate) **accepted** over the v2.2 scope — the
+  dominant incident shape is served by tiers 0–1; change-state moves to v1.1 with a
+  data-driven entry criterion. Tester B's demand for v1 action-cURL is met instead by the
+  cheap REST Parity Appendix + per-verb REST preview (already spec'd) — principle 5 stays
+  honest without holding v1 hostage.
+- SSE v1-vs-v1.x contradiction (lead dev) resolved: **no SSE in v1**, polling suffices;
+  SSE lands with tracked bulk, with a full lifecycle contract.
+- L2's "less power" vs L3's "more escape hatches": both accepted — they target different
+  tiers (RESPONDER split + protected instances DOWN; evidence view, parity appendix,
+  forensic passthrough UP, all ADMIN-gated and audited).
+- Tester A's FAILED/FAILING confusion (blocker): display rename **FAILING → RETRYING
+  (n/m, auto)**; internal flag names unchanged.
+- BA's finding that "Suspended > 24h" is unimplementable (no suspension timestamp in the
+  REST API) produced the curated-view honesty rule (R-SEM-05).
+
 ## Cross-seat consensus (adopted wholesale)
 Correct the join before adding features · partial-and-labeled beats complete-and-false ·
 error-class grouping is the triage centerpiece · shareable URLs are an incident primitive ·

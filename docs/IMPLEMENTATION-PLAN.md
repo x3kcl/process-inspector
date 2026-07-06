@@ -1,9 +1,17 @@
-# 🗺 IMPLEMENTATION PLAN (spec deliverable 3) — v2
+# 🗺 IMPLEMENTATION PLAN (spec deliverable 3) — v3
 
 Module-by-module; each milestone ends runnable + demoable. Backend and frontend for a
 milestone land together. Bootstrap code for **M1 + M2** already exists. Re-sequenced after
-the design review ([DESIGN-REVIEW.md](DESIGN-REVIEW.md)): correctness fixes fold into M2,
-shareability and the diagram move EARLIER, bulk-by-query and migration move LATER.
+the design reviews ([DESIGN-REVIEW.md](DESIGN-REVIEW.md)): correctness fixes fold into M2,
+shareability and the diagram move EARLIER, **flow surgery moves OUT of the v1 gate to v1.1**
+(R-GOV-07), bulk-by-query and migration move LATER.
+
+**Gates (R-TEST-02):** every milestone has entry/exit criteria per TEST-STRATEGY §2 — suite
+green ×3 on applicable engine profiles, coverage floors met, zero open Sev1/Sev2, every
+"Done when" demo converted into an automated E2E. Done-when clauses cite the
+REQUIREMENTS-REGISTER IDs they discharge. The authoritative CI merge-gate list is
+OPERATIONS.md §8. **Status correction:** M0's "CI" claim was ahead of reality — no workflows
+or Dockerfile exist yet; landing them is part of M2a's gate.
 
 ## M0 — Scaffold *(done)*
 - Repo layout, CI, docker-compose dev harness (2× `flowable/flowable-rest`).
@@ -62,20 +70,26 @@ shareability and the diagram move EARLIER, bulk-by-query and migration move LATE
   instance's Audit tab; a VIEWER sees every action greyed with the right tooltip.
 - **Deferred out of M4:** task reassign (v1.x — not an incident verb).
 
-## M5 — Flow surgery + diagram interactions
+## M5 — Bulk + hardening (v1 close-out; the former M6)
+- Grid-selection bulk as a **persisted tracked job** (R-SEM-10: state machine, startup
+  reconciliation → INTERRUPTED, circuit-open dispatch pause, aggregate readout), cap 200,
+  intersection-of-valid-actions, protected-instance auto-exclusion, acknowledgment gate over
+  partial result sets, per-item report with the full outcome-class set.
+- Security test plan execution (TEST-STRATEGY §5, independent tester); performance scenarios
+  P1/P2/P4; UAT sessions (R-TEST-08); operator quick-start + RUNBOOK.md; break-glass;
+  release gate per SPEC §13.
+- **Done when:** kill the BFF mid-bulk → on restart the job shows INTERRUPTED with an honest
+  per-item report and a continue-as-new-job affordance (R-SEM-10); a 50-instance bulk retry
+  reports every outcome class honestly; the §13 gate checklist is green.
+
+## v1.1 — Flow surgery (former M5; entry criterion R-GOV-07: ≥N audited pilot incidents
+unresolvable with tier 0–1 verbs)
 - change-state as a guarded form verb (activity dropdowns) with BFF-simulation preview +
   REST-body display; guardrails (MI-body block, parallel-join warning, suspended-check,
   variables-first composite = rerun-from-activity); restart-as-new with the pin-vs-latest
   definition fork. Diagram change-state *picker* is polish — only after the form verb works.
 - **Done when:** a token is moved off a failed node and the instance proceeds; the preview
   shows exactly the REST call; an MI body as source is refused with the reason.
-
-## M6 — Bulk + hardening (v1 close-out)
-- Grid-selection bulk with per-item report (success IDs vs id→error), hard caps,
-  intersection-of-valid-actions, acknowledgment gate over partial result sets.
-- Load-test fan-out; pen-test the proxy layer (path whitelist); CSV export.
-- **Done when:** a 50-instance bulk retry reports per-item outcomes incl. `skipped` and
-  `unknown` classes honestly.
 
 ## v1.x — fast follows (each independently demoable)
 1. Error-class **bulk-retry-the-group** from the triage landing.

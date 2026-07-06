@@ -21,6 +21,18 @@ diagram test. Author with Flowable/Camunda Modeler or copy an existing seed's DI
   documented recovery loop works: **edit variable → retry dead-letter job → completes**.
 - Default retry is 3 with ~10s intervals — a demo/test must WAIT for retries to exhaust
   before asserting on `/management/deadletter-jobs` (poll with a deadline, never fixed sleep).
+- **Control the retry cycle per task** with `flowable:failedJobRetryTimeCycle`:
+  `"R1/PT1S"` = fast dead-letter (~1s — bulk DLQ seeding); `"R10/PT1H"` = pins the
+  RETRYING/failing-with-retries-left state stably for an hour (the only deterministic way
+  to test the `hasFailingJobs` tier — see TEST-STRATEGY §9).
+- **Error-class corpus** (expression-only — flowable-rest has no custom beans): distinct
+  exception classes with per-instance noise, e.g. `${T(java.lang.Long).parseLong(orderRef)}`
+  → NumberFormatException with a unique string (proves ID-stripping groups N instances into
+  one signature); `${amount / zero}` → ArithmeticException; missing-variable access →
+  PropertyNotFoundException.
+- **Deep hierarchies**: one self-recursive seed process (call activity with `calledElement`
+  = its own key, gated `${depth < maxDepth}`, `depth+1` in-parameter) yields N-deep
+  call-activity chains from one file.
 - Use `flowable:expression`/`flowable:delegateExpression` referencing things that exist in
   the ENGINE container (flowable-rest has no custom beans) — plain expressions on variables
   are the reliable failure mechanism; `flowable:class` referencing a non-existent class fails

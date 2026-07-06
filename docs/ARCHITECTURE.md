@@ -137,11 +137,20 @@ inspector:
         type: basic                  # basic | bearer | none
         username: rest-admin
         password-ref: ENGINE_A_PASSWORD   # NAME of an env var; secret never in config/UI/logs
+      mode: read-write               # read-write | read-only — rollout ramp (R-GOV-04)
+      jurisdiction: ""               # OPTIONAL: data-residency tag (R-AUD-03)
       timeouts:
         connect-ms: 2000
         read-ms: 10000               # budgeted PER CALL within a search plan
+        write-ms: 10000              # governs MUTATING calls; UNKNOWN's definition depends on it (R-NFR-07)
       max-page-size: 200             # cap per fan-out query page
-      dlq-scan-cap: 5000             # exhaustive-paging bound for the dead-letter scan
+      dlq-scan-cap: 5000             # exhaustive-paging bound (test profile uses 50 — TEST-STRATEGY §9)
+      alarm-thresholds:              # R-NFR-04 defaults, per-engine overridable
+        oldest-job-warn-min: 5
+        oldest-job-crit-min: 15
+        overdue-timer-grace-s: 60
+      advisories: []                 # known engine-version issues → enabled-with-warning verbs (R-L3-06)
+      require-second-approval: []    # e.g. [tier3, tier4] — four-eyes (R-SAFE-08)
 ```
 
 **Runtime state kept per engine (not config):** `reachable`, `engineVersion`,
@@ -181,11 +190,15 @@ nobody may "simplify" by exposing an engine directly.
 - **Auth (dual profile from M4):** dev = form/basic + session; prod = **OIDC**
   (roles from a claim). One session-stateful BFF instance; engine credentials live only in
   the BFF process env.
-- **RBAC:** `VIEWER` (search/details/diagram/stacktraces), `OPERATOR` (tier 0–2 verbs:
-  retry, timer, unstick, variable edit, task ops, suspend/activate, rerun/change-state*),
-  `ADMIN` (tier 3–4: terminate/delete, suspend-definition, deadletter-delete, migrate, bulk).
-  (*change-state is tier 2 flow surgery but gated ADMIN on `prod` engines.) Enforced in the
-  BFF, mirrored in the UI as greyed-with-reason. **Grants are scoped, not global**: an OIDC
+- **RBAC:** `VIEWER` (read-only) → **`RESPONDER`** (tier-0 verbs + unstick + notes — the
+  runbook tier; no variable writes, no token moves) → `OPERATOR` (adds tiers 1–2) → `ADMIN`
+  (tiers 3–4: terminate/delete, suspend-definition, deadletter-delete, migrate, bulk).
+  (change-state is tier 2 flow surgery but gated ADMIN on `prod` engines.) Per-verb grant
+  overrides `(role, verb, engineId, tenantId)` supported (R-SAFE-01). Enforced in the BFF,
+  mirrored in the UI as greyed-with-reason. Protected instances (R-SAFE-05) and read-only
+  engine mode (R-GOV-04) are additional guard-layer gates. `engineId` slugs are validated
+  fail-fast at startup: `^[a-z0-9][a-z0-9._-]{0,63}$` (R-SEM-08); composites split on the
+  FIRST `:`. **Grants are scoped, not global**: an OIDC
   role/group maps to `(role, engineId | *, tenantId | *)` tuples — ADMIN on
   `orders-prod`/tenant-A authorizes nothing on another engine or tenant; the guard layer
   resolves the acting user's scope set against the target of every call.
@@ -206,6 +219,15 @@ nobody may "simplify" by exposing an engine directly.
   per-item results with `ok/failed/skipped/unknown`.
 - **Variable-search cost:** engine history tables are typically unindexed on value; variable
   filters get a "narrow by definition" nudge and a distinguished timeout hint in the envelope.
+- **Operating the Inspector itself** — health semantics (engine reachability is NEVER a
+  readiness component), the contract metric set, correlationId propagation, audit
+  fail-closed + backup/retention/tamper-evidence, threat model (the BFF is a credential
+  vault: egress allowlist, actuator lockdown, per-engine unique credentials), break-glass,
+  session policy, deploy/drain, CI gates: **[OPERATIONS.md](OPERATIONS.md)**. Board-accepted
+  requirements with priorities: **[REQUIREMENTS-REGISTER.md](REQUIREMENTS-REGISTER.md)**;
+  test governance: **[TEST-STRATEGY.md](TEST-STRATEGY.md)**. One `java.time.Clock` bean
+  behind every age/staleness computation; event timestamps always from engine responses
+  (R-TEST-07).
 
 ## 6. Inspecting an embedded-engine application (the flap case)
 

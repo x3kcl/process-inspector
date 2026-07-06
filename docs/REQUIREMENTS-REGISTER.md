@@ -1,0 +1,149 @@
+# 📋 REQUIREMENTS REGISTER — board round 3 (v3.0)
+
+The consolidated, deduplicated output of the 14-seat review board (2026-07-06): product owner,
+business analyst, lead developer, architect, DevOps engineer, test manager, embedded tester,
+usability expert, 2 usability testers, support team lead, support engineer, L3, L2.
+Each requirement has a stable ID (`R-<theme>-<nn>`) for tickets and test names — IDs are never
+reused. Priorities: **MUST-v1** (release-gating) · **SHOULD-v1.x** · **COULD-v2**.
+Source seats in brackets. Conflicts resolved per DESIGN-REVIEW round-3 addendum.
+
+## GOV — Product governance
+| ID | Requirement | Prio | Source |
+|---|---|---|---|
+| R-GOV-01 | Success metrics: KPIs computable from BFF data (weekly active operators, time-to-first-fix, % DLQ resolved via tool, deep-link opens); MTTR baseline captured before pilot; pilot exit target ("≥60% of workflow P1/P2 tickets show tool audit activity, median time-to-first-fix < 15 min"); every v1.x/v2 item names the KPI it must move | MUST-v1 | PO |
+| R-GOV-02 | v1 release gate: security sign-off (named function), CI-verified performance budget (R-NFR-02), operator quick-start + audit-attribution onboarding doc, named operating owner + restart/recovery expectation accepted by support lead | MUST-v1 | PO, test mgr |
+| R-GOV-03 | Stakeholder table (§1): sponsor, per-engine owner (signs machine account + fencing + read-write enablement), support lead, security reviewer. v1 precondition: ≥3 engines (≥1 prod) with signed onboarding checklists; ARCH §6 becomes a signable one-page Engine Onboarding Checklist | MUST-v1 | PO |
+| R-GOV-04 | Rollout: registry `mode: read-write\|read-only` per engine; BFF rejects mutations on read-only engines (greyed "engine registered read-only"); pilot = 1 team + 2 engines (prod read-only) 4 weeks after M4; prod mutation rights per-engine on written sign-off | MUST-v1 | PO |
+| R-GOV-05 | ADR-002 grid feature contract: v1 = AG Grid **Community only** (selection count via custom footer, ID copy via copy buttons — no Enterprise status bar/set filters/range selection/context menu); CI fails on `ag-grid-enterprise` import; bpmn.io watermark must not be removed (license term) | MUST-v1 | PO |
+| R-GOV-06 | ADR-003 IdP contract: name the pilot IdP + claim format (incl. Entra groups-overage behavior); OIDC delivers identity + coarse groups only; group→(role, engine, tenant) mapping is BFF-owned YAML config (v2: CRUD), change-audited | MUST-v1 | PO |
+| R-GOV-07 | Re-cut v1: change-state / rerun-from-activity / restart-as-new move to **v1.1** with entry criterion "≥N audited pilot incidents unresolvable with tier 0–1 verbs"; CSV export → v1.x; v1.x list ranked with per-item entry criteria + max-WIP 1 | MUST-v1 | PO (accepted over v2.2 scope) |
+| R-GOV-08 | Playbooks (v2) build trigger: audit analysis over ≥3 pilot months shows repeated identical ≥2-verb sequences on ≥10 instances of one signature; governance: replay is ADMIN, scope-checked against the RUNNER's grants | COULD-v2 | PO |
+
+## NFR — Quantified service levels & envelope (defaults, config-overridable; each is a test assertion)
+| ID | Requirement | Prio | Source |
+|---|---|---|---|
+| R-NFR-01 | Limits: ≤20 registered engines; ≤10 engines per fan-out search (refused above, with reason); 25 concurrent users; 50 SSE connections; v1 grid-bulk cap 200 items; v1.x query-bulk cap 5,000; per-engine bulk dispatch concurrency 4, default stagger 250 ms; variable preview cap 8 KiB (full fetch ≤5 MiB, beyond download-only); retry-now hard timeout 30 s → UNKNOWN (drop the unimplementable "long jobs blocked" clause) | MUST-v1 | BA |
+| R-NFR-02 | Latency (CI-verified vs the reference dataset): mixed search 5 engines P95 ≤ 3 s; FAILED-only at 5k DLQ P95 ≤ 5 s; triage landing warm P95 ≤ 500 ms; omnibox resolve ≤ 2 s across 10 engines | MUST-v1 | BA, PO |
+| R-NFR-03 | Triage cache TTL 20 s (5–60 config); Refresh bypass rate-limit 1/10 s/user (429 + retry-after) | MUST-v1 | BA |
+| R-NFR-04 | Alarm thresholds (per-engine overridable): oldest executable job >5 min warn / >15 min crit; timer overdue = due >60 s, any = warn, >100 = crit; health probe 30 s, unreachable after 2 consecutive fails, reachable after 1 success (flap damping) | MUST-v1 | BA |
+| R-NFR-05 | Operating envelope stated: ≤5M historic / 100k active instances per engine; DLQ fully handled ≤5k, functional-labeled ≤50k; history level ≥ `activity` required for Timeline/sibling-diff (probed, greyed-with-reason); sibling auto-suggest window 7 days / 1,000 candidates | MUST-v1 (statement) | BA |
+| R-NFR-06 | Reason fields: ≥10 chars after trim (reject shorter inline) | MUST-v1 | BA |
+| R-NFR-07 | `write-ms` timeout defined for mutating calls (registry; default = read-ms) — UNKNOWN's definition depends on it | MUST-v1 | embedded tester |
+
+## SEM — Semantics & contracts
+| ID | Requirement | Prio | Source |
+|---|---|---|---|
+| R-SEM-01 | Glossary (§0, normative): Engine, Process Instance (never bare "instance" in UI), FAILED, RETRYING, job lanes, Error Class, Sibling, Verb, Composite ID; UI strings link to it | MUST-v1 | BA, L2 |
+| R-SEM-02 | **Rename the FAILING display chip to `RETRYING (n/m, auto)`** and FAILED renders "FAILED — needs action"; "-ing" reads as more urgent than "-ed" and drives mis-triage (flag names in code/API stay `hasFailingJobs`) | MUST-v1 | tester A (blocker) |
+| R-SEM-03 | Error-signature normalization is a **normative, versioned contract**: outermost non-wrapper class (unwrap one level) + message with UUIDs/hex≥8/digit-runs/quoted-literals/ISO-timestamps → `#`, whitespace collapsed, 200-char cap; signature = `(algoVersion, sha256, sampleRawMessage)`; playbook/ack/annotation bindings store algoVersion; golden corpus ≥30 real 6.x+7.x traces, CI fails on drift; version bump ⇒ re-binding flagged, never silent | MUST-v1 | BA, lead dev, test mgr, embedded tester |
+| R-SEM-04 | Omnibox resolution semantics: exactly-one match → navigate; >1 → disambiguation list (kind, engine badge, status); business key → always a pre-filtered search; engine down → "resolved against N of M" banner; zero → explicit not-found + engine list. Omnibox is pinned in the global header on every stage | MUST-v1 | BA, tester A |
+| R-SEM-05 | Curated-view honesty rule: no system view may ship whose predicate the REST API cannot evaluate faithfully ("Suspended > 24h" is unimplementable — no suspension timestamp; replace with "suspended ∧ no audit/notes activity in 24h", labeled) | MUST-v1 | BA |
+| R-SEM-06 | Error-text search scope defined: applied to the scanned DLQ/RETRYING job set pre-hydration (truncation-labeled); in mixed searches only combined with a failed/retrying predicate, refused otherwise; §8 states snippet-vs-full-trace and offers a capped "search full stacktraces" mode | MUST-v1 / SHOULD-v1.x (full-trace) | BA, L3 |
+| R-SEM-07 | Requirement IDs: this register's IDs are the ticket/test handles; milestone done-when clauses cite the IDs they discharge | MUST-v1 | BA, test mgr |
+| R-SEM-08 | engineId slug rule `^[a-z0-9][a-z0-9._-]{0,63}$`, fail-fast at startup naming the offender; composite splits on FIRST `:`; frontend always `encodeURIComponent`s path segments | MUST-v1 | lead dev |
+| R-SEM-09 | Concurrent operators: engine 404/409 on a mutation target → outcome `skipped (already resolved)` enriched with "handled by <user> at <ts>" from audit; tier-1 variable edit is compare-and-set (`expectedOldValue`, 409 + re-render on mismatch); bulk submit warns on overlapping RUNNING job (same signature/ID overlap) with explicit run-anyway | MUST-v1 (CAS, 404-mapping) / SHOULD-v1.x (overlap) | lead dev |
+| R-SEM-10 | Bulk = persisted tracked job even for v1 grid-selection (resolves SPEC§7↔ARCH§4 contradiction); job state machine `PENDING→RUNNING→(COMPLETED\|CANCELLED\|INTERRUPTED)`; item `pending→dispatched→(ok\|failed\|skipped\|unknown\|not_run)`; startup reconciliation sweep marks RUNNING→INTERRUPTED, in-flight item→unknown, never auto-resume; drawer offers "continue as new job" scoped to not_run+failed | MUST-v1 (M6) | lead dev, devops |
+| R-SEM-11 | Circuit-open mid-bulk: dispatcher PAUSES dispatch to the tripped engine (undispatched stay `pending`/`not_run` — never burned as failures); breaker fast-fail on a dispatched item = `failed` (clean rejection), `unknown` stays reserved for true ambiguity; aggregate readout "N of M dispatched (ok/failed/skipped/unknown)" required | MUST-v1 (M6) | tester B, L2 |
+| R-SEM-12 | Stage 0 counts carry the same truncation/lower-bound badges as the grid (group counts, status tiles); error-group drill-through: each per-version count is its own click target and the resulting filter state is echoed before commit | MUST-v1 | tester B |
+| R-SEM-13 | "Bulk-retry-the-group" trap guard: when a group's endorsed annotation (R-ORG-06) or diagnosis implies a data fix first, the one-click retry warns/demotes | SHOULD-v1.x | tester B |
+| R-SEM-14 | SSE placement resolved: **no SSE in v1** (TanStack polling for health); SSE lands with v1.x bulk. Lifecycle contract then: 15 s heartbeat; emitter bound to session (expiry completes it); events are id-only notifications, client resyncs via REST on (re)connect; reconnect-401 → re-auth preserving route+drawer; events scope-filtered by (role, engine, tenant); SSE event catalog documented (names, payloads) since OpenAPI can't cover it; active-emitter Micrometer gauge | MUST-v1 (decision) / SHOULD-v1.x (contract) | lead dev, embedded tester |
+| R-SEM-15 | OpenAPI codegen mechanics: springdoc-maven-plugin export at integration-test phase (sorted keys, fixed info.version), committed `openapi.json`, `npm run gen:api`, CI `git diff --exit-code`; delete hand-written `types.ts` by M3; springdoc + openapi-typescript pinned exactly | MUST-v1 | lead dev, embedded tester |
+| R-SEM-16 | SPA/BFF version skew: `index.html` no-cache, hashed assets immutable; `/api/meta` + `X-Inspector-Version`; mismatch → non-blocking "reload when convenient" banner; dynamic-import failure → reload prompt, never a blank tab | SHOULD-v1.x | lead dev |
+| R-SEM-17 | Registry change = restart, stated; `POST /api/admin/drain` (refuse new bulk jobs, report running) before planned restarts; unknown engine ids in audit/notes render "removed engine <id>" | SHOULD-v1.x | lead dev, devops |
+
+## SAFE — Operator safety & RBAC
+| ID | Requirement | Prio | Source |
+|---|---|---|---|
+| R-SAFE-01 | **RESPONDER role** between VIEWER and OPERATOR: tier-0 verbs + unstick + notes, no variable writes, no token moves; plus per-verb grant overrides `(role, verb, engineId, tenantId)`; tooltips cite the missing verb grant | MUST-v1 | team lead, L2 (convergent) |
+| R-SAFE-02 | **Reversibility badge** on every verb (menu + confirm): `REVERSIBLE` (compensating verb named) / `RECOVERABLE` (rescue path named) / `IRREVERSIBLE`; retry carries "queue move reversible; executed side effects are not" | MUST-v1 | L2 |
+| R-SAFE-03 | Tier-0 friction floor on prod for side-effect-firing verbs (trigger-timer, retry-now): two-step inline button confirm (no modal); queue-state-only verbs stay single-click | MUST-v1 | L2 |
+| R-SAFE-04 | Plain-language secondary labels for every verb, spec'd verbatim in §5.0 (e.g. Retry job — "run the failed step again"; Terminate — "kill this case permanently"); glossary tooltips on all engine terms | MUST-v1 | L2 |
+| R-SAFE-05 | **Protected instances**: L3+ marks composite ID or definition key protected (reason required, tier-3 audited); below configured floor all verbs disabled-with-reason; badge on rows/header/confirms; bulk auto-excludes as `skipped (protected)` | MUST-v1 | L2 |
+| R-SAFE-06 | Break-glass local account on prod: sealed credentials, `/break-glass` path, 4 h session, ADMIN-global, distinguished audit flag + alert + page banner, rotate-after-use documented | MUST-v1 | team lead |
+| R-SAFE-07 | Access lifecycle: claims re-evaluated ≤15 min (tier-3/4 force re-validation); sessions hard-capped (default 12 h idle-tolerant, 24 h absolute; fixation protection; HttpOnly/Secure/SameSite=Lax); `GET /api/access-review` export of effective grant tuples | MUST-v1 | team lead, architect |
+| R-SAFE-08 | Second-person approval (four-eyes): per-engine `require-second-approval: [tier3,tier4]` → PENDING_APPROVAL state, approver ≠ proposer enforced server-side, TTL 1 h, both identities audited; plus the L2 **proposal inbox** ("Propose this action" on role-disabled verbs, deep-linked diagnosis, approver executes under own identity, proposals expire 4 h + re-validate) — one mechanism, two entry points. Schema hooks (approvedBy, proposal state) land in the v1 audit schema | SHOULD-v1.x (hooks MUST-v1) | team lead, L2 (convergent) |
+| R-SAFE-09 | UNKNOWN "Verify now": BFF re-runs the verb's precondition predicate → `ok / still-pending / needs L3` with evidence; unresolved UNKNOWNs persist in drawer + shift report | SHOULD-v1.x | L2 |
+| R-SAFE-10 | Pre-action evidence snapshot attached to the audit record before tier-3 destructive calls; confirm states it; §9 notes engine history cleanup is outside our control | SHOULD-v1.x | L3 |
+
+## AUD — Audit, data protection & handover
+| ID | Requirement | Prio | Source |
+|---|---|---|---|
+| R-AUD-01 | Audit is **fail-closed** for tier ≥1 mutations: audit INSERT fails ⇒ engine call not made; error names Postgres | MUST-v1 | devops |
+| R-AUD-02 | Normative schema: `audit_entry(id, correlation_id, bulk_job_id FK, user, ts, engine_id, tenant_id, instance_id, action, reason, ticket_id, payload jsonb (per-verb versioned schemas — edit-variable: {name, scope, oldValue, newValue, valueType}), http_status, outcome, response_snippet ≤32 KiB truncated+flagged, break_glass, approved_by)`; indexes (engine,instance,ts) + (ts); monthly range partitions | MUST-v1 | lead dev, devops, team lead |
+| R-AUD-03 | Data protection: retention default 400 days + scheduled purge (purge audited); per-engine `audit-payload: full\|redacted\|metadata-only`; secret-name denylist → `«redacted»`; payload bodies role-gated (OPERATOR+); DB role INSERT/SELECT-only (REVOKE UPDATE/DELETE) + tamper-evidence hash chain; erasure design (crypto-erasure or skeleton-preserving redaction); optional registry `jurisdiction`; data-classification one-pager as release-gate artifact | MUST-v1 | PO, BA, architect (convergent) |
+| R-AUD-04 | `correlationId`/`traceId` on every request, MDC-propagated across the virtual-thread fan-out, on every audit row, in every error envelope/toast and copy-for-ticket | MUST-v1 | devops, L3 (convergent) |
+| R-AUD-05 | Shift report: audit log filter "my activity, this shift" + Copy shift report (UNKNOWNs grouped first as NEEDS VERIFICATION) | MUST-v1 | L2 |
+| R-AUD-06 | Copy-for-ticket includes latest note + one-line actions-taken summary; a group-level copy-for-ticket exists on Stage 0 (signature, counts, engines/versions, deep link) | MUST-v1 (instance) / SHOULD-v1.x (group) | tester A |
+| R-AUD-07 | `ticketId` on every reason prompt (regex-validated, `ticket-url-template` linkified, audit column, filter; prod may require); bulk-completion webhook (signed JSON summary, retry ×3, never blocks) | SHOULD-v1.x (column MUST-v1) | team lead |
+| R-AUD-08 | Ops reporting: v1 = streaming CSV export of audit rows; v1.x = `GET /api/reports/ops` (actions by user×verb×outcome, group first-seen/last-seen/drained, median time-to-drain) | v1 CSV MUST / SHOULD-v1.x | team lead |
+| R-AUD-09 | Audit read surfaces are the SAME data: per-instance tab notes engine-side attribution caveat | MUST-v1 | (v2.4 carry-over, restated) |
+
+## OPS — Operating the inspector (→ docs/OPERATIONS.md)
+| ID | Requirement | Prio | Source |
+|---|---|---|---|
+| R-OPS-01 | Liveness = JVM only; readiness = Postgres + registry parsed; **engine reachability is never a readiness component** | MUST-v1 | devops |
+| R-OPS-02 | `/actuator/prometheus` with the named metric set (per-engine fan-out latency, breaker state, cache hit rate, SSE gauge, bulk outcomes, audit-insert failures, Hikari, JVM); metric names are contract | MUST-v1 | devops |
+| R-OPS-03 | External monitoring + shipped alert rules (InspectorDown, readiness>2m, audit_insert_failures>0, PG unreachable, disk>80%, all-circuits-open = egress problem); paging route = workflow platform team; degraded mode = the runbook's direct-cURL recipes | MUST-v1 | devops, team lead |
+| R-OPS-04 | RTO ≤15 min (IaC redeploy, pinned digest), RPO ≤5 min (WAL/PITR); Postgres external to BFF host in prod; Flyway forward-only + backup gate; quarterly restore drill | MUST-v1 | architect, devops |
+| R-OPS-05 | Graceful shutdown (30 s, SIGTERM → SSE `shutdown` event when SSE exists); deploy window ≤2 min announced; drain-before-deploy (v1.x with tracked bulk) | MUST-v1 / SHOULD-v1.x | devops |
+| R-OPS-06 | CI gate table (single authoritative list): build+unit, WireMock contract incl. 6.x/7.x error fixtures, Testcontainers PG, Spotless+ESLint, OpenAPI diff, Vitest, Playwright smoke, image CVE scan; nightly full engine-matrix; correct M0's "CI done" claim | MUST-v1 | devops, test mgr |
+| R-OPS-07 | Threat model: BFF = credential vault (admin on every engine) — egress allowlist to engines+PG only; actuator env/heapdump locked; per-engine unique credentials; secrets as 0400 files where possible; non-root read-only container; no redirects followed on engine calls | MUST-v1 | architect |
+| R-OPS-08 | Injection defenses: engine/user text is data (no HTML interpretation, ESLint-enforced); CR/LF-strip + length-cap on audit/snippet ingest; CSV formula-escape; hostile-message WireMock fixture in CI | MUST-v1 | architect |
+| R-OPS-09 | Image hygiene: Trivy gate (fixable HIGH/CRIT), weekly rescan, monthly base rebuild, CycloneDX SBOM; resource requests/limits + `MaxRAMPercentage=75` + OOM heap-dump volume; M6 load test records footprint | SHOULD-v1.x | devops |
+| R-OPS-10 | `prod-like` compose profile (release image + PG + OIDC stub + reverse proxy with SSE buffering off); secret delivery documented per target (compose `.env` 600 / k8s Secret); rotation: `password-file` refs re-read per attempt, 401 → "credential rejected" health state distinct from unreachable | SHOULD-v1.x | devops, architect |
+| R-OPS-11 | Clock skew: probe measures per-engine offset (Date header + RTT correction); >30 s badges the engine ("time filters unreliable"), alarms compute engine-relative; NTP stated as prerequisite | SHOULD-v1.x | architect |
+| R-OPS-12 | Capability cache invalidation on engineVersion change (auto re-probe, push update); rejection re-probes once before answering; unexpected 404/405 on a gated verb → re-probe; probe evidence endpoint + audited per-capability override (cleared on version change) | SHOULD-v1.x / COULD-v2 (override) | architect, L3 |
+| R-OPS-13 | Registry-CRUD SSRF constraints written now for v2: scheme allowlist, metadata/loopback/private-range denylist, resolve-then-pin DNS, REGISTRY_ADMIN scope, read-only probes until confirmed | COULD-v2 (text now) | architect |
+| R-OPS-14 | Diagnostics page `GET /api/diag` (ADMIN): breaker states + history, cache ages, semaphore saturation, last N engine errors with traceIds, build info; targeted per-composite-ID derivation trace (TTL 15 min) | SHOULD-v1.x | L3, devops |
+
+## UXQ — UX quality (→ SPEC "UX quality standards" section)
+| ID | Requirement | Prio | Source |
+|---|---|---|---|
+| R-UXQ-01 | WCAG 2.1 AA: color never sole channel (env token text `PROD/TEST/DEV` + border styles; chips keep labels; diagram markers = shape+glyph; sibling diff = stroke style + endpoint glyphs); contrast 4.5:1/3:1; axe in Playwright as CI hard failure | MUST-v1 | UX expert |
+| R-UXQ-02 | Keyboard/SR: every diagram fact has a textual twin (focusable activity summary list, synced selection); canvas `role="img"` + generated summary; AG Grid full keyboard nav, actions never hover-only; modal focus rules (trap, cancel-focused, Esc, return-to-invoker or surviving container) | MUST-v1 | UX expert |
+| R-UXQ-03 | Time display: absolute + explicit offset + relative age everywhere; user display-TZ (default browser, one-click UTC); machine-facing text (ticket, cURL, audit, exports) always UTC ISO-8601; "next retry" adds countdown | MUST-v1 | UX expert |
+| R-UXQ-04 | Zero-state catalog: no-engines (setup guide), all-down (full error state), true-zero (positive + echo), zero-under-partial (amber "NOT a confirmed zero"), zero-failures (explicit positive); first-run = states 1+5 + dismissible omnibox hint | MUST-v1 | UX expert |
+| R-UXQ-05 | Message style guide: [what happened]+[why/gate]+[next move]; concrete object names; engine text quoted+attributed vs BFF prose; no bare Success/Failed; no HTTP codes without plain language; 3am rule (no humor/apology) | MUST-v1 | UX expert |
+| R-UXQ-06 | Notification budget: modals user-initiated only; banners = ambient degradation, one per scope, update-in-place; toasts = own-action outcomes, max 3, overflow to drawer, never sole record; passive surfaces never steal focus; bulk toasts exactly twice (submit, terminal) | MUST-v1 | UX expert |
+| R-UXQ-07 | i18n: en-only deliberately (stated in §11); single string catalog per side; one shared date/number formatter | MUST-v1 (statement) | UX expert |
+| R-UXQ-08 | Semantic color tokens now; dark theme v1.x (prefers-color-scheme + persisted override, contrast re-verified) | SHOULD-v1.x | UX expert |
+| R-UXQ-09 | Grid: column chooser + density + layout persisted; saved views capture layout; Engine/Status/honesty-indicators never hideable; reset-to-default | SHOULD-v1.x | UX expert |
+| R-UXQ-10 | Print stylesheet for detail route; bulk report exports CSV + Markdown; copy-for-ticket Markdown variant | SHOULD-v1.x | UX expert |
+| R-UXQ-11 | Subprocess roll-up badge deep-links to the failing child's Errors & Jobs tab (the retry lives on the child — never a dead end on the parent) | MUST-v1 | tester A (blocker) |
+| R-UXQ-12 | Root-vs-child marker on tree-shaped businessKey results; minimal keyboard shortcuts (`/` focus omnibox, grid nav, quick-retry); operations drawer state is session-wide across tabs (stated) | SHOULD-v1.x | tester A/B |
+
+## BAU — Day-shift & support-org features
+| ID | Requirement | Prio | Source |
+|---|---|---|---|
+| R-BAU-01 | **Error-group acknowledge**: persisted (signature × engine × definition), who + required reason + optional expiry; collapses to "Acknowledged (N)" section (never hidden); auto-resurfaces on growth (+threshold) or new definition version; audited | MUST-v1 | support eng |
+| R-BAU-02 | Leak views: *Active > 30/90 days*, *Suspended > 7 days* (age = now−startTime), grouped per definition | MUST-v1 | support eng |
+| R-BAU-03 | Runbook/remediation annotations per error class: guidance ≤200 chars + runbook URL + optional **endorsed verb with conditions**; rendered on group card + member why-stuck strips; endorsed verb highlighted, others demoted; author/updated/expiry; audited; weekly curation by team lead | SHOULD-v1.x | team lead, L2 (convergent) |
+| R-BAU-04 | Person-centric task search (assignee/candidate filters, task columns) + grid-bulk reassign — ships with the task-reassign verb, never without it | SHOULD-v1.x | support eng |
+| R-BAU-05 | Watchlist: per-user pinned composite IDs, landing panel with changed-since-last-seen; start-of-shift delta ("changes since <marker>": new groups NEW-badged, ▲/▼ per group/lane) — both over one count-snapshot store | SHOULD-v1.x | support eng |
+| R-BAU-06 | Suspend prompts for reason + review-by date (structured note); *Suspended past review* view; outside-tool suspensions labeled "no suspension record" | SHOULD-v1.x | support eng |
+| R-BAU-07 | Copy business summary (plain-language state, definition name, no exceptions/IDs/engine names) | SHOULD-v1.x | support eng |
+| R-BAU-08 | Timers-due-in-window filter (maintenance prep); maintenance snapshot + post-window verification sweep; per-definition volume trends + growth flag — all over the same snapshot store as R-BAU-05 | SHOULD-v1.x (filter) / COULD-v2 (rest) | support eng |
+| R-BAU-09 | Training: seeded scenario compose profile (every triage shape + scripted reset); certification checklist per role before IdP grant | SHOULD-v1.x | team lead |
+
+## L3 — Deep-support & escapes
+| ID | Requirement | Prio | Source |
+|---|---|---|---|
+| R-L3-01 | **"Explain this status"** evidence view: per-leg raw engine request/response + plan choice + per-flag provenance, re-derived on demand and labeled as such | MUST-v1 | L3 |
+| R-L3-02 | REST Parity Appendix generated from the whitelist code (CI-failing on drift) + "copy as engine cURL" mode (`$ENGINE_CRED` placeholder); RUNBOOK section "inspector down/suspect": where to curl from, credentials, direct-mutation-bypasses-audit warning | MUST-v1 | L3, devops |
+| R-L3-03 | Support bundle export (ZIP + manifest: history, variables, job lanes + full stacktraces, subscriptions, hierarchy, diagram XML, audit+notes, evidence, engine metadata, BFF version); audited, OPERATOR+; v1 kernel = raw-JSON download per tab | SHOULD-v1.x (bundle) / MUST-v1 (raw JSON links) | L3, team lead (convergent) |
+| R-L3-04 | Forensic read-only query passthrough: enumerated historic query endpoints, raw body, ADMIN, audited, size-capped, rate-limited, breaker-wrapped; §11 rejection re-scoped ("no query language; raw engine query passthrough is the escape hatch"); historyLevel probe added | SHOULD-v1.x | L3 |
+| R-L3-05 | Stacktrace ergonomics: find-in-trace, cause-chain folding (root cause first), frame dedupe, copy-raw + copy-normalized-signature, "≡ group X · N occurrences" link | SHOULD-v1.x | L3 |
+| R-L3-06 | Engine advisories: registry `advisories` list (versionRange, issueId, severity, affectedVerbs) → health-strip badge + **enabled-with-warning** verb state | SHOULD-v1.x | L3 |
+
+## TEST — Test governance & testability (→ docs/TEST-STRATEGY.md)
+| ID | Requirement | Prio | Source |
+|---|---|---|---|
+| R-TEST-01 | Risk-ranked coverage floors: status join (≥90% branch + all flag collisions on all profiles) > guards/RBAC (100% matrix) > bulk outcomes (every class produced) > UI loop smoke ≤10 min | MUST-v1 | test mgr |
+| R-TEST-02 | Milestone entry/exit gates: suite green ×3 on applicable profiles, coverage floors, zero Sev1/Sev2, every done-when demo converted to an automated E2E; M2a additionally re-expresses the six join bugs as red-first regressions | MUST-v1 | test mgr |
+| R-TEST-03 | Defect taxonomy from the design principles: any quiet lie / guard bypass / wrong-target / missing audit row / auto-retried mutation = **Sev1 by definition**; zero open Sev1/Sev2 at any gate | MUST-v1 | test mgr |
+| R-TEST-04 | Fixture catalog with IDs + owner; flag-matrix mapped to fixtures (empty cell = visible gap); error/capability fixtures captured by script from live profiles, re-captured on image bump | MUST-v1 | test mgr, embedded tester |
+| R-TEST-05 | Performance scenarios P1–P4 with thresholds and schedule (fan-out under partial failure; 50k-DLQ truncation; SSE+bulk soak; thundering herd ≥99% cache hits); P1/P2 nightly | MUST-v1 (P1/P2/P4) | test mgr |
+| R-TEST-06 | Security test plan: whitelist bypass, RBAC×tenant matrix incl. SSE/bulk, CSRF, fencing tested from outside the trusted path, secret non-leakage; independent tester at M6; SCA hard-fail CVSS ≥7 | MUST-v1 | test mgr |
+| R-TEST-07 | Testability hooks: `Clock` bean everywhere + engine timestamps only + config view thresholds; FAILING pinned via `failedJobRetryTimeCycle="R10/PT1H"`; fast-DLQ `R1/PT1S`; test registry `dlq-scan-cap: 50`; recursive seed process for depth; cycle-guard tested at rung 1 (documented iron-rule exception); dual dev/prod registration of one engine; out-of-band mutation Playwright helper; breaker test profile + WireMock fault recipes; latch-gated stub for cancel/UNKNOWN | MUST-v1 | embedded tester |
+| R-TEST-08 | UAT: ≥3 practicing support engineers, scripted incident scenarios, ≥80% unassisted completion, trust-breaking observations = Sev1/Sev2 | SHOULD-v1.x (runs at M6) | test mgr |
+| R-TEST-09 | Soak/fault-injection weekly post-M6; playbook test charter before v2 work starts | COULD-v2 | test mgr |
