@@ -45,6 +45,24 @@ loop: **FIND → ORIENT → DIAGNOSE → FIX → VERIFY**, plus **HANDOVER** to 
   so BFF RBAC is the only real permission layer).
 - **Persistence** — one small PostgreSQL owned by the BFF (from M4): audit log, instance
   notes, bulk-job state + per-item reports, saved views (v1.x), registry CRUD (v2).
+- **Resiliency & circuit breaking (the "do no harm" rule)** — the engines are often already
+  under severe load or DB contention *exactly when this tool is in use*. The BFF wraps all
+  outbound engine calls in **circuit breakers (Resilience4j)** with strict timeouts: a
+  struggling engine must not cause thread starvation in the BFF, and an open circuit must
+  not be tipped over by aggressive fan-out (DLQ scans, triage aggregations). An open
+  circuit renders as the standard per-engine error envelope ("circuit open — engine
+  shedding load"), never a failed search.
+- **Identity tradeoff (the service-account problem)** — the BFF authenticates to engines
+  with a shared service account, so Flowable's native history tables
+  (`ACT_HI_IDENTITYLINK`, `ACT_HI_DETAIL`) record *the service account* as the actor for
+  every task completion and variable update. **The BFF's Postgres audit log is the only
+  authoritative source of human attribution** (§9). Where we control the engine deployment
+  (e.g. flap, ARCHITECTURE §6), the BFF additionally sends `X-Forwarded-User` for an
+  engine-side interceptor to attribute natively — optional, per-engine, never assumed.
+- **Tenant-scoped RBAC** — when OIDC is used, roles map to **(role, engineId, tenantId)
+  scopes**, not global grants: ADMIN on `orders-tenant-A` must not authorize actions on
+  `orders-tenant-B` or on another engine. Enforced in the BFF guard layer; the UI greys
+  out-of-scope actions with the RBAC reason.
 
 Full topology, composite-ID rule (`engineId:processInstanceId`), and the search-plan joins:
 [ARCHITECTURE.md](ARCHITECTURE.md).
@@ -90,6 +108,10 @@ Answers "what is broken, how much, where" in zero keystrokes:
 - **Recent operations** — tail of the audit log.
 - **Saved views** — curated system views ship with the product: *Failed (all engines)*,
   *Failed in the last hour*, *Suspended > 24h*, *Started in the last hour*.
+- **Short-lived cache (thundering-herd protection)**: the triage aggregations (job-lane
+  counts, error groups, status counts) are cached at the BFF for **~15–30 seconds** —
+  ten engineers opening the dashboard during a P1 must produce one round of engine
+  queries, not ten. The "as of" stamp shows the cache age; Refresh bypasses it (rate-limited).
 
 ### Stage 1 — Search + results
 - Collapsible filter rail; collapses to chips once a search runs; the results grid gets the
@@ -107,7 +129,9 @@ Answers "what is broken, how much, where" in zero keystrokes:
   produced under an engine error or truncation is labeled a **lower bound**.
 
 ### Stage 2 — Instance detail: a full-page, deep-linkable route
-`/inspect/{engineId}/{id}` from M3, not M6.
+`/inspect/{engineId}/{id}` from M3, not M6. **Deep links are tab-aware**
+(`?tab=timeline`, plus tab-specific anchors like a selected job) — "look at the timeline
+gap here: [link]" is the ticket-handover primitive.
 - **Vitals header** (no tab, no click): definition + version, engine badge (env color),
   status chip + badges, business key, started/duration, current activity — and when
   FAILED/FAILING, the **"why stuck" strip**: exception first line, retries state ("3/3
@@ -120,12 +144,19 @@ Answers "what is broken, how much, where" in zero keystrokes:
   - **Variables** — type-aware inline edit with old→new diff confirm; serializable Java
     objects read-only with an explaining tooltip (REST cannot round-trip them safely);
     execution-local variables shown per node in the execution tree (multi-instance loop
-    variables live there).
+    variables live there). **Size safeguards**: variable values are capped at a byte
+    threshold in list responses (truncated preview + "load full value" on demand) — a huge
+    JSON payload or base64 blob must crash neither the browser nor the engine; the same cap
+    applies to the sibling diff (§5.2), which diffs the truncated projections and flags
+    "values differ beyond preview" rather than fetching two blobs.
   - **Errors & Jobs** — Flowable's **four job lanes kept distinct** (executable / timer /
     suspended / dead-letter): the lane IS the diagnosis. Per-job: retries, create time,
     exception (stacktrace fetched on expand), and the verbs (§5).
   - **Hierarchy** — call-activity parent/child tree (both directions); child failures
-    surface here and on the parent's status.
+    surface here and on the parent's status. Tree resolution has a **max-depth limit**
+    (default 10) with an explicit "depth limit reached — expand further" affordance —
+    a deeply nested or looping call-activity structure must not recurse the BFF or the UI
+    into the ground.
   - **Timeline** — historic activity instances as duration bars with call-activity
     sub-lanes; failing activity annotated with live job state. (Per-retry gaps are not
     reconstructable from Flowable history — not promised.)
@@ -134,6 +165,11 @@ Answers "what is broken, how much, where" in zero keystrokes:
     fix ETA 9am"). The handover surface.
 - **"Copy for ticket"** button: composite ID, definition+version, status, exception first
   line, failure time, deep link — one click, plain text.
+- **External telemetry links**: workflow state is half the incident picture; APM/logs are
+  the other half. Each engine's registry entry may configure a **telemetry URL template**
+  (Kibana/Datadog/Splunk/Grafana) with `{processInstanceId}`, `{executionId}`,
+  `{businessKey}`, `{failureTime}` placeholders; the vitals header and the Errors & Jobs tab
+  render "open logs" deep links from it. Absent template → no link (never a broken guess).
 - **Compare with sibling** (v1.x, §5.2): from a failed instance, one click diffs it against
   a successful instance of the same definition version.
 
@@ -257,7 +293,7 @@ for the operator.
 | Status | flag predicates: Active, Completed, Suspended, **Failed**, **Failing (retries left)** — with facet counts |
 | Process definition | key or name; **definition version**; deployment time |
 | Timeframe | `startedAfter/Before` AND **failure time** (DLQ job `createTime`) — "failed in the last hour" must not depend on when the instance started |
-| Business data | `businessKey` (exact + `businessKeyLike`), variables (name/operator/value, `like` supported) |
+| Business data | `businessKey` (exact + `businessKeyLike`), variables (name/operator/value, `like` supported). ⚠ Variable-value search hits typically-unindexed engine tables (`ACT_RU/HI_VARINST`): the form warns and nudges "narrow by definition"; a per-engine flag can require it |
 | Current activity | activity id/name contains |
 | Error text | substring over exception snippets (BFF-side) |
 | Tenant | when any engine is multi-tenant |
@@ -277,6 +313,12 @@ tree, not just the root.
   operations log** page, **recent operations** on the triage landing.
 - **Notes** per composite ID (BFF-owned; author + timestamp; "has notes" grid marker).
 - IBM BAW ships no admin-action audit trail at all — this is a headline differentiator.
+- **Attribution tradeoff (explicit)**: because the BFF calls engines with a shared service
+  account, Flowable's own history tables attribute every mutation to that account — **the
+  BFF audit log is the only authoritative source of WHO acted**. Investigations must start
+  here, not in `ACT_HI_*`. Where the engine deployment is ours (flap), the optional
+  `X-Forwarded-User` header + engine-side interceptor restores native attribution
+  (ARCHITECTURE §6); it is a per-engine bonus, never relied upon.
 
 ## 10. Tech stack (decided — ADR-001, see [DESIGN-REVIEW.md](DESIGN-REVIEW.md))
 
@@ -290,7 +332,9 @@ and would rewrite working M1/M2 code for no capability gain); Go/FastAPI/Kotlin 
 
 - **Backend:** **Java 21 (LTS) / Spring Boot 3.5.x** (bump from 3.3.x before M3) / Maven
   (+ enforcer, `mvnw`). `RestClient` per engine over `JdkClientHttpRequestFactory` with
-  registry timeouts — blocking-by-design, **no WebFlux**. **Virtual threads**
+  registry timeouts — blocking-by-design, **no WebFlux**. **Resilience4j** circuit breaker +
+  bulkhead per engine around every outbound call (§2 do-no-harm); **Caffeine** short-lived
+  cache for the triage aggregations. **Virtual threads**
   (`spring.threads.virtual.enabled=true`; virtual-thread-per-task executor + per-engine
   `Semaphore` for fan-out and bulk dispatch; no preview APIs). Spring Data JPA + **Flyway**
   + Postgres 16 (audit repository insert-only). Spring Security **dual profile**: form/basic
@@ -353,6 +397,12 @@ and would rewrite working M1/M2 code for no capability gain); Go/FastAPI/Kotlin 
   views, k-way-merge deep paging.
 
 ## Change log
+- **v2.3** — Do-no-harm hardening (operator feedback): Resilience4j circuit breakers +
+  bulkheads per engine; 15–30s triage-aggregation cache; variable byte-size caps (Variables
+  tab + sibling diff); unindexed variable-search warning; identity/attribution tradeoff made
+  explicit in §2/§9 with optional `X-Forwarded-User`; tenant-scoped RBAC
+  (role × engine × tenant); external telemetry URL templates; tab-aware deep links;
+  hierarchy max-depth limit.
 - **v2.2** — §10 tech stack decided (ADR-001: Java 21/Spring Boot 3.5 + React/TS confirmed;
   OpenAPI-generated contract; virtual threads; test/lint/packaging pins; agent-ergonomics
   guardrails; Flowable 7.x compose profile). ARCHITECTURE gains §6 (inspecting

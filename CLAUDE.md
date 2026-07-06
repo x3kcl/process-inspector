@@ -12,7 +12,8 @@ sections in the same change — see the `spec-sync` skill. Read the relevant ski
 
 ## Stack pins (ADR-001, SPECIFICATION §10)
 - Java **21** / Spring Boot **≥3.5** / Maven. Blocking + **virtual threads**; no WebFlux,
-  no preview APIs. `RestClient` per engine. JPA + Flyway + Postgres 16.
+  no preview APIs. `RestClient` per engine, wrapped in **Resilience4j** circuit breaker +
+  bulkhead (do-no-harm, SPEC §2). JPA + Flyway + Postgres 16; Caffeine for the triage cache.
 - React **18** + TypeScript **≥5** `strict` + Vite, Node 22. TanStack Query v5,
   React Router v7, AG Grid Community, bpmn-js.
 - API contract: springdoc-openapi → generated `types.gen.ts` via `openapi-typescript`

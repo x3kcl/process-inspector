@@ -51,6 +51,16 @@ The UI renders partial results and badges the failing engine; every count derive
 error or truncation is labeled a lower bound. *A support tool must degrade, not blank —
 and never let truncated data impersonate a healthy status.*
 
+**Do no harm (resiliency):** every outbound engine call runs through a per-engine
+**Resilience4j circuit breaker + bulkhead**. The engines are typically already under load
+or DB contention when this tool is in use — a struggling engine must neither starve the
+BFF's threads nor be tipped over by fan-out (DLQ scans, triage aggregations). An open
+circuit is an ordinary `perEngine` error envelope (`"error": "circuit open — engine
+shedding load"`, with the retry-after). The **triage aggregations are cached ~15–30s**
+(Caffeine) so N concurrent operators produce one round of engine queries; Refresh bypasses
+the cache, rate-limited. Variable list responses **cap value byte size** (truncated preview
++ on-demand full fetch) so blob variables exhaust neither browser nor engine.
+
 ### 2.3 Semantics — the status join (v2, corrected)
 
 Flowable has no `FAILED` instance state; failure lives in job queues. Status is derived in
@@ -63,7 +73,8 @@ the retry verb checks suspension and offers activate-first).
 - **FAILED-only searches drive from the DLQ** (inverted plan): page
   `GET /management/deadletter-jobs` to exhaustion (bounded, `processDefinitionId` pushed down
   when a definition filter is set), collect `processInstanceId`s, resolve call-activity
-  children up the `superProcessInstanceId` chain, then hydrate via
+  children up the `superProcessInstanceId` chain (**max-depth 10**, cycle-guarded — a
+  looping call-activity structure must not recurse the BFF), then hydrate via
   `POST /query/historic-process-instances` with the `processInstanceIds` list.
 - **Mixed searches**: primary historic query per filters → per-page enrichment of exactly
   the displayed rows: runtime state (suspended flag) via `/query/process-instances` with
@@ -118,6 +129,10 @@ inspector:
       enabled: true
       tenant-id: ""                  # OPTIONAL: pin this registration to one tenant
       actuator-url: ""               # OPTIONAL: real executor metrics when exposed; never required
+      telemetry-url-template: ""     # OPTIONAL: APM/logs deep-link, e.g.
+                                     # "https://kibana/app/discover#/?_a=(query:'{processInstanceId}')"
+                                     # placeholders: {processInstanceId} {executionId} {businessKey} {failureTime}
+      forward-user-header: false     # OPTIONAL: send X-Forwarded-User for engine-side attribution (§6)
       auth:
         type: basic                  # basic | bearer | none
         username: rest-admin
@@ -170,7 +185,14 @@ nobody may "simplify" by exposing an engine directly.
   retry, timer, unstick, variable edit, task ops, suspend/activate, rerun/change-state*),
   `ADMIN` (tier 3–4: terminate/delete, suspend-definition, deadletter-delete, migrate, bulk).
   (*change-state is tier 2 flow surgery but gated ADMIN on `prod` engines.) Enforced in the
-  BFF, mirrored in the UI as greyed-with-reason.
+  BFF, mirrored in the UI as greyed-with-reason. **Grants are scoped, not global**: an OIDC
+  role/group maps to `(role, engineId | *, tenantId | *)` tuples — ADMIN on
+  `orders-prod`/tenant-A authorizes nothing on another engine or tenant; the guard layer
+  resolves the acting user's scope set against the target of every call.
+- **Attribution:** engines see the shared service account; Flowable's `ACT_HI_*` tables
+  therefore attribute mutations to it. The BFF audit log is the sole authoritative
+  human-attribution record. Engines with `forward-user-header: true` additionally receive
+  `X-Forwarded-User: <username>` on mutating calls for an engine-side interceptor (§6).
 - **Persistence (Postgres, M4+):** audit log (append-only), instance notes, bulk-job state +
   per-item reports, saved views (v1.x), registry CRUD (v2). No durable job-execution
   framework — in-memory execution, per-item flush, `INTERRUPTED` on restart.
@@ -206,6 +228,13 @@ until it does. The integration recipe (an afternoon on the flap side):
 3. **Registry entry**: `base-url: https://flap-host/process-api` — base-URL shapes vary per
    deployment (`…/flowable-rest/service` on the standalone image); nothing outside config
    may assume a path shape.
+4. **Native attribution (optional, recommended for flap)**: set
+   `forward-user-header: true` in the registry; flap's `/process-api/**` chain adds a small
+   interceptor that reads `X-Forwarded-User` and sets the Flowable authenticated user for
+   the request (`Authentication.setAuthenticatedUserId(...)` scoped to the call), so
+   `ACT_HI_*` records the real engineer instead of `inspector-svc`. Trust the header ONLY
+   on this chain, only from the inspector's network path — it is an attribution courtesy,
+   not an authentication mechanism; the BFF audit log remains authoritative either way.
 
 **Inspector-side implications:** the CI engine matrix includes a **7.x profile** (probe
 treats 7.x as passing all 6.x capability cliffs unless proven otherwise; watch the
