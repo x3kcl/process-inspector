@@ -1,71 +1,109 @@
-# 🗺 IMPLEMENTATION PLAN (spec deliverable 3)
+# 🗺 IMPLEMENTATION PLAN (spec deliverable 3) — v2
 
-Module-by-module; each milestone ends runnable + demoable. Backend and frontend for a milestone
-land together. Bootstrap code for **M1 + M2** already exists in `backend/` and `frontend/`.
+Module-by-module; each milestone ends runnable + demoable. Backend and frontend for a
+milestone land together. Bootstrap code for **M1 + M2** already exists. Re-sequenced after
+the design review ([DESIGN-REVIEW.md](DESIGN-REVIEW.md)): correctness fixes fold into M2,
+shareability and the diagram move EARLIER, bulk-by-query and migration move LATER.
 
-## M0 — Scaffold (this repo)
-- Repo layout `backend/` (Spring Boot 3, Java 21) + `frontend/` (Vite/React/TS) + `docs/`.
-- Docker-compose dev harness: 2× `flowable/flowable-rest` containers (A/B) with a demo process
-  deployed → a realistic multi-engine playground from day one.
-- CI: `mvn verify` + `npm run build`.
-- **Done when:** `docker compose up` gives two engines, BFF boots against them.
+## M0 — Scaffold *(done)*
+- Repo layout, CI, docker-compose dev harness (2× `flowable/flowable-rest`).
+- **Addition:** a second compose profile pinned to an **older Flowable image** so the
+  capability cliffs (change-state 6.4+, migration ~6.5+, external-worker 6.8+) are exercised
+  in CI; seed processes incl. the deliberately-failing async task (see `validate-bpmn` skill).
 
 ## M1 — Engine Registry + health  *(bootstrapped)*
-- `EngineRegistryProperties` (YAML binding, §3 of ARCHITECTURE.md), secret resolution from env refs.
-- `FlowableEngineClient`: per-engine `RestClient` with auth filter + timeouts.
-- Health probe (`GET /management/engine`) on boot + scheduled; capability flags.
-- `GET /api/engines` (no secrets).
-- **Done when:** UI header shows each engine with live green/red badge + version.
+- Registry YAML binding + env-ref secrets; per-engine `RestClient`; scheduled health probe.
+- **Extend:** capability probes per ARCH §2.5 (changeState/migration/externalWorkerJobs/
+  scopeType/activityHistory); job-lane counts + oldest-executable-job-age + overdue-timers
+  via the `size=1` total trick.
+- **Done when:** header strip shows each engine with env-colored badge, version, lanes.
 
-## M2 — Search & Results  *(bootstrapped)*
-- `SearchRequest` DTO (engines[], statuses[], processDefinitionKey, businessKey,
-  startedAfter/Before, variables[]) — AND across categories, OR within.
-- Per-engine **search plan** (historic query + suspended-set + dead-letter join, ARCH §2.3),
-  parallel fan-out with per-engine timeout + partial-result envelope (§2.2).
-- `POST /api/search` → merged rows sorted `startTime desc` + `perEngine` metadata.
-- Frontend: SearchPanel (engine + status checkboxes, definition/businessKey/date/variable
-  filters) + ResultsGrid (AG Grid, checkbox selection, engine badge, status chip, error snippet).
-- **Done when:** one search over 2 engines returns mixed, correctly-statused rows; killing an
-  engine mid-demo degrades to a partial-result badge, not an error page.
+## M2 — Search & results  *(bootstrapped — needs the correctness rework)*
+- **M2a (fix before anything else):** rewrite the status join per ARCH §2.3 — DLQ-driven
+  inverted plan for FAILED-only, exhaustive bounded paging + `dlqScan` truncation badge,
+  per-page runtime-state enrichment, FAILING tier (jobs+timer-jobs `withException`),
+  `superProcessInstanceId` roll-up, CMMN filtering, tenant threading. Status = flags.
+  Integration-tested against the real dockerized engines (never mocked — `engine-harness`).
+- **M2b:** search additions — failure-time filter/sort, `businessKeyLike`, variable `like`,
+  current-activity and error-text filters, facet counts; **URL-encoded search state**;
+  compiled-criteria echo + copy-as-cURL.
+- **M2c:** grid columns (definition version, failure time, status badges), snapshot "as of"
+  header + Refresh, partial-result banner + lower-bound labeling.
+- **Done when:** a search over 2 engines returns correctly-flagged rows incl. a
+  failed-in-subprocess parent and a FAILING (retries-left) instance; killing an engine
+  mid-demo degrades to a labeled partial result; a 10k-DLQ engine shows the truncation badge
+  instead of lying.
 
-## M3 — Details Panel (read-only troubleshooting)
-- BFF composite endpoint: instance (`GET /runtime/process-instances/{id}` or historic fallback),
-  executions (`GET /runtime/executions?processInstanceId=`), active activities
-  (`GET /runtime/executions/{execId}/activities`), tasks (`GET /runtime/tasks?processInstanceId=`).
-- Variables view (`GET /runtime/process-instances/{id}/variables`; historic fallback for completed).
-- Jobs view: dead-letter / timer / async / suspended jobs + on-demand stacktrace
-  (`GET /management/deadletter-jobs/{jobId}/exception-stacktrace`).
-- Frontend: third split-pane with tabs *Overview · Execution tree · Variables · Jobs/Errors*.
-- **Done when:** a stuck instance shows its failing job + full stacktrace and the execution tree.
+## M3 — Instance detail (full-page route) + triage landing
+- **Detail page `/inspect/{engineId}/{id}`** (deep-linkable now, not M6): vitals header with
+  "why stuck" strip (exception first line, retries state, waiting-for subscriptions/timers);
+  **read-only bpmn-js diagram** (pulled forward from M5) with token + dead-letter markers,
+  synced selection; lazy tabs: Variables (view) · Errors & Jobs (four lanes, stacktrace on
+  expand) · Tasks · Hierarchy · Timeline. Copy-for-ticket button.
+- **Omnibox** (`GET /api/resolve`).
+- **Triage landing**: engine health strip, status counts, failure groups by normalized error
+  signature with click-through, curated system views, recent-operations placeholder.
+- **Done when:** from the landing, one click on an error group reaches a pre-filtered list;
+  opening a stuck instance shows why it's stuck without any click; the link pastes into a
+  ticket and reopens the same view.
 
-## M4 — Corrective actions + audit + RBAC
-- Action endpoints (ARCH §4): retry dead-letter (`{"action":"move"}`), force-trigger timer,
-  suspend/activate (`PUT /runtime/process-instances/{id}`), terminate/delete, variable **edit**
-  (`PUT .../variables/{name}`), task reassign/complete-with-variables.
-- Audit log (append-only table) + RBAC roles VIEWER/OPERATOR/ADMIN + typed-confirm for
-  destructive ops on `prod` engines.
-- Frontend: action toolbar in Details, optimistic-free (always re-fetch after action).
-- **Done when:** the demo "failed service task" is fixed end-to-end from the UI:
-  edit variable → retry dead-letter job → instance completes; audit rows written.
+## M4 — Corrective actions + audit + RBAC + Postgres
+- **Postgres** joins the deployable: audit log, notes.
+- Single-target verb catalog tiers 0–3 (SPEC §5): retry / retry-now / trigger-timer /
+  unstick-event / suspend-activate / edit-variable (typed, old→new diff, old value audited) /
+  complete-task / suspend-definition / terminate-delete (cascade enumeration) /
+  deadletter-delete (orphan warning, ADMIN).
+- Guard ladder (SPEC §6): reasons, server-fresh target restatement, target-specific typed
+  tokens on prod; delta-statement outcome toasts + audit links; disabled-with-reason.
+- RBAC `VIEWER/OPERATOR/ADMIN`; **dual auth profile** (basic dev / OIDC prod).
+- Audit & Notes tab on the instance; global operations log page.
+- **Done when:** the demo failed instance is fixed end-to-end (edit variable → retry →
+  completes) with the delta toast shown, the reason recorded, and the action visible in the
+  instance's Audit tab; a VIEWER sees every action greyed with the right tooltip.
+- **Deferred out of M4:** task reassign (v1.x — not an incident verb).
 
-## M5 — Diagram + change-state (node jumping)
-- `GET /api/instances/{e}/{id}/diagram`: BPMN XML via
-  `GET /repository/process-definitions/{defId}/resourcedata` + active activity IDs.
-- bpmn-js viewer with active-node highlight + dead-letter node marked red.
-- Change-state UI: pick source/target activity on the diagram →
-  `POST /runtime/process-instances/{id}/change-state`
-  `{"cancelActivityIds":[…],"startActivityIds":[…]}` (capability-gated per engine, ADMIN only).
-- **Done when:** a token is visibly moved off a failed node on the diagram and the instance proceeds.
+## M5 — Flow surgery + diagram interactions
+- change-state as a guarded form verb (activity dropdowns) with BFF-simulation preview +
+  REST-body display; guardrails (MI-body block, parallel-join warning, suspended-check,
+  variables-first composite = rerun-from-activity); restart-as-new with the pin-vs-latest
+  definition fork. Diagram change-state *picker* is polish — only after the form verb works.
+- **Done when:** a token is moved off a failed node and the instance proceeds; the preview
+  shows exactly the REST call; an MI body as source is refused with the reason.
 
-## M6 — Bulk + hardening
-- Bulk suspend/activate/delete/retry over grid selection → per-item result report (stream or
-  summary table), no transactionality pretense.
-- Saved searches, CSV export, deep links (`/inspect/{engineId}/{id}`).
-- Load-test fan-out; tune executor + per-engine caps; pen-test pass on the proxy layer
-  (the BFF must **whitelist** engine paths, never blind-proxy).
+## M6 — Bulk + hardening (v1 close-out)
+- Grid-selection bulk with per-item report (success IDs vs id→error), hard caps,
+  intersection-of-valid-actions, acknowledgment gate over partial result sets.
+- Load-test fan-out; pen-test the proxy layer (path whitelist); CSV export.
+- **Done when:** a 50-instance bulk retry reports per-item outcomes incl. `skipped` and
+  `unknown` classes honestly.
 
-## Suggested build order inside any milestone
+## v1.x — fast follows (each independently demoable)
+1. Error-class **bulk-retry-the-group** from the triage landing.
+2. **Select-all-matching-filter bulk**: server-side re-resolution at execution time, tracked
+   async job in the BFF (Postgres-persisted per-item results), SSE progress, cancel,
+   per-engine concurrency cap + stagger, persistent operations drawer.
+3. Named saved views (localStorage) + recent searches.
+4. Timeline tab polish (call-activity sub-lanes); job-lane trend sparklines on the landing.
+5. **Sibling diff** (SPEC §5.2): compare endpoint over historic queries; variables/path/
+   timing diffs; divergence highlighting on the shared diagram; nearest-successful-sibling
+   auto-suggest.
+6. Task reassign/return-to-team; "show as cURL" on every action modal.
+7. External-worker job view (capability-gated, 6.8+).
+
+## v2 — demand-driven
+- **Remediation playbooks** (SPEC §5.1 — the headline): distill an exemplar's audit rows
+  into a named, literal-values-only verb sequence bound to an error-class signature; replay
+  through the bulk-job machinery with per-step precondition rechecks and per-item-per-step
+  outcomes. Requires: v1.x bulk framework + error-class grouping + audit old-value capture
+  (all landed earlier by design).
+- **Migration**: single-instance with server-side `migrate/validate` first; batch + side-by-
+  side diagram wizard with typed "MIGRATE" only after the single flow proves demand.
+- Definition version comparison + per-version instance counts (the migration on-ramp).
+- CMMN case support via the parallel `/cmmn-api` surface (row DTOs already carry `scopeType`).
+- Registry CRUD UI; shared server-side saved views; k-way-merge deep paging; OIDC hardening.
+
+## Build order inside any milestone
 backend DTO → engine client call → aggregator/join logic → controller → typed frontend API
-client → component. Every Flowable call gets one integration test against the dockerized
-`flowable-rest` (no mocked Flowable responses for join logic — the DLQ/suspended join is where
-the bugs will live).
+client → component. Every Flowable call gets an integration test against the dockerized
+`flowable-rest` on BOTH compose profiles (no mocked Flowable responses for join logic — the
+DLQ/suspended/hierarchy joins are where the bugs live).

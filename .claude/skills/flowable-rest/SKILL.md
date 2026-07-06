@@ -7,17 +7,29 @@ description: Flowable V6 REST API doctrine for the inspector — the FAILED/dead
 *Derived from the flap `trace-events`/`validate-bpmn` skills and this repo's ARCHITECTURE.md.
 Everything here is REST-only — the inspector NEVER touches an engine DB or embeds an engine.*
 
-## 1. There is no FAILED state — it's a join
-Flowable process instances are only ever active/suspended/ended. "Failed" lives in the
-**dead-letter job queue**. The per-engine search plan (`SearchService`) composes:
-1. `POST /query/historic-process-instances` — primary (running AND completed; supports
-   `startedBefore/After`, `businessKey`, `processDefinitionKey`, `variables`, `finished`).
-2. `POST /query/process-instances` `{"suspended":true}` — suspended-ID set (runtime only).
-3. `GET /management/deadletter-jobs?size=…` — failed-ID set + exception snippets.
+## 1. There is no FAILED state — it's a join (v2 corrected form, ARCH §2.3)
+Flowable process instances are only ever active/suspended/ended. "Failed" lives in job
+queues. Status is derived in the BFF as **flags** (`ended`, `suspended`,
+`hasDeadLetterJobs`, `hasFailingJobs`, `failedInSubprocess`) — statuses collide (a suspended
+instance keeps its DLQ jobs; retry must check suspension and offer activate-first).
 
-Derivation per row: `endTime != null → COMPLETED`, else `id ∈ dlq → FAILED`,
-else `id ∈ suspended → SUSPENDED`, else `ACTIVE`. Filter to the requested status set AFTER
-derivation. Never trust an engine-side "state" field for FAILED.
+- **FAILED-only searches drive FROM the DLQ**: page `GET /management/deadletter-jobs` to
+  exhaustion (bounded by `dlq-scan-cap`, `processDefinitionId` pushed down), resolve
+  call-activity children up the `superProcessInstanceId` chain to the searched root, then
+  hydrate via `POST /query/historic-process-instances` `{"processInstanceIds":[…]}`.
+- **Mixed searches**: historic query per filters → enrich only the displayed page:
+  runtime/suspended state via `/query/process-instances` with `processInstanceIds`; DLQ
+  membership per row.
+- **FAILING tier** (retries remaining): `GET /management/jobs?withException=true` PLUS
+  `GET /management/timer-jobs?withException=true` — a failing async job parks in the TIMER
+  table between attempts (`asyncFailedJobWaitTime`).
+
+⚠ NEVER issue one unpaged DLQ fetch as "the failed set" — default page size is 10; anything
+past the page silently declassifies FAILED → ACTIVE. A capped scan sets
+`dlqScan:"truncated@N"` in the envelope and the UI badges it.
+⚠ Filter CMMN-scoped jobs (null `processInstanceId` / `scopeType='cmmn'`) out of every leg —
+flowable-rest shares job tables with the CMMN engine. Thread `tenantId` through ALL legs on
+multi-tenant engines. Never trust an engine-side "state" field for FAILED.
 
 ## 2. Historic vs runtime — pick per lifecycle
 - Completed instances exist ONLY in `/query/historic-*` / `/history/*`. Runtime endpoints 404.

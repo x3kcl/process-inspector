@@ -7,9 +7,10 @@ instances across **multiple independent Flowable engines** — strictly via the 
 
 | File | Content |
 |---|---|
-| [docs/SPECIFICATION.md](docs/SPECIFICATION.md) | The agreed product spec (features, filters, corrective actions) |
-| [docs/ARCHITECTURE.md](docs/ARCHITECTURE.md) | Multi-instance design: BFF topology, composite IDs, fan-out with partial results, the FAILED/dead-letter status join, **Engine Registry data model** |
-| [docs/IMPLEMENTATION-PLAN.md](docs/IMPLEMENTATION-PLAN.md) | Milestones M0–M6, module by module |
+| [docs/SPECIFICATION.md](docs/SPECIFICATION.md) | The product spec **v2.0** (design principles, status model, three-stage UI, verb catalog, guard ladder, release train) |
+| [docs/ARCHITECTURE.md](docs/ARCHITECTURE.md) | Multi-instance design: BFF topology, composite IDs, fan-out with partial results, the corrected FAILED/dead-letter status join, **Engine Registry data model** |
+| [docs/IMPLEMENTATION-PLAN.md](docs/IMPLEMENTATION-PLAN.md) | Milestones M0–M6 + v1.x/v2 release train, module by module |
+| [docs/DESIGN-REVIEW.md](docs/DESIGN-REVIEW.md) | Provenance of v2.0: IBM BAW + competitor research, four-seat expert panel findings |
 
 ## Repo layout
 
