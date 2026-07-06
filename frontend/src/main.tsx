@@ -1,9 +1,13 @@
 import { StrictMode } from 'react'
 import { createRoot } from 'react-dom/client'
 import { QueryClient, QueryClientProvider } from '@tanstack/react-query'
-import { createBrowserRouter, RouterProvider } from 'react-router'
-import App from './App'
+import { Navigate, RouterProvider, createBrowserRouter, useSearchParams } from 'react-router'
 import { ApiError } from './api/client'
+import { InspectPage } from './inspect/InspectPage'
+import { SearchPage } from './search/SearchPage'
+import { hasSearch } from './search/urlState'
+import { Shell } from './shell/Shell'
+import { TriagePage } from './triage/TriagePage'
 import './styles.css'
 
 const queryClient = new QueryClient({
@@ -17,8 +21,30 @@ const queryClient = new QueryClient({
   },
 })
 
-// Router because the URL IS the search state (SPEC §4 Stage 1) — not for page routing (yet).
-const router = createBrowserRouter([{ path: '/', element: <App /> }])
+/**
+ * Pre-M3, "/" was Stage 1 and shared M2b links encoded the search on the root path.
+ * Shared links are an incident primitive — they must keep replaying, so a root URL that
+ * carries search params forwards to /search verbatim. A bare "/" is Stage 0 triage.
+ */
+function HomeRoute() {
+  const [params] = useSearchParams()
+  if (hasSearch(params)) return <Navigate to={`/search?${params.toString()}`} replace />
+  return <TriagePage />
+}
+
+// SPEC §4: three stages, three routes — triage lands first, search is Stage 1,
+// /inspect/{engineId}/{id} is the full-page, deep-linkable Stage 2.
+const router = createBrowserRouter([
+  {
+    path: '/',
+    element: <Shell />,
+    children: [
+      { index: true, element: <HomeRoute /> },
+      { path: 'search', element: <SearchPage /> },
+      { path: 'inspect/:engineId/:instanceId', element: <InspectPage /> },
+    ],
+  },
+])
 
 const rootElement = document.getElementById('root')
 if (rootElement === null) throw new Error('missing #root element')

@@ -39,10 +39,12 @@ OPERATIONS.md §8.
   unauthenticated) → `npm run gen:api` regenerates the committed
   `frontend/src/api/schema.d.ts`; singleton `openapi-fetch` client (hand-written
   `types.ts`/`api.ts` deleted); `check:no-enterprise` build gate beside the watermark gate.
+- **OpenAPI CI drift gate (landed):** the `frontend` CI job boots the real BFF against a
+  `postgres:16` service (engines absent — health degrades, boot succeeds), waits bounded
+  on `/v3/api-docs`, runs `npm run gen:api` and fails on any
+  `git diff -- src/api/schema.d.ts` (R-SEM-15: cross-language drift is a CI failure).
 - **Still open (slice-0):** remaining FIX-PROC seeds (recursive / event-wait /
-  multi-instance / parallel-join / CMMN case); the OpenAPI CI drift gate
-  (`gen:api` + `git diff --exit-code` needs a booted BFF in the workflow); the
-  OPERATIONS §8 "still to land" gate list.
+  multi-instance / parallel-join / CMMN case); the OPERATIONS §8 "still to land" gate list.
 
 ## M1 — Engine Registry + health  *(landed, incl. the header-strip UI)*
 - Registry YAML binding per ARCH §3 (environment/mode enums, engine-id slug validation,
@@ -102,7 +104,7 @@ OPERATIONS.md §8.
   mid-demo degrades to a labeled partial result; a 10k-DLQ engine shows the truncation badge
   instead of lying.
 
-## M3 — Instance detail (full-page route) + triage landing  *(triage-aggregation backend landed; UI + detail page open)*
+## M3 — Instance detail (full-page route) + triage landing  *(triage backend + triage/Stage-2 frontend landed; detail-data backend open)*
 - **Detail page `/inspect/{engineId}/{id}`** (deep-linkable now, not M6): vitals header with
   "why stuck" strip (exception first line, retries state, waiting-for subscriptions/timers);
   **read-only bpmn-js diagram** (pulled forward from M5) with token + dead-letter markers,
@@ -111,6 +113,27 @@ OPERATIONS.md §8.
   Errors & Jobs (four lanes, stacktrace on expand) · Tasks · Hierarchy · Timeline.
   Copy-for-ticket button.
 - **Omnibox** (`GET /api/resolve`).
+- **Frontend landed (2026-07-06):** three-stage route tree (`/` Stage 0 triage default ·
+  `/search` Stage 1 · `/inspect/{engineId}/{id}` Stage 2; legacy root share-links 30x to
+  `/search` with params verbatim). Triage landing: status-count tiles + error-group cards
+  off `GET /api/triage` (asOf stamp, throttled Refresh bypass), R-SEM-12 honesty —
+  failed-engine banner turns every count into `≥`, `dlqScan truncated@N` bounds the group
+  counts, zero-filled sibling versions render unlinked; every count is a scope-explicit
+  drill-through into a pre-filtered `/search` (echoed by the criteria panel). Stage 2:
+  tab-aware deep links (`?tab=`), tabs code-split AND fetch-on-open; Audit & Notes tab live
+  against `…/audit` + `…/notes` (note create incl. RESPONDER 403 messaging); typed variable
+  ledger implemented + unit-tested (`inspect/variables/`: plain-language chips, explicit
+  null/empty-text, booleans as words, structured summaries with 256 KiB expand cap, shadow
+  badge, raw copy as escape hatch); read-only bpmn-js viewer (`DiagramCanvas.tsx`,
+  NavigatedViewer + active/dead-letter markers + ⚠ overlays, watermark untouched); omnibox
+  pinned in the shell — composite `engine:id` → Stage 2, anything else → business-key
+  search (labeled as degraded until `/api/resolve`).
+- **Blocked on the detail-data backend (ARCH §4 rows exist, endpoints do not):**
+  `GET /api/instances/{engineId}/{id}` (vitals/why-stuck), `…/diagram`, `…/variables`,
+  `…/jobs`, `…/tasks`, `…/hierarchy`, `…/timeline`, and `GET /api/resolve`; tabs render a
+  labeled contract-pending state naming their endpoint, never fake data. Search cannot yet
+  filter by signature hash or definition version, so error-group drill-throughs carry
+  engine + definition + FAILED/RETRYING (the tightest expressible scope).
 - **Triage landing**: engine health strip, status counts, failure groups by normalized error
   signature with click-through, curated system views, recent-operations placeholder.
   **Aggregation-independence constraint (binding):** Stage 0 aggregations NEVER reuse the

@@ -460,3 +460,373 @@ button.primary:disabled {
 .placeholder {
   color: #8395a7;
 }
+
+/* ---- shell (M3): title is a link home, omnibox pinned on every stage ---- */
+.home-link {
+  color: inherit;
+  text-decoration: none;
+}
+.omnibox {
+  flex: 0 1 340px;
+  min-width: 180px;
+}
+.omnibox input {
+  width: 100%;
+  padding: 4px 8px;
+  border-radius: 6px;
+  border: 1px solid #40515e;
+  background: #2f3b45;
+  color: #e8edf1;
+  font-size: 13px;
+}
+.omnibox input::placeholder {
+  color: #8395a7;
+}
+
+/* ---- Stage 0 triage landing ---- */
+.triage {
+  flex: 1;
+  overflow: auto;
+  padding: 12px 16px;
+}
+.triage-toolbar {
+  display: flex;
+  align-items: center;
+  gap: 12px;
+  margin-bottom: 8px;
+}
+.status-summary {
+  display: flex;
+  gap: 10px;
+  flex-wrap: wrap;
+  margin: 8px 0 16px;
+}
+.status-tile {
+  display: inline-flex;
+  align-items: center;
+  gap: 8px;
+  padding: 8px 12px;
+  border: 1px solid #d2dae2;
+  border-radius: 8px;
+  text-decoration: none;
+  color: inherit;
+}
+.status-tile-link:hover {
+  border-color: #2e86de;
+}
+.tile-count {
+  font-size: 18px;
+  font-weight: 700;
+  font-variant-numeric: tabular-nums;
+}
+.error-groups h2 {
+  font-size: 15px;
+  margin: 12px 0 8px;
+}
+.group-count {
+  color: #8395a7;
+  font-weight: 400;
+}
+.error-group {
+  border: 1px solid #d2dae2;
+  border-left: 4px solid #c0392b;
+  border-radius: 8px;
+  padding: 10px 12px;
+  margin-bottom: 10px;
+}
+.error-group-head {
+  display: flex;
+  justify-content: space-between;
+  align-items: baseline;
+  gap: 12px;
+}
+.error-signature {
+  display: flex;
+  align-items: baseline;
+  gap: 8px;
+  min-width: 0;
+  flex-wrap: wrap;
+}
+.exception-class {
+  font-weight: 700;
+  color: #922b21;
+}
+.normalized-message {
+  color: #1e272e;
+}
+.group-total {
+  font-size: 18px;
+  font-weight: 700;
+  color: #922b21;
+  text-decoration: none;
+  white-space: nowrap;
+  font-variant-numeric: tabular-nums;
+}
+.group-total:hover {
+  text-decoration: underline;
+}
+.error-group-lanes {
+  display: flex;
+  gap: 12px;
+  font-size: 12px;
+  color: #40515e;
+  margin-top: 2px;
+}
+.sample-message {
+  margin: 6px 0;
+  font-size: 12px;
+  color: #57606f;
+  overflow: hidden;
+  text-overflow: ellipsis;
+  white-space: nowrap;
+}
+.engine-counts {
+  list-style: none;
+  margin: 6px 0 0;
+  padding: 0;
+  display: flex;
+  flex-direction: column;
+  gap: 4px;
+}
+.engine-count-row {
+  display: flex;
+  align-items: baseline;
+  gap: 10px;
+  flex-wrap: wrap;
+}
+.engine-count-scope {
+  display: inline-flex;
+  align-items: center;
+  gap: 6px;
+  text-decoration: none;
+  color: inherit;
+}
+.engine-count-scope:hover .engine-name {
+  text-decoration: underline;
+}
+.definition-counts {
+  display: inline-flex;
+  gap: 14px;
+  flex-wrap: wrap;
+}
+.definition-count {
+  display: inline-flex;
+  gap: 6px;
+  align-items: baseline;
+}
+.definition-key {
+  color: #40515e;
+}
+.version-count {
+  font-variant-numeric: tabular-nums;
+  color: #922b21;
+  text-decoration: none;
+  border-bottom: 1px dotted #922b21;
+}
+.version-count:hover {
+  border-bottom-style: solid;
+}
+.version-zero {
+  color: #8395a7;
+  border-bottom: 0;
+}
+
+/* ---- Stage 2 inspect page ---- */
+.inspect {
+  flex: 1;
+  overflow: auto;
+  display: flex;
+  flex-direction: column;
+}
+.vitals {
+  padding: 10px 16px;
+  border-bottom: 1px solid #d2dae2;
+}
+.vitals-identity {
+  display: flex;
+  align-items: center;
+  gap: 8px;
+  flex-wrap: wrap;
+}
+.composite-id {
+  font-size: 13px;
+}
+.vitals-pending {
+  margin: 6px 0 0;
+  font-size: 12px;
+  color: #8395a7;
+}
+.diagram-slot {
+  min-height: 220px;
+  border-bottom: 1px solid #d2dae2;
+  display: flex;
+  flex-direction: column;
+  justify-content: center;
+}
+.diagram-canvas {
+  height: 45vh;
+}
+/* token + dead-letter markers the viewer applies (never touches the bpmn.io attribution) */
+.diagram-canvas .marker-active .djs-visual > :first-child {
+  stroke: #1e8449 !important;
+  fill: #d1f2eb !important;
+}
+.diagram-canvas .marker-deadletter .djs-visual > :first-child {
+  stroke: #c0392b !important;
+  fill: #fadbd8 !important;
+}
+.dlq-overlay {
+  background: #c0392b;
+  color: #fff;
+  border-radius: 50%;
+  padding: 1px 5px;
+  font-size: 12px;
+}
+.tab-bar {
+  display: flex;
+  gap: 2px;
+  padding: 0 12px;
+  border-bottom: 1px solid #d2dae2;
+}
+.tab-button {
+  border: 1px solid transparent;
+  border-bottom: 0;
+  background: none;
+  padding: 8px 12px;
+  cursor: pointer;
+  font-size: 13px;
+  border-radius: 6px 6px 0 0;
+}
+.tab-button:hover {
+  background: #eef2f5;
+}
+.tab-button.tab-active {
+  border-color: #d2dae2;
+  background: #fff;
+  font-weight: 600;
+  margin-bottom: -1px;
+}
+.tab-body {
+  flex: 1;
+  padding: 12px 16px;
+  overflow: auto;
+}
+.pending-contract {
+  text-align: left;
+  max-width: 720px;
+}
+
+/* ---- variable ledger + audit tables ---- */
+.ledger-group {
+  margin-bottom: 12px;
+}
+.ledger-group > summary {
+  cursor: pointer;
+  font-weight: 600;
+  padding: 4px 0;
+}
+.ledger-table {
+  width: 100%;
+  border-collapse: collapse;
+  font-size: 13px;
+}
+.ledger-table th {
+  text-align: left;
+  color: #57606f;
+  font-weight: 600;
+  border-bottom: 1px solid #d2dae2;
+  padding: 4px 8px;
+}
+.ledger-table td {
+  border-bottom: 1px solid #eef2f5;
+  padding: 4px 8px;
+  vertical-align: top;
+}
+.ledger-name code {
+  font-size: 12px;
+}
+.type-chip {
+  border: 1px solid #8395a7;
+  border-radius: 8px;
+  padding: 0 6px;
+  font-size: 11px;
+  white-space: nowrap;
+  background: #f4f6f8;
+  color: #40515e;
+}
+.type-chip.type-java-object {
+  border-style: dashed;
+}
+.value-muted {
+  color: #8395a7;
+}
+.value-body {
+  background: #f7f9fa;
+  border: 1px solid #d2dae2;
+  border-radius: 6px;
+  padding: 8px;
+  font-size: 12px;
+  max-height: 300px;
+  overflow: auto;
+  margin: 4px 0;
+}
+.visually-hidden {
+  position: absolute;
+  width: 1px;
+  height: 1px;
+  overflow: hidden;
+  clip: rect(0 0 0 0);
+}
+.audit-tab {
+  display: flex;
+  flex-direction: column;
+  gap: 16px;
+  max-width: 900px;
+}
+.audit-reason {
+  color: #40515e;
+}
+.outcome {
+  font-weight: 600;
+}
+.outcome-applied,
+.outcome-ok,
+.outcome-success {
+  color: #1e8449;
+}
+.outcome-failed,
+.outcome-error {
+  color: #922b21;
+}
+.outcome-unknown {
+  color: #6b4a03;
+}
+.notes h3 {
+  margin: 0 0 6px;
+  font-size: 14px;
+}
+.notes-list {
+  list-style: none;
+  margin: 0 0 8px;
+  padding: 0;
+}
+.notes-list li {
+  border-left: 3px solid #d2dae2;
+  padding: 4px 10px;
+  margin-bottom: 6px;
+}
+.note-meta {
+  font-size: 12px;
+  color: #57606f;
+}
+.note-body {
+  margin: 2px 0 0;
+  white-space: pre-wrap;
+}
+.notes textarea {
+  width: 100%;
+  min-height: 60px;
+  padding: 6px;
+  margin-bottom: 6px;
+  font: inherit;
+}

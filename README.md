@@ -93,8 +93,11 @@ password `dev` unless `INSPECTOR_DEV_PASSWORD` is set).
 
 ## Status
 
-Bootstrap stage: **M1 (registry + health) and M2 (fan-out search + results grid) are coded**;
-details panel, corrective actions, diagram and bulk ops follow the implementation plan.
+Bootstrap stage: **M1 (registry + health), M2 (fan-out search + results grid), the M3/M4
+backends (triage aggregations, corrective actions + audit + RBAC) and the three-stage UI
+(`/` triage landing · `/search` · `/inspect/{engineId}/{id}` with lazy tabs) are coded**;
+the instance-detail data endpoints (vitals/diagram/variables/jobs/hierarchy/timeline,
+`/api/resolve`), action UI and bulk ops follow the implementation plan.
 
 ## License
 

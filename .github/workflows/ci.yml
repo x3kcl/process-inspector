@@ -44,6 +44,23 @@ jobs:
     defaults:
       run:
         working-directory: frontend
+    services:
+      # The OpenAPI drift gate boots the REAL BFF. Engines may be absent (health degrades,
+      # boot succeeds — ARCH §2.2), but Postgres is a hard boot dependency (Flyway +
+      # ddl-auto=validate), so it runs as a service on the app's default port 5433.
+      postgres:
+        image: postgres:16
+        env:
+          POSTGRES_DB: inspector
+          POSTGRES_USER: inspector
+          POSTGRES_PASSWORD: inspector
+        ports:
+          - 5433:5432
+        options: >-
+          --health-cmd "pg_isready -U inspector"
+          --health-interval 5s
+          --health-timeout 3s
+          --health-retries 20
     steps:
       - uses: actions/checkout@v4
       - uses: actions/setup-node@v4
@@ -61,6 +78,44 @@ jobs:
         run: npm test
       - name: Build (watermark + no-enterprise guards + tsc + vite)
         run: npm run build
+      # ---- OpenAPI drift gate (R-SEM-15): cross-language drift is a CI failure. ----
+      - uses: actions/setup-java@v4
+        with:
+          distribution: temurin
+          java-version: "21"
+          cache: maven
+      - name: Build BFF jar (tests belong to the unit/integration jobs)
+        working-directory: backend
+        run: mvn -B -DskipTests package
+      - name: Boot BFF in the background (no engines — degraded health is expected)
+        working-directory: backend
+        env:
+          # password-refs must resolve; the engines they authenticate against are absent.
+          ENGINE_A_PASSWORD: unused-in-ci
+          ENGINE_B_PASSWORD: unused-in-ci
+        run: |
+          JAR=$(ls target/*.jar | head -1)
+          nohup java -jar "$JAR" > /tmp/bff.log 2>&1 &
+      - name: Wait for /v3/api-docs (bounded)
+        run: |
+          for _ in $(seq 1 90); do
+            curl -fsS http://localhost:8085/v3/api-docs > /dev/null && exit 0
+            sleep 2
+          done
+          echo "::error::BFF did not serve /v3/api-docs within 180s"
+          tail -200 /tmp/bff.log
+          exit 1
+      - name: Regenerate the API contract from the running BFF
+        run: npm run gen:api
+      - name: Drift gate — committed schema must match the live contract
+        run: |
+          git diff --exit-code -- src/api/schema.d.ts || {
+            echo "::error::frontend/src/api/schema.d.ts is stale — run the BFF, 'npm run gen:api', and commit the regenerated schema (never hand-edit it)."
+            exit 1
+          }
+      - name: Dump BFF log
+        if: failure()
+        run: tail -200 /tmp/bff.log || true
 
   docker:
     runs-on: ubuntu-24.04

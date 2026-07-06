@@ -10,6 +10,11 @@ export type ProcessInstanceRow = components['schemas']['ProcessInstanceRow']
 export type InstanceStatusFlags = components['schemas']['InstanceStatusFlags']
 export type EngineResult = components['schemas']['EngineResult']
 export type VariableFilter = components['schemas']['VariableFilter']
+export type TriageDashboardResponse = components['schemas']['TriageDashboardResponse']
+export type ErrorGroup = components['schemas']['ErrorGroup']
+export type PerEngineTriage = components['schemas']['PerEngineTriage']
+export type AuditEntryDto = components['schemas']['AuditEntryDto']
+export type NoteDto = components['schemas']['NoteDto']
 
 export type InstanceStatus = NonNullable<ProcessInstanceRow['status']>
 
