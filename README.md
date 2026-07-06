@@ -32,6 +32,7 @@ docker compose -f docker/docker-compose.dev.yml up -d
 
 # Optional extras:
 docker compose -f docker/docker-compose.dev.yml --profile flowable-7 up -d   # Flowable 7.1 on :8083
+docker compose -f docker/docker-compose.dev.yml --profile legacy up -d       # Flowable 6.3.1 on :8084 (pre-cliff)
 docker compose -f docker/docker-compose.dev.yml --profile postgres up -d     # BFF DB (M4) on :5433
 
 # 2. Seed demo processes (idempotent, REST-only): demoOrder + demoFailingPayment
@@ -57,7 +58,11 @@ executor-starvation alarms per engine.
 ```bash
 cd backend
 mvn test      # unit ladder (rungs 1–3 + ArchUnit no-sleep rule) — no docker needed
-mvn verify    # + dockerized integration tests (*IT) — requires the flowable-6 harness up
+mvn verify    # + dockerized integration tests (*IT) — requires the FULL engine matrix:
+#   docker compose -f docker/docker-compose.dev.yml --profile flowable-6 \
+#     --profile flowable-7 --profile legacy up -d
+# (EngineHealthIT → 6.8 :8081, EngineHealth7IT → 7.1 :8083, EngineHealthLegacyIT → 6.3.1 :8084;
+#  a down engine fails loudly with the compose command — never a silent skip)
 ```
 
 ## Status

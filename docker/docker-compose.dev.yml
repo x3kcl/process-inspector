@@ -7,6 +7,9 @@
 #                 keeps working unchanged.
 #   flowable-7  — one Flowable 7.x REST engine (:8083) to exercise the Spring Boot 3 /
 #                 Jakarta capability cliffs against a modern engine.
+#   legacy      — one pre-6.4 engine (:8084, Flowable 6.3.1) so the capability cliffs
+#                 (change-state 6.4+, migration 6.5+, external-worker/scopeType 6.8+)
+#                 are exercised against an engine that really lacks them.
 #   postgres    — the BFF's own database (M4: audit/annotations). Container only for now;
 #                 the backend has no JPA/Flyway wiring yet.
 #
@@ -40,6 +43,15 @@ services:
     profiles: ["flowable-7"]
     ports:
       - "8083:8080"
+    environment:
+      - FLOWABLE_REST_APP_ADMIN_USER-ID=rest-admin
+      - FLOWABLE_REST_APP_ADMIN_PASSWORD=test
+
+  engine-legacy:
+    image: flowable/flowable-rest:6.3.1
+    profiles: ["legacy"]
+    ports:
+      - "8084:8080"
     environment:
       - FLOWABLE_REST_APP_ADMIN_USER-ID=rest-admin
       - FLOWABLE_REST_APP_ADMIN_PASSWORD=test

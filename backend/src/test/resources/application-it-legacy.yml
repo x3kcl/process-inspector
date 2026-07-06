@@ -1,0 +1,22 @@
+# Rung-4 registry: the legacy compose profile (Flowable 6.3.1 on :8084) — the engine
+# that really LACKS the ARCH §2.5 capabilities the probe must gate.
+inspector:
+  fanout-parallelism: 4
+  engines:
+    - id: engine-legacy
+      name: "Engine Legacy (harness)"
+      base-url: "http://localhost:8084/flowable-rest/service"
+      environment: dev
+      accent-color: "#7f8c8d"
+      enabled: true
+      mode: read-only
+      auth:
+        type: basic
+        username: rest-admin
+        password-ref: ENGINE_LEGACY_PASSWORD
+      timeouts:
+        connect-ms: 2000
+        read-ms: 10000
+        write-ms: 10000
+      max-page-size: 10
+      dlq-scan-cap: 50

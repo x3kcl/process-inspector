@@ -22,8 +22,11 @@ or Dockerfile exist yet; landing them is part of M2a's gate.
 - Seed processes under `docker/processes/` + idempotent `docker/seed.sh` (REST-only):
   `demoOrder` (straight-through) and `demoFailingPayment` (async, `${amount % divisor}`,
   `R1/PT1S` → organic dead-letter; EL `/` never throws — see `validate-bpmn` skill).
-- **Still open (slice-0):** pre-6.4 `legacy` profile for the capability-cliff CI matrix;
-  the remaining FIX-PROC seed catalog; CI workflows + root Dockerfile (M2a gate).
+- **`legacy`** profile landed too: `flowable/flowable-rest:6.3.1` on :8084 — pre every
+  ARCH §2.5 cliff, same creds/context path; `EngineHealthLegacyIT` proves the probe
+  reports all four version capabilities absent without 400s on the 6.3 wire shapes.
+- **Still open (slice-0):** the remaining FIX-PROC seed catalog; CI workflows + root
+  Dockerfile (M2a gate).
 
 ## M1 — Engine Registry + health  *(backend landed; header-strip UI open)*
 - Registry YAML binding per ARCH §3 (environment/mode enums, engine-id slug validation,
@@ -34,8 +37,10 @@ or Dockerfile exist yet; landing them is part of M2a's gate.
 - Scheduled health probe (30s, virtual-thread fan-out): version, capability flags per
   ARCH §2.5, four job-lane counts + oldest-executable-job-age + overdue-timers via the
   `size=1` total trick — all surfaced by `GET /api/engines`.
-- Proven by `EngineHealthIT` against the dockerized 6.8 engine (organic dead-letter via
-  `demoFailingPayment`; fail→retry→DLQ measures ~45s on engine defaults — bound waits at 60s).
+- Proven across the engine matrix: `EngineHealthIT` (6.8, organic dead-letter via
+  `demoFailingPayment`; fail→retry→DLQ measures ~45s on engine defaults — waits bounded
+  at 60s), `EngineHealth7IT` (7.1, same full arc on the Jakarta wire shapes) and
+  `EngineHealthLegacyIT` (6.3.1, capability cliff: all four version caps reported absent).
 - **Done when:** header strip shows each engine with env-colored badge, version, lanes
   *(frontend part — open)*.
 

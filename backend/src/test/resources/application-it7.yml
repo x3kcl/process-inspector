@@ -1,0 +1,21 @@
+# Rung-4 registry: the flowable-7 compose profile (Flowable 7.1 on :8083).
+inspector:
+  fanout-parallelism: 4
+  engines:
+    - id: engine-7
+      name: "Engine 7 (harness)"
+      base-url: "http://localhost:8083/flowable-rest/service"
+      environment: dev
+      accent-color: "#8e44ad"
+      enabled: true
+      mode: read-write
+      auth:
+        type: basic
+        username: rest-admin
+        password-ref: ENGINE_7_PASSWORD
+      timeouts:
+        connect-ms: 2000
+        read-ms: 10000
+        write-ms: 10000
+      max-page-size: 10
+      dlq-scan-cap: 50

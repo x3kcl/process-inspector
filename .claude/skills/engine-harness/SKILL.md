@@ -14,11 +14,13 @@ docker compose -f docker/docker-compose.dev.yml up -d   # engine-a :8081, engine
 curl -fsS -u rest-admin:test http://localhost:8081/flowable-rest/service/management/engine
 ```
 The 6.x pair is the `flowable-6` profile, activated by default via `docker/.env`
-(`COMPOSE_PROFILES=flowable-6`). Extras: `--profile flowable-7` = Flowable 7.1 on :8083
-(same context path/creds); `--profile postgres` = the BFF's M4 DB on :5433. Seed with
-`bash docker/seed.sh` (idempotent BY KEY — after editing a process file, redeploy manually
-or `down -v`). Integration tests are failsafe `*IT` classes: `mvn test` needs no docker,
-`mvn verify` needs this stack up.
+(`COMPOSE_PROFILES=flowable-6`). Extras: `--profile flowable-7` = Flowable 7.1 on :8083;
+`--profile legacy` = Flowable 6.3.1 on :8084 (pre-cliff — same context path/creds on all);
+`--profile postgres` = the BFF's M4 DB on :5433. Seed with `bash docker/seed.sh`
+(idempotent BY KEY — after editing a process file, redeploy manually or `down -v`).
+Integration tests are failsafe `*IT` classes: `mvn test` needs no docker, `mvn verify`
+needs the FULL matrix up (flowable-6 + flowable-7 + legacy) — a down engine fails loudly
+with the compose command, never a silent skip.
 BFF: `export ENGINE_A_PASSWORD=test ENGINE_B_PASSWORD=test; cd backend && mvn spring-boot:run`
 (:8085). UI: `cd frontend && npm install && npm run dev` (:5173, proxies `/api`).
 

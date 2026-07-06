@@ -2,30 +2,22 @@ package io.inspector.registry;
 
 import com.fasterxml.jackson.databind.JsonNode;
 import com.fasterxml.jackson.databind.ObjectMapper;
+import io.inspector.support.EngineSeed;
 import org.junit.jupiter.api.BeforeAll;
 import org.junit.jupiter.api.Test;
 import org.junit.jupiter.api.TestInstance;
 import org.springframework.beans.factory.annotation.Autowired;
 import org.springframework.boot.test.context.SpringBootTest;
 import org.springframework.boot.test.web.client.TestRestTemplate;
-import org.springframework.core.io.FileSystemResource;
 import org.springframework.http.HttpStatus;
-import org.springframework.http.MediaType;
 import org.springframework.http.ResponseEntity;
 import org.springframework.test.context.ActiveProfiles;
-import org.springframework.util.LinkedMultiValueMap;
-import org.springframework.util.MultiValueMap;
 import org.springframework.web.client.RestClient;
 
-import java.nio.file.Files;
-import java.nio.file.Path;
-import java.util.List;
-import java.util.Map;
 import java.util.concurrent.TimeUnit;
 
 import static org.assertj.core.api.Assertions.assertThat;
 import static org.awaitility.Awaitility.await;
-import static org.junit.jupiter.api.Assertions.fail;
 
 /**
  * Rung 4 (engine-harness): the full M1 arc against REAL flowable-rest 6.8 —
@@ -42,55 +34,20 @@ import static org.junit.jupiter.api.Assertions.fail;
 class EngineHealthIT {
 
     private static final String ENGINE = "http://localhost:8081/flowable-rest/service";
-    private static final Path SEED_BPMN =
-            Path.of("..", "docker", "processes", "demo-failing-payment.bpmn20.xml");
-
-    private static final RestClient engine = RestClient.builder()
-            .baseUrl(ENGINE)
-            .defaultHeaders(h -> h.setBasicAuth("rest-admin", "test"))
-            .build();
 
     @Autowired TestRestTemplate rest;
     @Autowired EngineHealthService healthService;
     @Autowired ObjectMapper mapper;
 
+    private RestClient engine;
     private String processInstanceId;
 
     @BeforeAll
     void seedOrganically() {
-        try {
-            engine.get().uri("/management/engine").retrieve().toBodilessEntity();
-        } catch (Exception e) {
-            fail("engine-a is not reachable on :8081 — start the harness first: "
-                    + "docker compose -f docker/docker-compose.dev.yml up -d  (" + e.getMessage() + ")");
-        }
-        assertThat(SEED_BPMN).exists();
-
-        // Idempotent REST deploy; deployment 2xx != parsed, so assert the definition list.
-        if (definitionCount() == 0) {
-            MultiValueMap<String, Object> parts = new LinkedMultiValueMap<>();
-            parts.add("file", new FileSystemResource(SEED_BPMN));
-            engine.post().uri("/repository/deployments")
-                    .contentType(MediaType.MULTIPART_FORM_DATA)
-                    .body(parts)
-                    .retrieve()
-                    .toBodilessEntity();
-        }
-        assertThat(definitionCount())
-                .as("demoFailingPayment must be deployed AND parsed")
-                .isGreaterThanOrEqualTo(1);
-
+        engine = EngineSeed.requireReachable(ENGINE, "");
+        EngineSeed.deployIfMissing(engine, "demoFailingPayment", EngineSeed.FAILING_PAYMENT_BPMN);
         // The one mutation of this test: start an instance that will dead-letter itself.
-        Map<String, Object> started = engine.post().uri("/runtime/process-instances")
-                .contentType(MediaType.APPLICATION_JSON)
-                .body(Map.of(
-                        "processDefinitionKey", "demoFailingPayment",
-                        "variables", List.of(
-                                Map.of("name", "amount", "type", "integer", "value", 100),
-                                Map.of("name", "divisor", "type", "integer", "value", 0))))
-                .retrieve()
-                .body(Map.class);
-        processInstanceId = String.valueOf(started.get("id"));
+        processInstanceId = EngineSeed.startFailingPayment(engine);
     }
 
     @Test
@@ -100,7 +57,7 @@ class EngineHealthIT {
         // fail→retry→dead-letter is ~45s on flowable-rest 6.8 defaults. Bound: 60s.
         await().atMost(60, TimeUnit.SECONDS)
                 .pollInterval(1, TimeUnit.SECONDS)
-                .untilAsserted(() -> assertThat(deadLetterCountFor(processInstanceId))
+                .untilAsserted(() -> assertThat(EngineSeed.deadLetterCountFor(engine, processInstanceId))
                         .isGreaterThanOrEqualTo(1));
 
         // 2) One deterministic probe cycle — no schedule-waiting.
@@ -133,21 +90,5 @@ class EngineHealthIT {
         // in the FUTURE never count — the grace period is 60s in the past).
         assertThat(dto.get("overdueTimers").isNumber()).isTrue();
         assertThat(dto.get("overdueTimers").asLong()).isZero();
-    }
-
-    private long definitionCount() {
-        Map<String, Object> page = engine.get()
-                .uri("/repository/process-definitions?key=demoFailingPayment&latest=true")
-                .retrieve()
-                .body(Map.class);
-        return ((Number) page.get("total")).longValue();
-    }
-
-    private long deadLetterCountFor(String pid) {
-        Map<String, Object> page = engine.get()
-                .uri("/management/deadletter-jobs?processInstanceId=" + pid)
-                .retrieve()
-                .body(Map.class);
-        return ((Number) page.get("total")).longValue();
     }
 }
