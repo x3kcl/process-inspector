@@ -53,7 +53,7 @@ OPERATIONS.md §8.
 - **Done when:** header strip shows each engine with env-colored badge, version, lanes
   *(frontend part — open)*.
 
-## M2 — Search & results  *(M2a landed; M2b/M2c open)*
+## M2 — Search & results  *(M2a landed; M2b backend landed; M2b UI + M2c open)*
 - **M2a (landed, backend):** the status join per ARCH §2.3 — status = flags
   (`InstanceStatusFlags` + derived primary chip incl. RETRYING), DLQ-driven inverted plan
   for FAILED/RETRYING-only requests (bounded exhaustive paging, definition pushdown,
@@ -66,9 +66,16 @@ OPERATIONS.md §8.
   `Search7IT`, `SearchLegacyIT` (6.3.1 incl. the enrichment-fallback regression). Seed
   fixture fix: `failedJobRetryTimeCycle` must be the extension ELEMENT — the attribute
   form was silently ignored (TEST-SCENARIOS §1.2, `validate-bpmn` skill).
-- **M2b:** search additions — failure-time filter/sort, `businessKeyLike`, variable `like`,
-  current-activity and error-text filters, facet counts; **URL-encoded search state**;
-  compiled-criteria echo + copy-as-cURL.
+- **M2b (backend landed):** search additions — failure-time filter/sort and error-text
+  filter (BFF-side over the scan legs, BEFORE root resolution), `businessKeyLike` (native
+  pushdown; 6.3 silently drops the field → impossible-match canary → per-engine envelope
+  error, `SearchLegacyIT`), variable `like` (native on the whole matrix incl. 6.3, proven
+  live), current-activity contains-filter (unfinished-activity leg, bounded N+1),
+  `statusCounts` facets (plan-observable candidates, lower-bound under truncation),
+  compiled-criteria echo + copy-as-cURL (`criteriaEcho`/`curl` envelope fields, pure
+  `CriteriaEcho`), unindexed-variable-scan `log.warn` guardrail, 400 on bad filter input.
+  Proven on all three profiles (`SearchServiceIT` +8, `Search7IT` +1, `SearchLegacyIT` +2).
+  *Still open in M2b:* **URL-encoded search state** (frontend) + rendering the echo/cURL.
 - **M2c:** grid columns (definition version, failure time, status badges), snapshot "as of"
   header + Refresh, partial-result banner + lower-bound labeling.
 - **Done when:** a search over 2 engines returns correctly-flagged rows incl. a

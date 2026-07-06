@@ -88,6 +88,30 @@ the retry verb checks suspension and offers activate-first).
 anything beyond the page silently declassifies FAILED → ACTIVE — the exact instances the
 tool exists to find). Where a scan is capped anyway, set `dlqScan: "truncated@N"` and badge.
 
+**Filter kinds (M2b, SPEC §8):** three mechanically different families, ANDed between
+categories:
+- **Flowable-native** — `businessKey` (exact), `businessKeyLike` (substring, wrapped `%…%`
+  and pushed down as `processBusinessKeyLike`), `variables` (equals/like — the like
+  operation is honored by the whole matrix incl. 6.3.1, proven live), start window,
+  definition key. The engine evaluates them; no BFF query parser exists or ever will
+  (SPEC §11 — Flowable's query REST has no OR-across-fields to compile to).
+- **BFF-side over the scan legs** — `failureTimeAfter/Before` (inclusive window over
+  dead-letter/failing job `createTime`) and `errorText` (case-insensitive substring over
+  exception snippets): Flowable cannot query instances by failure evidence, so these filter
+  the JOB rows **before grouping and root resolution** — a filtered-out child failure never
+  rolls up its parent. Setting any of them means only failure-bearing rows can match; in the
+  mixed plan, rows whose evidence is filtered away drop out.
+- **Separate native leg** — `currentActivity` (contains, id or name): unfinished
+  `historic-activity-instances` per candidate open row (bounded N+1, same budget rules as
+  DLQ membership), intersected in the BFF. Completed rows can never match.
+
+**Facets (`statusCounts`):** counts of the candidates the chosen plan actually evaluated —
+after the non-status filters, before the status predicate, keyed by primary chip. The map
+contains only statuses the plan could observe (an inverted search never saw ACTIVE, so no
+ACTIVE key — never a fake zero) and inherits lower-bound semantics from any truncation
+marker. These are search-page facets; the Stage-0 triage counts remain the independent
+`size=1`-total queries (M3), never this plan.
+
 **Hygiene applied to every leg:** CMMN-scoped jobs filtered out (shared job tables; null
 `processInstanceId` / `scopeType='cmmn'` where serialized — ~6.8+); `tenantId` threaded
 through **all** legs when the engine is multi-tenant; async-history lag tolerated — the grid
@@ -104,6 +128,16 @@ or an impossible total) and falls back to bounded parallel per-id GETs. Historic
 `processInstanceIds` filters correctly on the whole matrix (6.3.1/6.8/7.1). No engine on
 the matrix serializes `processDefinitionKey`/`processDefinitionVersion` on historic rows —
 both are derived from `processDefinitionId` (`key:version:uuid`).
+
+Same failure mode, second field (M2b): 6.3.1 silently drops `processBusinessKeyLike` on
+BOTH the historic and runtime queries (proven live — an impossible-match like returns the
+full unfiltered total). Detection is an impossible-match **canary** (`size=1`, only on
+searches that use businessKeyLike): if it still returns rows, the filter was dropped and
+that engine degrades to a per-engine envelope error ("businessKeyLike not supported…") —
+never confidently unfiltered rows. There is no BFF post-filter fallback on purpose: page-
+bounded substring filtering would silently miss matches beyond the page. The `variables`
+filter and the unfinished-activity query have NO such cliff — identical wire shapes across
+the matrix (probed live 2026-07).
 
 ### 2.4 Aggregation — sorting & paging across engines
 There is no global cursor across independent engines. v1 strategy (deliberate, simple,

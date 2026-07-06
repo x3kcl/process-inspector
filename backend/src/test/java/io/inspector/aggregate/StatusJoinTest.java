@@ -5,6 +5,7 @@ import static org.assertj.core.api.Assertions.assertThat;
 import io.inspector.aggregate.StatusJoin.Plan;
 import io.inspector.dto.InstanceStatusFlags;
 import io.inspector.dto.SearchRequest.InstanceStatus;
+import java.time.Instant;
 import java.util.HashMap;
 import java.util.Map;
 import java.util.Set;
@@ -174,6 +175,60 @@ class StatusJoinTest {
                 parents.put("n" + i, "n" + (i + 1));
             }
             assertThat(StatusJoin.resolveRoot("n0", parents::get, 10)).isEqualTo("n10");
+        }
+    }
+
+    /* ---------- M2b BFF-side failure filters (SPEC §8) ---------- */
+
+    @Nested
+    class FailureFilters {
+
+        final Map<String, Object> job = Map.of(
+                "processInstanceId", "pi-1",
+                "createTime", "2026-07-06T09:14:45.798+00:00", // the engines' offset wire form
+                "exceptionMessage", "Error while evaluating expression: ${amount % divisor}");
+
+        final Instant nineAm = Instant.parse("2026-07-06T09:00:00Z");
+        final Instant tenAm = Instant.parse("2026-07-06T10:00:00Z");
+
+        @Test
+        void windowBoundsAreInclusiveOverCreateTime() {
+            assertThat(StatusJoin.jobMatchesFailureFilters(job, nineAm, tenAm, null))
+                    .isTrue();
+            assertThat(StatusJoin.jobMatchesFailureFilters(job, tenAm, null, null))
+                    .isFalse();
+            assertThat(StatusJoin.jobMatchesFailureFilters(job, null, nineAm, null))
+                    .isFalse();
+            Instant exact = Instant.parse("2026-07-06T09:14:45.798Z");
+            assertThat(StatusJoin.jobMatchesFailureFilters(job, exact, exact, null))
+                    .isTrue();
+        }
+
+        @Test
+        void errorTextIsACaseInsensitiveSubstringOverTheSnippet() {
+            assertThat(StatusJoin.jobMatchesFailureFilters(job, null, null, "AMOUNT % DIVISOR"))
+                    .isTrue();
+            assertThat(StatusJoin.jobMatchesFailureFilters(job, null, null, "connection refused"))
+                    .isFalse();
+        }
+
+        @Test
+        void aJobWithoutProvableCreateTimeCannotMatchAWindow() {
+            Map<String, Object> noTime = Map.of("processInstanceId", "pi-2", "exceptionMessage", "boom");
+            assertThat(StatusJoin.jobMatchesFailureFilters(noTime, nineAm, null, null))
+                    .isFalse();
+            // ...but text-only filtering still works without a timestamp
+            assertThat(StatusJoin.jobMatchesFailureFilters(noTime, null, null, "boom"))
+                    .isTrue();
+        }
+
+        @Test
+        void parseInstantAcceptsBothOffsetAndZuluFormsAndRefusesGarbage() {
+            assertThat(StatusJoin.parseInstant("2026-07-06T09:14:45.798+00:00"))
+                    .isEqualTo(Instant.parse("2026-07-06T09:14:45.798Z"));
+            assertThat(StatusJoin.parseInstant("2026-07-06T10:00:00Z")).isEqualTo(tenAm);
+            assertThat(StatusJoin.parseInstant("not-a-date")).isNull();
+            assertThat(StatusJoin.parseInstant(null)).isNull();
         }
     }
 }

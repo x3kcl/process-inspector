@@ -2,7 +2,11 @@ package io.inspector.aggregate;
 
 import io.inspector.dto.InstanceStatusFlags;
 import io.inspector.dto.SearchRequest.InstanceStatus;
+import java.time.Instant;
+import java.time.OffsetDateTime;
+import java.time.format.DateTimeParseException;
 import java.util.HashSet;
+import java.util.Locale;
 import java.util.Map;
 import java.util.Set;
 import java.util.function.Function;
@@ -63,6 +67,49 @@ final class StatusJoin {
         if (pid == null || pid.toString().isBlank()) return false;
         Object scopeType = job.get("scopeType");
         return scopeType == null || "bpmn".equalsIgnoreCase(scopeType.toString());
+    }
+
+    /**
+     * BFF-side failure-evidence predicate (SPEC §8, M2b): Flowable cannot query instances by
+     * dead-letter evidence, so the failure window ({@code createTime}, inclusive bounds) and
+     * the error-text substring are applied to the JOB rows of the scan legs — before root
+     * resolution, so a filtered-out child never rolls up. A job whose {@code createTime} is
+     * missing or unparseable cannot be proven inside a requested window and is excluded.
+     */
+    static boolean jobMatchesFailureFilters(Map<String, Object> job, Instant after, Instant before, String errorText) {
+        if (after != null || before != null) {
+            Instant createTime = parseInstant(str(job, "createTime"));
+            if (createTime == null) return false;
+            if (after != null && createTime.isBefore(after)) return false;
+            if (before != null && createTime.isAfter(before)) return false;
+        }
+        if (errorText != null && !errorText.isBlank()) {
+            String snippet = str(job, "exceptionMessage");
+            if (snippet == null || !snippet.toLowerCase(Locale.ROOT).contains(errorText.toLowerCase(Locale.ROOT))) {
+                return false;
+            }
+        }
+        return true;
+    }
+
+    /**
+     * Lenient ISO-8601 → {@link Instant}: engines serialize offset form
+     * ({@code 2026-07-06T09:14:45.798+00:00}), requests usually the {@code Z} form — both
+     * are ISO_OFFSET_DATE_TIME. Null when blank or unparseable (callers decide severity:
+     * request bounds fail the request, job rows fail the match).
+     */
+    static Instant parseInstant(String iso) {
+        if (iso == null || iso.isBlank()) return null;
+        try {
+            return OffsetDateTime.parse(iso).toInstant();
+        } catch (DateTimeParseException e) {
+            return null;
+        }
+    }
+
+    private static String str(Map<String, Object> map, String key) {
+        Object v = map.get(key);
+        return v != null ? v.toString() : null;
     }
 
     /**

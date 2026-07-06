@@ -53,6 +53,7 @@ class SearchServiceIT {
     private String extraFailedId;
     private String retryingId;
     private String suspendedId;
+    private String varTaggedId;
 
     @BeforeAll
     void seedOrganically() {
@@ -70,6 +71,12 @@ class SearchServiceIT {
         retryingId = EngineSeed.startFailing(engine, "demoFailingRetry", businessKey);
         suspendedId = EngineSeed.startInstance(engine, "demoUserTask", businessKey, List.of());
         EngineSeed.suspend(engine, suspendedId);
+        // M2b: inert instance carrying a run-unique STRING variable for the like-search arc.
+        varTaggedId = EngineSeed.startInstance(
+                engine,
+                "demoUserTask",
+                businessKey + "-vartag",
+                List.of(Map.of("name", "customerName", "type", "string", "value", "Customer " + businessKey)));
     }
 
     /* ---------------- the fixtures' async legs, awaited on REAL engine state ---------------- */
@@ -192,6 +199,169 @@ class SearchServiceIT {
         // Partial results are the contract: the healthy engine's rows are all present.
         assertThat(body.get("perEngine").get("engine-a").get("ok").asBoolean()).isTrue();
         assertThat(ids(body.get("rows"))).containsExactlyInAnyOrder(parentId, childId, directFailedId);
+    }
+
+    /* ---------------- M2b: search additions ---------------- */
+
+    @Test
+    void businessKeyLikeFindsEveryInstanceSharingTheKeyFragment() throws Exception {
+        // Substring (no wildcards) — the BFF wraps it %…% and pushes it down natively.
+        JsonNode body = search(Map.of("engineIds", List.of("engine-a"), "businessKeyLike", businessKey));
+
+        assertThat(ids(body.get("rows")))
+                .containsExactlyInAnyOrder(
+                        parentId, childId, directFailedId, extraFailedId, retryingId, suspendedId, varTaggedId);
+    }
+
+    @Test
+    void variableLikeSearchRetrievesTheTaggedInstance() throws Exception {
+        JsonNode body = search(Map.of(
+                "engineIds",
+                List.of("engine-a"),
+                "variables",
+                List.of(Map.of("name", "customerName", "operation", "like", "value", "%" + businessKey + "%"))));
+
+        assertThat(ids(body.get("rows"))).containsExactly(varTaggedId);
+    }
+
+    @Test
+    void failureTimeWindowFiltersOnDeadLetterCreateTimeNotStartTime() throws Exception {
+        awaitDeadLetters();
+        String hourAgo = java.time.Instant.now().minusSeconds(3600).toString();
+
+        // "failed in the last hour" — the naturally dead-lettered instances are inside it.
+        JsonNode recent = search(Map.of(
+                "engineIds",
+                List.of("engine-a"),
+                "statuses",
+                List.of("FAILED"),
+                "businessKey",
+                businessKey,
+                "failureTimeAfter",
+                hourAgo,
+                "sortBy",
+                "failureTime"));
+        assertThat(ids(recent.get("rows"))).containsExactlyInAnyOrder(parentId, childId, directFailedId);
+        // failureTime sort: every FAILED row carries evidence, ordered newest first.
+        List<java.time.Instant> failureTimes = new java.util.ArrayList<>();
+        for (JsonNode r : recent.get("rows")) {
+            assertThat(r.get("failureTime").isNull()).isFalse();
+            failureTimes.add(java.time.OffsetDateTime.parse(r.get("failureTime").asText())
+                    .toInstant());
+        }
+        assertThat(failureTimes).isSortedAccordingTo(java.util.Comparator.reverseOrder());
+
+        // ...and nothing failed BEFORE that window opened: the same search inverted is empty,
+        // even though the instances themselves started long before they dead-lettered.
+        JsonNode old = search(Map.of(
+                "engineIds",
+                List.of("engine-a"),
+                "statuses",
+                List.of("FAILED"),
+                "businessKey",
+                businessKey,
+                "failureTimeBefore",
+                hourAgo));
+        assertThat(old.get("rows")).isEmpty();
+        assertThat(old.get("perEngine").get("engine-a").get("ok").asBoolean()).isTrue();
+    }
+
+    @Test
+    void errorTextFiltersBeforeRollupSoAFilteredChildNeverSurfacesItsParent() throws Exception {
+        awaitDeadLetters();
+
+        JsonNode matching = search(Map.of(
+                "engineIds",
+                List.of("engine-a"),
+                "statuses",
+                List.of("FAILED"),
+                "businessKey",
+                businessKey,
+                "errorText",
+                "amount % divisor"));
+        assertThat(ids(matching.get("rows"))).containsExactlyInAnyOrder(parentId, childId, directFailedId);
+
+        // A non-matching error text removes the CHILD from the scan leg — and with it the
+        // rolled-up parent (the filter bites before root resolution).
+        JsonNode nonMatching = search(Map.of(
+                "engineIds",
+                List.of("engine-a"),
+                "statuses",
+                List.of("FAILED"),
+                "businessKey",
+                businessKey,
+                "errorText",
+                "connection refused"));
+        assertThat(nonMatching.get("rows")).isEmpty();
+    }
+
+    @Test
+    void currentActivityMatchesUnfinishedActivityIdOrNameCaseInsensitively() throws Exception {
+        // "viewOrd" ⊂ "reviewOrder" (id) and "Review order" (name) — only the user-task
+        // instance sits at that activity; the parent waits at its call activity.
+        JsonNode body = search(
+                Map.of("engineIds", List.of("engine-a"), "businessKey", businessKey, "currentActivity", "viewOrd"));
+
+        assertThat(ids(body.get("rows"))).containsExactly(suspendedId);
+    }
+
+    @Test
+    void statusCountsFacetCountsCandidatesBeforeTheStatusPredicate() throws Exception {
+        awaitDeadLetters();
+        awaitRetrying();
+
+        // Mixed plan over this run's businessKey: the facet sees every candidate.
+        JsonNode mixed = search(Map.of("engineIds", List.of("engine-a"), "businessKey", businessKey));
+        JsonNode counts = mixed.get("statusCounts");
+        assertThat(counts.get("FAILED").asLong()).isEqualTo(2); // child + direct
+        assertThat(counts.get("RETRYING").asLong()).isEqualTo(1);
+        assertThat(counts.get("SUSPENDED").asLong()).isEqualTo(1);
+        assertThat(counts.get("ACTIVE").asLong()).isEqualTo(1); // the parent (no roll-up in mixed)
+
+        // Inverted plan: candidates are the failure lanes only — FAILED counts the rolled-up
+        // parent too, and statuses the plan never observed have NO key (never a fake zero).
+        JsonNode inverted = search(Map.of(
+                "engineIds", List.of("engine-a"),
+                "statuses", List.of("FAILED"),
+                "businessKey", businessKey));
+        assertThat(inverted.get("statusCounts").get("FAILED").asLong()).isEqualTo(3);
+        assertThat(inverted.get("statusCounts").get("ACTIVE")).isNull();
+    }
+
+    @Test
+    void criteriaEchoAndCurlCompileTheAppliedFilters() throws Exception {
+        JsonNode body = search(Map.of(
+                "engineIds",
+                List.of("engine-a"),
+                "statuses",
+                List.of("FAILED", "RETRYING"),
+                "businessKey",
+                businessKey,
+                "errorText",
+                "divisor"));
+
+        List<String> echo = new java.util.ArrayList<>();
+        body.get("criteriaEcho").forEach(line -> echo.add(line.asText()));
+        assertThat(echo)
+                .contains(
+                        "Engines: engine-a",
+                        "Status: FAILED or RETRYING",
+                        "Business key: exactly '" + businessKey + "'",
+                        "Error text: contains 'divisor'");
+
+        String curl = body.get("curl").asText();
+        assertThat(curl).startsWith("curl -X POST 'http://");
+        assertThat(curl).contains("/api/search");
+        assertThat(curl).contains(businessKey);
+        assertThat(curl).contains("\"statuses\":[\"FAILED\",\"RETRYING\"]");
+    }
+
+    @Test
+    void unparseableFailureWindowIsA400NotA500() {
+        ResponseEntity<String> response =
+                rest.postForEntity("/api/search", Map.of("failureTimeAfter", "yesterday-ish"), String.class);
+        assertThat(response.getStatusCode()).isEqualTo(HttpStatus.BAD_REQUEST);
+        assertThat(response.getBody()).contains("failureTimeAfter");
     }
 
     /* ---------------- plumbing ---------------- */

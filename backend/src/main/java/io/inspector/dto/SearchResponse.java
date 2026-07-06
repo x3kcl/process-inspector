@@ -1,6 +1,7 @@
 package io.inspector.dto;
 
 import com.fasterxml.jackson.annotation.JsonInclude;
+import io.inspector.dto.SearchRequest.InstanceStatus;
 import java.util.List;
 import java.util.Map;
 
@@ -12,8 +13,26 @@ import java.util.Map;
  * the per-engine envelope says so — {@code dlqScan}/{@code failingScan} carry
  * {@code "truncated@N"} (N = jobs scanned before hitting the cap) and the UI badges every
  * count derived from it as a lower bound. Never let truncated data impersonate health.
+ *
+ * <p>{@code statusCounts} (SPEC §8 facets) counts the candidates each plan actually
+ * evaluated — after the non-status filters, before the status predicate — keyed by primary
+ * chip. It contains ONLY statuses the chosen plan could observe (an INVERTED search never
+ * saw ACTIVE instances, so no ACTIVE key) and inherits lower-bound semantics from any
+ * truncated scan or page cap. {@code criteriaEcho} + {@code curl} are the compiled-criteria
+ * echo and copy-as-cURL of SPEC Stage 1 — presentation over the request, filled by the
+ * controller, never recomputed by clients.
  */
-public record SearchResponse(List<ProcessInstanceRow> rows, Map<String, EngineResult> perEngine) {
+public record SearchResponse(
+        List<ProcessInstanceRow> rows,
+        Map<String, EngineResult> perEngine,
+        Map<InstanceStatus, Long> statusCounts,
+        List<String> criteriaEcho,
+        String curl) {
+
+    /** Controller-side decoration: same aggregation result, presentation fields filled. */
+    public SearchResponse withPresentation(List<String> criteriaEcho, String curl) {
+        return new SearchResponse(rows, perEngine, statusCounts, criteriaEcho, curl);
+    }
 
     @JsonInclude(JsonInclude.Include.NON_NULL)
     public record EngineResult(

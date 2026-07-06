@@ -94,6 +94,37 @@ class Search7IT {
         assertThat(row.get("flags").get("hasFailingJobs").asBoolean()).isTrue();
     }
 
+    @Test
+    void m2bFiltersComposeOnFlowable7() throws Exception {
+        await().atMost(60, TimeUnit.SECONDS)
+                .pollInterval(1, TimeUnit.SECONDS)
+                .untilAsserted(() -> assertThat(EngineSeed.deadLetterCountFor(engine, childId))
+                        .isGreaterThanOrEqualTo(1));
+        String hourAgo = java.time.Instant.now().minusSeconds(3600).toString();
+
+        // Native businessKeyLike pushdown + BFF-side failure window and error text, ANDed:
+        // the failing child and its rolled-up parent survive all three.
+        JsonNode body = search(Map.of(
+                "engineIds",
+                List.of("engine-7"),
+                "statuses",
+                List.of("FAILED"),
+                "businessKeyLike",
+                businessKey,
+                "failureTimeAfter",
+                hourAgo,
+                "errorText",
+                "amount % divisor"));
+
+        assertThat(body.get("perEngine").get("engine-7").get("ok").asBoolean()).isTrue();
+        assertThat(body.get("rows")).hasSize(2);
+        assertThat(rowOf(body, parentId).get("flags").get("failedInSubprocess").asBoolean())
+                .isTrue();
+        assertThat(rowOf(body, childId).get("flags").get("hasDeadLetterJobs").asBoolean())
+                .isTrue();
+        assertThat(body.get("statusCounts").get("FAILED").asLong()).isEqualTo(2);
+    }
+
     private JsonNode search(Map<String, Object> request) throws Exception {
         ResponseEntity<String> response = rest.postForEntity("/api/search", request, String.class);
         assertThat(response.getStatusCode()).isEqualTo(HttpStatus.OK);

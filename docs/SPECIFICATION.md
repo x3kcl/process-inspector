@@ -573,7 +573,7 @@ for the operator.
 | Status | flag predicates: Active, Completed, Suspended, **Failed**, **Failing (retries left)** — with facet counts |
 | Process definition | key or name; **definition version**; deployment time |
 | Timeframe | `startedAfter/Before` AND **failure time** (DLQ job `createTime`) — "failed in the last hour" must not depend on when the instance started |
-| Business data | `businessKey` (exact + `businessKeyLike`), variables (name/operator/value, `like` supported). ⚠ Variable-value search hits typically-unindexed engine tables (`ACT_RU/HI_VARINST`): the form warns and nudges "narrow by definition"; a per-engine flag can require it |
+| Business data | `businessKey` (exact + `businessKeyLike`), variables (name/operator/value, `like` supported). ⚠ Variable-value search hits typically-unindexed engine tables (`ACT_RU/HI_VARINST`): the form warns and nudges "narrow by definition"; a per-engine flag can require it. On engines that silently drop the like-filter (6.3-era), `businessKeyLike` degrades to a per-engine error in the envelope — never silently unfiltered rows (ARCH §2.3) |
 | Current activity | activity id/name contains |
 | Error text | substring over exception snippets (BFF-side) |
 | Tenant | when any engine is multi-tenant |

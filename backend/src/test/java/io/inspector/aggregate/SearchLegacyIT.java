@@ -48,6 +48,7 @@ class SearchLegacyIT {
     private String parentId;
     private String childId;
     private String suspendedId;
+    private String varTaggedId;
 
     @BeforeAll
     void seedOrganically() {
@@ -59,6 +60,11 @@ class SearchLegacyIT {
         childId = EngineSeed.childInstanceOf(engine, parentId);
         suspendedId = EngineSeed.startInstance(engine, "demoUserTask", businessKey, List.of());
         EngineSeed.suspend(engine, suspendedId);
+        varTaggedId = EngineSeed.startInstance(
+                engine,
+                "demoUserTask",
+                businessKey + "-vartag",
+                List.of(Map.of("name", "customerName", "type", "string", "value", "Customer " + businessKey)));
     }
 
     @Test
@@ -98,6 +104,37 @@ class SearchLegacyIT {
         // And the open-but-not-suspended parent must NOT inherit a foreign suspended flag.
         assertThat(rowOf(body, parentId).get("flags").get("suspended").asBoolean())
                 .isFalse();
+    }
+
+    /* ---------------- M2b on the 6.3 cliffs ---------------- */
+
+    @Test
+    void businessKeyLikeDegradesToAnHonestEnvelopeErrorNotUnfilteredRows() throws Exception {
+        // 6.3 silently DROPS processBusinessKeyLike (proven live: an impossible-match like
+        // still returns the full unfiltered total). The canary must catch that and degrade
+        // this engine to an envelope error — confidently unfiltered rows would be a lie.
+        JsonNode body = search(Map.of("engineIds", List.of("engine-legacy"), "businessKeyLike", businessKey));
+
+        JsonNode result = body.get("perEngine").get("engine-legacy");
+        assertThat(result.get("ok").asBoolean()).isFalse();
+        assertThat(result.get("error").asText()).contains("businessKeyLike");
+        assertThat(body.get("rows")).isEmpty();
+    }
+
+    @Test
+    void variableLikeIsNativelySupportedOnTheLegacyEngine() throws Exception {
+        // Unlike businessKeyLike, the variables filter (incl. the like operation) IS honored
+        // by 6.3 — proven live, so it pushes down natively with no fallback.
+        JsonNode body = search(Map.of(
+                "engineIds",
+                List.of("engine-legacy"),
+                "variables",
+                List.of(Map.of("name", "customerName", "operation", "like", "value", "%" + businessKey + "%"))));
+
+        assertThat(body.get("perEngine").get("engine-legacy").get("ok").asBoolean())
+                .isTrue();
+        assertThat(body.get("rows")).hasSize(1);
+        assertThat(rowOf(body, varTaggedId).get("processInstanceId").asText()).isEqualTo(varTaggedId);
     }
 
     private JsonNode search(Map<String, Object> request) throws Exception {

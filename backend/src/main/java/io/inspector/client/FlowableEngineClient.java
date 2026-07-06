@@ -137,6 +137,31 @@ public class FlowableEngineClient {
     }
 
     /**
+     * GET /history/historic-activity-instances?processInstanceId=&finished=false — the
+     * current-activity leg (SPEC §8, M2b): the unfinished activity rows of ONE instance,
+     * matched in the BFF against the requested id/name substring. Identical wire shape on
+     * 6.3.1/6.8/7.1 (probed live). One page suffices — an instance holds a handful of
+     * unfinished activities, not thousands.
+     */
+    public FlowablePage listUnfinishedActivities(
+            EngineConfig engine, String processInstanceId, String tenantId, int size) {
+        return guarded(
+                engine,
+                () -> client(engine)
+                        .get()
+                        .uri(uri -> {
+                            var b = uri.path("/history/historic-activity-instances")
+                                    .queryParam("processInstanceId", processInstanceId)
+                                    .queryParam("finished", "false")
+                                    .queryParam("size", size);
+                            if (tenantId != null && !tenantId.isBlank()) b.queryParam("tenantId", tenantId);
+                            return b.build();
+                        })
+                        .retrieve()
+                        .body(FlowablePage.class));
+    }
+
+    /**
      * GET /repository/process-definitions?key= — resolves a definition-key filter to the
      * concrete per-version definition ids for DLQ-scan pushdown (ARCH §2.3).
      */
