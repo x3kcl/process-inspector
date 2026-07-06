@@ -25,13 +25,24 @@ diagram test. Author with Flowable/Camunda Modeler or copy an existing seed's DI
   ships. Recovery: set `divisor` non-zero → retry → completes.
 - Default retry is 3 with ~10s intervals — a demo/test must WAIT for retries to exhaust
   before asserting on `/management/deadletter-jobs` (poll with a deadline, never fixed sleep).
-- **Control the retry cycle per task** with `flowable:failedJobRetryTimeCycle`:
-  `"R1/PT1S"` = fastest dead-letter — but the scheduled retry parks in the TIMER queue
-  until the async executor's timer-acquisition cycle picks it up, so wall-clock
-  fail→retry→dead-letter is **~45s** on flowable-rest 6.8 defaults (bound waits at 60s,
-  not 5s); `"R10/PT1H"` = pins the
-  RETRYING/failing-with-retries-left state stably for an hour (the only deterministic way
-  to test the `hasFailingJobs` tier — see TEST-STRATEGY §9).
+- **Control the retry cycle per task** with the `<flowable:failedJobRetryTimeCycle>`
+  **extension ELEMENT** inside `<extensionElements>`:
+  ```xml
+  <serviceTask id="t" flowable:async="true" flowable:expression="${amount % divisor}">
+    <extensionElements>
+      <flowable:failedJobRetryTimeCycle>R10/PT1H</flowable:failedJobRetryTimeCycle>
+    </extensionElements>
+  </serviceTask>
+  ```
+  ⚠ **The ATTRIBUTE form (`flowable:failedJobRetryTimeCycle="…"`) parses, deploys, and is
+  silently IGNORED** (proven on flowable-rest 6.8, 2026-07-06) — the default `R3/PT10S`
+  applies instead, so "R10/PT1H pinned RETRYING" fixtures quietly dead-letter and the
+  RETRYING tier is never testable. With the element form: `R1/PT1S` = fastest dead-letter
+  (bound waits at 60s — the async/timer acquisition cycles still add up to ~10s legs);
+  `R10/PT1H` = pins the RETRYING/failing-with-retries-left state stably for an hour, and the
+  parked retry timer surfaces in `/management/timer-jobs?withException=true` within seconds
+  of the first failure (the only deterministic way to test the `hasFailingJobs` tier —
+  see TEST-STRATEGY §9).
 - **Error-class corpus** (expression-only — flowable-rest has no custom beans): distinct
   exception classes with per-instance noise, e.g. a method call on a variable value
   (`${orderRef.substring(100)}` on a short string → StringIndexOutOfBoundsException with a

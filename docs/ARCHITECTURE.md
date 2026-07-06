@@ -89,12 +89,21 @@ anything beyond the page silently declassifies FAILED → ACTIVE — the exact i
 tool exists to find). Where a scan is capped anyway, set `dlqScan: "truncated@N"` and badge.
 
 **Hygiene applied to every leg:** CMMN-scoped jobs filtered out (shared job tables; null
-`processInstanceId` / `scopeType='cmmn'`); `tenantId` threaded through **all** legs when the
-engine is multi-tenant; async-history lag tolerated (runtime query unioned in for
-ACTIVE/SUSPENDED; details panel fetches live-first with historic fallback). Actions never
-trust the grid snapshot: every mutation re-validates against live engine state server-side
-and returns the engine's 404/409 verbatim (§2.7 of the old spec — snapshot races are
-acceptable for display, never for action targeting).
+`processInstanceId` / `scopeType='cmmn'` where serialized — ~6.8+); `tenantId` threaded
+through **all** legs when the engine is multi-tenant; async-history lag tolerated — the grid
+is a labeled snapshot, the details panel fetches live-first with historic fallback (M3), and
+actions never trust the grid: every mutation re-validates against live engine state
+server-side and returns the engine's 404/409 verbatim (snapshot races are acceptable for
+display, never for action targeting).
+
+**Enrichment cliffs (call-time detection, not version sniffing):** the runtime query
+silently IGNORES an unknown `processInstanceIds` field on old engines (proven on 6.3.1 —
+the result is unfiltered, and trusting it would join foreign rows into the suspended set).
+The bulk suspended-state enrichment detects this (a returned id outside the requested set,
+or an impossible total) and falls back to bounded parallel per-id GETs. Historic-query
+`processInstanceIds` filters correctly on the whole matrix (6.3.1/6.8/7.1). No engine on
+the matrix serializes `processDefinitionKey`/`processDefinitionVersion` on historic rows —
+both are derived from `processDefinitionId` (`key:version:uuid`).
 
 ### 2.4 Aggregation — sorting & paging across engines
 There is no global cursor across independent engines. v1 strategy (deliberate, simple,

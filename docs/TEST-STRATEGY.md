@@ -73,8 +73,10 @@ column; nightly runs the full cross.
 - One `java.time.Clock` bean behind every age/staleness/cache computation; **event timestamps
   always from engine responses**, never BFF receive time; ages floored at 0.
 - Curated-view thresholds are config (test profile: seconds, not days).
-- RETRYING pinned deterministically: seed task `flowable:failedJobRetryTimeCycle="R10/PT1H"`;
-  fast-DLQ seeding: `R1/PT1S`.
+- RETRYING pinned deterministically: seed task carries the
+  `<flowable:failedJobRetryTimeCycle>R10/PT1H</flowable:failedJobRetryTimeCycle>` extension
+  ELEMENT (the attribute form parses but is silently ignored — proven on flowable-rest 6.8;
+  `validate-bpmn` skill §2); fast-DLQ seeding: `R1/PT1S`, same element form.
 - **Anti-flakiness doctrine (enforced, not advisory):** `Thread.sleep()` in any test is a
   hard failure — an **ArchUnit rule in the unit suite** bans `Thread.sleep`/`TimeUnit.sleep`
   from test classes, so a PR containing a fixed sleep fails CI before review. All

@@ -1,0 +1,65 @@
+# Rung-4 registry for the M2a search-join ITs (flowable-6 profile, engine-a on :8081).
+#
+# Three registrations, one real engine (the sanctioned same-engine-twice trick,
+# engine-harness skill):
+#   engine-a    — the plans under test (cap 50 / page 10, TEST-STRATEGY §9)
+#   engine-tiny — SAME engine with dlq-scan-cap 2: guarantees a truncated scan without
+#                 seeding thousands of jobs; the envelope must badge, never lie
+#   engine-down — nothing listens there: the partial-results contract (perEngine.ok=false
+#                 inside a 200, rows from healthy engines intact)
+inspector:
+  fanout-parallelism: 4
+  hierarchy-max-depth: 10
+  engines:
+    - id: engine-a
+      name: "Engine A (harness)"
+      base-url: "http://localhost:8081/flowable-rest/service"
+      environment: dev
+      accent-color: "#2e86de"
+      enabled: true
+      mode: read-write
+      auth:
+        type: basic
+        username: rest-admin
+        password-ref: ENGINE_A_PASSWORD
+      timeouts:
+        connect-ms: 2000
+        read-ms: 10000
+        write-ms: 10000
+      max-page-size: 10
+      # Generous headroom: the dev engine accumulates dead-letter jobs across local runs,
+      # and a truncated engine-a scan would flake the roll-up assertions. Truncation is
+      # tested deterministically on engine-tiny, never here.
+      dlq-scan-cap: 500
+    - id: engine-tiny
+      name: "Engine A again, capped tiny (truncation fixture)"
+      base-url: "http://localhost:8081/flowable-rest/service"
+      environment: dev
+      enabled: true
+      mode: read-only
+      auth:
+        type: basic
+        username: rest-admin
+        password-ref: ENGINE_A_PASSWORD
+      timeouts:
+        connect-ms: 2000
+        read-ms: 10000
+        write-ms: 10000
+      max-page-size: 2
+      dlq-scan-cap: 2
+    - id: engine-down
+      name: "Unreachable engine (degradation fixture)"
+      base-url: "http://localhost:59999/flowable-rest/service"
+      environment: dev
+      enabled: true
+      mode: read-only
+      auth:
+        type: basic
+        username: rest-admin
+        password-ref: ENGINE_A_PASSWORD
+      timeouts:
+        connect-ms: 500
+        read-ms: 1000
+        write-ms: 1000
+      max-page-size: 10
+      dlq-scan-cap: 50

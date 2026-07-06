@@ -25,10 +25,20 @@ resilience4j:
         ignore-exceptions:
           # Capability probes expect 404s on old engines — they must never trip a breaker.
           - org.springframework.web.client.HttpClientErrorException
+  # Do-no-harm companion to the breaker (ARCH §2.2): caps concurrent in-flight calls PER
+  # ENGINE so the search plans' parallel enrichment legs queue instead of flooding an
+  # engine that is typically already under load when this tool is open.
+  bulkhead:
+    configs:
+      engine:
+        max-concurrent-calls: 8
+        max-wait-duration: 20s
 
 inspector:
-  # Fan-out executor: at most this many engine calls in flight per search.
+  # At most this many engines searched concurrently per fan-out (R-NFR-01 caps at 10).
   fanout-parallelism: 8
+  # superProcessInstanceId chain-walk bound for the failed-in-subprocess roll-up (ARCH §2.3).
+  hierarchy-max-depth: 10
   engines:
     - id: engine-a
       name: "Engine A (demo)"

@@ -21,6 +21,9 @@ public final class EngineSeed {
 
     public static final Path FAILING_PAYMENT_BPMN =
             Path.of("..", "docker", "processes", "demo-failing-payment.bpmn20.xml");
+    public static final Path FAILING_RETRY_BPMN = Path.of("..", "docker", "processes", "demo-failing-retry.bpmn20.xml");
+    public static final Path PARENT_BPMN = Path.of("..", "docker", "processes", "demo-parent.bpmn20.xml");
+    public static final Path USER_TASK_BPMN = Path.of("..", "docker", "processes", "demo-user-task.bpmn20.xml");
 
     private EngineSeed() {}
 
@@ -86,6 +89,66 @@ public final class EngineSeed {
                 .retrieve()
                 .body(Map.class);
         return String.valueOf(started.get("id"));
+    }
+
+    /** Starts any seed process over REST with the organically-failing variable pair. */
+    public static String startFailing(RestClient engine, String definitionKey, String businessKey) {
+        return startInstance(
+                engine,
+                definitionKey,
+                businessKey,
+                List.of(
+                        Map.of("name", "amount", "type", "integer", "value", 100),
+                        Map.of("name", "divisor", "type", "integer", "value", 0)));
+    }
+
+    public static String startInstance(
+            RestClient engine, String definitionKey, String businessKey, List<Map<String, Object>> variables) {
+        java.util.HashMap<String, Object> body = new java.util.HashMap<>();
+        body.put("processDefinitionKey", definitionKey);
+        body.put("variables", variables);
+        if (businessKey != null) body.put("businessKey", businessKey);
+        Map<String, Object> started = engine.post()
+                .uri("/runtime/process-instances")
+                .contentType(MediaType.APPLICATION_JSON)
+                .body(body)
+                .retrieve()
+                .body(Map.class);
+        return String.valueOf(started.get("id"));
+    }
+
+    /** SUSPENDED is a runtime REST action — BPMN cannot suspend itself. */
+    public static void suspend(RestClient engine, String processInstanceId) {
+        engine.put()
+                .uri("/runtime/process-instances/" + processInstanceId)
+                .contentType(MediaType.APPLICATION_JSON)
+                .body(Map.of("action", "suspend"))
+                .retrieve()
+                .toBodilessEntity();
+    }
+
+    /** The call-activity child of a parent instance (created synchronously at parent start). */
+    public static String childInstanceOf(RestClient engine, String parentInstanceId) {
+        Map<String, Object> page = engine.post()
+                .uri("/query/historic-process-instances")
+                .contentType(MediaType.APPLICATION_JSON)
+                .body(Map.of("superProcessInstanceId", parentInstanceId, "size", 5))
+                .retrieve()
+                .body(Map.class);
+        List<Map<String, Object>> data = (List<Map<String, Object>>) page.get("data");
+        if (data == null || data.isEmpty()) {
+            fail("no call-activity child found for parent " + parentInstanceId);
+        }
+        return String.valueOf(data.get(0).get("id"));
+    }
+
+    /** RETRYING evidence: failing-with-retries-left jobs park in the TIMER lane (withException). */
+    public static long failingTimerCountFor(RestClient engine, String processInstanceId) {
+        Map<String, Object> page = engine.get()
+                .uri("/management/timer-jobs?withException=true&processInstanceId=" + processInstanceId)
+                .retrieve()
+                .body(Map.class);
+        return ((Number) page.get("total")).longValue();
     }
 
     public static long deadLetterCountFor(RestClient engine, String processInstanceId) {

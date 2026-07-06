@@ -16,10 +16,15 @@
   <process id="demoFailingRetry" name="Demo Failing Retry (pinned RETRYING)" isExecutable="true">
     <startEvent id="start"/>
     <sequenceFlow id="flow1" sourceRef="start" targetRef="chargePayment"/>
+    <!-- Retry cycle MUST be the extension ELEMENT — the attribute form parses but is
+         silently ignored (proven on flowable-rest 6.8: attribute → default R3/PT10S). -->
     <serviceTask id="chargePayment" name="Charge payment"
                  flowable:async="true"
-                 flowable:expression="${amount % divisor}"
-                 flowable:failedJobRetryTimeCycle="R10/PT1H"/>
+                 flowable:expression="${amount % divisor}">
+      <extensionElements>
+        <flowable:failedJobRetryTimeCycle>R10/PT1H</flowable:failedJobRetryTimeCycle>
+      </extensionElements>
+    </serviceTask>
     <sequenceFlow id="flow2" sourceRef="chargePayment" targetRef="end"/>
     <endEvent id="end"/>
   </process>

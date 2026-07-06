@@ -2,8 +2,10 @@ package io.inspector.aggregate;
 
 import io.inspector.client.FlowableEngineClient;
 import io.inspector.client.FlowableEngineClient.FlowablePage;
+import io.inspector.client.FlowableEngineClient.JobLaneKind;
 import io.inspector.config.InspectorProperties;
 import io.inspector.config.InspectorProperties.EngineConfig;
+import io.inspector.dto.InstanceStatusFlags;
 import io.inspector.dto.ProcessInstanceRow;
 import io.inspector.dto.SearchRequest;
 import io.inspector.dto.SearchRequest.InstanceStatus;
@@ -12,6 +14,7 @@ import io.inspector.dto.SearchResponse.EngineResult;
 import io.inspector.registry.EngineRegistry;
 import jakarta.annotation.PreDestroy;
 import java.util.ArrayList;
+import java.util.Collection;
 import java.util.Comparator;
 import java.util.EnumSet;
 import java.util.HashMap;
@@ -24,6 +27,7 @@ import java.util.concurrent.CompletableFuture;
 import java.util.concurrent.ConcurrentHashMap;
 import java.util.concurrent.ExecutorService;
 import java.util.concurrent.Executors;
+import java.util.concurrent.Semaphore;
 import java.util.concurrent.TimeUnit;
 import java.util.concurrent.TimeoutException;
 import org.slf4j.Logger;
@@ -31,14 +35,25 @@ import org.slf4j.LoggerFactory;
 import org.springframework.stereotype.Service;
 
 /**
- * The API aggregator: builds one search plan per selected engine, fans out in
- * parallel with per-engine timeouts, and merges normalized rows.
+ * The API aggregator (ARCHITECTURE §2.3, the CORRECTED status join): one search plan per
+ * selected engine, fanned out on virtual threads with per-engine budgets, rows merged and
+ * sorted in the BFF. Status is derived as FLAGS ({@link InstanceStatusFlags}); the pure
+ * join semantics live in {@link StatusJoin} (rung-1 tested), the engine I/O here.
  *
- * Per-engine plan (ARCHITECTURE.md §2.3):
- *   1. POST /query/historic-process-instances  — primary query (running + completed)
- *   2. POST /query/process-instances {suspended:true} — suspended-ID set
- *   3. GET  /management/deadletter-jobs        — failed-ID set + error snippet
- * Status is derived in the BFF, then filtered to the requested OR-set.
+ * <p>Plan selection per requested status set:
+ * <ul>
+ *   <li><b>INVERTED</b> (FAILED/RETRYING only): drive FROM the job queues — page the DLQ to
+ *       exhaustion (bounded by {@code dlq-scan-cap}, definition filter pushed down), plus
+ *       the two withException lanes for the RETRYING tier; resolve call-activity children up
+ *       the {@code superProcessInstanceId} chain (batched level-by-level, depth-capped,
+ *       cycle-guarded); hydrate via the historic query with {@code processInstanceIds}.</li>
+ *   <li><b>MIXED</b>: primary historic query per filters, then per-page enrichment of exactly
+ *       the displayed rows: bulk runtime suspended state (with an ignored-filter fallback for
+ *       legacy engines), bounded-N+1 DLQ membership, and capped withException lane scans.</li>
+ * </ul>
+ *
+ * A capped scan never impersonates a complete one: the per-engine envelope carries
+ * {@code dlqScan/failingScan = "truncated@N"} and every downstream count is a lower bound.
  */
 @Service
 public class SearchService {
@@ -47,33 +62,50 @@ public class SearchService {
 
     private final EngineRegistry registry;
     private final FlowableEngineClient flowable;
-    private final ExecutorService fanoutPool;
+    private final InspectorProperties props;
+    private final ExecutorService fanout = Executors.newVirtualThreadPerTaskExecutor();
+    private final Semaphore engineSlots;
 
     public SearchService(EngineRegistry registry, FlowableEngineClient flowable, InspectorProperties props) {
         this.registry = registry;
         this.flowable = flowable;
-        int parallelism = props.fanoutParallelism() != null ? props.fanoutParallelism() : 8;
-        this.fanoutPool = Executors.newFixedThreadPool(parallelism);
+        this.props = props;
+        this.engineSlots = new Semaphore(props.fanoutParallelism() != null ? props.fanoutParallelism() : 8);
     }
 
     public SearchResponse search(SearchRequest request) {
         List<EngineConfig> targets = resolveTargets(request);
+        Set<InstanceStatus> wanted = EnumSet.copyOf(request.effectiveStatuses());
         Map<String, EngineResult> perEngine = new ConcurrentHashMap<>();
 
-        Map<EngineConfig, CompletableFuture<List<ProcessInstanceRow>>> futures = new LinkedHashMap<>();
+        Map<EngineConfig, CompletableFuture<EngineSlice>> futures = new LinkedHashMap<>();
         for (EngineConfig engine : targets) {
-            futures.put(engine, CompletableFuture.supplyAsync(() -> searchOneEngine(engine, request), fanoutPool));
+            futures.put(
+                    engine,
+                    CompletableFuture.supplyAsync(
+                            () -> {
+                                engineSlots.acquireUninterruptibly();
+                                try {
+                                    return searchOneEngine(engine, request, wanted);
+                                } finally {
+                                    engineSlots.release();
+                                }
+                            },
+                            fanout));
         }
 
         List<ProcessInstanceRow> rows = new ArrayList<>();
-        for (Map.Entry<EngineConfig, CompletableFuture<List<ProcessInstanceRow>>> e : futures.entrySet()) {
+        for (Map.Entry<EngineConfig, CompletableFuture<EngineSlice>> e : futures.entrySet()) {
             EngineConfig engine = e.getKey();
-            // Generous outer guard; the RestClient read timeout is the real per-call limit.
-            long budgetMs = engine.timeoutsOrDefault().read() * 3L + 2000;
+            // Generous outer guard; the real limits are the per-call read timeout, the
+            // per-engine breaker and the bounded scans inside the plan.
+            long budgetMs = engine.timeoutsOrDefault().read() * 6L + 2000;
             try {
-                List<ProcessInstanceRow> engineRows = e.getValue().get(budgetMs, TimeUnit.MILLISECONDS);
-                rows.addAll(engineRows);
-                perEngine.putIfAbsent(engine.id(), EngineResult.success(engineRows.size(), engineRows.size()));
+                EngineSlice slice = e.getValue().get(budgetMs, TimeUnit.MILLISECONDS);
+                rows.addAll(slice.rows());
+                perEngine.put(
+                        engine.id(),
+                        EngineResult.success(slice.rows().size(), slice.total(), slice.dlqScan(), slice.failingScan()));
             } catch (TimeoutException te) {
                 e.getValue().cancel(true);
                 perEngine.put(engine.id(), EngineResult.failure("timeout after " + budgetMs + "ms"));
@@ -88,73 +120,359 @@ public class SearchService {
         return new SearchResponse(rows, new HashMap<>(perEngine));
     }
 
-    /* ---------------- per-engine plan ---------------- */
+    /** One engine's contribution: filtered rows + the honesty markers for its scan legs. */
+    private record EngineSlice(List<ProcessInstanceRow> rows, long total, String dlqScan, String failingScan) {}
 
-    private List<ProcessInstanceRow> searchOneEngine(EngineConfig engine, SearchRequest req) {
-        Set<InstanceStatus> wanted = EnumSet.copyOf(req.effectiveStatuses());
+    /** Failure evidence folded per instance: newest dead-letter createTime + first snippet. */
+    private record Failure(String failureTime, String snippet) {
+        static Failure merge(Failure a, Failure b) {
+            String time = a.failureTime() == null
+                    ? b.failureTime()
+                    : b.failureTime() == null
+                            ? a.failureTime()
+                            : (a.failureTime().compareTo(b.failureTime()) >= 0 ? a.failureTime() : b.failureTime());
+            return new Failure(time, a.snippet() != null ? a.snippet() : b.snippet());
+        }
+    }
+
+    private EngineSlice searchOneEngine(EngineConfig engine, SearchRequest req, Set<InstanceStatus> wanted) {
         int pageSize = Math.min(
                 req.pageSize() != null && req.pageSize() > 0 ? req.pageSize() : engine.maxPageSizeOrDefault(),
                 engine.maxPageSizeOrDefault());
-
-        // 1) primary historic query — covers both running and completed instances
-        FlowablePage historic = flowable.queryHistoricProcessInstances(engine, historicBody(req, wanted, pageSize));
-
-        // 2) + 3) join sets — needed whenever any open (non-COMPLETED) status is requested,
-        // both to filter and to label the status column correctly.
-        boolean wantsOpen = wanted.contains(InstanceStatus.ACTIVE)
-                || wanted.contains(InstanceStatus.SUSPENDED)
-                || wanted.contains(InstanceStatus.FAILED);
-        Set<String> suspendedIds = wantsOpen
-                ? idsOf(flowable.queryRuntimeProcessInstances(
-                        engine, Map.of("suspended", true, "size", engine.maxPageSizeOrDefault())))
-                : Set.of();
-        Map<String, String> failedById = wantsOpen ? deadLetterIndex(engine) : Map.of();
-
-        List<ProcessInstanceRow> rows = new ArrayList<>();
-        for (Map<String, Object> pi : historic.dataOrEmpty()) {
-            String id = str(pi, "id");
-            String endTime = str(pi, "endTime");
-
-            InstanceStatus status;
-            if (endTime != null) status = InstanceStatus.COMPLETED;
-            else if (failedById.containsKey(id)) status = InstanceStatus.FAILED;
-            else if (suspendedIds.contains(id)) status = InstanceStatus.SUSPENDED;
-            else status = InstanceStatus.ACTIVE;
-
-            if (!wanted.contains(status)) continue;
-
-            rows.add(new ProcessInstanceRow(
-                    engine.id() + ":" + id,
-                    engine.id(),
-                    engine.name(),
-                    engine.accentColor(),
-                    id,
-                    str(pi, "businessKey"),
-                    str(pi, "processDefinitionKey"),
-                    str(pi, "processDefinitionName"),
-                    status,
-                    str(pi, "startTime"),
-                    endTime,
-                    failedById.get(id)));
-        }
-        return rows;
+        return switch (StatusJoin.planFor(wanted)) {
+            case INVERTED -> invertedPlan(engine, req, wanted, pageSize);
+            case MIXED -> mixedPlan(engine, req, wanted, pageSize);
+        };
     }
 
-    /** Flowable historic-process-instance query body — AND of all scalar + variable filters. */
-    private Map<String, Object> historicBody(SearchRequest req, Set<InstanceStatus> wanted, int pageSize) {
+    /* ================= INVERTED plan — drive FROM the job queues ================= */
+
+    private EngineSlice invertedPlan(EngineConfig engine, SearchRequest req, Set<InstanceStatus> wanted, int pageSize) {
+        LaneScan dlq = wanted.contains(InstanceStatus.FAILED)
+                ? scanLane(engine, JobLaneKind.DEADLETTER, Map.of(), req.processDefinitionKey())
+                : LaneScan.empty();
+        LaneScan failing = wanted.contains(InstanceStatus.RETRYING)
+                ? scanExceptionLanes(engine, req.processDefinitionKey())
+                : LaneScan.empty();
+
+        Map<String, Failure> dlqByInstance = indexByInstance(dlq.jobs());
+        Map<String, Failure> failingByInstance = indexByInstance(failing.jobs());
+
+        // Roll-up: resolve every dead-lettered instance to its call-activity root. Parent
+        // links come from BATCHED historic queries (level by level) — never one engine call
+        // per instance; the walk itself is pure and cycle-guarded (StatusJoin).
+        Map<String, String> parentMap = resolveParentMap(engine, dlqByInstance.keySet());
+        Set<String> rolledUpRoots = new HashSet<>();
+        Map<String, Failure> rollupFailure = new HashMap<>();
+        for (Map.Entry<String, Failure> child : dlqByInstance.entrySet()) {
+            String root = StatusJoin.resolveRoot(child.getKey(), parentMap::get, props.hierarchyMaxDepthOrDefault());
+            if (!root.equals(child.getKey())) {
+                rolledUpRoots.add(root);
+                rollupFailure.merge(root, child.getValue(), Failure::merge);
+            }
+        }
+
+        Set<String> ids = new HashSet<>();
+        ids.addAll(dlqByInstance.keySet());
+        ids.addAll(rolledUpRoots);
+        ids.addAll(failingByInstance.keySet());
+        if (ids.isEmpty()) {
+            return new EngineSlice(List.of(), 0, dlq.marker(), failing.marker());
+        }
+
+        // Hydration: ONE historic query carrying the id set plus the remaining filters —
+        // the engine (not the BFF) evaluates businessKey/time/variable predicates.
+        Map<String, Object> body = historicBody(engine, req, pageSize);
+        body.put("processInstanceIds", List.copyOf(ids));
+        FlowablePage page = flowable.queryHistoricProcessInstances(engine, body);
+        List<Map<String, Object>> data = page.dataOrEmpty();
+
+        Map<String, Boolean> suspendedById = suspendedFlags(engine, openIds(data));
+
+        List<ProcessInstanceRow> rows = new ArrayList<>();
+        for (Map<String, Object> pi : data) {
+            String id = str(pi, "id");
+            InstanceStatusFlags flags = new InstanceStatusFlags(
+                    str(pi, "endTime") != null,
+                    suspendedById.getOrDefault(id, false),
+                    dlqByInstance.containsKey(id),
+                    failingByInstance.containsKey(id),
+                    rolledUpRoots.contains(id));
+            if (!StatusJoin.matches(flags, wanted)) continue;
+            Failure failure = dlqByInstance.getOrDefault(id, rollupFailure.getOrDefault(id, failingByInstance.get(id)));
+            rows.add(row(engine, pi, flags, failure));
+        }
+        return new EngineSlice(rows, page.total(), dlq.marker(), failing.marker());
+    }
+
+    /* ================= MIXED plan — historic first, enrich the page ================= */
+
+    private EngineSlice mixedPlan(EngineConfig engine, SearchRequest req, Set<InstanceStatus> wanted, int pageSize) {
+        Map<String, Object> body = historicBody(engine, req, pageSize);
+        // Narrow finished when the status OR-set is one-sided (pure optimization).
+        boolean wantsOpen = wanted.stream().anyMatch(s -> s != InstanceStatus.COMPLETED);
+        boolean wantsCompleted = wanted.contains(InstanceStatus.COMPLETED);
+        if (wantsCompleted && !wantsOpen) body.put("finished", true);
+        else if (wantsOpen && !wantsCompleted) body.put("finished", false);
+
+        FlowablePage historic = flowable.queryHistoricProcessInstances(engine, body);
+        List<Map<String, Object>> data = historic.dataOrEmpty();
+        Set<String> open = openIds(data);
+
+        Map<String, Boolean> suspendedById = suspendedFlags(engine, open);
+        // DLQ membership per displayed OPEN row — the sanctioned bounded N+1 over one page
+        // (ARCH §2.3), parallelized on virtual threads, throttled by the engine bulkhead.
+        Map<String, Failure> dlqByInstance = deadLetterMembership(engine, open);
+        // RETRYING tier: two capped lane scans → membership set (the failing lanes are small).
+        LaneScan failing = scanExceptionLanes(engine, req.processDefinitionKey());
+        Map<String, Failure> failingByInstance = indexByInstance(failing.jobs());
+
+        List<ProcessInstanceRow> rows = new ArrayList<>();
+        for (Map<String, Object> pi : data) {
+            String id = str(pi, "id");
+            InstanceStatusFlags flags = new InstanceStatusFlags(
+                    str(pi, "endTime") != null,
+                    suspendedById.getOrDefault(id, false),
+                    dlqByInstance.containsKey(id),
+                    failingByInstance.containsKey(id),
+                    false); // subprocess roll-up is a property of the INVERTED plan
+            if (!StatusJoin.matches(flags, wanted)) continue;
+            Failure failure = dlqByInstance.getOrDefault(id, failingByInstance.get(id));
+            rows.add(row(engine, pi, flags, failure));
+        }
+        return new EngineSlice(rows, historic.total(), null, failing.marker());
+    }
+
+    /* ================= scan legs ================= */
+
+    private record LaneScan(List<Map<String, Object>> jobs, boolean truncated, int scanned) {
+        static LaneScan empty() {
+            return new LaneScan(List.of(), false, 0);
+        }
+
+        LaneScan and(LaneScan other) {
+            List<Map<String, Object>> all = new ArrayList<>(jobs);
+            all.addAll(other.jobs());
+            return new LaneScan(all, truncated || other.truncated(), scanned + other.scanned());
+        }
+
+        /** ARCH §2.3 honesty marker: {@code "truncated@N"}, null when the scan completed. */
+        String marker() {
+            return truncated ? "truncated@" + scanned : null;
+        }
+    }
+
+    /** RETRYING tier = BOTH withException lanes: a failing async job parks in the TIMER table between attempts. */
+    private LaneScan scanExceptionLanes(EngineConfig engine, String definitionKey) {
+        Map<String, String> withException = Map.of("withException", "true");
+        return scanLane(engine, JobLaneKind.EXECUTABLE, withException, definitionKey)
+                .and(scanLane(engine, JobLaneKind.TIMER, withException, definitionKey));
+    }
+
+    /**
+     * Bounded exhaustive paging of one job lane — NEVER a single unpaged fetch (default page
+     * size is 10; anything past it would silently declassify FAILED → ACTIVE). A definition
+     * filter is pushed down as concrete per-version {@code processDefinitionId}s.
+     */
+    private LaneScan scanLane(
+            EngineConfig engine, JobLaneKind lane, Map<String, String> baseFilters, String definitionKey) {
+        int cap = engine.dlqScanCapOrDefault();
+        int pageSize = engine.maxPageSizeOrDefault();
+        List<String> definitionIds = definitionKey == null || definitionKey.isBlank()
+                ? java.util.Collections.singletonList(null)
+                : resolveDefinitionIds(engine, definitionKey);
+
+        List<Map<String, Object>> jobs = new ArrayList<>();
+        int scanned = 0;
+        boolean truncated = false;
+        for (String definitionId : definitionIds) {
+            Map<String, String> filters = new HashMap<>(baseFilters);
+            if (definitionId != null) filters.put("processDefinitionId", definitionId);
+            tenant(engine).ifPresent(t -> filters.put("tenantId", t));
+
+            int start = 0;
+            while (true) {
+                int size = Math.min(pageSize, cap - scanned);
+                if (size <= 0) {
+                    truncated = true;
+                    break;
+                }
+                FlowablePage page = flowable.listJobs(engine, lane, filters, start, size);
+                List<Map<String, Object>> batch = page.dataOrEmpty();
+                scanned += batch.size();
+                jobs.addAll(batch);
+                start += batch.size();
+                if (batch.isEmpty() || start >= page.total()) break; // lane exhausted
+            }
+            if (truncated) break;
+        }
+        return new LaneScan(jobs, truncated, scanned);
+    }
+
+    /** CMMN-filtered fold of job rows into per-instance failure evidence. */
+    private static Map<String, Failure> indexByInstance(List<Map<String, Object>> jobs) {
+        Map<String, Failure> index = new HashMap<>();
+        for (Map<String, Object> job : jobs) {
+            if (!StatusJoin.isBpmnJob(job)) continue; // shared job tables — drop CMMN scopes
+            index.merge(
+                    str(job, "processInstanceId"),
+                    new Failure(str(job, "createTime"), str(job, "exceptionMessage")),
+                    Failure::merge);
+        }
+        return index;
+    }
+
+    /* ================= enrichment legs ================= */
+
+    /**
+     * Suspended state for the displayed open rows: ONE bulk runtime query — with a fallback
+     * to per-id GETs when the engine silently ignores {@code processInstanceIds} (proven on
+     * 6.3.1: unknown query fields are dropped and the result is UNFILTERED; trusting it
+     * would join foreign rows). Detection: any returned id outside the requested set, or an
+     * impossible total.
+     */
+    private Map<String, Boolean> suspendedFlags(EngineConfig engine, Set<String> ids) {
+        if (ids.isEmpty()) return Map.of();
         Map<String, Object> body = new HashMap<>();
-        if (req.processDefinitionKey() != null && !req.processDefinitionKey().isBlank()) {
-            body.put("processDefinitionKey", req.processDefinitionKey());
+        body.put("processInstanceIds", List.copyOf(ids));
+        body.put("size", ids.size());
+        tenant(engine).ifPresent(t -> body.put("tenantId", t));
+        FlowablePage page = flowable.queryRuntimeProcessInstances(engine, body);
+
+        Map<String, Boolean> byId = new HashMap<>();
+        boolean filterIgnored = page.total() > ids.size();
+        for (Map<String, Object> pi : page.dataOrEmpty()) {
+            String id = str(pi, "id");
+            if (!ids.contains(id)) {
+                filterIgnored = true;
+                break;
+            }
+            byId.put(id, Boolean.TRUE.equals(pi.get("suspended")));
         }
-        if (req.businessKey() != null && !req.businessKey().isBlank()) {
-            body.put("processBusinessKey", req.businessKey());
+        if (!filterIgnored) return byId;
+
+        log.debug("Engine {} ignored processInstanceIds on the runtime query — per-id fallback", engine.id());
+        return parallelPerId(ids, id -> {
+            Map<String, Object> pi = flowable.getRuntimeProcessInstance(engine, id);
+            return pi != null && Boolean.TRUE.equals(pi.get("suspended"));
+        });
+    }
+
+    /** Bounded N+1 DLQ membership for one page of open rows, parallel on virtual threads. */
+    private Map<String, Failure> deadLetterMembership(EngineConfig engine, Set<String> ids) {
+        if (ids.isEmpty()) return Map.of();
+        Map<String, Failure> result = new ConcurrentHashMap<>();
+        parallelPerId(ids, id -> {
+            Map<String, String> filters = new HashMap<>();
+            filters.put("processInstanceId", id);
+            tenant(engine).ifPresent(t -> filters.put("tenantId", t));
+            FlowablePage page =
+                    flowable.listJobs(engine, JobLaneKind.DEADLETTER, filters, 0, engine.maxPageSizeOrDefault());
+            Map<String, Failure> perInstance = indexByInstance(page.dataOrEmpty());
+            Failure failure = perInstance.get(id);
+            if (failure != null) result.put(id, failure);
+            return true;
+        });
+        return result;
+    }
+
+    /**
+     * Parent links for the roll-up, resolved level by level with BATCHED historic queries
+     * (chunked to the engine page cap). Depth is bounded here AND in the walk itself.
+     */
+    private Map<String, String> resolveParentMap(EngineConfig engine, Set<String> instanceIds) {
+        Map<String, String> parentMap = new HashMap<>();
+        Set<String> frontier = new HashSet<>(instanceIds);
+        for (int depth = 0; depth < props.hierarchyMaxDepthOrDefault() && !frontier.isEmpty(); depth++) {
+            Map<String, Map<String, Object>> rows = fetchHistoricByIds(engine, frontier);
+            Set<String> next = new HashSet<>();
+            for (String id : frontier) {
+                Map<String, Object> row = rows.get(id);
+                String parent = row != null ? str(row, "superProcessInstanceId") : null;
+                parentMap.put(id, parent);
+                if (parent != null && !parentMap.containsKey(parent)) next.add(parent);
+            }
+            frontier = next;
         }
-        if (req.startedAfter() != null && !req.startedAfter().isBlank()) {
-            body.put("startedAfter", req.startedAfter());
+        return parentMap;
+    }
+
+    /** Historic rows by id, chunked to the engine's page cap, chunks fetched in parallel. */
+    private Map<String, Map<String, Object>> fetchHistoricByIds(EngineConfig engine, Collection<String> ids) {
+        List<String> all = List.copyOf(ids);
+        int chunkSize = engine.maxPageSizeOrDefault();
+        List<List<String>> chunks = new ArrayList<>();
+        for (int i = 0; i < all.size(); i += chunkSize) {
+            chunks.add(all.subList(i, Math.min(i + chunkSize, all.size())));
         }
-        if (req.startedBefore() != null && !req.startedBefore().isBlank()) {
-            body.put("startedBefore", req.startedBefore());
+        Map<String, Map<String, Object>> byId = new ConcurrentHashMap<>();
+        List<CompletableFuture<Void>> futures = new ArrayList<>();
+        for (List<String> chunk : chunks) {
+            futures.add(CompletableFuture.runAsync(
+                    () -> {
+                        Map<String, Object> body = new HashMap<>();
+                        body.put("processInstanceIds", chunk);
+                        body.put("size", chunk.size());
+                        tenant(engine).ifPresent(t -> body.put("tenantId", t));
+                        for (Map<String, Object> row : flowable.queryHistoricProcessInstances(engine, body)
+                                .dataOrEmpty()) {
+                            byId.put(str(row, "id"), row);
+                        }
+                    },
+                    fanout));
         }
+        CompletableFuture.allOf(futures.toArray(CompletableFuture[]::new)).join();
+        return byId;
+    }
+
+    private <T> Map<String, T> parallelPerId(Set<String> ids, java.util.function.Function<String, T> lookup) {
+        Map<String, T> out = new ConcurrentHashMap<>();
+        List<CompletableFuture<Void>> futures = new ArrayList<>();
+        for (String id : ids) {
+            futures.add(CompletableFuture.runAsync(() -> out.put(id, lookup.apply(id)), fanout));
+        }
+        CompletableFuture.allOf(futures.toArray(CompletableFuture[]::new)).join();
+        return out;
+    }
+
+    /* ================= row assembly & query bodies ================= */
+
+    private ProcessInstanceRow row(
+            EngineConfig engine, Map<String, Object> pi, InstanceStatusFlags flags, Failure failure) {
+        String id = str(pi, "id");
+        String definitionId = str(pi, "processDefinitionId");
+        return new ProcessInstanceRow(
+                engine.id() + ":" + id,
+                engine.id(),
+                engine.name(),
+                engine.accentColor(),
+                id,
+                str(pi, "businessKey"),
+                definitionKeyOf(definitionId),
+                str(pi, "processDefinitionName"),
+                definitionVersionOf(definitionId),
+                str(pi, "tenantId"),
+                "bpmn", // carried from day one for CMMN support (SPEC §3)
+                flags.primaryStatus(),
+                flags,
+                str(pi, "startTime"),
+                str(pi, "endTime"),
+                failure != null ? failure.failureTime() : null,
+                failure != null ? failure.snippet() : null);
+    }
+
+    /**
+     * Shared scalar/variable filters (AND semantics, SPEC §3.A). No engine serializes
+     * processDefinitionKey/version on historic rows across the version matrix — both are
+     * derived from processDefinitionId ({@code key:version:uuid}).
+     */
+    private Map<String, Object> historicBody(EngineConfig engine, SearchRequest req, int pageSize) {
+        Map<String, Object> body = new HashMap<>();
+        if (notBlank(req.processDefinitionKey())) body.put("processDefinitionKey", req.processDefinitionKey());
+        if (notBlank(req.businessKey())) body.put("processBusinessKey", req.businessKey());
+        if (notBlank(req.startedAfter())) body.put("startedAfter", req.startedAfter());
+        if (notBlank(req.startedBefore())) body.put("startedBefore", req.startedBefore());
+        tenant(engine).ifPresent(t -> body.put("tenantId", t));
         if (req.variables() != null && !req.variables().isEmpty()) {
             body.put(
                     "variables",
@@ -169,40 +487,48 @@ public class SearchService {
                             })
                             .toList());
         }
-        // Narrow finished when the status OR-set is one-sided (pure optimization).
-        boolean wantsOpen = wanted.contains(InstanceStatus.ACTIVE)
-                || wanted.contains(InstanceStatus.SUSPENDED)
-                || wanted.contains(InstanceStatus.FAILED);
-        boolean wantsCompleted = wanted.contains(InstanceStatus.COMPLETED);
-        if (wantsCompleted && !wantsOpen) body.put("finished", true);
-        else if (wantsOpen && !wantsCompleted) body.put("finished", false);
-
         body.put("size", pageSize);
         body.put("sort", "startTime");
         body.put("order", "desc");
         return body;
     }
 
-    private static Set<String> idsOf(FlowablePage page) {
-        Set<String> ids = new HashSet<>();
-        for (Map<String, Object> entry : page.dataOrEmpty()) {
-            String id = str(entry, "id");
+    private List<String> resolveDefinitionIds(EngineConfig engine, String key) {
+        List<String> ids = new ArrayList<>();
+        for (Map<String, Object> def : flowable.listProcessDefinitionsByKey(engine, key, engine.maxPageSizeOrDefault())
+                .dataOrEmpty()) {
+            String id = str(def, "id");
             if (id != null) ids.add(id);
         }
         return ids;
     }
 
-    /** processInstanceId → exception-message snippet, from the engine's dead-letter queue. */
-    private Map<String, String> deadLetterIndex(EngineConfig engine) {
-        FlowablePage page = flowable.listDeadLetterJobs(engine, engine.maxPageSizeOrDefault());
-        Map<String, String> index = new HashMap<>();
-        for (Map<String, Object> job : page.dataOrEmpty()) {
-            String pid = str(job, "processInstanceId");
-            if (pid != null) {
-                index.putIfAbsent(pid, str(job, "exceptionMessage"));
-            }
+    private static Set<String> openIds(List<Map<String, Object>> historicRows) {
+        Set<String> open = new HashSet<>();
+        for (Map<String, Object> pi : historicRows) {
+            if (str(pi, "endTime") == null) open.add(str(pi, "id"));
         }
-        return index;
+        return open;
+    }
+
+    private static java.util.Optional<String> tenant(EngineConfig engine) {
+        return notBlank(engine.tenantId()) ? java.util.Optional.of(engine.tenantId()) : java.util.Optional.empty();
+    }
+
+    private static String definitionKeyOf(String definitionId) {
+        if (definitionId == null) return null;
+        int i = definitionId.indexOf(':');
+        return i > 0 ? definitionId.substring(0, i) : definitionId;
+    }
+
+    private static Integer definitionVersionOf(String definitionId) {
+        if (definitionId == null) return null;
+        String[] parts = definitionId.split(":", 3);
+        try {
+            return parts.length >= 2 ? Integer.valueOf(parts[1]) : null;
+        } catch (NumberFormatException e) {
+            return null;
+        }
     }
 
     private List<EngineConfig> resolveTargets(SearchRequest req) {
@@ -213,6 +539,10 @@ public class SearchService {
         return registry.all().stream().filter(e -> ids.contains(e.id())).toList();
     }
 
+    private static boolean notBlank(String s) {
+        return s != null && !s.isBlank();
+    }
+
     private static String str(Map<String, Object> map, String key) {
         Object v = map.get(key);
         return v != null ? v.toString() : null;
@@ -220,6 +550,6 @@ public class SearchService {
 
     @PreDestroy
     void shutdown() {
-        fanoutPool.shutdownNow();
+        fanout.shutdownNow();
     }
 }

@@ -18,11 +18,17 @@ public record SearchRequest(
         Integer pageSize // per-engine cap, clamped by engine maxPageSize
         ) {
 
+    /**
+     * Request-side status predicates over the derived flags (SPEC §3/§8) — OR within the set.
+     * FAILED ⇔ hasDeadLetterJobs ∨ failedInSubprocess; RETRYING ⇔ hasFailingJobs (failing
+     * but retries remaining — display term per the §0 glossary); ACTIVE ⇔ ¬ended ∧ ¬suspended.
+     */
     public enum InstanceStatus {
         ACTIVE,
         SUSPENDED,
         COMPLETED,
-        FAILED
+        FAILED,
+        RETRYING
     }
 
     /** Maps 1:1 onto Flowable's query-variable JSON: {name, value, operation, type}. */

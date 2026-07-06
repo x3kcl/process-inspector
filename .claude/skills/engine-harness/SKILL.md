@@ -69,8 +69,11 @@ stays rung 4 (recursive seed process, configurable max-depth low in the test pro
 
 ## Deterministic-state recipes (from the embedded-tester review; details TEST-STRATEGY §9)
 - **RETRYING (failing, retries left)** is a ~10s race with engine defaults — pin it with
-  `flowable:failedJobRetryTimeCycle="R10/PT1H"` on the seed task; poll-with-deadline, never
-  sleep. **Fast DLQ seeding**: `R1/PT1S` dead-letters in ~1s.
+  the `<flowable:failedJobRetryTimeCycle>R10/PT1H</flowable:failedJobRetryTimeCycle>`
+  extension ELEMENT on the seed task (the attribute form is silently ignored —
+  validate-bpmn skill §2); poll-with-deadline, never sleep. **Fast DLQ seeding**: `R1/PT1S`
+  dead-letters within seconds; the parked retry timer shows in
+  `timer-jobs?withException=true` almost immediately after the first failure.
 - **Truncation**: test registry uses `dlq-scan-cap: 50`, `max-page-size: 10` — never seed
   10k jobs.
 - **Guard-ladder E2E**: register the SAME docker engine twice (`environment: dev` and

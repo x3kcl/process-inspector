@@ -12,7 +12,7 @@ green ×3 on applicable engine profiles, coverage floors met, zero open Sev1/Sev
 REQUIREMENTS-REGISTER IDs they discharge. The authoritative CI merge-gate list is
 OPERATIONS.md §8.
 
-## M0 — Scaffold *(harness done; CI/Dockerfile remain M2a's gate)*
+## M0 — Scaffold *(done — only the listed slice-0 stragglers open)*
 - Repo layout, docker-compose dev harness. Profiles in `docker/docker-compose.dev.yml`
   (project name `process-inspector`): **`flowable-6`** (engine-a/engine-b, 6.8.0,
   :8081/:8082 — default via `docker/.env` `COMPOSE_PROFILES`), **`flowable-7`**
@@ -53,12 +53,19 @@ OPERATIONS.md §8.
 - **Done when:** header strip shows each engine with env-colored badge, version, lanes
   *(frontend part — open)*.
 
-## M2 — Search & results  *(bootstrapped — needs the correctness rework)*
-- **M2a (fix before anything else):** rewrite the status join per ARCH §2.3 — DLQ-driven
-  inverted plan for FAILED-only, exhaustive bounded paging + `dlqScan` truncation badge,
-  per-page runtime-state enrichment, FAILING tier (jobs+timer-jobs `withException`),
-  `superProcessInstanceId` roll-up, CMMN filtering, tenant threading. Status = flags.
-  Integration-tested against the real dockerized engines (never mocked — `engine-harness`).
+## M2 — Search & results  *(M2a landed; M2b/M2c open)*
+- **M2a (landed, backend):** the status join per ARCH §2.3 — status = flags
+  (`InstanceStatusFlags` + derived primary chip incl. RETRYING), DLQ-driven inverted plan
+  for FAILED/RETRYING-only requests (bounded exhaustive paging, definition pushdown,
+  `dlqScan/failingScan: "truncated@N"` envelope markers), FAILING tier (jobs+timer-jobs
+  `withException`), batched `superProcessInstanceId` roll-up (depth-capped, cycle-guarded
+  at rung 1 per R-TEST-07), CMMN filtering, tenant threading, per-page runtime-state
+  enrichment with the legacy ignored-`processInstanceIds` fallback (ARCH §2.3), per-engine
+  bulkhead beside the breaker. Proven on all three engine profiles: `SearchServiceIT`
+  (6.8: inverted plan, roll-up, RETRYING, truncation badge, engine-down degradation),
+  `Search7IT`, `SearchLegacyIT` (6.3.1 incl. the enrichment-fallback regression). Seed
+  fixture fix: `failedJobRetryTimeCycle` must be the extension ELEMENT — the attribute
+  form was silently ignored (TEST-SCENARIOS §1.2, `validate-bpmn` skill).
 - **M2b:** search additions — failure-time filter/sort, `businessKeyLike`, variable `like`,
   current-activity and error-text filters, facet counts; **URL-encoded search state**;
   compiled-criteria echo + copy-as-cURL.

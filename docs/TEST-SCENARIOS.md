@@ -36,8 +36,8 @@ instance); FIX-PROC-07..10 and FIX-CASE-01 are still to author.*
 | FIX-PROC-01 | `demoOrder` | straight-through service task, expression `${true}` | COMPLETED |
 | FIX-PROC-02 | `demoUserTask` | parks on a user task (assignee/candidate group per `validate-bpmn` §4) | ACTIVE; task fixtures; suspend target; variable-edit target |
 | FIX-PROC-03 | `demoTimerWait` | intermediate timer, duration from variable `${dueDuration}` | timer lane; "waiting for timer <due>"; timers-due-in-window (R-BAU-08) |
-| FIX-PROC-04 | `demoFailingPayment` | `flowable:async="true"` service task, expression `${amount % divisor}` with `divisor=0`; `failedJobRetryTimeCycle="R1/PT1S"` | dead-letter job in seconds; **the recovery arc**: edit `divisor`→1, retry, completes |
-| FIX-PROC-05 | `demoFailingRetry` | same expression; `failedJobRetryTimeCycle="R10/PT1H"` | RETRYING pinned in the **timer table** (`withException`), stable for 1 h (R-TEST-07) |
+| FIX-PROC-04 | `demoFailingPayment` | `flowable:async="true"` service task, expression `${amount % divisor}` with `divisor=0`; `failedJobRetryTimeCycle` **extension element** `R1/PT1S` (the attribute form is silently ignored) | dead-letter job in seconds; **the recovery arc**: edit `divisor`→1, retry, completes |
+| FIX-PROC-05 | `demoFailingRetry` | same expression; `failedJobRetryTimeCycle` extension element `R10/PT1H` | RETRYING pinned in the **timer table** (`withException`), stable for 1 h (R-TEST-07) |
 | FIX-PROC-06 | `demoParent` | call activity → `demoFailingPayment` child, businessKey propagated | `failedInSubprocess` roll-up, depth 1 |
 | FIX-PROC-07 | `demoRecursive` | self-recursive call activity, `depth+1` in-parameter, recurses while `depth < maxDepth`; calls `demoFailingPayment` at the leaf | hierarchy chains of arbitrary depth; roll-up at limit / limit+1 |
 | FIX-PROC-08 | `demoEventWait` | event-based gateway: message catch `PaymentReceived` vs signal catch `RetryBatch` | event subscriptions visible; unstick targets |

@@ -1,5 +1,6 @@
 package io.inspector.client;
 
+import io.github.resilience4j.bulkhead.BulkheadRegistry;
 import io.github.resilience4j.circuitbreaker.CircuitBreakerRegistry;
 import io.inspector.config.InspectorProperties.Auth;
 import io.inspector.config.InspectorProperties.EngineConfig;
@@ -33,13 +34,15 @@ public class FlowableEngineClient {
 
     private final Environment env;
     private final CircuitBreakerRegistry breakers;
+    private final BulkheadRegistry bulkheads;
     private final Map<String, RestClient> readClients = new ConcurrentHashMap<>();
     // Mutating calls get their own client so write-ms (R-NFR-07) budgets them separately.
     private final Map<String, RestClient> writeClients = new ConcurrentHashMap<>();
 
-    public FlowableEngineClient(Environment env, CircuitBreakerRegistry breakers) {
+    public FlowableEngineClient(Environment env, CircuitBreakerRegistry breakers, BulkheadRegistry bulkheads) {
         this.env = env;
         this.breakers = breakers;
+        this.bulkheads = bulkheads;
     }
 
     /* ---------- Flowable REST calls (the whitelist the BFF exposes) ---------- */
@@ -70,15 +73,80 @@ public class FlowableEngineClient {
                         .body(FlowablePage.class));
     }
 
-    /** GET /management/deadletter-jobs — the failed-instance join set. */
-    public FlowablePage listDeadLetterJobs(EngineConfig engine, int size) {
-        // No sort param: createTime is not an accepted job sort property, and the
-        // membership join doesn't care about order.
+    /**
+     * One page of a job lane (M2a scan legs). {@code filters} maps straight onto the
+     * collection's query params — {@code withException}, {@code processInstanceId},
+     * {@code processDefinitionId}, {@code tenantId}. No sort param: {@code createTime}
+     * is not an accepted job sort property, and the join legs don't care about order.
+     */
+    public FlowablePage listJobs(
+            EngineConfig engine, JobLaneKind lane, Map<String, String> filters, int start, int size) {
         return guarded(
                 engine,
                 () -> client(engine)
                         .get()
-                        .uri(uri -> uri.path("/management/deadletter-jobs")
+                        .uri(uri -> {
+                            var b = uri.path(lane.path)
+                                    .queryParam("start", start)
+                                    .queryParam("size", size);
+                            filters.forEach(b::queryParam);
+                            return b.build();
+                        })
+                        .retrieve()
+                        .body(FlowablePage.class));
+    }
+
+    /**
+     * GET /history/historic-process-instances/{id} — the hierarchy-walk resolver: the
+     * historic row (unlike the runtime one) carries {@code superProcessInstanceId} on every
+     * engine version, and exists for ended children too. Null when the id is unknown.
+     */
+    @SuppressWarnings("unchecked")
+    public Map<String, Object> getHistoricProcessInstance(EngineConfig engine, String processInstanceId) {
+        try {
+            return guarded(
+                    engine,
+                    () -> client(engine)
+                            .get()
+                            .uri("/history/historic-process-instances/{id}", processInstanceId)
+                            .retrieve()
+                            .body(Map.class));
+        } catch (HttpClientErrorException.NotFound e) {
+            return null;
+        }
+    }
+
+    /**
+     * GET /runtime/process-instances/{id} — per-row suspended fallback for engines whose
+     * runtime query ignores {@code processInstanceIds} (proven on 6.3.1: the unknown field
+     * is silently dropped and the query returns UNFILTERED data). 404 = not running.
+     */
+    @SuppressWarnings("unchecked")
+    public Map<String, Object> getRuntimeProcessInstance(EngineConfig engine, String processInstanceId) {
+        try {
+            return guarded(
+                    engine,
+                    () -> client(engine)
+                            .get()
+                            .uri("/runtime/process-instances/{id}", processInstanceId)
+                            .retrieve()
+                            .body(Map.class));
+        } catch (HttpClientErrorException.NotFound e) {
+            return null;
+        }
+    }
+
+    /**
+     * GET /repository/process-definitions?key= — resolves a definition-key filter to the
+     * concrete per-version definition ids for DLQ-scan pushdown (ARCH §2.3).
+     */
+    public FlowablePage listProcessDefinitionsByKey(EngineConfig engine, String key, int size) {
+        return guarded(
+                engine,
+                () -> client(engine)
+                        .get()
+                        .uri(uri -> uri.path("/repository/process-definitions")
+                                .queryParam("key", key)
                                 .queryParam("size", size)
                                 .build())
                         .retrieve()
@@ -196,12 +264,18 @@ public class FlowableEngineClient {
     /* ---------- resiliency chokepoint ---------- */
 
     /**
-     * Every outbound call passes through here: one circuit breaker per engine id,
-     * shared config "engine" (application.yml). Open breaker → CallNotPermittedException
-     * without a network attempt.
+     * Every outbound call passes through here: one bulkhead + one circuit breaker per
+     * engine id, shared config "engine" (application.yml). The bulkhead is outermost so
+     * the M2a fan-out legs (parallel per-row enrichment on virtual threads) can never
+     * flood a struggling engine; the breaker inside it only counts calls that actually
+     * ran. Open breaker → CallNotPermittedException; saturated bulkhead after its wait →
+     * BulkheadFullException — both become ordinary perEngine error envelopes upstream.
      */
     private <T> T guarded(EngineConfig engine, Supplier<T> call) {
-        return breakers.circuitBreaker(engine.id(), "engine").executeSupplier(call);
+        return bulkheads
+                .bulkhead(engine.id(), "engine")
+                .executeSupplier(
+                        () -> breakers.circuitBreaker(engine.id(), "engine").executeSupplier(call));
     }
 
     /* ---------- client construction ---------- */

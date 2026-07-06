@@ -75,11 +75,11 @@ jobs:
       matrix:
         include:
           - profile: flowable-6
-            itClass: EngineHealthIT
+            itClass: EngineHealthIT,SearchServiceIT
           - profile: flowable-7
-            itClass: EngineHealth7IT
+            itClass: EngineHealth7IT,Search7IT
           - profile: legacy
-            itClass: EngineHealthLegacyIT
+            itClass: EngineHealthLegacyIT,SearchLegacyIT
     env:
       # Job-level so EVERY compose invocation (up/exec/logs) sees the same profile set —
       # CLI --profile flags would scope only the command they're passed to, leaving

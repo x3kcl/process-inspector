@@ -18,9 +18,16 @@ import org.springframework.validation.annotation.Validated;
 @Validated
 @ConfigurationProperties(prefix = "inspector")
 public record InspectorProperties(
-        Integer fanoutParallelism, @Valid List<EngineConfig> engines) {
+        Integer fanoutParallelism,
+        Integer hierarchyMaxDepth,
+        @Valid List<EngineConfig> engines) {
     /** Engine ids are stable slugs used in composite instance IDs (R-SEM-08) — never rename. */
     public static final String ENGINE_ID_PATTERN = "^[a-z0-9][a-z0-9._-]{0,63}$";
+
+    /** superProcessInstanceId chain-walk bound (ARCH §2.3) — lowered in test profiles. */
+    public int hierarchyMaxDepthOrDefault() {
+        return hierarchyMaxDepth != null ? hierarchyMaxDepth : 10;
+    }
 
     public InspectorProperties {
         engines = engines != null ? List.copyOf(engines) : List.of();

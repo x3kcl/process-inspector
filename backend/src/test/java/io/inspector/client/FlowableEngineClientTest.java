@@ -14,6 +14,8 @@ import static org.assertj.core.api.Assertions.assertThatThrownBy;
 import static org.awaitility.Awaitility.await;
 
 import com.github.tomakehurst.wiremock.WireMockServer;
+import io.github.resilience4j.bulkhead.BulkheadConfig;
+import io.github.resilience4j.bulkhead.BulkheadRegistry;
 import io.github.resilience4j.circuitbreaker.CallNotPermittedException;
 import io.github.resilience4j.circuitbreaker.CircuitBreakerConfig;
 import io.github.resilience4j.circuitbreaker.CircuitBreakerRegistry;
@@ -61,7 +63,13 @@ class FlowableEngineClientTest {
                 .ignoreExceptions(HttpClientErrorException.class)
                 .build();
         breakers = CircuitBreakerRegistry.of(Map.of("engine", config));
-        client = new FlowableEngineClient(env, breakers);
+        BulkheadRegistry bulkheads = BulkheadRegistry.of(Map.of(
+                "engine",
+                BulkheadConfig.custom()
+                        .maxConcurrentCalls(8)
+                        .maxWaitDuration(Duration.ofSeconds(5))
+                        .build()));
+        client = new FlowableEngineClient(env, breakers, bulkheads);
     }
 
     @AfterEach
