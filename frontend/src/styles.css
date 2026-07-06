@@ -1,0 +1,45 @@
+* { box-sizing: border-box; }
+body { margin: 0; font-family: system-ui, sans-serif; font-size: 14px; color: #1e272e; }
+
+.app { display: flex; flex-direction: column; height: 100vh; }
+
+.topbar { display: flex; align-items: center; gap: 16px; padding: 8px 16px; background: #1e272e; color: #fff; }
+.topbar h1 { font-size: 16px; margin: 0; }
+.engine-badges { display: flex; gap: 8px; }
+.badge { padding: 2px 8px; border-radius: 10px; background: #485460; font-size: 12px; }
+.badge.down { background: #833; }
+
+.split { display: flex; flex: 1; min-height: 0; }
+.pane { overflow: auto; }
+.pane-search { width: 280px; border-right: 1px solid #d2dae2; padding: 12px; }
+.pane-results { flex: 1; display: flex; flex-direction: column; min-width: 0; }
+.pane-details { width: 380px; border-left: 1px solid #d2dae2; padding: 12px; }
+
+.search-panel fieldset { border: 1px solid #d2dae2; border-radius: 6px; margin-bottom: 10px; }
+.search-panel label { display: block; margin: 4px 0; }
+.search-panel input, .search-panel select { width: 100%; padding: 4px 6px; margin-top: 2px; }
+.check-row { display: flex; align-items: center; gap: 6px; }
+.check-row input { width: auto; }
+.var-row { display: flex; gap: 4px; margin-bottom: 4px; }
+.var-row input, .var-row select { width: auto; flex: 1; }
+
+button.primary { width: 100%; padding: 8px; background: #2e86de; color: #fff; border: 0; border-radius: 6px; cursor: pointer; }
+button.primary:disabled { background: #8395a7; }
+
+.results-toolbar { display: flex; justify-content: space-between; padding: 6px 10px; border-bottom: 1px solid #d2dae2; }
+.results-panel { flex: 1; display: flex; flex-direction: column; min-height: 0; }
+.engine-errors { background: #fff3cd; color: #856404; padding: 6px 10px; }
+.error-banner { background: #f8d7da; color: #721c24; padding: 6px 16px; }
+
+.engine-dot { display: inline-block; width: 9px; height: 9px; border-radius: 50%; margin-right: 4px; }
+.health.ok { color: #10ac84; margin-left: auto; }
+.health.down { color: #ee5253; margin-left: auto; }
+
+.status-chip { padding: 1px 8px; border-radius: 9px; font-size: 12px; font-weight: 600; }
+.status-chip.active { background: #d1f2eb; color: #148f77; }
+.status-chip.suspended { background: #fdebd0; color: #9c640c; }
+.status-chip.completed { background: #d6dbdf; color: #2c3e50; }
+.status-chip.failed { background: #fadbd8; color: #c0392b; }
+
+.details-header { display: flex; justify-content: space-between; align-items: center; }
+.placeholder { color: #8395a7; }

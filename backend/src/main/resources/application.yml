@@ -1,0 +1,36 @@
+server:
+  port: 8085
+
+inspector:
+  # Fan-out executor: at most this many engine calls in flight per search.
+  fanout-parallelism: 8
+  engines:
+    - id: engine-a
+      name: "Engine A (demo)"
+      base-url: "http://localhost:8081/flowable-rest/service"
+      environment: dev
+      color: "#2e86de"
+      enabled: true
+      auth:
+        type: basic
+        username: rest-admin
+        password-ref: ENGINE_A_PASSWORD
+      timeouts:
+        connect-ms: 2000
+        read-ms: 10000
+      max-page-size: 200
+
+    - id: engine-b
+      name: "Engine B (demo)"
+      base-url: "http://localhost:8082/flowable-rest/service"
+      environment: dev
+      color: "#10ac84"
+      enabled: true
+      auth:
+        type: basic
+        username: rest-admin
+        password-ref: ENGINE_B_PASSWORD
+      timeouts:
+        connect-ms: 2000
+        read-ms: 10000
+      max-page-size: 200
