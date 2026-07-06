@@ -36,7 +36,16 @@ loop: **FIND → ORIENT → DIAGNOSE → FIX → VERIFY**, plus **HANDOVER** to 
 
 - **Engine Registry** — configuration of multiple Flowable REST endpoints with per-engine
   auth (env-ref secrets), environment tag (`dev|test|prod`), timeouts, optional `tenant-id`,
-  and probed runtime state (version, reachability, capability flags).
+  and probed runtime state (version, reachability, capability flags). Each entry stores the
+  **full base URL including the context path** (`…/flowable-rest/service` on the standalone
+  image, `…/process-api` on an embedded engine) — the BFF appends only the standard resource
+  paths and **never assumes a path shape** outside config.
+- **Engine-side fencing (target architecture for embedded engines)** — engines that embed
+  Flowable expose the API via `flowable-spring-boot-starter-rest` mounted at a dedicated
+  path (e.g. `/process-api/**`), guarded by a **stateless** Spring Security filter chain
+  requiring Basic auth from a dedicated machine account (`inspector-svc` holding
+  `access-rest-api`) **and** network-scoped strictly to the Inspector BFF's IP space.
+  Recipe, proxy/ingress caveats and the attribution interceptor: ARCHITECTURE §6.
 - **API aggregation** — the backend is a BFF: one origin, one session; searches fan out in
   parallel with per-engine timeouts and a partial-result envelope.
 - **Integration** — strictly Flowable V6 REST (`/query/*`, `/history/*`, `/runtime/*`,
@@ -52,13 +61,17 @@ loop: **FIND → ORIENT → DIAGNOSE → FIX → VERIFY**, plus **HANDOVER** to 
   not be tipped over by aggressive fan-out (DLQ scans, triage aggregations). An open
   circuit renders as the standard per-engine error envelope ("circuit open — engine
   shedding load"), never a failed search.
-- **Identity tradeoff (the service-account problem)** — the BFF authenticates to engines
-  with a shared service account, so Flowable's native history tables
-  (`ACT_HI_IDENTITYLINK`, `ACT_HI_DETAIL`) record *the service account* as the actor for
-  every task completion and variable update. **The BFF's Postgres audit log is the only
-  authoritative source of human attribution** (§9). Where we control the engine deployment
-  (e.g. flap, ARCHITECTURE §6), the BFF additionally sends `X-Forwarded-User` for an
-  engine-side interceptor to attribute natively — optional, per-engine, never assumed.
+- **Audit golden master (the service-account problem)** — because all API mutations arrive
+  at the engine under the shared service account, Flowable's native history tables
+  (`ACT_HI_IDENTITYLINK`, `ACT_HI_DETAIL`, `ACT_HI_TASKINST`) record *the service account*
+  as the actor for every task completion, variable edit and state change. **The BFF's
+  Postgres audit log (§9) is therefore the definitive system of record for human
+  accountability** — not a dashboard nicety. The UI states this where it matters (the Audit
+  tab notes "engine-side history attributes these actions to the service account"), and
+  operator onboarding must teach it: querying the Flowable DB will no longer tell you which
+  engineer moved the token. Where we control the engine deployment (e.g. flap, ARCHITECTURE
+  §6), the BFF additionally sends `X-Forwarded-User` for an engine-side interceptor to
+  attribute natively — optional, per-engine, never relied upon.
 - **Tenant-scoped RBAC** — when OIDC is used, roles map to **(role, engineId, tenantId)
   scopes**, not global grants: ADMIN on `orders-tenant-A` must not authorize actions on
   `orders-tenant-B` or on another engine. Enforced in the BFF guard layer; the UI greys
@@ -365,7 +378,11 @@ and would rewrite working M1/M2 code for no capability gain); Go/FastAPI/Kotlin 
   current 6.x, one pre-6.4/6.5 image (capability cliffs: change-state 6.4+, migration ~6.5+,
   external-worker jobs 6.8+, `scopeType` ~6.8+), and a **Flowable 7.x profile** (the flap
   companion app embeds Flowable 7 — see ARCHITECTURE §6). Cliffs are exercised in CI, not
-  discovered in prod.
+  discovered in prod. The 7.x profile exists for more than capability flags: Flowable 7 is
+  a Spring Boot 3 / Jakarta baseline shift, and **standard Spring error responses changed
+  shape** — the BFF's error-handling interceptors, and specifically the exception-snippet
+  parsing that feeds the Stage 0 error-class grouping, are validated against 7.x error JSON
+  in CI so the normalizer never silently degrades to "unparseable" groups.
 
 ## 11. Non-goals & explicitly rejected (with reasons)
 
@@ -397,6 +414,10 @@ and would rewrite working M1/M2 code for no capability gain); Go/FastAPI/Kotlin 
   views, k-way-merge deep paging.
 
 ## Change log
+- **v2.4** — §2: engine-side fencing bullet (embedded-engine target architecture), explicit
+  full-base-URL registry guarantee, identity tradeoff elevated to "audit golden master"
+  (UI note + onboarding); §10: 7.x compose profile additionally validates error-JSON shape
+  for the triage exception parser; ARCH §6: proxy/ingress network-scoping caveats.
 - **v2.3** — Do-no-harm hardening (operator feedback): Resilience4j circuit breakers +
   bulkheads per engine; 15–30s triage-aggregation cache; variable byte-size caps (Variables
   tab + sibling diff); unindexed variable-search warning; identity/attribution tradeoff made

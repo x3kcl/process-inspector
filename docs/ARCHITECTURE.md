@@ -223,8 +223,21 @@ until it does. The integration recipe (an afternoon on the flap side):
    only* (API calls must not create UI sessions), a dedicated machine account
    (`inspector-svc`) with the `access-rest-api` privilege, credential injected as an env
    secret and referenced from the inspector registry via `password-ref`. flowable-rest
-   authorization is binary — network scoping (same Docker network / reverse-proxy
-   allow-list) plus the inspector's BFF RBAC is the entire defense.
+   authorization is binary — network scoping plus the inspector's BFF RBAC is the entire
+   defense.
+   **Network scoping must match the actual topology, or it silently fails:**
+   - *Plain Docker*: a dedicated backend bridge network shared only by the inspector and
+     the engine is the cleanest fence — the path is simply unroutable from elsewhere; no
+     IP evaluation needed in the app.
+   - *Behind an ingress controller / reverse proxy*: the engine sees the **proxy's** IP.
+     An application-level IP restriction then requires the security chain to trust
+     forwarded headers — a correctly configured `ForwardedHeaderFilter` /
+     `server.forward-headers-strategy` with the proxy explicitly trusted — or the
+     restriction evaluates the wrong address and either blocks the inspector or (worse)
+     allows everyone the proxy forwards. Prefer enforcing the allow-list **at the
+     proxy/ingress itself** (location-scoped rule for `/process-api/**`) over in-app IP
+     checks; if in-app checks are used, they must be tested from outside the trusted path.
+   - Never rely on `X-Forwarded-For` from an untrusted hop — any client can set it.
 3. **Registry entry**: `base-url: https://flap-host/process-api` — base-URL shapes vary per
    deployment (`…/flowable-rest/service` on the standalone image); nothing outside config
    may assume a path shape.
@@ -241,3 +254,10 @@ treats 7.x as passing all 6.x capability cliffs unless proven otherwise; watch t
 batch-migration payload shape, §2.5); the inspector never links Flowable libraries, so no
 version-lockstep with flap — the codebases stay idiomatically similar (both Spring) but
 physically decoupled over HTTP.
+**Error-shape drift (7.x):** Flowable 7 sits on Spring Boot 3/Jakarta, and standard Spring
+error responses (which Flowable wraps or sometimes leaks) changed shape across that
+baseline. The BFF's engine-error interceptors — and specifically the exception-snippet
+extraction feeding the triage error-class normalizer — must be contract-tested against
+BOTH 6.x and 7.x error JSON in CI (WireMock fixtures captured from each real profile).
+A parser that silently fails degrades every 7.x failure into one "unparseable" group —
+exactly the kind of quiet lie the design principles forbid.
