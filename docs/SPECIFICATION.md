@@ -278,19 +278,50 @@ tree, not just the root.
 - **Notes** per composite ID (BFF-owned; author + timestamp; "has notes" grid marker).
 - IBM BAW ships no admin-action audit trail at all — this is a headline differentiator.
 
-## 10. Tech stack
+## 10. Tech stack (decided — ADR-001, see [DESIGN-REVIEW.md](DESIGN-REVIEW.md))
 
-- **Backend:** Java 21 / Spring Boot 3 BFF — registry, health+capability probe, fan-out
-  aggregator, audit, RBAC (`VIEWER / OPERATOR / ADMIN`), guard enforcement. Spring Security
-  as **dual profile from M4**: basic (dev) / OIDC (prod) — retrofitting OIDC under RBAC later
-  means redoing role mapping under pressure. Postgres from M4.
-- **Frontend:** React + TypeScript (Vite), AG Grid, bpmn-js (read-only from M3; change-state
-  interaction M5), SSE for bulk-job progress and health-strip pushes (the BFF is the event
-  source there; "live" search results over REST polling is rejected — snapshot + Refresh).
-- **Dev harness:** two dockerized `flowable-rest` engines **plus a second compose profile
-  pinned to an older image** — the capability cliffs (change-state 6.4+, migration ~6.5+,
-  external-worker jobs 6.8+, `scopeType` ~6.8+) must be exercised in CI, not discovered in
-  prod.
+Confirmed after an architect review and a Claude-expert review (most implementation is done
+by an AI coding agent): the two hard problems live in different halves, and each half gets
+the strongest available tool. **Rejected:** all-Spring Thymeleaf/htmx (the UI is SPA-shaped:
+grid selection driving wizards, diagram↔tab sync, URL state, operations drawer — and
+server-rendered templates deny the agent its Playwright feedback loop); full-stack
+TypeScript/NestJS (runner-up: loses Spring Security's OIDC/session/RBAC maturity, team depth,
+and would rewrite working M1/M2 code for no capability gain); Go/FastAPI/Kotlin (no axis won).
+
+- **Backend:** **Java 21 (LTS) / Spring Boot 3.5.x** (bump from 3.3.x before M3) / Maven
+  (+ enforcer, `mvnw`). `RestClient` per engine over `JdkClientHttpRequestFactory` with
+  registry timeouts — blocking-by-design, **no WebFlux**. **Virtual threads**
+  (`spring.threads.virtual.enabled=true`; virtual-thread-per-task executor + per-engine
+  `Semaphore` for fan-out and bulk dispatch; no preview APIs). Spring Data JPA + **Flyway**
+  + Postgres 16 (audit repository insert-only). Spring Security **dual profile**: form/basic
+  (dev) / OIDC via `oauth2-client` (prod), one `GrantedAuthoritiesMapper` claim→role,
+  `@PreAuthorize` mirroring the guard ladder, cookie CSRF for the SPA. SSE via `SseEmitter`.
+- **Contract:** springdoc-openapi from the Java record DTOs (single source of truth) →
+  **`openapi-typescript`** generated types + `openapi-fetch` client in the frontend,
+  committed; CI regenerates and **fails on diff** — cross-language drift is a build failure.
+- **Frontend:** React 18 + TypeScript `strict` + Vite (Node 22 LTS, npm). **TanStack Query
+  v5** (its stale-snapshot model IS the spec's snapshot+Refresh semantics; SSE events
+  invalidate queries). React Router v7 + typed search-param codec for URL state. Zustand
+  only when the operations drawer lands. AG Grid Community (pinned; audit features against
+  Community before designing around them), bpmn-js (`NavigatedViewer` M3 → `Viewer` +
+  overlays M5).
+- **Testing:** JUnit 5/AssertJ/Mockito · **WireMock** for engine stubs (timeouts, 5xx,
+  truncated DLQ, version cliffs — the load-bearing layer) · Testcontainers Postgres ·
+  `@WebMvcTest` + `spring-security-test` for per-endpoint RBAC/guard tiers · Vitest + RTL +
+  MSW (reusing OpenAPI types) · **Playwright** E2E against the full compose stack (smoke in
+  PR CI, matrix nightly) — Playwright is also the agent's autonomous visual feedback loop.
+- **Lint/format as CI hard failures** (essential when an agent writes most code): Spotless
+  (palantir-java-format) · ESLint strict-type-checked + Prettier.
+- **Packaging:** one image, multi-stage (Vite build → jar `static/` → `temurin:21-jre`
+  layered jar). One origin, one session. No GraalVM native.
+- **Agent ergonomics** (from the Claude-expert review): repo `CLAUDE.md` with **scoped**
+  build/test commands (`mvn -o test -Dtest=…`, never the full suite in the loop), pinned
+  version floors (Boot ≥3.5, React ≥18, TS ≥5), and the `.claude/skills/*` doctrine set.
+- **Dev harness:** dockerized `flowable-rest` engines in **three compose profiles** —
+  current 6.x, one pre-6.4/6.5 image (capability cliffs: change-state 6.4+, migration ~6.5+,
+  external-worker jobs 6.8+, `scopeType` ~6.8+), and a **Flowable 7.x profile** (the flap
+  companion app embeds Flowable 7 — see ARCHITECTURE §6). Cliffs are exercised in CI, not
+  discovered in prod.
 
 ## 11. Non-goals & explicitly rejected (with reasons)
 
@@ -322,6 +353,10 @@ tree, not just the root.
   views, k-way-merge deep paging.
 
 ## Change log
+- **v2.2** — §10 tech stack decided (ADR-001: Java 21/Spring Boot 3.5 + React/TS confirmed;
+  OpenAPI-generated contract; virtual threads; test/lint/packaging pins; agent-ergonomics
+  guardrails; Flowable 7.x compose profile). ARCHITECTURE gains §6 (inspecting
+  embedded-engine apps / flap).
 - **v2.1** — Added §5.1 remediation playbooks (fix-once-apply-to-class, v2 headline) and
   §5.2 sibling diff (v1.x); release train updated accordingly.
 - **v2.0** — Full refinement after IBM BAW + competitor research and the four-seat design

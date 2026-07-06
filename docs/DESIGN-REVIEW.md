@@ -71,6 +71,35 @@ IMPLEMENTATION-PLAN v2.
   tooltips (capability vs role vs state); environment-semantic coloring (freeform engine
   colors demoted). → SPEC §6.
 
+## Addendum (v2.2) — tech-stack review (ADR-001)
+
+Two further advisors: a **principal architect** (read both repos, incl. the companion flap
+app) and a **Claude expert** (with what stacks does an AI coding agent perform best).
+
+- **Architect**: confirmed Java 21/Spring Boot + React/TS. Deciding argument: the backend's
+  hard problems (OIDC/session/RBAC ceremony, guard enforcement, audit/JPA, bounded fan-out)
+  are Spring's sweet spot and the team's depth; the frontend's hard problems (AG Grid,
+  bpmn-js, URL state, interaction density) are only honestly solvable in a typed SPA.
+  Rejected: Thymeleaf/htmx (the UI is SPA-shaped; agents also can't iterate on it visually),
+  NestJS runner-up (security-stack DIY glue + pointless rewrite of working M1/M2), Go/
+  FastAPI/Kotlin. Pinned: virtual threads (no WebFlux, no preview APIs), RestClient, Flyway,
+  OpenAPI→TS generated contract failing CI on diff, TanStack Query, WireMock as the
+  load-bearing test layer, Spotless/ESLint as CI hard failures, one multi-stage image.
+  Plus the **flap integration recipe** (ARCH §6): flap embeds Flowable 7 with no REST API —
+  one starter, one security filter chain, one machine account makes it inspectable.
+- **Claude expert**: ranked TS/NestJS first on iteration speed, Java/Spring a close viable
+  second — while its own data showed Java yields the *fewest* silent errors and iterations.
+  Its objection to Java (slow feedback loop) is mitigated by scoped test commands; its
+  frontend verdict (React+TS+Vite+Playwright ≫ server-rendered templates for agent
+  iteration) matched the architect's. Adopted from it regardless of backend choice: repo
+  CLAUDE.md with scoped build/test commands + version floors, OpenAPI-generated clients as
+  drift guardrails, Playwright as the agent's autonomous visual feedback loop, strict
+  typing both sides, lint as hard CI failure.
+- **Synthesis**: where the two disagreed (backend language), the architect's whole-system
+  weighting won — migration cost of zero, Spring Security maturity for the M4 dual-auth
+  requirement, flap-team alignment, and the Claude expert's iteration-speed concern
+  addressed by its own recommended mitigations. SPECIFICATION §10 is the decided form.
+
 ## Cross-seat consensus (adopted wholesale)
 Correct the join before adding features · partial-and-labeled beats complete-and-false ·
 error-class grouping is the triage centerpiece · shareable URLs are an incident primitive ·

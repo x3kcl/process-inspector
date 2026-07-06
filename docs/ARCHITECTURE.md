@@ -184,3 +184,31 @@ nobody may "simplify" by exposing an engine directly.
   per-item results with `ok/failed/skipped/unknown`.
 - **Variable-search cost:** engine history tables are typically unindexed on value; variable
   filters get a "narrow by definition" nudge and a distinguished timeout hint in the envelope.
+
+## 6. Inspecting an embedded-engine application (the flap case)
+
+The companion system **flap** embeds Flowable **7.0.0** (`flowable-spring-boot-starter`)
+behind its own UI and does **not** expose the Flowable REST API — so it is not inspectable
+until it does. The integration recipe (an afternoon on the flap side):
+
+1. **Add** `org.flowable:flowable-spring-boot-starter-rest` (same version as the embedded
+   engine) — mounts the process REST API under **`/process-api/**`** in flap's servlet
+   context. Flowable 7's REST surface is the direct continuation of the V6 API for
+   everything the inspector uses (`/query/*`, `/history/*`, `/runtime/*`, `/management/*`,
+   `/repository/*`).
+2. **Secure it explicitly**: a dedicated `SecurityFilterChain` ordered ahead of the UI
+   chain, matching `/process-api/**`, HTTP Basic, `STATELESS`, CSRF off *for that matcher
+   only* (API calls must not create UI sessions), a dedicated machine account
+   (`inspector-svc`) with the `access-rest-api` privilege, credential injected as an env
+   secret and referenced from the inspector registry via `password-ref`. flowable-rest
+   authorization is binary — network scoping (same Docker network / reverse-proxy
+   allow-list) plus the inspector's BFF RBAC is the entire defense.
+3. **Registry entry**: `base-url: https://flap-host/process-api` — base-URL shapes vary per
+   deployment (`…/flowable-rest/service` on the standalone image); nothing outside config
+   may assume a path shape.
+
+**Inspector-side implications:** the CI engine matrix includes a **7.x profile** (probe
+treats 7.x as passing all 6.x capability cliffs unless proven otherwise; watch the
+batch-migration payload shape, §2.5); the inspector never links Flowable libraries, so no
+version-lockstep with flap — the codebases stay idiomatically similar (both Spring) but
+physically decoupled over HTTP.
