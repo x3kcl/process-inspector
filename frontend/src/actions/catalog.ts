@@ -27,6 +27,12 @@ export interface VerbMeta {
   /** §5.0: verbs firing irreversible EXTERNAL side effects get the two-step inline
    *  confirm on prod; queue-state-only verbs stay single-click. */
   externalSideEffects: boolean
+  /** v1.1 flow surgery: the verb targets ENDED instances only (restart-as-new), so the
+   *  usual "instance has ended" gate inverts — running instances grey it instead. */
+  requiresEnded?: boolean
+  /** v1.1: role floor escalation on PROD engines (change-state is OPERATOR everywhere
+   *  but ADMIN on prod — mirrors the BFF's scoped check, which stays the real gate). */
+  prodRoleFloor?: RoleHint
 }
 
 export const VERBS = {
@@ -37,8 +43,7 @@ export const VERBS = {
     tier: 0,
     roleFloor: 'RESPONDER',
     reversibility: 'RECOVERABLE',
-    reversibilityNote:
-      'the queue move is reversible; the side effects of the executed job are not',
+    reversibilityNote: 'the queue move is reversible; the side effects of the executed job are not',
     externalSideEffects: true,
   },
   triggerTimer: {
@@ -101,6 +106,30 @@ export const VERBS = {
     reversibilityNote: 'only rescue afterwards: change-state (move the token by hand)',
     externalSideEffects: true,
   },
+  changeState: {
+    verb: 'change-state',
+    label: 'Change state / move token',
+    plain: 'cancel the token where it is, start it somewhere else',
+    tier: 3,
+    roleFloor: 'OPERATOR',
+    prodRoleFloor: 'ADMIN',
+    reversibility: 'RECOVERABLE',
+    reversibilityNote:
+      'a wrong move can usually be moved back — side effects of activities that start are not undone',
+    externalSideEffects: true,
+  },
+  restartAsNew: {
+    verb: 'restart',
+    label: 'Restart as new instance',
+    plain: 'start a fresh copy of this ended case from its variables',
+    tier: 3,
+    roleFloor: 'OPERATOR',
+    requiresEnded: true,
+    reversibility: 'RECOVERABLE',
+    reversibilityNote:
+      'the new instance is a normal running case — it can be suspended or terminated',
+    externalSideEffects: true,
+  },
 } as const satisfies Record<string, VerbMeta>
 
 export interface GateInput {
@@ -111,6 +140,13 @@ export interface GateInput {
   engineMode?: string
   /** The instance has ended (COMPLETED) — runtime verbs have no target. */
   instanceEnded?: boolean
+  /** The instance is SUSPENDED — token moves refuse pre-flight (409 instance-suspended). */
+  instanceSuspended?: boolean
+  /** Capability probe for this verb on the target engine (§6 capability gating);
+   *  undefined = the verb is not capability-gated, false = greyed with the reason. */
+  capability?: boolean
+  /** Engine environment — needed for verbs with a PROD role-floor escalation. */
+  environment?: string
 }
 
 export interface Gate {
@@ -123,12 +159,41 @@ export function actionGate(input: GateInput): Gate {
   if (input.engineMode !== undefined && input.engineMode.toUpperCase() === 'READ_ONLY') {
     return { enabled: false, reason: 'this engine is registered read-only' }
   }
-  if (input.instanceEnded === true) {
-    return { enabled: false, reason: 'the instance has ended — there is no runtime state to act on' }
+  if (input.capability === false) {
+    return {
+      enabled: false,
+      reason: 'this engine version does not support this operation (capability probe)',
+    }
+  }
+  if (input.meta.requiresEnded === true) {
+    if (input.instanceEnded !== true) {
+      return {
+        enabled: false,
+        reason: 'only an ended (completed or terminated) instance can be restarted as new',
+      }
+    }
+  } else if (input.instanceEnded === true) {
+    return {
+      enabled: false,
+      reason: 'the instance has ended — there is no runtime state to act on',
+    }
+  } else if (input.instanceSuspended === true) {
+    return {
+      enabled: false,
+      reason: 'the instance is suspended — activate it first, then move the token',
+    }
   }
   // Unknown role: stay optimistic (grey nothing) — the BFF 403 is the real gate.
-  if (input.roleHint !== null && !roleAtLeast(input.roleHint, input.meta.roleFloor)) {
-    return { enabled: false, reason: `requires the ${input.meta.roleFloor} role` }
+  const prod = input.environment?.toLowerCase() === 'prod'
+  const floor =
+    prod &&
+    input.meta.prodRoleFloor !== undefined &&
+    roleAtLeast(input.meta.prodRoleFloor, input.meta.roleFloor)
+      ? input.meta.prodRoleFloor
+      : input.meta.roleFloor
+  if (input.roleHint !== null && !roleAtLeast(input.roleHint, floor)) {
+    const suffix = floor !== input.meta.roleFloor ? ' on a production engine' : ''
+    return { enabled: false, reason: `requires the ${floor} role${suffix}` }
   }
   return { enabled: true }
 }

@@ -1,6 +1,8 @@
 // Instance-level verbs on the vitals header (SPEC §5): suspend/activate (tier 0,
-// REVERSIBLE, single-click) and terminate/delete (tier 3, the destructive modal). The
-// row follows greyed-never-hidden: every gate names itself in the tooltip.
+// REVERSIBLE, single-click), terminate/delete (tier 3, the destructive modal), and the
+// v1.1 flow-surgery pair — change-state (simulation-first modal) and restart-as-new
+// (ended instances only). The row follows greyed-never-hidden: every gate names itself
+// in the tooltip.
 import { useState } from 'react'
 import { useQuery } from '@tanstack/react-query'
 import type { EngineDto, InstanceDetail } from '../api/model'
@@ -14,6 +16,8 @@ import { problemBanner } from '../actions/problem'
 import type { ActionProblem } from '../actions/problem'
 import { roleOn, useMe } from '../api/me'
 import { useToast } from '../components/toast'
+import { ChangeStateModal } from '../surgery/ChangeStateModal'
+import { RestartModal } from '../surgery/RestartModal'
 
 interface Props {
   engineId: string
@@ -26,6 +30,8 @@ export function InstanceActions({ engineId, instanceId, vitals, engine }: Props)
   const toast = useToast()
   const action = useInstanceAction(engineId, instanceId)
   const [terminateOpen, setTerminateOpen] = useState(false)
+  const [changeStateOpen, setChangeStateOpen] = useState(false)
+  const [restartOpen, setRestartOpen] = useState(false)
   const me = useMe()
   const roleHint = roleOn(me.data, engineId)
   const ended = vitals.flags?.ended === true || vitals.endTime !== undefined
@@ -45,6 +51,22 @@ export function InstanceActions({ engineId, instanceId, vitals, engine }: Props)
     roleHint,
     engineMode: engine?.mode,
     instanceEnded: ended,
+  })
+  const changeStateGate = actionGate({
+    meta: VERBS.changeState,
+    roleHint,
+    engineMode: engine?.mode,
+    instanceEnded: ended,
+    instanceSuspended: suspended,
+    capability: engine?.capabilities?.changeState,
+    environment,
+  })
+  const restartGate = actionGate({
+    meta: VERBS.restartAsNew,
+    roleHint,
+    engineMode: engine?.mode,
+    instanceEnded: ended,
+    environment,
   })
 
   const run = (verb: string, body: Parameters<typeof action.mutate>[0]['body']) => {
@@ -81,12 +103,36 @@ export function InstanceActions({ engineId, instanceId, vitals, engine }: Props)
       />
       <button
         type="button"
+        className="copy-btn action-btn"
+        disabled={!changeStateGate.enabled}
+        title={
+          changeStateGate.enabled
+            ? `${VERBS.changeState.plain} — simulated before anything executes`
+            : changeStateGate.reason
+        }
+        onClick={() => {
+          setChangeStateOpen(true)
+        }}
+      >
+        {VERBS.changeState.label}
+      </button>
+      <button
+        type="button"
+        className="copy-btn action-btn"
+        disabled={!restartGate.enabled}
+        title={restartGate.enabled ? VERBS.restartAsNew.plain : restartGate.reason}
+        onClick={() => {
+          setRestartOpen(true)
+        }}
+      >
+        {VERBS.restartAsNew.label}
+      </button>
+      <button
+        type="button"
         className="copy-btn action-btn action-danger"
         disabled={!terminateGate.enabled}
         title={
-          terminateGate.enabled
-            ? `${VERBS.terminate.plain} · IRREVERSIBLE`
-            : terminateGate.reason
+          terminateGate.enabled ? `${VERBS.terminate.plain} · IRREVERSIBLE` : terminateGate.reason
         }
         onClick={() => {
           action.reset()
@@ -95,6 +141,28 @@ export function InstanceActions({ engineId, instanceId, vitals, engine }: Props)
       >
         {VERBS.terminate.label}
       </button>
+      {changeStateOpen && (
+        <ChangeStateModal
+          engineId={engineId}
+          instanceId={instanceId}
+          vitals={vitals}
+          engine={engine}
+          onClose={() => {
+            setChangeStateOpen(false)
+          }}
+        />
+      )}
+      {restartOpen && (
+        <RestartModal
+          engineId={engineId}
+          instanceId={instanceId}
+          vitals={vitals}
+          engine={engine}
+          onClose={() => {
+            setRestartOpen(false)
+          }}
+        />
+      )}
       {terminateOpen && (
         <TerminateModal
           engineId={engineId}

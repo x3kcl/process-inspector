@@ -95,6 +95,16 @@ column; nightly runs the full cross.
   cannot produce cycles) — tested at rung 1 over a fixture parent-map.
 - Guard ladder E2E: register the same docker engine twice (`dev` + `prod`); drift fixtures
   via out-of-band engine mutation from Playwright; assert Enter-never-submits.
+- **Playwright harness (landed with v1.1 flow surgery, the first R4 rung):**
+  `frontend/playwright.config.ts` + `frontend/e2e/`, `npm run e2e`. Smokes are HERMETIC —
+  a `page.route` predicate on `/api/` fulfills every BFF call from canned DTOs (a URL
+  predicate, never the `**/api/**` glob, which would hijack Vite's `/src/api/*` modules),
+  so no BFF or engine runs in PR CI. Mock-BFF smokes assert UI *invariants* (the
+  flow-surgery specs record every `…/execute`/`…/restart` request and assert none fired
+  — simulation-first is a tested property, not a convention); flows that need REAL
+  engine semantics (drift fixtures above) stay on the live-stack rung. The
+  never-mock-Flowable rule governs BFF join logic, not browser-side smokes of
+  already-tested BFF contracts.
 - Breakers: per-engine test profile (window 2, open 500ms) + WireMock fault/scenario recipes;
   assert cache hits don't count against the breaker.
 - Bulk cancel/UNKNOWN: latch-gated WireMock stub engine (dispatch order made total via

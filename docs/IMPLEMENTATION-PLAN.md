@@ -318,6 +318,31 @@ unresolvable with tier 0–1 verbs)
   REST-body display; guardrails (MI-body block, parallel-join warning, suspended-check,
   variables-first composite = rerun-from-activity); restart-as-new with the pin-vs-latest
   definition fork. Diagram change-state *picker* is polish — only after the form verb works.
+- **Backend: LANDED 2026-07-06.** `FlowSurgeryService` + three whitelisted routes
+  (`…/change-state/preview`, `…/change-state/execute`, `…/restart` — ARCH §4);
+  `BpmnStructure` guardrail parser (MI scopes from the engine's `/model` JSON, gateway
+  types + flow graph from the deployed XML — the /model serialization cannot distinguish
+  gateway kinds, see DESIGN-REVIEW), Caffeine-cached per definition id; capability gate
+  on `changeState` (≥6.4, fail-closed while unprobed); tier-2 rails with ADMIN-on-prod
+  for change-state. Seed fixture `demo-flow-surgery.bpmn20.xml` (runway → parallel
+  fork/join → sequential MI subprocess). Proven by `BpmnStructureTest` +
+  `FlowSurgeryServiceTest` (22 unit) and `FlowSurgeryIT` (8 against live 6.8 + Postgres):
+  the done-when arc below runs green end-to-end.
+- **Frontend: LANDED 2026-07-06.** Simulation-first two-step `ChangeStateModal`
+  (source checklist from `currentActivities`, target picker from the client-parsed
+  definition XML — `surgery/activityCatalog.ts` — then the §4a-style verification step
+  rendering the BFF preview verbatim: `summary` sentence, amber `warnings`,
+  `simulationNote` honesty line, exact `{cancelActivityIds, startActivityIds}` payload
+  expander, reason ≥10 + typed business key on prod); `RestartModal` with the mandatory
+  un-defaulted pin-original-vs-latest `Segmented` fork and the post-execute
+  carried/skipped-variables honesty report (`skippedVariables` name → reason table, new
+  instance deep-link). Both wired into the InstanceActions row via `actionGate` extended
+  with capability (`engine.capabilities.changeState`), suspended, requires-ended and
+  ADMIN-on-prod gates (greyed-never-hidden). New `api/surgery.ts` mutations reuse the M4
+  invalidation triad; no optimistic state. Net-new Playwright harness
+  (`playwright.config.ts`, hermetic route-mocked BFF) with 3 smokes proving the
+  simulation-first arc (execute is unreachable before a rendered preview and never fires
+  on cancel). Diagram-click *picker* stays v1.x polish.
 - **Done when:** a token is moved off a failed node and the instance proceeds; the preview
   shows exactly the REST call; an MI body as source is refused with the reason.
 

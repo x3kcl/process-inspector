@@ -36,6 +36,83 @@ describe('actionGate — greyed never hidden, with the gate named', () => {
   })
 })
 
+describe('actionGate — v1.1 flow surgery gates', () => {
+  it('greys change-state when the engine lacks the capability, naming the probe', () => {
+    const gate = actionGate({ meta: VERBS.changeState, roleHint: 'ADMIN', capability: false })
+    expect(gate.enabled).toBe(false)
+    expect(gate.reason).toContain('capability')
+  })
+
+  it('stays open when the verb is not capability-gated (undefined probe)', () => {
+    expect(actionGate({ meta: VERBS.changeState, roleHint: 'ADMIN' }).enabled).toBe(true)
+  })
+
+  it('greys change-state on a SUSPENDED instance and points at activate', () => {
+    const gate = actionGate({
+      meta: VERBS.changeState,
+      roleHint: 'ADMIN',
+      instanceSuspended: true,
+    })
+    expect(gate.enabled).toBe(false)
+    expect(gate.reason).toContain('suspended')
+  })
+
+  it('escalates change-state to ADMIN on prod, but stays OPERATOR elsewhere', () => {
+    const onProd = actionGate({
+      meta: VERBS.changeState,
+      roleHint: 'OPERATOR',
+      environment: 'prod',
+    })
+    expect(onProd.enabled).toBe(false)
+    expect(onProd.reason).toContain('ADMIN')
+    expect(onProd.reason).toContain('production')
+    expect(
+      actionGate({ meta: VERBS.changeState, roleHint: 'OPERATOR', environment: 'test' }).enabled,
+    ).toBe(true)
+    expect(
+      actionGate({ meta: VERBS.changeState, roleHint: 'ADMIN', environment: 'prod' }).enabled,
+    ).toBe(true)
+  })
+
+  it('inverts the ended gate for restart-as-new: running greys, ended enables', () => {
+    const running = actionGate({ meta: VERBS.restartAsNew, roleHint: 'OPERATOR' })
+    expect(running.enabled).toBe(false)
+    expect(running.reason).toContain('ended')
+    expect(
+      actionGate({ meta: VERBS.restartAsNew, roleHint: 'OPERATOR', instanceEnded: true }).enabled,
+    ).toBe(true)
+  })
+
+  it('restart-as-new keeps the OPERATOR floor even on prod (no escalation)', () => {
+    expect(
+      actionGate({
+        meta: VERBS.restartAsNew,
+        roleHint: 'OPERATOR',
+        instanceEnded: true,
+        environment: 'prod',
+      }).enabled,
+    ).toBe(true)
+    const viewer = actionGate({
+      meta: VERBS.restartAsNew,
+      roleHint: 'VIEWER',
+      instanceEnded: true,
+    })
+    expect(viewer.enabled).toBe(false)
+    expect(viewer.reason).toContain('OPERATOR')
+  })
+
+  it('read-only engine still greys surgery verbs first', () => {
+    const gate = actionGate({
+      meta: VERBS.restartAsNew,
+      roleHint: 'ADMIN',
+      instanceEnded: true,
+      engineMode: 'READ_ONLY',
+    })
+    expect(gate.enabled).toBe(false)
+    expect(gate.reason).toContain('read-only')
+  })
+})
+
 describe('reasonRule — the SPEC §6 reason ladder', () => {
   it('tier 0 never requires a reason', () => {
     expect(reasonRule(0, 'prod').required).toBe(false)

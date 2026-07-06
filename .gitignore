@@ -6,3 +6,5 @@ frontend/dist/
 .vscode/
 .DS_Store
 *.tsbuildinfo
+test-results/
+playwright-report/
