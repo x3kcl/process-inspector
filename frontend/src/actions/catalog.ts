@@ -1,0 +1,157 @@
+// The single-target verb catalog the UI offers in M4, mirroring the backend's ActionVerb
+// enum (tier + role floor) and SPEC §5.0's spec'd — never improvised — plain-language
+// labels and reversibility badges. The BFF is the real gate; this module only decides
+// what to grey (never hide) and which guard surface a verb gets.
+
+export type RoleHint = 'VIEWER' | 'RESPONDER' | 'OPERATOR' | 'ADMIN'
+
+const ROLE_RANK: Record<RoleHint, number> = { VIEWER: 0, RESPONDER: 1, OPERATOR: 2, ADMIN: 3 }
+
+export function roleAtLeast(role: RoleHint, floor: RoleHint): boolean {
+  return ROLE_RANK[role] >= ROLE_RANK[floor]
+}
+
+export type Reversibility = 'REVERSIBLE' | 'RECOVERABLE' | 'IRREVERSIBLE'
+
+export interface VerbMeta {
+  verb: string
+  /** Menu label, e.g. "Retry job". */
+  label: string
+  /** SPEC §5.0 plain-language secondary label. */
+  plain: string
+  tier: 0 | 1 | 3
+  roleFloor: RoleHint
+  reversibility: Reversibility
+  /** Named compensating verb (REVERSIBLE) or rescue path (RECOVERABLE). */
+  reversibilityNote: string
+  /** §5.0: verbs firing irreversible EXTERNAL side effects get the two-step inline
+   *  confirm on prod; queue-state-only verbs stay single-click. */
+  externalSideEffects: boolean
+}
+
+export const VERBS = {
+  retryJob: {
+    verb: 'retry-job',
+    label: 'Retry job',
+    plain: 'run the failed step again',
+    tier: 0,
+    roleFloor: 'RESPONDER',
+    reversibility: 'RECOVERABLE',
+    reversibilityNote:
+      'the queue move is reversible; the side effects of the executed job are not',
+    externalSideEffects: true,
+  },
+  triggerTimer: {
+    verb: 'trigger-timer',
+    label: 'Fire timer now',
+    plain: 'stop waiting, continue immediately',
+    tier: 0,
+    roleFloor: 'RESPONDER',
+    reversibility: 'IRREVERSIBLE',
+    reversibilityNote: 'the timer fires and the case moves on — there is no way back',
+    externalSideEffects: true,
+  },
+  suspend: {
+    verb: 'suspend',
+    label: 'Suspend',
+    plain: 'pause this case',
+    tier: 0,
+    roleFloor: 'RESPONDER',
+    reversibility: 'REVERSIBLE',
+    reversibilityNote: 'compensating verb: activate',
+    externalSideEffects: false,
+  },
+  activate: {
+    verb: 'activate',
+    label: 'Activate',
+    plain: 'resume this case',
+    tier: 0,
+    roleFloor: 'RESPONDER',
+    reversibility: 'REVERSIBLE',
+    reversibilityNote: 'compensating verb: suspend',
+    externalSideEffects: false,
+  },
+  editVariable: {
+    verb: 'edit-variable',
+    label: 'Edit variable',
+    plain: 'change a data value on this case',
+    tier: 1,
+    roleFloor: 'OPERATOR',
+    reversibility: 'RECOVERABLE',
+    reversibilityNote: 'the old value is kept in the audit trail',
+    externalSideEffects: false,
+  },
+  terminate: {
+    verb: 'terminate-delete',
+    label: 'Terminate / delete',
+    plain: 'kill this case permanently',
+    tier: 3,
+    roleFloor: 'ADMIN',
+    reversibility: 'IRREVERSIBLE',
+    reversibilityNote: 'runtime state is destroyed — there is no undo',
+    externalSideEffects: true,
+  },
+  deleteDeadletter: {
+    verb: 'delete-deadletter',
+    label: 'Delete dead-letter job',
+    plain: 'discard the failed step (the case can never continue past it on its own)',
+    tier: 3,
+    roleFloor: 'ADMIN',
+    reversibility: 'RECOVERABLE',
+    reversibilityNote: 'only rescue afterwards: change-state (move the token by hand)',
+    externalSideEffects: true,
+  },
+} as const satisfies Record<string, VerbMeta>
+
+export interface GateInput {
+  meta: VerbMeta
+  /** Role decoded from the dev sign-in ladder username; null = unknown (OIDC etc.). */
+  roleHint: RoleHint | null
+  /** Engine registry mode — a read-only engine greys every verb. */
+  engineMode?: string
+  /** The instance has ended (COMPLETED) — runtime verbs have no target. */
+  instanceEnded?: boolean
+}
+
+export interface Gate {
+  enabled: boolean
+  /** Greyed-never-hidden (SPEC §6): the tooltip names the gate. */
+  reason?: string
+}
+
+export function actionGate(input: GateInput): Gate {
+  if (input.engineMode !== undefined && input.engineMode.toUpperCase() === 'READ_ONLY') {
+    return { enabled: false, reason: 'this engine is registered read-only' }
+  }
+  if (input.instanceEnded === true) {
+    return { enabled: false, reason: 'the instance has ended — there is no runtime state to act on' }
+  }
+  // Unknown role: stay optimistic (grey nothing) — the BFF 403 is the real gate.
+  if (input.roleHint !== null && !roleAtLeast(input.roleHint, input.meta.roleFloor)) {
+    return { enabled: false, reason: `requires the ${input.meta.roleFloor} role` }
+  }
+  return { enabled: true }
+}
+
+export interface ReasonRule {
+  required: boolean
+  /** Backend refuses any present reason under 10 chars, required or not. */
+  minLength: number
+}
+
+/** SPEC §6 reason ladder: tiers ≥2 always required; tier 1 required on prod. */
+export function reasonRule(tier: number, environment: string | undefined): ReasonRule {
+  const prod = environment?.toLowerCase() === 'prod'
+  return { required: tier >= 2 || (tier === 1 && prod), minLength: 10 }
+}
+
+export function reasonValid(reason: string, rule: ReasonRule): boolean {
+  const trimmed = reason.trim()
+  if (trimmed === '') return !rule.required
+  return trimmed.length >= rule.minLength
+}
+
+/** §5.0 friction floor: two-step inline confirm on prod for external side effects. */
+export function needsTwoStepConfirm(meta: VerbMeta, environment: string | undefined): boolean {
+  return meta.externalSideEffects && environment?.toLowerCase() === 'prod'
+}

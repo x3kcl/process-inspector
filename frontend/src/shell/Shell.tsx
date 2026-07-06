@@ -4,6 +4,7 @@ import { Link, Outlet } from 'react-router'
 import { ApiError } from '../api/client'
 import { HeaderStrip } from '../components/HeaderStrip'
 import { SignIn } from '../components/SignIn'
+import { ToastProvider } from '../components/toast'
 import { Omnibox } from './Omnibox'
 
 /**
@@ -14,19 +15,21 @@ import { Omnibox } from './Omnibox'
 export function Shell() {
   const authRequired = useAnyAuthError()
   return (
-    <div className="app">
-      <header className="topbar">
-        <h1>
-          <Link to="/" className="home-link">
-            Flowable Process Inspector
-          </Link>
-        </h1>
-        <Omnibox />
-        <HeaderStrip />
-      </header>
-      {authRequired && <SignIn />}
-      <Outlet />
-    </div>
+    <ToastProvider>
+      <div className="app">
+        <header className="topbar">
+          <h1>
+            <Link to="/" className="home-link">
+              Flowable Process Inspector
+            </Link>
+          </h1>
+          <Omnibox />
+          <HeaderStrip />
+        </header>
+        {authRequired && <SignIn />}
+        <Outlet />
+      </div>
+    </ToastProvider>
   )
 }
 

@@ -1,4 +1,5 @@
 import { useState } from 'react'
+import type { ReactNode } from 'react'
 import { CopyButton } from '../../components/CopyButton'
 import { formatDateTime } from '../../lib/format'
 import { JsonTree } from './JsonTree'
@@ -13,6 +14,13 @@ interface Props {
   onLoadFull?: (row: LedgerRow) => void
   /** Name currently being fetched through the hatch — its button shows progress. */
   loadingFullName?: string
+  /** §4a per-row pencil: null reason = editable; a string names the gate (greyed). */
+  editGateReason?: (row: LedgerRow) => string | null
+  /** Process-scope name currently being edited — its panel renders under the row. */
+  editingName?: string
+  onEditRow?: (row: LedgerRow | null) => void
+  /** The inline editor panel for the editing row (owned by the tab). */
+  editorNode?: ReactNode
 }
 
 /**
@@ -26,6 +34,10 @@ export function VariableLedger({
   focusExecutionLabel,
   onLoadFull,
   loadingFullName,
+  editGateReason,
+  editingName,
+  onEditRow,
+  editorNode,
 }: Props) {
   if (groups.length === 0) {
     return <div className="zero-state">This instance carries no variables.</div>
@@ -42,6 +54,10 @@ export function VariableLedger({
           }
           onLoadFull={onLoadFull}
           loadingFullName={loadingFullName}
+          editGateReason={editGateReason}
+          editingName={group.scope === 'process' ? editingName : undefined}
+          onEditRow={onEditRow}
+          editorNode={editorNode}
         />
       ))}
     </div>
@@ -53,11 +69,19 @@ function LedgerGroupSection({
   defaultOpen,
   onLoadFull,
   loadingFullName,
+  editGateReason,
+  editingName,
+  onEditRow,
+  editorNode,
 }: {
   group: LedgerGroup
   defaultOpen: boolean
   onLoadFull?: (row: LedgerRow) => void
   loadingFullName?: string
+  editGateReason?: (row: LedgerRow) => string | null
+  editingName?: string
+  onEditRow?: (row: LedgerRow | null) => void
+  editorNode?: ReactNode
 }) {
   return (
     <details className="ledger-group" open={defaultOpen}>
@@ -84,6 +108,10 @@ function LedgerGroupSection({
               row={row}
               onLoadFull={onLoadFull}
               loadingFull={loadingFullName === row.entry.name}
+              editGateReason={editGateReason}
+              editing={editingName !== undefined && editingName === row.entry.name}
+              onEditRow={onEditRow}
+              editorNode={editorNode}
             />
           ))}
         </tbody>
@@ -96,12 +124,21 @@ function LedgerRowView({
   row,
   onLoadFull,
   loadingFull,
+  editGateReason,
+  editing,
+  onEditRow,
+  editorNode,
 }: {
   row: LedgerRow
   onLoadFull?: (row: LedgerRow) => void
   loadingFull: boolean
+  editGateReason?: (row: LedgerRow) => string | null
+  editing: boolean
+  onEditRow?: (row: LedgerRow | null) => void
+  editorNode?: ReactNode
 }) {
   const [expanded, setExpanded] = useState(false)
+  const gateReason = editGateReason !== undefined ? editGateReason(row) : 'editing not wired'
   const bytes = row.preview.expandable ? serializedBytes(row.entry.value) : 0
   // The client-side guard mirrors the server cap; a value the user EXPLICITLY pulled
   // through the hatch renders regardless — the tree is lazy, so it stays bounded.
@@ -164,10 +201,30 @@ function LedgerRowView({
         </td>
         <td className="ledger-scope">{row.entry.scope === 'process' ? 'case' : 'step-local'}</td>
         <td className="ledger-modified">{formatDateTime(row.entry.lastModified)}</td>
-        <td>
+        <td className="ledger-row-tools">
+          {/* §4a Entry: always visible, keyboard-focusable, greyed-with-reason. */}
+          {onEditRow !== undefined && (
+            <button
+              type="button"
+              className="copy-btn edit-pencil"
+              aria-label={`edit ${row.entry.name}`}
+              disabled={gateReason !== null}
+              title={gateReason ?? 'edit this value'}
+              onClick={() => {
+                onEditRow(editing ? null : row)
+              }}
+            >
+              {editing ? 'close editor' : '✎ edit'}
+            </button>
+          )}
           <CopyButton text={rawCopyText(row)} label="copy raw" />
         </td>
       </tr>
+      {editing && editorNode !== undefined && (
+        <tr className="ledger-expansion editor-row">
+          <td colSpan={6}>{editorNode}</td>
+        </tr>
+      )}
       {expanded && !expandBlocked && (
         <tr className="ledger-expansion">
           <td colSpan={6}>

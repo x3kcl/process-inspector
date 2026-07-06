@@ -1,15 +1,14 @@
 import { useMemo, useState } from 'react'
 import type { InstanceVariables, VariableDto } from '../../api/model'
 import { fetchInstanceVariable } from '../../api/queries'
-import { useInstanceVariables } from '../useInstanceQueries'
+import { useEngines } from '../../api/useEngines'
+import type { TabProps } from '../InspectPage'
+import { useInstanceVariables, useInstanceVitals } from '../useInstanceQueries'
 import { VariableLedger } from '../variables/VariableLedger'
+import { EditorPanel } from '../variables/editor/EditorPanel'
+import { editGateReason } from '../variables/editor/editState'
 import type { LedgerRow, VariableEntry } from '../variables/ledger'
 import { buildLedger } from '../variables/ledger'
-
-interface Props {
-  engineId: string
-  instanceId: string
-}
 
 /**
  * The typed variable ledger tab (SPEC §4, R-UXQ-13): the wire DTO maps into the tested
@@ -17,11 +16,20 @@ interface Props {
  * server truncated (>256 KiB) carry the explicit "load full value" escape hatch; the
  * fetched value then renders through the same typed pipeline, never as a blind dump.
  */
-export default function VariablesTab({ engineId, instanceId }: Props) {
+export default function VariablesTab({ engineId, instanceId, selectedActivityId }: TabProps) {
   const query = useInstanceVariables(engineId, instanceId)
+  const engines = useEngines()
+  const vitals = useInstanceVitals(engineId, instanceId)
   const [fullValues, setFullValues] = useState<Record<string, unknown>>({})
   const [loadingFullName, setLoadingFullName] = useState<string>()
   const [loadError, setLoadError] = useState<string>()
+  // §4a: at most one inline edit panel; the row it hangs under is the process-scope name.
+  const [editingRow, setEditingRow] = useState<LedgerRow | null>(null)
+
+  const engine = useMemo(
+    () => (engines.data ?? []).find((candidate) => candidate.id === engineId),
+    [engines.data, engineId],
+  )
 
   const groups = useMemo(
     () => (query.data === undefined ? [] : buildLedger(toEntries(query.data, fullValues))),
@@ -54,6 +62,15 @@ export default function VariablesTab({ engineId, instanceId }: Props) {
       })
   }
 
+  const instanceEnded = query.data.source === 'HISTORIC'
+  const gateFor = (row: LedgerRow) =>
+    editGateReason({
+      engineType: row.entry.engineType,
+      scope: row.entry.scope,
+      instanceEnded,
+      engineMode: engine?.mode,
+    })
+
   return (
     <div className="variables-tab">
       {query.data.source === 'HISTORIC' && (
@@ -64,7 +81,29 @@ export default function VariablesTab({ engineId, instanceId }: Props) {
           {loadError}
         </div>
       )}
-      <VariableLedger groups={groups} onLoadFull={loadFull} loadingFullName={loadingFullName} />
+      <VariableLedger
+        groups={groups}
+        focusExecutionLabel={selectedActivityId}
+        onLoadFull={loadFull}
+        loadingFullName={loadingFullName}
+        editGateReason={gateFor}
+        editingName={editingRow?.entry.name}
+        onEditRow={setEditingRow}
+        editorNode={
+          editingRow !== null ? (
+            <EditorPanel
+              engineId={engineId}
+              instanceId={instanceId}
+              entry={editingRow.entry}
+              engine={engine}
+              vitals={vitals.data}
+              onClose={() => {
+                setEditingRow(null)
+              }}
+            />
+          ) : undefined
+        }
+      />
     </div>
   )
 }

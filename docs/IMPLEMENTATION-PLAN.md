@@ -159,8 +159,14 @@ OPERATIONS.md §8.
   a pre-filtered `/search`, ambiguity renders the disambiguation panel with the
   "resolved against N of M engines" honesty line; composite `engine:id` still short-circuits
   client-side. Proven live via Playwright smoke against the dev stack.
-  **Still open (M3 slivers):** copy-for-ticket button, diagram↔tab selection sync,
-  per-job "open logs" links in the Errors & Jobs tab (vitals-level link is live).
+  **M3 slivers (landed 2026-07-06):** copy-for-ticket button (`inspect/ticket.ts`, plain
+  text: composite ID / definition+version / status / exception first line / failure time /
+  deep link), diagram↔tab selection sync both directions (canvas click on a dead-letter
+  node jumps to its row in Errors & Jobs — auto-expand, scroll, highlight; "show on
+  diagram" per job row adds the `marker-selected` marker + scroll-to-element; selection
+  also drives the Variables execution-group auto-expand), per-job "open logs" links in the
+  Errors & Jobs tab (runtime-probed off `JobDto` — renders the moment the contract adds
+  `telemetryUrl`, nothing until then).
 - **Triage landing**: engine health strip, status counts, failure groups by normalized error
   signature with click-through, curated system views, recent-operations placeholder.
   **Aggregation-independence constraint (binding):** Stage 0 aggregations NEVER reuse the
@@ -181,7 +187,7 @@ OPERATIONS.md §8.
   opening a stuck instance shows why it's stuck without any click; the link pastes into a
   ticket and reopens the same view.
 
-## M4 — Corrective actions + audit + RBAC + Postgres  *(backend landed 2026-07-06; UI open)*
+## M4 — Corrective actions + audit + RBAC + Postgres  *(backend + action/editor UI landed 2026-07-06; ops-log page open)*
 - **Postgres** joins the deployable: audit log, notes.
 - **Build-order constraint (binding):** `Flyway V1__init.sql` FIRST → JPA entities SECOND →
   repositories THIRD. Hibernate `ddl-auto=validate` in EVERY profile including tests —
@@ -216,11 +222,45 @@ OPERATIONS.md §8.
   typed token vs server-fresh state); audit/notes read surface (payload role-gated
   OPERATOR+, secret-name redaction, 32 KiB snippet cap); Testcontainers-Postgres IT suite
   incl. the kill-Postgres-mid-test fail-closed proof and the CAS-conflict arc.
-- **Still open in M4:** the UI half of the done-when (Audit tab, ops log page, delta
-  toasts, greyed-with-reason); audit-row config events for scope-mapping reloads (M4 logs
-  them); `X-Forwarded-User` engine attribution; R-AUD-07 ticketId validation/linkify;
-  per-engine `audit-payload` modes, retention purge + DB role grants (OPERATIONS §6 —
-  provisioning, not schema).
+- **Frontend landed (2026-07-06):** the M4 action UI over the live BFF, Playwright-proven
+  end-to-end (real edit-variable dispatch → delta toast → audit row on the dev stack).
+  Foundations: ProblemDetail parser keeping the §6 three-way distinction
+  (refused / engine-rejected / dispatched-unverified) in plain-language banners
+  (`actions/problem.ts`), toast host (delta statement + audit deep link, never bare
+  success), cancel-focused ModalShell (env band, Esc closes, Enter never submits), the
+  one non-retrying mutation hook (`api/actions.ts` — settled ⇒ re-fetch every instance
+  segment + audit: server truth only, no optimistic UI), role hint from the dev-ladder
+  username (no `/api/me` yet; unknown role stays optimistic, BFF 403 is the gate).
+  Guard ladder: tier-0 verbs (retry-job, trigger-timer, suspend/activate) as inline
+  buttons with the §5.0 two-step armed confirm on PROD for external-side-effect verbs and
+  reversibility badges/plain labels from the spec'd catalog (`actions/catalog.ts`);
+  tier-3 destructive modals for terminate-delete (cascade victims enumerated from the
+  hierarchy tree, 'unavailable' stated when truncated) and delete-deadletter (orphan
+  warning), reason ≥10 gate, PROD typed token (business key / job id) gating the
+  restating confirm button; CAS 409 / fail-closed 503 / outcome-unknown 504 each get
+  explicit copy, UNKNOWN blocks resubmit from the same surface.
+  The §4a editor: per-row pencil (greyed-with-reason: read-only engine / ended instance /
+  step-local / serializable), inline panel with forced full-value fetch + target
+  restatement + old value always visible; typed widgets (parsed-echo numbers with subtype
+  ranges, True/False segmented — never a toggle, offset-required dates with dual UTC
+  readout, whitespace-visible text, explicit empty-text-vs-null clearing); per-session
+  type unlock behind the warning; JSON leaf-edit tree (structural changes need source);
+  `Form | Source` segmented switch with the CodeMirror 6 chunk lazy-loaded on first use
+  (proven: no eager chunk request), Source→Form blocked while invalid, parse + 256 KiB
+  warn / 5 MiB block gates; verification modal generating sentence + structural path diff
+  + fixed-order warnings + exact-request expander from the SAME request object, freshness
+  re-check on open blocking on drift, CAS-conflict replacement panel (three values,
+  start-over-only, no overwrite-anyway). Audit tab: collapsed payload expander (old
+  values for variable edits). Pure logic vitest-covered (problem/catalog/cascade/ticket/
+  editState/diff — 125 tests green); `npm run lint` + `npm run build` (watermark +
+  enterprise guards) clean.
+- **Still open in M4:** ops log page (`GET /api/audit` global surface); a `/api/me`
+  endpoint so role-greying stops depending on the dev-ladder username heuristic;
+  execution-local (step-local) variable edits (needs a scoped read/CAS leg in the BFF);
+  the §4a offered follow-on "Retry the failed job?" after a successful edit; audit-row
+  config events for scope-mapping reloads (M4 logs them); `X-Forwarded-User` engine
+  attribution; R-AUD-07 ticketId validation/linkify; per-engine `audit-payload` modes,
+  retention purge + DB role grants (OPERATIONS §6 — provisioning, not schema).
 
 ## M5 — Bulk + hardening (v1 close-out; the former M6)
 - Grid-selection bulk as a **persisted tracked job** (R-SEM-10: state machine, startup

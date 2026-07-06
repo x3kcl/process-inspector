@@ -72,12 +72,29 @@ function AuditLog({ engineId, instanceId }: Props) {
             <td className="audit-reason">
               {entry.reason}
               {entry.ticketId !== undefined && <code className="ticket"> {entry.ticketId}</code>}
+              {entry.payload !== undefined && entry.payload !== '' && (
+                // The handover detail (SPEC §9): full request payload incl. old values
+                // for variable edits — collapsed, the row stays scannable.
+                <details className="audit-payload">
+                  <summary>payload</summary>
+                  <pre className="value-body">{prettyPayload(entry.payload)}</pre>
+                </details>
+              )}
             </td>
           </tr>
         ))}
       </tbody>
     </table>
   )
+}
+
+/** Audit payloads arrive as JSON strings; render them indented when they parse. */
+function prettyPayload(payload: string): string {
+  try {
+    return JSON.stringify(JSON.parse(payload), null, 2)
+  } catch {
+    return payload
+  }
 }
 
 function Notes({ engineId, instanceId }: Props) {

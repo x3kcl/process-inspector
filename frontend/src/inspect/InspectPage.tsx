@@ -1,4 +1,4 @@
-import { Suspense, lazy, useMemo } from 'react'
+import { Suspense, lazy, useCallback, useMemo, useRef, useState } from 'react'
 import type { ComponentType, LazyExoticComponent } from 'react'
 import { Link, useParams, useSearchParams } from 'react-router'
 import type { InstanceDetail } from '../api/model'
@@ -8,8 +8,10 @@ import { EnvBadge } from '../components/EnvBadge'
 import { StatusChip } from '../components/StatusChip'
 import { formatDateTime, formatSeconds } from '../lib/format'
 import { DiagramCanvas } from './DiagramCanvas'
+import { InstanceActions } from './InstanceActions'
 import type { TabId } from './tabs'
 import { DEFAULT_TAB, TAB_IDS, TAB_LABELS, isTabId } from './tabs'
+import { buildTicketText } from './ticket'
 import { useInstanceDiagram, useInstanceVitals } from './useInstanceQueries'
 
 // Every tab is its own chunk AND mounts (= fetches) only when opened — IBM's slow-detail
@@ -23,9 +25,13 @@ const TAB_COMPONENTS: Record<TabId, LazyExoticComponent<ComponentType<TabProps>>
   audit: lazy(() => import('./tabs/AuditTab')),
 }
 
-interface TabProps {
+export interface TabProps {
   engineId: string
   instanceId: string
+  /** Diagram↔tab selection sync (SPEC §4): the activity selected on the canvas. */
+  selectedActivityId?: string
+  /** Tabs report a selection back ("show on diagram") through this. */
+  onShowOnDiagram?: (activityId: string) => void
 }
 
 /**
@@ -55,6 +61,24 @@ export function InspectPage() {
   const compositeId = `${engineId}:${instanceId}`
   const deepLink = typeof window !== 'undefined' ? window.location.href : compositeId
 
+  // Diagram↔tab selection sync (SPEC §4): one shared selection, driven from both sides.
+  const [selectedActivityId, setSelectedActivityId] = useState<string>()
+  const diagramSectionRef = useRef<HTMLElement | null>(null)
+  const onDiagramSelect = useCallback(
+    (activityId: string, isDeadLetter: boolean) => {
+      setSelectedActivityId(activityId)
+      // A dead-letter node click jumps straight to its evidence in Errors & Jobs.
+      if (isDeadLetter) selectTab('errors-jobs')
+    },
+    // selectTab is recreated per render but only closes over stable router state.
+    // eslint-disable-next-line react-hooks/exhaustive-deps
+    [params],
+  )
+  const onShowOnDiagram = useCallback((activityId: string) => {
+    setSelectedActivityId(activityId)
+    diagramSectionRef.current?.scrollIntoView({ behavior: 'smooth', block: 'nearest' })
+  }, [])
+
   const ActiveTab = TAB_COMPONENTS[tab]
 
   return (
@@ -66,6 +90,12 @@ export function InspectPage() {
           <code className="composite-id">{compositeId}</code>
           <CopyButton text={compositeId} label="copy ID" />
           <CopyButton text={deepLink} label="copy link" />
+          {vitals.data !== undefined && (
+            <CopyButton
+              text={buildTicketText(vitals.data, compositeId, deepLink)}
+              label="copy for ticket"
+            />
+          )}
           {vitals.data?.telemetryUrl !== undefined && (
             <a
               className="open-logs"
@@ -91,10 +121,23 @@ export function InspectPage() {
           </div>
         )}
         {vitals.data !== undefined && <VitalsBody vitals={vitals.data} />}
+        {vitals.data !== undefined && (
+          <InstanceActions
+            engineId={engineId}
+            instanceId={instanceId}
+            vitals={vitals.data}
+            engine={engine}
+          />
+        )}
       </header>
 
-      <section className="diagram-slot" aria-label="Process diagram">
-        <DiagramSlot engineId={engineId} instanceId={instanceId} />
+      <section className="diagram-slot" aria-label="Process diagram" ref={diagramSectionRef}>
+        <DiagramSlot
+          engineId={engineId}
+          instanceId={instanceId}
+          selectedActivityId={selectedActivityId}
+          onSelect={onDiagramSelect}
+        />
       </section>
 
       <nav className="tab-bar" role="tablist" aria-label="Instance detail tabs">
@@ -116,7 +159,12 @@ export function InspectPage() {
 
       <section className="tab-body" role="tabpanel" aria-label={TAB_LABELS[tab]}>
         <Suspense fallback={<div className="zero-state">Loading {TAB_LABELS[tab]}…</div>}>
-          <ActiveTab engineId={engineId} instanceId={instanceId} />
+          <ActiveTab
+            engineId={engineId}
+            instanceId={instanceId}
+            selectedActivityId={selectedActivityId}
+            onShowOnDiagram={onShowOnDiagram}
+          />
         </Suspense>
       </section>
     </main>
@@ -247,7 +295,17 @@ function WhyStuckStrip({ vitals }: { vitals: InstanceDetail }) {
 }
 
 /** Diagram first, top half (SPEC §4): read-only bpmn-js with token + dead-letter markers. */
-function DiagramSlot({ engineId, instanceId }: { engineId: string; instanceId: string }) {
+function DiagramSlot({
+  engineId,
+  instanceId,
+  selectedActivityId,
+  onSelect,
+}: {
+  engineId: string
+  instanceId: string
+  selectedActivityId?: string
+  onSelect: (activityId: string, isDeadLetter: boolean) => void
+}) {
   const diagram = useInstanceDiagram(engineId, instanceId)
   // One stable markers object per data change — DiagramCanvas re-imports on change.
   const markers = useMemo(
@@ -256,6 +314,12 @@ function DiagramSlot({ engineId, instanceId }: { engineId: string; instanceId: s
       deadLetterActivityIds: diagram.data?.deadLetterActivityIds ?? [],
     }),
     [diagram.data],
+  )
+  const handleSelect = useCallback(
+    (activityId: string) => {
+      onSelect(activityId, markers.deadLetterActivityIds.includes(activityId))
+    },
+    [onSelect, markers],
   )
   if (diagram.isPending) return <div className="zero-state">Loading process diagram…</div>
   if (diagram.isError) {
@@ -268,5 +332,12 @@ function DiagramSlot({ engineId, instanceId }: { engineId: string; instanceId: s
   if (diagram.data.xml === undefined || diagram.data.xml === '') {
     return <div className="zero-state">The engine holds no BPMN XML for this definition.</div>
   }
-  return <DiagramCanvas xml={diagram.data.xml} markers={markers} />
+  return (
+    <DiagramCanvas
+      xml={diagram.data.xml}
+      markers={markers}
+      onSelectActivity={handleSelect}
+      selectedActivityId={selectedActivityId}
+    />
+  )
 }

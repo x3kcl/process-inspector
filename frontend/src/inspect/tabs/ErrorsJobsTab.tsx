@@ -1,15 +1,20 @@
-import { useState } from 'react'
+import { useEffect, useMemo, useRef, useState } from 'react'
 import type { InstanceJobs, JobDto, JobLaneId } from '../../api/model'
 import { JOB_LANES } from '../../api/model'
+import { useInstanceAction } from '../../api/actions'
 import { fetchJobStacktrace } from '../../api/queries'
+import { useEngines } from '../../api/useEngines'
+import { DestructiveModal } from '../../actions/DestructiveModal'
+import { InlineConfirm } from '../../actions/InlineConfirm'
+import { VERBS, actionGate, needsTwoStepConfirm } from '../../actions/catalog'
+import type { Gate } from '../../actions/catalog'
+import { problemBanner } from '../../actions/problem'
 import { CopyButton } from '../../components/CopyButton'
+import { useToast } from '../../components/toast'
 import { formatDateTime } from '../../lib/format'
+import { currentRoleHint } from '../../lib/roleHint'
+import type { TabProps } from '../InspectPage'
 import { useInstanceJobs } from '../useInstanceQueries'
-
-interface Props {
-  engineId: string
-  instanceId: string
-}
 
 /** Lane metadata (SPEC §4): the lane IS the diagnosis, so each one explains itself. */
 const LANE_META: Record<JobLaneId, { title: string; diagnosis: string; wireLane: string }> = {
@@ -37,7 +42,12 @@ const LANE_META: Record<JobLaneId, { title: string; diagnosis: string; wireLane:
 }
 
 /** Four Flowable job lanes kept distinct (SPEC §4); stacktraces fetch on expand only. */
-export default function ErrorsJobsTab({ engineId, instanceId }: Props) {
+export default function ErrorsJobsTab({
+  engineId,
+  instanceId,
+  selectedActivityId,
+  onShowOnDiagram,
+}: TabProps) {
   const query = useInstanceJobs(engineId, instanceId)
 
   if (query.isPending) return <div className="zero-state">Loading job lanes…</div>
@@ -65,6 +75,8 @@ export default function ErrorsJobsTab({ engineId, instanceId }: Props) {
           rows={laneRows(jobs, lane)}
           engineId={engineId}
           instanceId={instanceId}
+          selectedActivityId={selectedActivityId}
+          onShowOnDiagram={onShowOnDiagram}
         />
       ))}
     </div>
@@ -80,15 +92,22 @@ function JobLaneSection({
   rows,
   engineId,
   instanceId,
+  selectedActivityId,
+  onShowOnDiagram,
 }: {
   lane: JobLaneId
   rows: JobDto[]
   engineId: string
   instanceId: string
+  selectedActivityId?: string
+  onShowOnDiagram?: (activityId: string) => void
 }) {
   const meta = LANE_META[lane]
+  // Diagram→tab sync: a selected activity with rows in this lane forces the lane open.
+  const holdsSelection =
+    selectedActivityId !== undefined && rows.some((job) => job.elementId === selectedActivityId)
   return (
-    <details className={`job-lane lane-${lane}`} open={rows.length > 0}>
+    <details className={`job-lane lane-${lane}`} open={rows.length > 0 || holdsSelection}>
       <summary>
         {meta.title} <span className="group-count">({rows.length})</span>
         <span className="lane-diagnosis">{meta.diagnosis}</span>
@@ -105,6 +124,7 @@ function JobLaneSection({
               <th scope="col">Due</th>
               <th scope="col">Retries</th>
               <th scope="col">Exception</th>
+              <th scope="col">Actions</th>
             </tr>
           </thead>
           <tbody>
@@ -112,9 +132,14 @@ function JobLaneSection({
               <JobRow
                 key={job.id ?? `row-${String(index)}`}
                 job={job}
+                lane={lane}
                 wireLane={meta.wireLane}
                 engineId={engineId}
                 instanceId={instanceId}
+                selected={
+                  selectedActivityId !== undefined && job.elementId === selectedActivityId
+                }
+                onShowOnDiagram={onShowOnDiagram}
               />
             ))}
           </tbody>
@@ -129,17 +154,31 @@ type StacktraceState =
 
 function JobRow({
   job,
+  lane,
   wireLane,
   engineId,
   instanceId,
+  selected,
+  onShowOnDiagram,
 }: {
   job: JobDto
+  lane: JobLaneId
   wireLane: string
   engineId: string
   instanceId: string
+  selected: boolean
+  onShowOnDiagram?: (activityId: string) => void
 }) {
   const [stacktrace, setStacktrace] = useState<StacktraceState>()
   const [open, setOpen] = useState(false)
+  const rowRef = useRef<HTMLTableRowElement | null>(null)
+
+  // Diagram→tab sync: the first row of the selected activity scrolls into view.
+  useEffect(() => {
+    if (selected) rowRef.current?.scrollIntoView({ behavior: 'smooth', block: 'nearest' })
+  }, [selected])
+
+  const telemetryUrl = jobTelemetryUrl(job)
 
   const toggleStacktrace = () => {
     if (open) {
@@ -163,7 +202,7 @@ function JobRow({
 
   return (
     <>
-      <tr>
+      <tr ref={rowRef} className={selected ? 'row-selected' : undefined}>
         <td className="id-cell">
           <code>{job.id}</code>
           {job.id !== undefined && <CopyButton text={job.id} label="copy" />}
@@ -172,6 +211,18 @@ function JobRow({
           {job.elementName ?? job.elementId ?? <span className="value-muted">—</span>}
           {job.elementName !== undefined && job.elementId !== undefined && (
             <code className="element-id"> {job.elementId}</code>
+          )}
+          {job.elementId !== undefined && onShowOnDiagram !== undefined && (
+            <button
+              type="button"
+              className="copy-btn"
+              title="highlight this activity on the diagram"
+              onClick={() => {
+                onShowOnDiagram(job.elementId ?? '')
+              }}
+            >
+              show on diagram
+            </button>
           )}
         </td>
         <td>{formatDateTime(job.createTime)}</td>
@@ -188,11 +239,19 @@ function JobRow({
           ) : (
             <span className="value-muted">none</span>
           )}
+          {telemetryUrl !== undefined && (
+            <a className="open-logs" href={telemetryUrl} target="_blank" rel="noreferrer">
+              open logs ↗
+            </a>
+          )}
+        </td>
+        <td className="job-actions">
+          <JobActions job={job} lane={lane} engineId={engineId} instanceId={instanceId} />
         </td>
       </tr>
       {open && (
         <tr className="ledger-expansion">
-          <td colSpan={6}>
+          <td colSpan={7}>
             {stacktrace === undefined || stacktrace.phase === 'loading' ? (
               <p className="zero-state">Fetching stacktrace…</p>
             ) : stacktrace.phase === 'error' ? (
@@ -207,6 +266,162 @@ function JobRow({
       )}
     </>
   )
+}
+
+/** The per-job verb set (SPEC §5): retry + delete on dead-letter, fire-now on timers. */
+function JobActions({
+  job,
+  lane,
+  engineId,
+  instanceId,
+}: {
+  job: JobDto
+  lane: JobLaneId
+  engineId: string
+  instanceId: string
+}) {
+  const toast = useToast()
+  const engines = useEngines()
+  const action = useInstanceAction(engineId, instanceId)
+  const [deleteOpen, setDeleteOpen] = useState(false)
+  const engine = useMemo(
+    () => (engines.data ?? []).find((candidate) => candidate.id === engineId),
+    [engines.data, engineId],
+  )
+  const roleHint = currentRoleHint()
+  const environment = engine?.environment
+  const auditPath = `/inspect/${engineId}/${encodeURIComponent(instanceId)}?tab=audit`
+
+  const gateFor = (meta: (typeof VERBS)[keyof typeof VERBS]): Gate =>
+    actionGate({ meta, roleHint, engineMode: engine?.mode })
+
+  const run = (verb: string, onDone?: () => void) => {
+    action.mutate(
+      { verb, body: { jobId: job.id } },
+      {
+        onSuccess: (result) => {
+          onDone?.()
+          toast({
+            kind: 'success',
+            text: result.deltaStatement ?? `${verb} on job ${job.id ?? '?'} completed`,
+            auditPath,
+          })
+        },
+        onError: (error) => {
+          if (!deleteOpen) toast({ kind: 'error', text: problemBanner(error.problem) })
+        },
+      },
+    )
+  }
+
+  if (lane === 'deadLetter') {
+    return (
+      <>
+        <InlineConfirm
+          meta={VERBS.retryJob}
+          gate={gateFor(VERBS.retryJob)}
+          confirmText={`Retry job ${job.id ?? '?'}?`}
+          twoStep={needsTwoStepConfirm(VERBS.retryJob, environment)}
+          pending={action.isPending && !deleteOpen}
+          onConfirm={() => {
+            run(VERBS.retryJob.verb)
+          }}
+        />
+        <button
+          type="button"
+          className="copy-btn action-btn action-danger"
+          disabled={!gateFor(VERBS.deleteDeadletter).enabled}
+          title={
+            gateFor(VERBS.deleteDeadletter).enabled
+              ? `${VERBS.deleteDeadletter.plain} · ${VERBS.deleteDeadletter.reversibilityNote}`
+              : gateFor(VERBS.deleteDeadletter).reason
+          }
+          onClick={() => {
+            action.reset()
+            setDeleteOpen(true)
+          }}
+        >
+          Delete
+        </button>
+        {deleteOpen && (
+          <DestructiveModal
+            meta={VERBS.deleteDeadletter}
+            environment={environment}
+            engineName={engine?.name ?? engineId}
+            target={
+              <ul className="modal-target-list">
+                <li>
+                  Dead-letter job <code>{job.id}</code>
+                </li>
+                <li>
+                  Activity {job.elementName ?? job.elementId ?? '?'}
+                  {job.elementId !== undefined && (
+                    <code className="element-id"> {job.elementId}</code>
+                  )}
+                </li>
+                {job.exceptionMessage !== undefined && (
+                  <li>Exception {firstLine(job.exceptionMessage)}</li>
+                )}
+                <li className="cascade-warning">
+                  ⚠ The execution is orphaned permanently — the case can never continue past
+                  this step on its own; the only rescue afterwards is change-state.
+                </li>
+              </ul>
+            }
+            cascade={{ victims: [] }}
+            expectedToken={job.id ?? ''}
+            tokenName="job id"
+            confirmLabel={`Delete dead-letter job ${job.id ?? '?'}`}
+            pending={action.isPending}
+            problem={action.error?.problem}
+            onConfirm={() => {
+              run(VERBS.deleteDeadletter.verb, () => {
+                setDeleteOpen(false)
+              })
+            }}
+            onClose={() => {
+              setDeleteOpen(false)
+            }}
+          />
+        )}
+      </>
+    )
+  }
+
+  if (lane === 'timer') {
+    return (
+      <InlineConfirm
+        meta={VERBS.triggerTimer}
+        gate={gateFor(VERBS.triggerTimer)}
+        confirmText={`Fire timer for job ${job.id ?? '?'}?`}
+        twoStep={needsTwoStepConfirm(VERBS.triggerTimer, environment)}
+        pending={action.isPending}
+        onConfirm={() => {
+          run(VERBS.triggerTimer.verb)
+        }}
+      />
+    )
+  }
+
+  if (lane === 'suspended') {
+    return (
+      <span className="value-muted" title="suspended jobs release when the instance is activated">
+        activate the instance
+      </span>
+    )
+  }
+
+  return <span className="value-muted">—</span>
+}
+
+/**
+ * Per-job telemetry deep link (SPEC §4). The generated JobDto does not carry the field
+ * yet; this runtime probe lights the link up the moment the backend adds it to the
+ * contract — and renders nothing until then (never a broken guess).
+ */
+function jobTelemetryUrl(job: JobDto): string | undefined {
+  const candidate = (job as Record<string, unknown>)['telemetryUrl']
+  return typeof candidate === 'string' && candidate !== '' ? candidate : undefined
 }
 
 function firstLine(message: string): string {
