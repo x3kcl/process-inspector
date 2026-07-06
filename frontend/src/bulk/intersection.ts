@@ -47,9 +47,7 @@ const RULES: VerbRule[] = [
     label: 'Retry dead-letter jobs',
     plain: 'run the failed steps again',
     blocker: (row) =>
-      row.flags?.hasDeadLetterJobs === true
-        ? null
-        : 'has no dead-letter job (nothing to retry)',
+      row.flags?.hasDeadLetterJobs === true ? null : 'has no dead-letter job (nothing to retry)',
   },
   {
     verb: 'suspend',
@@ -93,10 +91,7 @@ export function planSelection(selected: ProcessInstanceRow[]): SelectionPlan {
         label: rule.label,
         plain: rule.plain,
         enabled: false,
-        reason:
-          protectedExcluded > 0
-            ? 'every selected instance is protected'
-            : 'nothing selected',
+        reason: protectedExcluded > 0 ? 'every selected instance is protected' : 'nothing selected',
       }
     }
     if (overCap) {

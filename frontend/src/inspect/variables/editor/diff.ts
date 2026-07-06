@@ -137,8 +137,7 @@ export interface SentenceInput {
  * order-4711 in billing-prod (PROD)". Structured values summarize as their change count.
  */
 export function changeSentence(input: SentenceInput): string {
-  const env =
-    input.environment !== undefined ? ` (${input.environment.toUpperCase()})` : ''
+  const env = input.environment !== undefined ? ` (${input.environment.toUpperCase()})` : ''
   const structured =
     (input.before !== null && typeof input.before === 'object') ||
     (input.after !== null && typeof input.after === 'object')

@@ -25,7 +25,9 @@ describe('editGateReason — greyed-with-reason ladder (§4a Entry)', () => {
     ).toContain('serializable')
   })
   it('permits editable types, including undeclared ones', () => {
-    expect(editGateReason({ engineType: 'string', scope: 'process', instanceEnded: false })).toBeNull()
+    expect(
+      editGateReason({ engineType: 'string', scope: 'process', instanceEnded: false }),
+    ).toBeNull()
     expect(editGateReason({ scope: 'process', instanceEnded: false })).toBeNull()
   })
 })

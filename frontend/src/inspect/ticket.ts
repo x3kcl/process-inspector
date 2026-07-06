@@ -3,12 +3,17 @@
 // as the wire ISO strings: a ticket crosses timezones, so ambiguity is a bug.
 import type { InstanceDetail } from '../api/model'
 
-export function buildTicketText(vitals: InstanceDetail, compositeId: string, deepLink: string): string {
+export function buildTicketText(
+  vitals: InstanceDetail,
+  compositeId: string,
+  deepLink: string,
+): string {
   const lines: string[] = [`Instance: ${compositeId}`]
 
   const definition = vitals.definitionName ?? vitals.definitionKey ?? vitals.processDefinitionId
   if (definition !== undefined) {
-    const version = vitals.definitionVersion !== undefined ? ` v${String(vitals.definitionVersion)}` : ''
+    const version =
+      vitals.definitionVersion !== undefined ? ` v${String(vitals.definitionVersion)}` : ''
     lines.push(`Definition: ${definition}${version}`)
   }
 

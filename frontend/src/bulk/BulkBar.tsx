@@ -37,7 +37,8 @@ export function BulkBar({ selected, failedEngines, truncated, onSubmitted }: Pro
             className="status-badge"
             title="protected instances (R-SAFE-05) are excluded from bulk automatically — they stay listed in the job report as skipped"
           >
-            {plan.protectedExcluded} protected instance{plan.protectedExcluded === 1 ? '' : 's'} excluded
+            {plan.protectedExcluded} protected instance{plan.protectedExcluded === 1 ? '' : 's'}{' '}
+            excluded
           </span>
         )}
         {plan.protectionUnknown > 0 && (
@@ -173,16 +174,18 @@ function BulkSubmitModal({
           {targets.map((row) => (
             <li key={row.compositeId ?? row.processInstanceId}>
               <code>{row.compositeId}</code>
-              {typeof row.businessKey === 'string' && row.businessKey !== '' && ` — ${row.businessKey}`}
+              {typeof row.businessKey === 'string' &&
+                row.businessKey !== '' &&
+                ` — ${row.businessKey}`}
             </li>
           ))}
         </ul>
       </details>
 
       <p className="strip-note">
-        Executed per item — no cross-engine transaction. Each item runs the full guard
-        chain and writes its own audit row; partial failure is reported per item in the
-        operations drawer, never rolled back.
+        Executed per item — no cross-engine transaction. Each item runs the full guard chain and
+        writes its own audit row; partial failure is reported per item in the operations drawer,
+        never rolled back.
       </p>
 
       {partial && (

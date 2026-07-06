@@ -79,7 +79,9 @@ export function AuditLogPage() {
             return <code>{entry.engineId}</code>
           }
           return (
-            <Link to={`/inspect/${entry.engineId ?? ''}/${encodeURIComponent(entry.instanceId)}?tab=audit`}>
+            <Link
+              to={`/inspect/${entry.engineId ?? ''}/${encodeURIComponent(entry.instanceId)}?tab=audit`}
+            >
               <code>{`${entry.engineId ?? '?'}:${entry.instanceId}`}</code>
             </Link>
           )

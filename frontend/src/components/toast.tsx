@@ -44,9 +44,12 @@ export function ToastProvider({ children }: { children: ReactNode }) {
     (input: ToastInput) => {
       const id = nextId.current++
       setToasts((current) => [...current, { ...input, id }])
-      window.setTimeout(() => {
-        dismiss(id)
-      }, input.sticky === true ? STICKY_DISMISS_MS : DISMISS_MS)
+      window.setTimeout(
+        () => {
+          dismiss(id)
+        },
+        input.sticky === true ? STICKY_DISMISS_MS : DISMISS_MS,
+      )
     },
     [dismiss],
   )

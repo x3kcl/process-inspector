@@ -55,7 +55,14 @@ export function OpsDrawer() {
 function talliesLine(job: BulkJobDto): string {
   const tallies = job.tallies ?? {}
   const total = job.totalItems ?? 0
-  const settledOrder = ['ok', 'failed', 'skipped', 'skipped_protected', 'unknown', 'not_run'] as const
+  const settledOrder = [
+    'ok',
+    'failed',
+    'skipped',
+    'skipped_protected',
+    'unknown',
+    'not_run',
+  ] as const
   const labels: Record<(typeof settledOrder)[number], string> = {
     ok: 'ok',
     failed: 'failed',
@@ -65,7 +72,10 @@ function talliesLine(job: BulkJobDto): string {
     not_run: 'not run',
   }
   const dispatched =
-    total - (tallies['pending'] ?? 0) - (tallies['not_run'] ?? 0) - (tallies['skipped_protected'] ?? 0)
+    total -
+    (tallies['pending'] ?? 0) -
+    (tallies['not_run'] ?? 0) -
+    (tallies['skipped_protected'] ?? 0)
   const parts = settledOrder
     .filter((key) => (tallies[key] ?? 0) > 0)
     .map((key) => `${labels[key]} ${String(tallies[key] ?? 0)}`)
@@ -162,8 +172,8 @@ function JobDetail({ jobId }: { jobId: string }) {
     <div className="job-detail">
       {job.state === 'INTERRUPTED' && (
         <div className="callout callout-amber" role="alert">
-          The BFF stopped while this job ran. Nothing was resumed automatically: items in
-          flight are <code>unknown</code> (Verify now), undispatched are <code>not_run</code>.
+          The BFF stopped while this job ran. Nothing was resumed automatically: items in flight are{' '}
+          <code>unknown</code> (Verify now), undispatched are <code>not_run</code>.
         </div>
       )}
       <div className="job-detail-toolbar">

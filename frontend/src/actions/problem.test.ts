@@ -38,20 +38,28 @@ describe('parseActionProblem', () => {
 
 describe('mayHaveExecuted', () => {
   it('is true only for the dispatched-unverified legs', () => {
-    expect(mayHaveExecuted(parseActionProblem(504, { code: 'outcome-unknown', outcome: 'unknown' }))).toBe(true)
+    expect(
+      mayHaveExecuted(parseActionProblem(504, { code: 'outcome-unknown', outcome: 'unknown' })),
+    ).toBe(true)
     expect(
       mayHaveExecuted(
         parseActionProblem(500, { code: 'outcome-verification-failed', outcome: 'unknown' }),
       ),
     ).toBe(true)
-    expect(mayHaveExecuted(parseActionProblem(503, { code: 'audit-unavailable', outcome: 'refused' }))).toBe(false)
-    expect(mayHaveExecuted(parseActionProblem(409, { code: 'engine-rejected', outcome: 'failed' }))).toBe(false)
+    expect(
+      mayHaveExecuted(parseActionProblem(503, { code: 'audit-unavailable', outcome: 'refused' })),
+    ).toBe(false)
+    expect(
+      mayHaveExecuted(parseActionProblem(409, { code: 'engine-rejected', outcome: 'failed' })),
+    ).toBe(false)
   })
 })
 
 describe('problemBanner — the three-way SPEC §6 distinction stays visible', () => {
   it('fail-closed 503 says nothing happened and names the audit store', () => {
-    const text = problemBanner(parseActionProblem(503, { code: 'audit-unavailable', outcome: 'refused' }))
+    const text = problemBanner(
+      parseActionProblem(503, { code: 'audit-unavailable', outcome: 'refused' }),
+    )
     expect(text).toContain('NOT sent')
     expect(text).toContain('audit store')
   })
@@ -74,7 +82,9 @@ describe('problemBanner — the three-way SPEC §6 distinction stays visible', (
   })
 
   it('outcome-unknown warns against resubmitting', () => {
-    const text = problemBanner(parseActionProblem(504, { code: 'outcome-unknown', outcome: 'unknown' }))
+    const text = problemBanner(
+      parseActionProblem(504, { code: 'outcome-unknown', outcome: 'unknown' }),
+    )
     expect(text).toContain('Do not resubmit')
   })
 

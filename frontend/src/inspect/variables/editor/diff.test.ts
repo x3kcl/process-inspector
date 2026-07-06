@@ -3,10 +3,11 @@ import { changeSentence, countLeaves, diffSummary, structuralDiff } from './diff
 
 describe('structuralDiff — values, never formatting', () => {
   it('finds a single changed leaf by path', () => {
-    const changes = structuralDiff({ shipping: { cost: 0 }, note: 'x' }, { shipping: { cost: 12.5 }, note: 'x' })
-    expect(changes).toEqual([
-      { path: 'shipping.cost', kind: 'changed', before: 0, after: 12.5 },
-    ])
+    const changes = structuralDiff(
+      { shipping: { cost: 0 }, note: 'x' },
+      { shipping: { cost: 12.5 }, note: 'x' },
+    )
+    expect(changes).toEqual([{ path: 'shipping.cost', kind: 'changed', before: 0, after: 12.5 }])
   })
   it('reports key order and identical values as NO change (re-serialization noise)', () => {
     expect(structuralDiff({ a: 1, b: 2 }, { b: 2, a: 1 })).toEqual([])
@@ -29,7 +30,10 @@ describe('structuralDiff — values, never formatting', () => {
 
 describe('diffSummary — the §4a wording', () => {
   it('renders the canonical single-change line', () => {
-    const doc = { shipping: { cost: 0 }, forty: Object.fromEntries(Array.from({ length: 39 }, (_, i) => [`f${String(i)}`, i])) }
+    const doc = {
+      shipping: { cost: 0 },
+      forty: Object.fromEntries(Array.from({ length: 39 }, (_, i) => [`f${String(i)}`, i])),
+    }
     const next = { ...doc, shipping: { cost: 12.5 } }
     const changes = structuralDiff(doc, next)
     expect(diffSummary(changes, countLeaves(doc))).toBe(

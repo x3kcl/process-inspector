@@ -110,8 +110,8 @@ export function DestructiveModal({
         )}
         {cascade.victims === 'unavailable' && (
           <p className="strip-note">
-            Cascade check unavailable — call-activity children (if any) will be terminated
-            with the parent.
+            Cascade check unavailable — call-activity children (if any) will be terminated with the
+            parent.
           </p>
         )}
         {Array.isArray(cascade.victims) &&

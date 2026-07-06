@@ -61,8 +61,7 @@ export function useBulkJobs(enabled: boolean) {
     queryKey: BULK_JOBS_KEY,
     queryFn: fetchBulkJobs,
     enabled,
-    refetchInterval: (query) =>
-      (query.state.data ?? []).some(jobActive) ? 2500 : 30_000,
+    refetchInterval: (query) => ((query.state.data ?? []).some(jobActive) ? 2500 : 30_000),
   })
 }
 

@@ -49,7 +49,10 @@ describe('planSelection — the Intersection Rule (binding)', () => {
   })
 
   it('auto-excludes protected rows and counts them for the badge', () => {
-    const plan = planSelection([FAILED, { ...FAILED, processInstanceId: 'pi-p', protectedInstance: true }])
+    const plan = planSelection([
+      FAILED,
+      { ...FAILED, processInstanceId: 'pi-p', protectedInstance: true },
+    ])
     expect(plan.targets).toHaveLength(1)
     expect(plan.protectedExcluded).toBe(1)
     expect(plan.offers.find((o) => o.verb === 'retry-job')?.enabled).toBe(true)
@@ -70,7 +73,11 @@ describe('planSelection — the Intersection Rule (binding)', () => {
 
   it('disables everything over the 200-item cap with the deselect count', () => {
     const many = Array.from({ length: BULK_CAP + 3 }, (_, i) =>
-      row({ processInstanceId: `pi-${String(i)}`, status: 'FAILED', flags: { hasDeadLetterJobs: true } }),
+      row({
+        processInstanceId: `pi-${String(i)}`,
+        status: 'FAILED',
+        flags: { hasDeadLetterJobs: true },
+      }),
     )
     const plan = planSelection(many)
     expect(plan.overCap).toBe(true)

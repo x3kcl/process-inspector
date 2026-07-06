@@ -6,7 +6,8 @@
 import { serializedBytes } from '../ledger'
 
 /** Engine types the editor can write. Serializables are locked out entirely (§4a). */
-export type EditableType = 'string' | 'integer' | 'long' | 'short' | 'double' | 'boolean' | 'date' | 'json'
+export type EditableType =
+  'string' | 'integer' | 'long' | 'short' | 'double' | 'boolean' | 'date' | 'json'
 
 export const EDITABLE_TYPES: readonly EditableType[] = [
   'string',
@@ -53,9 +54,7 @@ export function editGateReason(input: {
 
 /* ------------------------------- scalar parsing ------------------------------- */
 
-export type ParseResult =
-  | { ok: true; value: unknown; echo: string }
-  | { ok: false; error: string }
+export type ParseResult = { ok: true; value: unknown; echo: string } | { ok: false; error: string }
 
 const INT_RANGES: Record<'integer' | 'short', { min: number; max: number }> = {
   integer: { min: -2147483648, max: 2147483647 },
@@ -63,7 +62,10 @@ const INT_RANGES: Record<'integer' | 'short', { min: number; max: number }> = {
 }
 
 /** Number parsing with per-subtype range validation and the live parsed echo (§4a). */
-export function parseNumberInput(raw: string, subtype: 'integer' | 'long' | 'short' | 'double'): ParseResult {
+export function parseNumberInput(
+  raw: string,
+  subtype: 'integer' | 'long' | 'short' | 'double',
+): ParseResult {
   const trimmed = raw.trim()
   if (trimmed === '') return { ok: false, error: 'enter a number (or use Clear for no value)' }
   if (!/^[+-]?(\d+\.?\d*|\.\d+)([eE][+-]?\d+)?$/.test(trimmed)) {
@@ -110,7 +112,8 @@ export function parseDateInput(raw: string): ParseResult {
     }
   }
   const parsed = new Date(trimmed)
-  if (Number.isNaN(parsed.getTime())) return { ok: false, error: `"${trimmed}" is not a valid date-time` }
+  if (Number.isNaN(parsed.getTime()))
+    return { ok: false, error: `"${trimmed}" is not a valid date-time` }
   const utc = parsed.toISOString()
   return { ok: true, value: utc, echo: `will be stored as ${utc} (UTC)` }
 }
@@ -133,11 +136,7 @@ export type LeafPath = (string | number)[]
 export function formatPath(path: LeafPath): string {
   return path
     .map((segment, index) =>
-      typeof segment === 'number'
-        ? `[${String(segment)}]`
-        : index === 0
-          ? segment
-          : `.${segment}`,
+      typeof segment === 'number' ? `[${String(segment)}]` : index === 0 ? segment : `.${segment}`,
     )
     .join('')
 }
@@ -170,7 +169,10 @@ export function setAtPath(root: unknown, path: LeafPath, value: unknown): unknow
 }
 
 /** Staged leaf edits applied in order over the original document. */
-export function applyLeafEdits(root: unknown, edits: { path: LeafPath; value: unknown }[]): unknown {
+export function applyLeafEdits(
+  root: unknown,
+  edits: { path: LeafPath; value: unknown }[],
+): unknown {
   return edits.reduce((current, edit) => setAtPath(current, edit.path, edit.value), root)
 }
 
@@ -180,8 +182,7 @@ export const SOURCE_WARN_BYTES = 256 * 1024
 export const SOURCE_BLOCK_BYTES = 5 * 1024 * 1024
 
 export type SourceCheck =
-  | { ok: true; value: unknown; warning?: string }
-  | { ok: false; error: string }
+  { ok: true; value: unknown; warning?: string } | { ok: false; error: string }
 
 /**
  * The §4a Source→Form / proceed gate: parse (with position), then byte-size pre-flight

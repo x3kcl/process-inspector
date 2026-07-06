@@ -293,19 +293,20 @@ function EditorSession({
                 .then(async (result) => {
                   toast({
                     kind: 'success',
-                    text: result.deltaStatement ?? `job ${jobId} moved back to the executable queue`,
+                    text:
+                      result.deltaStatement ?? `job ${jobId} moved back to the executable queue`,
                     auditPath,
                   })
-                  await queryClient.invalidateQueries({ queryKey: ['instance', engineId, instanceId] })
+                  await queryClient.invalidateQueries({
+                    queryKey: ['instance', engineId, instanceId],
+                  })
                   await queryClient.invalidateQueries({ queryKey: ['audit', engineId, instanceId] })
                 })
                 .catch((error: unknown) => {
                   toast({
                     kind: 'error',
                     text:
-                      error instanceof ActionError
-                        ? problemBanner(error.problem)
-                        : String(error),
+                      error instanceof ActionError ? problemBanner(error.problem) : String(error),
                   })
                 })
             },
@@ -331,7 +332,9 @@ function EditorSession({
         <code className="composite-id">{`${engineId}:${instanceId}`}</code>
         <span>
           editing <code>{entry.name}</code>{' '}
-          <span className="value-muted">(case scope · engine type {declaredType ?? 'undeclared'})</span>
+          <span className="value-muted">
+            (case scope · engine type {declaredType ?? 'undeclared'})
+          </span>
         </span>
       </div>
 
@@ -352,8 +355,8 @@ function EditorSession({
               if (!next) setChosenType(lockedType)
             }}
           />
-          unlock type — downstream gateways/scripts may depend on this type; text “42” and
-          number 42 behave differently
+          unlock type — downstream gateways/scripts may depend on this type; text “42” and number 42
+          behave differently
         </label>
         {typeUnlocked && (
           <select
@@ -431,9 +434,12 @@ function EditorSession({
               {sourceCheck.error}
             </p>
           )}
-          {jsonType && mode === 'source' && sourceCheck?.ok === true && sourceCheck.warning !== undefined && (
-            <p className="edit-echo">⚠ {sourceCheck.warning}</p>
-          )}
+          {jsonType &&
+            mode === 'source' &&
+            sourceCheck?.ok === true &&
+            sourceCheck.warning !== undefined && (
+              <p className="edit-echo">⚠ {sourceCheck.warning}</p>
+            )}
           {jsonType && mode === 'source' && (
             <p className="value-muted source-note">
               saving re-serializes — the review compares values, not formatting
@@ -473,9 +479,7 @@ function EditorSession({
           type="button"
           className="primary review-btn"
           disabled={!staged.ok || unchanged || request === null}
-          title={
-            !staged.ok ? staged.error : unchanged ? 'nothing changed yet' : undefined
-          }
+          title={!staged.ok ? staged.error : unchanged ? 'nothing changed yet' : undefined}
           onClick={() => {
             action.reset()
             setVerifyOpen(true)

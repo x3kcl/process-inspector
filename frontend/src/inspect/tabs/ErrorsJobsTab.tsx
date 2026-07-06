@@ -136,9 +136,7 @@ function JobLaneSection({
                 wireLane={meta.wireLane}
                 engineId={engineId}
                 instanceId={instanceId}
-                selected={
-                  selectedActivityId !== undefined && job.elementId === selectedActivityId
-                }
+                selected={selectedActivityId !== undefined && job.elementId === selectedActivityId}
                 onShowOnDiagram={onShowOnDiagram}
               />
             ))}
@@ -364,8 +362,8 @@ function JobActions({
                   <li>Exception {firstLine(job.exceptionMessage)}</li>
                 )}
                 <li className="cascade-warning">
-                  ⚠ The execution is orphaned permanently — the case can never continue past
-                  this step on its own; the only rescue afterwards is change-state.
+                  ⚠ The execution is orphaned permanently — the case can never continue past this
+                  step on its own; the only rescue afterwards is change-state.
                 </li>
               </ul>
             }

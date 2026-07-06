@@ -126,8 +126,8 @@ export function VerifyModal({
         }
       >
         <p>
-          Nothing was overwritten — the engine value moved after you loaded it, so the edit
-          was refused as protection.
+          Nothing was overwritten — the engine value moved after you loaded it, so the edit was
+          refused as protection.
         </p>
         <dl className="cas-values">
           <dt>The value you started from</dt>
@@ -264,7 +264,8 @@ export function VerifyModal({
       )}
 
       <label className="modal-field">
-        Reason {rule.required ? '(required on PROD, ≥10 chars)' : '(optional, ≥10 chars when given)'}
+        Reason{' '}
+        {rule.required ? '(required on PROD, ≥10 chars)' : '(optional, ≥10 chars when given)'}
         <textarea
           value={reason}
           rows={2}
@@ -279,8 +280,8 @@ export function VerifyModal({
         <summary>exact request</summary>
         <pre className="value-body">{JSON.stringify(request, null, 2)}</pre>
         <p className="value-muted">
-          POST /api/instances/{engineId}/{instanceId}/actions/edit-variable — the
-          expectedOldValue is the compare-and-set precondition.
+          POST /api/instances/{engineId}/{instanceId}/actions/edit-variable — the expectedOldValue
+          is the compare-and-set precondition.
         </p>
       </details>
 
