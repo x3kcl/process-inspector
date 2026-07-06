@@ -3,6 +3,8 @@ package io.inspector.support;
 import io.inspector.audit.AuditEntryRepository;
 import io.inspector.audit.InstanceNoteRepository;
 import io.inspector.audit.ProtectedInstanceRepository;
+import io.inspector.bulk.BulkJobItemRepository;
+import io.inspector.bulk.BulkJobRepository;
 import org.mockito.Mockito;
 import org.springframework.boot.test.context.TestConfiguration;
 import org.springframework.context.annotation.Bean;
@@ -30,5 +32,15 @@ public class NoDbTestSupport {
     @Bean
     ProtectedInstanceRepository protectedInstanceRepository() {
         return Mockito.mock(ProtectedInstanceRepository.class);
+    }
+
+    @Bean
+    BulkJobRepository bulkJobRepository() {
+        return Mockito.mock(BulkJobRepository.class);
+    }
+
+    @Bean
+    BulkJobItemRepository bulkJobItemRepository() {
+        return Mockito.mock(BulkJobItemRepository.class);
     }
 }

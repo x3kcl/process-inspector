@@ -1,0 +1,524 @@
+package io.inspector.bulk;
+
+import io.inspector.action.ActionRequest;
+import io.inspector.action.ActionResult;
+import io.inspector.action.ActionVerb;
+import io.inspector.action.CasConflictException;
+import io.inspector.action.CorrectiveActionService;
+import io.inspector.action.EngineRejectedException;
+import io.inspector.action.GuardRefusedException;
+import io.inspector.action.OutcomeUnknownException;
+import io.inspector.audit.AuditEntry;
+import io.inspector.audit.AuditOutcome;
+import io.inspector.audit.AuditService;
+import io.inspector.audit.OutcomeVerificationFailedException;
+import io.inspector.audit.ProtectedInstance;
+import io.inspector.audit.ProtectedInstanceRepository;
+import io.inspector.client.FlowableEngineClient;
+import io.inspector.client.FlowableEngineClient.JobLaneKind;
+import io.inspector.config.InspectorProperties.EngineConfig;
+import io.inspector.registry.EngineRegistry;
+import java.time.Clock;
+import java.util.ArrayList;
+import java.util.LinkedHashMap;
+import java.util.List;
+import java.util.Map;
+import java.util.Set;
+import java.util.UUID;
+import java.util.concurrent.ConcurrentHashMap;
+import java.util.concurrent.ExecutorService;
+import java.util.concurrent.Executors;
+import java.util.stream.Collectors;
+import org.slf4j.Logger;
+import org.slf4j.LoggerFactory;
+import org.springframework.boot.context.event.ApplicationReadyEvent;
+import org.springframework.context.event.EventListener;
+import org.springframework.data.domain.PageRequest;
+import org.springframework.http.HttpStatus;
+import org.springframework.security.core.Authentication;
+import org.springframework.stereotype.Service;
+
+/**
+ * M5 grid-selection bulk (SPEC §7, R-SEM-10/11): a PERSISTED tracked job — submit
+ * records the resolved target list BEFORE acting, then a per-item fan-out where every
+ * item runs the FULL single-target guard chain ({@link CorrectiveActionService}: RBAC,
+ * engine gates, protected guard, server-fresh restatement, fail-closed per-item audit).
+ * No cross-engine transaction pretense; partial failure is a NORMAL outcome.
+ *
+ * <p>v1 discipline: items dispatch sequentially (the conservative per-engine concurrency
+ * cap — a simultaneous 300-job DLQ move can DDoS the executor, SPEC §7); retry-job
+ * resolves the instance's CURRENT dead-letter jobs at dispatch time (the built-in
+ * precondition recheck — none left ⇒ {@code skipped (already resolved)}). A timed-out
+ * mutation is {@code unknown} and is NEVER auto-retried; Verify-now (R-SAFE-09) re-runs
+ * the verb's precondition predicate and reclassifies with evidence.
+ */
+@Service
+public class BulkJobService {
+
+    private static final Logger log = LoggerFactory.getLogger(BulkJobService.class);
+
+    /** SPEC §7 v1 verb whitelist: queue-state verbs only — destructive bulk is the tier-4 wizard (deferred). */
+    private static final Set<ActionVerb> BULK_VERBS =
+            Set.of(ActionVerb.RETRY_JOB, ActionVerb.SUSPEND, ActionVerb.ACTIVATE, ActionVerb.TRIGGER_TIMER);
+
+    private static final int DLQ_JOBS_PER_INSTANCE_CAP = 20;
+
+    private final BulkJobRepository jobs;
+    private final BulkJobItemRepository items;
+    private final CorrectiveActionService actions;
+    private final ProtectedInstanceRepository protectedInstances;
+    private final AuditService audit;
+    private final EngineRegistry registry;
+    private final FlowableEngineClient client;
+    private final Clock clock;
+    private final ExecutorService executor = Executors.newVirtualThreadPerTaskExecutor();
+    private final Map<UUID, Boolean> cancelRequested = new ConcurrentHashMap<>();
+
+    public BulkJobService(
+            BulkJobRepository jobs,
+            BulkJobItemRepository items,
+            CorrectiveActionService actions,
+            ProtectedInstanceRepository protectedInstances,
+            AuditService audit,
+            EngineRegistry registry,
+            FlowableEngineClient client,
+            Clock clock) {
+        this.jobs = jobs;
+        this.items = items;
+        this.actions = actions;
+        this.protectedInstances = protectedInstances;
+        this.audit = audit;
+        this.registry = registry;
+        this.client = client;
+        this.clock = clock;
+    }
+
+    /* ------------------------------- submit ------------------------------- */
+
+    public BulkDtos.BulkJobDto submit(BulkDtos.BulkSubmitRequest request, Authentication auth) {
+        ActionVerb verb = ActionVerb.fromPath(request.verb() != null ? request.verb() : "")
+                .filter(BULK_VERBS::contains)
+                .orElseThrow(() -> new GuardRefusedException(
+                        HttpStatus.BAD_REQUEST,
+                        "bulk-verb-not-allowed",
+                        "Bulk supports retry-job, suspend, activate and trigger-timer in v1 — destructive bulk"
+                                + " needs the tier-4 wizard. Nothing happened."));
+        List<BulkDtos.BulkTarget> targets = request.items() != null ? request.items() : List.of();
+        if (targets.isEmpty()) {
+            throw new GuardRefusedException(
+                    HttpStatus.BAD_REQUEST, "bulk-empty", "The selection is empty — nothing to do.");
+        }
+        if (targets.size() > BulkJob.ITEM_CAP) {
+            throw new GuardRefusedException(
+                    HttpStatus.BAD_REQUEST,
+                    "bulk-cap-exceeded",
+                    "Bulk is capped at " + BulkJob.ITEM_CAP + " items (got " + targets.size()
+                            + "). Narrow the selection. Nothing happened.");
+        }
+        String reason = request.reason() != null && !request.reason().isBlank() ? request.reason() : null;
+        if (reason != null && reason.length() < 10) {
+            throw new GuardRefusedException(
+                    HttpStatus.BAD_REQUEST, "reason-too-short", "The reason must be at least 10 characters.");
+        }
+        for (BulkDtos.BulkTarget target : targets) {
+            registry.require(target.engineId()); // unknown engine refuses the WHOLE submit pre-flight
+            if (target.instanceId() == null || target.instanceId().isBlank()) {
+                throw new GuardRefusedException(
+                        HttpStatus.BAD_REQUEST, "bulk-target-invalid", "Every item needs an instanceId.");
+            }
+        }
+
+        // Protected auto-exclusion (R-SAFE-05): settled as skipped_protected at submit —
+        // visible in the report, never silently dropped.
+        Set<ProtectedInstance.Key> guarded = protectedKeys(targets);
+
+        UUID jobId = UUID.randomUUID();
+        // The envelope audit row (SPEC §7: one per item + ONE for the envelope) — the
+        // fail-closed gate for the whole submission (audit down ⇒ 503, nothing recorded
+        // ⇒ nothing dispatched).
+        Map<String, Object> payload = new LinkedHashMap<>();
+        payload.put("schema", "bulk/" + verb.path() + "/v1");
+        payload.put("bulkJobId", jobId.toString());
+        payload.put("items", targets.size());
+        payload.put(
+                "targets",
+                targets.stream().map(t -> t.engineId() + ":" + t.instanceId()).toList());
+        if (request.continuedFrom() != null) {
+            payload.put("continuedFrom", request.continuedFrom().toString());
+        }
+        String engineIds =
+                targets.stream().map(BulkDtos.BulkTarget::engineId).distinct().collect(Collectors.joining(","));
+        AuditEntry envelope = audit.beginPending(
+                auth.getName(), engineIds, null, null, "bulk:" + verb.path(), reason, request.ticketId(), payload);
+
+        BulkJob job = new BulkJob(
+                jobId,
+                auth.getName(),
+                clock.instant(),
+                verb.path(),
+                reason,
+                request.ticketId(),
+                targets.size(),
+                request.continuedFrom());
+        jobs.saveAndFlush(job);
+        List<BulkJobItem> itemRows = new ArrayList<>();
+        int ordinal = 0;
+        for (BulkDtos.BulkTarget target : targets) {
+            BulkJobItem item = new BulkJobItem(
+                    jobId,
+                    ordinal++,
+                    target.engineId(),
+                    target.instanceId(),
+                    target.jobId(),
+                    BulkJobItem.State.pending);
+            if (guarded.contains(new ProtectedInstance.Key(target.engineId(), target.instanceId()))) {
+                item.settle(
+                        BulkJobItem.State.skipped_protected,
+                        "protected instance (R-SAFE-05) — auto-excluded from bulk",
+                        null,
+                        clock.instant());
+            }
+            itemRows.add(item);
+        }
+        items.saveAllAndFlush(itemRows);
+
+        executor.submit(() -> run(jobId, envelope, auth));
+        return BulkDtos.BulkJobDto.of(job, itemRows, true);
+    }
+
+    private Set<ProtectedInstance.Key> protectedKeys(List<BulkDtos.BulkTarget> targets) {
+        List<ProtectedInstance.Key> keys = targets.stream()
+                .map(t -> new ProtectedInstance.Key(t.engineId(), t.instanceId()))
+                .toList();
+        return protectedInstances.findAllById(keys).stream()
+                .map(p -> new ProtectedInstance.Key(p.getEngineId(), p.getInstanceId()))
+                .collect(Collectors.toSet());
+    }
+
+    /* ------------------------------- execution ------------------------------- */
+
+    private void run(UUID jobId, AuditEntry envelope, Authentication auth) {
+        BulkJob job = jobs.findById(jobId).orElseThrow();
+        job.markRunning();
+        jobs.saveAndFlush(job);
+        ActionVerb verb = ActionVerb.fromPath(job.getVerb()).orElseThrow();
+
+        List<BulkJobItem> all = items.findByJobIdOrderByOrdinal(jobId);
+        boolean cancelled = false;
+        for (BulkJobItem item : all) {
+            if (item.getState() != BulkJobItem.State.pending) {
+                continue; // settled at submit (skipped_protected)
+            }
+            if (cancelRequested.getOrDefault(jobId, false)) {
+                cancelled = true;
+                break;
+            }
+            item.markDispatched();
+            items.saveAndFlush(item);
+            dispatchOne(job, verb, item, auth);
+            items.saveAndFlush(item);
+        }
+        if (cancelled) {
+            for (BulkJobItem item : all) {
+                if (item.getState() == BulkJobItem.State.pending) {
+                    item.settle(BulkJobItem.State.not_run, "job cancelled before dispatch", null, clock.instant());
+                }
+            }
+            items.saveAllAndFlush(all);
+        }
+        cancelRequested.remove(jobId);
+        job.finish(cancelled ? BulkJob.State.CANCELLED : BulkJob.State.COMPLETED, clock.instant());
+        jobs.saveAndFlush(job);
+        closeEnvelope(envelope, all);
+    }
+
+    /** One item through the full single-target rails; outcome classes per SPEC §7. */
+    private void dispatchOne(BulkJob job, ActionVerb verb, BulkJobItem item, Authentication auth) {
+        try {
+            if (verb == ActionVerb.RETRY_JOB) {
+                dispatchRetry(job, item, auth);
+                return;
+            }
+            ActionRequest request = requestFor(job, verb, item.getJobRef());
+            ActionResult result = actions.execute(item.getEngineId(), item.getInstanceId(), verb, request, auth);
+            item.settle(BulkJobItem.State.ok, result.deltaStatement(), result.auditId(), clock.instant());
+        } catch (GuardRefusedException e) {
+            item.settle(guardOutcome(e), e.code() + ": " + e.getMessage(), null, clock.instant());
+        } catch (CasConflictException e) {
+            // Concurrent-operator rule (R-SEM-09): the target moved — already handled.
+            item.settle(BulkJobItem.State.skipped, "already changed by someone else", e.auditId(), clock.instant());
+        } catch (EngineRejectedException e) {
+            item.settle(
+                    BulkJobItem.State.failed,
+                    "engine rejected (" + e.engineStatus() + "): " + e.engineBody(),
+                    e.auditId(),
+                    clock.instant());
+        } catch (OutcomeUnknownException e) {
+            item.settle(
+                    BulkJobItem.State.unknown,
+                    "no answer within the write budget — may have applied; use Verify now",
+                    e.auditId(),
+                    clock.instant());
+        } catch (OutcomeVerificationFailedException e) {
+            item.settle(
+                    BulkJobItem.State.unknown,
+                    "dispatched — outcome verification failed; use Verify now",
+                    e.auditId(),
+                    clock.instant());
+        } catch (RuntimeException e) {
+            log.error("bulk item {}:{} unexpected failure", item.getEngineId(), item.getInstanceId(), e);
+            item.settle(BulkJobItem.State.failed, "unexpected: " + e.getMessage(), null, clock.instant());
+        }
+    }
+
+    /**
+     * retry-job resolves the instance's dead-letter jobs at DISPATCH time — the SPEC §7
+     * per-item precondition recheck ("still in the DLQ?"). None left ⇒ skipped, honestly.
+     */
+    private void dispatchRetry(BulkJob job, BulkJobItem item, Authentication auth) {
+        EngineConfig engine = registry.require(item.getEngineId());
+        List<String> jobIds;
+        if (item.getJobRef() != null && !item.getJobRef().isBlank()) {
+            jobIds = List.of(item.getJobRef());
+        } else {
+            jobIds = client
+                    .listJobs(
+                            engine,
+                            JobLaneKind.DEADLETTER,
+                            Map.of("processInstanceId", item.getInstanceId()),
+                            0,
+                            DLQ_JOBS_PER_INSTANCE_CAP)
+                    .dataOrEmpty()
+                    .stream()
+                    .map(row -> String.valueOf(row.get("id")))
+                    .toList();
+        }
+        if (jobIds.isEmpty()) {
+            item.settle(
+                    BulkJobItem.State.skipped,
+                    "no dead-letter jobs on this instance any more (already retried?)",
+                    null,
+                    clock.instant());
+            return;
+        }
+        int retried = 0;
+        UUID lastAudit = null;
+        for (String dlqJobId : jobIds) {
+            ActionResult result = actions.execute(
+                    item.getEngineId(),
+                    item.getInstanceId(),
+                    ActionVerb.RETRY_JOB,
+                    requestFor(job, ActionVerb.RETRY_JOB, dlqJobId),
+                    auth);
+            lastAudit = result.auditId();
+            retried++;
+        }
+        item.settle(
+                BulkJobItem.State.ok,
+                retried == 1
+                        ? "job " + jobIds.get(0) + " moved back to the executable queue"
+                        : retried + " dead-letter jobs moved back to the executable queue",
+                lastAudit,
+                clock.instant());
+    }
+
+    private ActionRequest requestFor(BulkJob job, ActionVerb verb, String jobRef) {
+        return new ActionRequest(
+                job.getReason(),
+                job.getTicketId(),
+                null,
+                needsJobRef(verb) ? jobRef : null,
+                null,
+                null,
+                null,
+                null,
+                null,
+                null);
+    }
+
+    private static boolean needsJobRef(ActionVerb verb) {
+        return verb == ActionVerb.RETRY_JOB || verb == ActionVerb.TRIGGER_TIMER;
+    }
+
+    private static BulkJobItem.State guardOutcome(GuardRefusedException e) {
+        // "already resolved" class (R-SEM-09): the target is gone/done — a NORMAL outcome.
+        if ("job-gone".equals(e.code()) || "instance-not-running".equals(e.code())) {
+            return BulkJobItem.State.skipped;
+        }
+        if ("instance-protected".equals(e.code())) {
+            return BulkJobItem.State.skipped_protected;
+        }
+        // Everything else (rbac, read-only engine, unreachable, shedding load) is a clean
+        // pre-flight rejection: nothing happened ⇒ failed, retriable in a follow-up job.
+        return BulkJobItem.State.failed;
+    }
+
+    private void closeEnvelope(AuditEntry envelope, List<BulkJobItem> all) {
+        Map<BulkJobItem.State, Long> tally =
+                all.stream().collect(Collectors.groupingBy(BulkJobItem::getState, Collectors.counting()));
+        boolean anyUnknown = tally.getOrDefault(BulkJobItem.State.unknown, 0L) > 0;
+        boolean anyFailed = tally.getOrDefault(BulkJobItem.State.failed, 0L) > 0;
+        AuditOutcome outcome = anyUnknown ? AuditOutcome.unknown : anyFailed ? AuditOutcome.failed : AuditOutcome.ok;
+        try {
+            audit.close(envelope, outcome, null, "per-item tally: " + tally, false);
+        } catch (RuntimeException e) {
+            log.error("bulk envelope audit close failed for {}: {}", envelope.getId(), e.toString());
+        }
+    }
+
+    /* ------------------------------- reads ------------------------------- */
+
+    public List<BulkDtos.BulkJobDto> recent(int limit) {
+        return jobs.findAllByOrderBySubmittedAtDesc(PageRequest.of(0, Math.min(Math.max(limit, 1), 100))).stream()
+                .map(job -> BulkDtos.BulkJobDto.of(job, items.findByJobIdOrderByOrdinal(job.getId()), false))
+                .toList();
+    }
+
+    public BulkDtos.BulkJobDto get(UUID id) {
+        BulkJob job = jobs.findById(id)
+                .orElseThrow(() ->
+                        new GuardRefusedException(HttpStatus.NOT_FOUND, "bulk-job-unknown", "No bulk job " + id + "."));
+        return BulkDtos.BulkJobDto.of(job, items.findByJobIdOrderByOrdinal(id), true);
+    }
+
+    /* ------------------------------- cancel ------------------------------- */
+
+    /** Cancel stops DISPATCHING (SPEC §7) — items already sent keep their outcome. */
+    public BulkDtos.BulkJobDto cancel(UUID id, Authentication auth) {
+        BulkJob job = jobs.findById(id)
+                .orElseThrow(() ->
+                        new GuardRefusedException(HttpStatus.NOT_FOUND, "bulk-job-unknown", "No bulk job " + id + "."));
+        if (job.getState() != BulkJob.State.PENDING && job.getState() != BulkJob.State.RUNNING) {
+            throw new GuardRefusedException(
+                    HttpStatus.CONFLICT,
+                    "bulk-job-finished",
+                    "Job " + id + " is already " + job.getState() + " — nothing to cancel.");
+        }
+        log.info("bulk job {} cancel requested by {}", id, auth.getName());
+        cancelRequested.put(id, true);
+        return BulkDtos.BulkJobDto.of(job, items.findByJobIdOrderByOrdinal(id), true);
+    }
+
+    /* ------------------------------- verify-now (R-SAFE-09) ------------------------------- */
+
+    /**
+     * Re-runs the verb's precondition predicate against LIVE engine state and
+     * reclassifies the {@code unknown} item with evidence — never re-fires the mutation.
+     */
+    public BulkDtos.BulkItemDto verifyNow(UUID jobId, int ordinal) {
+        BulkJobItem item = items.findById(new BulkJobItem.Key(jobId, ordinal))
+                .orElseThrow(() -> new GuardRefusedException(
+                        HttpStatus.NOT_FOUND, "bulk-item-unknown", "No item " + ordinal + " in job " + jobId + "."));
+        if (item.getState() != BulkJobItem.State.unknown) {
+            throw new GuardRefusedException(
+                    HttpStatus.CONFLICT,
+                    "bulk-item-not-unknown",
+                    "Item " + ordinal + " is '" + item.getState() + "' — Verify now applies to unknown outcomes only.");
+        }
+        BulkJob job = jobs.findById(jobId).orElseThrow();
+        ActionVerb verb = ActionVerb.fromPath(job.getVerb()).orElseThrow();
+        EngineConfig engine = registry.require(item.getEngineId());
+        Verdict verdict;
+        try {
+            verdict = precondition(engine, verb, item);
+        } catch (RuntimeException e) {
+            verdict = new Verdict(null, "engine did not answer the verification read: " + e.getMessage());
+        }
+        if (verdict.reclassifyTo() != null) {
+            item.settle(verdict.reclassifyTo(), verdict.evidence(), item.getAuditId(), clock.instant());
+        } else {
+            // Still ambiguous: stays unknown, but the evidence is refreshed for the drawer.
+            item.settle(BulkJobItem.State.unknown, verdict.evidence(), item.getAuditId(), item.getFinishedAt());
+        }
+        items.saveAndFlush(item);
+        return BulkDtos.BulkItemDto.of(item);
+    }
+
+    private record Verdict(BulkJobItem.State reclassifyTo, String evidence) {}
+
+    private Verdict precondition(EngineConfig engine, ActionVerb verb, BulkJobItem item) {
+        switch (verb) {
+            case RETRY_JOB -> {
+                if (item.getJobRef() == null) {
+                    return new Verdict(null, "no job reference recorded — needs L3 review of the audit trail");
+                }
+                Map<String, Object> dlq = client.getJob(engine, JobLaneKind.DEADLETTER, item.getJobRef());
+                return dlq == null
+                        ? new Verdict(
+                                BulkJobItem.State.ok,
+                                "verified: job " + item.getJobRef() + " is no longer dead-lettered")
+                        : new Verdict(
+                                null,
+                                "job " + item.getJobRef()
+                                        + " is STILL dead-lettered — the retry may not have applied (or it failed"
+                                        + " again); needs L3");
+            }
+            case TRIGGER_TIMER -> {
+                if (item.getJobRef() == null) {
+                    return new Verdict(null, "no timer reference recorded — needs L3 review of the audit trail");
+                }
+                Map<String, Object> timer = client.getJob(engine, JobLaneKind.TIMER, item.getJobRef());
+                return timer == null
+                        ? new Verdict(BulkJobItem.State.ok, "verified: timer " + item.getJobRef() + " has fired")
+                        : new Verdict(null, "timer " + item.getJobRef() + " is still queued — still-pending");
+            }
+            case SUSPEND, ACTIVATE -> {
+                Map<String, Object> instance = client.getRuntimeProcessInstance(engine, item.getInstanceId());
+                if (instance == null) {
+                    return new Verdict(null, "instance is no longer running — completed or deleted since; needs L3");
+                }
+                boolean suspended = Boolean.TRUE.equals(instance.get("suspended"));
+                boolean wanted = verb == ActionVerb.SUSPEND;
+                return suspended == wanted
+                        ? new Verdict(
+                                BulkJobItem.State.ok, "verified: instance is " + (suspended ? "suspended" : "active"))
+                        : new Verdict(
+                                null,
+                                "instance is " + (suspended ? "suspended" : "active") + " — the " + verb.path()
+                                        + " likely did not apply; still-pending");
+            }
+            default -> {
+                return new Verdict(null, "no precondition predicate for '" + verb.path() + "' — needs L3");
+            }
+        }
+    }
+
+    /* ------------------------------- reconciliation (SPEC §7) ------------------------------- */
+
+    /** Startup sweep: no automatic resume, EVER — interrupted work is surfaced, not re-fired. */
+    @EventListener(ApplicationReadyEvent.class)
+    public void reconcileInterrupted() {
+        List<BulkJob> stale;
+        try {
+            stale = jobs.findByStateIn(List.of(BulkJob.State.PENDING, BulkJob.State.RUNNING));
+        } catch (RuntimeException e) {
+            log.warn("bulk reconciliation sweep skipped — store unavailable: {}", e.toString());
+            return;
+        }
+        for (BulkJob job : stale) {
+            List<BulkJobItem> all = items.findByJobIdOrderByOrdinal(job.getId());
+            for (BulkJobItem item : all) {
+                if (item.getState() == BulkJobItem.State.dispatched) {
+                    // In flight at crash: the engine may have applied it. NEVER re-fired.
+                    item.settle(
+                            BulkJobItem.State.unknown,
+                            "in flight when the BFF stopped — may have applied; use Verify now",
+                            item.getAuditId(),
+                            clock.instant());
+                } else if (item.getState() == BulkJobItem.State.pending) {
+                    item.settle(BulkJobItem.State.not_run, "BFF stopped before dispatch", null, clock.instant());
+                }
+            }
+            items.saveAllAndFlush(all);
+            BulkJob.State before = job.getState();
+            job.finish(BulkJob.State.INTERRUPTED, clock.instant());
+            jobs.saveAndFlush(job);
+            log.warn(
+                    "bulk job {} ({} × {}) swept {} → INTERRUPTED — offer 'continue as new job'",
+                    job.getId(),
+                    job.getTotalItems(),
+                    job.getVerb(),
+                    before);
+        }
+    }
+}

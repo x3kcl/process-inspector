@@ -1,5 +1,7 @@
 package io.inspector.aggregate;
 
+import io.inspector.audit.ProtectedInstance;
+import io.inspector.audit.ProtectedInstanceRepository;
 import io.inspector.client.FlowableEngineClient;
 import io.inspector.client.FlowableEngineClient.FlowablePage;
 import io.inspector.client.FlowableEngineClient.JobLaneKind;
@@ -66,13 +68,19 @@ public class SearchService {
     private final EngineRegistry registry;
     private final FlowableEngineClient flowable;
     private final InspectorProperties props;
+    private final ProtectedInstanceRepository protectedInstances;
     private final ExecutorService fanout = Executors.newVirtualThreadPerTaskExecutor();
     private final Semaphore engineSlots;
 
-    public SearchService(EngineRegistry registry, FlowableEngineClient flowable, InspectorProperties props) {
+    public SearchService(
+            EngineRegistry registry,
+            FlowableEngineClient flowable,
+            InspectorProperties props,
+            ProtectedInstanceRepository protectedInstances) {
         this.registry = registry;
         this.flowable = flowable;
         this.props = props;
+        this.protectedInstances = protectedInstances;
         this.engineSlots = new Semaphore(props.fanoutParallelism() != null ? props.fanoutParallelism() : 8);
     }
 
@@ -149,7 +157,34 @@ public class SearchService {
             rows.sort(Comparator.comparing(
                     ProcessInstanceRow::startTime, Comparator.nullsLast(Comparator.reverseOrder())));
         }
-        return new SearchResponse(rows, new HashMap<>(perEngine), statusCounts, null, null);
+        return new SearchResponse(markProtected(rows), new HashMap<>(perEngine), statusCounts, null, null);
+    }
+
+    /**
+     * R-SAFE-05 enrichment for the bulk bar: one batched lookup against the protected
+     * registry per result page. A Postgres outage leaves the flag {@code null} (unknown)
+     * — search must not fail over it; the execution-time guard still refuses fail-closed.
+     */
+    private List<ProcessInstanceRow> markProtected(List<ProcessInstanceRow> rows) {
+        if (rows.isEmpty()) {
+            return rows;
+        }
+        Set<ProtectedInstance.Key> guarded;
+        try {
+            List<ProtectedInstance.Key> keys = rows.stream()
+                    .map(row -> new ProtectedInstance.Key(row.engineId(), row.processInstanceId()))
+                    .toList();
+            guarded = protectedInstances.findAllById(keys).stream()
+                    .map(p -> new ProtectedInstance.Key(p.getEngineId(), p.getInstanceId()))
+                    .collect(java.util.stream.Collectors.toSet());
+        } catch (RuntimeException e) {
+            log.warn("protected-instance lookup unavailable — rows carry protectedInstance=null: {}", e.toString());
+            return rows;
+        }
+        return rows.stream()
+                .map(row -> row.withProtected(
+                        guarded.contains(new ProtectedInstance.Key(row.engineId(), row.processInstanceId()))))
+                .toList();
     }
 
     /** One engine's contribution: filtered rows, honesty markers, and the facet counts. */
@@ -657,7 +692,8 @@ public class SearchService {
                 str(pi, "startTime"),
                 str(pi, "endTime"),
                 failure != null ? failure.failureTime() : null,
-                failure != null ? failure.snippet() : null);
+                failure != null ? failure.snippet() : null,
+                null); // protectedInstance filled by markProtected() on the final page
     }
 
     /**

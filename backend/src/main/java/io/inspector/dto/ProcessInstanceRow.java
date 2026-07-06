@@ -29,5 +29,33 @@ public record ProcessInstanceRow(
         String startTime,
         String endTime,
         String failureTime,
-        String currentActivityOrError // dead-letter/failing-job exception snippet when present
-        ) {}
+        String currentActivityOrError, // dead-letter/failing-job exception snippet when present
+        /**
+         * R-SAFE-05 marker for the bulk bar: true = in the protected registry (bulk
+         * auto-excludes it, badge shown). null = protection store unreachable (unknown —
+         * the BFF guard still refuses at execution time either way).
+         */
+        Boolean protectedInstance) {
+
+    public ProcessInstanceRow withProtected(boolean isProtected) {
+        return new ProcessInstanceRow(
+                compositeId,
+                engineId,
+                engineName,
+                engineColor,
+                processInstanceId,
+                businessKey,
+                processDefinitionKey,
+                processDefinitionName,
+                definitionVersion,
+                tenantId,
+                scopeType,
+                status,
+                flags,
+                startTime,
+                endTime,
+                failureTime,
+                currentActivityOrError,
+                isProtected);
+    }
+}
