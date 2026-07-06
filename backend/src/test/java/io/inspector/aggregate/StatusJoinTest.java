@@ -231,4 +231,75 @@ class StatusJoinTest {
             assertThat(StatusJoin.parseInstant(null)).isNull();
         }
     }
+
+    /* ---------- M3: the signature drill-down filter (pure core) ---------- */
+
+    @Nested
+    class SignatureHashFilter {
+
+        private final Map<String, Object> divisorJob1 =
+                Map.of("id", "job-1", "processInstanceId", "pi-1", "exceptionMessage", "/ by zero");
+        private final Map<String, Object> divisorJob2 =
+                Map.of("id", "job-2", "processInstanceId", "pi-2", "exceptionMessage", "/ by zero");
+        private final Map<String, Object> timeoutJob = Map.of(
+                "id", "job-3", "processInstanceId", "pi-3", "exceptionMessage", "connection refused to 10.0.0.7");
+
+        private String snippetHashOf(String message) {
+            return io.inspector.triage.ErrorSignatureNormalizer.normalize(message)
+                    .hash();
+        }
+
+        @Test
+        void snippetHashMatchKeepsExactlyThatGroupsJobs() {
+            var kept = StatusJoin.filterBySignatureHash(
+                    java.util.List.of(divisorJob1, timeoutJob, divisorJob2),
+                    snippetHashOf("/ by zero"),
+                    job -> {
+                        throw new AssertionError("no stacktrace fetch needed on a snippet match");
+                    },
+                    0);
+            assertThat(kept).containsExactly(divisorJob1, divisorJob2);
+        }
+
+        @Test
+        void refinedHashMatchesViaOneRepresentativeStacktracePerGroup() {
+            // The drill hash comes from a stacktrace-REFINED triage card — the snippet-only
+            // hash differs. The bridge fetches ONE representative stacktrace per group.
+            String refinedHash =
+                    snippetHashOf("java.lang.ArithmeticException: / by zero\n\tat MapBasedELResolver.invoke(...)");
+            AtomicInteger fetches = new AtomicInteger();
+            var kept = StatusJoin.filterBySignatureHash(
+                    java.util.List.of(divisorJob1, divisorJob2, timeoutJob),
+                    refinedHash,
+                    job -> {
+                        fetches.incrementAndGet();
+                        return "job-3".equals(job.get("id"))
+                                ? "java.net.ConnectException: connection refused to 10.0.0.7"
+                                : "java.lang.ArithmeticException: / by zero\n\tat whatever(...)";
+                    },
+                    10);
+            assertThat(kept).containsExactly(divisorJob1, divisorJob2);
+            assertThat(fetches.get()).as("one fetch per GROUP, never per job").isEqualTo(2);
+        }
+
+        @Test
+        void refinementStopsAtTheSampleBudgetAndAFailedFetchDegradesToTheSnippet() {
+            String refinedHash = snippetHashOf("java.lang.ArithmeticException: / by zero");
+            // Budget 0: no refinement allowed — nothing matches on snippet, nothing kept.
+            var kept = StatusJoin.filterBySignatureHash(
+                    java.util.List.of(divisorJob1, timeoutJob), refinedHash, job -> "unused", 0);
+            assertThat(kept).isEmpty();
+            // A null stacktrace (job gone between scan and fetch) degrades quietly.
+            var keptNullTrace =
+                    StatusJoin.filterBySignatureHash(java.util.List.of(divisorJob1), refinedHash, job -> null, 10);
+            assertThat(keptNullTrace).isEmpty();
+        }
+
+        @Test
+        void noMatchMeansEmptyNeverUnfiltered() {
+            var kept = StatusJoin.filterBySignatureHash(
+                    java.util.List.of(divisorJob1, timeoutJob), "0".repeat(64), job -> null, 10);
+            assertThat(kept).isEmpty();
+        }
+    }
 }

@@ -18,6 +18,9 @@ public record SearchRequest(
         List<String> engineIds, // empty/null → all enabled engines
         List<InstanceStatus> statuses, // empty/null → all statuses
         String processDefinitionKey,
+        Integer definitionVersion, // exact deployed version — requires processDefinitionKey;
+        // resolved per engine to the concrete processDefinitionId and pushed down natively
+        // into the historic query AND the job-lane scans (the triage version-drill, SPEC §8)
         String businessKey, // Flowable exact match
         String businessKeyLike, // substring; wrapped %…% unless the caller sent wildcards.
         // NOT supported on 6.3-era engines (filter silently ignored) — detected per call
@@ -27,6 +30,11 @@ public record SearchRequest(
         String failureTimeAfter, // ISO-8601 window over the newest dead-letter/failing-job
         String failureTimeBefore, // createTime — independent of instance start (SPEC §8)
         String errorText, // case-insensitive substring over exception snippets (BFF-side)
+        String signatureHash, // normalized error-signature hash (R-SEM-03) — the triage
+        // error-group drill-down. BFF-side over the failure-lane scan legs: snippet-hash
+        // match, with the same one-representative-stacktrace refinement bridge triage uses
+        // (a refined group hash still matches its snippet-only jobs). Failure-evidence
+        // semantics like errorText: setting it means only failure-bearing rows can match.
         String currentActivity, // case-insensitive contains over unfinished activity id/name
         List<VariableFilter> variables,
         String sortBy, // startTime (default) | failureTime — merged rows, newest first
@@ -53,9 +61,12 @@ public record SearchRequest(
         return (statuses == null || statuses.isEmpty()) ? List.of(InstanceStatus.values()) : statuses;
     }
 
-    /** True when any BFF-side failure-evidence filter is set (failure window / error text). */
+    /** True when any BFF-side failure-evidence filter is set (failure window / error text / signature). */
     public boolean hasFailureFilters() {
-        return notBlank(failureTimeAfter) || notBlank(failureTimeBefore) || notBlank(errorText);
+        return notBlank(failureTimeAfter)
+                || notBlank(failureTimeBefore)
+                || notBlank(errorText)
+                || notBlank(signatureHash);
     }
 
     private static boolean notBlank(String s) {

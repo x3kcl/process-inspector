@@ -204,6 +204,59 @@ class TriageAggregationIT {
                 .isEqualTo(afterBypass);
     }
 
+    @Test
+    @Order(5)
+    void failedAndRetryingStatusCountsAreSynthesizedAndMathematicallyAccurate() {
+        JsonNode body = rest.getForObject("/api/triage", JsonNode.class);
+        JsonNode counts = body.get("statusCountsByEngine").get("engine-a");
+
+        // The engine state is static since seeding (the retry fixture is pinned R10/PT1H),
+        // so the BFF's synthesized counts must EQUAL the engine truth computed here from
+        // the same lanes: FAILED = distinct instances holding dead-letter jobs, RETRYING =
+        // distinct instances with withException jobs minus the FAILED set (precedence).
+        java.util.Set<String> failedInstances = distinctInstancesOf("/management/deadletter-jobs?withException=true");
+        java.util.Set<String> retryingInstances = distinctInstancesOf("/management/timer-jobs?withException=true");
+        retryingInstances.addAll(distinctInstancesOf("/management/jobs?withException=true"));
+        retryingInstances.removeAll(failedInstances);
+
+        assertThat(counts.get("FAILED").asLong())
+                .as("FAILED = distinct dead-lettered instances, exactly")
+                .isEqualTo(failedInstances.size());
+        assertThat(counts.get("RETRYING").asLong())
+                .as("RETRYING = distinct failing-with-retries-left instances, FAILED wins collisions")
+                .isEqualTo(retryingInstances.size());
+        assertThat(counts.get("FAILED").asLong()).isGreaterThanOrEqualTo(2); // both seeded versions
+        assertThat(counts.get("RETRYING").asLong()).isGreaterThanOrEqualTo(1); // the pinned fixture
+        // The global map still mirrors the single engine's, new keys included.
+        assertThat(body.get("statusCounts")).isEqualTo(counts);
+    }
+
+    /** Distinct BPMN process-instance ids across ALL pages of one failure lane (engine truth). */
+    @SuppressWarnings("unchecked")
+    private java.util.Set<String> distinctInstancesOf(String laneUrl) {
+        java.util.Set<String> instances = new java.util.HashSet<>();
+        int start = 0;
+        while (true) {
+            java.util.Map<String, Object> page = engine.get()
+                    .uri(laneUrl + "&start=" + start + "&size=200")
+                    .retrieve()
+                    .body(java.util.Map.class);
+            List<java.util.Map<String, Object>> data = (List<java.util.Map<String, Object>>) page.get("data");
+            if (data == null || data.isEmpty()) break;
+            for (java.util.Map<String, Object> job : data) {
+                Object pid = job.get("processInstanceId");
+                Object scopeType = job.get("scopeType");
+                boolean bpmn = scopeType == null || "bpmn".equalsIgnoreCase(String.valueOf(scopeType));
+                if (pid != null && !String.valueOf(pid).isBlank() && bpmn) {
+                    instances.add(String.valueOf(pid));
+                }
+            }
+            start += data.size();
+            if (start >= ((Number) page.get("total")).longValue()) break;
+        }
+        return instances;
+    }
+
     /** Engine calls only the triage aggregation makes (the M1 probe touches none of these). */
     private long triageEngineCalls() {
         return proxy.getAllServeEvents().stream()

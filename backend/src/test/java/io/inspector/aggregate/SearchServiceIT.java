@@ -333,6 +333,119 @@ class SearchServiceIT {
         assertThat(inverted.get("statusCounts").get("ACTIVE")).isNull();
     }
 
+    /* ---------------- M3 stragglers: definitionVersion + signatureHash ---------------- */
+
+    @Test
+    void definitionVersionNarrowsToTheConcreteDeployedVersion() throws Exception {
+        awaitDeadLetters();
+
+        // Read the actual version off an unfiltered hit first — the shared dev engine's
+        // version counter moves across runs, so the fixture's version is engine truth.
+        JsonNode unfiltered = search(Map.of(
+                "engineIds",
+                List.of("engine-a"),
+                "statuses",
+                List.of("FAILED"),
+                "businessKey",
+                businessKey,
+                "processDefinitionKey",
+                "demoFailingPayment"));
+        assertThat(ids(unfiltered.get("rows"))).containsExactlyInAnyOrder(childId, directFailedId);
+        int version = rowOf(unfiltered, directFailedId).get("definitionVersion").asInt();
+
+        JsonNode exact = search(Map.of(
+                "engineIds",
+                List.of("engine-a"),
+                "statuses",
+                List.of("FAILED"),
+                "businessKey",
+                businessKey,
+                "processDefinitionKey",
+                "demoFailingPayment",
+                "definitionVersion",
+                version));
+        assertThat(ids(exact.get("rows"))).containsExactlyInAnyOrder(childId, directFailedId);
+        assertThat(rowOf(exact, directFailedId).get("definitionVersion").asInt())
+                .isEqualTo(version);
+
+        // A version that is not deployed is an honestly EMPTY slice — never unfiltered rows.
+        JsonNode phantom = search(Map.of(
+                "engineIds",
+                List.of("engine-a"),
+                "statuses",
+                List.of("FAILED"),
+                "processDefinitionKey",
+                "demoFailingPayment",
+                "definitionVersion",
+                999999));
+        assertThat(phantom.get("rows")).isEmpty();
+        assertThat(phantom.get("perEngine").get("engine-a").get("ok").asBoolean())
+                .isTrue();
+
+        // …and a bare version without its key is the caller's mistake: 400, not a scan.
+        ResponseEntity<String> bare = rest.postForEntity("/api/search", Map.of("definitionVersion", 3), String.class);
+        assertThat(bare.getStatusCode()).isEqualTo(HttpStatus.BAD_REQUEST);
+        assertThat(bare.getBody()).contains("processDefinitionKey");
+    }
+
+    @Test
+    @SuppressWarnings("unchecked")
+    void signatureHashDrillsFromATriageCardIntoExactlyItsInstances() throws Exception {
+        awaitDeadLetters();
+
+        // Engine truth: the dead-letter job's snippet AND its stacktrace-refined signature
+        // (what a triage card carries after refinement) — computed with the SAME normative
+        // normalizer the BFF uses (R-SEM-03: the hash is the binding contract).
+        Map<String, Object> dlqPage = engine.get()
+                .uri("/management/deadletter-jobs?processInstanceId=" + directFailedId)
+                .retrieve()
+                .body(Map.class);
+        Map<String, Object> job = ((List<Map<String, Object>>) dlqPage.get("data")).get(0);
+        String snippetHash = io.inspector.triage.ErrorSignatureNormalizer.normalize(
+                        String.valueOf(job.get("exceptionMessage")))
+                .hash();
+        String stacktrace = engine.get()
+                .uri("/management/deadletter-jobs/" + job.get("id") + "/exception-stacktrace")
+                .retrieve()
+                .body(String.class);
+        String refinedHash = io.inspector.triage.ErrorSignatureNormalizer.normalize(stacktrace)
+                .hash();
+        assertThat(refinedHash).isNotEqualTo(snippetHash); // the bridge is load-bearing
+
+        // Snippet-level hash: direct match on the scan legs.
+        JsonNode bySnippet = search(Map.of(
+                "engineIds",
+                List.of("engine-a"),
+                "statuses",
+                List.of("FAILED"),
+                "businessKey",
+                businessKey,
+                "signatureHash",
+                snippetHash));
+        assertThat(ids(bySnippet.get("rows"))).containsExactlyInAnyOrder(parentId, childId, directFailedId);
+
+        // Refined hash (the triage drill): matches via the one-representative bridge.
+        JsonNode byRefined = search(Map.of(
+                "engineIds",
+                List.of("engine-a"),
+                "statuses",
+                List.of("FAILED"),
+                "businessKey",
+                businessKey,
+                "signatureHash",
+                refinedHash));
+        assertThat(ids(byRefined.get("rows"))).containsExactlyInAnyOrder(parentId, childId, directFailedId);
+
+        // A foreign hash filters the child out on the scan leg — and with it the rolled-up
+        // parent (same before-roll-up semantics as errorText).
+        JsonNode foreign = search(Map.of(
+                "engineIds", List.of("engine-a"),
+                "statuses", List.of("FAILED"),
+                "businessKey", businessKey,
+                "signatureHash", "0".repeat(64)));
+        assertThat(foreign.get("rows")).isEmpty();
+    }
+
     @Test
     void criteriaEchoAndCurlCompileTheAppliedFilters() throws Exception {
         JsonNode body = search(Map.of(

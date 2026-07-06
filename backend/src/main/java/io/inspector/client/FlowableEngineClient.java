@@ -32,6 +32,10 @@ import org.springframework.web.client.RestClient;
 @Component
 public class FlowableEngineClient {
 
+    /** Runtime variable collections answer a BARE JSON array, not the paged envelope. */
+    private static final org.springframework.core.ParameterizedTypeReference<List<Map<String, Object>>> VARIABLE_LIST =
+            new org.springframework.core.ParameterizedTypeReference<>() {};
+
     private final Environment env;
     private final CircuitBreakerRegistry breakers;
     private final BulkheadRegistry bulkheads;
@@ -166,14 +170,22 @@ public class FlowableEngineClient {
      * concrete per-version definition ids for DLQ-scan pushdown (ARCH §2.3).
      */
     public FlowablePage listProcessDefinitionsByKey(EngineConfig engine, String key, int size) {
+        return listProcessDefinitionsByKey(engine, key, null, size);
+    }
+
+    /** Same, narrowed to ONE exact deployed version (the M2b definitionVersion filter). */
+    public FlowablePage listProcessDefinitionsByKey(EngineConfig engine, String key, Integer version, int size) {
         return guarded(
                 engine,
                 () -> client(engine)
                         .get()
-                        .uri(uri -> uri.path("/repository/process-definitions")
-                                .queryParam("key", key)
-                                .queryParam("size", size)
-                                .build())
+                        .uri(uri -> {
+                            var b = uri.path("/repository/process-definitions")
+                                    .queryParam("key", key)
+                                    .queryParam("size", size);
+                            if (version != null) b.queryParam("version", version);
+                            return b.build();
+                        })
                         .retrieve()
                         .body(FlowablePage.class));
     }
@@ -192,6 +204,154 @@ public class FlowableEngineClient {
                     () -> client(engine)
                             .get()
                             .uri(lane.path + "/{jobId}/exception-stacktrace", jobId)
+                            .retrieve()
+                            .body(String.class));
+        } catch (HttpClientErrorException.NotFound e) {
+            return null;
+        }
+    }
+
+    /* ---------- M3 detail/resolve reads (Stage 2, SPEC §4) ---------- */
+
+    /**
+     * GET /runtime/executions?processInstanceId= — the execution tree of ONE open instance
+     * (execution-local variable segregation, SPEC §4). One page suffices: an instance holds
+     * a handful of executions; the page cap keeps a pathological multi-instance loop bounded.
+     */
+    public FlowablePage listExecutions(EngineConfig engine, String processInstanceId, int size) {
+        return guarded(
+                engine,
+                () -> client(engine)
+                        .get()
+                        .uri(uri -> uri.path("/runtime/executions")
+                                .queryParam("processInstanceId", processInstanceId)
+                                .queryParam("size", size)
+                                .build())
+                        .retrieve()
+                        .body(FlowablePage.class));
+    }
+
+    /**
+     * GET /runtime/process-instances/{id}/variables — the typed process-scope rows of a
+     * RUNNING instance. Bare array on the wire (not the paged envelope). Null = not running.
+     */
+    public List<Map<String, Object>> listInstanceVariables(EngineConfig engine, String processInstanceId) {
+        try {
+            return guarded(
+                    engine,
+                    () -> client(engine)
+                            .get()
+                            .uri("/runtime/process-instances/{id}/variables", processInstanceId)
+                            .retrieve()
+                            .body(VARIABLE_LIST));
+        } catch (HttpClientErrorException.NotFound e) {
+            return null;
+        }
+    }
+
+    /**
+     * GET /runtime/executions/{id}/variables?scope=local — variables declared ON one
+     * execution node (multi-instance loop locals live here, SPEC §4). Bare array.
+     */
+    public List<Map<String, Object>> listExecutionLocalVariables(EngineConfig engine, String executionId) {
+        try {
+            return guarded(
+                    engine,
+                    () -> client(engine)
+                            .get()
+                            .uri(uri -> uri.path("/runtime/executions/{id}/variables")
+                                    .queryParam("scope", "local")
+                                    .build(executionId))
+                            .retrieve()
+                            .body(VARIABLE_LIST));
+        } catch (HttpClientErrorException.NotFound e) {
+            return List.of();
+        }
+    }
+
+    /**
+     * GET /history/historic-variable-instances?processInstanceId= — the variables of a
+     * COMPLETED instance (runtime endpoints 404 after the end event — flowable-rest skill §2).
+     */
+    public FlowablePage listHistoricVariableInstances(EngineConfig engine, String processInstanceId, int size) {
+        return guarded(
+                engine,
+                () -> client(engine)
+                        .get()
+                        .uri(uri -> uri.path("/history/historic-variable-instances")
+                                .queryParam("processInstanceId", processInstanceId)
+                                .queryParam("size", size)
+                                .build())
+                        .retrieve()
+                        .body(FlowablePage.class));
+    }
+
+    /** GET /history/historic-activity-instances — one timeline page, startTime ascending. */
+    public FlowablePage listHistoricActivities(EngineConfig engine, String processInstanceId, int start, int size) {
+        return guarded(
+                engine,
+                () -> client(engine)
+                        .get()
+                        .uri(uri -> uri.path("/history/historic-activity-instances")
+                                .queryParam("processInstanceId", processInstanceId)
+                                .queryParam("sort", "startTime")
+                                .queryParam("order", "asc")
+                                .queryParam("start", start)
+                                .queryParam("size", size)
+                                .build())
+                        .retrieve()
+                        .body(FlowablePage.class));
+    }
+
+    /**
+     * GET /runtime/event-subscriptions?processInstanceId= — what a waiting instance waits
+     * FOR (message/signal names, SPEC §4 vitals). Not present on every engine version:
+     * callers degrade to an empty list on client errors, never fail the vitals.
+     */
+    public FlowablePage listEventSubscriptions(EngineConfig engine, String processInstanceId, int size) {
+        return guarded(
+                engine,
+                () -> client(engine)
+                        .get()
+                        .uri(uri -> uri.path("/runtime/event-subscriptions")
+                                .queryParam("processInstanceId", processInstanceId)
+                                .queryParam("size", size)
+                                .build())
+                        .retrieve()
+                        .body(FlowablePage.class));
+    }
+
+    /** GET /history/historic-task-instances/{id} — task resolution incl. completed tasks. Null = unknown. */
+    @SuppressWarnings("unchecked")
+    public Map<String, Object> getHistoricTaskInstance(EngineConfig engine, String taskId) {
+        try {
+            return guarded(
+                    engine,
+                    () -> client(engine)
+                            .get()
+                            .uri("/history/historic-task-instances/{id}", taskId)
+                            .retrieve()
+                            .body(Map.class));
+        } catch (HttpClientErrorException.NotFound e) {
+            return null;
+        }
+    }
+
+    /**
+     * GET /repository/deployments/{deploymentId}/resourcedata/{resourceName} — the raw
+     * BPMN 2.0 XML exactly as deployed (Stage 2 diagram). {@code resourceName} may contain
+     * slashes ("processes/order.bpmn20.xml") — they are REAL path segments to Flowable, so
+     * each segment is encoded separately (an encoded %2F would 400 on Tomcat).
+     */
+    public String deploymentResourceData(EngineConfig engine, String deploymentId, String resourceName) {
+        try {
+            return guarded(
+                    engine,
+                    () -> client(engine)
+                            .get()
+                            .uri(uri -> uri.path("/repository/deployments/{id}/resourcedata/")
+                                    .pathSegment(resourceName.split("/"))
+                                    .build(deploymentId))
                             .retrieve()
                             .body(String.class));
         } catch (HttpClientErrorException.NotFound e) {

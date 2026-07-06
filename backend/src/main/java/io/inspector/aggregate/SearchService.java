@@ -78,6 +78,11 @@ public class SearchService {
 
     public SearchResponse search(SearchRequest request) {
         BffFilters bff = BffFilters.of(request); // validates the failure window → 400 on bad ISO
+        if (request.definitionVersion() != null && !notBlank(request.processDefinitionKey())) {
+            // A bare version number is meaningless across definitions — the version-drill
+            // (triage cards, SPEC §8) always carries its key.
+            throw new IllegalArgumentException("definitionVersion requires processDefinitionKey");
+        }
         String sortBy = notBlank(request.sortBy()) ? request.sortBy() : "startTime";
         if (!sortBy.equals("startTime") && !sortBy.equals("failureTime")) {
             throw new IllegalArgumentException("sortBy must be 'startTime' or 'failureTime', got '" + sortBy + "'");
@@ -160,17 +165,19 @@ public class SearchService {
      * job rows on the scan legs (Flowable cannot query instances by dead-letter evidence);
      * currentActivity is matched against unfinished activity id/name per candidate row.
      */
-    private record BffFilters(Instant failedAfter, Instant failedBefore, String errorText, String currentActivity) {
+    private record BffFilters(
+            Instant failedAfter, Instant failedBefore, String errorText, String signatureHash, String currentActivity) {
         static BffFilters of(SearchRequest req) {
             return new BffFilters(
                     parseBound(req.failureTimeAfter(), "failureTimeAfter"),
                     parseBound(req.failureTimeBefore(), "failureTimeBefore"),
                     notBlank(req.errorText()) ? req.errorText() : null,
+                    notBlank(req.signatureHash()) ? req.signatureHash() : null,
                     notBlank(req.currentActivity()) ? req.currentActivity() : null);
         }
 
         boolean anyFailureFilter() {
-            return failedAfter != null || failedBefore != null || errorText != null;
+            return failedAfter != null || failedBefore != null || errorText != null || signatureHash != null;
         }
 
         private static Instant parseBound(String iso, String field) {
@@ -207,9 +214,21 @@ public class SearchService {
         int pageSize = Math.min(
                 req.pageSize() != null && req.pageSize() > 0 ? req.pageSize() : engine.maxPageSizeOrDefault(),
                 engine.maxPageSizeOrDefault());
+        // Definition filter resolved ONCE per engine to concrete per-version ids (scan-leg
+        // pushdown, ARCH §2.3). Null = unfiltered; an empty resolution — key not deployed
+        // here, or the requested definitionVersion doesn't exist — is an honestly empty
+        // slice, never an unfiltered scan.
+        List<String> definitionIds = null;
+        if (notBlank(req.processDefinitionKey())) {
+            definitionIds = resolveDefinitionIds(engine, req.processDefinitionKey(), req.definitionVersion());
+            if (definitionIds.isEmpty()) {
+                return new EngineSlice(List.of(), 0, null, null, Map.of());
+            }
+        }
+        List<String> defIds = definitionIds;
         return switch (StatusJoin.planFor(wanted)) {
-            case INVERTED -> invertedPlan(engine, req, wanted, pageSize, bff);
-            case MIXED -> mixedPlan(engine, req, wanted, pageSize, bff);
+            case INVERTED -> invertedPlan(engine, req, wanted, pageSize, bff, defIds);
+            case MIXED -> mixedPlan(engine, req, wanted, pageSize, bff, defIds);
         };
     }
 
@@ -231,12 +250,17 @@ public class SearchService {
     /* ================= INVERTED plan — drive FROM the job queues ================= */
 
     private EngineSlice invertedPlan(
-            EngineConfig engine, SearchRequest req, Set<InstanceStatus> wanted, int pageSize, BffFilters bff) {
+            EngineConfig engine,
+            SearchRequest req,
+            Set<InstanceStatus> wanted,
+            int pageSize,
+            BffFilters bff,
+            List<String> definitionIds) {
         LaneScan dlq = wanted.contains(InstanceStatus.FAILED)
-                ? scanLane(engine, JobLaneKind.DEADLETTER, Map.of(), req.processDefinitionKey())
+                ? scanLane(engine, JobLaneKind.DEADLETTER, Map.of(), definitionIds, bff)
                 : LaneScan.empty();
         LaneScan failing = wanted.contains(InstanceStatus.RETRYING)
-                ? scanExceptionLanes(engine, req.processDefinitionKey())
+                ? scanExceptionLanes(engine, definitionIds, bff)
                 : LaneScan.empty();
 
         // BFF-side failure filters bite HERE — on the job rows, before grouping and before
@@ -268,7 +292,7 @@ public class SearchService {
 
         // Hydration: ONE historic query carrying the id set plus the remaining filters —
         // the engine (not the BFF) evaluates businessKey/time/variable predicates.
-        Map<String, Object> body = historicBody(engine, req, pageSize);
+        Map<String, Object> body = historicBody(engine, req, pageSize, definitionIds);
         body.put("processInstanceIds", List.copyOf(ids));
         FlowablePage page = flowable.queryHistoricProcessInstances(engine, body);
         List<Map<String, Object>> data = page.dataOrEmpty();
@@ -300,8 +324,13 @@ public class SearchService {
     /* ================= MIXED plan — historic first, enrich the page ================= */
 
     private EngineSlice mixedPlan(
-            EngineConfig engine, SearchRequest req, Set<InstanceStatus> wanted, int pageSize, BffFilters bff) {
-        Map<String, Object> body = historicBody(engine, req, pageSize);
+            EngineConfig engine,
+            SearchRequest req,
+            Set<InstanceStatus> wanted,
+            int pageSize,
+            BffFilters bff,
+            List<String> definitionIds) {
+        Map<String, Object> body = historicBody(engine, req, pageSize, definitionIds);
         // Narrow finished when the status OR-set is one-sided (pure optimization).
         boolean wantsOpen = wanted.stream().anyMatch(s -> s != InstanceStatus.COMPLETED);
         boolean wantsCompleted = wanted.contains(InstanceStatus.COMPLETED);
@@ -317,7 +346,7 @@ public class SearchService {
         // (ARCH §2.3), parallelized on virtual threads, throttled by the engine bulkhead.
         Map<String, Failure> dlqByInstance = deadLetterMembership(engine, open, bff);
         // RETRYING tier: two capped lane scans → membership set (the failing lanes are small).
-        LaneScan failing = scanExceptionLanes(engine, req.processDefinitionKey());
+        LaneScan failing = scanExceptionLanes(engine, definitionIds, bff);
         Map<String, Failure> failingByInstance = indexByInstance(applyFailureFilters(failing.jobs(), bff));
         Set<String> activityMatched = activityMatches(engine, open, bff);
 
@@ -403,24 +432,29 @@ public class SearchService {
     }
 
     /** RETRYING tier = BOTH withException lanes: a failing async job parks in the TIMER table between attempts. */
-    private LaneScan scanExceptionLanes(EngineConfig engine, String definitionKey) {
+    private LaneScan scanExceptionLanes(EngineConfig engine, List<String> definitionIds, BffFilters bff) {
         Map<String, String> withException = Map.of("withException", "true");
-        return scanLane(engine, JobLaneKind.EXECUTABLE, withException, definitionKey)
-                .and(scanLane(engine, JobLaneKind.TIMER, withException, definitionKey));
+        return scanLane(engine, JobLaneKind.EXECUTABLE, withException, definitionIds, bff)
+                .and(scanLane(engine, JobLaneKind.TIMER, withException, definitionIds, bff));
     }
 
     /**
      * Bounded exhaustive paging of one job lane — NEVER a single unpaged fetch (default page
      * size is 10; anything past it would silently declassify FAILED → ACTIVE). A definition
-     * filter is pushed down as concrete per-version {@code processDefinitionId}s.
+     * filter arrives pre-resolved as concrete per-version {@code processDefinitionId}s (null =
+     * unfiltered). The signature drill-down bites here, where the lane is known — the
+     * refinement bridge needs it for the representative stacktrace fetch.
      */
     private LaneScan scanLane(
-            EngineConfig engine, JobLaneKind lane, Map<String, String> baseFilters, String definitionKey) {
+            EngineConfig engine,
+            JobLaneKind lane,
+            Map<String, String> baseFilters,
+            List<String> resolvedDefinitionIds,
+            BffFilters bff) {
         int cap = engine.dlqScanCapOrDefault();
         int pageSize = engine.maxPageSizeOrDefault();
-        List<String> definitionIds = definitionKey == null || definitionKey.isBlank()
-                ? java.util.Collections.singletonList(null)
-                : resolveDefinitionIds(engine, definitionKey);
+        List<String> definitionIds =
+                resolvedDefinitionIds == null ? java.util.Collections.singletonList(null) : resolvedDefinitionIds;
 
         List<Map<String, Object>> jobs = new ArrayList<>();
         int scanned = 0;
@@ -446,7 +480,30 @@ public class SearchService {
             }
             if (truncated) break;
         }
-        return new LaneScan(jobs, truncated, scanned);
+        return new LaneScan(applySignatureFilter(engine, lane, jobs, bff), truncated, scanned);
+    }
+
+    /**
+     * The signature drill-down over one lane's job rows (SPEC §8, R-SEM-03). The matching
+     * core is pure ({@link StatusJoin#filterBySignatureHash}); this seam injects the
+     * representative-stacktrace fetch — the same refinement triage applies, bounded by the
+     * SAME sample cap — and degrades a failed fetch to the snippet-only hash, never the leg.
+     */
+    private List<Map<String, Object>> applySignatureFilter(
+            EngineConfig engine, JobLaneKind lane, List<Map<String, Object>> jobs, BffFilters bff) {
+        if (bff.signatureHash() == null || jobs.isEmpty()) return jobs;
+        return StatusJoin.filterBySignatureHash(
+                jobs,
+                bff.signatureHash(),
+                job -> {
+                    try {
+                        return flowable.jobExceptionStacktrace(engine, lane, str(job, "id"));
+                    } catch (Exception ex) {
+                        log.debug("Signature refinement failed on {}: {}", engine.id(), ex.toString());
+                        return null;
+                    }
+                },
+                props.triageOrDefault().stacktraceSampleCapOrDefault());
     }
 
     /** CMMN-filtered fold of job rows into per-instance failure evidence. */
@@ -508,8 +565,9 @@ public class SearchService {
             tenant(engine).ifPresent(t -> filters.put("tenantId", t));
             FlowablePage page =
                     flowable.listJobs(engine, JobLaneKind.DEADLETTER, filters, 0, engine.maxPageSizeOrDefault());
-            // Same failure-window/error-text semantics as the inverted plan's scan legs.
-            Map<String, Failure> perInstance = indexByInstance(applyFailureFilters(page.dataOrEmpty(), bff));
+            // Same failure-window/error-text/signature semantics as the inverted plan's scan legs.
+            Map<String, Failure> perInstance = indexByInstance(applyFailureFilters(
+                    applySignatureFilter(engine, JobLaneKind.DEADLETTER, page.dataOrEmpty(), bff), bff));
             Failure failure = perInstance.get(id);
             if (failure != null) result.put(id, failure);
             return true;
@@ -607,9 +665,16 @@ public class SearchService {
      * processDefinitionKey/version on historic rows across the version matrix — both are
      * derived from processDefinitionId ({@code key:version:uuid}).
      */
-    private Map<String, Object> historicBody(EngineConfig engine, SearchRequest req, int pageSize) {
+    private Map<String, Object> historicBody(
+            EngineConfig engine, SearchRequest req, int pageSize, List<String> definitionIds) {
         Map<String, Object> body = new HashMap<>();
-        if (notBlank(req.processDefinitionKey())) body.put("processDefinitionKey", req.processDefinitionKey());
+        if (req.definitionVersion() != null && definitionIds != null && !definitionIds.isEmpty()) {
+            // key+version resolve to exactly one deployed definition per engine — push the
+            // concrete id down (processDefinitionVersion is not queryable across the matrix).
+            body.put("processDefinitionId", definitionIds.get(0));
+        } else if (notBlank(req.processDefinitionKey())) {
+            body.put("processDefinitionKey", req.processDefinitionKey());
+        }
         if (notBlank(req.businessKey())) body.put("processBusinessKey", req.businessKey());
         // Substring semantics: wrap unless the caller already sent a % pattern. Engines that
         // silently drop this field were rejected earlier (businessKeyLikeIgnored canary).
@@ -637,9 +702,11 @@ public class SearchService {
         return body;
     }
 
-    private List<String> resolveDefinitionIds(EngineConfig engine, String key) {
+    /** Concrete deployed definition ids for a key, optionally narrowed to ONE exact version. */
+    private List<String> resolveDefinitionIds(EngineConfig engine, String key, Integer version) {
         List<String> ids = new ArrayList<>();
-        for (Map<String, Object> def : flowable.listProcessDefinitionsByKey(engine, key, engine.maxPageSizeOrDefault())
+        for (Map<String, Object> def : flowable.listProcessDefinitionsByKey(
+                        engine, key, version, engine.maxPageSizeOrDefault())
                 .dataOrEmpty()) {
             String id = str(def, "id");
             if (id != null) ids.add(id);

@@ -104,7 +104,7 @@ OPERATIONS.md §8.
   mid-demo degrades to a labeled partial result; a 10k-DLQ engine shows the truncation badge
   instead of lying.
 
-## M3 — Instance detail (full-page route) + triage landing  *(triage backend + triage/Stage-2 frontend landed; detail-data backend open)*
+## M3 — Instance detail (full-page route) + triage landing  *(backend landed 2026-07-06 incl. detail-data endpoints + `/api/resolve`; frontend tab binding open)*
 - **Detail page `/inspect/{engineId}/{id}`** (deep-linkable now, not M6): vitals header with
   "why stuck" strip (exception first line, retries state, waiting-for subscriptions/timers);
   **read-only bpmn-js diagram** (pulled forward from M5) with token + dead-letter markers,
@@ -128,12 +128,22 @@ OPERATIONS.md §8.
   NavigatedViewer + active/dead-letter markers + ⚠ overlays, watermark untouched); omnibox
   pinned in the shell — composite `engine:id` → Stage 2, anything else → business-key
   search (labeled as degraded until `/api/resolve`).
-- **Blocked on the detail-data backend (ARCH §4 rows exist, endpoints do not):**
-  `GET /api/instances/{engineId}/{id}` (vitals/why-stuck), `…/diagram`, `…/variables`,
-  `…/jobs`, `…/tasks`, `…/hierarchy`, `…/timeline`, and `GET /api/resolve`; tabs render a
-  labeled contract-pending state naming their endpoint, never fake data. Search cannot yet
-  filter by signature hash or definition version, so error-group drill-throughs carry
-  engine + definition + FAILED/RETRYING (the tightest expressible scope).
+- **Detail-data backend (landed 2026-07-06):** `GET /api/resolve` (R-SEM-04 chain,
+  composite short-circuit, perEngine reachability envelope) and the Stage 2 resources —
+  `GET /api/instances/{engineId}/{id}` (vitals: historic-first, why-stuck, waiting-for,
+  current activities = unfinished historic ∪ runtime execution positions — a dead-lettered
+  async task has NO unfinished activity row, proven live), `…/diagram` (deployment
+  resourcedata proxy + marker id sets), `…/variables[/{name}]` (typed ledger, R-UXQ-13:
+  engine type verbatim, 256 KiB structured-preview cap, per-execution locals, historic
+  projection for completed instances), `…/jobs` + `…/jobs/{jobId}/stacktrace?lane=` (four
+  lanes distinct), `…/hierarchy` (both directions, depth 10 / breadth 50 rendered, exact
+  childTotal), `…/timeline`. Triage `statusCounts` now synthesizes FAILED/RETRYING
+  (distinct-instance counts off the failure-lane scans, FAILED precedence); search gained
+  `definitionVersion` (concrete-id pushdown) and `signatureHash` (refinement-bridge
+  drill-down) — error-group drill-throughs can now carry the exact signature + version.
+  Proven by `DetailResolveIT` + extended `SearchServiceIT`/`TriageAggregationIT` (full
+  matrix green). **Still open:** `…/tasks` (the Tasks tab keeps its contract-pending
+  state), binding the pending frontend tabs to the new endpoints, omnibox → `/api/resolve`.
 - **Triage landing**: engine health strip, status counts, failure groups by normalized error
   signature with click-through, curated system views, recent-operations placeholder.
   **Aggregation-independence constraint (binding):** Stage 0 aggregations NEVER reuse the

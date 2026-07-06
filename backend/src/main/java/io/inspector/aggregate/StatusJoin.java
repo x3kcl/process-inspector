@@ -2,10 +2,14 @@ package io.inspector.aggregate;
 
 import io.inspector.dto.InstanceStatusFlags;
 import io.inspector.dto.SearchRequest.InstanceStatus;
+import io.inspector.triage.ErrorSignatureNormalizer;
 import java.time.Instant;
 import java.time.OffsetDateTime;
 import java.time.format.DateTimeParseException;
+import java.util.ArrayList;
 import java.util.HashSet;
+import java.util.LinkedHashMap;
+import java.util.List;
 import java.util.Locale;
 import java.util.Map;
 import java.util.Set;
@@ -90,6 +94,41 @@ final class StatusJoin {
             }
         }
         return true;
+    }
+
+    /**
+     * The signature drill-down predicate (SPEC §8, R-SEM-03): keeps the jobs whose
+     * normalized error signature matches {@code wantedHash}. Jobs group by their
+     * snippet-level signature first (a job row carries only {@code exceptionMessage});
+     * a group whose snippet hash misses gets ONE representative stacktrace via
+     * {@code stacktraceOf} — the same refinement triage applies before hashing its
+     * cards — bounded by {@code sampleBudget}, so a drill-down from a stacktrace-refined
+     * triage card still matches its snippet-only jobs. Pure given the injected fetcher
+     * (rung 1); the engine I/O lives in {@link SearchService}.
+     */
+    static List<Map<String, Object>> filterBySignatureHash(
+            List<Map<String, Object>> jobs,
+            String wantedHash,
+            Function<Map<String, Object>, String> stacktraceOf,
+            int sampleBudget) {
+        Map<String, List<Map<String, Object>>> bySnippetHash = new LinkedHashMap<>();
+        for (Map<String, Object> job : jobs) {
+            String hash = ErrorSignatureNormalizer.normalize(str(job, "exceptionMessage"))
+                    .hash();
+            bySnippetHash.computeIfAbsent(hash, h -> new ArrayList<>()).add(job);
+        }
+        List<Map<String, Object>> matched = new ArrayList<>();
+        for (Map.Entry<String, List<Map<String, Object>>> group : bySnippetHash.entrySet()) {
+            boolean hit = group.getKey().equals(wantedHash);
+            if (!hit && sampleBudget-- > 0) {
+                String stacktrace = stacktraceOf.apply(group.getValue().get(0));
+                if (stacktrace != null && !stacktrace.isBlank()) {
+                    hit = ErrorSignatureNormalizer.normalize(stacktrace).hash().equals(wantedHash);
+                }
+            }
+            if (hit) matched.addAll(group.getValue());
+        }
+        return matched;
     }
 
     /**

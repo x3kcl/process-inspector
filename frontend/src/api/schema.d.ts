@@ -52,6 +52,22 @@ export interface paths {
         patch?: never;
         trace?: never;
     };
+    "/api/instances/{engineId}/{instanceId}": {
+        parameters: {
+            query?: never;
+            header?: never;
+            path?: never;
+            cookie?: never;
+        };
+        get: operations["vitals"];
+        put?: never;
+        post?: never;
+        delete?: never;
+        options?: never;
+        head?: never;
+        patch?: never;
+        trace?: never;
+    };
     "/api/instances/{engineId}/{instanceId}/actions/{verb}": {
         parameters: {
             query?: never;
@@ -84,6 +100,70 @@ export interface paths {
         patch?: never;
         trace?: never;
     };
+    "/api/instances/{engineId}/{instanceId}/diagram": {
+        parameters: {
+            query?: never;
+            header?: never;
+            path?: never;
+            cookie?: never;
+        };
+        get: operations["diagram"];
+        put?: never;
+        post?: never;
+        delete?: never;
+        options?: never;
+        head?: never;
+        patch?: never;
+        trace?: never;
+    };
+    "/api/instances/{engineId}/{instanceId}/hierarchy": {
+        parameters: {
+            query?: never;
+            header?: never;
+            path?: never;
+            cookie?: never;
+        };
+        get: operations["hierarchy"];
+        put?: never;
+        post?: never;
+        delete?: never;
+        options?: never;
+        head?: never;
+        patch?: never;
+        trace?: never;
+    };
+    "/api/instances/{engineId}/{instanceId}/jobs": {
+        parameters: {
+            query?: never;
+            header?: never;
+            path?: never;
+            cookie?: never;
+        };
+        get: operations["jobs"];
+        put?: never;
+        post?: never;
+        delete?: never;
+        options?: never;
+        head?: never;
+        patch?: never;
+        trace?: never;
+    };
+    "/api/instances/{engineId}/{instanceId}/jobs/{jobId}/stacktrace": {
+        parameters: {
+            query?: never;
+            header?: never;
+            path?: never;
+            cookie?: never;
+        };
+        get: operations["jobStacktrace"];
+        put?: never;
+        post?: never;
+        delete?: never;
+        options?: never;
+        head?: never;
+        patch?: never;
+        trace?: never;
+    };
     "/api/instances/{engineId}/{instanceId}/notes": {
         parameters: {
             query?: never;
@@ -94,6 +174,70 @@ export interface paths {
         get: operations["list"];
         put?: never;
         post: operations["create"];
+        delete?: never;
+        options?: never;
+        head?: never;
+        patch?: never;
+        trace?: never;
+    };
+    "/api/instances/{engineId}/{instanceId}/timeline": {
+        parameters: {
+            query?: never;
+            header?: never;
+            path?: never;
+            cookie?: never;
+        };
+        get: operations["timeline"];
+        put?: never;
+        post?: never;
+        delete?: never;
+        options?: never;
+        head?: never;
+        patch?: never;
+        trace?: never;
+    };
+    "/api/instances/{engineId}/{instanceId}/variables": {
+        parameters: {
+            query?: never;
+            header?: never;
+            path?: never;
+            cookie?: never;
+        };
+        get: operations["variables"];
+        put?: never;
+        post?: never;
+        delete?: never;
+        options?: never;
+        head?: never;
+        patch?: never;
+        trace?: never;
+    };
+    "/api/instances/{engineId}/{instanceId}/variables/{name}": {
+        parameters: {
+            query?: never;
+            header?: never;
+            path?: never;
+            cookie?: never;
+        };
+        get: operations["variable"];
+        put?: never;
+        post?: never;
+        delete?: never;
+        options?: never;
+        head?: never;
+        patch?: never;
+        trace?: never;
+    };
+    "/api/resolve": {
+        parameters: {
+            query?: never;
+            header?: never;
+            path?: never;
+            cookie?: never;
+        };
+        get: operations["resolve"];
+        put?: never;
+        post?: never;
         delete?: never;
         options?: never;
         head?: never;
@@ -181,6 +325,12 @@ export interface components {
         CreateNote: {
             body: string;
         };
+        CurrentActivity: {
+            activityId?: string;
+            activityName?: string;
+            activityType?: string;
+            startTime?: string;
+        };
         EngineCapabilities: {
             activityHistory?: boolean;
             changeState?: boolean;
@@ -205,6 +355,10 @@ export interface components {
             overdueTimers?: number;
             reachable?: boolean;
             tenantId?: string;
+        };
+        EngineProbe: {
+            error?: string;
+            ok?: boolean;
         };
         EngineResult: {
             dlqScan?: string;
@@ -239,12 +393,105 @@ export interface components {
             name?: string;
             type?: string;
         };
+        ExecutionScope: {
+            activityId?: string;
+            executionId?: string;
+            parentExecutionId?: string;
+            variables?: components["schemas"]["VariableDto"][];
+        };
+        HierarchyNode: {
+            businessKey?: string;
+            /** Format: int64 */
+            childTotal?: number;
+            children?: unknown[];
+            childrenTruncated?: boolean;
+            definitionKey?: string;
+            definitionName?: string;
+            /** Format: int32 */
+            definitionVersion?: number;
+            endTime?: string;
+            ended?: boolean;
+            hasDeadLetterJobs?: boolean;
+            processInstanceId?: string;
+            requested?: boolean;
+            startTime?: string;
+        };
+        InstanceDetail: {
+            businessKey?: string;
+            compositeId?: string;
+            currentActivities?: components["schemas"]["CurrentActivity"][];
+            definitionKey?: string;
+            definitionName?: string;
+            /** Format: int32 */
+            definitionVersion?: number;
+            /** Format: int64 */
+            durationMs?: number;
+            endTime?: string;
+            engineId?: string;
+            flags?: components["schemas"]["InstanceStatusFlags"];
+            processDefinitionId?: string;
+            processInstanceId?: string;
+            startTime?: string;
+            startedBy?: string;
+            /** @enum {string} */
+            status?: "ACTIVE" | "SUSPENDED" | "COMPLETED" | "FAILED" | "RETRYING";
+            superProcessInstanceId?: string;
+            tenantId?: string;
+            waitingFor?: components["schemas"]["WaitState"][];
+            whyStuck?: components["schemas"]["WhyStuck"];
+        };
+        InstanceDiagram: {
+            activeActivityIds?: string[];
+            deadLetterActivityIds?: string[];
+            xml?: string;
+        };
+        InstanceHierarchy: {
+            /** Format: int32 */
+            breadthCap?: number;
+            depthLimitReached?: boolean;
+            /** Format: int32 */
+            maxDepth?: number;
+            requestedProcessInstanceId?: string;
+            root?: components["schemas"]["HierarchyNode"];
+            rootProcessInstanceId?: string;
+        };
+        InstanceJobs: {
+            deadLetter?: components["schemas"]["JobDto"][];
+            executable?: components["schemas"]["JobDto"][];
+            suspended?: components["schemas"]["JobDto"][];
+            timer?: components["schemas"]["JobDto"][];
+        };
         InstanceStatusFlags: {
             ended?: boolean;
             failedInSubprocess?: boolean;
             hasDeadLetterJobs?: boolean;
             hasFailingJobs?: boolean;
             suspended?: boolean;
+        };
+        InstanceTimeline: {
+            activities?: components["schemas"]["TimelineActivity"][];
+            /** Format: int64 */
+            total?: number;
+            truncated?: boolean;
+        };
+        InstanceVariables: {
+            executionScopes?: components["schemas"]["ExecutionScope"][];
+            processVariables?: components["schemas"]["VariableDto"][];
+            source?: string;
+        };
+        JobDto: {
+            createTime?: string;
+            dueDate?: string;
+            elementId?: string;
+            elementName?: string;
+            exceptionMessage?: string;
+            executionId?: string;
+            id?: string;
+            lane?: string;
+            processDefinitionId?: string;
+            /** Format: int32 */
+            retries?: number;
+            tenantId?: string;
         };
         JobLanes: {
             /** Format: int64 */
@@ -292,10 +539,36 @@ export interface components {
             status?: "ACTIVE" | "SUSPENDED" | "COMPLETED" | "FAILED" | "RETRYING";
             tenantId?: string;
         };
+        ResolveMatch: {
+            businessKey?: string;
+            compositeId?: string;
+            definitionKey?: string;
+            /** Format: int32 */
+            definitionVersion?: number;
+            endTime?: string;
+            engineId?: string;
+            flags?: components["schemas"]["InstanceStatusFlags"];
+            /** @enum {string} */
+            kind?: "PROCESS_INSTANCE" | "EXECUTION" | "TASK" | "JOB" | "BUSINESS_KEY";
+            matchedId?: string;
+            processInstanceId?: string;
+            startTime?: string;
+            /** @enum {string} */
+            status?: "ACTIVE" | "SUSPENDED" | "COMPLETED" | "FAILED" | "RETRYING";
+        };
+        ResolveResponse: {
+            matches?: components["schemas"]["ResolveMatch"][];
+            perEngine?: {
+                [key: string]: components["schemas"]["EngineProbe"];
+            };
+            query?: string;
+        };
         SearchRequest: {
             businessKey?: string;
             businessKeyLike?: string;
             currentActivity?: string;
+            /** Format: int32 */
+            definitionVersion?: number;
             engineIds?: string[];
             errorText?: string;
             failureTimeAfter?: string;
@@ -303,6 +576,7 @@ export interface components {
             /** Format: int32 */
             pageSize?: number;
             processDefinitionKey?: string;
+            signatureHash?: string;
             sortBy?: string;
             startedAfter?: string;
             startedBefore?: string;
@@ -319,6 +593,20 @@ export interface components {
             statusCounts?: {
                 [key: string]: number;
             };
+        };
+        TimelineActivity: {
+            activityId?: string;
+            activityName?: string;
+            activityType?: string;
+            assignee?: string;
+            calledProcessInstanceId?: string;
+            /** Format: int64 */
+            durationMs?: number;
+            endTime?: string;
+            executionId?: string;
+            id?: string;
+            startTime?: string;
+            taskId?: string;
         };
         TriageDashboardResponse: {
             asOf?: string;
@@ -341,6 +629,17 @@ export interface components {
             type?: string;
             value?: unknown;
         };
+        VariableDto: {
+            executionId?: string;
+            name?: string;
+            scope?: string;
+            /** Format: int64 */
+            sizeBytes?: number;
+            taskId?: string;
+            truncated?: boolean;
+            type?: string;
+            value?: unknown;
+        };
         VariableEdit: {
             expectedOldValue?: unknown;
             name?: string;
@@ -352,6 +651,25 @@ export interface components {
             operation?: string;
             type?: string;
             value?: unknown;
+        };
+        WaitState: {
+            activityId?: string;
+            createdTime?: string;
+            dueDate?: string;
+            kind?: string;
+            name?: string;
+        };
+        WhyStuck: {
+            /** Format: int32 */
+            deadLetterJobs?: number;
+            exceptionFirstLine?: string;
+            failingActivityId?: string;
+            failureTime?: string;
+            nextRetryDue?: string;
+            /** Format: int32 */
+            retriesRemaining?: number;
+            /** Format: int32 */
+            retryingJobs?: number;
         };
     };
     responses: never;
@@ -436,6 +754,29 @@ export interface operations {
             };
         };
     };
+    vitals: {
+        parameters: {
+            query?: never;
+            header?: never;
+            path: {
+                engineId: string;
+                instanceId: string;
+            };
+            cookie?: never;
+        };
+        requestBody?: never;
+        responses: {
+            /** @description OK */
+            200: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "*/*": components["schemas"]["InstanceDetail"];
+                };
+            };
+        };
+    };
     instanceAction: {
         parameters: {
             query?: never;
@@ -489,6 +830,101 @@ export interface operations {
             };
         };
     };
+    diagram: {
+        parameters: {
+            query?: never;
+            header?: never;
+            path: {
+                engineId: string;
+                instanceId: string;
+            };
+            cookie?: never;
+        };
+        requestBody?: never;
+        responses: {
+            /** @description OK */
+            200: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "*/*": components["schemas"]["InstanceDiagram"];
+                };
+            };
+        };
+    };
+    hierarchy: {
+        parameters: {
+            query?: never;
+            header?: never;
+            path: {
+                engineId: string;
+                instanceId: string;
+            };
+            cookie?: never;
+        };
+        requestBody?: never;
+        responses: {
+            /** @description OK */
+            200: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "*/*": components["schemas"]["InstanceHierarchy"];
+                };
+            };
+        };
+    };
+    jobs: {
+        parameters: {
+            query?: never;
+            header?: never;
+            path: {
+                engineId: string;
+                instanceId: string;
+            };
+            cookie?: never;
+        };
+        requestBody?: never;
+        responses: {
+            /** @description OK */
+            200: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "*/*": components["schemas"]["InstanceJobs"];
+                };
+            };
+        };
+    };
+    jobStacktrace: {
+        parameters: {
+            query?: {
+                lane?: string;
+            };
+            header?: never;
+            path: {
+                engineId: string;
+                instanceId: string;
+                jobId: string;
+            };
+            cookie?: never;
+        };
+        requestBody?: never;
+        responses: {
+            /** @description OK */
+            200: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "text/plain": string;
+                };
+            };
+        };
+    };
     list: {
         parameters: {
             query?: never;
@@ -535,6 +971,98 @@ export interface operations {
                 };
                 content: {
                     "*/*": components["schemas"]["NoteDto"];
+                };
+            };
+        };
+    };
+    timeline: {
+        parameters: {
+            query?: never;
+            header?: never;
+            path: {
+                engineId: string;
+                instanceId: string;
+            };
+            cookie?: never;
+        };
+        requestBody?: never;
+        responses: {
+            /** @description OK */
+            200: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "*/*": components["schemas"]["InstanceTimeline"];
+                };
+            };
+        };
+    };
+    variables: {
+        parameters: {
+            query?: never;
+            header?: never;
+            path: {
+                engineId: string;
+                instanceId: string;
+            };
+            cookie?: never;
+        };
+        requestBody?: never;
+        responses: {
+            /** @description OK */
+            200: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "*/*": components["schemas"]["InstanceVariables"];
+                };
+            };
+        };
+    };
+    variable: {
+        parameters: {
+            query?: never;
+            header?: never;
+            path: {
+                engineId: string;
+                instanceId: string;
+                name: string;
+            };
+            cookie?: never;
+        };
+        requestBody?: never;
+        responses: {
+            /** @description OK */
+            200: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "*/*": components["schemas"]["VariableDto"];
+                };
+            };
+        };
+    };
+    resolve: {
+        parameters: {
+            query: {
+                q: string;
+            };
+            header?: never;
+            path?: never;
+            cookie?: never;
+        };
+        requestBody?: never;
+        responses: {
+            /** @description OK */
+            200: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "*/*": components["schemas"]["ResolveResponse"];
                 };
             };
         };

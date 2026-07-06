@@ -93,14 +93,20 @@ categories:
 - **Flowable-native** — `businessKey` (exact), `businessKeyLike` (substring, wrapped `%…%`
   and pushed down as `processBusinessKeyLike`), `variables` (equals/like — the like
   operation is honored by the whole matrix incl. 6.3.1, proven live), start window,
-  definition key. The engine evaluates them; no BFF query parser exists or ever will
-  (SPEC §11 — Flowable's query REST has no OR-across-fields to compile to).
+  definition key, `definitionVersion` (requires the key; resolved per engine to the ONE
+  concrete `processDefinitionId` and pushed down into the historic query AND the job-lane
+  scans; an undeployed version is an honestly empty slice, never an unfiltered scan). The
+  engine evaluates them; no BFF query parser exists or ever will (SPEC §11 — Flowable's
+  query REST has no OR-across-fields to compile to).
 - **BFF-side over the scan legs** — `failureTimeAfter/Before` (inclusive window over
-  dead-letter/failing job `createTime`) and `errorText` (case-insensitive substring over
-  exception snippets): Flowable cannot query instances by failure evidence, so these filter
-  the JOB rows **before grouping and root resolution** — a filtered-out child failure never
-  rolls up its parent. Setting any of them means only failure-bearing rows can match; in the
-  mixed plan, rows whose evidence is filtered away drop out.
+  dead-letter/failing job `createTime`), `errorText` (case-insensitive substring over
+  exception snippets) and `signatureHash` (the R-SEM-03 triage drill-down: jobs group by
+  snippet signature; a group whose snippet hash misses gets ONE representative-stacktrace
+  refinement — same algorithm and sample cap as triage — so a refined card's hash still
+  matches its snippet-only jobs): Flowable cannot query instances by failure evidence, so
+  these filter the JOB rows **before grouping and root resolution** — a filtered-out child
+  failure never rolls up its parent. Setting any of them means only failure-bearing rows
+  can match; in the mixed plan, rows whose evidence is filtered away drop out.
 - **Separate native leg** — `currentActivity` (contains, id or name): unfinished
   `historic-activity-instances` per candidate open row (bounded N+1, same budget rules as
   DLQ membership), intersected in the BFF. Completed rows can never match.
@@ -211,17 +217,18 @@ surfaced by `GET /api/engines` and pushed to the health strip via SSE.
 | Endpoint | Purpose |
 |---|---|
 | `GET  /api/engines` | Registry + live health/capabilities/job-lane counts (no secrets) |
-| `GET  /api/resolve?q=…` | **Omnibox**: any ID kind or business key → matching instances across engines |
+| `GET  /api/resolve?q=…` | **Omnibox**: one pasted string resolved across engines in the R-SEM-04 order (process-instance → execution → task → job → business key; composite `engine:id` short-circuits to that engine); returns a disambiguation list (kind, engineId, compositeId, derived flags) + a `perEngine` reachability envelope for the "N of M engines" banner |
 | `POST /api/search` | Fan-out instance search (`SearchRequest`; URL-serializable) |
 | `GET  /api/triage[?refresh=true]` | Stage 0 dashboard: engine health strip (M1 probe state), global + per-engine status counts (query totals, `size=1`), DLQ + RETRYING jobs grouped by normalized error signature with per-engine/per-definition-version counts (sibling versions zero-filled), per-engine honesty envelope (`ok/error/dlqScan`). Served from the 20s Caffeine cache (single-flight); `refresh=true` bypasses, throttled 1/10s |
-| `GET  /api/instances/{engineId}/{id}` | Details composite: vitals, executions, activities, tasks, event subscriptions, hierarchy |
-| `GET/PUT /api/instances/{engineId}/{id}/variables[/…]` | Type-aware view/edit (incl. per-execution); serializables read-only; list responses byte-capped with an on-demand full-value fetch (an edit always operates on the fetched full value); writes are compare-and-set — `expectedOldValue` ⇒ 409 + fresh re-render on mismatch (R-SEM-09); UI contract: SPEC §4a |
-| `GET  /api/instances/{engineId}/{id}/jobs` | Four lanes (executable/timer/suspended/deadletter); stacktrace on expand |
-| `GET  /api/instances/{engineId}/{id}/timeline` | Historic activity instances (Gantt rows, call-activity sub-lanes) |
+| `GET  /api/instances/{engineId}/{id}` | Vitals (historic-first — a completed instance renders, never 404s): identity, definition key/name/version, status flags + primary chip, current activities (unfinished historic activities ∪ runtime execution positions — a dead-lettered async task has NO unfinished activity row, its execution carries the token), why-stuck strip (exception first line, failing activity, retries state), waiting-for (event subscriptions + pending timers) |
+| `GET/PUT /api/instances/{engineId}/{id}/variables[/{name}]` | The TYPED ledger (R-UXQ-13): engine type verbatim next to the typed value, process scope + per-execution locals, HISTORIC projection for completed instances; serializables read-only; list responses byte-capped at 256 KiB with the on-demand full-value fetch `GET …/variables/{name}` (an edit always operates on the fetched full value); writes are compare-and-set — `expectedOldValue` ⇒ 409 + fresh re-render on mismatch (R-SEM-09); UI contract: SPEC §4a |
+| `GET  /api/instances/{engineId}/{id}/jobs` | Four lanes (executable/timer/suspended/deadletter), typed rows; stacktrace on expand via `GET …/jobs/{jobId}/stacktrace?lane=` (plain text) |
+| `GET  /api/instances/{engineId}/{id}/hierarchy` | Call-activity tree BOTH directions: up-walk to the root (`superProcessInstanceId`, cycle-guarded), BFS down; depth cap 10 (registry), breadth cap 50 rendered/node (R-SEM-19) with exact `childTotal` from the query total, per-node dead-letter markers |
+| `GET  /api/instances/{engineId}/{id}/timeline` | Historic activity instances (Gantt rows, `startTime` asc, call-activity sub-lanes via `calledProcessInstanceId`, truncation marker) |
 | `GET  /api/instances/{engineId}/{id}/audit` · `…/notes` | Per-instance action history + notes (CRUD) |
 | `POST /api/instances/{engineId}/{id}/actions/{verb}` | Verb catalog (SPEC §5); guard tier + reason enforced server-side |
 | `POST /api/definitions/{engineId}/{definitionId}/actions/{verb}` | Definition-scoped verbs (`suspend-definition` / `activate-definition`, tier 3) — same guard rails, typed token = the definition key |
-| `GET  /api/instances/{engineId}/{id}/diagram` | BPMN XML + active/failed activity IDs for bpmn-js |
+| `GET  /api/instances/{engineId}/{id}/diagram` | BPMN XML exactly as deployed (definition → deploymentId + resourceName → `/repository/deployments/{deploymentId}/resourcedata/{resourceName}`) + active/dead-letter activity-id sets for the bpmn-js markers |
 | `POST /api/bulk/{verb}` | v1: composite-ID list; v1.x: `{filter:…}` select-all — creates a tracked job |
 | `GET  /api/bulk/jobs[/{jobId}]` · `POST …/cancel` | Job state + persisted per-item report |
 | `GET  /api/instances/{engineId}/{id}/compare?with={e2}:{id2}` | **Sibling diff** (v1.x): variables / path / timing diffs from historic queries; sibling auto-suggest via same-definition-version query |

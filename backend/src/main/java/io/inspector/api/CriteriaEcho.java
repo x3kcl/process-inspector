@@ -33,6 +33,7 @@ public final class CriteriaEcho {
             lines.add("Status: " + req.statuses().stream().map(Enum::name).collect(Collectors.joining(" or ")));
         }
         if (notBlank(req.processDefinitionKey())) lines.add("Definition: " + req.processDefinitionKey());
+        if (req.definitionVersion() != null) lines.add("Definition version: v" + req.definitionVersion());
         if (notBlank(req.businessKey())) lines.add("Business key: exactly '" + req.businessKey() + "'");
         if (notBlank(req.businessKeyLike())) lines.add("Business key: contains '" + req.businessKeyLike() + "'");
         if (notBlank(req.startedAfter())) lines.add("Started after: " + req.startedAfter());
@@ -45,6 +46,7 @@ public final class CriteriaEcho {
         }
         if (notBlank(req.currentActivity())) lines.add("Current activity: contains '" + req.currentActivity() + "'");
         if (notBlank(req.errorText())) lines.add("Error text: contains '" + req.errorText() + "'");
+        if (notBlank(req.signatureHash())) lines.add("Error signature: " + abbreviate(req.signatureHash()));
         if ("failureTime".equals(req.sortBy())) lines.add("Sort: failure time (newest first)");
         return lines;
     }
@@ -63,6 +65,11 @@ public final class CriteriaEcho {
         }
         return "curl -X POST '" + shellSingleQuote(url) + "' -H 'Content-Type: application/json' -d '"
                 + shellSingleQuote(body) + "'";
+    }
+
+    /** A 64-hex signature hash is an opaque key — echo a recognizable stub, not a wall. */
+    private static String abbreviate(String hash) {
+        return hash.length() <= 12 ? hash : hash.substring(0, 12) + "…";
     }
 
     private static String variableLine(VariableFilter v) {

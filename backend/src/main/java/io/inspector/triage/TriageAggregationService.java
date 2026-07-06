@@ -15,9 +15,11 @@ import jakarta.annotation.PreDestroy;
 import java.time.Clock;
 import java.util.ArrayList;
 import java.util.Comparator;
+import java.util.HashSet;
 import java.util.LinkedHashMap;
 import java.util.List;
 import java.util.Map;
+import java.util.Set;
 import java.util.TreeMap;
 import java.util.concurrent.ExecutorService;
 import java.util.concurrent.Executors;
@@ -34,11 +36,18 @@ import org.springframework.stereotype.Service;
  * <ul>
  *   <li><b>Health strip / job lanes / alarms</b> — read from the registry, populated by
  *       the M1 scheduled probe. Zero new engine calls.</li>
- *   <li><b>Status counts</b> — query TOTALS only ({@code size=1}, no rows): ACTIVE and
- *       SUSPENDED from the runtime query's {@code suspended} flag, COMPLETED from the
- *       historic query's {@code finished:true} (completed instances do not exist on the
- *       runtime endpoint). Both fields filter correctly on 6.3.1/6.8/7.1 — canary-probed
- *       live 2026-07-06; sub-totals reconcile with the unfiltered totals.</li>
+ *   <li><b>Status counts</b> — ACTIVE/SUSPENDED/COMPLETED are query TOTALS only
+ *       ({@code size=1}, no rows): ACTIVE and SUSPENDED from the runtime query's
+ *       {@code suspended} flag, COMPLETED from the historic query's {@code finished:true}
+ *       (completed instances do not exist on the runtime endpoint). Both fields filter
+ *       correctly on 6.3.1/6.8/7.1 — canary-probed live 2026-07-06; sub-totals reconcile
+ *       with the unfiltered totals. FAILED and RETRYING are SYNTHESIZED — Flowable has no
+ *       such instance states (SPEC §3) — as distinct-instance counts harvested from the
+ *       failure-lane scans below: FAILED = instances holding ≥1 dead-letter job, RETRYING =
+ *       instances with withException jobs and none dead-lettered (FAILED precedence).
+ *       Statuses collide by doctrine: a FAILED instance is still inside the ACTIVE (or
+ *       SUSPENDED) total — the chips are flag tiers, not a partition. Under a truncated
+ *       scan both are lower bounds, flagged by the existing {@code dlqScan} marker.</li>
  *   <li><b>Error groups</b> — dedicated capped scans of the failure lanes: dead-letter
  *       plus the RETRYING tier ({@code timer-jobs} AND {@code jobs} with
  *       {@code withException=true} — a failing job parks in the timer table between
@@ -154,14 +163,25 @@ public class TriageAggregationService {
             long scanned = 0;
             boolean truncated = false;
             Map<String, PreGroup> preGroups = new LinkedHashMap<>();
+            Set<String> deadLetterInstances = new HashSet<>();
+            Set<String> retryingInstances = new HashSet<>();
             for (Map.Entry<JobLaneKind, Future<LaneScan>> scan : scans.entrySet()) {
                 LaneScan result = scan.getValue().get();
                 scanned += result.jobs().size();
                 truncated |= result.truncated();
                 for (Map<String, Object> job : result.jobs()) {
                     accumulate(preGroups, job, scan.getKey());
+                    String pid = bpmnProcessInstanceId(job);
+                    if (pid != null) {
+                        (scan.getKey() == JobLaneKind.DEADLETTER ? deadLetterInstances : retryingInstances).add(pid);
+                    }
                 }
             }
+            // FAILED wins a collision (SPEC §3 precedence): an instance with both a
+            // dead-letter job and a still-retrying one is FAILED, counted exactly once.
+            retryingInstances.removeAll(deadLetterInstances);
+            statusCounts.put("FAILED", (long) deadLetterInstances.size());
+            statusCounts.put("RETRYING", (long) retryingInstances.size());
             return new EngineSlice(
                     new PerEngineTriage(true, null, truncated ? "truncated@" + scanned : "complete"),
                     statusCounts,
@@ -251,15 +271,25 @@ public class TriageAggregationService {
         }
     }
 
-    private void accumulate(Map<String, PreGroup> preGroups, Map<String, Object> job, JobLaneKind lane) {
-        // CMMN hygiene (SPEC §3): flowable-rest shares job tables with the CMMN engine —
-        // no processInstanceId (or an explicit non-bpmn scopeType, ~6.8+) is not ours.
+    /**
+     * CMMN hygiene (SPEC §3): flowable-rest shares job tables with the CMMN engine —
+     * no processInstanceId (or an explicit non-bpmn scopeType, ~6.8+) is not ours.
+     * Returns the BPMN process-instance id, or null when the job is out of scope.
+     */
+    private static String bpmnProcessInstanceId(Map<String, Object> job) {
         Object pid = job.get("processInstanceId");
         if (pid == null || pid.toString().isBlank()) {
-            return;
+            return null;
         }
         Object scopeType = job.get("scopeType");
         if (scopeType != null && !"bpmn".equalsIgnoreCase(scopeType.toString())) {
+            return null;
+        }
+        return pid.toString();
+    }
+
+    private void accumulate(Map<String, PreGroup> preGroups, Map<String, Object> job, JobLaneKind lane) {
+        if (bpmnProcessInstanceId(job) == null) {
             return;
         }
         String rawMessage = job.get("exceptionMessage") != null

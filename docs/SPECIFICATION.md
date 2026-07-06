@@ -202,9 +202,15 @@ Answers "what is broken, how much, where" in zero keystrokes:
   + runbook URL + optionally one **endorsed verb with conditions** — "Retry, but only after
   15:00"). Rendered on the group card and every member's why-stuck strip; the endorsed verb
   is the highlighted action, others demoted; author/updated-at/expiry; audited.
-- **Status counts** per engine × status (from query totals — no row fetch). **All Stage 0
-  counts carry the same truncation/lower-bound badges as the grid** (R-SEM-12) — the first
-  number an operator anchors on gets the same honesty guarantee as the last.
+- **Status counts** per engine × status. ACTIVE/SUSPENDED/COMPLETED come from query totals
+  (no row fetch); FAILED and RETRYING are **synthesized** — Flowable has no such instance
+  states (§3) — as distinct-instance counts harvested from the same capped failure-lane
+  scans that feed the error groups (FAILED = instances holding ≥1 dead-letter job; RETRYING
+  = instances with withException jobs and none dead-lettered; FAILED wins a collision).
+  Statuses collide by doctrine: a FAILED instance is still inside the ACTIVE total — the
+  chips are flag tiers, not a partition. **All Stage 0 counts carry the same
+  truncation/lower-bound badges as the grid** (R-SEM-12) — the first number an operator
+  anchors on gets the same honesty guarantee as the last.
 - **Leak views** (R-BAU-02): curated views *Active > 30 days*, *Active > 90 days*,
   *Suspended > 7 days*, grouped per definition ("vacationRequest: 212 > 30d") — the slow
   leaks that never enter a failure lane. Curated-view honesty rule (R-SEM-05): **no system
@@ -576,6 +582,7 @@ for the operator.
 | Business data | `businessKey` (exact + `businessKeyLike`), variables (name/operator/value, `like` supported). ⚠ Variable-value search hits typically-unindexed engine tables (`ACT_RU/HI_VARINST`): the form warns and nudges "narrow by definition"; a per-engine flag can require it. On engines that silently drop the like-filter (6.3-era), `businessKeyLike` degrades to a per-engine error in the envelope — never silently unfiltered rows (ARCH §2.3) |
 | Current activity | activity id/name contains |
 | Error text | substring over exception snippets (BFF-side) |
+| Error signature | `signatureHash` — the normalized-signature hash (R-SEM-03), the triage card's drill-down; BFF-side over the failure-lane scans with the same one-representative-stacktrace refinement triage uses, so a refined card's hash matches its snippet-only jobs |
 | Tenant | when any engine is multi-tenant |
 
 Combination rule unchanged: **AND between categories, OR within** — made visible by the
@@ -802,6 +809,15 @@ and would rewrite working M1/M2 code for no capability gain); Go/FastAPI/Kotlin 
   team lead; data-classification one-pager approved; zero open Sev1/Sev2.
 
 ## Change log
+- **v3.5** — M3 detail-data backend landed: Stage 0 status counts gain synthesized
+  FAILED/RETRYING keys (§4 Stage 0 — distinct-instance counts from the failure-lane scans,
+  FAILED precedence, lower-bound under truncation); search gains `definitionVersion`
+  (native pushdown via the concrete per-engine definition id) and `signatureHash` (§8 —
+  BFF-side with the refinement bridge); `GET /api/resolve` and the Stage 2 detail
+  resources (`vitals`/`diagram`/`variables[/{name}]`/`jobs[+stacktrace]`/`hierarchy`/
+  `timeline`) specified in ARCHITECTURE §4. Wire truth recorded there: a dead-lettered
+  async task has no unfinished historic activity row — current activities are the union
+  of unfinished activities and runtime execution positions.
 - **v3.4** — M4 backend implementation note (§9): fail-closed (R-AUD-01) is applied to ALL
   tiers including 0 in v1 — the spec floor (tier ≥1) stays normative, the implementation
   is deliberately stricter. New definition-scoped actions route recorded in ARCHITECTURE
