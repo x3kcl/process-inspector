@@ -1,8 +1,8 @@
 package io.inspector.registry;
 
-import org.junit.jupiter.api.Test;
-
 import static org.assertj.core.api.Assertions.assertThat;
+
+import org.junit.jupiter.api.Test;
 
 /** Rung 1: the ARCH §2.5 version cliffs are pure logic. */
 class EngineCapabilitiesTest {
@@ -52,8 +52,7 @@ class EngineCapabilitiesTest {
     void unparseableVersionsYieldNoVersionCapabilities() {
         for (String garbage : new String[] {null, "", "  ", "unknown", "v6.8", "six.eight"}) {
             EngineCapabilities caps = EngineCapabilities.fromVersion(garbage, false);
-            assertThat(caps).as("version=%s", garbage)
-                    .isEqualTo(EngineCapabilities.none());
+            assertThat(caps).as("version=%s", garbage).isEqualTo(EngineCapabilities.none());
         }
     }
 

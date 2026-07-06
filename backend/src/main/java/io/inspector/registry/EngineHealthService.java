@@ -6,11 +6,6 @@ import io.inspector.client.FlowableEngineClient.JobLaneKind;
 import io.inspector.config.InspectorProperties.EngineConfig;
 import io.inspector.registry.EngineHealth.JobLanes;
 import jakarta.annotation.PreDestroy;
-import org.slf4j.Logger;
-import org.slf4j.LoggerFactory;
-import org.springframework.scheduling.annotation.Scheduled;
-import org.springframework.stereotype.Service;
-
 import java.time.Clock;
 import java.time.Duration;
 import java.time.Instant;
@@ -21,6 +16,10 @@ import java.util.Map;
 import java.util.concurrent.ExecutorService;
 import java.util.concurrent.Executors;
 import java.util.concurrent.Future;
+import org.slf4j.Logger;
+import org.slf4j.LoggerFactory;
+import org.springframework.scheduling.annotation.Scheduled;
+import org.springframework.stereotype.Service;
 
 /**
  * The Stage 0 health probe: on boot and every 30s, fan out over all registered engines
@@ -37,8 +36,7 @@ public class EngineHealthService {
     private static final Logger log = LoggerFactory.getLogger(EngineHealthService.class);
 
     /** Flowable serializes dates as ISO-8601 with non-colon offsets, e.g. 2026-07-06T10:00:00.000+0000. */
-    private static final DateTimeFormatter FLOWABLE_DATE =
-            DateTimeFormatter.ofPattern("yyyy-MM-dd'T'HH:mm:ss.SSSZ");
+    private static final DateTimeFormatter FLOWABLE_DATE = DateTimeFormatter.ofPattern("yyyy-MM-dd'T'HH:mm:ss.SSSZ");
 
     private final EngineRegistry registry;
     private final FlowableEngineClient flowable;
@@ -63,8 +61,7 @@ public class EngineHealthService {
                 registry.updateHealth(engineId, future.get());
             } catch (Exception ex) {
                 log.warn("Health probe for {} died unexpectedly: {}", engineId, ex.toString());
-                registry.updateHealth(engineId,
-                        EngineHealth.unreachable(rootMessage(ex), clock.millis()));
+                registry.updateHealth(engineId, EngineHealth.unreachable(rootMessage(ex), clock.millis()));
             }
         });
     }
@@ -74,7 +71,9 @@ public class EngineHealthService {
         String version;
         try {
             Map<String, Object> info = flowable.engineInfo(engine);
-            version = info != null && info.get("version") != null ? info.get("version").toString() : "unknown";
+            version = info != null && info.get("version") != null
+                    ? info.get("version").toString()
+                    : "unknown";
         } catch (CallNotPermittedException open) {
             return EngineHealth.unreachable("circuit open — engine shedding load", clock.millis());
         } catch (Exception ex) {
@@ -92,15 +91,22 @@ public class EngineHealthService {
                     flowable.countJobs(engine, JobLaneKind.SUSPENDED),
                     flowable.countJobs(engine, JobLaneKind.DEADLETTER));
             Long oldestAgeSec = oldestExecutableJobAgeSec(engine, lanes.executable());
-            long overdueTimers = flowable.countOverdueTimers(engine,
+            long overdueTimers = flowable.countOverdueTimers(
+                    engine,
                     clock.instant().minusSeconds(engine.alarmsOrDefault().overdueTimerGraceSOrDefault()));
-            return new EngineHealth(true, version, null, clock.millis(),
-                    capabilities, lanes, oldestAgeSec, overdueTimers);
+            return new EngineHealth(
+                    true, version, null, clock.millis(), capabilities, lanes, oldestAgeSec, overdueTimers);
         } catch (Exception ex) {
             log.debug("Lane/capability probe degraded for {}: {}", engine.id(), ex.toString());
-            return new EngineHealth(true, version,
+            return new EngineHealth(
+                    true,
+                    version,
                     "reachable, but lane/capability probe failed: " + rootMessage(ex),
-                    clock.millis(), null, null, null, null);
+                    clock.millis(),
+                    null,
+                    null,
+                    null,
+                    null);
         }
     }
 
@@ -129,11 +135,15 @@ public class EngineHealthService {
         }
         String text = value.toString();
         try {
-            return Instant.parse(text);                                   // 2026-07-06T10:00:00Z
-        } catch (Exception ignored) { /* fall through */ }
+            return Instant.parse(text); // 2026-07-06T10:00:00Z
+        } catch (Exception ignored) {
+            /* fall through */
+        }
         try {
-            return OffsetDateTime.parse(text).toInstant();                // ...+02:00
-        } catch (Exception ignored) { /* fall through */ }
+            return OffsetDateTime.parse(text).toInstant(); // ...+02:00
+        } catch (Exception ignored) {
+            /* fall through */
+        }
         try {
             return OffsetDateTime.parse(text, FLOWABLE_DATE).toInstant(); // ...+0000
         } catch (Exception ignored) {

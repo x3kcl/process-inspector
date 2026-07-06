@@ -10,8 +10,7 @@ shareability and the diagram move EARLIER, **flow surgery moves OUT of the v1 ga
 green ×3 on applicable engine profiles, coverage floors met, zero open Sev1/Sev2, every
 "Done when" demo converted into an automated E2E. Done-when clauses cite the
 REQUIREMENTS-REGISTER IDs they discharge. The authoritative CI merge-gate list is
-OPERATIONS.md §8. **Status correction:** M0's "CI" claim was ahead of reality — no workflows
-or Dockerfile exist yet; landing them is part of M2a's gate.
+OPERATIONS.md §8.
 
 ## M0 — Scaffold *(harness done; CI/Dockerfile remain M2a's gate)*
 - Repo layout, docker-compose dev harness. Profiles in `docker/docker-compose.dev.yml`
@@ -19,14 +18,24 @@ or Dockerfile exist yet; landing them is part of M2a's gate.
   :8081/:8082 — default via `docker/.env` `COMPOSE_PROFILES`), **`flowable-7`**
   (`flowable/flowable-rest:7.1.0`, :8083, same context path + admin env vars),
   **`postgres`** (postgres:16, :5433 — container only until M4, no JPA/Flyway).
-- Seed processes under `docker/processes/` + idempotent `docker/seed.sh` (REST-only):
-  `demoOrder` (straight-through) and `demoFailingPayment` (async, `${amount % divisor}`,
-  `R1/PT1S` → organic dead-letter; EL `/` never throws — see `validate-bpmn` skill).
+- Seed catalog under `docker/processes/` + idempotent `docker/seed.sh` (REST-only;
+  no-arg mode auto-discovers every reachable engine on :8081-:8084): `demoOrder`
+  (FIX-PROC-01), `demoFailingPayment` (FIX-PROC-04, `${amount % divisor}` + `R1/PT1S`
+  → organic dead-letter; EL `/` never throws — see `validate-bpmn` skill),
+  `demoFailingRetry` (FIX-PROC-05, `R10/PT1H` pinned RETRYING), `demoUserTask`
+  (FIX-PROC-02; seed.sh starts one ACTIVE + one suspended over REST), `demoTimerWait`
+  (FIX-PROC-03, `${dueDuration}` timer-stuck), `demoParent` (FIX-PROC-06, call activity
+  → failing child, businessKey inherited → `failedInSubprocess` roll-up data).
 - **`legacy`** profile landed too: `flowable/flowable-rest:6.3.1` on :8084 — pre every
   ARCH §2.5 cliff, same creds/context path; `EngineHealthLegacyIT` proves the probe
   reports all four version capabilities absent without 400s on the 6.3 wire shapes.
-- **Still open (slice-0):** the remaining FIX-PROC seed catalog; CI workflows + root
-  Dockerfile (M2a gate).
+- CI + image landed: `.github/workflows/ci.yml` (lint / unit / frontend / docker /
+  integration matrix over the three engine profiles, gated by `docker/smoke-test.sh`
+  bounded readiness probes) and the root multi-stage `Dockerfile` (maven builder →
+  `eclipse-temurin:21-jre-alpine`, non-root, `SERVER_PORT=8080`).
+- **Still open (slice-0):** remaining FIX-PROC seeds (recursive / event-wait /
+  multi-instance / parallel-join / CMMN case); frontend `package-lock.json` + ESLint;
+  the OPERATIONS §8 "still to land" gate list.
 
 ## M1 — Engine Registry + health  *(backend landed; header-strip UI open)*
 - Registry YAML binding per ARCH §3 (environment/mode enums, engine-id slug validation,

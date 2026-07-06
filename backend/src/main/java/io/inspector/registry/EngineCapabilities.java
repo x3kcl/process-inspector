@@ -9,12 +9,12 @@ package io.inspector.registry;
  * engine's history level is configuration, not version.
  */
 public record EngineCapabilities(
-        boolean changeState,         // POST .../change-state — Flowable ≥ 6.4
-        boolean migration,           // process-migration API — Flowable ≥ 6.5
-        boolean externalWorkerJobs,  // external-worker job queue — Flowable ≥ 6.8
-        boolean scopeType,           // scopeType field on job rows — Flowable ≥ 6.8
-        boolean activityHistory      // history level records activities (probed, not derived)
-) {
+        boolean changeState, // POST .../change-state — Flowable ≥ 6.4
+        boolean migration, // process-migration API — Flowable ≥ 6.5
+        boolean externalWorkerJobs, // external-worker job queue — Flowable ≥ 6.8
+        boolean scopeType, // scopeType field on job rows — Flowable ≥ 6.8
+        boolean activityHistory // history level records activities (probed, not derived)
+        ) {
     public static EngineCapabilities none() {
         return new EngineCapabilities(false, false, false, false, false);
     }

@@ -15,9 +15,9 @@ public record EngineHealth(
         long checkedAtEpochMs,
         EngineCapabilities capabilities,
         JobLanes jobLanes,
-        Long oldestExecutableJobAgeSec,   // null when the executable lane is empty/unknown
-        Long overdueTimers                // timers past due beyond the grace period; null when unknown
-) {
+        Long oldestExecutableJobAgeSec, // null when the executable lane is empty/unknown
+        Long overdueTimers // timers past due beyond the grace period; null when unknown
+        ) {
     /** The four job queues — four lanes, never one (flowable-rest skill §3). */
     public record JobLanes(long executable, long timer, long suspended, long deadletter) {}
 

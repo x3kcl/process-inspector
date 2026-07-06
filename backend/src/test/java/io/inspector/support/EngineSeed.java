@@ -1,17 +1,16 @@
 package io.inspector.support;
 
-import org.springframework.core.io.FileSystemResource;
-import org.springframework.http.MediaType;
-import org.springframework.util.LinkedMultiValueMap;
-import org.springframework.util.MultiValueMap;
-import org.springframework.web.client.RestClient;
+import static org.junit.jupiter.api.Assertions.fail;
 
 import java.nio.file.Files;
 import java.nio.file.Path;
 import java.util.List;
 import java.util.Map;
-
-import static org.junit.jupiter.api.Assertions.fail;
+import org.springframework.core.io.FileSystemResource;
+import org.springframework.http.MediaType;
+import org.springframework.util.LinkedMultiValueMap;
+import org.springframework.util.MultiValueMap;
+import org.springframework.web.client.RestClient;
 
 /**
  * REST-only seeding against a dockerized flowable-rest engine (engine-harness skill).
@@ -60,7 +59,8 @@ public final class EngineSeed {
         if (definitionCount(engine, key) == 0) {
             MultiValueMap<String, Object> parts = new LinkedMultiValueMap<>();
             parts.add("file", new FileSystemResource(bpmn));
-            engine.post().uri("/repository/deployments")
+            engine.post()
+                    .uri("/repository/deployments")
                     .contentType(MediaType.MULTIPART_FORM_DATA)
                     .body(parts)
                     .retrieve()
@@ -73,11 +73,14 @@ public final class EngineSeed {
 
     /** Starts the organically-dead-lettering fixture (divisor=0). Returns the instance id. */
     public static String startFailingPayment(RestClient engine) {
-        Map<String, Object> started = engine.post().uri("/runtime/process-instances")
+        Map<String, Object> started = engine.post()
+                .uri("/runtime/process-instances")
                 .contentType(MediaType.APPLICATION_JSON)
                 .body(Map.of(
-                        "processDefinitionKey", "demoFailingPayment",
-                        "variables", List.of(
+                        "processDefinitionKey",
+                        "demoFailingPayment",
+                        "variables",
+                        List.of(
                                 Map.of("name", "amount", "type", "integer", "value", 100),
                                 Map.of("name", "divisor", "type", "integer", "value", 0))))
                 .retrieve()

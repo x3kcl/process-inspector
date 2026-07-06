@@ -1,24 +1,5 @@
 package io.inspector.client;
 
-import com.github.tomakehurst.wiremock.WireMockServer;
-import io.github.resilience4j.circuitbreaker.CallNotPermittedException;
-import io.github.resilience4j.circuitbreaker.CircuitBreakerConfig;
-import io.github.resilience4j.circuitbreaker.CircuitBreakerRegistry;
-import io.inspector.config.InspectorProperties.EngineConfig;
-import io.inspector.config.InspectorProperties.Timeouts;
-import io.inspector.support.TestEngines;
-import org.junit.jupiter.api.AfterEach;
-import org.junit.jupiter.api.BeforeEach;
-import org.junit.jupiter.api.Test;
-import org.springframework.mock.env.MockEnvironment;
-import org.springframework.web.client.HttpClientErrorException;
-import org.springframework.web.client.HttpServerErrorException;
-import org.springframework.web.client.ResourceAccessException;
-
-import java.time.Duration;
-import java.util.Map;
-import java.util.concurrent.TimeUnit;
-
 import static com.github.tomakehurst.wiremock.client.WireMock.aResponse;
 import static com.github.tomakehurst.wiremock.client.WireMock.equalTo;
 import static com.github.tomakehurst.wiremock.client.WireMock.get;
@@ -31,6 +12,24 @@ import static org.assertj.core.api.Assertions.assertThat;
 import static org.assertj.core.api.Assertions.assertThatCode;
 import static org.assertj.core.api.Assertions.assertThatThrownBy;
 import static org.awaitility.Awaitility.await;
+
+import com.github.tomakehurst.wiremock.WireMockServer;
+import io.github.resilience4j.circuitbreaker.CallNotPermittedException;
+import io.github.resilience4j.circuitbreaker.CircuitBreakerConfig;
+import io.github.resilience4j.circuitbreaker.CircuitBreakerRegistry;
+import io.inspector.config.InspectorProperties.EngineConfig;
+import io.inspector.config.InspectorProperties.Timeouts;
+import io.inspector.support.TestEngines;
+import java.time.Duration;
+import java.util.Map;
+import java.util.concurrent.TimeUnit;
+import org.junit.jupiter.api.AfterEach;
+import org.junit.jupiter.api.BeforeEach;
+import org.junit.jupiter.api.Test;
+import org.springframework.mock.env.MockEnvironment;
+import org.springframework.web.client.HttpClientErrorException;
+import org.springframework.web.client.HttpServerErrorException;
+import org.springframework.web.client.ResourceAccessException;
 
 /**
  * Rung 2: pure HTTP-client behavior against WireMock — auth header shape, timeouts,
@@ -71,15 +70,16 @@ class FlowableEngineClientTest {
     }
 
     private EngineConfig engine(String id) {
-        return TestEngines.engine(id, wm.baseUrl(),
+        return TestEngines.engine(
+                id,
+                wm.baseUrl(),
                 TestEngines.basicAuth("rest-admin", "ENGINE_T_PASSWORD"),
                 new Timeouts(1000, 1000, null));
     }
 
     @Test
     void emitsBasicAuthResolvedFromPasswordRef() {
-        wm.stubFor(get(urlPathEqualTo("/management/engine"))
-                .willReturn(okJson("{\"version\":\"6.8.0\"}")));
+        wm.stubFor(get(urlPathEqualTo("/management/engine")).willReturn(okJson("{\"version\":\"6.8.0\"}")));
 
         Map<String, Object> info = client.engineInfo(engine("auth-engine"));
 
@@ -91,7 +91,9 @@ class FlowableEngineClientTest {
 
     @Test
     void missingSecretEnvVarFailsLoudlyWithTheRefName() {
-        EngineConfig engine = TestEngines.engine("no-secret", wm.baseUrl(),
+        EngineConfig engine = TestEngines.engine(
+                "no-secret",
+                wm.baseUrl(),
                 TestEngines.basicAuth("rest-admin", "NOT_SET_ANYWHERE"),
                 new Timeouts(1000, 1000, null));
         wm.stubFor(get(urlPathEqualTo("/management/engine")).willReturn(okJson("{}")));
@@ -106,8 +108,7 @@ class FlowableEngineClientTest {
         wm.stubFor(get(urlPathEqualTo("/management/engine"))
                 .willReturn(okJson("{}").withFixedDelay(2000)));
 
-        assertThatThrownBy(() -> client.engineInfo(engine("slow-engine")))
-                .isInstanceOf(ResourceAccessException.class);
+        assertThatThrownBy(() -> client.engineInfo(engine("slow-engine"))).isInstanceOf(ResourceAccessException.class);
     }
 
     @Test
@@ -127,24 +128,22 @@ class FlowableEngineClientTest {
     @Test
     void breakerOpensAfterFailuresAndFastFailsWithoutNetworkCalls() {
         EngineConfig engine = engine("sick-engine");
-        wm.stubFor(get(urlPathEqualTo("/management/engine"))
-                .willReturn(aResponse().withStatus(500)));
+        wm.stubFor(
+                get(urlPathEqualTo("/management/engine")).willReturn(aResponse().withStatus(500)));
 
         for (int i = 0; i < 2; i++) {
-            assertThatThrownBy(() -> client.engineInfo(engine))
-                    .isInstanceOf(HttpServerErrorException.class);
+            assertThatThrownBy(() -> client.engineInfo(engine)).isInstanceOf(HttpServerErrorException.class);
         }
         // Window full (2/2 failures) → open. The third call must not touch the network.
-        assertThatThrownBy(() -> client.engineInfo(engine))
-                .isInstanceOf(CallNotPermittedException.class);
+        assertThatThrownBy(() -> client.engineInfo(engine)).isInstanceOf(CallNotPermittedException.class);
         wm.verify(2, getRequestedFor(urlPathEqualTo("/management/engine")));
     }
 
     @Test
     void breakerRecoversHalfOpenOnceTheEngineHeals() {
         EngineConfig engine = engine("healing-engine");
-        wm.stubFor(get(urlPathEqualTo("/management/engine"))
-                .willReturn(aResponse().withStatus(500)));
+        wm.stubFor(
+                get(urlPathEqualTo("/management/engine")).willReturn(aResponse().withStatus(500)));
         for (int i = 0; i < 2; i++) {
             assertThatThrownBy(() -> client.engineInfo(engine)).isInstanceOf(HttpServerErrorException.class);
         }
@@ -154,21 +153,20 @@ class FlowableEngineClientTest {
         wm.stubFor(get(urlPathEqualTo("/management/engine")).willReturn(okJson("{\"version\":\"6.8.0\"}")));
         await().atMost(2, TimeUnit.SECONDS)
                 .pollInterval(100, TimeUnit.MILLISECONDS)
-                .untilAsserted(() -> assertThatCode(() -> client.engineInfo(engine))
-                        .doesNotThrowAnyException());
+                .untilAsserted(
+                        () -> assertThatCode(() -> client.engineInfo(engine)).doesNotThrowAnyException());
     }
 
     @Test
     void clientErrorsDoNotTripTheBreaker() {
         EngineConfig engine = engine("gappy-engine");
-        wm.stubFor(get(urlPathEqualTo("/management/engine"))
-                .willReturn(aResponse().withStatus(404)));
+        wm.stubFor(
+                get(urlPathEqualTo("/management/engine")).willReturn(aResponse().withStatus(404)));
 
         // Well past the 2-call window: 404s are the expected negative answer of
         // capability probes and must never open the breaker.
         for (int i = 0; i < 4; i++) {
-            assertThatThrownBy(() -> client.engineInfo(engine))
-                    .isInstanceOf(HttpClientErrorException.class);
+            assertThatThrownBy(() -> client.engineInfo(engine)).isInstanceOf(HttpClientErrorException.class);
         }
         wm.verify(4, getRequestedFor(urlPathEqualTo("/management/engine")));
     }
@@ -196,7 +194,6 @@ class FlowableEngineClientTest {
         long total = client.countJobs(engine, FlowableEngineClient.JobLaneKind.DEADLETTER);
 
         assertThat(total).isEqualTo(137);
-        wm.verify(getRequestedFor(urlPathEqualTo("/management/deadletter-jobs"))
-                .withQueryParam("size", equalTo("1")));
+        wm.verify(getRequestedFor(urlPathEqualTo("/management/deadletter-jobs")).withQueryParam("size", equalTo("1")));
     }
 }

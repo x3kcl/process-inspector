@@ -77,11 +77,16 @@ Session policy (R-SAFE-07): fixation protection, idle timeout 12 h / absolute 24
 re-validation; bulk jobs survive session expiry, cancel requires a live session.
 
 ## 8. CI gates — the authoritative merge-blocking list (R-OPS-06)
-1. Backend build + unit suite (incl. the **ArchUnit anti-flakiness rule**: `Thread.sleep`
-in any test class = build failure) · 2. WireMock contract tests incl. **6.x AND 7.x
-error-JSON fixtures** · 3. Testcontainers Postgres suite (M4+) · 4. Spotless + ESLint strict ·
-5. OpenAPI export + `git diff --exit-code` · 6. Vitest · 7. Playwright smoke (≤10 min,
-incl. axe) · 8. Image build + Trivy scan (fixable HIGH/CRIT fail).
+**Landed in `.github/workflows/ci.yml`:** `lint` (Spotless/palantir) · `unit` (backend
+build + unit suite incl. the **ArchUnit anti-flakiness rule**: `Thread.sleep` in any test
+class = build failure) · `frontend` (watermark check + tsc + vite build) · `docker`
+(multi-stage image build) · `integration` matrix over **flowable-6 / flowable-7 / legacy**
+(compose up → `docker/smoke-test.sh` bounded readiness gate incl. postgres `pg_isready` →
+`docker/seed.sh` → failsafe per-profile IT).
+**Still to land:** WireMock contract tests with **6.x AND 7.x error-JSON fixtures** ·
+Testcontainers Postgres suite (M4+) · ESLint strict · OpenAPI export +
+`git diff --exit-code` · Vitest · Playwright smoke (≤10 min, incl. axe) · Trivy scan
+(fixable HIGH/CRIT fail).
 Nightly (release-blocking, not merge-blocking): full engine-matrix Playwright, P1/P2 perf
 scenarios, capability matrix cross. Weekly: image rescan; monthly: base-image rebuild; SBOM
 (CycloneDX) attached to releases.

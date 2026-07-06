@@ -18,8 +18,8 @@ public final class TestEngines {
     }
 
     public static EngineConfig engine(String id, String baseUrl, Auth auth, Timeouts timeouts) {
-        return new EngineConfig(id, id, baseUrl, EngineEnvironment.DEV, null, true,
-                null, auth, null, timeouts, null, null, null);
+        return new EngineConfig(
+                id, id, baseUrl, EngineEnvironment.DEV, null, true, null, auth, null, timeouts, null, null, null);
     }
 
     public static Auth basicAuth(String username, String passwordRef) {

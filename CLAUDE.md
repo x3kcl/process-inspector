@@ -24,8 +24,8 @@ sections in the same change — see the `spec-sync` skill. Read the relevant ski
 ```bash
 # backend fast loop (seconds):
 cd backend && mvn -o test -Dtest=TheClassYouAreDriving
-# backend full (before claiming done):
-cd backend && mvn verify
+# backend full (before claiming done; needs the full engine matrix up — engine-harness):
+cd backend && mvn spotless:apply && mvn verify
 # frontend:
 cd frontend && npm test          # vitest
 cd frontend && npm run build     # type-check + build

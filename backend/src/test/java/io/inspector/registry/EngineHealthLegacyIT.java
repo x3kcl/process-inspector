@@ -1,5 +1,7 @@
 package io.inspector.registry;
 
+import static org.assertj.core.api.Assertions.assertThat;
+
 import com.fasterxml.jackson.databind.JsonNode;
 import com.fasterxml.jackson.databind.ObjectMapper;
 import io.inspector.support.EngineSeed;
@@ -11,8 +13,6 @@ import org.springframework.boot.test.context.SpringBootTest;
 import org.springframework.boot.test.web.client.TestRestTemplate;
 import org.springframework.test.context.ActiveProfiles;
 
-import static org.assertj.core.api.Assertions.assertThat;
-
 /**
  * Rung 4 against the legacy compose profile (Flowable 6.3.1 — pre every ARCH §2.5
  * version cliff): the probe must report the capabilities the engine really lacks, and
@@ -21,17 +21,21 @@ import static org.assertj.core.api.Assertions.assertThat;
  *
  * Requires: docker compose -f docker/docker-compose.dev.yml --profile legacy up -d
  */
-@SpringBootTest(webEnvironment = SpringBootTest.WebEnvironment.RANDOM_PORT,
-        properties = "ENGINE_LEGACY_PASSWORD=test")
+@SpringBootTest(webEnvironment = SpringBootTest.WebEnvironment.RANDOM_PORT, properties = "ENGINE_LEGACY_PASSWORD=test")
 @ActiveProfiles("it-legacy")
 @TestInstance(TestInstance.Lifecycle.PER_CLASS)
 class EngineHealthLegacyIT {
 
     private static final String ENGINE = "http://localhost:8084/flowable-rest/service";
 
-    @Autowired TestRestTemplate rest;
-    @Autowired EngineHealthService healthService;
-    @Autowired ObjectMapper mapper;
+    @Autowired
+    TestRestTemplate rest;
+
+    @Autowired
+    EngineHealthService healthService;
+
+    @Autowired
+    ObjectMapper mapper;
 
     @BeforeAll
     void requireEngine() {
@@ -42,7 +46,8 @@ class EngineHealthLegacyIT {
     void probeReportsMissingCapabilitiesOnPreCliffEngine() throws Exception {
         healthService.probeAll();
 
-        JsonNode dto = mapper.readTree(rest.getForObject("/api/engines", String.class)).get(0);
+        JsonNode dto =
+                mapper.readTree(rest.getForObject("/api/engines", String.class)).get(0);
         assertThat(dto.get("id").asText()).isEqualTo("engine-legacy");
         assertThat(dto.get("reachable").asBoolean()).isTrue();
         assertThat(dto.get("engineVersion").asText()).startsWith("6.3");

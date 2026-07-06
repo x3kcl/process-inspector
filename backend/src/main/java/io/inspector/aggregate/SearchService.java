@@ -11,10 +11,6 @@ import io.inspector.dto.SearchResponse;
 import io.inspector.dto.SearchResponse.EngineResult;
 import io.inspector.registry.EngineRegistry;
 import jakarta.annotation.PreDestroy;
-import org.slf4j.Logger;
-import org.slf4j.LoggerFactory;
-import org.springframework.stereotype.Service;
-
 import java.util.ArrayList;
 import java.util.Comparator;
 import java.util.EnumSet;
@@ -30,6 +26,9 @@ import java.util.concurrent.ExecutorService;
 import java.util.concurrent.Executors;
 import java.util.concurrent.TimeUnit;
 import java.util.concurrent.TimeoutException;
+import org.slf4j.Logger;
+import org.slf4j.LoggerFactory;
+import org.springframework.stereotype.Service;
 
 /**
  * The API aggregator: builds one search plan per selected engine, fans out in
@@ -85,8 +84,7 @@ public class SearchService {
             }
         }
 
-        rows.sort(Comparator.comparing(ProcessInstanceRow::startTime,
-                Comparator.nullsLast(Comparator.reverseOrder())));
+        rows.sort(Comparator.comparing(ProcessInstanceRow::startTime, Comparator.nullsLast(Comparator.reverseOrder())));
         return new SearchResponse(rows, new HashMap<>(perEngine));
     }
 
@@ -107,8 +105,8 @@ public class SearchService {
                 || wanted.contains(InstanceStatus.SUSPENDED)
                 || wanted.contains(InstanceStatus.FAILED);
         Set<String> suspendedIds = wantsOpen
-                ? idsOf(flowable.queryRuntimeProcessInstances(engine,
-                        Map.of("suspended", true, "size", engine.maxPageSizeOrDefault())))
+                ? idsOf(flowable.queryRuntimeProcessInstances(
+                        engine, Map.of("suspended", true, "size", engine.maxPageSizeOrDefault())))
                 : Set.of();
         Map<String, String> failedById = wantsOpen ? deadLetterIndex(engine) : Map.of();
 
@@ -118,10 +116,10 @@ public class SearchService {
             String endTime = str(pi, "endTime");
 
             InstanceStatus status;
-            if (endTime != null)                       status = InstanceStatus.COMPLETED;
-            else if (failedById.containsKey(id))       status = InstanceStatus.FAILED;
-            else if (suspendedIds.contains(id))        status = InstanceStatus.SUSPENDED;
-            else                                       status = InstanceStatus.ACTIVE;
+            if (endTime != null) status = InstanceStatus.COMPLETED;
+            else if (failedById.containsKey(id)) status = InstanceStatus.FAILED;
+            else if (suspendedIds.contains(id)) status = InstanceStatus.SUSPENDED;
+            else status = InstanceStatus.ACTIVE;
 
             if (!wanted.contains(status)) continue;
 
@@ -158,20 +156,25 @@ public class SearchService {
             body.put("startedBefore", req.startedBefore());
         }
         if (req.variables() != null && !req.variables().isEmpty()) {
-            body.put("variables", req.variables().stream().map(v -> {
-                Map<String, Object> m = new HashMap<>();
-                m.put("name", v.name());
-                m.put("value", v.value());
-                m.put("operation", v.operation() != null ? v.operation() : "equals");
-                if (v.type() != null) m.put("type", v.type());
-                return m;
-            }).toList());
+            body.put(
+                    "variables",
+                    req.variables().stream()
+                            .map(v -> {
+                                Map<String, Object> m = new HashMap<>();
+                                m.put("name", v.name());
+                                m.put("value", v.value());
+                                m.put("operation", v.operation() != null ? v.operation() : "equals");
+                                if (v.type() != null) m.put("type", v.type());
+                                return m;
+                            })
+                            .toList());
         }
         // Narrow finished when the status OR-set is one-sided (pure optimization).
-        boolean wantsOpen = wanted.contains(InstanceStatus.ACTIVE) || wanted.contains(InstanceStatus.SUSPENDED)
+        boolean wantsOpen = wanted.contains(InstanceStatus.ACTIVE)
+                || wanted.contains(InstanceStatus.SUSPENDED)
                 || wanted.contains(InstanceStatus.FAILED);
         boolean wantsCompleted = wanted.contains(InstanceStatus.COMPLETED);
-        if (wantsCompleted && !wantsOpen)      body.put("finished", true);
+        if (wantsCompleted && !wantsOpen) body.put("finished", true);
         else if (wantsOpen && !wantsCompleted) body.put("finished", false);
 
         body.put("size", pageSize);

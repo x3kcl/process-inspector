@@ -18,5 +18,5 @@ public record ProcessInstanceRow(
         InstanceStatus status,
         String startTime,
         String endTime,
-        String currentActivityOrError   // dead-letter exception snippet when FAILED
-) {}
+        String currentActivityOrError // dead-letter exception snippet when FAILED
+        ) {}

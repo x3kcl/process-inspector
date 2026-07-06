@@ -27,6 +27,10 @@ never *replaces* the L4 proof for join/status semantics (iron rule, `engine-harn
 
 ### 1.1 Seed processes (S2 generators)
 
+*Status: FIX-PROC-01..06 are landed in `docker/processes/` and started by `docker/seed.sh`
+(the SUSPENDED arc is manufactured by seed.sh via REST suspend on a `demoUserTask`
+instance); FIX-PROC-07..10 and FIX-CASE-01 are still to author.*
+
 | ID | Key | Shape / failure mechanism | Manufactures |
 |---|---|---|---|
 | FIX-PROC-01 | `demoOrder` | straight-through service task, expression `${true}` | COMPLETED |

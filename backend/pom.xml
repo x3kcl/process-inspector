@@ -22,6 +22,10 @@
     <resilience4j.version>2.4.0</resilience4j.version>
     <wiremock.version>3.13.2</wiremock.version>
     <archunit.version>1.4.2</archunit.version>
+    <spotless.version>2.46.1</spotless.version>
+    <!-- CI matrix legs skip the unit suite (already run in the unit job) without
+         killing failsafe: -Dskip.surefire.tests=true. -DskipTests would skip both. -->
+    <skip.surefire.tests>false</skip.surefire.tests>
   </properties>
 
   <dependencies>
@@ -71,6 +75,29 @@
       <plugin>
         <groupId>org.springframework.boot</groupId>
         <artifactId>spring-boot-maven-plugin</artifactId>
+      </plugin>
+      <plugin>
+        <groupId>org.apache.maven.plugins</groupId>
+        <artifactId>maven-surefire-plugin</artifactId>
+        <configuration>
+          <skipTests>${skip.surefire.tests}</skipTests>
+        </configuration>
+      </plugin>
+      <!-- Formatting is a CI hard failure (CLAUDE.md): `mvn spotless:check` in the lint
+           job; fix locally with `mvn spotless:apply`. Palantir style = 4-space/120-col. -->
+      <plugin>
+        <groupId>com.diffplug.spotless</groupId>
+        <artifactId>spotless-maven-plugin</artifactId>
+        <version>${spotless.version}</version>
+        <configuration>
+          <java>
+            <palantirJavaFormat>
+              <version>2.94.0</version>
+              <style>PALANTIR</style>
+            </palantirJavaFormat>
+            <removeUnusedImports/>
+          </java>
+        </configuration>
       </plugin>
       <!-- Dockerized-engine integration tests (*IT) run under failsafe only:
            `mvn test` stays green without docker; `mvn verify` requires the harness. -->

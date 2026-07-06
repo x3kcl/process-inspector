@@ -1,5 +1,7 @@
 package io.inspector.api;
 
+import static org.assertj.core.api.Assertions.assertThat;
+
 import com.fasterxml.jackson.databind.JsonNode;
 import com.fasterxml.jackson.databind.ObjectMapper;
 import io.inspector.config.InspectorProperties;
@@ -14,8 +16,6 @@ import org.springframework.http.HttpStatus;
 import org.springframework.http.ResponseEntity;
 import org.springframework.test.context.ActiveProfiles;
 
-import static org.assertj.core.api.Assertions.assertThat;
-
 /**
  * Rung 3: wiring only — registry YAML binding (enums, defaults, truncation knobs) and
  * the graceful /api/engines contract with both test engines pointing at a closed port.
@@ -25,10 +25,17 @@ import static org.assertj.core.api.Assertions.assertThat;
 @ActiveProfiles("test")
 class EnginesApiSpringTest {
 
-    @Autowired TestRestTemplate rest;
-    @Autowired InspectorProperties props;
-    @Autowired EngineHealthService healthService;
-    @Autowired ObjectMapper mapper;
+    @Autowired
+    TestRestTemplate rest;
+
+    @Autowired
+    InspectorProperties props;
+
+    @Autowired
+    EngineHealthService healthService;
+
+    @Autowired
+    ObjectMapper mapper;
 
     @Test
     void registryBindsEnumsAndKnobsFromYaml() {
@@ -46,7 +53,8 @@ class EnginesApiSpringTest {
         assertThat(dev.maxPageSizeOrDefault()).isEqualTo(10);
         assertThat(dev.dlqScanCapOrDefault()).isEqualTo(50);
         // defaults where the YAML is silent
-        assertThat(dev.timeoutsOrDefault().write()).isEqualTo(dev.timeoutsOrDefault().read());
+        assertThat(dev.timeoutsOrDefault().write())
+                .isEqualTo(dev.timeoutsOrDefault().read());
         assertThat(dev.alarmsOrDefault().oldestJobWarnMinOrDefault()).isEqualTo(5);
         assertThat(dev.alarmsOrDefault().oldestJobCritMinOrDefault()).isEqualTo(15);
         assertThat(dev.alarmsOrDefault().overdueTimerGraceSOrDefault()).isEqualTo(60);

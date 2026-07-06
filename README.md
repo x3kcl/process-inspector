@@ -35,10 +35,12 @@ docker compose -f docker/docker-compose.dev.yml --profile flowable-7 up -d   # F
 docker compose -f docker/docker-compose.dev.yml --profile legacy up -d       # Flowable 6.3.1 on :8084 (pre-cliff)
 docker compose -f docker/docker-compose.dev.yml --profile postgres up -d     # BFF DB (M4) on :5433
 
-# 2. Seed demo processes (idempotent, REST-only): demoOrder + demoFailingPayment
-#    (the latter dead-letters itself organically — the standing DLQ demo fixture)
-bash docker/seed.sh                                          # engine-a
-bash docker/seed.sh http://localhost:8082/flowable-rest/service   # engine-b too, if wanted
+# 2. Seed the demo catalog (idempotent deploys, REST-only). No-arg mode auto-discovers
+#    and seeds EVERY reachable engine (:8081-:8084): completed, organically dead-lettered,
+#    pinned-RETRYING, active-on-user-task, suspended, timer-stuck and failing-child
+#    (failedInSubprocess) instances.
+bash docker/seed.sh                                               # all reachable engines
+bash docker/seed.sh http://localhost:8082/flowable-rest/service   # or exactly one
 
 # 3. BFF on :8085 (engine credentials come from the environment, never from config)
 export ENGINE_A_PASSWORD=test ENGINE_B_PASSWORD=test
@@ -53,11 +55,20 @@ Registered engines live in `backend/src/main/resources/application.yml` under `i
 health strip: reachability, version, capability flags, the four job-lane counts and the
 executor-starvation alarms per engine.
 
+### Docker image
+
+```bash
+# Multi-stage build (maven builder → JRE 21 alpine, runs as non-root, port 8080):
+docker build -t process-inspector .
+docker run -p 8080:8080 -e ENGINE_A_PASSWORD=test -e ENGINE_B_PASSWORD=test process-inspector
+```
+
 ### Backend tests
 
 ```bash
 cd backend
 mvn test      # unit ladder (rungs 1–3 + ArchUnit no-sleep rule) — no docker needed
+mvn spotless:apply   # format (palantir style) — spotless:check is a CI hard failure
 mvn verify    # + dockerized integration tests (*IT) — requires the FULL engine matrix:
 #   docker compose -f docker/docker-compose.dev.yml --profile flowable-6 \
 #     --profile flowable-7 --profile legacy up -d

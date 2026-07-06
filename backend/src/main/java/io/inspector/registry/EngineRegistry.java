@@ -1,18 +1,17 @@
 package io.inspector.registry;
 
+import static org.springframework.http.HttpStatus.NOT_FOUND;
+
 import io.inspector.config.InspectorProperties;
 import io.inspector.config.InspectorProperties.EngineConfig;
-import org.springframework.stereotype.Component;
-import org.springframework.web.server.ResponseStatusException;
-
 import java.util.LinkedHashMap;
 import java.util.List;
 import java.util.Map;
 import java.util.concurrent.ConcurrentHashMap;
 import java.util.function.Function;
 import java.util.stream.Collectors;
-
-import static org.springframework.http.HttpStatus.NOT_FOUND;
+import org.springframework.stereotype.Component;
+import org.springframework.web.server.ResponseStatusException;
 
 /**
  * In-memory view of the configured engines plus their live health state.
@@ -28,8 +27,7 @@ public class EngineRegistry {
         // LinkedHashMap: the health strip and every fan-out follow registry YAML order.
         this.engines = props.engines().stream()
                 .filter(EngineConfig::enabled)
-                .collect(Collectors.toMap(EngineConfig::id, Function.identity(),
-                        (a, b) -> a, LinkedHashMap::new));
+                .collect(Collectors.toMap(EngineConfig::id, Function.identity(), (a, b) -> a, LinkedHashMap::new));
         engines.keySet().forEach(id -> health.put(id, EngineHealth.unknown()));
     }
 

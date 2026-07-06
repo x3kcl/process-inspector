@@ -16,11 +16,16 @@ curl -fsS -u rest-admin:test http://localhost:8081/flowable-rest/service/managem
 The 6.x pair is the `flowable-6` profile, activated by default via `docker/.env`
 (`COMPOSE_PROFILES=flowable-6`). Extras: `--profile flowable-7` = Flowable 7.1 on :8083;
 `--profile legacy` = Flowable 6.3.1 on :8084 (pre-cliff — same context path/creds on all);
-`--profile postgres` = the BFF's M4 DB on :5433. Seed with `bash docker/seed.sh`
-(idempotent BY KEY — after editing a process file, redeploy manually or `down -v`).
+`--profile postgres` = the BFF's M4 DB on :5433. Seed with `bash docker/seed.sh` —
+no-arg mode auto-discovers and seeds EVERY reachable engine (:8081-:8084) with the full
+FIX-PROC-01..06 arc set incl. the REST-suspended and failing-child instances (idempotent
+BY KEY — after editing a process file, redeploy manually or `down -v`).
 Integration tests are failsafe `*IT` classes: `mvn test` needs no docker, `mvn verify`
 needs the FULL matrix up (flowable-6 + flowable-7 + legacy) — a down engine fails loudly
-with the compose command, never a silent skip.
+with the compose command, never a silent skip. CI (`.github/workflows/ci.yml`) runs one
+matrix leg per profile, gated by `docker/smoke-test.sh` (bounded engine+postgres
+readiness — reproduce a leg locally with
+`COMPOSE_PROFILES=<profile>,postgres bash docker/smoke-test.sh <profile>`).
 BFF: `export ENGINE_A_PASSWORD=test ENGINE_B_PASSWORD=test; cd backend && mvn spring-boot:run`
 (:8085). UI: `cd frontend && npm install && npm run dev` (:5173, proxies `/api`).
 

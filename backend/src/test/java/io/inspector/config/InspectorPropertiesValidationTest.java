@@ -1,21 +1,20 @@
 package io.inspector.config;
 
+import static org.assertj.core.api.Assertions.assertThat;
+import static org.assertj.core.api.Assertions.assertThatThrownBy;
+
 import io.inspector.config.InspectorProperties.EngineConfig;
 import io.inspector.support.TestEngines;
 import jakarta.validation.ConstraintViolation;
 import jakarta.validation.Validation;
 import jakarta.validation.Validator;
 import jakarta.validation.ValidatorFactory;
+import java.util.List;
 import org.junit.jupiter.api.AfterAll;
 import org.junit.jupiter.api.BeforeAll;
 import org.junit.jupiter.api.Test;
 import org.junit.jupiter.params.ParameterizedTest;
 import org.junit.jupiter.params.provider.ValueSource;
-
-import java.util.List;
-
-import static org.assertj.core.api.Assertions.assertThat;
-import static org.assertj.core.api.Assertions.assertThatThrownBy;
 
 /** Rung 1: registry validation is pure record logic — no Spring context. */
 class InspectorPropertiesValidationTest {
@@ -37,20 +36,24 @@ class InspectorPropertiesValidationTest {
     @ParameterizedTest
     @ValueSource(strings = {"orders-prod", "a", "x.y_z-1", "engine-7", "0abc"})
     void acceptsValidEngineIds(String id) {
-        assertThat(violationsOn(TestEngines.engine(id, "http://localhost:8081/x"), "id")).isEmpty();
+        assertThat(violationsOn(TestEngines.engine(id, "http://localhost:8081/x"), "id"))
+                .isEmpty();
     }
 
     @ParameterizedTest
     @ValueSource(strings = {"Orders-Prod", "-x", ".x", "a:b", "a b", "ä", ""})
     void rejectsInvalidEngineIds(String id) {
-        assertThat(violationsOn(TestEngines.engine(id, "http://localhost:8081/x"), "id")).isNotEmpty();
+        assertThat(violationsOn(TestEngines.engine(id, "http://localhost:8081/x"), "id"))
+                .isNotEmpty();
     }
 
     @Test
     void rejectsSixtyFiveCharacterId() {
         String tooLong = "a".repeat(65);
-        assertThat(violationsOn(TestEngines.engine(tooLong, "http://localhost:8081/x"), "id")).isNotEmpty();
-        assertThat(violationsOn(TestEngines.engine("a".repeat(64), "http://localhost:8081/x"), "id")).isEmpty();
+        assertThat(violationsOn(TestEngines.engine(tooLong, "http://localhost:8081/x"), "id"))
+                .isNotEmpty();
+        assertThat(violationsOn(TestEngines.engine("a".repeat(64), "http://localhost:8081/x"), "id"))
+                .isEmpty();
     }
 
     @Test
@@ -61,8 +64,7 @@ class InspectorPropertiesValidationTest {
     @Test
     void duplicateEngineIdsFailFastNamingTheOffender() {
         List<EngineConfig> twice = List.of(
-                TestEngines.engine("orders-prod", "http://a/x"),
-                TestEngines.engine("orders-prod", "http://b/x"));
+                TestEngines.engine("orders-prod", "http://a/x"), TestEngines.engine("orders-prod", "http://b/x"));
         assertThatThrownBy(() -> new InspectorProperties(4, twice))
                 .isInstanceOf(IllegalStateException.class)
                 .hasMessageContaining("orders-prod");
