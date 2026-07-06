@@ -5,7 +5,8 @@
   "type": "module",
   "scripts": {
     "dev": "vite",
-    "build": "tsc -b && vite build",
+    "build": "npm run check:watermark && tsc -b && vite build",
+    "check:watermark": "node scripts/check-bpmn-watermark.mjs",
     "preview": "vite preview"
   },
   "dependencies": {

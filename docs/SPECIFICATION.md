@@ -1,6 +1,6 @@
 # 📄 SPECIFICATION — Flowable Multi-Instance Process Inspector
 
-Status: **v3.2** · Owner: workflow platform team ·
+Status: **v3.3** · Owner: workflow platform team ·
 Inspired by IBM BAW Process Inspector; refined against Camunda Operate/Cockpit, Temporal,
 Flowable Control, Conductor/Orkes, Airflow and Step Functions, and a four-seat design review
 (workflow-engine expert, senior support engineer, lead developer, UX expert — see
@@ -250,14 +250,28 @@ gap here: [link]" is the ticket-handover primitive.
   activities, red badge on dead-letter activities, synchronized selection with the tabs.
 - **Tabs**: Variables · Errors & Jobs · Tasks · Hierarchy · Timeline · Audit & Notes —
   each lazy-loaded (IBM's slow-detail lesson).
-  - **Variables** — type-aware inline edit with old→new diff confirm; serializable Java
-    objects read-only with an explaining tooltip (REST cannot round-trip them safely);
-    execution-local variables shown per node in the execution tree (multi-instance loop
-    variables live there). **Size safeguards**: variable values are capped at a byte
+  - **Variables** — a **typed variable ledger, never a raw JSON dump** (the Flowable
+    Control anti-pattern; R-UXQ-13). Rows: name · plain-language type chip (text / number /
+    yes-no / date / structured / empty / Java object — the engine term lives in the
+    glossary tooltip) · typed value preview · scope · last-modified. Grouping: **"Case data
+    (process scope)"** open by default; execution-local variables grouped per execution
+    node ("Step-local: *Validate line item*, instance 3 of 12" — multi-instance loop
+    variables live there), auto-expanded when navigated in from the diagram selection; a
+    local variable shadowing a process-scope name is badged *"overrides case-level value"*.
+    Per-type rendering: dates per R-UXQ-03; null explicit (*"(no value / null)"* — never
+    blank); booleans as words (*"No (false)"* — never a toggle glyph); structured/json as a
+    summary (*"object · 14 fields · 2.1 KiB"*) expanding to a **lazy, virtualized read-only
+    tree** — no main-thread parse of multi-MiB documents. Editing per **§4a**. Serializable
+    Java objects read-only with an explaining tooltip **plus a "what to do instead" path**
+    (copy value, copy-for-ticket pre-filled for the owning dev team) — the row must read
+    intentionally locked, never broken (REST cannot round-trip serializables safely).
+    **Size safeguards**: variable values are capped at a byte
     threshold in list responses (truncated preview + "load full value" on demand) — a huge
     JSON payload or base64 blob must crash neither the browser nor the engine; the same cap
     applies to the sibling diff (§5.2), which diffs the truncated projections and flags
-    "values differ beyond preview" rather than fetching two blobs.
+    "values differ beyond preview" rather than fetching two blobs. Raw-JSON download per
+    row and per tab stays (R-L3-03): **raw text is the escape hatch, never the
+    presentation**.
   - **Errors & Jobs** — Flowable's **four job lanes kept distinct** (executable / timer /
     suspended / dead-letter): the lane IS the diagnosis. Per-job: retries, create time,
     exception (stacktrace fetched on expand), and the verbs (§5).
@@ -286,6 +300,86 @@ gap here: [link]" is the ticket-handover primitive.
   render "open logs" deep links from it. Absent template → no link (never a broken guess).
 - **Compare with sibling** (v1.x, §5.2): from a failed instance, one click diffs it against
   a successful instance of the same definition version.
+
+### 4a. The variable editor — form first, source available (R-UXQ-13)
+
+**One shared surface** — an editor producing a typed *change-set* plus **one** verification
+screen rendering it — reused verbatim by edit-variable (change-set of one),
+complete-task-with-data and rerun-with-overrides (change-sets of many). The arc follows the
+IBM Business Process Choreographer precedent (form → source → verify → confirm), modernized.
+Design stance: **the operator edits a value, never a payload** — the form is the product,
+source mode is a labeled power tool, verification is where a tired human catches the mistake
+the form couldn't prevent.
+
+- **Entry** — per-row pencil: always visible, keyboard-focusable, never hover-only;
+  greyed-with-reason when gated (role below OPERATOR / serializable type / read-only engine /
+  completed instance / breaker open). Opens an **inline panel** under the row — not a modal
+  (the surrounding ledger and vitals stay visible); the panel header restates the target
+  (env band, engine badge, business key, instance ID) so the wrong-instance error dies here.
+  Opening **forces the full-value fetch first** — a truncated projection is never editable.
+  The old value stays visible above the input throughout.
+- **Form mode (default) — typed widgets**: *number* with per-subtype range validation and a
+  live parsed echo (*"will be stored as integer 42"* — the echo IS the contract); *boolean*
+  as a True/False segmented control (**never a toggle** — toggles read as immediate-effect,
+  and nothing applies before confirm); *date* with the **timezone-honesty block** (dual
+  readout: wall-clock in the operator's zone **and** the exact UTC ISO-8601 string that will
+  be sent; offset-less input rejected); *text* with visible leading/trailing whitespace and
+  no autocorrect; clearing a value is an explicit **"empty text" vs "no value (null)"**
+  choice — never inferred from an empty input.
+- **Type lock** — the declared engine type is locked by default; changing it requires an
+  explicit per-edit-session unlock behind a warning (*"downstream gateways/scripts may
+  depend on this type — text `"42"` and number `42` behave differently"*) and renders as its
+  **own amber callout at verification**, never buried in the value diff. Silent type
+  coercion (string-ifying a number because a widget was lazy) is a review-blocking defect;
+  the lock applies in source mode too.
+- **JSON in form mode — leaf edits only**: the same tree as the read view with editable
+  leaves (each leaf gets the scalar widget for its JSON type); the dominant task ("flip
+  `paymentRetry.enabled`") is a two-click leaf edit that never shows the operator a brace.
+  Structural changes (add/remove keys, insert/delete/reorder array items, replace subtrees)
+  require source mode — deliberately. Multiple leaf edits stage into one change, rendered
+  as path lines (`retryPolicy.maxAttempts: 3 → 5`).
+- **Source mode — json variables only, opt-in**: a persistent `Form | Source` segmented
+  switch inside the panel (labeled, never icon-only); source is visually unmistakable
+  (mono, *"SOURCE — exact typed payload"* band). Lazy-loaded editor chunk (§10). Form→Source
+  serializes the staged state losslessly; Source→Form is **blocked while the buffer is
+  invalid** — the form never renders a lie about what source contains. Proceeding is gated
+  on **parse** (error with line/col) **+ type check** (against the lock) **+ byte-size
+  pre-flight** (warn >256 KiB; hard-block >5 MiB = the write cap). One-time note: saving
+  re-serializes — the review compares *values*, not formatting. Scalars get no source
+  editing; their technical view is the exact-request expander at verification.
+- **Verification — the one modal in the flow, user-initiated** (fits R-UXQ-06). Top to
+  bottom: env band + target restatement; the **generated plain-language sentence** —
+  *"Change **orderTotal** from **0** to **149.90** (number, applies to the whole case) on
+  **order-4711** in **billing-prod (PROD)**"* — produced from the **same request object** as
+  the payload, so sentence and payload can never disagree. Diff: scalars as Current → After
+  panes; json as a **structural path diff** (*"1 of 40 fields changes: `shipping.cost`
+  0 → 12.50 — the other 39 are unchanged"*), never a wall-of-text diff; re-serialization
+  formatting noise (key order, whitespace) never appears as a change; a collapsed raw-text
+  diff expander serves power users. Warning lines in fixed order when applicable: type
+  change · execution-local scope · PROD. Byte-size delta shown; **freshness re-check on
+  open** (*"server value re-checked — unchanged since you loaded it"*; if stale: blocked
+  with attribution and reload as the only forward path). Reversibility framing:
+  `RECOVERABLE` — *"the old value is kept in the audit trail"*. Collapsed **"exact
+  request"** expander: the typed payload verbatim, real target IDs (processInstanceId vs
+  executionId), the CAS precondition, copy-as-engine-cURL (`$ENGINE_CRED`). Reason field per
+  §6 tier rules. The confirm button **restates the change** (*"Change `orderTotal` from 0 to
+  149.90 on order-4711"*) — never "Confirm"; cancel-focused; Enter never submits; diff
+  semantics never color-only (glyph + label per R-UXQ-01).
+- **Dispatch & outcome** — the write is compare-and-set (R-SEM-09). A CAS conflict
+  **replaces** the confirm content (no error toast): three values — the value you started
+  from, your new value, the engine's current value — with attribution from audit (*"changed
+  40 s ago by k.meier"*), framed as protection (*"nothing was overwritten"*); forward paths
+  are **"start over from the current value"** or cancel — there is **no overwrite-anyway
+  button**. No optimistic UI: the ledger re-renders only from re-fetched server truth (2 s
+  "updated" highlight). Success = delta toast + audit link + the **offered, never automatic**
+  follow-on *"Retry the failed job?"* (the #1 incident sequence, §5.1). Timeout ⇒ UNKNOWN +
+  Verify-now (R-SAFE-09); mutations are never auto-retried.
+- **Banned outright** (review-blocking, complements §11): raw JSON as the default
+  presentation of any variable or of the tab; editing a whole document to change one field;
+  last-write-wins; optimistic variable updates; toggle-styled booleans; hover-only or
+  hidden edit affordances; "best effort" serializable editing (no hex view, no base64
+  paste); timezone-ambiguous date editing; editing a truncated projection; eager full-blob
+  fetch or un-virtualized rendering; bundling the source editor eagerly.
 
 ### The omnibox
 A global input **pinned in the header on every stage** that accepts a paste of anything:
@@ -334,10 +428,10 @@ built from the same code as the path whitelist, CI-failing on drift; the UI offe
 | **Trigger timer now** | Timer fires immediately, takes its normal path | 0 |
 | **Unstick event wait** | Deliver message / signal / trigger to a waiting execution (event subscriptions made visible first) | 1 |
 | **Suspend / activate instance** | Execution pauses/resumes; jobs move to/from the suspended lane | 0 |
-| **Edit variable** | Typed old→new diff; scope-aware (process vs execution) | 1 |
-| **Complete task with data** | Task closes with overridden output; warning: a skipped/forced task never writes its own outputs — edit them here | 1 |
+| **Edit variable** | Via the §4a editor: form-first typed widgets, leaf-level json edits, opt-in source mode; old→new path-diff verification; compare-and-set; scope-aware (process vs execution) | 1 |
+| **Complete task with data** | Task closes with overridden output; warning: a skipped/forced task never writes its own outputs — edit them here (via the shared §4a change-set editor) | 1 |
 | **Reassign task** *(v1.x)* | Assignee changes; task state otherwise untouched | 1 |
-| **Rerun from activity (with overrides)** | Guided composite: variable edits first, then change-state; token re-enters the chosen activity; history append-only | 2 |
+| **Rerun from activity (with overrides)** | Guided composite: variable edits first (§4a change-set), then change-state; token re-enters the chosen activity; history append-only | 2 |
 | **Change state / move token** | Cancels ALL executions at the source activity, starts at target; guardrails: blocked on multi-instance bodies, parallel-join warning, suspended-check (offer activate-first), preview labeled *BFF simulation* (engine has no dry-run) + exact REST body shown | 2 |
 | **Restart as new instance** | Completed/terminated instance re-launched with copied historic variables; **explicit fork: pin original definition version vs latest**; new instance ID | 2 |
 | **Suspend process definition** | One call stops new AND (optionally) running instances of a definition — the real "bad deploy" brake (replaces bulk instance-suspend) | 3 |
@@ -559,7 +653,12 @@ and would rewrite working M1/M2 code for no capability gain); Go/FastAPI/Kotlin 
   the search rail — no Enterprise status bar/set filters/range selection/context menu); CI
   fails on an `ag-grid-enterprise` import; Enterprise, if ever proposed, is a costed
   decision. bpmn-js (`NavigatedViewer` at M3): **the bpmn.io watermark must not be removed —
-  license term.** All user-facing strings live in one message catalog per side; all
+  license term.** **CodeMirror 6** (`@codemirror/lang-json` + lint) is the variable
+  editor's source-mode component (§4a) — chosen for parse-error line/col location, bracket
+  matching and folding on multi-KiB payloads; shipped as a **lazy route-level chunk** so
+  form-mode-only operators never download it; Monaco rejected (multi-MB + worker plumbing),
+  bare textarea rejected (no error location). All user-facing strings live in one message
+  catalog per side; all
   date/number formatting through one shared formatter (R-UXQ-07); semantic color tokens
   from day one (dark theme lands v1.x, R-UXQ-08).
 - **Testing:** JUnit 5/AssertJ/Mockito · **WireMock** for engine stubs (timeouts, 5xx,
@@ -651,7 +750,8 @@ and would rewrite working M1/M2 code for no capability gain); Go/FastAPI/Kotlin 
 - **v1 (must ship, gated by §13):** corrected status join + RETRYING tier + hierarchy
   roll-up + explain-status evidence; triage landing incl. acknowledge + leak views +
   badged counts; omnibox; URL state + deep links; full-page detail (vitals, read-only
-  diagram, tabs, raw-JSON links); **verbs: tiers 0–1 + suspend/activate +
+  diagram, tabs, form-first variable ledger + editor (§4a), raw-JSON links); **verbs:
+  tiers 0–1 + suspend/activate +
   suspend-definition + terminate/delete + deadletter-delete** with reversibility badges +
   plain-language labels + tier-0 friction floor; RESPONDER role + per-verb grants +
   protected instances + read-only engine mode; grid-selection bulk as a persisted tracked
@@ -697,6 +797,13 @@ and would rewrite working M1/M2 code for no capability gain); Go/FastAPI/Kotlin 
   team lead; data-classification one-pager approved; zero open Sev1/Sev2.
 
 ## Change log
+- **v3.3** — Variable editor designed (web-design + usability panel, DESIGN-REVIEW
+  addendum): §4 Variables tab re-spec'd as a typed ledger (never raw-JSON-primary;
+  Flowable Control anti-pattern banned); new §4a shared change-set editor — form-first
+  typed widgets, type-lock, leaf-level json edits, json-only lazy source mode (CodeMirror 6,
+  §10), one verification modal (generated sentence + structural path diff + exact-request
+  expander + CAS freshness re-check), no-overwrite conflict recovery, offered-never-auto
+  follow-on. IBM BPC form/source/verify/confirm precedent. Register R-UXQ-13.
 - **v3.2** — Operator feedback round 4: dual-write rule (§6 — sync mutations inherit UNKNOWN;
   audit lifecycle PENDING→ok|failed|unknown; "dispatched — outcome verification failed",
   never a bare 500); break-glass normative semantics (§6 — what it bypasses and what it

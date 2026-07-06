@@ -59,4 +59,5 @@ subsistence in any individual fragment (details in NOTICE).
 
 Third-party note: bpmn-js, when bundled, is used under the
 [bpmn.io license](https://bpmn.io/license/) — the "Powered by bpmn.io" watermark must
-remain visible and unmodified.
+remain visible and unmodified. This is build-enforced: `npm run build` fails if any
+frontend source references the watermark element (`frontend/scripts/check-bpmn-watermark.mjs`).

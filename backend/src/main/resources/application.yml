@@ -1,6 +1,31 @@
 server:
   port: 8085
 
+spring:
+  threads:
+    virtual:
+      enabled: true   # SPEC §10: blocking style on virtual threads, no WebFlux
+
+# Shared circuit-breaker config; the client creates one instance PER ENGINE ID so a sick
+# engine fast-fails alone (do-no-harm, ARCHITECTURE §2.2). wait-duration < probe period
+# (30s) so the scheduled health probe drives half-open recovery.
+resilience4j:
+  circuitbreaker:
+    configs:
+      engine:
+        sliding-window-type: COUNT_BASED
+        sliding-window-size: 10
+        minimum-number-of-calls: 4
+        failure-rate-threshold: 50
+        wait-duration-in-open-state: 15s
+        permitted-number-of-calls-in-half-open-state: 2
+        record-exceptions:
+          - org.springframework.web.client.ResourceAccessException
+          - org.springframework.web.client.HttpServerErrorException
+        ignore-exceptions:
+          # Capability probes expect 404s on old engines — they must never trip a breaker.
+          - org.springframework.web.client.HttpClientErrorException
+
 inspector:
   # Fan-out executor: at most this many engine calls in flight per search.
   fanout-parallelism: 8
@@ -9,8 +34,9 @@ inspector:
       name: "Engine A (demo)"
       base-url: "http://localhost:8081/flowable-rest/service"
       environment: dev
-      color: "#2e86de"
+      accent-color: "#2e86de"
       enabled: true
+      mode: read-write
       auth:
         type: basic
         username: rest-admin
@@ -18,14 +44,21 @@ inspector:
       timeouts:
         connect-ms: 2000
         read-ms: 10000
+        write-ms: 10000
       max-page-size: 200
+      dlq-scan-cap: 5000
+      alarm-thresholds:
+        oldest-job-warn-min: 5
+        oldest-job-crit-min: 15
+        overdue-timer-grace-s: 60
 
     - id: engine-b
       name: "Engine B (demo)"
       base-url: "http://localhost:8082/flowable-rest/service"
       environment: dev
-      color: "#10ac84"
+      accent-color: "#10ac84"
       enabled: true
+      mode: read-write
       auth:
         type: basic
         username: rest-admin
@@ -33,4 +66,29 @@ inspector:
       timeouts:
         connect-ms: 2000
         read-ms: 10000
+        write-ms: 10000
       max-page-size: 200
+      dlq-scan-cap: 5000
+      alarm-thresholds:
+        oldest-job-warn-min: 5
+        oldest-job-crit-min: 15
+        overdue-timer-grace-s: 60
+
+    # Flowable 7 engine from the flowable-7 compose profile; flip enabled when it runs.
+    - id: engine-7
+      name: "Engine 7 (Flowable 7.x)"
+      base-url: "http://localhost:8083/flowable-rest/service"
+      environment: dev
+      accent-color: "#8e44ad"
+      enabled: false
+      mode: read-write
+      auth:
+        type: basic
+        username: rest-admin
+        password-ref: ENGINE_7_PASSWORD
+      timeouts:
+        connect-ms: 2000
+        read-ms: 10000
+        write-ms: 10000
+      max-page-size: 200
+      dlq-scan-cap: 5000

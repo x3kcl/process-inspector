@@ -168,7 +168,7 @@ surfaced by `GET /api/engines` and pushed to the health strip via SSE.
 | `POST /api/search` | Fan-out instance search (`SearchRequest`; URL-serializable) |
 | `GET  /api/triage/failure-groups` | DLQ + failing jobs grouped by normalized error signature, counts per engine/definition-version |
 | `GET  /api/instances/{engineId}/{id}` | Details composite: vitals, executions, activities, tasks, event subscriptions, hierarchy |
-| `GET/PUT /api/instances/{engineId}/{id}/variables[/…]` | Type-aware view/edit (incl. per-execution); serializables read-only |
+| `GET/PUT /api/instances/{engineId}/{id}/variables[/…]` | Type-aware view/edit (incl. per-execution); serializables read-only; list responses byte-capped with an on-demand full-value fetch (an edit always operates on the fetched full value); writes are compare-and-set — `expectedOldValue` ⇒ 409 + fresh re-render on mismatch (R-SEM-09); UI contract: SPEC §4a |
 | `GET  /api/instances/{engineId}/{id}/jobs` | Four lanes (executable/timer/suspended/deadletter); stacktrace on expand |
 | `GET  /api/instances/{engineId}/{id}/timeline` | Historic activity instances (Gantt rows, call-activity sub-lanes) |
 | `GET  /api/instances/{engineId}/{id}/audit` · `…/notes` | Per-instance action history + notes (CRUD) |

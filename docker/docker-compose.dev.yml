@@ -1,8 +1,25 @@
-# Two independent Flowable REST engines = a realistic multi-engine playground.
-# Default credentials of the flowable/flowable-rest image: rest-admin / test
+# Dev harness for the Process Inspector BFF.
+#
+# Profiles:
+#   flowable-6  — two independent Flowable 6.8 REST engines (:8081/:8082), the default
+#                 dev pair. Activated by default via docker/.env (COMPOSE_PROFILES=flowable-6),
+#                 so the doctrinal `docker compose -f docker/docker-compose.dev.yml up -d`
+#                 keeps working unchanged.
+#   flowable-7  — one Flowable 7.x REST engine (:8083) to exercise the Spring Boot 3 /
+#                 Jakarta capability cliffs against a modern engine.
+#   postgres    — the BFF's own database (M4: audit/annotations). Container only for now;
+#                 the backend has no JPA/Flyway wiring yet.
+#
+# docker/.env must never contain secrets — it only selects default profiles.
+# Default credentials of the flowable/flowable-rest images: rest-admin / test
+#
+# Explicit project name: without it compose derives "docker" from the directory name,
+# which collides with any other compose project living in a directory called docker/.
+name: process-inspector
 services:
   engine-a:
     image: flowable/flowable-rest:6.8.0
+    profiles: ["flowable-6"]
     ports:
       - "8081:8080"
     environment:
@@ -11,8 +28,33 @@ services:
 
   engine-b:
     image: flowable/flowable-rest:6.8.0
+    profiles: ["flowable-6"]
     ports:
       - "8082:8080"
     environment:
       - FLOWABLE_REST_APP_ADMIN_USER-ID=rest-admin
       - FLOWABLE_REST_APP_ADMIN_PASSWORD=test
+
+  engine-7:
+    image: flowable/flowable-rest:7.1.0
+    profiles: ["flowable-7"]
+    ports:
+      - "8083:8080"
+    environment:
+      - FLOWABLE_REST_APP_ADMIN_USER-ID=rest-admin
+      - FLOWABLE_REST_APP_ADMIN_PASSWORD=test
+
+  postgres:
+    image: postgres:16-alpine
+    profiles: ["postgres"]
+    ports:
+      - "5433:5432"
+    environment:
+      - POSTGRES_DB=inspector
+      - POSTGRES_USER=inspector
+      - POSTGRES_PASSWORD=inspector
+    volumes:
+      - inspector-pgdata:/var/lib/postgresql/data
+
+volumes:
+  inspector-pgdata:

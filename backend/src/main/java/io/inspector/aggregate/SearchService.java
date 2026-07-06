@@ -70,7 +70,7 @@ public class SearchService {
         for (Map.Entry<EngineConfig, CompletableFuture<List<ProcessInstanceRow>>> e : futures.entrySet()) {
             EngineConfig engine = e.getKey();
             // Generous outer guard; the RestClient read timeout is the real per-call limit.
-            long budgetMs = engine.timeouts().read() * 3L + 2000;
+            long budgetMs = engine.timeoutsOrDefault().read() * 3L + 2000;
             try {
                 List<ProcessInstanceRow> engineRows = e.getValue().get(budgetMs, TimeUnit.MILLISECONDS);
                 rows.addAll(engineRows);
@@ -129,7 +129,7 @@ public class SearchService {
                     engine.id() + ":" + id,
                     engine.id(),
                     engine.name(),
-                    engine.color(),
+                    engine.accentColor(),
                     id,
                     str(pi, "businessKey"),
                     str(pi, "processDefinitionKey"),

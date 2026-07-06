@@ -46,8 +46,10 @@ or Dockerfile exist yet; landing them is part of M2a's gate.
 - **Detail page `/inspect/{engineId}/{id}`** (deep-linkable now, not M6): vitals header with
   "why stuck" strip (exception first line, retries state, waiting-for subscriptions/timers);
   **read-only bpmn-js diagram** (pulled forward from M5) with token + dead-letter markers,
-  synced selection; lazy tabs: Variables (view) · Errors & Jobs (four lanes, stacktrace on
-  expand) · Tasks · Hierarchy · Timeline. Copy-for-ticket button.
+  synced selection; lazy tabs: Variables (view: typed ledger with scope groups + lazy
+  virtualized json tree, size caps — never raw-JSON-primary, SPEC §4/§4a, R-UXQ-13) ·
+  Errors & Jobs (four lanes, stacktrace on expand) · Tasks · Hierarchy · Timeline.
+  Copy-for-ticket button.
 - **Omnibox** (`GET /api/resolve`).
 - **Triage landing**: engine health strip, status counts, failure groups by normalized error
   signature with click-through, curated system views, recent-operations placeholder.
@@ -68,7 +70,9 @@ or Dockerfile exist yet; landing them is part of M2a's gate.
   reality, not the other way around. (The audit table's grants, partitions and hash-chain
   column exist only if the schema is authored, not generated.)
 - Single-target verb catalog tiers 0–3 (SPEC §5): retry / retry-now / trigger-timer /
-  unstick-event / suspend-activate / edit-variable (typed, old→new diff, old value audited) /
+  unstick-event / suspend-activate / edit-variable (the SPEC §4a editor: form-first typed
+  widgets, type-lock, leaf-level json edits, lazy source mode, path-diff verification,
+  compare-and-set; old value audited) /
   complete-task / suspend-definition / terminate-delete (cascade enumeration) /
   deadletter-delete (orphan warning, ADMIN).
 - Guard ladder (SPEC §6): reasons, server-fresh target restatement, target-specific typed

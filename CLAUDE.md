@@ -50,4 +50,7 @@ join logic (dockerized engine only — `engine-harness` skill).
 - Status is derived per ARCHITECTURE §2.3 — never a single unpaged DLQ fetch; never render
   a status derived from truncated data without the badge.
 - Secrets only via env refs (`password-ref`); never in config values, logs, or responses.
+- Never select, restyle, hide, or remove the bpmn.io watermark (`.bjs-powered-by`) —
+  license term (R-GOV-05), enforced by `frontend/scripts/check-bpmn-watermark.mjs` in
+  `npm run build`.
 - Spotless + ESLint are CI hard failures — run them before finishing.

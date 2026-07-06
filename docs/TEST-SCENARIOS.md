@@ -167,7 +167,7 @@ All TS-STAT L4 rows run on **all three compose profiles** (R-TEST-01).
 | TS-DET-01 | FAILED vitals: exception first line, "3/3 exhausted", failing activity, stacktrace expander; RETRYING: "attempt 1 of 10, next retry <t>" + countdown | S2/L4 + E2E | SPEC §4 Stage 2, R-UXQ-03 |
 | TS-DET-02 | waiting-for: FIX-PROC-08 shows message/signal subscription names; FIX-PROC-03 shows timer due date | S2/L4 | SPEC §4 Stage 2 |
 | TS-DET-03 | diagram: token markers on active activities, red badge on DLQ activity, selection synced with tabs; every seed renders (DI mandatory) | E2E (S2) | SPEC §4, `validate-bpmn` |
-| TS-DET-04 | variables: typed inline edit with old→new diff; FIX-DATA-02 serializable value read-only with tooltip | S2/L4 + E2E | SPEC §4 Variables |
+| TS-DET-04 | variables: typed ledger rendering — never raw-JSON-primary (plain-language type chips, scope groups + shadowing badge, null explicit, json as summary → lazy virtualized tree); FIX-DATA-02 serializable value read-only with tooltip + "what to do instead" path | S2/L4 + E2E | SPEC §4 Variables, R-UXQ-13 |
 | TS-DET-05 | FIX-DATA-01: 8 KiB preview cap + "load full value"; >5 MiB download-only; neither browser nor engine harmed | S2/L4 + E2E | R-NFR-01 |
 | TS-DET-06 | FIX-PROC-09 loop variables shown execution-local per node in the execution tree | S2/L4 | SPEC §4 Variables |
 | TS-DET-07 | four job lanes rendered distinctly; stacktrace fetched only on expand (lazy) | S2/L4 + E2E | SPEC §4 Errors & Jobs |
@@ -178,6 +178,7 @@ All TS-STAT L4 rows run on **all three compose profiles** (R-TEST-01).
 | TS-DET-12 | telemetry URL template renders "open logs" links with placeholders substituted; absent template → no link | S1/L3 + E2E | SPEC §4 Stage 2 |
 | TS-DET-13 | raw-JSON download per tab (support-bundle kernel) | S2/L4 | R-L3-03 |
 | TS-DET-14 | "explain this status": per-leg raw request/response, plan choice, per-flag provenance, labeled re-derived | S2/L4 | R-L3-01 |
+| TS-DET-15 | date variable edit: dual readout (wall-clock in user TZ + exact UTC ISO-8601 to be sent); stored instant correct; offset-less source input rejected; boolean rendered as segmented control (no toggle); null-vs-empty is an explicit choice, spelled out in the verify sentence | S2/L4 + E2E | SPEC §4a, R-UXQ-03/13 |
 
 ## 7. Verbs, guard ladder & RBAC — TS-VERB / TS-GUARD / TS-RBAC (risk rank R2)
 
@@ -192,7 +193,7 @@ docker engine as `dev` AND `prod` manufactures the prod gates (R-TEST-07).
 | TS-VERB-03 | trigger timer now → fires, takes normal path | SPEC §5 |
 | TS-VERB-04 | unstick: subscriptions listed first; message/signal delivered → instance proceeds | SPEC §5 |
 | TS-VERB-05 | suspend/activate instance → jobs move to/from suspended lane | SPEC §5 |
-| TS-VERB-06 | edit variable: typed old→new; compare-and-set — out-of-band REST change between open and submit → 409 + re-render, no blind overwrite | R-SEM-09 |
+| TS-VERB-06 | edit variable, the full §4a arc: form-mode leaf edit on FIX-DATA-01's json changes exactly ONE field (stored-value diff proves the other fields byte-identical); type preserved (number stays number) unless explicitly unlocked — unlock renders its own warning line at verify; source mode gated on parse/type/size before Review enables; verify shows generated sentence + structural path diff (re-serialization noise absent) + exact-request expander; compare-and-set — out-of-band REST change between open and submit → 409 + three-value conflict recovery with attribution, no overwrite-anyway control exists | R-SEM-09, R-UXQ-13 |
 | TS-VERB-07 | complete task with data: outputs overridden; skipped-task warning copy rendered verbatim | SPEC §5, R-SAFE-04 |
 | TS-VERB-08 *(v1.1)* | change-state: token moved off failed node → proceeds; MI-body source refused with reason; parallel-join warning (FIX-PROC-10); suspended target → offer activate-first; preview labeled *BFF simulation* + exact REST body | SPEC §5 tier 2, R-GOV-07 |
 | TS-VERB-09 *(v1.1)* | rerun-from-activity: variable edits applied, then move — one guided composite, both halves audited | SPEC §5, R-GOV-07 |
@@ -289,6 +290,6 @@ taxonomy) — S3 is never a CI gate.
 | R-AUD-01…06 | TS-AUD-01…06 |
 | R-NFR-01…07 | TS-AGG-07, TS-DET-05, TS-BULK-08, TS-VERB-02 · TS-TRI-06 (+FIX-REF-01) · TS-TRI-06/07 · TS-TRI-02 · TS-DET-09 · TS-GUARD-02 · TS-BULK-02 |
 | R-GOV-04 read-only mode | TS-RBAC-01 · TS-PROD-01 |
-| R-UXQ-01…06/11 | TS-E2E-01/03/04 · TS-DET-01/11 · TS-STAT-07 |
+| R-UXQ-01…06/11/13 | TS-E2E-01/03/04 · TS-DET-01/11 · TS-STAT-07 · TS-DET-04/15, TS-VERB-06 |
 | R-L3-01/02/03 | TS-STAT-13, TS-DET-14, TS-PROD-02 · (parity appendix: CI drift gate) · TS-DET-13 |
 | R-OPS-08 | TS-AUD-08, FIX-STUB-05, FIX-DATA-03 |
