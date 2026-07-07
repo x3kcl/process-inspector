@@ -1,0 +1,46 @@
+{
+  "mcpServers": {
+    "inspector-postgres": {
+      "command": "docker",
+      "args": [
+        "run",
+        "-i",
+        "--rm",
+        "--network",
+        "process-inspector_default",
+        "-e",
+        "DATABASE_URI=${INSPECTOR_DB_URI:-postgresql://inspector:inspector@postgres:5432/inspector}",
+        "crystaldba/postgres-mcp",
+        "--access-mode=restricted"
+      ]
+    },
+    "playwright": {
+      "command": "docker",
+      "args": [
+        "run",
+        "-i",
+        "--rm",
+        "--init",
+        "--network",
+        "host",
+        "-v",
+        "${INSPECTOR_PLAYWRIGHT_OUT:-/home/flapci/workspace/process-inspector/.playwright-mcp}:/output",
+        "mcr.microsoft.com/playwright/mcp",
+        "--output-dir",
+        "/output"
+      ]
+    },
+    "github": {
+      "command": "docker",
+      "args": [
+        "run",
+        "-i",
+        "--rm",
+        "-e",
+        "GITHUB_PERSONAL_ACCESS_TOKEN=${GITHUB_PERSONAL_ACCESS_TOKEN:-}",
+        "ghcr.io/github/github-mcp-server",
+        "stdio"
+      ]
+    }
+  }
+}

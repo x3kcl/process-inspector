@@ -37,6 +37,22 @@ docker compose -f docker/docker-compose.dev.yml up -d   # :8081/:8082, rest-admi
 Never run the full test suite inside a red-green loop; never mock Flowable responses for
 join logic (dockerized engine only — `engine-harness` skill).
 
+## Dev tooling — MCP (`.mcp.json`, all dockerized)
+- `inspector-postgres` (crystaldba/postgres-mcp, `--access-mode=restricted` = read-only):
+  the BFF's OWN dev Postgres (compose `postgres` — audit/bulk/notes store). Audit-chain and
+  bulk-job introspection, `explain_query`, index advice, db-health. DEV TOOLING ONLY: never
+  touches engine (`ACT_*`) databases — engine state stays REST-only — and has no write path
+  (the audit trigger would reject one anyway). Needs the compose stack up; override via
+  `INSPECTOR_DB_URI`.
+- `playwright` (mcr.microsoft.com/playwright/mcp, host network): drives the real rendered
+  UI (Vite :5173 / BFF :8085) — built for the `usability-testing` skill's tester agents and
+  UI smokes. Snapshots/screenshots land in `.playwright-mcp/` (gitignored). Remember the
+  dev sign-in ladder users (pw `dev`).
+- `github` (ghcr.io/github/github-mcp-server): PR/issue workflows against
+  `x3kcl/process-inspector` (`gh` CLI is not installed on this box). INERT until
+  `GITHUB_PERSONAL_ACCESS_TOKEN` is exported in the environment that launches the session —
+  the token is env-ref only, never in config (iron rule).
+
 ## Iron rules
 - Schema comes from Flyway ONLY: `V1__init.sql` before any JPA entity; `ddl-auto=validate`
   in every profile including tests. Never auto-DDL.
