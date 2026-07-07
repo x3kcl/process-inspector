@@ -501,15 +501,26 @@ applied to an error class is the differentiator.
 ### 5.2 Sibling diff — "why did this one fail when 9,999 succeeded?" *(v1.x)*
 
 From a failed instance's detail page: **Compare with a sibling** — a completed instance of
-the same definition version (auto-suggested: nearest-in-time successful sibling; or pick
-any instance). Rendered as three synchronized diffs, all from historic queries (read-only,
-cheap):
-- **Variables** — value differences at comparable points (start snapshot + final/current).
-- **Path** — the activity sequence each instance took, divergence highlighted on the shared
-  diagram (the failed one's tokens red, the sibling's path green).
-- **Timing** — per-activity duration bars side by side; where the failed one stalled.
+the same definition version (auto-suggested: the most recent successful sibling — same
+`processDefinitionId`, `finished` in the Flowable sense of reaching an end event rather than
+dead-lettering; or pick any instance by id in the disambiguation input). A brand-new
+definition version with no completed run yet auto-suggests nothing and drops straight to the
+manual input. Rendered as three synchronized diffs, **all from historic queries** (read-only,
+cheap — the successful siblings are gone from runtime, so runtime tables are never touched):
+- **Variables** — key-by-key value differences on the **256 KiB capped projection** (the same
+  truncated projection the ledger renders); a value over the cap is never fetched in full just
+  to compare — the pair is flagged *values differ beyond preview*. Additions, removals and
+  changes carry +/−/± glyphs (never colour alone).
+- **Path** — the activity sequence each instance took; the diverging activity-id sets drive the
+  shared diagram, differentiated by **stroke style + endpoint glyphs, not red/green hue**
+  (SPEC §10a): the failed run's unique path solid/heavy, the sibling's dashed.
+- **Timing** — per-activity duration bars side by side (loops sum across occurrences); the
+  stalled step carries no subject duration and is flagged so "where it stalled" reads at a
+  glance.
 
-The second-most-asked 3am question after "why is it stuck" gets a one-click answer.
+A cross-definition sibling (manually picked) still diffs, flagged as a definition mismatch so
+the comparison is never silently misleading. The second-most-asked 3am question after "why is
+it stuck" gets a one-click answer.
 
 ## 6. The guard ladder
 

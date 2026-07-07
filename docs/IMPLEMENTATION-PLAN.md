@@ -382,9 +382,20 @@ unresolvable with tier 0–1 verbs)
    server-side migration; hermetic Playwright smokes in `e2e/saved-views.spec.ts`.
    Column chooser + density + dark theme from the original SPEC item stay open.
 4. Timeline tab polish (call-activity sub-lanes); job-lane trend sparklines on the landing.
-5. **Sibling diff** (SPEC §5.2): compare endpoint over historic queries; variables/path/
-   timing diffs; divergence highlighting on the shared diagram; nearest-successful-sibling
-   auto-suggest.
+5. **Sibling diff** (SPEC §5.2). **Backend landed 2026-07-07**: two read-only endpoints under
+   the Stage-2 composite path, VIEWER floor, **historic queries only** (never a runtime table —
+   completed siblings live only in history). `GET …/{id}/nearest-sibling` resolves the smart
+   default — the most recently COMPLETED instance of the *same* `processDefinitionId`
+   (`finished:true` + `sort=endTime desc`; "successful" = reached an end event, not
+   dead-lettered), returning `found:false` (not an error) when a fresh version has no completed
+   run. `GET …/{id}/diff/{siblingId}` composes a three-way `SiblingDiffResponse`: variable
+   deltas diffed on the **256 KiB capped projection** (`InstanceDetailService.typedRow` reused;
+   an over-cap pair is never fetched in full — it ships `DIFFER_BEYOND_PREVIEW`), path
+   divergence as `onlyInSubject`/`onlyInSibling`/`common` activity-id sets (drive the diagram
+   stroke overlay — ids only, no hue), and per-activity timing deltas (loops sum; the stalled
+   open step carries a null duration + `subjectUnfinished`). The join core is pure/static and
+   rung-1 tested; a manually-picked cross-definition sibling still diffs, flagged
+   `sameDefinition:false`. **Frontend open**: picker + dedicated Comparison surface.
 6. Task reassign/return-to-team; "show as cURL" on every action modal.
 7. External-worker job view (capability-gated, 6.8+).
 

@@ -260,6 +260,22 @@ export interface paths {
         patch?: never;
         trace?: never;
     };
+    "/api/instances/{engineId}/{instanceId}/diff/{siblingId}": {
+        parameters: {
+            query?: never;
+            header?: never;
+            path?: never;
+            cookie?: never;
+        };
+        get: operations["diff"];
+        put?: never;
+        post?: never;
+        delete?: never;
+        options?: never;
+        head?: never;
+        patch?: never;
+        trace?: never;
+    };
     "/api/instances/{engineId}/{instanceId}/hierarchy": {
         parameters: {
             query?: never;
@@ -300,6 +316,22 @@ export interface paths {
             cookie?: never;
         };
         get: operations["jobStacktrace"];
+        put?: never;
+        post?: never;
+        delete?: never;
+        options?: never;
+        head?: never;
+        patch?: never;
+        trace?: never;
+    };
+    "/api/instances/{engineId}/{instanceId}/nearest-sibling": {
+        parameters: {
+            query?: never;
+            header?: never;
+            path?: never;
+            cookie?: never;
+        };
+        get: operations["nearestSibling"];
         put?: never;
         post?: never;
         delete?: never;
@@ -739,6 +771,19 @@ export interface components {
             suspended?: components["schemas"]["JobDto"][];
             timer?: components["schemas"]["JobDto"][];
         };
+        InstanceRef: {
+            businessKey?: string;
+            definitionId?: string;
+            /** Format: int32 */
+            definitionVersion?: number;
+            /** Format: int64 */
+            durationMs?: number;
+            endTime?: string;
+            ended?: boolean;
+            processDefinitionKey?: string;
+            processInstanceId?: string;
+            startTime?: string;
+        };
         InstanceStatusFlags: {
             ended?: boolean;
             failedInSubprocess?: boolean;
@@ -794,6 +839,16 @@ export interface components {
             role?: string;
             username?: string;
         };
+        NearestSiblingResponse: {
+            /** Format: int32 */
+            candidatesScanned?: number;
+            definitionId?: string;
+            /** Format: int32 */
+            definitionVersion?: number;
+            found?: boolean;
+            processDefinitionKey?: string;
+            sibling?: components["schemas"]["SiblingRef"];
+        };
         NoteDto: {
             author?: string;
             body?: string;
@@ -803,6 +858,23 @@ export interface components {
             instanceId?: string;
             /** Format: date-time */
             ts?: string;
+        };
+        PathActivity: {
+            activityId?: string;
+            activityName?: string;
+            activityType?: string;
+            /** Format: int64 */
+            durationMs?: number;
+            endTime?: string;
+            startTime?: string;
+            unfinished?: boolean;
+        };
+        PathDivergence: {
+            common?: string[];
+            onlyInSibling?: string[];
+            onlyInSubject?: string[];
+            siblingPath?: components["schemas"]["PathActivity"][];
+            subjectPath?: components["schemas"]["PathActivity"][];
         };
         PerEngineTriage: {
             dlqScan?: string;
@@ -906,6 +978,23 @@ export interface components {
                 [key: string]: number;
             };
         };
+        SiblingDiffResponse: {
+            path?: components["schemas"]["PathDivergence"];
+            previewCappedPresent?: boolean;
+            sameDefinition?: boolean;
+            sibling?: components["schemas"]["InstanceRef"];
+            subject?: components["schemas"]["InstanceRef"];
+            timings?: components["schemas"]["TimingDelta"][];
+            variables?: components["schemas"]["VariableDelta"][];
+        };
+        SiblingRef: {
+            businessKey?: string;
+            /** Format: int64 */
+            durationMs?: number;
+            endTime?: string;
+            processInstanceId?: string;
+            startTime?: string;
+        };
         SseEmitter: {
             /** Format: int64 */
             timeout?: number;
@@ -937,6 +1026,21 @@ export interface components {
             startTime?: string;
             taskId?: string;
         };
+        TimingDelta: {
+            activityId?: string;
+            activityName?: string;
+            /** Format: int64 */
+            deltaMs?: number;
+            /** Format: int64 */
+            siblingMs?: number;
+            /** Format: int32 */
+            siblingOccurrences?: number;
+            /** Format: int64 */
+            subjectMs?: number;
+            /** Format: int32 */
+            subjectOccurrences?: number;
+            subjectUnfinished?: boolean;
+        };
         TriageDashboardResponse: {
             asOf?: string;
             engines?: components["schemas"]["EngineDto"][];
@@ -957,6 +1061,13 @@ export interface components {
             name?: string;
             type?: string;
             value?: unknown;
+        };
+        VariableDelta: {
+            /** @enum {string} */
+            change?: "SAME" | "CHANGED" | "ONLY_IN_SUBJECT" | "ONLY_IN_SIBLING" | "DIFFER_BEYOND_PREVIEW";
+            name?: string;
+            sibling?: components["schemas"]["VariableDto"];
+            subject?: components["schemas"]["VariableDto"];
         };
         VariableDto: {
             executionId?: string;
@@ -1421,6 +1532,30 @@ export interface operations {
             };
         };
     };
+    diff: {
+        parameters: {
+            query?: never;
+            header?: never;
+            path: {
+                engineId: string;
+                instanceId: string;
+                siblingId: string;
+            };
+            cookie?: never;
+        };
+        requestBody?: never;
+        responses: {
+            /** @description OK */
+            200: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "*/*": components["schemas"]["SiblingDiffResponse"];
+                };
+            };
+        };
+    };
     hierarchy: {
         parameters: {
             query?: never;
@@ -1489,6 +1624,29 @@ export interface operations {
                 };
                 content: {
                     "text/plain": string;
+                };
+            };
+        };
+    };
+    nearestSibling: {
+        parameters: {
+            query?: never;
+            header?: never;
+            path: {
+                engineId: string;
+                instanceId: string;
+            };
+            cookie?: never;
+        };
+        requestBody?: never;
+        responses: {
+            /** @description OK */
+            200: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "*/*": components["schemas"]["NearestSiblingResponse"];
                 };
             };
         };

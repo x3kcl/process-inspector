@@ -65,7 +65,7 @@ public class InstanceDetailService {
     private static final Logger log = LoggerFactory.getLogger(InstanceDetailService.class);
 
     /** SPEC §4 size safeguard: structured previews cap at 256 KiB serialized. */
-    static final int STRUCTURED_PREVIEW_CAP_BYTES = 256 * 1024;
+    public static final int STRUCTURED_PREVIEW_CAP_BYTES = 256 * 1024;
 
     /** R-SEM-19: max children RENDERED per node; totals stay exact via the query total. */
     static final int HIERARCHY_BREADTH_CAP = 50;
@@ -272,7 +272,7 @@ public class InstanceDetailService {
      * number stays a JSON number — capped at {@value #STRUCTURED_PREVIEW_CAP_BYTES} bytes
      * for structured/text payloads (SPEC §4 size safeguards).
      */
-    static VariableDto typedRow(Map<String, Object> row, String scope, String executionId, String taskId) {
+    public static VariableDto typedRow(Map<String, Object> row, String scope, String executionId, String taskId) {
         Object value = row.get("value");
         boolean truncated = false;
         Long sizeBytes = null;
