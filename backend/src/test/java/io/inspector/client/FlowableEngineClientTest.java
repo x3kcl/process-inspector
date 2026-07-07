@@ -204,4 +204,24 @@ class FlowableEngineClientTest {
         assertThat(total).isEqualTo(137);
         wm.verify(getRequestedFor(urlPathEqualTo("/management/deadletter-jobs")).withQueryParam("size", equalTo("1")));
     }
+
+    @Test
+    void externalWorkerJobsHitTheSiblingExternalJobApiContextNotManagement() {
+        // base-url ends in /service; the external-worker list lives at the /external-job-api
+        // sibling (verified live). The client must swap the suffix, not append under /service.
+        EngineConfig engine = TestEngines.engine("ew-engine", wm.baseUrl() + "/flowable-rest/service");
+        wm.stubFor(
+                get(urlPathEqualTo("/flowable-rest/external-job-api/jobs"))
+                        .willReturn(
+                                okJson(
+                                        "{\"data\":[{\"id\":\"ew-1\",\"lockOwner\":\"worker-3\"}],\"total\":1,\"start\":0,\"size\":50}")));
+
+        FlowableEngineClient.FlowablePage page =
+                client.listExternalWorkerJobs(engine, java.util.Map.of("processInstanceId", "pi-1"), 0, 50);
+
+        assertThat(page.total()).isEqualTo(1);
+        assertThat(page.dataOrEmpty().get(0).get("lockOwner")).isEqualTo("worker-3");
+        wm.verify(getRequestedFor(urlPathEqualTo("/flowable-rest/external-job-api/jobs"))
+                .withQueryParam("processInstanceId", equalTo("pi-1")));
+    }
 }

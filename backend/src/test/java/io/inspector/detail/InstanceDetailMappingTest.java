@@ -3,6 +3,7 @@ package io.inspector.detail;
 import static org.assertj.core.api.Assertions.assertThat;
 
 import io.inspector.client.FlowableEngineClient.JobLaneKind;
+import io.inspector.dto.ExternalWorkerJobDto;
 import io.inspector.dto.InstanceJobs.JobDto;
 import io.inspector.dto.InstanceTasks.TaskDto;
 import io.inspector.dto.InstanceTimeline.TimelineActivity;
@@ -184,5 +185,47 @@ class InstanceDetailMappingTest {
         assertThat(dto.durationMs()).isEqualTo(1234L);
         assertThat(dto.calledProcessInstanceId()).isEqualTo("child-7");
         assertThat(dto.endTime()).isNull();
+    }
+
+    /* ---------- external-worker jobs — the fifth queue (v1.x #7) ---------- */
+
+    @Test
+    void externalWorkerRowKeepsTheWorkerLockAndActivity() {
+        // Field names verified live against a running 6.8/7.x external-job-api/jobs response.
+        Map<String, Object> job = new HashMap<>();
+        job.put("id", "ew-1");
+        job.put("elementId", "ext");
+        job.put("elementName", "Charge via worker");
+        job.put("lockOwner", "worker-3");
+        job.put("lockExpirationTime", "2026-07-07T14:00:00Z");
+        job.put("retries", 3);
+        job.put("exceptionMessage", null);
+        job.put("createTime", "2026-07-07T13:47:19.498Z");
+        job.put("executionId", "exec-9");
+
+        ExternalWorkerJobDto dto = InstanceDetailService.externalWorkerRow(job);
+
+        assertThat(dto.id()).isEqualTo("ew-1");
+        assertThat(dto.elementId()).isEqualTo("ext");
+        assertThat(dto.elementName()).isEqualTo("Charge via worker");
+        assertThat(dto.lockOwner()).isEqualTo("worker-3"); // the "who is holding this" tell
+        assertThat(dto.lockExpirationTime()).isEqualTo("2026-07-07T14:00:00Z");
+        assertThat(dto.retries()).isEqualTo(3);
+        assertThat(dto.exceptionMessage()).isNull();
+    }
+
+    @Test
+    void externalWorkerRowLeavesAnUnacquiredJobsLockNull() {
+        Map<String, Object> unacquired = new HashMap<>();
+        unacquired.put("id", "ew-2");
+        unacquired.put("elementId", "ext");
+        unacquired.put("retries", 3);
+        // lockOwner / lockExpirationTime absent — no worker has picked it up yet.
+
+        ExternalWorkerJobDto dto = InstanceDetailService.externalWorkerRow(unacquired);
+
+        assertThat(dto.lockOwner()).isNull();
+        assertThat(dto.lockExpirationTime()).isNull();
+        assertThat(dto.retries()).isEqualTo(3);
     }
 }

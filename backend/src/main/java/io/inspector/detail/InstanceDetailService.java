@@ -2,11 +2,13 @@ package io.inspector.detail;
 
 import com.fasterxml.jackson.core.JsonProcessingException;
 import com.fasterxml.jackson.databind.ObjectMapper;
+import io.inspector.action.GuardRefusedException;
 import io.inspector.client.FlowableEngineClient;
 import io.inspector.client.FlowableEngineClient.FlowablePage;
 import io.inspector.client.FlowableEngineClient.JobLaneKind;
 import io.inspector.config.InspectorProperties;
 import io.inspector.config.InspectorProperties.EngineConfig;
+import io.inspector.dto.ExternalWorkerJobDto;
 import io.inspector.dto.InstanceDetail;
 import io.inspector.dto.InstanceDetail.CurrentActivity;
 import io.inspector.dto.InstanceDetail.WaitState;
@@ -25,6 +27,7 @@ import io.inspector.dto.InstanceTimeline.TimelineActivity;
 import io.inspector.dto.InstanceVariables;
 import io.inspector.dto.InstanceVariables.ExecutionScope;
 import io.inspector.dto.InstanceVariables.VariableDto;
+import io.inspector.registry.EngineCapabilities;
 import io.inspector.registry.EngineRegistry;
 import java.net.URLDecoder;
 import java.nio.charset.StandardCharsets;
@@ -99,6 +102,7 @@ public class InstanceDetailService {
         List<CurrentActivity> current = ended ? List.of() : currentActivities(engine, instanceId);
         WhyStuck whyStuck = whyStuck(engine, lanes);
         List<WaitState> waitingFor = ended ? List.of() : waitingFor(engine, instanceId, lanes);
+        Integer externalWorkerJobs = ended ? null : externalWorkerCount(engine, instanceId);
 
         String definitionId = str(historic, "processDefinitionId");
         Object duration = historic.get("durationInMillis");
@@ -126,7 +130,26 @@ public class InstanceDetailService {
                         whyStuck != null ? whyStuck.failureTime() : null),
                 current,
                 whyStuck,
-                waitingFor);
+                waitingFor,
+                externalWorkerJobs);
+    }
+
+    /**
+     * The external-worker job count for the vitals diagnostic summary (v1.x #7). Null on a
+     * pre-6.8 engine (the fifth queue does not apply) — never a misleading 0. An optional
+     * count must never break the vitals render, so an engine hiccup degrades to null too.
+     */
+    private Integer externalWorkerCount(EngineConfig engine, String instanceId) {
+        EngineCapabilities capabilities = registry.healthOf(engine.id()).capabilities();
+        if (capabilities == null || !capabilities.externalWorkerJobs()) {
+            return null;
+        }
+        try {
+            return (int) flowable.listExternalWorkerJobs(engine, Map.of("processInstanceId", instanceId), 0, 1)
+                    .total();
+        } catch (RuntimeException e) {
+            return null;
+        }
     }
 
     /**
@@ -346,6 +369,64 @@ public class InstanceDetailService {
                 str(job, "exceptionMessage"),
                 str(job, "elementId"),
                 str(job, "elementName"),
+                str(job, "executionId"),
+                str(job, "processDefinitionId"),
+                str(job, "tenantId"));
+    }
+
+    /* ============ external-worker jobs — the fifth queue (v1.x #7) ============ */
+
+    /**
+     * External-worker jobs for the instance (read-only). Capability-gated (Flowable ≥ 6.8):
+     * on an older engine the BFF refuses with a ProblemDetail rather than letting the call die
+     * as a confusing 404 at the sibling external-job-api context. The UI never reaches here on
+     * a pre-6.8 engine — it reads the same flag off {@code EngineDto.capabilities} — but the
+     * server stays the gate.
+     */
+    public List<ExternalWorkerJobDto> externalWorkerJobs(String engineId, String instanceId) {
+        EngineConfig engine = registry.require(engineId);
+        requireExternalWorkerCapability(engine);
+        requireHistoric(engine, instanceId);
+        Map<String, String> filters = new LinkedHashMap<>();
+        filters.put("processInstanceId", instanceId);
+        if (engine.tenantId() != null && !engine.tenantId().isBlank()) {
+            filters.put("tenantId", engine.tenantId());
+        }
+        return flowable.listExternalWorkerJobs(engine, filters, 0, engine.maxPageSizeOrDefault()).dataOrEmpty().stream()
+                .map(InstanceDetailService::externalWorkerRow)
+                .toList();
+    }
+
+    private void requireExternalWorkerCapability(EngineConfig engine) {
+        EngineCapabilities capabilities = registry.healthOf(engine.id()).capabilities();
+        if (capabilities == null) {
+            throw new GuardRefusedException(
+                    HttpStatus.CONFLICT,
+                    "capability-unknown",
+                    "Engine '" + engine.id() + "' has not answered a health probe yet — external-worker support"
+                            + " (Flowable ≥ 6.8) is unverified, so the call is refused rather than sent blind.");
+        }
+        if (!capabilities.externalWorkerJobs()) {
+            throw new GuardRefusedException(
+                    HttpStatus.CONFLICT,
+                    "capability-unavailable",
+                    "Engine '" + engine.id() + "' runs an Unsupported Engine Version for external-worker jobs"
+                            + " (requires Flowable ≥ 6.8) — refused in the BFF, never a confusing engine 404.");
+        }
+    }
+
+    static ExternalWorkerJobDto externalWorkerRow(Map<String, Object> job) {
+        Object retries = job.get("retries");
+        return new ExternalWorkerJobDto(
+                str(job, "id"),
+                str(job, "elementId"),
+                str(job, "elementName"),
+                str(job, "lockOwner"),
+                str(job, "lockExpirationTime"),
+                retries instanceof Number n ? n.intValue() : null,
+                str(job, "exceptionMessage"),
+                str(job, "createTime"),
+                str(job, "dueDate"),
                 str(job, "executionId"),
                 str(job, "processDefinitionId"),
                 str(job, "tenantId"));

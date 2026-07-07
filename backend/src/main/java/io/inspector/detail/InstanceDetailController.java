@@ -1,6 +1,7 @@
 package io.inspector.detail;
 
 import io.inspector.client.FlowableEngineClient.JobLaneKind;
+import io.inspector.dto.ExternalWorkerJobDto;
 import io.inspector.dto.InstanceDetail;
 import io.inspector.dto.InstanceDiagram;
 import io.inspector.dto.InstanceHierarchy;
@@ -72,6 +73,17 @@ public class InstanceDetailController {
     @PreAuthorize("@rbac.atLeastOn(authentication, 'VIEWER', #engineId)")
     public InstanceJobs jobs(@PathVariable String engineId, @PathVariable String instanceId) {
         return detail.jobs(engineId, instanceId);
+    }
+
+    /**
+     * External-worker jobs — Flowable's fifth queue (v1.x #7), read-only. Capability-gated
+     * (≥ 6.8): a pre-6.8 engine gets a ProblemDetail, never a masking empty list.
+     */
+    @GetMapping("/jobs/external-worker")
+    @PreAuthorize("@rbac.atLeastOn(authentication, 'VIEWER', #engineId)")
+    public java.util.List<ExternalWorkerJobDto> externalWorkerJobs(
+            @PathVariable String engineId, @PathVariable String instanceId) {
+        return detail.externalWorkerJobs(engineId, instanceId);
     }
 
     /** Stacktrace on expand, plain text. {@code lane} names the queue the job sits in. */

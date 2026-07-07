@@ -86,6 +86,17 @@ seed_engine() { # base-url
   pid=$(start_instance "$E" "{\"processDefinitionKey\":\"demoParent\",\"businessKey\":\"seed-$(date +%s)\",\"variables\":[
     {\"name\":\"amount\",\"type\":\"integer\",\"value\":100},{\"name\":\"divisor\",\"type\":\"integer\",\"value\":0}]}")
   echo "  demoParent         $pid (child will dead-letter)"
+
+  # External-worker fixture (v1.x #7) — the element is Flowable 6.8+ ONLY, so deploy it just
+  # on capable engines; on 6.3 legacy the deploy would fail and there is no fifth queue to see.
+  ver=$(curl -sfu "$CRED" "$E/management/engine" | python3 -c 'import sys,json;print(json.load(sys.stdin).get("version",""))')
+  if python3 -c "import sys;v=('$ver'+'.0.0').split('.');sys.exit(0 if (int(v[0])>6 or (int(v[0])==6 and int(v[1])>=8)) else 1)" 2>/dev/null; then
+    deploy_if_missing "$E" demoExternalWorker demo-external-worker.bpmn20.xml
+    pid=$(start_instance "$E" '{"processDefinitionKey":"demoExternalWorker","variables":[]}')
+    echo "  demoExternalWorker $pid (parks an UNACQUIRED external-worker job — the fifth queue)"
+  else
+    echo "  demoExternalWorker skipped — engine $ver predates external workers (< 6.8)."
+  fi
 }
 
 if [ $# -ge 1 ]; then

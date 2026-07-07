@@ -30,8 +30,37 @@ public final class EngineSeed {
     public static final Path USER_TASK_BPMN = Path.of("..", "docker", "processes", "demo-user-task.bpmn20.xml");
     public static final Path ORDER_BPMN = Path.of("..", "docker", "processes", "demo-order.bpmn20.xml");
     public static final Path FLOW_SURGERY_BPMN = Path.of("..", "docker", "processes", "demo-flow-surgery.bpmn20.xml");
+    public static final Path EXTERNAL_WORKER_BPMN =
+            Path.of("..", "docker", "processes", "demo-external-worker.bpmn20.xml");
 
     private EngineSeed() {}
+
+    /**
+     * Acquire up to {@code maxTasks} external-worker jobs on {@code topic} so their lockOwner is
+     * populated — the IT setup for the lock-owner mapping assertion (v1.x #7). Hits the External
+     * Worker REST API at the {@code /external-job-api} sibling of the management {@code /service}
+     * base. Returns how many were acquired; the lock lapses after the duration, so KEEP-up
+     * residue is self-healing.
+     */
+    @SuppressWarnings("unchecked")
+    public static int acquireExternalWorkerJobs(String serviceBaseUrl, String topic, String workerId, int maxTasks) {
+        String base = serviceBaseUrl.endsWith("/service")
+                ? serviceBaseUrl.substring(0, serviceBaseUrl.length() - "/service".length()) + "/external-job-api"
+                : serviceBaseUrl + "/external-job-api";
+        List<Map<String, Object>> acquired = engineClient(base)
+                .post()
+                .uri("/acquire/jobs")
+                .contentType(MediaType.APPLICATION_JSON)
+                .body(Map.of(
+                        "topic", topic,
+                        "lockDuration", "PT10M",
+                        "maxTasks", maxTasks,
+                        "numberOfRetries", 3,
+                        "workerId", workerId))
+                .retrieve()
+                .body(List.class);
+        return acquired == null ? 0 : acquired.size();
+    }
 
     public static RestClient engineClient(String baseUrl) {
         return RestClient.builder()

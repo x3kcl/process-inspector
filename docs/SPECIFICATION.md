@@ -18,7 +18,11 @@ Flowable Control, Conductor/Orkes, Airflow and Step Functions, and a four-seat d
   `hasFailingJobs` is unchanged; the display term was renamed from "FAILING" because "-ing"
   reads as more urgent than "-ed" and drove mis-triage in walkthroughs.)*
 - **Job lanes** — Flowable's four job queues: executable, timer, suspended, dead-letter.
-  The lane a job sits in IS the diagnosis.
+  The lane a job sits in IS the diagnosis. A **fifth lane — external-worker jobs** (v1.x #7,
+  read-only, Flowable 6.8+ only) sits alongside them, capability-gated: it renders only on a
+  supporting engine (`EngineCapabilities.externalWorkerJobs`) and its crux column is the
+  **lock owner** — who holds the task and until when. Sourced from the External Worker REST
+  API, not the management queues; the active count is surfaced in the vitals diagnostic summary.
 - **Error class / signature** — the normalized, versioned exception signature (§4) that
   groups failures; the binding key for acknowledgments, annotations and playbooks.
 - **Verb** — one corrective action from the §5 catalog.
@@ -891,7 +895,11 @@ and would rewrite working M1/M2 code for no capability gain); Go/FastAPI/Kotlin 
      cURL-honesty affordance instead, and person-centric task search remains the natural
      follow-up (still unscheduled). Reassign is reachable today from the instance Tasks tab;
      finding a person's tasks across instances is the pending half;
-  7. external-worker job view (capability-gated, 6.8+).
+  7. external-worker job view (capability-gated, 6.8+) — **landed (v1.x #7)**: the fifth
+     read-only job lane (lock owner / expiration / retries / exception) + vitals count, sourced
+     from the External Worker REST API's `/external-job-api/jobs` sibling context (the
+     management API has no external-worker endpoint); pre-6.8 engines refuse in the BFF and hide
+     the lane in the UI.
   - **Not yet scheduled in the plan** (candidate v1.x/v2, sequenced after the numbered list —
     ordered differently from earlier drafts): second-person approval / proposal inbox (hooks
     already in v1 schema); error-class annotations + endorsed verbs + group-level

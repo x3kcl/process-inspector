@@ -324,6 +324,22 @@ export interface paths {
         patch?: never;
         trace?: never;
     };
+    "/api/instances/{engineId}/{instanceId}/jobs/external-worker": {
+        parameters: {
+            query?: never;
+            header?: never;
+            path?: never;
+            cookie?: never;
+        };
+        get: operations["externalWorkerJobs"];
+        put?: never;
+        post?: never;
+        delete?: never;
+        options?: never;
+        head?: never;
+        patch?: never;
+        trace?: never;
+    };
     "/api/instances/{engineId}/{instanceId}/jobs/{jobId}/stacktrace": {
         parameters: {
             query?: never;
@@ -728,6 +744,21 @@ export interface components {
             parentExecutionId?: string;
             variables?: components["schemas"]["VariableDto"][];
         };
+        ExternalWorkerJobDto: {
+            createTime?: string;
+            dueDate?: string;
+            elementId?: string;
+            elementName?: string;
+            exceptionMessage?: string;
+            executionId?: string;
+            id?: string;
+            lockExpirationTime?: string;
+            lockOwner?: string;
+            processDefinitionId?: string;
+            /** Format: int32 */
+            retries?: number;
+            tenantId?: string;
+        };
         HierarchyNode: {
             businessKey?: string;
             /** Format: int64 */
@@ -757,6 +788,8 @@ export interface components {
             durationMs?: number;
             endTime?: string;
             engineId?: string;
+            /** Format: int32 */
+            externalWorkerJobs?: number;
             flags?: components["schemas"]["InstanceStatusFlags"];
             processDefinitionId?: string;
             processInstanceId?: string;
@@ -1650,6 +1683,29 @@ export interface operations {
                 };
                 content: {
                     "*/*": components["schemas"]["InstanceJobs"];
+                };
+            };
+        };
+    };
+    externalWorkerJobs: {
+        parameters: {
+            query?: never;
+            header?: never;
+            path: {
+                engineId: string;
+                instanceId: string;
+            };
+            cookie?: never;
+        };
+        requestBody?: never;
+        responses: {
+            /** @description OK */
+            200: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "*/*": components["schemas"]["ExternalWorkerJobDto"][];
                 };
             };
         };

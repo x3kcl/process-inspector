@@ -5,6 +5,7 @@
 import { useQuery } from '@tanstack/react-query'
 import {
   fetchInstanceDiagram,
+  fetchInstanceExternalWorkerJobs,
   fetchInstanceHierarchy,
   fetchInstanceJobs,
   fetchInstanceTasks,
@@ -50,6 +51,25 @@ export function useInstanceJobs(engineId: string, instanceId: string) {
   return useQuery({
     queryKey: key(engineId, instanceId, 'jobs'),
     queryFn: () => fetchInstanceJobs({ engineId, instanceId }),
+    staleTime: STALE_MS,
+  })
+}
+
+/**
+ * External-worker jobs — the fifth queue (v1.x #7). CAPABILITY-GATED at the source: the caller
+ * passes `enabled` from `EngineDto.capabilities.externalWorkerJobs`, so on a pre-6.8 engine the
+ * query never fires (no empty lane, no spinner) and the BFF is never called. The BFF stays the
+ * real gate and refuses if hit anyway.
+ */
+export function useInstanceExternalWorkerJobs(
+  engineId: string,
+  instanceId: string,
+  enabled: boolean,
+) {
+  return useQuery({
+    queryKey: key(engineId, instanceId, 'external-worker-jobs'),
+    queryFn: () => fetchInstanceExternalWorkerJobs({ engineId, instanceId }),
+    enabled,
     staleTime: STALE_MS,
   })
 }

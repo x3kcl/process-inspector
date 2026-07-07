@@ -33,7 +33,11 @@ public record InstanceDetail(
         // null when no template is configured (SPEC §4: absent template → no link)
         List<CurrentActivity> currentActivities, // unfinished activities; empty when ended
         WhyStuck whyStuck,
-        List<WaitState> waitingFor) {
+        List<WaitState> waitingFor,
+        // Count of external-worker jobs on this instance (v1.x #7) — the fifth queue is not in
+        // the four job lanes, so its presence is invisible without this. Null on a pre-6.8
+        // engine (capability absent) or an ended instance; a count (incl. 0) when applicable.
+        Integer externalWorkerJobs) {
 
     /** One unfinished activity — the "where is it" line + diagram token markers. */
     public record CurrentActivity(String activityId, String activityName, String activityType, String startTime) {}

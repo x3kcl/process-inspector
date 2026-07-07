@@ -1,9 +1,10 @@
 import { useEffect, useMemo, useRef, useState } from 'react'
-import type { InstanceJobs, JobDto, JobLaneId } from '../../api/model'
+import type { ExternalWorkerJobDto, InstanceJobs, JobDto, JobLaneId } from '../../api/model'
 import { JOB_LANES } from '../../api/model'
 import { useInstanceAction } from '../../api/actions'
 import { fetchJobStacktrace } from '../../api/queries'
 import { useEngines } from '../../api/useEngines'
+import { externalWorkerLaneVisible } from '../externalWorker'
 import { DestructiveModal } from '../../actions/DestructiveModal'
 import { InlineConfirm } from '../../actions/InlineConfirm'
 import { VERBS, actionGate, needsTwoStepConfirm } from '../../actions/catalog'
@@ -14,7 +15,7 @@ import { useToast } from '../../components/toast'
 import { formatDateTime } from '../../lib/format'
 import { roleOn, useMe } from '../../api/me'
 import type { TabProps } from '../InspectPage'
-import { useInstanceJobs } from '../useInstanceQueries'
+import { useInstanceExternalWorkerJobs, useInstanceJobs } from '../useInstanceQueries'
 
 /** Lane metadata (SPEC §4): the lane IS the diagnosis, so each one explains itself. */
 const LANE_META: Record<JobLaneId, { title: string; diagnosis: string; wireLane: string }> = {
@@ -49,6 +50,11 @@ export default function ErrorsJobsTab({
   onShowOnDiagram,
 }: TabProps) {
   const query = useInstanceJobs(engineId, instanceId)
+  const engines = useEngines()
+  const engine = (engines.data ?? []).find((candidate) => candidate.id === engineId)
+  // Capability gate (v1.x #7): the fifth lane exists ONLY on a Flowable ≥ 6.8 engine. On a
+  // pre-6.8 engine it is never rendered and its query never fires — true graceful degradation.
+  const showExternalWorker = externalWorkerLaneVisible(engine)
 
   if (query.isPending) return <div className="zero-state">Loading job lanes…</div>
   if (query.isError) {
@@ -79,7 +85,108 @@ export default function ErrorsJobsTab({
           onShowOnDiagram={onShowOnDiagram}
         />
       ))}
+      {showExternalWorker && (
+        <ExternalWorkerLane
+          engineId={engineId}
+          instanceId={instanceId}
+          onShowOnDiagram={onShowOnDiagram}
+        />
+      )}
     </div>
+  )
+}
+
+/**
+ * The fifth queue (v1.x #7) — external-worker jobs, READ-ONLY. Only mounted on a capable
+ * engine (the parent gates on `EngineDto.capabilities.externalWorkerJobs`), so its query runs
+ * unconditionally here. The lock owner is the crux: a job held by a worker whose lock keeps
+ * sliding is a worker that acquired but never completes.
+ */
+function ExternalWorkerLane({
+  engineId,
+  instanceId,
+  onShowOnDiagram,
+}: {
+  engineId: string
+  instanceId: string
+  onShowOnDiagram?: (activityId: string) => void
+}) {
+  const query = useInstanceExternalWorkerJobs(engineId, instanceId, true)
+  const rows: ExternalWorkerJobDto[] = query.data ?? []
+  return (
+    <details className="job-lane lane-external-worker" open={rows.length > 0}>
+      <summary>
+        External worker <span className="group-count">({query.isPending ? '…' : rows.length})</span>
+        <span className="lane-diagnosis">
+          Flowable&rsquo;s fifth queue — steps handed to an external worker; a job whose lock owner
+          keeps sliding is a worker that acquired but never completes
+        </span>
+      </summary>
+      {query.isError ? (
+        <div className="error-banner" role="alert">
+          External-worker jobs unavailable: {query.error.message}
+        </div>
+      ) : query.isPending ? (
+        <p className="zero-state">Loading external-worker jobs…</p>
+      ) : rows.length === 0 ? (
+        <p className="zero-state">No external-worker jobs on this instance.</p>
+      ) : (
+        <table className="ledger-table">
+          <thead>
+            <tr>
+              <th scope="col">Job</th>
+              <th scope="col">Activity</th>
+              <th scope="col">Lock owner</th>
+              <th scope="col">Lock expiration</th>
+              <th scope="col">Retries</th>
+              <th scope="col">Exception</th>
+            </tr>
+          </thead>
+          <tbody>
+            {rows.map((job, index) => (
+              <tr key={job.id ?? `ew-${String(index)}`}>
+                <td className="id-cell">
+                  <code>{job.id}</code>
+                  {job.id !== undefined && <CopyButton text={job.id} label="copy" />}
+                </td>
+                <td>
+                  {job.elementName ?? job.elementId ?? <span className="value-muted">—</span>}
+                  {job.elementName !== undefined && job.elementId !== undefined && (
+                    <code className="element-id"> {job.elementId}</code>
+                  )}
+                  {job.elementId !== undefined && onShowOnDiagram !== undefined && (
+                    <button
+                      type="button"
+                      className="copy-btn"
+                      title="highlight this activity on the diagram"
+                      onClick={() => {
+                        onShowOnDiagram(job.elementId ?? '')
+                      }}
+                    >
+                      show on diagram
+                    </button>
+                  )}
+                </td>
+                <td>
+                  {job.lockOwner ?? (
+                    <span className="value-muted">unacquired — no worker holds it</span>
+                  )}
+                </td>
+                <td>{formatDateTime(job.lockExpirationTime)}</td>
+                <td>{job.retries ?? <span className="value-muted">—</span>}</td>
+                <td className="exception-cell">
+                  {job.exceptionMessage !== undefined ? (
+                    <span className="exception-first-line">{firstLine(job.exceptionMessage)}</span>
+                  ) : (
+                    <span className="value-muted">none</span>
+                  )}
+                </td>
+              </tr>
+            ))}
+          </tbody>
+        </table>
+      )}
+    </details>
   )
 }
 

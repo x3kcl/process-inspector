@@ -5,6 +5,7 @@ import type {
   InstanceDetail,
   InstanceDiagram,
   InstanceHierarchy,
+  ExternalWorkerJobDto,
   InstanceJobs,
   InstanceTasks,
   InstanceTimeline,
@@ -106,6 +107,22 @@ export async function fetchInstanceJobs(path: InstancePath): Promise<InstanceJob
   const { data, error, response } = await api.GET('/api/instances/{engineId}/{instanceId}/jobs', {
     params: { path },
   })
+  if (data === undefined) throw new ApiError(response.status, error)
+  return data
+}
+
+/**
+ * External-worker jobs (v1.x #7) — the fifth queue, capability-gated. Only ever fetched on a
+ * Flowable ≥ 6.8 engine (the caller enables the query off EngineDto.capabilities); the BFF is
+ * the real gate and refuses on an older engine.
+ */
+export async function fetchInstanceExternalWorkerJobs(
+  path: InstancePath,
+): Promise<ExternalWorkerJobDto[]> {
+  const { data, error, response } = await api.GET(
+    '/api/instances/{engineId}/{instanceId}/jobs/external-worker',
+    { params: { path } },
+  )
   if (data === undefined) throw new ApiError(response.status, error)
   return data
 }

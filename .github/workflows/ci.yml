@@ -142,9 +142,9 @@ jobs:
           - profile: flowable-6
             itClass: EngineHealthIT,SearchServiceIT,TriageAggregationIT
           - profile: flowable-7
-            itClass: EngineHealth7IT,Search7IT,Triage7IT
+            itClass: EngineHealth7IT,Search7IT,Triage7IT,ExternalWorkerJob7IT
           - profile: legacy
-            itClass: EngineHealthLegacyIT,SearchLegacyIT,TriageLegacyIT
+            itClass: EngineHealthLegacyIT,SearchLegacyIT,TriageLegacyIT,ExternalWorkerJobLegacyIT
     env:
       # Job-level so EVERY compose invocation (up/exec/logs) sees the same profile set —
       # CLI --profile flags would scope only the command they're passed to, leaving

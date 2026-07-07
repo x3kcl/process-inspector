@@ -40,12 +40,23 @@ multi-tenant engines. Never trust an engine-side "state" field for FAILED.
   `{name, type, value}` — preserve the declared type; string-ifying an integer breaks
   gateways downstream).
 
-## 3. Job kinds — four queues, not one
+## 3. Job kinds — four management queues, plus a fifth off to the side
 `/management/jobs` (async executable), `/management/timer-jobs`, `/management/suspended-jobs`,
 `/management/deadletter-jobs`. Stacktrace: `GET /management/deadletter-jobs/{jobId}/exception-stacktrace`
 (plain text). A "retry" is a MOVE between queues: `POST /management/deadletter-jobs/{jobId}`
 `{"action":"move"}` → back to the executable queue with fresh retries. Force-fire a timer early
 the same way on `/management/timer-jobs/{jobId}`.
+
+**External-worker jobs are a FIFTH queue, and NOT in the management API** (v1.x #7 — Flowable
+6.8+). Verified live: `GET /management/external-worker-jobs` does not exist (6.8 → 404; 7.x →
+*"No endpoint …"*). They live in the **External Worker REST API at the `/external-job-api`
+SIBLING context** (beside `/service`, not under it): `GET …/external-job-api/jobs?processInstanceId=`
+is the READ-ONLY list — standard page envelope; 200 on 6.8/7.x, **404 on pre-6.8** (so its
+availability tracks the `externalWorkerJobs` capability exactly). Rows carry the worker lock:
+`lockOwner` / `lockExpirationTime` (null until acquired). ⚠ The `POST …/external-job-api/acquire/jobs`
+endpoint of that same API **LOCKS a job** — a mutation that steals it from a real worker; never
+call it for visibility (ITs may, to populate `lockOwner`). Capability-gate (≥6.8) in the BFF
+before the call — a pre-6.8 engine has no such context to answer.
 
 ⚠ Wire-format gotchas (proven on flowable-rest 6.8):
 - **Date query params take WHOLE seconds only** — `dueBefore=…T06:20:00Z` works,

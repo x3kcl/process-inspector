@@ -423,7 +423,17 @@ unresolvable with tier 0–1 verbs)
    BFF endpoint) and rendered verbatim — NOT a client-side generator (that would break the
    search-cURL invariant and risk a live token in the DOM). Frontend: Tasks-tab row actions,
    the shared `TaskAssignModal`, `CurlPreview`. Person-centric task search stays unscheduled.
-7. External-worker job view (capability-gated, 6.8+).
+7. External-worker job view (capability-gated, 6.8+). **— landed (v1.x #7).** The fifth
+   read-only job lane. Backend: `GET …/jobs/external-worker` + `ExternalWorkerJobDto` (lock
+   owner/expiration), capability-gated (reuses the version-derived `externalWorkerJobs` flag —
+   refuses pre-6.8 with a ProblemDetail); the count rides the vitals diagnostic summary. Wire:
+   the management API has NO external-worker endpoint — sourced from the External Worker REST
+   API's `/external-job-api/jobs` SIBLING context (derived from base-url by convention), verified
+   live. Frontend: capability-gated fifth lane in the Errors & Jobs tab (never rendered / never
+   called on pre-6.8). Tests: unit (gate + mapping + sibling-context GET), Playwright (gate both
+   ways), and `ExternalWorkerJob7IT` (fetch + acquire→lock-owner) / `ExternalWorkerJobLegacyIT`
+   (refuse) on the real matrix. New seed process `demo-external-worker`. **v1.x release train
+   complete.**
 
 ## v2 — demand-driven
 - **Remediation playbooks** (SPEC §5.1 — the headline): distill an exemplar's audit rows
