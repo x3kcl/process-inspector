@@ -50,18 +50,20 @@ function EngineCard({ engine }: { engine: EngineDto }) {
       </span>
       {/* The BFF serializes just-recovered engines with jobLanes: null for one probe cycle
           (Jackson-null vs TS-undefined) — an undefined-only guard crashed the whole SPA
-          on the unreachable→healthy transition. */}
-      {reachable && lanes !== undefined && lanes !== null && (
-        <span className="lanes">
-          <Lane label="exec" value={lanes.executable} />
-          <Lane label="timer" value={lanes.timer} />
-          <Lane label="susp" value={lanes.suspended} />
-          <Lane label="DLQ" value={lanes.deadletter} alarm={(lanes.deadletter ?? 0) > 0} />
-        </span>
-      )}
-      {reachable && (lanes === undefined || lanes === null) && (
-        <span className="strip-note">lanes unknown</span>
-      )}
+          on the unreachable→healthy transition. The generated type omits null, so the
+          runtime guard reads as "unnecessary" to ESLint even though it is load-bearing. */}
+      {reachable &&
+        // eslint-disable-next-line @typescript-eslint/no-unnecessary-condition -- runtime sends null despite the type
+        (lanes !== undefined && lanes !== null ? (
+          <span className="lanes">
+            <Lane label="exec" value={lanes.executable} />
+            <Lane label="timer" value={lanes.timer} />
+            <Lane label="susp" value={lanes.suspended} />
+            <Lane label="DLQ" value={lanes.deadletter} alarm={(lanes.deadletter ?? 0) > 0} />
+          </span>
+        ) : (
+          <span className="strip-note">lanes unknown</span>
+        ))}
       {!reachable && (
         // Usability round 1, Theme F: the raw exception text stays available in the
         // title — the visible line is a plain-language gloss, never a stack trace.

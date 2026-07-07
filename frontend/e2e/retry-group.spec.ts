@@ -119,7 +119,9 @@ test('retry group: Tier-3 modal, coordinates-only submit, drawer opens focused o
   // Reason ladder: the restating confirm unlocks only on a ≥10-char reason (dev: no token).
   const confirm = modal.getByRole('button', { name: 'Retry group — payment v3' })
   await expect(confirm).toBeDisabled()
-  await modal.getByLabel(/Why are you doing this/).fill('INC-4711: upstream data fixed, drain the class')
+  await modal
+    .getByLabel(/Why are you doing this/)
+    .fill('INC-4711: upstream data fixed, drain the class')
   await expect(confirm).toBeEnabled()
   await confirm.click()
 
@@ -170,7 +172,9 @@ test('on a PROD engine the confirm stays locked until the definition key is type
   // Reason alone must NOT unlock on prod (corrective-actions §3: bulk on prod never
   // dispatches on a bare confirm) — the typed token is the stable definition key.
   const confirm = modal.getByRole('button', { name: 'Retry group — payment v3' })
-  await modal.getByLabel(/Why are you doing this/).fill('INC-4711: upstream data fixed, drain the class')
+  await modal
+    .getByLabel(/Why are you doing this/)
+    .fill('INC-4711: upstream data fixed, drain the class')
   await expect(confirm).toBeDisabled()
   await modal.getByLabel(/Type the definition key/).fill('payment')
   await expect(confirm).toBeEnabled()
