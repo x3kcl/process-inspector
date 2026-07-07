@@ -1,18 +1,73 @@
+import { useState } from 'react'
 import type { TaskDto } from '../../api/model'
 import { formatDateTime, formatSeconds } from '../../lib/format'
 import { useInstanceTasks } from '../useInstanceQueries'
+import { useInstanceAction } from '../../api/actions'
+import type { ActionRequest } from '../../api/actions'
+import { useEngines } from '../../api/useEngines'
+import { roleOn, useMe } from '../../api/me'
+import { actionGate, VERBS } from '../../actions/catalog'
+import { TaskAssignModal } from '../../actions/TaskAssignModal'
+import type { TaskAssignMode } from '../../actions/TaskAssignModal'
+import type { ActionProblem } from '../../actions/problem'
+import { useToast } from '../../components/toast'
 
 interface Props {
   engineId: string
   instanceId: string
 }
 
+interface ModalState {
+  mode: TaskAssignMode
+  task: TaskDto
+}
+
 /**
  * User tasks, completed AND open, one ledger (SPEC §4) — bound to the historic ∪ runtime
- * union of GET …/tasks. Complete/reassign actions arrive with the M4 action toolbar.
+ * union of GET …/tasks. Reassign / return-to-team (v1.x #6) ride the row menu of ACTIVE
+ * tasks only; both are tier-1 OPERATOR verbs through the shared action dispatcher.
  */
 export default function TasksTab({ engineId, instanceId }: Props) {
   const query = useInstanceTasks(engineId, instanceId)
+  const engines = useEngines()
+  const engine = (engines.data ?? []).find((candidate) => candidate.id === engineId)
+  const me = useMe()
+  const roleHint = roleOn(me.data, engineId)
+  const action = useInstanceAction(engineId, instanceId)
+  const toast = useToast()
+
+  const [modal, setModal] = useState<ModalState | null>(null)
+  const [problem, setProblem] = useState<ActionProblem | undefined>(undefined)
+
+  // Role/engine-mode gate (greyed-never-hidden); the BFF stays the real gate. Reassign and
+  // return-to-team share the same tier-1 OPERATOR floor, so one gate covers both.
+  const gate = actionGate({
+    meta: VERBS.reassignTask,
+    roleHint,
+    engineMode: engine?.mode,
+    environment: engine?.environment,
+  })
+
+  const openModal = (mode: TaskAssignMode, task: TaskDto) => {
+    setProblem(undefined)
+    setModal({ mode, task })
+  }
+
+  const dispatch = (verb: string, body: ActionRequest) => {
+    action.mutate(
+      { verb, body },
+      {
+        onSuccess: (result) => {
+          setModal(null)
+          setProblem(undefined)
+          toast({ kind: 'success', text: result.deltaStatement ?? 'Done.' })
+        },
+        onError: (error) => {
+          setProblem(error.problem)
+        },
+      },
+    )
+  }
 
   if (query.isPending) return <div className="zero-state">Loading user tasks…</div>
   if (query.isError) {
@@ -46,19 +101,56 @@ export default function TasksTab({ engineId, instanceId }: Props) {
             <th scope="col">Created</th>
             <th scope="col">Due</th>
             <th scope="col">Completed</th>
+            <th scope="col">Actions</th>
           </tr>
         </thead>
         <tbody>
           {tasks.map((task, index) => (
-            <TaskRow key={task.id ?? `row-${String(index)}`} task={task} />
+            <TaskRow
+              key={task.id ?? `row-${String(index)}`}
+              task={task}
+              gate={gate}
+              onReassign={() => {
+                openModal('reassign', task)
+              }}
+              onReturn={() => {
+                openModal('return', task)
+              }}
+            />
           ))}
         </tbody>
       </table>
+
+      {modal !== null && (
+        <TaskAssignModal
+          mode={modal.mode}
+          engineId={engineId}
+          instanceId={instanceId}
+          engineName={engine?.name ?? engineId}
+          environment={engine?.environment}
+          task={modal.task}
+          pending={action.isPending}
+          problem={problem}
+          onConfirm={dispatch}
+          onClose={() => {
+            setModal(null)
+          }}
+        />
+      )}
     </div>
   )
 }
 
-function TaskRow({ task }: { task: TaskDto }) {
+interface RowProps {
+  task: TaskDto
+  gate: ReturnType<typeof actionGate>
+  onReassign: () => void
+  onReturn: () => void
+}
+
+function TaskRow({ task, gate, onReassign, onReturn }: RowProps) {
+  const active = (task.state ?? 'ACTIVE') === 'ACTIVE' && task.id !== undefined
+  const assigned = task.assignee !== undefined
   return (
     <tr>
       <td className="ledger-name">
@@ -89,6 +181,38 @@ function TaskRow({ task }: { task: TaskDto }) {
           </>
         ) : (
           <span className="value-muted">open</span>
+        )}
+      </td>
+      <td className="task-actions">
+        {active ? (
+          <>
+            <button
+              type="button"
+              className="row-action"
+              disabled={!gate.enabled}
+              title={gate.enabled ? undefined : gate.reason}
+              onClick={onReassign}
+            >
+              Reassign
+            </button>
+            <button
+              type="button"
+              className="row-action"
+              disabled={!gate.enabled || !assigned}
+              title={
+                !gate.enabled
+                  ? gate.reason
+                  : !assigned
+                    ? 'already unassigned — nothing to return'
+                    : undefined
+              }
+              onClick={onReturn}
+            >
+              Return to team
+            </button>
+          </>
+        ) : (
+          <span className="value-muted">—</span>
         )}
       </td>
     </tr>

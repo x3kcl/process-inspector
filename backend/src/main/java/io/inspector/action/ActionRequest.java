@@ -8,6 +8,8 @@ import java.util.List;
  * {@code reason} discipline per SPEC §6: tiers ≥2 always, tier 1 required on prod
  * engines; ≥10 chars whenever present. {@code confirmToken} is the tier-3 prod typed
  * token (target-specific — business key / job id / definition key, never a generic yes).
+ * {@code assignee} is the reassign-task target user id; unassign-task ignores it (clears
+ * the assignee → the task falls back to its candidate groups).
  */
 public record ActionRequest(
         String reason,
@@ -19,10 +21,11 @@ public record ActionRequest(
         VariableEdit variable,
         List<TypedVariable> variables,
         EventTrigger event,
-        Boolean includeProcessInstances) {
+        Boolean includeProcessInstances,
+        String assignee) {
 
     public static ActionRequest empty() {
-        return new ActionRequest(null, null, null, null, null, null, null, null, null, null);
+        return new ActionRequest(null, null, null, null, null, null, null, null, null, null, null);
     }
 
     /** Compare-and-set variable edit (R-SEM-09): the request carries what the operator saw. */

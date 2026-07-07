@@ -8,6 +8,7 @@ import java.net.http.HttpClient;
 import java.time.Duration;
 import java.time.Instant;
 import java.time.temporal.ChronoUnit;
+import java.util.LinkedHashMap;
 import java.util.List;
 import java.util.Map;
 import java.util.concurrent.ConcurrentHashMap;
@@ -640,6 +641,26 @@ public class FlowableEngineClient {
                 engine,
                 () -> writeClient(engine)
                         .post()
+                        .uri("/runtime/tasks/{taskId}", taskId)
+                        .contentType(MediaType.APPLICATION_JSON)
+                        .body(body)
+                        .retrieve()
+                        .toBodilessEntity());
+    }
+
+    /**
+     * PUT /runtime/tasks/{taskId} {"assignee": …} — reassign to a specific user, or clear
+     * the assignee ({@code null}) so the task falls back to its candidate groups
+     * (return-to-team). The key is sent even when the value is null, so Flowable treats it as
+     * an explicit set-to-null rather than "leave unchanged" (flowable-rest §4).
+     */
+    public void setTaskAssignee(EngineConfig engine, String taskId, String assignee) {
+        Map<String, Object> body = new LinkedHashMap<>();
+        body.put("assignee", assignee);
+        mutate(
+                engine,
+                () -> writeClient(engine)
+                        .put()
                         .uri("/runtime/tasks/{taskId}", taskId)
                         .contentType(MediaType.APPLICATION_JSON)
                         .body(body)

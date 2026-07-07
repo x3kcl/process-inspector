@@ -64,7 +64,7 @@ the same way on `/management/timer-jobs/{jobId}`.
 | Suspend / activate | `PUT /runtime/process-instances/{id}` `{"action":"suspend"\|"activate"}` |
 | Terminate/delete | `DELETE /runtime/process-instances/{id}` |
 | Node jump / change state | `POST /runtime/process-instances/{id}/change-state` `{"cancelActivityIds":[…],"startActivityIds":[…]}` |
-| Reassign task | `POST /runtime/tasks/{taskId}` `{"action":"delegate"\|assignee}` |
+| Reassign / return-to-team task | `PUT /runtime/tasks/{taskId}` `{"assignee":"<id>"\|null}` — arbitrary assignee, or null to clear it back to candidate groups. The key must be PRESENT (even null) so Flowable treats it as an explicit set, not "leave unchanged". `POST …{"action":"claim"\|"delegate"}` only self-assigns/delegates — not a free reassign. |
 | Complete task w/ data | `POST /runtime/tasks/{taskId}` `{"action":"complete","variables":[…]}` |
 | Edit variables | `PUT /runtime/process-instances/{id}/variables` |
 | Diagram source | `GET /repository/process-definitions/{defId}/resourcedata` (BPMN XML for bpmn-js) |

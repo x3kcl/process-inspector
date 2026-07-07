@@ -103,7 +103,7 @@ class CorrectiveActionServiceTest {
     }
 
     private static ActionRequest retryRequest() {
-        return new ActionRequest(null, null, null, "j1", null, null, null, null, null, null);
+        return new ActionRequest(null, null, null, "j1", null, null, null, null, null, null, null);
     }
 
     /* ---------------- guard refusals: nothing audited, nothing sent ---------------- */
@@ -156,6 +156,7 @@ class CorrectiveActionServiceTest {
                 new ActionRequest.VariableEdit("amount", "integer", 43, 42),
                 null,
                 null,
+                null,
                 null);
 
         // prod: refused before any engine write
@@ -172,7 +173,7 @@ class CorrectiveActionServiceTest {
     @Test
     void shortReasonIsRefusedEvenWhereOptional() {
         ActionRequest shortReason =
-                new ActionRequest("too short", null, null, "j1", null, null, null, null, null, null);
+                new ActionRequest("too short", null, null, "j1", null, null, null, null, null, null, null);
         assertThatThrownBy(() -> service.execute(DEV, "pi-1", ActionVerb.RETRY_JOB, shortReason, operator))
                 .isInstanceOf(GuardRefusedException.class)
                 .satisfies(e -> assertThat(((GuardRefusedException) e).code()).isEqualTo("reason-too-short"));
@@ -184,14 +185,14 @@ class CorrectiveActionServiceTest {
                 .thenReturn(Map.of("id", "pi-1", "businessKey", "ORD-77", "suspended", false));
 
         ActionRequest wrongToken = new ActionRequest(
-                "operator requested teardown", null, "ORD-99", null, null, null, null, null, null, null);
+                "operator requested teardown", null, "ORD-99", null, null, null, null, null, null, null, null);
         assertThatThrownBy(() -> service.execute(PROD, "pi-1", ActionVerb.TERMINATE_DELETE, wrongToken, operator))
                 .isInstanceOf(GuardRefusedException.class)
                 .satisfies(e -> assertThat(((GuardRefusedException) e).code()).isEqualTo("confirm-token-mismatch"));
         verify(client, never()).deleteProcessInstance(any(), anyString(), anyString());
 
         ActionRequest rightToken = new ActionRequest(
-                "operator requested teardown", null, "ORD-77", null, null, null, null, null, null, null);
+                "operator requested teardown", null, "ORD-77", null, null, null, null, null, null, null, null);
         service.execute(PROD, "pi-1", ActionVerb.TERMINATE_DELETE, rightToken, operator);
         verify(client).deleteProcessInstance(any(), eq("pi-1"), anyString());
     }
@@ -235,6 +236,7 @@ class CorrectiveActionServiceTest {
                 new ActionRequest.VariableEdit("amount", "integer", 43, 42),
                 null,
                 null,
+                null,
                 null);
 
         assertThatThrownBy(() -> service.execute(DEV, "pi-1", ActionVerb.EDIT_VARIABLE, edit, operator))
@@ -258,6 +260,7 @@ class CorrectiveActionServiceTest {
                 null,
                 null,
                 new ActionRequest.VariableEdit("amount", "long", 43, 42),
+                null,
                 null,
                 null,
                 null);
@@ -310,6 +313,80 @@ class CorrectiveActionServiceTest {
                 .isInstanceOf(GuardRefusedException.class)
                 .satisfies(e -> assertThat(((GuardRefusedException) e).code()).isEqualTo("engine-unreachable"));
         verify(audit).close(eq(pendingEntry), eq(AuditOutcome.failed), any(), any(), eq(false));
+    }
+
+    /* ---------------- reassign / return-to-team (v1.x #6) ---------------- */
+
+    private static ActionRequest reassignRequest(String assignee) {
+        return new ActionRequest(null, null, null, null, "task-9", null, null, null, null, null, assignee);
+    }
+
+    private void openTaskOn(String instanceId, String assignee) {
+        java.util.Map<String, Object> task = new java.util.HashMap<>();
+        task.put("id", "task-9");
+        task.put("processInstanceId", instanceId);
+        task.put("name", "Manual review");
+        task.put("assignee", assignee);
+        when(client.getTask(any(), eq("task-9"))).thenReturn(task);
+    }
+
+    @Test
+    void reassignSetsTheAssigneeAuditsOldAndNewAndDispatchesOnce() {
+        openTaskOn("pi-1", "kermit");
+
+        var result = service.execute(DEV, "pi-1", ActionVerb.REASSIGN_TASK, reassignRequest("gonzo"), operator);
+
+        InOrder order = inOrder(audit, client);
+        order.verify(audit)
+                .beginPending(eq("op"), eq(DEV), any(), eq("pi-1"), eq("reassign-task"), any(), any(), any());
+        order.verify(client).setTaskAssignee(any(), eq("task-9"), eq("gonzo"));
+        order.verify(audit).close(eq(pendingEntry), eq(AuditOutcome.ok), eq(200), any(), eq(true));
+        assertThat(result.deltaStatement()).contains("reassigned to 'gonzo'").contains("was 'kermit'");
+    }
+
+    @Test
+    void reassignWithoutAnAssigneeIsRefusedBeforeAudit() {
+        openTaskOn("pi-1", "kermit");
+
+        assertThatThrownBy(
+                        () -> service.execute(DEV, "pi-1", ActionVerb.REASSIGN_TASK, reassignRequest(null), operator))
+                .isInstanceOf(GuardRefusedException.class)
+                .satisfies(e -> assertThat(((GuardRefusedException) e).code()).isEqualTo("missing-field"));
+        verifyNoInteractions(audit);
+        verify(client, never()).setTaskAssignee(any(), anyString(), any());
+    }
+
+    @Test
+    void unassignClearsTheAssigneeSoItFallsBackToTheTeam() {
+        openTaskOn("pi-1", "kermit");
+
+        var result = service.execute(DEV, "pi-1", ActionVerb.UNASSIGN_TASK, reassignRequest(null), operator);
+
+        verify(client).setTaskAssignee(any(), eq("task-9"), org.mockito.ArgumentMatchers.isNull());
+        assertThat(result.deltaStatement()).contains("returned to its team").contains("was 'kermit'");
+    }
+
+    @Test
+    void aTaskThatIsNoLongerActiveCannotBeReassigned() {
+        when(client.getTask(any(), eq("task-9"))).thenReturn(null);
+
+        assertThatThrownBy(() ->
+                        service.execute(DEV, "pi-1", ActionVerb.REASSIGN_TASK, reassignRequest("gonzo"), operator))
+                .isInstanceOf(GuardRefusedException.class)
+                .satisfies(e -> assertThat(((GuardRefusedException) e).code()).isEqualTo("task-not-active"));
+        verifyNoInteractions(audit);
+        verify(client, never()).setTaskAssignee(any(), anyString(), any());
+    }
+
+    @Test
+    void reassignRefusesATaskOwnedByAnotherInstance() {
+        openTaskOn("OTHER", "kermit");
+
+        assertThatThrownBy(() ->
+                        service.execute(DEV, "pi-1", ActionVerb.REASSIGN_TASK, reassignRequest("gonzo"), operator))
+                .isInstanceOf(GuardRefusedException.class)
+                .satisfies(e -> assertThat(((GuardRefusedException) e).code()).isEqualTo("task-instance-mismatch"));
+        verifyNoInteractions(audit);
     }
 
     @Test

@@ -431,7 +431,12 @@ Every verb states what is preserved. Guard tiers per §6. All calls in
 [ARCHITECTURE.md §4](ARCHITECTURE.md); Flowable mappings in the `flowable-rest` skill,
 operator-facing engine-call parity in the generated **REST Parity Appendix** (R-L3-02 —
 built from the same code as the path whitelist, CI-failing on drift; the UI offers both
-"show BFF cURL" and **"copy as engine cURL"** with a `$ENGINE_CRED` placeholder).
+"show BFF cURL" and **"copy as engine cURL"** with a `$ENGINE_CRED` placeholder). The
+**"Show as cURL"** affordance (v1.x #6) is **server-computed** — the BFF renders the exact
+command it will dispatch to its OWN whitelisted verb endpoint with a placeholder credential
+(never a live token or an engine path), and the UI shows it verbatim (never re-assembled
+client-side, mirroring the search cURL invariant). Present on every tier-1+ action modal;
+the "copy as engine cURL" / REST Parity Appendix variant remains v2.
 
 ### 5.0 Language safety & reversibility (R-SAFE-02/03/04)
 - Every verb renders a **plain-language secondary label**, spec'd here, not improvised:
@@ -463,7 +468,7 @@ built from the same code as the path whitelist, CI-failing on drift; the UI offe
 | **Suspend / activate instance** | Execution pauses/resumes; jobs move to/from the suspended lane | 0 |
 | **Edit variable** | Via the §4a editor: form-first typed widgets, leaf-level json edits, opt-in source mode; old→new path-diff verification; compare-and-set; scope-aware (process vs execution) | 1 |
 | **Complete task with data** | Task closes with overridden output; warning: a skipped/forced task never writes its own outputs — edit them here (via the shared §4a change-set editor) | 1 |
-| **Reassign task** *(v1.x)* | Assignee changes; task state otherwise untouched | 1 |
+| **Reassign task / return to team** *(v1.x #6, landed)* | Reassign to a specific user, or clear the assignee (return-to-team) so the task falls back to its candidate groups; **ACTIVE tasks only** (a completed task can no longer be reassigned); task state otherwise untouched | 1 |
 | **Rerun from activity (with overrides)** | Guided composite: variable edits first (§4a change-set), then change-state; token re-enters the chosen activity; history append-only | 2 |
 | **Change state / move token** | Cancels ALL executions at the source activity, starts at target; guardrails: blocked on multi-instance bodies, parallel-join warning, suspended-check (offer activate-first), preview labeled *BFF simulation* (engine has no dry-run) + exact REST body shown | 2 |
 | **Restart as new instance** | Completed/terminated instance re-launched with copied historic variables; **explicit fork: pin original definition version vs latest**; new instance ID | 2 |
@@ -880,7 +885,12 @@ and would rewrite working M1/M2 code for no capability gain); Go/FastAPI/Kotlin 
      **descoped to v2** — they need the R-BAU-08 snapshot/time-series store, absent in v1;
   5. sibling diff (§5.2 — trigger: ≥5 "why did this one fail" investigations/month, probed
      via a stub affordance) — **landed**;
-  6. task reassign + person-centric task search (ship together, never apart);
+  6. task reassign / return-to-team + **"Show as cURL"** on the action modals — **landed
+     (v1.x #6)**. NOTE: an earlier draft paired reassign with person-centric task search
+     ("never apart"); that coupling was relaxed — reassign/return-to-team shipped with the
+     cURL-honesty affordance instead, and person-centric task search remains the natural
+     follow-up (still unscheduled). Reassign is reachable today from the instance Tasks tab;
+     finding a person's tasks across instances is the pending half;
   7. external-worker job view (capability-gated, 6.8+).
   - **Not yet scheduled in the plan** (candidate v1.x/v2, sequenced after the numbered list —
     ordered differently from earlier drafts): second-person approval / proposal inbox (hooks

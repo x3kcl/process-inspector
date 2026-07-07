@@ -196,6 +196,22 @@ export interface paths {
         patch?: never;
         trace?: never;
     };
+    "/api/instances/{engineId}/{instanceId}/actions/{verb}/curl": {
+        parameters: {
+            query?: never;
+            header?: never;
+            path?: never;
+            cookie?: never;
+        };
+        get?: never;
+        put?: never;
+        post: operations["instanceActionCurl"];
+        delete?: never;
+        options?: never;
+        head?: never;
+        patch?: never;
+        trace?: never;
+    };
     "/api/instances/{engineId}/{instanceId}/audit": {
         parameters: {
             query?: never;
@@ -504,7 +520,11 @@ export interface paths {
 export type webhooks = Record<string, never>;
 export interface components {
     schemas: {
+        ActionCurlResponse: {
+            curl?: string;
+        };
         ActionRequest: {
+            assignee?: string;
             confirmToken?: string;
             event?: components["schemas"]["EventTrigger"];
             executionId?: string;
@@ -1430,6 +1450,34 @@ export interface operations {
                 };
                 content: {
                     "*/*": components["schemas"]["ActionResult"];
+                };
+            };
+        };
+    };
+    instanceActionCurl: {
+        parameters: {
+            query?: never;
+            header?: never;
+            path: {
+                engineId: string;
+                instanceId: string;
+                verb: string;
+            };
+            cookie?: never;
+        };
+        requestBody?: {
+            content: {
+                "application/json": components["schemas"]["ActionRequest"];
+            };
+        };
+        responses: {
+            /** @description OK */
+            200: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "*/*": components["schemas"]["ActionCurlResponse"];
                 };
             };
         };

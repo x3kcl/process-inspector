@@ -237,6 +237,8 @@ public class CorrectiveActionService {
                 case SUSPEND, ACTIVATE, TERMINATE_DELETE -> instanceTarget(engine, targetId);
                 case EDIT_VARIABLE -> variableTarget(engine, targetId, request);
                 case COMPLETE_TASK -> taskTarget(engine, targetId, required(request.taskId(), "taskId"), request);
+                case REASSIGN_TASK, UNASSIGN_TASK ->
+                    taskAssignTarget(engine, verb, targetId, required(request.taskId(), "taskId"), request);
                 case UNSTICK_EVENT -> executionTarget(engine, targetId, request);
                 case SUSPEND_DEFINITION, ACTIVATE_DEFINITION -> definitionTarget(engine, targetId, request);
             };
@@ -337,6 +339,42 @@ public class CorrectiveActionService {
         return new Target(payload, taskId, "task id", null);
     }
 
+    /**
+     * Reassign / return-to-team restatement. {@code GET /runtime/tasks/{taskId}} returns only
+     * OPEN tasks, so a null here IS the active-task gate — a completed task can no longer have
+     * its assignee changed (R-SAFE: reassignment only on currently active user tasks). The
+     * audit payload records the old and new assignee so the delta is reconstructable.
+     */
+    private Target taskAssignTarget(
+            EngineConfig engine, ActionVerb verb, String instanceId, String taskId, ActionRequest request) {
+        Map<String, Object> task = client.getTask(engine, taskId);
+        if (task == null) {
+            throw new GuardRefusedException(
+                    HttpStatus.NOT_FOUND,
+                    "task-not-active",
+                    "Task " + taskId + " is not an active user task (completed or already gone?) — an assignee can"
+                            + " only be changed on a live task. Nothing happened.");
+        }
+        Object owner = task.get("processInstanceId");
+        if (owner != null && !instanceId.equals(String.valueOf(owner))) {
+            throw new GuardRefusedException(
+                    HttpStatus.BAD_REQUEST,
+                    "task-instance-mismatch",
+                    "Task " + taskId + " belongs to instance " + owner + ", not " + instanceId + ".");
+        }
+        String oldAssignee = task.get("assignee") != null ? String.valueOf(task.get("assignee")) : null;
+        String newAssignee = verb == ActionVerb.REASSIGN_TASK
+                ? required(request.assignee(), "assignee").strip()
+                : null;
+        Map<String, Object> payload = new LinkedHashMap<>();
+        payload.put("schema", verb.path() + "/v1");
+        payload.put("taskId", taskId);
+        payload.put("taskName", task.get("name"));
+        payload.put("oldAssignee", oldAssignee);
+        payload.put("newAssignee", newAssignee);
+        return new Target(payload, taskId, "task id", null);
+    }
+
     private Target executionTarget(EngineConfig engine, String instanceId, ActionRequest request) {
         String executionId = required(request.executionId(), "executionId");
         ActionRequest.EventTrigger event = request.event();
@@ -414,6 +452,10 @@ public class CorrectiveActionService {
                 client.putInstanceVariable(engine, targetId, edit.name(), typed);
             }
             case COMPLETE_TASK -> client.completeTask(engine, request.taskId(), typedVariables(request));
+            case REASSIGN_TASK ->
+                client.setTaskAssignee(
+                        engine, request.taskId(), request.assignee().strip());
+            case UNASSIGN_TASK -> client.setTaskAssignee(engine, request.taskId(), null);
             case UNSTICK_EVENT -> client.executionAction(engine, request.executionId(), eventBody(request.event()));
             case SUSPEND_DEFINITION ->
                 client.suspendOrActivateDefinition(
@@ -477,6 +519,13 @@ public class CorrectiveActionService {
                 "Task " + request.taskId() + " completed on the user's behalf with "
                         + (request.variables() == null ? 0 : request.variables().size())
                         + " variable override(s). A forced task never writes its own outputs.";
+            case REASSIGN_TASK ->
+                "Task " + request.taskId() + " reassigned to '"
+                        + request.assignee().strip() + "' (was " + assigneeWas(target)
+                        + "). The task stays where it is in the flow.";
+            case UNASSIGN_TASK ->
+                "Task " + request.taskId() + " returned to its team — assignee cleared (was " + assigneeWas(target)
+                        + "); it now falls back to its candidate groups.";
             case UNSTICK_EVENT ->
                 capitalize(request.event().type()) + " delivered to execution " + request.executionId()
                         + " — the wait is over.";
@@ -491,6 +540,12 @@ public class CorrectiveActionService {
                                 : "; running instances continue.");
             case ACTIVATE_DEFINITION -> "Definition " + targetId + " activated again.";
         };
+    }
+
+    /** Old-assignee phrasing for the outcome toast — the server-fresh value captured at restatement. */
+    private static String assigneeWas(Target target) {
+        Object old = target.auditPayload().get("oldAssignee");
+        return old != null ? "'" + old + "'" : "unassigned";
     }
 
     /** Not dispatched for sure: the connection itself failed — safe to call it `failed`. */

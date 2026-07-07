@@ -6,7 +6,7 @@ import java.util.Optional;
 /**
  * The M4 single-target verb catalog (SPEC §5 table) with each verb's guard tier (SPEC §6)
  * and role floor (R-SAFE-01 / ARCH §5). Tier-2 flow surgery (change-state, rerun-from,
- * restart) is v1.1; reassign-task and retry-now are deferred out of M4; bulk is M5.
+ * restart) is v1.1; reassign-task / unassign-task landed in v1.x #6; bulk is M5.
  *
  * Role floors follow the ladder: tier 0 + unstick = RESPONDER, tiers 1–2 = OPERATOR,
  * tier 3 = ADMIN. unstick-event is guard-TIER 1 (reason discipline) but role-floor
@@ -20,6 +20,8 @@ public enum ActionVerb {
     UNSTICK_EVENT("unstick-event", 1, Role.RESPONDER, TargetKind.INSTANCE),
     EDIT_VARIABLE("edit-variable", 1, Role.OPERATOR, TargetKind.INSTANCE),
     COMPLETE_TASK("complete-task", 1, Role.OPERATOR, TargetKind.INSTANCE),
+    REASSIGN_TASK("reassign-task", 1, Role.OPERATOR, TargetKind.INSTANCE),
+    UNASSIGN_TASK("unassign-task", 1, Role.OPERATOR, TargetKind.INSTANCE),
     TERMINATE_DELETE("terminate-delete", 3, Role.ADMIN, TargetKind.INSTANCE),
     DELETE_DEADLETTER("delete-deadletter", 3, Role.ADMIN, TargetKind.INSTANCE),
     SUSPEND_DEFINITION("suspend-definition", 3, Role.ADMIN, TargetKind.DEFINITION),

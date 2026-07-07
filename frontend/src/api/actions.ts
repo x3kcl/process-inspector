@@ -11,6 +11,7 @@ import type { components } from './schema'
 
 export type ActionRequest = components['schemas']['ActionRequest']
 export type ActionResult = components['schemas']['ActionResult']
+export type ActionCurlResponse = components['schemas']['ActionCurlResponse']
 
 export class ActionError extends Error {
   readonly problem: ActionProblem
@@ -30,6 +31,26 @@ export async function dispatchInstanceAction(
 ): Promise<ActionResult> {
   const { data, error, response } = await api.POST(
     '/api/instances/{engineId}/{instanceId}/actions/{verb}',
+    { params: { path: { engineId, instanceId, verb } }, body },
+  )
+  if (data === undefined) throw new ActionError(parseActionProblem(response.status, error))
+  return data
+}
+
+/**
+ * "Show as cURL" (v1.x #6). The BFF renders the exact command it would dispatch for this
+ * proposed action — its OWN endpoint, a placeholder credential, never a live token — and the
+ * UI shows it verbatim. Server-computed, never recomputed client-side (same invariant as the
+ * search cURL). Runs the same RBAC door as execute but touches neither engine nor audit.
+ */
+export async function fetchActionCurl(
+  engineId: string,
+  instanceId: string,
+  verb: string,
+  body: ActionRequest,
+): Promise<ActionCurlResponse> {
+  const { data, error, response } = await api.POST(
+    '/api/instances/{engineId}/{instanceId}/actions/{verb}/curl',
     { params: { path: { engineId, instanceId, verb } }, body },
   )
   if (data === undefined) throw new ActionError(parseActionProblem(response.status, error))

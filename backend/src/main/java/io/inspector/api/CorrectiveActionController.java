@@ -1,5 +1,7 @@
 package io.inspector.api;
 
+import io.inspector.action.ActionCurl;
+import io.inspector.action.ActionCurlResponse;
 import io.inspector.action.ActionRequest;
 import io.inspector.action.ActionResult;
 import io.inspector.action.ActionVerb;
@@ -13,6 +15,7 @@ import org.springframework.web.bind.annotation.RequestBody;
 import org.springframework.web.bind.annotation.RequestMapping;
 import org.springframework.web.bind.annotation.RestController;
 import org.springframework.web.server.ResponseStatusException;
+import org.springframework.web.servlet.support.ServletUriComponentsBuilder;
 
 /**
  * The verb-catalog endpoints (ARCH §4): one whitelisted route per target kind — never a
@@ -44,6 +47,29 @@ public class CorrectiveActionController {
                 resolve(verb, ActionVerb.TargetKind.INSTANCE),
                 request != null ? request : ActionRequest.empty(),
                 authentication);
+    }
+
+    /**
+     * "Show as cURL" (v1.x #6): the SERVER-computed command the modal will dispatch, rendered
+     * verbatim by the UI. Same RBAC door as execute ({@code @PreAuthorize}); touches neither
+     * the engine nor the audit log. The command points at THIS BFF action URL (never the
+     * engine) with a placeholder credential — no secret ever crosses the wire.
+     */
+    @PostMapping("/instances/{engineId}/{instanceId}/actions/{verb}/curl")
+    @PreAuthorize("@rbac.canExecute(authentication, #engineId, #verb)")
+    public ActionCurlResponse instanceActionCurl(
+            @PathVariable String engineId,
+            @PathVariable String instanceId,
+            @PathVariable String verb,
+            @RequestBody(required = false) ActionRequest request) {
+        ActionVerb resolved = resolve(verb, ActionVerb.TargetKind.INSTANCE);
+        // The command uses the externally visible EXECUTE url (this request arrived on the
+        // /curl sibling), so a pasted command works from wherever the operator is.
+        String url = ServletUriComponentsBuilder.fromCurrentContextPath()
+                .path("/api/instances/{engineId}/{instanceId}/actions/{verb}")
+                .buildAndExpand(engineId, instanceId, resolved.path())
+                .toUriString();
+        return new ActionCurlResponse(ActionCurl.render(url, request));
     }
 
     @PostMapping("/definitions/{engineId}/{definitionId}/actions/{verb}")

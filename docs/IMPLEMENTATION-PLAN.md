@@ -207,7 +207,8 @@ OPERATIONS.md §8.
 - **Done when:** the demo failed instance is fixed end-to-end (edit variable → retry →
   completes) with the delta toast shown, the reason recorded, and the action visible in the
   instance's Audit tab; a VIEWER sees every action greyed with the right tooltip.
-- **Deferred out of M4:** task reassign (v1.x — not an incident verb).
+- **Deferred out of M4:** task reassign (v1.x — not an incident verb). **Landed in v1.x #6**
+  as `reassign-task` / `unassign-task`.
 - **Backend landed (2026-07-06):** Flyway `V1__init.sql` (audit_entry range-partitioned +
   append-only guard trigger + chain_hash, instance_note, protected_instance) → JPA →
   repositories, `ddl-auto=validate` in every profile; fail-closed audit
@@ -414,7 +415,14 @@ unresolvable with tier 0–1 verbs)
    ▲/△ glyphs** (solid/heavy = failed-only, dashed = sibling-only), and per-activity timing
    bars (failed over sibling, the stalled step called out). Hermetic Playwright smokes in
    `e2e/sibling-diff.spec.ts`; the pure formatting logic is vitest-covered.
-6. Task reassign/return-to-team; "show as cURL" on every action modal.
+6. Task reassign/return-to-team; "show as cURL" on every action modal. **— landed (v1.x #6).**
+   Backend: `reassign-task` / `unassign-task` verbs (tier 1 / OPERATOR) through the existing
+   action dispatcher (audit + RBAC + guard rails reused, not re-implemented); `PUT
+   /runtime/tasks/{taskId}` with `{"assignee":…|null}`; active-task gate via the server-fresh
+   task read. cURL is SERVER-computed (`POST …/actions/{verb}/curl`, placeholder credential,
+   BFF endpoint) and rendered verbatim — NOT a client-side generator (that would break the
+   search-cURL invariant and risk a live token in the DOM). Frontend: Tasks-tab row actions,
+   the shared `TaskAssignModal`, `CurlPreview`. Person-centric task search stays unscheduled.
 7. External-worker job view (capability-gated, 6.8+).
 
 ## v2 — demand-driven

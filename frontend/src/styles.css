@@ -264,6 +264,35 @@ button.primary:disabled {
   word-break: break-all;
   margin: 0;
 }
+
+/* "Show as cURL" toggle inside action modals (v1.x #6) — server-computed, verbatim */
+.curl-preview {
+  margin: 10px 0 4px;
+}
+.curl-toggle {
+  font-size: 12px;
+  padding: 2px 8px;
+}
+.curl-preview-body {
+  margin-top: 6px;
+}
+.curl-preview-head {
+  display: flex;
+  align-items: center;
+  justify-content: space-between;
+  gap: 8px;
+  font-size: 12px;
+  color: #40515e;
+  margin-bottom: 4px;
+}
+.task-actions {
+  white-space: nowrap;
+}
+.row-action {
+  font-size: 12px;
+  padding: 2px 8px;
+  margin-right: 4px;
+}
 .criteria-chips {
   display: flex;
   flex-direction: column;
