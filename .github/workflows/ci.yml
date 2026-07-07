@@ -25,6 +25,8 @@ jobs:
       - name: Spotless check
         working-directory: backend
         run: mvn -B spotless:check
+      - name: Security audit (env-ref secrets doctrine)
+        run: ./scripts/security-audit.sh
 
   unit:
     runs-on: ubuntu-24.04
