@@ -208,3 +208,31 @@ any unlock there is a finding), reason-field content quality.
 **Doc deltas:** SPEC §4 Variables tab + new §4a + §5 rows + §10 (CodeMirror) + §12 v1 scope;
 register R-UXQ-13; ARCH §4 variables row (CAS, full-value-before-edit); IMPLEMENTATION-PLAN
 M3/M4; TEST-SCENARIOS TS-DET-04/15, TS-VERB-06, coverage index.
+
+## Addendum (v3.6) — v1.1 flow-surgery backend: wire evidence (2026-07-06)
+
+Probed live on flowable-rest 6.8 while implementing the change-state guardrails:
+
+- **`GET /repository/process-definitions/{id}/model` cannot type gateways.** The endpoint
+  returns the Jackson-serialized `BpmnModel`; a `parallelGateway` element is
+  field-identical to an `exclusiveGateway` (no type discriminator anywhere in the JSON).
+  It IS authoritative for multi-instance detection: every element entry carries an
+  explicit `loopCharacteristics`, and MI subprocess roots expose their body via a nested
+  `flowElementMap`. **Resolution:** `BpmnStructure` parses BOTH representations of the
+  immutable definition — /model JSON for MI scopes (the mandated source), deployed XML
+  (`/resourcedata`, definition-level, verified 200) for gateway types, element names and
+  the sequence-flow graph — cached in Caffeine per `engineId:definitionId`.
+- **Change-state verified on 6.8**: `POST /runtime/process-instances/{id}/change-state`
+  with `{"cancelActivityIds":["stepOne"],"startActivityIds":["stepTwo"]}` → 200, token
+  observed moved via unfinished historic activities. There is NO dry-run endpoint —
+  preview is a BFF simulation and says so in its `simulationNote` (SPEC §5/§11 honesty).
+- **Historic variable rows** nest the value as `variable:{name,type,value,scope}` with a
+  top-level `taskId`; restart-as-new carries only `scope=global`, non-intrinsic,
+  REST-portable types and reports everything else in `skippedVariables`.
+- **Parallel-branch warning is a heuristic by design**: backward walk over incoming flows,
+  fork-before-join = warn, climbing out of non-MI subprocess scopes. It gates NOTHING
+  (warning only), so false positives on exotic graphs are acceptable; the MI block, which
+  DOES gate, uses the engine's own loopCharacteristics — not the heuristic.
+
+**Doc deltas:** ARCH §4 three flow-surgery rows; IMPLEMENTATION-PLAN v1.1 backend-landed
+status. SPEC §5/§6 already specified the verbs, guardrails and tier — no WHAT change.

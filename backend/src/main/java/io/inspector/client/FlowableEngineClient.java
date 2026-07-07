@@ -706,6 +706,84 @@ public class FlowableEngineClient {
                         .toBodilessEntity());
     }
 
+    /* ---------- v1.1 flow-surgery calls (SPEC §5 tier 2, flowable-rest skill §4) ---------- */
+
+    /**
+     * GET /repository/process-definitions/{id}/model — the engine's parsed BpmnModel as
+     * JSON. Element entries carry {@code loopCharacteristics} explicitly, which is the
+     * authoritative multi-instance signal for the change-state guardrails. (Gateway TYPES
+     * are NOT distinguishable in this serialization — parallel-gateway analysis reads the
+     * deployed XML instead, see {@link #processDefinitionResourceData}.) Null = unknown id.
+     */
+    @SuppressWarnings("unchecked")
+    public Map<String, Object> getProcessDefinitionModel(EngineConfig engine, String definitionId) {
+        try {
+            return guarded(
+                    engine,
+                    () -> client(engine)
+                            .get()
+                            .uri("/repository/process-definitions/{id}/model", definitionId)
+                            .retrieve()
+                            .body(Map.class));
+        } catch (HttpClientErrorException.NotFound e) {
+            return null;
+        }
+    }
+
+    /**
+     * GET /repository/process-definitions/{id}/resourcedata — the deployed BPMN XML by
+     * DEFINITION id (no deployment/resource-name indirection). Used for the structural
+     * analysis the /model JSON cannot express (gateway element types). Null = unknown id.
+     */
+    public String processDefinitionResourceData(EngineConfig engine, String definitionId) {
+        try {
+            return guarded(
+                    engine,
+                    () -> client(engine)
+                            .get()
+                            .uri("/repository/process-definitions/{id}/resourcedata", definitionId)
+                            .retrieve()
+                            .body(String.class));
+        } catch (HttpClientErrorException.NotFound e) {
+            return null;
+        }
+    }
+
+    /**
+     * POST /runtime/process-instances/{id}/change-state — the token move. The body is
+     * EXACTLY the payload the preview showed the operator ({@code cancelActivityIds} /
+     * {@code startActivityIds}); the service audits it verbatim before dispatch.
+     */
+    public void changeActivityState(EngineConfig engine, String processInstanceId, Map<String, Object> body) {
+        mutate(
+                engine,
+                () -> writeClient(engine)
+                        .post()
+                        .uri("/runtime/process-instances/{id}/change-state", processInstanceId)
+                        .contentType(MediaType.APPLICATION_JSON)
+                        .body(body)
+                        .retrieve()
+                        .toBodilessEntity());
+    }
+
+    /**
+     * POST /runtime/process-instances — start an instance (restart-as-new). The body pins
+     * either {@code processDefinitionId} (version pinned) or {@code processDefinitionKey}
+     * (latest) — never both. Returns the engine's instance representation (the new id).
+     */
+    @SuppressWarnings("unchecked")
+    public Map<String, Object> startProcessInstance(EngineConfig engine, Map<String, Object> body) {
+        return guarded(
+                engine,
+                () -> writeClient(engine)
+                        .post()
+                        .uri("/runtime/process-instances")
+                        .contentType(MediaType.APPLICATION_JSON)
+                        .body(body)
+                        .retrieve()
+                        .body(Map.class));
+    }
+
     private void mutate(EngineConfig engine, Supplier<?> call) {
         guarded(engine, call);
     }

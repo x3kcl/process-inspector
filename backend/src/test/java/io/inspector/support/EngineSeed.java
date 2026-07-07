@@ -29,6 +29,7 @@ public final class EngineSeed {
     public static final Path PARENT_BPMN = Path.of("..", "docker", "processes", "demo-parent.bpmn20.xml");
     public static final Path USER_TASK_BPMN = Path.of("..", "docker", "processes", "demo-user-task.bpmn20.xml");
     public static final Path ORDER_BPMN = Path.of("..", "docker", "processes", "demo-order.bpmn20.xml");
+    public static final Path FLOW_SURGERY_BPMN = Path.of("..", "docker", "processes", "demo-flow-surgery.bpmn20.xml");
 
     private EngineSeed() {}
 

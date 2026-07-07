@@ -1,0 +1,135 @@
+<?xml version="1.0" encoding="UTF-8"?>
+<definitions xmlns="http://www.omg.org/spec/BPMN/20100524/MODEL"
+             xmlns:xsi="http://www.w3.org/2001/XMLSchema-instance"
+             xmlns:flowable="http://flowable.org/bpmn"
+             xmlns:bpmndi="http://www.omg.org/spec/BPMN/20100524/DI"
+             xmlns:omgdc="http://www.omg.org/spec/DD/20100524/DC"
+             xmlns:omgdi="http://www.omg.org/spec/DD/20100524/DI"
+             typeLanguage="http://www.w3.org/2001/XMLSchema"
+             expressionLanguage="http://www.w3.org/1999/XPath"
+             targetNamespace="http://inspector.io/demo">
+
+  <!-- FIX-PROC (v1.1 flow surgery): the change-state guardrail fixture. A plain user-task
+       runway (stepOne → stepTwo) for legal token moves, a parallel fork/join whose branch
+       tasks trigger the sibling-token warning, and a sequential multi-instance subprocess
+       whose body (miTask) the BFF must refuse to jump into or out of (422). Every user
+       task is assigned to rest-admin so reassign/complete demos have something to grab. -->
+  <process id="demoFlowSurgery" name="Demo Flow Surgery" isExecutable="true">
+    <startEvent id="start"/>
+    <sequenceFlow id="flowStart" sourceRef="start" targetRef="stepOne"/>
+    <userTask id="stepOne" name="Step one" flowable:assignee="rest-admin"/>
+    <sequenceFlow id="flowOneTwo" sourceRef="stepOne" targetRef="stepTwo"/>
+    <userTask id="stepTwo" name="Step two" flowable:assignee="rest-admin"/>
+    <sequenceFlow id="flowTwoFork" sourceRef="stepTwo" targetRef="forkGw"/>
+    <parallelGateway id="forkGw"/>
+    <sequenceFlow id="flowForkA" sourceRef="forkGw" targetRef="branchA"/>
+    <sequenceFlow id="flowForkB" sourceRef="forkGw" targetRef="branchB"/>
+    <userTask id="branchA" name="Branch A" flowable:assignee="rest-admin"/>
+    <userTask id="branchB" name="Branch B" flowable:assignee="rest-admin"/>
+    <sequenceFlow id="flowAJoin" sourceRef="branchA" targetRef="joinGw"/>
+    <sequenceFlow id="flowBJoin" sourceRef="branchB" targetRef="joinGw"/>
+    <parallelGateway id="joinGw"/>
+    <sequenceFlow id="flowJoinMi" sourceRef="joinGw" targetRef="miSub"/>
+    <subProcess id="miSub" name="MI body">
+      <multiInstanceLoopCharacteristics isSequential="true">
+        <loopCardinality>2</loopCardinality>
+      </multiInstanceLoopCharacteristics>
+      <startEvent id="miStart"/>
+      <sequenceFlow id="flowMiStart" sourceRef="miStart" targetRef="miTask"/>
+      <userTask id="miTask" name="MI task" flowable:assignee="rest-admin"/>
+      <sequenceFlow id="flowMiEnd" sourceRef="miTask" targetRef="miEnd"/>
+      <endEvent id="miEnd"/>
+    </subProcess>
+    <sequenceFlow id="flowMiOut" sourceRef="miSub" targetRef="end"/>
+    <endEvent id="end"/>
+  </process>
+
+  <bpmndi:BPMNDiagram id="BPMNDiagram_demoFlowSurgery">
+    <bpmndi:BPMNPlane id="BPMNPlane_demoFlowSurgery" bpmnElement="demoFlowSurgery">
+      <bpmndi:BPMNShape id="BPMNShape_start" bpmnElement="start">
+        <omgdc:Bounds x="100" y="185" width="30" height="30"/>
+      </bpmndi:BPMNShape>
+      <bpmndi:BPMNShape id="BPMNShape_stepOne" bpmnElement="stepOne">
+        <omgdc:Bounds x="180" y="170" width="100" height="60"/>
+      </bpmndi:BPMNShape>
+      <bpmndi:BPMNShape id="BPMNShape_stepTwo" bpmnElement="stepTwo">
+        <omgdc:Bounds x="330" y="170" width="100" height="60"/>
+      </bpmndi:BPMNShape>
+      <bpmndi:BPMNShape id="BPMNShape_forkGw" bpmnElement="forkGw">
+        <omgdc:Bounds x="480" y="180" width="40" height="40"/>
+      </bpmndi:BPMNShape>
+      <bpmndi:BPMNShape id="BPMNShape_branchA" bpmnElement="branchA">
+        <omgdc:Bounds x="570" y="90" width="100" height="60"/>
+      </bpmndi:BPMNShape>
+      <bpmndi:BPMNShape id="BPMNShape_branchB" bpmnElement="branchB">
+        <omgdc:Bounds x="570" y="250" width="100" height="60"/>
+      </bpmndi:BPMNShape>
+      <bpmndi:BPMNShape id="BPMNShape_joinGw" bpmnElement="joinGw">
+        <omgdc:Bounds x="720" y="180" width="40" height="40"/>
+      </bpmndi:BPMNShape>
+      <bpmndi:BPMNShape id="BPMNShape_miSub" bpmnElement="miSub" isExpanded="true">
+        <omgdc:Bounds x="810" y="130" width="280" height="140"/>
+      </bpmndi:BPMNShape>
+      <bpmndi:BPMNShape id="BPMNShape_miStart" bpmnElement="miStart">
+        <omgdc:Bounds x="830" y="185" width="30" height="30"/>
+      </bpmndi:BPMNShape>
+      <bpmndi:BPMNShape id="BPMNShape_miTask" bpmnElement="miTask">
+        <omgdc:Bounds x="900" y="170" width="100" height="60"/>
+      </bpmndi:BPMNShape>
+      <bpmndi:BPMNShape id="BPMNShape_miEnd" bpmnElement="miEnd">
+        <omgdc:Bounds x="1040" y="186" width="28" height="28"/>
+      </bpmndi:BPMNShape>
+      <bpmndi:BPMNShape id="BPMNShape_end" bpmnElement="end">
+        <omgdc:Bounds x="1130" y="186" width="28" height="28"/>
+      </bpmndi:BPMNShape>
+      <bpmndi:BPMNEdge id="BPMNEdge_flowStart" bpmnElement="flowStart">
+        <omgdi:waypoint x="130" y="200"/>
+        <omgdi:waypoint x="180" y="200"/>
+      </bpmndi:BPMNEdge>
+      <bpmndi:BPMNEdge id="BPMNEdge_flowOneTwo" bpmnElement="flowOneTwo">
+        <omgdi:waypoint x="280" y="200"/>
+        <omgdi:waypoint x="330" y="200"/>
+      </bpmndi:BPMNEdge>
+      <bpmndi:BPMNEdge id="BPMNEdge_flowTwoFork" bpmnElement="flowTwoFork">
+        <omgdi:waypoint x="430" y="200"/>
+        <omgdi:waypoint x="480" y="200"/>
+      </bpmndi:BPMNEdge>
+      <bpmndi:BPMNEdge id="BPMNEdge_flowForkA" bpmnElement="flowForkA">
+        <omgdi:waypoint x="500" y="180"/>
+        <omgdi:waypoint x="500" y="120"/>
+        <omgdi:waypoint x="570" y="120"/>
+      </bpmndi:BPMNEdge>
+      <bpmndi:BPMNEdge id="BPMNEdge_flowForkB" bpmnElement="flowForkB">
+        <omgdi:waypoint x="500" y="220"/>
+        <omgdi:waypoint x="500" y="280"/>
+        <omgdi:waypoint x="570" y="280"/>
+      </bpmndi:BPMNEdge>
+      <bpmndi:BPMNEdge id="BPMNEdge_flowAJoin" bpmnElement="flowAJoin">
+        <omgdi:waypoint x="670" y="120"/>
+        <omgdi:waypoint x="740" y="120"/>
+        <omgdi:waypoint x="740" y="180"/>
+      </bpmndi:BPMNEdge>
+      <bpmndi:BPMNEdge id="BPMNEdge_flowBJoin" bpmnElement="flowBJoin">
+        <omgdi:waypoint x="670" y="280"/>
+        <omgdi:waypoint x="740" y="280"/>
+        <omgdi:waypoint x="740" y="220"/>
+      </bpmndi:BPMNEdge>
+      <bpmndi:BPMNEdge id="BPMNEdge_flowJoinMi" bpmnElement="flowJoinMi">
+        <omgdi:waypoint x="760" y="200"/>
+        <omgdi:waypoint x="810" y="200"/>
+      </bpmndi:BPMNEdge>
+      <bpmndi:BPMNEdge id="BPMNEdge_flowMiStart" bpmnElement="flowMiStart">
+        <omgdi:waypoint x="860" y="200"/>
+        <omgdi:waypoint x="900" y="200"/>
+      </bpmndi:BPMNEdge>
+      <bpmndi:BPMNEdge id="BPMNEdge_flowMiEnd" bpmnElement="flowMiEnd">
+        <omgdi:waypoint x="1000" y="200"/>
+        <omgdi:waypoint x="1040" y="200"/>
+      </bpmndi:BPMNEdge>
+      <bpmndi:BPMNEdge id="BPMNEdge_flowMiOut" bpmnElement="flowMiOut">
+        <omgdi:waypoint x="1090" y="200"/>
+        <omgdi:waypoint x="1130" y="200"/>
+      </bpmndi:BPMNEdge>
+    </bpmndi:BPMNPlane>
+  </bpmndi:BPMNDiagram>
+</definitions>

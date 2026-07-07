@@ -164,6 +164,38 @@ export interface paths {
         patch?: never;
         trace?: never;
     };
+    "/api/instances/{engineId}/{instanceId}/change-state/execute": {
+        parameters: {
+            query?: never;
+            header?: never;
+            path?: never;
+            cookie?: never;
+        };
+        get?: never;
+        put?: never;
+        post: operations["executeChangeState"];
+        delete?: never;
+        options?: never;
+        head?: never;
+        patch?: never;
+        trace?: never;
+    };
+    "/api/instances/{engineId}/{instanceId}/change-state/preview": {
+        parameters: {
+            query?: never;
+            header?: never;
+            path?: never;
+            cookie?: never;
+        };
+        get?: never;
+        put?: never;
+        post: operations["previewChangeState"];
+        delete?: never;
+        options?: never;
+        head?: never;
+        patch?: never;
+        trace?: never;
+    };
     "/api/instances/{engineId}/{instanceId}/diagram": {
         parameters: {
             query?: never;
@@ -238,6 +270,22 @@ export interface paths {
         get: operations["list"];
         put?: never;
         post: operations["create"];
+        delete?: never;
+        options?: never;
+        head?: never;
+        patch?: never;
+        trace?: never;
+    };
+    "/api/instances/{engineId}/{instanceId}/restart": {
+        parameters: {
+            query?: never;
+            header?: never;
+            path?: never;
+            cookie?: never;
+        };
+        get?: never;
+        put?: never;
+        post: operations["restart"];
         delete?: never;
         options?: never;
         head?: never;
@@ -464,6 +512,25 @@ export interface components {
             engineId?: string;
             instanceId?: string;
             jobId?: string;
+        };
+        ChangeStatePreview: {
+            engineId?: string;
+            enginePath?: string;
+            method?: string;
+            payload?: {
+                [key: string]: unknown;
+            };
+            processDefinitionId?: string;
+            processInstanceId?: string;
+            simulationNote?: string;
+            summary?: string;
+            warnings?: components["schemas"]["Warning"][];
+        };
+        ChangeStateRequest: {
+            reason?: string;
+            sourceActivityIds?: string[];
+            targetActivityIds?: string[];
+            ticketId?: string;
         };
         CreateNote: {
             body: string;
@@ -721,6 +788,26 @@ export interface components {
             };
             query?: string;
         };
+        RestartInstanceRequest: {
+            pinDefinitionVersion?: boolean;
+            reason?: string;
+            ticketId?: string;
+        };
+        RestartInstanceResult: {
+            /** Format: uuid */
+            auditId?: string;
+            carriedVariables?: string[];
+            correlationId?: string;
+            deltaStatement?: string;
+            /** Format: int32 */
+            engineHttpStatus?: number;
+            newProcessInstanceId?: string;
+            outcome?: string;
+            processDefinitionId?: string;
+            skippedVariables?: {
+                [key: string]: string;
+            };
+        };
         SearchRequest: {
             businessKey?: string;
             businessKeyLike?: string;
@@ -829,6 +916,10 @@ export interface components {
             dueDate?: string;
             kind?: string;
             name?: string;
+        };
+        Warning: {
+            code?: string;
+            message?: string;
         };
         WhyStuck: {
             /** Format: int32 */
@@ -1114,6 +1205,60 @@ export interface operations {
             };
         };
     };
+    executeChangeState: {
+        parameters: {
+            query?: never;
+            header?: never;
+            path: {
+                engineId: string;
+                instanceId: string;
+            };
+            cookie?: never;
+        };
+        requestBody: {
+            content: {
+                "application/json": components["schemas"]["ChangeStateRequest"];
+            };
+        };
+        responses: {
+            /** @description OK */
+            200: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "*/*": components["schemas"]["ActionResult"];
+                };
+            };
+        };
+    };
+    previewChangeState: {
+        parameters: {
+            query?: never;
+            header?: never;
+            path: {
+                engineId: string;
+                instanceId: string;
+            };
+            cookie?: never;
+        };
+        requestBody: {
+            content: {
+                "application/json": components["schemas"]["ChangeStateRequest"];
+            };
+        };
+        responses: {
+            /** @description OK */
+            200: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "*/*": components["schemas"]["ChangeStatePreview"];
+                };
+            };
+        };
+    };
     diagram: {
         parameters: {
             query?: never;
@@ -1255,6 +1400,33 @@ export interface operations {
                 };
                 content: {
                     "*/*": components["schemas"]["NoteDto"];
+                };
+            };
+        };
+    };
+    restart: {
+        parameters: {
+            query?: never;
+            header?: never;
+            path: {
+                engineId: string;
+                instanceId: string;
+            };
+            cookie?: never;
+        };
+        requestBody?: {
+            content: {
+                "application/json": components["schemas"]["RestartInstanceRequest"];
+            };
+        };
+        responses: {
+            /** @description OK */
+            200: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "*/*": components["schemas"]["RestartInstanceResult"];
                 };
             };
         };
