@@ -637,6 +637,9 @@ button.primary:disabled {
   overflow: auto;
   display: flex;
   flex-direction: column;
+  /* Clear the position:fixed Operations drawer (.ops-drawer) so it never occludes the last
+     rows of a data table — e.g. the Compare tab's per-activity timing (usability loop). */
+  padding-bottom: 56px;
 }
 .vitals {
   padding: 10px 16px;

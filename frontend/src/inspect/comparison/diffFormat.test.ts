@@ -1,9 +1,10 @@
 import { describe, expect, it } from 'vitest'
-import type { TimingDelta, VariableDto } from '../../api/model'
+import type { PathDivergence, TimingDelta, VariableDto } from '../../api/model'
 import {
   barWidthPct,
   changeGlyph,
   deltaPhrase,
+  divergenceMarkers,
   isDivergent,
   renderValue,
   timingScale,
@@ -24,6 +25,23 @@ const timing = (over: Partial<TimingDelta>): TimingDelta => ({
   siblingOccurrences: 1,
   subjectUnfinished: false,
   ...over,
+})
+
+describe('divergenceMarkers (Option B: one diagram carries the ▲/△ overlay)', () => {
+  it('projects the path divergence onto the shared DiagramMarkers fields', () => {
+    const path: PathDivergence = { onlyInSubject: ['charge'], onlyInSibling: ['ship', 'notify'] }
+    expect(divergenceMarkers(path)).toEqual({
+      subjectOnlyActivityIds: ['charge'],
+      siblingOnlyActivityIds: ['ship', 'notify'],
+    })
+  })
+
+  it('is empty for an undefined path so the top diagram shows no stray divergence markers', () => {
+    expect(divergenceMarkers(undefined)).toEqual({
+      subjectOnlyActivityIds: [],
+      siblingOnlyActivityIds: [],
+    })
+  })
 })
 
 describe('sibling-diff formatting', () => {

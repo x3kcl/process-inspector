@@ -1,7 +1,26 @@
 // Pure presentation helpers for the sibling-diff Comparison view (SPEC §5.2). Kept out of
 // the components so the semantics — glyph mapping (never hue-only), value rendering, timing
 // bar scaling — are unit-testable without a DOM.
-import type { TimingDelta, VariableChange, VariableDto } from '../../api/model'
+import type { PathDivergence, TimingDelta, VariableChange, VariableDto } from '../../api/model'
+
+/** The subset of DiagramMarkers that the sibling-diff overlay drives (SPEC §5.2). */
+export interface DivergenceMarkerSet {
+  subjectOnlyActivityIds: string[]
+  siblingOnlyActivityIds: string[]
+}
+
+/**
+ * Project a path divergence onto the shared DiagramMarkers fields so the ONE always-on
+ * instance diagram carries the ▲/△ overlay — no second bpmn canvas in the Compare tab
+ * (usability loop 2026-07-07, Option B). An absent path yields empty sets, so the top
+ * diagram shows no stray divergence markers when there is nothing to compare.
+ */
+export function divergenceMarkers(path: PathDivergence | undefined): DivergenceMarkerSet {
+  return {
+    subjectOnlyActivityIds: path?.onlyInSubject ?? [],
+    siblingOnlyActivityIds: path?.onlyInSibling ?? [],
+  }
+}
 
 /**
  * A stable, non-colour glyph per change kind (SPEC §10a: shape/glyph carries the meaning,

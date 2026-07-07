@@ -8,6 +8,7 @@ import { EnvBadge } from '../components/EnvBadge'
 import { StatusChip } from '../components/StatusChip'
 import { formatDateTime, formatSeconds } from '../lib/format'
 import { DiagramCanvas } from './DiagramCanvas'
+import type { DivergenceMarkerSet } from './comparison/diffFormat'
 import { InstanceActions } from './InstanceActions'
 import type { TabId } from './tabs'
 import { DEFAULT_TAB, TAB_IDS, TAB_LABELS, isTabId } from './tabs'
@@ -33,6 +34,11 @@ export interface TabProps {
   selectedActivityId?: string
   /** Tabs report a selection back ("show on diagram") through this. */
   onShowOnDiagram?: (activityId: string) => void
+  /**
+   * Sibling-diff (SPEC §5.2, Option B): the Compare tab reports its path divergence up so the
+   * single top diagram renders the ▲/△ overlay. undefined clears it. Ignored by other tabs.
+   */
+  onDivergence?: (markers: DivergenceMarkerSet | undefined) => void
 }
 
 /**
@@ -79,6 +85,11 @@ export function InspectPage() {
     setSelectedActivityId(activityId)
     diagramSectionRef.current?.scrollIntoView({ behavior: 'smooth', block: 'nearest' })
   }, [])
+
+  // Sibling-diff (SPEC §5.2, Option B): the Compare tab reports its path divergence UP so the
+  // single always-on diagram carries the ▲/△ overlay — no second bpmn canvas. Cleared on the
+  // tab's unmount, so leaving Compare reverts the diagram to its plain instance markers.
+  const [divergence, setDivergence] = useState<DivergenceMarkerSet>()
 
   const ActiveTab = TAB_COMPONENTS[tab]
 
@@ -145,6 +156,7 @@ export function InspectPage() {
           instanceId={instanceId}
           selectedActivityId={selectedActivityId}
           onSelect={onDiagramSelect}
+          divergence={divergence}
         />
       </section>
 
@@ -172,6 +184,7 @@ export function InspectPage() {
             instanceId={instanceId}
             selectedActivityId={selectedActivityId}
             onShowOnDiagram={onShowOnDiagram}
+            onDivergence={setDivergence}
           />
         </Suspense>
       </section>
@@ -311,20 +324,26 @@ function DiagramSlot({
   instanceId,
   selectedActivityId,
   onSelect,
+  divergence,
 }: {
   engineId: string
   instanceId: string
   selectedActivityId?: string
   onSelect: (activityId: string, isDeadLetter: boolean) => void
+  /** Present only while the Compare tab is active — overlays ▲/△ on this one canvas. */
+  divergence?: DivergenceMarkerSet
 }) {
   const diagram = useInstanceDiagram(engineId, instanceId)
-  // One stable markers object per data change — DiagramCanvas re-imports on change.
+  // One stable markers object per data change — DiagramCanvas re-imports on change. When the
+  // Compare tab is active, the sibling-diff overlay rides the SAME canvas (Option B).
   const markers = useMemo(
     () => ({
       activeActivityIds: diagram.data?.activeActivityIds ?? [],
       deadLetterActivityIds: diagram.data?.deadLetterActivityIds ?? [],
+      subjectOnlyActivityIds: divergence?.subjectOnlyActivityIds ?? [],
+      siblingOnlyActivityIds: divergence?.siblingOnlyActivityIds ?? [],
     }),
-    [diagram.data],
+    [diagram.data, divergence],
   )
   const handleSelect = useCallback(
     (activityId: string) => {

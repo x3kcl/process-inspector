@@ -522,6 +522,15 @@ A cross-definition sibling (manually picked) still diffs, flagged as a definitio
 the comparison is never silently misleading. The second-most-asked 3am question after "why is
 it stuck" gets a one-click answer.
 
+Honesty on failure (R-SEM-12): the empty "no comparable sibling exists" state is shown **only**
+when the auto-suggest query succeeds and the backend explicitly answers *found = false*. A
+failed auto-suggest query — a network reject, a downed proxy, a 5xx, or a missing route — is
+never allowed to masquerade as that empty state; it surfaces an explicit fetch-error banner
+that says so, so an operator never mistakes an unreachable engine for "this failure had no
+known-good precedent". A manual sibling id that the engine has no record of (400/404) is
+distinguished in turn from an infra failure: the operator is told the id was not found on this
+engine (a fixable input), not that the diff itself broke.
+
 ## 6. The guard ladder
 
 | Tier | Guard |
