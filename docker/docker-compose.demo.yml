@@ -93,7 +93,11 @@ services:
     restart: unless-stopped
     labels:
       - "traefik.enable=true"
-      - "traefik.docker.network=discovery"
+      # The frontend is on TWO networks (internal + the proxy net), so Traefik must be told
+      # the EXACT real network name to reach nginx on — the hp04 proxy net is `docker_discovery`
+      # (the `docker` compose project's `discovery` network). A single-network service can omit
+      # this; a multi-network one cannot, or Traefik may pick the unreachable internal IP.
+      - "traefik.docker.network=docker_discovery"
       - "traefik.http.services.process-inspector.loadbalancer.server.port=80"
       ### Routing
       - "traefik.http.routers.process-inspector.entrypoints=websecure"
@@ -142,6 +146,9 @@ volumes:
 networks:
   internal:
     driver: bridge
-  # The shared Traefik network on hp04 — created outside this stack.
+  # The shared Traefik proxy network, created outside this stack. On hp04 its real Docker
+  # name is `docker_discovery` (owned by the `docker` compose project); we attach by that
+  # name but keep the local alias `discovery`.
   discovery:
     external: true
+    name: docker_discovery

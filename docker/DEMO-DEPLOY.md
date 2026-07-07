@@ -5,18 +5,21 @@ serves the SPA and reverse-proxies `/api` to the BFF, published as one HTTPS ori
 the existing hp04 Traefik.
 
 ```
-Traefik ──(discovery net, TLS)──▶ frontend (nginx: SPA + /api proxy) ──▶ backend (BFF) ──▶ engine-a / engine-b
+Traefik ──(docker_discovery, TLS)──▶ frontend (nginx: SPA + /api proxy) ──▶ backend (BFF) ──▶ engine-a / engine-b
                                                                             └──▶ postgres
 seed (one-shot): deploys the demo BPMN + starts one instance per status arc, then exits.
 ```
 
 Only `frontend` is exposed; the BFF, engines and DB have no host ports and never touch the
-`discovery` network.
+proxy network. That proxy network is the hp04 Traefik net, whose real Docker name is
+**`docker_discovery`** (the compose alias `discovery` maps to it via `name:`). Because the
+frontend sits on two networks, the `traefik.docker.network=docker_discovery` label is
+required so Traefik reaches nginx on the right IP.
 
 ## Deploy / update
 
 ```bash
-# from the repo root, on the hp04 host (the external `discovery` network must already exist)
+# from the repo root, on the hp04 host (the external `docker_discovery` net must already exist)
 docker compose -f docker/docker-compose.demo.yml --env-file docker/.env.demo up -d --build
 ```
 
@@ -58,8 +61,8 @@ docker compose -f docker/docker-compose.demo.yml logs backend --tail=40   # bind
 docker compose -f docker/docker-compose.demo.yml exec frontend \
   wget -qO- http://backend:8080/api/engines                 # 401 body = nginx→BFF path OK
 
-# Traefik must share the discovery network with the frontend container:
-docker network inspect discovery -f '{{range .Containers}}{{.Name}} {{end}}'
+# Traefik must share the proxy network with the frontend container:
+docker network inspect docker_discovery -f '{{range .Containers}}{{.Name}} {{end}}'
 #  → must list BOTH the traefik container AND process-inspector-demo-frontend-1
 ```
 
