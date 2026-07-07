@@ -933,6 +933,8 @@ export interface components {
             dlqScan?: string;
             error?: string;
             ok?: boolean;
+            /** Format: int32 */
+            outOfScopeDeadletters?: number;
         };
         ProcessInstanceRow: {
             businessKey?: string;

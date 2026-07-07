@@ -9,6 +9,13 @@ export interface TriageHonesty {
   failedEngines: { engineId: string; error: string }[]
   /** Engines whose failure-lane scan hit the cap — error-GROUP counts are lower bounds. */
   truncatedScans: { engineId: string; marker: string }[]
+  /**
+   * Engines whose dead-letter lane holds jobs from ANOTHER engine sharing the job tables
+   * (CMMN): counted, not counted as process failures. Reconciles the health strip's raw
+   * dead-letter count with the process-scoped FAILED count. Only present on engines new
+   * enough to discriminate scope (6.8+); a null/zero count contributes nothing.
+   */
+  outOfScope: { engineId: string; count: number }[]
 }
 
 export function deriveHonesty(
@@ -16,16 +23,22 @@ export function deriveHonesty(
 ): TriageHonesty {
   const failedEngines: TriageHonesty['failedEngines'] = []
   const truncatedScans: TriageHonesty['truncatedScans'] = []
+  const outOfScope: TriageHonesty['outOfScope'] = []
   for (const [engineId, result] of Object.entries(perEngine ?? {})) {
     if (result.ok !== true) {
       failedEngines.push({ engineId, error: result.error ?? 'aggregation failed' })
     } else if (result.dlqScan !== undefined && result.dlqScan.startsWith('truncated')) {
       truncatedScans.push({ engineId, marker: result.dlqScan })
     }
+    // Independent of truncation: a healthy engine can still project out-of-scope orphans.
+    if (result.ok === true && (result.outOfScopeDeadletters ?? 0) > 0) {
+      outOfScope.push({ engineId, count: result.outOfScopeDeadletters ?? 0 })
+    }
   }
   failedEngines.sort((a, b) => a.engineId.localeCompare(b.engineId))
   truncatedScans.sort((a, b) => a.engineId.localeCompare(b.engineId))
-  return { failedEngines, truncatedScans }
+  outOfScope.sort((a, b) => a.engineId.localeCompare(b.engineId))
+  return { failedEngines, truncatedScans, outOfScope }
 }
 
 /** Status tiles are lower bounds only when an engine is missing from the aggregate. */

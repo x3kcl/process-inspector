@@ -37,4 +37,36 @@ describe('deriveHonesty', () => {
     const honesty = deriveHonesty(undefined)
     expect(statusCountsAreLowerBound(honesty)).toBe(false)
   })
+
+  it('collects out-of-scope dead-letters as a distinct, non-lower-bound note', () => {
+    const honesty = deriveHonesty({
+      b: { ok: true, dlqScan: 'complete', outOfScopeDeadletters: 3 },
+      a: { ok: true, outOfScopeDeadletters: 1 },
+    })
+    // sorted by engineId, independent of the truncation/failed channels
+    expect(honesty.outOfScope).toEqual([
+      { engineId: 'a', count: 1 },
+      { engineId: 'b', count: 3 },
+    ])
+    expect(statusCountsAreLowerBound(honesty)).toBe(false)
+    expect(groupCountsAreLowerBound(honesty)).toBe(false)
+  })
+
+  it('omits zero, null (unknown/pre-6.8) and failed-engine out-of-scope counts', () => {
+    const honesty = deriveHonesty({
+      a: { ok: true, outOfScopeDeadletters: 0 },
+      b: { ok: true, outOfScopeDeadletters: null as unknown as undefined },
+      c: { ok: true },
+      d: { ok: false, error: 'down', outOfScopeDeadletters: 9 },
+    })
+    expect(honesty.outOfScope).toEqual([])
+  })
+
+  it('reports out-of-scope even while the same engine scan is truncated', () => {
+    const honesty = deriveHonesty({
+      a: { ok: true, dlqScan: 'truncated@500', outOfScopeDeadletters: 2 },
+    })
+    expect(honesty.truncatedScans).toEqual([{ engineId: 'a', marker: 'truncated@500' }])
+    expect(honesty.outOfScope).toEqual([{ engineId: 'a', count: 2 }])
+  })
 })

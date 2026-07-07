@@ -346,6 +346,29 @@ button.primary:disabled {
   padding: 0 6px;
   cursor: pointer;
 }
+/* Out-of-scope dead-letters: an informational reconciliation note, deliberately NOT the
+   amber lower-bound warning (the counts shown ARE exact) — SPEC §10a: a text token
+   ("out of scope") + border carry the meaning, never colour alone. */
+.scope-note {
+  display: flex;
+  flex-direction: column;
+  gap: 2px;
+  background: #eef2f5;
+  color: #40515e;
+  padding: 6px 10px;
+  font-size: 13px;
+  border-bottom: 1px solid #d2dae2;
+}
+.scope-badge {
+  border: 1px solid #8395a7;
+  border-radius: 8px;
+  padding: 0 6px;
+  font-size: 11px;
+  text-transform: uppercase;
+  letter-spacing: 0.03em;
+  color: #40515e;
+  background: #f4f6f8;
+}
 .error-banner {
   background: #f8d7da;
   color: #721c24;

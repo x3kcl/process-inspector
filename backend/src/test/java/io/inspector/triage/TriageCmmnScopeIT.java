@@ -82,10 +82,11 @@ class TriageCmmnScopeIT {
         EngineSeed.deployCmmnIfMissing(cmmn, CASE_KEY, EngineSeed.FAILING_CASE_CMMN);
         caseInstanceId = EngineSeed.startFailingCase(cmmn, CASE_KEY);
 
-        // The async service task dead-letters fast (R1/PT1S). Await the ORPHAN as the
-        // process-api projection renders it — engine truth, never a sleep.
-        await().atMost(30, TimeUnit.SECONDS)
-                .pollInterval(1, TimeUnit.SECONDS)
+        // The async service task dead-letters once its DEFAULT retry budget exhausts (6.8's
+        // CMMN engine ignores failedJobRetryTimeCycle — ~30-40s, measured live). Await the
+        // ORPHAN as the process-api projection renders it — engine truth, never a sleep.
+        await().atMost(75, TimeUnit.SECONDS)
+                .pollInterval(2, TimeUnit.SECONDS)
                 .until(() -> EngineSeed.outOfScopeDeadletterPresent(engine, NEEDLE));
 
         // The health strip (and the scopeType capability the count is gated on) comes from

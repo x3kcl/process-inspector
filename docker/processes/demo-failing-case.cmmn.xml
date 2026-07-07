@@ -1,11 +1,13 @@
 <?xml version="1.0" encoding="UTF-8"?>
 <!--
   Deliberately-failing CMMN case (engine-harness / cmmn-wire-shape-spike): an async Java
-  service task referencing a missing bean dead-letters within seconds (R1/PT1S), and a
-  blocking human task keeps the case ACTIVE so the dead-letter job persists. Deployed over
-  the cmmn-api ONLY as an out-of-scope fixture: its dead-letter job shows in the shared
+  service task referencing a missing bean dead-letters once its retry budget is exhausted,
+  and a blocking human task keeps the case ACTIVE so the dead-letter job persists. Deployed
+  over the cmmn-api ONLY as an out-of-scope fixture: its dead-letter job shows in the shared
   process-api /management/deadletter-jobs projection with a null processInstanceId — the
   exact orphan the Stage-0 `outOfScopeDeadletters` count exists to surface. Flowable 6.8+.
+  NOTE: the failedJobRetryTimeCycle hint below is IGNORED by Flowable 6.8's CMMN engine
+  (proven live) — the case dead-letters via the DEFAULT 3-retry budget (~30-40s), not R1.
 -->
 <definitions xmlns="http://www.omg.org/spec/CMMN/20151109/MODEL"
              xmlns:flowable="http://flowable.org/cmmn"

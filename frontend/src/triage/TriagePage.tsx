@@ -90,6 +90,18 @@ export function TriagePage() {
           ))}
         </div>
       )}
+      {honesty.outOfScope.length > 0 && (
+        <div className="scope-note" role="note" aria-label="Out-of-scope dead-letters">
+          {honesty.outOfScope.map((scope) => (
+            <span key={scope.engineId}>
+              {scope.engineId}: <span className="scope-badge">out of scope</span>{' '}
+              {formatCount(scope.count)} dead-letter{scope.count === 1 ? '' : 's'} belong to
+              another engine sharing this one&apos;s job tables (CMMN) — surfaced for
+              reconciliation, not counted as process failures.
+            </span>
+          ))}
+        </div>
+      )}
 
       <StatusCounts counts={data?.statusCounts} lowerBound={statusCountsAreLowerBound(honesty)} />
 

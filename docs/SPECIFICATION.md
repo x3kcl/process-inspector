@@ -165,7 +165,13 @@ subprocess roll-up ("FAILED — in subprocess *chargePayment*", which **deep-lin
 failing child's Errors & Jobs tab** — the retry lives on the child; the parent must never be
 a dead end, R-UXQ-11). Search filters operate on flag predicates. CMMN-scoped jobs (null
 `processInstanceId`) are filtered out of every join; row DTOs carry `scopeType` from day one
-for future CMMN support. Multi-tenant engines thread `tenantId` through **every** query leg.
+for future CMMN support. The Stage-0 triage instead **counts** the dead-letters it excludes
+as `outOfScopeDeadletters` (a co-deployed CMMN engine shares the job tables, so its failing
+jobs surface in the process-api dead-letter lane as null-`processInstanceId` orphans) — so
+the health strip's dead-letter count reconciles with FAILED rather than silently exceeding
+it; the count is unknown (null, shown as nothing) on engines that cannot discriminate scope
+(pre-6.8, no `scopeType` capability — never a misleading zero). Multi-tenant engines thread
+`tenantId` through **every** query leg.
 
 **The derivation is falsifiable** (R-L3-01): every status chip offers **"Explain this
 status"** — the per-leg evidence (plan shape chosen and why; each engine call's URL, body,

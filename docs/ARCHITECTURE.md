@@ -122,7 +122,10 @@ marker. These are search-page facets; the Stage-0 triage counts remain the indep
 `size=1`-total queries (M3), never this plan.
 
 **Hygiene applied to every leg:** CMMN-scoped jobs filtered out (shared job tables; null
-`processInstanceId` / `scopeType='cmmn'` where serialized — ~6.8+); `tenantId` threaded
+`processInstanceId` / `scopeType='cmmn'` where serialized — ~6.8+); the Stage-0 triage
+additionally **counts** the dead-letters it excludes as `outOfScopeDeadletters` (null when
+the engine lacks the `scopeType` capability) instead of dropping them silently, so the health
+strip's dead-letter lane reconciles with the process-scoped FAILED count; `tenantId` threaded
 through **all** legs when the engine is multi-tenant; async-history lag tolerated — the grid
 is a labeled snapshot, the details panel fetches live-first with historic fallback (M3), and
 actions never trust the grid: every mutation re-validates against live engine state
@@ -222,7 +225,7 @@ surfaced by `GET /api/engines` and pushed to the health strip via SSE.
 | `GET  /api/engines` | Registry + live health/capabilities/job-lane counts (no secrets) |
 | `GET  /api/resolve?q=…` | **Omnibox**: one pasted string resolved across engines in the R-SEM-04 order (process-instance → execution → task → job → business key; composite `engine:id` short-circuits to that engine); returns a disambiguation list (kind, engineId, compositeId, derived flags) + a `perEngine` reachability envelope for the "N of M engines" banner |
 | `POST /api/search` | Fan-out instance search (`SearchRequest`; URL-serializable) |
-| `GET  /api/triage[?refresh=true]` | Stage 0 dashboard: engine health strip (M1 probe state), global + per-engine status counts (query totals, `size=1`), DLQ + RETRYING jobs grouped by normalized error signature with per-engine/per-definition-version counts (sibling versions zero-filled), per-engine honesty envelope (`ok/error/dlqScan`). Served from the 20s Caffeine cache (single-flight); `refresh=true` bypasses, throttled 1/10s |
+| `GET  /api/triage[?refresh=true]` | Stage 0 dashboard: engine health strip (M1 probe state), global + per-engine status counts (query totals, `size=1`), DLQ + RETRYING jobs grouped by normalized error signature with per-engine/per-definition-version counts (sibling versions zero-filled), per-engine honesty envelope (`ok/error/dlqScan`, plus `outOfScopeDeadletters` — dead-letters belonging to a co-deployed engine sharing the job tables (CMMN), counted not dropped so the strip's dead-letter lane reconciles with FAILED; null when the engine cannot discriminate scope, gated on the `scopeType` capability ~6.8+). Served from the 20s Caffeine cache (single-flight); `refresh=true` bypasses, throttled 1/10s |
 | `GET  /api/instances/{engineId}/{id}` | Vitals (historic-first — a completed instance renders, never 404s): identity, definition key/name/version, status flags + primary chip, current activities (unfinished historic activities ∪ runtime execution positions — a dead-lettered async task has NO unfinished activity row, its execution carries the token), why-stuck strip (exception first line, failing activity, retries state), waiting-for (event subscriptions + pending timers), `telemetryUrl` (the engine's `telemetry-url-template` rendered with url-encoded values; absent template → no field) |
 | `GET  /api/instances/{engineId}/{id}/variables[/{name}]` | The TYPED ledger (R-UXQ-13), READ-only: engine type verbatim next to the typed value, process scope + per-execution locals, HISTORIC projection for completed instances; serializables read-only; list responses byte-capped at 256 KiB with the on-demand full-value fetch `GET …/variables/{name}`. The EDIT is not a PUT here — it is the tier-1 `edit-variable` verb via `POST …/actions/edit-variable` (row above), always on the fetched full value: compare-and-set — `expectedOldValue` ⇒ 409 + fresh re-render on mismatch (R-SEM-09); UI contract: SPEC §4a |
 | `GET  /api/instances/{engineId}/{id}/jobs` | Four lanes (executable/timer/suspended/deadletter), typed rows; stacktrace on expand via `GET …/jobs/{jobId}/stacktrace?lane=` (plain text) |
