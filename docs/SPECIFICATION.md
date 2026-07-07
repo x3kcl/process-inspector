@@ -190,9 +190,11 @@ Answers "what is broken, how much, where" in zero keystrokes:
   algoVersion; a normalizer change bumps it, flags bindings "needs re-binding" (never
   silently rebinds), and must pass the golden corpus (TEST-STRATEGY §4).
   **Drill-through is scope-explicit** (R-SEM-12): each per-version count is its own click
-  target, and the resulting filter state is echoed before commit. Each group offers
-  bulk-retry-the-group — demoted/warned when the group's annotation implies a data fix
-  first (R-SEM-13). This is the triage centerpiece.
+  target, and the resulting filter state is echoed before commit. Each per-version count
+  also offers **bulk-retry-the-group** (§7 v1.x #1) — demoted/warned when the group's
+  annotation implies a data fix first (R-SEM-13; the demotion activates with group
+  annotations, R-BAU-01 — until then the offer is un-demoted). This is the triage
+  centerpiece.
 - **Acknowledge** (R-BAU-01): a group can be acknowledged (who + required reason + optional
   expiry, keyed signature × engine × definition, audited). Acknowledged groups collapse into
   a labeled "Acknowledged (N)" section — never hidden — and **auto-resurface** when the
@@ -556,6 +558,20 @@ for the operator.
   items stay `pending`, never burned as failures; a breaker fast-fail on an already-dispatched
   item is `failed` (clean rejection); `unknown` stays reserved for true ambiguity (timeout
   per registry `write-ms`).
+- **v1.x #1 — error-class group retry** (landed): the triage landing's bulk-retry-the-group
+  dispatches `POST /api/bulk/error-class` carrying the group's **coordinates only**
+  (`signatureHash + algoVersion + processDefinitionKey + definitionVersion [+ engineId]`,
+  reason mandatory ≥10) — never a browser-enumerated ID list. The BFF re-resolves the
+  FAILED members from the same capped signature scan the cards aggregate from and feeds
+  them into the v1 machinery above (cap, rails, per-item report unchanged; RETRYING members
+  are left to their remaining retries). Stale `algoVersion` ⇒ 409 refuse ("refresh the
+  landing"); zero members ⇒ 409 `error-class-drained`, never a zero-item job; a degraded
+  resolution leg ⇒ fail-closed 502; > 200 members ⇒ honest cap refusal (select-all-filter
+  bulk below is the answer at that size). Tier-3 confirm (restated signature/scope/count +
+  reason); PROD typed token = the **definition key** — deliberately not the count: the
+  member list is re-resolved server-side at dispatch, so a typed count would attest a
+  stale number. The envelope audit row records the group provenance
+  (`errorClass`: signature, algoVersion, defKey:vN, resolvedCount, scanTruncated).
 - **v1.x**: **select-all-matching-filter** — the BFF re-executes the search plan at
   execution time (never the stale grid), records the resolved ID list in the audit record
   BEFORE acting, then per-item fan-out as a **server-side async job**: persisted in Postgres,

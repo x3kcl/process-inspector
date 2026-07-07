@@ -6,6 +6,7 @@ import { HeaderStrip } from '../components/HeaderStrip'
 import { SignIn } from '../components/SignIn'
 import { ToastProvider } from '../components/toast'
 import { OpsDrawer } from '../ops/OpsDrawer'
+import { OpsDrawerProvider } from '../ops/drawerState'
 import { Omnibox } from './Omnibox'
 
 /**
@@ -17,23 +18,25 @@ export function Shell() {
   const authRequired = useAnyAuthError()
   return (
     <ToastProvider>
-      <div className="app">
-        <header className="topbar">
-          <h1>
-            <Link to="/" className="home-link">
-              Flowable Process Inspector
+      <OpsDrawerProvider>
+        <div className="app">
+          <header className="topbar">
+            <h1>
+              <Link to="/" className="home-link">
+                Flowable Process Inspector
+              </Link>
+            </h1>
+            <Link to="/audit" className="topbar-link">
+              Ops log
             </Link>
-          </h1>
-          <Link to="/audit" className="topbar-link">
-            Ops log
-          </Link>
-          <Omnibox />
-          <HeaderStrip />
-        </header>
-        {authRequired && <SignIn />}
-        <Outlet />
-        <OpsDrawer />
-      </div>
+            <Omnibox />
+            <HeaderStrip />
+          </header>
+          {authRequired && <SignIn />}
+          <Outlet />
+          <OpsDrawer />
+        </div>
+      </OpsDrawerProvider>
     </ToastProvider>
   )
 }

@@ -9,6 +9,7 @@ import type { BulkTarget } from '../api/bulk'
 import { problemBanner } from '../actions/problem'
 import { ModalShell } from '../components/ModalShell'
 import { useToast } from '../components/toast'
+import { useOpsDrawer } from '../ops/drawerState'
 import type { EngineFailure } from '../search/partials'
 import { perEngineSplit, planSelection } from './intersection'
 import type { BulkVerbOffer } from './intersection'
@@ -99,6 +100,7 @@ function BulkSubmitModal({
   onSubmitted: () => void
 }) {
   const toast = useToast()
+  const drawer = useOpsDrawer()
   const submit = useSubmitBulk()
   const [reason, setReason] = useState('')
   const [acknowledged, setAcknowledged] = useState(false)
@@ -122,6 +124,9 @@ function BulkSubmitModal({
             kind: 'success',
             text: `Bulk ${offer.label.toLowerCase()} submitted — ${String(job.totalItems ?? items.length)} items, tracked as job ${(job.id ?? '').slice(0, 8)}…. Progress in the operations drawer.`,
           })
+          // v1.x #1 handoff, shared with the triage group retry: open the drawer
+          // focused on the fresh job instead of pointing at it with words.
+          if (job.id !== undefined) drawer.focusJob(job.id)
           onSubmitted()
         },
       },

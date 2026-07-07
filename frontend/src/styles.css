@@ -1935,3 +1935,30 @@ button.primary:disabled {
 .outcome-skipped-protected {
   color: #1a4d80;
 }
+
+/* ---- v1.x #1: triage group retry + drawer focus handoff ---- */
+.version-count-cell {
+  display: inline-flex;
+  align-items: center;
+  gap: 0.25rem;
+}
+.retry-group-btn {
+  font-size: 0.72rem;
+  padding: 0.05rem 0.4rem;
+  border: 1px solid var(--border, #c8c2b8);
+  border-radius: 3px;
+  background: transparent;
+  cursor: pointer;
+  white-space: nowrap;
+}
+.retry-group-btn:hover:not(:disabled) {
+  border-color: var(--accent, #8a6d3b);
+}
+.retry-group-btn:disabled {
+  opacity: 0.45;
+  cursor: not-allowed;
+}
+.job-card.job-focused {
+  outline: 2px solid var(--accent, #8a6d3b);
+  outline-offset: -2px;
+}

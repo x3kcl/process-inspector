@@ -1,5 +1,8 @@
+import { useState } from 'react'
 import { Link } from 'react-router'
+import { useMe, roleOn } from '../api/me'
 import type { EngineDto, ErrorGroup } from '../api/model'
+import { actionGate, VERBS } from '../actions/catalog'
 import { EnvBadge } from '../components/EnvBadge'
 import { formatCount } from '../lib/format'
 import {
@@ -8,6 +11,7 @@ import {
   groupDefinitionCounts,
   groupDrillParams,
 } from './drill'
+import { RetryGroupModal } from './RetryGroupModal'
 
 interface Props {
   group: ErrorGroup
@@ -67,10 +71,12 @@ export function ErrorGroupCard({ group, enginesById, lowerBound }: Props) {
         {engineEntries.map(([engineId, byDefVersion]) => (
           <EngineRow
             key={engineId}
+            group={group}
             engineId={engineId}
             engine={enginesById.get(engineId)}
             byDefVersion={byDefVersion}
             prefix={prefix}
+            lowerBound={lowerBound}
           />
         ))}
       </ul>
@@ -79,17 +85,36 @@ export function ErrorGroupCard({ group, enginesById, lowerBound }: Props) {
 }
 
 function EngineRow({
+  group,
   engineId,
   engine,
   byDefVersion,
   prefix,
+  lowerBound,
 }: {
+  group: ErrorGroup
   engineId: string
   engine: EngineDto | undefined
   byDefVersion: Record<string, number>
   prefix: string
+  lowerBound: boolean
 }) {
   const definitions = groupDefinitionCounts(byDefVersion)
+  const me = useMe()
+  // Same greying doctrine as the single-target verbs (greyed-never-hidden, tooltip names
+  // the gate; the BFF door stays the real check): retry-job's RESPONDER floor — the group
+  // retry is an alternate entry to the identical bulk fan-out.
+  const gate = actionGate({
+    meta: VERBS.retryJob,
+    roleHint: roleOn(me.data, engineId),
+    engineMode: engine?.mode,
+    environment: engine?.environment,
+  })
+  const [retryScope, setRetryScope] = useState<{
+    definitionKey: string
+    version: number
+    count: number
+  } | null>(null)
   return (
     <li className="engine-count-row">
       <Link
@@ -108,30 +133,75 @@ function EngineRow({
               const label = versionCount.version === '' ? 'all' : versionCount.version
               // Zero-filled versions are the regression signal — visible, never a link
               // (the search cannot scope to a version, so the link would over-promise).
-              return versionCount.count === 0 ? (
-                <span key={label} className="version-count version-zero">
-                  {label}: 0
+              if (versionCount.count === 0) {
+                return (
+                  <span key={label} className="version-count version-zero">
+                    {label}: 0
+                  </span>
+                )
+              }
+              const version = versionNumberOf(versionCount.version)
+              return (
+                <span key={label} className="version-count-cell">
+                  <Link
+                    className="version-count"
+                    to={`/search?${definitionDrillParams(engineId, definition.definitionKey)}`}
+                    title={
+                      `Search FAILED + RETRYING · ${engineId} · ${definition.definitionKey} — ` +
+                      'version scope is shown in the grid (no version filter in /api/search yet)'
+                    }
+                  >
+                    {label}: {prefix}
+                    {formatCount(versionCount.count)}
+                  </Link>
+                  {version !== null && (
+                    <button
+                      type="button"
+                      className="retry-group-btn"
+                      disabled={!gate.enabled}
+                      title={
+                        gate.reason ??
+                        `Retry every currently dead-lettered ${definition.definitionKey} v${String(version)} instance in this error class (resolved server-side)`
+                      }
+                      onClick={() => {
+                        setRetryScope({
+                          definitionKey: definition.definitionKey,
+                          version,
+                          count: versionCount.count,
+                        })
+                      }}
+                    >
+                      Retry group
+                    </button>
+                  )}
                 </span>
-              ) : (
-                <Link
-                  key={label}
-                  className="version-count"
-                  to={`/search?${definitionDrillParams(engineId, definition.definitionKey)}`}
-                  title={
-                    `Search FAILED + RETRYING · ${engineId} · ${definition.definitionKey} — ` +
-                    'version scope is shown in the grid (no version filter in /api/search yet)'
-                  }
-                >
-                  {label}: {prefix}
-                  {formatCount(versionCount.count)}
-                </Link>
               )
             })}
           </span>
         ))}
       </span>
+      {retryScope !== null && (
+        <RetryGroupModal
+          group={group}
+          engineId={engineId}
+          engine={engine}
+          definitionKey={retryScope.definitionKey}
+          version={retryScope.version}
+          count={retryScope.count}
+          lowerBound={lowerBound}
+          onClose={() => {
+            setRetryScope(null)
+          }}
+        />
+      )}
     </li>
   )
+}
+
+/** "v3" → 3; null when the chip has no numeric version (the endpoint needs one). */
+function versionNumberOf(version: string): number | null {
+  if (!/^v\d+$/.test(version)) return null
+  return Number.parseInt(version.slice(1), 10)
 }
 
 function sumCounts(byDefVersion: Record<string, number>): number {

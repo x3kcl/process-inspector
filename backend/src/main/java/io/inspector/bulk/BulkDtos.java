@@ -20,6 +20,23 @@ public final class BulkDtos {
     public record BulkSubmitRequest(
             String verb, String reason, String ticketId, UUID continuedFrom, List<BulkTarget> items) {}
 
+    /**
+     * The triage-landing group retry (v1.x #1, SPEC §7): the browser sends the error-class
+     * COORDINATES, never a member list — the BFF re-resolves the FAILED members server-side
+     * from the same capped signature scan the triage cards are built on. {@code algoVersion}
+     * pins the normalizer generation the card was rendered with (a hash from an older
+     * algorithm must refuse, not silently match nothing). {@code engineId} narrows to one
+     * engine's row on the card; null = every engine the group spans.
+     */
+    public record BulkErrorClassRequest(
+            String signatureHash,
+            Integer algoVersion,
+            String processDefinitionKey,
+            Integer definitionVersion,
+            String engineId,
+            String reason,
+            String ticketId) {}
+
     public record BulkItemDto(
             int ordinal,
             String engineId,

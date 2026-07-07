@@ -347,7 +347,13 @@ unresolvable with tier 0–1 verbs)
   shows exactly the REST call; an MI body as source is refused with the reason.
 
 ## v1.x — fast follows (each independently demoable)
-1. Error-class **bulk-retry-the-group** from the triage landing.
+1. Error-class **bulk-retry-the-group** from the triage landing. **Landed 2026-07-07**:
+   `POST /api/bulk/error-class` (SPEC §7, ARCH §4) — coordinates-only body, server-side
+   member re-resolution through the capped signature scan into the unchanged M5 machinery;
+   card button per engine × defKey:vN (greyed-never-hidden), tier-3 modal (PROD token =
+   definition key — a typed count would attest a stale number), operations-drawer
+   auto-focus handoff (context lift shared with the bulk bar), `['triage']` invalidation
+   on job settle. R-SEM-13 annotation demotion waits for group annotations (R-BAU-01).
 2. **Select-all-matching-filter bulk**: server-side re-resolution at execution time, tracked
    async job in the BFF (Postgres-persisted per-item results), SSE progress, cancel,
    per-engine concurrency cap + stagger, persistent operations drawer.

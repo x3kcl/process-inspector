@@ -36,6 +36,22 @@ export interface paths {
         patch?: never;
         trace?: never;
     };
+    "/api/bulk/error-class": {
+        parameters: {
+            query?: never;
+            header?: never;
+            path?: never;
+            cookie?: never;
+        };
+        get?: never;
+        put?: never;
+        post: operations["submitErrorClass"];
+        delete?: never;
+        options?: never;
+        head?: never;
+        patch?: never;
+        trace?: never;
+    };
     "/api/bulk/{id}": {
         parameters: {
             query?: never;
@@ -465,6 +481,17 @@ export interface components {
             ticketId?: string;
             /** Format: date-time */
             ts?: string;
+        };
+        BulkErrorClassRequest: {
+            /** Format: int32 */
+            algoVersion?: number;
+            /** Format: int32 */
+            definitionVersion?: number;
+            engineId?: string;
+            processDefinitionKey?: string;
+            reason?: string;
+            signatureHash?: string;
+            ticketId?: string;
         };
         BulkItemDto: {
             /** Format: uuid */
@@ -1000,6 +1027,30 @@ export interface operations {
         requestBody: {
             content: {
                 "application/json": components["schemas"]["BulkSubmitRequest"];
+            };
+        };
+        responses: {
+            /** @description OK */
+            200: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "*/*": components["schemas"]["BulkJobDto"];
+                };
+            };
+        };
+    };
+    submitErrorClass: {
+        parameters: {
+            query?: never;
+            header?: never;
+            path?: never;
+            cookie?: never;
+        };
+        requestBody: {
+            content: {
+                "application/json": components["schemas"]["BulkErrorClassRequest"];
             };
         };
         responses: {

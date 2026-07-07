@@ -11,6 +11,7 @@ export type BulkJobDto = components['schemas']['BulkJobDto']
 export type BulkItemDto = components['schemas']['BulkItemDto']
 export type BulkSubmitRequest = components['schemas']['BulkSubmitRequest']
 export type BulkTarget = components['schemas']['BulkTarget']
+export type BulkErrorClassRequest = components['schemas']['BulkErrorClassRequest']
 
 export const BULK_JOBS_KEY = ['bulk-jobs']
 
@@ -28,6 +29,18 @@ export async function fetchBulkJob(id: string): Promise<BulkJobDto> {
 
 export async function submitBulk(body: BulkSubmitRequest): Promise<BulkJobDto> {
   const { data, error, response } = await api.POST('/api/bulk', { body })
+  if (data === undefined) throw new ActionError(parseActionProblem(response.status, error))
+  return data
+}
+
+/**
+ * v1.x #1 — the triage group retry. SERVER-SIDE RESOLUTION is the contract: this sends
+ * the error-class COORDINATES only; the BFF re-resolves the FAILED members from its own
+ * capped signature scan and pipes them into the persisted bulk machinery. No instance ID
+ * ever crosses the wire from the browser.
+ */
+export async function submitBulkErrorClass(body: BulkErrorClassRequest): Promise<BulkJobDto> {
+  const { data, error, response } = await api.POST('/api/bulk/error-class', { body })
   if (data === undefined) throw new ActionError(parseActionProblem(response.status, error))
   return data
 }
@@ -80,6 +93,17 @@ export function useSubmitBulk() {
   return useMutation<BulkJobDto, ActionError, BulkSubmitRequest>({
     retry: false,
     mutationFn: submitBulk,
+    onSettled: async () => {
+      await queryClient.invalidateQueries({ queryKey: BULK_JOBS_KEY })
+    },
+  })
+}
+
+export function useSubmitBulkErrorClass() {
+  const queryClient = useQueryClient()
+  return useMutation<BulkJobDto, ActionError, BulkErrorClassRequest>({
+    retry: false,
+    mutationFn: submitBulkErrorClass,
     onSettled: async () => {
       await queryClient.invalidateQueries({ queryKey: BULK_JOBS_KEY })
     },

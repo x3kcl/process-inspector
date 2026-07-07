@@ -1,6 +1,7 @@
 package io.inspector.api;
 
 import io.inspector.bulk.BulkDtos;
+import io.inspector.bulk.BulkErrorClassService;
 import io.inspector.bulk.BulkJobService;
 import java.util.List;
 import java.util.UUID;
@@ -26,15 +27,31 @@ import org.springframework.web.bind.annotation.RestController;
 public class BulkController {
 
     private final BulkJobService bulk;
+    private final BulkErrorClassService errorClass;
 
-    public BulkController(BulkJobService bulk) {
+    public BulkController(BulkJobService bulk, BulkErrorClassService errorClass) {
         this.bulk = bulk;
+        this.errorClass = errorClass;
     }
 
     @PostMapping
     @PreAuthorize("@rbac.atLeast(authentication, 'RESPONDER')")
     public BulkDtos.BulkJobDto submit(@RequestBody BulkDtos.BulkSubmitRequest request, Authentication authentication) {
         return bulk.submit(request, authentication);
+    }
+
+    /**
+     * v1.x #1 — error-class group retry from the triage landing. The body carries the
+     * group's COORDINATES only (signature + definition version, optionally one engine);
+     * the BFF re-resolves the FAILED members server-side and feeds them into the same
+     * persisted bulk machinery as {@link #submit}. Same door floor as the grid bulk —
+     * this is an alternate entry to the identical retry-job fan-out.
+     */
+    @PostMapping("/error-class")
+    @PreAuthorize("@rbac.atLeast(authentication, 'RESPONDER')")
+    public BulkDtos.BulkJobDto submitErrorClass(
+            @RequestBody BulkDtos.BulkErrorClassRequest request, Authentication authentication) {
+        return errorClass.submit(request, authentication);
     }
 
     /** The operations drawer's hydration read — persisted jobs survive BFF restarts and browser refreshes. */

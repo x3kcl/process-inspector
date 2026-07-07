@@ -3,9 +3,10 @@
 // refreshes for free. NO optimistic state: everything rendered here is the persisted
 // BulkJobDto/BulkItemDto truth, re-fetched on a poll that tightens only while a job is
 // actually live. INTERRUPTED jobs banner a "continue as new job" (no automatic resume).
-import { useMemo, useState } from 'react'
+import { useEffect, useMemo, useRef, useState } from 'react'
 import { useMutation, useQueryClient } from '@tanstack/react-query'
 import { ActionError } from '../api/actions'
+import { useOpsDrawer } from './drawerState'
 import {
   BULK_JOBS_KEY,
   jobActive,
@@ -21,10 +22,24 @@ import { useToast } from '../components/toast'
 import { formatDateTime } from '../lib/format'
 
 export function OpsDrawer() {
-  const [open, setOpen] = useState(false)
+  const { open, setOpen, focusJobId, clearFocus } = useOpsDrawer()
+  const queryClient = useQueryClient()
   const jobs = useBulkJobs(true)
   const activeCount = (jobs.data ?? []).filter(jobActive).length
   const interrupted = (jobs.data ?? []).filter((job) => job.state === 'INTERRUPTED').length
+
+  // When a job SETTLES, the landing counts it acted on are stale — invalidate ['triage']
+  // so the next look at Stage 0 re-aggregates. Poll-driven, never optimistic: this fires
+  // off the persisted job state transition, not off the submit.
+  const previouslyActive = useRef<Set<string>>(new Set())
+  useEffect(() => {
+    const nowActive = new Set((jobs.data ?? []).filter(jobActive).map((job) => job.id ?? ''))
+    const settled = [...previouslyActive.current].some((id) => !nowActive.has(id))
+    previouslyActive.current = nowActive
+    if (settled) {
+      void queryClient.invalidateQueries({ queryKey: ['triage'] })
+    }
+  }, [jobs.data, queryClient])
 
   if (jobs.data === undefined || jobs.data.length === 0) return null
 
@@ -34,6 +49,7 @@ export function OpsDrawer() {
         type="button"
         className="drawer-toggle"
         onClick={() => {
+          if (open) clearFocus()
           setOpen(!open)
         }}
       >
@@ -44,7 +60,11 @@ export function OpsDrawer() {
       {open && (
         <div className="drawer-body">
           {jobs.data.map((job) => (
-            <JobCard key={job.id} job={job} />
+            <JobCard
+              key={job.id}
+              job={job}
+              focused={job.id !== undefined && job.id === focusJobId}
+            />
           ))}
         </div>
       )}
@@ -82,10 +102,17 @@ function talliesLine(job: BulkJobDto): string {
   return `${String(Math.max(dispatched, 0))} of ${String(total)} dispatched${parts.length > 0 ? ' · ' + parts.join(' · ') : ''}`
 }
 
-function JobCard({ job }: { job: BulkJobDto }) {
-  const [expanded, setExpanded] = useState(false)
+function JobCard({ job, focused }: { job: BulkJobDto; focused: boolean }) {
+  const [expanded, setExpanded] = useState(focused)
+  // The dispatch handoff can land while the card is already mounted (drawer open on an
+  // earlier job) — a focus arriving later must still expand it.
+  useEffect(() => {
+    if (focused) setExpanded(true)
+  }, [focused])
   return (
-    <div className={`job-card job-${(job.state ?? '').toLowerCase()}`}>
+    <div
+      className={`job-card job-${(job.state ?? '').toLowerCase()}${focused ? ' job-focused' : ''}`}
+    >
       <button
         type="button"
         className="job-card-head"

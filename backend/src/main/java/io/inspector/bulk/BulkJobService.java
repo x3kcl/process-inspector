@@ -96,6 +96,16 @@ public class BulkJobService {
     /* ------------------------------- submit ------------------------------- */
 
     public BulkDtos.BulkJobDto submit(BulkDtos.BulkSubmitRequest request, Authentication auth) {
+        return submit(request, auth, Map.of());
+    }
+
+    /**
+     * Package-door variant for server-side-resolved submits (error-class group retry):
+     * {@code extraEnvelopePayload} lands in the envelope audit row so the provenance of the
+     * target list (which signature, which scan, how many resolved) is on the record.
+     */
+    BulkDtos.BulkJobDto submit(
+            BulkDtos.BulkSubmitRequest request, Authentication auth, Map<String, Object> extraEnvelopePayload) {
         ActionVerb verb = ActionVerb.fromPath(request.verb() != null ? request.verb() : "")
                 .filter(BULK_VERBS::contains)
                 .orElseThrow(() -> new GuardRefusedException(
@@ -146,6 +156,7 @@ public class BulkJobService {
         if (request.continuedFrom() != null) {
             payload.put("continuedFrom", request.continuedFrom().toString());
         }
+        payload.putAll(extraEnvelopePayload);
         String engineIds =
                 targets.stream().map(BulkDtos.BulkTarget::engineId).distinct().collect(Collectors.joining(","));
         AuditEntry envelope = audit.beginPending(
