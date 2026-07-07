@@ -1306,6 +1306,7 @@ button.primary:disabled {
 .action-btn {
   font-weight: 600;
 }
+
 .action-danger {
   color: #a94438;
   border-color: #c0392b;
@@ -1961,4 +1962,93 @@ button.primary:disabled {
 .job-card.job-focused {
   outline: 2px solid var(--accent, #8a6d3b);
   outline-offset: -2px;
+}
+
+/* ---- v1.x saved views & recent searches (SPEC §4/§8, localStorage) ---- */
+.saved-views {
+  margin-top: 20px;
+}
+.saved-views h2 {
+  font-size: 15px;
+  margin: 12px 0 8px;
+}
+.view-chips {
+  display: flex;
+  flex-wrap: wrap;
+  gap: 8px;
+}
+.view-chip {
+  display: inline-flex;
+  align-items: center;
+  gap: 6px;
+  padding: 4px 12px;
+  border: 1px solid #d2dae2;
+  border-radius: 999px;
+  text-decoration: none;
+  color: inherit;
+  font-size: 13px;
+  background: #fff;
+}
+.view-chip:hover {
+  border-color: #2e86de;
+}
+.view-chip.active {
+  border-color: #2e86de;
+  background: #eaf2fd;
+  font-weight: 600;
+}
+.view-chip.user-view a {
+  text-decoration: none;
+  color: inherit;
+}
+.view-chip.user-view button {
+  border: none;
+  background: none;
+  cursor: pointer;
+  color: #8395a7;
+  padding: 0;
+  font-size: 12px;
+  line-height: 1;
+}
+.view-chip.user-view button:hover {
+  color: #c0392b;
+}
+.view-strip {
+  padding: 8px 12px 0;
+}
+.recent-searches-block h3 {
+  font-size: 13px;
+  color: #576574;
+  margin: 14px 0 6px;
+}
+.recent-searches {
+  list-style: none;
+  padding: 0;
+  margin: 0;
+}
+.recent-searches li {
+  display: flex;
+  gap: 10px;
+  align-items: baseline;
+  padding: 2px 0;
+  font-size: 13px;
+}
+.recent-at {
+  color: #8395a7;
+  font-size: 12px;
+}
+.pane-results > .recent-searches-block {
+  padding: 4px 12px;
+}
+.save-view {
+  margin-top: 10px;
+}
+.save-view-form {
+  display: flex;
+  gap: 6px;
+  margin-top: 10px;
+}
+.save-view-form input {
+  flex: 1;
+  min-width: 0;
 }

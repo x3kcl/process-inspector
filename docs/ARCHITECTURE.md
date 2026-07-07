@@ -275,7 +275,8 @@ nobody may "simplify" by exposing an engine directly.
   human-attribution record. Engines with `forward-user-header: true` additionally receive
   `X-Forwarded-User: <username>` on mutating calls for an engine-side interceptor (§6).
 - **Persistence (Postgres, M4+):** audit log (append-only), instance notes, bulk-job state +
-  per-item reports, saved views (v1.x), registry CRUD (v2). No durable job-execution
+  per-item reports, shared saved views (v2; v1.x saved views/recents live in browser
+  localStorage under a versioned envelope), registry CRUD (v2). No durable job-execution
   framework — in-memory execution, per-item flush, `INTERRUPTED` on restart.
 - **Audit:** every mutating call → `(user, ts, engineId, instanceId, tenantId, action,
   reason, requestPayload incl. old values, httpStatus, outcome, responseSnippet)`; one row

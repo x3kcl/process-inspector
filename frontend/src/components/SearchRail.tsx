@@ -3,12 +3,15 @@ import type { FormEvent } from 'react'
 import type { EngineDto, InstanceStatus, SearchRequest, SearchResponse } from '../api/model'
 import { ALL_STATUSES } from '../api/model'
 import { formatCount } from '../lib/format'
+import { SaveViewControl } from '../views/SaveViewControl'
 import { CopyButton } from './CopyButton'
 
 interface Props {
   engines: EngineDto[]
   /** Decoded from the URL — the form is only an editor for it. */
   initial: SearchRequest | null
+  /** The raw URL search string when one is applied — what "Save current view" names. */
+  currentSearch: string | null
   response: SearchResponse | undefined
   busy: boolean
   collapsed: boolean
@@ -38,6 +41,7 @@ interface VariableRow {
 export function SearchRail({
   engines,
   initial,
+  currentSearch,
   response,
   busy,
   collapsed,
@@ -57,6 +61,7 @@ export function SearchRail({
             </span>
           ))}
         </div>
+        <SaveViewControl search={currentSearch} />
       </aside>
     )
   }
@@ -72,6 +77,7 @@ export function SearchRail({
         busy={busy}
         onSubmit={onSubmit}
       />
+      <SaveViewControl search={currentSearch} />
       {response !== undefined && <CriteriaPanel response={response} />}
     </aside>
   )
@@ -83,7 +89,7 @@ function RailForm({
   response,
   busy,
   onSubmit,
-}: Omit<Props, 'collapsed' | 'onToggle'>) {
+}: Omit<Props, 'collapsed' | 'onToggle' | 'currentSearch'>) {
   const [engineIds, setEngineIds] = useState<string[]>(initial?.engineIds ?? [])
   const [statuses, setStatuses] = useState<InstanceStatus[]>(initial?.statuses ?? [])
   const [definitionKey, setDefinitionKey] = useState(initial?.processDefinitionKey ?? '')

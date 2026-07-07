@@ -224,7 +224,15 @@ Answers "what is broken, how much, where" in zero keystrokes:
   with 2-fail/1-success flap damping.
 - **Recent operations** — tail of the audit log.
 - **Saved views** — curated system views ship with the product: *Failed (all engines)*,
-  *Failed in the last hour*, *Suspended > 24h*, *Started in the last hour*.
+  *Failed in the last hour* (by failure time, never instance start), *Suspended > 24h (by
+  start time)* (R-SEM-05: no suspension timestamp exists, so the predicate is `startedBefore`
+  and the name says so), *Started in the last hour*. A view is a named URL search string —
+  clicking replays the exact Stage 1 state; relative windows materialize minute-floored at
+  render. User-named views render beside them (saved from the Stage 1 rail, same-name
+  replace, deletable here). **Recent searches**: the last 10 uniquely-parameterized searches
+  that executed successfully, newest first, with a generated criteria label — shown here and
+  in the Stage 1 zero state. Both persist in localStorage under a versioned envelope
+  (`{version, items}`; unknown version degrades to empty) until the v2 server-side store.
 - **Short-lived cache (thundering-herd protection)**: the triage aggregations (job-lane
   counts, error groups, status counts) are cached at the BFF for **~15–30 seconds** —
   ten engineers opening the dashboard during a P1 must produce one round of engine
@@ -630,9 +638,9 @@ for the operator.
 | Tenant | when any engine is multi-tenant |
 
 Combination rule unchanged: **AND between categories, OR within** — made visible by the
-compiled-criteria echo. Saved views: curated system views (v1) + user-named views
-(localStorage v1.x → shared server-side v2). Hierarchy-aware: businessKey search finds the
-tree, not just the root.
+compiled-criteria echo. Saved views: curated system views + user-named views + recent
+searches (§4 Stage 0; localStorage v1.x → shared server-side v2). Hierarchy-aware:
+businessKey search finds the tree, not just the root.
 
 ## 9. Audit, notes & handover
 

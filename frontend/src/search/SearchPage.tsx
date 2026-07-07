@@ -8,6 +8,9 @@ import { PartialResultsBanner } from '../components/PartialResultsBanner'
 import { ResultsGrid } from '../components/ResultsGrid'
 import { SearchRail } from '../components/SearchRail'
 import { formatClock, formatCount } from '../lib/format'
+import { RecentSearchList } from '../views/RecentSearchList'
+import { ViewChips } from '../views/ViewChips'
+import { recordRecentSearch } from '../views/useViewStores'
 import { summarizePartials } from './partials'
 import { useSearchResults, useSearchUrl } from './useSearch'
 
@@ -31,6 +34,16 @@ export function SearchPage() {
   useEffect(() => {
     setSelectedRows([])
   }, [results.dataUpdatedAt])
+
+  // v1.x saved views: a search enters the recents history only once it has EXECUTED
+  // successfully — once per distinct URL state, like the rail collapse above.
+  const recordedForParams = useRef<string | null>(null)
+  useEffect(() => {
+    if (results.isSuccess && request !== null && recordedForParams.current !== paramsKey) {
+      recordedForParams.current = paramsKey
+      recordRecentSearch(paramsKey, request)
+    }
+  }, [results.isSuccess, request, paramsKey])
 
   // SPEC §4: the rail collapses to chips once a search runs — once per distinct search,
   // so re-expanding it to tweak filters is never fought by a refetch.
@@ -79,6 +92,7 @@ export function SearchPage() {
         key={paramsKey}
         engines={engines.data ?? []}
         initial={request}
+        currentSearch={request !== null ? paramsKey : null}
         response={results.data}
         busy={results.isFetching}
         collapsed={railCollapsed}
@@ -89,6 +103,7 @@ export function SearchPage() {
       />
 
       <section className="pane pane-results">
+        <ViewChips currentSearch={paramsKey} />
         <div className="results-toolbar">
           <span className="snapshot">
             {results.data !== undefined
@@ -131,6 +146,8 @@ export function SearchPage() {
           visibleCount={(results.data?.rows ?? []).length}
           engines={engines.data ?? []}
         />
+        {/* Zero state: resume where you left off instead of a blank grid. */}
+        {request === null && <RecentSearchList />}
         <ResultsGrid
           response={results.data}
           enginesById={enginesById}

@@ -1,6 +1,7 @@
 import { useMemo } from 'react'
 import type { EngineDto } from '../api/model'
 import { formatCount, formatDateTime } from '../lib/format'
+import { SavedViewsSection } from '../views/SavedViewsSection'
 import { ErrorGroupCard } from './ErrorGroupCard'
 import { StatusCounts } from './StatusCounts'
 import { deriveHonesty, groupCountsAreLowerBound, statusCountsAreLowerBound } from './honesty'
@@ -112,6 +113,9 @@ export function TriagePage() {
           ))
         )}
       </section>
+
+      {/* Navigation chrome BELOW the failure signal — triage stays zero-keystroke first. */}
+      <SavedViewsSection />
     </div>
   )
 }

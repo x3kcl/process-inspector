@@ -369,7 +369,18 @@ unresolvable with tier 0–1 verbs)
    (PROD token = definition key, else single prod engine id), app-scoped `LiveProvider`
    (ONE EventSource) with debounced invalidation — drawer polling relaxes to a 30 s safety
    net while live. This retires the M5 "short-poll + sequential dispatch" deviations.
-3. Named saved views (localStorage) + recent searches.
+3. **Named saved views (localStorage) + recent searches. Landed 2026-07-07** (pure
+   frontend): a view = a named URL search string replayed through the M2b codec — no new
+   state path (`frontend/src/views/`). Four curated system views on the Stage 0 landing
+   (SPEC §4; R-SEM-05 honest predicates — *Suspended > 24h (by start time)* uses
+   `startedBefore`, *Failed in the last hour* uses `failedAfter`; relative windows
+   materialize minute-floored at render), user-named views (save affordance in the Stage 1
+   rail, same-name replace, delete on the landing), last-10 recent searches recorded only
+   on successful execution with a generated criteria label. Stage 1 view strip highlights
+   the chip whose canonical (key-sorted) params exactly match the current URL. Storage is
+   version-enveloped (`{version: 1, items}`, corrupt/unknown → empty) for the v2
+   server-side migration; hermetic Playwright smokes in `e2e/saved-views.spec.ts`.
+   Column chooser + density + dark theme from the original SPEC item stay open.
 4. Timeline tab polish (call-activity sub-lanes); job-lane trend sparklines on the landing.
 5. **Sibling diff** (SPEC §5.2): compare endpoint over historic queries; variables/path/
    timing diffs; divergence highlighting on the shared diagram; nearest-successful-sibling
