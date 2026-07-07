@@ -73,7 +73,9 @@ public final class BulkDtos {
     /**
      * The job readout: {@code tallies} is the aggregate "N of M dispatched ·
      * ok/failed/skipped/unknown" line's data (R-SEM-11); {@code items} ships on the
-     * detail read only.
+     * detail read only. {@code scopeKind}/{@code scopeLabel} (usability fix E1) are the
+     * scope-provenance descriptor threaded from whichever of the three submit doors
+     * (ticked selection / error-class group / filter) produced the job.
      */
     public record BulkJobDto(
             UUID id,
@@ -86,6 +88,8 @@ public final class BulkDtos {
             String ticketId,
             UUID continuedFrom,
             int totalItems,
+            String scopeKind,
+            String scopeLabel,
             Map<String, Long> tallies,
             List<BulkItemDto> items) {
 
@@ -105,6 +109,8 @@ public final class BulkDtos {
                     job.getTicketId(),
                     job.getContinuedFrom(),
                     job.getTotalItems(),
+                    job.getScopeKind().name(),
+                    job.getScopeLabel(),
                     tallies,
                     includeItems ? items.stream().map(BulkItemDto::of).toList() : null);
         }

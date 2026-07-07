@@ -3,10 +3,12 @@
 // compiled-criteria panel before the operator trusts it. The links reuse the M2b URL codec,
 // so a drill-through IS a shareable search.
 //
-// Honesty note: /api/search has no signature-hash or definition-version filter yet, so a
-// per-version click carries the tightest expressible scope — engine + definition key +
-// FAILED/RETRYING. The version column in the grid and the criteria echo make the wider
-// scope visible instead of pretending precision.
+// Honesty note: /api/search has no definition-version filter yet, so a per-version click
+// carries the tightest expressible scope — engine + definition key + FAILED/RETRYING. The
+// version column in the grid and the criteria echo make the wider scope visible instead of
+// pretending precision. The GROUP-level click, though, does carry the class signature
+// (usability round 2): landing on the grid pre-scoped to ONE error class makes the
+// select-all-matching-filter path the one-click whole-class action.
 import type { ErrorGroup, InstanceStatus } from '../api/model'
 import { encodeSearch } from '../search/urlState'
 
@@ -41,12 +43,13 @@ export function engineDrillParams(engineId: string): string {
   }).toString()
 }
 
-/** The whole group: every engine it was observed on. */
+/** The whole group: every engine it was observed on, scoped to THIS error class. */
 export function groupDrillParams(group: ErrorGroup): string {
   const engineIds = Object.keys(group.countsByEngine ?? {}).sort()
   return encodeSearch({
     engineIds,
     statuses: FAILURE_STATUSES,
+    signatureHash: group.signatureHash,
     sortBy: 'failureTime',
   }).toString()
 }

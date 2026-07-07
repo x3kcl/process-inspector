@@ -76,6 +76,6 @@ export function problemBanner(problem: ActionProblem): string {
       // already carries an exact operator sentence from the BFF.
       return problem.detail !== ''
         ? problem.detail
-        : `The action was refused pre-flight (${problem.title}). Nothing happened.`
+        : `The request was refused before anything ran — nothing happened. (Technical detail: HTTP ${String(problem.status)}.)`
   }
 }

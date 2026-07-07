@@ -10,9 +10,11 @@ import type { EngineDto, SearchRequest } from '../api/model'
 import { useSubmitBulkFilter } from '../api/bulk'
 import { reasonRule, reasonValid } from '../actions/catalog'
 import { problemBanner } from '../actions/problem'
+import { ActionHint } from '../components/ActionHint'
 import { ModalShell } from '../components/ModalShell'
 import { useToast } from '../components/toast'
 import { useOpsDrawer } from '../ops/drawerState'
+import { reversibilityNote } from './intersection'
 import type { BulkVerbOffer } from './intersection'
 
 interface Props {
@@ -121,26 +123,39 @@ export function FilterBulkModal({
     )
   }
 
+  const shortReason = !reasonOk
+    ? 'Reason too short — 10+ characters'
+    : !tokenOk
+      ? `Type ${token} to enable`
+      : dispatchedMaybe
+        ? 'Blocked: previous attempt outcome unknown — do not resubmit'
+        : undefined
+  const longDetail = !reasonOk
+    ? 'a reason of at least 10 characters is required'
+    : !tokenOk
+      ? `type ${token} exactly to enable`
+      : undefined
+
   const footer = (
     <>
       <button type="button" onClick={onClose}>
         Cancel
       </button>
-      <button
-        type="button"
-        className="danger"
-        disabled={!reasonOk || !tokenOk || submit.isPending || dispatchedMaybe}
-        title={
-          !reasonOk
-            ? 'a reason of at least 10 characters is required'
-            : !tokenOk
-              ? `type ${token} exactly to enable`
-              : undefined
-        }
-        onClick={confirm}
-      >
-        {submit.isPending ? 'Dispatching…' : `${offer.label} — all matching the filter`}
-      </button>
+      <div className="action-slot">
+        <button
+          type="button"
+          className="danger"
+          disabled={!reasonOk || !tokenOk || submit.isPending || dispatchedMaybe}
+          aria-describedby={shortReason !== undefined ? 'filter-bulk-submit-hint' : undefined}
+          title={longDetail}
+          onClick={confirm}
+        >
+          {submit.isPending ? 'Dispatching…' : `${offer.label} — all matching the filter`}
+        </button>
+        {shortReason !== undefined && (
+          <ActionHint id="filter-bulk-submit-hint" text={shortReason} tone="gate" />
+        )}
+      </div>
     </>
   )
 
@@ -172,8 +187,10 @@ export function FilterBulkModal({
         </p>
       </div>
 
+      <p className="strip-note">{reversibilityNote(offer.verb)}</p>
+
       <label className="modal-field">
-        Reason (required, at least 10 characters — lands in the audit trail)
+        Why are you doing this? (required, 10+ characters — saved to the audit trail on every item)
         <textarea
           value={reason}
           rows={2}

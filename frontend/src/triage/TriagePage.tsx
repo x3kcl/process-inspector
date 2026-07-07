@@ -1,6 +1,7 @@
 import { useMemo } from 'react'
 import type { EngineDto } from '../api/model'
 import { formatCount, formatDateTime } from '../lib/format'
+import { glossTechnicalMessage } from '../lib/plainFailure'
 import { SavedViewsSection } from '../views/SavedViewsSection'
 import { ErrorGroupCard } from './ErrorGroupCard'
 import { StatusCounts } from './StatusCounts'
@@ -71,9 +72,11 @@ export function TriagePage() {
       {honesty.failedEngines.length > 0 && (
         <div className="partial-banner" role="alert">
           {honesty.failedEngines.map((failure) => (
-            <span key={failure.engineId}>
-              {failure.engineId}: {failure.error} — every count below is a lower bound (this engine
-              is excluded)
+            // Theme F (round 2): plain-language gloss first, raw exception demoted to the
+            // title — same layering the search grid's partial banner already uses.
+            <span key={failure.engineId} title={failure.error}>
+              {failure.engineId}: {glossTechnicalMessage(failure.error)} — every count below is a
+              lower bound (this engine is excluded)
             </span>
           ))}
         </div>

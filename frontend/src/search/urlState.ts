@@ -18,6 +18,7 @@ const KEYS = [
   'failedAfter',
   'failedBefore',
   'errorText',
+  'signature',
   'activity',
   'sortBy',
   'pageSize',
@@ -46,6 +47,7 @@ export function encodeSearch(request: SearchRequest): URLSearchParams {
   set('failedAfter', request.failureTimeAfter)
   set('failedBefore', request.failureTimeBefore)
   set('errorText', request.errorText)
+  set('signature', request.signatureHash)
   set('activity', request.currentActivity)
   set('sortBy', request.sortBy)
   if (request.pageSize !== undefined) params.set('pageSize', String(request.pageSize))
@@ -77,6 +79,7 @@ export function decodeSearch(params: URLSearchParams): SearchRequest | null {
     failureTimeAfter: get('failedAfter'),
     failureTimeBefore: get('failedBefore'),
     errorText: get('errorText'),
+    signatureHash: get('signature'),
     currentActivity: get('activity'),
     sortBy: get('sortBy'),
     pageSize: pageSize !== undefined && Number.isFinite(pageSize) ? pageSize : undefined,

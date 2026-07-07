@@ -21,6 +21,7 @@ import { problemBanner } from '../actions/problem'
 import { useToast } from '../components/toast'
 import { useLive, useLiveEvent } from '../live/live'
 import { formatDateTime } from '../lib/format'
+import { outcomeClassName, outcomeLabel } from './outcome'
 
 export function OpsDrawer() {
   const { open, setOpen, focusJobId, clearFocus } = useOpsDrawer()
@@ -92,14 +93,6 @@ function talliesLine(job: BulkJobDto): string {
     'unknown',
     'not_run',
   ] as const
-  const labels: Record<(typeof settledOrder)[number], string> = {
-    ok: 'ok',
-    failed: 'failed',
-    skipped: 'skipped',
-    skipped_protected: 'skipped (protected)',
-    unknown: 'unknown',
-    not_run: 'not run',
-  }
   const dispatched =
     total -
     (tallies['pending'] ?? 0) -
@@ -107,7 +100,8 @@ function talliesLine(job: BulkJobDto): string {
     (tallies['skipped_protected'] ?? 0)
   const parts = settledOrder
     .filter((key) => (tallies[key] ?? 0) > 0)
-    .map((key) => `${labels[key]} ${String(tallies[key] ?? 0)}`)
+    // Theme G: verb-aware — a retry-job "ok" tally reads "re-queued", never "ok".
+    .map((key) => `${outcomeLabel(job.verb, key)} ${String(tallies[key] ?? 0)}`)
   return `${String(Math.max(dispatched, 0))} of ${String(total)} dispatched${parts.length > 0 ? ' · ' + parts.join(' · ') : ''}`
 }
 
@@ -125,16 +119,23 @@ function JobCard({ job, focused }: { job: BulkJobDto; focused: boolean }) {
       <button
         type="button"
         className="job-card-head"
+        aria-expanded={expanded}
         onClick={() => {
           setExpanded(!expanded)
         }}
       >
         <span className={`job-state state-${(job.state ?? '').toLowerCase()}`}>{job.state}</span>
         <code>{job.verb}</code>
+        {/* Theme E1: scope provenance — the same chip idiom the confirm modal used, so an
+            hour later "was that the cluster retry or the filter retry?" reads off the card. */}
+        {typeof job.scopeLabel === 'string' && job.scopeLabel !== '' && (
+          <code className="criteria-chip">{job.scopeLabel}</code>
+        )}
         <span className="job-meta">
           {job.submittedBy} · {formatDateTime(job.submittedAt)}
         </span>
         <span className="job-tallies">{talliesLine(job)}</span>
+        <span aria-hidden>{expanded ? '▾' : '▴'}</span>
       </button>
       {expanded && job.id !== undefined && <JobDetail jobId={job.id} />}
     </div>
@@ -207,6 +208,9 @@ function JobDetail({ jobId }: { jobId: string }) {
 
   return (
     <div className="job-detail">
+      {typeof job.reason === 'string' && job.reason !== '' && (
+        <p className="strip-note">Reason: "{job.reason}"</p>
+      )}
       {job.state === 'INTERRUPTED' && (
         <div className="callout callout-amber" role="alert">
           The BFF stopped while this job ran. Nothing was resumed automatically: items in flight are{' '}
@@ -264,6 +268,13 @@ function JobDetail({ jobId }: { jobId: string }) {
           <span className="job-meta">continues {job.continuedFrom.slice(0, 8)}…</span>
         )}
       </div>
+      {job.verb === 'retry-job' && (
+        <p className="strip-note">
+          Re-queued means the failed step will run again — it has not succeeded yet. A step that
+          fails the same way will return to FAILED after its retries; check the grid in a few
+          minutes.
+        </p>
+      )}
       <table className="ledger-table job-items">
         <thead>
           <tr>
@@ -282,8 +293,8 @@ function JobDetail({ jobId }: { jobId: string }) {
                 <code>{`${item.engineId ?? '?'}:${item.instanceId ?? '?'}`}</code>
               </td>
               <td>
-                <span className={`outcome outcome-${(item.state ?? '').replace('_', '-')}`}>
-                  {item.state === 'skipped_protected' ? 'skipped (protected)' : item.state}
+                <span className={`outcome ${outcomeClassName(job.verb, item.state)}`}>
+                  {outcomeLabel(job.verb, item.state)}
                 </span>
               </td>
               <td className="item-detail">{item.detail}</td>

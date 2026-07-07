@@ -35,6 +35,18 @@ public class BulkJob {
         INTERRUPTED
     }
 
+    /**
+     * Scope provenance (usability fix E1, V4__bulk_job_scope.sql): which door the job came
+     * through — the ticked-row grid selection, the triage-landing error-class group retry,
+     * or the select-all-matching-filter bulk. Paired with {@link #scopeLabel} for a
+     * human-readable one-liner in the operations drawer.
+     */
+    public enum ScopeKind {
+        SELECTION,
+        ERROR_CLASS,
+        FILTER
+    }
+
     @Id
     private UUID id;
 
@@ -66,6 +78,13 @@ public class BulkJob {
     @Column(name = "continued_from")
     private UUID continuedFrom;
 
+    @Enumerated(EnumType.STRING)
+    @Column(name = "scope_kind", nullable = false)
+    private ScopeKind scopeKind;
+
+    @Column(name = "scope_label")
+    private String scopeLabel;
+
     protected BulkJob() {
         // JPA
     }
@@ -79,6 +98,31 @@ public class BulkJob {
             String ticketId,
             int totalItems,
             UUID continuedFrom) {
+        this(
+                id,
+                submittedBy,
+                submittedAt,
+                verb,
+                reason,
+                ticketId,
+                totalItems,
+                continuedFrom,
+                ScopeKind.SELECTION,
+                null);
+    }
+
+    /** Full constructor threading the scope descriptor from one of the three submit doors. */
+    public BulkJob(
+            UUID id,
+            String submittedBy,
+            Instant submittedAt,
+            String verb,
+            String reason,
+            String ticketId,
+            int totalItems,
+            UUID continuedFrom,
+            ScopeKind scopeKind,
+            String scopeLabel) {
         this.id = id;
         this.submittedBy = submittedBy;
         this.submittedAt = submittedAt;
@@ -88,6 +132,8 @@ public class BulkJob {
         this.state = State.PENDING;
         this.totalItems = totalItems;
         this.continuedFrom = continuedFrom;
+        this.scopeKind = scopeKind;
+        this.scopeLabel = scopeLabel;
     }
 
     public void markRunning() {
@@ -137,5 +183,13 @@ public class BulkJob {
 
     public UUID getContinuedFrom() {
         return continuedFrom;
+    }
+
+    public ScopeKind getScopeKind() {
+        return scopeKind;
+    }
+
+    public String getScopeLabel() {
+        return scopeLabel;
     }
 }

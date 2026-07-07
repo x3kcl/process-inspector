@@ -2,6 +2,7 @@ import { useEffect, useMemo, useRef, useState } from 'react'
 import { useNavigate } from 'react-router'
 import type { EngineDto, ProcessInstanceRow } from '../api/model'
 import { ApiError } from '../api/client'
+import { useMe } from '../api/me'
 import { useEngines } from '../api/useEngines'
 import { BulkBar } from '../bulk/BulkBar'
 import { PartialResultsBanner } from '../components/PartialResultsBanner'
@@ -22,6 +23,9 @@ import { useSearchResults, useSearchUrl } from './useSearch'
 export function SearchPage() {
   const navigate = useNavigate()
   const engines = useEngines()
+  // Usability round 1, Theme B: the same useMe + roleOn path ErrorGroupCard already uses,
+  // threaded into BulkBar so its role gate cannot drift from the BFF's real guard.
+  const me = useMe()
   const { request, submit, paramsKey } = useSearchUrl()
   const results = useSearchResults(request)
   const [railCollapsed, setRailCollapsed] = useState(false)
@@ -145,6 +149,7 @@ export function SearchPage() {
           matchTotal={matchTotal}
           visibleCount={(results.data?.rows ?? []).length}
           engines={engines.data ?? []}
+          me={me.data}
         />
         {/* Zero state: resume where you left off instead of a blank grid. */}
         {request === null && <RecentSearchList />}

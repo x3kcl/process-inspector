@@ -97,4 +97,11 @@ describe('problemBanner — the three-way SPEC §6 distinction stays visible', (
     )
     expect(text).toBe('The reason must be at least 10 characters.')
   })
+
+  it('falls back to the plain refusal sentence when the BFF sent no detail (Theme F)', () => {
+    const text = problemBanner(parseActionProblem(400, { code: 'weird' }))
+    expect(text).toBe(
+      'The request was refused before anything ran — nothing happened. (Technical detail: HTTP 400.)',
+    )
+  })
 })

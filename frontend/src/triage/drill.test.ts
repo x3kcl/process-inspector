@@ -61,6 +61,18 @@ describe('drill params round-trip through the M2b URL codec', () => {
     expect(request?.engineIds).toEqual(['engine-a', 'engine-b'])
   })
 
+  it('group drill carries the error-class signature so the grid scopes to ONE class', () => {
+    const request = decodeSearch(
+      new URLSearchParams(
+        groupDrillParams({
+          signatureHash: 'f'.repeat(64),
+          countsByEngine: { 'engine-a': { 'k:v1': 1 } },
+        }),
+      ),
+    )
+    expect(request?.signatureHash).toBe('f'.repeat(64))
+  })
+
   it('status tile drill is the bare status filter', () => {
     const request = decodeSearch(new URLSearchParams(statusDrillParams('SUSPENDED')))
     expect(request?.statuses).toEqual(['SUSPENDED'])

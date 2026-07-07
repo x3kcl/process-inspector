@@ -7,9 +7,11 @@ import io.inspector.dto.SearchRequest;
 import io.inspector.dto.SearchRequest.InstanceStatus;
 import io.inspector.dto.SearchResponse;
 import io.inspector.registry.EngineRegistry;
+import java.util.ArrayList;
 import java.util.LinkedHashMap;
 import java.util.List;
 import java.util.Map;
+import java.util.stream.Collectors;
 import org.springframework.http.HttpStatus;
 import org.springframework.security.core.Authentication;
 import org.springframework.stereotype.Service;
@@ -50,8 +52,8 @@ public class BulkFilterService {
                     "filter-criteria-required",
                     "Select-all-matching needs the search criteria. Nothing happened.");
         }
-        // Unlike /api/bulk (reason optional for queue-state verbs), a filter bulk acts on
-        // instances the operator never enumerated — the reason is mandatory.
+        // A filter bulk acts on instances the operator never enumerated — the reason is
+        // mandatory (same rule as every other bulk door, BulkJobService#submit).
         if (request.reason() == null
                 || request.reason().isBlank()
                 || request.reason().trim().length() < 10) {
@@ -138,7 +140,31 @@ public class BulkFilterService {
 
         BulkDtos.BulkSubmitRequest submit = new BulkDtos.BulkSubmitRequest(
                 request.verb(), request.reason().trim(), request.ticketId(), null, List.copyOf(targets.values()));
-        return bulk.submit(submit, auth, Map.of("filter", filterMeta), BulkJob.FILTER_ITEM_CAP);
+        return bulk.submit(submit, auth, Map.of("filter", filterMeta), BulkJob.FILTER_ITEM_CAP, scopeLabel(criteria));
+    }
+
+    /**
+     * Scope provenance (usability fix E1): a compact restatement of the criteria — statuses
+     * + definition key[+version] + engines — ported from the {@code criteriaChips} notion
+     * FilterBulkModal.tsx already shows the operator, kept ≤120 chars for the drawer.
+     */
+    private static String scopeLabel(SearchRequest criteria) {
+        List<String> parts = new ArrayList<>();
+        if (criteria.statuses() != null && !criteria.statuses().isEmpty()) {
+            parts.add(criteria.statuses().stream().map(Enum::name).collect(Collectors.joining(" + ")));
+        }
+        if (criteria.processDefinitionKey() != null
+                && !criteria.processDefinitionKey().isBlank()) {
+            parts.add(
+                    criteria.definitionVersion() != null
+                            ? criteria.processDefinitionKey() + " v" + criteria.definitionVersion()
+                            : criteria.processDefinitionKey());
+        }
+        if (criteria.engineIds() != null && !criteria.engineIds().isEmpty()) {
+            parts.add("engines: " + String.join(", ", criteria.engineIds()));
+        }
+        String label = String.join(" · ", parts);
+        return label.length() > 120 ? label.substring(0, 117) + "..." : label;
     }
 
     /** The 16-component record, minus the display-page bound (the resolver owns paging). */

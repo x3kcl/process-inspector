@@ -151,36 +151,49 @@ export interface GateInput {
 
 export interface Gate {
   enabled: boolean
-  /** Greyed-never-hidden (SPEC §6): the tooltip names the gate. */
+  /** Greyed-never-hidden (SPEC §6): the SHORT string for the visible ActionHint —
+   *  `Requires {FLOOR} — you are {ROLE}` (RBAC) or `Blocked: {offender} {why}` (business
+   *  logic). Usability round 1, Theme A-copy. */
   reason?: string
+  /** The long explanation — moved to the button's title (secondary layer), never the
+   *  first thing an operator reads. */
+  detail?: string
 }
 
 export function actionGate(input: GateInput): Gate {
   if (input.engineMode !== undefined && input.engineMode.toUpperCase() === 'READ_ONLY') {
-    return { enabled: false, reason: 'this engine is registered read-only' }
+    return {
+      enabled: false,
+      reason: 'Blocked: engine is read-only',
+      detail: 'this engine is registered read-only',
+    }
   }
   if (input.capability === false) {
     return {
       enabled: false,
-      reason: 'this engine version does not support this operation (capability probe)',
+      reason: 'Blocked: engine lacks this capability',
+      detail: 'this engine version does not support this operation (capability probe)',
     }
   }
   if (input.meta.requiresEnded === true) {
     if (input.instanceEnded !== true) {
       return {
         enabled: false,
-        reason: 'only an ended (completed or terminated) instance can be restarted as new',
+        reason: 'Blocked: instance has not ended',
+        detail: 'only an ended (completed or terminated) instance can be restarted as new',
       }
     }
   } else if (input.instanceEnded === true) {
     return {
       enabled: false,
-      reason: 'the instance has ended — there is no runtime state to act on',
+      reason: 'Blocked: instance has ended',
+      detail: 'the instance has ended — there is no runtime state to act on',
     }
   } else if (input.instanceSuspended === true) {
     return {
       enabled: false,
-      reason: 'the instance is suspended — activate it first, then move the token',
+      reason: 'Blocked: instance is suspended',
+      detail: 'the instance is suspended — activate it first, then move the token',
     }
   }
   // Unknown role: stay optimistic (grey nothing) — the BFF 403 is the real gate.
@@ -192,8 +205,12 @@ export function actionGate(input: GateInput): Gate {
       ? input.meta.prodRoleFloor
       : input.meta.roleFloor
   if (input.roleHint !== null && !roleAtLeast(input.roleHint, floor)) {
-    const suffix = floor !== input.meta.roleFloor ? ' on a production engine' : ''
-    return { enabled: false, reason: `requires the ${floor} role${suffix}` }
+    const onProd = floor !== input.meta.roleFloor
+    return {
+      enabled: false,
+      reason: `Requires ${floor} — you are ${input.roleHint}`,
+      detail: `requires the ${floor} role${onProd ? ' on a production engine' : ''}`,
+    }
   }
   return { enabled: true }
 }

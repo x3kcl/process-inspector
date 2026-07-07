@@ -3,6 +3,7 @@ import { Link } from 'react-router'
 import { useMe, roleOn } from '../api/me'
 import type { EngineDto, ErrorGroup } from '../api/model'
 import { actionGate, VERBS } from '../actions/catalog'
+import { ActionHint } from '../components/ActionHint'
 import { EnvBadge } from '../components/EnvBadge'
 import { formatCount } from '../lib/format'
 import {
@@ -10,8 +11,12 @@ import {
   engineDrillParams,
   groupDefinitionCounts,
   groupDrillParams,
+  type VersionCount,
 } from './drill'
 import { RetryGroupModal } from './RetryGroupModal'
+
+/** Newest version rows shown inline per definition; the long tail collapses (Theme E2). */
+const VERSIONS_INLINE = 4
 
 interface Props {
   group: ErrorGroup
@@ -46,12 +51,19 @@ export function ErrorGroupCard({ group, enginesById, lowerBound }: Props) {
         <Link
           className="group-total"
           to={`/search?${groupDrillParams(group)}`}
-          title="Search FAILED + RETRYING instances on every engine in this group"
+          title="Open every FAILED + RETRYING instance of this one error class in the grid"
         >
           {prefix}
           {formatCount(group.total ?? 0)}
         </Link>
       </header>
+      {/* Usability round 2 (Theme E2): the card total spans every engine/definition/version,
+          but each "Retry group" button covers ONE slice — say so, and point at the grid
+          drill (now class-scoped) as the one-action path for the whole class. */}
+      <p className="strip-note">
+        The count opens this one class in the grid — one bulk action there covers all of it. Each
+        "Retry group" below covers a single definition + version.
+      </p>
       <div className="error-group-lanes">
         <span title="dead-letter jobs (retries exhausted)">
           DLQ {prefix}
@@ -126,42 +138,47 @@ function EngineRow({
         <span className="engine-name">{engine?.name ?? engineId}</span>
       </Link>
       <span className="definition-counts">
-        {definitions.map((definition) => (
-          <span key={definition.definitionKey} className="definition-count">
-            <span className="definition-key">{definition.definitionKey}</span>
-            {definition.versions.map((versionCount) => {
-              const label = versionCount.version === '' ? 'all' : versionCount.version
-              // Zero-filled versions are the regression signal — visible, never a link
-              // (the search cannot scope to a version, so the link would over-promise).
-              if (versionCount.count === 0) {
-                return (
-                  <span key={label} className="version-count version-zero">
-                    {label}: 0
-                  </span>
-                )
-              }
-              const version = versionNumberOf(versionCount.version)
+        {definitions.map((definition) => {
+          const renderVersion = (versionCount: VersionCount) => {
+            const label = versionCount.version === '' ? 'all' : versionCount.version
+            // Zero-filled versions are the regression signal — visible, never a link
+            // (the search cannot scope to a version, so the link would over-promise).
+            if (versionCount.count === 0) {
               return (
-                <span key={label} className="version-count-cell">
-                  <Link
-                    className="version-count"
-                    to={`/search?${definitionDrillParams(engineId, definition.definitionKey)}`}
-                    title={
-                      `Search FAILED + RETRYING · ${engineId} · ${definition.definitionKey} — ` +
-                      'version scope is shown in the grid (no version filter in /api/search yet)'
-                    }
-                  >
-                    {label}: {prefix}
-                    {formatCount(versionCount.count)}
-                  </Link>
-                  {version !== null && (
+                <span key={label} className="version-count version-zero">
+                  {label}: 0
+                </span>
+              )
+            }
+            const version = versionNumberOf(versionCount.version)
+            return (
+              <span key={label} className="version-count-cell">
+                <Link
+                  className="version-count"
+                  to={`/search?${definitionDrillParams(engineId, definition.definitionKey)}`}
+                  title={
+                    `Search FAILED + RETRYING · ${engineId} · ${definition.definitionKey} — ` +
+                    'version scope is shown in the grid (no version filter in /api/search yet)'
+                  }
+                >
+                  {label}: {prefix}
+                  {formatCount(versionCount.count)}
+                </Link>
+                {version !== null && (
+                  <span className="action-slot">
                     <button
                       type="button"
                       className="retry-group-btn"
                       disabled={!gate.enabled}
+                      aria-describedby={
+                        gate.enabled
+                          ? undefined
+                          : `retry-group-hint-${engineId}-${definition.definitionKey}-${String(version)}`
+                      }
                       title={
-                        gate.reason ??
-                        `Retry every currently dead-lettered ${definition.definitionKey} v${String(version)} instance in this error class (resolved server-side)`
+                        gate.enabled
+                          ? `Retry every currently dead-lettered ${definition.definitionKey} v${String(version)} instance in this error class (resolved server-side)`
+                          : gate.detail
                       }
                       onClick={() => {
                         setRetryScope({
@@ -173,12 +190,35 @@ function EngineRow({
                     >
                       Retry group
                     </button>
-                  )}
-                </span>
-              )
-            })}
-          </span>
-        ))}
+                    {!gate.enabled && gate.reason !== undefined && (
+                      <ActionHint
+                        id={`retry-group-hint-${engineId}-${definition.definitionKey}-${String(version)}`}
+                        text={gate.reason}
+                        tone="gate"
+                      />
+                    )}
+                  </span>
+                )}
+              </span>
+            )
+          }
+          // Usability round 2 (Theme E2): newest versions stay inline (zero-fill included —
+          // it is the regression signal); the long tail collapses behind the shared
+          // <details> idiom instead of ~30 button rows.
+          const overflow = definition.versions.slice(VERSIONS_INLINE)
+          return (
+            <span key={definition.definitionKey} className="definition-count">
+              <span className="definition-key">{definition.definitionKey}</span>
+              {definition.versions.slice(0, VERSIONS_INLINE).map(renderVersion)}
+              {overflow.length > 0 && (
+                <details className="version-overflow">
+                  <summary>+{String(overflow.length)} more versions</summary>
+                  {overflow.map(renderVersion)}
+                </details>
+              )}
+            </span>
+          )
+        })}
       </span>
       {retryScope !== null && (
         <RetryGroupModal

@@ -10,14 +10,38 @@ import { useEffect, useMemo, useState } from 'react'
 import type { EngineDto, ProcessInstanceRow, SearchRequest } from '../api/model'
 import { useSubmitBulk } from '../api/bulk'
 import type { BulkTarget } from '../api/bulk'
+import type { MeDto } from '../api/me'
+import { roleOn } from '../api/me'
+import { roleAtLeast } from '../actions/catalog'
+import type { RoleHint } from '../actions/catalog'
 import { problemBanner } from '../actions/problem'
+import { ActionHint } from '../components/ActionHint'
 import { ModalShell } from '../components/ModalShell'
 import { useToast } from '../components/toast'
 import { useOpsDrawer } from '../ops/drawerState'
 import type { EngineFailure } from '../search/partials'
-import { FilterBulkModal } from './FilterBulkModal'
-import { perEngineSplit, planFilterScope, planSelection } from './intersection'
+import { enginesInScope, FilterBulkModal } from './FilterBulkModal'
+import {
+  perEngineSplit,
+  planFilterScope,
+  planSelection,
+  reversibilityNote,
+  targetEnvironment,
+} from './intersection'
 import type { BulkVerbOffer } from './intersection'
+
+const ROLE_FLOOR: RoleHint = 'RESPONDER'
+
+/** Usability round 1, Theme B: the FIRST target engine whose role is below the RESPONDER
+ *  floor — greying ALL verbs uniformly, the same as ErrorGroupCard's per-verb gate. Unknown
+ *  role (me not loaded / engine unmapped) stays optimistic, per roleOn's own contract. */
+function belowFloorRole(me: MeDto | undefined, engineIds: Iterable<string>): RoleHint | null {
+  for (const engineId of engineIds) {
+    const role = roleOn(me, engineId)
+    if (role !== null && !roleAtLeast(role, ROLE_FLOOR)) return role
+  }
+  return null
+}
 
 interface Props {
   selected: ProcessInstanceRow[]
@@ -33,6 +57,9 @@ interface Props {
   /** Rows the grid currently shows — "all visible selected" trips the affordance. */
   visibleCount: number
   engines: EngineDto[]
+  /** The signed-in operator (SPEC §6 greyed-never-hidden) — threaded down from SearchPage
+   *  the same way ErrorGroupCard obtains it, so the bar's role gate cannot drift from it. */
+  me: MeDto | undefined
 }
 
 export function BulkBar({
@@ -44,11 +71,19 @@ export function BulkBar({
   matchTotal,
   visibleCount,
   engines,
+  me,
 }: Props) {
   const [modalVerb, setModalVerb] = useState<BulkVerbOffer | null>(null)
   const [filterScope, setFilterScope] = useState(false)
   const [filterVerb, setFilterVerb] = useState<BulkVerbOffer | null>(null)
-  const plan = useMemo(() => planSelection(selected), [selected])
+  const selectionRoleHint = useMemo(
+    () => belowFloorRole(me, new Set(selected.map((row) => row.engineId ?? ''))),
+    [me, selected],
+  )
+  const plan = useMemo(
+    () => planSelection(selected, selectionRoleHint),
+    [selected, selectionRoleHint],
+  )
 
   // A new search is a new scope — never carry filter mode across criteria.
   useEffect(() => {
@@ -60,15 +95,25 @@ export function BulkBar({
     criteria !== null && (criteria.statuses ?? []).length > 0 && (matchTotal ?? 0) > 0
   const allVisibleSelected = visibleCount > 0 && selected.length >= visibleCount
   const approx = matchTotal !== undefined ? `~${String(matchTotal)}` : 'all'
+  // Theme H1: never render "Select all all matching filter…" — the ~N only appears when known.
+  const selectAllLabel =
+    matchTotal !== undefined
+      ? `Select all ${approx} matching filter…`
+      : 'Select all matching filter…'
+  const scopeCountHint =
+    '~ = the count when this page loaded. The real list is re-checked at run time.'
 
   if (filterScope && criteria !== null) {
-    const offers = planFilterScope(criteria.statuses)
+    const filterEngineIds = enginesInScope(criteria, engines).map((engine) => engine.id ?? '')
+    const filterRoleHint = belowFloorRole(me, filterEngineIds)
+    const offers = planFilterScope(criteria.statuses, filterRoleHint)
     return (
       <div className="bulk-bar bulk-bar-filter" role="toolbar" aria-label="bulk actions">
         <span className="bulk-count">
           Scope: <strong>{approx} instances matching the current filter</strong> — resolved
           server-side at execution, not this snapshot
         </span>
+        <ActionHint tone="info" text={scopeCountHint} />
         <button
           type="button"
           className="copy-btn"
@@ -79,18 +124,23 @@ export function BulkBar({
           Back to checkbox selection
         </button>
         {offers.map((offer) => (
-          <button
-            key={offer.verb}
-            type="button"
-            className="copy-btn action-btn"
-            disabled={!offer.enabled}
-            title={offer.enabled ? offer.plain : offer.reason}
-            onClick={() => {
-              setFilterVerb(offer)
-            }}
-          >
-            {offer.label}
-          </button>
+          <div className="action-slot" key={offer.verb}>
+            <button
+              type="button"
+              className="copy-btn action-btn"
+              disabled={!offer.enabled}
+              aria-describedby={offer.enabled ? undefined : `filter-${offer.verb}-hint`}
+              title={offer.enabled ? offer.plain : (offer.detail ?? offer.reason)}
+              onClick={() => {
+                setFilterVerb(offer)
+              }}
+            >
+              {offer.label}
+            </button>
+            {!offer.enabled && offer.reason !== undefined && (
+              <ActionHint id={`filter-${offer.verb}-hint`} text={offer.reason} tone="gate" />
+            )}
+          </div>
         ))}
         {filterVerb !== null && (
           <FilterBulkModal
@@ -118,16 +168,19 @@ export function BulkBar({
     if (!filterable) return null
     return (
       <div className="bulk-bar bulk-bar-slim" role="toolbar" aria-label="bulk actions">
-        <button
-          type="button"
-          className="copy-btn"
-          title="act on every instance matching the current filter — resolved server-side at execution"
-          onClick={() => {
-            setFilterScope(true)
-          }}
-        >
-          Select all {approx} matching filter…
-        </button>
+        <div className="action-slot">
+          <button
+            type="button"
+            className="copy-btn"
+            title="act on every instance matching the current filter — resolved server-side at execution"
+            onClick={() => {
+              setFilterScope(true)
+            }}
+          >
+            {selectAllLabel}
+          </button>
+          <ActionHint tone="info" text={scopeCountHint} />
+        </div>
       </div>
     )
   }
@@ -155,35 +208,44 @@ export function BulkBar({
         )}
       </span>
       {allVisibleSelected && filterable && (
-        <button
-          type="button"
-          className="copy-btn"
-          title="the whole page is selected — widen the scope to every instance matching the filter (server-resolved at execution)"
-          onClick={() => {
-            setFilterScope(true)
-          }}
-        >
-          Select all {approx} matching filter…
-        </button>
+        <div className="action-slot">
+          <button
+            type="button"
+            className="copy-btn"
+            title="the whole page is selected — widen the scope to every instance matching the filter (server-resolved at execution)"
+            onClick={() => {
+              setFilterScope(true)
+            }}
+          >
+            {selectAllLabel}
+          </button>
+          <ActionHint tone="info" text={scopeCountHint} />
+        </div>
       )}
       {plan.offers.map((offer) => (
-        <button
-          key={offer.verb}
-          type="button"
-          className="copy-btn action-btn"
-          disabled={!offer.enabled}
-          title={offer.enabled ? offer.plain : offer.reason}
-          onClick={() => {
-            setModalVerb(offer)
-          }}
-        >
-          {offer.label}
-        </button>
+        <div className="action-slot" key={offer.verb}>
+          <button
+            type="button"
+            className="copy-btn action-btn"
+            disabled={!offer.enabled}
+            aria-describedby={offer.enabled ? undefined : `bulk-${offer.verb}-hint`}
+            title={offer.enabled ? offer.plain : (offer.detail ?? offer.reason)}
+            onClick={() => {
+              setModalVerb(offer)
+            }}
+          >
+            {offer.label}
+          </button>
+          {!offer.enabled && offer.reason !== undefined && (
+            <ActionHint id={`bulk-${offer.verb}-hint`} text={offer.reason} tone="gate" />
+          )}
+        </div>
       ))}
       {modalVerb !== null && (
         <BulkSubmitModal
           offer={modalVerb}
           targets={plan.targets}
+          engines={engines}
           failedEngines={failedEngines}
           truncated={truncated}
           onClose={() => {
@@ -202,6 +264,7 @@ export function BulkBar({
 function BulkSubmitModal({
   offer,
   targets,
+  engines,
   failedEngines,
   truncated,
   onClose,
@@ -209,6 +272,7 @@ function BulkSubmitModal({
 }: {
   offer: BulkVerbOffer
   targets: ProcessInstanceRow[]
+  engines: EngineDto[]
   failedEngines: EngineFailure[]
   truncated: boolean
   onClose: () => void
@@ -221,10 +285,23 @@ function BulkSubmitModal({
   const [acknowledged, setAcknowledged] = useState(false)
   const [listOpen, setListOpen] = useState(false)
   const split = perEngineSplit(targets)
+  const environment = useMemo(() => targetEnvironment(targets, engines), [targets, engines])
   // SPEC §7: bulk over a partial result set is BLOCKED until explicitly acknowledged.
   const partial = failedEngines.length > 0 || truncated
-  const reasonOk = reason.trim() === '' || reason.trim().length >= 10
+  // C-front: unified with the sibling modals — always required, never the optional escape.
+  const reasonOk = reason.trim().length >= 10
   const canSubmit = !submit.isPending && reasonOk && (!partial || acknowledged)
+  const partialBlocked = partial && !acknowledged
+  const shortReason = partialBlocked
+    ? 'Blocked: acknowledge the partial result set first'
+    : !reasonOk
+      ? 'Reason too short — 10+ characters'
+      : undefined
+  const longDetail = partialBlocked
+    ? 'acknowledge the partial result set first'
+    : !reasonOk
+      ? 'a reason of at least 10 characters is required'
+      : undefined
 
   const dispatch = () => {
     const items: BulkTarget[] = targets.map((row) => ({
@@ -232,7 +309,7 @@ function BulkSubmitModal({
       instanceId: row.processInstanceId ?? '',
     }))
     submit.mutate(
-      { verb: offer.verb, reason: reason.trim() === '' ? undefined : reason.trim(), items },
+      { verb: offer.verb, reason: reason.trim(), items },
       {
         onSuccess: (job) => {
           toast({
@@ -251,29 +328,30 @@ function BulkSubmitModal({
   return (
     <ModalShell
       title={`${offer.label} — ${offer.plain}`}
+      environment={environment}
       onClose={onClose}
       footer={
         <>
           <button type="button" onClick={onClose}>
             Cancel
           </button>
-          <button
-            type="button"
-            className="primary"
-            disabled={!canSubmit}
-            title={
-              partial && !acknowledged
-                ? 'acknowledge the partial result set first'
-                : !reasonOk
-                  ? 'a reason, when given, must be at least 10 characters'
-                  : undefined
-            }
-            onClick={dispatch}
-          >
-            {submit.isPending
-              ? 'Submitting…'
-              : `${offer.label} — ${String(targets.length)} instance${targets.length === 1 ? '' : 's'}`}
-          </button>
+          <div className="action-slot">
+            <button
+              type="button"
+              className="primary"
+              disabled={!canSubmit}
+              aria-describedby={longDetail !== undefined ? 'bulk-submit-hint' : undefined}
+              title={longDetail}
+              onClick={dispatch}
+            >
+              {submit.isPending
+                ? 'Submitting…'
+                : `${offer.label} — ${String(targets.length)} instance${targets.length === 1 ? '' : 's'}`}
+            </button>
+            {shortReason !== undefined && (
+              <ActionHint id="bulk-submit-hint" text={shortReason} tone="gate" />
+            )}
+          </div>
         </>
       }
     >
@@ -307,6 +385,7 @@ function BulkSubmitModal({
         writes its own audit row; partial failure is reported per item in the operations drawer,
         never rolled back.
       </p>
+      <p className="strip-note">{reversibilityNote(offer.verb)}</p>
 
       {partial && (
         <div className="callout callout-amber" role="alert">
@@ -333,7 +412,7 @@ function BulkSubmitModal({
       )}
 
       <label className="modal-field">
-        Reason (optional, ≥10 chars when given — lands on every item&apos;s audit row)
+        Why are you doing this? (required, 10+ characters — saved to the audit trail on every item)
         <textarea
           value={reason}
           rows={2}

@@ -190,7 +190,10 @@ Answers "what is broken, how much, where" in zero keystrokes:
   algoVersion; a normalizer change bumps it, flags bindings "needs re-binding" (never
   silently rebinds), and must pass the golden corpus (TEST-STRATEGY §4).
   **Drill-through is scope-explicit** (R-SEM-12): each per-version count is its own click
-  target, and the resulting filter state is echoed before commit. Each per-version count
+  target, and the resulting filter state is echoed before commit. The group-total click
+  carries the signature hash into the Stage-1 search (`signature` URL param → the search
+  plan's signature filter), so the landing's whole-class scope survives the drill and the
+  filter-scope bulk (§7 v1.x #2) becomes the one-action whole-class remediation path. Each per-version count
   also offers **bulk-retry-the-group** (§7 v1.x #1) — demoted/warned when the group's
   annotation implies a data fix first (R-SEM-13; the demotion activates with group
   annotations, R-BAU-01 — until then the offer is un-demoted). This is the triage
@@ -551,17 +554,26 @@ for the operator.
 
 ## 7. Bulk operations
 
-- **v1**: grid-selection bulk (intersection of valid actions), cap 200 items — executed as
-  a **persisted tracked job from day one** (R-SEM-10; resolves the earlier §7↔ARCH §4
-  ambiguity: one machinery, restart-safe), with per-item result report (successful IDs vs
-  id→error table, Conductor `BulkResponse` style) and an **aggregate readout** "N of M
-  dispatched · ok/failed/skipped/unknown" (R-SEM-11).
+- **v1**: grid-selection bulk (intersection of valid actions), cap 200 items, **reason
+  mandatory ≥10 chars** (usability fix C-back: unified across every submit door — the
+  ticked-selection door used to allow it blank, which the error-class and filter doors
+  never did) — executed as a **persisted tracked job from day one** (R-SEM-10; resolves the
+  earlier §7↔ARCH §4 ambiguity: one machinery, restart-safe), with per-item result report
+  (successful IDs vs id→error table, Conductor `BulkResponse` style) and an **aggregate
+  readout** "N of M dispatched · ok/failed/skipped/unknown" (R-SEM-11).
 - **Job state machine** (normative): job `PENDING → RUNNING → (COMPLETED | CANCELLED |
   INTERRUPTED)`; item `pending → dispatched → (ok | failed | skipped | skipped (protected) |
   unknown | not_run)`. On BFF startup a reconciliation sweep marks RUNNING → INTERRUPTED;
   the item in flight at crash becomes `unknown` (never re-fired); undispatched become
   `not_run`. No automatic resume, ever: the operations drawer banners INTERRUPTED jobs on
   next login and offers "continue as new job" pre-scoped to `not_run` + `failed`.
+- **Scope provenance** (usability fix E1, `V4__bulk_job_scope.sql`): every persisted job
+  records which of the three submit doors produced it — `scope_kind ∈ SELECTION |
+  ERROR_CLASS | FILTER` — plus a `scope_label` one-liner summarizing what was targeted
+  (`"12 ticked instances"` / `"payment v3 · error class"` / a compact criteria restatement —
+  statuses + definition key[+version] + engines, ≤120 chars, the same chip notion the
+  filter-bulk confirm modal already shows). Surfaced in the operations drawer so a job
+  reads "what was targeted" without opening the envelope audit payload.
 - **Circuit-open mid-job** (R-SEM-11): dispatch to a tripped engine **pauses** — undispatched
   items stay `pending`, never burned as failures; a breaker fast-fail on an already-dispatched
   item is `failed` (clean rejection); `unknown` stays reserved for true ambiguity (timeout

@@ -3,6 +3,7 @@
 // 8123?" → click, sub-second); queue-state-only verbs stay single-click. The armed state
 // disarms itself after a beat so a stray first click cannot linger as a landmine.
 import { useEffect, useRef, useState } from 'react'
+import { ActionHint } from '../components/ActionHint'
 import type { Gate, VerbMeta } from './catalog'
 
 const DISARM_MS = 5000
@@ -30,8 +31,9 @@ export function InlineConfirm({ meta, gate, confirmText, twoStep, pending, onCon
 
   const disabled = !gate.enabled || pending
   const title = !gate.enabled
-    ? gate.reason
+    ? (gate.detail ?? gate.reason)
     : `${meta.plain} · ${meta.reversibility}: ${meta.reversibilityNote}`
+  const hintId = `inline-confirm-hint-${meta.verb}`
 
   if (armed && twoStep) {
     return (
@@ -64,24 +66,30 @@ export function InlineConfirm({ meta, gate, confirmText, twoStep, pending, onCon
   }
 
   return (
-    <button
-      type="button"
-      className="copy-btn action-btn"
-      disabled={disabled}
-      title={title}
-      onClick={() => {
-        if (!twoStep) {
-          onConfirm()
-          return
-        }
-        setArmed(true)
-        window.clearTimeout(timer.current)
-        timer.current = window.setTimeout(() => {
-          setArmed(false)
-        }, DISARM_MS)
-      }}
-    >
-      {pending ? `${meta.label}…` : meta.label}
-    </button>
+    <span className="action-slot">
+      <button
+        type="button"
+        className="copy-btn action-btn"
+        disabled={disabled}
+        title={title}
+        aria-describedby={!gate.enabled ? hintId : undefined}
+        onClick={() => {
+          if (!twoStep) {
+            onConfirm()
+            return
+          }
+          setArmed(true)
+          window.clearTimeout(timer.current)
+          timer.current = window.setTimeout(() => {
+            setArmed(false)
+          }, DISARM_MS)
+        }}
+      >
+        {pending ? `${meta.label}…` : meta.label}
+      </button>
+      {!gate.enabled && gate.reason !== undefined && (
+        <ActionHint id={hintId} text={gate.reason} tone="gate" />
+      )}
+    </span>
   )
 }

@@ -20,6 +20,13 @@ existing one (grid re-architecture, a new destructive path, bulk-flow changes), 
 2. **N tester agents** (cheaper model tier) execute the scripts as naive first-time operators
    against the REAL rendered surface (run the dev stack; drive/inspect the actual UI, not the
    source). Each emits element-cited findings + a per-task `canComplete` verdict.
+   **Driver:** the `playwright` MCP server (`.mcp.json`, dockerized, host network — see
+   CLAUDE.md "Dev tooling — MCP") is the sanctioned way to drive the UI: accessibility
+   snapshots via `browser_snapshot`, interaction via `browser_click`/`browser_fill_form`,
+   artifacts land in `.playwright-mcp/`. Subagents load its tools on demand via ToolSearch.
+   Testers sign in with the dev ladder users (viewer/responder/operator/admin, pw `dev`).
+   Fallback when MCP is unavailable (e.g. the server wasn't connected at session start):
+   scratchpad Playwright scripts against the cached `~/.cache/ms-playwright` chromium.
 3. **UX reconciliation**: cluster N reports by shared root cause (not by page); a theme
    hitting ≥3 surfaces outranks any single-surface major.
 4. **FIX panel** (designer + UX + lead dev seats) scores value/feasibility/fit, converges on

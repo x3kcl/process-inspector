@@ -1,6 +1,7 @@
 import type { EngineDto } from '../api/model'
 import { useEngines } from '../api/useEngines'
 import { formatCount, formatSeconds } from '../lib/format'
+import { glossTechnicalMessage } from '../lib/plainFailure'
 import { EnvBadge } from './EnvBadge'
 
 const LANE_TITLES: Record<string, string> = {
@@ -45,9 +46,12 @@ function EngineCard({ engine }: { engine: EngineDto }) {
       <EnvBadge environment={engine.environment} accentColor={engine.accentColor} />
       <span className="engine-name">{engine.name ?? engine.id ?? 'unnamed engine'}</span>
       <span className="engine-version">
-        {engine.engineVersion !== undefined ? `v${engine.engineVersion}` : 'v?'}
+        {typeof engine.engineVersion === 'string' ? `v${engine.engineVersion}` : 'v?'}
       </span>
-      {reachable && lanes !== undefined && (
+      {/* The BFF serializes just-recovered engines with jobLanes: null for one probe cycle
+          (Jackson-null vs TS-undefined) — an undefined-only guard crashed the whole SPA
+          on the unreachable→healthy transition. */}
+      {reachable && lanes !== undefined && lanes !== null && (
         <span className="lanes">
           <Lane label="exec" value={lanes.executable} />
           <Lane label="timer" value={lanes.timer} />
@@ -55,10 +59,14 @@ function EngineCard({ engine }: { engine: EngineDto }) {
           <Lane label="DLQ" value={lanes.deadletter} alarm={(lanes.deadletter ?? 0) > 0} />
         </span>
       )}
-      {reachable && lanes === undefined && <span className="strip-note">lanes unknown</span>}
+      {reachable && (lanes === undefined || lanes === null) && (
+        <span className="strip-note">lanes unknown</span>
+      )}
       {!reachable && (
+        // Usability round 1, Theme F: the raw exception text stays available in the
+        // title — the visible line is a plain-language gloss, never a stack trace.
         <span className="engine-unreachable" title={engine.healthError}>
-          ⚠ UNREACHABLE{engine.healthError !== undefined ? ` — ${engine.healthError}` : ''}
+          ⚠ UNREACHABLE — {glossTechnicalMessage(engine.healthError)}
         </span>
       )}
       {reachable && oldestAge !== undefined && oldestAge > 0 && (

@@ -133,7 +133,7 @@ class BulkFilterServiceTest {
                         List.of(row("p-1"), row("p-2"), row("p-1")), // p-1 twice: dedupe
                         Map.of(ENGINE, EngineResult.success(3, 3))));
         BulkDtos.BulkJobDto dto = mock(BulkDtos.BulkJobDto.class);
-        when(bulk.submit(any(), eq(responder), anyMap(), eq(BulkJob.FILTER_ITEM_CAP)))
+        when(bulk.submit(any(), eq(responder), anyMap(), eq(BulkJob.FILTER_ITEM_CAP), any()))
                 .thenReturn(dto);
 
         SearchRequest criteria = criteria(InstanceStatus.FAILED);
@@ -150,7 +150,14 @@ class BulkFilterServiceTest {
         ArgumentCaptor<BulkDtos.BulkSubmitRequest> submit = ArgumentCaptor.forClass(BulkDtos.BulkSubmitRequest.class);
         @SuppressWarnings("unchecked")
         ArgumentCaptor<Map<String, Object>> meta = ArgumentCaptor.forClass(Map.class);
-        verify(bulk).submit(submit.capture(), eq(responder), meta.capture(), eq(BulkJob.FILTER_ITEM_CAP));
+        ArgumentCaptor<String> scopeLabel = ArgumentCaptor.forClass(String.class);
+        verify(bulk)
+                .submit(
+                        submit.capture(),
+                        eq(responder),
+                        meta.capture(),
+                        eq(BulkJob.FILTER_ITEM_CAP),
+                        scopeLabel.capture());
         assertThat(submit.getValue().verb()).isEqualTo("retry-job");
         assertThat(submit.getValue().reason()).isEqualTo("ops-4711 incident");
         assertThat(submit.getValue().items())
@@ -159,6 +166,40 @@ class BulkFilterServiceTest {
         @SuppressWarnings("unchecked")
         Map<String, Object> filter = (Map<String, Object>) meta.getValue().get("filter");
         assertThat(filter).containsEntry("criteria", criteria).containsEntry("resolvedCount", 2);
+        // E1-back: scope provenance — the compact criteria summary (statuses + defKey +
+        // engines), ported from the FilterBulkModal chip notion, ≤120 chars.
+        assertThat(scopeLabel.getValue()).isEqualTo("FAILED · payment · engines: engine-a");
+    }
+
+    @Test
+    void scopeLabelOmitsEmptyPartsAndTruncatesAt120Chars() {
+        when(search.resolveAllMatching(any(), anyInt()))
+                .thenReturn(response(List.of(row("p-1")), Map.of(ENGINE, EngineResult.success(1, 1))));
+        when(bulk.submit(any(), eq(responder), anyMap(), anyInt(), any())).thenReturn(mock(BulkDtos.BulkJobDto.class));
+        SearchRequest noDefKeyNoEngines = new SearchRequest(
+                null,
+                List.of(InstanceStatus.FAILED, InstanceStatus.ACTIVE),
+                null,
+                null,
+                null,
+                null,
+                null,
+                null,
+                null,
+                null,
+                null,
+                null,
+                null,
+                null,
+                null,
+                null);
+
+        service.submit(request(noDefKeyNoEngines, "ops-4711 incident"), responder);
+
+        ArgumentCaptor<String> scopeLabel = ArgumentCaptor.forClass(String.class);
+        verify(bulk).submit(any(), eq(responder), anyMap(), anyInt(), scopeLabel.capture());
+        assertThat(scopeLabel.getValue()).isEqualTo("FAILED + ACTIVE");
+        assertThat(scopeLabel.getValue().length()).isLessThanOrEqualTo(120);
     }
 
     @Test

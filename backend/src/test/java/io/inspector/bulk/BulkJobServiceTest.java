@@ -181,7 +181,7 @@ class BulkJobServiceTest {
         for (String id : instanceIds) {
             targets.add(new BulkDtos.BulkTarget(ENGINE, id, null));
         }
-        return new BulkDtos.BulkSubmitRequest("suspend", null, null, null, targets);
+        return new BulkDtos.BulkSubmitRequest("suspend", "ops-4711 incident", null, null, targets);
     }
 
     private BulkDtos.BulkJobDto awaitFinished(UUID id) {
@@ -231,6 +231,30 @@ class BulkJobServiceTest {
                         responder))
                 .isInstanceOf(GuardRefusedException.class)
                 .hasMessageContaining("10 characters");
+    }
+
+    /**
+     * C-back (usability fix): the ticked-row door used to length-check the reason only when
+     * present; unified with the error-class/filter siblings — null AND blank now refuse the
+     * same way a too-short reason does.
+     */
+    @Test
+    void refusesMissingOrBlankReasonLikeTheStrictSiblings() {
+        assertThatThrownBy(() -> service.submit(
+                        new BulkDtos.BulkSubmitRequest(
+                                "suspend", null, null, null, List.of(new BulkDtos.BulkTarget(ENGINE, "pi-1", null))),
+                        responder))
+                .isInstanceOfSatisfying(GuardRefusedException.class, e -> {
+                    assertThat(e.code()).isEqualTo("reason-too-short");
+                    assertThat(e.getMessage()).contains("10 characters");
+                });
+        assertThatThrownBy(() -> service.submit(
+                        new BulkDtos.BulkSubmitRequest(
+                                "suspend", "   ", null, null, List.of(new BulkDtos.BulkTarget(ENGINE, "pi-1", null))),
+                        responder))
+                .isInstanceOfSatisfying(
+                        GuardRefusedException.class, e -> assertThat(e.code()).isEqualTo("reason-too-short"));
+        assertThat(jobStore).isEmpty();
     }
 
     @Test
@@ -288,7 +312,11 @@ class BulkJobServiceTest {
 
         BulkDtos.BulkJobDto submitted = service.submit(
                 new BulkDtos.BulkSubmitRequest(
-                        "retry-job", null, null, null, List.of(new BulkDtos.BulkTarget(ENGINE, "pi-1", null))),
+                        "retry-job",
+                        "ops-4711 incident",
+                        null,
+                        null,
+                        List.of(new BulkDtos.BulkTarget(ENGINE, "pi-1", null))),
                 responder);
         BulkDtos.BulkJobDto done = awaitFinished(submitted.id());
 
@@ -305,7 +333,11 @@ class BulkJobServiceTest {
 
         BulkDtos.BulkJobDto submitted = service.submit(
                 new BulkDtos.BulkSubmitRequest(
-                        "retry-job", null, null, null, List.of(new BulkDtos.BulkTarget(ENGINE, "pi-1", null))),
+                        "retry-job",
+                        "ops-4711 incident",
+                        null,
+                        null,
+                        List.of(new BulkDtos.BulkTarget(ENGINE, "pi-1", null))),
                 responder);
         BulkDtos.BulkJobDto done = awaitFinished(submitted.id());
 
@@ -476,9 +508,66 @@ class BulkJobServiceTest {
         // The public door still refuses over 200…
         assertThatThrownBy(() -> service.submit(suspendOf(ids), responder)).isInstanceOf(GuardRefusedException.class);
         // …the filter package-door carries the same list under the 5000 cap.
-        BulkDtos.BulkJobDto submitted = service.submit(suspendOf(ids), responder, Map.of(), BulkJob.FILTER_ITEM_CAP);
+        BulkDtos.BulkJobDto submitted =
+                service.submit(suspendOf(ids), responder, Map.of(), BulkJob.FILTER_ITEM_CAP, "FAILED · payment");
         BulkDtos.BulkJobDto done = awaitFinished(submitted.id());
         assertThat(done.tallies()).containsEntry("ok", (long) ids.length);
+    }
+
+    /* ---------------- E1-back: scope provenance threaded from the three doors ---------------- */
+
+    @Test
+    void selectionDoorRecordsItsOwnScopeKindAndTickedCountLabel() {
+        when(actions.execute(any(), any(), any(), any(), any()))
+                .thenReturn(new ActionResult(UUID.randomUUID(), "c", "ok", 200, "suspended"));
+
+        BulkDtos.BulkJobDto submitted = service.submit(suspendOf("pi-1", "pi-2", "pi-3"), responder);
+
+        assertThat(submitted.scopeKind()).isEqualTo("SELECTION");
+        assertThat(submitted.scopeLabel()).isEqualTo("3 ticked instances");
+    }
+
+    @Test
+    void selectionDoorSingularizesTheLabelForOneInstance() {
+        when(actions.execute(any(), any(), any(), any(), any()))
+                .thenReturn(new ActionResult(UUID.randomUUID(), "c", "ok", 200, "suspended"));
+
+        BulkDtos.BulkJobDto submitted = service.submit(suspendOf("pi-1"), responder);
+
+        assertThat(submitted.scopeLabel()).isEqualTo("1 ticked instance");
+    }
+
+    @Test
+    void errorClassDoorRecordsItsScopeKindAndCallerSuppliedLabel() {
+        when(actions.execute(any(), any(), any(), any(), any()))
+                .thenReturn(new ActionResult(UUID.randomUUID(), "c", "ok", 200, "suspended"));
+
+        BulkDtos.BulkJobDto submitted = service.submit(
+                new BulkDtos.BulkSubmitRequest(
+                        "suspend",
+                        "ops-4711 incident",
+                        null,
+                        null,
+                        List.of(new BulkDtos.BulkTarget(ENGINE, "pi-1", null))),
+                responder,
+                Map.of("errorClass", Map.of()),
+                "payment v3 · error class");
+
+        assertThat(submitted.scopeKind()).isEqualTo("ERROR_CLASS");
+        assertThat(submitted.scopeLabel()).isEqualTo("payment v3 · error class");
+    }
+
+    @Test
+    void filterDoorRecordsItsScopeKindAndCallerSuppliedLabel() {
+        service = serviceWith(8, 0, new java.util.concurrent.CopyOnWriteArrayList<>());
+        when(actions.execute(any(), any(), any(), any(), any()))
+                .thenReturn(new ActionResult(UUID.randomUUID(), "c", "ok", 200, "suspended"));
+
+        BulkDtos.BulkJobDto submitted = service.submit(
+                suspendOf("pi-1"), responder, Map.of("filter", Map.of()), BulkJob.FILTER_ITEM_CAP, "FAILED · payment");
+
+        assertThat(submitted.scopeKind()).isEqualTo("FILTER");
+        assertThat(submitted.scopeLabel()).isEqualTo("FAILED · payment");
     }
 
     @Test

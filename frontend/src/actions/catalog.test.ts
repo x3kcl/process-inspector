@@ -65,7 +65,7 @@ describe('actionGate — v1.1 flow surgery gates', () => {
     })
     expect(onProd.enabled).toBe(false)
     expect(onProd.reason).toContain('ADMIN')
-    expect(onProd.reason).toContain('production')
+    expect(onProd.detail).toContain('production')
     expect(
       actionGate({ meta: VERBS.changeState, roleHint: 'OPERATOR', environment: 'test' }).enabled,
     ).toBe(true)

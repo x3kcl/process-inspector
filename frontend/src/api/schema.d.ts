@@ -553,6 +553,8 @@ export interface components {
             id?: string;
             items?: components["schemas"]["BulkItemDto"][];
             reason?: string;
+            scopeKind?: string;
+            scopeLabel?: string;
             state?: string;
             /** Format: date-time */
             submittedAt?: string;

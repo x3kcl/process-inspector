@@ -11,6 +11,8 @@ import { useSubmitBulkErrorClass } from '../api/bulk'
 import { useQueryClient } from '@tanstack/react-query'
 import { reasonRule, reasonValid } from '../actions/catalog'
 import { problemBanner } from '../actions/problem'
+import { reversibilityNote } from '../bulk/intersection'
+import { ActionHint } from '../components/ActionHint'
 import { ModalShell } from '../components/ModalShell'
 import { useToast } from '../components/toast'
 import { useOpsDrawer } from '../ops/drawerState'
@@ -85,28 +87,43 @@ export function RetryGroupModal({
     )
   }
 
+  const shortReason = !coordinatesOk
+    ? 'Group stale — refresh the landing'
+    : !reasonOk
+      ? 'Reason too short — 10+ characters'
+      : !tokenOk
+        ? `Type ${definitionKey} to enable`
+        : dispatchedMaybe
+          ? 'Blocked: previous attempt outcome unknown — do not resubmit'
+          : undefined
+  const longDetail = !coordinatesOk
+    ? 'this group is missing its signature coordinates — refresh the landing'
+    : !reasonOk
+      ? 'a reason of at least 10 characters is required'
+      : !tokenOk
+        ? 'type the definition key exactly to enable'
+        : undefined
+
   const footer = (
     <>
       <button type="button" onClick={onClose}>
         Cancel
       </button>
-      <button
-        type="button"
-        className="danger"
-        disabled={!reasonOk || !tokenOk || !coordinatesOk || submit.isPending || dispatchedMaybe}
-        title={
-          !coordinatesOk
-            ? 'this group is missing its signature coordinates — refresh the landing'
-            : !reasonOk
-              ? 'a reason of at least 10 characters is required'
-              : !tokenOk
-                ? 'type the definition key exactly to enable'
-                : undefined
-        }
-        onClick={confirm}
-      >
-        {submit.isPending ? 'Dispatching…' : `Retry group — ${definitionKey} v${String(version)}`}
-      </button>
+      <div className="action-slot">
+        <button
+          type="button"
+          className="danger"
+          disabled={!reasonOk || !tokenOk || !coordinatesOk || submit.isPending || dispatchedMaybe}
+          aria-describedby={shortReason !== undefined ? 'retry-group-submit-hint' : undefined}
+          title={longDetail}
+          onClick={confirm}
+        >
+          {submit.isPending ? 'Dispatching…' : `Retry group — ${definitionKey} v${String(version)}`}
+        </button>
+        {shortReason !== undefined && (
+          <ActionHint id="retry-group-submit-hint" text={shortReason} tone="gate" />
+        )}
+      </div>
     </>
   )
 
@@ -136,8 +153,10 @@ export function RetryGroupModal({
         </p>
       </div>
 
+      <p className="strip-note">{reversibilityNote('retry-job')}</p>
+
       <label className="modal-field">
-        Reason (required, at least 10 characters — lands in the audit trail)
+        Why are you doing this? (required, 10+ characters — saved to the audit trail on every item)
         <textarea
           value={reason}
           rows={2}

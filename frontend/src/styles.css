@@ -1307,6 +1307,22 @@ button.primary:disabled {
   font-weight: 600;
 }
 
+/* ---- usability round 1: ActionHint shared primitive ---- */
+.action-slot {
+  display: inline-flex;
+  flex-direction: column;
+  gap: 2px;
+}
+.action-hint {
+  font-size: 11px;
+  line-height: 1.3;
+}
+.action-hint-gate {
+  color: #6b4a03;
+}
+.action-hint-info {
+  color: #57606f;
+}
 .action-danger {
   color: #a94438;
   border-color: #c0392b;
@@ -1935,6 +1951,12 @@ button.primary:disabled {
 }
 .outcome-skipped-protected {
   color: #1a4d80;
+}
+/* Re-queued (retry-job + ok) is deliberately amber, NOT green — the step has not
+   succeeded yet, it has only been re-queued (usability round 1, Theme G). */
+.outcome-requeued {
+  color: #b7791f;
+  font-weight: 700;
 }
 
 /* ---- v1.x #1: triage group retry + drawer focus handoff ---- */

@@ -114,28 +114,46 @@ public class BulkJobService {
     /* ------------------------------- submit ------------------------------- */
 
     public BulkDtos.BulkJobDto submit(BulkDtos.BulkSubmitRequest request, Authentication auth) {
-        return submit(request, auth, Map.of(), BulkJob.ITEM_CAP);
+        return submit(request, auth, Map.of(), BulkJob.ITEM_CAP, BulkJob.ScopeKind.SELECTION, null);
     }
 
     /**
      * Package-door variant for server-side-resolved submits (error-class group retry):
      * {@code extraEnvelopePayload} lands in the envelope audit row so the provenance of the
      * target list (which signature, which scan, how many resolved) is on the record.
-     */
-    BulkDtos.BulkJobDto submit(
-            BulkDtos.BulkSubmitRequest request, Authentication auth, Map<String, Object> extraEnvelopePayload) {
-        return submit(request, auth, extraEnvelopePayload, BulkJob.ITEM_CAP);
-    }
-
-    /**
-     * Package-door for the filter-resolved path (v1.x #2), which alone may carry up to
-     * {@link BulkJob#FILTER_ITEM_CAP} items; every other entry keeps the 200-item cap.
+     * {@code scopeLabel} (usability fix E1) is the caller's own short provenance summary —
+     * e.g. "payment v3 · error class" — recorded on the persisted job.
      */
     BulkDtos.BulkJobDto submit(
             BulkDtos.BulkSubmitRequest request,
             Authentication auth,
             Map<String, Object> extraEnvelopePayload,
-            int itemCap) {
+            String scopeLabel) {
+        return submit(request, auth, extraEnvelopePayload, BulkJob.ITEM_CAP, BulkJob.ScopeKind.ERROR_CLASS, scopeLabel);
+    }
+
+    /**
+     * Package-door for the filter-resolved path (v1.x #2), which alone may carry up to
+     * {@link BulkJob#FILTER_ITEM_CAP} items; every other entry keeps the 200-item cap.
+     * {@code scopeLabel} (usability fix E1) is the caller's compact criteria summary,
+     * recorded on the persisted job alongside the {@code FILTER} scope kind.
+     */
+    BulkDtos.BulkJobDto submit(
+            BulkDtos.BulkSubmitRequest request,
+            Authentication auth,
+            Map<String, Object> extraEnvelopePayload,
+            int itemCap,
+            String scopeLabel) {
+        return submit(request, auth, extraEnvelopePayload, itemCap, BulkJob.ScopeKind.FILTER, scopeLabel);
+    }
+
+    private BulkDtos.BulkJobDto submit(
+            BulkDtos.BulkSubmitRequest request,
+            Authentication auth,
+            Map<String, Object> extraEnvelopePayload,
+            int itemCap,
+            BulkJob.ScopeKind scopeKind,
+            String scopeLabel) {
         ActionVerb verb = ActionVerb.fromPath(request.verb() != null ? request.verb() : "")
                 .filter(BULK_VERBS::contains)
                 .orElseThrow(() -> new GuardRefusedException(
@@ -155,11 +173,15 @@ public class BulkJobService {
                     "Bulk is capped at " + itemCap + " items (got " + targets.size()
                             + "). Narrow the selection. Nothing happened.");
         }
-        String reason = request.reason() != null && !request.reason().isBlank() ? request.reason() : null;
-        if (reason != null && reason.length() < 10) {
+        // Reason is mandatory on EVERY submit door (usability fix C-back) — unified with the
+        // error-class and filter siblings, which never allowed the optional escape.
+        if (request.reason() == null
+                || request.reason().isBlank()
+                || request.reason().trim().length() < 10) {
             throw new GuardRefusedException(
                     HttpStatus.BAD_REQUEST, "reason-too-short", "The reason must be at least 10 characters.");
         }
+        String reason = request.reason().trim();
         for (BulkDtos.BulkTarget target : targets) {
             registry.require(target.engineId()); // unknown engine refuses the WHOLE submit pre-flight
             if (target.instanceId() == null || target.instanceId().isBlank()) {
@@ -192,6 +214,11 @@ public class BulkJobService {
         AuditEntry envelope = audit.beginPending(
                 auth.getName(), engineIds, null, null, "bulk:" + verb.path(), reason, request.ticketId(), payload);
 
+        // Scope provenance (usability fix E1): SELECTION derives its own label from the
+        // ticked count; ERROR_CLASS/FILTER bring their own from the door that resolved them.
+        String label = scopeLabel != null
+                ? scopeLabel
+                : targets.size() + " ticked instance" + (targets.size() == 1 ? "" : "s");
         BulkJob job = new BulkJob(
                 jobId,
                 auth.getName(),
@@ -200,7 +227,9 @@ public class BulkJobService {
                 reason,
                 request.ticketId(),
                 targets.size(),
-                request.continuedFrom());
+                request.continuedFrom(),
+                scopeKind,
+                label);
         jobs.saveAndFlush(job);
         List<BulkJobItem> itemRows = new ArrayList<>();
         int ordinal = 0;

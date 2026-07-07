@@ -144,7 +144,7 @@ test('select-all-matching: criteria-only submit, drawer hydrates off the SSE sig
 
   const confirm = modal.getByRole('button', { name: /Retry dead-letter jobs — all matching/ })
   await expect(confirm).toBeDisabled()
-  await modal.getByLabel(/Reason/).fill('INC-4712: drain everything matching the filter')
+  await modal.getByLabel(/Why are you doing this/).fill('INC-4712: drain everything matching the filter')
   await expect(confirm).toBeEnabled()
   await confirm.click()
 
@@ -178,7 +178,7 @@ test('a prod engine in filter scope demands the typed definition key', async ({ 
   // Reason alone must NOT unlock on prod — the typed token is the definition key
   // (never the raceable count: the members are re-resolved at execution time).
   const confirm = modal.getByRole('button', { name: /all matching the filter/ })
-  await modal.getByLabel(/Reason/).fill('INC-4712: drain everything matching the filter')
+  await modal.getByLabel(/Why are you doing this/).fill('INC-4712: drain everything matching the filter')
   await expect(confirm).toBeDisabled()
   await modal.getByLabel(/Type/).fill('payment')
   await expect(confirm).toBeEnabled()

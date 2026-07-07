@@ -63,8 +63,8 @@ public class BulkErrorClassService {
                     "Group retry is scoped to one definition version — processDefinitionKey and"
                             + " definitionVersion are required.");
         }
-        // Unlike /api/bulk (where reason is optional for queue-state verbs), a group retry
-        // acts on instances the operator never enumerated — the reason is mandatory.
+        // A group retry acts on instances the operator never enumerated — the reason is
+        // mandatory (same rule as every other bulk door, BulkJobService#submit).
         if (request.reason() == null
                 || request.reason().isBlank()
                 || request.reason().length() < 10) {
@@ -148,7 +148,10 @@ public class BulkErrorClassService {
 
         BulkDtos.BulkSubmitRequest submit = new BulkDtos.BulkSubmitRequest(
                 "retry-job", request.reason(), request.ticketId(), null, List.copyOf(targets.values()));
-        return bulk.submit(submit, auth, Map.of("errorClass", groupMeta));
+        // Scope provenance (usability fix E1): definition key + version identify the group
+        // at a glance in the operations drawer, without re-deriving it from the envelope.
+        String scopeLabel = request.processDefinitionKey() + " v" + request.definitionVersion() + " · error class";
+        return bulk.submit(submit, auth, Map.of("errorClass", groupMeta), scopeLabel);
     }
 
     private static GuardRefusedException refuse(HttpStatus status, String code, String message) {

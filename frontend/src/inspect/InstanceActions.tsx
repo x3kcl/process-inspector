@@ -15,6 +15,7 @@ import { cascadeVictims } from '../actions/cascade'
 import { problemBanner } from '../actions/problem'
 import type { ActionProblem } from '../actions/problem'
 import { roleOn, useMe } from '../api/me'
+import { ActionHint } from '../components/ActionHint'
 import { useToast } from '../components/toast'
 import { ChangeStateModal } from '../surgery/ChangeStateModal'
 import { RestartModal } from '../surgery/RestartModal'
@@ -101,46 +102,64 @@ export function InstanceActions({ engineId, instanceId, vitals, engine }: Props)
           run(pauseMeta.verb, {})
         }}
       />
-      <button
-        type="button"
-        className="copy-btn action-btn"
-        disabled={!changeStateGate.enabled}
-        title={
-          changeStateGate.enabled
-            ? `${VERBS.changeState.plain} — simulated before anything executes`
-            : changeStateGate.reason
-        }
-        onClick={() => {
-          setChangeStateOpen(true)
-        }}
-      >
-        {VERBS.changeState.label}
-      </button>
-      <button
-        type="button"
-        className="copy-btn action-btn"
-        disabled={!restartGate.enabled}
-        title={restartGate.enabled ? VERBS.restartAsNew.plain : restartGate.reason}
-        onClick={() => {
-          setRestartOpen(true)
-        }}
-      >
-        {VERBS.restartAsNew.label}
-      </button>
-      <button
-        type="button"
-        className="copy-btn action-btn action-danger"
-        disabled={!terminateGate.enabled}
-        title={
-          terminateGate.enabled ? `${VERBS.terminate.plain} · IRREVERSIBLE` : terminateGate.reason
-        }
-        onClick={() => {
-          action.reset()
-          setTerminateOpen(true)
-        }}
-      >
-        {VERBS.terminate.label}
-      </button>
+      <span className="action-slot">
+        <button
+          type="button"
+          className="copy-btn action-btn"
+          disabled={!changeStateGate.enabled}
+          aria-describedby={changeStateGate.enabled ? undefined : 'change-state-hint'}
+          title={
+            changeStateGate.enabled
+              ? `${VERBS.changeState.plain} — simulated before anything executes`
+              : changeStateGate.detail
+          }
+          onClick={() => {
+            setChangeStateOpen(true)
+          }}
+        >
+          {VERBS.changeState.label}
+        </button>
+        {!changeStateGate.enabled && changeStateGate.reason !== undefined && (
+          <ActionHint id="change-state-hint" text={changeStateGate.reason} tone="gate" />
+        )}
+      </span>
+      <span className="action-slot">
+        <button
+          type="button"
+          className="copy-btn action-btn"
+          disabled={!restartGate.enabled}
+          aria-describedby={restartGate.enabled ? undefined : 'restart-hint'}
+          title={restartGate.enabled ? VERBS.restartAsNew.plain : restartGate.detail}
+          onClick={() => {
+            setRestartOpen(true)
+          }}
+        >
+          {VERBS.restartAsNew.label}
+        </button>
+        {!restartGate.enabled && restartGate.reason !== undefined && (
+          <ActionHint id="restart-hint" text={restartGate.reason} tone="gate" />
+        )}
+      </span>
+      <span className="action-slot">
+        <button
+          type="button"
+          className="copy-btn action-btn action-danger"
+          disabled={!terminateGate.enabled}
+          aria-describedby={terminateGate.enabled ? undefined : 'terminate-hint'}
+          title={
+            terminateGate.enabled ? `${VERBS.terminate.plain} · IRREVERSIBLE` : terminateGate.detail
+          }
+          onClick={() => {
+            action.reset()
+            setTerminateOpen(true)
+          }}
+        >
+          {VERBS.terminate.label}
+        </button>
+        {!terminateGate.enabled && terminateGate.reason !== undefined && (
+          <ActionHint id="terminate-hint" text={terminateGate.reason} tone="gate" />
+        )}
+      </span>
       {changeStateOpen && (
         <ChangeStateModal
           engineId={engineId}

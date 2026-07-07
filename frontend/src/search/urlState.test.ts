@@ -36,6 +36,16 @@ describe('search URL codec', () => {
     expect(decoded?.statuses).toEqual(['FAILED'])
   })
 
+  it('round-trips the error-class signature (the triage class drill)', () => {
+    const request: SearchRequest = {
+      statuses: ['FAILED', 'RETRYING'],
+      signatureHash: 'a'.repeat(64),
+    }
+    const decoded = decodeSearch(new URLSearchParams(`?${encodeSearch(request).toString()}`))
+    expect(decoded?.signatureHash).toBe('a'.repeat(64))
+    expect(hasSearch(encodeSearch({ signatureHash: 'abc' }))).toBe(true)
+  })
+
   it('returns null when the URL carries no search', () => {
     expect(decodeSearch(new URLSearchParams())).toBeNull()
     expect(hasSearch(new URLSearchParams('unrelated=1'))).toBe(false)

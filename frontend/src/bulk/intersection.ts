@@ -3,9 +3,16 @@
 // disabled-with-reason naming the offender (greyed never hidden, SPEC §6). Protected
 // instances are auto-excluded from the effective selection and surfaced as a badge.
 // Pure and tested; the components render its output verbatim.
-import type { ProcessInstanceRow } from '../api/model'
+//
+// Usability round 1: `reason` is the SHORT copy for the visible ActionHint (A-copy —
+// `Blocked: {offender} {why}` for business logic, `Requires RESPONDER — you are {ROLE}`
+// for the role floor); `detail` is the long explanation that moves to the button's title.
+import type { EngineDto, ProcessInstanceRow } from '../api/model'
+import type { RoleHint } from '../actions/catalog'
+import { roleAtLeast } from '../actions/catalog'
 
 export const BULK_CAP = 200
+const ROLE_FLOOR: RoleHint = 'RESPONDER'
 
 /** The v1 bulk verb set (queue-state verbs — destructive bulk is the tier-4 wizard). */
 export const BULK_VERB_IDS = ['retry-job', 'suspend', 'activate'] as const
@@ -17,8 +24,11 @@ export interface BulkVerbOffer {
   /** SPEC §5.0 plain-language secondary label. */
   plain: string
   enabled: boolean
-  /** Names the gate when disabled: the FIRST offending row, the cap, or emptiness. */
+  /** SHORT gate name (Theme A-copy) — the FIRST offending row, the cap, emptiness, or the
+   *  role floor. Rendered verbatim by the ActionHint. */
   reason?: string
+  /** The long explanation — surfaces as the button's title, never the visible hint. */
+  detail?: string
 }
 
 export interface SelectionPlan {
@@ -33,12 +43,18 @@ export interface SelectionPlan {
   offers: BulkVerbOffer[]
 }
 
+/** null = row is eligible; otherwise the short `why` clause (Blocked: {offender} {why})
+ *  and the long `detail` clause naming why THIS row blocks the verb. */
+interface RowBlocker {
+  why: string
+  detail: string
+}
+
 interface VerbRule {
   verb: BulkVerbId
   label: string
   plain: string
-  /** null = row is eligible; a string names why THIS row blocks the verb. */
-  blocker: (row: ProcessInstanceRow) => string | null
+  blocker: (row: ProcessInstanceRow) => RowBlocker | null
 }
 
 const RULES: VerbRule[] = [
@@ -47,15 +63,21 @@ const RULES: VerbRule[] = [
     label: 'Retry dead-letter jobs',
     plain: 'run the failed steps again',
     blocker: (row) =>
-      row.flags?.hasDeadLetterJobs === true ? null : 'has no dead-letter job (nothing to retry)',
+      row.flags?.hasDeadLetterJobs === true
+        ? null
+        : { why: 'has nothing to retry', detail: 'has no dead-letter job (nothing to retry)' },
   },
   {
     verb: 'suspend',
     label: 'Suspend',
     plain: 'pause these cases',
     blocker: (row) => {
-      if (row.flags?.ended === true || row.status === 'COMPLETED') return 'has ended'
-      if (row.flags?.suspended === true || row.status === 'SUSPENDED') return 'is already suspended'
+      if (row.flags?.ended === true || row.status === 'COMPLETED') {
+        return { why: 'has ended', detail: 'has ended' }
+      }
+      if (row.flags?.suspended === true || row.status === 'SUSPENDED') {
+        return { why: 'is already suspended', detail: 'is already suspended' }
+      }
       return null
     },
   },
@@ -64,43 +86,81 @@ const RULES: VerbRule[] = [
     label: 'Activate',
     plain: 'resume these cases',
     blocker: (row) => {
-      if (row.flags?.ended === true || row.status === 'COMPLETED') return 'has ended'
-      if (!(row.flags?.suspended === true || row.status === 'SUSPENDED')) return 'is not suspended'
+      if (row.flags?.ended === true || row.status === 'COMPLETED') {
+        return { why: 'has ended', detail: 'has ended' }
+      }
+      if (!(row.flags?.suspended === true || row.status === 'SUSPENDED')) {
+        return { why: 'is not suspended', detail: 'is not suspended' }
+      }
       return null
     },
   },
 ]
 
 function rowName(row: ProcessInstanceRow): string {
-  return row.businessKey !== undefined && row.businessKey !== ''
+  // Jackson serializes an absent business key as JSON null, so an undefined-only check
+  // would render a literal "null" in the visible hint — guard both.
+  return typeof row.businessKey === 'string' && row.businessKey !== ''
     ? row.businessKey
-    : (row.compositeId ?? row.processInstanceId ?? '?')
+    : (row.processInstanceId ?? row.compositeId ?? '?')
 }
 
-/** The strict intersection over the EFFECTIVE selection (protected rows excluded first). */
-export function planSelection(selected: ProcessInstanceRow[]): SelectionPlan {
+/** The RBAC short/long pair shared by planSelection and planFilterScope (Theme B). */
+function roleBlockedOffer(
+  rule: { verb: BulkVerbId; label: string; plain: string },
+  role: RoleHint,
+) {
+  return {
+    verb: rule.verb,
+    label: rule.label,
+    plain: rule.plain,
+    enabled: false,
+    reason: `Requires ${ROLE_FLOOR} — you are ${role}`,
+  }
+}
+
+/**
+ * The strict intersection over the EFFECTIVE selection (protected rows excluded first).
+ * Usability round 1, Theme B: any target engine below the RESPONDER floor disables EVERY
+ * verb uniformly — greyed the same as the business-logic gates, never regressing the
+ * optimistic behavior when the role is unknown (roleHint null).
+ */
+export function planSelection(
+  selected: ProcessInstanceRow[],
+  roleHint: RoleHint | null = null,
+): SelectionPlan {
   const targets = selected.filter((row) => row.protectedInstance !== true)
   const protectedExcluded = selected.length - targets.length
   const protectionUnknown = targets.filter((row) => row.protectedInstance === undefined).length
   const overCap = targets.length > BULK_CAP
 
+  if (roleHint !== null && !roleAtLeast(roleHint, ROLE_FLOOR)) {
+    const offers: BulkVerbOffer[] = RULES.map((rule) => roleBlockedOffer(rule, roleHint))
+    return { targets, protectedExcluded, protectionUnknown, overCap, offers }
+  }
+
   const offers: BulkVerbOffer[] = RULES.map((rule) => {
     if (targets.length === 0) {
+      const why =
+        protectedExcluded > 0 ? 'every selected instance is protected' : 'nothing selected'
       return {
         verb: rule.verb,
         label: rule.label,
         plain: rule.plain,
         enabled: false,
-        reason: protectedExcluded > 0 ? 'every selected instance is protected' : 'nothing selected',
+        reason: `Blocked: ${why}`,
+        detail: why,
       }
     }
     if (overCap) {
+      const deselect = String(targets.length - BULK_CAP)
       return {
         verb: rule.verb,
         label: rule.label,
         plain: rule.plain,
         enabled: false,
-        reason: `selection exceeds the ${String(BULK_CAP)}-item cap — deselect ${String(targets.length - BULK_CAP)}`,
+        reason: `Blocked: over the ${String(BULK_CAP)}-item cap — deselect ${deselect}`,
+        detail: `selection exceeds the ${String(BULK_CAP)}-item cap — deselect ${deselect}`,
       }
     }
     // THE intersection: the first offending row disables the verb for the whole selection.
@@ -112,7 +172,8 @@ export function planSelection(selected: ProcessInstanceRow[]): SelectionPlan {
           label: rule.label,
           plain: rule.plain,
           enabled: false,
-          reason: `${rowName(row)} ${blocker}`,
+          reason: `Blocked: ${rowName(row)} ${blocker.why}`,
+          detail: `${rowName(row)} ${blocker.detail}`,
         }
       }
     }
@@ -129,25 +190,48 @@ export function planSelection(selected: ProcessInstanceRow[]): SelectionPlan {
  * matching row can accept it. Same doctrine as {@link planSelection}: greyed with the
  * reason, never hidden.
  */
-export function planFilterScope(statuses: readonly string[] | undefined): BulkVerbOffer[] {
+export function planFilterScope(
+  statuses: readonly string[] | undefined,
+  roleHint: RoleHint | null = null,
+): BulkVerbOffer[] {
+  if (roleHint !== null && !roleAtLeast(roleHint, ROLE_FLOOR)) {
+    return FILTER_RULES.map((rule) => roleBlockedOffer(rule, roleHint))
+  }
   const chips = statuses ?? []
-  const disable = (rule: (typeof FILTER_RULES)[number], reason: string): BulkVerbOffer => ({
+  const disable = (
+    rule: (typeof FILTER_RULES)[number],
+    why: string,
+    detail: string,
+  ): BulkVerbOffer => ({
     verb: rule.verb,
     label: rule.label,
     plain: rule.plain,
     enabled: false,
-    reason,
+    reason: `Blocked: ${why}`,
+    detail,
   })
   return FILTER_RULES.map((rule) => {
     if (chips.length === 0) {
-      return disable(rule, 'the filter needs explicit status chips to scope a bulk action')
+      return disable(
+        rule,
+        'filter has no status chips',
+        'the filter needs explicit status chips to scope a bulk action',
+      )
     }
     if (chips.includes('COMPLETED')) {
-      return disable(rule, 'the filter includes COMPLETED instances — nothing can act on those')
+      return disable(
+        rule,
+        'filter includes COMPLETED instances',
+        'the filter includes COMPLETED instances — nothing can act on those',
+      )
     }
     const offender = chips.find((chip) => !rule.eligibleStatuses.includes(chip))
     if (offender !== undefined) {
-      return disable(rule, `the filter includes ${offender} instances, which ${rule.ineligibleWhy}`)
+      return disable(
+        rule,
+        `filter includes ${offender} instances`,
+        `the filter includes ${offender} instances, which ${rule.ineligibleWhy}`,
+      )
     }
     return { verb: rule.verb, label: rule.label, plain: rule.plain, enabled: true }
   })
@@ -192,4 +276,30 @@ export function perEngineSplit(targets: ProcessInstanceRow[]): [string, number][
     counts.set(engine, (counts.get(engine) ?? 0) + 1)
   }
   return [...counts.entries()].sort((a, b) => a[0].localeCompare(b[0]))
+}
+
+/**
+ * Theme D: the environment band the ticked-row submit modal wears. Mirrors
+ * FilterBulkModal's doctrine (prodConfirmToken/enginesInScope) — prod if ANY target's
+ * engine is prod, else the first target's engine environment.
+ */
+export function targetEnvironment(
+  targets: ProcessInstanceRow[],
+  engines: EngineDto[],
+): string | undefined {
+  const engineById = new Map(engines.map((engine) => [engine.id, engine]))
+  const environments = targets.map((row) => engineById.get(row.engineId)?.environment)
+  if (environments.some((env) => env?.toLowerCase() === 'prod')) return 'prod'
+  return environments[0]
+}
+
+/** Theme H2: the reversibility strip-note shared by all three bulk modals. */
+export function reversibilityNote(verb: BulkVerbId): string {
+  if (verb === 'retry-job') {
+    return (
+      'Mostly safe: retrying only re-queues the step. Anything the step does when it runs ' +
+      '(emails, payments, calls) is not undone.'
+    )
+  }
+  return 'Reversible — the opposite action undoes it.'
 }

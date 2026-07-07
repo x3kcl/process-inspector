@@ -1,6 +1,13 @@
 import { describe, expect, it } from 'vitest'
-import type { ProcessInstanceRow } from '../api/model'
-import { BULK_CAP, perEngineSplit, planFilterScope, planSelection } from './intersection'
+import type { EngineDto, ProcessInstanceRow } from '../api/model'
+import {
+  BULK_CAP,
+  perEngineSplit,
+  planFilterScope,
+  planSelection,
+  reversibilityNote,
+  targetEnvironment,
+} from './intersection'
 
 function row(partial: Partial<ProcessInstanceRow>): ProcessInstanceRow {
   return { engineId: 'engine-a', processInstanceId: 'pi', protectedInstance: false, ...partial }
@@ -28,8 +35,8 @@ describe('planSelection — the Intersection Rule (binding)', () => {
     const mixed = planSelection([FAILED, ACTIVE])
     const retry = mixed.offers.find((o) => o.verb === 'retry-job')
     expect(retry?.enabled).toBe(false)
-    expect(retry?.reason).toContain('pi-active')
-    expect(retry?.reason).toContain('no dead-letter job')
+    expect(retry?.reason).toBe('Blocked: pi-active has nothing to retry')
+    expect(retry?.detail).toContain('no dead-letter job')
   })
 
   it('names the offending row by business key when it has one', () => {
@@ -37,6 +44,22 @@ describe('planSelection — the Intersection Rule (binding)', () => {
     const suspend = mixed.offers.find((o) => o.verb === 'suspend')
     expect(suspend?.enabled).toBe(false)
     expect(suspend?.reason).toContain('order-9')
+  })
+
+  it('never renders a JSON-null business key as the offender name', () => {
+    // The BFF serializes an absent business key as null (the Jackson-null vs TS-undefined
+    // trap) — the visible hint must fall back to an id, not read "Blocked: null …".
+    const nullKeyed = {
+      ...ACTIVE,
+      processInstanceId: 'pi-nokey',
+      compositeId: 'engine-a:pi-nokey',
+      businessKey: null as unknown as string,
+    }
+    const plan = planSelection([nullKeyed])
+    const activate = plan.offers.find((o) => o.verb === 'activate')
+    expect(activate?.enabled).toBe(false)
+    expect(activate?.reason).not.toContain('null')
+    expect(activate?.reason).toContain('pi-nokey')
   })
 
   it('suspend excludes suspended and ended rows; activate is the inverse', () => {
@@ -84,6 +107,26 @@ describe('planSelection — the Intersection Rule (binding)', () => {
     expect(plan.offers[0].enabled).toBe(false)
     expect(plan.offers[0].reason).toContain('deselect 3')
   })
+
+  it('usability round 1, Theme B: below-floor role disables every verb, naming the role', () => {
+    const plan = planSelection([FAILED], 'VIEWER')
+    expect(plan.offers.every((o) => !o.enabled)).toBe(true)
+    expect(plan.offers.every((o) => o.reason === 'Requires RESPONDER — you are VIEWER')).toBe(true)
+  })
+
+  it('a floor-meeting role changes nothing — the normal intersection still applies', () => {
+    const responder = planSelection([FAILED], 'RESPONDER')
+    expect(responder.offers.find((o) => o.verb === 'retry-job')?.enabled).toBe(true)
+    const admin = planSelection([FAILED, ACTIVE], 'ADMIN')
+    expect(admin.offers.find((o) => o.verb === 'retry-job')?.enabled).toBe(false)
+  })
+
+  it('an unknown (null) role stays optimistic — no regression', () => {
+    const withRole = planSelection([FAILED])
+    const withoutRoleArg = planSelection([FAILED], null)
+    expect(withRole).toEqual(withoutRoleArg)
+    expect(withRole.offers.find((o) => o.verb === 'retry-job')?.enabled).toBe(true)
+  })
 })
 
 describe('planFilterScope (v1.x #2 — eligibility from status chips only)', () => {
@@ -123,6 +166,48 @@ describe('planFilterScope (v1.x #2 — eligibility from status chips only)', () 
       expect(offers.every((o) => !o.enabled)).toBe(true)
       expect(offers[0].reason).toContain('status chips')
     }
+  })
+
+  it('usability round 1, Theme B: below-floor role disables every verb here too', () => {
+    const offers = planFilterScope(['FAILED'], 'VIEWER')
+    expect(offers.every((o) => !o.enabled)).toBe(true)
+    expect(offers.every((o) => o.reason === 'Requires RESPONDER — you are VIEWER')).toBe(true)
+  })
+
+  it('null role leaves the filter-scope offers unchanged', () => {
+    expect(planFilterScope(['FAILED'], null)).toEqual(planFilterScope(['FAILED']))
+  })
+})
+
+describe('targetEnvironment (Theme D — mirrors FilterBulkModal doctrine)', () => {
+  const engines: EngineDto[] = [
+    { id: 'engine-a', environment: 'dev' },
+    { id: 'engine-b', environment: 'prod' },
+  ]
+
+  it('is prod if ANY target engine is prod', () => {
+    expect(
+      targetEnvironment([row({ engineId: 'engine-a' }), row({ engineId: 'engine-b' })], engines),
+    ).toBe('prod')
+  })
+
+  it('otherwise falls back to the first target engine environment', () => {
+    expect(targetEnvironment([row({ engineId: 'engine-a' })], engines)).toBe('dev')
+  })
+
+  it('is undefined for an empty selection', () => {
+    expect(targetEnvironment([], engines)).toBeUndefined()
+  })
+})
+
+describe('reversibilityNote (Theme H2)', () => {
+  it('warns retry-job never undoes external side effects', () => {
+    expect(reversibilityNote('retry-job')).toContain('not undone')
+  })
+
+  it('calls suspend/activate reversible via the opposite action', () => {
+    expect(reversibilityNote('suspend')).toBe('Reversible — the opposite action undoes it.')
+    expect(reversibilityNote('activate')).toBe('Reversible — the opposite action undoes it.')
   })
 })
 

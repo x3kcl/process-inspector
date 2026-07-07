@@ -122,7 +122,7 @@ class BulkErrorClassServiceTest {
                         List.of(row("p-1"), row("p-2"), row("p-1")), // p-1 twice: dedupe
                         Map.of(ENGINE, EngineResult.success(3, 3))));
         BulkDtos.BulkJobDto dto = mock(BulkDtos.BulkJobDto.class);
-        when(bulk.submit(any(), eq(responder), anyMap())).thenReturn(dto);
+        when(bulk.submit(any(), eq(responder), anyMap(), any())).thenReturn(dto);
 
         BulkDtos.BulkJobDto out =
                 service.submit(request(HASH, ALGO, "payment", 3, ENGINE, "ops-4711 incident"), responder);
@@ -140,7 +140,8 @@ class BulkErrorClassServiceTest {
         ArgumentCaptor<BulkDtos.BulkSubmitRequest> submit = ArgumentCaptor.forClass(BulkDtos.BulkSubmitRequest.class);
         @SuppressWarnings("unchecked")
         ArgumentCaptor<Map<String, Object>> meta = ArgumentCaptor.forClass(Map.class);
-        verify(bulk).submit(submit.capture(), eq(responder), meta.capture());
+        ArgumentCaptor<String> scopeLabel = ArgumentCaptor.forClass(String.class);
+        verify(bulk).submit(submit.capture(), eq(responder), meta.capture(), scopeLabel.capture());
         assertThat(submit.getValue().verb()).isEqualTo("retry-job");
         assertThat(submit.getValue().reason()).isEqualTo("ops-4711 incident");
         assertThat(submit.getValue().items())
@@ -155,6 +156,9 @@ class BulkErrorClassServiceTest {
                 .containsEntry("engineId", ENGINE)
                 .containsEntry("resolvedCount", 2)
                 .containsEntry("scanTruncated", false);
+        // E1-back: scope provenance — the door's own defKey:version label, so the drawer
+        // shows "what was targeted" without re-deriving it from the envelope payload.
+        assertThat(scopeLabel.getValue()).isEqualTo("payment v3 · error class");
     }
 
     @Test
@@ -202,13 +206,13 @@ class BulkErrorClassServiceTest {
         when(search.search(any()))
                 .thenReturn(response(
                         List.of(row("p-1")), Map.of(ENGINE, EngineResult.success(1, 1, "truncated@500", null))));
-        when(bulk.submit(any(), eq(responder), anyMap())).thenReturn(mock(BulkDtos.BulkJobDto.class));
+        when(bulk.submit(any(), eq(responder), anyMap(), any())).thenReturn(mock(BulkDtos.BulkJobDto.class));
 
         service.submit(request(HASH, ALGO, "payment", 3, ENGINE, "ops-4711 incident"), responder);
 
         @SuppressWarnings("unchecked")
         ArgumentCaptor<Map<String, Object>> meta = ArgumentCaptor.forClass(Map.class);
-        verify(bulk).submit(any(), eq(responder), meta.capture());
+        verify(bulk).submit(any(), eq(responder), meta.capture(), any());
         @SuppressWarnings("unchecked")
         Map<String, Object> group = (Map<String, Object>) meta.getValue().get("errorClass");
         assertThat(group).containsEntry("scanTruncated", true);
@@ -218,7 +222,7 @@ class BulkErrorClassServiceTest {
     void nullEngineFansOutToAllEnginesTheGroupSpans() {
         when(search.search(any()))
                 .thenReturn(response(List.of(row("p-1")), Map.of(ENGINE, EngineResult.success(1, 1))));
-        when(bulk.submit(any(), eq(responder), anyMap())).thenReturn(mock(BulkDtos.BulkJobDto.class));
+        when(bulk.submit(any(), eq(responder), anyMap(), any())).thenReturn(mock(BulkDtos.BulkJobDto.class));
 
         service.submit(request(HASH, ALGO, "payment", 3, null, "ops-4711 incident"), responder);
 
