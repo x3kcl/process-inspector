@@ -2074,3 +2074,244 @@ button.primary:disabled {
   flex: 1;
   min-width: 0;
 }
+
+/* ---- v1.x #5 sibling diff / Comparison tab (SPEC §5.2) ---- */
+
+/* Divergence on the diagram: STROKE STYLE + glyph carry the meaning, not hue (§10a).
+   Subject-only = solid heavy outline; sibling-only = dashed outline. */
+.diagram-canvas .marker-diverge-subject .djs-visual > :first-child {
+  stroke: #1e272e !important;
+  stroke-width: 4px !important;
+  stroke-dasharray: none !important;
+}
+.diagram-canvas .marker-diverge-sibling .djs-visual > :first-child {
+  stroke: #1e272e !important;
+  stroke-width: 2px !important;
+  stroke-dasharray: 5 4 !important;
+}
+.diverge-glyph {
+  font-weight: 700;
+  font-size: 12px;
+}
+.diverge-glyph-subject {
+  color: #1e272e;
+}
+.diverge-glyph-sibling {
+  color: #57606f;
+}
+.diverge-legend {
+  display: flex;
+  gap: 18px;
+  list-style: none;
+  margin: 0 0 6px;
+  padding: 0;
+  font-size: 12px;
+  color: #40515e;
+}
+.diverge-legend li {
+  display: inline-flex;
+  align-items: center;
+  gap: 5px;
+}
+
+.comparison-tab {
+  padding: 12px;
+  display: flex;
+  flex-direction: column;
+  gap: 18px;
+}
+.comparison-section h3 {
+  font-size: 14px;
+  margin: 0 0 8px;
+}
+
+/* picker */
+.sibling-picker {
+  display: flex;
+  flex-wrap: wrap;
+  align-items: end;
+  gap: 12px;
+  padding: 10px 12px;
+  border: 1px solid #d2dae2;
+  border-radius: 8px;
+  background: #f8fafb;
+}
+.sibling-picker-current {
+  flex-basis: 100%;
+  font-size: 13px;
+}
+.sibling-suggested-chip {
+  margin-left: 8px;
+  padding: 1px 8px;
+  border: 1px dotted #2b6cb0;
+  border-radius: 999px;
+  font-size: 11px;
+  color: #1a4d80;
+}
+.sibling-picker-input {
+  display: flex;
+  flex-direction: column;
+  gap: 3px;
+  font-size: 12px;
+  flex: 1;
+  min-width: 240px;
+}
+.sibling-picker-input input {
+  padding: 5px 7px;
+}
+
+/* the CTA in the why-stuck strip */
+.compare-cta {
+  margin-top: 8px;
+  border: 1px solid #b7791f;
+  background: #fff;
+  border-radius: 6px;
+  padding: 4px 10px;
+  font-weight: 600;
+  cursor: pointer;
+}
+.compare-cta:hover {
+  background: #fff6df;
+}
+
+/* identity strip */
+.compare-header {
+  display: grid;
+  grid-template-columns: 1fr 1fr;
+  gap: 12px;
+}
+.compare-side {
+  display: flex;
+  flex-direction: column;
+  gap: 3px;
+  padding: 8px 10px;
+  border: 1px solid #d2dae2;
+  border-radius: 8px;
+  font-size: 13px;
+}
+.compare-role {
+  font-weight: 700;
+}
+
+/* variable diff table */
+.var-diff-summary {
+  display: flex;
+  gap: 16px;
+  align-items: center;
+  font-size: 13px;
+  margin-bottom: 6px;
+}
+.var-diff-toggle {
+  display: inline-flex;
+  gap: 5px;
+  align-items: center;
+  color: #40515e;
+}
+.var-diff-table {
+  width: 100%;
+  border-collapse: collapse;
+  font-size: 13px;
+}
+.var-diff-table th,
+.var-diff-table td {
+  text-align: left;
+  padding: 4px 8px;
+  border-bottom: 1px solid #eceff1;
+  vertical-align: top;
+}
+.var-diff-glyph {
+  font-weight: 700;
+  width: 1.5em;
+  text-align: center;
+}
+.var-diff-value {
+  font-family: ui-monospace, monospace;
+  font-size: 12px;
+  word-break: break-word;
+  max-width: 32ch;
+}
+.var-diff-row.change-changed {
+  background: #fff6df;
+}
+.var-diff-row.change-only_in_subject {
+  background: #fdecea;
+}
+.var-diff-row.change-only_in_sibling {
+  background: #eaf3fb;
+}
+.var-diff-row.change-differ_beyond_preview {
+  background: #f1eef7;
+}
+
+/* timing bars */
+.timing-bars {
+  display: flex;
+  flex-direction: column;
+  gap: 4px;
+  font-size: 13px;
+}
+.timing-head {
+  display: grid;
+  grid-template-columns: 16ch 1fr 16ch;
+  gap: 10px;
+  font-size: 11px;
+  color: #57606f;
+  padding-bottom: 2px;
+  border-bottom: 1px solid #eceff1;
+}
+.timing-row {
+  display: grid;
+  grid-template-columns: 16ch 1fr 16ch;
+  gap: 10px;
+  align-items: center;
+}
+.timing-activity {
+  overflow: hidden;
+  text-overflow: ellipsis;
+  white-space: nowrap;
+}
+.timing-tracks {
+  display: flex;
+  flex-direction: column;
+  gap: 2px;
+}
+.timing-track {
+  position: relative;
+  height: 9px;
+  background: #eceff1;
+  border-radius: 3px;
+}
+.timing-bar {
+  position: absolute;
+  left: 0;
+  top: 0;
+  bottom: 0;
+  border-radius: 3px;
+}
+/* subject = solid dark; sibling = hatched/light — distinguishable without colour reliance */
+.timing-bar-subject {
+  background: #40515e;
+}
+.timing-bar-sibling {
+  background: repeating-linear-gradient(45deg, #90a4ae, #90a4ae 3px, #cfd8dc 3px, #cfd8dc 6px);
+}
+.timing-stall-mark {
+  position: absolute;
+  left: 4px;
+  top: -4px;
+  font-size: 10px;
+  font-weight: 700;
+  color: #a94438;
+}
+.timing-delta {
+  font-size: 12px;
+  color: #40515e;
+  text-align: right;
+}
+.timing-delta.timing-slower {
+  color: #a94438;
+  font-weight: 600;
+}
+.timing-row.timing-stalled .timing-activity {
+  font-weight: 700;
+}

@@ -6,6 +6,7 @@ export const TAB_IDS = [
   'tasks',
   'hierarchy',
   'timeline',
+  'comparison',
   'audit',
 ] as const
 
@@ -17,6 +18,7 @@ export const TAB_LABELS: Record<TabId, string> = {
   tasks: 'Tasks',
   hierarchy: 'Hierarchy',
   timeline: 'Timeline',
+  comparison: 'Compare',
   audit: 'Audit & Notes',
 }
 

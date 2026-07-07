@@ -395,7 +395,15 @@ unresolvable with tier 0–1 verbs)
    stroke overlay — ids only, no hue), and per-activity timing deltas (loops sum; the stalled
    open step carries a null duration + `subjectUnfinished`). The join core is pure/static and
    rung-1 tested; a manually-picked cross-definition sibling still diffs, flagged
-   `sameDefinition:false`. **Frontend open**: picker + dedicated Comparison surface.
+   `sameDefinition:false`. **Frontend landed 2026-07-07**: a dedicated **Compare** tab (own
+   lazy chunk) — the why-stuck strip carries a one-click "Compare with a sibling" CTA into it.
+   The nearest sibling auto-populates the comparison; a manual process-instance id overrides
+   it, and the choice lives in `?sibling=` so a comparison is a shareable deep link. Three
+   panes: side-by-side variable diff (divergent-first, identical collapsed, +/−/±/~/= glyphs —
+   no hue-only), the subject's diagram with the path divergence overlaid by **stroke style +
+   ▲/△ glyphs** (solid/heavy = failed-only, dashed = sibling-only), and per-activity timing
+   bars (failed over sibling, the stalled step called out). Hermetic Playwright smokes in
+   `e2e/sibling-diff.spec.ts`; the pure formatting logic is vitest-covered.
 6. Task reassign/return-to-team; "show as cURL" on every action modal.
 7. External-worker job view (capability-gated, 6.8+).
 

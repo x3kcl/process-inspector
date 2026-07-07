@@ -11,6 +11,13 @@ export interface DiagramMarkers {
   activeActivityIds: string[]
   /** Activity ids with dead-letter jobs — red ⚠ badge. */
   deadLetterActivityIds: string[]
+  /**
+   * Sibling-diff divergence (SPEC §5.2/§10a): the two runs are differentiated by STROKE
+   * STYLE + glyph, never hue. Subject-only activities get a solid/heavy outline + ▲ badge;
+   * sibling-only get a dashed outline + △ badge. Absent on the normal single-instance diagram.
+   */
+  subjectOnlyActivityIds?: string[]
+  siblingOnlyActivityIds?: string[]
 }
 
 interface Props {
@@ -128,6 +135,29 @@ function applyMarkers(viewer: NavigatedViewer, markers: DiagramMarkers) {
       })
     } catch {
       // Same containment: markers are best-effort decoration over the diagram.
+    }
+  }
+  // Divergence overlay (SPEC §5.2): differentiated by stroke style + glyph, not hue.
+  for (const id of markers.subjectOnlyActivityIds ?? []) {
+    try {
+      canvas.addMarker(id, 'marker-diverge-subject')
+      overlays.add(id, `diverge-subject-${id}`, {
+        position: { bottom: -6, left: -6 },
+        html: '<span class="diverge-glyph diverge-glyph-subject" title="only the failed run took this step">▲</span>',
+      })
+    } catch {
+      // best-effort decoration
+    }
+  }
+  for (const id of markers.siblingOnlyActivityIds ?? []) {
+    try {
+      canvas.addMarker(id, 'marker-diverge-sibling')
+      overlays.add(id, `diverge-sibling-${id}`, {
+        position: { bottom: -6, left: -6 },
+        html: '<span class="diverge-glyph diverge-glyph-sibling" title="only the successful sibling took this step">△</span>',
+      })
+    } catch {
+      // best-effort decoration
     }
   }
 }

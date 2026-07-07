@@ -9,10 +9,12 @@ import type {
   InstanceTasks,
   InstanceTimeline,
   InstanceVariables,
+  NearestSiblingResponse,
   NoteDto,
   ResolveResponse,
   SearchRequest,
   SearchResponse,
+  SiblingDiffResponse,
   TriageDashboardResponse,
   VariableDto,
 } from './model'
@@ -143,6 +145,31 @@ export async function fetchInstanceTimeline(path: InstancePath): Promise<Instanc
   const { data, error, response } = await api.GET(
     '/api/instances/{engineId}/{instanceId}/timeline',
     { params: { path } },
+  )
+  if (data === undefined) throw new ApiError(response.status, error)
+  return data
+}
+
+/* ---------- Sibling diff (v1.x #5, SPEC §5.2) — read-only historic comparison ---------- */
+
+/** The smart default: the most recently completed instance of the same definition version. */
+export async function fetchNearestSibling(path: InstancePath): Promise<NearestSiblingResponse> {
+  const { data, error, response } = await api.GET(
+    '/api/instances/{engineId}/{instanceId}/nearest-sibling',
+    { params: { path } },
+  )
+  if (data === undefined) throw new ApiError(response.status, error)
+  return data
+}
+
+/** The three-way diff of this instance (subject) against a chosen sibling. */
+export async function fetchSiblingDiff(
+  path: InstancePath,
+  siblingId: string,
+): Promise<SiblingDiffResponse> {
+  const { data, error, response } = await api.GET(
+    '/api/instances/{engineId}/{instanceId}/diff/{siblingId}',
+    { params: { path: { ...path, siblingId } } },
   )
   if (data === undefined) throw new ApiError(response.status, error)
   return data

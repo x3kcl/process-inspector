@@ -22,6 +22,7 @@ const TAB_COMPONENTS: Record<TabId, LazyExoticComponent<ComponentType<TabProps>>
   tasks: lazy(() => import('./tabs/TasksTab')),
   hierarchy: lazy(() => import('./tabs/HierarchyTab')),
   timeline: lazy(() => import('./tabs/TimelineTab')),
+  comparison: lazy(() => import('./comparison/ComparisonTab')),
   audit: lazy(() => import('./tabs/AuditTab')),
 }
 
@@ -120,7 +121,14 @@ export function InspectPage() {
             history, or the engine may be unreachable.
           </div>
         )}
-        {vitals.data !== undefined && <VitalsBody vitals={vitals.data} />}
+        {vitals.data !== undefined && (
+          <VitalsBody
+            vitals={vitals.data}
+            onCompare={() => {
+              selectTab('comparison')
+            }}
+          />
+        )}
         {vitals.data !== undefined && (
           <InstanceActions
             engineId={engineId}
@@ -172,7 +180,7 @@ export function InspectPage() {
 }
 
 /** Everything the operator sees WITHOUT a tab or a click (SPEC §4). */
-function VitalsBody({ vitals }: { vitals: InstanceDetail }) {
+function VitalsBody({ vitals, onCompare }: { vitals: InstanceDetail; onCompare: () => void }) {
   const definition =
     vitals.definitionName ?? vitals.definitionKey ?? vitals.processDefinitionId ?? '(unknown)'
   return (
@@ -230,7 +238,7 @@ function VitalsBody({ vitals }: { vitals: InstanceDetail }) {
         )}
       </div>
 
-      {vitals.whyStuck !== undefined && <WhyStuckStrip vitals={vitals} />}
+      {vitals.whyStuck !== undefined && <WhyStuckStrip vitals={vitals} onCompare={onCompare} />}
 
       {vitals.waitingFor !== undefined && vitals.waitingFor.length > 0 && (
         <p className="waiting-for">
@@ -250,7 +258,7 @@ function VitalsBody({ vitals }: { vitals: InstanceDetail }) {
 }
 
 /** SPEC §4: exception first line, failing activity, retries state — present iff stuck. */
-function WhyStuckStrip({ vitals }: { vitals: InstanceDetail }) {
+function WhyStuckStrip({ vitals, onCompare }: { vitals: InstanceDetail; onCompare: () => void }) {
   const whyStuck = vitals.whyStuck
   if (whyStuck === undefined) return null
   const deadLetter = whyStuck.deadLetterJobs ?? 0
@@ -290,6 +298,9 @@ function WhyStuckStrip({ vitals }: { vitals: InstanceDetail }) {
         )}
         {' · '}details in the Errors &amp; Jobs tab
       </p>
+      <button type="button" className="compare-cta" onClick={onCompare}>
+        Compare with a sibling — why did this one fail? →
+      </button>
     </div>
   )
 }

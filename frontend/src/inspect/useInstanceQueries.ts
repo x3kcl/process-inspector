@@ -11,6 +11,8 @@ import {
   fetchInstanceTimeline,
   fetchInstanceVariables,
   fetchInstanceVitals,
+  fetchNearestSibling,
+  fetchSiblingDiff,
 } from '../api/queries'
 
 const STALE_MS = 15_000
@@ -72,6 +74,32 @@ export function useInstanceTimeline(engineId: string, instanceId: string) {
   return useQuery({
     queryKey: key(engineId, instanceId, 'timeline'),
     queryFn: () => fetchInstanceTimeline({ engineId, instanceId }),
+    staleTime: STALE_MS,
+  })
+}
+
+/**
+ * The sibling-diff smart default (SPEC §5.2). Historic-only and stable per instance, so it
+ * caches longer than the live tabs — the "most recent completed run" barely moves mid-triage.
+ */
+export function useNearestSibling(engineId: string, instanceId: string) {
+  return useQuery({
+    queryKey: key(engineId, instanceId, 'nearest-sibling'),
+    queryFn: () => fetchNearestSibling({ engineId, instanceId }),
+    staleTime: 60_000,
+  })
+}
+
+/** The three-way diff against {@code siblingId}; disabled until a sibling is chosen. */
+export function useSiblingDiff(
+  engineId: string,
+  instanceId: string,
+  siblingId: string | undefined,
+) {
+  return useQuery({
+    queryKey: [...key(engineId, instanceId, 'diff'), siblingId],
+    queryFn: () => fetchSiblingDiff({ engineId, instanceId }, siblingId ?? ''),
+    enabled: siblingId !== undefined && siblingId !== '',
     staleTime: STALE_MS,
   })
 }

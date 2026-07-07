@@ -37,6 +37,17 @@ export type ResolveResponse = components['schemas']['ResolveResponse']
 export type ResolveMatch = components['schemas']['ResolveMatch']
 export type EngineProbe = components['schemas']['EngineProbe']
 
+// Sibling diff (v1.x #5, SPEC §5.2)
+export type NearestSiblingResponse = components['schemas']['NearestSiblingResponse']
+export type SiblingRef = components['schemas']['SiblingRef']
+export type SiblingDiffResponse = components['schemas']['SiblingDiffResponse']
+export type SiblingInstanceRef = components['schemas']['InstanceRef']
+export type VariableDelta = components['schemas']['VariableDelta']
+export type VariableChange = NonNullable<VariableDelta['change']>
+export type PathDivergence = components['schemas']['PathDivergence']
+export type PathActivity = components['schemas']['PathActivity']
+export type TimingDelta = components['schemas']['TimingDelta']
+
 /** The four engine job queues, in render order: the diagnosis lane first (SPEC §4). */
 export const JOB_LANES = ['deadLetter', 'executable', 'timer', 'suspended'] as const
 export type JobLaneId = (typeof JOB_LANES)[number]
