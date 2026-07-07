@@ -170,7 +170,10 @@ as `outOfScopeDeadletters` (a co-deployed CMMN engine shares the job tables, so 
 jobs surface in the process-api dead-letter lane as null-`processInstanceId` orphans) — so
 the health strip's dead-letter count reconciles with FAILED rather than silently exceeding
 it; the count is unknown (null, shown as nothing) on engines that cannot discriminate scope
-(pre-6.8, no `scopeType` capability — never a misleading zero). Multi-tenant engines thread
+(pre-6.8, no `scopeType` capability — never a misleading zero), and is shown as a lower bound
+(`≥N`) when the dead-letter scan hit its cap. The note is deliberately job-scoped, lower-bound
+phrasing ("≥N CMMN jobs not triaged here") — never an exact "N of M" that invites unsound
+subtraction against the instance-scoped FAILED chip. Multi-tenant engines thread
 `tenantId` through **every** query leg.
 
 **The derivation is falsifiable** (R-L3-01): every status chip offers **"Explain this

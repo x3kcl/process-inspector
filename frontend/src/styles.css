@@ -347,8 +347,10 @@ button.primary:disabled {
   cursor: pointer;
 }
 /* Out-of-scope dead-letters: an informational reconciliation note, deliberately NOT the
-   amber lower-bound warning (the counts shown ARE exact) — SPEC §10a: a text token
-   ("out of scope") + border carry the meaning, never colour alone. */
+   amber lower-bound warning — it is a qualitative cross-engine aside, not a grid count. The
+   number itself may still be a floor (≥N) when the DEADLETTER scan capped; that is carried
+   inline by the ≥ glyph, not by this style. SPEC §10a: a text token ("out of scope") +
+   border carry the meaning, never colour alone. */
 .scope-note {
   display: flex;
   flex-direction: column;

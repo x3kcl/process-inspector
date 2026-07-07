@@ -930,6 +930,7 @@ export interface components {
             subjectPath?: components["schemas"]["PathActivity"][];
         };
         PerEngineTriage: {
+            deadletterTruncated?: boolean;
             dlqScan?: string;
             error?: string;
             ok?: boolean;

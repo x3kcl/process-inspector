@@ -125,7 +125,10 @@ marker. These are search-page facets; the Stage-0 triage counts remain the indep
 `processInstanceId` / `scopeType='cmmn'` where serialized — ~6.8+); the Stage-0 triage
 additionally **counts** the dead-letters it excludes as `outOfScopeDeadletters` (null when
 the engine lacks the `scopeType` capability) instead of dropping them silently, so the health
-strip's dead-letter lane reconciles with the process-scoped FAILED count; `tenantId` threaded
+strip's dead-letter lane reconciles with the process-scoped FAILED count — and a concrete
+count becomes a **lower bound** (rendered `≥N`) when the DEADLETTER lane's own scan hit the
+cap, flagged by `deadletterTruncated`: the lane-specific truncation, captured before the
+unified `dlqScan` marker OR-conflates it with the timer/executable lanes; `tenantId` threaded
 through **all** legs when the engine is multi-tenant; async-history lag tolerated — the grid
 is a labeled snapshot, the details panel fetches live-first with historic fallback (M3), and
 actions never trust the grid: every mutation re-validates against live engine state

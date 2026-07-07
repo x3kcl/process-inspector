@@ -32,8 +32,14 @@ public record TriageDashboardResponse(
      * Surfaced so the health strip's raw dead-letter lane count reconciles with the
      * process-scoped FAILED count instead of silently disagreeing. {@code null} when the
      * engine cannot be trusted to discriminate scope (pre-6.8, no {@code scopeType}
-     * capability — 6.3.1 is CMMN-dead-letter-blind); inherits the {@code dlqScan} lower
-     * bound under a truncated scan.
+     * capability — 6.3.1 is CMMN-dead-letter-blind).
+     *
+     * <p>{@code deadletterTruncated} floors {@code outOfScopeDeadletters}: it is true when
+     * the DEADLETTER lane's own scan hit the cap, so the count is a lower bound (further
+     * orphans may lie past the cap). This is the DEADLETTER lane's SPECIFIC truncation
+     * state — not the unified {@code dlqScan} marker, which OR-conflates all three failure
+     * lanes and would floor the count even when only the timer/executable lane truncated.
      */
-    public record PerEngineTriage(boolean ok, String error, String dlqScan, Integer outOfScopeDeadletters) {}
+    public record PerEngineTriage(
+            boolean ok, String error, String dlqScan, Integer outOfScopeDeadletters, boolean deadletterTruncated) {}
 }

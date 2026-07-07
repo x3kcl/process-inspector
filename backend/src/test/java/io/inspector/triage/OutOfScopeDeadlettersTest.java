@@ -2,6 +2,7 @@ package io.inspector.triage;
 
 import static org.assertj.core.api.Assertions.assertThat;
 
+import io.inspector.triage.TriageAggregationService.OutOfScope;
 import java.util.LinkedHashMap;
 import java.util.List;
 import java.util.Map;
@@ -42,29 +43,57 @@ class OutOfScopeDeadlettersTest {
         return job;
     }
 
-    @Test
-    void countsNullProcessInstanceRowsAsOutOfScopeWhenScopeTypeCapable() {
-        List<Map<String, Object>> dlq = List.of(bpmnJob("p1"), bpmnJob("p2"), cmmnOrphanJob("c1"), cmmnOrphanJob("c2"));
-        assertThat(TriageAggregationService.outOfScopeDeadletters(dlq, true)).isEqualTo(2);
+    /** A complete (uncapped) DEADLETTER scan of the given rows on a scope-capable engine. */
+    private static OutOfScope complete(List<Map<String, Object>> dlq, boolean scopeTypeCapable) {
+        return TriageAggregationService.outOfScopeDeadletters(dlq, false, scopeTypeCapable);
     }
 
     @Test
-    void returnsNullWhenTheEngineCannotDiscriminateScope() {
+    void countsNullProcessInstanceRowsAsOutOfScopeWhenScopeTypeCapable() {
+        List<Map<String, Object>> dlq = List.of(bpmnJob("p1"), bpmnJob("p2"), cmmnOrphanJob("c1"), cmmnOrphanJob("c2"));
+        OutOfScope result = complete(dlq, true);
+        assertThat(result.count()).isEqualTo(2);
+        // A complete scan is exact — the count is NOT a lower bound.
+        assertThat(result.deadletterTruncated()).isFalse();
+    }
+
+    @Test
+    void returnsNullCountWhenTheEngineCannotDiscriminateScope() {
         List<Map<String, Object>> dlq = List.of(bpmnJob("p1"), cmmnOrphanJob("c1"));
-        assertThat(TriageAggregationService.outOfScopeDeadletters(dlq, false)).isNull();
+        assertThat(complete(dlq, false).count()).isNull();
     }
 
     @Test
     void anExplicitNonBpmnScopeTypeIsOutOfScopeEvenWithAProcessInstanceId() {
         List<Map<String, Object>> dlq = List.of(bpmnJob("p1"), scopedJob("x1", "cmmn"));
-        assertThat(TriageAggregationService.outOfScopeDeadletters(dlq, true)).isEqualTo(1);
+        assertThat(complete(dlq, true).count()).isEqualTo(1);
     }
 
     @Test
     void aCleanBpmnOnlyLaneIsZeroNotNull() {
-        assertThat(TriageAggregationService.outOfScopeDeadletters(List.of(bpmnJob("p1")), true))
-                .isEqualTo(0);
-        assertThat(TriageAggregationService.outOfScopeDeadletters(List.of(), true))
-                .isEqualTo(0);
+        assertThat(complete(List.of(bpmnJob("p1")), true).count()).isEqualTo(0);
+        assertThat(complete(List.of(), true).count()).isEqualTo(0);
+    }
+
+    /**
+     * The floor flag: when the DEADLETTER lane's own scan hit the cap, the concrete count is
+     * a lower bound (orphans may lie past the cap) — the UI must render it as ≥N. This is the
+     * H1 fix: the DEADLETTER lane's specific truncation, captured before it is swallowed into
+     * the unified {@code dlqScan} marker.
+     */
+    @Test
+    void aTruncatedDeadletterScanFloorsTheCount() {
+        List<Map<String, Object>> dlq = List.of(bpmnJob("p1"), cmmnOrphanJob("c1"), cmmnOrphanJob("c2"));
+        OutOfScope result = TriageAggregationService.outOfScopeDeadletters(dlq, true, true);
+        assertThat(result.count()).isEqualTo(2);
+        assertThat(result.deadletterTruncated()).isTrue();
+    }
+
+    /** A truncated scan on an engine that cannot discriminate scope stays unknown — no floor. */
+    @Test
+    void aTruncatedScanOnAnIncapableEngineIsStillNullAndUnfloored() {
+        OutOfScope result = TriageAggregationService.outOfScopeDeadletters(List.of(cmmnOrphanJob("c1")), true, false);
+        assertThat(result.count()).isNull();
+        assertThat(result.deadletterTruncated()).isFalse();
     }
 }

@@ -93,11 +93,16 @@ export function TriagePage() {
       {honesty.outOfScope.length > 0 && (
         <div className="scope-note" role="note" aria-label="Out-of-scope dead-letters">
           {honesty.outOfScope.map((scope) => (
+            // Deliberately job-scoped, lower-bound-honest phrasing: "≥N CMMN jobs not triaged
+            // here" — NOT an exact "N of the health strip's M" that invites unsound
+            // subtraction (these are JOBS, the FAILED chips count INSTANCES; and a capped scan
+            // makes N a floor). It reconciles the raw lane count qualitatively, no arithmetic.
             <span key={scope.engineId}>
               {scope.engineId}: <span className="scope-badge">out of scope</span>{' '}
-              {formatCount(scope.count)} dead-letter{scope.count === 1 ? '' : 's'} belong to
-              another engine sharing this one&apos;s job tables (CMMN) — surfaced for
-              reconciliation, not counted as process failures.
+              {scope.floor ? '≥' : ''}
+              {formatCount(scope.count)} CMMN job{scope.count === 1 ? '' : 's'} not triaged here —
+              they belong to another engine sharing this one&apos;s job tables, so they sit in the
+              raw dead-letter lane but never among the process failures below.
             </span>
           ))}
         </div>

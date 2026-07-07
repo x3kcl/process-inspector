@@ -131,7 +131,7 @@ public class TriageAggregationService {
 
     private record EngineSlice(PerEngineTriage envelope, Map<String, Long> statusCounts, List<EngineGroup> groups) {
         static EngineSlice failed(String error) {
-            return new EngineSlice(new PerEngineTriage(false, error, null, null), Map.of(), List.of());
+            return new EngineSlice(new PerEngineTriage(false, error, null, null, false), Map.of(), List.of());
         }
     }
 
@@ -185,15 +185,23 @@ public class TriageAggregationService {
 
             // The dead-letter rows the join dropped for being out of BPMN scope — reported
             // only on engines that can be trusted to discriminate (scopeType capability, ~6.8+).
+            // The DEADLETTER lane's OWN truncation floors this count independently of the
+            // unified dlqScan marker (which OR-conflates all three failure lanes).
             var health = registry.healthOf(engine.id());
             boolean scopeTypeCapable = health != null
                     && health.capabilities() != null
                     && health.capabilities().scopeType();
-            Integer outOfScope = outOfScopeDeadletters(
-                    scans.get(JobLaneKind.DEADLETTER).get().jobs(), scopeTypeCapable);
+            LaneScan deadletterScan = scans.get(JobLaneKind.DEADLETTER).get();
+            OutOfScope outOfScope =
+                    outOfScopeDeadletters(deadletterScan.jobs(), deadletterScan.truncated(), scopeTypeCapable);
 
             return new EngineSlice(
-                    new PerEngineTriage(true, null, truncated ? "truncated@" + scanned : "complete", outOfScope),
+                    new PerEngineTriage(
+                            true,
+                            null,
+                            truncated ? "truncated@" + scanned : "complete",
+                            outOfScope.count(),
+                            outOfScope.deadletterTruncated()),
                     statusCounts,
                     refine(engine, preGroups));
         } catch (Exception ex) {
@@ -299,6 +307,14 @@ public class TriageAggregationService {
     }
 
     /**
+     * The out-of-scope dead-letter count plus whether it is a lower bound (the DEADLETTER
+     * lane's own scan hit the cap). {@code count} is {@code null} — unknown — when the
+     * engine cannot discriminate scope; {@code deadletterTruncated} is only meaningful
+     * alongside a non-null count.
+     */
+    record OutOfScope(Integer count, boolean deadletterTruncated) {}
+
+    /**
      * The dead-letter rows this aggregator EXCLUDES from every BPMN leg — jobs from another
      * engine sharing flowable-rest's job tables (CMMN, proven live: the process-api DLQ
      * projection lists them as {@code processInstanceId:null} orphans and serializes no
@@ -306,14 +322,18 @@ public class TriageAggregationService {
      * Counting them (rather than dropping them silently) lets the health strip's raw
      * dead-letter lane count reconcile with the process-scoped FAILED count.
      *
-     * <p>Returns {@code null} — unknown, not zero — when the engine cannot be trusted to
-     * discriminate scope ({@code scopeTypeCapable} false: pre-6.8, where 6.3.1 is
-     * CMMN-dead-letter-blind and a confident zero would be a lie). A truncated DLQ scan
-     * makes the count a lower bound, inheriting the slice's {@code dlqScan} marker.
+     * <p>Returns a {@code null} count — unknown, not zero — when the engine cannot be
+     * trusted to discriminate scope ({@code scopeTypeCapable} false: pre-6.8, where 6.3.1
+     * is CMMN-dead-letter-blind and a confident zero would be a lie). When the DEADLETTER
+     * lane scan hit its cap ({@code deadletterLaneTruncated}), a concrete count is a lower
+     * bound — orphans may lie past the cap — so it is flagged for the UI's ≥N treatment.
+     * This is the DEADLETTER lane's SPECIFIC truncation, not the unified {@code dlqScan}
+     * marker that conflates all three failure lanes.
      */
-    static Integer outOfScopeDeadletters(List<Map<String, Object>> deadLetterJobs, boolean scopeTypeCapable) {
+    static OutOfScope outOfScopeDeadletters(
+            List<Map<String, Object>> deadLetterJobs, boolean deadletterLaneTruncated, boolean scopeTypeCapable) {
         if (!scopeTypeCapable) {
-            return null;
+            return new OutOfScope(null, false);
         }
         int count = 0;
         for (Map<String, Object> job : deadLetterJobs) {
@@ -321,7 +341,7 @@ public class TriageAggregationService {
                 count++;
             }
         }
-        return count;
+        return new OutOfScope(count, deadletterLaneTruncated);
     }
 
     private void accumulate(Map<String, PreGroup> preGroups, Map<String, Object> job, JobLaneKind lane) {

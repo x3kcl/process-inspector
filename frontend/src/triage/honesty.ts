@@ -13,9 +13,11 @@ export interface TriageHonesty {
    * Engines whose dead-letter lane holds jobs from ANOTHER engine sharing the job tables
    * (CMMN): counted, not counted as process failures. Reconciles the health strip's raw
    * dead-letter count with the process-scoped FAILED count. Only present on engines new
-   * enough to discriminate scope (6.8+); a null/zero count contributes nothing.
+   * enough to discriminate scope (6.8+); a null/zero count contributes nothing. {@code floor}
+   * marks the count a lower bound — the DEADLETTER lane's own scan hit the cap, so more
+   * orphans may lie past it (rendered ≥N).
    */
-  outOfScope: { engineId: string; count: number }[]
+  outOfScope: { engineId: string; count: number; floor: boolean }[]
 }
 
 export function deriveHonesty(
@@ -30,9 +32,15 @@ export function deriveHonesty(
     } else if (result.dlqScan !== undefined && result.dlqScan.startsWith('truncated')) {
       truncatedScans.push({ engineId, marker: result.dlqScan })
     }
-    // Independent of truncation: a healthy engine can still project out-of-scope orphans.
+    // Independent of the group-count truncation channel: a healthy engine can still project
+    // out-of-scope orphans. The count is a lower bound when the DEADLETTER lane's OWN scan
+    // hit the cap (deadletterTruncated) — not merely when the unified dlqScan marker tripped.
     if (result.ok === true && (result.outOfScopeDeadletters ?? 0) > 0) {
-      outOfScope.push({ engineId, count: result.outOfScopeDeadletters ?? 0 })
+      outOfScope.push({
+        engineId,
+        count: result.outOfScopeDeadletters ?? 0,
+        floor: result.deadletterTruncated === true,
+      })
     }
   }
   failedEngines.sort((a, b) => a.engineId.localeCompare(b.engineId))
