@@ -435,6 +435,20 @@ unresolvable with tier 0–1 verbs)
    (refuse) on the real matrix. New seed process `demo-external-worker`. **v1.x release train
    complete.**
 
+### CMMN scope visibility — Phase 0 *(shipped 2026-07-07, R-SEM-20)*
+Standalone first slice of a possible multi-engine **Case Inspector**; ships on its own and
+changes **no existing count's value**. A co-deployed CMMN engine shares flowable-rest's job
+tables, so its failing jobs land in the same dead-letter lane; the BPMN join already drops
+them (null `processInstanceId`), but they were dropped *silently*. Phase 0 **counts** them
+per-engine as `outOfScopeDeadletters` (gated on the `scopeType` capability, ~6.8+; `null` —
+unknown, never a lying zero — below that), so the health strip's raw dead-letter lane
+reconciles with FAILED instead of hiding untriaged server-side incidents. Backend fold in
+`TriageAggregationService`; frontend `role="note"` reconciliation strip on the Stage-0 landing.
+Full design + wire-shape provenance + forward plan: **`docs/CMMN-SCOPE-PHASE-0.md`**. Tests:
+`OutOfScopeDeadlettersTest` (rung 1) + `TriageCmmnScopeIT` (6.8) + `TriageCmmnScopeLegacyIT`
+(6.3 null gate). **Open (panel review 2026-07-07):** the frontend does not yet degrade the
+count to a "≥N" lower bound under a truncated DLQ scan — see `CMMN-SCOPE-PHASE-0.md` §8.1.
+
 ## v2 — demand-driven
 - **Remediation playbooks** (SPEC §5.1 — the headline): distill an exemplar's audit rows
   into a named, literal-values-only verb sequence bound to an error-class signature; replay
@@ -448,7 +462,16 @@ unresolvable with tier 0–1 verbs)
   only *live* job-lane counts; a trend needs the **R-BAU-08** snapshot/time-series store
   (ranked with maintenance snapshots + per-definition volume trends).
 - Definition version comparison + per-version instance counts (the migration on-ramp).
-- CMMN case support via the parallel `/cmmn-api` surface (row DTOs already carry `scopeType`).
+- **CMMN Case Inspector — Phases 1-3** (Phase 0 counting already shipped in v1, above).
+  `docs/CMMN-SCOPE-PHASE-0.md` §7 is the authoritative source of truth for the architecture,
+  sequencing, and the wire-shape constraints; it deprecates the older one-line "CMMN case
+  support" bullet. **Phase 1** — Unified Search: promote `outOfScopeDeadletters` from a scalar
+  to a drillable CMMN scope facet by fetching both management DLQ lists and merging by job `id`;
+  bounded/paged/`truncated@N` like the BPMN scan; **scope-typed lane sets** (ACTIVE/FAILED/
+  COMPLETED/TERMINATED, no SUSPENDED). **Phase 2** — Polymorphic Stage-2 detail: `cmmn-js`
+  canvas (extend the watermark guard to `/(bjs|cmmn)-powered-by/i` **first**) + plan-item
+  timeline. **Phase 3** — CMMN corrective actions under the full `corrective-actions` rails.
+  All gated 6.8+.
 - Registry CRUD UI; shared server-side saved views; k-way-merge deep paging; OIDC hardening.
 
 ### v2/M4 — State store + snapshot store: architectural boundary *(decided 2026-07-07, pre-build)*

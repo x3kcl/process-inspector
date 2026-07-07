@@ -1,10 +1,13 @@
 # 🩺 SPEC EXTENSION — CMMN scope visibility (Phase 0)
 
-**Status:** Proposed · **Date:** 2026-07-07 · **Author:** remote-control design session
+**Status:** Landed 2026-07-07 (commits `e712e46` spec · `48a4640` backend · `51300c6`
+frontend + spec-sync) · **Author:** remote-control design session
 **Extends:** SPECIFICATION §3 (status join / CMMN hygiene), ARCHITECTURE §2.3 & §2.5
 (capability map) · **Provenance:** live wire-shape spike vs dockerized 6.8 / 7.1 / 6.3.1
-(see below) · **Requirement:** proposed **R-SEM-08** (assign in REQUIREMENTS-REGISTER on
-landing)
+(see below) · **Requirement:** **R-SEM-20** (registered in REQUIREMENTS-REGISTER). NOTE:
+the backend commit `48a4640` and earlier drafts of this doc mis-cited **R-SEM-08** — that ID
+was already permanently assigned to the engineId slug rule; the register never reuses IDs, so
+the CMMN requirement was renumbered to R-SEM-20 on the panel review (2026-07-07).
 
 This is the first, standalone slice of a possible multi-engine **Case Inspector** (CMMN)
 feature. It ships on its own, changes **no existing count's value**, and lays the capability
@@ -75,7 +78,7 @@ truncated data without the badge"): here, dead-letter jobs are silently dropped 
 
 ## 2. Behavior change (WHAT — amends SPEC §3)
 
-> **R-SEM-08 (proposed).** A dead-letter job that fails BPMN scope hygiene (null/blank
+> **R-SEM-20.** A dead-letter job that fails BPMN scope hygiene (null/blank
 > `processInstanceId`, or `scopeType` ∉ {null, `bpmn`}) is **excluded from every BPMN join
 > leg _and counted_**. Per engine, the count of such rows observed in the Stage-0 failure
 > scan is surfaced as `outOfScopeDeadletters`. It is **additive** — no existing status or
@@ -105,12 +108,27 @@ hiding server-side incidents, violating the do-no-harm honesty doctrine.
 Zero new engine calls. `TriageAggregationService.sliceOf` already pages the full DEADLETTER
 lane (`withException=true`, bounded by `dlq-scan-cap`) and calls `bpmnProcessInstanceId(job)`
 on every row. CMMN dead-letters carry an `exceptionMessage` (spike-confirmed), so they are
-already inside that scan. The `else` branch of the existing guard becomes the tally:
+already inside that scan. **As shipped**, the tally is a *separate* fold over the DEADLETTER
+lane's jobs — deliberately NOT inlined into the grouping loop — invoked once after the lane
+scans complete and gated on the `scopeType` capability (the gate is what produces the `null`
+case, so it is load-bearing, not decoration):
 
 ```java
-// sliceOf(), in the existing per-job loop
-} else if (scan.getKey() == JobLaneKind.DEADLETTER) {
-    outOfScopeDeadletters++;   // real dead-letter job, not ours — previously dropped in silence
+// sliceOf(): after the failure-lane scans complete —
+Integer outOfScope = outOfScopeDeadletters(
+        scans.get(JobLaneKind.DEADLETTER).get().jobs(), scopeTypeCapable);
+
+static Integer outOfScopeDeadletters(List<Map<String,Object>> deadLetterJobs, boolean scopeTypeCapable) {
+    if (!scopeTypeCapable) {
+        return null;                 // pre-6.8: cannot discriminate scope → unknown, never a lying 0
+    }
+    int count = 0;
+    for (Map<String, Object> job : deadLetterJobs) {
+        if (bpmnProcessInstanceId(job) == null) {
+            count++;                 // real dead-letter, not ours — previously dropped in silence
+        }
+    }
+    return count;
 }
 ```
 
@@ -140,10 +158,14 @@ matches the existing gate style (`FlowSurgeryService.requireChangeStateCapabilit
 ## 5. Interface deltas
 
 - `dto/TriageDashboardResponse.PerEngineTriage` gains a trailing nullable field:
-  `record PerEngineTriage(boolean ok, String error, String dlqScan, Long outOfScopeDeadletters)`.
+  `record PerEngineTriage(boolean ok, String error, String dlqScan, Integer outOfScopeDeadletters)`.
+  (Shipped as `Integer`, not `Long` — a row count, never near int32; both serialize to a JSON
+  number so `schema.d.ts` is identical either way.)
 - Frontend: regenerate `frontend/src/api/schema.d.ts` via `npm run gen:api` (run BFF on a
-  probed free port; gen:api hardcodes :8085). Render the lane-tile annotation when
-  `outOfScopeDeadletters > 0`. No new component.
+  probed free port; gen:api hardcodes :8085). As shipped, the annotation is a `role="note"`
+  reconciliation strip on the Stage-0 landing (`TriagePage`, via the `outOfScope` channel in
+  `honesty.ts`) rendered when `outOfScopeDeadletters > 0` — not an inline lane-tile badge. No
+  new component.
 
 ---
 
@@ -175,26 +197,66 @@ matches the existing gate style (`FlowSurgeryService.requireChangeStateCapabilit
 
 Phase 0 deliberately produces the seam the later phases consume:
 
-- The `outOfScopeDeadletters` count is the **degenerate scalar** of what Phase 1 turns into a
-  first-class CMMN scope facet. Phase 1 replaces the annotation with drillable rows by
-  fetching both management DLQ lists and **merging by job `id`** (§1.1 Q1) — no data-contract
-  break, the badge becomes a facet.
+- The `outOfScopeDeadletters` count is a **display placeholder** (a nullable scope facet), not
+  a load-bearing seam. Phase 1 replaces the annotation with drillable rows by fetching **both**
+  management DLQ lists and **merging by job `id`** (§1.1 Q1). The wire *contract* is genuinely
+  additive (scalar → facet-with-rows, no break), but the Phase-1 rows are a **net-new**
+  cmmn-api fetch+merge: Phase 0 counts null-pid orphans from the **process-api** scan, whereas
+  Phase 1 enumerates from the **cmmn-api** projection (non-null `caseInstanceId`). The two are
+  different windows on the shared table with **different truncation caps** — the scalar and the
+  facet count can legitimately disagree under truncation. Do not frame Phase 1 as "upgrading"
+  the Phase-0 code.
+  - **CONSTRAINT (iron rule):** Phase 1's cmmn-api DLQ fetch is **bounded by `dlq-scan-cap`,
+    paged, and carries the `truncated@N` badge**, exactly like the BPMN Stage-0 scan — never a
+    single unpaged DLQ fetch.
+  - **CONSTRAINT:** all CMMN incident features **gate to 6.8+** (§1.1 Q3 — 6.3 is silently
+    wrong: DLQ-blind, `?state=` ignored, no `state` field). On <6.8 emit `null`, never a wrong
+    number. Re-verify on the cmmn context, not merely inferred from `scopeType`.
 - Phase 1 status lanes for CMMN are **ACTIVE / FAILED / COMPLETED / TERMINATED** — **no
-  SUSPENDED** (§1.1 Q2). `superProcessInstanceId` carries cross-engine hierarchy.
-- Phase 2 (polymorphic Stage-2 detail: `cmmn-js` canvas — **R-GOV-05 watermark rule applies
-  to `.cmmn-powered-by`** — plus a plan-item state-machine timeline) and Phase 3 (CMMN
-  corrective actions under the full `corrective-actions` rails, server-computed
-  "Show as cURL" emitting `cmmn-runtime/case-instances/{id}/…`) remain unspecified pending
-  a separate plan.
+  SUSPENDED** (§1.1 Q2; cases cannot suspend). `superProcessInstanceId` carries cross-engine
+  hierarchy.
+  - **HAZARD (M4):** the BPMN lane set (`frontend/src/api/model.ts` `ALL_STATUSES`) hardcodes
+    SUSPENDED and lacks TERMINATED — the **mirror image** of CMMN's. A polymorphic Phase-1 UI
+    must drive its tile/lane set off the row's `scopeType` (introduce a `CMMN_STATUSES` const),
+    **not** reuse the single global `ALL_STATUSES` — else TERMINATED is silently dropped into
+    the unlabeled bucket and an always-empty SUSPENDED lane can appear.
+  - **HAZARD:** `superProcessInstanceId` crosses the cmmn-history → process-api context (and
+    possibly engine) boundary. The existing within-process hierarchy roll-up cycle-guard does
+    not span two APIs — Phase 1 must **extend**, not reuse, it.
+- Phase 2 (polymorphic Stage-2 detail: `cmmn-js` canvas plus a plan-item state-machine
+  timeline) and Phase 3 (CMMN corrective actions under the full `corrective-actions` rails,
+  server-computed "Show as cURL" emitting `cmmn-runtime/case-instances/{id}/…`) remain
+  unspecified pending a separate plan.
+  - **CONSTRAINT (R-GOV-05, must precede the canvas):** `cmmn-js` emits its own
+    `.cmmn-powered-by` watermark. `frontend/scripts/check-bpmn-watermark.mjs` currently guards
+    only `bjs-powered-by`, so the build stays green precisely because it never looks for the
+    CMMN class. **Before** `cmmn-js` lands, generalize the guard to `/(bjs|cmmn)-powered-by/i`
+    (or add a sibling `check-cmmn-watermark.mjs`) so the watermark cannot be stripped.
 
 ---
 
-## 8. Doc-sync checklist (when this lands, same change)
+## 8. Doc-sync checklist (discharged on the panel review, 2026-07-07)
 
-- [ ] SPEC §3 — replace "excluded from every BPMN join leg" with "excluded **and counted**;
-      surfaced as `outOfScopeDeadletters` (R-SEM-08)."
-- [ ] ARCHITECTURE §2.3 — add the Stage-0 tally; §2.5 — note `scopeType` gains an explicit
-      consumer.
-- [ ] REQUIREMENTS-REGISTER — assign R-SEM-08 its real id + acceptance test refs.
-- [ ] IMPLEMENTATION-PLAN — add Phase 0 as a shipped slice; reference this doc for Phases 1-3.
-- [ ] TEST-STRATEGY / TEST-SCENARIOS — the CMMN-scope IT and its 6.3 gate leg.
+- [x] SPEC §3 — "excluded from every BPMN join leg" now reads "excluded **and counted**;
+      surfaced as `outOfScopeDeadletters`" (SPECIFICATION §3, L166-173).
+- [x] ARCHITECTURE §2.3 — Stage-0 tally added (L124-127, §4 API table L228); §2.5 — `scopeType`
+      recorded as an explicit consumer of Phase 0.
+- [x] REQUIREMENTS-REGISTER — requirement registered as **R-SEM-20** (the earlier R-SEM-08
+      citation collided with the engineId slug rule; renumbered on review).
+- [x] IMPLEMENTATION-PLAN — Phase 0 recorded as shipped; Phases 1-3 sequenced with a link here.
+- [x] TEST-SCENARIOS — `TS-STAT-16` covers the out-of-scope count (6.8 = 1, 6.3 = null gate);
+      TEST-STRATEGY R1 names `TriageCmmnScopeIT` / `TriageCmmnScopeLegacyIT`.
+
+### 8.1 Open (panel review 2026-07-07) — NOT yet fixed
+- **Truncation honesty gap (HIGH).** The shipped frontend renders `outOfScopeDeadletters` as an
+  exact count even when that engine's DLQ scan is `truncated@N`, contradicting §2/§3's "a
+  truncated scan makes the tally a documented floor." `honesty.ts` builds the `outOfScope`
+  channel without consulting `dlqScan`, and `styles.css` asserts "the counts shown ARE exact."
+  Fix needs a DEADLETTER-lane-specific floor flag on `PerEngineTriage` (the shared `dlqScan`
+  marker unions all three failure lanes, so it is not a faithful per-lane proxy) + a "≥N"
+  lower-bound rendering. Deferred pending owner go-ahead (behavior change).
+- **Reconciliation wording (MODERATE).** The "tile − CMMN = BPMN/FAILED" framing pairs a
+  jobs count (`outOfScopeDeadletters`) with a distinct-instances count (`FAILED`) computed over
+  a different (uncapped, no-`withException`) denominator than the lane tile — the equality holds
+  only at 1 DLQ-job-per-instance and a complete scan. The annotation should not invite that
+  subtraction. Docstring at `TriageAggregationService.java:307-308` to be softened.

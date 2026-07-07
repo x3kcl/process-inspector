@@ -167,6 +167,9 @@ cliffs: `changeState` (6.4+), `migration` + `migration/validate` (~6.5+, batch s
 6.5→7.x), `externalWorkerJobs` (6.8+), `scopeType` on job rows (~6.8+), historic-activity
 availability (history level ≥ activity). Capability-flagged features are greyed in the UI
 **with the reason** and rejected by the BFF — never a confusing engine-side 404 at click time.
+The Stage-0 out-of-scope-dead-letter tally (§2.3, R-SEM-20) is an explicit consumer of
+`scopeType`: it emits `outOfScopeDeadletters = null` (unknown, never a confident zero) where
+the flag is false, since a pre-6.8 engine is CMMN-dead-letter-blind.
 
 ## 3. Engine Registry — data model
 

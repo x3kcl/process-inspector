@@ -53,7 +53,10 @@ during M6; zero high findings at GA. Continuous: SCA hard-fails known-exploitabl
 Every seed process / captured payload has a stable ID (`FIX-STATUS-03: suspended+DLQ
 collision`), an owner (lead dev), and a purpose. The SPEC §3 flag matrix maps to fixtures —
 an empty cell is a visible coverage gap. Mandatory cells: each flag alone, each collision,
-roll-up at depth 1/limit/limit+1, RETRYING in job+timer tables, CMMN rows, tenant threading.
+roll-up at depth 1/limit/limit+1, RETRYING in job+timer tables, CMMN rows (both *filtered from
+every join leg* and *counted* as `outOfScopeDeadletters` per R-SEM-20 — `OutOfScopeDeadlettersTest`
+at rung 1, `TriageCmmnScopeIT` on 6.8, `TriageCmmnScopeLegacyIT` for the 6.3 null gate), tenant
+threading.
 Capture scripts live in `docker/`; captured fixtures carry the engine image tag.
 The catalog is realized in [TEST-SCENARIOS.md](TEST-SCENARIOS.md) §1 (fixtures `FIX-*`) with
 the scenario mapping (`TS-*`) in its §§2–12.

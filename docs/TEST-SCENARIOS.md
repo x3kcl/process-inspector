@@ -116,6 +116,7 @@ never seeded (R-TEST-07).
 | TS-STAT-13 | FAILED-only search selects the DLQ-driven inverted plan (assert via the evidence view's plan choice) | S2/L4 | ARCH §2.3, R-L3-01 |
 | TS-STAT-14 | full flag-combination matrix over fixture collections (every §1.2 cell + impossible-combination guards) | S1/L1 | R-TEST-01 (≥90% branch) |
 | TS-STAT-15 | the six DESIGN-REVIEW join bugs, each re-expressed as a red-first regression | S1/L1 + S2/L4 | R-TEST-02 (M2a gate) |
+| TS-STAT-16 | out-of-scope (CMMN) dead-letter count: seed 1 failing BPMN payment + 1 failing CMMN case on a 6.8 engine → `statusCounts.FAILED` counts BPMN only **and** `perEngine[e].outOfScopeDeadletters == 1` (`TriageCmmnScopeIT`); on 6.3 the field is `null` — the scopeType gate (`TriageCmmnScopeLegacyIT`); rung-1 fold over a mixed fixture in `OutOfScopeDeadlettersTest` | S1/L1 + S2/L4 | SPEC §3, R-SEM-20 |
 
 All TS-STAT L4 rows run on **all three compose profiles** (R-TEST-01).
 
