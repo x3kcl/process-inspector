@@ -12,6 +12,7 @@ export type BulkItemDto = components['schemas']['BulkItemDto']
 export type BulkSubmitRequest = components['schemas']['BulkSubmitRequest']
 export type BulkTarget = components['schemas']['BulkTarget']
 export type BulkErrorClassRequest = components['schemas']['BulkErrorClassRequest']
+export type BulkFilterRequest = components['schemas']['BulkFilterRequest']
 
 export const BULK_JOBS_KEY = ['bulk-jobs']
 
@@ -45,6 +46,18 @@ export async function submitBulkErrorClass(body: BulkErrorClassRequest): Promise
   return data
 }
 
+/**
+ * v1.x #2 — select-all-matching-filter. SERVER-SIDE RE-RESOLUTION is the contract: this
+ * sends the SearchRequest criteria the grid is looking at; the BFF re-runs the search
+ * plan exhaustively at execution time and records the resolved members in the audit
+ * envelope before anything dispatches. No instance ID crosses the wire from the browser.
+ */
+export async function submitBulkFilter(body: BulkFilterRequest): Promise<BulkJobDto> {
+  const { data, error, response } = await api.POST('/api/bulk/filter', { body })
+  if (data === undefined) throw new ActionError(parseActionProblem(response.status, error))
+  return data
+}
+
 export async function cancelBulk(id: string): Promise<BulkJobDto> {
   const { data, error, response } = await api.POST('/api/bulk/{id}/cancel', {
     params: { path: { id } },
@@ -67,24 +80,27 @@ export function jobActive(job: BulkJobDto): boolean {
 
 /**
  * The drawer's hydration read: state is server-side (survives navigation AND browser
- * refresh); polling tightens only while a job is actually live.
+ * refresh). With the SSE stream open ({@code live}) polling is a slow 30s safety net —
+ * the stream's id-only events drive invalidation; offline it falls back to the v1
+ * tightening poll.
  */
-export function useBulkJobs(enabled: boolean) {
+export function useBulkJobs(enabled: boolean, live = false) {
   return useQuery({
     queryKey: BULK_JOBS_KEY,
     queryFn: fetchBulkJobs,
     enabled,
-    refetchInterval: (query) => ((query.state.data ?? []).some(jobActive) ? 2500 : 30_000),
+    refetchInterval: (query) =>
+      live ? 30_000 : (query.state.data ?? []).some(jobActive) ? 2500 : 30_000,
   })
 }
 
-export function useBulkJob(id: string | undefined) {
+export function useBulkJob(id: string | undefined, live = false) {
   return useQuery({
     queryKey: ['bulk-job', id],
     queryFn: () => fetchBulkJob(id ?? ''),
     enabled: id !== undefined,
     refetchInterval: (query) =>
-      query.state.data !== undefined && jobActive(query.state.data) ? 1500 : false,
+      live ? false : query.state.data !== undefined && jobActive(query.state.data) ? 1500 : false,
   })
 }
 
@@ -104,6 +120,17 @@ export function useSubmitBulkErrorClass() {
   return useMutation<BulkJobDto, ActionError, BulkErrorClassRequest>({
     retry: false,
     mutationFn: submitBulkErrorClass,
+    onSettled: async () => {
+      await queryClient.invalidateQueries({ queryKey: BULK_JOBS_KEY })
+    },
+  })
+}
+
+export function useSubmitBulkFilter() {
+  const queryClient = useQueryClient()
+  return useMutation<BulkJobDto, ActionError, BulkFilterRequest>({
+    retry: false,
+    mutationFn: submitBulkFilter,
     onSettled: async () => {
       await queryClient.invalidateQueries({ queryKey: BULK_JOBS_KEY })
     },

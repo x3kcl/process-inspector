@@ -16,6 +16,7 @@ import io.inspector.audit.ProtectedInstance;
 import io.inspector.audit.ProtectedInstanceRepository;
 import io.inspector.client.FlowableEngineClient;
 import io.inspector.client.FlowableEngineClient.JobLaneKind;
+import io.inspector.config.InspectorProperties;
 import io.inspector.config.InspectorProperties.EngineConfig;
 import io.inspector.registry.EngineRegistry;
 import java.time.Clock;
@@ -25,13 +26,16 @@ import java.util.List;
 import java.util.Map;
 import java.util.Set;
 import java.util.UUID;
+import java.util.concurrent.CompletableFuture;
 import java.util.concurrent.ConcurrentHashMap;
 import java.util.concurrent.ExecutorService;
 import java.util.concurrent.Executors;
+import java.util.concurrent.Semaphore;
 import java.util.stream.Collectors;
 import org.slf4j.Logger;
 import org.slf4j.LoggerFactory;
 import org.springframework.boot.context.event.ApplicationReadyEvent;
+import org.springframework.context.ApplicationEventPublisher;
 import org.springframework.context.event.EventListener;
 import org.springframework.data.domain.PageRequest;
 import org.springframework.http.HttpStatus;
@@ -45,12 +49,18 @@ import org.springframework.stereotype.Service;
  * engine gates, protected guard, server-fresh restatement, fail-closed per-item audit).
  * No cross-engine transaction pretense; partial failure is a NORMAL outcome.
  *
- * <p>v1 discipline: items dispatch sequentially (the conservative per-engine concurrency
- * cap — a simultaneous 300-job DLQ move can DDoS the executor, SPEC §7); retry-job
+ * <p>Engine protection (v1.x #2, SPEC §7): dispatch fans out per ENGINE — each engine's
+ * items are paced by a mandatory stagger between dispatch STARTS and bounded by a
+ * per-engine permit pool shared across concurrent jobs ({@code inspector.bulk.*}), so a
+ * 5000-item filter bulk trickles into the target async executor instead of slamming it.
+ * The pacer sleeps on its own virtual thread — cheap and non-carrier-blocking. retry-job
  * resolves the instance's CURRENT dead-letter jobs at dispatch time (the built-in
  * precondition recheck — none left ⇒ {@code skipped (already resolved)}). A timed-out
  * mutation is {@code unknown} and is NEVER auto-retried; Verify-now (R-SAFE-09) re-runs
  * the verb's precondition predicate and reclassifies with evidence.
+ *
+ * <p>Every observable transition publishes an id-only {@link BulkJobChangedEvent} — the
+ * SSE bridge's feed (live-ui-sse doctrine: push the signal, the browser refetches).
  */
 @Service
 public class BulkJobService {
@@ -71,8 +81,12 @@ public class BulkJobService {
     private final EngineRegistry registry;
     private final FlowableEngineClient client;
     private final Clock clock;
+    private final InspectorProperties props;
+    private final ApplicationEventPublisher events;
     private final ExecutorService executor = Executors.newVirtualThreadPerTaskExecutor();
     private final Map<UUID, Boolean> cancelRequested = new ConcurrentHashMap<>();
+    /** Per-engine in-flight dispatch permits, shared across concurrent jobs (SPEC §7). */
+    private final Map<String, Semaphore> enginePermits = new ConcurrentHashMap<>();
 
     public BulkJobService(
             BulkJobRepository jobs,
@@ -82,7 +96,9 @@ public class BulkJobService {
             AuditService audit,
             EngineRegistry registry,
             FlowableEngineClient client,
-            Clock clock) {
+            Clock clock,
+            InspectorProperties props,
+            ApplicationEventPublisher events) {
         this.jobs = jobs;
         this.items = items;
         this.actions = actions;
@@ -91,12 +107,14 @@ public class BulkJobService {
         this.registry = registry;
         this.client = client;
         this.clock = clock;
+        this.props = props;
+        this.events = events;
     }
 
     /* ------------------------------- submit ------------------------------- */
 
     public BulkDtos.BulkJobDto submit(BulkDtos.BulkSubmitRequest request, Authentication auth) {
-        return submit(request, auth, Map.of());
+        return submit(request, auth, Map.of(), BulkJob.ITEM_CAP);
     }
 
     /**
@@ -106,6 +124,18 @@ public class BulkJobService {
      */
     BulkDtos.BulkJobDto submit(
             BulkDtos.BulkSubmitRequest request, Authentication auth, Map<String, Object> extraEnvelopePayload) {
+        return submit(request, auth, extraEnvelopePayload, BulkJob.ITEM_CAP);
+    }
+
+    /**
+     * Package-door for the filter-resolved path (v1.x #2), which alone may carry up to
+     * {@link BulkJob#FILTER_ITEM_CAP} items; every other entry keeps the 200-item cap.
+     */
+    BulkDtos.BulkJobDto submit(
+            BulkDtos.BulkSubmitRequest request,
+            Authentication auth,
+            Map<String, Object> extraEnvelopePayload,
+            int itemCap) {
         ActionVerb verb = ActionVerb.fromPath(request.verb() != null ? request.verb() : "")
                 .filter(BULK_VERBS::contains)
                 .orElseThrow(() -> new GuardRefusedException(
@@ -118,11 +148,11 @@ public class BulkJobService {
             throw new GuardRefusedException(
                     HttpStatus.BAD_REQUEST, "bulk-empty", "The selection is empty — nothing to do.");
         }
-        if (targets.size() > BulkJob.ITEM_CAP) {
+        if (targets.size() > itemCap) {
             throw new GuardRefusedException(
                     HttpStatus.BAD_REQUEST,
                     "bulk-cap-exceeded",
-                    "Bulk is capped at " + BulkJob.ITEM_CAP + " items (got " + targets.size()
+                    "Bulk is capped at " + itemCap + " items (got " + targets.size()
                             + "). Narrow the selection. Nothing happened.");
         }
         String reason = request.reason() != null && !request.reason().isBlank() ? request.reason() : null;
@@ -194,6 +224,7 @@ public class BulkJobService {
         items.saveAllAndFlush(itemRows);
 
         executor.submit(() -> run(jobId, envelope, auth));
+        events.publishEvent(new BulkJobChangedEvent(jobId));
         return BulkDtos.BulkJobDto.of(job, itemRows, true);
     }
 
@@ -212,23 +243,32 @@ public class BulkJobService {
         BulkJob job = jobs.findById(jobId).orElseThrow();
         job.markRunning();
         jobs.saveAndFlush(job);
+        events.publishEvent(new BulkJobChangedEvent(jobId));
         ActionVerb verb = ActionVerb.fromPath(job.getVerb()).orElseThrow();
 
         List<BulkJobItem> all = items.findByJobIdOrderByOrdinal(jobId);
-        boolean cancelled = false;
+        // Per-engine fan-out: engines proceed independently (one slow engine must not
+        // starve the others), each group paced and permit-bounded (class javadoc).
+        Map<String, List<BulkJobItem>> byEngine = new LinkedHashMap<>();
         for (BulkJobItem item : all) {
             if (item.getState() != BulkJobItem.State.pending) {
                 continue; // settled at submit (skipped_protected)
             }
-            if (cancelRequested.getOrDefault(jobId, false)) {
-                cancelled = true;
-                break;
-            }
-            item.markDispatched();
-            items.saveAndFlush(item);
-            dispatchOne(job, verb, item, auth);
-            items.saveAndFlush(item);
+            byEngine.computeIfAbsent(item.getEngineId(), k -> new ArrayList<>()).add(item);
         }
+        List<CompletableFuture<Void>> runners = new ArrayList<>();
+        for (Map.Entry<String, List<BulkJobItem>> group : byEngine.entrySet()) {
+            runners.add(CompletableFuture.runAsync(
+                            () -> dispatchEngineGroup(job, verb, group.getKey(), group.getValue(), auth), executor)
+                    .exceptionally(ex -> {
+                        // An engine-group failure must never leave the job RUNNING forever.
+                        log.error("bulk job {} engine group {} failed", jobId, group.getKey(), ex);
+                        return null;
+                    }));
+        }
+        CompletableFuture.allOf(runners.toArray(CompletableFuture[]::new)).join();
+
+        boolean cancelled = cancelRequested.getOrDefault(jobId, false);
         if (cancelled) {
             for (BulkJobItem item : all) {
                 if (item.getState() == BulkJobItem.State.pending) {
@@ -241,6 +281,62 @@ public class BulkJobService {
         job.finish(cancelled ? BulkJob.State.CANCELLED : BulkJob.State.COMPLETED, clock.instant());
         jobs.saveAndFlush(job);
         closeEnvelope(envelope, all);
+        events.publishEvent(new BulkJobChangedEvent(jobId));
+    }
+
+    /**
+     * One engine's dispatch loop: a permit per in-flight item (pool shared with every other
+     * running job targeting this engine) and a mandatory pause between dispatch STARTS —
+     * the do-no-harm stagger (SPEC §7). The pacer thread sleeps; workers run per item.
+     */
+    private void dispatchEngineGroup(
+            BulkJob job, ActionVerb verb, String engineId, List<BulkJobItem> group, Authentication auth) {
+        Semaphore permits = enginePermits.computeIfAbsent(
+                engineId, id -> new Semaphore(props.bulkOrDefault().enginePermitsOrDefault()));
+        long staggerMs = props.bulkOrDefault().staggerMsOrDefault();
+        List<CompletableFuture<Void>> inFlight = new ArrayList<>();
+        boolean first = true;
+        for (BulkJobItem item : group) {
+            if (cancelRequested.getOrDefault(job.getId(), false)) {
+                break; // stop DISPATCHING — in-flight items keep their outcome (SPEC §7)
+            }
+            if (!first) {
+                pace(staggerMs);
+            }
+            first = false;
+            permits.acquireUninterruptibly();
+            item.markDispatched();
+            items.saveAndFlush(item);
+            inFlight.add(CompletableFuture.runAsync(
+                            () -> {
+                                try {
+                                    dispatchOne(job, verb, item, auth);
+                                    items.saveAndFlush(item);
+                                    events.publishEvent(new BulkJobChangedEvent(job.getId()));
+                                } finally {
+                                    permits.release();
+                                }
+                            },
+                            executor)
+                    .exceptionally(ex -> {
+                        log.error(
+                                "bulk item {}:{} dispatch thread failed", item.getEngineId(), item.getInstanceId(), ex);
+                        return null;
+                    }));
+        }
+        CompletableFuture.allOf(inFlight.toArray(CompletableFuture[]::new)).join();
+    }
+
+    /** Virtual-thread pause — non-blocking for the carrier; interruption just stops pacing. */
+    private static void pace(long ms) {
+        if (ms <= 0) {
+            return;
+        }
+        try {
+            Thread.sleep(ms);
+        } catch (InterruptedException e) {
+            Thread.currentThread().interrupt();
+        }
     }
 
     /** One item through the full single-target rails; outcome classes per SPEC §7. */
@@ -407,6 +503,7 @@ public class BulkJobService {
         }
         log.info("bulk job {} cancel requested by {}", id, auth.getName());
         cancelRequested.put(id, true);
+        events.publishEvent(new BulkJobChangedEvent(id));
         return BulkDtos.BulkJobDto.of(job, items.findByJobIdOrderByOrdinal(id), true);
     }
 
@@ -442,6 +539,7 @@ public class BulkJobService {
             item.settle(BulkJobItem.State.unknown, verdict.evidence(), item.getAuditId(), item.getFinishedAt());
         }
         items.saveAndFlush(item);
+        events.publishEvent(new BulkJobChangedEvent(jobId));
         return BulkDtos.BulkItemDto.of(item);
     }
 

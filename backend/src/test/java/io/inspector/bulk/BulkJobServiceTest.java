@@ -79,6 +79,7 @@ class BulkJobServiceTest {
                 null,
                 null,
                 null,
+                null,
                 List.of(TestEngines.engine(
                         ENGINE, "http://localhost:1", EngineEnvironment.DEV, EngineMode.READ_WRITE))));
 
@@ -132,7 +133,10 @@ class BulkJobServiceTest {
                 audit,
                 registry,
                 client,
-                Clock.fixed(Instant.parse("2026-07-06T12:00:00Z"), ZoneOffset.UTC));
+                Clock.fixed(Instant.parse("2026-07-06T12:00:00Z"), ZoneOffset.UTC),
+                // stagger 0 in rung 1 — pacing behavior itself is asserted separately
+                new InspectorProperties(null, null, null, new InspectorProperties.Bulk(4, 0), List.of()),
+                event -> {});
     }
 
     private static UUID keyJob(BulkJobItem.Key key) {
@@ -386,5 +390,117 @@ class BulkJobServiceTest {
         assertThat(done.getState()).isEqualTo(BulkJobItem.State.ok); // settled outcomes untouched
         assertThat(inFlight.getState()).isEqualTo(BulkJobItem.State.unknown); // never re-fired
         assertThat(waiting.getState()).isEqualTo(BulkJobItem.State.not_run);
+    }
+
+    /* ---------------- v1.x #2: engine protection (permits + stagger) ---------------- */
+
+    /** A same-mocks service with explicit bulk knobs and a recording event publisher. */
+    private BulkJobService serviceWith(int permits, int staggerMs, List<Object> publishedEvents) {
+        EngineRegistry registry = new EngineRegistry(new InspectorProperties(
+                null,
+                null,
+                null,
+                null,
+                List.of(TestEngines.engine(
+                        ENGINE, "http://localhost:1", EngineEnvironment.DEV, EngineMode.READ_WRITE))));
+        return new BulkJobService(
+                jobs,
+                items,
+                actions,
+                protectedInstances,
+                audit,
+                registry,
+                client,
+                Clock.fixed(Instant.parse("2026-07-06T12:00:00Z"), ZoneOffset.UTC),
+                new InspectorProperties(null, null, null, new InspectorProperties.Bulk(permits, staggerMs), List.of()),
+                publishedEvents::add);
+    }
+
+    @Test
+    void inFlightDispatchesPerEngineNeverExceedThePermitPool() throws Exception {
+        service = serviceWith(2, 0, new java.util.concurrent.CopyOnWriteArrayList<>());
+        var entered = new java.util.concurrent.atomic.AtomicInteger();
+        var concurrent = new java.util.concurrent.atomic.AtomicInteger();
+        var maxConcurrent = new java.util.concurrent.atomic.AtomicInteger();
+        var gate = new java.util.concurrent.CountDownLatch(1);
+        when(actions.execute(any(), any(), any(), any(), any())).thenAnswer(inv -> {
+            entered.incrementAndGet();
+            maxConcurrent.accumulateAndGet(concurrent.incrementAndGet(), Math::max);
+            try {
+                gate.await(5, TimeUnit.SECONDS);
+            } finally {
+                concurrent.decrementAndGet();
+            }
+            return new ActionResult(UUID.randomUUID(), "c", "ok", 200, "suspended");
+        });
+
+        BulkDtos.BulkJobDto submitted = service.submit(suspendOf("pi-1", "pi-2", "pi-3", "pi-4"), responder);
+
+        // Two dispatches enter and HOLD; the permit pool must pin the third out.
+        await().atMost(5, TimeUnit.SECONDS).until(() -> entered.get() == 2);
+        assertThat(maxConcurrent.get()).isEqualTo(2);
+        gate.countDown();
+        BulkDtos.BulkJobDto done = awaitFinished(submitted.id());
+        assertThat(done.tallies()).containsEntry("ok", 4L);
+        assertThat(maxConcurrent.get()).isEqualTo(2); // never exceeded while draining either
+    }
+
+    @Test
+    void dispatchStartsOnOneEngineArePacedByTheStagger() {
+        service = serviceWith(4, 120, new java.util.concurrent.CopyOnWriteArrayList<>());
+        var startNanos = new java.util.concurrent.ConcurrentLinkedQueue<Long>();
+        when(actions.execute(any(), any(), any(), any(), any())).thenAnswer(inv -> {
+            startNanos.add(System.nanoTime());
+            return new ActionResult(UUID.randomUUID(), "c", "ok", 200, "suspended");
+        });
+
+        BulkDtos.BulkJobDto submitted = service.submit(suspendOf("pi-1", "pi-2", "pi-3"), responder);
+        awaitFinished(submitted.id());
+
+        // Three dispatch starts, two mandatory 120ms pauses between them: the window from
+        // first to last must span at least ~2×stagger (scheduling jitter slack included).
+        List<Long> sorted = startNanos.stream().sorted().toList();
+        assertThat(sorted).hasSize(3);
+        long spanMs = (sorted.get(2) - sorted.get(0)) / 1_000_000;
+        assertThat(spanMs).isGreaterThanOrEqualTo(200);
+    }
+
+    @Test
+    void filterDoorAcceptsBeyondTheGridCapUpToTheQueryBulkCap() {
+        service = serviceWith(8, 0, new java.util.concurrent.CopyOnWriteArrayList<>());
+        when(actions.execute(any(), any(), any(), any(), any()))
+                .thenReturn(new ActionResult(UUID.randomUUID(), "c", "ok", 200, "suspended"));
+        String[] ids = new String[BulkJob.ITEM_CAP + 1];
+        for (int i = 0; i < ids.length; i++) ids[i] = "pi-" + i;
+
+        // The public door still refuses over 200…
+        assertThatThrownBy(() -> service.submit(suspendOf(ids), responder)).isInstanceOf(GuardRefusedException.class);
+        // …the filter package-door carries the same list under the 5000 cap.
+        BulkDtos.BulkJobDto submitted = service.submit(suspendOf(ids), responder, Map.of(), BulkJob.FILTER_ITEM_CAP);
+        BulkDtos.BulkJobDto done = awaitFinished(submitted.id());
+        assertThat(done.tallies()).containsEntry("ok", (long) ids.length);
+    }
+
+    @Test
+    void publishesIdOnlyChangeEventsAcrossTheJobLifecycle() {
+        List<Object> published = new java.util.concurrent.CopyOnWriteArrayList<>();
+        service = serviceWith(4, 0, published);
+        when(actions.execute(any(), any(), any(), any(), any()))
+                .thenReturn(new ActionResult(UUID.randomUUID(), "c", "ok", 200, "suspended"));
+
+        BulkDtos.BulkJobDto submitted = service.submit(suspendOf("pi-1", "pi-2"), responder);
+        awaitFinished(submitted.id());
+
+        // submit + running + one per settled item + terminal — id-only, all for this job.
+        await().atMost(5, TimeUnit.SECONDS)
+                .until(() -> published.stream()
+                                .filter(e -> e instanceof BulkJobChangedEvent)
+                                .count()
+                        >= 5);
+        assertThat(published)
+                .allSatisfy(e -> assertThat(e)
+                        .isInstanceOfSatisfying(
+                                BulkJobChangedEvent.class,
+                                changed -> assertThat(changed.jobId()).isEqualTo(submitted.id())));
     }
 }

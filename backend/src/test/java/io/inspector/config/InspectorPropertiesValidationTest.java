@@ -65,14 +65,14 @@ class InspectorPropertiesValidationTest {
     void duplicateEngineIdsFailFastNamingTheOffender() {
         List<EngineConfig> twice = List.of(
                 TestEngines.engine("orders-prod", "http://a/x"), TestEngines.engine("orders-prod", "http://b/x"));
-        assertThatThrownBy(() -> new InspectorProperties(4, null, null, twice))
+        assertThatThrownBy(() -> new InspectorProperties(4, null, null, null, twice))
                 .isInstanceOf(IllegalStateException.class)
                 .hasMessageContaining("orders-prod");
     }
 
     @Test
     void nullEnginesListBindsToEmpty() {
-        assertThat(new InspectorProperties(4, null, null, null).engines()).isEmpty();
+        assertThat(new InspectorProperties(4, null, null, null, null).engines()).isEmpty();
     }
 
     @Test

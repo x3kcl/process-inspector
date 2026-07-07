@@ -1,5 +1,6 @@
 package io.inspector.bulk;
 
+import io.inspector.dto.SearchRequest;
 import java.time.Instant;
 import java.util.List;
 import java.util.Map;
@@ -36,6 +37,15 @@ public final class BulkDtos {
             String engineId,
             String reason,
             String ticketId) {}
+
+    /**
+     * The select-all-matching-filter bulk (v1.x #2, SPEC §7): the browser sends the SEARCH
+     * CRITERIA it is looking at, never a resolved ID list — server-side re-resolution is
+     * binding. The BFF re-runs the M2a plan exhaustively at execution time, records the
+     * resolved composite IDs in the envelope audit row, then dispatches. {@code reason} is
+     * mandatory: the operator never enumerated these instances.
+     */
+    public record BulkFilterRequest(SearchRequest criteria, String verb, String reason, String ticketId) {}
 
     public record BulkItemDto(
             int ordinal,

@@ -122,6 +122,68 @@ export function planSelection(selected: ProcessInstanceRow[]): SelectionPlan {
   return { targets, protectedExcluded, protectionUnknown, overCap, offers }
 }
 
+/**
+ * The Intersection Rule over a FILTER scope (v1.x #2): the members are resolved
+ * server-side at execution time, so eligibility can only be judged from the status
+ * chips — a verb is offered exactly when EVERY status in the filter implies every
+ * matching row can accept it. Same doctrine as {@link planSelection}: greyed with the
+ * reason, never hidden.
+ */
+export function planFilterScope(statuses: readonly string[] | undefined): BulkVerbOffer[] {
+  const chips = statuses ?? []
+  const disable = (rule: (typeof FILTER_RULES)[number], reason: string): BulkVerbOffer => ({
+    verb: rule.verb,
+    label: rule.label,
+    plain: rule.plain,
+    enabled: false,
+    reason,
+  })
+  return FILTER_RULES.map((rule) => {
+    if (chips.length === 0) {
+      return disable(rule, 'the filter needs explicit status chips to scope a bulk action')
+    }
+    if (chips.includes('COMPLETED')) {
+      return disable(rule, 'the filter includes COMPLETED instances — nothing can act on those')
+    }
+    const offender = chips.find((chip) => !rule.eligibleStatuses.includes(chip))
+    if (offender !== undefined) {
+      return disable(rule, `the filter includes ${offender} instances, which ${rule.ineligibleWhy}`)
+    }
+    return { verb: rule.verb, label: rule.label, plain: rule.plain, enabled: true }
+  })
+}
+
+const FILTER_RULES: {
+  verb: BulkVerbId
+  label: string
+  plain: string
+  /** Status chips whose EVERY member can accept the verb. */
+  eligibleStatuses: string[]
+  ineligibleWhy: string
+}[] = [
+  {
+    verb: 'retry-job',
+    label: 'Retry dead-letter jobs',
+    plain: 'run the failed steps again',
+    eligibleStatuses: ['FAILED'],
+    ineligibleWhy: 'have no dead-letter job to retry',
+  },
+  {
+    verb: 'suspend',
+    label: 'Suspend',
+    plain: 'pause these cases',
+    eligibleStatuses: ['ACTIVE', 'FAILED', 'RETRYING'],
+    ineligibleWhy: 'are not running (already suspended or ended)',
+  },
+  {
+    verb: 'activate',
+    label: 'Activate',
+    plain: 'resume these cases',
+    eligibleStatuses: ['SUSPENDED'],
+    ineligibleWhy: 'are not suspended',
+  },
+]
+
 /** Per-engine split for the confirm's scope enumeration (SPEC §6 tier-4 spirit). */
 export function perEngineSplit(targets: ProcessInstanceRow[]): [string, number][] {
   const counts = new Map<string, number>()

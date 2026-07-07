@@ -52,6 +52,38 @@ export interface paths {
         patch?: never;
         trace?: never;
     };
+    "/api/bulk/events": {
+        parameters: {
+            query?: never;
+            header?: never;
+            path?: never;
+            cookie?: never;
+        };
+        get: operations["events"];
+        put?: never;
+        post?: never;
+        delete?: never;
+        options?: never;
+        head?: never;
+        patch?: never;
+        trace?: never;
+    };
+    "/api/bulk/filter": {
+        parameters: {
+            query?: never;
+            header?: never;
+            path?: never;
+            cookie?: never;
+        };
+        get?: never;
+        put?: never;
+        post: operations["submitFilter"];
+        delete?: never;
+        options?: never;
+        head?: never;
+        patch?: never;
+        trace?: never;
+    };
     "/api/bulk/{id}": {
         parameters: {
             query?: never;
@@ -493,6 +525,12 @@ export interface components {
             signatureHash?: string;
             ticketId?: string;
         };
+        BulkFilterRequest: {
+            criteria?: components["schemas"]["SearchRequest"];
+            reason?: string;
+            ticketId?: string;
+            verb?: string;
+        };
         BulkItemDto: {
             /** Format: uuid */
             auditId?: string;
@@ -866,6 +904,10 @@ export interface components {
                 [key: string]: number;
             };
         };
+        SseEmitter: {
+            /** Format: int64 */
+            timeout?: number;
+        };
         TaskDto: {
             assignee?: string;
             createTime?: string;
@@ -1051,6 +1093,50 @@ export interface operations {
         requestBody: {
             content: {
                 "application/json": components["schemas"]["BulkErrorClassRequest"];
+            };
+        };
+        responses: {
+            /** @description OK */
+            200: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "*/*": components["schemas"]["BulkJobDto"];
+                };
+            };
+        };
+    };
+    events: {
+        parameters: {
+            query?: never;
+            header?: never;
+            path?: never;
+            cookie?: never;
+        };
+        requestBody?: never;
+        responses: {
+            /** @description OK */
+            200: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "text/event-stream": components["schemas"]["SseEmitter"];
+                };
+            };
+        };
+    };
+    submitFilter: {
+        parameters: {
+            query?: never;
+            header?: never;
+            path?: never;
+            cookie?: never;
+        };
+        requestBody: {
+            content: {
+                "application/json": components["schemas"]["BulkFilterRequest"];
             };
         };
         responses: {

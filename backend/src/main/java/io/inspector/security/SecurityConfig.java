@@ -16,6 +16,9 @@ import org.springframework.security.core.userdetails.UserDetailsService;
 import org.springframework.security.provisioning.InMemoryUserDetailsManager;
 import org.springframework.security.web.SecurityFilterChain;
 import org.springframework.security.web.authentication.HttpStatusEntryPoint;
+import org.springframework.security.web.context.DelegatingSecurityContextRepository;
+import org.springframework.security.web.context.HttpSessionSecurityContextRepository;
+import org.springframework.security.web.context.RequestAttributeSecurityContextRepository;
 import org.springframework.security.web.csrf.CookieCsrfTokenRepository;
 import org.springframework.security.web.csrf.CsrfTokenRequestAttributeHandler;
 
@@ -70,7 +73,15 @@ public class SecurityConfig {
     @Bean
     @Profile("!oidc")
     SecurityFilterChain devChain(HttpSecurity http) throws Exception {
-        return common(http).httpBasic(withDefaults()).formLogin(withDefaults()).build();
+        // Basic auth persists into the HTTP session (Security 6 default is stateless):
+        // the SSE stream (v1.x #2) authenticates as a browser EventSource, which cannot
+        // send an Authorization header — it rides the JSESSIONID the first authenticated
+        // XHR established, matching the oidc chain's session semantics.
+        return common(http)
+                .httpBasic(basic -> basic.securityContextRepository(new DelegatingSecurityContextRepository(
+                        new RequestAttributeSecurityContextRepository(), new HttpSessionSecurityContextRepository())))
+                .formLogin(withDefaults())
+                .build();
     }
 
     /**

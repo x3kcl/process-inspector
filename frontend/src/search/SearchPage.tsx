@@ -56,6 +56,18 @@ export function SearchPage() {
 
   const summary = useMemo(() => summarizePartials(results.data?.perEngine), [results.data])
 
+  // Engine-reported match total across the answering engines — the "~N" context for the
+  // filter-scope affordance (v1.x #2); the binding count is server-resolved at execution.
+  const matchTotal = useMemo(() => {
+    const perEngine = results.data?.perEngine
+    if (perEngine === undefined) return undefined
+    let total = 0
+    for (const result of Object.values(perEngine)) {
+      if (result.ok === true) total += result.total ?? 0
+    }
+    return total
+  }, [results.data])
+
   const openDetails = (row: ProcessInstanceRow) => {
     if (row.engineId === undefined || row.processInstanceId === undefined) return
     void navigate(`/inspect/${row.engineId}/${encodeURIComponent(row.processInstanceId)}`)
@@ -114,6 +126,10 @@ export function SearchPage() {
             setSelectedRows([])
             setDeselectSignal((n) => n + 1)
           }}
+          criteria={results.data !== undefined ? request : null}
+          matchTotal={matchTotal}
+          visibleCount={(results.data?.rows ?? []).length}
+          engines={engines.data ?? []}
         />
         <ResultsGrid
           response={results.data}

@@ -1,5 +1,7 @@
 # Rung-4 registry: the legacy compose profile (Flowable 6.3.1 on :8084) — the engine
 # that really LACKS the ARCH §2.5 capabilities the probe must gate.
+# dlq-scan-cap 500 (not the truncation-sized 50): SearchLegacyIT filters by businessKey —
+# not pushed down to the job-lane scan; stack residue past the cap truncates fresh rows.
 inspector:
   fanout-parallelism: 4
   engines:
@@ -19,7 +21,7 @@ inspector:
         read-ms: 10000
         write-ms: 10000
       max-page-size: 10
-      dlq-scan-cap: 50
+      dlq-scan-cap: 500
 
 # M4: this profile is docker-free / engine-only — the BFF Postgres is NOT part of the
 # context. DB autoconfig is excluded (repository beans are provided as mocks via

@@ -10,6 +10,7 @@ import org.springframework.http.HttpStatus;
 import org.springframework.http.ProblemDetail;
 import org.springframework.web.bind.annotation.ExceptionHandler;
 import org.springframework.web.bind.annotation.RestControllerAdvice;
+import org.springframework.web.context.request.async.AsyncRequestTimeoutException;
 
 /**
  * Maps the action-layer failure modes onto problem-detail responses whose copy keeps the
@@ -84,5 +85,15 @@ public class ActionExceptionHandler {
         problem.setProperty("outcome", "unknown");
         problem.setProperty("auditId", e.auditId());
         return problem;
+    }
+
+    /**
+     * Benign SSE lifecycle noise (live-ui-sse doctrine): an emitter hitting its window is
+     * just a reconnect — the stream is already committed, so there is nothing to answer
+     * and nothing worth an error log.
+     */
+    @ExceptionHandler(AsyncRequestTimeoutException.class)
+    void sseWindowElapsed() {
+        // intentionally empty — EventSource reconnects on its own
     }
 }

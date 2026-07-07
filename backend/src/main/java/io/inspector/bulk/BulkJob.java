@@ -18,8 +18,14 @@ import java.util.UUID;
 @Table(name = "bulk_job")
 public class BulkJob {
 
-    /** SPEC §7 v1: grid-selection bulk is capped at 200 items. */
+    /** SPEC §7 v1: grid-selection (and error-class) bulk is capped at 200 items. */
     public static final int ITEM_CAP = 200;
+
+    /**
+     * SPEC §7 v1.x #2: the filter-resolved path ("select all matching") may carry up to
+     * 5000 items — the query-bulk hard cap, matched by the V3 CHECK constraint.
+     */
+    public static final int FILTER_ITEM_CAP = 5000;
 
     public enum State {
         PENDING,

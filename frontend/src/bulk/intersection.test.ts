@@ -1,6 +1,6 @@
 import { describe, expect, it } from 'vitest'
 import type { ProcessInstanceRow } from '../api/model'
-import { BULK_CAP, perEngineSplit, planSelection } from './intersection'
+import { BULK_CAP, perEngineSplit, planFilterScope, planSelection } from './intersection'
 
 function row(partial: Partial<ProcessInstanceRow>): ProcessInstanceRow {
   return { engineId: 'engine-a', processInstanceId: 'pi', protectedInstance: false, ...partial }
@@ -83,6 +83,46 @@ describe('planSelection — the Intersection Rule (binding)', () => {
     expect(plan.overCap).toBe(true)
     expect(plan.offers[0].enabled).toBe(false)
     expect(plan.offers[0].reason).toContain('deselect 3')
+  })
+})
+
+describe('planFilterScope (v1.x #2 — eligibility from status chips only)', () => {
+  const offer = (offers: ReturnType<typeof planFilterScope>, verb: string) =>
+    offers.find((o) => o.verb === verb)
+
+  it('offers retry-job only for a pure FAILED filter', () => {
+    const offers = planFilterScope(['FAILED'])
+    expect(offer(offers, 'retry-job')?.enabled).toBe(true)
+    expect(offer(offers, 'suspend')?.enabled).toBe(true) // FAILED rows are open
+    expect(offer(offers, 'activate')?.enabled).toBe(false)
+  })
+
+  it('disables retry-job when RETRYING is mixed in, naming the offender', () => {
+    const offers = planFilterScope(['FAILED', 'RETRYING'])
+    const retry = offer(offers, 'retry-job')
+    expect(retry?.enabled).toBe(false)
+    expect(retry?.reason).toContain('RETRYING')
+  })
+
+  it('offers activate only for a pure SUSPENDED filter', () => {
+    const offers = planFilterScope(['SUSPENDED'])
+    expect(offer(offers, 'activate')?.enabled).toBe(true)
+    expect(offer(offers, 'suspend')?.enabled).toBe(false)
+    expect(offer(offers, 'retry-job')?.enabled).toBe(false)
+  })
+
+  it('disables everything when COMPLETED is in the filter', () => {
+    const offers = planFilterScope(['ACTIVE', 'COMPLETED'])
+    expect(offers.every((o) => !o.enabled)).toBe(true)
+    expect(offers[0].reason).toContain('COMPLETED')
+  })
+
+  it('disables everything without explicit status chips — greyed, never hidden', () => {
+    for (const offers of [planFilterScope([]), planFilterScope(undefined)]) {
+      expect(offers).toHaveLength(3)
+      expect(offers.every((o) => !o.enabled)).toBe(true)
+      expect(offers[0].reason).toContain('status chips')
+    }
   })
 })
 

@@ -2,9 +2,12 @@ package io.inspector.api;
 
 import io.inspector.bulk.BulkDtos;
 import io.inspector.bulk.BulkErrorClassService;
+import io.inspector.bulk.BulkFilterService;
 import io.inspector.bulk.BulkJobService;
+import io.inspector.stream.SseHub;
 import java.util.List;
 import java.util.UUID;
+import org.springframework.http.MediaType;
 import org.springframework.security.access.prepost.PreAuthorize;
 import org.springframework.security.core.Authentication;
 import org.springframework.web.bind.annotation.GetMapping;
@@ -14,6 +17,7 @@ import org.springframework.web.bind.annotation.RequestBody;
 import org.springframework.web.bind.annotation.RequestMapping;
 import org.springframework.web.bind.annotation.RequestParam;
 import org.springframework.web.bind.annotation.RestController;
+import org.springframework.web.servlet.mvc.method.annotation.SseEmitter;
 
 /**
  * The M5 bulk surface (SPEC §7): submit / list / detail / cancel / verify-now. The door
@@ -28,10 +32,15 @@ public class BulkController {
 
     private final BulkJobService bulk;
     private final BulkErrorClassService errorClass;
+    private final BulkFilterService filter;
+    private final SseHub stream;
 
-    public BulkController(BulkJobService bulk, BulkErrorClassService errorClass) {
+    public BulkController(
+            BulkJobService bulk, BulkErrorClassService errorClass, BulkFilterService filter, SseHub stream) {
         this.bulk = bulk;
         this.errorClass = errorClass;
+        this.filter = filter;
+        this.stream = stream;
     }
 
     @PostMapping
@@ -52,6 +61,30 @@ public class BulkController {
     public BulkDtos.BulkJobDto submitErrorClass(
             @RequestBody BulkDtos.BulkErrorClassRequest request, Authentication authentication) {
         return errorClass.submit(request, authentication);
+    }
+
+    /**
+     * v1.x #2 — select-all-matching-filter bulk. Server-side re-resolution is BINDING: the
+     * body carries the {@code SearchRequest} criteria, never an ID array — the BFF re-runs
+     * the M2a plan exhaustively at execution time, records the resolved list in the audit
+     * envelope BEFORE dispatch, then hands off to the staggered fan-out.
+     */
+    @PostMapping("/filter")
+    @PreAuthorize("@rbac.atLeast(authentication, 'RESPONDER')")
+    public BulkDtos.BulkJobDto submitFilter(
+            @RequestBody BulkDtos.BulkFilterRequest request, Authentication authentication) {
+        return filter.submit(request, authentication);
+    }
+
+    /**
+     * v1.x #2 — the live progress stream (live-ui-sse doctrine): id-only {@code bulk-job}
+     * events plus a 15s {@code ping}. The browser's EventSource authenticates via the
+     * session cookie (it cannot send an Authorization header); secured like any API route.
+     */
+    @GetMapping(value = "/events", produces = MediaType.TEXT_EVENT_STREAM_VALUE)
+    @PreAuthorize("@rbac.atLeast(authentication, 'VIEWER')")
+    public SseEmitter events(Authentication authentication) {
+        return stream.subscribe(authentication.getName());
     }
 
     /** The operations drawer's hydration read — persisted jobs survive BFF restarts and browser refreshes. */

@@ -572,12 +572,34 @@ for the operator.
   member list is re-resolved server-side at dispatch, so a typed count would attest a
   stale number. The envelope audit row records the group provenance
   (`errorClass`: signature, algoVersion, defKey:vN, resolvedCount, scanTruncated).
-- **v1.x**: **select-all-matching-filter** — the BFF re-executes the search plan at
-  execution time (never the stale grid), records the resolved ID list in the audit record
-  BEFORE acting, then per-item fan-out as a **server-side async job**: persisted in Postgres,
-  live progress via SSE, **cancel** (stops dispatching), per-engine concurrency cap +
-  optional stagger (a simultaneous 300-job DLQ move can DDoS the async executor), per-item
-  **precondition recheck** ("still in the DLQ?").
+- **v1.x #2 — select-all-matching-filter + SSE progress** (landed): the results grid's
+  filter scope (affordance when every visible row is selected, or standalone once a
+  filtered search ran) dispatches `POST /api/bulk/filter` carrying the **`SearchRequest`
+  criteria only** (verb ∈ v1 whitelist; reason mandatory ≥10; statuses must be explicit
+  chips and must not include COMPLETED) — never a browser-enumerated ID list. The BFF
+  re-executes the SAME search plan at execution time, **paged to exhaustion** (the grid's
+  display page size is ignored), records the criteria + resolved composite-ID list in the
+  envelope audit row BEFORE acting, then per-item fan-out on the v1 machinery. Query-bulk
+  hard cap **5,000** (grid/error-class keep 200): over-cap ⇒ 400 refuse; zero matches ⇒
+  409 `filter-drained`; a degraded engine ⇒ fail-closed 502; a **truncated failure-lane
+  scan ⇒ refuse** (`filter-scan-truncated` — "all matching" must never silently be a
+  subset; stricter than the error-class path, which is already version-scoped and records
+  truncation as provenance). Filter-scope verbs derive from the status chips (intersection
+  doctrine: a verb is offered only when every chip implies eligibility). Tier-3 confirm
+  restates the criteria + the snapshot count as context ("~N — applies to the
+  server-resolved filter at execution, not this snapshot"); PROD typed token = the
+  **definition key** (no key in the filter ⇒ the single prod engine id, else `ALL`) —
+  never the raceable count.
+- **Engine protection & live progress** (v1.x #2, normative): dispatch fans out **per
+  engine** — a per-engine in-flight permit pool (default 4, shared across concurrent jobs)
+  plus a mandatory **250 ms stagger** between dispatch starts (`inspector.bulk.engine-permits`
+  / `inspector.bulk.stagger-ms`) so a 5,000-item job trickles into the target async
+  executor. Live progress is **SSE** (`GET /api/bulk/events`, session-cookie auth): id-only
+  `bulk-job` events on every job transition + a 15 s `ping` heartbeat; the browser holds ONE
+  app-scoped EventSource, refetches its own JSON debounced (~500 ms), and relaxes the drawer
+  poll to a 30 s safety net while the stream is live (full v1 polling when offline). On BFF
+  shutdown every stream is completed BEFORE the web server's graceful-shutdown phase (an
+  open stream must not hold the grace period hostage); clients auto-reconnect.
 - Outcome classes: `ok | failed | skipped (already resolved) | skipped (protected) |
   unknown | not_run` — a timed-out mutation is UNKNOWN, never auto-retried. Every UNKNOWN
   offers **"Verify now"** (R-SAFE-09): the BFF re-runs the verb's precondition predicate and

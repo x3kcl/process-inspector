@@ -2,8 +2,12 @@
 // Offers exactly the Intersection-Rule verbs (disabled-with-reason), badges protected
 // exclusions, and routes every click through the submit modal — which doubles as the
 // partial-result acknowledgment gate ("billing-prod excluded — proceed anyway?").
-import { useMemo, useState } from 'react'
-import type { ProcessInstanceRow } from '../api/model'
+//
+// v1.x #2 adds the FILTER SCOPE: selecting every visible row (or asking outright) flips
+// the bar from "these N checkboxes" to "everything matching the current filter" — the
+// scope is then the CRITERIA, re-resolved server-side at execution time, never a row list.
+import { useEffect, useMemo, useState } from 'react'
+import type { EngineDto, ProcessInstanceRow, SearchRequest } from '../api/model'
 import { useSubmitBulk } from '../api/bulk'
 import type { BulkTarget } from '../api/bulk'
 import { problemBanner } from '../actions/problem'
@@ -11,7 +15,8 @@ import { ModalShell } from '../components/ModalShell'
 import { useToast } from '../components/toast'
 import { useOpsDrawer } from '../ops/drawerState'
 import type { EngineFailure } from '../search/partials'
-import { perEngineSplit, planSelection } from './intersection'
+import { FilterBulkModal } from './FilterBulkModal'
+import { perEngineSplit, planFilterScope, planSelection } from './intersection'
 import type { BulkVerbOffer } from './intersection'
 
 interface Props {
@@ -21,13 +26,111 @@ interface Props {
   /** True when scans were truncated (10k-DLQ hit etc.) — same acknowledgment gate. */
   truncated: boolean
   onSubmitted: () => void
+  /** The current search criteria (URL state) — the filter-scope submit body. */
+  criteria: SearchRequest | null
+  /** Engine-reported match total across the result set — context ("~N"), not the scope. */
+  matchTotal: number | undefined
+  /** Rows the grid currently shows — "all visible selected" trips the affordance. */
+  visibleCount: number
+  engines: EngineDto[]
 }
 
-export function BulkBar({ selected, failedEngines, truncated, onSubmitted }: Props) {
+export function BulkBar({
+  selected,
+  failedEngines,
+  truncated,
+  onSubmitted,
+  criteria,
+  matchTotal,
+  visibleCount,
+  engines,
+}: Props) {
   const [modalVerb, setModalVerb] = useState<BulkVerbOffer | null>(null)
+  const [filterScope, setFilterScope] = useState(false)
+  const [filterVerb, setFilterVerb] = useState<BulkVerbOffer | null>(null)
   const plan = useMemo(() => planSelection(selected), [selected])
 
-  if (selected.length === 0) return null
+  // A new search is a new scope — never carry filter mode across criteria.
+  useEffect(() => {
+    setFilterScope(false)
+    setFilterVerb(null)
+  }, [criteria])
+
+  const filterable =
+    criteria !== null && (criteria.statuses ?? []).length > 0 && (matchTotal ?? 0) > 0
+  const allVisibleSelected = visibleCount > 0 && selected.length >= visibleCount
+  const approx = matchTotal !== undefined ? `~${String(matchTotal)}` : 'all'
+
+  if (filterScope && criteria !== null) {
+    const offers = planFilterScope(criteria.statuses)
+    return (
+      <div className="bulk-bar bulk-bar-filter" role="toolbar" aria-label="bulk actions">
+        <span className="bulk-count">
+          Scope: <strong>{approx} instances matching the current filter</strong> — resolved
+          server-side at execution, not this snapshot
+        </span>
+        <button
+          type="button"
+          className="copy-btn"
+          onClick={() => {
+            setFilterScope(false)
+          }}
+        >
+          Back to checkbox selection
+        </button>
+        {offers.map((offer) => (
+          <button
+            key={offer.verb}
+            type="button"
+            className="copy-btn action-btn"
+            disabled={!offer.enabled}
+            title={offer.enabled ? offer.plain : offer.reason}
+            onClick={() => {
+              setFilterVerb(offer)
+            }}
+          >
+            {offer.label}
+          </button>
+        ))}
+        {filterVerb !== null && (
+          <FilterBulkModal
+            offer={filterVerb}
+            criteria={criteria}
+            matchTotal={matchTotal}
+            engines={engines}
+            onClose={() => {
+              setFilterVerb(null)
+            }}
+            onSubmitted={() => {
+              setFilterVerb(null)
+              setFilterScope(false)
+              onSubmitted()
+            }}
+          />
+        )}
+      </div>
+    )
+  }
+
+  if (selected.length === 0) {
+    // Standalone entry (v1.x #2): a filtered result set is bulk-actionable without
+    // touching a single checkbox — the scope is the filter itself.
+    if (!filterable) return null
+    return (
+      <div className="bulk-bar bulk-bar-slim" role="toolbar" aria-label="bulk actions">
+        <button
+          type="button"
+          className="copy-btn"
+          title="act on every instance matching the current filter — resolved server-side at execution"
+          onClick={() => {
+            setFilterScope(true)
+          }}
+        >
+          Select all {approx} matching filter…
+        </button>
+      </div>
+    )
+  }
 
   return (
     <div className="bulk-bar" role="toolbar" aria-label="bulk actions">
@@ -51,6 +154,18 @@ export function BulkBar({ selected, failedEngines, truncated, onSubmitted }: Pro
           </span>
         )}
       </span>
+      {allVisibleSelected && filterable && (
+        <button
+          type="button"
+          className="copy-btn"
+          title="the whole page is selected — widen the scope to every instance matching the filter (server-resolved at execution)"
+          onClick={() => {
+            setFilterScope(true)
+          }}
+        >
+          Select all {approx} matching filter…
+        </button>
+      )}
       {plan.offers.map((offer) => (
         <button
           key={offer.verb}

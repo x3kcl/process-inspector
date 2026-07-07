@@ -297,11 +297,12 @@ OPERATIONS.md §8.
   polling tightens only while a job is live; state-machine chips, aggregate "N of M
   dispatched" readout, per-item sub-table, cancel, per-unknown Verify-now, and
   "continue as new job" pre-scoped to `not_run`+`failed` with `continuedFrom` lineage.
-  **v1 deviations (deliberate, revisit in M5 close-out):** live progress is short-poll,
-  not yet `GET /api/stream` SSE; a circuit-open mid-job fails items cleanly per item
-  instead of PAUSING dispatch (R-SEM-11's pause semantics pending); destructive bulk
-  (terminate) deferred to the tier-4 wizard; per-engine parallel dispatch + stagger
-  pending (sequential = the conservative floor). WIRE GOTCHA: Jackson serializes absent
+  **v1 deviations (deliberate, revisit in M5 close-out):** ~~live progress is short-poll~~
+  and ~~per-engine parallel dispatch + stagger pending~~ both retired by v1.x #2 (SSE on
+  `GET /api/bulk/events`; permit pool + stagger in `BulkJobService`); still open: a
+  circuit-open mid-job fails items cleanly per item instead of PAUSING dispatch
+  (R-SEM-11's pause semantics pending); destructive bulk (terminate) deferred to the
+  tier-4 wizard. WIRE GOTCHA: Jackson serializes absent
   DTO fields as JSON null while openapi-typescript types them `?: undefined` — guard
   with `typeof x === 'string'` / `?? undefined`, never bare `!== undefined` (a null
   `continuedFrom` crashed the drawer until guarded).
@@ -354,9 +355,20 @@ unresolvable with tier 0–1 verbs)
    definition key — a typed count would attest a stale number), operations-drawer
    auto-focus handoff (context lift shared with the bulk bar), `['triage']` invalidation
    on job settle. R-SEM-13 annotation demotion waits for group annotations (R-BAU-01).
-2. **Select-all-matching-filter bulk**: server-side re-resolution at execution time, tracked
-   async job in the BFF (Postgres-persisted per-item results), SSE progress, cancel,
-   per-engine concurrency cap + stagger, persistent operations drawer.
+2. **Select-all-matching-filter bulk + SSE progress. Landed 2026-07-07**:
+   `POST /api/bulk/filter` (SPEC §7, ARCH §4) — criteria-only body (binding server-side
+   re-resolution through `SearchService.resolveAllMatching`, the SAME plan paged to
+   exhaustion; V3 raises the DB cap to the 5,000 query-bulk limit while grid/error-class
+   keep 200; truncated-scan/degraded-engine/drained/over-cap all refuse, never a silent
+   subset); per-ENGINE dispatch with a shared permit pool (4) + 250 ms stagger
+   (`inspector.bulk.*`); `GET /api/bulk/events` SSE (id-only `bulk-job` events + 15 s ping,
+   session-cookie auth — dev chain now persists Basic auth into the session; SmartLifecycle
+   completes streams before Tomcat's graceful shutdown, else every stop eats the 30 s grace
+   period). UI: bulk-bar filter scope (all-visible-selected affordance + standalone button),
+   status-chip verb intersection (`planFilterScope`), tier-3 modal restating the criteria
+   (PROD token = definition key, else single prod engine id), app-scoped `LiveProvider`
+   (ONE EventSource) with debounced invalidation — drawer polling relaxes to a 30 s safety
+   net while live. This retires the M5 "short-poll + sequential dispatch" deviations.
 3. Named saved views (localStorage) + recent searches.
 4. Timeline tab polish (call-activity sub-lanes); job-lane trend sparklines on the landing.
 5. **Sibling diff** (SPEC §5.2): compare endpoint over historic queries; variables/path/

@@ -175,6 +175,12 @@ public class FlowableEngineClient {
 
     /** Same, narrowed to ONE exact deployed version (the M2b definitionVersion filter). */
     public FlowablePage listProcessDefinitionsByKey(EngineConfig engine, String key, Integer version, int size) {
+        return listProcessDefinitionsByKey(engine, key, version, 0, size);
+    }
+
+    /** Paged variant — a long-deployed key accumulates more versions than one page holds. */
+    public FlowablePage listProcessDefinitionsByKey(
+            EngineConfig engine, String key, Integer version, int start, int size) {
         return guarded(
                 engine,
                 () -> client(engine)
@@ -183,6 +189,7 @@ public class FlowableEngineClient {
                             var b = uri.path("/repository/process-definitions")
                                     .queryParam("key", key)
                                     .queryParam("size", size);
+                            if (start > 0) b.queryParam("start", start);
                             if (version != null) b.queryParam("version", version);
                             return b.build();
                         })

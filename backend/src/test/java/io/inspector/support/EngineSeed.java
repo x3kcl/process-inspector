@@ -186,6 +186,22 @@ public final class EngineSeed {
         return String.valueOf(started.get("id"));
     }
 
+    /**
+     * Test-residue hygiene on the KEEP-up stack: an IT that seeds instances deletes ITS OWN
+     * at the end — accumulated dead letters eventually cross a profile's dlq-scan-cap and
+     * turn unrelated capped-scan ITs flaky. Quiet: a target already gone is fine.
+     */
+    public static void deleteInstanceQuietly(RestClient engine, String processInstanceId) {
+        try {
+            engine.delete()
+                    .uri("/runtime/process-instances/" + processInstanceId)
+                    .retrieve()
+                    .toBodilessEntity();
+        } catch (RuntimeException e) {
+            // already ended/deleted — residue cleanup must never fail a test
+        }
+    }
+
     /** SUSPENDED is a runtime REST action — BPMN cannot suspend itself. */
     public static void suspend(RestClient engine, String processInstanceId) {
         engine.put()

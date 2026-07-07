@@ -54,6 +54,7 @@ class BulkErrorClassServiceTest {
             null,
             null,
             null,
+            null,
             List.of(TestEngines.engine(ENGINE, "http://localhost:1", EngineEnvironment.DEV, EngineMode.READ_WRITE))));
     private final Authentication responder = new TestingAuthenticationToken("resp", "n/a", "ROLE_RESPONDER");
 

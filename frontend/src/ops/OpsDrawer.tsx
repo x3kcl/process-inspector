@@ -19,14 +19,23 @@ import {
 import type { BulkItemDto, BulkJobDto, BulkTarget } from '../api/bulk'
 import { problemBanner } from '../actions/problem'
 import { useToast } from '../components/toast'
+import { useLive, useLiveEvent } from '../live/live'
 import { formatDateTime } from '../lib/format'
 
 export function OpsDrawer() {
   const { open, setOpen, focusJobId, clearFocus } = useOpsDrawer()
   const queryClient = useQueryClient()
-  const jobs = useBulkJobs(true)
+  const live = useLive()
+  const jobs = useBulkJobs(true, live)
   const activeCount = (jobs.data ?? []).filter(jobActive).length
   const interrupted = (jobs.data ?? []).filter((job) => job.state === 'INTERRUPTED').length
+
+  // v1.x #2 SSE hydration: the stream pushes the JOB ID only — invalidate and refetch
+  // our own JSON (debounced in the hook; a 5000-item fan-out bursts one event per item).
+  useLiveEvent('bulk-job', (jobId) => {
+    void queryClient.invalidateQueries({ queryKey: BULK_JOBS_KEY })
+    if (jobId !== '') void queryClient.invalidateQueries({ queryKey: ['bulk-job', jobId] })
+  })
 
   // When a job SETTLES, the landing counts it acted on are stale — invalidate ['triage']
   // so the next look at Stage 0 re-aggregates. Poll-driven, never optimistic: this fires
@@ -135,7 +144,8 @@ function JobCard({ job, focused }: { job: BulkJobDto; focused: boolean }) {
 function JobDetail({ jobId }: { jobId: string }) {
   const toast = useToast()
   const queryClient = useQueryClient()
-  const detail = useBulkJob(jobId)
+  const live = useLive()
+  const detail = useBulkJob(jobId, live)
   const submit = useSubmitBulk()
 
   const cancel = useMutation<BulkJobDto, ActionError, string>({

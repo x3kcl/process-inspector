@@ -5,6 +5,7 @@ import { ApiError } from '../api/client'
 import { HeaderStrip } from '../components/HeaderStrip'
 import { SignIn } from '../components/SignIn'
 import { ToastProvider } from '../components/toast'
+import { LiveProvider } from '../live/live'
 import { OpsDrawer } from '../ops/OpsDrawer'
 import { OpsDrawerProvider } from '../ops/drawerState'
 import { Omnibox } from './Omnibox'
@@ -18,25 +19,30 @@ export function Shell() {
   const authRequired = useAnyAuthError()
   return (
     <ToastProvider>
-      <OpsDrawerProvider>
-        <div className="app">
-          <header className="topbar">
-            <h1>
-              <Link to="/" className="home-link">
-                Flowable Process Inspector
+      {/* App-scoped live channel (live-ui-sse): ONE EventSource for every surface — a
+          drawer-scoped stream would go deaf while closed. Gated on auth: the stream
+          rides the session cookie the first authenticated call establishes. */}
+      <LiveProvider enabled={!authRequired}>
+        <OpsDrawerProvider>
+          <div className="app">
+            <header className="topbar">
+              <h1>
+                <Link to="/" className="home-link">
+                  Flowable Process Inspector
+                </Link>
+              </h1>
+              <Link to="/audit" className="topbar-link">
+                Ops log
               </Link>
-            </h1>
-            <Link to="/audit" className="topbar-link">
-              Ops log
-            </Link>
-            <Omnibox />
-            <HeaderStrip />
-          </header>
-          {authRequired && <SignIn />}
-          <Outlet />
-          <OpsDrawer />
-        </div>
-      </OpsDrawerProvider>
+              <Omnibox />
+              <HeaderStrip />
+            </header>
+            {authRequired && <SignIn />}
+            <Outlet />
+            <OpsDrawer />
+          </div>
+        </OpsDrawerProvider>
+      </LiveProvider>
     </ToastProvider>
   )
 }

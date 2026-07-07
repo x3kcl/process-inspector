@@ -21,6 +21,7 @@ public record InspectorProperties(
         Integer fanoutParallelism,
         Integer hierarchyMaxDepth,
         @Valid Triage triage,
+        @Valid Bulk bulk,
         @Valid List<EngineConfig> engines) {
     /** Engine ids are stable slugs used in composite instance IDs (R-SEM-08) — never rename. */
     public static final String ENGINE_ID_PATTERN = "^[a-z0-9][a-z0-9._-]{0,63}$";
@@ -50,6 +51,26 @@ public record InspectorProperties(
 
         public int stacktraceSampleCapOrDefault() {
             return stacktraceSampleCap != null ? stacktraceSampleCap : 25;
+        }
+    }
+
+    public Bulk bulkOrDefault() {
+        return bulk != null ? bulk : new Bulk(null, null);
+    }
+
+    /**
+     * Bulk fan-out engine-protection knobs (SPEC §7, v1.x #2): at most {@code enginePermits}
+     * in-flight dispatches per engine (shared across concurrent jobs) and a mandatory
+     * {@code staggerMs} pause between dispatch STARTS per engine — a 5000-item job must
+     * trickle into the target async executor, never slam it.
+     */
+    public record Bulk(Integer enginePermits, Integer staggerMs) {
+        public int enginePermitsOrDefault() {
+            return enginePermits != null ? enginePermits : 4;
+        }
+
+        public int staggerMsOrDefault() {
+            return staggerMs != null ? staggerMs : 250;
         }
     }
 
