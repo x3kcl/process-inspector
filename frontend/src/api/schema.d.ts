@@ -1018,11 +1018,15 @@ export interface components {
             activityType?: string;
             assignee?: string;
             calledProcessInstanceId?: string;
+            children?: components["schemas"]["TimelineActivity"][];
             /** Format: int64 */
             durationMs?: number;
             endTime?: string;
             executionId?: string;
             id?: string;
+            isCapped?: boolean;
+            /** @enum {string} */
+            liveJobState?: "FAILED" | "RETRYING";
             startTime?: string;
             taskId?: string;
         };

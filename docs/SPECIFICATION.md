@@ -310,8 +310,16 @@ gap here: [link]" is the ticket-handover primitive.
     The BFF's roll-up scan uses count-only queries beyond the render cap; counts stay
     exact, rendering stays bounded, and capped breadth carries the standard lower-bound
     labeling on any derived aggregate.
-  - **Timeline** — historic activity instances as duration bars with call-activity
-    sub-lanes; failing activity annotated with live job state. (Per-retry gaps are not
+  - **Timeline** — historic activity instances as duration bars. A call-activity bar nests
+    the called instance's own activities as a **sub-lane**, recursed under the same caps as
+    the Hierarchy tab (depth 10, breadth 50/node, global node budget; `calledProcessInstanceId`
+    cycle-guarded) — a node whose sub-lane was truncated by any cap carries a single truncation
+    flag so the UI can render the lower-bound warning. A failing/unfinished node is annotated
+    with its **live job state** (`FAILED` = a dead-letter job is parked on it, `RETRYING` = a
+    failing job with retries remaining), joined from the runtime job lanes. Because a
+    dead-lettered **async** activity's history row is rolled back with the failed transaction,
+    that node is **synthesized from the live job lanes** rather than read from history —
+    otherwise the failure would be invisible on the timeline. (Per-retry gaps are not
     reconstructable from Flowable history — not promised.)
   - **Audit & Notes** — this instance's action history (who/what/when/outcome, old values
     for variable edits, reasons) + free-text notes ("do NOT retry — double-books; tax-service
@@ -858,23 +866,34 @@ and would rewrite working M1/M2 code for no capability gain); Go/FastAPI/Kotlin 
 - **v1.1 (first fast-follow, entry criterion: ≥N audited pilot incidents unresolvable with
   tier 0–1):** change-state / rerun-from-activity / restart-as-new (the former M5), with
   their guardrails.
-- **v1.x (ranked; max one in flight alongside pilot support; each names its KPI/trigger):**
-  1. error-class bulk-retry from the landing group (pre-committed pilot gap);
-  2. select-all-matching-filter bulk + SSE progress + operations drawer + drain;
-  3. second-person approval / proposal inbox (hooks already in v1 schema);
-  4. error-class annotations + endorsed verbs; group-level copy-for-ticket;
-  5. named saved views; column chooser + density + dark theme;
-  6. sibling diff (§5.2 — trigger: ≥5 "why did this one fail" investigations/month, probed
-     via a stub affordance); timeline polish;
-  7. task reassign + person-centric task search (ship together, never apart);
-  8. watchlist + start-of-shift delta (one snapshot store); suspend reason/review-by;
-     business summary; timers-due-in-window; ops reporting; support bundle; forensic
-     passthrough; stacktrace ergonomics; engine advisories; secret-rotation file refs;
-     clock-skew badges; capability invalidation; CSV export; print styles; webhook.
+- **v1.x** — **sequencing authority: `docs/IMPLEMENTATION-PLAN.md` §"v1.x — fast follows" is
+  the single source of truth for order and scope; this list is the product-rationale view and
+  defers to it.** (Max one in flight alongside pilot support; each names its KPI/trigger. This
+  ordering was reconciled to the plan — the *proposal inbox* and *error-class annotations*
+  items, numbered #3/#4 in an earlier draft, are deliberately sequenced **after** the numbered
+  fast-follows now and moved to the unscheduled list below.)
+  1. error-class bulk-retry from the landing group (pre-committed pilot gap) — **landed**;
+  2. select-all-matching-filter bulk + SSE progress + operations drawer + drain — **landed**;
+  3. named saved views; column chooser + density + dark theme (saved views **landed**);
+  4. timeline polish — **call-activity sub-lanes only** (failing async node synthesized from
+     the live job lanes; `FAILED`/`RETRYING` live annotation). Job-lane trend sparklines were
+     **descoped to v2** — they need the R-BAU-08 snapshot/time-series store, absent in v1;
+  5. sibling diff (§5.2 — trigger: ≥5 "why did this one fail" investigations/month, probed
+     via a stub affordance) — **landed**;
+  6. task reassign + person-centric task search (ship together, never apart);
+  7. external-worker job view (capability-gated, 6.8+).
+  - **Not yet scheduled in the plan** (candidate v1.x/v2, sequenced after the numbered list —
+    ordered differently from earlier drafts): second-person approval / proposal inbox (hooks
+    already in v1 schema); error-class annotations + endorsed verbs + group-level
+    copy-for-ticket; watchlist + start-of-shift delta (one snapshot store); suspend
+    reason/review-by; business summary; timers-due-in-window; ops reporting; support bundle;
+    forensic passthrough; stacktrace ergonomics; engine advisories; secret-rotation file refs;
+    clock-skew badges; capability invalidation; CSV export; print styles; webhook.
 - **v2 (demand-driven, triggers stated):** **remediation playbooks (§5.1 — build trigger
   R-GOV-08)**, migration (single w/ validate → batch wizard + typed "MIGRATE"), definition
   version comparison, CMMN, registry CRUD (with the R-OPS-13 SSRF constraints), shared
-  server-side views, k-way-merge paging, maintenance snapshots + volume trends, training
+  server-side views, k-way-merge paging, maintenance snapshots + volume trends +
+  **job-lane trend sparklines** (all over the R-BAU-08 snapshot store), training
   mode, capability overrides.
 
 ## 13. Success metrics & v1 release gate (R-GOV-01/02)

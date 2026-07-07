@@ -381,7 +381,17 @@ unresolvable with tier 0–1 verbs)
    version-enveloped (`{version: 1, items}`, corrupt/unknown → empty) for the v2
    server-side migration; hermetic Playwright smokes in `e2e/saved-views.spec.ts`.
    Column chooser + density + dark theme from the original SPEC item stay open.
-4. Timeline tab polish (call-activity sub-lanes); job-lane trend sparklines on the landing.
+4. **Timeline tab polish — call-activity sub-lanes (SPEC §4).** A call-activity row nests
+   the called instance's own historic activities as a sub-lane; recursion is bounded by the
+   hierarchy caps (depth 10, breadth 50/node, 500-node budget) with a `calledProcessInstanceId`
+   cycle guard (R-TEST-07 — a real engine cannot cycle, so the guard is rung-1 tested). Each
+   unfinished/failing node carries a joined live job state (`FAILED` = dead-letter, `RETRYING`
+   = failing job with retries left); the dead-lettered **async** node is *synthesized from the
+   live job lanes* because its `ACT_HI_ACTINST` row is rolled back with the failed transaction
+   (phantom-node union — annotating historic rows alone would be a guaranteed false negative).
+   A single `isCapped` flag marks a node whose sub-lane was truncated by any cap (breadth,
+   depth, or node budget). **Job-lane trend sparklines are descoped to v2** (see below) — they
+   require the R-BAU-08 snapshot/time-series store, which does not exist in v1.
 5. **Sibling diff** (SPEC §5.2). **Backend landed 2026-07-07**: two read-only endpoints under
    the Stage-2 composite path, VIEWER floor, **historic queries only** (never a runtime table —
    completed siblings live only in history). `GET …/{id}/nearest-sibling` resolves the smart
@@ -415,6 +425,10 @@ unresolvable with tier 0–1 verbs)
   (all landed earlier by design).
 - **Migration**: single-instance with server-side `migrate/validate` first; batch + side-by-
   side diagram wizard with typed "MIGRATE" only after the single flow proves demand.
+- **Job-lane trend sparklines** on the Stage-0 landing (per-engine dead-letter / timer /
+  executable / suspended counts over time) — descoped here from v1.x #4 because v1 exposes
+  only *live* job-lane counts; a trend needs the **R-BAU-08** snapshot/time-series store
+  (ranked with maintenance snapshots + per-definition volume trends).
 - Definition version comparison + per-version instance counts (the migration on-ramp).
 - CMMN case support via the parallel `/cmmn-api` surface (row DTOs already carry `scopeType`).
 - Registry CRUD UI; shared server-side saved views; k-way-merge deep paging; OIDC hardening.
