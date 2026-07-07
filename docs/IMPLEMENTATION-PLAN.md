@@ -451,6 +451,39 @@ unresolvable with tier 0–1 verbs)
 - CMMN case support via the parallel `/cmmn-api` surface (row DTOs already carry `scopeType`).
 - Registry CRUD UI; shared server-side saved views; k-way-merge deep paging; OIDC hardening.
 
+### v2/M4 — State store + snapshot store: architectural boundary *(decided 2026-07-07, pre-build)*
+The BFF shifts from transient proxy to **stateful telemetry aggregator**. Boundary decisions
+locked before build so the milestone doesn't re-litigate them:
+
+- **Ingestion = scheduled polling, NOT a message broker.** Event-stream ingestion (Flowable
+  history events → JMS/Kafka) is rejected for v2.0: it is a **non-REST channel into the
+  engine** (violates the strictly-via-REST iron rule), can't survive the heterogeneous
+  multi-engine V6/V7 premise without per-engine broker wiring + capability gating, and adds
+  a second new stateful dependency in the same milestone that already introduces Postgres
+  (do-no-harm). The sampler is an `@Scheduled` **virtual-thread** job running the existing
+  **Stage-0 `count-only`/`size=1`** aggregation on a 30–60s cadence — the snapshot store IS
+  the mechanism that keeps the trend UI off the live engine.
+- **Keep the door open:** a `SnapshotSource` seam sits between ingestion and the store; the
+  poller is the only v2.0 impl, but store/query tiers depend on the interface. An
+  event-driven source can drop in **per-engine, capability-gated** later, on real demand,
+  without touching the snapshot schema or the UI query path.
+- **Telemetry table = narrow wide-row time-series** (`engine, lane, count, sampled_at`),
+  **not** JSONB. JSONB (+ GIN only where the UI filters) is reserved strictly for
+  variable-snapshot / audit-context blobs.
+- **Idempotent samples:** upsert keyed `(engine, lane, sampled_at_bucket)` so scheduler
+  overlap/restart can't double-count. A poll is not a mutation — no corrective-action rails.
+- **Bulkhead sharing:** the sampler competes with live user queries for each engine's
+  Resilience4j permits — give it its own thin lane or a low-priority share so a burst of
+  trend polls can't starve an interactive search.
+- **Retention (400-day revFADP, R-BAU-08):** partition-by-range with **drop-partition**
+  (never `DELETE`) for BOTH the snapshot time-series and the audit rows, so the `@Scheduled`
+  sweep never locks the active partition.
+- **Boot resilience:** container-level DB readiness gate (init smoke test) so the Java
+  service only dials Postgres when it is genuinely ready — app-level retries alone are too
+  fragile for enterprise boot-sequence race conditions.
+- v1 `localStorage` payloads (Saved Views, Recent Searches) migrate to relational tables
+  keyed to user identity via Flyway (`ddl-auto=validate` holds — no auto-DDL).
+
 ## Build order inside any milestone
 backend DTO → engine client call → aggregator/join logic → controller → typed frontend API
 client → component. Every Flowable call gets an integration test against the dockerized
