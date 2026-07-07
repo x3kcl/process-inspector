@@ -876,6 +876,65 @@ button.primary:disabled {
   text-align: right;
   white-space: nowrap;
 }
+/* v1.x #4 sub-lanes: nesting, live-job annotations (SPEC §10a non-hue), truncation, phantoms. */
+.tl-label {
+  display: flex;
+  align-items: baseline;
+  gap: 6px;
+  min-width: 0;
+}
+.tl-label--nested {
+  border-left: 2px solid #cfd8e3;
+}
+.tl-name {
+  overflow: hidden;
+  text-overflow: ellipsis;
+  white-space: nowrap;
+}
+.tl-badge {
+  font-weight: 600;
+  font-size: 11px;
+  padding: 0 4px;
+  border-radius: 3px;
+  white-space: nowrap;
+}
+/* Color is REDUNDANT reinforcement only — the icon + the state word carry the meaning. */
+.tl-badge--FAILED {
+  color: #b23b3b;
+  border: 1px solid #b23b3b;
+}
+.tl-badge--RETRYING {
+  color: #a86b00;
+  border: 1px dashed #a86b00;
+}
+/* FAILED = diagonal HATCH pattern (a shape, not a hue) so it reads with color stripped. */
+.tl-bar--failed {
+  background: repeating-linear-gradient(45deg, #b23b3b, #b23b3b 5px, #e79a9a 5px, #e79a9a 10px);
+}
+/* RETRYING = DASHED outline on a pale fill — visually distinct from the hatch without relying on color. */
+.tl-bar--retrying {
+  background: #fbf3e2;
+  border: 2px dashed #a86b00;
+}
+/* A phantom node (no history row) has no real position — fill the whole track, hatched, to flag it. */
+.tl-phantom-row .tl-track {
+  background: transparent;
+}
+.tl-bar--phantom {
+  left: 0;
+  right: 0;
+  width: auto;
+  background: repeating-linear-gradient(45deg, #b23b3b, #b23b3b 4px, #efc4c4 4px, #efc4c4 8px);
+  opacity: 0.9;
+}
+.tl-cap-warning {
+  display: flex;
+  align-items: center;
+  gap: 6px;
+  font-size: 11px;
+  color: #8a5a00;
+  padding: 2px 0;
+}
 
 /* ---- lazy json tree ---- */
 .json-tree {
