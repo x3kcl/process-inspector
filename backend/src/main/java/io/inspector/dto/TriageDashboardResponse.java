@@ -25,6 +25,15 @@ public record TriageDashboardResponse(
      * {@code ok=false}, never a failed response; a capped failure scan marks
      * {@code dlqScan="truncated@N"} (N = rows actually scanned) and every count derived
      * from it becomes a labeled lower bound in the UI.
+     *
+     * <p>{@code outOfScopeDeadletters} = dead-letter jobs the BPMN join EXCLUDES because
+     * they belong to another engine sharing flowable-rest's job tables (CMMN, proven live:
+     * the process-api DLQ projects such a job as a {@code processInstanceId:null} orphan).
+     * Surfaced so the health strip's raw dead-letter lane count reconciles with the
+     * process-scoped FAILED count instead of silently disagreeing. {@code null} when the
+     * engine cannot be trusted to discriminate scope (pre-6.8, no {@code scopeType}
+     * capability — 6.3.1 is CMMN-dead-letter-blind); inherits the {@code dlqScan} lower
+     * bound under a truncated scan.
      */
-    public record PerEngineTriage(boolean ok, String error, String dlqScan) {}
+    public record PerEngineTriage(boolean ok, String error, String dlqScan, Integer outOfScopeDeadletters) {}
 }

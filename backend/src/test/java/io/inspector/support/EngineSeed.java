@@ -32,6 +32,8 @@ public final class EngineSeed {
     public static final Path FLOW_SURGERY_BPMN = Path.of("..", "docker", "processes", "demo-flow-surgery.bpmn20.xml");
     public static final Path EXTERNAL_WORKER_BPMN =
             Path.of("..", "docker", "processes", "demo-external-worker.bpmn20.xml");
+    /** Out-of-scope fixture: an async-failing CMMN case, deployed over the cmmn-api ONLY. */
+    public static final Path FAILING_CASE_CMMN = Path.of("..", "docker", "processes", "demo-failing-case.cmmn.xml");
 
     private EngineSeed() {}
 
@@ -284,5 +286,140 @@ public final class EngineSeed {
                 .retrieve()
                 .body(Map.class);
         return ((Number) page.get("total")).longValue();
+    }
+
+    /* ---------------- CMMN out-of-scope fixture (cmmn-wire-shape-spike) ---------------- */
+
+    /** The {@code /cmmn-api} sibling of a process-api {@code /service} base URL. */
+    public static RestClient cmmnClient(String serviceBaseUrl) {
+        String base = serviceBaseUrl.endsWith("/service")
+                ? serviceBaseUrl.substring(0, serviceBaseUrl.length() - "/service".length()) + "/cmmn-api"
+                : serviceBaseUrl + "/cmmn-api";
+        return engineClient(base);
+    }
+
+    public static long caseDefinitionCount(RestClient cmmn, String caseKey) {
+        Map<String, Object> page = cmmn.get()
+                .uri("/cmmn-repository/case-definitions?key=" + caseKey + "&latest=true")
+                .retrieve()
+                .body(Map.class);
+        return ((Number) page.get("total")).longValue();
+    }
+
+    /** Deploys the CMMN case model over the cmmn-api if its key is not already present. */
+    public static void deployCmmnIfMissing(RestClient cmmn, String caseKey, Path cmmnFile) {
+        if (!Files.exists(cmmnFile)) {
+            fail("seed CMMN not found: " + cmmnFile.toAbsolutePath());
+        }
+        if (caseDefinitionCount(cmmn, caseKey) == 0) {
+            MultiValueMap<String, Object> parts = new LinkedMultiValueMap<>();
+            parts.add("file", new FileSystemResource(cmmnFile));
+            cmmn.post()
+                    .uri("/cmmn-repository/deployments")
+                    .contentType(MediaType.MULTIPART_FORM_DATA)
+                    .body(parts)
+                    .retrieve()
+                    .toBodilessEntity();
+        }
+        if (caseDefinitionCount(cmmn, caseKey) == 0) {
+            fail("'" + caseKey + "' deployed but the case definition did not appear — parse failure?");
+        }
+    }
+
+    /** Starts the async-failing case; its dead-letter job surfaces out-of-scope. Returns the case-instance id. */
+    public static String startFailingCase(RestClient cmmn, String caseKey) {
+        Map<String, Object> started = cmmn.post()
+                .uri("/cmmn-runtime/case-instances")
+                .contentType(MediaType.APPLICATION_JSON)
+                .body(Map.of("caseDefinitionKey", caseKey))
+                .retrieve()
+                .body(Map.class);
+        return String.valueOf(started.get("id"));
+    }
+
+    /**
+     * Out-of-scope dead-letters as the inspector sees them: rows in the PROCESS-API
+     * projection with no {@code processInstanceId} (a CMMN job sharing the job tables).
+     * One page (size=200) — enough for a delta await on the KEEP-up stack.
+     */
+    @SuppressWarnings("unchecked")
+    public static long outOfScopeDeadletterCount(RestClient engine) {
+        Map<String, Object> page = engine.get()
+                .uri("/management/deadletter-jobs?size=200")
+                .retrieve()
+                .body(Map.class);
+        List<Map<String, Object>> data = (List<Map<String, Object>>) page.get("data");
+        return data == null
+                ? 0
+                : data.stream()
+                        .filter(r -> {
+                            Object pid = r.get("processInstanceId");
+                            return pid == null || String.valueOf(pid).isBlank();
+                        })
+                        .count();
+    }
+
+    /**
+     * True once the PROCESS-API DLQ projection (what the inspector scans) shows an
+     * out-of-scope orphan — a {@code processInstanceId:null} row carrying {@code needle} in
+     * its exception. Residue-independent: keys on this test's unique failing expression, so
+     * a parallel session's CMMN residue neither satisfies nor starves the await.
+     */
+    @SuppressWarnings("unchecked")
+    public static boolean outOfScopeDeadletterPresent(RestClient engine, String needle) {
+        Map<String, Object> page = engine.get()
+                .uri("/management/deadletter-jobs?withException=true&size=200")
+                .retrieve()
+                .body(Map.class);
+        List<Map<String, Object>> data = (List<Map<String, Object>>) page.get("data");
+        return data != null
+                && data.stream().anyMatch(r -> {
+                    Object pid = r.get("processInstanceId");
+                    boolean orphan = pid == null || String.valueOf(pid).isBlank();
+                    return orphan && String.valueOf(r.get("exceptionMessage")).contains(needle);
+                });
+    }
+
+    /** Terminates a case instance (removing its dead-letter job). Quiet: a target already gone is fine. */
+    public static void deleteCaseQuietly(RestClient cmmn, String caseInstanceId) {
+        try {
+            cmmn.delete()
+                    .uri("/cmmn-runtime/case-instances/" + caseInstanceId)
+                    .retrieve()
+                    .toBodilessEntity();
+        } catch (RuntimeException e) {
+            // already ended/deleted — residue cleanup must never fail a test
+        }
+    }
+
+    /**
+     * Cascade-deletes every deployment backing a case key — hermetic teardown so no
+     * dead-lettered CMMN case survives to skew a parallel session's pristine DLQ counts.
+     */
+    @SuppressWarnings("unchecked")
+    public static void deleteCmmnDeploymentsQuietly(RestClient cmmn, String caseKey) {
+        try {
+            Map<String, Object> page = cmmn.get()
+                    .uri("/cmmn-repository/case-definitions?key=" + caseKey + "&size=100")
+                    .retrieve()
+                    .body(Map.class);
+            List<Map<String, Object>> data = (List<Map<String, Object>>) page.get("data");
+            if (data == null) return;
+            data.stream()
+                    .map(d -> String.valueOf(d.get("deploymentId")))
+                    .distinct()
+                    .forEach(dep -> {
+                        try {
+                            cmmn.delete()
+                                    .uri("/cmmn-repository/deployments/" + dep + "?cascade=true")
+                                    .retrieve()
+                                    .toBodilessEntity();
+                        } catch (RuntimeException e) {
+                            // best-effort residue cleanup
+                        }
+                    });
+        } catch (RuntimeException e) {
+            // best-effort residue cleanup
+        }
     }
 }

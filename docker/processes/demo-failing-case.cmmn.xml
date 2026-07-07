@@ -1,0 +1,28 @@
+<?xml version="1.0" encoding="UTF-8"?>
+<!--
+  Deliberately-failing CMMN case (engine-harness / cmmn-wire-shape-spike): an async Java
+  service task referencing a missing bean dead-letters within seconds (R1/PT1S), and a
+  blocking human task keeps the case ACTIVE so the dead-letter job persists. Deployed over
+  the cmmn-api ONLY as an out-of-scope fixture: its dead-letter job shows in the shared
+  process-api /management/deadletter-jobs projection with a null processInstanceId — the
+  exact orphan the Stage-0 `outOfScopeDeadletters` count exists to surface. Flowable 6.8+.
+-->
+<definitions xmlns="http://www.omg.org/spec/CMMN/20151109/MODEL"
+             xmlns:flowable="http://flowable.org/cmmn"
+             targetNamespace="http://flowable.org/cmmn">
+  <case id="demoFailingCase" name="Demo failing case">
+    <casePlanModel id="casePlanModel" name="Demo failing case">
+      <planItem id="planItem_svc" name="Failing service" definitionRef="failingService"/>
+      <planItem id="planItem_human" name="Keep alive" definitionRef="keepAlive"/>
+      <task id="failingService" name="Failing service"
+            flowable:async="true"
+            flowable:type="java"
+            flowable:expression="${nonExistentBean.doStuff()}">
+        <extensionElements>
+          <flowable:failedJobRetryTimeCycle>R1/PT1S</flowable:failedJobRetryTimeCycle>
+        </extensionElements>
+      </task>
+      <humanTask id="keepAlive" name="Keep alive"/>
+    </casePlanModel>
+  </case>
+</definitions>
