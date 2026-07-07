@@ -76,7 +76,9 @@ inspector:
   engines:
     - id: engine-a
       name: "Engine A (demo)"
-      base-url: "http://localhost:8081/flowable-rest/service"
+      # Placeholder-with-default so a container deployment can repoint the host without
+      # replacing the whole engines list (indexed env binding would wipe the other fields).
+      base-url: "${INSPECTOR_ENGINE_A_BASE_URL:http://localhost:8081/flowable-rest/service}"
       environment: dev
       accent-color: "#2e86de"
       enabled: true
@@ -98,7 +100,7 @@ inspector:
 
     - id: engine-b
       name: "Engine B (demo)"
-      base-url: "http://localhost:8082/flowable-rest/service"
+      base-url: "${INSPECTOR_ENGINE_B_BASE_URL:http://localhost:8082/flowable-rest/service}"
       environment: dev
       accent-color: "#10ac84"
       enabled: true
@@ -121,7 +123,7 @@ inspector:
     # Flowable 7 engine from the flowable-7 compose profile; flip enabled when it runs.
     - id: engine-7
       name: "Engine 7 (Flowable 7.x)"
-      base-url: "http://localhost:8083/flowable-rest/service"
+      base-url: "${INSPECTOR_ENGINE_7_BASE_URL:http://localhost:8083/flowable-rest/service}"
       environment: dev
       accent-color: "#8e44ad"
       enabled: false

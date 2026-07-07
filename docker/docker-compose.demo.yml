@@ -1,0 +1,147 @@
+# Self-contained DEMO stack for the Process Inspector, published behind the hp04 cloud
+# Traefik at https://pi.naumann.cloud.
+#
+#   docker compose -f docker/docker-compose.demo.yml up -d --build
+#
+# Topology (one public origin, everything else internal):
+#   Traefik ──(discovery net)──▶ frontend (nginx: SPA + /api reverse-proxy)
+#                                     │ internal net
+#                                     ▼
+#                                  backend (BFF) ──▶ engine-a / engine-b (Flowable 6.8, REST)
+#                                     │
+#                                     ▼  postgres (audit / notes / bulk store)
+#   seed (one-shot) deploys the demo processes + starts one instance per status arc.
+#
+# Only `frontend` is exposed; the BFF, engines and DB have NO host ports and never touch the
+# discovery network. Sign in with the ladder users viewer/responder/operator/admin
+# (password ${INSPECTOR_DEV_PASSWORD:-dev}).
+#
+# Overridable via the shell env or `--env-file docker/.env.demo`:
+#   NAUMANN_CLOUD, PI_SUBDOMAIN, INSPECTOR_DEV_PASSWORD, POSTGRES_PASSWORD
+#
+# The two demo engines keep the flowable-rest image's well-known default creds
+# (rest-admin / test) — seed.sh and the BFF below both expect them; they are throwaway
+# in-network engines with no host port, so this is not a real secret.
+name: process-inspector-demo
+
+services:
+  engine-a:
+    image: flowable/flowable-rest:6.8.0
+    environment:
+      - FLOWABLE_REST_APP_ADMIN_USER-ID=rest-admin
+      - FLOWABLE_REST_APP_ADMIN_PASSWORD=test
+    networks: [internal]
+    restart: unless-stopped
+
+  engine-b:
+    image: flowable/flowable-rest:6.8.0
+    environment:
+      - FLOWABLE_REST_APP_ADMIN_USER-ID=rest-admin
+      - FLOWABLE_REST_APP_ADMIN_PASSWORD=test
+    networks: [internal]
+    restart: unless-stopped
+
+  postgres:
+    image: postgres:16-alpine
+    environment:
+      - POSTGRES_DB=inspector
+      - POSTGRES_USER=inspector
+      - POSTGRES_PASSWORD=${POSTGRES_PASSWORD:-inspector}
+    volumes:
+      - inspector-demo-pgdata:/var/lib/postgresql/data
+    healthcheck:
+      test: ["CMD-SHELL", "pg_isready -h 127.0.0.1 -U inspector -d inspector"]
+      interval: 5s
+      timeout: 3s
+      retries: 24
+    networks: [internal]
+    restart: unless-stopped
+
+  backend:
+    build:
+      context: ..
+      dockerfile: Dockerfile
+    environment:
+      - SERVER_PORT=8080
+      # Trust Traefik's X-Forwarded-* (scheme/host) after TLS termination.
+      - SERVER_FORWARD_HEADERS_STRATEGY=framework
+      # BFF-owned Postgres (Flyway + audit/notes/bulk store).
+      - INSPECTOR_DB_URL=jdbc:postgresql://postgres:5432/inspector
+      - INSPECTOR_DB_USER=inspector
+      - INSPECTOR_DB_PASSWORD=${POSTGRES_PASSWORD:-inspector}
+      # Point the two demo engines at their in-network hostnames. These are per-value
+      # placeholders in application.yml — NOT indexed list binding, which would drop the
+      # engines' id/environment/auth and fail startup.
+      - INSPECTOR_ENGINE_A_BASE_URL=http://engine-a:8080/flowable-rest/service
+      - INSPECTOR_ENGINE_B_BASE_URL=http://engine-b:8080/flowable-rest/service
+      - ENGINE_A_PASSWORD=test
+      - ENGINE_B_PASSWORD=test
+      # Demo sign-in ladder password (dev auth chain; oidc profile is off here).
+      - INSPECTOR_DEV_PASSWORD=${INSPECTOR_DEV_PASSWORD:-dev}
+    depends_on:
+      postgres:
+        condition: service_healthy
+    networks: [internal]
+    restart: unless-stopped
+
+  frontend:
+    build:
+      context: ../frontend
+      dockerfile: Dockerfile
+    depends_on: [backend]
+    networks: [internal, discovery]
+    restart: unless-stopped
+    labels:
+      - "traefik.enable=true"
+      - "traefik.docker.network=discovery"
+      - "traefik.http.services.process-inspector.loadbalancer.server.port=80"
+      ### Routing
+      - "traefik.http.routers.process-inspector.entrypoints=websecure"
+      - "traefik.http.routers.process-inspector.rule=Host(`${PI_SUBDOMAIN:-pi}.${NAUMANN_CLOUD:-naumann.cloud}`)"
+      - "traefik.http.routers.process-inspector.tls.certresolver=mytlschallenge"
+      ### Security headers.
+      # DELIBERATELY WEAKER HSTS than the hp04 house style: a demo host whose cert churns
+      # must NOT set stsPreload or stsIncludeSubdomains, and keeps a SHORT max-age (5 min).
+      # A long-lived, preloaded, subdomain-spanning HSTS entry turns any transient cert
+      # error into a browser lockout that cannot be click-through'd and lasts up to a year
+      # (and preload can affect the whole naumann.cloud registrable domain). Raise stsSeconds
+      # only once pi.naumann.cloud has a stable, trusted Let's Encrypt cert.
+      - "traefik.http.routers.process-inspector.middlewares=pi-header"
+      - "traefik.http.middlewares.pi-header.headers.referrerPolicy=no-referrer"
+      - "traefik.http.middlewares.pi-header.headers.stsSeconds=300"
+      - "traefik.http.middlewares.pi-header.headers.forceSTSHeader=true"
+      - "traefik.http.middlewares.pi-header.headers.browserXssFilter=true"
+      - "traefik.http.middlewares.pi-header.headers.customRequestHeaders.X-Forwarded-Proto=https"
+
+  # One-shot: wait for both engines, then deploy the demo processes + seed one instance per
+  # status arc (COMPLETED / FAILED / RETRYING / SUSPENDED / ACTIVE / timer / sub-process).
+  # REST-only (CLAUDE.md iron rule) — never touches ACT_* tables. Exits 0 when done.
+  seed:
+    image: alpine:3.20
+    depends_on: [engine-a, engine-b]
+    volumes:
+      - ./:/seed:ro
+    entrypoint: ["/bin/sh", "-c"]
+    command:
+      - |
+        set -e
+        apk add --no-cache bash curl python3 >/dev/null
+        for e in engine-a engine-b; do
+          url="http://$$e:8080/flowable-rest/service"
+          echo "waiting for $$e ..."
+          until curl -sf -u "rest-admin:test" -o /dev/null "$$url/management/engine"; do sleep 3; done
+          bash /seed/seed.sh "$$url"
+        done
+        echo "demo seed complete."
+    networks: [internal]
+    restart: "no"
+
+volumes:
+  inspector-demo-pgdata:
+
+networks:
+  internal:
+    driver: bridge
+  # The shared Traefik network on hp04 — created outside this stack.
+  discovery:
+    external: true
