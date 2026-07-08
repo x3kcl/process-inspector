@@ -53,6 +53,10 @@ resilience4j:
         ignore-exceptions:
           # Capability probes expect 404s on old engines — they must never trip a breaker.
           - org.springframework.web.client.HttpClientErrorException
+      # v2/M4 snapshot sampler's OWN breaker (instances keyed "{id}:sampler") so a failing
+      # background poll trips independently of the interactive breaker — same failure model.
+      sampler:
+        base-config: engine
   # Do-no-harm companion to the breaker (ARCH §2.2): caps concurrent in-flight calls PER
   # ENGINE so the search plans' parallel enrichment legs queue instead of flooding an
   # engine that is typically already under load when this tool is open.
@@ -61,6 +65,12 @@ resilience4j:
       engine:
         max-concurrent-calls: 8
         max-wait-duration: 20s
+      # The v2/M4 snapshot sampler's THIN lane (PLAN v2/M4): a periodic trend poll gets its
+      # own small per-engine permit share so it can never starve an interactive search of the
+      # 8 interactive permits. Short wait — a contended sample is skipped, not queued long.
+      sampler:
+        max-concurrent-calls: 2
+        max-wait-duration: 5s
 
 inspector:
   # At most this many engines searched concurrently per fan-out (R-NFR-01 caps at 10).
@@ -73,6 +83,16 @@ inspector:
     cache-ttl-s: 20
     refresh-min-interval-s: 10
     stacktrace-sample-cap: 25
+  # v2/M4 job-lane snapshot store (R-BAU-08 trend sparklines): an @Scheduled virtual-thread
+  # sampler runs the Stage-0 count aggregation on the thin `sampler` bulkhead and upserts one
+  # narrow row per (engine, lane) bucket into triage_snapshot. The UI reads history from
+  # Postgres, never the live engine. bucket-width ≥ sample-interval so a normal (non-overlapping)
+  # fire always lands in a fresh bucket; a restart/overlap within a bucket upserts idempotently.
+  snapshot:
+    enabled: true
+    sample-interval: 60s
+    bucket-width: 60s
+    retention-days: 400
   engines:
     - id: engine-a
       name: "Engine A (demo)"

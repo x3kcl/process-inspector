@@ -51,12 +51,47 @@ public class FlowableEngineClient {
         this.bulkheads = bulkheads;
     }
 
+    /**
+     * The resilience lane a call runs on (do-no-harm, SPEC §2). Interactive user queries own the
+     * per-engine {@code "engine"} bulkhead + breaker (8 permits). The v2/M4 snapshot sampler runs
+     * on a SEPARATE, thin {@code "sampler"} lane keyed {@code "{id}:sampler"} so a periodic trend
+     * poll can never consume the permits an interactive search is waiting on (PLAN v2/M4 — "give
+     * it its own thin lane"). The instance name MUST differ from the interactive one: the registry
+     * keys instances by name, so a shared name would silently reuse the same 8-permit bulkhead.
+     */
+    public enum CallPriority {
+        INTERACTIVE("engine", null),
+        BACKGROUND("sampler", "sampler");
+
+        private final String config;
+        private final String suffix;
+
+        CallPriority(String config, String suffix) {
+            this.config = config;
+            this.suffix = suffix;
+        }
+
+        String config() {
+            return config;
+        }
+
+        String instanceName(String engineId) {
+            return suffix == null ? engineId : engineId + ":" + suffix;
+        }
+    }
+
     /* ---------- Flowable REST calls (the whitelist the BFF exposes) ---------- */
 
     /** POST /query/historic-process-instances — the primary search query. */
     public FlowablePage queryHistoricProcessInstances(EngineConfig engine, Map<String, Object> body) {
+        return queryHistoricProcessInstances(engine, body, CallPriority.INTERACTIVE);
+    }
+
+    public FlowablePage queryHistoricProcessInstances(
+            EngineConfig engine, Map<String, Object> body, CallPriority priority) {
         return guarded(
                 engine,
+                priority,
                 () -> client(engine)
                         .post()
                         .uri("/query/historic-process-instances")
@@ -68,8 +103,14 @@ public class FlowableEngineClient {
 
     /** POST /query/process-instances — runtime query (used for the suspended-ID set). */
     public FlowablePage queryRuntimeProcessInstances(EngineConfig engine, Map<String, Object> body) {
+        return queryRuntimeProcessInstances(engine, body, CallPriority.INTERACTIVE);
+    }
+
+    public FlowablePage queryRuntimeProcessInstances(
+            EngineConfig engine, Map<String, Object> body, CallPriority priority) {
         return guarded(
                 engine,
+                priority,
                 () -> client(engine)
                         .post()
                         .uri("/query/process-instances")
@@ -87,8 +128,19 @@ public class FlowableEngineClient {
      */
     public FlowablePage listJobs(
             EngineConfig engine, JobLaneKind lane, Map<String, String> filters, int start, int size) {
+        return listJobs(engine, lane, filters, start, size, CallPriority.INTERACTIVE);
+    }
+
+    public FlowablePage listJobs(
+            EngineConfig engine,
+            JobLaneKind lane,
+            Map<String, String> filters,
+            int start,
+            int size,
+            CallPriority priority) {
         return guarded(
                 engine,
+                priority,
                 () -> client(engine)
                         .get()
                         .uri(uri -> {
@@ -406,6 +458,11 @@ public class FlowableEngineClient {
         return listProcessDefinitionsByKey(engine, key, null, size);
     }
 
+    /** Background-lane variant (v2/M4 snapshot sampler): same page, on the {@code sampler} lane. */
+    public FlowablePage listProcessDefinitionsByKey(EngineConfig engine, String key, int size, CallPriority priority) {
+        return listProcessDefinitionsByKey(engine, key, null, 0, size, priority);
+    }
+
     /** Same, narrowed to ONE exact deployed version (the M2b definitionVersion filter). */
     public FlowablePage listProcessDefinitionsByKey(EngineConfig engine, String key, Integer version, int size) {
         return listProcessDefinitionsByKey(engine, key, version, 0, size);
@@ -414,8 +471,14 @@ public class FlowableEngineClient {
     /** Paged variant — a long-deployed key accumulates more versions than one page holds. */
     public FlowablePage listProcessDefinitionsByKey(
             EngineConfig engine, String key, Integer version, int start, int size) {
+        return listProcessDefinitionsByKey(engine, key, version, start, size, CallPriority.INTERACTIVE);
+    }
+
+    public FlowablePage listProcessDefinitionsByKey(
+            EngineConfig engine, String key, Integer version, int start, int size, CallPriority priority) {
         return guarded(
                 engine,
+                priority,
                 () -> client(engine)
                         .get()
                         .uri(uri -> {
@@ -438,9 +501,14 @@ public class FlowableEngineClient {
      * message-only signature).
      */
     public String jobExceptionStacktrace(EngineConfig engine, JobLaneKind lane, String jobId) {
+        return jobExceptionStacktrace(engine, lane, jobId, CallPriority.INTERACTIVE);
+    }
+
+    public String jobExceptionStacktrace(EngineConfig engine, JobLaneKind lane, String jobId, CallPriority priority) {
         try {
             return guarded(
                     engine,
+                    priority,
                     () -> client(engine)
                             .get()
                             .uri(lane.path + "/{jobId}/exception-stacktrace", jobId)
@@ -1157,10 +1225,15 @@ public class FlowableEngineClient {
      * BulkheadFullException — both become ordinary perEngine error envelopes upstream.
      */
     private <T> T guarded(EngineConfig engine, Supplier<T> call) {
+        return guarded(engine, CallPriority.INTERACTIVE, call);
+    }
+
+    private <T> T guarded(EngineConfig engine, CallPriority priority, Supplier<T> call) {
+        String name = priority.instanceName(engine.id());
         return bulkheads
-                .bulkhead(engine.id(), "engine")
+                .bulkhead(name, priority.config())
                 .executeSupplier(
-                        () -> breakers.circuitBreaker(engine.id(), "engine").executeSupplier(call));
+                        () -> breakers.circuitBreaker(name, priority.config()).executeSupplier(call));
     }
 
     /* ---------- client construction ---------- */

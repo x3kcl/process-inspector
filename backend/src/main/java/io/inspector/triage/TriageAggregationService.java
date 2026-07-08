@@ -1,6 +1,7 @@
 package io.inspector.triage;
 
 import io.inspector.client.FlowableEngineClient;
+import io.inspector.client.FlowableEngineClient.CallPriority;
 import io.inspector.client.FlowableEngineClient.FlowablePage;
 import io.inspector.client.FlowableEngineClient.JobLaneKind;
 import io.inspector.config.InspectorProperties;
@@ -83,10 +84,20 @@ public class TriageAggregationService {
         this.clock = clock;
     }
 
+    /** Interactive aggregation — the {@code /api/triage} landing, on the {@code engine} lane. */
     public TriageDashboardResponse aggregate() {
+        return aggregate(CallPriority.INTERACTIVE);
+    }
+
+    /**
+     * The Stage-0 fan-out on a chosen resilience lane. The v2/M4 snapshot sampler passes
+     * {@link CallPriority#BACKGROUND} so its periodic engine reads run on the thin {@code sampler}
+     * bulkhead and can never starve an interactive search's permits (do-no-harm, PLAN v2/M4).
+     */
+    public TriageDashboardResponse aggregate(CallPriority priority) {
         Map<String, Future<EngineSlice>> futures = new LinkedHashMap<>();
         for (EngineConfig engine : registry.all()) {
-            futures.put(engine.id(), fanout.submit(() -> sliceOf(engine)));
+            futures.put(engine.id(), fanout.submit(() -> sliceOf(engine, priority)));
         }
 
         List<EngineDto> engines = new ArrayList<>();
@@ -143,16 +154,17 @@ public class TriageAggregationService {
             long retryingCount,
             Map<String, Long> countsByDefVersion) {}
 
-    private EngineSlice sliceOf(EngineConfig engine) {
+    private EngineSlice sliceOf(EngineConfig engine, CallPriority priority) {
         try {
-            // Independent legs fan out on virtual threads; the per-engine bulkhead (max 8)
-            // is the do-no-harm ceiling, so this can never flood a struggling engine.
-            Future<Long> active = fanout.submit(() -> runtimeTotal(engine, false));
-            Future<Long> suspended = fanout.submit(() -> runtimeTotal(engine, true));
-            Future<Long> completed = fanout.submit(() -> completedTotal(engine));
+            // Independent legs fan out on virtual threads; the per-engine bulkhead (max 8 on the
+            // interactive lane, thinner on the sampler lane) is the do-no-harm ceiling, so this
+            // can never flood a struggling engine.
+            Future<Long> active = fanout.submit(() -> runtimeTotal(engine, false, priority));
+            Future<Long> suspended = fanout.submit(() -> runtimeTotal(engine, true, priority));
+            Future<Long> completed = fanout.submit(() -> completedTotal(engine, priority));
             Map<JobLaneKind, Future<LaneScan>> scans = new LinkedHashMap<>();
             for (JobLaneKind lane : FAILURE_LANES) {
-                scans.put(lane, fanout.submit(() -> scanFailureLane(engine, lane)));
+                scans.put(lane, fanout.submit(() -> scanFailureLane(engine, lane, priority)));
             }
 
             Map<String, Long> statusCounts = new TreeMap<>();
@@ -203,7 +215,7 @@ public class TriageAggregationService {
                             outOfScope.count(),
                             outOfScope.deadletterTruncated()),
                     statusCounts,
-                    refine(engine, preGroups));
+                    refine(engine, preGroups, priority));
         } catch (Exception ex) {
             log.debug("Triage slice degraded for {}: {}", engine.id(), ex.toString());
             return EngineSlice.failed(rootMessage(ex));
@@ -212,21 +224,21 @@ public class TriageAggregationService {
 
     /* ---------------- status counts: totals only, never rows ---------------- */
 
-    private long runtimeTotal(EngineConfig engine, boolean suspended) {
+    private long runtimeTotal(EngineConfig engine, boolean suspended, CallPriority priority) {
         Map<String, Object> body = new LinkedHashMap<>();
         body.put("suspended", suspended);
         body.put("size", 1);
         withTenant(engine, body);
-        FlowablePage page = flowable.queryRuntimeProcessInstances(engine, body);
+        FlowablePage page = flowable.queryRuntimeProcessInstances(engine, body, priority);
         return page != null ? page.total() : 0;
     }
 
-    private long completedTotal(EngineConfig engine) {
+    private long completedTotal(EngineConfig engine, CallPriority priority) {
         Map<String, Object> body = new LinkedHashMap<>();
         body.put("finished", true);
         body.put("size", 1);
         withTenant(engine, body);
-        FlowablePage page = flowable.queryHistoricProcessInstances(engine, body);
+        FlowablePage page = flowable.queryHistoricProcessInstances(engine, body, priority);
         return page != null ? page.total() : 0;
     }
 
@@ -245,7 +257,7 @@ public class TriageAggregationService {
      * {@code withException=true} keeps the leg failure-only (the timer/executable lanes
      * hold mostly healthy jobs) and filters correctly on all three engine versions.
      */
-    private LaneScan scanFailureLane(EngineConfig engine, JobLaneKind lane) {
+    private LaneScan scanFailureLane(EngineConfig engine, JobLaneKind lane, CallPriority priority) {
         int cap = engine.dlqScanCapOrDefault();
         int pageSize = engine.maxPageSizeOrDefault();
         Map<String, String> filters = new LinkedHashMap<>();
@@ -256,7 +268,8 @@ public class TriageAggregationService {
         List<Map<String, Object>> jobs = new ArrayList<>();
         long total = Long.MAX_VALUE;
         for (int start = 0; start < Math.min(total, cap); start += pageSize) {
-            FlowablePage page = flowable.listJobs(engine, lane, filters, start, Math.min(pageSize, cap - start));
+            FlowablePage page =
+                    flowable.listJobs(engine, lane, filters, start, Math.min(pageSize, cap - start), priority);
             if (page == null) {
                 break;
             }
@@ -379,8 +392,8 @@ public class TriageAggregationService {
      * sibling definition versions so version-specific failures are visible ("v47: 312,
      * v46: 0"). Refinement failures degrade to the message-only signature — never the slice.
      */
-    private List<EngineGroup> refine(EngineConfig engine, Map<String, PreGroup> preGroups) {
-        Map<String, List<String>> versionsByKey = definitionVersions(engine, preGroups);
+    private List<EngineGroup> refine(EngineConfig engine, Map<String, PreGroup> preGroups, CallPriority priority) {
+        Map<String, List<String>> versionsByKey = definitionVersions(engine, preGroups, priority);
         List<PreGroup> bySize = preGroups.values().stream()
                 .sorted(Comparator.comparingLong((PreGroup g) -> g.deadLetter + g.retrying)
                         .reversed())
@@ -391,7 +404,8 @@ public class TriageAggregationService {
             ErrorSignature signature = group.snippetSignature;
             if (sampleBudget-- > 0) {
                 try {
-                    String stacktrace = flowable.jobExceptionStacktrace(engine, group.sampleLane, group.sampleJobId);
+                    String stacktrace =
+                            flowable.jobExceptionStacktrace(engine, group.sampleLane, group.sampleJobId, priority);
                     if (stacktrace != null && !stacktrace.isBlank()) {
                         signature = ErrorSignatureNormalizer.normalize(stacktrace);
                     }
@@ -412,7 +426,8 @@ public class TriageAggregationService {
     }
 
     /** All deployed versions per definition key seen in any group (for the zero-fill). */
-    private Map<String, List<String>> definitionVersions(EngineConfig engine, Map<String, PreGroup> preGroups) {
+    private Map<String, List<String>> definitionVersions(
+            EngineConfig engine, Map<String, PreGroup> preGroups, CallPriority priority) {
         Map<String, List<String>> versionsByKey = new LinkedHashMap<>();
         preGroups.values().stream()
                 .flatMap(g -> g.countsByDefVersion.keySet().stream())
@@ -421,7 +436,7 @@ public class TriageAggregationService {
                 .filter(key -> !key.equals("unknown"))
                 .forEach(defKey -> {
                     try {
-                        FlowablePage page = flowable.listProcessDefinitionsByKey(engine, defKey, 50);
+                        FlowablePage page = flowable.listProcessDefinitionsByKey(engine, defKey, 50, priority);
                         versionsByKey.put(
                                 defKey,
                                 page.dataOrEmpty().stream()

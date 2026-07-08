@@ -2,6 +2,9 @@
 # A profile-specific file replaces the whole engines list — no bleed-through of
 # engine-b/engine-7 from the main application.yml.
 inspector:
+  # v2/M4 snapshot sampler OFF — this profile is docker-free (no DB / JdbcTemplate).
+  snapshot:
+    enabled: false
   fanout-parallelism: 4
   engines:
     - id: engine-a

@@ -987,8 +987,10 @@ and would rewrite working M1/M2 code for no capability gain); Go/FastAPI/Kotlin 
   R-GOV-08)**, migration (single w/ validate → batch wizard + typed "MIGRATE"), definition
   version comparison, CMMN, registry CRUD (with the R-OPS-13 SSRF constraints), shared
   server-side views, k-way-merge paging, maintenance snapshots + volume trends +
-  **job-lane trend sparklines** (all over the R-BAU-08 snapshot store), training
-  mode, capability overrides.
+  **job-lane trend sparklines** (all over the R-BAU-08 snapshot store — whose ingestion
+  backbone is now live: a scheduled sampler persists per-engine, per-lane Stage-0 counts to
+  Postgres on a thin background engine lane, keeping the trend reads off the live engine; the
+  sparkline UI is the next slice), training mode, capability overrides.
 
 ## 13. Success metrics & v1 release gate (R-GOV-01/02)
 

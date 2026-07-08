@@ -186,6 +186,23 @@ The Stage-0 out-of-scope-dead-letter tally (§2.3, R-SEM-20) is an explicit cons
 `scopeType`: it emits `outOfScopeDeadletters = null` (unknown, never a confident zero) where
 the flag is false, since a pre-6.8 engine is CMMN-dead-letter-blind.
 
+### 2.6 Trend — the snapshot store (v2/M4, R-BAU-08)
+Job-lane trends must not be reconstructed by re-querying engines: the BFF **persists** the
+Stage-0 counts over time. A `@Scheduled` virtual-thread **sampler** (`io.inspector.snapshot`)
+re-runs the Stage-0 count aggregation on a fixed cadence and **upserts** one narrow row per
+`(engine_id, lane)` — the status chips plus `OUT_OF_SCOPE_DLQ` — into the `triage_snapshot`
+time-series, keyed to a bucketed `sampled_at` (idempotent `ON CONFLICT`, so a restart or
+scheduler overlap within a bucket cannot double-count; a poll is NOT a mutation, so no audit
+rail). A `SnapshotSource` seam sits between ingestion and the store so an event-driven source
+can replace polling later, per-engine and capability-gated, without touching the schema or the
+trend read path. **Ingestion stays strictly-via-REST** (the iron rule) and inherits do-no-harm:
+sampler engine calls run on a **separate, thin per-engine Resilience4j lane** (`CallPriority.BACKGROUND`,
+instance `{id}:sampler`, 2 permits) so a trend poll can never starve the 8 interactive search
+permits. Retention is **drop-partition** (400-day revFADP): the table is `PARTITION BY RANGE
+(sampled_at)` with a DEFAULT catch-all, and a maintainer creates months ahead and DROPs (never
+DELETEs) those past the horizon, so the sweep never locks the partition being written. A NULL
+out-of-scope count writes no row — the series stays honest rather than fabricating a zero.
+
 ## 3. Engine Registry — data model
 
 v1 is **config-first** (YAML + env-var secret refs, 12-factor). The identical shape becomes a
@@ -305,9 +322,10 @@ nobody may "simplify" by exposing an engine directly.
   human-attribution record. Engines with `forward-user-header: true` additionally receive
   `X-Forwarded-User: <username>` on mutating calls for an engine-side interceptor (§6).
 - **Persistence (Postgres, M4+):** audit log (append-only), instance notes, bulk-job state +
-  per-item reports, shared saved views (v2; v1.x saved views/recents live in browser
-  localStorage under a versioned envelope), registry CRUD (v2). No durable job-execution
-  framework — in-memory execution, per-item flush, `INTERRUPTED` on restart.
+  per-item reports, the `triage_snapshot` job-lane time-series (v2/M4, range-partitioned +
+  drop-partition retention — §2.6), shared saved views (v2; v1.x saved views/recents live in
+  browser localStorage under a versioned envelope), registry CRUD (v2). No durable
+  job-execution framework — in-memory execution, per-item flush, `INTERRUPTED` on restart.
 - **Audit:** every mutating call → `(user, ts, engineId, instanceId, tenantId, action,
   reason, requestPayload incl. old values, httpStatus, outcome, responseSnippet)`; one row
   per bulk item + envelope. Non-negotiable for a tool whose job is poking production state —
