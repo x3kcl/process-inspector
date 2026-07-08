@@ -1,0 +1,151 @@
+<?xml version="1.0" encoding="UTF-8"?>
+<definitions xmlns="http://www.omg.org/spec/BPMN/20100524/MODEL"
+             xmlns:xsi="http://www.w3.org/2001/XMLSchema-instance"
+             xmlns:flowable="http://flowable.org/bpmn"
+             xmlns:bpmndi="http://www.omg.org/spec/BPMN/20100524/DI"
+             xmlns:omgdc="http://www.omg.org/spec/DD/20100524/DC"
+             xmlns:omgdi="http://www.omg.org/spec/DD/20100524/DI"
+             typeLanguage="http://www.w3.org/2001/XMLSchema"
+             expressionLanguage="http://www.w3.org/1999/XPath"
+             targetNamespace="http://inspector.io/demo/acme">
+
+  <!-- ACME back-office suite — EXPENSE APPROVAL.
+       Swimlanes (laneSet) across three user populations / departments:
+         Employee  · Finance (candidate group "finance") · Management (group "management").
+       Multi-activity + EXCLUSIVE gateway routing the token by claim amount:
+         amount <= 500   -> auto-approved (service task)
+         amount <= 5000  -> single Finance review
+         amount  > 5000  -> Finance review THEN Management (director) review
+       Department queues are modelled as candidateGroups (unclaimed department inboxes);
+       one task is assignee'd to rest-admin so the claim/complete demo has a live target. -->
+  <process id="acmeExpenseApproval" name="ACME Expense Approval" isExecutable="true">
+    <laneSet id="laneSet_expense">
+      <lane id="employeeLane" name="Employee">
+        <flowNodeRef>start</flowNodeRef>
+        <flowNodeRef>enterExpense</flowNodeRef>
+      </lane>
+      <lane id="financeLane" name="Finance">
+        <flowNodeRef>routeByAmount</flowNodeRef>
+        <flowNodeRef>autoApprove</flowNodeRef>
+        <flowNodeRef>financeReview</flowNodeRef>
+        <flowNodeRef>financeReviewLarge</flowNodeRef>
+        <flowNodeRef>joinDecision</flowNodeRef>
+        <flowNodeRef>notifyEmployee</flowNodeRef>
+        <flowNodeRef>end</flowNodeRef>
+      </lane>
+      <lane id="managementLane" name="Management">
+        <flowNodeRef>directorReview</flowNodeRef>
+      </lane>
+    </laneSet>
+
+    <startEvent id="start"/>
+    <sequenceFlow id="f_start" sourceRef="start" targetRef="enterExpense"/>
+    <userTask id="enterExpense" name="Enter expense claim" flowable:assignee="rest-admin"/>
+    <sequenceFlow id="f_enter_route" sourceRef="enterExpense" targetRef="routeByAmount"/>
+
+    <exclusiveGateway id="routeByAmount" name="Amount?"/>
+    <sequenceFlow id="f_small" sourceRef="routeByAmount" targetRef="autoApprove">
+      <conditionExpression xsi:type="tFormalExpression">${amount &lt;= 500}</conditionExpression>
+    </sequenceFlow>
+    <sequenceFlow id="f_medium" sourceRef="routeByAmount" targetRef="financeReview">
+      <conditionExpression xsi:type="tFormalExpression">${amount &lt;= 5000}</conditionExpression>
+    </sequenceFlow>
+    <sequenceFlow id="f_large" sourceRef="routeByAmount" targetRef="financeReviewLarge"/>
+
+    <serviceTask id="autoApprove" name="Auto-approve (&#8804; 500)" flowable:expression="${true}"/>
+    <sequenceFlow id="f_auto_join" sourceRef="autoApprove" targetRef="joinDecision"/>
+
+    <userTask id="financeReview" name="Finance review" flowable:candidateGroups="finance"/>
+    <sequenceFlow id="f_fin_join" sourceRef="financeReview" targetRef="joinDecision"/>
+
+    <userTask id="financeReviewLarge" name="Finance review (high value)" flowable:candidateGroups="finance"/>
+    <sequenceFlow id="f_finlarge_dir" sourceRef="financeReviewLarge" targetRef="directorReview"/>
+    <userTask id="directorReview" name="Director sign-off" flowable:candidateGroups="management"/>
+    <sequenceFlow id="f_dir_join" sourceRef="directorReview" targetRef="joinDecision"/>
+
+    <exclusiveGateway id="joinDecision" name="Merge"/>
+    <sequenceFlow id="f_join_notify" sourceRef="joinDecision" targetRef="notifyEmployee"/>
+    <serviceTask id="notifyEmployee" name="Notify employee" flowable:expression="${true}"/>
+    <sequenceFlow id="f_notify_end" sourceRef="notifyEmployee" targetRef="end"/>
+    <endEvent id="end"/>
+  </process>
+
+  <bpmndi:BPMNDiagram id="BPMNDiagram_acmeExpenseApproval">
+    <bpmndi:BPMNPlane id="BPMNPlane_acmeExpenseApproval" bpmnElement="acmeExpenseApproval">
+      <bpmndi:BPMNShape id="S_employeeLane" bpmnElement="employeeLane" isHorizontal="true">
+        <omgdc:Bounds x="160" y="40" width="1080" height="150"/>
+      </bpmndi:BPMNShape>
+      <bpmndi:BPMNShape id="S_financeLane" bpmnElement="financeLane" isHorizontal="true">
+        <omgdc:Bounds x="160" y="190" width="1080" height="240"/>
+      </bpmndi:BPMNShape>
+      <bpmndi:BPMNShape id="S_managementLane" bpmnElement="managementLane" isHorizontal="true">
+        <omgdc:Bounds x="160" y="430" width="1080" height="150"/>
+      </bpmndi:BPMNShape>
+
+      <bpmndi:BPMNShape id="S_start" bpmnElement="start">
+        <omgdc:Bounds x="210" y="100" width="30" height="30"/>
+      </bpmndi:BPMNShape>
+      <bpmndi:BPMNShape id="S_enterExpense" bpmnElement="enterExpense">
+        <omgdc:Bounds x="290" y="85" width="100" height="60"/>
+      </bpmndi:BPMNShape>
+      <bpmndi:BPMNShape id="S_routeByAmount" bpmnElement="routeByAmount" isMarkerVisible="true">
+        <omgdc:Bounds x="450" y="230" width="40" height="40"/>
+      </bpmndi:BPMNShape>
+      <bpmndi:BPMNShape id="S_autoApprove" bpmnElement="autoApprove">
+        <omgdc:Bounds x="560" y="210" width="100" height="60"/>
+      </bpmndi:BPMNShape>
+      <bpmndi:BPMNShape id="S_financeReview" bpmnElement="financeReview">
+        <omgdc:Bounds x="560" y="290" width="100" height="60"/>
+      </bpmndi:BPMNShape>
+      <bpmndi:BPMNShape id="S_financeReviewLarge" bpmnElement="financeReviewLarge">
+        <omgdc:Bounds x="560" y="360" width="100" height="60"/>
+      </bpmndi:BPMNShape>
+      <bpmndi:BPMNShape id="S_directorReview" bpmnElement="directorReview">
+        <omgdc:Bounds x="560" y="470" width="100" height="60"/>
+      </bpmndi:BPMNShape>
+      <bpmndi:BPMNShape id="S_joinDecision" bpmnElement="joinDecision" isMarkerVisible="true">
+        <omgdc:Bounds x="770" y="230" width="40" height="40"/>
+      </bpmndi:BPMNShape>
+      <bpmndi:BPMNShape id="S_notifyEmployee" bpmnElement="notifyEmployee">
+        <omgdc:Bounds x="870" y="220" width="100" height="60"/>
+      </bpmndi:BPMNShape>
+      <bpmndi:BPMNShape id="S_end" bpmnElement="end">
+        <omgdc:Bounds x="1030" y="236" width="28" height="28"/>
+      </bpmndi:BPMNShape>
+
+      <bpmndi:BPMNEdge id="E_f_start" bpmnElement="f_start">
+        <omgdi:waypoint x="240" y="115"/><omgdi:waypoint x="290" y="115"/>
+      </bpmndi:BPMNEdge>
+      <bpmndi:BPMNEdge id="E_f_enter_route" bpmnElement="f_enter_route">
+        <omgdi:waypoint x="390" y="115"/><omgdi:waypoint x="470" y="115"/><omgdi:waypoint x="470" y="230"/>
+      </bpmndi:BPMNEdge>
+      <bpmndi:BPMNEdge id="E_f_small" bpmnElement="f_small">
+        <omgdi:waypoint x="490" y="245"/><omgdi:waypoint x="525" y="245"/><omgdi:waypoint x="525" y="240"/><omgdi:waypoint x="560" y="240"/>
+      </bpmndi:BPMNEdge>
+      <bpmndi:BPMNEdge id="E_f_medium" bpmnElement="f_medium">
+        <omgdi:waypoint x="470" y="270"/><omgdi:waypoint x="470" y="320"/><omgdi:waypoint x="560" y="320"/>
+      </bpmndi:BPMNEdge>
+      <bpmndi:BPMNEdge id="E_f_large" bpmnElement="f_large">
+        <omgdi:waypoint x="470" y="270"/><omgdi:waypoint x="470" y="390"/><omgdi:waypoint x="560" y="390"/>
+      </bpmndi:BPMNEdge>
+      <bpmndi:BPMNEdge id="E_f_finlarge_dir" bpmnElement="f_finlarge_dir">
+        <omgdi:waypoint x="610" y="420"/><omgdi:waypoint x="610" y="470"/>
+      </bpmndi:BPMNEdge>
+      <bpmndi:BPMNEdge id="E_f_auto_join" bpmnElement="f_auto_join">
+        <omgdi:waypoint x="660" y="240"/><omgdi:waypoint x="790" y="240"/><omgdi:waypoint x="790" y="230"/>
+      </bpmndi:BPMNEdge>
+      <bpmndi:BPMNEdge id="E_f_fin_join" bpmnElement="f_fin_join">
+        <omgdi:waypoint x="660" y="320"/><omgdi:waypoint x="790" y="320"/><omgdi:waypoint x="790" y="270"/>
+      </bpmndi:BPMNEdge>
+      <bpmndi:BPMNEdge id="E_f_dir_join" bpmnElement="f_dir_join">
+        <omgdi:waypoint x="660" y="500"/><omgdi:waypoint x="790" y="500"/><omgdi:waypoint x="790" y="270"/>
+      </bpmndi:BPMNEdge>
+      <bpmndi:BPMNEdge id="E_f_join_notify" bpmnElement="f_join_notify">
+        <omgdi:waypoint x="810" y="250"/><omgdi:waypoint x="870" y="250"/>
+      </bpmndi:BPMNEdge>
+      <bpmndi:BPMNEdge id="E_f_notify_end" bpmnElement="f_notify_end">
+        <omgdi:waypoint x="970" y="250"/><omgdi:waypoint x="1030" y="250"/>
+      </bpmndi:BPMNEdge>
+    </bpmndi:BPMNPlane>
+  </bpmndi:BPMNDiagram>
+</definitions>

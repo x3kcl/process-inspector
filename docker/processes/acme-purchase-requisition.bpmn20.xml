@@ -1,0 +1,144 @@
+<?xml version="1.0" encoding="UTF-8"?>
+<definitions xmlns="http://www.omg.org/spec/BPMN/20100524/MODEL"
+             xmlns:xsi="http://www.w3.org/2001/XMLSchema-instance"
+             xmlns:flowable="http://flowable.org/bpmn"
+             xmlns:bpmndi="http://www.omg.org/spec/BPMN/20100524/DI"
+             xmlns:omgdc="http://www.omg.org/spec/DD/20100524/DC"
+             xmlns:omgdi="http://www.omg.org/spec/DD/20100524/DI"
+             typeLanguage="http://www.w3.org/2001/XMLSchema"
+             expressionLanguage="http://www.w3.org/1999/XPath"
+             targetNamespace="http://inspector.io/demo/acme">
+
+  <!-- ACME back-office suite — PURCHASE REQUISITION.
+       FOUR swimlanes / departments: Requester · Procurement · Finance · Legal.
+       INCLUSIVE gateway fans the token to a subset of reviewers depending on flags:
+         Procurement review is ALWAYS taken; Finance review iff ${needsFinance};
+         Legal review iff ${needsLegal}. Inclusive join waits only for the arms that fired.
+       Drive coverage by starting instances with different needsFinance/needsLegal combos. -->
+  <process id="acmePurchaseRequisition" name="ACME Purchase Requisition" isExecutable="true">
+    <laneSet id="laneSet_req">
+      <lane id="requesterLane" name="Requester">
+        <flowNodeRef>start</flowNodeRef>
+        <flowNodeRef>createRequisition</flowNodeRef>
+      </lane>
+      <lane id="procurementLane" name="Procurement">
+        <flowNodeRef>forkReviews</flowNodeRef>
+        <flowNodeRef>procurementReview</flowNodeRef>
+        <flowNodeRef>joinReviews</flowNodeRef>
+        <flowNodeRef>issuePurchaseOrder</flowNodeRef>
+        <flowNodeRef>end</flowNodeRef>
+      </lane>
+      <lane id="financeLane" name="Finance">
+        <flowNodeRef>financeReview</flowNodeRef>
+      </lane>
+      <lane id="legalLane" name="Legal">
+        <flowNodeRef>legalReview</flowNodeRef>
+      </lane>
+    </laneSet>
+
+    <startEvent id="start"/>
+    <sequenceFlow id="f_start" sourceRef="start" targetRef="createRequisition"/>
+    <userTask id="createRequisition" name="Create requisition" flowable:assignee="rest-admin"/>
+    <sequenceFlow id="f_create_fork" sourceRef="createRequisition" targetRef="forkReviews"/>
+
+    <inclusiveGateway id="forkReviews" name="Which reviews?"/>
+    <sequenceFlow id="f_fork_proc" sourceRef="forkReviews" targetRef="procurementReview">
+      <conditionExpression xsi:type="tFormalExpression">${true}</conditionExpression>
+    </sequenceFlow>
+    <sequenceFlow id="f_fork_fin" sourceRef="forkReviews" targetRef="financeReview">
+      <conditionExpression xsi:type="tFormalExpression">${needsFinance}</conditionExpression>
+    </sequenceFlow>
+    <sequenceFlow id="f_fork_legal" sourceRef="forkReviews" targetRef="legalReview">
+      <conditionExpression xsi:type="tFormalExpression">${needsLegal}</conditionExpression>
+    </sequenceFlow>
+
+    <userTask id="procurementReview" name="Procurement review" flowable:candidateGroups="procurement"/>
+    <userTask id="financeReview" name="Finance review" flowable:candidateGroups="finance"/>
+    <userTask id="legalReview" name="Legal review" flowable:candidateGroups="legal"/>
+    <sequenceFlow id="f_proc_join" sourceRef="procurementReview" targetRef="joinReviews"/>
+    <sequenceFlow id="f_fin_join" sourceRef="financeReview" targetRef="joinReviews"/>
+    <sequenceFlow id="f_legal_join" sourceRef="legalReview" targetRef="joinReviews"/>
+
+    <inclusiveGateway id="joinReviews" name="Join"/>
+    <sequenceFlow id="f_join_po" sourceRef="joinReviews" targetRef="issuePurchaseOrder"/>
+    <serviceTask id="issuePurchaseOrder" name="Issue purchase order" flowable:expression="${true}"/>
+    <sequenceFlow id="f_po_end" sourceRef="issuePurchaseOrder" targetRef="end"/>
+    <endEvent id="end"/>
+  </process>
+
+  <bpmndi:BPMNDiagram id="BPMNDiagram_acmePurchaseRequisition">
+    <bpmndi:BPMNPlane id="BPMNPlane_acmePurchaseRequisition" bpmnElement="acmePurchaseRequisition">
+      <bpmndi:BPMNShape id="S_requesterLane" bpmnElement="requesterLane" isHorizontal="true">
+        <omgdc:Bounds x="160" y="40" width="1000" height="120"/>
+      </bpmndi:BPMNShape>
+      <bpmndi:BPMNShape id="S_procurementLane" bpmnElement="procurementLane" isHorizontal="true">
+        <omgdc:Bounds x="160" y="160" width="1000" height="140"/>
+      </bpmndi:BPMNShape>
+      <bpmndi:BPMNShape id="S_financeLane" bpmnElement="financeLane" isHorizontal="true">
+        <omgdc:Bounds x="160" y="300" width="1000" height="120"/>
+      </bpmndi:BPMNShape>
+      <bpmndi:BPMNShape id="S_legalLane" bpmnElement="legalLane" isHorizontal="true">
+        <omgdc:Bounds x="160" y="420" width="1000" height="120"/>
+      </bpmndi:BPMNShape>
+
+      <bpmndi:BPMNShape id="S_start" bpmnElement="start">
+        <omgdc:Bounds x="210" y="85" width="30" height="30"/>
+      </bpmndi:BPMNShape>
+      <bpmndi:BPMNShape id="S_createRequisition" bpmnElement="createRequisition">
+        <omgdc:Bounds x="290" y="70" width="100" height="60"/>
+      </bpmndi:BPMNShape>
+      <bpmndi:BPMNShape id="S_forkReviews" bpmnElement="forkReviews" isMarkerVisible="true">
+        <omgdc:Bounds x="450" y="210" width="40" height="40"/>
+      </bpmndi:BPMNShape>
+      <bpmndi:BPMNShape id="S_procurementReview" bpmnElement="procurementReview">
+        <omgdc:Bounds x="580" y="200" width="100" height="60"/>
+      </bpmndi:BPMNShape>
+      <bpmndi:BPMNShape id="S_financeReview" bpmnElement="financeReview">
+        <omgdc:Bounds x="580" y="330" width="100" height="60"/>
+      </bpmndi:BPMNShape>
+      <bpmndi:BPMNShape id="S_legalReview" bpmnElement="legalReview">
+        <omgdc:Bounds x="580" y="450" width="100" height="60"/>
+      </bpmndi:BPMNShape>
+      <bpmndi:BPMNShape id="S_joinReviews" bpmnElement="joinReviews" isMarkerVisible="true">
+        <omgdc:Bounds x="760" y="210" width="40" height="40"/>
+      </bpmndi:BPMNShape>
+      <bpmndi:BPMNShape id="S_issuePurchaseOrder" bpmnElement="issuePurchaseOrder">
+        <omgdc:Bounds x="860" y="200" width="100" height="60"/>
+      </bpmndi:BPMNShape>
+      <bpmndi:BPMNShape id="S_end" bpmnElement="end">
+        <omgdc:Bounds x="1010" y="216" width="28" height="28"/>
+      </bpmndi:BPMNShape>
+
+      <bpmndi:BPMNEdge id="E_f_start" bpmnElement="f_start">
+        <omgdi:waypoint x="240" y="100"/><omgdi:waypoint x="290" y="100"/>
+      </bpmndi:BPMNEdge>
+      <bpmndi:BPMNEdge id="E_f_create_fork" bpmnElement="f_create_fork">
+        <omgdi:waypoint x="390" y="100"/><omgdi:waypoint x="470" y="100"/><omgdi:waypoint x="470" y="210"/>
+      </bpmndi:BPMNEdge>
+      <bpmndi:BPMNEdge id="E_f_fork_proc" bpmnElement="f_fork_proc">
+        <omgdi:waypoint x="490" y="230"/><omgdi:waypoint x="580" y="230"/>
+      </bpmndi:BPMNEdge>
+      <bpmndi:BPMNEdge id="E_f_fork_fin" bpmnElement="f_fork_fin">
+        <omgdi:waypoint x="470" y="250"/><omgdi:waypoint x="470" y="360"/><omgdi:waypoint x="580" y="360"/>
+      </bpmndi:BPMNEdge>
+      <bpmndi:BPMNEdge id="E_f_fork_legal" bpmnElement="f_fork_legal">
+        <omgdi:waypoint x="470" y="250"/><omgdi:waypoint x="470" y="480"/><omgdi:waypoint x="580" y="480"/>
+      </bpmndi:BPMNEdge>
+      <bpmndi:BPMNEdge id="E_f_proc_join" bpmnElement="f_proc_join">
+        <omgdi:waypoint x="680" y="230"/><omgdi:waypoint x="760" y="230"/>
+      </bpmndi:BPMNEdge>
+      <bpmndi:BPMNEdge id="E_f_fin_join" bpmnElement="f_fin_join">
+        <omgdi:waypoint x="680" y="360"/><omgdi:waypoint x="780" y="360"/><omgdi:waypoint x="780" y="250"/>
+      </bpmndi:BPMNEdge>
+      <bpmndi:BPMNEdge id="E_f_legal_join" bpmnElement="f_legal_join">
+        <omgdi:waypoint x="680" y="480"/><omgdi:waypoint x="780" y="480"/><omgdi:waypoint x="780" y="250"/>
+      </bpmndi:BPMNEdge>
+      <bpmndi:BPMNEdge id="E_f_join_po" bpmnElement="f_join_po">
+        <omgdi:waypoint x="800" y="230"/><omgdi:waypoint x="860" y="230"/>
+      </bpmndi:BPMNEdge>
+      <bpmndi:BPMNEdge id="E_f_po_end" bpmnElement="f_po_end">
+        <omgdi:waypoint x="960" y="230"/><omgdi:waypoint x="1010" y="230"/>
+      </bpmndi:BPMNEdge>
+    </bpmndi:BPMNPlane>
+  </bpmndi:BPMNDiagram>
+</definitions>

@@ -1,0 +1,147 @@
+<?xml version="1.0" encoding="UTF-8"?>
+<definitions xmlns="http://www.omg.org/spec/BPMN/20100524/MODEL"
+             xmlns:xsi="http://www.w3.org/2001/XMLSchema-instance"
+             xmlns:flowable="http://flowable.org/bpmn"
+             xmlns:bpmndi="http://www.omg.org/spec/BPMN/20100524/DI"
+             xmlns:omgdc="http://www.omg.org/spec/DD/20100524/DC"
+             xmlns:omgdi="http://www.omg.org/spec/DD/20100524/DI"
+             typeLanguage="http://www.w3.org/2001/XMLSchema"
+             expressionLanguage="http://www.w3.org/1999/XPath"
+             targetNamespace="http://inspector.io/demo/acme">
+
+  <!-- ACME event choreography — ORDER ORCHESTRATOR (event-based gateway + correlation).
+       1. Throws a GLOBAL signal "orderPlaced" — this asynchronously STARTS an
+          acmePaymentService instance (its signal start event), inter-process comms by event.
+       2. Parks on an EVENT-BASED GATEWAY racing three catches:
+            - message  "paymentConfirmed"  (correlated to THIS order by orderId / businessKey,
+              delivered to the waiting execution over REST — the correlated-response leg)
+            - signal   "orderCancelled"     (broadcast cancel)
+            - timer    PT2H                  (SLA escalation to Sales)
+       A freshly started instance sits ACTIVE at the gateway = a waiting-on-event fixture. -->
+
+  <signal id="orderPlacedSignal" name="orderPlaced" flowable:scope="global"/>
+  <signal id="orderCancelledSignal" name="orderCancelled" flowable:scope="global"/>
+  <message id="paymentConfirmedMsg" name="paymentConfirmed"/>
+
+  <process id="acmeOrderOrchestrator" name="ACME Order Orchestrator" isExecutable="true">
+    <startEvent id="start"/>
+    <sequenceFlow id="f_start" sourceRef="start" targetRef="recordOrder"/>
+    <serviceTask id="recordOrder" name="Record order" flowable:expression="${true}"/>
+    <sequenceFlow id="f_record_throw" sourceRef="recordOrder" targetRef="throwOrderPlaced"/>
+
+    <intermediateThrowEvent id="throwOrderPlaced" name="Signal order placed">
+      <signalEventDefinition signalRef="orderPlacedSignal"/>
+    </intermediateThrowEvent>
+    <sequenceFlow id="f_throw_gw" sourceRef="throwOrderPlaced" targetRef="awaitOutcome"/>
+
+    <eventBasedGateway id="awaitOutcome" name="Await outcome"/>
+    <sequenceFlow id="f_gw_pay" sourceRef="awaitOutcome" targetRef="catchPayment"/>
+    <sequenceFlow id="f_gw_cancel" sourceRef="awaitOutcome" targetRef="catchCancel"/>
+    <sequenceFlow id="f_gw_timeout" sourceRef="awaitOutcome" targetRef="catchTimeout"/>
+
+    <intermediateCatchEvent id="catchPayment" name="Payment confirmed">
+      <messageEventDefinition messageRef="paymentConfirmedMsg"/>
+    </intermediateCatchEvent>
+    <sequenceFlow id="f_pay_ship" sourceRef="catchPayment" targetRef="shipOrder"/>
+    <serviceTask id="shipOrder" name="Ship order" flowable:expression="${true}"/>
+    <sequenceFlow id="f_ship_end" sourceRef="shipOrder" targetRef="endShipped"/>
+    <endEvent id="endShipped" name="Shipped"/>
+
+    <intermediateCatchEvent id="catchCancel" name="Order cancelled">
+      <signalEventDefinition signalRef="orderCancelledSignal"/>
+    </intermediateCatchEvent>
+    <sequenceFlow id="f_cancel_co" sourceRef="catchCancel" targetRef="cancelOrder"/>
+    <serviceTask id="cancelOrder" name="Cancel order" flowable:expression="${true}"/>
+    <sequenceFlow id="f_co_end" sourceRef="cancelOrder" targetRef="endCancelled"/>
+    <endEvent id="endCancelled" name="Cancelled"/>
+
+    <intermediateCatchEvent id="catchTimeout" name="SLA breached">
+      <timerEventDefinition><timeDuration>PT2H</timeDuration></timerEventDefinition>
+    </intermediateCatchEvent>
+    <sequenceFlow id="f_timeout_esc" sourceRef="catchTimeout" targetRef="escalateOrder"/>
+    <userTask id="escalateOrder" name="Escalate stalled order" flowable:candidateGroups="sales"/>
+    <sequenceFlow id="f_esc_end" sourceRef="escalateOrder" targetRef="endEscalated"/>
+    <endEvent id="endEscalated" name="Escalated"/>
+  </process>
+
+  <bpmndi:BPMNDiagram id="BPMNDiagram_acmeOrderOrchestrator">
+    <bpmndi:BPMNPlane id="BPMNPlane_acmeOrderOrchestrator" bpmnElement="acmeOrderOrchestrator">
+      <bpmndi:BPMNShape id="S_start" bpmnElement="start">
+        <omgdc:Bounds x="130" y="200" width="30" height="30"/>
+      </bpmndi:BPMNShape>
+      <bpmndi:BPMNShape id="S_recordOrder" bpmnElement="recordOrder">
+        <omgdc:Bounds x="200" y="185" width="100" height="60"/>
+      </bpmndi:BPMNShape>
+      <bpmndi:BPMNShape id="S_throwOrderPlaced" bpmnElement="throwOrderPlaced">
+        <omgdc:Bounds x="350" y="197" width="36" height="36"/>
+      </bpmndi:BPMNShape>
+      <bpmndi:BPMNShape id="S_awaitOutcome" bpmnElement="awaitOutcome">
+        <omgdc:Bounds x="440" y="195" width="40" height="40"/>
+      </bpmndi:BPMNShape>
+      <bpmndi:BPMNShape id="S_catchPayment" bpmnElement="catchPayment">
+        <omgdc:Bounds x="540" y="100" width="36" height="36"/>
+      </bpmndi:BPMNShape>
+      <bpmndi:BPMNShape id="S_catchCancel" bpmnElement="catchCancel">
+        <omgdc:Bounds x="540" y="197" width="36" height="36"/>
+      </bpmndi:BPMNShape>
+      <bpmndi:BPMNShape id="S_catchTimeout" bpmnElement="catchTimeout">
+        <omgdc:Bounds x="540" y="300" width="36" height="36"/>
+      </bpmndi:BPMNShape>
+      <bpmndi:BPMNShape id="S_shipOrder" bpmnElement="shipOrder">
+        <omgdc:Bounds x="650" y="88" width="100" height="60"/>
+      </bpmndi:BPMNShape>
+      <bpmndi:BPMNShape id="S_cancelOrder" bpmnElement="cancelOrder">
+        <omgdc:Bounds x="650" y="185" width="100" height="60"/>
+      </bpmndi:BPMNShape>
+      <bpmndi:BPMNShape id="S_escalateOrder" bpmnElement="escalateOrder">
+        <omgdc:Bounds x="650" y="288" width="100" height="60"/>
+      </bpmndi:BPMNShape>
+      <bpmndi:BPMNShape id="S_endShipped" bpmnElement="endShipped">
+        <omgdc:Bounds x="820" y="104" width="28" height="28"/>
+      </bpmndi:BPMNShape>
+      <bpmndi:BPMNShape id="S_endCancelled" bpmnElement="endCancelled">
+        <omgdc:Bounds x="820" y="201" width="28" height="28"/>
+      </bpmndi:BPMNShape>
+      <bpmndi:BPMNShape id="S_endEscalated" bpmnElement="endEscalated">
+        <omgdc:Bounds x="820" y="304" width="28" height="28"/>
+      </bpmndi:BPMNShape>
+
+      <bpmndi:BPMNEdge id="E_f_start" bpmnElement="f_start">
+        <omgdi:waypoint x="160" y="215"/><omgdi:waypoint x="200" y="215"/>
+      </bpmndi:BPMNEdge>
+      <bpmndi:BPMNEdge id="E_f_record_throw" bpmnElement="f_record_throw">
+        <omgdi:waypoint x="300" y="215"/><omgdi:waypoint x="350" y="215"/>
+      </bpmndi:BPMNEdge>
+      <bpmndi:BPMNEdge id="E_f_throw_gw" bpmnElement="f_throw_gw">
+        <omgdi:waypoint x="386" y="215"/><omgdi:waypoint x="440" y="215"/>
+      </bpmndi:BPMNEdge>
+      <bpmndi:BPMNEdge id="E_f_gw_pay" bpmnElement="f_gw_pay">
+        <omgdi:waypoint x="460" y="195"/><omgdi:waypoint x="460" y="118"/><omgdi:waypoint x="540" y="118"/>
+      </bpmndi:BPMNEdge>
+      <bpmndi:BPMNEdge id="E_f_gw_cancel" bpmnElement="f_gw_cancel">
+        <omgdi:waypoint x="480" y="215"/><omgdi:waypoint x="540" y="215"/>
+      </bpmndi:BPMNEdge>
+      <bpmndi:BPMNEdge id="E_f_gw_timeout" bpmnElement="f_gw_timeout">
+        <omgdi:waypoint x="460" y="235"/><omgdi:waypoint x="460" y="318"/><omgdi:waypoint x="540" y="318"/>
+      </bpmndi:BPMNEdge>
+      <bpmndi:BPMNEdge id="E_f_pay_ship" bpmnElement="f_pay_ship">
+        <omgdi:waypoint x="576" y="118"/><omgdi:waypoint x="650" y="118"/>
+      </bpmndi:BPMNEdge>
+      <bpmndi:BPMNEdge id="E_f_cancel_co" bpmnElement="f_cancel_co">
+        <omgdi:waypoint x="576" y="215"/><omgdi:waypoint x="650" y="215"/>
+      </bpmndi:BPMNEdge>
+      <bpmndi:BPMNEdge id="E_f_timeout_esc" bpmnElement="f_timeout_esc">
+        <omgdi:waypoint x="576" y="318"/><omgdi:waypoint x="650" y="318"/>
+      </bpmndi:BPMNEdge>
+      <bpmndi:BPMNEdge id="E_f_ship_end" bpmnElement="f_ship_end">
+        <omgdi:waypoint x="750" y="118"/><omgdi:waypoint x="820" y="118"/>
+      </bpmndi:BPMNEdge>
+      <bpmndi:BPMNEdge id="E_f_co_end" bpmnElement="f_co_end">
+        <omgdi:waypoint x="750" y="215"/><omgdi:waypoint x="820" y="215"/>
+      </bpmndi:BPMNEdge>
+      <bpmndi:BPMNEdge id="E_f_esc_end" bpmnElement="f_esc_end">
+        <omgdi:waypoint x="750" y="318"/><omgdi:waypoint x="820" y="318"/>
+      </bpmndi:BPMNEdge>
+    </bpmndi:BPMNPlane>
+  </bpmndi:BPMNDiagram>
+</definitions>

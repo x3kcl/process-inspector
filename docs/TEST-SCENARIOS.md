@@ -5,6 +5,11 @@ maps the risk floors (R-TEST-01) to named, automatable scenarios. Scenario IDs (
 fixture IDs (`FIX-…`) are the handles used in test names, tickets, and milestone done-when
 clauses (R-SEM-07). An empty matrix cell (§1.2) is a visible coverage gap.
 
+> **Where the proof lives:** [TRACEABILITY-MATRIX.md](TRACEABILITY-MATRIX.md) maps each `TS-*`
+> scenario (and each `R-*` requirement) to the concrete automated suite that discharges it —
+> and keeps the honest open-gap register (§C there). This file says how we'd prove a scenario;
+> the matrix says where the proof actually is, or that it is still a gap.
+
 **Data stages** — generation rules are normative in TEST-STRATEGY §10:
 
 | Stage | Data | Where |
@@ -44,6 +49,26 @@ instance); FIX-PROC-07..10 and FIX-CASE-01 are still to author.*
 | FIX-PROC-09 | `demoMultiInstance` | MI subprocess over collection variable | execution-local loop variables; change-state MI-body refusal |
 | FIX-PROC-10 | `demoParallelJoin` | parallel split → two user tasks → join | parallel-join change-state warning |
 | FIX-CASE-01 | `demoCase` (CMMN) | case with an async plan item | cmmn-scoped jobs (null `processInstanceId`) for join filtering. If a profile lacks CMMN REST, this cell falls back to L1 over captured job JSON — documented S1 exception |
+
+#### 1.1a ACME back-office suite (realistic-corpus generators)
+
+*Status: landed in `docker/processes/acme-*.bpmn20.xml`, deployed + started by
+`docker/seed.sh` (`seed_acme`), gated to Flowable **6.8+** (swimlane / HTTP-task / event
+constructs). These are richer, business-shaped fixtures layered on top of the minimal
+FIX-PROC set — they populate department task queues, multi-gateway diagrams, real public-API
+integrations, and event-based inter-process choreography. All start variables are documented
+inline in each file's header comment.*
+
+| ID | Key | Shape | Manufactures |
+|---|---|---|---|
+| FIX-ACME-01 | `acmeExpenseApproval` | 3 swimlanes (Employee/Finance/Management); **exclusive** gateway routes by `${amount}` (≤500 auto · ≤5000 Finance · else Finance+Director) | department queues (`finance`,`management`); exclusive-branch coverage; lane-rendered diagram |
+| FIX-ACME-02 | `acmeLeaveRequest` | 3 swimlanes (Employee/Team-Lead/HR); **parallel** fork → concurrent Team-Lead + HR tasks → join | two simultaneously-open tasks in two department queues (`engineering`,`hr`); parallel-join fixture |
+| FIX-ACME-03 | `acmePurchaseRequisition` | 4 swimlanes (Requester/Procurement/Finance/Legal); **inclusive** gateway on `${needsFinance}`/`${needsLegal}` (Procurement always) | inclusive fan-out subset; `procurement`,`finance`,`legal` queues |
+| FIX-ACME-04 | `acmeLoanOrigination` | long multi-activity: user+service+HTTP tasks, **parallel** fraud‖income fork/join, **3-way exclusive** on `${creditScore}` | every gateway kind in one diagram; deep branch coverage; public-API address call |
+| FIX-ACME-05 | `acmeVendorEnrichment` | built-in **HTTP task** GET `api.restful-api.dev` (no custom bean); exclusive gateway on live `${vendorResponseStatusCode}` | real REST payload in variables; status-driven routing; parks at `reviewVendor` |
+| FIX-ACME-06 | `acmeApiOutage` | async **HTTP task** POST to a reserved `.invalid` host (RFC 2606) + `R1/PT1S` | **deterministic** integration dead-letter (`FlowableException` from `AsyncExecutableHttpRequest`) — distinct exception class from the arithmetic corpus |
+| FIX-ACME-07 | `acmeOrderOrchestrator` | throws global **signal** `orderPlaced`, then **event-based gateway** [message `paymentConfirmed` (correlated by `orderId`) · signal `orderCancelled` · timer PT2H] | waiting-on-event fixtures at the gateway; correlated-response completion (seed delivers the message to the specific waiting execution over REST) |
+| FIX-ACME-08 | `acmePaymentService` | **signal start event** `orderPlaced` → Finance user task | async inter-process comms — one instance auto-started per orchestrator start; Finance queue |
 
 ### 1.2 The SPEC §3 flag matrix → fixture map (mandatory cells, TEST-STRATEGY §6)
 
@@ -206,13 +231,13 @@ docker engine as `dev` AND `prod` manufactures the prod gates (R-TEST-07).
 | TS-VERB-11 | suspend definition: new starts rejected; optional running-instance suspension honored | SPEC §5 tier 3 |
 | TS-VERB-12 | terminate/delete: cascade children enumerated **server-fresh** in the confirm; children actually gone after | SPEC §5/§6 tier 3 |
 | TS-VERB-13 | delete DLQ job: ADMIN-only; orphan warning; execution verifiably orphaned; change-state rescue documented in the modal | SPEC §5 tier 3 |
-| TS-VERB-14 | every verb: reversibility badge (`REVERSIBLE`/`RECOVERABLE`/`IRREVERSIBLE`) + plain-language secondary label rendered verbatim from §5.0 | R-SAFE-02/04 |
+| TS-VERB-14 | every verb: reversibility badge (`REVERSIBLE`/`RECOVERABLE`/`IRREVERSIBLE`) + plain-language secondary label rendered verbatim from §5.0. **Frontend `catalog.test.ts` TS-VERB-14 block iterates `VERBS` (valid badge, non-empty note, §5.0 verbatim label, prod friction floor); backend tier/floor completeness `RbacGuardMatrixTest`.** | R-SAFE-02/04 |
 | TS-GUARD-01 | tier 0 on dev: zero modal; on prod, side-effect verbs (trigger-timer, retry-now) get two-step inline confirm; queue-state verbs stay single-click | R-SAFE-03 |
 | TS-GUARD-02 | tier 1: diff confirm; reason optional dev / required prod; reason <10 trimmed chars rejected inline | SPEC §6, R-NFR-06 |
 | TS-GUARD-03 | tier 2: required reason + plan-as-sentence + raw REST body preview | SPEC §6 |
 | TS-GUARD-04 | tier 3: server-fresh restatement warns on drift (state mutated out-of-band after grid snapshot); typed token = the business key — generic "yes"/"DELETE" rejected; Enter never submits; cancel-focused; env color band | SPEC §6, R-TEST-07 |
 | TS-GUARD-05 | tier 4: scope re-resolved at submit with drift shown; prod type-the-count; **unscoped destructive bulk refused outright** | SPEC §6/§7 |
-| TS-RBAC-01 | the 100% matrix, generated: every mutating endpoint × {VIEWER, RESPONDER, OPERATOR, ADMIN} × in/out-of-scope (engine, tenant) × read-only engine mode → expected 403 + greyed-with-reason tooltip. CI fails on an endpoint without matrix rows | R-TEST-01, R-GOV-04, SPEC §2 |
+| TS-RBAC-01 | the 100% matrix, generated: every mutating endpoint × {VIEWER, RESPONDER, OPERATOR, ADMIN} × in/out-of-scope (engine, tenant) × read-only engine mode → expected 403 + greyed-with-reason tooltip. CI fails on an endpoint without matrix rows. **Generated verb×role matrix: `RbacGuardMatrixTest` (L1, iterates `ActionVerb.values()` — a floor-less verb fails it); HTTP wiring `ActionRbacGuardSpringTest` (L3); scope isolation `ScopeMappingServiceTest`; read-only mode `CorrectiveActionServiceTest`. OIDC-scoped-grant HTTP leg = matrix §C-1.** | R-TEST-01, R-GOV-04, SPEC §2 |
 | TS-RBAC-02 | RESPONDER: tier-0 + unstick + notes allowed; variable writes and token moves denied with the verb-grant reason | R-SAFE-01 |
 | TS-RBAC-03 | protected instance: all verbs below floor disabled-with-reason; badge on row/header/confirm; bulk auto-excludes as `skipped (protected)` | R-SAFE-05 |
 | TS-RBAC-04 | break-glass login: ADMIN-global, distinguished audit flag, page banner, 4 h session cap | R-SAFE-06 |

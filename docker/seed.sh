@@ -41,6 +41,102 @@ start_instance() { # engine json-body -> instance id on stdout
     "$1/runtime/process-instances" | json_id
 }
 
+task_for_instance() { # engine instance-id -> first open task id (or empty)
+  curl -sfu "$CRED" "$1/runtime/tasks?processInstanceId=$2" \
+    | python3 -c 'import sys,json;d=json.load(sys.stdin)["data"];print(d[0]["id"] if d else "")'
+}
+
+complete_task() { # engine task-id
+  curl -sfu "$CRED" -X POST -H 'Content-Type: application/json' -d '{"action":"complete"}' \
+    "$1/runtime/tasks/$2" >/dev/null
+}
+
+# Correlate a named message to the single execution of one instance parked at activityId.
+# This is the request/response leg of the event choreography — delivered over REST, targeting
+# exactly the waiting order (correlation by instance), never a broadcast (validate-bpmn §5).
+deliver_message() { # engine instance-id activityId messageName
+  local ex
+  ex=$(curl -sfu "$CRED" "$1/runtime/executions?processInstanceId=$2&activityId=$3" \
+    | python3 -c 'import sys,json;d=json.load(sys.stdin)["data"];print(d[0]["id"] if d else "")')
+  [ -n "$ex" ] && curl -sfu "$CRED" -X PUT -H 'Content-Type: application/json' \
+    -d "{\"action\":\"messageEventReceived\",\"messageName\":\"$4\"}" \
+    "$1/runtime/executions/$ex" >/dev/null
+}
+
+engine_is_68plus() { # engine -> exit 0 iff Flowable >= 6.8
+  local ver
+  ver=$(curl -sfu "$CRED" "$1/management/engine" \
+    | python3 -c 'import sys,json;print(json.load(sys.stdin).get("version",""))')
+  python3 -c "import sys;v=('$ver'+'.0.0').split('.');sys.exit(0 if (int(v[0])>6 or (int(v[0])==6 and int(v[1])>=8)) else 1)" 2>/dev/null
+}
+
+# ACME back-office suite: swimlane/department approvals, multi-gateway processes, public-API
+# (HTTP-task) integrations, and event-based inter-process choreography with correlation.
+# Gated to 6.8+ (consistent with the modern-engine fixtures; 6.3 is DLQ-blind — see memory).
+seed_acme() { # engine
+  local E="$1" pid tid first fin leg combo
+  if ! engine_is_68plus "$E"; then
+    echo "  ACME suite skipped — engine predates 6.8 (swimlane/http/event fixtures gated 6.8+)."
+    return
+  fi
+  echo "  -- ACME back-office suite --"
+  deploy_if_missing "$E" acmeExpenseApproval     acme-expense-approval.bpmn20.xml
+  deploy_if_missing "$E" acmeLeaveRequest        acme-leave-request.bpmn20.xml
+  deploy_if_missing "$E" acmePurchaseRequisition acme-purchase-requisition.bpmn20.xml
+  deploy_if_missing "$E" acmeLoanOrigination     acme-loan-origination.bpmn20.xml
+  deploy_if_missing "$E" acmeVendorEnrichment    acme-vendor-enrichment.bpmn20.xml
+  deploy_if_missing "$E" acmeApiOutage           acme-api-outage.bpmn20.xml
+  deploy_if_missing "$E" acmePaymentService      acme-payment-service.bpmn20.xml
+  deploy_if_missing "$E" acmeOrderOrchestrator   acme-order-orchestrator.bpmn20.xml
+
+  # Expense — three amount bands (auto-approve / Finance / Finance+Director). Complete the
+  # employee entry task so the token reaches the routing gateway and the department queue.
+  for amt in 200 2000 9000; do
+    pid=$(start_instance "$E" "{\"processDefinitionKey\":\"acmeExpenseApproval\",\"businessKey\":\"EXP-$amt-$(date +%s)\",\"variables\":[{\"name\":\"amount\",\"type\":\"integer\",\"value\":$amt}]}")
+    tid=$(task_for_instance "$E" "$pid"); [ -n "$tid" ] && complete_task "$E" "$tid"
+    echo "  acmeExpenseApproval     $pid (amount=$amt)"
+  done
+
+  # Leave — one instance fans to two concurrent department tasks (engineering + hr).
+  pid=$(start_instance "$E" '{"processDefinitionKey":"acmeLeaveRequest","variables":[]}')
+  tid=$(task_for_instance "$E" "$pid"); [ -n "$tid" ] && complete_task "$E" "$tid"
+  echo "  acmeLeaveRequest        $pid (parallel team-lead + HR tasks open)"
+
+  # Purchase requisition — inclusive-gateway fan-out combinations.
+  for combo in 'true true' 'false false'; do
+    read -r fin leg <<<"$combo"
+    pid=$(start_instance "$E" "{\"processDefinitionKey\":\"acmePurchaseRequisition\",\"variables\":[{\"name\":\"needsFinance\",\"type\":\"boolean\",\"value\":$fin},{\"name\":\"needsLegal\",\"type\":\"boolean\",\"value\":$leg}]}")
+    tid=$(task_for_instance "$E" "$pid"); [ -n "$tid" ] && complete_task "$E" "$tid"
+    echo "  acmePurchaseRequisition $pid (needsFinance=$fin needsLegal=$leg)"
+  done
+
+  # Loan — complete the capture task so the public-API address call + parallel checks run;
+  # the token then parks on Income verification (Finance). creditScore drives the later arm.
+  for score in 780 640 550; do
+    pid=$(start_instance "$E" "{\"processDefinitionKey\":\"acmeLoanOrigination\",\"variables\":[{\"name\":\"creditScore\",\"type\":\"integer\",\"value\":$score}]}")
+    tid=$(task_for_instance "$E" "$pid"); [ -n "$tid" ] && complete_task "$E" "$tid"
+    echo "  acmeLoanOrigination     $pid (creditScore=$score)"
+  done
+
+  # Public-API integrations (need outbound internet; the outage one fails deterministically).
+  pid=$(start_instance "$E" '{"processDefinitionKey":"acmeVendorEnrichment","variables":[]}')
+  echo "  acmeVendorEnrichment    $pid (live HTTP GET -> parks at reviewVendor)"
+  pid=$(start_instance "$E" '{"processDefinitionKey":"acmeApiOutage","variables":[]}')
+  echo "  acmeApiOutage           $pid (async HTTP to .invalid host -> dead-letters)"
+
+  # Event choreography — each orchestrator throws orderPlaced, auto-starting a payment-service
+  # (signal, inter-process). Order #1 receives its correlated paymentConfirmed and ships; #2/#3
+  # stay parked at the event-based gateway as waiting-on-event fixtures.
+  first=""
+  for n in 1 2 3; do
+    pid=$(start_instance "$E" "{\"processDefinitionKey\":\"acmeOrderOrchestrator\",\"businessKey\":\"ORD-$n-$(date +%s)\",\"variables\":[{\"name\":\"orderId\",\"type\":\"string\",\"value\":\"ORD-$n\"}]}")
+    echo "  acmeOrderOrchestrator   $pid (orderId=ORD-$n; signalled acmePaymentService)"
+    [ -z "$first" ] && first="$pid"
+  done
+  deliver_message "$E" "$first" catchPayment paymentConfirmed
+  echo "  -> delivered correlated paymentConfirmed to $first (order shipped)"
+}
+
 seed_engine() { # base-url
   local E="$1" pid
   echo "Seeding $E"
@@ -97,6 +193,8 @@ seed_engine() { # base-url
   else
     echo "  demoExternalWorker skipped — engine $ver predates external workers (< 6.8)."
   fi
+
+  seed_acme "$E"
 }
 
 if [ $# -ge 1 ]; then

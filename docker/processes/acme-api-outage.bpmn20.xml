@@ -1,0 +1,53 @@
+<?xml version="1.0" encoding="UTF-8"?>
+<definitions xmlns="http://www.omg.org/spec/BPMN/20100524/MODEL"
+             xmlns:xsi="http://www.w3.org/2001/XMLSchema-instance"
+             xmlns:flowable="http://flowable.org/bpmn"
+             xmlns:bpmndi="http://www.omg.org/spec/BPMN/20100524/DI"
+             xmlns:omgdc="http://www.omg.org/spec/DD/20100524/DC"
+             xmlns:omgdi="http://www.omg.org/spec/DD/20100524/DI"
+             typeLanguage="http://www.w3.org/2001/XMLSchema"
+             expressionLanguage="http://www.w3.org/1999/XPath"
+             targetNamespace="http://inspector.io/demo/acme">
+
+  <!-- ACME "sample BFF" integration — FAILING external REST call (DLQ fixture).
+       An async HTTP task POSTs to an unroutable host in the reserved .invalid TLD
+       (RFC 2606 — guaranteed never to resolve), so the call throws UnknownHostException
+       DETERMINISTICALLY, offline or online. async + R1/PT1S retry -> dead-letter job.
+       This is the realistic "downstream API is down" dead-letter for the DLQ views;
+       exception class differs from the arithmetic corpus (a network/integration failure). -->
+  <process id="acmeApiOutage" name="ACME API Outage (failing integration)" isExecutable="true">
+    <startEvent id="start"/>
+    <sequenceFlow id="f_start" sourceRef="start" targetRef="chargeExternal"/>
+
+    <serviceTask id="chargeExternal" name="POST to billing API" flowable:type="http" flowable:async="true">
+      <extensionElements>
+        <flowable:field name="requestMethod"><flowable:string>POST</flowable:string></flowable:field>
+        <flowable:field name="requestUrl"><flowable:string>http://acme-billing.invalid:9999/charge</flowable:string></flowable:field>
+        <flowable:field name="requestBody"><flowable:string>{"amount":100}</flowable:string></flowable:field>
+        <flowable:failedJobRetryTimeCycle>R1/PT1S</flowable:failedJobRetryTimeCycle>
+      </extensionElements>
+    </serviceTask>
+    <sequenceFlow id="f_charge_end" sourceRef="chargeExternal" targetRef="end"/>
+    <endEvent id="end"/>
+  </process>
+
+  <bpmndi:BPMNDiagram id="BPMNDiagram_acmeApiOutage">
+    <bpmndi:BPMNPlane id="BPMNPlane_acmeApiOutage" bpmnElement="acmeApiOutage">
+      <bpmndi:BPMNShape id="S_start" bpmnElement="start">
+        <omgdc:Bounds x="150" y="100" width="30" height="30"/>
+      </bpmndi:BPMNShape>
+      <bpmndi:BPMNShape id="S_chargeExternal" bpmnElement="chargeExternal">
+        <omgdc:Bounds x="230" y="85" width="120" height="60"/>
+      </bpmndi:BPMNShape>
+      <bpmndi:BPMNShape id="S_end" bpmnElement="end">
+        <omgdc:Bounds x="410" y="101" width="28" height="28"/>
+      </bpmndi:BPMNShape>
+      <bpmndi:BPMNEdge id="E_f_start" bpmnElement="f_start">
+        <omgdi:waypoint x="180" y="115"/><omgdi:waypoint x="230" y="115"/>
+      </bpmndi:BPMNEdge>
+      <bpmndi:BPMNEdge id="E_f_charge_end" bpmnElement="f_charge_end">
+        <omgdi:waypoint x="350" y="115"/><omgdi:waypoint x="410" y="115"/>
+      </bpmndi:BPMNEdge>
+    </bpmndi:BPMNPlane>
+  </bpmndi:BPMNDiagram>
+</definitions>

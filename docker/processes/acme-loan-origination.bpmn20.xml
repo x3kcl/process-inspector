@@ -1,0 +1,172 @@
+<?xml version="1.0" encoding="UTF-8"?>
+<definitions xmlns="http://www.omg.org/spec/BPMN/20100524/MODEL"
+             xmlns:xsi="http://www.w3.org/2001/XMLSchema-instance"
+             xmlns:flowable="http://flowable.org/bpmn"
+             xmlns:bpmndi="http://www.omg.org/spec/BPMN/20100524/DI"
+             xmlns:omgdc="http://www.omg.org/spec/DD/20100524/DC"
+             xmlns:omgdi="http://www.omg.org/spec/DD/20100524/DI"
+             typeLanguage="http://www.w3.org/2001/XMLSchema"
+             expressionLanguage="http://www.w3.org/1999/XPath"
+             targetNamespace="http://inspector.io/demo/acme">
+
+  <!-- ACME back-office suite — LOAN ORIGINATION (multi-activity + every gateway kind).
+       A deliberately long, branch-heavy definition: user + service + HTTP tasks, a PARALLEL
+       fork/join (fraud check || income verification run concurrently) and a 3-way EXCLUSIVE
+       decision on ${creditScore}:
+         >= 700 auto-approve · >= 600 manual review (Finance) · else reject.
+       validateAddress calls a real public API (api.zippopotam.us). Seed instances with
+       different creditScore values to exercise all three arms. -->
+  <process id="acmeLoanOrigination" name="ACME Loan Origination" isExecutable="true">
+    <startEvent id="start"/>
+    <sequenceFlow id="f_start" sourceRef="start" targetRef="captureApplication"/>
+    <userTask id="captureApplication" name="Capture application" flowable:assignee="rest-admin"/>
+    <sequenceFlow id="f_cap_addr" sourceRef="captureApplication" targetRef="validateAddress"/>
+
+    <serviceTask id="validateAddress" name="Validate address (public API)" flowable:type="http">
+      <extensionElements>
+        <flowable:field name="requestMethod"><flowable:string>GET</flowable:string></flowable:field>
+        <flowable:field name="requestUrl"><flowable:string>https://api.zippopotam.us/us/90210</flowable:string></flowable:field>
+        <flowable:field name="saveResponseParameters"><flowable:string>true</flowable:string></flowable:field>
+        <flowable:field name="resultVariablePrefix"><flowable:string>address</flowable:string></flowable:field>
+      </extensionElements>
+    </serviceTask>
+    <sequenceFlow id="f_addr_pull" sourceRef="validateAddress" targetRef="pullCreditReport"/>
+
+    <serviceTask id="pullCreditReport" name="Pull credit report" flowable:expression="${true}"/>
+    <sequenceFlow id="f_pull_fork" sourceRef="pullCreditReport" targetRef="forkChecks"/>
+
+    <parallelGateway id="forkChecks" name="Fork checks"/>
+    <sequenceFlow id="f_fork_fraud" sourceRef="forkChecks" targetRef="fraudCheck"/>
+    <sequenceFlow id="f_fork_income" sourceRef="forkChecks" targetRef="incomeVerification"/>
+    <serviceTask id="fraudCheck" name="Fraud check" flowable:expression="${true}"/>
+    <userTask id="incomeVerification" name="Income verification" flowable:candidateGroups="finance"/>
+    <sequenceFlow id="f_fraud_join" sourceRef="fraudCheck" targetRef="joinChecks"/>
+    <sequenceFlow id="f_income_join" sourceRef="incomeVerification" targetRef="joinChecks"/>
+    <parallelGateway id="joinChecks" name="Join checks"/>
+    <sequenceFlow id="f_join_score" sourceRef="joinChecks" targetRef="scoreGateway"/>
+
+    <exclusiveGateway id="scoreGateway" name="Credit score?"/>
+    <sequenceFlow id="f_score_auto" sourceRef="scoreGateway" targetRef="autoApprove">
+      <conditionExpression xsi:type="tFormalExpression">${creditScore &gt;= 700}</conditionExpression>
+    </sequenceFlow>
+    <sequenceFlow id="f_score_manual" sourceRef="scoreGateway" targetRef="manualReview">
+      <conditionExpression xsi:type="tFormalExpression">${creditScore &gt;= 600}</conditionExpression>
+    </sequenceFlow>
+    <sequenceFlow id="f_score_reject" sourceRef="scoreGateway" targetRef="rejectLoan"/>
+
+    <serviceTask id="autoApprove" name="Auto-approve loan" flowable:expression="${true}"/>
+    <userTask id="manualReview" name="Manual underwriting" flowable:candidateGroups="finance"/>
+    <serviceTask id="rejectLoan" name="Reject loan" flowable:expression="${true}"/>
+    <sequenceFlow id="f_auto_merge" sourceRef="autoApprove" targetRef="mergeDecision"/>
+    <sequenceFlow id="f_manual_merge" sourceRef="manualReview" targetRef="mergeDecision"/>
+    <sequenceFlow id="f_reject_merge" sourceRef="rejectLoan" targetRef="mergeDecision"/>
+
+    <exclusiveGateway id="mergeDecision" name="Merge"/>
+    <sequenceFlow id="f_merge_notify" sourceRef="mergeDecision" targetRef="notifyApplicant"/>
+    <serviceTask id="notifyApplicant" name="Notify applicant" flowable:expression="${true}"/>
+    <sequenceFlow id="f_notify_end" sourceRef="notifyApplicant" targetRef="end"/>
+    <endEvent id="end"/>
+  </process>
+
+  <bpmndi:BPMNDiagram id="BPMNDiagram_acmeLoanOrigination">
+    <bpmndi:BPMNPlane id="BPMNPlane_acmeLoanOrigination" bpmnElement="acmeLoanOrigination">
+      <bpmndi:BPMNShape id="S_start" bpmnElement="start">
+        <omgdc:Bounds x="130" y="205" width="30" height="30"/>
+      </bpmndi:BPMNShape>
+      <bpmndi:BPMNShape id="S_captureApplication" bpmnElement="captureApplication">
+        <omgdc:Bounds x="200" y="190" width="100" height="60"/>
+      </bpmndi:BPMNShape>
+      <bpmndi:BPMNShape id="S_validateAddress" bpmnElement="validateAddress">
+        <omgdc:Bounds x="340" y="190" width="120" height="60"/>
+      </bpmndi:BPMNShape>
+      <bpmndi:BPMNShape id="S_pullCreditReport" bpmnElement="pullCreditReport">
+        <omgdc:Bounds x="500" y="190" width="120" height="60"/>
+      </bpmndi:BPMNShape>
+      <bpmndi:BPMNShape id="S_forkChecks" bpmnElement="forkChecks">
+        <omgdc:Bounds x="660" y="200" width="40" height="40"/>
+      </bpmndi:BPMNShape>
+      <bpmndi:BPMNShape id="S_fraudCheck" bpmnElement="fraudCheck">
+        <omgdc:Bounds x="730" y="110" width="120" height="60"/>
+      </bpmndi:BPMNShape>
+      <bpmndi:BPMNShape id="S_incomeVerification" bpmnElement="incomeVerification">
+        <omgdc:Bounds x="730" y="270" width="120" height="60"/>
+      </bpmndi:BPMNShape>
+      <bpmndi:BPMNShape id="S_joinChecks" bpmnElement="joinChecks">
+        <omgdc:Bounds x="900" y="200" width="40" height="40"/>
+      </bpmndi:BPMNShape>
+      <bpmndi:BPMNShape id="S_scoreGateway" bpmnElement="scoreGateway" isMarkerVisible="true">
+        <omgdc:Bounds x="980" y="200" width="40" height="40"/>
+      </bpmndi:BPMNShape>
+      <bpmndi:BPMNShape id="S_autoApprove" bpmnElement="autoApprove">
+        <omgdc:Bounds x="1070" y="90" width="120" height="60"/>
+      </bpmndi:BPMNShape>
+      <bpmndi:BPMNShape id="S_manualReview" bpmnElement="manualReview">
+        <omgdc:Bounds x="1070" y="190" width="120" height="60"/>
+      </bpmndi:BPMNShape>
+      <bpmndi:BPMNShape id="S_rejectLoan" bpmnElement="rejectLoan">
+        <omgdc:Bounds x="1070" y="290" width="120" height="60"/>
+      </bpmndi:BPMNShape>
+      <bpmndi:BPMNShape id="S_mergeDecision" bpmnElement="mergeDecision" isMarkerVisible="true">
+        <omgdc:Bounds x="1250" y="200" width="40" height="40"/>
+      </bpmndi:BPMNShape>
+      <bpmndi:BPMNShape id="S_notifyApplicant" bpmnElement="notifyApplicant">
+        <omgdc:Bounds x="1330" y="190" width="120" height="60"/>
+      </bpmndi:BPMNShape>
+      <bpmndi:BPMNShape id="S_end" bpmnElement="end">
+        <omgdc:Bounds x="1500" y="206" width="28" height="28"/>
+      </bpmndi:BPMNShape>
+
+      <bpmndi:BPMNEdge id="E_f_start" bpmnElement="f_start">
+        <omgdi:waypoint x="160" y="220"/><omgdi:waypoint x="200" y="220"/>
+      </bpmndi:BPMNEdge>
+      <bpmndi:BPMNEdge id="E_f_cap_addr" bpmnElement="f_cap_addr">
+        <omgdi:waypoint x="300" y="220"/><omgdi:waypoint x="340" y="220"/>
+      </bpmndi:BPMNEdge>
+      <bpmndi:BPMNEdge id="E_f_addr_pull" bpmnElement="f_addr_pull">
+        <omgdi:waypoint x="460" y="220"/><omgdi:waypoint x="500" y="220"/>
+      </bpmndi:BPMNEdge>
+      <bpmndi:BPMNEdge id="E_f_pull_fork" bpmnElement="f_pull_fork">
+        <omgdi:waypoint x="620" y="220"/><omgdi:waypoint x="660" y="220"/>
+      </bpmndi:BPMNEdge>
+      <bpmndi:BPMNEdge id="E_f_fork_fraud" bpmnElement="f_fork_fraud">
+        <omgdi:waypoint x="680" y="200"/><omgdi:waypoint x="680" y="140"/><omgdi:waypoint x="730" y="140"/>
+      </bpmndi:BPMNEdge>
+      <bpmndi:BPMNEdge id="E_f_fork_income" bpmnElement="f_fork_income">
+        <omgdi:waypoint x="680" y="240"/><omgdi:waypoint x="680" y="300"/><omgdi:waypoint x="730" y="300"/>
+      </bpmndi:BPMNEdge>
+      <bpmndi:BPMNEdge id="E_f_fraud_join" bpmnElement="f_fraud_join">
+        <omgdi:waypoint x="850" y="140"/><omgdi:waypoint x="920" y="140"/><omgdi:waypoint x="920" y="200"/>
+      </bpmndi:BPMNEdge>
+      <bpmndi:BPMNEdge id="E_f_income_join" bpmnElement="f_income_join">
+        <omgdi:waypoint x="850" y="300"/><omgdi:waypoint x="920" y="300"/><omgdi:waypoint x="920" y="240"/>
+      </bpmndi:BPMNEdge>
+      <bpmndi:BPMNEdge id="E_f_join_score" bpmnElement="f_join_score">
+        <omgdi:waypoint x="940" y="220"/><omgdi:waypoint x="980" y="220"/>
+      </bpmndi:BPMNEdge>
+      <bpmndi:BPMNEdge id="E_f_score_auto" bpmnElement="f_score_auto">
+        <omgdi:waypoint x="1000" y="200"/><omgdi:waypoint x="1000" y="120"/><omgdi:waypoint x="1070" y="120"/>
+      </bpmndi:BPMNEdge>
+      <bpmndi:BPMNEdge id="E_f_score_manual" bpmnElement="f_score_manual">
+        <omgdi:waypoint x="1020" y="220"/><omgdi:waypoint x="1070" y="220"/>
+      </bpmndi:BPMNEdge>
+      <bpmndi:BPMNEdge id="E_f_score_reject" bpmnElement="f_score_reject">
+        <omgdi:waypoint x="1000" y="240"/><omgdi:waypoint x="1000" y="320"/><omgdi:waypoint x="1070" y="320"/>
+      </bpmndi:BPMNEdge>
+      <bpmndi:BPMNEdge id="E_f_auto_merge" bpmnElement="f_auto_merge">
+        <omgdi:waypoint x="1190" y="120"/><omgdi:waypoint x="1270" y="120"/><omgdi:waypoint x="1270" y="200"/>
+      </bpmndi:BPMNEdge>
+      <bpmndi:BPMNEdge id="E_f_manual_merge" bpmnElement="f_manual_merge">
+        <omgdi:waypoint x="1190" y="220"/><omgdi:waypoint x="1250" y="220"/>
+      </bpmndi:BPMNEdge>
+      <bpmndi:BPMNEdge id="E_f_reject_merge" bpmnElement="f_reject_merge">
+        <omgdi:waypoint x="1190" y="320"/><omgdi:waypoint x="1270" y="320"/><omgdi:waypoint x="1270" y="240"/>
+      </bpmndi:BPMNEdge>
+      <bpmndi:BPMNEdge id="E_f_merge_notify" bpmnElement="f_merge_notify">
+        <omgdi:waypoint x="1290" y="220"/><omgdi:waypoint x="1330" y="220"/>
+      </bpmndi:BPMNEdge>
+      <bpmndi:BPMNEdge id="E_f_notify_end" bpmnElement="f_notify_end">
+        <omgdi:waypoint x="1450" y="220"/><omgdi:waypoint x="1500" y="220"/>
+      </bpmndi:BPMNEdge>
+    </bpmndi:BPMNPlane>
+  </bpmndi:BPMNDiagram>
+</definitions>

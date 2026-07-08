@@ -1,0 +1,59 @@
+<?xml version="1.0" encoding="UTF-8"?>
+<definitions xmlns="http://www.omg.org/spec/BPMN/20100524/MODEL"
+             xmlns:xsi="http://www.w3.org/2001/XMLSchema-instance"
+             xmlns:flowable="http://flowable.org/bpmn"
+             xmlns:bpmndi="http://www.omg.org/spec/BPMN/20100524/DI"
+             xmlns:omgdc="http://www.omg.org/spec/DD/20100524/DC"
+             xmlns:omgdi="http://www.omg.org/spec/DD/20100524/DI"
+             typeLanguage="http://www.w3.org/2001/XMLSchema"
+             expressionLanguage="http://www.w3.org/1999/XPath"
+             targetNamespace="http://inspector.io/demo/acme">
+
+  <!-- ACME event choreography — PAYMENT SERVICE (signal-started responder).
+       A SIGNAL START EVENT on "orderPlaced": whenever acmeOrderOrchestrator throws that
+       global signal, a payment-service instance starts on its own — asynchronous,
+       event-based inter-process communication (no direct call, no shared thread).
+       It parks on a Finance user task (confirm capture). Completing it, and then delivering
+       the correlated "paymentConfirmed" message back to the waiting orchestrator (over REST),
+       closes the request/response loop. -->
+
+  <signal id="orderPlacedSignal" name="orderPlaced" flowable:scope="global"/>
+
+  <process id="acmePaymentService" name="ACME Payment Service" isExecutable="true">
+    <startEvent id="startSignal" name="On orderPlaced">
+      <signalEventDefinition signalRef="orderPlacedSignal"/>
+    </startEvent>
+    <sequenceFlow id="f_start_auth" sourceRef="startSignal" targetRef="authorizePayment"/>
+    <serviceTask id="authorizePayment" name="Authorize payment" flowable:expression="${true}"/>
+    <sequenceFlow id="f_auth_confirm" sourceRef="authorizePayment" targetRef="confirmCapture"/>
+    <userTask id="confirmCapture" name="Confirm capture" flowable:candidateGroups="finance"/>
+    <sequenceFlow id="f_confirm_end" sourceRef="confirmCapture" targetRef="end"/>
+    <endEvent id="end"/>
+  </process>
+
+  <bpmndi:BPMNDiagram id="BPMNDiagram_acmePaymentService">
+    <bpmndi:BPMNPlane id="BPMNPlane_acmePaymentService" bpmnElement="acmePaymentService">
+      <bpmndi:BPMNShape id="S_startSignal" bpmnElement="startSignal">
+        <omgdc:Bounds x="150" y="100" width="30" height="30"/>
+      </bpmndi:BPMNShape>
+      <bpmndi:BPMNShape id="S_authorizePayment" bpmnElement="authorizePayment">
+        <omgdc:Bounds x="230" y="85" width="120" height="60"/>
+      </bpmndi:BPMNShape>
+      <bpmndi:BPMNShape id="S_confirmCapture" bpmnElement="confirmCapture">
+        <omgdc:Bounds x="400" y="85" width="120" height="60"/>
+      </bpmndi:BPMNShape>
+      <bpmndi:BPMNShape id="S_end" bpmnElement="end">
+        <omgdc:Bounds x="570" y="101" width="28" height="28"/>
+      </bpmndi:BPMNShape>
+      <bpmndi:BPMNEdge id="E_f_start_auth" bpmnElement="f_start_auth">
+        <omgdi:waypoint x="180" y="115"/><omgdi:waypoint x="230" y="115"/>
+      </bpmndi:BPMNEdge>
+      <bpmndi:BPMNEdge id="E_f_auth_confirm" bpmnElement="f_auth_confirm">
+        <omgdi:waypoint x="350" y="115"/><omgdi:waypoint x="400" y="115"/>
+      </bpmndi:BPMNEdge>
+      <bpmndi:BPMNEdge id="E_f_confirm_end" bpmnElement="f_confirm_end">
+        <omgdi:waypoint x="520" y="115"/><omgdi:waypoint x="570" y="115"/>
+      </bpmndi:BPMNEdge>
+    </bpmndi:BPMNPlane>
+  </bpmndi:BPMNDiagram>
+</definitions>

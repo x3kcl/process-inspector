@@ -1,0 +1,88 @@
+<?xml version="1.0" encoding="UTF-8"?>
+<definitions xmlns="http://www.omg.org/spec/BPMN/20100524/MODEL"
+             xmlns:xsi="http://www.w3.org/2001/XMLSchema-instance"
+             xmlns:flowable="http://flowable.org/bpmn"
+             xmlns:bpmndi="http://www.omg.org/spec/BPMN/20100524/DI"
+             xmlns:omgdc="http://www.omg.org/spec/DD/20100524/DC"
+             xmlns:omgdi="http://www.omg.org/spec/DD/20100524/DI"
+             typeLanguage="http://www.w3.org/2001/XMLSchema"
+             expressionLanguage="http://www.w3.org/1999/XPath"
+             targetNamespace="http://inspector.io/demo/acme">
+
+  <!-- ACME "sample BFF" integration — VENDOR ENRICHMENT.
+       Calls a real PUBLIC REST API from a Flowable HTTP service task (built-in
+       flowable:type="http", no custom bean) and routes on the live HTTP status code.
+       GET https://api.restful-api.dev/objects/7  (stable public JSON fixture API).
+       The response body + status land in process variables (vendorResponseBody /
+       vendorResponseStatusCode) — a real-payload fixture for the variables view. -->
+  <process id="acmeVendorEnrichment" name="ACME Vendor Enrichment (public API)" isExecutable="true">
+    <startEvent id="start"/>
+    <sequenceFlow id="f_start" sourceRef="start" targetRef="callVendorApi"/>
+
+    <serviceTask id="callVendorApi" name="Fetch vendor (public API)" flowable:type="http">
+      <extensionElements>
+        <flowable:field name="requestMethod"><flowable:string>GET</flowable:string></flowable:field>
+        <flowable:field name="requestUrl"><flowable:string>https://api.restful-api.dev/objects/7</flowable:string></flowable:field>
+        <flowable:field name="saveResponseParameters"><flowable:string>true</flowable:string></flowable:field>
+        <flowable:field name="resultVariablePrefix"><flowable:string>vendor</flowable:string></flowable:field>
+      </extensionElements>
+    </serviceTask>
+    <sequenceFlow id="f_call_gw" sourceRef="callVendorApi" targetRef="apiOk"/>
+
+    <exclusiveGateway id="apiOk" name="HTTP 200?"/>
+    <sequenceFlow id="f_ok" sourceRef="apiOk" targetRef="reviewVendor">
+      <conditionExpression xsi:type="tFormalExpression">${vendorResponseStatusCode == 200}</conditionExpression>
+    </sequenceFlow>
+    <sequenceFlow id="f_err" sourceRef="apiOk" targetRef="handleApiError"/>
+
+    <userTask id="reviewVendor" name="Review enriched vendor" flowable:candidateGroups="procurement"/>
+    <sequenceFlow id="f_review_end" sourceRef="reviewVendor" targetRef="end"/>
+
+    <serviceTask id="handleApiError" name="Flag enrichment failure" flowable:expression="${true}"/>
+    <sequenceFlow id="f_err_end" sourceRef="handleApiError" targetRef="end"/>
+
+    <endEvent id="end"/>
+  </process>
+
+  <bpmndi:BPMNDiagram id="BPMNDiagram_acmeVendorEnrichment">
+    <bpmndi:BPMNPlane id="BPMNPlane_acmeVendorEnrichment" bpmnElement="acmeVendorEnrichment">
+      <bpmndi:BPMNShape id="S_start" bpmnElement="start">
+        <omgdc:Bounds x="150" y="100" width="30" height="30"/>
+      </bpmndi:BPMNShape>
+      <bpmndi:BPMNShape id="S_callVendorApi" bpmnElement="callVendorApi">
+        <omgdc:Bounds x="230" y="85" width="120" height="60"/>
+      </bpmndi:BPMNShape>
+      <bpmndi:BPMNShape id="S_apiOk" bpmnElement="apiOk" isMarkerVisible="true">
+        <omgdc:Bounds x="400" y="95" width="40" height="40"/>
+      </bpmndi:BPMNShape>
+      <bpmndi:BPMNShape id="S_reviewVendor" bpmnElement="reviewVendor">
+        <omgdc:Bounds x="500" y="60" width="120" height="60"/>
+      </bpmndi:BPMNShape>
+      <bpmndi:BPMNShape id="S_handleApiError" bpmnElement="handleApiError">
+        <omgdc:Bounds x="500" y="170" width="120" height="60"/>
+      </bpmndi:BPMNShape>
+      <bpmndi:BPMNShape id="S_end" bpmnElement="end">
+        <omgdc:Bounds x="700" y="101" width="28" height="28"/>
+      </bpmndi:BPMNShape>
+
+      <bpmndi:BPMNEdge id="E_f_start" bpmnElement="f_start">
+        <omgdi:waypoint x="180" y="115"/><omgdi:waypoint x="230" y="115"/>
+      </bpmndi:BPMNEdge>
+      <bpmndi:BPMNEdge id="E_f_call_gw" bpmnElement="f_call_gw">
+        <omgdi:waypoint x="350" y="115"/><omgdi:waypoint x="400" y="115"/>
+      </bpmndi:BPMNEdge>
+      <bpmndi:BPMNEdge id="E_f_ok" bpmnElement="f_ok">
+        <omgdi:waypoint x="420" y="95"/><omgdi:waypoint x="420" y="90"/><omgdi:waypoint x="500" y="90"/>
+      </bpmndi:BPMNEdge>
+      <bpmndi:BPMNEdge id="E_f_err" bpmnElement="f_err">
+        <omgdi:waypoint x="420" y="135"/><omgdi:waypoint x="420" y="200"/><omgdi:waypoint x="500" y="200"/>
+      </bpmndi:BPMNEdge>
+      <bpmndi:BPMNEdge id="E_f_review_end" bpmnElement="f_review_end">
+        <omgdi:waypoint x="620" y="90"/><omgdi:waypoint x="714" y="90"/><omgdi:waypoint x="714" y="101"/>
+      </bpmndi:BPMNEdge>
+      <bpmndi:BPMNEdge id="E_f_err_end" bpmnElement="f_err_end">
+        <omgdi:waypoint x="620" y="200"/><omgdi:waypoint x="714" y="200"/><omgdi:waypoint x="714" y="129"/>
+      </bpmndi:BPMNEdge>
+    </bpmndi:BPMNPlane>
+  </bpmndi:BPMNDiagram>
+</definitions>
