@@ -594,6 +594,30 @@ locked before build so the milestone doesn't re-litigate them:
 - v1 `localStorage` payloads (Saved Views, Recent Searches) migrate to relational tables
   keyed to user identity via Flyway (`ddl-auto=validate` holds — no auto-DDL).
 
+- **Slice 1 — ingestion backbone LANDED 2026-07-08 (backend, full-stack pending):** the
+  store + sampler half of the milestone. `V5__triage_snapshot.sql` adds the narrow
+  `(engine_id, lane, count, sampled_at)` time-series, `PARTITION BY RANGE (sampled_at)` +
+  a DEFAULT catch-all, with a partitioned `UNIQUE (engine_id, lane, sampled_at)` as the
+  `ON CONFLICT` arbiter (idempotent bucketed upsert — a poll is not a mutation, no audit
+  rail). Lanes are the Stage-0 status chips + `OUT_OF_SCOPE_DLQ`; a NULL out-of-scope count
+  writes NO row (never a fabricated zero). The `SnapshotSource` seam (`io.inspector.snapshot`)
+  keeps the door open for an event-driven source; the only v2.0 impl (`PollingSnapshotSource`)
+  re-runs `TriageAggregationService.aggregate(BACKGROUND)` — ONE source of truth for the
+  FAILED/RETRYING synthesis. `SnapshotSampler` (`@Scheduled` fixedDelay + `ApplicationReadyEvent`,
+  store-down = skipped cycle) buckets via `SnapshotBucket` and upserts. **Bulkhead sharing
+  implemented as `FlowableEngineClient.CallPriority`:** the sampler runs on a SEPARATE thin
+  per-engine lane keyed `{id}:sampler` (Resilience4j `sampler` bulkhead, 2 permits / 5s wait +
+  its own breaker) so a trend poll can never starve the 8 interactive permits. Retention is
+  `SnapshotPartitionMaintainer` — create-ahead current+next month, drop-behind past 400 days
+  (DROP TABLE, never DELETE); the DEFAULT partition means a write never fails on missing
+  housekeeping. Config `inspector.snapshot.{enabled,sample-interval,bucket-width,retention-days}`
+  (OFF in docker-free test profiles). Tests: rung-1 `SnapshotBucketTest` /
+  `SnapshotPartitionsTest` / `PollingSnapshotSourceTest` / `SnapshotSamplerTest` (in CI's unit
+  job) + rung-4 `SnapshotSamplerIT` (live 6.8 + Testcontainers Postgres — sample lands, upsert
+  idempotent, partitions created; LOCAL-ONLY, not in ci.yml itClass). Boot-readiness gate and
+  the localStorage→relational migration remain open. **Slice 2 (next):** the trend query API +
+  typed frontend client + job-lane sparklines on the Stage-0 lanes.
+
 ## Build order inside any milestone
 backend DTO → engine client call → aggregator/join logic → controller → typed frontend API
 client → component. Every Flowable call gets an integration test against the dockerized

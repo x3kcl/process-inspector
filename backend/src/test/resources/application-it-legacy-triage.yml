@@ -2,6 +2,9 @@
 # dlq-scan-cap 500: this suite asserts per-version group counts that a truncation-sized
 # cap could drop as the dev engine accumulates failures across local runs.
 inspector:
+  # v2/M4 snapshot sampler OFF — this profile is docker-free (no DB / JdbcTemplate).
+  snapshot:
+    enabled: false
   fanout-parallelism: 4
   engines:
     - id: engine-legacy

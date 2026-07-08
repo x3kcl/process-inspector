@@ -3,6 +3,9 @@
 # is NOT pushed down to the job-lane scan — on the KEEP-up stack, accumulated dead-letter
 # residue past the cap truncates the fresh test instances out of the member list.
 inspector:
+  # v2/M4 snapshot sampler OFF — this profile is docker-free (no DB / JdbcTemplate).
+  snapshot:
+    enabled: false
   fanout-parallelism: 4
   engines:
     - id: engine-7

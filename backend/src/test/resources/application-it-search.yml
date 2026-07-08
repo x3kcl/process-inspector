@@ -8,6 +8,9 @@
 #   engine-down — nothing listens there: the partial-results contract (perEngine.ok=false
 #                 inside a 200, rows from healthy engines intact)
 inspector:
+  # v2/M4 snapshot sampler OFF — this profile is docker-free (no DB / JdbcTemplate).
+  snapshot:
+    enabled: false
   fanout-parallelism: 4
   hierarchy-max-depth: 10
   engines:

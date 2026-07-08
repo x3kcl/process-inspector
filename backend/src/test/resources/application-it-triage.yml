@@ -7,6 +7,9 @@
 # accumulate failed instances across local runs, and this suite asserts per-version
 # counts that a truncated scan could legitimately drop.
 inspector:
+  # v2/M4 snapshot sampler OFF — this profile is docker-free (no DB / JdbcTemplate).
+  snapshot:
+    enabled: false
   fanout-parallelism: 4
   engines:
     - id: engine-a

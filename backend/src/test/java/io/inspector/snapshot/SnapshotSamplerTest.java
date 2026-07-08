@@ -1,0 +1,71 @@
+package io.inspector.snapshot;
+
+import static org.assertj.core.api.Assertions.assertThat;
+import static org.mockito.Mockito.mock;
+import static org.mockito.Mockito.never;
+import static org.mockito.Mockito.verify;
+import static org.mockito.Mockito.when;
+
+import io.inspector.config.InspectorProperties;
+import io.inspector.config.InspectorProperties.Snapshot;
+import java.time.Clock;
+import java.time.Duration;
+import java.time.Instant;
+import java.time.ZoneOffset;
+import java.util.List;
+import org.junit.jupiter.api.Test;
+
+/** Rung 1: bucketing + idempotent write + do-no-harm degradation, all with mocked collaborators. */
+class SnapshotSamplerTest {
+
+    private static final Instant NOW = Instant.parse("2026-07-08T12:00:37Z");
+    private static final Instant BUCKET = Instant.parse("2026-07-08T12:00:00Z");
+
+    private final SnapshotSource source = mock(SnapshotSource.class);
+    private final SnapshotCountRepository repository = mock(SnapshotCountRepository.class);
+    private final SnapshotSampler sampler =
+            new SnapshotSampler(source, repository, props(Duration.ofSeconds(60)), Clock.fixed(NOW, ZoneOffset.UTC));
+
+    @Test
+    void upsertsEachObservationAtTheFlooredBucket() {
+        when(source.sample())
+                .thenReturn(List.of(
+                        new EngineLaneCount("engine-a", SnapshotLane.ACTIVE, 5),
+                        new EngineLaneCount("engine-a", SnapshotLane.OUT_OF_SCOPE_DLQ, 3)));
+
+        int written = sampler.sampleOnce();
+
+        assertThat(written).isEqualTo(2);
+        verify(repository).upsert("engine-a", "ACTIVE", 5, BUCKET);
+        verify(repository).upsert("engine-a", "OUT_OF_SCOPE_DLQ", 3, BUCKET);
+    }
+
+    @Test
+    void storeUnavailableDegradesToASkippedCycle() {
+        when(source.sample()).thenReturn(List.of(new EngineLaneCount("engine-a", SnapshotLane.ACTIVE, 1)));
+        when(repository.upsert(
+                        org.mockito.ArgumentMatchers.anyString(),
+                        org.mockito.ArgumentMatchers.anyString(),
+                        org.mockito.ArgumentMatchers.anyLong(),
+                        org.mockito.ArgumentMatchers.any()))
+                .thenThrow(new RuntimeException("db down"));
+
+        assertThat(sampler.sampleOnce()).isZero(); // no exception escapes
+    }
+
+    @Test
+    void aggregationFailureNeverTouchesTheStore() {
+        when(source.sample()).thenThrow(new RuntimeException("all engines down"));
+
+        assertThat(sampler.sampleOnce()).isZero();
+        verify(repository, never())
+                .upsert(
+                        org.mockito.ArgumentMatchers.anyString(), org.mockito.ArgumentMatchers.anyString(),
+                        org.mockito.ArgumentMatchers.anyLong(), org.mockito.ArgumentMatchers.any());
+    }
+
+    private static InspectorProperties props(Duration bucketWidth) {
+        return new InspectorProperties(
+                null, null, null, null, new Snapshot(true, Duration.ofSeconds(60), bucketWidth, 400), List.of());
+    }
+}
