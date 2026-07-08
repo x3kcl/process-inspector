@@ -396,7 +396,11 @@ the form couldn't prevent.
   (the surrounding ledger and vitals stay visible); the panel header restates the target
   (env band, engine badge, business key, instance ID) so the wrong-instance error dies here.
   Opening **forces the full-value fetch first** — a truncated projection is never editable.
-  The old value stays visible above the input throughout.
+  The old value stays visible above the input throughout. **Scope-aware (M4):** both
+  process-scope and execution-local ("step-local") rows are editable — a local row scopes the
+  full-value fetch, the CAS pre-check and the write to its owning execution (`scope=local`),
+  never the case-wide value; the header, verify sentence and a fixed-order warning line all
+  say "step-local", and a same-named case variable is left untouched.
 - **Form mode (default) — typed widgets**: *number* with per-subtype range validation and a
   live parsed echo (*"will be stored as integer 42"* — the echo IS the contract); *boolean*
   as a True/False segmented control (**never a toggle** — toggles read as immediate-effect,

@@ -28,8 +28,20 @@ public record ActionRequest(
         return new ActionRequest(null, null, null, null, null, null, null, null, null, null, null);
     }
 
-    /** Compare-and-set variable edit (R-SEM-09): the request carries what the operator saw. */
-    public record VariableEdit(String name, String type, Object value, Object expectedOldValue) {}
+    /**
+     * Compare-and-set variable edit (R-SEM-09): the request carries what the operator saw.
+     * {@code executionId} scopes the edit: {@code null}/blank = process (case) scope — the
+     * default; a non-blank value = the execution-local ("step-local") variable on that
+     * execution node (SPEC §4a, multi-instance loop locals). The scoped read, CAS pre-check
+     * and write all follow the executionId when present.
+     */
+    public record VariableEdit(String name, String type, Object value, Object expectedOldValue, String executionId) {
+
+        /** Process-scope edit (no execution target) — the pre-step-local call shape. */
+        public VariableEdit(String name, String type, Object value, Object expectedOldValue) {
+            this(name, type, value, expectedOldValue, null);
+        }
+    }
 
     /** Typed engine variable — the declared type is preserved on the wire (flowable-rest §2). */
     public record TypedVariable(String name, String type, Object value) {}

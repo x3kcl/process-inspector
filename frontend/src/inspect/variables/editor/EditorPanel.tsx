@@ -49,8 +49,8 @@ export function EditorPanel({ engineId, instanceId, entry, engine, vitals, onClo
   // §4a Entry: the full-value fetch is unconditional — the ledger's projection may be
   // truncated or stale, and an edit staged over either would be a lie.
   const full = useQuery({
-    queryKey: ['edit-variable-full', engineId, instanceId, entry.name],
-    queryFn: () => fetchInstanceVariable({ engineId, instanceId }, entry.name),
+    queryKey: ['edit-variable-full', engineId, instanceId, entry.name, entry.executionId ?? ''],
+    queryFn: () => fetchInstanceVariable({ engineId, instanceId }, entry.name, entry.executionId),
     staleTime: 0,
     gcTime: 0,
     refetchOnMount: 'always',
@@ -224,6 +224,9 @@ function EditorSession({
           type: chosenType,
           value: staged.value,
           expectedOldValue: originalValue,
+          // Step-local edits carry the owning execution — the BFF scopes the read/CAS/write
+          // to it (SPEC §4a). Absent for process-scope edits.
+          executionId: entry.executionId,
         },
       }
     : null
@@ -333,7 +336,11 @@ function EditorSession({
         <span>
           editing <code>{entry.name}</code>{' '}
           <span className="value-muted">
-            (case scope · engine type {declaredType ?? 'undeclared'})
+            (
+            {entry.executionId !== undefined
+              ? `step-local · ${entry.executionLabel ?? entry.executionId}`
+              : 'case scope'}{' '}
+            · engine type {declaredType ?? 'undeclared'})
           </span>
         </span>
       </div>

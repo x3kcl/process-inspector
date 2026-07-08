@@ -60,12 +60,19 @@ public class InstanceDetailController {
         return detail.variables(engineId, instanceId);
     }
 
-    /** The on-demand FULL value behind a truncated ledger row (SPEC §4 size safeguards). */
+    /**
+     * The on-demand FULL value behind a truncated ledger row (SPEC §4 size safeguards).
+     * {@code executionId} (optional) scopes the read to an execution-local ("step-local")
+     * variable — the base value the step-local editor stages against; omitted = process scope.
+     */
     @GetMapping("/variables/{name}")
     @PreAuthorize("@rbac.atLeastOn(authentication, 'VIEWER', #engineId)")
     public VariableDto variable(
-            @PathVariable String engineId, @PathVariable String instanceId, @PathVariable String name) {
-        return detail.variable(engineId, instanceId, name);
+            @PathVariable String engineId,
+            @PathVariable String instanceId,
+            @PathVariable String name,
+            @RequestParam(required = false) String executionId) {
+        return detail.variable(engineId, instanceId, name, executionId);
     }
 
     /** The four job lanes, kept distinct — the lane IS the diagnosis (SPEC §4). */

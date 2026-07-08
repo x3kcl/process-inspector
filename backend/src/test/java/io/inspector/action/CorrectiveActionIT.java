@@ -67,6 +67,7 @@ class CorrectiveActionIT {
         engine = EngineSeed.requireReachable(ENGINE, "");
         EngineSeed.deployIfMissing(engine, "demoFailingPayment", EngineSeed.FAILING_PAYMENT_BPMN);
         EngineSeed.deployIfMissing(engine, "demoUserTask", EngineSeed.USER_TASK_BPMN);
+        EngineSeed.deployIfMissing(engine, "demoFlowSurgery", EngineSeed.FLOW_SURGERY_BPMN);
     }
 
     private TestRestTemplate as(String user) {
@@ -243,5 +244,115 @@ class CorrectiveActionIT {
         ResponseEntity<String> applied = as("operator")
                 .postForEntity("/api/instances/engine-a/" + instanceId + "/actions/edit-variable", edit, String.class);
         assertThat(applied.getStatusCode()).isEqualTo(HttpStatus.OK);
+    }
+
+    /* ------------------------------------------------------------------------------
+     * SPEC §4a execution-local ("step-local") edit against REAL flowable-rest: the
+     * scoped read/CAS/write leg touches ONLY the execution-local variable — a same-named
+     * process-scope value is left untouched (scope segregation is the whole point). A
+     * demoFlowSurgery instance forks at a parallel gateway into concurrent branch
+     * executions; the edit lands on one branch's local `amount`.
+     * ------------------------------------------------------------------------------ */
+    @Test
+    @SuppressWarnings("unchecked")
+    void editVariableStepLocalTouchesOnlyTheExecutionScope() throws Exception {
+        // Start with a process-scope `amount=10` — the value the local edit must NOT touch.
+        String instanceId = EngineSeed.startInstance(
+                engine,
+                "demoFlowSurgery",
+                businessKey + "-local",
+                List.of(Map.of("name", "amount", "type", "integer", "value", 10)));
+
+        // Drive to the parallel fork: complete stepOne then stepTwo (synchronous, no async).
+        completeNextTask(instanceId);
+        completeNextTask(instanceId);
+        String branchExecution = executionAtActivity(instanceId, "branchA");
+
+        // Seed the execution-local `amount=42` on the branch (over the engine, not the BFF).
+        engine.post()
+                .uri("/runtime/executions/{id}/variables", branchExecution)
+                .body(List.of(Map.of("name", "amount", "type", "integer", "value", 42, "scope", "local")))
+                .retrieve()
+                .toBodilessEntity();
+
+        // The BFF's scoped full-value fetch returns the LOCAL value, not the process one.
+        JsonNode full = mapper.readTree(as("operator")
+                .getForEntity(
+                        "/api/instances/engine-a/" + instanceId + "/variables/amount?executionId=" + branchExecution,
+                        String.class)
+                .getBody());
+        assertThat(full.path("value").asInt()).isEqualTo(42);
+        assertThat(full.path("scope").asText()).isEqualTo("local");
+
+        // A CAS edit over the local value: expectedOldValue is the local 42, not the process 10.
+        Map<String, Object> localEdit = Map.of(
+                "reason",
+                "correct the branch-local amount before the join",
+                "variable",
+                Map.of(
+                        "name",
+                        "amount",
+                        "type",
+                        "integer",
+                        "value",
+                        43,
+                        "expectedOldValue",
+                        42,
+                        "executionId",
+                        branchExecution));
+        ResponseEntity<String> done = as("operator")
+                .postForEntity(
+                        "/api/instances/engine-a/" + instanceId + "/actions/edit-variable", localEdit, String.class);
+        assertThat(done.getStatusCode()).isEqualTo(HttpStatus.OK);
+        assertThat(mapper.readTree(done.getBody()).path("deltaStatement").asText())
+                .containsIgnoringCase("step-local")
+                .contains(branchExecution);
+
+        // The execution-local value changed…
+        Map<String, Object> local = engine.get()
+                .uri("/runtime/executions/{id}/variables/amount?scope=local", branchExecution)
+                .retrieve()
+                .body(Map.class);
+        assertThat(((Number) local.get("value")).intValue()).isEqualTo(43);
+
+        // …and the same-named PROCESS-scope value is untouched: scope segregation held.
+        Map<String, Object> process = engine.get()
+                .uri("/runtime/process-instances/{id}/variables/amount", instanceId)
+                .retrieve()
+                .body(Map.class);
+        assertThat(((Number) process.get("value")).intValue()).isEqualTo(10);
+
+        EngineSeed.deleteInstanceQuietly(engine, instanceId);
+    }
+
+    /** Completes the single currently-open task of an instance (synchronous user tasks). */
+    @SuppressWarnings("unchecked")
+    private void completeNextTask(String instanceId) {
+        Map<String, Object> tasks = engine.get()
+                .uri("/runtime/tasks?processInstanceId={id}", instanceId)
+                .retrieve()
+                .body(Map.class);
+        List<Map<String, Object>> data = (List<Map<String, Object>>) tasks.get("data");
+        String taskId = String.valueOf(data.get(0).get("id"));
+        engine.post()
+                .uri("/runtime/tasks/{id}", taskId)
+                .body(Map.of("action", "complete"))
+                .retrieve()
+                .toBodilessEntity();
+    }
+
+    /** The child execution currently sitting on {@code activityId} (a forked branch). */
+    @SuppressWarnings("unchecked")
+    private String executionAtActivity(String instanceId, String activityId) {
+        Map<String, Object> executions = engine.get()
+                .uri("/runtime/executions?processInstanceId={id}", instanceId)
+                .retrieve()
+                .body(Map.class);
+        List<Map<String, Object>> data = (List<Map<String, Object>>) executions.get("data");
+        return data.stream()
+                .filter(e -> activityId.equals(e.get("activityId")))
+                .map(e -> String.valueOf(e.get("id")))
+                .findFirst()
+                .orElseThrow(() -> new AssertionError("no execution at activity " + activityId));
     }
 }

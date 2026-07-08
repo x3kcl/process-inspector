@@ -14,6 +14,8 @@ export interface VariableEntry {
   scope: 'process' | 'local'
   /** For execution-local variables: the owning node, e.g. "Validate line item · instance 3 of 12". */
   executionLabel?: string
+  /** For execution-local variables: the owning execution id — the scoped read/edit target. */
+  executionId?: string
   /** ISO timestamp of the last write, when the engine surfaces it. */
   lastModified?: string
   /** Server-truncated: the value exceeded the 256 KiB preview cap and shipped as null. */

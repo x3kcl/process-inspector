@@ -263,8 +263,20 @@ OPERATIONS.md §8.
   target column deep-links to the instance's Audit tab); the §4a offered follow-on —
   after a successful edit-variable on a FAILED instance a sticky toast offers "Retry the
   failed job?" (live dead-letter re-check first; offered, never automatic).
-- **Still open in M4:** execution-local (step-local) variable edits (needs a scoped
-  read/CAS leg in the BFF); audit-row config events for scope-mapping reloads (M4 logs
+- **M4 execution-local (step-local) variable edits landed 2026-07-08:** the same tier-1
+  `edit-variable` verb now carries an optional `variable.executionId`. Present ⇒ the BFF
+  scopes the whole leg to that execution — server-fresh restatement re-reads the execution
+  and refuses a foreign/gone one (`execution-instance-mismatch` / `execution-gone`), the CAS
+  pre-check reads `GET /runtime/executions/{id}/variables/{name}?scope=local` (the exact row
+  the write touches, never a process-scope value shadowed down the tree), and dispatch writes
+  `PUT /runtime/executions/{id}/variables/{name}` with `scope:"local"`. Absent ⇒ the
+  unchanged process-scope path. The full-value fetch (`GET …/variables/{name}?executionId=`)
+  is likewise scoped so a truncated step-local row is editable; audit payload records
+  `scope:"local"` + `executionId` + `activityId`. Scope segregation proven against real
+  flowable-rest (CorrectiveActionIT: local `amount` edited, same-named case value untouched).
+  Frontend: the §4a pencil gate no longer blocks local rows, the editor header + verify
+  sentence/warning say "step-local", freshness re-check is scoped.
+- **Still open in M4:** audit-row config events for scope-mapping reloads (M4 logs
   them); `X-Forwarded-User` engine attribution; R-AUD-07 ticketId validation/linkify;
   per-engine `audit-payload` modes, retention purge + DB role grants (OPERATIONS §6 —
   provisioning, not schema).

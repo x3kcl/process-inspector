@@ -14,21 +14,30 @@ import {
 } from './editState'
 
 describe('editGateReason — greyed-with-reason ladder (§4a Entry)', () => {
-  it('locks read-only engines, ended instances, local scope and serializables, in that order', () => {
+  it('locks read-only engines, ended instances and serializables, in that order', () => {
     expect(
       editGateReason({ scope: 'process', instanceEnded: false, engineMode: 'READ_ONLY' }),
     ).toContain('read-only')
     expect(editGateReason({ scope: 'process', instanceEnded: true })).toContain('ended')
-    expect(editGateReason({ scope: 'local', instanceEnded: false })).toContain('step-local')
     expect(
       editGateReason({ engineType: 'serializable', scope: 'process', instanceEnded: false }),
     ).toContain('serializable')
   })
-  it('permits editable types, including undeclared ones', () => {
+  it('permits editable types on both process and execution-local scope', () => {
     expect(
       editGateReason({ engineType: 'string', scope: 'process', instanceEnded: false }),
     ).toBeNull()
     expect(editGateReason({ scope: 'process', instanceEnded: false })).toBeNull()
+    // Step-local edits are supported now (scoped read/CAS/write leg) — an editable
+    // execution-local value is no longer gated off.
+    expect(
+      editGateReason({ engineType: 'integer', scope: 'local', instanceEnded: false }),
+    ).toBeNull()
+    // …but the type/state gates still apply on local scope.
+    expect(editGateReason({ scope: 'local', instanceEnded: true })).toContain('ended')
+    expect(
+      editGateReason({ engineType: 'serializable', scope: 'local', instanceEnded: false }),
+    ).toContain('serializable')
   })
 })
 
