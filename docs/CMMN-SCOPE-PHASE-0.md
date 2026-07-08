@@ -302,19 +302,27 @@ Phase 0 deliberately produces the seam the later phases consume:
   a plan-item state-machine timeline at `/case/{engineId}/{caseInstanceId}`. Full design + wire
   provenance: **`docs/CMMN-CASE-DETAIL-PHASE-2.md`** (the authority for the phase). Read-only,
   gated 6.8+.
-- **Phase 3 — LANDED 2026-07-08 (full-stack): CMMN dead-letter retry.** The case detail becomes
-  actionable for the ONE verb a co-deployed CMMN case needs — **Retry job** (tier 0 / RESPONDER) —
-  under the FULL `corrective-actions` rails. The key design call: the existing BPMN
-  `CorrectiveActionService` dispatcher was GENERALIZED (an `ActionScope.CMMN` seam), NOT forked —
-  the rails are scope-neutral (`audit_entry` keys on a generic instance id), so only two seams
-  differ: the by-id restatement reads `cmmn-management/deadletter-jobs/{id}` (cap-free, owner =
-  `caseInstanceId`) and the move is `POST …/cmmn-management/deadletter-jobs/{id}` `{"action":"move"}`
-  (byte-identical to process-api — **live-proven 6.8, 2026-07-08**: HTTP 204, job leaves the DLQ,
-  re-queues, re-dead-letters as the same id). Route `POST /api/cases/{engineId}/{caseInstanceId}/
-  actions/{verb}` (+`/curl`, server-computed, BFF-targeted — never an engine path/token). SPEC §5.3,
-  ARCH §4. **Correction to the earlier sketch:** the "Show as cURL" targets the BFF verb endpoint
-  (like every other action), NOT `cmmn-runtime/case-instances/{id}/…` — that draft premise was
-  wrong; no engine path or credential ever reaches the client.
+- **Phase 3 — LANDED 2026-07-08 (full-stack): CMMN dead-letter retry & delete.** The case detail
+  becomes actionable for the two dead-letter verbs a co-deployed CMMN case needs — **Retry job**
+  (tier 0 / RESPONDER) and **Delete dead-letter job** (tier 3 / ADMIN) — under the FULL
+  `corrective-actions` rails. The key design call: the existing BPMN `CorrectiveActionService`
+  dispatcher was GENERALIZED (an `ActionScope.CMMN` seam), NOT forked — the rails are scope-neutral
+  (`audit_entry` keys on a generic instance id), so only two seams differ: the by-id restatement
+  reads `cmmn-management/deadletter-jobs/{id}` (cap-free, owner = `caseInstanceId`) and the one
+  engine call is the `/cmmn-management/deadletter-jobs/{id}` sibling — `POST … {"action":"move"}`
+  for retry, `DELETE …` for delete (both byte-identical to process-api — **live-proven 6.8,
+  2026-07-08**: HTTP 204 each; move re-queues → re-dead-letters as the same id, delete is terminal
+  → gone for good). Route `POST /api/cases/{engineId}/{caseInstanceId}/actions/{verb}` (+`/curl`,
+  server-computed, BFF-targeted — never an engine path/token). SPEC §5.3, ARCH §4.
+  **Delete is scope-honest:** a CMMN case has no change-state rescue in this tool, so the delta and
+  the (dedicated `CaseDeleteModal`) blast-radius copy say the plan item is orphaned permanently —
+  never the BPMN "rescue via change-state" line. **Correction to the earlier sketch:** the "Show as
+  cURL" targets the BFF verb endpoint (like every other action), NOT
+  `cmmn-runtime/case-instances/{id}/…` — that draft premise was wrong; no engine path or credential
+  ever reaches the client.
+  - **The delete follow-up flagged as open at Phase-3 landing is now CLOSED (2026-07-08):** the
+    `ActionScope.CMMN` seam absorbed it with a `deleteCmmnDeadLetterJob` client method + the shared
+    tier-3 job-id token; no new controller route (the generic verb door already accepts it).
   - **CONSTRAINT (R-GOV-05, discharged before the canvas landed):** the guard
     `frontend/scripts/check-bpmn-watermark.mjs` was generalized to `/(bjs|cmmn)-powered-by/i`
     **first**. NOTE the premise correction: `cmmn-js` 0.20 actually emits the SAME

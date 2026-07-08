@@ -597,20 +597,25 @@ known-good precedent". A manual sibling id that the engine has no record of (400
 distinguished in turn from an infra failure: the operator is told the id was not found on this
 engine (a fixable input), not that the diff itself broke.
 
-### 5.3 CMMN case scope — dead-letter retry (Case Inspector Phase 3)
+### 5.3 CMMN case scope — dead-letter retry & delete (Case Inspector Phase 3)
 The verb catalog is BPMN-shaped (targets a process instance), but the rails are scope-neutral:
 audit (keyed on a generic instance id), RBAC tier, reason discipline, the protected-instance
 guard, fail-closed audit, no-auto-retry, and the server-computed cURL all apply unchanged to a
 CMMN case. Phase 3 turns the read-only case detail (§4 Stage 2) into an actionable one for the
-ONE verb that a co-deployed CMMN case needs today — **Retry job** (tier 0 / RESPONDER, the same
-verb as BPMN). It is offered per dead-letter job in the case's "why-stuck" panel, capability-gated
-on `scopeType` (Flowable ≥ 6.8 — older engines are dead-letter-blind on the cmmn context, greyed
-never hidden). Only the two scope seams differ from BPMN: the server-fresh restatement reads the
-job by-id from the `/cmmn-management` DLQ (cap-free) and keys ownership on `caseInstanceId`, and
-the one engine call is the `POST …/cmmn-management/deadletter-jobs/{id}` `{"action":"move"}` move
-— byte-identical to the process-api shape (live-proven 6.8, 2026-07-08). All other single-target
-verbs (suspend/activate — cases can't suspend anyway; terminate; edit-variable) are out of scope
-and refused for a CMMN case. Route: `POST /api/cases/{engineId}/{caseInstanceId}/actions/{verb}`.
+two dead-letter verbs a co-deployed CMMN case needs — **Retry job** (tier 0 / RESPONDER) and
+**Delete dead-letter job** (tier 3 / ADMIN) — the same verbs as BPMN. Both are offered per
+dead-letter job in the case's "why-stuck" panel, capability-gated on `scopeType` (Flowable ≥ 6.8 —
+older engines are dead-letter-blind on the cmmn context, greyed never hidden). Retry is a tier-0
+inline confirm; delete is a tier-3 typed-confirm modal (required reason ≥ 10 chars; on prod, the
+typed token = the job id) whose blast-radius copy is scope-honest — a CMMN case has **no
+change-state rescue** in this tool, so deleting a dead-letter job orphans its plan item for good.
+Only the two scope seams differ from BPMN: the server-fresh restatement reads the job by-id from
+the `/cmmn-management` DLQ (cap-free) and keys ownership on `caseInstanceId`, and the one engine
+call is the `/cmmn-management/deadletter-jobs/{id}` sibling — `POST … {"action":"move"}` for retry,
+`DELETE …` for delete — byte-identical to the process-api shapes (both live-proven 6.8, HTTP 204,
+2026-07-08). All other single-target verbs (suspend/activate — cases can't suspend anyway;
+terminate; edit-variable) are out of scope and refused for a CMMN case. Route:
+`POST /api/cases/{engineId}/{caseInstanceId}/actions/{verb}`.
 
 ## 6. The guard ladder
 

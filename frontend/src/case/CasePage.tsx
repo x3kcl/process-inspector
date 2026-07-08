@@ -10,6 +10,7 @@ import { CopyButton } from '../components/CopyButton'
 import { EnvBadge } from '../components/EnvBadge'
 import { useToast } from '../components/toast'
 import { formatDateTime } from '../lib/format'
+import { CaseDeleteModal } from './CaseDeleteModal'
 import { CaseDiagramCanvas } from './CaseDiagramCanvas'
 import { PlanItemTimeline } from './PlanItemTimeline'
 import { useCaseDiagram, useCasePlanItems, useCaseVitals } from './useCaseQueries'
@@ -18,9 +19,10 @@ import { useCaseDiagram, useCasePlanItems, useCaseVitals } from './useCaseQuerie
  * Case Inspector Phase 2 (R-SEM-20): the read-only, polymorphic Stage-2 detail of one CMMN case —
  * the CMMN sibling of {@code InstancePage}. Vitals header (no SUSPENDED — cases can't suspend), a
  * cmmn-js diagram on top (or an honest no-layout state), and the plan-item state-machine timeline
- * below. Mostly read-only; Phase 3 adds ONE corrective action — dead-letter retry (tier 0 /
- * RESPONDER) — offered per dead-letter job in the "why stuck" panel under the full
- * corrective-actions rails (audit, RBAC, capability gate, no auto-retry).
+ * below. Mostly read-only; Phase 3 adds the two dead-letter corrective actions — retry (tier 0 /
+ * RESPONDER, inline confirm) and delete (tier 3 / ADMIN, typed-confirm modal) — offered per
+ * dead-letter job in the "why stuck" panel under the full corrective-actions rails (audit, RBAC,
+ * capability gate, no auto-retry).
  *
  * Gated 6.8+ server-side: a pre-6.8 engine (or an engine that has not probed) refuses the vitals
  * call with a ProblemDetail, surfaced here as an honest error, never a fabricated page.
@@ -32,6 +34,7 @@ export function CasePage() {
   const diagram = useCaseDiagram(engineId, caseInstanceId)
   const planItems = useCasePlanItems(engineId, caseInstanceId)
   const [selectedElementId, setSelectedElementId] = useState<string | undefined>(undefined)
+  const [deleteJobId, setDeleteJobId] = useState<string | null>(null)
 
   const me = useMe()
   const toast = useToast()
@@ -62,6 +65,29 @@ export function CasePage() {
         onError: (error) => {
           toast({ kind: 'error', text: problemBanner(error.problem) })
         },
+      },
+    )
+  }
+
+  // Phase 3: delete dead-letter job (tier 3 / ADMIN, destructive) — the second CMMN verb.
+  // Same scopeType capability gate as retry; opens a typed-confirm modal (reason ≥ 10, PROD job-id
+  // token). On PROD the confirm token is the job id — matched against the server-fresh target.
+  const deleteGate = actionGate({
+    meta: VERBS.deleteDeadletter,
+    roleHint,
+    engineMode: engine?.mode,
+    capability: engine?.capabilities?.scopeType,
+  })
+  const deleteJob = (jobId: string, reason: string) => {
+    const confirmToken = engine?.environment?.toLowerCase() === 'prod' ? jobId : undefined
+    action.mutate(
+      { verb: VERBS.deleteDeadletter.verb, body: { jobId, reason, confirmToken } },
+      {
+        onSuccess: (result) => {
+          setDeleteJobId(null)
+          toast({ kind: 'success', text: result.deltaStatement ?? `Deleted job ${jobId}.` })
+        },
+        // The modal renders the ProblemDetail inline (action.error) — no toast while it is open.
       },
     )
   }
@@ -167,6 +193,39 @@ export function CasePage() {
                             retryJob(job.id ?? '')
                           }}
                         />
+                        {/* Delete is tier-3/ADMIN and irreversible for the case — a typed-confirm
+                            modal, never an inline click (unlike retry). */}
+                        <button
+                          type="button"
+                          className="copy-btn action-btn action-danger"
+                          disabled={!deleteGate.enabled}
+                          title={
+                            deleteGate.enabled ? VERBS.deleteDeadletter.plain : deleteGate.reason
+                          }
+                          onClick={() => {
+                            action.reset()
+                            setDeleteJobId(job.id ?? '')
+                          }}
+                        >
+                          Delete
+                        </button>
+                        {deleteJobId === job.id && (
+                          <CaseDeleteModal
+                            environment={engine?.environment}
+                            engineName={engine?.name ?? engineId}
+                            jobId={job.id ?? ''}
+                            elementName={job.elementName ?? undefined}
+                            exceptionMessage={job.exceptionMessage ?? undefined}
+                            pending={action.isPending}
+                            problem={action.error?.problem}
+                            onConfirm={(reason) => {
+                              deleteJob(job.id ?? '', reason)
+                            }}
+                            onClose={() => {
+                              setDeleteJobId(null)
+                            }}
+                          />
+                        )}
                       </li>
                     ))}
                   </ul>

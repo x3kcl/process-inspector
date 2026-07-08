@@ -207,18 +207,23 @@ to `/case/…` for a pre-6.8 engine — but the server stays the gate regardless
   `demoCaseDetail` seed renders the `cmmn-js` canvas with `planItem_svc` carrying
   `marker-deadletter` + the ⚠ overlay, watermark intact.
 
-## 9. Phase 3 addendum — CMMN dead-letter retry (LANDED 2026-07-08)
+## 9. Phase 3 addendum — CMMN dead-letter retry & delete (LANDED 2026-07-08)
 
-The read-only detail becomes **actionable for one verb**: **Retry job** (tier 0 / RESPONDER),
+The read-only detail becomes **actionable for the two dead-letter verbs**: **Retry job** (tier 0 /
+RESPONDER, inline confirm) and **Delete dead-letter job** (tier 3 / ADMIN, typed-confirm modal),
 offered per dead-letter job in the "why-stuck" panel. Full behavior in **SPEC §5.3**; API in
 **ARCH §4** (`POST /api/cases/{engineId}/{caseInstanceId}/actions/{verb}`).
 
-**Wire spike (live 6.8.0, 2026-07-08).** The CMMN dead-letter move is **byte-identical** to the
-BPMN shape: `POST …/cmmn-api/cmmn-management/deadletter-jobs/{id}` `{"action":"move"}` → **HTTP
-204**; the job leaves the DLQ (by-id → 404), is restored to executable (→ a timer-job for the
-retry backoff, then re-executes), and re-dead-letters as the **same job id** with retries reset —
-a genuine DLQ→executable transition, not a delete. By-id hydration
-(`GET …/cmmn-management/deadletter-jobs/{id}`) is cap-free and returns full case context.
+**Wire spike (live 6.8.0, 2026-07-08).** Both verbs are **byte-identical** to the BPMN shapes on
+the `/cmmn-api/cmmn-management/deadletter-jobs/{id}` sibling path:
+- **Move (retry):** `POST … {"action":"move"}` → **HTTP 204**; the job leaves the DLQ (by-id →
+  404), is restored to executable (→ a timer-job for the retry backoff, then re-executes), and
+  re-dead-letters as the **same job id** with retries reset — a genuine DLQ→executable transition.
+- **Delete:** `DELETE …` → **HTTP 204**; the job is gone (by-id → 404) for good — unlike retry it
+  never re-dead-letters, and the plan-item execution is orphaned.
+
+By-id hydration (`GET …/cmmn-management/deadletter-jobs/{id}`) is cap-free and returns full case
+context — the same read backs both verbs' server-fresh restatement.
 
 **Design call — GENERALIZE, don't fork.** The rails (audit, RBAC, reason, protected-instance
 guard, fail-closed audit, no-auto-retry, server-computed cURL) are scope-neutral — `audit_entry`
@@ -227,24 +232,34 @@ keys on a generic instance id — so the existing `CorrectiveActionService` gain
 duplicated the whole ladder + the audit-consistency risk). Only two seams differ:
 
 1. **Restatement** — `cmmnJobTarget` reads the job by-id from `cmmn-management/deadletter-jobs/{id}`
-   (cap-free) and checks ownership on `caseInstanceId` (BPMN keys on `processInstanceId`).
-2. **Dispatch** — `client.moveCmmnDeadLetterJob` hits the `/cmmn-management` path (absolute URI —
-   the cmmn context is a sibling of `/service`); the body is identical.
+   (cap-free) and checks ownership on `caseInstanceId` (BPMN keys on `processInstanceId`); shared
+   by both verbs. The tier-3 typed token is the **job id** (as for the BPMN delete).
+2. **Dispatch** — `client.moveCmmnDeadLetterJob` / `client.deleteCmmnDeadLetterJob` hit the
+   `/cmmn-management` path (absolute URI — the cmmn context is a sibling of `/service`); the move
+   body is identical to BPMN and the delete is a bare `DELETE`.
 
 Gated on `scopeType` (≥6.8) via the shared `CmmnCapabilities.requireScopeType` BEFORE any engine
 byte; a non-CMMN verb is refused (`verb-not-cmmn-scoped`). The server-computed "Show as cURL"
-targets the **BFF** case-action URL (never an engine path/credential) — correcting the Phase-0
-sketch that guessed a `cmmn-runtime/case-instances/{id}/…` engine path. The CasePage "read-only"
+targets the **BFF** case-action URL (never an engine path/credential). The CasePage "read-only"
 badge is retired; the case detail is otherwise still read-only (no suspend/terminate/edit).
 
+**Delete honesty (scope-aware).** The `DELETE_DEADLETTER` delta and the modal's blast-radius copy
+are scope-aware: a CMMN case has **no change-state rescue** in this tool (unlike a BPMN process),
+so deleting a dead-letter job orphans its plan item permanently — the copy says exactly that
+rather than reusing the BPMN "the only rescue is change-state" line. The CasePage uses a small
+CMMN-honest `CaseDeleteModal` (on `ModalShell`) rather than the BPMN `DestructiveModal`, whose
+call-activity-cascade and change-state copy would be misleading for a case.
+
 **Verified (2026-07-08):**
-- **Backend rung-1** (`CmmnCorrectiveActionServiceTest`, 6): the gate runs before any read/audit,
-  the restatement reads the cmmn DLQ by-id + keys on `caseInstanceId`, the one call is the CMMN
-  move (never the BPMN one), and pre-6.8 / unprobed / job-gone / case-mismatch / non-CMMN-verb all
-  refuse cleanly.
-- **Backend rung-4 live 6.8 + Postgres** (`CmmnCorrectiveActionIT`, 1): seed → dead-letter → a
-  RESPONDER retries via the BFF → outcome `ok`, the job leaves the CMMN DLQ, the action lands in
-  the audit golden master (payload carries the job id + `cmmn` scope). `CaseDetailIT` gained a
-  `failing.jobs[0].id` assertion.
-- **Frontend hermetic e2e** (`case-detail.spec.ts`, +1): clicking Retry POSTs the case-scoped
-  action with `{jobId}` and the server delta surfaces as the toast; the read-only badge is gone.
+- **Backend rung-1** (`CmmnCorrectiveActionServiceTest`, 9): the gate runs before any read/audit,
+  the restatement reads the cmmn DLQ by-id + keys on `caseInstanceId`, the one call routes to the
+  CMMN move **or** delete (never the BPMN ones); pre-6.8 / unprobed / job-gone / case-mismatch /
+  non-CMMN-verb refuse cleanly; and delete additionally enforces its tier-3 **reason** and **ADMIN**
+  gates before any engine byte.
+- **Backend rung-4 live 6.8 + Postgres** (`CmmnCorrectiveActionIT`, 2): two failing cases seeded
+  (one per verb, failing concurrently) → a RESPONDER retries case A (job leaves the DLQ) and an
+  ADMIN deletes case B (job gone for good) → outcome `ok`, each action in the audit golden master
+  (payload carries the job id + `cmmn` scope). `CaseDetailIT` asserts `failing.jobs[0].id`.
+- **Frontend hermetic e2e** (`case-detail.spec.ts`, +2): a RESPONDER sees Delete **disabled**
+  (tier-3 gate); an ADMIN opens the typed-confirm modal, a ≥10-char reason enables the confirm, and
+  the POST carries `{jobId, reason}` with the scope-honest delta surfacing as the toast.
