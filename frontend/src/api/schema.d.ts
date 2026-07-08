@@ -532,6 +532,22 @@ export interface paths {
         patch?: never;
         trace?: never;
     };
+    "/api/triage/engines/{engineId}/cmmn-scope": {
+        parameters: {
+            query?: never;
+            header?: never;
+            path?: never;
+            cookie?: never;
+        };
+        get: operations["cmmnScope"];
+        put?: never;
+        post?: never;
+        delete?: never;
+        options?: never;
+        head?: never;
+        patch?: never;
+        trace?: never;
+    };
     "/api/triage/engines/{engineId}/out-of-scope-deadletters": {
         parameters: {
             query?: never;
@@ -698,6 +714,20 @@ export interface components {
             /** Format: int32 */
             retries?: number;
             tenantId?: string;
+        };
+        CmmnLaneCounts: {
+            /** Format: int32 */
+            active?: number;
+            /** Format: int32 */
+            completed?: number;
+            /** Format: int32 */
+            failed?: number;
+            /** Format: int32 */
+            terminated?: number;
+        };
+        CmmnScopeFacet: {
+            deadletters?: components["schemas"]["OutOfScopeDeadLetters"];
+            lanes?: components["schemas"]["CmmnLaneCounts"];
         };
         CreateNote: {
             body: string;
@@ -2054,6 +2084,28 @@ export interface operations {
                 };
                 content: {
                     "*/*": components["schemas"]["TriageDashboardResponse"];
+                };
+            };
+        };
+    };
+    cmmnScope: {
+        parameters: {
+            query?: never;
+            header?: never;
+            path: {
+                engineId: string;
+            };
+            cookie?: never;
+        };
+        requestBody?: never;
+        responses: {
+            /** @description OK */
+            200: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "*/*": components["schemas"]["CmmnScopeFacet"];
                 };
             };
         };

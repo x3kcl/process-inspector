@@ -216,6 +216,26 @@ public class FlowableEngineClient {
     }
 
     /**
+     * Count-only ({@code size=1}) CMMN historic case-instances in one lifecycle state — the
+     * Case Inspector's scope-typed lane facet (ACTIVE / COMPLETED / TERMINATED; a case cannot
+     * SUSPEND, spike Q2). {@code state} maps straight onto the collection's {@code ?state=}
+     * param, live-proven honored on 6.8+ (silently ignored on 6.3.1, so callers gate ≥ 6.8);
+     * {@code filters} threads {@code tenantId}. Returns the page {@code total} — never the rows
+     * (Stage-0 aggregations are count-only, iron rule). 0 on an unreachable/degraded page.
+     */
+    public long countHistoricCmmnCaseInstances(EngineConfig engine, String state, Map<String, String> filters) {
+        UriComponentsBuilder b = UriComponentsBuilder.fromUriString(
+                        cmmnApiBase(engine) + "/cmmn-history/historic-case-instances")
+                .queryParam("state", state)
+                .queryParam("size", 1);
+        filters.forEach(b::queryParam);
+        java.net.URI uri = b.build().toUri();
+        FlowablePage page =
+                guarded(engine, () -> client(engine).get().uri(uri).retrieve().body(FlowablePage.class));
+        return page != null ? page.total() : 0;
+    }
+
+    /**
      * The CMMN Management/Runtime/Repository/History REST APIs live under the {@code /cmmn-api}
      * sibling of the process-api {@code /service} base — same convention as
      * {@link #externalJobApiBase}. A non-standard deployment would need an explicit override,

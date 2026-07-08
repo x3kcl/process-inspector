@@ -83,11 +83,13 @@ class TriageCmmnScopeIT {
         caseInstanceId = EngineSeed.startFailingCase(cmmn, CASE_KEY);
 
         // The async service task dead-letters once its DEFAULT retry budget exhausts (6.8's
-        // CMMN engine ignores failedJobRetryTimeCycle — ~30-40s, measured live). Await the
-        // ORPHAN as the process-api projection renders it — engine truth, never a sleep.
+        // CMMN engine ignores failedJobRetryTimeCycle — ~30-40s, measured live). Await THIS run's
+        // case (keyed on its unique caseInstanceId, not the shared failing-expression needle) so a
+        // parallel session's residue of the same seed can't short-circuit the wait — engine truth,
+        // never a sleep.
         await().atMost(75, TimeUnit.SECONDS)
                 .pollInterval(2, TimeUnit.SECONDS)
-                .until(() -> EngineSeed.outOfScopeDeadletterPresent(engine, NEEDLE));
+                .until(() -> EngineSeed.cmmnDeadletterPresentForCase(cmmn, caseInstanceId));
 
         // The health strip (and the scopeType capability the count is gated on) comes from
         // the scheduled M1 probe — wait for one cycle before triage reads the registry.
@@ -204,6 +206,49 @@ class TriageCmmnScopeIT {
         assertThat(jobs.size())
                 .as("the endpoint enumerates exactly the engine's ?scopeType=cmmn lane")
                 .isEqualTo(scopedTotal);
+    }
+
+    /**
+     * Case Inspector Phase 1 — the scope-typed lane facet: the drawer shows CMMN case counts
+     * (ACTIVE / FAILED / COMPLETED / TERMINATED — never SUSPENDED, cases can't suspend) plus the
+     * FAILED-lane dead-letter detail. Proven against the real 6.8 engine: the seeded failing case
+     * is ACTIVE (its async job dead-lettered but the case is still running) and shows up in FAILED,
+     * so both lanes are ≥ 1; every lane is a concrete number (the 6.8 gate is open), and the FAILED
+     * detail carries the same seeded row.
+     */
+    @Test
+    void cmmnScopeEndpointReportsLaneCountsAndFailedDetail() {
+        JsonNode body = rest.getForObject("/api/triage/engines/engine-a/cmmn-scope", JsonNode.class);
+
+        JsonNode lanes = body.get("lanes");
+        // A dead-lettered case is still active, so both lanes count the seeded case — no SUSPENDED.
+        assertThat(lanes.get("active").asInt())
+                .as("the seeded failing case is still an ACTIVE case")
+                .isGreaterThanOrEqualTo(1);
+        assertThat(lanes.get("failed").asInt())
+                .as("the seeded failing case is one FAILED (dead-lettered) case")
+                .isGreaterThanOrEqualTo(1);
+        // COMPLETED / TERMINATED are concrete numbers on a 6.8 engine (gate open), never null.
+        assertThat(lanes.get("completed").isNull()).isFalse();
+        assertThat(lanes.get("terminated").isNull()).isFalse();
+        assertThat(lanes.has("suspended"))
+                .as("a CMMN case cannot be suspended — no SUSPENDED lane")
+                .isFalse();
+
+        // The FAILED lane drills into the same dead-letter rows the dedicated endpoint enumerates.
+        JsonNode jobs = body.get("deadletters").get("jobs");
+        assertThat(jobs.isArray()).isTrue();
+        boolean seededPresent = false;
+        for (JsonNode job : jobs) {
+            if (caseInstanceId.equals(job.path("caseInstanceId").asText())) {
+                seededPresent = true;
+                assertThat(job.path("exceptionMessage").asText()).contains(NEEDLE);
+                assertThat(job.path("caseDefinitionKey").asText()).isEqualTo(CASE_KEY);
+            }
+        }
+        assertThat(seededPresent)
+                .as("the seeded failing case is in the FAILED-lane detail")
+                .isTrue();
     }
 
     /** VIEWER floor holds: an unauthenticated caller is rejected before any engine read. */

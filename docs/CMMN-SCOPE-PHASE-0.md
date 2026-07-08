@@ -217,12 +217,31 @@ Phase 0 deliberately produces the seam the later phases consume:
     6.8 (`TriageCmmnScopeIT`). A 2nd increment (2026-07-08) resolves the bare-uuid
     `caseDefinitionId` → readable `caseDefinitionKey`/`caseDefinitionName` via a bounded
     distinct-id lookup against `cmmn-repository/case-definitions/{id}` (N+1 on definitions, never
-    on jobs; a missing def degrades to null). **Deferred within Phase 1:** the process-api
-    merge-by-`id` cross-window reconciliation (this slice reads the cmmn-api window ONLY —
-    sufficient to enumerate, since the discriminator is intrinsic to that projection; the merge
-    is the load-bearing spine of the unified grid and deserves its own slice, ideally opened by a
-    live spike on the two-projection/two-cap reconciliation), and the scope-typed lane facet in
-    unified search (below).
+    on jobs; a missing def degrades to null).
+  - **SCOPE-TYPED LANE FACET SHIPPED 2026-07-08 (3rd increment, full-stack).** The drawer is now a
+    case-scoped view: `GET …/cmmn-scope` → `CmmnScopeFacet` (`CmmnLaneCounts{active,failed,
+    completed,terminated}` + the inlined dead-letter detail). ACTIVE/COMPLETED/TERMINATED are
+    count-only (`size=1`) `historic-case-instances?state=` queries
+    (`FlowableEngineClient.countHistoricCmmnCaseInstances`), degrading to `null` (unknown, never a
+    misleading `0`); FAILED = distinct `caseInstanceId`s among the dead-letters (a lower bound when
+    truncated). **No SUSPENDED** (cases can't suspend, Q2); the frontend renders tiles off a
+    dedicated `CMMN_STATUSES` const — the M4 hazard below is now CLOSED in code. Same VIEWER floor
+    + 6.8 gate (reuses the enumeration, so the gate runs before any lane query). IT seed-await
+    hardened to key on the per-run `caseInstanceId` (`EngineSeed.cmmnDeadletterPresentForCase`) —
+    the needle-keyed await could short-circuit on a parallel session's same-seed residue.
+  - **MERGE SLICE DESCOPED 2026-07-08 (near-zero-yield — supersedes the "deferred" note below).**
+    The process-api↔cmmn-api merge-by-`id` reconciliation was originally the "load-bearing spine
+    of the unified grid," but the `?scopeType=cmmn` server-side filter (shipped in the first slice)
+    obviates it: the cmmn-api leg already spends the whole `dlq-scan-cap` on CMMN rows, so it
+    **strictly dominates** the diluted process-api orphan window — the merge yields no rows in the
+    normal case (CMMN dead-letters ≤ cap), and extras only in the pathological case where the two
+    endpoints order CMMN rows differently past the cap. Crucially the **"degraded — Unknown case"
+    fallback can't fire honestly**: a null-pid process-api orphan is only a *candidate* CMMN job;
+    confirming it needs a by-id cmmn-api hydration (`deadletter-jobs/{id}`, cap-free) that, on
+    success, returns FULL context (→ a normal row, not degraded), and on 404 can't be claimed as
+    CMMN at all (never-lie). So the enumeration reads the cmmn-api window ONLY — the discriminator
+    is intrinsic to that projection — and the merge is dropped, not deferred. The "structurally
+    mandatory degraded-orphan path" reasoning below predates the scope filter; it is superseded.
   - **CONSTRAINT (iron rule):** Phase 1's cmmn-api DLQ fetch is **bounded by `dlq-scan-cap`,
     paged, and carries the `truncated@N` badge**, exactly like the BPMN Stage-0 scan — never a
     single unpaged DLQ fetch.
@@ -266,8 +285,12 @@ Phase 0 deliberately produces the seam the later phases consume:
       `withoutTenantId`** — use empty `tenantId=` for the blank-tenant filter.
 - Phase 1 status lanes for CMMN are **ACTIVE / FAILED / COMPLETED / TERMINATED** — **no
   SUSPENDED** (§1.1 Q2; cases cannot suspend). `superProcessInstanceId` carries cross-engine
-  hierarchy.
-  - **HAZARD (M4):** the BPMN lane set (`frontend/src/api/model.ts` `ALL_STATUSES`) hardcodes
+  hierarchy. **SHIPPED 2026-07-08** as `CmmnLaneCounts` behind `GET …/cmmn-scope` (see the
+  lane-facet note above).
+  - **HAZARD (M4) — CLOSED 2026-07-08:** the drawer drives its tiles off the new `CMMN_STATUSES`
+    const (`frontend/src/api/model.ts`), NOT `ALL_STATUSES`, so TERMINATED is never dropped and no
+    empty SUSPENDED lane appears. Original hazard retained for context: the BPMN lane set
+    (`ALL_STATUSES`) hardcodes
     SUSPENDED and lacks TERMINATED — the **mirror image** of CMMN's. A polymorphic Phase-1 UI
     must drive its tile/lane set off the row's `scopeType` (introduce a `CMMN_STATUSES` const),
     **not** reuse the single global `ALL_STATUSES` — else TERMINATED is silently dropped into

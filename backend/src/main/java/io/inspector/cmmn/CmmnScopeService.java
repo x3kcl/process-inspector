@@ -5,6 +5,8 @@ import io.inspector.client.FlowableEngineClient;
 import io.inspector.client.FlowableEngineClient.FlowablePage;
 import io.inspector.config.InspectorProperties.EngineConfig;
 import io.inspector.dto.CmmnDeadLetterJob;
+import io.inspector.dto.CmmnLaneCounts;
+import io.inspector.dto.CmmnScopeFacet;
 import io.inspector.dto.OutOfScopeDeadLetters;
 import io.inspector.registry.EngineCapabilities;
 import io.inspector.registry.EngineRegistry;
@@ -45,6 +47,51 @@ public class CmmnScopeService {
     public CmmnScopeService(EngineRegistry registry, FlowableEngineClient flowable) {
         this.registry = registry;
         this.flowable = flowable;
+    }
+
+    /**
+     * The scope-typed view of the co-deployed CMMN engine on one engine (R-SEM-20): the status
+     * lane counts (ACTIVE / FAILED / COMPLETED / TERMINATED — no SUSPENDED, cases can't suspend;
+     * spike Q2) plus the enumerated FAILED-lane detail (the dead-letter jobs). ACTIVE/COMPLETED/
+     * TERMINATED are count-only ({@code size=1}) historic-case-instance queries per {@code
+     * ?state=}; FAILED is the distinct cases carrying a dead-letter job (a lower bound, "≥N", when
+     * the dead-letter scan was truncated). Each lane degrades to {@code null} ("unknown") on its
+     * own query failure, never a misleading {@code 0}. Read-only; gated 6.8+ (via the enumeration).
+     */
+    public CmmnScopeFacet cmmnScope(String engineId) {
+        // The enumeration re-requires the engine and re-runs the 6.8+ gate — the single source of
+        // truth for both, so a pre-6.8 engine is refused here too before any lane query leaves.
+        OutOfScopeDeadLetters deadletters = outOfScopeDeadLetters(engineId);
+        EngineConfig engine = registry.require(engineId);
+
+        Map<String, String> filters = new LinkedHashMap<>();
+        if (engine.tenantId() != null && !engine.tenantId().isBlank()) {
+            filters.put("tenantId", engine.tenantId());
+        }
+        Integer active = laneCount(engine, "active", filters);
+        Integer completed = laneCount(engine, "completed", filters);
+        Integer terminated = laneCount(engine, "terminated", filters);
+        // FAILED = DISTINCT cases with a dead-letter job (a case can hold several); a truncated
+        // scan makes this a lower bound, carried by deadletters.truncated() for the UI's ≥N.
+        Integer failed = (int) deadletters.jobs().stream()
+                .map(CmmnDeadLetterJob::caseInstanceId)
+                .filter(id -> id != null && !id.isBlank())
+                .distinct()
+                .count();
+
+        return new CmmnScopeFacet(new CmmnLaneCounts(active, failed, completed, terminated), deadletters);
+    }
+
+    /**
+     * One count-only ({@code size=1}) historic-case-instance lane, degrading to {@code null}
+     * ("unknown") on a query failure so a transient error never renders as a confident {@code 0}.
+     */
+    private Integer laneCount(EngineConfig engine, String state, Map<String, String> filters) {
+        try {
+            return (int) flowable.countHistoricCmmnCaseInstances(engine, state, filters);
+        } catch (Exception ex) {
+            return null;
+        }
     }
 
     /** The enumerated out-of-scope (CMMN) dead-letter jobs on one engine. */

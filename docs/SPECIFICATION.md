@@ -174,13 +174,18 @@ it; the count is unknown (null, shown as nothing) on engines that cannot discrim
 (`≥N`) when the dead-letter scan hit its cap. The note is deliberately job-scoped, lower-bound
 phrasing ("≥N CMMN jobs not triaged here") — never an exact "N of M" that invites unsound
 subtraction against the instance-scoped FAILED chip. The note is **drillable** (Case Inspector
-Phase 1, first slice): "View jobs" opens a read-only list of those CMMN dead-letters —
-enumerated from the CMMN-api dead-letter projection (the shared-table rows carrying a case
-attribution), bounded/paged/`truncated@N` like every DLQ scan, gated 6.8+ (a pre-6.8 engine is
-refused server-side). The drawer shows the failing plan-item element, exception snippet, case
-instance id, and retries; it carries the same `≥` lower-bound honesty as the count and offers
-**no corrective action** (CMMN actions are a later phase). Multi-tenant engines thread
-`tenantId` through **every** query leg.
+Phase 1): "View jobs" opens a read-only **scope-typed view** of the co-deployed CMMN engine.
+It leads with the CMMN case **lane counts** — `ACTIVE / FAILED / COMPLETED / TERMINATED` (there
+is **no SUSPENDED lane**: a CMMN case cannot be suspended) — count-only (`size=1`)
+historic-case-instance queries per `?state=`, each shown as `—` (unknown) rather than a
+misleading `0` if its query degrades; `FAILED` is the distinct cases carrying a dead-letter job.
+Below the lanes the **FAILED lane drills** into those CMMN dead-letters — enumerated from the
+CMMN-api dead-letter projection (the shared-table rows carrying a case attribution),
+bounded/paged/`truncated@N` like every DLQ scan — showing the failing plan-item element,
+exception snippet, case instance id, and retries. The whole drawer is gated 6.8+ (a pre-6.8
+engine is refused server-side), carries the same `≥` lower-bound honesty as the count on the
+FAILED lane, and offers **no corrective action** (CMMN actions are a later phase). Multi-tenant
+engines thread `tenantId` through **every** query leg.
 
 **The derivation is falsifiable** (R-L3-01): every status chip offers **"Explain this
 status"** — the per-leg evidence (plan shape chosen and why; each engine call's URL, body,

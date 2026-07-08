@@ -11,6 +11,7 @@ import type {
   InstanceTimeline,
   InstanceVariables,
   NearestSiblingResponse,
+  CmmnScopeFacet,
   NoteDto,
   OutOfScopeDeadLetters,
   ResolveResponse,
@@ -52,6 +53,20 @@ export async function fetchOutOfScopeDeadLetters(engineId: string): Promise<OutO
     '/api/triage/engines/{engineId}/out-of-scope-deadletters',
     { params: { path: { engineId } } },
   )
+  if (data === undefined) throw new ApiError(response.status, error)
+  return data
+}
+
+/**
+ * Case Inspector Phase 1: the scope-typed lane facet — CMMN case counts
+ * (ACTIVE/FAILED/COMPLETED/TERMINATED) plus the FAILED-lane dead-letter detail on one engine.
+ * Same 6.8+ server-side gate as {@link fetchOutOfScopeDeadLetters}; the UI only opens it on
+ * engines whose out-of-scope count is a number.
+ */
+export async function fetchCmmnScope(engineId: string): Promise<CmmnScopeFacet> {
+  const { data, error, response } = await api.GET('/api/triage/engines/{engineId}/cmmn-scope', {
+    params: { path: { engineId } },
+  })
   if (data === undefined) throw new ApiError(response.status, error)
   return data
 }

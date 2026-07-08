@@ -405,6 +405,25 @@ public final class EngineSeed {
                 });
     }
 
+    /**
+     * True once the CMMN-API DLQ shows a dead-letter for THIS SPECIFIC case instance. Unlike the
+     * process-api projection (whose orphan rows carry no case attribution, so only the shared
+     * failing-expression needle is available — which a parallel session's residue of the SAME
+     * seed also matches), the cmmn-api row carries {@code caseInstanceId}, so keying on the
+     * per-run instance id is genuinely residue-proof: a fresh seed's await never short-circuits
+     * on another session's leftover dead-letter.
+     */
+    @SuppressWarnings("unchecked")
+    public static boolean cmmnDeadletterPresentForCase(RestClient cmmn, String caseInstanceId) {
+        Map<String, Object> page = cmmn.get()
+                .uri("/cmmn-management/deadletter-jobs?scopeType=cmmn&size=200")
+                .retrieve()
+                .body(Map.class);
+        List<Map<String, Object>> data = (List<Map<String, Object>>) page.get("data");
+        return data != null
+                && data.stream().anyMatch(r -> caseInstanceId.equals(String.valueOf(r.get("caseInstanceId"))));
+    }
+
     /** Terminates a case instance (removing its dead-letter job). Quiet: a target already gone is fine. */
     public static void deleteCaseQuietly(RestClient cmmn, String caseInstanceId) {
         try {

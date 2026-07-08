@@ -1,6 +1,7 @@
 package io.inspector.api;
 
 import io.inspector.cmmn.CmmnScopeService;
+import io.inspector.dto.CmmnScopeFacet;
 import io.inspector.dto.OutOfScopeDeadLetters;
 import org.springframework.security.access.prepost.PreAuthorize;
 import org.springframework.web.bind.annotation.GetMapping;
@@ -29,5 +30,15 @@ public class CmmnScopeController {
     @PreAuthorize("@rbac.atLeastOn(authentication, 'VIEWER', #engineId)")
     public OutOfScopeDeadLetters outOfScopeDeadLetters(@PathVariable String engineId) {
         return cmmnScope.outOfScopeDeadLetters(engineId);
+    }
+
+    /**
+     * The scope-typed lane facet: CMMN case counts (ACTIVE / FAILED / COMPLETED / TERMINATED)
+     * plus the FAILED-lane dead-letter detail. Same VIEWER floor + 6.8+ capability gate.
+     */
+    @GetMapping("/cmmn-scope")
+    @PreAuthorize("@rbac.atLeastOn(authentication, 'VIEWER', #engineId)")
+    public CmmnScopeFacet cmmnScope(@PathVariable String engineId) {
+        return cmmnScope.cmmnScope(engineId);
     }
 }
