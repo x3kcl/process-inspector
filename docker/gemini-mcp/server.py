@@ -13,7 +13,7 @@ from mcp.server.fastmcp import FastMCP
 API_BASE = "https://generativelanguage.googleapis.com/v1beta"
 API_KEY = os.environ.get("GEMINI_API_KEY", "").strip()
 # Default model; override per-call or via GEMINI_MODEL env.
-DEFAULT_MODEL = os.environ.get("GEMINI_MODEL", "gemini-2.5-pro").strip()
+DEFAULT_MODEL = os.environ.get("GEMINI_MODEL", "gemini-2.5-flash").strip()
 
 mcp = FastMCP("gemini")
 
@@ -54,8 +54,8 @@ def gemini_generate(
 
     Args:
         prompt: The user prompt / question.
-        model: Model id, e.g. "gemini-2.5-pro" or "gemini-2.5-flash".
-               Defaults to the server's DEFAULT_MODEL (gemini-2.5-pro).
+        model: Model id, e.g. "gemini-2.5-flash" or "gemini-2.5-pro".
+               Defaults to the server's DEFAULT_MODEL (gemini-2.5-flash).
         system_instruction: Optional system instruction to steer the model.
         temperature: Sampling temperature (0.0–2.0).
     """
