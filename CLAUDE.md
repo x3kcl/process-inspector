@@ -72,3 +72,7 @@ join logic (dockerized engine only — `engine-harness` skill).
   license term (R-GOV-05), enforced by `frontend/scripts/check-bpmn-watermark.mjs` in
   `npm run build`.
 - Spotless + ESLint are CI hard failures — run them before finishing.
+- A commit to `main` is not done until GitHub Actions is **green on its SHA** — a successful
+  `git push` is NOT success. Follow the `green-ci` skill: mirror the gates locally
+  (`scripts/ci-local.sh`), push, then block on the real run (`scripts/ci-watch.sh <sha>`,
+  backgrounded) and fix any red in the SAME session. Red `main` blocks every parallel session.
