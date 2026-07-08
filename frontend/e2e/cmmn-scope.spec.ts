@@ -26,6 +26,8 @@ async function mockBff(page: Page, opts: Options): Promise<void> {
     id: `job-${String(i)}`,
     caseInstanceId: `case-${String(i)}`,
     caseDefinitionId: 'def-uuid',
+    caseDefinitionKey: 'demoFailingCase',
+    caseDefinitionName: 'Demo failing case',
     planItemInstanceId: `pi-${String(i)}`,
     elementId: 'failingService',
     elementName: 'Failing service',
@@ -76,6 +78,9 @@ test('the out-of-scope note drills into the enumerated CMMN dead-letters', async
   const dialog = page.getByRole('dialog')
   await expect(dialog).toContainText('Out-of-scope dead-letters — eng1')
   await expect(dialog).toContainText('2 CMMN dead-letter jobs')
+  // The bare-uuid caseDefinitionId is shown as the resolved readable case type + key.
+  await expect(dialog.getByText('Demo failing case')).toHaveCount(2)
+  await expect(dialog).toContainText('(demoFailingCase)')
   await expect(dialog.getByText('Failing service')).toHaveCount(2)
   await expect(dialog).toContainText('nonExistentBean')
   await expect(dialog.getByText('case-0')).toBeVisible()

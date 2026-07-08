@@ -58,7 +58,7 @@ public class CmmnScopeService {
 
         int cap = engine.dlqScanCapOrDefault();
         int pageSize = engine.maxPageSizeOrDefault();
-        List<CmmnDeadLetterJob> jobs = new ArrayList<>();
+        List<Map<String, Object>> cmmnRows = new ArrayList<>();
         int scanned = 0;
         long total = Long.MAX_VALUE;
         for (int start = 0; start < Math.min(total, cap); start += pageSize) {
@@ -74,14 +74,55 @@ public class CmmnScopeService {
             for (Map<String, Object> row : page.dataOrEmpty()) {
                 scanned++;
                 if (isCmmnScoped(row)) {
-                    jobs.add(map(row));
+                    cmmnRows.add(row);
                 }
             }
         }
+
+        // Resolve the bare-uuid caseDefinitionId to a readable key/name — DISTINCT ids only
+        // (N+1 on definitions, never on jobs), each degrading to null so a resolution miss
+        // (undeployed definition) never fails the slice.
+        Map<String, CaseDefinitionRef> definitions = resolveDefinitions(engine, cmmnRows);
+        List<CmmnDeadLetterJob> jobs = cmmnRows.stream()
+                .map(row -> map(row, definitions.getOrDefault(str(row, "caseDefinitionId"), CaseDefinitionRef.UNKNOWN)))
+                .toList();
+
         // The shared DLQ table (BPMN + CMMN rows) exceeded the cap: CMMN rows may lie past it,
         // so the enumerated list is a labeled lower bound (the UI's ≥N treatment).
         boolean truncated = total > scanned;
-        return new OutOfScopeDeadLetters(List.copyOf(jobs), truncated, scanned);
+        return new OutOfScopeDeadLetters(jobs, truncated, scanned);
+    }
+
+    /** A resolved (or missing) case-definition key/name pair. */
+    record CaseDefinitionRef(String key, String name) {
+        static final CaseDefinitionRef UNKNOWN = new CaseDefinitionRef(null, null);
+    }
+
+    /**
+     * Resolves each DISTINCT {@code caseDefinitionId} present in the rows to its key/name via
+     * {@code cmmn-repository/case-definitions/{id}}. A per-id failure (undeployed definition →
+     * 404 → null) degrades that one entry to {@link CaseDefinitionRef#UNKNOWN}; the scan never
+     * fails on enrichment.
+     */
+    private Map<String, CaseDefinitionRef> resolveDefinitions(EngineConfig engine, List<Map<String, Object>> rows) {
+        Map<String, CaseDefinitionRef> resolved = new LinkedHashMap<>();
+        for (Map<String, Object> row : rows) {
+            String defId = str(row, "caseDefinitionId");
+            if (defId == null || resolved.containsKey(defId)) {
+                continue;
+            }
+            try {
+                Map<String, Object> def = flowable.getCmmnCaseDefinition(engine, defId);
+                resolved.put(
+                        defId,
+                        def == null
+                                ? CaseDefinitionRef.UNKNOWN
+                                : new CaseDefinitionRef(str(def, "key"), str(def, "name")));
+            } catch (Exception ex) {
+                resolved.put(defId, CaseDefinitionRef.UNKNOWN);
+            }
+        }
+        return resolved;
     }
 
     /**
@@ -94,12 +135,14 @@ public class CmmnScopeService {
         return caseInstanceId != null && !caseInstanceId.toString().isBlank();
     }
 
-    static CmmnDeadLetterJob map(Map<String, Object> row) {
+    static CmmnDeadLetterJob map(Map<String, Object> row, CaseDefinitionRef definition) {
         Object retries = row.get("retries");
         return new CmmnDeadLetterJob(
                 str(row, "id"),
                 str(row, "caseInstanceId"),
                 str(row, "caseDefinitionId"),
+                definition.key(),
+                definition.name(),
                 str(row, "planItemInstanceId"),
                 str(row, "elementId"),
                 str(row, "elementName"),

@@ -61,6 +61,12 @@ export function CmmnScopeDrawer({ engineId, onClose }: { engineId: string; onClo
             <ul className="cmmn-scope-list">
               {jobs.map((job) => (
                 <li key={job.id} className="cmmn-scope-row">
+                  <div className="cmmn-scope-casetype">
+                    {job.caseDefinitionName ?? job.caseDefinitionKey ?? 'Unknown case type'}
+                    {job.caseDefinitionKey && job.caseDefinitionName && (
+                      <span className="cmmn-scope-casekey"> ({job.caseDefinitionKey})</span>
+                    )}
+                  </div>
                   <div className="cmmn-scope-element">{job.elementName ?? job.elementId ?? '(unnamed element)'}</div>
                   {job.exceptionMessage && (
                     <div className="cmmn-scope-exception">{job.exceptionMessage}</div>

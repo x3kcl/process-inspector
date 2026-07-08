@@ -477,14 +477,23 @@ count to a "≥N" lower bound under a truncated DLQ scan — see `CMMN-SCOPE-PHA
     with null case attribution — spike Q1); bounded by `dlq-scan-cap`, paged, `truncated` lower
     bound; gated 6.8+ via `scopeType` (pre-6.8 refused with a ProblemDetail — the cmmn context
     is DLQ-blind there). Frontend: the Stage-0 "≥N CMMN jobs not triaged here" note gains a
-    "View jobs" drill into a read-only `CmmnScopeDrawer` (element, exception, case id, retries;
-    same `≥` lower-bound honesty; no corrective action). Tests: `CmmnScopeServiceTest` (rung-1:
-    discriminator, mapping, gate ordering) + drill assertions folded into `TriageCmmnScopeIT`
-    (rung-4, live 6.8) + hermetic `e2e/cmmn-scope.spec.ts`. Schema regen'd (additive). **Still
-    open in Phase 1:** merging the process-api DLQ list by job `id` for a cross-window
-    reconciliation, resolving `caseDefinitionId` (a bare uuid) → case key/name, and the full
-    **scope-typed lane facet** in unified search (ACTIVE/FAILED/COMPLETED/TERMINATED tiles off a
-    `CMMN_STATUSES` const — never the SUSPENDED-carrying `ALL_STATUSES`, §7 M4 hazard).
+    "View jobs" drill into a read-only `CmmnScopeDrawer` (readable case type, element, exception,
+    case id, retries; same `≥` lower-bound honesty; no corrective action). Tests:
+    `CmmnScopeServiceTest` (rung-1: discriminator, mapping, gate ordering, definition-resolution
+    dedup + degrade) + drill assertions folded into `TriageCmmnScopeIT` (rung-4, live 6.8) +
+    hermetic `e2e/cmmn-scope.spec.ts`. Schema regen'd (additive).
+    - **Case key/name resolution LANDED 2026-07-08 (same slice, 2nd increment).** A CMMN
+      `caseDefinitionId` on a job row is a bare uuid (NOT `key:version:uuid`), so the readable
+      key/name are resolved by a **bounded, distinct-id** lookup against
+      `cmmn-repository/case-definitions/{id}` (`FlowableEngineClient.getCmmnCaseDefinition`;
+      N+1 on distinct DEFINITIONS, never on jobs; a 404/undeployed def degrades that entry to
+      null, never fails the slice). `CmmnDeadLetterJob` gains `caseDefinitionKey`/
+      `caseDefinitionName`; the drawer leads each row with the case type.
+    - **Still open in Phase 1:** merging the process-api DLQ list by job `id` for a cross-window
+      reconciliation (the load-bearing spine of the unified grid — deserves its own slice, ideally
+      opened by a live spike on the two-projection/two-cap reconciliation), and the full
+      **scope-typed lane facet** in unified search (ACTIVE/FAILED/COMPLETED/TERMINATED tiles off a
+      `CMMN_STATUSES` const — never the SUSPENDED-carrying `ALL_STATUSES`, §7 M4 hazard).
   **Phase 2** — Polymorphic Stage-2 detail: `cmmn-js`
   canvas (extend the watermark guard to `/(bjs|cmmn)-powered-by/i` **first**) + plan-item
   timeline. **Phase 3** — CMMN corrective actions under the full `corrective-actions` rails.

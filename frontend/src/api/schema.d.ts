@@ -685,6 +685,8 @@ export interface components {
         };
         CmmnDeadLetterJob: {
             caseDefinitionId?: string;
+            caseDefinitionKey?: string;
+            caseDefinitionName?: string;
             caseInstanceId?: string;
             createTime?: string;
             dueDate?: string;

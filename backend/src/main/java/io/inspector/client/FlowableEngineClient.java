@@ -153,6 +153,27 @@ public class FlowableEngineClient {
     }
 
     /**
+     * GET /cmmn-api/cmmn-repository/case-definitions/{id} — resolves a CMMN
+     * {@code caseDefinitionId} (a bare uuid on job rows, unlike a BPMN
+     * {@code key:version:uuid}) to its readable {@code key}/{@code name}/{@code version}.
+     * Null when the id is unknown (404) — a definition can be undeployed while its
+     * dead-letter jobs linger. Callers resolve DISTINCT ids only (never per job row).
+     */
+    @SuppressWarnings("unchecked")
+    public Map<String, Object> getCmmnCaseDefinition(EngineConfig engine, String caseDefinitionId) {
+        java.net.URI uri = UriComponentsBuilder.fromUriString(
+                        cmmnApiBase(engine) + "/cmmn-repository/case-definitions/" + caseDefinitionId)
+                .build()
+                .toUri();
+        try {
+            return guarded(
+                    engine, () -> client(engine).get().uri(uri).retrieve().body(Map.class));
+        } catch (HttpClientErrorException.NotFound e) {
+            return null;
+        }
+    }
+
+    /**
      * The CMMN Management/Runtime/Repository/History REST APIs live under the {@code /cmmn-api}
      * sibling of the process-api {@code /service} base — same convention as
      * {@link #externalJobApiBase}. A non-standard deployment would need an explicit override,

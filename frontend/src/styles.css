@@ -414,8 +414,17 @@ button.primary:disabled {
   padding: 8px 10px;
   background: #fafbfc;
 }
-.cmmn-scope-element {
+.cmmn-scope-casetype {
   font-weight: 600;
+}
+.cmmn-scope-casekey {
+  font-weight: 400;
+  color: #8395a7;
+  font-size: 12px;
+}
+.cmmn-scope-element {
+  color: #40515e;
+  font-size: 13px;
 }
 .cmmn-scope-exception {
   font-size: 12px;

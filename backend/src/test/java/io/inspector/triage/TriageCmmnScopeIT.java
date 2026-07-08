@@ -178,6 +178,9 @@ class TriageCmmnScopeIT {
                 .isNotBlank());
         assertThat(seeded.path("exceptionMessage").asText()).contains(NEEDLE);
         assertThat(seeded.path("retries").asInt()).isZero();
+        // The bare-uuid caseDefinitionId is resolved to a readable key/name via cmmn-repository.
+        assertThat(seeded.path("caseDefinitionKey").asText()).isEqualTo(CASE_KEY);
+        assertThat(seeded.path("caseDefinitionName").asText()).isEqualTo("Demo failing case");
     }
 
     /** VIEWER floor holds: an unauthenticated caller is rejected before any engine read. */

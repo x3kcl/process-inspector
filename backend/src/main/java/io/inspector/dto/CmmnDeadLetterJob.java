@@ -16,16 +16,19 @@ import com.fasterxml.jackson.annotation.JsonInclude;
  *
  * <p>Unlike a BPMN {@code processDefinitionId} ({@code key:version:uuid}), a CMMN
  * {@code caseDefinitionId} is a bare uuid — the case key/name are NOT derivable from it, so
- * they are left to a later (bounded) enrichment; the drill value here is {@code elementName}
- * + {@code exceptionMessage} + {@code caseInstanceId}. Read-only in Phase 1 (no move/discard —
- * CMMN corrective actions are Phase 3, under the full corrective-actions rails). Gated 6.8+;
- * nullable fields differ by engine.
+ * they are resolved by a bounded, distinct-id lookup against
+ * {@code cmmn-repository/case-definitions/{id}} ({@code caseDefinitionKey}/
+ * {@code caseDefinitionName}, null when the definition is undeployed). Read-only in Phase 1
+ * (no move/discard — CMMN corrective actions are Phase 3, under the full corrective-actions
+ * rails). Gated 6.8+; nullable fields differ by engine.
  */
 @JsonInclude(JsonInclude.Include.NON_NULL)
 public record CmmnDeadLetterJob(
         String id,
         String caseInstanceId, // the discriminator — non-null iff this row is CMMN-scoped
-        String caseDefinitionId, // bare uuid (NOT key:version:uuid); key/name not derivable from it
+        String caseDefinitionId, // bare uuid (NOT key:version:uuid); key/name resolved separately
+        String caseDefinitionKey, // resolved via cmmn-repository; null if the definition is gone
+        String caseDefinitionName, // resolved via cmmn-repository; the readable case type
         String planItemInstanceId, // the failed plan item's instance
         String elementId, // the failing case element (e.g. a service task)
         String elementName,

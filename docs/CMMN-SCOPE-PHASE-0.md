@@ -214,11 +214,15 @@ Phase 0 deliberately produces the seam the later phases consume:
     `scopeType` (≥6.8) with a live re-check — the call rides the cmmn context, so a DLQ-blind
     6.3 (refused server-side on the capability gate) never returns a wrong number. Frontend: a
     "View jobs" drill on the Stage-0 note → read-only `CmmnScopeDrawer`. Live-verified against
-    6.8 (`TriageCmmnScopeIT`). **Deferred within Phase 1:** the process-api merge-by-`id`
-    cross-window reconciliation (this slice reads the cmmn-api window ONLY — sufficient to
-    enumerate, since the discriminator is intrinsic to that projection), case key/name
-    resolution from the bare-uuid `caseDefinitionId`, and the scope-typed lane facet in unified
-    search (below).
+    6.8 (`TriageCmmnScopeIT`). A 2nd increment (2026-07-08) resolves the bare-uuid
+    `caseDefinitionId` → readable `caseDefinitionKey`/`caseDefinitionName` via a bounded
+    distinct-id lookup against `cmmn-repository/case-definitions/{id}` (N+1 on definitions, never
+    on jobs; a missing def degrades to null). **Deferred within Phase 1:** the process-api
+    merge-by-`id` cross-window reconciliation (this slice reads the cmmn-api window ONLY —
+    sufficient to enumerate, since the discriminator is intrinsic to that projection; the merge
+    is the load-bearing spine of the unified grid and deserves its own slice, ideally opened by a
+    live spike on the two-projection/two-cap reconciliation), and the scope-typed lane facet in
+    unified search (below).
   - **CONSTRAINT (iron rule):** Phase 1's cmmn-api DLQ fetch is **bounded by `dlq-scan-cap`,
     paged, and carries the `truncated@N` badge**, exactly like the BPMN Stage-0 scan — never a
     single unpaged DLQ fetch.
