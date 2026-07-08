@@ -468,7 +468,24 @@ count to a "≥N" lower bound under a truncated DLQ scan — see `CMMN-SCOPE-PHA
   support" bullet. **Phase 1** — Unified Search: promote `outOfScopeDeadletters` from a scalar
   to a drillable CMMN scope facet by fetching both management DLQ lists and merging by job `id`;
   bounded/paged/`truncated@N` like the BPMN scan; **scope-typed lane sets** (ACTIVE/FAILED/
-  COMPLETED/TERMINATED, no SUSPENDED). **Phase 2** — Polymorphic Stage-2 detail: `cmmn-js`
+  COMPLETED/TERMINATED, no SUSPENDED).
+  - **Phase 1 — first slice LANDED 2026-07-08 (full-stack).** The scalar is now DRILLABLE:
+    `GET /api/triage/engines/{id}/out-of-scope-deadletters` (`CmmnScopeService` +
+    `CmmnScopeController`, VIEWER floor) enumerates the CMMN dead-letters from the `/cmmn-api`
+    sibling context (`FlowableEngineClient.cmmnApiBase` + `listCmmnDeadLetterJobs`), keeping
+    rows with a non-null `caseInstanceId` (the shared cmmn-api DLQ list also projects BPMN jobs
+    with null case attribution — spike Q1); bounded by `dlq-scan-cap`, paged, `truncated` lower
+    bound; gated 6.8+ via `scopeType` (pre-6.8 refused with a ProblemDetail — the cmmn context
+    is DLQ-blind there). Frontend: the Stage-0 "≥N CMMN jobs not triaged here" note gains a
+    "View jobs" drill into a read-only `CmmnScopeDrawer` (element, exception, case id, retries;
+    same `≥` lower-bound honesty; no corrective action). Tests: `CmmnScopeServiceTest` (rung-1:
+    discriminator, mapping, gate ordering) + drill assertions folded into `TriageCmmnScopeIT`
+    (rung-4, live 6.8) + hermetic `e2e/cmmn-scope.spec.ts`. Schema regen'd (additive). **Still
+    open in Phase 1:** merging the process-api DLQ list by job `id` for a cross-window
+    reconciliation, resolving `caseDefinitionId` (a bare uuid) → case key/name, and the full
+    **scope-typed lane facet** in unified search (ACTIVE/FAILED/COMPLETED/TERMINATED tiles off a
+    `CMMN_STATUSES` const — never the SUSPENDED-carrying `ALL_STATUSES`, §7 M4 hazard).
+  **Phase 2** — Polymorphic Stage-2 detail: `cmmn-js`
   canvas (extend the watermark guard to `/(bjs|cmmn)-powered-by/i` **first**) + plan-item
   timeline. **Phase 3** — CMMN corrective actions under the full `corrective-actions` rails.
   All gated 6.8+.

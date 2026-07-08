@@ -129,7 +129,19 @@ strip's dead-letter lane reconciles with the process-scoped FAILED count — and
 count becomes a **lower bound** (rendered `≥N`) when the DEADLETTER lane's own scan hit the
 cap, flagged by `deadletterTruncated`: the lane-specific truncation, captured before the
 unified `dlqScan` marker OR-conflates it with the timer/executable lanes; `tenantId` threaded
-through **all** legs when the engine is multi-tenant; async-history lag tolerated — the grid
+through **all** legs when the engine is multi-tenant. That scalar count is **drillable** (Case
+Inspector Phase 1, first slice): `GET /api/triage/engines/{id}/out-of-scope-deadletters`
+(`CmmnScopeService`) enumerates the CMMN dead-letters from the **CMMN-api** sibling context
+(`FlowableEngineClient.cmmnApiBase` — the `/cmmn-api` sibling of `/service`, same convention as
+the external-job-api), keeping only rows with a non-null `caseInstanceId` (the shared cmmn-api
+DLQ list also projects BPMN jobs, which carry a null case attribution). It is bounded by
+`dlq-scan-cap`, paged, and floors to a `truncated` lower bound like every DLQ scan; the
+`scopeType` capability is the gate (a pre-6.8 engine — whose cmmn context is dead-letter-blind
+— is refused with a ProblemDetail, never a silently-wrong view). This is a NET-NEW window on
+the shared table — it reads the cmmn-api projection whereas the Phase-0 scalar counts null-pid
+orphans from the process-api scan; the two have different caps and can legitimately disagree
+under truncation, so it is NOT an upgrade of the Phase-0 code. Read-only (CMMN corrective
+actions are a later phase); async-history lag tolerated — the grid
 is a labeled snapshot, the details panel fetches live-first with historic fallback (M3), and
 actions never trust the grid: every mutation re-validates against live engine state
 server-side and returns the engine's 404/409 verbatim (snapshot races are acceptable for
@@ -232,6 +244,7 @@ surfaced by `GET /api/engines` and pushed to the health strip via SSE.
 | `GET  /api/resolve?q=…` | **Omnibox**: one pasted string resolved across engines in the R-SEM-04 order (process-instance → execution → task → job → business key; composite `engine:id` short-circuits to that engine); returns a disambiguation list (kind, engineId, compositeId, derived flags) + a `perEngine` reachability envelope for the "N of M engines" banner |
 | `POST /api/search` | Fan-out instance search (`SearchRequest`; URL-serializable) |
 | `GET  /api/triage[?refresh=true]` | Stage 0 dashboard: engine health strip (M1 probe state), global + per-engine status counts (query totals, `size=1`), DLQ + RETRYING jobs grouped by normalized error signature with per-engine/per-definition-version counts (sibling versions zero-filled), per-engine honesty envelope (`ok/error/dlqScan`, plus `outOfScopeDeadletters` — dead-letters belonging to a co-deployed engine sharing the job tables (CMMN), counted not dropped so the strip's dead-letter lane reconciles with FAILED; null when the engine cannot discriminate scope, gated on the `scopeType` capability ~6.8+). Served from the 20s Caffeine cache (single-flight); `refresh=true` bypasses, throttled 1/10s |
+| `GET  /api/triage/engines/{engineId}/out-of-scope-deadletters` | **Case Inspector Phase 1** (first slice): the drill behind `outOfScopeDeadletters` — read-only enumeration of the co-deployed CMMN engine's dead-letter jobs (`CmmnDeadLetterJob`: failing element, exception snippet, case-instance id, retries) from the `/cmmn-api` sibling context, keeping only rows with a non-null `caseInstanceId`. Bounded by `dlq-scan-cap`, paged, `truncated` lower bound. VIEWER floor; capability-gated (`scopeType`, Flowable ≥ 6.8 — a pre-6.8 engine is refused with a ProblemDetail). No corrective action (CMMN actions are a later phase) |
 | `GET  /api/instances/{engineId}/{id}` | Vitals (historic-first — a completed instance renders, never 404s): identity, definition key/name/version, status flags + primary chip, current activities (unfinished historic activities ∪ runtime execution positions — a dead-lettered async task has NO unfinished activity row, its execution carries the token), why-stuck strip (exception first line, failing activity, retries state), waiting-for (event subscriptions + pending timers), `telemetryUrl` (the engine's `telemetry-url-template` rendered with url-encoded values; absent template → no field) |
 | `GET  /api/instances/{engineId}/{id}/variables[/{name}]` | The TYPED ledger (R-UXQ-13), READ-only: engine type verbatim next to the typed value, process scope + per-execution locals, HISTORIC projection for completed instances; serializables read-only; list responses byte-capped at 256 KiB with the on-demand full-value fetch `GET …/variables/{name}`. The EDIT is not a PUT here — it is the tier-1 `edit-variable` verb via `POST …/actions/edit-variable` (row above), always on the fetched full value: compare-and-set — `expectedOldValue` ⇒ 409 + fresh re-render on mismatch (R-SEM-09); UI contract: SPEC §4a |
 | `GET  /api/instances/{engineId}/{id}/jobs` | Four lanes (executable/timer/suspended/deadletter), typed rows; stacktrace on expand via `GET …/jobs/{jobId}/stacktrace?lane=` (plain text) |

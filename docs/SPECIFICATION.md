@@ -173,7 +173,13 @@ it; the count is unknown (null, shown as nothing) on engines that cannot discrim
 (pre-6.8, no `scopeType` capability — never a misleading zero), and is shown as a lower bound
 (`≥N`) when the dead-letter scan hit its cap. The note is deliberately job-scoped, lower-bound
 phrasing ("≥N CMMN jobs not triaged here") — never an exact "N of M" that invites unsound
-subtraction against the instance-scoped FAILED chip. Multi-tenant engines thread
+subtraction against the instance-scoped FAILED chip. The note is **drillable** (Case Inspector
+Phase 1, first slice): "View jobs" opens a read-only list of those CMMN dead-letters —
+enumerated from the CMMN-api dead-letter projection (the shared-table rows carrying a case
+attribution), bounded/paged/`truncated@N` like every DLQ scan, gated 6.8+ (a pre-6.8 engine is
+refused server-side). The drawer shows the failing plan-item element, exception snippet, case
+instance id, and retries; it carries the same `≥` lower-bound honesty as the count and offers
+**no corrective action** (CMMN actions are a later phase). Multi-tenant engines thread
 `tenantId` through **every** query leg.
 
 **The derivation is falsifiable** (R-L3-01): every status chip offers **"Explain this

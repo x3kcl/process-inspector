@@ -134,6 +134,38 @@ public class FlowableEngineClient {
     }
 
     /**
+     * CMMN dead-letter jobs (Case Inspector Phase 1) — the failed async jobs of a co-deployed
+     * CMMN engine. Like the external-job-api, the CMMN Management REST API is a SIBLING of the
+     * process-api {@code /service} context, at {@code …/cmmn-api} (proven live: this list also
+     * projects BPMN jobs with a null case attribution — the CMMN ones carry a non-null
+     * {@code caseInstanceId}). Callers MUST capability-gate ({@code scopeType}, Flowable ≥ 6.8)
+     * first: on 6.3.1 the cmmn context exists but is dead-letter-blind (spike Q3), so a call
+     * there would silently return a wrong (BPMN-only or empty) view.
+     */
+    public FlowablePage listCmmnDeadLetterJobs(EngineConfig engine, Map<String, String> filters, int start, int size) {
+        UriComponentsBuilder b = UriComponentsBuilder.fromUriString(
+                        cmmnApiBase(engine) + "/cmmn-management/deadletter-jobs")
+                .queryParam("start", start)
+                .queryParam("size", size);
+        filters.forEach(b::queryParam);
+        java.net.URI uri = b.build().toUri();
+        return guarded(engine, () -> client(engine).get().uri(uri).retrieve().body(FlowablePage.class));
+    }
+
+    /**
+     * The CMMN Management/Runtime/Repository/History REST APIs live under the {@code /cmmn-api}
+     * sibling of the process-api {@code /service} base — same convention as
+     * {@link #externalJobApiBase}. A non-standard deployment would need an explicit override,
+     * not offered here.
+     */
+    static String cmmnApiBase(EngineConfig engine) {
+        String base = engine.baseUrl();
+        return base.endsWith("/service")
+                ? base.substring(0, base.length() - "/service".length()) + "/cmmn-api"
+                : base + "/cmmn-api";
+    }
+
+    /**
      * GET /history/historic-process-instances/{id} — the hierarchy-walk resolver: the
      * historic row (unlike the runtime one) carries {@code superProcessInstanceId} on every
      * engine version, and exists for ended children too. Null when the id is unknown.

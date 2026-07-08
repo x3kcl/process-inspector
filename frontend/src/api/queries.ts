@@ -12,6 +12,7 @@ import type {
   InstanceVariables,
   NearestSiblingResponse,
   NoteDto,
+  OutOfScopeDeadLetters,
   ResolveResponse,
   SearchRequest,
   SearchResponse,
@@ -37,6 +38,20 @@ export async function fetchTriage(refresh: boolean): Promise<TriageDashboardResp
   const { data, error, response } = await api.GET('/api/triage', {
     params: { query: refresh ? { refresh: true } : {} },
   })
+  if (data === undefined) throw new ApiError(response.status, error)
+  return data
+}
+
+/**
+ * Case Inspector Phase 1: the drill behind the Stage-0 out-of-scope count — the enumerated
+ * CMMN dead-letter jobs on one engine. Capability-gated 6.8+ server-side (a pre-6.8 engine
+ * answers a ProblemDetail); the UI only opens this on engines whose count is a number.
+ */
+export async function fetchOutOfScopeDeadLetters(engineId: string): Promise<OutOfScopeDeadLetters> {
+  const { data, error, response } = await api.GET(
+    '/api/triage/engines/{engineId}/out-of-scope-deadletters',
+    { params: { path: { engineId } } },
+  )
   if (data === undefined) throw new ApiError(response.status, error)
   return data
 }

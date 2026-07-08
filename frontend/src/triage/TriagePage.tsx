@@ -1,8 +1,9 @@
-import { useMemo } from 'react'
+import { useMemo, useState } from 'react'
 import type { EngineDto } from '../api/model'
 import { formatCount, formatDateTime } from '../lib/format'
 import { glossTechnicalMessage } from '../lib/plainFailure'
 import { SavedViewsSection } from '../views/SavedViewsSection'
+import { CmmnScopeDrawer } from './CmmnScopeDrawer'
 import { ErrorGroupCard } from './ErrorGroupCard'
 import { StatusCounts } from './StatusCounts'
 import { deriveHonesty, groupCountsAreLowerBound, statusCountsAreLowerBound } from './honesty'
@@ -26,6 +27,7 @@ export function TriagePage() {
   }, [data?.engines])
 
   const honesty = useMemo(() => deriveHonesty(data?.perEngine), [data?.perEngine])
+  const [scopeDrillEngine, setScopeDrillEngine] = useState<string | null>(null)
 
   if (triage.isPending) {
     return <div className="triage zero-state">Aggregating across engines…</div>
@@ -102,10 +104,27 @@ export function TriagePage() {
               {scope.floor ? '≥' : ''}
               {formatCount(scope.count)} CMMN job{scope.count === 1 ? '' : 's'} not triaged here —
               they belong to another engine sharing this one&apos;s job tables, so they sit in the
-              raw dead-letter lane but never among the process failures below.
+              raw dead-letter lane but never among the process failures below.{' '}
+              <button
+                type="button"
+                className="scope-drill"
+                onClick={() => {
+                  setScopeDrillEngine(scope.engineId)
+                }}
+              >
+                View jobs
+              </button>
             </span>
           ))}
         </div>
+      )}
+      {scopeDrillEngine !== null && (
+        <CmmnScopeDrawer
+          engineId={scopeDrillEngine}
+          onClose={() => {
+            setScopeDrillEngine(null)
+          }}
+        />
       )}
 
       <StatusCounts counts={data?.statusCounts} lowerBound={statusCountsAreLowerBound(honesty)} />

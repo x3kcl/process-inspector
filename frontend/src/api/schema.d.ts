@@ -532,6 +532,22 @@ export interface paths {
         patch?: never;
         trace?: never;
     };
+    "/api/triage/engines/{engineId}/out-of-scope-deadletters": {
+        parameters: {
+            query?: never;
+            header?: never;
+            path?: never;
+            cookie?: never;
+        };
+        get: operations["outOfScopeDeadLetters"];
+        put?: never;
+        post?: never;
+        delete?: never;
+        options?: never;
+        head?: never;
+        patch?: never;
+        trace?: never;
+    };
 }
 export type webhooks = Record<string, never>;
 export interface components {
@@ -666,6 +682,20 @@ export interface components {
             sourceActivityIds?: string[];
             targetActivityIds?: string[];
             ticketId?: string;
+        };
+        CmmnDeadLetterJob: {
+            caseDefinitionId?: string;
+            caseInstanceId?: string;
+            createTime?: string;
+            dueDate?: string;
+            elementId?: string;
+            elementName?: string;
+            exceptionMessage?: string;
+            id?: string;
+            planItemInstanceId?: string;
+            /** Format: int32 */
+            retries?: number;
+            tenantId?: string;
         };
         CreateNote: {
             body: string;
@@ -911,6 +941,12 @@ export interface components {
             instanceId?: string;
             /** Format: date-time */
             ts?: string;
+        };
+        OutOfScopeDeadLetters: {
+            jobs?: components["schemas"]["CmmnDeadLetterJob"][];
+            /** Format: int32 */
+            scanned?: number;
+            truncated?: boolean;
         };
         PathActivity: {
             activityId?: string;
@@ -2016,6 +2052,28 @@ export interface operations {
                 };
                 content: {
                     "*/*": components["schemas"]["TriageDashboardResponse"];
+                };
+            };
+        };
+    };
+    outOfScopeDeadLetters: {
+        parameters: {
+            query?: never;
+            header?: never;
+            path: {
+                engineId: string;
+            };
+            cookie?: never;
+        };
+        requestBody?: never;
+        responses: {
+            /** @description OK */
+            200: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "*/*": components["schemas"]["OutOfScopeDeadLetters"];
                 };
             };
         };

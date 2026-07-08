@@ -144,4 +144,49 @@ class TriageCmmnScopeIT {
             assertThat(group.get("normalizedMessage").asText("")).doesNotContain(NEEDLE);
         });
     }
+
+    /**
+     * Case Inspector Phase 1: the Stage-0 scalar becomes a drillable list. The dedicated
+     * endpoint enumerates the CMMN dead-letter jobs from the cmmn-api projection (non-null
+     * {@code caseInstanceId}), and the seeded failing CASE appears there — same underlying
+     * dead-letter job the process-api projection counts as an orphan, now with its full case
+     * attribution for a drill-down.
+     */
+    @Test
+    void outOfScopeDeadlettersEndpointEnumeratesTheSeededCase() {
+        JsonNode body = rest.getForObject("/api/triage/engines/engine-a/out-of-scope-deadletters", JsonNode.class);
+
+        assertThat(body.get("truncated").asBoolean())
+                .as("the tiny seeded DLQ is well under dlq-scan-cap")
+                .isFalse();
+
+        JsonNode jobs = body.get("jobs");
+        assertThat(jobs.isArray()).isTrue();
+        JsonNode seeded = null;
+        for (JsonNode job : jobs) {
+            if (caseInstanceId.equals(job.path("caseInstanceId").asText())) {
+                seeded = job;
+                break;
+            }
+        }
+        assertThat(seeded)
+                .as("the seeded failing case is enumerated as a CMMN dead-letter row")
+                .isNotNull();
+        // Every enumerated row is genuinely CMMN-scoped — the discriminator held.
+        jobs.forEach(job -> assertThat(job.path("caseInstanceId").asText())
+                .as("no BPMN row leaks into the out-of-scope list")
+                .isNotBlank());
+        assertThat(seeded.path("exceptionMessage").asText()).contains(NEEDLE);
+        assertThat(seeded.path("retries").asInt()).isZero();
+    }
+
+    /** VIEWER floor holds: an unauthenticated caller is rejected before any engine read. */
+    @Test
+    void outOfScopeDeadlettersEndpointRequiresAuth() {
+        assertThat(rest.withBasicAuth("nobody", "wrong")
+                        .getForEntity("/api/triage/engines/engine-a/out-of-scope-deadletters", String.class)
+                        .getStatusCode()
+                        .is4xxClientError())
+                .isTrue();
+    }
 }

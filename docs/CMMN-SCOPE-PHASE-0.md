@@ -206,6 +206,19 @@ Phase 0 deliberately produces the seam the later phases consume:
   different windows on the shared table with **different truncation caps** — the scalar and the
   facet count can legitimately disagree under truncation. Do not frame Phase 1 as "upgrading"
   the Phase-0 code.
+  - **FIRST SLICE SHIPPED 2026-07-08 (full-stack).** `GET /api/triage/engines/{id}/
+    out-of-scope-deadletters` (`CmmnScopeService`) enumerates the CMMN dead-letters straight
+    from the **cmmn-api** projection (`FlowableEngineClient.cmmnApiBase` + `listCmmnDeadLetterJobs`),
+    keeping rows with a non-null `caseInstanceId`. It honors both CONSTRAINTs below: bounded by
+    `dlq-scan-cap` + paged + `truncated` lower bound (never an unpaged fetch), and gated on
+    `scopeType` (≥6.8) with a live re-check — the call rides the cmmn context, so a DLQ-blind
+    6.3 (refused server-side on the capability gate) never returns a wrong number. Frontend: a
+    "View jobs" drill on the Stage-0 note → read-only `CmmnScopeDrawer`. Live-verified against
+    6.8 (`TriageCmmnScopeIT`). **Deferred within Phase 1:** the process-api merge-by-`id`
+    cross-window reconciliation (this slice reads the cmmn-api window ONLY — sufficient to
+    enumerate, since the discriminator is intrinsic to that projection), case key/name
+    resolution from the bare-uuid `caseDefinitionId`, and the scope-typed lane facet in unified
+    search (below).
   - **CONSTRAINT (iron rule):** Phase 1's cmmn-api DLQ fetch is **bounded by `dlq-scan-cap`,
     paged, and carries the `truncated@N` badge**, exactly like the BPMN Stage-0 scan — never a
     single unpaged DLQ fetch.
@@ -247,16 +260,17 @@ Phase 0 deliberately produces the seam the later phases consume:
 - [x] TEST-SCENARIOS — `TS-STAT-16` covers the out-of-scope count (6.8 = 1, 6.3 = null gate);
       TEST-STRATEGY R1 names `TriageCmmnScopeIT` / `TriageCmmnScopeLegacyIT`.
 
-### 8.1 Open (panel review 2026-07-07) — NOT yet fixed
-- **Truncation honesty gap (HIGH).** The shipped frontend renders `outOfScopeDeadletters` as an
-  exact count even when that engine's DLQ scan is `truncated@N`, contradicting §2/§3's "a
-  truncated scan makes the tally a documented floor." `honesty.ts` builds the `outOfScope`
-  channel without consulting `dlqScan`, and `styles.css` asserts "the counts shown ARE exact."
-  Fix needs a DEADLETTER-lane-specific floor flag on `PerEngineTriage` (the shared `dlqScan`
-  marker unions all three failure lanes, so it is not a faithful per-lane proxy) + a "≥N"
-  lower-bound rendering. Deferred pending owner go-ahead (behavior change).
-- **Reconciliation wording (MODERATE).** The "tile − CMMN = BPMN/FAILED" framing pairs a
-  jobs count (`outOfScopeDeadletters`) with a distinct-instances count (`FAILED`) computed over
-  a different (uncapped, no-`withException`) denominator than the lane tile — the equality holds
-  only at 1 DLQ-job-per-instance and a complete scan. The annotation should not invite that
-  subtraction. Docstring at `TriageAggregationService.java:307-308` to be softened.
+### 8.1 Panel-review follow-ups (raised 2026-07-07) — RESOLVED 2026-07-07 (`b6c7837`)
+Both items below were fixed together in `b6c7837` ("triage: floor out-of-scope CMMN count
+under a capped DEADLETTER scan (H1/M1)"); ARCHITECTURE §2.2 and SPECIFICATION §3 were updated
+in the same commit. Recorded here as closed for provenance.
+- **Truncation honesty gap (HIGH) — FIXED.** `PerEngineTriage` gained a lane-specific
+  `deadletterTruncated` flag (the shared `dlqScan` marker OR-conflates all three failure lanes,
+  so it is not a faithful per-lane proxy), captured from the DEADLETTER `LaneScan.truncated()`
+  before it merges into `dlqScan`. `outOfScopeDeadletters(...)` now returns
+  `OutOfScope(count, deadletterTruncated)`; `honesty.ts` carries `floor = deadletterTruncated`
+  per entry; the strip renders a "≥N" lower bound when floored. `styles.css` dropped the false
+  "counts ARE exact" claim.
+- **Reconciliation wording (MODERATE) — FIXED.** The Stage-0 strip was reworded to job-scoped
+  "≥N CMMN jobs not triaged here", dropping the "tile − CMMN = FAILED" arithmetic that paired a
+  jobs count against the instance-scoped FAILED chip over a different denominator.

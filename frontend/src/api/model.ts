@@ -13,6 +13,8 @@ export type VariableFilter = components['schemas']['VariableFilter']
 export type TriageDashboardResponse = components['schemas']['TriageDashboardResponse']
 export type ErrorGroup = components['schemas']['ErrorGroup']
 export type PerEngineTriage = components['schemas']['PerEngineTriage']
+export type OutOfScopeDeadLetters = components['schemas']['OutOfScopeDeadLetters']
+export type CmmnDeadLetterJob = components['schemas']['CmmnDeadLetterJob']
 export type AuditEntryDto = components['schemas']['AuditEntryDto']
 export type NoteDto = components['schemas']['NoteDto']
 
