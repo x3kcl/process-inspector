@@ -181,10 +181,12 @@ public class ResolveService {
     }
 
     /**
-     * A CMMN case by id — running first, then ended — mapped to a read-only, non-navigable match
-     * (no {@code compositeId}/{@code processInstanceId}: this tool has no CMMN detail route yet).
-     * The bare-uuid {@code caseDefinitionId} is resolved to a readable key for the row, degrading
-     * to null on a miss (never fails the resolve).
+     * A CMMN case by id — running first, then ended — mapped to a read-only match. It carries no
+     * {@code compositeId}/{@code processInstanceId} because a case is not a process instance; the
+     * omnibox builds its read-only detail route ({@code /case/{engineId}/{caseId}}, Case Inspector
+     * Phase 2) from {@code engineId} + the matched case id instead. The bare-uuid
+     * {@code caseDefinitionId} is resolved to a readable key for the row, degrading to null on a
+     * miss (never fails the resolve).
      */
     private ResolveMatch resolveCmmnCase(EngineConfig engine, String id) {
         Map<String, Object> caseInstance = flowable.getCmmnCaseInstance(engine, id);
@@ -210,8 +212,8 @@ public class ResolveService {
         return new ResolveMatch(
                 MatchKind.CMMN_CASE,
                 engine.id(),
-                null, // not a process instance — no owning pid, hence non-navigable
-                null, // no composite deep-link route (CMMN detail is a later phase)
+                null, // not a process instance — no owning pid
+                null, // no process composite; the case route is built from engineId + case id
                 id,
                 str(caseInstance, "businessKey"),
                 definitionKey,

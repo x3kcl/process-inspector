@@ -74,6 +74,24 @@ async function mockBff(page: Page, opts: Options): Promise<void> {
             deadletters: { jobs, truncated: opts.truncated, scanned: opts.count },
           },
         })
+      } else if (pathname === '/api/resolve') {
+        // The omnibox resolver answers a pasted Case id with a read-only CMMN_CASE match — no
+        // compositeId/processInstanceId (a case is not a process instance). Case Inspector Phase 2
+        // made it navigable: the row links to /case/{engineId}/{caseId}.
+        await route.fulfill({
+          json: {
+            query: 'case-0',
+            perEngine: { eng1: { ok: true } },
+            matches: [
+              {
+                kind: 'CMMN_CASE',
+                engineId: 'eng1',
+                matchedId: 'case-0',
+                definitionKey: 'demoFailingCase',
+              },
+            ],
+          },
+        })
       } else if (pathname === '/api/bulk') {
         await route.fulfill({ json: [] })
       } else {
@@ -116,6 +134,26 @@ test('the out-of-scope note drills into the enumerated CMMN dead-letters', async
   await expect(dialog.getByText('Failing service')).toHaveCount(2)
   await expect(dialog).toContainText('nonExistentBean')
   await expect(dialog.getByText('case-0')).toBeVisible()
+})
+
+test('a pasted CMMN Case id resolves to a navigable read-only case-detail link', async ({
+  page,
+}) => {
+  await mockBff(page, { count: 2, truncated: false })
+  await page.goto('/')
+
+  // Paste a Case id into the omnibox and resolve it.
+  await page.getByPlaceholder(/paste an instance/).fill('case-0')
+  await page.getByPlaceholder(/paste an instance/).press('Enter')
+
+  // The resolve panel surfaces the CMMN case as a navigable, honestly-labelled row (Case
+  // Inspector Phase 2 gave it a destination; Phase 1 rendered it as an inert dead-end).
+  const match = page.getByRole('listbox', { name: 'Resolve results' }).getByRole('link')
+  await expect(match).toContainText('CMMN case')
+  await expect(match).toContainText('open the read-only case detail')
+
+  await match.click()
+  await expect(page).toHaveURL(/\/case\/eng1\/case-0$/)
 })
 
 test('a truncated scan is a labeled lower bound in both the note and the drawer', async ({

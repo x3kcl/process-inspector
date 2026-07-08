@@ -1,6 +1,6 @@
 import { useState } from 'react'
 import type { FormEvent } from 'react'
-import { useNavigate } from 'react-router'
+import { Link, useNavigate } from 'react-router'
 import { useMutation } from '@tanstack/react-query'
 import type { ResolveMatch, ResolveResponse } from '../api/model'
 import { resolveQuery } from '../api/queries'
@@ -92,6 +92,10 @@ export function Omnibox() {
           onSearchKey={(businessKey) => {
             finish(`/search?${encodeSearch({ businessKey }).toString()}`)
           }}
+          onNavigate={() => {
+            setPanel(undefined)
+            setValue('')
+          }}
         />
       )}
     </form>
@@ -112,10 +116,12 @@ function ResolvePanel({
   response,
   onPick,
   onSearchKey,
+  onNavigate,
 }: {
   response: ResolveResponse
   onPick: (match: ResolveMatch) => void
   onSearchKey: (businessKey: string) => void
+  onNavigate: () => void
 }) {
   const matches = response.matches ?? []
   const reachability = summarizeReachability(response)
@@ -131,23 +137,27 @@ function ResolvePanel({
       ) : (
         <ul className="omnibox-matches">
           {matches.map((match, index) => {
-            // A CMMN case is read-only and has no detail route yet (Case Inspector Phase 1): it's
-            // surfaced so a pasted Case id is answered truthfully, NOT to navigate. Render it as a
-            // non-interactive, honestly-labelled row instead of a dead-end button (Finding #1).
-            if (match.kind === 'CMMN_CASE') {
+            // A CMMN case now has a read-only detail route (Case Inspector Phase 2): navigate to
+            // /case/{engineId}/{caseId}. The match carries no compositeId/processInstanceId (it's a
+            // case, not a process instance), so the route is built from engineId + matchedId (the
+            // case id) directly. Honesty preserved: the row is labelled read-only.
+            if (match.kind === 'CMMN_CASE' && match.engineId !== undefined) {
               return (
                 <li key={`cmmn:${match.matchedId ?? ''}:${String(index)}`}>
-                  <div className="omnibox-match omnibox-match-inert">
+                  <Link
+                    className="omnibox-match"
+                    to={`/case/${match.engineId}/${encodeURIComponent(match.matchedId ?? '')}`}
+                    onClick={onNavigate}
+                    title="Open the read-only case detail (diagram + plan-item timeline)"
+                  >
                     <span className="match-kind">{KIND_LABELS.CMMN_CASE}</span>
                     <span className="engine-name">{match.engineId}</span>
                     <code className="composite-id">{match.matchedId}</code>
                     {match.definitionKey !== undefined && (
                       <span className="value-muted">{match.definitionKey}</span>
                     )}
-                    <span className="value-muted">
-                      read-only — this tool doesn&apos;t triage CMMN cases yet
-                    </span>
-                  </div>
+                    <span className="value-muted">open the read-only case detail</span>
+                  </Link>
                 </li>
               )
             }
