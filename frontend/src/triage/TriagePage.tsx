@@ -7,7 +7,7 @@ import { CmmnScopeDrawer } from './CmmnScopeDrawer'
 import { ErrorGroupCard } from './ErrorGroupCard'
 import { StatusCounts } from './StatusCounts'
 import { deriveHonesty, groupCountsAreLowerBound, statusCountsAreLowerBound } from './honesty'
-import { useTriage } from './useTriage'
+import { useTriage, useTriageTrends } from './useTriage'
 
 /**
  * Stage 0 — the default route (SPEC §4): "what is broken, how much, where" in zero
@@ -17,6 +17,7 @@ import { useTriage } from './useTriage'
 export function TriagePage() {
   const triage = useTriage()
   const data = triage.data
+  const trends = useTriageTrends().data
 
   const enginesById = useMemo(() => {
     const map = new Map<string, EngineDto>()
@@ -127,7 +128,11 @@ export function TriagePage() {
         />
       )}
 
-      <StatusCounts counts={data?.statusCounts} lowerBound={statusCountsAreLowerBound(honesty)} />
+      <StatusCounts
+        counts={data?.statusCounts}
+        lowerBound={statusCountsAreLowerBound(honesty)}
+        trends={trends}
+      />
 
       <section className="error-groups" aria-label="Failures by error class">
         <h2>

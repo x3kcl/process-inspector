@@ -5,6 +5,7 @@ import io.inspector.audit.InstanceNoteRepository;
 import io.inspector.audit.ProtectedInstanceRepository;
 import io.inspector.bulk.BulkJobItemRepository;
 import io.inspector.bulk.BulkJobRepository;
+import io.inspector.snapshot.SnapshotCountRepository;
 import org.mockito.Mockito;
 import org.springframework.boot.test.context.TestConfiguration;
 import org.springframework.context.annotation.Bean;
@@ -42,5 +43,10 @@ public class NoDbTestSupport {
     @Bean
     BulkJobItemRepository bulkJobItemRepository() {
         return Mockito.mock(BulkJobItemRepository.class);
+    }
+
+    @Bean
+    SnapshotCountRepository snapshotCountRepository() {
+        return Mockito.mock(SnapshotCountRepository.class);
     }
 }

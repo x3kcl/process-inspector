@@ -1,7 +1,10 @@
 package io.inspector.api;
 
 import io.inspector.dto.TriageDashboardResponse;
+import io.inspector.dto.TriageTrendResponse;
 import io.inspector.triage.TriageService;
+import io.inspector.triage.TriageTrendService;
+import java.time.Duration;
 import org.springframework.web.bind.annotation.GetMapping;
 import org.springframework.web.bind.annotation.RequestMapping;
 import org.springframework.web.bind.annotation.RequestParam;
@@ -13,19 +16,34 @@ import org.springframework.web.bind.annotation.RestController;
  * the cache (rate-limited in {@link TriageService}; a throttled refresh serves the
  * cached snapshot — the {@code asOf} stamp tells the truth either way). Always a 200:
  * engine failures degrade into the response's {@code perEngine} envelopes.
+ *
+ * GET /api/triage/trends — the R-BAU-08 job-lane history for the Stage-0 sparklines, read
+ * from the v2/M4 snapshot store (never the live engine). Same openness as the dashboard:
+ * it trends the exact counts the (already-open) landing shows.
  */
 @RestController
 @RequestMapping("/api/triage")
 public class TriageController {
 
-    private final TriageService triage;
+    /** Clamp the look-back so a crafted {@code hours} can never scan an unbounded window. */
+    private static final int MAX_TREND_HOURS = 24 * 30;
 
-    public TriageController(TriageService triage) {
+    private final TriageService triage;
+    private final TriageTrendService trends;
+
+    public TriageController(TriageService triage, TriageTrendService trends) {
         this.triage = triage;
+        this.trends = trends;
     }
 
     @GetMapping
     public TriageDashboardResponse dashboard(@RequestParam(defaultValue = "false") boolean refresh) {
         return triage.dashboard(refresh);
+    }
+
+    @GetMapping("/trends")
+    public TriageTrendResponse trends(@RequestParam(defaultValue = "24") int hours) {
+        int bounded = Math.max(1, Math.min(hours, MAX_TREND_HOURS));
+        return trends.trends(Duration.ofHours(bounded));
     }
 }
