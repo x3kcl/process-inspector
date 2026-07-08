@@ -489,11 +489,27 @@ count to a "≥N" lower bound under a truncated DLQ scan — see `CMMN-SCOPE-PHA
       N+1 on distinct DEFINITIONS, never on jobs; a 404/undeployed def degrades that entry to
       null, never fails the slice). `CmmnDeadLetterJob` gains `caseDefinitionKey`/
       `caseDefinitionName`; the drawer leads each row with the case type.
-    - **Still open in Phase 1:** merging the process-api DLQ list by job `id` for a cross-window
-      reconciliation (the load-bearing spine of the unified grid — deserves its own slice, ideally
-      opened by a live spike on the two-projection/two-cap reconciliation), and the full
-      **scope-typed lane facet** in unified search (ACTIVE/FAILED/COMPLETED/TERMINATED tiles off a
-      `CMMN_STATUSES` const — never the SUSPENDED-carrying `ALL_STATUSES`, §7 M4 hazard).
+    - **Scope-typed lane facet LANDED 2026-07-08 (3rd increment, full-stack).** The drawer is now
+      a scope view, not just a job list: `GET /api/triage/engines/{id}/cmmn-scope` →
+      `CmmnScopeFacet` (`CmmnLaneCounts{active,failed,completed,terminated}` + the inlined
+      dead-letter detail). `active`/`completed`/`terminated` are count-only (`size=1`)
+      `historic-case-instances?state=` queries (`FlowableEngineClient.countHistoricCmmnCaseInstances`),
+      each degrading to `null` (unknown, never a misleading `0`); `failed` = distinct
+      `caseInstanceId`s among the dead-letters (a lower bound when that scan truncated). **No
+      SUSPENDED lane** (cases can't suspend, spike Q2); the frontend renders the tiles off a
+      dedicated `CMMN_STATUSES` const (`api/model.ts`), never the SUSPENDED-carrying BPMN
+      `ALL_STATUSES` (§7 M4 hazard closed). Tests: `CmmnScopeServiceTest` (+3: lane counts,
+      distinct-FAILED, per-lane degrade-to-null, gate-before-any-query) + `TriageCmmnScopeIT`
+      (+1, rung-4 live 6.8) + `e2e/cmmn-scope.spec.ts` lane-tile assertions. Also hardened the IT
+      seed-await to key on the per-run `caseInstanceId` (`EngineSeed.cmmnDeadletterPresentForCase`)
+      — the old needle-keyed await could short-circuit on a parallel session's same-seed residue.
+    - **Merge slice DESCOPED 2026-07-08 (near-zero-yield).** The originally-planned process-api↔
+      cmmn-api merge-by-`id` reconciliation is obviated by the `?scopeType=cmmn` server-side filter
+      that shipped in the first slice: the cmmn-api leg already spends the whole `dlq-scan-cap` on
+      CMMN rows, so it strictly dominates the diluted process-api orphan window — the merge yields
+      no rows in the normal case, and its "degraded — Unknown case" fallback can't fire honestly
+      (a null-pid process-api orphan is only a *candidate* CMMN job; confirming it needs a by-id
+      hydration that, on success, returns FULL context, not a degraded row). See §7.
   **Phase 2** — Polymorphic Stage-2 detail: `cmmn-js`
   canvas (extend the watermark guard to `/(bjs|cmmn)-powered-by/i` **first**) + plan-item
   timeline. **Phase 3** — CMMN corrective actions under the full `corrective-actions` rails.
