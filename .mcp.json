@@ -41,6 +41,17 @@
         "ghcr.io/github/github-mcp-server",
         "stdio"
       ]
+    },
+    "gemini": {
+      "command": "docker",
+      "args": [
+        "run",
+        "-i",
+        "--rm",
+        "-e",
+        "GEMINI_API_KEY=${GEMINI_API_KEY:-}",
+        "process-inspector/gemini-mcp:latest"
+      ]
     }
   }
 }
