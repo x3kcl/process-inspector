@@ -2,6 +2,7 @@ import { useEffect, useMemo, useRef, useState } from 'react'
 import type { ExternalWorkerJobDto, InstanceJobs, JobDto, JobLaneId } from '../../api/model'
 import { JOB_LANES } from '../../api/model'
 import { useInstanceAction } from '../../api/actions'
+import type { ActionRequest } from '../../api/actions'
 import { fetchJobStacktrace } from '../../api/queries'
 import { useEngines } from '../../api/useEngines'
 import { externalWorkerLaneVisible } from '../externalWorker'
@@ -401,9 +402,13 @@ function JobActions({
   const gateFor = (meta: (typeof VERBS)[keyof typeof VERBS]): Gate =>
     actionGate({ meta, roleHint, engineMode: engine?.mode })
 
-  const run = (verb: string, onDone?: () => void) => {
+  // `extra` carries the tier-gated body fields the modal collects — the required reason (tier ≥ 2)
+  // and, on a prod engine, the typed confirm token (= the job id). Tier-0 callers (retry, fire
+  // timer) pass nothing. Without this, a tier-3 delete-deadletter POSTs no reason and the BFF
+  // refuses it `reason-required` — the delete never happens.
+  const run = (verb: string, onDone?: () => void, extra?: Partial<ActionRequest>) => {
     action.mutate(
-      { verb, body: { jobId: job.id } },
+      { verb, body: { jobId: job.id, ...extra } },
       {
         onSuccess: (result) => {
           onDone?.()
@@ -480,10 +485,20 @@ function JobActions({
             confirmLabel={`Delete dead-letter job ${job.id ?? '?'}`}
             pending={action.isPending}
             problem={action.error?.problem}
-            onConfirm={() => {
-              run(VERBS.deleteDeadletter.verb, () => {
-                setDeleteOpen(false)
-              })
+            onConfirm={(reason) => {
+              // Tier-3: thread the modal's reason and, on prod, the typed token (= the job id,
+              // which the modal already required to be typed) into the request body.
+              run(
+                VERBS.deleteDeadletter.verb,
+                () => {
+                  setDeleteOpen(false)
+                },
+                {
+                  reason,
+                  confirmToken:
+                    environment?.toLowerCase() === 'prod' ? (job.id ?? undefined) : undefined,
+                },
+              )
             }}
             onClose={() => {
               setDeleteOpen(false)
