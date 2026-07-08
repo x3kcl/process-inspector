@@ -1,5 +1,8 @@
 import { describe, expect, it } from 'vitest'
 import {
+  type Reversibility,
+  type RoleHint,
+  type VerbMeta,
   VERBS,
   actionGate,
   needsTwoStepConfirm,
@@ -152,5 +155,71 @@ describe('roleAtLeast', () => {
     expect(roleAtLeast('ADMIN', 'RESPONDER')).toBe(true)
     expect(roleAtLeast('VIEWER', 'RESPONDER')).toBe(false)
     expect(roleAtLeast('OPERATOR', 'OPERATOR')).toBe(true)
+  })
+})
+
+// TS-VERB-14 (R-SAFE-02/04): every verb renders a reversibility badge AND a plain-language
+// secondary label spec'd VERBATIM in SPEC §5.0 — never improvised. This is the frontend leg
+// of the safety contract; the backend leg (tier + role floor completeness) is
+// RbacGuardMatrixTest. A new verb without a badge or a §5.0 label fails here.
+describe('TS-VERB-14 — reversibility badge + §5.0 plain labels, on every verb', () => {
+  const ALL = Object.values(VERBS) as VerbMeta[]
+  const BADGES: readonly Reversibility[] = ['REVERSIBLE', 'RECOVERABLE', 'IRREVERSIBLE']
+  const ROLES: readonly RoleHint[] = ['VIEWER', 'RESPONDER', 'OPERATOR', 'ADMIN']
+
+  it('covers the full single-target catalog (no verb silently omitted)', () => {
+    expect(ALL.length).toBeGreaterThanOrEqual(11)
+    // Every entry is well-formed — no missing fields that would render a blank menu row.
+    const verbs = ALL.map((v) => v.verb)
+    expect(new Set(verbs).size).toBe(verbs.length) // no duplicate verb slugs
+  })
+
+  it.each(ALL.map((v) => [v.verb, v] as const))(
+    '%s carries a valid badge + labels',
+    (_slug, meta) => {
+      expect(BADGES).toContain(meta.reversibility)
+      expect(meta.label.trim().length).toBeGreaterThan(0)
+      expect(meta.plain.trim().length).toBeGreaterThan(0)
+      // The reversibility note must name the compensating verb / rescue path (never blank).
+      expect(meta.reversibilityNote.trim().length).toBeGreaterThan(0)
+      expect(ROLES).toContain(meta.roleFloor)
+      expect([0, 1, 3]).toContain(meta.tier)
+    },
+  )
+
+  it('renders the SPEC §5.0 secondary labels verbatim — not improvised', () => {
+    expect(VERBS.retryJob.plain).toBe('run the failed step again')
+    expect(VERBS.triggerTimer.plain).toBe('stop waiting, continue immediately')
+    expect(VERBS.suspend.plain).toBe('pause this case')
+    expect(VERBS.activate.plain).toBe('resume this case')
+    expect(VERBS.editVariable.plain).toBe('change a data value on this case')
+    expect(VERBS.terminate.plain).toBe('kill this case permanently')
+    expect(VERBS.deleteDeadletter.plain).toBe(
+      'discard the failed step (the case can never continue past it on its own)',
+    )
+  })
+
+  it('REVERSIBLE verbs name their compensating verb (suspend↔activate)', () => {
+    expect(VERBS.suspend.reversibility).toBe('REVERSIBLE')
+    expect(VERBS.suspend.reversibilityNote).toContain('activate')
+    expect(VERBS.activate.reversibility).toBe('REVERSIBLE')
+    expect(VERBS.activate.reversibilityNote).toContain('suspend')
+  })
+
+  it('retry carries the §5.0 honesty note — the queue move is reversible, the side effects are not', () => {
+    expect(VERBS.retryJob.reversibility).toBe('RECOVERABLE')
+    expect(VERBS.retryJob.reversibilityNote).toContain('reversible')
+    expect(VERBS.retryJob.reversibilityNote).toContain('side effects')
+  })
+
+  it('every external-side-effect verb takes the prod two-step friction floor', () => {
+    for (const meta of ALL) {
+      if (meta.externalSideEffects) {
+        expect(needsTwoStepConfirm(meta, 'prod')).toBe(true)
+        expect(needsTwoStepConfirm(meta, 'dev')).toBe(false)
+      } else {
+        expect(needsTwoStepConfirm(meta, 'prod')).toBe(false)
+      }
+    }
   })
 })

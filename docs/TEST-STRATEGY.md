@@ -181,6 +181,18 @@ mocks hide:
 These scenarios are S1/S2 hybrids (WireMock engine + real Postgres) and merge-gating from
 M4 (OPERATIONS §8 gate 3 is this suite).
 
+## 12a. Requirement → suite traceability (R-TEST-02/04)
+Coverage floors and the fixture catalog are only credible if every requirement resolves to a
+real suite. [TRACEABILITY-MATRIX.md](TRACEABILITY-MATRIX.md) is that ledger: `R-*` → `TS-*` →
+concrete `*Test`/`*IT`/`*.test.ts`/`*.spec.ts`, with an honest coverage-gap register (its §C).
+Two suites make the register's "no orphan endpoint/verb" rule mechanical rather than aspirational:
+- **`RbacGuardMatrixTest`** (L1) — the *generated* verb×role RBAC matrix (TS-RBAC-01, the R2
+  floor): it iterates `ActionVerb.values()`, so a verb shipped without a role floor fails CI.
+- **`catalog.test.ts` TS-VERB-14 block** (vitest) — iterates `VERBS`; a verb without a
+  reversibility badge or its §5.0 plain label fails CI.
+The two current release-gating (P1) open gaps are matrix §C-5 (audit-integrity pool/sweep/REVOKE
+beyond `FailClosedAuditIT`) and §C-16 (the single canonical-arc E2E behind the per-surface smokes).
+
 ## 12. UAT & soak (R-TEST-08/09)
 UAT at M6: ≥3 practicing support engineers, scripted incident scenarios from the fixture
 catalog, ≥80% unassisted completion; trust-breaking observations file as Sev1/Sev2. Weekly
