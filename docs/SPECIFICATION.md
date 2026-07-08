@@ -470,11 +470,13 @@ disambiguation list (kind, engine badge, status chip), never auto-navigate; busi
 always a pre-filtered search (hierarchy-aware; root vs child rows marked); any engine
 unreachable → "resolved against N of M engines" banner; zero hits → explicit "not found on
 any reachable engine" naming the engines. When no BPMN kind matches on a scope-capable engine
-(Flowable ≥ 6.8), a co-deployed **CMMN case** with that id is surfaced as a read-only,
-non-navigable `CMMN_CASE` row ("read-only — this tool doesn't triage CMMN cases yet") rather
-than a false not-found — a pasted Case id from the out-of-scope drawer (Case Inspector Phase 1)
-must be answered truthfully (do-no-harm / never-lie). Older engines can't discriminate scope,
-so a CMMN case is never *claimed* there; the honest not-found stands.
+(Flowable ≥ 6.8), a co-deployed **CMMN case** with that id is surfaced as a read-only
+`CMMN_CASE` row that **navigates to its Stage-2 detail** (`/case/{engineId}/{caseId}`, §4 Stage 2,
+"open the read-only case detail") rather than a false not-found — a pasted Case id from the
+out-of-scope drawer must be answered truthfully (do-no-harm / never-lie). The row carries no
+`compositeId`/`processInstanceId` (a case is not a process instance), so the route is built from
+the engine id and the matched case id. Older engines can't discriminate scope, so a CMMN case is
+never *claimed* there; the honest not-found stands.
 
 ## 5. Corrective actions — the verb catalog
 
