@@ -51,9 +51,9 @@ export default function VariablesTab({ engineId, instanceId, selectedActivityId 
   const loadFull = (row: LedgerRow) => {
     setLoadingFullName(row.entry.name)
     setLoadError(undefined)
-    fetchInstanceVariable({ engineId, instanceId }, row.entry.name)
+    fetchInstanceVariable({ engineId, instanceId }, row.entry.name, row.entry.executionId)
       .then((dto: VariableDto) => {
-        setFullValues((prev) => ({ ...prev, [row.entry.name]: dto.value ?? null }))
+        setFullValues((prev) => ({ ...prev, [entryKey(row.entry)]: dto.value ?? null }))
       })
       .catch((error: unknown) => {
         setLoadError(
@@ -118,16 +118,21 @@ export default function VariablesTab({ engineId, instanceId, selectedActivityId 
   )
 }
 
+/** Scope-safe key for the full-value cache — a local name can shadow a process one. */
+function entryKey(entry: Pick<VariableEntry, 'name' | 'scope' | 'executionId'>): string {
+  return `${entry.scope}:${entry.executionId ?? ''}:${entry.name}`
+}
+
 /** Wire → presentation: the generated DTO becomes the tested VariableEntry model. */
 function toEntries(data: InstanceVariables, fullValues: Record<string, unknown>): VariableEntry[] {
   const entries: VariableEntry[] = []
   for (const dto of data.processVariables ?? []) {
-    entries.push(toEntry(dto, 'process', undefined, fullValues))
+    entries.push(toEntry(dto, 'process', undefined, undefined, fullValues))
   }
   for (const scope of data.executionScopes ?? []) {
     const label = `${scope.activityId ?? 'execution'} · ${scope.executionId ?? '?'}`
     for (const dto of scope.variables ?? []) {
-      entries.push(toEntry(dto, 'local', label, fullValues))
+      entries.push(toEntry(dto, 'local', label, scope.executionId ?? undefined, fullValues))
     }
   }
   return entries
@@ -137,16 +142,19 @@ function toEntry(
   dto: VariableDto,
   scope: 'process' | 'local',
   executionLabel: string | undefined,
+  executionId: string | undefined,
   fullValues: Record<string, unknown>,
 ): VariableEntry {
   const name = dto.name ?? '(unnamed)'
-  const fullyLoaded = scope === 'process' && name in fullValues
+  const key = entryKey({ name, scope, executionId })
+  const fullyLoaded = key in fullValues
   return {
     name,
     engineType: dto.type,
-    value: fullyLoaded ? fullValues[name] : dto.value,
+    value: fullyLoaded ? fullValues[key] : dto.value,
     scope,
     executionLabel,
+    executionId,
     truncated: dto.truncated,
     sizeBytes: dto.sizeBytes,
     fullyLoaded,

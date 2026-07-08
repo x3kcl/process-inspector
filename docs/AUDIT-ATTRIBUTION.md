@@ -39,7 +39,7 @@ an unaudited action is treated as worse than no action). Each row carries:
 | `actor` | The **human** (their BFF/OIDC identity — the whole point) |
 | `ts`, `correlationId` | When; and the ID threaded through every BFF log line and error envelope for that request |
 | `engineId`, `tenantId`, `instanceId` | Where — the composite-ID coordinates |
-| `action`, `payload` | The verb + its versioned payload (e.g. edit-variable: `{name, scope, oldValue, newValue, valueType}`) |
+| `action`, `payload` | The verb + its versioned payload (e.g. edit-variable: `{name, scope, oldValue, newValue, valueType}`; a `scope:"local"` step-local edit also carries `executionId` + `activityId`) |
 | `reason`, `ticketId` | Why (reason ≥10 chars where required; ticketId linkified) |
 | `httpStatus`, `outcome`, `responseSnippet` | What the engine said: `PENDING → ok \| failed \| unknown` |
 | `bulkJobId` | For bulk: one row **per item** plus one envelope row |

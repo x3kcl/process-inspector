@@ -262,20 +262,37 @@ public class InstanceDetailService {
         return new InstanceVariables("RUNTIME", processScope, executionScopes);
     }
 
-    /** On-demand full value (SPEC §4a: an edit always operates on the fetched full value). */
-    public VariableDto variable(String engineId, String instanceId, String name) {
+    /**
+     * On-demand full value (SPEC §4a: an edit always operates on the fetched full value).
+     * Scope-aware: a blank {@code executionId} reads the process (case) scope; a non-blank one
+     * reads the execution-local ("step-local") variable {@code scope=local} on that node — the
+     * base value the step-local editor stages and CASes against.
+     */
+    public VariableDto variable(String engineId, String instanceId, String name, String executionId) {
         EngineConfig engine = registry.require(engineId);
         requireHistoric(engine, instanceId);
-        Map<String, Object> row = flowable.getInstanceVariable(engine, instanceId, name);
+        boolean local = executionId != null && !executionId.isBlank();
+        Map<String, Object> row = local
+                ? flowable.getExecutionVariable(engine, executionId, name)
+                : flowable.getInstanceVariable(engine, instanceId, name);
         if (row == null) {
             throw new ResponseStatusException(
                     HttpStatus.NOT_FOUND,
-                    "variable '" + name + "' not found on running instance " + engineId + ":" + instanceId);
+                    local
+                            ? "step-local variable '" + name + "' not found on execution " + executionId
+                            : "variable '" + name + "' not found on running instance " + engineId + ":" + instanceId);
         }
         // The full fetch is deliberately uncapped — this IS the "load full value" escape
         // hatch; the write cap (5 MiB, SPEC §4a) guards the other direction.
         return new VariableDto(
-                str(row, "name"), str(row, "type"), row.get("value"), false, null, str(row, "scope"), null, null);
+                str(row, "name"),
+                str(row, "type"),
+                row.get("value"),
+                false,
+                null,
+                local ? "local" : str(row, "scope"),
+                local ? executionId : null,
+                null);
     }
 
     private InstanceVariables historicVariables(EngineConfig engine, String instanceId) {

@@ -4,6 +4,7 @@ import static org.assertj.core.api.Assertions.assertThat;
 import static org.assertj.core.api.Assertions.assertThatThrownBy;
 import static org.mockito.ArgumentMatchers.any;
 import static org.mockito.ArgumentMatchers.anyString;
+import static org.mockito.ArgumentMatchers.argThat;
 import static org.mockito.ArgumentMatchers.eq;
 import static org.mockito.Mockito.inOrder;
 import static org.mockito.Mockito.mock;
@@ -267,6 +268,83 @@ class CorrectiveActionServiceTest {
 
         service.execute(DEV, "pi-1", ActionVerb.EDIT_VARIABLE, edit, operator);
         verify(client).putInstanceVariable(any(), eq("pi-1"), eq("amount"), any());
+    }
+
+    /* ---------------- execution-local (step-local) edits ---------------- */
+
+    private ActionRequest stepLocalEdit(String executionId, Object newValue, Object expectedOld) {
+        return new ActionRequest(
+                "fix the loop-local amount",
+                null,
+                null,
+                null,
+                null,
+                null,
+                new ActionRequest.VariableEdit("amount", "integer", newValue, expectedOld, executionId),
+                null,
+                null,
+                null,
+                null);
+    }
+
+    @Test
+    void stepLocalEditReadsAndWritesTheExecutionLocalScopeOnly() {
+        when(client.getExecution(any(), eq("exec-7")))
+                .thenReturn(Map.of("id", "exec-7", "processInstanceId", "pi-1", "activityId", "validateLine"));
+        when(client.getExecutionVariable(any(), eq("exec-7"), eq("amount")))
+                .thenReturn(Map.of("name", "amount", "type", "integer", "value", 42));
+
+        service.execute(DEV, "pi-1", ActionVerb.EDIT_VARIABLE, stepLocalEdit("exec-7", 43, 42), operator);
+
+        // The write lands ON the execution with scope=local — never promoted to process scope.
+        verify(client)
+                .putExecutionVariable(
+                        any(), eq("exec-7"), eq("amount"), argThat(body -> "local".equals(body.get("scope"))));
+        verify(client, never()).putInstanceVariable(any(), anyString(), anyString(), any());
+    }
+
+    @Test
+    void stepLocalCasComparesAgainstTheLocalValueNotTheProcessScope() {
+        when(client.getExecution(any(), eq("exec-7")))
+                .thenReturn(Map.of("id", "exec-7", "processInstanceId", "pi-1", "activityId", "validateLine"));
+        // The local value (99) differs from what the operator saw (42) — CAS must refuse.
+        when(client.getExecutionVariable(any(), eq("exec-7"), eq("amount")))
+                .thenReturn(Map.of("name", "amount", "type", "integer", "value", 99));
+
+        assertThatThrownBy(() -> service.execute(
+                        DEV, "pi-1", ActionVerb.EDIT_VARIABLE, stepLocalEdit("exec-7", 43, 42), operator))
+                .isInstanceOf(CasConflictException.class)
+                .satisfies(e ->
+                        assertThat(((CasConflictException) e).currentValue()).isEqualTo(99));
+        verify(audit).close(eq(pendingEntry), eq(AuditOutcome.failed), eq(409), any(), eq(false));
+        verify(client, never()).putExecutionVariable(any(), anyString(), anyString(), any());
+    }
+
+    @Test
+    void stepLocalEditRefusesAForeignExecutionBeforeAuditing() {
+        when(client.getExecution(any(), eq("exec-7")))
+                .thenReturn(Map.of("id", "exec-7", "processInstanceId", "pi-OTHER"));
+
+        assertThatThrownBy(() -> service.execute(
+                        DEV, "pi-1", ActionVerb.EDIT_VARIABLE, stepLocalEdit("exec-7", 43, 42), operator))
+                .isInstanceOf(GuardRefusedException.class)
+                .satisfies(
+                        e -> assertThat(((GuardRefusedException) e).code()).isEqualTo("execution-instance-mismatch"));
+        verifyNoInteractions(audit);
+        verify(client, never()).putExecutionVariable(any(), anyString(), anyString(), any());
+    }
+
+    @Test
+    void stepLocalEditRefusesWhenTheLocalVariableIsMissing() {
+        when(client.getExecution(any(), eq("exec-7"))).thenReturn(Map.of("id", "exec-7", "processInstanceId", "pi-1"));
+        when(client.getExecutionVariable(any(), eq("exec-7"), eq("amount"))).thenReturn(null);
+
+        assertThatThrownBy(() -> service.execute(
+                        DEV, "pi-1", ActionVerb.EDIT_VARIABLE, stepLocalEdit("exec-7", 43, 42), operator))
+                .isInstanceOf(GuardRefusedException.class)
+                .satisfies(e -> assertThat(((GuardRefusedException) e).code()).isEqualTo("variable-not-found"));
+        verifyNoInteractions(audit);
+        verify(client, never()).putExecutionVariable(any(), anyString(), anyString(), any());
     }
 
     /* ---------------- post-dispatch honesty (R-SEM-18) ---------------- */

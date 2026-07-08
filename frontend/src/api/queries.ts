@@ -156,14 +156,24 @@ export async function fetchInstanceVariables(path: InstancePath): Promise<Instan
   return data
 }
 
-/** The escape hatch behind a >256 KiB truncated ledger row — explicit fetch only. */
+/**
+ * The escape hatch behind a >256 KiB truncated ledger row — explicit fetch only. Scoped:
+ * pass {@code executionId} to read an execution-local ("step-local") variable (the base the
+ * step-local editor stages/CASes against); omit it for the process (case) scope.
+ */
 export async function fetchInstanceVariable(
   path: InstancePath,
   name: string,
+  executionId?: string,
 ): Promise<VariableDto> {
   const { data, error, response } = await api.GET(
     '/api/instances/{engineId}/{instanceId}/variables/{name}',
-    { params: { path: { ...path, name } } },
+    {
+      params: {
+        path: { ...path, name },
+        ...(executionId !== undefined ? { query: { executionId } } : {}),
+      },
+    },
   )
   if (data === undefined) throw new ApiError(response.status, error)
   return data

@@ -1355,6 +1355,7 @@ export interface components {
             value?: unknown;
         };
         VariableEdit: {
+            executionId?: string;
             expectedOldValue?: unknown;
             name?: string;
             type?: string;
@@ -2249,7 +2250,9 @@ export interface operations {
     };
     variable: {
         parameters: {
-            query?: never;
+            query?: {
+                executionId?: string;
+            };
             header?: never;
             path: {
                 engineId: string;

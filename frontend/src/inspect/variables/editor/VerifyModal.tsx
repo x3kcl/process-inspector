@@ -55,6 +55,8 @@ export function VerifyModal({
   const name = variable?.name ?? '?'
   const before = variable?.expectedOldValue
   const after = variable?.value
+  const executionId = variable?.executionId
+  const stepLocal = executionId !== undefined
   const environment = engine?.environment
   const prod = environment?.toLowerCase() === 'prod'
   const rule = reasonRule(1, environment)
@@ -62,8 +64,8 @@ export function VerifyModal({
   // Freshness re-check on open (§4a): the server value is re-read once; a drift blocks
   // the confirm with reload as the only forward path — never a silent overwrite race.
   const fresh = useQuery({
-    queryKey: ['verify-freshness', engineId, instanceId, name],
-    queryFn: () => fetchInstanceVariable({ engineId, instanceId }, name),
+    queryKey: ['verify-freshness', engineId, instanceId, name, executionId ?? ''],
+    queryFn: () => fetchInstanceVariable({ engineId, instanceId }, name, executionId),
     staleTime: 0,
     gcTime: 0,
     refetchOnMount: 'always',
@@ -84,7 +86,7 @@ export function VerifyModal({
     before,
     after,
     typeLabel,
-    scopeLabel: 'applies to the whole case',
+    scopeLabel: stepLocal ? 'applies to this step only' : 'applies to the whole case',
     targetLabel,
     engineName: engine?.name ?? engineId,
     environment,
@@ -216,12 +218,19 @@ export function VerifyModal({
         </div>
       )}
 
-      {/* Warning lines in fixed order (§4a): type change · PROD. */}
+      {/* Warning lines in fixed order (§4a): type change · execution-local scope · PROD. */}
       {typeChanged !== null && (
         <div className="callout callout-amber" role="alert">
           Type changes from <code>{typeChanged.from}</code> to <code>{typeChanged.to}</code> —
           downstream gateways/scripts may depend on this type: text “42” and number 42 behave
           differently.
+        </div>
+      )}
+      {stepLocal && (
+        <div className="callout callout-amber" role="alert">
+          Execution-local scope — this change applies only to this step's execution (
+          <code>{executionId}</code>), not the case-wide value. A same-named case variable is left
+          unchanged.
         </div>
       )}
       {prod && (

@@ -887,6 +887,49 @@ public class FlowableEngineClient {
                         .toBodilessEntity());
     }
 
+    /**
+     * GET /runtime/executions/{executionId}/variables/{name}?scope=local — the CAS pre-read
+     * for an execution-local ("step-local") variable (SPEC §4a). {@code scope=local} means
+     * the engine returns ONLY a variable declared ON this execution, never a process-scope
+     * value shadowed down the tree — so the CAS reads the exact row the write will touch.
+     * Null = no such local variable (404).
+     */
+    @SuppressWarnings("unchecked")
+    public Map<String, Object> getExecutionVariable(EngineConfig engine, String executionId, String name) {
+        try {
+            return guarded(
+                    engine,
+                    () -> client(engine)
+                            .get()
+                            .uri(uri -> uri.path("/runtime/executions/{id}/variables/{name}")
+                                    .queryParam("scope", "local")
+                                    .build(executionId, name))
+                            .retrieve()
+                            .body(Map.class));
+        } catch (HttpClientErrorException.NotFound e) {
+            return null;
+        }
+    }
+
+    /**
+     * PUT /runtime/executions/{executionId}/variables/{name} — typed execution-local write.
+     * The body carries {@code scope:"local"} so the engine writes the variable ON this
+     * execution node rather than promoting it to process scope; the declared type is
+     * preserved by the caller (flowable-rest §2).
+     */
+    public void putExecutionVariable(
+            EngineConfig engine, String executionId, String name, Map<String, Object> typedVariable) {
+        mutate(
+                engine,
+                () -> writeClient(engine)
+                        .put()
+                        .uri("/runtime/executions/{id}/variables/{name}", executionId, name)
+                        .contentType(MediaType.APPLICATION_JSON)
+                        .body(typedVariable)
+                        .retrieve()
+                        .toBodilessEntity());
+    }
+
     /** GET /runtime/tasks/{taskId} — server-fresh task restatement. Null = gone/completed. */
     @SuppressWarnings("unchecked")
     public Map<String, Object> getTask(EngineConfig engine, String taskId) {

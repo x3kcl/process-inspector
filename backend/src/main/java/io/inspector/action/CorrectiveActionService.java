@@ -386,22 +386,67 @@ public class CorrectiveActionService {
         return new Target(payload, token, "business key", null);
     }
 
+    /**
+     * Server-fresh restatement of an edit-variable target, scope-aware. A blank
+     * {@code executionId} is the process (case) scope — the pre-step-local path, read via
+     * {@code /runtime/process-instances}. A non-blank one is the execution-local
+     * ("step-local") scope (SPEC §4a): the execution is first re-read and ownership-checked
+     * against the instance (a foreign execution id is refused, not blindly written), then the
+     * variable is read {@code scope=local} so the CAS pre-check sees the exact row the write
+     * will touch — never a process-scope value shadowed down the tree.
+     */
     private Target variableTarget(EngineConfig engine, String instanceId, ActionRequest request) {
         ActionRequest.VariableEdit edit = requiredEdit(request);
-        Map<String, Object> row = client.getInstanceVariable(engine, instanceId, edit.name());
-        if (row == null) {
-            throw new GuardRefusedException(
-                    HttpStatus.NOT_FOUND,
-                    "variable-not-found",
-                    "Variable '" + edit.name() + "' does not exist on running instance " + instanceId
-                            + " — edit-variable changes existing values only. Nothing happened.");
+        String executionId = blankToNull(edit.executionId());
+        boolean local = executionId != null;
+
+        String activityId = null;
+        Map<String, Object> row;
+        if (local) {
+            Map<String, Object> execution = client.getExecution(engine, executionId);
+            if (execution == null) {
+                throw new GuardRefusedException(
+                        HttpStatus.NOT_FOUND,
+                        "execution-gone",
+                        "Execution " + executionId + " no longer exists (instance moved on?). Nothing happened.");
+            }
+            Object owner = execution.get("processInstanceId");
+            if (owner != null && !instanceId.equals(String.valueOf(owner))) {
+                throw new GuardRefusedException(
+                        HttpStatus.BAD_REQUEST,
+                        "execution-instance-mismatch",
+                        "Execution " + executionId + " belongs to instance " + owner + ", not " + instanceId + ".");
+            }
+            activityId = execution.get("activityId") != null ? String.valueOf(execution.get("activityId")) : null;
+            row = client.getExecutionVariable(engine, executionId, edit.name());
+            if (row == null) {
+                throw new GuardRefusedException(
+                        HttpStatus.NOT_FOUND,
+                        "variable-not-found",
+                        "Step-local variable '" + edit.name() + "' does not exist on execution " + executionId
+                                + " — edit-variable changes existing values only. Nothing happened.");
+            }
+        } else {
+            row = client.getInstanceVariable(engine, instanceId, edit.name());
+            if (row == null) {
+                throw new GuardRefusedException(
+                        HttpStatus.NOT_FOUND,
+                        "variable-not-found",
+                        "Variable '" + edit.name() + "' does not exist on running instance " + instanceId
+                                + " — edit-variable changes existing values only. Nothing happened.");
+            }
         }
+
         Object current = row.get("value");
         boolean secret = AuditService.isSecretName(edit.name());
         Map<String, Object> payload = new LinkedHashMap<>();
         payload.put("schema", "edit-variable/v1");
         payload.put("name", edit.name());
-        payload.put("scope", "process");
+        payload.put("scope", local ? "local" : "process");
+        if (local) {
+            payload.put("executionId", executionId);
+            payload.put("activityId", activityId);
+        }
         payload.put("valueType", edit.type() != null ? edit.type() : row.get("type"));
         payload.put("oldValue", secret ? AuditService.REDACTED : current);
         payload.put("expectedOldValue", secret ? AuditService.REDACTED : edit.expectedOldValue());
@@ -549,13 +594,21 @@ public class CorrectiveActionService {
                         request.reason() != null ? request.reason() : "terminated via process-inspector");
             case EDIT_VARIABLE -> {
                 ActionRequest.VariableEdit edit = request.variable();
+                String executionId = blankToNull(edit.executionId());
                 Map<String, Object> typed = new LinkedHashMap<>();
                 typed.put("name", edit.name());
                 if (edit.type() != null) {
                     typed.put("type", edit.type());
                 }
                 typed.put("value", edit.value());
-                client.putInstanceVariable(engine, targetId, edit.name(), typed);
+                if (executionId != null) {
+                    // Step-local: write ON the execution node. scope=local keeps the engine from
+                    // promoting it to process scope (SPEC §4a; flowable-rest §2).
+                    typed.put("scope", "local");
+                    client.putExecutionVariable(engine, executionId, edit.name(), typed);
+                } else {
+                    client.putInstanceVariable(engine, targetId, edit.name(), typed);
+                }
             }
             case COMPLETE_TASK -> client.completeTask(engine, request.taskId(), typedVariables(request));
             case REASSIGN_TASK ->
@@ -616,10 +669,14 @@ public class CorrectiveActionService {
             case SUSPEND -> "Instance " + targetId + " suspended; its jobs moved to the suspended lane.";
             case ACTIVATE -> "Instance " + targetId + " activated; suspended jobs returned to their queues.";
             case EDIT_VARIABLE -> {
-                boolean secret = AuditService.isSecretName(request.variable().name());
-                yield "Variable '" + request.variable().name() + "' changed from "
+                ActionRequest.VariableEdit edit = request.variable();
+                boolean secret = AuditService.isSecretName(edit.name());
+                String scope = blankToNull(edit.executionId()) != null
+                        ? "step-local variable (execution " + edit.executionId() + ")"
+                        : "variable";
+                yield capitalize(scope) + " '" + edit.name() + "' changed from "
                         + (secret ? AuditService.REDACTED : target.currentVariableValue()) + " to "
-                        + (secret ? AuditService.REDACTED : request.variable().value()) + ".";
+                        + (secret ? AuditService.REDACTED : edit.value()) + ".";
             }
             case COMPLETE_TASK ->
                 "Task " + request.taskId() + " completed on the user's behalf with "

@@ -40,9 +40,6 @@ export function editGateReason(input: {
   if (input.instanceEnded) {
     return 'the instance has ended — historic variables are a record, not state'
   }
-  if (input.scope === 'local') {
-    return 'step-local edits are not supported yet — edit the case-level value or use the engine directly'
-  }
   if (input.engineType?.toLowerCase() === 'serializable') {
     return 'REST cannot round-trip serializable Java objects — copy the value for the owning dev team instead'
   }
