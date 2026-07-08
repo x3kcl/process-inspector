@@ -1,6 +1,5 @@
 package io.inspector.cmmn;
 
-import io.inspector.action.GuardRefusedException;
 import io.inspector.client.FlowableEngineClient;
 import io.inspector.client.FlowableEngineClient.FlowablePage;
 import io.inspector.config.InspectorProperties.EngineConfig;
@@ -8,13 +7,11 @@ import io.inspector.dto.CmmnDeadLetterJob;
 import io.inspector.dto.CmmnLaneCounts;
 import io.inspector.dto.CmmnScopeFacet;
 import io.inspector.dto.OutOfScopeDeadLetters;
-import io.inspector.registry.EngineCapabilities;
 import io.inspector.registry.EngineRegistry;
 import java.util.ArrayList;
 import java.util.LinkedHashMap;
 import java.util.List;
 import java.util.Map;
-import org.springframework.http.HttpStatus;
 import org.springframework.stereotype.Service;
 
 /**
@@ -97,7 +94,7 @@ public class CmmnScopeService {
     /** The enumerated out-of-scope (CMMN) dead-letter jobs on one engine. */
     public OutOfScopeDeadLetters outOfScopeDeadLetters(String engineId) {
         EngineConfig engine = registry.require(engineId);
-        requireScopeTypeCapability(engine);
+        CmmnCapabilities.requireScopeType(registry, engine);
 
         Map<String, String> filters = new LinkedHashMap<>();
         // Server-side scope filter (live-proven 2026-07-08): the cmmn-api DLQ list HONORS
@@ -206,26 +203,6 @@ public class CmmnScopeService {
                 str(row, "createTime"),
                 str(row, "dueDate"),
                 str(row, "tenantId"));
-    }
-
-    private void requireScopeTypeCapability(EngineConfig engine) {
-        var health = registry.healthOf(engine.id());
-        EngineCapabilities capabilities = health != null ? health.capabilities() : null;
-        if (capabilities == null) {
-            throw new GuardRefusedException(
-                    HttpStatus.CONFLICT,
-                    "capability-unknown",
-                    "Engine '" + engine.id() + "' has not answered a health probe yet — CMMN scope support"
-                            + " (Flowable ≥ 6.8) is unverified, so the call is refused rather than sent blind.");
-        }
-        if (!capabilities.scopeType()) {
-            throw new GuardRefusedException(
-                    HttpStatus.CONFLICT,
-                    "capability-unavailable",
-                    "Engine '" + engine.id() + "' runs an Unsupported Engine Version for CMMN scope"
-                            + " (requires Flowable ≥ 6.8 — older engines are dead-letter-blind on the cmmn"
-                            + " context) — refused in the BFF, never a silently wrong view.");
-        }
     }
 
     private static String str(Map<String, Object> row, String key) {

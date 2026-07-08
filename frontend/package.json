@@ -22,6 +22,7 @@
     "ag-grid-community": "^32.2.0",
     "ag-grid-react": "^32.2.0",
     "bpmn-js": "^18.19.0",
+    "cmmn-js": "^0.20.0",
     "codemirror": "^6.0.2",
     "openapi-fetch": "^0.17.0",
     "react": "^18.3.1",

@@ -298,15 +298,18 @@ Phase 0 deliberately produces the seam the later phases consume:
   - **HAZARD:** `superProcessInstanceId` crosses the cmmn-history → process-api context (and
     possibly engine) boundary. The existing within-process hierarchy roll-up cycle-guard does
     not span two APIs — Phase 1 must **extend**, not reuse, it.
-- Phase 2 (polymorphic Stage-2 detail: `cmmn-js` canvas plus a plan-item state-machine
-  timeline) and Phase 3 (CMMN corrective actions under the full `corrective-actions` rails,
-  server-computed "Show as cURL" emitting `cmmn-runtime/case-instances/{id}/…`) remain
+- **Phase 2 — LANDED 2026-07-08 (full-stack).** Polymorphic Stage-2 detail: a `cmmn-js` canvas +
+  a plan-item state-machine timeline at `/case/{engineId}/{caseInstanceId}`. Full design + wire
+  provenance: **`docs/CMMN-CASE-DETAIL-PHASE-2.md`** (the authority for the phase). Read-only,
+  gated 6.8+. Phase 3 (CMMN corrective actions under the full `corrective-actions` rails,
+  server-computed "Show as cURL" emitting `cmmn-runtime/case-instances/{id}/…`) remains
   unspecified pending a separate plan.
-  - **CONSTRAINT (R-GOV-05, must precede the canvas):** `cmmn-js` emits its own
-    `.cmmn-powered-by` watermark. `frontend/scripts/check-bpmn-watermark.mjs` currently guards
-    only `bjs-powered-by`, so the build stays green precisely because it never looks for the
-    CMMN class. **Before** `cmmn-js` lands, generalize the guard to `/(bjs|cmmn)-powered-by/i`
-    (or add a sibling `check-cmmn-watermark.mjs`) so the watermark cannot be stripped.
+  - **CONSTRAINT (R-GOV-05, discharged before the canvas landed):** the guard
+    `frontend/scripts/check-bpmn-watermark.mjs` was generalized to `/(bjs|cmmn)-powered-by/i`
+    **first**. NOTE the premise correction: `cmmn-js` 0.20 actually emits the SAME
+    `bjs-powered-by` element as `bpmn-js` (not a `cmmn-powered-by` variant — verified live), so the
+    original guard would in fact have covered it; the generalization is kept as forward defense
+    against a future `cmmn-js`/`dmn-js` renaming. See CMMN-CASE-DETAIL-PHASE-2 §1 Q5.
 
 ---
 

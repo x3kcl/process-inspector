@@ -358,6 +358,28 @@ gap here: [link]" is the ticket-handover primitive.
 - **Compare with sibling** (v1.x, §5.2): from a failed instance, one click diffs it against
   a successful instance of the same definition version.
 
+#### Stage 2 — CMMN case detail: the polymorphic sibling route (Case Inspector Phase 2)
+A co-deployed **CMMN case** gets its own read-only, deep-linkable Stage-2 route
+**`/case/{engineId}/{caseInstanceId}`** — reached from the Phase-1 out-of-scope scope drawer (each
+FAILED job's case is now a link) and the omnibox CMMN-case match. It mirrors the BPMN detail:
+- **Vitals header** — case type (key/name/version), engine env badge, state chip
+  (ACTIVE / COMPLETED / TERMINATED — **no SUSPENDED**, a case cannot suspend), business key,
+  started/ended, and a "why stuck" strip when a plan item has dead-lettered (failing element +
+  first exception). A `superProcessInstanceId` shows the calling BPMN process (id only).
+- **Diagram first** — a read-only **`cmmn-js`** canvas with plan-item markers (active plan items
+  highlighted, dead-lettered plan items badged). A case definition deployed **without graphical
+  notation** renders an explicit no-layout state, never a blank box (`cmmn-js` does not auto-lay
+  out). The bpmn.io watermark is untouched (R-GOV-05; the build guard now covers `cmmn-js` too).
+- **Plan-item timeline** — the CMMN analog of the activity timeline: each plan item as a row with
+  its lifecycle state and a live-job badge (`FAILED` = dead-letter parked, `RETRYING` = failing
+  with retries), pattern + text never hue-only (§10a); stage children nest. **Runtime-only** on
+  Flowable 6.8 (no historic plan-item REST API) — an ended case shows an honest "unavailable"
+  state rather than a fabricated empty timeline.
+
+Read-only in this phase (CMMN corrective actions are a later phase); gated to Flowable **6.8+**
+(6.3 is dead-letter-blind and stateless on the CMMN context). Full design + wire provenance:
+[docs/CMMN-CASE-DETAIL-PHASE-2.md](CMMN-CASE-DETAIL-PHASE-2.md).
+
 ### 4a. The variable editor — form first, source available (R-UXQ-13)
 
 **One shared surface** — an editor producing a typed *change-set* plus **one** verification

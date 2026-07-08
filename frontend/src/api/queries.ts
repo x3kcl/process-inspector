@@ -12,6 +12,9 @@ import type {
   InstanceVariables,
   NearestSiblingResponse,
   CmmnScopeFacet,
+  CaseDetail,
+  CaseDiagram,
+  CasePlanItems,
   NoteDto,
   OutOfScopeDeadLetters,
   ResolveResponse,
@@ -67,6 +70,39 @@ export async function fetchCmmnScope(engineId: string): Promise<CmmnScopeFacet> 
   const { data, error, response } = await api.GET('/api/triage/engines/{engineId}/cmmn-scope', {
     params: { path: { engineId } },
   })
+  if (data === undefined) throw new ApiError(response.status, error)
+  return data
+}
+
+/* ---- Case Inspector Phase 2: polymorphic Stage-2 CMMN case detail (read-only, 6.8+) ---- */
+
+export interface CasePath {
+  engineId: string
+  caseInstanceId: string
+}
+
+export async function fetchCaseVitals(path: CasePath): Promise<CaseDetail> {
+  const { data, error, response } = await api.GET('/api/cases/{engineId}/{caseInstanceId}', {
+    params: { path },
+  })
+  if (data === undefined) throw new ApiError(response.status, error)
+  return data
+}
+
+export async function fetchCaseDiagram(path: CasePath): Promise<CaseDiagram> {
+  const { data, error, response } = await api.GET(
+    '/api/cases/{engineId}/{caseInstanceId}/diagram',
+    { params: { path } },
+  )
+  if (data === undefined) throw new ApiError(response.status, error)
+  return data
+}
+
+export async function fetchCasePlanItems(path: CasePath): Promise<CasePlanItems> {
+  const { data, error, response } = await api.GET(
+    '/api/cases/{engineId}/{caseInstanceId}/plan-items',
+    { params: { path } },
+  )
   if (data === undefined) throw new ApiError(response.status, error)
   return data
 }

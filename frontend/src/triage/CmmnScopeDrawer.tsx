@@ -1,4 +1,5 @@
 import { useQuery } from '@tanstack/react-query'
+import { Link } from 'react-router'
 import { CMMN_STATUSES, type CmmnStatus, type CmmnLaneCounts } from '../api/model'
 import { fetchCmmnScope } from '../api/queries'
 import { useEngines } from '../api/useEngines'
@@ -119,7 +120,17 @@ export function CmmnScopeDrawer({ engineId, onClose }: { engineId: string; onClo
                       {job.caseInstanceId && (
                         <>
                           <dt>Case</dt>
-                          <dd className="mono">{job.caseInstanceId}</dd>
+                          <dd className="mono">
+                            {/* Case Inspector Phase 2: the case is now inspectable (read-only,
+                                6.8+). Closing the drawer as we navigate to its detail page. */}
+                            <Link
+                              to={`/case/${engineId}/${job.caseInstanceId}`}
+                              onClick={onClose}
+                              title="Open the read-only case detail (diagram + plan-item timeline)"
+                            >
+                              {job.caseInstanceId}
+                            </Link>
+                          </dd>
                         </>
                       )}
                       {typeof job.retries === 'number' && (
