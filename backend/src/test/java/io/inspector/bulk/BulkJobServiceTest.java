@@ -8,6 +8,7 @@ import static org.mockito.ArgumentMatchers.anyInt;
 import static org.mockito.ArgumentMatchers.anyMap;
 import static org.mockito.ArgumentMatchers.eq;
 import static org.mockito.Mockito.mock;
+import static org.mockito.Mockito.never;
 import static org.mockito.Mockito.verify;
 import static org.mockito.Mockito.verifyNoInteractions;
 import static org.mockito.Mockito.when;
@@ -299,6 +300,43 @@ class BulkJobServiceTest {
                 .extracting(BulkDtos.BulkItemDto::state)
                 .containsExactly("skipped", "failed", "unknown", "ok");
         assertThat(done.items().get(2).detail()).contains("Verify now");
+    }
+
+    @Test
+    void circuitOpenMidBulkPausesDispatchInsteadOfBurningTheRestAsFailures() {
+        // permits=1, stagger=0 ⇒ strict ordinal dispatch, one item at a time (deterministic).
+        service = serviceWith(1, 0, new java.util.concurrent.CopyOnWriteArrayList<>());
+        when(actions.execute(eq(ENGINE), eq("pi-1"), any(), any(), any()))
+                .thenReturn(new ActionResult(UUID.randomUUID(), "c", "ok", 200, "suspended"));
+        // The breaker trips on pi-2: the BFF's guarded chokepoint fast-fails BEFORE any bytes
+        // leave — CorrectiveActionService surfaces it as this shedding-load guard refusal.
+        when(actions.execute(eq(ENGINE), eq("pi-2"), any(), any(), any()))
+                .thenThrow(new GuardRefusedException(
+                        HttpStatus.SERVICE_UNAVAILABLE,
+                        "engine-shedding-load",
+                        "Engine 'engine-a' is shedding load (circuit open) — the action was not sent."));
+        // pi-3 and pi-4 are deliberately UNSTUBBED: the pause must keep them from ever being
+        // dispatched (a stub that never fires would also fail Mockito's strict-stub check).
+
+        BulkDtos.BulkJobDto submitted = service.submit(suspendOf("pi-1", "pi-2", "pi-3", "pi-4"), responder);
+        BulkDtos.BulkJobDto done = awaitFinished(submitted.id());
+
+        // Partial run: dispatch PAUSED, the job is INTERRUPTED (offer "continue as new job"),
+        // never COMPLETED — undispatched work is surfaced, not silently dropped.
+        assertThat(done.state()).isEqualTo("INTERRUPTED");
+        assertThat(done.items())
+                .extracting(BulkDtos.BulkItemDto::state)
+                .containsExactly("ok", "failed", "not_run", "not_run");
+        assertThat(done.tallies())
+                .containsEntry("ok", 1L)
+                .containsEntry("failed", 1L)
+                .containsEntry("not_run", 2L);
+        // The undispatched items were NEVER sent to the engine — do-no-harm held.
+        verify(actions, never()).execute(eq(ENGINE), eq("pi-3"), any(), any(), any());
+        verify(actions, never()).execute(eq(ENGINE), eq("pi-4"), any(), any(), any());
+        // The fast-failed item carries the clean shedding-load reason, not an "unexpected" crash.
+        assertThat(done.items().get(1).detail()).contains("shedding load");
+        assertThat(done.items().get(2).detail()).contains("paused");
     }
 
     /* ---------------- retry: dispatch-time DLQ resolution ---------------- */

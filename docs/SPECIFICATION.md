@@ -687,7 +687,10 @@ for the operator.
 - **Circuit-open mid-job** (R-SEM-11): dispatch to a tripped engine **pauses** — undispatched
   items stay `pending`, never burned as failures; a breaker fast-fail on an already-dispatched
   item is `failed` (clean rejection); `unknown` stays reserved for true ambiguity (timeout
-  per registry `write-ms`).
+  per registry `write-ms`). Only the tripped engine pauses — other engine groups run on
+  independently. When the job finishes, the held `pending` items settle `not_run` (never
+  attempted) and the job is **INTERRUPTED**, not COMPLETED, so the "continue as new job"
+  affordance re-scopes `not_run`+`failed`; no automatic resume, ever.
 - **v1.x #1 — error-class group retry** (landed): the triage landing's bulk-retry-the-group
   dispatches `POST /api/bulk/error-class` carrying the group's **coordinates only**
   (`signatureHash + algoVersion + processDefinitionKey + definitionVersion [+ engineId]`,
