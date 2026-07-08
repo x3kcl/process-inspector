@@ -1,0 +1,32 @@
+<?xml version="1.0" encoding="UTF-8"?>
+<cmmn:definitions xmlns:cmmn="http://www.omg.org/spec/CMMN/20151109/MODEL"
+  xmlns:cmmndi="http://www.omg.org/spec/CMMN/20151109/CMMNDI"
+  xmlns:dc="http://www.omg.org/spec/CMMN/20151109/DC"
+  xmlns:di="http://www.omg.org/spec/CMMN/20151109/DI"
+  xmlns:flowable="http://flowable.org/cmmn"
+  targetNamespace="http://flowable.org/cmmn">
+  <cmmn:case id="demoCaseDetail" name="Demo case detail">
+    <cmmn:casePlanModel id="casePlanModel" name="Demo case detail">
+      <cmmn:planItem id="planItem_svc" name="Failing service" definitionRef="failingService"/>
+      <cmmn:planItem id="planItem_human" name="Keep alive" definitionRef="keepAlive"/>
+      <cmmn:task id="failingService" name="Failing service" flowable:async="true" flowable:type="java" flowable:expression="${nonExistentBean.doStuff()}"/>
+      <cmmn:humanTask id="keepAlive" name="Keep alive"/>
+    </cmmn:casePlanModel>
+  </cmmn:case>
+  <cmmndi:CMMNDI>
+    <cmmndi:CMMNDiagram id="CMMNDiagram_demoCaseDetail">
+      <cmmndi:CMMNShape id="Shape_casePlanModel" cmmnElementRef="casePlanModel">
+        <dc:Bounds height="260" width="420" x="40" y="40"/>
+        <cmmndi:CMMNLabel/>
+      </cmmndi:CMMNShape>
+      <cmmndi:CMMNShape id="Shape_planItem_svc" cmmnElementRef="planItem_svc">
+        <dc:Bounds height="60" width="120" x="90" y="110"/>
+        <cmmndi:CMMNLabel/>
+      </cmmndi:CMMNShape>
+      <cmmndi:CMMNShape id="Shape_planItem_human" cmmnElementRef="planItem_human">
+        <dc:Bounds height="60" width="120" x="280" y="110"/>
+        <cmmndi:CMMNLabel/>
+      </cmmndi:CMMNShape>
+    </cmmndi:CMMNDiagram>
+  </cmmndi:CMMNDI>
+</cmmn:definitions>

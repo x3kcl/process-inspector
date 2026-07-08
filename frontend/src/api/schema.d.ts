@@ -132,6 +132,54 @@ export interface paths {
         patch?: never;
         trace?: never;
     };
+    "/api/cases/{engineId}/{caseInstanceId}": {
+        parameters: {
+            query?: never;
+            header?: never;
+            path?: never;
+            cookie?: never;
+        };
+        get: operations["vitals_1"];
+        put?: never;
+        post?: never;
+        delete?: never;
+        options?: never;
+        head?: never;
+        patch?: never;
+        trace?: never;
+    };
+    "/api/cases/{engineId}/{caseInstanceId}/diagram": {
+        parameters: {
+            query?: never;
+            header?: never;
+            path?: never;
+            cookie?: never;
+        };
+        get: operations["diagram_1"];
+        put?: never;
+        post?: never;
+        delete?: never;
+        options?: never;
+        head?: never;
+        patch?: never;
+        trace?: never;
+    };
+    "/api/cases/{engineId}/{caseInstanceId}/plan-items": {
+        parameters: {
+            query?: never;
+            header?: never;
+            path?: never;
+            cookie?: never;
+        };
+        get: operations["planItems"];
+        put?: never;
+        post?: never;
+        delete?: never;
+        options?: never;
+        head?: never;
+        patch?: never;
+        trace?: never;
+    };
     "/api/definitions/{engineId}/{definitionId}/actions/{verb}": {
         parameters: {
             query?: never;
@@ -679,6 +727,64 @@ export interface components {
             engineId?: string;
             instanceId?: string;
             jobId?: string;
+        };
+        CaseDetail: {
+            businessKey?: string;
+            caseDefinitionId?: string;
+            caseDefinitionKey?: string;
+            caseDefinitionName?: string;
+            /** Format: int32 */
+            caseDefinitionVersion?: number;
+            caseInstanceId?: string;
+            endTime?: string;
+            ended?: boolean;
+            engineId?: string;
+            failing?: components["schemas"]["CaseFailing"];
+            parentId?: string;
+            present?: boolean;
+            startTime?: string;
+            startUserId?: string;
+            state?: string;
+            superProcessInstanceId?: string;
+            tenantId?: string;
+        };
+        CaseDiagram: {
+            activePlanItemElementIds?: string[];
+            failedPlanItemElementIds?: string[];
+            graphicalNotationDefined?: boolean;
+            xml?: string;
+        };
+        CaseFailing: {
+            /** Format: int32 */
+            deadLetterJobCount?: number;
+            failingElementName?: string;
+            firstException?: string;
+        };
+        CasePlanItem: {
+            completedTime?: string;
+            createTime?: string;
+            elementId?: string;
+            endedTime?: string;
+            exitTime?: string;
+            id?: string;
+            lastAvailableTime?: string;
+            lastEnabledTime?: string;
+            lastStartedTime?: string;
+            /** @enum {string} */
+            liveJobState?: "FAILED" | "RETRYING";
+            name?: string;
+            occurredTime?: string;
+            planItemDefinitionType?: string;
+            stage?: boolean;
+            stageInstanceId?: string;
+            state?: string;
+            terminatedTime?: string;
+        };
+        CasePlanItems: {
+            available?: boolean;
+            planItems?: components["schemas"]["CasePlanItem"][];
+            truncated?: boolean;
+            unavailableReason?: string;
         };
         ChangeStatePreview: {
             engineId?: string;
@@ -1455,6 +1561,75 @@ export interface operations {
                 };
                 content: {
                     "*/*": components["schemas"]["BulkItemDto"];
+                };
+            };
+        };
+    };
+    vitals_1: {
+        parameters: {
+            query?: never;
+            header?: never;
+            path: {
+                engineId: string;
+                caseInstanceId: string;
+            };
+            cookie?: never;
+        };
+        requestBody?: never;
+        responses: {
+            /** @description OK */
+            200: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "*/*": components["schemas"]["CaseDetail"];
+                };
+            };
+        };
+    };
+    diagram_1: {
+        parameters: {
+            query?: never;
+            header?: never;
+            path: {
+                engineId: string;
+                caseInstanceId: string;
+            };
+            cookie?: never;
+        };
+        requestBody?: never;
+        responses: {
+            /** @description OK */
+            200: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "*/*": components["schemas"]["CaseDiagram"];
+                };
+            };
+        };
+    };
+    planItems: {
+        parameters: {
+            query?: never;
+            header?: never;
+            path: {
+                engineId: string;
+                caseInstanceId: string;
+            };
+            cookie?: never;
+        };
+        requestBody?: never;
+        responses: {
+            /** @description OK */
+            200: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "*/*": components["schemas"]["CasePlanItems"];
                 };
             };
         };

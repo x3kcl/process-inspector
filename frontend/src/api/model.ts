@@ -17,6 +17,15 @@ export type OutOfScopeDeadLetters = components['schemas']['OutOfScopeDeadLetters
 export type CmmnDeadLetterJob = components['schemas']['CmmnDeadLetterJob']
 export type CmmnScopeFacet = components['schemas']['CmmnScopeFacet']
 export type CmmnLaneCounts = components['schemas']['CmmnLaneCounts']
+
+// Case Inspector Phase 2 — polymorphic Stage-2 CMMN case detail (cmmn-js + plan-item timeline)
+export type CaseDetail = components['schemas']['CaseDetail']
+export type CaseFailing = components['schemas']['CaseFailing']
+export type CaseDiagram = components['schemas']['CaseDiagram']
+export type CasePlanItems = components['schemas']['CasePlanItems']
+export type CasePlanItem = components['schemas']['CasePlanItem']
+// springdoc inlines the enum on the field rather than as a named schema, so derive it.
+export type CmmnLiveJobState = NonNullable<CasePlanItem['liveJobState']>
 export type AuditEntryDto = components['schemas']['AuditEntryDto']
 export type NoteDto = components['schemas']['NoteDto']
 

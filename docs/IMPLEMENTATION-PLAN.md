@@ -510,10 +510,22 @@ count to a "≥N" lower bound under a truncated DLQ scan — see `CMMN-SCOPE-PHA
       no rows in the normal case, and its "degraded — Unknown case" fallback can't fire honestly
       (a null-pid process-api orphan is only a *candidate* CMMN job; confirming it needs a by-id
       hydration that, on success, returns FULL context, not a degraded row). See §7.
-  **Phase 2** — Polymorphic Stage-2 detail: `cmmn-js`
-  canvas (extend the watermark guard to `/(bjs|cmmn)-powered-by/i` **first**) + plan-item
-  timeline. **Phase 3** — CMMN corrective actions under the full `corrective-actions` rails.
-  All gated 6.8+.
+  **Phase 2 — LANDED 2026-07-08 (full-stack).** Polymorphic Stage-2 CMMN detail at
+  `/case/{engineId}/{caseInstanceId}` — the read-only sibling of `/inspect`: a `cmmn-js` case
+  diagram (with an honest no-layout state for a DI-less definition) + a plan-item state-machine
+  timeline. Backend `CaseDetailService`/`CaseDetailController` (three `GET /api/cases/…` endpoints,
+  VIEWER floor, gated 6.8+ via a shared `CmmnCapabilities.requireScopeType`); FAILED/RETRYING
+  joined by `planItemInstanceId` (NOT the job's `elementId`, which is the plan-item DEFINITION id —
+  the load-bearing wire trap); the plan-item timeline is **runtime-only** on 6.8 (no historic
+  plan-item REST API — an ended case degrades honestly). The watermark guard was generalized to
+  `/(bjs|cmmn)-powered-by/i` **first** (cmmn-js 0.20 actually emits the same `bjs-powered-by`
+  class; the generalization is forward defense). Frontend: `CasePage` + lazy `cmmn-js` chunk +
+  `CaseDiagramCanvas` + a pure `planItemModel` timeline; the Phase-1 drawer's case ids became
+  links. New DI-bearing seed `docker/processes/demo-case-detail.cmmn.xml`. Tests:
+  `CaseDetailServiceTest` (rung-1, incl. the Q7 join trap) + `CaseDetailIT` (rung-4 live 6.8) +
+  `planItemModel.test.ts` + `e2e/case-detail.spec.ts` (incl. a real in-browser cmmn-js render).
+  Live-verified vs real 6.8. Full design + wire provenance: **`docs/CMMN-CASE-DETAIL-PHASE-2.md`**.
+  **Phase 3** — CMMN corrective actions under the full `corrective-actions` rails. All gated 6.8+.
 - Registry CRUD UI; shared server-side saved views; k-way-merge deep paging; OIDC hardening.
 
 ### v2/M4 — State store + snapshot store: architectural boundary *(decided 2026-07-07, pre-build)*

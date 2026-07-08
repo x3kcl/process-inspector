@@ -236,6 +236,66 @@ public class FlowableEngineClient {
     }
 
     /**
+     * GET /cmmn-api/cmmn-runtime/plan-item-instances?caseInstanceId= — the plan items of ONE
+     * running case (Case Inspector Phase 2 timeline). RUNTIME-ONLY: {@code
+     * cmmn-history/historic-plan-item-instances} 404s on 6.8 (spike Q6), so an ENDED case has no
+     * plan-item source at all — callers render the timeline as "unavailable for ended cases",
+     * never a fabricated empty list. Each row carries {@code id} (the join key for a dead-letter
+     * job's {@code planItemInstanceId}, spike Q7), {@code elementId} (the CMMN DI shape key —
+     * NOT the same as a job row's {@code elementId}, which is the plan-item DEFINITION id),
+     * {@code planItemDefinitionType}, {@code state}, {@code stageInstanceId}, and the lifecycle
+     * timestamps. Callers capability-gate (≥ 6.8) first.
+     */
+    public FlowablePage listCmmnPlanItemInstances(
+            EngineConfig engine, Map<String, String> filters, int start, int size) {
+        UriComponentsBuilder b = UriComponentsBuilder.fromUriString(
+                        cmmnApiBase(engine) + "/cmmn-runtime/plan-item-instances")
+                .queryParam("start", start)
+                .queryParam("size", size);
+        filters.forEach(b::queryParam);
+        java.net.URI uri = b.build().toUri();
+        return guarded(engine, () -> client(engine).get().uri(uri).retrieve().body(FlowablePage.class));
+    }
+
+    /**
+     * GET /cmmn-api/cmmn-management/jobs — the EXECUTABLE (not yet dead-lettered) CMMN jobs, the
+     * source of the {@code RETRYING} plan-item annotation (a failing job with retries left) that
+     * pairs with the dead-letter {@code FAILED} annotation (Case Inspector Phase 2). Joined to a
+     * plan item by {@code planItemInstanceId}, exactly like the dead-letter list (spike Q7).
+     * Callers capability-gate (≥ 6.8) first.
+     */
+    public FlowablePage listCmmnJobs(EngineConfig engine, Map<String, String> filters, int start, int size) {
+        UriComponentsBuilder b = UriComponentsBuilder.fromUriString(cmmnApiBase(engine) + "/cmmn-management/jobs")
+                .queryParam("start", start)
+                .queryParam("size", size);
+        filters.forEach(b::queryParam);
+        java.net.URI uri = b.build().toUri();
+        return guarded(engine, () -> client(engine).get().uri(uri).retrieve().body(FlowablePage.class));
+    }
+
+    /**
+     * GET /cmmn-api/cmmn-repository/deployments/{deploymentId}/resourcedata/{resourceName} — the
+     * raw CMMN 1.1 XML exactly as deployed (Phase 2 case diagram), the CMMN sibling of
+     * {@link #deploymentResourceData}. {@code cmmn-js} needs the {@code <cmmndi:CMMNDI>} block to
+     * render — a DI-less model imports to an empty canvas, so callers pair this with the
+     * definition's {@code graphicalNotationDefined} flag and degrade honestly. Null on 404.
+     */
+    public String cmmnDeploymentResourceData(EngineConfig engine, String deploymentId, String resourceName) {
+        UriComponentsBuilder b = UriComponentsBuilder.fromUriString(
+                cmmnApiBase(engine) + "/cmmn-repository/deployments/" + deploymentId + "/resourcedata");
+        for (String segment : resourceName.split("/")) {
+            b.pathSegment(segment);
+        }
+        java.net.URI uri = b.build().toUri();
+        try {
+            return guarded(
+                    engine, () -> client(engine).get().uri(uri).retrieve().body(String.class));
+        } catch (HttpClientErrorException.NotFound e) {
+            return null;
+        }
+    }
+
+    /**
      * The CMMN Management/Runtime/Repository/History REST APIs live under the {@code /cmmn-api}
      * sibling of the process-api {@code /service} base — same convention as
      * {@link #externalJobApiBase}. A non-standard deployment would need an explicit override,

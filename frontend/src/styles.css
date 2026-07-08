@@ -2560,3 +2560,190 @@ button.primary:disabled {
 .timing-row.timing-stalled .timing-activity {
   font-weight: 700;
 }
+
+/* ============================================================================
+   Case Inspector Phase 2 — polymorphic CMMN case detail (cmmn-js + plan items)
+   ============================================================================ */
+.case-page {
+  padding: 1rem 1.25rem;
+}
+.case-header-row {
+  display: flex;
+  align-items: center;
+  gap: 0.6rem;
+  margin-bottom: 0.5rem;
+}
+.case-back {
+  font-size: 0.85rem;
+}
+.case-kind {
+  font-size: 0.75rem;
+  font-weight: 600;
+  letter-spacing: 0.03em;
+  padding: 1px 7px;
+  border: 1px solid #8e44ad;
+  border-radius: 10px;
+  color: #6c3483;
+}
+.case-readonly {
+  font-size: 0.72rem;
+  color: #7f8c8d;
+  border: 1px dashed #b2babb;
+  border-radius: 10px;
+  padding: 1px 7px;
+}
+.case-title {
+  font-size: 1.35rem;
+  display: flex;
+  align-items: center;
+  gap: 0.6rem;
+  margin: 0.25rem 0;
+}
+.case-state {
+  font-size: 0.72rem;
+  font-weight: 700;
+  letter-spacing: 0.04em;
+  padding: 2px 8px;
+  border-radius: 10px;
+  border: 1px solid currentColor;
+}
+.case-state--active {
+  color: #1e6091;
+}
+.case-state--completed {
+  color: #1e8449;
+}
+.case-state--terminated {
+  color: #935116;
+}
+.case-vitals {
+  display: grid;
+  grid-template-columns: max-content 1fr;
+  gap: 0.15rem 1rem;
+  font-size: 0.9rem;
+  margin: 0.5rem 0;
+}
+.case-vitals dt {
+  color: #7f8c8d;
+}
+.case-id-row {
+  display: flex;
+  align-items: center;
+  gap: 0.5rem;
+}
+.case-why-stuck {
+  background: #fdedec;
+  border: 1px solid #f5b7b1;
+  border-radius: 6px;
+  padding: 0.5rem 0.75rem;
+  font-size: 0.88rem;
+  margin: 0.5rem 0;
+}
+.case-exception {
+  font-family: var(--font-mono, monospace);
+  color: #922b21;
+}
+
+/* cmmn-js canvas — markers mirror the bpmn-js ones; the bpmn.io watermark is untouched */
+.case-diagram {
+  height: 42vh;
+  border: 1px solid #e5e7e9;
+  border-radius: 6px;
+}
+.case-diagram--no-layout {
+  height: auto;
+  padding: 1rem 1.25rem;
+  background: #f8f9f9;
+}
+.case-diagram-no-layout-title {
+  font-weight: 600;
+  margin: 0 0 0.25rem;
+}
+.case-diagram .marker-active .djs-visual > :first-child {
+  stroke: #1e8449 !important;
+  fill: #d1f2eb !important;
+}
+.case-diagram .marker-deadletter .djs-visual > :first-child {
+  stroke: #c0392b !important;
+  fill: #fadbd8 !important;
+}
+
+.case-section-title {
+  font-size: 1rem;
+  margin: 1rem 0 0.5rem;
+}
+.plan-item-timeline--unavailable {
+  color: #7f8c8d;
+  font-style: italic;
+  padding: 0.5rem 0;
+}
+.plan-item-timeline-truncated {
+  font-size: 0.8rem;
+  color: #935116;
+}
+.plan-item-list {
+  list-style: none;
+  margin: 0;
+  padding: 0;
+}
+.plan-item {
+  border-left: 2px solid #d5dbdb;
+  padding: 0.4rem 0.6rem;
+  margin: 0.2rem 0;
+}
+.plan-item-head {
+  display: flex;
+  align-items: center;
+  gap: 0.5rem;
+  flex-wrap: wrap;
+}
+.plan-item-name {
+  font-weight: 600;
+}
+.plan-item-type {
+  font-size: 0.72rem;
+  color: #566573;
+  background: #eaeded;
+  border-radius: 8px;
+  padding: 1px 7px;
+}
+.plan-item-state {
+  font-size: 0.74rem;
+  font-family: var(--font-mono, monospace);
+  padding: 1px 6px;
+  border-radius: 4px;
+  border: 1px solid currentColor;
+}
+.plan-item-state--active {
+  color: #1e6091;
+}
+.plan-item-state--ended {
+  color: #616a6b;
+}
+.plan-item-state--available {
+  color: #7d6608;
+}
+.plan-item-badge {
+  font-size: 0.74rem;
+  font-weight: 600;
+  padding: 1px 7px;
+  border-radius: 8px;
+}
+.plan-item-badge--failed {
+  color: #922b21;
+  background: #fadbd8;
+  border: 1px solid #e6b0aa;
+}
+.plan-item-badge--retrying {
+  color: #7e5109;
+  background: #fdebd0;
+  border: 1px dashed #e59866;
+}
+.plan-item-meta {
+  display: grid;
+  grid-template-columns: max-content 1fr;
+  gap: 0 0.75rem;
+  font-size: 0.78rem;
+  color: #7f8c8d;
+  margin: 0.2rem 0 0;
+}

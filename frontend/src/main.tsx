@@ -1,4 +1,4 @@
-import { StrictMode } from 'react'
+import { StrictMode, Suspense, lazy } from 'react'
 import { createRoot } from 'react-dom/client'
 import { QueryClient, QueryClientProvider } from '@tanstack/react-query'
 import { Navigate, RouterProvider, createBrowserRouter, useSearchParams } from 'react-router'
@@ -10,6 +10,10 @@ import { hasSearch } from './search/urlState'
 import { Shell } from './shell/Shell'
 import { TriagePage } from './triage/TriagePage'
 import './styles.css'
+
+// The CMMN case detail pulls in cmmn-js (heavy) and is a rare path — keep it out of the
+// initial bundle, mirroring the lazy Stage-2 tab chunks.
+const CasePage = lazy(() => import('./case/CasePage').then((m) => ({ default: m.CasePage })))
 
 const queryClient = new QueryClient({
   defaultOptions: {
@@ -43,6 +47,15 @@ const router = createBrowserRouter([
       { index: true, element: <HomeRoute /> },
       { path: 'search', element: <SearchPage /> },
       { path: 'inspect/:engineId/:instanceId', element: <InspectPage /> },
+      // Case Inspector Phase 2: the polymorphic CMMN sibling of /inspect (read-only, 6.8+).
+      {
+        path: 'case/:engineId/:caseInstanceId',
+        element: (
+          <Suspense fallback={<p className="muted">Loading case…</p>}>
+            <CasePage />
+          </Suspense>
+        ),
+      },
       { path: 'audit', element: <AuditLogPage /> },
     ],
   },
