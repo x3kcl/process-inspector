@@ -4,6 +4,7 @@ import static org.assertj.core.api.Assertions.assertThat;
 import static org.assertj.core.api.Assertions.assertThatThrownBy;
 import static org.mockito.ArgumentMatchers.any;
 import static org.mockito.ArgumentMatchers.anyInt;
+import static org.mockito.ArgumentMatchers.eq;
 import static org.mockito.Mockito.mock;
 import static org.mockito.Mockito.never;
 import static org.mockito.Mockito.times;
@@ -15,6 +16,7 @@ import io.inspector.client.FlowableEngineClient;
 import io.inspector.client.FlowableEngineClient.FlowablePage;
 import io.inspector.config.InspectorProperties.EngineConfig;
 import io.inspector.dto.CmmnDeadLetterJob;
+import io.inspector.dto.CmmnScopeFacet;
 import io.inspector.dto.OutOfScopeDeadLetters;
 import io.inspector.registry.EngineCapabilities;
 import io.inspector.registry.EngineHealth;
@@ -162,6 +164,66 @@ class CmmnScopeServiceTest {
             assertThat(job.caseDefinitionKey()).isNull();
             assertThat(job.caseDefinitionName()).isNull();
         });
+    }
+
+    @Test
+    void cmmnScopeReportsLaneCountsAndDistinctFailedCases() {
+        health(scopeTypeCapable());
+        // Two dead-letter jobs on ONE case + a third on another → FAILED = 2 DISTINCT cases.
+        when(flowable.listCmmnDeadLetterJobs(any(), any(), anyInt(), anyInt()))
+                .thenReturn(new FlowablePage(
+                        List.of(
+                                cmmnRow("j1", "case-1", "def-A"),
+                                cmmnRow("j2", "case-1", "def-A"),
+                                cmmnRow("j3", "case-2", "def-B")),
+                        3,
+                        0,
+                        50));
+        when(flowable.getCmmnCaseDefinition(any(), any())).thenReturn(def("k", "n"));
+        when(flowable.countHistoricCmmnCaseInstances(any(), eq("active"), any()))
+                .thenReturn(5L);
+        when(flowable.countHistoricCmmnCaseInstances(any(), eq("completed"), any()))
+                .thenReturn(12L);
+        when(flowable.countHistoricCmmnCaseInstances(any(), eq("terminated"), any()))
+                .thenReturn(1L);
+
+        CmmnScopeFacet facet = service.cmmnScope(ENGINE);
+
+        assertThat(facet.lanes().active()).isEqualTo(5);
+        assertThat(facet.lanes().completed()).isEqualTo(12);
+        assertThat(facet.lanes().terminated()).isEqualTo(1);
+        assertThat(facet.lanes().failed()).isEqualTo(2); // distinct cases, not 3 jobs
+        assertThat(facet.deadletters().jobs()).extracting(CmmnDeadLetterJob::id).containsExactly("j1", "j2", "j3");
+    }
+
+    @Test
+    void aLaneQueryFailureDegradesToNullNeverZero() {
+        health(scopeTypeCapable());
+        when(flowable.listCmmnDeadLetterJobs(any(), any(), anyInt(), anyInt()))
+                .thenReturn(new FlowablePage(List.of(), 0, 0, 50));
+        when(flowable.countHistoricCmmnCaseInstances(any(), eq("active"), any()))
+                .thenReturn(3L);
+        when(flowable.countHistoricCmmnCaseInstances(any(), eq("completed"), any()))
+                .thenThrow(new RuntimeException("engine hiccup"));
+        when(flowable.countHistoricCmmnCaseInstances(any(), eq("terminated"), any()))
+                .thenReturn(0L);
+
+        CmmnScopeFacet facet = service.cmmnScope(ENGINE);
+
+        assertThat(facet.lanes().active()).isEqualTo(3);
+        assertThat(facet.lanes().completed()).isNull(); // unknown, NOT a confident 0
+        assertThat(facet.lanes().terminated()).isZero();
+        assertThat(facet.lanes().failed()).isZero();
+    }
+
+    @Test
+    void cmmnScopeGatesPreSixEightBeforeAnyLaneQuery() {
+        health(new EngineCapabilities(true, true, false, false, true)); // scopeType absent
+
+        assertThatThrownBy(() -> service.cmmnScope(ENGINE))
+                .isInstanceOf(GuardRefusedException.class)
+                .satisfies(e -> assertThat(((GuardRefusedException) e).code()).isEqualTo("capability-unavailable"));
+        verify(flowable, never()).countHistoricCmmnCaseInstances(any(), any(), any());
     }
 
     private static EngineCapabilities scopeTypeCapable() {

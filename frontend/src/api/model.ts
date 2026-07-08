@@ -15,6 +15,8 @@ export type ErrorGroup = components['schemas']['ErrorGroup']
 export type PerEngineTriage = components['schemas']['PerEngineTriage']
 export type OutOfScopeDeadLetters = components['schemas']['OutOfScopeDeadLetters']
 export type CmmnDeadLetterJob = components['schemas']['CmmnDeadLetterJob']
+export type CmmnScopeFacet = components['schemas']['CmmnScopeFacet']
+export type CmmnLaneCounts = components['schemas']['CmmnLaneCounts']
 export type AuditEntryDto = components['schemas']['AuditEntryDto']
 export type NoteDto = components['schemas']['NoteDto']
 
@@ -68,3 +70,14 @@ export const ALL_STATUSES: readonly InstanceStatus[] = [
 export function isInstanceStatus(value: string): value is InstanceStatus {
   return (ALL_STATUSES as readonly string[]).includes(value)
 }
+
+/**
+ * The CMMN case lane set (Case Inspector Phase 1, R-SEM-20) — deliberately SEPARATE from the
+ * BPMN {@link ALL_STATUSES}. A CMMN case cannot be SUSPENDED (spike Q2), and it CAN be
+ * TERMINATED — the mirror image of the BPMN set, which hardcodes SUSPENDED and has no
+ * TERMINATED. Any polymorphic scope-typed UI must drive its lanes off THIS const, never reuse
+ * ALL_STATUSES, or TERMINATED silently vanishes and an always-empty SUSPENDED lane appears
+ * (docs/CMMN-SCOPE-PHASE-0.md §7 M4 hazard).
+ */
+export const CMMN_STATUSES = ['ACTIVE', 'FAILED', 'COMPLETED', 'TERMINATED'] as const
+export type CmmnStatus = (typeof CMMN_STATUSES)[number]

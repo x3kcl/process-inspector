@@ -65,8 +65,15 @@ async function mockBff(page: Page, opts: Options): Promise<void> {
             },
           },
         })
-      } else if (pathname === '/api/triage/engines/eng1/out-of-scope-deadletters') {
-        await route.fulfill({ json: { jobs, truncated: opts.truncated, scanned: opts.count } })
+      } else if (pathname === '/api/triage/engines/eng1/cmmn-scope') {
+        await route.fulfill({
+          json: {
+            // FAILED = distinct cases with a dead-letter job; each mock job has a unique case,
+            // so it equals the job count (a lower bound when the scan truncated).
+            lanes: { active: 7, failed: opts.count, completed: 12, terminated: 1 },
+            deadletters: { jobs, truncated: opts.truncated, scanned: opts.count },
+          },
+        })
       } else if (pathname === '/api/bulk') {
         await route.fulfill({ json: [] })
       } else {
@@ -86,12 +93,23 @@ test('the out-of-scope note drills into the enumerated CMMN dead-letters', async
   await note.getByRole('button', { name: 'View jobs' }).click()
 
   const dialog = page.getByRole('dialog')
-  await expect(dialog).toContainText('Out-of-scope dead-letters — eng1')
+  await expect(dialog).toContainText('CMMN scope — eng1')
   // The modal band carries the engine's real risk tier (eng1 is DEV), NOT the bare "UNKNOWN"
   // fallback that read as a rendering bug in usability testing (Finding #3).
   await expect(dialog.getByText('DEV', { exact: true })).toBeVisible()
   await expect(dialog.getByText('UNKNOWN', { exact: true })).toHaveCount(0)
-  await expect(dialog).toContainText('2 CMMN dead-letter jobs')
+
+  // The scope-typed lane tiles (ACTIVE/FAILED/COMPLETED/TERMINATED — no SUSPENDED). Each tile is
+  // count + label; assert per tile so a mis-mapped lane can't pass on a coincidental substring.
+  const lanes = dialog.getByRole('list', { name: 'CMMN case lanes' })
+  await expect(lanes.getByRole('listitem').filter({ hasText: 'ACTIVE' })).toContainText('7')
+  await expect(lanes.getByRole('listitem').filter({ hasText: 'FAILED' })).toContainText('2')
+  await expect(lanes.getByRole('listitem').filter({ hasText: 'COMPLETED' })).toContainText('12')
+  await expect(lanes.getByRole('listitem').filter({ hasText: 'TERMINATED' })).toContainText('1')
+  await expect(dialog.getByText('SUSPENDED', { exact: true })).toHaveCount(0)
+
+  // The FAILED lane drills into the dead-letter jobs.
+  await expect(dialog).toContainText('FAILED — dead-letter jobs')
   // The bare-uuid caseDefinitionId is shown as the resolved readable case type + key.
   await expect(dialog.getByText('Demo failing case')).toHaveCount(2)
   await expect(dialog).toContainText('(demoFailingCase)')
@@ -111,6 +129,9 @@ test('a truncated scan is a labeled lower bound in both the note and the drawer'
 
   await note.getByRole('button', { name: 'View jobs' }).click()
   const dialog = page.getByRole('dialog')
-  await expect(dialog).toContainText('≥3 CMMN dead-letter jobs')
+  // The FAILED lane tile floors to a lower bound under a truncated scan, and so does the drill.
+  const lanes = dialog.getByRole('list', { name: 'CMMN case lanes' })
+  await expect(lanes.getByRole('listitem').filter({ hasText: 'FAILED' })).toContainText('≥3')
+  await expect(dialog).toContainText('≥3')
   await expect(dialog).toContainText('lower bound')
 })

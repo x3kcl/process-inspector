@@ -398,6 +398,51 @@ button.primary:disabled {
 .cmmn-scope-count {
   font-weight: 600;
   font-size: 13px;
+}
+.cmmn-scope-lanes {
+  list-style: none;
+  margin: 0 0 14px;
+  padding: 0;
+  display: grid;
+  grid-template-columns: repeat(4, 1fr);
+  gap: 8px;
+}
+.cmmn-scope-lane {
+  border: 1px solid #d2dae2;
+  border-radius: 8px;
+  padding: 8px 6px;
+  background: #fafbfc;
+  text-align: center;
+  border-top: 3px solid #b7c2cd;
+}
+.cmmn-scope-lane--failed {
+  border-top-color: #d64545;
+}
+.cmmn-scope-lane--active {
+  border-top-color: #3d7fd6;
+}
+.cmmn-scope-lane--completed {
+  border-top-color: #3fa65a;
+}
+.cmmn-scope-lane--terminated {
+  border-top-color: #8a94a0;
+}
+.cmmn-scope-lane-count {
+  display: block;
+  font-size: 20px;
+  font-weight: 700;
+  line-height: 1.1;
+}
+.cmmn-scope-lane-label {
+  display: block;
+  font-size: 11px;
+  letter-spacing: 0.03em;
+  color: #55636e;
+  margin-top: 2px;
+}
+.cmmn-scope-subhead {
+  font-size: 13px;
+  font-weight: 600;
   margin: 0 0 8px;
 }
 .cmmn-scope-list {
