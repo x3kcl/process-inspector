@@ -442,7 +442,12 @@ to detail; more than one (any mix of kinds/engines — IDs are only engine-uniqu
 disambiguation list (kind, engine badge, status chip), never auto-navigate; business key →
 always a pre-filtered search (hierarchy-aware; root vs child rows marked); any engine
 unreachable → "resolved against N of M engines" banner; zero hits → explicit "not found on
-any reachable engine" naming the engines.
+any reachable engine" naming the engines. When no BPMN kind matches on a scope-capable engine
+(Flowable ≥ 6.8), a co-deployed **CMMN case** with that id is surfaced as a read-only,
+non-navigable `CMMN_CASE` row ("read-only — this tool doesn't triage CMMN cases yet") rather
+than a false not-found — a pasted Case id from the out-of-scope drawer (Case Inspector Phase 1)
+must be answered truthfully (do-no-harm / never-lie). Older engines can't discriminate scope,
+so a CMMN case is never *claimed* there; the honest not-found stands.
 
 ## 5. Corrective actions — the verb catalog
 

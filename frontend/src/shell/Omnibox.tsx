@@ -104,6 +104,7 @@ const KIND_LABELS: Record<string, string> = {
   TASK: 'task',
   JOB: 'job',
   BUSINESS_KEY: 'business key',
+  CMMN_CASE: 'CMMN case',
 }
 
 /** The disambiguation dropdown: kind + engine + status per match, honesty line below. */
@@ -129,36 +130,58 @@ function ResolvePanel({
         </p>
       ) : (
         <ul className="omnibox-matches">
-          {matches.map((match, index) => (
-            <li key={`${match.compositeId ?? ''}:${match.kind ?? ''}:${String(index)}`}>
-              <button
-                type="button"
-                className="omnibox-match"
-                onClick={() => {
-                  if (match.kind === 'BUSINESS_KEY') {
-                    onSearchKey(match.businessKey ?? response.query ?? '')
-                  } else {
-                    onPick(match)
-                  }
-                }}
-              >
-                <span className="match-kind">{KIND_LABELS[match.kind ?? ''] ?? match.kind}</span>
-                <span className="engine-name">{match.engineId}</span>
-                <code className="composite-id">{match.compositeId}</code>
-                <StatusChip status={match.status} flags={match.flags} />
-                {match.businessKey !== undefined && (
-                  <code className="hier-key">{match.businessKey}</code>
-                )}
-                {match.definitionKey !== undefined && (
-                  <span className="value-muted">
-                    {match.definitionKey}
-                    {match.definitionVersion !== undefined &&
-                      ` v${String(match.definitionVersion)}`}
-                  </span>
-                )}
-              </button>
-            </li>
-          ))}
+          {matches.map((match, index) => {
+            // A CMMN case is read-only and has no detail route yet (Case Inspector Phase 1): it's
+            // surfaced so a pasted Case id is answered truthfully, NOT to navigate. Render it as a
+            // non-interactive, honestly-labelled row instead of a dead-end button (Finding #1).
+            if (match.kind === 'CMMN_CASE') {
+              return (
+                <li key={`cmmn:${match.matchedId ?? ''}:${String(index)}`}>
+                  <div className="omnibox-match omnibox-match-inert">
+                    <span className="match-kind">{KIND_LABELS.CMMN_CASE}</span>
+                    <span className="engine-name">{match.engineId}</span>
+                    <code className="composite-id">{match.matchedId}</code>
+                    {match.definitionKey !== undefined && (
+                      <span className="value-muted">{match.definitionKey}</span>
+                    )}
+                    <span className="value-muted">
+                      read-only — this tool doesn&apos;t triage CMMN cases yet
+                    </span>
+                  </div>
+                </li>
+              )
+            }
+            return (
+              <li key={`${match.compositeId ?? ''}:${match.kind ?? ''}:${String(index)}`}>
+                <button
+                  type="button"
+                  className="omnibox-match"
+                  onClick={() => {
+                    if (match.kind === 'BUSINESS_KEY') {
+                      onSearchKey(match.businessKey ?? response.query ?? '')
+                    } else {
+                      onPick(match)
+                    }
+                  }}
+                >
+                  <span className="match-kind">{KIND_LABELS[match.kind ?? ''] ?? match.kind}</span>
+                  <span className="engine-name">{match.engineId}</span>
+                  <code className="composite-id">{match.compositeId}</code>
+                  <StatusChip status={match.status} flags={match.flags} />
+                  {match.businessKey !== undefined && (
+                    <code className="hier-key">{match.businessKey}</code>
+                  )}
+                  {match.definitionKey !== undefined && (
+                    <span className="value-muted">
+                      {match.definitionKey}
+                      {match.definitionVersion !== undefined &&
+                        ` v${String(match.definitionVersion)}`}
+                    </span>
+                  )}
+                </button>
+              </li>
+            )
+          })}
         </ul>
       )}
       <p className="omnibox-reachability">

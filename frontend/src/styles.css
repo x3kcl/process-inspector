@@ -1169,6 +1169,11 @@ button.primary:disabled {
 .omnibox-match:hover {
   background: #eef2f5;
 }
+/* A CMMN case row is informational, not a destination (Case Inspector Phase 1): no pointer,
+   no hover lift — it must not read as a clickable dead-end (usability Finding #1). */
+.omnibox-match-inert {
+  cursor: default;
+}
 .match-kind {
   font-size: 11px;
   text-transform: uppercase;

@@ -161,7 +161,73 @@ public class ResolveService {
                 flowable.queryHistoricProcessInstances(engine, body).dataOrEmpty()) {
             byKey.add(match(engine, MatchKind.BUSINESS_KEY, id, row));
         }
+        if (!byKey.isEmpty()) {
+            return byKey;
+        }
+
+        // 6. CMMN case — a co-deployed case engine shares this engine's job tables (Case Inspector
+        //    Phase 1). Nothing BPMN matched; a pasted Case id (the drawer surfaces it) would
+        //    otherwise fall to a FALSE "not found on any reachable engine" — the case is really
+        //    there, just not a process instance. Only probed where scope is discriminable
+        //    (≥ 6.8): on an older engine we can't verify a case, so we stay silent rather than
+        //    guess, and the honest "not found here" stands.
+        if (hasScopeType(engine)) {
+            ResolveMatch cmmn = resolveCmmnCase(engine, id);
+            if (cmmn != null) {
+                return List.of(cmmn);
+            }
+        }
         return byKey;
+    }
+
+    /**
+     * A CMMN case by id — running first, then ended — mapped to a read-only, non-navigable match
+     * (no {@code compositeId}/{@code processInstanceId}: this tool has no CMMN detail route yet).
+     * The bare-uuid {@code caseDefinitionId} is resolved to a readable key for the row, degrading
+     * to null on a miss (never fails the resolve).
+     */
+    private ResolveMatch resolveCmmnCase(EngineConfig engine, String id) {
+        Map<String, Object> caseInstance = flowable.getCmmnCaseInstance(engine, id);
+        if (caseInstance == null) {
+            caseInstance = flowable.getHistoricCmmnCaseInstance(engine, id);
+        }
+        if (caseInstance == null) {
+            return null;
+        }
+        // Historic rows already carry caseDefinitionName; a runtime row needs the by-id lookup.
+        String definitionKey = str(caseInstance, "caseDefinitionKey");
+        if (definitionKey == null) {
+            String caseDefinitionId = str(caseInstance, "caseDefinitionId");
+            if (caseDefinitionId != null) {
+                try {
+                    Map<String, Object> def = flowable.getCmmnCaseDefinition(engine, caseDefinitionId);
+                    definitionKey = def != null ? str(def, "key") : null;
+                } catch (Exception ex) {
+                    definitionKey = null; // enrichment miss never fails the resolve
+                }
+            }
+        }
+        return new ResolveMatch(
+                MatchKind.CMMN_CASE,
+                engine.id(),
+                null, // not a process instance — no owning pid, hence non-navigable
+                null, // no composite deep-link route (CMMN detail is a later phase)
+                id,
+                str(caseInstance, "businessKey"),
+                definitionKey,
+                null,
+                str(caseInstance, "startTime"),
+                str(caseInstance, "endTime"),
+                null,
+                null);
+    }
+
+    /** True only when the engine has answered a probe AND advertises scope discrimination (≥ 6.8). */
+    private boolean hasScopeType(EngineConfig engine) {
+        var health = registry.healthOf(engine.id());
+        return health != null
+                && health.capabilities() != null
+                && health.capabilities().scopeType();
     }
 
     private List<ResolveMatch> matchInstance(EngineConfig engine, MatchKind kind, String matchedId, String pid) {

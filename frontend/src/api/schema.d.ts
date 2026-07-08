@@ -1007,7 +1007,7 @@ export interface components {
             engineId?: string;
             flags?: components["schemas"]["InstanceStatusFlags"];
             /** @enum {string} */
-            kind?: "PROCESS_INSTANCE" | "EXECUTION" | "TASK" | "JOB" | "BUSINESS_KEY";
+            kind?: "PROCESS_INSTANCE" | "EXECUTION" | "TASK" | "JOB" | "BUSINESS_KEY" | "CMMN_CASE";
             matchedId?: string;
             processInstanceId?: string;
             startTime?: string;

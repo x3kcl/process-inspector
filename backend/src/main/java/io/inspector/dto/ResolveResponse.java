@@ -24,7 +24,15 @@ public record ResolveResponse(String query, List<ResolveMatch> matches, Map<Stri
         EXECUTION,
         TASK,
         JOB,
-        BUSINESS_KEY
+        BUSINESS_KEY,
+        /**
+         * A CMMN case instance on a co-deployed case engine sharing this engine's tables — NOT a
+         * process instance. Read-only and non-navigable (this tool doesn't triage CMMN yet, Case
+         * Inspector Phase 1); it exists so a pasted Case id is answered truthfully instead of a
+         * false "not found on any reachable engine". Only claimed on engines that can discriminate
+         * scope (Flowable ≥ 6.8); it carries no {@code compositeId}/{@code processInstanceId}.
+         */
+        CMMN_CASE
     }
 
     /**

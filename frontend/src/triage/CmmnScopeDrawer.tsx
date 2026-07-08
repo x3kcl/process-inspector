@@ -1,5 +1,6 @@
 import { useQuery } from '@tanstack/react-query'
 import { fetchOutOfScopeDeadLetters } from '../api/queries'
+import { useEngines } from '../api/useEngines'
 import { ModalShell } from '../components/ModalShell'
 
 /**
@@ -19,12 +20,18 @@ export function CmmnScopeDrawer({ engineId, onClose }: { engineId: string; onClo
     staleTime: 15_000,
   })
 
+  // The drill lives on ONE engine — carry its real risk tier onto the modal band so the header
+  // reads DEV/PROD like every other card, not the bare "UNKNOWN" fallback (usability Finding #3).
+  const engines = useEngines()
+  const environment = engines.data?.find((engine) => engine.id === engineId)?.environment
+
   const jobs = query.data?.jobs ?? []
   const truncated = query.data?.truncated === true
 
   return (
     <ModalShell
       title={`Out-of-scope dead-letters — ${engineId}`}
+      environment={environment}
       onClose={onClose}
       footer={
         <button type="button" onClick={onClose}>

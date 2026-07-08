@@ -176,6 +176,46 @@ public class FlowableEngineClient {
     }
 
     /**
+     * GET /cmmn-api/cmmn-runtime/case-instances/{id} — a RUNNING case by id (the omnibox's CMMN
+     * resolution leg, R-SEM-04). A dead-lettered async job keeps its case active, so the 3am
+     * paste of a Case id from the out-of-scope drawer lands here. Null on 404 (not running — try
+     * {@link #getHistoricCmmnCaseInstance}). Callers capability-gate (≥ 6.8) first.
+     */
+    @SuppressWarnings("unchecked")
+    public Map<String, Object> getCmmnCaseInstance(EngineConfig engine, String caseInstanceId) {
+        java.net.URI uri = UriComponentsBuilder.fromUriString(
+                        cmmnApiBase(engine) + "/cmmn-runtime/case-instances/" + caseInstanceId)
+                .build()
+                .toUri();
+        try {
+            return guarded(
+                    engine, () -> client(engine).get().uri(uri).retrieve().body(Map.class));
+        } catch (HttpClientErrorException.NotFound e) {
+            return null;
+        }
+    }
+
+    /**
+     * GET /cmmn-api/cmmn-history/historic-case-instances/{id} — an ENDED case by id (completed or
+     * terminated), so a resolve of a finished case is answered truthfully rather than as "not
+     * found". Its DTO parallels historic-process-instances (businessKey/startTime/endTime/
+     * caseDefinitionId+Name; spike Q2). Null on 404. Callers capability-gate (≥ 6.8) first.
+     */
+    @SuppressWarnings("unchecked")
+    public Map<String, Object> getHistoricCmmnCaseInstance(EngineConfig engine, String caseInstanceId) {
+        java.net.URI uri = UriComponentsBuilder.fromUriString(
+                        cmmnApiBase(engine) + "/cmmn-history/historic-case-instances/" + caseInstanceId)
+                .build()
+                .toUri();
+        try {
+            return guarded(
+                    engine, () -> client(engine).get().uri(uri).retrieve().body(Map.class));
+        } catch (HttpClientErrorException.NotFound e) {
+            return null;
+        }
+    }
+
+    /**
      * The CMMN Management/Runtime/Repository/History REST APIs live under the {@code /cmmn-api}
      * sibling of the process-api {@code /service} base — same convention as
      * {@link #externalJobApiBase}. A non-standard deployment would need an explicit override,

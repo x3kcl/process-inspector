@@ -87,6 +87,10 @@ test('the out-of-scope note drills into the enumerated CMMN dead-letters', async
 
   const dialog = page.getByRole('dialog')
   await expect(dialog).toContainText('Out-of-scope dead-letters — eng1')
+  // The modal band carries the engine's real risk tier (eng1 is DEV), NOT the bare "UNKNOWN"
+  // fallback that read as a rendering bug in usability testing (Finding #3).
+  await expect(dialog.getByText('DEV', { exact: true })).toBeVisible()
+  await expect(dialog.getByText('UNKNOWN', { exact: true })).toHaveCount(0)
   await expect(dialog).toContainText('2 CMMN dead-letter jobs')
   // The bare-uuid caseDefinitionId is shown as the resolved readable case type + key.
   await expect(dialog.getByText('Demo failing case')).toHaveCount(2)
