@@ -1,6 +1,6 @@
 import { useCallback } from 'react'
 import { useQuery, useQueryClient } from '@tanstack/react-query'
-import { fetchTriage } from '../api/queries'
+import { fetchTriage, fetchTriageTrends } from '../api/queries'
 
 /**
  * Stage 0 aggregations. The BFF already caches ~20s (thundering-herd protection, SPEC §4),
@@ -23,4 +23,18 @@ export function useTriage() {
     })
   }, [queryClient])
   return { ...query, refresh }
+}
+
+/**
+ * v2/M4 job-lane trend history (R-BAU-08) for the Stage-0 sparklines. Reads the snapshot store,
+ * not the live engine, so it polls gently and never blocks the landing — a failure just hides
+ * the sparklines (the counts still render).
+ */
+export function useTriageTrends(hours = 24) {
+  return useQuery({
+    queryKey: ['triage-trends', hours],
+    queryFn: () => fetchTriageTrends(hours),
+    refetchInterval: 60_000,
+    staleTime: 30_000,
+  })
 }

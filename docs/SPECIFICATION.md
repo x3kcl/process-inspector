@@ -986,11 +986,14 @@ and would rewrite working M1/M2 code for no capability gain); Go/FastAPI/Kotlin 
 - **v2 (demand-driven, triggers stated):** **remediation playbooks (§5.1 — build trigger
   R-GOV-08)**, migration (single w/ validate → batch wizard + typed "MIGRATE"), definition
   version comparison, CMMN, registry CRUD (with the R-OPS-13 SSRF constraints), shared
-  server-side views, k-way-merge paging, maintenance snapshots + volume trends +
-  **job-lane trend sparklines** (all over the R-BAU-08 snapshot store — whose ingestion
-  backbone is now live: a scheduled sampler persists per-engine, per-lane Stage-0 counts to
-  Postgres on a thin background engine lane, keeping the trend reads off the live engine; the
-  sparkline UI is the next slice), training mode, capability overrides.
+  server-side views, k-way-merge paging, maintenance snapshots + volume trends,
+  training mode, capability overrides.
+- **v2/M4 job-lane trend sparklines — SHIPPED (R-BAU-08):** each Stage-0 status tile carries a
+  small trend line of that lane's recent count history, read from the snapshot store (a scheduled
+  sampler persists per-engine, per-lane Stage-0 counts to Postgres on a thin background engine
+  lane), so the trend reads never touch the live engine. A lane with no history shows no line
+  (never a fabricated flat trend); the line's shape + an accessible label carry the meaning, hue
+  only echoes the lane chip.
 
 ## 13. Success metrics & v1 release gate (R-GOV-01/02)
 

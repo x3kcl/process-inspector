@@ -697,6 +697,33 @@ button.primary:disabled {
   font-weight: 700;
   font-variant-numeric: tabular-nums;
 }
+/* v2/M4 job-lane trend sparkline (R-BAU-08): a tiny snapshot-store trend line inside each
+   status tile. Hue only ECHOES the lane chip (redundant reinforcement) — the meaning is the
+   line's shape + the SVG aria-label. */
+.lane-sparkline {
+  display: block;
+  width: 64px;
+  height: 18px;
+  opacity: 0.85;
+}
+.lane-sparkline polyline {
+  stroke: #566573;
+}
+.lane-sparkline--active polyline {
+  stroke: #0e6251;
+}
+.lane-sparkline--suspended polyline {
+  stroke: #7e510a;
+}
+.lane-sparkline--completed polyline {
+  stroke: #2c3e50;
+}
+.lane-sparkline--failed polyline {
+  stroke: #922b21;
+}
+.lane-sparkline--retrying polyline {
+  stroke: #5b2c6f;
+}
 .error-groups h2 {
   font-size: 15px;
   margin: 12px 0 8px;

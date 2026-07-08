@@ -618,6 +618,20 @@ locked before build so the milestone doesn't re-litigate them:
   the localStorage→relational migration remain open. **Slice 2 (next):** the trend query API +
   typed frontend client + job-lane sparklines on the Stage-0 lanes.
 
+- **Slice 2 — trend read + sparklines LANDED 2026-07-08 (full-stack):** the visible R-BAU-08
+  payoff. `GET /api/triage/trends?hours=` (`TriageTrendService` + `TriageController`, one windowed
+  query grouped into per-`(engine,lane)` ascending series; `hours` clamped to 30 days; open like
+  the dashboard). Frontend: a self-contained inline-SVG `LaneSparkline` under each Stage-0 status
+  tile, fed by `useTriageTrends`; the tile is global so the pure `globalLaneSeries` sums the
+  per-engine series by bucket, and `toPolyline` maps to the line (flat → mid-height, not pinned to
+  zero). A lane with no history renders nothing; meaning lives in the line shape + aria-label, hue
+  only echoes the chip (the "hue is redundant" convention). Tests: rung-1 `TriageTrendServiceTest`
+  + `sparkline.test.ts`, rung-3 `TriageTrendApiSpringTest` (endpoint/clamp/JSON shape).
+  `NoDbTestSupport` gained the `SnapshotCountRepository` mock (an always-on service now reads it).
+  Schema regenerated from the running BFF (never hand-edited). Browser-verified end-to-end against
+  a seeded store — sparklines render with correct global sums + labels. Boot-readiness gate +
+  localStorage→relational migration still remain for the milestone.
+
 ## Build order inside any milestone
 backend DTO → engine client call → aggregator/join logic → controller → typed frontend API
 client → component. Every Flowable call gets an integration test against the dockerized

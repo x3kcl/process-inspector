@@ -22,6 +22,7 @@ import type {
   SearchResponse,
   SiblingDiffResponse,
   TriageDashboardResponse,
+  TriageTrendResponse,
   VariableDto,
 } from './model'
 
@@ -41,6 +42,18 @@ export async function runSearch(request: SearchRequest): Promise<SearchResponse>
 export async function fetchTriage(refresh: boolean): Promise<TriageDashboardResponse> {
   const { data, error, response } = await api.GET('/api/triage', {
     params: { query: refresh ? { refresh: true } : {} },
+  })
+  if (data === undefined) throw new ApiError(response.status, error)
+  return data
+}
+
+/**
+ * v2/M4 job-lane trend history (R-BAU-08) for the Stage-0 sparklines — read from the snapshot
+ * store, never the live engine. Look-back in hours (server-clamped to 30 days).
+ */
+export async function fetchTriageTrends(hours: number): Promise<TriageTrendResponse> {
+  const { data, error, response } = await api.GET('/api/triage/trends', {
+    params: { query: { hours } },
   })
   if (data === undefined) throw new ApiError(response.status, error)
   return data

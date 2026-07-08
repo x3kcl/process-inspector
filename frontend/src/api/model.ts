@@ -14,6 +14,10 @@ export type TriageDashboardResponse = components['schemas']['TriageDashboardResp
 export type ErrorGroup = components['schemas']['ErrorGroup']
 export type PerEngineTriage = components['schemas']['PerEngineTriage']
 export type OutOfScopeDeadLetters = components['schemas']['OutOfScopeDeadLetters']
+// v2/M4 job-lane trend store (R-BAU-08) — the Stage-0 sparkline series.
+export type TriageTrendResponse = components['schemas']['TriageTrendResponse']
+export type TrendSeries = components['schemas']['Series']
+export type TrendPoint = components['schemas']['Point']
 export type CmmnDeadLetterJob = components['schemas']['CmmnDeadLetterJob']
 export type CmmnScopeFacet = components['schemas']['CmmnScopeFacet']
 export type CmmnLaneCounts = components['schemas']['CmmnLaneCounts']

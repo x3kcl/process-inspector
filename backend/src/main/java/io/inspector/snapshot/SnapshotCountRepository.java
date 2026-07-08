@@ -39,6 +39,12 @@ public interface SnapshotCountRepository extends JpaRepository<SnapshotCount, Lo
     List<SnapshotCount> findByEngineIdAndLaneAndSampledAtGreaterThanEqualOrderBySampledAtDesc(
             String engineId, SnapshotLane lane, Instant since);
 
+    /**
+     * Every lane of every engine over a window, ascending — the trend query reads this once and
+     * groups by {@code (engine, lane)} in memory (small: engines × 6 lanes × buckets/window).
+     */
+    List<SnapshotCount> findBySampledAtGreaterThanEqualOrderByEngineIdAscLaneAscSampledAtAsc(Instant since);
+
     /** All lanes an engine wrote at one bucket — used to assert a sample landed whole. */
     List<SnapshotCount> findByEngineIdAndSampledAtOrderByLane(String engineId, Instant sampledAt);
 }

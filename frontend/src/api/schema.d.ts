@@ -644,6 +644,22 @@ export interface paths {
         patch?: never;
         trace?: never;
     };
+    "/api/triage/trends": {
+        parameters: {
+            query?: never;
+            header?: never;
+            path?: never;
+            cookie?: never;
+        };
+        get: operations["trends"];
+        put?: never;
+        post?: never;
+        delete?: never;
+        options?: never;
+        head?: never;
+        patch?: never;
+        trace?: never;
+    };
 }
 export type webhooks = Record<string, never>;
 export interface components {
@@ -1151,6 +1167,11 @@ export interface components {
             /** Format: int32 */
             outOfScopeDeadletters?: number;
         };
+        Point: {
+            /** Format: int64 */
+            count?: number;
+            sampledAt?: string;
+        };
         ProcessInstanceRow: {
             businessKey?: string;
             compositeId?: string;
@@ -1248,6 +1269,11 @@ export interface components {
                 [key: string]: number;
             };
         };
+        Series: {
+            engineId?: string;
+            lane?: string;
+            points?: components["schemas"]["Point"][];
+        };
         SiblingDiffResponse: {
             path?: components["schemas"]["PathDivergence"];
             previewCappedPresent?: boolean;
@@ -1330,6 +1356,11 @@ export interface components {
                     [key: string]: number;
                 };
             };
+        };
+        TriageTrendResponse: {
+            asOf?: string;
+            series?: components["schemas"]["Series"][];
+            window?: string;
         };
         TypedVariable: {
             name?: string;
@@ -2402,6 +2433,28 @@ export interface operations {
                 };
                 content: {
                     "*/*": components["schemas"]["OutOfScopeDeadLetters"];
+                };
+            };
+        };
+    };
+    trends: {
+        parameters: {
+            query?: {
+                hours?: number;
+            };
+            header?: never;
+            path?: never;
+            cookie?: never;
+        };
+        requestBody?: never;
+        responses: {
+            /** @description OK */
+            200: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "*/*": components["schemas"]["TriageTrendResponse"];
                 };
             };
         };
