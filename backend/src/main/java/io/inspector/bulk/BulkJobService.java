@@ -31,6 +31,7 @@ import java.util.concurrent.ConcurrentHashMap;
 import java.util.concurrent.ExecutorService;
 import java.util.concurrent.Executors;
 import java.util.concurrent.Semaphore;
+import java.util.concurrent.atomic.AtomicBoolean;
 import java.util.stream.Collectors;
 import org.slf4j.Logger;
 import org.slf4j.LoggerFactory;
@@ -87,6 +88,13 @@ public class BulkJobService {
     private final Map<UUID, Boolean> cancelRequested = new ConcurrentHashMap<>();
     /** Per-engine in-flight dispatch permits, shared across concurrent jobs (SPEC §7). */
     private final Map<String, Semaphore> enginePermits = new ConcurrentHashMap<>();
+    /**
+     * Jobs whose dispatch to an engine PAUSED on an open circuit / saturated bulkhead mid-run
+     * (R-SEM-11). Recorded by the tripped engine group, consumed by {@link #run} to finish the
+     * job INTERRUPTED (partial) rather than COMPLETED — undispatched work is surfaced for a
+     * "continue as new job", never silently burned as failures.
+     */
+    private final Set<UUID> circuitPaused = ConcurrentHashMap.newKeySet();
 
     public BulkJobService(
             BulkJobRepository jobs,
@@ -298,16 +306,25 @@ public class BulkJobService {
         CompletableFuture.allOf(runners.toArray(CompletableFuture[]::new)).join();
 
         boolean cancelled = cancelRequested.getOrDefault(jobId, false);
-        if (cancelled) {
+        // R-SEM-11: a circuit-open pause leaves undispatched items `pending`. They are NOT
+        // failures — settle them not_run (never attempted) and finish INTERRUPTED so the
+        // "continue as new job" affordance + "N of M dispatched" honesty apply. Cancel wins.
+        boolean paused = circuitPaused.remove(jobId) && !cancelled;
+        if (cancelled || paused) {
+            String reason = cancelled
+                    ? "job cancelled before dispatch"
+                    : "engine circuit open mid-job — dispatch paused; not attempted (continue as a new job)";
             for (BulkJobItem item : all) {
                 if (item.getState() == BulkJobItem.State.pending) {
-                    item.settle(BulkJobItem.State.not_run, "job cancelled before dispatch", null, clock.instant());
+                    item.settle(BulkJobItem.State.not_run, reason, null, clock.instant());
                 }
             }
             items.saveAllAndFlush(all);
         }
         cancelRequested.remove(jobId);
-        job.finish(cancelled ? BulkJob.State.CANCELLED : BulkJob.State.COMPLETED, clock.instant());
+        BulkJob.State terminal =
+                cancelled ? BulkJob.State.CANCELLED : paused ? BulkJob.State.INTERRUPTED : BulkJob.State.COMPLETED;
+        job.finish(terminal, clock.instant());
         jobs.saveAndFlush(job);
         closeEnvelope(envelope, all);
         events.publishEvent(new BulkJobChangedEvent(jobId));
@@ -324,9 +341,12 @@ public class BulkJobService {
                 engineId, id -> new Semaphore(props.bulkOrDefault().enginePermitsOrDefault()));
         long staggerMs = props.bulkOrDefault().staggerMsOrDefault();
         List<CompletableFuture<Void>> inFlight = new ArrayList<>();
+        // Circuit-open PAUSE (R-SEM-11): once a worker fast-fails on a tripped breaker, stop
+        // starting new items on this engine — the rest stay `pending`, settled to not_run in run().
+        AtomicBoolean paused = new AtomicBoolean(false);
         boolean first = true;
         for (BulkJobItem item : group) {
-            if (cancelRequested.getOrDefault(job.getId(), false)) {
+            if (cancelRequested.getOrDefault(job.getId(), false) || paused.get()) {
                 break; // stop DISPATCHING — in-flight items keep their outcome (SPEC §7)
             }
             if (!first) {
@@ -334,12 +354,20 @@ public class BulkJobService {
             }
             first = false;
             permits.acquireUninterruptibly();
+            // Re-check after acquiring the permit: a worker may have tripped the pause while we
+            // waited for the permit, so this closes the window on burning an undispatched item.
+            if (cancelRequested.getOrDefault(job.getId(), false) || paused.get()) {
+                permits.release();
+                break;
+            }
             item.markDispatched();
             items.saveAndFlush(item);
             inFlight.add(CompletableFuture.runAsync(
                             () -> {
                                 try {
-                                    dispatchOne(job, verb, item, auth);
+                                    if (dispatchOne(job, verb, item, auth)) {
+                                        paused.set(true);
+                                    }
                                     items.saveAndFlush(item);
                                     events.publishEvent(new BulkJobChangedEvent(job.getId()));
                                 } finally {
@@ -354,6 +382,13 @@ public class BulkJobService {
                     }));
         }
         CompletableFuture.allOf(inFlight.toArray(CompletableFuture[]::new)).join();
+        if (paused.get()) {
+            circuitPaused.add(job.getId());
+            log.warn(
+                    "bulk job {} paused dispatch to engine {} — circuit open / bulkhead full; undispatched items held",
+                    job.getId(),
+                    engineId);
+        }
     }
 
     /** Virtual-thread pause — non-blocking for the carrier; interruption just stops pacing. */
@@ -369,41 +404,55 @@ public class BulkJobService {
     }
 
     /** One item through the full single-target rails; outcome classes per SPEC §7. */
-    private void dispatchOne(BulkJob job, ActionVerb verb, BulkJobItem item, Authentication auth) {
+    /**
+     * Dispatch one item and settle it. Returns {@code true} iff the engine fast-failed on an
+     * open circuit / saturated bulkhead ({@code engine-shedding-load}) — an ENGINE-WIDE
+     * condition, not a per-item verdict: the caller must PAUSE dispatch to this engine so the
+     * remaining items are not burned as failures (R-SEM-11). The fast-failed item itself is a
+     * clean {@code failed} (nothing left the BFF); every other outcome returns {@code false}.
+     */
+    private boolean dispatchOne(BulkJob job, ActionVerb verb, BulkJobItem item, Authentication auth) {
         try {
             if (verb == ActionVerb.RETRY_JOB) {
                 dispatchRetry(job, item, auth);
-                return;
+                return false;
             }
             ActionRequest request = requestFor(job, verb, item.getJobRef());
             ActionResult result = actions.execute(item.getEngineId(), item.getInstanceId(), verb, request, auth);
             item.settle(BulkJobItem.State.ok, result.deltaStatement(), result.auditId(), clock.instant());
+            return false;
         } catch (GuardRefusedException e) {
             item.settle(guardOutcome(e), e.code() + ": " + e.getMessage(), null, clock.instant());
+            return "engine-shedding-load".equals(e.code());
         } catch (CasConflictException e) {
             // Concurrent-operator rule (R-SEM-09): the target moved — already handled.
             item.settle(BulkJobItem.State.skipped, "already changed by someone else", e.auditId(), clock.instant());
+            return false;
         } catch (EngineRejectedException e) {
             item.settle(
                     BulkJobItem.State.failed,
                     "engine rejected (" + e.engineStatus() + "): " + e.engineBody(),
                     e.auditId(),
                     clock.instant());
+            return false;
         } catch (OutcomeUnknownException e) {
             item.settle(
                     BulkJobItem.State.unknown,
                     "no answer within the write budget — may have applied; use Verify now",
                     e.auditId(),
                     clock.instant());
+            return false;
         } catch (OutcomeVerificationFailedException e) {
             item.settle(
                     BulkJobItem.State.unknown,
                     "dispatched — outcome verification failed; use Verify now",
                     e.auditId(),
                     clock.instant());
+            return false;
         } catch (RuntimeException e) {
             log.error("bulk item {}:{} unexpected failure", item.getEngineId(), item.getInstanceId(), e);
             item.settle(BulkJobItem.State.failed, "unexpected: " + e.getMessage(), null, clock.instant());
+            return false;
         }
     }
 

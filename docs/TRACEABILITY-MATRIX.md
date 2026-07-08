@@ -48,7 +48,7 @@ exhaustive scenario→class index.
 | R-SEM-08 engineId slug / composite split | TS-OMNI-03 | `InspectorPropertiesValidationTest`; FE `omnibox.test` | L1·UNIT-FE | ✅ |
 | R-SEM-09 concurrent-op / CAS | TS-VERB-06, TS-BULK-03 | `CorrectiveActionServiceTest`, `CorrectiveActionIT`, `BulkJobServiceTest` | L1·L4 | ✅ |
 | R-SEM-10 bulk = tracked job | TS-BULK-05 | `BulkJobServiceTest` (reconcile sweep), `BulkFilterIT` | L1·L4 | ✅ |
-| R-SEM-11 circuit-open mid-bulk | TS-BULK-06 | `BulkJobServiceTest` (permits/pause) | L1 | 🟡 (breaker-pause L2/L3 slice — §C-6) |
+| R-SEM-11 circuit-open mid-bulk | TS-BULK-06 | `BulkJobServiceTest` (permits/pause) | L1 | ✅ (pause + INTERRUPTED rung-1 tested; breaker *transition* L2 WireMock slice still §C-6) |
 | R-SEM-12 Stage-0 truncation badges | TS-TRI-08, TS-STAT-12 | FE `honesty.test`, `drill.test`; `cmmn-scope.spec` | UNIT-FE·E2E | ✅ |
 | R-SEM-14 SSE lifecycle contract | TS-BULK-11 | `SseHubTest`, `BulkFilterIT` | L1·L4 | 🟡 (P3 soak = §C-8) |
 | R-SEM-18 dual-write UNKNOWN | TS-AUD-02, TS-BULK-02 | `AuditServiceTest`, `CorrectiveActionServiceTest`, `FailClosedAuditIT` | L1·L4 | ✅ |
