@@ -10,7 +10,13 @@ const ENGINE = {
   name: 'Payments DEV',
   environment: 'dev',
   reachable: true,
-  capabilities: { changeState: true, migration: true, externalWorkerJobs: true, scopeType: true, activityHistory: true },
+  capabilities: {
+    changeState: true,
+    migration: true,
+    externalWorkerJobs: true,
+    scopeType: true,
+    activityHistory: true,
+  },
 }
 
 interface Options {
@@ -51,7 +57,11 @@ async function mockBff(page: Page, opts: Options): Promise<void> {
             errorGroups: [],
             engines: [ENGINE],
             perEngine: {
-              eng1: { ok: true, outOfScopeDeadletters: opts.count, deadletterTruncated: opts.truncated },
+              eng1: {
+                ok: true,
+                outOfScopeDeadletters: opts.count,
+                deadletterTruncated: opts.truncated,
+              },
             },
           },
         })

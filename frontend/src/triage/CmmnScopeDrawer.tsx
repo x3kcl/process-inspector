@@ -67,7 +67,9 @@ export function CmmnScopeDrawer({ engineId, onClose }: { engineId: string; onClo
                       <span className="cmmn-scope-casekey"> ({job.caseDefinitionKey})</span>
                     )}
                   </div>
-                  <div className="cmmn-scope-element">{job.elementName ?? job.elementId ?? '(unnamed element)'}</div>
+                  <div className="cmmn-scope-element">
+                    {job.elementName ?? job.elementId ?? '(unnamed element)'}
+                  </div>
                   {job.exceptionMessage && (
                     <div className="cmmn-scope-exception">{job.exceptionMessage}</div>
                   )}
