@@ -229,6 +229,26 @@ Phase 0 deliberately produces the seam the later phases consume:
   - **CONSTRAINT:** all CMMN incident features **gate to 6.8+** (§1.1 Q3 — 6.3 is silently
     wrong: DLQ-blind, `?state=` ignored, no `state` field). On <6.8 emit `null`, never a wrong
     number. Re-verify on the cmmn context, not merely inferred from `scopeType`.
+  - **`cmmn-repository/case-definitions` wire facts (spike 2026-07-08, live 6.8.0 vs 7.1.0 —
+    6.8 and 7.1 BYTE-IDENTICAL on this endpoint; needed by the version facet + the bounded key/
+    name resolution already shipped).** The row shape is the BPMN process-definition shape
+    **minus `suspended`** (cases can't suspend, §1.1 Q2): `id, key, name, version` (int),
+    `deploymentId, category, description, tenantId` (`""` not null when unset), `resource/
+    diagramResource, graphicalNotationDefined, startFormDefined, url`.
+    - **Versioning is the BPMN "page-to-exhaustion" trap, WORSE.** Default sort is **`name` asc**
+      (NOT version); with identical names across versions the tiebreak is DB-dependent and
+      **unstable across page sizes** (a `size=200` page came back version-ascending `1,1,2,3`
+      while `size=2` offset paging came back descending `3,2,1,1` — same reported
+      `sort=name/order=asc`). So `size=1` yields **version 1 (oldest), never latest**. Rules:
+      to enumerate versions set **`sort=version` explicitly and page to exhaustion**; for "current"
+      use **`latest=true`** (returns latest **per tenant** — 2 rows on a 2-tenant key, NOT one);
+      for an exact one use **`version=N`** (+ `tenantId`). The by-id resolver already shipped
+      (`/case-definitions/{id}`) sidesteps ALL of this — prefer it whenever the id is known.
+    - **Tenant threading is IDENTICAL to the BPMN repository queries** (no cross-streams):
+      `?tenantId=X` exact-matches, `?tenantId=` (empty) isolates the blank-tenant defs. **BUT
+      `?withoutTenantId=true` is SILENTLY IGNORED** on CMMN (returned all tenants on both 6.8 &
+      7.1 — a param-drop like the 6.3 BPMN drops). Thread `tenantId` exactly; **never rely on
+      `withoutTenantId`** — use empty `tenantId=` for the blank-tenant filter.
 - Phase 1 status lanes for CMMN are **ACTIVE / FAILED / COMPLETED / TERMINATED** — **no
   SUSPENDED** (§1.1 Q2; cases cannot suspend). `superProcessInstanceId` carries cross-engine
   hierarchy.
