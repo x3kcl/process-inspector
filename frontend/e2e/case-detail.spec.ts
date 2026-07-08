@@ -101,15 +101,18 @@ const CMMN_WITH_DI = `<?xml version="1.0" encoding="UTF-8"?>
 
 interface DiagramOpts {
   graphicalNotationDefined: boolean
+  /** Signed-in role (default RESPONDER); ADMIN unlocks the tier-3 delete. */
+  role?: string
 }
 
 async function mockBff(page: Page, diagram: DiagramOpts): Promise<void> {
+  const role = diagram.role ?? 'RESPONDER'
   await page.route(
     (url) => url.pathname.startsWith('/api/'),
     async (route) => {
       const { pathname } = new URL(route.request().url())
       if (pathname === '/api/me') {
-        await route.fulfill({ json: { role: 'RESPONDER', engineRoles: { eng1: 'RESPONDER' } } })
+        await route.fulfill({ json: { role, engineRoles: { eng1: role } } })
       } else if (pathname === '/api/engines') {
         await route.fulfill({ json: [ENGINE] })
       } else if (pathname === '/api/cases/eng1/case-1') {
@@ -134,6 +137,19 @@ async function mockBff(page: Page, diagram: DiagramOpts): Promise<void> {
             deltaStatement:
               'Job job-1 moved back to the executable queue; engine-default retries restored.',
             auditId: 'audit-1',
+          },
+        })
+      } else if (pathname === '/api/cases/eng1/case-1/actions/delete-deadletter') {
+        // Phase 3: the tier-3 case-scoped delete. Answer with the scope-honest CMMN delta.
+        await route.fulfill({
+          json: {
+            outcome: 'ok',
+            httpStatus: 200,
+            deltaStatement:
+              'Dead-letter job job-1 deleted. The plan item is orphaned — the case cannot continue' +
+              ' past this step on its own, and this tool offers no CMMN rescue verb (no change-state' +
+              ' for cases).',
+            auditId: 'audit-2',
           },
         })
       } else if (pathname === '/api/bulk') {
@@ -195,6 +211,58 @@ test('retrying a CMMN dead-letter job POSTs the case-scoped action and reports t
 
   // The server's delta statement surfaces as the success toast (never a bare "success").
   await expect(page.getByText(/moved back to the executable queue/)).toBeVisible()
+})
+
+test('a RESPONDER cannot delete a CMMN dead-letter job — the tier-3 button is gated', async ({
+  page,
+}) => {
+  await mockBff(page, { graphicalNotationDefined: false }) // default RESPONDER
+  await page.goto('/case/eng1/case-1')
+
+  // Retry (tier 0) is offered; Delete (tier 3 / ADMIN) is present but disabled — greyed, never hidden.
+  await expect(
+    page.locator('.case-why-stuck').getByRole('button', { name: 'Retry job' }),
+  ).toBeEnabled()
+  await expect(
+    page.locator('.case-why-stuck').getByRole('button', { name: 'Delete', exact: true }),
+  ).toBeDisabled()
+})
+
+test('an ADMIN deletes a CMMN dead-letter job through the typed-confirm modal', async ({
+  page,
+}) => {
+  await mockBff(page, { graphicalNotationDefined: false, role: 'ADMIN' })
+  const del = page.waitForRequest(
+    (req) =>
+      req.method() === 'POST' &&
+      req.url().includes('/api/cases/eng1/case-1/actions/delete-deadletter'),
+  )
+  await page.goto('/case/eng1/case-1')
+
+  // Open the destructive modal (never an inline click for a tier-3 verb).
+  await page.locator('.case-why-stuck').getByRole('button', { name: 'Delete', exact: true }).click()
+  const modal = page.getByRole('dialog')
+  await expect(modal).toBeVisible()
+  // Scope-honest blast radius: no BPMN change-state rescue for a case.
+  await expect(modal).toContainText('no change-state rescue')
+
+  // The confirm is disabled until a ≥10-char reason lands (DEV engine → no typed token gate).
+  const confirm = modal.getByRole('button', { name: /Delete dead-letter job/ })
+  await expect(confirm).toBeDisabled()
+  await modal.getByRole('textbox').first().fill('case abandoned; job orphaned deliberately')
+  await expect(confirm).toBeEnabled()
+  await confirm.click()
+
+  // The request carries the job id AND the reason (tier-3 reason discipline reaches the wire).
+  const request = await del
+  expect(request.postDataJSON()).toMatchObject({
+    jobId: 'job-1',
+    reason: 'case abandoned; job orphaned deliberately',
+  })
+
+  // The scope-honest server delta surfaces as the toast; the modal closes.
+  await expect(page.getByText(/no CMMN rescue verb/)).toBeVisible()
+  await expect(page.getByRole('dialog')).toHaveCount(0)
 })
 
 test('a case with graphical notation renders the cmmn-js canvas with the failed marker', async ({

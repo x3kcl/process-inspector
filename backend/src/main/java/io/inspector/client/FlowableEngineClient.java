@@ -812,6 +812,21 @@ public class FlowableEngineClient {
                         .toBodilessEntity());
     }
 
+    /**
+     * DELETE /cmmn-api/cmmn-management/deadletter-jobs/{jobId} — the CMMN sibling of {@link
+     * #deleteDeadLetterJob}, byte-identical in shape (live-proven 2026-07-08, HTTP 204): discards a
+     * CMMN dead-letter job, orphaning its plan-item execution. The base path differs (the {@code
+     * /cmmn-api} context is a sibling of {@code /service}, so this builds an absolute URI). Callers
+     * capability-gate ({@code scopeType}, ≥ 6.8) first.
+     */
+    public void deleteCmmnDeadLetterJob(EngineConfig engine, String jobId) {
+        java.net.URI uri = UriComponentsBuilder.fromUriString(
+                        cmmnApiBase(engine) + "/cmmn-management/deadletter-jobs/" + jobId)
+                .build()
+                .toUri();
+        mutate(engine, () -> writeClient(engine).delete().uri(uri).retrieve().toBodilessEntity());
+    }
+
     /** PUT /runtime/process-instances/{id} {"action":"suspend"|"activate"}. */
     public void suspendOrActivateInstance(EngineConfig engine, String processInstanceId, String action) {
         mutate(

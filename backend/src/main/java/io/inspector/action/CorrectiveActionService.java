@@ -166,8 +166,13 @@ public class CorrectiveActionService {
 
     /* ------------------------------- guards ------------------------------- */
 
-    /** The verbs a CMMN case supports today (Phase 3 = dead-letter retry only). */
-    private static final java.util.Set<ActionVerb> CMMN_VERBS = java.util.Set.of(ActionVerb.RETRY_JOB);
+    /**
+     * The verbs a CMMN case supports today (Case Inspector Phase 3): the two dead-letter verbs —
+     * retry (tier 0 / RESPONDER) and delete (tier 3 / ADMIN). Both act on the {@code
+     * /cmmn-management} DLQ projection; every other verb is process-instance shaped and refused.
+     */
+    private static final java.util.Set<ActionVerb> CMMN_VERBS =
+            java.util.Set.of(ActionVerb.RETRY_JOB, ActionVerb.DELETE_DEADLETTER);
 
     /**
      * CMMN-scope gate: the verb must be CMMN-applicable AND the engine must advertise
@@ -179,8 +184,8 @@ public class CorrectiveActionService {
             throw new GuardRefusedException(
                     HttpStatus.BAD_REQUEST,
                     "verb-not-cmmn-scoped",
-                    "'" + verb.path() + "' is not available on a CMMN case — only dead-letter retry is (Case"
-                            + " Inspector Phase 3). Nothing happened.");
+                    "'" + verb.path() + "' is not available on a CMMN case — only dead-letter retry and delete are"
+                            + " (Case Inspector Phase 3). Nothing happened.");
         }
         CmmnCapabilities.requireScopeType(registry, engine);
     }
@@ -277,7 +282,8 @@ public class CorrectiveActionService {
             ActionScope scope, EngineConfig engine, ActionVerb verb, String targetId, ActionRequest request) {
         try {
             // CMMN scope reads the /cmmn-management DLQ projection (by-id, cap-free) instead of the
-            // process-api one; the guard above has already narrowed the verb set to RETRY_JOB.
+            // process-api one; the guard above has already narrowed the verb set to the two
+            // dead-letter verbs (retry / delete), which share this by-id restatement.
             if (scope == ActionScope.CMMN) {
                 return cmmnJobTarget(engine, targetId, required(request.jobId(), "jobId"), verb);
             }
@@ -518,10 +524,16 @@ public class CorrectiveActionService {
 
     private void dispatch(
             ActionScope scope, EngineConfig engine, ActionVerb verb, String targetId, ActionRequest request) {
-        // CMMN scope: the only supported verb (guarded above) is the DLQ move, which hits the
-        // /cmmn-management path — byte-identical body, sibling context (spike 2026-07-08).
+        // CMMN scope: the guard above narrowed the verb set to the two DLQ verbs, both on the
+        // /cmmn-management path — byte-identical bodies to the process-api ones, sibling context
+        // (move + delete live-proven 2026-07-08, HTTP 204 each).
         if (scope == ActionScope.CMMN) {
-            client.moveCmmnDeadLetterJob(engine, request.jobId());
+            switch (verb) {
+                case RETRY_JOB -> client.moveCmmnDeadLetterJob(engine, request.jobId());
+                case DELETE_DEADLETTER -> client.deleteCmmnDeadLetterJob(engine, request.jobId());
+                default ->
+                    throw new IllegalStateException("CMMN verb not dispatchable: " + verb); // unreachable: guarded
+            }
             return;
         }
         switch (verb) {
@@ -625,8 +637,12 @@ public class CorrectiveActionService {
                         + " — the wait is over.";
             case TERMINATE_DELETE -> "Instance " + targetId + " terminated and deleted — irreversible.";
             case DELETE_DEADLETTER ->
-                "Dead-letter job " + request.jobId() + " deleted. The execution is orphaned — the only rescue"
-                        + " afterwards is change-state.";
+                "cmmn".equals(target.auditPayload().get("scope"))
+                        ? "Dead-letter job " + request.jobId() + " deleted. The plan item is orphaned — the case"
+                                + " cannot continue past this step on its own, and this tool offers no CMMN rescue"
+                                + " verb (no change-state for cases)."
+                        : "Dead-letter job " + request.jobId() + " deleted. The execution is orphaned — the only"
+                                + " rescue afterwards is change-state.";
             case SUSPEND_DEFINITION ->
                 "Definition " + targetId + " suspended — new instances are blocked"
                         + (Boolean.TRUE.equals(request.includeProcessInstances())

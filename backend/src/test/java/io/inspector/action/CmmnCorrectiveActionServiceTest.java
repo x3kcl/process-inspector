@@ -106,8 +106,17 @@ class CmmnCorrectiveActionServiceTest {
         return new ActionRequest(null, null, null, JOB, null, null, null, null, null, null, null);
     }
 
+    /** Delete is tier 3 → a reason is always required; this one is ≥ 10 chars so the gate passes. */
+    private static ActionRequest deleteRequest(String reason) {
+        return new ActionRequest(reason, null, null, JOB, null, null, null, null, null, null, null);
+    }
+
     private ActionResult retry() {
         return service.execute(ActionScope.CMMN, ENGINE, CASE, ActionVerb.RETRY_JOB, retryRequest(), operator);
+    }
+
+    private ActionResult delete(Authentication who, ActionRequest request) {
+        return service.execute(ActionScope.CMMN, ENGINE, CASE, ActionVerb.DELETE_DEADLETTER, request, who);
     }
 
     @Test
@@ -191,5 +200,56 @@ class CmmnCorrectiveActionServiceTest {
                 .satisfies(e -> assertThat(((GuardRefusedException) e).code()).isEqualTo("job-case-mismatch"));
         verifyNoInteractions(audit);
         verify(client, never()).moveCmmnDeadLetterJob(any(), anyString());
+    }
+
+    /* ------------------- delete-deadletter (tier 3 / ADMIN) — the second CMMN verb ------------------- */
+
+    @Test
+    void cmmnDeleteHydratesByIdDeletesTheCmmnJobAndAuditsTheCaseId() {
+        scopeCapable();
+        deadLetterJobOnCase(CASE);
+
+        ActionResult result = delete(operator, deleteRequest("stale orphan job, case abandoned"));
+
+        InOrder order = inOrder(audit, client);
+        // same server-fresh by-id restatement as retry (before the audit gate) …
+        order.verify(client).getCmmnDeadLetterJob(engine, JOB);
+        order.verify(audit)
+                .beginPending(eq("op"), eq(ENGINE), any(), eq(CASE), eq("delete-deadletter"), any(), any(), any());
+        // … but the one engine call is the CMMN delete, never the move or the BPMN delete
+        order.verify(client).deleteCmmnDeadLetterJob(engine, JOB);
+        order.verify(audit).close(eq(pendingEntry), eq(AuditOutcome.ok), eq(200), any(), eq(true));
+        verify(client, never()).moveCmmnDeadLetterJob(any(), anyString());
+        verify(client, never()).deleteDeadLetterJob(any(), anyString());
+        // scope-honest delta: a CMMN case has no change-state rescue in this tool
+        assertThat(result.deltaStatement()).contains(JOB).contains("orphaned").contains("no change-state for cases");
+    }
+
+    @Test
+    void deleteWithoutAReasonIsRefusedBeforeAudit() {
+        scopeCapable();
+        deadLetterJobOnCase(CASE);
+
+        // tier-3 reason discipline (SPEC §6): a null reason is refused before any engine byte.
+        assertThatThrownBy(() -> delete(operator, deleteRequest(null)))
+                .isInstanceOf(GuardRefusedException.class)
+                .satisfies(e -> assertThat(((GuardRefusedException) e).code()).isEqualTo("reason-required"));
+        verifyNoInteractions(audit);
+        verify(client, never()).deleteCmmnDeadLetterJob(any(), anyString());
+    }
+
+    @Test
+    void deleteRequiresAdminAndIsRefusedForALesserRole() {
+        // RESPONDER/OPERATOR clears retry (tier 0) but not delete (tier 3 / ADMIN).
+        when(rbac.hasRoleOn(any(), eq(io.inspector.security.Role.ADMIN), anyString()))
+                .thenReturn(false);
+
+        assertThatThrownBy(() -> delete(operator, deleteRequest("stale orphan job, case abandoned")))
+                .isInstanceOf(GuardRefusedException.class)
+                .satisfies(e -> assertThat(((GuardRefusedException) e).code()).isEqualTo("rbac-denied"));
+        verifyNoInteractions(audit);
+        verify(client, never()).deleteCmmnDeadLetterJob(any(), anyString());
+        // refused before any capability probe or engine read
+        verify(client, never()).getCmmnDeadLetterJob(any(), anyString());
     }
 }
