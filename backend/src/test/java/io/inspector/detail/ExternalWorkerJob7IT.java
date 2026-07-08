@@ -70,6 +70,7 @@ class ExternalWorkerJob7IT {
         JsonNode jobs = mapper.readTree(rest.getForObject(url("/jobs/external-worker"), String.class));
         assertThat(jobs.isArray()).isTrue();
         JsonNode mine = row(jobs);
+        String targetJobId = mine.get("id").asText();
         assertThat(mine.get("elementId").asText()).isEqualTo("chargeViaWorker");
         assertThat(mine.get("retries").asInt()).isEqualTo(3);
         assertThat(mine.hasNonNull("lockOwner")).isFalse(); // no worker has picked it up yet
@@ -78,10 +79,15 @@ class ExternalWorkerJob7IT {
         JsonNode vitals = mapper.readTree(rest.getForObject(url(""), String.class));
         assertThat(vitals.get("externalWorkerJobs").asInt()).isGreaterThanOrEqualTo(1);
 
-        // (3) a worker acquires the topic → the BFF now reflects the lock owner on THIS instance.
+        // (3) a worker acquires THIS instance's job → the BFF now reflects the lock owner on it.
+        //     The acquire API is topic-scoped and hands back one job per call, and seed.sh parks a
+        //     sibling instance on the same topic — so drain until OUR job id is the one locked
+        //     (bounded) rather than trusting a single acquire to pick ours.
         String worker = "inspector-ew-it-7";
-        int acquired = EngineSeed.acquireExternalWorkerJobs(ENGINE, TOPIC, worker, 10);
-        assertThat(acquired).isGreaterThanOrEqualTo(1);
+        boolean lockedMine = EngineSeed.acquireExternalWorkerJobUntilLocked(ENGINE, TOPIC, worker, targetJobId, 25);
+        assertThat(lockedMine)
+                .as("this instance's external-worker job %s was acquired", targetJobId)
+                .isTrue();
 
         JsonNode locked = row(mapper.readTree(rest.getForObject(url("/jobs/external-worker"), String.class)));
         assertThat(locked.get("lockOwner").asText()).isEqualTo(worker);

@@ -38,30 +38,55 @@ public final class EngineSeed {
     private EngineSeed() {}
 
     /**
-     * Acquire up to {@code maxTasks} external-worker jobs on {@code topic} so their lockOwner is
-     * populated — the IT setup for the lock-owner mapping assertion (v1.x #7). Hits the External
-     * Worker REST API at the {@code /external-job-api} sibling of the management {@code /service}
-     * base. Returns how many were acquired; the lock lapses after the duration, so KEEP-up
-     * residue is self-healing.
+     * Acquire external-worker jobs on {@code topic} until THIS instance's job ({@code targetJobId})
+     * is the one locked — the IT setup for the lock-owner mapping assertion (v1.x #7). Hits the
+     * External Worker REST API at the {@code /external-job-api} sibling of the management
+     * {@code /service} base.
+     *
+     * <p>The acquire endpoint is TOPIC-scoped and returns AT MOST ONE job per call regardless of
+     * {@code maxTasks} (verified live on 7.x), and {@code seed.sh} parks a second demoExternalWorker
+     * instance on the same {@code inspectorDemo} topic — so a single acquire can lock a SIBLING's
+     * job, not ours, leaving our job unlocked while still reporting a success. This drains the topic
+     * one job per call (each grabbed job is held for the lock duration, so calls don't re-return the
+     * same job) for up to {@code maxAttempts} calls, returning {@code true} the moment
+     * {@code targetJobId} is acquired. This is queue draining, not mutation-retry: every call does
+     * distinct work. Locks lapse after the duration, so KEEP-up residue is self-healing. Returns
+     * {@code false} if the topic empties before our job surfaces or the attempt budget is exhausted.
      */
     @SuppressWarnings("unchecked")
-    public static int acquireExternalWorkerJobs(String serviceBaseUrl, String topic, String workerId, int maxTasks) {
+    public static boolean acquireExternalWorkerJobUntilLocked(
+            String serviceBaseUrl, String topic, String workerId, String targetJobId, int maxAttempts) {
         String base = serviceBaseUrl.endsWith("/service")
                 ? serviceBaseUrl.substring(0, serviceBaseUrl.length() - "/service".length()) + "/external-job-api"
                 : serviceBaseUrl + "/external-job-api";
-        List<Map<String, Object>> acquired = engineClient(base)
-                .post()
-                .uri("/acquire/jobs")
-                .contentType(MediaType.APPLICATION_JSON)
-                .body(Map.of(
-                        "topic", topic,
-                        "lockDuration", "PT10M",
-                        "maxTasks", maxTasks,
-                        "numberOfRetries", 3,
-                        "workerId", workerId))
-                .retrieve()
-                .body(List.class);
-        return acquired == null ? 0 : acquired.size();
+        RestClient client = engineClient(base);
+        for (int attempt = 0; attempt < maxAttempts; attempt++) {
+            List<Map<String, Object>> acquired = client.post()
+                    .uri("/acquire/jobs")
+                    .contentType(MediaType.APPLICATION_JSON)
+                    .body(Map.of(
+                            "topic",
+                            topic,
+                            "lockDuration",
+                            "PT10M",
+                            "maxTasks",
+                            10,
+                            "numberOfRetries",
+                            3,
+                            "workerId",
+                            workerId))
+                    .retrieve()
+                    .body(List.class);
+            if (acquired == null || acquired.isEmpty()) {
+                return false; // topic drained without our job ever surfacing
+            }
+            for (Map<String, Object> job : acquired) {
+                if (targetJobId.equals(String.valueOf(job.get("id")))) {
+                    return true;
+                }
+            }
+        }
+        return false;
     }
 
     public static RestClient engineClient(String baseUrl) {

@@ -55,7 +55,12 @@ describe('deriveHonesty', () => {
 
   it('floors the out-of-scope count when the DEADLETTER lane scan hit the cap', () => {
     const honesty = deriveHonesty({
-      a: { ok: true, dlqScan: 'truncated@5000', outOfScopeDeadletters: 2, deadletterTruncated: true },
+      a: {
+        ok: true,
+        dlqScan: 'truncated@5000',
+        outOfScopeDeadletters: 2,
+        deadletterTruncated: true,
+      },
     })
     // ≥2: the concrete number is a lower bound (rendered with a ≥ glyph upstream).
     expect(honesty.outOfScope).toEqual([{ engineId: 'a', count: 2, floor: true }])
@@ -65,7 +70,12 @@ describe('deriveHonesty', () => {
     // dlqScan trips on any failure lane; deadletterTruncated is false, so the DEADLETTER
     // scan was complete and the out-of-scope count stays exact — the H1 distinction.
     const honesty = deriveHonesty({
-      a: { ok: true, dlqScan: 'truncated@5000', outOfScopeDeadletters: 4, deadletterTruncated: false },
+      a: {
+        ok: true,
+        dlqScan: 'truncated@5000',
+        outOfScopeDeadletters: 4,
+        deadletterTruncated: false,
+      },
     })
     expect(honesty.outOfScope).toEqual([{ engineId: 'a', count: 4, floor: false }])
   })
