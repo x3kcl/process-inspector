@@ -181,6 +181,29 @@ class TriageCmmnScopeIT {
         // The bare-uuid caseDefinitionId is resolved to a readable key/name via cmmn-repository.
         assertThat(seeded.path("caseDefinitionKey").asText()).isEqualTo(CASE_KEY);
         assertThat(seeded.path("caseDefinitionName").asText()).isEqualTo("Demo failing case");
+
+        // POSITIVE proof of the ?scopeType=cmmn server-side filter (under real BPMN "load":
+        // engine-a's DLQ lane also holds BPMN dead-letters). The endpoint returns EXACTLY the
+        // engine's CMMN-scoped lane — strictly fewer than the unfiltered lane (BPMN excluded),
+        // and equal to a direct scoped query (nothing dropped past the cap for this tiny seed).
+        int unfilteredTotal = cmmn.get()
+                .uri("/cmmn-management/deadletter-jobs?size=1")
+                .retrieve()
+                .body(JsonNode.class)
+                .path("total")
+                .asInt();
+        int scopedTotal = cmmn.get()
+                .uri("/cmmn-management/deadletter-jobs?size=1&scopeType=cmmn")
+                .retrieve()
+                .body(JsonNode.class)
+                .path("total")
+                .asInt();
+        assertThat(scopedTotal)
+                .as("the CMMN-scoped lane is a strict subset of the raw lane — BPMN load is present")
+                .isLessThan(unfilteredTotal);
+        assertThat(jobs.size())
+                .as("the endpoint enumerates exactly the engine's ?scopeType=cmmn lane")
+                .isEqualTo(scopedTotal);
     }
 
     /** VIEWER floor holds: an unauthenticated caller is rejected before any engine read. */

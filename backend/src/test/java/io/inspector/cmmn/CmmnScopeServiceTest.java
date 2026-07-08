@@ -24,6 +24,7 @@ import java.util.HashMap;
 import java.util.List;
 import java.util.Map;
 import org.junit.jupiter.api.Test;
+import org.mockito.ArgumentCaptor;
 
 /**
  * Rung 1 (unit-test-patterns): the CMMN scope drill's discriminator, row mapping, and the
@@ -129,6 +130,22 @@ class CmmnScopeServiceTest {
         // N+1 on DISTINCT definitions, never on jobs: def-A resolved once despite two rows.
         verify(flowable, times(1)).getCmmnCaseDefinition(engine, "def-A");
         verify(flowable, times(1)).getCmmnCaseDefinition(engine, "def-B");
+    }
+
+    @Test
+    void spendsTheScanCapOnCmmnOnlyViaScopeTypeFilter() {
+        health(scopeTypeCapable());
+        when(flowable.listCmmnDeadLetterJobs(any(), any(), anyInt(), anyInt()))
+                .thenReturn(new FlowablePage(List.of(), 0, 0, 50));
+
+        service.outOfScopeDeadLetters(ENGINE);
+
+        // The cmmn-api DLQ honors ?scopeType=cmmn (unlike the process-api DLQ), so the scan
+        // cap is spent on CMMN rows only — BPMN projections never crowd CMMN past the cap.
+        @SuppressWarnings("unchecked")
+        ArgumentCaptor<Map<String, String>> filters = ArgumentCaptor.forClass(Map.class);
+        verify(flowable).listCmmnDeadLetterJobs(any(), filters.capture(), anyInt(), anyInt());
+        assertThat(filters.getValue()).containsEntry("scopeType", "cmmn");
     }
 
     @Test

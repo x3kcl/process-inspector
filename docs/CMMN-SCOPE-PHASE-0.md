@@ -226,6 +226,21 @@ Phase 0 deliberately produces the seam the later phases consume:
   - **CONSTRAINT (iron rule):** Phase 1's cmmn-api DLQ fetch is **bounded by `dlq-scan-cap`,
     paged, and carries the `truncated@N` badge**, exactly like the BPMN Stage-0 scan — never a
     single unpaged DLQ fetch.
+  - **DLQ scope-filter ASYMMETRY (spike 2026-07-08, live 6.8.0 — the load-bearing wire fact for
+    the merge slice).** The two DLQ projections are NOT symmetrically filterable:
+    - **`cmmn-api /cmmn-management/deadletter-jobs` HONORS `?scopeType=cmmn`** (narrowed an
+      all-BPMN residue set 7→0). So the CMMN leg passes `?scopeType=cmmn` and spends its
+      `dlq-scan-cap` on **CMMN rows only** — BPMN projections never crowd CMMN past the cap, and
+      the CMMN `truncated` flag is a pure-CMMN lower bound. **The shipped `CmmnScopeService` now
+      passes this filter** (was fetch-all + client-filter — corrected as a standalone fix,
+      2026-07-08); the intrinsic `caseInstanceId` discriminator is kept as defense-in-depth.
+    - **`process-api /management/deadletter-jobs` IGNORES every scope param** (`scopeType=bpmn|
+      cmmn`, `withoutScopeType` all returned the unfiltered set) and its rows carry **no scope
+      keys at all**. The BPMN leg is therefore unavoidably mixed (BPMN + CMMN orphans), capped
+      together — so the merge slice's **degraded-orphan path is STRUCTURALLY MANDATORY**, not a
+      nicety: a CMMN job seen only as a null-`processInstanceId` process-api orphan (past the
+      cmmn-api cap) has no case context and must render degraded ("Unknown case (context
+      truncated)"), never be dropped.
   - **CONSTRAINT:** all CMMN incident features **gate to 6.8+** (§1.1 Q3 — 6.3 is silently
     wrong: DLQ-blind, `?state=` ignored, no `state` field). On <6.8 emit `null`, never a wrong
     number. Re-verify on the cmmn context, not merely inferred from `scopeType`.

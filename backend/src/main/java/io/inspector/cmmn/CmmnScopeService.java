@@ -18,9 +18,10 @@ import org.springframework.stereotype.Service;
 /**
  * Case Inspector Phase 1 (R-SEM-20): the drill-down behind the Stage-0
  * {@code outOfScopeDeadletters} count. Enumerates the CMMN dead-letter jobs on one engine by
- * paging the CMMN-api dead-letter list (the SIBLING of the process-api context) and keeping
- * only the CMMN-scoped rows (non-null {@code caseInstanceId} — proven live, the same list
- * projects BPMN jobs with a null case attribution; docs/CMMN-SCOPE-PHASE-0.md §1.1 Q1).
+ * paging the CMMN-api dead-letter list (the SIBLING of the process-api context) with a
+ * server-side {@code ?scopeType=cmmn} filter (live-proven honored — the cap is spent on CMMN
+ * rows only; docs/CMMN-SCOPE-PHASE-0.md §7). The intrinsic discriminator (non-null
+ * {@code caseInstanceId}; §1.1 Q1) is retained as a defense-in-depth belt over that filter.
  *
  * <p>Doctrine held here:
  * <ul>
@@ -52,6 +53,12 @@ public class CmmnScopeService {
         requireScopeTypeCapability(engine);
 
         Map<String, String> filters = new LinkedHashMap<>();
+        // Server-side scope filter (live-proven 2026-07-08): the cmmn-api DLQ list HONORS
+        // ?scopeType=cmmn (narrowed an all-BPMN set 7→0), so the dlq-scan-cap is spent on CMMN
+        // rows ONLY — BPMN jobs projected through this context never crowd CMMN past the cap,
+        // and `truncated` below becomes a PURE-CMMN lower bound. (The process-api DLQ, by
+        // contrast, ignores every scope param — hence the merge slice's degraded-orphan path.)
+        filters.put("scopeType", "cmmn");
         if (engine.tenantId() != null && !engine.tenantId().isBlank()) {
             filters.put("tenantId", engine.tenantId());
         }
@@ -126,9 +133,10 @@ public class CmmnScopeService {
     }
 
     /**
-     * A CMMN-scoped row iff it carries a non-null {@code caseInstanceId}. The cmmn-api list
-     * projects BPMN dead-letters too (shared table), and those have a null case attribution —
-     * so the presence of a case-instance id is the load-bearing discriminator (spike Q1).
+     * A CMMN-scoped row iff it carries a non-null {@code caseInstanceId}. With the server-side
+     * {@code ?scopeType=cmmn} filter this is now defense-in-depth: were that filter ever dropped
+     * by an engine, the intrinsic discriminator still keeps BPMN projections (null case
+     * attribution; spike Q1) out of the drawer rather than leaking them.
      */
     static boolean isCmmnScoped(Map<String, Object> row) {
         Object caseInstanceId = row.get("caseInstanceId");

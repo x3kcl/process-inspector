@@ -138,9 +138,11 @@ public class FlowableEngineClient {
      * CMMN engine. Like the external-job-api, the CMMN Management REST API is a SIBLING of the
      * process-api {@code /service} context, at {@code …/cmmn-api} (proven live: this list also
      * projects BPMN jobs with a null case attribution — the CMMN ones carry a non-null
-     * {@code caseInstanceId}). Callers MUST capability-gate ({@code scopeType}, Flowable ≥ 6.8)
-     * first: on 6.3.1 the cmmn context exists but is dead-letter-blind (spike Q3), so a call
-     * there would silently return a wrong (BPMN-only or empty) view.
+     * {@code caseInstanceId}). Unlike the process-api DLQ (which ignores every scope param),
+     * this endpoint HONORS {@code ?scopeType=cmmn} (live-proven 2026-07-08), so callers pass it
+     * in {@code filters} to spend the scan cap on CMMN rows only. Callers MUST capability-gate
+     * ({@code scopeType}, Flowable ≥ 6.8) first: on 6.3.1 the cmmn context exists but is
+     * dead-letter-blind (spike Q3), so a call there would silently return a wrong view.
      */
     public FlowablePage listCmmnDeadLetterJobs(EngineConfig engine, Map<String, String> filters, int start, int size) {
         UriComponentsBuilder b = UriComponentsBuilder.fromUriString(
