@@ -10,6 +10,7 @@ import io.inspector.audit.ProtectedInstance;
 import io.inspector.audit.ProtectedInstanceRepository;
 import io.inspector.client.FlowableEngineClient;
 import io.inspector.client.FlowableEngineClient.JobLaneKind;
+import io.inspector.cmmn.CmmnCapabilities;
 import io.inspector.config.InspectorProperties.EngineConfig;
 import io.inspector.config.InspectorProperties.EngineEnvironment;
 import io.inspector.config.InspectorProperties.EngineMode;
@@ -69,18 +70,44 @@ public class CorrectiveActionService {
         this.protectedInstances = protectedInstances;
     }
 
-    /** {@code targetId} is the processInstanceId for INSTANCE verbs, the definitionId for DEFINITION verbs. */
+    /**
+     * BPMN-scoped execute — the process-instance and definition routes (bulk included). Delegates
+     * to the scoped form; the {@code targetId} is the processInstanceId for INSTANCE verbs, the
+     * definitionId for DEFINITION verbs.
+     */
     public ActionResult execute(
             String engineId, String targetId, ActionVerb verb, ActionRequest request, Authentication auth) {
+        return execute(ActionScope.BPMN, engineId, targetId, verb, request, auth);
+    }
+
+    /**
+     * The scoped verb executor (Case Inspector Phase 3 added the {@code scope} seam). For
+     * {@link ActionScope#CMMN} the {@code targetId} is a caseInstanceId and the job verbs read /
+     * move the CMMN ({@code /cmmn-management}) DLQ projection instead of the process-api one; every
+     * other rail is scope-neutral.
+     */
+    public ActionResult execute(
+            ActionScope scope,
+            String engineId,
+            String targetId,
+            ActionVerb verb,
+            ActionRequest request,
+            Authentication auth) {
         EngineConfig engine = registry.require(engineId);
 
         // -- guards: everything above the audit insert refuses with "nothing happened" --
         requireRole(auth, verb, engineId);
         requireWritableEngine(engine, verb);
+        // CMMN scope is capability-gated (scopeType, Flowable ≥ 6.8) BEFORE any engine read — an
+        // older engine is dead-letter-blind on the cmmn context, so a blind move would be
+        // silently wrong (do-no-harm). Also rejects any verb not applicable to a CMMN case.
+        if (scope == ActionScope.CMMN) {
+            requireCmmnScope(engine, verb);
+        }
         requireUnprotectedOrAdmin(auth, engine, verb, targetId);
         String reason = normalizedReason(engine, verb, request);
 
-        Target target = restateTarget(engine, verb, targetId, request);
+        Target target = restateTarget(scope, engine, verb, targetId, request);
         requireConfirmToken(engine, verb, target, request);
 
         // -- fail-closed audit gate (R-AUD-01): beyond this point the attempt is on record --
@@ -106,7 +133,7 @@ public class CorrectiveActionService {
 
         // -- the one engine call --
         try {
-            dispatch(engine, verb, targetId, request);
+            dispatch(scope, engine, verb, targetId, request);
         } catch (CallNotPermittedException | BulkheadFullException e) {
             // Do-no-harm: the breaker/bulkhead refused BEFORE any bytes left — nothing happened.
             audit.close(entry, AuditOutcome.failed, null, "refused: circuit open / bulkhead full", false);
@@ -138,6 +165,25 @@ public class CorrectiveActionService {
     }
 
     /* ------------------------------- guards ------------------------------- */
+
+    /** The verbs a CMMN case supports today (Phase 3 = dead-letter retry only). */
+    private static final java.util.Set<ActionVerb> CMMN_VERBS = java.util.Set.of(ActionVerb.RETRY_JOB);
+
+    /**
+     * CMMN-scope gate: the verb must be CMMN-applicable AND the engine must advertise
+     * {@code scopeType} (≥ 6.8). Both refuse before any engine bytes leave — an unsupported verb
+     * or a dead-letter-blind engine never gets a blind call.
+     */
+    private void requireCmmnScope(EngineConfig engine, ActionVerb verb) {
+        if (!CMMN_VERBS.contains(verb)) {
+            throw new GuardRefusedException(
+                    HttpStatus.BAD_REQUEST,
+                    "verb-not-cmmn-scoped",
+                    "'" + verb.path() + "' is not available on a CMMN case — only dead-letter retry is (Case"
+                            + " Inspector Phase 3). Nothing happened.");
+        }
+        CmmnCapabilities.requireScopeType(registry, engine);
+    }
 
     private void requireRole(Authentication auth, ActionVerb verb, String engineId) {
         if (!rbac.hasRoleOn(auth, verb.minRole(), engineId)) {
@@ -227,8 +273,14 @@ public class CorrectiveActionService {
      * real old values, and the tier-3 token is checked against live state — never the
      * grid snapshot.
      */
-    private Target restateTarget(EngineConfig engine, ActionVerb verb, String targetId, ActionRequest request) {
+    private Target restateTarget(
+            ActionScope scope, EngineConfig engine, ActionVerb verb, String targetId, ActionRequest request) {
         try {
+            // CMMN scope reads the /cmmn-management DLQ projection (by-id, cap-free) instead of the
+            // process-api one; the guard above has already narrowed the verb set to RETRY_JOB.
+            if (scope == ActionScope.CMMN) {
+                return cmmnJobTarget(engine, targetId, required(request.jobId(), "jobId"), verb);
+            }
             return switch (verb) {
                 case RETRY_JOB, DELETE_DEADLETTER ->
                     jobTarget(engine, JobLaneKind.DEADLETTER, targetId, required(request.jobId(), "jobId"), verb);
@@ -269,6 +321,41 @@ public class CorrectiveActionService {
         Map<String, Object> payload = new LinkedHashMap<>();
         payload.put("schema", verb.path() + "/v1");
         payload.put("jobId", jobId);
+        payload.put("elementId", job.get("elementId"));
+        payload.put("exceptionMessage", job.get("exceptionMessage"));
+        return new Target(payload, jobId, "job id", null);
+    }
+
+    /**
+     * CMMN sibling of {@link #jobTarget}: the server-fresh restatement of a CMMN dead-letter job,
+     * read by-id from the {@code /cmmn-management} DLQ (cap-free hydration, spike 2026-07-08). A
+     * null is the honest "already gone" refusal; ownership is checked on {@code caseInstanceId}
+     * (the CMMN projection's owner key, where BPMN uses {@code processInstanceId}). The audit
+     * payload records {@code scope:cmmn} and the case context so the delta is reconstructable.
+     */
+    private Target cmmnJobTarget(EngineConfig engine, String caseInstanceId, String jobId, ActionVerb verb) {
+        Map<String, Object> job = client.getCmmnDeadLetterJob(engine, jobId);
+        if (job == null) {
+            throw new GuardRefusedException(
+                    HttpStatus.NOT_FOUND,
+                    "job-gone",
+                    "CMMN dead-letter job " + jobId + " is no longer in the dead-letter lane"
+                            + " (already retried, fired or deleted?). Nothing happened.");
+        }
+        Object owner = job.get("caseInstanceId");
+        if (owner != null && !caseInstanceId.equals(String.valueOf(owner))) {
+            throw new GuardRefusedException(
+                    HttpStatus.BAD_REQUEST,
+                    "job-case-mismatch",
+                    "Job " + jobId + " belongs to case " + owner + ", not " + caseInstanceId + ".");
+        }
+        Map<String, Object> payload = new LinkedHashMap<>();
+        payload.put("schema", verb.path() + "/v1");
+        payload.put("scope", "cmmn");
+        payload.put("jobId", jobId);
+        payload.put("caseInstanceId", caseInstanceId);
+        payload.put("caseDefinitionId", job.get("caseDefinitionId"));
+        payload.put("planItemInstanceId", job.get("planItemInstanceId"));
         payload.put("elementId", job.get("elementId"));
         payload.put("exceptionMessage", job.get("exceptionMessage"));
         return new Target(payload, jobId, "job id", null);
@@ -429,7 +516,14 @@ public class CorrectiveActionService {
 
     /* ------------------------------- dispatch ------------------------------- */
 
-    private void dispatch(EngineConfig engine, ActionVerb verb, String targetId, ActionRequest request) {
+    private void dispatch(
+            ActionScope scope, EngineConfig engine, ActionVerb verb, String targetId, ActionRequest request) {
+        // CMMN scope: the only supported verb (guarded above) is the DLQ move, which hits the
+        // /cmmn-management path — byte-identical body, sibling context (spike 2026-07-08).
+        if (scope == ActionScope.CMMN) {
+            client.moveCmmnDeadLetterJob(engine, request.jobId());
+            return;
+        }
         switch (verb) {
             case RETRY_JOB -> client.moveDeadLetterJob(engine, request.jobId());
             case TRIGGER_TIMER -> client.moveTimerJob(engine, request.jobId());

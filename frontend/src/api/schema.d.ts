@@ -148,6 +148,38 @@ export interface paths {
         patch?: never;
         trace?: never;
     };
+    "/api/cases/{engineId}/{caseInstanceId}/actions/{verb}": {
+        parameters: {
+            query?: never;
+            header?: never;
+            path?: never;
+            cookie?: never;
+        };
+        get?: never;
+        put?: never;
+        post: operations["caseAction"];
+        delete?: never;
+        options?: never;
+        head?: never;
+        patch?: never;
+        trace?: never;
+    };
+    "/api/cases/{engineId}/{caseInstanceId}/actions/{verb}/curl": {
+        parameters: {
+            query?: never;
+            header?: never;
+            path?: never;
+            cookie?: never;
+        };
+        get?: never;
+        put?: never;
+        post: operations["caseActionCurl"];
+        delete?: never;
+        options?: never;
+        head?: never;
+        patch?: never;
+        trace?: never;
+    };
     "/api/cases/{engineId}/{caseInstanceId}/diagram": {
         parameters: {
             query?: never;
@@ -759,6 +791,7 @@ export interface components {
             deadLetterJobCount?: number;
             failingElementName?: string;
             firstException?: string;
+            jobs?: components["schemas"]["DeadLetterJobRef"][];
         };
         CasePlanItem: {
             completedTime?: string;
@@ -843,6 +876,13 @@ export interface components {
             activityName?: string;
             activityType?: string;
             startTime?: string;
+        };
+        DeadLetterJobRef: {
+            elementName?: string;
+            exceptionMessage?: string;
+            id?: string;
+            /** Format: int32 */
+            retries?: number;
         };
         EngineCapabilities: {
             activityHistory?: boolean;
@@ -1584,6 +1624,62 @@ export interface operations {
                 };
                 content: {
                     "*/*": components["schemas"]["CaseDetail"];
+                };
+            };
+        };
+    };
+    caseAction: {
+        parameters: {
+            query?: never;
+            header?: never;
+            path: {
+                engineId: string;
+                caseInstanceId: string;
+                verb: string;
+            };
+            cookie?: never;
+        };
+        requestBody?: {
+            content: {
+                "application/json": components["schemas"]["ActionRequest"];
+            };
+        };
+        responses: {
+            /** @description OK */
+            200: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "*/*": components["schemas"]["ActionResult"];
+                };
+            };
+        };
+    };
+    caseActionCurl: {
+        parameters: {
+            query?: never;
+            header?: never;
+            path: {
+                engineId: string;
+                caseInstanceId: string;
+                verb: string;
+            };
+            cookie?: never;
+        };
+        requestBody?: {
+            content: {
+                "application/json": components["schemas"]["ActionRequest"];
+            };
+        };
+        responses: {
+            /** @description OK */
+            200: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "*/*": components["schemas"]["ActionCurlResponse"];
                 };
             };
         };

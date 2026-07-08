@@ -122,7 +122,15 @@ public class CaseDetailService {
         }
         List<Map<String, Object>> rows = page.dataOrEmpty();
         Map<String, Object> first = rows.isEmpty() ? Map.of() : rows.get(0);
-        return new CaseFailing((int) page.total(), str(first, "exceptionMessage"), str(first, "elementName"));
+        List<CaseFailing.DeadLetterJobRef> jobs = rows.stream()
+                .map(r -> new CaseFailing.DeadLetterJobRef(
+                        str(r, "id"), str(r, "elementName"), str(r, "exceptionMessage"), intOrNull(r.get("retries"))))
+                .toList();
+        return new CaseFailing((int) page.total(), str(first, "exceptionMessage"), str(first, "elementName"), jobs);
+    }
+
+    private static Integer intOrNull(Object value) {
+        return value instanceof Number n ? n.intValue() : null;
     }
 
     /* ============================ diagram ============================ */

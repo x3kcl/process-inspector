@@ -155,6 +155,31 @@ public class FlowableEngineClient {
     }
 
     /**
+     * GET /cmmn-api/cmmn-management/deadletter-jobs/{id} — one CMMN dead-letter job by id, the
+     * server-fresh restatement behind the Phase-3 retry action. By-id hydration is NOT subject to
+     * the list scan cap (spike 2026-07-08), so it always returns the full case context
+     * ({@code caseInstanceId}/{@code caseDefinitionId}/{@code planItemInstanceId}/
+     * {@code elementId}/{@code exceptionMessage}). Null on 404 — the job already left the DLQ
+     * (retried, fired or deleted). NB: the list row's own {@code url} points at the EXECUTABLE
+     * {@code /cmmn-management/jobs/{id}} table and 404s for a dead-letter job — this constructs the
+     * {@code deadletter-jobs/{id}} path itself. Callers capability-gate ({@code scopeType}, ≥ 6.8)
+     * first.
+     */
+    @SuppressWarnings("unchecked")
+    public Map<String, Object> getCmmnDeadLetterJob(EngineConfig engine, String jobId) {
+        java.net.URI uri = UriComponentsBuilder.fromUriString(
+                        cmmnApiBase(engine) + "/cmmn-management/deadletter-jobs/" + jobId)
+                .build()
+                .toUri();
+        try {
+            return guarded(
+                    engine, () -> client(engine).get().uri(uri).retrieve().body(Map.class));
+        } catch (HttpClientErrorException.NotFound e) {
+            return null;
+        }
+    }
+
+    /**
      * GET /cmmn-api/cmmn-repository/case-definitions/{id} — resolves a CMMN
      * {@code caseDefinitionId} (a bare uuid on job rows, unlike a BPMN
      * {@code key:version:uuid}) to its readable {@code key}/{@code name}/{@code version}.
@@ -746,6 +771,30 @@ public class FlowableEngineClient {
                 () -> writeClient(engine)
                         .post()
                         .uri(JobLaneKind.TIMER.path + "/{jobId}", jobId)
+                        .contentType(MediaType.APPLICATION_JSON)
+                        .body(Map.of("action", "move"))
+                        .retrieve()
+                        .toBodilessEntity());
+    }
+
+    /**
+     * POST /cmmn-api/cmmn-management/deadletter-jobs/{jobId} {"action":"move"} — the CMMN sibling
+     * of {@link #moveDeadLetterJob}, byte-identical in shape (live-proven 2026-07-08, HTTP 204):
+     * moves a CMMN dead-letter job back to the executable queue with engine-default retries
+     * restored. The base path differs (the {@code /cmmn-api} context is a sibling of {@code
+     * /service}, so this builds an absolute URI rather than the process-api relative path).
+     * Callers capability-gate ({@code scopeType}, ≥ 6.8) first.
+     */
+    public void moveCmmnDeadLetterJob(EngineConfig engine, String jobId) {
+        java.net.URI uri = UriComponentsBuilder.fromUriString(
+                        cmmnApiBase(engine) + "/cmmn-management/deadletter-jobs/" + jobId)
+                .build()
+                .toUri();
+        mutate(
+                engine,
+                () -> writeClient(engine)
+                        .post()
+                        .uri(uri)
                         .contentType(MediaType.APPLICATION_JSON)
                         .body(Map.of("action", "move"))
                         .retrieve()

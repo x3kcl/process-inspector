@@ -206,3 +206,45 @@ to `/case/…` for a pre-6.8 engine — but the server stays the gate regardless
   the honest no-layout state + the timeline with the 🛑 Failed servicetask; the DI-bearing
   `demoCaseDetail` seed renders the `cmmn-js` canvas with `planItem_svc` carrying
   `marker-deadletter` + the ⚠ overlay, watermark intact.
+
+## 9. Phase 3 addendum — CMMN dead-letter retry (LANDED 2026-07-08)
+
+The read-only detail becomes **actionable for one verb**: **Retry job** (tier 0 / RESPONDER),
+offered per dead-letter job in the "why-stuck" panel. Full behavior in **SPEC §5.3**; API in
+**ARCH §4** (`POST /api/cases/{engineId}/{caseInstanceId}/actions/{verb}`).
+
+**Wire spike (live 6.8.0, 2026-07-08).** The CMMN dead-letter move is **byte-identical** to the
+BPMN shape: `POST …/cmmn-api/cmmn-management/deadletter-jobs/{id}` `{"action":"move"}` → **HTTP
+204**; the job leaves the DLQ (by-id → 404), is restored to executable (→ a timer-job for the
+retry backoff, then re-executes), and re-dead-letters as the **same job id** with retries reset —
+a genuine DLQ→executable transition, not a delete. By-id hydration
+(`GET …/cmmn-management/deadletter-jobs/{id}`) is cap-free and returns full case context.
+
+**Design call — GENERALIZE, don't fork.** The rails (audit, RBAC, reason, protected-instance
+guard, fail-closed audit, no-auto-retry, server-computed cURL) are scope-neutral — `audit_entry`
+keys on a generic instance id — so the existing `CorrectiveActionService` gained an
+`ActionScope.CMMN` seam rather than a parallel `CmmnCorrectiveActionService` (which would have
+duplicated the whole ladder + the audit-consistency risk). Only two seams differ:
+
+1. **Restatement** — `cmmnJobTarget` reads the job by-id from `cmmn-management/deadletter-jobs/{id}`
+   (cap-free) and checks ownership on `caseInstanceId` (BPMN keys on `processInstanceId`).
+2. **Dispatch** — `client.moveCmmnDeadLetterJob` hits the `/cmmn-management` path (absolute URI —
+   the cmmn context is a sibling of `/service`); the body is identical.
+
+Gated on `scopeType` (≥6.8) via the shared `CmmnCapabilities.requireScopeType` BEFORE any engine
+byte; a non-CMMN verb is refused (`verb-not-cmmn-scoped`). The server-computed "Show as cURL"
+targets the **BFF** case-action URL (never an engine path/credential) — correcting the Phase-0
+sketch that guessed a `cmmn-runtime/case-instances/{id}/…` engine path. The CasePage "read-only"
+badge is retired; the case detail is otherwise still read-only (no suspend/terminate/edit).
+
+**Verified (2026-07-08):**
+- **Backend rung-1** (`CmmnCorrectiveActionServiceTest`, 6): the gate runs before any read/audit,
+  the restatement reads the cmmn DLQ by-id + keys on `caseInstanceId`, the one call is the CMMN
+  move (never the BPMN one), and pre-6.8 / unprobed / job-gone / case-mismatch / non-CMMN-verb all
+  refuse cleanly.
+- **Backend rung-4 live 6.8 + Postgres** (`CmmnCorrectiveActionIT`, 1): seed → dead-letter → a
+  RESPONDER retries via the BFF → outcome `ok`, the job leaves the CMMN DLQ, the action lands in
+  the audit golden master (payload carries the job id + `cmmn` scope). `CaseDetailIT` gained a
+  `failing.jobs[0].id` assertion.
+- **Frontend hermetic e2e** (`case-detail.spec.ts`, +1): clicking Retry POSTs the case-scoped
+  action with `{jobId}` and the server delta surfaces as the toast; the read-only badge is gone.

@@ -4,6 +4,7 @@ import io.inspector.action.ActionCurl;
 import io.inspector.action.ActionCurlResponse;
 import io.inspector.action.ActionRequest;
 import io.inspector.action.ActionResult;
+import io.inspector.action.ActionScope;
 import io.inspector.action.ActionVerb;
 import io.inspector.action.CorrectiveActionService;
 import org.springframework.http.HttpStatus;
@@ -68,6 +69,47 @@ public class CorrectiveActionController {
         String url = ServletUriComponentsBuilder.fromCurrentContextPath()
                 .path("/api/instances/{engineId}/{instanceId}/actions/{verb}")
                 .buildAndExpand(engineId, instanceId, resolved.path())
+                .toUriString();
+        return new ActionCurlResponse(ActionCurl.render(url, request));
+    }
+
+    /**
+     * The CMMN case-scoped verb route (Case Inspector Phase 3): the same whitelisted verb catalog
+     * and RBAC door as the instance route, but scoped to a CMMN {@code caseInstanceId}. The service
+     * capability-gates it ({@code scopeType}, Flowable ≥ 6.8) and narrows the verb set to the
+     * dead-letter retry — everything else in the guard ladder is scope-neutral. A distinct path
+     * (cases, not instances) keeps the URL namespace honest and lets the cURL point at the right
+     * BFF route.
+     */
+    @PostMapping("/cases/{engineId}/{caseInstanceId}/actions/{verb}")
+    @PreAuthorize("@rbac.canExecute(authentication, #engineId, #verb)")
+    public ActionResult caseAction(
+            @PathVariable String engineId,
+            @PathVariable String caseInstanceId,
+            @PathVariable String verb,
+            @RequestBody(required = false) ActionRequest request,
+            Authentication authentication) {
+        return actions.execute(
+                ActionScope.CMMN,
+                engineId,
+                caseInstanceId,
+                resolve(verb, ActionVerb.TargetKind.INSTANCE),
+                request != null ? request : ActionRequest.empty(),
+                authentication);
+    }
+
+    /** "Show as cURL" for a CMMN case action — the BFF case-action URL, credential-free (v1.x #6). */
+    @PostMapping("/cases/{engineId}/{caseInstanceId}/actions/{verb}/curl")
+    @PreAuthorize("@rbac.canExecute(authentication, #engineId, #verb)")
+    public ActionCurlResponse caseActionCurl(
+            @PathVariable String engineId,
+            @PathVariable String caseInstanceId,
+            @PathVariable String verb,
+            @RequestBody(required = false) ActionRequest request) {
+        ActionVerb resolved = resolve(verb, ActionVerb.TargetKind.INSTANCE);
+        String url = ServletUriComponentsBuilder.fromCurrentContextPath()
+                .path("/api/cases/{engineId}/{caseInstanceId}/actions/{verb}")
+                .buildAndExpand(engineId, caseInstanceId, resolved.path())
                 .toUriString();
         return new ActionCurlResponse(ActionCurl.render(url, request));
     }

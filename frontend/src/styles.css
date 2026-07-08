@@ -2585,13 +2585,6 @@ button.primary:disabled {
   border-radius: 10px;
   color: #6c3483;
 }
-.case-readonly {
-  font-size: 0.72rem;
-  color: #7f8c8d;
-  border: 1px dashed #b2babb;
-  border-radius: 10px;
-  padding: 1px 7px;
-}
 .case-title {
   font-size: 1.35rem;
   display: flex;
@@ -2639,9 +2632,28 @@ button.primary:disabled {
   font-size: 0.88rem;
   margin: 0.5rem 0;
 }
+.case-why-stuck p {
+  margin: 0;
+}
 .case-exception {
   font-family: var(--font-mono, monospace);
   color: #922b21;
+}
+/* Phase 3: one retry affordance per dead-letter job, under the "why stuck" panel. */
+.case-deadletter-actions {
+  list-style: none;
+  margin: 0.5rem 0 0;
+  padding: 0;
+  display: flex;
+  flex-direction: column;
+  gap: 0.35rem;
+}
+.case-deadletter-row {
+  display: flex;
+  align-items: center;
+  gap: 0.5rem;
+  flex-wrap: wrap;
+  font-size: 0.82rem;
 }
 
 /* cmmn-js canvas — markers mirror the bpmn-js ones; the bpmn.io watermark is untouched */

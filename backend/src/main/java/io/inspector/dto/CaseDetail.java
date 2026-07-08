@@ -1,6 +1,7 @@
 package io.inspector.dto;
 
 import com.fasterxml.jackson.annotation.JsonInclude;
+import java.util.List;
 
 /**
  * CMMN case vitals (Case Inspector Phase 2) — the polymorphic sibling of the BPMN
@@ -38,9 +39,20 @@ public record CaseDetail(
 
     /**
      * The "why stuck" summary of a case carrying a dead-lettered plan item — the count, the first
-     * exception line, and the failing element's readable name. Present only when
+     * exception line, the failing element's readable name, and the (bounded) list of dead-letter
+     * jobs so the UI can offer a per-job retry (Case Inspector Phase 3). Present only when
      * {@code deadLetterJobCount > 0}.
      */
     @JsonInclude(JsonInclude.Include.NON_NULL)
-    public record CaseFailing(int deadLetterJobCount, String firstException, String failingElementName) {}
+    public record CaseFailing(
+            int deadLetterJobCount, String firstException, String failingElementName, List<DeadLetterJobRef> jobs) {
+
+        /**
+         * The minimum a Phase-3 retry needs: the job {@code id} (the move target) plus enough
+         * context to name the row honestly. The full case-scoped enumeration lives in
+         * {@link CmmnDeadLetterJob}; this is the per-case slice already fetched for the count.
+         */
+        @JsonInclude(JsonInclude.Include.NON_NULL)
+        public record DeadLetterJobRef(String id, String elementName, String exceptionMessage, Integer retries) {}
+    }
 }

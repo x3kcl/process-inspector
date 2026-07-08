@@ -34,6 +34,14 @@ const VITALS = {
     deadLetterJobCount: 1,
     firstException: 'Unknown property used in expression: ${nonExistentBean.doStuff()}',
     failingElementName: 'Failing service',
+    jobs: [
+      {
+        id: 'job-1',
+        elementName: 'Failing service',
+        exceptionMessage: 'Unknown property used in expression: ${nonExistentBean.doStuff()}',
+        retries: 0,
+      },
+    ],
   },
 }
 
@@ -117,6 +125,17 @@ async function mockBff(page: Page, diagram: DiagramOpts): Promise<void> {
         })
       } else if (pathname === '/api/cases/eng1/case-1/plan-items') {
         await route.fulfill({ json: PLAN_ITEMS })
+      } else if (pathname === '/api/cases/eng1/case-1/actions/retry-job') {
+        // Phase 3: the case-scoped retry route. Assert the request shape then answer ok.
+        await route.fulfill({
+          json: {
+            outcome: 'ok',
+            httpStatus: 200,
+            deltaStatement:
+              'Job job-1 moved back to the executable queue; engine-default retries restored.',
+            auditId: 'audit-1',
+          },
+        })
       } else if (pathname === '/api/bulk') {
         await route.fulfill({ json: [] })
       } else {
@@ -137,7 +156,11 @@ test('the case detail renders vitals, the plan-item timeline, and the honest no-
   await expect(page.getByText('ACTIVE', { exact: true })).toBeVisible()
   await expect(page.locator('.case-why-stuck')).toContainText('Failing service')
   await expect(page.locator('.case-why-stuck')).toContainText('nonExistentBean')
-  await expect(page.getByText('read-only')).toBeVisible()
+  // Phase 3: the read-only badge is retired; the why-stuck panel now offers a retry per job.
+  await expect(page.getByText('read-only')).toHaveCount(0)
+  await expect(
+    page.locator('.case-why-stuck').getByRole('button', { name: 'Retry job' }),
+  ).toBeVisible()
 
   // A DI-less model renders the honest no-layout state, never a blank canvas.
   await expect(page.getByText('No case diagram')).toBeVisible()
@@ -151,6 +174,27 @@ test('the case detail renders vitals, the plan-item timeline, and the honest no-
     'aria-level',
     '1',
   )
+})
+
+test('retrying a CMMN dead-letter job POSTs the case-scoped action and reports the delta', async ({
+  page,
+}) => {
+  await mockBff(page, { graphicalNotationDefined: false })
+  const retry = page.waitForRequest(
+    (req) =>
+      req.method() === 'POST' && req.url().includes('/api/cases/eng1/case-1/actions/retry-job'),
+  )
+  await page.goto('/case/eng1/case-1')
+
+  // A RESPONDER on a DEV engine: single-click retry (no prod two-step), gated on scopeType.
+  await page.locator('.case-why-stuck').getByRole('button', { name: 'Retry job' }).click()
+
+  // The request carries the dead-letter job id in the body — the BFF reads the CMMN DLQ by-id.
+  const request = await retry
+  expect(request.postDataJSON()).toMatchObject({ jobId: 'job-1' })
+
+  // The server's delta statement surfaces as the success toast (never a bare "success").
+  await expect(page.getByText(/moved back to the executable queue/)).toBeVisible()
 })
 
 test('a case with graphical notation renders the cmmn-js canvas with the failed marker', async ({
