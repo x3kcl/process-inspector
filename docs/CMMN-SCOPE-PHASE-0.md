@@ -301,9 +301,20 @@ Phase 0 deliberately produces the seam the later phases consume:
 - **Phase 2 — LANDED 2026-07-08 (full-stack).** Polymorphic Stage-2 detail: a `cmmn-js` canvas +
   a plan-item state-machine timeline at `/case/{engineId}/{caseInstanceId}`. Full design + wire
   provenance: **`docs/CMMN-CASE-DETAIL-PHASE-2.md`** (the authority for the phase). Read-only,
-  gated 6.8+. Phase 3 (CMMN corrective actions under the full `corrective-actions` rails,
-  server-computed "Show as cURL" emitting `cmmn-runtime/case-instances/{id}/…`) remains
-  unspecified pending a separate plan.
+  gated 6.8+.
+- **Phase 3 — LANDED 2026-07-08 (full-stack): CMMN dead-letter retry.** The case detail becomes
+  actionable for the ONE verb a co-deployed CMMN case needs — **Retry job** (tier 0 / RESPONDER) —
+  under the FULL `corrective-actions` rails. The key design call: the existing BPMN
+  `CorrectiveActionService` dispatcher was GENERALIZED (an `ActionScope.CMMN` seam), NOT forked —
+  the rails are scope-neutral (`audit_entry` keys on a generic instance id), so only two seams
+  differ: the by-id restatement reads `cmmn-management/deadletter-jobs/{id}` (cap-free, owner =
+  `caseInstanceId`) and the move is `POST …/cmmn-management/deadletter-jobs/{id}` `{"action":"move"}`
+  (byte-identical to process-api — **live-proven 6.8, 2026-07-08**: HTTP 204, job leaves the DLQ,
+  re-queues, re-dead-letters as the same id). Route `POST /api/cases/{engineId}/{caseInstanceId}/
+  actions/{verb}` (+`/curl`, server-computed, BFF-targeted — never an engine path/token). SPEC §5.3,
+  ARCH §4. **Correction to the earlier sketch:** the "Show as cURL" targets the BFF verb endpoint
+  (like every other action), NOT `cmmn-runtime/case-instances/{id}/…` — that draft premise was
+  wrong; no engine path or credential ever reaches the client.
   - **CONSTRAINT (R-GOV-05, discharged before the canvas landed):** the guard
     `frontend/scripts/check-bpmn-watermark.mjs` was generalized to `/(bjs|cmmn)-powered-by/i`
     **first**. NOTE the premise correction: `cmmn-js` 0.20 actually emits the SAME

@@ -424,6 +424,28 @@ public final class EngineSeed {
                 && data.stream().anyMatch(r -> caseInstanceId.equals(String.valueOf(r.get("caseInstanceId"))));
     }
 
+    /**
+     * The id of THIS case's CMMN dead-letter job (the retry target). Keyed on {@code caseInstanceId}
+     * from the cmmn-api projection, so it's residue-proof like {@link #cmmnDeadletterPresentForCase}.
+     * Fails if none is present — callers await presence first.
+     */
+    @SuppressWarnings("unchecked")
+    public static String cmmnDeadLetterJobIdFor(RestClient cmmn, String caseInstanceId) {
+        Map<String, Object> page = cmmn.get()
+                .uri("/cmmn-management/deadletter-jobs?scopeType=cmmn&size=200")
+                .retrieve()
+                .body(Map.class);
+        List<Map<String, Object>> data = (List<Map<String, Object>>) page.get("data");
+        if (data != null) {
+            for (Map<String, Object> row : data) {
+                if (caseInstanceId.equals(String.valueOf(row.get("caseInstanceId")))) {
+                    return String.valueOf(row.get("id"));
+                }
+            }
+        }
+        return fail("no CMMN dead-letter job for case " + caseInstanceId);
+    }
+
     /** Terminates a case instance (removing its dead-letter job). Quiet: a target already gone is fine. */
     public static void deleteCaseQuietly(RestClient cmmn, String caseInstanceId) {
         try {

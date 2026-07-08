@@ -14,7 +14,7 @@ import org.springframework.http.HttpStatus;
  * mapped by the global advice), never sent blind. Extracted from {@code CmmnScopeService} so
  * Phase-1 (scope facet) and Phase-2 (case detail) refuse identically.
  */
-final class CmmnCapabilities {
+public final class CmmnCapabilities {
 
     private CmmnCapabilities() {}
 
@@ -23,7 +23,7 @@ final class CmmnCapabilities {
      * capability (Flowable ≥ 6.8). An unprobed engine is refused (capability-unknown) rather than
      * assumed capable — fail-closed.
      */
-    static void requireScopeType(EngineRegistry registry, EngineConfig engine) {
+    public static void requireScopeType(EngineRegistry registry, EngineConfig engine) {
         var health = registry.healthOf(engine.id());
         EngineCapabilities capabilities = health != null ? health.capabilities() : null;
         if (capabilities == null) {

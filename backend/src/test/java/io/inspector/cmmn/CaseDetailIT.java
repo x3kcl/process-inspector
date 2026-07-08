@@ -123,6 +123,8 @@ class CaseDetailIT {
         // the "why stuck" summary — at least the one seeded dead-letter job
         assertThat(body.get("failing").get("deadLetterJobCount").asInt()).isGreaterThanOrEqualTo(1);
         assertThat(body.get("failing").get("firstException").asText()).contains("nonExistentBean");
+        // Phase 3: the dead-letter jobs are surfaced (id + context) so the UI can offer a retry.
+        assertThat(body.get("failing").get("jobs").get(0).get("id").asText()).isNotBlank();
     }
 
     @Test

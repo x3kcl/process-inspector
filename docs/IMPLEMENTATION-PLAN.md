@@ -525,7 +525,20 @@ count to a "≥N" lower bound under a truncated DLQ scan — see `CMMN-SCOPE-PHA
   `CaseDetailServiceTest` (rung-1, incl. the Q7 join trap) + `CaseDetailIT` (rung-4 live 6.8) +
   `planItemModel.test.ts` + `e2e/case-detail.spec.ts` (incl. a real in-browser cmmn-js render).
   Live-verified vs real 6.8. Full design + wire provenance: **`docs/CMMN-CASE-DETAIL-PHASE-2.md`**.
-  **Phase 3** — CMMN corrective actions under the full `corrective-actions` rails. All gated 6.8+.
+  - **Phase 3 — LANDED 2026-07-08 (full-stack): CMMN dead-letter retry.** The read-only case detail
+    becomes actionable for the ONE verb a co-deployed CMMN case needs — **Retry job** (tier 0 /
+    RESPONDER) — under the FULL `corrective-actions` rails. Key design call: the BPMN
+    `CorrectiveActionService` dispatcher was **generalized** (an `ActionScope.CMMN` seam), NOT forked
+    into a parallel service — the rails are scope-neutral (`audit_entry` keys on a generic instance
+    id). Two seams differ: the by-id restatement reads `cmmn-management/deadletter-jobs/{id}`
+    (cap-free, owner=`caseInstanceId`) and the move is `POST …/cmmn-management/deadletter-jobs/{id}`
+    `{"action":"move"}` (byte-identical to process-api — live-proven 6.8). Route
+    `POST /api/cases/{engineId}/{caseInstanceId}/actions/{verb}` (+`/curl`, BFF-targeted);
+    capability-gated on `scopeType`; non-CMMN verbs refused. `CaseDetail.failing` now carries the
+    dead-letter `jobs` list; the CasePage offers a per-job retry and the "read-only" badge is
+    retired. Tests: `CmmnCorrectiveActionServiceTest` (rung-1, 6) + `CmmnCorrectiveActionIT` (rung-4
+    live 6.8 + Postgres) + `case-detail.spec.ts` retry e2e. SPEC §5.3, ARCH §4,
+    `docs/CMMN-CASE-DETAIL-PHASE-2.md` §9, `docs/CMMN-SCOPE-PHASE-0.md` §7.
 - Registry CRUD UI; shared server-side saved views; k-way-merge deep paging; OIDC hardening.
 
 ### v2/M4 — State store + snapshot store: architectural boundary *(decided 2026-07-07, pre-build)*
