@@ -298,11 +298,19 @@ wire-facts** — neither correction changes the RE-LOCK, but both are now known 
   parsed `Instant`. Rung-1 goldens in `StatusJoinTest.ResultOrder` (tiebreak, `+00:00`/`Z` same-instant
   equality-then-tiebreak, nullsLast, failureTime-mode, shuffle-stable). No API change — ships page-1
   determinism immediately.
-- **S2 — Backend cursor + bounded page merge (R-SEM-22, R-NFR-08).** `PageWindow` seam into
-  `searchOneEngine`; cursor codec + `filterHash` bind + **inbound offset/cap re-validation** +
-  TTL + bounded `boundaryIds`; `HISTORIC` cursor union; `DEEP_PAGE` bulkhead lane; `depthCapped`.
-  Rung-1 (codec/dedup/bound) + rung-2 (MockWebServer: crafted-cursor refused pre-fan-out) + cached
-  `@SpringBootTest` RBAC.
+- **S2 — Backend cursor + bounded page merge (R-SEM-22, R-NFR-08).** ✔ **LANDED 2026-07-09.**
+  `PagingCursor` (codec + `filterHash` bind + inbound **per-engine** offset/cap re-validation + TTL +
+  bounded `boundaryIds`) and the pure bounded k-way `mergePage`; a `PageWindow` seam threaded into
+  `searchOneEngine`/`mixedPlan` with `CallPriority` threaded through the whole MIXED enrichment chain so
+  the deep-page fan-out runs on the new `CallPriority.DEEP_PAGE` bulkhead+breaker lane and never starves
+  the 8-permit interactive lane; per-engine `deep-paging-max-depth` on `EngineConfig` (default 5000);
+  `SearchService.deepPage` orchestration (MIXED/`startTime`-only — `failureTime`/INVERTED refused → the
+  filter seam); `depthCapped`. **Offset advances over the engine's RAW result set** (not the BFF-filtered
+  subset) by `|raw ≥ boundary| − |kept-but-unemitted-at-boundary|`, which drains a same-instant cluster
+  larger than the window without dup/skip. Rung-1 `PagingCursorTest` (codec, bound-check, filterHash,
+  multi-page + same-instant-cluster merge walks) + rung-2 `SearchServiceDeepPageTest` (crafted over-cap
+  cursor refused pre-fan-out, `verifyNoInteractions`). **No API surface yet — S3 wires the controller
+  and adds the web-layer RBAC test.**
 - **S3 — API surface.** `SearchRequest.cursor` + `SearchResponse.nextCursor`/`depthCapped`/
   `pagingCoherence`, controller wiring, `gen:api` regen (isolated diff).
 - **S4 — Frontend "Load more".** `useInfiniteQuery` cursor chain, overflow-only surfacing,

@@ -709,8 +709,10 @@ ARCH §2.4's parked "v2 can add k-way-merge cursors…" sentence.
   `failureTime` (job `createTime`) **is** engine-sortable on 6.8/7.1 (INVERTED door known-open,
   still deferred). → **S1 ✔ landed** deterministic total order (R-SEM-23, standalone: comparator
   extracted into `StatusJoin.resultOrder`, `compositeId` tiebreak, `startTime` as `Instant`; rung-1
-  goldens) → **S2** backend cursor + bounded merge
-  (`PageWindow` seam, codec + inbound cap re-validation + TTL, `DEEP_PAGE` lane, R-SEM-22/R-NFR-08)
+  goldens) → **S2 ✔ landed** backend cursor + bounded merge (`PagingCursor` codec/bound-check/`mergePage`,
+  `PageWindow` seam, `CallPriority.DEEP_PAGE` lane threaded through the MIXED chain, per-engine
+  `deep-paging-max-depth` on `EngineConfig`, `SearchService.deepPage`; offset advances over the RAW engine
+  set so same-instant clusters drain without dup/skip; R-SEM-22/R-NFR-08; rung-1+rung-2, no API surface yet)
   → **S3** API surface + `gen:api` → **S4** frontend "Load more" → **S5** live-engine ITs
   (config-lowered caps, same-second cluster, drop-engine-mid-scroll honesty). Each CI-green +
   independently mergeable; caps config-lowerable so correctness proves at `deep-paging-max-depth:6`.

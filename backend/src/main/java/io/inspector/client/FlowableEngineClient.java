@@ -64,7 +64,12 @@ public class FlowableEngineClient {
      */
     public enum CallPriority {
         INTERACTIVE("engine", null),
-        BACKGROUND("sampler", "sampler");
+        BACKGROUND("sampler", "sampler"),
+        // v2 k-way-merge deep paging (R-NFR-08): an offset-near-cap historic query is far heavier
+        // than page-1, and a scroller (or an attacker firing cursors at offset=cap-1) must NEVER
+        // consume the 8 interactive permits page-1 search is waiting on. Its OWN per-engine lane
+        // keyed "{id}:deep-page" so deep scroll degrades itself, never interactive search.
+        DEEP_PAGE("deep-page", "deep-page");
 
         private final String config;
         private final String suffix;
@@ -413,11 +418,17 @@ public class FlowableEngineClient {
      * runtime query ignores {@code processInstanceIds} (proven on 6.3.1: the unknown field
      * is silently dropped and the query returns UNFILTERED data). 404 = not running.
      */
-    @SuppressWarnings("unchecked")
     public Map<String, Object> getRuntimeProcessInstance(EngineConfig engine, String processInstanceId) {
+        return getRuntimeProcessInstance(engine, processInstanceId, CallPriority.INTERACTIVE);
+    }
+
+    @SuppressWarnings("unchecked")
+    public Map<String, Object> getRuntimeProcessInstance(
+            EngineConfig engine, String processInstanceId, CallPriority priority) {
         try {
             return guarded(
                     engine,
+                    priority,
                     () -> client(engine)
                             .get()
                             .uri("/runtime/process-instances/{id}", processInstanceId)
@@ -437,8 +448,14 @@ public class FlowableEngineClient {
      */
     public FlowablePage listUnfinishedActivities(
             EngineConfig engine, String processInstanceId, String tenantId, int size) {
+        return listUnfinishedActivities(engine, processInstanceId, tenantId, size, CallPriority.INTERACTIVE);
+    }
+
+    public FlowablePage listUnfinishedActivities(
+            EngineConfig engine, String processInstanceId, String tenantId, int size, CallPriority priority) {
         return guarded(
                 engine,
+                priority,
                 () -> client(engine)
                         .get()
                         .uri(uri -> {

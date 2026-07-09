@@ -57,6 +57,10 @@ resilience4j:
       # background poll trips independently of the interactive breaker — same failure model.
       sampler:
         base-config: engine
+      # v2 deep-paging's OWN breaker (instances keyed "{id}:deep-page", R-NFR-08): an
+      # offset-near-cap query failing/timing out trips independently of interactive search.
+      deep-page:
+        base-config: engine
   # Do-no-harm companion to the breaker (ARCH §2.2): caps concurrent in-flight calls PER
   # ENGINE so the search plans' parallel enrichment legs queue instead of flooding an
   # engine that is typically already under load when this tool is open.
@@ -69,6 +73,12 @@ resilience4j:
       # own small per-engine permit share so it can never starve an interactive search of the
       # 8 interactive permits. Short wait — a contended sample is skipped, not queued long.
       sampler:
+        max-concurrent-calls: 2
+        max-wait-duration: 5s
+      # v2 deep-paging's THIN lane (R-NFR-08): a heavy offset-near-cap fan-out gets its own small
+      # per-engine permit share so a scroller (or a crafted-cursor flood) can never starve the 8
+      # interactive permits. Short wait — a contended deep page degrades, never queues long.
+      deep-page:
         max-concurrent-calls: 2
         max-wait-duration: 5s
 
