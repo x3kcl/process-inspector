@@ -80,9 +80,14 @@ report "no ENGINE_*_PASSWORD literals in shipping source (backend main / fronten
 #    Excludes .mcp.json: the dockerized dev-tooling config, whose Postgres DATABASE_URI
 #    default (inspector:inspector@postgres) is the SAME public dev fixture as the compose
 #    stack — a dev/test credential, allowed like docker/ and CI (secrets there stay env-ref).
+#    Also excludes the SSRF validator's hostile-input corpus: those user:pass@host strings are
+#    the NEGATIVE fixtures that PROVE RegistryUrlValidator rejects credential-in-URL (R-OPS-13),
+#    not real credentials — the twin of the .mcp.json intentional-fixture carve-out.
 report "no user:password@ URLs anywhere tracked" \
   "$(git grep -nE '[a-z][a-z0-9+.-]*://[^/@[:space:]"'"'"']+:[^/@[:space:]"'"'"']+@' -- \
         $SELF ':!*.lock' ':!*package-lock.json' ':!.mcp.json' \
+        ':!backend/src/test/java/io/inspector/registry/RegistryUrlHostileCorpusTest.java' \
+        ':!backend/src/test/java/io/inspector/registry/RegistryUrlValidatorTest.java' \
      || true)"
 
 # ---------------------------------------------------------------------------------------

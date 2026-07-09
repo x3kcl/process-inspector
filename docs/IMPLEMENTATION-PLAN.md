@@ -581,7 +581,7 @@ check-then-connect; trust is earned by a **read-only** probe (DRAFT→PROBED→A
 and delete is a soft tombstone; hot reload evicts the per-id client caches (no restart).
 
 **Slices — dangerous plumbing lands and is tested behind nothing before any UI reaches it:**
-- **S1 — SSRF validator (pure, no wiring).** `RegistryUrlValidator`: **canonicalize first**
+- **S1 — SSRF validator (pure, no wiring). ✅ LANDED 2026-07-09.** `RegistryUrlValidator`: **canonicalize first**
   (trailing-dot, punycode, `..`-traversal, implicit-port) → scheme → egress-allowlist →
   **IPv6-complete** metadata/private/loopback/ULA denylist across all resolved IPs →
   resolve-then-pin (pin the validated IP; connect-time re-checks the *pinned* IP, never
@@ -590,6 +590,12 @@ and delete is a soft tombstone; hot reload evicts the per-id client caches (no r
   CI-gating rung-1 suite (every metadata-IP encoding incl. `::ffff:`, `..`/trailing-dot host, a
   rebinding stub, scheme/credential/redirect rejects). A quiet allow = Sev1 (R-TEST-03).
   Done-when: corpus green; validator rejects every hostile case, accepts the demo engines.
+  *Shipped:* `RegistryUrlValidator` + `RegistryAddresses`/`Cidr`/`RegistryEgressPolicy` +
+  `HostResolver` seam; the denylist decodes glibc numeric v4 (decimal/hex/octal/short-form)
+  AND recurses IPv6 v4-embeddings (v4-mapped `::ffff:`, v4-compatible, NAT64 `64:ff9b::/96`,
+  6to4 `2002::/16`) so the metadata IP can't ride a transition prefix (Gemini S1 review).
+  Redirect rejection stays `followRedirects(NEVER)` on the built client (asserted in the S3/S4
+  IT, not the pure corpus). 55 rung-1 assertions green.
 - **S2 — store + seed.** `V7__engine_registry.sql` (identity-keyed by the immutable slug,
   lifecycle/tombstone columns, secret **refs** by name — DDL in REGISTRY-CRUD.md §10); entity +
   `JpaRepository` + `@Transactional EngineRegistryStore` (V6 saved-view shape). YAML-seed
