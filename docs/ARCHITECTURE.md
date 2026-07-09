@@ -206,7 +206,19 @@ out-of-scope count writes no row — the series stays honest rather than fabrica
 ## 3. Engine Registry — data model
 
 v1 is **config-first** (YAML + env-var secret refs, 12-factor). The identical shape becomes a
-JPA table when runtime CRUD of engines is wanted (v2).
+JPA table (`engine_registry`, `V7`) when runtime CRUD of engines is wanted — **v2 Registry
+CRUD, design locked in [REGISTRY-CRUD.md](REGISTRY-CRUD.md)**. The store is
+**DB-authoritative once initialized**: an empty engine table imports `inspector.engines` as a
+one-time audited seed (like the v2/M4 localStorage→server backfill), a non-empty table wins
+and YAML is ignored with a startup WARN, and `inspector.registry.source: config` pins to
+config-only (CRUD off, restart semantics restored — the air-gap posture). A registry write
+refreshes `EngineRegistry`'s map, **evicts the affected `FlowableEngineClient` RestClient
+caches** (which cache per id forever — an edited base-URL/auth is otherwise stale) and resets
+the Resilience4j named instances on remove, publishes a `RegistryChangedEvent`, and triggers
+an immediate read-only re-probe — a live reload, no restart. `id` is immutable (composite-ID
+key); delete is a soft tombstone so id→name still resolves in audit/notes/saved-views. The
+runtime base-URL is validated **resolve-then-pin** against a deploy-config egress allowlist
+(SSRF, §5 + REGISTRY-CRUD.md §5). The YAML shape below is unchanged and remains the seed:
 
 ```yaml
 inspector:
@@ -297,6 +309,7 @@ surfaced by `GET /api/engines` and pushed to the health strip via SSE.
 | `POST /api/playbooks` · `GET /api/playbooks` · `POST /api/playbooks/{id}/replay` | **Remediation playbooks** (v2): record = distill the exemplar's audit rows into a verb sequence; replay = a bulk job whose items run the sequence with per-step precondition rechecks |
 | `GET  /api/audit` | Global operations log (filterable) |
 | `GET  /api/stream` | RESERVED (v1.x): engine-health SSE — bulk-job progress already streams on `GET /api/bulk/events`; whichever lands second consolidates the two into one app stream (the BFF is the event source; no engine polling relay) |
+| `GET·POST /api/admin/engines` · `PUT·DELETE /api/admin/engines/{id}` · `POST …/{id}/probe`·`/enable`·`/disable`·`/purge` | **Registry CRUD** (v2, REGISTRY-CRUD.md §9): runtime engine lifecycle. `GET` returns the full registry incl. disabled/draft/tombstoned rows + lifecycle state + secret-ref **presence** (never values — distinct from the secret-free enabled-only `GET /api/engines`). `POST`/`PUT` add/edit (all fields except the immutable `id`), SSRF-validated (resolve-then-pin, egress allowlist, metadata/private denylist), audited fail-closed before/after. `probe` runs the **read-only** version+capability probe (no mutating call, transitions DRAFT→PROBED). `enable?mode=read-write` on a prod engine ⇒ typed token + four-eyes (R-SAFE-08). `DELETE` soft-tombstones (requires DISABLED); `purge` hard-removes after retention. ALL gated `@rbac.canAdministerRegistry` (REGISTRY_ADMIN, fleet-scoped — per-engine ADMIN does not confer it) |
 | `GET  /v3/api-docs` | The OpenAPI contract (springdoc, key-ordered + fixed info version for deterministic codegen); the only unauthenticated API route besides health — it describes the surface, never data. Source of `frontend/src/api/schema.d.ts` via `npm run gen:api` (R-SEM-15) |
 
 The BFF **whitelists** engine paths — never a blind proxy. flowable-rest authorization is
@@ -320,6 +333,11 @@ nobody may "simplify" by exposing an engine directly.
   role/group maps to `(role, engineId | *, tenantId | *)` tuples — ADMIN on
   `orders-prod`/tenant-A authorizes nothing on another engine or tenant; the guard layer
   resolves the acting user's scope set against the target of every call.
+  **`REGISTRY_ADMIN`** (v2, REGISTRY-CRUD.md §7) is an **orthogonal fleet-level grant**, not a
+  ladder rung — you cannot scope "add an engine" to an engine that does not exist. It maps
+  from its own OIDC group, is checked by `rbac.canAdministerRegistry`, and is the highest-
+  privilege surface in the tool (it repoints the credential vault); per-engine ADMIN does not
+  confer it and break-glass does not grant it.
 - **Attribution:** engines see the shared service account; Flowable's `ACT_HI_*` tables
   therefore attribute mutations to it. The BFF audit log is the sole authoritative
   human-attribution record. Engines with `forward-user-header: true` additionally receive
@@ -328,7 +346,8 @@ nobody may "simplify" by exposing an engine directly.
   per-item reports, the `triage_snapshot` job-lane time-series (v2/M4, range-partitioned +
   drop-partition retention — §2.6), per-user Saved Views + Recent Searches (`saved_view` /
   `recent_search`, v2/M4 — keyed to the authenticated user; superseded the v1 localStorage
-  store, with a one-time client backfill), registry CRUD (v2). No durable
+  store, with a one-time client backfill), the **engine registry itself** (`engine_registry`,
+  v2 Registry CRUD — DB-authoritative once seeded from YAML; REGISTRY-CRUD.md). No durable
   job-execution framework — in-memory execution, per-item flush, `INTERRUPTED` on restart.
 - **Audit:** every mutating call → `(user, ts, engineId, instanceId, tenantId, action,
   reason, requestPayload incl. old values, httpStatus, outcome, responseSnippet)`; one row

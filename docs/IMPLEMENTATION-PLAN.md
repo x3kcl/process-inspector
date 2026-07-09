@@ -559,7 +559,60 @@ count to a "≥N" lower bound under a truncated DLQ scan — see `CMMN-SCOPE-PHA
     live 6.8 + Postgres, 2 — retry + delete over two concurrently-failing cases) + `case-detail.spec.ts`
     retry + delete-gated + delete-modal e2e. SPEC §5.3, ARCH §4,
     `docs/CMMN-CASE-DETAIL-PHASE-2.md` §9, `docs/CMMN-SCOPE-PHASE-0.md` §7.
-- Registry CRUD UI; shared server-side saved views; k-way-merge deep paging; OIDC hardening.
+- Shared server-side saved views; k-way-merge deep paging; OIDC hardening.
+
+### v2 — Registry CRUD: runtime engine lifecycle *(design locked 2026-07-09, unbuilt)*
+The registry moves YAML→DB so ops can onboard/retire/tune engines without a deploy — the
+completion of the "BFF is now stateful" arc. **Full design + panel + threat model +
+API/DDL/state-machine: `docs/REGISTRY-CRUD.md`.** Discharges R-OPS-13
+(SSRF rails, now concrete), R-OPS-15 (source-of-truth + hot reload), R-SAFE-13
+(REGISTRY_ADMIN + governance); supersedes R-SEM-17's "registry change = restart" for the
+CRUD-managed path.
+
+**Boundary decisions locked before build** (REGISTRY-CRUD.md §3): DB-authoritative once
+initialized (YAML = one-time audited seed + `registry.source: config` pin); the egress
+allowlist is deploy config, never a UI field; validation is **resolve-then-pin**, not
+check-then-connect; trust is earned by a **read-only** probe (DRAFT→PROBED→ACTIVE);
+`REGISTRY_ADMIN` is an orthogonal fleet grant; CRUD is audited fail-closed; `id` is immutable
+and delete is a soft tombstone; hot reload evicts the per-id client caches (no restart).
+
+**Slices — dangerous plumbing lands and is tested behind nothing before any UI reaches it:**
+- **S1 — SSRF validator (pure, no wiring).** `RegistryUrlValidator`: **canonicalize first**
+  (trailing-dot, punycode, `..`-traversal, implicit-port) → scheme → egress-allowlist →
+  **IPv6-complete** metadata/private/loopback/ULA denylist across all resolved IPs →
+  resolve-then-pin (pin the validated IP; connect-time re-checks the *pinned* IP, never
+  re-resolves) → credential-in-URL + redirect rejection. The `/external-job-api` + `/cmmn-api`
+  **sibling URLs inherit the same pin + policy**. Ships with the **hostile-URL corpus** as a
+  CI-gating rung-1 suite (every metadata-IP encoding incl. `::ffff:`, `..`/trailing-dot host, a
+  rebinding stub, scheme/credential/redirect rejects). A quiet allow = Sev1 (R-TEST-03).
+  Done-when: corpus green; validator rejects every hostile case, accepts the demo engines.
+- **S2 — store + seed.** `V7__engine_registry.sql` (identity-keyed by the immutable slug,
+  lifecycle/tombstone columns, secret **refs** by name — DDL in REGISTRY-CRUD.md §10); entity +
+  `JpaRepository` + `@Transactional EngineRegistryStore` (V6 saved-view shape). YAML-seed
+  import on empty table (audited `registry-seed`); `inspector.registry.source: db|config`
+  switch. `NoDbTestSupport` gains the new repo mock. Done-when: empty-table seed IT + non-empty
+  WARN + config-pin 403 all green; `ddl-auto=validate` holds.
+- **S3 — reload seam (strictly post-commit).** `EngineRegistry` moves the `enabled` filter
+  from ctor to `all()` and gains `refresh(id)`; `FlowableEngineClient.evict(id)` drops the
+  cached read/write RestClients (+ **removes**, not resets, the R4j named instances on
+  remove/purge). Refresh/evict/`RegistryChangedEvent`/re-probe run in a
+  `TransactionSynchronization.afterCommit` hook so in-memory state never runs ahead of a
+  rolled-back row. Done-when: rung-4 IT edits an ACTIVE engine's base-URL over REST and the next
+  call hits the new host (Awaitility on the re-probe — never `Thread.sleep`); a forced
+  audit-close failure leaves neither the row nor the in-memory map mutated.
+- **S4 — admin API + governance.** New `rbac.canAdministerRegistry` gate + `ROLE_REGISTRY_ADMIN`
+  dev user + OIDC group mapping; `AdminEnginesController` (REGISTRY-CRUD.md §9) with
+  SSRF-validate → persist → reload; fail-closed audit (`registry-*` actions, before/after
+  payload, secret-ref redaction); the read-only-probe endpoint; the prod enable-read-write
+  four-eyes + typed-token path (reuses R-SAFE-08); break-glass exclusion. `/api/me` gains
+  `registryAdmin`. Done-when: RBAC matrix (door + service, per-engine-ADMIN refused,
+  break-glass refused) + audit-integrity (fail-closed, redaction) green.
+- **S5 — admin UI.** Route `/admin/engines` (greyed-never-hidden), list with lifecycle
+  column + env band + secret-ref presence + "Test connection", add/edit form with live
+  rule-named SSRF validation, prod enable-read-write typed-token/four-eyes UI, R-UXQ-04
+  zero-states. Types via `npm run gen:api` (never hand-written). Done-when: Playwright smoke
+  (add→probe→enable→edit→disable→remove) + axe green.
+
 
 ### v2/M4 — State store + snapshot store: architectural boundary *(decided 2026-07-07, pre-build)*
 The BFF shifts from transient proxy to **stateful telemetry aggregator**. Boundary decisions
