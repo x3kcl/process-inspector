@@ -112,12 +112,14 @@ class RbacGuardMatrixTest {
     }
 
     @Test
-    void unknownVerbPassesRbacSoTheControllerCanAnswer404() {
-        // A typo must surface as 404, never masquerade as a 403 permission problem.
+    void unknownVerbFailsClosed() {
+        // Fail-closed (IDP-SECURITY.md §3.10): an unknown verb is DENIED — was `.orElse(true)`, a
+        // fail-OPEN authorization default. The typo→404 UX is preserved by VerbExistenceInterceptor
+        // (runs before @PreAuthorize), proven over HTTP at rung 3 in ActionRbacGuardSpringTest.
         assertThat(rbac.canExecute(as(Role.ADMIN), ENGINE, "reticulate-splines"))
-                .isTrue();
+                .isFalse();
         assertThat(rbac.canExecute(as(Role.VIEWER), ENGINE, "reticulate-splines"))
-                .isTrue();
+                .isFalse();
     }
 
     @Test

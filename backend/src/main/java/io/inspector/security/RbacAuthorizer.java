@@ -50,13 +50,18 @@ public class RbacAuthorizer {
 
     /**
      * SpEL entry for the actions endpoint: may this user run {@code verbPath} on
-     * {@code engineId}? Unknown verbs pass — the controller answers 404 for them (a typo
-     * must not masquerade as a permission problem).
+     * {@code engineId}? <b>Fail-closed (IDP-SECURITY.md §3.10):</b> an unknown verb path is
+     * DENIED ({@code .orElse(false)}) — a verb wired before its enum entry, a rename, or a
+     * sub-path must never execute with no role check (the old {@code .orElse(true)} was a
+     * fail-OPEN authorization default). The typo→404 UX is preserved separately by the
+     * {@code VerbExistenceInterceptor}, which answers 404 for an unknown verb BEFORE this gate
+     * evaluates — so a typo dies as "unknown verb", a known-but-forbidden verb as a clean 403,
+     * and the authorization decision itself never defaults to allow.
      */
     public boolean canExecute(Authentication auth, String engineId, String verbPath) {
         return ActionVerb.fromPath(verbPath)
                 .map(verb -> hasRoleOn(auth, verb.minRole(), engineId))
-                .orElse(true);
+                .orElse(false);
     }
 
     /** SpEL entry for non-verb endpoints (notes, audit): role floor on one engine. */
