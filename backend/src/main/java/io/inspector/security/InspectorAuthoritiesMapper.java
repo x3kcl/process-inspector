@@ -27,11 +27,12 @@ import org.springframework.stereotype.Component;
 @Component
 public class InspectorAuthoritiesMapper implements GrantedAuthoritiesMapper {
 
-    private final ScopeMappingService scopeMapping;
+    private final io.inspector.security.mapping.MappingSource mappingSource;
     private final OidcGroupResolver groupResolver;
 
-    public InspectorAuthoritiesMapper(ScopeMappingService scopeMapping, OidcGroupResolver groupResolver) {
-        this.scopeMapping = scopeMapping;
+    public InspectorAuthoritiesMapper(
+            io.inspector.security.mapping.MappingSource mappingSource, OidcGroupResolver groupResolver) {
+        this.mappingSource = mappingSource;
         this.groupResolver = groupResolver;
     }
 
@@ -40,7 +41,7 @@ public class InspectorAuthoritiesMapper implements GrantedAuthoritiesMapper {
         Set<GrantedAuthority> mapped = new LinkedHashSet<>(authorities);
         for (GrantedAuthority authority : authorities) {
             List<String> groups = groupsOf(authority);
-            for (Role role : scopeMapping.rolesForGroups(groups)) {
+            for (Role role : mappingSource.rolesForGroups(groups)) {
                 mapped.add(new SimpleGrantedAuthority("ROLE_" + role.name()));
             }
         }

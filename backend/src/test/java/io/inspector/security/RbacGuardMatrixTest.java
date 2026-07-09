@@ -6,7 +6,6 @@ import io.inspector.action.ActionVerb;
 import io.inspector.config.InspectorProperties;
 import io.inspector.config.InspectorProperties.EngineConfig;
 import io.inspector.support.TestEngines;
-import java.time.Clock;
 import java.util.ArrayList;
 import java.util.Arrays;
 import java.util.List;
@@ -40,13 +39,13 @@ class RbacGuardMatrixTest {
     private static RbacAuthorizer newAuthorizer() {
         List<EngineConfig> engines = List.of(TestEngines.engine(ENGINE, "http://localhost:1/flowable-rest"));
         InspectorProperties registry = new InspectorProperties(null, null, null, null, engines);
-        SecurityProperties props = new SecurityProperties(null, null, null, null, null);
-        // No scope-mapping file here (null) → the audit path is never exercised; a mock suffices.
-        ScopeMappingService scopeMapping = new ScopeMappingService(
-                props, Clock.systemUTC(), org.mockito.Mockito.mock(io.inspector.audit.AuditService.class));
-        // Dev/basic sessions only in this matrix → the OIDC group path is never exercised; a mock
-        // resolver suffices (the OIDC branches are covered in OidcGroupResolverTest).
-        return new RbacAuthorizer(scopeMapping, props, registry, org.mockito.Mockito.mock(OidcGroupResolver.class));
+        // Dev/basic sessions only in this matrix → the OIDC group / mapping-source path is never
+        // exercised (grants come from ROLE_* authorities); mocks suffice. The OIDC branches are
+        // covered in OidcGroupResolverTest; mapping resolution in the mapping-package tests.
+        return new RbacAuthorizer(
+                org.mockito.Mockito.mock(io.inspector.security.mapping.MappingSource.class),
+                registry,
+                org.mockito.Mockito.mock(OidcGroupResolver.class));
     }
 
     /** A dev/basic session carrying exactly one {@code ROLE_*} authority = global scope. */

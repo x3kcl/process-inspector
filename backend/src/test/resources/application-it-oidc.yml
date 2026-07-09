@@ -4,6 +4,11 @@
 # env placeholders are all satisfied — proving that config parses and the chain boots against a
 # genuine issuer. Snapshot sampler + registry seeding off (no engines needed for the auth path).
 inspector:
+  security:
+    # The env-bootstrap apex floor — satisfies the ≥1-ACCESS_ADMIN boot invariant (S3) under the
+    # oidc profile. A real deploy sets INSPECTOR_ACCESS_ADMIN_GROUP; here it's a realm group.
+    mapping:
+      access-admin-group: flowable-admins
   snapshot:
     enabled: false
   registry:

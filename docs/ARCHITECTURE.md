@@ -398,9 +398,11 @@ nobody may "simplify" by exposing an engine directly.
   `recordConfigEvent`; dangling-scope canon renders greyed-with-reason via R-SEM-17 id→name, never
   a clean all-clear), the **engine registry itself** (`engine_registry`,
   v2 Registry CRUD — DB-authoritative once seeded from YAML; REGISTRY-CRUD.md), and the
-  **group→scope mapping** (`group_scope_grant` + `group_fleet_grant`, v2 IdP-Security —
+  **group→scope mapping** (`group_scope_grant` + `group_fleet_grant`, v2 IdP-Security — **S3 built**:
   DB-authoritative once seeded from the mounted YAML, `mapping-source: file|db` pin, a
-  `MappingSource` seam behind `ScopeMappingService`; IDP-SECURITY.md). No durable
+  `MappingSource` seam — `FileMappingSource`/`DbMappingSource` by profile — that `RbacAuthorizer`
+  now reads for both ladder and fleet grants; the env-bootstrap `ACCESS_ADMIN` apex overlay + the
+  ≥1/≥2-apex boot invariant are the lock-out floor; IDP-SECURITY.md). No durable
   job-execution framework — in-memory execution, per-item flush, `INTERRUPTED` on restart.
 - **Audit:** every mutating call → `(user, ts, engineId, instanceId, tenantId, action,
   reason, requestPayload incl. old values, httpStatus, outcome, responseSnippet)`; one row
