@@ -132,7 +132,8 @@ public class FlowSurgeryService {
                 CHANGE_STATE_ACTION,
                 reason,
                 blankToNull(request.ticketId()),
-                plan.auditPayload());
+                plan.auditPayload(),
+                engine.auditPayloadOrDefault());
 
         dispatchAudited(entry, engineId, () -> {
             client.changeActivityState(engine, instanceId, plan.restBody());
@@ -445,7 +446,8 @@ public class FlowSurgeryService {
                 RESTART_ACTION,
                 reason,
                 blankToNull(request.ticketId()),
-                payload);
+                payload,
+                engine.auditPayloadOrDefault());
 
         Map<String, Object> started =
                 dispatchAudited(entry, engineId, () -> client.startProcessInstance(engine, startBody));

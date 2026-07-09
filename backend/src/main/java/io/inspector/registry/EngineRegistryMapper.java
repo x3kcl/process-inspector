@@ -1,5 +1,6 @@
 package io.inspector.registry;
 
+import io.inspector.audit.AuditPayloadMode;
 import io.inspector.config.InspectorProperties.AlarmThresholds;
 import io.inspector.config.InspectorProperties.Auth;
 import io.inspector.config.InspectorProperties.EngineConfig;
@@ -60,7 +61,8 @@ public final class EngineRegistryMapper {
                 timeouts,
                 row.getMaxPageSize(),
                 row.getDlqScanCap(),
-                alarms);
+                alarms,
+                AuditPayloadMode.fromWire(row.getAuditPayload()));
     }
 
     /**
@@ -105,6 +107,7 @@ public final class EngineRegistryMapper {
             row.setAlarmOverdueGraceS(alarms.overdueTimerGraceS());
         }
 
+        row.setAuditPayload(engine.auditPayloadOrDefault().wire());
         row.setCreatedAt(now);
         row.setUpdatedAt(now);
         row.setSource(SOURCE_YAML_SEED);

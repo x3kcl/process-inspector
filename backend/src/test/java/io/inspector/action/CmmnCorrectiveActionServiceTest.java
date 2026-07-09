@@ -80,7 +80,7 @@ class CmmnCorrectiveActionServiceTest {
                 null,
                 null,
                 false);
-        when(audit.beginPending(any(), any(), any(), any(), any(), any(), any(), any()))
+        when(audit.beginPending(any(), any(), any(), any(), any(), any(), any(), any(), any()))
                 .thenReturn(pendingEntry);
     }
 
@@ -131,7 +131,8 @@ class CmmnCorrectiveActionServiceTest {
         // NOT the process-api lane
         order.verify(client).getCmmnDeadLetterJob(engine, JOB);
         // the audit "instance" is the caseInstanceId (audit_entry keys on a generic id)
-        order.verify(audit).beginPending(eq("op"), eq(ENGINE), any(), eq(CASE), eq("retry-job"), any(), any(), any());
+        order.verify(audit)
+                .beginPending(eq("op"), eq(ENGINE), any(), eq(CASE), eq("retry-job"), any(), any(), any(), any());
         // and the one engine call is the CMMN move, never the BPMN one
         order.verify(client).moveCmmnDeadLetterJob(engine, JOB);
         order.verify(audit).close(eq(pendingEntry), eq(AuditOutcome.ok), eq(200), any(), eq(true));
@@ -215,7 +216,8 @@ class CmmnCorrectiveActionServiceTest {
         // same server-fresh by-id restatement as retry (before the audit gate) …
         order.verify(client).getCmmnDeadLetterJob(engine, JOB);
         order.verify(audit)
-                .beginPending(eq("op"), eq(ENGINE), any(), eq(CASE), eq("delete-deadletter"), any(), any(), any());
+                .beginPending(
+                        eq("op"), eq(ENGINE), any(), eq(CASE), eq("delete-deadletter"), any(), any(), any(), any());
         // … but the one engine call is the CMMN delete, never the move or the BPMN delete
         order.verify(client).deleteCmmnDeadLetterJob(engine, JOB);
         order.verify(audit).close(eq(pendingEntry), eq(AuditOutcome.ok), eq(200), any(), eq(true));

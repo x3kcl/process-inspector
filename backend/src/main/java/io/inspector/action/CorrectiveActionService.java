@@ -119,7 +119,8 @@ public class CorrectiveActionService {
                 verb.path(),
                 reason,
                 blankToNull(request.ticketId()),
-                target.auditPayload());
+                target.auditPayload(),
+                engine.auditPayloadOrDefault());
 
         // -- CAS pre-check (audited: the last shift must see the refused attempt) --
         if (verb == ActionVerb.EDIT_VARIABLE) {

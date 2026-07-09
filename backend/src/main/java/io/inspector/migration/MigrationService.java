@@ -139,7 +139,8 @@ public class MigrationService {
                 MIGRATE_ACTION,
                 reason,
                 blankToNull(request.ticketId()),
-                plan.auditPayload());
+                plan.auditPayload(),
+                engine.auditPayloadOrDefault());
 
         dispatchAudited(entry, engineId, () -> {
             client.migrateInstance(engine, instanceId, plan.restBody());

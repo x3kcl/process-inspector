@@ -1,5 +1,6 @@
 package io.inspector.config;
 
+import io.inspector.audit.AuditPayloadMode;
 import jakarta.validation.Valid;
 import jakarta.validation.constraints.NotBlank;
 import jakarta.validation.constraints.NotNull;
@@ -149,7 +150,57 @@ public record InspectorProperties(
             @Valid Timeouts timeouts,
             Integer maxPageSize,
             Integer dlqScanCap,
-            @Valid AlarmThresholds alarmThresholds) {
+            @Valid AlarmThresholds alarmThresholds,
+            // Per-engine audit-payload minimization (R-AUD-03). Null → redacted (minimization by
+            // default); YAML `audit-payload: full|redacted|metadata-only` binds here.
+            AuditPayloadMode auditPayload) {
+
+        // @ConfigurationProperties binding is ambiguous once a record has >1 constructor — pin the
+        // canonical (15-arg) one as the bind target so the convenience ctor below is ignored.
+        @ConstructorBinding
+        public EngineConfig {}
+
+        /**
+         * Pre-S2 14-arg shape (no {@code auditPayload}) → the redacted default, so existing
+         * factories/tests don't churn (unit-test-patterns: no constructor churn).
+         */
+        public EngineConfig(
+                String id,
+                String name,
+                String baseUrl,
+                EngineEnvironment environment,
+                String accentColor,
+                boolean enabled,
+                String tenantId,
+                String telemetryUrlTemplate,
+                Auth auth,
+                EngineMode mode,
+                Timeouts timeouts,
+                Integer maxPageSize,
+                Integer dlqScanCap,
+                AlarmThresholds alarmThresholds) {
+            this(
+                    id,
+                    name,
+                    baseUrl,
+                    environment,
+                    accentColor,
+                    enabled,
+                    tenantId,
+                    telemetryUrlTemplate,
+                    auth,
+                    mode,
+                    timeouts,
+                    maxPageSize,
+                    dlqScanCap,
+                    alarmThresholds,
+                    null);
+        }
+
+        public AuditPayloadMode auditPayloadOrDefault() {
+            return auditPayload != null ? auditPayload : AuditPayloadMode.REDACTED;
+        }
+
         public EngineMode modeOrDefault() {
             return mode != null ? mode : EngineMode.READ_WRITE;
         }

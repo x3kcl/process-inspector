@@ -96,7 +96,7 @@ class CorrectiveActionServiceTest {
                 null,
                 null,
                 false);
-        when(audit.beginPending(any(), any(), any(), any(), any(), any(), any(), any()))
+        when(audit.beginPending(any(), any(), any(), any(), any(), any(), any(), any(), any()))
                 .thenReturn(pendingEntry);
 
         when(client.getJob(any(), eq(JobLaneKind.DEADLETTER), eq("j1")))
@@ -205,14 +205,15 @@ class CorrectiveActionServiceTest {
         service.execute(DEV, "pi-1", ActionVerb.RETRY_JOB, retryRequest(), operator);
 
         InOrder order = inOrder(audit, client);
-        order.verify(audit).beginPending(eq("op"), eq(DEV), any(), eq("pi-1"), eq("retry-job"), any(), any(), any());
+        order.verify(audit)
+                .beginPending(eq("op"), eq(DEV), any(), eq("pi-1"), eq("retry-job"), any(), any(), any(), any());
         order.verify(client).moveDeadLetterJob(any(), eq("j1"));
         order.verify(audit).close(eq(pendingEntry), eq(AuditOutcome.ok), eq(200), any(), eq(true));
     }
 
     @Test
     void auditUnavailableAbortsBeforeAnyEngineMutation() {
-        when(audit.beginPending(any(), any(), any(), any(), any(), any(), any(), any()))
+        when(audit.beginPending(any(), any(), any(), any(), any(), any(), any(), any(), any()))
                 .thenThrow(new AuditUnavailableException(new RuntimeException("db down")));
 
         assertThatThrownBy(() -> service.execute(DEV, "pi-1", ActionVerb.RETRY_JOB, retryRequest(), operator))
@@ -416,7 +417,7 @@ class CorrectiveActionServiceTest {
 
         InOrder order = inOrder(audit, client);
         order.verify(audit)
-                .beginPending(eq("op"), eq(DEV), any(), eq("pi-1"), eq("reassign-task"), any(), any(), any());
+                .beginPending(eq("op"), eq(DEV), any(), eq("pi-1"), eq("reassign-task"), any(), any(), any(), any());
         order.verify(client).setTaskAssignee(any(), eq("task-9"), eq("gonzo"));
         order.verify(audit).close(eq(pendingEntry), eq(AuditOutcome.ok), eq(200), any(), eq(true));
         assertThat(result.deltaStatement()).contains("reassigned to 'gonzo'").contains("was 'kermit'");

@@ -1,5 +1,6 @@
 package io.inspector.registry;
 
+import io.inspector.audit.AuditPayloadMode;
 import jakarta.persistence.Column;
 import jakarta.persistence.Entity;
 import jakarta.persistence.Id;
@@ -95,6 +96,11 @@ public class EngineRegistryRow {
 
     @Column(name = "source", nullable = false)
     private String source;
+
+    // Defaults to redacted (minimization by default) for new UI-added rows — Hibernate overwrites
+    // it from the column on load; the YAML seed sets it explicitly. Mirrors the V8 column DEFAULT.
+    @Column(name = "audit_payload", nullable = false)
+    private String auditPayload = AuditPayloadMode.REDACTED.wire();
 
     public EngineRegistryRow() {
         // JPA + test/DTO construction
@@ -290,6 +296,14 @@ public class EngineRegistryRow {
 
     public void setRemovedAt(Instant removedAt) {
         this.removedAt = removedAt;
+    }
+
+    public String getAuditPayload() {
+        return auditPayload;
+    }
+
+    public void setAuditPayload(String auditPayload) {
+        this.auditPayload = auditPayload;
     }
 
     public String getSource() {

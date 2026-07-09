@@ -109,7 +109,7 @@ class FlowSurgeryServiceTest {
                 null,
                 null,
                 false);
-        when(audit.beginPending(any(), any(), any(), any(), any(), any(), any(), any()))
+        when(audit.beginPending(any(), any(), any(), any(), any(), any(), any(), any(), any()))
                 .thenReturn(pendingEntry);
 
         Map<String, Object> running = new HashMap<>();
@@ -269,7 +269,8 @@ class FlowSurgeryServiceTest {
                         eq("change-state"),
                         eq(REASON),
                         any(),
-                        auditPayload.capture());
+                        auditPayload.capture(),
+                        any());
         ArgumentCaptor<Map<String, Object>> wireBody = ArgumentCaptor.captor();
         order.verify(client).changeActivityState(any(), eq("pi-1"), wireBody.capture());
         order.verify(audit).close(eq(pendingEntry), eq(AuditOutcome.ok), eq(200), any(), eq(true));

@@ -11,6 +11,7 @@ import java.util.LinkedHashMap;
 import java.util.List;
 import java.util.Locale;
 import java.util.Map;
+import java.util.Set;
 import java.util.UUID;
 import org.slf4j.Logger;
 import org.slf4j.LoggerFactory;
@@ -86,7 +87,27 @@ public class AuditService {
             String reason,
             String ticketId,
             Map<String, Object> payload) {
-        String payloadJson = toJson(redact(payload));
+        // Config/registry-coordinate callers carry no variable values → FULL (denylist still runs).
+        return beginPending(
+                actor, engineId, tenantId, instanceId, action, reason, ticketId, payload, AuditPayloadMode.FULL);
+    }
+
+    /**
+     * Mode-aware variant (R-AUD-03): the resolved per-engine {@link AuditPayloadMode} minimizes the
+     * payload at WRITE time (denylist → mode transform) and is carried on the returned entry so
+     * {@link #close} can likewise minimize the engine response snippet — the value is never stored.
+     */
+    public AuditEntry beginPending(
+            String actor,
+            String engineId,
+            String tenantId,
+            String instanceId,
+            String action,
+            String reason,
+            String ticketId,
+            Map<String, Object> payload,
+            AuditPayloadMode mode) {
+        String payloadJson = toJson(applyPayloadMode(redact(payload), mode));
         try {
             synchronized (chainLock) {
                 String previousHash = repository
@@ -106,6 +127,7 @@ public class AuditService {
                         ticketId,
                         payloadJson,
                         false);
+                entry.setPayloadMode(mode);
                 entry.setChainHash(chainHash(previousHash, entry));
                 return repository.saveAndFlush(entry);
             }
@@ -181,8 +203,14 @@ public class AuditService {
     public void close(
             AuditEntry entry, AuditOutcome outcome, Integer httpStatus, String snippet, boolean engineSucceeded) {
         try {
-            String bounded = truncateToBytes(snippet, AuditEntry.SNIPPET_MAX_BYTES);
-            entry.close(outcome, httpStatus, bounded, bounded != null && !bounded.equals(snippet));
+            // R-AUD-03 (D4d): the engine response can echo the variable value, so a minimized
+            // engine must not persist it — the payload mode governs the snippet too, not just the
+            // request payload. Keep the status code; replace the body with the redaction marker.
+            String governed = (entry.getPayloadMode() != AuditPayloadMode.FULL && snippet != null && !snippet.isEmpty())
+                    ? REDACTED
+                    : snippet;
+            String bounded = truncateToBytes(governed, AuditEntry.SNIPPET_MAX_BYTES);
+            entry.close(outcome, httpStatus, bounded, bounded != null && !bounded.equals(governed));
             repository.saveAndFlush(entry);
         } catch (RuntimeException e) {
             if (engineSucceeded) {
@@ -199,8 +227,39 @@ public class AuditService {
 
     /* ---------- payload hygiene ---------- */
 
-    /** Replace values whose KEY matches the secret-name denylist, recursively. */
-    @SuppressWarnings("unchecked")
+    /**
+     * Skeleton/coordinate keys whose VALUES are structural accountability, not payload data —
+     * kept even under {@code redacted}/{@code metadata-only} (R-AUD-03, D4b). Everything NOT here
+     * is treated as potentially value-bearing and fails toward minimization (masked or dropped),
+     * so a new payload key added by a future verb is over-redacted, never leaked.
+     */
+    private static final Set<String> SKELETON_KEYS = Set.of(
+            "name",
+            "scope",
+            "scopeType",
+            "valueType",
+            "executionId",
+            "activityId",
+            "jobId",
+            "jobIds",
+            "timerId",
+            "deadLetterJobId",
+            "processInstanceId",
+            "definitionId",
+            "definitionKey",
+            "version",
+            "sourceActivityId",
+            "targetActivityId",
+            "activityMappings",
+            "cascade",
+            // Variable CONTAINERS are skeleton so the transform recurses INTO them (keeping the
+            // variable NAMES = accountability, masking their values), rather than masking the whole
+            // container and losing the names (Gemini S2).
+            "variables",
+            "carriedVariables",
+            "skippedVariables");
+
+    /** Replace values whose KEY matches the secret-name denylist, recursing through maps AND lists. */
     public static Map<String, Object> redact(Map<String, Object> payload) {
         if (payload == null) {
             return Map.of();
@@ -209,13 +268,78 @@ public class AuditService {
         for (Map.Entry<String, Object> entry : payload.entrySet()) {
             if (isSecretName(entry.getKey())) {
                 clean.put(entry.getKey(), REDACTED);
-            } else if (entry.getValue() instanceof Map<?, ?> nested) {
-                clean.put(entry.getKey(), redact((Map<String, Object>) nested));
             } else {
-                clean.put(entry.getKey(), entry.getValue());
+                clean.put(entry.getKey(), redactValue(entry.getValue()));
             }
         }
         return clean;
+    }
+
+    /**
+     * Recurse the denylist through nested maps AND lists — the pre-existing {@code redact()} only
+     * descended into maps, so a {@code {"variables":[{"password":"x"}]}} payload was stored in the
+     * clear. Lists are now traversed elementwise.
+     */
+    private static Object redactValue(Object value) {
+        if (value instanceof Map<?, ?> nested) {
+            return redact(stringKeyed(nested));
+        }
+        if (value instanceof List<?> list) {
+            return list.stream().map(AuditService::redactValue).toList();
+        }
+        return value;
+    }
+
+    /**
+     * Normalize a possibly non-String-keyed map to {@code Map<String,Object>} — a nested payload
+     * value could in principle carry non-String keys, and the downstream cast would otherwise throw
+     * and take down the (fail-closed) audit write (Gemini S2). Keys are coerced via {@code valueOf}.
+     */
+    private static Map<String, Object> stringKeyed(Map<?, ?> map) {
+        Map<String, Object> out = new LinkedHashMap<>();
+        for (Map.Entry<?, ?> e : map.entrySet()) {
+            out.put(String.valueOf(e.getKey()), e.getValue());
+        }
+        return out;
+    }
+
+    /**
+     * Apply the per-engine minimization {@code mode} (R-AUD-03) — run AFTER {@link #redact}, whose
+     * denylist is unconditional. {@code FULL} keeps everything; {@code REDACTED} masks every
+     * non-skeleton leaf value with {@link #REDACTED} (keeping the key); {@code METADATA_ONLY} drops
+     * the non-skeleton entries entirely. Skeleton coordinates ({@link #SKELETON_KEYS}) survive both.
+     */
+    public static Map<String, Object> applyPayloadMode(Map<String, Object> payload, AuditPayloadMode mode) {
+        if (payload == null) {
+            return Map.of();
+        }
+        if (mode == AuditPayloadMode.FULL) {
+            return payload;
+        }
+        Map<String, Object> out = new LinkedHashMap<>();
+        for (Map.Entry<String, Object> entry : payload.entrySet()) {
+            if (SKELETON_KEYS.contains(entry.getKey())) {
+                // Recurse INTO the coordinate's value so a nested value-bearing structure (a
+                // variables map: name→value) keeps its keys/names but masks its values, rather
+                // than being kept verbatim (Gemini S2).
+                out.put(entry.getKey(), minimizeNested(entry.getValue(), mode));
+            } else if (mode == AuditPayloadMode.REDACTED) {
+                out.put(entry.getKey(), REDACTED); // keep the key, mask the value
+            }
+            // METADATA_ONLY: drop the value-bearing entry entirely
+        }
+        return out;
+    }
+
+    /** Apply the mode transform to a value nested under a skeleton key (maps + lists, recursively). */
+    private static Object minimizeNested(Object value, AuditPayloadMode mode) {
+        if (value instanceof Map<?, ?> nested) {
+            return applyPayloadMode(stringKeyed(nested), mode);
+        }
+        if (value instanceof List<?> list) {
+            return list.stream().map(e -> minimizeNested(e, mode)).toList();
+        }
+        return value; // a scalar coordinate (an id, a name in a list) — keep it
     }
 
     public static boolean isSecretName(String name) {

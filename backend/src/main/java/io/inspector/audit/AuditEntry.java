@@ -6,6 +6,7 @@ import jakarta.persistence.EnumType;
 import jakarta.persistence.Enumerated;
 import jakarta.persistence.Id;
 import jakarta.persistence.Table;
+import jakarta.persistence.Transient;
 import java.time.Instant;
 import java.util.UUID;
 import org.hibernate.annotations.JdbcTypeCode;
@@ -99,6 +100,15 @@ public class AuditEntry {
     /** Tamper-evidence hash over the insert-time columns + previous row's hash. */
     @Column(name = "chain_hash", updatable = false)
     private String chainHash;
+
+    /**
+     * The per-engine minimization mode this row was written under (R-AUD-03) — NOT persisted (the
+     * payload was already minimized at insert); carried in-memory so {@link
+     * io.inspector.audit.AuditService#close} can likewise minimize the response snippet. Defaults
+     * to {@code FULL} so config/registry rows (which never set it) behave exactly as before.
+     */
+    @Transient
+    private AuditPayloadMode payloadMode = AuditPayloadMode.FULL;
 
     protected AuditEntry() {
         // JPA
@@ -222,5 +232,13 @@ public class AuditEntry {
 
     public String getChainHash() {
         return chainHash;
+    }
+
+    public AuditPayloadMode getPayloadMode() {
+        return payloadMode;
+    }
+
+    public void setPayloadMode(AuditPayloadMode payloadMode) {
+        this.payloadMode = payloadMode;
     }
 }
