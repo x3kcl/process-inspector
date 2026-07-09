@@ -64,6 +64,42 @@ class AuditServiceTest {
     }
 
     @Test
+    void recordConfigEventInsertsATerminalSentinelRowChainedToPrevious() {
+        AuditEntry previous = entry("prior");
+        previous.setChainHash("prior-hash");
+        when(repository.findTopByOrderBySeqDesc()).thenReturn(Optional.of(previous));
+
+        AuditEntry entry = service.recordConfigEvent(
+                "config-scope-mapping-reload", "system", true, Map.of("sha256", "abc", "groupCount", 2));
+
+        // R-AUD-10: sentinel engine, no instance/tenant, single-shot TERMINAL outcome (no PENDING).
+        assertThat(entry.getEngineId()).isEqualTo(AuditService.CONFIG_ENGINE_ID);
+        assertThat(entry.getActor()).isEqualTo("system");
+        assertThat(entry.getInstanceId()).isNull();
+        assertThat(entry.getTenantId()).isNull();
+        assertThat(entry.getOutcome()).isEqualTo(AuditOutcome.ok);
+        assertThat(entry.getChainHash()).isNotBlank().isNotEqualTo("prior-hash");
+        assertThat(entry.getPayload()).contains("sha256");
+    }
+
+    @Test
+    void recordConfigEventMarksAFailedEventAsFailedNotOk() {
+        when(repository.findTopByOrderBySeqDesc()).thenReturn(Optional.empty());
+        AuditEntry entry = service.recordConfigEvent(
+                "config-scope-mapping-reload", "system", false, Map.of("errorClass", "ParseException"));
+        assertThat(entry.getOutcome()).isEqualTo(AuditOutcome.failed);
+    }
+
+    @Test
+    void recordConfigEventThrowsAuditUnavailableOnPersistenceFailure() {
+        when(repository.findTopByOrderBySeqDesc()).thenReturn(Optional.empty());
+        when(repository.saveAndFlush(any(AuditEntry.class)))
+                .thenThrow(new DataAccessResourceFailureException("connection refused"));
+        assertThatThrownBy(() -> service.recordConfigEvent("audit-retention-purge", "system", true, Map.of()))
+                .isInstanceOf(AuditUnavailableException.class);
+    }
+
+    @Test
     void closeAfterEngineSuccessTranslatesFailureToOutcomeVerificationFailed() {
         AuditEntry entry = entry("e1");
         when(repository.saveAndFlush(any(AuditEntry.class)))

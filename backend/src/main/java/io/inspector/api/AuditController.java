@@ -2,6 +2,7 @@ package io.inspector.api;
 
 import io.inspector.audit.AuditEntry;
 import io.inspector.audit.AuditEntryRepository;
+import io.inspector.audit.AuditService;
 import io.inspector.security.RbacAuthorizer;
 import io.inspector.security.Role;
 import java.time.Instant;
@@ -60,12 +61,25 @@ public class AuditController {
             @RequestParam(required = false) Instant since,
             @RequestParam(defaultValue = "100") int limit,
             Authentication authentication) {
+        boolean adminAnywhere = rbac.atLeast(authentication, "ADMIN");
         return repository
                 .findLog(actor, action, engineId, since != null ? since : Instant.EPOCH, PageRequest.of(0, cap(limit)))
                 .stream()
-                .map(entry ->
-                        AuditEntryDto.from(entry, rbac.hasRoleOn(authentication, Role.OPERATOR, entry.getEngineId())))
+                .map(entry -> AuditEntryDto.from(entry, payloadVisible(entry, authentication, adminAnywhere)))
                 .toList();
+    }
+
+    /**
+     * Config-event rows (R-AUD-10) carry the {@link AuditService#CONFIG_ENGINE_ID} sentinel, which
+     * no operator is scoped to — so the usual per-engine OPERATOR gate would hide them from every
+     * engine-scoped admin. They are instead visible to ANY ADMIN (engine-scope-independent); every
+     * other row keeps the per-engine OPERATOR+ payload gate.
+     */
+    private boolean payloadVisible(AuditEntry entry, Authentication authentication, boolean adminAnywhere) {
+        if (AuditService.CONFIG_ENGINE_ID.equals(entry.getEngineId())) {
+            return adminAnywhere;
+        }
+        return rbac.hasRoleOn(authentication, Role.OPERATOR, entry.getEngineId());
     }
 
     private static int cap(int limit) {
