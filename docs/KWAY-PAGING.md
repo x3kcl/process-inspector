@@ -291,11 +291,13 @@ wire-facts** — neither correction changes the RE-LOCK, but both are now known 
 
 ## 7. Slice plan (each CI-green + independently mergeable)
 
-- **S0 — P0 wire-shape spike** (§6). De-risks the cursor mechanism and sets the cap number.
-- **S1 — Deterministic total order (R-SEM-23), standalone.** Extract comparator into `StatusJoin`;
-  `compositeId` tiebreak; `startTime` as `Instant`. Rung-1 goldens (tiebreak, `+00:00`/`Z`
-  equality, nullsLast). No API change — ships page-1 determinism immediately. Reserves the register
-  IDs in its first commit (win the parallel-session race).
+- **S0 — P0 wire-shape spike** (§6). ✔ **DISCHARGED 2026-07-09** (§6.1) — de-risked the mechanism,
+  gated the feature 6.8+ (6.3.1 offset-unstable), set the cap at 5000/engine by reasoning.
+- **S1 — Deterministic total order (R-SEM-23), standalone.** ✔ **LANDED 2026-07-09.** Comparator
+  extracted into `StatusJoin.resultOrder(sortBy)`; `compositeId` final tiebreak; `startTime` as
+  parsed `Instant`. Rung-1 goldens in `StatusJoinTest.ResultOrder` (tiebreak, `+00:00`/`Z` same-instant
+  equality-then-tiebreak, nullsLast, failureTime-mode, shuffle-stable). No API change — ships page-1
+  determinism immediately.
 - **S2 — Backend cursor + bounded page merge (R-SEM-22, R-NFR-08).** `PageWindow` seam into
   `searchOneEngine`; cursor codec + `filterHash` bind + **inbound offset/cap re-validation** +
   TTL + bounded `boundaryIds`; `HISTORIC` cursor union; `DEEP_PAGE` bulkhead lane; `depthCapped`.

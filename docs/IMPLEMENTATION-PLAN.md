@@ -679,7 +679,7 @@ drills the same filter. Codifies runbook starting points as first-class objects.
   moderate + audited fail-closed lifecycle → **S4** replay-time resolvability honesty → **S5** API
   surface + `gen:api` → **S6** frontend. No S0 spike; no rung-4-engine slice.
 
-### v2 — K-way-merge deep paging *(design locked 2026-07-09, unbuilt + spike-gated)*
+### v2 — K-way-merge deep paging *(design locked 2026-07-09; S0 spike discharged + S1 landed 2026-07-09; capability-gated 6.8+)*
 Cursor-based browsing through the globally-sorted merged stream across all engines, without
 pulling everything into memory and without breaking sort correctness or the per-engine
 do-no-harm bounds. **Full design + 6-seat panel + wire-wall + RE-LOCK decisions + spike plan:
@@ -703,10 +703,13 @@ ARCH §2.4's parked "v2 can add k-way-merge cursors…" sentence.
 - **UX:** progressive-disclosure "Load more" (`useInfiniteQuery`), surfaced only on overflow —
   **not** a row-model swap, no numbered pages, no infinite scroll. Two-door selection preserved
   (no loaded-rows-as-ID-list door → also avoids AG Grid Enterprise / R-GOV-05).
-- **Slices:** **S0** live P0 wire-shape spike (6.3/6.8/7.1 — proves offset stability, the
-  historic-body date granularity, failureTime-unsortable, sets the cap by measurement) →
-  **S1** deterministic total order (R-SEM-23, standalone, extract comparator into `StatusJoin`,
-  `compositeId` tiebreak, `startTime` as `Instant`) → **S2** backend cursor + bounded merge
+- **Slices:** **S0 ✔ discharged** live P0 wire-shape spike (`docker/spike-kway-paging.sh`, §6.1):
+  offset stable on 6.8/7.1 but **UNSTABLE on 6.3.1** → deep paging **capability-gated 6.8+**; cost
+  unmeasurable at test-safe scale → cap = **5000/engine by reasoning**; corrected the draft —
+  `failureTime` (job `createTime`) **is** engine-sortable on 6.8/7.1 (INVERTED door known-open,
+  still deferred). → **S1 ✔ landed** deterministic total order (R-SEM-23, standalone: comparator
+  extracted into `StatusJoin.resultOrder`, `compositeId` tiebreak, `startTime` as `Instant`; rung-1
+  goldens) → **S2** backend cursor + bounded merge
   (`PageWindow` seam, codec + inbound cap re-validation + TTL, `DEEP_PAGE` lane, R-SEM-22/R-NFR-08)
   → **S3** API surface + `gen:api` → **S4** frontend "Load more" → **S5** live-engine ITs
   (config-lowered caps, same-second cluster, drop-engine-mid-scroll honesty). Each CI-green +

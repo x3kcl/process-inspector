@@ -1,12 +1,14 @@
 package io.inspector.aggregate;
 
 import io.inspector.dto.InstanceStatusFlags;
+import io.inspector.dto.ProcessInstanceRow;
 import io.inspector.dto.SearchRequest.InstanceStatus;
 import io.inspector.triage.ErrorSignatureNormalizer;
 import java.time.Instant;
 import java.time.OffsetDateTime;
 import java.time.format.DateTimeParseException;
 import java.util.ArrayList;
+import java.util.Comparator;
 import java.util.HashSet;
 import java.util.LinkedHashMap;
 import java.util.List;
@@ -129,6 +131,32 @@ final class StatusJoin {
             if (hit) matched.addAll(group.getValue());
         }
         return matched;
+    }
+
+    /**
+     * The post-merge <strong>total order</strong> for search results (R-SEM-23): the requested
+     * sort key newest-first, then {@code compositeId} as the final tiebreak, so a given result set
+     * orders <em>identically</em> across requests instead of leaving same-key rows in whatever
+     * order the fan-out happened to append them.
+     *
+     * <p>The key ({@code startTime} or {@code failureTime}) is compared as a parsed {@link Instant},
+     * never a raw String: different engines emit different ISO forms for the same instant — the S0
+     * spike proved 6.8 serializes {@code +00:00} where 7.1 serializes {@code Z} — and a lexical
+     * String compare mis-orders {@code Z} (0x5A) against {@code +} (0x2B) for the identical instant.
+     * Null or unparseable keys sort last ({@code nullsLast}) but STILL tiebreak on {@code compositeId}
+     * (always non-null), so the order is total even among a cluster of null-keyed rows.
+     *
+     * <p>Honesty (R-SEM-22): this bounds duplicate <em>emission</em> at the merge — it does NOT
+     * repair an engine-side page-boundary skip under concurrent mutation. The order is deterministic
+     * for a fixed input; it is never claimed stable across a straddling insert/delete.
+     */
+    static Comparator<ProcessInstanceRow> resultOrder(String sortBy) {
+        Function<ProcessInstanceRow, String> key =
+                "failureTime".equals(sortBy) ? ProcessInstanceRow::failureTime : ProcessInstanceRow::startTime;
+        return Comparator.comparing(
+                        (ProcessInstanceRow r) -> parseInstant(key.apply(r)),
+                        Comparator.nullsLast(Comparator.reverseOrder()))
+                .thenComparing(ProcessInstanceRow::compositeId);
     }
 
     /**

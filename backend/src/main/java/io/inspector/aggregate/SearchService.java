@@ -18,7 +18,6 @@ import jakarta.annotation.PreDestroy;
 import java.time.Instant;
 import java.util.ArrayList;
 import java.util.Collection;
-import java.util.Comparator;
 import java.util.EnumMap;
 import java.util.EnumSet;
 import java.util.HashMap;
@@ -169,14 +168,12 @@ public class SearchService {
             }
         }
 
-        if (sortBy.equals("failureTime")) {
-            // Cross-engine timestamp formats differ (offset vs Z form) — compare as Instants.
-            rows.sort(Comparator.comparing(
-                    r -> StatusJoin.parseInstant(r.failureTime()), Comparator.nullsLast(Comparator.reverseOrder())));
-        } else {
-            rows.sort(Comparator.comparing(
-                    ProcessInstanceRow::startTime, Comparator.nullsLast(Comparator.reverseOrder())));
-        }
+        // R-SEM-23: a deterministic TOTAL order — the sort key (parsed as an Instant so the
+        // offset-form vs Z-form ISO strings different engines emit collate correctly) then
+        // compositeId as the final tiebreak, so a given merged set orders identically across
+        // requests. Extracted to StatusJoin (rung-1 tested); the old inline branch compared
+        // startTime as a raw String with no tiebreak (nondeterministic among same-second ties).
+        rows.sort(StatusJoin.resultOrder(sortBy));
         return new SearchResponse(markProtected(rows), new HashMap<>(perEngine), statusCounts, null, null);
     }
 
