@@ -140,9 +140,9 @@ jobs:
       matrix:
         include:
           - profile: flowable-6
-            itClass: EngineHealthIT,SearchServiceIT,TriageAggregationIT,TriageCmmnScopeIT,CaseDetailIT
+            itClass: EngineHealthIT,SearchServiceIT,TriageAggregationIT,TriageCmmnScopeIT,CaseDetailIT,KwayPagingIT
           - profile: flowable-7
-            itClass: EngineHealth7IT,Search7IT,Triage7IT,ExternalWorkerJob7IT
+            itClass: EngineHealth7IT,Search7IT,Triage7IT,ExternalWorkerJob7IT,Kway7IT
           - profile: legacy
             itClass: EngineHealthLegacyIT,SearchLegacyIT,TriageLegacyIT,ExternalWorkerJobLegacyIT,TriageCmmnScopeLegacyIT
     env:

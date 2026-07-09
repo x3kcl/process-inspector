@@ -1,8 +1,11 @@
 # 🧭 K-WAY-MERGE DEEP PAGING — design + panel (v2, demand-gated)
 
-**Status:** design locked; **S0 P0 spike DISCHARGED 2026-07-09** (live 6.3/6.8/7.1 — see §6.1) →
-build unblocked for the MIXED-first slices, **capability-gated 6.8+** (6.3.1 failed offset stability).
-Authoritative source-of-truth
+**Status:** ★ **FEATURE COMPLETE 2026-07-09 — S0–S5 all built + merged to main, each CI-green.**
+Design locked; **S0 P0 spike discharged** (live 6.3/6.8/7.1 — §6.1) → MIXED-first slices built,
+**capability-gated 6.8+** (6.3.1 failed offset stability). S1 deterministic total order (R-SEM-23,
+standalone) · S2 backend cursor + bounded k-way merge (R-SEM-22/R-NFR-08, `DEEP_PAGE` lane) · S3 API
+surface · S4 frontend "Load more" (`useInfiniteQuery` + `aggregate()` entry cursor) · S5 live-engine
+ITs (6.8 + 7.1, config-lowered caps). Authoritative source-of-truth
 for the deep-paging feature (v2 demand-driven item #3). The WHAT/WHY/HOW/WHEN below drive the
 deltas into `SPECIFICATION.md` (§4/§8 + deferred list), `ARCHITECTURE.md` (§2.3/§2.4),
 `IMPLEMENTATION-PLAN.md` (v2 block) and `REQUIREMENTS-REGISTER.md` (R-SEM-22, R-SEM-23, R-NFR-08
@@ -326,9 +329,14 @@ wire-facts** — neither correction changes the RE-LOCK, but both are now known 
   identity, not per-page fetch). Playwright `e2e/deep-paging.spec.ts` (URL-predicate route mock branched
   on `cursor` — append/seam/end + criteria-only re-send). Backend: `aggregate()` mints the entry cursor
   via `mergePage`; `mixedPlan` always collects raw window keys.
-- **S5 — Live-engine ITs (engine-harness).** Dockerized 6.8/7.1: deep-scroll correctness against a
-  seeded same-second cluster (no dup/skip), drop-engine-mid-scroll honesty, depth-cap refusal,
-  config-lowered caps. Seed strictly over REST.
+- **S5 — Live-engine ITs (engine-harness).** ✔ **LANDED 2026-07-09.** `AbstractKwayPagingIT` + the
+  6.8 (`KwayPagingIT`) and 7.1 (`Kway7IT`) concrete subclasses, wired into the CI integration matrix
+  (`it-kway` / `it7-kway` profiles, caps config-lowered to `max-page-size:2`, `deep-paging-max-depth:6`).
+  Proves on live engine state (seeded strictly over REST, unique businessKey per test): a multi-page
+  deep scroll emits every seeded instance **exactly once in `startTime desc` order** (no dup/skip,
+  cross-version — the 7.1 `Z`-form vs 6.8 `+00:00`-form corroborates the R-SEM-23 Instant-parse);
+  paging past the lowered cap flags `depthCapped`; a crafted over-cap cursor is a **400**; a dropped
+  engine mid-scroll degrades to `perEngine.ok=false` inside a 200 with the healthy rows intact.
 
 ---
 

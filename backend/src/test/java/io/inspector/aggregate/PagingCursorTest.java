@@ -289,7 +289,27 @@ class PagingCursorTest {
             PageResult r =
                     PagingCursor.mergePage(null, emit, raw, Map.of("a", 50L), 4, "startTime", "H", tightCaps, 1L);
             assertThat(r.depthCapped()).isTrue();
-            assertThat(r.nextCursor().offsets()).containsEntry("a", 3);
+            // The only engine is walled at its cap → the chain ENDS (no nextCursor); the UI offers the
+            // depth-wall "narrow to continue" seam instead of looping on the same capped window.
+            assertThat(r.nextCursor()).isNull();
+        }
+
+        @Test
+        void aWalledEngineDoesNotStallTheChainWhileAnotherEngineStillHasRows() {
+            // engine 'a' walled at cap 1; engine 'b' (huge cap) still has rows → the chain continues on
+            // b, a stays frozen at its cap, and depthCapped is surfaced.
+            Map<String, Integer> mixedCaps = Map.of("a", 1, "b", 5000);
+            Map<String, List<ProcessInstanceRow>> emit = new LinkedHashMap<>();
+            emit.put("a", List.of(row("a:1", "2026-07-09T10:00:05Z")));
+            emit.put("b", List.of(row("b:1", "2026-07-09T10:00:04Z")));
+            Map<String, List<String>> raw = new LinkedHashMap<>();
+            raw.put("a", List.of("2026-07-09T10:00:05Z", "2026-07-09T10:00:03Z"));
+            raw.put("b", List.of("2026-07-09T10:00:04Z", "2026-07-09T10:00:02Z"));
+            PageResult r = PagingCursor.mergePage(
+                    null, emit, raw, Map.of("a", 9L, "b", 9L), 2, "startTime", "H", mixedCaps, 1L);
+            assertThat(r.depthCapped()).isTrue();
+            assertThat(r.nextCursor()).isNotNull(); // b still pages
+            assertThat(r.nextCursor().offsets()).containsEntry("a", 1); // a frozen at its cap
         }
 
         @Test
