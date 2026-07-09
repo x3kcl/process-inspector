@@ -35,10 +35,26 @@ export function SearchPage() {
   const [selectedRows, setSelectedRows] = useState<ProcessInstanceRow[]>([])
   const [deselectSignal, setDeselectSignal] = useState(0)
 
-  // A fresh result set invalidates the old selection — never act on a stale snapshot.
+  // A fresh SEARCH invalidates the old selection — never act on a stale snapshot. Keyed on the
+  // search identity (paramsKey), NOT dataUpdatedAt: a "Load more" append must keep the ticked rows;
+  // only a new search (or Refresh, handled explicitly below) drops the selection.
   useEffect(() => {
     setSelectedRows([])
-  }, [results.dataUpdatedAt])
+  }, [paramsKey])
+
+  // Refresh resets the deep-paging cursor chain (refetch re-runs from page 1 and discards later
+  // pages) AND drops any selection made across the now-stale snapshot (docs/KWAY-PAGING.md §4).
+  const refresh = () => {
+    setSelectedRows([])
+    setDeselectSignal((n) => n + 1)
+    results.refresh()
+  }
+
+  // The oldest row shown — the pre-filled time bound for the depth-wall filter seam ([what]+[next]).
+  const lastStartTime = useMemo(() => {
+    const rows = results.data?.rows
+    return rows !== undefined && rows.length > 0 ? rows[rows.length - 1].startTime : undefined
+  }, [results.data])
 
   // v1.x saved views: a search enters the recents history only once it has EXECUTED
   // successfully — once per distinct URL state, like the rail collapse above.
@@ -117,13 +133,7 @@ export function SearchPage() {
                 ? 'Searching…'
                 : 'No search yet'}
           </span>
-          <button
-            type="button"
-            disabled={request === null || results.isFetching}
-            onClick={() => {
-              void results.refetch()
-            }}
-          >
+          <button type="button" disabled={request === null || results.isFetching} onClick={refresh}>
             {results.isFetching ? 'Refreshing…' : 'Refresh'}
           </button>
         </div>
@@ -132,12 +142,7 @@ export function SearchPage() {
             Search failed: {searchError.message}
           </div>
         )}
-        <PartialResultsBanner
-          summary={summary}
-          onRetry={() => {
-            void results.refetch()
-          }}
-        />
+        <PartialResultsBanner summary={summary} onRetry={refresh} />
         <BulkBar
           selected={selectedRows}
           failedEngines={summary.failed}
@@ -161,6 +166,46 @@ export function SearchPage() {
           onSelectionRows={setSelectedRows}
           deselectSignal={deselectSignal}
         />
+
+        {/* v2 deep paging (docs/KWAY-PAGING.md §4): progressive "Load more", surfaced only on an
+            overflowing time-ordered result set — never a row-model swap, no numbered pages, no
+            infinite scroll. The seam line keeps the snapshot honest; the depth wall is a filter seam. */}
+        {results.data !== undefined &&
+          (results.hasNextPage || results.data.pagingCoherence === 'snapshot') && (
+            <div className="load-more" role="region" aria-label="Load more results">
+              {results.data.pagingCoherence === 'snapshot' && (
+                <p className="load-more-seam">
+                  Loaded more as of {formatClock(results.dataUpdatedAt)} — newer instances won’t
+                  appear until Refresh.
+                </p>
+              )}
+              {results.data.depthCapped === true && lastStartTime !== undefined && (
+                <p className="load-more-depthwall" role="note">
+                  Reached the paging depth on at least one engine.{' '}
+                  <button
+                    type="button"
+                    className="linklike"
+                    onClick={() => {
+                      if (request !== null) submit({ ...request, startedBefore: lastStartTime })
+                    }}
+                  >
+                    Continue by narrowing to started before {formatClock(Date.parse(lastStartTime))}
+                  </button>
+                </p>
+              )}
+              {results.hasNextPage && (
+                <button
+                  type="button"
+                  disabled={results.isFetchingNextPage}
+                  onClick={() => {
+                    void results.fetchNextPage()
+                  }}
+                >
+                  {results.isFetchingNextPage ? 'Loading…' : 'Load more'}
+                </button>
+              )}
+            </div>
+          )}
       </section>
     </main>
   )

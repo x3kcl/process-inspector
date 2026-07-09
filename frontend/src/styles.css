@@ -346,6 +346,42 @@ button.primary:disabled {
   padding: 0 6px;
   cursor: pointer;
 }
+
+/* v2 deep paging — progressive "Load more" (docs/KWAY-PAGING.md §4). */
+.load-more {
+  display: flex;
+  flex-direction: column;
+  align-items: center;
+  gap: 6px;
+  padding: 10px;
+  border-top: 1px solid #d2dae2;
+}
+.load-more-seam,
+.load-more-depthwall {
+  margin: 0;
+  font-size: 12px;
+  color: #6b7280;
+}
+.load-more button {
+  border: 1px solid #b0bac6;
+  background: #fff;
+  border-radius: 4px;
+  padding: 4px 14px;
+  cursor: pointer;
+}
+.load-more button:disabled {
+  opacity: 0.6;
+  cursor: default;
+}
+.linklike {
+  border: none;
+  background: none;
+  padding: 0;
+  color: #1d4ed8;
+  text-decoration: underline;
+  cursor: pointer;
+  font: inherit;
+}
 /* Out-of-scope dead-letters: an informational reconciliation note, deliberately NOT the
    amber lower-bound warning — it is a qualitative cross-engine aside, not a grid count. The
    number itself may still be a floor (≥N) when the DEADLETTER scan capped; that is carried

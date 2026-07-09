@@ -715,7 +715,8 @@ ARCH §2.4's parked "v2 can add k-way-merge cursors…" sentence.
   set so same-instant clusters drain without dup/skip; R-SEM-22/R-NFR-08; rung-1+rung-2, no API surface yet)
   → **S3 ✔ landed** API surface (`SearchRequest.cursor` + `SearchResponse.nextCursor`/`depthCapped`/
   `pagingCoherence`, `SearchController` deep-page branch, `schema.d.ts` regen, rung-3 web test)
-  → **S4** frontend "Load more" → **S5** live-engine ITs
+  → **S4 ✔ landed** frontend "Load more" (`useInfiniteQuery` chain, overflow-only, depth-wall + snapshot
+  seams, Refresh resets; backend `aggregate()` mints the entry cursor on overflow) → **S5** live-engine ITs
   (config-lowered caps, same-second cluster, drop-engine-mid-scroll honesty). Each CI-green +
   independently mergeable; caps config-lowerable so correctness proves at `deep-paging-max-depth:6`.
 

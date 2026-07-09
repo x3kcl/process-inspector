@@ -273,6 +273,11 @@ public class SearchService {
 
         List<ProcessInstanceRow> rows = new ArrayList<>();
         Map<InstanceStatus, Long> statusCounts = new EnumMap<>(InstanceStatus.class);
+        // Per-engine page-1 material for the deep-paging ENTRY cursor (below): the emittable rows,
+        // the RAW window keys (offset-advance basis), and the totals (overflow detection).
+        Map<String, List<ProcessInstanceRow>> emittableByEngine = new LinkedHashMap<>();
+        Map<String, List<String>> rawKeysByEngine = new LinkedHashMap<>();
+        Map<String, Long> totalsByEngine = new LinkedHashMap<>();
         for (Map.Entry<EngineConfig, CompletableFuture<EngineSlice>> e : futures.entrySet()) {
             EngineConfig engine = e.getKey();
             // Generous outer guard; the real limits are the per-call read timeout, the
@@ -286,6 +291,9 @@ public class SearchService {
                 EngineSlice slice = e.getValue().get(budgetMs, TimeUnit.MILLISECONDS);
                 rows.addAll(slice.rows());
                 slice.counts().forEach((status, n) -> statusCounts.merge(status, n, Long::sum));
+                emittableByEngine.put(engine.id(), slice.rows());
+                rawKeysByEngine.put(engine.id(), slice.rawWindowStartKeys());
+                totalsByEngine.put(engine.id(), slice.total());
                 perEngine.put(
                         engine.id(),
                         EngineResult.success(slice.rows().size(), slice.total(), slice.dlqScan(), slice.failingScan()));
@@ -305,7 +313,37 @@ public class SearchService {
         // requests. Extracted to StatusJoin (rung-1 tested); the old inline branch compared
         // startTime as a raw String with no tiebreak (nondeterministic among same-second ties).
         rows.sort(StatusJoin.resultOrder(sortBy));
-        return new SearchResponse(markProtected(rows), new HashMap<>(perEngine), statusCounts, null, null);
+
+        // Deep-paging ENTRY cursor (R-SEM-22, docs/KWAY-PAGING.md): the frontend cannot mint the
+        // opaque cursor itself, so an ordinary MIXED / startTime-desc search whose result OVERFLOWS
+        // (some engine has total > fetched) hands back the cursor that resumes AFTER this page —
+        // the "Load more" entry point. mergePage(null, …, pageSize = all shown rows) emits exactly
+        // the page-1 rows and computes that resume position. ~95% of searches never overflow, so
+        // this stays null and the cursor machinery is untouched.
+        String nextCursor = null;
+        boolean depthCapped = false;
+        if (exhaustCap == null
+                && "startTime".equals(sortBy)
+                && StatusJoin.planFor(wanted) == StatusJoin.Plan.MIXED
+                && !rows.isEmpty()
+                && perEngine.values().stream().anyMatch(r -> r.ok() && r.total() > r.fetched())) {
+            Map<String, Integer> depthCaps = new HashMap<>();
+            targets.forEach(t -> depthCaps.put(t.id(), t.deepPagingMaxDepthOrDefault()));
+            PagingCursor.PageResult entry = PagingCursor.mergePage(
+                    null,
+                    emittableByEngine,
+                    rawKeysByEngine,
+                    totalsByEngine,
+                    rows.size(),
+                    sortBy,
+                    PagingCursor.filterHash(request),
+                    depthCaps,
+                    System.currentTimeMillis());
+            depthCapped = entry.depthCapped();
+            if (entry.nextCursor() != null) nextCursor = entry.nextCursor().encode();
+        }
+        return new SearchResponse(
+                markProtected(rows), new HashMap<>(perEngine), statusCounts, null, null, nextCursor, depthCapped, null);
     }
 
     /**
@@ -562,9 +600,11 @@ public class SearchService {
 
         List<ProcessInstanceRow> rows = new ArrayList<>();
         Map<InstanceStatus, Long> counts = new EnumMap<>(InstanceStatus.class);
-        // Deep-paging window (R-SEM-22): a single page at the engine's cursor offset; the raw
-        // sort-keys of EVERY row it returns (pre BFF-filter) feed the cursor's offset advance.
-        List<String> rawWindowStartKeys = window != null ? new ArrayList<>() : List.of();
+        // The raw sort-keys of EVERY row the engine returns (pre BFF-filter) feed the deep-paging
+        // cursor's offset advance — collected for the deep-page window AND for a normal page-1 search
+        // (which is a single page here, since exhaustCap is null → one loop iteration) so the ENTRY
+        // cursor can resume after it. Unused (but harmless) on the exhaustive filter-bulk path.
+        List<String> rawWindowStartKeys = new ArrayList<>();
         long total = 0;
         int start = window != null ? window.start() : 0;
         while (true) {
@@ -586,9 +626,7 @@ public class SearchService {
                         + " candidate instances on this engine — over the " + exhaustCap
                         + "-item filter-bulk cap; narrow the filter");
             }
-            if (window != null) {
-                for (Map<String, Object> pi : data) rawWindowStartKeys.add(str(pi, "startTime"));
-            }
+            for (Map<String, Object> pi : data) rawWindowStartKeys.add(str(pi, "startTime"));
             Set<String> open = openIds(data);
 
             Map<String, Boolean> suspendedById = suspendedFlags(engine, open, priority);
