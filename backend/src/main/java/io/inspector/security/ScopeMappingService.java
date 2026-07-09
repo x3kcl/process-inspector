@@ -1,5 +1,6 @@
 package io.inspector.security;
 
+import io.inspector.audit.AuditService;
 import java.io.IOException;
 import java.nio.file.Files;
 import java.nio.file.Path;
@@ -11,10 +12,12 @@ import java.time.Instant;
 import java.util.Collection;
 import java.util.HashMap;
 import java.util.HexFormat;
+import java.util.LinkedHashMap;
 import java.util.LinkedHashSet;
 import java.util.List;
 import java.util.Map;
 import java.util.Set;
+import java.util.concurrent.atomic.AtomicReference;
 import org.slf4j.Logger;
 import org.slf4j.LoggerFactory;
 import org.springframework.stereotype.Service;
@@ -49,14 +52,25 @@ public class ScopeMappingService {
 
     private final SecurityProperties props;
     private final Clock clock;
+    private final AuditService audit;
 
-    private volatile Snapshot snapshot = new Snapshot(Map.of(), null, Instant.EPOCH);
+    // AtomicReference (not a bare volatile) so the out-of-lock adopt/roll-back after a reload can
+    // compare-and-set against the exact interim this thread published — a slower thread whose audit
+    // outran the TTL can never clobber a concurrent adopt, and a roll-back can never pair one
+    // snapshot's byGroup with another's contentHash (Gemini S1).
+    private final AtomicReference<Snapshot> snapshot =
+            new AtomicReference<>(new Snapshot(Map.of(), null, Instant.EPOCH));
 
-    private record Snapshot(Map<String, List<ScopeGrant>> byGroup, String contentHash, Instant loadedAt) {}
+    private record Snapshot(Map<String, List<ScopeGrant>> byGroup, String contentHash, Instant loadedAt) {
+        Snapshot withLoadedAt(Instant t) {
+            return new Snapshot(byGroup, contentHash, t);
+        }
+    }
 
-    public ScopeMappingService(SecurityProperties props, Clock clock) {
+    public ScopeMappingService(SecurityProperties props, Clock clock, AuditService audit) {
         this.props = props;
         this.clock = clock;
+        this.audit = audit;
     }
 
     /** Scoped grants for a set of IdP groups, from the freshest mapping (TTL-bounded). */
@@ -79,44 +93,133 @@ public class ScopeMappingService {
     }
 
     private Snapshot current() {
-        Snapshot snap = this.snapshot;
-        Instant now = clock.instant();
-        if (Duration.between(snap.loadedAt(), now).getSeconds() < props.reloadTtlSOrDefault()) {
+        long ttl = props.reloadTtlSOrDefault();
+        Snapshot snap = snapshot.get();
+        if (Duration.between(snap.loadedAt(), clock.instant()).getSeconds() < ttl) {
             return snap;
         }
+
+        Change change;
         synchronized (this) {
-            snap = this.snapshot;
-            if (Duration.between(snap.loadedAt(), now).getSeconds() < props.reloadTtlSOrDefault()) {
-                return snap;
+            snap = snapshot.get();
+            Instant now = clock.instant();
+            if (Duration.between(snap.loadedAt(), now).getSeconds() < ttl) {
+                return snap; // another thread reloaded while we waited for the lock
             }
-            this.snapshot = load(snap);
-            return this.snapshot;
+            change = readMapping(snap, now);
+            // Publish the interim snapshot. For a genuine CHANGE this KEEPS the previous byGroup
+            // but CLAIMS the new content hash + a fresh loadedAt, so concurrent callers take the
+            // fast path (serve the previous mapping, never block on the audit DB below) and this
+            // reload is not emitted twice.
+            snapshot.set(change.interim());
+        }
+        if (!change.needsAudit()) {
+            return snapshot.get(); // no change, or empty/unreadable file — nothing to record
+        }
+
+        // R-SAFE-12 / R-AUD-10: a content change is a security-relevant config event — record it
+        // OUTSIDE the lock (D1a: audit-DB latency must never wedge auth resolution). The acting
+        // human is NOT the actor — the mapping changed on disk, not because that user did
+        // anything — so actor = "system".
+        try {
+            audit.recordConfigEvent("config-scope-mapping-reload", "system", change.parsedOk(), change.auditPayload());
+        } catch (RuntimeException e) {
+            // Fail-to-previous (R-AUD-10): an unauditable grant change never goes live. Roll the
+            // claimed hash back — to the interim's OWN byGroup, never another thread's, so byGroup
+            // and contentHash stay consistent — and CAS so a concurrent adopt is never clobbered.
+            log.error(
+                    "scope-mapping change (sha256={}) NOT adopted — config event unrecordable, keeping"
+                            + " previous mapping (retries next TTL)",
+                    change.rawHash(),
+                    e);
+            Snapshot interim = change.interim();
+            snapshot.compareAndSet(interim, new Snapshot(interim.byGroup(), change.previousHash(), interim.loadedAt()));
+            return snapshot.get();
+        }
+
+        // Audited. Adopt the new mapping when the reload PARSED OK; a broken reload stays on the
+        // previous mapping (already the interim) with the failure now on the ledger. CAS against our
+        // interim so a newer concurrent reload is never overwritten by this staler adopt.
+        if (change.parsedOk()) {
+            log.info(
+                    "scope-mapping reloaded from {} (sha256={}, {} groups) — audited",
+                    props.scopeMappingFile(),
+                    change.rawHash(),
+                    change.byGroup().size());
+            snapshot.compareAndSet(change.interim(), new Snapshot(change.byGroup(), change.rawHash(), clock.instant()));
+        }
+        return snapshot.get();
+    }
+
+    /** The outcome of reading the mapping file — pure (no audit, no adoption of a change). */
+    private record Change(
+            boolean parsedOk,
+            Map<String, List<ScopeGrant>> byGroup,
+            String rawHash,
+            String previousHash,
+            Snapshot interim,
+            Map<String, Object> auditPayload) {
+        boolean needsAudit() {
+            return auditPayload != null;
+        }
+
+        static Change none(Snapshot interim) {
+            return new Change(true, Map.of(), null, null, interim, null);
         }
     }
 
-    private Snapshot load(Snapshot previous) {
-        Instant now = clock.instant();
+    private Change readMapping(Snapshot previous, Instant now) {
         String file = props.scopeMappingFile();
         if (file == null || file.isBlank()) {
-            return new Snapshot(Map.of(), null, now);
+            return Change.none(new Snapshot(Map.of(), null, now));
         }
+        byte[] bytes;
+        String hash;
         try {
-            byte[] bytes = Files.readAllBytes(Path.of(file));
-            String hash = sha256(bytes);
-            if (hash.equals(previous.contentHash())) {
-                return new Snapshot(previous.byGroup(), hash, now);
-            }
-            Map<String, List<ScopeGrant>> parsed = parse(bytes);
-            // R-SAFE-12: a content change is a security-relevant config event — log with
-            // the hash so "who could do what since when" is reconstructible from logs.
-            log.info("scope-mapping reloaded from {} (sha256={}, {} groups)", file, hash, parsed.size());
-            return new Snapshot(parsed, hash, now);
+            bytes = Files.readAllBytes(Path.of(file));
+            hash = sha256(bytes);
         } catch (IOException | RuntimeException e) {
-            // Fail SAFE, not open: keep the previous known-good mapping, never widen to
-            // empty (which would lock everyone out mid-incident) — but log loudly.
-            log.error("scope-mapping reload from {} failed — keeping previous mapping: {}", file, e.toString());
-            return new Snapshot(previous.byGroup(), previous.contentHash(), now);
+            // Cannot even read the file (vanished / permissions) — keep previous, refresh the TTL.
+            // Not a content change worth a ledger row; log loudly for the operator.
+            log.error("scope-mapping unreadable at {} — keeping previous mapping: {}", file, e.toString());
+            return Change.none(previous.withLoadedAt(now));
         }
+        if (hash.equals(previous.contentHash())) {
+            return Change.none(previous.withLoadedAt(now)); // no content change
+        }
+        // Content changed: the interim KEEPS the previous byGroup but claims the new hash (fail-to-
+        // previous — the new mapping is not live until audited & parsed).
+        Snapshot interim = new Snapshot(previous.byGroup(), hash, now);
+        try {
+            Map<String, List<ScopeGrant>> parsed = parse(bytes);
+            int grants = parsed.values().stream().mapToInt(List::size).sum();
+            Map<String, Object> payload = new LinkedHashMap<>();
+            payload.put("file", file);
+            payload.put("sha256", hash);
+            payload.put("previousSha256", previous.contentHash()); // null on the boot baseline
+            payload.put("groupCount", parsed.size());
+            payload.put("grantCount", grants);
+            return new Change(true, parsed, hash, previous.contentHash(), interim, payload);
+        } catch (RuntimeException e) {
+            // Changed but unparseable — audit the FAILED reload with a sanitized error (never the
+            // raw YAML fragment, which echoes group/grant names — DP-minimization), keep previous.
+            log.error(
+                    "scope-mapping reload from {} failed to parse — keeping previous mapping: {}", file, e.toString());
+            Map<String, Object> payload = new LinkedHashMap<>();
+            payload.put("file", file);
+            payload.put("errorClass", e.getClass().getSimpleName());
+            payload.put("error", sanitize(e.getMessage()));
+            return new Change(false, previous.byGroup(), hash, previous.contentHash(), interim, payload);
+        }
+    }
+
+    /** CR/LF-stripped, length-capped exception message for the failed-reload ledger row (D1c). */
+    private static String sanitize(String message) {
+        if (message == null) {
+            return null;
+        }
+        String oneLine = message.replaceAll("[\\r\\n]+", " ").strip();
+        return oneLine.length() > 200 ? oneLine.substring(0, 200) : oneLine;
     }
 
     @SuppressWarnings("unchecked")

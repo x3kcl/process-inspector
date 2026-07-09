@@ -41,6 +41,16 @@ public class AuditService {
     private static final String CHAIN_GENESIS = "genesis";
 
     /**
+     * Reserved sentinel {@code engine_id} for config-event rows (R-AUD-10): facts that are not
+     * instance mutations and have no engine. A leading underscore is illegal in a real engine id
+     * (R-SEM-08 slug rule {@code ^[a-z0-9]…}, enforced at every registry write door — config
+     * startup validation AND the {@code EngineRegistryStore} add path), so it can never collide.
+     * The value is non-null so the {@code engine_id NOT NULL} column and the hash chain (which
+     * dereferences {@code engineId}) are untouched — no migration needed.
+     */
+    public static final String CONFIG_ENGINE_ID = "_inspector";
+
+    /**
      * Secret-name denylist (R-AUD-03): variable/field names matching any of these have
      * their VALUES replaced by «redacted» in audit payloads. Names stay — the skeleton
      * is the accountability record.
@@ -100,6 +110,64 @@ public class AuditService {
                 return repository.saveAndFlush(entry);
             }
         } catch (RuntimeException e) {
+            throw new AuditUnavailableException(e);
+        }
+    }
+
+    /**
+     * Record a <b>config event</b> (R-AUD-10): a single-shot terminal-outcome ledger row for a
+     * fact that is not an instance mutation — a scope-mapping reload, a retention purge, a
+     * legal-hold change. No PENDING phase (the outcome is inserted directly as {@code ok} or
+     * {@code failed}); it shares the table, the {@link #chainLock}, {@link #chainHash} and secret
+     * redaction with {@link #beginPending}. It is keyed on the {@link #CONFIG_ENGINE_ID} sentinel
+     * with no tenant/instance. Because it is a single INSERT (never an UPDATE) with a terminal
+     * outcome, the append-only guard trigger (UPDATE/DELETE-only) never fires and the
+     * PENDING-only reconciler never touches it.
+     *
+     * <p>This method is <b>policy-neutral</b>: on any persistence failure it emits the
+     * config-event failure signal and re-throws {@link AuditUnavailableException}. The CALLER
+     * implements the R-AUD-10 failure trichotomy — scope-mapping reload = <i>fail-to-previous</i>
+     * (keep the prior mapping, never adopt an unauditable grant change), retention purge =
+     * <i>fail-closed-ordering</i> (audit before the DROP), legal-hold = <i>fail-closed</i>.
+     * Mutation audit ({@link #beginPending}) is unchanged and stays fail-closed for all tiers.
+     *
+     * @param succeeded whether the underlying event itself succeeded ({@code ok} vs {@code failed})
+     */
+    public AuditEntry recordConfigEvent(String action, String actor, boolean succeeded, Map<String, Object> payload) {
+        String payloadJson = toJson(redact(payload));
+        try {
+            synchronized (chainLock) {
+                String previousHash = repository
+                        .findTopByOrderBySeqDesc()
+                        .map(AuditEntry::getChainHash)
+                        .orElse(CHAIN_GENESIS);
+                AuditEntry entry = new AuditEntry(
+                        UUID.randomUUID(),
+                        UUID.randomUUID().toString(),
+                        actor,
+                        clock.instant(),
+                        CONFIG_ENGINE_ID,
+                        null,
+                        null,
+                        action,
+                        null,
+                        null,
+                        payloadJson,
+                        false);
+                entry.close(succeeded ? AuditOutcome.ok : AuditOutcome.failed, null, null, false);
+                entry.setChainHash(chainHash(previousHash, entry));
+                return repository.saveAndFlush(entry);
+            }
+        } catch (RuntimeException e) {
+            // Config-event failure signal. The R-OPS-02 telemetry milestone will bind the
+            // audit_config_event_failures_total counter to this site; no metric stack exists yet
+            // (neither does audit_insert_failures_total), so a stable, greppable ERROR marker is
+            // the interim alert substrate for log-based alerting.
+            log.error(
+                    "AUDIT_CONFIG_EVENT_FAILURE action={} — config event NOT recorded; caller applies its"
+                            + " failure policy: {}",
+                    action,
+                    e.toString());
             throw new AuditUnavailableException(e);
         }
     }

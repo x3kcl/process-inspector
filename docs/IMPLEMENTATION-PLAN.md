@@ -300,6 +300,13 @@ OPERATIONS.md §8.
   parallel Registry-CRUD / Migration worktrees. Each slice lands its own SPEC §9 / OPERATIONS §6
   / DATA-CLASSIFICATION §3 / ARCH §6 / register / TRACEABILITY / TEST-SCENARIOS / TEST-STRATEGY
   §11 / RUNBOOK lockstep on green merge.
+  **Landed:** S0 (PR #25 — `deploy/sql/audit-roles.sql` + grant-level `AuditRoleGrantsIT`);
+  S1 (`AuditService.recordConfigEvent` sentinel-keyed single-shot terminal row + config-event
+  read-RBAC; `ScopeMappingService` now writes the R-SAFE-12 reload to the ledger with
+  fail-to-previous emit-outside-the-lock). The `audit_config_event_failures_total` counter is
+  reserved for the R-OPS-02 telemetry milestone (no metric stack exists yet — nor does
+  `audit_insert_failures_total`); until then the failure surfaces as the stable
+  `AUDIT_CONFIG_EVENT_FAILURE` ERROR marker for log-based alerting.
 
 ## M5 — Bulk + hardening (v1 close-out; the former M6)
 - Grid-selection bulk as a **persisted tracked job** (R-SEM-10: state machine, startup

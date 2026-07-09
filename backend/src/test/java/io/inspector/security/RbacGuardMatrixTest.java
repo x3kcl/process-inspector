@@ -41,7 +41,9 @@ class RbacGuardMatrixTest {
         List<EngineConfig> engines = List.of(TestEngines.engine(ENGINE, "http://localhost:1/flowable-rest"));
         InspectorProperties registry = new InspectorProperties(null, null, null, null, engines);
         SecurityProperties props = new SecurityProperties(null, null, null, null, null);
-        ScopeMappingService scopeMapping = new ScopeMappingService(props, Clock.systemUTC());
+        // No scope-mapping file here (null) → the audit path is never exercised; a mock suffices.
+        ScopeMappingService scopeMapping = new ScopeMappingService(
+                props, Clock.systemUTC(), org.mockito.Mockito.mock(io.inspector.audit.AuditService.class));
         return new RbacAuthorizer(scopeMapping, props, registry);
     }
 
