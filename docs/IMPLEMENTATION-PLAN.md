@@ -314,7 +314,17 @@ OPERATIONS.md §8.
   `GET /api/audit` gains a `ticketId` filter); S3b (frontend — `ticketHref` safe linkify
   [encodeURIComponent + `new URL` http(s) re-check + `rel=noopener noreferrer`, plain-text
   fallback], `useMeta` hook, linkified ticketId in the `/audit` grid + the instance Audit tab,
-  ticketId filter input on `/audit`).
+  ticketId filter input on `/audit`); S4 (X-Forwarded-User send-side — `V9`
+  `engine_registry.forward_user` off by default + `EngineConfig`/`Row`/mapper; a per-thread
+  `ForwardedActor` set at each mutation dispatch from the audit row's OWN actor
+  (`AuditEntry.forwardedIdentity()`, break-glass → `break-glass-<user>`) — **not**
+  `SecurityContextHolder` (empty on the bulk virtual-thread fan-out), sanitized + cleared-in-
+  `finally`; a write-client-only request interceptor installed iff `forward-user`, reusing the
+  S3 `evict()` rebuild on a flip; `InboundForwardedUserFilter` ingress-scrubs any client-supplied
+  inbound `X-Forwarded-User` so it is never reflected (D2c); config-load **hard-WARN**, no
+  environment auto-refuse — "outside the ARCH §6 trust fence" is not a modeled attribute and §6
+  recommends the flag for the possibly-prod embedded-engine (flap) case. Design-only vs SPEC §9 /
+  ARCH §6 — no MUST/requirement id is claimed).
   The `audit_config_event_failures_total` counter is reserved for the R-OPS-02
   telemetry milestone (no metric stack exists yet — nor does `audit_insert_failures_total`);
   until then the failure surfaces as the stable `AUDIT_CONFIG_EVENT_FAILURE` ERROR marker.

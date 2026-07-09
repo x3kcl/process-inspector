@@ -105,7 +105,10 @@ checklist).
   operator onboarding must teach it: querying the Flowable DB will no longer tell you which
   engineer moved the token. Where we control the engine deployment (e.g. flap, ARCHITECTURE
   §6), the BFF additionally sends `X-Forwarded-User` for an engine-side interceptor to
-  attribute natively — optional, per-engine, never relied upon.
+  attribute natively — optional, per-engine (`forward-user`, **off by default**), never relied
+  upon. The forwarded value is the **same actor the audit row records** (break-glass namespaced
+  `break-glass-<user>`); it is trustworthy only over an authenticated/isolated BFF→engine channel,
+  and the BFF scrubs any client-supplied inbound `X-Forwarded-User` so it can never be reflected.
 - **Tenant-scoped RBAC** — when OIDC is used, roles map to **(role, engineId, tenantId)
   scopes**, not global grants: ADMIN on `orders-tenant-A` must not authorize actions on
   `orders-tenant-B` or on another engine. Enforced in the BFF guard layer; the UI greys
