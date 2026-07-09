@@ -13,6 +13,9 @@ inspector:
   fanout-parallelism: 4
   snapshot:
     enabled: false
+  audit:
+    partition-maintenance:
+      enabled: false
   engines:
     - id: engine-a
       name: "Engine A (seed harness)"
