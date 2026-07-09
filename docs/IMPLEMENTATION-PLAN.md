@@ -611,7 +611,7 @@ and delete is a soft tombstone; hot reload evicts the per-id client caches (no r
   is enforced at the endpoint in S4, so here `source: config` simply makes the boot seeder inert. Test
   profiles are `source: config` (seeder inert, existing suites unperturbed); `EngineRegistryStoreIT`
   (own `it-registry` `source: db` profile, Testcontainers) proves seed→rows+audit + `ddl-auto=validate`.
-- **S3 — reload seam (strictly post-commit).** `EngineRegistry` moves the `enabled` filter
+- **S3 — reload seam (strictly post-commit). ✅ LANDED 2026-07-09.** `EngineRegistry` moves the `enabled` filter
   from ctor to `all()` and gains `refresh(id)`; `FlowableEngineClient.evict(id)` drops the
   cached read/write RestClients (+ **removes**, not resets, the R4j named instances on
   remove/purge). Refresh/evict/`RegistryChangedEvent`/re-probe run in a
@@ -619,6 +619,20 @@ and delete is a soft tombstone; hot reload evicts the per-id client caches (no r
   rolled-back row. Done-when: rung-4 IT edits an ACTIVE engine's base-URL over REST and the next
   call hits the new host (Awaitility on the re-probe — never `Thread.sleep`); a forced
   audit-close failure leaves neither the row nor the in-memory map mutated.
+  *Shipped:* `EngineRegistry` holds enabled+disabled rows in a `volatile` map, `all()`/`require()`
+  stay **enabled-only** (unchanged contract) + new `resolve(id):Optional` for disabled id→name;
+  `reload(Collection)` atomically swaps the map preserving health. `FlowableEngineClient.evict(id)`
+  drops both RestClients + **removes** the R4j breaker/bulkhead per `CallPriority` lane.
+  `RegistryChangedEvent` + `RegistryReloadListener` (`@TransactionalEventListener(AFTER_COMMIT)` =
+  the Spring afterCommit hook) runs reload→evict→reprobe (order matters for the lazy client cache;
+  evict-first would re-cache stale config). `EngineRegistryStore.editBaseUrl` (the S3 seam-driver;
+  S4 generalizes) publishes the event inside the tx; `RegistryBootstrap` reloads the registry from
+  the store at boot under `source: db`. `EngineHealthService.reprobe(id)` for the immediate re-probe.
+  Tests: `EngineRegistryReloadTest`, `RegistryReloadListenerTest` (order + swallow), evict test on
+  `FlowableEngineClientTest` (R4j REMOVED), `EngineRegistryReloadIT` (Testcontainers `source=db`:
+  boot points registry at DB, `editBaseUrl` commit → Awaitility reload + `registry-edit` audit).
+  **Deferred to S4** (where the write door exists): wiring `RegistryUrlValidator` into the connect
+  path (validate-at-write is the primary SSRF guard; connect-time `isPinAllowed` is belt-and-braces).
 - **S4 — admin API + governance.** New `rbac.canAdministerRegistry` gate + `ROLE_REGISTRY_ADMIN`
   dev user + OIDC group mapping; `AdminEnginesController` (REGISTRY-CRUD.md §9) with
   SSRF-validate → persist → reload; fail-closed audit (`registry-*` actions, before/after

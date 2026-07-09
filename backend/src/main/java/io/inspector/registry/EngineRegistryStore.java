@@ -9,8 +9,11 @@ import java.time.Clock;
 import java.util.LinkedHashMap;
 import java.util.List;
 import java.util.Map;
+import org.springframework.context.ApplicationEventPublisher;
+import org.springframework.http.HttpStatus;
 import org.springframework.stereotype.Service;
 import org.springframework.transaction.annotation.Transactional;
+import org.springframework.web.server.ResponseStatusException;
 
 /**
  * The transactional store over V7 {@code engine_registry} (docs/REGISTRY-CRUD.md §4/§10). In S2 it
@@ -28,16 +31,20 @@ public class EngineRegistryStore {
 
     private static final String SYSTEM_ACTOR = "system";
     private static final String ACTION_SEED = "registry-seed";
+    private static final String ACTION_EDIT = "registry-edit";
     private static final String SEED_REASON =
             "Registry seed: imported inspector.engines YAML into an empty registry (R-OPS-15)";
 
     private final EngineRegistryRepository repository;
     private final AuditService audit;
+    private final ApplicationEventPublisher events;
     private final Clock clock;
 
-    public EngineRegistryStore(EngineRegistryRepository repository, AuditService audit, Clock clock) {
+    public EngineRegistryStore(
+            EngineRegistryRepository repository, AuditService audit, ApplicationEventPublisher events, Clock clock) {
         this.repository = repository;
         this.audit = audit;
+        this.events = events;
         this.clock = clock;
     }
 
@@ -75,6 +82,36 @@ public class EngineRegistryStore {
             seeded++;
         }
         return seeded;
+    }
+
+    /**
+     * Edit a live engine's base-URL (the S3 seam that exercises hot-reload; S4 generalizes this to
+     * full add/edit/enable/disable). Audited {@code registry-edit} fail-closed before the write, and
+     * a {@link RegistryChangedEvent} is published so the {@code AFTER_COMMIT} reload listener
+     * refreshes the registry + evicts the cached client once (and only if) this transaction commits.
+     * {@code id} is immutable — only the base-URL changes here.
+     */
+    @Transactional
+    public void editBaseUrl(String id, String newBaseUrl, String actor, String reason) {
+        EngineRegistryRow row = repository
+                .findByIdAndRemovedAtIsNull(id)
+                .orElseThrow(() -> new ResponseStatusException(HttpStatus.NOT_FOUND, "Unknown engine: " + id));
+        String oldBaseUrl = row.getBaseUrl();
+
+        Map<String, Object> payload = new LinkedHashMap<>();
+        payload.put("id", id);
+        payload.put("field", "baseUrl");
+        payload.put("before", oldBaseUrl);
+        payload.put("after", newBaseUrl);
+        AuditEntry entry = audit.beginPending(actor, id, row.getTenantId(), id, ACTION_EDIT, reason, null, payload);
+
+        row.setBaseUrl(newBaseUrl);
+        row.setUpdatedAt(clock.instant());
+        repository.save(row);
+        audit.close(entry, AuditOutcome.ok, null, "edited", true);
+
+        // Published inside the tx; AFTER_COMMIT delivery means a rollback (row or audit) → no reload.
+        events.publishEvent(new RegistryChangedEvent(id));
     }
 
     /** The DB-vs-YAML drift for the boot report / admin badge — never mutates. */

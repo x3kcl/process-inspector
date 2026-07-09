@@ -22,8 +22,9 @@ import org.mockito.Mockito;
 
 /**
  * Rung 1: the boot-time source resolution DECISION logic (docs/REGISTRY-CRUD.md §4) — config-pin,
- * seed-on-empty, drift-on-nonempty — with a mocked store so no DB is needed. The end-to-end seed
- * against real Postgres is {@link EngineRegistryStoreIT}.
+ * seed-on-empty, drift-on-nonempty, and (S3) the DB→registry reload — with mocked collaborators so
+ * no DB is needed. The end-to-end seed + reload against real Postgres is
+ * {@link EngineRegistryStoreIT} / {@link EngineRegistryReloadIT}.
  */
 class RegistryBootstrapTest {
 
@@ -49,78 +50,84 @@ class RegistryBootstrapTest {
         return new InspectorProperties(4, 10, null, null, engines);
     }
 
-    private static RegistryProperties registry(Source source) {
+    private static RegistryProperties registryProps(Source source) {
         return new RegistryProperties(source, List.of(), java.util.Set.of());
     }
 
-    private static RegistryBootstrap bootstrap(
-            RegistryProperties reg, InspectorProperties insp, EngineRegistryStore s) {
-        return new RegistryBootstrap(reg, insp, s);
-    }
-
     @Test
-    void config_pinned_never_touches_the_store() {
+    void config_pinned_touches_nothing() {
         EngineRegistryStore store = Mockito.mock(EngineRegistryStore.class);
-        bootstrap(registry(Source.CONFIG), inspector(List.of(engine("a"))), store)
-                .run(null);
+        EngineRegistry registry = Mockito.mock(EngineRegistry.class);
+
+        new RegistryBootstrap(registryProps(Source.CONFIG), inspector(List.of(engine("a"))), store, registry).run(null);
+
         verifyNoInteractions(store);
+        verifyNoInteractions(registry); // config-pin keeps the ctor map — no DB reload
     }
 
     @Test
-    void empty_registry_seeds_the_yaml_engines() {
+    void empty_registry_seeds_the_yaml_engines_then_reloads() {
         EngineRegistryStore store = Mockito.mock(EngineRegistryStore.class);
+        EngineRegistry registry = Mockito.mock(EngineRegistry.class);
         when(store.isEmpty()).thenReturn(true);
         List<EngineConfig> engines = List.of(engine("a"), engine("b"));
 
-        bootstrap(registry(Source.DB), inspector(engines), store).run(null);
+        new RegistryBootstrap(registryProps(Source.DB), inspector(engines), store, registry).run(null);
 
         verify(store).seedFromConfig(engines);
         verify(store, never()).driftReport(any());
+        verify(registry).reload(any()); // DB→registry after the seed
     }
 
     @Test
-    void empty_registry_with_no_yaml_seeds_nothing() {
+    void empty_registry_with_no_yaml_seeds_nothing_but_still_reloads() {
         EngineRegistryStore store = Mockito.mock(EngineRegistryStore.class);
+        EngineRegistry registry = Mockito.mock(EngineRegistry.class);
         when(store.isEmpty()).thenReturn(true);
 
-        bootstrap(registry(Source.DB), inspector(List.of()), store).run(null);
+        new RegistryBootstrap(registryProps(Source.DB), inspector(List.of()), store, registry).run(null);
 
         verify(store, never()).seedFromConfig(any());
+        verify(registry).reload(any());
     }
 
     @Test
-    void non_empty_registry_reports_drift_instead_of_seeding() {
+    void non_empty_registry_reports_drift_then_reloads_from_db() {
         EngineRegistryStore store = Mockito.mock(EngineRegistryStore.class);
+        EngineRegistry registry = Mockito.mock(EngineRegistry.class);
         when(store.isEmpty()).thenReturn(false);
         when(store.driftReport(any())).thenReturn(new DriftReport(List.of("c"), List.of(), List.of()));
 
-        bootstrap(registry(Source.DB), inspector(List.of(engine("a"))), store).run(null);
+        new RegistryBootstrap(registryProps(Source.DB), inspector(List.of(engine("a"))), store, registry).run(null);
 
         verify(store).driftReport(any());
         verify(store, never()).seedFromConfig(any());
+        verify(registry).reload(any());
     }
 
     @Test
     void a_seed_failure_with_still_empty_registry_is_caught_so_startup_never_crashes() {
         EngineRegistryStore store = Mockito.mock(EngineRegistryStore.class);
-        // Empty before AND after the failed seed (audit/DB genuinely unavailable).
+        EngineRegistry registry = Mockito.mock(EngineRegistry.class);
         when(store.isEmpty()).thenReturn(true, true);
         when(store.seedFromConfig(any())).thenThrow(new IllegalStateException("audit down"));
 
         // Must not propagate — fail-closed = boot with an empty registry, retry next boot.
-        bootstrap(registry(Source.DB), inspector(List.of(engine("a"))), store).run(null);
+        new RegistryBootstrap(registryProps(Source.DB), inspector(List.of(engine("a"))), store, registry).run(null);
+        verify(registry).reload(any()); // reload still runs (empty set) so the registry is consistent
     }
 
     @Test
     void a_concurrent_seed_race_is_recognized_not_mislabeled_as_empty() {
         EngineRegistryStore store = Mockito.mock(EngineRegistryStore.class);
-        // Empty at the isEmpty() gate, but a concurrent instance committed the seed while we
-        // were mid-import — so our insert hit the PK and rolled back, and now the table is NOT
-        // empty. Must be recognized (info), never crash.
+        EngineRegistry registry = Mockito.mock(EngineRegistry.class);
+        // Empty at the gate, but a concurrent instance committed the seed while we were mid-import,
+        // so our insert hit the PK and rolled back and the table is now NOT empty.
         when(store.isEmpty()).thenReturn(true, false);
         when(store.seedFromConfig(any()))
                 .thenThrow(new org.springframework.dao.DataIntegrityViolationException("dup id"));
 
-        bootstrap(registry(Source.DB), inspector(List.of(engine("a"))), store).run(null);
+        new RegistryBootstrap(registryProps(Source.DB), inspector(List.of(engine("a"))), store, registry).run(null);
+        verify(registry).reload(any());
     }
 }

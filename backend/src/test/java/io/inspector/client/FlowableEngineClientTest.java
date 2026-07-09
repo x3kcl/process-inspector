@@ -43,6 +43,7 @@ class FlowableEngineClientTest {
     private WireMockServer wm;
     private MockEnvironment env;
     private CircuitBreakerRegistry breakers;
+    private BulkheadRegistry bulkheads;
     private FlowableEngineClient client;
 
     @BeforeEach
@@ -63,7 +64,7 @@ class FlowableEngineClientTest {
                 .ignoreExceptions(HttpClientErrorException.class)
                 .build();
         breakers = CircuitBreakerRegistry.of(Map.of("engine", config));
-        BulkheadRegistry bulkheads = BulkheadRegistry.of(Map.of(
+        bulkheads = BulkheadRegistry.of(Map.of(
                 "engine",
                 BulkheadConfig.custom()
                         .maxConcurrentCalls(8)
@@ -195,6 +196,29 @@ class FlowableEngineClientTest {
             assertThatThrownBy(() -> client.engineInfo(engine)).isInstanceOf(HttpClientErrorException.class);
         }
         wm.verify(4, getRequestedFor(urlPathEqualTo("/management/engine")));
+    }
+
+    @Test
+    void evictDropsCachedClientAndRemovesResilienceInstances() {
+        // v2 Registry CRUD S3 reload seam: editing an engine is stale until its client + R4j
+        // instances are evicted, so the NEXT call rebuilds against the new config.
+        wm.stubFor(get(urlPathEqualTo("/management/engine")).willReturn(okJson("{\"version\":\"6.8.0\"}")));
+        EngineConfig engine = engine("evict-me");
+        client.engineInfo(engine); // materializes the cached client + the "engine" R4j instances
+
+        assertThat(client.isClientCached("evict-me")).isTrue();
+        assertThat(breakers.find("evict-me")).isPresent();
+        assertThat(bulkheads.find("evict-me")).isPresent();
+
+        client.evict("evict-me");
+
+        assertThat(client.isClientCached("evict-me")).isFalse();
+        assertThat(breakers.find("evict-me")).as("breaker REMOVED, not reset").isEmpty();
+        assertThat(bulkheads.find("evict-me")).as("bulkhead REMOVED, not reset").isEmpty();
+
+        // A later call rebuilds cleanly — fresh client + fresh breaker.
+        assertThatCode(() -> client.engineInfo(engine)).doesNotThrowAnyException();
+        assertThat(breakers.find("evict-me")).isPresent();
     }
 
     @Test
