@@ -86,7 +86,8 @@ checklist).
   **whitelists** engine paths — never a blind proxy (flowable-rest authorization is binary,
   so BFF RBAC is the only real permission layer).
 - **Persistence** — one small PostgreSQL owned by the BFF (from M4): audit log, instance
-  notes, bulk-job state + per-item reports, saved views (v1.x), registry CRUD (v2).
+  notes, bulk-job state + per-item reports, the job-lane snapshot time-series (v2/M4),
+  per-user saved views + recent searches (v2/M4), registry CRUD (v2).
 - **Resiliency & circuit breaking (the "do no harm" rule)** — the engines are often already
   under severe load or DB contention *exactly when this tool is in use*. The BFF wraps all
   outbound engine calls in **circuit breakers (Resilience4j)** with strict timeouts: a
@@ -258,8 +259,9 @@ Answers "what is broken, how much, where" in zero keystrokes:
   render. User-named views render beside them (saved from the Stage 1 rail, same-name
   replace, deletable here). **Recent searches**: the last 10 uniquely-parameterized searches
   that executed successfully, newest first, with a generated criteria label — shown here and
-  in the Stage 1 zero state. Both persist in localStorage under a versioned envelope
-  (`{version, items}`; unknown version degrades to empty) until the v2 server-side store.
+  in the Stage 1 zero state. Both persist **per user in the BFF** (v2/M4, `saved_view` /
+  `recent_search`, keyed to the authenticated user so they follow the user across browsers); a
+  one-time client backfill migrates any pre-v2 localStorage entries on first authenticated load.
 - **Short-lived cache (thundering-herd protection)**: the triage aggregations (job-lane
   counts, error groups, status counts) are cached at the BFF for **~15–30 seconds** —
   ten engineers opening the dashboard during a P1 must produce one round of engine
@@ -764,7 +766,8 @@ for the operator.
 
 Combination rule unchanged: **AND between categories, OR within** — made visible by the
 compiled-criteria echo. Saved views: curated system views + user-named views + recent
-searches (§4 Stage 0; localStorage v1.x → shared server-side v2). Hierarchy-aware:
+searches (§4 Stage 0; user-named views/recents are per-user server-backed as of v2/M4, system
+views stay client-derived). Hierarchy-aware:
 businessKey search finds the tree, not just the root.
 
 ## 9. Audit, notes & handover

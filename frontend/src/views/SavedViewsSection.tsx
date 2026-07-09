@@ -27,13 +27,13 @@ export function SavedViewsSection() {
         ))}
         {views.map((view) => (
           <span key={view.id} className="view-chip user-view">
-            <Link to={`/search?${view.search}`}>{view.name}</Link>
+            <Link to={`/search?${view.search ?? ''}`}>{view.name}</Link>
             <button
               type="button"
-              aria-label={`delete view ${view.name}`}
+              aria-label={`delete view ${view.name ?? ''}`}
               title="delete this view"
               onClick={() => {
-                remove(view.id)
+                if (view.id !== undefined) remove(view.id)
               }}
             >
               ✕

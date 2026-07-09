@@ -16,7 +16,7 @@ export function RecentSearchList() {
       <ul className="recent-searches">
         {recents.map((recent) => (
           <li key={recent.search}>
-            <Link to={`/search?${recent.search}`}>{recent.label}</Link>
+            <Link to={`/search?${recent.search ?? ''}`}>{recent.label}</Link>
             <span className="recent-at" title={recent.at}>
               {formatDateTime(recent.at)}
             </span>
