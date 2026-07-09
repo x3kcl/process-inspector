@@ -14,7 +14,8 @@ import type { MeDto } from '../api/me'
 import { roleOn } from '../api/me'
 import { roleAtLeast } from '../actions/catalog'
 import type { RoleHint } from '../actions/catalog'
-import { problemBanner } from '../actions/problem'
+import { isReauthChallenge, problemBanner } from '../actions/problem'
+import { ReauthNotice, useReauthStale } from '../actions/ReauthNotice'
 import { ActionHint } from '../components/ActionHint'
 import { ModalShell } from '../components/ModalShell'
 import { useToast } from '../components/toast'
@@ -290,7 +291,11 @@ function BulkSubmitModal({
   const partial = failedEngines.length > 0 || truncated
   // C-front: unified with the sibling modals — always required, never the optional escape.
   const reasonOk = reason.trim().length >= 10
-  const canSubmit = !submit.isPending && reasonOk && (!partial || acknowledged)
+  // Dangerous-set freshness (IDP-SECURITY.md §5): bulk submit is challenged regardless of verb
+  // tier — pre-empt at open via the /api/me hint, or react to the 401 reauth-required answer.
+  const reauthNeeded =
+    useReauthStale() || (submit.error !== null && isReauthChallenge(submit.error.problem))
+  const canSubmit = !submit.isPending && reasonOk && (!partial || acknowledged) && !reauthNeeded
   const partialBlocked = partial && !acknowledged
   const shortReason = partialBlocked
     ? 'Blocked: acknowledge the partial result set first'
@@ -423,10 +428,14 @@ function BulkSubmitModal({
         />
       </label>
 
-      {submit.error !== null && (
-        <div className="error-banner" role="alert">
-          {problemBanner(submit.error.problem)}
-        </div>
+      {reauthNeeded ? (
+        <ReauthNotice />
+      ) : (
+        submit.error !== null && (
+          <div className="error-banner" role="alert">
+            {problemBanner(submit.error.problem)}
+          </div>
+        )
       )}
     </ModalShell>
   )

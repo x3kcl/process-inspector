@@ -1,5 +1,5 @@
 import { describe, expect, it } from 'vitest'
-import { mayHaveExecuted, parseActionProblem, problemBanner } from './problem'
+import { isReauthChallenge, mayHaveExecuted, parseActionProblem, problemBanner } from './problem'
 
 describe('parseActionProblem', () => {
   it('reads the machine-readable code, outcome and audit id from a ProblemDetail', () => {
@@ -103,5 +103,28 @@ describe('problemBanner — the three-way SPEC §6 distinction stays visible', (
     expect(text).toBe(
       'The request was refused before anything ran — nothing happened. (Technical detail: HTTP 400.)',
     )
+  })
+})
+
+describe('reauth-required — the dangerous-set freshness challenge (IDP-SECURITY.md §5)', () => {
+  it('is recognised as a challenge, not a plain failure', () => {
+    const problem = parseActionProblem(401, {
+      code: 'reauth-required',
+      outcome: 'refused',
+      detail: 'Re-authentication required: …',
+    })
+    expect(isReauthChallenge(problem)).toBe(true)
+    expect(problem.outcome).toBe('refused')
+    expect(mayHaveExecuted(problem)).toBe(false)
+  })
+
+  it('carries re-auth copy in the banner fallback path', () => {
+    const text = problemBanner(parseActionProblem(401, { code: 'reauth-required' }))
+    expect(text).toContain('re-authenticate')
+    expect(text).toContain('Nothing happened')
+  })
+
+  it('an ordinary 401 without the code is NOT a challenge', () => {
+    expect(isReauthChallenge(parseActionProblem(401, {}))).toBe(false)
   })
 })

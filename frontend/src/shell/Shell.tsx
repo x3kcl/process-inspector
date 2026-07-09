@@ -1,8 +1,9 @@
-import { useSyncExternalStore } from 'react'
+import { useEffect, useSyncExternalStore } from 'react'
 import { useQueryClient } from '@tanstack/react-query'
-import { Link, Outlet } from 'react-router'
+import { Link, Outlet, useNavigate } from 'react-router'
 import { ApiError } from '../api/client'
 import { useMe } from '../api/me'
+import { consumeResume, isReauthBody } from '../auth/reauth'
 import { HeaderStrip } from '../components/HeaderStrip'
 import { SignIn } from '../components/SignIn'
 import { ToastProvider } from '../components/toast'
@@ -22,6 +23,10 @@ export function Shell() {
   // v2/M4: one-time migration of any v1 localStorage views/recents into the server store, once
   // the user is authenticated (SPEC §8).
   useLegacyViewMigration(!authRequired)
+  // Re-auth round-trip landing (IDP-SECURITY.md §5): the dangerous-set challenge is a full-page
+  // OIDC redirect, so the pre-redirect route is checkpointed to sessionStorage; on the fresh boot
+  // after login we restore it (single-shot, TTL-bounded, same-origin-path-only).
+  useResumeAfterReauth()
   return (
     <ToastProvider>
       {/* App-scoped live channel (live-ui-sse): ONE EventSource for every surface — a
@@ -121,7 +126,12 @@ function BreakGlassBanner() {
   )
 }
 
-/** True while any cached query's latest error is a 401 (dev sign-in chain trigger). */
+/**
+ * True while any cached query's latest error is a 401 (dev sign-in chain trigger). A 401 carrying
+ * the `reauth-required` challenge is EXCLUDED — that is a freshness interstitial on a still-valid
+ * session (IDP-SECURITY.md §5), never a sign-out; today it only occurs on mutations (which live in
+ * the mutation cache, not here), so this guard is defence-in-depth against a future gated query.
+ */
 function useAnyAuthError(): boolean {
   const queryClient = useQueryClient()
   const cache = queryClient.getQueryCache()
@@ -130,6 +140,28 @@ function useAnyAuthError(): boolean {
     () =>
       cache
         .getAll()
-        .some((query) => query.state.error instanceof ApiError && query.state.error.status === 401),
+        .some(
+          (query) =>
+            query.state.error instanceof ApiError &&
+            query.state.error.status === 401 &&
+            !isReauthBody(query.state.error.body),
+        ),
   )
+}
+
+/**
+ * Restore the pre-re-auth route on the first boot after the OIDC round-trip. Only fires when the
+ * app landed on the default post-login target '/' — a deep-linked landing wins over the checkpoint
+ * (the checkpoint is popped either way; it is single-shot).
+ */
+function useResumeAfterReauth() {
+  const navigate = useNavigate()
+  useEffect(() => {
+    const href = consumeResume()
+    if (href !== null && window.location.pathname === '/') {
+      void navigate(href, { replace: true })
+    }
+    // mount-only: the checkpoint exists only across the full-page redirect boundary
+    // eslint-disable-next-line react-hooks/exhaustive-deps
+  }, [])
 }

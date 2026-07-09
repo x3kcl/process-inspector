@@ -9,7 +9,8 @@ import { useMemo, useState } from 'react'
 import type { EngineDto, SearchRequest } from '../api/model'
 import { useSubmitBulkFilter } from '../api/bulk'
 import { reasonRule, reasonValid } from '../actions/catalog'
-import { problemBanner } from '../actions/problem'
+import { isReauthChallenge, problemBanner } from '../actions/problem'
+import { ReauthNotice, useReauthStale } from '../actions/ReauthNotice'
 import { ActionHint } from '../components/ActionHint'
 import { ModalShell } from '../components/ModalShell'
 import { useToast } from '../components/toast'
@@ -104,6 +105,9 @@ export function FilterBulkModal({
   // (corrective-actions §4). Refusals (4xx) leave the button usable after an edit.
   const problem = submit.error?.problem
   const dispatchedMaybe = problem !== undefined && problem.outcome === 'unknown'
+  // Dangerous-set freshness (IDP-SECURITY.md §5): bulk submit is challenged regardless of verb
+  // tier — pre-empt at open via the /api/me hint, or react to the 401 reauth-required answer.
+  const reauthNeeded = useReauthStale() || (problem !== undefined && isReauthChallenge(problem))
 
   const confirm = () => {
     submit.mutate(
@@ -123,13 +127,15 @@ export function FilterBulkModal({
     )
   }
 
-  const shortReason = !reasonOk
-    ? 'Reason too short — 10+ characters'
-    : !tokenOk
-      ? `Type ${token} to enable`
-      : dispatchedMaybe
-        ? 'Blocked: previous attempt outcome unknown — do not resubmit'
-        : undefined
+  const shortReason = reauthNeeded
+    ? 'Blocked: re-authenticate to enable — sign-in too old'
+    : !reasonOk
+      ? 'Reason too short — 10+ characters'
+      : !tokenOk
+        ? `Type ${token} to enable`
+        : dispatchedMaybe
+          ? 'Blocked: previous attempt outcome unknown — do not resubmit'
+          : undefined
   const longDetail = !reasonOk
     ? 'a reason of at least 10 characters is required'
     : !tokenOk
@@ -145,7 +151,7 @@ export function FilterBulkModal({
         <button
           type="button"
           className="danger"
-          disabled={!reasonOk || !tokenOk || submit.isPending || dispatchedMaybe}
+          disabled={!reasonOk || !tokenOk || submit.isPending || dispatchedMaybe || reauthNeeded}
           aria-describedby={shortReason !== undefined ? 'filter-bulk-submit-hint' : undefined}
           title={longDetail}
           onClick={confirm}
@@ -216,10 +222,14 @@ export function FilterBulkModal({
         </label>
       )}
 
-      {problem !== undefined && (
-        <div className="error-banner" role="alert">
-          {problemBanner(problem)}
-        </div>
+      {reauthNeeded ? (
+        <ReauthNotice />
+      ) : (
+        problem !== undefined && (
+          <div className="error-banner" role="alert">
+            {problemBanner(problem)}
+          </div>
+        )
       )}
     </ModalShell>
   )
