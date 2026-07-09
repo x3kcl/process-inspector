@@ -98,6 +98,24 @@ class FlowableEngineClientTest {
     }
 
     @Test
+    void latestProcessDefinitionByKeySendsLatestTrue() {
+        // A plain size=1 does NOT return the latest version (name-ascending default) — the
+        // migration default-target resolution needs latest=true. Pin it on the wire.
+        wm.stubFor(get(urlPathEqualTo("/repository/process-definitions"))
+                .willReturn(
+                        okJson("{\"data\":[{\"id\":\"demoMigration:5:abc\",\"key\":\"demoMigration\",\"version\":5}],"
+                                + "\"total\":1,\"start\":0,\"size\":1}")));
+
+        var page = client.latestProcessDefinitionByKey(engine("latest-engine"), "demoMigration");
+
+        assertThat(page.dataOrEmpty().get(0)).containsEntry("version", 5);
+        wm.verify(getRequestedFor(urlPathEqualTo("/repository/process-definitions"))
+                .withQueryParam("key", equalTo("demoMigration"))
+                .withQueryParam("latest", equalTo("true"))
+                .withQueryParam("size", equalTo("1")));
+    }
+
+    @Test
     void missingSecretEnvVarFailsLoudlyWithTheRefName() {
         EngineConfig engine = TestEngines.engine(
                 "no-secret",

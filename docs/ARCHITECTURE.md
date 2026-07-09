@@ -178,8 +178,10 @@ v2 can add k-way-merge cursors if real usage demands deep paging.
 ### 2.5 Drift — capability probing
 Engines run different Flowable versions. On registry load (and on demand) the BFF calls
 `GET /management/engine`, records version + reachability, and empirically probes feature
-cliffs: `changeState` (6.4+), `migration` + `migration/validate` (~6.5+, batch shape varies
-6.5→7.x), `externalWorkerJobs` (6.8+), `scopeType` on job rows (~6.8+), historic-activity
+cliffs: `changeState` (6.4+), `migration` (execute route only, ~6.5+; there is **no**
+`migration/validate` REST resource on ANY version — P0 spike 2026-07-09, so the migration
+"preview" is a BFF static model diff, never an engine call; batch shape varies 6.5→7.x),
+`externalWorkerJobs` (6.8+), `scopeType` on job rows (~6.8+), historic-activity
 availability (history level ≥ activity). Capability-flagged features are greyed in the UI
 **with the reason** and rejected by the BFF — never a confusing engine-side 404 at click time.
 The Stage-0 out-of-scope-dead-letter tally (§2.3, R-SEM-20) is an explicit consumer of

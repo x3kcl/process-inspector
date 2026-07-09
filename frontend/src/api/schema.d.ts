@@ -436,6 +436,22 @@ export interface paths {
         patch?: never;
         trace?: never;
     };
+    "/api/instances/{engineId}/{instanceId}/migrate/preview": {
+        parameters: {
+            query?: never;
+            header?: never;
+            path?: never;
+            cookie?: never;
+        };
+        get?: never;
+        put?: never;
+        post: operations["preview"];
+        delete?: never;
+        options?: never;
+        head?: never;
+        patch?: never;
+        trace?: never;
+    };
     "/api/instances/{engineId}/{instanceId}/nearest-sibling": {
         parameters: {
             query?: never;
@@ -736,6 +752,18 @@ export interface components {
             /** Format: int32 */
             engineHttpStatus?: number;
             outcome?: string;
+        };
+        ActivityDiffEntry: {
+            blocker?: boolean;
+            detail?: string;
+            fromActivityId?: string;
+            fromName?: string;
+            fromType?: string;
+            /** @enum {string} */
+            status?: "AUTO_MAPPED" | "FLAGGED_UNMAPPED" | "MAPPED_BY_OVERRIDE" | "TYPE_CHANGED" | "NESTING_CHANGED";
+            toActivityId?: string;
+            toType?: string;
+            warning?: boolean;
         };
         AuditEntryDto: {
             action?: string;
@@ -1163,6 +1191,44 @@ export interface components {
             };
             role?: string;
             username?: string;
+        };
+        MigrationMapping: {
+            fromActivityId?: string;
+            fromActivityIds?: string[];
+            toActivityId?: string;
+            toActivityIds?: string[];
+        };
+        MigrationPreview: {
+            activities?: components["schemas"]["ActivityDiffEntry"][];
+            banner?: string;
+            /** Format: int32 */
+            callActivityChildCount?: number;
+            engineId?: string;
+            enginePath?: string;
+            engineValidated?: boolean;
+            executable?: boolean;
+            fromDefinitionId?: string;
+            fromDefinitionKey?: string;
+            /** Format: int32 */
+            fromVersion?: number;
+            instanceId?: string;
+            method?: string;
+            restBody?: {
+                [key: string]: unknown;
+            };
+            summary?: string;
+            toProcessDefinitionId?: string;
+            /** Format: int32 */
+            toVersion?: number;
+        };
+        MigrationRequest: {
+            confirmToken?: string;
+            mappings?: components["schemas"]["MigrationMapping"][];
+            reason?: string;
+            ticketId?: string;
+            toDefinitionId?: string;
+            /** Format: int32 */
+            toVersion?: number;
         };
         NearestSiblingResponse: {
             /** Format: int32 */
@@ -2176,6 +2242,33 @@ export interface operations {
                 };
                 content: {
                     "text/plain": string;
+                };
+            };
+        };
+    };
+    preview: {
+        parameters: {
+            query?: never;
+            header?: never;
+            path: {
+                engineId: string;
+                instanceId: string;
+            };
+            cookie?: never;
+        };
+        requestBody?: {
+            content: {
+                "application/json": components["schemas"]["MigrationRequest"];
+            };
+        };
+        responses: {
+            /** @description OK */
+            200: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "*/*": components["schemas"]["MigrationPreview"];
                 };
             };
         };
