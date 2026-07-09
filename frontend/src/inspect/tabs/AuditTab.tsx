@@ -2,8 +2,10 @@ import { useState } from 'react'
 import type { FormEvent } from 'react'
 import { useMutation, useQuery, useQueryClient } from '@tanstack/react-query'
 import { ApiError } from '../../api/client'
+import { useTicketUrlTemplate } from '../../api/meta'
 import { createInstanceNote, fetchInstanceAudit, fetchInstanceNotes } from '../../api/queries'
 import { formatDateTime } from '../../lib/format'
+import { ticketHref } from '../../lib/ticket'
 
 interface Props {
   engineId: string
@@ -23,7 +25,19 @@ export default function AuditTab({ engineId, instanceId }: Props) {
   )
 }
 
+function TicketRef({ template, ticketId }: { template: string | undefined; ticketId: string }) {
+  const href = ticketHref(template, ticketId)
+  return href !== null ? (
+    <a className="ticket" href={href} target="_blank" rel="noopener noreferrer">
+      {ticketId}
+    </a>
+  ) : (
+    <code className="ticket"> {ticketId}</code>
+  )
+}
+
 function AuditLog({ engineId, instanceId }: Props) {
+  const ticketTemplate = useTicketUrlTemplate()
   const audit = useQuery({
     queryKey: ['audit', engineId, instanceId],
     queryFn: () => fetchInstanceAudit(engineId, instanceId),
@@ -71,7 +85,9 @@ function AuditLog({ engineId, instanceId }: Props) {
             </td>
             <td className="audit-reason">
               {entry.reason}
-              {entry.ticketId !== undefined && <code className="ticket"> {entry.ticketId}</code>}
+              {entry.ticketId !== undefined && entry.ticketId !== '' && (
+                <TicketRef template={ticketTemplate} ticketId={entry.ticketId} />
+              )}
               {entry.payload !== undefined && entry.payload !== '' && (
                 // The handover detail (SPEC §9): full request payload incl. old values
                 // for variable edits — collapsed, the row stays scannable.

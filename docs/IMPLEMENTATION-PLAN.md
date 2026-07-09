@@ -311,7 +311,10 @@ OPERATIONS.md §8.
   `ticket-required-on` / boot-validated `ticket-url-template`; `TicketPolicy` guard wired into
   CorrectiveAction + FlowSurgery + Migration (bulk enforced per-item), CR/LF-strip + refuse-
   over-long + pattern + required-on-by-environment; `GET /api/meta` exposes the template;
-  `GET /api/audit` gains a `ticketId` filter). Frontend linkify + filter UI = **S3b** (next).
+  `GET /api/audit` gains a `ticketId` filter); S3b (frontend — `ticketHref` safe linkify
+  [encodeURIComponent + `new URL` http(s) re-check + `rel=noopener noreferrer`, plain-text
+  fallback], `useMeta` hook, linkified ticketId in the `/audit` grid + the instance Audit tab,
+  ticketId filter input on `/audit`).
   The `audit_config_event_failures_total` counter is reserved for the R-OPS-02
   telemetry milestone (no metric stack exists yet — nor does `audit_insert_failures_total`);
   until then the failure surfaces as the stable `AUDIT_CONFIG_EVENT_FAILURE` ERROR marker.
