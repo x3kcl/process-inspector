@@ -583,8 +583,41 @@ count to a "≥N" lower bound under a truncated DLQ scan — see `CMMN-SCOPE-PHA
     live 6.8 + Postgres, 2 — retry + delete over two concurrently-failing cases) + `case-detail.spec.ts`
     retry + delete-gated + delete-modal e2e. SPEC §5.3, ARCH §4,
     `docs/CMMN-CASE-DETAIL-PHASE-2.md` §9, `docs/CMMN-SCOPE-PHASE-0.md` §7.
-- Shared server-side saved views; k-way-merge deep paging; **OIDC hardening + access-lifecycle +
+- Shared server-side saved views; **OIDC hardening + access-lifecycle +
   group→scope CRUD + break-glass → now the v2 IdP & Security block below (design locked).**
+
+### v2 — K-way-merge deep paging *(design locked 2026-07-09, unbuilt + spike-gated)*
+Cursor-based browsing through the globally-sorted merged stream across all engines, without
+pulling everything into memory and without breaking sort correctness or the per-engine
+do-no-harm bounds. **Full design + 6-seat panel + wire-wall + RE-LOCK decisions + spike plan:
+`docs/KWAY-PAGING.md`.** Adds R-SEM-22 (cursor contract), R-SEM-23 (deterministic total order —
+a standalone MUST that ships first regardless), R-NFR-08 (deep-paging envelope). Discharges
+ARCH §2.4's parked "v2 can add k-way-merge cursors…" sentence.
+- **Demand-gated** (ARCH §2.4): build only if operators repeatedly hit `perEngine.total >
+  fetched` on a *time-sorted* search and do not narrow. The "narrow your filter" doctrine is the
+  default; deep paging serves the one honest case (a live wide incident whose discriminator is
+  still being discovered).
+- **Reshaped by the panel:** a *uniform* offset cursor is unsound — the INVERTED/`failureTime`
+  plan scans the DLQ unsorted and sorts on a BFF-derived key, so it has no engine-side resume
+  position. The cursor is a **tagged union by plan**, **MIXED/`startTime desc` first**; INVERTED
+  deep paging is initially gated off (the overflow banner offers a pre-filled time-bound filter
+  seam instead).
+- **Do-no-harm (R-NFR-08):** an inbound per-engine offset bound-check + `size` clamp *before*
+  fan-out (the real DoS ceiling — `filterHash` binding gives no integrity vs a crafted cursor);
+  a dedicated `CallPriority.DEEP_PAGE` bulkhead lane so deep scroll can't starve interactive
+  search; a per-engine, config-lowerable depth cap; a cursor TTL; deep pages excluded from the
+  R-NFR-02 P95 gate (a separate latency class).
+- **UX:** progressive-disclosure "Load more" (`useInfiniteQuery`), surfaced only on overflow —
+  **not** a row-model swap, no numbered pages, no infinite scroll. Two-door selection preserved
+  (no loaded-rows-as-ID-list door → also avoids AG Grid Enterprise / R-GOV-05).
+- **Slices:** **S0** live P0 wire-shape spike (6.3/6.8/7.1 — proves offset stability, the
+  historic-body date granularity, failureTime-unsortable, sets the cap by measurement) →
+  **S1** deterministic total order (R-SEM-23, standalone, extract comparator into `StatusJoin`,
+  `compositeId` tiebreak, `startTime` as `Instant`) → **S2** backend cursor + bounded merge
+  (`PageWindow` seam, codec + inbound cap re-validation + TTL, `DEEP_PAGE` lane, R-SEM-22/R-NFR-08)
+  → **S3** API surface + `gen:api` → **S4** frontend "Load more" → **S5** live-engine ITs
+  (config-lowered caps, same-second cluster, drop-engine-mid-scroll honesty). Each CI-green +
+  independently mergeable; caps config-lowerable so correctness proves at `deep-paging-max-depth:6`.
 
 ### v2 — Registry CRUD: runtime engine lifecycle *(design locked 2026-07-09, unbuilt)*
 The registry moves YAML→DB so ops can onboard/retire/tune engines without a deploy — the

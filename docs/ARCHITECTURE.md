@@ -166,6 +166,12 @@ bounded substring filtering would silently miss matches beyond the page. The `va
 filter and the unfinished-activity query have NO such cliff — identical wire shapes across
 the matrix (probed live 2026-07).
 
+**Deterministic total order (R-SEM-23):** the post-merge sort is a total order — the sort key
+then `compositeId` as a final tiebreak — so a given result set orders identically across
+requests (a precondition for any cursor, but a correctness fix in its own right for page-1).
+`startTime` is compared as a parsed `Instant`, since the matrix mixes offset-form and `Z`-form
+ISO timestamps that a raw String comparison mis-orders. See §2.4 and `docs/KWAY-PAGING.md`.
+
 ### 2.4 Aggregation — sorting & paging across engines
 There is no global cursor across independent engines. v1 strategy (deliberate, simple,
 honest): each engine queried with `size = min(maxPageSize, requestedPageSize)`, rows merged
@@ -173,7 +179,21 @@ and sorted in the BFF (default `startTime desc`; `failureTime` sortable), `perEn
 tells the user when an engine has more ("138 of 2,410 — narrow your filter"). No fake global
 pagination. Every enumeration loop (bulk-by-query, error-class aggregation) has a **hard item
 cap and refuses above it** — refuse-unscoped is an industry pattern, not an apology.
-v2 can add k-way-merge cursors if real usage demands deep paging.
+The merge uses a **deterministic total order** — the sort key then `compositeId` as a final
+tiebreak, with `startTime` compared as a parsed `Instant` (not a raw String, which mis-orders
+the offset-form vs `Z`-form timestamps different engines emit); ties are otherwise
+nondeterministic across requests (R-SEM-23, §2.3).
+v2 **k-way-merge deep paging** (demand-gated, design-locked + spike-gated, `docs/KWAY-PAGING.md`):
+a stateless opaque cursor pages the globally-sorted merged stream. It is a **tagged union by
+plan** — the MIXED/`startTime desc` plan carries a resumable per-engine offset; the
+INVERTED/`failureTime` plan has **no** engine-side resume position (it scans the DLQ unsorted and
+sorts on a BFF-derived key), so deep paging is MIXED-first and INVERTED is initially gated off.
+Do-no-harm: an inbound per-engine offset bound-check + size clamp **before** fan-out (the real
+DoS ceiling — a `filterHash`-bound cursor gives no integrity against a crafted one), a dedicated
+`DEEP_PAGE` bulkhead lane so deep scroll can't starve interactive search, a per-engine depth cap,
+and a cursor TTL. Built only if usage shows operators hitting `perEngine.total > fetched` on a
+time-sorted search without narrowing; a mandatory P0 wire-shape spike (6.3/6.8/7.1) precedes any
+build.
 
 ### 2.5 Drift — capability probing
 Engines run different Flowable versions. On registry load (and on demand) the BFF calls
