@@ -945,9 +945,17 @@ behind nothing before any UI reaches them:**
   so the SPA interstitials at modal open. Tests: `DangerousActionReauthGateTest` (rung-1: fresh/stale/
   absent-`auth_time`/dev/break-glass/window), `CorrectiveActionServiceTest` (tier-3 stale → challenge
   before token+audit; within-window → reaches token check; tier-0 never challenged),
-  `ActionExceptionHandlerTest` (401 + marker). *(S5 remaining — non-blocking follow-ups):* re-auth for
-  **bulk submit** (guard-tier 4; enforce once at the create endpoint, NOT per persisted item — a bulk
-  job survives session expiry, R-SEM-10) + **mapping writes / four-eyes approve**; the optional
+  `ActionExceptionHandlerTest` (401 + marker). *(S5d write-surface re-auth ✅ LANDED 2026-07-10 —
+  the dangerous set is now FULLY gated):* **bulk submit** — `reauth.enforce(auth)` at the single
+  private `BulkJobService#submit` convergence overload all three doors (selection / error-class /
+  filter) funnel through, so the challenge fires ONCE at submit where the session is live, never per
+  persisted item (a bulk job survives session expiry, R-SEM-10; bulk is dangerous regardless of verb
+  tier — it is the guard-tier-4 fan-out); **mapping writes** — `AdminAccessController` add / remove /
+  four-eyes `approve` challenge FIRST, before the file-pin 409 and before governance (the approver's
+  "∉ affected group" test runs on a fresh membership). Tests: `BulkJobServiceTest` (stale → challenged
+  before persist/audit; fresh → submits and is never re-challenged per item), `AdminAccessReauthTest`
+  (challenge outranks the file-pin 409; approve gated; dev basic passes to the next rail).
+  *(S5 remaining — non-blocking follow-ups):* the optional
   belt-and-suspenders `OidcIdTokenValidator` (`auth_time`-vs-`max_age` conformance at login) +
   userinfo/Graph membership re-pull; the SPA interstitial + verb-replay + warn-before-guillotine + the
   IdP-unreachable [Break-glass sign-in] door (frontend, with S6). Done-when: identity-freshness

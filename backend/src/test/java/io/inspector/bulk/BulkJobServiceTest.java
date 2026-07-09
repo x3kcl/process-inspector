@@ -31,9 +31,13 @@ import io.inspector.config.InspectorProperties;
 import io.inspector.config.InspectorProperties.EngineEnvironment;
 import io.inspector.config.InspectorProperties.EngineMode;
 import io.inspector.registry.EngineRegistry;
+import io.inspector.security.OidcProperties;
+import io.inspector.security.reauth.DangerousActionReauthGate;
+import io.inspector.security.reauth.ReauthRequiredException;
 import io.inspector.support.TestEngines;
 import java.net.http.HttpTimeoutException;
 import java.time.Clock;
+import java.time.Duration;
 import java.time.Instant;
 import java.time.ZoneOffset;
 import java.util.ArrayList;
@@ -60,6 +64,8 @@ import org.springframework.web.client.ResourceAccessException;
 class BulkJobServiceTest {
 
     private static final String ENGINE = "engine-a";
+    /** The suite's fixed clock instant — the reauth gate shares it so freshness cases are deterministic. */
+    private static final Instant NOW = Instant.parse("2026-07-06T12:00:00Z");
 
     private final BulkJobRepository jobs = mock(BulkJobRepository.class);
     private final BulkJobItemRepository items = mock(BulkJobItemRepository.class);
@@ -134,10 +140,11 @@ class BulkJobServiceTest {
                 audit,
                 registry,
                 client,
-                Clock.fixed(Instant.parse("2026-07-06T12:00:00Z"), ZoneOffset.UTC),
+                Clock.fixed(NOW, ZoneOffset.UTC),
                 // stagger 0 in rung 1 — pacing behavior itself is asserted separately
                 new InspectorProperties(null, null, null, new InspectorProperties.Bulk(4, 0), List.of()),
-                event -> {});
+                event -> {},
+                reauthGate());
     }
 
     private static UUID keyJob(BulkJobItem.Key key) {
@@ -232,6 +239,53 @@ class BulkJobServiceTest {
                         responder))
                 .isInstanceOf(GuardRefusedException.class)
                 .hasMessageContaining("10 characters");
+    }
+
+    /* ---------------- dangerous-set re-auth at SUBMIT (R-SAFE-07, IDP-SECURITY.md §5) ---------------- */
+
+    /** The gate the service is built with — shares the suite's fixed clock, default 15-min window. */
+    private static DangerousActionReauthGate reauthGate() {
+        return new DangerousActionReauthGate(new OidcProperties(null, false, null), Clock.fixed(NOW, ZoneOffset.UTC));
+    }
+
+    /** An OIDC session whose auth_time is {@code age} old, holding RESPONDER (the bulk door floor). */
+    private static Authentication oidcSession(Duration age) {
+        Map<String, Object> claims =
+                Map.of("sub", "u-1", "auth_time", NOW.minus(age).getEpochSecond());
+        var idToken = new org.springframework.security.oauth2.core.oidc.OidcIdToken(
+                "id-tok", NOW.minus(Duration.ofHours(1)), NOW.plus(Duration.ofHours(1)), claims);
+        var authorities = List.<org.springframework.security.core.GrantedAuthority>of(
+                new org.springframework.security.core.authority.SimpleGrantedAuthority("ROLE_RESPONDER"));
+        return new org.springframework.security.oauth2.client.authentication.OAuth2AuthenticationToken(
+                new org.springframework.security.oauth2.core.oidc.user.DefaultOidcUser(authorities, idToken),
+                authorities,
+                "oidc");
+    }
+
+    @Test
+    void aStaleOidcSessionIsChallengedAtSubmitBeforeAnythingIsPersistedOrAudited() {
+        // Bulk is in the dangerous set REGARDLESS of verb tier (guard-tier-4 fan-out): even the
+        // tier-0 suspend fan-out challenges a 20-min-old session. Nothing persisted, nothing audited.
+        assertThatThrownBy(() -> service.submit(suspendOf("pi-1"), oidcSession(Duration.ofMinutes(20))))
+                .isInstanceOf(ReauthRequiredException.class);
+        verifyNoInteractions(audit);
+        verifyNoInteractions(actions);
+        assertThat(jobStore).isEmpty();
+    }
+
+    @Test
+    void aFreshOidcSessionSubmitsNormallyAndIsNeverReChallengedPerItem() {
+        // Within-window session → the challenge passes ONCE at submit; the per-item workers then run
+        // the whole fan-out with no further freshness check (a bulk job survives its session,
+        // R-SEM-10 — the per-item rails are RBAC + audit, not re-auth).
+        when(actions.execute(any(), any(), any(), any(), any()))
+                .thenReturn(new ActionResult(UUID.randomUUID(), "corr", "ok", 200, "done"));
+
+        var dto = service.submit(suspendOf("pi-1", "pi-2"), oidcSession(Duration.ofMinutes(5)));
+        var done = awaitFinished(dto.id());
+
+        assertThat(done.state()).isEqualTo("COMPLETED");
+        verify(actions, org.mockito.Mockito.times(2)).execute(any(), any(), eq(ActionVerb.SUSPEND), any(), any());
     }
 
     /**
@@ -481,9 +535,10 @@ class BulkJobServiceTest {
                 audit,
                 registry,
                 client,
-                Clock.fixed(Instant.parse("2026-07-06T12:00:00Z"), ZoneOffset.UTC),
+                Clock.fixed(NOW, ZoneOffset.UTC),
                 new InspectorProperties(null, null, null, new InspectorProperties.Bulk(permits, staggerMs), List.of()),
-                publishedEvents::add);
+                publishedEvents::add,
+                reauthGate());
     }
 
     @Test

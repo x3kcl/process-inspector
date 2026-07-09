@@ -100,6 +100,12 @@ public class BulkController {
         return bulk.get(id);
     }
 
+    /**
+     * Deliberately OUTSIDE the dangerous-set re-auth gate (IDP-SECURITY.md §5): cancel is the safety
+     * brake — it only STOPS dispatching (do-no-harm direction; sent items keep their outcome), and
+     * demanding a re-auth bounce to stop an in-flight fan-out mid-incident would be harmful.
+     * "Continue as new job" is a fresh submit and IS gated at the submit convergence.
+     */
     @PostMapping("/{id}/cancel")
     @PreAuthorize("@rbac.atLeast(authentication, 'RESPONDER')")
     public BulkDtos.BulkJobDto cancel(@PathVariable UUID id, Authentication authentication) {

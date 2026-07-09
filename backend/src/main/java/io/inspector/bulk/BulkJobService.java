@@ -19,6 +19,7 @@ import io.inspector.client.FlowableEngineClient.JobLaneKind;
 import io.inspector.config.InspectorProperties;
 import io.inspector.config.InspectorProperties.EngineConfig;
 import io.inspector.registry.EngineRegistry;
+import io.inspector.security.reauth.DangerousActionReauthGate;
 import java.time.Clock;
 import java.util.ArrayList;
 import java.util.LinkedHashMap;
@@ -84,6 +85,7 @@ public class BulkJobService {
     private final Clock clock;
     private final InspectorProperties props;
     private final ApplicationEventPublisher events;
+    private final DangerousActionReauthGate reauth;
     private final ExecutorService executor = Executors.newVirtualThreadPerTaskExecutor();
     private final Map<UUID, Boolean> cancelRequested = new ConcurrentHashMap<>();
     /** Per-engine in-flight dispatch permits, shared across concurrent jobs (SPEC §7). */
@@ -106,7 +108,8 @@ public class BulkJobService {
             FlowableEngineClient client,
             Clock clock,
             InspectorProperties props,
-            ApplicationEventPublisher events) {
+            ApplicationEventPublisher events,
+            DangerousActionReauthGate reauth) {
         this.jobs = jobs;
         this.items = items;
         this.actions = actions;
@@ -117,6 +120,7 @@ public class BulkJobService {
         this.clock = clock;
         this.props = props;
         this.events = events;
+        this.reauth = reauth;
     }
 
     /* ------------------------------- submit ------------------------------- */
@@ -162,6 +166,13 @@ public class BulkJobService {
             int itemCap,
             BulkJob.ScopeKind scopeKind,
             String scopeLabel) {
+        // Dangerous-set freshness (IDP-SECURITY.md §5, R-SAFE-07): bulk is in the dangerous set
+        // regardless of verb tier (it is the guard-tier-4 fan-out), so a stale OAuth2 session
+        // re-authenticates ONCE — here at SUBMIT, where the session is live — never per persisted
+        // item (a bulk job survives session expiry, R-SEM-10; the workers run this envelope's
+        // targets under the already-freshness-checked submit). All three entry doors (selection /
+        // error-class / filter) converge on this overload, so the gate cannot be bypassed.
+        reauth.enforce(auth);
         ActionVerb verb = ActionVerb.fromPath(request.verb() != null ? request.verb() : "")
                 .filter(BULK_VERBS::contains)
                 .orElseThrow(() -> new GuardRefusedException(
