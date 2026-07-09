@@ -94,4 +94,16 @@ class MigrationRbacGuardSpringTest {
         assertThat(response.getStatusCode()).isEqualTo(HttpStatus.CONFLICT);
         assertThat(mapper.readTree(response.getBody()).path("code").asText()).startsWith("capability-");
     }
+
+    // ---- the definition-versions on-ramp is a plain READ: VIEWER floor, no capability gate ----
+
+    @Test
+    void versionsOnRampIsReadableByViewers() throws Exception {
+        // A VIEWER clears the read door and reaches the (closed-port) engine — 502 proves the door
+        // opened (a 403 would mean the read was wrongly gated above VIEWER).
+        ResponseEntity<String> response =
+                as("viewer").getForEntity("/api/definitions/probe-dev/demoMigration/versions", String.class);
+        assertThat(response.getStatusCode()).isEqualTo(HttpStatus.BAD_GATEWAY);
+        assertThat(mapper.readTree(response.getBody()).path("code").asText()).isEqualTo("engine-unreachable");
+    }
 }

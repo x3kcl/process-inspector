@@ -228,6 +228,22 @@ export interface paths {
         patch?: never;
         trace?: never;
     };
+    "/api/definitions/{engineId}/{key}/versions": {
+        parameters: {
+            query?: never;
+            header?: never;
+            path?: never;
+            cookie?: never;
+        };
+        get: operations["versions"];
+        put?: never;
+        post?: never;
+        delete?: never;
+        options?: never;
+        head?: never;
+        patch?: never;
+        trace?: never;
+    };
     "/api/engines": {
         parameters: {
             query?: never;
@@ -991,6 +1007,26 @@ export interface components {
             id?: string;
             /** Format: int32 */
             retries?: number;
+        };
+        DefinitionVersion: {
+            definitionId?: string;
+            deploymentId?: string;
+            latest?: boolean;
+            name?: string;
+            /** Format: int64 */
+            runningInstanceCount?: number;
+            /** Format: int32 */
+            version?: number;
+        };
+        DefinitionVersionsResponse: {
+            complete?: boolean;
+            engineId?: string;
+            key?: string;
+            /** Format: int32 */
+            latestVersion?: number;
+            /** Format: int32 */
+            totalVersions?: number;
+            versions?: components["schemas"]["DefinitionVersion"][];
         };
         EngineCapabilities: {
             activityHistory?: boolean;
@@ -1941,6 +1977,29 @@ export interface operations {
                 };
                 content: {
                     "*/*": components["schemas"]["ActionResult"];
+                };
+            };
+        };
+    };
+    versions: {
+        parameters: {
+            query?: never;
+            header?: never;
+            path: {
+                engineId: string;
+                key: string;
+            };
+            cookie?: never;
+        };
+        requestBody?: never;
+        responses: {
+            /** @description OK */
+            200: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "*/*": components["schemas"]["DefinitionVersionsResponse"];
                 };
             };
         };
