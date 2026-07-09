@@ -3,6 +3,10 @@
 # is NOT pushed down to the job-lane scan — on the KEEP-up stack, accumulated dead-letter
 # residue past the cap truncates the fresh test instances out of the member list.
 inspector:
+  # Registry CRUD off in tests: config-pinned so the boot seeder is inert (RegistryBootstrap
+  # no-ops; existing suites unperturbed). The seed/drift path is proven by EngineRegistryStoreIT.
+  registry:
+    source: config
   # v2/M4 snapshot sampler OFF — this profile is docker-free (no DB / JdbcTemplate).
   snapshot:
     enabled: false

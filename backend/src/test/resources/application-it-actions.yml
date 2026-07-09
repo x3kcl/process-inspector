@@ -9,6 +9,10 @@
 #   engine-a-prod — SAME engine tagged prod: every prod-only guard branch (typed token,
 #                   tier-1 reason requirement) runs against one stack
 inspector:
+  # Registry CRUD off in tests: config-pinned so the boot seeder is inert (RegistryBootstrap
+  # no-ops; existing suites unperturbed). The seed/drift path is proven by EngineRegistryStoreIT.
+  registry:
+    source: config
   fanout-parallelism: 4
   engines:
     - id: engine-a

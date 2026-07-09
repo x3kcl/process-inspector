@@ -1,0 +1,45 @@
+# Rung-4 registry for EngineRegistryStoreIT (v2 Registry CRUD S2) — the ONLY test profile with
+# inspector.registry.source=db, so the boot seeder + store run against a REAL Testcontainers
+# Postgres 16 (datasource injected via @DynamicPropertySource): Flyway applies V1..V7, Hibernate
+# validates the EngineRegistryRow against V7 (ddl-auto=validate from application.yml), and the
+# YAML seed → engine_registry + registry-seed audit path is exercised end-to-end. DB-only: these
+# engines are never dialled (seeding touches no engine).
+inspector:
+  registry:
+    source: db
+    egress-allowlist:
+      - "*.corp.example.com"
+      - "127.0.0.0/8"
+  fanout-parallelism: 4
+  snapshot:
+    enabled: false
+  engines:
+    - id: engine-a
+      name: "Engine A (seed harness)"
+      base-url: "http://localhost:8081/flowable-rest/service"
+      environment: dev
+      accent-color: "#2e86de"
+      enabled: true
+      mode: read-write
+      auth:
+        type: basic
+        username: rest-admin
+        password-ref: ENGINE_A_PASSWORD
+      timeouts:
+        connect-ms: 2000
+        read-ms: 10000
+        write-ms: 10000
+      max-page-size: 10
+      dlq-scan-cap: 500
+
+    - id: engine-7
+      name: "Engine 7 (seed harness, disabled)"
+      base-url: "http://localhost:8083/flowable-rest/service"
+      environment: prod
+      accent-color: "#8e44ad"
+      enabled: false
+      mode: read-only
+      auth:
+        type: basic
+        username: rest-admin
+        password-ref: ENGINE_7_PASSWORD

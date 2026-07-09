@@ -5,6 +5,7 @@ import io.inspector.audit.InstanceNoteRepository;
 import io.inspector.audit.ProtectedInstanceRepository;
 import io.inspector.bulk.BulkJobItemRepository;
 import io.inspector.bulk.BulkJobRepository;
+import io.inspector.registry.EngineRegistryRepository;
 import io.inspector.snapshot.SnapshotCountRepository;
 import io.inspector.views.RecentSearchRepository;
 import io.inspector.views.SavedViewRepository;
@@ -60,5 +61,10 @@ public class NoDbTestSupport {
     @Bean
     RecentSearchRepository recentSearchRepository() {
         return Mockito.mock(RecentSearchRepository.class);
+    }
+
+    @Bean
+    EngineRegistryRepository engineRegistryRepository() {
+        return Mockito.mock(EngineRegistryRepository.class);
     }
 }
