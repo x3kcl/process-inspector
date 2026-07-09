@@ -27,11 +27,33 @@ public record SearchResponse(
         Map<String, EngineResult> perEngine,
         Map<InstanceStatus, Long> statusCounts,
         List<String> criteriaEcho,
-        String curl) {
+        String curl,
+        // v2 deep paging (docs/KWAY-PAGING.md, R-SEM-22): the opaque cursor for the NEXT "Load more"
+        // click (null on a normal search or at end-of-stream); depthCapped = some engine reached its
+        // per-engine depth cap (surface the depth-wall filter seam); pagingCoherence = "snapshot" on a
+        // deep-paged set (the "loaded more as of HH:MM — Refresh to reset" seam line). Null/false on
+        // the normal single-shot search path.
+        String nextCursor,
+        boolean depthCapped,
+        String pagingCoherence) {
 
-    /** Controller-side decoration: same aggregation result, presentation fields filled. */
+    /**
+     * Pre-deep-paging 5-arg shape → no cursor, not depth-capped, single-shot coherence. Keeps the
+     * normal aggregation path and existing tests off constructor churn (unit-test-patterns).
+     */
+    public SearchResponse(
+            List<ProcessInstanceRow> rows,
+            Map<String, EngineResult> perEngine,
+            Map<InstanceStatus, Long> statusCounts,
+            List<String> criteriaEcho,
+            String curl) {
+        this(rows, perEngine, statusCounts, criteriaEcho, curl, null, false, null);
+    }
+
+    /** Controller-side decoration: same aggregation result, presentation fields filled, deep-page markers preserved. */
     public SearchResponse withPresentation(List<String> criteriaEcho, String curl) {
-        return new SearchResponse(rows, perEngine, statusCounts, criteriaEcho, curl);
+        return new SearchResponse(
+                rows, perEngine, statusCounts, criteriaEcho, curl, nextCursor, depthCapped, pagingCoherence);
     }
 
     @JsonInclude(JsonInclude.Include.NON_NULL)
