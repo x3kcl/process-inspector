@@ -9,6 +9,7 @@ import io.inspector.registry.EngineRegistryRepository;
 import io.inspector.snapshot.SnapshotCountRepository;
 import io.inspector.views.RecentSearchRepository;
 import io.inspector.views.SavedViewRepository;
+import io.inspector.views.SharedViewRepository;
 import org.mockito.Mockito;
 import org.springframework.boot.test.context.TestConfiguration;
 import org.springframework.context.annotation.Bean;
@@ -61,6 +62,11 @@ public class NoDbTestSupport {
     @Bean
     RecentSearchRepository recentSearchRepository() {
         return Mockito.mock(RecentSearchRepository.class);
+    }
+
+    @Bean
+    SharedViewRepository sharedViewRepository() {
+        return Mockito.mock(SharedViewRepository.class);
     }
 
     @Bean
