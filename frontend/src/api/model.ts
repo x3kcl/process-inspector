@@ -21,6 +21,7 @@ export type TrendPoint = components['schemas']['Point']
 // v2/M4 server-backed Saved Views + Recent Searches (SPEC §8) — replace the v1 localStorage stores.
 export type SavedViewDto = components['schemas']['SavedViewDto']
 export type RecentSearchDto = components['schemas']['RecentSearchDto']
+export type TeamViewDto = components['schemas']['TeamViewDto']
 export type CmmnDeadLetterJob = components['schemas']['CmmnDeadLetterJob']
 export type CmmnScopeFacet = components['schemas']['CmmnScopeFacet']
 export type CmmnLaneCounts = components['schemas']['CmmnLaneCounts']

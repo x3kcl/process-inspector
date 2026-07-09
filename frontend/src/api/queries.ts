@@ -25,6 +25,7 @@ import type {
   TriageTrendResponse,
   SavedViewDto,
   RecentSearchDto,
+  TeamViewDto,
   VariableDto,
 } from './model'
 
@@ -78,6 +79,40 @@ export async function putSavedView(name: string, search: string): Promise<SavedV
 
 export async function deleteSavedView(id: number): Promise<void> {
   const { error, response } = await api.DELETE('/api/views/{id}', { params: { path: { id } } })
+  if (!response.ok) throw new ApiError(response.status, error)
+}
+
+/* ---------------- team (shared) views (v2, SHARED-VIEWS.md) ---------------- */
+
+/** The caller's visible team canon (overlaps()-filtered server-side; a DECLUTTER list, not a gate). */
+export async function fetchTeamViews(): Promise<TeamViewDto[]> {
+  const { data, error, response } = await api.GET('/api/team-views')
+  if (data === undefined) throw new ApiError(response.status, error)
+  return data
+}
+
+/**
+ * Publish a private view's snapshot as team canon. The scope is DERIVED server-side from the search
+ * (never sent from here); the server gates on covers() and refuses (403/400/409) — surfaced as an
+ * {@link ApiError} the caller renders inline.
+ */
+export async function publishTeamView(body: {
+  name: string
+  search: string
+  description?: string
+  runbookUrl?: string
+}): Promise<TeamViewDto> {
+  const { data, error, response } = await api.POST('/api/team-views', { body })
+  if (data === undefined) throw new ApiError(response.status, error)
+  return data
+}
+
+/** Unpublish (remove from team canon). Author removes their own; a moderator must pass a reason ≥10. */
+export async function unpublishTeamView(id: number, reason?: string): Promise<void> {
+  const { error, response } = await api.POST('/api/team-views/{id}/unpublish', {
+    params: { path: { id } },
+    body: { reason },
+  })
   if (!response.ok) throw new ApiError(response.status, error)
 }
 
