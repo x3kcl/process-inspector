@@ -39,7 +39,8 @@ import org.springframework.web.client.RestClient;
 @Import(NoDbTestSupport.class)
 class TriageCmmnScopeLegacyIT {
 
-    private static final String ENGINE = "http://localhost:8084/flowable-rest/service";
+    private static final String ENGINE = "http://localhost:"
+            + System.getenv().getOrDefault("PI_ENGINE_LEGACY_PORT", "8084") + "/flowable-rest/service";
 
     @Autowired
     TestRestTemplate rest;

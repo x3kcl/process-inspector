@@ -38,7 +38,8 @@ import org.testcontainers.containers.PostgreSQLContainer;
 @TestInstance(TestInstance.Lifecycle.PER_CLASS)
 class FlowSurgeryIT {
 
-    private static final String ENGINE = "http://localhost:8081/flowable-rest/service";
+    private static final String ENGINE =
+            "http://localhost:" + System.getenv().getOrDefault("PI_ENGINE_A_PORT", "8081") + "/flowable-rest/service";
     private static final String REASON = "flow-surgery IT: INC-0 rehearsal move";
 
     private static final PostgreSQLContainer<?> POSTGRES = new PostgreSQLContainer<>("postgres:16-alpine");

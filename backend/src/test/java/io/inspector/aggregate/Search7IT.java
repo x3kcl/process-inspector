@@ -36,7 +36,8 @@ import org.springframework.web.client.RestClient;
 @Import(NoDbTestSupport.class)
 class Search7IT {
 
-    private static final String ENGINE = "http://localhost:8083/flowable-rest/service";
+    private static final String ENGINE =
+            "http://localhost:" + System.getenv().getOrDefault("PI_ENGINE_7_PORT", "8083") + "/flowable-rest/service";
 
     @Autowired
     TestRestTemplate rest;

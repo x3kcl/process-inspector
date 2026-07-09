@@ -16,7 +16,7 @@ inspector:
   engines:
     - id: engine-legacy
       name: "Engine Legacy (triage harness)"
-      base-url: "http://localhost:8084/flowable-rest/service"
+      base-url: "http://localhost:${PI_ENGINE_LEGACY_PORT:8084}/flowable-rest/service"
       environment: dev
       accent-color: "#7f8c8d"
       enabled: true

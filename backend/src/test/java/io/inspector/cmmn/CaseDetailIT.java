@@ -53,7 +53,8 @@ import org.springframework.web.client.RestClient;
 @Import(NoDbTestSupport.class)
 class CaseDetailIT {
 
-    private static final String ENGINE = "http://localhost:8081/flowable-rest/service";
+    private static final String ENGINE =
+            "http://localhost:" + System.getenv().getOrDefault("PI_ENGINE_A_PORT", "8081") + "/flowable-rest/service";
     private static final String CASE_KEY = "demoFailingCase";
 
     private static final WireMockServer proxy = new WireMockServer(options().dynamicPort());
@@ -61,7 +62,9 @@ class CaseDetailIT {
     @DynamicPropertySource
     static void registerProxy(DynamicPropertyRegistry registry) {
         proxy.start();
-        proxy.stubFor(any(anyUrl()).willReturn(aResponse().proxiedFrom("http://localhost:8081")));
+        proxy.stubFor(any(anyUrl())
+                .willReturn(aResponse()
+                        .proxiedFrom("http://localhost:" + System.getenv().getOrDefault("PI_ENGINE_A_PORT", "8081"))));
         registry.add("TRIAGE_PROXY_PORT", () -> proxy.port());
     }
 

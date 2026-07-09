@@ -17,7 +17,7 @@ inspector:
   engines:
     - id: engine-a
       name: "Engine A (actions harness)"
-      base-url: "http://localhost:8081/flowable-rest/service"
+      base-url: "http://localhost:${PI_ENGINE_A_PORT:8081}/flowable-rest/service"
       environment: dev
       accent-color: "#2e86de"
       enabled: true
@@ -35,7 +35,7 @@ inspector:
 
     - id: engine-a-prod
       name: "Engine A (prod twin)"
-      base-url: "http://localhost:8081/flowable-rest/service"
+      base-url: "http://localhost:${PI_ENGINE_A_PORT:8081}/flowable-rest/service"
       environment: prod
       accent-color: "#e74c3c"
       enabled: true
