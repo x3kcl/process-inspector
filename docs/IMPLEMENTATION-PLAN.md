@@ -879,13 +879,23 @@ behind nothing before any UI reaches them:**
   fail-closed. Full unit ladder green (607). CSP *enforcement* tuning against the live bundle stays
   report-only until observed (a Playwright/axe follow-up in S6); the SPA-serving nginx should mirror
   these headers (demo-deploy follow-up).
-- **S3 — mapping store (file→DB).** Flyway `V<next>` (`group_scope_grant` + `group_fleet_grant`,
-  DDL in IDP-SECURITY.md §11 — **version allocated at merge time; coordinate with M4-closeout's
-  V8/V9/V10**) + entities/repos + `@Transactional` store + the `MappingSource` seam (incl.
-  `allLadderGrants`/`allFleetGrants`, both impls, `DbMappingSource` `@Profile("db")`) + file-seed
-  import + `mapping-source` pin + the env-bootstrap apex grant + the ≥2-`ACCESS_ADMIN` boot
-  invariant. `NoDbTestSupport` repo mocks scoped to DB-store tests only. Done-when: empty-seed IT +
-  non-empty drift WARN + file-pin 403 + boot-invariant fails-loudly-on-no-apex.
+- **S3 — mapping store (file→DB). ✅ LANDED 2026-07-09.** **Flyway `V13`** (`group_scope_grant` +
+  `group_fleet_grant`, DDL per IDP-SECURITY.md §11 — V8–V12 were taken by M4-closeout + shared-views,
+  so V13 was the next free at merge time) + entities/repos + `@Transactional` `MappingStore` + the
+  `MappingSource` seam (`grantsForGroups`/`rolesForGroups`/**`fleetGrantsForGroups`** +
+  `allLadderGrants`/`allFleetGrants`, BOTH impls — `FileMappingSource` `@Profile("!db")` delegating
+  to the hot-reloaded file + config fleet grants, `DbMappingSource` `@Profile("db")` reading the
+  store behind a ≤60s cache) + the boot file-seed import (`MappingSeeder`, audited `mapping-seed`,
+  DB-authoritative once seeded) + the **env-bootstrap `ACCESS_ADMIN` apex overlay**
+  (`inspector.security.mapping.access-admin-group` = the always-available floor, never a store row)
+  + the **≥1/≥2-`ACCESS_ADMIN` boot invariant** (`ApexInvariantChecker`, `@Profile("oidc")`: 0 apex
+  → refuse-to-boot loudly, 1 → boot with CRUD disabled, ≥2 → CRUD enabled). `RbacAuthorizer` +
+  `InspectorAuthoritiesMapper` now consume the seam (registry-admin resolution unified through
+  `fleetGrantsForGroups`, file-mode behavior identical). Profile-driven so the rung-3 suite keeps the
+  file source with **zero new `NoDbTestSupport` mocks** (the DB beans are `@Profile("db")`-only).
+  *Tests:* `FileMappingSourceTest` + `ApexInvariantCheckerTest` (rung-1, CI gate) + a real-Postgres
+  `MappingStoreDbIT` (seed + read + env-overlay + refresh, local-only). Full unit ladder green (621).
+  Drift-report + file-pin-403 land with the S4 CRUD surface that consumes them.
 - **S4 — `ACCESS_ADMIN` + mapping CRUD API + governance.** `rbac.canAdministerAccess`,
   `AdminAccessController`, the **effective-grant widen/breadth/fleet-removal check** + four-eyes
   (proposer & approver both re-authenticated) + the security-alert fire, fail-closed audit

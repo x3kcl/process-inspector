@@ -83,6 +83,15 @@ public class ScopeMappingService {
         return grants;
     }
 
+    /**
+     * The WHOLE current mapping (group → ladder grants), TTL-fresh — backs the
+     * {@code FileMappingSource} enumeration methods (access-review / widen / drift) so they work
+     * under {@code mapping-source: file}, not silently empty (⚠️ lead-dev).
+     */
+    public Map<String, List<ScopeGrant>> allGrantsByGroup() {
+        return current().byGroup();
+    }
+
     /** Distinct roles the groups grant anywhere — the coarse ROLE_* authorities for the session. */
     public Set<Role> rolesForGroups(Collection<String> groups) {
         Set<Role> roles = new LinkedHashSet<>();

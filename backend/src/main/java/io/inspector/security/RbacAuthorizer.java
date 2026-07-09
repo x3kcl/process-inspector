@@ -3,6 +3,8 @@ package io.inspector.security;
 import io.inspector.action.ActionVerb;
 import io.inspector.config.InspectorProperties;
 import io.inspector.config.InspectorProperties.EngineConfig;
+import io.inspector.security.mapping.FleetGrant;
+import io.inspector.security.mapping.MappingSource;
 import java.util.LinkedHashSet;
 import java.util.List;
 import java.util.Set;
@@ -32,18 +34,12 @@ public class RbacAuthorizer {
      */
     public static final String REGISTRY_ADMIN_AUTHORITY = "ROLE_REGISTRY_ADMIN";
 
-    private final ScopeMappingService scopeMapping;
-    private final SecurityProperties props;
+    private final MappingSource mappingSource;
     private final InspectorProperties registry;
     private final OidcGroupResolver groupResolver;
 
-    public RbacAuthorizer(
-            ScopeMappingService scopeMapping,
-            SecurityProperties props,
-            InspectorProperties registry,
-            OidcGroupResolver groupResolver) {
-        this.scopeMapping = scopeMapping;
-        this.props = props;
+    public RbacAuthorizer(MappingSource mappingSource, InspectorProperties registry, OidcGroupResolver groupResolver) {
+        this.mappingSource = mappingSource;
         this.registry = registry;
         this.groupResolver = groupResolver;
     }
@@ -87,7 +83,9 @@ public class RbacAuthorizer {
             return false;
         }
         if (auth instanceof OAuth2AuthenticationToken oauth && oauth.getPrincipal() instanceof OAuth2User user) {
-            return groupsOf(user).contains(props.registryAdminGroupOrDefault());
+            // Resolved through the mapping seam: under file mode this is the config registry-admin
+            // group (unchanged); under db mode it is a store fleet-grant row. Groups are issuer-pinned.
+            return mappingSource.fleetGrantsForGroups(groupsOf(user)).contains(FleetGrant.REGISTRY_ADMIN);
         }
         return auth.getAuthorities().stream().anyMatch(a -> REGISTRY_ADMIN_AUTHORITY.equals(a.getAuthority()));
     }
@@ -109,7 +107,7 @@ public class RbacAuthorizer {
         }
         if (auth instanceof OAuth2AuthenticationToken oauth && oauth.getPrincipal() instanceof OAuth2User user) {
             List<String> groups = groupsOf(user);
-            return scopeMapping.grantsForGroups(groups);
+            return mappingSource.grantsForGroups(groups);
         }
         Set<ScopeGrant> grants = new LinkedHashSet<>();
         for (GrantedAuthority authority : auth.getAuthorities()) {
