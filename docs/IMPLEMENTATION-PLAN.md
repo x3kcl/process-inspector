@@ -860,11 +860,24 @@ behind nothing before any UI reaches them:**
   the zero-flake doctrine keeps container ITs off the per-PR path; a merge-blocking Keycloak leg +
   Graph overage *resolution* (vs detection) are tracked follow-ups. Graph overage resolution and the
   `max_age`/refresh re-auth semantics land in **S5**.
-- **S2 — session + header hardening + fail-closed gate.** `sessionManagement` (caps; fixation scoped
-  to `oidc`/form so the dev Basic-per-XHR SSE isn't orphaned), cookie flags, the header set, CSP
-  **report-only**, HSTS opt-in; `canExecute` → `.orElse(false)` + the verb-existence check.
-  Done-when: JSESSIONID stable across consecutive Basic XHRs with an SSE stream open; unknown verb
-  → 403; CSP report-only renders bpmn-js/AG-Grid/CodeMirror with zero violations.
+- **S2 — session + header hardening + fail-closed gate. ✅ LANDED 2026-07-09.** Session caps —
+  idle **12h** (`server.servlet.session.timeout`) + absolute **24h** (`AbsoluteSessionTimeoutFilter`,
+  Clock-driven, invalidate-and-let-the-entry-point-answer); fixation **scoped** —
+  `changeSessionId` on the `oidc` chain, **`none` on the dev Basic chain** so the SSE `EventSource`
+  isn't orphaned; cookie flags `HttpOnly`/`SameSite=Lax` (`Secure` container-derived so dev-over-http
+  still logs in). Header set (`HttpHardeningProperties`, config-bounded): `nosniff`,
+  `X-Frame-Options: DENY` + CSP `frame-ancestors 'none'`, `Referrer-Policy`, `Permissions-Policy`;
+  **CSP report-only-first** (bpmn-js/AG-Grid/CodeMirror-safe default, flip to enforce per deploy);
+  **HSTS opt-in, off by default** (never double-emit vs the proxy). **Fail-closed gate:**
+  `RbacAuthorizer.canExecute` → `.orElse(false)`, with a `VerbExistenceInterceptor` that 404s an
+  unknown verb **before** `@PreAuthorize` so typo→404 survives while a known-but-forbidden verb is a
+  clean 403 and the authorization decision never defaults to allow. *Tests:*
+  `AbsoluteSessionTimeoutFilterTest` (fake-Clock cap, no sleep), `HttpHardeningSpringTest`
+  (headers present + HSTS absent + CSP report-only; unknown verb → 404; forbidden verb → 403;
+  **JSESSIONID stable across consecutive Basic XHRs**), `RbacGuardMatrixTest` updated to
+  fail-closed. Full unit ladder green (607). CSP *enforcement* tuning against the live bundle stays
+  report-only until observed (a Playwright/axe follow-up in S6); the SPA-serving nginx should mirror
+  these headers (demo-deploy follow-up).
 - **S3 — mapping store (file→DB).** Flyway `V<next>` (`group_scope_grant` + `group_fleet_grant`,
   DDL in IDP-SECURITY.md §11 — **version allocated at merge time; coordinate with M4-closeout's
   V8/V9/V10**) + entities/repos + `@Transactional` store + the `MappingSource` seam (incl.

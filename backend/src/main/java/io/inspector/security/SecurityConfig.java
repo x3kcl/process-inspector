@@ -25,6 +25,7 @@ import org.springframework.security.web.context.RequestAttributeSecurityContextR
 import org.springframework.security.web.context.SecurityContextHolderFilter;
 import org.springframework.security.web.csrf.CookieCsrfTokenRepository;
 import org.springframework.security.web.csrf.CsrfTokenRequestAttributeHandler;
+import org.springframework.security.web.header.writers.ReferrerPolicyHeaderWriter.ReferrerPolicy;
 
 /**
  * Dual auth profile (SPEC §10, ARCH §5): the default (dev) chain authenticates with HTTP
@@ -43,6 +44,14 @@ import org.springframework.security.web.csrf.CsrfTokenRequestAttributeHandler;
 @EnableMethodSecurity
 public class SecurityConfig {
 
+    private final HttpHardeningProperties hardening;
+    private final java.time.Clock clock;
+
+    public SecurityConfig(HttpHardeningProperties hardening, java.time.Clock clock) {
+        this.hardening = hardening;
+        this.clock = clock;
+    }
+
     /** The layered ladder (R-SAFE-01): a higher role covers every lower one. */
     @Bean
     RoleHierarchy roleHierarchy() {
@@ -58,6 +67,34 @@ public class SecurityConfig {
                 // Ingress scrub (M4-CLOSEOUT §2 / D2c): a client-supplied X-Forwarded-User is never
                 // trusted or reflected — the BFF mints the outbound header from the audit actor alone.
                 .addFilterBefore(new InboundForwardedUserFilter(), SecurityContextHolderFilter.class)
+                // Absolute session cap (R-SAFE-07): after SecurityContextHolderFilter so the session
+                // exists; on expiry it invalidates + clears and lets the entry point answer 401/redirect.
+                .addFilterAfter(
+                        new AbsoluteSessionTimeoutFilter(
+                                java.time.Duration.ofHours(hardening.sessionAbsoluteCapHoursOrDefault()), clock),
+                        SecurityContextHolderFilter.class)
+                // Transport/header hardening (IDP-SECURITY.md §8, R-OPS-16), defense-in-depth over the
+                // reverse proxy, config-bounded so nothing bricks. nosniff is on by Spring default.
+                .headers(headers -> headers.frameOptions(frame -> frame.deny())
+                        .referrerPolicy(ref -> ref.policy(ReferrerPolicy.STRICT_ORIGIN_WHEN_CROSS_ORIGIN))
+                        .permissionsPolicyHeader(pp -> pp.policy(hardening.permissionsPolicyOrDefault()))
+                        // HSTS opt-in: the proxy owns it by default (deliberately weak stsSeconds) so
+                        // the app must never DOUBLE-emit Strict-Transport-Security.
+                        .httpStrictTransportSecurity(hsts -> {
+                            if (hardening.hstsEnabled()) {
+                                hsts.includeSubDomains(false).maxAgeInSeconds(hardening.hstsMaxAgeSOrDefault());
+                            } else {
+                                hsts.disable();
+                            }
+                        })
+                        // CSP report-only-FIRST (tune against the real bpmn-js/AG-Grid/CodeMirror bundle,
+                        // then flip to enforce per deploy); frame-ancestors 'none' is inside the policy.
+                        .contentSecurityPolicy(csp -> {
+                            csp.policyDirectives(hardening.cspOrDefault());
+                            if (hardening.cspReportOnlyOrDefault()) {
+                                csp.reportOnly();
+                            }
+                        }))
                 .csrf(csrf -> csrf.csrfTokenRepository(CookieCsrfTokenRepository.withHttpOnlyFalse())
                         .csrfTokenRequestHandler(new CsrfTokenRequestAttributeHandler())
                         .ignoringRequestMatchers(request -> request.getHeader("Authorization") != null))
@@ -86,6 +123,10 @@ public class SecurityConfig {
         // send an Authorization header — it rides the JSESSIONID the first authenticated
         // XHR established, matching the oidc chain's session semantics.
         return common(http)
+                // Dev Basic re-authenticates every XHR; changeSessionId would re-ID JSESSIONID each
+                // time and orphan the long-lived SSE EventSource (⚠️ lead-dev). Keep the session id
+                // STABLE on this chain — fixation protection is applied on the oidc chain only.
+                .sessionManagement(session -> session.sessionFixation(fixation -> fixation.none()))
                 .httpBasic(basic -> basic.securityContextRepository(new DelegatingSecurityContextRepository(
                         new RequestAttributeSecurityContextRepository(), new HttpSessionSecurityContextRepository())))
                 .formLogin(withDefaults())
@@ -136,6 +177,9 @@ public class SecurityConfig {
             ClientRegistrationRepository clientRegistrations)
             throws Exception {
         return common(http)
+                // Session-fixation protection on the oidc chain: a fresh JSESSIONID at login (the SSE
+                // stream rides the post-login session, so a single change at login doesn't orphan it).
+                .sessionManagement(session -> session.sessionFixation(fixation -> fixation.changeSessionId()))
                 .oauth2Login(oauth -> oauth.authorizationEndpoint(
                                 endpoint -> endpoint.authorizationRequestResolver(pkceResolver(clientRegistrations)))
                         .userInfoEndpoint(user -> user.userAuthoritiesMapper(authoritiesMapper)))

@@ -351,9 +351,11 @@ nobody may "simplify" by exposing an engine directly.
   pinned to one tenant, PKCE, tokens server-side-session-only) and a single authoritative
   `OidcGroupResolver` (issuer pinning, non-array-claim rejection, Entra groups-overage
   detect-and-legibly-fail) owns the one place a token's groups are trusted, at login and at check
-  time — hardens the session/transport posture (session caps,
-  fixation scoped so the dev Basic-per-XHR SSE isn't orphaned, `HttpOnly/Secure/SameSite=Lax`,
-  header set, CSP report-only-first, HSTS opt-in, CORS off — R-SAFE-07/R-OPS-16), and builds
+  time — hardens the session/transport posture (**S2 built**: idle+absolute session caps,
+  fixation scoped (`changeSessionId` on `oidc`, `none` on dev-Basic so the SSE isn't orphaned),
+  `HttpOnly/Secure/SameSite=Lax`, the header set + **fail-closed verb gate**
+  (`canExecute .orElse(false)` + a pre-`@PreAuthorize` verb-existence 404), CSP report-only-first,
+  HSTS opt-in, CORS off — R-SAFE-07/R-OPS-16), and builds
   break-glass (sealed local ADMIN on a distinct `/break-glass` chain that works when the IdP is
   down; ADMIN-global never fleet; audit degrades to a local file sink when Postgres is also down).
 - **RBAC:** `VIEWER` (read-only) → **`RESPONDER`** (tier-0 verbs + unstick + notes — the

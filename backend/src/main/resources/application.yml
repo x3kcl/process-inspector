@@ -1,5 +1,15 @@
 server:
   port: 8085
+  servlet:
+    session:
+      # Idle cap (R-SAFE-07): a session dies after 12h of inactivity. The ABSOLUTE cap (24h,
+      # regardless of activity) is AbsoluteSessionTimeoutFilter — see inspector.security.http.
+      timeout: 12h
+      cookie:
+        http-only: true
+        same-site: lax
+        # `secure` deliberately left container-derived: Secure over HTTPS (prod behind the proxy),
+        # not on plain-HTTP local dev — hard-coding true would break the dev login over http.
 
 spring:
   threads:
@@ -83,6 +93,15 @@ resilience4j:
         max-wait-duration: 5s
 
 inspector:
+  # Transport/header/session posture (IDP-SECURITY.md §8, R-OPS-16). All defaults are safe; shown
+  # here for legibility. CSP ships REPORT-ONLY first — flip csp-report-only:false per deploy once
+  # tuned against the real bpmn-js/AG-Grid/CodeMirror bundle. HSTS stays OFF (the proxy owns it —
+  # never double-emit Strict-Transport-Security).
+  security:
+    http:
+      csp-report-only: true
+      hsts-enabled: false
+      session-absolute-cap-hours: 24
   # At most this many engines searched concurrently per fan-out (R-NFR-01 caps at 10).
   fanout-parallelism: 8
   # superProcessInstanceId chain-walk bound for the failed-in-subprocess roll-up (ARCH §2.3).
