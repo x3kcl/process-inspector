@@ -324,7 +324,17 @@ OPERATIONS.md §8.
   inbound `X-Forwarded-User` so it is never reflected (D2c); config-load **hard-WARN**, no
   environment auto-refuse — "outside the ARCH §6 trust fence" is not a modeled attribute and §6
   recommends the flag for the possibly-prod embedded-engine (flap) case. Design-only vs SPEC §9 /
-  ARCH §6 — no MUST/requirement id is claimed).
+  ARCH §6 — no MUST/requirement id is claimed); S5a (audit monthly-partition substrate — `V10`
+  carves any existing `audit_entry_default` rows into `audit_entry_YYYY_MM` children and
+  create-aheads current+next, append-only never relaxed [the guard trigger is BEFORE UPDATE OR
+  DELETE; the carve is DETACH/CREATE/INSERT/TRUNCATE/ATTACH only, `seq`+`chain_hash` copied
+  verbatim, atomic in Flyway's single tx]; `AuditPartitionMaintainer` [mirrors
+  `SnapshotPartitionMaintainer`] create-aheads current+next at startup+daily and does NOT drop
+  [retention DROP is S5b's `SECURITY DEFINER purge_audit()` under the ops role]; a guard raises the
+  stable `AUDIT_DEFAULT_PARTITION_NONEMPTY` ERROR marker whenever a row lands in DEFAULT; owner
+  CREATE direct [the prod non-owner-role SECURITY DEFINER create-helper is deferred to S5b];
+  `AuditPartitionCarveIT` proves the carve empirically [no row loss, correct routing, chain
+  preserved, trigger survives]).
   The `audit_config_event_failures_total` counter is reserved for the R-OPS-02
   telemetry milestone (no metric stack exists yet — nor does `audit_insert_failures_total`);
   until then the failure surfaces as the stable `AUDIT_CONFIG_EVENT_FAILURE` ERROR marker.
