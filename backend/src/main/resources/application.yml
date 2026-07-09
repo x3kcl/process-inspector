@@ -93,6 +93,15 @@ inspector:
     sample-interval: 60s
     bucket-width: 60s
     retention-days: 400
+  # Audit golden-master retention (M4-CLOSEOUT §A2 / S5b). retention-days MUST be ≥ 400 — the
+  # purge_audit() DB floor refuses any younger cutoff, so a smaller value would never purge.
+  # The @Scheduled AuditRetentionPurger drops whole aged-out monthly partitions (one at a time,
+  # each chain-checkpointed and audited BEFORE the DROP); disable it with retention-purge.enabled:
+  # false (a STOPPED purge is then visible via the missing audit-retention-purge event).
+  audit:
+    retention-days: 400
+    retention-purge:
+      enabled: true
   # v2 Registry CRUD (docs/REGISTRY-CRUD.md). source=db (default): DB-authoritative once seeded —
   # an empty engine_registry imports `engines` below as a one-time audited seed, then the DB wins
   # (YAML drift is reported at boot, never silent). source=config pins to config-only (CRUD off,

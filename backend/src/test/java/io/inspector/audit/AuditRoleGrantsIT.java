@@ -157,4 +157,46 @@ class AuditRoleGrantsIT {
             os.executeUpdate("DROP TABLE audit_entry_2099_01"); // owner/ops path can reclaim
         }
     }
+
+    @Test
+    void appMayExecutePurgeAuditToDropAnAgedPartitionButHoldsNoRawDrop() throws Exception {
+        // Owner creates an aged-out partition; the app can only reclaim it through purge_audit's
+        // grant (SECURITY DEFINER → runs as owner → drops), never a raw DROP (asserted above). This
+        // is the S5b grant-level positive: the app is the single-writer purge caller.
+        try (Connection owner = asOwner();
+                Statement os = owner.createStatement()) {
+            os.executeUpdate("CREATE TABLE audit_entry_2019_01 PARTITION OF audit_entry"
+                    + " FOR VALUES FROM ('2019-01-01') TO ('2019-02-01')");
+        }
+        try (Connection app = asApp();
+                Statement st = app.createStatement()) {
+            // Raw DROP is refused at the grant layer …
+            assertThatThrownBy(() -> st.executeUpdate("DROP TABLE audit_entry_2019_01"))
+                    .isInstanceOf(SQLException.class)
+                    .satisfies(e -> assertThat(((SQLException) e).getSQLState()).isEqualTo(INSUFFICIENT_PRIVILEGE));
+            // … but EXECUTE purge_audit (cutoff safely past the 400-day floor) drops it.
+            try (java.sql.ResultSet rs = st.executeQuery(
+                    "SELECT dropped_partition FROM purge_audit('audit_entry_2019_01', now() - interval '450 days')")) {
+                assertThat(rs.next()).isTrue();
+                assertThat(rs.getString(1)).isEqualTo("audit_entry_2019_01");
+            }
+        }
+    }
+
+    @Test
+    void appFullyManagesLegalHolds() throws Exception {
+        // legal_hold is operational — the app sets (INSERT) and releases (UPDATE) it, and may
+        // compensate a failed set (DELETE). The ALTER DEFAULT PRIVILEGES gave only SELECT+INSERT;
+        // the explicit S5b grant adds UPDATE/DELETE.
+        try (Connection app = asApp();
+                Statement st = app.createStatement()) {
+            assertThat(st.executeUpdate("INSERT INTO legal_hold (id, from_ts, to_ts, reason, created_by, created_at)"
+                            + " VALUES (gen_random_uuid(), '2019-01-01 00:00:00+00', '2019-02-01 00:00:00+00',"
+                            + " 'case 4711 preservation', 'alice', now())"))
+                    .isEqualTo(1);
+            assertThat(st.executeUpdate("UPDATE legal_hold SET released_at = now(), released_by = 'alice'"))
+                    .isEqualTo(1);
+            assertThat(st.executeUpdate("DELETE FROM legal_hold")).isEqualTo(1);
+        }
+    }
 }

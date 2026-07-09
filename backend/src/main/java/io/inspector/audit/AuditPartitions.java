@@ -1,6 +1,7 @@
 package io.inspector.audit;
 
 import java.time.DateTimeException;
+import java.time.LocalDate;
 import java.time.YearMonth;
 import java.util.Optional;
 
@@ -59,6 +60,19 @@ public final class AuditPartitions {
         } catch (NumberFormatException | DateTimeException e) {
             return Optional.empty();
         }
+    }
+
+    /**
+     * True when every instant a partition could hold is on or before {@code cutoff} — i.e. the whole
+     * month has aged past the retention horizon and is a candidate for the S5b purge (the DROP itself
+     * goes through {@code purge_audit()}, which re-checks age + legal-hold in the DB). The exclusive
+     * upper bound (first day of the next month) must be ≤ cutoff. The DEFAULT partition never
+     * qualifies ({@link #monthOf} returns empty for it).
+     */
+    public static boolean isExpired(String partitionName, LocalDate cutoff) {
+        return monthOf(partitionName)
+                .map(month -> !month.plusMonths(1).atDay(1).isAfter(cutoff))
+                .orElse(false);
     }
 
     public record Bounds(String name, String fromInclusive, String toExclusive) {}

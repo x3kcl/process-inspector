@@ -67,4 +67,16 @@ public class NoDbTestSupport {
     EngineRegistryRepository engineRegistryRepository() {
         return Mockito.mock(EngineRegistryRepository.class);
     }
+
+    /**
+     * These docker-free contexts have no DataSource, so Spring Boot never auto-configures a
+     * JdbcTemplate — yet audit partition/retention beans (AuditRetentionPurger, the LegalHold
+     * service/controller) constructor-inject one. A mock lets those beans wire and stay dormant
+     * (@Scheduled jobs don't fire in a short test; no endpoint is exercised here). Real JdbcTemplate
+     * behavior is covered by the Testcontainers-backed *IT suite.
+     */
+    @Bean
+    org.springframework.jdbc.core.JdbcTemplate jdbcTemplate() {
+        return Mockito.mock(org.springframework.jdbc.core.JdbcTemplate.class);
+    }
 }
