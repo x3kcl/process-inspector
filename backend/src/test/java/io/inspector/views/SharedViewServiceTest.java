@@ -87,6 +87,25 @@ class SharedViewServiceTest {
         assertThat(SharedViewService.canPublish(globalAdmin, "*", "tenant-a")).isTrue();
     }
 
+    /* ---------------- dangling-canon detection (S4, §4.5) ---------------- */
+
+    @Test
+    void concreteScopeEngineNotLiveIsDangling() {
+        assertThat(SharedViewService.danglingReason("orders-prod", java.util.Set.of("orders-prod", "billing-prod")))
+                .isNull();
+        assertThat(SharedViewService.danglingReason("orders-prod", java.util.Set.of("billing-prod")))
+                .contains("not currently available");
+        assertThat(SharedViewService.danglingReason("orders-prod", java.util.Set.of()))
+                .contains("orders-prod");
+    }
+
+    @Test
+    void wildcardScopeNeverDanglesOnAnEngine() {
+        assertThat(SharedViewService.danglingReason("*", java.util.Set.of())).isNull();
+        assertThat(SharedViewService.danglingReason("*", java.util.Set.of("orders-prod")))
+                .isNull();
+    }
+
     /* ---------------- canModerate authority (S3, §4.4) ---------------- */
 
     @Test

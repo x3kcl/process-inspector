@@ -70,6 +70,30 @@ public class SharedViewService {
     }
 
     /**
+     * Replay-time resolvability honesty for the PICKER (SHARED-VIEWS.md §4.5, R-SEM-24): a shared view
+     * scoped to a concrete engine that is no longer a live ENABLED engine (soft-tombstoned or disabled
+     * by Registry CRUD) is DANGLING — the frontend greys it with this reason so a responder never
+     * clicks a dead entry point that would otherwise replay to a clean-looking "no failures". Returns
+     * {@code null} when the canon still resolves. A wildcard-engine scope can't dangle on one engine.
+     */
+    public String danglingReason(SharedView view) {
+        Set<String> enabled = new java.util.HashSet<>();
+        registry.all().forEach(e -> enabled.add(e.id()));
+        return danglingReason(view.getScopeEngineId(), enabled);
+    }
+
+    /** Pure form (rung-1): dangling iff the concrete scope engine is not among the live enabled ids. */
+    public static String danglingReason(String scopeEngineId, Set<String> enabledEngineIds) {
+        if (SharedView.ANY.equals(scopeEngineId)) {
+            return null; // a wildcard-engine scope resolves as long as any engine is live
+        }
+        return enabledEngineIds.contains(scopeEngineId)
+                ? null
+                : "the engine \"" + scopeEngineId
+                        + "\" this team view is scoped to is not currently available (removed or disabled)";
+    }
+
+    /**
      * Pure visibility filter (rung-1 testable with crafted {@link ScopeGrant} sets — the scoped RBAC
      * cases the dev basic-auth ladder can't express, since it only ever mints global grants). A view
      * is visible iff SOME grant overlaps its scope at the VIEWER floor.
