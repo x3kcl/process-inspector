@@ -70,6 +70,17 @@ export function InspectPage() {
 
   // Diagram↔tab selection sync (SPEC §4): one shared selection, driven from both sides.
   const [selectedActivityId, setSelectedActivityId] = useState<string>()
+  // Collapsible diagram: on a small process the fixed-height canvas starves the tab section
+  // below it, so the operator can fold the diagram away and hand the full height to the tabs.
+  // The choice is sticky across instances (one preference for the whole detail view).
+  const [diagramCollapsed, setDiagramCollapsed] = useState(readDiagramCollapsed)
+  const toggleDiagram = useCallback(() => {
+    setDiagramCollapsed((collapsed) => {
+      const next = !collapsed
+      writeDiagramCollapsed(next)
+      return next
+    })
+  }, [])
   const diagramSectionRef = useRef<HTMLElement | null>(null)
   const onDiagramSelect = useCallback(
     (activityId: string, isDeadLetter: boolean) => {
@@ -83,6 +94,9 @@ export function InspectPage() {
   )
   const onShowOnDiagram = useCallback((activityId: string) => {
     setSelectedActivityId(activityId)
+    // "Show on diagram" only makes sense with the diagram visible — unfold it first.
+    setDiagramCollapsed(false)
+    writeDiagramCollapsed(false)
     diagramSectionRef.current?.scrollIntoView({ behavior: 'smooth', block: 'nearest' })
   }, [])
 
@@ -150,14 +164,31 @@ export function InspectPage() {
         )}
       </header>
 
-      <section className="diagram-slot" aria-label="Process diagram" ref={diagramSectionRef}>
-        <DiagramSlot
-          engineId={engineId}
-          instanceId={instanceId}
-          selectedActivityId={selectedActivityId}
-          onSelect={onDiagramSelect}
-          divergence={divergence}
-        />
+      <section
+        className={`diagram-slot${diagramCollapsed ? ' diagram-collapsed' : ''}`}
+        aria-label="Process diagram"
+        ref={diagramSectionRef}
+      >
+        <div className="diagram-slot-bar">
+          <button
+            type="button"
+            className="diagram-toggle"
+            aria-expanded={!diagramCollapsed}
+            onClick={toggleDiagram}
+          >
+            <span aria-hidden="true">{diagramCollapsed ? '▸' : '▾'}</span>
+            {diagramCollapsed ? 'Show diagram' : 'Hide diagram'}
+          </button>
+        </div>
+        {!diagramCollapsed && (
+          <DiagramSlot
+            engineId={engineId}
+            instanceId={instanceId}
+            selectedActivityId={selectedActivityId}
+            onSelect={onDiagramSelect}
+            divergence={divergence}
+          />
+        )}
       </section>
 
       <nav className="tab-bar" role="tablist" aria-label="Instance detail tabs">
@@ -190,6 +221,25 @@ export function InspectPage() {
       </section>
     </main>
   )
+}
+
+const DIAGRAM_COLLAPSED_KEY = 'inspect.diagramCollapsed'
+
+/** Sticky diagram fold state — best-effort; a locked-down localStorage just means no memory. */
+function readDiagramCollapsed(): boolean {
+  try {
+    return localStorage.getItem(DIAGRAM_COLLAPSED_KEY) === '1'
+  } catch {
+    return false
+  }
+}
+function writeDiagramCollapsed(collapsed: boolean): void {
+  try {
+    if (collapsed) localStorage.setItem(DIAGRAM_COLLAPSED_KEY, '1')
+    else localStorage.removeItem(DIAGRAM_COLLAPSED_KEY)
+  } catch {
+    // No persistence available (private mode / quota) — the in-memory state still works.
+  }
 }
 
 /** Everything the operator sees WITHOUT a tab or a click (SPEC §4). */
