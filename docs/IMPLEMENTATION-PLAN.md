@@ -471,8 +471,12 @@ count to a "≥N" lower bound under a truncated DLQ scan — see `CMMN-SCOPE-PHA
   through the bulk-job machinery with per-step precondition rechecks and per-item-per-step
   outcomes. Requires: v1.x bulk framework + error-class grouping + audit old-value capture
   (all landed earlier by design).
-- **Migration**: single-instance with server-side `migrate/validate` first; batch + side-by-
-  side diagram wizard with typed "MIGRATE" only after the single flow proves demand.
+- **Migration** — **panel-reviewed design locked in [INSTANCE-MIGRATION.md](INSTANCE-MIGRATION.md)**:
+  single-instance migrate with server-side `migrate/validate` first; slice-1 = auto-map + a
+  validator-driven targeted mapping table + the definition-versions on-ramp. The full side-by-side
+  diagram mapping wizard and batch (async `Batch`) stay deferred with typed "MIGRATE" only after
+  the single flow proves demand. Builds in parallel with Registry CRUD (INSTANCE-MIGRATION.md §13:
+  no Flyway collision — CRUD owns V7, migration adds no table).
 - **Job-lane trend sparklines** on the Stage-0 landing (per-engine dead-letter / timer /
   executable / suspended counts over time) — descoped here from v1.x #4 because v1 exposes
   only *live* job-lane counts; a trend needs the **R-BAU-08** snapshot/time-series store
