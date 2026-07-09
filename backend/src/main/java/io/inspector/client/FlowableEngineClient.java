@@ -1304,6 +1304,34 @@ public class FlowableEngineClient {
                         () -> breakers.circuitBreaker(name, priority.config()).executeSupplier(call));
     }
 
+    /* ---------- registry hot-reload seam (v2 Registry CRUD S3) ---------- */
+
+    /**
+     * Drop everything cached for an engine id so the NEXT call rebuilds against the current
+     * registry row (docs/REGISTRY-CRUD.md §4, seam #2). Editing an engine's base-URL / auth /
+     * timeouts is stale until this runs. Called strictly post-commit by {@link
+     * io.inspector.registry.RegistryReloadListener}.
+     *
+     * <p>Both cached {@link RestClient}s are dropped, AND the Resilience4j breaker + bulkhead named
+     * instances are REMOVED (not reset) for every {@link CallPriority} lane — a reset would leave
+     * the named instance lingering in the registry and leak it on add/remove churn (the ≤20-engine
+     * cap bounds it, but removal is correct). A later call re-materializes them from config.
+     */
+    public void evict(String engineId) {
+        readClients.remove(engineId);
+        writeClients.remove(engineId);
+        for (CallPriority priority : CallPriority.values()) {
+            String name = priority.instanceName(engineId);
+            breakers.remove(name);
+            bulkheads.remove(name);
+        }
+    }
+
+    /** Test hook (S3): whether a read client is currently cached for this id. */
+    boolean isClientCached(String engineId) {
+        return readClients.containsKey(engineId);
+    }
+
     /* ---------- client construction ---------- */
 
     private RestClient client(EngineConfig engine) {

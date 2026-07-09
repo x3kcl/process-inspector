@@ -66,6 +66,28 @@ public class EngineHealthService {
         });
     }
 
+    /**
+     * Re-probe ONE engine now (v2 Registry CRUD S3 reload seam): after a registry edit commits, the
+     * reload listener calls this so the health strip reflects the new endpoint without waiting up to
+     * 30s for the next scheduled cycle. A read-only probe (version + lanes), never a mutating call.
+     * Silently no-ops if the id left the registry (disabled→removed) between commit and reload.
+     */
+    public void reprobe(String engineId) {
+        EngineConfig engine = registry.all().stream()
+                .filter(e -> e.id().equals(engineId))
+                .findFirst()
+                .orElse(null);
+        if (engine == null) {
+            return; // not an enabled engine (disabled/removed) — nothing to probe
+        }
+        try {
+            registry.updateHealth(engineId, probeOne(engine));
+        } catch (Exception ex) {
+            log.warn("Re-probe after registry change for {} failed: {}", engineId, ex.toString());
+            registry.updateHealth(engineId, EngineHealth.unreachable(rootMessage(ex), clock.millis()));
+        }
+    }
+
     /** Package-private so tests can drive one deterministic probe without the schedule. */
     EngineHealth probeOne(EngineConfig engine) {
         String version;

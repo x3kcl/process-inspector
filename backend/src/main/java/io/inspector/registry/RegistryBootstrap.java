@@ -36,12 +36,17 @@ public class RegistryBootstrap implements ApplicationRunner {
     private final RegistryProperties registryProperties;
     private final InspectorProperties inspectorProperties;
     private final EngineRegistryStore store;
+    private final EngineRegistry registry;
 
     public RegistryBootstrap(
-            RegistryProperties registryProperties, InspectorProperties inspectorProperties, EngineRegistryStore store) {
+            RegistryProperties registryProperties,
+            InspectorProperties inspectorProperties,
+            EngineRegistryStore store,
+            EngineRegistry registry) {
         this.registryProperties = registryProperties;
         this.inspectorProperties = inspectorProperties;
         this.store = store;
+        this.registry = registry;
     }
 
     @Override
@@ -56,36 +61,41 @@ public class RegistryBootstrap implements ApplicationRunner {
         if (store.isEmpty()) {
             if (yamlEngines.isEmpty()) {
                 log.info("Engine registry is empty and inspector.engines has no entries — nothing to seed.");
-                return;
+            } else {
+                seedEmptyRegistry(yamlEngines);
             }
-            try {
-                int seeded = store.seedFromConfig(yamlEngines);
-                log.info("Seeded {} engine(s) from inspector.engines YAML into the empty registry.", seeded);
-            } catch (RuntimeException e) {
-                // Fail-closed: nothing this instance did persisted (the @Transactional seed is
-                // all-or-nothing). Report the cause honestly instead of always claiming "empty": a
-                // concurrent instance may have won the seed race (its rows committed, so OUR insert
-                // hit the unique-id PK and rolled us back) — the registry IS seeded, nothing to
-                // retry. Otherwise the audit/DB was unavailable — boot empty, retry next start.
-                if (!store.isEmpty()) {
-                    log.info("Engine registry was seeded by a concurrent instance; continuing.");
-                } else {
-                    log.warn(
-                            "Could not seed the engine registry from YAML (audit/DB unavailable?) — "
-                                    + "booting with an empty registry, will retry on next start: {}",
-                            e.toString());
-                }
-            }
-            return;
-        }
-
-        // Non-empty: DB is authoritative. Surface (never swallow) any divergence from YAML.
-        if (!yamlEngines.isEmpty()) {
+        } else if (!yamlEngines.isEmpty()) {
+            // Non-empty: DB is authoritative. Surface (never swallow) any divergence from YAML.
             DriftReport drift = store.driftReport(yamlEngines);
             if (drift.isEmpty()) {
                 log.info("Engine registry loaded from DB; inspector.engines YAML matches (no drift).");
             } else {
                 log.warn(drift.summary());
+            }
+        }
+
+        // Point EngineRegistry at the DB (S3): under source=db the store is the source of truth, so
+        // the in-memory map now reflects the live rows (replacing the bootstrap map built from YAML).
+        registry.reload(store.findLive());
+    }
+
+    private void seedEmptyRegistry(List<EngineConfig> yamlEngines) {
+        try {
+            int seeded = store.seedFromConfig(yamlEngines);
+            log.info("Seeded {} engine(s) from inspector.engines YAML into the empty registry.", seeded);
+        } catch (RuntimeException e) {
+            // Fail-closed: nothing this instance did persisted (the @Transactional seed is
+            // all-or-nothing). Report the cause honestly instead of always claiming "empty": a
+            // concurrent instance may have won the seed race (its rows committed, so OUR insert hit
+            // the unique-id PK and rolled us back) — the registry IS seeded, nothing to retry.
+            // Otherwise the audit/DB was unavailable — boot empty, retry next start.
+            if (!store.isEmpty()) {
+                log.info("Engine registry was seeded by a concurrent instance; continuing.");
+            } else {
+                log.warn(
+                        "Could not seed the engine registry from YAML (audit/DB unavailable?) — "
+                                + "booting with an empty registry, will retry on next start: {}",
+                        e.toString());
             }
         }
     }
