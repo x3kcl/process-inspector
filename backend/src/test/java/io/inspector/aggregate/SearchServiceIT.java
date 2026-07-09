@@ -206,6 +206,23 @@ class SearchServiceIT {
         assertThat(ids(body.get("rows"))).containsExactlyInAnyOrder(parentId, childId, directFailedId);
     }
 
+    @Test
+    void unregisteredEngineIsMarkedExcludedNeverSilentlyDropped() throws Exception {
+        // Replay-time resolvability honesty (R-SEM-24, SHARED-VIEWS.md §4.5): a dangling scope — e.g. a
+        // replayed shared view over a soft-tombstoned engine — names an engine that no longer resolves.
+        // It must surface as an excluded ok=false leg; a search that resolves to NO live engine must
+        // never read as a clean empty grid ("no failures") — the incident-blindness the honesty seat
+        // flagged. (engine-down is registered-but-unreachable; "ghost-engine" is not in the registry.)
+        JsonNode body = search(Map.of("engineIds", List.of("ghost-engine"), "statuses", List.of("FAILED")));
+
+        JsonNode ghost = body.get("perEngine").get("ghost-engine");
+        assertThat(ghost).isNotNull();
+        assertThat(ghost.get("ok").asBoolean()).isFalse();
+        assertThat(ghost.get("error").asText()).contains("no longer registered");
+        // The all-dead case is a labeled ok=false envelope, not an empty grid impersonating health.
+        assertThat(body.get("rows")).isEmpty();
+    }
+
     /* ---------------- M2b: search additions ---------------- */
 
     @Test

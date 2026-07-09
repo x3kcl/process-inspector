@@ -230,6 +230,30 @@ public class SearchService {
         Set<InstanceStatus> wanted = EnumSet.copyOf(request.effectiveStatuses());
         Map<String, EngineResult> perEngine = new ConcurrentHashMap<>();
 
+        // Replay-time resolvability honesty (R-SEM-24, SHARED-VIEWS.md §4.5): an explicitly-requested
+        // engine that no longer resolves to a live ENABLED engine must NOT be silently dropped —
+        // otherwise a dangling scope (e.g. a replayed shared view over a soft-tombstoned engine) reads
+        // as a clean "no failures", the very incident-blindness the honesty seat flagged. Mark each
+        // requested-but-unresolvable id as an excluded leg on the SAME perEngine envelope, so the
+        // all-dead case is a grid full of ok=false (labeled) rather than an empty grid impersonating
+        // health. (An empty engineIds request = "all enabled engines" — nothing is dangling there.)
+        if (request.engineIds() != null && !request.engineIds().isEmpty()) {
+            Set<String> resolved = new HashSet<>();
+            for (EngineConfig t : targets) {
+                resolved.add(t.id());
+            }
+            for (String requested : request.engineIds()) {
+                if (requested != null && !requested.isBlank() && !resolved.contains(requested)) {
+                    // Distinguish disabled-but-present from truly removed (resolve() sees disabled rows
+                    // too) so the marker is accurate, not merely non-silent.
+                    String why = registry.resolve(requested).isPresent()
+                            ? "the engine \"" + requested + "\" is currently disabled — excluded from this search"
+                            : "the engine \"" + requested + "\" is no longer registered — excluded from this search";
+                    perEngine.put(requested, EngineResult.failure(why));
+                }
+            }
+        }
+
         Map<EngineConfig, CompletableFuture<EngineSlice>> futures = new LinkedHashMap<>();
         for (EngineConfig engine : targets) {
             futures.put(
