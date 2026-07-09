@@ -2,6 +2,7 @@ package io.inspector.security;
 
 import static org.springframework.security.config.Customizer.withDefaults;
 
+import io.inspector.security.reauth.ReauthAuthorizationRequestResolver;
 import org.springframework.context.annotation.Bean;
 import org.springframework.context.annotation.Configuration;
 import org.springframework.context.annotation.Profile;
@@ -14,8 +15,6 @@ import org.springframework.security.config.annotation.web.configuration.EnableWe
 import org.springframework.security.core.userdetails.User;
 import org.springframework.security.core.userdetails.UserDetailsService;
 import org.springframework.security.oauth2.client.registration.ClientRegistrationRepository;
-import org.springframework.security.oauth2.client.web.DefaultOAuth2AuthorizationRequestResolver;
-import org.springframework.security.oauth2.client.web.OAuth2AuthorizationRequestCustomizers;
 import org.springframework.security.provisioning.InMemoryUserDetailsManager;
 import org.springframework.security.web.SecurityFilterChain;
 import org.springframework.security.web.authentication.HttpStatusEntryPoint;
@@ -46,10 +45,12 @@ public class SecurityConfig {
 
     private final HttpHardeningProperties hardening;
     private final java.time.Clock clock;
+    private final OidcProperties oidcProps;
 
-    public SecurityConfig(HttpHardeningProperties hardening, java.time.Clock clock) {
+    public SecurityConfig(HttpHardeningProperties hardening, java.time.Clock clock, OidcProperties oidcProps) {
         this.hardening = hardening;
         this.clock = clock;
+        this.oidcProps = oidcProps;
     }
 
     /** The layered ladder (R-SAFE-01): a higher role covers every lower one. */
@@ -187,21 +188,9 @@ public class SecurityConfig {
                 // Session-fixation protection on the oidc chain: a fresh JSESSIONID at login (the SSE
                 // stream rides the post-login session, so a single change at login doesn't orphan it).
                 .sessionManagement(session -> session.sessionFixation(fixation -> fixation.changeSessionId()))
-                .oauth2Login(oauth -> oauth.authorizationEndpoint(
-                                endpoint -> endpoint.authorizationRequestResolver(pkceResolver(clientRegistrations)))
+                .oauth2Login(oauth -> oauth.authorizationEndpoint(endpoint -> endpoint.authorizationRequestResolver(
+                                new ReauthAuthorizationRequestResolver(clientRegistrations, oidcProps)))
                         .userInfoEndpoint(user -> user.userAuthoritiesMapper(authoritiesMapper)))
                 .build();
-    }
-
-    /**
-     * Authorization-code + PKCE (IDP-SECURITY.md §4): Spring auto-applies PKCE only for public
-     * clients, so a confidential registration needs the customizer wired explicitly. S5 extends
-     * this same resolver to inject {@code max_age}/{@code prompt} for the dangerous-set re-auth.
-     */
-    private static DefaultOAuth2AuthorizationRequestResolver pkceResolver(ClientRegistrationRepository repo) {
-        DefaultOAuth2AuthorizationRequestResolver resolver =
-                new DefaultOAuth2AuthorizationRequestResolver(repo, "/oauth2/authorization");
-        resolver.setAuthorizationRequestCustomizer(OAuth2AuthorizationRequestCustomizers.withPkce());
-        return resolver;
     }
 }

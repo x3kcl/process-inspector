@@ -114,6 +114,23 @@ class OidcKeycloakIT {
         String location = resp.headers().firstValue("Location").orElse("");
         assertThat(location).startsWith(issuer() + "/protocol/openid-connect/auth");
         assertThat(location).contains("code_challenge=").contains("code_challenge_method=S256");
+        // A normal login carries no max_age — no per-login MFA storm (S5).
+        assertThat(location).doesNotContain("max_age");
+    }
+
+    @Test
+    void theDangerousSetReauthForcesMaxAgeAndPromptLogin() throws Exception {
+        // The SPA replays a dangerous verb by re-initiating login with the reauth marker; the resolver
+        // then injects max_age (the freshness window) + prompt=login so the IdP forces a fresh
+        // auth_time rather than silently returning the stale SSO session (S5, IDP-SECURITY.md §5).
+        HttpResponse<String> resp = noFollow("/oauth2/authorization/oidc?reauth=true");
+        assertThat(resp.statusCode()).isEqualTo(302);
+        String location = resp.headers().firstValue("Location").orElse("");
+        assertThat(location).startsWith(issuer() + "/protocol/openid-connect/auth");
+        assertThat(location).contains("max_age=").contains("prompt=login");
+        // PKCE MUST survive the reauth rewrite — the resolver copies the existing additionalParameters
+        // (where the code_challenge lives) before adding max_age/prompt (Copilot S5a review).
+        assertThat(location).contains("code_challenge=").contains("code_challenge_method=S256");
     }
 
     /** A GET that never follows redirects — so we assert the 302 the BFF itself emits. */
