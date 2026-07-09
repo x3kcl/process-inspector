@@ -458,6 +458,28 @@ public class FlowableEngineClient {
         return listProcessDefinitionsByKey(engine, key, null, size);
     }
 
+    /**
+     * The single LATEST-version definition for a key ({@code latest=true}). The plain
+     * {@code size=1} query does NOT return the latest — {@code /repository/process-definitions}
+     * defaults to name-ascending, so version disambiguation needs {@code latest=true}
+     * explicitly (used by instance migration's default-target resolution). Empty page when the
+     * key is undeployed.
+     */
+    public FlowablePage latestProcessDefinitionByKey(EngineConfig engine, String key) {
+        return guarded(
+                engine,
+                CallPriority.INTERACTIVE,
+                () -> client(engine)
+                        .get()
+                        .uri(uri -> uri.path("/repository/process-definitions")
+                                .queryParam("key", key)
+                                .queryParam("latest", true)
+                                .queryParam("size", 1)
+                                .build())
+                        .retrieve()
+                        .body(FlowablePage.class));
+    }
+
     /** Background-lane variant (v2/M4 snapshot sampler): same page, on the {@code sampler} lane. */
     public FlowablePage listProcessDefinitionsByKey(EngineConfig engine, String key, int size, CallPriority priority) {
         return listProcessDefinitionsByKey(engine, key, null, 0, size, priority);

@@ -95,6 +95,21 @@ public final class BpmnStructure {
     }
 
     /**
+     * The nesting path of {@code activityId} from the process root inward: the ordered list
+     * of enclosing subprocess ids (outermost first), empty for a node at the process root.
+     * Used by instance-migration's structural diff to warn when an activity keeps its id but
+     * moves into/out of a subprocess scope between versions — a re-nesting the engine's
+     * auto-mapper silently accepts but which changes variable scoping and event context.
+     */
+    public List<String> nestingPath(String activityId) {
+        Deque<String> stack = new ArrayDeque<>();
+        for (String scope = scopeOf.get(activityId); scope != null; scope = scopeOf.get(scope)) {
+            stack.push(scope); // push parents so the outermost ends up first
+        }
+        return new ArrayList<>(stack);
+    }
+
+    /**
      * Is {@code activityId} inside an unjoined parallel-gateway branch? Backward walk over
      * incoming sequence flows: reaching a diverging parallel gateway before crossing a
      * converging one means sibling branches hold (or will expect) concurrent tokens.
