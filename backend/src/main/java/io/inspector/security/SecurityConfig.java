@@ -109,6 +109,14 @@ public class SecurityConfig {
                 User.withUsername("admin")
                         .password(password)
                         .roles(Role.ADMIN.name())
+                        .build(),
+                // Fleet REGISTRY_ADMIN (v2 Registry CRUD, R-SAFE-13) — ORTHOGONAL to the ladder, so
+                // this user is NOT an engine ADMIN, and the `admin` user above is NOT a registry
+                // admin. `.authorities` (not `.roles`) so ROLE_REGISTRY_ADMIN stays outside the
+                // ROLE_ADMIN>… hierarchy. Also VIEWER so they can load the SPA to reach the panel.
+                User.withUsername("registry-admin")
+                        .password(password)
+                        .authorities(RbacAuthorizer.REGISTRY_ADMIN_AUTHORITY, "ROLE_" + Role.VIEWER.name())
                         .build());
     }
 

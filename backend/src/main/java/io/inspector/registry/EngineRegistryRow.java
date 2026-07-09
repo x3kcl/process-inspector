@@ -96,8 +96,8 @@ public class EngineRegistryRow {
     @Column(name = "source", nullable = false)
     private String source;
 
-    protected EngineRegistryRow() {
-        // JPA
+    public EngineRegistryRow() {
+        // JPA + test/DTO construction
     }
 
     public String getId() {

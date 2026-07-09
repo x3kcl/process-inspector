@@ -16,7 +16,9 @@ public record SecurityProperties(
         /* Mapping re-read TTL, spec-capped at 60s. */
         Integer reloadTtlS,
         /* IdP claim carrying the user's groups. */
-        String groupsClaim) {
+        String groupsClaim,
+        /* OIDC group that confers the fleet REGISTRY_ADMIN grant (v2 Registry CRUD, R-SAFE-13). */
+        String registryAdminGroup) {
 
     public String devPasswordOrDefault() {
         return devPassword != null && !devPassword.isBlank() ? devPassword : "dev";
@@ -29,5 +31,10 @@ public record SecurityProperties(
 
     public String groupsClaimOrDefault() {
         return groupsClaim != null && !groupsClaim.isBlank() ? groupsClaim : "groups";
+    }
+
+    /** OIDC group name conferring REGISTRY_ADMIN; default {@code registry-admin}. */
+    public String registryAdminGroupOrDefault() {
+        return registryAdminGroup != null && !registryAdminGroup.isBlank() ? registryAdminGroup : "registry-admin";
     }
 }
