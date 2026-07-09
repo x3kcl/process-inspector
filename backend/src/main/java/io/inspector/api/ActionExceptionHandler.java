@@ -6,8 +6,10 @@ import io.inspector.action.GuardRefusedException;
 import io.inspector.action.OutcomeUnknownException;
 import io.inspector.audit.AuditUnavailableException;
 import io.inspector.audit.OutcomeVerificationFailedException;
+import io.inspector.security.reauth.ReauthRequiredException;
 import org.springframework.http.HttpStatus;
 import org.springframework.http.ProblemDetail;
+import org.springframework.http.ResponseEntity;
 import org.springframework.web.bind.annotation.ExceptionHandler;
 import org.springframework.web.bind.annotation.RestControllerAdvice;
 import org.springframework.web.context.request.async.AsyncRequestTimeoutException;
@@ -28,6 +30,26 @@ public class ActionExceptionHandler {
         problem.setProperty("code", e.code());
         problem.setProperty("outcome", "refused");
         return problem;
+    }
+
+    /**
+     * Dangerous-set freshness challenge (IDP-SECURITY.md §5, R-SAFE-07): the session is authenticated
+     * but too stale to run this verb. A 401 — not a 403 — because the remedy is to re-authenticate;
+     * the {@code reauth-required} code + the {@code X-Reauth-Required} header let the SPA tell a
+     * freshness challenge apart from a plain "session expired" 401 (which redirects to full sign-in),
+     * so it can run the interstitial and replay the verb. Thrown BEFORE the audit gate — nothing
+     * happened, nothing recorded (a refusal, like rbac-denied).
+     */
+    @ExceptionHandler(ReauthRequiredException.class)
+    ResponseEntity<ProblemDetail> reauthRequired(ReauthRequiredException e) {
+        ProblemDetail problem = ProblemDetail.forStatusAndDetail(HttpStatus.UNAUTHORIZED, e.getMessage());
+        problem.setTitle("Re-authentication required — nothing happened");
+        problem.setProperty("code", "reauth-required");
+        problem.setProperty("outcome", "refused");
+        problem.setProperty("freshnessWindowSeconds", e.freshnessWindowSeconds());
+        return ResponseEntity.status(HttpStatus.UNAUTHORIZED)
+                .header("X-Reauth-Required", "true")
+                .body(problem);
     }
 
     /** Fail-closed (R-AUD-01): tier-independent in this implementation — no audit, no action. */

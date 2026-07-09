@@ -932,10 +932,25 @@ behind nothing before any UI reaches them:**
   fail-closed exception; `AuditService` now flags EVERY sealed-session mutation `breakGlass:true`.
   `/api/me` gains `accessAdmin` + `breakGlass` hints (schema.d.ts regenerated). Tests:
   `OidcKeycloakIT` (real IdP + MockMvc: sealed login → ADMIN session, `breakGlass:true`,
-  `/api/admin/access` → 403). *(S5b remaining — SPA-coupled, folds with S6):* the 401-challenge/replay
-  protocol at verb-intent + `OidcIdTokenValidator` server-side `auth_time` rejection + membership
-  re-pull; the IdP-unreachable interstitial + red banner + sticky tier-0 reason (frontend). Earlier —
-  banner + alert + local-file-sink audit fallback + sticky tier-0 reason. Done-when: identity-freshness
+  `/api/admin/access` → 403). *(S5c inbound enforcement ✅ LANDED 2026-07-09 — the "`max_age`
+  recorded ≠ enforced" gap closed):* `DangerousActionReauthGate` reads the session principal's
+  `auth_time` and, on a **tier-3 verb**, refuses a stale (or absent-`auth_time`) OIDC session with a
+  **401 + `reauth-required` marker** (`X-Reauth-Required` header + body `code`) — a pre-condition in
+  `CorrectiveActionService.execute` placed BEFORE the reason/typed-token rails (challenge at verb
+  intent, never after the confirm token is typed) and BEFORE the audit gate (nothing happened,
+  nothing recorded). Non-OIDC sessions (dev Basic, break-glass) are **exempt** (Basic re-auths every
+  XHR; break-glass can't bounce a down IdP) so the dev + no-DB matrix is untouched. Membership
+  freshness rides the re-auth free: a re-auth login mints a new id-token and `RbacAuthorizer` resolves
+  groups from it per check. `/api/me` gains a `reauth` hint (`required`/`freshUntil`/`windowSeconds`)
+  so the SPA interstitials at modal open. Tests: `DangerousActionReauthGateTest` (rung-1: fresh/stale/
+  absent-`auth_time`/dev/break-glass/window), `CorrectiveActionServiceTest` (tier-3 stale → challenge
+  before token+audit; within-window → reaches token check; tier-0 never challenged),
+  `ActionExceptionHandlerTest` (401 + marker). *(S5 remaining — non-blocking follow-ups):* re-auth for
+  **bulk submit** (guard-tier 4; enforce once at the create endpoint, NOT per persisted item — a bulk
+  job survives session expiry, R-SEM-10) + **mapping writes / four-eyes approve**; the optional
+  belt-and-suspenders `OidcIdTokenValidator` (`auth_time`-vs-`max_age` conformance at login) +
+  userinfo/Graph membership re-pull; the SPA interstitial + verb-replay + warn-before-guillotine + the
+  IdP-unreachable [Break-glass sign-in] door (frontend, with S6). Done-when: identity-freshness
   IT (removed group can't authorize tier-3 post-re-auth; no per-verb MFA storm within window);
   break-glass IT (works IdP-down; audit degrades DB-down and still proceeds; cannot reach fleet CRUD).
 - **S6 — admin UI + access-review + `/api/me` hints.** *(access-review BACKEND ✅ LANDED

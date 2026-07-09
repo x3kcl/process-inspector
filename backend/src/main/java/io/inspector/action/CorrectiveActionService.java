@@ -18,6 +18,7 @@ import io.inspector.config.InspectorProperties.EngineMode;
 import io.inspector.registry.EngineRegistry;
 import io.inspector.security.RbacAuthorizer;
 import io.inspector.security.Role;
+import io.inspector.security.reauth.DangerousActionReauthGate;
 import java.net.ConnectException;
 import java.net.http.HttpConnectTimeoutException;
 import java.util.ArrayList;
@@ -39,6 +40,7 @@ import org.springframework.web.client.RestClientResponseException;
  * <ol>
  *   <li>RBAC — scoped role floor per verb (also mirrored in {@code @PreAuthorize});
  *   <li>engine gates — registered, enabled, not read-only (R-GOV-04);
+ *   <li>dangerous-set freshness — tier-3 verbs re-authenticate a stale OIDC session (R-SAFE-07);
  *   <li>protected-instance guard (R-SAFE-05, ADMIN floor);
  *   <li>reason discipline (SPEC §6) + request-shape validation;
  *   <li>server-fresh target restatement + tier-3 prod typed token;
@@ -58,6 +60,7 @@ public class CorrectiveActionService {
     private final RbacAuthorizer rbac;
     private final ProtectedInstanceRepository protectedInstances;
     private final TicketPolicy ticketPolicy;
+    private final DangerousActionReauthGate reauth;
 
     public CorrectiveActionService(
             EngineRegistry registry,
@@ -65,13 +68,15 @@ public class CorrectiveActionService {
             AuditService audit,
             RbacAuthorizer rbac,
             ProtectedInstanceRepository protectedInstances,
-            TicketPolicy ticketPolicy) {
+            TicketPolicy ticketPolicy,
+            DangerousActionReauthGate reauth) {
         this.registry = registry;
         this.client = client;
         this.audit = audit;
         this.rbac = rbac;
         this.protectedInstances = protectedInstances;
         this.ticketPolicy = ticketPolicy;
+        this.reauth = reauth;
     }
 
     /**
@@ -102,6 +107,19 @@ public class CorrectiveActionService {
         // -- guards: everything above the audit insert refuses with "nothing happened" --
         requireRole(auth, verb, engineId);
         requireWritableEngine(engine, verb);
+        // Dangerous-set freshness (IDP-SECURITY.md §5, R-SAFE-07): a tier-3 verb on an OAuth2 session
+        // re-authenticates when auth_time exceeds the bounded window (absent auth_time fails closed).
+        // A PRE-CONDITION — refused with "nothing happened" BEFORE the reason/typed-token rails, so
+        // the SPA re-auths at verb intent, never after the operator has typed the confirm token
+        // (⚠️ support-lead). Dev/basic + break-glass sessions are exempt (DangerousActionReauthGate).
+        // INVARIANT (⚠️ do not break): this method is ALSO the per-item executor for async bulk jobs.
+        // Bulk carries NO tier-3 verb today, so this never fires on a bulk item. When tier-3 bulk lands
+        // (the tier-4 wizard), it MUST enforce freshness ONCE at submit (BulkController) — NOT here per
+        // persisted item: a bulk job outlives its session (R-SEM-10), so a per-item challenge would
+        // 401 the tail of a long fan-out.
+        if (verb.tier() >= 3) {
+            reauth.enforce(auth);
+        }
         // CMMN scope is capability-gated (scopeType, Flowable ≥ 6.8) BEFORE any engine read — an
         // older engine is dead-letter-blind on the cmmn context, so a blind move would be
         // silently wrong (do-no-harm). Also rejects any verb not applicable to a CMMN case.

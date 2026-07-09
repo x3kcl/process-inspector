@@ -1681,6 +1681,7 @@ export interface components {
             engineRoles?: {
                 [key: string]: string;
             };
+            reauth?: components["schemas"]["ReauthHint"];
             registryAdmin?: boolean;
             role?: string;
             username?: string;
@@ -1837,6 +1838,13 @@ export interface components {
         };
         ReasonRequest: {
             reason: string;
+        };
+        ReauthHint: {
+            /** Format: date-time */
+            freshUntil?: string;
+            required?: boolean;
+            /** Format: int32 */
+            windowSeconds?: number;
         };
         RecentSearchDto: {
             /** Format: date-time */
