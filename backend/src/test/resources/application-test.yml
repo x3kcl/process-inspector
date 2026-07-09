@@ -28,6 +28,10 @@ inspector:
   # v2/M4 snapshot sampler OFF — this profile is docker-free (no DB / JdbcTemplate).
   snapshot:
     enabled: false
+  # audit partition maintainer OFF for the same reason (S5a — no DB / JdbcTemplate here).
+  audit:
+    partition-maintenance:
+      enabled: false
   fanout-parallelism: 4
   engines:
     - id: probe-dev
