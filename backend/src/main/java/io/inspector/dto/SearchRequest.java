@@ -38,8 +38,54 @@ public record SearchRequest(
         String currentActivity, // case-insensitive contains over unfinished activity id/name
         List<VariableFilter> variables,
         String sortBy, // startTime (default) | failureTime — merged rows, newest first
-        Integer pageSize // per-engine cap, clamped by engine maxPageSize
-        ) {
+        Integer pageSize, // per-engine cap, clamped by engine maxPageSize
+        // v2 deep paging (docs/KWAY-PAGING.md, R-SEM-22): an opaque cursor from a previous page's
+        // nextCursor. Present ⇒ this is a "Load more" for the SAME filter (which is re-sent in the
+        // body and is authoritative — the cursor only carries the resume offsets, bound to the
+        // filter by a hash). pageSize is then the GLOBAL rows to emit; the per-engine window is
+        // internal. Absent ⇒ an ordinary single-shot search. MIXED/startTime-desc only.
+        String cursor) {
+
+    /**
+     * Pre-deep-paging 16-arg shape (no {@code cursor}) → an ordinary single-shot search. Keeps
+     * existing call sites/tests off constructor churn (unit-test-patterns: no constructor churn).
+     */
+    public SearchRequest(
+            List<String> engineIds,
+            List<InstanceStatus> statuses,
+            String processDefinitionKey,
+            Integer definitionVersion,
+            String businessKey,
+            String businessKeyLike,
+            String startedAfter,
+            String startedBefore,
+            String failureTimeAfter,
+            String failureTimeBefore,
+            String errorText,
+            String signatureHash,
+            String currentActivity,
+            List<VariableFilter> variables,
+            String sortBy,
+            Integer pageSize) {
+        this(
+                engineIds,
+                statuses,
+                processDefinitionKey,
+                definitionVersion,
+                businessKey,
+                businessKeyLike,
+                startedAfter,
+                startedBefore,
+                failureTimeAfter,
+                failureTimeBefore,
+                errorText,
+                signatureHash,
+                currentActivity,
+                variables,
+                sortBy,
+                pageSize,
+                null);
+    }
 
     /**
      * Request-side status predicates over the derived flags (SPEC §3/§8) — OR within the set.
