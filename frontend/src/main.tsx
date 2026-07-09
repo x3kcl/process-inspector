@@ -8,6 +8,7 @@ import { AuditLogPage } from './ops/AuditLogPage'
 import { SearchPage } from './search/SearchPage'
 import { hasSearch } from './search/urlState'
 import { Shell } from './shell/Shell'
+import { DefinitionVersionsPage } from './inspect/DefinitionVersionsPage'
 import { TriagePage } from './triage/TriagePage'
 import './styles.css'
 
@@ -57,6 +58,10 @@ const router = createBrowserRouter([
         ),
       },
       { path: 'audit', element: <AuditLogPage /> },
+      {
+        path: 'definitions/:engineId/:key/versions',
+        element: <DefinitionVersionsPage />,
+      },
     ],
   },
 ])

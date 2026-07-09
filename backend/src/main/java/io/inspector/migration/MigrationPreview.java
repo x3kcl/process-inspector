@@ -31,6 +31,7 @@ public record MigrationPreview(
         boolean engineValidated,
         boolean executable,
         List<ActivityDiffEntry> activities,
+        List<TargetActivity> targetActivities,
         String activityStateDigest,
         int callActivityChildCount,
         String method,
@@ -38,6 +39,10 @@ public record MigrationPreview(
         Map<String, Object> restBody,
         String summary,
         String banner) {
+
+    /** A flow node in the TARGET version — the options the mapping dropdown offers for a
+     * flagged (unmapped) source activity. */
+    public record TargetActivity(String id, String name, String type) {}
 
     public static final String BANNER =
             "Inspector pre-check — this is not a Flowable validation. Flowable's REST API exposes no migration"

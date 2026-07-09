@@ -138,6 +138,17 @@ export const VERBS = {
       'a wrong move can usually be moved back — side effects of activities that start are not undone',
     externalSideEffects: true,
   },
+  migrate: {
+    verb: 'migrate-instance',
+    label: 'Migrate',
+    plain: 'move this case to a newer process version',
+    tier: 3,
+    roleFloor: 'ADMIN',
+    reversibility: 'IRREVERSIBLE',
+    reversibilityNote:
+      'migrating back is a fresh forward migration to the old version, not an undo — work executed under the new version stands',
+    externalSideEffects: true,
+  },
   restartAsNew: {
     verb: 'restart',
     label: 'Restart as new instance',
