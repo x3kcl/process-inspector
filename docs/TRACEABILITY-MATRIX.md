@@ -54,6 +54,8 @@ exhaustive scenario→class index.
 | R-SEM-18 dual-write UNKNOWN | TS-AUD-02, TS-BULK-02 | `AuditServiceTest`, `CorrectiveActionServiceTest`, `FailClosedAuditIT` | L1·L4 | ✅ |
 | R-SEM-19 hierarchy breadth cap | TS-STAT-08, TS-DET-08 | `InstanceTimelineServiceTest`, `InstanceTimelineIT`; FE `timelineModel.test` | L1·L4·UNIT-FE | ✅ |
 | R-SEM-20 CMMN out-of-scope count | TS-STAT-16 | `OutOfScopeDeadlettersTest`, `TriageCmmnScopeIT` (6.8), **`TriageCmmnScopeLegacyIT` (6.3 null gate)** | L1·L4 | ✅ (legacy IT added this pass) |
+| R-SEM-22 k-way-merge cursor contract | (design) | `PagingCursorTest` (L1 codec/dedup/bound), crafted-cursor-refused-pre-fan-out (L2 WireMock), deep-scroll ITs (L4, config-lowered caps) | L1·L2·L4 | 🔲 design-locked + spike-gated (`docs/KWAY-PAGING.md`) |
+| R-SEM-23 deterministic total order | (design) | `StatusJoinTest` goldens: tiebreak order, `+00:00`/`Z` compare-equal, `nullsLast` | L1 | 🔲 standalone bug-fix, S1 (red-first goldens) |
 
 ### SAFE — operator safety & RBAC (risk rank R2)
 | Req | Scenario(s) | Suite(s) | Rung | Cov |
@@ -86,6 +88,7 @@ exhaustive scenario→class index.
 | R-NFR-03 cache TTL / refresh throttle | TS-TRI-06/07 | `TriageServiceTest`, `TriageAggregationIT` | L1·L4 | ✅ |
 | R-NFR-04 alarm thresholds | TS-TRI-02 | `EngineCapabilitiesTest`, health ITs | L1·L4 | 🟡 (threshold arithmetic L1 slice thin — §C-11) |
 | R-NFR-07 write-ms timeout | TS-BULK-02 | `InspectorPropertiesValidationTest`, `CorrectiveActionServiceTest` (timeout→UNKNOWN) | L1 | 🟡 (slow-engine L2 exercise = §C-6) |
+| R-NFR-08 deep-paging envelope | (design) | inbound-offset-cap-check (L1/L2), `DEEP_PAGE` bulkhead lane wiring (L3), deep-page cost harness (§C-11) | L1·L2 | 🔲 design-locked (`docs/KWAY-PAGING.md`); perf harness = §C-11 |
 
 ### OPS / L3 / GOV / UXQ / BAU (representative)
 | Req | Scenario(s) | Suite(s) | Rung | Cov |
@@ -180,6 +183,7 @@ P3 later). **Closed this pass** items were gaps until this change and now have s
 | C-8 | SSE soak (P3) | R-SEM-14, R-TEST-05, TS-BULK-11 | `SseHubTest`+`BulkFilterIT` prove logic + one live stream; the 50-client/30-min soak is unrun. | Scheduled (non-PR) P3 harness: 50 EventSource clients through a 500-item bulk, assert zero dropped/dup, heap ±10%. | P3 |
 | C-9 | Explain-status per-flag provenance E2E · group copy-for-ticket | R-L3-01, R-AUD-06, TS-DET-14/11 | Backend derivation proven at L4; the rendered evidence view + Markdown copy variants have no E2E. | Playwright spec: open a FAILED instance → "explain this status" shows per-leg request/response + plan choice; copy-for-ticket emits the SPEC §4 line order. | P2 |
 | C-10 | Latency budget (P4 / R-NFR-02) | R-NFR-02, TS-TRI-06 | No perf harness in-repo; FIX-REF-01 reference dataset + k6/Gatling assertions unbuilt. | Nightly S2 job seeding FIX-REF-01, asserting the four P95 budgets + ≥99% landing cache hits. | P2 |
+| C-11 | Deep-paging cost curve (R-NFR-08) | R-NFR-08, R-SEM-22 | Design-locked, unbuilt; the O(offset) cost near the depth cap is unmeasured — sets the real per-engine cap and its separate (non-R-NFR-02) latency class. | S0 P0 spike measures offset-near-cap query cost per engine on 6.3/6.8/7.1; nightly deep-scroll perf assertion once built. | P3 |
 | C-11 | Alarm-threshold arithmetic L1 | R-NFR-04, TS-TRI-02 | Thresholds exercised implicitly in health ITs; the warn/crit boundary math has no `Clock`-driven L1. | L1 over fixed-`Clock`: oldest-executable >5m warn / >15m crit; overdue-timer any=warn, >100=crit; ages floored at 0. | P3 |
 | C-12 | Readiness/liveness probe assertions | R-OPS-01 | Registry binding tested; the actuator readiness (PG+registry, NEVER engine) group isn't asserted. | L3: `/actuator/health/readiness` UP with engines down; DOWN with PG down. | P2 |
 | C-13 | axe accessibility wired per-spec | R-UXQ-01, TS-E2E-01/04 | axe is named as a CI hard-fail but not attached inside the current e2e specs. | Add `@axe-core/playwright` scan step to each e2e spec + the canonical-arc spec (C-16); fail on serious/critical. | P2 |

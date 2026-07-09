@@ -1067,7 +1067,11 @@ and would rewrite working M1/M2 code for no capability gain); Go/FastAPI/Kotlin 
   version comparison, CMMN, **registry CRUD** (runtime engine lifecycle — SPEC §4b, the
   R-OPS-13/R-OPS-15/R-SAFE-13 SSRF + governance rails; design locked in
   [REGISTRY-CRUD.md](REGISTRY-CRUD.md)), shared
-  server-side views, k-way-merge paging, maintenance snapshots + volume trends,
+  server-side views, **k-way-merge deep paging** (cursor-based browsing of the globally-sorted
+  merged stream — design locked + spike-gated in [KWAY-PAGING.md](KWAY-PAGING.md), R-SEM-22/23,
+  R-NFR-08; **build trigger:** operators repeatedly hit `perEngine.total > fetched` on a
+  time-sorted search without narrowing. NOTE: R-SEM-23, the deterministic total-order fix, is a
+  standalone MUST that ships regardless), maintenance snapshots + volume trends,
   training mode, capability overrides.
 - **v2/M4 job-lane trend sparklines — SHIPPED (R-BAU-08):** each Stage-0 status tile carries a
   small trend line of that lane's recent count history, read from the snapshot store (a scheduled
