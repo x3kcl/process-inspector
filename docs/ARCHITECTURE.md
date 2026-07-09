@@ -346,9 +346,12 @@ nobody may "simplify" by exposing an engine directly.
 
 - **Auth (dual profile from M4):** dev = form/basic + session; prod = **OIDC**
   (roles from a claim). One session-stateful BFF instance; engine credentials live only in
-  the BFF process env. **v2 IdP-Security (IDP-SECURITY.md)** wires OIDC for real (Entra ID pilot /
-  Keycloak; issuer pinned to one tenant, PKCE, tokens server-side-session-only, Entra
-  groups-overage detect-and-legibly-fail), hardens the session/transport posture (session caps,
+  the BFF process env. **v2 IdP-Security (IDP-SECURITY.md)** wires OIDC for real — **S1 built**: the
+  `oidc` profile carries a real `oauth2-client` registration (Entra ID pilot / Keycloak; issuer
+  pinned to one tenant, PKCE, tokens server-side-session-only) and a single authoritative
+  `OidcGroupResolver` (issuer pinning, non-array-claim rejection, Entra groups-overage
+  detect-and-legibly-fail) owns the one place a token's groups are trusted, at login and at check
+  time — hardens the session/transport posture (session caps,
   fixation scoped so the dev Basic-per-XHR SSE isn't orphaned, `HttpOnly/Secure/SameSite=Lax`,
   header set, CSP report-only-first, HSTS opt-in, CORS off — R-SAFE-07/R-OPS-16), and builds
   break-glass (sealed local ADMIN on a distinct `/break-glass` chain that works when the IdP is

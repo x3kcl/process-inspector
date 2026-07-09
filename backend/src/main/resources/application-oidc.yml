@@ -1,0 +1,43 @@
+# OIDC / prod identity profile (IDP-SECURITY.md §4, ADR-003 — R-GOV-06). Loaded only when the
+# `oidc` profile is active; the default dev chain (Basic+form) never sees this. Everything here is
+# DEPLOY CONFIG (iron rule) — issuer/client-id are set out-of-band, the secret is an env ref, and
+# nothing OIDC is ever editable in-app.
+#
+# ⚠️ ISSUER PINNING (sixth-seat, load-bearing): issuer-uri MUST point at a SINGLE tenant, never
+# Entra's multi-tenant `common`/`organizations` endpoint. inspector.security.oidc.issuer pins the
+# SAME issuer for the belt-and-suspenders group-trust check (groups from any other issuer resolve
+# to zero) — keep the two in lockstep.
+spring:
+  security:
+    oauth2:
+      client:
+        registration:
+          oidc:
+            provider: oidc
+            client-id: ${INSPECTOR_OIDC_CLIENT_ID}
+            # Env ref only (password-ref / iron rule) — never a literal secret in config.
+            client-secret: ${INSPECTOR_OIDC_CLIENT_SECRET}
+            client-authentication-method: client_secret_basic
+            authorization-grant-type: authorization_code
+            # openid+profile for identity; the groups scope carries coarse group IDs; offline_access
+            # only when the optional background re-pull (S5) is enabled for this deploy.
+            scope:
+              - openid
+              - profile
+              - ${INSPECTOR_OIDC_GROUPS_SCOPE:groups}
+            # Exact redirect-uri (§4): the standard Spring code-exchange callback.
+            redirect-uri: "{baseUrl}/login/oauth2/code/{registrationId}"
+        provider:
+          oidc:
+            issuer-uri: ${INSPECTOR_OIDC_ISSUER_URI}
+
+inspector:
+  security:
+    # The claim carrying the user's groups (Entra: "groups"; Keycloak: a configured mapper claim).
+    groups-claim: ${INSPECTOR_OIDC_GROUPS_CLAIM:groups}
+    oidc:
+      # Pinned trusted issuer — MUST equal the issuer-uri above (one tenant).
+      issuer: ${INSPECTOR_OIDC_ISSUER_URI}
+      # Entra groups-overage: false = detect + legibly fail (the floor). Enabling it requires a
+      # deployed OverageGroupResolver (permissioned Graph add-on) — out of S1 scope.
+      resolve-overage: ${INSPECTOR_OIDC_RESOLVE_OVERAGE:false}

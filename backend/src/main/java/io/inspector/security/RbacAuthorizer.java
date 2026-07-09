@@ -9,6 +9,7 @@ import java.util.Set;
 import org.springframework.security.core.Authentication;
 import org.springframework.security.core.GrantedAuthority;
 import org.springframework.security.oauth2.client.authentication.OAuth2AuthenticationToken;
+import org.springframework.security.oauth2.core.oidc.user.OidcUser;
 import org.springframework.security.oauth2.core.user.OAuth2User;
 import org.springframework.stereotype.Component;
 
@@ -34,11 +35,17 @@ public class RbacAuthorizer {
     private final ScopeMappingService scopeMapping;
     private final SecurityProperties props;
     private final InspectorProperties registry;
+    private final OidcGroupResolver groupResolver;
 
-    public RbacAuthorizer(ScopeMappingService scopeMapping, SecurityProperties props, InspectorProperties registry) {
+    public RbacAuthorizer(
+            ScopeMappingService scopeMapping,
+            SecurityProperties props,
+            InspectorProperties registry,
+            OidcGroupResolver groupResolver) {
         this.scopeMapping = scopeMapping;
         this.props = props;
         this.registry = registry;
+        this.groupResolver = groupResolver;
     }
 
     /**
@@ -106,12 +113,22 @@ public class RbacAuthorizer {
         return grants;
     }
 
-    @SuppressWarnings("unchecked")
+    /**
+     * Check-time group extraction via the single authoritative {@link OidcGroupResolver}
+     * (quiet variant — the login already validated the claim shape, so this never throws, but
+     * issuer pinning still applies as defense-in-depth: a token whose {@code iss} is not the
+     * pinned tenant resolves zero groups).
+     */
     private List<String> groupsOf(OAuth2User user) {
-        Object claim = user.getAttributes().get(props.groupsClaimOrDefault());
-        if (claim instanceof List<?> list) {
-            return (List<String>) list;
+        // Same single authoritative source as login (IDP-SECURITY.md §4): for an OIDC session read
+        // the ID TOKEN claims (not the merged getAttributes(), where userinfo could shadow groups),
+        // so the group source and the pinned iss are the same token.
+        if (user instanceof OidcUser oidc) {
+            String issuer = oidc.getIssuer() != null ? oidc.getIssuer().toString() : null;
+            return groupResolver.resolveForCheck(oidc.getIdToken().getClaims(), issuer, oidc.getSubject());
         }
-        return List.of();
+        Object iss = user.getAttributes().get("iss");
+        return groupResolver.resolveForCheck(
+                user.getAttributes(), iss != null ? String.valueOf(iss) : null, user.getName());
     }
 }

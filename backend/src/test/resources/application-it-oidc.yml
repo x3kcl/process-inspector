@@ -1,0 +1,28 @@
+# Rung-4 OIDC profile: the REAL oidc chain (application-oidc.yml) against a REAL Keycloak +
+# a Testcontainers Postgres. The oidc client registration values (issuer-uri, client-id,
+# secret) are injected via @DynamicPropertySource in OidcKeycloakIT so application-oidc.yml's
+# env placeholders are all satisfied — proving that config parses and the chain boots against a
+# genuine issuer. Snapshot sampler + registry seeding off (no engines needed for the auth path).
+inspector:
+  snapshot:
+    enabled: false
+  registry:
+    source: config
+  engines:
+    - id: engine-a
+      name: "Engine A (inert)"
+      base-url: "http://localhost:8081/flowable-rest/service"
+      environment: dev
+      accent-color: "#2e86de"
+      enabled: false
+      mode: read-write
+      auth:
+        type: basic
+        username: rest-admin
+        password-ref: ENGINE_A_PASSWORD
+      timeouts:
+        connect-ms: 2000
+        read-ms: 10000
+        write-ms: 10000
+      max-page-size: 10
+      dlq-scan-cap: 500
