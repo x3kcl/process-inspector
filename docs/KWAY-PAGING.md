@@ -317,9 +317,15 @@ wire-facts** — neither correction changes the RE-LOCK, but both are now known 
   "snapshot"`), the existing `IllegalArgumentException`→400 handler covers a crafted/expired/mismatched
   cursor; `schema.d.ts` regen (the 4 new fields). Rung-3 `SearchDeepPageApiSpringTest` (cursor round-trips,
   markers serialize, garbage/over-cap/FAILED-only cursors are 400-not-500 for an authenticated reader).
-- **S4 — Frontend "Load more".** `useInfiniteQuery` cursor chain, overflow-only surfacing,
-  two-door selection preserved, depth-wall filter seam, snapshot seam line. Playwright e2e with
-  URL-predicate route mocks.
+- **S4 — Frontend "Load more".** ✔ **LANDED 2026-07-09.** `useInfiniteQuery` cursor chain
+  (`useSearch.ts`), the flattened+compositeId-deduped feed fed to the client-side grid; overflow-only
+  surfacing (the BFF emits the ENTRY `nextCursor` from `aggregate()` only when a MIXED/`startTime`
+  search overflows, so `hasNextPage` gates the button); two-door selection preserved (no
+  loaded-rows-as-ID-list door); depth-wall filter seam (pre-filled `startedBefore` at the last-shown
+  key); snapshot seam line; Refresh resets the chain + drops the selection (keyed on the search
+  identity, not per-page fetch). Playwright `e2e/deep-paging.spec.ts` (URL-predicate route mock branched
+  on `cursor` — append/seam/end + criteria-only re-send). Backend: `aggregate()` mints the entry cursor
+  via `mergePage`; `mixedPlan` always collects raw window keys.
 - **S5 — Live-engine ITs (engine-harness).** Dockerized 6.8/7.1: deep-scroll correctness against a
   seeded same-second cluster (no dup/skip), drop-engine-mid-scroll honesty, depth-cap refusal,
   config-lowered caps. Seed strictly over REST.

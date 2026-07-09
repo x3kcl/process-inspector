@@ -88,6 +88,10 @@ async function mockBff(
         await route.fulfill({ json: JOB_DETAIL })
       } else if (pathname === '/api/bulk') {
         await route.fulfill({ json: jobs })
+      } else if (pathname === '/api/views' || pathname === '/api/recents') {
+        // Saved-views / recents chrome now renders on every search page (V6 relational store) —
+        // an empty array keeps ViewChips/RecentSearchList from erroring in this unrelated smoke.
+        await route.fulfill({ json: [] })
       } else {
         await route.fulfill({ json: {} })
       }
