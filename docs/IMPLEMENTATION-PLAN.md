@@ -938,10 +938,18 @@ behind nothing before any UI reaches them:**
   banner + alert + local-file-sink audit fallback + sticky tier-0 reason. Done-when: identity-freshness
   IT (removed group can't authorize tier-3 post-re-auth; no per-verb MFA storm within window);
   break-glass IT (works IdP-down; audit degrades DB-down and still proceeds; cannot reach fleet CRUD).
-- **S6 — admin UI + access-review + `/api/me` hints.** `/admin/access` (fleet-chip intrinsic glyph;
-  eligible-approver legibility; warn-before-guillotine + re-auth interstitial), the access-review
-  screen + export (ladder|fleet column), `me.accessAdmin`/`breakGlass`. Types via `npm run gen:api`.
-  Done-when: Playwright smoke (grant→four-eyes→revoke) + axe + SR pass.
+- **S6 — admin UI + access-review + `/api/me` hints.** *(access-review BACKEND ✅ LANDED
+  2026-07-09):* `GET /api/access-review` — the effective-grant export (the R-GOV-02 "who can do what"
+  release-gate artifact): full mapping expansion with a **grant-type column (ladder|fleet)** + source
+  tag + the caller's own grants, `ACCESS_ADMIN`-gated + **audited read**, JSON/CSV/Markdown
+  (RFC-4180-escaped CSV). `AccessReviewSpringTest` (rung-3: RBAC gate, formats, audit). The
+  `me.accessAdmin`/`breakGlass` hints landed in S5b. schema.d.ts regenerated. *(FRONTEND remaining —
+  the React slice):* `/admin/access` mapping UI (fleet-chip intrinsic glyph + "FLEET" token;
+  add/edit form; the widen path's eligible-approver legibility + the R-SAFE-08 proposal inbox), the
+  access-review screen + CSV/MD download, the dangerous-verb re-auth interstitial +
+  warn-before-guillotine, the IdP-unreachable [Break-glass sign-in] door + permanent red banner, nav
+  greying off `me.accessAdmin`/`breakGlass`. Done-when: Playwright smoke (grant→four-eyes→revoke) +
+  axe + SR pass.
 
 Each slice: rung-1 unit → rung-3 Spring wiring/RBAC → rung-4 Keycloak/Testcontainers IT → Playwright.
 
