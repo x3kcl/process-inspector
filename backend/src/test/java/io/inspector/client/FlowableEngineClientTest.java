@@ -5,6 +5,8 @@ import static com.github.tomakehurst.wiremock.client.WireMock.equalTo;
 import static com.github.tomakehurst.wiremock.client.WireMock.get;
 import static com.github.tomakehurst.wiremock.client.WireMock.getRequestedFor;
 import static com.github.tomakehurst.wiremock.client.WireMock.okJson;
+import static com.github.tomakehurst.wiremock.client.WireMock.post;
+import static com.github.tomakehurst.wiremock.client.WireMock.postRequestedFor;
 import static com.github.tomakehurst.wiremock.client.WireMock.urlEqualTo;
 import static com.github.tomakehurst.wiremock.client.WireMock.urlPathEqualTo;
 import static com.github.tomakehurst.wiremock.core.WireMockConfiguration.options;
@@ -75,6 +77,7 @@ class FlowableEngineClientTest {
 
     @AfterEach
     void tearDown() {
+        ForwardedActor.clear();
         wm.stop();
     }
 
@@ -265,5 +268,76 @@ class FlowableEngineClientTest {
         assertThat(page.dataOrEmpty().get(0).get("lockOwner")).isEqualTo("worker-3");
         wm.verify(getRequestedFor(urlPathEqualTo("/flowable-rest/external-job-api/jobs"))
                 .withQueryParam("processInstanceId", equalTo("pi-1")));
+    }
+
+    /* ---------------- X-Forwarded-User send-side (M4-CLOSEOUT §2 / S4) ---------------- */
+
+    private EngineConfig forwardEngine(String id) {
+        return TestEngines.forwardUserEngine(
+                id,
+                wm.baseUrl(),
+                TestEngines.basicAuth("rest-admin", "ENGINE_T_PASSWORD"),
+                new Timeouts(1000, 1000, null));
+    }
+
+    @Test
+    void forwardsUserHeaderOnWriteWhenEngineOptedInAndActorSet() {
+        wm.stubFor(post(urlPathEqualTo("/management/deadletter-jobs/j1"))
+                .willReturn(aResponse().withStatus(200)));
+
+        ForwardedActor.set("alice");
+        client.moveDeadLetterJob(forwardEngine("fwd-on"), "j1");
+
+        wm.verify(postRequestedFor(urlPathEqualTo("/management/deadletter-jobs/j1"))
+                .withHeader("X-Forwarded-User", equalTo("alice")));
+    }
+
+    @Test
+    void omitsUserHeaderWhenEngineNotOptedIn() {
+        wm.stubFor(post(urlPathEqualTo("/management/deadletter-jobs/j1"))
+                .willReturn(aResponse().withStatus(200)));
+
+        // A plain (non-forward-user) engine never carries the header, even with an actor set.
+        ForwardedActor.set("alice");
+        client.moveDeadLetterJob(engine("fwd-off"), "j1");
+
+        wm.verify(postRequestedFor(urlPathEqualTo("/management/deadletter-jobs/j1"))
+                .withoutHeader("X-Forwarded-User"));
+    }
+
+    @Test
+    void omitsUserHeaderWhenNoActorSet() {
+        wm.stubFor(post(urlPathEqualTo("/management/deadletter-jobs/j1"))
+                .willReturn(aResponse().withStatus(200)));
+
+        // Opted-in engine but no actor on the thread (holder empty) → header dropped, never blank.
+        client.moveDeadLetterJob(forwardEngine("fwd-on-noactor"), "j1");
+
+        wm.verify(postRequestedFor(urlPathEqualTo("/management/deadletter-jobs/j1"))
+                .withoutHeader("X-Forwarded-User"));
+    }
+
+    @Test
+    void forwardedUserHeaderIsSanitized() {
+        wm.stubFor(post(urlPathEqualTo("/management/deadletter-jobs/j1"))
+                .willReturn(aResponse().withStatus(200)));
+
+        // CR/LF would be a header-injection vector — the holder strips it before it reaches the wire.
+        ForwardedActor.set("al\r\nice");
+        client.moveDeadLetterJob(forwardEngine("fwd-sanitize"), "j1");
+
+        wm.verify(postRequestedFor(urlPathEqualTo("/management/deadletter-jobs/j1"))
+                .withHeader("X-Forwarded-User", equalTo("alice")));
+    }
+
+    @Test
+    void neverForwardsUserHeaderOnTheReadClient() {
+        wm.stubFor(get(urlPathEqualTo("/management/engine")).willReturn(okJson("{\"version\":\"6.8.0\"}")));
+
+        // The interceptor is WRITE-client only — a read on a forward-user engine carries no identity.
+        ForwardedActor.set("alice");
+        client.engineInfo(forwardEngine("fwd-read"));
+
+        wm.verify(getRequestedFor(urlPathEqualTo("/management/engine")).withoutHeader("X-Forwarded-User"));
     }
 }

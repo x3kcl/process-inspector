@@ -12,6 +12,8 @@ import java.util.Optional;
 import java.util.concurrent.ConcurrentHashMap;
 import java.util.function.Function;
 import java.util.stream.Collectors;
+import org.slf4j.Logger;
+import org.slf4j.LoggerFactory;
 import org.springframework.stereotype.Component;
 import org.springframework.web.server.ResponseStatusException;
 
@@ -31,6 +33,8 @@ import org.springframework.web.server.ResponseStatusException;
 @Component
 public class EngineRegistry {
 
+    private static final Logger log = LoggerFactory.getLogger(EngineRegistry.class);
+
     // volatile: reload() publishes a brand-new immutable map; readers see the swap atomically and
     // never observe a half-built map (the map is never mutated in place after publication).
     private volatile Map<String, EngineConfig> engines;
@@ -41,6 +45,7 @@ public class EngineRegistry {
         // this bootstrap map at boot under source=db.
         this.engines = index(props.engines());
         engines.keySet().forEach(id -> health.put(id, EngineHealth.unknown()));
+        warnForwardUser(engines.values());
     }
 
     /**
@@ -54,6 +59,28 @@ public class EngineRegistry {
         next.keySet().forEach(id -> health.putIfAbsent(id, EngineHealth.unknown()));
         health.keySet().retainAll(next.keySet());
         this.engines = next; // volatile publish
+        warnForwardUser(next.values());
+    }
+
+    /**
+     * Config-load guardrail for the X-Forwarded-User send-side (M4-CLOSEOUT §2 / D2). Forwarding
+     * employee identity (PII, outside the §4 payload modes) is trustworthy ONLY over an
+     * authenticated / network-isolated BFF→engine channel (D2c) — a property the registry does not
+     * model, so we hard-WARN rather than silently forward. We deliberately do not auto-refuse by
+     * {@code environment}: "outside the ARCH §6 trust fence" is not a modeled attribute (the
+     * classification only distinguishes dev/test/prod), and ARCH §6 explicitly recommends the flag
+     * for the embedded-engine (flap) case, which may be prod. Off-by-default already makes enabling
+     * it a deliberate act; this WARN keeps that act visible at every load/reload.
+     */
+    private static void warnForwardUser(Collection<EngineConfig> engines) {
+        engines.stream()
+                .filter(EngineConfig::forwardUser)
+                .forEach(e -> log.warn(
+                        "engine '{}' ({}) has forward-user ON: X-Forwarded-User carries employee identity (PII) — "
+                                + "ensure a trusted, isolated BFF→engine channel and that the engine strips inbound "
+                                + "X-Forwarded-User (M4-CLOSEOUT §2 / ARCH §6).",
+                        e.id(),
+                        e.environment()));
     }
 
     // LinkedHashMap: the health strip and every fan-out follow registry (YAML / DB) order.

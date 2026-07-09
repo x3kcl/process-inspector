@@ -29,6 +29,27 @@ public final class TestEngines {
                 id, id, baseUrl, environment, null, true, null, null, null, mode, null, null, null, null);
     }
 
+    /** X-Forwarded-User send-side fixture (M4-CLOSEOUT §2 / S4): forward-user ON. */
+    public static EngineConfig forwardUserEngine(String id, String baseUrl, Auth auth, Timeouts timeouts) {
+        return new EngineConfig(
+                id,
+                id,
+                baseUrl,
+                EngineEnvironment.DEV,
+                null,
+                true,
+                null,
+                null,
+                auth,
+                null,
+                timeouts,
+                null,
+                null,
+                null,
+                null,
+                true);
+    }
+
     public static Auth basicAuth(String username, String passwordRef) {
         return new Auth(Auth.Type.basic, username, passwordRef, null);
     }

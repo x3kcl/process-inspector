@@ -1,0 +1,21 @@
+-- ============================================================================
+-- V9__engine_forward_user.sql — per-engine X-Forwarded-User send-side opt-in
+-- (SPEC §9 bonus, ARCH §6, M4-CLOSEOUT §2 / S4).
+--
+-- Where WE control the engine, the BFF may forward the acting human as an
+-- `X-Forwarded-User` request header so an engine-side interceptor can write
+-- native Flowable attribution. The BFF audit log stays the golden master — this
+-- is a never-relied-upon bonus, off by default.
+--
+-- Off by default (`false`): forwarding employee identity (PII, outside the §4
+-- payload modes) is the deliberate opt-in, permitted only on genuinely-trusted
+-- engines. Config-load refuses/hard-warns `forward_user = true` on an engine
+-- outside the ARCH §6 trust fence (same environment classification that gates
+-- §5.0 typed tokens). engine_registry is DB-authoritative-once-seeded, so
+-- existing rows take the DEFAULT (false) — no silent identity leak on upgrade.
+--
+-- ddl-auto=validate holds: EngineRegistryRow gains a matching field. This is the
+-- previously-deferred "forward-user-header" column called out in V7's header.
+-- ============================================================================
+ALTER TABLE engine_registry
+    ADD COLUMN forward_user boolean NOT NULL DEFAULT false;
