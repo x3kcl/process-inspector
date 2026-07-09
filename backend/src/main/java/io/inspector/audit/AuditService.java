@@ -126,7 +126,7 @@ public class AuditService {
                         reason,
                         ticketId,
                         payloadJson,
-                        false);
+                        currentSessionIsBreakGlass());
                 entry.setPayloadMode(mode);
                 entry.setChainHash(chainHash(previousHash, entry));
                 return repository.saveAndFlush(entry);
@@ -260,6 +260,21 @@ public class AuditService {
             "skippedVariables");
 
     /** Replace values whose KEY matches the secret-name denylist, recursing through maps AND lists. */
+    /**
+     * Is the current session a break-glass one (IDP-SECURITY.md §7)? Resolved from the security
+     * context at write time so EVERY mutation audited under a sealed-account session is flagged
+     * {@code breakGlass:true} (first in the shift report) without threading a flag through every
+     * caller. Marker-only ({@code ROLE_BREAK_GLASS}); the grant itself is {@code ROLE_ADMIN}.
+     */
+    private static boolean currentSessionIsBreakGlass() {
+        org.springframework.security.core.Authentication auth =
+                org.springframework.security.core.context.SecurityContextHolder.getContext()
+                        .getAuthentication();
+        return auth != null
+                && auth.isAuthenticated()
+                && auth.getAuthorities().stream().anyMatch(a -> "ROLE_BREAK_GLASS".equals(a.getAuthority()));
+    }
+
     public static Map<String, Object> redact(Map<String, Object> payload) {
         if (payload == null) {
             return Map.of();

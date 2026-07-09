@@ -915,9 +915,26 @@ behind nothing before any UI reaches them:**
   it, ADMIN/`REGISTRY_ADMIN`/unauth refused, file-mode 409) + `AccessMappingAdminDbIT` (rung-4 real
   Postgres: apply / propose→approve / self-approve refused / ≥2-invariant, local-only). Unit ladder
   green (634); `schema.d.ts` regenerated for the new endpoints.
-- **S5 — dangerous-set re-auth protocol + break-glass.** The custom `OAuth2AuthorizationRequestResolver`
-  + `OidcIdTokenValidator` (rejects stale/absent `auth_time`) + the 401-challenge/replay + bounded
-  window + membership re-pull; the sealed break-glass chain + `/break-glass` + IdP-unreachable door +
+- **S5 — dangerous-set re-auth protocol + break-glass.** *(S5a re-auth foundation ✅ LANDED
+  2026-07-09):* `ReauthAuthorizationRequestResolver` (PKCE always; on the `reauth` marker it injects
+  `max_age` = the freshness window + `prompt=login`, so a normal login carries no `max_age` — no
+  per-login MFA storm — and the dangerous-set replay forces a fresh `auth_time`) wired into the oidc
+  chain; the pure `SessionFreshness` bounded-window decision (absent `auth_time` fails closed);
+  `inspector.security.oidc.freshness-window-s` (≤15 min). Tests: `SessionFreshnessTest` (rung-1) +
+  `OidcKeycloakIT` (real IdP: normal login has no `max_age`; `?reauth=true` carries `max_age`+`prompt=login`).
+  *(S5b break-glass + hints ✅ LANDED 2026-07-09):* the sealed **break-glass** chain — a local ADMIN
+  account on a distinct `/break-glass` form login wired into the oidc chain ONLY when
+  `INSPECTOR_BREAK_GLASS_PASSWORD` is set (works IdP-down; the oauth2 entry point is pinned
+  explicitly so formLogin doesn't hijack it); ADMIN-global + a `ROLE_BREAK_GLASS` marker, **never**
+  `ACCESS_ADMIN`/`REGISTRY_ADMIN`; **4 h** session cap (`AbsoluteSessionTimeoutFilter` per-session
+  override); **alert-on-login**; audit fail-closed to Postgres, degrading to a **tamper-evident
+  local file sink** (`BreakGlassAuditSink`, hash-chained) when the DB is down — the one deliberate
+  fail-closed exception; `AuditService` now flags EVERY sealed-session mutation `breakGlass:true`.
+  `/api/me` gains `accessAdmin` + `breakGlass` hints (schema.d.ts regenerated). Tests:
+  `OidcKeycloakIT` (real IdP + MockMvc: sealed login → ADMIN session, `breakGlass:true`,
+  `/api/admin/access` → 403). *(S5b remaining — SPA-coupled, folds with S6):* the 401-challenge/replay
+  protocol at verb-intent + `OidcIdTokenValidator` server-side `auth_time` rejection + membership
+  re-pull; the IdP-unreachable interstitial + red banner + sticky tier-0 reason (frontend). Earlier —
   banner + alert + local-file-sink audit fallback + sticky tier-0 reason. Done-when: identity-freshness
   IT (removed group can't authorize tier-3 post-re-auth; no per-verb MFA storm within window);
   break-glass IT (works IdP-down; audit degrades DB-down and still proceeds; cannot reach fleet CRUD).

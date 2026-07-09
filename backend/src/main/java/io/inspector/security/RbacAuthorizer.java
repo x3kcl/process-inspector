@@ -42,6 +42,14 @@ public class RbacAuthorizer {
      */
     public static final String ACCESS_ADMIN_AUTHORITY = "ROLE_ACCESS_ADMIN";
 
+    /**
+     * The break-glass marker (IDP-SECURITY.md §7, R-SAFE-11): a sealed-account session carries this
+     * ALONGSIDE {@code ROLE_ADMIN} (ADMIN-global), so audit + the UI banner can flag it loudly. It
+     * grants nothing itself — {@code ROLE_ADMIN} does — and is NEVER {@code ACCESS_ADMIN}/{@code
+     * REGISTRY_ADMIN} (an IdP outage is not a licence to rewrite authority or repoint the vault).
+     */
+    public static final String BREAK_GLASS_AUTHORITY = "ROLE_BREAK_GLASS";
+
     private final MappingSource mappingSource;
     private final InspectorProperties registry;
     private final OidcGroupResolver groupResolver;
@@ -113,6 +121,13 @@ public class RbacAuthorizer {
             return mappingSource.fleetGrantsForGroups(groupsOf(user)).contains(FleetGrant.ACCESS_ADMIN);
         }
         return auth.getAuthorities().stream().anyMatch(a -> ACCESS_ADMIN_AUTHORITY.equals(a.getAuthority()));
+    }
+
+    /** Is this a break-glass session (sealed-account login)? Drives the audit flag + the red banner. */
+    public boolean isBreakGlass(Authentication auth) {
+        return auth != null
+                && auth.isAuthenticated()
+                && auth.getAuthorities().stream().anyMatch(a -> BREAK_GLASS_AUTHORITY.equals(a.getAuthority()));
     }
 
     /** Groups the acting user's OIDC session carries (issuer-pinned) — used by the mapping-admin service. */

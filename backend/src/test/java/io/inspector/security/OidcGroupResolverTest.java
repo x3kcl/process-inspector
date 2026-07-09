@@ -23,7 +23,7 @@ class OidcGroupResolverTest {
 
     private OidcGroupResolver resolver(String pinnedIssuer, boolean resolveOverage, OverageGroupResolver overage) {
         SecurityProperties security = new SecurityProperties(null, null, null, "groups", null);
-        OidcProperties oidc = new OidcProperties(pinnedIssuer, resolveOverage);
+        OidcProperties oidc = new OidcProperties(pinnedIssuer, resolveOverage, null);
         @SuppressWarnings("unchecked")
         ObjectProvider<OverageGroupResolver> provider = mock(ObjectProvider.class);
         when(provider.getIfAvailable()).thenReturn(overage);

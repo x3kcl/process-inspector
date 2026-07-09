@@ -27,9 +27,22 @@ public record OidcProperties(
          * OverageGroupResolver bean (a permissioned Graph add-on) — absent that bean it still fails
          * legibly. Graph resolution itself is a documented deploy add-on, out of S1 scope.
          */
-        boolean resolveOverage) {
+        boolean resolveOverage,
+        /*
+         * Dangerous-set freshness window in seconds (S5, IDP-SECURITY.md §5, ⚠️ DevOps): a
+         * tier-3/bulk/mapping-write verb re-authenticates only when the session's authentication is
+         * older than this. Bounds authentication recency without an MFA storm during a P1 fan-out.
+         * Capped at 15 min (R-SAFE-07); default 15 min.
+         */
+        Integer freshnessWindowS) {
 
     public boolean issuerPinned() {
         return issuer != null && !issuer.isBlank();
+    }
+
+    /** Freshness window (seconds), defaulted to and hard-capped at 15 min (R-SAFE-07). */
+    public int freshnessWindowSOrDefault() {
+        int n = freshnessWindowS != null && freshnessWindowS > 0 ? freshnessWindowS : 900;
+        return Math.min(n, 900);
     }
 }
