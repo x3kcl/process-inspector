@@ -15,6 +15,9 @@ inspector:
   # v2/M4 snapshot sampler OFF — this profile is docker-free (no DB / JdbcTemplate).
   snapshot:
     enabled: false
+  audit:
+    partition-maintenance:
+      enabled: false
   fanout-parallelism: 4
   hierarchy-max-depth: 10
   engines:
