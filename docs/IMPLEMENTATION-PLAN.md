@@ -897,11 +897,24 @@ behind nothing before any UI reaches them:**
   *Tests:* `FileMappingSourceTest` + `ApexInvariantCheckerTest` (rung-1, CI gate) + a real-Postgres
   `MappingStoreDbIT` (seed + read + env-overlay + refresh, local-only). Full unit ladder green (621).
   Drift-report + file-pin-403 land with the S4 CRUD surface that consumes them.
-- **S4 — `ACCESS_ADMIN` + mapping CRUD API + governance.** `rbac.canAdministerAccess`,
-  `AdminAccessController`, the **effective-grant widen/breadth/fleet-removal check** + four-eyes
-  (proposer & approver both re-authenticated) + the security-alert fire, fail-closed audit
-  (`mapping-*`), the drift endpoint (no-apex hard-alert). Done-when: escalation matrix (a quiet
-  self-grant = Sev1) + RBAC matrix (ADMIN/`REGISTRY_ADMIN`/break-glass refused) + audit-integrity green.
+- **S4 — `ACCESS_ADMIN` + mapping CRUD API + governance. ✅ LANDED 2026-07-09.**
+  `rbac.canAdministerAccess` (apex, orthogonal — never a ladder ADMIN / `REGISTRY_ADMIN` /
+  break-glass; dev `access-admin` user) + `AdminAccessController` (`@PreAuthorize` door + service
+  re-check; GET mapping **audited-read**, POST/DELETE grants, GET `/drift`, `/proposals` +
+  `/proposals/{id}/approve`). `AccessMappingAdminService` (`@Profile("db")` — file mode 409s):
+  the **`FourEyesPolicy`** on the resolved change (self-widen / wildcard-≥OPERATOR breadth / any
+  fleet create / any fleet removal → a **V14 `access_grant_proposal`** a second independent
+  `ACCESS_ADMIN` must approve; ladder-narrow single-actor); the **eligible-approver set computed
+  now** (empty ⇒ refuse with the file-pin next-move); **fail-closed audit** (`grant-add`/
+  `grant-remove`, audit-first so no-audit ⇒ no-change); the **≥2-`ACCESS_ADMIN` invariant** on apex
+  removal + CRUD-enabled-only-with-≥2; a **security-alert fire** on every `ACCESS_ADMIN` change
+  (detective backstop, §9); the drift endpoint (no-file-apex hard-alert). Grants are value tuples so
+  add/remove address them by tuple (edit = remove+add, client-composed — `PUT` deferred). Proposer &
+  approver re-auth binds to the **S5** challenge protocol. *Tests:* `FourEyesPolicyTest` (rung-1
+  escalation matrix, **CI gate**) + `AdminAccessRbacSpringTest` (rung-3: only `ACCESS_ADMIN` reaches
+  it, ADMIN/`REGISTRY_ADMIN`/unauth refused, file-mode 409) + `AccessMappingAdminDbIT` (rung-4 real
+  Postgres: apply / propose→approve / self-approve refused / ≥2-invariant, local-only). Unit ladder
+  green (634); `schema.d.ts` regenerated for the new endpoints.
 - **S5 — dangerous-set re-auth protocol + break-glass.** The custom `OAuth2AuthorizationRequestResolver`
   + `OidcIdTokenValidator` (rejects stale/absent `auth_time`) + the 401-challenge/replay + bounded
   window + membership re-pull; the sealed break-glass chain + `/break-glass` + IdP-unreachable door +

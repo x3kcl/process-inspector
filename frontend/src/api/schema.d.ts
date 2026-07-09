@@ -4,6 +4,86 @@
  */
 
 export interface paths {
+    "/api/admin/access": {
+        parameters: {
+            query?: never;
+            header?: never;
+            path?: never;
+            cookie?: never;
+        };
+        get: operations["list_4"];
+        put?: never;
+        post?: never;
+        delete?: never;
+        options?: never;
+        head?: never;
+        patch?: never;
+        trace?: never;
+    };
+    "/api/admin/access/drift": {
+        parameters: {
+            query?: never;
+            header?: never;
+            path?: never;
+            cookie?: never;
+        };
+        get: operations["drift_1"];
+        put?: never;
+        post?: never;
+        delete?: never;
+        options?: never;
+        head?: never;
+        patch?: never;
+        trace?: never;
+    };
+    "/api/admin/access/grants": {
+        parameters: {
+            query?: never;
+            header?: never;
+            path?: never;
+            cookie?: never;
+        };
+        get?: never;
+        put?: never;
+        post: operations["add_1"];
+        delete: operations["remove_1"];
+        options?: never;
+        head?: never;
+        patch?: never;
+        trace?: never;
+    };
+    "/api/admin/access/proposals": {
+        parameters: {
+            query?: never;
+            header?: never;
+            path?: never;
+            cookie?: never;
+        };
+        get: operations["proposals"];
+        put?: never;
+        post?: never;
+        delete?: never;
+        options?: never;
+        head?: never;
+        patch?: never;
+        trace?: never;
+    };
+    "/api/admin/access/proposals/{id}/approve": {
+        parameters: {
+            query?: never;
+            header?: never;
+            path?: never;
+            cookie?: never;
+        };
+        get?: never;
+        put?: never;
+        post: operations["approve"];
+        delete?: never;
+        options?: never;
+        head?: never;
+        patch?: never;
+        trace?: never;
+    };
     "/api/admin/engines": {
         parameters: {
             query?: never;
@@ -968,6 +1048,10 @@ export interface paths {
 export type webhooks = Record<string, never>;
 export interface components {
     schemas: {
+        AccessMappingDto: {
+            fleetGrants?: components["schemas"]["FleetView"][];
+            ladderGrants?: components["schemas"]["LadderView"][];
+        };
         ActionCurlResponse: {
             curl?: string;
         };
@@ -1405,6 +1489,20 @@ export interface components {
             retries?: number;
             tenantId?: string;
         };
+        FleetView: {
+            grant?: string;
+            group?: string;
+            source?: string;
+        };
+        GrantRequest: {
+            engineId?: string;
+            fleetGrant?: string;
+            group: string;
+            reason?: string;
+            role?: string;
+            tenantId?: string;
+            type?: string;
+        };
         HierarchyNode: {
             businessKey?: string;
             /** Format: int64 */
@@ -1531,6 +1629,13 @@ export interface components {
             /** Format: int64 */
             timer?: number;
         };
+        LadderView: {
+            engineId?: string;
+            group?: string;
+            role?: string;
+            source?: string;
+            tenantId?: string;
+        };
         LegalHoldDto: {
             /** Format: date-time */
             createdAt?: string;
@@ -1636,6 +1741,13 @@ export interface components {
             scanned?: number;
             truncated?: boolean;
         };
+        Outcome: {
+            eligibleApproverGroups?: string[];
+            /** Format: int64 */
+            proposalId?: number;
+            status?: string;
+            summary?: string;
+        };
         PathActivity: {
             activityId?: string;
             activityName?: string;
@@ -1687,6 +1799,15 @@ export interface components {
             /** @enum {string} */
             status?: "ACTIVE" | "SUSPENDED" | "COMPLETED" | "FAILED" | "RETRYING";
             tenantId?: string;
+        };
+        ProposalView: {
+            expiresAt?: string;
+            group?: string;
+            /** Format: int64 */
+            id?: number;
+            proposer?: string;
+            reason?: string;
+            summary?: string;
         };
         PublishRequest: {
             description?: string;
@@ -1982,6 +2103,136 @@ export interface components {
 }
 export type $defs = Record<string, never>;
 export interface operations {
+    list_4: {
+        parameters: {
+            query?: never;
+            header?: never;
+            path?: never;
+            cookie?: never;
+        };
+        requestBody?: never;
+        responses: {
+            /** @description OK */
+            200: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "*/*": components["schemas"]["AccessMappingDto"];
+                };
+            };
+        };
+    };
+    drift_1: {
+        parameters: {
+            query?: never;
+            header?: never;
+            path?: never;
+            cookie?: never;
+        };
+        requestBody?: never;
+        responses: {
+            /** @description OK */
+            200: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "*/*": components["schemas"]["DriftReport"];
+                };
+            };
+        };
+    };
+    add_1: {
+        parameters: {
+            query?: never;
+            header?: never;
+            path?: never;
+            cookie?: never;
+        };
+        requestBody: {
+            content: {
+                "application/json": components["schemas"]["GrantRequest"];
+            };
+        };
+        responses: {
+            /** @description OK */
+            200: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "*/*": components["schemas"]["Outcome"];
+                };
+            };
+        };
+    };
+    remove_1: {
+        parameters: {
+            query?: never;
+            header?: never;
+            path?: never;
+            cookie?: never;
+        };
+        requestBody: {
+            content: {
+                "application/json": components["schemas"]["GrantRequest"];
+            };
+        };
+        responses: {
+            /** @description OK */
+            200: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "*/*": components["schemas"]["Outcome"];
+                };
+            };
+        };
+    };
+    proposals: {
+        parameters: {
+            query?: never;
+            header?: never;
+            path?: never;
+            cookie?: never;
+        };
+        requestBody?: never;
+        responses: {
+            /** @description OK */
+            200: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "*/*": components["schemas"]["ProposalView"][];
+                };
+            };
+        };
+    };
+    approve: {
+        parameters: {
+            query?: never;
+            header?: never;
+            path: {
+                id: number;
+            };
+            cookie?: never;
+        };
+        requestBody?: never;
+        responses: {
+            /** @description OK */
+            200: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "*/*": components["schemas"]["Outcome"];
+                };
+            };
+        };
+    };
     list_2: {
         parameters: {
             query?: never;
