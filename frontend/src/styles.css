@@ -3020,3 +3020,109 @@ button.primary:disabled {
   gap: 0.4rem;
   font-weight: 400;
 }
+
+/* ── v2 IdP-Security S6: access-admin surface (IDP-SECURITY.md §12) ───────────────── */
+.grants-table {
+  width: 100%;
+  border-collapse: collapse;
+  margin: 0.5rem 0 1rem;
+}
+.grants-table th,
+.grants-table td {
+  text-align: left;
+  padding: 0.3rem 0.6rem;
+  border-bottom: 1px solid rgba(128, 128, 128, 0.25);
+  vertical-align: middle;
+}
+.ladder-chip {
+  display: inline-block;
+  padding: 0.05rem 0.5rem;
+  border-radius: 0.75rem;
+  border: 1px solid rgba(128, 128, 128, 0.5);
+  font-size: 0.85em;
+  font-weight: 600;
+}
+/* Fleet chips are INTRINSICALLY distinct (⚠️ UX): shape (◆) + a literal "FLEET" token + kind,
+   never colour alone — so they survive sort/filter + SR linearization. */
+.fleet-chip {
+  display: inline-flex;
+  align-items: center;
+  gap: 0.35rem;
+  padding: 0.05rem 0.5rem;
+  border-radius: 0.25rem;
+  border: 2px solid #b8860b;
+  font-size: 0.85em;
+  font-weight: 700;
+}
+.fleet-chip .fleet-glyph {
+  color: #b8860b;
+}
+.fleet-chip .fleet-token {
+  font-size: 0.72em;
+  letter-spacing: 0.06em;
+  padding: 0 0.25rem;
+  border: 1px solid currentColor;
+  border-radius: 0.2rem;
+}
+.fleet-chip.fleet-apex {
+  border-color: #c0392b;
+  color: #c0392b;
+}
+.fleet-chip.fleet-apex .fleet-glyph {
+  color: #c0392b;
+}
+.proposal-inbox {
+  list-style: none;
+  padding: 0;
+}
+.proposal-inbox li {
+  padding: 0.4rem 0;
+  border-bottom: 1px solid rgba(128, 128, 128, 0.25);
+  display: flex;
+  gap: 0.5rem;
+  align-items: center;
+  flex-wrap: wrap;
+}
+.proposal-summary {
+  font-weight: 600;
+}
+.grant-form {
+  display: flex;
+  gap: 0.75rem;
+  align-items: flex-end;
+  flex-wrap: wrap;
+  margin: 0.5rem 0;
+}
+.grant-form label {
+  display: flex;
+  flex-direction: column;
+  font-size: 0.85em;
+  gap: 0.2rem;
+}
+.grant-form .reason {
+  flex: 1 1 16rem;
+}
+.banner {
+  padding: 0.6rem 0.9rem;
+  border-radius: 0.35rem;
+  margin: 0.5rem 0;
+  border: 1px solid transparent;
+}
+.banner-info {
+  background: rgba(46, 134, 222, 0.12);
+  border-color: rgba(46, 134, 222, 0.5);
+}
+.banner-warn {
+  background: rgba(231, 76, 60, 0.12);
+  border-color: rgba(231, 76, 60, 0.6);
+}
+/* The permanent, loud break-glass banner (R-SAFE-11): unmissable red across the top. */
+.banner-breakglass {
+  background: #c0392b;
+  color: #fff;
+  font-weight: 700;
+  text-align: center;
+  border-radius: 0;
+  margin: 0;
+  padding: 0.5rem 1rem;
+}

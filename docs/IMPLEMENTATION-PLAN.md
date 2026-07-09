@@ -943,13 +943,19 @@ behind nothing before any UI reaches them:**
   release-gate artifact): full mapping expansion with a **grant-type column (ladder|fleet)** + source
   tag + the caller's own grants, `ACCESS_ADMIN`-gated + **audited read**, JSON/CSV/Markdown
   (RFC-4180-escaped CSV). `AccessReviewSpringTest` (rung-3: RBAC gate, formats, audit). The
-  `me.accessAdmin`/`breakGlass` hints landed in S5b. schema.d.ts regenerated. *(FRONTEND remaining —
-  the React slice):* `/admin/access` mapping UI (fleet-chip intrinsic glyph + "FLEET" token;
-  add/edit form; the widen path's eligible-approver legibility + the R-SAFE-08 proposal inbox), the
-  access-review screen + CSV/MD download, the dangerous-verb re-auth interstitial +
-  warn-before-guillotine, the IdP-unreachable [Break-glass sign-in] door + permanent red banner, nav
-  greying off `me.accessAdmin`/`breakGlass`. Done-when: Playwright smoke (grant→four-eyes→revoke) +
-  axe + SR pass.
+  `me.accessAdmin`/`breakGlass` hints landed in S5b. *(FRONTEND core ✅ LANDED 2026-07-09):*
+  `/admin/access` route + `AdminAccessPage` — the effective mapping (env-banded `ladder-chip`s +
+  **intrinsic `FleetChip`**: an in-chip glyph ◆ + a literal "FLEET" token + the kind, textual so it
+  survives sort/filter + SR, never colour-alone — ⚠️ UX), an add/remove-grant form (Enter never
+  submits; explicit buttons), the widen path's **eligible-approver legibility** (`outcomeNotice`:
+  names the approver groups, or the file-pin/RUNBOOK next-move when the set is empty — never a
+  rotting prompt), the **four-eyes proposal inbox** (approve), and the **access-review CSV/MD
+  download** (blob from `/api/access-review`). Shell nav: greyed-never-hidden **Access** link off
+  `me.accessAdmin` + the permanent **red break-glass banner** off `me.breakGlass`. Pure helpers
+  (`accessView.ts`) unit-tested (`accessView.test.ts`); lint/format/tsc/build/vitest(281) green.
+  *(FRONTEND remaining):* the dangerous-verb re-auth interstitial + warn-before-guillotine + the
+  IdP-unreachable [Break-glass sign-in] door — these pair with the verb-intent 401-challenge backend
+  follow-up (S5b tail); + the Playwright smoke (grant→four-eyes→revoke) + axe/SR gate.
 
 Each slice: rung-1 unit → rung-3 Spring wiring/RBAC → rung-4 Keycloak/Testcontainers IT → Playwright.
 

@@ -30,6 +30,7 @@ export function Shell() {
       <LiveProvider enabled={!authRequired}>
         <OpsDrawerProvider>
           <div className="app">
+            <BreakGlassBanner />
             <header className="topbar">
               <h1>
                 <Link to="/" className="home-link">
@@ -40,6 +41,7 @@ export function Shell() {
                 Ops log
               </Link>
               <RegistryAdminLink />
+              <AccessAdminLink />
               <Omnibox />
               <HeaderStrip />
             </header>
@@ -75,6 +77,47 @@ function RegistryAdminLink() {
     >
       Engines
     </span>
+  )
+}
+
+/**
+ * The apex mapping-admin nav entry — greyed-never-hidden (IDP-SECURITY.md §12): everyone sees
+ * "Access", but a non-ACCESS_ADMIN gets a greyed, unlinked label mirroring the BFF gate.
+ */
+function AccessAdminLink() {
+  const me = useMe()
+  if (me.data?.accessAdmin === true) {
+    return (
+      <Link to="/admin/access" className="topbar-link">
+        Access
+      </Link>
+    )
+  }
+  return (
+    <span
+      className="topbar-link disabled"
+      aria-disabled="true"
+      aria-label="Access — requires the ACCESS_ADMIN grant"
+      title="Requires ACCESS_ADMIN"
+    >
+      Access
+    </span>
+  )
+}
+
+/**
+ * The permanent, loud break-glass banner (IDP-SECURITY.md §7, R-SAFE-11): while the session is a
+ * sealed break-glass one, a red page banner is always visible — the operator can never forget they
+ * are in break-glass, and every action is reason-gated + alert-fired server-side.
+ */
+function BreakGlassBanner() {
+  const me = useMe()
+  if (me.data?.breakGlass !== true) return null
+  return (
+    <div className="banner banner-breakglass" role="alert">
+      ⚠ BREAK-GLASS SESSION — sealed emergency access (ADMIN-global, never fleet). Every action is
+      logged and alerted; use only during an identity-provider outage, then rotate the credential.
+    </div>
   )
 }
 
