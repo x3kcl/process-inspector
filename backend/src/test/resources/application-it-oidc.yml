@@ -9,6 +9,11 @@ inspector:
     # oidc profile. A real deploy sets INSPECTOR_ACCESS_ADMIN_GROUP; here it's a realm group.
     mapping:
       access-admin-group: flowable-admins
+    # Break-glass on for the IT (the password is injected via @DynamicPropertySource as an env ref).
+    break-glass:
+      enabled: true
+      username: break-glass
+      session-cap-hours: 4
   snapshot:
     enabled: false
   registry:

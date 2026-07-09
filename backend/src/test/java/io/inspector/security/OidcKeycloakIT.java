@@ -1,6 +1,11 @@
 package io.inspector.security;
 
 import static org.assertj.core.api.Assertions.assertThat;
+import static org.springframework.security.test.web.servlet.request.SecurityMockMvcRequestPostProcessors.csrf;
+import static org.springframework.test.web.servlet.request.MockMvcRequestBuilders.get;
+import static org.springframework.test.web.servlet.request.MockMvcRequestBuilders.post;
+import static org.springframework.test.web.servlet.result.MockMvcResultMatchers.content;
+import static org.springframework.test.web.servlet.result.MockMvcResultMatchers.status;
 
 import com.fasterxml.jackson.databind.JsonNode;
 import com.fasterxml.jackson.databind.ObjectMapper;
@@ -15,8 +20,10 @@ import java.util.Map;
 import org.junit.jupiter.api.Test;
 import org.junit.jupiter.api.TestInstance;
 import org.springframework.beans.factory.annotation.Autowired;
+import org.springframework.boot.test.autoconfigure.web.servlet.AutoConfigureMockMvc;
 import org.springframework.boot.test.context.SpringBootTest;
 import org.springframework.boot.test.web.server.LocalServerPort;
+import org.springframework.mock.web.MockHttpSession;
 import org.springframework.security.oauth2.client.registration.ClientRegistration;
 import org.springframework.security.oauth2.client.registration.ClientRegistrationRepository;
 import org.springframework.security.oauth2.jwt.Jwt;
@@ -25,6 +32,7 @@ import org.springframework.security.oauth2.jwt.JwtDecoders;
 import org.springframework.test.context.ActiveProfiles;
 import org.springframework.test.context.DynamicPropertyRegistry;
 import org.springframework.test.context.DynamicPropertySource;
+import org.springframework.test.web.servlet.MockMvc;
 import org.testcontainers.containers.GenericContainer;
 import org.testcontainers.containers.PostgreSQLContainer;
 import org.testcontainers.containers.wait.strategy.Wait;
@@ -40,6 +48,7 @@ import org.testcontainers.utility.MountableFile;
  * authoritative {@link OidcGroupResolver} — with issuer pinning rejecting a foreign issuer.
  */
 @SpringBootTest(webEnvironment = SpringBootTest.WebEnvironment.RANDOM_PORT)
+@AutoConfigureMockMvc
 @ActiveProfiles({"oidc", "it-oidc"})
 @TestInstance(TestInstance.Lifecycle.PER_CLASS)
 class OidcKeycloakIT {
@@ -78,6 +87,7 @@ class OidcKeycloakIT {
         registry.add("spring.security.oauth2.client.registration.oidc.client-id", () -> "inspector-bff");
         registry.add("spring.security.oauth2.client.registration.oidc.client-secret", () -> "test-secret");
         registry.add("inspector.security.oidc.issuer", OidcKeycloakIT::issuer);
+        registry.add("INSPECTOR_BREAK_GLASS_PASSWORD", () -> "break-glass-secret"); // sealed-account env ref
     }
 
     @LocalServerPort
@@ -85,6 +95,9 @@ class OidcKeycloakIT {
 
     @Autowired
     ClientRegistrationRepository clientRegistrations;
+
+    @Autowired
+    MockMvc mockMvc;
 
     @Autowired
     OidcGroupResolver groupResolver;
@@ -145,6 +158,28 @@ class OidcKeycloakIT {
                 .followRedirects(HttpClient.Redirect.NEVER)
                 .build()
                 .send(request, BodyHandlers.ofString());
+    }
+
+    @Test
+    void breakGlassSealedLoginOpensAnAdminSessionThatCannotAdministerAccess() throws Exception {
+        // MockMvc's csrf() post-processor supplies a valid token cleanly (no cookie handshake).
+        var login = mockMvc.perform(post("/break-glass")
+                        .with(csrf())
+                        .param("username", "break-glass")
+                        .param("password", "break-glass-secret"))
+                .andExpect(status().isFound()) // 302 to / via the success handler
+                .andReturn();
+        MockHttpSession session = (MockHttpSession) login.getRequest().getSession(false);
+        assertThat(session).isNotNull();
+
+        // The session is ADMIN-global with the break-glass flag — but NEVER ACCESS_ADMIN.
+        mockMvc.perform(get("/api/me").session(session))
+                .andExpect(status().isOk())
+                .andExpect(content().string(org.hamcrest.Matchers.containsString("\"breakGlass\":true")))
+                .andExpect(content().string(org.hamcrest.Matchers.containsString("\"accessAdmin\":false")));
+
+        // Break-glass is ADMIN-global but never ACCESS_ADMIN (an IdP outage doesn't rewrite authority).
+        mockMvc.perform(get("/api/admin/access").session(session)).andExpect(status().isForbidden());
     }
 
     @Test

@@ -18,6 +18,7 @@ import org.springframework.security.oauth2.client.registration.ClientRegistratio
 import org.springframework.security.provisioning.InMemoryUserDetailsManager;
 import org.springframework.security.web.SecurityFilterChain;
 import org.springframework.security.web.authentication.HttpStatusEntryPoint;
+import org.springframework.security.web.authentication.LoginUrlAuthenticationEntryPoint;
 import org.springframework.security.web.context.DelegatingSecurityContextRepository;
 import org.springframework.security.web.context.HttpSessionSecurityContextRepository;
 import org.springframework.security.web.context.RequestAttributeSecurityContextRepository;
@@ -46,11 +47,31 @@ public class SecurityConfig {
     private final HttpHardeningProperties hardening;
     private final java.time.Clock clock;
     private final OidcProperties oidcProps;
+    private final BreakGlassProperties breakGlass;
+    private final BreakGlassAuditSink breakGlassSink;
+    private final io.inspector.security.mapping.SecurityAlertChannel alertChannel;
+    private final io.inspector.audit.AuditService auditService;
 
-    public SecurityConfig(HttpHardeningProperties hardening, java.time.Clock clock, OidcProperties oidcProps) {
+    // The sealed break-glass password is an env ref (iron rule) — read here, NEVER logged/stored. A
+    // blank value means break-glass is unconfigured (the sealed chain is not wired).
+    @org.springframework.beans.factory.annotation.Value("${INSPECTOR_BREAK_GLASS_PASSWORD:}")
+    private String breakGlassPassword;
+
+    public SecurityConfig(
+            HttpHardeningProperties hardening,
+            java.time.Clock clock,
+            OidcProperties oidcProps,
+            BreakGlassProperties breakGlass,
+            BreakGlassAuditSink breakGlassSink,
+            io.inspector.security.mapping.SecurityAlertChannel alertChannel,
+            io.inspector.audit.AuditService auditService) {
         this.hardening = hardening;
         this.clock = clock;
         this.oidcProps = oidcProps;
+        this.breakGlass = breakGlass;
+        this.breakGlassSink = breakGlassSink;
+        this.alertChannel = alertChannel;
+        this.auditService = auditService;
     }
 
     /** The layered ladder (R-SAFE-01): a higher role covers every lower one. */
@@ -184,13 +205,37 @@ public class SecurityConfig {
             InspectorAuthoritiesMapper authoritiesMapper,
             ClientRegistrationRepository clientRegistrations)
             throws Exception {
-        return common(http)
+        common(http)
                 // Session-fixation protection on the oidc chain: a fresh JSESSIONID at login (the SSE
                 // stream rides the post-login session, so a single change at login doesn't orphan it).
                 .sessionManagement(session -> session.sessionFixation(fixation -> fixation.changeSessionId()))
                 .oauth2Login(oauth -> oauth.authorizationEndpoint(endpoint -> endpoint.authorizationRequestResolver(
                                 new ReauthAuthorizationRequestResolver(clientRegistrations, oidcProps)))
                         .userInfoEndpoint(user -> user.userAuthoritiesMapper(authoritiesMapper)))
-                .build();
+                // Pin the browser (non-/api) entry point to the OIDC redirect EXPLICITLY, so adding the
+                // break-glass formLogin below does not hijack it to a /login page (/api stays 401).
+                .exceptionHandling(ex -> ex.defaultAuthenticationEntryPointFor(
+                        new LoginUrlAuthenticationEntryPoint("/oauth2/authorization/oidc"),
+                        request -> !request.getRequestURI().startsWith("/api/")));
+
+        // Break-glass (R-SAFE-06/11): a sealed local ADMIN account on a distinct /break-glass form
+        // login that works when the IdP is down (a local DaoAuthenticationProvider alongside OIDC).
+        // Wired ONLY when configured (env password present) — oauth2Login stays the default entry
+        // point; the SPA reaches /break-glass from the IdP-unreachable interstitial (S6).
+        if (breakGlass.isEnabled() && breakGlassPassword != null && !breakGlassPassword.isBlank()) {
+            var sealed = new InMemoryUserDetailsManager(User.withUsername(breakGlass.usernameOrDefault())
+                    .password("{noop}" + breakGlassPassword)
+                    // ADMIN-global + the break-glass marker; NEVER a fleet grant (§7).
+                    .authorities("ROLE_" + Role.ADMIN.name(), RbacAuthorizer.BREAK_GLASS_AUTHORITY)
+                    .build());
+            var successHandler = new BreakGlassSuccessHandler(
+                    auditService, breakGlassSink, alertChannel, breakGlass.sessionCapHoursOrDefault(), clock);
+            http.userDetailsService(sealed)
+                    .formLogin(form -> form.loginProcessingUrl("/break-glass")
+                            .successHandler(successHandler)
+                            .failureHandler((req, res, ex) ->
+                                    res.sendError(HttpStatus.UNAUTHORIZED.value(), "break-glass sign-in failed")));
+        }
+        return http.build();
     }
 }

@@ -33,6 +33,9 @@ public class AbsoluteSessionTimeoutFilter extends OncePerRequestFilter {
     /** Epoch-milli stamp of session creation, set on first sight of a session. */
     static final String CREATED_AT = "inspector.session.createdAtEpochMs";
 
+    /** Optional per-session cap override (millis) — break-glass stamps 4 h (< the default 24 h). */
+    public static final String SESSION_CAP_MS_ATTR = "inspector.session.capMs";
+
     private final Duration cap;
     private final Clock clock;
 
@@ -47,9 +50,12 @@ public class AbsoluteSessionTimeoutFilter extends OncePerRequestFilter {
         HttpSession session = request.getSession(false);
         if (session != null) {
             Instant now = clock.instant();
+            // A session may carry a tighter per-session cap (break-glass = 4 h); else the default.
+            Duration effectiveCap =
+                    session.getAttribute(SESSION_CAP_MS_ATTR) instanceof Long capMs ? Duration.ofMillis(capMs) : cap;
             Object stamp = session.getAttribute(CREATED_AT);
             if (stamp instanceof Long createdAtMs) {
-                if (Duration.between(Instant.ofEpochMilli(createdAtMs), now).compareTo(cap) > 0) {
+                if (Duration.between(Instant.ofEpochMilli(createdAtMs), now).compareTo(effectiveCap) > 0) {
                     log.info("session {} exceeded the absolute cap ({}) — invalidating", session.getId(), cap);
                     session.invalidate();
                     SecurityContextHolder.clearContext();

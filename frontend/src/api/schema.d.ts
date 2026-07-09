@@ -1660,6 +1660,8 @@ export interface components {
             toTs?: string;
         };
         MeDto: {
+            accessAdmin?: boolean;
+            breakGlass?: boolean;
             engineRoles?: {
                 [key: string]: string;
             };

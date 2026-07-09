@@ -51,6 +51,8 @@ public class MeController {
                 authentication.getName(),
                 highestAnywhere != null ? highestAnywhere.name() : null,
                 engineRoles,
-                rbac.canAdministerRegistry(authentication));
+                rbac.canAdministerRegistry(authentication),
+                rbac.canAdministerAccess(authentication),
+                rbac.isBreakGlass(authentication));
     }
 }

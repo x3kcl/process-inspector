@@ -16,4 +16,8 @@ public record MeDto(
         /** Highest ladder role per engine id — drives per-engine action greying. */
         Map<String, String> engineRoles,
         /** Fleet REGISTRY_ADMIN grant (v2 Registry CRUD) — greys the /admin/engines nav. */
-        boolean registryAdmin) {}
+        boolean registryAdmin,
+        /** Apex ACCESS_ADMIN grant (v2 IdP-Security) — greys the /admin/access nav. */
+        boolean accessAdmin,
+        /** Break-glass session (v2 IdP-Security) — shows the permanent red banner + reason-on-every-verb. */
+        boolean breakGlass) {}
