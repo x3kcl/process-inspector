@@ -157,12 +157,61 @@ public record InspectorProperties(
             // Per-engine X-Forwarded-User send-side opt-in (M4-CLOSEOUT §2 / S4). Off by default —
             // forwarding employee identity (PII) is permitted only on genuinely-trusted engines;
             // YAML `forward-user: true` binds here. Never relied upon: the BFF audit log is master.
-            boolean forwardUser) {
+            boolean forwardUser,
+            // Per-engine deep-paging depth cap (R-NFR-08, docs/KWAY-PAGING.md): the maximum
+            // per-engine offset a k-way-merge cursor may reach. Offset cost is O(offset) PER
+            // ENGINE, so the cap is per-engine (a single global cap would multiply load ×fan-out).
+            // Null → 5000 (aligned to the filter-bulk cap for one operator mental model; the S0
+            // spike could not measure the O(offset) knee at test-safe scale). YAML
+            // `deep-paging-max-depth: N` binds here — lowered to e.g. 6 in the S5 config-lowered IT.
+            Integer deepPagingMaxDepth) {
 
         // @ConfigurationProperties binding is ambiguous once a record has >1 constructor — pin the
-        // canonical (16-arg) one as the bind target so the convenience ctors below are ignored.
+        // canonical (17-arg) one as the bind target so the convenience ctors below are ignored.
         @ConstructorBinding
         public EngineConfig {}
+
+        /**
+         * Pre-deep-paging 16-arg shape (no {@code deepPagingMaxDepth}) → the 5000 default, so
+         * existing factories/tests and the DB→config registry mapper don't churn
+         * (unit-test-patterns: no constructor churn).
+         */
+        public EngineConfig(
+                String id,
+                String name,
+                String baseUrl,
+                EngineEnvironment environment,
+                String accentColor,
+                boolean enabled,
+                String tenantId,
+                String telemetryUrlTemplate,
+                Auth auth,
+                EngineMode mode,
+                Timeouts timeouts,
+                Integer maxPageSize,
+                Integer dlqScanCap,
+                AlarmThresholds alarmThresholds,
+                AuditPayloadMode auditPayload,
+                boolean forwardUser) {
+            this(
+                    id,
+                    name,
+                    baseUrl,
+                    environment,
+                    accentColor,
+                    enabled,
+                    tenantId,
+                    telemetryUrlTemplate,
+                    auth,
+                    mode,
+                    timeouts,
+                    maxPageSize,
+                    dlqScanCap,
+                    alarmThresholds,
+                    auditPayload,
+                    forwardUser,
+                    null);
+        }
 
         /**
          * Pre-S2 14-arg shape (no {@code auditPayload}, no {@code forwardUser}) → the redacted
@@ -256,6 +305,10 @@ public record InspectorProperties(
 
         public int dlqScanCapOrDefault() {
             return dlqScanCap != null ? dlqScanCap : 5000;
+        }
+
+        public int deepPagingMaxDepthOrDefault() {
+            return deepPagingMaxDepth != null ? deepPagingMaxDepth : 5000;
         }
 
         public Timeouts timeoutsOrDefault() {
