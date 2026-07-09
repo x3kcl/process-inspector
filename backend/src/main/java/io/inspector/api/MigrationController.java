@@ -1,5 +1,6 @@
 package io.inspector.api;
 
+import io.inspector.action.ActionResult;
 import io.inspector.migration.MigrationPreview;
 import io.inspector.migration.MigrationRequest;
 import io.inspector.migration.MigrationService;
@@ -38,7 +39,17 @@ public class MigrationController {
         return migration.preview(
                 engineId,
                 instanceId,
-                request != null ? request : new MigrationRequest(null, null, null, null, null, null),
+                request != null ? request : new MigrationRequest(null, null, null, null, null, null, null, null),
                 authentication);
+    }
+
+    @PostMapping("/instances/{engineId}/{instanceId}/migrate/execute")
+    @PreAuthorize("@rbac.atLeastOn(authentication, 'ADMIN', #engineId)")
+    public ActionResult execute(
+            @PathVariable String engineId,
+            @PathVariable String instanceId,
+            @RequestBody MigrationRequest request,
+            Authentication authentication) {
+        return migration.execute(engineId, instanceId, request, authentication);
     }
 }

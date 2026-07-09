@@ -1199,6 +1199,27 @@ public class FlowableEngineClient {
     }
 
     /**
+     * POST /runtime/process-instances/{id}/migrate — instance migration to another deployed
+     * version of the same process key (P0 spike 2026-07-09: this is the ONLY migration route
+     * exposed over REST — there is no validate endpoint). The body is the migration document
+     * ({@code toProcessDefinitionId} + {@code activityMappings}), returns empty on success; the
+     * engine rejects the WHOLE document atomically (HTTP 500 with a verbatim message) when a
+     * required activity mapping is missing. The service audits the document verbatim before
+     * dispatch and never retries.
+     */
+    public void migrateInstance(EngineConfig engine, String processInstanceId, Map<String, Object> migrationDocument) {
+        mutate(
+                engine,
+                () -> writeClient(engine)
+                        .post()
+                        .uri("/runtime/process-instances/{id}/migrate", processInstanceId)
+                        .contentType(MediaType.APPLICATION_JSON)
+                        .body(migrationDocument)
+                        .retrieve()
+                        .toBodilessEntity());
+    }
+
+    /**
      * POST /runtime/process-instances — start an instance (restart-as-new). The body pins
      * either {@code processDefinitionId} (version pinned) or {@code processDefinitionKey}
      * (latest) — never both. Returns the engine's instance representation (the new id).

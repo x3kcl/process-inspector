@@ -29,6 +29,7 @@ import org.springframework.test.context.ActiveProfiles;
 class MigrationRbacGuardSpringTest {
 
     private static final String PREVIEW = "/api/instances/probe-dev/pi-1/migrate/preview";
+    private static final String EXECUTE = "/api/instances/probe-dev/pi-1/migrate/execute";
 
     @Autowired
     TestRestTemplate rest;
@@ -68,5 +69,29 @@ class MigrationRbacGuardSpringTest {
         assertThat(response.getStatusCode()).isEqualTo(HttpStatus.CONFLICT);
         JsonNode problem = mapper.readTree(response.getBody());
         assertThat(problem.path("code").asText()).startsWith("capability-");
+    }
+
+    // ---- execute shares the tier-3 ADMIN door + the same server-fresh guard ladder ----
+
+    @Test
+    void executeDeniesViewerAndOperatorAtTheAdminDoor() {
+        assertThat(as("viewer")
+                        .postForEntity(EXECUTE, Map.of("reason", "x"), String.class)
+                        .getStatusCode())
+                .isEqualTo(HttpStatus.FORBIDDEN);
+        assertThat(as("operator")
+                        .postForEntity(EXECUTE, Map.of("reason", "x"), String.class)
+                        .getStatusCode())
+                .isEqualTo(HttpStatus.FORBIDDEN);
+    }
+
+    @Test
+    void executeAdminClearsRbacAndStopsAtCapabilityGateBeforeAnyMutation() throws Exception {
+        // Guard order: RBAC → capability run BEFORE reason/confirm/dispatch, so a capable-unknown
+        // engine refuses at 409 with nothing sent — even with a valid reason present.
+        ResponseEntity<String> response =
+                as("admin").postForEntity(EXECUTE, Map.of("reason", "migrating stuck cohort forward"), String.class);
+        assertThat(response.getStatusCode()).isEqualTo(HttpStatus.CONFLICT);
+        assertThat(mapper.readTree(response.getBody()).path("code").asText()).startsWith("capability-");
     }
 }

@@ -14,7 +14,13 @@ import java.util.List;
  * else the latest deployed version of the key.
  *
  * <p>{@code reason}/{@code ticketId}/{@code confirmToken} are unused by preview and consumed
- * by execute (S2).
+ * by execute (reason ≥10 always; typed business-key {@code confirmToken} on prod).
+ *
+ * <p>{@code expectedFromDefinitionId}/{@code expectedActivityStateDigest} are the §5
+ * compare-and-set assertions (decision P0-4): the frontend echoes back what the preview
+ * returned. Both are MANDATORY for execute (400 {@code preview-required} if absent) so an
+ * operator can never migrate under a stale approval; execute refuses 409 if either diverges from
+ * the live state. Unused by preview.
  */
 public record MigrationRequest(
         String toDefinitionId,
@@ -22,7 +28,9 @@ public record MigrationRequest(
         List<MigrationMapping> mappings,
         String reason,
         String ticketId,
-        String confirmToken) {
+        String confirmToken,
+        String expectedFromDefinitionId,
+        String expectedActivityStateDigest) {
 
     public List<MigrationMapping> mappingsOrEmpty() {
         return mappings != null ? mappings : List.of();
