@@ -14,6 +14,8 @@ import java.util.Map;
  * @param engineValidated always {@code false} — the constant honesty marker (decision P0-6)
  * @param executable true iff no activity is FLAGGED_UNMAPPED (advisory warnings do not block)
  * @param activities every active activity, classified (auto-mapped / flagged / warning)
+ * @param activityStateDigest the token-position fingerprint the operator is approving; execute
+ *     echoes it back so a move between preview and execute is refused (decision P0-4)
  * @param restBody the exact migration document execute will POST (server-rebuilt, decision P0-4)
  * @param callActivityChildCount child instances that will NOT be migrated (blast-radius)
  * @param banner the honesty banner — never claims the engine checked this
@@ -29,6 +31,7 @@ public record MigrationPreview(
         boolean engineValidated,
         boolean executable,
         List<ActivityDiffEntry> activities,
+        String activityStateDigest,
         int callActivityChildCount,
         String method,
         String enginePath,

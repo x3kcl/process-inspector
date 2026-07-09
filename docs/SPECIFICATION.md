@@ -570,7 +570,7 @@ the "copy as engine cURL" / REST Parity Appendix variant remains v2.
 | **Suspend process definition** | One call stops new AND (optionally) running instances of a definition — the real "bad deploy" brake (replaces bulk instance-suspend) | 3 |
 | **Terminate / delete instance** | Irreversible; runtime state destroyed; **cascade to call-activity children enumerated in the confirm** | 3 |
 | **Delete dead-letter job** | ⚠ Orphans the execution permanently (only rescue afterwards: change-state). ADMIN-only, explicit warning | 3 |
-| **Migrate instance** *(v2)* | Move instance to another deployed version of the same key. **Inspector static pre-check (NOT an engine validation** — Flowable's REST API exposes no migration validator, P0 spike 2026-07-09): a BFF model diff flags activities that can't auto-map; the engine is the ground truth only at apply. Honest banner ("this is not a Flowable validation … the engine's own check runs only when you execute"); ADMIN unconditional + typed "MIGRATE" on prod; single first, batch later. See `docs/INSTANCE-MIGRATION.md` | 3 |
+| **Migrate instance** *(v2)* | Move instance to another deployed version of the same key. **Inspector static pre-check (NOT an engine validation** — Flowable's REST API exposes no migration validator, P0 spike 2026-07-09): a BFF model diff flags activities that can't auto-map; the engine is the ground truth only at apply. Honest banner ("this is not a Flowable validation … the engine's own check runs only when you execute"); ADMIN unconditional + typed **business-key** confirm on prod; IRREVERSIBLE, never auto-retried (post-dispatch timeout ⇒ UNKNOWN + verify-now); single first, batch later. See `docs/INSTANCE-MIGRATION.md` | 3 |
 
 Explicitly **not offered** (API honesty, §11): timer *reschedule-to-later* (not exposed by
 open-source REST — the change-state workaround is documented instead), Temporal-style
@@ -1023,7 +1023,7 @@ and would rewrite working M1/M2 code for no capability gain); Go/FastAPI/Kotlin 
     forensic passthrough; stacktrace ergonomics; engine advisories; secret-rotation file refs;
     clock-skew badges; capability invalidation; CSV export; print styles; webhook.
 - **v2 (demand-driven, triggers stated):** **remediation playbooks (§5.1 — build trigger
-  R-GOV-08)**, migration (single w/ Inspector static pre-check → batch wizard + typed "MIGRATE"), definition
+  R-GOV-08)**, migration (single w/ Inspector static pre-check → batch wizard + typed business-key confirm), definition
   version comparison, CMMN, **registry CRUD** (runtime engine lifecycle — SPEC §4b, the
   R-OPS-13/R-OPS-15/R-SAFE-13 SSRF + governance rails; design locked in
   [REGISTRY-CRUD.md](REGISTRY-CRUD.md)), shared

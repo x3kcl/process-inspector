@@ -436,6 +436,22 @@ export interface paths {
         patch?: never;
         trace?: never;
     };
+    "/api/instances/{engineId}/{instanceId}/migrate/execute": {
+        parameters: {
+            query?: never;
+            header?: never;
+            path?: never;
+            cookie?: never;
+        };
+        get?: never;
+        put?: never;
+        post: operations["execute"];
+        delete?: never;
+        options?: never;
+        head?: never;
+        patch?: never;
+        trace?: never;
+    };
     "/api/instances/{engineId}/{instanceId}/migrate/preview": {
         parameters: {
             query?: never;
@@ -1200,6 +1216,7 @@ export interface components {
         };
         MigrationPreview: {
             activities?: components["schemas"]["ActivityDiffEntry"][];
+            activityStateDigest?: string;
             banner?: string;
             /** Format: int32 */
             callActivityChildCount?: number;
@@ -1223,6 +1240,8 @@ export interface components {
         };
         MigrationRequest: {
             confirmToken?: string;
+            expectedActivityStateDigest?: string;
+            expectedFromDefinitionId?: string;
             mappings?: components["schemas"]["MigrationMapping"][];
             reason?: string;
             ticketId?: string;
@@ -2242,6 +2261,33 @@ export interface operations {
                 };
                 content: {
                     "text/plain": string;
+                };
+            };
+        };
+    };
+    execute: {
+        parameters: {
+            query?: never;
+            header?: never;
+            path: {
+                engineId: string;
+                instanceId: string;
+            };
+            cookie?: never;
+        };
+        requestBody: {
+            content: {
+                "application/json": components["schemas"]["MigrationRequest"];
+            };
+        };
+        responses: {
+            /** @description OK */
+            200: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "*/*": components["schemas"]["ActionResult"];
                 };
             };
         };
