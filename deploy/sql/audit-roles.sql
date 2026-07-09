@@ -138,9 +138,20 @@ ALTER DEFAULT PRIVILEGES FOR ROLE :"owner" IN SCHEMA public
 ALTER DEFAULT PRIVILEGES FOR ROLE :"owner" IN SCHEMA public
     GRANT USAGE ON SEQUENCES TO :"app_role";
 
--- === The purge role — minimal until S5b ====================================
--- inspector_ops gains EXECUTE on the SECURITY DEFINER purge_audit() and SELECT
--- on legal_hold when S5b lands; today it holds only CONNECT + schema USAGE. It
--- is created here so the credential exists and rotates on the same cadence. It
--- is NOT granted raw DROP: partition drops go through purge_audit(), which
--- refuses recent/held partitions (security M7).
+-- === Retention purge + legal hold (S5b) ====================================
+-- legal_hold is an OPERATIONAL table the app fully manages (set/release). The
+-- ALTER DEFAULT PRIVILEGES above auto-granted only SELECT+INSERT (append-only
+-- posture for audit children); legal_hold additionally needs UPDATE (release) and
+-- DELETE (the fail-closed compensating rollback of a set whose audit event failed),
+-- so grant them explicitly — exactly the "future operational table needs
+-- UPDATE/DELETE" case the default-privileges comment names.
+GRANT SELECT, INSERT, UPDATE, DELETE ON legal_hold TO :"app_role";
+GRANT SELECT ON legal_hold TO :"ops_role";
+
+-- The BFF orchestrator (AuditRetentionPurger) is the single-writer purge caller. It
+-- connects as the runtime role and invokes the SECURITY DEFINER purge_audit(), which
+-- runs as the owner and DROPs the partition after DB-enforcing the retention floor,
+-- whole-partition age, and legal holds. The app therefore holds EXECUTE on this
+-- function — NEVER raw DROP on the audit tables (asserted in AuditRoleGrantsIT). ops
+-- gets EXECUTE too, for a manual owner-adjacent purge.
+GRANT EXECUTE ON FUNCTION purge_audit(text, timestamptz) TO :"app_role", :"ops_role";

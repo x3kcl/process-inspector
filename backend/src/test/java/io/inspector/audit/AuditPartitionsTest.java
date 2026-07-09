@@ -47,4 +47,19 @@ class AuditPartitionsTest {
         YearMonth m = YearMonth.of(2027, 3);
         assertThat(AuditPartitions.monthOf(AuditPartitions.name(m))).contains(m);
     }
+
+    @Test
+    void isExpiredOnlyWhenTheWholeMonthPredatesTheCutoff() {
+        // audit_entry_2026_07 covers [2026-07-01, 2026-08-01): expired iff cutoff ≥ 2026-08-01.
+        assertThat(AuditPartitions.isExpired("audit_entry_2026_07", java.time.LocalDate.parse("2026-08-01")))
+                .isTrue();
+        assertThat(AuditPartitions.isExpired("audit_entry_2026_07", java.time.LocalDate.parse("2026-07-31")))
+                .isFalse();
+    }
+
+    @Test
+    void theDefaultPartitionIsNeverExpired() {
+        assertThat(AuditPartitions.isExpired("audit_entry_default", java.time.LocalDate.parse("2999-01-01")))
+                .isFalse();
+    }
 }
