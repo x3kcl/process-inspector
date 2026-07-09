@@ -11,7 +11,7 @@ export interface paths {
             path?: never;
             cookie?: never;
         };
-        get: operations["list_1"];
+        get: operations["list_2"];
         put?: never;
         post: operations["add"];
         delete?: never;
@@ -44,7 +44,7 @@ export interface paths {
             cookie?: never;
         };
         get?: never;
-        put: operations["edit"];
+        put: operations["edit_1"];
         post?: never;
         delete: operations["remove"];
         options?: never;
@@ -395,7 +395,7 @@ export interface paths {
             path?: never;
             cookie?: never;
         };
-        get: operations["list_2"];
+        get: operations["list_3"];
         put?: never;
         post?: never;
         delete?: never;
@@ -651,7 +651,7 @@ export interface paths {
             path?: never;
             cookie?: never;
         };
-        get: operations["list"];
+        get: operations["list_1"];
         put?: never;
         post: operations["create"];
         delete?: never;
@@ -814,6 +814,54 @@ export interface paths {
         get?: never;
         put?: never;
         post: operations["search"];
+        delete?: never;
+        options?: never;
+        head?: never;
+        patch?: never;
+        trace?: never;
+    };
+    "/api/team-views": {
+        parameters: {
+            query?: never;
+            header?: never;
+            path?: never;
+            cookie?: never;
+        };
+        get: operations["list"];
+        put?: never;
+        post: operations["publish"];
+        delete?: never;
+        options?: never;
+        head?: never;
+        patch?: never;
+        trace?: never;
+    };
+    "/api/team-views/{id}": {
+        parameters: {
+            query?: never;
+            header?: never;
+            path?: never;
+            cookie?: never;
+        };
+        get?: never;
+        put: operations["edit"];
+        post?: never;
+        delete: operations["delete"];
+        options?: never;
+        head?: never;
+        patch?: never;
+        trace?: never;
+    };
+    "/api/team-views/{id}/unpublish": {
+        parameters: {
+            query?: never;
+            header?: never;
+            path?: never;
+            cookie?: never;
+        };
+        get?: never;
+        put?: never;
+        post: operations["unpublish"];
         delete?: never;
         options?: never;
         head?: never;
@@ -1232,6 +1280,12 @@ export interface components {
             empty?: boolean;
             removed?: string[];
         };
+        EditRequest: {
+            description?: string;
+            reason?: string;
+            runbookUrl?: string;
+            search: string;
+        };
         EnableRequest: {
             confirmToken?: string;
             readWrite?: boolean;
@@ -1553,6 +1607,9 @@ export interface components {
             /** Format: int32 */
             toVersion?: number;
         };
+        ModerationRequest: {
+            reason?: string;
+        };
         NearestSiblingResponse: {
             /** Format: int32 */
             candidatesScanned?: number;
@@ -1630,6 +1687,14 @@ export interface components {
             /** @enum {string} */
             status?: "ACTIVE" | "SUSPENDED" | "COMPLETED" | "FAILED" | "RETRYING";
             tenantId?: string;
+        };
+        PublishRequest: {
+            description?: string;
+            name: string;
+            runbookUrl?: string;
+            scopeEngineId?: string;
+            scopeTenantId?: string;
+            search: string;
         };
         ReasonRequest: {
             reason: string;
@@ -1779,6 +1844,22 @@ export interface components {
             state?: string;
             taskDefinitionKey?: string;
         };
+        TeamViewDto: {
+            author?: string;
+            /** Format: date-time */
+            createdAt?: string;
+            danglingReason?: string;
+            description?: string;
+            /** Format: int64 */
+            id?: number;
+            name?: string;
+            runbookUrl?: string;
+            scopeEngineId?: string;
+            scopeTenantId?: string;
+            search?: string;
+            /** Format: date-time */
+            updatedAt?: string;
+        };
         TimelineActivity: {
             activityId?: string;
             activityName?: string;
@@ -1901,7 +1982,7 @@ export interface components {
 }
 export type $defs = Record<string, never>;
 export interface operations {
-    list_1: {
+    list_2: {
         parameters: {
             query?: never;
             header?: never;
@@ -1965,7 +2046,7 @@ export interface operations {
             };
         };
     };
-    edit: {
+    edit_1: {
         parameters: {
             query?: never;
             header?: never;
@@ -2563,7 +2644,7 @@ export interface operations {
             };
         };
     };
-    list_2: {
+    list_3: {
         parameters: {
             query?: never;
             header?: never;
@@ -2960,7 +3041,7 @@ export interface operations {
             };
         };
     };
-    list: {
+    list_1: {
         parameters: {
             query?: never;
             header?: never;
@@ -3259,6 +3340,120 @@ export interface operations {
                 content: {
                     "*/*": components["schemas"]["SearchResponse"];
                 };
+            };
+        };
+    };
+    list: {
+        parameters: {
+            query?: never;
+            header?: never;
+            path?: never;
+            cookie?: never;
+        };
+        requestBody?: never;
+        responses: {
+            /** @description OK */
+            200: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "*/*": components["schemas"]["TeamViewDto"][];
+                };
+            };
+        };
+    };
+    publish: {
+        parameters: {
+            query?: never;
+            header?: never;
+            path?: never;
+            cookie?: never;
+        };
+        requestBody: {
+            content: {
+                "application/json": components["schemas"]["PublishRequest"];
+            };
+        };
+        responses: {
+            /** @description OK */
+            200: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "*/*": components["schemas"]["TeamViewDto"];
+                };
+            };
+        };
+    };
+    edit: {
+        parameters: {
+            query?: never;
+            header?: never;
+            path: {
+                id: number;
+            };
+            cookie?: never;
+        };
+        requestBody: {
+            content: {
+                "application/json": components["schemas"]["EditRequest"];
+            };
+        };
+        responses: {
+            /** @description OK */
+            200: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "*/*": components["schemas"]["TeamViewDto"];
+                };
+            };
+        };
+    };
+    delete: {
+        parameters: {
+            query?: never;
+            header?: never;
+            path: {
+                id: number;
+            };
+            cookie?: never;
+        };
+        requestBody?: never;
+        responses: {
+            /** @description No Content */
+            204: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content?: never;
+            };
+        };
+    };
+    unpublish: {
+        parameters: {
+            query?: never;
+            header?: never;
+            path: {
+                id: number;
+            };
+            cookie?: never;
+        };
+        requestBody: {
+            content: {
+                "application/json": components["schemas"]["ModerationRequest"];
+            };
+        };
+        responses: {
+            /** @description No Content */
+            204: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content?: never;
             };
         };
     };

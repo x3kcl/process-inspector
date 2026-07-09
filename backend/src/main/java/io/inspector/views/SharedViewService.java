@@ -69,6 +69,22 @@ public class SharedViewService {
         return filterVisible(rbac.grantsFor(auth), repository.findAllByOrderByCreatedAtDesc());
     }
 
+    /** A visible team view paired with its picker dangling reason ({@code null} when it still resolves). */
+    public record VisibleSharedView(SharedView view, String danglingReason) {}
+
+    /**
+     * The team canon for the picker (S5): the caller's visible views, each tagged with its dangling
+     * reason. The live enabled-engine set is computed ONCE for the whole list (not per view) — the
+     * registry read is in-memory, but a shared set keeps the mapping O(views), not O(views·engines).
+     */
+    public List<VisibleSharedView> listVisibleForDisplay(Authentication auth) {
+        Set<String> enabled = new java.util.HashSet<>();
+        registry.all().forEach(e -> enabled.add(e.id()));
+        return filterVisible(rbac.grantsFor(auth), repository.findAllByOrderByCreatedAtDesc()).stream()
+                .map(v -> new VisibleSharedView(v, danglingReason(v.getScopeEngineId(), enabled)))
+                .toList();
+    }
+
     /**
      * Replay-time resolvability honesty for the PICKER (SHARED-VIEWS.md §4.5, R-SEM-24): a shared view
      * scoped to a concrete engine that is no longer a live ENABLED engine (soft-tombstoned or disabled
