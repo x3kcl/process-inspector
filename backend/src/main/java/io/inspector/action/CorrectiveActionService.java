@@ -10,6 +10,7 @@ import io.inspector.audit.ProtectedInstance;
 import io.inspector.audit.ProtectedInstanceRepository;
 import io.inspector.client.FlowableEngineClient;
 import io.inspector.client.FlowableEngineClient.JobLaneKind;
+import io.inspector.client.ForwardedActor;
 import io.inspector.cmmn.CmmnCapabilities;
 import io.inspector.config.InspectorProperties.EngineConfig;
 import io.inspector.config.InspectorProperties.EngineEnvironment;
@@ -137,6 +138,9 @@ public class CorrectiveActionService {
         }
 
         // -- the one engine call --
+        // Forward the acting human (== this audit row's actor) to identity-forwarding engines, set on
+        // the dispatching thread so bulk virtual-thread workers carry it too (M4-CLOSEOUT §2 / D2a).
+        ForwardedActor.set(entry.forwardedIdentity());
         try {
             dispatch(scope, engine, verb, targetId, request);
         } catch (CallNotPermittedException | BulkheadFullException e) {
@@ -161,6 +165,8 @@ public class CorrectiveActionService {
             // Timed out AFTER dispatch: the engine may have applied it. UNKNOWN, never re-fired.
             audit.close(entry, AuditOutcome.unknown, null, "no answer within write budget: " + e.getMessage(), false);
             throw new OutcomeUnknownException(entry.getId(), e);
+        } finally {
+            ForwardedActor.clear();
         }
 
         // -- dual-write close-out (R-SEM-18): a failure HERE is the specialized error --

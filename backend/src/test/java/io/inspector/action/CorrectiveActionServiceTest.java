@@ -6,6 +6,7 @@ import static org.mockito.ArgumentMatchers.any;
 import static org.mockito.ArgumentMatchers.anyString;
 import static org.mockito.ArgumentMatchers.argThat;
 import static org.mockito.ArgumentMatchers.eq;
+import static org.mockito.Mockito.doAnswer;
 import static org.mockito.Mockito.inOrder;
 import static org.mockito.Mockito.mock;
 import static org.mockito.Mockito.never;
@@ -21,6 +22,7 @@ import io.inspector.audit.ProtectedInstance;
 import io.inspector.audit.ProtectedInstanceRepository;
 import io.inspector.client.FlowableEngineClient;
 import io.inspector.client.FlowableEngineClient.JobLaneKind;
+import io.inspector.client.ForwardedActor;
 import io.inspector.config.InspectorProperties;
 import io.inspector.config.InspectorProperties.EngineEnvironment;
 import io.inspector.config.InspectorProperties.EngineMode;
@@ -35,6 +37,7 @@ import java.util.List;
 import java.util.Map;
 import java.util.Optional;
 import java.util.UUID;
+import java.util.concurrent.atomic.AtomicReference;
 import org.junit.jupiter.api.BeforeEach;
 import org.junit.jupiter.api.Test;
 import org.mockito.InOrder;
@@ -215,6 +218,26 @@ class CorrectiveActionServiceTest {
                 .beginPending(eq("op"), eq(DEV), any(), eq("pi-1"), eq("retry-job"), any(), any(), any(), any());
         order.verify(client).moveDeadLetterJob(any(), eq("j1"));
         order.verify(audit).close(eq(pendingEntry), eq(AuditOutcome.ok), eq(200), any(), eq(true));
+    }
+
+    @Test
+    void forwardedActorEqualsTheAuditRowActorDuringDispatchAndIsClearedAfter() {
+        // M4-CLOSEOUT §2 / D2a invariant: the X-Forwarded-User carried on the engine call is the
+        // SAME actor the audit row was written with — captured here at the instant of dispatch.
+        AtomicReference<String> seenAtDispatch = new AtomicReference<>();
+        doAnswer(inv -> {
+                    seenAtDispatch.set(ForwardedActor.current());
+                    return null;
+                })
+                .when(client)
+                .moveDeadLetterJob(any(), eq("j1"));
+
+        service.execute(DEV, "pi-1", ActionVerb.RETRY_JOB, retryRequest(), operator);
+
+        assertThat(seenAtDispatch.get()).isEqualTo(pendingEntry.forwardedIdentity());
+        assertThat(seenAtDispatch.get()).isEqualTo(pendingEntry.getActor());
+        // Cleared in the finally — never leaks onto the next unit of work on this thread.
+        assertThat(ForwardedActor.current()).isNull();
     }
 
     @Test

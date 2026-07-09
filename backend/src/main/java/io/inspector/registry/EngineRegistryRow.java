@@ -102,6 +102,13 @@ public class EngineRegistryRow {
     @Column(name = "audit_payload", nullable = false)
     private String auditPayload = AuditPayloadMode.REDACTED.wire();
 
+    // X-Forwarded-User send-side opt-in (M4-CLOSEOUT §2 / S4). Off by default — a field-initializer
+    // default is REQUIRED, not just the V9 column DEFAULT: JPA emits every column on INSERT, so the
+    // DB DEFAULT only covers rows the app never writes. Hibernate overwrites this from the column on
+    // load; the YAML seed sets it from the EngineConfig explicitly.
+    @Column(name = "forward_user", nullable = false)
+    private boolean forwardUser = false;
+
     public EngineRegistryRow() {
         // JPA + test/DTO construction
     }
@@ -304,6 +311,14 @@ public class EngineRegistryRow {
 
     public void setAuditPayload(String auditPayload) {
         this.auditPayload = auditPayload;
+    }
+
+    public boolean isForwardUser() {
+        return forwardUser;
+    }
+
+    public void setForwardUser(boolean forwardUser) {
+        this.forwardUser = forwardUser;
     }
 
     public String getSource() {

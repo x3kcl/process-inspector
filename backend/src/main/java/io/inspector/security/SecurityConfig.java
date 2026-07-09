@@ -19,6 +19,7 @@ import org.springframework.security.web.authentication.HttpStatusEntryPoint;
 import org.springframework.security.web.context.DelegatingSecurityContextRepository;
 import org.springframework.security.web.context.HttpSessionSecurityContextRepository;
 import org.springframework.security.web.context.RequestAttributeSecurityContextRepository;
+import org.springframework.security.web.context.SecurityContextHolderFilter;
 import org.springframework.security.web.csrf.CookieCsrfTokenRepository;
 import org.springframework.security.web.csrf.CsrfTokenRequestAttributeHandler;
 
@@ -50,7 +51,11 @@ public class SecurityConfig {
     }
 
     private HttpSecurity common(HttpSecurity http) throws Exception {
-        return http.csrf(csrf -> csrf.csrfTokenRepository(CookieCsrfTokenRepository.withHttpOnlyFalse())
+        return http
+                // Ingress scrub (M4-CLOSEOUT §2 / D2c): a client-supplied X-Forwarded-User is never
+                // trusted or reflected — the BFF mints the outbound header from the audit actor alone.
+                .addFilterBefore(new InboundForwardedUserFilter(), SecurityContextHolderFilter.class)
+                .csrf(csrf -> csrf.csrfTokenRepository(CookieCsrfTokenRepository.withHttpOnlyFalse())
                         .csrfTokenRequestHandler(new CsrfTokenRequestAttributeHandler())
                         .ignoringRequestMatchers(request -> request.getHeader("Authorization") != null))
                 .authorizeHttpRequests(auth -> auth.requestMatchers(

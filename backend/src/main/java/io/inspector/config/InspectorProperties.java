@@ -153,16 +153,21 @@ public record InspectorProperties(
             @Valid AlarmThresholds alarmThresholds,
             // Per-engine audit-payload minimization (R-AUD-03). Null → redacted (minimization by
             // default); YAML `audit-payload: full|redacted|metadata-only` binds here.
-            AuditPayloadMode auditPayload) {
+            AuditPayloadMode auditPayload,
+            // Per-engine X-Forwarded-User send-side opt-in (M4-CLOSEOUT §2 / S4). Off by default —
+            // forwarding employee identity (PII) is permitted only on genuinely-trusted engines;
+            // YAML `forward-user: true` binds here. Never relied upon: the BFF audit log is master.
+            boolean forwardUser) {
 
         // @ConfigurationProperties binding is ambiguous once a record has >1 constructor — pin the
-        // canonical (15-arg) one as the bind target so the convenience ctor below is ignored.
+        // canonical (16-arg) one as the bind target so the convenience ctors below are ignored.
         @ConstructorBinding
         public EngineConfig {}
 
         /**
-         * Pre-S2 14-arg shape (no {@code auditPayload}) → the redacted default, so existing
-         * factories/tests don't churn (unit-test-patterns: no constructor churn).
+         * Pre-S2 14-arg shape (no {@code auditPayload}, no {@code forwardUser}) → the redacted
+         * default + forwarding off, so existing factories/tests don't churn (unit-test-patterns:
+         * no constructor churn).
          */
         public EngineConfig(
                 String id,
@@ -194,7 +199,47 @@ public record InspectorProperties(
                     maxPageSize,
                     dlqScanCap,
                     alarmThresholds,
-                    null);
+                    null,
+                    false);
+        }
+
+        /**
+         * S2-era 15-arg shape ({@code auditPayload} present, no {@code forwardUser}) → forwarding
+         * off. Keeps callers that already thread the audit-payload mode compiling unchanged.
+         */
+        public EngineConfig(
+                String id,
+                String name,
+                String baseUrl,
+                EngineEnvironment environment,
+                String accentColor,
+                boolean enabled,
+                String tenantId,
+                String telemetryUrlTemplate,
+                Auth auth,
+                EngineMode mode,
+                Timeouts timeouts,
+                Integer maxPageSize,
+                Integer dlqScanCap,
+                AlarmThresholds alarmThresholds,
+                AuditPayloadMode auditPayload) {
+            this(
+                    id,
+                    name,
+                    baseUrl,
+                    environment,
+                    accentColor,
+                    enabled,
+                    tenantId,
+                    telemetryUrlTemplate,
+                    auth,
+                    mode,
+                    timeouts,
+                    maxPageSize,
+                    dlqScanCap,
+                    alarmThresholds,
+                    auditPayload,
+                    false);
         }
 
         public AuditPayloadMode auditPayloadOrDefault() {

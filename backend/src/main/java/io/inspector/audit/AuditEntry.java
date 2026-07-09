@@ -174,6 +174,16 @@ public class AuditEntry {
         return actor;
     }
 
+    /**
+     * The identity to forward as {@code X-Forwarded-User} (M4-CLOSEOUT §2 / D2d): the audit actor,
+     * namespaced {@code break-glass-<actor>} for a break-glass action so an engine-side log can
+     * never confuse it with a real OIDC subject. Derived purely from this row, so the forwarded
+     * value always corresponds to the row's own attribution.
+     */
+    public String forwardedIdentity() {
+        return breakGlass ? "break-glass-" + actor : actor;
+    }
+
     public Instant getTs() {
         return ts;
     }

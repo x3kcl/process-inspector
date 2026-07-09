@@ -38,6 +38,9 @@ public class FlowableEngineClient {
     private static final org.springframework.core.ParameterizedTypeReference<List<Map<String, Object>>> VARIABLE_LIST =
             new org.springframework.core.ParameterizedTypeReference<>() {};
 
+    /** Engine-side attribution courtesy on forward-user engines (M4-CLOSEOUT §2). */
+    static final String FORWARDED_USER_HEADER = "X-Forwarded-User";
+
     private final Environment env;
     private final CircuitBreakerRegistry breakers;
     private final BulkheadRegistry bulkheads;
@@ -1336,16 +1339,16 @@ public class FlowableEngineClient {
 
     private RestClient client(EngineConfig engine) {
         return readClients.computeIfAbsent(
-                engine.id(), id -> build(engine, engine.timeoutsOrDefault().read()));
+                engine.id(), id -> build(engine, engine.timeoutsOrDefault().read(), false));
     }
 
     /** Client for mutating verbs — same connection settings, write-ms read timeout. */
     protected RestClient writeClient(EngineConfig engine) {
         return writeClients.computeIfAbsent(
-                engine.id(), id -> build(engine, engine.timeoutsOrDefault().write()));
+                engine.id(), id -> build(engine, engine.timeoutsOrDefault().write(), true));
     }
 
-    private RestClient build(EngineConfig engine, int readTimeoutMs) {
+    private RestClient build(EngineConfig engine, int readTimeoutMs, boolean write) {
         HttpClient http = HttpClient.newBuilder()
                 .connectTimeout(Duration.ofMillis(engine.timeoutsOrDefault().connect()))
                 .followRedirects(HttpClient.Redirect.NEVER)
@@ -1373,6 +1376,23 @@ public class FlowableEngineClient {
                     /* unauthenticated engine */
                 }
             }
+        }
+
+        // X-Forwarded-User send-side (M4-CLOSEOUT §2): only on the WRITE client, only for engines
+        // that opted in. The value is the per-call actor set by the mutation dispatch (ForwardedActor,
+        // which carries the SAME actor the audit row was written with) — never an inbound header
+        // (D2c), never a SecurityContextHolder read (D2a: empty/stale on bulk workers). A blank actor
+        // yields no header (already collapsed to null by ForwardedActor.sanitize). Because the flag
+        // is baked into the built client, a forward-user flip must evict the cached client to take
+        // effect — the S3 evict() path (RegistryReloadListener) already rebuilds it post-commit.
+        if (write && engine.forwardUser()) {
+            builder.requestInterceptor((req, bytes, exec) -> {
+                String actor = ForwardedActor.current();
+                if (actor != null) {
+                    req.getHeaders().set(FORWARDED_USER_HEADER, actor);
+                }
+                return exec.execute(req, bytes);
+            });
         }
         return builder.build();
     }

@@ -62,7 +62,8 @@ public final class EngineRegistryMapper {
                 row.getMaxPageSize(),
                 row.getDlqScanCap(),
                 alarms,
-                AuditPayloadMode.fromWire(row.getAuditPayload()));
+                AuditPayloadMode.fromWire(row.getAuditPayload()),
+                row.isForwardUser());
     }
 
     /**
@@ -108,6 +109,7 @@ public final class EngineRegistryMapper {
         }
 
         row.setAuditPayload(engine.auditPayloadOrDefault().wire());
+        row.setForwardUser(engine.forwardUser());
         row.setCreatedAt(now);
         row.setUpdatedAt(now);
         row.setSource(SOURCE_YAML_SEED);

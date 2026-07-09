@@ -15,6 +15,7 @@ import io.inspector.audit.ProtectedInstance;
 import io.inspector.audit.ProtectedInstanceRepository;
 import io.inspector.client.FlowableEngineClient;
 import io.inspector.client.FlowableEngineClient.FlowablePage;
+import io.inspector.client.ForwardedActor;
 import io.inspector.config.InspectorProperties.EngineConfig;
 import io.inspector.config.InspectorProperties.EngineEnvironment;
 import io.inspector.config.InspectorProperties.EngineMode;
@@ -493,6 +494,9 @@ public class MigrationService {
 
     /** The ONE engine call with the M4 outcome discipline — never retried, honest close-out. */
     private <T> T dispatchAudited(AuditEntry entry, String engineId, Supplier<T> call) {
+        // Forward the acting human (== this audit row's actor) on the dispatching thread, so an
+        // identity-forwarding engine sees it (M4-CLOSEOUT §2 / D2a). Cleared in finally.
+        ForwardedActor.set(entry.forwardedIdentity());
         try {
             return call.get();
         } catch (CallNotPermittedException | BulkheadFullException e) {
@@ -518,6 +522,8 @@ public class MigrationService {
             // Timed out AFTER dispatch: migrate is non-idempotent — UNKNOWN, never re-fired (Verify-now).
             audit.close(entry, AuditOutcome.unknown, null, "no answer within write budget: " + e.getMessage(), false);
             throw new OutcomeUnknownException(entry.getId(), e);
+        } finally {
+            ForwardedActor.clear();
         }
     }
 
