@@ -70,11 +70,28 @@ possible (`password-file` refs re-read per attempt → rotation without restart;
 as "credential rejected", distinct from unreachable); non-root, read-only-FS container, no
 redirects followed on engine calls. Injection: engine/user text is data (no HTML
 interpretation — ESLint-enforced), CR/LF-strip + caps on ingest, CSV formula-escape.
-**Break-glass** (R-SAFE-06): sealed local ADMIN account, `/break-glass` path, 4 h session,
-distinguished audit flag + alert + page banner, rotate after use.
-Session policy (R-SAFE-07): fixation protection, idle timeout 12 h / absolute 24 h,
-`HttpOnly; Secure; SameSite=Lax`; OIDC claims re-evaluated ≤15 min, tier-3/4 force
-re-validation; bulk jobs survive session expiry, cancel requires a live session.
+**Break-glass** (R-SAFE-06, built v2 — IDP-SECURITY.md §7): sealed local ADMIN account on a
+distinct `/break-glass` chain+path that works **when the IdP is down** (reachable from an
+inspector-owned "Identity provider unreachable" interstitial — no memorized URL), 4 h session,
+distinguished audit flag + alert-on-login + red page banner, mandatory reason ≥10 on every verb
+(per-session sticky reason for tier-0 repeats), rotate after use. ADMIN-global but **never**
+`ACCESS_ADMIN`/`REGISTRY_ADMIN` — a bricked mapping is recovered via the `INSPECTOR_ACCESS_ADMIN_GROUP`
+env grant or the `mapping-source: file` pin (see RUNBOOK), never break-glass. **Audit degrades,
+never blocks:** if Postgres is unreachable *concurrent* with the IdP outage, break-glass audit
+falls back to a **local tamper-evident append-only file sink** (write-success gates the action) —
+the one deliberate fail-closed exception, reconciled to `audit_entry` on recovery.
+Session policy (R-SAFE-07, built v2 — IDP-SECURITY.md §5): fixation protection (scoped to
+`oidc`/form so the dev Basic-per-XHR SSE isn't orphaned), idle timeout 12 h / absolute 24 h
+(**warn-before-guillotine**, never a takeover over a dirty wizard draft), `HttpOnly; Secure;
+SameSite=Lax`; OIDC group membership re-evaluated within a **bounded window** — the dangerous set
+(tier-3 verbs + bulk + every mapping write) forces a fresh re-authentication (challenge→replay at
+verb-intent, never after the confirm token is typed) and resolves grants from the re-authed
+principal; bulk jobs survive session expiry, cancel requires a live session. Transport/header
+posture (R-OPS-16): app-level `nosniff`/`frame-ancestors`/`Referrer-Policy`/`Permissions-Policy`
+always on, CSP report-only-first, **HSTS off by default** (the proxy owns it — never double-emit),
+CORS off. Readiness = "mapping loaded (DB rows or file seed)" + a distinct **"mapping resolves
+zero effective grants / seed failed" health indicator + alert** (READY alone can't tell seeded-fine
+from seeded-to-zero).
 
 ## 8. CI gates — the authoritative merge-blocking list (R-OPS-06)
 **Landed in `.github/workflows/ci.yml`:** `lint` (Spotless/palantir) · `unit` (backend
@@ -86,7 +103,9 @@ class = build failure) · `frontend` (watermark check + tsc + vite build) · `do
 **Still to land:** WireMock contract tests with **6.x AND 7.x error-JSON fixtures** ·
 Testcontainers Postgres suite (M4+) · ESLint strict · OpenAPI export +
 `git diff --exit-code` · Vitest · Playwright smoke (≤10 min, incl. axe) · Trivy scan
-(fixable HIGH/CRIT fail).
+(fixable HIGH/CRIT fail) · **a real Keycloak `oidc`/prod-like leg** (v2 IdP-Security — a
+lightweight OIDC stub omits `max_age`/refresh/overage, exactly the security-critical semantics;
+budget its realm-import boot against the 20-min integration cap or split to its own job).
 Nightly (release-blocking, not merge-blocking): full engine-matrix Playwright, P1/P2 perf
 scenarios, capability matrix cross. Weekly: image rescan; monthly: base-image rebuild; SBOM
 (CycloneDX) attached to releases.

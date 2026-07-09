@@ -563,7 +563,8 @@ count to a "≥N" lower bound under a truncated DLQ scan — see `CMMN-SCOPE-PHA
     live 6.8 + Postgres, 2 — retry + delete over two concurrently-failing cases) + `case-detail.spec.ts`
     retry + delete-gated + delete-modal e2e. SPEC §5.3, ARCH §4,
     `docs/CMMN-CASE-DETAIL-PHASE-2.md` §9, `docs/CMMN-SCOPE-PHASE-0.md` §7.
-- Shared server-side saved views; k-way-merge deep paging; OIDC hardening.
+- Shared server-side saved views; k-way-merge deep paging; **OIDC hardening + access-lifecycle +
+  group→scope CRUD + break-glass → now the v2 IdP & Security block below (design locked).**
 
 ### v2 — Registry CRUD: runtime engine lifecycle *(design locked 2026-07-09, unbuilt)*
 The registry moves YAML→DB so ops can onboard/retire/tune engines without a deploy — the
@@ -646,6 +647,61 @@ and delete is a soft tombstone; hot reload evicts the per-id client caches (no r
   zero-states. Types via `npm run gen:api` (never hand-written). Done-when: Playwright smoke
   (add→probe→enable→edit→disable→remove) + axe green.
 
+
+### v2 — IdP & Security: identity wiring, access lifecycle & the who-can-do-what store *(design locked 2026-07-09, unbuilt)*
+Wires OIDC for real, hardens the session/transport posture, moves the group→scope mapping
+file→DB with a CRUD admin surface, and builds break-glass. **Full design + 5-seat panel +
+adversarial pass + threat model + API/DDL: `docs/IDP-SECURITY.md`.** Concretizes R-GOV-06
+(ADR-003), builds R-SAFE-07 (access lifecycle) + R-SAFE-06/11 (break-glass), designs the v2
+CRUD promised by R-SAFE-12; adds R-SAFE-14/15 + R-OPS-16.
+
+**Boundary decisions locked before build** (IDP-SECURITY.md §3): OIDC becomes real (Entra pilot
+/ Keycloak, issuer pinned to one tenant, PKCE, tokens server-side-session-only, overage
+detect-and-legibly-fail); the mapping is **DB-authoritative once seeded** (mounted YAML = seed +
+`mapping-source: file|db` pin) behind a `MappingSource` seam; **`ACCESS_ADMIN`** is the apex
+orthogonal fleet grant (above `REGISTRY_ADMIN`); four-eyes on effective-grant widening (self-widen,
+wildcard-breadth `≥OPERATOR`, any fleet create, **any fleet removal**) + a ≥2-`ACCESS_ADMIN` boot
+invariant + an `INSPECTOR_ACCESS_ADMIN_GROUP` env floor; **the live gate fails closed**
+(`canExecute` `.orElse(true)`→`.orElse(false)` + a pre-auth verb-existence check); dangerous-set
+(tier-3 + bulk + mapping writes) forced-re-auth via a bounded-window challenge→replay protocol;
+break-glass never grants a fleet grant and its audit degrades to a local file sink when Postgres
+is down.
+
+**Slices — the identity foundation, fail-closed gate, and escalation rails land and are tested
+behind nothing before any UI reaches them:**
+- **S1 — OIDC wiring + ADR-003.** Real `oauth2-client` registration; issuer/tenant pinning; the
+  **Keycloak** prod-like/CI leg (merge-blocking — a stub omits `max_age`/refresh/overage);
+  non-array-claim + Entra-overage detect-and-legibly-fail (Graph resolution opt-in). Dev chain
+  untouched. Done-when: rung-3 Keycloak-login IT; overage/non-array claim → legible zero-scope fail.
+- **S2 — session + header hardening + fail-closed gate.** `sessionManagement` (caps; fixation scoped
+  to `oidc`/form so the dev Basic-per-XHR SSE isn't orphaned), cookie flags, the header set, CSP
+  **report-only**, HSTS opt-in; `canExecute` → `.orElse(false)` + the verb-existence check.
+  Done-when: JSESSIONID stable across consecutive Basic XHRs with an SSE stream open; unknown verb
+  → 403; CSP report-only renders bpmn-js/AG-Grid/CodeMirror with zero violations.
+- **S3 — mapping store (file→DB).** Flyway `V<next>` (`group_scope_grant` + `group_fleet_grant`,
+  DDL in IDP-SECURITY.md §11 — **version allocated at merge time; coordinate with M4-closeout's
+  V8/V9/V10**) + entities/repos + `@Transactional` store + the `MappingSource` seam (incl.
+  `allLadderGrants`/`allFleetGrants`, both impls, `DbMappingSource` `@Profile("db")`) + file-seed
+  import + `mapping-source` pin + the env-bootstrap apex grant + the ≥2-`ACCESS_ADMIN` boot
+  invariant. `NoDbTestSupport` repo mocks scoped to DB-store tests only. Done-when: empty-seed IT +
+  non-empty drift WARN + file-pin 403 + boot-invariant fails-loudly-on-no-apex.
+- **S4 — `ACCESS_ADMIN` + mapping CRUD API + governance.** `rbac.canAdministerAccess`,
+  `AdminAccessController`, the **effective-grant widen/breadth/fleet-removal check** + four-eyes
+  (proposer & approver both re-authenticated) + the security-alert fire, fail-closed audit
+  (`mapping-*`), the drift endpoint (no-apex hard-alert). Done-when: escalation matrix (a quiet
+  self-grant = Sev1) + RBAC matrix (ADMIN/`REGISTRY_ADMIN`/break-glass refused) + audit-integrity green.
+- **S5 — dangerous-set re-auth protocol + break-glass.** The custom `OAuth2AuthorizationRequestResolver`
+  + `OidcIdTokenValidator` (rejects stale/absent `auth_time`) + the 401-challenge/replay + bounded
+  window + membership re-pull; the sealed break-glass chain + `/break-glass` + IdP-unreachable door +
+  banner + alert + local-file-sink audit fallback + sticky tier-0 reason. Done-when: identity-freshness
+  IT (removed group can't authorize tier-3 post-re-auth; no per-verb MFA storm within window);
+  break-glass IT (works IdP-down; audit degrades DB-down and still proceeds; cannot reach fleet CRUD).
+- **S6 — admin UI + access-review + `/api/me` hints.** `/admin/access` (fleet-chip intrinsic glyph;
+  eligible-approver legibility; warn-before-guillotine + re-auth interstitial), the access-review
+  screen + export (ladder|fleet column), `me.accessAdmin`/`breakGlass`. Types via `npm run gen:api`.
+  Done-when: Playwright smoke (grant→four-eyes→revoke) + axe + SR pass.
+
+Each slice: rung-1 unit → rung-3 Spring wiring/RBAC → rung-4 Keycloak/Testcontainers IT → Playwright.
 
 ### v2/M4 — State store + snapshot store: architectural boundary *(decided 2026-07-07, pre-build)*
 The BFF shifts from transient proxy to **stateful telemetry aggregator**. Boundary decisions

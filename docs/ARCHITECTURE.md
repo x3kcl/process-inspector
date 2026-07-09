@@ -325,7 +325,13 @@ nobody may "simplify" by exposing an engine directly.
 
 - **Auth (dual profile from M4):** dev = form/basic + session; prod = **OIDC**
   (roles from a claim). One session-stateful BFF instance; engine credentials live only in
-  the BFF process env.
+  the BFF process env. **v2 IdP-Security (IDP-SECURITY.md)** wires OIDC for real (Entra ID pilot /
+  Keycloak; issuer pinned to one tenant, PKCE, tokens server-side-session-only, Entra
+  groups-overage detect-and-legibly-fail), hardens the session/transport posture (session caps,
+  fixation scoped so the dev Basic-per-XHR SSE isn't orphaned, `HttpOnly/Secure/SameSite=Lax`,
+  header set, CSP report-only-first, HSTS opt-in, CORS off — R-SAFE-07/R-OPS-16), and builds
+  break-glass (sealed local ADMIN on a distinct `/break-glass` chain that works when the IdP is
+  down; ADMIN-global never fleet; audit degrades to a local file sink when Postgres is also down).
 - **RBAC:** `VIEWER` (read-only) → **`RESPONDER`** (tier-0 verbs + unstick + notes — the
   runbook tier; no variable writes, no token moves) → `OPERATOR` (adds tiers 1–2) → `ADMIN`
   (tiers 3–4: terminate/delete, suspend-definition, deadletter-delete, migrate, bulk).
@@ -340,9 +346,17 @@ nobody may "simplify" by exposing an engine directly.
   resolves the acting user's scope set against the target of every call.
   **`REGISTRY_ADMIN`** (v2, REGISTRY-CRUD.md §7) is an **orthogonal fleet-level grant**, not a
   ladder rung — you cannot scope "add an engine" to an engine that does not exist. It maps
-  from its own OIDC group, is checked by `rbac.canAdministerRegistry`, and is the highest-
-  privilege surface in the tool (it repoints the credential vault); per-engine ADMIN does not
-  confer it and break-glass does not grant it.
+  from its own OIDC group, is checked by `rbac.canAdministerRegistry`, and repoints the credential
+  vault; per-engine ADMIN does not confer it and break-glass does not grant it.
+  **`ACCESS_ADMIN`** (v2, IDP-SECURITY.md §9) is the **apex** orthogonal fleet grant — it
+  administers the group→scope mapping itself, including the assignment of `REGISTRY_ADMIN` and of
+  `ACCESS_ADMIN`, so it is strictly *above* `REGISTRY_ADMIN`; checked by `rbac.canAdministerAccess`,
+  never conferred by ADMIN/`REGISTRY_ADMIN` or break-glass, and guarded by four-eyes on any
+  effective-grant widening (self-widen, wildcard-breadth `≥OPERATOR`, any fleet create, any fleet
+  removal) plus a ≥2-independent-`ACCESS_ADMIN` invariant. **The live gate fails closed**:
+  `RbacAuthorizer.canExecute` authorizes only *known* verbs (an unknown verb path is never
+  authorized-by-default), and the dangerous set (tier-3 verbs + bulk + mapping writes) runs on a
+  forced-re-authenticated principal (IDP-SECURITY.md §5).
 - **Attribution:** engines see the shared service account; Flowable's `ACT_HI_*` tables
   therefore attribute mutations to it. The BFF audit log is the sole authoritative
   human-attribution record. Engines with `forward-user-header: true` additionally receive
@@ -352,7 +366,10 @@ nobody may "simplify" by exposing an engine directly.
   drop-partition retention — §2.6), per-user Saved Views + Recent Searches (`saved_view` /
   `recent_search`, v2/M4 — keyed to the authenticated user; superseded the v1 localStorage
   store, with a one-time client backfill), the **engine registry itself** (`engine_registry`,
-  v2 Registry CRUD — DB-authoritative once seeded from YAML; REGISTRY-CRUD.md). No durable
+  v2 Registry CRUD — DB-authoritative once seeded from YAML; REGISTRY-CRUD.md), and the
+  **group→scope mapping** (`group_scope_grant` + `group_fleet_grant`, v2 IdP-Security —
+  DB-authoritative once seeded from the mounted YAML, `mapping-source: file|db` pin, a
+  `MappingSource` seam behind `ScopeMappingService`; IDP-SECURITY.md). No durable
   job-execution framework — in-memory execution, per-item flush, `INTERRUPTED` on restart.
 - **Audit:** every mutating call → `(user, ts, engineId, instanceId, tenantId, action,
   reason, requestPayload incl. old values, httpStatus, outcome, responseSnippet)`; one row
