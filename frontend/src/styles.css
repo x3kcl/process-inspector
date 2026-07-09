@@ -2389,6 +2389,90 @@ button.primary:disabled {
 .view-chip.user-view button:hover {
   color: #c0392b;
 }
+
+/* Team (shared) views — SHARED-VIEWS.md §4.6. The "TEAM" tag is a bordered label, NOT hue-only
+   (R-UXQ-01), so it reads without color. A dangling canon is greyed + non-interactive (§4.5). */
+.view-chips.team-views {
+  margin-top: 4px;
+}
+.view-chip.team-view a,
+.view-chip.team-view .team-view-name {
+  text-decoration: none;
+  color: inherit;
+}
+.team-tag {
+  font-size: 9px;
+  font-weight: 700;
+  letter-spacing: 0.06em;
+  border: 1px solid currentColor;
+  border-radius: 3px;
+  padding: 0 3px;
+  opacity: 0.7;
+}
+.view-chip.team-view button {
+  border: none;
+  background: none;
+  cursor: pointer;
+  color: #8395a7;
+  padding: 0;
+  font-size: 12px;
+  line-height: 1;
+}
+.view-chip.team-view button:hover {
+  color: #c0392b;
+}
+.view-chip.team-view.dangling {
+  opacity: 0.55;
+}
+.view-chip.team-view.dangling .team-view-name {
+  cursor: not-allowed;
+}
+.team-view-note {
+  font-style: italic;
+  font-size: 11px;
+}
+.team-views-error {
+  margin: 4px 0 0;
+  font-size: 11px;
+  color: #c0392b;
+}
+.publish-team {
+  border: none;
+  background: none;
+  cursor: pointer;
+  color: #2e86de;
+  padding: 0;
+  font-size: 11px;
+  text-decoration: underline;
+}
+.publish-team:disabled {
+  color: #b2bec3;
+  cursor: not-allowed;
+  text-decoration: none;
+}
+.publish-team-form {
+  display: flex;
+  flex-direction: column;
+  gap: 4px;
+  padding: 8px;
+  border: 1px solid #dfe4ea;
+  border-radius: 6px;
+  margin-top: 4px;
+}
+.publish-team-scope {
+  margin: 0;
+  font-size: 11px;
+  color: #57606f;
+}
+.publish-team-error {
+  margin: 0;
+  font-size: 11px;
+  color: #c0392b;
+}
+.publish-team-actions {
+  display: flex;
+  gap: 6px;
+}
 .view-strip {
   padding: 8px 12px 0;
 }
