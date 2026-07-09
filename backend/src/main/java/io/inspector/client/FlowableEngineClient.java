@@ -459,6 +459,31 @@ public class FlowableEngineClient {
     }
 
     /**
+     * Versions of a key sorted by version DESCENDING (newest first) — a STABLE order for the
+     * migration on-ramp's paging (the default sort is name-ascending, which makes start/size
+     * paging prone to missed/duplicated rows under concurrent deploys). {@code page.total()} is
+     * the full version count for the key, so the caller can detect truncation.
+     */
+    public FlowablePage listProcessDefinitionVersionsDesc(EngineConfig engine, String key, int start, int size) {
+        return guarded(
+                engine,
+                CallPriority.INTERACTIVE,
+                () -> client(engine)
+                        .get()
+                        .uri(uri -> {
+                            var b = uri.path("/repository/process-definitions")
+                                    .queryParam("key", key)
+                                    .queryParam("sort", "version")
+                                    .queryParam("order", "desc")
+                                    .queryParam("size", size);
+                            if (start > 0) b.queryParam("start", start);
+                            return b.build();
+                        })
+                        .retrieve()
+                        .body(FlowablePage.class));
+    }
+
+    /**
      * The single LATEST-version definition for a key ({@code latest=true}). The plain
      * {@code size=1} query does NOT return the latest — {@code /repository/process-definitions}
      * defaults to name-ascending, so version disambiguation needs {@code latest=true}
