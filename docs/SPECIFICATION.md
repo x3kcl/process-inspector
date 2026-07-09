@@ -520,6 +520,46 @@ will dial, so runtime CRUD is an **SSRF surface** aimed by the credential-vault 
 Zero-states (R-UXQ-04): no-engines → an actionable "Add your first engine"; config-pinned →
 a read-only registry labelled "CRUD disabled (registry source = config)".
 
+### 4c. Access administration — the group→scope mapping *(v2)*
+
+A dedicated admin surface (`/admin/access`, **`ACCESS_ADMIN`** only, **greyed-never-hidden**)
+that moves the BFF-owned group→scope mapping (R-SAFE-12) from a mounted YAML file to runtime
+CRUD: grant a colleague RESPONDER-on-`orders-prod` mid-incident from a screen — change-audited —
+instead of SSHing to edit a mounted volume. The mapping moves file→DB (`group_scope_grant` +
+`group_fleet_grant`), **DB-authoritative once seeded**, with the mounted YAML as the one-time seed
+and an `inspector.security.mapping-source: file|db` pin for air-gapped deploys. This also finally
+wires OIDC for real (Entra ID pilot / Keycloak), hardens the session + transport posture
+(R-SAFE-07/R-OPS-16), and builds break-glass (R-SAFE-06/11). **Authoritative design + panel:
+[IDP-SECURITY.md](IDP-SECURITY.md).**
+
+The load-bearing constraint (why it is gated to v2): **the mapping is the single most privileged
+store in the tool** — a row can grant ADMIN-global or `REGISTRY_ADMIN` (repoint the credential
+vault) to any IdP group, so editing it is higher-privilege than any tier-3 verb. The guardrails —
+most of the feature's cost, per R-SAFE-14/R-SAFE-15/R-GOV-06:
+- **`ACCESS_ADMIN` is the apex orthogonal fleet grant** — it administers the mapping incl. the
+  assignment of `REGISTRY_ADMIN` and of `ACCESS_ADMIN` itself. Per-engine ADMIN and `REGISTRY_ADMIN`
+  do **not** confer it; break-glass does **not** grant it. Checked by `rbac.canAdministerAccess`.
+- **Four-eyes on effective-grant widening** — computed on the resolved grant set: any self-widen,
+  **any** grant of role ≥ OPERATOR wildcarded to `*` engines/tenants, **any** fleet-grant create,
+  **and** fleet-grant **removal** (removing the other apex admins is a control-plane takeover, not a
+  fail-safe narrowing) all need a second approver (∉ the affected group, ≠ proposer, freshly
+  re-authenticated); a **≥2-independent-`ACCESS_ADMIN` invariant** and a security-alert on every
+  apex change back it up. An `INSPECTOR_ACCESS_ADMIN_GROUP` env grant is the always-available
+  lock-out floor.
+- **Identity can't go stale on the dangerous verbs.** OIDC groups are re-evaluated within a bounded
+  window; tier-3 verbs + bulk + every mapping write force a fresh re-authentication (challenge →
+  re-auth → replay, never after the confirm token is typed) and resolve grants from the re-authed
+  principal. Sessions are capped (12 h idle / 24 h absolute), fixation-protected, cookies
+  `HttpOnly; Secure; SameSite=Lax`. **The live authorization gate fails closed** (an unknown verb
+  path is never authorized-by-default).
+- **Break-glass** (built): a sealed local ADMIN account on a distinct `/break-glass` chain that
+  works when the IdP is down (reachable from an "Identity provider unreachable" interstitial),
+  4 h, ADMIN-global but never a fleet grant, loud + reason-on-every-verb; its audit degrades to a
+  local tamper-evident file sink when Postgres is also down.
+
+Zero-states (R-UXQ-04): no eligible four-eyes approver → "recover via the file-pin"; config-pinned →
+"CRUD disabled (mapping source = file)"; IdP unreachable → the break-glass door.
+
 ## 5. Corrective actions — the verb catalog
 
 Every verb states what is preserved. Guard tiers per §6. All calls in

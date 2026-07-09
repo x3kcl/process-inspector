@@ -290,3 +290,63 @@ a tier-3 verb · secrets stay env-refs and ref-absence is a loud pre-enable fail
 **Doc deltas:** new `docs/REGISTRY-CRUD.md` (authoritative); SPEC §4b + §12; ARCH §3/§4/§5;
 REQUIREMENTS-REGISTER R-OPS-13 (expanded) + R-OPS-15 + R-SAFE-13; IMPLEMENTATION-PLAN v2
 Registry-CRUD block (S1–S5). No code — design locked, unbuilt.
+
+## Addendum (v2) — IdP & Security: identity wiring, access lifecycle & the who-can-do-what store (2026-07-09)
+
+**Trigger:** the auth machinery was built but half-inert — the `oidc` chain was coded but pointed
+at no issuer, group membership froze at login, there was no session/transport hardening, break-glass
+was a schema field, and the group→scope mapping (R-SAFE-12's "v2 CRUD") was still a single mounted
+file. **Method:** five-seat panel — security architect, lead developer, DevOps/SRE, support-team
+lead, UX expert — deliberating against the real M4/v2 security code, then an independent adversarial
+red-team pass (Gemini 2.5). **Full record + threat model + state machine + API/DDL:**
+`docs/IDP-SECURITY.md`.
+
+**Panel findings that changed the design (not just the prose):**
+- *Security architect (load-bearing):* the live gate **fails open** today —
+  `RbacAuthorizer.canExecute` = `…map(hasRoleOn).orElse(true)` authorizes any unknown verb path →
+  flip to `.orElse(false)` + a pre-`@PreAuthorize` verb-existence check; the mapping is the **apex**
+  store (a row mints ADMIN-global or `REGISTRY_ADMIN`) → its own `ACCESS_ADMIN` grant, *above*
+  `REGISTRY_ADMIN`; four-eyes must also cover **wildcard-breadth `≥OPERATOR` ladder grants** (not
+  just self-widen/fleet) and **fleet-grant removal** (apex removal is a control-plane takeover, not
+  a fail-safe narrowing), backed by a **≥2-`ACCESS_ADMIN` invariant**; `max_age` **recorded ≠
+  enforced** (Spring doesn't reject a stale `auth_time`) → a custom `OidcIdTokenValidator`.
+- *Lead developer (real seams):* forced re-auth is **not a near-free redirect** — a `fetch` can't
+  follow a 302, so it needs a custom `OAuth2AuthorizationRequestResolver` + a **401-challenge →
+  full-page re-auth → verb-replay** protocol resolving grants from the **post-re-auth session
+  principal**; `changeSessionId` **churns the dev Basic-per-XHR SSE** (scope fixation to `oidc`/form);
+  the `MappingSource` seam needs **whole-mapping enumeration** for access-review/drift; **don't pin
+  `V8`** (M4-closeout owns V8/V9/V10); the dangerous set is tiers **0/1/3** — there is no tier-4 *verb*.
+- *DevOps/SRE:* the **file-pin can recover into a lock-out** (a stale seed with no `ACCESS_ADMIN`) →
+  an **env-bootstrap `INSPECTOR_ACCESS_ADMIN_GROUP`** floor + a boot invariant; **readiness** must
+  distinguish seeded-fine from **seeded-to-zero** (silent total lockout); per-verb re-auth is an
+  **MFA-storm** on Entra → a **bounded freshness window**; name **Keycloak** (not a stub) as a
+  merge-blocking CI leg; drill break-glass on a running box pre-pilot.
+- *Support-team lead:* re-auth must fire **at verb-intent, never after the confirm token is typed**
+  (else lost work + double-confirm on the most dangerous verb); the **IdP-down door** must surface
+  `/break-glass` (no memorized URL); a **bulk-wizard draft** is not a persisted job — warn before the
+  session-cap guillotine.
+- *UX expert:* **un-approvable proposals** (empty eligible-approver set) must say "recover via the
+  file-pin", not read as "denied"; **fleet grants need an intrinsic in-chip glyph** (not just a band)
+  to survive access-review table sort/filter + SR linearization.
+
+**Sixth seat — adversarial pass (Gemini 2.5):** IdP **group-name/issuer collision** → pin one tenant,
+trust `groups` only from the pinned `iss`; **break-glass ✗ when Postgres _is_ the outage** → audit
+degrades to a local tamper-evident file sink (the one deliberate fail-closed exception); **four-eyes
+collusion on the apex** → a detective **security-alert on every apex-grant change** (a ≤25-user org
+can't segregate an approver class); **`max_age` silent re-auth may not re-check membership** +
+**ID-token-vs-userinfo mismatch** → single authoritative group source + a userinfo re-pull at the
+dangerous tier; **CSRF `Authorization`-header exemption** is safe by construction (CORS off) —
+clarified; **CSP** for bpmn-js/AG-Grid/CodeMirror → report-only-first.
+
+**Cross-seat consensus:** the live gate fails **closed** · the mapping is the apex store → its own
+`ACCESS_ADMIN` above `REGISTRY_ADMIN` · four-eyes on effective-grant widening + wildcard breadth +
+fleet removal, with a ≥2-apex invariant + an env-bootstrap floor · dangerous actions run on a
+re-authenticated principal via challenge+replay under a bounded window (never per-verb MFA storms),
+membership freshness via a userinfo re-pull · one pinned issuer + one authoritative group source ·
+break-glass ADMIN-global-never-fleet, reachable IdP-down, audit degrades DB-down · headers/cookies
+at the app, CSP report-only-first, HSTS opt-in, CORS off · every mapping write + access-review read
+audited fail-closed.
+
+**Doc deltas:** new `docs/IDP-SECURITY.md` (authoritative); SPEC §4c; ARCH §5; OPERATIONS §7/§8;
+REQUIREMENTS-REGISTER R-GOV-06 (concretized) + R-SAFE-07/12 (expanded) + R-SAFE-14/15 + R-OPS-16;
+IMPLEMENTATION-PLAN v2 IdP-Security block (S1–S6). No code — design locked, unbuilt.
