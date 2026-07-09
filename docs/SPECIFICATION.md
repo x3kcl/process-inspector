@@ -843,7 +843,12 @@ for the operator.
 Combination rule unchanged: **AND between categories, OR within** — made visible by the
 compiled-criteria echo. Saved views: curated system views + user-named views + recent
 searches (§4 Stage 0; user-named views/recents are per-user server-backed as of v2/M4, system
-views stay client-derived). Hierarchy-aware:
+views stay client-derived) + **team-published shared views** (v2, demand-gated —
+[SHARED-VIEWS.md](SHARED-VIEWS.md), R-SEM-24/R-SAFE-16): an operator/admin publishes curated
+canon the team inherits, in a separate governed `shared_view` store (publish = snapshot-copy,
+`covers()`-gated by scope). Read-visibility is **scoped declutter, NOT a security boundary**
+(precedence System → Team → Private); a shared view whose scoped engine is later removed
+renders **greyed-with-reason and never as a clean all-clear** (§4 Stage 0). Hierarchy-aware:
 businessKey search finds the tree, not just the root.
 
 ## 9. Audit, notes & handover
@@ -1066,8 +1071,12 @@ and would rewrite working M1/M2 code for no capability gain); Go/FastAPI/Kotlin 
   R-GOV-08)**, migration (single w/ Inspector static pre-check → batch wizard + typed business-key confirm), definition
   version comparison, CMMN, **registry CRUD** (runtime engine lifecycle — SPEC §4b, the
   R-OPS-13/R-OPS-15/R-SAFE-13 SSRF + governance rails; design locked in
-  [REGISTRY-CRUD.md](REGISTRY-CRUD.md)), shared
-  server-side views, **k-way-merge deep paging** (cursor-based browsing of the globally-sorted
+  [REGISTRY-CRUD.md](REGISTRY-CRUD.md)), **shared
+  server-side (team) views** (an operator/admin publishes curated canon the team inherits —
+  design locked in [SHARED-VIEWS.md](SHARED-VIEWS.md), R-SEM-24/R-SAFE-16; separate governed
+  `shared_view` store, snapshot-copy publish, `covers()`-gated by scope, `overlaps()`-scoped
+  read-visibility as declutter, replay-time dangling-canon honesty; **build trigger:** distinct
+  owners repeatedly re-create the same canonical `search` string), **k-way-merge deep paging** (cursor-based browsing of the globally-sorted
   merged stream — design locked + spike-gated in [KWAY-PAGING.md](KWAY-PAGING.md), R-SEM-22/23,
   R-NFR-08; **build trigger:** operators repeatedly hit `perEngine.total > fetched` on a
   time-sorted search without narrowing. NOTE: R-SEM-23, the deterministic total-order fix, is a

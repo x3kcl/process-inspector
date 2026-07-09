@@ -56,6 +56,8 @@ exhaustive scenario→class index.
 | R-SEM-20 CMMN out-of-scope count | TS-STAT-16 | `OutOfScopeDeadlettersTest`, `TriageCmmnScopeIT` (6.8), **`TriageCmmnScopeLegacyIT` (6.3 null gate)** | L1·L4 | ✅ (legacy IT added this pass) |
 | R-SEM-22 k-way-merge cursor contract | (design) | `PagingCursorTest` (L1 codec/dedup/bound), crafted-cursor-refused-pre-fan-out (L2 WireMock), deep-scroll ITs (L4, config-lowered caps) | L1·L2·L4 | 🔲 design-locked + spike-gated (`docs/KWAY-PAGING.md`) |
 | R-SEM-23 deterministic total order | (design) | `StatusJoinTest` goldens: tiebreak order, `+00:00`/`Z` compare-equal, `nullsLast` | L1 | 🔲 standalone bug-fix, S1 (red-first goldens) |
+| R-SEM-24 team/shared saved-view model + honesty | (design) | `shared_view` migration/uniqueness IT (L4-DB, LOCAL-ONLY), `overlaps()` + derived-scope + read-visibility (L1 authorizer — dev ladder is global-only), replay resolvability partial-vs-total-dead-vs-clean-empty (L1) + greying vitest | L1·L4 | 🔲 design-locked + demand-gated (`docs/SHARED-VIEWS.md`) |
+| R-SAFE-16 team/shared saved-view governance | (design) | publish `covers()` gate + wildcard→ADMIN + content-bound refusal + forged owner/scope ignored (L1 authorizer + L3 door), audited fail-closed lifecycle via `recordConfigEvent` (L4-DB positive rows + **PRIVATE-write-no-audit negative** + mocked-throws→503+no-flip L3), concurrent-publish→409, injection caps | L1·L3·L4 | 🔲 design-locked (`docs/SHARED-VIEWS.md`); scoped RBAC not rung-3-reachable (dev ladder global-only) |
 
 ### SAFE — operator safety & RBAC (risk rank R2)
 | Req | Scenario(s) | Suite(s) | Rung | Cov |
