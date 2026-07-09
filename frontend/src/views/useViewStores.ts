@@ -1,63 +1,74 @@
-// The two v1.x localStorage stores (SPEC §8: localStorage v1.x → shared server-side v2)
-// and their React bindings. Views/recents store CANONICAL search strings (normalizeSearch)
-// so highlight matching and recents dedup never depend on param order.
-import { useSyncExternalStore } from 'react'
-import type { SearchRequest } from '../api/model'
-import { createLocalStore } from './localStore'
-import type { RecentSearch, SavedView } from './model'
+// Server-backed Saved Views + Recent Searches (v2/M4, SPEC §8) — the successor to the v1.x
+// localStorage stores. The BFF keys every row on the authenticated user, so views/recents now
+// follow a user across browsers. Views/recents still store CANONICAL search strings
+// (normalizeSearch) so highlight matching and server-side dedupe never depend on param order.
+import { useCallback } from 'react'
+import { useMutation, useQuery, useQueryClient } from '@tanstack/react-query'
+import type { RecentSearchDto, SavedViewDto, SearchRequest } from '../api/model'
 import {
-  describeSearch,
-  isRecentSearch,
-  isSavedView,
-  normalizeSearch,
-  pushRecent,
-  removeView,
-  upsertView,
-} from './model'
+  deleteSavedView,
+  fetchRecents,
+  fetchSavedViews,
+  postRecent,
+  putSavedView,
+} from '../api/queries'
+import { describeSearch, normalizeSearch } from './model'
 
-const savedViewsStore = createLocalStore<SavedView>('inspector.savedViews', isSavedView)
-const recentSearchesStore = createLocalStore<RecentSearch>(
-  'inspector.recentSearches',
-  isRecentSearch,
-)
+const SAVED_VIEWS_KEY = ['savedViews'] as const
+const RECENTS_KEY = ['recents'] as const
 
 export interface SavedViewsApi {
-  views: SavedView[]
+  views: SavedViewDto[]
   save: (name: string, search: string) => void
-  remove: (id: string) => void
+  remove: (id: number) => void
 }
 
 export function useSavedViews(): SavedViewsApi {
-  const views = useSyncExternalStore(savedViewsStore.subscribe, savedViewsStore.read)
+  const queryClient = useQueryClient()
+  const { data } = useQuery({ queryKey: SAVED_VIEWS_KEY, queryFn: fetchSavedViews })
+  const invalidate = () => void queryClient.invalidateQueries({ queryKey: SAVED_VIEWS_KEY })
+
+  const saveMutation = useMutation({
+    mutationFn: (vars: { name: string; search: string }) =>
+      putSavedView(vars.name.trim(), normalizeSearch(vars.search)),
+    onSuccess: invalidate,
+  })
+  const removeMutation = useMutation({
+    mutationFn: (id: number) => deleteSavedView(id),
+    onSuccess: invalidate,
+  })
+
   return {
-    views,
-    save: (name: string, search: string) => {
-      savedViewsStore.write(
-        upsertView(savedViewsStore.read(), {
-          id: crypto.randomUUID(),
-          name: name.trim(),
-          search: normalizeSearch(search),
-          createdAt: new Date().toISOString(),
-        }),
-      )
+    views: data ?? [],
+    save: (name, search) => {
+      saveMutation.mutate({ name, search })
     },
-    remove: (id: string) => {
-      savedViewsStore.write(removeView(savedViewsStore.read(), id))
+    remove: (id) => {
+      removeMutation.mutate(id)
     },
   }
 }
 
-export function useRecentSearches(): RecentSearch[] {
-  return useSyncExternalStore(recentSearchesStore.subscribe, recentSearchesStore.read)
+export function useRecentSearches(): RecentSearchDto[] {
+  const { data } = useQuery({ queryKey: RECENTS_KEY, queryFn: fetchRecents })
+  return data ?? []
 }
 
-/** Write-only path for Stage 1: record AFTER a search executed successfully — never on typing. */
-export function recordRecentSearch(search: string, request: SearchRequest): void {
-  recentSearchesStore.write(
-    pushRecent(recentSearchesStore.read(), {
-      search: normalizeSearch(search),
-      label: describeSearch(request),
-      at: new Date().toISOString(),
-    }),
+/**
+ * Stage 1 write path: record a search AFTER it executed successfully (never on typing). Returns a
+ * STABLE callback (safe in an effect's deps). Best-effort — a failed record must never surface as
+ * a search error; it just doesn't reach the recents list.
+ */
+export function useRecordRecentSearch(): (search: string, request: SearchRequest) => void {
+  const queryClient = useQueryClient()
+  return useCallback(
+    (search: string, request: SearchRequest) => {
+      void postRecent(normalizeSearch(search), describeSearch(request))
+        .then(() => queryClient.invalidateQueries({ queryKey: RECENTS_KEY }))
+        .catch(() => {
+          /* best-effort: recording history must never break the search itself */
+        })
+    },
+    [queryClient],
   )
 }

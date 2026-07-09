@@ -629,8 +629,32 @@ locked before build so the milestone doesn't re-litigate them:
   + `sparkline.test.ts`, rung-3 `TriageTrendApiSpringTest` (endpoint/clamp/JSON shape).
   `NoDbTestSupport` gained the `SnapshotCountRepository` mock (an always-on service now reads it).
   Schema regenerated from the running BFF (never hand-edited). Browser-verified end-to-end against
-  a seeded store — sparklines render with correct global sums + labels. Boot-readiness gate +
-  localStorage→relational migration still remain for the milestone.
+  a seeded store — sparklines render with correct global sums + labels.
+
+- **Boot-readiness gate — ALREADY SATISFIED (docker-compose.demo.yml):** the containerized BFF
+  gates on `depends_on: postgres: { condition: service_healthy }`, and the postgres service's
+  healthcheck is a target-specific `pg_isready -U inspector -d inspector` — the container-level
+  gate the boundary decision called for (app-level connect retries alone were the rejected
+  fragile path). No app change needed; the remaining v2/M4 item is the localStorage→relational
+  migration below.
+
+- **localStorage→relational (Saved Views + Recent Searches) — LANDED 2026-07-09 (full-stack):**
+  the last v2/M4 boundary item — v1 localStorage payloads now persist per-user in the BFF (SPEC
+  §8). `V6__saved_view_recent_search.sql`: `saved_view` (`UNIQUE(owner,name)` = upsert-by-name)
+  + `recent_search` (`UNIQUE(owner,search)` = dedupe; cap-10 in the BFF). Entities/repos +
+  `ViewStoreService` (ownership-scoped: every read/write keyed on `authentication.getName()`,
+  never a client field) + `ViewsController` (`GET·PUT /api/views`, `DELETE /api/views/{id}`,
+  `GET·POST /api/recents`; VIEWER floor). System views (R-SEM-05 relative windows) stay
+  client-derived. Frontend: `useViewStores` rewritten from `localStore` to TanStack Query against
+  the server (same `SavedViewsApi` shape — consumers barely change); `useRecordRecentSearch` is
+  now a stable hook; a one-time `useLegacyViewMigration` (run in `Shell` once authenticated) pushes
+  any pre-v2 localStorage entries to the server then clears the keys (best-effort, idempotent). The
+  dead `localStore.ts` + client upsert/dedupe/cap helpers were removed (that logic now lives
+  server-side, tested there). Tests: rung-1 `ViewStoreServiceTest`, rung-3 `ViewsApiSpringTest`
+  (ownership: a crafted `owner` body field is ignored; cross-user delete → 404), rung-4
+  `ViewStoreIT` (real Postgres: upsert-by-name, owner isolation, recents cap). Browser-verified
+  end-to-end: save→persist-across-reload, record recent→persist, delete→gone. `NoDbTestSupport`
+  gained both repo mocks. **v2/M4 milestone COMPLETE.**
 
 ## Build order inside any milestone
 backend DTO → engine client call → aggregator/join logic → controller → typed frontend API

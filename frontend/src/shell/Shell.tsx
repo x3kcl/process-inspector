@@ -8,6 +8,7 @@ import { ToastProvider } from '../components/toast'
 import { LiveProvider } from '../live/live'
 import { OpsDrawer } from '../ops/OpsDrawer'
 import { OpsDrawerProvider } from '../ops/drawerState'
+import { useLegacyViewMigration } from '../views/legacyMigration'
 import { Omnibox } from './Omnibox'
 
 /**
@@ -17,6 +18,9 @@ import { Omnibox } from './Omnibox'
  */
 export function Shell() {
   const authRequired = useAnyAuthError()
+  // v2/M4: one-time migration of any v1 localStorage views/recents into the server store, once
+  // the user is authenticated (SPEC §8).
+  useLegacyViewMigration(!authRequired)
   return (
     <ToastProvider>
       {/* App-scoped live channel (live-ui-sse): ONE EventSource for every surface — a

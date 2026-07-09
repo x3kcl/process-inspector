@@ -11,7 +11,7 @@ import { SearchRail } from '../components/SearchRail'
 import { formatClock, formatCount } from '../lib/format'
 import { RecentSearchList } from '../views/RecentSearchList'
 import { ViewChips } from '../views/ViewChips'
-import { recordRecentSearch } from '../views/useViewStores'
+import { useRecordRecentSearch } from '../views/useViewStores'
 import { summarizePartials } from './partials'
 import { useSearchResults, useSearchUrl } from './useSearch'
 
@@ -28,6 +28,7 @@ export function SearchPage() {
   const me = useMe()
   const { request, submit, paramsKey } = useSearchUrl()
   const results = useSearchResults(request)
+  const recordRecentSearch = useRecordRecentSearch()
   const [railCollapsed, setRailCollapsed] = useState(false)
   const collapsedForParams = useRef<string | null>(null)
   // M5 bulk selection (SPEC §7): checkbox rows flow into the intersection bar.
@@ -47,7 +48,7 @@ export function SearchPage() {
       recordedForParams.current = paramsKey
       recordRecentSearch(paramsKey, request)
     }
-  }, [results.isSuccess, request, paramsKey])
+  }, [results.isSuccess, request, paramsKey, recordRecentSearch])
 
   // SPEC §4: the rail collapses to chips once a search runs — once per distinct search,
   // so re-expanding it to tweak filters is never fought by a refetch.

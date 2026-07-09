@@ -6,6 +6,8 @@ import io.inspector.audit.ProtectedInstanceRepository;
 import io.inspector.bulk.BulkJobItemRepository;
 import io.inspector.bulk.BulkJobRepository;
 import io.inspector.snapshot.SnapshotCountRepository;
+import io.inspector.views.RecentSearchRepository;
+import io.inspector.views.SavedViewRepository;
 import org.mockito.Mockito;
 import org.springframework.boot.test.context.TestConfiguration;
 import org.springframework.context.annotation.Bean;
@@ -48,5 +50,15 @@ public class NoDbTestSupport {
     @Bean
     SnapshotCountRepository snapshotCountRepository() {
         return Mockito.mock(SnapshotCountRepository.class);
+    }
+
+    @Bean
+    SavedViewRepository savedViewRepository() {
+        return Mockito.mock(SavedViewRepository.class);
+    }
+
+    @Bean
+    RecentSearchRepository recentSearchRepository() {
+        return Mockito.mock(RecentSearchRepository.class);
     }
 }

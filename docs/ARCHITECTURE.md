@@ -272,6 +272,8 @@ surfaced by `GET /api/engines` and pushed to the health strip via SSE.
 | `GET  /api/instances/{engineId}/{id}/hierarchy` | Call-activity tree BOTH directions: up-walk to the root (`superProcessInstanceId`, cycle-guarded), BFS down; depth cap 10 (registry), breadth cap 50 rendered/node (R-SEM-19) with exact `childTotal` from the query total, per-node dead-letter markers |
 | `GET  /api/instances/{engineId}/{id}/timeline` | Historic activity instances (Gantt rows, `startTime` asc, top-level truncation marker). A call-activity row nests the called instance's own activities as a `children` sub-lane, recursed under the hierarchy caps (depth 10, breadth 50/node, 500-node budget) with a `calledProcessInstanceId` cycle guard; a node truncated by any cap carries `isCapped`. Failing/unfinished nodes carry `liveJobState` (`FAILED`=dead-letter, `RETRYING`=failing-with-retries) joined from the runtime lanes — a dead-lettered async node, whose history row rolled back with its transaction, is **synthesized from the lanes** (phantom-node union) so the failure is never invisible |
 | `GET  /api/instances/{engineId}/{id}/audit` · `…/notes` | Per-instance action history + notes (CRUD) |
+| `GET·PUT /api/views` · `DELETE /api/views/{id}` | **v2/M4 per-user Saved Views** (SPEC §8) — the server-backed replacement for the v1 localStorage store. `PUT` upserts by name (re-saving a name replaces it); `DELETE` is ownership-scoped (404 if absent or owned by another). Every route is keyed on `authentication.getName()` server-side — never a client-supplied owner — so a user only ever sees/mutates their OWN rows. VIEWER floor. System views (R-SEM-05 relative windows) stay client-derived, not stored |
+| `GET·POST /api/recents` | **v2/M4 per-user Recent Searches** (SPEC §8): `POST` records a just-executed search (deduped by search, capped at 10 newest-first in the BFF) and returns the caller's updated list. Same per-user ownership + VIEWER floor |
 | `POST /api/instances/{engineId}/{id}/actions/{verb}` | Verb catalog (SPEC §5); guard tier + reason enforced server-side. Includes `reassign-task` / `unassign-task` (v1.x #6, tier 1 / OPERATOR): server-fresh task restatement gates on the LIVE task (`GET /runtime/tasks/{taskId}` — a completed task 404s → "not active"), then one `PUT /runtime/tasks/{taskId}` `{"assignee":…\|null}`; the audit payload records old→new assignee |
 | `POST /api/instances/{engineId}/{id}/actions/{verb}/curl` | "Show as cURL" (v1.x #6): SERVER-computed command for the proposed action — same RBAC door as execute, but touches neither engine nor audit; renders THIS BFF's verb URL + JSON body + placeholder credential (never a live token, never the engine path). UI shows it verbatim |
 | `POST /api/definitions/{engineId}/{definitionId}/actions/{verb}` | Definition-scoped verbs (`suspend-definition` / `activate-definition`, tier 3) — same guard rails, typed token = the definition key |
@@ -324,8 +326,9 @@ nobody may "simplify" by exposing an engine directly.
   `X-Forwarded-User: <username>` on mutating calls for an engine-side interceptor (§6).
 - **Persistence (Postgres, M4+):** audit log (append-only), instance notes, bulk-job state +
   per-item reports, the `triage_snapshot` job-lane time-series (v2/M4, range-partitioned +
-  drop-partition retention — §2.6), shared saved views (v2; v1.x saved views/recents live in
-  browser localStorage under a versioned envelope), registry CRUD (v2). No durable
+  drop-partition retention — §2.6), per-user Saved Views + Recent Searches (`saved_view` /
+  `recent_search`, v2/M4 — keyed to the authenticated user; superseded the v1 localStorage
+  store, with a one-time client backfill), registry CRUD (v2). No durable
   job-execution framework — in-memory execution, per-item flush, `INTERRUPTED` on restart.
 - **Audit:** every mutating call → `(user, ts, engineId, instanceId, tenantId, action,
   reason, requestPayload incl. old values, httpStatus, outcome, responseSnippet)`; one row

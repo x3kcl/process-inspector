@@ -23,6 +23,8 @@ import type {
   SiblingDiffResponse,
   TriageDashboardResponse,
   TriageTrendResponse,
+  SavedViewDto,
+  RecentSearchDto,
   VariableDto,
 } from './model'
 
@@ -55,6 +57,39 @@ export async function fetchTriageTrends(hours: number): Promise<TriageTrendRespo
   const { data, error, response } = await api.GET('/api/triage/trends', {
     params: { query: { hours } },
   })
+  if (data === undefined) throw new ApiError(response.status, error)
+  return data
+}
+
+/* ---- v2/M4 server-backed Saved Views + Recent Searches (SPEC §8), keyed to the caller ---- */
+
+export async function fetchSavedViews(): Promise<SavedViewDto[]> {
+  const { data, error, response } = await api.GET('/api/views')
+  if (data === undefined) throw new ApiError(response.status, error)
+  return data
+}
+
+/** Upsert by name (re-saving a name replaces it) — mirrors the v1 store's semantics. */
+export async function putSavedView(name: string, search: string): Promise<SavedViewDto> {
+  const { data, error, response } = await api.PUT('/api/views', { body: { name, search } })
+  if (data === undefined) throw new ApiError(response.status, error)
+  return data
+}
+
+export async function deleteSavedView(id: number): Promise<void> {
+  const { error, response } = await api.DELETE('/api/views/{id}', { params: { path: { id } } })
+  if (!response.ok) throw new ApiError(response.status, error)
+}
+
+export async function fetchRecents(): Promise<RecentSearchDto[]> {
+  const { data, error, response } = await api.GET('/api/recents')
+  if (data === undefined) throw new ApiError(response.status, error)
+  return data
+}
+
+/** Record a just-executed search; returns the caller's updated recents (newest-first, capped). */
+export async function postRecent(search: string, label: string): Promise<RecentSearchDto[]> {
+  const { data, error, response } = await api.POST('/api/recents', { body: { search, label } })
   if (data === undefined) throw new ApiError(response.status, error)
   return data
 }

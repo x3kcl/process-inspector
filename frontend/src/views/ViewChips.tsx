@@ -21,10 +21,10 @@ export function ViewChips({ currentSearch }: { currentSearch: string }) {
       search: view.search(now),
     })),
     ...views.map((view) => ({
-      id: view.id,
-      name: view.name,
+      id: String(view.id),
+      name: view.name ?? '',
       note: undefined,
-      search: view.search,
+      search: view.search ?? '',
     })),
   ]
   return (

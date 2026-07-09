@@ -564,6 +564,22 @@ export interface paths {
         patch?: never;
         trace?: never;
     };
+    "/api/recents": {
+        parameters: {
+            query?: never;
+            header?: never;
+            path?: never;
+            cookie?: never;
+        };
+        get: operations["listRecents"];
+        put?: never;
+        post: operations["recordRecent"];
+        delete?: never;
+        options?: never;
+        head?: never;
+        patch?: never;
+        trace?: never;
+    };
     "/api/resolve": {
         parameters: {
             query?: never;
@@ -655,6 +671,38 @@ export interface paths {
         put?: never;
         post?: never;
         delete?: never;
+        options?: never;
+        head?: never;
+        patch?: never;
+        trace?: never;
+    };
+    "/api/views": {
+        parameters: {
+            query?: never;
+            header?: never;
+            path?: never;
+            cookie?: never;
+        };
+        get: operations["listViews"];
+        put: operations["saveView"];
+        post?: never;
+        delete?: never;
+        options?: never;
+        head?: never;
+        patch?: never;
+        trace?: never;
+    };
+    "/api/views/{id}": {
+        parameters: {
+            query?: never;
+            header?: never;
+            path?: never;
+            cookie?: never;
+        };
+        get?: never;
+        put?: never;
+        post?: never;
+        delete: operations["deleteView"];
         options?: never;
         head?: never;
         patch?: never;
@@ -1194,6 +1242,16 @@ export interface components {
             status?: "ACTIVE" | "SUSPENDED" | "COMPLETED" | "FAILED" | "RETRYING";
             tenantId?: string;
         };
+        RecentSearchDto: {
+            /** Format: date-time */
+            at?: string;
+            label?: string;
+            search?: string;
+        };
+        RecordRecentRequest: {
+            label: string;
+            search: string;
+        };
         ResolveMatch: {
             businessKey?: string;
             compositeId?: string;
@@ -1237,6 +1295,18 @@ export interface components {
             skippedVariables?: {
                 [key: string]: string;
             };
+        };
+        SaveViewRequest: {
+            name: string;
+            search: string;
+        };
+        SavedViewDto: {
+            /** Format: date-time */
+            createdAt?: string;
+            /** Format: int64 */
+            id?: number;
+            name?: string;
+            search?: string;
         };
         SearchRequest: {
             businessKey?: string;
@@ -2325,6 +2395,50 @@ export interface operations {
             };
         };
     };
+    listRecents: {
+        parameters: {
+            query?: never;
+            header?: never;
+            path?: never;
+            cookie?: never;
+        };
+        requestBody?: never;
+        responses: {
+            /** @description OK */
+            200: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "*/*": components["schemas"]["RecentSearchDto"][];
+                };
+            };
+        };
+    };
+    recordRecent: {
+        parameters: {
+            query?: never;
+            header?: never;
+            path?: never;
+            cookie?: never;
+        };
+        requestBody: {
+            content: {
+                "application/json": components["schemas"]["RecordRecentRequest"];
+            };
+        };
+        responses: {
+            /** @description OK */
+            200: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "*/*": components["schemas"]["RecentSearchDto"][];
+                };
+            };
+        };
+    };
     resolve: {
         parameters: {
             query: {
@@ -2456,6 +2570,70 @@ export interface operations {
                 content: {
                     "*/*": components["schemas"]["TriageTrendResponse"];
                 };
+            };
+        };
+    };
+    listViews: {
+        parameters: {
+            query?: never;
+            header?: never;
+            path?: never;
+            cookie?: never;
+        };
+        requestBody?: never;
+        responses: {
+            /** @description OK */
+            200: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "*/*": components["schemas"]["SavedViewDto"][];
+                };
+            };
+        };
+    };
+    saveView: {
+        parameters: {
+            query?: never;
+            header?: never;
+            path?: never;
+            cookie?: never;
+        };
+        requestBody: {
+            content: {
+                "application/json": components["schemas"]["SaveViewRequest"];
+            };
+        };
+        responses: {
+            /** @description OK */
+            200: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "*/*": components["schemas"]["SavedViewDto"];
+                };
+            };
+        };
+    };
+    deleteView: {
+        parameters: {
+            query?: never;
+            header?: never;
+            path: {
+                id: number;
+            };
+            cookie?: never;
+        };
+        requestBody?: never;
+        responses: {
+            /** @description No Content */
+            204: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content?: never;
             };
         };
     };

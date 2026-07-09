@@ -6,7 +6,6 @@
 import type { SearchRequest } from '../api/model'
 
 export const SCHEMA_VERSION = 1
-export const RECENT_CAP = 10
 
 export interface SavedView {
   id: string
@@ -74,22 +73,8 @@ export function sameSearch(a: string, b: string): boolean {
   return normalizeSearch(a) === normalizeSearch(b)
 }
 
-/** Most-recent-first, deduped on the canonical search string, capped at RECENT_CAP. */
-export function pushRecent(list: RecentSearch[], entry: RecentSearch): RecentSearch[] {
-  const rest = list.filter((recent) => !sameSearch(recent.search, entry.search))
-  return [entry, ...rest].slice(0, RECENT_CAP)
-}
-
-/** Saving under an existing name replaces that view in place — never a silent duplicate. */
-export function upsertView(list: SavedView[], view: SavedView): SavedView[] {
-  const at = list.findIndex((existing) => existing.name === view.name)
-  if (at === -1) return [...list, view]
-  return list.map((existing, index) => (index === at ? view : existing))
-}
-
-export function removeView(list: SavedView[], id: string): SavedView[] {
-  return list.filter((view) => view.id !== id)
-}
+// upsert-by-name, dedupe and cap now live SERVER-SIDE (ViewStoreService, v2/M4). The client no
+// longer mutates a local list — it saves/records through the BFF and re-reads.
 
 /** Compact criteria one-liner for recents, e.g. `FAILED · billing-prod · orderId: 123`. */
 export function describeSearch(request: SearchRequest): string {

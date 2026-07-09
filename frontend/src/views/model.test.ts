@@ -2,17 +2,13 @@ import { describe, expect, it } from 'vitest'
 import type { SearchRequest } from '../api/model'
 import type { RecentSearch, SavedView } from './model'
 import {
-  RECENT_CAP,
   decodeEnvelope,
   describeSearch,
   encodeEnvelope,
   isRecentSearch,
   isSavedView,
   normalizeSearch,
-  pushRecent,
-  removeView,
   sameSearch,
-  upsertView,
 } from './model'
 
 const view = (name: string, search = 'status=FAILED'): SavedView => ({
@@ -74,48 +70,6 @@ describe('normalizeSearch', () => {
   it('distinguishes genuinely different searches', () => {
     expect(sameSearch('status=FAILED', 'status=RETRYING')).toBe(false)
     expect(sameSearch('status=FAILED', 'status=FAILED&engines=a')).toBe(false)
-  })
-})
-
-describe('pushRecent', () => {
-  it('prepends newest first', () => {
-    const list = pushRecent([recent('a=1')], recent('b=2'))
-    expect(list.map((r) => r.search)).toEqual(['b=2', 'a=1'])
-  })
-
-  it('dedupes on the canonical search string — re-running moves it to the front', () => {
-    const start = [recent('a=1&b=2', 'old label'), recent('c=3')]
-    const list = pushRecent(start, recent('b=2&a=1', 'new label'))
-    expect(list).toHaveLength(2)
-    expect(list[0].label).toBe('new label')
-    expect(list[1].search).toBe('c=3')
-  })
-
-  it(`caps at ${String(RECENT_CAP)} entries, evicting the oldest`, () => {
-    let list: RecentSearch[] = []
-    for (let i = 0; i < RECENT_CAP + 3; i++) {
-      list = pushRecent(list, recent(`n=${String(i)}`))
-    }
-    expect(list).toHaveLength(RECENT_CAP)
-    expect(list[0].search).toBe(`n=${String(RECENT_CAP + 2)}`)
-    expect(list.at(-1)?.search).toBe('n=3')
-  })
-})
-
-describe('saved views list operations', () => {
-  it('appends a new name, replaces an existing one in place', () => {
-    const list = upsertView([view('first'), view('second')], view('third'))
-    expect(list.map((v) => v.name)).toEqual(['first', 'second', 'third'])
-    const replaced = upsertView(list, { ...view('second', 'status=SUSPENDED'), id: 'id-new' })
-    expect(replaced.map((v) => v.name)).toEqual(['first', 'second', 'third'])
-    expect(replaced[1].search).toBe('status=SUSPENDED')
-    expect(replaced[1].id).toBe('id-new')
-  })
-
-  it('removes by id only', () => {
-    const list = [view('a'), view('b')]
-    expect(removeView(list, 'id-a').map((v) => v.name)).toEqual(['b'])
-    expect(removeView(list, 'missing')).toEqual(list)
   })
 })
 
