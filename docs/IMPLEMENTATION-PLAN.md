@@ -276,10 +276,30 @@ OPERATIONS.md §8.
   flowable-rest (CorrectiveActionIT: local `amount` edited, same-named case value untouched).
   Frontend: the §4a pencil gate no longer blocks local rows, the editor header + verify
   sentence/warning say "step-local", freshness re-check is scoped.
-- **Still open in M4:** audit-row config events for scope-mapping reloads (M4 logs
-  them); `X-Forwarded-User` engine attribution; R-AUD-07 ticketId validation/linkify;
-  per-engine `audit-payload` modes, retention purge + DB role grants (OPERATIONS §6 —
-  provisioning, not schema).
+- **M4 close-out — DESIGN LOCKED 2026-07-09** (five-seat panel + Gemini adversarial;
+  `docs/M4-CLOSEOUT.md` v1.0). The five "still open" items — audit-row config events for
+  scope-mapping reloads (R-SAFE-12), `X-Forwarded-User` engine attribution (optional bonus,
+  SPEC §9/ARCH §6), R-AUD-07 ticketId validate/linkify/filter (SHOULD-v1.x), per-engine
+  `audit-payload` modes (R-AUD-03), and retention purge + DB role grants (R-AUD-03) — plus a
+  new **R-AUD-10** config-event primitive. The review reshaped two of them: the config-event
+  failure policy is a **trichotomy** (fail-to-previous / fail-closed-ordering / fail-closed),
+  NOT blanket fail-open (a scope-mapping-reload fail-open was a silent privilege-escalation
+  hole); and the retention purge is **BFF-orchestrated through a `SECURITY DEFINER
+  purge_audit()`** (age + legal-hold DB-enforced) after the panel found `audit_entry` has **no
+  monthly partitions today** (only DEFAULT — "drop old partitions" is a no-op) and that an
+  external second-writer forks the JVM-serialized hash chain. Slices:
+  **S0** role/prod-like scaffolding *first* (grant regime under every later slice: non-owner
+  `inspector_app`, `USAGE` on `audit_entry_seq`, `ALTER DEFAULT PRIVILEGES`, `REVOKE
+  UPDATE/DELETE/TRUNCATE`, grant-level negative test, `prod-like` compose + Testcontainers-PG
+  gate — none of which exist yet) → **S1** config-event primitive + scope-mapping reload events
+  → **S2** `audit-payload` modes (V8 registry column; fix the pre-existing List-blind `redact()`;
+  govern `response_snippet`) → **S3** ticketId validate/linkify/filter → **S4** X-Forwarded-User
+  send-side (V9 registry column; explicit actor propagation, NOT `SecurityContextHolder`) →
+  **S5a** partition maintainer + carve (V10) → **S5b** `legal_hold` + `purge_audit()` +
+  orchestrator (V11). Registry-schema slices serialized (S2→S4) to avoid `Vn` collision with the
+  parallel Registry-CRUD / Migration worktrees. Each slice lands its own SPEC §9 / OPERATIONS §6
+  / DATA-CLASSIFICATION §3 / ARCH §6 / register / TRACEABILITY / TEST-SCENARIOS / TEST-STRATEGY
+  §11 / RUNBOOK lockstep on green merge.
 
 ## M5 — Bulk + hardening (v1 close-out; the former M6)
 - Grid-selection bulk as a **persisted tracked job** (R-SEM-10: state machine, startup
