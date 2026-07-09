@@ -1,6 +1,7 @@
-# Instance Migration — design (v0.1, panel-reviewed, PRE-BUILD)
+# Instance Migration — design (v0.3, P0-spiked + panel-RE-LOCKED, ready for P1)
 
-> Status: **design draft**, reviewed by a 4-voice expert panel (Flowable-REST honesty,
+> Status: **P0 spike DONE + panel RE-LOCK DONE (2026-07-09) — ready for P1** (see the ✅ callout +
+> "P0 RE-LOCK DECISIONS" below). Was: **design draft**, reviewed by a 4-voice expert panel (Flowable-REST honesty,
 > corrective-actions safety, operator-UX/product, and Gemini 2.5). Not yet merged into the
 > lockstep docs. When the build is authorized this becomes the authoritative source for the
 > migration feature and the SPEC §5 / ARCH §5 / IMPLEMENTATION-PLAN §474-480 edits land in the
@@ -13,7 +14,120 @@ version *forward* without terminate+restart — which severs token position and 
 
 ---
 
+## ✅ P0 SPIKE + PANEL RE-LOCK (2026-07-09) — decided, ready for P1
+The P0 wire-shape spike ran live against **6.3.1 (engine-legacy :8084), 6.8.0 (engine-a :8081),
+7.1.0 (engine-7 :8083)**, deploying a two-version `demoMigration` fixture and cross-checking every
+finding against the extracted `flowable-rest` / `flowable-engine` bytecode (not curl alone). It
+**invalidated the feature's marquee premise**; a 5-seat panel (Flowable-REST honesty,
+corrective-actions safety, operator-UX/product, Gemini adversarial, + adversarial closer) then
+**re-locked the design — see "P0 RE-LOCK DECISIONS" below.** Two decisive findings (full detail +
+evidence in §2):
+
+1. **There is NO migration *validate* endpoint in the Flowable REST API — on ANY version.**
+   `ProcessInstanceResource` exposes exactly one migration method,
+   `migrateProcessInstance(id, documentJson) → void` (execute). The engine's
+   `ProcessMigrationService.validateMigrationOfProcessInstance(...)` — which returns *precisely* the
+   `{ migrationValid, validationMessages:[String] }` shape this design predicted — lives **only in
+   the Java API and is never surfaced over REST**. We are REST-only by iron rule. **Therefore the
+   "preview is a *real engine call*" claim (§0) and the "Flowable checked this migration" banner
+   (§0, §5, SPEC §5) are NOT achievable.** Every engine is, in this doc's own words, a
+   "validate-gap engine" — the validate-gap path (§5) is now the *only* path, not the exception.
+2. **The migration-document field is `activityMappings`, NOT `activityMigrationMappings`.** The doc
+   (and §2 below, pre-spike) had it backwards; `activityMigrationMappings` is the engine builder's
+   internal method name. The JSON converter reads `activityMappings`. The execute path itself is
+   solid (200 on 6.8/7.1; token confirmed moved v1→v2) — only the *preview/banner* premise breaks.
+
+---
+
+## P0 RE-LOCK DECISIONS (2026-07-09 panel — supersede the pre-spike sections below)
+The panel was **unanimous on Option A** and hardened it. These decisions govern P1; the older
+§0/§3/§5/§6/§8 text is preserved with inline `⚠️ P0:` markers where superseded.
+
+**Core decision — the "preview" is a BFF *static auto-map check*, an honest estimate, NOT an engine
+validation.** The engine is the ground truth only at execute; there is no REST validator to call.
+
+1. **Diff scope = the instance's currently-ACTIVE activity IDs** (from `listExecutions`, exactly as
+   change-state reads active activities), diffed against the **target** model — *not* the full
+   source-model activity set. The engine only requires mappings for token-holding activities; a
+   full-model diff false-flags renamed-but-inactive nodes and adds nothing.
+2. **Type-aware + nesting-path-aware, deliberately shallow.** Beyond ID equality the diff compares
+   each active node's **type** and **nesting path**. It emits a LOUD, distinct warning (not an
+   "unmapped" flag) on the **same-ID / changed-TYPE** case (v1 `step2` userTask → v2 `step2`
+   serviceTask): auto-map accepts it, the engine returns **200**, yet the token lands on different
+   behavior with no error anywhere — the one *silent-corruption* path both the BFF and the engine
+   would otherwise pass. **Honest floor:** active-scoped + type-aware + nesting-aware is the minimum
+   sound estimate; a bare ID-set diff is unsound. **Ceiling:** never reimplement the engine's
+   migration rules (they vary 6.5→7.x) — stay shallow and labelled.
+3. **Advisory-only — the estimate relaxes NO tier-3 rail.** ADMIN floor unconditional every env,
+   reason ≥10, typed `MIGRATE` on prod, IRREVERSIBLE badge — identical whether the preview was
+   green, red, or never run. A green estimate shortcuts nothing. (This is the single most important
+   safety control: it prevents the estimate from silently becoming a gate.)
+4. **§5 compare-and-set replaces `validationDigest` with `activityStateDigest`.** Execute
+   re-asserts, server-fresh, immediately before the one migrate call: (a) runtime
+   `processDefinitionId` == the previewed `fromProcessDefinitionId`, AND (b) `activityStateDigest` =
+   hash of the **sorted multiset of `(activityId, executionCount)`** of active executions == the
+   digest the preview was computed against. Divergence ⇒ **409 "instance moved since preview —
+   re-preview."** (Multiset, not a plain id-set: token multiplicity is under CAS too.)
+5. **Execute accepts SEMANTIC inputs only** — `{ target, operatorOverrides[], reason, confirmToken }`
+   — **never a client-baked migration document.** The BFF recomputes the static diff server-fresh
+   and *rebuilds* the `activityMappings` wire body itself. This binds "what the operator was shown"
+   to "what is sent" (TOCTOU defense); a crafted/edited client body can't diverge from the approved
+   preview. The preview endpoint sits at the **same ADMIN floor + interactive bulkhead** as execute
+   (it reads two models — never a lower-RBAC recon/amplification route).
+6. **Audit `migrate/v1` payload** (versioned now so batch slots in later): `engineValidated=false`
+   (constant honesty marker), `fromProcessDefinitionId` (pinned), `toProcessDefinitionId` (resolved
+   concrete id, pinned) + key/version, `activityMappings` (verbatim sent), `bffAutoMapped` /
+   `bffFlagged` (what the operator was shown, labelled estimate), `activityStateDigest` +
+   `activeActivities`, `childExecutionCount`, `endpoint`, `restBody`, `reversibility="IRREVERSIBLE"`,
+   `warnings`. **Closes:** *ok* → record the **observed post-migrate `processDefinitionId`** (prove
+   the move landed; don't infer from the void 200); *failed* → the **verbatim** engine error
+   (32 KiB cap), `engineSucceeded=false`; *unknown* (post-dispatch timeout) → Verify-now, **never
+   auto-retried** (migrate is non-idempotent, has no idempotency key).
+7. **Verify-now for `unknown`** = re-`GET` the runtime instance and compare `processDefinitionId`:
+   `==to` → applied (reconcile `unknown→ok`); `==from` **and** `activityStateDigest` unchanged → not
+   applied (reconcile `unknown→failed`, safe; operator may re-issue as a fresh migrate); ended/gone
+   → fall back to the **historic** instance's `processDefinitionId`. Reconcile is an audit *close*,
+   never a re-dispatch.
+8. **Capability gating collapses to two states.** DELETE the separate "validate-resource" probe
+   (§3 rail 2, §5 Panel B) — it would 404 on every engine, forever; a flag for a universally-absent
+   feature is itself dishonest. The `migration` cap (≥6.5) gates **execute**; pre-6.5 (6.3.1
+   confirmed no `/migrate` route) → greyed with reason (ProblemDetail, never a dead 404 passthrough).
+   **No engine ever earns an "engine checked" badge** — one uniform "Inspector estimate" banner for
+   every migration-capable engine (the pre-spike three-state "checked / UNCHECKED / off" model is
+   dead).
+9. **Definition-versions on-ramp ships in slice-1 regardless** — read-only, count-only Stage-0
+   ("37 running on v3 · latest v5"). Standalone diagnostic value (answers "how bad, how many, which
+   version" in a bad-deploy incident) and zero mutation surface; de-risks the feature by landing
+   value early.
+10. **Execute-time backstop (the two-phase engine-as-validator, kept as backstop not primary).**
+    When the engine rejects a case the BFF estimate couldn't see, surface the **verbatim** error,
+    highlight the named activity in the mapping table, state **"nothing was migrated — the engine
+    rolls back the whole document atomically,"** and let the operator map + retry. The pre-flight
+    estimate front-loads the common renamed-activity case; the engine's own rejection catches the
+    rest — best of both, no serial-reveal-only loop.
+
+**Acknowledged residual limits (RUNBOOK + banner must disclose, cannot be fixed over REST):**
+semantic divergence the BFF structurally *cannot* see — a stable-ID activity whose service-task
+code / form / required-variables / integration changed migrates 200-OK but may break downstream;
+re-subscribed timer/message/signal boundary events reset (a 3h-elapsed 24h timer restarts at 24h);
+call-activity children are not migrated; variables are retained untransformed. These are inherent
+to REST-only migration and are precisely why the banner never claims success.
+
+**Panel decisions resolved:** Q3 → **moot** (nothing to cache — no engine validate). Q6 → keep an
+**explicit "Check mapping" click**, but it computes a BFF model-diff, not an engine digest.
+Validate-gap policy → **collapsed** (every engine is validate-gap; one honest banner). On-ramp →
+**confirmed in slice-1.** New: **A-advisory-only** + **`activityStateDigest`-CAS** +
+**server-recompute wire body** + **`engineValidated:false`** (see §12 table).
+
+---
+
 ## 0. The marquee property — and its honest limits
+> ⚠️ **P0 (2026-07-09) CONTRADICTS THIS SECTION.** The premise below — "Flowable exposes a
+> migration validator … migration's preview is a real engine call" — is **false over REST**. The
+> validator is Java-API-only (`ProcessMigrationService.validateMigrationOfProcessInstance`), never
+> exposed by `flowable-rest` on 6.3/6.8/7.1. See the top-of-doc P0 callout and §2. Text preserved
+> for the panel.
+
 Flowable exposes a migration validator: a POST that statically checks a proposed migration
 document against the two definitions. So migration's "preview" is a **real engine call**, unlike
 change-state's BFF simulation. **But the panel corrected the claim's scope:**
@@ -54,31 +168,57 @@ OUT (later slices, each its own design; resolves IMPLEMENTATION-PLAN §474-475):
 always safe to do. The BUILD trigger is a concrete recurring incident: *N instances wedged on a
 known-bad deploy version where terminate+restart is unacceptable.* (Panel consensus.)
 
-## 2. Flowable wire shape — SPIKE LIVE in P0, never assume
-The single-instance shape below is a HYPOTHESIS to confirm on **6.5, a mid-6.x, and 7.1** before
-any path string or DTO hardens (the spec flags "batch shape varies 6.5→7.x", ARCH §2.5):
-- Execute: `POST /runtime/process-instances/{id}/migrate` — body = migration document.
-- Validate: path is **NOT reliably** `…/migration/validate`. Flowable has historically split
-  single-instance vs by-definition migration across different resources and moved them between
-  6.x and 7.x. **Curl BOTH verbs independently in P0.** Treat `/migrate` and the validate path
-  as two separately-unproven strings.
-- Migration document (field name `activityMigrationMappings` — confirmed correct, NOT
-  `activityMappings`). **The mapping DTO must model the richer forms**, even though slice-1's UI
-  only drives one-to-one:
+## 2. Flowable wire shape — ✅ SPIKED LIVE 2026-07-09 (facts below supersede the hypothesis)
+Method: deployed `demoMigration:1`/`:2` (v2 renames `reviewTask`→`approveTask`) over REST to each
+engine, started a v1 instance, probed both verbs independently, and confirmed every path/field
+against the extracted `flowable-rest-*.jar` resource classes + `flowable-engine-*.jar` converter.
+
+**Drift matrix (confirmed):**
+
+| Call | 6.3.1 (:8084) | 6.8.0 (:8081/:8082) | 7.1.0 (:8083) |
+|------|---------------|---------------------|---------------|
+| `POST /runtime/process-instances/{id}/migrate` (execute) | **404 — no endpoint** (capability cliff, pre-6.5) | **200** ✓ token moved v1→v2, `processDefinitionId` advanced | **200** ✓ |
+| any validate path (`…/migrate/validate`, `…/migration/validate`, `runtime/process-instance-migration/validate`, by-definition `repository/process-definitions/{id}/migrate/validate`) | 404 | **404 — does not exist** | **500 "No endpoint" — does not exist** |
+
+- **Execute — CONFIRMED:** `POST /runtime/process-instances/{id}/migrate`, body = the migration
+  document (raw JSON, parsed by the engine, not a REST DTO), returns **`void`/empty 200**. Bytecode:
+  `ProcessInstanceResource.migrateProcessInstance(String id, String documentJson)` — the ONLY
+  migration method on the resource. Capability cliff confirmed: 6.3.1 has no such route (404) → the
+  `migration` (≥6.5) capability gate correctly refuses pre-6.5 with a ProblemDetail, never a dead
+  404 passthrough.
+- **Validate — CONFIRMED ABSENT over REST (all versions).** No single-instance and no by-definition
+  validate route exists. `flowable-rest` has **zero** migration validate resource; the engine's
+  `ProcessMigrationService.validateMigrationOfProcessInstance(...)` (the source of the
+  `{migrationValid, validationMessages:[String]}` shape) is **Java-API only**. ⚠️ This is the P0
+  finding that pauses the build (top-of-doc callout).
+- **Migration-document field is `activityMappings`** (⚠️ **NOT** `activityMigrationMappings` — that
+  was backwards; it is the engine builder's internal method name). Verbatim proof from
+  `ProcessInstanceMigrationDocumentConverter`: the converter reads `activityMappings` and
+  discriminates the three forms by field presence. The rich-DTO instinct was RIGHT — only the
+  wrapper key was wrong:
   ```json
   {
     "toProcessDefinitionId": "orderProcess:5:abc",
-    "activityMigrationMappings": [
-      { "fromActivityId": "reviewTask", "toActivityId": "reviewTaskV2" },
-      { "fromActivityIds": ["a","b"], "toActivityId": "merged" },      // many-to-one
-      { "fromActivityId": "split", "toActivityIds": ["x","y"] }        // one-to-many
+    "activityMappings": [
+      { "fromActivityId": "reviewTask", "toActivityId": "approveTask" },   // one-to-one
+      { "fromActivityIds": ["a","b"], "toActivityId": "merged" },          // many-to-one
+      { "fromActivityId": "split", "toActivityIds": ["x","y"] }            // one-to-many
     ]
   }
   ```
-  A one-to-one-only DTO would make parallel-gateway / multi-instance renames unexpressible.
-  (alt target selector: `toProcessDefinitionKey` + `toProcessDefinitionVersion` +
-  `toProcessDefinitionTenantId` — thread tenant through both calls.)
-- Validate response: `{ migrationValid: bool, validationMessages: [String] }` — confirm in P0.
+  Target selector alternatives (converter-confirmed keys):
+  `toProcessDefinitionKey` + `toProcessDefinitionVersion` + `toProcessDefinitionTenantId`.
+  OUT-of-scope converter keys present but unused by slice-1: per-mapping `newAssignee`,
+  `localVariables`; top-level `processInstanceVariables`, `preUpgradeScript`, `postUpgradeScript`,
+  `enableActivityMappings`.
+- **No validate response to model.** When a mapping is missing, execute fails **at apply time** with
+  a precise verbatim engine message — e.g. `"Migration Activity mapping missing for activity
+  definition Id:'reviewTask' or its MI Parent"` (HTTP 500 on 6.8/7.1). That apply-time error is the
+  only engine-authoritative "validation" available over REST, and it is what a `failed` audit close
+  must surface verbatim.
+- **6.x↔7.x drift note for ARCH §2.5:** unknown routes differ — 6.8 returns a clean **404**, 7.1
+  wraps them as **500 `"No endpoint POST …"`**. Capability probing must treat *both* as "route
+  absent"; do not assume 404 is the only "not-supported" signal.
 
 ## 3. Guardrails — pre-flight, BFF-side, run for BOTH validate and execute
 Mirror `FlowSurgeryService.planChangeState` ORDER exactly:
@@ -120,6 +260,13 @@ Mirror `FlowSurgeryService.planChangeState` ORDER exactly:
   background sampler lane.
 
 ## 5. The compare-and-set / banner-honesty rule (panel-critical)
+> ⚠️ **P0 RE-LOCK.** There is no engine validate to "re-run server-fresh", so the second bullet
+> (re-run the validator, `validationDigest`, "validated at execute time" banner) is unbuildable as
+> written. The CAS hardens to **definition-id + token-position re-assert only**. The
+> **"validate-gap policy" below is now the UNIVERSAL case**, not the exception: every REST engine is
+> validate-gap. Candidate reframe (panel to confirm): the "engine checked this" banner is replaced
+> everywhere by the honest **BFF-static-check / "Inspector estimate, not the engine's"** copy.
+
 "Server-fresh re-plan" defends the *definition* only. The real hole: operator validates v3→v5,
 but a parallel actor / async job advances the instance to v4 or moves its token between validate
 and execute. Mandate:
@@ -138,6 +285,14 @@ heightened confirm. Mirrors change-state's honest "BFF simulation" labelling. (F
 defensible do-no-harm alternative; this is a deliberate product call, flagged for sign-off.)
 
 ## 6. BFF endpoints (whitelisted, additive)
+> ⚠️ **P0 RE-LOCK.** The `/migrate/validate` endpoint below cannot proxy an engine validator (none
+> exists over REST). If the panel adopts the BFF-static-check reframe it stays as a BFF-computed
+> model-diff (honestly labelled), populated from two `getProcessDefinitionModel` reads — **not** an
+> engine round-trip. `engineValidated` is then always `false`; `validationMessages` become
+> BFF-authored (still surfaced distinctly from the verbatim engine apply-time error). If the panel
+> instead adopts execute-only, this endpoint is dropped entirely. Field shapes below are pending
+> that decision.
+
 - `POST /api/instances/{engineId}/{instanceId}/migrate/validate`
   body `{ toDefinitionId? | toDefinitionKey?+toVersion? , activityMappings?[] }`
   → `MigrationValidation { migrationValid, validationMessages:[String] (verbatim),
@@ -201,16 +356,22 @@ path against an unspiked, 6.5→7.x-variant wire shape.
 - ArchUnit / Spotless / ESLint green; schema regen via a throwaway BFF port (parallel-session gotcha).
 
 ## 11. Phasing (implementation plan)
-- **P0 — spike (½–1 day):** live wire-shape on 6.5 / mid-6.x / 7.1; lock the two path strings +
-  document + validation-response field names; `demoMigration` seed v1/v2; capability probe for
-  the validate resource. Gate: green spike IT.
+- **P0 — spike ✅ DONE 2026-07-09** (live on 6.3.1 / 6.8.0 / 7.1.0, bytecode-verified; see §2 +
+  top-of-doc callout). Locked: execute path `POST /runtime/process-instances/{id}/migrate`,
+  document field `activityMappings` (three forms), capability cliff at 6.5. **Disproved: any REST
+  validate endpoint exists (Java-API only).** `demoMigration` v1/v2 seed authored
+  (`docker/processes/demo-migration-v{1,2}.bpmn20.xml`). **Panel RE-LOCK DONE 2026-07-09 → P1
+  unblocked; build to the "P0 RE-LOCK DECISIONS" above, NOT the pre-spike §0/§5/§6/§8 text.**
 - **P1 — backend + on-ramp (2–3 days):** `MigrationService` (clone `FlowSurgeryService` rail
-  order + the §5 CAS assertion); `FlowableEngineClient.migrateInstance` / `validateMigration`
-  (tenant-threaded); richer mapping DTO; `ActionVerb.MIGRATE_INSTANCE("migrate-instance", 3,
-  Role.ADMIN, INSTANCE)`; validate + execute endpoints; versions endpoint; capability +
-  validate-gap gating; full guard + outcome + CAS ITs. spec-sync: SPEC §5 copy/badge, ARCH §5
-  RBAC, ARCH §2.5 validate probe, IMPLEMENTATION-PLAN §474-480 (resolve the diagram-slice
-  conflict), RUNBOOK recovery.
+  order + the §5 `activityStateDigest` CAS, decision P0-3/P0-4); `FlowableEngineClient.migrateInstance`
+  (bodiless POST `…/migrate`, field **`activityMappings`**, tenant-threaded) — **NO `validateMigration`
+  client method (no such REST endpoint); the "preview" is a BFF static diff over two
+  `getProcessDefinitionModel` reads**; richer mapping DTO (three forms); `ActionVerb.MIGRATE_INSTANCE("migrate-instance",
+  3, Role.ADMIN, INSTANCE)`; `migrate/preview` (BFF diff) + `migrate/execute` endpoints; versions
+  endpoint; capability gating (execute-route only, two states); full guard + outcome + CAS ITs.
+  spec-sync: SPEC §5 copy/badge (honest "Inspector estimate" banner, `engineValidated:false`),
+  ARCH §5 RBAC, ARCH §2.5 (drift: 404 vs 500 "No endpoint"; DELETE the validate-probe row),
+  IMPLEMENTATION-PLAN §474-480, RUNBOOK recovery + the acknowledged-limits disclosure.
 - **P2 — frontend wizard (2 days):** gen:api; 3-step MigrateModal; explicit Validate; structured
   message chips + honesty/UNCHECKED banners; targeted mapping dropdowns for flagged activities;
   typed-MIGRATE; definition-versions view + entry (b); Playwright e2e (URL-predicate mocks) + one
@@ -223,13 +384,18 @@ path against an unspiked, 6.5→7.x-variant wire shape.
 |---|---|---|---|
 | Q1 | Mapping UI in slice-1 | **Validator-driven targeted table** (dropdown only for flagged activities); full diagram wizard deferred | A, 4-1 (Gemini×2, Safety, Flowable-API vs UX) |
 | Q2 | Cross-key | **Hard 422**, its own design later | unanimous |
-| Q3 | Cache validate | **Always live**, execute re-validates | unanimous |
+| Q3 | Cache validate | **MOOT (P0 re-lock)** — no engine validate exists over REST; the BFF estimate is recomputed per "Check mapping" click, nothing to cache | resolved |
 | Q4 | Batch | **Defer entirely**; version the audit schema now; don't scaffold poll | unanimous |
 | Q5 | Migrate-back | **Manual re-run**, no one-click (would fake an undo) | unanimous |
-| Q6 | Validate trigger | **Explicit Validate click** (anchors audit digest, legible) | Gemini + Flowable-API vs UX |
+| Q6 | Validate trigger | **Explicit "Check mapping" click (P0 re-lock)** — computes a BFF model-diff (active-scoped, type+nesting aware), NOT an engine digest | resolved |
 | Q7 | RBAC | **Tier-3 ADMIN unconditional every env**; typed-confirm is the prod escalation | unanimous |
-| — | Validate-gap engine | **Allow with UNCHECKED banner** + heightened confirm (not full refuse) | B (Gemini + Flowable-API); flagged for sign-off |
+| — | Validate-gap engine | **COLLAPSED (P0 re-lock)** — no validator on ANY engine; delete the separate probe; one uniform "Inspector estimate" banner; no "checked" badge ever | unanimous |
 | — | On-ramp | **Definition-versions view into slice-1** (cohort visibility) | UX; unopposed |
+| **P0-1** | Preview mechanism | **BFF static auto-map check = honest estimate; engine is ground truth at execute only** | unanimous (5 seats) |
+| **P0-2** | Estimate authority | **Advisory-only — relaxes NO tier-3 rail**; a green preview shortcuts nothing | Safety; unopposed |
+| **P0-3** | Execute-time CAS | **`activityStateDigest`** (multiset of (activityId,executionCount)) + def-id re-assert, replacing the impossible `validationDigest` | Safety; unopposed |
+| **P0-4** | Wire-body trust | **Execute takes semantic inputs only; BFF recomputes the migration document server-side** (TOCTOU bind shown→sent) | Safety; unopposed |
+| **P0-5** | Same-ID/changed-TYPE | **Loud distinct BFF warning** — the one silent-corruption path (engine 200s, token on wrong behavior) | Flowable-REST honesty; unopposed |
 
 ## 13. Parallel-build compatibility with Registry CRUD (v2)
 Migration and Registry CRUD (`REGISTRY-CRUD.md`) are being built in parallel sessions. The
