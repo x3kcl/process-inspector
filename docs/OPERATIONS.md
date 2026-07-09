@@ -54,6 +54,13 @@ mismatch → non-blocking reload banner; dynamic-import failure → reload promp
 - DB role: INSERT/SELECT only (REVOKE UPDATE/DELETE) + guard trigger; per-row hash chain for
   tamper evidence; monthly range partitions; retention default 400 days with an audited
   purge job; legal-hold procedure (suspend purge per engine/tenant/window).
+  **Monthly partitioning is live (S5a):** `V10` carved the DEFAULT partition into
+  `audit_entry_YYYY_MM` children (append-only never relaxed — the carve moves rows by
+  DETACH/CREATE/INSERT/TRUNCATE/ATTACH with `seq`/`chain_hash` verbatim), and
+  `AuditPartitionMaintainer` create-aheads the current+next month at startup + daily. Watch for the
+  **`AUDIT_DEFAULT_PARTITION_NONEMPTY`** ERROR marker — it means rows are landing in the DEFAULT
+  safety net (create-ahead failing, e.g. the connection lacks owner DDL), so the future purge could
+  not drop them. The audited **purge job + legal-hold** themselves land with S5b (`purge_audit()`).
 - PII: variable payloads in audit rows are potentially personal data. Per-engine
   `audit-payload: full|redacted|metadata-only`; secret-name denylist → `«redacted»`; payload
   bodies role-gated OPERATOR+; erasure = skeleton-preserving redaction (accountability
