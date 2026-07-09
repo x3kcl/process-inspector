@@ -34,6 +34,14 @@ public class RbacAuthorizer {
      */
     public static final String REGISTRY_ADMIN_AUTHORITY = "ROLE_REGISTRY_ADMIN";
 
+    /**
+     * The apex fleet authority (IDP-SECURITY.md §9, R-SAFE-14) — administers the group→scope mapping
+     * itself, INCLUDING the assignment of {@code REGISTRY_ADMIN} and of {@code ACCESS_ADMIN}. Higher
+     * than {@code REGISTRY_ADMIN}. Never conferred by a ladder ADMIN, never by {@code REGISTRY_ADMIN},
+     * and never by break-glass (which grants ADMIN-global via {@code ROLE_ADMIN}, not this).
+     */
+    public static final String ACCESS_ADMIN_AUTHORITY = "ROLE_ACCESS_ADMIN";
+
     private final MappingSource mappingSource;
     private final InspectorProperties registry;
     private final OidcGroupResolver groupResolver;
@@ -88,6 +96,31 @@ public class RbacAuthorizer {
             return mappingSource.fleetGrantsForGroups(groupsOf(user)).contains(FleetGrant.REGISTRY_ADMIN);
         }
         return auth.getAuthorities().stream().anyMatch(a -> REGISTRY_ADMIN_AUTHORITY.equals(a.getAuthority()));
+    }
+
+    /**
+     * SpEL entry for the mapping-admin surface (IDP-SECURITY.md §9, R-SAFE-14): does this user hold
+     * the apex {@code ACCESS_ADMIN} fleet grant? Resolved from the mapping seam's fleet grants for an
+     * OIDC session (issuer-pinned), or the {@code ROLE_ACCESS_ADMIN} authority on a dev session —
+     * NEVER from a ladder ADMIN, {@code REGISTRY_ADMIN}, or break-glass. Checked at the door via
+     * {@code @PreAuthorize} AND re-checked in the service.
+     */
+    public boolean canAdministerAccess(Authentication auth) {
+        if (auth == null || !auth.isAuthenticated()) {
+            return false;
+        }
+        if (auth instanceof OAuth2AuthenticationToken oauth && oauth.getPrincipal() instanceof OAuth2User user) {
+            return mappingSource.fleetGrantsForGroups(groupsOf(user)).contains(FleetGrant.ACCESS_ADMIN);
+        }
+        return auth.getAuthorities().stream().anyMatch(a -> ACCESS_ADMIN_AUTHORITY.equals(a.getAuthority()));
+    }
+
+    /** Groups the acting user's OIDC session carries (issuer-pinned) — used by the mapping-admin service. */
+    public List<String> oidcGroups(Authentication auth) {
+        if (auth instanceof OAuth2AuthenticationToken oauth && oauth.getPrincipal() instanceof OAuth2User user) {
+            return groupsOf(user);
+        }
+        return List.of();
     }
 
     /** The guard layer's programmatic check (targets the engine's pinned tenant). */

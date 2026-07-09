@@ -166,6 +166,13 @@ public class SecurityConfig {
                 User.withUsername("registry-admin")
                         .password(password)
                         .authorities(RbacAuthorizer.REGISTRY_ADMIN_AUTHORITY, "ROLE_" + Role.VIEWER.name())
+                        .build(),
+                // Fleet ACCESS_ADMIN (v2 IdP-Security, R-SAFE-14) — the apex, ORTHOGONAL to the ladder
+                // and to REGISTRY_ADMIN. NOT an engine ADMIN and NOT a registry admin. VIEWER too so
+                // they can load the SPA to reach /admin/access.
+                User.withUsername("access-admin")
+                        .password(password)
+                        .authorities(RbacAuthorizer.ACCESS_ADMIN_AUTHORITY, "ROLE_" + Role.VIEWER.name())
                         .build());
     }
 
