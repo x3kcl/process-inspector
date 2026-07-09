@@ -3,14 +3,25 @@ package io.inspector.registry;
 import io.inspector.audit.AuditEntry;
 import io.inspector.audit.AuditOutcome;
 import io.inspector.audit.AuditService;
+import io.inspector.config.InspectorProperties;
 import io.inspector.config.InspectorProperties.EngineConfig;
+import io.inspector.config.InspectorProperties.EngineEnvironment;
+import io.inspector.config.RegistryProperties;
 import io.inspector.registry.RegistryDrift.DriftReport;
+import io.inspector.registry.RegistryUrlValidator.Rejected;
+import io.inspector.registry.RegistryUrlValidator.Result;
+import io.inspector.security.RbacAuthorizer;
 import java.time.Clock;
 import java.util.LinkedHashMap;
 import java.util.List;
+import java.util.Locale;
 import java.util.Map;
+import java.util.regex.Pattern;
+import org.slf4j.Logger;
+import org.slf4j.LoggerFactory;
 import org.springframework.context.ApplicationEventPublisher;
 import org.springframework.http.HttpStatus;
+import org.springframework.security.core.Authentication;
 import org.springframework.stereotype.Service;
 import org.springframework.transaction.annotation.Transactional;
 import org.springframework.web.server.ResponseStatusException;
@@ -29,23 +40,56 @@ import org.springframework.web.server.ResponseStatusException;
 @Service
 public class EngineRegistryStore {
 
+    private static final Logger log = LoggerFactory.getLogger(EngineRegistryStore.class);
+
     private static final String SYSTEM_ACTOR = "system";
     private static final String ACTION_SEED = "registry-seed";
+    private static final String ACTION_ADD = "registry-add";
     private static final String ACTION_EDIT = "registry-edit";
+    private static final String ACTION_PROBE = "registry-probe";
+    private static final String ACTION_ENABLE = "registry-enable";
+    private static final String ACTION_DISABLE = "registry-disable";
+    private static final String ACTION_REMOVE = "registry-remove";
+    private static final String ACTION_PURGE = "registry-purge";
     private static final String SEED_REASON =
             "Registry seed: imported inspector.engines YAML into an empty registry (R-OPS-15)";
+    private static final Pattern ID_PATTERN = Pattern.compile(InspectorProperties.ENGINE_ID_PATTERN);
 
     private final EngineRegistryRepository repository;
     private final AuditService audit;
     private final ApplicationEventPublisher events;
+    private final RegistryUrlValidator urlValidator;
+    private final RegistryProperties registryProperties;
+    private final RbacAuthorizer rbac;
     private final Clock clock;
 
     public EngineRegistryStore(
-            EngineRegistryRepository repository, AuditService audit, ApplicationEventPublisher events, Clock clock) {
+            EngineRegistryRepository repository,
+            AuditService audit,
+            ApplicationEventPublisher events,
+            RegistryUrlValidator urlValidator,
+            RegistryProperties registryProperties,
+            RbacAuthorizer rbac,
+            Clock clock) {
         this.repository = repository;
         this.audit = audit;
         this.events = events;
+        this.urlValidator = urlValidator;
+        this.registryProperties = registryProperties;
+        this.rbac = rbac;
         this.clock = clock;
+    }
+
+    /**
+     * The SERVICE half of the door-AND-service RBAC doctrine (corrective-actions): every write
+     * re-verifies the fleet REGISTRY_ADMIN grant here, not only at the controller's
+     * {@code @PreAuthorize} door. Returns the audit actor name.
+     */
+    private String requireRegistryAdmin(Authentication actor) {
+        if (!rbac.canAdministerRegistry(actor)) {
+            throw new ResponseStatusException(HttpStatus.FORBIDDEN, "requires REGISTRY_ADMIN");
+        }
+        return actor.getName();
     }
 
     /** True when no engine has ever been registered — the seed trigger. */
@@ -117,6 +161,247 @@ public class EngineRegistryStore {
     /** The DB-vs-YAML drift for the boot report / admin badge — never mutates. */
     public DriftReport driftReport(List<EngineConfig> yamlEngines) {
         return RegistryDrift.compute(yamlEngines, findLive());
+    }
+
+    /* ---------------- S4 admin CRUD + lifecycle (all REGISTRY_ADMIN, audited, reload) ----------------
+     *
+     * Each write: SSRF-validate the base-URL (add/edit) → audit fail-closed → mutate the row →
+     * publish RegistryChangedEvent (AFTER_COMMIT reload). A rejected base-URL throws BEFORE any audit
+     * or write (nothing happened; the rule-named 400 is safe copy), logged loudly.
+     */
+
+    private static final String LIFECYCLE_DRAFT = "draft";
+    private static final String LIFECYCLE_PROBED = "probed";
+    private static final String LIFECYCLE_PROBE_FAILED = "probe_failed";
+    private static final String LIFECYCLE_REMOVED = "removed";
+
+    /** Every row incl. draft/disabled/tombstoned — the admin list (the enabled-only view is findLive). */
+    public List<EngineRegistryRow> findAllForAdmin() {
+        return repository.findAll();
+    }
+
+    /** A live (non-tombstoned) row, or 404. */
+    public EngineRegistryRow requireRow(String id) {
+        return repository
+                .findByIdAndRemovedAtIsNull(id)
+                .orElseThrow(() -> new ResponseStatusException(HttpStatus.NOT_FOUND, "Unknown engine: " + id));
+    }
+
+    /** Add a new engine (→ DRAFT, read-only). SSRF-validated, slug- + duplicate-id-checked, audited. */
+    @Transactional
+    public EngineRegistryRow add(RegistryWrite w, Authentication actor, String reason) {
+        String actorName = requireRegistryAdmin(actor);
+        String id = w.id();
+        if (id == null || !ID_PATTERN.matcher(id).matches()) {
+            throw new ResponseStatusException(
+                    HttpStatus.BAD_REQUEST, "engine id must match " + InspectorProperties.ENGINE_ID_PATTERN);
+        }
+        if (repository.existsById(id)) {
+            throw new ResponseStatusException(HttpStatus.CONFLICT, "engine id already registered: " + id);
+        }
+        validateUrl(w.baseUrl(), w.environment());
+
+        AuditEntry entry =
+                audit.beginPending(actorName, id, w.tenantId(), id, ACTION_ADD, reason, null, writePayload(null, w));
+        EngineRegistryRow row = new EngineRegistryRow();
+        row.setId(id);
+        row.setLifecycle(LIFECYCLE_DRAFT); // born disabled + read-only; trust is earned by a probe
+        row.setMode(EngineRegistryMapper.MODE_READ_ONLY);
+        row.setSource(EngineRegistryMapper.SOURCE_UI);
+        row.setCreatedAt(clock.instant());
+        applyWrite(row, w);
+        repository.save(row);
+        audit.close(entry, AuditOutcome.ok, null, "added", true);
+        events.publishEvent(new RegistryChangedEvent(id));
+        return row;
+    }
+
+    /** Edit everything except {@code id} (immutable). SSRF-re-validated, audited before/after. */
+    @Transactional
+    public EngineRegistryRow edit(String id, RegistryWrite w, Authentication actor, String reason) {
+        String actorName = requireRegistryAdmin(actor);
+        EngineRegistryRow row = requireRow(id);
+        validateUrl(w.baseUrl(), w.environment());
+
+        Map<String, Object> before = rowPayload(row);
+        AuditEntry entry =
+                audit.beginPending(actorName, id, w.tenantId(), id, ACTION_EDIT, reason, null, writePayload(before, w));
+        applyWrite(row, w);
+        repository.save(row);
+        audit.close(entry, AuditOutcome.ok, null, "edited", true);
+        events.publishEvent(new RegistryChangedEvent(id));
+        return row;
+    }
+
+    /** Record a read-only probe result — DRAFT/PROBE_FAILED → PROBED | PROBE_FAILED. Audited. */
+    @Transactional
+    public EngineRegistryRow recordProbe(String id, boolean ok, Authentication actor, String detail) {
+        String actorName = requireRegistryAdmin(actor);
+        EngineRegistryRow row = requireRow(id);
+        String next = ok ? LIFECYCLE_PROBED : LIFECYCLE_PROBE_FAILED;
+        Map<String, Object> payload = new LinkedHashMap<>();
+        payload.put("id", id);
+        payload.put("from", row.getLifecycle());
+        payload.put("to", next);
+        AuditEntry entry = audit.beginPending(
+                actorName, id, row.getTenantId(), id, ACTION_PROBE, "read-only probe", null, payload);
+        row.setLifecycle(next);
+        row.setUpdatedAt(clock.instant());
+        repository.save(row);
+        audit.close(entry, ok ? AuditOutcome.ok : AuditOutcome.failed, null, ok ? "probed" : "probe-failed", true);
+        events.publishEvent(new RegistryChangedEvent(id));
+        return row;
+    }
+
+    /** Enable (→ ACTIVE) in the given mode. Requires PROBED or DISABLED (never a raw DRAFT). Audited. */
+    @Transactional
+    public EngineRegistryRow enable(String id, boolean readWrite, Authentication actor, String reason) {
+        String actorName = requireRegistryAdmin(actor);
+        EngineRegistryRow row = requireRow(id);
+        if (!LIFECYCLE_PROBED.equals(row.getLifecycle())
+                && !EngineRegistryMapper.LIFECYCLE_DISABLED.equals(row.getLifecycle())
+                && !EngineRegistryMapper.LIFECYCLE_ACTIVE.equals(row.getLifecycle())) {
+            throw new ResponseStatusException(
+                    HttpStatus.CONFLICT,
+                    "enable requires a probed or disabled engine (current: " + row.getLifecycle() + ")");
+        }
+        String mode = readWrite ? EngineRegistryMapper.MODE_READ_WRITE : EngineRegistryMapper.MODE_READ_ONLY;
+        return transition(row, EngineRegistryMapper.LIFECYCLE_ACTIVE, mode, ACTION_ENABLE, actorName, reason);
+    }
+
+    /** Disable (pause dispatch, R-SEM-11). Requires ACTIVE. Audited. */
+    @Transactional
+    public EngineRegistryRow disable(String id, Authentication actor, String reason) {
+        String actorName = requireRegistryAdmin(actor);
+        EngineRegistryRow row = requireRow(id);
+        if (!EngineRegistryMapper.LIFECYCLE_ACTIVE.equals(row.getLifecycle())) {
+            throw new ResponseStatusException(HttpStatus.CONFLICT, "only an active engine can be disabled");
+        }
+        return transition(
+                row, EngineRegistryMapper.LIFECYCLE_DISABLED, row.getMode(), ACTION_DISABLE, actorName, reason);
+    }
+
+    /** Soft-delete → tombstone. Requires DISABLED (never a live engine). id→name survives. Audited. */
+    @Transactional
+    public void remove(String id, Authentication actor, String reason) {
+        String actorName = requireRegistryAdmin(actor);
+        EngineRegistryRow row = requireRow(id);
+        if (!EngineRegistryMapper.LIFECYCLE_DISABLED.equals(row.getLifecycle())) {
+            throw new ResponseStatusException(HttpStatus.CONFLICT, "disable the engine before removing it");
+        }
+        Map<String, Object> payload = new LinkedHashMap<>();
+        payload.put("id", id);
+        payload.put("action", "tombstone");
+        AuditEntry entry =
+                audit.beginPending(actorName, id, row.getTenantId(), id, ACTION_REMOVE, reason, null, payload);
+        row.setLifecycle(LIFECYCLE_REMOVED);
+        row.setRemovedAt(clock.instant());
+        row.setUpdatedAt(clock.instant());
+        repository.save(row);
+        audit.close(entry, AuditOutcome.ok, null, "removed", true);
+        events.publishEvent(new RegistryChangedEvent(id));
+    }
+
+    /** Hard-remove a tombstone after retention. Requires a REMOVED row. Audited. */
+    @Transactional
+    public void purge(String id, Authentication actor, String reason) {
+        String actorName = requireRegistryAdmin(actor);
+        EngineRegistryRow row = repository
+                .findById(id)
+                .orElseThrow(() -> new ResponseStatusException(HttpStatus.NOT_FOUND, "Unknown engine: " + id));
+        if (row.getRemovedAt() == null) {
+            throw new ResponseStatusException(HttpStatus.CONFLICT, "only a removed (tombstoned) engine can be purged");
+        }
+        Map<String, Object> payload = new LinkedHashMap<>();
+        payload.put("id", id);
+        payload.put("action", "purge");
+        AuditEntry entry =
+                audit.beginPending(actorName, id, row.getTenantId(), id, ACTION_PURGE, reason, null, payload);
+        repository.delete(row);
+        audit.close(entry, AuditOutcome.ok, null, "purged", true);
+        events.publishEvent(new RegistryChangedEvent(id));
+    }
+
+    private EngineRegistryRow transition(
+            EngineRegistryRow row, String lifecycle, String mode, String action, String actor, String reason) {
+        Map<String, Object> payload = new LinkedHashMap<>();
+        payload.put("id", row.getId());
+        payload.put("from", row.getLifecycle());
+        payload.put("to", lifecycle);
+        payload.put("mode", mode);
+        AuditEntry entry =
+                audit.beginPending(actor, row.getId(), row.getTenantId(), row.getId(), action, reason, null, payload);
+        row.setLifecycle(lifecycle);
+        row.setMode(mode);
+        row.setUpdatedAt(clock.instant());
+        repository.save(row);
+        audit.close(entry, AuditOutcome.ok, null, lifecycle, true);
+        events.publishEvent(new RegistryChangedEvent(row.getId()));
+        return row;
+    }
+
+    /** SSRF rail (docs §5): reject a base-URL BEFORE any audit/write; the rule name is safe 400 copy. */
+    private void validateUrl(String baseUrl, EngineEnvironment environment) {
+        Result result = urlValidator.validate(baseUrl, environment, registryProperties.egressPolicy());
+        if (result instanceof Rejected rejected) {
+            log.warn("Rejected registry base-URL '{}' on rail {}: {}", baseUrl, rejected.rail(), rejected.message());
+            throw new ResponseStatusException(HttpStatus.BAD_REQUEST, rejected.message());
+        }
+    }
+
+    private void applyWrite(EngineRegistryRow row, RegistryWrite w) {
+        row.setName(w.name());
+        row.setBaseUrl(w.baseUrl());
+        row.setEnvironment(w.environment().name().toLowerCase(Locale.ROOT));
+        row.setAccentColor(w.accentColor());
+        row.setTenantId(w.tenantId());
+        row.setTelemetryUrlTemplate(w.telemetryUrlTemplate());
+        row.setAuthType(w.authType() != null ? w.authType() : "none");
+        row.setAuthUsername(w.authUsername());
+        row.setPasswordRef(w.passwordRef());
+        row.setTokenRef(w.tokenRef());
+        row.setConnectMs(w.connectMs());
+        row.setReadMs(w.readMs());
+        row.setWriteMs(w.writeMs());
+        row.setMaxPageSize(w.maxPageSize());
+        row.setDlqScanCap(w.dlqScanCap());
+        row.setAlarmOldestWarnMin(w.alarmOldestWarnMin());
+        row.setAlarmOldestCritMin(w.alarmOldestCritMin());
+        row.setAlarmOverdueGraceS(w.alarmOverdueGraceS());
+        row.setUpdatedAt(clock.instant());
+    }
+
+    private static Map<String, Object> rowPayload(EngineRegistryRow row) {
+        Map<String, Object> p = new LinkedHashMap<>();
+        p.put("id", row.getId());
+        p.put("name", row.getName());
+        p.put("baseUrl", row.getBaseUrl());
+        p.put("environment", row.getEnvironment());
+        p.put("mode", row.getMode());
+        p.put("lifecycle", row.getLifecycle());
+        p.put("authType", row.getAuthType());
+        p.put("authUsername", row.getAuthUsername());
+        p.put("passwordRef", row.getPasswordRef());
+        p.put("tokenRef", row.getTokenRef());
+        return p;
+    }
+
+    private static Map<String, Object> writePayload(Map<String, Object> before, RegistryWrite w) {
+        Map<String, Object> after = new LinkedHashMap<>();
+        after.put("id", w.id());
+        after.put("name", w.name());
+        after.put("baseUrl", w.baseUrl());
+        after.put("environment", w.environment() != null ? w.environment().name() : null);
+        after.put("authType", w.authType());
+        after.put("authUsername", w.authUsername());
+        after.put("passwordRef", w.passwordRef());
+        after.put("tokenRef", w.tokenRef());
+        Map<String, Object> payload = new LinkedHashMap<>();
+        if (before != null) {
+            payload.put("before", before);
+        }
+        payload.put("after", after);
+        return payload;
     }
 
     /**

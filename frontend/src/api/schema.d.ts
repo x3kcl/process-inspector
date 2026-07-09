@@ -4,6 +4,118 @@
  */
 
 export interface paths {
+    "/api/admin/engines": {
+        parameters: {
+            query?: never;
+            header?: never;
+            path?: never;
+            cookie?: never;
+        };
+        get: operations["list_1"];
+        put?: never;
+        post: operations["add"];
+        delete?: never;
+        options?: never;
+        head?: never;
+        patch?: never;
+        trace?: never;
+    };
+    "/api/admin/engines/drift": {
+        parameters: {
+            query?: never;
+            header?: never;
+            path?: never;
+            cookie?: never;
+        };
+        get: operations["drift"];
+        put?: never;
+        post?: never;
+        delete?: never;
+        options?: never;
+        head?: never;
+        patch?: never;
+        trace?: never;
+    };
+    "/api/admin/engines/{id}": {
+        parameters: {
+            query?: never;
+            header?: never;
+            path?: never;
+            cookie?: never;
+        };
+        get?: never;
+        put: operations["edit"];
+        post?: never;
+        delete: operations["remove"];
+        options?: never;
+        head?: never;
+        patch?: never;
+        trace?: never;
+    };
+    "/api/admin/engines/{id}/disable": {
+        parameters: {
+            query?: never;
+            header?: never;
+            path?: never;
+            cookie?: never;
+        };
+        get?: never;
+        put?: never;
+        post: operations["disable"];
+        delete?: never;
+        options?: never;
+        head?: never;
+        patch?: never;
+        trace?: never;
+    };
+    "/api/admin/engines/{id}/enable": {
+        parameters: {
+            query?: never;
+            header?: never;
+            path?: never;
+            cookie?: never;
+        };
+        get?: never;
+        put?: never;
+        post: operations["enable"];
+        delete?: never;
+        options?: never;
+        head?: never;
+        patch?: never;
+        trace?: never;
+    };
+    "/api/admin/engines/{id}/probe": {
+        parameters: {
+            query?: never;
+            header?: never;
+            path?: never;
+            cookie?: never;
+        };
+        get?: never;
+        put?: never;
+        post: operations["probe"];
+        delete?: never;
+        options?: never;
+        head?: never;
+        patch?: never;
+        trace?: never;
+    };
+    "/api/admin/engines/{id}/purge": {
+        parameters: {
+            query?: never;
+            header?: never;
+            path?: never;
+            cookie?: never;
+        };
+        get?: never;
+        put?: never;
+        post: operations["purge"];
+        delete?: never;
+        options?: never;
+        head?: never;
+        patch?: never;
+        trace?: never;
+    };
     "/api/audit": {
         parameters: {
             query?: never;
@@ -251,7 +363,7 @@ export interface paths {
             path?: never;
             cookie?: never;
         };
-        get: operations["list_1"];
+        get: operations["list_2"];
         put?: never;
         post?: never;
         delete?: never;
@@ -797,6 +909,40 @@ export interface components {
             toType?: string;
             warning?: boolean;
         };
+        AdminEngineDto: {
+            accentColor?: string;
+            authType?: string;
+            authUsername?: string;
+            baseUrl?: string;
+            /** Format: int32 */
+            connectMs?: number;
+            /** Format: date-time */
+            createdAt?: string;
+            /** Format: int32 */
+            dlqScanCap?: number;
+            environment?: string;
+            id?: string;
+            lifecycle?: string;
+            /** Format: int32 */
+            maxPageSize?: number;
+            mode?: string;
+            name?: string;
+            passwordRef?: string;
+            passwordRefPresent?: boolean;
+            /** Format: int32 */
+            readMs?: number;
+            /** Format: date-time */
+            removedAt?: string;
+            source?: string;
+            telemetryUrlTemplate?: string;
+            tenantId?: string;
+            tokenRef?: string;
+            tokenRefPresent?: boolean;
+            /** Format: date-time */
+            updatedAt?: string;
+            /** Format: int32 */
+            writeMs?: number;
+        };
         AuditEntryDto: {
             action?: string;
             actor?: string;
@@ -992,6 +1138,10 @@ export interface components {
             deadletters?: components["schemas"]["OutOfScopeDeadLetters"];
             lanes?: components["schemas"]["CmmnLaneCounts"];
         };
+        ConfirmRequest: {
+            confirmToken?: string;
+            reason: string;
+        };
         CreateNote: {
             body: string;
         };
@@ -1027,6 +1177,17 @@ export interface components {
             /** Format: int32 */
             totalVersions?: number;
             versions?: components["schemas"]["DefinitionVersion"][];
+        };
+        DriftReport: {
+            added?: string[];
+            changed?: string[];
+            empty?: boolean;
+            removed?: string[];
+        };
+        EnableRequest: {
+            confirmToken?: string;
+            readWrite?: boolean;
+            reason: string;
         };
         EngineCapabilities: {
             activityHistory?: boolean;
@@ -1066,6 +1227,37 @@ export interface components {
             ok?: boolean;
             /** Format: int64 */
             total?: number;
+        };
+        EngineWriteRequest: {
+            accentColor?: string;
+            /** Format: int32 */
+            alarmOldestCritMin?: number;
+            /** Format: int32 */
+            alarmOldestWarnMin?: number;
+            /** Format: int32 */
+            alarmOverdueGraceS?: number;
+            authType?: string;
+            authUsername?: string;
+            baseUrl: string;
+            /** Format: int32 */
+            connectMs?: number;
+            /** Format: int32 */
+            dlqScanCap?: number;
+            /** @enum {string} */
+            environment?: "DEV" | "TEST" | "PROD";
+            id?: string;
+            /** Format: int32 */
+            maxPageSize?: number;
+            name: string;
+            passwordRef?: string;
+            /** Format: int32 */
+            readMs?: number;
+            reason: string;
+            telemetryUrlTemplate?: string;
+            tenantId?: string;
+            tokenRef?: string;
+            /** Format: int32 */
+            writeMs?: number;
         };
         ErrorGroup: {
             /** Format: int32 */
@@ -1241,6 +1433,7 @@ export interface components {
             engineRoles?: {
                 [key: string]: string;
             };
+            registryAdmin?: boolean;
             role?: string;
             username?: string;
         };
@@ -1363,6 +1556,9 @@ export interface components {
             /** @enum {string} */
             status?: "ACTIVE" | "SUSPENDED" | "COMPLETED" | "FAILED" | "RETRYING";
             tenantId?: string;
+        };
+        ReasonRequest: {
+            reason: string;
         };
         RecentSearchDto: {
             /** Format: date-time */
@@ -1627,6 +1823,218 @@ export interface components {
 }
 export type $defs = Record<string, never>;
 export interface operations {
+    list_1: {
+        parameters: {
+            query?: never;
+            header?: never;
+            path?: never;
+            cookie?: never;
+        };
+        requestBody?: never;
+        responses: {
+            /** @description OK */
+            200: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "*/*": components["schemas"]["AdminEngineDto"][];
+                };
+            };
+        };
+    };
+    add: {
+        parameters: {
+            query?: never;
+            header?: never;
+            path?: never;
+            cookie?: never;
+        };
+        requestBody: {
+            content: {
+                "application/json": components["schemas"]["EngineWriteRequest"];
+            };
+        };
+        responses: {
+            /** @description Created */
+            201: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "*/*": components["schemas"]["AdminEngineDto"];
+                };
+            };
+        };
+    };
+    drift: {
+        parameters: {
+            query?: never;
+            header?: never;
+            path?: never;
+            cookie?: never;
+        };
+        requestBody?: never;
+        responses: {
+            /** @description OK */
+            200: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "*/*": components["schemas"]["DriftReport"];
+                };
+            };
+        };
+    };
+    edit: {
+        parameters: {
+            query?: never;
+            header?: never;
+            path: {
+                id: string;
+            };
+            cookie?: never;
+        };
+        requestBody: {
+            content: {
+                "application/json": components["schemas"]["EngineWriteRequest"];
+            };
+        };
+        responses: {
+            /** @description OK */
+            200: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "*/*": components["schemas"]["AdminEngineDto"];
+                };
+            };
+        };
+    };
+    remove: {
+        parameters: {
+            query?: never;
+            header?: never;
+            path: {
+                id: string;
+            };
+            cookie?: never;
+        };
+        requestBody: {
+            content: {
+                "application/json": components["schemas"]["ConfirmRequest"];
+            };
+        };
+        responses: {
+            /** @description No Content */
+            204: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content?: never;
+            };
+        };
+    };
+    disable: {
+        parameters: {
+            query?: never;
+            header?: never;
+            path: {
+                id: string;
+            };
+            cookie?: never;
+        };
+        requestBody: {
+            content: {
+                "application/json": components["schemas"]["ReasonRequest"];
+            };
+        };
+        responses: {
+            /** @description OK */
+            200: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "*/*": components["schemas"]["AdminEngineDto"];
+                };
+            };
+        };
+    };
+    enable: {
+        parameters: {
+            query?: never;
+            header?: never;
+            path: {
+                id: string;
+            };
+            cookie?: never;
+        };
+        requestBody: {
+            content: {
+                "application/json": components["schemas"]["EnableRequest"];
+            };
+        };
+        responses: {
+            /** @description OK */
+            200: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "*/*": components["schemas"]["AdminEngineDto"];
+                };
+            };
+        };
+    };
+    probe: {
+        parameters: {
+            query?: never;
+            header?: never;
+            path: {
+                id: string;
+            };
+            cookie?: never;
+        };
+        requestBody?: never;
+        responses: {
+            /** @description OK */
+            200: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "*/*": components["schemas"]["AdminEngineDto"];
+                };
+            };
+        };
+    };
+    purge: {
+        parameters: {
+            query?: never;
+            header?: never;
+            path: {
+                id: string;
+            };
+            cookie?: never;
+        };
+        requestBody: {
+            content: {
+                "application/json": components["schemas"]["ConfirmRequest"];
+            };
+        };
+        responses: {
+            /** @description OK */
+            200: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content?: never;
+            };
+        };
+    };
     operationsLog: {
         parameters: {
             query?: {
@@ -2010,7 +2418,7 @@ export interface operations {
             };
         };
     };
-    list_1: {
+    list_2: {
         parameters: {
             query?: never;
             header?: never;

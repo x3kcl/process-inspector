@@ -633,13 +633,35 @@ and delete is a soft tombstone; hot reload evicts the per-id client caches (no r
   boot points registry at DB, `editBaseUrl` commit → Awaitility reload + `registry-edit` audit).
   **Deferred to S4** (where the write door exists): wiring `RegistryUrlValidator` into the connect
   path (validate-at-write is the primary SSRF guard; connect-time `isPinAllowed` is belt-and-braces).
-- **S4 — admin API + governance.** New `rbac.canAdministerRegistry` gate + `ROLE_REGISTRY_ADMIN`
+- **S4 — admin API + governance. ✅ LANDED 2026-07-09 (four-eyes + connect-pinning deferred, below).**
+  New `rbac.canAdministerRegistry` gate + `ROLE_REGISTRY_ADMIN`
   dev user + OIDC group mapping; `AdminEnginesController` (REGISTRY-CRUD.md §9) with
   SSRF-validate → persist → reload; fail-closed audit (`registry-*` actions, before/after
   payload, secret-ref redaction); the read-only-probe endpoint; the prod enable-read-write
   four-eyes + typed-token path (reuses R-SAFE-08); break-glass exclusion. `/api/me` gains
   `registryAdmin`. Done-when: RBAC matrix (door + service, per-engine-ADMIN refused,
   break-glass refused) + audit-integrity (fail-closed, redaction) green.
+  *Shipped:* `RbacAuthorizer.canAdministerRegistry` (orthogonal fleet grant; OIDC group in prod,
+  `ROLE_REGISTRY_ADMIN` authority in dev — a `registry-admin` dev user; per-engine ADMIN AND the
+  break-glass ADMIN-global shape refused) checked at the `@PreAuthorize` DOOR **and** re-checked in
+  `EngineRegistryStore` (SERVICE). `AdminEnginesController` GET/POST/PUT/DELETE + probe/enable/disable/
+  purge/drift; store `add`(→DRAFT read-only)/`edit`/`recordProbe`/`enable`/`disable`/`remove`(tombstone,
+  requires disabled)/`purge`(requires removed) — each SSRF-validated (add/edit, via `RegistryUrlValidator`
+  + `RegistryProperties.egressPolicy()`, rejected BEFORE any audit/write), fail-closed audited
+  `registry-*` with before/after (secret refs redacted), AFTER_COMMIT reload. Typed token (the engine
+  id) on prod enable-read-write + remove + purge. `source: config` ⇒ writes 409. `/api/me.registryAdmin`.
+  Tests: `EngineRegistryStoreWriteTest` (rung-1: RBAC service re-check, SSRF-reject-before-write,
+  lifecycle guards), `AdminEnginesApiSpringTest` (rung-3: door matrix registry-admin/admin/viewer/
+  unauth, SSRF 400, add 201, `/api/me` hint).
+  The PROBE endpoint (a live dial surface) RE-VALIDATES the base-URL before dialling (Gemini S4
+  review) — it re-resolves, so a URL validated-at-add that has since rebound to an internal address
+  is refused before any connection.
+  **DEFERRED to a follow-up (noted, not silently skipped):** (1) FOUR-EYES dual-control
+  (`PENDING_APPROVAL`, approver≠proposer) — no such infra exists yet; typed-token is the interim prod
+  gate. (2) Socket-level connect-time IP-PINNING of the pinned IP on the LIVE `HttpClient` connect for
+  the health-loop + actual-operation dials (`isPinAllowed`) — validate-at-write + validate-at-probe are
+  the guards shipped here; socket pinning (custom resolver) fully closes the sub-millisecond
+  validate→connect TOCTOU on every dial path. Both tracked for S4b.
 - **S5 — admin UI.** Route `/admin/engines` (greyed-never-hidden), list with lifecycle
   column + env band + secret-ref presence + "Test connection", add/edit form with live
   rule-named SSRF validation, prod enable-read-write typed-token/four-eyes UI, R-UXQ-04

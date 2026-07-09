@@ -27,7 +27,7 @@ class ScopeMappingServiceTest {
     private final Clock clock = mock(Clock.class);
 
     private ScopeMappingService serviceFor(Path file) {
-        SecurityProperties props = new SecurityProperties(null, file.toString(), 60, null);
+        SecurityProperties props = new SecurityProperties(null, file.toString(), 60, null, null);
         return new ScopeMappingService(props, clock);
     }
 

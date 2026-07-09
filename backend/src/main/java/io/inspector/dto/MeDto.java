@@ -14,4 +14,6 @@ public record MeDto(
         /** Highest ladder role held on ANY engine — the UI's coarse default. */
         String role,
         /** Highest ladder role per engine id — drives per-engine action greying. */
-        Map<String, String> engineRoles) {}
+        Map<String, String> engineRoles,
+        /** Fleet REGISTRY_ADMIN grant (v2 Registry CRUD) — greys the /admin/engines nav. */
+        boolean registryAdmin) {}

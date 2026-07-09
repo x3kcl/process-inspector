@@ -48,6 +48,9 @@ public class MeController {
             }
         }
         return new MeDto(
-                authentication.getName(), highestAnywhere != null ? highestAnywhere.name() : null, engineRoles);
+                authentication.getName(),
+                highestAnywhere != null ? highestAnywhere.name() : null,
+                engineRoles,
+                rbac.canAdministerRegistry(authentication));
     }
 }
