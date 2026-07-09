@@ -346,14 +346,18 @@ public record PagingCursor(
             newOffsets.put(eng, next);
         }
 
-        // 6. more pages? — any engine still has rows past its new offset, or we left candidates behind.
-        boolean more = kept.size() > emitCount;
-        if (!more) {
-            for (String eng : engines) {
-                if (newOffsets.get(eng) < engineTotals.getOrDefault(eng, 0L)) {
-                    more = true;
-                    break;
-                }
+        // 6. more pages? — an engine that still has rows past its new offset AND has not yet hit its
+        //    depth cap. A WALLED engine (offset clamped at the cap) contributes to depthCapped — the
+        //    depth-wall filter seam — NOT to "more": counting it would loop forever re-fetching the
+        //    same capped window (nextCursor never null). When every more-having engine is walled the
+        //    chain ends with nextCursor=null + depthCapped=true, and the UI offers "narrow to continue".
+        boolean more = false;
+        for (String eng : engines) {
+            int cap = depthCaps.getOrDefault(eng, DEFAULT_DEPTH_CAP);
+            int next = newOffsets.get(eng);
+            if (next < cap && next < engineTotals.getOrDefault(eng, 0L)) {
+                more = true;
+                break;
             }
         }
 

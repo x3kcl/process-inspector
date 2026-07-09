@@ -171,7 +171,9 @@ export function SearchPage() {
             overflowing time-ordered result set — never a row-model swap, no numbered pages, no
             infinite scroll. The seam line keeps the snapshot honest; the depth wall is a filter seam. */}
         {results.data !== undefined &&
-          (results.hasNextPage || results.data.pagingCoherence === 'snapshot') && (
+          (results.hasNextPage ||
+            results.data.pagingCoherence === 'snapshot' ||
+            results.data.depthCapped === true) && (
             <div className="load-more" role="region" aria-label="Load more results">
               {results.data.pagingCoherence === 'snapshot' && (
                 <p className="load-more-seam">

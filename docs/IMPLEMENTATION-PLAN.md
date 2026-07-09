@@ -679,7 +679,7 @@ drills the same filter. Codifies runbook starting points as first-class objects.
   moderate + audited fail-closed lifecycle → **S4** replay-time resolvability honesty → **S5** API
   surface + `gen:api` → **S6** frontend. No S0 spike; no rung-4-engine slice.
 
-### v2 — K-way-merge deep paging *(design locked 2026-07-09; S0 spike discharged + S1 landed 2026-07-09; capability-gated 6.8+)*
+### v2 — K-way-merge deep paging *(★ FEATURE COMPLETE 2026-07-09 — S0–S5 all merged, each CI-green; capability-gated 6.8+)*
 Cursor-based browsing through the globally-sorted merged stream across all engines, without
 pulling everything into memory and without breaking sort correctness or the per-engine
 do-no-harm bounds. **Full design + 6-seat panel + wire-wall + RE-LOCK decisions + spike plan:
@@ -716,9 +716,10 @@ ARCH §2.4's parked "v2 can add k-way-merge cursors…" sentence.
   → **S3 ✔ landed** API surface (`SearchRequest.cursor` + `SearchResponse.nextCursor`/`depthCapped`/
   `pagingCoherence`, `SearchController` deep-page branch, `schema.d.ts` regen, rung-3 web test)
   → **S4 ✔ landed** frontend "Load more" (`useInfiniteQuery` chain, overflow-only, depth-wall + snapshot
-  seams, Refresh resets; backend `aggregate()` mints the entry cursor on overflow) → **S5** live-engine ITs
-  (config-lowered caps, same-second cluster, drop-engine-mid-scroll honesty). Each CI-green +
-  independently mergeable; caps config-lowerable so correctness proves at `deep-paging-max-depth:6`.
+  seams, Refresh resets; backend `aggregate()` mints the entry cursor on overflow) → **S5 ✔ landed**
+  live-engine ITs (`AbstractKwayPagingIT` + 6.8 `KwayPagingIT`/7.1 `Kway7IT` in the CI matrix,
+  config-lowered `deep-paging-max-depth:6`: multi-page scroll no-dup/skip cross-version, depthCapped,
+  crafted-cursor 400, drop-engine honesty). Each CI-green + independently merged.
 
 ### v2 — Registry CRUD: runtime engine lifecycle *(design locked 2026-07-09, unbuilt)*
 The registry moves YAML→DB so ops can onboard/retire/tune engines without a deploy — the

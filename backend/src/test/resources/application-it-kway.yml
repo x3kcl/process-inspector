@@ -1,0 +1,79 @@
+# Rung-4 registry for the v2 k-way-merge deep-paging ITs (flowable-6, engine-a on :8081).
+# All registrations point at the SAME real engine (the sanctioned same-engine-twice trick,
+# engine-harness skill); each IT filters by a unique businessKey so it sees ONLY its own
+# seeded instances on the shared KEEP-up dev stack.
+#
+#   kway-scroll — deep-paging depth cap left at the default (correctness scroll never caps),
+#                 max-page-size 2 so a small seeded set still spans several pages
+#   kway-capped — deep-paging-max-depth LOWERED to 6 (TEST-STRATEGY §10: prove the cap at a
+#                 config-lowered value, never by seeding thousands)
+#   kway-down   — nothing listens: drop-engine-mid-scroll honesty (perEngine.ok=false in a 200)
+inspector:
+  registry:
+    source: config
+  snapshot:
+    enabled: false
+  audit:
+    partition-maintenance:
+      enabled: false
+  fanout-parallelism: 4
+  hierarchy-max-depth: 10
+  engines:
+    - id: kway-scroll
+      name: "K-way scroll (default depth cap)"
+      base-url: "http://localhost:8081/flowable-rest/service"
+      environment: dev
+      accent-color: "#2e86de"
+      enabled: true
+      mode: read-write
+      auth:
+        type: basic
+        username: rest-admin
+        password-ref: ENGINE_A_PASSWORD
+      timeouts:
+        connect-ms: 2000
+        read-ms: 10000
+        write-ms: 10000
+      # Small window so ~6 seeded instances span several deep pages without seeding thousands.
+      max-page-size: 2
+    - id: kway-capped
+      name: "K-way capped (deep-paging-max-depth 6)"
+      base-url: "http://localhost:8081/flowable-rest/service"
+      environment: dev
+      enabled: true
+      mode: read-write
+      auth:
+        type: basic
+        username: rest-admin
+        password-ref: ENGINE_A_PASSWORD
+      timeouts:
+        connect-ms: 2000
+        read-ms: 10000
+        write-ms: 10000
+      max-page-size: 3
+      # The config-lowered depth cap under test: paging past offset 6 flags depthCapped, and a
+      # crafted cursor with an offset over 6 is refused (400) before any fan-out.
+      deep-paging-max-depth: 6
+    - id: kway-down
+      name: "Unreachable engine (drop-mid-scroll fixture)"
+      base-url: "http://localhost:59998/flowable-rest/service"
+      environment: dev
+      enabled: true
+      mode: read-only
+      auth:
+        type: basic
+        username: rest-admin
+        password-ref: ENGINE_A_PASSWORD
+      timeouts:
+        connect-ms: 500
+        read-ms: 1000
+        write-ms: 1000
+      max-page-size: 2
+
+# Docker-free / engine-only profile — the BFF Postgres is NOT part of the context (NoDbTestSupport).
+spring:
+  autoconfigure:
+    exclude:
+      - org.springframework.boot.autoconfigure.jdbc.DataSourceAutoConfiguration
+      - org.springframework.boot.autoconfigure.orm.jpa.HibernateJpaAutoConfiguration
+      - org.springframework.boot.autoconfigure.flyway.FlywayAutoConfiguration
