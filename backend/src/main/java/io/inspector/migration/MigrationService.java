@@ -101,6 +101,7 @@ public class MigrationService {
                 false,
                 plan.executable(),
                 plan.activities(),
+                plan.targetActivities(),
                 plan.activityStateDigest(),
                 plan.childCount(),
                 "POST",
@@ -175,6 +176,7 @@ public class MigrationService {
         List<MigrationMapping> overrides = validatedOverrides(request.mappingsOrEmpty());
 
         List<ActivityDiffEntry> activities;
+        List<MigrationPreview.TargetActivity> targetActivities;
         List<String> activeActivityIds;
         int childCount;
         try {
@@ -183,6 +185,9 @@ public class MigrationService {
             activeActivityIds = activeActivityIds(engine, instanceId);
             activities = MigrationDiff.diff(
                     MigrationDiff.of(sourceModel), MigrationDiff.of(targetModel), activeActivityIds, overrides);
+            targetActivities = targetModel.flowNodes().stream()
+                    .map(n -> new MigrationPreview.TargetActivity(n.id(), n.name(), n.type()))
+                    .toList();
             childCount = callActivityChildCount(engine, instanceId);
         } catch (CallNotPermittedException | BulkheadFullException | ResourceAccessException e) {
             throw engineUnreachablePreFlight(engine);
@@ -198,6 +203,7 @@ public class MigrationService {
                 target,
                 overrides,
                 activities,
+                targetActivities,
                 ActivityStateDigest.of(activeActivityIds),
                 childCount);
     }
@@ -586,6 +592,7 @@ public class MigrationService {
             ResolvedTarget target,
             List<MigrationMapping> overrides,
             List<ActivityDiffEntry> activities,
+            List<MigrationPreview.TargetActivity> targetActivities,
             String activityStateDigest,
             int childCount) {
 

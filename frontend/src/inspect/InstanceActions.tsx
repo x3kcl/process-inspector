@@ -18,6 +18,7 @@ import { roleOn, useMe } from '../api/me'
 import { ActionHint } from '../components/ActionHint'
 import { useToast } from '../components/toast'
 import { ChangeStateModal } from '../surgery/ChangeStateModal'
+import { MigrateModal } from '../surgery/MigrateModal'
 import { RestartModal } from '../surgery/RestartModal'
 
 interface Props {
@@ -32,6 +33,7 @@ export function InstanceActions({ engineId, instanceId, vitals, engine }: Props)
   const action = useInstanceAction(engineId, instanceId)
   const [terminateOpen, setTerminateOpen] = useState(false)
   const [changeStateOpen, setChangeStateOpen] = useState(false)
+  const [migrateOpen, setMigrateOpen] = useState(false)
   const [restartOpen, setRestartOpen] = useState(false)
   const me = useMe()
   const roleHint = roleOn(me.data, engineId)
@@ -60,6 +62,15 @@ export function InstanceActions({ engineId, instanceId, vitals, engine }: Props)
     instanceEnded: ended,
     instanceSuspended: suspended,
     capability: engine?.capabilities?.changeState,
+    environment,
+  })
+  const migrateGate = actionGate({
+    meta: VERBS.migrate,
+    roleHint,
+    engineMode: engine?.mode,
+    instanceEnded: ended,
+    instanceSuspended: suspended,
+    capability: engine?.capabilities?.migration,
     environment,
   })
   const restartGate = actionGate({
@@ -127,6 +138,23 @@ export function InstanceActions({ engineId, instanceId, vitals, engine }: Props)
         <button
           type="button"
           className="copy-btn action-btn"
+          disabled={!migrateGate.enabled}
+          aria-describedby={migrateGate.enabled ? undefined : 'migrate-hint'}
+          title={migrateGate.enabled ? `${VERBS.migrate.plain} · IRREVERSIBLE` : migrateGate.detail}
+          onClick={() => {
+            setMigrateOpen(true)
+          }}
+        >
+          {VERBS.migrate.label}
+        </button>
+        {!migrateGate.enabled && migrateGate.reason !== undefined && (
+          <ActionHint id="migrate-hint" text={migrateGate.reason} tone="gate" />
+        )}
+      </span>
+      <span className="action-slot">
+        <button
+          type="button"
+          className="copy-btn action-btn"
           disabled={!restartGate.enabled}
           aria-describedby={restartGate.enabled ? undefined : 'restart-hint'}
           title={restartGate.enabled ? VERBS.restartAsNew.plain : restartGate.detail}
@@ -168,6 +196,17 @@ export function InstanceActions({ engineId, instanceId, vitals, engine }: Props)
           engine={engine}
           onClose={() => {
             setChangeStateOpen(false)
+          }}
+        />
+      )}
+      {migrateOpen && (
+        <MigrateModal
+          engineId={engineId}
+          instanceId={instanceId}
+          vitals={vitals}
+          engine={engine}
+          onClose={() => {
+            setMigrateOpen(false)
           }}
         />
       )}

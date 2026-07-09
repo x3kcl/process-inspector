@@ -1821,6 +1821,32 @@ button.primary:disabled {
   font-weight: 600;
   line-height: 1.45;
 }
+/* migration mapping table (targeted from→to for engine-flagged activities) */
+.mapping-table {
+  width: 100%;
+  border-collapse: collapse;
+  margin-top: 6px;
+}
+.mapping-table td {
+  padding: 4px 8px 4px 0;
+  vertical-align: middle;
+}
+.mapping-table td[aria-hidden] {
+  color: var(--muted, #888);
+  padding: 0 8px;
+}
+.mapping-table select {
+  width: 100%;
+}
+.verify-red {
+  color: var(--danger, #b3261e);
+  font-weight: 600;
+}
+.reversibility-line {
+  margin: 8px 0 0;
+  font-size: 13px;
+  line-height: 1.5;
+}
 .verify-panes {
   display: flex;
   gap: 10px;

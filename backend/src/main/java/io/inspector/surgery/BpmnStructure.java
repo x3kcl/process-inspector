@@ -89,6 +89,12 @@ public final class BpmnStructure {
         return Optional.ofNullable(nodes.get(activityId));
     }
 
+    /** Every flow node in the definition, in document order — the target-activity catalog the
+     * migration mapping dropdown offers for a flagged source activity. */
+    public java.util.Collection<FlowNode> flowNodes() {
+        return nodes.values();
+    }
+
     /** The multi-instance root whose body contains {@code activityId} (the root maps to itself). */
     public Optional<String> multiInstanceScopeOf(String activityId) {
         return Optional.ofNullable(miScopeOf.get(activityId));

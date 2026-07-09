@@ -1270,6 +1270,7 @@ export interface components {
                 [key: string]: unknown;
             };
             summary?: string;
+            targetActivities?: components["schemas"]["TargetActivity"][];
             toProcessDefinitionId?: string;
             /** Format: int32 */
             toVersion?: number;
@@ -1485,6 +1486,11 @@ export interface components {
         SseEmitter: {
             /** Format: int64 */
             timeout?: number;
+        };
+        TargetActivity: {
+            id?: string;
+            name?: string;
+            type?: string;
         };
         TaskDto: {
             assignee?: string;
