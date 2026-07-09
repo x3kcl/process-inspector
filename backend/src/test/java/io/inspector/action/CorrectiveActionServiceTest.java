@@ -27,12 +27,19 @@ import io.inspector.config.InspectorProperties;
 import io.inspector.config.InspectorProperties.EngineEnvironment;
 import io.inspector.config.InspectorProperties.EngineMode;
 import io.inspector.registry.EngineRegistry;
+import io.inspector.security.OidcProperties;
 import io.inspector.security.RbacAuthorizer;
 import io.inspector.security.Role;
+import io.inspector.security.reauth.DangerousActionReauthGate;
+import io.inspector.security.reauth.ReauthRequiredException;
 import io.inspector.support.TestEngines;
 import java.net.http.HttpTimeoutException;
 import java.nio.charset.StandardCharsets;
+import java.time.Clock;
+import java.time.Duration;
 import java.time.Instant;
+import java.time.ZoneOffset;
+import java.util.Collection;
 import java.util.List;
 import java.util.Map;
 import java.util.Optional;
@@ -45,6 +52,11 @@ import org.springframework.http.HttpHeaders;
 import org.springframework.http.HttpStatus;
 import org.springframework.security.authentication.TestingAuthenticationToken;
 import org.springframework.security.core.Authentication;
+import org.springframework.security.core.GrantedAuthority;
+import org.springframework.security.core.authority.SimpleGrantedAuthority;
+import org.springframework.security.oauth2.client.authentication.OAuth2AuthenticationToken;
+import org.springframework.security.oauth2.core.oidc.OidcIdToken;
+import org.springframework.security.oauth2.core.oidc.user.DefaultOidcUser;
 import org.springframework.web.client.HttpClientErrorException;
 import org.springframework.web.client.ResourceAccessException;
 
@@ -60,6 +72,9 @@ class CorrectiveActionServiceTest {
     private static final String DEV = "dev-engine";
     private static final String PROD = "prod-engine";
     private static final String RO = "ro-engine";
+
+    /** Fixed clock anchor for the OIDC freshness cases; the 15-min default window is applied off it. */
+    private static final Instant NOW = Instant.parse("2026-07-09T12:00:00Z");
 
     private final FlowableEngineClient client = mock(FlowableEngineClient.class);
     private final AuditService audit = mock(AuditService.class);
@@ -87,7 +102,8 @@ class CorrectiveActionServiceTest {
                 audit,
                 rbac,
                 protectedInstances,
-                new TicketPolicy(new io.inspector.config.AuditProperties(null, null, null)));
+                new TicketPolicy(new io.inspector.config.AuditProperties(null, null, null)),
+                new DangerousActionReauthGate(new OidcProperties(null, false, null), Clock.fixed(NOW, ZoneOffset.UTC)));
 
         when(rbac.hasRoleOn(any(), any(), anyString())).thenReturn(true);
         when(protectedInstances.findById(any())).thenReturn(Optional.empty());
@@ -205,6 +221,64 @@ class CorrectiveActionServiceTest {
                 "operator requested teardown", null, "ORD-77", null, null, null, null, null, null, null, null);
         service.execute(PROD, "pi-1", ActionVerb.TERMINATE_DELETE, rightToken, operator);
         verify(client).deleteProcessInstance(any(), eq("pi-1"), anyString());
+    }
+
+    /* ---------------- dangerous-set re-auth (R-SAFE-07, IDP-SECURITY.md §5) ---------------- */
+
+    /** An OIDC session whose auth_time is {@code age} old (null age = the IdP asserted no auth_time). */
+    private static Authentication oidcSession(Duration age, String... roles) {
+        Map<String, Object> claims = new java.util.HashMap<>();
+        claims.put("sub", "u-1");
+        if (age != null) {
+            claims.put("auth_time", NOW.minus(age).getEpochSecond());
+        }
+        OidcIdToken idToken =
+                new OidcIdToken("id-tok", NOW.minus(Duration.ofHours(1)), NOW.plus(Duration.ofHours(1)), claims);
+        Collection<GrantedAuthority> authorities = java.util.Arrays.stream(roles)
+                .map(r -> (GrantedAuthority) new SimpleGrantedAuthority(r))
+                .toList();
+        return new OAuth2AuthenticationToken(new DefaultOidcUser(authorities, idToken), authorities, "oidc");
+    }
+
+    @Test
+    void tierThreeOnAStaleOidcSessionDemandsReauthBeforeTheTypedTokenAndBeforeAudit() {
+        // 20 min > the 15-min window → the freshness challenge fires FIRST: not confirm-token-mismatch
+        // (the token check is downstream), and nothing is audited (a pre-audit refusal, like rbac).
+        Authentication stale = oidcSession(Duration.ofMinutes(20), "ROLE_ADMIN");
+        ActionRequest anyToken = new ActionRequest(
+                "operator requested teardown", null, "whatever", null, null, null, null, null, null, null, null);
+
+        assertThatThrownBy(() -> service.execute(PROD, "pi-1", ActionVerb.TERMINATE_DELETE, anyToken, stale))
+                .isInstanceOf(ReauthRequiredException.class)
+                .satisfies(e -> assertThat(((ReauthRequiredException) e).freshnessWindowSeconds())
+                        .isEqualTo(900));
+        verifyNoInteractions(audit);
+        verifyNoInteractions(client);
+    }
+
+    @Test
+    void tierThreeWithinTheWindowSkipsReauthAndReachesTheTypedTokenCheck() {
+        // 5 min < window → fresh: re-auth passes and control reaches the tier-3 typed-token rail, which
+        // then refuses the wrong token. Proves the gate lets a fresh session through to the next rail.
+        when(client.getRuntimeProcessInstance(any(), eq("pi-1")))
+                .thenReturn(Map.of("id", "pi-1", "businessKey", "ORD-77", "suspended", false));
+        Authentication fresh = oidcSession(Duration.ofMinutes(5), "ROLE_ADMIN");
+        ActionRequest wrongToken = new ActionRequest(
+                "operator requested teardown", null, "ORD-99", null, null, null, null, null, null, null, null);
+
+        assertThatThrownBy(() -> service.execute(PROD, "pi-1", ActionVerb.TERMINATE_DELETE, wrongToken, fresh))
+                .isInstanceOf(GuardRefusedException.class)
+                .satisfies(e -> assertThat(((GuardRefusedException) e).code()).isEqualTo("confirm-token-mismatch"));
+        verify(client, never()).deleteProcessInstance(any(), anyString(), anyString());
+    }
+
+    @Test
+    void aTierZeroVerbNeverRequiresReauthEvenOnAnAncientOidcSession() {
+        // The dangerous set is tier-3 only (no per-verb MFA storm): a day-old OIDC session still runs
+        // a retry (tier 0) without a challenge. Gate scoping — the P1-fan-out safety valve.
+        Authentication ancient = oidcSession(Duration.ofDays(1), "ROLE_ADMIN");
+        service.execute(DEV, "pi-1", ActionVerb.RETRY_JOB, retryRequest(), ancient);
+        verify(client).moveDeadLetterJob(any(), eq("j1"));
     }
 
     /* ---------------- the fail-closed audit gate ---------------- */

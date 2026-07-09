@@ -5,6 +5,7 @@ import io.inspector.dto.MeDto;
 import io.inspector.registry.EngineRegistry;
 import io.inspector.security.RbacAuthorizer;
 import io.inspector.security.Role;
+import io.inspector.security.reauth.DangerousActionReauthGate;
 import java.util.LinkedHashMap;
 import java.util.Map;
 import org.springframework.security.core.Authentication;
@@ -26,10 +27,12 @@ public class MeController {
 
     private final EngineRegistry registry;
     private final RbacAuthorizer rbac;
+    private final DangerousActionReauthGate reauth;
 
-    public MeController(EngineRegistry registry, RbacAuthorizer rbac) {
+    public MeController(EngineRegistry registry, RbacAuthorizer rbac, DangerousActionReauthGate reauth) {
         this.registry = registry;
         this.rbac = rbac;
+        this.reauth = reauth;
     }
 
     @GetMapping("/me")
@@ -53,6 +56,7 @@ public class MeController {
                 engineRoles,
                 rbac.canAdministerRegistry(authentication),
                 rbac.canAdministerAccess(authentication),
-                rbac.isBreakGlass(authentication));
+                rbac.isBreakGlass(authentication),
+                reauth.hint(authentication));
     }
 }

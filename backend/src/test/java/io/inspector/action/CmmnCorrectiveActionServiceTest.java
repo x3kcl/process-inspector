@@ -68,7 +68,9 @@ class CmmnCorrectiveActionServiceTest {
                 audit,
                 rbac,
                 protectedInstances,
-                new TicketPolicy(new io.inspector.config.AuditProperties(null, null, null)));
+                new TicketPolicy(new io.inspector.config.AuditProperties(null, null, null)),
+                new io.inspector.security.reauth.DangerousActionReauthGate(
+                        new io.inspector.security.OidcProperties(null, false, null), java.time.Clock.systemUTC()));
         when(registry.require(ENGINE)).thenReturn(engine);
         when(rbac.hasRoleOn(any(), any(), anyString())).thenReturn(true);
         when(protectedInstances.findById(any())).thenReturn(Optional.empty());

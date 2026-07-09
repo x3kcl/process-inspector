@@ -20,4 +20,10 @@ public record MeDto(
         /** Apex ACCESS_ADMIN grant (v2 IdP-Security) — greys the /admin/access nav. */
         boolean accessAdmin,
         /** Break-glass session (v2 IdP-Security) — shows the permanent red banner + reason-on-every-verb. */
-        boolean breakGlass) {}
+        boolean breakGlass,
+        /**
+         * Dangerous-set freshness hint (v2 IdP-Security §5) — drives the re-auth interstitial at
+         * modal open so a stale OIDC session re-authenticates BEFORE the operator types the confirm
+         * token. {@code required=false, freshUntil=null} for an exempt dev/basic or break-glass session.
+         */
+        ReauthHint reauth) {}
