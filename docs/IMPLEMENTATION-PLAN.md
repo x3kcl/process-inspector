@@ -602,8 +602,48 @@ count to a "≥N" lower bound under a truncated DLQ scan — see `CMMN-SCOPE-PHA
     live 6.8 + Postgres, 2 — retry + delete over two concurrently-failing cases) + `case-detail.spec.ts`
     retry + delete-gated + delete-modal e2e. SPEC §5.3, ARCH §4,
     `docs/CMMN-CASE-DETAIL-PHASE-2.md` §9, `docs/CMMN-SCOPE-PHASE-0.md` §7.
-- Shared server-side saved views; **OIDC hardening + access-lifecycle +
-  group→scope CRUD + break-glass → now the v2 IdP & Security block below (design locked).**
+- **OIDC hardening + access-lifecycle + group→scope CRUD + break-glass → the v2 IdP & Security
+  block below (design locked).** Shared server-side saved views → now its own design block (below).
+
+### v2 — Shared (team-wide) saved views *(design locked 2026-07-09, unbuilt + demand-gated)*
+An operator/admin publishes curated views the whole team (or a tenant/engine scope) inherits —
+"stuck payments in prod", "failed in the last hour" — so new responders get the team's canonical
+entry points instead of rebuilding them, and during an incident everyone *working the engine*
+drills the same filter. Codifies runbook starting points as first-class objects. **Full design +
+6-seat panel + walls + RE-LOCK decisions + slice plan: `docs/SHARED-VIEWS.md`.** Adds R-SEM-24
+(team-view model + scoped read-visibility + replay-time resolvability honesty) and R-SAFE-16
+(publish/moderation governance). Promotes the folded v2 "shared server-side saved views" line.
+- **Demand-gated:** build only if operators repeatedly re-create each other's filters — instrument
+  **duplicate canonical `search` strings across distinct owners**. Empty signal ⇒ don't build;
+  private views stay the whole feature. NOT spike-gated — a shared view executes nothing against
+  any engine (no unknown wire-shape), so the panel (not a live spike) de-risked it.
+- **Reshaped by the panel (unanimous ACCEPT-WITH-CHANGES, no BLOCK):** the draft's `visibility`
+  flip on the per-user `saved_view` row became a **separate governed `shared_view` table +
+  `SharedViewService` + `/api/team-views`** (house pattern, à la Registry CRUD) — publish is a
+  **snapshot-copy** (create-only), which keeps `saved_view`/`ViewStoreService`/V6 pristine and
+  **structurally kills the canon-hijack** the inherited owner-blind upsert-by-name would open.
+- **Scope-of-governance must equal scope-of-content** (the fatal flaw Gemini + security surfaced):
+  the publish scope is **derived from the `search` string's `engineIds`**, not authored free-hand;
+  publish is refused if the search references an engine outside the declared scope; `scope_tenant_id`
+  derived from the registry pin.
+- **Two RBAC predicates, not one:** publish gate = `ScopeGrant.covers()` (containment — OPERATOR-on-
+  scope, wildcard scope escalates to ADMIN-on-scope); read-visibility = a **new `overlaps()`**
+  intersection predicate (a concrete grant can't cover a `*` scope), **co-signed with IdP-Security**.
+  Read-visibility is **declutter, NOT a security boundary** (search is grant-blind; result sets are
+  caller-invariant today — if per-caller scoping ever lands the picker MUST badge the limitation).
+- **Dangling-canon honesty:** a shared view over a soft-tombstoned engine / redeployed definition /
+  6.3 param-drop must NOT read as a clean all-clear — a **distinct "resolves to no live engine" state**
+  + per-engine unresolvable markers + **greyed-with-reason** canon (R-SEM-17 id→name survives), riding
+  the existing lower-bound envelope; no background poller.
+- **Governance:** lifecycle audited fail-closed via `recordConfigEvent` (R-AUD-10, same `@Transactional`);
+  moderation default = **unpublish** (reversible); reason≥10 + security-alert on another's moderation
+  (not four-eyes). Publish is a deliberate second act off the hot save path; layout capture (R-UXQ-09)
+  stays OUT (view==URL invariant). Injection R-OPS-08 extended to the `search` string + export surfaces.
+- **Slices (`docs/SHARED-VIEWS.md` §6):** **S1** `shared_view` table + entity (reserve R-SEM-24/
+  R-SAFE-16 in the first commit) → **S2** `overlaps()` + read-visibility filter (rung-1 authorizer —
+  the dev basic-auth ladder is global-only, so scoped cases can't be rung-3) → **S3** publish/unpublish/
+  moderate + audited fail-closed lifecycle → **S4** replay-time resolvability honesty → **S5** API
+  surface + `gen:api` → **S6** frontend. No S0 spike; no rung-4-engine slice.
 
 ### v2 — K-way-merge deep paging *(design locked 2026-07-09, unbuilt + spike-gated)*
 Cursor-based browsing through the globally-sorted merged stream across all engines, without
