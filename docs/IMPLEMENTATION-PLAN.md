@@ -596,12 +596,21 @@ and delete is a soft tombstone; hot reload evicts the per-id client caches (no r
   6to4 `2002::/16`) so the metadata IP can't ride a transition prefix (Gemini S1 review).
   Redirect rejection stays `followRedirects(NEVER)` on the built client (asserted in the S3/S4
   IT, not the pure corpus). 55 rung-1 assertions green.
-- **S2 — store + seed.** `V7__engine_registry.sql` (identity-keyed by the immutable slug,
+- **S2 — store + seed. ✅ LANDED 2026-07-09.** `V7__engine_registry.sql` (identity-keyed by the immutable slug,
   lifecycle/tombstone columns, secret **refs** by name — DDL in REGISTRY-CRUD.md §10); entity +
   `JpaRepository` + `@Transactional EngineRegistryStore` (V6 saved-view shape). YAML-seed
   import on empty table (audited `registry-seed`); `inspector.registry.source: db|config`
   switch. `NoDbTestSupport` gains the new repo mock. Done-when: empty-table seed IT + non-empty
   WARN + config-pin 403 all green; `ddl-auto=validate` holds.
+  *Shipped:* `EngineRegistryRow`/`EngineRegistryRepository`/`EngineRegistryMapper` (row↔`EngineConfig`
+  seam) + `@Transactional EngineRegistryStore` (fail-closed `registry-seed`, whole import in ONE tx)
+  + `RegistryBootstrap` (`ApplicationRunner`: config-pin skip / seed-on-empty / per-engine drift log,
+  fail-closed = boot with empty registry on audit failure, never crashes) + `RegistryDrift` (pure) +
+  `RegistryProperties` (`inspector.registry` — `source` + `egress-allowlist`/`egress-ports`). NB: S2
+  does NOT yet point `EngineRegistry` at the store (that + live reload is S3); the config-pin/CRUD-403
+  is enforced at the endpoint in S4, so here `source: config` simply makes the boot seeder inert. Test
+  profiles are `source: config` (seeder inert, existing suites unperturbed); `EngineRegistryStoreIT`
+  (own `it-registry` `source: db` profile, Testcontainers) proves seed→rows+audit + `ddl-auto=validate`.
 - **S3 — reload seam (strictly post-commit).** `EngineRegistry` moves the `enabled` filter
   from ctor to `all()` and gains `refresh(id)`; `FlowableEngineClient.evict(id)` drops the
   cached read/write RestClients (+ **removes**, not resets, the R4j named instances on

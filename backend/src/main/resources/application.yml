@@ -93,6 +93,19 @@ inspector:
     sample-interval: 60s
     bucket-width: 60s
     retention-days: 400
+  # v2 Registry CRUD (docs/REGISTRY-CRUD.md). source=db (default): DB-authoritative once seeded —
+  # an empty engine_registry imports `engines` below as a one-time audited seed, then the DB wins
+  # (YAML drift is reported at boot, never silent). source=config pins to config-only (CRUD off,
+  # restart semantics). egress-allowlist/egress-ports are the SSRF egress boundary — DEPLOY CONFIG,
+  # never editable in-app — consumed by the URL validator when the write/connect path is wired
+  # (S3/S4). Dev lists localhost so the demo engines below validate; prod sets a strict list
+  # out-of-band and NEVER lists private ranges.
+  registry:
+    source: db
+    egress-allowlist:
+      - localhost
+      - 127.0.0.0/8
+    egress-ports: []
   engines:
     - id: engine-a
       name: "Engine A (demo)"
