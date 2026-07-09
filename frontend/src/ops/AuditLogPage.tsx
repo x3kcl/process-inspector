@@ -9,23 +9,27 @@ import type { ColDef } from 'ag-grid-community'
 import { useQuery } from '@tanstack/react-query'
 import { Link } from 'react-router'
 import { api, ApiError } from '../api/client'
+import { useTicketUrlTemplate } from '../api/meta'
 import type { AuditEntryDto } from '../api/model'
 import { formatDateTime } from '../lib/format'
+import { ticketHref } from '../lib/ticket'
 import 'ag-grid-community/styles/ag-grid.css'
 import 'ag-grid-community/styles/ag-theme-quartz.css'
 
 interface Filters {
   actor: string
   action: string
+  ticketId: string
   since: string
 }
 
-const EMPTY: Filters = { actor: '', action: '', since: '' }
+const EMPTY: Filters = { actor: '', action: '', ticketId: '', since: '' }
 
 async function fetchOperationsLog(filters: Filters): Promise<AuditEntryDto[]> {
   const query: Record<string, string | number> = { limit: 500 }
   if (filters.actor.trim() !== '') query['actor'] = filters.actor.trim()
   if (filters.action.trim() !== '') query['action'] = filters.action.trim()
+  if (filters.ticketId.trim() !== '') query['ticketId'] = filters.ticketId.trim()
   if (filters.since.trim() !== '') query['since'] = filters.since.trim()
   const { data, error, response } = await api.GET('/api/audit', { params: { query } })
   if (data === undefined) throw new ApiError(response.status, error)
@@ -35,6 +39,7 @@ async function fetchOperationsLog(filters: Filters): Promise<AuditEntryDto[]> {
 export function AuditLogPage() {
   const [draft, setDraft] = useState<Filters>(EMPTY)
   const [applied, setApplied] = useState<Filters>(EMPTY)
+  const ticketTemplate = useTicketUrlTemplate()
   const log = useQuery({
     queryKey: ['operations-log', applied],
     queryFn: () => fetchOperationsLog(applied),
@@ -100,9 +105,25 @@ export function AuditLogPage() {
           ),
       },
       { headerName: 'Reason', field: 'reason', flex: 1, minWidth: 200, tooltipField: 'reason' },
-      { headerName: 'Ticket', field: 'ticketId', width: 120 },
+      {
+        headerName: 'Ticket',
+        field: 'ticketId',
+        width: 140,
+        cellRenderer: (p: CustomCellRendererProps<AuditEntryDto>) => {
+          const id = p.data?.ticketId
+          if (id === undefined || id === '') return null
+          const href = ticketHref(ticketTemplate, id)
+          return href !== null ? (
+            <a href={href} target="_blank" rel="noopener noreferrer">
+              {id}
+            </a>
+          ) : (
+            <span>{id}</span>
+          )
+        },
+      },
     ],
-    [],
+    [ticketTemplate],
   )
 
   const apply = (event: FormEvent) => {
@@ -134,6 +155,17 @@ export function AuditLogPage() {
               placeholder="retry-job / edit-variable / bulk:…"
               onChange={(e) => {
                 setDraft({ ...draft, action: e.target.value })
+              }}
+            />
+          </label>
+          <label>
+            Ticket
+            <input
+              type="text"
+              value={draft.ticketId}
+              placeholder="OPS-42"
+              onChange={(e) => {
+                setDraft({ ...draft, ticketId: e.target.value })
               }}
             />
           </label>
