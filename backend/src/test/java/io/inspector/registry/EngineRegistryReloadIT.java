@@ -64,7 +64,8 @@ class EngineRegistryReloadIT {
 
     @Test
     void editBaseUrlCommitReloadsTheInMemoryRegistry() {
-        String newUrl = "http://localhost:8081/flowable-rest/service-EDITED";
+        String newUrl = "http://localhost:" + System.getenv().getOrDefault("PI_ENGINE_A_PORT", "8081")
+                + "/flowable-rest/service-EDITED";
         assertThat(registry.require("engine-a").baseUrl()).isNotEqualTo(newUrl);
 
         store.editBaseUrl("engine-a", newUrl, "tester", "S3 reload seam IT");

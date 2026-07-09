@@ -37,7 +37,8 @@ import org.testcontainers.containers.PostgreSQLContainer;
 @TestInstance(TestInstance.Lifecycle.PER_CLASS)
 class CorrectiveActionIT {
 
-    private static final String ENGINE = "http://localhost:8081/flowable-rest/service";
+    private static final String ENGINE =
+            "http://localhost:" + System.getenv().getOrDefault("PI_ENGINE_A_PORT", "8081") + "/flowable-rest/service";
 
     // Testcontainers Postgres shared by this class's context; Ryuk reaps it afterwards.
     private static final PostgreSQLContainer<?> POSTGRES = new PostgreSQLContainer<>("postgres:16-alpine");

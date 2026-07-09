@@ -16,7 +16,7 @@ inspector:
   engines:
     - id: engine-7
       name: "Engine 7 (triage harness)"
-      base-url: "http://localhost:8083/flowable-rest/service"
+      base-url: "http://localhost:${PI_ENGINE_7_PORT:8083}/flowable-rest/service"
       environment: dev
       accent-color: "#8e44ad"
       enabled: true

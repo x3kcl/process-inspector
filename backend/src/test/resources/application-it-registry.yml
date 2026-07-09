@@ -19,7 +19,7 @@ inspector:
   engines:
     - id: engine-a
       name: "Engine A (seed harness)"
-      base-url: "http://localhost:8081/flowable-rest/service"
+      base-url: "http://localhost:${PI_ENGINE_A_PORT:8081}/flowable-rest/service"
       environment: dev
       accent-color: "#2e86de"
       enabled: true
@@ -37,7 +37,7 @@ inspector:
 
     - id: engine-7
       name: "Engine 7 (seed harness, disabled)"
-      base-url: "http://localhost:8083/flowable-rest/service"
+      base-url: "http://localhost:${PI_ENGINE_7_PORT:8083}/flowable-rest/service"
       environment: prod
       accent-color: "#8e44ad"
       enabled: false

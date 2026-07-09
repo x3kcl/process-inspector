@@ -14,7 +14,9 @@ set -euo pipefail
 
 CRED="rest-admin:test"
 DIR="$(cd "$(dirname "$0")" && pwd)"
-KNOWN_PORTS="8081 8082 8083 8084"
+# Env-overridable (default = doctrinal dev ports) to match a remapped self-hosted-runner
+# harness; see docker-compose.dev.yml PI_ENGINE_*_PORT.
+KNOWN_PORTS="${PI_ENGINE_A_PORT:-8081} ${PI_ENGINE_B_PORT:-8082} ${PI_ENGINE_7_PORT:-8083} ${PI_ENGINE_LEGACY_PORT:-8084}"
 
 json_total() { python3 -c 'import sys,json; print(json.load(sys.stdin)["total"])'; }
 json_id()    { python3 -c 'import sys,json; print(json.load(sys.stdin)["id"])'; }

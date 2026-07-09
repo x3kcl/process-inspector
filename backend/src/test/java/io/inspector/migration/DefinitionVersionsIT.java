@@ -32,7 +32,8 @@ import org.testcontainers.containers.PostgreSQLContainer;
 @TestInstance(TestInstance.Lifecycle.PER_CLASS)
 class DefinitionVersionsIT {
 
-    private static final String ENGINE = "http://localhost:8081/flowable-rest/service";
+    private static final String ENGINE =
+            "http://localhost:" + System.getenv().getOrDefault("PI_ENGINE_A_PORT", "8081") + "/flowable-rest/service";
     private static final String KEY = "demoMigration";
     private static final Path V1_BPMN = Path.of("..", "docker", "processes", "demo-migration-v1.bpmn20.xml");
     private static final Path V2_BPMN = Path.of("..", "docker", "processes", "demo-migration-v2.bpmn20.xml");

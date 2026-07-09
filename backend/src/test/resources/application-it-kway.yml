@@ -21,7 +21,7 @@ inspector:
   engines:
     - id: kway-scroll
       name: "K-way scroll (default depth cap)"
-      base-url: "http://localhost:8081/flowable-rest/service"
+      base-url: "http://localhost:${PI_ENGINE_A_PORT:8081}/flowable-rest/service"
       environment: dev
       accent-color: "#2e86de"
       enabled: true
@@ -38,7 +38,7 @@ inspector:
       max-page-size: 2
     - id: kway-capped
       name: "K-way capped (deep-paging-max-depth 6)"
-      base-url: "http://localhost:8081/flowable-rest/service"
+      base-url: "http://localhost:${PI_ENGINE_A_PORT:8081}/flowable-rest/service"
       environment: dev
       enabled: true
       mode: read-write

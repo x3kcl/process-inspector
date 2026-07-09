@@ -11,12 +11,18 @@ set -euo pipefail
 PROFILE="${1:?usage: smoke-test.sh <flowable-6|flowable-7|legacy>}"
 DEADLINE=$(($(date +%s) + 180)) # engines take 30-60s to boot; 6.3.1 can be slower
 CRED="rest-admin:test"
-COMPOSE="docker compose -f $(dirname "$0")/docker-compose.dev.yml"
+# CI_PROJECT (set by the self-hosted-runner CI job) scopes `compose exec` to CI's own
+# project so the postgres readiness probe hits CI's container, not an already-up dev stack.
+# Unset locally → the compose file's own `name:` (process-inspector) is used, as before.
+COMPOSE="docker compose ${CI_PROJECT:+-p $CI_PROJECT} -f $(dirname "$0")/docker-compose.dev.yml"
 
+# Host ports are env-overridable (default = the doctrinal dev ports) so a self-hosted
+# runner on a shared Docker daemon can remap them off an already-up dev/demo stack.
+# These MUST agree with docker-compose.dev.yml's PI_ENGINE_*_PORT defaults.
 case "$PROFILE" in
-  flowable-6) PORTS="8081 8082" ;;
-  flowable-7) PORTS="8083" ;;
-  legacy)     PORTS="8084" ;;
+  flowable-6) PORTS="${PI_ENGINE_A_PORT:-8081} ${PI_ENGINE_B_PORT:-8082}" ;;
+  flowable-7) PORTS="${PI_ENGINE_7_PORT:-8083}" ;;
+  legacy)     PORTS="${PI_ENGINE_LEGACY_PORT:-8084}" ;;
   *) echo "unknown profile: $PROFILE" >&2; exit 2 ;;
 esac
 

@@ -52,7 +52,8 @@ import org.springframework.web.client.RestClient;
 @Import(NoDbTestSupport.class)
 class TriageCmmnScopeIT {
 
-    private static final String ENGINE = "http://localhost:8081/flowable-rest/service";
+    private static final String ENGINE =
+            "http://localhost:" + System.getenv().getOrDefault("PI_ENGINE_A_PORT", "8081") + "/flowable-rest/service";
     private static final String CASE_KEY = "demoFailingCase";
     /** The seed's unique failing expression — a residue-independent needle for the orphan. */
     private static final String NEEDLE = "nonExistentBean";
@@ -62,7 +63,9 @@ class TriageCmmnScopeIT {
     @DynamicPropertySource
     static void registerProxy(DynamicPropertyRegistry registry) {
         proxy.start();
-        proxy.stubFor(any(anyUrl()).willReturn(aResponse().proxiedFrom("http://localhost:8081")));
+        proxy.stubFor(any(anyUrl())
+                .willReturn(aResponse()
+                        .proxiedFrom("http://localhost:" + System.getenv().getOrDefault("PI_ENGINE_A_PORT", "8081"))));
         registry.add("TRIAGE_PROXY_PORT", () -> proxy.port());
     }
 

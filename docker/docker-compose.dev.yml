@@ -25,7 +25,10 @@ services:
     image: flowable/flowable-rest:6.8.0
     profiles: ["flowable-6"]
     ports:
-      - "8081:8080"
+      # Host port is env-overridable (default = the doctrinal dev port) so a self-hosted
+      # runner can bind a free port without colliding with an already-up dev/demo stack
+      # on the same Docker daemon. Dev/local keep 8081 via the default.
+      - "${PI_ENGINE_A_PORT:-8081}:8080"
     environment:
       - FLOWABLE_REST_APP_ADMIN_USER-ID=rest-admin
       - FLOWABLE_REST_APP_ADMIN_PASSWORD=test
@@ -34,7 +37,7 @@ services:
     image: flowable/flowable-rest:6.8.0
     profiles: ["flowable-6"]
     ports:
-      - "8082:8080"
+      - "${PI_ENGINE_B_PORT:-8082}:8080"
     environment:
       - FLOWABLE_REST_APP_ADMIN_USER-ID=rest-admin
       - FLOWABLE_REST_APP_ADMIN_PASSWORD=test
@@ -43,7 +46,7 @@ services:
     image: flowable/flowable-rest:7.1.0
     profiles: ["flowable-7"]
     ports:
-      - "8083:8080"
+      - "${PI_ENGINE_7_PORT:-8083}:8080"
     environment:
       - FLOWABLE_REST_APP_ADMIN_USER-ID=rest-admin
       - FLOWABLE_REST_APP_ADMIN_PASSWORD=test
@@ -52,7 +55,7 @@ services:
     image: flowable/flowable-rest:6.3.1
     profiles: ["legacy"]
     ports:
-      - "8084:8080"
+      - "${PI_ENGINE_LEGACY_PORT:-8084}:8080"
     environment:
       - FLOWABLE_REST_APP_ADMIN_USER-ID=rest-admin
       - FLOWABLE_REST_APP_ADMIN_PASSWORD=test
@@ -61,7 +64,7 @@ services:
     image: postgres:16-alpine
     profiles: ["postgres"]
     ports:
-      - "5433:5432"
+      - "${PI_PG_PORT:-5433}:5432"
     environment:
       - POSTGRES_DB=inspector
       - POSTGRES_USER=inspector

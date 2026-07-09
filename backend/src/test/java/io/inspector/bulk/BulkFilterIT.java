@@ -58,7 +58,8 @@ import org.testcontainers.containers.PostgreSQLContainer;
 @TestInstance(TestInstance.Lifecycle.PER_CLASS)
 class BulkFilterIT {
 
-    private static final String ENGINE = "http://localhost:8081/flowable-rest/service";
+    private static final String ENGINE =
+            "http://localhost:" + System.getenv().getOrDefault("PI_ENGINE_A_PORT", "8081") + "/flowable-rest/service";
     private static final int MEMBERS = 12; // > max-page-size 10 → exhaustive paging is exercised
 
     private static final PostgreSQLContainer<?> POSTGRES = new PostgreSQLContainer<>("postgres:16-alpine");

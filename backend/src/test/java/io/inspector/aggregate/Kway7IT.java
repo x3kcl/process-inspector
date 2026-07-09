@@ -19,7 +19,8 @@ class Kway7IT extends AbstractKwayPagingIT {
 
     @Override
     protected String engineUrl() {
-        return "http://localhost:8083/flowable-rest/service";
+        return "http://localhost:" + System.getenv().getOrDefault("PI_ENGINE_7_PORT", "8083")
+                + "/flowable-rest/service";
     }
 
     @Override

@@ -21,7 +21,7 @@ inspector:
   engines:
     - id: engine-a
       name: "Engine A (inert)"
-      base-url: "http://localhost:8081/flowable-rest/service"
+      base-url: "http://localhost:${PI_ENGINE_A_PORT:8081}/flowable-rest/service"
       environment: dev
       accent-color: "#2e86de"
       enabled: false

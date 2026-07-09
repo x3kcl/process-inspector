@@ -14,7 +14,7 @@ concurrency:
 
 jobs:
   lint:
-    runs-on: ubuntu-24.04
+    runs-on: self-hosted
     steps:
       - uses: actions/checkout@v4
       - uses: actions/setup-java@v4
@@ -29,7 +29,7 @@ jobs:
         run: ./scripts/security-audit.sh
 
   unit:
-    runs-on: ubuntu-24.04
+    runs-on: self-hosted
     steps:
       - uses: actions/checkout@v4
       - uses: actions/setup-java@v4
@@ -42,14 +42,16 @@ jobs:
         run: mvn -B test
 
   frontend:
-    runs-on: ubuntu-24.04
+    runs-on: self-hosted
     defaults:
       run:
         working-directory: frontend
     services:
       # The OpenAPI drift gate boots the REAL BFF. Engines may be absent (health degrades,
       # boot succeeds — ARCH §2.2), but Postgres is a hard boot dependency (Flyway +
-      # ddl-auto=validate), so it runs as a service on the app's default port 5433.
+      # ddl-auto=validate), so it runs as a service. Host port 5434 (not the dev default
+      # 5433) so a self-hosted runner does not collide with an already-up dev/demo Postgres
+      # on the same daemon; the BFF is pointed at it via INSPECTOR_DB_URL below.
       postgres:
         image: postgres:16
         env:
@@ -57,7 +59,7 @@ jobs:
           POSTGRES_USER: inspector
           POSTGRES_PASSWORD: inspector
         ports:
-          - 5433:5432
+          - 5434:5432
         options: >-
           --health-cmd "pg_isready -U inspector"
           --health-interval 5s
@@ -95,19 +97,25 @@ jobs:
           # password-refs must resolve; the engines they authenticate against are absent.
           ENGINE_A_PASSWORD: unused-in-ci
           ENGINE_B_PASSWORD: unused-in-ci
+          # Self-hosted-runner remap: BFF on 8086 and its DB on the 5434 service (above),
+          # off the dev defaults (8085/5433) so a concurrent dev BFF/Postgres can coexist.
+          SERVER_PORT: "8086"
+          INSPECTOR_DB_URL: jdbc:postgresql://localhost:5434/inspector
         run: |
           JAR=$(ls target/*.jar | head -1)
           nohup java -jar "$JAR" > /tmp/bff.log 2>&1 &
       - name: Wait for /v3/api-docs (bounded)
         run: |
           for _ in $(seq 1 90); do
-            curl -fsS http://localhost:8085/v3/api-docs > /dev/null && exit 0
+            curl -fsS http://localhost:8086/v3/api-docs > /dev/null && exit 0
             sleep 2
           done
           echo "::error::BFF did not serve /v3/api-docs within 180s"
           tail -200 /tmp/bff.log
           exit 1
       - name: Regenerate the API contract from the running BFF
+        env:
+          INSPECTOR_BFF_URL: http://localhost:8086
         run: npm run gen:api
       - name: Drift gate — committed schema must match the live contract
         run: |
@@ -120,7 +128,7 @@ jobs:
         run: tail -200 /tmp/bff.log || true
 
   docker:
-    runs-on: ubuntu-24.04
+    runs-on: self-hosted
     steps:
       - uses: actions/checkout@v4
       - uses: docker/setup-buildx-action@v3
@@ -133,7 +141,7 @@ jobs:
           cache-to: type=gha,mode=max
 
   integration:
-    runs-on: ubuntu-24.04
+    runs-on: self-hosted
     timeout-minutes: 20
     strategy:
       fail-fast: false
@@ -150,6 +158,20 @@ jobs:
       # CLI --profile flags would scope only the command they're passed to, leaving
       # logs/exec on the docker/.env default.
       COMPOSE_PROFILES: "${{ matrix.profile }},postgres"
+      # Self-hosted runner shares hp04's Docker daemon with a live demo + interactive dev
+      # stacks. Remap every published port off the dev defaults so CI never collides with
+      # (or tears down) those stacks; the compose file, smoke-test.sh, seed.sh and the IT
+      # base-urls all read these vars (default = the dev port). The engine ITs read
+      # PI_ENGINE_*_PORT; the BFF-owned Postgres is remapped + fed via INSPECTOR_DB_URL.
+      PI_ENGINE_A_PORT: "8091"
+      PI_ENGINE_B_PORT: "8092"
+      PI_ENGINE_7_PORT: "8093"
+      PI_ENGINE_LEGACY_PORT: "8094"
+      PI_PG_PORT: "5435"
+      INSPECTOR_DB_URL: jdbc:postgresql://localhost:5435/inspector
+      # Distinct compose project (not the dev "process-inspector") so container names never
+      # clash and teardown only ever removes CI's own containers/volumes.
+      CI_PROJECT: pi-ci-${{ matrix.profile }}
     steps:
       - uses: actions/checkout@v4
       - uses: actions/setup-java@v4
@@ -165,8 +187,12 @@ jobs:
         with:
           username: ${{ secrets.DOCKERHUB_USERNAME }}
           password: ${{ secrets.DOCKERHUB_TOKEN }}
+      # Persistent runner: a prior interrupted run may have left CI's own containers behind.
+      # Scoped to $CI_PROJECT — never touches the dev/demo projects.
+      - name: Pre-clean CI harness residue
+        run: docker compose -p "$CI_PROJECT" -f docker/docker-compose.dev.yml down -v --remove-orphans || true
       - name: Boot harness (${{ matrix.profile }} + postgres)
-        run: docker compose -f docker/docker-compose.dev.yml up -d
+        run: docker compose -p "$CI_PROJECT" -f docker/docker-compose.dev.yml up -d
       - name: Wait for engines and postgres (bounded)
         run: bash docker/smoke-test.sh ${{ matrix.profile }}
       - name: Seed demo processes (REST-only, idempotent)
@@ -176,4 +202,9 @@ jobs:
         run: mvn -B verify -Dit.test=${{ matrix.itClass }} -Dskip.surefire.tests=true
       - name: Dump harness logs
         if: failure()
-        run: docker compose -f docker/docker-compose.dev.yml logs --no-color --timestamps
+        run: docker compose -p "$CI_PROJECT" -f docker/docker-compose.dev.yml logs --no-color --timestamps
+      # Always tear down CI's own project so the persistent runner leaves no residue and
+      # frees the remapped ports for the next leg. Never touches dev/demo (different project).
+      - name: Tear down CI harness
+        if: always()
+        run: docker compose -p "$CI_PROJECT" -f docker/docker-compose.dev.yml down -v --remove-orphans || true
