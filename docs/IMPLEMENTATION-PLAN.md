@@ -303,10 +303,17 @@ OPERATIONS.md §8.
   **Landed:** S0 (PR #25 — `deploy/sql/audit-roles.sql` + grant-level `AuditRoleGrantsIT`);
   S1 (`AuditService.recordConfigEvent` sentinel-keyed single-shot terminal row + config-event
   read-RBAC; `ScopeMappingService` now writes the R-SAFE-12 reload to the ledger with
-  fail-to-previous emit-outside-the-lock). The `audit_config_event_failures_total` counter is
-  reserved for the R-OPS-02 telemetry milestone (no metric stack exists yet — nor does
-  `audit_insert_failures_total`); until then the failure surfaces as the stable
-  `AUDIT_CONFIG_EVENT_FAILURE` ERROR marker for log-based alerting.
+  fail-to-previous emit-outside-the-lock); S2 (per-engine `audit-payload` modes — `V8`
+  `engine_registry.audit_payload` + `AuditPayloadMode`/policy resolved at the mutation call site;
+  the pre-existing List-blind `redact()` leak fixed + recursion into variable containers keeps
+  NAMES / masks values; the mode governs `response_snippet` too; minimization by default =
+  `redacted`). The `audit_config_event_failures_total` counter is reserved for the R-OPS-02
+  telemetry milestone (no metric stack exists yet — nor does `audit_insert_failures_total`);
+  until then the failure surfaces as the stable `AUDIT_CONFIG_EVENT_FAILURE` ERROR marker.
+  Deferred to a follow-on: auditing an in-app `audit-payload` FLIP (`config-audit-payload-mode-change`,
+  D4f) once an admin edit path exposes the field; operator-authored `reason`/`ticketId` free-text
+  is governed by DATA-CLASSIFICATION §4 handling rules (redacting the accountability reason would
+  defeat the point), not payload minimization.
 
 ## M5 — Bulk + hardening (v1 close-out; the former M6)
 - Grid-selection bulk as a **persisted tracked job** (R-SEM-10: state machine, startup

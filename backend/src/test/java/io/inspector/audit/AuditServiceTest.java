@@ -12,6 +12,8 @@ import java.nio.charset.StandardCharsets;
 import java.time.Clock;
 import java.time.Instant;
 import java.time.ZoneOffset;
+import java.util.LinkedHashMap;
+import java.util.List;
 import java.util.Map;
 import java.util.Optional;
 import org.junit.jupiter.api.BeforeEach;
@@ -153,6 +155,125 @@ class AuditServiceTest {
 
         assertThat(clean).containsEntry("businessKey", "ORD-1").containsEntry("apiToken", AuditService.REDACTED);
         assertThat(clean.get("nested")).isEqualTo(Map.of("dbPassword", AuditService.REDACTED, "plain", "ok"));
+    }
+
+    @Test
+    @SuppressWarnings("unchecked")
+    void redactRecursesIntoListsClosingThePreExistingDenylistBypass() {
+        // Before the S2 fix, redact() descended into maps only — a secret inside a LIST leaked.
+        Map<String, Object> payload = Map.of("variables", List.of(Map.of("name", "amount", "password", "hunter2")));
+
+        Map<String, Object> clean = AuditService.redact(payload);
+
+        List<Map<String, Object>> vars = (List<Map<String, Object>>) clean.get("variables");
+        assertThat(vars.get(0)).containsEntry("name", "amount").containsEntry("password", AuditService.REDACTED);
+    }
+
+    @Test
+    void redactedModeMasksValueBearingLeavesButKeepsSkeletonAndKeys() {
+        Map<String, Object> payload = new LinkedHashMap<>();
+        payload.put("name", "amount");
+        payload.put("scope", "local");
+        payload.put("valueType", "long");
+        payload.put("oldValue", 10);
+        payload.put("newValue", 20);
+
+        Map<String, Object> out = AuditService.applyPayloadMode(payload, AuditPayloadMode.REDACTED);
+
+        assertThat(out)
+                .containsEntry("name", "amount")
+                .containsEntry("scope", "local")
+                .containsEntry("valueType", "long")
+                .containsEntry("oldValue", AuditService.REDACTED)
+                .containsEntry("newValue", AuditService.REDACTED);
+    }
+
+    @Test
+    void metadataOnlyModeDropsValueBearingKeysEntirely() {
+        Map<String, Object> payload = new LinkedHashMap<>();
+        payload.put("name", "amount");
+        payload.put("oldValue", 10);
+        payload.put("newValue", 20);
+
+        assertThat(AuditService.applyPayloadMode(payload, AuditPayloadMode.METADATA_ONLY))
+                .containsOnlyKeys("name");
+    }
+
+    @Test
+    void fullModeIsIdentity() {
+        Map<String, Object> payload = Map.of("newValue", "customer-order-detail");
+        assertThat(AuditService.applyPayloadMode(payload, AuditPayloadMode.FULL))
+                .isEqualTo(payload);
+    }
+
+    @Test
+    @SuppressWarnings("unchecked")
+    void redactedModeRecursesIntoVariableContainersKeepingNamesMaskingValues() {
+        Map<String, Object> payload = Map.of("carriedVariables", Map.of("amount", 42, "email", "alice@example.com"));
+
+        Map<String, Object> out = AuditService.applyPayloadMode(payload, AuditPayloadMode.REDACTED);
+
+        Map<String, Object> vars = (Map<String, Object>) out.get("carriedVariables");
+        // Names (keys) survive as accountability; values are masked.
+        assertThat(vars).containsEntry("amount", AuditService.REDACTED).containsEntry("email", AuditService.REDACTED);
+    }
+
+    @Test
+    @SuppressWarnings("unchecked")
+    void redactedModeKeepsStructuralCoordinatesUnderSkeletonLists() {
+        Map<String, Object> payload =
+                Map.of("activityMappings", List.of(Map.of("sourceActivityId", "a1", "targetActivityId", "b1")));
+
+        Map<String, Object> out = AuditService.applyPayloadMode(payload, AuditPayloadMode.REDACTED);
+
+        List<Map<String, Object>> maps = (List<Map<String, Object>>) out.get("activityMappings");
+        assertThat(maps.get(0)).containsEntry("sourceActivityId", "a1").containsEntry("targetActivityId", "b1");
+    }
+
+    @Test
+    void redactToleratesNonStringMapKeysWithoutThrowing() {
+        Map<Object, Object> nonStringKeyed = new LinkedHashMap<>();
+        nonStringKeyed.put(1, "x");
+        Map<String, Object> payload = Map.of("data", nonStringKeyed);
+
+        assertThatCode(() -> AuditService.redact(payload)).doesNotThrowAnyException();
+    }
+
+    @Test
+    void beginPendingWithRedactedModeStoresNoVariableValuesAndCarriesTheMode() {
+        when(repository.findTopByOrderBySeqDesc()).thenReturn(Optional.empty());
+        Map<String, Object> payload = new LinkedHashMap<>();
+        payload.put("name", "email");
+        payload.put("newValue", "alice@example.com");
+
+        AuditEntry entry = service.beginPending(
+                "op",
+                "engine-a",
+                null,
+                "pi-1",
+                "edit-variable",
+                "reason long enough",
+                null,
+                payload,
+                AuditPayloadMode.REDACTED);
+
+        assertThat(entry.getPayload())
+                .contains("email")
+                .doesNotContain("alice@example.com")
+                .contains(AuditService.REDACTED);
+        assertThat(entry.getPayloadMode()).isEqualTo(AuditPayloadMode.REDACTED);
+    }
+
+    @Test
+    void closeRedactsTheResponseSnippetForAMinimizedEngine() {
+        AuditEntry entry = entry("e1");
+        entry.setPayloadMode(AuditPayloadMode.REDACTED);
+
+        service.close(entry, AuditOutcome.ok, 200, "{\"value\":\"alice@example.com\"}", true);
+
+        ArgumentCaptor<AuditEntry> saved = ArgumentCaptor.forClass(AuditEntry.class);
+        org.mockito.Mockito.verify(repository).saveAndFlush(saved.capture());
+        assertThat(saved.getValue().getResponseSnippet()).isEqualTo(AuditService.REDACTED);
     }
 
     private static AuditEntry entry(String id) {
