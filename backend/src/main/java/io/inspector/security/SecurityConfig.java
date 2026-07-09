@@ -13,6 +13,9 @@ import org.springframework.security.config.annotation.web.builders.HttpSecurity;
 import org.springframework.security.config.annotation.web.configuration.EnableWebSecurity;
 import org.springframework.security.core.userdetails.User;
 import org.springframework.security.core.userdetails.UserDetailsService;
+import org.springframework.security.oauth2.client.registration.ClientRegistrationRepository;
+import org.springframework.security.oauth2.client.web.DefaultOAuth2AuthorizationRequestResolver;
+import org.springframework.security.oauth2.client.web.OAuth2AuthorizationRequestCustomizers;
 import org.springframework.security.provisioning.InMemoryUserDetailsManager;
 import org.springframework.security.web.SecurityFilterChain;
 import org.springframework.security.web.authentication.HttpStatusEntryPoint;
@@ -127,9 +130,27 @@ public class SecurityConfig {
 
     @Bean
     @Profile("oidc")
-    SecurityFilterChain oidcChain(HttpSecurity http, InspectorAuthoritiesMapper authoritiesMapper) throws Exception {
+    SecurityFilterChain oidcChain(
+            HttpSecurity http,
+            InspectorAuthoritiesMapper authoritiesMapper,
+            ClientRegistrationRepository clientRegistrations)
+            throws Exception {
         return common(http)
-                .oauth2Login(oauth -> oauth.userInfoEndpoint(user -> user.userAuthoritiesMapper(authoritiesMapper)))
+                .oauth2Login(oauth -> oauth.authorizationEndpoint(
+                                endpoint -> endpoint.authorizationRequestResolver(pkceResolver(clientRegistrations)))
+                        .userInfoEndpoint(user -> user.userAuthoritiesMapper(authoritiesMapper)))
                 .build();
+    }
+
+    /**
+     * Authorization-code + PKCE (IDP-SECURITY.md §4): Spring auto-applies PKCE only for public
+     * clients, so a confidential registration needs the customizer wired explicitly. S5 extends
+     * this same resolver to inject {@code max_age}/{@code prompt} for the dangerous-set re-auth.
+     */
+    private static DefaultOAuth2AuthorizationRequestResolver pkceResolver(ClientRegistrationRepository repo) {
+        DefaultOAuth2AuthorizationRequestResolver resolver =
+                new DefaultOAuth2AuthorizationRequestResolver(repo, "/oauth2/authorization");
+        resolver.setAuthorizationRequestCustomizer(OAuth2AuthorizationRequestCustomizers.withPkce());
+        return resolver;
     }
 }

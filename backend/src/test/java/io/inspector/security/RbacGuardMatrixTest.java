@@ -44,7 +44,9 @@ class RbacGuardMatrixTest {
         // No scope-mapping file here (null) → the audit path is never exercised; a mock suffices.
         ScopeMappingService scopeMapping = new ScopeMappingService(
                 props, Clock.systemUTC(), org.mockito.Mockito.mock(io.inspector.audit.AuditService.class));
-        return new RbacAuthorizer(scopeMapping, props, registry);
+        // Dev/basic sessions only in this matrix → the OIDC group path is never exercised; a mock
+        // resolver suffices (the OIDC branches are covered in OidcGroupResolverTest).
+        return new RbacAuthorizer(scopeMapping, props, registry, org.mockito.Mockito.mock(OidcGroupResolver.class));
     }
 
     /** A dev/basic session carrying exactly one {@code ROLE_*} authority = global scope. */

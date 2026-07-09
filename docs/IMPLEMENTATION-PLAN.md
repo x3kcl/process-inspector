@@ -840,10 +840,22 @@ is down.
 
 **Slices — the identity foundation, fail-closed gate, and escalation rails land and are tested
 behind nothing before any UI reaches them:**
-- **S1 — OIDC wiring + ADR-003.** Real `oauth2-client` registration; issuer/tenant pinning; the
-  **Keycloak** prod-like/CI leg (merge-blocking — a stub omits `max_age`/refresh/overage);
-  non-array-claim + Entra-overage detect-and-legibly-fail (Graph resolution opt-in). Dev chain
-  untouched. Done-when: rung-3 Keycloak-login IT; overage/non-array claim → legible zero-scope fail.
+- **S1 — OIDC wiring + ADR-003. ✅ LANDED 2026-07-09.** Real `oauth2-client` registration
+  (`application-oidc.yml`: issuer-uri pinned to one tenant, client-id + secret-**ref**, PKCE via a
+  customized `DefaultOAuth2AuthorizationRequestResolver`, `openid profile <groups>` scopes, exact
+  redirect-uri); the single authoritative `OidcGroupResolver` (issuer pinning as belt-and-suspenders
+  over Spring's `iss` validation — groups trusted only from the pinned issuer; non-array `groups`
+  claim → legible login failure; Entra groups-overage `_claim_names`/`_claim_sources` → detect +
+  resolve-via-`OverageGroupResolver`-if-deployed ELSE legible fail; a silent zero = Sev1) wired into
+  both the login mapper (strict) and the check-time `RbacAuthorizer` (issuer-pinned, quiet). Dev
+  chain untouched. *Tests:* rung-1 `OidcGroupResolverTest` (all trust branches, CI gate) + a
+  **real-Keycloak `OidcKeycloakIT`** (Testcontainers — discovery/JWKS/PKCE against a live issuer +
+  a real array `groups` claim through the resolver + issuer-pinning rejects a foreign tenant),
+  empirically proven locally. *CI note:* like every other DB/container IT in this repo the Keycloak
+  IT is **local-only** (not in `ci.yml`'s itClass matrix; CI gates on the rung-1 resolver matrix) —
+  the zero-flake doctrine keeps container ITs off the per-PR path; a merge-blocking Keycloak leg +
+  Graph overage *resolution* (vs detection) are tracked follow-ups. Graph overage resolution and the
+  `max_age`/refresh re-auth semantics land in **S5**.
 - **S2 — session + header hardening + fail-closed gate.** `sessionManagement` (caps; fixation scoped
   to `oidc`/form so the dev Basic-per-XHR SSE isn't orphaned), cookie flags, the header set, CSP
   **report-only**, HSTS opt-in; `canExecute` → `.orElse(false)` + the verb-existence check.
