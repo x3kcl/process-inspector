@@ -6,6 +6,7 @@ import io.inspector.action.ActionResult;
 import io.inspector.action.EngineRejectedException;
 import io.inspector.action.GuardRefusedException;
 import io.inspector.action.OutcomeUnknownException;
+import io.inspector.action.TicketPolicy;
 import io.inspector.audit.AuditEntry;
 import io.inspector.audit.AuditOutcome;
 import io.inspector.audit.AuditService;
@@ -81,6 +82,7 @@ public class FlowSurgeryService {
     private final AuditService audit;
     private final RbacAuthorizer rbac;
     private final ProtectedInstanceRepository protectedInstances;
+    private final TicketPolicy ticketPolicy;
 
     public FlowSurgeryService(
             EngineRegistry registry,
@@ -88,13 +90,15 @@ public class FlowSurgeryService {
             BpmnStructureService structures,
             AuditService audit,
             RbacAuthorizer rbac,
-            ProtectedInstanceRepository protectedInstances) {
+            ProtectedInstanceRepository protectedInstances,
+            TicketPolicy ticketPolicy) {
         this.registry = registry;
         this.client = client;
         this.structures = structures;
         this.audit = audit;
         this.rbac = rbac;
         this.protectedInstances = protectedInstances;
+        this.ticketPolicy = ticketPolicy;
     }
 
     /* ------------------------------ change-state ------------------------------ */
@@ -123,6 +127,7 @@ public class FlowSurgeryService {
         ChangeStatePlan plan = planChangeState(engine, instanceId, request, auth);
         requireUnprotectedOrAdmin(auth, engine, CHANGE_STATE_ACTION, instanceId);
         String reason = requireReason(request.reason(), CHANGE_STATE_ACTION);
+        String ticketId = ticketPolicy.validate(request.ticketId(), engine.environment());
 
         AuditEntry entry = audit.beginPending(
                 auth.getName(),
@@ -131,7 +136,7 @@ public class FlowSurgeryService {
                 instanceId,
                 CHANGE_STATE_ACTION,
                 reason,
-                blankToNull(request.ticketId()),
+                ticketId,
                 plan.auditPayload(),
                 engine.auditPayloadOrDefault());
 
@@ -372,6 +377,7 @@ public class FlowSurgeryService {
         requireWritableEngine(engine, RESTART_ACTION);
         requireUnprotectedOrAdmin(auth, engine, RESTART_ACTION, instanceId);
         String reason = requireReason(request.reason(), RESTART_ACTION);
+        String ticketId = ticketPolicy.validate(request.ticketId(), engine.environment());
         boolean pinVersion = Boolean.TRUE.equals(request.pinDefinitionVersion());
 
         Map<String, Object> historic;
@@ -445,7 +451,7 @@ public class FlowSurgeryService {
                 instanceId,
                 RESTART_ACTION,
                 reason,
-                blankToNull(request.ticketId()),
+                ticketId,
                 payload,
                 engine.auditPayloadOrDefault());
 

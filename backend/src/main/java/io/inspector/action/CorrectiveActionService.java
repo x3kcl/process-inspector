@@ -56,18 +56,21 @@ public class CorrectiveActionService {
     private final AuditService audit;
     private final RbacAuthorizer rbac;
     private final ProtectedInstanceRepository protectedInstances;
+    private final TicketPolicy ticketPolicy;
 
     public CorrectiveActionService(
             EngineRegistry registry,
             FlowableEngineClient client,
             AuditService audit,
             RbacAuthorizer rbac,
-            ProtectedInstanceRepository protectedInstances) {
+            ProtectedInstanceRepository protectedInstances,
+            TicketPolicy ticketPolicy) {
         this.registry = registry;
         this.client = client;
         this.audit = audit;
         this.rbac = rbac;
         this.protectedInstances = protectedInstances;
+        this.ticketPolicy = ticketPolicy;
     }
 
     /**
@@ -106,6 +109,7 @@ public class CorrectiveActionService {
         }
         requireUnprotectedOrAdmin(auth, engine, verb, targetId);
         String reason = normalizedReason(engine, verb, request);
+        String ticketId = ticketPolicy.validate(request.ticketId(), engine.environment());
 
         Target target = restateTarget(scope, engine, verb, targetId, request);
         requireConfirmToken(engine, verb, target, request);
@@ -118,7 +122,7 @@ public class CorrectiveActionService {
                 verb.targetKind() == ActionVerb.TargetKind.INSTANCE ? targetId : null,
                 verb.path(),
                 reason,
-                blankToNull(request.ticketId()),
+                ticketId,
                 target.auditPayload(),
                 engine.auditPayloadOrDefault());
 

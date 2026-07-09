@@ -724,6 +724,22 @@ export interface paths {
         patch?: never;
         trace?: never;
     };
+    "/api/meta": {
+        parameters: {
+            query?: never;
+            header?: never;
+            path?: never;
+            cookie?: never;
+        };
+        get: operations["meta"];
+        put?: never;
+        post?: never;
+        delete?: never;
+        options?: never;
+        head?: never;
+        patch?: never;
+        trace?: never;
+    };
     "/api/recents": {
         parameters: {
             query?: never;
@@ -1437,6 +1453,9 @@ export interface components {
             role?: string;
             username?: string;
         };
+        MetaDto: {
+            ticketUrlTemplate?: string;
+        };
         MigrationMapping: {
             fromActivityId?: string;
             fromActivityIds?: string[];
@@ -2041,6 +2060,7 @@ export interface operations {
                 actor?: string;
                 action?: string;
                 engineId?: string;
+                ticketId?: string;
                 since?: string;
                 limit?: number;
             };
@@ -3003,6 +3023,26 @@ export interface operations {
                 };
                 content: {
                     "*/*": components["schemas"]["MeDto"];
+                };
+            };
+        };
+    };
+    meta: {
+        parameters: {
+            query?: never;
+            header?: never;
+            path?: never;
+            cookie?: never;
+        };
+        requestBody?: never;
+        responses: {
+            /** @description OK */
+            200: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "*/*": components["schemas"]["MetaDto"];
                 };
             };
         };

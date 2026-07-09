@@ -307,7 +307,12 @@ OPERATIONS.md §8.
   `engine_registry.audit_payload` + `AuditPayloadMode`/policy resolved at the mutation call site;
   the pre-existing List-blind `redact()` leak fixed + recursion into variable containers keeps
   NAMES / masks values; the mode governs `response_snippet` too; minimization by default =
-  `redacted`). The `audit_config_event_failures_total` counter is reserved for the R-OPS-02
+  `redacted`); S3-backend (R-AUD-07 ticketId — `inspector.audit` config `ticket-id-pattern` /
+  `ticket-required-on` / boot-validated `ticket-url-template`; `TicketPolicy` guard wired into
+  CorrectiveAction + FlowSurgery + Migration (bulk enforced per-item), CR/LF-strip + refuse-
+  over-long + pattern + required-on-by-environment; `GET /api/meta` exposes the template;
+  `GET /api/audit` gains a `ticketId` filter). Frontend linkify + filter UI = **S3b** (next).
+  The `audit_config_event_failures_total` counter is reserved for the R-OPS-02
   telemetry milestone (no metric stack exists yet — nor does `audit_insert_failures_total`);
   until then the failure surfaces as the stable `AUDIT_CONFIG_EVENT_FAILURE` ERROR marker.
   Deferred to a follow-on: auditing an in-app `audit-payload` FLIP (`config-audit-payload-mode-change`,

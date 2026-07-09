@@ -62,7 +62,13 @@ class CmmnCorrectiveActionServiceTest {
 
     @BeforeEach
     void setUp() {
-        service = new CorrectiveActionService(registry, client, audit, rbac, protectedInstances);
+        service = new CorrectiveActionService(
+                registry,
+                client,
+                audit,
+                rbac,
+                protectedInstances,
+                new TicketPolicy(new io.inspector.config.AuditProperties(null, null, null)));
         when(registry.require(ENGINE)).thenReturn(engine);
         when(rbac.hasRoleOn(any(), any(), anyString())).thenReturn(true);
         when(protectedInstances.findById(any())).thenReturn(Optional.empty());
