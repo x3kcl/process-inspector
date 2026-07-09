@@ -236,3 +236,57 @@ Probed live on flowable-rest 6.8 while implementing the change-state guardrails:
 
 **Doc deltas:** ARCH §4 three flow-surgery rows; IMPLEMENTATION-PLAN v1.1 backend-landed
 status. SPEC §5/§6 already specified the verbs, guardrails and tier — no WHAT change.
+
+## Addendum (v2) — Registry CRUD: runtime engine lifecycle (2026-07-09)
+
+**Trigger:** the "BFF is now stateful" arc completed for user prefs (Saved Views moved
+localStorage→DB, v2/M4); engines remained YAML-plus-redeploy. **Method:** five-seat panel —
+security architect, lead developer, DevOps/SRE, support-team lead, UX expert — independent
+deliberations against the real M1/M4/v2 code, synthesized. **Full record + threat model +
+state machine + API/DDL:** `docs/REGISTRY-CRUD.md`.
+
+**Panel findings that shaped the design:**
+- *Security architect (load-bearing seat):* the base-URL is the whole SSRF surface; a
+  per-request allowlist is insufficient against DNS rebinding → **resolve-then-pin** demanded;
+  the egress allowlist must be **deploy config, not a UI field** (an admin who edits their own
+  bound has none); trust is **earned by a read-only probe**, never asserted; registry CRUD is
+  higher-privilege than any tier-3 verb → audited fail-closed; break-glass must NOT grant it.
+- *Lead developer (real seams):* every consumer already re-reads `registry.all()`/`require(id)`
+  live — the only stale caches are `FlowableEngineClient`'s per-id RestClients (evict on edit)
+  and the lingering R4j named instances (reset on remove); `id` is immutable forever
+  (composite-ID key); the net-new code is the SSRF validator + reload plumbing, everything else
+  is V6/audit/RBAC precedent.
+- *DevOps/SRE:* YAML must never stop booting the system (air-gap/DR) → DB-authoritative *once
+  initialized*, YAML one-time seed, `registry.source: config` pin; secrets stay env-refs;
+  readiness contract (R-OPS-01) unchanged.
+- *Support-team lead:* the guardrails must be legible in the flow (rule-named rejections, not
+  "denied"); the DRAFT→PROBED→ACTIVE "Test connection" ramp is confidence, not friction;
+  soft-delete so "removed engine `<id>`" honesty survives.
+- *UX expert:* own admin route, greyed-never-hidden; lifecycle as a first-class shape+label
+  column; secret **ref-name + presence** indicator, never a masked-value pretense.
+
+**Conflicts resolved:** DB-authoritative-once-initialized (over config-first-overlay) —
+one unambiguous source, YAML still cold-boots; all registry writes are REGISTRY_ADMIN (over
+letting OPERATOR tune caps) — one door, `dlq-scan-cap` is a do-no-harm knob; soft-delete/
+tombstone (over hard delete); **REGISTRY_ADMIN is an orthogonal fleet grant, not a ladder
+rung** (you cannot scope "add an engine" to an engine that does not exist).
+
+**Sixth seat — adversarial security review (independent LLM pass):** hardened the locked
+design (not just prose): the *pin* re-checks at connect but never re-resolves (the original
+"cached forever + re-validate at connect" was contradictory); reload runs strictly
+`afterCommit` (in-memory could otherwise run ahead of a rolled-back row); the `/external-job-api`
++ `/cmmn-api` **sibling URLs inherit the base pin + policy** (were an unguarded hole); the
+denylist is **IPv6-complete**; base-URL is **canonicalized before validation**; the probe can't
+be an oracle (validation errors specific, connect errors coarse); R4j instances are **removed**
+not reset on tombstone. "Block startup on YAML≠DB" was rejected (fails every deploy once seeded)
+in favor of a loud per-engine drift report + admin badge. → REGISTRY-CRUD.md §2 sixth seat, §4, §5, §9.
+
+**Cross-seat consensus:** trust is earned by a read-only probe · the egress allowlist bounds
+the admin so it is deploy config · resolve-then-pin (re-check the *pinned* IP at connect, never
+re-resolve) · sibling URLs inherit the base pin · reload is strictly post-commit · YAML never
+stops booting but drift is never silent · `id` immutable forever · CRUD audited fail-closed like
+a tier-3 verb · secrets stay env-refs and ref-absence is a loud pre-enable failure.
+
+**Doc deltas:** new `docs/REGISTRY-CRUD.md` (authoritative); SPEC §4b + §12; ARCH §3/§4/§5;
+REQUIREMENTS-REGISTER R-OPS-13 (expanded) + R-OPS-15 + R-SAFE-13; IMPLEMENTATION-PLAN v2
+Registry-CRUD block (S1–S5). No code — design locked, unbuilt.

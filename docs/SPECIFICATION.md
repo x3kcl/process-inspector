@@ -484,6 +484,42 @@ out-of-scope drawer must be answered truthfully (do-no-harm / never-lie). The ro
 the engine id and the matched case id. Older engines can't discriminate scope, so a CMMN case is
 never *claimed* there; the honest not-found stands.
 
+### 4b. Registry administration — runtime engine lifecycle *(v2)*
+
+A dedicated admin surface (`/admin/engines`, REGISTRY_ADMIN only, **greyed-never-hidden**
+in the nav with the reason for everyone else) that moves the engine registry from a
+YAML-edit-plus-redeploy to runtime CRUD: onboard a newly-stood-up engine, retire a
+decommissioned one, flip read-write↔read-only, or tune a per-engine cap / alarm threshold /
+`password-ref` **without a deploy**. The registry moves from `application.yml` to a DB table —
+the same "BFF is now stateful" arc as Saved Views (v2/M4) — DB-authoritative once seeded,
+with YAML as the one-time bootstrap seed and a `registry.source: config` pin for air-gapped
+deploys. **Authoritative design + panel: [REGISTRY-CRUD.md](REGISTRY-CRUD.md).**
+
+The load-bearing constraint (why it is gated to v2): an engine entry is a base-URL the BFF
+will dial, so runtime CRUD is an **SSRF surface** aimed by the credential-vault BFF
+(R-OPS-07). The guardrails — most of the feature's cost — are, per R-OPS-13/R-OPS-15/R-SAFE-13:
+- **Trust is earned, not asserted.** An added engine is born DRAFT + read-only, probed with
+  **read-only** calls (version + capabilities — never a mutating call), and cannot be enabled
+  read-write until a human confirms a good probe. On prod that flip is four-eyes (R-SAFE-08) +
+  typed token. Lifecycle: DRAFT → PROBED/PROBE_FAILED → ACTIVE → DISABLED → REMOVED.
+- **The base-URL is validated resolve-then-pin** against a **deploy-config egress allowlist**
+  (never editable in-app) with a loopback/link-local/private/metadata (`169.254.169.254`)
+  denylist — closing DNS-rebinding, not just check-then-connect. Rejections name the rule and
+  the next move (R-UXQ-05), never a bare "denied".
+- **Secrets stay env-refs** (iron rule): the DB stores the `password-ref` *name*, never a
+  value; the UI shows the ref name + a **presence** indicator ("`ENGINE_X_PASSWORD`: present ✓
+  / not in this deployment ✗") so a missing secret is a pre-enable failure, not a first-call
+  surprise.
+- **REGISTRY_ADMIN** is a fleet-level grant orthogonal to the VIEWER→ADMIN ladder — per-engine
+  ADMIN does **not** confer it, and break-glass (R-SAFE-11) does **not** grant it (an IdP
+  outage is no reason to repoint the vault). Every write is **audited fail-closed** like a
+  tier-3 verb (before/after config; secret refs redacted-by-name). `id` is immutable forever
+  (composite-ID key); delete is a soft tombstone so audit/notes/saved-view references still
+  resolve "removed engine `<id>`" (R-SEM-17).
+
+Zero-states (R-UXQ-04): no-engines → an actionable "Add your first engine"; config-pinned →
+a read-only registry labelled "CRUD disabled (registry source = config)".
+
 ## 5. Corrective actions — the verb catalog
 
 Every verb states what is preserved. Guard tiers per §6. All calls in
@@ -988,7 +1024,9 @@ and would rewrite working M1/M2 code for no capability gain); Go/FastAPI/Kotlin 
     clock-skew badges; capability invalidation; CSV export; print styles; webhook.
 - **v2 (demand-driven, triggers stated):** **remediation playbooks (§5.1 — build trigger
   R-GOV-08)**, migration (single w/ validate → batch wizard + typed "MIGRATE"), definition
-  version comparison, CMMN, registry CRUD (with the R-OPS-13 SSRF constraints), shared
+  version comparison, CMMN, **registry CRUD** (runtime engine lifecycle — SPEC §4b, the
+  R-OPS-13/R-OPS-15/R-SAFE-13 SSRF + governance rails; design locked in
+  [REGISTRY-CRUD.md](REGISTRY-CRUD.md)), shared
   server-side views, k-way-merge paging, maintenance snapshots + volume trends,
   training mode, capability overrides.
 - **v2/M4 job-lane trend sparklines — SHIPPED (R-BAU-08):** each Stage-0 status tile carries a
