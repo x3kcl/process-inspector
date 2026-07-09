@@ -2,6 +2,7 @@ import { StrictMode, Suspense, lazy } from 'react'
 import { createRoot } from 'react-dom/client'
 import { QueryClient, QueryClientProvider } from '@tanstack/react-query'
 import { Navigate, RouterProvider, createBrowserRouter, useSearchParams } from 'react-router'
+import { AdminEnginesPage } from './admin/AdminEnginesPage'
 import { ApiError } from './api/client'
 import { InspectPage } from './inspect/InspectPage'
 import { AuditLogPage } from './ops/AuditLogPage'
@@ -58,6 +59,7 @@ const router = createBrowserRouter([
         ),
       },
       { path: 'audit', element: <AuditLogPage /> },
+      { path: 'admin/engines', element: <AdminEnginesPage /> },
       {
         path: 'definitions/:engineId/:key/versions',
         element: <DefinitionVersionsPage />,
