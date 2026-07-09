@@ -1054,6 +1054,15 @@ locked before build so the milestone doesn't re-litigate them:
   end-to-end: save→persist-across-reload, record recent→persist, delete→gone. `NoDbTestSupport`
   gained both repo mocks. **v2/M4 milestone COMPLETE.**
 
+## 2026-07 whole-solution review → hardening plan
+A full-codebase 5-seat panel review (+ Gemini/Copilot external critique) at main `6129a88`
+produced a consolidated findings register and a risk-tiered improvement plan (P0 hotfixes →
+P1 security-tail/docs-truth → P2 structural debt → P3 product track):
+**[IMPROVEMENT-PLAN-2026-07.md](IMPROVEMENT-PLAN-2026-07.md)**. That document is the
+authoritative WHEN for the review's output; the doc-drift sweep it schedules (its slice #11)
+will reconcile the stale section headers in THIS file (shared-views / registry-CRUD / IdP
+headers still read "unbuilt" for shipped features).
+
 ## Build order inside any milestone
 backend DTO → engine client call → aggregator/join logic → controller → typed frontend API
 client → component. Every Flowable call gets an integration test against the dockerized
