@@ -60,10 +60,20 @@ DPO has signed off.
   cover a full annual audit cycle plus follow-up. Rationale: the audit log is the *only*
   human-attribution record (the engines attribute everything to `inspector-svc`), so it is
   intentionally retained longer than typical operational logs.
-- **Purge is itself audited**: the monthly-partition layout makes expiry a partition drop;
-  every purge run writes an audit event (what range, how many rows, by which job).
-- **Legal hold**: purge can be suspended per engine / tenant / time window; the hold and
-  its release are audited events (OPERATIONS §6).
+- **Purge is itself audited** (implemented, S5b): expiry is a whole-**month partition drop**
+  via the `SECURITY DEFINER purge_audit()` function. The BFF orchestrator writes a
+  **chain-boundary checkpoint** config event (the `chain_hash` + `seq` of the last dropped and
+  first surviving row, so the tamper chain stays verifiable across the gap) **before** each
+  drop — fail-closed: if the audit write fails, nothing is dropped. A started/terminal event
+  pair records the run. The function enforces a **hard 400-day floor in the DB** (a compromised
+  caller cannot purge younger data) and the app role holds `EXECUTE` only, never raw `DROP`.
+  *Because drops are whole-partition, effective retention is up to 400 days + one partition
+  width, and a hold over-retains unrelated subjects sharing that month (DP MAJOR-5) — row-scoped
+  enforcement is a v-next; the exposure is accepted here.*
+- **Legal hold** (implemented, S5b): purge is suspended per engine / tenant / time window; the
+  hold is **enforced by the DB inside `purge_audit()`** (not merely consulted by a cooperating
+  job), and both set and release are fail-closed audited events carrying the human actor
+  (OPERATIONS §6).
 - **Erasure = skeleton-preserving redaction**: on a validated erasure request, payload and
   free-text value columns are blanked while `actor`, `ts`, `engineId`, `instanceId`,
   `action`, `outcome` and the hash chain survive. The redaction writes its own audit row.

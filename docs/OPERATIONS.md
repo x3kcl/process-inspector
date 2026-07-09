@@ -60,7 +60,17 @@ mismatch → non-blocking reload banner; dynamic-import failure → reload promp
   `AuditPartitionMaintainer` create-aheads the current+next month at startup + daily. Watch for the
   **`AUDIT_DEFAULT_PARTITION_NONEMPTY`** ERROR marker — it means rows are landing in the DEFAULT
   safety net (create-ahead failing, e.g. the connection lacks owner DDL), so the future purge could
-  not drop them. The audited **purge job + legal-hold** themselves land with S5b (`purge_audit()`).
+  not drop them.
+  **The retention purge + legal hold are live (S5b):** the BFF `@Scheduled AuditRetentionPurger`
+  drops whole aged-out months via the `SECURITY DEFINER purge_audit()` (a DB-enforced 400-day
+  floor + legal-hold + whole-partition-age; the app role has `EXECUTE` only, never raw `DROP`),
+  writing a chain-boundary **checkpoint** config event BEFORE each drop (fail-closed). Alerts:
+  a **dead-man on the absence of a recent `audit-retention-purge` event** (the earliest signal, long
+  before disk fills), and the **`AUDIT_RETENTION_PURGE_ABORTED`** ERROR marker (a purge could not be
+  audited, so it did not run). Disable with `inspector.audit.retention-purge.enabled: false` — a
+  STOPPED purge is then visible via that dead-man. Legal holds are set/released ADMIN-only at
+  `/api/admin/legal-holds` (each a fail-closed audited event); lowering `inspector.audit.retention-days`
+  below the 400-day DB floor is refused at boot.
 - PII: variable payloads in audit rows are potentially personal data. Per-engine
   `audit-payload: full|redacted|metadata-only`; secret-name denylist → `«redacted»`; payload
   bodies role-gated OPERATOR+; erasure = skeleton-preserving redaction (accountability

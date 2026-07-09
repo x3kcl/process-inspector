@@ -334,7 +334,18 @@ OPERATIONS.md §8.
   stable `AUDIT_DEFAULT_PARTITION_NONEMPTY` ERROR marker whenever a row lands in DEFAULT; owner
   CREATE direct [the prod non-owner-role SECURITY DEFINER create-helper is deferred to S5b];
   `AuditPartitionCarveIT` proves the carve empirically [no row loss, correct routing, chain
-  preserved, trigger survives]).
+  preserved, trigger survives]); S5b (audit retention purge + legal hold — `V11` `legal_hold`
+  table + `SECURITY DEFINER purge_audit(partition, cutoff)` [DB-enforced 400-day floor + whole-
+  partition age + legal-hold via `LOCK legal_hold IN SHARE`; partition resolved from the catalog,
+  DEFAULT/non-child/parse-fail refused; `format('DROP TABLE %I')` injection-safe; app role
+  `EXECUTE`-only, never raw DROP]; `AuditRetentionPurger` @Scheduled single-writer orchestrator
+  writing a per-partition **chain-boundary checkpoint** config event [last-dropped + first-surviving
+  `seq`/`chain_hash`] BEFORE each drop — fail-closed [`AUDIT_RETENTION_PURGE_ABORTED` if unauditable];
+  `LegalHoldService` + ADMIN `/api/admin/legal-holds` set/release [fail-closed audited config events,
+  human actor, compensate-on-failure]; `inspector.audit.retention-days` [default 400, boot-refused
+  below the DB floor]; `audit-roles.sql` folds in `EXECUTE purge_audit` + `legal_hold` grants;
+  end-to-end `AuditRetentionPurgerIT` proves the whole flow against real Postgres).
+  **★ M4 CLOSE-OUT COMPLETE (S0–S5b all merged, each CI-green).**
   The `audit_config_event_failures_total` counter is reserved for the R-OPS-02
   telemetry milestone (no metric stack exists yet — nor does `audit_insert_failures_total`);
   until then the failure surfaces as the stable `AUDIT_CONFIG_EVENT_FAILURE` ERROR marker.

@@ -169,7 +169,8 @@ show the same bodies.
 | `InspectorDown` (liveness) | §1 |
 | Readiness failing > 2 min | §2a |
 | `audit_insert_failures_total > 0` | §2b — Postgres first; mutations are refusing by design |
-| Postgres unreachable / disk > 80% | §2a / §5; disk: check partition growth vs the sizing worksheet before extending |
+| No `audit-retention-purge` event in > ~2 days (dead-man) | The `@Scheduled` purge is stopped/failing. Check the BFF is up and `inspector.audit.retention-purge.enabled` is not `false`; look for `AUDIT_RETENTION_PURGE_ABORTED` (audit DB down → purge correctly did not run) and `AUDIT_DEFAULT_PARTITION_NONEMPTY` (rows in DEFAULT → create-ahead broken, nothing to drop). Data is over-retained, never wrongly deleted — safe to triage unhurried. |
+| Postgres unreachable / disk > 80% | §2a / §5; disk: check partition growth vs the sizing worksheet; confirm the retention purge is running (dead-man above) before extending |
 | All circuit breakers open | §2c — BFF egress, not the engines |
 | Break-glass login alert | Confirm it's expected (active P1 + IdP outage); otherwise treat as compromise: lock the account, rotate, review `breakGlass` audit rows |
 | SSE emitter errors spiking | Reverse-proxy buffering misconfig after a deploy (OPERATIONS §9 `prod-like` profile tests this); clients degrade to polling — not user-facing-critical |
