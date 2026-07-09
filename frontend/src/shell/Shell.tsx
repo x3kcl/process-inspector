@@ -2,6 +2,7 @@ import { useSyncExternalStore } from 'react'
 import { useQueryClient } from '@tanstack/react-query'
 import { Link, Outlet } from 'react-router'
 import { ApiError } from '../api/client'
+import { useMe } from '../api/me'
 import { HeaderStrip } from '../components/HeaderStrip'
 import { SignIn } from '../components/SignIn'
 import { ToastProvider } from '../components/toast'
@@ -38,6 +39,7 @@ export function Shell() {
               <Link to="/audit" className="topbar-link">
                 Ops log
               </Link>
+              <RegistryAdminLink />
               <Omnibox />
               <HeaderStrip />
             </header>
@@ -48,6 +50,31 @@ export function Shell() {
         </OpsDrawerProvider>
       </LiveProvider>
     </ToastProvider>
+  )
+}
+
+/**
+ * The registry-admin nav entry — greyed-never-hidden (R-UXQ): everyone sees "Engines", but a
+ * non-REGISTRY_ADMIN gets a greyed, unlinked label with the reason, mirroring the BFF gate.
+ */
+function RegistryAdminLink() {
+  const me = useMe()
+  if (me.data?.registryAdmin === true) {
+    return (
+      <Link to="/admin/engines" className="topbar-link">
+        Engines
+      </Link>
+    )
+  }
+  return (
+    <span
+      className="topbar-link disabled"
+      aria-disabled="true"
+      aria-label="Engines — requires the REGISTRY_ADMIN grant"
+      title="Requires REGISTRY_ADMIN"
+    >
+      Engines
+    </span>
   )
 }
 

@@ -2808,3 +2808,71 @@ button.primary:disabled {
   color: #7f8c8d;
   margin: 0.2rem 0 0;
 }
+
+/* ── v2 Registry CRUD admin surface (/admin/engines) ─────────────────────── */
+.topbar-link.disabled {
+  opacity: 0.45;
+  cursor: not-allowed;
+}
+.engines-table {
+  width: 100%;
+  border-collapse: collapse;
+  margin-top: 0.75rem;
+}
+.engines-table th,
+.engines-table td {
+  text-align: left;
+  padding: 0.5rem 0.75rem;
+  border-bottom: 1px solid var(--border, #e2e2e2);
+  vertical-align: top;
+}
+.engines-table td.mono {
+  font-family: ui-monospace, SFMono-Regular, Menlo, monospace;
+  font-size: 0.85em;
+  word-break: break-all;
+}
+.engines-table .row-actions {
+  display: flex;
+  flex-wrap: wrap;
+  gap: 0.35rem;
+  white-space: nowrap;
+}
+.engine-form {
+  display: flex;
+  flex-direction: column;
+  gap: 0.6rem;
+  min-width: 22rem;
+}
+.engine-form label {
+  display: flex;
+  flex-direction: column;
+  gap: 0.2rem;
+  font-weight: 600;
+  font-size: 0.9em;
+}
+.engine-form input,
+.engine-form select {
+  padding: 0.4rem 0.5rem;
+  font: inherit;
+}
+.engine-form input[aria-invalid='true'] {
+  outline: 2px solid var(--danger, #c0392b);
+}
+.lifecycle-confirm {
+  display: flex;
+  flex-direction: column;
+  gap: 0.7rem;
+  min-width: 20rem;
+}
+.lifecycle-confirm label {
+  display: flex;
+  flex-direction: column;
+  gap: 0.25rem;
+  font-weight: 600;
+}
+.lifecycle-confirm .checkbox-row {
+  flex-direction: row;
+  align-items: center;
+  gap: 0.4rem;
+  font-weight: 400;
+}
