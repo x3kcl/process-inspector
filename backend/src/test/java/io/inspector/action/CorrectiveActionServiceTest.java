@@ -78,7 +78,13 @@ class CorrectiveActionServiceTest {
                         TestEngines.engine(DEV, "http://localhost:1", EngineEnvironment.DEV, EngineMode.READ_WRITE),
                         TestEngines.engine(PROD, "http://localhost:1", EngineEnvironment.PROD, EngineMode.READ_WRITE),
                         TestEngines.engine(RO, "http://localhost:1", EngineEnvironment.PROD, EngineMode.READ_ONLY))));
-        service = new CorrectiveActionService(registry, client, audit, rbac, protectedInstances);
+        service = new CorrectiveActionService(
+                registry,
+                client,
+                audit,
+                rbac,
+                protectedInstances,
+                new TicketPolicy(new io.inspector.config.AuditProperties(null, null, null)));
 
         when(rbac.hasRoleOn(any(), any(), anyString())).thenReturn(true);
         when(protectedInstances.findById(any())).thenReturn(Optional.empty());

@@ -91,7 +91,13 @@ class FlowSurgeryServiceTest {
         // COLD keeps EngineHealth.unknown() — capabilities null, as before the first probe.
 
         service = new FlowSurgeryService(
-                registry, client, new BpmnStructureService(client), audit, rbac, protectedInstances);
+                registry,
+                client,
+                new BpmnStructureService(client),
+                audit,
+                rbac,
+                protectedInstances,
+                new io.inspector.action.TicketPolicy(new io.inspector.config.AuditProperties(null, null, null)));
 
         when(rbac.hasRoleOn(any(), any(), anyString())).thenReturn(true);
         when(protectedInstances.findById(any())).thenReturn(Optional.empty());

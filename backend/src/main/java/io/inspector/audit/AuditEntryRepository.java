@@ -31,6 +31,7 @@ public interface AuditEntryRepository extends JpaRepository<AuditEntry, UUID> {
             where (:actor is null or a.actor = :actor)
               and (:action is null or a.action = :action)
               and (:engineId is null or a.engineId = :engineId)
+              and (:ticketId is null or a.ticketId = :ticketId)
               and a.ts >= :since
             order by a.ts desc
             """)
@@ -38,6 +39,7 @@ public interface AuditEntryRepository extends JpaRepository<AuditEntry, UUID> {
             @Param("actor") String actor,
             @Param("action") String action,
             @Param("engineId") String engineId,
+            @Param("ticketId") String ticketId,
             @Param("since") Instant since,
             Pageable page);
 

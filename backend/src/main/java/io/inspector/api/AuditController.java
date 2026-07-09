@@ -58,12 +58,19 @@ public class AuditController {
             @RequestParam(required = false) String actor,
             @RequestParam(required = false) String action,
             @RequestParam(required = false) String engineId,
+            @RequestParam(required = false) String ticketId,
             @RequestParam(required = false) Instant since,
             @RequestParam(defaultValue = "100") int limit,
             Authentication authentication) {
         boolean adminAnywhere = rbac.atLeast(authentication, "ADMIN");
         return repository
-                .findLog(actor, action, engineId, since != null ? since : Instant.EPOCH, PageRequest.of(0, cap(limit)))
+                .findLog(
+                        actor,
+                        action,
+                        engineId,
+                        blankToNull(ticketId),
+                        since != null ? since : Instant.EPOCH,
+                        PageRequest.of(0, cap(limit)))
                 .stream()
                 .map(entry -> AuditEntryDto.from(entry, payloadVisible(entry, authentication, adminAnywhere)))
                 .toList();
@@ -84,6 +91,10 @@ public class AuditController {
 
     private static int cap(int limit) {
         return Math.max(1, Math.min(limit, MAX_PAGE));
+    }
+
+    private static String blankToNull(String value) {
+        return (value == null || value.isBlank()) ? null : value;
     }
 
     /** Wire shape of one audit row; {@code payload} is null when the caller is below OPERATOR. */

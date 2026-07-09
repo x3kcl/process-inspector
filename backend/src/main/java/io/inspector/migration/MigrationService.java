@@ -6,6 +6,7 @@ import io.inspector.action.ActionResult;
 import io.inspector.action.EngineRejectedException;
 import io.inspector.action.GuardRefusedException;
 import io.inspector.action.OutcomeUnknownException;
+import io.inspector.action.TicketPolicy;
 import io.inspector.audit.AuditEntry;
 import io.inspector.audit.AuditOutcome;
 import io.inspector.audit.AuditService;
@@ -64,6 +65,7 @@ public class MigrationService {
     private final RbacAuthorizer rbac;
     private final AuditService audit;
     private final ProtectedInstanceRepository protectedInstances;
+    private final TicketPolicy ticketPolicy;
 
     public MigrationService(
             EngineRegistry registry,
@@ -71,13 +73,15 @@ public class MigrationService {
             BpmnStructureService structures,
             RbacAuthorizer rbac,
             AuditService audit,
-            ProtectedInstanceRepository protectedInstances) {
+            ProtectedInstanceRepository protectedInstances,
+            TicketPolicy ticketPolicy) {
         this.registry = registry;
         this.client = client;
         this.structures = structures;
         this.rbac = rbac;
         this.audit = audit;
         this.protectedInstances = protectedInstances;
+        this.ticketPolicy = ticketPolicy;
     }
 
     /* --------------------------------- preview (S1) --------------------------------- */
@@ -128,6 +132,7 @@ public class MigrationService {
         assertNotMovedSincePreview(plan, request);
         requireUnprotectedOrAdmin(auth, engine, instanceId);
         String reason = requireReason(request.reason());
+        String ticketId = ticketPolicy.validate(request.ticketId(), engine.environment());
         requireConfirmToken(engine, plan, request.confirmToken());
         requireExecutable(plan);
 
@@ -138,7 +143,7 @@ public class MigrationService {
                 instanceId,
                 MIGRATE_ACTION,
                 reason,
-                blankToNull(request.ticketId()),
+                ticketId,
                 plan.auditPayload(),
                 engine.auditPayloadOrDefault());
 

@@ -78,9 +78,11 @@ DPO has signed off.
 
 ## 4. Handling rules for humans
 
-- Never paste secrets or full customer records into **notes** or **reasons** — they are
-  retained 400 days and visible to every operator with instance access. Reference the
-  ticket instead.
+- Never paste secrets or full customer records into **notes**, **reasons**, or the
+  **ticketId** — all are retained 400 days and visible to every operator with instance access;
+  the ticketId is additionally hash-chain-covered and never redacted by the payload modes (it is
+  a short accountability handle — the `ticket-id-pattern` guard, R-AUD-07, is the enforcement
+  point). Reference the ticket, don't inline the data.
 - **Copy-for-ticket** output and shift-report exports leave the Inspector's control the
   moment you paste them — the ticket system's classification rules take over. Don't export
   variable *values* into tickets unless the ticket system is cleared for them.
