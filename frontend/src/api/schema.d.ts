@@ -1704,6 +1704,7 @@ export interface components {
             businessKey?: string;
             businessKeyLike?: string;
             currentActivity?: string;
+            cursor?: string;
             /** Format: int32 */
             definitionVersion?: number;
             engineIds?: string[];
@@ -1723,6 +1724,9 @@ export interface components {
         SearchResponse: {
             criteriaEcho?: string[];
             curl?: string;
+            depthCapped?: boolean;
+            nextCursor?: string;
+            pagingCoherence?: string;
             perEngine?: {
                 [key: string]: components["schemas"]["EngineResult"];
             };

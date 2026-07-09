@@ -311,8 +311,12 @@ wire-facts** — neither correction changes the RE-LOCK, but both are now known 
   multi-page + same-instant-cluster merge walks) + rung-2 `SearchServiceDeepPageTest` (crafted over-cap
   cursor refused pre-fan-out, `verifyNoInteractions`). **No API surface yet — S3 wires the controller
   and adds the web-layer RBAC test.**
-- **S3 — API surface.** `SearchRequest.cursor` + `SearchResponse.nextCursor`/`depthCapped`/
-  `pagingCoherence`, controller wiring, `gen:api` regen (isolated diff).
+- **S3 — API surface.** ✔ **LANDED 2026-07-09.** `SearchRequest.cursor` + `SearchResponse.nextCursor`/
+  `depthCapped`/`pagingCoherence` (delegating convenience ctors, no call-site churn); `SearchController`
+  branches on a present cursor → `deepPage` → maps `DeepPage` onto `SearchResponse` (`pagingCoherence =
+  "snapshot"`), the existing `IllegalArgumentException`→400 handler covers a crafted/expired/mismatched
+  cursor; `schema.d.ts` regen (the 4 new fields). Rung-3 `SearchDeepPageApiSpringTest` (cursor round-trips,
+  markers serialize, garbage/over-cap/FAILED-only cursors are 400-not-500 for an authenticated reader).
 - **S4 — Frontend "Load more".** `useInfiniteQuery` cursor chain, overflow-only surfacing,
   two-door selection preserved, depth-wall filter seam, snapshot seam line. Playwright e2e with
   URL-predicate route mocks.
