@@ -293,6 +293,9 @@ gap here: [link]" is the ticket-handover primitive.
   When waiting: **what it waits for** (message/signal subscription name, timer due date).
 - **Diagram first** (top half, read-only bpmn-js from M3): token markers on active
   activities, red badge on dead-letter activities, synchronized selection with the tabs.
+  **Collapsible** via a header toggle (state persisted): a small process leaves the fixed-
+  height canvas mostly empty, so folding it hands the reclaimed height to the tabs below; a
+  tab's "show on diagram" auto-unfolds it.
 - **Tabs**: Variables · Errors & Jobs · Tasks · Hierarchy · Timeline · Audit & Notes —
   each lazy-loaded (IBM's slow-detail lesson).
   - **Variables** — a **typed variable ledger, never a raw JSON dump** (the Flowable
