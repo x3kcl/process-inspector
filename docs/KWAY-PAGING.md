@@ -1,6 +1,8 @@
 # 🧭 K-WAY-MERGE DEEP PAGING — design + panel (v2, demand-gated)
 
-**Status:** design locked, **unbuilt + spike-gated** (2026-07-09). Authoritative source-of-truth
+**Status:** design locked; **S0 P0 spike DISCHARGED 2026-07-09** (live 6.3/6.8/7.1 — see §6.1) →
+build unblocked for the MIXED-first slices, **capability-gated 6.8+** (6.3.1 failed offset stability).
+Authoritative source-of-truth
 for the deep-paging feature (v2 demand-driven item #3). The WHAT/WHY/HOW/WHEN below drive the
 deltas into `SPECIFICATION.md` (§4/§8 + deferred list), `ARCHITECTURE.md` (§2.3/§2.4),
 `IMPLEMENTATION-PLAN.md` (v2 block) and `REQUIREMENTS-REGISTER.md` (R-SEM-22, R-SEM-23, R-NFR-08
@@ -203,7 +205,9 @@ Any deep-paging design must survive the Flowable REST wire-shape (REST-only iron
    resets the chain and drops deep selections.
 5. **Stateless in-token cursor**, opaque `base64url(JSON)`, idempotent/read-only; the authoritative
    filter is always the request body, never the cursor.
-6. **P0 spike (§6) MANDATORY before build.**
+6. **P0 spike (§6) MANDATORY before build — DISCHARGED 2026-07-09 (§6.1).** Verdicts: build
+   unblocked MIXED-first; **capability-gated 6.8+** (6.3.1 fails offset stability); cap = 5000/engine;
+   R-SEM-23 Instant-parse confirmed load-bearing; INVERTED door known-open on 6.8/7.1 (still deferred).
 
 ---
 
@@ -241,6 +245,47 @@ Same method as the migration spike (curl **and** extracted-bytecode cross-check)
 here with per-version curl evidence, and **captured page-boundary corpora promoted to rung-1
 fixtures**. If the spike shows offset instability on any version, R-SEM-22 is dead on that engine
 and the panel **re-locks before build** — exactly as Instance Migration did.
+
+### 6.1 FINDINGS — S0 ran live 2026-07-09 (`docker/spike-kway-paging.sh`)
+
+Ran against the dockerized matrix (`docker-compose.dev.yml`): **6.8.0** :8081, **7.1.0** :8083,
+**6.3.1** :8084. Per-version evidence below. **Net: the spike CONFIRMS the MIXED-first offset build
+on 6.8/7.1, forces a 6.8+ capability gate (6.3.1 fails offset stability), and CORRECTS two draft
+wire-facts** — neither correction changes the RE-LOCK, but both are now known instead of assumed.
+
+| # | Probe | 6.8.0 | 7.1.0 | 6.3.1 | Verdict |
+|---|---|---|---|---|---|
+| 1 | POST `/query/historic-process-instances` sub-second `startedBefore` | 200 | 200 | 200 | Accepted everywhere — a startTime **keyset is constructible** in principle (not used; build is offset). |
+| 2 | historic `startTime` echo | `…Z` +ms | `…Z` +ms | `…Z` +ms | Millisecond `Z`-form on all. |
+| 2b | deadletter `createTime` echo (the `failureTime` source) | **`…+00:00`** +ms | **`…Z`** +ms | **null/absent** | **Cross-engine form split is REAL → R-SEM-23 `Instant`-parse is load-bearing** (a `String` compare mis-orders `+00:00` vs `Z`). |
+| 3 | offset stability, `sort=startTime desc`, two identical scans | **stable** | **stable** | **UNSTABLE** | 6.3.1 reproducibly swaps adjacent same-second rows (pos 50/51) between identical scans → a page boundary inside a tie-cluster dups/skips. |
+| 3b | same-second clusters per top-100 (max cluster) | 21 (11) | 19 (9) | 29 (8) | Ubiquitous — a secondary tiebreak is **essential**, not cosmetic. |
+| 4 | deadletter `sort=id&order=asc` | 200 | 200 | 200 | Honored everywhere (candidate stable DLQ offset; INVERTED gated off anyway). |
+| 5 | deadletter `sort=createTime` (i.e. `failureTime`) | **200, genuinely orders** (ASC≠DESC, correct direction) | **200, genuinely orders** | **400 rejected** | **Draft's "failureTime unsortable (400)" is FALSE on 6.8/7.1** — imported from the GET job-list params, untrue on the deadletter lane. Only 6.3.1 rejects. |
+| 6 | 6.3 paging-param cliff (`start`/`size`) | pages | pages | **pages (no cliff)** | The businessKeyLike-class cliff does **not** apply to historic paging — 6.3.1 pages fine; it's *offset stability* (row 3), not paging support, that fails on 6.3.1. |
+| 7 | cost `start=0` vs `50` vs `100` (size=10) | ~4 ms flat | ~5–6 ms flat | ~6 ms flat | Flat at the dev corpus scale (100s of rows). **O(offset) is NOT measurable at TEST-STRATEGY §10-safe scale** (never seed thousands) → the cap is set by *reasoning*, not this number. |
+
+**Decisions locked by S0 (feed the build slices):**
+
+1. **Deep paging is capability-gated `6.8+`.** 6.3.1 fails offset stability (row 3) — this is exactly
+   the design's own kill-switch ("offset instability on any version ⇒ R-SEM-22 dead on that engine").
+   6.3.1 (and any engine that fails the stability probe) gets the **depth-wall filter seam**, never the
+   cursor. This matches the repo's existing 6.8+ gating precedent (CMMN, external-worker).
+2. **`deep-paging-max-depth` = 5000 per-engine** (config-lowerable), aligned to the R-NFR-01 v1.x
+   query-bulk cap for one operator mental model. Set by reasoning + the conservative side of the
+   unmeasurable cost curve, **not** by a measured knee — documented as such, revisited if a real
+   large corpus ever lets us measure the O(offset) knee.
+3. **R-SEM-23 (`startTime` as `Instant`, `compositeId` tiebreak) is confirmed load-bearing**, not
+   speculative: row 2b proves engines emit different ISO forms for the same instant, and row 3b proves
+   same-second ties are everywhere. Ships first (S1), stands alone.
+4. **INVERTED is still gated off for THIS build — but the door is now known-open on 6.8/7.1.** Row 5
+   corrects the draft: `failureTime` (job `createTime`) **is** an engine-honored sort on the deadletter
+   lane for 6.8/7.1, so a future bounded INVERTED cursor slice is wire-viable there (it was assumed
+   impossible). Deferred, not dead. MIXED-first stands.
+5. **Concurrent-mutation dup/skip stays "bounded + labeled, never stable"** even on 6.8/7.1: row 3 is
+   stable only with no writes in flight; the R-SEM-23 tiebreak bounds duplicate *emission* at the merge
+   but cannot repair an engine-side page-boundary skip under a straddling insert (a rung-1 property, not
+   a live race — S1/S2 tests).
 
 ---
 
