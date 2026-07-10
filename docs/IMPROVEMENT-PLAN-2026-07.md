@@ -136,9 +136,16 @@ tests + spec-sync in the same PR, and follows green-ci.
 
 ### P0 — stop the bleeding *(days; ~6 small PRs)*
 
-1. **URI-encoding hotfix (F1)** — `cmmnUri()`/`externalJobUri()` helpers via `pathSegment()`,
-   inbound id shape validation on `ActionRequest.jobId` + resolve params, MockWebServer
-   refusal tests. *Ships alone, first.*
+1. **URI-encoding hotfix (F1)** — ✅ **LANDED** (`feature/p0-uri-encoding`). The six CMMN
+   sibling-context id-in-path calls (`getCmmnDeadLetterJob`, `getCmmnCaseDefinition`,
+   `getCmmnCaseInstance`, `getHistoricCmmnCaseInstance`, `moveCmmnDeadLetterJob`,
+   `deleteCmmnDeadLetterJob`) + the `deploymentId` concat now route the id through the
+   RestClient `{id}` template (TEMPLATE_AND_VALUES percent-encoding — the SAME mechanism the
+   process-api lanes already used), fronted by a `FlowableEngineClient.safeId()` boundary
+   guard (`[A-Za-z0-9._:-]{1,128}`, no `..`) so a `/`/`?`/`#`/traversal id is a 400 before any
+   engine byte. WireMock tests prove traversal/reserved-char ids are refused *without dialling*
+   and a valid id reaches the exact `/cmmn-api/...` path. External-worker `/jobs` list carries
+   no path id (already safe). *Shipped alone, first.*
 2. **CI hygiene fix-pack (Q3, Q10)** — pidfile + `if: always()` BFF kill, `timeout-minutes`
    on every job.
 3. **Runner persistence (Q5)** — `sudo ./svc.sh install flapci && sudo ./svc.sh start`

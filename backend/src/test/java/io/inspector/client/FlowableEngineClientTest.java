@@ -340,4 +340,44 @@ class FlowableEngineClientTest {
 
         wm.verify(getRequestedFor(urlPathEqualTo("/management/engine")).withoutHeader("X-Forwarded-User"));
     }
+
+    // ── F1: sibling-context (/cmmn-api) id-in-path whitelist bypass ────────────────────────────
+    // The CMMN by-id calls interpolate an attacker-influenceable job/case id into the path. A value
+    // carrying `/`, `?`, `#` or a `..` traversal must never re-target the request to another engine
+    // path under the BFF's rest-admin creds — it is rejected at the client boundary, BEFORE dialling.
+
+    @Test
+    void cmmnDeadLetterReadRejectsPathTraversalIdWithoutDialling() {
+        assertThatThrownBy(() -> client.getCmmnDeadLetterJob(engine("trav"), "../../cmmn-repository/deployments"))
+                .isInstanceOf(IllegalArgumentException.class);
+        assertThat(wm.getAllServeEvents()).isEmpty();
+    }
+
+    @Test
+    void cmmnDeadLetterMutationsRejectReservedCharIdsWithoutDialling() {
+        // '/' would re-path a retry; '?' would splice a query — both refused before any engine byte.
+        assertThatThrownBy(() -> client.moveCmmnDeadLetterJob(engine("mv"), "1/../../management/jobs"))
+                .isInstanceOf(IllegalArgumentException.class);
+        assertThatThrownBy(() -> client.deleteCmmnDeadLetterJob(engine("del"), "1?cascade=true"))
+                .isInstanceOf(IllegalArgumentException.class);
+        assertThat(wm.getAllServeEvents()).isEmpty();
+    }
+
+    @Test
+    void cmmnCaseResolveRejectsTraversalIdWithoutDialling() {
+        assertThatThrownBy(() -> client.getCmmnCaseInstance(engine("res"), "..%2f..%2fadmin"))
+                .isInstanceOf(IllegalArgumentException.class);
+        assertThat(wm.getAllServeEvents()).isEmpty();
+    }
+
+    @Test
+    void cmmnDeadLetterReadReachesTheDeadletterPathForAValidId() {
+        wm.stubFor(get(urlPathEqualTo("/cmmn-api/cmmn-management/deadletter-jobs/abc-123"))
+                .willReturn(okJson("{\"id\":\"abc-123\",\"caseInstanceId\":\"c1\"}")));
+
+        Map<String, Object> job = client.getCmmnDeadLetterJob(engine("ok"), "abc-123");
+
+        assertThat(job).containsEntry("caseInstanceId", "c1");
+        wm.verify(getRequestedFor(urlPathEqualTo("/cmmn-api/cmmn-management/deadletter-jobs/abc-123")));
+    }
 }

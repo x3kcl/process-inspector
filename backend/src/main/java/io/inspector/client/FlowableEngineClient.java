@@ -227,13 +227,15 @@ public class FlowableEngineClient {
      */
     @SuppressWarnings("unchecked")
     public Map<String, Object> getCmmnDeadLetterJob(EngineConfig engine, String jobId) {
-        java.net.URI uri = UriComponentsBuilder.fromUriString(
-                        cmmnApiBase(engine) + "/cmmn-management/deadletter-jobs/" + jobId)
-                .build()
-                .toUri();
+        String id = safeId(jobId);
         try {
             return guarded(
-                    engine, () -> client(engine).get().uri(uri).retrieve().body(Map.class));
+                    engine,
+                    () -> client(engine)
+                            .get()
+                            .uri(cmmnApiBase(engine) + "/cmmn-management/deadletter-jobs/{id}", id)
+                            .retrieve()
+                            .body(Map.class));
         } catch (HttpClientErrorException.NotFound e) {
             return null;
         }
@@ -248,13 +250,15 @@ public class FlowableEngineClient {
      */
     @SuppressWarnings("unchecked")
     public Map<String, Object> getCmmnCaseDefinition(EngineConfig engine, String caseDefinitionId) {
-        java.net.URI uri = UriComponentsBuilder.fromUriString(
-                        cmmnApiBase(engine) + "/cmmn-repository/case-definitions/" + caseDefinitionId)
-                .build()
-                .toUri();
+        String id = safeId(caseDefinitionId);
         try {
             return guarded(
-                    engine, () -> client(engine).get().uri(uri).retrieve().body(Map.class));
+                    engine,
+                    () -> client(engine)
+                            .get()
+                            .uri(cmmnApiBase(engine) + "/cmmn-repository/case-definitions/{id}", id)
+                            .retrieve()
+                            .body(Map.class));
         } catch (HttpClientErrorException.NotFound e) {
             return null;
         }
@@ -268,13 +272,15 @@ public class FlowableEngineClient {
      */
     @SuppressWarnings("unchecked")
     public Map<String, Object> getCmmnCaseInstance(EngineConfig engine, String caseInstanceId) {
-        java.net.URI uri = UriComponentsBuilder.fromUriString(
-                        cmmnApiBase(engine) + "/cmmn-runtime/case-instances/" + caseInstanceId)
-                .build()
-                .toUri();
+        String id = safeId(caseInstanceId);
         try {
             return guarded(
-                    engine, () -> client(engine).get().uri(uri).retrieve().body(Map.class));
+                    engine,
+                    () -> client(engine)
+                            .get()
+                            .uri(cmmnApiBase(engine) + "/cmmn-runtime/case-instances/{id}", id)
+                            .retrieve()
+                            .body(Map.class));
         } catch (HttpClientErrorException.NotFound e) {
             return null;
         }
@@ -288,13 +294,15 @@ public class FlowableEngineClient {
      */
     @SuppressWarnings("unchecked")
     public Map<String, Object> getHistoricCmmnCaseInstance(EngineConfig engine, String caseInstanceId) {
-        java.net.URI uri = UriComponentsBuilder.fromUriString(
-                        cmmnApiBase(engine) + "/cmmn-history/historic-case-instances/" + caseInstanceId)
-                .build()
-                .toUri();
+        String id = safeId(caseInstanceId);
         try {
             return guarded(
-                    engine, () -> client(engine).get().uri(uri).retrieve().body(Map.class));
+                    engine,
+                    () -> client(engine)
+                            .get()
+                            .uri(cmmnApiBase(engine) + "/cmmn-history/historic-case-instances/{id}", id)
+                            .retrieve()
+                            .body(Map.class));
         } catch (HttpClientErrorException.NotFound e) {
             return null;
         }
@@ -367,7 +375,7 @@ public class FlowableEngineClient {
      */
     public String cmmnDeploymentResourceData(EngineConfig engine, String deploymentId, String resourceName) {
         UriComponentsBuilder b = UriComponentsBuilder.fromUriString(
-                cmmnApiBase(engine) + "/cmmn-repository/deployments/" + deploymentId + "/resourcedata");
+                cmmnApiBase(engine) + "/cmmn-repository/deployments/" + safeId(deploymentId) + "/resourcedata");
         for (String segment : resourceName.split("/")) {
             b.pathSegment(segment);
         }
@@ -391,6 +399,26 @@ public class FlowableEngineClient {
         return base.endsWith("/service")
                 ? base.substring(0, base.length() - "/service".length()) + "/cmmn-api"
                 : base + "/cmmn-api";
+    }
+
+    /**
+     * A Flowable entity id is a UUID or a {@code key:version:uuid} composite — always within this
+     * set. The process-api lanes interpolate ids through the RestClient's {@code {var}} template
+     * (TEMPLATE_AND_VALUES-encoded); the sibling-context ({@code /cmmn-api}, {@code
+     * /external-job-api}) helpers do the same, but a value carrying {@code /}, {@code ?}, {@code #}
+     * or a {@code ..} traversal would still be a whitelist bypass — re-targeting the request to an
+     * arbitrary path on the engine host under the BFF's rest-admin credentials, violating the
+     * "BFF whitelists engine paths" iron rule (F1). Validate at the client boundary so EVERY caller
+     * (action dispatch, omnibox resolve, scope/case services) is covered uniformly: an illegal id
+     * is an {@link IllegalArgumentException} (→ 400), never an upstream request.
+     */
+    private static final java.util.regex.Pattern SAFE_ID = java.util.regex.Pattern.compile("[A-Za-z0-9._:-]{1,128}");
+
+    static String safeId(String id) {
+        if (id == null || !SAFE_ID.matcher(id).matches() || id.contains("..")) {
+            throw new IllegalArgumentException("illegal engine entity id");
+        }
+        return id;
     }
 
     /**
@@ -921,15 +949,12 @@ public class FlowableEngineClient {
      * Callers capability-gate ({@code scopeType}, ≥ 6.8) first.
      */
     public void moveCmmnDeadLetterJob(EngineConfig engine, String jobId) {
-        java.net.URI uri = UriComponentsBuilder.fromUriString(
-                        cmmnApiBase(engine) + "/cmmn-management/deadletter-jobs/" + jobId)
-                .build()
-                .toUri();
+        String id = safeId(jobId);
         mutate(
                 engine,
                 () -> writeClient(engine)
                         .post()
-                        .uri(uri)
+                        .uri(cmmnApiBase(engine) + "/cmmn-management/deadletter-jobs/{id}", id)
                         .contentType(MediaType.APPLICATION_JSON)
                         .body(Map.of("action", "move"))
                         .retrieve()
@@ -955,11 +980,14 @@ public class FlowableEngineClient {
      * capability-gate ({@code scopeType}, ≥ 6.8) first.
      */
     public void deleteCmmnDeadLetterJob(EngineConfig engine, String jobId) {
-        java.net.URI uri = UriComponentsBuilder.fromUriString(
-                        cmmnApiBase(engine) + "/cmmn-management/deadletter-jobs/" + jobId)
-                .build()
-                .toUri();
-        mutate(engine, () -> writeClient(engine).delete().uri(uri).retrieve().toBodilessEntity());
+        String id = safeId(jobId);
+        mutate(
+                engine,
+                () -> writeClient(engine)
+                        .delete()
+                        .uri(cmmnApiBase(engine) + "/cmmn-management/deadletter-jobs/{id}", id)
+                        .retrieve()
+                        .toBodilessEntity());
     }
 
     /** PUT /runtime/process-instances/{id} {"action":"suspend"|"activate"}. */
