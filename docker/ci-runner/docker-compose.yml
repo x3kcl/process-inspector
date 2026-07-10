@@ -1,0 +1,49 @@
+# Dockerized self-hosted GitHub Actions runner (replaces the bare-metal ~/actions-runner
+# launched via nohup — which died on reboot; `restart: unless-stopped` survives one).
+# Runs under the flapci account. Start/verify via scripts/ci-runner.sh — the green-ci
+# skill's step 0 before any push or PR.
+#
+# Design constraints this must preserve (see .github/workflows/ci.yml):
+# - SINGLE serialized runner: the remapped harness ports are fixed, so two online runners
+#   would run matrix legs concurrently and re-collide. ci-runner.sh enforces exactly-one.
+# - network_mode host: job steps address published ports via localhost (postgres service
+#   :5434, drift-gate BFF :8086, engine harness :8091-8094/:5435) exactly like the
+#   bare-metal runner did. A bridged runner would break every localhost assumption.
+# - /var/run/docker.sock: the integration legs drive the SHARED host daemon by design
+#   (per-profile pi-ci-* compose projects on parameterized ports). Trusted-operator
+#   threat model — no fork PRs run here; this is the same daemon access the bare-metal
+#   runner already had, now with a resource ceiling around the runner's own processes.
+name: pi-ci-runner
+services:
+  runner:
+    build: .
+    image: process-inspector/ci-runner:latest
+    container_name: pi-ci-runner
+    restart: unless-stopped
+    network_mode: host
+    environment:
+      RUNNER_SCOPE: repo
+      REPO_URL: https://github.com/x3kcl/process-inspector
+      # Env-ref only (iron rule). Exchanged for a short-lived registration token at start;
+      # the PAT itself is never written to disk by the runner.
+      ACCESS_TOKEN: ${GITHUB_PERSONAL_ACCESS_TOKEN:?export the GitHub PAT in the launching shell}
+      RUNNER_NAME: hp04-docker
+      # One job per container: after each job the runner exits and the restart policy
+      # brings up a fresh, cleanly re-registered one — no state bleed, self-healing.
+      EPHEMERAL: "true"
+      DISABLE_AUTO_UPDATE: "true"
+      RUNNER_WORKDIR: /home/flapci/ci-runner-work
+    volumes:
+      - /var/run/docker.sock:/var/run/docker.sock
+      # Identical host/container path: anything a job bind-mounts into a container goes
+      # through the HOST daemon, so workspace paths must resolve identically on the host.
+      - /home/flapci/ci-runner-work:/home/flapci/ci-runner-work
+      # setup-java/setup-node tool downloads survive the ephemeral restarts.
+      - toolcache:/opt/hostedtoolcache
+    # Ceiling, not a reservation: CI must never starve the prod/demo/dev stacks sharing
+    # this box. Harness containers run on the host daemon outside this limit; this caps
+    # the runner's own mvn/npm/java processes.
+    cpus: 16
+    mem_limit: 24g
+volumes:
+  toolcache:
