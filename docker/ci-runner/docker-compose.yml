@@ -14,6 +14,9 @@
 #   s1    8091 8092 8093 8094      5435    8086        pi-ci-s1-<profile>
 #   s2    8191 8192 8193 8194      5445    8186        pi-ci-s2-<profile>
 #   s3    8291 8292 8293 8294      5455    8286        pi-ci-s3-<profile>
+#   s4    8391 8392 8393 8394      5465    8386        pi-ci-s4-<profile>
+#   s5    8491 8492 8493 8494      5475    8486        pi-ci-s5-<profile>
+#   s6    8591 8592 8593 8594      5485    8586        pi-ci-s6-<profile>
 # (The frontend job's throwaway Postgres uses a Docker-assigned random host port — see
 # ci.yml — so it needs no slot entry.)
 # NEVER register a runner outside this file: a foreign runner has no slot, so its jobs
@@ -35,8 +38,9 @@ x-runner: &runner
   network_mode: host
   # Ceiling, not a reservation (host: 64 cores / 172G). Harness containers run on the
   # host daemon outside these limits; this caps each runner's own mvn/npm/java processes.
-  cpus: 12
-  mem_limit: 16g
+  # Sized for SIX slots: worst-case sums (60c / 72g + ~40g harness) leave prod headroom.
+  cpus: 10
+  mem_limit: 12g
 
 x-runner-env: &runner-env
   RUNNER_SCOPE: repo
@@ -111,7 +115,67 @@ services:
       - /home/flapci/ci-runner-work-s3:/home/flapci/ci-runner-work-s3
       - toolcache-s3:/opt/hostedtoolcache
 
+  runner-s4:
+    <<: *runner
+    container_name: pi-ci-runner-s4
+    environment:
+      <<: *runner-env
+      RUNNER_NAME: hp04-docker-s4
+      RUNNER_WORKDIR: /home/flapci/ci-runner-work-s4
+      PI_CI_SLOT: "4"
+      PI_ENGINE_A_PORT: "8391"
+      PI_ENGINE_B_PORT: "8392"
+      PI_ENGINE_7_PORT: "8393"
+      PI_ENGINE_LEGACY_PORT: "8394"
+      PI_PG_PORT: "5465"
+      PI_BFF_PORT: "8386"
+    volumes:
+      - /var/run/docker.sock:/var/run/docker.sock
+      - /home/flapci/ci-runner-work-s4:/home/flapci/ci-runner-work-s4
+      - toolcache-s4:/opt/hostedtoolcache
+
+  runner-s5:
+    <<: *runner
+    container_name: pi-ci-runner-s5
+    environment:
+      <<: *runner-env
+      RUNNER_NAME: hp04-docker-s5
+      RUNNER_WORKDIR: /home/flapci/ci-runner-work-s5
+      PI_CI_SLOT: "5"
+      PI_ENGINE_A_PORT: "8491"
+      PI_ENGINE_B_PORT: "8492"
+      PI_ENGINE_7_PORT: "8493"
+      PI_ENGINE_LEGACY_PORT: "8494"
+      PI_PG_PORT: "5475"
+      PI_BFF_PORT: "8486"
+    volumes:
+      - /var/run/docker.sock:/var/run/docker.sock
+      - /home/flapci/ci-runner-work-s5:/home/flapci/ci-runner-work-s5
+      - toolcache-s5:/opt/hostedtoolcache
+
+  runner-s6:
+    <<: *runner
+    container_name: pi-ci-runner-s6
+    environment:
+      <<: *runner-env
+      RUNNER_NAME: hp04-docker-s6
+      RUNNER_WORKDIR: /home/flapci/ci-runner-work-s6
+      PI_CI_SLOT: "6"
+      PI_ENGINE_A_PORT: "8591"
+      PI_ENGINE_B_PORT: "8592"
+      PI_ENGINE_7_PORT: "8593"
+      PI_ENGINE_LEGACY_PORT: "8594"
+      PI_PG_PORT: "5485"
+      PI_BFF_PORT: "8586"
+    volumes:
+      - /var/run/docker.sock:/var/run/docker.sock
+      - /home/flapci/ci-runner-work-s6:/home/flapci/ci-runner-work-s6
+      - toolcache-s6:/opt/hostedtoolcache
+
 volumes:
   toolcache-s1:
   toolcache-s2:
   toolcache-s3:
+  toolcache-s4:
+  toolcache-s5:
+  toolcache-s6:
