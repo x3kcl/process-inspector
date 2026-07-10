@@ -1,0 +1,9 @@
+[Unit]
+Description=Run the Process Inspector audit-DB backup nightly
+
+[Timer]
+OnCalendar=*-*-* 02:30:00
+Persistent=true
+
+[Install]
+WantedBy=timers.target

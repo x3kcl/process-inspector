@@ -51,6 +51,25 @@ Role passwords and grants are **cluster-global** (`pg_authid` / ACLs) — a logi
 **and** re-run this script, then verify grant-level enforcement (re-run `AuditRoleGrantsIT`'s
 assertions against the restored cluster), not merely that rows + the hash chain survived.
 
+## `backup-audit-db.sh` + `restore-drill.sh` — the audit golden-master's copies (P0 #4 / Q4)
+
+The 400-day audit chain had **zero copies** — one docker volume on one host. These close that:
+
+- **`backup-audit-db.sh`** — nightly `pg_dump -Fc` of the BFF's Postgres to `PI_BACKUP_DIR`
+  (ideally a second disk), checksummed, retention-pruned. Read-only against the live DB; safe
+  while serving. Schedule with `systemd/pi-audit-backup.timer` (or cron). Honest **RPO = the
+  timer interval (24 h)** — continuous WAL/PITR is the documented follow-up (OPERATIONS §4).
+- **`restore-drill.sh`** — restores the latest dump into a **throwaway** Postgres (never the
+  live DB) and asserts `audit_entry` returns **partitioned, with partitions + rows**. Makes the
+  "quarterly restore drill" executable. Complements — does not replace — the globals/roles
+  verification below: this drills DATA + SCHEMA restorability (`--no-owner`); a full DR drill
+  additionally restores `pg_dumpall --globals` + re-runs `audit-roles.sql` + `AuditRoleGrantsIT`.
+
+```bash
+PI_BACKUP_DIR=/mnt/backups/pi-audit deploy/backup-audit-db.sh   # nightly (timer-driven)
+deploy/restore-drill.sh                                          # verify newest dump restores
+```
+
 ## Still to land in S0 (tracked)
 
 - **`prod-like` compose profile** (OPERATIONS §9): release image + external Postgres provisioned

@@ -143,8 +143,15 @@ tests + spec-sync in the same PR, and follows green-ci.
    on every job.
 3. **Runner persistence (Q5)** — `sudo ./svc.sh install flapci && sudo ./svc.sh start`
    (**user action — needs sudo**); keep repo private + require-approval for outside PRs.
-4. **Audit-store backup (Q4)** — nightly `pg_dump` sidecar to a second disk + restore-drill
-   script under `deploy/`; OPERATIONS gets the honest RPO.
+4. **Audit-store backup (Q4)** — ✅ **LANDED** (`feature/p0-audit-backup`).
+   `deploy/backup-audit-db.sh` (`pg_dump -Fc` → second-disk `PI_BACKUP_DIR`, checksummed,
+   retention-pruned, `.partial`→rename so a crashed dump never masquerades as good) +
+   `deploy/restore-drill.sh` (restores the latest dump into a **throwaway** PG, asserts
+   `audit_entry` returns partitioned with partitions+rows — the drill made executable) +
+   `deploy/systemd/pi-audit-backup.{service,timer}` (nightly). **Both scripts verified
+   end-to-end** against a throwaway partitioned table (backup→checksum→restore→PASS).
+   OPERATIONS §4 corrected to the **honest RPO = 24 h** (the nightly interval), not the ≤5-min
+   WAL/PITR it claimed — continuous PITR is the noted follow-up; this closes "no copy at all".
 5. **Nightly full-IT workflow (Q2)** — `schedule:` workflow over all 42 IT classes
    (compose harness + Testcontainers + Keycloak legs), red → morning routine.
 6. **Truth hotfixes (D7 + S6)** — downgrade R-SAFE-07 to "foundation built; enforcement OPEN";
