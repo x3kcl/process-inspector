@@ -136,7 +136,11 @@ public class EngineRegistryStore {
      * {@code id} is immutable — only the base-URL changes here.
      */
     @Transactional
-    public void editBaseUrl(String id, String newBaseUrl, String actor, String reason) {
+    public void editBaseUrl(String id, String newBaseUrl, Authentication actor, String reason) {
+        // S6 (security seat): re-check the fleet grant in the SERVICE, exactly like every S4 sibling
+        // mutator — the @PreAuthorize door is not the only guard. Without this, whoever wires this
+        // seam to an endpoint inherits an unauthenticated registry write (an SSRF repoint).
+        String actorName = requireRegistryAdmin(actor);
         EngineRegistryRow row = repository
                 .findByIdAndRemovedAtIsNull(id)
                 .orElseThrow(() -> new ResponseStatusException(HttpStatus.NOT_FOUND, "Unknown engine: " + id));
@@ -147,7 +151,7 @@ public class EngineRegistryStore {
         payload.put("field", "baseUrl");
         payload.put("before", oldBaseUrl);
         payload.put("after", newBaseUrl);
-        AuditEntry entry = audit.beginPending(actor, id, row.getTenantId(), id, ACTION_EDIT, reason, null, payload);
+        AuditEntry entry = audit.beginPending(actorName, id, row.getTenantId(), id, ACTION_EDIT, reason, null, payload);
 
         row.setBaseUrl(newBaseUrl);
         row.setUpdatedAt(clock.instant());

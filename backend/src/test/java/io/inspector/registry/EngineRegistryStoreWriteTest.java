@@ -87,6 +87,22 @@ class EngineRegistryStoreWriteTest {
         verify(repo, never()).save(any());
     }
 
+    @Test
+    void editBaseUrl_re_checks_the_fleet_grant_in_the_service_and_never_reads_the_row() {
+        // S6: the S3 reload seam used to skip requireRegistryAdmin. A non-admin must be refused
+        // BEFORE the row is even loaded — no lookup, no audit, no write, no reload event.
+        when(rbac.canAdministerRegistry(admin)).thenReturn(false);
+
+        assertThatThrownBy(
+                        () -> store.editBaseUrl("engine-a", "https://93.184.216.34/service-EDITED", admin, "seam edit"))
+                .isInstanceOf(ResponseStatusException.class)
+                .hasMessageContaining("REGISTRY_ADMIN");
+        verify(repo, never()).findByIdAndRemovedAtIsNull(any());
+        verify(audit, never()).beginPending(any(), any(), any(), any(), any(), any(), any(), any());
+        verify(repo, never()).save(any());
+        verify(events, never()).publishEvent(any());
+    }
+
     /* ---------- SSRF validate-at-write ---------- */
 
     @Test
