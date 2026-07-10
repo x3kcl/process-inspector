@@ -22,6 +22,10 @@ inspector:
       accent-color: "#2e86de"
       enabled: true
       mode: read-write
+      # The action ITs verify the EXACT captured audit payload (MigrationIT/FlowSurgeryIT assert
+      # activity ids, defIds, schema=migrate-instance/v1 etc.). The prod default is REDACTED
+      # (values → «redacted», R-AUD-03); full is the correct TEST-engine mode to see those values.
+      audit-payload: full
       auth:
         type: basic
         username: rest-admin
@@ -40,6 +44,7 @@ inspector:
       accent-color: "#e74c3c"
       enabled: true
       mode: read-write
+      audit-payload: full   # payload-verifying ITs (see engine-a) also drive the prod-twin
       auth:
         type: basic
         username: rest-admin

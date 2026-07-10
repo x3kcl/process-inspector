@@ -178,6 +178,14 @@ tests + spec-sync in the same PR, and follows green-ci.
    corrective-action/flow-surgery/migration/bulk rails + seed-driven detail/timeline/snapshot).
    16 (PR gate) + 25 (nightly) + 1 abstract base = the full 42. Shake out via `workflow_dispatch`
    before relying on it; a red nightly is a morning-routine triage, not a push gate.
+   **Shakeout run 1 (2026-07-10):** `container-its` 14/14 green; `engine-its` 9/11 — it **caught
+   exactly the silent drift Q2 predicted:** `MigrationIT` + `FlowSurgeryIT` (local-only, never in
+   CI) assert on the FULL audit payload (schema value, nested `restPayload`, activity-id values),
+   but M4-closeout made `REDACTED` the **default** `AuditPayloadMode` — so every such value read
+   back `«redacted»`. Fixed by configuring the `it-actions` test engines `audit-payload: full`
+   (the correct mode for payload-verifying ITs; verified no IT asserts redaction). The
+   `Connection refused` in the log was harmless scheduled-bean noise on a cached context, not the
+   failure cause — no isolation/`reuseForks` change needed. Re-dispatched to confirm green.
 6. **Truth hotfixes (D7 + S6)** — ✅ **LANDED** (`feature/p0-truth-hotfixes`), reshaped:
    - **D7 is now MOOT.** The plan's D7 assumed S1 (dangerous-verb re-auth) was unenforced, so
      `REQUIREMENTS-REGISTER` marking R-SAFE-07 "Built" was an overclaim. But parallel sessions
