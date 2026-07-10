@@ -109,4 +109,39 @@ class SearchServiceDeepPageTest {
                 .hasMessageContaining("not available for FAILED");
         verifyNoInteractions(flowable);
     }
+
+    @Test
+    void deepPageFanOutDrawsOnItsOwnSlotBudgetNotTheInteractiveOne() throws Exception {
+        // props fanoutParallelism=4 → engineSlots=4 (interactive), deepPageSlots=max(1,4/2)=2.
+        // F3 / R-NFR-08: a deep-page fan-out must queue on deepPageSlots, never consume an
+        // interactive slot — otherwise a scroller/crafted-cursor flood starves live search.
+        EngineConfig engine = TestEngines.engine("engine-a", "http://localhost:1");
+        when(registry.all()).thenReturn(java.util.List.of(engine));
+
+        // Saturate the deep-page budget so the next deepPage MUST block at its own semaphore.
+        service.deepPageSlots.acquireUninterruptibly(2);
+
+        var bg = java.util.concurrent.CompletableFuture.runAsync(() -> {
+            try {
+                service.deepPage(request("engine-a"), null, 1L);
+            } catch (Throwable ignored) {
+                // After we release the drained permits it proceeds against the mock and may fail —
+                // irrelevant; the assertions below run while it is still blocked.
+            }
+        });
+
+        // While the deep-page fan-out is parked on deepPageSlots:
+        org.awaitility.Awaitility.await()
+                .atMost(java.time.Duration.ofSeconds(3))
+                .untilAsserted(() -> org.assertj.core.api.Assertions.assertThat(service.deepPageSlots.getQueueLength())
+                        .isGreaterThanOrEqualTo(1));
+        // …the interactive budget is fully intact (deep paging never touched it) …
+        org.assertj.core.api.Assertions.assertThat(service.engineSlots.availablePermits())
+                .isEqualTo(4);
+        // …and no engine has been dialled (the fan-out is stuck at the BFF slot, pre-engine).
+        verifyNoInteractions(flowable);
+
+        service.deepPageSlots.release(2); // let the parked fan-out drain
+        bg.get(5, java.util.concurrent.TimeUnit.SECONDS);
+    }
 }
