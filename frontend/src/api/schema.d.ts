@@ -1684,6 +1684,8 @@ export interface components {
             reauth?: components["schemas"]["ReauthHint"];
             registryAdmin?: boolean;
             role?: string;
+            /** Format: date-time */
+            sessionExpiresAt?: string;
             username?: string;
         };
         MetaDto: {

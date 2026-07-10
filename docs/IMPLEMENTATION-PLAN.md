@@ -990,7 +990,19 @@ behind nothing before any UI reaches them:**
   `reauth-required` 401s (a freshness challenge is never a sign-out → the SignIn overlay must not
   hijack it). Tests: `reauth.test.ts` + `problem.test.ts` (vitest, 296) + `e2e/reauth.spec.ts`
   (pre-empt / checkpoint+navigate / reactive challenge / resume; full suite 32 green).
-  *(FRONTEND remaining):* warn-before-guillotine + the
+  *(warn-before-guillotine ✅ LANDED 2026-07-10, full-stack):* `/api/me` gains `sessionExpiresAt`
+  — the session's `CREATED_AT` birth stamp + the effective absolute cap (the break-glass 4 h
+  `SESSION_CAP_MS_ATTR` override honoured; a brand-new session is only created at response commit,
+  so the unstamped first call answers now + cap, which IS its birth). The Shell renders a **passive**
+  countdown banner (never a takeover over a dirty form, R-UXQ-06) once ≤30 min remain, ticking every
+  30 s off the cached me-fetch; the CTA (`checkpointAndReauth`) shows ONLY for a freshness-tracked
+  OIDC session (string `freshUntil` or `required:true` — dev basic AND break-glass answer
+  `freshUntil:null`, and Jackson sends null where the generated type says undefined, so the check is
+  `typeof`, never `!== undefined`); break-glass gets the countdown without a CTA (nothing to bounce
+  through — its 4 h cap exists because the IdP is down). Tests: `AdminEnginesApiSpringTest`
+  guillotine-instant (rung-3), `reauth.test.ts` `sessionExpiryState` (window/boundary/ceil-minutes),
+  `e2e/reauth.spec.ts` (CTA / no-CTA / silent-far-away; suite 36 green). schema.d.ts regenerated.
+  *(FRONTEND remaining):* the
   IdP-unreachable [Break-glass sign-in] door; + the Playwright smoke (grant→four-eyes→revoke) + axe/SR gate.
 
 Each slice: rung-1 unit → rung-3 Spring wiring/RBAC → rung-4 Keycloak/Testcontainers IT → Playwright.

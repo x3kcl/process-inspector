@@ -4,6 +4,8 @@
 import { describe, expect, it } from 'vitest'
 import {
   decodeResume,
+  GUILLOTINE_WARN_MS,
+  sessionExpiryState,
   encodeResume,
   isReauthBody,
   reauthStale,
@@ -83,5 +85,34 @@ describe('isReauthBody', () => {
     expect(isReauthBody({ code: 'rbac-denied' })).toBe(false)
     expect(isReauthBody(null)).toBe(false)
     expect(isReauthBody('reauth-required')).toBe(false)
+  })
+})
+
+describe('sessionExpiryState — warn-before-guillotine (R-SAFE-07)', () => {
+  it('is silent far from the cap and after it', () => {
+    const inTwoHours = new Date(NOW + 2 * 3_600_000).toISOString()
+    const past = new Date(NOW - 1_000).toISOString()
+    expect(sessionExpiryState(inTwoHours, NOW).show).toBe(false)
+    expect(sessionExpiryState(past, NOW).show).toBe(false)
+    expect(sessionExpiryState(undefined, NOW).show).toBe(false)
+    expect(sessionExpiryState('not-a-date', NOW).show).toBe(false)
+  })
+
+  it('warns inside the 30-min window with ceil minutes, never "0 minutes"', () => {
+    const inTenMin = new Date(NOW + 10 * 60_000).toISOString()
+    expect(sessionExpiryState(inTenMin, NOW)).toEqual({ show: true, minutesLeft: 10 })
+    const inNinetySeconds = new Date(NOW + 90_000).toISOString()
+    expect(sessionExpiryState(inNinetySeconds, NOW)).toEqual({ show: true, minutesLeft: 2 })
+    const inTenSeconds = new Date(NOW + 10_000).toISOString()
+    expect(sessionExpiryState(inTenSeconds, NOW)).toEqual({ show: true, minutesLeft: 1 })
+  })
+
+  it('the boundary: exactly 30 min out shows; a millisecond beyond stays silent', () => {
+    expect(sessionExpiryState(new Date(NOW + GUILLOTINE_WARN_MS).toISOString(), NOW).show).toBe(
+      true,
+    )
+    expect(
+      sessionExpiryState(new Date(NOW + GUILLOTINE_WARN_MS + 1_000).toISOString(), NOW).show,
+    ).toBe(false)
   })
 })

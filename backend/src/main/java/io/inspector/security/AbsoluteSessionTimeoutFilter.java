@@ -30,8 +30,8 @@ public class AbsoluteSessionTimeoutFilter extends OncePerRequestFilter {
 
     private static final Logger log = LoggerFactory.getLogger(AbsoluteSessionTimeoutFilter.class);
 
-    /** Epoch-milli stamp of session creation, set on first sight of a session. */
-    static final String CREATED_AT = "inspector.session.createdAtEpochMs";
+    /** Epoch-milli stamp of session creation, set on first sight of a session (read by /api/me). */
+    public static final String CREATED_AT = "inspector.session.createdAtEpochMs";
 
     /** Optional per-session cap override (millis) — break-glass stamps 4 h (< the default 24 h). */
     public static final String SESSION_CAP_MS_ATTR = "inspector.session.capMs";
