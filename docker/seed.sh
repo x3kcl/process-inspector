@@ -171,9 +171,12 @@ seed_engine() { # base-url
   curl -sfu "$CRED" -X PUT -H 'Content-Type: application/json' \
     -d '{"action":"suspend"}' "$E/runtime/process-instances/$pid" >/dev/null
   echo "  demoUserTask       $pid (SUSPENDED via REST)"
-  # ...and one left ACTIVE as the task/variable-edit target.
-  pid=$(start_instance "$E" '{"processDefinitionKey":"demoUserTask","variables":[]}')
-  echo "  demoUserTask       $pid (ACTIVE on user task)"
+  # ...and one left ACTIVE as the task/variable-edit target. Carries typed variables so
+  # the §4a editor arcs (usability harness M3: number edit, empty-vs-null clear) have
+  # real rows to edit.
+  pid=$(start_instance "$E" '{"processDefinitionKey":"demoUserTask","variables":[
+    {"name":"amount","type":"integer","value":100},{"name":"note","type":"string","value":"temporary hold"}]}')
+  echo "  demoUserTask       $pid (ACTIVE on user task; amount/note edit targets)"
 
   # Timer-stuck ACTIVE (FIX-PROC-03) — PT24H: present in the timer lane, never overdue.
   pid=$(start_instance "$E" '{"processDefinitionKey":"demoTimerWait","variables":[
@@ -184,6 +187,37 @@ seed_engine() { # base-url
   pid=$(start_instance "$E" "{\"processDefinitionKey\":\"demoParent\",\"businessKey\":\"seed-$(date +%s)\",\"variables\":[
     {\"name\":\"amount\",\"type\":\"integer\",\"value\":100},{\"name\":\"divisor\",\"type\":\"integer\",\"value\":0}]}")
   echo "  demoParent         $pid (child will dead-letter)"
+
+  # Usability-harness fixtures (docs/usability/GOAL-CATALOG.md FIXTURE GAPS):
+  # F-G1 wide MI parent (R-SEM-19 hierarchy breadth cap / timeline sub-lanes). Guarded —
+  # one live 60-child fan-out per engine is plenty; reseeds must not accumulate them.
+  deploy_if_missing "$E" demoWideChild  demo-wide-child.bpmn20.xml
+  deploy_if_missing "$E" demoWideParent demo-wide-parent.bpmn20.xml
+  local wide
+  wide=$(curl -sfu "$CRED" "$E/runtime/process-instances?processDefinitionKey=demoWideParent&size=1" \
+    | python3 -c 'import sys,json;print(json.load(sys.stdin)["total"])')
+  if [ "$wide" = "0" ]; then
+    pid=$(start_instance "$E" '{"processDefinitionKey":"demoWideParent","businessKey":"ORD-BATCH-2107"}')
+    echo "  demoWideParent     $pid (60 parallel MI children — breadth-cap fixture)"
+  else
+    echo "  demoWideParent     already live ($wide active) — skipping."
+  fi
+
+  # F-G6 hostile-text instance (R-OPS-08 injection rendering must stay inert). Guarded
+  # via the query API (the business key itself is the hostile payload).
+  local hostile
+  hostile=$(curl -sfu "$CRED" -H 'Content-Type: application/json' -X POST \
+    -d '{"processDefinitionKey":"demoUserTask","businessKey":"<img src=x onerror=alert(1)>"}' \
+    "$E/query/process-instances?size=1" \
+    | python3 -c 'import sys,json;print(json.load(sys.stdin)["total"])')
+  if [ "$hostile" = "0" ]; then
+    pid=$(start_instance "$E" '{"processDefinitionKey":"demoUserTask","businessKey":"<img src=x onerror=alert(1)>","variables":[
+      {"name":"note","type":"string","value":"=HYPERLINK(\"http://evil.example\",\"open\")"},
+      {"name":"payload","type":"string","value":"<script>alert(\"xss\")</script>"}]}')
+    echo "  demoUserTask       $pid (HOSTILE businessKey/vars — injection fixture)"
+  else
+    echo "  hostile fixture    already live — skipping."
+  fi
 
   # External-worker fixture (v1.x #7) — the element is Flowable 6.8+ ONLY, so deploy it just
   # on capable engines; on 6.3 legacy the deploy would fail and there is no fifth queue to see.
