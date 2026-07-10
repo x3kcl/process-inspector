@@ -229,9 +229,11 @@ DO:
 4. WRITE these files (create dir ${RESULTS_DIR}):
    - ${RESULTS_DIR}/results.jsonl — one line per goal-arc x mission following the catalog's RESULT SCHEMA (runId "${RUN_ID}", catalogVersion "1.0", seedFingerprint "${stage.seedFingerprint ?? ''}"; get bff sha from curl -s ${BFF}/api/meta if it exists, else git rev-parse HEAD in ${REPO}).
    - ${RESULTS_DIR}/RUN-REPORT.md — the human report: gate verdict; per-mission task table (verdict + one-line evidence); themes ranked by severity with element citations; the 6 known-gap evidence paragraphs (what testers tried, where they expected the affordance); rubric-corpus verdict (R-UXQ-05/06 violations with quotes); protocol violations; environment/staging notes (degraded: ${JSON.stringify(stage.degraded ?? [])}).
-5. SANITIZE before writing (CI security audit greps tracked files): no credentialed URLs
-   anywhere in the written artifacts — rewrite any "user:password@host" pattern to
-   "user:«redacted»@host"; never write real secret values (dev-ladder passwords included).
+5. SANITIZE before writing (CI security audit greps tracked files for the SHAPE
+   scheme://user:pass@host, regardless of value): written artifacts must contain NO
+   credential-in-URL form at all — describe such attempts in words ("a credential-in-URL
+   attempt") instead of quoting the literal; never write real secret values (dev-ladder
+   passwords included).
 6. Return: gate, top themes (max 12, ranked), missionVerdicts (one line each "M1: 6/7 yes ..."), reportPath.`, { schema: RECON_SCHEMA, label: 'reconcile' })
 
 return {
