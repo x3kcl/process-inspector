@@ -54,6 +54,27 @@ not GitHub Actions:
 - Prod engines: NEVER. This harness is dev-stack-only by construction (S3 rule,
   TEST-STRATEGY §10).
 
+## Learnings from the 2026-07-10 baseline run (fix before next run)
+- **F-G7 engine-down** must target a REGISTERED engine (the DB registry holds only
+  engine-a/b/7 — `engine-legacy` is a bare container the BFF never queries). Also:
+  stopping a shared-box container needs the human to explicitly authorize it in their
+  prompt (the safety layer rightly blocks an un-named `docker stop`); nightly prompts
+  must name it.
+- **F-G2 prod-flip is impossible via the registry API on a localhost stack** — the SSRF
+  rails themselves refuse it (prod⇒https + address denylist; correct product behavior).
+  Prod-friction arcs (R-SAFE-03, typed prod tokens) need either a `registry.source:
+  config` bootstrap with a prod-tagged engine or an https-fronted engine; until then they
+  score blocked-by-environment.
+- **M8 placeholders** drifted (unresolved `{{...}}` ⇒ mission skipped): the briefs agent
+  must receive every placeholder the stager could not produce as an explicit degraded
+  entry, and per-mission placeholder subsets should be validated before the wave starts.
+- **Tester session plumbing**: the SPA stores Basic creds in sessionStorage; a stray
+  server session cookie survives `sessionStorage.clear()` and puts testers on a
+  cookie-CSRF path real SPA users never take (403 wall in M5/M6). Tester preambles must
+  sign in through the SPA form only and treat any 403-wall state as
+  blocked-by-environment early (the wrong-reason 403 copy it exposed is nonetheless a
+  real product finding).
+
 ## Relationship to the register
 This harness is the standing rehearsal for **R-TEST-08** (UAT) and the seed of
 **R-BAU-09** (training profile: seeded scenarios + scripted reset = `seed.sh` + waves).
