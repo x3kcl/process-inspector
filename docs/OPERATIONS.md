@@ -126,16 +126,19 @@ budget its realm-import boot against the 20-min integration cap or split to its 
 Nightly (release-blocking, not merge-blocking): full engine-matrix Playwright, P1/P2 perf
 scenarios, capability matrix cross. Weekly: image rescan; monthly: base-image rebuild; SBOM
 (CycloneDX) attached to releases.
-**Where CI runs:** a **dockerized self-hosted runner** (`docker/ci-runner/`, image =
-`myoung34/github-runner` + Maven/python3/jq; zero paid Actions minutes). Single serialized
-runner **by design** — harness ports are fixed remaps, so a second online runner would
-collide matrix legs; `scripts/ci-runner.sh ensure` (run before every push/PR — green-ci
-skill step 0) starts it and enforces the exactly-one-online invariant. Ephemeral (one job
-per container, fresh registration each restart), `network_mode: host` (jobs address
-published harness ports via localhost), host `docker.sock` (integration legs drive the
-shared daemon; trusted-operator model — no fork PRs), `restart: unless-stopped` for
-reboot survival. Registration: repo-scoped PAT via `GITHUB_PERSONAL_ACCESS_TOKEN` env ref,
-exchanged at start for a short-lived registration token.
+**Where CI runs:** dockerized self-hosted **runner slots** (`docker/ci-runner/`, image =
+`myoung34/github-runner` + Maven/python3/jq; zero paid Actions minutes). Harness ports are
+fixed remaps, so parallelism is **port-namespace slots**: each runner container carries a
+disjoint pre-computed port block as env (engines/PG/BFF per slot; `ci.yml` honors it with
+slot-1 fallback, and the frontend job's throwaway Postgres uses a Docker-assigned random
+host port). Jobs serialize within a slot, so cross-PR runs AND same-run matrix legs
+parallelize across slots collision-free. `scripts/ci-runner.sh ensure` (before every
+push/PR — green-ci skill step 0) starts the slots and fails if any FOREIGN (slot-less)
+runner is online. Ephemeral (one job per container, fresh registration each restart),
+`network_mode: host` (jobs address published ports via localhost), host `docker.sock`
+(integration legs drive the shared daemon; trusted-operator model — no fork PRs),
+`restart: unless-stopped` for reboot survival. Registration: repo-scoped PAT via
+`GITHUB_PERSONAL_ACCESS_TOKEN` env ref, exchanged at start for short-lived tokens.
 
 ## 9. Compose profiles
 Dev engine profiles in `docker/docker-compose.dev.yml`: **`flowable-6`** (6.8.0 pair,

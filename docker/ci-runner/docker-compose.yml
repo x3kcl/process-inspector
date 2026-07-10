@@ -1,49 +1,117 @@
-# Dockerized self-hosted GitHub Actions runner (replaces the bare-metal ~/actions-runner
+# Dockerized self-hosted GitHub Actions runners (replaces the bare-metal ~/actions-runner
 # launched via nohup — which died on reboot; `restart: unless-stopped` survives one).
 # Runs under the flapci account. Start/verify via scripts/ci-runner.sh — the green-ci
 # skill's step 0 before any push or PR.
 #
-# Design constraints this must preserve (see .github/workflows/ci.yml):
-# - SINGLE serialized runner: the remapped harness ports are fixed, so two online runners
-#   would run matrix legs concurrently and re-collide. ci-runner.sh enforces exactly-one.
-# - network_mode host: job steps address published ports via localhost (postgres service
-#   :5434, drift-gate BFF :8086, engine harness :8091-8094/:5435) exactly like the
-#   bare-metal runner did. A bridged runner would break every localhost assumption.
+# PARALLELISM MODEL — port-namespace slots, not a free-for-all:
+# CI harness ports are fixed remaps (they cannot be dynamic: compose, smoke-test.sh,
+# seed.sh and the IT base-urls all read PI_*_PORT from the process environment). So each
+# runner service below is a SLOT that carries its own disjoint, pre-computed port block as
+# container env; ci.yml honors that env (with the slot-1 values as fallback). Jobs
+# serialize WITHIN a runner, so no two jobs ever share a port namespace concurrently —
+# cross-PR runs and same-run matrix legs both parallelize across slots, collision-free.
+#   slot  engines (A/B/7/legacy)   BFF-pg  drift-BFF   compose projects
+#   s1    8091 8092 8093 8094      5435    8086        pi-ci-s1-<profile>
+#   s2    8191 8192 8193 8194      5445    8186        pi-ci-s2-<profile>
+#   s3    8291 8292 8293 8294      5455    8286        pi-ci-s3-<profile>
+# (The frontend job's throwaway Postgres uses a Docker-assigned random host port — see
+# ci.yml — so it needs no slot entry.)
+# NEVER register a runner outside this file: a foreign runner has no slot, so its jobs
+# would race a slot's fixed ports. ci-runner.sh `ensure` fails if one is online.
+#
+# Design constraints preserved from the single-runner original (see ci.yml):
+# - network_mode host: job steps address published ports via localhost, so each slot's
+#   engines/postgres/BFF must land on the host interface exactly like bare-metal.
 # - /var/run/docker.sock: the integration legs drive the SHARED host daemon by design
-#   (per-profile pi-ci-* compose projects on parameterized ports). Trusted-operator
-#   threat model — no fork PRs run here; this is the same daemon access the bare-metal
-#   runner already had, now with a resource ceiling around the runner's own processes.
+#   (per-slot pi-ci-* compose projects on the slot's ports). Trusted-operator threat
+#   model — no fork PRs run here.
+# - Resource ceilings: CI must never starve the prod/demo/dev stacks on this box.
 name: pi-ci-runner
+
+x-runner: &runner
+  build: .
+  image: process-inspector/ci-runner:latest
+  restart: unless-stopped
+  network_mode: host
+  # Ceiling, not a reservation (host: 64 cores / 172G). Harness containers run on the
+  # host daemon outside these limits; this caps each runner's own mvn/npm/java processes.
+  cpus: 12
+  mem_limit: 16g
+
+x-runner-env: &runner-env
+  RUNNER_SCOPE: repo
+  REPO_URL: https://github.com/x3kcl/process-inspector
+  # Env-ref only (iron rule). Exchanged for a short-lived registration token at start;
+  # the PAT itself is never written to disk by the runner.
+  ACCESS_TOKEN: ${GITHUB_PERSONAL_ACCESS_TOKEN:?export the GitHub PAT in the launching shell}
+  # One job per container: after each job the runner exits and the restart policy brings
+  # up a fresh, cleanly re-registered one — no state bleed, self-healing.
+  EPHEMERAL: "true"
+  DISABLE_AUTO_UPDATE: "true"
+
 services:
-  runner:
-    build: .
-    image: process-inspector/ci-runner:latest
-    container_name: pi-ci-runner
-    restart: unless-stopped
-    network_mode: host
+  runner-s1:
+    <<: *runner
+    container_name: pi-ci-runner-s1
     environment:
-      RUNNER_SCOPE: repo
-      REPO_URL: https://github.com/x3kcl/process-inspector
-      # Env-ref only (iron rule). Exchanged for a short-lived registration token at start;
-      # the PAT itself is never written to disk by the runner.
-      ACCESS_TOKEN: ${GITHUB_PERSONAL_ACCESS_TOKEN:?export the GitHub PAT in the launching shell}
-      RUNNER_NAME: hp04-docker
-      # One job per container: after each job the runner exits and the restart policy
-      # brings up a fresh, cleanly re-registered one — no state bleed, self-healing.
-      EPHEMERAL: "true"
-      DISABLE_AUTO_UPDATE: "true"
-      RUNNER_WORKDIR: /home/flapci/ci-runner-work
+      <<: *runner-env
+      RUNNER_NAME: hp04-docker-s1
+      RUNNER_WORKDIR: /home/flapci/ci-runner-work-s1
+      PI_CI_SLOT: "1"
+      PI_ENGINE_A_PORT: "8091"
+      PI_ENGINE_B_PORT: "8092"
+      PI_ENGINE_7_PORT: "8093"
+      PI_ENGINE_LEGACY_PORT: "8094"
+      PI_PG_PORT: "5435"
+      PI_BFF_PORT: "8086"
     volumes:
       - /var/run/docker.sock:/var/run/docker.sock
       # Identical host/container path: anything a job bind-mounts into a container goes
       # through the HOST daemon, so workspace paths must resolve identically on the host.
-      - /home/flapci/ci-runner-work:/home/flapci/ci-runner-work
-      # setup-java/setup-node tool downloads survive the ephemeral restarts.
-      - toolcache:/opt/hostedtoolcache
-    # Ceiling, not a reservation: CI must never starve the prod/demo/dev stacks sharing
-    # this box. Harness containers run on the host daemon outside this limit; this caps
-    # the runner's own mvn/npm/java processes.
-    cpus: 16
-    mem_limit: 24g
+      - /home/flapci/ci-runner-work-s1:/home/flapci/ci-runner-work-s1
+      # setup-java/setup-node tool downloads survive the ephemeral restarts. Per-slot:
+      # concurrent extractions into a shared cache would race.
+      - toolcache-s1:/opt/hostedtoolcache
+
+  runner-s2:
+    <<: *runner
+    container_name: pi-ci-runner-s2
+    environment:
+      <<: *runner-env
+      RUNNER_NAME: hp04-docker-s2
+      RUNNER_WORKDIR: /home/flapci/ci-runner-work-s2
+      PI_CI_SLOT: "2"
+      PI_ENGINE_A_PORT: "8191"
+      PI_ENGINE_B_PORT: "8192"
+      PI_ENGINE_7_PORT: "8193"
+      PI_ENGINE_LEGACY_PORT: "8194"
+      PI_PG_PORT: "5445"
+      PI_BFF_PORT: "8186"
+    volumes:
+      - /var/run/docker.sock:/var/run/docker.sock
+      - /home/flapci/ci-runner-work-s2:/home/flapci/ci-runner-work-s2
+      - toolcache-s2:/opt/hostedtoolcache
+
+  runner-s3:
+    <<: *runner
+    container_name: pi-ci-runner-s3
+    environment:
+      <<: *runner-env
+      RUNNER_NAME: hp04-docker-s3
+      RUNNER_WORKDIR: /home/flapci/ci-runner-work-s3
+      PI_CI_SLOT: "3"
+      PI_ENGINE_A_PORT: "8291"
+      PI_ENGINE_B_PORT: "8292"
+      PI_ENGINE_7_PORT: "8293"
+      PI_ENGINE_LEGACY_PORT: "8294"
+      PI_PG_PORT: "5455"
+      PI_BFF_PORT: "8286"
+    volumes:
+      - /var/run/docker.sock:/var/run/docker.sock
+      - /home/flapci/ci-runner-work-s3:/home/flapci/ci-runner-work-s3
+      - toolcache-s3:/opt/hostedtoolcache
+
 volumes:
-  toolcache:
+  toolcache-s1:
+  toolcache-s2:
+  toolcache-s3:

@@ -49,9 +49,9 @@ jobs:
     services:
       # The OpenAPI drift gate boots the REAL BFF. Engines may be absent (health degrades,
       # boot succeeds — ARCH §2.2), but Postgres is a hard boot dependency (Flyway +
-      # ddl-auto=validate), so it runs as a service. Host port 5434 (not the dev default
-      # 5433) so a self-hosted runner does not collide with an already-up dev/demo Postgres
-      # on the same daemon; the BFF is pointed at it via INSPECTOR_DB_URL below.
+      # ddl-auto=validate), so it runs as a service. Container-port-only mapping: Docker
+      # assigns a random free HOST port (read via job.services below), so concurrent
+      # frontend jobs on different runner slots never collide and no slot entry is needed.
       postgres:
         image: postgres:16
         env:
@@ -59,7 +59,7 @@ jobs:
           POSTGRES_USER: inspector
           POSTGRES_PASSWORD: inspector
         ports:
-          - 5434:5432
+          - 5432/tcp
         options: >-
           --health-cmd "pg_isready -U inspector"
           --health-interval 5s
@@ -67,6 +67,12 @@ jobs:
           --health-retries 20
     steps:
       - uses: actions/checkout@v4
+      # Runner slots (docker/ci-runner/docker-compose.yml) carry a disjoint port block as
+      # container env so concurrent jobs never collide; slot-1 values are the fallback for
+      # a slot-less runner.
+      - name: Resolve the slot port namespace
+        working-directory: .
+        run: echo "BFF_PORT=${PI_BFF_PORT:-8086}" >> "$GITHUB_ENV"
       - uses: actions/setup-node@v4
         with:
           node-version: "22"
@@ -97,17 +103,18 @@ jobs:
           # password-refs must resolve; the engines they authenticate against are absent.
           ENGINE_A_PASSWORD: unused-in-ci
           ENGINE_B_PASSWORD: unused-in-ci
-          # Self-hosted-runner remap: BFF on 8086 and its DB on the 5434 service (above),
-          # off the dev defaults (8085/5433) so a concurrent dev BFF/Postgres can coexist.
-          SERVER_PORT: "8086"
-          INSPECTOR_DB_URL: jdbc:postgresql://localhost:5434/inspector
+          # Slot remap: the BFF on the runner slot's PI_BFF_PORT (dev default is 8085) and
+          # its DB on the service's Docker-assigned host port, so concurrent dev stacks AND
+          # concurrent CI jobs on other slots all coexist.
+          SERVER_PORT: ${{ env.BFF_PORT }}
+          INSPECTOR_DB_URL: jdbc:postgresql://localhost:${{ job.services.postgres.ports['5432'] }}/inspector
         run: |
           JAR=$(ls target/*.jar | head -1)
           nohup java -jar "$JAR" > /tmp/bff.log 2>&1 &
       - name: Wait for /v3/api-docs (bounded)
         run: |
           for _ in $(seq 1 90); do
-            curl -fsS http://localhost:8086/v3/api-docs > /dev/null && exit 0
+            curl -fsS "http://localhost:${BFF_PORT}/v3/api-docs" > /dev/null && exit 0
             sleep 2
           done
           echo "::error::BFF did not serve /v3/api-docs within 180s"
@@ -115,7 +122,7 @@ jobs:
           exit 1
       - name: Regenerate the API contract from the running BFF
         env:
-          INSPECTOR_BFF_URL: http://localhost:8086
+          INSPECTOR_BFF_URL: http://localhost:${{ env.BFF_PORT }}
         run: npm run gen:api
       - name: Drift gate — committed schema must match the live contract
         run: |
@@ -158,22 +165,27 @@ jobs:
       # CLI --profile flags would scope only the command they're passed to, leaving
       # logs/exec on the docker/.env default.
       COMPOSE_PROFILES: "${{ matrix.profile }},postgres"
-      # Self-hosted runner shares hp04's Docker daemon with a live demo + interactive dev
-      # stacks. Remap every published port off the dev defaults so CI never collides with
-      # (or tears down) those stacks; the compose file, smoke-test.sh, seed.sh and the IT
-      # base-urls all read these vars (default = the dev port). The engine ITs read
-      # PI_ENGINE_*_PORT; the BFF-owned Postgres is remapped + fed via INSPECTOR_DB_URL.
-      PI_ENGINE_A_PORT: "8091"
-      PI_ENGINE_B_PORT: "8092"
-      PI_ENGINE_7_PORT: "8093"
-      PI_ENGINE_LEGACY_PORT: "8094"
-      PI_PG_PORT: "5435"
-      INSPECTOR_DB_URL: jdbc:postgresql://localhost:5435/inspector
-      # Distinct compose project (not the dev "process-inspector") so container names never
-      # clash and teardown only ever removes CI's own containers/volumes.
-      CI_PROJECT: pi-ci-${{ matrix.profile }}
     steps:
       - uses: actions/checkout@v4
+      # Self-hosted runners share hp04's Docker daemon with a live demo + interactive dev
+      # stacks, so every published port is remapped off the dev defaults — and each runner
+      # SLOT (docker/ci-runner/docker-compose.yml) carries its own disjoint remap block as
+      # container env so concurrent jobs on different slots never collide either. The
+      # compose file, smoke-test.sh, seed.sh and the IT base-urls all read PI_*_PORT from
+      # the process environment; slot-1 values are the fallback for a slot-less runner.
+      # CI_PROJECT: distinct per-slot compose project (never the dev "process-inspector")
+      # so container names can't clash and teardown only removes THIS job's containers.
+      - name: Resolve the slot port namespace
+        run: |
+          {
+            echo "PI_ENGINE_A_PORT=${PI_ENGINE_A_PORT:-8091}"
+            echo "PI_ENGINE_B_PORT=${PI_ENGINE_B_PORT:-8092}"
+            echo "PI_ENGINE_7_PORT=${PI_ENGINE_7_PORT:-8093}"
+            echo "PI_ENGINE_LEGACY_PORT=${PI_ENGINE_LEGACY_PORT:-8094}"
+            echo "PI_PG_PORT=${PI_PG_PORT:-5435}"
+            echo "INSPECTOR_DB_URL=jdbc:postgresql://localhost:${PI_PG_PORT:-5435}/inspector"
+            echo "CI_PROJECT=pi-ci-s${PI_CI_SLOT:-1}-${{ matrix.profile }}"
+          } >> "$GITHUB_ENV"
       - uses: actions/setup-java@v4
         with:
           distribution: temurin
