@@ -37,7 +37,7 @@ const REAUTH_PROBLEM = {
 /** reauth: the /api/me freshness hint under test; challengeAction: the POST answers the 401. */
 async function mockBff(
   page: Page,
-  opts: { reauth?: Record<string, unknown>; challengeAction?: boolean },
+  opts: { reauth?: Record<string, unknown>; challengeAction?: boolean; sessionExpiresAt?: string },
 ): Promise<void> {
   await page.route(
     (url) => url.pathname.startsWith('/api/'),
@@ -45,7 +45,12 @@ async function mockBff(
       const { pathname } = new URL(route.request().url())
       if (pathname === '/api/me') {
         await route.fulfill({
-          json: { role: 'ADMIN', engineRoles: { eng1: 'ADMIN' }, reauth: opts.reauth },
+          json: {
+            role: 'ADMIN',
+            engineRoles: { eng1: 'ADMIN' },
+            reauth: opts.reauth,
+            sessionExpiresAt: opts.sessionExpiresAt,
+          },
         })
       } else if (pathname === '/api/engines') {
         await route.fulfill({ json: [ENGINE] })
@@ -156,4 +161,47 @@ test('the post-login boot restores the checkpointed route (single-shot)', async 
   await page.waitForURL(/\/inspect\/eng1\/p-1\?tab=errors-jobs/)
   // Single-shot: the checkpoint is consumed.
   expect(await page.evaluate(() => sessionStorage.getItem('inspector.reauth.resume'))).toBeNull()
+})
+
+test('warn-before-guillotine: an OIDC session near the absolute cap gets the countdown + CTA', async ({
+  page,
+}) => {
+  const soon = new Date(Date.now() + 10 * 60_000).toISOString()
+  const fresh = new Date(Date.now() + 5 * 60_000).toISOString()
+  await mockBff(page, {
+    reauth: { required: false, freshUntil: fresh, windowSeconds: 900 },
+    sessionExpiresAt: soon,
+  })
+  await page.goto('/inspect/eng1/p-1?tab=errors-jobs')
+
+  const banner = page.locator('.session-expiry-banner')
+  await expect(banner).toBeVisible()
+  await expect(banner).toContainText(/Session expires in (9|10) min/)
+  await expect(banner.getByRole('button', { name: 'Re-authenticate now' })).toBeVisible()
+})
+
+test('warn-before-guillotine: a break-glass-shaped session counts down WITHOUT a re-auth CTA', async ({
+  page,
+}) => {
+  // Break-glass (and dev basic) answer {required:false, freshUntil:null} — no IdP to bounce
+  // through, so the banner warns but offers no button.
+  const soon = new Date(Date.now() + 10 * 60_000).toISOString()
+  await mockBff(page, {
+    reauth: { required: false, freshUntil: null, windowSeconds: 900 },
+    sessionExpiresAt: soon,
+  })
+  await page.goto('/inspect/eng1/p-1?tab=errors-jobs')
+
+  const banner = page.locator('.session-expiry-banner')
+  await expect(banner).toBeVisible()
+  await expect(banner.getByRole('button')).toHaveCount(0)
+})
+
+test('warn-before-guillotine: silent while the cap is far away', async ({ page }) => {
+  const farAway = new Date(Date.now() + 20 * 3_600_000).toISOString()
+  await mockBff(page, { reauth: { required: false }, sessionExpiresAt: farAway })
+  await page.goto('/inspect/eng1/p-1?tab=errors-jobs')
+
+  await expect(page.locator('details.lane-deadLetter')).toBeVisible() // page rendered
+  await expect(page.locator('.session-expiry-banner')).toHaveCount(0)
 })

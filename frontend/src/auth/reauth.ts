@@ -42,6 +42,28 @@ export function reauthWindowMinutes(hint: ReauthHint | undefined): number {
   return Math.max(1, Math.round(seconds / 60))
 }
 
+/** Warn-before-guillotine threshold: the countdown banner shows inside this window (R-SAFE-07). */
+export const GUILLOTINE_WARN_MS = 30 * 60 * 1000
+
+/**
+ * The warn-before-guillotine decision (IDP-SECURITY.md §5, R-SAFE-07): how the SPA reads
+ * {@code me.sessionExpiresAt}. Pure — pass Date.now(); the banner re-evaluates on a timer.
+ * {@code show} inside the warn window while the session still lives; {@code minutesLeft} is
+ * ceil'd so the copy never says "0 minutes" while requests still work. After expiry the next
+ * API call answers 401 and the normal sign-in path takes over — the banner's job is done.
+ */
+export function sessionExpiryState(
+  expiresAt: string | undefined,
+  nowMs: number,
+): { show: boolean; minutesLeft: number } {
+  if (expiresAt === undefined) return { show: false, minutesLeft: 0 }
+  const until = Date.parse(expiresAt)
+  if (!Number.isFinite(until)) return { show: false, minutesLeft: 0 }
+  const remaining = until - nowMs
+  if (remaining <= 0 || remaining > GUILLOTINE_WARN_MS) return { show: false, minutesLeft: 0 }
+  return { show: true, minutesLeft: Math.max(1, Math.ceil(remaining / 60_000)) }
+}
+
 /**
  * Is this (unknown-typed) error body the BFF's 401 freshness challenge? Non-action endpoints
  * (the mapping admin writes) surface it as a raw ProblemDetail on ApiError.body — same

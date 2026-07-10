@@ -150,4 +150,21 @@ class AdminEnginesApiSpringTest {
                 mapper.readTree(as("admin", HttpMethod.GET, "/api/me", null).getBody());
         assertThat(plainAdmin.get("registryAdmin").asBoolean()).isFalse();
     }
+
+    @Test
+    void meExposesTheAbsoluteCapGuillotineInstant() throws Exception {
+        // Warn-before-guillotine (R-SAFE-07): the dev basic call rides a session (the security
+        // context is session-persisted), so /api/me answers its absolute-cap expiry ≈ birth + 24 h
+        // (the default; a break-glass session stamps a tighter 4 h override via the same
+        // SESSION_CAP_MS_ATTR the /api/me read honours). Presentation only — the
+        // AbsoluteSessionTimeoutFilter stays the enforcement.
+        JsonNode me =
+                mapper.readTree(as("admin", HttpMethod.GET, "/api/me", null).getBody());
+        assertThat(me.hasNonNull("sessionExpiresAt")).isTrue();
+        java.time.Instant expires =
+                java.time.Instant.parse(me.get("sessionExpiresAt").asText());
+        java.time.Instant now = java.time.Instant.now();
+        assertThat(expires).isAfter(now.plus(java.time.Duration.ofHours(23)));
+        assertThat(expires).isBefore(now.plus(java.time.Duration.ofHours(25)));
+    }
 }

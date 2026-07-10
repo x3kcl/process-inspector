@@ -1,9 +1,14 @@
-import { useEffect, useSyncExternalStore } from 'react'
+import { useEffect, useState, useSyncExternalStore } from 'react'
 import { useQueryClient } from '@tanstack/react-query'
 import { Link, Outlet, useNavigate } from 'react-router'
 import { ApiError } from '../api/client'
 import { useMe } from '../api/me'
-import { consumeResume, isReauthBody } from '../auth/reauth'
+import {
+  checkpointAndReauth,
+  consumeResume,
+  isReauthBody,
+  sessionExpiryState,
+} from '../auth/reauth'
 import { HeaderStrip } from '../components/HeaderStrip'
 import { SignIn } from '../components/SignIn'
 import { ToastProvider } from '../components/toast'
@@ -36,6 +41,7 @@ export function Shell() {
         <OpsDrawerProvider>
           <div className="app">
             <BreakGlassBanner />
+            <SessionExpiryBanner />
             <header className="topbar">
               <h1>
                 <Link to="/" className="home-link">
@@ -122,6 +128,53 @@ function BreakGlassBanner() {
     <div className="banner banner-breakglass" role="alert">
       ⚠ BREAK-GLASS SESSION — sealed emergency access (ADMIN-global, never fleet). Every action is
       logged and alerted; use only during an identity-provider outage, then rotate the credential.
+    </div>
+  )
+}
+
+/**
+ * Warn-before-guillotine (IDP-SECURITY.md §5, R-SAFE-07): a passive countdown banner — NEVER a
+ * takeover over a dirty form (R-UXQ-06) — once the absolute session cap is ≤30 min away. On an
+ * OIDC session (reauth hint carries a freshUntil) the CTA re-authenticates in place, minting a
+ * fresh session; a break-glass session gets the countdown WITHOUT a CTA — its 4 h cap exists
+ * because the IdP is down, so there is nothing to bounce through (rotate or re-break-glass).
+ * The clock ticks every 30 s; me is cached (staleTime Infinity) so this costs no refetching.
+ */
+function SessionExpiryBanner() {
+  const me = useMe()
+  const [nowMs, setNowMs] = useState(() => Date.now())
+  useEffect(() => {
+    const timer = setInterval(() => {
+      setNowMs(Date.now())
+    }, 30_000)
+    return () => {
+      clearInterval(timer)
+    }
+  }, [])
+  const expiry = sessionExpiryState(me.data?.sessionExpiresAt, nowMs)
+  if (!expiry.show) return null
+  // A freshness-tracked OIDC session — the only chain a re-auth bounce helps — carries a string
+  // freshUntil (or required=true when auth_time was absent). Dev basic AND break-glass answer
+  // {required:false, freshUntil:null}; Jackson sends null where the generated type says
+  // undefined (known wire gotcha), so the check is typeof, never !== undefined.
+  const hint = me.data?.reauth
+  const canReauth = typeof hint?.freshUntil === 'string' || hint?.required === true
+  return (
+    <div className="banner banner-warn session-expiry-banner" role="status">
+      Session expires in {String(expiry.minutesLeft)} min — the absolute cap ends it regardless of
+      activity.{' '}
+      {canReauth ? (
+        <button
+          type="button"
+          onClick={() => {
+            checkpointAndReauth()
+          }}
+        >
+          Re-authenticate now
+        </button>
+      ) : (
+        'Finish or hand over in-flight work before it does.'
+      )}
     </div>
   )
 }

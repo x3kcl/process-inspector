@@ -1,5 +1,6 @@
 package io.inspector.dto;
 
+import java.time.Instant;
 import java.util.Map;
 
 /**
@@ -26,4 +27,11 @@ public record MeDto(
          * modal open so a stale OIDC session re-authenticates BEFORE the operator types the confirm
          * token. {@code required=false, freshUntil=null} for an exempt dev/basic or break-glass session.
          */
-        ReauthHint reauth) {}
+        ReauthHint reauth,
+        /**
+         * Absolute-cap guillotine instant (v2 IdP-Security §5, R-SAFE-07): when this session dies
+         * regardless of activity (per-session break-glass 4 h override honoured). Drives the SPA's
+         * warn-before-guillotine countdown banner. Null when the call rode no session. Presentation
+         * only — {@code AbsoluteSessionTimeoutFilter} stays the enforcement.
+         */
+        Instant sessionExpiresAt) {}
