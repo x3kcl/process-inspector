@@ -34,11 +34,20 @@ fallback — the runbook carries direct-cURL recipes for the top verbs (see §7)
 
 ## 4. Availability & recovery (R-OPS-04)
 RTO ≤ 15 min: IaC/one-command redeploy, image pinned by digest, registry YAML + secrets in
-version-controlled/secret-managed form. RPO ≤ 5 min: Postgres WAL archiving/PITR; Postgres
-runs **external to the BFF host** in prod (never co-fate-shared). Flyway: forward-only, no
-down-migrations, automated backup gate before migrate; recovery from a bad migration =
-restore + roll forward. Restore drill quarterly — the audit golden master's backup is
-verified as part of it.
+version-controlled/secret-managed form. Postgres runs **external to the BFF host** in the
+target-state prod topology (never co-fate-shared). Flyway: forward-only, no down-migrations,
+backup before migrate; recovery from a bad migration = restore + roll forward.
+
+**Backup posture — honest current state (P0 #4 / Q4).** The BFF's Postgres holds the 400-day
+audit chain (revFADP); its retention + legal-hold machinery guards data that must not be lost.
+The shipping mechanism is a **nightly logical dump** — `deploy/backup-audit-db.sh` (`pg_dump -Fc`
+to a second-disk `PI_BACKUP_DIR`, checksummed, retention-pruned), scheduled by
+`deploy/systemd/pi-audit-backup.timer`. That makes the honest **RPO the timer interval (24 h)**,
+not the ≤5-min WAL/PITR previously claimed here — continuous WAL archiving/PITR is a documented
+follow-up; this first closes the "no copy at all" gap (the demo ran on a single docker volume).
+The restore drill is now **executable, not aspirational**: `deploy/restore-drill.sh` restores the
+latest dump into a throwaway Postgres and asserts `audit_entry` came back partitioned with its
+partitions and rows — run it after wiring the backup and on a calendar cadence.
 
 ## 5. Deploys (R-OPS-05, R-SEM-16/17)
 `server.shutdown=graceful` (30 s); SIGTERM emits a terminal SSE `shutdown` event (once SSE

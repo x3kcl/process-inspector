@@ -1,0 +1,17 @@
+# Nightly logical backup of the BFF's audit Postgres (IMPROVEMENT-PLAN P0 #4 / Q4).
+# Install on the demo host (hp04):
+#   sudo cp deploy/systemd/pi-audit-backup.* /etc/systemd/system/
+#   sudo systemctl daemon-reload && sudo systemctl enable --now pi-audit-backup.timer
+# Override the destination (a SECOND disk) + retention via a drop-in:
+#   sudo systemctl edit pi-audit-backup.service   # [Service] Environment=PI_BACKUP_DIR=/mnt/backups/pi-audit
+[Unit]
+Description=Process Inspector — nightly audit-DB logical backup
+After=docker.service
+Requires=docker.service
+
+[Service]
+Type=oneshot
+Environment=PI_BACKUP_DIR=/var/backups/pi-audit
+# Adjust WorkingDirectory to the repo checkout on the host.
+WorkingDirectory=/home/flapci/workspace/process-inspector
+ExecStart=/home/flapci/workspace/process-inspector/deploy/backup-audit-db.sh
