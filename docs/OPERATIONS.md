@@ -55,6 +55,15 @@ GitHub Release as prerelease), then creates the Release with
 `docker/docker-compose.release.yml` attached as the consumer quick-start. Auth is the
 workflow `GITHUB_TOKEN` (`packages: write`) — no extra secret. One-time after first publish:
 flip both ghcr packages to public visibility.
+**Continuous edge builds:** every **green** `ci` run on `main` auto-publishes the same two
+images as `:edge` + `:sha-<short7>` (`publish-edge.yml`; `workflow_run`-triggered so a red
+main never ships a build — the green-main doctrine applied to publishing). Pinned release
+tags are never moved by edge builds.
+**Cutting a version without local git:** Actions → `cut-release` → Run workflow → pick
+patch/minor/major. It refuses a `main` HEAD without a green `ci` run, computes the next
+semver from the latest *stable* tag (prereleases never advance the baseline), pushes the
+annotated tag, and *calls* `release.yml` as a reusable workflow — required because a
+`GITHUB_TOKEN`-pushed tag never fires push triggers. Prerelease tags stay manual pushes.
 
 ## 6. The audit golden master, operationally (R-AUD-01/02/03)
 - **Fail-closed**: tier ≥1 mutations are not issued if the audit INSERT fails; the error

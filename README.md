@@ -76,6 +76,11 @@ INSPECTOR_DEV_PASSWORD=pick-one docker compose -f docker-compose.release.yml up 
 # UI on :8080; point INSPECTOR_ENGINE_{A,B}_BASE_URL + ENGINE_{A,B}_PASSWORD at your engines
 ```
 
+New versions are cut from the Actions tab (`cut-release` → patch/minor/major — green-CI
+gated, auto-computes the next semver, tags, publishes, drafts the Release), and every green
+`ci` run on `main` additionally publishes moving `:edge` + `:sha-<short>` images
+(`publish-edge.yml`) for tracking the latest verified build.
+
 ### Backend tests
 
 ```bash
