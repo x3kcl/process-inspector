@@ -23,6 +23,13 @@ a formatting slip that reddens the `frontend` job costs everyone. Catch it local
 
 ## The loop
 ```
+   ┌─ 0. RUNNER ─────────────────────────────────────────────────┐
+   │  scripts/ci-runner.sh ensure                                  │
+   │  # the dockerized self-hosted runner must be ONLINE (and be   │
+   │  # the ONLY one online) or every run below queues forever.    │
+   └──────────────────────────────────────────────────────────────┘
+              │ exactly one runner online
+              ▼
    ┌─ 1. MIRROR ──────────────────────────────────────────────────┐
    │  scripts/ci-local.sh            # fast gates, cheapest-first  │
    │  scripts/ci-local.sh --fix      # auto-apply spotless+prettier│
@@ -72,6 +79,18 @@ you let the real run prove them and react to the result. If you changed a backen
 drift gate yourself before pushing (boot the BFF, `npm run gen:api`, commit the regenerated
 `schema.d.ts` — never hand-edit it). If you touched engine-call/join logic, run the relevant
 IT under the engine-harness skill first.
+
+## scripts/ci-runner.sh — the runner must exist before the run can
+CI executes on a **dockerized self-hosted runner** (`docker/ci-runner/`, container
+`pi-ci-runner`, `restart: unless-stopped` so it survives reboots). GitHub queues jobs
+silently when no runner is online — a push then looks "stuck", not failed. So **step 0 of
+every push/PR**: `scripts/ci-runner.sh ensure` (needs `$GITHUB_PERSONAL_ACCESS_TOKEN`
+exported; env-ref only). It starts the compose service if the container is down, waits
+bounded for GitHub to report it online, and **fails if more than one runner is online** —
+the CI harness ports are fixed remaps, so a second concurrent runner (e.g. a stray
+bare-metal `~/actions-runner/run.sh`) would collide matrix legs. `status`/`logs`/`stop`
+subcommands for diagnosis. The runner is ephemeral (one job per container, fresh
+re-registration each time) — a brief `offline` blip between jobs of one workflow is normal.
 
 ## scripts/ci-watch.sh — the remote feedback primitive
 There is **no `gh` CLI** on this box. `ci-watch.sh` talks to the Actions REST API directly with

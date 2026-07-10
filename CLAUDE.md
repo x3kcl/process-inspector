@@ -76,3 +76,7 @@ join logic (dockerized engine only — `engine-harness` skill).
   `git push` is NOT success. Follow the `green-ci` skill: mirror the gates locally
   (`scripts/ci-local.sh`), push, then block on the real run (`scripts/ci-watch.sh <sha>`,
   backgrounded) and fix any red in the SAME session. Red `main` blocks every parallel session.
+- CI runs on the **dockerized self-hosted runner** (`docker/ci-runner/`, single serialized
+  runner by design). Before pushing to `main` or creating a PR, run
+  `scripts/ci-runner.sh ensure` — it starts the runner if down and fails if the
+  exactly-one-online invariant is broken; otherwise every CI run just queues forever.
