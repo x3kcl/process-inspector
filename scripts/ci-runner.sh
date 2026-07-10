@@ -67,9 +67,10 @@ cmd_ensure() {
     cmd_start
   fi
   # Bounded wait: ephemeral re-registration after a job takes a few seconds to show online.
+  # A transient API failure counts as "not online yet" and is retried, not fatal.
   n=0
   for _ in $(seq 1 30); do
-    n="$(online_count)"
+    n="$(online_count || echo 0)"
     [[ "$n" -ge 1 ]] && break
     sleep 2
   done
