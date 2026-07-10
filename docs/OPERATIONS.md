@@ -47,6 +47,14 @@ window ≤2 min, announced in the support channel. Before planned restarts:
 `POST /api/admin/drain` refuses new bulk jobs and reports running ones (v1.x). SPA/BFF skew:
 `index.html` no-cache, hashed assets immutable, `/api/meta` + `X-Inspector-Version`,
 mismatch → non-blocking reload banner; dynamic-import failure → reload prompt.
+**Versioned image releases:** pushing a `v*` tag runs `.github/workflows/release.yml` on the
+self-hosted runner — builds the two shipping images and publishes them to
+`ghcr.io/x3kcl/process-inspector-{bff,web}` (semver + `latest` for stable; prerelease tags
+like `v1.2.3-rc1` publish only their literal version, never move `latest`, and mark the
+GitHub Release as prerelease), then creates the Release with
+`docker/docker-compose.release.yml` attached as the consumer quick-start. Auth is the
+workflow `GITHUB_TOKEN` (`packages: write`) — no extra secret. One-time after first publish:
+flip both ghcr packages to public visibility.
 
 ## 6. The audit golden master, operationally (R-AUD-01/02/03)
 - **Fail-closed**: tier ≥1 mutations are not issued if the audit INSERT fails; the error
