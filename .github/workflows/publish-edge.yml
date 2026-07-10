@@ -1,0 +1,80 @@
+# Continuous builds (OPERATIONS §5): after every GREEN ci run on main, publish the two
+# shipping images as :edge + :sha-<short7>. Triggered by workflow_run — not push — so a
+# red main never ships an image (the green-main doctrine applied to publishing). Consumers
+# pinning a released version are never moved by these tags; versioned releases are
+# release.yml / cut-release.yml.
+name: publish-edge
+
+on:
+  workflow_run:
+    workflows: [ci]
+    types: [completed]
+    branches: [main]
+
+permissions:
+  packages: write
+
+# A newer green main supersedes an in-flight edge build.
+concurrency:
+  group: publish-edge
+  cancel-in-progress: true
+
+jobs:
+  edge:
+    if: github.event.workflow_run.conclusion == 'success'
+    runs-on: self-hosted
+    timeout-minutes: 30
+    env:
+      # The commit the green ci run actually validated — NOT github.sha (which is the
+      # default-branch head at event-delivery time and can already be newer).
+      GREEN_SHA: ${{ github.event.workflow_run.head_sha }}
+    steps:
+      - uses: actions/checkout@v4
+        with:
+          ref: ${{ env.GREEN_SHA }}
+      - uses: docker/setup-buildx-action@v3
+      - name: Log in to ghcr.io
+        uses: docker/login-action@v3
+        with:
+          registry: ghcr.io
+          username: ${{ github.actor }}
+          password: ${{ secrets.GITHUB_TOKEN }}
+      - name: Short SHA
+        id: src
+        run: echo "short=$(cut -c1-7 <<< "$GREEN_SHA")" >> "$GITHUB_OUTPUT"
+
+      - name: BFF image tags
+        id: meta-bff
+        uses: docker/metadata-action@v5
+        with:
+          images: ghcr.io/${{ github.repository }}-bff
+          tags: |
+            type=raw,value=edge
+            type=raw,value=sha-${{ steps.src.outputs.short }}
+      - name: Build + push BFF image
+        uses: docker/build-push-action@v6
+        with:
+          context: .
+          push: true
+          tags: ${{ steps.meta-bff.outputs.tags }}
+          labels: ${{ steps.meta-bff.outputs.labels }}
+          cache-from: type=gha
+          cache-to: type=gha,mode=max
+
+      - name: Web image tags
+        id: meta-web
+        uses: docker/metadata-action@v5
+        with:
+          images: ghcr.io/${{ github.repository }}-web
+          tags: |
+            type=raw,value=edge
+            type=raw,value=sha-${{ steps.src.outputs.short }}
+      - name: Build + push web image
+        uses: docker/build-push-action@v6
+        with:
+          context: frontend
+          push: true
+          tags: ${{ steps.meta-web.outputs.tags }}
+          labels: ${{ steps.meta-web.outputs.labels }}
+          cache-from: type=gha
+          cache-to: type=gha,mode=max

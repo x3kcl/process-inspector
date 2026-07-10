@@ -1,0 +1,76 @@
+# Push-button versioning (OPERATIONS §5): Actions → cut-release → Run workflow, pick the
+# bump level — the workflow refuses any main HEAD without a green ci run (green-main
+# doctrine), computes the next semver from the latest STABLE v* tag, pushes the annotated
+# tag, then calls release.yml to publish the images + GitHub Release. No local git needed.
+#
+# Why the reusable-workflow call: the tag is pushed with the workflow GITHUB_TOKEN, and
+# Actions suppresses events initiated by that token — release.yml's own `push: tags`
+# trigger would never fire. Prerelease tags (v1.2.3-rc1) stay manual pushes, which DO
+# fire release.yml directly (user PAT/SSH events are not suppressed).
+name: cut-release
+
+on:
+  workflow_dispatch:
+    inputs:
+      bump:
+        description: "Semver level to bump (from the latest stable v* tag; v0.0.0 if none exist)"
+        type: choice
+        options: [patch, minor, major]
+        default: patch
+
+permissions:
+  contents: write # push the tag
+
+# One cut at a time — two concurrent cuts would race the compute-next-version step.
+concurrency:
+  group: cut-release
+
+jobs:
+  tag:
+    runs-on: self-hosted
+    timeout-minutes: 5
+    outputs:
+      tag: ${{ steps.next.outputs.tag }}
+    steps:
+      - uses: actions/checkout@v4
+        with:
+          fetch-depth: 0 # full history + tags for the version compute
+      - name: Refuse a HEAD without a green ci run (green-main doctrine)
+        env:
+          GH_TOKEN: ${{ secrets.GITHUB_TOKEN }}
+        run: |
+          GREEN=$(curl -fsS -H "Authorization: Bearer $GH_TOKEN" \
+            "${GITHUB_API_URL}/repos/${GITHUB_REPOSITORY}/actions/workflows/ci.yml/runs?head_sha=${GITHUB_SHA}&status=success&per_page=1" \
+            | jq -r .total_count)
+          if [ "$GREEN" = "0" ]; then
+            echo "::error::No successful ci run for ${GITHUB_SHA} — wait for green main (green-ci skill), then re-run."
+            exit 1
+          fi
+      - name: Compute next version and push the tag
+        id: next
+        env:
+          BUMP: ${{ inputs.bump }}
+        run: |
+          # Latest STABLE tag only — prereleases (v1.2.3-rc1) never advance the baseline.
+          LATEST=$(git tag -l 'v*' | grep -E '^v[0-9]+\.[0-9]+\.[0-9]+$' | sort -V | tail -1)
+          LATEST=${LATEST:-v0.0.0}
+          IFS=. read -r MAJ MIN PAT <<< "${LATEST#v}"
+          case "$BUMP" in
+            major) TAG="v$((MAJ + 1)).0.0" ;;
+            minor) TAG="v${MAJ}.$((MIN + 1)).0" ;;
+            *) TAG="v${MAJ}.${MIN}.$((PAT + 1))" ;;
+          esac
+          git config user.name "github-actions[bot]"
+          git config user.email "github-actions[bot]@users.noreply.github.com"
+          git tag -a "$TAG" -m "release $TAG ($BUMP bump from $LATEST)"
+          git push origin "$TAG"
+          echo "tag=$TAG" >> "$GITHUB_OUTPUT"
+
+  release:
+    needs: tag
+    permissions:
+      contents: write # release.yml creates the GitHub Release
+      packages: write # ...and pushes to ghcr.io
+    uses: ./.github/workflows/release.yml
+    with:
+      tag: ${{ needs.tag.outputs.tag }}
