@@ -146,8 +146,14 @@ tests + spec-sync in the same PR, and follows green-ci.
    engine byte. WireMock tests prove traversal/reserved-char ids are refused *without dialling*
    and a valid id reaches the exact `/cmmn-api/...` path. External-worker `/jobs` list carries
    no path id (already safe). *Shipped alone, first.*
-2. **CI hygiene fix-pack (Q3, Q10)** — pidfile + `if: always()` BFF kill, `timeout-minutes`
-   on every job.
+2. **CI hygiene fix-pack (Q3, Q10)** — ✅ **LANDED** (`feature/p0-ci-hygiene`).
+   `timeout-minutes` on lint/unit/frontend/docker (Q10 was the live risk — only `integration`
+   had one, so a hung job on the single serialized runner would block every parallel session
+   for the 6 h default) + a defensive `if: always()` BFF reap in the frontend job (pidfile).
+   **Correction on Q3:** the leaked-BFF *cross-run* poisoning the review flagged was already
+   closed by PR #67's dockerized runner (`EPHEMERAL=true` + `restart: unless-stopped` = one
+   job per container, torn down between jobs — a leaked process can't survive into the next
+   run). The reap is retained as within-job hygiene, not a fix for a live bug.
 3. **Runner persistence (Q5)** — `sudo ./svc.sh install flapci && sudo ./svc.sh start`
    (**user action — needs sudo**); keep repo private + require-approval for outside PRs.
 4. **Audit-store backup (Q4)** — nightly `pg_dump` sidecar to a second disk + restore-drill

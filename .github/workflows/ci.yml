@@ -15,6 +15,7 @@ concurrency:
 jobs:
   lint:
     runs-on: self-hosted
+    timeout-minutes: 10
     steps:
       - uses: actions/checkout@v4
       - uses: actions/setup-java@v4
@@ -30,6 +31,7 @@ jobs:
 
   unit:
     runs-on: self-hosted
+    timeout-minutes: 20
     steps:
       - uses: actions/checkout@v4
       - uses: actions/setup-java@v4
@@ -43,6 +45,7 @@ jobs:
 
   frontend:
     runs-on: self-hosted
+    timeout-minutes: 20
     defaults:
       run:
         working-directory: frontend
@@ -104,6 +107,7 @@ jobs:
         run: |
           JAR=$(ls target/*.jar | head -1)
           nohup java -jar "$JAR" > /tmp/bff.log 2>&1 &
+          echo $! > /tmp/bff.pid
       - name: Wait for /v3/api-docs (bounded)
         run: |
           for _ in $(seq 1 90); do
@@ -126,9 +130,17 @@ jobs:
       - name: Dump BFF log
         if: failure()
         run: tail -200 /tmp/bff.log || true
+      - name: Reap the background BFF
+        # Defensive hygiene: the EPHEMERAL runner container is torn down and recreated per
+        # job (docker/ci-runner: EPHEMERAL=true + restart:unless-stopped), so a leaked BFF
+        # already cannot survive into the next run — this reaps it within-job regardless of
+        # how the job exited, keeping the host :8086 free the moment the frontend job ends.
+        if: always()
+        run: kill "$(cat /tmp/bff.pid 2>/dev/null)" 2>/dev/null || true
 
   docker:
     runs-on: self-hosted
+    timeout-minutes: 20
     steps:
       - uses: actions/checkout@v4
       - uses: docker/setup-buildx-action@v3
