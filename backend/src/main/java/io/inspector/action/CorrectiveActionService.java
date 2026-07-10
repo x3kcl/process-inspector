@@ -113,10 +113,10 @@ public class CorrectiveActionService {
         // the SPA re-auths at verb intent, never after the operator has typed the confirm token
         // (⚠️ support-lead). Dev/basic + break-glass sessions are exempt (DangerousActionReauthGate).
         // INVARIANT (⚠️ do not break): this method is ALSO the per-item executor for async bulk jobs.
-        // Bulk carries NO tier-3 verb today, so this never fires on a bulk item. When tier-3 bulk lands
-        // (the tier-4 wizard), it MUST enforce freshness ONCE at submit (BulkController) — NOT here per
-        // persisted item: a bulk job outlives its session (R-SEM-10), so a per-item challenge would
-        // 401 the tail of a long fan-out.
+        // Bulk carries NO tier-3 verb today, so this never fires on a bulk item; bulk's OWN freshness
+        // gate runs ONCE at submit (BulkJobService#submit, S5d) — NOT here per persisted item: a bulk
+        // job outlives its session (R-SEM-10), so a per-item challenge would 401 the tail of a long
+        // fan-out. When tier-3 bulk lands (the tier-4 wizard) that submit-time gate already covers it.
         if (verb.tier() >= 3) {
             reauth.enforce(auth);
         }

@@ -6,6 +6,7 @@ import io.inspector.security.mapping.AccessMappingAdminService;
 import io.inspector.security.mapping.FleetGrant;
 import io.inspector.security.mapping.GrantChange;
 import io.inspector.security.mapping.MappingSource;
+import io.inspector.security.reauth.DangerousActionReauthGate;
 import jakarta.validation.constraints.NotBlank;
 import jakarta.validation.constraints.Size;
 import java.util.List;
@@ -42,12 +43,17 @@ public class AdminAccessController {
     private final MappingSource mappingSource;
     private final ObjectProvider<AccessMappingAdminService> service; // absent under mapping-source: file
     private final AuditService audit;
+    private final DangerousActionReauthGate reauth;
 
     public AdminAccessController(
-            MappingSource mappingSource, ObjectProvider<AccessMappingAdminService> service, AuditService audit) {
+            MappingSource mappingSource,
+            ObjectProvider<AccessMappingAdminService> service,
+            AuditService audit,
+            DangerousActionReauthGate reauth) {
         this.mappingSource = mappingSource;
         this.service = service;
         this.audit = audit;
+        this.reauth = reauth;
     }
 
     /** The full mapping (ladder + fleet grants, source-tagged). ACCESS_ADMIN. Audited read. */
@@ -63,18 +69,29 @@ public class AdminAccessController {
                         .toList());
     }
 
+    /**
+     * Every mapping WRITE (add / remove / four-eyes approve) is in the dangerous set (IDP-SECURITY.md
+     * §5, R-SAFE-07): a stale OAuth2 session is challenged FIRST — before the file-pin 409, before
+     * reason validation, before the service's governance checks — so the operator re-authenticates at
+     * verb intent, never after composing the grant + reason. The approver's four-eyes click is itself
+     * a mapping-write-class act, so {@link #approve} runs the same gate: the "∉ affected group" test
+     * is computed on a freshly-authenticated approver.
+     */
     @PostMapping("/grants")
     public AccessMappingAdminService.Outcome add(@RequestBody GrantRequest body, Authentication authentication) {
+        reauth.enforce(authentication);
         return translate(() -> writes().submit(body.toChange(true), body.requireReason(), authentication));
     }
 
     @DeleteMapping("/grants")
     public AccessMappingAdminService.Outcome remove(@RequestBody GrantRequest body, Authentication authentication) {
+        reauth.enforce(authentication);
         return translate(() -> writes().submit(body.toChange(false), body.requireReason(), authentication));
     }
 
     @PostMapping("/proposals/{id}/approve")
     public AccessMappingAdminService.Outcome approve(@PathVariable long id, Authentication authentication) {
+        reauth.enforce(authentication);
         return translate(() -> writes().approve(id, authentication));
     }
 
