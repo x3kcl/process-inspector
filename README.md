@@ -63,6 +63,19 @@ docker build -t process-inspector .
 docker run -p 8080:8080 -e ENGINE_A_PASSWORD=test -e ENGINE_B_PASSWORD=test process-inspector
 ```
 
+### Released images (ghcr.io)
+
+Every `v*` tag publishes versioned images —
+`ghcr.io/x3kcl/process-inspector-bff` (Spring Boot BFF) and
+`ghcr.io/x3kcl/process-inspector-web` (nginx: SPA + `/api` proxy) — plus a GitHub Release
+with a quick-start compose attached (`.github/workflows/release.yml`, OPERATIONS §5):
+
+```bash
+curl -LO https://github.com/x3kcl/process-inspector/releases/latest/download/docker-compose.release.yml
+INSPECTOR_DEV_PASSWORD=pick-one docker compose -f docker-compose.release.yml up -d
+# UI on :8080; point INSPECTOR_ENGINE_{A,B}_BASE_URL + ENGINE_{A,B}_PASSWORD at your engines
+```
+
 ### Backend tests
 
 ```bash

@@ -1,0 +1,67 @@
+# Quick-start stack for the RELEASED Process Inspector images (published by
+# .github/workflows/release.yml, attached to every GitHub Release).
+#
+#   PI_VERSION=v1.2.3 INSPECTOR_DEV_PASSWORD=... \
+#     docker compose -f docker-compose.release.yml up -d
+#   → UI on http://localhost:${PI_HTTP_PORT:-8080}, sign-in ladder users
+#     viewer/responder/operator/admin with the password you set.
+#
+# Engines are YOURS to point at (the inspector integrates strictly over the Flowable
+# REST API — it never ships an engine). Defaults assume engines published on the DOCKER
+# HOST at :8081/:8082 (e.g. `docker run -p 8081:8080 flowable/flowable-rest:6.8.0`);
+# override INSPECTOR_ENGINE_{A,B}_BASE_URL + ENGINE_{A,B}_PASSWORD for real ones.
+# Unreachable engines are first-class product state (health degrades, UI shows it) —
+# the stack boots fine before you wire them.
+name: process-inspector
+services:
+  postgres:
+    image: postgres:16-alpine
+    environment:
+      - POSTGRES_DB=inspector
+      - POSTGRES_USER=inspector
+      - POSTGRES_PASSWORD=${POSTGRES_PASSWORD:-inspector} # internal-only network
+    volumes:
+      - inspector-pgdata:/var/lib/postgresql/data
+    healthcheck:
+      test: ["CMD-SHELL", "pg_isready -h 127.0.0.1 -U inspector -d inspector"]
+      interval: 5s
+      timeout: 3s
+      retries: 24
+    networks: [internal]
+    restart: unless-stopped
+
+  # nginx.conf resolves the BFF by the service name `backend` — do not rename.
+  backend:
+    image: ghcr.io/x3kcl/process-inspector-bff:${PI_VERSION:-latest}
+    environment:
+      - SERVER_PORT=8080
+      - INSPECTOR_DB_URL=jdbc:postgresql://postgres:5432/inspector
+      - INSPECTOR_DB_USER=inspector
+      - INSPECTOR_DB_PASSWORD=${POSTGRES_PASSWORD:-inspector}
+      - INSPECTOR_ENGINE_A_BASE_URL=${INSPECTOR_ENGINE_A_BASE_URL:-http://host.docker.internal:8081/flowable-rest/service}
+      - INSPECTOR_ENGINE_B_BASE_URL=${INSPECTOR_ENGINE_B_BASE_URL:-http://host.docker.internal:8082/flowable-rest/service}
+      - ENGINE_A_PASSWORD=${ENGINE_A_PASSWORD:-test}
+      - ENGINE_B_PASSWORD=${ENGINE_B_PASSWORD:-test}
+      # Sign-in password for the dev-auth ladder users — no default on purpose.
+      - INSPECTOR_DEV_PASSWORD=${INSPECTOR_DEV_PASSWORD:?set a sign-in password}
+    extra_hosts:
+      - host.docker.internal:host-gateway # so the default engine URLs reach the host
+    depends_on:
+      postgres:
+        condition: service_healthy
+    networks: [internal]
+    restart: unless-stopped
+
+  frontend:
+    image: ghcr.io/x3kcl/process-inspector-web:${PI_VERSION:-latest}
+    ports:
+      - "${PI_HTTP_PORT:-8080}:80"
+    depends_on: [backend]
+    networks: [internal]
+    restart: unless-stopped
+
+networks:
+  internal:
+
+volumes:
+  inspector-pgdata:
