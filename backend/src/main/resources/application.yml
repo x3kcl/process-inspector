@@ -11,6 +11,44 @@ server:
         # `secure` deliberately left container-derived: Secure over HTTPS (prod behind the proxy),
         # not on plain-HTTP local dev — hard-coding true would break the dev login over http.
 
+# Observability (IMPROVEMENT-PLAN P1 #12 / Q1, OPERATIONS §8). `/actuator/health/**` is permitAll
+# in SecurityConfig for the container/k8s liveness+readiness probes; `/actuator/prometheus` stays
+# behind `.anyRequest().authenticated()` — an auth-gated scrape endpoint (OPERATIONS §8), so a
+# Prometheus scraper authenticates like any other caller. Only these three endpoints are exposed.
+management:
+  endpoints:
+    web:
+      exposure:
+        include:
+          - health
+          - prometheus
+          - info
+  endpoint:
+    health:
+      probes:
+        enabled: true          # /actuator/health/{liveness,readiness}
+      show-details: when-authorized
+      # `db` is an OPTIONAL readiness member: present with a real DataSource (demo/prod), absent in
+      # the docker-free engine-only test profiles (DataSource autoconfig excluded). Turn off
+      # membership validation so those contexts still boot — the group then resolves to whatever
+      # exists (readinessState-only there, readinessState+db where Postgres is wired).
+      validate-group-membership: false
+      group:
+        # Readiness gates on the audit DB: a BFF that cannot reach its own Postgres must not be
+        # routed traffic (mutations would fail-closed anyway).
+        readiness:
+          include:
+            - readinessState
+            - db
+  health:
+    livenessstate:
+      enabled: true
+    readinessstate:
+      enabled: true
+  metrics:
+    tags:
+      application: process-inspector
+
 spring:
   threads:
     virtual:

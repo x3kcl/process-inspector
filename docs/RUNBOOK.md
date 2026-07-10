@@ -48,8 +48,15 @@ alerted and visible in `/actuator/prometheus`). Postgres down has one more conse
 ### 2b. "Every mutation fails with an audit/Postgres error" — fail-closed is WORKING
 The audit write is **fail-closed for all tiers**: no audit row ⇒ no mutation issued,
 reads still work. This is not the outage — it is the designed response to the real outage
-(Postgres / `audit_insert_failures_total > 0`). **Fix Postgres; do not look for a way to
-bypass the audit.** There isn't one, deliberately. Until fixed, urgent engine mutations go
+(Postgres). **Fix Postgres; do not look for a way to bypass the audit.** There isn't one,
+deliberately.
+> **Metric note (P1 #12):** `/actuator/health` + `/actuator/prometheus` are now live, but the
+> **custom** `audit_insert_failures_total` counter referenced here and in §7 is **not yet emitted**
+> (see OPERATIONS §2 status). Until it is wired, the live signals for this condition are the
+> fail-closed 5xx on every mutation and the audit-failure log line; readiness stays UP (the DB
+> indicator only flips when Postgres is unreachable, not when an insert is refused by the guard).
+
+Until fixed, urgent engine mutations go
 through §6 (direct cURL, hand-logged).
 
 ### 2c. One engine red / searches partial
