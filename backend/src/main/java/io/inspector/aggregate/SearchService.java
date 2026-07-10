@@ -70,7 +70,9 @@ public class SearchService {
     private final InspectorProperties props;
     private final ProtectedInstanceRepository protectedInstances;
     private final ExecutorService fanout = Executors.newVirtualThreadPerTaskExecutor();
-    private final Semaphore engineSlots;
+    // Package-private for the DEEP_PAGE-isolation test (F3 / R-NFR-08).
+    final Semaphore engineSlots;
+    final Semaphore deepPageSlots;
 
     public SearchService(
             EngineRegistry registry,
@@ -81,7 +83,14 @@ public class SearchService {
         this.flowable = flowable;
         this.props = props;
         this.protectedInstances = protectedInstances;
-        this.engineSlots = new Semaphore(props.fanoutParallelism() != null ? props.fanoutParallelism() : 8);
+        int fanoutN = props.fanoutParallelism() != null ? props.fanoutParallelism() : 8;
+        this.engineSlots = new Semaphore(fanoutN);
+        // F3 (R-NFR-08): deep paging gets its OWN, smaller BFF fan-out budget. The engine-side
+        // Resilience4j DEEP_PAGE bulkhead only throttles AFTER a BFF slot is taken, so sharing
+        // engineSlots let a scroller (or a crafted-cursor flood) occupy the interactive slots and
+        // starve live search — the exact opposite of the do-no-harm claim below. A separate,
+        // smaller semaphore means deep scroll queues on THESE permits and never touches interactive.
+        this.deepPageSlots = new Semaphore(Math.max(1, fanoutN / 2));
     }
 
     public SearchResponse search(SearchRequest request) {
@@ -113,8 +122,9 @@ public class SearchService {
      * {@code docs/KWAY-PAGING.md}). MIXED / {@code startTime desc} ONLY: the cursor resumes on a
      * per-engine startTime offset, so a {@code failureTime} sort (BFF-derived, no engine resume)
      * and a FAILED/RETRYING-only (INVERTED) search are both refused here — the caller surfaces the
-     * depth-wall time-filter seam instead. The fan-out runs on the dedicated {@code DEEP_PAGE} lane
-     * so a scroller (or a crafted-cursor flood) degrades itself and never starves interactive search.
+     * depth-wall time-filter seam instead. The fan-out runs on a dedicated BFF slot budget
+     * ({@link #deepPageSlots}) AND the engine-side {@code DEEP_PAGE} Resilience4j lane, so a scroller
+     * (or a crafted-cursor flood) degrades itself and never starves interactive search's slots.
      * A crafted cursor is bound-checked ({@link PagingCursor#validateInbound}) BEFORE any engine is
      * touched — that inbound check, not the {@code filterHash}, is the DoS ceiling.
      *
@@ -162,12 +172,12 @@ public class SearchService {
                     engine,
                     CompletableFuture.supplyAsync(
                             () -> {
-                                engineSlots.acquireUninterruptibly();
+                                deepPageSlots.acquireUninterruptibly();
                                 try {
                                     return searchOneEngine(
                                             engine, request, wanted, bff, null, window, CallPriority.DEEP_PAGE);
                                 } finally {
-                                    engineSlots.release();
+                                    deepPageSlots.release();
                                 }
                             },
                             fanout));

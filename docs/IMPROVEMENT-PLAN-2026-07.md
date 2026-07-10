@@ -213,8 +213,14 @@ tests + spec-sync in the same PR, and follows green-ci.
     exposed (SecurityConfig already permits health), the RUNBOOK §7 metric names emitted for
     audit-insert-failure, purge dead-man, breaker state; alert-rule files land in `deploy/`
     or the RUNBOOK rows get "TO LAND" markers — no fiction either way.
-13. **DEEP_PAGE BFF isolation (F3)** — dedicated (smaller) fan-out budget for deep-page +
-    a two-lane contention test; makes the R-NFR-08 claim true.
+13. **DEEP_PAGE BFF isolation (F3)** — ✅ **LANDED** (`feature/p1-deeppage-isolation`).
+    `SearchService.deepPage` now acquires from a dedicated `deepPageSlots` semaphore (sized
+    `max(1, fanoutParallelism/2)`) instead of the shared 8-permit `engineSlots`, so a scroller
+    or crafted-cursor flood queues on the deep-page budget and can never occupy an interactive
+    slot — the engine-side R4j `DEEP_PAGE` lane only throttled *after* a BFF slot was taken, so
+    sharing `engineSlots` was the real starvation path. Rung-2 contention test drains the
+    deep-page budget and proves a parked `deepPage` leaves `engineSlots` fully available and
+    dials no engine. Makes the R-NFR-08 / KWAY-PAGING do-no-harm claim true at the BFF layer.
 14. **Playwright + axe into the PR gate (U8, Q9)** — the 14 hermetic specs + an
     `AxeBuilder` pass per spec run in the frontend CI job (browsers cached on the runner);
     prerequisite fixes U1/U2/U7 land first so the gate starts green (see P2 #17).
