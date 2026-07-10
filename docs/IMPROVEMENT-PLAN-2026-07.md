@@ -209,10 +209,23 @@ tests + spec-sync in the same PR, and follows green-ci.
     mirror the BFF header set in the demo nginx; fix demo HSTS.
 11. **Docs true-up sweep (D1–D12)** — one docs-only PR; the register/matrix/plan/runbook/
     quick-start all reconciled to main; OPERATIONS §8 rewritten as the actual gate list.
-12. **Observability minimum (Q1)** — actuator + micrometer-prometheus deps, health/prometheus
-    exposed (SecurityConfig already permits health), the RUNBOOK §7 metric names emitted for
-    audit-insert-failure, purge dead-man, breaker state; alert-rule files land in `deploy/`
-    or the RUNBOOK rows get "TO LAND" markers — no fiction either way.
+12. **Observability minimum (Q1)** — ✅ **LANDED** (`feature/p1-observability`), scoped to the
+    verifiable core. Added `spring-boot-starter-actuator` + `micrometer-registry-prometheus`;
+    `/actuator/health` (+ liveness/readiness probes; readiness gates on the `db` indicator so a
+    BFF that can't reach its audit Postgres isn't routed traffic) and an auth-gated
+    `/actuator/prometheus` are now **real** (both 404'd before). `resilience4j_circuitbreaker_state`
+    + bulkhead / Hikari / HTTP / JVM metrics come free from the registry — the breaker/lane signal
+    RUNBOOK §7 wants. Rung-3 `ActuatorEndpointsSpringTest` proves health is unauthenticated, the
+    scrape is gated + emits real metrics, and — the drift-gate guard — actuator paths do **not**
+    leak into `/v3/api-docs`. **Honesty (no fiction either way):** the *named custom* app metrics
+    (`audit_insert_failures_total`, per-engine fan-out latency, SSE/bulk gauges), structured-JSON
+    logs + `correlationId`, `GET /api/diag`, and the `deploy/` alert-rule files are marked **TO
+    LAND** in OPERATIONS §2/§3 + RUNBOOK §2b — a Micrometer-counter-per-site follow-up.
+    Config gotchas recorded: `exposure.include`/health-group `include` need YAML **list** form
+    (a space after the comma left `" prometheus"` unexposed); `@SpringBootTest` disables metrics
+    export → the test needs `@AutoConfigureObservability`; the `db` readiness member is optional in
+    docker-free profiles → `validate-group-membership: false` so all 10 DataSource-excluded IT
+    profiles still boot.
 13. **DEEP_PAGE BFF isolation (F3)** — ✅ **LANDED** (`feature/p1-deeppage-isolation`).
     `SearchService.deepPage` now acquires from a dedicated `deepPageSlots` semaphore (sized
     `max(1, fanoutParallelism/2)`) instead of the shared 8-permit `engineSlots`, so a scroller

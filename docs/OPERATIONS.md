@@ -12,7 +12,17 @@ R-SAFE-06/07 (REQUIREMENTS-REGISTER.md).
   surfaces only via `/api/engines`, the health strip, and metrics.
 
 ## 2. Telemetry (R-OPS-02, R-AUD-04)
-- `/actuator/prometheus` (auth-gated). Contract metric set: per-engine fan-out latency
+> **Implementation status (P1 #12 / Q1, 2026-07-10).** `/actuator/health` (+ liveness/readiness
+> probes) and `/actuator/prometheus` are now **live** — actuator + micrometer-prometheus are real
+> dependencies (before this they 404'd). **Emitted today:** `resilience4j_circuitbreaker_state`
+> and bulkhead metrics (the breaker/lane signal), Hikari pool, HTTP-server timings, and JVM /
+> virtual-thread metrics — all for free from the registry. The **named application-metric contract
+> below is the TARGET, not yet wired** (per-engine fan-out latency, triage-cache hit rate, SSE
+> gauges, bulk-job counters, `audit_insert_failures_total`) — each needs a Micrometer counter/timer
+> at its call site (tracked follow-up); until then the interim signal for those is the audit event /
+> log line. **Structured-JSON logs + `correlationId` MDC and `GET /api/diag` are likewise not yet
+> built.** No fiction: treat the un-emitted items as roadmap, not shipped.
+- `/actuator/prometheus` (auth-gated). Target contract metric set: per-engine fan-out latency
   histograms (tags `engineId`,`leg`), `resilience4j_circuitbreaker_state`, triage-cache hit
   rate, SSE emitter gauge + error counter, bulk-job gauges + per-item outcome counters,
   `audit_insert_failures_total`, Hikari pool, JVM/virtual-thread pinning.
@@ -25,8 +35,10 @@ R-SAFE-06/07 (REQUIREMENTS-REGISTER.md).
   derivation tracing with 15-min TTL.
 
 ## 3. Who watches the watcher (R-OPS-03)
-The Inspector is probed by **external** monitoring. Shipped alert rules (files in `deploy/`,
-referencing the contract metric names): `InspectorDown` (liveness probe), readiness failing
+The Inspector is probed by **external** monitoring. Alert rules (TARGET — the rule files under
+`deploy/` are **not yet shipped**; the liveness/readiness probes they'd bind to ARE live as of
+P1 #12, the custom-metric rules wait on §2's metric wiring), referencing the contract metric
+names: `InspectorDown` (liveness probe), readiness failing
 >2m, `audit_insert_failures_total > 0`, Postgres unreachable, disk >80%, SSE emitter errors
 spiking, **all circuits open simultaneously** (an inspector-side egress problem, not N engine
 failures). Paging route: the workflow platform team. Degraded mode: design principle 5 IS the

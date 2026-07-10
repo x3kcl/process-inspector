@@ -80,6 +80,20 @@
       <groupId>com.github.ben-manes.caffeine</groupId>
       <artifactId>caffeine</artifactId>
     </dependency>
+    <!-- Observability (IMPROVEMENT-PLAN P1 #12 / Q1, OPERATIONS §8): actuator health probes
+         (liveness/readiness — the docker/k8s gate) + a Prometheus scrape endpoint. With the
+         resilience4j starter already present, the per-engine circuit-breaker / bulkhead state
+         and call metrics are contributed automatically (no custom binding) — exactly the
+         breaker-state signal RUNBOOK §7 alerts on. JVM / HTTP-server / HikariCP metrics come
+         with micrometer's core binders. Versions managed by spring-boot-dependencies. -->
+    <dependency>
+      <groupId>org.springframework.boot</groupId>
+      <artifactId>spring-boot-starter-actuator</artifactId>
+    </dependency>
+    <dependency>
+      <groupId>io.micrometer</groupId>
+      <artifactId>micrometer-registry-prometheus</artifactId>
+    </dependency>
     <!-- R-SEM-15: the OpenAPI contract the frontend types are generated from
          (/v3/api-docs → openapi-typescript → frontend/src/api/schema.d.ts). API-only
          starter — no Swagger UI is shipped. -->
