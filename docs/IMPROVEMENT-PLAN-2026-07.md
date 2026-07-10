@@ -154,8 +154,11 @@ tests + spec-sync in the same PR, and follows green-ci.
    closed by PR #67's dockerized runner (`EPHEMERAL=true` + `restart: unless-stopped` = one
    job per container, torn down between jobs — a leaked process can't survive into the next
    run). The reap is retained as within-job hygiene, not a fix for a live bug.
-3. **Runner persistence (Q5)** — `sudo ./svc.sh install flapci && sudo ./svc.sh start`
-   (**user action — needs sudo**); keep repo private + require-approval for outside PRs.
+3. **Runner persistence (Q5)** — ✅ **MOOT / RESOLVED by PR #67.** The review's fix
+   (`sudo ./svc.sh install`) was for the bare-metal nohup runner. PR #67 replaced it with a
+   *dockerized* runner (`docker/ci-runner`, `restart: unless-stopped`) that survives reboots
+   with no sudo action. Residual (unchanged): still a single serialized runner, and
+   `pull_request:` with daemon access stays acceptable only while the repo is private.
 4. **Audit-store backup (Q4)** — ✅ **LANDED** (`feature/p0-audit-backup`).
    `deploy/backup-audit-db.sh` (`pg_dump -Fc` → second-disk `PI_BACKUP_DIR`, checksummed,
    retention-pruned, `.partial`→rename so a crashed dump never masquerades as good) +
@@ -165,8 +168,16 @@ tests + spec-sync in the same PR, and follows green-ci.
    end-to-end** against a throwaway partitioned table (backup→checksum→restore→PASS).
    OPERATIONS §4 corrected to the **honest RPO = 24 h** (the nightly interval), not the ≤5-min
    WAL/PITR it claimed — continuous PITR is the noted follow-up; this closes "no copy at all".
-5. **Nightly full-IT workflow (Q2)** — `schedule:` workflow over all 42 IT classes
-   (compose harness + Testcontainers + Keycloak legs), red → morning routine.
+5. **Nightly full-IT workflow (Q2)** — ✅ **LANDED** (`feature/p0-nightly-its`).
+   `.github/workflows/nightly.yml` (`schedule` 02:00 UTC + `workflow_dispatch`, NOT
+   merge-blocking) runs the 25 local-only ITs the PR gate skips, split by infra: a
+   **container-its** job (no compose — the audit partition/retention/roles + fail-closed,
+   shared/team-view + governance, view/mapping/access-admin/registry stores, and the
+   real-Keycloak OIDC IT, all Testcontainers-self-provisioned via `@DynamicPropertySource`)
+   and an **engine-its** job (the ci.yml flowable-6+postgres compose harness — the mutating
+   corrective-action/flow-surgery/migration/bulk rails + seed-driven detail/timeline/snapshot).
+   16 (PR gate) + 25 (nightly) + 1 abstract base = the full 42. Shake out via `workflow_dispatch`
+   before relying on it; a red nightly is a morning-routine triage, not a push gate.
 6. **Truth hotfixes (D7 + S6)** — ✅ **LANDED** (`feature/p0-truth-hotfixes`), reshaped:
    - **D7 is now MOOT.** The plan's D7 assumed S1 (dangerous-verb re-auth) was unenforced, so
      `REQUIREMENTS-REGISTER` marking R-SAFE-07 "Built" was an overclaim. But parallel sessions

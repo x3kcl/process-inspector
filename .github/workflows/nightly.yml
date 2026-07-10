@@ -1,0 +1,96 @@
+# Nightly full integration suite (Q2 — IMPROVEMENT-PLAN-2026-07 P0 #5). The PR merge gate
+# (ci.yml) runs 16 read-oriented engine ITs; the zero-flake doctrine keeps the mutating,
+# audit-integrity, DB-CRUD and Keycloak ITs off the per-PR path. This workflow runs those
+# 25 local-only ITs once a night (and on demand) so a regression in a corrective-action rail,
+# the fail-closed audit chain, four-eyes governance, registry reload or OIDC resolution is
+# caught within a day instead of at the next manual local run.
+#
+# NOT merge-blocking: a red nightly is triaged in the morning routine, not a push gate.
+# Runs on the same single self-hosted runner (docker/ci-runner) — serialized after any PR run.
+# Trigger manually to shake it out: Actions → nightly → Run workflow (workflow_dispatch).
+name: nightly
+
+on:
+  schedule:
+    - cron: "0 2 * * *" # 02:00 UTC daily
+  workflow_dispatch: {}
+
+concurrency:
+  group: nightly
+  cancel-in-progress: false
+
+jobs:
+  # Self-provisioning ITs: each spins its own Postgres 16 / Keycloak via Testcontainers
+  # (@DynamicPropertySource) — no compose engine, just the Docker socket the runner already
+  # mounts. Audit partition/retention/roles + fail-closed, shared/team views + governance,
+  # view store, mapping store + access-admin CRUD, registry store/reload, and the real-Keycloak
+  # OIDC resolver IT.
+  container-its:
+    runs-on: self-hosted
+    timeout-minutes: 40
+    steps:
+      - uses: actions/checkout@v4
+      - uses: actions/setup-java@v4
+        with:
+          distribution: temurin
+          java-version: "21"
+          cache: maven
+      # Mitigates Docker Hub 429s on the shared NAT pool; skips cleanly when secrets are absent.
+      - name: Docker Hub login (rate-limit mitigation)
+        continue-on-error: true
+        uses: docker/login-action@v3
+        with:
+          username: ${{ secrets.DOCKERHUB_USERNAME }}
+          password: ${{ secrets.DOCKERHUB_TOKEN }}
+      - name: Container ITs (Testcontainers — Postgres / Keycloak, no compose engine)
+        working-directory: backend
+        run: >-
+          mvn -B verify -Dskip.surefire.tests=true
+          -Dit.test=AuditRoleGrantsIT,AuditPartitionCarveIT,AuditPartitionMaintainerIT,AuditRetentionPurgeIT,AuditRetentionPurgerIT,SharedViewIT,SharedViewFailClosedIT,SharedViewGovernanceIT,ViewStoreIT,AccessMappingAdminDbIT,MappingStoreDbIT,EngineRegistryStoreIT,EngineRegistryReloadIT,OidcKeycloakIT
+
+  # Engine-dependent ITs: the mutating corrective-action / flow-surgery / migration / bulk rails
+  # and the seed-driven detail/timeline/snapshot ITs. Same compose harness the ci.yml matrix
+  # uses (flowable-6 + postgres, port-remapped off the dev/demo stacks); the ITs' OWN datasource
+  # is a Testcontainers Postgres, so the compose postgres profile is only there for parity.
+  engine-its:
+    runs-on: self-hosted
+    timeout-minutes: 40
+    env:
+      COMPOSE_PROFILES: "flowable-6,postgres"
+      PI_ENGINE_A_PORT: "8091"
+      PI_ENGINE_B_PORT: "8092"
+      PI_PG_PORT: "5435"
+      INSPECTOR_DB_URL: jdbc:postgresql://localhost:5435/inspector
+      CI_PROJECT: pi-ci-nightly-6
+    steps:
+      - uses: actions/checkout@v4
+      - uses: actions/setup-java@v4
+        with:
+          distribution: temurin
+          java-version: "21"
+          cache: maven
+      - name: Docker Hub login (rate-limit mitigation)
+        continue-on-error: true
+        uses: docker/login-action@v3
+        with:
+          username: ${{ secrets.DOCKERHUB_USERNAME }}
+          password: ${{ secrets.DOCKERHUB_TOKEN }}
+      - name: Pre-clean CI harness residue (scoped to $CI_PROJECT)
+        run: docker compose -p "$CI_PROJECT" -f docker/docker-compose.dev.yml down -v --remove-orphans || true
+      - name: Boot harness (flowable-6 + postgres)
+        run: docker compose -p "$CI_PROJECT" -f docker/docker-compose.dev.yml up -d
+      - name: Wait for engines and postgres (bounded)
+        run: bash docker/smoke-test.sh flowable-6
+      - name: Seed demo processes (REST-only, idempotent)
+        run: bash docker/seed.sh
+      - name: Engine ITs (failsafe)
+        working-directory: backend
+        run: >-
+          mvn -B verify -Dskip.surefire.tests=true
+          -Dit.test=CorrectiveActionIT,CmmnCorrectiveActionIT,FailClosedAuditIT,FlowSurgeryIT,BulkFilterIT,BulkErrorClassIT,SnapshotSamplerIT,DefinitionVersionsIT,MigrationIT,DetailResolveIT,InstanceTimelineIT
+      - name: Dump harness logs
+        if: failure()
+        run: docker compose -p "$CI_PROJECT" -f docker/docker-compose.dev.yml logs --no-color --timestamps
+      - name: Tear down CI harness
+        if: always()
+        run: docker compose -p "$CI_PROJECT" -f docker/docker-compose.dev.yml down -v --remove-orphans || true
