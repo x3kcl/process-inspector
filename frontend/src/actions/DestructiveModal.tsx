@@ -8,8 +8,9 @@ import type { ReactNode } from 'react'
 import { ModalShell } from '../components/ModalShell'
 import { reasonRule } from './catalog'
 import type { VerbMeta } from './catalog'
-import { problemBanner } from './problem'
+import { isReauthChallenge, problemBanner } from './problem'
 import type { ActionProblem } from './problem'
+import { ReauthNotice, useReauthStale } from './ReauthNotice'
 
 export interface CascadeState {
   /** Call-activity descendants that die with the target; 'loading' while resolving. */
@@ -57,6 +58,10 @@ export function DestructiveModal({
   // An UNKNOWN outcome means the action may have executed — never allow a resubmit
   // from the same modal (corrective-actions skill §4: no blind client-side retry).
   const dispatchedMaybe = problem !== undefined && problem.outcome === 'unknown'
+  // Dangerous-set freshness (IDP-SECURITY.md §5): pre-empt at modal OPEN via the /api/me hint,
+  // or react to the BFF's 401 reauth-required challenge — either way the interstitial replaces
+  // the plain banner and the confirm button stays disabled until the session is fresh again.
+  const reauthNeeded = useReauthStale() || (problem !== undefined && isReauthChallenge(problem))
 
   const footer = (
     <>
@@ -66,13 +71,15 @@ export function DestructiveModal({
       <button
         type="button"
         className="danger"
-        disabled={!reasonOk || !tokenOk || pending || dispatchedMaybe}
+        disabled={!reasonOk || !tokenOk || pending || dispatchedMaybe || reauthNeeded}
         title={
-          !reasonOk
-            ? 'a reason of at least 10 characters is required'
-            : !tokenOk
-              ? `type the ${tokenName} exactly to enable`
-              : undefined
+          reauthNeeded
+            ? 're-authenticate to enable — your sign-in is too old for this action'
+            : !reasonOk
+              ? 'a reason of at least 10 characters is required'
+              : !tokenOk
+                ? `type the ${tokenName} exactly to enable`
+                : undefined
         }
         onClick={() => {
           onConfirm(reason.trim())
@@ -161,10 +168,14 @@ export function DestructiveModal({
         </label>
       )}
 
-      {problem !== undefined && (
-        <div className="error-banner" role="alert">
-          {problemBanner(problem)}
-        </div>
+      {reauthNeeded ? (
+        <ReauthNotice />
+      ) : (
+        problem !== undefined && (
+          <div className="error-banner" role="alert">
+            {problemBanner(problem)}
+          </div>
+        )
       )}
     </ModalShell>
   )

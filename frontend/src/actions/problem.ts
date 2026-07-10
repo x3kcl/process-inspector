@@ -54,6 +54,15 @@ export function mayHaveExecuted(problem: ActionProblem): boolean {
 }
 
 /**
+ * The dangerous-set freshness challenge (IDP-SECURITY.md §5): the session is authenticated but
+ * too stale for this verb — the remedy is a full-page re-auth, not a different input. The UI
+ * renders the re-auth call-to-action (ReauthNotice) instead of a plain error banner.
+ */
+export function isReauthChallenge(problem: ActionProblem): boolean {
+  return problem.code === 'reauth-required'
+}
+
+/**
  * The operator-facing banner sentence per failure class (SPEC §6 error-copy rule:
  * never a generic 500 for a dispatched mutation).
  */
@@ -71,6 +80,8 @@ export function problemBanner(problem: ActionProblem): string {
       return 'The action was dispatched and likely executed, but recording the outcome failed. Do not resubmit; the audit row stays "unknown" until verified.'
     case 'forbidden':
       return 'Your role does not permit this action — the BFF refused it. Nothing happened.'
+    case 'reauth-required':
+      return 'Your sign-in is too old for this action — re-authenticate and try again. Nothing happened.'
     default:
       // Every other guard refusal (reason-required, confirm-token-mismatch, job-gone…)
       // already carries an exact operator sentence from the BFF.

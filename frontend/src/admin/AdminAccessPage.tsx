@@ -1,5 +1,7 @@
 import { useState } from 'react'
+import { ReauthNotice, useReauthStale } from '../actions/ReauthNotice'
 import { ApiError } from '../api/client'
+import { isReauthBody } from '../auth/reauth'
 import {
   downloadAccessReview,
   useAccessMapping,
@@ -25,6 +27,12 @@ export function AdminAccessPage() {
   const proposals = useProposals()
   const { add, remove, approve } = useAccessMutations()
   const [notice, setNotice] = useState<string | null>(null)
+  // Dangerous-set freshness (IDP-SECURITY.md §5): every mapping WRITE (add/remove/approve) is
+  // re-auth-gated server-side — pre-empt via the /api/me hint, or react to the 401 challenge.
+  const writeError = add.error ?? remove.error ?? approve.error
+  const reauthNeeded =
+    useReauthStale() ||
+    (writeError instanceof ApiError && writeError.status === 401 && isReauthBody(writeError.body))
 
   if (mapping.error instanceof ApiError && mapping.error.status === 403) {
     return (
@@ -60,10 +68,14 @@ export function AdminAccessPage() {
           {notice}
         </div>
       )}
-      {(add.error ?? remove.error ?? approve.error) instanceof ApiError && (
-        <div className="banner banner-warn" role="alert">
-          {((add.error ?? remove.error ?? approve.error) as ApiError).message}
-        </div>
+      {reauthNeeded ? (
+        <ReauthNotice />
+      ) : (
+        writeError instanceof ApiError && (
+          <div className="banner banner-warn" role="alert">
+            {writeError.message}
+          </div>
+        )
       )}
 
       <section aria-labelledby="mapping-h">

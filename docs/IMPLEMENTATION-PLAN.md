@@ -976,9 +976,22 @@ behind nothing before any UI reaches them:**
   download** (blob from `/api/access-review`). Shell nav: greyed-never-hidden **Access** link off
   `me.accessAdmin` + the permanent **red break-glass banner** off `me.breakGlass`. Pure helpers
   (`accessView.ts`) unit-tested (`accessView.test.ts`); lint/format/tsc/build/vitest(281) green.
-  *(FRONTEND remaining):* the dangerous-verb re-auth interstitial + warn-before-guillotine + the
-  IdP-unreachable [Break-glass sign-in] door — these pair with the verb-intent 401-challenge backend
-  follow-up (S5b tail); + the Playwright smoke (grant→four-eyes→revoke) + axe/SR gate.
+  *(FRONTEND re-auth interstitial + verb-intent pre-empt + resume ✅ LANDED 2026-07-10):*
+  `src/auth/reauth.ts` (pure staleness decision off the `/api/me` `reauth` hint — `freshUntil`
+  extends the `staleTime: Infinity` me-cache client-side; sessionStorage route checkpoint with
+  10-min TTL + same-origin-path-only decode, open-redirect hygiene) + `ReauthNotice`/`useReauthStale`
+  rendered on EVERY dangerous surface — `DestructiveModal` (all tier-3 verbs incl. case delete +
+  definitions), the three bulk submit modals (`BulkBar`, `FilterBulkModal`, `RetryGroupModal`), and
+  the `/admin/access` writes — both PRE-EMPTIVE (hint at modal open, confirm disabled before the
+  operator types) and REACTIVE (the 401 `reauth-required` answer flips the banner slot to the
+  interstitial); the button navigates top-level to `/oauth2/authorization/oidc?reauth=true` (the S5a
+  resolver injects `max_age`+`prompt=login`) and the Shell restores the checkpointed route on the
+  post-login boot (single-shot, only when landing on `/`). `useAnyAuthError` excludes
+  `reauth-required` 401s (a freshness challenge is never a sign-out → the SignIn overlay must not
+  hijack it). Tests: `reauth.test.ts` + `problem.test.ts` (vitest, 296) + `e2e/reauth.spec.ts`
+  (pre-empt / checkpoint+navigate / reactive challenge / resume; full suite 32 green).
+  *(FRONTEND remaining):* warn-before-guillotine + the
+  IdP-unreachable [Break-glass sign-in] door; + the Playwright smoke (grant→four-eyes→revoke) + axe/SR gate.
 
 Each slice: rung-1 unit → rung-3 Spring wiring/RBAC → rung-4 Keycloak/Testcontainers IT → Playwright.
 
