@@ -10,6 +10,9 @@ import org.junit.jupiter.api.Test;
 import org.junit.jupiter.api.TestInstance;
 import org.springframework.beans.factory.annotation.Autowired;
 import org.springframework.boot.test.context.SpringBootTest;
+import org.springframework.security.authentication.UsernamePasswordAuthenticationToken;
+import org.springframework.security.core.Authentication;
+import org.springframework.security.core.authority.SimpleGrantedAuthority;
 import org.springframework.test.context.ActiveProfiles;
 import org.springframework.test.context.DynamicPropertyRegistry;
 import org.springframework.test.context.DynamicPropertySource;
@@ -68,7 +71,7 @@ class EngineRegistryReloadIT {
                 + "/flowable-rest/service-EDITED";
         assertThat(registry.require("engine-a").baseUrl()).isNotEqualTo(newUrl);
 
-        store.editBaseUrl("engine-a", newUrl, "tester", "S3 reload seam IT");
+        store.editBaseUrl("engine-a", newUrl, registryAdmin("tester"), "S3 reload seam IT");
 
         // AFTER_COMMIT reload is synchronous at commit, but bound it with Awaitility (no sleep).
         await().atMost(Duration.ofSeconds(5))
@@ -79,5 +82,11 @@ class EngineRegistryReloadIT {
         assertThat(auditEntries.findAll().stream().filter(e -> "registry-edit".equals(e.getAction())))
                 .anySatisfy(e -> assertThat(e.getInstanceId()).isEqualTo("engine-a"))
                 .allSatisfy(e -> assertThat(e.getPayload()).contains("service-EDITED"));
+    }
+
+    /** A REGISTRY_ADMIN principal — editBaseUrl now re-checks the fleet grant in the service (S6). */
+    private static Authentication registryAdmin(String name) {
+        return new UsernamePasswordAuthenticationToken(
+                name, "n/a", java.util.List.of(new SimpleGrantedAuthority("ROLE_REGISTRY_ADMIN")));
     }
 }

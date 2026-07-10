@@ -147,9 +147,20 @@ tests + spec-sync in the same PR, and follows green-ci.
    script under `deploy/`; OPERATIONS gets the honest RPO.
 5. **Nightly full-IT workflow (Q2)** — `schedule:` workflow over all 42 IT classes
    (compose harness + Testcontainers + Keycloak legs), red → morning routine.
-6. **Truth hotfixes (D7 + S6)** — downgrade R-SAFE-07 to "foundation built; enforcement OPEN";
-   route `editBaseUrl` through the guarded `edit(...)` + an ArchUnit rule that every store
-   mutator re-checks its fleet grant.
+6. **Truth hotfixes (D7 + S6)** — ✅ **LANDED** (`feature/p0-truth-hotfixes`), reshaped:
+   - **D7 is now MOOT.** The plan's D7 assumed S1 (dangerous-verb re-auth) was unenforced, so
+     `REQUIREMENTS-REGISTER` marking R-SAFE-07 "Built" was an overclaim. But parallel sessions
+     closed S1 on 2026-07-10 (S5c/S5d/S6b, PRs #63–66): freshness is now enforced in
+     `CorrectiveActionService` (tier-3), `BulkJobService` (bulk), surfaced as a 401
+     `reauth-required` (`ActionExceptionHandler` + `ReauthRequiredException`). R-SAFE-07 is
+     therefore **accurate** — downgrading it would introduce a falsehood, so it is left as-is.
+   - **S6 landed:** `EngineRegistryStore.editBaseUrl` (the S3 reload seam, IT-only) now takes an
+     `Authentication` and re-checks `requireRegistryAdmin` first — the one store mutator that
+     skipped the door-AND-service RBAC re-check its S4 siblings all have. Rung-1 test proves a
+     non-admin is refused before the row is even loaded (no lookup/audit/write/reload event); the
+     reload IT passes a `ROLE_REGISTRY_ADMIN` principal. (The ArchUnit "every mutator re-checks"
+     rule is deferred — a focused reject-test per mutator is the practical guard; ArchUnit can't
+     easily assert "method A calls method B".)
 
 ### P1 — close the security tail + make the docs true *(1–2 weeks)*
 
