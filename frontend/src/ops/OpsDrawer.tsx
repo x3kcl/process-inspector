@@ -4,6 +4,7 @@
 // BulkJobDto/BulkItemDto truth, re-fetched on a poll that tightens only while a job is
 // actually live. INTERRUPTED jobs banner a "continue as new job" (no automatic resume).
 import { useEffect, useMemo, useRef, useState } from 'react'
+import { Link } from 'react-router'
 import { useMutation, useQueryClient } from '@tanstack/react-query'
 import { ActionError } from '../api/actions'
 import { useOpsDrawer } from './drawerState'
@@ -21,7 +22,7 @@ import { problemBanner } from '../actions/problem'
 import { useToast } from '../components/toast'
 import { useLive, useLiveEvent } from '../live/live'
 import { formatDateTime } from '../lib/format'
-import { outcomeClassName, outcomeLabel } from './outcome'
+import { outcomeCellLabel, outcomeClassName, outcomeIsDispatchOnly, outcomeLabel } from './outcome'
 
 export function OpsDrawer() {
   const { open, setOpen, focusJobId, clearFocus } = useOpsDrawer()
@@ -268,12 +269,14 @@ function JobDetail({ jobId }: { jobId: string }) {
           <span className="job-meta">continues {job.continuedFrom.slice(0, 8)}…</span>
         )}
       </div>
+      {/* Theme T8: the re-queued explainer joins the amber honesty envelope — a dispatch
+          state must never read as a success verdict, and each item links its own verify. */}
       {job.verb === 'retry-job' && (
-        <p className="strip-note">
+        <div className="callout callout-amber" role="note">
           Re-queued means the failed step will run again — it has not succeeded yet. A step that
-          fails the same way will return to FAILED after its retries; check the grid in a few
-          minutes.
-        </p>
+          fails the same way will return to FAILED after its retries; use an item's Verify now to
+          open its live engine evidence, or check the grid in a few minutes.
+        </div>
       )}
       <table className="ledger-table job-items">
         <thead>
@@ -294,7 +297,7 @@ function JobDetail({ jobId }: { jobId: string }) {
               </td>
               <td>
                 <span className={`outcome ${outcomeClassName(job.verb, item.state)}`}>
-                  {outcomeLabel(job.verb, item.state)}
+                  {outcomeCellLabel(job.verb, item.state)}
                 </span>
               </td>
               <td className="item-detail">{item.detail}</td>
@@ -312,6 +315,21 @@ function JobDetail({ jobId }: { jobId: string }) {
                     Verify now
                   </button>
                 )}
+                {/* Theme T8: re-queued is dispatch-only — its Verify now opens the item's
+                    live Errors & Jobs evidence (did the step succeed, or is it back in the
+                    DLQ?). A read-only link: it never re-fires the action (R-SAFE-09). */}
+                {outcomeIsDispatchOnly(job.verb, item.state) &&
+                  typeof item.engineId === 'string' &&
+                  typeof item.instanceId === 'string' &&
+                  item.instanceId !== '' && (
+                    <Link
+                      className="copy-btn verify-link"
+                      title="re-queued is a dispatch state, not a verdict — opens this item's live Errors & Jobs evidence (never re-fires the action)"
+                      to={`/inspect/${item.engineId}/${encodeURIComponent(item.instanceId)}?tab=errors-jobs`}
+                    >
+                      Verify now
+                    </Link>
+                  )}
               </td>
             </tr>
           ))}
