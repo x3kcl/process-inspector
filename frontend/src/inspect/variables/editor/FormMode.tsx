@@ -4,7 +4,7 @@
 // leaf tree where the dominant "flip one flag" task never shows a brace.
 import { useMemo } from 'react'
 import { Segmented } from '../../../components/Segmented'
-import { formatDateTime } from '../../../lib/format'
+import { formatDateTime, useDisplayZone } from '../../../lib/format'
 import { short } from './diff'
 import { formatPath, parseDateInput, parseNumberInput, textEcho } from './editState'
 import type { LeafPath } from './editState'
@@ -90,6 +90,8 @@ export function BooleanWidget({
 }
 
 export function DateWidget({ raw, onChange }: { raw: string; onChange: (raw: string) => void }) {
+  // R-UXQ-03: the dual readout formats as a plain string — re-render on the UTC toggle.
+  useDisplayZone()
   const parsed = parseDateInput(raw)
   return (
     <div className="edit-widget">

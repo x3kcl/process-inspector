@@ -11,7 +11,7 @@ import { Link } from 'react-router'
 import { api, ApiError } from '../api/client'
 import { useTicketUrlTemplate } from '../api/meta'
 import type { AuditEntryDto } from '../api/model'
-import { formatDateTime } from '../lib/format'
+import { Ts } from '../lib/Ts'
 import { ticketHref } from '../lib/ticket'
 import { auditOutcomeView } from './outcome'
 import 'ag-grid-community/styles/ag-grid.css'
@@ -48,13 +48,16 @@ export function AuditLogPage() {
 
   const columns = useMemo<ColDef<AuditEntryDto>[]>(
     () => [
+      // R-UXQ-03: absolute + zone token + relative age; the full UTC ISO rides the
+      // native title/aria via <Ts> (which also self-refreshes on the UTC toggle).
       {
         headerName: 'When',
         field: 'ts',
-        width: 180,
+        width: 230,
         sort: 'desc',
-        valueFormatter: (p) => formatDateTime(p.value as string | undefined),
-        tooltipValueGetter: (p) => p.data?.ts ?? null,
+        cellRenderer: (p: CustomCellRendererProps<AuditEntryDto>) => (
+          <Ts iso={p.data?.ts} relative />
+        ),
       },
       { headerName: 'Actor', field: 'actor', width: 130 },
       {

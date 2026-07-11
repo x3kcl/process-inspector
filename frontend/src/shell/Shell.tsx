@@ -11,6 +11,7 @@ import {
 } from '../auth/reauth'
 import { HeaderStrip } from '../components/HeaderStrip'
 import { SignIn } from '../components/SignIn'
+import { ZoneToggle } from '../components/ZoneToggle'
 import { ToastProvider } from '../components/toast'
 import { LiveProvider } from '../live/live'
 import { OpsDrawer } from '../ops/OpsDrawer'
@@ -54,6 +55,8 @@ export function Shell() {
               <RegistryAdminLink />
               <AccessAdminLink />
               <Omnibox />
+              {/* R-UXQ-03: the one-click display-zone control lives on every stage. */}
+              <ZoneToggle />
               <HeaderStrip />
             </header>
             {authRequired && <SignIn />}

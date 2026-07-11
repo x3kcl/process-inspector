@@ -21,7 +21,7 @@ import type { BulkItemDto, BulkJobDto, BulkTarget } from '../api/bulk'
 import { problemBanner } from '../actions/problem'
 import { useToast } from '../components/toast'
 import { useLive, useLiveEvent } from '../live/live'
-import { formatDateTime } from '../lib/format'
+import { Ts } from '../lib/Ts'
 import { outcomeCellLabel, outcomeClassName, outcomeIsDispatchOnly, outcomeLabel } from './outcome'
 
 export function OpsDrawer() {
@@ -133,7 +133,7 @@ function JobCard({ job, focused }: { job: BulkJobDto; focused: boolean }) {
           <code className="criteria-chip">{job.scopeLabel}</code>
         )}
         <span className="job-meta">
-          {job.submittedBy} · {formatDateTime(job.submittedAt)}
+          {job.submittedBy} · <Ts iso={job.submittedAt} relative />
         </span>
         <span className="job-tallies">{talliesLine(job)}</span>
         <span aria-hidden>{expanded ? '▾' : '▴'}</span>

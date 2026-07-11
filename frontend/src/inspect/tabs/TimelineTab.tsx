@@ -1,5 +1,5 @@
 import { Link } from 'react-router'
-import { formatDateTime, formatSeconds } from '../../lib/format'
+import { formatDateTime, formatSeconds, useDisplayZone } from '../../lib/format'
 import { useInstanceTimeline } from '../useInstanceQueries'
 import { describeLiveState, flattenTimeline, type TimelineRowItem } from './timelineModel'
 
@@ -17,6 +17,8 @@ interface Props {
  */
 export default function TimelineTab({ engineId, instanceId }: Props) {
   const query = useInstanceTimeline(engineId, instanceId)
+  // R-UXQ-03: bar titles format timestamps as plain strings — re-render on the UTC toggle.
+  useDisplayZone()
 
   if (query.isPending) return <div className="zero-state">Loading the activity timeline…</div>
   if (query.isError) {

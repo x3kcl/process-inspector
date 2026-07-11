@@ -1,6 +1,6 @@
 import { Link } from 'react-router'
 import type { HierarchyNode } from '../../api/model'
-import { formatDateTime } from '../../lib/format'
+import { Ts } from '../../lib/Ts'
 import { useInstanceHierarchy } from '../useInstanceQueries'
 
 interface Props {
@@ -75,8 +75,13 @@ function HierarchyNodeView({
         )}
         {node.ended === true && <span className="status-chip completed">ended</span>}
         <span className="hier-times value-muted">
-          {formatDateTime(node.startTime)}
-          {node.endTime !== undefined && ` → ${formatDateTime(node.endTime)}`}
+          <Ts iso={node.startTime} />
+          {node.endTime !== undefined && (
+            <>
+              {' → '}
+              <Ts iso={node.endTime} />
+            </>
+          )}
         </span>
       </span>
       {(shown > 0 || total > shown) && (

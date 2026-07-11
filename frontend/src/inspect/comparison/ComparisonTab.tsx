@@ -1,7 +1,8 @@
 import { useEffect, useState } from 'react'
 import { useSearchParams } from 'react-router'
 import type { SiblingInstanceRef } from '../../api/model'
-import { formatDateTime, formatSeconds } from '../../lib/format'
+import { formatSeconds } from '../../lib/format'
+import { Ts } from '../../lib/Ts'
 import type { TabProps } from '../InspectPage'
 import { useNearestSibling, useSiblingDiff } from '../useInstanceQueries'
 import { divergenceMarkers } from './diffFormat'
@@ -179,8 +180,12 @@ function SiblingPicker({
                 title="the most recent completed run of this definition version"
               >
                 auto-suggested
-                {suggestedRef?.endTime !== undefined &&
-                  ` · completed ${formatDateTime(suggestedRef.endTime)}`}
+                {suggestedRef?.endTime !== undefined && (
+                  <>
+                    {' · completed '}
+                    <Ts iso={suggestedRef.endTime} />
+                  </>
+                )}
               </span>
             )}
           </>
@@ -235,7 +240,7 @@ function CompareHeader({
         <code>{subject?.processInstanceId}</code>
         <span className="value-muted">
           {subject?.businessKey !== undefined && `key ${subject.businessKey} · `}
-          started {formatDateTime(subject?.startTime)}
+          started <Ts iso={subject?.startTime} relative />
           {subject?.ended === false && ' · still open'}
         </span>
       </div>
@@ -244,9 +249,14 @@ function CompareHeader({
         <code>{sibling?.processInstanceId}</code>
         <span className="value-muted">
           {sibling?.businessKey !== undefined && `key ${sibling.businessKey} · `}
-          {sibling?.endTime !== undefined
-            ? `completed ${formatDateTime(sibling.endTime)}`
-            : 'completion time unknown'}
+          {sibling?.endTime !== undefined ? (
+            <>
+              {'completed '}
+              <Ts iso={sibling.endTime} relative />
+            </>
+          ) : (
+            'completion time unknown'
+          )}
           {sibling?.durationMs !== undefined &&
             ` · took ${formatSeconds(Math.round(sibling.durationMs / 1000))}`}
         </span>
