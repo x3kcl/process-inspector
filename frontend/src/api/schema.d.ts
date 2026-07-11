@@ -645,6 +645,22 @@ export interface paths {
         patch?: never;
         trace?: never;
     };
+    "/api/instances/{engineId}/{instanceId}/explain-status": {
+        parameters: {
+            query?: never;
+            header?: never;
+            path?: never;
+            cookie?: never;
+        };
+        get: operations["explainStatus"];
+        put?: never;
+        post?: never;
+        delete?: never;
+        options?: never;
+        head?: never;
+        patch?: never;
+        trace?: never;
+    };
     "/api/instances/{engineId}/{instanceId}/hierarchy": {
         parameters: {
             query?: never;
@@ -1593,6 +1609,13 @@ export interface components {
             retries?: number;
             tenantId?: string;
         };
+        FlagFinding: {
+            deepLinkInstanceId?: string;
+            detail?: string;
+            flag?: string;
+            source?: string;
+            value?: boolean;
+        };
         FleetView: {
             grant?: string;
             group?: string;
@@ -1760,6 +1783,18 @@ export interface components {
             activeOver30d?: string;
             activeOver90d?: string;
             suspendedStartedOver7d?: string;
+        };
+        Leg: {
+            asOf?: string;
+            /** Format: int64 */
+            durationMs?: number;
+            label?: string;
+            method?: string;
+            requestBody?: string;
+            source?: string;
+            /** Format: int32 */
+            status?: number;
+            url?: string;
         };
         LegalHoldDto: {
             /** Format: date-time */
@@ -2084,6 +2119,21 @@ export interface components {
         SseEmitter: {
             /** Format: int64 */
             timeout?: number;
+        };
+        StatusEvidence: {
+            compositeId?: string;
+            engineId?: string;
+            findings?: components["schemas"]["FlagFinding"][];
+            flags?: components["schemas"]["InstanceStatusFlags"];
+            legs?: components["schemas"]["Leg"][];
+            note?: string;
+            plan?: string;
+            planReason?: string;
+            processInstanceId?: string;
+            rederived?: boolean;
+            rederivedAt?: string;
+            /** @enum {string} */
+            status?: "ACTIVE" | "SUSPENDED" | "COMPLETED" | "FAILED" | "RETRYING";
         };
         TargetActivity: {
             id?: string;
@@ -3309,6 +3359,29 @@ export interface operations {
                 };
                 content: {
                     "*/*": components["schemas"]["SiblingDiffResponse"];
+                };
+            };
+        };
+    };
+    explainStatus: {
+        parameters: {
+            query?: never;
+            header?: never;
+            path: {
+                engineId: string;
+                instanceId: string;
+            };
+            cookie?: never;
+        };
+        requestBody?: never;
+        responses: {
+            /** @description OK */
+            200: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "*/*": components["schemas"]["StatusEvidence"];
                 };
             };
         };

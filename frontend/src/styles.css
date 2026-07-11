@@ -713,6 +713,96 @@ button.primary:disabled {
   background: #f4f6f8;
 }
 
+/* ---- interactive status chip → "Explain this status" (R-L3-01) ---- */
+.status-chip-button {
+  padding: 0;
+  border: none;
+  background: none;
+  cursor: pointer;
+  font: inherit;
+}
+.status-chip-button:focus-visible {
+  outline: 2px solid #2c6fb5;
+  outline-offset: 2px;
+  border-radius: 9px;
+}
+.status-chip-button .status-chip {
+  border-bottom: 1px dotted currentColor;
+}
+
+/* ---- "Explain this status" evidence modal ---- */
+.status-evidence h4 {
+  margin: 14px 0 4px;
+  font-size: 13px;
+  text-transform: uppercase;
+  letter-spacing: 0.03em;
+  color: #566573;
+}
+.status-evidence .evidence-rederived {
+  font-size: 13px;
+  padding: 8px 10px;
+  border-radius: 6px;
+  background: #eef3f8;
+  color: #2c3e50;
+}
+.status-evidence .evidence-findings ul {
+  list-style: none;
+  margin: 0;
+  padding: 0;
+}
+.evidence-finding {
+  display: flex;
+  flex-wrap: wrap;
+  align-items: baseline;
+  gap: 6px;
+  padding: 3px 0;
+  font-size: 13px;
+}
+.evidence-finding .flag-mark {
+  font-weight: 700;
+}
+.evidence-finding.flag-on .flag-mark {
+  color: #1e8449;
+}
+.evidence-finding.flag-off {
+  color: #7f8c9a;
+}
+.evidence-finding .flag-source {
+  color: #566573;
+}
+.evidence-finding .flag-detail {
+  color: #2c3e50;
+}
+.evidence-finding .flag-deeplink {
+  font-weight: 600;
+}
+.evidence-legs-scroll {
+  overflow-x: auto;
+  max-height: 260px;
+  overflow-y: auto;
+}
+.evidence-legs table {
+  border-collapse: collapse;
+  width: 100%;
+  font-size: 12px;
+}
+.evidence-legs th,
+.evidence-legs td {
+  text-align: left;
+  padding: 3px 8px;
+  border-bottom: 1px solid #e0e5ea;
+  vertical-align: top;
+}
+.evidence-legs .leg-call {
+  display: block;
+  word-break: break-all;
+}
+.evidence-legs .leg-body {
+  display: block;
+  color: #7f8c9a;
+  word-break: break-all;
+}
+
 /* ---- sign-in (dev chain) ---- */
 .signin-backdrop {
   position: fixed;

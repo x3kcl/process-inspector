@@ -5,6 +5,7 @@ import io.github.resilience4j.circuitbreaker.CircuitBreakerRegistry;
 import io.inspector.config.InspectorProperties.Auth;
 import io.inspector.config.InspectorProperties.EngineConfig;
 import java.net.http.HttpClient;
+import java.nio.charset.StandardCharsets;
 import java.time.Duration;
 import java.time.Instant;
 import java.time.temporal.ChronoUnit;
@@ -1425,6 +1426,31 @@ public class FlowableEngineClient {
         RestClient.Builder builder =
                 RestClient.builder().baseUrl(engine.baseUrl()).requestFactory(rf);
 
+        // Evidence capture (R-L3-01, SPEC §3): outermost interceptor so it records the FINAL
+        // request URL/method/body and the observed HTTP status + wall duration of every leg —
+        // but ONLY while a derivation is being re-derived for the "Explain this status" view
+        // (EngineCallRecorder.isActive()). Inert on every other call, so the hot search/vitals
+        // paths pay nothing. getStatusCode() does not consume the body, so downstream mapping is
+        // unaffected; a transport failure records status=null (an honest "no reply") and rethrows.
+        builder.requestInterceptor((req, bytes, exec) -> {
+            if (!EngineCallRecorder.isActive()) {
+                return exec.execute(req, bytes);
+            }
+            long startNanos = System.nanoTime();
+            String method = req.getMethod().name();
+            String url = req.getURI().toString();
+            String body = recordedBody(bytes);
+            try {
+                var response = exec.execute(req, bytes);
+                EngineCallRecorder.record(
+                        method, url, body, response.getStatusCode().value(), elapsedMs(startNanos));
+                return response;
+            } catch (java.io.IOException | RuntimeException e) {
+                EngineCallRecorder.record(method, url, body, null, elapsedMs(startNanos));
+                throw e;
+            }
+        });
+
         Auth auth = engine.auth();
         if (auth != null) {
             switch (auth.type()) {
@@ -1461,6 +1487,23 @@ public class FlowableEngineClient {
             });
         }
         return builder.build();
+    }
+
+    private static long elapsedMs(long startNanos) {
+        return (System.nanoTime() - startNanos) / 1_000_000L;
+    }
+
+    /** Evidence bodies (query filters) are tiny JSON; cap the captured copy defensively so a
+     *  recorder that ever spans a large write cannot pin an unbounded String on the heap. */
+    private static final int MAX_RECORDED_BODY_BYTES = 4096;
+
+    private static String recordedBody(byte[] bytes) {
+        if (bytes.length == 0) {
+            return null;
+        }
+        int keep = Math.min(bytes.length, MAX_RECORDED_BODY_BYTES);
+        String body = new String(bytes, 0, keep, StandardCharsets.UTF_8);
+        return bytes.length > MAX_RECORDED_BODY_BYTES ? body + "…(" + bytes.length + " bytes total)" : body;
     }
 
     /** Secrets are configured as env-var NAMES; the value never appears in config or API output. */

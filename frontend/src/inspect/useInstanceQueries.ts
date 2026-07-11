@@ -5,6 +5,7 @@
 import { useQuery } from '@tanstack/react-query'
 import {
   fetchInstanceDiagram,
+  fetchInstanceStatusEvidence,
   fetchInstanceExternalWorkerJobs,
   fetchInstanceHierarchy,
   fetchInstanceJobs,
@@ -27,6 +28,21 @@ export function useInstanceVitals(engineId: string, instanceId: string) {
     queryKey: key(engineId, instanceId, 'vitals'),
     queryFn: () => fetchInstanceVitals({ engineId, instanceId }),
     staleTime: STALE_MS,
+  })
+}
+
+/**
+ * "Explain this status" evidence (R-L3-01) — re-derived on demand, so it is NEVER cached
+ * stale: staleTime 0 and the freshly-stamped `rederivedAt` is the honesty label. Enabled only
+ * when the modal is open (the caller passes `enabled`), so opening a chip is what fires it.
+ */
+export function useInstanceStatusEvidence(engineId: string, instanceId: string, enabled: boolean) {
+  return useQuery({
+    queryKey: key(engineId, instanceId, 'explain-status'),
+    queryFn: () => fetchInstanceStatusEvidence({ engineId, instanceId }),
+    enabled,
+    staleTime: 0,
+    gcTime: 0,
   })
 }
 

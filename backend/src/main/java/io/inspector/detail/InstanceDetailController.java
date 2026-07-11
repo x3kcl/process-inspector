@@ -34,9 +34,11 @@ import org.springframework.web.bind.annotation.RestController;
 public class InstanceDetailController {
 
     private final InstanceDetailService detail;
+    private final StatusEvidenceService statusEvidence;
 
-    public InstanceDetailController(InstanceDetailService detail) {
+    public InstanceDetailController(InstanceDetailService detail, StatusEvidenceService statusEvidence) {
         this.detail = detail;
+        this.statusEvidence = statusEvidence;
     }
 
     /** Vitals: identity, definition+version, flags, current activity, why-stuck, waiting-for. */
@@ -44,6 +46,19 @@ public class InstanceDetailController {
     @PreAuthorize("@rbac.atLeastOn(authentication, 'VIEWER', #engineId)")
     public InstanceDetail vitals(@PathVariable String engineId, @PathVariable String instanceId) {
         return detail.vitals(engineId, instanceId);
+    }
+
+    /**
+     * "Explain this status" (R-L3-01, SPEC §3): the falsifiable derivation behind the status
+     * chip — the plan shape chosen and why, each engine call's URL/body/status/duration/asOf,
+     * and per-flag provenance, re-derived on demand and labeled as such. VIEWER floor, like
+     * every other detail read.
+     */
+    @GetMapping("/explain-status")
+    @PreAuthorize("@rbac.atLeastOn(authentication, 'VIEWER', #engineId)")
+    public io.inspector.dto.StatusEvidence explainStatus(
+            @PathVariable String engineId, @PathVariable String instanceId) {
+        return statusEvidence.explain(engineId, instanceId);
     }
 
     /** BPMN 2.0 XML exactly as deployed + marker id sets for the bpmn-js overlays. */

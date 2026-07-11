@@ -44,6 +44,9 @@ export type NoteDto = components['schemas']['NoteDto']
 
 // Stage 2 detail contract (M3)
 export type InstanceDetail = components['schemas']['InstanceDetail']
+export type StatusEvidence = components['schemas']['StatusEvidence']
+export type StatusEvidenceLeg = components['schemas']['Leg']
+export type StatusEvidenceFinding = components['schemas']['FlagFinding']
 export type CurrentActivity = components['schemas']['CurrentActivity']
 export type WhyStuck = components['schemas']['WhyStuck']
 export type WaitState = components['schemas']['WaitState']
