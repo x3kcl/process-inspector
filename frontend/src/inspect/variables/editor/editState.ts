@@ -3,6 +3,7 @@
 // empty-vs-null clearing, JSON leaf staging, and the source-mode gates (parse + type
 // check + byte-size pre-flight). Everything here is presentation-free and tested;
 // components stay thin.
+import { isReadOnlyMode } from '../../../lib/enginePolicy'
 import { serializedBytes } from '../ledger'
 
 /** Engine types the editor can write. Serializables are locked out entirely (§4a). */
@@ -34,8 +35,8 @@ export function editGateReason(input: {
   instanceEnded: boolean
   engineMode?: string
 }): string | null {
-  if (input.engineMode !== undefined && input.engineMode.toUpperCase() === 'READ_ONLY') {
-    return 'this engine is registered read-only'
+  if (isReadOnlyMode(input.engineMode)) {
+    return 'this engine is registered read-only — engine policy set by its owner, not your role'
   }
   if (input.instanceEnded) {
     return 'the instance has ended — historic variables are a record, not state'

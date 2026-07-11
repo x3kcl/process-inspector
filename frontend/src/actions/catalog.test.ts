@@ -18,6 +18,14 @@ describe('actionGate — greyed never hidden, with the gate named', () => {
     expect(gate.reason).toContain('read-only')
   })
 
+  it('greys on the WIRE mode form "read-only" too (W1#4, theme T6 — the value the BFF sends)', () => {
+    const gate = actionGate({ meta: VERBS.retryJob, roleHint: 'ADMIN', engineMode: 'read-only' })
+    expect(gate.enabled).toBe(false)
+    expect(gate.reason).toContain('read-only')
+    // Policy, not role: the detail must name the engine owner, not an RBAC gate.
+    expect(gate.detail).toContain('engine owner')
+  })
+
   it('greys runtime verbs on an ended instance', () => {
     const gate = actionGate({ meta: VERBS.suspend, roleHint: 'ADMIN', instanceEnded: true })
     expect(gate.enabled).toBe(false)

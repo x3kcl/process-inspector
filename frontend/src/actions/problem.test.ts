@@ -119,6 +119,24 @@ describe('problemBanner — the three-way SPEC §6 distinction stays visible', (
     )
   })
 
+  it('engine-read-only reads as OWNER POLICY, never byte-identical to an RBAC denial (W1#4, theme T6)', () => {
+    const readOnly = problemBanner(
+      parseActionProblem(403, {
+        code: 'engine-read-only',
+        outcome: 'refused',
+        detail: "Engine 'engine-7' is registered read-only (R-GOV-04) — 'retry' is rejected.",
+      }),
+    )
+    expect(readOnly).toContain('read-only')
+    expect(readOnly).toContain('engine owner')
+    expect(readOnly).toContain('not your role')
+    expect(readOnly).toContain("Engine 'engine-7'") // the BFF sentence stays quoted
+    // Distinct from RBAC copy — the same status code must never render the role verdict.
+    expect(readOnly).not.toContain('Your role does not permit')
+    const rbac = problemBanner(parseActionProblem(403, { code: 'rbac-denied' }))
+    expect(readOnly).not.toBe(rbac)
+  })
+
   it('renders the RBAC copy ONLY for the rbac-denied code, quoting the missing grant', () => {
     const text = problemBanner(
       parseActionProblem(403, {

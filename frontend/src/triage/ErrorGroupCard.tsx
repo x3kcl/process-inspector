@@ -134,7 +134,12 @@ function EngineRow({
         to={`/search?${engineDrillParams(engineId)}`}
         title={`Search all FAILED + RETRYING instances on ${engineId}`}
       >
-        <EnvBadge environment={engine?.environment} accentColor={engine?.accentColor} />
+        <EnvBadge
+          environment={engine?.environment}
+          accentColor={engine?.accentColor}
+          mode={engine?.mode}
+          lifecycle={engine?.lifecycle}
+        />
         <span className="engine-name">{engine?.name ?? engineId}</span>
       </Link>
       <span className="definition-counts">

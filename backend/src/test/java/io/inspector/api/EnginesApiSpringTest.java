@@ -88,6 +88,9 @@ class EnginesApiSpringTest {
         assertThat(engines.get(0).get("environment").asText()).isEqualTo("dev");
         assertThat(engines.get(1).get("environment").asText()).isEqualTo("prod");
         assertThat(engines.get(1).get("mode").asText()).isEqualTo("read-only");
+        // W1#4 (theme T6): lifecycle rides the same list so policy is visible at point of action.
+        assertThat(engines.get(0).get("lifecycle").asText()).isEqualTo("active");
+        assertThat(engines.get(1).get("lifecycle").asText()).isEqualTo("active");
     }
 
     @Test

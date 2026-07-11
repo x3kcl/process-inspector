@@ -329,7 +329,12 @@ function EditorSession({
     <div className="editor-panel">
       {/* Panel header restates the target — the wrong-instance error dies here (§4a). */}
       <div className="editor-target">
-        <EnvBadge environment={engine?.environment} accentColor={engine?.accentColor} />
+        <EnvBadge
+          environment={engine?.environment}
+          accentColor={engine?.accentColor}
+          mode={engine?.mode}
+          lifecycle={engine?.lifecycle}
+        />
         <span className="engine-name">{engine?.name ?? engineId}</span>
         {businessKey !== undefined && businessKey !== '' && <code>{businessKey}</code>}
         <code className="composite-id">{`${engineId}:${instanceId}`}</code>

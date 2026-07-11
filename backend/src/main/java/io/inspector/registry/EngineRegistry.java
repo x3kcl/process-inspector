@@ -89,9 +89,20 @@ public class EngineRegistry {
                 .collect(Collectors.toMap(EngineConfig::id, Function.identity(), (a, b) -> a, LinkedHashMap::new));
     }
 
-    /** The enabled engines, in registry order — the fan-out / health-strip surface. */
+    /** The enabled engines, in registry order — the fan-out / operable-target surface. */
     public List<EngineConfig> all() {
         return engines.values().stream().filter(EngineConfig::enabled).toList();
+    }
+
+    /**
+     * ALL live engines (enabled AND disabled/draft/probe_failed), in registry order — the
+     * DISPLAY surface (usability W1#4, theme T6): the dashboard renders a non-active engine
+     * greyed-with-reason rather than silently omitting it (R-SEM-17/R-GOV-04 doctrine).
+     * Never an operable-target source — fan-out and mutation resolution stay on
+     * {@link #all()} / {@link #require}.
+     */
+    public List<EngineConfig> allForDisplay() {
+        return List.copyOf(engines.values());
     }
 
     /**

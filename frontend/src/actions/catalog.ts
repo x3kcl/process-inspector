@@ -2,6 +2,7 @@
 // enum (tier + role floor) and SPEC §5.0's spec'd — never improvised — plain-language
 // labels and reversibility badges. The BFF is the real gate; this module only decides
 // what to grey (never hide) and which guard surface a verb gets.
+import { isReadOnlyMode } from '../lib/enginePolicy'
 
 export type RoleHint = 'VIEWER' | 'RESPONDER' | 'OPERATOR' | 'ADMIN'
 
@@ -192,11 +193,12 @@ export interface Gate {
 }
 
 export function actionGate(input: GateInput): Gate {
-  if (input.engineMode !== undefined && input.engineMode.toUpperCase() === 'READ_ONLY') {
+  if (isReadOnlyMode(input.engineMode)) {
     return {
       enabled: false,
       reason: 'Blocked: engine is read-only',
-      detail: 'this engine is registered read-only',
+      detail:
+        'this engine is registered read-only — set by the engine owner (policy, not your role)',
     }
   }
   if (input.capability === false) {

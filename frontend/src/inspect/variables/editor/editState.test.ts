@@ -18,6 +18,10 @@ describe('editGateReason — greyed-with-reason ladder (§4a Entry)', () => {
     expect(
       editGateReason({ scope: 'process', instanceEnded: false, engineMode: 'READ_ONLY' }),
     ).toContain('read-only')
+    // W1#4 (theme T6): the registry wire value is hyphenated — it must lock the pencil too.
+    expect(
+      editGateReason({ scope: 'process', instanceEnded: false, engineMode: 'read-only' }),
+    ).toContain('read-only')
     expect(editGateReason({ scope: 'process', instanceEnded: true })).toContain('ended')
     expect(
       editGateReason({ engineType: 'serializable', scope: 'process', instanceEnded: false }),

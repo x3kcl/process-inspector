@@ -62,6 +62,19 @@ class EngineRegistryReloadTest {
     }
 
     @Test
+    void allForDisplay_includes_disabled_engines_so_the_dashboard_never_silently_omits_one() {
+        // Usability W1#4 / theme T6 (R-SEM-17): a disabled engine renders greyed-with-reason,
+        // never disappears. Display surface = every live row; fan-out stays enabled-only.
+        EngineRegistry registry = registryOf(
+                engine("a", true, "http://a/service"),
+                engine("c", false, "http://c/service"),
+                engine("b", true, "http://b/service"));
+
+        assertThat(registry.allForDisplay()).extracting(EngineConfig::id).containsExactly("a", "c", "b");
+        assertThat(registry.all()).extracting(EngineConfig::id).containsExactly("a", "b");
+    }
+
+    @Test
     void reload_swaps_the_live_set_and_updates_config() {
         EngineRegistry registry =
                 registryOf(engine("a", true, "http://old-a/service"), engine("b", true, "http://b/service"));

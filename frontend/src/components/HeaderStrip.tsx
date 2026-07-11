@@ -1,5 +1,6 @@
 import type { EngineDto } from '../api/model'
 import { useEngines } from '../api/useEngines'
+import { isInactiveLifecycle, lifecycleGloss } from '../lib/enginePolicy'
 import { formatCount, formatSeconds } from '../lib/format'
 import { glossTechnicalMessage } from '../lib/plainFailure'
 import { EnvBadge } from './EnvBadge'
@@ -41,9 +42,34 @@ function EngineCard({ engine }: { engine: EngineDto }) {
   const lanes = engine.jobLanes
   const oldestAge = engine.oldestExecutableJobAge
   const overdue = engine.overdueTimers
+  // W1#4 (theme T6, R-SEM-17): a non-active engine renders as a GREYED card with the
+  // lifecycle reason — never silently omitted, and never as a spurious "UNREACHABLE"
+  // (a disabled engine is deliberately not probed; that is policy, not an outage).
+  const inactive = isInactiveLifecycle(engine.lifecycle)
+  if (inactive) {
+    return (
+      <div className="engine-card engine-card-disabled">
+        <EnvBadge
+          environment={engine.environment}
+          accentColor={engine.accentColor}
+          mode={engine.mode}
+          lifecycle={engine.lifecycle}
+        />
+        <span className="engine-name">{engine.name ?? engine.id ?? 'unnamed engine'}</span>
+        <span className="engine-disabled-note">
+          {engine.lifecycle !== undefined ? lifecycleGloss(engine.lifecycle) : 'not active'}
+        </span>
+      </div>
+    )
+  }
   return (
     <div className={`engine-card${reachable ? '' : ' engine-card-down'}`}>
-      <EnvBadge environment={engine.environment} accentColor={engine.accentColor} />
+      <EnvBadge
+        environment={engine.environment}
+        accentColor={engine.accentColor}
+        mode={engine.mode}
+        lifecycle={engine.lifecycle}
+      />
       <span className="engine-name">{engine.name ?? engine.id ?? 'unnamed engine'}</span>
       <span className="engine-version">
         {typeof engine.engineVersion === 'string' ? `v${engine.engineVersion}` : 'v?'}
