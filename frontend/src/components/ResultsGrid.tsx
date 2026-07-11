@@ -85,7 +85,31 @@ export function ResultsGrid({
           )
         },
       },
-      { headerName: 'Business Key', field: 'businessKey', width: 160 },
+      {
+        headerName: 'Business Key',
+        field: 'businessKey',
+        width: 180,
+        // W2 #7 (R-UXQ-12): root-vs-child marker — a businessKey search finds the whole
+        // tree, and identically-keyed rows are indistinguishable without it. typeof-guarded
+        // (Jackson serializes root rows as superProcessInstanceId: null).
+        cellRenderer: (p: CustomCellRendererProps<ProcessInstanceRow>) => {
+          const parent = p.data?.superProcessInstanceId
+          const child = typeof parent === 'string' && parent !== ''
+          return (
+            <span className="bk-cell">
+              {child && (
+                <span
+                  className="status-badge child-badge"
+                  title={`child instance — started by parent ${parent} (call activity); it shares the tree's business key`}
+                >
+                  ↳ child
+                </span>
+              )}
+              {p.data?.businessKey}
+            </span>
+          )
+        },
+      },
       {
         headerName: 'Status',
         field: 'status',

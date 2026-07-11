@@ -11,6 +11,11 @@ import io.inspector.dto.SearchRequest.InstanceStatus;
  * the newest dead-letter job {@code createTime} for the instance — for a root flagged
  * {@code failedInSubprocess} it is inherited from the failing child. {@code scopeType} is
  * {@code "bpmn"} for every v1 row (carried from day one for CMMN support, SPEC §3).
+ *
+ * <p>{@code superProcessInstanceId} (usability W2 #7, R-UXQ-12): the parent instance id when this
+ * row is a call-activity CHILD, straight off the historic wire row (every search leg assembles from
+ * historic queries, which always serialize it for children) — the grid's root-vs-child marker.
+ * {@code null} = a root instance.
  */
 public record ProcessInstanceRow(
         String compositeId,
@@ -19,6 +24,7 @@ public record ProcessInstanceRow(
         String engineColor,
         String processInstanceId,
         String businessKey,
+        String superProcessInstanceId,
         String processDefinitionKey,
         String processDefinitionName,
         Integer definitionVersion,
@@ -45,6 +51,7 @@ public record ProcessInstanceRow(
                 engineColor,
                 processInstanceId,
                 businessKey,
+                superProcessInstanceId,
                 processDefinitionKey,
                 processDefinitionName,
                 definitionVersion,

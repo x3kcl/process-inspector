@@ -11,7 +11,20 @@ import type { EngineDto, ProcessInstanceRow } from '../api/model'
 import type { RoleHint } from '../actions/catalog'
 import { roleAtLeast } from '../actions/catalog'
 
+// The server-enforced bulk caps (W2 #5, R-NFR-01) — mirrors of the backend's
+// BulkJob.ITEM_CAP / BulkJob.FILTER_ITEM_CAP. Disclosed VERBATIM in the confirm copy so
+// the numbers stop being a surprise refusal; the BFF stays the real gate.
 export const BULK_CAP = 200
+export const BULK_FILTER_CAP = 5000
+
+/** The one cap-disclosure sentence per submit door (R-NFR-01) — rendered verbatim. */
+export function bulkCapNote(scope: 'selection' | 'filter'): string {
+  const filterCap = BULK_FILTER_CAP.toLocaleString('en-US')
+  return scope === 'selection'
+    ? `Capped at ${String(BULK_CAP)} instances per bulk job (server-enforced). For larger sets — up to ${filterCap} — use "Select all matching filter…", the filter-scope bulk.`
+    : `Capped at ${filterCap} instances per bulk job (server-enforced) — a filter resolving to more is refused; narrow it and run in slices.`
+}
+
 const ROLE_FLOOR: RoleHint = 'RESPONDER'
 
 /** The v1 bulk verb set (queue-state verbs — destructive bulk is the tier-4 wizard). */

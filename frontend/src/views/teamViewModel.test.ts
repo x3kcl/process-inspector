@@ -28,6 +28,16 @@ describe('teamViewModel', () => {
     expect(isDangling(view({ danglingReason: 'the engine is gone' }))).toBe(true)
   })
 
+  it('a wire-null danglingReason is NOT dangling — the W2 #4 "⚠ null (scope unavailable)" bug', () => {
+    // Jackson serializes the resolvable case as danglingReason: null; the generated type
+    // omits null, so a `!== undefined` check wrongly greyed every WILDCARD team view and
+    // rendered "⚠ null" in its tooltip. Wildcard canon must stay a live, labeled link.
+    const wildcard = view({ danglingReason: null as unknown as string })
+    expect(isDangling(wildcard)).toBe(false)
+    expect(teamViewTitle(wildcard)).not.toContain('null')
+    expect(teamViewTitle(wildcard)).toContain('all engines')
+  })
+
   it('renders a words-only scope label (never color-only)', () => {
     expect(scopeLabel(view({ scopeEngineId: '*', scopeTenantId: '*' }))).toBe('all engines')
     expect(scopeLabel(view({ scopeEngineId: 'orders-prod', scopeTenantId: '*' }))).toBe(

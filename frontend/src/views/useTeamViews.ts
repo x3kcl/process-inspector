@@ -21,7 +21,8 @@ export interface PublishInput {
 export interface TeamViewsApi {
   views: TeamViewDto[]
   publish: (input: PublishInput) => Promise<TeamViewDto>
-  unpublish: (id: number, reason?: string) => Promise<void>
+  /** Reason ≥10 required for every caller (W2 #3, R-SAFE-16 — a moderation verb). */
+  unpublish: (id: number, reason: string) => Promise<void>
 }
 
 export function useTeamViews(): TeamViewsApi {
@@ -40,7 +41,7 @@ export function useTeamViews(): TeamViewsApi {
     onSuccess: invalidate,
   })
   const unpublishMutation = useMutation({
-    mutationFn: (vars: { id: number; reason?: string }) => unpublishTeamView(vars.id, vars.reason),
+    mutationFn: (vars: { id: number; reason: string }) => unpublishTeamView(vars.id, vars.reason),
     onSuccess: invalidate,
   })
 
@@ -50,7 +51,7 @@ export function useTeamViews(): TeamViewsApi {
     [publishMutation],
   )
   const unpublish = useCallback(
-    (id: number, reason?: string) => unpublishMutation.mutateAsync({ id, reason }),
+    (id: number, reason: string) => unpublishMutation.mutateAsync({ id, reason }),
     [unpublishMutation],
   )
 

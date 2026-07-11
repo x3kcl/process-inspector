@@ -1,6 +1,7 @@
 import { Suspense, lazy, useCallback, useMemo, useRef, useState } from 'react'
 import type { ComponentType, LazyExoticComponent } from 'react'
 import { Link, useParams, useSearchParams } from 'react-router'
+import { ApiError } from '../api/client'
 import type { InstanceDetail } from '../api/model'
 import { useEngines } from '../api/useEngines'
 import { CopyButton } from '../components/CopyButton'
@@ -10,6 +11,7 @@ import { formatSeconds } from '../lib/format'
 import { Ts } from '../lib/Ts'
 import { DetailTabBar } from './DetailTabBar'
 import { DiagramCanvas } from './DiagramCanvas'
+import { instanceLoadFailureCopy } from './loadFailure'
 import type { DivergenceMarkerSet } from './comparison/diffFormat'
 import { InstanceActions } from './InstanceActions'
 import type { TabId } from './tabs'
@@ -156,9 +158,13 @@ export function InspectPage() {
         )}
         {vitals.isPending && <p className="zero-state">Loading instance vitals…</p>}
         {vitals.isError && (
+          // W2 #4 (T12): coverage-parameterized honesty — definitive when the engine
+          // answered (404), hedged ONLY when it did not; never both at once.
           <div className="error-banner" role="alert">
-            {vitals.error.message} — the instance may be unknown to this engine, purged from its
-            history, or the engine may be unreachable.
+            {vitals.error.message} —{' '}
+            {instanceLoadFailureCopy(
+              vitals.error instanceof ApiError ? vitals.error.status : undefined,
+            )}
           </div>
         )}
         {vitals.data !== undefined && (

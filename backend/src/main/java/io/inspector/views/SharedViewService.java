@@ -229,10 +229,11 @@ public class SharedViewService {
         java.time.Instant oldUpdatedAt = view.getUpdatedAt();
         view.edit(search, description, runbookUrl, clockNow());
         SharedView saved = repository.saveAndFlush(view);
-        auditOrCompensate("view-update", auth.getName(), lifecyclePayload(saved, "SHARED", "SHARED", reason), () -> {
-            saved.edit(oldSearch, oldDescription, oldRunbook, oldUpdatedAt);
-            repository.saveAndFlush(saved);
-        });
+        auditOrCompensate(
+                "view-update", auth.getName(), reason, lifecyclePayload(saved, "SHARED", "SHARED", reason), () -> {
+                    saved.edit(oldSearch, oldDescription, oldRunbook, oldUpdatedAt);
+                    repository.saveAndFlush(saved);
+                });
         return saved;
     }
 
@@ -240,17 +241,21 @@ public class SharedViewService {
      * Unpublish = remove from team canon (§4.4, the default moderation verb). Because publish was a
      * snapshot-COPY (§4.1), the author's private bookmark was never consumed and survives untouched —
      * so this is the reversible "demote to private" with no re-materialization needed. Author removes
-     * their own; a scope-ADMIN moderating another's supplies a reason ≥10 + fires the alert substrate.
+     * their own; a scope-ADMIN moderating another's additionally fires the alert substrate. The
+     * reason ≥10 is required for EVERY caller, author included (usability W2 #3, R-SAFE-16 — an
+     * unpublish yanks a shared entry point out from under the whole team), and is rendered
+     * first-class in the operations log via the audit row's reason column.
      */
     public void unpublish(Authentication auth, Long id, String reason) {
+        String clean = requireUnpublishReason(reason);
         SharedView view = load(id);
-        requireModerationAuthority(auth, view, reason, "view-unpublish");
+        requireModerationAuthority(auth, view, clean, "view-unpublish");
 
-        Map<String, Object> payload = lifecyclePayload(view, "SHARED", "PRIVATE", reason);
+        Map<String, Object> payload = lifecyclePayload(view, "SHARED", "PRIVATE", clean);
         SharedView snapshot = detach(view);
         repository.delete(view);
         repository.flush();
-        auditOrCompensate("view-unpublish", auth.getName(), payload, () -> repository.saveAndFlush(snapshot));
+        auditOrCompensate("view-unpublish", auth.getName(), clean, payload, () -> repository.saveAndFlush(snapshot));
     }
 
     /* ---------------- pure decision helpers (rung-1 testable) ---------------- */
@@ -263,6 +268,22 @@ public class SharedViewService {
     public static boolean canPublish(Set<ScopeGrant> grants, String scopeEngineId, String scopeTenantId) {
         Role floor = SharedViewScope.isWildcard(scopeEngineId, scopeTenantId) ? Role.ADMIN : Role.OPERATOR;
         return grants.stream().anyMatch(g -> g.covers(floor, scopeEngineId, scopeTenantId));
+    }
+
+    /**
+     * The unpublish reason floor (usability W2 #3, R-SAFE-16): every unpublish — the author's own
+     * included — is a moderation act on a shared entry point, so the why is mandatory and must
+     * survive into the audit surface. Pure (rung-1 testable); returns the trimmed reason.
+     */
+    static String requireUnpublishReason(String reason) {
+        String clean = reason == null ? "" : reason.strip();
+        if (clean.length() < MIN_MODERATION_REASON) {
+            throw new ResponseStatusException(
+                    HttpStatus.BAD_REQUEST,
+                    "unpublishing team canon requires a reason of at least " + MIN_MODERATION_REASON
+                            + " characters — it is recorded in the operations log");
+        }
+        return clean;
     }
 
     /** Moderation authority: the author always, else an ADMIN whose grant covers the canon's scope. */
@@ -309,8 +330,17 @@ public class SharedViewService {
 
     /** Write the config event; on audit failure run {@code compensate} and refuse fail-closed (503). */
     private void auditOrCompensate(String action, String actor, Map<String, Object> payload, Runnable compensate) {
+        auditOrCompensate(action, actor, null, payload, compensate);
+    }
+
+    /**
+     * As above, with an operator reason bound to the audit row's reason COLUMN so the operations
+     * log renders it without opening the payload (W2 #3 — "rendered in audit").
+     */
+    private void auditOrCompensate(
+            String action, String actor, String reason, Map<String, Object> payload, Runnable compensate) {
         try {
-            audit.recordConfigEvent(action, actor, true, payload);
+            audit.recordConfigEvent(action, actor, true, reason, payload);
         } catch (AuditUnavailableException e) {
             compensate.run();
             throw new ResponseStatusException(

@@ -6,6 +6,7 @@ import { roleOn, useMe } from '../api/me'
 import { InlineConfirm } from '../actions/InlineConfirm'
 import { VERBS, actionGate, needsTwoStepConfirm } from '../actions/catalog'
 import { problemBanner } from '../actions/problem'
+import { ActionHint } from '../components/ActionHint'
 import { CopyButton } from '../components/CopyButton'
 import { EnvBadge } from '../components/EnvBadge'
 import { useToast } from '../components/toast'
@@ -204,20 +205,35 @@ export function CasePage() {
                         />
                         {/* Delete is tier-3/ADMIN and irreversible for the case — a typed-confirm
                             modal, never an inline click (unlike retry). */}
-                        <button
-                          type="button"
-                          className="copy-btn action-btn action-danger"
-                          disabled={!deleteGate.enabled}
-                          title={
-                            deleteGate.enabled ? VERBS.deleteDeadletter.plain : deleteGate.reason
-                          }
-                          onClick={() => {
-                            action.reset()
-                            setDeleteJobId(job.id ?? '')
-                          }}
-                        >
-                          Delete
-                        </button>
+                        <span className="action-slot">
+                          <button
+                            type="button"
+                            className="copy-btn action-btn action-danger"
+                            disabled={!deleteGate.enabled}
+                            aria-describedby={
+                              deleteGate.enabled ? undefined : `case-delete-hint-${job.id ?? ''}`
+                            }
+                            title={
+                              deleteGate.enabled
+                                ? VERBS.deleteDeadletter.plain
+                                : (deleteGate.detail ?? deleteGate.reason)
+                            }
+                            onClick={() => {
+                              action.reset()
+                              setDeleteJobId(job.id ?? '')
+                            }}
+                          >
+                            Delete
+                          </button>
+                          {/* W2 #6 (T7): visible gate — never a title-only dead control. */}
+                          {!deleteGate.enabled && deleteGate.reason !== undefined && (
+                            <ActionHint
+                              id={`case-delete-hint-${job.id ?? ''}`}
+                              text={deleteGate.reason}
+                              tone="gate"
+                            />
+                          )}
+                        </span>
                         {deleteJobId === job.id && (
                           <CaseDeleteModal
                             environment={engine?.environment}

@@ -11,6 +11,7 @@ import { InlineConfirm } from '../../actions/InlineConfirm'
 import { VERBS, actionGate, needsTwoStepConfirm } from '../../actions/catalog'
 import type { Gate } from '../../actions/catalog'
 import { problemBanner } from '../../actions/problem'
+import { ActionHint } from '../../components/ActionHint'
 import { CopyButton } from '../../components/CopyButton'
 import { useToast } from '../../components/toast'
 import { Ts } from '../../lib/Ts'
@@ -432,6 +433,7 @@ function JobActions({
   }
 
   if (lane === 'deadLetter') {
+    const deleteGate = gateFor(VERBS.deleteDeadletter)
     return (
       <>
         <InlineConfirm
@@ -444,22 +446,34 @@ function JobActions({
             run(VERBS.retryJob.verb)
           }}
         />
-        <button
-          type="button"
-          className="copy-btn action-btn action-danger"
-          disabled={!gateFor(VERBS.deleteDeadletter).enabled}
-          title={
-            gateFor(VERBS.deleteDeadletter).enabled
-              ? `${VERBS.deleteDeadletter.plain} · ${VERBS.deleteDeadletter.reversibilityNote}`
-              : gateFor(VERBS.deleteDeadletter).reason
-          }
-          onClick={() => {
-            action.reset()
-            setDeleteOpen(true)
-          }}
-        >
-          Delete
-        </button>
+        {/* W2 #6 (T7): the disabled Delete carries the visible ActionHint gate — the same
+            pattern as its InlineConfirm sibling; never a title-only dead control. */}
+        <span className="action-slot">
+          <button
+            type="button"
+            className="copy-btn action-btn action-danger"
+            disabled={!deleteGate.enabled}
+            aria-describedby={deleteGate.enabled ? undefined : `delete-dlq-hint-${job.id ?? ''}`}
+            title={
+              deleteGate.enabled
+                ? `${VERBS.deleteDeadletter.plain} · ${VERBS.deleteDeadletter.reversibilityNote}`
+                : (deleteGate.detail ?? deleteGate.reason)
+            }
+            onClick={() => {
+              action.reset()
+              setDeleteOpen(true)
+            }}
+          >
+            Delete
+          </button>
+          {!deleteGate.enabled && deleteGate.reason !== undefined && (
+            <ActionHint
+              id={`delete-dlq-hint-${job.id ?? ''}`}
+              text={deleteGate.reason}
+              tone="gate"
+            />
+          )}
+        </span>
         {deleteOpen && (
           <DestructiveModal
             meta={VERBS.deleteDeadletter}

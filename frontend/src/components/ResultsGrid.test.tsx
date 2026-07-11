@@ -74,3 +74,27 @@ describe('ResultsGrid keyboard row-open (R-UXQ-02)', () => {
     expect(hint.textContent).toMatch(/Space/)
   })
 })
+
+describe('ResultsGrid root-vs-child marker (W2 #7, R-UXQ-12)', () => {
+  it('a call-activity child row wears the ↳ child marker; a root row does not', async () => {
+    const child: ProcessInstanceRow = {
+      ...row,
+      compositeId: 'engine-a:pi-2',
+      processInstanceId: 'pi-2',
+      businessKey: 'ORDER-77', // same tree business key as the root — the marker disambiguates
+      superProcessInstanceId: 'pi-1',
+    }
+    render(
+      <ResultsGrid
+        response={{ rows: [row, child], perEngine: { 'engine-a': { ok: true, total: 2 } } }}
+        enginesById={enginesById}
+        onOpenDetails={vi.fn()}
+      />,
+    )
+    await waitFor(() => screen.getAllByText('ORDER-77'))
+    const markers = screen.getAllByText(/↳ child/)
+    expect(markers).toHaveLength(1)
+    // The marker explains itself: parent id in the title, for the identically-keyed tree case.
+    expect(markers[0].getAttribute('title')).toContain('pi-1')
+  })
+})

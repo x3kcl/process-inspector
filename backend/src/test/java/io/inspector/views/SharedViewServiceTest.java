@@ -143,4 +143,26 @@ class SharedViewServiceTest {
                         "tenant-a"))
                 .isFalse();
     }
+
+    /* ---------- unpublish reason floor (usability W2 #3, R-SAFE-16: a moderation verb) ---------- */
+
+    @Test
+    void unpublishReasonIsRequiredForEveryCallerIncludingTheAuthor() {
+        org.assertj.core.api.Assertions.assertThatThrownBy(() -> SharedViewService.requireUnpublishReason(null))
+                .isInstanceOf(org.springframework.web.server.ResponseStatusException.class)
+                .hasMessageContaining("400")
+                .hasMessageContaining("reason");
+        org.assertj.core.api.Assertions.assertThatThrownBy(() -> SharedViewService.requireUnpublishReason("   "))
+                .isInstanceOf(org.springframework.web.server.ResponseStatusException.class)
+                .hasMessageContaining("400");
+        org.assertj.core.api.Assertions.assertThatThrownBy(() -> SharedViewService.requireUnpublishReason("too short"))
+                .isInstanceOf(org.springframework.web.server.ResponseStatusException.class)
+                .hasMessageContaining("400");
+    }
+
+    @Test
+    void unpublishReasonAtTheFloorIsAcceptedAndTrimmed() {
+        assertThat(SharedViewService.requireUnpublishReason("  superseded by the new canon  "))
+                .isEqualTo("superseded by the new canon");
+    }
 }

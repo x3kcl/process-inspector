@@ -70,8 +70,11 @@ export default function VariablesTab({ engineId, instanceId, selectedActivityId 
   const gateFor = (row: LedgerRow) => {
     // §4a Entry gate order: role first (from /api/me — the same resolution the BFF
     // enforces), then the state/type gates. Unknown role stays optimistic.
+    // The RBAC copy is the standard grant-naming short form (W2 #6, T7 — the same
+    // wording every ActionHint gate uses), so the pencil never reads differently from
+    // its sibling buttons.
     if (role !== null && !roleAtLeast(role, 'OPERATOR')) {
-      return 'editing values requires the OPERATOR role on this engine'
+      return `Requires OPERATOR — you are ${role}`
     }
     return editGateReason({
       engineType: row.entry.engineType,

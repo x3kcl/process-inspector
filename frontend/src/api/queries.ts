@@ -107,8 +107,9 @@ export async function publishTeamView(body: {
   return data
 }
 
-/** Unpublish (remove from team canon). Author removes their own; a moderator must pass a reason ≥10. */
-export async function unpublishTeamView(id: number, reason?: string): Promise<void> {
+/** Unpublish (remove from team canon). Reason ≥10 REQUIRED for every caller — a moderation verb
+ *  (W2 #3, R-SAFE-16); the server enforces the floor and renders it in the operations log. */
+export async function unpublishTeamView(id: number, reason: string): Promise<void> {
   const { error, response } = await api.POST('/api/team-views/{id}/unpublish', {
     params: { path: { id } },
     body: { reason },

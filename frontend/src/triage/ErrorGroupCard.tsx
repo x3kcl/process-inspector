@@ -54,7 +54,7 @@ export function ErrorGroupCard({ group, enginesById, lowerBound }: Props) {
           title="Open every FAILED + RETRYING instance of this one error class in the grid"
         >
           {prefix}
-          {formatCount(group.total ?? 0)}
+          {formatCount(group.total ?? 0)} <span className="count-unit">instances</span>
         </Link>
       </header>
       {/* Usability round 2 (Theme E2): the card total spans every engine/definition/version,
@@ -64,14 +64,16 @@ export function ErrorGroupCard({ group, enginesById, lowerBound }: Props) {
         The count opens this one class in the grid — one bulk action there covers all of it. Each
         "Retry group" below covers a single definition + version.
       </p>
+      {/* W2 #7 (T9): the lanes count JOBS, the total counts INSTANCES — two families that
+          look comparable but aren't; every count wears its unit token. */}
       <div className="error-group-lanes">
         <span title="dead-letter jobs (retries exhausted)">
           DLQ {prefix}
-          {formatCount(group.deadLetterCount ?? 0)}
+          {formatCount(group.deadLetterCount ?? 0)} <span className="count-unit">jobs</span>
         </span>
         <span title="failing jobs with retries left">
           retrying {prefix}
-          {formatCount(group.retryingCount ?? 0)}
+          {formatCount(group.retryingCount ?? 0)} <span className="count-unit">jobs</span>
         </span>
       </div>
       {group.sampleRawMessage !== undefined && (

@@ -296,6 +296,7 @@ class BulkFilterServiceTest {
                 null,
                 instanceId,
                 null,
+                null,
                 "payment",
                 null,
                 3,

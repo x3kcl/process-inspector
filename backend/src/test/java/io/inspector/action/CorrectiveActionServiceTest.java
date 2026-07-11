@@ -581,4 +581,37 @@ class CorrectiveActionServiceTest {
                 .satisfies(e -> assertThat(((GuardRefusedException) e).code()).isEqualTo("job-instance-mismatch"));
         verifyNoInteractions(audit);
     }
+
+    /* ---------------- tier-0 outcome toasts (usability W2 #2, SPEC §5.0/§6) ---------------- */
+
+    private static ActionRequest emptyRequest() {
+        return new ActionRequest(null, null, null, null, null, null, null, null, null, null, null);
+    }
+
+    @Test
+    void suspendDeltaStatementStatesTheDeltaAndNamesTheCompensatingVerb() {
+        when(client.getRuntimeProcessInstance(any(), eq("pi-1"))).thenReturn(Map.of("id", "pi-1"));
+
+        var result = service.execute(DEV, "pi-1", ActionVerb.SUSPEND, emptyRequest(), operator);
+
+        // SPEC §6 tier 0: explicit delta + reversibility phrasing, never a bare "success".
+        assertThat(result.deltaStatement())
+                .contains("pi-1")
+                .contains("suspended")
+                .contains("reversible")
+                .contains("Activate undoes it");
+    }
+
+    @Test
+    void activateDeltaStatementStatesTheDeltaAndNamesTheCompensatingVerb() {
+        when(client.getRuntimeProcessInstance(any(), eq("pi-1"))).thenReturn(Map.of("id", "pi-1"));
+
+        var result = service.execute(DEV, "pi-1", ActionVerb.ACTIVATE, emptyRequest(), operator);
+
+        assertThat(result.deltaStatement())
+                .contains("pi-1")
+                .contains("activated")
+                .contains("reversible")
+                .contains("Suspend undoes it");
+    }
 }

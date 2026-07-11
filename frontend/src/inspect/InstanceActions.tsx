@@ -103,12 +103,15 @@ export function InstanceActions({ engineId, instanceId, vitals, engine }: Props)
 
   return (
     <div className="instance-actions">
+      {/* W2 #2 (T11): single-click stays (§5.0 queue-state doctrine — no confirm), but the
+          REVERSIBLE badge is visible and the outcome toast names the compensating verb. */}
       <InlineConfirm
         meta={pauseMeta}
         gate={pauseGate}
         confirmText={`${pauseMeta.label} this case?`}
         twoStep={needsTwoStepConfirm(pauseMeta, environment)}
         pending={action.isPending && !terminateOpen}
+        showReversibility
         onConfirm={() => {
           run(pauseMeta.verb, {})
         }}

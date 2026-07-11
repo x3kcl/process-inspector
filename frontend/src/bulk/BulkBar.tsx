@@ -23,6 +23,7 @@ import { useOpsDrawer } from '../ops/drawerState'
 import type { EngineFailure } from '../search/partials'
 import { enginesInScope, FilterBulkModal } from './FilterBulkModal'
 import {
+  bulkCapNote,
   perEngineSplit,
   planFilterScope,
   planSelection,
@@ -391,6 +392,8 @@ function BulkSubmitModal({
         never rolled back.
       </p>
       <p className="strip-note">{reversibilityNote(offer.verb)}</p>
+      {/* W2 #5 (R-NFR-01): the cap is disclosed BEFORE it refuses, with the bigger door named. */}
+      <p className="strip-note">{bulkCapNote('selection')}</p>
 
       {partial && (
         <div className="callout callout-amber" role="alert">
@@ -422,6 +425,7 @@ function BulkSubmitModal({
           value={reason}
           rows={2}
           maxLength={2000}
+          aria-invalid={!reasonOk}
           onChange={(e) => {
             setReason(e.target.value)
           }}

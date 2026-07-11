@@ -2,6 +2,8 @@ import { describe, expect, it } from 'vitest'
 import type { EngineDto, ProcessInstanceRow } from '../api/model'
 import {
   BULK_CAP,
+  BULK_FILTER_CAP,
+  bulkCapNote,
   perEngineSplit,
   planFilterScope,
   planSelection,
@@ -208,6 +210,27 @@ describe('reversibilityNote (Theme H2)', () => {
   it('calls suspend/activate reversible via the opposite action', () => {
     expect(reversibilityNote('suspend')).toBe('Reversible — the opposite action undoes it.')
     expect(reversibilityNote('activate')).toBe('Reversible — the opposite action undoes it.')
+  })
+})
+
+describe('bulk cap disclosure (W2 #5, R-NFR-01)', () => {
+  it('mirrors the backend caps: 200 grid selection / 5000 filter scope', () => {
+    // BulkJob.ITEM_CAP / BulkJob.FILTER_ITEM_CAP — the server-enforced refusals.
+    expect(BULK_CAP).toBe(200)
+    expect(BULK_FILTER_CAP).toBe(5000)
+  })
+
+  it('the selection note states the 200 cap and nudges to the filter-scope bulk for larger sets', () => {
+    const note = bulkCapNote('selection')
+    expect(note).toContain('200')
+    expect(note).toContain('5,000')
+    expect(note).toMatch(/filter/i)
+  })
+
+  it('the filter note states the 5,000 cap and the over-cap refusal', () => {
+    const note = bulkCapNote('filter')
+    expect(note).toContain('5,000')
+    expect(note).toMatch(/refuse/i)
   })
 })
 
