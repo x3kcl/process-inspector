@@ -21,6 +21,10 @@ export interface ActionProblem {
   expectedOldValue?: unknown
   engineStatus?: number
   engineBody?: string
+  /** True when the body was Spring's default error JSON (numeric `status` + `error`, no
+   *  `code`) — the request was refused before it reached the BFF's handlers, typically
+   *  because the session lacks a CSRF token. */
+  bareSpringError: boolean
 }
 
 function str(source: Record<string, unknown>, key: string): string | undefined {
@@ -34,9 +38,12 @@ export function parseActionProblem(status: number, body: unknown): ActionProblem
   const rawOutcome = str(source, 'outcome')
   const outcome: ProblemOutcome =
     rawOutcome === 'failed' || rawOutcome === 'unknown' ? rawOutcome : 'refused'
+  const code = str(source, 'code')
   return {
     status,
-    code: str(source, 'code') ?? (status === 403 ? 'forbidden' : 'unexpected'),
+    // No 403→'forbidden' fallback here: without a machine-readable code the UI must not
+    // invent an RBAC verdict the server never gave (usability W1#1 — wrong-reason 403).
+    code: code ?? 'unexpected',
     title: str(source, 'title') ?? `HTTP ${String(status)}`,
     detail: str(source, 'detail') ?? '',
     outcome,
@@ -45,6 +52,10 @@ export function parseActionProblem(status: number, body: unknown): ActionProblem
     expectedOldValue: 'expectedOldValue' in source ? source['expectedOldValue'] : undefined,
     engineStatus: typeof source['engineStatus'] === 'number' ? source['engineStatus'] : undefined,
     engineBody: str(source, 'engineBody'),
+    bareSpringError:
+      code === undefined &&
+      typeof source['status'] === 'number' &&
+      str(source, 'error') !== undefined,
   }
 }
 
@@ -78,15 +89,21 @@ export function problemBanner(problem: ActionProblem): string {
       return 'The action was dispatched but the engine never answered — it MAY have executed. Do not resubmit; re-check the instance state and the audit trail.'
     case 'outcome-verification-failed':
       return 'The action was dispatched and likely executed, but recording the outcome failed. Do not resubmit; the audit row stays "unknown" until verified.'
-    case 'forbidden':
-      return 'Your role does not permit this action — the BFF refused it. Nothing happened.'
+    case 'rbac-denied':
+      // The ONLY code that renders an RBAC verdict — a code-less 403 takes the honest
+      // default below instead (usability W1#1).
+      return `Your role does not permit this action — the BFF refused it. Nothing happened.${problem.detail !== '' ? ` (${problem.detail})` : ''}`
     case 'reauth-required':
       return 'Your sign-in is too old for this action — re-authenticate and try again. Nothing happened.'
     default:
       // Every other guard refusal (reason-required, confirm-token-mismatch, job-gone…)
       // already carries an exact operator sentence from the BFF.
-      return problem.detail !== ''
-        ? problem.detail
-        : `The request was refused before anything ran — nothing happened. (Technical detail: HTTP ${String(problem.status)}.)`
+      if (problem.detail !== '') return problem.detail
+      if (problem.status === 403)
+        // Refused before the BFF's action handlers ran — say only what is known. The bare
+        // Spring shape means Spring Security itself answered: on a cookie session that is
+        // almost always a missing CSRF token, and a fresh sign-in mints one.
+        return `The server refused this request before anything ran — HTTP 403.${problem.bareSpringError ? ' The session may be missing a CSRF token — sign out and back in, then retry.' : ''}`
+      return `The request was refused before anything ran — nothing happened. (Technical detail: HTTP ${String(problem.status)}.)`
   }
 }

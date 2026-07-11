@@ -38,5 +38,41 @@ const basicAuth: Middleware = {
   },
 }
 
+const UNSAFE_METHODS = new Set(['POST', 'PUT', 'PATCH', 'DELETE'])
+
+/**
+ * The X-XSRF-TOKEN value a request must carry, or null to send nothing (usability W1#1).
+ * Basic-per-request is CSRF-exempt on the BFF, but cookie-session users (dev ladder
+ * sign-in form, OIDC) must echo Spring's `XSRF-TOKEN` cookie on unsafe methods — without
+ * it Spring Security answers a bare 403 before the request reaches any handler.
+ * Pure so vitest covers it in node; the middleware below is the thin DOM binding.
+ */
+export function xsrfHeaderValue(
+  method: string,
+  cookies: string,
+  basicToken: string | null,
+): string | null {
+  if (basicToken !== null) return null
+  if (!UNSAFE_METHODS.has(method.toUpperCase())) return null
+  const match = /(?:^|;\s*)XSRF-TOKEN=([^;]+)/.exec(cookies)
+  if (match === null) return null
+  try {
+    return decodeURIComponent(match[1])
+  } catch {
+    // Malformed percent-encoding must not crash the request — echo the raw value and
+    // let the BFF's own token comparison decide (external review, both seats).
+    return match[1]
+  }
+}
+
+const cookieCsrf: Middleware = {
+  onRequest({ request }) {
+    const token = xsrfHeaderValue(request.method, document.cookie, getBasicAuth())
+    if (token !== null) request.headers.set('X-XSRF-TOKEN', token)
+    return request
+  },
+}
+
 export const api = createClient<paths>({ baseUrl: '/' })
 api.use(basicAuth)
+api.use(cookieCsrf)
