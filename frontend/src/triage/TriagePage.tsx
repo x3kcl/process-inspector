@@ -1,6 +1,7 @@
 import { useMemo, useState } from 'react'
 import type { EngineDto } from '../api/model'
-import { formatCount, formatDateTime } from '../lib/format'
+import { formatCount } from '../lib/format'
+import { Ts } from '../lib/Ts'
 import { glossTechnicalMessage } from '../lib/plainFailure'
 import { SavedViewsSection } from '../views/SavedViewsSection'
 import { CmmnScopeDrawer } from './CmmnScopeDrawer'
@@ -58,7 +59,7 @@ export function TriagePage() {
     <div className="triage">
       <div className="triage-toolbar">
         <span className="snapshot" title="server-side aggregation stamp (BFF caches ~20s)">
-          as of {formatDateTime(data?.asOf)}
+          as of <Ts iso={data?.asOf} relative />
         </span>
         <button
           type="button"

@@ -1,5 +1,5 @@
 import { Link } from 'react-router'
-import { formatDateTime } from '../lib/format'
+import { Ts } from '../lib/Ts'
 import { useRecentSearches } from './useViewStores'
 
 /**
@@ -17,9 +17,7 @@ export function RecentSearchList() {
         {recents.map((recent) => (
           <li key={recent.search}>
             <Link to={`/search?${recent.search ?? ''}`}>{recent.label}</Link>
-            <span className="recent-at" title={recent.at}>
-              {formatDateTime(recent.at)}
-            </span>
+            <Ts className="recent-at" iso={recent.at} relative />
           </li>
         ))}
       </ul>

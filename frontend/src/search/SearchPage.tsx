@@ -8,7 +8,7 @@ import { BulkBar } from '../bulk/BulkBar'
 import { PartialResultsBanner } from '../components/PartialResultsBanner'
 import { ResultsGrid } from '../components/ResultsGrid'
 import { SearchRail } from '../components/SearchRail'
-import { formatClock, formatCount } from '../lib/format'
+import { formatClock, formatCount, useDisplayZone } from '../lib/format'
 import { RecentSearchList } from '../views/RecentSearchList'
 import { ViewChips } from '../views/ViewChips'
 import { useRecordRecentSearch } from '../views/useViewStores'
@@ -22,6 +22,8 @@ import { useSearchResults, useSearchUrl } from './useSearch'
  * Stage 2 route (deep-linkable, ticket-pasteable).
  */
 export function SearchPage() {
+  // R-UXQ-03: the "as of" clocks format as plain strings — re-render on the UTC toggle.
+  useDisplayZone()
   const navigate = useNavigate()
   const engines = useEngines()
   // Usability round 1, Theme B: the same useMe + roleOn path ErrorGroupCard already uses,

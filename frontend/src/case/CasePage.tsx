@@ -9,7 +9,7 @@ import { problemBanner } from '../actions/problem'
 import { CopyButton } from '../components/CopyButton'
 import { EnvBadge } from '../components/EnvBadge'
 import { useToast } from '../components/toast'
-import { formatDateTime } from '../lib/format'
+import { Ts } from '../lib/Ts'
 import { CaseDeleteModal } from './CaseDeleteModal'
 import { CaseDiagramCanvas } from './CaseDiagramCanvas'
 import { PlanItemTimeline } from './PlanItemTimeline'
@@ -144,11 +144,15 @@ export function CasePage() {
                 <CopyButton text={compositeId} label="Copy engine:id" />
               </dd>
               <dt>Started</dt>
-              <dd>{formatDateTime(vitals.data.startTime)}</dd>
+              <dd>
+                <Ts iso={vitals.data.startTime} relative />
+              </dd>
               {vitals.data.ended && (
                 <>
                   <dt>Ended</dt>
-                  <dd>{formatDateTime(vitals.data.endTime)}</dd>
+                  <dd>
+                    <Ts iso={vitals.data.endTime} relative />
+                  </dd>
                 </>
               )}
               {vitals.data.superProcessInstanceId && (

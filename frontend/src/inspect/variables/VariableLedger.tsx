@@ -1,7 +1,8 @@
 import { useState } from 'react'
 import type { ReactNode } from 'react'
 import { CopyButton } from '../../components/CopyButton'
-import { formatDateTime } from '../../lib/format'
+import { useDisplayZone } from '../../lib/format'
+import { Ts } from '../../lib/Ts'
 import { JsonTree } from './JsonTree'
 import type { LedgerGroup, LedgerRow } from './ledger'
 import { EXPAND_BYTE_CAP, serializedBytes } from './ledger'
@@ -39,6 +40,9 @@ export function VariableLedger({
   onEditRow,
   editorNode,
 }: Props) {
+  // R-UXQ-03: date-typed variable VALUES render via the string pipeline (ledger.ts) —
+  // subscribe so the one-click UTC toggle repaints them.
+  useDisplayZone()
   if (groups.length === 0) {
     return <div className="zero-state">This instance carries no variables.</div>
   }
@@ -200,7 +204,9 @@ function LedgerRowView({
           )}
         </td>
         <td className="ledger-scope">{row.entry.scope === 'process' ? 'case' : 'step-local'}</td>
-        <td className="ledger-modified">{formatDateTime(row.entry.lastModified)}</td>
+        <td className="ledger-modified">
+          <Ts iso={row.entry.lastModified} />
+        </td>
         <td className="ledger-row-tools">
           {/* §4a Entry: always visible, keyboard-focusable, greyed-with-reason. */}
           {onEditRow !== undefined && (

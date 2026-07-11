@@ -4,7 +4,7 @@ import { useMutation, useQuery, useQueryClient } from '@tanstack/react-query'
 import { ApiError } from '../../api/client'
 import { useTicketUrlTemplate } from '../../api/meta'
 import { createInstanceNote, fetchInstanceAudit, fetchInstanceNotes } from '../../api/queries'
-import { formatDateTime } from '../../lib/format'
+import { Ts } from '../../lib/Ts'
 import { ticketHref } from '../../lib/ticket'
 import { auditOutcomeView } from '../../ops/outcome'
 
@@ -72,7 +72,9 @@ function AuditLog({ engineId, instanceId }: Props) {
           const outcome = auditOutcomeView(entry.action, entry.outcome, entry.httpStatus)
           return (
             <tr key={entry.id ?? `${entry.ts ?? ''}${entry.action ?? ''}`}>
-              <td>{formatDateTime(entry.ts)}</td>
+              <td>
+                <Ts iso={entry.ts} relative />
+              </td>
               <td>{entry.actor}</td>
               <td>
                 <code>{entry.action}</code>
@@ -154,7 +156,7 @@ function Notes({ engineId, instanceId }: Props) {
         {notes.data?.map((note) => (
           <li key={note.id ?? `${note.ts ?? ''}${note.author ?? ''}`}>
             <span className="note-meta">
-              {note.author} · {formatDateTime(note.ts)}
+              {note.author} · <Ts iso={note.ts} relative />
             </span>
             <p className="note-body">{note.body}</p>
           </li>

@@ -6,7 +6,8 @@ import { useEngines } from '../api/useEngines'
 import { CopyButton } from '../components/CopyButton'
 import { EnvBadge } from '../components/EnvBadge'
 import { StatusChip } from '../components/StatusChip'
-import { formatDateTime, formatSeconds } from '../lib/format'
+import { formatSeconds } from '../lib/format'
+import { Ts } from '../lib/Ts'
 import { DiagramCanvas } from './DiagramCanvas'
 import type { DivergenceMarkerSet } from './comparison/diffFormat'
 import { InstanceActions } from './InstanceActions'
@@ -272,13 +273,13 @@ function VitalsBody({ vitals, onCompare }: { vitals: InstanceDetail; onCompare: 
         </span>
         <span className="vital">
           <span className="vital-label">Started</span>
-          {formatDateTime(vitals.startTime)}
+          <Ts iso={vitals.startTime} relative />
           {vitals.startedBy !== undefined && ` by ${vitals.startedBy}`}
         </span>
         {vitals.endTime !== undefined && (
           <span className="vital">
             <span className="vital-label">Ended</span>
-            {formatDateTime(vitals.endTime)}
+            <Ts iso={vitals.endTime} relative />
             {vitals.durationMs !== undefined &&
               ` (took ${formatSeconds(Math.round(vitals.durationMs / 1000))})`}
           </span>
@@ -308,9 +309,19 @@ function VitalsBody({ vitals, onCompare }: { vitals: InstanceDetail; onCompare: 
           Waiting for:{' '}
           {vitals.waitingFor.map((wait, index) => (
             <span key={`${wait.kind ?? ''}:${String(index)}`} className="waiting-chip">
-              {wait.kind === 'TIMER'
-                ? `timer${wait.dueDate !== undefined ? ` due ${formatDateTime(wait.dueDate)}` : ''}`
-                : `${(wait.kind ?? 'event').toLowerCase()} “${wait.name ?? '?'}”`}
+              {wait.kind === 'TIMER' ? (
+                <>
+                  timer
+                  {wait.dueDate !== undefined && (
+                    <>
+                      {' due '}
+                      <Ts iso={wait.dueDate} relative />
+                    </>
+                  )}
+                </>
+              ) : (
+                `${(wait.kind ?? 'event').toLowerCase()} “${wait.name ?? '?'}”`
+              )}
               {wait.activityId !== undefined && ` at ${wait.activityId}`}
             </span>
           ))}
@@ -342,7 +353,9 @@ function WhyStuckStrip({ vitals, onCompare }: { vitals: InstanceDetail; onCompar
           </>
         )}
         {whyStuck.failureTime !== undefined && (
-          <>last failure {formatDateTime(whyStuck.failureTime)} · </>
+          <>
+            last failure <Ts iso={whyStuck.failureTime} relative copyIso /> ·{' '}
+          </>
         )}
         {deadLetter > 0 && (
           <>
@@ -355,8 +368,12 @@ function WhyStuckStrip({ vitals, onCompare }: { vitals: InstanceDetail; onCompar
             {retrying} retrying
             {whyStuck.retriesRemaining !== undefined &&
               ` — ${String(whyStuck.retriesRemaining)} retries left`}
-            {whyStuck.nextRetryDue !== undefined &&
-              `, next attempt ${formatDateTime(whyStuck.nextRetryDue)}`}
+            {whyStuck.nextRetryDue !== undefined && (
+              <>
+                {', next attempt '}
+                <Ts iso={whyStuck.nextRetryDue} relative />
+              </>
+            )}
           </>
         )}
         {' · '}details in the Errors &amp; Jobs tab

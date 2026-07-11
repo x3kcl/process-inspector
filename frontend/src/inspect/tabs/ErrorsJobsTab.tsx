@@ -13,7 +13,7 @@ import type { Gate } from '../../actions/catalog'
 import { problemBanner } from '../../actions/problem'
 import { CopyButton } from '../../components/CopyButton'
 import { useToast } from '../../components/toast'
-import { formatDateTime } from '../../lib/format'
+import { Ts } from '../../lib/Ts'
 import { roleOn, useMe } from '../../api/me'
 import type { TabProps } from '../InspectPage'
 import { useInstanceExternalWorkerJobs, useInstanceJobs } from '../useInstanceQueries'
@@ -173,7 +173,9 @@ function ExternalWorkerLane({
                     <span className="value-muted">unacquired — no worker holds it</span>
                   )}
                 </td>
-                <td>{formatDateTime(job.lockExpirationTime)}</td>
+                <td>
+                  <Ts iso={job.lockExpirationTime} relative />
+                </td>
                 <td>{job.retries ?? <span className="value-muted">—</span>}</td>
                 <td className="exception-cell">
                   {job.exceptionMessage !== undefined ? (
@@ -331,8 +333,12 @@ function JobRow({
             </button>
           )}
         </td>
-        <td>{formatDateTime(job.createTime)}</td>
-        <td>{formatDateTime(job.dueDate)}</td>
+        <td>
+          <Ts iso={job.createTime} relative />
+        </td>
+        <td>
+          <Ts iso={job.dueDate} relative />
+        </td>
         <td>{job.retries ?? <span className="value-muted">—</span>}</td>
         <td className="exception-cell">
           {job.exceptionMessage !== undefined ? (

@@ -3,7 +3,8 @@ import { AgGridReact } from 'ag-grid-react'
 import type { CustomCellRendererProps } from 'ag-grid-react'
 import type { ColDef, RowSelectionOptions, SelectionChangedEvent } from 'ag-grid-community'
 import type { EngineDto, ProcessInstanceRow, SearchResponse } from '../api/model'
-import { formatCount, formatDateTime } from '../lib/format'
+import { formatCount } from '../lib/format'
+import { Ts } from '../lib/Ts'
 import { summarizePartials, zeroState } from '../search/partials'
 import { CopyButton } from './CopyButton'
 import { EnvBadge } from './EnvBadge'
@@ -95,19 +96,23 @@ export function ResultsGrid({
           return version === undefined ? name : `${name} · v${String(version)}`
         },
       },
+      // R-UXQ-03: time cells render through <Ts> — absolute + zone token + relative age,
+      // with the full UTC ISO on hover/aria (native title; no AG Grid tooltip needed).
       {
         headerName: 'Start Time',
         field: 'startTime',
-        width: 180,
-        valueFormatter: (p) => formatDateTime(p.value as string | undefined),
-        tooltipValueGetter: (p) => p.data?.startTime ?? null,
+        width: 230,
+        cellRenderer: (p: CustomCellRendererProps<ProcessInstanceRow>) => (
+          <Ts iso={p.data?.startTime} relative />
+        ),
       },
       {
         headerName: 'Failure Time',
         field: 'failureTime',
-        width: 180,
-        valueFormatter: (p) => formatDateTime(p.value as string | undefined),
-        tooltipValueGetter: (p) => p.data?.failureTime ?? null,
+        width: 230,
+        cellRenderer: (p: CustomCellRendererProps<ProcessInstanceRow>) => (
+          <Ts iso={p.data?.failureTime} relative />
+        ),
       },
       {
         headerName: 'Current Activity / Error',

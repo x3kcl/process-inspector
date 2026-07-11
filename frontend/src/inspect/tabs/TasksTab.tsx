@@ -1,6 +1,7 @@
 import { useState } from 'react'
 import type { TaskDto } from '../../api/model'
-import { formatDateTime, formatSeconds } from '../../lib/format'
+import { formatSeconds } from '../../lib/format'
+import { Ts } from '../../lib/Ts'
 import { useInstanceTasks } from '../useInstanceQueries'
 import { useInstanceAction } from '../../api/actions'
 import type { ActionRequest } from '../../api/actions'
@@ -170,12 +171,16 @@ function TaskRow({ task, gate, onReassign, onReturn }: RowProps) {
           <span className="value-muted"> · owner {task.owner}</span>
         )}
       </td>
-      <td>{formatDateTime(task.createTime)}</td>
-      <td>{formatDateTime(task.dueDate)}</td>
+      <td>
+        <Ts iso={task.createTime} relative />
+      </td>
+      <td>
+        <Ts iso={task.dueDate} relative />
+      </td>
       <td>
         {task.endTime !== undefined ? (
           <>
-            {formatDateTime(task.endTime)}
+            <Ts iso={task.endTime} />
             {task.durationMs !== undefined &&
               ` (took ${formatSeconds(Math.round(task.durationMs / 1000))})`}
           </>

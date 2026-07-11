@@ -30,6 +30,21 @@ body {
   white-space: nowrap;
 }
 
+/* R-UXQ-03: the one-click display-zone control (Local <-> UTC) in the topbar. */
+.zone-toggle {
+  white-space: nowrap;
+}
+.zone-toggle .segment {
+  padding: 2px 8px;
+  font-size: 12px;
+}
+
+/* R-UXQ-03: the relative-age suffix every <Ts relative> renders. */
+.ts-relative {
+  color: #8395a7;
+  white-space: nowrap;
+}
+
 .engine-strip {
   display: flex;
   gap: 8px;
