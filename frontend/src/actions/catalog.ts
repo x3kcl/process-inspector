@@ -174,6 +174,10 @@ export interface GateInput {
   instanceEnded?: boolean
   /** The instance is SUSPENDED — token moves refuse pre-flight (409 instance-suspended). */
   instanceSuspended?: boolean
+  /** R-SAFE-05: the instance is in the protected registry — below the ADMIN floor EVERY verb
+   *  is refused (the BFF's `instance-protected` guard). true = protected, undefined/false =
+   *  not (or unknown — stay optimistic; the guard is the real gate, mirroring the role case). */
+  instanceProtected?: boolean
   /** Capability probe for this verb on the target engine (§6 capability gating);
    *  undefined = the verb is not capability-gated, false = greyed with the reason. */
   capability?: boolean
@@ -206,6 +210,17 @@ export function actionGate(input: GateInput): Gate {
       enabled: false,
       reason: 'Blocked: engine lacks this capability',
       detail: 'this engine version does not support this operation (capability probe)',
+    }
+  }
+  // R-SAFE-05 (SPEC §2): a protected instance refuses EVERY verb below the ADMIN floor. A
+  // known-below-ADMIN role greys with the spec'd reason; an unknown role (null) stays
+  // optimistic — the BFF's `instance-protected` guard is the real gate. Placed before the
+  // ended/suspended/role checks so the protection is the FIRST thing the operator reads.
+  if (input.instanceProtected === true && input.roleHint !== null && !roleAtLeast(input.roleHint, 'ADMIN')) {
+    return {
+      enabled: false,
+      reason: 'Protected — L3 action required',
+      detail: `this instance is protected (R-SAFE-05) — an L3 (ADMIN) operator must act on it (you are ${input.roleHint})`,
     }
   }
   if (input.meta.requiresEnded === true) {

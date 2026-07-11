@@ -47,6 +47,39 @@ describe('actionGate — greyed never hidden, with the gate named', () => {
   })
 })
 
+describe('actionGate — R-SAFE-05 protected instance (usability W3 sliver)', () => {
+  it('greys EVERY verb below the ADMIN floor with the spec §2 reason', () => {
+    for (const meta of [VERBS.suspend, VERBS.retryJob, VERBS.editVariable, VERBS.changeState]) {
+      const gate = actionGate({ meta, roleHint: 'OPERATOR', instanceProtected: true })
+      expect(gate.enabled).toBe(false)
+      expect(gate.reason).toBe('Protected — L3 action required')
+      expect(gate.detail).toContain('R-SAFE-05')
+    }
+  })
+
+  it('lets an ADMIN act on a protected instance (matches the BFF guard exemption)', () => {
+    expect(
+      actionGate({ meta: VERBS.terminate, roleHint: 'ADMIN', instanceProtected: true }).enabled,
+    ).toBe(true)
+  })
+
+  it('stays optimistic when the role is unknown — the BFF instance-protected guard is the gate', () => {
+    expect(
+      actionGate({ meta: VERBS.terminate, roleHint: null, instanceProtected: true }).enabled,
+    ).toBe(true)
+  })
+
+  it('protection outranks the ended/role reasons so it is the first thing read', () => {
+    const gate = actionGate({
+      meta: VERBS.terminate,
+      roleHint: 'OPERATOR',
+      instanceProtected: true,
+      instanceEnded: true,
+    })
+    expect(gate.reason).toBe('Protected — L3 action required')
+  })
+})
+
 describe('actionGate — v1.1 flow surgery gates', () => {
   it('greys change-state when the engine lacks the capability, naming the probe', () => {
     const gate = actionGate({ meta: VERBS.changeState, roleHint: 'ADMIN', capability: false })

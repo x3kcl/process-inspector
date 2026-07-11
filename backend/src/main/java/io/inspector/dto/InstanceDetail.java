@@ -37,7 +37,15 @@ public record InstanceDetail(
         // Count of external-worker jobs on this instance (v1.x #7) — the fifth queue is not in
         // the four job lanes, so its presence is invisible without this. Null on a pre-6.8
         // engine (capability absent) or an ended instance; a count (incl. 0) when applicable.
-        Integer externalWorkerJobs) {
+        Integer externalWorkerJobs,
+        // R-SAFE-05 point-of-action visibility (usability W3 sliver): true = in the protected
+        // registry, so below the ADMIN floor every verb is disabled-with-reason and the vitals
+        // header shows the protected badge. null = protection store unreachable (unknown — the
+        // execution-time guard still refuses fail-closed either way, mirroring the search row).
+        Boolean protectedInstance,
+        // The L3-supplied protection reason, surfaced on the badge; null when not protected or
+        // when the store was unreachable. Never a secret (reasons are operator-authored, audited).
+        String protectionReason) {
 
     /** One unfinished activity — the "where is it" line + diagram token markers. */
     public record CurrentActivity(String activityId, String activityName, String activityType, String startTime) {}

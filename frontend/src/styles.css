@@ -1814,6 +1814,21 @@ button.primary:disabled {
 .action-btn {
   font-weight: 600;
 }
+/* R-SAFE-05 protected-instance badge (usability W3): loud amber pill at the point of action
+   so the operator sees the protection right where the (greyed) verbs live. */
+.protected-badge {
+  display: inline-flex;
+  align-items: center;
+  gap: 4px;
+  padding: 2px 8px;
+  border-radius: 12px;
+  font-size: 12px;
+  font-weight: 700;
+  color: #6b4a03;
+  background: #fdf3d7;
+  border: 1px solid #e0b84a;
+  white-space: nowrap;
+}
 
 /* ---- usability round 1: ActionHint shared primitive ---- */
 .action-slot {
@@ -2263,6 +2278,34 @@ button.primary:disabled {
 .topbar-link:hover {
   color: #fff;
   text-decoration: underline;
+}
+/* Usability W3: dev identity affordance (who-am-I + Sign out) in the topbar. */
+.identity-strip {
+  display: inline-flex;
+  align-items: center;
+  gap: 8px;
+  white-space: nowrap;
+}
+.identity-who {
+  font-size: 13px;
+  color: #c9d6df;
+}
+.identity-label {
+  color: #7f8c9b;
+}
+.identity-role {
+  color: #7f8c9b;
+}
+.identity-signout {
+  background: none;
+  border: 1px solid #4a5b6b;
+  border-radius: 4px;
+  padding: 2px 8px;
+  cursor: pointer;
+}
+.identity-signout:disabled {
+  opacity: 0.6;
+  cursor: default;
 }
 .ops-log-page {
   display: flex;

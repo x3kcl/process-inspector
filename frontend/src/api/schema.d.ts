@@ -1664,6 +1664,8 @@ export interface components {
             flags?: components["schemas"]["InstanceStatusFlags"];
             processDefinitionId?: string;
             processInstanceId?: string;
+            protectedInstance?: boolean;
+            protectionReason?: string;
             startTime?: string;
             startedBy?: string;
             /** @enum {string} */

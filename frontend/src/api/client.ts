@@ -99,3 +99,18 @@ const cookieCsrf: Middleware = {
 export const api = createClient<paths>({ baseUrl: '/' })
 api.use(basicAuth)
 api.use(cookieCsrf)
+
+/**
+ * Sign out the dev session (usability W3). Spring Security's LogoutFilter owns POST `/logout`
+ * — it is NOT an OpenAPI-contract endpoint, so it legitimately sits outside the typed `api`
+ * client (this is the ONE security-plumbing call, not a parallel data wrapper). The basic
+ * creds are cleared by the caller FIRST, so this POST has no Authorization header and rides
+ * the session cookie — meaning CSRF applies, so we echo the same X-XSRF-TOKEN the middleware
+ * would (reusing xsrfHeaderValue). Best-effort: a failure still drops the client-side creds.
+ */
+export async function postLogout(): Promise<void> {
+  const token = xsrfHeaderValue('POST', document.cookie, getBasicAuth())
+  const headers: Record<string, string> = {}
+  if (token !== null) headers['X-XSRF-TOKEN'] = token
+  await fetch('/logout', { method: 'POST', headers, credentials: 'same-origin' })
+}

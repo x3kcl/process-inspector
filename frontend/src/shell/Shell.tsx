@@ -3,6 +3,7 @@ import { useQueryClient } from '@tanstack/react-query'
 import { Link, Outlet, useLocation, useNavigate } from 'react-router'
 import { ApiError } from '../api/client'
 import { useMe } from '../api/me'
+import { isSignedOut, subscribeSignedOut } from '../api/session'
 import {
   checkpointAndReauth,
   consumeResume,
@@ -10,6 +11,7 @@ import {
   sessionExpiryState,
 } from '../auth/reauth'
 import { HeaderStrip } from '../components/HeaderStrip'
+import { IdentityStrip } from '../components/IdentityStrip'
 import { SignIn } from '../components/SignIn'
 import { ZoneToggle } from '../components/ZoneToggle'
 import { ToastProvider } from '../components/toast'
@@ -26,7 +28,12 @@ import { restoreRouteFocus } from './routeFocus'
  * appears the moment ANY query in the cache answers 401 — pages never manage auth.
  */
 export function Shell() {
-  const authRequired = useAnyAuthError()
+  // Sign-in shows on EITHER a 401 (session expired / never signed in) OR an explicit dev
+  // sign-out (usability W3) — the latter forces the form before any query errors. Both hooks
+  // run unconditionally (rules-of-hooks); the `||` only combines their results.
+  const authError = useAnyAuthError()
+  const signedOut = useSignedOut()
+  const authRequired = authError || signedOut
   // v2/M4: one-time migration of any v1 localStorage views/recents into the server store, once
   // the user is authenticated (SPEC §8).
   useLegacyViewMigration(!authRequired)
@@ -61,6 +68,8 @@ export function Shell() {
               <Omnibox />
               {/* R-UXQ-03: the one-click display-zone control lives on every stage. */}
               <ZoneToggle />
+              {/* Usability W3: who-am-I + Sign out (dev ladder). Hidden while signed out. */}
+              {!authRequired && <IdentityStrip />}
               <HeaderStrip />
             </header>
             {authRequired && <SignIn />}
@@ -207,6 +216,11 @@ function useAnyAuthError(): boolean {
             !isReauthBody(query.state.error.body),
         ),
   )
+}
+
+/** Subscribe to the explicit dev sign-out flag (usability W3), SSR-safe via a store snapshot. */
+function useSignedOut(): boolean {
+  return useSyncExternalStore(subscribeSignedOut, isSignedOut, isSignedOut)
 }
 
 /**

@@ -3,6 +3,8 @@ package io.inspector.detail;
 import com.fasterxml.jackson.core.JsonProcessingException;
 import com.fasterxml.jackson.databind.ObjectMapper;
 import io.inspector.action.GuardRefusedException;
+import io.inspector.audit.ProtectedInstance;
+import io.inspector.audit.ProtectedInstanceRepository;
 import io.inspector.client.FlowableEngineClient;
 import io.inspector.client.FlowableEngineClient.FlowablePage;
 import io.inspector.client.FlowableEngineClient.JobLaneKind;
@@ -82,11 +84,17 @@ public class InstanceDetailService {
     private final EngineRegistry registry;
     private final FlowableEngineClient flowable;
     private final InspectorProperties props;
+    private final ProtectedInstanceRepository protectedInstances;
 
-    public InstanceDetailService(EngineRegistry registry, FlowableEngineClient flowable, InspectorProperties props) {
+    public InstanceDetailService(
+            EngineRegistry registry,
+            FlowableEngineClient flowable,
+            InspectorProperties props,
+            ProtectedInstanceRepository protectedInstances) {
         this.registry = registry;
         this.flowable = flowable;
         this.props = props;
+        this.protectedInstances = protectedInstances;
     }
 
     /* ================= vitals ================= */
@@ -106,6 +114,7 @@ public class InstanceDetailService {
 
         String definitionId = str(historic, "processDefinitionId");
         Object duration = historic.get("durationInMillis");
+        Protection protection = protectionOf(engine.id(), instanceId);
         return new InstanceDetail(
                 engine.id() + ":" + instanceId,
                 engine.id(),
@@ -131,7 +140,31 @@ public class InstanceDetailService {
                 current,
                 whyStuck,
                 waitingFor,
-                externalWorkerJobs);
+                externalWorkerJobs,
+                protection.isProtected(),
+                protection.reason());
+    }
+
+    /** The vitals protected-state read + its reason; {@code isProtected==null} = store unreachable. */
+    private record Protection(Boolean isProtected, String reason) {}
+
+    /**
+     * R-SAFE-05 point-of-action read (usability W3 sliver): one batched-key lookup for THIS
+     * instance so the vitals header can show the protected badge and the UI can grey every
+     * verb below the ADMIN floor. A Postgres outage degrades to {@code isProtected=null}
+     * (unknown) — vitals must never fail over it; the execution-time guard still refuses
+     * fail-closed. Mirrors {@code SearchService.markProtected} on the grid path.
+     */
+    private Protection protectionOf(String engineId, String instanceId) {
+        try {
+            return protectedInstances
+                    .findById(new ProtectedInstance.Key(engineId, instanceId))
+                    .map(p -> new Protection(true, p.getReason()))
+                    .orElseGet(() -> new Protection(false, null));
+        } catch (RuntimeException e) {
+            log.warn("protected-instance lookup unavailable — vitals carries protectedInstance=null: {}", e.toString());
+            return new Protection(null, null);
+        }
     }
 
     /**
