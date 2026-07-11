@@ -9,8 +9,7 @@ import { parseActionProblem } from '../actions/problem'
 import type { components } from './schema'
 
 export type AcknowledgeErrorGroupRequest = components['schemas']['AcknowledgeErrorGroupRequest']
-export type UnacknowledgeErrorGroupRequest =
-  components['schemas']['UnacknowledgeErrorGroupRequest']
+export type UnacknowledgeErrorGroupRequest = components['schemas']['UnacknowledgeErrorGroupRequest']
 export type ErrorGroupAcknowledgement = components['schemas']['ErrorGroupAcknowledgement']
 
 export async function acknowledgeErrorGroup(
@@ -23,9 +22,7 @@ export async function acknowledgeErrorGroup(
   return data
 }
 
-export async function unacknowledgeErrorGroup(
-  body: UnacknowledgeErrorGroupRequest,
-): Promise<null> {
+export async function unacknowledgeErrorGroup(body: UnacknowledgeErrorGroupRequest): Promise<null> {
   // 204 on success — check the response, not the (absent) body.
   const { error, response } = await api.POST('/api/triage/error-groups/unacknowledge', { body })
   if (!response.ok) throw new ActionError(parseActionProblem(response.status, error))

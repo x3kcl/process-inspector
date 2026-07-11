@@ -5,7 +5,13 @@
 import { describe, expect, it } from 'vitest'
 import type { MeDto } from '../api/me'
 import type { ErrorGroup, ErrorGroupAcknowledgement } from '../api/model'
-import { ackGate, isCollapsedAck, resurfaceBadge, splitAcknowledged, worstEnvironment } from './ackState'
+import {
+  ackGate,
+  isCollapsedAck,
+  resurfaceBadge,
+  splitAcknowledged,
+  worstEnvironment,
+} from './ackState'
 
 function group(hash: string, ack?: ErrorGroupAcknowledgement): ErrorGroup {
   return {
@@ -64,9 +70,9 @@ describe('splitAcknowledged (R-BAU-01 collapse rule)', () => {
 
 describe('resurfaceBadge wording', () => {
   it('renders the register-normative growth badge', () => {
-    expect(resurfaceBadge({ ...quietAck, resurfaced: true, resurfaceReason: 'grew', grownBy: 45 })).toBe(
-      'GREW SINCE ACK: +45',
-    )
+    expect(
+      resurfaceBadge({ ...quietAck, resurfaced: true, resurfaceReason: 'grew', grownBy: 45 }),
+    ).toBe('GREW SINCE ACK: +45')
   })
 
   it('labels a new failing version, keeping the delta visible when present', () => {

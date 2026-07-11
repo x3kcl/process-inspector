@@ -48,7 +48,9 @@ export function ErrorGroupCard({ group, enginesById, lowerBound }: Props) {
   // The BFF door mirror (R-BAU-01): OPERATOR on EVERY engine the group is failing on.
   const gate = ackGate(me.data, Object.keys(group.countsByEngine ?? {}))
   const environment = worstEnvironment(
-    Object.keys(group.countsByEngine ?? {}).map((engineId) => enginesById.get(engineId)?.environment),
+    Object.keys(group.countsByEngine ?? {}).map(
+      (engineId) => enginesById.get(engineId)?.environment,
+    ),
   )
   const [ackMode, setAckMode] = useState<'acknowledge' | 'unacknowledge' | null>(null)
   return (
@@ -112,9 +114,9 @@ export function ErrorGroupCard({ group, enginesById, lowerBound }: Props) {
       </header>
       {ack !== undefined && (
         <p className="ack-meta">
-          Acknowledged by <strong>{ack.acknowledgedBy}</strong> <Ts iso={ack.acknowledgedAt} relative />{' '}
-          at {formatCount(ack.acknowledgedTotal ?? 0)} instances — “{ack.reason}”
-          {ack.ticketId != null && <> · {ack.ticketId}</>}
+          Acknowledged by <strong>{ack.acknowledgedBy}</strong>{' '}
+          <Ts iso={ack.acknowledgedAt} relative /> at {formatCount(ack.acknowledgedTotal ?? 0)}{' '}
+          instances — “{ack.reason}”{ack.ticketId != null && <> · {ack.ticketId}</>}
           {ack.expiresAt != null && (
             <>
               {' '}
@@ -126,7 +128,9 @@ export function ErrorGroupCard({ group, enginesById, lowerBound }: Props) {
             className="ack-group-btn"
             disabled={!gate.enabled}
             title={
-              gate.enabled ? 'Remove the acknowledgment — the group returns to the active list' : gate.reason
+              gate.enabled
+                ? 'Remove the acknowledgment — the group returns to the active list'
+                : gate.reason
             }
             onClick={() => {
               setAckMode('unacknowledge')
