@@ -1,6 +1,6 @@
-import { useEffect, useState, useSyncExternalStore } from 'react'
+import { useEffect, useRef, useState, useSyncExternalStore } from 'react'
 import { useQueryClient } from '@tanstack/react-query'
-import { Link, Outlet, useNavigate } from 'react-router'
+import { Link, Outlet, useLocation, useNavigate } from 'react-router'
 import { ApiError } from '../api/client'
 import { useMe } from '../api/me'
 import {
@@ -18,6 +18,7 @@ import { OpsDrawer } from '../ops/OpsDrawer'
 import { OpsDrawerProvider } from '../ops/drawerState'
 import { useLegacyViewMigration } from '../views/legacyMigration'
 import { Omnibox } from './Omnibox'
+import { restoreRouteFocus } from './routeFocus'
 
 /**
  * The stage-independent frame (SPEC §4): topbar with the app title, the omnibox (pinned on
@@ -33,6 +34,9 @@ export function Shell() {
   // OIDC redirect, so the pre-redirect route is checkpointed to sessionStorage; on the fresh boot
   // after login we restore it (single-shot, TTL-bounded, same-origin-path-only).
   useResumeAfterReauth()
+  // R-UXQ-02: after a route change, focus never stays on <body> — it lands on the new
+  // route's main heading (or nearest survivor).
+  useRouteFocus()
   return (
     <ToastProvider>
       {/* App-scoped live channel (live-ui-sse): ONE EventSource for every surface — a
@@ -203,6 +207,31 @@ function useAnyAuthError(): boolean {
             !isReauthBody(query.state.error.body),
         ),
   )
+}
+
+/**
+ * Route-change focus management (R-UXQ-02, usability W1#5): SPA navigation drops focus
+ * onto <body>, forcing keyboard users to re-Tab from the page top. After each pathname
+ * change, hand focus to the new route's main heading — unless a surviving element (the
+ * link just activated, a tab button on a ?tab= switch) still holds it; restoreRouteFocus
+ * never steals focus. Keyed on pathname only: same-route param changes keep their focus.
+ * The initial load keeps the browser's default (address-bar → document) focus order.
+ */
+function useRouteFocus() {
+  const { pathname } = useLocation()
+  const isInitialLoad = useRef(true)
+  useEffect(() => {
+    if (isInitialLoad.current) {
+      isInitialLoad.current = false
+      return
+    }
+    // Next macrotask: lazy routes (CasePage, tab chunks) commit a Suspense fallback
+    // first — give the route one tick to mount its landmark before targeting it.
+    const timer = window.setTimeout(() => restoreRouteFocus(), 0)
+    return () => {
+      clearTimeout(timer)
+    }
+  }, [pathname])
 }
 
 /**

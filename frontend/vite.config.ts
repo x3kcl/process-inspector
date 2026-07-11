@@ -12,7 +12,9 @@ export default defineConfig({
     },
   },
   test: {
+    // Default stays node (pure-logic tests); component tests opt into jsdom per-file
+    // via the `// @vitest-environment jsdom` pragma.
     environment: 'node',
-    include: ['src/**/*.test.ts'],
+    include: ['src/**/*.test.{ts,tsx}'],
   },
 })

@@ -986,8 +986,13 @@ and would rewrite working M1/M2 code for no capability gain); Go/FastAPI/Kotlin 
   sibling diff differentiates by stroke style + endpoint glyphs, not red/green hue.
   Contrast 4.5:1 text / 3:1 non-text. Every diagram-borne fact has a keyboard-focusable
   textual twin (activity summary list with synced selection); canvas is `role="img"` with a
-  generated summary. AG Grid: full keyboard nav; row actions never hover-only. Modals: focus
-  trapped, cancel-focused, Esc per tier, focus returns to invoker or nearest survivor.
+  generated summary. AG Grid: full keyboard nav; row-open is never mouse-only — Enter on
+  the focused row/cell opens the instance detail through the same handler as double-click,
+  with a visible hint beside the grid; row actions never hover-only. Detail tabs are an
+  ARIA-APG tablist: roving tabindex, ArrowLeft/ArrowRight (wrapping) + Home/End move focus,
+  activation stays manual. After every route change focus lands on the new route's main
+  heading or nearest surviving landmark — never `<body>`. Modals: focus trapped,
+  cancel-focused, Esc per tier, focus returns to invoker or nearest survivor.
   **axe runs inside the Playwright suite as a CI hard failure.**
 - **Time.** Absolute timestamp + explicit offset + relative age, everywhere; user-selected
   display TZ (default browser-local, one-click UTC); "next retry" adds a countdown.
