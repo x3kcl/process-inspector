@@ -11,6 +11,7 @@ import { actionGate, VERBS } from '../../actions/catalog'
 import { TaskAssignModal } from '../../actions/TaskAssignModal'
 import type { TaskAssignMode } from '../../actions/TaskAssignModal'
 import type { ActionProblem } from '../../actions/problem'
+import { ActionHint } from '../../components/ActionHint'
 import { useToast } from '../../components/toast'
 
 interface Props {
@@ -191,30 +192,54 @@ function TaskRow({ task, gate, onReassign, onReturn }: RowProps) {
       <td className="task-actions">
         {active ? (
           <>
-            <button
-              type="button"
-              className="row-action"
-              disabled={!gate.enabled}
-              title={gate.enabled ? undefined : gate.reason}
-              onClick={onReassign}
-            >
-              Reassign
-            </button>
-            <button
-              type="button"
-              className="row-action"
-              disabled={!gate.enabled || !assigned}
-              title={
-                !gate.enabled
-                  ? gate.reason
-                  : !assigned
-                    ? 'already unassigned — nothing to return'
-                    : undefined
-              }
-              onClick={onReturn}
-            >
-              Return to team
-            </button>
+            {/* W2 #6 (T7): disabled task verbs carry the visible ActionHint gate naming
+                the missing grant — never a title-only dead control. */}
+            <span className="action-slot">
+              <button
+                type="button"
+                className="row-action"
+                disabled={!gate.enabled}
+                aria-describedby={gate.enabled ? undefined : `reassign-hint-${task.id ?? ''}`}
+                title={gate.enabled ? undefined : (gate.detail ?? gate.reason)}
+                onClick={onReassign}
+              >
+                Reassign
+              </button>
+              {!gate.enabled && gate.reason !== undefined && (
+                <ActionHint id={`reassign-hint-${task.id ?? ''}`} text={gate.reason} tone="gate" />
+              )}
+            </span>
+            <span className="action-slot">
+              <button
+                type="button"
+                className="row-action"
+                disabled={!gate.enabled || !assigned}
+                aria-describedby={
+                  !gate.enabled || !assigned ? `return-hint-${task.id ?? ''}` : undefined
+                }
+                title={
+                  !gate.enabled
+                    ? (gate.detail ?? gate.reason)
+                    : !assigned
+                      ? 'already unassigned — nothing to return'
+                      : undefined
+                }
+                onClick={onReturn}
+              >
+                Return to team
+              </button>
+              {!gate.enabled && gate.reason !== undefined ? (
+                <ActionHint id={`return-hint-${task.id ?? ''}`} text={gate.reason} tone="gate" />
+              ) : (
+                !assigned && (
+                  <ActionHint
+                    id={`return-hint-${task.id ?? ''}`}
+                    text="Blocked: already unassigned"
+                    tone="gate"
+                  />
+                )
+              )}
+            </span>
           </>
         ) : (
           <span className="value-muted">—</span>

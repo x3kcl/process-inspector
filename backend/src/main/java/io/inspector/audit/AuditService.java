@@ -156,6 +156,17 @@ public class AuditService {
      * @param succeeded whether the underlying event itself succeeded ({@code ok} vs {@code failed})
      */
     public AuditEntry recordConfigEvent(String action, String actor, boolean succeeded, Map<String, Object> payload) {
+        return recordConfigEvent(action, actor, succeeded, null, payload);
+    }
+
+    /**
+     * {@link #recordConfigEvent(String, String, boolean, Map)} with an operator-supplied reason that
+     * lands in the row's {@code reason} COLUMN — so the operations log renders it first-class, not
+     * buried in the payload JSON (usability W2 #3: team-view unpublish is a moderation verb whose
+     * mandatory reason must be readable in the audit surface, R-SAFE-16).
+     */
+    public AuditEntry recordConfigEvent(
+            String action, String actor, boolean succeeded, String reason, Map<String, Object> payload) {
         String payloadJson = toJson(redact(payload));
         try {
             synchronized (chainLock) {
@@ -172,7 +183,7 @@ public class AuditService {
                         null,
                         null,
                         action,
-                        null,
+                        reason,
                         null,
                         payloadJson,
                         false);

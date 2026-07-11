@@ -34,6 +34,7 @@ class PagingCursorTest {
                 null,
                 null,
                 null,
+                null,
                 "bpmn",
                 null,
                 null,

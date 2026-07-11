@@ -250,6 +250,7 @@ class BulkErrorClassServiceTest {
                 null,
                 instanceId,
                 null,
+                null,
                 "payment",
                 null,
                 3,

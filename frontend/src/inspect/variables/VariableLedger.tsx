@@ -1,5 +1,6 @@
 import { useState } from 'react'
 import type { ReactNode } from 'react'
+import { ActionHint } from '../../components/ActionHint'
 import { CopyButton } from '../../components/CopyButton'
 import { useDisplayZone } from '../../lib/format'
 import { Ts } from '../../lib/Ts'
@@ -208,20 +209,28 @@ function LedgerRowView({
           <Ts iso={row.entry.lastModified} />
         </td>
         <td className="ledger-row-tools">
-          {/* §4a Entry: always visible, keyboard-focusable, greyed-with-reason. */}
+          {/* §4a Entry: always visible, keyboard-focusable, greyed-with-reason. W2 #6 (T7):
+              the reason is a VISIBLE ActionHint, never a hover-only title — no silently
+              dead pencils. */}
           {onEditRow !== undefined && (
-            <button
-              type="button"
-              className="copy-btn edit-pencil"
-              aria-label={`edit ${row.entry.name}`}
-              disabled={gateReason !== null}
-              title={gateReason ?? 'edit this value'}
-              onClick={() => {
-                onEditRow(editing ? null : row)
-              }}
-            >
-              {editing ? 'close editor' : '✎ edit'}
-            </button>
+            <span className="action-slot">
+              <button
+                type="button"
+                className="copy-btn edit-pencil"
+                aria-label={`edit ${row.entry.name}`}
+                aria-describedby={gateReason !== null ? `edit-gate-${row.entry.name}` : undefined}
+                disabled={gateReason !== null}
+                title={gateReason ?? 'edit this value'}
+                onClick={() => {
+                  onEditRow(editing ? null : row)
+                }}
+              >
+                {editing ? 'close editor' : '✎ edit'}
+              </button>
+              {gateReason !== null && (
+                <ActionHint id={`edit-gate-${row.entry.name}`} text={gateReason} tone="gate" />
+              )}
+            </span>
           )}
           <CopyButton text={rawCopyText(row)} label="copy raw" />
         </td>

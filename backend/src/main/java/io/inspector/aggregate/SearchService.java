@@ -953,6 +953,9 @@ public class SearchService {
                 engine.accentColor(),
                 id,
                 str(pi, "businessKey"),
+                // Root-vs-child (W2 #7, R-UXQ-12): historic rows serialize the parent id for
+                // call-activity children; null = root. Both plan legs assemble from historic rows.
+                str(pi, "superProcessInstanceId"),
                 definitionKeyOf(definitionId),
                 str(pi, "processDefinitionName"),
                 definitionVersionOf(definitionId),

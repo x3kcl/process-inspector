@@ -11,7 +11,6 @@ import java.util.List;
 import org.springframework.http.HttpStatus;
 import org.springframework.security.access.prepost.PreAuthorize;
 import org.springframework.security.core.Authentication;
-import org.springframework.web.bind.annotation.DeleteMapping;
 import org.springframework.web.bind.annotation.GetMapping;
 import org.springframework.web.bind.annotation.PathVariable;
 import org.springframework.web.bind.annotation.PostMapping;
@@ -81,14 +80,6 @@ public class TeamViewsController {
         service.unpublish(authentication, id, body.reason());
     }
 
-    /** Convenience DELETE alias for unpublish (no reason body — an author removing their own canon). */
-    @DeleteMapping("/{id}")
-    @ResponseStatus(HttpStatus.NO_CONTENT)
-    @PreAuthorize("@rbac.atLeast(authentication, 'VIEWER')")
-    public void delete(@PathVariable Long id, Authentication authentication) {
-        service.unpublish(authentication, id, null);
-    }
-
     /**
      * A team view for the picker. {@code danglingReason} is non-null when the scoped engine is no
      * longer live (SHARED-VIEWS.md §4.5) — the frontend greys the chip with it, never a dead entry
@@ -145,6 +136,11 @@ public class TeamViewsController {
             @Size(max = 2000) String runbookUrl,
             @Size(max = 500) String reason) {}
 
-    /** Unpublish; {@code reason} (≥10 chars, enforced in the service) required only to moderate another's canon. */
+    /**
+     * Unpublish; {@code reason} ≥10 chars (floor enforced in the service) is REQUIRED for every
+     * caller, author included — unpublish is a moderation verb (usability W2 #3, R-SAFE-16) and the
+     * reason is rendered in the operations log. The former reason-free {@code DELETE /{id}} alias is
+     * gone: it existed solely for the author's reason-free path, which no longer exists.
+     */
     public record ModerationRequest(@Size(max = 500) String reason) {}
 }

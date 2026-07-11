@@ -106,9 +106,21 @@ class SharedViewGovernanceIT {
                 .isEqualTo("engines=hr-prod&status=RETRYING");
         assertThat(viewAudits("view-update", "Failing onboarding")).isEqualTo(1);
 
-        service.unpublish(admin("alice"), v.getId(), null);
+        // W2 #3 (R-SAFE-16): unpublish is a moderation verb — reason ≥10 required for EVERY
+        // caller (author included), and it lands in the row's reason COLUMN, not only the payload.
+        assertThatThrownBy(() -> service.unpublish(admin("alice"), v.getId(), null))
+                .isInstanceOf(ResponseStatusException.class)
+                .hasMessageContaining("400");
+        assertThat(repository.findById(v.getId())).isPresent(); // refused → nothing changed
+
+        service.unpublish(admin("alice"), v.getId(), "superseded by the new onboarding canon");
         assertThat(repository.findById(v.getId())).isEmpty();
         assertThat(viewAudits("view-unpublish", "Failing onboarding")).isEqualTo(1);
+        AuditEntry unpublishRow = audit.findAll().stream()
+                .filter(e -> "view-unpublish".equals(e.getAction()))
+                .reduce((a, b) -> b)
+                .orElseThrow();
+        assertThat(unpublishRow.getReason()).isEqualTo("superseded by the new onboarding canon");
     }
 
     @Test

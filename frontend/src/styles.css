@@ -812,6 +812,17 @@ button.primary:disabled {
   font-weight: 700;
   font-variant-numeric: tabular-nums;
 }
+/* W2 #7 (T9): count-unit tokens — "jobs" vs "instances" so the two count families never
+   read as comparable; muted so the number stays the headline. */
+.count-unit {
+  font-size: 11px;
+  font-weight: 400;
+  color: #7f8c9b;
+}
+/* W2 #7 (R-UXQ-12): root-vs-child marker on tree-shaped businessKey results. */
+.child-badge {
+  margin-right: 4px;
+}
 /* v2/M4 job-lane trend sparkline (R-BAU-08): a tiny snapshot-store trend line inside each
    status tile. Hue only ECHOES the lane chip (redundant reinforcement) — the meaning is the
    line's shape + the SVG aria-label. */

@@ -1,9 +1,14 @@
 // Pure presentation helpers for team (shared) views — rung-1 testable, no React.
 import type { TeamViewDto } from '../api/model'
 
-/** A team view whose scoped engine is gone (SHARED-VIEWS.md §4.5): grey it, never a live link. */
+/**
+ * A team view whose scoped engine is gone (SHARED-VIEWS.md §4.5): grey it, never a live link.
+ * typeof-guarded (W2 #4): the wire serializes the RESOLVABLE case as `danglingReason: null`
+ * (Jackson null vs TS undefined — the generated type omits null), and a bare `!== undefined`
+ * check greyed every wildcard view as "⚠ null (scope unavailable)".
+ */
 export function isDangling(view: TeamViewDto): boolean {
-  return view.danglingReason !== undefined && view.danglingReason !== ''
+  return typeof view.danglingReason === 'string' && view.danglingReason !== ''
 }
 
 /** Human scope phrase for the chip tooltip — never color-only (R-UXQ-01), always words. */

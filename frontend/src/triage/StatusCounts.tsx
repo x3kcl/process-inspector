@@ -79,6 +79,9 @@ function Count({ value, lowerBound }: { value: number; lowerBound: boolean }) {
     >
       {lowerBound ? '≥ ' : ''}
       {formatCount(value)}
+      {/* W2 #7 (T9): unit token — these tiles count INSTANCES; the header strip's lane
+          numbers count JOBS. The two look comparable but aren't. */}
+      <span className="count-unit"> instances</span>
     </span>
   )
 }

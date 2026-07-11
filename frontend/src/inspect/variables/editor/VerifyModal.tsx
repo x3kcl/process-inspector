@@ -12,6 +12,7 @@ import { fetchInstanceVariable } from '../../../api/queries'
 import { reasonRule, reasonValid } from '../../../actions/catalog'
 import type { ActionProblem } from '../../../actions/problem'
 import { problemBanner } from '../../../actions/problem'
+import { ActionHint } from '../../../components/ActionHint'
 import { ModalShell } from '../../../components/ModalShell'
 import { formatBytes, serializedBytes } from '../ledger'
 import { changeSentence, changeLine, countLeaves, diffSummary, short, structuralDiff } from './diff'
@@ -101,6 +102,9 @@ export function VerifyModal({
   const reasonOk = reasonValid(reason, rule)
   const confirmDisabled =
     pending || !reasonOk || freshness !== 'fresh' || casConflict || dispatchedMaybe
+  // W2 #1 (T10, §10a): a refusal always carries a visible message — the SAME inline gate
+  // copy the bulk dialogs use for the same ≥10 rule, never a silently disabled button.
+  const reasonGate = !reasonOk ? 'Reason too short — 10+ characters' : undefined
 
   // The CAS answer REPLACES the confirm content (§4a) — three values, protection
   // framing, and no overwrite-anyway button.
@@ -162,26 +166,32 @@ export function VerifyModal({
           <button type="button" onClick={onClose}>
             Cancel
           </button>
-          <button
-            type="button"
-            className="primary"
-            disabled={confirmDisabled}
-            title={
-              freshness === 'stale'
-                ? 'blocked: the server value changed — reload first'
-                : !reasonOk
-                  ? prod
-                    ? 'a reason of at least 10 characters is required on PROD'
-                    : 'a reason, when given, must be at least 10 characters'
-                  : undefined
-            }
-            onClick={() => {
-              const trimmed = reason.trim()
-              onDispatch(trimmed === '' ? undefined : trimmed)
-            }}
-          >
-            {pending ? 'Applying…' : confirmLabel}
-          </button>
+          <div className="action-slot">
+            <button
+              type="button"
+              className="primary"
+              disabled={confirmDisabled}
+              aria-describedby={reasonGate !== undefined ? 'verify-reason-hint' : undefined}
+              title={
+                freshness === 'stale'
+                  ? 'blocked: the server value changed — reload first'
+                  : !reasonOk
+                    ? prod
+                      ? 'a reason of at least 10 characters is required on PROD'
+                      : 'a reason, when given, must be at least 10 characters'
+                    : undefined
+              }
+              onClick={() => {
+                const trimmed = reason.trim()
+                onDispatch(trimmed === '' ? undefined : trimmed)
+              }}
+            >
+              {pending ? 'Applying…' : confirmLabel}
+            </button>
+            {reasonGate !== undefined && (
+              <ActionHint id="verify-reason-hint" text={reasonGate} tone="gate" />
+            )}
+          </div>
         </>
       }
     >
@@ -279,6 +289,7 @@ export function VerifyModal({
           value={reason}
           rows={2}
           maxLength={2000}
+          aria-invalid={!reasonOk}
           onChange={(event) => {
             setReason(event.target.value)
           }}

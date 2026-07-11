@@ -114,4 +114,20 @@ class TeamViewsApiSpringTest {
         ResponseEntity<String> res = rest.getForEntity("/api/team-views", String.class);
         assertThat(res.getStatusCode()).isEqualTo(HttpStatus.UNAUTHORIZED);
     }
+
+    @Test
+    void unpublishWithoutAReasonIsRefusedEvenForTheAuthor() {
+        // Usability W2 #3 (R-SAFE-16): unpublish is a moderation verb — a reason ≥10 is
+        // required for EVERY caller, author included, and lands in the audit reason column.
+        when(sharedViews.findById(7L))
+                .thenReturn(java.util.Optional.of(new SharedView(
+                        "admin", "Stuck payments", "status=FAILED", "*", "*", null, null, Instant.now())));
+
+        ResponseEntity<String> res = rest.withBasicAuth("admin", "dev")
+                .exchange("/api/team-views/7/unpublish", HttpMethod.POST, new HttpEntity<>(Map.of()), String.class);
+
+        // The refusal is a 400 (bare-Spring shape — the operator-facing copy lives in the SPA's
+        // inline reason gate; the service floor is defense-in-depth, message asserted at rung 1).
+        assertThat(res.getStatusCode()).isEqualTo(HttpStatus.BAD_REQUEST);
+    }
 }

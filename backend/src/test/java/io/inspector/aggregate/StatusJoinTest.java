@@ -324,6 +324,7 @@ class StatusJoinTest {
                     null,
                     null,
                     null,
+                    null,
                     "bpmn",
                     null,
                     null,

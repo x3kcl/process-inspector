@@ -2,6 +2,7 @@ import { useState } from 'react'
 import type { FormEvent } from 'react'
 import { ApiError } from '../api/client'
 import { useMe } from '../api/me'
+import { ActionHint } from '../components/ActionHint'
 import { useTeamViews } from './useTeamViews'
 
 /**
@@ -25,21 +26,33 @@ export function PublishToTeamButton({ name, search }: { name: string; search: st
 
   if (!open) {
     return (
-      <button
-        type="button"
-        className="publish-team"
-        disabled={!canPublish}
-        title={
-          canPublish
-            ? 'Publish this view as team canon everyone with access will see'
-            : 'Publishing team views needs the OPERATOR role'
-        }
-        onClick={() => {
-          setOpen(true)
-        }}
-      >
-        Publish to team…
-      </button>
+      <span className="action-slot">
+        <button
+          type="button"
+          className="publish-team"
+          disabled={!canPublish}
+          aria-describedby={canPublish ? undefined : 'publish-team-hint'}
+          title={
+            canPublish
+              ? 'Publish this view as team canon everyone with access will see'
+              : 'Publishing team views needs the OPERATOR role'
+          }
+          onClick={() => {
+            setOpen(true)
+          }}
+        >
+          Publish to team…
+        </button>
+        {/* W2 #6 (T7): the gate is visible and names the missing grant — the same
+            ActionHint pattern as every other disabled action control. */}
+        {!canPublish && me !== undefined && (
+          <ActionHint
+            id="publish-team-hint"
+            text={`Requires OPERATOR — you are ${me.role ?? 'unknown'}`}
+            tone="gate"
+          />
+        )}
+      </span>
     )
   }
 

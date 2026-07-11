@@ -12,7 +12,7 @@ import { useQueryClient } from '@tanstack/react-query'
 import { reasonRule, reasonValid } from '../actions/catalog'
 import { isReauthChallenge, problemBanner } from '../actions/problem'
 import { ReauthNotice, useReauthStale } from '../actions/ReauthNotice'
-import { reversibilityNote } from '../bulk/intersection'
+import { bulkCapNote, reversibilityNote } from '../bulk/intersection'
 import { ActionHint } from '../components/ActionHint'
 import { ModalShell } from '../components/ModalShell'
 import { useToast } from '../components/toast'
@@ -167,6 +167,8 @@ export function RetryGroupModal({
       </div>
 
       <p className="strip-note">{reversibilityNote('retry-job')}</p>
+      {/* W2 #5 (R-NFR-01): the group door shares the 200 cap; the bigger door is named. */}
+      <p className="strip-note">{bulkCapNote('selection')}</p>
 
       <label className="modal-field">
         Why are you doing this? (required, 10+ characters — saved to the audit trail on every item)
@@ -174,6 +176,7 @@ export function RetryGroupModal({
           value={reason}
           rows={2}
           maxLength={2000}
+          aria-invalid={!reasonOk}
           onChange={(event) => {
             setReason(event.target.value)
           }}

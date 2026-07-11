@@ -595,7 +595,11 @@ the "copy as engine cURL" / REST Parity Appendix variant remains v2.
   (compensating verb named — suspend↔activate) / `RECOVERABLE` (no undo, rescue path named —
   deadletter-delete → change-state) / `IRREVERSIBLE` (terminate, trigger-timer, retry of a
   non-idempotent job). Retry verbs carry the honesty note: *"the queue move is reversible;
-  the side effects of the executed job are not."*
+  the side effects of the executed job are not."* For modal-less tier-0 verbs the badge is
+  visible ON the button (suspend/activate wear `REVERSIBLE` next to the label — a hover
+  title is not a badge), and the §6 outcome toast repeats it with the compensating verb
+  named: *"Instance 12345 suspended; its jobs moved to the suspended lane — reversible;
+  Activate undoes it."*
 - **Tier-0 friction floor on prod** for verbs that fire irreversible external side effects
   (trigger-timer, retry-now): a two-step inline button confirm (click → "Fire timer for job
   8123?" → click) — sub-second, no modal. Queue-state-only verbs stay single-click.
@@ -709,7 +713,7 @@ terminate; edit-variable) are out of scope and refused for a CMMN case. Route:
 
 | Tier | Guard |
 |---|---|
-| **0** — reversible-ish, single target | No modal. In-flight row state → **outcome toast with an explicit delta statement** ("Job 8123 moved to executable queue; retries reset to 3") + audit link. Never a bare "success". |
+| **0** — reversible-ish, single target | No modal. In-flight row state → **outcome toast with an explicit delta statement** ("Job 8123 moved to executable queue; retries reset to 3") + audit link. Never a bare "success". A `REVERSIBLE` verb's toast also names the compensating verb ("— reversible; Activate undoes it", §5.0). |
 | **1** — data mutation, single target | Diff confirm (old → new, name, scope). Reason optional on dev/test, **required on prod**. |
 | **2** — flow surgery, single target | Confirm + **required reason** + plan-as-a-sentence + raw REST body preview. |
 | **3** — destructive, single target | Modal restates the target **server-fresh** (warns if state changed since the grid snapshot), enumerates cascade victims, environment color band. Required reason. On prod: **typed token = the business key** (target-specific — never a generic "yes"/"DELETE"). Cancel-focused; Enter never submits. |
@@ -757,7 +761,10 @@ copy is never identical to an RBAC denial (R-GOV-04, R-SEM-17).
 - **v1**: grid-selection bulk (intersection of valid actions), cap 200 items, **reason
   mandatory ≥10 chars** (usability fix C-back: unified across every submit door — the
   ticked-selection door used to allow it blank, which the error-class and filter doors
-  never did) — executed as a **persisted tracked job from day one** (R-SEM-10; resolves the
+  never did). The numeric caps are **disclosed verbatim in every submit modal's copy**
+  (R-NFR-01, usability W2 #5): the 200-cap doors state the cap and name the filter-scope
+  bulk (cap 5,000) as the door for larger sets, BEFORE the server's over-cap refusal can
+  surprise anyone — executed as a **persisted tracked job from day one** (R-SEM-10; resolves the
   earlier §7↔ARCH §4 ambiguity: one machinery, restart-safe), with per-item result report
   (successful IDs vs id→error table, Conductor `BulkResponse` style) and an **aggregate
   readout** "N of M dispatched · ok/failed/skipped/unknown" (R-SEM-11).
@@ -860,8 +867,12 @@ views stay client-derived) + **team-published shared views** (v2, demand-gated �
 canon the team inherits, in a separate governed `shared_view` store (publish = snapshot-copy,
 `covers()`-gated by scope). Read-visibility is **scoped declutter, NOT a security boundary**
 (precedence System → Team → Private); a shared view whose scoped engine is later removed
-renders **greyed-with-reason and never as a clean all-clear** (§4 Stage 0). Hierarchy-aware:
-businessKey search finds the tree, not just the root.
+renders **greyed-with-reason and never as a clean all-clear** (§4 Stage 0). Unpublish is a
+**moderation verb**: a reason ≥10 is required from EVERY caller — the author included —
+and is rendered first-class in the operations log (R-SAFE-16, usability W2 #3).
+Hierarchy-aware: businessKey search finds the tree, not just the root — and the results
+grid marks call-activity children (`↳ child`, parent id in the tooltip) so identically-keyed
+tree rows stay distinguishable (R-UXQ-12 half, usability W2 #7).
 
 ## 9. Audit, notes & handover
 
@@ -1005,7 +1016,12 @@ and would rewrite working M1/M2 code for no capability gain); Go/FastAPI/Kotlin 
 - **Message style.** Every message = [what happened] + [why/which gate] + [next move];
   names the concrete object; engine-origin text quoted and attributed, visually distinct
   from BFF prose; no bare Success/Failed; no HTTP code without a plain-language line;
-  no humor, no apology theater — the 3am rule.
+  no humor, no apology theater — the 3am rule. Not-found copy is coverage-parameterized:
+  definitive ("resolved against N of N engines — confirmed not-found") when every engine
+  answered, hedged ("the engine may be unreachable") ONLY under real partial coverage —
+  never both at once (usability W2 #4). Counts name their unit wherever the two families
+  co-render: job-lane numbers say **jobs**, status tiles and drill totals say **instances**
+  (usability W2 #7 — 36+13 jobs vs 46+7 instances must never read as comparable).
 - **Notification budget.** Modals: user-initiated only. Banners: ambient degradation, one
   per scope, update-in-place, never stacked. Toasts: own-action outcomes only, max 3,
   overflow collapses to the drawer, never the sole record. Passive surfaces update silently,

@@ -15,7 +15,7 @@ import { ActionHint } from '../components/ActionHint'
 import { ModalShell } from '../components/ModalShell'
 import { useToast } from '../components/toast'
 import { useOpsDrawer } from '../ops/drawerState'
-import { reversibilityNote } from './intersection'
+import { bulkCapNote, reversibilityNote } from './intersection'
 import type { BulkVerbOffer } from './intersection'
 
 interface Props {
@@ -194,6 +194,8 @@ export function FilterBulkModal({
       </div>
 
       <p className="strip-note">{reversibilityNote(offer.verb)}</p>
+      {/* W2 #5 (R-NFR-01): the filter-scope cap disclosed before the server refuses. */}
+      <p className="strip-note">{bulkCapNote('filter')}</p>
 
       <label className="modal-field">
         Why are you doing this? (required, 10+ characters — saved to the audit trail on every item)
@@ -201,6 +203,7 @@ export function FilterBulkModal({
           value={reason}
           rows={2}
           maxLength={2000}
+          aria-invalid={!reasonOk}
           onChange={(event) => {
             setReason(event.target.value)
           }}

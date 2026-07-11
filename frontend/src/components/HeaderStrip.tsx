@@ -86,6 +86,11 @@ function EngineCard({ engine }: { engine: EngineDto }) {
             <Lane label="timer" value={lanes.timer} />
             <Lane label="susp" value={lanes.suspended} />
             <Lane label="DLQ" value={lanes.deadletter} alarm={(lanes.deadletter ?? 0) > 0} />
+            {/* W2 #7 (T9): unit token — the lane numbers count JOBS; the triage tiles
+                below count INSTANCES. Never let the two read as the same family. */}
+            <span className="count-unit" title="lane numbers are JOB counts, not instance counts">
+              jobs
+            </span>
           </span>
         ) : (
           <span className="strip-note">lanes unknown</span>

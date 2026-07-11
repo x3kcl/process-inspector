@@ -245,9 +245,12 @@ another's canon. Every lifecycle transition (`view-publish` / `view-update` / `v
 `view-delete`) is **audited fail-closed via `recordConfigEvent` (R-AUD-10), in the same `@Transactional`
 as the write** — audit-insert failure ⇒ 503 and no visibility change (no `beginPending`/`close`, no
 UNKNOWN class). Payload = name + scope + **search-HASH** (never the raw search — it embeds business keys)
-+ before/after visibility. **Reason ≥10 REQUIRED** for moderation of *another's* canon (recommended for
-own publish/update), and moderation of another's canon **also fires the security-alert channel** — but
-**not** four-eyes. PRIVATE-view CRUD stays **unaudited** (the boundary is the table).
++ before/after visibility. **Reason ≥10 REQUIRED for EVERY unpublish — the author's own included**
+(usability W2 #3: unpublish yanks a shared entry point from the whole team, so it is a moderation verb
+for everyone; the reason is bound to the audit row's reason COLUMN and rendered first-class in the
+operations log). For *edits*, the reason stays required only when moderating *another's* canon
+(recommended for own publish/update). Moderation of another's canon **also fires the security-alert
+channel** — but **not** four-eyes. PRIVATE-view CRUD stays **unaudited** (the boundary is the table).
 
 ### 4.5 Dangling-canon honesty = replay-time resolvability diff (W3)
 On replay, resolve the view's declared scope against the **live enabled registry** and (for
@@ -289,9 +292,10 @@ endorsed-verb on a view (it executes nothing). No S0 spike, no dockerized-engine
   IdP-Security.
 - **`GET /api/team-views`** (VIEWER floor; `overlaps()`-filtered), **`POST /api/team-views`** (publish —
   `covers()` gate + content-bound scope check + `recordConfigEvent`), **`PUT /api/team-views/{id}`**
-  (author-or-scope-ADMIN), **`POST /api/team-views/{id}/unpublish`** + **`DELETE /api/team-views/{id}`**
-  (author-or-scope-ADMIN moderation, reason≥10 for another's + security alert). Concurrent-publish
-  DataIntegrityViolation → **409**.
+  (author-or-scope-ADMIN), **`POST /api/team-views/{id}/unpublish`** (author-or-scope-ADMIN moderation,
+  reason≥10 REQUIRED for every caller — W2 #3; + security alert for another's). The reason-free
+  `DELETE /api/team-views/{id}` alias is removed (its only purpose was the author's reason-free path,
+  which no longer exists). Concurrent-publish DataIntegrityViolation → **409**.
 - **DTOs:** a team-view DTO (`id, name, search, scopeEngineId, scopeTenantId, author, description,
   runbookUrl, isTeam, dangling?` + reason) + a publish request; `SearchResponse` replay honesty reuses the
   existing `perEngine`/lower-bound markers plus the distinct all-dead state (§4.5). `gen:api` regen

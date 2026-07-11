@@ -942,7 +942,7 @@ export interface paths {
         get?: never;
         put: operations["edit"];
         post?: never;
-        delete: operations["delete"];
+        delete?: never;
         options?: never;
         head?: never;
         patch?: never;
@@ -1820,6 +1820,7 @@ export interface components {
             startTime?: string;
             /** @enum {string} */
             status?: "ACTIVE" | "SUSPENDED" | "COMPLETED" | "FAILED" | "RETRYING";
+            superProcessInstanceId?: string;
             tenantId?: string;
         };
         ProposalView: {
@@ -3712,26 +3713,6 @@ export interface operations {
                 content: {
                     "*/*": components["schemas"]["TeamViewDto"];
                 };
-            };
-        };
-    };
-    delete: {
-        parameters: {
-            query?: never;
-            header?: never;
-            path: {
-                id: number;
-            };
-            cookie?: never;
-        };
-        requestBody?: never;
-        responses: {
-            /** @description No Content */
-            204: {
-                headers: {
-                    [name: string]: unknown;
-                };
-                content?: never;
             };
         };
     };
