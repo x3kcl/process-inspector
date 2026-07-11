@@ -31,11 +31,34 @@ export function resultsMayBeStale(
   return hasResults && lastMutationSettledAt !== null && lastMutationSettledAt > dataUpdatedAt
 }
 
+/** Structural view of the mutation cache — only what the mount-time seed reads. */
+interface MutationCacheLike {
+  getAll: () => { state: { status: string; submittedAt: number } }[]
+}
+
+/** Mount-time seed (external review, round 2): a mutation that settled while this
+ *  surface was UNMOUNTED — act from the drawer on another page, navigate back to the
+ *  still-cached snapshot — must still raise the chip. The cache keeps settled mutations
+ *  (gcTime), so scan it; submittedAt is the conservative lower bound for the settle
+ *  time (a success can only settle at or after its submit). */
+export function lastSettleSeedFromCache(cache: MutationCacheLike): number | null {
+  let latest: number | null = null
+  for (const mutation of cache.getAll()) {
+    const { status, submittedAt } = mutation.state
+    if (status === 'success' && submittedAt > 0 && (latest === null || submittedAt > latest)) {
+      latest = submittedAt
+    }
+  }
+  return latest
+}
+
 /** Wall-clock time of the last successfully settled mutation in this session — every
  *  mutation in this app's single QueryClient is the user's own action. */
 export function useLastMutationSettledAt(): number | null {
   const queryClient = useQueryClient()
-  const [settledAt, setSettledAt] = useState<number | null>(null)
+  const [settledAt, setSettledAt] = useState<number | null>(() =>
+    lastSettleSeedFromCache(queryClient.getMutationCache()),
+  )
   useEffect(
     () =>
       queryClient.getMutationCache().subscribe((event) => {

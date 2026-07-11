@@ -4,7 +4,7 @@
 // disclosure only — never a silent re-fetch.
 import { MutationObserver, QueryClient } from '@tanstack/react-query'
 import { describe, expect, it } from 'vitest'
-import { isMutationSettleEvent, resultsMayBeStale } from './staleness'
+import { isMutationSettleEvent, lastSettleSeedFromCache, resultsMayBeStale } from './staleness'
 
 describe('isMutationSettleEvent', () => {
   it('matches only a mutation UPDATE that settled successfully', () => {
@@ -34,6 +34,37 @@ describe('isMutationSettleEvent', () => {
     await failing.mutate().catch(() => undefined)
     expect(settles).toBe(1)
     unsubscribe()
+  })
+})
+
+describe('lastSettleSeedFromCache — mutations settled while the search surface was unmounted', () => {
+  it('returns the latest successful submit time, ignoring failures and in-flight mutations', () => {
+    const cache = {
+      getAll: () => [
+        { state: { status: 'success', submittedAt: 1_000 } },
+        { state: { status: 'success', submittedAt: 3_000 } },
+        { state: { status: 'error', submittedAt: 9_000 } },
+        { state: { status: 'pending', submittedAt: 8_000 } },
+      ],
+    }
+    expect(lastSettleSeedFromCache(cache)).toBe(3_000)
+  })
+
+  it('returns null on an empty or never-successful cache', () => {
+    expect(lastSettleSeedFromCache({ getAll: () => [] })).toBe(null)
+    expect(
+      lastSettleSeedFromCache({ getAll: () => [{ state: { status: 'error', submittedAt: 5 } }] }),
+    ).toBe(null)
+  })
+
+  it('reads a REAL mutation cache: a settled mutation seeds a later-mounted surface', async () => {
+    const queryClient = new QueryClient()
+    expect(lastSettleSeedFromCache(queryClient.getMutationCache())).toBe(null)
+    const ok = new MutationObserver(queryClient, { mutationFn: () => Promise.resolve('done') })
+    await ok.mutate()
+    const seed = lastSettleSeedFromCache(queryClient.getMutationCache())
+    expect(seed).not.toBe(null)
+    expect(seed ?? 0).toBeGreaterThan(0)
   })
 })
 
