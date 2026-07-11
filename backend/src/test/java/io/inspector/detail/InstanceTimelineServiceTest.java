@@ -49,7 +49,10 @@ class InstanceTimelineServiceTest {
 
     private InstanceDetailService serviceWithMaxDepth(Integer maxDepth) {
         return new InstanceDetailService(
-                registry, flowable, new InspectorProperties(null, maxDepth, null, null, List.of()));
+                registry,
+                flowable,
+                new InspectorProperties(null, maxDepth, null, null, List.of()),
+                mock(io.inspector.audit.ProtectedInstanceRepository.class));
     }
 
     /* ================= cycle guard (R-TEST-07) ================= */

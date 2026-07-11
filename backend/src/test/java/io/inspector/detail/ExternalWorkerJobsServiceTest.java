@@ -34,8 +34,11 @@ class ExternalWorkerJobsServiceTest {
     private final EngineConfig engine = TestEngines.engine(ENGINE, "http://engine.test/flowable-rest/service");
     private final FlowableEngineClient flowable = mock(FlowableEngineClient.class);
     private final EngineRegistry registry = mock(EngineRegistry.class);
-    private final InstanceDetailService service =
-            new InstanceDetailService(registry, flowable, new InspectorProperties(null, null, null, null, List.of()));
+    private final InstanceDetailService service = new InstanceDetailService(
+            registry,
+            flowable,
+            new InspectorProperties(null, null, null, null, List.of()),
+            mock(io.inspector.audit.ProtectedInstanceRepository.class));
 
     private void health(EngineCapabilities capabilities) {
         when(registry.require(ENGINE)).thenReturn(engine);

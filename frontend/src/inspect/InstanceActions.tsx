@@ -39,6 +39,10 @@ export function InstanceActions({ engineId, instanceId, vitals, engine }: Props)
   const roleHint = roleOn(me.data, engineId)
   const ended = vitals.flags?.ended === true || vitals.endTime !== undefined
   const suspended = vitals.status === 'SUSPENDED' || vitals.flags?.suspended === true
+  // R-SAFE-05 (usability W3 sliver): the vitals carry the protected state, so every verb below
+  // the ADMIN floor greys with the reason AND the badge shows — point-of-action visibility for
+  // enforcement the BFF already does. true = protected; false/undefined = not (or unknown).
+  const isProtected = vitals.protectedInstance === true
   const environment = engine?.environment
   const auditPath = `/inspect/${engineId}/${encodeURIComponent(instanceId)}?tab=audit`
 
@@ -48,12 +52,14 @@ export function InstanceActions({ engineId, instanceId, vitals, engine }: Props)
     roleHint,
     engineMode: engine?.mode,
     instanceEnded: ended,
+    instanceProtected: isProtected,
   })
   const terminateGate = actionGate({
     meta: VERBS.terminate,
     roleHint,
     engineMode: engine?.mode,
     instanceEnded: ended,
+    instanceProtected: isProtected,
   })
   const changeStateGate = actionGate({
     meta: VERBS.changeState,
@@ -61,6 +67,7 @@ export function InstanceActions({ engineId, instanceId, vitals, engine }: Props)
     engineMode: engine?.mode,
     instanceEnded: ended,
     instanceSuspended: suspended,
+    instanceProtected: isProtected,
     capability: engine?.capabilities?.changeState,
     environment,
   })
@@ -70,6 +77,7 @@ export function InstanceActions({ engineId, instanceId, vitals, engine }: Props)
     engineMode: engine?.mode,
     instanceEnded: ended,
     instanceSuspended: suspended,
+    instanceProtected: isProtected,
     capability: engine?.capabilities?.migration,
     environment,
   })
@@ -78,6 +86,7 @@ export function InstanceActions({ engineId, instanceId, vitals, engine }: Props)
     roleHint,
     engineMode: engine?.mode,
     instanceEnded: ended,
+    instanceProtected: isProtected,
     environment,
   })
 
@@ -103,6 +112,23 @@ export function InstanceActions({ engineId, instanceId, vitals, engine }: Props)
 
   return (
     <div className="instance-actions">
+      {/* R-SAFE-05 point-of-action badge (usability W3): the operator sees the instance is
+          protected right where the verbs live — the reason rides the title, and every verb
+          below the ADMIN floor is greyed with the matching "Protected — L3 action required"
+          gate. Enforcement is server-side (instance-protected guard); this is visibility. */}
+      {isProtected && (
+        <span
+          className="protected-badge"
+          role="status"
+          title={
+            vitals.protectionReason !== undefined && vitals.protectionReason !== ''
+              ? `Protected (R-SAFE-05): ${vitals.protectionReason} — L3 (ADMIN) action required`
+              : 'Protected (R-SAFE-05) — L3 (ADMIN) action required'
+          }
+        >
+          🔒 Protected
+        </span>
+      )}
       {/* W2 #2 (T11): single-click stays (§5.0 queue-state doctrine — no confirm), but the
           REVERSIBLE badge is visible and the outcome toast names the compensating verb. */}
       <InlineConfirm

@@ -67,8 +67,11 @@ class StatusEvidenceServiceTest {
         EngineConfig engine = TestEngines.engine(ENGINE, wm.baseUrl());
         EngineRegistry registry = mock(EngineRegistry.class);
         when(registry.require(ENGINE)).thenReturn(engine);
-        InstanceDetailService detail =
-                new InstanceDetailService(registry, client, new InspectorProperties(null, null, null, null, List.of()));
+        InstanceDetailService detail = new InstanceDetailService(
+                registry,
+                client,
+                new InspectorProperties(null, null, null, null, List.of()),
+                mock(io.inspector.audit.ProtectedInstanceRepository.class));
         service = new StatusEvidenceService(registry, detail);
     }
 
