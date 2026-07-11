@@ -268,7 +268,12 @@ function VitalsBody({ vitals, onCompare }: { vitals: InstanceDetail; onCompare: 
         </span>
         <span className="vital">
           <span className="vital-label">Status</span>
-          <StatusChip status={vitals.status} flags={vitals.flags} />
+          <StatusChip
+            status={vitals.status}
+            flags={vitals.flags}
+            engineId={vitals.engineId}
+            instanceId={vitals.processInstanceId}
+          />
         </span>
         <span className="vital">
           <span className="vital-label">Business key</span>

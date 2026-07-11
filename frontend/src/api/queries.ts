@@ -22,6 +22,7 @@ import type {
   SearchRequest,
   SearchResponse,
   SiblingDiffResponse,
+  StatusEvidence,
   TriageDashboardResponse,
   TriageTrendResponse,
   SavedViewDto,
@@ -231,6 +232,20 @@ export async function fetchInstanceVitals(path: InstancePath): Promise<InstanceD
   const { data, error, response } = await api.GET('/api/instances/{engineId}/{instanceId}', {
     params: { path },
   })
+  if (data === undefined) throw new ApiError(response.status, error)
+  return data
+}
+
+/**
+ * "Explain this status" (R-L3-01, SPEC §3): the falsifiable derivation behind the status chip —
+ * plan choice, each engine call's URL/body/status/duration/asOf, and per-flag provenance,
+ * RE-DERIVED on demand (labeled as such; the original bytes are never retained).
+ */
+export async function fetchInstanceStatusEvidence(path: InstancePath): Promise<StatusEvidence> {
+  const { data, error, response } = await api.GET(
+    '/api/instances/{engineId}/{instanceId}/explain-status',
+    { params: { path } },
+  )
   if (data === undefined) throw new ApiError(response.status, error)
   return data
 }

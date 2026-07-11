@@ -795,8 +795,51 @@ public class InstanceDetailService {
      * with early exit.
      */
     public InstanceStatusFlags flagsFor(EngineConfig engine, Map<String, Object> historicRow) {
+        return deriveStatus(engine, historicRow).flags();
+    }
+
+    /**
+     * The single-instance status derivation WITH its provenance (R-L3-01, SPEC §3) — the same
+     * flags {@link #vitals} and resolve render, plus the evidence trail behind each one: which
+     * failure-lane jobs set {@code hasDeadLetterJobs}/{@code hasFailingJobs}, and which
+     * call-activity descendant (and its dead-letter job) set {@code failedInSubprocess}. The
+     * raw per-leg engine calls are captured separately by {@link EngineCallRecorder}; this
+     * record supplies the SEMANTIC link (flag ⇐ job/child), so "Explain this status" can say
+     * exactly why a chip is what it is — the fix for the retest status-contradiction (grid
+     * parent ACTIVE vs detail FAILED "in subprocess").
+     */
+    public record StatusDerivation(
+            InstanceStatusFlags flags,
+            boolean ended,
+            List<String> deadLetterJobIds,
+            List<String> failingJobIds,
+            String failingChildInstanceId,
+            String failingChildJobId) {}
+
+    public StatusDerivation deriveStatus(EngineConfig engine, Map<String, Object> historicRow) {
+        String instanceId = str(historicRow, "id");
         boolean ended = str(historicRow, "endTime") != null;
-        return flagsFor(engine, historicRow, ended ? Lanes.EMPTY : scanInstanceLanes(engine, str(historicRow, "id")));
+        if (ended) {
+            return new StatusDerivation(
+                    new InstanceStatusFlags(true, false, false, false, false), true, List.of(), List.of(), null, null);
+        }
+        Lanes lanes = scanInstanceLanes(engine, instanceId);
+        Map<String, Object> runtime = flowable.getRuntimeProcessInstance(engine, instanceId);
+        boolean suspended = runtime != null && Boolean.TRUE.equals(runtime.get("suspended"));
+        FailedChild failedChild = firstFailedDescendant(engine, instanceId);
+        InstanceStatusFlags flags = new InstanceStatusFlags(
+                false,
+                suspended,
+                !lanes.deadLetter().isEmpty(),
+                !lanes.failing().isEmpty(),
+                failedChild != null);
+        return new StatusDerivation(
+                flags,
+                false,
+                jobIds(lanes.deadLetter()),
+                jobIds(lanes.failing()),
+                failedChild != null ? failedChild.childInstanceId() : null,
+                failedChild != null ? failedChild.jobId() : null);
     }
 
     private InstanceStatusFlags flagsFor(EngineConfig engine, Map<String, Object> historicRow, Lanes lanes) {
@@ -809,16 +852,28 @@ public class InstanceDetailService {
         boolean suspended = runtime != null && Boolean.TRUE.equals(runtime.get("suspended"));
         boolean hasDeadLetter = !lanes.deadLetter().isEmpty();
         boolean hasFailing = !lanes.failing().isEmpty();
-        boolean failedInSubprocess = failedInDescendants(engine, instanceId);
+        boolean failedInSubprocess = firstFailedDescendant(engine, instanceId) != null;
         return new InstanceStatusFlags(false, suspended, hasDeadLetter, hasFailing, failedInSubprocess);
     }
 
+    private static List<String> jobIds(List<Map<String, Object>> jobs) {
+        return jobs.stream()
+                .map(job -> str(job, "id"))
+                .filter(java.util.Objects::nonNull)
+                .toList();
+    }
+
+    /** The first failed call-activity descendant found — its instance id + the dead-letter job id. */
+    private record FailedChild(String childInstanceId, String jobId) {}
+
     /**
-     * Bounded descendant walk with early exit: does any call-activity child (transitively,
-     * depth-capped) hold a dead-letter job? Count-only queries throughout — one children
-     * query per visited node, one DLQ count per child.
+     * Bounded descendant walk with early exit: the FIRST call-activity child (transitively,
+     * depth-capped) that holds a dead-letter job, or null when none does. One children query
+     * per visited node; the offending child is confirmed with a {@code size=1} dead-letter
+     * read that also yields the job id for the provenance trail (R-L3-01) — still one row,
+     * never a scan.
      */
-    private boolean failedInDescendants(EngineConfig engine, String instanceId) {
+    private FailedChild firstFailedDescendant(EngineConfig engine, String instanceId) {
         Deque<String> frontier = new ArrayDeque<>();
         frontier.add(instanceId);
         Set<String> visited = new HashSet<>();
@@ -831,15 +886,29 @@ public class InstanceDetailService {
                 for (Map<String, Object> child : childrenOf(engine, parent).dataOrEmpty()) {
                     String childId = str(child, "id");
                     if (childId == null || !visited.add(childId)) continue;
-                    if (str(child, "endTime") == null && deadLetterCount(engine, childId) > 0) {
-                        return true;
+                    if (str(child, "endTime") == null) {
+                        Map<String, Object> deadLetter = firstDeadLetterJob(engine, childId);
+                        if (deadLetter != null) {
+                            return new FailedChild(childId, str(deadLetter, "id"));
+                        }
                     }
                     next.add(childId);
                 }
             }
             frontier = next;
         }
-        return false;
+        return null;
+    }
+
+    private Map<String, Object> firstDeadLetterJob(EngineConfig engine, String instanceId) {
+        Map<String, String> filters = new LinkedHashMap<>();
+        filters.put("processInstanceId", instanceId);
+        if (engine.tenantId() != null && !engine.tenantId().isBlank()) {
+            filters.put("tenantId", engine.tenantId());
+        }
+        List<Map<String, Object>> rows =
+                flowable.listJobs(engine, JobLaneKind.DEADLETTER, filters, 0, 1).dataOrEmpty();
+        return rows.isEmpty() ? null : rows.get(0);
     }
 
     /* ================= per-instance lane reads ================= */

@@ -97,7 +97,7 @@ exhaustive scenario→class index.
 |---|---|---|---|---|
 | R-OPS-01 readiness excludes engines | — | `EnginesApiSpringTest` (registry bind) | L3 | 🟡 (readiness probe assert = §C-12) |
 | R-OPS-07/08 injection / secret hygiene | TS-AUD-03/08, FIX-STUB-05 | `EnginesApiSpringTest`, `ActionCurlTest`, `AuditServiceTest` (redact), `CsvTest`/`AuditCsvExportSpringTest` (CSV formula-escape) | L1·L3 | 🟡 (hostile-msg CI fixture = §C-7) |
-| R-L3-01 explain-this-status | TS-DET-14, TS-STAT-13 | `DetailResolveIT`, `SearchServiceIT` (plan choice) | L4 | 🟡 (per-flag provenance E2E = §C-9) |
+| R-L3-01 explain-this-status | TS-DET-14, TS-STAT-13 | `StatusEvidenceServiceTest` (per-leg capture + plan choice + failedInSubprocess provenance, WireMock), `StatusChip.test.tsx` (chip→popover→re-derived label + child deep link), `DetailResolveIT`, `SearchServiceIT` (plan choice) | L2·L4 | 🟡 (per-flag provenance E2E = §C-9) |
 | R-L3-03 raw-JSON per-tab | TS-DET-13 | `DetailResolveIT` | L4 | ✅ |
 | R-GOV-04 read-only engine mode | TS-RBAC-01, TS-PROD-01 | `CorrectiveActionServiceTest`, `ActionRbacGuardSpringTest` | L1·L3 | ✅ |
 | R-GOV-05 grid/watermark contract | — | `frontend/scripts/check-bpmn-watermark.mjs` (build gate); ESLint ag-grid-enterprise | build | 📋 |

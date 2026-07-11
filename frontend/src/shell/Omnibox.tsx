@@ -177,7 +177,12 @@ function ResolvePanel({
                   <span className="match-kind">{KIND_LABELS[match.kind ?? ''] ?? match.kind}</span>
                   <span className="engine-name">{match.engineId}</span>
                   <code className="composite-id">{match.compositeId}</code>
-                  <StatusChip status={match.status} flags={match.flags} />
+                  <StatusChip
+                    status={match.status}
+                    flags={match.flags}
+                    engineId={match.engineId}
+                    instanceId={match.processInstanceId}
+                  />
                   {match.businessKey !== undefined && (
                     <code className="hier-key">{match.businessKey}</code>
                   )}

@@ -195,7 +195,14 @@ engines thread `tenantId` through **every** query leg.
 status"** — the per-leg evidence (plan shape chosen and why; each engine call's URL, body,
 status, duration, `asOf`, cache-hit vs live, truncation; per-flag provenance "hasFailingJobs
 ⇐ timer-jobs leg, job 8123"). Evidence is re-derived on demand and labeled with both
-timestamps — never pretending the original bytes were retained.
+timestamps — never pretending the original bytes were retained. Served over
+`GET /api/instances/{engineId}/{instanceId}/explain-status` (VIEWER, breaker-wrapped) by
+re-running the SAME single-instance derivation the vitals chip uses (so the evidence can
+never disagree with the chip it explains), the calls captured by a thread-local recorder for
+the span of that one derivation. The `failedInSubprocess` finding names the failing
+call-activity child and its dead-letter job and **deep-links to that child's Errors & Jobs** —
+so a "grid parent ACTIVE vs detail FAILED in subprocess" contradiction is explained on the
+chip itself.
 
 ## 4. UI structure — three stages, not three panes
 
@@ -1079,9 +1086,9 @@ and would rewrite working M1/M2 code for no capability gain); Go/FastAPI/Kotlin 
 ## 12. Release train (re-cut per R-GOV-07; every item cites the register IDs it discharges)
 
 - **v1 (must ship, gated by §13):** corrected status join + RETRYING tier + hierarchy
-  roll-up + explain-status evidence; triage landing incl. acknowledge (landed —
-  usability W3-2, R-BAU-01) + leak views (landed — usability W3-3, R-BAU-02/R-SEM-05) +
-  badged counts; omnibox; URL state + deep
+  roll-up + explain-status evidence (landed — usability W3-4, R-L3-01); triage landing incl.
+  acknowledge (landed — usability W3-2, R-BAU-01) + leak views (landed — usability W3-3,
+  R-BAU-02/R-SEM-05) + badged counts; omnibox; URL state + deep
   links; full-page detail (vitals, read-only
   diagram, tabs, form-first variable ledger + editor (§4a), raw-JSON links); **verbs:
   tiers 0–1 + suspend/activate +

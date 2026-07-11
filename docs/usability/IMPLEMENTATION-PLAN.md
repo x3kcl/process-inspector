@@ -67,8 +67,12 @@ placeholder validation; tester sign-in via SPA form only.
    *Suspended · started > 7 days ago* view is `startedBefore`, never time-since-suspension).
    New `GET /api/triage/leak-views` count-only aggregation (`LeakViewService`) → per-definition
    `LeakViewsSection` on the landing, each count a lower-bound-badged deep link into Stage 1.
-4. **R-L3-01 explain-status** — `StatusChip` becomes interactive: derivation-ladder
-   popover (ARCH §2.3 evidence, re-derived + labeled) + deep link to Errors & Jobs. M.
+4. ✅ **R-L3-01 explain-status** (LANDED — usability W3-4): `StatusChip` is interactive —
+   clicking it opens the re-derived-and-labeled `StatusEvidence` (plan choice + per-leg raw
+   engine calls + per-flag provenance), with a deep link to the failing call-activity child's
+   Errors & Jobs (the retest status-contradiction, made explainable on the chip). New
+   `GET /api/instances/{engineId}/{id}/explain-status` (VIEWER, breaker-wrapped) re-runs the
+   SAME `deriveStatus` the vitals chip uses, calls captured by a thread-local recorder. M.
 Also from the run: **R-SAFE-05 sliver** (protected badge + per-verb reason in
 `InstanceActions.tsx` — backend enforcement exists) and the dev-ladder sign-in/sign-out
 surface (`HeaderStrip` identity + sign-out; `SignIn` on explicit sign-out, not only 401).

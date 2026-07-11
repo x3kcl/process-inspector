@@ -115,7 +115,14 @@ export function ResultsGrid({
         field: 'status',
         width: 200,
         cellRenderer: (p: CustomCellRendererProps<ProcessInstanceRow>) =>
-          p.data === undefined ? null : <StatusChip status={p.data.status} flags={p.data.flags} />,
+          p.data === undefined ? null : (
+            <StatusChip
+              status={p.data.status}
+              flags={p.data.flags}
+              engineId={p.data.engineId}
+              instanceId={p.data.processInstanceId}
+            />
+          ),
       },
       {
         headerName: 'Definition',
