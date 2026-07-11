@@ -164,12 +164,62 @@ public record InspectorProperties(
             // Null → 5000 (aligned to the filter-bulk cap for one operator mental model; the S0
             // spike could not measure the O(offset) knee at test-safe scale). YAML
             // `deep-paging-max-depth: N` binds here — lowered to e.g. 6 in the S5 config-lowered IT.
-            Integer deepPagingMaxDepth) {
+            Integer deepPagingMaxDepth,
+            // Registry lifecycle state for the DISPLAY surface (usability W1#4, theme T6):
+            // draft|probed|probe_failed|active|disabled — authoritative under source=db (the
+            // row's lifecycle column via EngineRegistryMapper); null under source=config, where
+            // lifecycleOrDefault() derives it from `enabled`. Display metadata only — every
+            // operability decision keeps reading `enabled`/require().
+            String lifecycle) {
 
         // @ConfigurationProperties binding is ambiguous once a record has >1 constructor — pin the
-        // canonical (17-arg) one as the bind target so the convenience ctors below are ignored.
+        // canonical (18-arg) one as the bind target so the convenience ctors below are ignored.
         @ConstructorBinding
         public EngineConfig {}
+
+        /**
+         * Pre-lifecycle 17-arg shape (no {@code lifecycle}) → derived from {@code enabled} via
+         * {@link #lifecycleOrDefault()}, so existing factories/tests don't churn
+         * (unit-test-patterns: no constructor churn).
+         */
+        public EngineConfig(
+                String id,
+                String name,
+                String baseUrl,
+                EngineEnvironment environment,
+                String accentColor,
+                boolean enabled,
+                String tenantId,
+                String telemetryUrlTemplate,
+                Auth auth,
+                EngineMode mode,
+                Timeouts timeouts,
+                Integer maxPageSize,
+                Integer dlqScanCap,
+                AlarmThresholds alarmThresholds,
+                AuditPayloadMode auditPayload,
+                boolean forwardUser,
+                Integer deepPagingMaxDepth) {
+            this(
+                    id,
+                    name,
+                    baseUrl,
+                    environment,
+                    accentColor,
+                    enabled,
+                    tenantId,
+                    telemetryUrlTemplate,
+                    auth,
+                    mode,
+                    timeouts,
+                    maxPageSize,
+                    dlqScanCap,
+                    alarmThresholds,
+                    auditPayload,
+                    forwardUser,
+                    deepPagingMaxDepth,
+                    null);
+        }
 
         /**
          * Pre-deep-paging 16-arg shape (no {@code deepPagingMaxDepth}) → the 5000 default, so
@@ -210,6 +260,7 @@ public record InspectorProperties(
                     alarmThresholds,
                     auditPayload,
                     forwardUser,
+                    null,
                     null);
         }
 
@@ -297,6 +348,14 @@ public record InspectorProperties(
 
         public EngineMode modeOrDefault() {
             return mode != null ? mode : EngineMode.READ_WRITE;
+        }
+
+        /**
+         * The display lifecycle (W1#4, theme T6): the DB row's lifecycle when present, else
+         * derived from {@code enabled} ({@code active}/{@code disabled}) under source=config.
+         */
+        public String lifecycleOrDefault() {
+            return lifecycle != null ? lifecycle : (enabled ? "active" : "disabled");
         }
 
         public int maxPageSizeOrDefault() {

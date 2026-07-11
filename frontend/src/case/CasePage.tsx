@@ -99,7 +99,12 @@ export function CasePage() {
           <Link to="/" className="case-back">
             ← Triage
           </Link>
-          <EnvBadge environment={engine?.environment} accentColor={engine?.accentColor} />
+          <EnvBadge
+            environment={engine?.environment}
+            accentColor={engine?.accentColor}
+            mode={engine?.mode}
+            lifecycle={engine?.lifecycle}
+          />
           <span className="case-kind" title="This is a CMMN case, not a BPMN process">
             CMMN case
           </span>

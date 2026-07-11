@@ -9,7 +9,8 @@ export type ProblemOutcome = 'refused' | 'failed' | 'unknown'
 export interface ActionProblem {
   status: number
   /** Machine-readable code: cas-conflict, audit-unavailable, reason-required,
-   *  confirm-token-mismatch, job-gone, engine-rejected, outcome-unknown, … */
+   *  confirm-token-mismatch, job-gone, engine-rejected, engine-read-only,
+   *  outcome-unknown, … */
   code: string
   title: string
   detail: string
@@ -89,6 +90,10 @@ export function problemBanner(problem: ActionProblem): string {
       return 'The action was dispatched but the engine never answered — it MAY have executed. Do not resubmit; re-check the instance state and the audit trail.'
     case 'outcome-verification-failed':
       return 'The action was dispatched and likely executed, but recording the outcome failed. Do not resubmit; the audit row stays "unknown" until verified.'
+    case 'engine-read-only':
+      // W1#4 (theme T6): a 403 from a read-only engine is OWNER POLICY, not a role
+      // verdict — the copy must never be byte-identical to (or read like) rbac-denied.
+      return `Refused: this engine is registered read-only — set by the engine owner. That is engine policy, not your role; nothing happened.${problem.detail !== '' ? ` (${problem.detail})` : ''}`
     case 'rbac-denied':
       // The ONLY code that renders an RBAC verdict — a code-less 403 takes the honest
       // default below instead (usability W1#1).

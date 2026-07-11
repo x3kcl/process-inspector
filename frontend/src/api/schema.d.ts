@@ -1407,6 +1407,7 @@ export interface components {
             id?: string;
             jobLanes?: components["schemas"]["JobLanes"];
             lastHealthCheck?: string;
+            lifecycle?: string;
             mode?: string;
             name?: string;
             /** Format: int64 */

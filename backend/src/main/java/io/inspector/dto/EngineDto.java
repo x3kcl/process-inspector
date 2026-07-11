@@ -18,6 +18,10 @@ public record EngineDto(
         String environment, // "dev" | "test" | "prod"
         String accentColor,
         String mode, // "read-write" | "read-only"
+        // Registry lifecycle (W1#4, theme T6): "active" | "disabled" | "draft" | "probed" |
+        // "probe_failed" — the display surface renders a non-active engine greyed-with-reason,
+        // never silently omitting it (R-SEM-17/R-GOV-04 doctrine).
+        String lifecycle,
         String tenantId,
         boolean reachable,
         String engineVersion,
@@ -36,6 +40,7 @@ public record EngineDto(
                 config.environment().name().toLowerCase(Locale.ROOT),
                 config.accentColor(),
                 config.modeOrDefault().name().toLowerCase(Locale.ROOT).replace('_', '-'),
+                config.lifecycleOrDefault(),
                 config.tenantId(),
                 health.reachable(),
                 health.version(),

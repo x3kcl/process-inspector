@@ -2,6 +2,7 @@ import { useState } from 'react'
 import type { FormEvent } from 'react'
 import type { EngineDto, InstanceStatus, SearchRequest, SearchResponse } from '../api/model'
 import { ALL_STATUSES } from '../api/model'
+import { isInactiveLifecycle, lifecycleGloss } from '../lib/enginePolicy'
 import { formatCount } from '../lib/format'
 import { SaveViewControl } from '../views/SaveViewControl'
 import { CopyButton } from './CopyButton'
@@ -153,19 +154,39 @@ function RailForm({
 
       <fieldset>
         <legend>Engines (all when none checked)</legend>
-        {engines.map((engine) => (
-          <label key={engine.id} className="check-row">
-            <input
-              type="checkbox"
-              checked={engine.id !== undefined && engineIds.includes(engine.id)}
-              onChange={() => {
-                if (engine.id !== undefined) setEngineIds(toggle(engineIds, engine.id))
-              }}
-            />
-            {engine.name ?? engine.id}
-            {engine.reachable !== true && <span className="health-down"> (unreachable)</span>}
-          </label>
-        ))}
+        {engines.map((engine) => {
+          // W1#4 (theme T6, R-SEM-17): the engines list now includes non-active engines —
+          // greyed-with-reason here (not searchable), never silently omitted. Still
+          // un-tickable if a stale URL selection carries one.
+          const inactive = isInactiveLifecycle(engine.lifecycle)
+          const checked = engine.id !== undefined && engineIds.includes(engine.id)
+          return (
+            <label
+              key={engine.id}
+              className={`check-row${inactive ? ' check-row-gated' : ''}`}
+              title={
+                inactive && engine.lifecycle !== undefined
+                  ? `Not searchable: ${lifecycleGloss(engine.lifecycle)}`
+                  : undefined
+              }
+            >
+              <input
+                type="checkbox"
+                checked={checked}
+                disabled={inactive && !checked}
+                onChange={() => {
+                  if (engine.id !== undefined) setEngineIds(toggle(engineIds, engine.id))
+                }}
+              />
+              {engine.name ?? engine.id}
+              {inactive ? (
+                <span className="health-down"> ({engine.lifecycle} — not searchable)</span>
+              ) : (
+                engine.reachable !== true && <span className="health-down"> (unreachable)</span>
+              )}
+            </label>
+          )
+        })}
       </fieldset>
 
       <fieldset>

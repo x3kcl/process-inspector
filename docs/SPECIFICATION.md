@@ -743,8 +743,14 @@ Cross-cutting: environment (`dev|test|prod`) drives a consistent color band on b
 headers, and inside every confirm modal (freeform per-engine colors are demoted to a subtle
 accent — color encodes environment, not identity). Disabled actions are greyed **never
 hidden**, with a tooltip naming the gate — capability ("needs Flowable ≥ 6.4; billing runs
-6.3"), role ("requires ADMIN"), or state ("no dead-letter jobs") — three different next moves
-for the operator.
+6.3"), role ("requires ADMIN"), state ("no dead-letter jobs"), or **engine policy**
+("registered read-only — set by the engine owner; policy, not your role" / registry
+lifecycle `disabled|draft|probe_failed`) — four different next moves for the operator.
+Engine policy is also visible BEFORE any refusal: a read-only or non-active engine
+co-renders a literal second token (READ-ONLY / DISABLED / …) next to its environment badge
+wherever actions are offered, the engines list/dashboard renders a non-active engine
+greyed-with-reason rather than silently omitting it, and the `engine-read-only` refusal
+copy is never identical to an RBAC denial (R-GOV-04, R-SEM-17).
 
 ## 7. Bulk operations
 

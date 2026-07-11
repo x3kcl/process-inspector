@@ -111,7 +111,12 @@ export function InspectPage() {
     <main className="inspect">
       <header className="vitals">
         <div className="vitals-identity">
-          <EnvBadge environment={engine?.environment} accentColor={engine?.accentColor} />
+          <EnvBadge
+            environment={engine?.environment}
+            accentColor={engine?.accentColor}
+            mode={engine?.mode}
+            lifecycle={engine?.lifecycle}
+          />
           <span className="engine-name">{engine?.name ?? engineId}</span>
           <code className="composite-id">{compositeId}</code>
           <CopyButton text={compositeId} label="copy ID" />

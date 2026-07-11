@@ -63,7 +63,9 @@ public final class EngineRegistryMapper {
                 row.getDlqScanCap(),
                 alarms,
                 AuditPayloadMode.fromWire(row.getAuditPayload()),
-                row.isForwardUser());
+                row.isForwardUser(),
+                null, // deepPagingMaxDepth: not a registry column — the 5000 default applies
+                row.getLifecycle()); // W1#4: the true lifecycle survives onto the display surface
     }
 
     /**

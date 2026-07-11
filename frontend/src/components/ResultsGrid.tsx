@@ -55,6 +55,8 @@ export function ResultsGrid({
               <EnvBadge
                 environment={engine?.environment}
                 accentColor={p.data.engineColor ?? engine?.accentColor}
+                mode={engine?.mode}
+                lifecycle={engine?.lifecycle}
               />
               {p.data.engineName ?? p.data.engineId}
             </span>

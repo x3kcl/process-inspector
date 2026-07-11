@@ -87,6 +87,29 @@ class EngineRegistryMapperTest {
         assertThat(back.enabled()).isFalse();
         assertThat(back.modeOrDefault()).isEqualTo(EngineMode.READ_ONLY);
         assertThat(back.auth().type()).isEqualTo(Auth.Type.none);
+        // W1#4: the true lifecycle survives the row→config seam (display honesty, theme T6).
+        assertThat(back.lifecycleOrDefault()).isEqualTo("disabled");
+    }
+
+    @Test
+    void onboarding_lifecycles_pass_through_unflattened() {
+        // A draft/probe_failed engine must not impersonate "disabled" on the display surface —
+        // the row's lifecycle string flows through verbatim (W1#4, R-SEM-17 greyed-with-REASON).
+        EngineRegistryRow row = EngineRegistryMapper.toSeedRow(
+                engine("newbie", false, EngineMode.READ_ONLY, EngineEnvironment.DEV, null), NOW);
+        row.setLifecycle("probe_failed");
+
+        assertThat(EngineRegistryMapper.toEngineConfig(row).lifecycleOrDefault())
+                .isEqualTo("probe_failed");
+    }
+
+    @Test
+    void config_source_lifecycle_derives_from_enabled_when_absent() {
+        // Under source=config there is no lifecycle column: enabled ⇒ active, disabled ⇒ disabled.
+        EngineConfig enabled = engine("up", true, EngineMode.READ_WRITE, EngineEnvironment.DEV, null);
+        EngineConfig disabled = engine("down", false, EngineMode.READ_WRITE, EngineEnvironment.DEV, null);
+        assertThat(enabled.lifecycleOrDefault()).isEqualTo("active");
+        assertThat(disabled.lifecycleOrDefault()).isEqualTo("disabled");
     }
 
     @Test
