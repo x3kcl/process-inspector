@@ -6,6 +6,7 @@
 import { useState } from 'react'
 import type { ReactNode } from 'react'
 import { ModalShell } from '../components/ModalShell'
+import { TicketField, ticketValue } from '../components/TicketField'
 import { reasonRule } from './catalog'
 import type { VerbMeta } from './catalog'
 import { isReauthChallenge, problemBanner } from './problem'
@@ -31,7 +32,8 @@ interface Props {
   confirmLabel: string
   pending: boolean
   problem?: ActionProblem
-  onConfirm: (reason: string) => void
+  /** ticketId is the optional R-AUD-07 capture — undefined when the field stays blank. */
+  onConfirm: (reason: string, ticketId?: string) => void
   onClose: () => void
 }
 
@@ -50,6 +52,7 @@ export function DestructiveModal({
   onClose,
 }: Props) {
   const [reason, setReason] = useState('')
+  const [ticket, setTicket] = useState('')
   const [typed, setTyped] = useState('')
   const prod = environment?.toLowerCase() === 'prod'
   const rule = reasonRule(meta.tier, environment)
@@ -82,7 +85,7 @@ export function DestructiveModal({
                 : undefined
         }
         onClick={() => {
-          onConfirm(reason.trim())
+          onConfirm(reason.trim(), ticketValue(ticket))
         }}
       >
         {pending ? 'Dispatching…' : confirmLabel}
@@ -152,6 +155,8 @@ export function DestructiveModal({
           }}
         />
       </label>
+
+      <TicketField value={ticket} onChange={setTicket} />
 
       {prod && (
         <label className="modal-field">

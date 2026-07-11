@@ -251,10 +251,10 @@ function EditorSession({
     setEditedPaths((current) => new Set(current).add(formatPath(path)))
   }
 
-  const dispatch = (reason: string | undefined) => {
+  const dispatch = (reason: string | undefined, ticketId?: string) => {
     if (request === null) return
     action.mutate(
-      { verb: 'edit-variable', body: { ...request, reason } },
+      { verb: 'edit-variable', body: { ...request, reason, ticketId } },
       {
         onSuccess: (result) => {
           toast({

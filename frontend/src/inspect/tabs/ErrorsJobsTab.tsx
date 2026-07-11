@@ -505,9 +505,9 @@ function JobActions({
             confirmLabel={`Delete dead-letter job ${job.id ?? '?'}`}
             pending={action.isPending}
             problem={action.error?.problem}
-            onConfirm={(reason) => {
-              // Tier-3: thread the modal's reason and, on prod, the typed token (= the job id,
-              // which the modal already required to be typed) into the request body.
+            onConfirm={(reason, ticketId) => {
+              // Tier-3: thread the modal's reason, optional ticket (R-AUD-07) and, on prod,
+              // the typed token (= the job id, which the modal already required to be typed).
               run(
                 VERBS.deleteDeadletter.verb,
                 () => {
@@ -515,6 +515,7 @@ function JobActions({
                 },
                 {
                   reason,
+                  ticketId,
                   confirmToken:
                     environment?.toLowerCase() === 'prod' ? (job.id ?? undefined) : undefined,
                 },

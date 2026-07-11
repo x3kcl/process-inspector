@@ -76,29 +76,22 @@ public class AccessReviewController {
     private static String csv(List<Row> rows) {
         StringBuilder sb = new StringBuilder("grantType,group,role,engineId,tenantId,source\n");
         for (Row r : rows) {
-            sb.append(csvCell(r.grantType()))
+            // Shared RFC-4180 + formula-escape encoding (R-OPS-08) — IdP-authored group
+            // names are another-user text and must never open as a live formula.
+            sb.append(Csv.cell(r.grantType()))
                     .append(',')
-                    .append(csvCell(r.group()))
+                    .append(Csv.cell(r.group()))
                     .append(',')
-                    .append(csvCell(r.role()))
+                    .append(Csv.cell(r.role()))
                     .append(',')
-                    .append(csvCell(r.engineId()))
+                    .append(Csv.cell(r.engineId()))
                     .append(',')
-                    .append(csvCell(r.tenantId()))
+                    .append(Csv.cell(r.tenantId()))
                     .append(',')
-                    .append(csvCell(r.source()))
+                    .append(Csv.cell(r.source()))
                     .append('\n');
         }
         return sb.toString();
-    }
-
-    /** RFC-4180 escaping — quote + double any cell with a comma/quote/newline (injection-safe). */
-    private static String csvCell(String v) {
-        String s = v == null ? "" : v;
-        if (s.contains(",") || s.contains("\"") || s.contains("\n") || s.contains("\r")) {
-            return "\"" + s.replace("\"", "\"\"") + "\"";
-        }
-        return s;
     }
 
     private static String markdown(List<Row> rows, List<String> callerGrants) {

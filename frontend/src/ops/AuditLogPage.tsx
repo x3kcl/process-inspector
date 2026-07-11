@@ -9,11 +9,16 @@ import type { ColDef } from 'ag-grid-community'
 import { useQuery } from '@tanstack/react-query'
 import { Link } from 'react-router'
 import { api, ApiError } from '../api/client'
+import { useMe } from '../api/me'
 import { useTicketUrlTemplate } from '../api/meta'
 import type { AuditEntryDto } from '../api/model'
+import { AttributionCaveat } from '../components/AttributionCaveat'
+import { CopyButton } from '../components/CopyButton'
 import { Ts } from '../lib/Ts'
 import { ticketHref } from '../lib/ticket'
+import { downloadOperationsCsv } from './exportCsv'
 import { auditOutcomeView } from './outcome'
+import { buildShiftReport, shiftStartIso } from './shiftReport'
 import 'ag-grid-community/styles/ag-grid.css'
 import 'ag-grid-community/styles/ag-theme-quartz.css'
 
@@ -40,7 +45,9 @@ async function fetchOperationsLog(filters: Filters): Promise<AuditEntryDto[]> {
 export function AuditLogPage() {
   const [draft, setDraft] = useState<Filters>(EMPTY)
   const [applied, setApplied] = useState<Filters>(EMPTY)
+  const [exportError, setExportError] = useState<string | null>(null)
   const ticketTemplate = useTicketUrlTemplate()
+  const me = useMe()
   const log = useQuery({
     queryKey: ['operations-log', applied],
     queryFn: () => fetchOperationsLog(applied),
@@ -139,10 +146,29 @@ export function AuditLogPage() {
     setApplied(draft)
   }
 
+  // R-AUD-05: "my activity, this shift" — the signed-in user since shift start (last 8h).
+  const applyMyShift = () => {
+    const preset: Filters = { ...EMPTY, actor: me.data?.username ?? '', since: shiftStartIso() }
+    setDraft(preset)
+    setApplied(preset)
+  }
+
+  // R-AUD-08: server-side streaming export of the APPLIED filters (what the grid shows) —
+  // through the api client (auth middleware), never a bare href.
+  const exportCsv = () => {
+    setExportError(null)
+    downloadOperationsCsv(applied).catch((cause: unknown) => {
+      setExportError(cause instanceof Error ? cause.message : 'export failed')
+    })
+  }
+
   return (
     <main className="ops-log-page">
       <header className="ops-log-header">
         <h2>Operations log</h2>
+        {/* R-AUD-09: the engine-side history blames the shared service account — warn HERE,
+            on the surface people trust for WHO, not only on the per-instance tab. */}
+        <AttributionCaveat />
         <form className="ops-log-filters" onSubmit={apply}>
           <label>
             Actor
@@ -191,8 +217,39 @@ export function AuditLogPage() {
           <button type="submit" className="primary ops-log-apply">
             Apply
           </button>
+          <button
+            type="button"
+            className="copy-btn"
+            title="filter to your own actions since shift start (last 8 hours)"
+            onClick={applyMyShift}
+          >
+            My shift
+          </button>
+          <button
+            type="button"
+            className="copy-btn"
+            title="download the applied filters as CSV — newest 10,000 rows, formula-escaped"
+            onClick={exportCsv}
+          >
+            Export CSV
+          </button>
+          {log.data !== undefined && (
+            <CopyButton
+              label="Copy shift report"
+              text={buildShiftReport(log.data, {
+                actor: applied.actor !== '' ? applied.actor : (me.data?.username ?? ''),
+                sinceIso: applied.since,
+                nowMs: Date.now(),
+              })}
+            />
+          )}
         </form>
       </header>
+      {exportError !== null && (
+        <div className="error-banner" role="alert">
+          CSV export failed: {exportError}
+        </div>
+      )}
       {log.isPending && <div className="zero-state">Loading the operations log…</div>}
       {log.isError && (
         <div className="error-banner" role="alert">

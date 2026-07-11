@@ -78,9 +78,9 @@ exhaustive scenario→class index.
 | R-AUD-01 fail-closed audit | TS-AUD-01 | `AuditServiceTest`, `FailClosedAuditIT`, `CorrectiveActionServiceTest` | L1·L4 | ✅ |
 | R-AUD-02 normative schema | TS-AUD-02 | `AuditServiceTest`, `CorrectiveActionIT` | L1·L4 | ✅ |
 | R-AUD-03 redaction / role-gate / hash chain | TS-AUD-03/04/05 | `AuditServiceTest` (redact, hash-chain, truncation) | L1 | 🟡 (DB REVOKE + tamper read-path = §C-5) |
-| R-AUD-05 shift report | TS-AUD-07 | — | — | 🔲 (§C-7) |
+| R-AUD-05 shift report | TS-AUD-07 | FE `shiftReport.test` (UNKNOWNs-first, UTC ISO), `AuditLogPage.test` (My-shift preset + copy) | UNIT-FE | 🟡 (rendered E2E leg = usability nightly re-run) |
 | R-AUD-06 copy-for-ticket | TS-DET-11 | FE `ticket.test` | UNIT-FE | 🟡 (E2E leg pending — §C-9) |
-| R-AUD-08 CSV export + formula-escape | TS-AUD-08 | — | — | 🔲 (§C-7) |
+| R-AUD-08 CSV export + formula-escape | TS-AUD-08 | `CsvTest` (escape rules), `AuditCsvExportSpringTest` (streaming endpoint, hostile cells, filter parity, RBAC) | L1·L3 | ✅ |
 
 ### NFR — service levels
 | Req | Scenario(s) | Suite(s) | Rung | Cov |
@@ -96,7 +96,7 @@ exhaustive scenario→class index.
 | Req | Scenario(s) | Suite(s) | Rung | Cov |
 |---|---|---|---|---|
 | R-OPS-01 readiness excludes engines | — | `EnginesApiSpringTest` (registry bind) | L3 | 🟡 (readiness probe assert = §C-12) |
-| R-OPS-07/08 injection / secret hygiene | TS-AUD-03/08, FIX-STUB-05 | `EnginesApiSpringTest`, `ActionCurlTest`, `AuditServiceTest` (redact) | L1·L3 | 🟡 (CSV formula-escape + hostile-msg CI fixture = §C-7) |
+| R-OPS-07/08 injection / secret hygiene | TS-AUD-03/08, FIX-STUB-05 | `EnginesApiSpringTest`, `ActionCurlTest`, `AuditServiceTest` (redact), `CsvTest`/`AuditCsvExportSpringTest` (CSV formula-escape) | L1·L3 | 🟡 (hostile-msg CI fixture = §C-7) |
 | R-L3-01 explain-this-status | TS-DET-14, TS-STAT-13 | `DetailResolveIT`, `SearchServiceIT` (plan choice) | L4 | 🟡 (per-flag provenance E2E = §C-9) |
 | R-L3-03 raw-JSON per-tab | TS-DET-13 | `DetailResolveIT` | L4 | ✅ |
 | R-GOV-04 read-only engine mode | TS-RBAC-01, TS-PROD-01 | `CorrectiveActionServiceTest`, `ActionRbacGuardSpringTest` | L1·L3 | ✅ |
@@ -147,8 +147,8 @@ Exhaustive TS-* → class(es). `—` = no automated suite yet (see §C). This is
 | TS-BULK-11 SSE progress | `SseHubTest`, `BulkFilterIT` | L1·L4 | 🟡 §C-8 (P3 soak) |
 | TS-AUD-01..05 | `AuditServiceTest`, `FailClosedAuditIT`, `CorrectiveActionIT` | L1·L4 | 🟡 §C-5 |
 | TS-AUD-06 notes | `ActionRbacGuardSpringTest` (notes floor); `DetailResolveIT` | L3·L4 |
-| TS-AUD-07 shift report | — | — | 🔲 §C-7 |
-| TS-AUD-08 CSV export | — | — | 🔲 §C-7 |
+| TS-AUD-07 shift report | FE `shiftReport.test`, `AuditLogPage.test` | UNIT-FE | 🟡 (E2E leg) |
+| TS-AUD-08 CSV export | `CsvTest`, `AuditCsvExportSpringTest` | L1·L3 |
 | TS-CAP-01/02/03 | `EngineCapabilitiesTest`, `CmmnScopeServiceTest`, `ExternalWorkerJob{7,Legacy}IT`, `Triage7IT`, `SearchLegacyIT`; FE `externalWorker.test` | L1·L4·UNIT-FE |
 | TS-E2E-01 canonical arc | — (per-surface smokes only) | — | 🔲 §C-16 |
 | TS-E2E-02/03/04 | partial across `cmmn-scope.spec`/`filter-bulk.spec` + FE `partials.test` zero-states | E2E·UNIT-FE | 🟡 §C-16 |
@@ -181,7 +181,7 @@ P3 later). **Closed this pass** items were gaps until this change and now have s
 | C-4 | Resolver precedence L1 | R-SEM-04, TS-OMNI-01 | Kind-detection/ordering proven only at L4 (`DetailResolveIT`); no docker-free unit of the precedence logic. | Extract/parameterize the resolve order (process-instance→execution→task→job→composite→business-key) into an L1 test over fixtures. | P3 |
 | C-5 | Audit-integrity: pool exhaustion + reconciler sweep + DB REVOKE | R-AUD-03, R-TEST-10, TS-AUD-05 | `FailClosedAuditIT` covers DB-down fail-closed; `AuditServiceTest` covers hash-chain + dual-write translation. Not covered: Hikari saturation degradation, stale-PENDING startup sweep against real PG, and a REVOKE-UPDATE/DELETE proof. | Testcontainers PG suite `AuditIntegrityIT`: hold all connections → mutations fail-closed + `audit_insert_failures_total`++; seed stale PENDING → startup sweep → `unknown`; attempt UPDATE/DELETE as the app role → rejected. | **P1** |
 | C-6 | Circuit-open mid-bulk pause + write-path slow-engine | R-SEM-11, R-NFR-07, TS-BULK-06 | Pausing/permits proven in-memory (`BulkJobServiceTest`); the breaker *transition* mid-dispatch and a genuinely slow write engine aren't exercised. | L2 WireMock: fault after N dispatches trips breaker → undispatched stay `pending`, dispatched fast-fail = `failed`; a `write-ms`-exceeding stub → `unknown`, never retried. | P2 |
-| C-7 | Shift report · CSV export · hostile-message CI fixture | R-AUD-05/08, R-OPS-08, TS-AUD-07/08 | Reporting/export surfaces and the FIX-STUB-05 hostile-exception fixture aren't wired to a suite. | L3: streaming CSV endpoint with FIX-DATA-03 content → formula-escaped output; shift-report filter groups UNKNOWNs first; a committed 1 MiB hostile-message fixture replayed through the normalizer + audit ingest. | P2 |
+| C-7 | Hostile-message CI fixture | R-OPS-08, FIX-STUB-05 | The shift-report + CSV-export halves landed with W3-1 (`CsvTest`, `AuditCsvExportSpringTest`, FE `shiftReport.test`/`AuditLogPage.test`); what remains is the committed 1 MiB hostile-message fixture replayed through the normalizer + audit ingest. | A committed 1 MiB hostile-message fixture replayed through the normalizer + audit ingest. | P2 |
 | C-8 | SSE soak (P3) | R-SEM-14, R-TEST-05, TS-BULK-11 | `SseHubTest`+`BulkFilterIT` prove logic + one live stream; the 50-client/30-min soak is unrun. | Scheduled (non-PR) P3 harness: 50 EventSource clients through a 500-item bulk, assert zero dropped/dup, heap ±10%. | P3 |
 | C-9 | Explain-status per-flag provenance E2E · group copy-for-ticket | R-L3-01, R-AUD-06, TS-DET-14/11 | Backend derivation proven at L4; the rendered evidence view + Markdown copy variants have no E2E. | Playwright spec: open a FAILED instance → "explain this status" shows per-leg request/response + plan choice; copy-for-ticket emits the SPEC §4 line order. | P2 |
 | C-10 | Latency budget (P4 / R-NFR-02) | R-NFR-02, TS-TRI-06 | No perf harness in-repo; FIX-REF-01 reference dataset + k6/Gatling assertions unbuilt. | Nightly S2 job seeding FIX-REF-01, asserting the four P95 budgets + ≥99% landing cache hits. | P2 |

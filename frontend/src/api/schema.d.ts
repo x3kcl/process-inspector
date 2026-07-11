@@ -260,6 +260,23 @@ export interface paths {
         patch?: never;
         trace?: never;
     };
+    "/api/audit/export": {
+        parameters: {
+            query?: never;
+            header?: never;
+            path?: never;
+            cookie?: never;
+        };
+        /** Operations log as CSV — same filters as GET /api/audit, skeleton columns only */
+        get: operations["operationsLogCsv"];
+        put?: never;
+        post?: never;
+        delete?: never;
+        options?: never;
+        head?: never;
+        patch?: never;
+        trace?: never;
+    };
     "/api/bulk": {
         parameters: {
             query?: never;
@@ -2586,6 +2603,33 @@ export interface operations {
                 };
                 content: {
                     "*/*": components["schemas"]["AuditEntryDto"][];
+                };
+            };
+        };
+    };
+    operationsLogCsv: {
+        parameters: {
+            query?: {
+                actor?: string;
+                action?: string;
+                engineId?: string;
+                ticketId?: string;
+                since?: string;
+                limit?: number;
+            };
+            header?: never;
+            path?: never;
+            cookie?: never;
+        };
+        requestBody?: never;
+        responses: {
+            /** @description OK */
+            200: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "text/csv": string;
                 };
             };
         };
