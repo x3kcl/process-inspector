@@ -695,12 +695,11 @@ public class CorrectiveActionService {
                 "Job " + request.jobId() + " moved back to the executable queue; engine-default retries restored."
                         + " The queue move is reversible; the side effects of the executed job are not.";
             case TRIGGER_TIMER -> "Timer job " + request.jobId() + " fired now and took its normal path.";
-            case SUSPEND ->
-                "Instance " + targetId + " suspended; its jobs moved to the suspended lane —"
-                        + " reversible; Activate undoes it.";
-            case ACTIVATE ->
-                "Instance " + targetId + " activated; suspended jobs returned to their queues —"
-                        + " reversible; Suspend undoes it.";
+            // #117: never assert a job lane move here — suspend/activate touches executable
+            // jobs only, a dead-letter job stays dead-lettered, and this path never reads
+            // job lanes. State only what the call itself guarantees.
+            case SUSPEND -> "Instance " + targetId + " suspended — reversible; Activate resumes it.";
+            case ACTIVATE -> "Instance " + targetId + " activated — reversible; Suspend undoes it.";
             case EDIT_VARIABLE -> {
                 ActionRequest.VariableEdit edit = request.variable();
                 boolean secret = AuditService.isSecretName(edit.name());

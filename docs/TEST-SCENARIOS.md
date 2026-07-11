@@ -222,7 +222,7 @@ docker engine as `dev` AND `prod` manufactures the prod gates (R-TEST-07).
 | TS-VERB-02 | retry-now: success and live-exception both surfaced; 30 s hard timeout → UNKNOWN (FIX-STUB-04) | R-NFR-01 |
 | TS-VERB-03 | trigger timer now → fires, takes normal path | SPEC §5 |
 | TS-VERB-04 | unstick: subscriptions listed first; message/signal delivered → instance proceeds | SPEC §5 |
-| TS-VERB-05 | suspend/activate instance → jobs move to/from suspended lane | SPEC §5 |
+| TS-VERB-05 | suspend/activate instance → executable jobs move to/from suspended lane; a dead-letter job stays dead-lettered (unaffected); outcome toast claims no lane move | SPEC §5 |
 | TS-VERB-06 | edit variable, the full §4a arc: form-mode leaf edit on FIX-DATA-01's json changes exactly ONE field (stored-value diff proves the other fields byte-identical); type preserved (number stays number) unless explicitly unlocked — unlock renders its own warning line at verify; source mode gated on parse/type/size before Review enables; verify shows generated sentence + structural path diff (re-serialization noise absent) + exact-request expander; compare-and-set — out-of-band REST change between open and submit → 409 + three-value conflict recovery with attribution, no overwrite-anyway control exists | R-SEM-09, R-UXQ-13 |
 | TS-VERB-07 | complete task with data: outputs overridden; skipped-task warning copy rendered verbatim | SPEC §5, R-SAFE-04 |
 | TS-VERB-08 *(v1.1)* | change-state: token moved off failed node → proceeds; MI-body source refused with reason; parallel-join warning (FIX-PROC-10); suspended target → offer activate-first; preview labeled *BFF simulation* + exact REST body | SPEC §5 tier 2, R-GOV-07 |
