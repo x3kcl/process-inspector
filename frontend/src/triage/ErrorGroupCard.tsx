@@ -6,6 +6,9 @@ import { actionGate, VERBS } from '../actions/catalog'
 import { ActionHint } from '../components/ActionHint'
 import { EnvBadge } from '../components/EnvBadge'
 import { formatCount } from '../lib/format'
+import { Ts } from '../lib/Ts'
+import { AcknowledgeGroupModal } from './AcknowledgeGroupModal'
+import { ackGate, resurfaceBadge, worstEnvironment } from './ackState'
 import {
   definitionDrillParams,
   engineDrillParams,
@@ -37,6 +40,17 @@ export function ErrorGroupCard({ group, enginesById, lowerBound }: Props) {
   const engineEntries = Object.entries(group.countsByEngine ?? {}).sort(
     (a, b) => sumCounts(b[1]) - sumCounts(a[1]) || a[0].localeCompare(b[0]),
   )
+  const me = useMe()
+  // ?? undefined: tolerate a null on the wire (the DTO omits absent fields, but a null
+  // here must degrade to "unacknowledged", never crash the landing).
+  const ack = group.acknowledgement ?? undefined
+  const badge = resurfaceBadge(ack)
+  // The BFF door mirror (R-BAU-01): OPERATOR on EVERY engine the group is failing on.
+  const gate = ackGate(me.data, Object.keys(group.countsByEngine ?? {}))
+  const environment = worstEnvironment(
+    Object.keys(group.countsByEngine ?? {}).map((engineId) => enginesById.get(engineId)?.environment),
+  )
+  const [ackMode, setAckMode] = useState<'acknowledge' | 'unacknowledge' | null>(null)
   return (
     <article className="error-group">
       <header className="error-group-head">
@@ -47,6 +61,14 @@ export function ErrorGroupCard({ group, enginesById, lowerBound }: Props) {
             </code>
           )}
           <span className="normalized-message">{group.normalizedMessage ?? '(no message)'}</span>
+          {badge !== null && (
+            <span
+              className="grew-badge"
+              title="This acknowledged group auto-resurfaced — the failure moved past the acknowledged baseline"
+            >
+              {badge}
+            </span>
+          )}
         </span>
         <Link
           className="group-total"
@@ -56,7 +78,74 @@ export function ErrorGroupCard({ group, enginesById, lowerBound }: Props) {
           {prefix}
           {formatCount(group.total ?? 0)} <span className="count-unit">instances</span>
         </Link>
+        {/* The mute/ack affordance lives ON the card head (baseline run M7 task 5:
+            "the same way monitoring tools silence a known alert") — never Suspend. */}
+        <span className="action-slot">
+          <button
+            type="button"
+            className="ack-group-btn"
+            disabled={!gate.enabled}
+            aria-describedby={
+              gate.enabled ? undefined : `ack-gate-hint-${group.signatureHash ?? 'unknown'}`
+            }
+            title={
+              gate.enabled
+                ? ack === undefined
+                  ? 'Mute this known error class on the landing (engine state untouched); it auto-resurfaces on growth, a new failing version, or expiry'
+                  : 'Re-acknowledge at the CURRENT counts — resets the auto-resurface baseline'
+                : gate.reason
+            }
+            onClick={() => {
+              setAckMode('acknowledge')
+            }}
+          >
+            {ack === undefined ? 'Acknowledge' : 'Re-acknowledge'}
+          </button>
+          {!gate.enabled && gate.reason !== undefined && (
+            <ActionHint
+              id={`ack-gate-hint-${group.signatureHash ?? 'unknown'}`}
+              text={gate.reason}
+              tone="gate"
+            />
+          )}
+        </span>
       </header>
+      {ack !== undefined && (
+        <p className="ack-meta">
+          Acknowledged by <strong>{ack.acknowledgedBy}</strong> <Ts iso={ack.acknowledgedAt} relative />{' '}
+          at {formatCount(ack.acknowledgedTotal ?? 0)} instances — “{ack.reason}”
+          {ack.ticketId != null && <> · {ack.ticketId}</>}
+          {ack.expiresAt != null && (
+            <>
+              {' '}
+              · expires <Ts iso={ack.expiresAt} relative />
+            </>
+          )}{' '}
+          <button
+            type="button"
+            className="ack-group-btn"
+            disabled={!gate.enabled}
+            title={
+              gate.enabled ? 'Remove the acknowledgment — the group returns to the active list' : gate.reason
+            }
+            onClick={() => {
+              setAckMode('unacknowledge')
+            }}
+          >
+            Un-acknowledge
+          </button>
+        </p>
+      )}
+      {ackMode !== null && (
+        <AcknowledgeGroupModal
+          group={group}
+          mode={ackMode}
+          environment={environment}
+          onClose={() => {
+            setAckMode(null)
+          }}
+        />
+      )}
       {/* Usability round 2 (Theme E2): the card total spans every engine/definition/version,
           but each "Retry group" button covers ONE slice — say so, and point at the grid
           drill (now class-scoped) as the one-action path for the whole class. */}

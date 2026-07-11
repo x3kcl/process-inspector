@@ -7,6 +7,7 @@ import io.inspector.bulk.BulkJobItemRepository;
 import io.inspector.bulk.BulkJobRepository;
 import io.inspector.registry.EngineRegistryRepository;
 import io.inspector.snapshot.SnapshotCountRepository;
+import io.inspector.triage.ErrorGroupAckRepository;
 import io.inspector.views.RecentSearchRepository;
 import io.inspector.views.SavedViewRepository;
 import io.inspector.views.SharedViewRepository;
@@ -52,6 +53,11 @@ public class NoDbTestSupport {
     @Bean
     SnapshotCountRepository snapshotCountRepository() {
         return Mockito.mock(SnapshotCountRepository.class);
+    }
+
+    @Bean
+    ErrorGroupAckRepository errorGroupAckRepository() {
+        return Mockito.mock(ErrorGroupAckRepository.class);
     }
 
     @Bean
