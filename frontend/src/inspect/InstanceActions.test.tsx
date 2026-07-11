@@ -15,7 +15,12 @@ vi.mock('../api/me', () => ({
 }))
 // Idle mutation stub — the toolbar never fires an action in this render.
 vi.mock('../api/actions', () => ({
-  useInstanceAction: () => ({ mutate: vi.fn(), isPending: false, reset: vi.fn(), error: undefined }),
+  useInstanceAction: () => ({
+    mutate: vi.fn(),
+    isPending: false,
+    reset: vi.fn(),
+    error: undefined,
+  }),
 }))
 
 import { InstanceActions } from './InstanceActions'

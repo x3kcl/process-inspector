@@ -51,7 +51,12 @@ export function IdentityStrip() {
         <strong>{username ?? 'unknown'}</strong>
         {role !== undefined && role !== '' && <span className="identity-role"> ({role})</span>}
       </span>
-      <button type="button" className="topbar-link identity-signout" onClick={signOut} disabled={busy}>
+      <button
+        type="button"
+        className="topbar-link identity-signout"
+        onClick={signOut}
+        disabled={busy}
+      >
         {busy ? 'Signing out…' : 'Sign out'}
       </button>
     </span>

@@ -216,7 +216,11 @@ export function actionGate(input: GateInput): Gate {
   // known-below-ADMIN role greys with the spec'd reason; an unknown role (null) stays
   // optimistic — the BFF's `instance-protected` guard is the real gate. Placed before the
   // ended/suspended/role checks so the protection is the FIRST thing the operator reads.
-  if (input.instanceProtected === true && input.roleHint !== null && !roleAtLeast(input.roleHint, 'ADMIN')) {
+  if (
+    input.instanceProtected === true &&
+    input.roleHint !== null &&
+    !roleAtLeast(input.roleHint, 'ADMIN')
+  ) {
     return {
       enabled: false,
       reason: 'Protected — L3 action required',
