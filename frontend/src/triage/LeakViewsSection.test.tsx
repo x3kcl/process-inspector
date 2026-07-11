@@ -49,8 +49,18 @@ describe('LeakViewsSection (R-BAU-02, honest per R-SEM-05)', () => {
       lowerBound: false,
       unavailableEngines: [],
       definitions: [
-        { definitionKey: 'vacationRequest', activeOver30d: 212, activeOver90d: 40, suspendedStartedOver7d: 3 },
-        { definitionKey: 'loanApproval', activeOver30d: 12, activeOver90d: 0, suspendedStartedOver7d: 0 },
+        {
+          definitionKey: 'vacationRequest',
+          activeOver30d: 212,
+          activeOver90d: 40,
+          suspendedStartedOver7d: 3,
+        },
+        {
+          definitionKey: 'loanApproval',
+          activeOver30d: 12,
+          activeOver90d: 0,
+          suspendedStartedOver7d: 0,
+        },
       ],
     })
 
@@ -76,11 +86,18 @@ describe('LeakViewsSection (R-BAU-02, honest per R-SEM-05)', () => {
       lowerBound: false,
       unavailableEngines: [],
       definitions: [
-        { definitionKey: 'vacationRequest', activeOver30d: 0, activeOver90d: 0, suspendedStartedOver7d: 3 },
+        {
+          definitionKey: 'vacationRequest',
+          activeOver30d: 0,
+          activeOver90d: 0,
+          suspendedStartedOver7d: 3,
+        },
       ],
     })
 
-    const chip = (await screen.findByText('suspended · started > 7d')).closest('a') as HTMLAnchorElement
+    const chip = (await screen.findByText('suspended · started > 7d')).closest(
+      'a',
+    ) as HTMLAnchorElement
     const request = linkSearch(chip)
     expect(request.statuses).toEqual(['SUSPENDED'])
     expect(request.startedBefore).toBe(WINDOWS.suspendedStartedOver7d)
@@ -98,7 +115,12 @@ describe('LeakViewsSection (R-BAU-02, honest per R-SEM-05)', () => {
       lowerBound: true,
       unavailableEngines: ['engine-b'],
       definitions: [
-        { definitionKey: 'vacationRequest', activeOver30d: 212, activeOver90d: 0, suspendedStartedOver7d: 0 },
+        {
+          definitionKey: 'vacationRequest',
+          activeOver30d: 212,
+          activeOver90d: 0,
+          suspendedStartedOver7d: 0,
+        },
       ],
     })
 
