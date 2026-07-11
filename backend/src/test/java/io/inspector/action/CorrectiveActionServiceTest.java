@@ -599,7 +599,19 @@ class CorrectiveActionServiceTest {
                 .contains("pi-1")
                 .contains("suspended")
                 .contains("reversible")
-                .contains("Activate undoes it");
+                .contains("Activate resumes it");
+    }
+
+    @Test
+    void suspendDeltaStatementNeverClaimsAJobLaneMoveItCannotVerify() {
+        // Issue #117: suspending an instance does NOT move a dead-letter job to the suspended
+        // lane, and the BFF never inspects job lanes on this path — so the toast must not
+        // assert any lane movement (quiet-lie / R-TEST-03).
+        when(client.getRuntimeProcessInstance(any(), eq("pi-1"))).thenReturn(Map.of("id", "pi-1"));
+
+        var result = service.execute(DEV, "pi-1", ActionVerb.SUSPEND, emptyRequest(), operator);
+
+        assertThat(result.deltaStatement()).doesNotContain("suspended lane").doesNotContain("jobs moved");
     }
 
     @Test
@@ -613,5 +625,18 @@ class CorrectiveActionServiceTest {
                 .contains("activated")
                 .contains("reversible")
                 .contains("Suspend undoes it");
+    }
+
+    @Test
+    void activateDeltaStatementNeverClaimsAJobLaneMoveItCannotVerify() {
+        // Mirror of #117 for the compensating verb: a dead-letter job was never suspended,
+        // so "suspended jobs returned to their queues" is equally unverifiable here.
+        when(client.getRuntimeProcessInstance(any(), eq("pi-1"))).thenReturn(Map.of("id", "pi-1"));
+
+        var result = service.execute(DEV, "pi-1", ActionVerb.ACTIVATE, emptyRequest(), operator);
+
+        assertThat(result.deltaStatement())
+                .doesNotContain("returned to their queues")
+                .doesNotContain("suspended lane");
     }
 }

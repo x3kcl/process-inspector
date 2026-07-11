@@ -598,8 +598,10 @@ the "copy as engine cURL" / REST Parity Appendix variant remains v2.
   the side effects of the executed job are not."* For modal-less tier-0 verbs the badge is
   visible ON the button (suspend/activate wear `REVERSIBLE` next to the label — a hover
   title is not a badge), and the §6 outcome toast repeats it with the compensating verb
-  named: *"Instance 12345 suspended; its jobs moved to the suspended lane — reversible;
-  Activate undoes it."*
+  named: *"Instance 12345 suspended — reversible; Activate resumes it."* An outcome toast
+  states only deltas the call itself guarantees — it never asserts a job-lane move
+  (suspend touches executable jobs only; a dead-letter job stays dead-lettered and its
+  Retry stays available).
 - **Tier-0 friction floor on prod** for verbs that fire irreversible external side effects
   (trigger-timer, retry-now): a two-step inline button confirm (click → "Fire timer for job
   8123?" → click) — sub-second, no modal. Queue-state-only verbs stay single-click.
@@ -610,7 +612,7 @@ the "copy as engine cURL" / REST Parity Appendix variant remains v2.
 | **Retry now (diagnostic)** | Executes the job synchronously; success or the live exception shown immediately (hard timeout; long jobs blocked) | 0 |
 | **Trigger timer now** | Timer fires immediately, takes its normal path | 0 |
 | **Unstick event wait** | Deliver message / signal / trigger to a waiting execution (event subscriptions made visible first) | 1 |
-| **Suspend / activate instance** | Execution pauses/resumes; jobs move to/from the suspended lane | 0 |
+| **Suspend / activate instance** | Execution pauses/resumes; executable jobs move to/from the suspended lane — a dead-letter job is unaffected (stays dead-lettered, Retry available) | 0 |
 | **Edit variable** | Via the §4a editor: form-first typed widgets, leaf-level json edits, opt-in source mode; old→new path-diff verification; compare-and-set; scope-aware (process vs execution) | 1 |
 | **Complete task with data** | Task closes with overridden output; warning: a skipped/forced task never writes its own outputs — edit them here (via the shared §4a change-set editor) | 1 |
 | **Reassign task / return to team** *(v1.x #6, landed)* | Reassign to a specific user, or clear the assignee (return-to-team) so the task falls back to its candidate groups; **ACTIVE tasks only** (a completed task can no longer be reassigned); task state otherwise untouched | 1 |
@@ -713,7 +715,7 @@ terminate; edit-variable) are out of scope and refused for a CMMN case. Route:
 
 | Tier | Guard |
 |---|---|
-| **0** — reversible-ish, single target | No modal. In-flight row state → **outcome toast with an explicit delta statement** ("Job 8123 moved to executable queue; retries reset to 3") + audit link. Never a bare "success". A `REVERSIBLE` verb's toast also names the compensating verb ("— reversible; Activate undoes it", §5.0). |
+| **0** — reversible-ish, single target | No modal. In-flight row state → **outcome toast with an explicit delta statement** ("Job 8123 moved to executable queue; retries reset to 3") + audit link. Never a bare "success". A `REVERSIBLE` verb's toast also names the compensating verb ("— reversible; Activate resumes it", §5.0) and claims only deltas the call guarantees (§5.0 — no job-lane claims). |
 | **1** — data mutation, single target | Diff confirm (old → new, name, scope). Reason optional on dev/test, **required on prod**. |
 | **2** — flow surgery, single target | Confirm + **required reason** + plan-as-a-sentence + raw REST body preview. |
 | **3** — destructive, single target | Modal restates the target **server-fresh** (warns if state changed since the grid snapshot), enumerates cascade victims, environment color band. Required reason. On prod: **typed token = the business key** (target-specific — never a generic "yes"/"DELETE"). Cancel-focused; Enter never submits. |
