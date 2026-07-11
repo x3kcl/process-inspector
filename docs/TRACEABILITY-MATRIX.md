@@ -43,7 +43,7 @@ exhaustive scenario→class index.
 | R-SEM-02 RETRYING/FAILED chips | TS-STAT-04/05 | `StatusJoinTest`, `SearchServiceIT`; FE `partials.test`, `plainFailure.test` | L1·L4·UNIT-FE | ✅ |
 | R-SEM-03 signature normalizer contract | TS-TRI-04, TS-CAP-03 | `ErrorSignatureNormalizerTest`, `ErrorSignatureGoldenCorpusTest`, `Triage7IT` | L1·L4 | ✅ |
 | R-SEM-04 omnibox resolution | TS-OMNI-01/02 | `DetailResolveIT`; FE `omnibox.test` | L4·UNIT-FE | 🟡 (resolver precedence L1 gap — §C-4) |
-| R-SEM-05 curated-view honesty | TS-TRI-11 | FE `systemViews.test`, `honesty.test`; `saved-views.spec` | UNIT-FE·E2E | ✅ |
+| R-SEM-05 curated-view honesty | TS-TRI-11 | FE `systemViews.test`, `leakViews.test`, `honesty.test`; `saved-views.spec` | UNIT-FE·E2E | ✅ |
 | R-SEM-06 error-text search scope | TS-SRCH-05 | `StatusJoinTest$FailureFilters`, `SearchServiceIT` | L1·L4 | ✅ |
 | R-SEM-08 engineId slug / composite split | TS-OMNI-03 | `InspectorPropertiesValidationTest`; FE `omnibox.test` | L1·UNIT-FE | ✅ |
 | R-SEM-09 concurrent-op / CAS | TS-VERB-06, TS-BULK-03 | `CorrectiveActionServiceTest`, `CorrectiveActionIT`, `BulkJobServiceTest` | L1·L4 | ✅ |
@@ -104,7 +104,7 @@ exhaustive scenario→class index.
 | R-UXQ-01 axe accessibility | TS-E2E-01/04 | Playwright axe (config) | E2E | 🔲 (axe wiring per-spec = §C-13) |
 | R-UXQ-13 form-first variables | TS-DET-04/15, TS-VERB-06 | `InstanceDetailMappingTest`; FE `ledger.test`, `editor/diff.test`, `editState.test` | L1·UNIT-FE | 🟡 (rendered edit→verify→CAS E2E = §C-14) |
 | R-BAU-01 error-group acknowledge | TS-TRI-09 | `ErrorGroupAckPolicyTest` (resurface predicate), `ErrorGroupAckServiceTest` (guards/audit/compensation), `ErrorGroupAckRbacSpringTest` (HTTP door + fail-closed 503); FE `ackState.test`, `ErrorGroupSections.test`, `AcknowledgeGroupModal.test` | L1·L3·UNIT-FE | 🟡 (L4 real-Postgres persistence + rendered arc = §C-15) |
-| R-BAU-02 leak views | TS-TRI-10 | FE `systemViews.test` | UNIT-FE | 🟡 (L4 age-from-engine-ts = §C-15) |
+| R-BAU-02 leak views | TS-TRI-10 | `LeakViewServiceTest`; FE `leakViews.test`, `LeakViewsSection.test` | L1·UNIT-FE | 🟡 (L4 age-from-engine-ts = §C-15) |
 
 ### TEST — governance (self-referential)
 | Req | Discharged by | Cov |

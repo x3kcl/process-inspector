@@ -10,6 +10,7 @@ import type {
   InstanceTasks,
   InstanceTimeline,
   InstanceVariables,
+  LeakViewsResponse,
   NearestSiblingResponse,
   CmmnScopeFacet,
   CaseDetail,
@@ -58,6 +59,18 @@ export async function fetchTriageTrends(hours: number): Promise<TriageTrendRespo
   const { data, error, response } = await api.GET('/api/triage/trends', {
     params: { query: { hours } },
   })
+  if (data === undefined) throw new ApiError(response.status, error)
+  return data
+}
+
+/**
+ * Stage-0 leak views (SPEC §4, R-BAU-02): per-definition counts of long-running and
+ * long-suspended instances, from count-only queries. Age = now − startTime for every window,
+ * SUSPENDED included (R-SEM-05 — there is no suspension timestamp). Cached at the BFF; a down
+ * engine degrades to a named lower bound, never a failed response, so this is always a 200.
+ */
+export async function fetchLeakViews(): Promise<LeakViewsResponse> {
+  const { data, error, response } = await api.GET('/api/triage/leak-views')
   if (data === undefined) throw new ApiError(response.status, error)
   return data
 }

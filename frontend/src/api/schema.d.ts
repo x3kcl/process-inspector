@@ -1061,6 +1061,22 @@ export interface paths {
         patch?: never;
         trace?: never;
     };
+    "/api/triage/leak-views": {
+        parameters: {
+            query?: never;
+            header?: never;
+            path?: never;
+            cookie?: never;
+        };
+        get: operations["leakViews"];
+        put?: never;
+        post?: never;
+        delete?: never;
+        options?: never;
+        head?: never;
+        patch?: never;
+        trace?: never;
+    };
     "/api/triage/trends": {
         parameters: {
             query?: never;
@@ -1723,6 +1739,27 @@ export interface components {
             role?: string;
             source?: string;
             tenantId?: string;
+        };
+        LeakDefinitionCount: {
+            /** Format: int64 */
+            activeOver30d?: number;
+            /** Format: int64 */
+            activeOver90d?: number;
+            definitionKey?: string;
+            /** Format: int64 */
+            suspendedStartedOver7d?: number;
+        };
+        LeakViewsResponse: {
+            asOf?: string;
+            definitions?: components["schemas"]["LeakDefinitionCount"][];
+            lowerBound?: boolean;
+            unavailableEngines?: string[];
+            windows?: components["schemas"]["LeakWindows"];
+        };
+        LeakWindows: {
+            activeOver30d?: string;
+            activeOver90d?: string;
+            suspendedStartedOver7d?: string;
         };
         LegalHoldDto: {
             /** Format: date-time */
@@ -3953,6 +3990,26 @@ export interface operations {
                     [name: string]: unknown;
                 };
                 content?: never;
+            };
+        };
+    };
+    leakViews: {
+        parameters: {
+            query?: never;
+            header?: never;
+            path?: never;
+            cookie?: never;
+        };
+        requestBody?: never;
+        responses: {
+            /** @description OK */
+            200: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "*/*": components["schemas"]["LeakViewsResponse"];
+                };
             };
         };
     };

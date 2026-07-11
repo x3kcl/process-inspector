@@ -62,8 +62,11 @@ placeholder validation; tester sign-in via SPA form only.
    config-event audit with compensation), render-time ack join (engine cache untouched),
    card affordance + "Acknowledged (N)" section + "GREW SINCE ACK: +n" auto-resurface
    (+20% default / new failing version / expiry).
-3. **R-BAU-02 leak views** — curated definition-grouped presets riding the shipped
-   saved/shared-view machinery (predicate-honest names per R-SEM-05). S/M.
+3. ✅ **R-BAU-02 leak views** (LANDED — usability W3-3): curated definition-grouped presets
+   riding the shipped saved/system-view machinery (predicate-honest names per R-SEM-05 — the
+   *Suspended · started > 7 days ago* view is `startedBefore`, never time-since-suspension).
+   New `GET /api/triage/leak-views` count-only aggregation (`LeakViewService`) → per-definition
+   `LeakViewsSection` on the landing, each count a lower-bound-badged deep link into Stage 1.
 4. **R-L3-01 explain-status** — `StatusChip` becomes interactive: derivation-ladder
    popover (ARCH §2.3 evidence, re-derived + labeled) + deep link to Errors & Jobs. M.
 Also from the run: **R-SAFE-05 sliver** (protected badge + per-verb reason in
