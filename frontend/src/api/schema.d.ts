@@ -1029,6 +1029,38 @@ export interface paths {
         patch?: never;
         trace?: never;
     };
+    "/api/triage/error-groups/acknowledge": {
+        parameters: {
+            query?: never;
+            header?: never;
+            path?: never;
+            cookie?: never;
+        };
+        get?: never;
+        put?: never;
+        post: operations["acknowledge"];
+        delete?: never;
+        options?: never;
+        head?: never;
+        patch?: never;
+        trace?: never;
+    };
+    "/api/triage/error-groups/unacknowledge": {
+        parameters: {
+            query?: never;
+            header?: never;
+            path?: never;
+            cookie?: never;
+        };
+        get?: never;
+        put?: never;
+        post: operations["unacknowledge"];
+        delete?: never;
+        options?: never;
+        head?: never;
+        patch?: never;
+        trace?: never;
+    };
     "/api/triage/trends": {
         parameters: {
             query?: never;
@@ -1084,6 +1116,14 @@ export interface components {
         AccessMappingDto: {
             fleetGrants?: components["schemas"]["FleetView"][];
             ladderGrants?: components["schemas"]["LadderView"][];
+        };
+        AcknowledgeErrorGroupRequest: {
+            /** Format: int32 */
+            algoVersion?: number;
+            expiresAt?: string;
+            reason?: string;
+            signatureHash?: string;
+            ticketId?: string;
         };
         ActionCurlResponse: {
             curl?: string;
@@ -1480,6 +1520,7 @@ export interface components {
             writeMs?: number;
         };
         ErrorGroup: {
+            acknowledgement?: components["schemas"]["ErrorGroupAcknowledgement"];
             /** Format: int32 */
             algoVersion?: number;
             countsByEngine?: {
@@ -1497,6 +1538,19 @@ export interface components {
             signatureHash?: string;
             /** Format: int64 */
             total?: number;
+        };
+        ErrorGroupAcknowledgement: {
+            acknowledgedAt?: string;
+            acknowledgedBy?: string;
+            /** Format: int64 */
+            acknowledgedTotal?: number;
+            expiresAt?: string;
+            /** Format: int64 */
+            grownBy?: number;
+            reason?: string;
+            resurfaceReason?: string;
+            resurfaced?: boolean;
+            ticketId?: string;
         };
         EventTrigger: {
             name?: string;
@@ -2086,6 +2140,12 @@ export interface components {
             name?: string;
             type?: string;
             value?: unknown;
+        };
+        UnacknowledgeErrorGroupRequest: {
+            /** Format: int32 */
+            algoVersion?: number;
+            reason?: string;
+            signatureHash?: string;
         };
         VariableDelta: {
             /** @enum {string} */
@@ -3847,6 +3907,52 @@ export interface operations {
                 content: {
                     "*/*": components["schemas"]["OutOfScopeDeadLetters"];
                 };
+            };
+        };
+    };
+    acknowledge: {
+        parameters: {
+            query?: never;
+            header?: never;
+            path?: never;
+            cookie?: never;
+        };
+        requestBody: {
+            content: {
+                "application/json": components["schemas"]["AcknowledgeErrorGroupRequest"];
+            };
+        };
+        responses: {
+            /** @description OK */
+            200: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "*/*": components["schemas"]["ErrorGroupAcknowledgement"];
+                };
+            };
+        };
+    };
+    unacknowledge: {
+        parameters: {
+            query?: never;
+            header?: never;
+            path?: never;
+            cookie?: never;
+        };
+        requestBody: {
+            content: {
+                "application/json": components["schemas"]["UnacknowledgeErrorGroupRequest"];
+            };
+        };
+        responses: {
+            /** @description No Content */
+            204: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content?: never;
             };
         };
     };

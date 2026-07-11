@@ -36,15 +36,21 @@ public record InspectorProperties(
     }
 
     public Triage triageOrDefault() {
-        return triage != null ? triage : new Triage(null, null, null);
+        return triage != null ? triage : new Triage(null, null, null, null);
     }
 
     /**
      * Stage 0 triage knobs (SPEC §4/§9): 20s aggregation cache TTL (thundering-herd
-     * protection — spec-pinned default), Refresh bypass throttled to one per 10s, and
-     * the cap on representative stacktrace fetches used to refine error groups.
+     * protection — spec-pinned default), Refresh bypass throttled to one per 10s, the
+     * cap on representative stacktrace fetches used to refine error groups, and the
+     * R-BAU-01 acknowledge auto-resurface threshold (an acked group resurfaces once its
+     * member count grows PAST the acknowledged baseline by this percentage).
      */
-    public record Triage(Integer cacheTtlS, Integer refreshMinIntervalS, Integer stacktraceSampleCap) {
+    public record Triage(
+            Integer cacheTtlS,
+            Integer refreshMinIntervalS,
+            Integer stacktraceSampleCap,
+            Integer ackResurfaceThresholdPct) {
         public int cacheTtlSOrDefault() {
             return cacheTtlS != null ? cacheTtlS : 20;
         }
@@ -55,6 +61,10 @@ public record InspectorProperties(
 
         public int stacktraceSampleCapOrDefault() {
             return stacktraceSampleCap != null ? stacktraceSampleCap : 25;
+        }
+
+        public int ackResurfaceThresholdPctOrDefault() {
+            return ackResurfaceThresholdPct != null ? ackResurfaceThresholdPct : 20;
         }
     }
 

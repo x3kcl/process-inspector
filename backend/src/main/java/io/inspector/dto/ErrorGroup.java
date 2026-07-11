@@ -1,5 +1,6 @@
 package io.inspector.dto;
 
+import com.fasterxml.jackson.annotation.JsonInclude;
 import java.util.Map;
 
 /**
@@ -13,7 +14,16 @@ import java.util.Map;
  * involved definition that produced zero failures are zero-filled: "v47: 312, v46: 0" is
  * the signal that a failure is version-specific (R-SEM-12 scope-explicit drill-through).
  * All counts are lower bounds whenever the engine's envelope carries a truncation marker.
+ *
+ * {@code acknowledgement} (R-BAU-01) is the render-time overlay from the BFF's own ack
+ * store — null while unacknowledged, and ALWAYS null inside the cached aggregation (the
+ * decorator joins it per request so ack state is live while engine data stays cached).
+ *
+ * <p>{@code NON_NULL} so absent fields are OMITTED on the wire, matching the generated
+ * contract's optionality ({@code acknowledgement?:}) — a serialized {@code null} would
+ * defeat every {@code !== undefined} check in the SPA (external review, W3-2).
  */
+@JsonInclude(JsonInclude.Include.NON_NULL)
 public record ErrorGroup(
         String signatureHash,
         int algoVersion,
@@ -23,4 +33,45 @@ public record ErrorGroup(
         long total,
         long deadLetterCount,
         long retryingCount, // failing-with-retries-left evidence (timer + executable lanes)
-        Map<String, Map<String, Long>> countsByEngine) {}
+        Map<String, Map<String, Long>> countsByEngine,
+        ErrorGroupAcknowledgement acknowledgement) {
+
+    /** The aggregation-side shape: engine data only, never an ack overlay (see class doc). */
+    public ErrorGroup(
+            String signatureHash,
+            int algoVersion,
+            String exceptionClass,
+            String normalizedMessage,
+            String sampleRawMessage,
+            long total,
+            long deadLetterCount,
+            long retryingCount,
+            Map<String, Map<String, Long>> countsByEngine) {
+        this(
+                signatureHash,
+                algoVersion,
+                exceptionClass,
+                normalizedMessage,
+                sampleRawMessage,
+                total,
+                deadLetterCount,
+                retryingCount,
+                countsByEngine,
+                null);
+    }
+
+    /** Render-time decoration: a NEW instance — the cached aggregation object is never mutated. */
+    public ErrorGroup withAcknowledgement(ErrorGroupAcknowledgement info) {
+        return new ErrorGroup(
+                signatureHash,
+                algoVersion,
+                exceptionClass,
+                normalizedMessage,
+                sampleRawMessage,
+                total,
+                deadLetterCount,
+                retryingCount,
+                countsByEngine,
+                info);
+    }
+}

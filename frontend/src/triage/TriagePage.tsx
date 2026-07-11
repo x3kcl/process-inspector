@@ -5,7 +5,7 @@ import { Ts } from '../lib/Ts'
 import { glossTechnicalMessage } from '../lib/plainFailure'
 import { SavedViewsSection } from '../views/SavedViewsSection'
 import { CmmnScopeDrawer } from './CmmnScopeDrawer'
-import { ErrorGroupCard } from './ErrorGroupCard'
+import { ErrorGroupSections } from './ErrorGroupSections'
 import { StatusCounts } from './StatusCounts'
 import { deriveHonesty, groupCountsAreLowerBound, statusCountsAreLowerBound } from './honesty'
 import { useTriage, useTriageTrends } from './useTriage'
@@ -148,14 +148,11 @@ export function TriagePage() {
             engine.
           </div>
         ) : (
-          groups.map((group, index) => (
-            <ErrorGroupCard
-              key={group.signatureHash ?? String(index)}
-              group={group}
-              enginesById={enginesById}
-              lowerBound={groupsLowerBound}
-            />
-          ))
+          <ErrorGroupSections
+            groups={groups}
+            enginesById={enginesById}
+            lowerBound={groupsLowerBound}
+          />
         )}
       </section>
 

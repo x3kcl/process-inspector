@@ -12,6 +12,7 @@ export type EngineResult = components['schemas']['EngineResult']
 export type VariableFilter = components['schemas']['VariableFilter']
 export type TriageDashboardResponse = components['schemas']['TriageDashboardResponse']
 export type ErrorGroup = components['schemas']['ErrorGroup']
+export type ErrorGroupAcknowledgement = components['schemas']['ErrorGroupAcknowledgement']
 export type PerEngineTriage = components['schemas']['PerEngineTriage']
 export type OutOfScopeDeadLetters = components['schemas']['OutOfScopeDeadLetters']
 // v2/M4 job-lane trend store (R-BAU-08) — the Stage-0 sparkline series.

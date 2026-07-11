@@ -152,11 +152,14 @@ inspector:
   # superProcessInstanceId chain-walk bound for the failed-in-subprocess roll-up (ARCH §2.3).
   hierarchy-max-depth: 10
   # Stage 0 triage landing (SPEC §4): aggregation cache TTL (thundering-herd protection),
-  # Refresh-bypass throttle, and the cap on representative stacktrace fetches per round.
+  # Refresh-bypass throttle, the cap on representative stacktrace fetches per round, and
+  # the R-BAU-01 acknowledge auto-resurface threshold (an acknowledged group resurfaces
+  # once its member count grows past the acknowledged baseline by this percentage).
   triage:
     cache-ttl-s: 20
     refresh-min-interval-s: 10
     stacktrace-sample-cap: 25
+    ack-resurface-threshold-pct: 20
   # v2/M4 job-lane snapshot store (R-BAU-08 trend sparklines): an @Scheduled virtual-thread
   # sampler runs the Stage-0 count aggregation on the thin `sampler` bulkhead and upserts one
   # narrow row per (engine, lane) bucket into triage_snapshot. The UI reads history from

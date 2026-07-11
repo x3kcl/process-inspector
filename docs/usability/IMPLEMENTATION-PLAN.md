@@ -55,9 +55,13 @@ placeholder validation; tester sign-in via SPA form only.
    header) + R-AUD-05 shift report ("My shift" preset + "Copy shift report", UNKNOWNs
    first under NEEDS VERIFICATION) + R-AUD-07 ticket-capture field in the reason-bearing
    confirm modals.
-2. **R-BAU-01 acknowledge** — the long pole (new store via Flyway, tier-1 endpoint under
-   full corrective-actions rails, `ErrorGroupCard` toggle, auto-resurface rule). L.
-   Design starts during slice 1.
+2. ✅ **R-BAU-01 acknowledge** (LANDED) — persisted `error_group_ack` store (V15, keyed
+   signature × engine × definition key with server-resolved baselines),
+   `POST /api/triage/error-groups/acknowledge` + `…/unacknowledge` under the full
+   corrective-actions rails (OPERATOR floor + per-engine re-check, reason ≥10, fail-closed
+   config-event audit with compensation), render-time ack join (engine cache untouched),
+   card affordance + "Acknowledged (N)" section + "GREW SINCE ACK: +n" auto-resurface
+   (+20% default / new failing version / expiry).
 3. **R-BAU-02 leak views** — curated definition-grouped presets riding the shipped
    saved/shared-view machinery (predicate-honest names per R-SEM-05). S/M.
 4. **R-L3-01 explain-status** — `StatusChip` becomes interactive: derivation-ladder

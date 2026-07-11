@@ -226,11 +226,20 @@ Answers "what is broken, how much, where" in zero keystrokes:
   annotation implies a data fix first (R-SEM-13; the demotion activates with group
   annotations, R-BAU-01 — until then the offer is un-demoted). This is the triage
   centerpiece.
-- **Acknowledge** (R-BAU-01): a group can be acknowledged (who + required reason + optional
-  expiry, keyed signature × engine × definition, audited). Acknowledged groups collapse into
-  a labeled "Acknowledged (N)" section — never hidden — and **auto-resurface** when the
-  member count grows past a threshold or a new definition version appears ("GREW SINCE ACK:
-  +45"). Without this the landing rots into alarm fatigue within weeks.
+- **Acknowledge** (R-BAU-01): OPERATOR+ (on EVERY engine the group is failing on) can
+  acknowledge a group — who + required reason ≥10 + optional ticketId + optional expiry,
+  persisted keyed signature × engine × definition KEY with the member-count /
+  max-failing-version baselines resolved server-side, audited fail-closed as a config
+  event; an un-acknowledge exists under the same rails (reason included). Acknowledging
+  mutes the CARD only — engine state is untouched (never the Suspend workaround).
+  Acknowledged groups collapse into a labeled "Acknowledged (N)" section — never hidden —
+  and **auto-resurface** when the member count grows PAST the acknowledged baseline by a
+  threshold (default +20%, `inspector.triage.ack-resurface-threshold-pct`), when a new
+  definition version (or engine × definition slice) starts failing, or when the expiry
+  passes — badged "GREW SINCE ACK: +45" / "NEW VERSION SINCE ACK" / "ACK EXPIRED". Ack
+  state joins the dashboard at render time (the aggregation cache never carries it); a
+  normalizer bump orphans old-generation acks ("needs re-binding", never silent).
+  Without this the landing rots into alarm fatigue within weeks.
 - **Annotations** (R-BAU-03, v1.x): OPERATOR+ may attach per-signature guidance (≤200 chars
   + runbook URL + optionally one **endorsed verb with conditions** — "Retry, but only after
   15:00"). Rendered on the group card and every member's why-stuck strip; the endorsed verb
@@ -1064,8 +1073,9 @@ and would rewrite working M1/M2 code for no capability gain); Go/FastAPI/Kotlin 
 ## 12. Release train (re-cut per R-GOV-07; every item cites the register IDs it discharges)
 
 - **v1 (must ship, gated by §13):** corrected status join + RETRYING tier + hierarchy
-  roll-up + explain-status evidence; triage landing incl. acknowledge + leak views +
-  badged counts; omnibox; URL state + deep links; full-page detail (vitals, read-only
+  roll-up + explain-status evidence; triage landing incl. acknowledge (landed —
+  usability W3-2, R-BAU-01) + leak views + badged counts; omnibox; URL state + deep
+  links; full-page detail (vitals, read-only
   diagram, tabs, form-first variable ledger + editor (§4a), raw-JSON links); **verbs:
   tiers 0–1 + suspend/activate +
   suspend-definition + terminate/delete + deadletter-delete** with reversibility badges +

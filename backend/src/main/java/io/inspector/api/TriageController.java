@@ -2,6 +2,7 @@ package io.inspector.api;
 
 import io.inspector.dto.TriageDashboardResponse;
 import io.inspector.dto.TriageTrendResponse;
+import io.inspector.triage.ErrorGroupAckService;
 import io.inspector.triage.TriageService;
 import io.inspector.triage.TriageTrendService;
 import java.time.Duration;
@@ -30,15 +31,19 @@ public class TriageController {
 
     private final TriageService triage;
     private final TriageTrendService trends;
+    private final ErrorGroupAckService acks;
 
-    public TriageController(TriageService triage, TriageTrendService trends) {
+    public TriageController(TriageService triage, TriageTrendService trends, ErrorGroupAckService acks) {
         this.triage = triage;
         this.trends = trends;
+        this.acks = acks;
     }
 
     @GetMapping
     public TriageDashboardResponse dashboard(@RequestParam(defaultValue = "false") boolean refresh) {
-        return triage.dashboard(refresh);
+        // R-BAU-01: ack state joins the CACHED aggregation at render time — live on every
+        // read, never cached with (or busting) the engine data.
+        return acks.decorate(triage.dashboard(refresh));
     }
 
     @GetMapping("/trends")
