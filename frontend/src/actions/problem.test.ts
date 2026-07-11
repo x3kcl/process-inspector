@@ -24,10 +24,24 @@ describe('parseActionProblem', () => {
     expect(problem.currentValue).toBeNull()
   })
 
-  it('maps a bare 403 (RBAC refusal without a problem body) to forbidden', () => {
+  it('never invents an RBAC verdict for a code-less 403 (usability W1#1, Theme T1)', () => {
     const problem = parseActionProblem(403, undefined)
-    expect(problem.code).toBe('forbidden')
+    expect(problem.code).toBe('unexpected')
     expect(problem.outcome).toBe('refused')
+  })
+
+  it('recognises the bare Spring error shape — the request never reached the BFF handlers', () => {
+    const spring = parseActionProblem(403, {
+      timestamp: '2026-07-10T12:00:00Z',
+      status: 403,
+      error: 'Forbidden',
+      path: '/api/engines/engine-a/actions/retry',
+    })
+    expect(spring.bareSpringError).toBe(true)
+    // A ProblemDetail with a machine-readable code is NOT the bare shape.
+    const problemDetail = parseActionProblem(403, { code: 'rbac-denied', status: 403 })
+    expect(problemDetail.bareSpringError).toBe(false)
+    expect(parseActionProblem(403, undefined).bareSpringError).toBe(false)
   })
 
   it('defaults unknown outcome strings to refused — never silently to "it ran"', () => {
@@ -103,6 +117,38 @@ describe('problemBanner — the three-way SPEC §6 distinction stays visible', (
     expect(text).toBe(
       'The request was refused before anything ran — nothing happened. (Technical detail: HTTP 400.)',
     )
+  })
+
+  it('renders the RBAC copy ONLY for the rbac-denied code, quoting the missing grant', () => {
+    const text = problemBanner(
+      parseActionProblem(403, {
+        code: 'rbac-denied',
+        detail: "'retry' (tier 1) requires OPERATOR on engine 'engine-a'.",
+      }),
+    )
+    expect(text).toContain('Your role does not permit this action')
+    expect(text).toContain("requires OPERATOR on engine 'engine-a'")
+  })
+
+  it('a code-less 403 gets the honest default, never the RBAC copy (usability W1#1)', () => {
+    const text = problemBanner(parseActionProblem(403, undefined))
+    expect(text).toBe('The server refused this request before anything ran — HTTP 403.')
+    expect(text).not.toContain('Your role')
+  })
+
+  it('a bare-Spring-shaped 403 adds the missing-CSRF hint with the sign-out remedy', () => {
+    const text = problemBanner(
+      parseActionProblem(403, {
+        timestamp: '2026-07-10T12:00:00Z',
+        status: 403,
+        error: 'Forbidden',
+        path: '/api/engines/engine-a/actions/retry',
+      }),
+    )
+    expect(text).toContain('The server refused this request before anything ran — HTTP 403.')
+    expect(text).toContain('CSRF token')
+    expect(text).toContain('sign out and back in')
+    expect(text).not.toContain('Your role')
   })
 })
 
