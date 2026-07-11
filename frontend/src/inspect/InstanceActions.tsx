@@ -232,8 +232,8 @@ export function InstanceActions({ engineId, instanceId, vitals, engine }: Props)
           engine={engine}
           pending={action.isPending}
           problem={action.error?.problem}
-          onConfirm={(reason) => {
-            run(VERBS.terminate.verb, { reason })
+          onConfirm={(reason, ticketId) => {
+            run(VERBS.terminate.verb, { reason, ticketId })
           }}
           onClose={() => {
             setTerminateOpen(false)
@@ -260,7 +260,7 @@ function TerminateModal({
   engine?: EngineDto
   pending: boolean
   problem?: ActionProblem
-  onConfirm: (reason: string) => void
+  onConfirm: (reason: string, ticketId?: string) => void
   onClose: () => void
 }) {
   // Cascade victims come from the hierarchy tree — fetched only while the modal is open.

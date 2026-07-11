@@ -4,6 +4,7 @@ import { useMutation, useQuery, useQueryClient } from '@tanstack/react-query'
 import { ApiError } from '../../api/client'
 import { useTicketUrlTemplate } from '../../api/meta'
 import { createInstanceNote, fetchInstanceAudit, fetchInstanceNotes } from '../../api/queries'
+import { AttributionCaveat } from '../../components/AttributionCaveat'
 import { Ts } from '../../lib/Ts'
 import { ticketHref } from '../../lib/ticket'
 import { auditOutcomeView } from '../../ops/outcome'
@@ -20,6 +21,9 @@ interface Props {
 export default function AuditTab({ engineId, instanceId }: Props) {
   return (
     <div className="audit-tab">
+      {/* R-AUD-09: static on every render — engine-side (ACT_HI_*) history blames the
+          shared service account; investigations of WHO start on THIS surface. */}
+      <AttributionCaveat />
       <AuditLog engineId={engineId} instanceId={instanceId} />
       <Notes engineId={engineId} instanceId={instanceId} />
     </div>

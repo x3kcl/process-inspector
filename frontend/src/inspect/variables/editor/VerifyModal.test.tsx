@@ -19,7 +19,9 @@ afterEach(cleanup)
 
 const prodEngine: EngineDto = { id: 'engine-p', name: 'Engine P', environment: 'prod' }
 
-function renderModal() {
+function renderModal(
+  onDispatch: (reason: string | undefined, ticketId?: string) => void = vi.fn(),
+) {
   const client = new QueryClient({ defaultOptions: { queries: { retry: false } } })
   render(
     <QueryClientProvider client={client}>
@@ -32,7 +34,7 @@ function renderModal() {
         typeLabel="text"
         typeChanged={null}
         pending={false}
-        onDispatch={vi.fn()}
+        onDispatch={onDispatch}
         onStartOver={vi.fn()}
         onClose={vi.fn()}
       />
@@ -47,7 +49,7 @@ describe('VerifyModal reason gate feedback (W2 #1, T10)', () => {
 
     // Empty reason on PROD (required): visible inline gate, not just a disabled button.
     expect(screen.getByText(/Reason too short — 10\+ characters/)).toBeTruthy()
-    const reasonField = screen.getByRole('textbox')
+    const reasonField = screen.getByLabelText(/Reason/)
     expect(reasonField.getAttribute('aria-invalid')).toBe('true')
 
     fireEvent.change(reasonField, { target: { value: 'short' } })
@@ -68,5 +70,34 @@ describe('VerifyModal reason gate feedback (W2 #1, T10)', () => {
     expect(describedBy).toBeTruthy()
     const hint = document.getElementById(describedBy ?? '')
     expect(hint?.textContent).toContain('Reason too short — 10+ characters')
+  })
+})
+
+describe('VerifyModal ticket capture (R-AUD-07, W3-1)', () => {
+  it('threads the optional Ticket ID into onDispatch alongside the reason', async () => {
+    const onDispatch = vi.fn()
+    renderModal(onDispatch)
+    await waitFor(() => screen.getByText(/re-checked — unchanged/))
+
+    fireEvent.change(screen.getByLabelText(/Reason/), {
+      target: { value: 'a long enough reason' },
+    })
+    fireEvent.change(screen.getByLabelText(/Ticket ID/), { target: { value: 'OPS-42' } })
+    fireEvent.click(screen.getByRole('button', { name: /Change amount/ }))
+
+    expect(onDispatch).toHaveBeenCalledWith('a long enough reason', 'OPS-42')
+  })
+
+  it('a blank ticket stays undefined', async () => {
+    const onDispatch = vi.fn()
+    renderModal(onDispatch)
+    await waitFor(() => screen.getByText(/re-checked — unchanged/))
+
+    fireEvent.change(screen.getByLabelText(/Reason/), {
+      target: { value: 'a long enough reason' },
+    })
+    fireEvent.click(screen.getByRole('button', { name: /Change amount/ }))
+
+    expect(onDispatch).toHaveBeenCalledWith('a long enough reason', undefined)
   })
 })

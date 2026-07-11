@@ -13,6 +13,7 @@ import { isReauthChallenge, problemBanner } from '../actions/problem'
 import { ReauthNotice, useReauthStale } from '../actions/ReauthNotice'
 import { ActionHint } from '../components/ActionHint'
 import { ModalShell } from '../components/ModalShell'
+import { TicketField, ticketValue } from '../components/TicketField'
 import { useToast } from '../components/toast'
 import { useOpsDrawer } from '../ops/drawerState'
 import { bulkCapNote, reversibilityNote } from './intersection'
@@ -88,6 +89,7 @@ export function FilterBulkModal({
   const drawer = useOpsDrawer()
   const submit = useSubmitBulkFilter()
   const [reason, setReason] = useState('')
+  const [ticket, setTicket] = useState('')
   const [typed, setTyped] = useState('')
 
   const scope = useMemo(() => enginesInScope(criteria, engines), [criteria, engines])
@@ -111,7 +113,7 @@ export function FilterBulkModal({
 
   const confirm = () => {
     submit.mutate(
-      { criteria, verb: offer.verb, reason: reason.trim() },
+      { criteria, verb: offer.verb, reason: reason.trim(), ticketId: ticketValue(ticket) },
       {
         onSuccess: (job) => {
           toast({
@@ -209,6 +211,8 @@ export function FilterBulkModal({
           }}
         />
       </label>
+
+      <TicketField value={ticket} onChange={setTicket} />
 
       {prod && (
         <label className="modal-field">

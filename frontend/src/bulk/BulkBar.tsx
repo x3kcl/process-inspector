@@ -18,6 +18,7 @@ import { isReauthChallenge, problemBanner } from '../actions/problem'
 import { ReauthNotice, useReauthStale } from '../actions/ReauthNotice'
 import { ActionHint } from '../components/ActionHint'
 import { ModalShell } from '../components/ModalShell'
+import { TicketField, ticketValue } from '../components/TicketField'
 import { useToast } from '../components/toast'
 import { useOpsDrawer } from '../ops/drawerState'
 import type { EngineFailure } from '../search/partials'
@@ -284,6 +285,7 @@ function BulkSubmitModal({
   const drawer = useOpsDrawer()
   const submit = useSubmitBulk()
   const [reason, setReason] = useState('')
+  const [ticket, setTicket] = useState('')
   const [acknowledged, setAcknowledged] = useState(false)
   const [listOpen, setListOpen] = useState(false)
   const split = perEngineSplit(targets)
@@ -315,7 +317,7 @@ function BulkSubmitModal({
       instanceId: row.processInstanceId ?? '',
     }))
     submit.mutate(
-      { verb: offer.verb, reason: reason.trim(), items },
+      { verb: offer.verb, reason: reason.trim(), ticketId: ticketValue(ticket), items },
       {
         onSuccess: (job) => {
           toast({
@@ -431,6 +433,8 @@ function BulkSubmitModal({
           }}
         />
       </label>
+
+      <TicketField value={ticket} onChange={setTicket} />
 
       {reauthNeeded ? (
         <ReauthNotice />

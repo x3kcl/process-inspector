@@ -15,6 +15,7 @@ import { ReauthNotice, useReauthStale } from '../actions/ReauthNotice'
 import { bulkCapNote, reversibilityNote } from '../bulk/intersection'
 import { ActionHint } from '../components/ActionHint'
 import { ModalShell } from '../components/ModalShell'
+import { TicketField, ticketValue } from '../components/TicketField'
 import { useToast } from '../components/toast'
 import { useOpsDrawer } from '../ops/drawerState'
 
@@ -46,6 +47,7 @@ export function RetryGroupModal({
   const drawer = useOpsDrawer()
   const submit = useSubmitBulkErrorClass()
   const [reason, setReason] = useState('')
+  const [ticket, setTicket] = useState('')
   const [typed, setTyped] = useState('')
 
   const environment = engine?.environment
@@ -72,6 +74,7 @@ export function RetryGroupModal({
         definitionVersion: version,
         engineId,
         reason: reason.trim(),
+        ticketId: ticketValue(ticket),
       },
       {
         onSuccess: (job) => {
@@ -182,6 +185,8 @@ export function RetryGroupModal({
           }}
         />
       </label>
+
+      <TicketField value={ticket} onChange={setTicket} />
 
       {prod && (
         <label className="modal-field">

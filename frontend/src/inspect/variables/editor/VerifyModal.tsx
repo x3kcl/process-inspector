@@ -14,6 +14,7 @@ import type { ActionProblem } from '../../../actions/problem'
 import { problemBanner } from '../../../actions/problem'
 import { ActionHint } from '../../../components/ActionHint'
 import { ModalShell } from '../../../components/ModalShell'
+import { TicketField, ticketValue } from '../../../components/TicketField'
 import { formatBytes, serializedBytes } from '../ledger'
 import { changeSentence, changeLine, countLeaves, diffSummary, short, structuralDiff } from './diff'
 
@@ -31,7 +32,8 @@ interface Props {
   typeChanged: { from: string; to: string } | null
   pending: boolean
   problem?: ActionProblem
-  onDispatch: (reason: string | undefined) => void
+  /** ticketId is the optional R-AUD-07 capture — undefined when the field stays blank. */
+  onDispatch: (reason: string | undefined, ticketId?: string) => void
   /** CAS conflict / staleness forward path: re-seed the editor from the engine value. */
   onStartOver: (currentValue: unknown) => void
   onClose: () => void
@@ -52,6 +54,7 @@ export function VerifyModal({
   onClose,
 }: Props) {
   const [reason, setReason] = useState('')
+  const [ticket, setTicket] = useState('')
   const variable = request.variable
   const name = variable?.name ?? '?'
   const before = variable?.expectedOldValue
@@ -183,7 +186,7 @@ export function VerifyModal({
               }
               onClick={() => {
                 const trimmed = reason.trim()
-                onDispatch(trimmed === '' ? undefined : trimmed)
+                onDispatch(trimmed === '' ? undefined : trimmed, ticketValue(ticket))
               }}
             >
               {pending ? 'Applying…' : confirmLabel}
@@ -295,6 +298,8 @@ export function VerifyModal({
           }}
         />
       </label>
+
+      <TicketField value={ticket} onChange={setTicket} />
 
       <details className="exact-request">
         <summary>exact request</summary>

@@ -893,15 +893,20 @@ tree rows stay distinguishable (R-UXQ-12 half, usability W2 #7).
   role-gated OPERATOR+; DB role INSERT/SELECT-only + hash-chain tamper evidence; erasure =
   skeleton-preserving redaction. Details: OPERATIONS.md §6. Never logs secrets.
 - Surfaced four ways: **per-instance tab** (what did the last shift try), **global
-  operations log** page (filterable by actor/action/engine/ticketId/time), **recent
-  operations** on the triage landing, and the **shift report** (R-AUD-05): a "my activity,
-  this shift" preset + one-click plain-text export, UNKNOWN outcomes grouped first under
+  operations log** page (filterable by actor/action/engine/ticketId/time, with a streaming
+  **CSV export** over the same filters — R-AUD-08; formula-escaped per R-OPS-08, skeleton
+  columns only: payload/response bodies stay role-gated in the app per R-AUD-03), **recent
+  operations** on the triage landing, and the **shift report** (R-AUD-05): a "My shift"
+  preset (current user, since shift start = last 8 h) + one-click plain-text export
+  ("Copy shift report", UTC ISO timestamps), UNKNOWN outcomes grouped first under
   NEEDS VERIFICATION.
 - **Notes** per composite ID (BFF-owned; author + timestamp; "has notes" grid marker).
   Copy-for-ticket includes the latest note + a one-line actions-taken summary (R-AUD-06);
   a group-level copy-for-ticket exists on Stage 0 (v1.x). Reasons carry an optional
   (per-deployment requirable) **ticketId**, regex-validated and linkified via
-  `ticket-url-template` (R-AUD-07); bulk completion can fire a signed webhook (v1.x).
+  `ticket-url-template` (R-AUD-07) — captured by an optional "Ticket ID" field on every
+  reason-bearing confirm dialog (destructive modal, edit-variable verify, bulk submits);
+  bulk completion can fire a signed webhook (v1.x).
 - **Watchlist** (R-BAU-05, v1.x): per-user pinned composite IDs as a landing panel with
   changed-since-last-seen indication; with the start-of-shift delta ("changes since
   <marker>") and future maintenance snapshots, it shares ONE count-snapshot store.
@@ -911,7 +916,10 @@ tree rows stay distinguishable (R-UXQ-12 half, usability W2 #7).
   BFF audit log is the only authoritative source of WHO acted**. Investigations must start
   here, not in `ACT_HI_*`. Where the engine deployment is ours (flap), the optional
   `X-Forwarded-User` header + engine-side interceptor restores native attribution
-  (ARCHITECTURE §6); it is a per-engine bonus, never relied upon.
+  (ARCHITECTURE §6); it is a per-engine bonus, never relied upon. Surfaced in-product
+  (R-AUD-09) as a static info caveat on the per-instance Audit tab AND the operations-log
+  header: "Engine-side history attributes these actions to the shared service account —
+  this log is the authoritative WHO."
 
 ## 10. Tech stack (decided — ADR-001, see [DESIGN-REVIEW.md](DESIGN-REVIEW.md))
 

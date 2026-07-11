@@ -49,11 +49,12 @@ placeholder validation; tester sign-in via SPA form only.
   grid (R-UXQ-12 half).
 
 ## W3 — the six known MUST-v1 gaps (sequenced; all SPEC §12 v1 scope, outrank every v1.x fast-follow)
-1. **Audit-surface slice** (one PR): R-AUD-08 CSV export (`AuditController.operationsLog`
-   grows a `text/csv` variant — filters already exist) + R-AUD-09 attribution caveat
-   (static `ActionHint` tone-info on the audit tab) + R-AUD-05 shift report ("my activity
-   this shift, UNKNOWNs first" preset + plain-text export over the same query) +
-   R-AUD-07 ticket-capture field in the confirm modals. Effort S+S+M+S.
+1. ✅ **Audit-surface slice** (one PR — LANDED): R-AUD-08 CSV export (`GET /api/audit/export`,
+   the streaming `text/csv` sibling of `operationsLog` over the SAME filters) + R-AUD-09
+   attribution caveat (static `ActionHint` tone-info on the audit tab AND the ops-log
+   header) + R-AUD-05 shift report ("My shift" preset + "Copy shift report", UNKNOWNs
+   first under NEEDS VERIFICATION) + R-AUD-07 ticket-capture field in the reason-bearing
+   confirm modals.
 2. **R-BAU-01 acknowledge** — the long pole (new store via Flyway, tier-1 endpoint under
    full corrective-actions rails, `ErrorGroupCard` toggle, auto-resurface rule). L.
    Design starts during slice 1.
