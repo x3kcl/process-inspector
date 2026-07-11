@@ -327,6 +327,18 @@ button.primary:disabled {
 .snapshot {
   font-variant-numeric: tabular-nums;
 }
+/* Theme T8 (refresh split-brain): post-mutation honesty chip on the snapshot header —
+   the user's own settled action may have outdated this grid; Refresh is the only re-run
+   (SPEC §4 snapshot semantics, disclosure only — never a silent re-fetch). */
+.snapshot-stale {
+  margin-left: 8px;
+  padding: 1px 6px;
+  font-size: 12px;
+  color: #6b4a03;
+  background: #fff6df;
+  border: 1px solid #b7791f;
+  border-radius: 3px;
+}
 
 .partial-banner {
   display: flex;
@@ -2311,6 +2323,18 @@ button.primary:disabled {
 .outcome-requeued {
   color: #b7791f;
   font-weight: 700;
+}
+/* Audit rows caught mid-flight (R-SEM-18 PENDING) — a dispatch state, never a verdict. */
+.outcome-pending {
+  color: #6b4a03;
+  font-weight: 700;
+}
+/* The re-queued item's Verify now is a read-only LINK to live evidence (Theme T8),
+   dressed in the same affordance as the unknown item's Verify now button. */
+.verify-link {
+  display: inline-block;
+  text-decoration: none;
+  color: inherit;
 }
 
 /* ---- v1.x #1: triage group retry + drawer focus handoff ---- */

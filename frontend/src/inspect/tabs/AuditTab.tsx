@@ -6,6 +6,7 @@ import { useTicketUrlTemplate } from '../../api/meta'
 import { createInstanceNote, fetchInstanceAudit, fetchInstanceNotes } from '../../api/queries'
 import { formatDateTime } from '../../lib/format'
 import { ticketHref } from '../../lib/ticket'
+import { auditOutcomeView } from '../../ops/outcome'
 
 interface Props {
   engineId: string
@@ -65,40 +66,44 @@ function AuditLog({ engineId, instanceId }: Props) {
         </tr>
       </thead>
       <tbody>
-        {audit.data.map((entry) => (
-          <tr key={entry.id ?? `${entry.ts ?? ''}${entry.action ?? ''}`}>
-            <td>{formatDateTime(entry.ts)}</td>
-            <td>{entry.actor}</td>
-            <td>
-              <code>{entry.action}</code>
-              {entry.breakGlass === true && (
-                <span className="status-badge" title="executed under break-glass">
-                  break-glass
+        {audit.data.map((entry) => {
+          // Theme T8 / R-UXQ-05: same verdict-word mapping as the global ops log —
+          // never raw "ok · null" internals (httpStatus arrives as a wire null).
+          const outcome = auditOutcomeView(entry.action, entry.outcome, entry.httpStatus)
+          return (
+            <tr key={entry.id ?? `${entry.ts ?? ''}${entry.action ?? ''}`}>
+              <td>{formatDateTime(entry.ts)}</td>
+              <td>{entry.actor}</td>
+              <td>
+                <code>{entry.action}</code>
+                {entry.breakGlass === true && (
+                  <span className="status-badge" title="executed under break-glass">
+                    break-glass
+                  </span>
+                )}
+              </td>
+              <td>
+                <span className={`outcome ${outcome.className}`} title={outcome.title}>
+                  {outcome.label}
                 </span>
-              )}
-            </td>
-            <td>
-              <span className={`outcome outcome-${(entry.outcome ?? 'unknown').toLowerCase()}`}>
-                {entry.outcome ?? 'UNKNOWN'}
-              </span>
-              {entry.httpStatus !== undefined && ` · ${String(entry.httpStatus)}`}
-            </td>
-            <td className="audit-reason">
-              {entry.reason}
-              {entry.ticketId !== undefined && entry.ticketId !== '' && (
-                <TicketRef template={ticketTemplate} ticketId={entry.ticketId} />
-              )}
-              {entry.payload !== undefined && entry.payload !== '' && (
-                // The handover detail (SPEC §9): full request payload incl. old values
-                // for variable edits — collapsed, the row stays scannable.
-                <details className="audit-payload">
-                  <summary>payload</summary>
-                  <pre className="value-body">{prettyPayload(entry.payload)}</pre>
-                </details>
-              )}
-            </td>
-          </tr>
-        ))}
+              </td>
+              <td className="audit-reason">
+                {entry.reason}
+                {entry.ticketId !== undefined && entry.ticketId !== '' && (
+                  <TicketRef template={ticketTemplate} ticketId={entry.ticketId} />
+                )}
+                {entry.payload !== undefined && entry.payload !== '' && (
+                  // The handover detail (SPEC §9): full request payload incl. old values
+                  // for variable edits — collapsed, the row stays scannable.
+                  <details className="audit-payload">
+                    <summary>payload</summary>
+                    <pre className="value-body">{prettyPayload(entry.payload)}</pre>
+                  </details>
+                )}
+              </td>
+            </tr>
+          )
+        })}
       </tbody>
     </table>
   )

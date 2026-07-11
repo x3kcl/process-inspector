@@ -13,6 +13,7 @@ import { RecentSearchList } from '../views/RecentSearchList'
 import { ViewChips } from '../views/ViewChips'
 import { useRecordRecentSearch } from '../views/useViewStores'
 import { summarizePartials } from './partials'
+import { resultsMayBeStale, useLastMutationSettledAt } from './staleness'
 import { useSearchResults, useSearchUrl } from './useSearch'
 
 /**
@@ -90,6 +91,16 @@ export function SearchPage() {
 
   const summary = useMemo(() => summarizePartials(results.data?.perEngine), [results.data])
 
+  // Theme T8 (refresh split-brain): once the user's OWN mutation settles, this snapshot
+  // may disagree with the live ops drawer — disclose it next to the as-of stamp instead
+  // of silently diverging. Disclosure only; Refresh stays the single re-run (SPEC §4).
+  const lastMutationSettledAt = useLastMutationSettledAt()
+  const staleAfterMutation = resultsMayBeStale(
+    results.data !== undefined,
+    results.dataUpdatedAt,
+    lastMutationSettledAt,
+  )
+
   // Engine-reported match total across the answering engines — the "~N" context for the
   // filter-scope affordance (v1.x #2); the binding count is server-resolved at execution.
   const matchTotal = useMemo(() => {
@@ -132,6 +143,15 @@ export function SearchPage() {
               : request !== null
                 ? 'Searching…'
                 : 'No search yet'}
+            {staleAfterMutation && (
+              <span
+                className="snapshot-stale"
+                role="note"
+                title="one of your actions settled after this snapshot was taken — Refresh re-runs the search"
+              >
+                results may be stale — refresh
+              </span>
+            )}
           </span>
           <button type="button" disabled={request === null || results.isFetching} onClick={refresh}>
             {results.isFetching ? 'Refreshing…' : 'Refresh'}

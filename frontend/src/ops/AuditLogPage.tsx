@@ -13,6 +13,7 @@ import { useTicketUrlTemplate } from '../api/meta'
 import type { AuditEntryDto } from '../api/model'
 import { formatDateTime } from '../lib/format'
 import { ticketHref } from '../lib/ticket'
+import { auditOutcomeView } from './outcome'
 import 'ag-grid-community/styles/ag-grid.css'
 import 'ag-grid-community/styles/ag-theme-quartz.css'
 
@@ -95,14 +96,18 @@ export function AuditLogPage() {
       {
         headerName: 'Outcome',
         field: 'outcome',
-        width: 130,
-        cellRenderer: (p: CustomCellRendererProps<AuditEntryDto>) =>
-          p.data === undefined ? null : (
-            <span className={`outcome outcome-${(p.data.outcome ?? 'unknown').toLowerCase()}`}>
-              {p.data.outcome ?? 'UNKNOWN'}
-              {p.data.httpStatus !== undefined && ` · ${String(p.data.httpStatus)}`}
+        width: 150,
+        // Theme T8 / R-UXQ-05: a VERDICT WORD from the shared outcome vocabulary — never
+        // raw store internals like "ok · null" (httpStatus arrives as a wire null).
+        cellRenderer: (p: CustomCellRendererProps<AuditEntryDto>) => {
+          if (p.data === undefined) return null
+          const view = auditOutcomeView(p.data.action, p.data.outcome, p.data.httpStatus)
+          return (
+            <span className={`outcome ${view.className}`} title={view.title}>
+              {view.label}
             </span>
-          ),
+          )
+        },
       },
       { headerName: 'Reason', field: 'reason', flex: 1, minWidth: 200, tooltipField: 'reason' },
       {
