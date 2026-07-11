@@ -1,6 +1,6 @@
 import { useCallback } from 'react'
 import { useQuery, useQueryClient } from '@tanstack/react-query'
-import { fetchTriage, fetchTriageTrends } from '../api/queries'
+import { fetchLeakViews, fetchTriage, fetchTriageTrends } from '../api/queries'
 
 /**
  * Stage 0 aggregations. The BFF already caches ~20s (thundering-herd protection, SPEC §4),
@@ -36,5 +36,19 @@ export function useTriageTrends(hours = 24) {
     queryFn: () => fetchTriageTrends(hours),
     refetchInterval: 60_000,
     staleTime: 30_000,
+  })
+}
+
+/**
+ * Stage-0 leak views (R-BAU-02). Secondary chrome below the failure signal, so it polls gently
+ * and never blocks the landing — a failure just hides the panel (the failure groups still render).
+ * The BFF caches the aggregation like the dashboard, so the client staleTime matches.
+ */
+export function useLeakViews() {
+  return useQuery({
+    queryKey: ['triage-leak-views'],
+    queryFn: fetchLeakViews,
+    refetchInterval: 60_000,
+    staleTime: 15_000,
   })
 }

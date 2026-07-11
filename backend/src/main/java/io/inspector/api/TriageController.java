@@ -1,8 +1,10 @@
 package io.inspector.api;
 
+import io.inspector.dto.LeakViewsResponse;
 import io.inspector.dto.TriageDashboardResponse;
 import io.inspector.dto.TriageTrendResponse;
 import io.inspector.triage.ErrorGroupAckService;
+import io.inspector.triage.LeakViewService;
 import io.inspector.triage.TriageService;
 import io.inspector.triage.TriageTrendService;
 import java.time.Duration;
@@ -32,11 +34,14 @@ public class TriageController {
     private final TriageService triage;
     private final TriageTrendService trends;
     private final ErrorGroupAckService acks;
+    private final LeakViewService leakViews;
 
-    public TriageController(TriageService triage, TriageTrendService trends, ErrorGroupAckService acks) {
+    public TriageController(
+            TriageService triage, TriageTrendService trends, ErrorGroupAckService acks, LeakViewService leakViews) {
         this.triage = triage;
         this.trends = trends;
         this.acks = acks;
+        this.leakViews = leakViews;
     }
 
     @GetMapping
@@ -50,5 +55,17 @@ public class TriageController {
     public TriageTrendResponse trends(@RequestParam(defaultValue = "24") int hours) {
         int bounded = Math.max(1, Math.min(hours, MAX_TREND_HOURS));
         return trends.trends(Duration.ofHours(bounded));
+    }
+
+    /**
+     * GET /api/triage/leak-views — the R-BAU-02 "Leak views" panel: long-running and
+     * long-suspended instances grouped per definition, from count-only Stage-0 queries. Age is
+     * {@code now − startTime} for every window (R-SEM-05: the SUSPENDED window too — there is no
+     * suspension timestamp). Cached like the dashboard; always a 200 (a down engine degrades to
+     * a named lower bound, never a failed response).
+     */
+    @GetMapping("/leak-views")
+    public LeakViewsResponse leakViews() {
+        return leakViews.leakViews();
     }
 }

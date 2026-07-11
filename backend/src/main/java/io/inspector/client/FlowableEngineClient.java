@@ -558,6 +558,27 @@ public class FlowableEngineClient {
         return listProcessDefinitionsByKey(engine, key, null, 0, size, priority);
     }
 
+    /**
+     * The LATEST-version definition of EVERY key on the engine ({@code latest=true}) — a bounded
+     * metadata list of the deployed definition keys, NOT instance rows. Used by the Stage-0 leak
+     * views (R-BAU-02) to enumerate the keys it then counts per age window with count-only
+     * queries. {@code page.total()} lets the caller detect a key set larger than {@code size}
+     * (a lower bound). {@code latest=true} collapses the version history to one row per key.
+     */
+    public FlowablePage listLatestProcessDefinitions(EngineConfig engine, int size, CallPriority priority) {
+        return guarded(
+                engine,
+                priority,
+                () -> client(engine)
+                        .get()
+                        .uri(uri -> uri.path("/repository/process-definitions")
+                                .queryParam("latest", true)
+                                .queryParam("size", size)
+                                .build())
+                        .retrieve()
+                        .body(FlowablePage.class));
+    }
+
     /** Same, narrowed to ONE exact deployed version (the M2b definitionVersion filter). */
     public FlowablePage listProcessDefinitionsByKey(EngineConfig engine, String key, Integer version, int size) {
         return listProcessDefinitionsByKey(engine, key, version, 0, size);

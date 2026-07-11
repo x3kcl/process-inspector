@@ -253,12 +253,18 @@ Answers "what is broken, how much, where" in zero keystrokes:
   chips are flag tiers, not a partition. **All Stage 0 counts carry the same
   truncation/lower-bound badges as the grid** (R-SEM-12) — the first number an operator
   anchors on gets the same honesty guarantee as the last.
-- **Leak views** (R-BAU-02): curated views *Active > 30 days*, *Active > 90 days*,
-  *Suspended > 7 days*, grouped per definition ("vacationRequest: 212 > 30d") — the slow
-  leaks that never enter a failure lane. Curated-view honesty rule (R-SEM-05): **no system
-  view may ship whose predicate the REST API cannot evaluate faithfully** (there is no
-  suspension timestamp — "suspended too long" views are defined against audit/notes
-  activity and labeled as such).
+- **Leak views** (R-BAU-02): curated views *Active · started > 30 days ago*, *Active ·
+  started > 90 days ago*, *Suspended · started > 7 days ago*, grouped per definition
+  ("vacationRequest: 212 > 30d") — the slow leaks that never enter a failure lane. Age is
+  `now − startTime` (the `startedBefore` predicate) for every window; each per-definition
+  count is a count-only Stage-0 query (never the grid-search plan) and carries the same
+  truncation/lower-bound badge as the grid (R-SEM-12). Each count is a deep link that
+  replays the exact Stage-1 search it was measured against (URL primacy). Curated-view
+  honesty rule (R-SEM-05): **no system view may ship whose predicate the REST API cannot
+  evaluate faithfully** — Flowable records no suspension timestamp, so the suspended view
+  is defined against **start time** ("currently suspended AND started > 7d ago", the same
+  honest scoping as the *Suspended > 24h (by start time)* saved view) and its label says
+  exactly that, never implying time-since-suspension.
 - **Alarm thresholds** (R-NFR-04, per-engine overridable): oldest executable job >5 min
   warn / >15 min crit; overdue timer = past due >60 s, any = warn, >100 = crit; probe 30 s
   with 2-fail/1-success flap damping.
@@ -1074,7 +1080,8 @@ and would rewrite working M1/M2 code for no capability gain); Go/FastAPI/Kotlin 
 
 - **v1 (must ship, gated by §13):** corrected status join + RETRYING tier + hierarchy
   roll-up + explain-status evidence; triage landing incl. acknowledge (landed —
-  usability W3-2, R-BAU-01) + leak views + badged counts; omnibox; URL state + deep
+  usability W3-2, R-BAU-01) + leak views (landed — usability W3-3, R-BAU-02/R-SEM-05) +
+  badged counts; omnibox; URL state + deep
   links; full-page detail (vitals, read-only
   diagram, tabs, form-first variable ledger + editor (§4a), raw-JSON links); **verbs:
   tiers 0–1 + suspend/activate +

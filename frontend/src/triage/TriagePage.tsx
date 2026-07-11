@@ -6,6 +6,7 @@ import { glossTechnicalMessage } from '../lib/plainFailure'
 import { SavedViewsSection } from '../views/SavedViewsSection'
 import { CmmnScopeDrawer } from './CmmnScopeDrawer'
 import { ErrorGroupSections } from './ErrorGroupSections'
+import { LeakViewsSection } from './LeakViewsSection'
 import { StatusCounts } from './StatusCounts'
 import { deriveHonesty, groupCountsAreLowerBound, statusCountsAreLowerBound } from './honesty'
 import { useTriage, useTriageTrends } from './useTriage'
@@ -155,6 +156,9 @@ export function TriagePage() {
           />
         )}
       </section>
+
+      {/* Leak views (R-BAU-02) — the slow leaks, below the failure signal. */}
+      <LeakViewsSection />
 
       {/* Navigation chrome BELOW the failure signal — triage stays zero-keystroke first. */}
       <SavedViewsSection />
