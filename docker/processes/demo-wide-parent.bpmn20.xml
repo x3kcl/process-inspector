@@ -1,0 +1,44 @@
+<?xml version="1.0" encoding="UTF-8"?>
+<definitions xmlns="http://www.omg.org/spec/BPMN/20100524/MODEL"
+             xmlns:flowable="http://flowable.org/bpmn"
+             xmlns:bpmndi="http://www.omg.org/spec/BPMN/20100524/DI"
+             xmlns:omgdc="http://www.omg.org/spec/DD/20100524/DC"
+             xmlns:omgdi="http://www.omg.org/spec/DD/20100524/DI"
+             targetNamespace="http://inspector.io/demo">
+  <!-- F-G1 (GOAL-CATALOG fixture gap): parallel multi-instance call activity with
+       cardinality 60 — exceeds the R-SEM-19 hierarchy render cap (50/node) so the
+       Hierarchy tab must show "+N more" and the Timeline sub-lanes must truncate
+       honestly. Children park on a user task (demoWideChild) and stay ACTIVE. -->
+  <process id="demoWideParent" name="Wide parent (60 parallel children)" isExecutable="true">
+    <startEvent id="start"/>
+    <sequenceFlow id="f1" sourceRef="start" targetRef="fanOut"/>
+    <callActivity id="fanOut" name="Fan out to 60 children" calledElement="demoWideChild">
+      <multiInstanceLoopCharacteristics isSequential="false">
+        <loopCardinality>60</loopCardinality>
+      </multiInstanceLoopCharacteristics>
+    </callActivity>
+    <sequenceFlow id="f2" sourceRef="fanOut" targetRef="end"/>
+    <endEvent id="end"/>
+  </process>
+  <bpmndi:BPMNDiagram id="diag">
+    <bpmndi:BPMNPlane id="plane" bpmnElement="demoWideParent">
+      <bpmndi:BPMNShape id="s_start" bpmnElement="start">
+        <omgdc:Bounds x="100" y="100" width="30" height="30"/>
+      </bpmndi:BPMNShape>
+      <bpmndi:BPMNShape id="s_fanOut" bpmnElement="fanOut">
+        <omgdc:Bounds x="180" y="80" width="120" height="70"/>
+      </bpmndi:BPMNShape>
+      <bpmndi:BPMNShape id="s_end" bpmnElement="end">
+        <omgdc:Bounds x="350" y="100" width="30" height="30"/>
+      </bpmndi:BPMNShape>
+      <bpmndi:BPMNEdge id="e_f1" bpmnElement="f1">
+        <omgdi:waypoint x="130" y="115"/>
+        <omgdi:waypoint x="180" y="115"/>
+      </bpmndi:BPMNEdge>
+      <bpmndi:BPMNEdge id="e_f2" bpmnElement="f2">
+        <omgdi:waypoint x="300" y="115"/>
+        <omgdi:waypoint x="350" y="115"/>
+      </bpmndi:BPMNEdge>
+    </bpmndi:BPMNPlane>
+  </bpmndi:BPMNDiagram>
+</definitions>
