@@ -276,6 +276,31 @@ class AuditServiceTest {
         assertThat(saved.getValue().getResponseSnippet()).isEqualTo(AuditService.REDACTED);
     }
 
+    @Test
+    void beginPendingAdoptsTheRequestCorrelationIdFromMdc() {
+        // R-AUD-04 / usability W1#6: inside a request the audit row's correlationId IS the
+        // request's X-Request-Id (RequestIdFilter binds it to MDC) — the id an operator quotes
+        // from an error banner finds these rows via the audit correlationId filter.
+        when(repository.findTopByOrderBySeqDesc()).thenReturn(Optional.empty());
+        org.slf4j.MDC.put(io.inspector.api.RequestIdFilter.MDC_KEY, "req-4711");
+        try {
+            AuditEntry entry = service.beginPending(
+                    "operator", "engine-a", null, "pi-1", "retry-job", "stuck payment retry", null, Map.of());
+            assertThat(entry.getCorrelationId()).isEqualTo("req-4711");
+        } finally {
+            org.slf4j.MDC.remove(io.inspector.api.RequestIdFilter.MDC_KEY);
+        }
+    }
+
+    @Test
+    void beginPendingMintsACorrelationIdOffRequest() {
+        // Off-request callers (bulk executor items, scheduled jobs) still get a correlation id.
+        when(repository.findTopByOrderBySeqDesc()).thenReturn(Optional.empty());
+        AuditEntry entry = service.beginPending(
+                "operator", "engine-a", null, "pi-1", "retry-job", "reason long enough", null, Map.of());
+        assertThat(entry.getCorrelationId()).isNotBlank();
+    }
+
     private static AuditEntry entry(String id) {
         return new AuditEntry(
                 java.util.UUID.nameUUIDFromBytes(id.getBytes(StandardCharsets.UTF_8)),

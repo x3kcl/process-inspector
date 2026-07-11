@@ -170,6 +170,53 @@ describe('problemBanner — the three-way SPEC §6 distinction stays visible', (
   })
 })
 
+describe('requestId — the quotable support id (usability W1#6, R-AUD-04)', () => {
+  it('parses the additive requestId property off any ProblemDetail', () => {
+    const problem = parseActionProblem(403, { code: 'rbac-denied', requestId: 'req-4711' })
+    expect(problem.requestId).toBe('req-4711')
+    expect(parseActionProblem(403, { code: 'rbac-denied' }).requestId).toBeUndefined()
+  })
+
+  it('parses the requestId off the bare Spring error shape too', () => {
+    const problem = parseActionProblem(403, {
+      timestamp: '2026-07-10T12:00:00Z',
+      status: 403,
+      error: 'Forbidden',
+      path: '/api/search',
+      requestId: 'req-bare-1',
+    })
+    expect(problem.bareSpringError).toBe(true)
+    expect(problem.requestId).toBe('req-bare-1')
+  })
+
+  it('every banner ends with the quote-this-ID next move when the id is present', () => {
+    const withId = problemBanner(
+      parseActionProblem(403, { code: 'rbac-denied', requestId: 'req-4711' }),
+    )
+    expect(withId).toContain('Quote request ID req-4711 to support')
+    // the guard-sentence passthrough leg too
+    const guard = problemBanner(
+      parseActionProblem(400, {
+        code: 'reason-too-short',
+        detail: 'The reason must be at least 10 characters.',
+        requestId: 'req-4712',
+      }),
+    )
+    expect(guard).toContain('The reason must be at least 10 characters.')
+    expect(guard).toContain('Quote request ID req-4712 to support')
+    // and the bare-shape fallback leg
+    const bare = problemBanner(
+      parseActionProblem(403, { status: 403, error: 'Forbidden', requestId: 'req-4713' }),
+    )
+    expect(bare).toContain('Quote request ID req-4713 to support')
+  })
+
+  it('adds no id line when the server sent none — never invents an id', () => {
+    const text = problemBanner(parseActionProblem(403, { code: 'rbac-denied' }))
+    expect(text).not.toContain('Quote request ID')
+  })
+})
+
 describe('reauth-required — the dangerous-set freshness challenge (IDP-SECURITY.md §5)', () => {
   it('is recognised as a challenge, not a plain failure', () => {
     const problem = parseActionProblem(401, {

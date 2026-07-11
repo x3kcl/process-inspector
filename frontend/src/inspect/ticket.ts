@@ -37,3 +37,16 @@ function firstLine(text: string): string {
   const newline = text.indexOf('\n')
   return newline < 0 ? text : text.slice(0, newline)
 }
+
+/**
+ * Copy-for-ticket when the page itself errored (usability W1#6, R-AUD-04): there are no vitals
+ * to quote, but the composite id, the error sentence — which carries the quotable request ID,
+ * appended by ApiError — and the deep link are exactly what support needs.
+ */
+export function buildErrorTicketText(
+  compositeId: string,
+  errorMessage: string,
+  deepLink: string,
+): string {
+  return [`Instance: ${compositeId}`, `Error: ${errorMessage}`, `Link: ${deepLink}`].join('\n')
+}

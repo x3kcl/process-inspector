@@ -11,6 +11,13 @@ server:
         # `secure` deliberately left container-derived: Secure over HTTPS (prod behind the proxy),
         # not on plain-HTTP local dev — hard-coding true would break the dev login over http.
 
+# R-AUD-04 (usability W1#6): every log line carries the request's correlation id — the same
+# value as the X-Request-Id response header and the audit row's correlation_id (RequestIdFilter
+# binds it to MDC). Boot's default console/file patterns include this correlation slot.
+logging:
+  pattern:
+    correlation: "[%X{correlationId:-}] "
+
 # Observability (IMPROVEMENT-PLAN P1 #12 / Q1, OPERATIONS §8). `/actuator/health/**` is permitAll
 # in SecurityConfig for the container/k8s liveness+readiness probes; `/actuator/prometheus` stays
 # behind `.anyRequest().authenticated()` — an auth-gated scrape endpoint (OPERATIONS §8), so a
