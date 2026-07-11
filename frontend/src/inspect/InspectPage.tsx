@@ -8,11 +8,12 @@ import { EnvBadge } from '../components/EnvBadge'
 import { StatusChip } from '../components/StatusChip'
 import { formatSeconds } from '../lib/format'
 import { Ts } from '../lib/Ts'
+import { DetailTabBar } from './DetailTabBar'
 import { DiagramCanvas } from './DiagramCanvas'
 import type { DivergenceMarkerSet } from './comparison/diffFormat'
 import { InstanceActions } from './InstanceActions'
 import type { TabId } from './tabs'
-import { DEFAULT_TAB, TAB_IDS, TAB_LABELS, isTabId } from './tabs'
+import { DEFAULT_TAB, TAB_LABELS, isTabId } from './tabs'
 import { buildErrorTicketText, buildTicketText } from './ticket'
 import { useInstanceDiagram, useInstanceVitals } from './useInstanceQueries'
 
@@ -205,22 +206,9 @@ export function InspectPage() {
         )}
       </section>
 
-      <nav className="tab-bar" role="tablist" aria-label="Instance detail tabs">
-        {TAB_IDS.map((id) => (
-          <button
-            key={id}
-            type="button"
-            role="tab"
-            aria-selected={id === tab}
-            className={`tab-button${id === tab ? ' tab-active' : ''}`}
-            onClick={() => {
-              selectTab(id)
-            }}
-          >
-            {TAB_LABELS[id]}
-          </button>
-        ))}
-      </nav>
+      {/* R-UXQ-02: APG tablist with arrow-key roving focus, extracted for direct
+          keyboard-event testing. */}
+      <DetailTabBar active={tab} onSelect={selectTab} />
 
       <section className="tab-body" role="tabpanel" aria-label={TAB_LABELS[tab]}>
         <Suspense fallback={<div className="zero-state">Loading {TAB_LABELS[tab]}…</div>}>

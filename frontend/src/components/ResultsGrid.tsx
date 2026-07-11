@@ -1,7 +1,13 @@
 import { useCallback, useEffect, useMemo, useRef, useState } from 'react'
 import { AgGridReact } from 'ag-grid-react'
 import type { CustomCellRendererProps } from 'ag-grid-react'
-import type { ColDef, RowSelectionOptions, SelectionChangedEvent } from 'ag-grid-community'
+import type {
+  CellKeyDownEvent,
+  ColDef,
+  FullWidthCellKeyDownEvent,
+  RowSelectionOptions,
+  SelectionChangedEvent,
+} from 'ag-grid-community'
 import type { EngineDto, ProcessInstanceRow, SearchResponse } from '../api/model'
 import { formatCount } from '../lib/format'
 import { Ts } from '../lib/Ts'
@@ -145,6 +151,28 @@ export function ResultsGrid({
     gridRef.current?.api.deselectAll()
   }, [])
 
+  // R-UXQ-02: ONE row-open handler for both input paths — double-click and Enter on the
+  // focused cell (AG Grid Community keyboard hook: onCellKeyDown). Row-open must never
+  // be mouse-only.
+  const openRow = useCallback(
+    (row: ProcessInstanceRow | undefined) => {
+      if (row !== undefined) onOpenDetails(row)
+    },
+    [onOpenDetails],
+  )
+  const onCellKeyDown = useCallback(
+    (
+      event: CellKeyDownEvent<ProcessInstanceRow> | FullWidthCellKeyDownEvent<ProcessInstanceRow>,
+    ) => {
+      const key = event.event
+      // defaultPrevented guard (review finding): if a future cell widget/editor claims
+      // Enter first, the row-open must not double-fire on the same keystroke.
+      if (key instanceof KeyboardEvent && key.key === 'Enter' && !key.defaultPrevented)
+        openRow(event.data)
+    },
+    [openRow],
+  )
+
   const rows = response?.rows ?? []
 
   // SPEC §10a: distinct zero states — never a calm empty grid while an engine is down.
@@ -192,8 +220,9 @@ export function ResultsGrid({
           getRowId={(p) => p.data.compositeId ?? p.data.processInstanceId ?? ''}
           onSelectionChanged={onSelectionChanged}
           onRowDoubleClicked={(e) => {
-            if (e.data !== undefined) onOpenDetails(e.data)
+            openRow(e.data)
           }}
+          onCellKeyDown={onCellKeyDown}
           tooltipShowDelay={300}
         />
       </div>
@@ -201,6 +230,12 @@ export function ResultsGrid({
         <span>
           {formatCount(rows.length)} row{rows.length === 1 ? '' : 's'}
           {selectedCount > 0 && ` · ${formatCount(selectedCount)} selected`}
+        </span>
+        {/* R-UXQ-02: the open affordance must be discoverable, next to the (screen-reader)
+            "Space to toggle row selection" hint AG Grid already announces. */}
+        <span className="grid-keys">
+          <kbd>Enter</kbd> opens the focused row · <kbd>Space</kbd> toggles selection · double-click
+          opens
         </span>
         {selectedCount > 0 && (
           <button type="button" onClick={clearSelection}>
