@@ -3,7 +3,7 @@
 // methods, while Basic-per-request stays CSRF-exempt on the BFF. The DOM side
 // (document.cookie + the live request) is Playwright's territory.
 import { describe, expect, it } from 'vitest'
-import { xsrfHeaderValue } from './client'
+import { ApiError, xsrfHeaderValue } from './client'
 
 describe('xsrfHeaderValue', () => {
   it('echoes the XSRF-TOKEN cookie on unsafe methods when no Basic token is present', () => {
@@ -45,5 +45,35 @@ describe('xsrfHeaderValue', () => {
     expect(xsrfHeaderValue('POST', '', null)).toBeNull()
     expect(xsrfHeaderValue('POST', 'SESSION=s1', null)).toBeNull()
     expect(xsrfHeaderValue('POST', 'XSRF-TOKEN=', null)).toBeNull()
+  })
+})
+
+describe('ApiError — the quotable request id (usability W1#6, R-AUD-04)', () => {
+  it('exposes the body requestId and ends the message with the quote-this-ID next move', () => {
+    const error = new ApiError(404, {
+      timestamp: '2026-07-10T12:00:00Z',
+      status: 404,
+      error: 'Not Found',
+      path: '/api/instances/engine-a/gone',
+      requestId: 'req-4711',
+    })
+    expect(error.requestId).toBe('req-4711')
+    expect(error.message).toContain('Not Found')
+    expect(error.message).toContain('Quote request ID req-4711 to support')
+  })
+
+  it('appends the id to a ProblemDetail detail sentence too', () => {
+    const error = new ApiError(502, {
+      title: 'Engine unreachable',
+      detail: 'engine-a did not answer.',
+      requestId: 'req-4712',
+    })
+    expect(error.message).toBe('engine-a did not answer. Quote request ID req-4712 to support.')
+  })
+
+  it('never invents an id when the body carries none', () => {
+    const error = new ApiError(403, { status: 403, error: 'Forbidden' })
+    expect(error.requestId).toBeUndefined()
+    expect(error.message).not.toContain('Quote request ID')
   })
 })

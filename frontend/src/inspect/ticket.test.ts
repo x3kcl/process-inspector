@@ -1,6 +1,6 @@
 import { describe, expect, it } from 'vitest'
 import type { InstanceDetail } from '../api/model'
-import { buildTicketText } from './ticket'
+import { buildErrorTicketText, buildTicketText } from './ticket'
 
 const FAILED: InstanceDetail = {
   definitionName: 'Order fulfilment',
@@ -44,5 +44,20 @@ describe('buildTicketText', () => {
   it('falls back through definitionName → key → processDefinitionId', () => {
     const text = buildTicketText({ processDefinitionId: 'order:7:abc' }, 'e:1', 'l')
     expect(text).toContain('Definition: order:7:abc')
+  })
+})
+
+describe('buildErrorTicketText — copy-for-ticket when the page itself errored (W1#6, R-AUD-04)', () => {
+  it('carries the composite id, the full error sentence (incl. the request id) and the link', () => {
+    const text = buildErrorTicketText(
+      'billing-prod:12345',
+      'HTTP 404. Quote request ID req-4711 to support.',
+      'https://inspector/inspect/billing-prod/12345',
+    )
+    expect(text.split('\n')).toEqual([
+      'Instance: billing-prod:12345',
+      'Error: HTTP 404. Quote request ID req-4711 to support.',
+      'Link: https://inspector/inspect/billing-prod/12345',
+    ])
   })
 })

@@ -116,7 +116,7 @@ public class AuditService {
                         .orElse(CHAIN_GENESIS);
                 AuditEntry entry = new AuditEntry(
                         UUID.randomUUID(),
-                        UUID.randomUUID().toString(),
+                        requestCorrelationId(),
                         actor,
                         clock.instant(),
                         engineId,
@@ -165,7 +165,7 @@ public class AuditService {
                         .orElse(CHAIN_GENESIS);
                 AuditEntry entry = new AuditEntry(
                         UUID.randomUUID(),
-                        UUID.randomUUID().toString(),
+                        requestCorrelationId(),
                         actor,
                         clock.instant(),
                         CONFIG_ENGINE_ID,
@@ -192,6 +192,17 @@ public class AuditService {
                     e.toString());
             throw new AuditUnavailableException(e);
         }
+    }
+
+    /**
+     * R-AUD-04 (usability W1#6): inside a request the audit row's correlationId IS the request's
+     * {@code X-Request-Id} — {@code RequestIdFilter} binds it to MDC, so the id an operator
+     * quotes from an error banner finds these rows via the existing audit correlationId filter.
+     * Off-request callers (bulk executor items, scheduled jobs) fall back to a fresh UUID.
+     */
+    private static String requestCorrelationId() {
+        String requestId = org.slf4j.MDC.get(io.inspector.api.RequestIdFilter.MDC_KEY);
+        return requestId != null ? requestId : UUID.randomUUID().toString();
     }
 
     /**

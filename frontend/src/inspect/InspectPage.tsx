@@ -12,7 +12,7 @@ import type { DivergenceMarkerSet } from './comparison/diffFormat'
 import { InstanceActions } from './InstanceActions'
 import type { TabId } from './tabs'
 import { DEFAULT_TAB, TAB_IDS, TAB_LABELS, isTabId } from './tabs'
-import { buildTicketText } from './ticket'
+import { buildErrorTicketText, buildTicketText } from './ticket'
 import { useInstanceDiagram, useInstanceVitals } from './useInstanceQueries'
 
 // Every tab is its own chunk AND mounts (= fetches) only when opened — IBM's slow-detail
@@ -124,6 +124,14 @@ export function InspectPage() {
           {vitals.data !== undefined && (
             <CopyButton
               text={buildTicketText(vitals.data, compositeId, deepLink)}
+              label="copy for ticket"
+            />
+          )}
+          {vitals.isError && (
+            // W1#6 (R-AUD-04): the errored page still yields a support-ready ticket — the
+            // error sentence carries the quotable request ID (appended by ApiError).
+            <CopyButton
+              text={buildErrorTicketText(compositeId, vitals.error.message, deepLink)}
               label="copy for ticket"
             />
           )}

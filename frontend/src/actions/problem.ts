@@ -26,6 +26,10 @@ export interface ActionProblem {
    *  `code`) — the request was refused before it reached the BFF's handlers, typically
    *  because the session lacks a CSRF token. */
   bareSpringError: boolean
+  /** The quotable support id (usability W1#6, R-AUD-04): the BFF stamps every error body —
+   *  ProblemDetail AND the bare Spring shape — with the request's X-Request-Id, which is
+   *  also the audit rows' correlationId and the log lines' MDC id. */
+  requestId?: string
 }
 
 function str(source: Record<string, unknown>, key: string): string | undefined {
@@ -53,6 +57,7 @@ export function parseActionProblem(status: number, body: unknown): ActionProblem
     expectedOldValue: 'expectedOldValue' in source ? source['expectedOldValue'] : undefined,
     engineStatus: typeof source['engineStatus'] === 'number' ? source['engineStatus'] : undefined,
     engineBody: str(source, 'engineBody'),
+    requestId: str(source, 'requestId'),
     bareSpringError:
       code === undefined &&
       typeof source['status'] === 'number' &&
@@ -76,9 +81,19 @@ export function isReauthChallenge(problem: ActionProblem): boolean {
 
 /**
  * The operator-facing banner sentence per failure class (SPEC §6 error-copy rule:
- * never a generic 500 for a dispatched mutation).
+ * never a generic 500 for a dispatched mutation). Always ends with the quotable-id
+ * next move when the server sent one (W1#6, R-AUD-04): quoting that id gives support
+ * the request's log lines AND its audit rows (same value end to end). Never invented
+ * client-side.
  */
 export function problemBanner(problem: ActionProblem): string {
+  const sentence = bannerSentence(problem)
+  return problem.requestId === undefined
+    ? sentence
+    : `${sentence} Quote request ID ${problem.requestId} to support.`
+}
+
+function bannerSentence(problem: ActionProblem): string {
   switch (problem.code) {
     case 'audit-unavailable':
       return 'Refused fail-closed: the audit store is unavailable, so the action was NOT sent to the engine. Nothing happened. Retry once audit is back.'

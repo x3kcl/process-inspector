@@ -9,15 +9,30 @@ export class ApiError extends Error {
   /** The parsed error body — action endpoints answer RFC-7807 ProblemDetails whose
    *  machine-readable `code`/`outcome` properties drive the guard-ladder UI copy. */
   readonly body: unknown
+  /** The quotable support id (usability W1#6, R-AUD-04): the BFF stamps every error body
+   *  — ProblemDetail AND the bare Spring 403/404 shape — with the request's X-Request-Id,
+   *  which is also the audit rows' correlationId and the log lines' MDC id. */
+  readonly requestId: string | undefined
 
   constructor(status: number, body: unknown) {
     super(ApiError.describe(status, body))
     this.name = 'ApiError'
     this.status = status
     this.body = body
+    this.requestId = ApiError.requestIdOf(body)
   }
 
   private static describe(status: number, body: unknown): string {
+    const sentence = ApiError.sentence(status, body)
+    const requestId = ApiError.requestIdOf(body)
+    // The next-move line rides every error banner rendered off error.message (W1#6) —
+    // never invented client-side: only when the server sent one.
+    return requestId === undefined
+      ? sentence
+      : `${sentence} Quote request ID ${requestId} to support.`
+  }
+
+  private static sentence(status: number, body: unknown): string {
     if (status === 401) return 'Not signed in'
     if (body !== null && typeof body === 'object') {
       // SearchController answers bad filter input as 400 {"error": "<message>"}.
@@ -27,6 +42,14 @@ export class ApiError extends Error {
       if ('title' in body && typeof body.title === 'string') return body.title
     }
     return `HTTP ${String(status)}`
+  }
+
+  private static requestIdOf(body: unknown): string | undefined {
+    if (body !== null && typeof body === 'object' && 'requestId' in body) {
+      const id = (body as Record<string, unknown>)['requestId']
+      if (typeof id === 'string' && id !== '') return id
+    }
+    return undefined
   }
 }
 
