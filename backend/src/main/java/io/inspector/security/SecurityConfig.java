@@ -19,6 +19,7 @@ import org.springframework.security.provisioning.InMemoryUserDetailsManager;
 import org.springframework.security.web.SecurityFilterChain;
 import org.springframework.security.web.authentication.HttpStatusEntryPoint;
 import org.springframework.security.web.authentication.LoginUrlAuthenticationEntryPoint;
+import org.springframework.security.web.authentication.UsernamePasswordAuthenticationFilter;
 import org.springframework.security.web.context.DelegatingSecurityContextRepository;
 import org.springframework.security.web.context.HttpSessionSecurityContextRepository;
 import org.springframework.security.web.context.RequestAttributeSecurityContextRepository;
@@ -49,6 +50,7 @@ public class SecurityConfig {
     private final OidcProperties oidcProps;
     private final BreakGlassProperties breakGlass;
     private final BreakGlassAuditSink breakGlassSink;
+    private final BreakGlassThrottle breakGlassThrottle;
     private final io.inspector.security.mapping.SecurityAlertChannel alertChannel;
     private final io.inspector.audit.AuditService auditService;
 
@@ -63,6 +65,7 @@ public class SecurityConfig {
             OidcProperties oidcProps,
             BreakGlassProperties breakGlass,
             BreakGlassAuditSink breakGlassSink,
+            BreakGlassThrottle breakGlassThrottle,
             io.inspector.security.mapping.SecurityAlertChannel alertChannel,
             io.inspector.audit.AuditService auditService) {
         this.hardening = hardening;
@@ -70,6 +73,7 @@ public class SecurityConfig {
         this.oidcProps = oidcProps;
         this.breakGlass = breakGlass;
         this.breakGlassSink = breakGlassSink;
+        this.breakGlassThrottle = breakGlassThrottle;
         this.alertChannel = alertChannel;
         this.auditService = auditService;
     }
@@ -229,12 +233,24 @@ public class SecurityConfig {
                     .authorities("ROLE_" + Role.ADMIN.name(), RbacAuthorizer.BREAK_GLASS_AUTHORITY)
                     .build());
             var successHandler = new BreakGlassSuccessHandler(
-                    auditService, breakGlassSink, alertChannel, breakGlass.sessionCapHoursOrDefault(), clock);
+                    auditService,
+                    breakGlassSink,
+                    alertChannel,
+                    breakGlassThrottle,
+                    breakGlass.sessionCapHoursOrDefault(),
+                    clock);
+            // S4: brute-force protection on the sealed door. The throttle FILTER pre-empts a POST with
+            // 429+Retry-After while in cooldown (a clean login never hits it); the FAILURE handler counts
+            // + alerts on a sustained burst; success resets the counter (in the success handler above).
+            var throttleUser = breakGlass.usernameOrDefault();
             http.userDetailsService(sealed)
+                    .addFilterBefore(
+                            new BreakGlassThrottleFilter(breakGlassThrottle, throttleUser),
+                            UsernamePasswordAuthenticationFilter.class)
                     .formLogin(form -> form.loginProcessingUrl("/break-glass")
                             .successHandler(successHandler)
-                            .failureHandler((req, res, ex) ->
-                                    res.sendError(HttpStatus.UNAUTHORIZED.value(), "break-glass sign-in failed")));
+                            .failureHandler(
+                                    new BreakGlassFailureHandler(breakGlassThrottle, alertChannel, throttleUser)));
         }
         return http.build();
     }

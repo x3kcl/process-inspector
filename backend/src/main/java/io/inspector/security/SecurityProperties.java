@@ -27,7 +27,15 @@ public record SecurityProperties(
          * by naming it in the request. Reads intersect the caller's grants via
          * {@link ScopeGrant#overlaps} at VIEWER floor; mutations were already scoped.
          */
-        Boolean scopeReadsEnforced) {
+        Boolean scopeReadsEnforced,
+        /*
+         * ENV-VAR NAME (never the value — iron rule) of the security-alert webhook URL (S3). When set
+         * and resolvable, {@code SecurityAlertChannel} POSTs every alert there in addition to the
+         * always-on log marker; blank/unresolvable ⇒ log-only, and under the {@code oidc} profile that
+         * absence is a BOOT WARNING (a prod deploy that pages nobody on an ACCESS_ADMIN change or a
+         * break-glass login should be a loud config gap, not silent). E.g. INSPECTOR_ALERT_WEBHOOK_URL.
+         */
+        String alertWebhookUrlRef) {
 
     public String devPasswordOrDefault() {
         return devPassword != null && !devPassword.isBlank() ? devPassword : "dev";
@@ -50,5 +58,10 @@ public record SecurityProperties(
     /** Whether search/triage reads are scope-filtered (S2, R-SAFE-17); default off (see field doc). */
     public boolean scopeReadsEnforcedOrDefault() {
         return Boolean.TRUE.equals(scopeReadsEnforced);
+    }
+
+    /** The configured alert-webhook env-ref, or null when unset (S3). */
+    public String alertWebhookUrlRefOrNull() {
+        return alertWebhookUrlRef != null && !alertWebhookUrlRef.isBlank() ? alertWebhookUrlRef : null;
     }
 }

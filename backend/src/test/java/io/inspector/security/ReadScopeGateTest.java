@@ -29,7 +29,7 @@ class ReadScopeGateTest {
     private final EngineConfig canon = TestEngines.engineInTenant("shared", "http://s", "*");
 
     private ReadScopeGate gate(boolean enforced) {
-        SecurityProperties props = new SecurityProperties(null, null, null, null, null, enforced);
+        SecurityProperties props = new SecurityProperties(null, null, null, null, null, enforced, null);
         when(registry.all()).thenReturn(List.of(engineA, engineB, canon));
         return new ReadScopeGate(rbac, registry, props);
     }

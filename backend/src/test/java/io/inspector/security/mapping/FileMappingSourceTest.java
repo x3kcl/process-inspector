@@ -32,7 +32,8 @@ class FileMappingSourceTest {
                     - role: RESPONDER
                       engine-id: orders-prod
                 """);
-        SecurityProperties security = new SecurityProperties(null, file.toString(), 60, null, "registry-admin", null);
+        SecurityProperties security =
+                new SecurityProperties(null, file.toString(), 60, null, "registry-admin", null, null);
         ScopeMappingService scope = new ScopeMappingService(
                 security, Clock.systemUTC(), Mockito.mock(io.inspector.audit.AuditService.class));
         MappingProperties mapping = new MappingProperties(null, "access-admins");
@@ -72,7 +73,8 @@ class FileMappingSourceTest {
     void withNoEnvApexOnlyTheRegistryFleetGrantIsPresent(@TempDir Path dir) throws Exception {
         Path file = dir.resolve("scopes.yml");
         Files.writeString(file, "groups: {}\n");
-        SecurityProperties security = new SecurityProperties(null, file.toString(), 60, null, "registry-admin", null);
+        SecurityProperties security =
+                new SecurityProperties(null, file.toString(), 60, null, "registry-admin", null, null);
         ScopeMappingService scope = new ScopeMappingService(
                 security, Clock.systemUTC(), Mockito.mock(io.inspector.audit.AuditService.class));
         var s = new FileMappingSource(scope, security, new MappingProperties(null, null));
