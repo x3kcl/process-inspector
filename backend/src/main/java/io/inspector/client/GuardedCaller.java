@@ -1,6 +1,7 @@
 package io.inspector.client;
 
 import io.github.resilience4j.bulkhead.BulkheadRegistry;
+import io.github.resilience4j.circuitbreaker.CircuitBreaker;
 import io.github.resilience4j.circuitbreaker.CircuitBreakerRegistry;
 import io.inspector.config.InspectorProperties.Auth;
 import io.inspector.config.InspectorProperties.EngineConfig;
@@ -122,6 +123,16 @@ public class GuardedCaller {
             op.run();
             return null;
         });
+    }
+
+    /**
+     * Is this engine's breaker currently OPEN (R-SEM-11, issue #101)? A bounded-wait caller (the
+     * bulk dispatcher) polls this to detect recovery WITHOUT itself dispatching a doomed call —
+     * {@code HALF_OPEN}/{@code CLOSED} both read {@code false} (a trial call is worth attempting).
+     */
+    public boolean isOpen(String engineId, CallPriority priority) {
+        String name = priority.instanceName(engineId);
+        return breakers.circuitBreaker(name, priority.config()).getState() == CircuitBreaker.State.OPEN;
     }
 
     static String safeId(String id) {
