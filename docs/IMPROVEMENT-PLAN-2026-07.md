@@ -99,9 +99,8 @@ Seat IDs preserved: **F** = backend architecture, **S** = security, **U** = fron
   violated where it matters most, mid-incident); `ModalShell` under 13 destructive confirms has
   no focus trap/restore (swap to native `<dialog>`); 1.5 MB entry chunk — `/inspect` +
   bpmn-js + AG Grid ship statically in the entry (`main.tsx:8`), Stage-0 users pay it all.
-- **U4/U5** — Zero component-level tests (vitest is node-env, logic-only; no spec covers
-  Stage-0, InspectPage shell, OpsDrawer/SSE, omnibox, admin pages); the typed-token/reason
-  guard ladder is copy-pasted across 7–13 modals and already drifting.
+- **U4** — Zero component-level tests (vitest is node-env, logic-only; no spec covers
+  Stage-0, InspectPage shell, OpsDrawer/SSE, omnibox, admin pages).
 - **U7/U8/U10** — Omnibox ARIA is a broken listbox; the promised axe gate never landed
   (no jsx-a11y, no @axe-core/playwright); one raw `fetch()` bypasses the client middleware.
 - **Q7/Q8** — No release mechanism (no tags, image built `push: false`, demo deploys from
@@ -298,8 +297,14 @@ tests + spec-sync in the same PR, and follows green-ci.
     FOCUS TRAP in the shared `ModalShell` (so all 13 modals inherit it at once) — Tab/Shift+Tab cycle
     within the dialog instead of leaking to the page behind it, and focus is RESTORED to the opener
     on close. Kept the div-based shell (a JS trap, jsdom-verifiable) rather than swap to native
-    `<dialog>` to avoid a CSS/backdrop regression across every modal. Remaining: U5
-    (`useProdGuard`/`<GuardFields>` extraction across the 13 modals).
+    `<dialog>` to avoid a CSS/backdrop regression across every modal. **U5 LANDED:** the
+    reason/typed-token guard ladder is now a single `useProdGuard()` hook + `<GuardFields>`
+    presentational component (`frontend/src/actions/guard.ts` +
+    `frontend/src/components/GuardFields.tsx`), adopted by all 12 confirm modals that carry the
+    ladder (the 13th, `EngineFormModal`, reuses the hook only — a single-line input, not the
+    two-field shape `<GuardFields>` renders). All pre-existing modal tests pass unchanged; 9 new
+    unit tests cover the hook's reason/token gating semantics including the non-prod-driven
+    override `LifecycleModal` needs for remove/purge. **Item complete — U1/U2/U3/U5 all landed.**
 18. **Component-test harness (U4)** — vitest jsdom project + testing-library; first targets:
     Shell 401 gating/BreakGlassBanner, ResultsGrid zero-state ladder, StatusChip.
 19. **Test-support consolidation (F5, F6, Q8)** — one docker-free convention (profile-gated

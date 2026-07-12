@@ -5,10 +5,11 @@
 // Rails (SPEC §6 / corrective-actions skill): reason ≥ 10 chars, PROD typed-token gate (the job
 // id), cancel-focused, Enter never submits (both via ModalShell), and a dispatched-UNKNOWN outcome
 // can never be resubmitted from the same modal.
-import { useState } from 'react'
 import { reasonRule, VERBS } from '../actions/catalog'
+import { useProdGuard } from '../actions/guard'
 import { problemBanner } from '../actions/problem'
 import type { ActionProblem } from '../actions/problem'
+import { GuardFields, tokenLabel } from '../components/GuardFields'
 import { ModalShell } from '../components/ModalShell'
 
 const META = VERBS.deleteDeadletter
@@ -36,12 +37,13 @@ export function CaseDeleteModal({
   onConfirm,
   onClose,
 }: Props) {
-  const [reason, setReason] = useState('')
-  const [typed, setTyped] = useState('')
-  const prod = environment?.toLowerCase() === 'prod'
-  const rule = reasonRule(META.tier, environment)
-  const reasonOk = reason.trim().length >= rule.minLength
-  const tokenOk = !prod || typed === jobId
+  const guard = useProdGuard({
+    reasonRule: reasonRule(META.tier, environment),
+    environment,
+    expectedToken: jobId,
+  })
+  const { reason, reasonOk, tokenOk } = guard
+  const prod = guard.prod
   // An UNKNOWN outcome means the delete may already have executed — never allow a resubmit
   // from the same modal (corrective-actions skill §4: no blind client-side retry).
   const dispatchedMaybe = problem !== undefined && problem.outcome === 'unknown'
@@ -102,32 +104,11 @@ export function CaseDeleteModal({
         </ul>
       </div>
 
-      <label className="modal-field">
-        Reason (required, at least 10 characters — lands in the audit trail)
-        <textarea
-          value={reason}
-          rows={2}
-          maxLength={2000}
-          onChange={(event) => {
-            setReason(event.target.value)
-          }}
-        />
-      </label>
-
-      {prod && (
-        <label className="modal-field">
-          Type the job id <code>{jobId}</code> to enable the confirm button
-          <input
-            type="text"
-            value={typed}
-            autoComplete="off"
-            spellCheck={false}
-            onChange={(event) => {
-              setTyped(event.target.value)
-            }}
-          />
-        </label>
-      )}
+      <GuardFields
+        guard={guard}
+        expectedToken={jobId}
+        tokenFieldLabel={tokenLabel('job id', jobId)}
+      />
 
       {problem !== undefined && (
         <div className="error-banner" role="alert">

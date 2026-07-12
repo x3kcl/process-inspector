@@ -10,8 +10,10 @@ import type { EngineDto, InstanceDetail } from '../api/model'
 import { useChangeStateExecute, useChangeStatePreview } from '../api/surgery'
 import type { ChangeStatePreview, ChangeStateRequest } from '../api/surgery'
 import { VERBS } from '../actions/catalog'
+import { businessKeyOrInstanceToken, useProdGuard } from '../actions/guard'
 import { problemBanner } from '../actions/problem'
 import type { ActionProblem } from '../actions/problem'
+import { GuardFields, tokenLabel } from '../components/GuardFields'
 import { ModalShell } from '../components/ModalShell'
 import { useToast } from '../components/toast'
 import { useInstanceDiagram } from '../inspect/useInstanceQueries'
@@ -245,20 +247,19 @@ function VerifyMoveStep({
   onBack: () => void
   onClose: () => void
 }) {
-  const [reason, setReason] = useState('')
-  const [typed, setTyped] = useState('')
   const environment = engine?.environment
   const prod = environment?.toLowerCase() === 'prod'
   const preview = simulated.preview
 
   // PROD typed-token gate (corrective-actions §3): the business key, else the instance id.
-  const hasBusinessKey = vitals.businessKey !== undefined && vitals.businessKey !== ''
-  const expectedToken = hasBusinessKey ? (vitals.businessKey ?? instanceId) : instanceId
-  const tokenName = hasBusinessKey ? 'business key' : 'instance id'
+  const { expectedToken, tokenName } = businessKeyOrInstanceToken(vitals.businessKey, instanceId)
   const targetLabel = expectedToken
-
-  const reasonOk = reason.trim().length >= 10
-  const tokenOk = !prod || typed === expectedToken
+  const guard = useProdGuard({
+    reasonRule: { required: true, minLength: 10 },
+    environment,
+    expectedToken,
+  })
+  const { reasonOk, tokenOk } = guard
   // UNKNOWN outcome = the move may have reached the engine — never a resubmit (§4).
   const dispatchedMaybe = problem !== undefined && problem.outcome === 'unknown'
   const disabled = !reasonOk || !tokenOk || pending || dispatchedMaybe
@@ -290,7 +291,7 @@ function VerifyMoveStep({
                     : undefined
             }
             onClick={() => {
-              onExecute(reason.trim())
+              onExecute(guard.reason.trim())
             }}
           >
             {pending ? 'Executing…' : `Execute move on ${targetLabel}`}
@@ -334,32 +335,11 @@ function VerifyMoveStep({
         </p>
       </details>
 
-      <label className="modal-field">
-        Reason (required, at least 10 characters — lands in the audit trail)
-        <textarea
-          value={reason}
-          rows={2}
-          maxLength={2000}
-          onChange={(event) => {
-            setReason(event.target.value)
-          }}
-        />
-      </label>
-
-      {prod && (
-        <label className="modal-field">
-          Type the {tokenName} <code>{expectedToken}</code> to enable the execute button
-          <input
-            type="text"
-            value={typed}
-            autoComplete="off"
-            spellCheck={false}
-            onChange={(event) => {
-              setTyped(event.target.value)
-            }}
-          />
-        </label>
-      )}
+      <GuardFields
+        guard={guard}
+        expectedToken={expectedToken}
+        tokenFieldLabel={tokenLabel(tokenName, expectedToken, 'execute')}
+      />
 
       {problem !== undefined && (
         <div className="error-banner" role="alert">

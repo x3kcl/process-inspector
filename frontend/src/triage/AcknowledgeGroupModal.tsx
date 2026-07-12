@@ -6,8 +6,10 @@
 import { useState } from 'react'
 import type { ErrorGroup } from '../api/model'
 import { useAcknowledgeErrorGroup, useUnacknowledgeErrorGroup } from '../api/ack'
+import { useProdGuard } from '../actions/guard'
 import { problemBanner } from '../actions/problem'
 import { ActionHint } from '../components/ActionHint'
+import { GuardFields } from '../components/GuardFields'
 import { ModalShell } from '../components/ModalShell'
 import { TicketField, ticketValue } from '../components/TicketField'
 import { useToast } from '../components/toast'
@@ -36,15 +38,15 @@ export function AcknowledgeGroupModal({ group, mode, environment, onClose }: Pro
   const toast = useToast()
   const acknowledge = useAcknowledgeErrorGroup()
   const unacknowledge = useUnacknowledgeErrorGroup()
-  const [reason, setReason] = useState('')
-  const [ticket, setTicket] = useState('')
   const [expiry, setExpiry] = useState<ExpiryId>('none')
+  // Reason ≥10 for BOTH verbs (the BFF refuses under 10 unconditionally on these doors) — a
+  // literal always-required rule, not tier/environment-driven (this never touches an engine).
+  const guard = useProdGuard({ reasonRule: { required: true, minLength: 10 } })
+  const { reasonOk } = guard
 
   const acking = mode === 'acknowledge'
   const submitting = acknowledge.isPending || unacknowledge.isPending
   const problem = (acking ? acknowledge : unacknowledge).error?.problem
-  // Reason ≥10 for BOTH verbs (the BFF refuses under 10 unconditionally on these doors).
-  const reasonOk = reason.trim().length >= 10
   const coordinatesOk = group.signatureHash != null && group.algoVersion != null
 
   const confirm = () => {
@@ -58,8 +60,8 @@ export function AcknowledgeGroupModal({ group, mode, environment, onClose }: Pro
         {
           signatureHash: group.signatureHash,
           algoVersion: group.algoVersion,
-          reason: reason.trim(),
-          ticketId: ticketValue(ticket),
+          reason: guard.reason.trim(),
+          ticketId: ticketValue(guard.ticket),
           expiresAt,
         },
         {
@@ -79,7 +81,7 @@ export function AcknowledgeGroupModal({ group, mode, environment, onClose }: Pro
         {
           signatureHash: group.signatureHash,
           algoVersion: group.algoVersion,
-          reason: reason.trim(),
+          reason: guard.reason.trim(),
         },
         {
           onSuccess: () => {
@@ -145,22 +147,14 @@ export function AcknowledgeGroupModal({ group, mode, environment, onClose }: Pro
         </p>
       </div>
 
-      <label className="modal-field">
-        Why? (required, 10+ characters — recorded in the operations log)
-        <textarea
-          value={reason}
-          rows={2}
-          maxLength={2000}
-          aria-invalid={!reasonOk}
-          onChange={(event) => {
-            setReason(event.target.value)
-          }}
-        />
-      </label>
+      <GuardFields
+        guard={guard}
+        reasonLabel="Why? (required, 10+ characters — recorded in the operations log)"
+      />
 
       {acking && (
         <>
-          <TicketField value={ticket} onChange={setTicket} />
+          <TicketField value={guard.ticket} onChange={guard.setTicket} />
           <label className="modal-field">
             Expiry (optional — the acknowledgment resurfaces the group when it passes)
             <select

@@ -9,7 +9,9 @@ import type { TaskDto } from '../api/model'
 import type { ActionRequest } from '../api/actions'
 import { ModalShell } from '../components/ModalShell'
 import { CurlPreview } from '../components/CurlPreview'
+import { GuardFields } from '../components/GuardFields'
 import { VERBS, reasonRule } from './catalog'
+import { useProdGuard } from './guard'
 import { buildTaskAssignBody } from './taskAssign'
 import type { TaskAssignMode } from './taskAssign'
 import { problemBanner } from './problem'
@@ -44,12 +46,11 @@ export function TaskAssignModal({
 }: Props) {
   const meta = mode === 'reassign' ? VERBS.reassignTask : VERBS.unassignTask
   const [assignee, setAssignee] = useState('')
-  const [reason, setReason] = useState('')
+  const rule = reasonRule(meta.tier, environment)
+  const guard = useProdGuard({ reasonRule: rule, environment })
+  const { reason, reasonOk } = guard
 
   const prod = environment?.toLowerCase() === 'prod'
-  const rule = reasonRule(meta.tier, environment)
-  const trimmedReason = reason.trim()
-  const reasonOk = trimmedReason === '' ? !rule.required : trimmedReason.length >= rule.minLength
   const trimmedAssignee = assignee.trim()
   const assigneeOk = mode === 'return' || trimmedAssignee !== ''
   // UNKNOWN outcome ⇒ the pre-flight/dispatch may have applied — never resubmit (§4).
@@ -147,18 +148,10 @@ export function TaskAssignModal({
         </label>
       )}
 
-      <label className="modal-field">
-        Reason{rule.required ? ' (required, at least 10 characters' : ' (optional'} — lands in the
-        audit trail)
-        <textarea
-          value={reason}
-          rows={2}
-          maxLength={2000}
-          onChange={(event) => {
-            setReason(event.target.value)
-          }}
-        />
-      </label>
+      <GuardFields
+        guard={guard}
+        reasonLabel={`Reason${rule.required ? ' (required, at least 10 characters' : ' (optional'} — lands in the audit trail)`}
+      />
 
       <CurlPreview engineId={engineId} instanceId={instanceId} verb={meta.verb} body={body} />
 

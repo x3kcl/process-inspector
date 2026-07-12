@@ -10,7 +10,9 @@ import type { EngineDto, InstanceDetail } from '../api/model'
 import { useRestartInstance } from '../api/surgery'
 import type { RestartInstanceResult } from '../api/surgery'
 import { VERBS } from '../actions/catalog'
+import { useProdGuard } from '../actions/guard'
 import { problemBanner } from '../actions/problem'
+import { GuardFields } from '../components/GuardFields'
 import { ModalShell } from '../components/ModalShell'
 import { Segmented } from '../components/Segmented'
 import { useToast } from '../components/toast'
@@ -29,12 +31,12 @@ export function RestartModal({ engineId, instanceId, vitals, engine, onClose }: 
   const toast = useToast()
   const restart = useRestartInstance(engineId, instanceId)
   const [choice, setChoice] = useState<VersionChoice | undefined>(undefined)
-  const [reason, setReason] = useState('')
   const [result, setResult] = useState<RestartInstanceResult | null>(null)
 
   const meta = VERBS.restartAsNew
   const environment = engine?.environment
   const prod = environment?.toLowerCase() === 'prod'
+  const guard = useProdGuard({ reasonRule: { required: true, minLength: 10 }, environment })
   const auditPath = `/inspect/${engineId}/${encodeURIComponent(instanceId)}?tab=audit`
   const targetLabel =
     vitals.businessKey !== undefined && vitals.businessKey !== '' ? vitals.businessKey : instanceId
@@ -48,8 +50,7 @@ export function RestartModal({ engineId, instanceId, vitals, engine, onClose }: 
 
   const problem = restart.error?.problem
   const dispatchedMaybe = problem !== undefined && problem.outcome === 'unknown'
-  const reasonOk = reason.trim().length >= 10
-  const disabled = choice === undefined || !reasonOk || restart.isPending || dispatchedMaybe
+  const disabled = choice === undefined || !guard.reasonOk || restart.isPending || dispatchedMaybe
 
   if (result !== null) {
     const skipped = Object.entries(result.skippedVariables ?? {})
@@ -147,7 +148,7 @@ export function RestartModal({ engineId, instanceId, vitals, engine, onClose }: 
             title={
               choice === undefined
                 ? 'choose which definition version the new instance starts on'
-                : !reasonOk
+                : !guard.reasonOk
                   ? 'a reason of at least 10 characters is required'
                   : dispatchedMaybe
                     ? 'outcome unknown — re-check the audit trail instead of resubmitting'
@@ -155,7 +156,7 @@ export function RestartModal({ engineId, instanceId, vitals, engine, onClose }: 
             }
             onClick={() => {
               restart.mutate(
-                { pinDefinitionVersion: choice === 'pin', reason: reason.trim() },
+                { pinDefinitionVersion: choice === 'pin', reason: guard.reason.trim() },
                 {
                   onSuccess: (restarted) => {
                     setResult(restarted)
@@ -238,17 +239,7 @@ export function RestartModal({ engineId, instanceId, vitals, engine, onClose }: 
         </div>
       )}
 
-      <label className="modal-field">
-        Reason (required, at least 10 characters — lands in the audit trail)
-        <textarea
-          value={reason}
-          rows={2}
-          maxLength={2000}
-          onChange={(event) => {
-            setReason(event.target.value)
-          }}
-        />
-      </label>
+      <GuardFields guard={guard} />
 
       {problem !== undefined && (
         <div className="error-banner" role="alert">

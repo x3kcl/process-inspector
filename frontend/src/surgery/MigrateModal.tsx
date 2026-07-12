@@ -11,7 +11,9 @@ import type { EngineDto, InstanceDetail } from '../api/model'
 import { useDefinitionVersions, useMigrateExecute, useMigratePreview } from '../api/migrate'
 import type { MigrationPreview, MigrationRequest } from '../api/migrate'
 import { VERBS } from '../actions/catalog'
+import { businessKeyOrInstanceToken, useProdGuard } from '../actions/guard'
 import { problemBanner } from '../actions/problem'
+import { GuardFields, tokenLabel } from '../components/GuardFields'
 import { ModalShell } from '../components/ModalShell'
 import { useToast } from '../components/toast'
 
@@ -37,12 +39,18 @@ export function MigrateModal({ engineId, instanceId, vitals, engine, onClose }: 
   const [mappings, setMappings] = useState<Record<string, string>>({})
   const [dirty, setDirty] = useState(false)
   const [preview, setPreview] = useState<MigrationPreview | null>(null)
-  const [reason, setReason] = useState('')
-  const [typed, setTyped] = useState('')
 
   const environment = engine?.environment
   const prod = environment?.toLowerCase() === 'prod'
   const auditPath = `/inspect/${engineId}/${encodeURIComponent(instanceId)}?tab=audit`
+  // PROD typed-token gate: the business key, else the instance id. Called unconditionally
+  // (hooks rule) even though the fields only render in step 2, below.
+  const { expectedToken, tokenName } = businessKeyOrInstanceToken(vitals.businessKey, instanceId)
+  const guard = useProdGuard({
+    reasonRule: { required: true, minLength: 10 },
+    environment,
+    expectedToken,
+  })
 
   // Default the target to the latest version that is NOT the instance's current one.
   // Memoized so the default-target effect doesn't re-run on every render.
@@ -88,13 +96,7 @@ export function MigrateModal({ engineId, instanceId, vitals, engine, onClose }: 
     const warnings = (preview.activities ?? []).filter((a) => a.warning === true)
     const targets = preview.targetActivities ?? []
 
-    // PROD typed-token gate: the business key, else the instance id.
-    const hasBusinessKey = vitals.businessKey !== undefined && vitals.businessKey !== ''
-    const expectedToken = hasBusinessKey ? (vitals.businessKey ?? instanceId) : instanceId
-    const tokenName = hasBusinessKey ? 'business key' : 'instance id'
-
-    const reasonOk = reason.trim().length >= 10
-    const tokenOk = !prod || typed === expectedToken
+    const { reasonOk, tokenOk } = guard
     const problem = executeM.error?.problem
     // UNKNOWN outcome = the migrate may have reached the engine — never a resubmit.
     const dispatchedMaybe = problem !== undefined && problem.outcome === 'unknown'
@@ -110,8 +112,8 @@ export function MigrateModal({ engineId, instanceId, vitals, engine, onClose }: 
       const request: MigrationRequest = {
         toDefinitionId: targetDefinitionId,
         mappings: mappingList(),
-        reason: reason.trim(),
-        confirmToken: prod ? typed : undefined,
+        reason: guard.reason.trim(),
+        confirmToken: prod ? guard.typed : undefined,
         expectedFromDefinitionId: preview.fromDefinitionId,
         expectedActivityStateDigest: preview.activityStateDigest,
       }
@@ -174,7 +176,7 @@ export function MigrateModal({ engineId, instanceId, vitals, engine, onClose }: 
               >
                 {executeM.isPending
                   ? 'Migrating…'
-                  : `Migrate ${hasBusinessKey ? (vitals.businessKey ?? instanceId) : instanceId} to v${String(preview.toVersion ?? '?')}`}
+                  : `Migrate ${expectedToken} to v${String(preview.toVersion ?? '?')}`}
               </button>
             )}
           </>
@@ -275,32 +277,11 @@ export function MigrateModal({ engineId, instanceId, vitals, engine, onClose }: 
           </p>
         </details>
 
-        <label className="modal-field">
-          Reason (required, at least 10 characters — lands in the audit trail)
-          <textarea
-            value={reason}
-            rows={2}
-            maxLength={2000}
-            onChange={(e) => {
-              setReason(e.target.value)
-            }}
-          />
-        </label>
-
-        {prod && (
-          <label className="modal-field">
-            Type the {tokenName} <code>{expectedToken}</code> to enable the migrate button
-            <input
-              type="text"
-              value={typed}
-              autoComplete="off"
-              spellCheck={false}
-              onChange={(e) => {
-                setTyped(e.target.value)
-              }}
-            />
-          </label>
-        )}
+        <GuardFields
+          guard={guard}
+          expectedToken={expectedToken}
+          tokenFieldLabel={tokenLabel(tokenName, expectedToken, 'migrate')}
+        />
 
         {problem !== undefined && (
           <div className="error-banner" role="alert">

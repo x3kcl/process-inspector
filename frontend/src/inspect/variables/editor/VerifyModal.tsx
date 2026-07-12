@@ -4,15 +4,17 @@
 // never shows). Fixed-order warnings (type change · PROD), freshness re-check on open,
 // collapsed exact-request expander, reason per the §6 tier rules, a confirm button that
 // RESTATES the change, and the CAS-conflict replacement panel with no overwrite-anyway.
-import { useMemo, useState } from 'react'
+import { useMemo } from 'react'
 import { useQuery } from '@tanstack/react-query'
 import type { ActionRequest } from '../../../api/actions'
 import type { EngineDto } from '../../../api/model'
 import { fetchInstanceVariable } from '../../../api/queries'
-import { reasonRule, reasonValid } from '../../../actions/catalog'
+import { reasonRule } from '../../../actions/catalog'
+import { useProdGuard } from '../../../actions/guard'
 import type { ActionProblem } from '../../../actions/problem'
 import { problemBanner } from '../../../actions/problem'
 import { ActionHint } from '../../../components/ActionHint'
+import { GuardFields } from '../../../components/GuardFields'
 import { ModalShell } from '../../../components/ModalShell'
 import { TicketField, ticketValue } from '../../../components/TicketField'
 import { formatBytes, serializedBytes } from '../ledger'
@@ -53,8 +55,6 @@ export function VerifyModal({
   onStartOver,
   onClose,
 }: Props) {
-  const [reason, setReason] = useState('')
-  const [ticket, setTicket] = useState('')
   const variable = request.variable
   const name = variable?.name ?? '?'
   const before = variable?.expectedOldValue
@@ -64,6 +64,7 @@ export function VerifyModal({
   const environment = engine?.environment
   const prod = environment?.toLowerCase() === 'prod'
   const rule = reasonRule(1, environment)
+  const guard = useProdGuard({ reasonRule: rule, environment })
 
   // Freshness re-check on open (§4a): the server value is re-read once; a drift blocks
   // the confirm with reload as the only forward path — never a silent overwrite race.
@@ -102,7 +103,7 @@ export function VerifyModal({
 
   const casConflict = problem?.code === 'cas-conflict'
   const dispatchedMaybe = problem !== undefined && problem.outcome === 'unknown'
-  const reasonOk = reasonValid(reason, rule)
+  const { reasonOk } = guard
   const confirmDisabled =
     pending || !reasonOk || freshness !== 'fresh' || casConflict || dispatchedMaybe
   // W2 #1 (T10, §10a): a refusal always carries a visible message — the SAME inline gate
@@ -185,8 +186,8 @@ export function VerifyModal({
                     : undefined
               }
               onClick={() => {
-                const trimmed = reason.trim()
-                onDispatch(trimmed === '' ? undefined : trimmed, ticketValue(ticket))
+                const trimmed = guard.reason.trim()
+                onDispatch(trimmed === '' ? undefined : trimmed, ticketValue(guard.ticket))
               }}
             >
               {pending ? 'Applying…' : confirmLabel}
@@ -285,21 +286,12 @@ export function VerifyModal({
         </div>
       )}
 
-      <label className="modal-field">
-        Reason{' '}
-        {rule.required ? '(required on PROD, ≥10 chars)' : '(optional, ≥10 chars when given)'}
-        <textarea
-          value={reason}
-          rows={2}
-          maxLength={2000}
-          aria-invalid={!reasonOk}
-          onChange={(event) => {
-            setReason(event.target.value)
-          }}
-        />
-      </label>
+      <GuardFields
+        guard={guard}
+        reasonLabel={`Reason ${rule.required ? '(required on PROD, ≥10 chars)' : '(optional, ≥10 chars when given)'}`}
+      />
 
-      <TicketField value={ticket} onChange={setTicket} />
+      <TicketField value={guard.ticket} onChange={guard.setTicket} />
 
       <details className="exact-request">
         <summary>exact request</summary>
