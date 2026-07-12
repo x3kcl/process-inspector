@@ -63,17 +63,22 @@ docker build -t process-inspector .
 docker run -p 8080:8080 -e ENGINE_A_PASSWORD=test -e ENGINE_B_PASSWORD=test process-inspector
 ```
 
-### Released images (ghcr.io)
+### Released images (Docker Hub + ghcr.io)
 
-Every `v*` tag publishes versioned images —
-`ghcr.io/x3kcl/process-inspector-bff` (Spring Boot BFF) and
-`ghcr.io/x3kcl/process-inspector-web` (nginx: SPA + `/api` proxy) — plus a GitHub Release
-with a quick-start compose attached (`.github/workflows/release.yml`, OPERATIONS §5):
+Every `v*` tag publishes versioned images to **both** registries — the BFF (Spring Boot)
+and the web tier (nginx: SPA + `/api` proxy) — plus a GitHub Release with a quick-start
+compose attached (`.github/workflows/release.yml`, OPERATIONS §5):
+
+| Image | Docker Hub | GHCR |
+|-------|------------|------|
+| BFF   | `docker.io/x3kcl/process-inspector-bff` | `ghcr.io/x3kcl/process-inspector-bff` |
+| Web   | `docker.io/x3kcl/process-inspector-web` | `ghcr.io/x3kcl/process-inspector-web` |
 
 ```bash
 curl -LO https://github.com/x3kcl/process-inspector/releases/latest/download/docker-compose.release.yml
 INSPECTOR_DEV_PASSWORD=pick-one docker compose -f docker-compose.release.yml up -d
-# UI on :8080; point INSPECTOR_ENGINE_{A,B}_BASE_URL + ENGINE_{A,B}_PASSWORD at your engines
+# UI on :8080; pulls from Docker Hub by default — PI_REGISTRY=ghcr.io/x3kcl to use GHCR.
+# Point INSPECTOR_ENGINE_{A,B}_BASE_URL + ENGINE_{A,B}_PASSWORD at your engines
 ```
 
 New versions are cut from the Actions tab (`cut-release` → patch/minor/major — green-CI

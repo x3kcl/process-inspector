@@ -21,6 +21,12 @@ RUN mvn -B package -DskipTests
 
 # ---- Stage 2: runtime --------------------------------------------------------
 FROM eclipse-temurin:21-jre-alpine
+# OCI provenance for the registry listing (ghcr.io + Docker Hub). The publish
+# workflows also inject dynamic labels (revision/version) via docker/metadata-action.
+LABEL org.opencontainers.image.title="Process Inspector BFF" \
+      org.opencontainers.image.description="Spring Boot BFF for the multi-engine Flowable Process Inspector" \
+      org.opencontainers.image.source="https://github.com/x3kcl/process-inspector" \
+      org.opencontainers.image.licenses="Apache-2.0"
 RUN addgroup -S app && adduser -S -G app app
 USER app
 WORKDIR /app

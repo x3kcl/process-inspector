@@ -1,8 +1,9 @@
 # Continuous builds (OPERATIONS §5): after every GREEN ci run on main, publish the two
-# shipping images as :edge + :sha-<short7>. Triggered by workflow_run — not push — so a
-# red main never ships an image (the green-main doctrine applied to publishing). Consumers
-# pinning a released version are never moved by these tags; versioned releases are
-# release.yml / cut-release.yml.
+# shipping images as :edge + :sha-<short7> to BOTH ghcr.io and Docker Hub. Triggered by
+# workflow_run — not push — so a red main never ships an image (the green-main doctrine
+# applied to publishing). Consumers pinning a released version are never moved by these
+# tags; versioned releases are release.yml / cut-release.yml.
+# Requires the DOCKERHUB_USERNAME / DOCKERHUB_TOKEN repo secrets (see release.yml header).
 name: publish-edge
 
 on:
@@ -39,6 +40,11 @@ jobs:
           registry: ghcr.io
           username: ${{ github.actor }}
           password: ${{ secrets.GITHUB_TOKEN }}
+      - name: Log in to Docker Hub
+        uses: docker/login-action@v3
+        with:
+          username: ${{ secrets.DOCKERHUB_USERNAME }}
+          password: ${{ secrets.DOCKERHUB_TOKEN }}
       - name: Short SHA
         id: src
         run: echo "short=$(cut -c1-7 <<< "$GREEN_SHA")" >> "$GITHUB_OUTPUT"
@@ -47,7 +53,9 @@ jobs:
         id: meta-bff
         uses: docker/metadata-action@v5
         with:
-          images: ghcr.io/${{ github.repository }}-bff
+          images: |
+            ghcr.io/${{ github.repository }}-bff
+            docker.io/x3kcl/process-inspector-bff
           tags: |
             type=raw,value=edge
             type=raw,value=sha-${{ steps.src.outputs.short }}
@@ -65,7 +73,9 @@ jobs:
         id: meta-web
         uses: docker/metadata-action@v5
         with:
-          images: ghcr.io/${{ github.repository }}-web
+          images: |
+            ghcr.io/${{ github.repository }}-web
+            docker.io/x3kcl/process-inspector-web
           tags: |
             type=raw,value=edge
             type=raw,value=sha-${{ steps.src.outputs.short }}

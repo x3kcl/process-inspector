@@ -1,5 +1,7 @@
 # Quick-start stack for the RELEASED Process Inspector images (published by
-# .github/workflows/release.yml, attached to every GitHub Release).
+# .github/workflows/release.yml, attached to every GitHub Release). Images are mirrored to
+# both Docker Hub and ghcr.io; this file defaults to Docker Hub. To pull from ghcr instead:
+#   PI_REGISTRY=ghcr.io/x3kcl docker compose -f docker-compose.release.yml up -d
 #
 #   PI_VERSION=v1.2.3 INSPECTOR_DEV_PASSWORD=... \
 #     docker compose -f docker-compose.release.yml up -d
@@ -32,7 +34,7 @@ services:
 
   # nginx.conf resolves the BFF by the service name `backend` — do not rename.
   backend:
-    image: ghcr.io/x3kcl/process-inspector-bff:${PI_VERSION:-latest}
+    image: ${PI_REGISTRY:-docker.io/x3kcl}/process-inspector-bff:${PI_VERSION:-latest}
     environment:
       - SERVER_PORT=8080
       - INSPECTOR_DB_URL=jdbc:postgresql://postgres:5432/inspector
@@ -53,7 +55,7 @@ services:
     restart: unless-stopped
 
   frontend:
-    image: ghcr.io/x3kcl/process-inspector-web:${PI_VERSION:-latest}
+    image: ${PI_REGISTRY:-docker.io/x3kcl}/process-inspector-web:${PI_VERSION:-latest}
     ports:
       - "${PI_HTTP_PORT:-8080}:80"
     depends_on: [backend]

@@ -9,14 +9,19 @@
 # publish a tag it just created: a GITHUB_TOKEN-pushed tag never fires this file's push
 # trigger (Actions suppresses token-initiated events), so the button path must CALL it.
 #
-# Images (linux/amd64; the runner builds natively — no qemu):
-#   ghcr.io/x3kcl/process-inspector-bff   (Dockerfile          — Spring Boot BFF)
-#   ghcr.io/x3kcl/process-inspector-web   (frontend/Dockerfile — nginx: SPA + /api proxy)
+# Each image is published to BOTH registries in one build (docker/metadata-action lists
+# both names), linux/amd64; the runner builds natively — no qemu):
+#   {ghcr.io/x3kcl, docker.io/x3kcl}/process-inspector-bff  (Dockerfile          — Spring Boot BFF)
+#   {ghcr.io/x3kcl, docker.io/x3kcl}/process-inspector-web  (frontend/Dockerfile — nginx: SPA + /api proxy)
 # Tags: {version} and {major}.{minor} + `latest` for stable releases; a prerelease tag
 # (v1.2.3-rc1) publishes only its literal version and never moves latest.
 #
+# Docker Hub push needs two repo secrets (Settings → Secrets → Actions):
+#   DOCKERHUB_USERNAME — an account with push rights to the x3kcl namespace
+#   DOCKERHUB_TOKEN    — a Docker Hub access token (Read & Write scope)
 # ONE-TIME after the first publish: flip both ghcr packages to PUBLIC visibility
-# (repo → Packages → package settings) — new packages default to private.
+# (repo → Packages → package settings) — new packages default to private. Docker Hub
+# repos are auto-created on first push; set them to Public in each repo's settings.
 name: release
 
 on:
@@ -57,12 +62,19 @@ jobs:
           registry: ghcr.io
           username: ${{ github.actor }}
           password: ${{ secrets.GITHUB_TOKEN }}
+      - name: Log in to Docker Hub
+        uses: docker/login-action@v3
+        with:
+          username: ${{ secrets.DOCKERHUB_USERNAME }}
+          password: ${{ secrets.DOCKERHUB_TOKEN }}
 
       - name: BFF image tags
         id: meta-bff
         uses: docker/metadata-action@v5
         with:
-          images: ghcr.io/${{ github.repository }}-bff
+          images: |
+            ghcr.io/${{ github.repository }}-bff
+            docker.io/x3kcl/process-inspector-bff
           tags: |
             type=semver,pattern={{version}},value=${{ env.RELEASE_TAG }}
             type=semver,pattern={{major}}.{{minor}},value=${{ env.RELEASE_TAG }}
@@ -80,7 +92,9 @@ jobs:
         id: meta-web
         uses: docker/metadata-action@v5
         with:
-          images: ghcr.io/${{ github.repository }}-web
+          images: |
+            ghcr.io/${{ github.repository }}-web
+            docker.io/x3kcl/process-inspector-web
           tags: |
             type=semver,pattern={{version}},value=${{ env.RELEASE_TAG }}
             type=semver,pattern={{major}}.{{minor}},value=${{ env.RELEASE_TAG }}
@@ -109,4 +123,6 @@ jobs:
             curl -LO https://github.com/${{ github.repository }}/releases/download/${{ env.RELEASE_TAG }}/docker-compose.release.yml
             PI_VERSION=${{ env.RELEASE_TAG }} docker compose -f docker-compose.release.yml up -d
             ```
-            Images: `ghcr.io/${{ github.repository }}-bff` · `ghcr.io/${{ github.repository }}-web`
+            Images (published to both registries — compose defaults to Docker Hub, override with `PI_REGISTRY`):
+            - Docker Hub: `docker.io/x3kcl/process-inspector-bff` · `docker.io/x3kcl/process-inspector-web`
+            - GHCR: `ghcr.io/${{ github.repository }}-bff` · `ghcr.io/${{ github.repository }}-web`
