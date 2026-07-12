@@ -23,6 +23,12 @@ public final class TestEngines {
                 id, id, baseUrl, EngineEnvironment.DEV, null, true, null, null, auth, null, timeouts, null, null, null);
     }
 
+    /** Tenant-pinned fixture (S2 read-scope tests): the engine's registry-pinned {@code tenantId}. */
+    public static EngineConfig engineInTenant(String id, String baseUrl, String tenantId) {
+        return new EngineConfig(
+                id, id, baseUrl, EngineEnvironment.DEV, null, true, tenantId, null, null, null, null, null, null, null);
+    }
+
     /** Guard-ladder fixtures (M4): environment drives reason/token strictness, mode the R-GOV-04 gate. */
     public static EngineConfig engine(String id, String baseUrl, EngineEnvironment environment, EngineMode mode) {
         return new EngineConfig(

@@ -18,7 +18,16 @@ public record SecurityProperties(
         /* IdP claim carrying the user's groups. */
         String groupsClaim,
         /* OIDC group that confers the fleet REGISTRY_ADMIN grant (v2 Registry CRUD, R-SAFE-13). */
-        String registryAdminGroup) {
+        String registryAdminGroup,
+        /*
+         * Enforce per-engine/tenant scope on SEARCH/TRIAGE reads (S2, R-SAFE-17). Default off:
+         * on the dev (`!oidc`) ladder every session is global-scoped so this is a no-op, and a
+         * single-team deploy may want the fleet-wide overview. Set true under `oidc` (done in
+         * application-oidc.yml) so a per-engine VIEWER cannot read another engine/tenant's rows
+         * by naming it in the request. Reads intersect the caller's grants via
+         * {@link ScopeGrant#overlaps} at VIEWER floor; mutations were already scoped.
+         */
+        Boolean scopeReadsEnforced) {
 
     public String devPasswordOrDefault() {
         return devPassword != null && !devPassword.isBlank() ? devPassword : "dev";
@@ -36,5 +45,10 @@ public record SecurityProperties(
     /** OIDC group name conferring REGISTRY_ADMIN; default {@code registry-admin}. */
     public String registryAdminGroupOrDefault() {
         return registryAdminGroup != null && !registryAdminGroup.isBlank() ? registryAdminGroup : "registry-admin";
+    }
+
+    /** Whether search/triage reads are scope-filtered (S2, R-SAFE-17); default off (see field doc). */
+    public boolean scopeReadsEnforcedOrDefault() {
+        return Boolean.TRUE.equals(scopeReadsEnforced);
     }
 }

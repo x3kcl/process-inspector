@@ -35,6 +35,11 @@ inspector:
   security:
     # The claim carrying the user's groups (Entra: "groups"; Keycloak: a configured mapper claim).
     groups-claim: ${INSPECTOR_OIDC_GROUPS_CLAIM:groups}
+    # S2 (R-SAFE-17): scope-filter search/triage reads under real scoped grants so a per-engine
+    # VIEWER cannot read another engine/tenant by naming it. Default off in the base config (the dev
+    # ladder is global-scoped anyway); on here. A single-team OIDC deploy that wants the fleet-wide
+    # overview can override to false.
+    scope-reads-enforced: ${INSPECTOR_SCOPE_READS_ENFORCED:true}
     oidc:
       # Pinned trusted issuer — MUST equal the issuer-uri above (one tenant).
       issuer: ${INSPECTOR_OIDC_ISSUER_URI}
