@@ -69,7 +69,7 @@ public record InspectorProperties(
     }
 
     public Bulk bulkOrDefault() {
-        return bulk != null ? bulk : new Bulk(null, null);
+        return bulk != null ? bulk : new Bulk(null, null, null, null);
     }
 
     /**
@@ -77,14 +77,30 @@ public record InspectorProperties(
      * in-flight dispatches per engine (shared across concurrent jobs) and a mandatory
      * {@code staggerMs} pause between dispatch STARTS per engine — a 5000-item job must
      * trickle into the target async executor, never slam it.
+     *
+     * <p>{@code circuitPauseMaxMs}/{@code circuitPausePollMs} (R-SEM-11, issue #101): when an
+     * item fast-fails on an OPEN circuit, the dispatcher pauses that ONE item's retry (never the
+     * whole engine group) up to {@code circuitPauseMaxMs}, polling the breaker every {@code
+     * circuitPausePollMs}. The default ceiling (20s) is a deliberate hair past the "engine"
+     * breaker's own {@code wait-duration-in-open-state} (15s, application.yml) — long enough for
+     * one HALF_OPEN probe cycle to actually resolve, never an unbounded wait.
      */
-    public record Bulk(Integer enginePermits, Integer staggerMs) {
+    public record Bulk(
+            Integer enginePermits, Integer staggerMs, Integer circuitPauseMaxMs, Integer circuitPausePollMs) {
         public int enginePermitsOrDefault() {
             return enginePermits != null ? enginePermits : 4;
         }
 
         public int staggerMsOrDefault() {
             return staggerMs != null ? staggerMs : 250;
+        }
+
+        public long circuitPauseMaxMsOrDefault() {
+            return circuitPauseMaxMs != null ? circuitPauseMaxMs : 20_000L;
+        }
+
+        public long circuitPausePollMsOrDefault() {
+            return circuitPausePollMs != null ? circuitPausePollMs : 1_000L;
         }
     }
 
