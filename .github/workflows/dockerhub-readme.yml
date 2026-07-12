@@ -1,0 +1,45 @@
+# Sync each Docker Hub repository's Overview (long description + short description) from the
+# in-repo markdown under docker/dockerhub/. Docker Hub has no build-time README the way ghcr
+# derives one from the repo, so we push it explicitly with the same DOCKERHUB_USERNAME /
+# DOCKERHUB_TOKEN secrets the publish workflows use (token needs Read & Write scope).
+#
+# Runs on green-main pushes that touch the overview files or this workflow, and on demand
+# (workflow_dispatch). It only rewrites metadata — it never builds or pushes an image.
+name: dockerhub-readme
+
+on:
+  push:
+    branches: [main]
+    paths:
+      - docker/dockerhub/**
+      - .github/workflows/dockerhub-readme.yml
+  workflow_dispatch:
+
+concurrency:
+  group: dockerhub-readme
+  cancel-in-progress: true
+
+jobs:
+  sync:
+    runs-on: self-hosted
+    timeout-minutes: 10
+    steps:
+      - uses: actions/checkout@v4
+
+      - name: Sync BFF overview
+        uses: peter-evans/dockerhub-description@v4
+        with:
+          username: ${{ secrets.DOCKERHUB_USERNAME }}
+          password: ${{ secrets.DOCKERHUB_TOKEN }}
+          repository: x3kcl/process-inspector-bff
+          short-description: "Spring Boot 3 BFF for the multi-engine Flowable Process Inspector — REST-only, do-no-harm."
+          readme-filepath: ./docker/dockerhub/process-inspector-bff.md
+
+      - name: Sync web overview
+        uses: peter-evans/dockerhub-description@v4
+        with:
+          username: ${{ secrets.DOCKERHUB_USERNAME }}
+          password: ${{ secrets.DOCKERHUB_TOKEN }}
+          repository: x3kcl/process-inspector-web
+          short-description: "nginx-served React SPA for the Flowable Process Inspector (pairs with the -bff image)."
+          readme-filepath: ./docker/dockerhub/process-inspector-web.md
