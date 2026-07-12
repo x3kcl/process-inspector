@@ -291,8 +291,12 @@ tests + spec-sync in the same PR, and follows green-ci.
     bpmn-js/cmmn-js/diagram-js/ag-grid/codemirror/react into their own long-cacheable vendor
     chunks. **U1 LANDED:** Enter-to-open already existed (R-UXQ-02) but was invisible — added a
     visible, focusable, "open in new tab"-able **"Open →" `<Link>` column** to `ResultsGrid`
-    (leftmost), navigating to the same `/inspect` URL as double-click/Enter. Remaining: U2
-    (`<dialog>` focus trap), U5 (`useProdGuard`/`<GuardFields>` extraction across the 13 modals).
+    (leftmost), navigating to the same `/inspect` URL as double-click/Enter. **U2 LANDED:** a real
+    FOCUS TRAP in the shared `ModalShell` (so all 13 modals inherit it at once) — Tab/Shift+Tab cycle
+    within the dialog instead of leaking to the page behind it, and focus is RESTORED to the opener
+    on close. Kept the div-based shell (a JS trap, jsdom-verifiable) rather than swap to native
+    `<dialog>` to avoid a CSS/backdrop regression across every modal. Remaining: U5
+    (`useProdGuard`/`<GuardFields>` extraction across the 13 modals).
 18. **Component-test harness (U4)** — vitest jsdom project + testing-library; first targets:
     Shell 401 gating/BreakGlassBanner, ResultsGrid zero-state ladder, StatusChip.
 19. **Test-support consolidation (F5, F6, Q8)** — one docker-free convention (profile-gated
