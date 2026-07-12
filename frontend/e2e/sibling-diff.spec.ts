@@ -125,6 +125,11 @@ async function mockBff(page: Page): Promise<MockState> {
         await route.fulfill({ json: [ENGINE] })
       } else if (pathname === base) {
         await route.fulfill({ json: VITALS })
+      } else if (pathname === `${base}/variables`) {
+        // Not the subject of this spec — an unhandled response would leave VariablesTab
+        // (the default tab) stuck on "Loading variables…" indefinitely (axe
+        // scrollable-region-focusable on the never-settled tabpanel).
+        await route.fulfill({ json: { executionScopes: [], processVariables: [] } })
       } else if (pathname === `${base}/diagram`) {
         await route.fulfill({
           json: { xml: '<definitions/>', activeActivityIds: [], deadLetterActivityIds: [] },
