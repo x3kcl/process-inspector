@@ -7,9 +7,9 @@ import io.inspector.config.InspectorProperties;
 import io.inspector.config.InspectorProperties.AlarmThresholds;
 import io.inspector.config.InspectorProperties.Auth;
 import io.inspector.config.InspectorProperties.EngineConfig;
-import io.inspector.config.InspectorProperties.EngineEnvironment;
 import io.inspector.config.InspectorProperties.EngineMode;
 import io.inspector.config.InspectorProperties.Timeouts;
+import io.inspector.support.TestEngines;
 import java.util.List;
 import org.junit.jupiter.api.Test;
 import org.springframework.web.server.ResponseStatusException;
@@ -23,21 +23,13 @@ import org.springframework.web.server.ResponseStatusException;
 class EngineRegistryReloadTest {
 
     private static EngineConfig engine(String id, boolean enabled, String baseUrl) {
-        return new EngineConfig(
-                id,
-                id,
-                baseUrl,
-                EngineEnvironment.DEV,
-                null,
-                enabled,
-                null,
-                null,
-                new Auth(Auth.Type.none, null, null, null),
-                EngineMode.READ_WRITE,
-                new Timeouts(null, null, null),
-                null,
-                null,
-                new AlarmThresholds(null, null, null));
+        return TestEngines.builder(id, baseUrl)
+                .enabled(enabled)
+                .auth(new Auth(Auth.Type.none, null, null, null))
+                .mode(EngineMode.READ_WRITE)
+                .timeouts(new Timeouts(null, null, null))
+                .alarmThresholds(new AlarmThresholds(null, null, null))
+                .build();
     }
 
     private static EngineRegistry registryOf(EngineConfig... engines) {
