@@ -43,6 +43,14 @@ Filter rail + AG Grid results. Two things to internalize:
 - **Combination rule: AND between categories, OR within one.** The compiled-criteria echo
   below the form shows exactly what will run, and "copy as cURL" gives you the equivalent
   `POST /api/search` call.
+- **Load more** (deep paging): past the first page, a **Load more** button pages the
+  merged, globally-sorted result stream — no fake global pagination, so scrolling deep
+  never silently reorders what you already saw. It's a point-in-time snapshot ("loaded more
+  as of HH:MM"); Refresh resets the chain. Narrow your filter instead when you can.
+- **Saved views**: private (per-user) views + system views (relative windows like "Active
+  > 30 days") + **team-published views** — an OPERATOR+ can publish a private view as team
+  canon (visible to everyone who can read that engine/tenant scope); unpublishing requires
+  a reason, same as any other moderation act.
 
 Partial results show an amber banner naming the engine and error ("2 of 3 engines ·
 billing-prod: timeout"). A partial result set **blocks bulk actions until you explicitly
@@ -131,6 +139,23 @@ skipped (protected) / unknown / not_run`) in the operations drawer — it surviv
 browser refresh, and BFF restart (see RUNBOOK for INTERRUPTED jobs). If your selection
 overlaps a job that is already RUNNING, you must explicitly run-anyway naming the other job
 and its owner.
+
+## Admin surfaces (ADMIN-gated)
+
+Two fleet-level admin pages exist outside the three stages — both greyed-never-hidden below
+their required grant, with a tooltip naming the missing one:
+
+- **`/admin/engines`** (registry lifecycle): add/edit/enable/disable/remove/purge engines,
+  gated by the fleet-level `REGISTRY_ADMIN` grant (orthogonal to the VIEWER→ADMIN ladder —
+  a per-engine ADMIN does not confer it). New engines earn trust through a lifecycle
+  (DRAFT → PROBED → ACTIVE — no mutating verb before ACTIVE); flipping a prod engine to
+  read-write requires a typed confirm token. Every write is audited fail-closed.
+- **`/admin/access`** (group→scope grant CRUD): who maps to which role/engine/tenant, gated
+  by the apex `ACCESS_ADMIN` grant. A change that **widens** access (self-widen, granting
+  OPERATOR+ with a wildcard engine/tenant, or any fleet-grant create/removal) goes through a
+  **second independent `ACCESS_ADMIN` approval** before it applies — you'll see it as a
+  pending proposal, not an instant change. A drift badge flags when the mounted file and the
+  DB-backed store disagree.
 
 ## The one thing to remember about accountability
 

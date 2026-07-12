@@ -639,7 +639,7 @@ count to a "≥N" lower bound under a truncated DLQ scan — see `CMMN-SCOPE-PHA
 - **OIDC hardening + access-lifecycle + group→scope CRUD + break-glass → the v2 IdP & Security
   block below (design locked).** Shared server-side saved views → now its own design block (below).
 
-### v2 — Shared (team-wide) saved views *(design locked 2026-07-09, unbuilt + demand-gated)*
+### v2 — Shared (team-wide) saved views *(design locked 2026-07-09, ★ S1–S6 LANDED 2026-07-09 — see [SHARED-VIEWS.md](SHARED-VIEWS.md))*
 An operator/admin publishes curated views the whole team (or a tenant/engine scope) inherits —
 "stuck payments in prod", "failed in the last hour" — so new responders get the team's canonical
 entry points instead of rebuilding them, and during an incident everyone *working the engine*
@@ -721,7 +721,7 @@ ARCH §2.4's parked "v2 can add k-way-merge cursors…" sentence.
   config-lowered `deep-paging-max-depth:6`: multi-page scroll no-dup/skip cross-version, depthCapped,
   crafted-cursor 400, drop-engine honesty). Each CI-green + independently merged.
 
-### v2 — Registry CRUD: runtime engine lifecycle *(design locked 2026-07-09, unbuilt)*
+### v2 — Registry CRUD: runtime engine lifecycle *(design locked 2026-07-09, ★ S1–S5 LANDED 2026-07-09 — S4b four-eyes + connect-time IP-pinning deferred, issue #91)*
 The registry moves YAML→DB so ops can onboard/retire/tune engines without a deploy — the
 completion of the "BFF is now stateful" arc. **Full design + panel + threat model +
 API/DDL/state-machine: `docs/REGISTRY-CRUD.md`.** Discharges R-OPS-13
@@ -825,7 +825,7 @@ and delete is a soft tombstone; hot reload evicts the per-id client caches (no r
   (add→probe→enable→edit→disable→remove) + axe green.
 
 
-### v2 — IdP & Security: identity wiring, access lifecycle & the who-can-do-what store *(design locked 2026-07-09, unbuilt)*
+### v2 — IdP & Security: identity wiring, access lifecycle & the who-can-do-what store *(design locked 2026-07-09, ★ S1–S6 core LANDED 2026-07-09/10 — remaining: IdP-unreachable break-glass door, Playwright/axe grant-flow gate, issue #94/#85)*
 Wires OIDC for real, hardens the session/transport posture, moves the group→scope mapping
 file→DB with a CRUD admin surface, and builds break-glass. **Full design + 5-seat panel +
 adversarial pass + threat model + API/DDL: `docs/IDP-SECURITY.md`.** Concretizes R-GOV-06
@@ -1107,9 +1107,10 @@ A full-codebase 5-seat panel review (+ Gemini/Copilot external critique) at main
 produced a consolidated findings register and a risk-tiered improvement plan (P0 hotfixes →
 P1 security-tail/docs-truth → P2 structural debt → P3 product track):
 **[IMPROVEMENT-PLAN-2026-07.md](IMPROVEMENT-PLAN-2026-07.md)**. That document is the
-authoritative WHEN for the review's output; the doc-drift sweep it schedules (its slice #11)
-will reconcile the stale section headers in THIS file (shared-views / registry-CRUD / IdP
-headers still read "unbuilt" for shipped features).
+authoritative WHEN for the review's output; the doc-drift sweep it scheduled (its slice #11,
+issue #84) reconciled the section headers in THIS file (shared-views / registry-CRUD / IdP
+headers now read shipped, not "unbuilt") plus REQUIREMENTS-REGISTER, TRACEABILITY-MATRIX,
+RUNBOOK, OPERATIONS §8, OPERATOR-QUICK-START, ARCHITECTURE §2.4 and SPECIFICATION §12.
 
 ## Build order inside any milestone
 backend DTO → engine client call → aggregator/join logic → controller → typed frontend API

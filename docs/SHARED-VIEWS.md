@@ -1,7 +1,9 @@
-# 👥 SHARED (TEAM-WIDE) SAVED VIEWS — design + panel (v2, demand-gated)
+# 👥 SHARED (TEAM-WIDE) SAVED VIEWS — design + panel (v2)
 
-**Status:** design locked, **unbuilt + demand-gated** (2026-07-09). Authoritative source-of-truth for
-the shared/team saved-views feature (v2 demand-driven item #2). The WHAT/WHY/HOW/WHEN below drive the
+**Status:** ★ **BUILT 2026-07-09** — S1–S6 all landed, CI-green (the design lock below is retained as
+the WHAT/WHY authority, not a still-pending gate). Built directly on panel-review consensus rather
+than a fired duplicate-search-string signal (the stated demand-gate trigger, §1, was never
+instrumented in code — historical framing only). The WHAT/WHY/HOW/WHEN below drive the
 deltas into `SPECIFICATION.md` (§8/§4 Stage 0 + deferred list), `ARCHITECTURE.md` (the "BFF is stateful"
 views arc), `IMPLEMENTATION-PLAN.md` (v2 block) and `REQUIREMENTS-REGISTER.md` (**R-SEM-24, R-SAFE-16**
 added). Mirrors the doc-per-feature convention of `INSTANCE-MIGRATION.md` / `REGISTRY-CRUD.md` /
@@ -361,5 +363,5 @@ No S0 spike; no rung-4-**engine** slice (a shared view touches no `ACT_*` table)
 - **`REQUIREMENTS-REGISTER.md`** — add R-SEM-24, R-SAFE-16.
 - **`TRACEABILITY-MATRIX.md`** — add rows for both IDs.
 
-Deeper SPEC §8 *behavioral* edits land **with the build slices** (spec-sync), not now — the behavior is
-unbuilt and demand-gated.
+Deeper SPEC §8 *behavioral* edits have landed with the build slices (spec-sync) — S1-S6 are all
+built; this section's deltas are historical (the pre-build plan), not a still-open TODO.

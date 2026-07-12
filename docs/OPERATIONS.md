@@ -155,21 +155,29 @@ zero effective grants / seed failed" health indicator + alert** (READY alone can
 from seeded-to-zero).
 
 ## 8. CI gates — the authoritative merge-blocking list (R-OPS-06)
-**Landed in `.github/workflows/ci.yml`:** `lint` (Spotless/palantir) · `unit` (backend
-build + unit suite incl. the **ArchUnit anti-flakiness rule**: `Thread.sleep` in any test
-class = build failure) · `frontend` (watermark check + tsc + vite build) · `docker`
-(multi-stage image build) · `integration` matrix over **flowable-6 / flowable-7 / legacy**
-(compose up → `docker/smoke-test.sh` bounded readiness gate incl. postgres `pg_isready` →
-`docker/seed.sh` → failsafe per-profile IT).
-**Still to land:** WireMock contract tests with **6.x AND 7.x error-JSON fixtures** ·
-Testcontainers Postgres suite (M4+) · ESLint strict · OpenAPI export +
-`git diff --exit-code` · Vitest · Playwright smoke (≤10 min, incl. axe) · Trivy scan
-(fixable HIGH/CRIT fail) · **a real Keycloak `oidc`/prod-like leg** (v2 IdP-Security — a
-lightweight OIDC stub omits `max_age`/refresh/overage, exactly the security-critical semantics;
-budget its realm-import boot against the 20-min integration cap or split to its own job).
-Nightly (release-blocking, not merge-blocking): full engine-matrix Playwright, P1/P2 perf
-scenarios, capability matrix cross. Weekly: image rescan; monthly: base-image rebuild; SBOM
-(CycloneDX) attached to releases.
+**Landed in `.github/workflows/ci.yml` (merge-blocking):** `lint` (Spotless/palantir) ·
+`unit` (backend build + unit suite incl. the **ArchUnit anti-flakiness rule**: `Thread.sleep`
+in any test class = build failure) · `frontend` (**ESLint strict-type-checked + Prettier**,
+**Vitest**, watermark check, tsc, vite build) · **OpenAPI drift gate** (boots the BFF,
+regenerates `schema.d.ts`, `git diff --exit-code`) · `docker` (multi-stage image build) ·
+`integration` matrix over **flowable-6 / flowable-7 / legacy** (compose up →
+`docker/smoke-test.sh` bounded readiness gate incl. postgres `pg_isready` → `docker/seed.sh`
+→ failsafe per-profile IT).
+**Landed in `.github/workflows/nightly.yml` (NOT merge-blocking — 02:00 UTC + `workflow_dispatch`):**
+a **Testcontainers Postgres/Keycloak suite** (`container-its` job, 14 self-provisioning ITs —
+audit partition/retention/roles + fail-closed, shared/team-view governance, mapping/registry
+store CRUD, and **a real Keycloak `oidc` leg** — `OidcKeycloakIT`, sealed-login + `max_age`/
+`auth_time` semantics a lightweight stub can't exercise) and an **`engine-its` job** (11
+mutating corrective-action/flow-surgery/migration/bulk ITs the PR gate skips for the
+zero-flake doctrine). A red nightly is a morning-routine triage, not a push gate.
+**Genuinely still to land:** Playwright smoke + axe (no CI wiring exists at all yet, tracked
+issue #85, blocked on #88's remaining U5 frontend-fitness prerequisite — U1/U2 landed) · Trivy image scan +
+SBOM (CycloneDX) + dependency audit in nightly · k6 P1 perf wiring against a seeded
+FIX-REF-01 reference dataset (`scripts/perf-scenario-p1.js` exists since the v1 gate but has
+never run in CI — tracked issue #93) · a dedicated static WireMock fixture suite for 6.x/7.x
+error-JSON shape (partially covered differently today: WireMock proves pure HTTP-client
+behavior in `FlowableEngineClientTest`, and the live `integration` matrix's flowable-6/7/legacy
+profiles exercise real error-JSON shape end-to-end — but no standalone fixture suite pins it).
 **Where CI runs:** dockerized self-hosted **runner slots** (`docker/ci-runner/`, image =
 `myoung34/github-runner` + Maven/python3/jq; zero paid Actions minutes). Harness ports are
 fixed remaps, so parallelism is **port-namespace slots**: each runner container carries a

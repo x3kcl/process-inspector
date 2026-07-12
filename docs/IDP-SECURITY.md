@@ -1,8 +1,11 @@
 # 🔐 IdP & SECURITY — identity wiring, access lifecycle & the who-can-do-what store (design + panel, v2)
 
-**Status:** design locked, unbuilt (2026-07-09), **hardened by a 5-seat panel + independent
-adversarial pass (Gemini 2.5)** — the panel changed the design, not just the prose (see §2 and the
-`⚠️ panel:` markers). Authoritative source-of-truth for the **IdP-and-Security extension** — the
+**Status:** ★ **S1–S6 core BUILT 2026-07-09/10** (design locked 2026-07-09, **hardened by a 5-seat
+panel + independent adversarial pass (Gemini 2.5)** — the panel changed the design, not just the
+prose, see §2 and the `⚠️ panel:` markers). Remaining: the IdP-unreachable break-glass door
+(issue #94), the login-time `auth_time` conformance validator + membership re-pull (issue #95),
+and the Playwright grant-flow + axe gate (issue #85). Authoritative source-of-truth for the
+**IdP-and-Security extension** — the
 WHAT/WHY/HOW/WHEN below drive the deltas into `SPECIFICATION.md` (new §2.4 + §4c),
 `ARCHITECTURE.md` (§5), `IMPLEMENTATION-PLAN.md` (v2 IdP-Security block, S1–S6), `OPERATIONS.md`
 (§7) and `REQUIREMENTS-REGISTER.md` (R-GOV-06 concretized; R-SAFE-07/12 expanded; R-SAFE-14 +
