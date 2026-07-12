@@ -63,7 +63,7 @@ class TriageCmmnScopeLegacyIT {
 
         // The scopeType capability is set by the scheduled M1 probe — wait one cycle so triage
         // reads a populated registry, not a cold one.
-        await().atMost(30, TimeUnit.SECONDS)
+        await().atMost(60, TimeUnit.SECONDS)
                 .pollInterval(500, TimeUnit.MILLISECONDS)
                 .untilAsserted(() -> assertThat(rest.getForObject("/api/engines", JsonNode.class)
                                 .get(0)

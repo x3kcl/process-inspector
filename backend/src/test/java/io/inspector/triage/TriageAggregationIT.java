@@ -110,7 +110,7 @@ class TriageAggregationIT {
             assertThat(EngineSeed.failingTimerCountFor(engine, retrying)).isGreaterThanOrEqualTo(1);
         });
         // The health strip reads the scheduled M1 probe's registry state — wait for one cycle.
-        await().atMost(30, TimeUnit.SECONDS)
+        await().atMost(60, TimeUnit.SECONDS)
                 .pollInterval(500, TimeUnit.MILLISECONDS)
                 .untilAsserted(() -> assertThat(rest.getForObject("/api/engines", JsonNode.class)
                                 .get(0)

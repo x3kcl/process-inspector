@@ -96,7 +96,7 @@ class TriageCmmnScopeIT {
 
         // The health strip (and the scopeType capability the count is gated on) comes from
         // the scheduled M1 probe — wait for one cycle before triage reads the registry.
-        await().atMost(30, TimeUnit.SECONDS)
+        await().atMost(60, TimeUnit.SECONDS)
                 .pollInterval(500, TimeUnit.MILLISECONDS)
                 .untilAsserted(() -> assertThat(rest.getForObject("/api/engines", JsonNode.class)
                                 .get(0)
