@@ -63,6 +63,22 @@ describe('StatusChip — Explain this status (R-L3-01)', () => {
     expect(screen.getByText('ACTIVE')).toBeTruthy()
   })
 
+  it('renders TERMINATED (not COMPLETED) for an ended instance that was terminated (#118/#105)', () => {
+    // Flowable ends both completed AND terminated instances with an endTime → status is COMPLETED,
+    // but the chip must not lie: with a termination reason it reads TERMINATED, reason in the tooltip.
+    render(<StatusChip status="COMPLETED" terminationReason="cancelled by ops — duplicate order" />)
+    const chip = screen.getByText('TERMINATED')
+    expect(chip.className).toContain('terminated')
+    expect(chip.getAttribute('title')).toContain('cancelled by ops — duplicate order')
+    expect(screen.queryByText('COMPLETED')).toBeNull()
+  })
+
+  it('still reads COMPLETED for a genuine completion (no termination reason)', () => {
+    render(<StatusChip status="COMPLETED" />)
+    expect(screen.getByText('COMPLETED')).toBeTruthy()
+    expect(screen.queryByText('TERMINATED')).toBeNull()
+  })
+
   it('opens the re-derived evidence view with per-flag provenance and the child deep link', () => {
     useEvidence.mockReturnValue({ data: evidence, isPending: false, isError: false })
     render(

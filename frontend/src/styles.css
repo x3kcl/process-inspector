@@ -704,6 +704,13 @@ button.primary:disabled {
   background: #e8daef;
   color: #5b2c6f;
 }
+/* Terminated ≠ completed (#118/#105). The chip TEXT reads "TERMINATED" (the non-hue signal,
+   SPEC §10a); the dark fill differs from the light-grey completed chip in LIGHTNESS too. */
+.status-chip.terminated {
+  background: #4a4a55;
+  color: #f4f4f6;
+  border: 1px solid #2c2c34;
+}
 .status-badge {
   border: 1px solid #8395a7;
   border-radius: 8px;

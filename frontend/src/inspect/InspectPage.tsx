@@ -271,6 +271,7 @@ function VitalsBody({ vitals, onCompare }: { vitals: InstanceDetail; onCompare: 
           <StatusChip
             status={vitals.status}
             flags={vitals.flags}
+            terminationReason={vitals.terminationReason}
             engineId={vitals.engineId}
             instanceId={vitals.processInstanceId}
           />

@@ -40,6 +40,7 @@ import java.util.Deque;
 import java.util.HashSet;
 import java.util.LinkedHashMap;
 import java.util.List;
+import java.util.Locale;
 import java.util.Map;
 import java.util.Set;
 import org.slf4j.Logger;
@@ -142,7 +143,36 @@ public class InstanceDetailService {
                 waitingFor,
                 externalWorkerJobs,
                 protection.isProtected(),
-                protection.reason());
+                protection.reason(),
+                terminationReason(historic, ended));
+    }
+
+    /**
+     * Status honesty (#118/#105): distinguish a TERMINATED/deleted ended instance from a genuine
+     * completion. Flowable ends both with an {@code endTime}, so {@code primaryStatus()} maps both
+     * to COMPLETED — but a historic instance also carries a {@code state} (6.x+:
+     * {@code COMPLETED}/{@code EXTERNALLY_TERMINATED}/{@code INTERNALLY_TERMINATED}/{@code DELETED})
+     * and/or a {@code deleteReason}. Returns the termination reason (deleteReason preferred, else a
+     * humanized state) for a terminated instance, or {@code null} for a normal completion / while
+     * running. No engine-client change — the historic Map already carries these keys.
+     */
+    static String terminationReason(Map<String, Object> historic, boolean ended) {
+        if (!ended) {
+            return null;
+        }
+        String state = str(historic, "state");
+        String deleteReason = str(historic, "deleteReason");
+        boolean hasDeleteReason = deleteReason != null && !deleteReason.isBlank();
+        if (state != null && !state.isBlank()) {
+            if ("COMPLETED".equalsIgnoreCase(state)) {
+                return null; // a normal completion — no badge
+            }
+            return hasDeleteReason
+                    ? deleteReason
+                    : state.toLowerCase(Locale.ROOT).replace('_', ' ');
+        }
+        // Pre-6.x engines don't serialize `state`; a deleteReason on an ended instance = terminated.
+        return hasDeleteReason ? deleteReason : null;
     }
 
     /** The vitals protected-state read + its reason; {@code isProtected==null} = store unreachable. */

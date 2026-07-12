@@ -164,7 +164,15 @@ hold dead-letter jobs):
 
 The UI renders a primary chip (`COMPLETED / FAILED / RETRYING / SUSPENDED / ACTIVE`, in that
 precedence — display terms per the §0 glossary; "FAILED — needs action" vs "RETRYING (n/m,
-auto)") **plus secondary badges** for collisions ("SUSPENDED · has dead-letter jobs") and
+auto)"). **Terminated ≠ completed (#118/#105):** Flowable ends a normally-completed AND a
+terminated/deleted instance the same way (an `endTime`), so the derived status ENUM stays
+`COMPLETED` for both (the 5-value set + the search facets/counts must not churn). But the
+instance-detail chip must not lie — when the historic row carries a termination signal (a
+`deleteReason`, or a `state` other than `COMPLETED`: `EXTERNALLY_/INTERNALLY_TERMINATED`,
+`DELETED`), the detail vitals carry a `terminationReason` and the chip DISPLAYS **`TERMINATED`**
+(reason in its tooltip, dark fill distinct in lightness not hue) instead of `COMPLETED`. This is
+a display-only honesty override on the detail header, not a sixth status. The chip also carries
+**secondary badges** for collisions ("SUSPENDED · has dead-letter jobs") and
 subprocess roll-up ("FAILED — in subprocess *chargePayment*", which **deep-links to the
 failing child's Errors & Jobs tab** — the retry lives on the child; the parent must never be
 a dead end, R-UXQ-11). Search filters operate on flag predicates. CMMN-scoped jobs (null
