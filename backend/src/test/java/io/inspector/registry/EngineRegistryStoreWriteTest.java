@@ -14,6 +14,7 @@ import io.inspector.config.InspectorProperties.EngineEnvironment;
 import io.inspector.config.RegistryProperties;
 import io.inspector.config.RegistryProperties.Source;
 import io.inspector.security.RbacAuthorizer;
+import io.inspector.security.mapping.MappingSource;
 import java.time.Clock;
 import java.time.Instant;
 import java.time.ZoneOffset;
@@ -39,6 +40,8 @@ class EngineRegistryStoreWriteTest {
     private ApplicationEventPublisher events;
     private RbacAuthorizer rbac;
     private Authentication admin;
+    private RegistryWriteProposalRepository proposals;
+    private MappingSource mappingSource;
     private EngineRegistryStore store;
 
     @BeforeEach
@@ -48,22 +51,28 @@ class EngineRegistryStoreWriteTest {
         events = mock(ApplicationEventPublisher.class);
         rbac = mock(RbacAuthorizer.class);
         admin = mock(Authentication.class);
+        proposals = mock(RegistryWriteProposalRepository.class);
+        mappingSource = mock(MappingSource.class);
         when(admin.getName()).thenReturn("reg-admin");
         when(rbac.canAdministerRegistry(admin)).thenReturn(true);
+        when(rbac.oidcGroups(admin)).thenReturn(List.of());
         when(audit.beginPending(any(), any(), any(), any(), any(), any(), any(), any()))
                 .thenReturn(mock(AuditEntry.class));
 
         // Egress allows a public /24 (validated by literal IP, no DNS) + loopback for dev.
         RegistryProperties props =
                 new RegistryProperties(Source.DB, List.of("93.184.216.0/24", "127.0.0.0/8", "localhost"), Set.of());
+        RegistryPinRegistry pinRegistry = new RegistryPinRegistry(new RegistryUrlValidator(), props);
         store = new EngineRegistryStore(
                 repo,
                 audit,
                 events,
-                new RegistryUrlValidator(),
                 props,
                 rbac,
-                Clock.fixed(Instant.parse("2026-07-09T12:00:00Z"), ZoneOffset.UTC));
+                Clock.fixed(Instant.parse("2026-07-09T12:00:00Z"), ZoneOffset.UTC),
+                proposals,
+                mappingSource,
+                pinRegistry);
     }
 
     private static RegistryWrite write(String id, String baseUrl, EngineEnvironment env) {
@@ -188,13 +197,157 @@ class EngineRegistryStoreWriteTest {
     }
 
     @Test
-    void enable_read_write_on_a_probed_engine_transitions_active_and_reloads() {
+    void enable_read_write_on_a_probed_non_prod_engine_transitions_active_and_reloads() {
+        // No environment set (null != "prod") ⇒ single-actor, matching the existing typed-token scope.
         when(repo.findByIdAndRemovedAtIsNull("e")).thenReturn(Optional.of(rowWithLifecycle("e", "probed")));
 
-        EngineRegistryRow row = store.enable("e", true, admin, "enabling read-write after probe");
+        EngineRegistryStore.Outcome outcome = store.enable("e", true, admin, "enabling read-write after probe");
 
-        assertThat(row.getLifecycle()).isEqualTo("active");
-        assertThat(row.getMode()).isEqualTo("read-write");
+        assertThat(outcome.status()).isEqualTo("applied");
+        assertThat(outcome.row().getLifecycle()).isEqualTo("active");
+        assertThat(outcome.row().getMode()).isEqualTo("read-write");
         verify(events).publishEvent(new RegistryChangedEvent("e"));
+    }
+
+    /* ---------- four-eyes (R-SAFE-08, #91) ---------- */
+
+    private EngineRegistryRow rowWithLifecycleAndEnv(String id, String lifecycle, String environment) {
+        EngineRegistryRow row = rowWithLifecycle(id, lifecycle);
+        row.setEnvironment(environment);
+        return row;
+    }
+
+    @Test
+    void enable_read_write_on_a_prod_engine_is_proposed_not_applied() {
+        when(repo.findByIdAndRemovedAtIsNull("e"))
+                .thenReturn(Optional.of(rowWithLifecycleAndEnv("e", "probed", "prod")));
+        when(mappingSource.allFleetGrants())
+                .thenReturn(List.of(new MappingSource.FleetGrantRow(
+                        "registry-admins", io.inspector.security.mapping.FleetGrant.REGISTRY_ADMIN, "ui")));
+        when(proposals.save(any())).thenAnswer(inv -> inv.getArgument(0));
+
+        EngineRegistryStore.Outcome outcome = store.enable("e", true, admin, "prod read-write flip");
+
+        assertThat(outcome.status()).isEqualTo("proposed");
+        assertThat(outcome.row()).isNull();
+        assertThat(outcome.eligibleApproverGroups()).containsExactly("registry-admins");
+        verify(repo, never()).save(any());
+        verify(events, never()).publishEvent(any());
+    }
+
+    @Test
+    void remove_and_purge_always_propose_regardless_of_environment() {
+        when(repo.findByIdAndRemovedAtIsNull("e")).thenReturn(Optional.of(rowWithLifecycle("e", "disabled")));
+        EngineRegistryRow tombstoned = rowWithLifecycle("p", "disabled");
+        tombstoned.setRemovedAt(Instant.parse("2026-07-01T00:00:00Z"));
+        when(repo.findById("p")).thenReturn(Optional.of(tombstoned));
+        when(mappingSource.allFleetGrants())
+                .thenReturn(List.of(new MappingSource.FleetGrantRow(
+                        "registry-admins", io.inspector.security.mapping.FleetGrant.REGISTRY_ADMIN, "ui")));
+        when(proposals.save(any())).thenAnswer(inv -> inv.getArgument(0));
+
+        EngineRegistryStore.Outcome removeOutcome = store.remove("e", admin, "removing a disabled engine");
+        assertThat(removeOutcome.status()).isEqualTo("proposed");
+
+        EngineRegistryStore.Outcome purgeOutcome = store.purge("p", admin, "purging a tombstoned engine");
+        assertThat(purgeOutcome.status()).isEqualTo("proposed");
+
+        verify(repo, never()).save(any());
+        verify(repo, never()).delete(any());
+    }
+
+    @Test
+    void propose_with_no_independent_approver_is_refused() {
+        when(repo.findByIdAndRemovedAtIsNull("e")).thenReturn(Optional.of(rowWithLifecycle("e", "disabled")));
+        // The only REGISTRY_ADMIN group IS the proposer's own — no eligible independent approver.
+        when(rbac.oidcGroups(admin)).thenReturn(List.of("registry-admins"));
+        when(mappingSource.allFleetGrants())
+                .thenReturn(List.of(new MappingSource.FleetGrantRow(
+                        "registry-admins", io.inspector.security.mapping.FleetGrant.REGISTRY_ADMIN, "ui")));
+
+        assertThatThrownBy(() -> store.remove("e", admin, "removing a disabled engine"))
+                .isInstanceOf(EngineRegistryStore.NoEligibleApproverException.class)
+                .hasMessageContaining("No eligible independent REGISTRY_ADMIN approver");
+        verify(proposals, never()).save(any());
+    }
+
+    @Test
+    void approve_refuses_self_approval_and_a_non_independent_approver() {
+        RegistryWriteProposal proposal = new RegistryWriteProposal(
+                "reg-admin",
+                "registry-admins",
+                "e",
+                RegistryChange.Kind.REMOVE,
+                "remove engine 'e'",
+                "removing a disabled engine",
+                Instant.parse("2026-07-09T12:00:00Z"),
+                Instant.parse("2026-07-10T12:00:00Z"));
+        when(proposals.findById(1L)).thenReturn(Optional.of(proposal));
+
+        assertThatThrownBy(() -> store.approve(1L, admin))
+                .isInstanceOf(EngineRegistryStore.IneligibleApproverException.class)
+                .hasMessageContaining("cannot approve their own");
+
+        Authentication sameGroupApprover = mock(Authentication.class);
+        when(sameGroupApprover.getName()).thenReturn("another-admin");
+        when(rbac.canAdministerRegistry(sameGroupApprover)).thenReturn(true);
+        when(rbac.oidcGroups(sameGroupApprover)).thenReturn(List.of("registry-admins"));
+        when(mappingSource.allFleetGrants())
+                .thenReturn(List.of(new MappingSource.FleetGrantRow(
+                        "registry-admins", io.inspector.security.mapping.FleetGrant.REGISTRY_ADMIN, "ui")));
+
+        assertThatThrownBy(() -> store.approve(1L, sameGroupApprover))
+                .isInstanceOf(EngineRegistryStore.IneligibleApproverException.class)
+                .hasMessageContaining("not independent");
+    }
+
+    @Test
+    void approve_by_an_independent_admin_applies_the_change() {
+        RegistryWriteProposal proposal = new RegistryWriteProposal(
+                "reg-admin",
+                "registry-admins",
+                "e",
+                RegistryChange.Kind.REMOVE,
+                "remove engine 'e'",
+                "removing a disabled engine",
+                Instant.parse("2026-07-09T12:00:00Z"),
+                Instant.parse("2026-07-10T12:00:00Z"));
+        when(proposals.findById(1L)).thenReturn(Optional.of(proposal));
+        when(repo.findById("e")).thenReturn(Optional.of(rowWithLifecycle("e", "disabled")));
+
+        Authentication approver = mock(Authentication.class);
+        when(approver.getName()).thenReturn("registry-admin-2");
+        when(rbac.canAdministerRegistry(approver)).thenReturn(true);
+        when(rbac.oidcGroups(approver)).thenReturn(List.of("other-admins"));
+        when(mappingSource.allFleetGrants())
+                .thenReturn(List.of(
+                        new MappingSource.FleetGrantRow(
+                                "registry-admins", io.inspector.security.mapping.FleetGrant.REGISTRY_ADMIN, "ui"),
+                        new MappingSource.FleetGrantRow(
+                                "other-admins", io.inspector.security.mapping.FleetGrant.REGISTRY_ADMIN, "ui")));
+
+        EngineRegistryStore.Outcome outcome = store.approve(1L, approver);
+
+        assertThat(outcome.status()).isEqualTo("applied");
+        assertThat(proposal.getStatus()).isEqualTo(RegistryWriteProposal.Status.APPROVED);
+        assertThat(proposal.getApprover()).isEqualTo("registry-admin-2");
+        verify(events).publishEvent(new RegistryChangedEvent("e"));
+    }
+
+    @Test
+    void approve_refuses_an_expired_proposal() {
+        RegistryWriteProposal proposal = new RegistryWriteProposal(
+                "reg-admin",
+                "registry-admins",
+                "e",
+                RegistryChange.Kind.REMOVE,
+                "remove engine 'e'",
+                "removing a disabled engine",
+                Instant.parse("2026-07-01T12:00:00Z"),
+                Instant.parse("2026-07-02T12:00:00Z")); // expired relative to the fixed clock (2026-07-09)
+        when(proposals.findById(1L)).thenReturn(Optional.of(proposal));
+
+        assertThatThrownBy(() -> store.approve(1L, admin)).isInstanceOf(IllegalStateException.class);
+        assertThat(proposal.getStatus()).isEqualTo(RegistryWriteProposal.Status.EXPIRED);
     }
 }

@@ -8,9 +8,12 @@ import type { components } from '../api/schema'
 export type AdminEngineDto = components['schemas']['AdminEngineDto']
 export type EngineWriteRequest = components['schemas']['EngineWriteRequest']
 export type DriftReport = components['schemas']['DriftReport']
+export type EngineWriteOutcome = components['schemas']['EngineWriteOutcome']
+export type EngineProposalView = components['schemas']['EngineProposalView']
 
 const ENGINES_KEY = ['adminEngines'] as const
 const DRIFT_KEY = ['adminEnginesDrift'] as const
+const ENGINE_PROPOSALS_KEY = ['adminEngineProposals'] as const
 
 async function listEngines(): Promise<AdminEngineDto[]> {
   const { data, error, response } = await api.GET('/api/admin/engines')
@@ -50,7 +53,7 @@ async function probeEngine(id: string): Promise<AdminEngineDto> {
 async function enableEngine(
   id: string,
   body: { readWrite: boolean; confirmToken: string; reason: string },
-): Promise<AdminEngineDto> {
+): Promise<EngineWriteOutcome> {
   const { data, error, response } = await api.POST('/api/admin/engines/{id}/enable', {
     params: { path: { id } },
     body,
@@ -68,20 +71,44 @@ async function disableEngine(id: string, reason: string): Promise<AdminEngineDto
   return data
 }
 
-async function removeEngine(id: string, confirmToken: string, reason: string): Promise<void> {
-  const { error, response } = await api.DELETE('/api/admin/engines/{id}', {
+async function removeEngine(
+  id: string,
+  confirmToken: string,
+  reason: string,
+): Promise<EngineWriteOutcome> {
+  const { data, error, response } = await api.DELETE('/api/admin/engines/{id}', {
     params: { path: { id } },
     body: { confirmToken, reason },
   })
-  if (!response.ok) throw new ApiError(response.status, error)
+  if (data === undefined) throw new ApiError(response.status, error)
+  return data
 }
 
-async function purgeEngine(id: string, confirmToken: string, reason: string): Promise<void> {
-  const { error, response } = await api.POST('/api/admin/engines/{id}/purge', {
+async function purgeEngine(
+  id: string,
+  confirmToken: string,
+  reason: string,
+): Promise<EngineWriteOutcome> {
+  const { data, error, response } = await api.POST('/api/admin/engines/{id}/purge', {
     params: { path: { id } },
     body: { confirmToken, reason },
   })
-  if (!response.ok) throw new ApiError(response.status, error)
+  if (data === undefined) throw new ApiError(response.status, error)
+  return data
+}
+
+async function fetchEngineProposals(): Promise<EngineProposalView[]> {
+  const { data, error, response } = await api.GET('/api/admin/engines/proposals')
+  if (data === undefined) throw new ApiError(response.status, error)
+  return data
+}
+
+async function approveEngineProposal(id: number): Promise<EngineWriteOutcome> {
+  const { data, error, response } = await api.POST('/api/admin/engines/proposals/{id}/approve', {
+    params: { path: { id } },
+  })
+  if (data === undefined) throw new ApiError(response.status, error)
+  return data
 }
 
 export function useAdminEngines() {
@@ -92,12 +119,18 @@ export function useDrift() {
   return useQuery({ queryKey: DRIFT_KEY, queryFn: fetchDrift, retry: false })
 }
 
-/** All the lifecycle mutations, each invalidating the list + drift so the table reflects reality. */
+/** The pending four-eyes inbox (R-SAFE-08, #91) — a prod enable-read-write, a remove, or a purge. */
+export function useEngineProposals() {
+  return useQuery({ queryKey: ENGINE_PROPOSALS_KEY, queryFn: fetchEngineProposals, retry: false })
+}
+
+/** All the lifecycle mutations, each invalidating the list + drift + proposals so the UI reflects reality. */
 export function useEngineMutations() {
   const queryClient = useQueryClient()
   const invalidate = () => {
     void queryClient.invalidateQueries({ queryKey: ENGINES_KEY })
     void queryClient.invalidateQueries({ queryKey: DRIFT_KEY })
+    void queryClient.invalidateQueries({ queryKey: ENGINE_PROPOSALS_KEY })
   }
   return {
     add: useMutation({ mutationFn: addEngine, onSuccess: invalidate }),
@@ -135,5 +168,6 @@ export function useEngineMutations() {
         purgeEngine(vars.id, vars.confirmToken, vars.reason),
       onSuccess: invalidate,
     }),
+    approve: useMutation({ mutationFn: approveEngineProposal, onSuccess: invalidate }),
   }
 }

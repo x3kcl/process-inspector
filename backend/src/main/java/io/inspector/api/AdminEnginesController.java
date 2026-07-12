@@ -9,7 +9,7 @@ import io.inspector.registry.EngineRegistryMapper;
 import io.inspector.registry.EngineRegistryRow;
 import io.inspector.registry.EngineRegistryStore;
 import io.inspector.registry.RegistryDrift.DriftReport;
-import io.inspector.registry.RegistryUrlValidator;
+import io.inspector.registry.RegistryPinRegistry;
 import io.inspector.registry.RegistryWrite;
 import jakarta.validation.Valid;
 import jakarta.validation.constraints.NotBlank;
@@ -17,6 +17,8 @@ import jakarta.validation.constraints.Size;
 import java.time.Instant;
 import java.util.List;
 import java.util.Locale;
+import java.util.Set;
+import java.util.function.Supplier;
 import org.springframework.core.env.Environment;
 import org.springframework.http.HttpStatus;
 import org.springframework.security.access.prepost.PreAuthorize;
@@ -41,8 +43,14 @@ import org.springframework.web.server.ResponseStatusException;
  * secret-ref PRESENCE (never values).
  *
  * <p>Trust is earned: add → DRAFT (read-only), probe (read-only) → PROBED, enable → ACTIVE. A
- * prod enable-read-write and a remove require a typed token (the engine id) — the four-eyes
- * (R-SAFE-08 dual-control) layer is a separate follow-up, noted in the PR.
+ * prod enable-read-write, a remove, and a purge require a typed token (the engine id) AND a
+ * four-eyes proposal (R-SAFE-08, #91): the write returns {@code applied} immediately, or
+ * {@code proposed} — parked until a second independent REGISTRY_ADMIN approves via
+ * {@code POST /proposals/{id}/approve}. These three writes are NOT (yet) folded into the
+ * dangerous-set re-auth gate ({@code DangerousActionReauthGate}) — that gate's dangerous set is
+ * scoped to tier-3 action verbs + bulk + mapping writes (IDP-SECURITY.md §5); registry CRUD sits
+ * behind its own orthogonal REGISTRY_ADMIN grant + typed token + (now) four-eyes instead. Revisit
+ * together if the two dangerous-set definitions should ever merge.
  */
 @RestController
 @RequestMapping("/api/admin/engines")
@@ -52,7 +60,7 @@ public class AdminEnginesController {
     private final EngineRegistryStore store;
     private final InspectorProperties inspectorProperties;
     private final RegistryProperties registryProperties;
-    private final RegistryUrlValidator urlValidator;
+    private final RegistryPinRegistry pinRegistry;
     private final FlowableEngineClient flowable;
     private final Environment env;
 
@@ -60,13 +68,13 @@ public class AdminEnginesController {
             EngineRegistryStore store,
             InspectorProperties inspectorProperties,
             RegistryProperties registryProperties,
-            RegistryUrlValidator urlValidator,
+            RegistryPinRegistry pinRegistry,
             FlowableEngineClient flowable,
             Environment env) {
         this.store = store;
         this.inspectorProperties = inspectorProperties;
         this.registryProperties = registryProperties;
-        this.urlValidator = urlValidator;
+        this.pinRegistry = pinRegistry;
         this.flowable = flowable;
         this.env = env;
     }
@@ -99,10 +107,11 @@ public class AdminEnginesController {
         // SSRF re-validation at the DIAL point (Gemini S4 review): add/edit validate at WRITE, but the
         // probe is a live dial surface, so re-validate here — it RE-RESOLVES, so a base-URL that was
         // validated at add but has since rebound to an internal address is rejected before we dial.
-        // (Socket-level pinning of the pinned IP for the health-loop / operation dials is S4b.)
+        // Routes through RegistryPinRegistry so a successful re-validation ALSO re-pins the host for
+        // connect-time reuse by the health loop / operation dials (R-OPS-13, #91).
         EngineEnvironment environment =
                 EngineEnvironment.valueOf(row.getEnvironment().toUpperCase(Locale.ROOT));
-        if (!urlValidator
+        if (!pinRegistry
                 .validate(row.getBaseUrl(), environment, registryProperties.egressPolicy())
                 .isAllowed()) {
             // Coarse to the UI (no oracle); the rejecting rail is in the store's log + audit.
@@ -127,16 +136,17 @@ public class AdminEnginesController {
     }
 
     @PostMapping("/{id}/enable")
-    public AdminEngineDto enable(
+    public EngineWriteOutcome enable(
             @PathVariable String id, @Valid @RequestBody EnableRequest body, Authentication authentication) {
         assertNotConfigPinned();
         EngineRegistryRow row = store.requireRow(id);
         boolean readWrite = body.readWrite() != null && body.readWrite();
-        // Prod read-write enable is the dangerous flip: typed token = the engine id (four-eyes TBD).
+        // Prod read-write enable is the dangerous flip: typed token = the engine id, PLUS four-eyes
+        // (the store parks it as a proposal — see class doc).
         if (readWrite && "prod".equals(row.getEnvironment())) {
             requireTypedToken(id, body.confirmToken());
         }
-        return toDto(store.enable(id, readWrite, authentication, body.reason()));
+        return toOutcome(store.enable(id, readWrite, authentication, body.reason()));
     }
 
     @PostMapping("/{id}/disable")
@@ -147,19 +157,41 @@ public class AdminEnginesController {
     }
 
     @DeleteMapping("/{id}")
-    @ResponseStatus(HttpStatus.NO_CONTENT)
-    public void remove(
+    public EngineWriteOutcome remove(
             @PathVariable String id, @Valid @RequestBody ConfirmRequest body, Authentication authentication) {
         assertNotConfigPinned();
-        requireTypedToken(id, body.confirmToken()); // remove always requires the typed id
-        store.remove(id, authentication, body.reason());
+        requireTypedToken(id, body.confirmToken()); // remove always requires the typed id, PLUS four-eyes
+        return toOutcome(store.remove(id, authentication, body.reason()));
     }
 
     @PostMapping("/{id}/purge")
-    public void purge(@PathVariable String id, @Valid @RequestBody ConfirmRequest body, Authentication authentication) {
+    public EngineWriteOutcome purge(
+            @PathVariable String id, @Valid @RequestBody ConfirmRequest body, Authentication authentication) {
         assertNotConfigPinned();
-        requireTypedToken(id, body.confirmToken());
-        store.purge(id, authentication, body.reason());
+        requireTypedToken(id, body.confirmToken()); // PLUS four-eyes
+        return toOutcome(store.purge(id, authentication, body.reason()));
+    }
+
+    /** The pending four-eyes inbox (R-SAFE-08). REGISTRY_ADMIN. */
+    @GetMapping("/proposals")
+    public List<EngineProposalView> proposals() {
+        return store.pendingProposals().stream()
+                .map(p -> new EngineProposalView(
+                        p.getId(),
+                        p.getProposer(),
+                        p.getEngineId(),
+                        p.getKind(),
+                        p.getSummary(),
+                        p.getReason(),
+                        p.getExpiresAt().toString()))
+                .toList();
+    }
+
+    /** A second independent REGISTRY_ADMIN approves a pending proposal, which then applies. */
+    @PostMapping("/proposals/{id}/approve")
+    public EngineWriteOutcome approve(@PathVariable long id, Authentication authentication) {
+        assertNotConfigPinned();
+        return toOutcome(translate(() -> store.approve(id, authentication)));
     }
 
     /** DB-vs-YAML drift (the admin badge / access-review). REGISTRY_ADMIN. */
@@ -217,6 +249,28 @@ public class AdminEnginesController {
     /** Secret-ref PRESENCE — is the named env var set in THIS deployment? Never the value. */
     private boolean present(String ref) {
         return ref != null && !ref.isBlank() && env.getProperty(ref) != null;
+    }
+
+    private EngineWriteOutcome toOutcome(EngineRegistryStore.Outcome outcome) {
+        return new EngineWriteOutcome(
+                outcome.status(),
+                outcome.proposalId(),
+                outcome.eligibleApproverGroups(),
+                outcome.summary(),
+                outcome.row() != null ? toDto(outcome.row()) : null);
+    }
+
+    /** Map the store's typed four-eyes failures onto HTTP without leaking internals as 500s. */
+    private <T> T translate(Supplier<T> op) {
+        try {
+            return op.get();
+        } catch (EngineRegistryStore.IneligibleApproverException e) {
+            throw new ResponseStatusException(HttpStatus.FORBIDDEN, e.getMessage());
+        } catch (EngineRegistryStore.NoEligibleApproverException | IllegalStateException e) {
+            throw new ResponseStatusException(HttpStatus.CONFLICT, e.getMessage());
+        } catch (IllegalArgumentException e) {
+            throw new ResponseStatusException(HttpStatus.BAD_REQUEST, e.getMessage());
+        }
     }
 
     /* ---------------- DTOs ---------------- */
@@ -304,4 +358,20 @@ public class AdminEnginesController {
     public record ConfirmRequest(
             String confirmToken,
             @NotBlank @Size(min = 10, max = 500) String reason) {}
+
+    /** The outcome of a dangerous write (R-SAFE-08, #91): applied now, or parked as a proposal. */
+    public record EngineWriteOutcome(
+            String status, // "applied" | "proposed"
+            Long proposalId,
+            Set<String> eligibleApproverGroups,
+            String summary,
+            AdminEngineDto engine) {}
+
+    /**
+     * Distinct name from {@link AdminAccessController.ProposalView} — both being named "ProposalView"
+     * collided into a single wrong-shaped OpenAPI schema (springdoc names schemas by simple class
+     * name, not FQN) when they were generated together (#91 review finding).
+     */
+    public record EngineProposalView(
+            Long id, String proposer, String engineId, String kind, String summary, String reason, String expiresAt) {}
 }

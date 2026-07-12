@@ -5,16 +5,19 @@
 import { useState } from 'react'
 import { ApiError } from '../api/client'
 import { useMe } from '../api/me'
-import { EngineFormModal } from './EngineFormModal'
-import { LifecycleModal } from './LifecycleModal'
 import {
   useAdminEngines,
   useDrift,
   useEngineMutations,
+  useEngineProposals,
   type AdminEngineDto,
+  type EngineWriteOutcome,
   type EngineWriteRequest,
 } from './adminEngines'
+import { engineOutcomeNotice } from './adminEnginesView'
+import { EngineFormModal } from './EngineFormModal'
 import { rowActions, type LifecycleAction } from './lifecycle'
+import { LifecycleModal } from './LifecycleModal'
 
 const LIFECYCLE_LABEL: Record<string, string> = {
   draft: '○ Draft',
@@ -32,9 +35,14 @@ export function AdminEnginesPage() {
   const me = useMe()
   const engines = useAdminEngines()
   const drift = useDrift()
+  const proposals = useEngineProposals()
   const m = useEngineMutations()
   const [form, setForm] = useState<FormState>(null)
   const [lifecycle, setLifecycle] = useState<LifecycleState>(null)
+  const [notice, setNotice] = useState<string | null>(null)
+  const reportOutcome = (o: EngineWriteOutcome) => {
+    setNotice(engineOutcomeNotice(o))
+  }
 
   // Greyed-never-hidden (R-UXQ): the nav renders for everyone; the page itself states the gate.
   if (me.data !== undefined && me.data.registryAdmin !== true) {
@@ -72,6 +80,12 @@ export function AdminEnginesPage() {
           Add engine
         </button>
       </header>
+
+      {notice !== null && (
+        <div className="banner banner-info" role="status">
+          {notice}
+        </div>
+      )}
 
       {!driftEmpty && (
         <p className="strip-note" role="status">
@@ -186,8 +200,16 @@ export function AdminEnginesPage() {
           error={mutationFor(m, lifecycle.action).error}
           onConfirm={(vars) => {
             const id = lifecycle.engine.id ?? ''
-            const done = {
+            const closeOnly = {
               onSuccess: () => {
+                setLifecycle(null)
+              },
+            }
+            // enable/remove/purge are the dangerous set (R-SAFE-08, #91) — they may come back
+            // `proposed` rather than `applied`; report the outcome before closing the modal.
+            const closeAndReport = {
+              onSuccess: (o: EngineWriteOutcome) => {
+                reportOutcome(o)
                 setLifecycle(null)
               },
             }
@@ -199,13 +221,20 @@ export function AdminEnginesPage() {
                   confirmToken: vars.confirmToken,
                   reason: vars.reason,
                 },
-                done,
+                closeAndReport,
               )
             else if (lifecycle.action === 'disable')
-              m.disable.mutate({ id, reason: vars.reason }, done)
+              m.disable.mutate({ id, reason: vars.reason }, closeOnly)
             else if (lifecycle.action === 'remove')
-              m.remove.mutate({ id, confirmToken: vars.confirmToken, reason: vars.reason }, done)
-            else m.purge.mutate({ id, confirmToken: vars.confirmToken, reason: vars.reason }, done)
+              m.remove.mutate(
+                { id, confirmToken: vars.confirmToken, reason: vars.reason },
+                closeAndReport,
+              )
+            else
+              m.purge.mutate(
+                { id, confirmToken: vars.confirmToken, reason: vars.reason },
+                closeAndReport,
+              )
           }}
           onClose={() => {
             mutationFor(m, lifecycle.action).reset()
@@ -213,6 +242,38 @@ export function AdminEnginesPage() {
           }}
         />
       )}
+
+      <section aria-labelledby="engine-proposals-h">
+        <h3 id="engine-proposals-h">Pending proposals (four-eyes)</h3>
+        {(proposals.data ?? []).length === 0 ? (
+          <p className="muted">No pending proposals.</p>
+        ) : (
+          <ul className="proposal-inbox">
+            {(proposals.data ?? []).map((p) => (
+              <li key={p.id}>
+                <span className="proposal-summary">{p.summary}</span>
+                <span className="muted">
+                  {' '}
+                  — proposed by {p.proposer}; reason: {p.reason}
+                </span>
+                <button
+                  type="button"
+                  className="btn"
+                  onClick={() => {
+                    if (p.id !== undefined) m.approve.mutate(p.id, { onSuccess: reportOutcome })
+                  }}
+                >
+                  Approve
+                </button>
+              </li>
+            ))}
+          </ul>
+        )}
+        <p className="muted">
+          Only a REGISTRY_ADMIN who is not the proposer and not in the proposer&apos;s
+          REGISTRY_ADMIN group may approve.
+        </p>
+      </section>
     </div>
   )
 }

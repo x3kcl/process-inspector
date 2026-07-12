@@ -197,6 +197,15 @@ public class SecurityConfig {
                         .password(password)
                         .authorities(RbacAuthorizer.REGISTRY_ADMIN_AUTHORITY, "ROLE_" + Role.VIEWER.name())
                         .build(),
+                // A SECOND independent REGISTRY_ADMIN (Registry S4b four-eyes, R-SAFE-08, #91): dev/test
+                // sessions carry no OIDC groups, so the "independent approver" test reduces to "a
+                // different authenticated principal" — this account is that second principal, letting a
+                // dev/demo/IT session exercise propose (as registry-admin) → approve (as this user)
+                // without needing a DB-mode mapping fixture with two real REGISTRY_ADMIN groups.
+                User.withUsername("registry-admin-2")
+                        .password(password)
+                        .authorities(RbacAuthorizer.REGISTRY_ADMIN_AUTHORITY, "ROLE_" + Role.VIEWER.name())
+                        .build(),
                 // Fleet ACCESS_ADMIN (v2 IdP-Security, R-SAFE-14) — the apex, ORTHOGONAL to the ladder
                 // and to REGISTRY_ADMIN. NOT an engine ADMIN and NOT a registry admin. VIEWER too so
                 // they can load the SPA to reach /admin/access.

@@ -75,7 +75,7 @@ export interface paths {
             path?: never;
             cookie?: never;
         };
-        get: operations["proposals"];
+        get: operations["proposals_1"];
         put?: never;
         post?: never;
         delete?: never;
@@ -93,7 +93,7 @@ export interface paths {
         };
         get?: never;
         put?: never;
-        post: operations["approve"];
+        post: operations["approve_1"];
         delete?: never;
         options?: never;
         head?: never;
@@ -126,6 +126,38 @@ export interface paths {
         get: operations["drift"];
         put?: never;
         post?: never;
+        delete?: never;
+        options?: never;
+        head?: never;
+        patch?: never;
+        trace?: never;
+    };
+    "/api/admin/engines/proposals": {
+        parameters: {
+            query?: never;
+            header?: never;
+            path?: never;
+            cookie?: never;
+        };
+        get: operations["proposals"];
+        put?: never;
+        post?: never;
+        delete?: never;
+        options?: never;
+        head?: never;
+        patch?: never;
+        trace?: never;
+    };
+    "/api/admin/engines/proposals/{id}/approve": {
+        parameters: {
+            query?: never;
+            header?: never;
+            path?: never;
+            cookie?: never;
+        };
+        get?: never;
+        put?: never;
+        post: operations["approve"];
         delete?: never;
         options?: never;
         head?: never;
@@ -1510,6 +1542,16 @@ export interface components {
             error?: string;
             ok?: boolean;
         };
+        EngineProposalView: {
+            engineId?: string;
+            expiresAt?: string;
+            /** Format: int64 */
+            id?: number;
+            kind?: string;
+            proposer?: string;
+            reason?: string;
+            summary?: string;
+        };
         EngineResult: {
             dlqScan?: string;
             error?: string;
@@ -1519,6 +1561,14 @@ export interface components {
             ok?: boolean;
             /** Format: int64 */
             total?: number;
+        };
+        EngineWriteOutcome: {
+            eligibleApproverGroups?: string[];
+            engine?: components["schemas"]["AdminEngineDto"];
+            /** Format: int64 */
+            proposalId?: number;
+            status?: string;
+            summary?: string;
         };
         EngineWriteRequest: {
             accentColor?: string;
@@ -2410,7 +2460,7 @@ export interface operations {
             };
         };
     };
-    proposals: {
+    proposals_1: {
         parameters: {
             query?: never;
             header?: never;
@@ -2430,7 +2480,7 @@ export interface operations {
             };
         };
     };
-    approve: {
+    approve_1: {
         parameters: {
             query?: never;
             header?: never;
@@ -2516,6 +2566,48 @@ export interface operations {
             };
         };
     };
+    proposals: {
+        parameters: {
+            query?: never;
+            header?: never;
+            path?: never;
+            cookie?: never;
+        };
+        requestBody?: never;
+        responses: {
+            /** @description OK */
+            200: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "*/*": components["schemas"]["EngineProposalView"][];
+                };
+            };
+        };
+    };
+    approve: {
+        parameters: {
+            query?: never;
+            header?: never;
+            path: {
+                id: number;
+            };
+            cookie?: never;
+        };
+        requestBody?: never;
+        responses: {
+            /** @description OK */
+            200: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "*/*": components["schemas"]["EngineWriteOutcome"];
+                };
+            };
+        };
+    };
     edit_1: {
         parameters: {
             query?: never;
@@ -2557,12 +2649,14 @@ export interface operations {
             };
         };
         responses: {
-            /** @description No Content */
-            204: {
+            /** @description OK */
+            200: {
                 headers: {
                     [name: string]: unknown;
                 };
-                content?: never;
+                content: {
+                    "*/*": components["schemas"]["EngineWriteOutcome"];
+                };
             };
         };
     };
@@ -2613,7 +2707,7 @@ export interface operations {
                     [name: string]: unknown;
                 };
                 content: {
-                    "*/*": components["schemas"]["AdminEngineDto"];
+                    "*/*": components["schemas"]["EngineWriteOutcome"];
                 };
             };
         };
@@ -2660,7 +2754,9 @@ export interface operations {
                 headers: {
                     [name: string]: unknown;
                 };
-                content?: never;
+                content: {
+                    "*/*": components["schemas"]["EngineWriteOutcome"];
+                };
             };
         };
     };
