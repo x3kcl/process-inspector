@@ -4,6 +4,7 @@ import io.inspector.dto.LeakViewsResponse;
 import io.inspector.dto.TriageDashboardResponse;
 import io.inspector.dto.TriageTrendResponse;
 import io.inspector.triage.ErrorGroupAckService;
+import io.inspector.triage.LeakViewScopeProjector;
 import io.inspector.triage.LeakViewService;
 import io.inspector.triage.TriageScopeProjector;
 import io.inspector.triage.TriageService;
@@ -38,18 +39,21 @@ public class TriageController {
     private final ErrorGroupAckService acks;
     private final LeakViewService leakViews;
     private final TriageScopeProjector scopeProjector;
+    private final LeakViewScopeProjector leakViewScopeProjector;
 
     public TriageController(
             TriageService triage,
             TriageTrendService trends,
             ErrorGroupAckService acks,
             LeakViewService leakViews,
-            TriageScopeProjector scopeProjector) {
+            TriageScopeProjector scopeProjector,
+            LeakViewScopeProjector leakViewScopeProjector) {
         this.triage = triage;
         this.trends = trends;
         this.acks = acks;
         this.leakViews = leakViews;
         this.scopeProjector = scopeProjector;
+        this.leakViewScopeProjector = leakViewScopeProjector;
     }
 
     @GetMapping
@@ -64,9 +68,10 @@ public class TriageController {
     }
 
     @GetMapping("/trends")
-    public TriageTrendResponse trends(@RequestParam(defaultValue = "24") int hours) {
+    public TriageTrendResponse trends(@RequestParam(defaultValue = "24") int hours, Authentication auth) {
         int bounded = Math.max(1, Math.min(hours, MAX_TREND_HOURS));
-        return trends.trends(Duration.ofHours(bounded));
+        // S2 (R-SAFE-17): scoped inline (no shared cache to protect here — see TriageTrendService).
+        return trends.trends(Duration.ofHours(bounded), auth);
     }
 
     /**
@@ -77,7 +82,8 @@ public class TriageController {
      * a named lower bound, never a failed response).
      */
     @GetMapping("/leak-views")
-    public LeakViewsResponse leakViews() {
-        return leakViews.leakViews();
+    public LeakViewsResponse leakViews(Authentication auth) {
+        // S2 (R-SAFE-17): scope the SHARED cached aggregation post-cache, same doctrine as dashboard().
+        return leakViewScopeProjector.project(leakViews.leakViews(), auth);
     }
 }

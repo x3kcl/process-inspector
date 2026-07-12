@@ -92,9 +92,16 @@ class LeakViewServiceTest {
         assertThat(vr.activeOver30d()).isEqualTo(212);
         assertThat(vr.activeOver90d()).isEqualTo(40);
         assertThat(vr.suspendedStartedOver7d()).isEqualTo(3);
+        // issue #126: the per-engine breakdown survives the merge — e1's 200 + e2's 12 = 212,
+        // never collapsed away, so a later scope projection can honestly recompute a slice.
+        assertThat(vr.countsByEngine()).hasSize(2);
+        assertThat(vr.countsByEngine().get("e1").activeOver30d()).isEqualTo(200);
+        assertThat(vr.countsByEngine().get("e2").activeOver30d()).isEqualTo(12);
+        assertThat(vr.partial()).isFalse(); // unscoped aggregation is never partial
         LeakDefinitionCount loan = response.definitions().get(1);
         assertThat(loan.activeOver30d()).isEqualTo(12);
         assertThat(loan.suspendedStartedOver7d()).isZero();
+        assertThat(loan.countsByEngine()).containsOnlyKeys("e1");
     }
 
     @Test
