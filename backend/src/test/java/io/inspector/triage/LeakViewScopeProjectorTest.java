@@ -94,6 +94,49 @@ class LeakViewScopeProjectorTest {
     }
 
     @Test
+    void reSortsByTheRecomputedScopedTotalsNotTheOriginalFleetOrder() {
+        // Fleet order ranks "mostly-hidden" above "fully-visible" (101 > 50) because an UNREADABLE
+        // engine dominates its fleet total — after scoping, "fully-visible" actually leaks worse
+        // for THIS caller (50 > 1) and must sort first (Gemini review, issue #126).
+        when(gate.readableEngineIds(auth)).thenReturn(Set.of("engine-a"));
+        LeakViewsResponse fleet = new LeakViewsResponse(
+                "2026-07-12T00:00:00Z",
+                WINDOWS,
+                List.of(
+                        def(
+                                "mostly-hidden",
+                                Map.of(
+                                        "engine-a", new EngineLeakCount(1, 0, 0),
+                                        "engine-b", new EngineLeakCount(100, 0, 0))),
+                        def("fully-visible", Map.of("engine-a", new EngineLeakCount(50, 0, 0)))),
+                false,
+                List.of());
+
+        LeakViewsResponse scoped = projector.project(fleet, auth);
+
+        assertThat(scoped.definitions())
+                .extracting(LeakDefinitionCount::definitionKey)
+                .containsExactly("fully-visible", "mostly-hidden");
+    }
+
+    @Test
+    void unavailableEnginesKeepsAReadableEngineButDropsAnUnreadableOne() {
+        // Copilot review, issue #126: the existing coverage only exercised unavailableEngines
+        // collapsing to empty — prove the readable-but-unavailable member survives too.
+        when(gate.readableEngineIds(auth)).thenReturn(Set.of("engine-a", "engine-c"));
+        LeakViewsResponse fleet = new LeakViewsResponse(
+                "2026-07-12T00:00:00Z",
+                WINDOWS,
+                List.of(def("only-a", Map.of("engine-a", new EngineLeakCount(1, 0, 0)))),
+                true,
+                List.of("engine-b", "engine-c"));
+
+        LeakViewsResponse scoped = projector.project(fleet, auth);
+
+        assertThat(scoped.unavailableEngines()).containsExactly("engine-c");
+    }
+
+    @Test
     void lowerBoundCarriesOverUnchangedRegardlessOfScope() {
         when(gate.readableEngineIds(auth)).thenReturn(Set.of("engine-a"));
         LeakViewsResponse fleet = new LeakViewsResponse(

@@ -5,6 +5,7 @@ import io.inspector.dto.LeakViewsResponse.LeakDefinitionCount;
 import io.inspector.dto.LeakViewsResponse.LeakDefinitionCount.EngineLeakCount;
 import io.inspector.security.ReadScopeGate;
 import java.util.ArrayList;
+import java.util.Comparator;
 import java.util.LinkedHashMap;
 import java.util.List;
 import java.util.Map;
@@ -72,6 +73,15 @@ public class LeakViewScopeProjector {
                 .filter(readable::contains)
                 .toList();
 
-        return new LeakViewsResponse(response.asOf(), response.windows(), scoped, response.lowerBound(), unavailable);
+        // aggregate() sorts leakiest-first on the FLEET totals; recomputing narrower totals above
+        // can reorder which definition actually leaks worst for THIS caller (Gemini review, issue
+        // #126) — re-sort on the scoped totals rather than silently keeping fleet order.
+        List<LeakDefinitionCount> sorted = scoped.stream()
+                .sorted(Comparator.comparingLong(LeakDefinitionCount::activeOver30d)
+                        .thenComparingLong(LeakDefinitionCount::suspendedStartedOver7d)
+                        .reversed())
+                .toList();
+
+        return new LeakViewsResponse(response.asOf(), response.windows(), sorted, response.lowerBound(), unavailable);
     }
 }
