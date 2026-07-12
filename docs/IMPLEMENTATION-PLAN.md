@@ -1374,6 +1374,39 @@ password-grant id-token actually carries `auth_time` (the real-world assumption 
 freshness mechanism rests on), plus all 6 existing cases still green against the live Keycloak +
 Testcontainers Postgres harness.
 
+### #126 — Scope-filter leak-views + trends (R-SAFE-17 remainder) *(✅ LANDED 2026-07-12, issue #126)*
+Follow-up to the S2 read-scoping work (#81; R-SAFE-17): search and the triage dashboard were
+scope-filtered, but two triage read surfaces stayed fleet-wide because `LeakDefinitionCount`
+had no per-engine dimension to project post-cache the way `TriageScopeProjector` does the
+dashboard, and it was unverified whether `triage_snapshot` carried one either.
+
+*Shipped — leak-views:* `LeakDefinitionCount` gains `countsByEngine` (a
+`Map<engineId, EngineLeakCount>`) and `partial` (boolean). `LeakViewService.aggregate()` already
+computed a per-engine breakdown transiently inside `EngineSlice` before summing it away at the
+`byKey` merge — the fix carries that breakdown through into the DTO instead of discarding it. New
+`LeakViewScopeProjector` (same post-cache render-time doctrine as `TriageScopeProjector`, required
+by the shared 20s single-flight cache): unlike `ErrorGroup`'s dead-letter/retrying split, every
+leak-view window count DOES decompose per engine, so a scoped slice's totals are honestly
+RECOMPUTED from survivors — never nulled. A definition touching no readable engine is dropped; one
+only partially in scope keeps its recomputed totals and sets `partial=true` so the UI can badge
+"may not cover every engine this definition runs on" without misrepresenting the numbers.
+`unavailableEngines` is narrowed to readable engines (no engine-topology leak); `lowerBound`
+carries over unchanged (a fleet-wide honesty floor, not scope-dependent).
+
+*Shipped — trends:* verified (not assumed) that `triage_snapshot` rows already carry `engineId`
+per the sampler's write path — no schema change needed. `TriageTrendService` gains a
+`ReadScopeGate` dependency and filters rows to the caller's readable engines before grouping into
+series; unlike leak-views/the dashboard, trends has no shared cache to protect (a direct
+per-request DB read every call), so scoping is a plain inline filter, not a separate projector.
+
+*Both* reuse the existing `inspector.security.scope-reads-enforced` flag for free via
+`ReadScopeGate.readableEngineIds()` (`null` = enforcement off = unrestricted) — no new flag.
+
+*Tests:* `LeakViewScopeProjectorTest` (new, 4 rung-1 cases). `LeakViewServiceTest` extended with
+`countsByEngine`/`partial` assertions on the merge. `TriageTrendServiceTest` gains a scoped-row-
+filter case + a `ReadScopeGate` test seam. `TriageTrendApiSpringTest` unchanged and still green
+(dev/test profile has enforcement off, so the new `Authentication` parameter is a no-op there).
+
 ## Build order inside any milestone
 backend DTO → engine client call → aggregator/join logic → controller → typed frontend API
 client → component. Every Flowable call gets an integration test against the dockerized

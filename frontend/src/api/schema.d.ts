@@ -1538,6 +1538,14 @@ export interface components {
             reachable?: boolean;
             tenantId?: string;
         };
+        EngineLeakCount: {
+            /** Format: int64 */
+            activeOver30d?: number;
+            /** Format: int64 */
+            activeOver90d?: number;
+            /** Format: int64 */
+            suspendedStartedOver7d?: number;
+        };
         EngineProbe: {
             error?: string;
             ok?: boolean;
@@ -1821,7 +1829,11 @@ export interface components {
             activeOver30d?: number;
             /** Format: int64 */
             activeOver90d?: number;
+            countsByEngine?: {
+                [key: string]: components["schemas"]["EngineLeakCount"];
+            };
             definitionKey?: string;
+            partial?: boolean;
             /** Format: int64 */
             suspendedStartedOver7d?: number;
         };

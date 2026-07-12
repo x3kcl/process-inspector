@@ -9,6 +9,7 @@ import io.inspector.config.InspectorProperties;
 import io.inspector.config.InspectorProperties.EngineConfig;
 import io.inspector.dto.LeakViewsResponse;
 import io.inspector.dto.LeakViewsResponse.LeakDefinitionCount;
+import io.inspector.dto.LeakViewsResponse.LeakDefinitionCount.EngineLeakCount;
 import io.inspector.dto.LeakViewsResponse.LeakWindows;
 import jakarta.annotation.PreDestroy;
 import java.time.Clock;
@@ -115,8 +116,12 @@ public class LeakViewService {
             futures.put(engine.id(), fanout.submit(() -> sliceOf(engine, active30, active90, suspended7)));
         }
 
-        // key → [active30, active90, suspended7], summed across engines.
+        // key → [active30, active90, suspended7], summed across engines; byKeyByEngine keeps the
+        // per-engine breakdown alive (issue #126) so a caller-scoped projection can honestly
+        // recompute a slice instead of nulling it (unlike ErrorGroup's DL/retrying split, every
+        // window count here IS separable per engine).
         Map<String, long[]> byKey = new TreeMap<>();
+        Map<String, Map<String, long[]>> byKeyByEngine = new TreeMap<>();
         ConcurrentSkipListSet<String> unavailable = new ConcurrentSkipListSet<>();
         boolean lowerBound = false;
         for (EngineConfig engine : engines) {
@@ -132,11 +137,20 @@ public class LeakViewService {
                 for (int i = 0; i < 3; i++) {
                     agg[i] += counts[i];
                 }
+                byKeyByEngine.computeIfAbsent(key, k -> new LinkedHashMap<>()).put(engine.id(), counts);
             });
         }
 
         List<LeakDefinitionCount> definitions = byKey.entrySet().stream()
-                .map(e -> new LeakDefinitionCount(e.getKey(), e.getValue()[0], e.getValue()[1], e.getValue()[2]))
+                .map(e -> {
+                    Map<String, EngineLeakCount> perEngine = new LinkedHashMap<>();
+                    byKeyByEngine
+                            .getOrDefault(e.getKey(), Map.of())
+                            .forEach((engineId, counts) ->
+                                    perEngine.put(engineId, new EngineLeakCount(counts[0], counts[1], counts[2])));
+                    return new LeakDefinitionCount(
+                            e.getKey(), e.getValue()[0], e.getValue()[1], e.getValue()[2], perEngine, false);
+                })
                 // A definition surfaces only when it actually leaks in at least one window.
                 .filter(d -> d.activeOver30d() > 0 || d.activeOver90d() > 0 || d.suspendedStartedOver7d() > 0)
                 .sorted(Comparator.comparingLong(LeakDefinitionCount::activeOver30d)
