@@ -1,4 +1,5 @@
 import { useCallback, useEffect, useMemo, useRef, useState } from 'react'
+import { Link } from 'react-router'
 import { AgGridReact } from 'ag-grid-react'
 import type { CustomCellRendererProps } from 'ag-grid-react'
 import type {
@@ -49,6 +50,35 @@ export function ResultsGrid({
 
   const columns = useMemo<ColDef<ProcessInstanceRow>[]>(
     () => [
+      {
+        // U1 (#88): a VISIBLE, keyboard/right-click-able row-open affordance. Double-click and
+        // Enter already open the row (R-UXQ-02) but both are invisible; a real <Link> makes it
+        // discoverable, focusable, and "open in new tab"-able. Navigates to the same /inspect URL
+        // onOpenDetails uses. stopPropagation so the click doesn't also toggle row selection.
+        headerName: '',
+        colId: 'open',
+        width: 82,
+        sortable: false,
+        resizable: false,
+        suppressMovable: true,
+        cellRenderer: (p: CustomCellRendererProps<ProcessInstanceRow>) => {
+          const engineId = p.data?.engineId
+          const id = p.data?.processInstanceId
+          if (engineId === undefined || id === undefined) return null
+          return (
+            <Link
+              className="grid-open-link"
+              to={`/inspect/${engineId}/${encodeURIComponent(id)}`}
+              title="Open this instance's detail (Stage 2)"
+              onClick={(event) => {
+                event.stopPropagation()
+              }}
+            >
+              Open →
+            </Link>
+          )
+        },
+      },
       {
         headerName: 'Engine',
         field: 'engineName',

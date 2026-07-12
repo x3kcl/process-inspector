@@ -621,6 +621,16 @@ button.primary:disabled {
   flex: 1;
   width: 100%;
 }
+/* U1 (#88): the visible row-open affordance in the grid's leading column. */
+.grid-open-link {
+  font-weight: 600;
+  text-decoration: none;
+  white-space: nowrap;
+}
+.grid-open-link:hover,
+.grid-open-link:focus-visible {
+  text-decoration: underline;
+}
 .grid-footer {
   display: flex;
   justify-content: space-between;

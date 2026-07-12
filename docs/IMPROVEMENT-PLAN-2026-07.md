@@ -289,7 +289,10 @@ tests + spec-sync in the same PR, and follows green-ci.
     (bpmn-js), `/search` + `/audit` (ag-grid), `/case` (cmmn-js) and the admin/definition pages
     are all lazy route chunks now (only the triage landing is eager), and `manualChunks` isolates
     bpmn-js/cmmn-js/diagram-js/ag-grid/codemirror/react into their own long-cacheable vendor
-    chunks. Remaining: U1 (grid Open/Enter), U2 (`<dialog>` focus trap), U5 (guard extraction).
+    chunks. **U1 LANDED:** Enter-to-open already existed (R-UXQ-02) but was invisible — added a
+    visible, focusable, "open in new tab"-able **"Open →" `<Link>` column** to `ResultsGrid`
+    (leftmost), navigating to the same `/inspect` URL as double-click/Enter. Remaining: U2
+    (`<dialog>` focus trap), U5 (`useProdGuard`/`<GuardFields>` extraction across the 13 modals).
 18. **Component-test harness (U4)** — vitest jsdom project + testing-library; first targets:
     Shell 401 gating/BreakGlassBanner, ResultsGrid zero-state ladder, StatusChip.
 19. **Test-support consolidation (F5, F6, Q8)** — one docker-free convention (profile-gated
