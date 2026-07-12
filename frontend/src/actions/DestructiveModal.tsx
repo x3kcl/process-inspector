@@ -3,12 +3,13 @@
 // the confirm button behind the exact target-specific typed token — never a generic
 // "yes"/"DELETE". Cancel-focused; Enter never submits (both via ModalShell). The confirm
 // button restates the action, never says just "Confirm".
-import { useState } from 'react'
 import type { ReactNode } from 'react'
 import { ModalShell } from '../components/ModalShell'
+import { GuardFields, tokenLabel } from '../components/GuardFields'
 import { TicketField, ticketValue } from '../components/TicketField'
 import { reasonRule } from './catalog'
 import type { VerbMeta } from './catalog'
+import { useProdGuard } from './guard'
 import { isReauthChallenge, problemBanner } from './problem'
 import type { ActionProblem } from './problem'
 import { ReauthNotice, useReauthStale } from './ReauthNotice'
@@ -51,13 +52,13 @@ export function DestructiveModal({
   onConfirm,
   onClose,
 }: Props) {
-  const [reason, setReason] = useState('')
-  const [ticket, setTicket] = useState('')
-  const [typed, setTyped] = useState('')
-  const prod = environment?.toLowerCase() === 'prod'
-  const rule = reasonRule(meta.tier, environment)
-  const reasonOk = reason.trim().length >= rule.minLength
-  const tokenOk = !prod || typed === expectedToken
+  const guard = useProdGuard({
+    reasonRule: reasonRule(meta.tier, environment),
+    environment,
+    expectedToken,
+  })
+  const { reason, ticket, setTicket, reasonOk, tokenOk } = guard
+  const prod = guard.prod
   // An UNKNOWN outcome means the action may have executed — never allow a resubmit
   // from the same modal (corrective-actions skill §4: no blind client-side retry).
   const dispatchedMaybe = problem !== undefined && problem.outcome === 'unknown'
@@ -144,34 +145,13 @@ export function DestructiveModal({
           ))}
       </div>
 
-      <label className="modal-field">
-        Reason (required, at least 10 characters — lands in the audit trail)
-        <textarea
-          value={reason}
-          rows={2}
-          maxLength={2000}
-          onChange={(event) => {
-            setReason(event.target.value)
-          }}
-        />
-      </label>
+      <GuardFields
+        guard={guard}
+        expectedToken={expectedToken}
+        tokenFieldLabel={tokenLabel(tokenName, expectedToken)}
+      />
 
       <TicketField value={ticket} onChange={setTicket} />
-
-      {prod && (
-        <label className="modal-field">
-          Type the {tokenName} <code>{expectedToken}</code> to enable the confirm button
-          <input
-            type="text"
-            value={typed}
-            autoComplete="off"
-            spellCheck={false}
-            onChange={(event) => {
-              setTyped(event.target.value)
-            }}
-          />
-        </label>
-      )}
 
       {reauthNeeded ? (
         <ReauthNotice />

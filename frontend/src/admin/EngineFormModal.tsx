@@ -3,6 +3,7 @@
 // rule-named 400 and is shown inline. id is immutable — shown read-only on edit.
 import { useState } from 'react'
 import { ApiError } from '../api/client'
+import { useProdGuard } from '../actions/guard'
 import { ModalShell } from '../components/ModalShell'
 import type { AdminEngineDto, EngineWriteRequest } from './adminEngines'
 import { toEnvironment, type Environment } from './lifecycle'
@@ -30,11 +31,10 @@ export function EngineFormModal({ existing, submitting, error, onSubmit, onClose
   const [authUsername, setAuthUsername] = useState(existing?.authUsername ?? '')
   const [passwordRef, setPasswordRef] = useState(existing?.passwordRef ?? '')
   const [tokenRef, setTokenRef] = useState(existing?.tokenRef ?? '')
-  const [reason, setReason] = useState('')
-
-  const reasonTooShort = reason.trim().length < 10
-  const canSubmit =
-    id.trim() !== '' && name.trim() !== '' && baseUrl.trim() !== '' && !reasonTooShort
+  // Admin CRUD, not verb-tiered: always required ≥10, regardless of environment.
+  const guard = useProdGuard({ reasonRule: { required: true, minLength: 10 } })
+  const { reason, setReason, reasonOk } = guard
+  const canSubmit = id.trim() !== '' && name.trim() !== '' && baseUrl.trim() !== '' && reasonOk
 
   const submit = () => {
     if (!canSubmit) return
@@ -176,7 +176,7 @@ export function EngineFormModal({ existing, submitting, error, onSubmit, onClose
           Reason <span className="muted">(≥10 chars, audited)</span>
           <input
             value={reason}
-            aria-invalid={reasonTooShort}
+            aria-invalid={!reasonOk}
             onChange={(e) => {
               setReason(e.target.value)
             }}

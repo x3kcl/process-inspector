@@ -5,15 +5,16 @@
 // prod never dispatches on a bare confirm). The modal restates the signature, the scope
 // and the card's count as a lower-bound-honest context line; the BINDING count is the
 // resolved one reported back on the job itself.
-import { useState } from 'react'
 import type { EngineDto, ErrorGroup } from '../api/model'
 import { useSubmitBulkErrorClass } from '../api/bulk'
 import { useQueryClient } from '@tanstack/react-query'
-import { reasonRule, reasonValid } from '../actions/catalog'
+import { reasonRule } from '../actions/catalog'
+import { useProdGuard } from '../actions/guard'
 import { isReauthChallenge, problemBanner } from '../actions/problem'
 import { ReauthNotice, useReauthStale } from '../actions/ReauthNotice'
 import { bulkCapNote, reversibilityNote } from '../bulk/intersection'
 import { ActionHint } from '../components/ActionHint'
+import { GuardFields, tokenLabel } from '../components/GuardFields'
 import { ModalShell } from '../components/ModalShell'
 import { TicketField, ticketValue } from '../components/TicketField'
 import { useToast } from '../components/toast'
@@ -46,15 +47,14 @@ export function RetryGroupModal({
   const queryClient = useQueryClient()
   const drawer = useOpsDrawer()
   const submit = useSubmitBulkErrorClass()
-  const [reason, setReason] = useState('')
-  const [ticket, setTicket] = useState('')
-  const [typed, setTyped] = useState('')
-
   const environment = engine?.environment
   const prod = environment?.toLowerCase() === 'prod'
-  const rule = reasonRule(3, environment)
-  const reasonOk = reasonValid(reason, rule) && reason.trim() !== ''
-  const tokenOk = !prod || typed === definitionKey
+  const guard = useProdGuard({
+    reasonRule: reasonRule(3, environment),
+    environment,
+    expectedToken: definitionKey,
+  })
+  const { reasonOk, tokenOk } = guard
   const coordinatesOk = group.signatureHash !== undefined && group.algoVersion !== undefined
   // UNKNOWN outcome ⇒ the job may exist server-side — never resubmit from this modal
   // (corrective-actions §4). Refusals (4xx) leave the button usable after an edit.
@@ -73,8 +73,8 @@ export function RetryGroupModal({
         processDefinitionKey: definitionKey,
         definitionVersion: version,
         engineId,
-        reason: reason.trim(),
-        ticketId: ticketValue(ticket),
+        reason: guard.reason.trim(),
+        ticketId: ticketValue(guard.ticket),
       },
       {
         onSuccess: (job) => {
@@ -173,35 +173,14 @@ export function RetryGroupModal({
       {/* W2 #5 (R-NFR-01): the group door shares the 200 cap; the bigger door is named. */}
       <p className="strip-note">{bulkCapNote('selection')}</p>
 
-      <label className="modal-field">
-        Why are you doing this? (required, 10+ characters — saved to the audit trail on every item)
-        <textarea
-          value={reason}
-          rows={2}
-          maxLength={2000}
-          aria-invalid={!reasonOk}
-          onChange={(event) => {
-            setReason(event.target.value)
-          }}
-        />
-      </label>
+      <GuardFields
+        guard={guard}
+        reasonLabel="Why are you doing this? (required, 10+ characters — saved to the audit trail on every item)"
+        expectedToken={definitionKey}
+        tokenFieldLabel={tokenLabel('definition key', definitionKey)}
+      />
 
-      <TicketField value={ticket} onChange={setTicket} />
-
-      {prod && (
-        <label className="modal-field">
-          Type the definition key <code>{definitionKey}</code> to enable the confirm button
-          <input
-            type="text"
-            value={typed}
-            autoComplete="off"
-            spellCheck={false}
-            onChange={(event) => {
-              setTyped(event.target.value)
-            }}
-          />
-        </label>
-      )}
+      <TicketField value={guard.ticket} onChange={guard.setTicket} />
 
       {reauthNeeded ? (
         <ReauthNotice />

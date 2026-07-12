@@ -5,13 +5,15 @@
 // doctrine as the error-class group retry. The modal restates the CRITERIA (the binding
 // scope) and shows the grid's count as context; the binding count is the one the job
 // reports after resolution.
-import { useMemo, useState } from 'react'
+import { useMemo } from 'react'
 import type { EngineDto, SearchRequest } from '../api/model'
 import { useSubmitBulkFilter } from '../api/bulk'
-import { reasonRule, reasonValid } from '../actions/catalog'
+import { reasonRule } from '../actions/catalog'
+import { useProdGuard } from '../actions/guard'
 import { isReauthChallenge, problemBanner } from '../actions/problem'
 import { ReauthNotice, useReauthStale } from '../actions/ReauthNotice'
 import { ActionHint } from '../components/ActionHint'
+import { GuardFields } from '../components/GuardFields'
 import { ModalShell } from '../components/ModalShell'
 import { TicketField, ticketValue } from '../components/TicketField'
 import { useToast } from '../components/toast'
@@ -88,9 +90,6 @@ export function FilterBulkModal({
   const toast = useToast()
   const drawer = useOpsDrawer()
   const submit = useSubmitBulkFilter()
-  const [reason, setReason] = useState('')
-  const [ticket, setTicket] = useState('')
-  const [typed, setTyped] = useState('')
 
   const scope = useMemo(() => enginesInScope(criteria, engines), [criteria, engines])
   const prodEngines = scope.filter((engine) => engine.environment?.toLowerCase() === 'prod')
@@ -100,9 +99,12 @@ export function FilterBulkModal({
 
   // The reason is ALWAYS mandatory here (tier-3 spirit): the operator never enumerated
   // these instances, so the audit trail carries the why.
-  const rule = reasonRule(3, environment)
-  const reasonOk = reasonValid(reason, rule) && reason.trim() !== ''
-  const tokenOk = !prod || typed === token
+  const guard = useProdGuard({
+    reasonRule: reasonRule(3, environment),
+    environment,
+    expectedToken: token,
+  })
+  const { reasonOk, tokenOk } = guard
   // UNKNOWN outcome ⇒ the job may exist server-side — never resubmit from this modal
   // (corrective-actions §4). Refusals (4xx) leave the button usable after an edit.
   const problem = submit.error?.problem
@@ -113,7 +115,12 @@ export function FilterBulkModal({
 
   const confirm = () => {
     submit.mutate(
-      { criteria, verb: offer.verb, reason: reason.trim(), ticketId: ticketValue(ticket) },
+      {
+        criteria,
+        verb: offer.verb,
+        reason: guard.reason.trim(),
+        ticketId: ticketValue(guard.ticket),
+      },
       {
         onSuccess: (job) => {
           toast({
@@ -199,35 +206,18 @@ export function FilterBulkModal({
       {/* W2 #5 (R-NFR-01): the filter-scope cap disclosed before the server refuses. */}
       <p className="strip-note">{bulkCapNote('filter')}</p>
 
-      <label className="modal-field">
-        Why are you doing this? (required, 10+ characters — saved to the audit trail on every item)
-        <textarea
-          value={reason}
-          rows={2}
-          maxLength={2000}
-          aria-invalid={!reasonOk}
-          onChange={(event) => {
-            setReason(event.target.value)
-          }}
-        />
-      </label>
+      <GuardFields
+        guard={guard}
+        reasonLabel="Why are you doing this? (required, 10+ characters — saved to the audit trail on every item)"
+        expectedToken={token}
+        tokenFieldLabel={
+          <>
+            Type <code>{token}</code> to confirm acting on production
+          </>
+        }
+      />
 
-      <TicketField value={ticket} onChange={setTicket} />
-
-      {prod && (
-        <label className="modal-field">
-          Type <code>{token}</code> to confirm acting on production
-          <input
-            type="text"
-            value={typed}
-            autoComplete="off"
-            spellCheck={false}
-            onChange={(event) => {
-              setTyped(event.target.value)
-            }}
-          />
-        </label>
-      )}
+      <TicketField value={guard.ticket} onChange={guard.setTicket} />
 
       {reauthNeeded ? (
         <ReauthNotice />

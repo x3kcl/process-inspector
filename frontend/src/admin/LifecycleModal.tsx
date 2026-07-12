@@ -3,6 +3,8 @@
 // remove, and purge. Enter never submits (ModalShell) — confirms are explicit clicks.
 import { useState } from 'react'
 import { ApiError } from '../api/client'
+import { useProdGuard } from '../actions/guard'
+import { GuardFields } from '../components/GuardFields'
 import { ModalShell } from '../components/ModalShell'
 import type { AdminEngineDto } from './adminEngines'
 import { needsTypedToken, type LifecycleAction } from './lifecycle'
@@ -25,14 +27,16 @@ const TITLES: Record<LifecycleAction, string> = {
 
 export function LifecycleModal({ action, engine, submitting, error, onConfirm, onClose }: Props) {
   const [readWrite, setReadWrite] = useState(false)
-  const [confirmToken, setConfirmToken] = useState('')
-  const [reason, setReason] = useState('')
 
   const id = engine.id ?? ''
   const isProd = engine.environment === 'prod'
-  const needsToken = needsTypedToken(action, engine.environment ?? undefined, readWrite)
-  const reasonOk = reason.trim().length >= 10
-  const tokenOk = !needsToken || confirmToken === id
+  const guard = useProdGuard({
+    reasonRule: { required: true, minLength: 10 },
+    environment: engine.environment ?? undefined,
+    expectedToken: id,
+    needsToken: needsTypedToken(action, engine.environment ?? undefined, readWrite),
+  })
+  const { reasonOk, tokenOk } = guard
   const canConfirm = reasonOk && tokenOk
 
   const message =
@@ -53,7 +57,8 @@ export function LifecycleModal({ action, engine, submitting, error, onConfirm, o
             className="danger"
             disabled={!canConfirm || submitting}
             onClick={() => {
-              if (canConfirm) onConfirm({ readWrite, confirmToken, reason: reason.trim() })
+              if (canConfirm)
+                onConfirm({ readWrite, confirmToken: guard.typed, reason: guard.reason.trim() })
             }}
           >
             {submitting ? 'Working…' : TITLES[action]}
@@ -86,29 +91,16 @@ export function LifecycleModal({ action, engine, submitting, error, onConfirm, o
           </p>
         )}
 
-        {needsToken && (
-          <label>
-            Type the engine id <code>{id}</code> to confirm
-            <input
-              value={confirmToken}
-              aria-invalid={!tokenOk}
-              placeholder={id}
-              onChange={(e) => {
-                setConfirmToken(e.target.value)
-              }}
-            />
-          </label>
-        )}
-        <label>
-          Reason <span className="muted">(≥10 chars, audited)</span>
-          <input
-            value={reason}
-            aria-invalid={!reasonOk}
-            onChange={(e) => {
-              setReason(e.target.value)
-            }}
-          />
-        </label>
+        <GuardFields
+          guard={guard}
+          reasonLabel="Reason (≥10 chars, audited)"
+          expectedToken={id}
+          tokenFieldLabel={
+            <>
+              Type the engine id <code>{id}</code> to confirm
+            </>
+          }
+        />
         {message != null && (
           <p className="error-banner" role="alert">
             {message}
