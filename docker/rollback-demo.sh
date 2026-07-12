@@ -28,8 +28,16 @@ if ! git -C "$REPO_ROOT" rev-parse -q --verify "refs/tags/$TAG" >/dev/null; then
 fi
 
 echo "Restoring docker/.env.demo from $TAG..."
-git -C "$REPO_ROOT" show "$TAG:docker/.env.demo" > "$ENV_FILE"
-grep -E '^PI_(BFF|WEB)_DIGEST=' "$ENV_FILE"
+# Resolve into a temp file first — `> "$ENV_FILE"` truncates the target as part of shell
+# redirection setup, BEFORE `git show`'s exit status is known, so a failing `git show`
+# (e.g. the tag exists but somehow doesn't carry this path) would otherwise leave
+# docker/.env.demo silently empty rather than failing loudly with the old content intact.
+TMP_ENV="$(mktemp)"
+trap 'rm -f "$TMP_ENV"' EXIT
+git -C "$REPO_ROOT" show "$TAG:docker/.env.demo" > "$TMP_ENV"
+grep -E '^PI_(BFF|WEB)_DIGEST=' "$TMP_ENV"
+mv "$TMP_ENV" "$ENV_FILE"
+trap - EXIT
 
 echo "Pulling + redeploying..."
 docker compose -f "$COMPOSE_FILE" --env-file "$ENV_FILE" pull backend frontend
@@ -45,6 +53,10 @@ if [[ "$CODE" != "401" ]]; then
 fi
 
 git -C "$REPO_ROOT" add docker/.env.demo
+if git -C "$REPO_ROOT" diff --cached --quiet -- docker/.env.demo; then
+  echo "docker/.env.demo unchanged — already at $TAG's pinned digests. Nothing to commit."
+  exit 0
+fi
 git -C "$REPO_ROOT" commit -m "chore(demo): roll back to $TAG"
 echo
 echo "Rolled back and committed locally. Publish with: git -C \"$REPO_ROOT\" push origin HEAD"

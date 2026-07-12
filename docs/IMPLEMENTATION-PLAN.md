@@ -1518,6 +1518,27 @@ attribution commit/tag is a separate, printed, deliberate step.
 re-resolving a tag (which would be wrong — `:edge` moves). RUNBOOK.md §8 (new) documents the
 symptom → command → verification shape, mirroring §5's Postgres-restore entry.
 
+*Fixed post-adversarial-review, before merge:* Copilot + Gemini review of the first cut (Gemini
+hit a persistent 429 mid-review but did its own empirical bash verification instead of
+guessing) surfaced 5 real bugs in the two scripts, all confirmed by direct reproduction in a
+scratch git repo and fixed: (1) the deploy's `git commit`/rollback's `git commit` both aborted
+the whole script under `set -e` on a no-op redeploy ("nothing to commit" is exit 1) — both now
+`git diff --cached --quiet` first and exit 0 cleanly; (2) the demo-tag name was computed
+BEFORE the commit it names, so it embedded the PARENT commit's short-sha while the tag itself
+resolved to the new commit — moved the `TAG=` line after `git commit`; (3) `resolve_digest()`'s
+`sha256:...` passthrough branch ignored which image (`$1`) was being resolved, silently
+pinning both BFF and web to the same digest — removed the passthrough entirely (rollback is
+the correct tool for "go back to an exact prior state", not a raw-digest arg to the deploy
+script); (4) `rollback-demo.sh`'s `git show ... > "$ENV_FILE"` truncated the target file as
+part of shell-redirection setup BEFORE `git show`'s exit status was known, so a failing show
+could silently zero out `docker/.env.demo` — now writes to a `mktemp` file first, checked, then
+`mv`'d into place; (5) a failed post-deploy verify probe only warned and still committed+tagged
+the bad state as "the" attribution record, inconsistent with rollback's (correct) exit-before-
+commit — deploy now matches rollback's fail-before-commit posture. Also added digest-format
+validation (`^sha256:[0-9a-f]{64}$`) before writing any resolved value into `.env.demo`, closing
+a gap where `jq -r '.digest'` silently prints the literal string `"null"` (exit 0) if a
+manifest's digest field were ever absent.
+
 *Deliberately not done here, honestly flagged rather than silently skipped:* the actual live
 cutover of pi.naumann.cloud to digest pinning, and an against-prod rollback drill, were NOT
 performed as part of this change — this dev box IS hp04 (the same Docker daemon also runs

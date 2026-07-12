@@ -19,9 +19,9 @@
 #
 # Rollback = docker/rollback-demo.sh <demo-tag> (restores a PRIOR deploy's exact pinned
 # digest pair from git history — see that script and RUNBOOK.md §8 for the drilled
-# procedure). Re-running THIS script with an older `sha-<short7>` re-resolves that tag's
-# CURRENT digest, which is only safe if the registry never re-tags — rollback-demo.sh is the
-# one that's actually correct for "go back to exactly what was running before".
+# procedure). This script only ever RESOLVES a tag's CURRENT digest, which is only safe going
+# forward — rollback-demo.sh is the one that's correct for "go back to exactly what was
+# running before" (a floating tag like `edge` may have moved since).
 set -euo pipefail
 
 REPO_ROOT="$(cd "$(dirname "${BASH_SOURCE[0]}")/.." && pwd)"
@@ -29,6 +29,7 @@ COMPOSE_FILE="$REPO_ROOT/docker/docker-compose.demo.yml"
 ENV_FILE="$REPO_ROOT/docker/.env.demo"
 BFF_IMAGE="ghcr.io/x3kcl/process-inspector-bff"
 WEB_IMAGE="ghcr.io/x3kcl/process-inspector-web"
+DIGEST_RE='^sha256:[0-9a-f]{64}$'
 
 DRY_RUN=0
 if [[ "${1:-}" == "--dry-run" ]]; then
@@ -38,13 +39,16 @@ fi
 IMAGE_TAG="${1:-edge}"
 
 resolve_digest() {
-  local ref="$1:$IMAGE_TAG"
-  # A raw sha256:... IMAGE_TAG is already a digest — pass it through unresolved.
-  if [[ "$IMAGE_TAG" == sha256:* ]]; then
-    echo "$IMAGE_TAG"
-    return
+  local digest
+  digest="$(docker buildx imagetools inspect "$1:$IMAGE_TAG" --format '{{json .Manifest}}' | jq -r '.digest')"
+  # jq -r prints the literal string "null" (exit 0) if .digest is absent — plain `set -e`
+  # would not catch that, and a "null" digest would otherwise be written straight into
+  # docker/.env.demo and only fail much later, opaquely, at `docker compose pull`.
+  if [[ ! "$digest" =~ $DIGEST_RE ]]; then
+    echo "resolved digest for $1:$IMAGE_TAG doesn't look like a digest: '$digest'" >&2
+    exit 1
   fi
-  docker buildx imagetools inspect "$ref" --format '{{json .Manifest}}' | jq -r '.digest'
+  echo "$digest"
 }
 
 echo "Resolving digests for tag '$IMAGE_TAG'..."
@@ -73,12 +77,23 @@ sleep 5
 CODE="$(curl -s -o /dev/null -w '%{http_code}' https://pi.naumann.cloud/api/engines || echo "curl-failed")"
 echo "  https://pi.naumann.cloud/api/engines -> $CODE"
 if [[ "$CODE" != "401" ]]; then
-  echo "WARNING: expected 401, got $CODE — see docker/DEMO-DEPLOY.md#troubleshooting before walking away." >&2
+  # Fail BEFORE committing — an unverified deploy must never become "the" attribution
+  # record. Containers are already running the new images; docker/.env.demo is left
+  # modified-but-uncommitted for a human to inspect (git diff still shows the intended
+  # pin), same posture as rollback-demo.sh's identical check.
+  echo "ERROR: expected 401, got $CODE — see docker/DEMO-DEPLOY.md#troubleshooting. Not committing/tagging this deploy." >&2
+  exit 1
 fi
 
-TAG="demo-$(date +%Y-%m-%d)-$(git -C "$REPO_ROOT" rev-parse --short HEAD)"
 git -C "$REPO_ROOT" add docker/.env.demo
+if git -C "$REPO_ROOT" diff --cached --quiet -- docker/.env.demo; then
+  echo "docker/.env.demo unchanged — '$IMAGE_TAG' already resolves to what's currently pinned. Nothing to commit/tag."
+  exit 0
+fi
 git -C "$REPO_ROOT" commit -m "chore(demo): deploy $IMAGE_TAG (bff@${BFF_DIGEST:7:12} web@${WEB_DIGEST:7:12})"
+# Tag AFTER the commit, from the commit it actually names — computing this before the
+# commit would embed the PARENT sha in a tag that resolves to the new commit.
+TAG="demo-$(date +%Y-%m-%d)-$(git -C "$REPO_ROOT" rev-parse --short HEAD)"
 git -C "$REPO_ROOT" tag -a "$TAG" -m "demo deploy: $IMAGE_TAG"
 
 cat <<EOF
