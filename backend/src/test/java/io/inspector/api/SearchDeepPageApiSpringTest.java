@@ -105,7 +105,9 @@ class SearchDeepPageApiSpringTest {
                 String.class);
 
         assertThat(res.getStatusCode()).isEqualTo(HttpStatus.BAD_REQUEST);
-        assertThat(mapper.readTree(res.getBody()).get("error").asText()).contains("out of range");
+        JsonNode body = mapper.readTree(res.getBody());
+        assertThat(body.get("detail").asText()).contains("out of range");
+        assertThat(body.get("code").asText()).isEqualTo("bad-request");
     }
 
     @Test

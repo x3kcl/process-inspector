@@ -22,13 +22,9 @@ export interface ActionProblem {
   expectedOldValue?: unknown
   engineStatus?: number
   engineBody?: string
-  /** True when the body was Spring's default error JSON (numeric `status` + `error`, no
-   *  `code`) — the request was refused before it reached the BFF's handlers, typically
-   *  because the session lacks a CSRF token. */
-  bareSpringError: boolean
-  /** The quotable support id (usability W1#6, R-AUD-04): the BFF stamps every error body —
-   *  ProblemDetail AND the bare Spring shape — with the request's X-Request-Id, which is
-   *  also the audit rows' correlationId and the log lines' MDC id. */
+  /** The quotable support id (usability W1#6, R-AUD-04): the BFF stamps every ProblemDetail
+   *  body — one contract everywhere (issue #87 — F4) — with the request's X-Request-Id,
+   *  which is also the audit rows' correlationId and the log lines' MDC id. */
   requestId?: string
 }
 
@@ -46,8 +42,9 @@ export function parseActionProblem(status: number, body: unknown): ActionProblem
   const code = str(source, 'code')
   return {
     status,
-    // No 403→'forbidden' fallback here: without a machine-readable code the UI must not
-    // invent an RBAC verdict the server never gave (usability W1#1 — wrong-reason 403).
+    // No 403→'forbidden' GUESS here: 'forbidden' only appears when the BFF itself sent it
+    // (ProblemCodes.fromStatus, the container-/error fallback) — the UI never invents an
+    // RBAC verdict the server didn't give (usability W1#1 — wrong-reason 403).
     code: code ?? 'unexpected',
     title: str(source, 'title') ?? `HTTP ${String(status)}`,
     detail: str(source, 'detail') ?? '',
@@ -58,10 +55,6 @@ export function parseActionProblem(status: number, body: unknown): ActionProblem
     engineStatus: typeof source['engineStatus'] === 'number' ? source['engineStatus'] : undefined,
     engineBody: str(source, 'engineBody'),
     requestId: str(source, 'requestId'),
-    bareSpringError:
-      code === undefined &&
-      typeof source['status'] === 'number' &&
-      str(source, 'error') !== undefined,
   }
 }
 
@@ -110,20 +103,24 @@ function bannerSentence(problem: ActionProblem): string {
       // verdict — the copy must never be byte-identical to (or read like) rbac-denied.
       return `Refused: this engine is registered read-only — set by the engine owner. That is engine policy, not your role; nothing happened.${problem.detail !== '' ? ` (${problem.detail})` : ''}`
     case 'rbac-denied':
-      // The ONLY code that renders an RBAC verdict — a code-less 403 takes the honest
-      // default below instead (usability W1#1).
+      // The ONLY code that renders an RBAC verdict — a plain 'forbidden' (below) takes the
+      // honest, role-silent copy instead (usability W1#1).
       return `Your role does not permit this action — the BFF refused it. Nothing happened.${problem.detail !== '' ? ` (${problem.detail})` : ''}`
+    case 'forbidden':
+      // Refused before the BFF's own action handlers ran (Spring Security's own 403 —
+      // @PreAuthorize or the container /error fallback, ProblemCodes.fromStatus). On a
+      // cookie session that is almost always a missing CSRF token, and a fresh sign-in mints
+      // one; say only what is known, never an RBAC verdict the server didn't give.
+      return 'The server refused this request before anything ran — HTTP 403. The session may be missing a CSRF token — sign out and back in, then retry.'
     case 'reauth-required':
       return 'Your sign-in is too old for this action — re-authenticate and try again. Nothing happened.'
     default:
       // Every other guard refusal (reason-required, confirm-token-mismatch, job-gone…)
-      // already carries an exact operator sentence from the BFF.
-      if (problem.detail !== '') return problem.detail
-      if (problem.status === 403)
-        // Refused before the BFF's action handlers ran — say only what is known. The bare
-        // Spring shape means Spring Security itself answered: on a cookie session that is
-        // almost always a missing CSRF token, and a fresh sign-in mints one.
-        return `The server refused this request before anything ran — HTTP 403.${problem.bareSpringError ? ' The session may be missing a CSRF token — sign out and back in, then retry.' : ''}`
-      return `The request was refused before anything ran — nothing happened. (Technical detail: HTTP ${String(problem.status)}.)`
+      // already carries an exact operator sentence from the BFF; every OTHER response now
+      // carries a real `detail` too (one error contract, issue #87 — F4), so this is the
+      // universal fallback rather than a special case for any one shape.
+      return problem.detail !== ''
+        ? problem.detail
+        : `The request was refused before anything ran — nothing happened. (Technical detail: HTTP ${String(problem.status)}.)`
   }
 }

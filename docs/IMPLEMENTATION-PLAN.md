@@ -1226,6 +1226,48 @@ concerns exercised through `ProcessApiClient` as a thin call vehicle), `ProcessA
 production split. Every consumer test's mock type/constructor/call-site was updated in
 lockstep. Full `mvn test` (798 tests) green; `mvn spotless:apply` clean.
 
+### P2 #16 — One error contract (F4) *(✅ LANDED 2026-07-12, issue #87)*
+Three different error-body shapes on one API — `ProblemDetail`+`code` (`ActionExceptionHandler`,
+the action/guard-ladder surface), three subtly-different hand-rolled `{"error": "…"}` maps
+(`SearchController`/`ResolveController`/`InstanceDetailController`, each a local
+`@ExceptionHandler(IllegalArgumentException.class)`), and Spring's bare
+`{timestamp,status,error,path}` shape (the container `/error` fallback for anything that never
+reached a handler: the security 401/403 `sendError` legs and the no-handler 404) — collapse into
+ONE: every error the BFF answers now carries `type`/`title`/`status`/`detail`/`instance` plus
+`code` (machine-readable) and `requestId` (R-AUD-04).
+
+*Shipped:* `ActionExceptionHandler` gains two generic handlers ahead of its existing
+domain-specific ones — `IllegalArgumentException` → 400 `bad-request` (subsuming the three
+ad-hoc map handlers, all deleted) and `ResponseStatusException` → the exception's own status +
+`ProblemCodes.fromStatus` (a new package-private kebab-case-slug helper, e.g.
+`NOT_FOUND`→`not-found`) as `code`, `getReason()` as `detail` (falling back to the status's
+reason phrase when null) — this is the ONE change that makes all ~50 plain
+`throw new ResponseStatusException(status, "…")` call sites across the app (`SharedViewService`,
+`CaseDetailService`, `InstanceDetailService`, `AdminEnginesController`, `EngineRegistryStore`,
+etc.) answer the unified shape with ZERO changes at any of those call sites. `RequestIdErrorAttributes`
+(the `/error` fallback, `DefaultErrorAttributes` subclass) is rewritten to build the SAME
+shape instead of Spring's flat one — `detail` there is deliberately the status's stock reason
+phrase, NEVER a raw exception message, since anything reaching that path is by construction
+unexpected (unlike the handler-path exceptions, whose messages are always developer-authored
+client-facing copy) — surfacing `.getMessage()` there would risk leaking internals. Deliberately
+does NOT set `spring.mvc.problemdetails.enabled` (see IMPROVEMENT-PLAN-2026-07.md item 16's
+landed-note for why). Frontend: `ApiError.sentence()` drops its `'error' in body` branch (now
+dead — nothing sends that shape); `ActionProblem` drops `bareSpringError` entirely, replaced by
+checking `code === 'forbidden'` directly in `problemBanner`'s switch (a new explicit case,
+alongside `rbac-denied`) — the missing-CSRF-token hint fires off the SAME stable machine code a
+domain refusal would use, not a shape-sniffing heuristic. `npm run gen:api` regenerated
+`schema.d.ts` byte-identical (springdoc doesn't type error responses without per-endpoint
+`@ApiResponse` annotations — out of scope here; confirmed via diff, not assumed).
+
+*Tests:* `RequestIdSpringTest` (the one file that explicitly documented and asserted all THREE
+old shapes side by side) rewritten to assert the SAME shape from every path — handler (400),
+security 403, ad-hoc-turned-global 400, no-handler 404 — all now carry `code`+`requestId`.
+`SearchDeepPageApiSpringTest`'s crafted-cursor-400 assertion moved from `.get("error")` to
+`.get("detail")`. New `ActionExceptionHandlerTest` cases for both generic handlers +
+`ProblemCodesTest`. Frontend: `problem.test.ts`'s `bareSpringError` tests replaced with
+`code: 'forbidden'`-based equivalents; `client.test.ts` updated to the new container-fallback
+body shape. Full `mvn test` (803 tests) + `npm test` (478 tests) green.
+
 ## Build order inside any milestone
 backend DTO → engine client call → aggregator/join logic → controller → typed frontend API
 client → component. Every Flowable call gets an integration test against the dockerized
