@@ -813,13 +813,23 @@ copy is never identical to an RBAC denial (R-GOV-04, R-SEM-17).
   statuses + definition key[+version] + engines, ≤120 chars, the same chip notion the
   filter-bulk confirm modal already shows). Surfaced in the operations drawer so a job
   reads "what was targeted" without opening the envelope audit payload.
-- **Circuit-open mid-job** (R-SEM-11): dispatch to a tripped engine **pauses** — undispatched
-  items stay `pending`, never burned as failures; a breaker fast-fail on an already-dispatched
-  item is `failed` (clean rejection); `unknown` stays reserved for true ambiguity (timeout
-  per registry `write-ms`). Only the tripped engine pauses — other engine groups run on
-  independently. When the job finishes, the held `pending` items settle `not_run` (never
-  attempted) and the job is **INTERRUPTED**, not COMPLETED, so the "continue as new job"
-  affordance re-scopes `not_run`+`failed`; no automatic resume, ever.
+- **Circuit-open mid-job** (R-SEM-11, issue #101): a fast-fail on an OPEN circuit triggers a
+  BOUNDED wait-and-retry for that ONE item (default 20s, polling the breaker rather than
+  dispatching a doomed call) — safe because `CallNotPermittedException` guarantees the first
+  attempt never actually reached the engine, so the retry can never double-send. If the breaker
+  leaves OPEN within the bound, the item retries once and — on success — the rest of that
+  engine's items dispatch NORMALLY, never paused; per-item outcomes stay truthful (a recovered
+  item's real outcome, never mislabeled by the transient trip). Only when the bound is exceeded
+  does dispatch to that engine **pause** — undispatched items stay `pending`, never burned as
+  failures; a breaker fast-fail on an already-dispatched item is `failed` (clean rejection);
+  `unknown` stays reserved for true ambiguity (timeout per registry `write-ms`). Only the
+  tripped engine pauses — other engine groups run on independently throughout, bound or no
+  bound. When the job finishes, the held `pending` items settle `not_run` (never attempted) and
+  the job is **INTERRUPTED**, not COMPLETED, so the "continue as new job" affordance re-scopes
+  `not_run`+`failed`. "No automatic resume, ever" still holds at the JOB level — a job that
+  finished INTERRUPTED is never later auto-resumed (only "continue as new job", a fresh
+  submission); the bounded item-level retry above is a single, safe, in-flight extension of
+  the SAME live dispatch pass, not a resume of a finished job.
 - **v1.x #1 — error-class group retry** (landed): the triage landing's bulk-retry-the-group
   dispatches `POST /api/bulk/error-class` carrying the group's **coordinates only**
   (`signatureHash + algoVersion + processDefinitionKey + definitionVersion [+ engineId]`,

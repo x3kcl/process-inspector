@@ -96,10 +96,10 @@ function RailForm({
   const [definitionKey, setDefinitionKey] = useState(initial?.processDefinitionKey ?? '')
   const [businessKey, setBusinessKey] = useState(initial?.businessKey ?? '')
   const [businessKeyLike, setBusinessKeyLike] = useState(initial?.businessKeyLike ?? '')
-  const [startedAfter, setStartedAfter] = useState(isoToLocal(initial?.startedAfter))
-  const [startedBefore, setStartedBefore] = useState(isoToLocal(initial?.startedBefore))
-  const [failedAfter, setFailedAfter] = useState(isoToLocal(initial?.failureTimeAfter))
-  const [failedBefore, setFailedBefore] = useState(isoToLocal(initial?.failureTimeBefore))
+  const [startedAfter, setStartedAfter] = useState(() => splitLocal(initial?.startedAfter))
+  const [startedBefore, setStartedBefore] = useState(() => splitLocal(initial?.startedBefore))
+  const [failedAfter, setFailedAfter] = useState(() => splitLocal(initial?.failureTimeAfter))
+  const [failedBefore, setFailedBefore] = useState(() => splitLocal(initial?.failureTimeBefore))
   const [errorText, setErrorText] = useState(initial?.errorText ?? '')
   const [currentActivity, setCurrentActivity] = useState(initial?.currentActivity ?? '')
   const [sortBy, setSortBy] = useState(initial?.sortBy ?? 'startTime')
@@ -262,50 +262,14 @@ function RailForm({
 
       <fieldset>
         <legend>Started</legend>
-        <label>
-          After
-          <input
-            type="datetime-local"
-            value={startedAfter}
-            onChange={(e) => {
-              setStartedAfter(e.target.value)
-            }}
-          />
-        </label>
-        <label>
-          Before
-          <input
-            type="datetime-local"
-            value={startedBefore}
-            onChange={(e) => {
-              setStartedBefore(e.target.value)
-            }}
-          />
-        </label>
+        <DateTimeFilterField label="After" value={startedAfter} onChange={setStartedAfter} />
+        <DateTimeFilterField label="Before" value={startedBefore} onChange={setStartedBefore} />
       </fieldset>
 
       <fieldset>
         <legend>Failure time</legend>
-        <label>
-          After
-          <input
-            type="datetime-local"
-            value={failedAfter}
-            onChange={(e) => {
-              setFailedAfter(e.target.value)
-            }}
-          />
-        </label>
-        <label>
-          Before
-          <input
-            type="datetime-local"
-            value={failedBefore}
-            onChange={(e) => {
-              setFailedBefore(e.target.value)
-            }}
-          />
-        </label>
+        <DateTimeFilterField label="After" value={failedAfter} onChange={setFailedAfter} />
+        <DateTimeFilterField label="Before" value={failedBefore} onChange={setFailedBefore} />
       </fieldset>
 
       <fieldset>
@@ -418,16 +382,66 @@ function CriteriaPanel({ response }: { response: SearchResponse }) {
   )
 }
 
-function isoToLocal(iso: string | undefined): string {
-  if (iso === undefined) return ''
-  const parsed = new Date(iso)
-  if (Number.isNaN(parsed.getTime())) return ''
-  const pad = (n: number) => String(n).padStart(2, '0')
-  return `${String(parsed.getFullYear())}-${pad(parsed.getMonth() + 1)}-${pad(parsed.getDate())}T${pad(parsed.getHours())}:${pad(parsed.getMinutes())}`
+/**
+ * Sev2 usability cluster (#118 item 3): a single `type="datetime-local"` control's internal
+ * date+time+AM/PM sub-segments trap keyboard Tab navigation when the field starts empty (a
+ * native browser quirk, not app code — confirmed via no custom focus/keydown handling
+ * anywhere near these fields). Two plain `type="date"` + `type="time"` inputs have far fewer
+ * sub-segments each, so Tab reliably exits to the next control.
+ */
+export interface LocalDateTime {
+  date: string
+  time: string
 }
 
-function localToIso(local: string): string | undefined {
-  if (local === '') return undefined
-  const parsed = new Date(local)
+function DateTimeFilterField({
+  label,
+  value,
+  onChange,
+}: {
+  label: string
+  value: LocalDateTime
+  onChange: (value: LocalDateTime) => void
+}) {
+  return (
+    <span className="datetime-filter-field">
+      <label>
+        {label} date
+        <input
+          type="date"
+          value={value.date}
+          onChange={(e) => {
+            onChange({ ...value, date: e.target.value })
+          }}
+        />
+      </label>
+      <label>
+        {label} time
+        <input
+          type="time"
+          value={value.time}
+          onChange={(e) => {
+            onChange({ ...value, time: e.target.value })
+          }}
+        />
+      </label>
+    </span>
+  )
+}
+
+export function splitLocal(iso: string | undefined): LocalDateTime {
+  if (iso === undefined) return { date: '', time: '' }
+  const parsed = new Date(iso)
+  if (Number.isNaN(parsed.getTime())) return { date: '', time: '' }
+  const pad = (n: number) => String(n).padStart(2, '0')
+  return {
+    date: `${String(parsed.getFullYear())}-${pad(parsed.getMonth() + 1)}-${pad(parsed.getDate())}`,
+    time: `${pad(parsed.getHours())}:${pad(parsed.getMinutes())}`,
+  }
+}
+
+export function localToIso({ date, time }: LocalDateTime): string | undefined {
+  if (date === '') return undefined
+  const parsed = new Date(`${date}T${time === '' ? '00:00' : time}`)
   return Number.isNaN(parsed.getTime()) ? undefined : parsed.toISOString()
 }

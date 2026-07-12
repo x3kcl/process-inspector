@@ -386,12 +386,23 @@ OPERATIONS.md §8.
   **v1 deviations (deliberate, revisit in M5 close-out):** ~~live progress is short-poll~~
   and ~~per-engine parallel dispatch + stagger pending~~ both retired by v1.x #2 (SSE on
   `GET /api/bulk/events`; permit pool + stagger in `BulkJobService`) and ~~a circuit-open
-  mid-job burned the rest of the engine's items as failures~~ retired 2026-07-08: **R-SEM-11
-  pause LANDED** — a `engine-shedding-load` fast-fail now PAUSES dispatch to that engine
-  (`dispatchOne` signals, the group loop breaks after re-checking on permit acquire), leaving
-  undispatched items `pending` → settled `not_run` and the job **INTERRUPTED** (partial;
-  "continue as new job" re-scopes `not_run`+`failed`); the fast-failed item stays a clean
-  `failed`, other engine groups run on independently (`BulkJobServiceTest`, rung-1). Still
+  mid-job burned the rest of the engine's items as failures~~ retired 2026-07-08 (pause-and-
+  give-up only) then **fully retired 2026-07-12, issue #101: R-SEM-11 pause-AND-RESUME
+  LANDED** — the 2026-07-08 pass only stopped burning the rest as failures; it never actually
+  resumed, so a transiently-tripped breaker still gave up the whole engine group. Now a
+  `engine-shedding-load` fast-fail triggers a BOUNDED wait (default 20s, a hair past the
+  "engine" breaker's own 15s `wait-duration-in-open-state`), polling `GuardedCaller.isOpen`
+  rather than dispatching a doomed call; if the breaker leaves OPEN within the bound, the SAME
+  item retries ONCE (safe — `CallNotPermittedException` guarantees the first attempt never
+  actually dispatched, so no double-send risk) and — on success — the REST of the engine
+  group's items dispatch normally, never paused. Only when the bound is exceeded does the
+  service fall through to the original 2026-07-08 behavior: PAUSE the rest of this engine's
+  dispatch (`dispatchOne` signals, the group loop breaks after re-checking on permit acquire),
+  leaving undispatched items `pending` → settled `not_run` and the job **INTERRUPTED**
+  (partial; "continue as new job" re-scopes `not_run`+`failed`); other engine groups run on
+  independently throughout. Per-item outcomes stay truthful either way: a recovered item ends
+  up its REAL dispatch outcome, never mislabeled by the transient trip
+  (`BulkJobServiceTest`, rung-1, 2 new cases). Still
   open: destructive bulk (terminate) deferred to the tier-4 wizard. WIRE GOTCHA: Jackson serializes absent
   DTO fields as JSON null while openapi-typescript types them `?: undefined` — guard
   with `typeof x === 'string'` / `?? undefined`, never bare `!== undefined` (a null
@@ -1322,6 +1333,46 @@ the builder, behavior-preserving (every prior explicit value threaded through un
 Full `mvn verify` (805 unit + 151 IT, full engine matrix) green aside from the pre-existing,
 unrelated `SharedViewFailClosedIT` failure (confirmed to also fail on `origin/main`); `npm
 test` (487 tests) + `npm run build` green; `scripts/ci-local.sh --full` green.
+
+### #95 — Login-time `auth_time` conformance + membership re-pull verification (R-SAFE-07) *(✅ LANDED 2026-07-12, issue #95)*
+IDP-SECURITY.md §5's dangerous-set re-auth protocol had only a CHECK-time freshness gate
+(`DangerousActionReauthGate`, landed S5c): it reads whatever `auth_time` the IdP already
+returned, but nothing verified the IdP actually *honored* the `max_age` it was asked for at
+login. A nonconforming IdP could silently echo the stale SSO session's old `auth_time` (or omit
+the claim), and the gap would only surface minutes later as a confusing 401 on an unrelated
+verb — never at the login itself, where the operator could see it immediately. Separately, the
+gate's own Javadoc asserted "membership freshness rides for free on the re-auth" with no test
+anywhere proving it.
+
+*Shipped — login-time gate:* `ReauthAuthorizationRequestResolver` now stashes a one-shot session
+marker (`REAUTH_SESSION_MARKER`) whenever it injects `max_age`/`prompt=login` — the same
+`HttpSession` is guaranteed current at the callback (OAuth2's own state-param CSRF defense
+depends on that continuity). `ReauthConformantOidcUserService` (new, wraps the default
+`OidcUserService`, wired into `SecurityConfig`'s `oidcChain`'s `userInfoEndpoint().oidcUserService(...)`)
+reads-and-clears that marker on every token response; when set, it demands the returned
+`OidcUser.getAuthenticatedAt()` satisfy the same `SessionFreshness` window the check-time gate
+uses, failing the login itself (`OAuth2AuthenticationException`, error code `stale_auth_time`)
+when it does not. Ordinary logins (no marker) pay zero extra cost and get zero extra behavior.
+Confirmed empirically (not assumed) that Spring's default OIDC validator chain does nothing here
+— decompiled `spring-security-oauth2-client`'s `OidcIdTokenValidator`, which validates `iss`,
+`aud`, `exp`/`iat` clock skew, and `azp`, but never `auth_time`/`max_age` — hence the two
+purpose-built gates rather than a validator hook.
+
+*Shipped — membership re-pull verification:* no production change (design already correct by
+construction — `RbacAuthorizer` caches nothing keyed by identity; `grantsFor`/`hasRoleOn` are
+pure functions of whatever `Authentication` is currently in `SecurityContextHolder`, so a re-auth
+round trip's fresh id-token is read on the very next check). Deliberately did NOT touch
+`InspectorAuthoritiesMapper`/`RbacAuthorizer`'s id-token-only group source (their own comments
+already explain why: Entra puts groups in the id token, not userinfo, and the pinned `iss` must
+match the token the groups came from) — `RbacAuthorizerOidcFreshnessTest` proves the EXISTING
+mechanism re-resolves fresh across an `Authentication` swap, closing the previously-unverified gap.
+
+*Tests:* `ReauthConformantOidcUserServiceTest` (new, 6 cases — no marker/fresh/stale/absent/
+marker-always-consumed/no-leak-into-next-login). `RbacAuthorizerOidcFreshnessTest` (new, 2 cases).
+`OidcKeycloakIT` gains `aRealKeycloakIdTokenCarriesAuthTime` — empirical proof a real Keycloak
+password-grant id-token actually carries `auth_time` (the real-world assumption the whole
+freshness mechanism rests on), plus all 6 existing cases still green against the live Keycloak +
+Testcontainers Postgres harness.
 
 ### #126 — Scope-filter leak-views + trends (R-SAFE-17 remainder) *(✅ LANDED 2026-07-12, issue #126)*
 Follow-up to the S2 read-scoping work (#81; R-SAFE-17): search and the triage dashboard were

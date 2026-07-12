@@ -4,6 +4,7 @@ import type { SiblingInstanceRef } from '../../api/model'
 import { formatSeconds } from '../../lib/format'
 import { Ts } from '../../lib/Ts'
 import type { TabProps } from '../InspectPage'
+import { RawJsonExport } from '../RawJsonExport'
 import { useNearestSibling, useSiblingDiff } from '../useInstanceQueries'
 import { divergenceMarkers } from './diffFormat'
 import { selectComparePane } from './siblingState'
@@ -59,6 +60,10 @@ export default function ComparisonTab({ engineId, instanceId, onDivergence }: Ta
 
   return (
     <div className="comparison-tab">
+      <RawJsonExport
+        data={diff.data}
+        filename={`${engineId}-${instanceId}-comparison-${effectiveSibling ?? 'none'}.json`}
+      />
       <SiblingPicker
         current={effectiveSibling}
         usingSuggested={usingSuggested}

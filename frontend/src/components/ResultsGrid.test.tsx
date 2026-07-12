@@ -110,3 +110,66 @@ describe('ResultsGrid root-vs-child marker (W2 #7, R-UXQ-12)', () => {
     expect(markers[0].getAttribute('title')).toContain('pi-1')
   })
 })
+
+describe('ResultsGrid zero states (SPEC §10a — U4/#89)', () => {
+  it('no response yet: a neutral prompt, not an empty grid', () => {
+    render(
+      <MemoryRouter>
+        <ResultsGrid response={undefined} enginesById={enginesById} onOpenDetails={vi.fn()} />
+      </MemoryRouter>,
+    )
+    expect(screen.getByText(/run a search to see process instances/i)).not.toBeNull()
+  })
+
+  it('every engine failed: a loud alert, never a calm "no matches"', () => {
+    render(
+      <MemoryRouter>
+        <ResultsGrid
+          response={{ rows: [], perEngine: { 'engine-a': { ok: false, error: 'timeout' } } }}
+          enginesById={enginesById}
+          onOpenDetails={vi.fn()}
+        />
+      </MemoryRouter>,
+    )
+    const alert = screen.getByRole('alert')
+    expect(alert.textContent).toMatch(/all 1 engines? failed/i)
+    expect(alert.textContent).toContain('engine-a: timeout')
+    expect(alert.className).toContain('zero-error')
+  })
+
+  it('zero under partial coverage: a warned "not a confirmed zero", not a bare zero', () => {
+    render(
+      <MemoryRouter>
+        <ResultsGrid
+          response={{
+            rows: [],
+            perEngine: {
+              'engine-a': { ok: true, total: 0, fetched: 0 },
+              'engine-b': { ok: false, error: 'unreachable' },
+            },
+          }}
+          enginesById={enginesById}
+          onOpenDetails={vi.fn()}
+        />
+      </MemoryRouter>,
+    )
+    const alert = screen.getByRole('alert')
+    expect(alert.textContent).toMatch(/not a confirmed zero/i)
+    expect(alert.textContent).toContain('engine-b unreachable')
+    expect(alert.className).toContain('zero-warn')
+  })
+
+  it('confirmed zero: every engine answered ok with nothing — no role="alert"', () => {
+    render(
+      <MemoryRouter>
+        <ResultsGrid
+          response={{ rows: [], perEngine: { 'engine-a': { ok: true, total: 0, fetched: 0 } } }}
+          enginesById={enginesById}
+          onOpenDetails={vi.fn()}
+        />
+      </MemoryRouter>,
+    )
+    expect(screen.getByText(/confirmed zero across 1 engine/i)).not.toBeNull()
+    expect(screen.queryByRole('alert')).toBeNull()
+  })
+})

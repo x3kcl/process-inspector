@@ -48,7 +48,7 @@ exhaustive scenario→class index.
 | R-SEM-08 engineId slug / composite split | TS-OMNI-03 | `InspectorPropertiesValidationTest`; FE `omnibox.test` | L1·UNIT-FE | ✅ |
 | R-SEM-09 concurrent-op / CAS | TS-VERB-06, TS-BULK-03 | `CorrectiveActionServiceTest`, `CorrectiveActionIT`, `BulkJobServiceTest` | L1·L4 | ✅ |
 | R-SEM-10 bulk = tracked job | TS-BULK-05 | `BulkJobServiceTest` (reconcile sweep), `BulkFilterIT` | L1·L4 | ✅ |
-| R-SEM-11 circuit-open mid-bulk | TS-BULK-06 | `BulkJobServiceTest` (permits/pause) | L1 | ✅ (pause + INTERRUPTED rung-1 tested; breaker *transition* L2 WireMock slice still §C-6) |
+| R-SEM-11 circuit-open mid-bulk | TS-BULK-06 | `BulkJobServiceTest` (permits/pause/bounded-recovery, issue #101) | L1 | ✅ (bounded wait-and-retry + pause-on-bound-exceeded + INTERRUPTED all rung-1 tested; breaker *transition* L2 WireMock slice against the REAL resilience4j state machine still §C-6 — the rung-1 recovery test mocks `GuardedCaller.isOpen` directly) |
 | R-SEM-12 Stage-0 truncation badges | TS-TRI-08, TS-STAT-12 | FE `honesty.test`, `drill.test`; `cmmn-scope.spec` | UNIT-FE·E2E | ✅ |
 | R-SEM-14 SSE lifecycle contract | TS-BULK-11 | `SseHubTest`, `BulkFilterIT` | L1·L4 | 🟡 (P3 soak = §C-8) |
 | R-SEM-18 dual-write UNKNOWN | TS-AUD-02, TS-BULK-02 | `AuditServiceTest`, `CorrectiveActionServiceTest`, `FailClosedAuditIT` | L1·L4 | ✅ |
@@ -102,7 +102,7 @@ exhaustive scenario→class index.
 | R-OPS-07/08 injection / secret hygiene | TS-AUD-03/08, FIX-STUB-05 | `EnginesApiSpringTest`, `ActionCurlTest`, `AuditServiceTest` (redact), `CsvTest`/`AuditCsvExportSpringTest` (CSV formula-escape) | L1·L3 | 🟡 (hostile-msg CI fixture = §C-7) |
 | R-OPS-16 transport/header posture | — | `HttpHardeningSpringTest` (CSP enforce, HSTS off-by-default, nosniff/frame-options/referrer/permissions headers) | L3 | 🟡 (BFF headers ✅; demo-nginx header mirror + Traefik HSTS are config, not test-asserted) |
 | R-L3-01 explain-this-status | TS-DET-14, TS-STAT-13 | `StatusEvidenceServiceTest` (per-leg capture + plan choice + failedInSubprocess provenance, WireMock), `StatusChip.test.tsx` (chip→popover→re-derived label + child deep link), `DetailResolveIT`, `SearchServiceIT` (plan choice) | L2·L4 | 🟡 (per-flag provenance E2E = §C-9) |
-| R-L3-03 raw-JSON per-tab | TS-DET-13 | `RawJsonExport` on the Variables/Errors&Jobs/Tasks/Hierarchy/Timeline tabs (download + copy of the tab's cached DTO, `RawJsonExport.test.tsx`); data resolution `DetailResolveIT` | L1(fe)·L4 | ✅ built (was per-ROW-only; the per-TAB support-bundle export landed #118) |
+| R-L3-03 raw-JSON per-tab | TS-DET-13 | `RawJsonExport` on all 7 detail tabs — Variables/Errors&Jobs/Tasks/Hierarchy/Timeline/Comparison/Audit (Audit exports its two data sources, audit history + notes, separately; download + copy of the tab's cached DTO, `RawJsonExport.test.tsx`); data resolution `DetailResolveIT` | L1(fe)·L4 | ✅ built (was per-ROW-only, then 5-of-7 tabs; every tab landed #118) |
 | R-GOV-04 read-only engine mode | TS-RBAC-01, TS-PROD-01 | `CorrectiveActionServiceTest`, `ActionRbacGuardSpringTest` | L1·L3 | ✅ |
 | R-GOV-05 grid/watermark contract | — | `frontend/scripts/check-bpmn-watermark.mjs` (build gate); ESLint ag-grid-enterprise | build | 📋 |
 | R-UXQ-01 axe accessibility | TS-E2E-01/04 | Playwright axe (config) | E2E | 🔲 (axe wiring per-spec = §C-13) |

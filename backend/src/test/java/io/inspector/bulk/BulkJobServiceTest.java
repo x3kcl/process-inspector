@@ -25,6 +25,7 @@ import io.inspector.audit.AuditService;
 import io.inspector.audit.ProtectedInstance;
 import io.inspector.audit.ProtectedInstanceRepository;
 import io.inspector.client.FlowablePage;
+import io.inspector.client.GuardedCaller;
 import io.inspector.client.GuardedCaller.CallPriority;
 import io.inspector.client.ProcessApiClient;
 import io.inspector.client.ProcessApiClient.JobLaneKind;
@@ -74,6 +75,7 @@ class BulkJobServiceTest {
     private final ProtectedInstanceRepository protectedInstances = mock(ProtectedInstanceRepository.class);
     private final AuditService audit = mock(AuditService.class);
     private final ProcessApiClient client = mock(ProcessApiClient.class);
+    private final GuardedCaller guardedCaller = mock(GuardedCaller.class);
     private final Authentication responder = new TestingAuthenticationToken("resp", "n/a", "ROLE_RESPONDER");
 
     private final Map<UUID, BulkJob> jobStore = new ConcurrentHashMap<>();
@@ -133,6 +135,9 @@ class BulkJobServiceTest {
         when(audit.beginPending(any(), any(), any(), any(), any(), any(), any(), any()))
                 .thenReturn(envelope());
 
+        // circuit-pause bound 0 in rung 1 (mirrors "stagger 0") — the bounded-wait-and-retry
+        // behavior itself is asserted separately, with tests that set an explicit bound.
+        when(guardedCaller.isOpen(any(), any())).thenReturn(false);
         service = new BulkJobService(
                 jobs,
                 items,
@@ -143,9 +148,10 @@ class BulkJobServiceTest {
                 client,
                 Clock.fixed(NOW, ZoneOffset.UTC),
                 // stagger 0 in rung 1 — pacing behavior itself is asserted separately
-                new InspectorProperties(null, null, null, new InspectorProperties.Bulk(4, 0), List.of()),
+                new InspectorProperties(null, null, null, new InspectorProperties.Bulk(4, 0, 0, 0), List.of()),
                 event -> {},
-                reauthGate());
+                reauthGate(),
+                guardedCaller);
     }
 
     private static UUID keyJob(BulkJobItem.Key key) {
@@ -394,6 +400,66 @@ class BulkJobServiceTest {
         assertThat(done.items().get(2).detail()).contains("paused");
     }
 
+    @Test
+    void circuitRecoversWithinTheBoundedWaitAndDispatchResumes() {
+        // permits=1, stagger=0 ⇒ strict ordinal dispatch. A generous 200ms bound / 10ms poll —
+        // the mocked breaker "closes" after 2 polls, so this resolves in ~20ms, well inside it.
+        service = serviceWith(1, 0, 200, 10, new java.util.concurrent.CopyOnWriteArrayList<>());
+        when(actions.execute(eq(ENGINE), eq("pi-1"), any(), any(), any()))
+                .thenReturn(new ActionResult(UUID.randomUUID(), "c", "ok", 200, "suspended"));
+        // pi-2's FIRST attempt trips the breaker; the bounded-wait retry (SECOND attempt, after
+        // the mocked breaker reports recovered) succeeds — CallNotPermittedException guarantees
+        // the first attempt never actually dispatched, so retrying it is safe (never a double-send).
+        when(actions.execute(eq(ENGINE), eq("pi-2"), any(), any(), any()))
+                .thenThrow(new GuardRefusedException(
+                        HttpStatus.SERVICE_UNAVAILABLE,
+                        "engine-shedding-load",
+                        "Engine 'engine-a' is shedding load (circuit open) — the action was not sent."))
+                .thenReturn(new ActionResult(UUID.randomUUID(), "c", "ok", 200, "suspended"));
+        when(actions.execute(eq(ENGINE), eq("pi-3"), any(), any(), any()))
+                .thenReturn(new ActionResult(UUID.randomUUID(), "c", "ok", 200, "suspended"));
+        when(guardedCaller.isOpen(eq(ENGINE), eq(CallPriority.INTERACTIVE))).thenReturn(true, true, false);
+
+        BulkDtos.BulkJobDto submitted = service.submit(suspendOf("pi-1", "pi-2", "pi-3"), responder);
+        BulkDtos.BulkJobDto done = awaitFinished(submitted.id());
+
+        // Full run: dispatch RESUMED after the bounded wait — never INTERRUPTED, no not_run.
+        assertThat(done.state()).isEqualTo("COMPLETED");
+        assertThat(done.items()).extracting(BulkDtos.BulkItemDto::state).containsExactly("ok", "ok", "ok");
+        // pi-2's truthful outcome is its REAL (recovered) dispatch, never the transient circuit trip.
+        assertThat(done.items().get(1).detail()).doesNotContain("shedding load");
+        verify(actions, org.mockito.Mockito.times(2)).execute(eq(ENGINE), eq("pi-2"), any(), any(), any());
+    }
+
+    @Test
+    void circuitStillOpenAfterTheBoundedWaitGivesUpHonestly() {
+        // A genuinely non-zero bound (unlike the degenerate bound=0 shortcut the OTHER give-up
+        // test uses) — the breaker NEVER reports recovered, so this exercises the real poll loop
+        // timing out, not just skipping it. Same final outcome as the bound=0 case: honest give-up.
+        service = serviceWith(1, 0, 60, 10, new java.util.concurrent.CopyOnWriteArrayList<>());
+        when(actions.execute(eq(ENGINE), eq("pi-1"), any(), any(), any()))
+                .thenReturn(new ActionResult(UUID.randomUUID(), "c", "ok", 200, "suspended"));
+        when(actions.execute(eq(ENGINE), eq("pi-2"), any(), any(), any()))
+                .thenThrow(new GuardRefusedException(
+                        HttpStatus.SERVICE_UNAVAILABLE,
+                        "engine-shedding-load",
+                        "Engine 'engine-a' is shedding load (circuit open) — the action was not sent."));
+        // pi-3 deliberately UNSTUBBED — must never dispatch once the bound is exceeded.
+        when(guardedCaller.isOpen(eq(ENGINE), eq(CallPriority.INTERACTIVE))).thenReturn(true);
+
+        BulkDtos.BulkJobDto submitted = service.submit(suspendOf("pi-1", "pi-2", "pi-3"), responder);
+        BulkDtos.BulkJobDto done = awaitFinished(submitted.id());
+
+        assertThat(done.state()).isEqualTo("INTERRUPTED");
+        assertThat(done.items()).extracting(BulkDtos.BulkItemDto::state).containsExactly("ok", "failed", "not_run");
+        assertThat(done.items().get(1).detail()).contains("shedding load");
+        verify(actions, org.mockito.Mockito.times(1)).execute(eq(ENGINE), eq("pi-2"), any(), any(), any());
+        verify(actions, never()).execute(eq(ENGINE), eq("pi-3"), any(), any(), any());
+        // The poll loop actually ran (not the bound=0 shortcut) — at least a couple of real polls
+        // within the 60ms/10ms window before giving up.
+        verify(guardedCaller, org.mockito.Mockito.atLeast(2)).isOpen(eq(ENGINE), eq(CallPriority.INTERACTIVE));
+    }
+
     /* ---------------- retry: dispatch-time DLQ resolution ---------------- */
 
     @Test
@@ -525,6 +591,14 @@ class BulkJobServiceTest {
 
     /** A same-mocks service with explicit bulk knobs and a recording event publisher. */
     private BulkJobService serviceWith(int permits, int staggerMs, List<Object> publishedEvents) {
+        // No bounded circuit-pause wait by default — preserves the pre-#101 immediate-give-up
+        // semantics for every test that doesn't care about the recovery path.
+        return serviceWith(permits, staggerMs, 0, 0, publishedEvents);
+    }
+
+    /** As above, with explicit circuit-pause bound/poll knobs (issue #101, R-SEM-11). */
+    private BulkJobService serviceWith(
+            int permits, int staggerMs, long circuitPauseMaxMs, long circuitPausePollMs, List<Object> publishedEvents) {
         EngineRegistry registry = new EngineRegistry(new InspectorProperties(
                 null,
                 null,
@@ -541,9 +615,16 @@ class BulkJobServiceTest {
                 registry,
                 client,
                 Clock.fixed(NOW, ZoneOffset.UTC),
-                new InspectorProperties(null, null, null, new InspectorProperties.Bulk(permits, staggerMs), List.of()),
+                new InspectorProperties(
+                        null,
+                        null,
+                        null,
+                        new InspectorProperties.Bulk(
+                                permits, staggerMs, (int) circuitPauseMaxMs, (int) circuitPausePollMs),
+                        List.of()),
                 publishedEvents::add,
-                reauthGate());
+                reauthGate(),
+                guardedCaller);
     }
 
     @Test

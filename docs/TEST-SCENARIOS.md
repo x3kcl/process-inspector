@@ -252,7 +252,7 @@ docker engine as `dev` AND `prod` manufactures the prod gates (R-TEST-07).
 | TS-BULK-03 | engine 404/409 on target → `skipped (already resolved)` enriched "handled by <user> at <ts>" from audit | S2/L4 | R-SEM-09 |
 | TS-BULK-04 | cancel: dispatching stops; undispatched items `not_run`, never burned as failures | S1 (latch) | SPEC §7 |
 | TS-BULK-05 | BFF restart mid-bulk → reconciliation sweep: RUNNING→INTERRUPTED, in-flight item→unknown, never auto-resumed; drawer offers continue-as-new scoped to `not_run`+`failed` | S2 + restart | R-SEM-10 |
-| TS-BULK-06 | circuit opens mid-bulk → dispatch to that engine PAUSES (items stay pending/not_run); fast-fail on a dispatched item = `failed`; aggregate readout "N of M dispatched (…)" | S1/L2 + L3 | R-SEM-11 |
+| TS-BULK-06 | circuit opens mid-bulk → the tripped item gets a BOUNDED wait-and-retry (issue #101); recovery within the bound resumes normal dispatch, per-item outcomes truthful; only past the bound does dispatch to that engine PAUSE (items stay pending/not_run); fast-fail on a dispatched item = `failed`; aggregate readout "N of M dispatched (…)" | S1/L2 + L3 | R-SEM-11 |
 | TS-BULK-07 | bulk over a partial result set blocked until explicit acknowledgment ("billing-prod excluded — proceed anyway?") | E2E | SPEC §7 |
 | TS-BULK-08 | caps enforced: 200 grid / 5,000 query bulk; per-engine concurrency 4 + 250 ms stagger observable in dispatch order/timing | S1 (latch) | R-NFR-01 |
 | TS-BULK-09 | select-all-matching-filter: plan re-executed at submit (never the stale grid); resolved ID list written to audit BEFORE acting; drift shown | S2/L4 | SPEC §7 |
