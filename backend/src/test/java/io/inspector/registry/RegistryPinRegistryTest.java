@@ -9,6 +9,7 @@ import io.inspector.config.InspectorProperties.EngineMode;
 import io.inspector.config.InspectorProperties.Timeouts;
 import io.inspector.config.RegistryProperties;
 import io.inspector.config.RegistryProperties.Source;
+import io.inspector.support.TestEngines;
 import java.net.InetAddress;
 import java.net.UnknownHostException;
 import java.util.List;
@@ -34,21 +35,12 @@ class RegistryPinRegistryTest {
     }
 
     private static EngineConfig engine(String id, String baseUrl) {
-        return new EngineConfig(
-                id,
-                id,
-                baseUrl,
-                EngineEnvironment.TEST,
-                null,
-                true,
-                null,
-                null,
-                new Auth(Auth.Type.none, null, null, null),
-                EngineMode.READ_WRITE,
-                new Timeouts(null, null, null),
-                null,
-                null,
-                null);
+        return TestEngines.builder(id, baseUrl)
+                .environment(EngineEnvironment.TEST)
+                .auth(new Auth(Auth.Type.none, null, null, null))
+                .mode(EngineMode.READ_WRITE)
+                .timeouts(new Timeouts(null, null, null))
+                .build();
     }
 
     /** A hostname mapped to a fixed IP without touching real DNS (mirrors the hostile-corpus tests). */

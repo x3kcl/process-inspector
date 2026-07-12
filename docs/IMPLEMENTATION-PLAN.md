@@ -1271,6 +1271,58 @@ security 403, ad-hoc-turned-global 400, no-handler 404 — all now carry `code`+
 `code: 'forbidden'`-based equivalents; `client.test.ts` updated to the new container-fallback
 body shape. Full `mvn test` (803 tests) + `npm test` (478 tests) green.
 
+### P2 #19 — Test-support consolidation (F5, F6, Q8) *(✅ LANDED 2026-07-12, issue #90)*
+Three unrelated pain points bundled under one finding: (1) `NoDbTestSupport` (the docker-free
+Spring context's persistence stand-in) required a hand-added `@Bean` mock for every new JPA
+repository, or all 33 dependent test classes broke at once with a diffuse
+`NoSuchBeanDefinitionException`; (2) `EngineConfig`'s 18-arg positional record already needed
+5 backward-compat constructors to avoid churning ~60 `TestEngines` call sites, and 6 more
+test classes still hand-rolled the full positional constructor for fields `TestEngines`
+didn't expose; (3) `TEST-STRATEGY.md` claimed "backend line coverage ≥80%, frontend logic
+≥70%, measured and gating from M3" — untrue on both counts, no tool anywhere measured either
+number.
+
+*Shipped — (1):* `NoDbTestSupport` replaced its 12 individual `@Bean Mockito.mock(...)`
+methods with a `BeanDefinitionRegistryPostProcessor` that classpath-scans `io.inspector` for
+every `interface X extends JpaRepository<...>` and registers a mock for each automatically —
+proven (not assumed) against the live codebase: the scan found 3 repositories
+(`AccessGrantProposalRepository`/`GroupFleetGrantRepository`/`GroupScopeGrantRepository`) that
+predated ANY hand-written mock, a latent gap the old list never caught. A new repository now
+needs zero edits here. The lone `JdbcTemplate` mock (a framework type the scan can't and
+shouldn't discover) stays a single explicit, documented exception. `NoDbTestSupportTest`
+proves the mechanism directly, including the 3 previously-uncovered repos.
+
+*Shipped — (2):* `TestEngines` gains `TestEngines.builder(id, baseUrl)` — a fluent builder
+with a named setter per `EngineConfig` field, defaulting exactly like the existing named
+factories (`name=id`, DEV, enabled, everything else null/off). The 5 existing named factories
+(`engine(...)`, `engineInTenant`, `forwardUserEngine`, …) now delegate to the builder
+internally instead of duplicating positional construction, and stay byte-identical for their
+~60 existing call sites. The 6 registry-focused test classes that hand-rolled
+`new EngineConfig(...)` for fields no named factory exposed (`lifecycle`,
+`maxPageSize`/`dlqScanCap`/`alarmThresholds`/`telemetryUrlTemplate`/`accentColor`) now use the
+builder. A NEW `EngineConfig` field means a new builder setter, never a constructor-arity
+bump anywhere else.
+
+*Shipped — (3):* jacoco (`backend/pom.xml`, `prepare-agent`+`report` goals bound to the `test`
+phase — runs automatically on every `mvn test`, backend included in CI's `unit` job, report at
+`target/site/jacoco/index.html`) and `@vitest/coverage-v8` (`frontend/vite.config.ts`
+`test.coverage` block, opt-in via the new `npm run test:coverage` script — deliberately NOT
+wired into the default `npm test` CI step) now MEASURE line/branch coverage for real. Neither
+gates: `TEST-STRATEGY.md`'s floor sentence is rewritten to say so plainly, with the actual
+measured unit-only baselines (~66% backend lines, ~38% frontend lines) replacing the false
+"measured and gating from M3" claim — both numbers are well under the 80%/70% floors, so a
+blind gate today would have broken every build. Turning either into a real threshold is
+follow-up work now informed by a true starting point instead of an assumed one.
+`frontend/coverage/` (the html report) is gitignored + excluded from eslint/prettier.
+
+*Tests:* `NoDbTestSupportTest` (new, 2 cases). `EnginesControllerTest` +
+`RegistryBootstrapTest` + `EngineRegistryReloadTest` + `RegistryPinRegistryTest` +
+`RegistryDriftTest` + `EngineRegistryMapperTest` migrated from raw `new EngineConfig(...)` to
+the builder, behavior-preserving (every prior explicit value threaded through unchanged).
+Full `mvn verify` (805 unit + 151 IT, full engine matrix) green aside from the pre-existing,
+unrelated `SharedViewFailClosedIT` failure (confirmed to also fail on `origin/main`); `npm
+test` (487 tests) + `npm run build` green; `scripts/ci-local.sh --full` green.
+
 ## Build order inside any milestone
 backend DTO → engine client call → aggregator/join logic → controller → typed frontend API
 client → component. Every Flowable call gets an integration test against the dockerized

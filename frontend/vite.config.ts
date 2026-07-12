@@ -36,5 +36,16 @@ export default defineConfig({
     // via the `// @vitest-environment jsdom` pragma.
     environment: 'node',
     include: ['src/**/*.test.{ts,tsx}'],
+    // Test-support consolidation (Q8, issue #90): MEASURE coverage on demand (`npm run
+    // test:coverage`), report-only — not wired into the default `npm test`/CI `frontend`
+    // job, and no threshold here. TEST-STRATEGY.md's "≥70% frontend logic" floor was
+    // previously an unfalsifiable claim (no tool anywhere measured it); this makes the
+    // number real and visible before any gate is added on top of it.
+    coverage: {
+      provider: 'v8',
+      reporter: ['text', 'html'],
+      include: ['src/**/*.{ts,tsx}'],
+      exclude: ['src/**/*.test.{ts,tsx}', 'src/api/schema.d.ts'],
+    },
   },
 })

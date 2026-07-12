@@ -337,7 +337,12 @@ tests + spec-sync in the same PR, and follows green-ci.
 19. **Test-support consolidation (F5, F6, Q8)** — one docker-free convention (profile-gated
     DB beans, retire the blanket `JdbcTemplate` mock), `EngineConfig` builder/test-factory,
     jacoco + vitest coverage thresholds (or amend TEST-STRATEGY to aspirational — no
-    unfalsifiable floors).
+    unfalsifiable floors). **✅ LANDED 2026-07-12 (#90)** — see IMPLEMENTATION-PLAN.md's
+    "P2 #19" slice entry for the shipped shape. Coverage went the "amend to aspirational"
+    route: jacoco/vitest coverage are now genuinely MEASURED (report-only, not gated) —
+    unit-only baselines came back at ~66% backend / ~38% frontend, both well under the
+    claimed floors, confirming a gate would have broken every build had one been added
+    blind. Turning either into a real gate is follow-up work informed by these numbers.
 20. **Registry S4b (deferred from CRUD build)** — four-eyes on registry writes (reuse the V14
     proposal pattern) + socket connect-time IP-pinning closing the validate→connect TOCTOU.
 21. **Release mechanics (Q7)** — GHCR push on green main (buildx already wired), demo compose

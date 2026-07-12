@@ -9,6 +9,7 @@ import io.inspector.config.InspectorProperties.EngineEnvironment;
 import io.inspector.config.InspectorProperties.EngineMode;
 import io.inspector.config.InspectorProperties.Timeouts;
 import io.inspector.registry.RegistryDrift.DriftReport;
+import io.inspector.support.TestEngines;
 import java.util.List;
 import org.junit.jupiter.api.Test;
 
@@ -21,21 +22,14 @@ class RegistryDriftTest {
 
     private static EngineConfig cfg(
             String id, String baseUrl, EngineEnvironment env, boolean enabled, EngineMode mode) {
-        return new EngineConfig(
-                id,
-                id,
-                baseUrl,
-                env,
-                null,
-                enabled,
-                null,
-                null,
-                new Auth(Auth.Type.none, null, null, null),
-                mode,
-                new Timeouts(null, null, null),
-                null,
-                null,
-                new AlarmThresholds(null, null, null));
+        return TestEngines.builder(id, baseUrl)
+                .environment(env)
+                .enabled(enabled)
+                .auth(new Auth(Auth.Type.none, null, null, null))
+                .mode(mode)
+                .timeouts(new Timeouts(null, null, null))
+                .alarmThresholds(new AlarmThresholds(null, null, null))
+                .build();
     }
 
     private static EngineConfig cfg(String id) {

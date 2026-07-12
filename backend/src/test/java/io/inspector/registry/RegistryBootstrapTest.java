@@ -10,12 +10,12 @@ import io.inspector.config.InspectorProperties;
 import io.inspector.config.InspectorProperties.AlarmThresholds;
 import io.inspector.config.InspectorProperties.Auth;
 import io.inspector.config.InspectorProperties.EngineConfig;
-import io.inspector.config.InspectorProperties.EngineEnvironment;
 import io.inspector.config.InspectorProperties.EngineMode;
 import io.inspector.config.InspectorProperties.Timeouts;
 import io.inspector.config.RegistryProperties;
 import io.inspector.config.RegistryProperties.Source;
 import io.inspector.registry.RegistryDrift.DriftReport;
+import io.inspector.support.TestEngines;
 import java.util.List;
 import org.junit.jupiter.api.Test;
 import org.mockito.Mockito;
@@ -29,21 +29,12 @@ import org.mockito.Mockito;
 class RegistryBootstrapTest {
 
     private static EngineConfig engine(String id) {
-        return new EngineConfig(
-                id,
-                id,
-                "http://" + id + "/service",
-                EngineEnvironment.DEV,
-                null,
-                true,
-                null,
-                null,
-                new Auth(Auth.Type.none, null, null, null),
-                EngineMode.READ_WRITE,
-                new Timeouts(null, null, null),
-                null,
-                null,
-                new AlarmThresholds(null, null, null));
+        return TestEngines.builder(id, "http://" + id + "/service")
+                .auth(new Auth(Auth.Type.none, null, null, null))
+                .mode(EngineMode.READ_WRITE)
+                .timeouts(new Timeouts(null, null, null))
+                .alarmThresholds(new AlarmThresholds(null, null, null))
+                .build();
     }
 
     private static InspectorProperties inspector(List<EngineConfig> engines) {

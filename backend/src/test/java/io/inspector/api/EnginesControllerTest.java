@@ -6,11 +6,11 @@ import io.inspector.config.InspectorProperties;
 import io.inspector.config.InspectorProperties.AlarmThresholds;
 import io.inspector.config.InspectorProperties.Auth;
 import io.inspector.config.InspectorProperties.EngineConfig;
-import io.inspector.config.InspectorProperties.EngineEnvironment;
 import io.inspector.config.InspectorProperties.EngineMode;
 import io.inspector.config.InspectorProperties.Timeouts;
 import io.inspector.dto.EngineDto;
 import io.inspector.registry.EngineRegistry;
+import io.inspector.support.TestEngines;
 import java.util.List;
 import org.junit.jupiter.api.Test;
 
@@ -24,21 +24,14 @@ import org.junit.jupiter.api.Test;
 class EnginesControllerTest {
 
     private static EngineConfig engine(String id, boolean enabled, EngineMode mode) {
-        return new EngineConfig(
-                id,
-                "Engine " + id,
-                "http://" + id + "/flowable-rest/service",
-                EngineEnvironment.DEV,
-                null,
-                enabled,
-                null,
-                null,
-                new Auth(Auth.Type.none, null, null, null),
-                mode,
-                new Timeouts(null, null, null),
-                null,
-                null,
-                new AlarmThresholds(null, null, null));
+        return TestEngines.builder(id, "http://" + id + "/flowable-rest/service")
+                .name("Engine " + id)
+                .enabled(enabled)
+                .auth(new Auth(Auth.Type.none, null, null, null))
+                .mode(mode)
+                .timeouts(new Timeouts(null, null, null))
+                .alarmThresholds(new AlarmThresholds(null, null, null))
+                .build();
     }
 
     private static EnginesController controllerOf(EngineConfig... engines) {

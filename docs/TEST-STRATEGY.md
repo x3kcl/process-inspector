@@ -13,7 +13,18 @@ Test depth follows product risk, not code size:
 | R3 | **Bulk outcomes** | every outcome class (`ok/failed/skipped/skipped-protected/unknown/not_run`) produced by an automated test; timeout→UNKNOWN never re-fired; INTERRUPTED reconciliation |
 | R4 | **UI flows** | Playwright smoke of FIND→ORIENT→DIAGNOSE→FIX→VERIFY, ≤10 min in PR CI; axe accessibility checks hard-fail |
 
-Backend line coverage ≥80%, frontend logic ≥70%, measured and gating from M3.
+**Backend line coverage ≥80%, frontend logic ≥70% are aspirational floors, not yet CI-gated**
+(test-support consolidation, Q8, issue #90 — this line previously claimed "measured and gating
+from M3," which was never true: no tool anywhere in the repo measured either number before
+2026-07-12). Both are now MEASURED, report-only: `mvn test` produces a jacoco report at
+`backend/target/site/jacoco/index.html`; `npm run test:coverage` produces one via
+`@vitest/coverage-v8` under `frontend/coverage/`. Neither is wired into the default `mvn
+test`/`npm test` CI steps or gated with a `check` rule — as of 2026-07-12, UNIT-ONLY coverage
+(the `mvn test`/`npm test` scope; the dockerized `*IT` suite adds meaningfully more but isn't
+measured here) sits at **~66% backend lines, ~38% frontend lines** — well under both floors, so
+gating on either today would break every build. The R1–R4 rows above remain the actually-enforced
+discipline: risk-ranked, individually curated test matrices per area, not a blanket percentage.
+Turning either floor into a real gate is tracked as follow-up work, informed by these baselines.
 
 ## 2. Milestone gates (R-TEST-02)
 **Entry:** previous exit gate green; required fixtures exist. **Exit:** (a) full suite green on
