@@ -215,9 +215,16 @@ tests + spec-sync in the same PR, and follows green-ci.
    register/matrix synced). Remaining: leak-views + trends carry no per-engine dimension (counts
    pre-merged across engines) so their aggregate-count scoping needs aggregation-level work — tracked
    as a follow-up issue.
-9. **Real alert channel + break-glass throttle (S3, S4)** — env-ref webhook bean (oidc
+9. **Real alert channel + break-glass throttle (S3, S4, S7)** — env-ref webhook bean (oidc
    profile, absence = boot warning); failure-count lockout + failed-attempt audit/alert on
    `/break-glass`; break-glass flag derived from `Authentication` on bulk workers (S7).
+   **S7 LANDED:** the per-item audit rows of a bulk job submitted under break-glass now flag
+   `breakGlass=true`. A bulk virtual-thread worker has an empty `SecurityContextHolder` (identity
+   is threaded, not inherited), so `AuditService`'s context read recorded `false`; fixed with a
+   `BreakGlassActor` dispatch-thread marker (mirroring `ForwardedActor`) that
+   `CorrectiveActionService` sets from the passed auth before the row is written, cleared in a
+   `finally`. Tests: `AuditServiceTest` (marker → flagged with empty context),
+   `CorrectiveActionServiceTest` (execute sets+clears the marker from the auth). S3/S4 remain.
 10. **Edge hardening (S5)** — flip CSP to enforce per-deploy after report-only observation;
     mirror the BFF header set in the demo nginx; fix demo HSTS.
 11. **Docs true-up sweep (D1–D12)** — one docs-only PR; the register/matrix/plan/runbook/
