@@ -101,8 +101,9 @@ Seat IDs preserved: **F** = backend architecture, **S** = security, **U** = fron
   bpmn-js + AG Grid ship statically in the entry (`main.tsx:8`), Stage-0 users pay it all.
 - **U4** — Zero component-level tests (vitest is node-env, logic-only; no spec covers
   Stage-0, InspectPage shell, OpsDrawer/SSE, omnibox, admin pages).
-- **U7/U8/U10** — Omnibox ARIA is a broken listbox; the promised axe gate never landed
-  (no jsx-a11y, no @axe-core/playwright); one raw `fetch()` bypasses the client middleware.
+- **U10** — one raw `fetch()` (the access-review CSV/Markdown download) bypasses the client
+  middleware. **U7/U8 LANDED 2026-07-12 (#85):** the omnibox's broken `role="listbox"` (no
+  `role="option"` children) is now a plain `role="region"` link list; the axe gate is live.
 - **Q7/Q8** — No release mechanism (no tags, image built `push: false`, demo deploys from
   working tree, rollback = rebuild-while-down); coverage floors claimed "gating from M3" with
   no jacoco/vitest-coverage anywhere.
@@ -269,9 +270,28 @@ tests + spec-sync in the same PR, and follows green-ci.
     sharing `engineSlots` was the real starvation path. Rung-2 contention test drains the
     deep-page budget and proves a parked `deepPage` leaves `engineSlots` fully available and
     dials no engine. Makes the R-NFR-08 / KWAY-PAGING do-no-harm claim true at the BFF layer.
-14. **Playwright + axe into the PR gate (U8, Q9)** — the 14 hermetic specs + an
-    `AxeBuilder` pass per spec run in the frontend CI job (browsers cached on the runner);
-    prerequisite fixes U1/U2/U7 land first so the gate starts green (see P2 #17).
+14. **Playwright + axe into the PR gate (U8, Q9)** — **✅ LANDED 2026-07-12 (#85)**: a new
+    `e2e` CI job runs all `e2e/*.spec.ts` (17 hermetic specs, incl. the new
+    `admin-access.spec.ts` grant→four-eyes→approve→revoke flow) with an `AxeBuilder` scan
+    (`e2e/a11y.ts`'s `scanA11y()`) at every settled state; `scripts/check-e2e-a11y-coverage.mjs`
+    hard-fails the build if a spec never calls it. Chromium + its OS deps are baked into the CI
+    runner image (`docker/ci-runner/Dockerfile`) — the runner container is ephemeral and only
+    `/opt/hostedtoolcache` survives a restart, so a per-job `playwright install --with-deps`
+    would re-download the browser and re-run `apt-get` every run; the runner slots gained a
+    disjoint `PI_E2E_PORT` (4173–4673) since they share the host network. Gate-enabling fixes
+    that had to land alongside the gate itself (each was a real, previously-uncaught defect):
+    a **whole-app crash** — `useTeamViews`/`useSavedViews`/`useRecentSearches` defaulted
+    non-array responses with `?? []` (only catches null/undefined, not a malformed object),
+    which the router's default error boundary turned into a blank page for every route, not
+    just the widget; `ModalShell`'s title (`<h3>`, no page `<h2>` on `/inspect`/`/search`) and
+    every page missing a `<main>` landmark entirely (only 3 of 9 pages had one); ~500
+    color-contrast failures tracing to a handful of reused-everywhere tokens (one muted gray,
+    one brand blue) now WCAG-AA-compliant; the omnibox's `role="listbox"` had no `role="option"`
+    children (fixed by dropping the listbox semantics — it's a simple link list, not a
+    single-select widget, per U7). AG Grid's internal `.ag-header-viewport` (a vendor-managed
+    roving-tabindex scroll region, not natively Tab-focusable by the WAI-ARIA "grid" pattern
+    axe doesn't special-case) is a documented, scoped `.exclude()` in `scanA11y()` rather than
+    a DOM patch. All local gates + the full e2e suite verified green before merge.
 
 ### P2 — structural debt *(2–4 weeks, interleavable)*
 

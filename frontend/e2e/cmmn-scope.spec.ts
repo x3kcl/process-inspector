@@ -4,6 +4,7 @@
 // UI with a mocked BFF.
 import { expect, test } from '@playwright/test'
 import type { Page } from '@playwright/test'
+import { scanA11y } from './a11y'
 
 const ENGINE = {
   id: 'eng1',
@@ -25,7 +26,7 @@ interface Options {
   truncated: boolean
 }
 
-// Predicate route (never the '**​/api/**' glob — that would hijack Vite's /src/api/* module
+// Predicate route (never the '**/api/**' glob — that would hijack Vite's /src/api/* module
 // requests and brick the dev server, TEST-STRATEGY §9).
 async function mockBff(page: Page, opts: Options): Promise<void> {
   const jobs = Array.from({ length: opts.count }, (_, i) => ({
@@ -111,11 +112,13 @@ test('the out-of-scope note drills into the enumerated CMMN dead-letters', async
 
   const note = page.getByRole('note', { name: 'Out-of-scope dead-letters' })
   await expect(note).toContainText('2 CMMN jobs not triaged here')
+  await scanA11y(page, 'landing with out-of-scope dead-letter note')
 
   await note.getByRole('button', { name: 'View jobs' }).click()
 
   const dialog = page.getByRole('dialog')
   await expect(dialog).toContainText('CMMN scope — eng1')
+  await scanA11y(page, 'CMMN scope modal open')
   // The modal band carries the engine's real risk tier (eng1 is DEV), NOT the bare "UNKNOWN"
   // fallback that read as a rendering bug in usability testing (Finding #3).
   await expect(dialog.getByText('DEV', { exact: true })).toBeVisible()
@@ -152,9 +155,10 @@ test('a pasted CMMN Case id resolves to a navigable read-only case-detail link',
 
   // The resolve panel surfaces the CMMN case as a navigable, honestly-labelled row (Case
   // Inspector Phase 2 gave it a destination; Phase 1 rendered it as an inert dead-end).
-  const match = page.getByRole('listbox', { name: 'Resolve results' }).getByRole('link')
+  const match = page.getByRole('region', { name: 'Resolve results' }).getByRole('link')
   await expect(match).toContainText('CMMN case')
   await expect(match).toContainText('open the read-only case detail')
+  await scanA11y(page, 'omnibox resolve results with CMMN case match')
 
   await match.click()
   await expect(page).toHaveURL(/\/case\/eng1\/case-0$/)
@@ -168,6 +172,7 @@ test('a truncated scan is a labeled lower bound in both the note and the drawer'
 
   const note = page.getByRole('note', { name: 'Out-of-scope dead-letters' })
   await expect(note).toContainText('≥3 CMMN jobs not triaged here')
+  await scanA11y(page, 'landing note showing truncated lower bound')
 
   await note.getByRole('button', { name: 'View jobs' }).click()
   const dialog = page.getByRole('dialog')
@@ -176,4 +181,5 @@ test('a truncated scan is a labeled lower bound in both the note and the drawer'
   await expect(lanes.getByRole('listitem').filter({ hasText: 'FAILED' })).toContainText('≥3')
   await expect(dialog).toContainText('≥3')
   await expect(dialog).toContainText('lower bound')
+  await scanA11y(page, 'CMMN scope modal with truncated lower bound')
 })

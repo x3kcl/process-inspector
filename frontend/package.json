@@ -8,6 +8,7 @@
     "build": "npm run check:watermark && npm run check:enterprise && tsc -b && vite build",
     "check:watermark": "node scripts/check-bpmn-watermark.mjs",
     "check:enterprise": "node scripts/check-no-enterprise.mjs",
+    "check:e2e-a11y-coverage": "node scripts/check-e2e-a11y-coverage.mjs",
     "gen:api": "BFF=${INSPECTOR_BFF_URL:-http://localhost:8085}; curl -sf \"$BFF/v3/api-docs\" | grep -q SiblingDiffResponse || { echo \"ERROR: BFF at $BFF is stale or down (SiblingDiffResponse missing from contract) — aborting to avoid clobbering schema.d.ts\" >&2; exit 1; }; openapi-typescript \"$BFF/v3/api-docs\" -o src/api/schema.d.ts",
     "lint": "eslint .",
     "format": "prettier --write .",
@@ -15,7 +16,7 @@
     "test": "vitest run",
     "test:coverage": "vitest run --coverage",
     "preview": "vite preview",
-    "e2e": "playwright test"
+    "e2e": "npm run check:e2e-a11y-coverage && playwright test"
   },
   "dependencies": {
     "@codemirror/lang-json": "^6.0.2",
@@ -31,6 +32,7 @@
     "react-router": "^7.18.1"
   },
   "devDependencies": {
+    "@axe-core/playwright": "^4.12.1",
     "@eslint/js": "^10.0.1",
     "@playwright/test": "^1.61.1",
     "@testing-library/react": "^16.3.2",

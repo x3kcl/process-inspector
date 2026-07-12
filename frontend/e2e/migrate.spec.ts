@@ -5,6 +5,7 @@
 // is NEVER hit, and the migrate button exists only after a CLEAN pre-check.
 import { expect, test } from '@playwright/test'
 import type { Page } from '@playwright/test'
+import { scanA11y } from './a11y'
 
 const CAPABLE_ENGINE = {
   id: 'eng1',
@@ -176,6 +177,7 @@ test('migrate is greyed when the engine lacks the migration capability', async (
   const migrate = page.getByRole('button', { name: 'Migrate', exact: true })
   await expect(migrate).toBeDisabled()
   await expect(migrate).toHaveAttribute('title', /capability/)
+  await scanA11y(page, 'migrate button disabled, capability gated')
   expect(executed).toEqual([])
 })
 
@@ -195,6 +197,7 @@ test('migrate is pre-check-first: pick version, map the flagged activity, execut
   await expect(pick).toBeVisible()
   await expect(pick.getByRole('combobox', { name: 'target version' })).toHaveValue('orderFlow:5:e5')
   await expect(page.getByRole('button', { name: /^Migrate order-4711/ })).toHaveCount(0)
+  await scanA11y(page, 'migrate version-pick dialog open')
   await pick.getByRole('button', { name: 'Check mapping →' }).click()
 
   // Step 2 (pre-check): the estimate, honestly labelled, with the flagged activity + dropdown.
@@ -207,6 +210,7 @@ test('migrate is pre-check-first: pick version, map the flagged activity, execut
   // No migrate button while an activity is unmapped — only Re-check.
   await expect(check.getByRole('button', { name: /^Migrate order-4711/ })).toHaveCount(0)
   await expect(check.getByRole('button', { name: 'Re-check mapping' })).toBeVisible()
+  await scanA11y(page, 'migrate pre-check dialog, flagged activity unmapped')
 
   // Map the flagged activity, then re-check → the pre-check comes back clean.
   await check.getByRole('combobox', { name: 'target for reviewTask' }).selectOption('approveTask')
@@ -218,6 +222,7 @@ test('migrate is pre-check-first: pick version, map the flagged activity, execut
   await expect(migrate).toBeDisabled()
   await check.getByRole('textbox').fill('INC-9000: move cohort off the bad deploy')
   await expect(migrate).toBeEnabled()
+  await scanA11y(page, 'migrate pre-check dialog, mapping resolved and reason filled')
 
   // Cancel out — the whole arc must leave the engine untouched.
   await check.getByRole('button', { name: 'Cancel', exact: true }).click()

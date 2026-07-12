@@ -1,9 +1,10 @@
 // Team (shared) views (v2, SHARED-VIEWS.md): the curated canon an operator publishes for the team.
 // Proves the picker rendering (TEAM tag, author/scope tooltip, dangling greying) and the deliberate
 // "Publish to team…" second act, against the real rendered UI with a mocked BFF. Route mocks use a
-// URL predicate (never the '**​/api/**' glob — it would hijack Vite's /src/api/* modules).
+// URL predicate (never the '**/api/**' glob — it would hijack Vite's /src/api/* modules).
 import { expect, test } from '@playwright/test'
 import type { Page } from '@playwright/test'
+import { scanA11y } from './a11y'
 
 const ENGINE = { id: 'eng1', name: 'Payments DEV', environment: 'dev', reachable: true }
 
@@ -101,10 +102,12 @@ test('team views render with a non-color TEAM tag; a dangling canon is greyed, n
   await expect(teamGroup.getByText('TEAM').first()).toBeVisible()
   await expect(teamGroup.getByRole('link', { name: 'Old orders view' })).toHaveCount(0)
   await expect(teamGroup.getByText('(scope unavailable)')).toBeVisible()
+  await scanA11y(page, 'home page with team views list, one dangling')
 
   // Clicking the healthy canon replays its exact URL state (URL primacy).
   await teamGroup.getByRole('link', { name: 'Stuck payments in prod' }).click()
   await expect(page).toHaveURL(/\/search\?.*status=FAILED/)
+  await scanA11y(page, 'search results after following a team view link')
 })
 
 test('an operator publishes a private view to the team through the deliberate second act', async ({
@@ -123,6 +126,7 @@ test('an operator publishes a private view to the team through the deliberate se
     name: 'My stuck tax orders',
     description: 'retry after the gateway is back',
   })
+  await scanA11y(page, 'home page after publishing a view to the team')
 })
 
 test('publishing is greyed (never hidden) for a responder who lacks OPERATOR', async ({ page }) => {
@@ -134,4 +138,5 @@ test('publishing is greyed (never hidden) for a responder who lacks OPERATOR', a
     .getByRole('button', { name: 'Publish to team…' })
   await expect(publish).toBeVisible()
   await expect(publish).toBeDisabled()
+  await scanA11y(page, 'saved views region with Publish to team gated for RESPONDER')
 })

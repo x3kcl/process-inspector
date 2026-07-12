@@ -4,6 +4,7 @@
 // coordinates only — no instance ID ever crosses the wire from the browser.
 import { expect, test } from '@playwright/test'
 import type { Page } from '@playwright/test'
+import { scanA11y } from './a11y'
 
 const HASH = 'a1b2c3d4e5f6a1b2c3d4e5f6a1b2c3d4e5f6a1b2c3d4e5f6a1b2c3d4e5f6a1b2'
 
@@ -53,8 +54,8 @@ interface MockState {
   submits: unknown[]
 }
 
-/** Fulfills every /api call. Predicate (never the '**​/api/**' glob): the glob would also
- *  hijack Vite's /src/api/* module requests and brick the dev server (TEST-STRATEGY §9). */
+// Fulfills every /api call. Predicate (never the '**/api/**' glob): the glob would also
+// hijack Vite's /src/api/* module requests and brick the dev server (TEST-STRATEGY §9).
 async function mockBff(
   page: Page,
   opts: { role: string; environment: string },
@@ -109,6 +110,7 @@ test('retry group: Tier-3 modal, coordinates-only submit, drawer opens focused o
   // The affordance sits next to the defKey:vN count and is enabled for a RESPONDER.
   const open = page.getByRole('button', { name: 'Retry group' })
   await expect(open).toBeEnabled()
+  await scanA11y(page, 'triage page with retry-group button enabled')
   await open.click()
 
   // Tier-3 restatement: signature, scope, count — and the honesty line that the BINDING
@@ -119,6 +121,7 @@ test('retry group: Tier-3 modal, coordinates-only submit, drawer opens focused o
   await expect(modal.getByText('/ by zero')).toBeVisible()
   await expect(modal.getByText(/3 failing instances/)).toBeVisible()
   await expect(modal.getByText(/resolved\s+server-side at dispatch/)).toBeVisible()
+  await scanA11y(page, 'retry group modal open')
 
   // Reason ladder: the restating confirm unlocks only on a ≥10-char reason (dev: no token).
   const confirm = modal.getByRole('button', { name: 'Retry group — payment v3' })
@@ -151,6 +154,7 @@ test('retry group: Tier-3 modal, coordinates-only submit, drawer opens focused o
   await expect(drawer.getByText('retry-job')).toBeVisible()
   await expect(drawer.getByText('eng1:p-1')).toBeVisible()
   await expect(drawer.getByText('eng1:p-2')).toBeVisible()
+  await scanA11y(page, 'operations drawer after retry group dispatch')
 })
 
 test('retry group is greyed for a VIEWER with the gate named', async ({ page }) => {
@@ -161,6 +165,7 @@ test('retry group is greyed for a VIEWER with the gate named', async ({ page }) 
   await expect(button).toBeDisabled()
   await expect(button).toHaveAttribute('title', /RESPONDER/)
   expect(state.submits).toEqual([])
+  await scanA11y(page, 'triage page with retry-group disabled for viewer')
 })
 
 test('on a PROD engine the confirm stays locked until the definition key is typed', async ({
@@ -172,6 +177,7 @@ test('on a PROD engine the confirm stays locked until the definition key is type
   await page.getByRole('button', { name: 'Retry group' }).click()
   const modal = page.getByRole('dialog', { name: /Retry group/ })
   await expect(modal.getByText('a PRODUCTION engine')).toBeVisible()
+  await scanA11y(page, 'retry group modal on prod engine')
 
   // Reason alone must NOT unlock on prod (corrective-actions §3: bulk on prod never
   // dispatches on a bare confirm) — the typed token is the stable definition key.
@@ -187,4 +193,5 @@ test('on a PROD engine the confirm stays locked until the definition key is type
   await modal.getByRole('button', { name: 'Cancel', exact: true }).click()
   await expect(modal).toHaveCount(0)
   expect(state.submits).toEqual([])
+  await scanA11y(page, 'triage page after cancelling retry group modal')
 })

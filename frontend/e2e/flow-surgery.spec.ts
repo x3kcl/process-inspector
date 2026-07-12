@@ -4,6 +4,7 @@
 // no execute route is EVER hit, and the execute button only exists after a preview.
 import { expect, test } from '@playwright/test'
 import type { Page } from '@playwright/test'
+import { scanA11y } from './a11y'
 
 const ENGINE = {
   id: 'eng1',
@@ -81,8 +82,8 @@ const PREVIEW = {
     'This plan was calculated by the inspector from the deployed model — it is NOT an engine-verified dry-run.',
 }
 
-/** Fulfills every /api call; records mutating calls so tests can assert none fired.
- *  Predicate (not a glob): '**​/api/**' would also hijack Vite's /src/api/* modules. */
+// Fulfills every /api call; records mutating calls so tests can assert none fired.
+// Predicate (not a glob): '**/api/**' would also hijack Vite's /src/api/* modules.
 async function mockBff(page: Page, vitals: object, executed: string[]): Promise<void> {
   await page.route(
     (url) => url.pathname.startsWith('/api/'),
@@ -134,6 +135,7 @@ test('change-state is simulation-first: form, preview modal, cancel — execute 
   // Step 1 (intent): pick source + target. There is NO execute affordance yet.
   const form = page.getByRole('dialog', { name: /Change state \/ move token/ })
   await expect(form).toBeVisible()
+  await scanA11y(page, 'change-state form open, no execute affordance yet')
   await expect(page.getByRole('button', { name: /Execute move/ })).toHaveCount(0)
   await form
     .getByRole('group', { name: 'source nodes' })
@@ -151,6 +153,7 @@ test('change-state is simulation-first: form, preview modal, cancel — execute 
   await expect(verify.getByText('Cancel the token at “Approve order”')).toBeVisible()
   await expect(verify.getByRole('alert').filter({ hasText: 'parallel-sibling' })).toBeVisible()
   await expect(verify.getByText('NOT an engine-verified dry-run')).toBeVisible()
+  await scanA11y(page, 'simulation verify modal open with warnings')
   await verify.getByText('exact engine request').click()
   await expect(verify.getByText('"cancelActivityIds"')).toBeVisible()
   await expect(verify.getByText('"startActivityIds"')).toBeVisible()
@@ -175,6 +178,7 @@ test('restart-as-new is greyed on a running instance, with the gate named', asyn
   const restart = page.getByRole('button', { name: 'Restart as new instance' })
   await expect(restart).toBeDisabled()
   await expect(restart).toHaveAttribute('title', /ended/)
+  await scanA11y(page, 'restart button disabled on a running instance')
   expect(executed).toEqual([])
 })
 
@@ -191,6 +195,7 @@ test('restart-as-new on an ended instance forces the version fork before unlocki
 
   const modal = page.getByRole('dialog', { name: /Restart as new instance/ })
   await expect(modal).toBeVisible()
+  await scanA11y(page, 'restart modal open, version fork pending')
   const confirm = modal.getByRole('button', { name: /Restart order-4711 as a new instance/ })
 
   // The fork is mandatory and un-defaulted: reason alone must not unlock.

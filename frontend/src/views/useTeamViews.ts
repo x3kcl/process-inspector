@@ -55,5 +55,8 @@ export function useTeamViews(): TeamViewsApi {
     [unpublishMutation],
   )
 
-  return { views: data ?? [], publish, unpublish }
+  // Array.isArray, not just `?? []`: TeamViewsGroup renders on every Stage-0 landing, so a
+  // malformed (non-array, non-nullish) response here would otherwise crash the whole app via
+  // the default router error boundary — not just this one widget.
+  return { views: Array.isArray(data) ? data : [], publish, unpublish }
 }

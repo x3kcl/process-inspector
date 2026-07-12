@@ -2,9 +2,10 @@
 // is challenged at verb INTENT — pre-emptively via the /api/me `reauth` hint at modal open, or
 // reactively via the BFF's 401 `reauth-required` answer — and the "Re-authenticate now" button
 // checkpoints the route before the full-page OIDC round-trip, which the Shell restores on the
-// post-login boot. Hermetic (predicate route, never the '**​/api/**' glob — TEST-STRATEGY §9).
+// post-login boot. Hermetic (predicate route, never the '**/api/**' glob — TEST-STRATEGY §9).
 import { expect, test } from '@playwright/test'
 import type { Page } from '@playwright/test'
+import { scanA11y } from './a11y'
 
 const ENGINE = {
   id: 'eng1',
@@ -98,6 +99,7 @@ test('a stale hint pre-empts at modal open: interstitial shown, confirm disabled
   await expect(modal.getByText(/sign-in newer than 15 minutes/)).toBeVisible()
   const reauthButton = modal.getByRole('button', { name: 'Re-authenticate now' })
   await expect(reauthButton).toBeVisible()
+  await scanA11y(page, 'pre-emptive reauth interstitial shown before typing')
 
   // Even a perfect reason leaves the confirm disabled — freshness first, token later.
   await modal.getByRole('textbox').first().fill('vendor confirmed the charge already settled')
@@ -116,6 +118,7 @@ test('the re-auth button checkpoints the route and navigates to the oidc re-auth
     },
   )
   const modal = await openDeleteModal(page)
+  await scanA11y(page, 'delete confirm modal open')
   await modal.getByRole('button', { name: 'Re-authenticate now' }).click()
 
   await page.waitForURL(/\/oauth2\/authorization\/oidc\?reauth=true/)
@@ -140,10 +143,12 @@ test('a fresh hint but a 401 challenge on submit surfaces the interstitial react
   const confirm = modal.getByRole('button', { name: /Delete dead-letter job/ })
   await modal.getByRole('textbox').first().fill('vendor confirmed the charge already settled')
   await expect(confirm).toBeEnabled()
+  await scanA11y(page, 'delete confirm modal with reason filled, confirm enabled')
   await confirm.click()
 
   await expect(modal.getByRole('button', { name: 'Re-authenticate now' })).toBeVisible()
   await expect(confirm).toBeDisabled()
+  await scanA11y(page, 'reactive reauth interstitial after 401 challenge')
 })
 
 test('the post-login boot restores the checkpointed route (single-shot)', async ({ page }) => {
@@ -159,6 +164,7 @@ test('the post-login boot restores the checkpointed route (single-shot)', async 
   await page.goto('/')
 
   await page.waitForURL(/\/inspect\/eng1\/p-1\?tab=errors-jobs/)
+  await scanA11y(page, 'post-login boot restored to the checkpointed errors-jobs tab')
   // Single-shot: the checkpoint is consumed.
   expect(await page.evaluate(() => sessionStorage.getItem('inspector.reauth.resume'))).toBeNull()
 })
@@ -178,6 +184,7 @@ test('warn-before-guillotine: an OIDC session near the absolute cap gets the cou
   await expect(banner).toBeVisible()
   await expect(banner).toContainText(/Session expires in (9|10) min/)
   await expect(banner.getByRole('button', { name: 'Re-authenticate now' })).toBeVisible()
+  await scanA11y(page, 'session-expiry banner with re-auth CTA')
 })
 
 test('warn-before-guillotine: a break-glass-shaped session counts down WITHOUT a re-auth CTA', async ({
@@ -194,6 +201,7 @@ test('warn-before-guillotine: a break-glass-shaped session counts down WITHOUT a
 
   const banner = page.locator('.session-expiry-banner')
   await expect(banner).toBeVisible()
+  await scanA11y(page, 'session-expiry banner without a re-auth CTA (break-glass)')
   await expect(banner.getByRole('button')).toHaveCount(0)
 })
 
@@ -203,5 +211,6 @@ test('warn-before-guillotine: silent while the cap is far away', async ({ page }
   await page.goto('/inspect/eng1/p-1?tab=errors-jobs')
 
   await expect(page.locator('details.lane-deadLetter')).toBeVisible() // page rendered
+  await scanA11y(page, 'instance page with no session-expiry banner, cap far away')
   await expect(page.locator('.session-expiry-banner')).toHaveCount(0)
 })

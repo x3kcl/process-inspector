@@ -73,7 +73,11 @@ export function Shell() {
               <HeaderStrip />
             </header>
             {authRequired && <SignIn />}
-            <Outlet />
+            {/* The app's ONE <main> landmark (axe landmark-one-main): every route's own
+                top-level element is a plain <div> so this never nests. */}
+            <main>
+              <Outlet />
+            </main>
             <OpsDrawer />
           </div>
         </OpsDrawerProvider>

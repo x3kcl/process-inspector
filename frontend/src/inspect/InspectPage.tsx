@@ -112,7 +112,8 @@ export function InspectPage() {
   const ActiveTab = TAB_COMPONENTS[tab]
 
   return (
-    <main className="inspect">
+    <div className="inspect">
+      <h2 className="visually-hidden">Instance detail</h2>
       <header className="vitals">
         <div className="vitals-identity">
           <EnvBadge
@@ -227,7 +228,7 @@ export function InspectPage() {
           />
         </Suspense>
       </section>
-    </main>
+    </div>
   )
 }
 

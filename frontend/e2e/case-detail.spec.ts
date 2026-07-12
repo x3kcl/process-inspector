@@ -3,6 +3,7 @@
 // the real rendered UI with a mocked BFF.
 import { expect, test } from '@playwright/test'
 import type { Page } from '@playwright/test'
+import { scanA11y } from './a11y'
 
 const ENGINE = {
   id: 'eng1',
@@ -177,6 +178,7 @@ test('the case detail renders vitals, the plan-item timeline, and the honest no-
   await expect(
     page.locator('.case-why-stuck').getByRole('button', { name: 'Retry job' }),
   ).toBeVisible()
+  await scanA11y(page, 'case vitals + why-stuck panel with retry button')
 
   // A DI-less model renders the honest no-layout state, never a blank canvas.
   await expect(page.getByText('No case diagram')).toBeVisible()
@@ -190,6 +192,7 @@ test('the case detail renders vitals, the plan-item timeline, and the honest no-
     'aria-level',
     '1',
   )
+  await scanA11y(page, 'plan-item timeline tree rendered')
 })
 
 test('retrying a CMMN dead-letter job POSTs the case-scoped action and reports the delta', async ({
@@ -211,6 +214,7 @@ test('retrying a CMMN dead-letter job POSTs the case-scoped action and reports t
 
   // The server's delta statement surfaces as the success toast (never a bare "success").
   await expect(page.getByText(/moved back to the executable queue/)).toBeVisible()
+  await scanA11y(page, 'retry success toast shown')
 })
 
 test('a RESPONDER cannot delete a CMMN dead-letter job — the tier-3 button is gated', async ({
@@ -226,6 +230,7 @@ test('a RESPONDER cannot delete a CMMN dead-letter job — the tier-3 button is 
   await expect(
     page.locator('.case-why-stuck').getByRole('button', { name: 'Delete', exact: true }),
   ).toBeDisabled()
+  await scanA11y(page, 'delete button disabled for RESPONDER')
 })
 
 test('an ADMIN deletes a CMMN dead-letter job through the typed-confirm modal', async ({
@@ -245,6 +250,7 @@ test('an ADMIN deletes a CMMN dead-letter job through the typed-confirm modal', 
   await expect(modal).toBeVisible()
   // Scope-honest blast radius: no BPMN change-state rescue for a case.
   await expect(modal).toContainText('no change-state rescue')
+  await scanA11y(page, 'delete confirm modal open for ADMIN')
 
   // The confirm is disabled until a ≥10-char reason lands (DEV engine → no typed token gate).
   const confirm = modal.getByRole('button', { name: /Delete dead-letter job/ })
@@ -263,6 +269,7 @@ test('an ADMIN deletes a CMMN dead-letter job through the typed-confirm modal', 
   // The scope-honest server delta surfaces as the toast; the modal closes.
   await expect(page.getByText(/no CMMN rescue verb/)).toBeVisible()
   await expect(page.getByRole('dialog')).toHaveCount(0)
+  await scanA11y(page, 'delete success toast, modal closed')
 })
 
 test('a case with graphical notation renders the cmmn-js canvas with the failed marker', async ({
@@ -279,4 +286,5 @@ test('a case with graphical notation renders the cmmn-js canvas with the failed 
   await expect(planItem).toHaveClass(/marker-deadletter/)
   await expect(page.locator('.case-diagram .bjs-powered-by')).toBeVisible()
   await expect(page.getByText('No case diagram')).toHaveCount(0)
+  await scanA11y(page, 'cmmn-js canvas rendered with failed marker')
 })

@@ -8,6 +8,7 @@
 //      main heading / landmark.
 import { expect, test } from '@playwright/test'
 import type { Page } from '@playwright/test'
+import { scanA11y } from './a11y'
 
 const ENGINE = { id: 'eng1', name: 'Payments DEV', environment: 'dev', reachable: true }
 
@@ -36,7 +37,7 @@ const VITALS = {
   flags: { ended: false, suspended: false, hasDeadLetterJobs: false, hasFailingJobs: false },
 }
 
-/** Fulfills every /api call. URL predicate (never the '**​/api/**' glob — TEST-STRATEGY §9). */
+// Fulfills every /api call. URL predicate (never the '**/api/**' glob — TEST-STRATEGY §9).
 async function mockBff(page: Page): Promise<void> {
   await page.route(
     (url) => url.pathname.startsWith('/api/'),
@@ -86,6 +87,7 @@ test('Enter on a focused grid cell opens the detail route, and the hint is visib
 
   // The open affordance is discoverable without a mouse hover or a manual.
   await expect(page.getByText(/opens the focused row/)).toBeVisible()
+  await scanA11y(page, 'search results grid with keyboard-open hint')
 
   // A single click only FOCUSES the cell (click-select is off; open is double-click) —
   // the open itself happens on the keyboard.
@@ -95,6 +97,7 @@ test('Enter on a focused grid cell opens the detail route, and the hint is visib
 
   await expect(page).toHaveURL(/\/inspect\/eng1\/p-1/)
   await expect(page.getByText('eng1:p-1')).toBeVisible()
+  await scanA11y(page, 'instance detail page opened via keyboard')
 })
 
 test('after the grid→detail route change, focus never rests on <body>', async ({ page }) => {
@@ -105,7 +108,9 @@ test('after the grid→detail route change, focus never rests on <body>', async 
   await page.keyboard.press('Enter')
   await expect(page).toHaveURL(/\/inspect\/eng1\/p-1/)
 
-  // The route-focus effect runs on the tick after navigation.
+  // The route-focus effect runs on the tick after navigation. InspectPage now carries its own
+  // <h2> (axe heading-order/landmark-one-main), so restoreRouteFocus's "main h1, main h2" rung
+  // wins over its "main" landmark fallback — a more useful announce than the bare landmark.
   await expect
     .poll(async () =>
       page.evaluate(() => {
@@ -113,7 +118,8 @@ test('after the grid→detail route change, focus never rests on <body>', async 
         return active === null || active === document.body ? 'body' : active.tagName
       }),
     )
-    .toBe('MAIN')
+    .toBe('H2')
+  await scanA11y(page, 'detail page focused on main after route change')
 })
 
 test('detail tabs rove with arrow keys per the ARIA APG (manual activation)', async ({ page }) => {
@@ -128,6 +134,7 @@ test('detail tabs rove with arrow keys per the ARIA APG (manual activation)', as
   // Roving tabindex: only the active tab sits in the Tab order.
   await expect(variables).toHaveAttribute('tabindex', '0')
   await expect(errorsJobs).toHaveAttribute('tabindex', '-1')
+  await scanA11y(page, 'detail page with variables tab active')
 
   await variables.focus()
   await page.keyboard.press('ArrowRight')
@@ -145,4 +152,5 @@ test('detail tabs rove with arrow keys per the ARIA APG (manual activation)', as
   await page.keyboard.press('Enter')
   await expect(audit).toHaveAttribute('aria-selected', 'true')
   await expect(page).toHaveURL(/tab=audit/)
+  await scanA11y(page, 'audit tab activated via keyboard')
 })

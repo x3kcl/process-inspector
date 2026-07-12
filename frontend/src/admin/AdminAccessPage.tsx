@@ -36,13 +36,13 @@ export function AdminAccessPage() {
 
   if (mapping.error instanceof ApiError && mapping.error.status === 403) {
     return (
-      <main className="page">
+      <div className="page">
         <h2>Access administration</h2>
         <p className="muted">
           Requires the <strong>ACCESS_ADMIN</strong> grant — the apex authority over the group→scope
           mapping. You are signed in without it.
         </p>
-      </main>
+      </div>
     )
   }
 
@@ -55,7 +55,7 @@ export function AdminAccessPage() {
   }
 
   return (
-    <main className="page">
+    <div className="page">
       <h2>Access administration</h2>
       <p className="muted">
         The group→scope mapping — the single most privileged store in the tool. A row here can grant
@@ -155,7 +155,7 @@ export function AdminAccessPage() {
           Download Markdown
         </button>
       </section>
-    </main>
+    </div>
   )
 }
 

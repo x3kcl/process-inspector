@@ -145,6 +145,46 @@ jobs:
         if: always()
         run: kill "$(cat /tmp/bff.pid 2>/dev/null)" 2>/dev/null || true
 
+  # Playwright + axe (#85, TEST-STRATEGY §1 R4: "axe accessibility checks hard-fail"). The
+  # ~17 e2e/*.spec.ts specs are hermetic BY CONSTRUCTION (every /api call is page.route-
+  # fulfilled — see the header comment in any spec) — no BFF, engine, or Postgres needed,
+  # just the plain Vite dev server. Chromium + its OS deps are baked into the CI runner
+  # image (docker/ci-runner/Dockerfile) rather than installed per-job: the runner container
+  # is ephemeral and only /opt/hostedtoolcache survives a restart, so a per-job
+  # `playwright install --with-deps` would re-download the ~200MB browser AND re-run
+  # apt-get for its libs on every single run.
+  e2e:
+    runs-on: self-hosted
+    timeout-minutes: 15
+    defaults:
+      run:
+        working-directory: frontend
+    steps:
+      - uses: actions/checkout@v4
+      # Runner slots share the HOST network (network_mode: host) — each slot's Vite dev
+      # server must bind a disjoint port or two concurrent e2e jobs (different PRs, same
+      # instant) collide; slot-1's value is the fallback for a slot-less runner.
+      - name: Resolve the slot port namespace
+        run: echo "PI_E2E_PORT=${PI_E2E_PORT:-4173}" >> "$GITHUB_ENV"
+      - uses: actions/setup-node@v4
+        with:
+          node-version: "22"
+          cache: npm
+          cache-dependency-path: frontend/package-lock.json
+      - name: Install
+        run: npm ci
+      - name: Playwright + axe (browser baked into the runner image, not installed here)
+        run: npm run e2e
+      - name: Upload the HTML report and traces on failure
+        if: failure()
+        uses: actions/upload-artifact@v4
+        with:
+          name: playwright-report
+          path: |
+            frontend/playwright-report/
+            frontend/test-results/
+          retention-days: 7
+
   docker:
     runs-on: self-hosted
     timeout-minutes: 20

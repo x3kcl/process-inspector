@@ -121,7 +121,8 @@ export function SearchPage() {
   }
 
   return (
-    <main className="split">
+    <div className="split">
+      <h2 className="visually-hidden">Search</h2>
       <SearchRail
         key={paramsKey}
         engines={engines.data ?? []}
@@ -231,6 +232,6 @@ export function SearchPage() {
             </div>
           )}
       </section>
-    </main>
+    </div>
   )
 }

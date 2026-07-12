@@ -45,7 +45,9 @@ export function VariableDiffPane({ variables }: Props) {
         <table className="var-diff-table">
           <thead>
             <tr>
-              <th scope="col" aria-label="change" />
+              <th scope="col">
+                <span className="visually-hidden">Change</span>
+              </th>
               <th scope="col">Variable</th>
               <th scope="col">This (failed) run</th>
               <th scope="col">Sibling</th>

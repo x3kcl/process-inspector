@@ -13,6 +13,15 @@ body {
   flex-direction: column;
   height: 100vh;
 }
+/* Passthrough for the one <main> landmark (Shell.tsx): pages like .split/.inspect rely on
+   flex: 1 from a DIRECT flex child of .app to fill the remaining vertical space — without
+   this, main's own height collapses to content and AG Grid's ResizeObserver thrashes. */
+.app > main {
+  display: flex;
+  flex-direction: column;
+  flex: 1;
+  min-height: 0;
+}
 
 /* ---- topbar + M1 header strip ---- */
 .topbar {
@@ -41,7 +50,7 @@ body {
 
 /* R-UXQ-03: the relative-age suffix every <Ts relative> renders. */
 .ts-relative {
-  color: #8395a7;
+  color: #4f6070;
   white-space: nowrap;
 }
 
@@ -60,6 +69,10 @@ body {
   background: #2f3b45;
   font-size: 12px;
 }
+/* .strip-note's light-bg muted token fails contrast on this card's dark background. */
+.engine-card .strip-note {
+  color: #a0aab5;
+}
 /* Unreachable = amber/red warning card; never blanks the healthy engines next to it. */
 .engine-card-down {
   background: #4a2a25;
@@ -69,7 +82,8 @@ body {
   font-weight: 600;
 }
 .engine-version {
-  color: #b2bec3;
+  /* .engine-card's background is dark (#2f3b45) — the light-bg muted token fails contrast here. */
+  color: #a0aab5;
 }
 .engine-unreachable {
   color: #ffb3a7;
@@ -101,7 +115,7 @@ body {
   font-weight: 700;
 }
 .strip-note {
-  color: #b2bec3;
+  color: #5f6d7c;
   font-size: 12px;
 }
 .strip-error {
@@ -174,7 +188,7 @@ body {
   outline: 1px dashed #7f8c8d;
 }
 .engine-disabled-note {
-  color: #b2bec3;
+  color: #5f6d7c;
   font-style: italic;
   max-width: 380px;
   overflow: hidden;
@@ -280,7 +294,7 @@ body {
 button.primary {
   width: 100%;
   padding: 8px;
-  background: #2e86de;
+  background: #2569ad;
   color: #fff;
   border: 0;
   border-radius: 6px;
@@ -574,7 +588,7 @@ button.primary:disabled {
 }
 .cmmn-scope-casekey {
   font-weight: 400;
-  color: #8395a7;
+  color: #4f6070;
   font-size: 12px;
 }
 .cmmn-scope-element {
@@ -595,7 +609,7 @@ button.primary:disabled {
   font-size: 12px;
 }
 .cmmn-scope-meta dt {
-  color: #8395a7;
+  color: #4f6070;
 }
 .cmmn-scope-meta dd {
   margin: 0;
@@ -866,7 +880,7 @@ button.primary:disabled {
   align-items: center;
 }
 .placeholder {
-  color: #8395a7;
+  color: #4f6070;
 }
 
 /* ---- shell (M3): title is a link home, omnibox pinned on every stage ---- */
@@ -888,7 +902,7 @@ button.primary:disabled {
   font-size: 13px;
 }
 .omnibox input::placeholder {
-  color: #8395a7;
+  color: #4f6070;
 }
 
 /* ---- Stage 0 triage landing ---- */
@@ -932,7 +946,7 @@ button.primary:disabled {
 .count-unit {
   font-size: 11px;
   font-weight: 400;
-  color: #7f8c9b;
+  color: #5f6d7c;
 }
 /* W2 #7 (R-UXQ-12): root-vs-child marker on tree-shaped businessKey results. */
 .child-badge {
@@ -970,7 +984,7 @@ button.primary:disabled {
   margin: 12px 0 8px;
 }
 .group-count {
-  color: #8395a7;
+  color: #4f6070;
   font-weight: 400;
 }
 .error-group {
@@ -1073,7 +1087,7 @@ button.primary:disabled {
   border-bottom-style: solid;
 }
 .version-zero {
-  color: #8395a7;
+  color: #4f6070;
   border-bottom: 0;
 }
 
@@ -1117,7 +1131,7 @@ button.primary:disabled {
   font-size: 11px;
   text-transform: uppercase;
   letter-spacing: 0.04em;
-  color: #8395a7;
+  color: #4f6070;
 }
 .version-chip {
   font-size: 11px;
@@ -1258,7 +1272,7 @@ button.primary:disabled {
 .lane-diagnosis {
   font-weight: 400;
   font-size: 12px;
-  color: #8395a7;
+  color: #4f6070;
   margin-left: 8px;
 }
 .lane-deadLetter > summary {
@@ -1270,7 +1284,7 @@ button.primary:disabled {
 }
 .element-id {
   font-size: 11px;
-  color: #8395a7;
+  color: #4f6070;
 }
 .stacktrace {
   max-height: 320px;
@@ -1335,12 +1349,12 @@ button.primary:disabled {
   position: absolute;
   top: 0;
   bottom: 0;
-  background: #2e86de;
+  background: #2569ad;
   border-radius: 6px;
   min-width: 3px;
 }
 .tl-ongoing .tl-bar {
-  background: repeating-linear-gradient(45deg, #2e86de, #2e86de 6px, #7fb3ea 6px, #7fb3ea 12px);
+  background: repeating-linear-gradient(45deg, #2569ad, #2569ad 6px, #7fb3ea 6px, #7fb3ea 12px);
 }
 .tl-duration {
   text-align: right;
@@ -1440,10 +1454,10 @@ button.primary:disabled {
 }
 .json-key::after {
   content: ':';
-  color: #8395a7;
+  color: #4f6070;
 }
 .json-summary {
-  color: #8395a7;
+  color: #4f6070;
 }
 .json-leaf {
   display: inline-flex;
@@ -1465,7 +1479,7 @@ button.primary:disabled {
   top: 50%;
   transform: translateY(-50%);
   font-size: 11px;
-  color: #8395a7;
+  color: #4f6070;
 }
 .omnibox-panel {
   position: absolute;
@@ -1520,7 +1534,7 @@ button.primary:disabled {
 .omnibox-reachability {
   margin: 6px 0 0;
   font-size: 11px;
-  color: #8395a7;
+  color: #4f6070;
   border-top: 1px solid #eef2f5;
   padding-top: 6px;
 }
@@ -1567,7 +1581,7 @@ button.primary:disabled {
   border-style: dashed;
 }
 .value-muted {
-  color: #8395a7;
+  color: #4f6070;
 }
 .value-body {
   background: #f7f9fa;
@@ -1687,7 +1701,8 @@ button.primary:disabled {
 .toast-close {
   background: none;
   border: 0;
-  color: #b2bec3;
+  /* .toast's background is dark (#1e272e) — the light-bg muted token fails contrast here. */
+  color: #a0aab5;
   font-size: 15px;
   cursor: pointer;
   padding: 0 2px;
@@ -1753,7 +1768,7 @@ button.primary:disabled {
 }
 .modal-footer button.primary {
   width: auto;
-  background: #2e86de;
+  background: #2569ad;
   border: 0;
   color: #fff;
 }
@@ -1876,7 +1891,7 @@ button.primary:disabled {
   border-color: #c0392b;
 }
 .action-danger:disabled {
-  color: #b2bec3;
+  color: #5f6d7c;
   border-color: #dfe4ea;
 }
 .inline-confirm {
@@ -1929,12 +1944,12 @@ button.primary:disabled {
   border-right: 0;
 }
 .segment-active {
-  background: #2e86de;
+  background: #2569ad;
   color: #fff;
   font-weight: 600;
 }
 .segment:disabled {
-  color: #b2bec3;
+  color: #5f6d7c;
   cursor: not-allowed;
 }
 
@@ -2288,7 +2303,7 @@ button.primary:disabled {
   text-decoration: none;
   padding: 7px 14px;
   border-radius: 6px;
-  background: #2e86de;
+  background: #2569ad;
   color: #fff;
   font-size: 13.3px;
 }
@@ -2316,10 +2331,10 @@ button.primary:disabled {
   color: #c9d6df;
 }
 .identity-label {
-  color: #7f8c9b;
+  color: #96a1ad;
 }
 .identity-role {
-  color: #7f8c9b;
+  color: #96a1ad;
 }
 .identity-signout {
   background: none;
@@ -2379,7 +2394,7 @@ button.primary:disabled {
   min-height: 300px;
 }
 .toast-action {
-  background: #2e86de;
+  background: #2569ad;
   color: #fff;
   border: 0;
   border-radius: 4px;
@@ -2442,7 +2457,7 @@ button.primary:disabled {
   font: inherit;
 }
 .drawer-live {
-  background: #2e86de;
+  background: #2569ad;
   border-radius: 10px;
   padding: 1px 8px;
   font-size: 12px;
@@ -2684,7 +2699,7 @@ button.primary:disabled {
   border: none;
   background: none;
   cursor: pointer;
-  color: #8395a7;
+  color: #4f6070;
   padding: 0;
   font-size: 12px;
   line-height: 1;
@@ -2716,7 +2731,7 @@ button.primary:disabled {
   border: none;
   background: none;
   cursor: pointer;
-  color: #8395a7;
+  color: #4f6070;
   padding: 0;
   font-size: 12px;
   line-height: 1;
@@ -2725,7 +2740,13 @@ button.primary:disabled {
   color: #c0392b;
 }
 .view-chip.team-view.dangling {
-  opacity: 0.55;
+  /* An explicit compliant color, not opacity: fading TEXT via opacity compounds with
+     .team-tag's own opacity and drops well below the 4.5:1 floor (axe color-contrast). */
+  color: #5f6d7c;
+  border-color: #b6c0c9;
+}
+.view-chip.team-view.dangling .team-tag {
+  opacity: 1;
 }
 .view-chip.team-view.dangling .team-view-name {
   cursor: not-allowed;
@@ -2743,13 +2764,13 @@ button.primary:disabled {
   border: none;
   background: none;
   cursor: pointer;
-  color: #2e86de;
+  color: #2569ad;
   padding: 0;
   font-size: 11px;
   text-decoration: underline;
 }
 .publish-team:disabled {
-  color: #b2bec3;
+  color: #5f6d7c;
   cursor: not-allowed;
   text-decoration: none;
 }
@@ -2797,7 +2818,7 @@ button.primary:disabled {
   font-size: 13px;
 }
 .recent-at {
-  color: #8395a7;
+  color: #4f6070;
   font-size: 12px;
 }
 .pane-results > .recent-searches-block {
@@ -3113,7 +3134,7 @@ button.primary:disabled {
   margin: 0.5rem 0;
 }
 .case-vitals dt {
-  color: #7f8c8d;
+  color: #5f6d7c;
 }
 .case-id-row {
   display: flex;
@@ -3181,7 +3202,7 @@ button.primary:disabled {
   margin: 1rem 0 0.5rem;
 }
 .plan-item-timeline--unavailable {
-  color: #7f8c8d;
+  color: #5f6d7c;
   font-style: italic;
   padding: 0.5rem 0;
 }
@@ -3252,7 +3273,7 @@ button.primary:disabled {
   grid-template-columns: max-content 1fr;
   gap: 0 0.75rem;
   font-size: 0.78rem;
-  color: #7f8c8d;
+  color: #5f6d7c;
   margin: 0.2rem 0 0;
 }
 
@@ -3472,5 +3493,5 @@ button.primary:disabled {
   font-size: 15px;
 }
 .acknowledged-section .error-group {
-  border-left-color: #8395a7;
+  border-left-color: #4f6070;
 }

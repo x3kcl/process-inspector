@@ -285,7 +285,9 @@ function JobDetail({ jobId }: { jobId: string }) {
             <th scope="col">Instance</th>
             <th scope="col">Outcome</th>
             <th scope="col">Detail</th>
-            <th scope="col" aria-label="actions" />
+            <th scope="col">
+              <span className="visually-hidden">Actions</span>
+            </th>
           </tr>
         </thead>
         <tbody>

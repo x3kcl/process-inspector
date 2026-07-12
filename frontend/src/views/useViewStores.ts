@@ -39,7 +39,9 @@ export function useSavedViews(): SavedViewsApi {
   })
 
   return {
-    views: data ?? [],
+    // Array.isArray, not just `?? []` — see useTeamViews.ts: a malformed response here must
+    // never crash the whole app (this renders on every Stage-0/1 landing).
+    views: Array.isArray(data) ? data : [],
     save: (name, search) => {
       saveMutation.mutate({ name, search })
     },
@@ -51,7 +53,7 @@ export function useSavedViews(): SavedViewsApi {
 
 export function useRecentSearches(): RecentSearchDto[] {
   const { data } = useQuery({ queryKey: RECENTS_KEY, queryFn: fetchRecents })
-  return data ?? []
+  return Array.isArray(data) ? data : []
 }
 
 /**

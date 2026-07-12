@@ -4,6 +4,7 @@
 // backend; here we only assert the rendered comparison surface.
 import { expect, test } from '@playwright/test'
 import type { Page } from '@playwright/test'
+import { scanA11y } from './a11y'
 
 const ENGINE = { id: 'eng1', name: 'Payments DEV', environment: 'dev', reachable: true }
 
@@ -124,6 +125,11 @@ async function mockBff(page: Page): Promise<MockState> {
         await route.fulfill({ json: [ENGINE] })
       } else if (pathname === base) {
         await route.fulfill({ json: VITALS })
+      } else if (pathname === `${base}/variables`) {
+        // Not the subject of this spec — an unhandled response would leave VariablesTab
+        // (the default tab) stuck on "Loading variables…" indefinitely (axe
+        // scrollable-region-focusable on the never-settled tabpanel).
+        await route.fulfill({ json: { executionScopes: [], processVariables: [] } })
       } else if (pathname === `${base}/diagram`) {
         await route.fulfill({
           json: { xml: '<definitions/>', activeActivityIds: [], deadLetterActivityIds: [] },
@@ -168,6 +174,7 @@ test('the compare CTA opens a three-way diff against the auto-suggested sibling'
   // The failure strip offers the one-click comparison.
   const cta = page.getByRole('button', { name: /Compare with a sibling/ })
   await expect(cta).toBeVisible()
+  await scanA11y(page, 'failed instance vitals with compare CTA')
   await cta.click()
 
   // Auto-suggested nearest sibling drives the diff without any manual input.
@@ -185,6 +192,7 @@ test('the compare CTA opens a three-way diff against the auto-suggested sibling'
   // Timing: the stalled step is called out; the divergence legend renders.
   await expect(page.locator('.timing-stall-mark')).toBeVisible()
   await expect(page.getByText('only the failed run')).toBeVisible()
+  await scanA11y(page, 'three-way diff loaded with variable and timing panels')
 })
 
 test('a manually entered sibling overrides the suggestion and re-runs the diff', async ({
@@ -194,6 +202,7 @@ test('a manually entered sibling overrides the suggestion and re-runs the diff',
   await page.goto('/inspect/eng1/inst-failed?tab=comparison')
 
   await expect(page.locator('.compare-header')).toContainText('good-1')
+  await scanA11y(page, 'diff auto-suggested against nearest sibling')
 
   await page.getByLabel('sibling process instance id').fill('manual-1')
   await page.getByRole('button', { name: 'Compare', exact: true }).click()
@@ -203,6 +212,7 @@ test('a manually entered sibling overrides the suggestion and re-runs the diff',
   expect(state.diffRequests).toContain('manual-1')
   // The override is a shareable deep link.
   await expect(page).toHaveURL(/sibling=manual-1/)
+  await scanA11y(page, 'diff re-run against manually overridden sibling')
 })
 
 test('a cross-definition sibling is flagged, never silently compared', async ({ page }) => {
@@ -231,8 +241,10 @@ test('a cross-definition sibling is flagged, never silently compared', async ({ 
 
   // No auto-suggestion: the manual input is the only path.
   await expect(page.getByText(/No completed instance of this definition/)).toBeVisible()
+  await scanA11y(page, 'comparison tab, no auto-suggested sibling found')
   await page.getByLabel('sibling process instance id').fill('other-def')
   await page.getByRole('button', { name: 'Compare', exact: true }).click()
 
   await expect(page.getByText(/different definition version/)).toBeVisible()
+  await scanA11y(page, 'cross-definition sibling flagged, diff not silently shown')
 })

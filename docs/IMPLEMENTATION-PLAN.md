@@ -909,7 +909,7 @@ and delete is a soft tombstone; hot reload evicts the per-id client caches (no r
   section + outcome banner in `AdminEnginesPage.tsx` (mirrors `AdminAccessPage.tsx`).
 
 
-### v2 — IdP & Security: identity wiring, access lifecycle & the who-can-do-what store *(design locked 2026-07-09, ★ S1–S6 core LANDED 2026-07-09/10 — remaining: IdP-unreachable break-glass door, Playwright/axe grant-flow gate, issue #94/#85)*
+### v2 — IdP & Security: identity wiring, access lifecycle & the who-can-do-what store *(design locked 2026-07-09, ★ S1–S6 core LANDED 2026-07-09/10; Playwright/axe grant-flow gate LANDED 2026-07-12 (#85) — remaining: IdP-unreachable break-glass door, issue #94)*
 Wires OIDC for real, hardens the session/transport posture, moves the group→scope mapping
 file→DB with a CRUD admin surface, and builds break-glass. **Full design + 5-seat panel +
 adversarial pass + threat model + API/DDL: `docs/IDP-SECURITY.md`.** Concretizes R-GOV-06
@@ -1087,7 +1087,10 @@ behind nothing before any UI reaches them:**
   guillotine-instant (rung-3), `reauth.test.ts` `sessionExpiryState` (window/boundary/ceil-minutes),
   `e2e/reauth.spec.ts` (CTA / no-CTA / silent-far-away; suite 36 green). schema.d.ts regenerated.
   *(FRONTEND remaining):* the
-  IdP-unreachable [Break-glass sign-in] door; + the Playwright smoke (grant→four-eyes→revoke) + axe/SR gate.
+  IdP-unreachable [Break-glass sign-in] door (issue #94). **The Playwright smoke
+  (grant→four-eyes→revoke) + axe/SR gate LANDED 2026-07-12 (#85):**
+  `e2e/admin-access.spec.ts` (narrow-applies, widening-proposes+approve, 403-gated) +
+  the `e2e` CI job running the full spec suite with an axe scan per settled state.
 
 Each slice: rung-1 unit → rung-3 Spring wiring/RBAC → rung-4 Keycloak/Testcontainers IT → Playwright.
 
