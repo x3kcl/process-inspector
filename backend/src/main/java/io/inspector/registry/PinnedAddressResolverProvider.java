@@ -9,6 +9,8 @@ import java.util.Locale;
 import java.util.Map;
 import java.util.concurrent.ConcurrentHashMap;
 import java.util.stream.Stream;
+import org.slf4j.Logger;
+import org.slf4j.LoggerFactory;
 
 /**
  * JEP 418 DNS-resolution SPI hook that closes the resolve→connect DNS-rebinding TOCTOU for
@@ -29,6 +31,8 @@ import java.util.stream.Stream;
  */
 public final class PinnedAddressResolverProvider extends InetAddressResolverProvider {
 
+    private static final Logger log = LoggerFactory.getLogger(PinnedAddressResolverProvider.class);
+
     private static final Map<String, PinEntry> PINS = new ConcurrentHashMap<>();
 
     // Permissive default until RegistryPinRegistry wires the real check at Spring startup — a host
@@ -43,8 +47,27 @@ public final class PinnedAddressResolverProvider extends InetAddressResolverProv
         boolean isAllowed(InetAddress ip, EngineEnvironment environment);
     }
 
+    /**
+     * The pin key is the hostname alone (the JDK's own DNS resolution is per-hostname, not
+     * per-engine — two registry rows sharing a literal hostname were always going to share
+     * whatever the OS resolver returned for it, pin or no pin). If a DIFFERENT IP than the one
+     * currently pinned is registered for the same host — round-robin DNS returning records in a
+     * different order, or two distinct engines behind the same hostname with divergent context
+     * paths — log it loudly: this is the one case where "last write wins" is a silent surprise
+     * worth an operator's attention, even though it is not a security regression (every IP a host
+     * has ever been pinned to already passed the same SSRF/egress checks).
+     */
     static void register(String host, InetAddress ip, EngineEnvironment environment) {
-        PINS.put(host.toLowerCase(Locale.ROOT), new PinEntry(ip, environment));
+        String key = host.toLowerCase(Locale.ROOT);
+        PinEntry previous = PINS.put(key, new PinEntry(ip, environment));
+        if (previous != null && !previous.ip().equals(ip)) {
+            log.warn(
+                    "Registry pin for host '{}' changed {} -> {} — if two engines share this hostname, "
+                            + "only the most recently (re-)validated pin is live for BOTH.",
+                    key,
+                    previous.ip().getHostAddress(),
+                    ip.getHostAddress());
+        }
     }
 
     static void setChecker(PinChecker c) {

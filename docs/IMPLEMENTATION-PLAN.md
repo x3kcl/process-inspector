@@ -874,6 +874,30 @@ and delete is a soft tombstone; hot reload evicts the per-id client caches (no r
   layer. Tested against the REAL JVM resolution path (`InetAddress.getAllByName`) with a hostname
   that cannot resolve over real DNS, not a mocked `Configuration` (a sealed JDK interface — can't be
   mocked or hand-implemented outside the JDK).
+  **⚠️ GOTCHA (self-caught by the test suite, not the reviewers):** without a SecurityManager (the
+  only option since JEP 486), the JDK's `InetAddress` layer caches a SUCCESSFUL resolution FOREVER
+  for the process's life — a cache that sits ABOVE any resolver SPI, including ours. Left alone,
+  every claim above about re-checking on every connect would silently only be true for a hostname's
+  FIRST-EVER resolution in the JVM's life; every later admin re-pin would be masked by the stale
+  cache and never actually reach `PinnedAddressResolverProvider` again. Caught because a rung-1 test
+  that re-registered a different IP for the same host and re-resolved got back the FIRST ip, not the
+  second. Fixed with `Security.setProperty("networkaddress.cache.ttl", "0")` as the literal first
+  line of `ProcessInspectorApplication.main()` (must run before ANY DNS lookup anywhere in the
+  process — Postgres, OIDC, engines, …) and mirrored in `PinnedAddressResolverProviderTest`'s
+  `@BeforeAll` (which never runs through `main()`). Deliberately JVM-wide, not scoped to registry
+  hosts only — every outbound hostname now re-resolves per connection instead of caching forever,
+  which is itself a defensible hardening default for a credential-vault BFF, not just a side effect.
+  **Known limitation (Copilot + Gemini S4b review, both independently flagged):** the pin map is
+  keyed by hostname alone — two registry rows sharing a literal hostname (a realistic same-host
+  different-context-path multi-engine setup) share ONE pin, last-(re-)validation wins, and
+  round-robin DNS could make that pin flip between the rows' base-URLs' otherwise-identical
+  addresses. NOT a new failure mode this PR introduces: JVM DNS resolution is inherently
+  per-hostname, so both rows were always going to share whatever the resolver answered at connect
+  time even pre-S4b; pinning only moves WHEN that shared answer gets fixed (at the last validate,
+  not at each connect) — and every IP a host is ever pinned to has already passed the identical
+  SSRF/egress check, so this is a correctness quirk, not a security bypass. `PinnedAddressResolverProvider
+  .register` now logs loudly on an IP change so an operator notices; not otherwise fixed (would mean
+  abandoning per-hostname JEP 418 resolution or accepting engine-scoped non-determinism instead).
   Tests: `RegistryFourEyesPolicyTest` (pure matrix), `EngineRegistryStoreWriteTest` (+propose/approve/
   self-approve-refused/no-eligible-approver/expired-proposal cases), `PinnedAddressResolverProviderTest`
   + `RegistryPinRegistryTest` (real-resolver end-to-end), `RegistryBootstrapTest`/

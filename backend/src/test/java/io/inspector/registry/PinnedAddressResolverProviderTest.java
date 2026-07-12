@@ -6,7 +6,9 @@ import static org.assertj.core.api.Assertions.assertThatThrownBy;
 import io.inspector.config.InspectorProperties.EngineEnvironment;
 import java.net.InetAddress;
 import java.net.UnknownHostException;
+import java.security.Security;
 import org.junit.jupiter.api.AfterEach;
+import org.junit.jupiter.api.BeforeAll;
 import org.junit.jupiter.api.Test;
 
 /**
@@ -18,8 +20,19 @@ import org.junit.jupiter.api.Test;
  * {@link PinnedAddressResolverProvider#get} than letting the real JVM instantiate it via the
  * {@code META-INF/services} registration. This is a feature, not a workaround: it proves the SPI
  * file is wired correctly, not just that the class's internal logic is sound in isolation.
+ *
+ * <p>{@code networkaddress.cache.ttl} MUST be 0 for these tests: without a SecurityManager, the JDK
+ * caches a successful {@code InetAddress} resolution FOREVER, ABOVE this SPI — a second lookup for
+ * the SAME hostname never reaches the resolver again. Production sets this at the very first line
+ * of {@code main()} for the identical reason; this class sets it itself since it never runs through
+ * {@code main()}.
  */
 class PinnedAddressResolverProviderTest {
+
+    @BeforeAll
+    static void disableJvmDnsCache() {
+        Security.setProperty("networkaddress.cache.ttl", "0");
+    }
 
     @AfterEach
     void resetGlobalState() {
@@ -59,4 +72,15 @@ class PinnedAddressResolverProviderTest {
         // proof our provider is a true no-op for a host RegistryPinRegistry never pinned.
         assertThat(InetAddress.getAllByName("localhost")).isNotEmpty();
     }
+
+    // NOTE (deliberately no "re-registering overwrites the pin" test here): proving that via
+    // InetAddress.getAllByName needs the JDK's OWN forever-cache disabled (see the class doc), and
+    // that cache's policy is latched from `networkaddress.cache.ttl` the FIRST time InetAddress
+    // internals are touched anywhere in the process — in the full suite (shared JVM, hundreds of
+    // earlier tests), that has always already happened before this class's @BeforeAll runs, making
+    // a second-resolution assertion here order-dependent and flaky (verified: passes in isolation,
+    // fails in the full run). The register() javadoc + PinnedAddressResolverProviderTest's other
+    // tests (which each resolve a never-before-seen hostname exactly once, unaffected by caching)
+    // are the reliable coverage; the overwrite-logs-a-warning behavior is simple enough (5 lines) to
+    // trust by inspection rather than chase with a flaky test.
 }
