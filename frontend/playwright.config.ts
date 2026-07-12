@@ -15,10 +15,14 @@ export default defineConfig({
   timeout: 30_000,
   // Default worker count is based on the HOST's core count (the compose comment notes 64),
   // not the runner container's actual `cpus: 10` cgroup ceiling (docker/ci-runner/docker-
-  // compose.yml) — left uncapped, Playwright oversubscribes far past what the container can
-  // give each Chromium instance, and assertions that render fine in ~1s locally start
-  // occasionally missing the default 5s expect timeout under that self-inflicted contention.
-  workers: process.env.CI ? 4 : undefined,
+  // compose.yml), and network_mode: host means all 6 slots' containers contend for the SAME
+  // underlying CPU scheduler regardless of per-container caps — real cross-slot load is
+  // expected, not eliminable from this job's own config. Serial execution in CI trades speed
+  // for reliability (49 specs still finish well inside R4's "≤10 min" budget); one retry
+  // absorbs a genuinely transient contention blip without masking a real failure (it would
+  // still fail twice).
+  workers: process.env.CI ? 1 : undefined,
+  retries: process.env.CI ? 1 : 0,
   expect: { timeout: 10_000 },
   // HTML report (traces/screenshots on failure) so the CI job's failure-artifact upload has
   // something to grab; 'never' skips auto-opening a browser tab in CI.
