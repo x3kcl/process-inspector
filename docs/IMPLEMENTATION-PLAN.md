@@ -1438,8 +1438,9 @@ around each task — swapped into all 7 `Executors.newVirtualThreadPerTaskExecut
 engine-health prober): `RequestIdFilter` bound `correlationId` to MDC on the request thread years
 ago, but every virtual-thread fan-out silently lost it (thread-locals don't inherit) until now.
 
-*Shipped — `GET /api/diag`* (new `DiagController`/`DiagService`, global `@rbac.atLeast(..,
-'ADMIN')`, not per-engine — fleet-wide BFF-process diagnostics): breaker states
+*Shipped — `GET /api/diag`* (new `DiagController`/`DiagService`): door check is `@rbac.atLeast(..,
+'ADMIN')` — ADMIN on at least one engine, the SAME coarse shape `AuditController#operationsLog`
+uses for the cross-engine operations log. Breaker states
 (`CircuitBreakerRegistry.getAllCircuitBreakers()`), cache AGES for the triage dashboard and
 leak-views (new `cacheAge()` accessors peeking each Caffeine cache's `asOf`-stamped current value
 via `asMap()`, never triggering the loader), bulk permit-pool saturation (new
@@ -1451,6 +1452,19 @@ Deliberately did NOT build the "targeted per-composite-ID derivation tracing wit
 line from OPERATIONS §2's aspirational text — a materially bigger feature layering a cached trace
 view on the EXISTING `EngineCallRecorder` (today only wired for on-demand "Explain this status"
 re-derivation), tracked separately.
+
+*Fixed post-adversarial-review, before merge:* the first cut's door check doubled as the ONLY
+check — every per-engine section (breakers/permits/recent-errors) went out fleet-wide to any
+caller who was ADMIN on even one engine, violating this codebase's own scope invariant
+(`ScopeGrant`: a grant on one engine/tenant authorizes nothing on another). Fixed by filtering
+each per-engine section, per entry, to engines the caller actually holds ADMIN on
+(`RbacAuthorizer.hasRoleOn`) — mirroring `AuditController#payloadVisible`'s coarse-door/fine-item
+shape exactly, no new grant type needed. Separately, `RecentEngineErrors` captured
+`Throwable.getMessage()` verbatim with no bound; a deserialization failure on a malformed or
+wire-shape-drifted engine response (`HttpMessageNotReadableException`/Jackson) can embed a
+snippet of response content in that message (confirmed `HttpStatusCodeException.getMessage()`
+itself does NOT — it's just `"<status> <reasonPhrase>"` — but the Jackson path can), so messages
+are now truncated to 500 chars before being stored.
 
 *Shipped — alert rules:* `deploy/prometheus/alert-rules.yml` (new), matching RUNBOOK §7's table —
 every expression checked against a real scrape, not assumed. `InspectorDown`,
@@ -1470,10 +1484,12 @@ a metric-based version needs new instrumentation this issue doesn't scope).
 `GuardedCallerTest` gains 2 new cases (timed success + timed failure, tag assertions).
 `MdcPropagatingExecutorsTest` (new, 4 rung-1 cases: context visible on the worker, no-context
 stays no-context, no cross-contamination between tasks on a shared executor, caller's own context
-untouched). `RecentEngineErrorsTest` (new, 5 cases: correlationId capture, null-safe with no MDC
-context, newest-first, limit respected, capacity eviction). `DiagServiceTest` (new, 2 cases,
-assembly from mocked sources). `DiagRbacSpringTest` (new, 3 cases: ADMIN reaches it, every lesser
-role 403s, unauthenticated 401s). `BulkJobServiceTest` gains a permit-gauge case.
+untouched). `RecentEngineErrorsTest` (new, 6 cases: correlationId capture, null-safe with no MDC
+context, newest-first, limit respected, capacity eviction, overlong message truncated). `DiagServiceTest`
+(new, 3 cases: assembly from mocked sources, per-engine scope filtering excludes a breaker/permit/
+recent-error the caller isn't ADMIN on, build-info presence). `DiagRbacSpringTest` (new, 3 cases:
+ADMIN reaches it, every lesser role 403s, unauthenticated 401s). `BulkJobServiceTest` gains a
+permit-gauge case.
 
 ## Build order inside any milestone
 backend DTO → engine client call → aggregator/join logic → controller → typed frontend API

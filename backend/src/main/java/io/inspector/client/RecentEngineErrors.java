@@ -23,6 +23,16 @@ public class RecentEngineErrors {
     /** Small and fixed — this is a "what just happened" glance, not an audit trail. */
     private static final int CAPACITY = 50;
 
+    /**
+     * A deserialization failure (e.g. {@code HttpMessageNotReadableException} on a malformed or
+     * wire-shape-drifted engine response) can embed a snippet of the offending response body in
+     * {@code getMessage()} — unlike {@code HttpStatusCodeException}, which is just "{@code <status>
+     * <reasonPhrase>}". Bounded defensively, same spirit as {@link
+     * io.inspector.audit.AuditService}'s snippet truncation, but far smaller: this is a glance, not
+     * a payload viewer.
+     */
+    private static final int MESSAGE_MAX_CHARS = 500;
+
     private final Clock clock;
     private final ConcurrentLinkedDeque<Entry> recent = new ConcurrentLinkedDeque<>();
 
@@ -39,7 +49,7 @@ public class RecentEngineErrors {
                 engineId,
                 leg,
                 error.getClass().getSimpleName(),
-                error.getMessage(),
+                truncate(error.getMessage()),
                 MDC.get(RequestIdFilter.MDC_KEY)));
         while (recent.size() > CAPACITY) {
             recent.removeLast();
@@ -56,5 +66,12 @@ public class RecentEngineErrors {
             out.add(e);
         }
         return out;
+    }
+
+    private static String truncate(String message) {
+        if (message == null || message.length() <= MESSAGE_MAX_CHARS) {
+            return message;
+        }
+        return message.substring(0, MESSAGE_MAX_CHARS) + "…";
     }
 }

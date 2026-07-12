@@ -12,9 +12,11 @@ import org.springframework.http.HttpStatus;
 import org.springframework.test.context.ActiveProfiles;
 
 /**
- * Rung 3 (issue #96, OPERATIONS.md §2): {@code GET /api/diag} is global ADMIN, not per-engine —
- * fleet-wide BFF-process diagnostics, so a lesser role (including an engine-scoped one) is
- * refused regardless of which engines it can operate on.
+ * Rung 3 (issue #96, OPERATIONS.md §2): {@code GET /api/diag}'s door check is "ADMIN somewhere" —
+ * a lesser role anywhere is refused outright, regardless of which engines it can operate on. Dev
+ * basic-auth sessions carry global-scope {@code ROLE_*} authorities (RbacAuthorizer), so this
+ * harness can't exercise the finer per-engine filtering of the diagnostic sections themselves —
+ * that's covered directly, with mocked scoped grants, by {@code DiagServiceTest}.
  */
 @SpringBootTest(webEnvironment = SpringBootTest.WebEnvironment.RANDOM_PORT)
 @ActiveProfiles("test")

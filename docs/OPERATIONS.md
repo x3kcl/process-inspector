@@ -25,9 +25,15 @@ R-SAFE-06/07 (REQUIREMENTS-REGISTER.md).
 > `oidc` prod-like profile — dev/test/it-* stay human-readable) **and correlationId MDC
 > propagation across the virtual-thread fan-out** (`MdcPropagatingExecutors`, swapped into every
 > `Executors.newVirtualThreadPerTaskExecutor()` call site) are **built**. **`GET /api/diag`
-> (ADMIN-gated) is built**: breaker states, cache AGES (triage dashboard + leak-views), bulk
-> permit-pool saturation, the last 20 engine-call failures with correlationIds, build info (absent
-> outside a `mvn package` build). **Remaining gap, honestly not built:** triage-cache **hit rate**
+> (door gate: ADMIN on at least one engine) is built**: breaker states, cache AGES (triage
+> dashboard + leak-views), bulk permit-pool saturation, the last 20 engine-call failures with
+> correlationIds, build info (absent outside a `mvn package` build). Per-engine sections
+> (breakers/permits/recent-errors) are filtered to engines the caller actually holds ADMIN on —
+> same coarse-door/fine-item shape as the operations log (`AuditController#payloadVisible`); a
+> per-engine-scoped ADMIN never sees another engine's diagnostics through this endpoint.
+> `RecentEngineErrors` truncates captured exception messages to 500 chars (a malformed/wire-shape-
+> drifted response can otherwise embed a body snippet via Jackson's deserialization-failure
+> message). **Remaining gap, honestly not built:** triage-cache **hit rate**
 > (age is emitted; a hit/miss ratio needs `Caffeine.recordStats()` + a Micrometer binder — outside
 > issue #96's stated scope) and `/api/diag`'s "targeted per-composite-ID derivation tracing with
 > 15-min TTL" (a materially bigger feature layering a cached trace view on the EXISTING
@@ -45,8 +51,10 @@ R-SAFE-06/07 (REQUIREMENTS-REGISTER.md).
   audit row, returned in every error envelope and UI toast. Never log secrets or variable
   payloads at INFO.
 - ADMIN diagnostics `GET /api/diag` (v1.x): breaker states, cache AGES, permit-pool saturation,
-  last-N engine errors with correlationIds, build info. Targeted per-composite-ID derivation
-  tracing with a 15-min TTL is NOT built (see status note above).
+  last-N engine errors with correlationIds, build info. Door gate is "ADMIN on at least one
+  engine"; per-engine sections are then filtered to engines the caller holds ADMIN on (see status
+  note above). Targeted per-composite-ID derivation tracing with a 15-min TTL is NOT built (see
+  status note above).
 
 ## 3. Who watches the watcher (R-OPS-03)
 The Inspector is probed by **external** monitoring. Alert rules (issue #96,

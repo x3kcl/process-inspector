@@ -72,6 +72,16 @@ class RecentEngineErrorsTest {
     }
 
     @Test
+    void anOverlongMessageIsTruncatedRatherThanCarriedVerbatim() {
+        String huge = "x".repeat(2_000);
+
+        errors.record("engine-a", "INTERACTIVE", new RuntimeException(huge));
+
+        String message = errors.recent(1).get(0).message();
+        assertThat(message).hasSize(501).endsWith("…"); // 500 chars + ellipsis marker
+    }
+
+    @Test
     void theCapacityBoundEvictsTheOldestEntryRatherThanGrowingUnbounded() {
         for (int i = 0; i < 60; i++) {
             errors.record("engine-a", "INTERACTIVE", new RuntimeException("err-" + i));
