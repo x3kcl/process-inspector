@@ -84,6 +84,13 @@ push) to Public.
 images to both registries as `:edge` + `:sha-<short7>` (`publish-edge.yml`; `workflow_run`-triggered
 so a red main never ships a build — the green-main doctrine applied to publishing). Pinned
 release tags are never moved by edge builds.
+**Docker Hub overviews:** each Docker Hub repo's Overview (long + short description) is
+sourced from `docker/dockerhub/process-inspector-{bff,web}.md` and pushed by
+`dockerhub-readme.yml` (peter-evans/dockerhub-description) on any main push that touches those
+files or the workflow, and on demand (`workflow_dispatch`). It only rewrites metadata — never
+builds an image — and uses the same `DOCKERHUB_USERNAME` / `DOCKERHUB_TOKEN` secrets (the
+token needs Read & Write). ghcr derives its package README from the repo, so no sync is needed
+there.
 **Cutting a version without local git:** Actions → `cut-release` → Run workflow → pick
 patch/minor/major. It refuses a `main` HEAD without a green `ci` run, computes the next
 semver from the latest *stable* tag (prereleases never advance the baseline), pushes the
