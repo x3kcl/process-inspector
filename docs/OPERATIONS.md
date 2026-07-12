@@ -69,17 +69,21 @@ window ≤2 min, announced in the support channel. Before planned restarts:
 `index.html` no-cache, hashed assets immutable, `/api/meta` + `X-Inspector-Version`,
 mismatch → non-blocking reload banner; dynamic-import failure → reload prompt.
 **Versioned image releases:** pushing a `v*` tag runs `.github/workflows/release.yml` on the
-self-hosted runner — builds the two shipping images and publishes them to
-`ghcr.io/x3kcl/process-inspector-{bff,web}` (semver + `latest` for stable; prerelease tags
-like `v1.2.3-rc1` publish only their literal version, never move `latest`, and mark the
-GitHub Release as prerelease), then creates the Release with
-`docker/docker-compose.release.yml` attached as the consumer quick-start. Auth is the
-workflow `GITHUB_TOKEN` (`packages: write`) — no extra secret. One-time after first publish:
-flip both ghcr packages to public visibility.
+self-hosted runner — builds the two shipping images and publishes each to **both**
+`docker.io/x3kcl/process-inspector-{bff,web}` and `ghcr.io/x3kcl/process-inspector-{bff,web}`
+in one build (docker/metadata-action lists both names) (semver + `latest` for stable;
+prerelease tags like `v1.2.3-rc1` publish only their literal version, never move `latest`,
+and mark the GitHub Release as prerelease), then creates the Release with
+`docker/docker-compose.release.yml` attached as the consumer quick-start (defaults to Docker
+Hub; `PI_REGISTRY=ghcr.io/x3kcl` overrides). Auth: the workflow `GITHUB_TOKEN`
+(`packages: write`) for ghcr, plus the `DOCKERHUB_USERNAME` / `DOCKERHUB_TOKEN` repo secrets
+(a Read-&-Write Docker Hub access token) for Docker Hub. One-time after first publish: flip
+both ghcr packages to public visibility, and set both Docker Hub repos (auto-created on first
+push) to Public.
 **Continuous edge builds:** every **green** `ci` run on `main` auto-publishes the same two
-images as `:edge` + `:sha-<short7>` (`publish-edge.yml`; `workflow_run`-triggered so a red
-main never ships a build — the green-main doctrine applied to publishing). Pinned release
-tags are never moved by edge builds.
+images to both registries as `:edge` + `:sha-<short7>` (`publish-edge.yml`; `workflow_run`-triggered
+so a red main never ships a build — the green-main doctrine applied to publishing). Pinned
+release tags are never moved by edge builds.
 **Cutting a version without local git:** Actions → `cut-release` → Run workflow → pick
 patch/minor/major. It refuses a `main` HEAD without a green `ci` run, computes the next
 semver from the latest *stable* tag (prereleases never advance the baseline), pushes the
