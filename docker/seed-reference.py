@@ -193,15 +193,15 @@ def deploy_all_versions(engine, key, tenant):
     DEPLOYMENT level, so starting an instance with a given tenantId requires the definition
     to have been deployed under that same tenant, not just tagged at start time. Each
     deployment's differing <documentation> forces a new version rather than a dedupe.
-    Idempotent: if the definition is already at version 3 for this tenant, skip (re-running
-    the seeder must not keep minting versions)."""
+    Idempotent: deploys only the versions still missing up to len(VERSIONS), so a re-run
+    after a partial prior run (e.g. crashed after version 2) tops up to exactly 3 rather
+    than minting versions 3..5 on top of the existing 1..2."""
     existing = call(
         engine,
         f"/repository/process-definitions?key={key}&tenantId={tenant}&sort=version&order=desc&size=1",
     )
-    if existing["total"] > 0 and existing["data"][0]["version"] >= len(VERSIONS):
-        return
-    for v in VERSIONS:
+    current = existing["data"][0]["version"] if existing["total"] > 0 else 0
+    for v in VERSIONS[current:]:
         deploy_version(engine, key, tenant, f"{key}[{tenant}] reference-dataset version {v}")
     total = call(engine, f"/repository/process-definitions?key={key}&tenantId={tenant}&latest=true")["total"]
     if total == 0:
@@ -247,10 +247,13 @@ def plan_starts(scale):
     active = round(ACTIVE_HEALTHY_TOTAL * scale)
     deadletter = round(DEADLETTER_TOTAL * scale)
     suspended = round(SUSPENDED_TOTAL * scale)
+    dl_modes = [1, 2, 3, 4]
     items = (
         [0] * historic
         + [5] * active
-        + [1, 2, 3, 4] * (deadletter // 4)
+        # round-robin over the 4 modes for the EXACT count, not a floor(deadletter/4)*4
+        # truncation (which silently drops the remainder and understates small-scale runs).
+        + [dl_modes[i % 4] for i in range(deadletter)]
         + [5] * suspended  # suspended instances start on the SAME parked path, then get suspended
     )
     return items, suspended

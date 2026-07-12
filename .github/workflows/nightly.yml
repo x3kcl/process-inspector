@@ -182,6 +182,7 @@ jobs:
           name: k6-summary-p1
           path: /tmp/k6-summary-p1.json
           retention-days: 90
+          if-no-files-found: warn
       - name: Dump BFF log
         if: failure()
         run: tail -200 /tmp/bff-perf.log || true
