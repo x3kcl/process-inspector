@@ -24,6 +24,7 @@
     <wiremock.version>3.13.2</wiremock.version>
     <archunit.version>1.4.2</archunit.version>
     <spotless.version>2.46.1</spotless.version>
+    <jacoco.version>0.8.13</jacoco.version>
     <!-- CI matrix legs skip the unit suite (already run in the unit job) without
          killing failsafe: -Dskip.surefire.tests=true. -DskipTests would skip both. -->
     <skip.surefire.tests>false</skip.surefire.tests>
@@ -184,6 +185,31 @@
             <goals>
               <goal>integration-test</goal>
               <goal>verify</goal>
+            </goals>
+          </execution>
+        </executions>
+      </plugin>
+      <!-- Test-support consolidation (Q8, issue #90): MEASURE line/branch coverage on every
+           `mvn test` run (report at target/site/jacoco/index.html + jacoco.xml), report-only —
+           no `check` goal, no threshold, nothing gates on it here. TEST-STRATEGY.md's coverage
+           floors were previously an unfalsifiable claim (no tool anywhere measured them); this
+           makes the number real and visible before any gate is added on top of it. -->
+      <plugin>
+        <groupId>org.jacoco</groupId>
+        <artifactId>jacoco-maven-plugin</artifactId>
+        <version>${jacoco.version}</version>
+        <executions>
+          <execution>
+            <id>prepare-agent</id>
+            <goals>
+              <goal>prepare-agent</goal>
+            </goals>
+          </execution>
+          <execution>
+            <id>report</id>
+            <phase>test</phase>
+            <goals>
+              <goal>report</goal>
             </goals>
           </execution>
         </executions>

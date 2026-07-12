@@ -6,7 +6,7 @@ import reactHooks from 'eslint-plugin-react-hooks'
 import prettier from 'eslint-config-prettier'
 
 export default tseslint.config(
-  { ignores: ['dist/**', 'node_modules/**', 'src/api/schema.d.ts'] },
+  { ignores: ['dist/**', 'node_modules/**', 'coverage/**', 'src/api/schema.d.ts'] },
   {
     files: ['src/**/*.{ts,tsx}'],
     extends: [eslint.configs.recommended, ...tseslint.configs.strictTypeChecked],

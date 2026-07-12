@@ -8,6 +8,7 @@ import io.inspector.config.InspectorProperties.EngineConfig;
 import io.inspector.config.InspectorProperties.EngineEnvironment;
 import io.inspector.config.InspectorProperties.EngineMode;
 import io.inspector.config.InspectorProperties.Timeouts;
+import io.inspector.support.TestEngines;
 import java.time.Instant;
 import org.junit.jupiter.api.Test;
 
@@ -21,21 +22,20 @@ class EngineRegistryMapperTest {
     private static final Instant NOW = Instant.parse("2026-07-09T10:00:00Z");
 
     private static EngineConfig engine(String id, boolean enabled, EngineMode mode, EngineEnvironment env, Auth auth) {
-        return new EngineConfig(
-                id,
-                "Name " + id,
-                "http://host/flowable-rest/service",
-                env,
-                "#123456",
-                enabled,
-                "tenant-1",
-                "https://apm/{processInstanceId}",
-                auth,
-                mode,
-                new Timeouts(1000, 5000, 7000),
-                150,
-                999,
-                new AlarmThresholds(3, 9, 42));
+        return TestEngines.builder(id, "http://host/flowable-rest/service")
+                .name("Name " + id)
+                .environment(env)
+                .accentColor("#123456")
+                .enabled(enabled)
+                .tenantId("tenant-1")
+                .telemetryUrlTemplate("https://apm/{processInstanceId}")
+                .auth(auth)
+                .mode(mode)
+                .timeouts(new Timeouts(1000, 5000, 7000))
+                .maxPageSize(150)
+                .dlqScanCap(999)
+                .alarmThresholds(new AlarmThresholds(3, 9, 42))
+                .build();
     }
 
     @Test
