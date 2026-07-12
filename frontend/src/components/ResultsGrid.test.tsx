@@ -3,6 +3,7 @@
 // grid cell opens the instance detail through the SAME handler as double-click, and
 // the affordance is visibly hinted next to the selection hint.
 import { cleanup, fireEvent, render, screen, waitFor } from '@testing-library/react'
+import { MemoryRouter } from 'react-router'
 import { afterEach, beforeAll, describe, expect, it, vi } from 'vitest'
 import type { EngineDto, ProcessInstanceRow, SearchResponse } from '../api/model'
 import { ResultsGrid } from './ResultsGrid'
@@ -42,7 +43,9 @@ const enginesById = new Map<string, EngineDto>([
 
 async function renderGrid(onOpenDetails: (opened: ProcessInstanceRow) => void) {
   render(
-    <ResultsGrid response={response} enginesById={enginesById} onOpenDetails={onOpenDetails} />,
+    <MemoryRouter>
+      <ResultsGrid response={response} enginesById={enginesById} onOpenDetails={onOpenDetails} />
+    </MemoryRouter>,
   )
   // AG Grid renders rows asynchronously — wait for the business-key cell.
   await waitFor(() => screen.getByText('ORDER-77'))
@@ -73,6 +76,13 @@ describe('ResultsGrid keyboard row-open (R-UXQ-02)', () => {
     expect(hint.textContent).toMatch(/Enter/)
     expect(hint.textContent).toMatch(/Space/)
   })
+
+  it('renders a visible Open link to the instance detail (U1) so row-open is not mouse-only', async () => {
+    await renderGrid(vi.fn())
+    const link = screen.getByRole('link', { name: /open/i })
+    // Same target onOpenDetails navigates to (double-click / Enter), now discoverable + focusable.
+    expect(link.getAttribute('href')).toBe('/inspect/engine-a/pi-1')
+  })
 })
 
 describe('ResultsGrid root-vs-child marker (W2 #7, R-UXQ-12)', () => {
@@ -85,11 +95,13 @@ describe('ResultsGrid root-vs-child marker (W2 #7, R-UXQ-12)', () => {
       superProcessInstanceId: 'pi-1',
     }
     render(
-      <ResultsGrid
-        response={{ rows: [row, child], perEngine: { 'engine-a': { ok: true, total: 2 } } }}
-        enginesById={enginesById}
-        onOpenDetails={vi.fn()}
-      />,
+      <MemoryRouter>
+        <ResultsGrid
+          response={{ rows: [row, child], perEngine: { 'engine-a': { ok: true, total: 2 } } }}
+          enginesById={enginesById}
+          onOpenDetails={vi.fn()}
+        />
+      </MemoryRouter>,
     )
     await waitFor(() => screen.getAllByText('ORDER-77'))
     const markers = screen.getAllByText(/↳ child/)
