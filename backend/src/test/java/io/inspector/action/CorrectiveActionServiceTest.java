@@ -18,6 +18,7 @@ import io.inspector.audit.AuditEntry;
 import io.inspector.audit.AuditOutcome;
 import io.inspector.audit.AuditService;
 import io.inspector.audit.AuditUnavailableException;
+import io.inspector.audit.BreakGlassActor;
 import io.inspector.audit.ProtectedInstance;
 import io.inspector.audit.ProtectedInstanceRepository;
 import io.inspector.client.FlowableEngineClient;
@@ -143,6 +144,45 @@ class CorrectiveActionServiceTest {
                 .satisfies(e -> assertThat(((GuardRefusedException) e).code()).isEqualTo("rbac-denied"));
         verifyNoInteractions(audit);
         verifyNoInteractions(client);
+    }
+
+    @Test
+    void executeSetsTheBreakGlassMarkerFromTheAuthAndClearsIt() {
+        // S7: on a bulk virtual-thread worker the SecurityContextHolder is empty, so the break-glass
+        // flag on each per-item audit row must come from the BreakGlassActor marker this service sets
+        // from the PASSED auth. Capture the marker at the instant the row is written, and prove it is
+        // cleared afterward so it never leaks onto a reused carrier thread.
+        Authentication breakGlass = new TestingAuthenticationToken("sealed", "n/a", "ROLE_ADMIN", "ROLE_BREAK_GLASS");
+        when(rbac.isBreakGlass(breakGlass)).thenReturn(true);
+        AtomicReference<Boolean> markerWhenRowWritten = new AtomicReference<>();
+        when(audit.beginPending(any(), any(), any(), any(), any(), any(), any(), any(), any()))
+                .thenAnswer(inv -> {
+                    markerWhenRowWritten.set(BreakGlassActor.current());
+                    return pendingEntry;
+                });
+        org.springframework.security.core.context.SecurityContextHolder.clearContext();
+
+        service.execute(DEV, "pi-1", ActionVerb.RETRY_JOB, retryRequest(), breakGlass);
+
+        assertThat(markerWhenRowWritten.get()).isTrue();
+        assertThat(BreakGlassActor.current()).isFalse();
+    }
+
+    @Test
+    void executeDoesNotMarkBreakGlassForAnOrdinarySession() {
+        when(rbac.isBreakGlass(operator)).thenReturn(false);
+        AtomicReference<Boolean> markerWhenRowWritten = new AtomicReference<>();
+        when(audit.beginPending(any(), any(), any(), any(), any(), any(), any(), any(), any()))
+                .thenAnswer(inv -> {
+                    markerWhenRowWritten.set(BreakGlassActor.current());
+                    return pendingEntry;
+                });
+        org.springframework.security.core.context.SecurityContextHolder.clearContext();
+
+        service.execute(DEV, "pi-1", ActionVerb.RETRY_JOB, retryRequest(), operator);
+
+        assertThat(markerWhenRowWritten.get()).isFalse();
+        assertThat(BreakGlassActor.current()).isFalse();
     }
 
     @Test

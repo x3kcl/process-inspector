@@ -6,6 +6,7 @@ import io.inspector.audit.AuditEntry;
 import io.inspector.audit.AuditOutcome;
 import io.inspector.audit.AuditService;
 import io.inspector.audit.AuditUnavailableException;
+import io.inspector.audit.BreakGlassActor;
 import io.inspector.audit.ProtectedInstance;
 import io.inspector.audit.ProtectedInstanceRepository;
 import io.inspector.client.FlowableEngineClient;
@@ -133,64 +134,82 @@ public class CorrectiveActionService {
         Target target = restateTarget(scope, engine, verb, targetId, request);
         requireConfirmToken(engine, verb, target, request);
 
-        // -- fail-closed audit gate (R-AUD-01): beyond this point the attempt is on record --
-        AuditEntry entry = audit.beginPending(
-                auth.getName(),
-                engineId,
-                blankToNull(engine.tenantId()),
-                verb.targetKind() == ActionVerb.TargetKind.INSTANCE ? targetId : null,
-                verb.path(),
-                reason,
-                ticketId,
-                target.auditPayload(),
-                engine.auditPayloadOrDefault());
-
-        // -- CAS pre-check (audited: the last shift must see the refused attempt) --
-        if (verb == ActionVerb.EDIT_VARIABLE) {
-            Object current = target.currentVariableValue();
-            Object expected = request.variable().expectedOldValue();
-            if (!sameValue(expected, current)) {
-                audit.close(entry, AuditOutcome.failed, 409, "CAS conflict: current value differs", false);
-                throw new CasConflictException(entry.getId(), request.variable().name(), current, expected);
-            }
-        }
-
-        // -- the one engine call --
-        // Forward the acting human (== this audit row's actor) to identity-forwarding engines, set on
-        // the dispatching thread so bulk virtual-thread workers carry it too (M4-CLOSEOUT §2 / D2a).
-        ForwardedActor.set(entry.forwardedIdentity());
+        // -- break-glass marker (S7): set from the PASSED auth on the dispatching thread BEFORE the
+        // audit row is written, so a bulk job submitted under a sealed-account session flags EVERY
+        // per-item row breakGlass=true. On a bulk virtual-thread worker the SecurityContextHolder is
+        // empty (identity is threaded, not inherited), so AuditService's context read alone would
+        // silently drop the flag on the items. Cleared in the finally below (never leaks). On the
+        // ordinary request thread this is redundant with the context read — harmless. --
+        BreakGlassActor.set(rbac.isBreakGlass(auth));
         try {
-            dispatch(scope, engine, verb, targetId, request);
-        } catch (CallNotPermittedException | BulkheadFullException e) {
-            // Do-no-harm: the breaker/bulkhead refused BEFORE any bytes left — nothing happened.
-            audit.close(entry, AuditOutcome.failed, null, "refused: circuit open / bulkhead full", false);
-            throw new GuardRefusedException(
-                    HttpStatus.SERVICE_UNAVAILABLE,
-                    "engine-shedding-load",
-                    "Engine '" + engineId + "' is shedding load (circuit open) — the action was not sent.");
-        } catch (RestClientResponseException e) {
-            String body = e.getResponseBodyAsString();
-            audit.close(entry, AuditOutcome.failed, e.getStatusCode().value(), body, false);
-            throw new EngineRejectedException(entry.getId(), e.getStatusCode().value(), body);
-        } catch (ResourceAccessException e) {
-            if (notDispatched(e)) {
-                audit.close(entry, AuditOutcome.failed, null, "engine unreachable: " + e.getMessage(), false);
-                throw new GuardRefusedException(
-                        HttpStatus.BAD_GATEWAY,
-                        "engine-unreachable",
-                        "Engine '" + engineId + "' is unreachable — the action was not sent.");
-            }
-            // Timed out AFTER dispatch: the engine may have applied it. UNKNOWN, never re-fired.
-            audit.close(entry, AuditOutcome.unknown, null, "no answer within write budget: " + e.getMessage(), false);
-            throw new OutcomeUnknownException(entry.getId(), e);
-        } finally {
-            ForwardedActor.clear();
-        }
+            // -- fail-closed audit gate (R-AUD-01): beyond this point the attempt is on record --
+            AuditEntry entry = audit.beginPending(
+                    auth.getName(),
+                    engineId,
+                    blankToNull(engine.tenantId()),
+                    verb.targetKind() == ActionVerb.TargetKind.INSTANCE ? targetId : null,
+                    verb.path(),
+                    reason,
+                    ticketId,
+                    target.auditPayload(),
+                    engine.auditPayloadOrDefault());
 
-        // -- dual-write close-out (R-SEM-18): a failure HERE is the specialized error --
-        audit.close(entry, AuditOutcome.ok, 200, null, true);
-        return new ActionResult(
-                entry.getId(), entry.getCorrelationId(), "ok", 200, deltaStatement(verb, targetId, request, target));
+            // -- CAS pre-check (audited: the last shift must see the refused attempt) --
+            if (verb == ActionVerb.EDIT_VARIABLE) {
+                Object current = target.currentVariableValue();
+                Object expected = request.variable().expectedOldValue();
+                if (!sameValue(expected, current)) {
+                    audit.close(entry, AuditOutcome.failed, 409, "CAS conflict: current value differs", false);
+                    throw new CasConflictException(
+                            entry.getId(), request.variable().name(), current, expected);
+                }
+            }
+
+            // -- the one engine call --
+            // Forward the acting human (== this audit row's actor) to identity-forwarding engines, set on
+            // the dispatching thread so bulk virtual-thread workers carry it too (M4-CLOSEOUT §2 / D2a).
+            ForwardedActor.set(entry.forwardedIdentity());
+            try {
+                dispatch(scope, engine, verb, targetId, request);
+            } catch (CallNotPermittedException | BulkheadFullException e) {
+                // Do-no-harm: the breaker/bulkhead refused BEFORE any bytes left — nothing happened.
+                audit.close(entry, AuditOutcome.failed, null, "refused: circuit open / bulkhead full", false);
+                throw new GuardRefusedException(
+                        HttpStatus.SERVICE_UNAVAILABLE,
+                        "engine-shedding-load",
+                        "Engine '" + engineId + "' is shedding load (circuit open) — the action was not sent.");
+            } catch (RestClientResponseException e) {
+                String body = e.getResponseBodyAsString();
+                audit.close(entry, AuditOutcome.failed, e.getStatusCode().value(), body, false);
+                throw new EngineRejectedException(
+                        entry.getId(), e.getStatusCode().value(), body);
+            } catch (ResourceAccessException e) {
+                if (notDispatched(e)) {
+                    audit.close(entry, AuditOutcome.failed, null, "engine unreachable: " + e.getMessage(), false);
+                    throw new GuardRefusedException(
+                            HttpStatus.BAD_GATEWAY,
+                            "engine-unreachable",
+                            "Engine '" + engineId + "' is unreachable — the action was not sent.");
+                }
+                // Timed out AFTER dispatch: the engine may have applied it. UNKNOWN, never re-fired.
+                audit.close(
+                        entry, AuditOutcome.unknown, null, "no answer within write budget: " + e.getMessage(), false);
+                throw new OutcomeUnknownException(entry.getId(), e);
+            } finally {
+                ForwardedActor.clear();
+            }
+
+            // -- dual-write close-out (R-SEM-18): a failure HERE is the specialized error --
+            audit.close(entry, AuditOutcome.ok, 200, null, true);
+            return new ActionResult(
+                    entry.getId(),
+                    entry.getCorrelationId(),
+                    "ok",
+                    200,
+                    deltaStatement(verb, targetId, request, target));
+        } finally {
+            BreakGlassActor.clear();
+        }
     }
 
     /* ------------------------------- guards ------------------------------- */

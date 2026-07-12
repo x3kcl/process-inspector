@@ -54,6 +54,33 @@ class AuditServiceTest {
     }
 
     @Test
+    void breakGlassMarkerFlagsTheRowEvenWithAnEmptySecurityContext() {
+        // S7: a bulk virtual-thread worker has an EMPTY SecurityContextHolder (identity is threaded,
+        // not inherited). CorrectiveActionService sets the BreakGlassActor marker from the submitter's
+        // auth before the row is written — so the per-item audit row must still be flagged breakGlass.
+        when(repository.findTopByOrderBySeqDesc()).thenReturn(Optional.empty());
+        org.springframework.security.core.context.SecurityContextHolder.clearContext();
+        BreakGlassActor.set(true);
+        try {
+            AuditEntry entry = service.beginPending(
+                    "sealed-admin", "engine-a", null, "pi-1", "retry-job", "incident bridge", null, Map.of());
+            assertThat(entry.isBreakGlass()).isTrue();
+        } finally {
+            BreakGlassActor.clear();
+        }
+    }
+
+    @Test
+    void noMarkerAndNoContextLeavesTheRowUnflagged() {
+        when(repository.findTopByOrderBySeqDesc()).thenReturn(Optional.empty());
+        org.springframework.security.core.context.SecurityContextHolder.clearContext();
+        BreakGlassActor.clear();
+        AuditEntry entry =
+                service.beginPending("operator", "engine-a", null, "pi-1", "retry-job", "routine", null, Map.of());
+        assertThat(entry.isBreakGlass()).isFalse();
+    }
+
+    @Test
     void beginPendingFailsClosedOnAnyPersistenceFailure() {
         when(repository.findTopByOrderBySeqDesc()).thenReturn(Optional.empty());
         when(repository.saveAndFlush(any(AuditEntry.class)))

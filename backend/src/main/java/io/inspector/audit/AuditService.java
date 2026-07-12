@@ -287,8 +287,18 @@ public class AuditService {
      * context at write time so EVERY mutation audited under a sealed-account session is flagged
      * {@code breakGlass:true} (first in the shift report) without threading a flag through every
      * caller. Marker-only ({@code ROLE_BREAK_GLASS}); the grant itself is {@code ROLE_ADMIN}.
+     *
+     * <p>S7: on a {@code BulkJobService} virtual-thread worker the {@code SecurityContextHolder} is
+     * EMPTY (the acting identity is threaded as an explicit {@code Authentication}, and thread-locals
+     * don't inherit onto the worker), so a job submitted under break-glass would record
+     * {@code breakGlass=false} on its per-item rows. {@link BreakGlassActor} — set by
+     * {@code CorrectiveActionService} (the per-item executor) from the passed auth on the dispatching
+     * thread — is consulted as a fallback so the flag survives the bulk fan-out.
      */
     private static boolean currentSessionIsBreakGlass() {
+        if (BreakGlassActor.current()) {
+            return true;
+        }
         org.springframework.security.core.Authentication auth =
                 org.springframework.security.core.context.SecurityContextHolder.getContext()
                         .getAuthentication();
