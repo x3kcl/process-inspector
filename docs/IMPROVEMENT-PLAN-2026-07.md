@@ -112,7 +112,9 @@ Seat IDs preserved: **F** = backend architecture, **S** = security, **U** = fron
   `role="option"` children) is now a plain `role="region"` link list; the axe gate is live.
 - **Q7/Q8** — No release mechanism (no tags, image built `push: false`, demo deploys from
   working tree, rollback = rebuild-while-down); coverage floors claimed "gating from M3" with
-  no jacoco/vitest-coverage anywhere.
+  no jacoco/vitest-coverage anywhere. **Q7 LANDED 2026-07-13 (#92)** — see item 21 below; the
+  demo compose no longer builds from the working tree, pins by digest, has a rollback script
+  and per-deploy git tags. **Q8 (coverage-floor gating) remains open.**
 - **F7/F8/F9/U6/U9/Q9/Q10** — smaller: businessKeyLike canary uncached per search; copy-pasted
   row-parsing helpers; stale client javadoc; dark theme/density/column chooser still open on a
   3,128-line untokenized stylesheet; query keys as scattered literals; OPERATIONS §8 stale both
@@ -366,7 +368,10 @@ tests + spec-sync in the same PR, and follows green-ci.
 20. **Registry S4b (deferred from CRUD build)** — four-eyes on registry writes (reuse the V14
     proposal pattern) + socket connect-time IP-pinning closing the validate→connect TOCTOU.
 21. **Release mechanics (Q7)** — GHCR push on green main (buildx already wired), demo compose
-    pins by digest, rollback = repoint; git tags per deploy.
+    pins by digest, rollback = repoint; git tags per deploy. **LANDED 2026-07-13 (#92):** demo
+    compose pinned by digest, `deploy-demo.sh`/`rollback-demo.sh`, per-deploy git tags,
+    RUNBOOK §8; CI records image digests. Live cutover of pi.naumann.cloud + an against-prod
+    rollback drill are the one deliberately-not-automated piece — see IMPLEMENTATION-PLAN.md.
 22. **Supply-chain gates** *(external-review addition)* — Trivy image scan + SBOM + dependency
     audit (OWASP dep-check / `npm audit`) in the nightly; k6 P1 wiring + FIX-REF-01 dataset
     (C-10/C-11); smaller F7/F8/U9/U10 cleanups ride along as they touch files.

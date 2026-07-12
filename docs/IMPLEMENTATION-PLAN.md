@@ -1491,6 +1491,69 @@ recent-error the caller isn't ADMIN on, build-info presence). `DiagRbacSpringTes
 ADMIN reaches it, every lesser role 403s, unauthenticated 401s). `BulkJobServiceTest` gains a
 permit-gauge case.
 
+### P2 #21 — Release mechanics remainder (Q7) *(✅ code landed 2026-07-13, issue #92; live cutover/drill still pending human action)*
+`docs/IMPROVEMENT-PLAN-2026-07.md` §2 P2 item 21's remaining slivers, after PR #68/#80 shipped
+the GHCR publish pipeline (`:edge`/`:sha-<short7>` on green main, `:vX.Y.Z`/`latest` on a
+version tag) and v0.1.0 released with public packages.
+
+*Shipped — digest capture:* `release.yml` and `publish-edge.yml` both give their
+`docker/build-push-action@v6` steps an `id:` and add a step reading `steps.<id>.outputs.digest`
+into `$GITHUB_STEP_SUMMARY`; `release.yml`'s GitHub Release body also gets a "Digests" section
+so a versioned release's exact image identity outlives the transient job summary.
+
+*Shipped — demo pinned by digest:* `docker/docker-compose.demo.yml`'s `backend`/`frontend`
+switch from `build:` (rebuild-from-working-tree — confirmed that's what was actually
+happening, `docker/DEMO-DEPLOY.md`'s old deploy command was `up -d --build`) to
+`image: ghcr.io/x3kcl/process-inspector-{bff,web}@${PI_BFF_DIGEST:?...}` — a required env var
+with a fail-loud default, never silently building from source or floating to whatever `:edge`
+resolves to at pull time. New `docker/deploy-demo.sh` resolves a tag's current digest via
+`docker buildx imagetools inspect` (registry metadata only, no pull), writes it into
+`docker/.env.demo`, redeploys, verifies the standard `/api/engines` 401 probe, then commits +
+tags the result `demo-YYYY-MM-DD-<shortsha>` — that file's git history is the attribution
+record ("git tag per demo deploy" from the issue). Does not auto-push; publishing the
+attribution commit/tag is a separate, printed, deliberate step.
+
+*Shipped — rollback:* new `docker/rollback-demo.sh <demo-tag>` restores a PRIOR deploy's
+*exact* digest pair straight from git history (`git show <tag>:docker/.env.demo`) rather than
+re-resolving a tag (which would be wrong — `:edge` moves). RUNBOOK.md §8 (new) documents the
+symptom → command → verification shape, mirroring §5's Postgres-restore entry.
+
+*Fixed post-adversarial-review, before merge:* Copilot + Gemini review of the first cut (Gemini
+hit a persistent 429 mid-review but did its own empirical bash verification instead of
+guessing) surfaced 5 real bugs in the two scripts, all confirmed by direct reproduction in a
+scratch git repo and fixed: (1) the deploy's `git commit`/rollback's `git commit` both aborted
+the whole script under `set -e` on a no-op redeploy ("nothing to commit" is exit 1) — both now
+`git diff --cached --quiet` first and exit 0 cleanly; (2) the demo-tag name was computed
+BEFORE the commit it names, so it embedded the PARENT commit's short-sha while the tag itself
+resolved to the new commit — moved the `TAG=` line after `git commit`; (3) `resolve_digest()`'s
+`sha256:...` passthrough branch ignored which image (`$1`) was being resolved, silently
+pinning both BFF and web to the same digest — removed the passthrough entirely (rollback is
+the correct tool for "go back to an exact prior state", not a raw-digest arg to the deploy
+script); (4) `rollback-demo.sh`'s `git show ... > "$ENV_FILE"` truncated the target file as
+part of shell-redirection setup BEFORE `git show`'s exit status was known, so a failing show
+could silently zero out `docker/.env.demo` — now writes to a `mktemp` file first, checked, then
+`mv`'d into place; (5) a failed post-deploy verify probe only warned and still committed+tagged
+the bad state as "the" attribution record, inconsistent with rollback's (correct) exit-before-
+commit — deploy now matches rollback's fail-before-commit posture. Also added digest-format
+validation (`^sha256:[0-9a-f]{64}$`) before writing any resolved value into `.env.demo`, closing
+a gap where `jq -r '.digest'` silently prints the literal string `"null"` (exit 0) if a
+manifest's digest field were ever absent.
+
+*Deliberately not done here, honestly flagged rather than silently skipped:* the actual live
+cutover of pi.naumann.cloud to digest pinning, and an against-prod rollback drill, were NOT
+performed as part of this change — this dev box IS hp04 (the same Docker daemon also runs
+unrelated personal-cloud services behind the same Traefik), so touching the live deploy is a
+deliberate, human-confirmed action, not something a background issue-implementation pass
+should do on its own. What WAS verified: `docker/deploy-demo.sh --dry-run edge` against the
+real published images (digest resolution succeeds), `docker compose config` fails closed on
+the committed (empty) `docker/.env.demo`, and succeeds once real digests are substituted.
+RUNBOOK §8 records this distinction explicitly so "drilled" isn't overclaimed.
+
+*Tests:* none added — this is deploy tooling (bash + YAML + workflow config), not application
+code; verified via `bash -n` (both scripts), a live `--dry-run` resolve against the real GHCR
+images, and `docker compose config` fail-closed/success checks (see above). `mvn -o test` /
+`npm test` are unaffected (no `backend/`/`frontend/` source changed).
+
 ## Build order inside any milestone
 backend DTO → engine client call → aggregator/join logic → controller → typed frontend API
 client → component. Every Flowable call gets an integration test against the dockerized

@@ -1,7 +1,10 @@
 # Self-contained DEMO stack for the Process Inspector, published behind the hp04 cloud
 # Traefik at https://pi.naumann.cloud.
 #
-#   docker compose -f docker/docker-compose.demo.yml up -d --build
+#   docker/deploy-demo.sh [edge|sha-<short7>]     # resolves+pins the digest, then deploys
+#
+# `backend`/`frontend` are pinned by DIGEST (issue #92), never a floating tag or a local
+# build — see docker/DEMO-DEPLOY.md for the deploy/rollback mechanics.
 #
 # Topology (one public origin, everything else internal):
 #   Traefik ──(discovery net)──▶ frontend (nginx: SPA + /api reverse-proxy)
@@ -58,9 +61,9 @@ services:
     restart: unless-stopped
 
   backend:
-    build:
-      context: ..
-      dockerfile: Dockerfile
+    # Pinned by digest (issue #92) — never a floating tag, so what's running is always
+    # attributable to one exact build. Set/updated by `docker/deploy-demo.sh`, never by hand.
+    image: ghcr.io/x3kcl/process-inspector-bff@${PI_BFF_DIGEST:?PI_BFF_DIGEST is unset — run docker/deploy-demo.sh, see docker/DEMO-DEPLOY.md}
     environment:
       - SERVER_PORT=8080
       # Trust Traefik's X-Forwarded-* (scheme/host) after TLS termination.
@@ -85,9 +88,8 @@ services:
     restart: unless-stopped
 
   frontend:
-    build:
-      context: ../frontend
-      dockerfile: Dockerfile
+    # Pinned by digest (issue #92) — see the `backend` service above for the rationale.
+    image: ghcr.io/x3kcl/process-inspector-web@${PI_WEB_DIGEST:?PI_WEB_DIGEST is unset — run docker/deploy-demo.sh, see docker/DEMO-DEPLOY.md}
     depends_on: [backend]
     networks: [internal, discovery]
     restart: unless-stopped
