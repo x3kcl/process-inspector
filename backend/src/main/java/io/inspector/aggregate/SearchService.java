@@ -1,5 +1,6 @@
 package io.inspector.aggregate;
 
+import io.inspector.api.MdcPropagatingExecutors;
 import io.inspector.audit.ProtectedInstance;
 import io.inspector.audit.ProtectedInstanceRepository;
 import io.inspector.client.FlowablePage;
@@ -32,7 +33,6 @@ import java.util.Set;
 import java.util.concurrent.CompletableFuture;
 import java.util.concurrent.ConcurrentHashMap;
 import java.util.concurrent.ExecutorService;
-import java.util.concurrent.Executors;
 import java.util.concurrent.Semaphore;
 import java.util.concurrent.TimeUnit;
 import java.util.concurrent.TimeoutException;
@@ -70,7 +70,7 @@ public class SearchService {
     private final ProcessApiClient flowable;
     private final InspectorProperties props;
     private final ProtectedInstanceRepository protectedInstances;
-    private final ExecutorService fanout = Executors.newVirtualThreadPerTaskExecutor();
+    private final ExecutorService fanout = MdcPropagatingExecutors.newVirtualThreadPerTaskExecutor();
     // Package-private for the DEEP_PAGE-isolation test (F3 / R-NFR-08).
     final Semaphore engineSlots;
     final Semaphore deepPageSlots;

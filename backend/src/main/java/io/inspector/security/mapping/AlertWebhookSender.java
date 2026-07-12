@@ -1,11 +1,11 @@
 package io.inspector.security.mapping;
 
+import io.inspector.api.MdcPropagatingExecutors;
 import io.inspector.security.SecurityProperties;
 import java.net.http.HttpClient;
 import java.time.Duration;
 import java.util.Map;
 import java.util.concurrent.ExecutorService;
-import java.util.concurrent.Executors;
 import org.slf4j.Logger;
 import org.slf4j.LoggerFactory;
 import org.springframework.core.env.Environment;
@@ -38,7 +38,7 @@ public class AlertWebhookSender {
 
     private final String url; // resolved once at boot; null = disabled (log-only)
     private final RestClient client;
-    private final ExecutorService dispatch = Executors.newVirtualThreadPerTaskExecutor();
+    private final ExecutorService dispatch = MdcPropagatingExecutors.newVirtualThreadPerTaskExecutor();
 
     public AlertWebhookSender(SecurityProperties properties, Environment environment) {
         String ref = properties.alertWebhookUrlRefOrNull();

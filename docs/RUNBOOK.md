@@ -50,11 +50,14 @@ The audit write is **fail-closed for all tiers**: no audit row ⇒ no mutation i
 reads still work. This is not the outage — it is the designed response to the real outage
 (Postgres). **Fix Postgres; do not look for a way to bypass the audit.** There isn't one,
 deliberately.
-> **Metric note (P1 #12):** `/actuator/health` + `/actuator/prometheus` are now live, but the
-> **custom** `audit_insert_failures_total` counter referenced here and in §7 is **not yet emitted**
-> (see OPERATIONS §2 status). Until it is wired, the live signals for this condition are the
-> fail-closed 5xx on every mutation and the audit-failure log line; readiness stays UP (the DB
-> indicator only flips when Postgres is unreachable, not when an insert is refused by the guard).
+> **Metric note (P1 #12; wired 2026-07-13, issue #96):** `/actuator/health` +
+> `/actuator/prometheus` are live, and the **custom** `audit_insert_failures_total` counter
+> referenced here and in §7 is now **emitted** (tagged `site` — `beginPending` for the mutation
+> fail-closed gate, `recordConfigEvent` for a config-event insert failure; see OPERATIONS §2), with
+> `deploy/prometheus/alert-rules.yml`'s `AuditInsertFailures` rule firing on it. Readiness still
+> stays UP regardless (the DB indicator only flips when Postgres is unreachable, not when an
+> insert is refused by the guard) — the fail-closed 5xx on every mutation and the audit-failure log
+> line remain the fastest signal at the terminal, the counter is for the alert pipeline.
 
 Until fixed, urgent engine mutations go
 through §6 (direct cURL, hand-logged).
@@ -176,6 +179,12 @@ verb documents its equivalent REST call; in the UI, tier-2 confirms and "copy as
 show the same bodies.
 
 ## 7. Alerts → actions
+
+Prometheus rule definitions for the alerts below live in `deploy/prometheus/alert-rules.yml`
+(issue #96) — hand that file to whichever monitoring stack scrapes `/actuator/prometheus` (none is
+deployed by this repo's `docker/*.yml`). `Readiness failing > 2 min` and `disk > 80%` are written
+but need an exporter this repo does not deploy (`blackbox_exporter`/`node_exporter` — see
+`deploy/README.md`); every other row already fires off a metric this app emits today.
 
 | Alert | First move |
 |---|---|

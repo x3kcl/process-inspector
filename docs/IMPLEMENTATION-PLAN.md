@@ -1407,6 +1407,90 @@ per-request DB read every call), so scoping is a plain inline filter, not a sepa
 filter case + a `ReadScopeGate` test seam. `TriageTrendApiSpringTest` unchanged and still green
 (dev/test profile has enforcement off, so the new `Authentication` parameter is a no-op there).
 
+### #96 — Observability follow-up (R-OPS-02/03, R-AUD-04) *(✅ LANDED 2026-07-13, issue #96, except cache hit rate)*
+Follow-up to the Q1 observability minimum (PR #77): actuator health + auth-gated Prometheus
+scrape were real, but the named application-metric contract, structured JSON logs, correlationId
+MDC fan-out propagation, `GET /api/diag`, and `deploy/` alert rules were all still honestly
+marked TO LAND in OPERATIONS §2/§3 + RUNBOOK §2b.
+
+*Shipped — metrics:* `audit_insert_failures_total` (tagged `site` — `beginPending`/
+`recordConfigEvent`, the two INSERT paths) in `AuditService`'s existing fail-closed catch blocks.
+`engine_fanout_duration_seconds` (tags `engineId`/`leg`) wraps `GuardedCaller.call()` — the
+single resiliency chokepoint every facade call already runs through, so ONE instrumentation site
+covers every engine call uniformly, timed around bulkhead+breaker+HTTP including failure paths
+(a fast-fail on an open breaker is itself a meaningful near-zero sample). `sse_emitters_active`
+(gauge over `SseHub.subscriberCount()`) + `sse_emitter_errors_total` (incremented on a dropped
+send or an emitter's own `onError`). `bulk_jobs_running` (gauge, `BulkJobRepository.countByState`)
++ `bulk_item_outcomes_total` (tagged `state`, tallied once per finished job in the existing
+`closeEnvelope` tally step — semantically identical to counting at each `settle()` call site, one
+hook point instead of half a dozen). All four verified against a REAL running instance's
+`/actuator/prometheus` scrape, not assumed correct from the code alone.
+
+*Shipped — structured logs + correlationId fan-out:* `logback-spring.xml` (new) emits JSON via
+`logstash-logback-encoder` gated on the `oidc` profile (this codebase's existing prod-like
+marker — e.g. `scope-reads-enforced` defaults on there too) rather than enumerating every
+dev/test/`it-*` profile by name (logback's `springProfile` matches exact names only, no
+wildcards — excluding profiles individually would silently miss a new one added later). New
+`MdcPropagatingExecutors.newVirtualThreadPerTaskExecutor()` — a drop-in `ExecutorService`
+decorator snapshotting `MDC.getCopyOfContextMap()` at submit time and restoring/clearing it
+around each task — swapped into all 7 `Executors.newVirtualThreadPerTaskExecutor()` call sites
+(search, triage aggregation, leak-views, bulk dispatch, resolve, the alert-webhook sender, the
+engine-health prober): `RequestIdFilter` bound `correlationId` to MDC on the request thread years
+ago, but every virtual-thread fan-out silently lost it (thread-locals don't inherit) until now.
+
+*Shipped — `GET /api/diag`* (new `DiagController`/`DiagService`): door check is `@rbac.atLeast(..,
+'ADMIN')` — ADMIN on at least one engine, the SAME coarse shape `AuditController#operationsLog`
+uses for the cross-engine operations log. Breaker states
+(`CircuitBreakerRegistry.getAllCircuitBreakers()`), cache AGES for the triage dashboard and
+leak-views (new `cacheAge()` accessors peeking each Caffeine cache's `asOf`-stamped current value
+via `asMap()`, never triggering the loader), bulk permit-pool saturation (new
+`BulkJobService.permitSnapshot()`, only engines dispatched-to this process), the last 20
+engine-call failures with correlationIds (new `RecentEngineErrors`, a bounded 50-entry ring
+buffer fed from the SAME `GuardedCaller.call()` chokepoint the timer uses), and build info
+(`spring-boot-maven-plugin`'s `build-info` goal, `Optional`ly absent outside a `mvn package` run).
+Deliberately did NOT build the "targeted per-composite-ID derivation tracing with 15-min TTL"
+line from OPERATIONS §2's aspirational text — a materially bigger feature layering a cached trace
+view on the EXISTING `EngineCallRecorder` (today only wired for on-demand "Explain this status"
+re-derivation), tracked separately.
+
+*Fixed post-adversarial-review, before merge:* the first cut's door check doubled as the ONLY
+check — every per-engine section (breakers/permits/recent-errors) went out fleet-wide to any
+caller who was ADMIN on even one engine, violating this codebase's own scope invariant
+(`ScopeGrant`: a grant on one engine/tenant authorizes nothing on another). Fixed by filtering
+each per-engine section, per entry, to engines the caller actually holds ADMIN on
+(`RbacAuthorizer.hasRoleOn`) — mirroring `AuditController#payloadVisible`'s coarse-door/fine-item
+shape exactly, no new grant type needed. Separately, `RecentEngineErrors` captured
+`Throwable.getMessage()` verbatim with no bound; a deserialization failure on a malformed or
+wire-shape-drifted engine response (`HttpMessageNotReadableException`/Jackson) can embed a
+snippet of response content in that message (confirmed `HttpStatusCodeException.getMessage()`
+itself does NOT — it's just `"<status> <reasonPhrase>"` — but the Jackson path can), so messages
+are now truncated to 500 chars before being stored.
+
+*Shipped — alert rules:* `deploy/prometheus/alert-rules.yml` (new), matching RUNBOOK §7's table —
+every expression checked against a real scrape, not assumed. `InspectorDown`,
+`AuditInsertFailures`, `AllCircuitBreakersOpen`, `SseEmitterErrorsSpiking`, and
+`DatabaseConnectionTimeoutsSpiking` (the honest proxy for Postgres-unreachable, via HikariCP's
+own `hikaricp_connections_timeout_total`) fire off metrics this app emits today.
+`InspectorReadinessFailing`/`DiskSpaceHigh` are written but explicitly marked infra-dependent —
+they need `blackbox_exporter`/`node_exporter`, neither deployed by this repo's `docker/*.yml`.
+
+*Deliberately out of scope (honestly documented, not silently dropped):* triage-cache **hit
+rate** (age is shipped via `GET /api/diag`; a hit/miss ratio needs `Caffeine.recordStats()` +
+Micrometer's `CaffeineCacheMetrics` binder — not in issue #96's stated bullet list) and the
+audit-retention-purge dead-man alert (RUNBOOK already documents its LOG-based interim signal;
+a metric-based version needs new instrumentation this issue doesn't scope).
+
+*Tests:* `AuditServiceTest` extended with counter assertions on both failure sites.
+`GuardedCallerTest` gains 2 new cases (timed success + timed failure, tag assertions).
+`MdcPropagatingExecutorsTest` (new, 4 rung-1 cases: context visible on the worker, no-context
+stays no-context, no cross-contamination between tasks on a shared executor, caller's own context
+untouched). `RecentEngineErrorsTest` (new, 6 cases: correlationId capture, null-safe with no MDC
+context, newest-first, limit respected, capacity eviction, overlong message truncated). `DiagServiceTest`
+(new, 3 cases: assembly from mocked sources, per-engine scope filtering excludes a breaker/permit/
+recent-error the caller isn't ADMIN on, build-info presence). `DiagRbacSpringTest` (new, 3 cases:
+ADMIN reaches it, every lesser role 403s, unauthenticated 401s). `BulkJobServiceTest` gains a
+permit-gauge case.
+
 ## Build order inside any milestone
 backend DTO → engine client call → aggregator/join logic → controller → typed frontend API
 client → component. Every Flowable call gets an integration test against the dockerized

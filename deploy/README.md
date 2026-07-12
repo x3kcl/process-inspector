@@ -70,6 +70,22 @@ PI_BACKUP_DIR=/mnt/backups/pi-audit deploy/backup-audit-db.sh   # nightly (timer
 deploy/restore-drill.sh                                          # verify newest dump restores
 ```
 
+## `prometheus/alert-rules.yml` — RUNBOOK §7's alert contract (issue #96, OPERATIONS §3)
+
+The alert side of RUNBOOK.md §7's "Alerts → actions" table, in standard Prometheus alerting-rule
+YAML — hand this to whatever Prometheus/Alertmanager stack scrapes the BFF's auth-gated
+`/actuator/prometheus` (no monitoring stack is deployed by THIS repo's `docker/*.yml`). Every
+expression is checked against a real running instance's scrape output, not assumed.
+
+Two rules are marked **infra-dependent** in the file itself: `InspectorReadinessFailing` needs
+`blackbox_exporter` probing `GET /actuator/health/readiness` (Prometheus has no native readiness
+concept — a scrape target being reachable at all only proves liveness), and `DiskSpaceHigh` needs
+`node_exporter`. Neither exporter is deployed here; the rules are included for completeness and
+should be wired up alongside whichever monitoring stack a real deploy adds, not treated as
+already-live. Everything else (`AuditInsertFailures`, `AllCircuitBreakersOpen`,
+`SseEmitterErrorsSpiking`, and `DatabaseConnectionTimeoutsSpiking` as the honest proxy for
+Postgres-unreachable pending a `postgres_exporter`) fires off metrics THIS app already emits.
+
 ## Still to land in S0 (tracked)
 
 - **`prod-like` compose profile** (OPERATIONS §9): release image + external Postgres provisioned

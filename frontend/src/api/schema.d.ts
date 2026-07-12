@@ -533,6 +533,22 @@ export interface paths {
         patch?: never;
         trace?: never;
     };
+    "/api/diag": {
+        parameters: {
+            query?: never;
+            header?: never;
+            path?: never;
+            cookie?: never;
+        };
+        get: operations["diag"];
+        put?: never;
+        post?: never;
+        delete?: never;
+        options?: never;
+        head?: never;
+        patch?: never;
+        trace?: never;
+    };
     "/api/engines": {
         parameters: {
             query?: never;
@@ -1281,6 +1297,15 @@ export interface components {
             /** Format: date-time */
             ts?: string;
         };
+        BreakerStatus: {
+            instanceName?: string;
+            state?: string;
+        };
+        BuildInfo: {
+            artifact?: string;
+            time?: string;
+            version?: string;
+        };
         BulkErrorClassRequest: {
             /** Format: int32 */
             algoVersion?: number;
@@ -1346,6 +1371,11 @@ export interface components {
             engineId?: string;
             instanceId?: string;
             jobId?: string;
+        };
+        CacheStatus: {
+            /** Format: int64 */
+            ageSeconds?: number;
+            name?: string;
         };
         CaseDetail: {
             businessKey?: string;
@@ -1494,6 +1524,14 @@ export interface components {
             /** Format: int32 */
             totalVersions?: number;
             versions?: components["schemas"]["DefinitionVersion"][];
+        };
+        DiagResponse: {
+            asOf?: string;
+            breakers?: components["schemas"]["BreakerStatus"][];
+            build?: components["schemas"]["BuildInfo"];
+            bulkPermits?: components["schemas"]["PermitStatus"][];
+            caches?: components["schemas"]["CacheStatus"][];
+            recentErrors?: components["schemas"]["RecentError"][];
         };
         DriftReport: {
             added?: string[];
@@ -2003,6 +2041,13 @@ export interface components {
             /** Format: int32 */
             outOfScopeDeadletters?: number;
         };
+        PermitStatus: {
+            /** Format: int32 */
+            available?: number;
+            engineId?: string;
+            /** Format: int32 */
+            total?: number;
+        };
         Point: {
             /** Format: int64 */
             count?: number;
@@ -2057,6 +2102,14 @@ export interface components {
             required?: boolean;
             /** Format: int32 */
             windowSeconds?: number;
+        };
+        RecentError: {
+            at?: string;
+            correlationId?: string;
+            engineId?: string;
+            errorClass?: string;
+            leg?: string;
+            message?: string;
         };
         RecentSearchDto: {
             /** Format: date-time */
@@ -3245,6 +3298,26 @@ export interface operations {
                 };
                 content: {
                     "*/*": components["schemas"]["DefinitionVersionsResponse"];
+                };
+            };
+        };
+    };
+    diag: {
+        parameters: {
+            query?: never;
+            header?: never;
+            path?: never;
+            cookie?: never;
+        };
+        requestBody?: never;
+        responses: {
+            /** @description OK */
+            200: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "*/*": components["schemas"]["DiagResponse"];
                 };
             };
         };

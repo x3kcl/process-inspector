@@ -23,6 +23,7 @@
     <springdoc.version>2.8.14</springdoc.version>
     <wiremock.version>3.13.2</wiremock.version>
     <archunit.version>1.4.2</archunit.version>
+    <logstash-logback-encoder.version>7.4</logstash-logback-encoder.version>
     <spotless.version>2.46.1</spotless.version>
     <jacoco.version>0.8.13</jacoco.version>
     <!-- CI matrix legs skip the unit suite (already run in the unit job) without
@@ -95,6 +96,14 @@
       <groupId>io.micrometer</groupId>
       <artifactId>micrometer-registry-prometheus</artifactId>
     </dependency>
+    <!-- Structured JSON logs (issue #96, OPERATIONS.md §2) — logback-spring.xml uses this
+         encoder outside dev/test profiles so a log-aggregation stack can parse fields
+         (correlationId, level, logger, thread) instead of scraping a text pattern. -->
+    <dependency>
+      <groupId>net.logstash.logback</groupId>
+      <artifactId>logstash-logback-encoder</artifactId>
+      <version>${logstash-logback-encoder.version}</version>
+    </dependency>
     <!-- R-SEM-15: the OpenAPI contract the frontend types are generated from
          (/v3/api-docs → openapi-typescript → frontend/src/api/schema.d.ts). API-only
          starter — no Swagger UI is shipped. -->
@@ -151,6 +160,17 @@
       <plugin>
         <groupId>org.springframework.boot</groupId>
         <artifactId>spring-boot-maven-plugin</artifactId>
+        <executions>
+          <!-- GET /api/diag build-info block (issue #96) + /actuator/info: writes
+               META-INF/build-info.properties, which Spring Boot auto-configures into a
+               BuildProperties bean. Absent in the raw test-compile output (no package phase
+               runs), so DiagService treats it as Optional — never a hard boot dependency. -->
+          <execution>
+            <goals>
+              <goal>build-info</goal>
+            </goals>
+          </execution>
+        </executions>
       </plugin>
       <plugin>
         <groupId>org.apache.maven.plugins</groupId>

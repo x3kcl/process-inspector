@@ -8,6 +8,7 @@ import static org.mockito.Mockito.mock;
 import static org.mockito.Mockito.when;
 
 import com.fasterxml.jackson.databind.ObjectMapper;
+import io.micrometer.core.instrument.simple.SimpleMeterRegistry;
 import java.nio.charset.StandardCharsets;
 import java.time.Clock;
 import java.time.Instant;
@@ -29,8 +30,12 @@ import org.springframework.dao.DataAccessResourceFailureException;
 class AuditServiceTest {
 
     private final AuditEntryRepository repository = mock(AuditEntryRepository.class);
+    private final SimpleMeterRegistry metrics = new SimpleMeterRegistry();
     private final AuditService service = new AuditService(
-            repository, new ObjectMapper(), Clock.fixed(Instant.parse("2026-07-06T12:00:00Z"), ZoneOffset.UTC));
+            repository,
+            new ObjectMapper(),
+            Clock.fixed(Instant.parse("2026-07-06T12:00:00Z"), ZoneOffset.UTC),
+            metrics);
 
     @BeforeEach
     void passThroughSave() {
@@ -90,6 +95,10 @@ class AuditServiceTest {
                         service.beginPending("operator", "engine-a", null, "pi-1", "retry-job", null, null, Map.of()))
                 .isInstanceOf(AuditUnavailableException.class)
                 .hasMessageContaining("NOT sent");
+        // R-OPS-02 (issue #96): the fail-closed gate firing IS the alertable RUNBOOK §7 signal.
+        assertThat(metrics.counter("audit_insert_failures_total", "site", "beginPending")
+                        .count())
+                .isEqualTo(1.0);
     }
 
     @Test
@@ -126,6 +135,9 @@ class AuditServiceTest {
                 .thenThrow(new DataAccessResourceFailureException("connection refused"));
         assertThatThrownBy(() -> service.recordConfigEvent("audit-retention-purge", "system", true, Map.of()))
                 .isInstanceOf(AuditUnavailableException.class);
+        assertThat(metrics.counter("audit_insert_failures_total", "site", "recordConfigEvent")
+                        .count())
+                .isEqualTo(1.0);
     }
 
     @Test

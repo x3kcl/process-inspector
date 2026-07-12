@@ -16,6 +16,8 @@ import io.github.resilience4j.circuitbreaker.CircuitBreakerRegistry;
 import io.inspector.client.GuardedCaller.CallPriority;
 import io.inspector.config.InspectorProperties.EngineConfig;
 import io.inspector.support.TestEngines;
+import io.micrometer.core.instrument.simple.SimpleMeterRegistry;
+import java.time.Clock;
 import java.time.Duration;
 import java.util.Map;
 import org.junit.jupiter.api.AfterEach;
@@ -61,7 +63,8 @@ class ExternalJobApiClientTest {
                         .maxConcurrentCalls(8)
                         .maxWaitDuration(Duration.ofSeconds(5))
                         .build()));
-        client = new ExternalJobApiClient(new GuardedCaller(env, breakers, bulkheads));
+        client = new ExternalJobApiClient(new GuardedCaller(
+                env, breakers, bulkheads, new SimpleMeterRegistry(), new RecentEngineErrors(Clock.systemUTC())));
     }
 
     @AfterEach

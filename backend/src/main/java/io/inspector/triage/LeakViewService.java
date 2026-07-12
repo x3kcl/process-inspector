@@ -2,6 +2,7 @@ package io.inspector.triage;
 
 import com.github.benmanes.caffeine.cache.Cache;
 import com.github.benmanes.caffeine.cache.Caffeine;
+import io.inspector.api.MdcPropagatingExecutors;
 import io.inspector.client.FlowablePage;
 import io.inspector.client.GuardedCaller.CallPriority;
 import io.inspector.client.ProcessApiClient;
@@ -19,10 +20,10 @@ import java.util.Comparator;
 import java.util.LinkedHashMap;
 import java.util.List;
 import java.util.Map;
+import java.util.Optional;
 import java.util.TreeMap;
 import java.util.concurrent.ConcurrentSkipListSet;
 import java.util.concurrent.ExecutorService;
-import java.util.concurrent.Executors;
 import java.util.concurrent.Future;
 import org.slf4j.Logger;
 import org.slf4j.LoggerFactory;
@@ -67,7 +68,7 @@ public class LeakViewService {
     private final ProcessApiClient flowable;
     private final Clock clock;
     private final Cache<String, LeakViewsResponse> cache;
-    private final ExecutorService fanout = Executors.newVirtualThreadPerTaskExecutor();
+    private final ExecutorService fanout = MdcPropagatingExecutors.newVirtualThreadPerTaskExecutor();
 
     /** Narrow seam over {@code EngineRegistry.all()} so the aggregation core unit-tests cleanly. */
     @FunctionalInterface
@@ -99,6 +100,18 @@ public class LeakViewService {
     /** The cached {@code /api/triage/leak-views} read — single-flight behind the TTL. */
     public LeakViewsResponse leakViews() {
         return cache.get(KEY, k -> aggregate());
+    }
+
+    /**
+     * Diagnostics (issue #96, {@code GET /api/diag}): age of the CURRENTLY cached snapshot —
+     * {@code asMap()} peeks the cache without triggering the loader. Empty before the first
+     * {@link #leakViews} call this process has served.
+     */
+    public Optional<Duration> cacheAge() {
+        LeakViewsResponse cached = cache.asMap().get(KEY);
+        return cached == null
+                ? Optional.empty()
+                : Optional.of(Duration.between(Instant.parse(cached.asOf()), clock.instant()));
     }
 
     /* ---------------- the fan-out (unit-tested directly) ---------------- */

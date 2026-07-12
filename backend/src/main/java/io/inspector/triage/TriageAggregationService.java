@@ -1,5 +1,6 @@
 package io.inspector.triage;
 
+import io.inspector.api.MdcPropagatingExecutors;
 import io.inspector.client.FlowablePage;
 import io.inspector.client.GuardedCaller.CallPriority;
 import io.inspector.client.ProcessApiClient;
@@ -23,7 +24,6 @@ import java.util.Map;
 import java.util.Set;
 import java.util.TreeMap;
 import java.util.concurrent.ExecutorService;
-import java.util.concurrent.Executors;
 import java.util.concurrent.Future;
 import org.slf4j.Logger;
 import org.slf4j.LoggerFactory;
@@ -74,7 +74,7 @@ public class TriageAggregationService {
     private final ProcessApiClient flowable;
     private final InspectorProperties props;
     private final Clock clock;
-    private final ExecutorService fanout = Executors.newVirtualThreadPerTaskExecutor();
+    private final ExecutorService fanout = MdcPropagatingExecutors.newVirtualThreadPerTaskExecutor();
 
     public TriageAggregationService(
             EngineRegistry registry, ProcessApiClient flowable, InspectorProperties props, Clock clock) {

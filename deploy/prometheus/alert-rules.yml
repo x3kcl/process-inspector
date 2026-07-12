@@ -1,0 +1,87 @@
+# Prometheus alerting rules for the process-inspector BFF (issue #96, OPERATIONS.md §3,
+# RUNBOOK.md §7). Every `First move` link in RUNBOOK.md §7's table is the operator's next step
+# once one of these fires.
+#
+# Not deployed by this repo: no Prometheus/Alertmanager/Grafana stack lives in docker/*.yml —
+# this file is the alert-side contract to hand to whatever monitoring stack scrapes
+# /actuator/prometheus (auth-gated; the scrape job needs credentials, e.g. `viewer`/dev-ladder or
+# a dedicated read-only account in a real deploy). `job` label below assumes the scrape config
+# names this target "process-inspector" — adjust to match the real job name if it differs.
+#
+# Every expression here is checked against a REAL scrape of a running instance (not assumed) —
+# see the #96 PR description for the verification transcript. Two rules are marked
+# infra-dependent below: they need an exporter this repo does not deploy (blackbox_exporter,
+# node_exporter) and are included for completeness, not because they're wired end-to-end today.
+groups:
+  - name: process-inspector.rules
+    rules:
+      - alert: InspectorDown
+        expr: up{job="process-inspector"} == 0
+        for: 1m
+        labels:
+          severity: critical
+        annotations:
+          summary: "process-inspector is unreachable (liveness)"
+          runbook: "RUNBOOK.md §1"
+
+      # Infra-dependent: Prometheus itself has no native "readiness" concept — the standard
+      # pattern is blackbox_exporter probing GET /actuator/health/readiness and exposing
+      # probe_success. Not deployed in this repo's docker-compose; wire it before enabling.
+      - alert: InspectorReadinessFailing
+        expr: probe_success{instance=~".*/actuator/health/readiness"} == 0
+        for: 2m
+        labels:
+          severity: critical
+        annotations:
+          summary: "process-inspector readiness probe has been failing for over 2 minutes"
+          runbook: "RUNBOOK.md §2a"
+
+      - alert: AuditInsertFailures
+        expr: increase(audit_insert_failures_total[5m]) > 0
+        labels:
+          severity: critical
+        annotations:
+          summary: "The audit fail-closed gate is refusing writes — mutations are refusing by design"
+          runbook: "RUNBOOK.md §2b — Postgres first"
+
+      # Infra-dependent: needs postgres_exporter (not deployed) for a direct signal. In the
+      # meantime, a spike in HikariCP connection-acquire timeouts is this app's own honest proxy
+      # for "the DB is unreachable or exhausted" — real metric, verified live.
+      - alert: DatabaseConnectionTimeoutsSpiking
+        expr: increase(hikaricp_connections_timeout_total[5m]) > 0
+        labels:
+          severity: critical
+        annotations:
+          summary: "HikariCP failed to acquire a Postgres connection — likely Postgres unreachable"
+          runbook: "RUNBOOK.md §2a / §5"
+
+      # Infra-dependent: disk usage is a node_exporter (or container-runtime) metric, not
+      # anything this app itself emits — not deployed in this repo's docker-compose.
+      - alert: DiskSpaceHigh
+        expr: node_filesystem_avail_bytes / node_filesystem_size_bytes < 0.20
+        for: 10m
+        labels:
+          severity: warning
+        annotations:
+          summary: "Disk usage over 80% on a process-inspector host"
+          runbook: "RUNBOOK.md §5 — check partition growth vs the sizing worksheet; confirm the retention purge is running first"
+
+      - alert: AllCircuitBreakersOpen
+        expr: |
+          count(resilience4j_circuitbreaker_state{state="open"} == 1)
+          ==
+          count(count by (name) (resilience4j_circuitbreaker_state))
+        for: 1m
+        labels:
+          severity: critical
+        annotations:
+          summary: "Every engine circuit breaker is open"
+          runbook: "RUNBOOK.md §2c — BFF egress, not the engines"
+
+      - alert: SseEmitterErrorsSpiking
+        expr: increase(sse_emitter_errors_total[5m]) > 5
+        labels:
+          severity: warning
+        annotations:
+          summary: "SSE emitter errors spiking — clients are degrading to polling"
+          runbook: "RUNBOOK.md §7 — usually a reverse-proxy buffering misconfig after a deploy; not user-facing-critical"

@@ -2,6 +2,7 @@ package io.inspector.audit;
 
 import com.fasterxml.jackson.core.JsonProcessingException;
 import com.fasterxml.jackson.databind.ObjectMapper;
+import io.micrometer.core.instrument.MeterRegistry;
 import java.nio.charset.StandardCharsets;
 import java.security.MessageDigest;
 import java.security.NoSuchAlgorithmException;
@@ -64,12 +65,14 @@ public class AuditService {
     private final AuditEntryRepository repository;
     private final ObjectMapper mapper;
     private final Clock clock;
+    private final MeterRegistry metrics;
     private final Object chainLock = new Object();
 
-    public AuditService(AuditEntryRepository repository, ObjectMapper mapper, Clock clock) {
+    public AuditService(AuditEntryRepository repository, ObjectMapper mapper, Clock clock, MeterRegistry metrics) {
         this.repository = repository;
         this.mapper = mapper;
         this.clock = clock;
+        this.metrics = metrics;
     }
 
     /**
@@ -132,6 +135,11 @@ public class AuditService {
                 return repository.saveAndFlush(entry);
             }
         } catch (RuntimeException e) {
+            // R-OPS-02 (issue #96): the fail-closed gate itself firing IS the alertable event —
+            // RUNBOOK §2b/§7 name this counter directly (`audit_insert_failures_total > 0` ⇒
+            // "Postgres first; mutations are refusing by design").
+            metrics.counter("audit_insert_failures_total", "site", "beginPending")
+                    .increment();
             throw new AuditUnavailableException(e);
         }
     }
@@ -192,10 +200,14 @@ public class AuditService {
                 return repository.saveAndFlush(entry);
             }
         } catch (RuntimeException e) {
-            // Config-event failure signal. The R-OPS-02 telemetry milestone will bind the
-            // audit_config_event_failures_total counter to this site; no metric stack exists yet
-            // (neither does audit_insert_failures_total), so a stable, greppable ERROR marker is
-            // the interim alert substrate for log-based alerting.
+            // R-OPS-02 (issue #96): same counter, tagged by site — a config-event failure is the
+            // SAME underlying condition (the audit DB is unavailable) as a mutation's beginPending
+            // failure, so RUNBOOK §7's single `audit_insert_failures_total > 0` alert catches both;
+            // the `site` tag lets the drill-down distinguish which write path tripped it. The
+            // greppable ERROR marker stays too — belt-and-suspenders until the alert is confirmed
+            // wired end-to-end in a real deploy.
+            metrics.counter("audit_insert_failures_total", "site", "recordConfigEvent")
+                    .increment();
             log.error(
                     "AUDIT_CONFIG_EVENT_FAILURE action={} — config event NOT recorded; caller applies its"
                             + " failure policy: {}",

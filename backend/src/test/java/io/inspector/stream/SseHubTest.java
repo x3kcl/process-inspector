@@ -3,6 +3,7 @@ package io.inspector.stream;
 import static org.assertj.core.api.Assertions.assertThat;
 
 import io.inspector.bulk.BulkJobChangedEvent;
+import io.micrometer.core.instrument.simple.SimpleMeterRegistry;
 import java.io.IOException;
 import java.util.UUID;
 import org.junit.jupiter.api.Test;
@@ -18,7 +19,7 @@ class SseHubTest {
 
     @Test
     void bridgesBulkEventsWithoutThrowingIntoThePublisher() {
-        SseHub hub = new SseHub();
+        SseHub hub = new SseHub(new SimpleMeterRegistry());
         hub.subscribe("viewer");
 
         // A standalone emitter buffers sends until a response attaches — the contract
@@ -40,6 +41,8 @@ class SseHubTest {
         hub.onBulkJobChanged(new BulkJobChangedEvent(UUID.randomUUID()));
 
         assertThat(hub.subscriberCount()).isEqualTo(1);
+        // OPERATIONS.md §2 (issue #96): the dropped write increments sse_emitter_errors_total.
+        assertThat(hub.metrics.counter("sse_emitter_errors_total").count()).isEqualTo(1.0);
     }
 
     @Test
@@ -56,7 +59,17 @@ class SseHubTest {
 
     /** Creation-seam double: optionally hands out an emitter whose every write breaks. */
     private static final class SeamHub extends SseHub {
+        final SimpleMeterRegistry metrics;
         boolean nextIsBroken;
+
+        SeamHub() {
+            this(new SimpleMeterRegistry());
+        }
+
+        private SeamHub(SimpleMeterRegistry metrics) {
+            super(metrics);
+            this.metrics = metrics;
+        }
 
         @Override
         protected SseEmitter newEmitter() {

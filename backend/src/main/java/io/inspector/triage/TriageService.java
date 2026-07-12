@@ -7,6 +7,8 @@ import io.inspector.config.InspectorProperties;
 import io.inspector.dto.TriageDashboardResponse;
 import java.time.Clock;
 import java.time.Duration;
+import java.time.Instant;
+import java.util.Optional;
 import java.util.concurrent.atomic.AtomicLong;
 import java.util.function.Supplier;
 import org.springframework.beans.factory.annotation.Autowired;
@@ -69,5 +71,17 @@ public class TriageService {
         long now = clock.millis();
         long previous = lastRefreshEpochMs.get();
         return now - previous >= refreshMinIntervalMs && lastRefreshEpochMs.compareAndSet(previous, now);
+    }
+
+    /**
+     * Diagnostics (issue #96, {@code GET /api/diag}): age of the CURRENTLY cached snapshot —
+     * {@code asMap()} peeks the cache without triggering the loader, so calling this never
+     * counts as a fetch. Empty before the first {@link #dashboard} call this process has served.
+     */
+    public Optional<Duration> cacheAge() {
+        TriageDashboardResponse cached = cache.asMap().get(KEY);
+        return cached == null
+                ? Optional.empty()
+                : Optional.of(Duration.between(Instant.parse(cached.asOf()), clock.instant()));
     }
 }
