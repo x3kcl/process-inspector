@@ -1673,6 +1673,7 @@ export interface components {
             superProcessInstanceId?: string;
             telemetryUrl?: string;
             tenantId?: string;
+            terminationReason?: string;
             waitingFor?: components["schemas"]["WaitState"][];
             whyStuck?: components["schemas"]["WhyStuck"];
         };

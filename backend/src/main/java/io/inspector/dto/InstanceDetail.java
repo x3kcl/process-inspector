@@ -45,7 +45,15 @@ public record InstanceDetail(
         Boolean protectedInstance,
         // The L3-supplied protection reason, surfaced on the badge; null when not protected or
         // when the store was unreachable. Never a secret (reasons are operator-authored, audited).
-        String protectionReason) {
+        String protectionReason,
+        // Status honesty (#118/#105): an ENDED instance that was TERMINATED/deleted — not a normal
+        // completion. The primary {@code status} enum stays COMPLETED (Flowable ends both the same
+        // way — endTime set — and the 5-value chip set + search facets/counts must not churn, SPEC
+        // §3), but this carries the engine's termination reason (deleteReason, or a humanized
+        // historic {@code state} like "externally terminated") so the detail chip can render
+        // TERMINATED instead of a misleading COMPLETED. Null for a genuine completion (and while
+        // running). Never a secret — an engine-set/operator-set deleteReason.
+        String terminationReason) {
 
     /** One unfinished activity — the "where is it" line + diagram token markers. */
     public record CurrentActivity(String activityId, String activityName, String activityType, String startTime) {}

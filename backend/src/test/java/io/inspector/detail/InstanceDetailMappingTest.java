@@ -228,4 +228,45 @@ class InstanceDetailMappingTest {
         assertThat(dto.lockExpirationTime()).isNull();
         assertThat(dto.retries()).isEqualTo(3);
     }
+
+    /* ---------- terminated ≠ completed (status honesty, #118/#105) ---------- */
+
+    @Test
+    void aNormalCompletionHasNoTerminationReason() {
+        // state=COMPLETED (6.x+) and no deleteReason → a genuine completion, no badge.
+        assertThat(InstanceDetailService.terminationReason(
+                        Map.of("endTime", "2026-07-12T00:00:00Z", "state", "COMPLETED"), true))
+                .isNull();
+        // A running instance is never terminated regardless of stray fields.
+        assertThat(InstanceDetailService.terminationReason(Map.of("state", "ACTIVE"), false))
+                .isNull();
+    }
+
+    @Test
+    void aTerminatedInstancePrefersDeleteReasonThenHumanizedState() {
+        // deleteReason present → surfaced verbatim (operator/engine authored).
+        Map<String, Object> deleted = new HashMap<>();
+        deleted.put("endTime", "2026-07-12T00:00:00Z");
+        deleted.put("state", "DELETED");
+        deleted.put("deleteReason", "cancelled by ops — duplicate order");
+        assertThat(InstanceDetailService.terminationReason(deleted, true))
+                .isEqualTo("cancelled by ops — duplicate order");
+
+        // No deleteReason → humanize the historic state so the badge still reads honestly.
+        assertThat(InstanceDetailService.terminationReason(
+                        Map.of("endTime", "2026-07-12T00:00:00Z", "state", "EXTERNALLY_TERMINATED"), true))
+                .isEqualTo("externally terminated");
+    }
+
+    @Test
+    void pre6xEngineWithoutStateFallsBackToDeleteReason() {
+        // Older engines don't serialize `state`; a deleteReason on an ended instance = terminated.
+        Map<String, Object> legacy = new HashMap<>();
+        legacy.put("endTime", "2026-07-12T00:00:00Z");
+        legacy.put("deleteReason", "ACTIVITI_DELETED");
+        assertThat(InstanceDetailService.terminationReason(legacy, true)).isEqualTo("ACTIVITI_DELETED");
+        // ended, no state, no deleteReason → treat as a normal completion (can't prove otherwise).
+        assertThat(InstanceDetailService.terminationReason(Map.of("endTime", "2026-07-12T00:00:00Z"), true))
+                .isNull();
+    }
 }
