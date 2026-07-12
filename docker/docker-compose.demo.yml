@@ -104,15 +104,15 @@ services:
       - "traefik.http.routers.process-inspector.rule=Host(`${PI_SUBDOMAIN:-pi}.${NAUMANN_CLOUD:-naumann.cloud}`)"
       - "traefik.http.routers.process-inspector.tls.certresolver=mytlschallenge"
       ### Security headers.
-      # DELIBERATELY WEAKER HSTS than the hp04 house style: a demo host whose cert churns
-      # must NOT set stsPreload or stsIncludeSubdomains, and keeps a SHORT max-age (5 min).
-      # A long-lived, preloaded, subdomain-spanning HSTS entry turns any transient cert
-      # error into a browser lockout that cannot be click-through'd and lasts up to a year
-      # (and preload can affect the whole naumann.cloud registrable domain). Raise stsSeconds
-      # only once pi.naumann.cloud has a stable, trusted Let's Encrypt cert.
+      # HSTS (S5): raised from the near-useless 5 min to 24 h now that pi.naumann.cloud runs a
+      # stable auto-renewing Let's Encrypt cert — long enough to actually resist an SSL-strip,
+      # short enough that a transient cert incident self-heals within a DAY (a browser lockout
+      # that can't be click-through'd). Still DELIBERATELY NO stsPreload / stsIncludeSubdomains:
+      # those are near-irreversible and preload can lock the whole naumann.cloud registrable
+      # domain — raise those only after a long soak. hp04 house style keeps the longer max-age.
       - "traefik.http.routers.process-inspector.middlewares=pi-header"
       - "traefik.http.middlewares.pi-header.headers.referrerPolicy=no-referrer"
-      - "traefik.http.middlewares.pi-header.headers.stsSeconds=300"
+      - "traefik.http.middlewares.pi-header.headers.stsSeconds=86400"
       - "traefik.http.middlewares.pi-header.headers.forceSTSHeader=true"
       - "traefik.http.middlewares.pi-header.headers.browserXssFilter=true"
       - "traefik.http.middlewares.pi-header.headers.customRequestHeaders.X-Forwarded-Proto=https"

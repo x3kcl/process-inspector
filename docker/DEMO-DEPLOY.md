@@ -33,10 +33,12 @@ The demo router requests a Let's Encrypt cert via the `mytlschallenge` resolver.
 cert is actually issued and trusted, Traefik serves its self-signed default and the browser
 shows a cert warning.
 
-HSTS here is **deliberately weak** — `stsSeconds=300`, **no** `stsPreload`, **no**
-`stsIncludeSubdomains`. A long, preloaded, subdomain-spanning HSTS entry turns a transient
-cert problem into an unbypassable, up-to-a-year lockout (and preload can affect the whole
-`naumann.cloud` domain). Only raise `stsSeconds` once the cert is stable.
+HSTS here is **moderate** (S5) — `stsSeconds=86400` (24 h), **no** `stsPreload`, **no**
+`stsIncludeSubdomains`. 24 h actually resists an SSL-strip (the former 5 min barely did),
+while a transient cert incident self-heals within a DAY rather than the up-to-a-year lockout a
+long, preloaded, subdomain-spanning entry would cause (preload can affect the whole
+`naumann.cloud` domain). Raise `stsSeconds` further — and only then consider preload /
+includeSubdomains — after a long soak on a stable cert.
 
 If a browser is already locked out from an earlier aggressive-HSTS attempt: it must clear
 its stored HSTS state (Firefox: History ▸ Forget About This Site → `pi.naumann.cloud`;

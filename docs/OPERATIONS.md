@@ -143,8 +143,10 @@ SameSite=Lax`; OIDC group membership re-evaluated within a **bounded window** �
 verb-intent, never after the confirm token is typed) and resolves grants from the re-authed
 principal; bulk jobs survive session expiry, cancel requires a live session. Transport/header
 posture (R-OPS-16): app-level `nosniff`/`frame-ancestors`/`Referrer-Policy`/`Permissions-Policy`
-always on, CSP report-only-first, **HSTS off by default** (the proxy owns it — never double-emit),
-CORS off. Readiness = "mapping loaded (DB rows or file seed)" + a distinct **"mapping resolves
+always on, **CSP now ENFORCES** (S5 — observation window over; a deploy can set
+`csp-report-only:true` to re-observe), the demo nginx MIRRORS the app header set on the SPA
+document it serves directly, **HSTS off in the app by default** (the proxy owns it — never
+double-emit; the demo Traefik HSTS is a moderate 24 h, no preload), CORS off. Readiness = "mapping loaded (DB rows or file seed)" + a distinct **"mapping resolves
 zero effective grants / seed failed" health indicator + alert** (READY alone can't tell seeded-fine
 from seeded-to-zero).
 
