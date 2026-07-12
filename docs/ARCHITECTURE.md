@@ -375,10 +375,13 @@ nobody may "simplify" by exposing an engine directly.
   `orders-prod`/tenant-A authorizes nothing on another engine or tenant; the guard layer
   resolves the acting user's scope set against the target of every call. **Reads are scoped
   too (S2, R-SAFE-17):** mutations and single-instance detail were always scope-checked, but
-  the fan-out read aggregators (search; triage next) intersect the caller's grants at VIEWER
-  via `ScopeGrant.overlaps` (`ReadScopeGate`) behind `inspector.security.scope-reads-enforced`
-  (default off — the dev ladder is global-scoped; on under `oidc`). Resolved on the request
-  thread, never inside the fan-out or the background `SnapshotSampler`.
+  the fan-out read aggregators (search + the triage dashboard) intersect the caller's grants at
+  VIEWER via `ScopeGrant.overlaps` (`ReadScopeGate`) behind `inspector.security.scope-reads-enforced`
+  (default off — the dev ladder is global-scoped; on under `oidc`). Search resolves the readable
+  set on the request thread; the triage dashboard applies it as a per-request POST-cache render-time
+  projection (`TriageScopeProjector`) — never inside the fan-out or the background `SnapshotSampler`
+  (no auth ⇒ would empty the shared snapshot). Triage leak-views/trends carry no per-engine
+  dimension yet, so their aggregate-count scoping is tracked separately.
   **`REGISTRY_ADMIN`** (v2, REGISTRY-CRUD.md §7) is an **orthogonal fleet-level grant**, not a
   ladder rung — you cannot scope "add an engine" to an engine that does not exist. It maps
   from its own OIDC group, is checked by `rbac.canAdministerRegistry`, and repoints the credential

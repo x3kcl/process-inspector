@@ -159,14 +159,35 @@ export function ErrorGroupCard({ group, enginesById, lowerBound }: Props) {
       </p>
       {/* W2 #7 (T9): the lanes count JOBS, the total counts INSTANCES — two families that
           look comparable but aren't; every count wears its unit token. */}
+      {/* S2 (R-SAFE-17): under read scoping a partially-visible group can't honestly split its
+          fleet-wide DLQ/retrying counts, so the BFF omits them — render "—" (scope-limited), never
+          a misleading "0". The recomputed total + per-engine counts above stay truthful. */}
       <div className="error-group-lanes">
         <span title="dead-letter jobs (retries exhausted)">
-          DLQ {prefix}
-          {formatCount(group.deadLetterCount ?? 0)} <span className="count-unit">jobs</span>
+          DLQ{' '}
+          {group.deadLetterCount === undefined ? (
+            <span className="count-scoped" title="limited to your access scope">
+              —
+            </span>
+          ) : (
+            <>
+              {prefix}
+              {formatCount(group.deadLetterCount)} <span className="count-unit">jobs</span>
+            </>
+          )}
         </span>
         <span title="failing jobs with retries left">
-          retrying {prefix}
-          {formatCount(group.retryingCount ?? 0)} <span className="count-unit">jobs</span>
+          retrying{' '}
+          {group.retryingCount === undefined ? (
+            <span className="count-scoped" title="limited to your access scope">
+              —
+            </span>
+          ) : (
+            <>
+              {prefix}
+              {formatCount(group.retryingCount)} <span className="count-unit">jobs</span>
+            </>
+          )}
         </span>
       </div>
       {group.sampleRawMessage !== undefined && (

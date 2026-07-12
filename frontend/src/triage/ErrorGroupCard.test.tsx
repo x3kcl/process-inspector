@@ -22,12 +22,12 @@ const group: ErrorGroup = {
   countsByEngine: {},
 }
 
-function renderCard() {
+function renderCard(g: ErrorGroup = group) {
   const client = new QueryClient({ defaultOptions: { queries: { retry: false, enabled: false } } })
   render(
     <QueryClientProvider client={client}>
       <MemoryRouter>
-        <ErrorGroupCard group={group} enginesById={new Map()} lowerBound={false} />
+        <ErrorGroupCard group={g} enginesById={new Map()} lowerBound={false} />
       </MemoryRouter>
     </QueryClientProvider>,
   )
@@ -41,5 +41,16 @@ describe('ErrorGroupCard count-unit tokens (W2 #7, T9)', () => {
     // The lanes count JOBS — a different unit, and it says so.
     expect(screen.getByTitle(/dead-letter jobs/).textContent).toMatch(/36\s*jobs/)
     expect(screen.getByTitle(/retries left/).textContent).toMatch(/13\s*jobs/)
+  })
+
+  it('renders "—" for the DLQ/retrying split when scope-limited (S2, R-SAFE-17)', () => {
+    // A partially-visible group under read scoping omits the un-splittable fleet-wide split; the
+    // card must show "—" (scope-limited), never a misleading "0 jobs".
+    renderCard({ ...group, deadLetterCount: undefined, retryingCount: undefined })
+    expect(screen.getByTitle(/dead-letter jobs/).textContent).toContain('—')
+    expect(screen.getByTitle(/dead-letter jobs/).textContent).not.toMatch(/\bjobs\b/)
+    expect(screen.getByTitle(/retries left/).textContent).toContain('—')
+    // The recomputed instance total is still shown truthfully.
+    expect(screen.getByTitle(/error class in the grid/).textContent).toMatch(/46\s*instances/)
   })
 })

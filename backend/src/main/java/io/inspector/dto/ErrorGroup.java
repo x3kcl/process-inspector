@@ -31,8 +31,15 @@ public record ErrorGroup(
         String normalizedMessage,
         String sampleRawMessage, // one REAL member message, for display/debugging
         long total,
-        long deadLetterCount,
-        long retryingCount, // failing-with-retries-left evidence (timer + executable lanes)
+        // deadLetterCount / retryingCount are NULLABLE (not primitive) for one reason: under S2 read
+        // scoping (R-SAFE-17) a group visible to a per-engine VIEWER may be only PARTIALLY in scope —
+        // the DL/retrying split is a fleet-wide aggregate NOT broken down per engine, so it cannot be
+        // honestly recomputed for a partial slice. The scope projector then nulls both (the recomputed
+        // `total` + filtered `countsByEngine` stay truthful) and the UI shows "—" rather than a fabricated
+        // or fleet-wide split. Non-null on every unscoped/fully-visible group. NON_NULL omits them on the
+        // wire, matching the generated contract's `deadLetterCount?: number`.
+        Long deadLetterCount,
+        Long retryingCount, // failing-with-retries-left evidence (timer + executable lanes)
         Map<String, Map<String, Long>> countsByEngine,
         ErrorGroupAcknowledgement acknowledgement) {
 

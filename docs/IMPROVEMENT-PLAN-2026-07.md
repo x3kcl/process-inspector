@@ -209,10 +209,12 @@ tests + spec-sync in the same PR, and follows green-ci.
    assigns it there; do not double-build.
 8. **Scope-filtered reads (S2)** — `grantsFor(auth)` intersection in Search/Triage behind a
    per-deploy flag (default on under oidc); SHARED-VIEWS caveat updated; rung-1 authorizer
-   tests. **Search LANDED** (R-SAFE-17; `ReadScopeGate` + `inspector.security.scope-reads-enforced`;
-   `ReadScopeGateTest`/`SearchServiceScopeTest`; SHARED-VIEWS + register/matrix synced). Triage
-   dashboard scoping (post-cache render-time projection over the shared single-flight cache) is
-   the remaining slice.
+   tests. **Search + triage DASHBOARD LANDED** (R-SAFE-17; `ReadScopeGate` +
+   `inspector.security.scope-reads-enforced`; `TriageScopeProjector` post-cache projection;
+   `ReadScopeGateTest`/`SearchServiceScopeTest`/`TriageScopeProjectorTest`; SHARED-VIEWS +
+   register/matrix synced). Remaining: leak-views + trends carry no per-engine dimension (counts
+   pre-merged across engines) so their aggregate-count scoping needs aggregation-level work — tracked
+   as a follow-up issue.
 9. **Real alert channel + break-glass throttle (S3, S4)** — env-ref webhook bean (oidc
    profile, absence = boot warning); failure-count lockout + failed-attempt audit/alert on
    `/break-glass`; break-glass flag derived from `Authentication` on bulk workers (S7).
