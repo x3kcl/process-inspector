@@ -13,6 +13,13 @@ const PORT = process.env.PI_E2E_PORT ?? '4173'
 export default defineConfig({
   testDir: 'e2e',
   timeout: 30_000,
+  // Default worker count is based on the HOST's core count (the compose comment notes 64),
+  // not the runner container's actual `cpus: 10` cgroup ceiling (docker/ci-runner/docker-
+  // compose.yml) — left uncapped, Playwright oversubscribes far past what the container can
+  // give each Chromium instance, and assertions that render fine in ~1s locally start
+  // occasionally missing the default 5s expect timeout under that self-inflicted contention.
+  workers: process.env.CI ? 4 : undefined,
+  expect: { timeout: 10_000 },
   // HTML report (traces/screenshots on failure) so the CI job's failure-artifact upload has
   // something to grab; 'never' skips auto-opening a browser tab in CI.
   reporter: [['html', { open: 'never' }], ['list']],
