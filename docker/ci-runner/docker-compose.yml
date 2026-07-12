@@ -41,6 +41,14 @@ x-runner: &runner
   # Sized for SIX slots: worst-case sums (60c / 72g + ~40g harness) leave prod headroom.
   cpus: 10
   mem_limit: 12g
+  # The e2e job (#85) runs Vite's dev server, whose FSWatcher opens one fd per watched
+  # file across the whole node_modules tree (ag-grid/bpmn-js/cmmn-js/codemirror/react)
+  # — the base image's default nofile ulimit (often 1024) hits EMFILE before the watcher
+  # even finishes starting.
+  ulimits:
+    nofile:
+      soft: 65536
+      hard: 65536
 
 x-runner-env: &runner-env
   RUNNER_SCOPE: repo
