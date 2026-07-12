@@ -60,6 +60,7 @@ jobs:
             type=raw,value=edge
             type=raw,value=sha-${{ steps.src.outputs.short }}
       - name: Build + push BFF image
+        id: build-bff
         uses: docker/build-push-action@v6
         with:
           context: .
@@ -80,6 +81,7 @@ jobs:
             type=raw,value=edge
             type=raw,value=sha-${{ steps.src.outputs.short }}
       - name: Build + push web image
+        id: build-web
         uses: docker/build-push-action@v6
         with:
           context: frontend
@@ -88,3 +90,13 @@ jobs:
           labels: ${{ steps.meta-web.outputs.labels }}
           cache-from: type=gha
           cache-to: type=gha,mode=max
+
+      - name: Record digests (issue #92 — always attributable to a SHA, never a floating tag)
+        run: |
+          {
+            echo "### edge / sha-${{ steps.src.outputs.short }} image digests ($GREEN_SHA)"
+            echo "- BFF: \`ghcr.io/${{ github.repository }}-bff@${{ steps.build-bff.outputs.digest }}\`"
+            echo "- web: \`ghcr.io/${{ github.repository }}-web@${{ steps.build-web.outputs.digest }}\`"
+            echo
+            echo "Pin the demo deploy to these with \`docker/deploy-demo.sh edge\` — see docker/DEMO-DEPLOY.md."
+          } | tee -a "$GITHUB_STEP_SUMMARY"

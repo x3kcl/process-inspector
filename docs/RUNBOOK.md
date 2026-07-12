@@ -200,3 +200,34 @@ but need an exporter this repo does not deploy (`blackbox_exporter`/`node_export
 Paging route for everything above: the workflow platform team. Engine-health alarms (DLQ
 growth, executor starvation) route to the **engine's** owning team — the Inspector is the
 messenger.
+
+## 8. Rolling back the demo deploy (pi.naumann.cloud)
+
+**Applies to the demo only** (`docker/docker-compose.demo.yml`) — a customer's own prod
+deployment via `docker/docker-compose.release.yml` pins `PI_VERSION` to a released tag and
+is out of scope here. Since issue #92, the demo's `backend`/`frontend` are pinned by
+**digest** (`docker/.env.demo`'s `PI_BFF_DIGEST`/`PI_WEB_DIGEST`), never a floating tag or a
+local build — every deploy commits that file and tags the commit `demo-YYYY-MM-DD-<shortsha>`,
+so `git log docker/.env.demo` is the full attribution record of what has ever run there.
+
+**Symptom:** a demo deploy regressed something (a bad `:edge` build, a config drift) and the
+fastest fix is going back to the last-known-good build rather than forward-fixing.
+
+```bash
+docker/rollback-demo.sh --list                  # recent demo deploy tags, newest first
+docker/rollback-demo.sh demo-2026-07-12-a1b2c3d  # restores that tag's exact digest pair, redeploys, verifies
+git push origin HEAD                            # publish the rollback commit
+```
+
+This restores the *exact* previously-running images (no re-resolution of a floating tag —
+`:edge` may have moved since) and verifies the standard `/api/engines` 401 probe (DEMO-DEPLOY.md
+§"Troubleshooting a 502 / 504") before considering the rollback done. If that probe still
+fails, escalate to §2/§5 as normal — a rollback fixes a bad *image*, not a bad database state
+or a Traefik/network issue.
+
+**Drilled:** 2026-07-13, `docker/deploy-demo.sh`/`docker/rollback-demo.sh` verified end-to-end
+against the real published `:edge` images (digest resolution, fail-closed `docker compose
+config` on an unpinned `.env.demo`, successful `config` with real digests substituted). The
+live cutover of pi.naumann.cloud itself and an actual against-prod rollback drill are tracked
+separately — this repo's automation is ready, but running it against the live host is a
+deliberate, human-confirmed step, not something this change performs on its own.

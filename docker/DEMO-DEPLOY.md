@@ -18,14 +18,28 @@ required so Traefik reaches nginx on the right IP.
 
 ## Deploy / update
 
+`backend`/`frontend` are pinned by **digest** (issue #92), not a floating tag and not a
+local build — `docker/deploy-demo.sh` resolves the digest for a published tag, writes it
+into `docker/.env.demo`, redeploys, verifies, and commits+tags the result so what's running
+is always attributable to one exact build (`git log docker/.env.demo`).
+
 ```bash
 # from the repo root, on the hp04 host (the external `docker_discovery` net must already exist)
-docker compose -f docker/docker-compose.demo.yml --env-file docker/.env.demo up -d --build
+docker/deploy-demo.sh          # defaults to the latest :edge (post-merge-to-main) build
+docker/deploy-demo.sh v0.3.0   # or pin a specific versioned release tag instead
+git push origin HEAD --tags    # publish the attribution commit + demo-YYYY-MM-DD-<sha> tag
 ```
 
 Sign in with the ladder users `viewer` / `responder` / `operator` / `admin`
 (password = `INSPECTOR_DEV_PASSWORD`, default `dev`). Override host/creds in
 `docker/.env.demo`.
+
+## Rollback
+
+`docker/rollback-demo.sh <demo-tag>` restores a PRIOR deploy's exact pinned digest pair from
+git history (no re-resolution — safe against a floating tag having since moved) and
+redeploys. `docker/rollback-demo.sh --list` shows recent demo deploy tags. See RUNBOOK.md §8
+for the drilled procedure and when to reach for this vs. `deploy-demo.sh`.
 
 ## TLS / HSTS — READ THIS if the browser blocks the site
 

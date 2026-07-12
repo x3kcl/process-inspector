@@ -79,6 +79,7 @@ jobs:
             type=semver,pattern={{version}},value=${{ env.RELEASE_TAG }}
             type=semver,pattern={{major}}.{{minor}},value=${{ env.RELEASE_TAG }}
       - name: Build + push BFF image
+        id: build-bff
         uses: docker/build-push-action@v6
         with:
           context: .
@@ -99,6 +100,7 @@ jobs:
             type=semver,pattern={{version}},value=${{ env.RELEASE_TAG }}
             type=semver,pattern={{major}}.{{minor}},value=${{ env.RELEASE_TAG }}
       - name: Build + push web image
+        id: build-web
         uses: docker/build-push-action@v6
         with:
           context: frontend
@@ -107,6 +109,14 @@ jobs:
           labels: ${{ steps.meta-web.outputs.labels }}
           cache-from: type=gha
           cache-to: type=gha,mode=max
+
+      - name: Record digests (issue #92 — always attributable to a SHA, never a floating tag)
+        run: |
+          {
+            echo "### ${{ env.RELEASE_TAG }} image digests"
+            echo "- BFF: \`ghcr.io/${{ github.repository }}-bff@${{ steps.build-bff.outputs.digest }}\`"
+            echo "- web: \`ghcr.io/${{ github.repository }}-web@${{ steps.build-web.outputs.digest }}\`"
+          } | tee -a "$GITHUB_STEP_SUMMARY"
 
       - name: GitHub Release (quick-start compose attached)
         uses: softprops/action-gh-release@v2
@@ -126,3 +136,7 @@ jobs:
             Images (published to both registries — compose defaults to Docker Hub, override with `PI_REGISTRY`):
             - Docker Hub: `docker.io/x3kcl/process-inspector-bff` · `docker.io/x3kcl/process-inspector-web`
             - GHCR: `ghcr.io/${{ github.repository }}-bff` · `ghcr.io/${{ github.repository }}-web`
+
+            Digests (issue #92 — pin these, not the floating `${{ env.RELEASE_TAG }}`/`latest` tag, for anything that must stay attributable to this exact build):
+            - `ghcr.io/${{ github.repository }}-bff@${{ steps.build-bff.outputs.digest }}`
+            - `ghcr.io/${{ github.repository }}-web@${{ steps.build-web.outputs.digest }}`
