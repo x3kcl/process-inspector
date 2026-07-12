@@ -237,7 +237,12 @@ tests + spec-sync in the same PR, and follows green-ci.
    `BreakGlassFailureHandlerTest`, `AlertWebhookSenderTest` (WireMock), `SecurityAlertChannelTest`.
    **#82 CLOSED** (S3+S4+S7 all landed).
 10. **Edge hardening (S5)** — flip CSP to enforce per-deploy after report-only observation;
-    mirror the BFF header set in the demo nginx; fix demo HSTS.
+    mirror the BFF header set in the demo nginx; fix demo HSTS. **LANDED:** base
+    `csp-report-only:false` (enforce; `HttpHardeningSpringTest` updated); `frontend/nginx.conf`
+    now emits the mirrored `nosniff`/`X-Frame-Options`/`Referrer-Policy`/`Permissions-Policy` +
+    ENFORCING CSP on the SPA `location /`; demo Traefik HSTS `stsSeconds` 300→86400 (24 h, no
+    preload/includeSubdomains). Follow-up: TIGHTEN the permissive `'unsafe-inline'`/`'unsafe-eval'`
+    CSP directives once the bundle allows.
 11. **Docs true-up sweep (D1–D12)** — one docs-only PR; the register/matrix/plan/runbook/
     quick-start all reconciled to main; OPERATIONS §8 rewritten as the actual gate list.
 12. **Observability minimum (Q1)** — ✅ **LANDED** (`feature/p1-observability`), scoped to the

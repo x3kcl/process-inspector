@@ -48,9 +48,9 @@ class HttpHardeningSpringTest {
         assertThat(h.getFirst("X-Frame-Options")).isEqualTo("DENY");
         assertThat(h.getFirst("Referrer-Policy")).isEqualTo("strict-origin-when-cross-origin");
         assertThat(h.getFirst("Permissions-Policy")).contains("geolocation=()");
-        // CSP ships report-only FIRST: the report-only header is present, the enforcing one absent.
-        assertThat(h.getFirst("Content-Security-Policy-Report-Only")).contains("frame-ancestors 'none'");
-        assertThat(h.getFirst("Content-Security-Policy")).isNull();
+        // CSP now ENFORCES (S5): the enforcing header is present, the report-only one absent.
+        assertThat(h.getFirst("Content-Security-Policy")).contains("frame-ancestors 'none'");
+        assertThat(h.getFirst("Content-Security-Policy-Report-Only")).isNull();
         // HSTS is the proxy's job — the app must not double-emit it.
         assertThat(h.getFirst("Strict-Transport-Security")).isNull();
     }
