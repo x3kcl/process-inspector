@@ -91,7 +91,30 @@ public class BulkJobService {
     private final GuardedCaller guardedCaller;
     private final ExecutorService executor = Executors.newVirtualThreadPerTaskExecutor();
     private final Map<UUID, Boolean> cancelRequested = new ConcurrentHashMap<>();
-    /** Per-engine in-flight dispatch permits, shared across concurrent jobs (SPEC §7). */
+    /**
+     * Per-engine in-flight dispatch permits, shared across concurrent jobs (SPEC §7).
+     *
+     * <p><b>Accepted tradeoff (issue #101 review, R-SEM-11):</b> a permit is held for the ENTIRE
+     * duration of {@link #awaitCircuitRecovery}, not just the dispatch attempt — an item that
+     * fast-fails on a genuinely open circuit camps on its permit for up to {@code
+     * circuitPauseMaxMs} (default 20s) while polling for recovery. During a real circuit-open
+     * incident, up to {@code enginePermits} (default 4) concurrently in-flight items pile into
+     * this wait roughly simultaneously (they all hit the same open breaker), soft-locking THAT
+     * ENGINE's shared permit pool for up to the bound — any OTHER concurrent job's dispatch to
+     * the SAME engine blocks on {@link Semaphore#acquireUninterruptibly()} until a permit frees.
+     * Deliberately not fixed by releasing-and-reacquiring the permit around the wait: doing so
+     * would let the per-item {@code paused} gate in {@link #dispatchEngineGroup} start MORE new
+     * dispatches into the same known-open breaker while this item waits, which is the exact
+     * pile-up this pause exists to prevent — trading a bounded, per-engine throughput dip (never
+     * fleet-wide; each engine has its own {@link Semaphore}) for genuinely uncontrolled load on
+     * a struggling engine. Considered and rejected a "pause immediately, not after the wait"
+     * variant too: the per-engine dispatch loop is a synchronous {@code for} that {@code break}s
+     * on pause and cannot resume mid-loop, so signaling pause before the wait resolves would
+     * silently abandon the REST of the group's items even when this one item's wait succeeds —
+     * worse than the current behavior, not better. A genuinely non-starving fix needs pre-flight
+     * {@code isOpen} checks ahead of every dispatch attempt (not just the reactive retry here),
+     * which is a bigger redesign than this P3 follow-up warrants.
+     */
     private final Map<String, Semaphore> enginePermits = new ConcurrentHashMap<>();
     /**
      * Jobs whose dispatch to an engine gave up on an open circuit / saturated bulkhead mid-run
@@ -417,6 +440,15 @@ public class BulkJobService {
      * dispatch, offer "continue as new job"). Runs on the item's own virtual thread — cheap,
      * never blocks the shared engine permit the item already holds from being released promptly.
      *
+     * <p>Since multiple items typically enter this wait around the same moment (they all hit the
+     * same open breaker — see {@link #enginePermits}'s javadoc), a HALF_OPEN transition can
+     * thundering-herd them: resilience4j permits only a FEW trial calls in HALF_OPEN, so several
+     * items may read {@code isOpen()==false} and retry simultaneously, but only the permitted
+     * trials actually get through — the rest immediately re-trip and settle {@code failed} via
+     * the single bounded retry ({@code isBoundedRetry} prevents a second wait, never a loop).
+     * Accepted as a pessimistic-but-safe outcome, not fixed with jitter/backoff — those items are
+     * exactly as truthfully {@code failed} as they'd have been without this whole feature.
+     *
      * <p>Timed against {@link System#nanoTime()}, deliberately NOT the injected {@link #clock} —
      * that clock is fixed in every test (for deterministic item timestamps), so a fixed-clock
      * deadline would never elapse and this bound would hang forever under test.
@@ -484,10 +516,15 @@ public class BulkJobService {
             item.settle(BulkJobItem.State.ok, result.deltaStatement(), result.auditId(), clock.instant());
             return false;
         } catch (GuardRefusedException e) {
-            // Bounded pause-and-retry (issue #101, R-SEM-11): CallNotPermittedException guarantees
-            // the wrapped op never ran, so ONE retry after the circuit leaves OPEN is safe — never
-            // a double-send. Exactly one retry attempt (isBoundedRetry guards re-entry) so a
-            // flickering breaker falls through to the honest give-up path instead of looping.
+            // Bounded pause-and-retry (issue #101, R-SEM-11): "engine-shedding-load" wraps EITHER
+            // CallNotPermittedException (breaker OPEN) or BulkheadFullException (bulkhead full) —
+            // see GuardedCaller.call()'s bulkhead-outside-breaker composition and
+            // CorrectiveActionService's shared catch. Resilience4j's contract for BOTH gates the
+            // SAME way: acquirePermission()/tryAcquirePermission() is checked, and the exception
+            // thrown, strictly BEFORE the wrapped operation ever runs — so a retry after either
+            // one clears is safe, never a double-send, for the same reason in both cases. Exactly
+            // one retry attempt (isBoundedRetry guards re-entry) so a flickering breaker falls
+            // through to the honest give-up path instead of looping.
             if (!isBoundedRetry
                     && "engine-shedding-load".equals(e.code())
                     && awaitCircuitRecovery(job, item.getEngineId())) {

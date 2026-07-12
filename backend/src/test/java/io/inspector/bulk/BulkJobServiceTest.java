@@ -431,6 +431,35 @@ class BulkJobServiceTest {
         verify(actions, org.mockito.Mockito.times(2)).execute(eq(ENGINE), eq("pi-2"), any(), any(), any());
     }
 
+    @Test
+    void circuitStillOpenAfterTheBoundedWaitGivesUpHonestly() {
+        // A genuinely non-zero bound (unlike the degenerate bound=0 shortcut the OTHER give-up
+        // test uses) — the breaker NEVER reports recovered, so this exercises the real poll loop
+        // timing out, not just skipping it. Same final outcome as the bound=0 case: honest give-up.
+        service = serviceWith(1, 0, 60, 10, new java.util.concurrent.CopyOnWriteArrayList<>());
+        when(actions.execute(eq(ENGINE), eq("pi-1"), any(), any(), any()))
+                .thenReturn(new ActionResult(UUID.randomUUID(), "c", "ok", 200, "suspended"));
+        when(actions.execute(eq(ENGINE), eq("pi-2"), any(), any(), any()))
+                .thenThrow(new GuardRefusedException(
+                        HttpStatus.SERVICE_UNAVAILABLE,
+                        "engine-shedding-load",
+                        "Engine 'engine-a' is shedding load (circuit open) — the action was not sent."));
+        // pi-3 deliberately UNSTUBBED — must never dispatch once the bound is exceeded.
+        when(guardedCaller.isOpen(eq(ENGINE), eq(CallPriority.INTERACTIVE))).thenReturn(true);
+
+        BulkDtos.BulkJobDto submitted = service.submit(suspendOf("pi-1", "pi-2", "pi-3"), responder);
+        BulkDtos.BulkJobDto done = awaitFinished(submitted.id());
+
+        assertThat(done.state()).isEqualTo("INTERRUPTED");
+        assertThat(done.items()).extracting(BulkDtos.BulkItemDto::state).containsExactly("ok", "failed", "not_run");
+        assertThat(done.items().get(1).detail()).contains("shedding load");
+        verify(actions, org.mockito.Mockito.times(1)).execute(eq(ENGINE), eq("pi-2"), any(), any(), any());
+        verify(actions, never()).execute(eq(ENGINE), eq("pi-3"), any(), any(), any());
+        // The poll loop actually ran (not the bound=0 shortcut) — at least a couple of real polls
+        // within the 60ms/10ms window before giving up.
+        verify(guardedCaller, org.mockito.Mockito.atLeast(2)).isOpen(eq(ENGINE), eq(CallPriority.INTERACTIVE));
+    }
+
     /* ---------------- retry: dispatch-time DLQ resolution ---------------- */
 
     @Test
