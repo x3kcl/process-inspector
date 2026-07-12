@@ -33,6 +33,7 @@ public class BreakGlassSuccessHandler implements AuthenticationSuccessHandler {
     private final AuditService audit;
     private final BreakGlassAuditSink sink;
     private final SecurityAlertChannel alert;
+    private final BreakGlassThrottle throttle;
     private final Duration sessionCap;
     private final java.time.Clock clock;
 
@@ -40,11 +41,13 @@ public class BreakGlassSuccessHandler implements AuthenticationSuccessHandler {
             AuditService audit,
             BreakGlassAuditSink sink,
             SecurityAlertChannel alert,
+            BreakGlassThrottle throttle,
             int sessionCapHours,
             java.time.Clock clock) {
         this.audit = audit;
         this.sink = sink;
         this.alert = alert;
+        this.throttle = throttle;
         this.sessionCap = Duration.ofHours(sessionCapHours);
         this.clock = clock;
     }
@@ -54,6 +57,9 @@ public class BreakGlassSuccessHandler implements AuthenticationSuccessHandler {
             HttpServletRequest request, HttpServletResponse response, Authentication authentication)
             throws IOException, ServletException {
         String actor = authentication.getName();
+        // A correct password clears the brute-force counter (S4) so an operator who fat-fingered the
+        // sealed password before getting it right is never held in a residual cooldown.
+        throttle.reset(actor);
         alert.fire("break-glass-login", "sealed-account login by " + actor);
 
         Map<String, Object> payload = Map.of("event", "break-glass-login", "actor", actor);

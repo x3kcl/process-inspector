@@ -362,6 +362,14 @@ nobody may "simplify" by exposing an engine directly.
   HSTS opt-in, CORS off — R-SAFE-07/R-OPS-16), and builds
   break-glass (sealed local ADMIN on a distinct `/break-glass` chain that works when the IdP is
   down; ADMIN-global never fleet; audit degrades to a local file sink when Postgres is also down).
+  **Brute-force throttle (S4):** the `/break-glass` door is protected by a self-healing PROGRESSIVE
+  DELAY (`BreakGlassThrottle`) — never a hard lockout, which would brick the emergency door during
+  an outage: first two failures free, then `429 + Retry-After` doubling 1s→30s; a correct password
+  resets it and it self-expires after 15 min idle; failures alert on a sustained burst.
+- **Security alerts:** `SecurityAlertChannel` fires on every `ACCESS_ADMIN` change, break-glass
+  login, and break-glass brute-force — an always-on greppable log marker PLUS (S3) a real
+  fire-and-forget POST to an env-ref webhook (`AlertWebhookSender`) when configured; under `oidc` an
+  unconfigured webhook is a boot warning. A dead pager never blocks the security flow it reports on.
 - **RBAC:** `VIEWER` (read-only) → **`RESPONDER`** (tier-0 verbs + unstick + notes — the
   runbook tier; no variable writes, no token moves) → `OPERATOR` (adds tiers 1–2) → `ADMIN`
   (tiers 3–4: terminate/delete, suspend-definition, deadletter-delete, migrate, bulk).

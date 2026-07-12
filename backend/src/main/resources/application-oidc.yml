@@ -40,6 +40,12 @@ inspector:
     # ladder is global-scoped anyway); on here. A single-team OIDC deploy that wants the fleet-wide
     # overview can override to false.
     scope-reads-enforced: ${INSPECTOR_SCOPE_READS_ENFORCED:true}
+    # S3: the ENV-VAR NAME (never the URL — iron rule) holding the security-alert webhook. When that
+    # env var is set, ACCESS_ADMIN changes / break-glass logins / break-glass brute-force POST there
+    # in addition to the log marker. Points at INSPECTOR_ALERT_WEBHOOK_URL by default; if THAT env var
+    # is unset the alert egress is log-only and the BFF logs a loud boot warning (a prod deploy that
+    # pages nobody is a config gap). Override to name a different env var, or blank to silence to logs.
+    alert-webhook-url-ref: ${INSPECTOR_ALERT_WEBHOOK_REF:INSPECTOR_ALERT_WEBHOOK_URL}
     oidc:
       # Pinned trusted issuer — MUST equal the issuer-uri above (one tenant).
       issuer: ${INSPECTOR_OIDC_ISSUER_URI}

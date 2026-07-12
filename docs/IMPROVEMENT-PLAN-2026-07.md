@@ -224,7 +224,18 @@ tests + spec-sync in the same PR, and follows green-ci.
    `BreakGlassActor` dispatch-thread marker (mirroring `ForwardedActor`) that
    `CorrectiveActionService` sets from the passed auth before the row is written, cleared in a
    `finally`. Tests: `AuditServiceTest` (marker → flagged with empty context),
-   `CorrectiveActionServiceTest` (execute sets+clears the marker from the auth). S3/S4 remain.
+   `CorrectiveActionServiceTest` (execute sets+clears the marker from the auth).
+   **S3 LANDED:** `AlertWebhookSender` — `SecurityAlertChannel.fire()` now ALSO POSTs every alert to
+   an env-ref webhook (`inspector.security.alert-webhook-url-ref`, on under `oidc`; absence = boot
+   warning), fire-and-forget on a virtual thread with short timeouts and swallowed failures (a dead
+   pager never blocks a break-glass login). **S4 LANDED:** `BreakGlassThrottle` — a self-healing
+   PROGRESSIVE DELAY on `/break-glass` (not a hard lockout, which would brick the emergency door
+   during an outage): first two failures free, then 429 + `Retry-After` doubling 1s→30s; a correct
+   password resets it (a legit operator is never held back) and it self-expires after 15 min idle.
+   A `BreakGlassThrottleFilter` pre-empts before the form login; `BreakGlassFailureHandler` counts +
+   alerts on the 5th/10th/… consecutive failure. Tests: `BreakGlassThrottleTest`,
+   `BreakGlassFailureHandlerTest`, `AlertWebhookSenderTest` (WireMock), `SecurityAlertChannelTest`.
+   **#82 CLOSED** (S3+S4+S7 all landed).
 10. **Edge hardening (S5)** — flip CSP to enforce per-deploy after report-only observation;
     mirror the BFF header set in the demo nginx; fix demo HSTS.
 11. **Docs true-up sweep (D1–D12)** — one docs-only PR; the register/matrix/plan/runbook/

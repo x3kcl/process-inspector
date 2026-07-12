@@ -22,7 +22,7 @@ class OidcGroupResolverTest {
     private static final String PINNED = "https://login.microsoftonline.com/tenant-a/v2.0";
 
     private OidcGroupResolver resolver(String pinnedIssuer, boolean resolveOverage, OverageGroupResolver overage) {
-        SecurityProperties security = new SecurityProperties(null, null, null, "groups", null, null);
+        SecurityProperties security = new SecurityProperties(null, null, null, "groups", null, null, null);
         OidcProperties oidc = new OidcProperties(pinnedIssuer, resolveOverage, null);
         @SuppressWarnings("unchecked")
         ObjectProvider<OverageGroupResolver> provider = mock(ObjectProvider.class);
