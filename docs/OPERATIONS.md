@@ -12,37 +12,57 @@ R-SAFE-06/07 (REQUIREMENTS-REGISTER.md).
   surfaces only via `/api/engines`, the health strip, and metrics.
 
 ## 2. Telemetry (R-OPS-02, R-AUD-04)
-> **Implementation status (P1 #12 / Q1, 2026-07-10).** `/actuator/health` (+ liveness/readiness
-> probes) and `/actuator/prometheus` are now **live** — actuator + micrometer-prometheus are real
-> dependencies (before this they 404'd). **Emitted today:** `resilience4j_circuitbreaker_state`
-> and bulkhead metrics (the breaker/lane signal), Hikari pool, HTTP-server timings, and JVM /
-> virtual-thread metrics — all for free from the registry. The **named application-metric contract
-> below is the TARGET, not yet wired** (per-engine fan-out latency, triage-cache hit rate, SSE
-> gauges, bulk-job counters, `audit_insert_failures_total`) — each needs a Micrometer counter/timer
-> at its call site (tracked follow-up); until then the interim signal for those is the audit event /
-> log line. **Structured-JSON logs + `correlationId` MDC and `GET /api/diag` are likewise not yet
-> built.** No fiction: treat the un-emitted items as roadmap, not shipped.
-- `/actuator/prometheus` (auth-gated). Target contract metric set: per-engine fan-out latency
-  histograms (tags `engineId`,`leg`), `resilience4j_circuitbreaker_state`, triage-cache hit
-  rate, SSE emitter gauge + error counter, bulk-job gauges + per-item outcome counters,
-  `audit_insert_failures_total`, Hikari pool, JVM/virtual-thread pinning.
-- Structured JSON logs; every request gets a `correlationId` (accept `X-Request-Id` or
-  generate), MDC-propagated across the virtual-thread fan-out (task decorator — MDC does not
-  auto-inherit), logged on every engine call, persisted on every audit row, returned in
-  every error envelope and UI toast. Never log secrets or variable payloads at INFO.
-- ADMIN diagnostics `GET /api/diag` (v1.x): breaker states+history, cache ages, semaphore
-  saturation, last N engine errors with correlationIds, build info; targeted per-composite-ID
-  derivation tracing with 15-min TTL.
+> **Implementation status (P1 #12 / Q1, 2026-07-10; issue #96, 2026-07-13).** `/actuator/health`
+> (+ liveness/readiness probes) and `/actuator/prometheus` are **live** — actuator +
+> micrometer-prometheus are real dependencies. **Emitted (free from the registry):**
+> `resilience4j_circuitbreaker_state` + bulkhead metrics, Hikari pool, HTTP-server timings,
+> JVM/virtual-thread metrics. **Emitted (issue #96, hand-wired at named sites — verified against a
+> real scrape, not assumed):** `audit_insert_failures_total` (tagged `site`), per-engine fan-out
+> latency (`engine_fanout_duration_seconds`, tags `engineId`/`leg` — ONE instrumentation site, the
+> `GuardedCaller` chokepoint every facade call runs through), `sse_emitters_active` (gauge) +
+> `sse_emitter_errors_total` (counter), `bulk_jobs_running` (gauge) + `bulk_item_outcomes_total`
+> (counter, tagged `state`, tallied once per finished job). **Structured JSON logs** (gated on the
+> `oidc` prod-like profile — dev/test/it-* stay human-readable) **and correlationId MDC
+> propagation across the virtual-thread fan-out** (`MdcPropagatingExecutors`, swapped into every
+> `Executors.newVirtualThreadPerTaskExecutor()` call site) are **built**. **`GET /api/diag`
+> (ADMIN-gated) is built**: breaker states, cache AGES (triage dashboard + leak-views), bulk
+> permit-pool saturation, the last 20 engine-call failures with correlationIds, build info (absent
+> outside a `mvn package` build). **Remaining gap, honestly not built:** triage-cache **hit rate**
+> (age is emitted; a hit/miss ratio needs `Caffeine.recordStats()` + a Micrometer binder — outside
+> issue #96's stated scope) and `/api/diag`'s "targeted per-composite-ID derivation tracing with
+> 15-min TTL" (a materially bigger feature layering a cached trace view on the EXISTING
+> `EngineCallRecorder`, itself only wired for on-demand "Explain this status" re-derivation today —
+> tracked separately, not claimed here).
+- `/actuator/prometheus` (auth-gated). Metric set: `audit_insert_failures_total`,
+  `engine_fanout_duration_seconds` (tags `engineId`,`leg`), `resilience4j_circuitbreaker_state`,
+  `sse_emitters_active` + `sse_emitter_errors_total`, `bulk_jobs_running` +
+  `bulk_item_outcomes_total`, Hikari pool, JVM/virtual-thread pinning. Triage-cache **hit rate**
+  (as opposed to age, which `GET /api/diag` reports) remains TARGET, not wired.
+- Structured JSON logs (the `oidc` profile only — see status note above); every request gets a
+  `correlationId` (accept `X-Request-Id` or generate), MDC-propagated across the virtual-thread
+  fan-out via `MdcPropagatingExecutors` (a drop-in executor swap — MDC does not auto-inherit,
+  confirmed with a dedicated propagation test), logged on every engine call, persisted on every
+  audit row, returned in every error envelope and UI toast. Never log secrets or variable
+  payloads at INFO.
+- ADMIN diagnostics `GET /api/diag` (v1.x): breaker states, cache AGES, permit-pool saturation,
+  last-N engine errors with correlationIds, build info. Targeted per-composite-ID derivation
+  tracing with a 15-min TTL is NOT built (see status note above).
 
 ## 3. Who watches the watcher (R-OPS-03)
-The Inspector is probed by **external** monitoring. Alert rules (TARGET — the rule files under
-`deploy/` are **not yet shipped**; the liveness/readiness probes they'd bind to ARE live as of
-P1 #12, the custom-metric rules wait on §2's metric wiring), referencing the contract metric
-names: `InspectorDown` (liveness probe), readiness failing
+The Inspector is probed by **external** monitoring. Alert rules (issue #96,
+`deploy/prometheus/alert-rules.yml` — liveness, `AuditInsertFailures`,
+`AllCircuitBreakersOpen`, `SseEmitterErrorsSpiking`, and `DatabaseConnectionTimeoutsSpiking`
+as the honest proxy for Postgres-unreachable now fire off metrics this app emits;
+`InspectorReadinessFailing`/`DiskSpaceHigh` are written but need an exporter this repo does not
+deploy — `blackbox_exporter`/`node_exporter` — see `deploy/README.md`), referencing the same
+contract metric names: `InspectorDown` (liveness probe), readiness failing
 >2m, `audit_insert_failures_total > 0`, Postgres unreachable, disk >80%, SSE emitter errors
 spiking, **all circuits open simultaneously** (an inspector-side egress problem, not N engine
-failures). Paging route: the workflow platform team. Degraded mode: design principle 5 IS the
-fallback — the runbook carries direct-cURL recipes for the top verbs (see §7).
+failures). No monitoring STACK (Prometheus/Alertmanager) is deployed by this repo's
+`docker/*.yml` — the rule file is the contract to hand to whichever one scrapes
+`/actuator/prometheus` in a real deploy. Paging route: the workflow platform team. Degraded
+mode: design principle 5 IS the fallback — the runbook carries direct-cURL recipes for the top
+verbs (see §7).
 
 ## 4. Availability & recovery (R-OPS-04)
 RTO ≤ 15 min: IaC/one-command redeploy, image pinned by digest, registry YAML + secrets in

@@ -25,6 +25,8 @@ import io.inspector.client.GuardedCaller.CallPriority;
 import io.inspector.config.InspectorProperties.EngineConfig;
 import io.inspector.config.InspectorProperties.Timeouts;
 import io.inspector.support.TestEngines;
+import io.micrometer.core.instrument.simple.SimpleMeterRegistry;
+import java.time.Clock;
 import java.time.Duration;
 import java.util.Map;
 import java.util.concurrent.TimeUnit;
@@ -50,6 +52,8 @@ class GuardedCallerTest {
     private MockEnvironment env;
     private CircuitBreakerRegistry breakers;
     private BulkheadRegistry bulkheads;
+    private SimpleMeterRegistry metrics;
+    private RecentEngineErrors recentErrors;
     private GuardedCaller guarded;
     private ProcessApiClient client;
 
@@ -77,7 +81,9 @@ class GuardedCallerTest {
                         .maxConcurrentCalls(8)
                         .maxWaitDuration(Duration.ofSeconds(5))
                         .build()));
-        guarded = new GuardedCaller(env, breakers, bulkheads);
+        metrics = new SimpleMeterRegistry();
+        recentErrors = new RecentEngineErrors(Clock.systemUTC());
+        guarded = new GuardedCaller(env, breakers, bulkheads, metrics, recentErrors);
         client = new ProcessApiClient(guarded);
     }
 
@@ -128,6 +134,41 @@ class GuardedCallerTest {
 
         assertThatThrownBy(() -> client.engineInfo(engine("slow-engine"), CallPriority.INTERACTIVE))
                 .isInstanceOf(ResourceAccessException.class);
+    }
+
+    @Test
+    void timesEveryCallTaggedByEngineAndLeg() {
+        // OPERATIONS.md §2 (issue #96): engine_fanout_duration_seconds{engineId,leg} — the single
+        // GuardedCaller.call() chokepoint, so one instrumentation site covers every facade.
+        wm.stubFor(get(urlPathEqualTo("/management/engine")).willReturn(okJson("{\"version\":\"6.8.0\"}")));
+
+        client.engineInfo(engine("timed-engine"), CallPriority.INTERACTIVE);
+
+        assertThat(metrics.find("engine_fanout_duration_seconds")
+                        .tag("engineId", "timed-engine")
+                        .tag("leg", "INTERACTIVE")
+                        .timer())
+                .isNotNull()
+                .satisfies(timer -> assertThat(timer.count()).isEqualTo(1));
+    }
+
+    @Test
+    void timesAFailedCallToo() {
+        // A refused/errored call is a meaningful (near-zero) latency sample, not hidden data.
+        wm.stubFor(
+                get(urlPathEqualTo("/management/engine")).willReturn(aResponse().withStatus(500)));
+
+        try {
+            client.engineInfo(engine("failing-engine"), CallPriority.INTERACTIVE);
+        } catch (RuntimeException expected) {
+            // the failure itself is asserted elsewhere — this test only cares that it was timed
+        }
+
+        assertThat(metrics.find("engine_fanout_duration_seconds")
+                        .tag("engineId", "failing-engine")
+                        .timer())
+                .isNotNull()
+                .satisfies(timer -> assertThat(timer.count()).isEqualTo(1));
     }
 
     @Test

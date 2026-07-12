@@ -5,6 +5,8 @@ import io.github.resilience4j.circuitbreaker.CircuitBreaker;
 import io.github.resilience4j.circuitbreaker.CircuitBreakerRegistry;
 import io.inspector.config.InspectorProperties.Auth;
 import io.inspector.config.InspectorProperties.EngineConfig;
+import io.micrometer.core.instrument.MeterRegistry;
+import io.micrometer.core.instrument.Timer;
 import java.net.http.HttpClient;
 import java.nio.charset.StandardCharsets;
 import java.time.Duration;
@@ -57,14 +59,23 @@ public class GuardedCaller {
     private final Environment env;
     private final CircuitBreakerRegistry breakers;
     private final BulkheadRegistry bulkheads;
+    private final MeterRegistry metrics;
+    private final RecentEngineErrors recentErrors;
     private final Map<String, RestClient> readClients = new ConcurrentHashMap<>();
     // Mutating calls get their own client so write-ms (R-NFR-07) budgets them separately.
     private final Map<String, RestClient> writeClients = new ConcurrentHashMap<>();
 
-    public GuardedCaller(Environment env, CircuitBreakerRegistry breakers, BulkheadRegistry bulkheads) {
+    public GuardedCaller(
+            Environment env,
+            CircuitBreakerRegistry breakers,
+            BulkheadRegistry bulkheads,
+            MeterRegistry metrics,
+            RecentEngineErrors recentErrors) {
         this.env = env;
         this.breakers = breakers;
         this.bulkheads = bulkheads;
+        this.metrics = metrics;
+        this.recentErrors = recentErrors;
     }
 
     /**
@@ -108,13 +119,37 @@ public class GuardedCaller {
      * it only counts calls that actually ran. Open breaker → {@code CallNotPermittedException};
      * saturated bulkhead after its wait → {@code BulkheadFullException} — both become ordinary
      * perEngine error envelopes upstream.
+     *
+     * <p>Timed end-to-end (issue #96, OPERATIONS.md §2's named-metric contract): {@code
+     * engine_fanout_duration_seconds} tagged {@code engineId}/{@code leg} ({@link CallPriority}'s
+     * name) — the single chokepoint every facade call runs through, so this covers ALL per-engine
+     * fan-out uniformly with one instrumentation site rather than one per call-site. Timed around
+     * the WHOLE guarded call (bulkhead wait + breaker + the actual HTTP round trip) including the
+     * failure paths — a fast-fail on an open breaker is itself a meaningful (near-zero) latency
+     * sample, not something to hide from the histogram.
+     *
+     * <p>Failures also feed {@link RecentEngineErrors} (issue #96, {@code GET /api/diag}) — the
+     * SAME chokepoint, so every facade's failures land in the one bounded recent-errors view
+     * regardless of which higher-level call raised them.
      */
     public <T> T call(EngineConfig engine, CallPriority priority, Supplier<T> op) {
         String name = priority.instanceName(engine.id());
-        return bulkheads
-                .bulkhead(name, priority.config())
-                .executeSupplier(
-                        () -> breakers.circuitBreaker(name, priority.config()).executeSupplier(op));
+        Timer.Sample sample = Timer.start(metrics);
+        try {
+            return bulkheads
+                    .bulkhead(name, priority.config())
+                    .executeSupplier(() ->
+                            breakers.circuitBreaker(name, priority.config()).executeSupplier(op));
+        } catch (RuntimeException e) {
+            recentErrors.record(engine.id(), priority.name(), e);
+            throw e;
+        } finally {
+            sample.stop(Timer.builder("engine_fanout_duration_seconds")
+                    .description("Per-engine, per-lane call latency through the GuardedCaller chokepoint")
+                    .tag("engineId", engine.id())
+                    .tag("leg", priority.name())
+                    .register(metrics));
+        }
     }
 
     /** Same guard, void-shaped — the mutation call sites (toBodilessEntity()). */

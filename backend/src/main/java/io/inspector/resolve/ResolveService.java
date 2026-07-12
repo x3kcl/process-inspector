@@ -1,5 +1,6 @@
 package io.inspector.resolve;
 
+import io.inspector.api.MdcPropagatingExecutors;
 import io.inspector.client.CmmnApiClient;
 import io.inspector.client.GuardedCaller.CallPriority;
 import io.inspector.client.ProcessApiClient;
@@ -19,7 +20,6 @@ import java.util.List;
 import java.util.Map;
 import java.util.concurrent.CompletableFuture;
 import java.util.concurrent.ExecutorService;
-import java.util.concurrent.Executors;
 import java.util.concurrent.TimeUnit;
 import java.util.concurrent.TimeoutException;
 import org.slf4j.Logger;
@@ -52,7 +52,7 @@ public class ResolveService {
     private final ProcessApiClient flowable;
     private final CmmnApiClient cmmnFlowable;
     private final InstanceDetailService detail;
-    private final ExecutorService fanout = Executors.newVirtualThreadPerTaskExecutor();
+    private final ExecutorService fanout = MdcPropagatingExecutors.newVirtualThreadPerTaskExecutor();
 
     public ResolveService(
             EngineRegistry registry,

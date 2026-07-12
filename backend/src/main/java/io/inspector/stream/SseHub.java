@@ -1,6 +1,9 @@
 package io.inspector.stream;
 
 import io.inspector.bulk.BulkJobChangedEvent;
+import io.micrometer.core.instrument.Counter;
+import io.micrometer.core.instrument.Gauge;
+import io.micrometer.core.instrument.MeterRegistry;
 import java.io.IOException;
 import java.time.Duration;
 import java.util.List;
@@ -27,7 +30,23 @@ public class SseHub implements SmartLifecycle {
     private static final long EMITTER_TIMEOUT_MS = Duration.ofMinutes(30).toMillis();
 
     private final List<SubscribedEmitter> emitters = new CopyOnWriteArrayList<>();
+    private final Counter errors;
     private volatile boolean running;
+
+    /**
+     * OPERATIONS.md §2 (issue #96): {@code sse_emitters_active} (a live gauge over {@link
+     * #subscriberCount()}) and {@code sse_emitter_errors_total} — a spike is RUNBOOK §7's "SSE
+     * emitter errors spiking" alert (typically a reverse-proxy buffering misconfig after a
+     * deploy; clients degrade to polling, not user-facing-critical).
+     */
+    public SseHub(MeterRegistry metrics) {
+        Gauge.builder("sse_emitters_active", this, SseHub::subscriberCount)
+                .description("Live SSE subscriber count")
+                .register(metrics);
+        this.errors = Counter.builder("sse_emitter_errors_total")
+                .description("SSE emitter writes/registrations dropped due to a broken pipe or timeout")
+                .register(metrics);
+    }
 
     /** Session-bound subscription: the emitter carries the authenticated user for the record. */
     public SseEmitter subscribe(String user) {
@@ -35,7 +54,10 @@ public class SseHub implements SmartLifecycle {
         SubscribedEmitter subscribed = new SubscribedEmitter(emitter, user);
         emitter.onCompletion(() -> emitters.remove(subscribed));
         emitter.onTimeout(() -> emitters.remove(subscribed));
-        emitter.onError(e -> emitters.remove(subscribed));
+        emitter.onError(e -> {
+            emitters.remove(subscribed);
+            errors.increment();
+        });
         emitters.add(subscribed);
         log.debug("SSE subscribe by {} — {} live stream(s)", user, emitters.size());
         return emitter;
@@ -108,6 +130,7 @@ public class SseHub implements SmartLifecycle {
                 subscribed.emitter().send(SseEmitter.event().name(eventName).data(data));
             } catch (IOException | RuntimeException e) {
                 emitters.remove(subscribed);
+                errors.increment();
                 log.debug("SSE emitter for {} dropped: {}", subscribed.user(), e.toString());
             }
         }

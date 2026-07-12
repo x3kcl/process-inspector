@@ -8,6 +8,7 @@ import io.inspector.action.CorrectiveActionService;
 import io.inspector.action.EngineRejectedException;
 import io.inspector.action.GuardRefusedException;
 import io.inspector.action.OutcomeUnknownException;
+import io.inspector.api.MdcPropagatingExecutors;
 import io.inspector.audit.AuditEntry;
 import io.inspector.audit.AuditOutcome;
 import io.inspector.audit.AuditService;
@@ -22,6 +23,9 @@ import io.inspector.config.InspectorProperties;
 import io.inspector.config.InspectorProperties.EngineConfig;
 import io.inspector.registry.EngineRegistry;
 import io.inspector.security.reauth.DangerousActionReauthGate;
+import io.micrometer.core.instrument.Counter;
+import io.micrometer.core.instrument.Gauge;
+import io.micrometer.core.instrument.MeterRegistry;
 import java.time.Clock;
 import java.util.ArrayList;
 import java.util.LinkedHashMap;
@@ -32,7 +36,6 @@ import java.util.UUID;
 import java.util.concurrent.CompletableFuture;
 import java.util.concurrent.ConcurrentHashMap;
 import java.util.concurrent.ExecutorService;
-import java.util.concurrent.Executors;
 import java.util.concurrent.Semaphore;
 import java.util.concurrent.atomic.AtomicBoolean;
 import java.util.stream.Collectors;
@@ -89,7 +92,8 @@ public class BulkJobService {
     private final ApplicationEventPublisher events;
     private final DangerousActionReauthGate reauth;
     private final GuardedCaller guardedCaller;
-    private final ExecutorService executor = Executors.newVirtualThreadPerTaskExecutor();
+    private final MeterRegistry metrics;
+    private final ExecutorService executor = MdcPropagatingExecutors.newVirtualThreadPerTaskExecutor();
     private final Map<UUID, Boolean> cancelRequested = new ConcurrentHashMap<>();
     /**
      * Per-engine in-flight dispatch permits, shared across concurrent jobs (SPEC §7).
@@ -137,7 +141,8 @@ public class BulkJobService {
             InspectorProperties props,
             ApplicationEventPublisher events,
             DangerousActionReauthGate reauth,
-            GuardedCaller guardedCaller) {
+            GuardedCaller guardedCaller,
+            MeterRegistry metrics) {
         this.jobs = jobs;
         this.items = items;
         this.actions = actions;
@@ -150,6 +155,12 @@ public class BulkJobService {
         this.events = events;
         this.reauth = reauth;
         this.guardedCaller = guardedCaller;
+        this.metrics = metrics;
+        // OPERATIONS.md §2 (issue #96): live count of non-terminal jobs — a gauge, not a counter,
+        // since RUNNING is a point-in-time state, not a monotonic event.
+        Gauge.builder("bulk_jobs_running", jobs, r -> r.countByState(BulkJob.State.RUNNING))
+                .description("Bulk jobs currently in the RUNNING state")
+                .register(metrics);
     }
 
     /* ------------------------------- submit ------------------------------- */
@@ -651,6 +662,15 @@ public class BulkJobService {
     private void closeEnvelope(AuditEntry envelope, List<BulkJobItem> all) {
         Map<BulkJobItem.State, Long> tally =
                 all.stream().collect(Collectors.groupingBy(BulkJobItem::getState, Collectors.counting()));
+        // OPERATIONS.md §2 (issue #96): per-item outcome counters, tallied once per finished job
+        // rather than at each individual settle() call site — semantically identical (every item
+        // is counted exactly once) with one hook point instead of the half-dozen dispatch/verify/
+        // reconcile sites that call settle().
+        tally.forEach((state, count) -> Counter.builder("bulk_item_outcomes_total")
+                .description("Bulk job item outcomes, tallied once per finished job")
+                .tag("state", state.name())
+                .register(metrics)
+                .increment(count));
         boolean anyUnknown = tally.getOrDefault(BulkJobItem.State.unknown, 0L) > 0;
         boolean anyFailed = tally.getOrDefault(BulkJobItem.State.failed, 0L) > 0;
         AuditOutcome outcome = anyUnknown ? AuditOutcome.unknown : anyFailed ? AuditOutcome.failed : AuditOutcome.ok;
@@ -674,6 +694,22 @@ public class BulkJobService {
                 .orElseThrow(() ->
                         new GuardRefusedException(HttpStatus.NOT_FOUND, "bulk-job-unknown", "No bulk job " + id + "."));
         return BulkDtos.BulkJobDto.of(job, items.findByJobIdOrderByOrdinal(id), true);
+    }
+
+    /** One engine's permit-pool saturation (issue #96, {@code GET /api/diag}). */
+    public record EnginePermitSnapshot(String engineId, int available, int total) {}
+
+    /**
+     * Diagnostics: only engines that have dispatched at least one item THIS process report a
+     * snapshot — {@link #enginePermits} is populated lazily on first dispatch, so an engine an
+     * operator has never bulk-acted on legitimately has nothing to show (never a fabricated
+     * "0/4 permits used").
+     */
+    public List<EnginePermitSnapshot> permitSnapshot() {
+        int total = props.bulkOrDefault().enginePermitsOrDefault();
+        return enginePermits.entrySet().stream()
+                .map(e -> new EnginePermitSnapshot(e.getKey(), e.getValue().availablePermits(), total))
+                .toList();
     }
 
     /* ------------------------------- cancel ------------------------------- */

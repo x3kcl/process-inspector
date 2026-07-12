@@ -37,6 +37,7 @@ import io.inspector.security.OidcProperties;
 import io.inspector.security.reauth.DangerousActionReauthGate;
 import io.inspector.security.reauth.ReauthRequiredException;
 import io.inspector.support.TestEngines;
+import io.micrometer.core.instrument.simple.SimpleMeterRegistry;
 import java.net.http.HttpTimeoutException;
 import java.time.Clock;
 import java.time.Duration;
@@ -76,6 +77,7 @@ class BulkJobServiceTest {
     private final AuditService audit = mock(AuditService.class);
     private final ProcessApiClient client = mock(ProcessApiClient.class);
     private final GuardedCaller guardedCaller = mock(GuardedCaller.class);
+    private final SimpleMeterRegistry metrics = new SimpleMeterRegistry();
     private final Authentication responder = new TestingAuthenticationToken("resp", "n/a", "ROLE_RESPONDER");
 
     private final Map<UUID, BulkJob> jobStore = new ConcurrentHashMap<>();
@@ -151,7 +153,8 @@ class BulkJobServiceTest {
                 new InspectorProperties(null, null, null, new InspectorProperties.Bulk(4, 0, 0, 0), List.of()),
                 event -> {},
                 reauthGate(),
-                guardedCaller);
+                guardedCaller,
+                metrics);
     }
 
     private static UUID keyJob(BulkJobItem.Key key) {
@@ -484,6 +487,9 @@ class BulkJobServiceTest {
         assertThat(done.items().get(0).detail()).contains("2 dead-letter jobs");
         verify(actions).execute(eq(ENGINE), eq("pi-1"), eq(ActionVerb.RETRY_JOB), argJob("dlq-1"), eq(responder));
         verify(actions).execute(eq(ENGINE), eq("pi-1"), eq(ActionVerb.RETRY_JOB), argJob("dlq-2"), eq(responder));
+        // OPERATIONS.md §2 (issue #96): the finished job's per-item outcomes are tallied once.
+        assertThat(metrics.counter("bulk_item_outcomes_total", "state", "ok").count())
+                .isEqualTo(1.0);
     }
 
     @Test
@@ -624,7 +630,11 @@ class BulkJobServiceTest {
                         List.of()),
                 publishedEvents::add,
                 reauthGate(),
-                guardedCaller);
+                guardedCaller,
+                // A fresh registry per instance — this helper builds a SECOND BulkJobService
+                // alongside the @BeforeEach one, and both would otherwise fight over registering
+                // the same bulk_jobs_running gauge id on the shared `metrics` field.
+                new SimpleMeterRegistry());
     }
 
     @Test
@@ -770,5 +780,14 @@ class BulkJobServiceTest {
                         .isInstanceOfSatisfying(
                                 BulkJobChangedEvent.class,
                                 changed -> assertThat(changed.jobId()).isEqualTo(submitted.id())));
+    }
+
+    @Test
+    void bulkJobsRunningGaugeReflectsTheRepositoryCount() {
+        // OPERATIONS.md §2 (issue #96): a live gauge, not a counter — RUNNING is a point-in-time
+        // state; the value comes straight from the repository query, never tracked separately.
+        when(jobs.countByState(BulkJob.State.RUNNING)).thenReturn(3L);
+
+        assertThat(metrics.get("bulk_jobs_running").gauge().value()).isEqualTo(3.0);
     }
 }

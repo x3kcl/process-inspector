@@ -17,6 +17,8 @@ import io.inspector.client.GuardedCaller.CallPriority;
 import io.inspector.config.InspectorProperties.EngineConfig;
 import io.inspector.config.InspectorProperties.Timeouts;
 import io.inspector.support.TestEngines;
+import io.micrometer.core.instrument.simple.SimpleMeterRegistry;
+import java.time.Clock;
 import java.time.Duration;
 import java.util.Map;
 import org.junit.jupiter.api.AfterEach;
@@ -65,7 +67,8 @@ class ProcessApiClientTest {
                         .maxConcurrentCalls(8)
                         .maxWaitDuration(Duration.ofSeconds(5))
                         .build()));
-        client = new ProcessApiClient(new GuardedCaller(env, breakers, bulkheads));
+        client = new ProcessApiClient(new GuardedCaller(
+                env, breakers, bulkheads, new SimpleMeterRegistry(), new RecentEngineErrors(Clock.systemUTC())));
     }
 
     @AfterEach

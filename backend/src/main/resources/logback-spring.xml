@@ -1,0 +1,35 @@
+<?xml version="1.0" encoding="UTF-8"?>
+<!--
+  Structured JSON logs (issue #96, OPERATIONS.md §2). Gated on the SAME "oidc" profile this
+  codebase already uses as its prod-like marker (application-oidc.yml — e.g.
+  inspector.security.scope-reads-enforced defaults on there too) rather than enumerating every
+  dev/test/it-* profile by name: logback's springProfile expression matches exact names only, no
+  wildcards, so excluding every "it-actions"/"it7-triage"/… IT profile individually would silently
+  miss a new one added later and start emitting unreadable JSON into a developer's IT console.
+  Positive-listing the one profile that means "a real deployment" is the robust direction.
+-->
+<configuration>
+    <include resource="org/springframework/boot/logging/logback/defaults.xml" />
+
+    <springProfile name="!oidc">
+        <include resource="org/springframework/boot/logging/logback/console-appender.xml" />
+        <root level="INFO">
+            <appender-ref ref="CONSOLE" />
+        </root>
+    </springProfile>
+
+    <springProfile name="oidc">
+        <appender name="JSON_CONSOLE" class="ch.qos.logback.core.ConsoleAppender">
+            <encoder class="net.logstash.logback.encoder.LogstashEncoder">
+                <!-- R-AUD-04: the same correlationId RequestIdFilter binds to MDC, echoed as the
+                     X-Request-Id response header and the audit row's correlation_id — one quotable
+                     id across the log line, the response header, and the audit trail. -->
+                <includeMdcKeyName>correlationId</includeMdcKeyName>
+                <customFields>{"application":"process-inspector"}</customFields>
+            </encoder>
+        </appender>
+        <root level="INFO">
+            <appender-ref ref="JSON_CONSOLE" />
+        </root>
+    </springProfile>
+</configuration>

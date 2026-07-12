@@ -19,6 +19,7 @@ import io.github.resilience4j.circuitbreaker.CircuitBreakerRegistry;
 import io.inspector.client.ExternalJobApiClient;
 import io.inspector.client.GuardedCaller;
 import io.inspector.client.ProcessApiClient;
+import io.inspector.client.RecentEngineErrors;
 import io.inspector.config.InspectorProperties;
 import io.inspector.config.InspectorProperties.EngineConfig;
 import io.inspector.dto.SearchRequest.InstanceStatus;
@@ -26,6 +27,8 @@ import io.inspector.dto.StatusEvidence;
 import io.inspector.dto.StatusEvidence.FlagFinding;
 import io.inspector.registry.EngineRegistry;
 import io.inspector.support.TestEngines;
+import io.micrometer.core.instrument.simple.SimpleMeterRegistry;
+import java.time.Clock;
 import java.time.Duration;
 import java.util.List;
 import java.util.Map;
@@ -65,7 +68,8 @@ class StatusEvidenceServiceTest {
                         .maxConcurrentCalls(8)
                         .maxWaitDuration(Duration.ofSeconds(5))
                         .build()));
-        GuardedCaller guarded = new GuardedCaller(env, breakers, bulkheads);
+        GuardedCaller guarded = new GuardedCaller(
+                env, breakers, bulkheads, new SimpleMeterRegistry(), new RecentEngineErrors(Clock.systemUTC()));
         ProcessApiClient client = new ProcessApiClient(guarded);
         ExternalJobApiClient externalJobs = new ExternalJobApiClient(guarded);
         EngineConfig engine = TestEngines.engine(ENGINE, wm.baseUrl());

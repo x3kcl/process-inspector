@@ -1,6 +1,7 @@
 package io.inspector.registry;
 
 import io.github.resilience4j.circuitbreaker.CallNotPermittedException;
+import io.inspector.api.MdcPropagatingExecutors;
 import io.inspector.client.GuardedCaller.CallPriority;
 import io.inspector.client.ProcessApiClient;
 import io.inspector.client.ProcessApiClient.JobLaneKind;
@@ -15,7 +16,6 @@ import java.time.format.DateTimeFormatter;
 import java.util.LinkedHashMap;
 import java.util.Map;
 import java.util.concurrent.ExecutorService;
-import java.util.concurrent.Executors;
 import java.util.concurrent.Future;
 import org.slf4j.Logger;
 import org.slf4j.LoggerFactory;
@@ -42,7 +42,7 @@ public class EngineHealthService {
     private final EngineRegistry registry;
     private final ProcessApiClient flowable;
     private final Clock clock;
-    private final ExecutorService probePool = Executors.newVirtualThreadPerTaskExecutor();
+    private final ExecutorService probePool = MdcPropagatingExecutors.newVirtualThreadPerTaskExecutor();
 
     public EngineHealthService(EngineRegistry registry, ProcessApiClient flowable, Clock clock) {
         this.registry = registry;
