@@ -34,6 +34,15 @@ import org.springframework.web.context.request.ServletRequestAttributes;
  * failing the login outright (never silently) when it does not. The marker is ALWAYS consumed on
  * the next token response, reauth or not, so an abandoned re-auth attempt can never leak into
  * gating a later, unrelated normal login.
+ *
+ * <p><b>Known limitation (Gemini review, issue #95): the marker is session-scoped, not bound to
+ * the specific authorization request's {@code state}.</b> Two concurrent login attempts on the
+ * SAME browser session (e.g. two tabs, one plain login and one reauth) could race: the wrong
+ * flow's token response consumes the marker, either wrongly freshness-checking an ordinary login
+ * or skipping the check for a reauth one. Accepted as a narrow edge case (concurrent auth flows in
+ * one session) rather than fixed by binding the marker to {@code state} — even in the skipped
+ * case, {@link DangerousActionReauthGate} still enforces freshness at the next dangerous verb, so
+ * this is reduced belt-and-suspenders coverage for one race window, never a full bypass.
  */
 @Component
 public class ReauthConformantOidcUserService implements OAuth2UserService<OidcUserRequest, OidcUser> {
@@ -57,8 +66,12 @@ public class ReauthConformantOidcUserService implements OAuth2UserService<OidcUs
 
     @Override
     public OidcUser loadUser(OidcUserRequest userRequest) throws OAuth2AuthenticationException {
+        // Read-and-clear BEFORE delegating: if delegate.loadUser() itself throws (bad token,
+        // IdP error, network blip), the one-shot marker must still be consumed here — otherwise
+        // it would survive to wrongly gate the NEXT, unrelated login attempt on this session.
+        boolean reauthWasExpected = reauthWasExpected();
         OidcUser user = delegate.loadUser(userRequest);
-        if (reauthWasExpected()) {
+        if (reauthWasExpected) {
             Duration window = Duration.ofSeconds(oidc.freshnessWindowSOrDefault());
             if (SessionFreshness.requiresReauth(user.getAuthenticatedAt(), clock.instant(), window)) {
                 throw new OAuth2AuthenticationException(

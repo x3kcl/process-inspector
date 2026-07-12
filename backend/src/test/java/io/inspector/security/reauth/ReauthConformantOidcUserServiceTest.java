@@ -129,8 +129,36 @@ class ReauthConformantOidcUserServiceTest {
         assertThatCode(() -> laterService.loadUser(request())).doesNotThrowAnyException();
     }
 
+    @Test
+    void aDelegateFailureDuringAReauthAttemptStillConsumesTheMarker() {
+        // The delegate itself can fail for reasons unrelated to auth_time freshness (bad code,
+        // IdP outage, network blip) — the marker must be cleared BEFORE delegating, not after,
+        // or a failed reauth attempt would leak into wrongly gating the next, unrelated login on
+        // this session (Copilot review finding, issue #95).
+        var failingService = service(stubThrowing());
+        MockHttpServletRequest request = withSession(Boolean.TRUE);
+        assertThatThrownBy(() -> failingService.loadUser(request())).isInstanceOf(OAuth2AuthenticationException.class);
+        assertThat(request.getSession(false).getAttribute(ReauthAuthorizationRequestResolver.REAUTH_SESSION_MARKER))
+                .as("consumed even when the delegate itself throws")
+                .isNull();
+
+        // A later, unrelated normal login on the same session must pass regardless of staleness.
+        var laterService = service(stub(oidcUser(NOW.minus(Duration.ofHours(3)))));
+        assertThatCode(() -> laterService.loadUser(request())).doesNotThrowAnyException();
+    }
+
     private ReauthConformantOidcUserService service(OAuth2UserService<OidcUserRequest, OidcUser> delegate) {
         return new ReauthConformantOidcUserService(delegate, oidc, clock);
+    }
+
+    @SuppressWarnings("unchecked")
+    private static OAuth2UserService<OidcUserRequest, OidcUser> stubThrowing() {
+        OAuth2UserService<OidcUserRequest, OidcUser> delegate = mock(OAuth2UserService.class);
+        when(delegate.loadUser(org.mockito.ArgumentMatchers.any()))
+                .thenThrow(new OAuth2AuthenticationException(
+                        new org.springframework.security.oauth2.core.OAuth2Error("invalid_grant"),
+                        "IdP rejected the code"));
+        return delegate;
     }
 
     @SuppressWarnings("unchecked")
