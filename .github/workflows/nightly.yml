@@ -94,3 +94,83 @@ jobs:
       - name: Tear down CI harness
         if: always()
         run: docker compose -p "$CI_PROJECT" -f docker/docker-compose.dev.yml down -v --remove-orphans || true
+
+  # Supply-chain gates (Q9/issue #93): image vuln scan, SBOM, and both dependency trees'
+  # audits. NOT merge-blocking (nightly-only) — a fresh CVE landing on an existing pinned
+  # version must not turn every in-flight PR red; it's triaged same as an IT failure.
+  supply-chain:
+    runs-on: self-hosted
+    timeout-minutes: 30
+    steps:
+      - uses: actions/checkout@v4
+      # Mitigates Docker Hub 429s on the shared NAT pool (base images: maven, eclipse-temurin);
+      # skips cleanly when secrets are absent.
+      - name: Docker Hub login (rate-limit mitigation)
+        continue-on-error: true
+        uses: docker/login-action@v3
+        with:
+          username: ${{ secrets.DOCKERHUB_USERNAME }}
+          password: ${{ secrets.DOCKERHUB_TOKEN }}
+      - uses: docker/setup-buildx-action@v3
+      - name: Build BFF image (loaded locally for scanning, not pushed)
+        uses: docker/build-push-action@v6
+        with:
+          context: .
+          push: false
+          load: true
+          tags: process-inspector:nightly-scan
+          cache-from: type=gha
+          cache-to: type=gha,mode=max
+      - name: Trivy image scan (HIGH/CRITICAL fixed-in-upstream vulns fail the run)
+        uses: aquasecurity/trivy-action@v0.36.0
+        with:
+          image-ref: process-inspector:nightly-scan
+          severity: HIGH,CRITICAL
+          ignore-unfixed: true
+          exit-code: "1"
+      - name: SBOM (CycloneDX) for the built image
+        uses: anchore/sbom-action@v0.22.0
+        with:
+          image: process-inspector:nightly-scan
+          format: cyclonedx-json
+          output-file: sbom-image.cdx.json
+      - uses: actions/upload-artifact@v4
+        if: always()
+        with:
+          name: sbom-image
+          path: sbom-image.cdx.json
+          retention-days: 90
+      # Backend dependency audit: Trivy's filesystem scanner over pom.xml, NOT OWASP
+      # dependency-check-maven — tried that first, and a cold run against the real NVD API
+      # hard-failed with HTTP 429 after several minutes (confirmed empirically): NVD
+      # throttles unregistered callers hard, and this repo deliberately provisions no
+      # NVD_API_KEY (env-ref-only secrets, iron rule — a personal NVD registration isn't a
+      # credential worth adding just for this gate). Trivy ships its own vulnerability DB
+      # (pulled from a container registry, not the NVD API per-request), so it doesn't hit
+      # this wall; it's also the same tool already used for the image scan above.
+      - name: Backend dependency audit (Trivy fs scan of pom.xml, HIGH/CRITICAL hard-fails)
+        uses: aquasecurity/trivy-action@v0.36.0
+        with:
+          scan-type: fs
+          scan-ref: backend/pom.xml
+          severity: HIGH,CRITICAL
+          ignore-unfixed: true
+          exit-code: "1"
+      - name: Frontend dependency audit — Trivy fs scan (HIGH/CRITICAL hard-fails)
+        uses: aquasecurity/trivy-action@v0.36.0
+        with:
+          scan-type: fs
+          scan-ref: frontend/package-lock.json
+          severity: HIGH,CRITICAL
+          ignore-unfixed: true
+          exit-code: "1"
+      - uses: actions/setup-node@v4
+        with:
+          node-version: "22"
+          cache: npm
+          cache-dependency-path: frontend/package-lock.json
+      - name: Frontend dependency audit (npm audit — the npm-native advisory source, high+ hard-fails)
+        working-directory: frontend
+        run: |
+          npm ci
+          npm audit --audit-level=high
