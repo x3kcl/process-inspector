@@ -102,12 +102,17 @@ invisible:
   Mandatory: a **replay-time scope/definition resolvability diff** that emits first-class
   `perEngine`/lower-bound markers (partial AND the distinct all-dead state), plus **greyed-with-reason**
   dangling canon in the picker, plus surfacing the existing per-engine 6.3 param-drop canaries at replay.
-- **D5 is declutter, NOT security.** Search is grant-blind today (`SearchController`/`SearchService` take
-  no `Authentication`), so two callers who can both *see* a canon get identical results — the incident
-  promise holds **now**. But a caller with no grant can paste the raw URL and get the full result set;
-  picker-visibility redacts nothing. The lock must say this plainly and decide caller-invariance now: **it
-  is caller-invariant today**; if per-caller search scoping ever lands (IdP direction), the picker/result
-  banner MUST badge "results limited to your scope" so an empty reads honest, not "resolved".
+- **D5 is declutter, NOT security — the picker-visibility filter.** It tidies which canon the picker
+  offers; it never redacts a shared view's stored query text (a caller can still read the `search` string
+  of any canon they can *see*). Result-set safety is a SEPARATE control: **per-caller read scoping landed
+  (S2, R-SAFE-17)** — under `inspector.security.scope-reads-enforced` (on by default in the `oidc` profile)
+  `SearchController`→`SearchService` intersect the caller's grants at VIEWER floor, so a per-engine VIEWER
+  who pastes a raw URL naming another engine gets that engine labeled **"outside your access scope"** on the
+  per-engine envelope (an explicitly-named out-of-scope engine is never silently dropped, R-SEM-24 honesty),
+  and an implicit "all engines" search narrows silently to the readable set. When enforcement is OFF (the
+  default base config, and effectively so on the global-scoped dev ladder) results are **caller-invariant**,
+  as before. A published snapshot may name engines the replaying viewer can't read — those surface as labeled
+  excluded legs, not a false "resolved/all-clear".
 - **Engine-id reuse after tombstone poisons canon** (a re-registered id silently re-points every view at a
   different engine) → flag registry ids non-reusable.
 - **VERDICT: ACCEPT-WITH-CHANGES** (add W3's replay-time diff + greying + the D5-is-declutter statement).
@@ -233,9 +238,11 @@ client assertion). `scope_tenant_id` is **derived from the engine's registry pin
   shared view is visible iff the caller holds any grant ≥VIEWER overlapping its scope; global-scoped canon
   visible to every authenticated user. `overlaps()` is a small addition to the scope model — **co-signed
   with IdP-Security** (they own `ScopeGrant`). It is **declutter/relevance, explicitly NOT a security
-  boundary** (search is grant-blind; a raw URL bypasses picker-visibility). Result sets are
-  **caller-invariant today**; if per-caller search scoping ever lands, the picker/banner MUST badge
-  "results limited to your scope".
+  boundary** — it does not redact a canon's stored query text. Result-set safety is the separate S2 control
+  (R-SAFE-17): when `scope-reads-enforced` is on (default under `oidc`), search/triage reads intersect the
+  caller's grants at VIEWER, so an out-of-scope engine named in a replayed snapshot is labeled "outside your
+  access scope" rather than returning another tenant's rows. With enforcement off, result sets are
+  **caller-invariant**, as before.
 
 ### 4.4 Governance authority + audited fail-closed lifecycle (R-SAFE-16)
 Author edits/unpublishes/deletes their **own** shared view. **Scope-ADMIN** (ADMIN covering the view's

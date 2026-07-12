@@ -27,6 +27,7 @@ import java.util.LinkedHashMap;
 import java.util.List;
 import java.util.Locale;
 import java.util.Map;
+import java.util.Optional;
 import java.util.Set;
 import java.util.concurrent.CompletableFuture;
 import java.util.concurrent.ConcurrentHashMap;
@@ -94,7 +95,17 @@ public class SearchService {
     }
 
     public SearchResponse search(SearchRequest request) {
-        return aggregate(request, null);
+        return aggregate(request, null, null);
+    }
+
+    /**
+     * Scope-filtered interactive search (S2, R-SAFE-17). {@code readableEngineIds} is the set of
+     * engines the caller may read, or {@code null} = unrestricted (enforcement off — the legacy
+     * fleet-wide behaviour). Only the interactive read path is scoped; {@link #resolveAllMatching}
+     * (bulk enumeration) stays unfiltered — bulk is gated at submit and per item.
+     */
+    public SearchResponse search(SearchRequest request, Set<String> readableEngineIds) {
+        return aggregate(request, null, readableEngineIds);
     }
 
     /**
@@ -106,7 +117,7 @@ public class SearchService {
      * engine honestly instead of enumerating it.
      */
     public SearchResponse resolveAllMatching(SearchRequest request, int rowCap) {
-        return aggregate(request, rowCap);
+        return aggregate(request, rowCap, null);
     }
 
     /** A deep-paging cursor older than this is rejected (bounds replay + incoherent-merge window). */
@@ -132,6 +143,11 @@ public class SearchService {
      * @param nowMillis   the wall clock for the TTL check and the emitted cursor's {@code issuedAt}
      */
     public DeepPage deepPage(SearchRequest request, String cursorToken, long nowMillis) {
+        return deepPage(request, cursorToken, nowMillis, null);
+    }
+
+    /** Scope-filtered "Load more" (S2, R-SAFE-17): {@code readableEngineIds} null = unrestricted. */
+    public DeepPage deepPage(SearchRequest request, String cursorToken, long nowMillis, Set<String> readableEngineIds) {
         BffFilters bff = BffFilters.of(request); // validates the failure window → 400 on bad ISO
         if (request.definitionVersion() != null && !notBlank(request.processDefinitionKey())) {
             throw new IllegalArgumentException("definitionVersion requires processDefinitionKey");
@@ -147,7 +163,7 @@ public class SearchService {
                     "deep paging is not available for FAILED/RETRYING-only searches — narrow by a failure-time window instead");
         }
 
-        List<EngineConfig> targets = resolveTargets(request);
+        List<EngineConfig> targets = resolveTargets(request, readableEngineIds);
         Map<String, Integer> depthCaps = new HashMap<>();
         targets.forEach(e -> depthCaps.put(e.id(), e.deepPagingMaxDepthOrDefault()));
 
@@ -184,6 +200,7 @@ public class SearchService {
         }
 
         Map<String, EngineResult> perEngine = new ConcurrentHashMap<>();
+        markExcludedEngines(request, targets, perEngine);
         Map<String, List<ProcessInstanceRow>> emittable = new LinkedHashMap<>();
         Map<String, List<String>> rawKeys = new LinkedHashMap<>();
         Map<String, Long> totals = new LinkedHashMap<>();
@@ -215,7 +232,7 @@ public class SearchService {
         return new DeepPage(rows, new HashMap<>(perEngine), nextCursor, merged.depthCapped());
     }
 
-    private SearchResponse aggregate(SearchRequest request, Integer exhaustCap) {
+    private SearchResponse aggregate(SearchRequest request, Integer exhaustCap, Set<String> readableEngineIds) {
         BffFilters bff = BffFilters.of(request); // validates the failure window → 400 on bad ISO
         if (request.definitionVersion() != null && !notBlank(request.processDefinitionKey())) {
             // A bare version number is meaningless across definitions — the version-drill
@@ -226,7 +243,7 @@ public class SearchService {
         if (!sortBy.equals("startTime") && !sortBy.equals("failureTime")) {
             throw new IllegalArgumentException("sortBy must be 'startTime' or 'failureTime', got '" + sortBy + "'");
         }
-        List<EngineConfig> targets = resolveTargets(request);
+        List<EngineConfig> targets = resolveTargets(request, readableEngineIds);
         if (request.variables() != null
                 && !request.variables().isEmpty()
                 && !notBlank(request.processDefinitionKey())) {
@@ -239,30 +256,7 @@ public class SearchService {
         }
         Set<InstanceStatus> wanted = EnumSet.copyOf(request.effectiveStatuses());
         Map<String, EngineResult> perEngine = new ConcurrentHashMap<>();
-
-        // Replay-time resolvability honesty (R-SEM-24, SHARED-VIEWS.md §4.5): an explicitly-requested
-        // engine that no longer resolves to a live ENABLED engine must NOT be silently dropped —
-        // otherwise a dangling scope (e.g. a replayed shared view over a soft-tombstoned engine) reads
-        // as a clean "no failures", the very incident-blindness the honesty seat flagged. Mark each
-        // requested-but-unresolvable id as an excluded leg on the SAME perEngine envelope, so the
-        // all-dead case is a grid full of ok=false (labeled) rather than an empty grid impersonating
-        // health. (An empty engineIds request = "all enabled engines" — nothing is dangling there.)
-        if (request.engineIds() != null && !request.engineIds().isEmpty()) {
-            Set<String> resolved = new HashSet<>();
-            for (EngineConfig t : targets) {
-                resolved.add(t.id());
-            }
-            for (String requested : request.engineIds()) {
-                if (requested != null && !requested.isBlank() && !resolved.contains(requested)) {
-                    // Distinguish disabled-but-present from truly removed (resolve() sees disabled rows
-                    // too) so the marker is accurate, not merely non-silent.
-                    String why = registry.resolve(requested).isPresent()
-                            ? "the engine \"" + requested + "\" is currently disabled — excluded from this search"
-                            : "the engine \"" + requested + "\" is no longer registered — excluded from this search";
-                    perEngine.put(requested, EngineResult.failure(why));
-                }
-            }
-        }
+        markExcludedEngines(request, targets, perEngine);
 
         Map<EngineConfig, CompletableFuture<EngineSlice>> futures = new LinkedHashMap<>();
         for (EngineConfig engine : targets) {
@@ -1064,12 +1058,55 @@ public class SearchService {
         }
     }
 
-    private List<EngineConfig> resolveTargets(SearchRequest req) {
+    private List<EngineConfig> resolveTargets(SearchRequest req, Set<String> readableEngineIds) {
+        List<EngineConfig> base;
         if (req.engineIds() == null || req.engineIds().isEmpty()) {
-            return registry.all();
+            base = registry.all();
+        } else {
+            Set<String> ids = new HashSet<>(req.engineIds());
+            base = registry.all().stream().filter(e -> ids.contains(e.id())).toList();
         }
-        Set<String> ids = new HashSet<>(req.engineIds());
-        return registry.all().stream().filter(e -> ids.contains(e.id())).toList();
+        // S2 (R-SAFE-17): when read-scope enforcement is on, the caller may only fan out over engines
+        // its grants overlap at VIEWER. null = unrestricted (enforcement off) — never treated as empty.
+        if (readableEngineIds == null) {
+            return base;
+        }
+        return base.stream().filter(e -> readableEngineIds.contains(e.id())).toList();
+    }
+
+    /**
+     * Mark each EXPLICITLY-requested engine that will not be queried as a labeled excluded leg on the
+     * perEngine envelope (never silently dropped, R-SEM-24): de-registered, disabled, or — under S2
+     * read scoping — outside the caller's access scope. Only explicit {@code engineIds} are labeled;
+     * an implicit "all engines" request narrows silently to the readable set, because labeling every
+     * unreadable engine would leak the existence and ids of engines the caller may not see. An
+     * enabled, still-resolvable engine absent from {@code targets} can only have been scope-excluded
+     * (the disabled/removed cases are not enabled+resolvable), so the classification is exact.
+     */
+    private void markExcludedEngines(
+            SearchRequest request, List<EngineConfig> targets, Map<String, EngineResult> perEngine) {
+        if (request.engineIds() == null || request.engineIds().isEmpty()) {
+            return;
+        }
+        Set<String> resolved = new HashSet<>();
+        for (EngineConfig t : targets) {
+            resolved.add(t.id());
+        }
+        for (String requested : request.engineIds()) {
+            if (requested == null || requested.isBlank() || resolved.contains(requested)) {
+                continue;
+            }
+            Optional<EngineConfig> row = registry.resolve(requested);
+            String why;
+            if (row.isPresent() && row.get().enabled()) {
+                why = "the engine \"" + requested + "\" is outside your access scope — excluded from this search";
+            } else if (row.isPresent()) {
+                why = "the engine \"" + requested + "\" is currently disabled — excluded from this search";
+            } else {
+                why = "the engine \"" + requested + "\" is no longer registered — excluded from this search";
+            }
+            perEngine.put(requested, EngineResult.failure(why));
+        }
     }
 
     private static String likePattern(String substring) {

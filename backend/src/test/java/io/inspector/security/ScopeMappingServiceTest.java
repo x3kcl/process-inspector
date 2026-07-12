@@ -37,7 +37,7 @@ class ScopeMappingServiceTest {
     private final AuditService audit = mock(AuditService.class);
 
     private ScopeMappingService serviceFor(Path file) {
-        SecurityProperties props = new SecurityProperties(null, file.toString(), 60, null, null);
+        SecurityProperties props = new SecurityProperties(null, file.toString(), 60, null, null, null);
         return new ScopeMappingService(props, clock, audit);
     }
 
