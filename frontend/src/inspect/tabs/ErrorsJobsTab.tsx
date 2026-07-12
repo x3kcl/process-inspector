@@ -1,3 +1,4 @@
+import { RawJsonExport } from '../RawJsonExport'
 import { useEffect, useMemo, useRef, useState } from 'react'
 import type { ExternalWorkerJobDto, InstanceJobs, JobDto, JobLaneId } from '../../api/model'
 import { JOB_LANES } from '../../api/model'
@@ -70,6 +71,7 @@ export default function ErrorsJobsTab({
   const empty = JOB_LANES.every((lane) => laneRows(jobs, lane).length === 0)
   return (
     <div className="job-lanes-tab">
+      <RawJsonExport data={jobs} filename={`${engineId}-${instanceId}-jobs.json`} />
       {empty && (
         <p className="zero-state">
           No jobs in any lane — this instance is not failing, retrying, scheduled, or suspended at

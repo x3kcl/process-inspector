@@ -1,3 +1,4 @@
+import { RawJsonExport } from '../RawJsonExport'
 import { Link } from 'react-router'
 import type { HierarchyNode } from '../../api/model'
 import { Ts } from '../../lib/Ts'
@@ -30,6 +31,7 @@ export default function HierarchyTab({ engineId, instanceId }: Props) {
   }
   return (
     <div className="hierarchy-tab">
+      <RawJsonExport data={query.data} filename={`${engineId}-${instanceId}-hierarchy.json`} />
       {depthLimitReached && (
         <p className="strip-note">
           Depth limit reached (max {maxDepth ?? '?'} levels rendered) — deeper children exist. Open

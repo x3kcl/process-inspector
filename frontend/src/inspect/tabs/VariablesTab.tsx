@@ -1,3 +1,4 @@
+import { RawJsonExport } from '../RawJsonExport'
 import { useMemo, useState } from 'react'
 import type { InstanceVariables, VariableDto } from '../../api/model'
 import { fetchInstanceVariable } from '../../api/queries'
@@ -86,6 +87,7 @@ export default function VariablesTab({ engineId, instanceId, selectedActivityId 
 
   return (
     <div className="variables-tab">
+      <RawJsonExport data={query.data} filename={`${engineId}-${instanceId}-variables.json`} />
       {query.data.source === 'HISTORIC' && (
         <p className="strip-note">Final variable state from history — this instance has ended.</p>
       )}

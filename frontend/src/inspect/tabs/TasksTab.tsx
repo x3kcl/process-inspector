@@ -1,3 +1,4 @@
+import { RawJsonExport } from '../RawJsonExport'
 import { useState } from 'react'
 import type { TaskDto } from '../../api/model'
 import { formatSeconds } from '../../lib/format'
@@ -89,6 +90,7 @@ export default function TasksTab({ engineId, instanceId }: Props) {
   }
   return (
     <div className="tasks-tab">
+      <RawJsonExport data={query.data} filename={`${engineId}-${instanceId}-tasks.json`} />
       {truncated && (
         <p className="strip-note">
           Showing {tasks.length} of {total} tasks — the engine page cap truncated this list.
