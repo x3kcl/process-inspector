@@ -1334,6 +1334,46 @@ Full `mvn verify` (805 unit + 151 IT, full engine matrix) green aside from the p
 unrelated `SharedViewFailClosedIT` failure (confirmed to also fail on `origin/main`); `npm
 test` (487 tests) + `npm run build` green; `scripts/ci-local.sh --full` green.
 
+### #95 — Login-time `auth_time` conformance + membership re-pull verification (R-SAFE-07) *(✅ LANDED 2026-07-12, issue #95)*
+IDP-SECURITY.md §5's dangerous-set re-auth protocol had only a CHECK-time freshness gate
+(`DangerousActionReauthGate`, landed S5c): it reads whatever `auth_time` the IdP already
+returned, but nothing verified the IdP actually *honored* the `max_age` it was asked for at
+login. A nonconforming IdP could silently echo the stale SSO session's old `auth_time` (or omit
+the claim), and the gap would only surface minutes later as a confusing 401 on an unrelated
+verb — never at the login itself, where the operator could see it immediately. Separately, the
+gate's own Javadoc asserted "membership freshness rides for free on the re-auth" with no test
+anywhere proving it.
+
+*Shipped — login-time gate:* `ReauthAuthorizationRequestResolver` now stashes a one-shot session
+marker (`REAUTH_SESSION_MARKER`) whenever it injects `max_age`/`prompt=login` — the same
+`HttpSession` is guaranteed current at the callback (OAuth2's own state-param CSRF defense
+depends on that continuity). `ReauthConformantOidcUserService` (new, wraps the default
+`OidcUserService`, wired into `SecurityConfig`'s `oidcChain`'s `userInfoEndpoint().oidcUserService(...)`)
+reads-and-clears that marker on every token response; when set, it demands the returned
+`OidcUser.getAuthenticatedAt()` satisfy the same `SessionFreshness` window the check-time gate
+uses, failing the login itself (`OAuth2AuthenticationException`, error code `stale_auth_time`)
+when it does not. Ordinary logins (no marker) pay zero extra cost and get zero extra behavior.
+Confirmed empirically (not assumed) that Spring's default OIDC validator chain does nothing here
+— decompiled `spring-security-oauth2-client`'s `OidcIdTokenValidator`, which validates `iss`,
+`aud`, `exp`/`iat` clock skew, and `azp`, but never `auth_time`/`max_age` — hence the two
+purpose-built gates rather than a validator hook.
+
+*Shipped — membership re-pull verification:* no production change (design already correct by
+construction — `RbacAuthorizer` caches nothing keyed by identity; `grantsFor`/`hasRoleOn` are
+pure functions of whatever `Authentication` is currently in `SecurityContextHolder`, so a re-auth
+round trip's fresh id-token is read on the very next check). Deliberately did NOT touch
+`InspectorAuthoritiesMapper`/`RbacAuthorizer`'s id-token-only group source (their own comments
+already explain why: Entra puts groups in the id token, not userinfo, and the pinned `iss` must
+match the token the groups came from) — `RbacAuthorizerOidcFreshnessTest` proves the EXISTING
+mechanism re-resolves fresh across an `Authentication` swap, closing the previously-unverified gap.
+
+*Tests:* `ReauthConformantOidcUserServiceTest` (new, 6 cases — no marker/fresh/stale/absent/
+marker-always-consumed/no-leak-into-next-login). `RbacAuthorizerOidcFreshnessTest` (new, 2 cases).
+`OidcKeycloakIT` gains `aRealKeycloakIdTokenCarriesAuthTime` — empirical proof a real Keycloak
+password-grant id-token actually carries `auth_time` (the real-world assumption the whole
+freshness mechanism rests on), plus all 6 existing cases still green against the live Keycloak +
+Testcontainers Postgres harness.
+
 ## Build order inside any milestone
 backend DTO → engine client call → aggregator/join logic → controller → typed frontend API
 client → component. Every Flowable call gets an integration test against the dockerized

@@ -3,6 +3,7 @@ package io.inspector.security;
 import static org.springframework.security.config.Customizer.withDefaults;
 
 import io.inspector.security.reauth.ReauthAuthorizationRequestResolver;
+import io.inspector.security.reauth.ReauthConformantOidcUserService;
 import org.springframework.context.annotation.Bean;
 import org.springframework.context.annotation.Configuration;
 import org.springframework.context.annotation.Profile;
@@ -220,6 +221,7 @@ public class SecurityConfig {
     SecurityFilterChain oidcChain(
             HttpSecurity http,
             InspectorAuthoritiesMapper authoritiesMapper,
+            ReauthConformantOidcUserService reauthConformantOidcUserService,
             ClientRegistrationRepository clientRegistrations)
             throws Exception {
         common(http)
@@ -228,7 +230,11 @@ public class SecurityConfig {
                 .sessionManagement(session -> session.sessionFixation(fixation -> fixation.changeSessionId()))
                 .oauth2Login(oauth -> oauth.authorizationEndpoint(endpoint -> endpoint.authorizationRequestResolver(
                                 new ReauthAuthorizationRequestResolver(clientRegistrations, oidcProps)))
-                        .userInfoEndpoint(user -> user.userAuthoritiesMapper(authoritiesMapper)))
+                        // Login-time auth_time conformance (issue #95) ahead of the authorities mapper —
+                        // a nonconforming IdP's stale/absent auth_time on a reauth login fails the login
+                        // itself, never silently waved through to be caught later by the check-time gate.
+                        .userInfoEndpoint(user -> user.oidcUserService(reauthConformantOidcUserService)
+                                .userAuthoritiesMapper(authoritiesMapper)))
                 // Pin the browser (non-/api) entry point to the OIDC redirect EXPLICITLY, so adding the
                 // break-glass formLogin below does not hijack it to a /login page (/api stays 401).
                 .exceptionHandling(ex -> ex.defaultAuthenticationEntryPointFor(

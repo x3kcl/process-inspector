@@ -198,6 +198,74 @@ class OidcKeycloakIT {
                 .isEmpty();
     }
 
+    @Test
+    void aRealBrowserLoginYieldsAnAuthTimeVisibleAtApiMe() throws Exception {
+        // The empirical assumption behind issue #95's freshness mechanism (SessionFreshness,
+        // DangerousActionReauthGate, ReauthConformantOidcUserService): a real IdP actually emits
+        // auth_time on the id token from a real interactive login, not just in spec prose. Proven
+        // end-to-end through the BFF's own oauth2Login pipeline — NOT the direct-access (password)
+        // grant: empirically, Keycloak's ROPC/direct-grant flow never sets the AUTH_TIME user-session
+        // note at all (confirmed by probing a live instance), so it can't stand in for a browser login
+        // here the way it does for the groups-claim test above.
+        var cookies = new java.net.CookieManager();
+        HttpClient client = HttpClient.newBuilder()
+                .cookieHandler(cookies)
+                .followRedirects(HttpClient.Redirect.NEVER)
+                .build();
+
+        HttpResponse<String> start = client.send(
+                HttpRequest.newBuilder(URI.create("http://localhost:" + port + "/oauth2/authorization/oidc"))
+                        .header("Accept", "text/html")
+                        .GET()
+                        .build(),
+                BodyHandlers.ofString());
+        String authorizeUrl = start.headers().firstValue("Location").orElseThrow();
+
+        HttpResponse<String> loginPage = client.send(
+                HttpRequest.newBuilder(URI.create(authorizeUrl)).GET().build(), BodyHandlers.ofString());
+        assertThat(loginPage.statusCode())
+                .as(
+                        "authorize GET %s -> %s %s",
+                        authorizeUrl,
+                        loginPage.statusCode(),
+                        loginPage.headers().firstValue("Location"))
+                .isEqualTo(200);
+        String formAction = extractFormAction(loginPage.body());
+
+        HttpResponse<String> loginResult = client.send(
+                HttpRequest.newBuilder(URI.create(formAction))
+                        .header("Content-Type", "application/x-www-form-urlencoded")
+                        .POST(BodyPublishers.ofString("username=alice&password=alice-pw"))
+                        .build(),
+                BodyHandlers.ofString());
+        String callbackUrl = loginResult.headers().firstValue("Location").orElseThrow();
+
+        HttpResponse<String> callback = client.send(
+                HttpRequest.newBuilder(URI.create(callbackUrl)).GET().build(), BodyHandlers.ofString());
+        assertThat(callback.statusCode())
+                .as("BFF callback: %s", callback.body())
+                .isEqualTo(302);
+
+        HttpResponse<String> me = client.send(
+                HttpRequest.newBuilder(URI.create("http://localhost:" + port + "/api/me"))
+                        .GET()
+                        .build(),
+                BodyHandlers.ofString());
+        assertThat(me.statusCode()).isEqualTo(200);
+        // MeDto.reauth.freshUntil is derived from OidcUser#getAuthenticatedAt() — non-null here proves
+        // auth_time flowed all the way from Keycloak's token response into the session principal.
+        assertThat(me.body()).doesNotContain("\"freshUntil\":null");
+    }
+
+    private static String extractFormAction(String html) {
+        java.util.regex.Matcher m =
+                java.util.regex.Pattern.compile("action=\"([^\"]+)\"").matcher(html);
+        if (!m.find()) {
+            throw new IllegalStateException("Keycloak login page had no form action: " + html);
+        }
+        return m.group(1).replace("&amp;", "&");
+    }
+
     /** Direct-access (password) grant → a real id token, decoded + validated against the live issuer. */
     private Jwt passwordGrantIdToken(String user, String password) throws Exception {
         // groups is a DEFAULT client scope in the realm, so it's emitted without an explicit request.

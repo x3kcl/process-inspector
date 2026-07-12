@@ -2,9 +2,10 @@
 
 **Status:** ★ **S1–S6 core BUILT 2026-07-09/10** (design locked 2026-07-09, **hardened by a 5-seat
 panel + independent adversarial pass (Gemini 2.5)** — the panel changed the design, not just the
-prose, see §2 and the `⚠️ panel:` markers). Remaining: the IdP-unreachable break-glass door
-(issue #94), the login-time `auth_time` conformance validator + membership re-pull (issue #95),
-and the Playwright grant-flow + axe gate (issue #85). Authoritative source-of-truth for the
+prose, see §2 and the `⚠️ panel:` markers). The login-time `auth_time` conformance validator +
+membership re-pull verification landed 2026-07-12 (issue #95, §5). Remaining: the IdP-unreachable
+break-glass door (issue #94) and the Playwright grant-flow + axe gate (issue #85). Authoritative
+source-of-truth for the
 **IdP-and-Security extension** — the
 WHAT/WHY/HOW/WHEN below drive the deltas into `SPECIFICATION.md` (new §2.4 + §4c),
 `ARCHITECTURE.md` (§5), `IMPLEMENTATION-PLAN.md` (v2 IdP-Security block, S1–S6), `OPERATIONS.md`
@@ -256,7 +257,8 @@ is audited fail-closed.
    write). Mandatory floor: session caps (idle 12 h / absolute 24 h) + `HttpOnly; Secure;
    SameSite=Lax` + fixation protection. The dangerous set additionally runs under a **challenge +
    SPA re-auth + verb-replay** protocol with a **bounded freshness window** (re-auth only when
-   `auth_time` exceeds N min, N ≤ 15) enforced by a custom `OidcIdTokenValidator`; where a groups
+   `auth_time` exceeds N min, N ≤ 15) enforced check-time by `DangerousActionReauthGate` and
+   login-time by `ReauthConformantOidcUserService` (issue #95); where a groups
    endpoint is reachable, membership is **re-pulled** at that moment (freshness of membership, not
    just of authentication). A background ≤15 min re-pull is **optional**, gated on `offline_access`,
    never assumed. On the dev chain this degrades to today's typed-token confirm (dev is ADMIN-global).
@@ -341,10 +343,18 @@ bulk (guard-tier 4) + every mapping write (there is no tier-4 *verb*).
   request with a **401 + a re-auth-required marker** *at verb intent* (destructive-verb click /
   modal-open — **never after the operator has typed the confirm token + reason**, ⚠️ support-lead);
   the SPA runs a full-page re-auth interstitial, lands back on the same instance with a server-fresh
-  modal, and replays the verb. A custom **`OidcIdTokenValidator` rejects** a token whose `auth_time`
-  is older than the freshness window (fail-closed if `auth_time` is absent). The acting grants
-  resolve from the **post-re-auth session principal** (`RbacAuthorizer.grantsFor`) — the guarantee
-  is "verb replayed after the new principal is persisted," not an in-request token reach.
+  modal, and replays the verb. Enforcement is two layers deep (issue #95, landed): **check-time**
+  (`DangerousActionReauthGate`) rejects a dangerous verb whose session `auth_time` is older than the
+  freshness window (fail-closed if absent); **login-time**
+  (`ReauthConformantOidcUserService`, belt-and-suspenders) fails the re-auth login itself, at the
+  token-response boundary, if a nonconforming IdP silently ignored `max_age` and echoed a stale/absent
+  `auth_time` — so a broken IdP surfaces immediately, not as a confusing 401 minutes later on an
+  unrelated verb. (Spring's `oauth2Login` has no built-in `auth_time`/`max_age` validator — confirmed
+  by decompiling the default `OidcIdTokenValidator` chain — hence the two purpose-built gates rather
+  than a validator hook.) The acting grants resolve from the **post-re-auth session principal**
+  (`RbacAuthorizer.grantsFor`) — the guarantee is "verb replayed after the new principal is
+  persisted," not an in-request token reach; proven fresh-by-construction (no identity-keyed cache
+  anywhere in `RbacAuthorizer`) by `RbacAuthorizerOidcFreshnessTest`.
   **Bounded freshness window** (⚠️ DevOps): re-auth fires only when `auth_time` exceeds **N min**
   (N ≤ 15, config); within-window verbs run on a token ≤N-min stale — no per-verb MFA storm during a
   P1 fan-out. `max_age` bounds *authentication* recency; where a groups endpoint is reachable the BFF
