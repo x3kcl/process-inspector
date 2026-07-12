@@ -124,6 +124,10 @@ public class SecurityConfig {
                 .csrf(csrf -> csrf.csrfTokenRepository(CookieCsrfTokenRepository.withHttpOnlyFalse())
                         .csrfTokenRequestHandler(new CsrfTokenRequestAttributeHandler())
                         .ignoringRequestMatchers(request -> request.getHeader("Authorization") != null))
+                // Prime the XSRF-TOKEN cookie on every response so the SPA's first post-login unsafe
+                // request never races an unset cookie (#118 items 1 & 2). After the CsrfFilter set the
+                // deferred token attribute; a null-guard leaves CSRF-exempt basic-auth calls untouched.
+                .addFilterAfter(new CsrfCookieFilter(), org.springframework.security.web.csrf.CsrfFilter.class)
                 .authorizeHttpRequests(auth -> auth.requestMatchers(
                                 "/actuator/health/**",
                                 "/error",
