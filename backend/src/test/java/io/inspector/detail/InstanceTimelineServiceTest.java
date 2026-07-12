@@ -7,9 +7,11 @@ import static org.mockito.ArgumentMatchers.eq;
 import static org.mockito.Mockito.mock;
 import static org.mockito.Mockito.when;
 
-import io.inspector.client.FlowableEngineClient;
-import io.inspector.client.FlowableEngineClient.FlowablePage;
-import io.inspector.client.FlowableEngineClient.JobLaneKind;
+import io.inspector.client.ExternalJobApiClient;
+import io.inspector.client.FlowablePage;
+import io.inspector.client.GuardedCaller.CallPriority;
+import io.inspector.client.ProcessApiClient;
+import io.inspector.client.ProcessApiClient.JobLaneKind;
 import io.inspector.config.InspectorProperties;
 import io.inspector.config.InspectorProperties.EngineConfig;
 import io.inspector.dto.InstanceTimeline;
@@ -35,7 +37,8 @@ class InstanceTimelineServiceTest {
     private static final String ENGINE = "e";
 
     private final EngineConfig engine = TestEngines.engine(ENGINE, "http://engine.test");
-    private final FlowableEngineClient flowable = mock(FlowableEngineClient.class);
+    private final ProcessApiClient flowable = mock(ProcessApiClient.class);
+    private final ExternalJobApiClient externalJobs = mock(ExternalJobApiClient.class);
     private final EngineRegistry registry = mock(EngineRegistry.class);
     private InstanceDetailService service;
 
@@ -44,13 +47,14 @@ class InstanceTimelineServiceTest {
         when(registry.require(ENGINE)).thenReturn(engine);
         service = serviceWithMaxDepth(null); // null → default depth 10
         // Healthy by default: no jobs on any lane. Individual tests override specific lanes.
-        when(flowable.listJobs(any(), any(), any(), anyInt(), anyInt())).thenReturn(FlowablePage.empty());
+        when(flowable.listJobs(any(), any(), any(), any(), anyInt(), anyInt())).thenReturn(FlowablePage.empty());
     }
 
     private InstanceDetailService serviceWithMaxDepth(Integer maxDepth) {
         return new InstanceDetailService(
                 registry,
                 flowable,
+                externalJobs,
                 new InspectorProperties(null, maxDepth, null, null, List.of()),
                 mock(io.inspector.audit.ProtectedInstanceRepository.class));
     }
@@ -132,22 +136,36 @@ class InstanceTimelineServiceTest {
     /* ================= fixtures ================= */
 
     private void historicExists(String id) {
-        when(flowable.getHistoricProcessInstance(engine, id)).thenReturn(Map.of("id", id));
+        when(flowable.getHistoricProcessInstance(engine, CallPriority.INTERACTIVE, id))
+                .thenReturn(Map.of("id", id));
     }
 
     @SafeVarargs
     private void activities(String instanceId, Map<String, Object>... rows) {
-        when(flowable.listHistoricActivities(eq(engine), eq(instanceId), anyInt(), anyInt()))
+        when(flowable.listHistoricActivities(
+                        eq(engine), eq(CallPriority.INTERACTIVE), eq(instanceId), anyInt(), anyInt()))
                 .thenReturn(new FlowablePage(List.of(rows), rows.length, 0, 50));
     }
 
     private void deadLetterJobs(String instanceId, Map<String, Object> job) {
-        when(flowable.listJobs(eq(engine), eq(JobLaneKind.DEADLETTER), any(), anyInt(), anyInt()))
+        when(flowable.listJobs(
+                        eq(engine),
+                        eq(CallPriority.INTERACTIVE),
+                        eq(JobLaneKind.DEADLETTER),
+                        any(),
+                        anyInt(),
+                        anyInt()))
                 .thenReturn(new FlowablePage(List.of(job), 1, 0, 50));
     }
 
     private void executableJobs(String instanceId, Map<String, Object> job) {
-        when(flowable.listJobs(eq(engine), eq(JobLaneKind.EXECUTABLE), any(), anyInt(), anyInt()))
+        when(flowable.listJobs(
+                        eq(engine),
+                        eq(CallPriority.INTERACTIVE),
+                        eq(JobLaneKind.EXECUTABLE),
+                        any(),
+                        anyInt(),
+                        anyInt()))
                 .thenReturn(new FlowablePage(List.of(job), 1, 0, 50));
     }
 

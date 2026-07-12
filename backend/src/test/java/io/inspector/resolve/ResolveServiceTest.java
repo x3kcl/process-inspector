@@ -7,8 +7,10 @@ import static org.mockito.Mockito.never;
 import static org.mockito.Mockito.verify;
 import static org.mockito.Mockito.when;
 
-import io.inspector.client.FlowableEngineClient;
-import io.inspector.client.FlowableEngineClient.FlowablePage;
+import io.inspector.client.CmmnApiClient;
+import io.inspector.client.FlowablePage;
+import io.inspector.client.GuardedCaller.CallPriority;
+import io.inspector.client.ProcessApiClient;
 import io.inspector.config.InspectorProperties.EngineConfig;
 import io.inspector.detail.InstanceDetailService;
 import io.inspector.dto.ResolveResponse;
@@ -35,22 +37,24 @@ class ResolveServiceTest {
     private static final String CASE_ID = "cbfc23c3-7abe-11f1-b839-3210ba03f0d0";
 
     private final EngineConfig engine = TestEngines.engine(ENGINE, "http://engine.test/flowable-rest/service");
-    private final FlowableEngineClient flowable = mock(FlowableEngineClient.class);
+    private final ProcessApiClient flowable = mock(ProcessApiClient.class);
+    private final CmmnApiClient cmmnFlowable = mock(CmmnApiClient.class);
     private final EngineRegistry registry = mock(EngineRegistry.class);
     private final InstanceDetailService detail = mock(InstanceDetailService.class);
-    private final ResolveService service = new ResolveService(registry, flowable, detail);
+    private final ResolveService service = new ResolveService(registry, flowable, cmmnFlowable, detail);
 
     private void engineWith(EngineCapabilities capabilities) {
         when(registry.all()).thenReturn(List.of(engine));
         when(registry.healthOf(ENGINE))
                 .thenReturn(new EngineHealth(true, "?", null, 0L, capabilities, null, null, null));
         // Every BPMN resolution step misses — a CMMN case id belongs to none of these tables.
-        when(flowable.getHistoricProcessInstance(any(), any())).thenReturn(null);
-        when(flowable.getExecution(any(), any())).thenReturn(null);
-        when(flowable.getTask(any(), any())).thenReturn(null);
-        when(flowable.getHistoricTaskInstance(any(), any())).thenReturn(null);
-        when(flowable.getJob(any(), any(), any())).thenReturn(null);
-        when(flowable.queryHistoricProcessInstances(any(), any())).thenReturn(new FlowablePage(List.of(), 0, 0, 0));
+        when(flowable.getHistoricProcessInstance(any(), any(), any())).thenReturn(null);
+        when(flowable.getExecution(any(), any(), any())).thenReturn(null);
+        when(flowable.getTask(any(), any(), any())).thenReturn(null);
+        when(flowable.getHistoricTaskInstance(any(), any(), any())).thenReturn(null);
+        when(flowable.getJob(any(), any(), any(), any())).thenReturn(null);
+        when(flowable.queryHistoricProcessInstances(any(), any(), any()))
+                .thenReturn(new FlowablePage(List.of(), 0, 0, 0));
     }
 
     @Test
@@ -60,8 +64,9 @@ class ResolveServiceTest {
         runningCase.put("id", CASE_ID);
         runningCase.put("caseDefinitionId", "def-uuid");
         runningCase.put("startTime", "2026-07-08T11:19:00.000Z");
-        when(flowable.getCmmnCaseInstance(engine, CASE_ID)).thenReturn(runningCase);
-        when(flowable.getCmmnCaseDefinition(engine, "def-uuid"))
+        when(cmmnFlowable.getCmmnCaseInstance(engine, CallPriority.INTERACTIVE, CASE_ID))
+                .thenReturn(runningCase);
+        when(cmmnFlowable.getCmmnCaseDefinition(engine, CallPriority.INTERACTIVE, "def-uuid"))
                 .thenReturn(def("demoFailingCase", "Demo failing case"));
 
         ResolveResponse response = service.resolve(CASE_ID);
@@ -82,12 +87,14 @@ class ResolveServiceTest {
     @Test
     void anEndedCmmnCaseIsFoundViaHistoryWhenNotRunning() {
         engineWith(scopeTypeCapable());
-        when(flowable.getCmmnCaseInstance(engine, CASE_ID)).thenReturn(null); // not running
+        when(cmmnFlowable.getCmmnCaseInstance(engine, CallPriority.INTERACTIVE, CASE_ID))
+                .thenReturn(null); // not running
         Map<String, Object> endedCase = new HashMap<>();
         endedCase.put("id", CASE_ID);
         endedCase.put("caseDefinitionKey", "demoFailingCase"); // historic DTO carries the key
         endedCase.put("endTime", "2026-07-08T12:00:00.000Z");
-        when(flowable.getHistoricCmmnCaseInstance(engine, CASE_ID)).thenReturn(endedCase);
+        when(cmmnFlowable.getHistoricCmmnCaseInstance(engine, CallPriority.INTERACTIVE, CASE_ID))
+                .thenReturn(endedCase);
 
         ResolveResponse response = service.resolve(CASE_ID);
 
@@ -107,8 +114,8 @@ class ResolveServiceTest {
         assertThat(response.matches()).isEmpty(); // honest "not found on any reachable engine"
         assertThat(response.perEngine().get(ENGINE).ok()).isTrue();
         // Never probed the cmmn context blind on an engine that can't discriminate scope.
-        verify(flowable, never()).getCmmnCaseInstance(any(), any());
-        verify(flowable, never()).getHistoricCmmnCaseInstance(any(), any());
+        verify(cmmnFlowable, never()).getCmmnCaseInstance(any(), any(), any());
+        verify(cmmnFlowable, never()).getHistoricCmmnCaseInstance(any(), any(), any());
     }
 
     private static EngineCapabilities scopeTypeCapable() {

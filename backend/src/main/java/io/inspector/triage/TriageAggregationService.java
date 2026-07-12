@@ -1,9 +1,9 @@
 package io.inspector.triage;
 
-import io.inspector.client.FlowableEngineClient;
-import io.inspector.client.FlowableEngineClient.CallPriority;
-import io.inspector.client.FlowableEngineClient.FlowablePage;
-import io.inspector.client.FlowableEngineClient.JobLaneKind;
+import io.inspector.client.FlowablePage;
+import io.inspector.client.GuardedCaller.CallPriority;
+import io.inspector.client.ProcessApiClient;
+import io.inspector.client.ProcessApiClient.JobLaneKind;
 import io.inspector.config.InspectorProperties;
 import io.inspector.config.InspectorProperties.EngineConfig;
 import io.inspector.dto.EngineDto;
@@ -71,13 +71,13 @@ public class TriageAggregationService {
             List.of(JobLaneKind.DEADLETTER, JobLaneKind.TIMER, JobLaneKind.EXECUTABLE);
 
     private final EngineRegistry registry;
-    private final FlowableEngineClient flowable;
+    private final ProcessApiClient flowable;
     private final InspectorProperties props;
     private final Clock clock;
     private final ExecutorService fanout = Executors.newVirtualThreadPerTaskExecutor();
 
     public TriageAggregationService(
-            EngineRegistry registry, FlowableEngineClient flowable, InspectorProperties props, Clock clock) {
+            EngineRegistry registry, ProcessApiClient flowable, InspectorProperties props, Clock clock) {
         this.registry = registry;
         this.flowable = flowable;
         this.props = props;
@@ -229,7 +229,7 @@ public class TriageAggregationService {
         body.put("suspended", suspended);
         body.put("size", 1);
         withTenant(engine, body);
-        FlowablePage page = flowable.queryRuntimeProcessInstances(engine, body, priority);
+        FlowablePage page = flowable.queryRuntimeProcessInstances(engine, priority, body);
         return page != null ? page.total() : 0;
     }
 
@@ -238,7 +238,7 @@ public class TriageAggregationService {
         body.put("finished", true);
         body.put("size", 1);
         withTenant(engine, body);
-        FlowablePage page = flowable.queryHistoricProcessInstances(engine, body, priority);
+        FlowablePage page = flowable.queryHistoricProcessInstances(engine, priority, body);
         return page != null ? page.total() : 0;
     }
 
@@ -269,7 +269,7 @@ public class TriageAggregationService {
         long total = Long.MAX_VALUE;
         for (int start = 0; start < Math.min(total, cap); start += pageSize) {
             FlowablePage page =
-                    flowable.listJobs(engine, lane, filters, start, Math.min(pageSize, cap - start), priority);
+                    flowable.listJobs(engine, priority, lane, filters, start, Math.min(pageSize, cap - start));
             if (page == null) {
                 break;
             }
@@ -405,7 +405,7 @@ public class TriageAggregationService {
             if (sampleBudget-- > 0) {
                 try {
                     String stacktrace =
-                            flowable.jobExceptionStacktrace(engine, group.sampleLane, group.sampleJobId, priority);
+                            flowable.jobExceptionStacktrace(engine, priority, group.sampleLane, group.sampleJobId);
                     if (stacktrace != null && !stacktrace.isBlank()) {
                         signature = ErrorSignatureNormalizer.normalize(stacktrace);
                     }
@@ -436,7 +436,7 @@ public class TriageAggregationService {
                 .filter(key -> !key.equals("unknown"))
                 .forEach(defKey -> {
                     try {
-                        FlowablePage page = flowable.listProcessDefinitionsByKey(engine, defKey, 50, priority);
+                        FlowablePage page = flowable.listProcessDefinitionsByKey(engine, priority, defKey, null, 0, 50);
                         versionsByKey.put(
                                 defKey,
                                 page.dataOrEmpty().stream()

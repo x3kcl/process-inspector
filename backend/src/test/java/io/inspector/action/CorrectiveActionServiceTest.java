@@ -21,9 +21,11 @@ import io.inspector.audit.AuditUnavailableException;
 import io.inspector.audit.BreakGlassActor;
 import io.inspector.audit.ProtectedInstance;
 import io.inspector.audit.ProtectedInstanceRepository;
-import io.inspector.client.FlowableEngineClient;
-import io.inspector.client.FlowableEngineClient.JobLaneKind;
+import io.inspector.client.CmmnApiClient;
 import io.inspector.client.ForwardedActor;
+import io.inspector.client.GuardedCaller.CallPriority;
+import io.inspector.client.ProcessApiClient;
+import io.inspector.client.ProcessApiClient.JobLaneKind;
 import io.inspector.config.InspectorProperties;
 import io.inspector.config.InspectorProperties.EngineEnvironment;
 import io.inspector.config.InspectorProperties.EngineMode;
@@ -77,7 +79,8 @@ class CorrectiveActionServiceTest {
     /** Fixed clock anchor for the OIDC freshness cases; the 15-min default window is applied off it. */
     private static final Instant NOW = Instant.parse("2026-07-09T12:00:00Z");
 
-    private final FlowableEngineClient client = mock(FlowableEngineClient.class);
+    private final ProcessApiClient client = mock(ProcessApiClient.class);
+    private final CmmnApiClient cmmnClient = mock(CmmnApiClient.class);
     private final AuditService audit = mock(AuditService.class);
     private final RbacAuthorizer rbac = mock(RbacAuthorizer.class);
     private final ProtectedInstanceRepository protectedInstances = mock(ProtectedInstanceRepository.class);
@@ -100,6 +103,7 @@ class CorrectiveActionServiceTest {
         service = new CorrectiveActionService(
                 registry,
                 client,
+                cmmnClient,
                 audit,
                 rbac,
                 protectedInstances,
@@ -125,7 +129,7 @@ class CorrectiveActionServiceTest {
         when(audit.beginPending(any(), any(), any(), any(), any(), any(), any(), any(), any()))
                 .thenReturn(pendingEntry);
 
-        when(client.getJob(any(), eq(JobLaneKind.DEADLETTER), eq("j1")))
+        when(client.getJob(any(), eq(CallPriority.INTERACTIVE), eq(JobLaneKind.DEADLETTER), eq("j1")))
                 .thenReturn(Map.of("id", "j1", "processInstanceId", "pi-1", "elementId", "chargeCard"));
     }
 
@@ -209,7 +213,7 @@ class CorrectiveActionServiceTest {
 
     @Test
     void tierOneRequiresReasonOnProdButNotOnDev() {
-        when(client.getInstanceVariable(any(), eq("pi-1"), eq("amount")))
+        when(client.getInstanceVariable(any(), eq(CallPriority.INTERACTIVE), eq("pi-1"), eq("amount")))
                 .thenReturn(Map.of("name", "amount", "type", "integer", "value", 42));
 
         ActionRequest noReason = new ActionRequest(
@@ -229,11 +233,11 @@ class CorrectiveActionServiceTest {
         assertThatThrownBy(() -> service.execute(PROD, "pi-1", ActionVerb.EDIT_VARIABLE, noReason, operator))
                 .isInstanceOf(GuardRefusedException.class)
                 .satisfies(e -> assertThat(((GuardRefusedException) e).code()).isEqualTo("reason-required"));
-        verify(client, never()).putInstanceVariable(any(), anyString(), anyString(), any());
+        verify(client, never()).putInstanceVariable(any(), any(), anyString(), anyString(), any());
 
         // dev: proceeds (SPEC §6 — tier-1 reason optional on dev/test)
         service.execute(DEV, "pi-1", ActionVerb.EDIT_VARIABLE, noReason, operator);
-        verify(client).putInstanceVariable(any(), eq("pi-1"), eq("amount"), any());
+        verify(client).putInstanceVariable(any(), eq(CallPriority.INTERACTIVE), eq("pi-1"), eq("amount"), any());
     }
 
     @Test
@@ -247,7 +251,7 @@ class CorrectiveActionServiceTest {
 
     @Test
     void tierThreeOnProdDemandsTheServerFreshTypedToken() {
-        when(client.getRuntimeProcessInstance(any(), eq("pi-1")))
+        when(client.getRuntimeProcessInstance(any(), eq(CallPriority.INTERACTIVE), eq("pi-1")))
                 .thenReturn(Map.of("id", "pi-1", "businessKey", "ORD-77", "suspended", false));
 
         ActionRequest wrongToken = new ActionRequest(
@@ -255,12 +259,12 @@ class CorrectiveActionServiceTest {
         assertThatThrownBy(() -> service.execute(PROD, "pi-1", ActionVerb.TERMINATE_DELETE, wrongToken, operator))
                 .isInstanceOf(GuardRefusedException.class)
                 .satisfies(e -> assertThat(((GuardRefusedException) e).code()).isEqualTo("confirm-token-mismatch"));
-        verify(client, never()).deleteProcessInstance(any(), anyString(), anyString());
+        verify(client, never()).deleteProcessInstance(any(), any(), anyString(), anyString());
 
         ActionRequest rightToken = new ActionRequest(
                 "operator requested teardown", null, "ORD-77", null, null, null, null, null, null, null, null);
         service.execute(PROD, "pi-1", ActionVerb.TERMINATE_DELETE, rightToken, operator);
-        verify(client).deleteProcessInstance(any(), eq("pi-1"), anyString());
+        verify(client).deleteProcessInstance(any(), eq(CallPriority.INTERACTIVE), eq("pi-1"), anyString());
     }
 
     /* ---------------- dangerous-set re-auth (R-SAFE-07, IDP-SECURITY.md §5) ---------------- */
@@ -300,7 +304,7 @@ class CorrectiveActionServiceTest {
     void tierThreeWithinTheWindowSkipsReauthAndReachesTheTypedTokenCheck() {
         // 5 min < window → fresh: re-auth passes and control reaches the tier-3 typed-token rail, which
         // then refuses the wrong token. Proves the gate lets a fresh session through to the next rail.
-        when(client.getRuntimeProcessInstance(any(), eq("pi-1")))
+        when(client.getRuntimeProcessInstance(any(), eq(CallPriority.INTERACTIVE), eq("pi-1")))
                 .thenReturn(Map.of("id", "pi-1", "businessKey", "ORD-77", "suspended", false));
         Authentication fresh = oidcSession(Duration.ofMinutes(5), "ROLE_ADMIN");
         ActionRequest wrongToken = new ActionRequest(
@@ -309,7 +313,7 @@ class CorrectiveActionServiceTest {
         assertThatThrownBy(() -> service.execute(PROD, "pi-1", ActionVerb.TERMINATE_DELETE, wrongToken, fresh))
                 .isInstanceOf(GuardRefusedException.class)
                 .satisfies(e -> assertThat(((GuardRefusedException) e).code()).isEqualTo("confirm-token-mismatch"));
-        verify(client, never()).deleteProcessInstance(any(), anyString(), anyString());
+        verify(client, never()).deleteProcessInstance(any(), any(), anyString(), anyString());
     }
 
     @Test
@@ -318,7 +322,7 @@ class CorrectiveActionServiceTest {
         // a retry (tier 0) without a challenge. Gate scoping — the P1-fan-out safety valve.
         Authentication ancient = oidcSession(Duration.ofDays(1), "ROLE_ADMIN");
         service.execute(DEV, "pi-1", ActionVerb.RETRY_JOB, retryRequest(), ancient);
-        verify(client).moveDeadLetterJob(any(), eq("j1"));
+        verify(client).moveDeadLetterJob(any(), eq(CallPriority.INTERACTIVE), eq("j1"));
     }
 
     /* ---------------- the fail-closed audit gate ---------------- */
@@ -330,7 +334,7 @@ class CorrectiveActionServiceTest {
         InOrder order = inOrder(audit, client);
         order.verify(audit)
                 .beginPending(eq("op"), eq(DEV), any(), eq("pi-1"), eq("retry-job"), any(), any(), any(), any());
-        order.verify(client).moveDeadLetterJob(any(), eq("j1"));
+        order.verify(client).moveDeadLetterJob(any(), eq(CallPriority.INTERACTIVE), eq("j1"));
         order.verify(audit).close(eq(pendingEntry), eq(AuditOutcome.ok), eq(200), any(), eq(true));
     }
 
@@ -344,7 +348,7 @@ class CorrectiveActionServiceTest {
                     return null;
                 })
                 .when(client)
-                .moveDeadLetterJob(any(), eq("j1"));
+                .moveDeadLetterJob(any(), eq(CallPriority.INTERACTIVE), eq("j1"));
 
         service.execute(DEV, "pi-1", ActionVerb.RETRY_JOB, retryRequest(), operator);
 
@@ -361,14 +365,14 @@ class CorrectiveActionServiceTest {
 
         assertThatThrownBy(() -> service.execute(DEV, "pi-1", ActionVerb.RETRY_JOB, retryRequest(), operator))
                 .isInstanceOf(AuditUnavailableException.class);
-        verify(client, never()).moveDeadLetterJob(any(), anyString());
+        verify(client, never()).moveDeadLetterJob(any(), any(), anyString());
     }
 
     /* ---------------- CAS (R-SEM-09) ---------------- */
 
     @Test
     void casMismatchRefusesTheEditAuditsItAndLeavesTheEngineUntouched() {
-        when(client.getInstanceVariable(any(), eq("pi-1"), eq("amount")))
+        when(client.getInstanceVariable(any(), eq(CallPriority.INTERACTIVE), eq("pi-1"), eq("amount")))
                 .thenReturn(Map.of("name", "amount", "type", "integer", "value", 100));
 
         ActionRequest edit = new ActionRequest(
@@ -389,12 +393,12 @@ class CorrectiveActionServiceTest {
                 .satisfies(e ->
                         assertThat(((CasConflictException) e).currentValue()).isEqualTo(100));
         verify(audit).close(eq(pendingEntry), eq(AuditOutcome.failed), eq(409), any(), eq(false));
-        verify(client, never()).putInstanceVariable(any(), anyString(), anyString(), any());
+        verify(client, never()).putInstanceVariable(any(), any(), anyString(), anyString(), any());
     }
 
     @Test
     void casToleratesIntegerVersusLongFromTheWire() {
-        when(client.getInstanceVariable(any(), eq("pi-1"), eq("amount")))
+        when(client.getInstanceVariable(any(), eq(CallPriority.INTERACTIVE), eq("pi-1"), eq("amount")))
                 .thenReturn(Map.of("name", "amount", "type", "long", "value", 42L));
 
         ActionRequest edit = new ActionRequest(
@@ -411,7 +415,7 @@ class CorrectiveActionServiceTest {
                 null);
 
         service.execute(DEV, "pi-1", ActionVerb.EDIT_VARIABLE, edit, operator);
-        verify(client).putInstanceVariable(any(), eq("pi-1"), eq("amount"), any());
+        verify(client).putInstanceVariable(any(), eq(CallPriority.INTERACTIVE), eq("pi-1"), eq("amount"), any());
     }
 
     /* ---------------- execution-local (step-local) edits ---------------- */
@@ -433,9 +437,9 @@ class CorrectiveActionServiceTest {
 
     @Test
     void stepLocalEditReadsAndWritesTheExecutionLocalScopeOnly() {
-        when(client.getExecution(any(), eq("exec-7")))
+        when(client.getExecution(any(), eq(CallPriority.INTERACTIVE), eq("exec-7")))
                 .thenReturn(Map.of("id", "exec-7", "processInstanceId", "pi-1", "activityId", "validateLine"));
-        when(client.getExecutionVariable(any(), eq("exec-7"), eq("amount")))
+        when(client.getExecutionVariable(any(), eq(CallPriority.INTERACTIVE), eq("exec-7"), eq("amount")))
                 .thenReturn(Map.of("name", "amount", "type", "integer", "value", 42));
 
         service.execute(DEV, "pi-1", ActionVerb.EDIT_VARIABLE, stepLocalEdit("exec-7", 43, 42), operator);
@@ -443,16 +447,20 @@ class CorrectiveActionServiceTest {
         // The write lands ON the execution with scope=local — never promoted to process scope.
         verify(client)
                 .putExecutionVariable(
-                        any(), eq("exec-7"), eq("amount"), argThat(body -> "local".equals(body.get("scope"))));
-        verify(client, never()).putInstanceVariable(any(), anyString(), anyString(), any());
+                        any(),
+                        eq(CallPriority.INTERACTIVE),
+                        eq("exec-7"),
+                        eq("amount"),
+                        argThat(body -> "local".equals(body.get("scope"))));
+        verify(client, never()).putInstanceVariable(any(), any(), anyString(), anyString(), any());
     }
 
     @Test
     void stepLocalCasComparesAgainstTheLocalValueNotTheProcessScope() {
-        when(client.getExecution(any(), eq("exec-7")))
+        when(client.getExecution(any(), eq(CallPriority.INTERACTIVE), eq("exec-7")))
                 .thenReturn(Map.of("id", "exec-7", "processInstanceId", "pi-1", "activityId", "validateLine"));
         // The local value (99) differs from what the operator saw (42) — CAS must refuse.
-        when(client.getExecutionVariable(any(), eq("exec-7"), eq("amount")))
+        when(client.getExecutionVariable(any(), eq(CallPriority.INTERACTIVE), eq("exec-7"), eq("amount")))
                 .thenReturn(Map.of("name", "amount", "type", "integer", "value", 99));
 
         assertThatThrownBy(() -> service.execute(
@@ -461,12 +469,12 @@ class CorrectiveActionServiceTest {
                 .satisfies(e ->
                         assertThat(((CasConflictException) e).currentValue()).isEqualTo(99));
         verify(audit).close(eq(pendingEntry), eq(AuditOutcome.failed), eq(409), any(), eq(false));
-        verify(client, never()).putExecutionVariable(any(), anyString(), anyString(), any());
+        verify(client, never()).putExecutionVariable(any(), any(), anyString(), anyString(), any());
     }
 
     @Test
     void stepLocalEditRefusesAForeignExecutionBeforeAuditing() {
-        when(client.getExecution(any(), eq("exec-7")))
+        when(client.getExecution(any(), eq(CallPriority.INTERACTIVE), eq("exec-7")))
                 .thenReturn(Map.of("id", "exec-7", "processInstanceId", "pi-OTHER"));
 
         assertThatThrownBy(() -> service.execute(
@@ -475,20 +483,22 @@ class CorrectiveActionServiceTest {
                 .satisfies(
                         e -> assertThat(((GuardRefusedException) e).code()).isEqualTo("execution-instance-mismatch"));
         verifyNoInteractions(audit);
-        verify(client, never()).putExecutionVariable(any(), anyString(), anyString(), any());
+        verify(client, never()).putExecutionVariable(any(), any(), anyString(), anyString(), any());
     }
 
     @Test
     void stepLocalEditRefusesWhenTheLocalVariableIsMissing() {
-        when(client.getExecution(any(), eq("exec-7"))).thenReturn(Map.of("id", "exec-7", "processInstanceId", "pi-1"));
-        when(client.getExecutionVariable(any(), eq("exec-7"), eq("amount"))).thenReturn(null);
+        when(client.getExecution(any(), eq(CallPriority.INTERACTIVE), eq("exec-7")))
+                .thenReturn(Map.of("id", "exec-7", "processInstanceId", "pi-1"));
+        when(client.getExecutionVariable(any(), eq(CallPriority.INTERACTIVE), eq("exec-7"), eq("amount")))
+                .thenReturn(null);
 
         assertThatThrownBy(() -> service.execute(
                         DEV, "pi-1", ActionVerb.EDIT_VARIABLE, stepLocalEdit("exec-7", 43, 42), operator))
                 .isInstanceOf(GuardRefusedException.class)
                 .satisfies(e -> assertThat(((GuardRefusedException) e).code()).isEqualTo("variable-not-found"));
         verifyNoInteractions(audit);
-        verify(client, never()).putExecutionVariable(any(), anyString(), anyString(), any());
+        verify(client, never()).putExecutionVariable(any(), any(), anyString(), anyString(), any());
     }
 
     /* ---------------- post-dispatch honesty (R-SEM-18) ---------------- */
@@ -502,7 +512,7 @@ class CorrectiveActionServiceTest {
                         "already suspended".getBytes(StandardCharsets.UTF_8),
                         null))
                 .when(client)
-                .moveDeadLetterJob(any(), eq("j1"));
+                .moveDeadLetterJob(any(), eq(CallPriority.INTERACTIVE), eq("j1"));
 
         assertThatThrownBy(() -> service.execute(DEV, "pi-1", ActionVerb.RETRY_JOB, retryRequest(), operator))
                 .isInstanceOf(EngineRejectedException.class)
@@ -516,20 +526,20 @@ class CorrectiveActionServiceTest {
         org.mockito.Mockito.doThrow(
                         new ResourceAccessException("timeout", new HttpTimeoutException("request timed out")))
                 .when(client)
-                .moveDeadLetterJob(any(), eq("j1"));
+                .moveDeadLetterJob(any(), eq(CallPriority.INTERACTIVE), eq("j1"));
 
         assertThatThrownBy(() -> service.execute(DEV, "pi-1", ActionVerb.RETRY_JOB, retryRequest(), operator))
                 .isInstanceOf(OutcomeUnknownException.class);
         verify(audit).close(eq(pendingEntry), eq(AuditOutcome.unknown), any(), any(), eq(false));
         // exactly one dispatch — a blind retry can double-fire
-        verify(client, org.mockito.Mockito.times(1)).moveDeadLetterJob(any(), eq("j1"));
+        verify(client, org.mockito.Mockito.times(1)).moveDeadLetterJob(any(), eq(CallPriority.INTERACTIVE), eq("j1"));
     }
 
     @Test
     void connectionRefusedIsFailedBecauseNothingWasDispatched() {
         org.mockito.Mockito.doThrow(new ResourceAccessException("refused", new java.net.ConnectException("refused")))
                 .when(client)
-                .moveDeadLetterJob(any(), eq("j1"));
+                .moveDeadLetterJob(any(), eq(CallPriority.INTERACTIVE), eq("j1"));
 
         assertThatThrownBy(() -> service.execute(DEV, "pi-1", ActionVerb.RETRY_JOB, retryRequest(), operator))
                 .isInstanceOf(GuardRefusedException.class)
@@ -549,7 +559,7 @@ class CorrectiveActionServiceTest {
         task.put("processInstanceId", instanceId);
         task.put("name", "Manual review");
         task.put("assignee", assignee);
-        when(client.getTask(any(), eq("task-9"))).thenReturn(task);
+        when(client.getTask(any(), eq(CallPriority.INTERACTIVE), eq("task-9"))).thenReturn(task);
     }
 
     @Test
@@ -561,7 +571,7 @@ class CorrectiveActionServiceTest {
         InOrder order = inOrder(audit, client);
         order.verify(audit)
                 .beginPending(eq("op"), eq(DEV), any(), eq("pi-1"), eq("reassign-task"), any(), any(), any(), any());
-        order.verify(client).setTaskAssignee(any(), eq("task-9"), eq("gonzo"));
+        order.verify(client).setTaskAssignee(any(), eq(CallPriority.INTERACTIVE), eq("task-9"), eq("gonzo"));
         order.verify(audit).close(eq(pendingEntry), eq(AuditOutcome.ok), eq(200), any(), eq(true));
         assertThat(result.deltaStatement()).contains("reassigned to 'gonzo'").contains("was 'kermit'");
     }
@@ -575,7 +585,7 @@ class CorrectiveActionServiceTest {
                 .isInstanceOf(GuardRefusedException.class)
                 .satisfies(e -> assertThat(((GuardRefusedException) e).code()).isEqualTo("missing-field"));
         verifyNoInteractions(audit);
-        verify(client, never()).setTaskAssignee(any(), anyString(), any());
+        verify(client, never()).setTaskAssignee(any(), any(), anyString(), any());
     }
 
     @Test
@@ -584,20 +594,22 @@ class CorrectiveActionServiceTest {
 
         var result = service.execute(DEV, "pi-1", ActionVerb.UNASSIGN_TASK, reassignRequest(null), operator);
 
-        verify(client).setTaskAssignee(any(), eq("task-9"), org.mockito.ArgumentMatchers.isNull());
+        verify(client)
+                .setTaskAssignee(
+                        any(), eq(CallPriority.INTERACTIVE), eq("task-9"), org.mockito.ArgumentMatchers.isNull());
         assertThat(result.deltaStatement()).contains("returned to its team").contains("was 'kermit'");
     }
 
     @Test
     void aTaskThatIsNoLongerActiveCannotBeReassigned() {
-        when(client.getTask(any(), eq("task-9"))).thenReturn(null);
+        when(client.getTask(any(), eq(CallPriority.INTERACTIVE), eq("task-9"))).thenReturn(null);
 
         assertThatThrownBy(() ->
                         service.execute(DEV, "pi-1", ActionVerb.REASSIGN_TASK, reassignRequest("gonzo"), operator))
                 .isInstanceOf(GuardRefusedException.class)
                 .satisfies(e -> assertThat(((GuardRefusedException) e).code()).isEqualTo("task-not-active"));
         verifyNoInteractions(audit);
-        verify(client, never()).setTaskAssignee(any(), anyString(), any());
+        verify(client, never()).setTaskAssignee(any(), any(), anyString(), any());
     }
 
     @Test
@@ -613,7 +625,7 @@ class CorrectiveActionServiceTest {
 
     @Test
     void jobBelongingToAnotherInstanceIsRefusedBeforeAudit() {
-        when(client.getJob(any(), eq(JobLaneKind.DEADLETTER), eq("j1")))
+        when(client.getJob(any(), eq(CallPriority.INTERACTIVE), eq(JobLaneKind.DEADLETTER), eq("j1")))
                 .thenReturn(Map.of("id", "j1", "processInstanceId", "OTHER"));
 
         assertThatThrownBy(() -> service.execute(DEV, "pi-1", ActionVerb.RETRY_JOB, retryRequest(), operator))
@@ -630,7 +642,8 @@ class CorrectiveActionServiceTest {
 
     @Test
     void suspendDeltaStatementStatesTheDeltaAndNamesTheCompensatingVerb() {
-        when(client.getRuntimeProcessInstance(any(), eq("pi-1"))).thenReturn(Map.of("id", "pi-1"));
+        when(client.getRuntimeProcessInstance(any(), eq(CallPriority.INTERACTIVE), eq("pi-1")))
+                .thenReturn(Map.of("id", "pi-1"));
 
         var result = service.execute(DEV, "pi-1", ActionVerb.SUSPEND, emptyRequest(), operator);
 
@@ -647,7 +660,8 @@ class CorrectiveActionServiceTest {
         // Issue #117: suspending an instance does NOT move a dead-letter job to the suspended
         // lane, and the BFF never inspects job lanes on this path — so the toast must not
         // assert any lane movement (quiet-lie / R-TEST-03).
-        when(client.getRuntimeProcessInstance(any(), eq("pi-1"))).thenReturn(Map.of("id", "pi-1"));
+        when(client.getRuntimeProcessInstance(any(), eq(CallPriority.INTERACTIVE), eq("pi-1")))
+                .thenReturn(Map.of("id", "pi-1"));
 
         var result = service.execute(DEV, "pi-1", ActionVerb.SUSPEND, emptyRequest(), operator);
 
@@ -656,7 +670,8 @@ class CorrectiveActionServiceTest {
 
     @Test
     void activateDeltaStatementStatesTheDeltaAndNamesTheCompensatingVerb() {
-        when(client.getRuntimeProcessInstance(any(), eq("pi-1"))).thenReturn(Map.of("id", "pi-1"));
+        when(client.getRuntimeProcessInstance(any(), eq(CallPriority.INTERACTIVE), eq("pi-1")))
+                .thenReturn(Map.of("id", "pi-1"));
 
         var result = service.execute(DEV, "pi-1", ActionVerb.ACTIVATE, emptyRequest(), operator);
 
@@ -671,7 +686,8 @@ class CorrectiveActionServiceTest {
     void activateDeltaStatementNeverClaimsAJobLaneMoveItCannotVerify() {
         // Mirror of #117 for the compensating verb: a dead-letter job was never suspended,
         // so "suspended jobs returned to their queues" is equally unverifiable here.
-        when(client.getRuntimeProcessInstance(any(), eq("pi-1"))).thenReturn(Map.of("id", "pi-1"));
+        when(client.getRuntimeProcessInstance(any(), eq(CallPriority.INTERACTIVE), eq("pi-1")))
+                .thenReturn(Map.of("id", "pi-1"));
 
         var result = service.execute(DEV, "pi-1", ActionVerb.ACTIVATE, emptyRequest(), operator);
 

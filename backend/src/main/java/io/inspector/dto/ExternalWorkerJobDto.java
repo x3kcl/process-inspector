@@ -12,7 +12,7 @@ import com.fasterxml.jackson.annotation.JsonInclude;
  *
  * <p>Read-only for v1.x (no retry/unacquire/terminate). Sourced from the External Worker REST
  * API's {@code GET …/external-job-api/jobs}, NOT the management API — see
- * {@code FlowableEngineClient.listExternalWorkerJobs}. Nullable fields differ by engine.
+ * {@code ExternalJobApiClient.listExternalWorkerJobs}. Nullable fields differ by engine.
  */
 @JsonInclude(JsonInclude.Include.NON_NULL)
 public record ExternalWorkerJobDto(

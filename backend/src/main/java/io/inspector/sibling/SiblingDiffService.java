@@ -1,7 +1,8 @@
 package io.inspector.sibling;
 
-import io.inspector.client.FlowableEngineClient;
-import io.inspector.client.FlowableEngineClient.FlowablePage;
+import io.inspector.client.FlowablePage;
+import io.inspector.client.GuardedCaller.CallPriority;
+import io.inspector.client.ProcessApiClient;
 import io.inspector.config.InspectorProperties.EngineConfig;
 import io.inspector.detail.InstanceDetailService;
 import io.inspector.dto.InstanceVariables.VariableDto;
@@ -41,10 +42,10 @@ public class SiblingDiffService {
     static final int NEAREST_CANDIDATE_SCAN = 25;
 
     private final EngineRegistry registry;
-    private final FlowableEngineClient flowable;
+    private final ProcessApiClient flowable;
     private final InstanceDetailService detail;
 
-    public SiblingDiffService(EngineRegistry registry, FlowableEngineClient flowable, InstanceDetailService detail) {
+    public SiblingDiffService(EngineRegistry registry, ProcessApiClient flowable, InstanceDetailService detail) {
         this.registry = registry;
         this.flowable = flowable;
         this.detail = detail;
@@ -76,7 +77,7 @@ public class SiblingDiffService {
         body.put("size", NEAREST_CANDIDATE_SCAN);
         withTenant(engine, body);
 
-        FlowablePage page = flowable.queryHistoricProcessInstances(engine, body);
+        FlowablePage page = flowable.queryHistoricProcessInstances(engine, CallPriority.INTERACTIVE, body);
         List<Map<String, Object>> rows = page.dataOrEmpty();
         for (Map<String, Object> row : rows) {
             String candidateId = str(row, "id");
@@ -212,7 +213,7 @@ public class SiblingDiffService {
     private List<VariableDto> historicVariableProjection(EngineConfig engine, String instanceId) {
         List<VariableDto> rows = new ArrayList<>();
         for (Map<String, Object> row : flowable.listHistoricVariableInstances(
-                        engine, instanceId, engine.maxPageSizeOrDefault())
+                        engine, CallPriority.INTERACTIVE, instanceId, engine.maxPageSizeOrDefault())
                 .dataOrEmpty()) {
             // 6.x nests the variable under "variable"; newer engines inline it — same as the
             // detail ledger's historic leg.
@@ -224,7 +225,8 @@ public class SiblingDiffService {
     }
 
     private List<PathActivity> historicPath(EngineConfig engine, String instanceId) {
-        FlowablePage page = flowable.listHistoricActivities(engine, instanceId, 0, engine.maxPageSizeOrDefault());
+        FlowablePage page = flowable.listHistoricActivities(
+                engine, CallPriority.INTERACTIVE, instanceId, 0, engine.maxPageSizeOrDefault());
         List<PathActivity> path = new ArrayList<>();
         for (Map<String, Object> row : page.dataOrEmpty()) {
             path.add(pathRow(row));

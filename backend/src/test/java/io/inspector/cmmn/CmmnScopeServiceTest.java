@@ -12,8 +12,9 @@ import static org.mockito.Mockito.verify;
 import static org.mockito.Mockito.when;
 
 import io.inspector.action.GuardRefusedException;
-import io.inspector.client.FlowableEngineClient;
-import io.inspector.client.FlowableEngineClient.FlowablePage;
+import io.inspector.client.CmmnApiClient;
+import io.inspector.client.FlowablePage;
+import io.inspector.client.GuardedCaller.CallPriority;
 import io.inspector.config.InspectorProperties.EngineConfig;
 import io.inspector.dto.CmmnDeadLetterJob;
 import io.inspector.dto.CmmnScopeFacet;
@@ -40,7 +41,7 @@ class CmmnScopeServiceTest {
     private static final String ENGINE = "e";
 
     private final EngineConfig engine = TestEngines.engine(ENGINE, "http://engine.test/flowable-rest/service");
-    private final FlowableEngineClient flowable = mock(FlowableEngineClient.class);
+    private final CmmnApiClient flowable = mock(CmmnApiClient.class);
     private final EngineRegistry registry = mock(EngineRegistry.class);
     private final CmmnScopeService service = new CmmnScopeService(registry, flowable);
 
@@ -57,7 +58,7 @@ class CmmnScopeServiceTest {
         assertThatThrownBy(() -> service.outOfScopeDeadLetters(ENGINE))
                 .isInstanceOf(GuardRefusedException.class)
                 .satisfies(e -> assertThat(((GuardRefusedException) e).code()).isEqualTo("capability-unknown"));
-        verify(flowable, never()).listCmmnDeadLetterJobs(any(), any(), anyInt(), anyInt());
+        verify(flowable, never()).listCmmnDeadLetterJobs(any(), any(), any(), anyInt(), anyInt());
     }
 
     @Test
@@ -68,7 +69,7 @@ class CmmnScopeServiceTest {
         assertThatThrownBy(() -> service.outOfScopeDeadLetters(ENGINE))
                 .isInstanceOf(GuardRefusedException.class)
                 .satisfies(e -> assertThat(((GuardRefusedException) e).code()).isEqualTo("capability-unavailable"));
-        verify(flowable, never()).listCmmnDeadLetterJobs(any(), any(), anyInt(), anyInt());
+        verify(flowable, never()).listCmmnDeadLetterJobs(any(), any(), any(), anyInt(), anyInt());
     }
 
     @Test
@@ -117,10 +118,12 @@ class CmmnScopeServiceTest {
         Map<String, Object> rowA2 = cmmnRow("j2", "case-2", "def-A");
         Map<String, Object> rowB = cmmnRow("j3", "case-3", "def-B");
         Map<String, Object> bpmn = cmmnRow("j4", null, "proc-def"); // null caseInstanceId → excluded
-        when(flowable.listCmmnDeadLetterJobs(any(), any(), anyInt(), anyInt()))
+        when(flowable.listCmmnDeadLetterJobs(any(), any(), any(), anyInt(), anyInt()))
                 .thenReturn(new FlowablePage(List.of(rowA1, rowA2, rowB, bpmn), 4, 0, 50));
-        when(flowable.getCmmnCaseDefinition(engine, "def-A")).thenReturn(def("kA", "Case A"));
-        when(flowable.getCmmnCaseDefinition(engine, "def-B")).thenReturn(def("kB", "Case B"));
+        when(flowable.getCmmnCaseDefinition(engine, CallPriority.INTERACTIVE, "def-A"))
+                .thenReturn(def("kA", "Case A"));
+        when(flowable.getCmmnCaseDefinition(engine, CallPriority.INTERACTIVE, "def-B"))
+                .thenReturn(def("kB", "Case B"));
 
         OutOfScopeDeadLetters result = service.outOfScopeDeadLetters(ENGINE);
 
@@ -130,14 +133,14 @@ class CmmnScopeServiceTest {
                 .containsExactly("Case A", "Case A", "Case B");
         assertThat(result.scanned()).isEqualTo(4); // BPMN row was scanned but not enumerated
         // N+1 on DISTINCT definitions, never on jobs: def-A resolved once despite two rows.
-        verify(flowable, times(1)).getCmmnCaseDefinition(engine, "def-A");
-        verify(flowable, times(1)).getCmmnCaseDefinition(engine, "def-B");
+        verify(flowable, times(1)).getCmmnCaseDefinition(engine, CallPriority.INTERACTIVE, "def-A");
+        verify(flowable, times(1)).getCmmnCaseDefinition(engine, CallPriority.INTERACTIVE, "def-B");
     }
 
     @Test
     void spendsTheScanCapOnCmmnOnlyViaScopeTypeFilter() {
         health(scopeTypeCapable());
-        when(flowable.listCmmnDeadLetterJobs(any(), any(), anyInt(), anyInt()))
+        when(flowable.listCmmnDeadLetterJobs(any(), any(), any(), anyInt(), anyInt()))
                 .thenReturn(new FlowablePage(List.of(), 0, 0, 50));
 
         service.outOfScopeDeadLetters(ENGINE);
@@ -146,16 +149,17 @@ class CmmnScopeServiceTest {
         // cap is spent on CMMN rows only — BPMN projections never crowd CMMN past the cap.
         @SuppressWarnings("unchecked")
         ArgumentCaptor<Map<String, String>> filters = ArgumentCaptor.forClass(Map.class);
-        verify(flowable).listCmmnDeadLetterJobs(any(), filters.capture(), anyInt(), anyInt());
+        verify(flowable).listCmmnDeadLetterJobs(any(), any(), filters.capture(), anyInt(), anyInt());
         assertThat(filters.getValue()).containsEntry("scopeType", "cmmn");
     }
 
     @Test
     void anUndeployedDefinitionDegradesToNullNameNeverFailsTheSlice() {
         health(scopeTypeCapable());
-        when(flowable.listCmmnDeadLetterJobs(any(), any(), anyInt(), anyInt()))
+        when(flowable.listCmmnDeadLetterJobs(any(), any(), any(), anyInt(), anyInt()))
                 .thenReturn(new FlowablePage(List.of(cmmnRow("j1", "case-1", "gone")), 1, 0, 50));
-        when(flowable.getCmmnCaseDefinition(engine, "gone")).thenReturn(null); // 404 → null
+        when(flowable.getCmmnCaseDefinition(engine, CallPriority.INTERACTIVE, "gone"))
+                .thenReturn(null); // 404 → null
 
         OutOfScopeDeadLetters result = service.outOfScopeDeadLetters(ENGINE);
 
@@ -170,7 +174,7 @@ class CmmnScopeServiceTest {
     void cmmnScopeReportsLaneCountsAndDistinctFailedCases() {
         health(scopeTypeCapable());
         // Two dead-letter jobs on ONE case + a third on another → FAILED = 2 DISTINCT cases.
-        when(flowable.listCmmnDeadLetterJobs(any(), any(), anyInt(), anyInt()))
+        when(flowable.listCmmnDeadLetterJobs(any(), any(), any(), anyInt(), anyInt()))
                 .thenReturn(new FlowablePage(
                         List.of(
                                 cmmnRow("j1", "case-1", "def-A"),
@@ -179,12 +183,12 @@ class CmmnScopeServiceTest {
                         3,
                         0,
                         50));
-        when(flowable.getCmmnCaseDefinition(any(), any())).thenReturn(def("k", "n"));
-        when(flowable.countHistoricCmmnCaseInstances(any(), eq("active"), any()))
+        when(flowable.getCmmnCaseDefinition(any(), any(), any())).thenReturn(def("k", "n"));
+        when(flowable.countHistoricCmmnCaseInstances(any(), any(), eq("active"), any()))
                 .thenReturn(5L);
-        when(flowable.countHistoricCmmnCaseInstances(any(), eq("completed"), any()))
+        when(flowable.countHistoricCmmnCaseInstances(any(), any(), eq("completed"), any()))
                 .thenReturn(12L);
-        when(flowable.countHistoricCmmnCaseInstances(any(), eq("terminated"), any()))
+        when(flowable.countHistoricCmmnCaseInstances(any(), any(), eq("terminated"), any()))
                 .thenReturn(1L);
 
         CmmnScopeFacet facet = service.cmmnScope(ENGINE);
@@ -199,13 +203,13 @@ class CmmnScopeServiceTest {
     @Test
     void aLaneQueryFailureDegradesToNullNeverZero() {
         health(scopeTypeCapable());
-        when(flowable.listCmmnDeadLetterJobs(any(), any(), anyInt(), anyInt()))
+        when(flowable.listCmmnDeadLetterJobs(any(), any(), any(), anyInt(), anyInt()))
                 .thenReturn(new FlowablePage(List.of(), 0, 0, 50));
-        when(flowable.countHistoricCmmnCaseInstances(any(), eq("active"), any()))
+        when(flowable.countHistoricCmmnCaseInstances(any(), any(), eq("active"), any()))
                 .thenReturn(3L);
-        when(flowable.countHistoricCmmnCaseInstances(any(), eq("completed"), any()))
+        when(flowable.countHistoricCmmnCaseInstances(any(), any(), eq("completed"), any()))
                 .thenThrow(new RuntimeException("engine hiccup"));
-        when(flowable.countHistoricCmmnCaseInstances(any(), eq("terminated"), any()))
+        when(flowable.countHistoricCmmnCaseInstances(any(), any(), eq("terminated"), any()))
                 .thenReturn(0L);
 
         CmmnScopeFacet facet = service.cmmnScope(ENGINE);
@@ -223,7 +227,7 @@ class CmmnScopeServiceTest {
         assertThatThrownBy(() -> service.cmmnScope(ENGINE))
                 .isInstanceOf(GuardRefusedException.class)
                 .satisfies(e -> assertThat(((GuardRefusedException) e).code()).isEqualTo("capability-unavailable"));
-        verify(flowable, never()).countHistoricCmmnCaseInstances(any(), any(), any());
+        verify(flowable, never()).countHistoricCmmnCaseInstances(any(), any(), any(), any());
     }
 
     private static EngineCapabilities scopeTypeCapable() {

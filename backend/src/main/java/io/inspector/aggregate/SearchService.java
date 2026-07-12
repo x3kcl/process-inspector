@@ -2,10 +2,10 @@ package io.inspector.aggregate;
 
 import io.inspector.audit.ProtectedInstance;
 import io.inspector.audit.ProtectedInstanceRepository;
-import io.inspector.client.FlowableEngineClient;
-import io.inspector.client.FlowableEngineClient.CallPriority;
-import io.inspector.client.FlowableEngineClient.FlowablePage;
-import io.inspector.client.FlowableEngineClient.JobLaneKind;
+import io.inspector.client.FlowablePage;
+import io.inspector.client.GuardedCaller.CallPriority;
+import io.inspector.client.ProcessApiClient;
+import io.inspector.client.ProcessApiClient.JobLaneKind;
 import io.inspector.config.InspectorProperties;
 import io.inspector.config.InspectorProperties.EngineConfig;
 import io.inspector.dto.InstanceStatusFlags;
@@ -67,7 +67,7 @@ public class SearchService {
     private static final Logger log = LoggerFactory.getLogger(SearchService.class);
 
     private final EngineRegistry registry;
-    private final FlowableEngineClient flowable;
+    private final ProcessApiClient flowable;
     private final InspectorProperties props;
     private final ProtectedInstanceRepository protectedInstances;
     private final ExecutorService fanout = Executors.newVirtualThreadPerTaskExecutor();
@@ -77,7 +77,7 @@ public class SearchService {
 
     public SearchService(
             EngineRegistry registry,
-            FlowableEngineClient flowable,
+            ProcessApiClient flowable,
             InspectorProperties props,
             ProtectedInstanceRepository protectedInstances) {
         this.registry = registry;
@@ -495,7 +495,9 @@ public class SearchService {
         canary.put("processBusinessKeyLike", "%__inspector_bkl_canary__%");
         canary.put("size", 1);
         tenant(engine).ifPresent(t -> canary.put("tenantId", t));
-        return flowable.queryHistoricProcessInstances(engine, canary).total() > 0;
+        return flowable.queryHistoricProcessInstances(engine, CallPriority.INTERACTIVE, canary)
+                        .total()
+                > 0;
     }
 
     /* ================= INVERTED plan — drive FROM the job queues ================= */
@@ -555,7 +557,7 @@ public class SearchService {
             Map<String, Object> body = historicBody(engine, req, pageSize, definitionIds);
             body.put("processInstanceIds", List.copyOf(ids));
             if (start > 0) body.put("start", start);
-            FlowablePage page = flowable.queryHistoricProcessInstances(engine, body, priority);
+            FlowablePage page = flowable.queryHistoricProcessInstances(engine, priority, body);
             List<Map<String, Object>> data = page.dataOrEmpty();
             total = page.total();
 
@@ -620,7 +622,7 @@ public class SearchService {
             else if (wantsOpen && !wantsCompleted) body.put("finished", false);
             if (start > 0) body.put("start", start);
 
-            FlowablePage historic = flowable.queryHistoricProcessInstances(engine, body, priority);
+            FlowablePage historic = flowable.queryHistoricProcessInstances(engine, priority, body);
             List<Map<String, Object>> data = historic.dataOrEmpty();
             total = historic.total();
             if (exhaustCap != null && total > exhaustCap) {
@@ -676,7 +678,7 @@ public class SearchService {
         String needle = bff.currentActivity().toLowerCase(Locale.ROOT);
         Map<String, Boolean> hits = parallelPerId(openIds, id -> {
             for (Map<String, Object> activity : flowable.listUnfinishedActivities(
-                            engine, id, engine.tenantId(), engine.maxPageSizeOrDefault(), priority)
+                            engine, priority, id, engine.tenantId(), engine.maxPageSizeOrDefault())
                     .dataOrEmpty()) {
                 if (containsIgnoreCase(str(activity, "activityId"), needle)
                         || containsIgnoreCase(str(activity, "activityName"), needle)) {
@@ -766,7 +768,7 @@ public class SearchService {
                     truncated = true;
                     break;
                 }
-                FlowablePage page = flowable.listJobs(engine, lane, filters, start, size, priority);
+                FlowablePage page = flowable.listJobs(engine, priority, lane, filters, start, size);
                 List<Map<String, Object>> batch = page.dataOrEmpty();
                 scanned += batch.size();
                 jobs.addAll(batch);
@@ -796,7 +798,7 @@ public class SearchService {
                 bff.signatureHash(),
                 job -> {
                     try {
-                        return flowable.jobExceptionStacktrace(engine, lane, str(job, "id"), priority);
+                        return flowable.jobExceptionStacktrace(engine, priority, lane, str(job, "id"));
                     } catch (Exception ex) {
                         log.debug("Signature refinement failed on {}: {}", engine.id(), ex.toString());
                         return null;
@@ -833,7 +835,7 @@ public class SearchService {
         body.put("processInstanceIds", List.copyOf(ids));
         body.put("size", ids.size());
         tenant(engine).ifPresent(t -> body.put("tenantId", t));
-        FlowablePage page = flowable.queryRuntimeProcessInstances(engine, body, priority);
+        FlowablePage page = flowable.queryRuntimeProcessInstances(engine, priority, body);
 
         Map<String, Boolean> byId = new HashMap<>();
         boolean filterIgnored = page.total() > ids.size();
@@ -849,7 +851,7 @@ public class SearchService {
 
         log.debug("Engine {} ignored processInstanceIds on the runtime query — per-id fallback", engine.id());
         return parallelPerId(ids, id -> {
-            Map<String, Object> pi = flowable.getRuntimeProcessInstance(engine, id, priority);
+            Map<String, Object> pi = flowable.getRuntimeProcessInstance(engine, priority, id);
             return pi != null && Boolean.TRUE.equals(pi.get("suspended"));
         });
     }
@@ -864,7 +866,7 @@ public class SearchService {
             filters.put("processInstanceId", id);
             tenant(engine).ifPresent(t -> filters.put("tenantId", t));
             FlowablePage page = flowable.listJobs(
-                    engine, JobLaneKind.DEADLETTER, filters, 0, engine.maxPageSizeOrDefault(), priority);
+                    engine, priority, JobLaneKind.DEADLETTER, filters, 0, engine.maxPageSizeOrDefault());
             // Same failure-window/error-text/signature semantics as the inverted plan's scan legs.
             Map<String, Failure> perInstance = indexByInstance(applyFailureFilters(
                     applySignatureFilter(engine, JobLaneKind.DEADLETTER, page.dataOrEmpty(), bff, priority), bff));
@@ -913,7 +915,8 @@ public class SearchService {
                         body.put("processInstanceIds", chunk);
                         body.put("size", chunk.size());
                         tenant(engine).ifPresent(t -> body.put("tenantId", t));
-                        for (Map<String, Object> row : flowable.queryHistoricProcessInstances(engine, body)
+                        for (Map<String, Object> row : flowable.queryHistoricProcessInstances(
+                                        engine, CallPriority.INTERACTIVE, body)
                                 .dataOrEmpty()) {
                             byId.put(str(row, "id"), row);
                         }
@@ -1017,7 +1020,7 @@ public class SearchService {
         int pageSize = engine.maxPageSizeOrDefault();
         int start = 0;
         while (true) {
-            FlowablePage page = flowable.listProcessDefinitionsByKey(engine, key, version, start, pageSize, priority);
+            FlowablePage page = flowable.listProcessDefinitionsByKey(engine, priority, key, version, start, pageSize);
             List<Map<String, Object>> data = page.dataOrEmpty();
             for (Map<String, Object> def : data) {
                 String id = str(def, "id");

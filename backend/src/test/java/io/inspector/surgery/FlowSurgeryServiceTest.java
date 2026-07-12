@@ -20,8 +20,9 @@ import io.inspector.audit.AuditEntry;
 import io.inspector.audit.AuditOutcome;
 import io.inspector.audit.AuditService;
 import io.inspector.audit.ProtectedInstanceRepository;
-import io.inspector.client.FlowableEngineClient;
-import io.inspector.client.FlowableEngineClient.FlowablePage;
+import io.inspector.client.FlowablePage;
+import io.inspector.client.GuardedCaller.CallPriority;
+import io.inspector.client.ProcessApiClient;
 import io.inspector.config.InspectorProperties;
 import io.inspector.config.InspectorProperties.EngineEnvironment;
 import io.inspector.config.InspectorProperties.EngineMode;
@@ -64,7 +65,7 @@ class FlowSurgeryServiceTest {
     private static final String DEF_ID = "demoFlowSurgery:1:abc";
     private static final String REASON = "moving the token off the failed node per INC-42";
 
-    private final FlowableEngineClient client = mock(FlowableEngineClient.class);
+    private final ProcessApiClient client = mock(ProcessApiClient.class);
     private final AuditService audit = mock(AuditService.class);
     private final RbacAuthorizer rbac = mock(RbacAuthorizer.class);
     private final ProtectedInstanceRepository protectedInstances = mock(ProtectedInstanceRepository.class);
@@ -122,10 +123,13 @@ class FlowSurgeryServiceTest {
         running.put("id", "pi-1");
         running.put("processDefinitionId", DEF_ID);
         running.put("suspended", false);
-        when(client.getRuntimeProcessInstance(any(), eq("pi-1"))).thenReturn(running);
-        when(client.getProcessDefinitionModel(any(), eq(DEF_ID))).thenReturn(modelJson());
-        when(client.processDefinitionResourceData(any(), eq(DEF_ID))).thenReturn(xml());
-        when(client.listExecutions(any(), eq("pi-1"), anyInt()))
+        when(client.getRuntimeProcessInstance(any(), eq(CallPriority.INTERACTIVE), eq("pi-1")))
+                .thenReturn(running);
+        when(client.getProcessDefinitionModel(any(), eq(CallPriority.INTERACTIVE), eq(DEF_ID)))
+                .thenReturn(modelJson());
+        when(client.processDefinitionResourceData(any(), eq(CallPriority.INTERACTIVE), eq(DEF_ID)))
+                .thenReturn(xml());
+        when(client.listExecutions(any(), eq(CallPriority.INTERACTIVE), eq("pi-1"), anyInt()))
                 .thenReturn(new FlowablePage(
                         List.of(Map.of("id", "pi-1"), Map.of("id", "e-2", "activityId", "stepOne")), 2, 0, 100));
     }
@@ -163,7 +167,7 @@ class FlowSurgeryServiceTest {
         assertThat(preview.simulationNote()).contains("no dry-run");
         assertThat(preview.warnings()).isEmpty();
         verifyNoInteractions(audit); // simulation only — nothing on the record, nothing mutated
-        verify(client, never()).changeActivityState(any(), any(), any());
+        verify(client, never()).changeActivityState(any(), any(), any(), any());
     }
 
     @Test
@@ -198,12 +202,12 @@ class FlowSurgeryServiceTest {
                 .isInstanceOf(GuardRefusedException.class)
                 .satisfies(e -> assertThat(refusal(e).code()).isEqualTo("multi-instance-body"));
         verifyNoInteractions(audit);
-        verify(client, never()).changeActivityState(any(), any(), any());
+        verify(client, never()).changeActivityState(any(), any(), any(), any());
     }
 
     @Test
     void suspendedInstanceIsBlockedWithActivateFirstGuidance() {
-        when(client.getRuntimeProcessInstance(any(), eq("pi-1")))
+        when(client.getRuntimeProcessInstance(any(), eq(CallPriority.INTERACTIVE), eq("pi-1")))
                 .thenReturn(Map.of("id", "pi-1", "processDefinitionId", DEF_ID, "suspended", true));
 
         assertThatThrownBy(() -> service.previewChangeState(DEV, "pi-1", move(null, "stepOne", "stepTwo"), operator))
@@ -247,7 +251,7 @@ class FlowSurgeryServiceTest {
                 .satisfies(e -> assertThat(refusal(e).code()).isEqualTo("capability-unavailable"));
         assertThatThrownBy(() -> service.previewChangeState(COLD, "pi-1", move(null, "stepOne", "stepTwo"), operator))
                 .satisfies(e -> assertThat(refusal(e).code()).isEqualTo("capability-unknown"));
-        verify(client, never()).getRuntimeProcessInstance(any(), any()); // refused before any engine read
+        verify(client, never()).getRuntimeProcessInstance(any(), any(), any()); // refused before any engine read
     }
 
     /* ---------------- execute: rails + audit truth ---------------- */
@@ -257,7 +261,7 @@ class FlowSurgeryServiceTest {
         assertThatThrownBy(() -> service.executeChangeState(DEV, "pi-1", move(null, "stepOne", "stepTwo"), operator))
                 .satisfies(e -> assertThat(refusal(e).code()).isEqualTo("reason-required"));
         verifyNoInteractions(audit);
-        verify(client, never()).changeActivityState(any(), any(), any());
+        verify(client, never()).changeActivityState(any(), any(), any(), any());
     }
 
     @Test
@@ -278,7 +282,7 @@ class FlowSurgeryServiceTest {
                         auditPayload.capture(),
                         any());
         ArgumentCaptor<Map<String, Object>> wireBody = ArgumentCaptor.captor();
-        order.verify(client).changeActivityState(any(), eq("pi-1"), wireBody.capture());
+        order.verify(client).changeActivityState(any(), eq(CallPriority.INTERACTIVE), eq("pi-1"), wireBody.capture());
         order.verify(audit).close(eq(pendingEntry), eq(AuditOutcome.ok), eq(200), any(), eq(true));
 
         // The audit records the source/target activities AND the exact generated REST body.
@@ -308,8 +312,10 @@ class FlowSurgeryServiceTest {
 
     @Test
     void restartRefusesAnUnknownInstance() {
-        when(client.getRuntimeProcessInstance(any(), eq("ghost"))).thenReturn(null);
-        when(client.getHistoricProcessInstance(any(), eq("ghost"))).thenReturn(null);
+        when(client.getRuntimeProcessInstance(any(), eq(CallPriority.INTERACTIVE), eq("ghost")))
+                .thenReturn(null);
+        when(client.getHistoricProcessInstance(any(), eq(CallPriority.INTERACTIVE), eq("ghost")))
+                .thenReturn(null);
 
         assertThatThrownBy(() ->
                         service.restartAsNew(DEV, "ghost", new RestartInstanceRequest(REASON, null, false), operator))
@@ -319,9 +325,10 @@ class FlowSurgeryServiceTest {
     @Test
     void restartCarriesPortableGlobalsAndReportsEveryStrippedVariable() {
         stubDeadInstance("pi-dead", "demoOrder:3:v3");
-        when(client.listProcessDefinitionsByKey(any(), eq("demoOrder"), eq(1)))
+        when(client.listProcessDefinitionsByKey(
+                        any(), eq(CallPriority.INTERACTIVE), eq("demoOrder"), any(), anyInt(), eq(1)))
                 .thenReturn(new FlowablePage(List.of(Map.of("id", "demoOrder:4:v4")), 1, 0, 1));
-        when(client.listHistoricVariableInstances(any(), eq("pi-dead"), anyInt()))
+        when(client.listHistoricVariableInstances(any(), eq(CallPriority.INTERACTIVE), eq("pi-dead"), anyInt()))
                 .thenReturn(new FlowablePage(
                         List.of(
                                 variableRow("amount", "integer", 42, "global", null),
@@ -332,14 +339,14 @@ class FlowSurgeryServiceTest {
                         5,
                         0,
                         500));
-        when(client.startProcessInstance(any(), any()))
+        when(client.startProcessInstance(any(), any(), any()))
                 .thenReturn(Map.of("id", "pi-new", "processDefinitionId", "demoOrder:4:v4"));
 
         RestartInstanceResult result =
                 service.restartAsNew(DEV, "pi-dead", new RestartInstanceRequest(REASON, null, false), operator);
 
         ArgumentCaptor<Map<String, Object>> startBody = ArgumentCaptor.captor();
-        verify(client).startProcessInstance(any(), startBody.capture());
+        verify(client).startProcessInstance(any(), any(), startBody.capture());
         assertThat(startBody.getValue())
                 .containsEntry("processDefinitionKey", "demoOrder") // latest: by KEY, never a silent pin
                 .containsEntry("businessKey", "bk-9")
@@ -355,17 +362,18 @@ class FlowSurgeryServiceTest {
     @Test
     void restartWithPinnedVersionStartsOnTheOriginalDefinitionId() {
         stubDeadInstance("pi-dead", "demoOrder:3:v3");
-        when(client.getProcessDefinition(any(), eq("demoOrder:3:v3"))).thenReturn(Map.of("id", "demoOrder:3:v3"));
-        when(client.listHistoricVariableInstances(any(), eq("pi-dead"), anyInt()))
+        when(client.getProcessDefinition(any(), eq(CallPriority.INTERACTIVE), eq("demoOrder:3:v3")))
+                .thenReturn(Map.of("id", "demoOrder:3:v3"));
+        when(client.listHistoricVariableInstances(any(), eq(CallPriority.INTERACTIVE), eq("pi-dead"), anyInt()))
                 .thenReturn(new FlowablePage(List.of(), 0, 0, 500));
-        when(client.startProcessInstance(any(), any()))
+        when(client.startProcessInstance(any(), any(), any()))
                 .thenReturn(Map.of("id", "pi-new", "processDefinitionId", "demoOrder:3:v3"));
 
         RestartInstanceResult result =
                 service.restartAsNew(DEV, "pi-dead", new RestartInstanceRequest(REASON, null, true), operator);
 
         ArgumentCaptor<Map<String, Object>> startBody = ArgumentCaptor.captor();
-        verify(client).startProcessInstance(any(), startBody.capture());
+        verify(client).startProcessInstance(any(), any(), startBody.capture());
         assertThat(startBody.getValue())
                 .containsEntry("processDefinitionId", "demoOrder:3:v3")
                 .doesNotContainKey("processDefinitionKey");
@@ -375,7 +383,8 @@ class FlowSurgeryServiceTest {
     @Test
     void pinnedRestartRefusesWhenTheOriginalVersionIsGone() {
         stubDeadInstance("pi-dead", "demoOrder:3:v3");
-        when(client.getProcessDefinition(any(), eq("demoOrder:3:v3"))).thenReturn(null);
+        when(client.getProcessDefinition(any(), eq(CallPriority.INTERACTIVE), eq("demoOrder:3:v3")))
+                .thenReturn(null);
 
         assertThatThrownBy(() ->
                         service.restartAsNew(DEV, "pi-dead", new RestartInstanceRequest(REASON, null, true), operator))
@@ -387,13 +396,15 @@ class FlowSurgeryServiceTest {
     }
 
     private void stubDeadInstance(String instanceId, String definitionId) {
-        when(client.getRuntimeProcessInstance(any(), eq(instanceId))).thenReturn(null);
+        when(client.getRuntimeProcessInstance(any(), eq(CallPriority.INTERACTIVE), eq(instanceId)))
+                .thenReturn(null);
         Map<String, Object> historic = new HashMap<>();
         historic.put("id", instanceId);
         historic.put("processDefinitionId", definitionId);
         historic.put("businessKey", "bk-9");
         historic.put("endTime", "2026-07-06T10:00:00.000Z");
-        when(client.getHistoricProcessInstance(any(), eq(instanceId))).thenReturn(historic);
+        when(client.getHistoricProcessInstance(any(), eq(CallPriority.INTERACTIVE), eq(instanceId)))
+                .thenReturn(historic);
     }
 
     private static Map<String, Object> variableRow(

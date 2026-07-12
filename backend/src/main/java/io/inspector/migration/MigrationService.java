@@ -13,9 +13,10 @@ import io.inspector.audit.AuditService;
 import io.inspector.audit.AuditUnavailableException;
 import io.inspector.audit.ProtectedInstance;
 import io.inspector.audit.ProtectedInstanceRepository;
-import io.inspector.client.FlowableEngineClient;
-import io.inspector.client.FlowableEngineClient.FlowablePage;
+import io.inspector.client.FlowablePage;
 import io.inspector.client.ForwardedActor;
+import io.inspector.client.GuardedCaller.CallPriority;
+import io.inspector.client.ProcessApiClient;
 import io.inspector.config.InspectorProperties.EngineConfig;
 import io.inspector.config.InspectorProperties.EngineEnvironment;
 import io.inspector.config.InspectorProperties.EngineMode;
@@ -61,7 +62,7 @@ public class MigrationService {
     private static final int EXECUTION_FETCH_CAP = 200;
 
     private final EngineRegistry registry;
-    private final FlowableEngineClient client;
+    private final ProcessApiClient client;
     private final BpmnStructureService structures;
     private final RbacAuthorizer rbac;
     private final AuditService audit;
@@ -70,7 +71,7 @@ public class MigrationService {
 
     public MigrationService(
             EngineRegistry registry,
-            FlowableEngineClient client,
+            ProcessApiClient client,
             BpmnStructureService structures,
             RbacAuthorizer rbac,
             AuditService audit,
@@ -149,7 +150,7 @@ public class MigrationService {
                 engine.auditPayloadOrDefault());
 
         dispatchAudited(entry, engineId, () -> {
-            client.migrateInstance(engine, instanceId, plan.restBody());
+            client.migrateInstance(engine, CallPriority.INTERACTIVE, instanceId, plan.restBody());
             return null;
         });
 
@@ -280,12 +281,13 @@ public class MigrationService {
         Map<String, Object> targetDef;
         try {
             if (request.toDefinitionId() != null && !request.toDefinitionId().isBlank()) {
-                targetDef = client.getProcessDefinition(engine, request.toDefinitionId());
+                targetDef = client.getProcessDefinition(engine, CallPriority.INTERACTIVE, request.toDefinitionId());
             } else if (request.toVersion() != null) {
-                targetDef = firstOrNull(client.listProcessDefinitionsByKey(engine, fromKey, request.toVersion(), 1));
+                targetDef = firstOrNull(client.listProcessDefinitionsByKey(
+                        engine, CallPriority.INTERACTIVE, fromKey, request.toVersion(), 0, 1));
             } else {
                 // Default target = the LATEST version (latest=true; a plain size=1 does NOT sort by version).
-                targetDef = firstOrNull(client.latestProcessDefinitionByKey(engine, fromKey));
+                targetDef = firstOrNull(client.latestProcessDefinitionByKey(engine, CallPriority.INTERACTIVE, fromKey));
             }
         } catch (CallNotPermittedException | BulkheadFullException | ResourceAccessException e) {
             throw engineUnreachablePreFlight(engine);
@@ -375,7 +377,7 @@ public class MigrationService {
     private Map<String, Object> restateRunningInstance(EngineConfig engine, String instanceId) {
         Map<String, Object> instance;
         try {
-            instance = client.getRuntimeProcessInstance(engine, instanceId);
+            instance = client.getRuntimeProcessInstance(engine, CallPriority.INTERACTIVE, instanceId);
         } catch (CallNotPermittedException | BulkheadFullException | ResourceAccessException e) {
             throw engineUnreachablePreFlight(engine);
         }
@@ -451,7 +453,8 @@ public class MigrationService {
 
     /** Active activity ids WITH repeats (one per active execution) — feeds the diff + the digest. */
     private List<String> activeActivityIds(EngineConfig engine, String instanceId) {
-        FlowablePage executions = client.listExecutions(engine, instanceId, EXECUTION_FETCH_CAP);
+        FlowablePage executions =
+                client.listExecutions(engine, CallPriority.INTERACTIVE, instanceId, EXECUTION_FETCH_CAP);
         if (executions.total() > EXECUTION_FETCH_CAP) {
             // A partial view of the active token set would make the diff + digest a lie (missed
             // flagged activities, an unstable CAS). Refuse rather than estimate on truncated data
@@ -478,14 +481,15 @@ public class MigrationService {
         Map<String, Object> body = new LinkedHashMap<>();
         body.put("superProcessInstanceId", instanceId);
         body.put("size", CHILD_COUNT_CAP_PROBE);
-        FlowablePage page = client.queryRuntimeProcessInstances(engine, body);
+        FlowablePage page = client.queryRuntimeProcessInstances(engine, CallPriority.INTERACTIVE, body);
         return page != null ? (int) page.total() : 0;
     }
 
     /** Re-read the instance to PROVE the migration landed — record the observed definition id. */
     private String observedDefinitionId(EngineConfig engine, String instanceId) {
         try {
-            Map<String, Object> instance = client.getRuntimeProcessInstance(engine, instanceId);
+            Map<String, Object> instance =
+                    client.getRuntimeProcessInstance(engine, CallPriority.INTERACTIVE, instanceId);
             return instance != null ? asString(instance.get("processDefinitionId")) : "(instance ended)";
         } catch (RuntimeException e) {
             return "(unverified)";

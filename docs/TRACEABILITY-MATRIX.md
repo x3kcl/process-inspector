@@ -132,7 +132,7 @@ Exhaustive TS-* → class(es). `—` = no automated suite yet (see §C). This is
 | TS-STAT-14 full flag matrix | `StatusJoinTest$Predicates`; FE `partials.test` (secondaryBadges) | L1·UNIT-FE |
 | TS-STAT-15 six join bugs red-first | `StatusJoinTest` (join semantics) | L1 | 🟡 §C-17 |
 | TS-STAT-16 CMMN out-of-scope | `OutOfScopeDeadlettersTest`, `TriageCmmnScopeIT`, **`TriageCmmnScopeLegacyIT`** | L1·L4 |
-| TS-AGG-01..08 | `SearchServiceIT`, `FlowableEngineClientTest` (breaker), `TriageAggregationIT`; FE `partials.test` | L2·L4·UNIT-FE |
+| TS-AGG-01..08 | `SearchServiceIT`, `GuardedCallerTest` (breaker), `TriageAggregationIT`; FE `partials.test` | L2·L4·UNIT-FE |
 | TS-TRI-01..11 | `TriageServiceTest`, `TriageAggregationIT`, `Triage{7,Legacy}IT`, `ErrorSignatureGoldenCorpusTest`; FE `honesty.test`/`drill.test`/`systemViews.test`; `retry-group.spec`/`cmmn-scope.spec` | L1·L4·UNIT-FE·E2E |
 | TS-SRCH-01..08 | `SearchServiceIT`, `CriteriaEchoTest`; FE `urlState.test`/`partials.test`/`model.test` | L1·L4·UNIT-FE |
 | TS-SRCH-06/07 URL round-trip / cURL E2E | `saved-views.spec` (URL replay) | E2E | 🟡 §C-18 (interactive search) |

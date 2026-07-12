@@ -19,7 +19,7 @@ import java.util.Locale;
  * ({@link #isPinAllowed}) — belt and braces.
  *
  * <p>Pure and unwired in S1 (its only seam is a {@link HostResolver}); S3 wires it into the reload
- * path and the {@link io.inspector.client.FlowableEngineClient} connect path.
+ * path and the {@link io.inspector.client.GuardedCaller} connect path.
  *
  * <p>Rail order (canonicalize FIRST, cheap→expensive; nothing is dialled before {@code resolve}):
  * <ol>
@@ -157,7 +157,7 @@ public class RegistryUrlValidator {
      * Connect-time re-check of an already-pinned IP (docs §5, "re-check the pinned IP … NEVER
      * re-resolve"). Re-resolving here would reopen the DNS-rebinding window the pin closes, so this
      * takes the literal IP and only re-applies the address denylist + dev escape. Called by the
-     * {@link io.inspector.client.FlowableEngineClient} connect path in S3.
+     * {@link io.inspector.client.GuardedCaller} connect path in S3.
      */
     public boolean isPinAllowed(InetAddress pinnedIp, EngineEnvironment environment, RegistryEgressPolicy policy) {
         boolean inAllowedCidr = policy.anyCidrContains(pinnedIp);
@@ -292,7 +292,7 @@ public class RegistryUrlValidator {
 
     /**
      * The {@code /external-job-api} and {@code /cmmn-api} sibling contexts, derived by the same
-     * convention as {@link io.inspector.client.FlowableEngineClient} but from the CANONICAL base —
+     * convention as {@link io.inspector.client.GuardedCaller} but from the CANONICAL base —
      * so a trailing-dot or {@code ..}-traversal host can't produce a sibling the validator never saw.
      */
     private static String siblingBase(Canonical c, String sibling) {

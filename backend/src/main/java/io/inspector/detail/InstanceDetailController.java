@@ -1,6 +1,6 @@
 package io.inspector.detail;
 
-import io.inspector.client.FlowableEngineClient.JobLaneKind;
+import io.inspector.client.ProcessApiClient.JobLaneKind;
 import io.inspector.dto.ExternalWorkerJobDto;
 import io.inspector.dto.InstanceDetail;
 import io.inspector.dto.InstanceDiagram;

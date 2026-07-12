@@ -10,7 +10,8 @@ import static org.mockito.Mockito.verify;
 import static org.mockito.Mockito.when;
 
 import io.inspector.action.GuardRefusedException;
-import io.inspector.client.FlowableEngineClient;
+import io.inspector.client.ExternalJobApiClient;
+import io.inspector.client.ProcessApiClient;
 import io.inspector.config.InspectorProperties;
 import io.inspector.config.InspectorProperties.EngineConfig;
 import io.inspector.registry.EngineCapabilities;
@@ -32,11 +33,13 @@ class ExternalWorkerJobsServiceTest {
     private static final String ENGINE = "e";
 
     private final EngineConfig engine = TestEngines.engine(ENGINE, "http://engine.test/flowable-rest/service");
-    private final FlowableEngineClient flowable = mock(FlowableEngineClient.class);
+    private final ProcessApiClient flowable = mock(ProcessApiClient.class);
+    private final ExternalJobApiClient externalJobs = mock(ExternalJobApiClient.class);
     private final EngineRegistry registry = mock(EngineRegistry.class);
     private final InstanceDetailService service = new InstanceDetailService(
             registry,
             flowable,
+            externalJobs,
             new InspectorProperties(null, null, null, null, List.of()),
             mock(io.inspector.audit.ProtectedInstanceRepository.class));
 
@@ -53,7 +56,7 @@ class ExternalWorkerJobsServiceTest {
         assertThatThrownBy(() -> service.externalWorkerJobs(ENGINE, "pi-1"))
                 .isInstanceOf(GuardRefusedException.class)
                 .satisfies(e -> assertThat(((GuardRefusedException) e).code()).isEqualTo("capability-unknown"));
-        verify(flowable, never()).listExternalWorkerJobs(any(), any(), anyInt(), anyInt());
+        verify(externalJobs, never()).listExternalWorkerJobs(any(), any(), any(), anyInt(), anyInt());
     }
 
     @Test
@@ -64,6 +67,6 @@ class ExternalWorkerJobsServiceTest {
         assertThatThrownBy(() -> service.externalWorkerJobs(ENGINE, "pi-1"))
                 .isInstanceOf(GuardRefusedException.class)
                 .satisfies(e -> assertThat(((GuardRefusedException) e).code()).isEqualTo("capability-unavailable"));
-        verify(flowable, never()).listExternalWorkerJobs(any(), any(), anyInt(), anyInt());
+        verify(externalJobs, never()).listExternalWorkerJobs(any(), any(), any(), anyInt(), anyInt());
     }
 }

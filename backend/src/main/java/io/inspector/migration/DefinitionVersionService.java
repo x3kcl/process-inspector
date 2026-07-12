@@ -3,8 +3,9 @@ package io.inspector.migration;
 import io.github.resilience4j.bulkhead.BulkheadFullException;
 import io.github.resilience4j.circuitbreaker.CallNotPermittedException;
 import io.inspector.action.GuardRefusedException;
-import io.inspector.client.FlowableEngineClient;
-import io.inspector.client.FlowableEngineClient.FlowablePage;
+import io.inspector.client.FlowablePage;
+import io.inspector.client.GuardedCaller.CallPriority;
+import io.inspector.client.ProcessApiClient;
 import io.inspector.config.InspectorProperties.EngineConfig;
 import io.inspector.registry.EngineRegistry;
 import java.util.ArrayList;
@@ -31,9 +32,9 @@ public class DefinitionVersionService {
     private static final int VERSION_CAP = 50;
 
     private final EngineRegistry registry;
-    private final FlowableEngineClient client;
+    private final ProcessApiClient client;
 
-    public DefinitionVersionService(EngineRegistry registry, FlowableEngineClient client) {
+    public DefinitionVersionService(EngineRegistry registry, ProcessApiClient client) {
         this.registry = registry;
         this.client = client;
     }
@@ -43,7 +44,7 @@ public class DefinitionVersionService {
         FlowablePage newest;
         try {
             // The newest VERSION_CAP versions in a STABLE desc order (one page suffices at the cap).
-            newest = client.listProcessDefinitionVersionsDesc(engine, key, 0, VERSION_CAP);
+            newest = client.listProcessDefinitionVersionsDesc(engine, CallPriority.INTERACTIVE, key, 0, VERSION_CAP);
         } catch (CallNotPermittedException | BulkheadFullException | ResourceAccessException e) {
             throw new GuardRefusedException(
                     HttpStatus.BAD_GATEWAY,
@@ -91,7 +92,7 @@ public class DefinitionVersionService {
         Map<String, Object> body = new LinkedHashMap<>();
         body.put("processDefinitionId", definitionId);
         body.put("size", 1);
-        FlowablePage page = client.queryRuntimeProcessInstances(engine, body);
+        FlowablePage page = client.queryRuntimeProcessInstances(engine, CallPriority.INTERACTIVE, body);
         return page != null ? page.total() : 0;
     }
 }

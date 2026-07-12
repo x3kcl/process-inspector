@@ -1,8 +1,9 @@
 package io.inspector.registry;
 
 import io.github.resilience4j.circuitbreaker.CallNotPermittedException;
-import io.inspector.client.FlowableEngineClient;
-import io.inspector.client.FlowableEngineClient.JobLaneKind;
+import io.inspector.client.GuardedCaller.CallPriority;
+import io.inspector.client.ProcessApiClient;
+import io.inspector.client.ProcessApiClient.JobLaneKind;
 import io.inspector.config.InspectorProperties.EngineConfig;
 import io.inspector.registry.EngineHealth.JobLanes;
 import jakarta.annotation.PreDestroy;
@@ -39,11 +40,11 @@ public class EngineHealthService {
     private static final DateTimeFormatter FLOWABLE_DATE = DateTimeFormatter.ofPattern("yyyy-MM-dd'T'HH:mm:ss.SSSZ");
 
     private final EngineRegistry registry;
-    private final FlowableEngineClient flowable;
+    private final ProcessApiClient flowable;
     private final Clock clock;
     private final ExecutorService probePool = Executors.newVirtualThreadPerTaskExecutor();
 
-    public EngineHealthService(EngineRegistry registry, FlowableEngineClient flowable, Clock clock) {
+    public EngineHealthService(EngineRegistry registry, ProcessApiClient flowable, Clock clock) {
         this.registry = registry;
         this.flowable = flowable;
         this.clock = clock;
@@ -92,7 +93,7 @@ public class EngineHealthService {
     EngineHealth probeOne(EngineConfig engine) {
         String version;
         try {
-            Map<String, Object> info = flowable.engineInfo(engine);
+            Map<String, Object> info = flowable.engineInfo(engine, CallPriority.INTERACTIVE);
             version = info != null && info.get("version") != null
                     ? info.get("version").toString()
                     : "unknown";
@@ -105,16 +106,17 @@ public class EngineHealthService {
 
         // Reachable. Later legs degrade the entry instead of blanking it.
         try {
-            EngineCapabilities capabilities =
-                    EngineCapabilities.fromVersion(version, flowable.probeActivityHistory(engine));
+            EngineCapabilities capabilities = EngineCapabilities.fromVersion(
+                    version, flowable.probeActivityHistory(engine, CallPriority.INTERACTIVE));
             JobLanes lanes = new JobLanes(
-                    flowable.countJobs(engine, JobLaneKind.EXECUTABLE),
-                    flowable.countJobs(engine, JobLaneKind.TIMER),
-                    flowable.countJobs(engine, JobLaneKind.SUSPENDED),
-                    flowable.countJobs(engine, JobLaneKind.DEADLETTER));
+                    flowable.countJobs(engine, CallPriority.INTERACTIVE, JobLaneKind.EXECUTABLE),
+                    flowable.countJobs(engine, CallPriority.INTERACTIVE, JobLaneKind.TIMER),
+                    flowable.countJobs(engine, CallPriority.INTERACTIVE, JobLaneKind.SUSPENDED),
+                    flowable.countJobs(engine, CallPriority.INTERACTIVE, JobLaneKind.DEADLETTER));
             Long oldestAgeSec = oldestExecutableJobAgeSec(engine, lanes.executable());
             long overdueTimers = flowable.countOverdueTimers(
                     engine,
+                    CallPriority.INTERACTIVE,
                     clock.instant().minusSeconds(engine.alarmsOrDefault().overdueTimerGraceSOrDefault()));
             return new EngineHealth(
                     true, version, null, clock.millis(), capabilities, lanes, oldestAgeSec, overdueTimers);
@@ -137,7 +139,7 @@ public class EngineHealthService {
         if (executableCount == 0) {
             return null;
         }
-        Map<String, Object> job = flowable.oldestExecutableJob(engine);
+        Map<String, Object> job = flowable.oldestExecutableJob(engine, CallPriority.INTERACTIVE);
         if (job == null) {
             return null;
         }

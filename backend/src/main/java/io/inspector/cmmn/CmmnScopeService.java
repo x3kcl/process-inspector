@@ -1,7 +1,8 @@
 package io.inspector.cmmn;
 
-import io.inspector.client.FlowableEngineClient;
-import io.inspector.client.FlowableEngineClient.FlowablePage;
+import io.inspector.client.CmmnApiClient;
+import io.inspector.client.FlowablePage;
+import io.inspector.client.GuardedCaller.CallPriority;
 import io.inspector.config.InspectorProperties.EngineConfig;
 import io.inspector.dto.CmmnDeadLetterJob;
 import io.inspector.dto.CmmnLaneCounts;
@@ -39,9 +40,9 @@ import org.springframework.stereotype.Service;
 public class CmmnScopeService {
 
     private final EngineRegistry registry;
-    private final FlowableEngineClient flowable;
+    private final CmmnApiClient flowable;
 
-    public CmmnScopeService(EngineRegistry registry, FlowableEngineClient flowable) {
+    public CmmnScopeService(EngineRegistry registry, CmmnApiClient flowable) {
         this.registry = registry;
         this.flowable = flowable;
     }
@@ -85,7 +86,7 @@ public class CmmnScopeService {
      */
     private Integer laneCount(EngineConfig engine, String state, Map<String, String> filters) {
         try {
-            return (int) flowable.countHistoricCmmnCaseInstances(engine, state, filters);
+            return (int) flowable.countHistoricCmmnCaseInstances(engine, CallPriority.INTERACTIVE, state, filters);
         } catch (Exception ex) {
             return null;
         }
@@ -113,8 +114,8 @@ public class CmmnScopeService {
         int scanned = 0;
         long total = Long.MAX_VALUE;
         for (int start = 0; start < Math.min(total, cap); start += pageSize) {
-            FlowablePage page =
-                    flowable.listCmmnDeadLetterJobs(engine, filters, start, Math.min(pageSize, cap - start));
+            FlowablePage page = flowable.listCmmnDeadLetterJobs(
+                    engine, CallPriority.INTERACTIVE, filters, start, Math.min(pageSize, cap - start));
             if (page == null) {
                 break;
             }
@@ -163,7 +164,7 @@ public class CmmnScopeService {
                 continue;
             }
             try {
-                Map<String, Object> def = flowable.getCmmnCaseDefinition(engine, defId);
+                Map<String, Object> def = flowable.getCmmnCaseDefinition(engine, CallPriority.INTERACTIVE, defId);
                 resolved.put(
                         defId,
                         def == null

@@ -2,9 +2,9 @@ package io.inspector.triage;
 
 import com.github.benmanes.caffeine.cache.Cache;
 import com.github.benmanes.caffeine.cache.Caffeine;
-import io.inspector.client.FlowableEngineClient;
-import io.inspector.client.FlowableEngineClient.CallPriority;
-import io.inspector.client.FlowableEngineClient.FlowablePage;
+import io.inspector.client.FlowablePage;
+import io.inspector.client.GuardedCaller.CallPriority;
+import io.inspector.client.ProcessApiClient;
 import io.inspector.config.InspectorProperties;
 import io.inspector.config.InspectorProperties.EngineConfig;
 import io.inspector.dto.LeakViewsResponse;
@@ -63,7 +63,7 @@ public class LeakViewService {
     private static final int DEFINITION_CAP = 500;
 
     private final EngineRegistrySupplier registry;
-    private final FlowableEngineClient flowable;
+    private final ProcessApiClient flowable;
     private final Clock clock;
     private final Cache<String, LeakViewsResponse> cache;
     private final ExecutorService fanout = Executors.newVirtualThreadPerTaskExecutor();
@@ -77,7 +77,7 @@ public class LeakViewService {
     @org.springframework.beans.factory.annotation.Autowired
     public LeakViewService(
             io.inspector.registry.EngineRegistry registry,
-            FlowableEngineClient flowable,
+            ProcessApiClient flowable,
             InspectorProperties props,
             Clock clock) {
         this(
@@ -88,7 +88,7 @@ public class LeakViewService {
     }
 
     /** Test seam: an engine-list supplier and an explicit TTL — no Spring context required. */
-    LeakViewService(EngineRegistrySupplier registry, FlowableEngineClient flowable, Clock clock, Duration ttl) {
+    LeakViewService(EngineRegistrySupplier registry, ProcessApiClient flowable, Clock clock, Duration ttl) {
         this.registry = registry;
         this.flowable = flowable;
         this.clock = clock;
@@ -174,7 +174,7 @@ public class LeakViewService {
                 return new EngineSlice(true, false, Map.of());
             }
 
-            FlowablePage defs = flowable.listLatestProcessDefinitions(engine, DEFINITION_CAP, CallPriority.INTERACTIVE);
+            FlowablePage defs = flowable.listLatestProcessDefinitions(engine, CallPriority.INTERACTIVE, DEFINITION_CAP);
             List<Map<String, Object>> rows = defs != null ? defs.dataOrEmpty() : List.of();
             boolean truncated = defs != null && defs.total() > rows.size();
 
@@ -224,7 +224,7 @@ public class LeakViewService {
         if (engine.tenantId() != null && !engine.tenantId().isBlank()) {
             body.put("tenantId", engine.tenantId());
         }
-        FlowablePage page = flowable.queryRuntimeProcessInstances(engine, body, CallPriority.INTERACTIVE);
+        FlowablePage page = flowable.queryRuntimeProcessInstances(engine, CallPriority.INTERACTIVE, body);
         return page != null ? page.total() : 0;
     }
 

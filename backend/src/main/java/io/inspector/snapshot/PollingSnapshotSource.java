@@ -1,6 +1,6 @@
 package io.inspector.snapshot;
 
-import io.inspector.client.FlowableEngineClient.CallPriority;
+import io.inspector.client.GuardedCaller.CallPriority;
 import io.inspector.dto.TriageDashboardResponse;
 import io.inspector.dto.TriageDashboardResponse.PerEngineTriage;
 import io.inspector.triage.TriageAggregationService;

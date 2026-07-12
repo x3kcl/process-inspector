@@ -1,6 +1,6 @@
 package io.inspector.registry;
 
-import io.inspector.client.FlowableEngineClient;
+import io.inspector.client.GuardedCaller;
 import org.slf4j.Logger;
 import org.slf4j.LoggerFactory;
 import org.springframework.stereotype.Component;
@@ -12,7 +12,7 @@ import org.springframework.transaction.event.TransactionalEventListener;
  * {@link RegistryChangedEvent}; this listener runs it {@code AFTER_COMMIT} — strictly post-commit,
  * so the in-memory map + client caches can never run ahead of a rolled-back row + audit. In one
  * step it: (1) refreshes {@link EngineRegistry} from the store (the live rows), (2) evicts the
- * affected {@link FlowableEngineClient} caches + R4j named instances so the next call rebuilds
+ * affected {@link GuardedCaller} caches + R4j named instances so the next call rebuilds
  * against the new config, (3) re-pins every live engine's host (R-OPS-13, #91 — {@link
  * RegistryPinRegistry}) so the DNS-pin the connect path relies on never goes stale, and (4)
  * triggers an immediate read-only re-probe so the health strip reflects the change without
@@ -29,19 +29,19 @@ public class RegistryReloadListener {
 
     private final EngineRegistry registry;
     private final EngineRegistryStore store;
-    private final FlowableEngineClient flowable;
+    private final GuardedCaller guarded;
     private final EngineHealthService health;
     private final RegistryPinRegistry pinRegistry;
 
     public RegistryReloadListener(
             EngineRegistry registry,
             EngineRegistryStore store,
-            FlowableEngineClient flowable,
+            GuardedCaller guarded,
             EngineHealthService health,
             RegistryPinRegistry pinRegistry) {
         this.registry = registry;
         this.store = store;
-        this.flowable = flowable;
+        this.guarded = guarded;
         this.health = health;
         this.pinRegistry = pinRegistry;
     }
@@ -56,7 +56,7 @@ public class RegistryReloadListener {
             // Evicting BEFORE reload would let a call in the pre-reload window RE-cache the OLD config
             // and leave it stale until the next write. reprobe finally rebuilds the client eagerly.
             registry.reload(store.findLive()); // refresh the whole live set (≤20 engines, cheap)
-            flowable.evict(id); // drop cached RestClients + REMOVE the R4j instances for this id
+            guarded.evict(id); // drop cached RestClients + REMOVE the R4j instances for this id
             pinRegistry.resync(registry.all()); // re-pin every live engine (R-OPS-13, #91)
             health.reprobe(id); // immediate read-only re-probe (also warms the new client)
             log.info("Registry hot-reloaded after change to engine '{}'.", id);
