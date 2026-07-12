@@ -3,7 +3,8 @@ package io.inspector.surgery;
 import com.github.benmanes.caffeine.cache.Cache;
 import com.github.benmanes.caffeine.cache.Caffeine;
 import io.inspector.action.GuardRefusedException;
-import io.inspector.client.FlowableEngineClient;
+import io.inspector.client.GuardedCaller.CallPriority;
+import io.inspector.client.ProcessApiClient;
 import io.inspector.config.InspectorProperties.EngineConfig;
 import java.time.Duration;
 import java.util.Map;
@@ -18,13 +19,13 @@ import org.springframework.stereotype.Service;
 @Service
 public class BpmnStructureService {
 
-    private final FlowableEngineClient client;
+    private final ProcessApiClient client;
     private final Cache<String, BpmnStructure> cache = Caffeine.newBuilder()
             .maximumSize(500)
             .expireAfterWrite(Duration.ofHours(1))
             .build();
 
-    public BpmnStructureService(FlowableEngineClient client) {
+    public BpmnStructureService(ProcessApiClient client) {
         this.client = client;
     }
 
@@ -33,8 +34,9 @@ public class BpmnStructureService {
     }
 
     private BpmnStructure load(EngineConfig engine, String processDefinitionId) {
-        Map<String, Object> model = client.getProcessDefinitionModel(engine, processDefinitionId);
-        String xml = client.processDefinitionResourceData(engine, processDefinitionId);
+        Map<String, Object> model =
+                client.getProcessDefinitionModel(engine, CallPriority.INTERACTIVE, processDefinitionId);
+        String xml = client.processDefinitionResourceData(engine, CallPriority.INTERACTIVE, processDefinitionId);
         if (model == null || xml == null) {
             throw new GuardRefusedException(
                     HttpStatus.NOT_FOUND,

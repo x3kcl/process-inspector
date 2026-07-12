@@ -132,7 +132,7 @@ unified `dlqScan` marker OR-conflates it with the timer/executable lanes; `tenan
 through **all** legs when the engine is multi-tenant. That scalar count is **drillable** (Case
 Inspector Phase 1, first slice): `GET /api/triage/engines/{id}/out-of-scope-deadletters`
 (`CmmnScopeService`) enumerates the CMMN dead-letters from the **CMMN-api** sibling context
-(`FlowableEngineClient.cmmnApiBase` — the `/cmmn-api` sibling of `/service`, same convention as
+(`CmmnApiClient.cmmnApiBase` — the `/cmmn-api` sibling of `/service`, same convention as
 the external-job-api), keeping only rows with a non-null `caseInstanceId` (the shared cmmn-api
 DLQ list also projects BPMN jobs, which carry a null case attribution). It is bounded by
 `dlq-scan-cap`, paged, and floors to a `truncated` lower bound like every DLQ scan; the
@@ -219,7 +219,7 @@ scheduler overlap within a bucket cannot double-count; a poll is NOT a mutation,
 rail). A `SnapshotSource` seam sits between ingestion and the store so an event-driven source
 can replace polling later, per-engine and capability-gated, without touching the schema or the
 trend read path. **Ingestion stays strictly-via-REST** (the iron rule) and inherits do-no-harm:
-sampler engine calls run on a **separate, thin per-engine Resilience4j lane** (`CallPriority.BACKGROUND`,
+sampler engine calls run on a **separate, thin per-engine Resilience4j lane** (`GuardedCaller.CallPriority.BACKGROUND`,
 instance `{id}:sampler`, 2 permits) so a trend poll can never starve the 8 interactive search
 permits. Retention is **drop-partition** (400-day revFADP): the table is `PARTITION BY RANGE
 (sampled_at)` with a DEFAULT catch-all, and a maintainer creates months ahead and DROPs (never
@@ -235,7 +235,7 @@ CRUD, design locked in [REGISTRY-CRUD.md](REGISTRY-CRUD.md)**. The store is
 one-time audited seed (like the v2/M4 localStorage→server backfill), a non-empty table wins
 and YAML is ignored with a startup WARN, and `inspector.registry.source: config` pins to
 config-only (CRUD off, restart semantics restored — the air-gap posture). A registry write
-refreshes `EngineRegistry`'s map, **evicts the affected `FlowableEngineClient` RestClient
+refreshes `EngineRegistry`'s map, **evicts the affected `GuardedCaller` RestClient
 caches** (which cache per id forever — an edited base-URL/auth is otherwise stale) and resets
 the Resilience4j named instances on remove, publishes a `RegistryChangedEvent`, and triggers
 an immediate read-only re-probe — a live reload, no restart. `id` is immutable (composite-ID

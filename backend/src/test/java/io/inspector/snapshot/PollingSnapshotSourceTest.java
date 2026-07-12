@@ -6,7 +6,7 @@ import static org.mockito.Mockito.mock;
 import static org.mockito.Mockito.verify;
 import static org.mockito.Mockito.when;
 
-import io.inspector.client.FlowableEngineClient.CallPriority;
+import io.inspector.client.GuardedCaller.CallPriority;
 import io.inspector.dto.TriageDashboardResponse;
 import io.inspector.dto.TriageDashboardResponse.PerEngineTriage;
 import io.inspector.triage.TriageAggregationService;

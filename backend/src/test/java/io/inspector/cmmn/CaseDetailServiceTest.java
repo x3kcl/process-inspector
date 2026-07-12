@@ -11,8 +11,8 @@ import static org.mockito.Mockito.verify;
 import static org.mockito.Mockito.when;
 
 import io.inspector.action.GuardRefusedException;
-import io.inspector.client.FlowableEngineClient;
-import io.inspector.client.FlowableEngineClient.FlowablePage;
+import io.inspector.client.CmmnApiClient;
+import io.inspector.client.FlowablePage;
 import io.inspector.config.InspectorProperties.EngineConfig;
 import io.inspector.dto.CaseDiagram;
 import io.inspector.dto.CasePlanItems;
@@ -40,7 +40,7 @@ class CaseDetailServiceTest {
     private static final String ENGINE = "e";
 
     private final EngineConfig engine = TestEngines.engine(ENGINE, "http://engine.test/flowable-rest/service");
-    private final FlowableEngineClient flowable = mock(FlowableEngineClient.class);
+    private final CmmnApiClient flowable = mock(CmmnApiClient.class);
     private final EngineRegistry registry = mock(EngineRegistry.class);
     private final CaseDetailService service = new CaseDetailService(registry, flowable);
 
@@ -62,8 +62,8 @@ class CaseDetailServiceTest {
         assertThatThrownBy(() -> service.vitals(ENGINE, "case-1"))
                 .isInstanceOf(GuardRefusedException.class)
                 .satisfies(e -> assertThat(((GuardRefusedException) e).code()).isEqualTo("capability-unknown"));
-        verify(flowable, never()).getHistoricCmmnCaseInstance(any(), any());
-        verify(flowable, never()).listCmmnPlanItemInstances(any(), any(), anyInt(), anyInt());
+        verify(flowable, never()).getHistoricCmmnCaseInstance(any(), any(), any());
+        verify(flowable, never()).listCmmnPlanItemInstances(any(), any(), any(), anyInt(), anyInt());
     }
 
     @Test
@@ -73,7 +73,7 @@ class CaseDetailServiceTest {
                 .isInstanceOf(GuardRefusedException.class)
                 .satisfies(e -> assertThat(((GuardRefusedException) e).code()).isEqualTo("capability-unavailable"));
         assertThatThrownBy(() -> service.diagram(ENGINE, "case-1")).isInstanceOf(GuardRefusedException.class);
-        verify(flowable, never()).cmmnDeploymentResourceData(any(), any(), any());
+        verify(flowable, never()).cmmnDeploymentResourceData(any(), any(), any(), any());
     }
 
     /* -------------------- Q7: the FAILED join keys on planItemInstanceId, not elementId -------- */
@@ -86,9 +86,9 @@ class CaseDetailServiceTest {
         Map<String, Object> job = new HashMap<>();
         job.put("planItemInstanceId", "pi-1");
         job.put("elementId", "failingService"); // the trap: definition id, not the shape key
-        when(flowable.listCmmnDeadLetterJobs(any(), any(), anyInt(), anyInt()))
+        when(flowable.listCmmnDeadLetterJobs(any(), any(), any(), anyInt(), anyInt()))
                 .thenReturn(new FlowablePage(List.of(job), 1, 0, 500));
-        when(flowable.listCmmnJobs(any(), any(), anyInt(), anyInt())).thenReturn(FlowablePage.empty());
+        when(flowable.listCmmnJobs(any(), any(), any(), anyInt(), anyInt())).thenReturn(FlowablePage.empty());
 
         Map<String, CmmnLiveJobState> byPlanItem = service.liveJobStates(engine, "case-1");
 
@@ -103,9 +103,9 @@ class CaseDetailServiceTest {
         retrying.put("planItemInstanceId", "pi-1");
         Map<String, Object> failed = new HashMap<>();
         failed.put("planItemInstanceId", "pi-1");
-        when(flowable.listCmmnJobs(any(), any(), anyInt(), anyInt()))
+        when(flowable.listCmmnJobs(any(), any(), any(), anyInt(), anyInt()))
                 .thenReturn(new FlowablePage(List.of(retrying), 1, 0, 500));
-        when(flowable.listCmmnDeadLetterJobs(any(), any(), anyInt(), anyInt()))
+        when(flowable.listCmmnDeadLetterJobs(any(), any(), any(), anyInt(), anyInt()))
                 .thenReturn(new FlowablePage(List.of(failed), 1, 0, 500));
 
         assertThat(service.liveJobStates(engine, "case-1")).containsEntry("pi-1", CmmnLiveJobState.FAILED);
@@ -115,8 +115,8 @@ class CaseDetailServiceTest {
     void blankPlanItemInstanceIdIsIgnored() {
         Map<String, Object> job = new HashMap<>();
         job.put("planItemInstanceId", "  ");
-        when(flowable.listCmmnJobs(any(), any(), anyInt(), anyInt())).thenReturn(FlowablePage.empty());
-        when(flowable.listCmmnDeadLetterJobs(any(), any(), anyInt(), anyInt()))
+        when(flowable.listCmmnJobs(any(), any(), any(), anyInt(), anyInt())).thenReturn(FlowablePage.empty());
+        when(flowable.listCmmnDeadLetterJobs(any(), any(), any(), anyInt(), anyInt()))
                 .thenReturn(new FlowablePage(List.of(job), 1, 0, 500));
         assertThat(service.liveJobStates(engine, "case-1")).isEmpty();
     }
@@ -131,9 +131,9 @@ class CaseDetailServiceTest {
         definition.put("graphicalNotationDefined", true);
         Map<String, Object> caseRow = new HashMap<>();
         caseRow.put("caseDefinitionId", "def-uuid");
-        when(flowable.getHistoricCmmnCaseInstance(any(), eq("case-1"))).thenReturn(caseRow);
-        when(flowable.getCmmnCaseDefinition(any(), eq("def-uuid"))).thenReturn(definition);
-        when(flowable.cmmnDeploymentResourceData(any(), eq("dep-1"), eq("demo.cmmn.xml")))
+        when(flowable.getHistoricCmmnCaseInstance(any(), any(), eq("case-1"))).thenReturn(caseRow);
+        when(flowable.getCmmnCaseDefinition(any(), any(), eq("def-uuid"))).thenReturn(definition);
+        when(flowable.cmmnDeploymentResourceData(any(), any(), eq("dep-1"), eq("demo.cmmn.xml")))
                 .thenReturn("<definitions/>");
 
         // one runtime plan item ("planItem_svc") holding a dead-letter job whose elementId differs
@@ -141,14 +141,14 @@ class CaseDetailServiceTest {
         planItem.put("id", "pi-1");
         planItem.put("elementId", "planItem_svc");
         planItem.put("state", "async-active");
-        when(flowable.listCmmnPlanItemInstances(any(), any(), anyInt(), anyInt()))
+        when(flowable.listCmmnPlanItemInstances(any(), any(), any(), anyInt(), anyInt()))
                 .thenReturn(new FlowablePage(List.of(planItem), 1, 0, 100));
         Map<String, Object> job = new HashMap<>();
         job.put("planItemInstanceId", "pi-1");
         job.put("elementId", "failingService");
-        when(flowable.listCmmnDeadLetterJobs(any(), any(), anyInt(), anyInt()))
+        when(flowable.listCmmnDeadLetterJobs(any(), any(), any(), anyInt(), anyInt()))
                 .thenReturn(new FlowablePage(List.of(job), 1, 0, 500));
-        when(flowable.listCmmnJobs(any(), any(), anyInt(), anyInt())).thenReturn(FlowablePage.empty());
+        when(flowable.listCmmnJobs(any(), any(), any(), anyInt(), anyInt())).thenReturn(FlowablePage.empty());
 
         CaseDiagram diagram = service.diagram(ENGINE, "case-1");
 
@@ -166,8 +166,8 @@ class CaseDetailServiceTest {
         Map<String, Object> ended = new HashMap<>();
         ended.put("endTime", "2026-07-08T09:00:00.000+00:00");
         ended.put("state", "completed");
-        when(flowable.getHistoricCmmnCaseInstance(any(), eq("case-1"))).thenReturn(ended);
-        when(flowable.getCmmnCaseInstance(any(), eq("case-1"))).thenReturn(null);
+        when(flowable.getHistoricCmmnCaseInstance(any(), any(), eq("case-1"))).thenReturn(ended);
+        when(flowable.getCmmnCaseInstance(any(), any(), eq("case-1"))).thenReturn(null);
 
         CasePlanItems planItems = service.planItems(ENGINE, "case-1");
 
@@ -175,7 +175,7 @@ class CaseDetailServiceTest {
         assertThat(planItems.unavailableReason()).contains("running cases only");
         assertThat(planItems.planItems()).isEmpty();
         // no plan-item scan is even attempted for an ended case
-        verify(flowable, never()).listCmmnPlanItemInstances(any(), any(), anyInt(), anyInt());
+        verify(flowable, never()).listCmmnPlanItemInstances(any(), any(), any(), anyInt(), anyInt());
     }
 
     /* -------------------- pure static helpers -------------------- */

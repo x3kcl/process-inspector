@@ -2,7 +2,7 @@ package io.inspector.detail;
 
 import static org.assertj.core.api.Assertions.assertThat;
 
-import io.inspector.client.FlowableEngineClient.JobLaneKind;
+import io.inspector.client.ProcessApiClient.JobLaneKind;
 import io.inspector.dto.ExternalWorkerJobDto;
 import io.inspector.dto.InstanceJobs.JobDto;
 import io.inspector.dto.InstanceTasks.TaskDto;

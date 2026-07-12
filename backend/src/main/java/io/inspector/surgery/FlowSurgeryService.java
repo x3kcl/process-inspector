@@ -13,9 +13,10 @@ import io.inspector.audit.AuditService;
 import io.inspector.audit.AuditUnavailableException;
 import io.inspector.audit.ProtectedInstance;
 import io.inspector.audit.ProtectedInstanceRepository;
-import io.inspector.client.FlowableEngineClient;
-import io.inspector.client.FlowableEngineClient.FlowablePage;
+import io.inspector.client.FlowablePage;
 import io.inspector.client.ForwardedActor;
+import io.inspector.client.GuardedCaller.CallPriority;
+import io.inspector.client.ProcessApiClient;
 import io.inspector.config.InspectorProperties.EngineConfig;
 import io.inspector.config.InspectorProperties.EngineEnvironment;
 import io.inspector.config.InspectorProperties.EngineMode;
@@ -78,7 +79,7 @@ public class FlowSurgeryService {
     private static final int EXECUTION_FETCH_CAP = 200;
 
     private final EngineRegistry registry;
-    private final FlowableEngineClient client;
+    private final ProcessApiClient client;
     private final BpmnStructureService structures;
     private final AuditService audit;
     private final RbacAuthorizer rbac;
@@ -87,7 +88,7 @@ public class FlowSurgeryService {
 
     public FlowSurgeryService(
             EngineRegistry registry,
-            FlowableEngineClient client,
+            ProcessApiClient client,
             BpmnStructureService structures,
             AuditService audit,
             RbacAuthorizer rbac,
@@ -142,7 +143,7 @@ public class FlowSurgeryService {
                 engine.auditPayloadOrDefault());
 
         dispatchAudited(entry, engineId, () -> {
-            client.changeActivityState(engine, instanceId, plan.restBody());
+            client.changeActivityState(engine, CallPriority.INTERACTIVE, instanceId, plan.restBody());
             return null;
         });
 
@@ -228,7 +229,7 @@ public class FlowSurgeryService {
     private Map<String, Object> restateRunningInstance(EngineConfig engine, String instanceId) {
         Map<String, Object> instance;
         try {
-            instance = client.getRuntimeProcessInstance(engine, instanceId);
+            instance = client.getRuntimeProcessInstance(engine, CallPriority.INTERACTIVE, instanceId);
         } catch (CallNotPermittedException | BulkheadFullException | ResourceAccessException e) {
             throw engineUnreachablePreFlight(engine);
         }
@@ -250,7 +251,8 @@ public class FlowSurgeryService {
     }
 
     private Set<String> activeActivityIds(EngineConfig engine, String instanceId) {
-        FlowablePage executions = client.listExecutions(engine, instanceId, EXECUTION_FETCH_CAP);
+        FlowablePage executions =
+                client.listExecutions(engine, CallPriority.INTERACTIVE, instanceId, EXECUTION_FETCH_CAP);
         Set<String> active = new HashSet<>();
         for (Map<String, Object> execution : executions.dataOrEmpty()) {
             Object activityId = execution.get("activityId");
@@ -388,7 +390,7 @@ public class FlowSurgeryService {
         String startDefinitionRef;
         try {
             // Restart resurrects DEAD instances only — a live one must be terminated or moved.
-            if (client.getRuntimeProcessInstance(engine, instanceId) != null) {
+            if (client.getRuntimeProcessInstance(engine, CallPriority.INTERACTIVE, instanceId) != null) {
                 throw new GuardRefusedException(
                         HttpStatus.CONFLICT,
                         "instance-still-running",
@@ -396,7 +398,7 @@ public class FlowSurgeryService {
                                 + "' — restart-as-new applies to completed/terminated instances only"
                                 + " (use change-state to move its token instead). Nothing happened.");
             }
-            historic = client.getHistoricProcessInstance(engine, instanceId);
+            historic = client.getHistoricProcessInstance(engine, CallPriority.INTERACTIVE, instanceId);
             if (historic == null) {
                 throw new GuardRefusedException(
                         HttpStatus.NOT_FOUND,
@@ -456,8 +458,8 @@ public class FlowSurgeryService {
                 payload,
                 engine.auditPayloadOrDefault());
 
-        Map<String, Object> started =
-                dispatchAudited(entry, engineId, () -> client.startProcessInstance(engine, startBody));
+        Map<String, Object> started = dispatchAudited(
+                entry, engineId, () -> client.startProcessInstance(engine, CallPriority.INTERACTIVE, startBody));
 
         String newInstanceId = String.valueOf(started.get("id"));
         String newDefinitionId = String.valueOf(started.get("processDefinitionId"));
@@ -489,7 +491,7 @@ public class FlowSurgeryService {
     private String resolveStartDefinition(
             EngineConfig engine, String originalDefinitionId, Map<String, Object> historic, boolean pinVersion) {
         if (pinVersion) {
-            if (client.getProcessDefinition(engine, originalDefinitionId) == null) {
+            if (client.getProcessDefinition(engine, CallPriority.INTERACTIVE, originalDefinitionId) == null) {
                 throw new GuardRefusedException(
                         HttpStatus.NOT_FOUND,
                         "definition-gone",
@@ -502,7 +504,8 @@ public class FlowSurgeryService {
         Object key = historic.get("processDefinitionKey");
         String definitionKey =
                 key != null ? String.valueOf(key) : originalDefinitionId.split(":", 2)[0];
-        FlowablePage latest = client.listProcessDefinitionsByKey(engine, definitionKey, 1);
+        FlowablePage latest =
+                client.listProcessDefinitionsByKey(engine, CallPriority.INTERACTIVE, definitionKey, null, 0, 1);
         if (latest == null || latest.total() == 0) {
             throw new GuardRefusedException(
                     HttpStatus.NOT_FOUND,
@@ -521,7 +524,8 @@ public class FlowSurgeryService {
      */
     private List<Map<String, Object>> portableHistoricVariables(
             EngineConfig engine, String instanceId, Map<String, String> skipped) {
-        FlowablePage page = client.listHistoricVariableInstances(engine, instanceId, VARIABLE_FETCH_CAP);
+        FlowablePage page =
+                client.listHistoricVariableInstances(engine, CallPriority.INTERACTIVE, instanceId, VARIABLE_FETCH_CAP);
         List<Map<String, Object>> rows = page != null ? page.dataOrEmpty() : List.of();
         if (page != null && page.total() > rows.size()) {
             throw new GuardRefusedException(

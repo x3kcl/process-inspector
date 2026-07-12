@@ -183,7 +183,7 @@ SBOM (CycloneDX) + dependency audit in nightly · k6 P1 perf wiring against a se
 FIX-REF-01 reference dataset (`scripts/perf-scenario-p1.js` exists since the v1 gate but has
 never run in CI — tracked issue #93) · a dedicated static WireMock fixture suite for 6.x/7.x
 error-JSON shape (partially covered differently today: WireMock proves pure HTTP-client
-behavior in `FlowableEngineClientTest`, and the live `integration` matrix's flowable-6/7/legacy
+behavior in `GuardedCallerTest`, and the live `integration` matrix's flowable-6/7/legacy
 profiles exercise real error-JSON shape end-to-end — but no standalone fixture suite pins it).
 **Where CI runs:** dockerized self-hosted **runner slots** (`docker/ci-runner/`, image =
 `myoung34/github-runner` + Maven/python3/jq; zero paid Actions minutes). Harness ports are

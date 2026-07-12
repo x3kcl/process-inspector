@@ -9,9 +9,11 @@ import io.inspector.audit.AuditUnavailableException;
 import io.inspector.audit.BreakGlassActor;
 import io.inspector.audit.ProtectedInstance;
 import io.inspector.audit.ProtectedInstanceRepository;
-import io.inspector.client.FlowableEngineClient;
-import io.inspector.client.FlowableEngineClient.JobLaneKind;
+import io.inspector.client.CmmnApiClient;
 import io.inspector.client.ForwardedActor;
+import io.inspector.client.GuardedCaller.CallPriority;
+import io.inspector.client.ProcessApiClient;
+import io.inspector.client.ProcessApiClient.JobLaneKind;
 import io.inspector.cmmn.CmmnCapabilities;
 import io.inspector.config.InspectorProperties.EngineConfig;
 import io.inspector.config.InspectorProperties.EngineEnvironment;
@@ -56,7 +58,8 @@ import org.springframework.web.client.RestClientResponseException;
 public class CorrectiveActionService {
 
     private final EngineRegistry registry;
-    private final FlowableEngineClient client;
+    private final ProcessApiClient client;
+    private final CmmnApiClient cmmnClient;
     private final AuditService audit;
     private final RbacAuthorizer rbac;
     private final ProtectedInstanceRepository protectedInstances;
@@ -65,7 +68,8 @@ public class CorrectiveActionService {
 
     public CorrectiveActionService(
             EngineRegistry registry,
-            FlowableEngineClient client,
+            ProcessApiClient client,
+            CmmnApiClient cmmnClient,
             AuditService audit,
             RbacAuthorizer rbac,
             ProtectedInstanceRepository protectedInstances,
@@ -73,6 +77,7 @@ public class CorrectiveActionService {
             DangerousActionReauthGate reauth) {
         this.registry = registry;
         this.client = client;
+        this.cmmnClient = cmmnClient;
         this.audit = audit;
         this.rbac = rbac;
         this.protectedInstances = protectedInstances;
@@ -357,7 +362,7 @@ public class CorrectiveActionService {
     }
 
     private Target jobTarget(EngineConfig engine, JobLaneKind lane, String instanceId, String jobId, ActionVerb verb) {
-        Map<String, Object> job = client.getJob(engine, lane, jobId);
+        Map<String, Object> job = client.getJob(engine, CallPriority.INTERACTIVE, lane, jobId);
         if (job == null) {
             throw new GuardRefusedException(
                     HttpStatus.NOT_FOUND,
@@ -388,7 +393,7 @@ public class CorrectiveActionService {
      * payload records {@code scope:cmmn} and the case context so the delta is reconstructable.
      */
     private Target cmmnJobTarget(EngineConfig engine, String caseInstanceId, String jobId, ActionVerb verb) {
-        Map<String, Object> job = client.getCmmnDeadLetterJob(engine, jobId);
+        Map<String, Object> job = cmmnClient.getCmmnDeadLetterJob(engine, CallPriority.INTERACTIVE, jobId);
         if (job == null) {
             throw new GuardRefusedException(
                     HttpStatus.NOT_FOUND,
@@ -416,7 +421,7 @@ public class CorrectiveActionService {
     }
 
     private Target instanceTarget(EngineConfig engine, String instanceId) {
-        Map<String, Object> instance = client.getRuntimeProcessInstance(engine, instanceId);
+        Map<String, Object> instance = client.getRuntimeProcessInstance(engine, CallPriority.INTERACTIVE, instanceId);
         if (instance == null) {
             throw new GuardRefusedException(
                     HttpStatus.NOT_FOUND,
@@ -451,7 +456,7 @@ public class CorrectiveActionService {
         String activityId = null;
         Map<String, Object> row;
         if (local) {
-            Map<String, Object> execution = client.getExecution(engine, executionId);
+            Map<String, Object> execution = client.getExecution(engine, CallPriority.INTERACTIVE, executionId);
             if (execution == null) {
                 throw new GuardRefusedException(
                         HttpStatus.NOT_FOUND,
@@ -466,7 +471,7 @@ public class CorrectiveActionService {
                         "Execution " + executionId + " belongs to instance " + owner + ", not " + instanceId + ".");
             }
             activityId = execution.get("activityId") != null ? String.valueOf(execution.get("activityId")) : null;
-            row = client.getExecutionVariable(engine, executionId, edit.name());
+            row = client.getExecutionVariable(engine, CallPriority.INTERACTIVE, executionId, edit.name());
             if (row == null) {
                 throw new GuardRefusedException(
                         HttpStatus.NOT_FOUND,
@@ -475,7 +480,7 @@ public class CorrectiveActionService {
                                 + " — edit-variable changes existing values only. Nothing happened.");
             }
         } else {
-            row = client.getInstanceVariable(engine, instanceId, edit.name());
+            row = client.getInstanceVariable(engine, CallPriority.INTERACTIVE, instanceId, edit.name());
             if (row == null) {
                 throw new GuardRefusedException(
                         HttpStatus.NOT_FOUND,
@@ -503,7 +508,7 @@ public class CorrectiveActionService {
     }
 
     private Target taskTarget(EngineConfig engine, String instanceId, String taskId, ActionRequest request) {
-        Map<String, Object> task = client.getTask(engine, taskId);
+        Map<String, Object> task = client.getTask(engine, CallPriority.INTERACTIVE, taskId);
         if (task == null) {
             throw new GuardRefusedException(
                     HttpStatus.NOT_FOUND,
@@ -533,7 +538,7 @@ public class CorrectiveActionService {
      */
     private Target taskAssignTarget(
             EngineConfig engine, ActionVerb verb, String instanceId, String taskId, ActionRequest request) {
-        Map<String, Object> task = client.getTask(engine, taskId);
+        Map<String, Object> task = client.getTask(engine, CallPriority.INTERACTIVE, taskId);
         if (task == null) {
             throw new GuardRefusedException(
                     HttpStatus.NOT_FOUND,
@@ -572,7 +577,7 @@ public class CorrectiveActionService {
         if (needsName && blankToNull(event.name()) == null) {
             throw missingField("event.name");
         }
-        Map<String, Object> execution = client.getExecution(engine, executionId);
+        Map<String, Object> execution = client.getExecution(engine, CallPriority.INTERACTIVE, executionId);
         if (execution == null) {
             throw new GuardRefusedException(
                     HttpStatus.NOT_FOUND,
@@ -596,7 +601,7 @@ public class CorrectiveActionService {
     }
 
     private Target definitionTarget(EngineConfig engine, String definitionId, ActionRequest request) {
-        Map<String, Object> definition = client.getProcessDefinition(engine, definitionId);
+        Map<String, Object> definition = client.getProcessDefinition(engine, CallPriority.INTERACTIVE, definitionId);
         if (definition == null) {
             throw new GuardRefusedException(
                     HttpStatus.NOT_FOUND,
@@ -622,22 +627,24 @@ public class CorrectiveActionService {
         // (move + delete live-proven 2026-07-08, HTTP 204 each).
         if (scope == ActionScope.CMMN) {
             switch (verb) {
-                case RETRY_JOB -> client.moveCmmnDeadLetterJob(engine, request.jobId());
-                case DELETE_DEADLETTER -> client.deleteCmmnDeadLetterJob(engine, request.jobId());
+                case RETRY_JOB -> cmmnClient.moveCmmnDeadLetterJob(engine, CallPriority.INTERACTIVE, request.jobId());
+                case DELETE_DEADLETTER ->
+                    cmmnClient.deleteCmmnDeadLetterJob(engine, CallPriority.INTERACTIVE, request.jobId());
                 default ->
                     throw new IllegalStateException("CMMN verb not dispatchable: " + verb); // unreachable: guarded
             }
             return;
         }
         switch (verb) {
-            case RETRY_JOB -> client.moveDeadLetterJob(engine, request.jobId());
-            case TRIGGER_TIMER -> client.moveTimerJob(engine, request.jobId());
-            case DELETE_DEADLETTER -> client.deleteDeadLetterJob(engine, request.jobId());
-            case SUSPEND -> client.suspendOrActivateInstance(engine, targetId, "suspend");
-            case ACTIVATE -> client.suspendOrActivateInstance(engine, targetId, "activate");
+            case RETRY_JOB -> client.moveDeadLetterJob(engine, CallPriority.INTERACTIVE, request.jobId());
+            case TRIGGER_TIMER -> client.moveTimerJob(engine, CallPriority.INTERACTIVE, request.jobId());
+            case DELETE_DEADLETTER -> client.deleteDeadLetterJob(engine, CallPriority.INTERACTIVE, request.jobId());
+            case SUSPEND -> client.suspendOrActivateInstance(engine, CallPriority.INTERACTIVE, targetId, "suspend");
+            case ACTIVATE -> client.suspendOrActivateInstance(engine, CallPriority.INTERACTIVE, targetId, "activate");
             case TERMINATE_DELETE ->
                 client.deleteProcessInstance(
                         engine,
+                        CallPriority.INTERACTIVE,
                         targetId,
                         request.reason() != null ? request.reason() : "terminated via process-inspector");
             case EDIT_VARIABLE -> {
@@ -653,23 +660,37 @@ public class CorrectiveActionService {
                     // Step-local: write ON the execution node. scope=local keeps the engine from
                     // promoting it to process scope (SPEC §4a; flowable-rest §2).
                     typed.put("scope", "local");
-                    client.putExecutionVariable(engine, executionId, edit.name(), typed);
+                    client.putExecutionVariable(engine, CallPriority.INTERACTIVE, executionId, edit.name(), typed);
                 } else {
-                    client.putInstanceVariable(engine, targetId, edit.name(), typed);
+                    client.putInstanceVariable(engine, CallPriority.INTERACTIVE, targetId, edit.name(), typed);
                 }
             }
-            case COMPLETE_TASK -> client.completeTask(engine, request.taskId(), typedVariables(request));
+            case COMPLETE_TASK ->
+                client.completeTask(engine, CallPriority.INTERACTIVE, request.taskId(), typedVariables(request));
             case REASSIGN_TASK ->
                 client.setTaskAssignee(
-                        engine, request.taskId(), request.assignee().strip());
-            case UNASSIGN_TASK -> client.setTaskAssignee(engine, request.taskId(), null);
-            case UNSTICK_EVENT -> client.executionAction(engine, request.executionId(), eventBody(request.event()));
+                        engine,
+                        CallPriority.INTERACTIVE,
+                        request.taskId(),
+                        request.assignee().strip());
+            case UNASSIGN_TASK -> client.setTaskAssignee(engine, CallPriority.INTERACTIVE, request.taskId(), null);
+            case UNSTICK_EVENT ->
+                client.executionAction(
+                        engine, CallPriority.INTERACTIVE, request.executionId(), eventBody(request.event()));
             case SUSPEND_DEFINITION ->
                 client.suspendOrActivateDefinition(
-                        engine, targetId, "suspend", Boolean.TRUE.equals(request.includeProcessInstances()));
+                        engine,
+                        CallPriority.INTERACTIVE,
+                        targetId,
+                        "suspend",
+                        Boolean.TRUE.equals(request.includeProcessInstances()));
             case ACTIVATE_DEFINITION ->
                 client.suspendOrActivateDefinition(
-                        engine, targetId, "activate", Boolean.TRUE.equals(request.includeProcessInstances()));
+                        engine,
+                        CallPriority.INTERACTIVE,
+                        targetId,
+                        "activate",
+                        Boolean.TRUE.equals(request.includeProcessInstances()));
         }
     }
 

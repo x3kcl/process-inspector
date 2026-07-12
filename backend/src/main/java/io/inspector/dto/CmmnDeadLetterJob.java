@@ -10,7 +10,7 @@ import com.fasterxml.jackson.annotation.JsonInclude;
  *
  * <p>Sourced from the CMMN Management REST API's {@code GET …/cmmn-api/cmmn-management/
  * deadletter-jobs}, the SIBLING of the process-api {@code /service} context — see
- * {@code FlowableEngineClient.listCmmnDeadLetterJobs}. The discriminator is a NON-NULL
+ * {@code CmmnApiClient.listCmmnDeadLetterJobs}. The discriminator is a NON-NULL
  * {@code caseInstanceId} (proven live: that same list also projects BPMN jobs, which carry a
  * null case attribution — Q1 of the CMMN wire-shape spike, docs/CMMN-SCOPE-PHASE-0.md §1.1).
  *

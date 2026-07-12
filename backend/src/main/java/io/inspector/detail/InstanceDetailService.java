@@ -5,9 +5,11 @@ import com.fasterxml.jackson.databind.ObjectMapper;
 import io.inspector.action.GuardRefusedException;
 import io.inspector.audit.ProtectedInstance;
 import io.inspector.audit.ProtectedInstanceRepository;
-import io.inspector.client.FlowableEngineClient;
-import io.inspector.client.FlowableEngineClient.FlowablePage;
-import io.inspector.client.FlowableEngineClient.JobLaneKind;
+import io.inspector.client.ExternalJobApiClient;
+import io.inspector.client.FlowablePage;
+import io.inspector.client.GuardedCaller.CallPriority;
+import io.inspector.client.ProcessApiClient;
+import io.inspector.client.ProcessApiClient.JobLaneKind;
 import io.inspector.config.InspectorProperties;
 import io.inspector.config.InspectorProperties.EngineConfig;
 import io.inspector.dto.ExternalWorkerJobDto;
@@ -83,17 +85,20 @@ public class InstanceDetailService {
     private static final ObjectMapper SIZER = new ObjectMapper();
 
     private final EngineRegistry registry;
-    private final FlowableEngineClient flowable;
+    private final ProcessApiClient flowable;
+    private final ExternalJobApiClient externalJobs;
     private final InspectorProperties props;
     private final ProtectedInstanceRepository protectedInstances;
 
     public InstanceDetailService(
             EngineRegistry registry,
-            FlowableEngineClient flowable,
+            ProcessApiClient flowable,
+            ExternalJobApiClient externalJobs,
             InspectorProperties props,
             ProtectedInstanceRepository protectedInstances) {
         this.registry = registry;
         this.flowable = flowable;
+        this.externalJobs = externalJobs;
         this.props = props;
         this.protectedInstances = protectedInstances;
     }
@@ -208,7 +213,9 @@ public class InstanceDetailService {
             return null;
         }
         try {
-            return (int) flowable.listExternalWorkerJobs(engine, Map.of("processInstanceId", instanceId), 0, 1)
+            return (int) externalJobs
+                    .listExternalWorkerJobs(
+                            engine, CallPriority.INTERACTIVE, Map.of("processInstanceId", instanceId), 0, 1)
                     .total();
         } catch (RuntimeException e) {
             return null;
@@ -240,7 +247,7 @@ public class InstanceDetailService {
         EngineConfig engine = registry.require(engineId);
         Map<String, Object> historic = requireHistoric(engine, instanceId);
         String definitionId = str(historic, "processDefinitionId");
-        Map<String, Object> definition = flowable.getProcessDefinition(engine, definitionId);
+        Map<String, Object> definition = flowable.getProcessDefinition(engine, CallPriority.INTERACTIVE, definitionId);
         if (definition == null) {
             throw new ResponseStatusException(
                     HttpStatus.NOT_FOUND, "process definition " + definitionId + " not found on " + engineId);
@@ -249,7 +256,7 @@ public class InstanceDetailService {
         String resourceName = resourceNameOf(definition);
         String xml = deploymentId == null || resourceName == null
                 ? null
-                : flowable.deploymentResourceData(engine, deploymentId, resourceName);
+                : flowable.deploymentResourceData(engine, CallPriority.INTERACTIVE, deploymentId, resourceName);
         if (xml == null || xml.isBlank()) {
             throw new ResponseStatusException(
                     HttpStatus.NOT_FOUND, "BPMN resource for definition " + definitionId + " not found on " + engineId);
@@ -296,7 +303,8 @@ public class InstanceDetailService {
             return historicVariables(engine, instanceId);
         }
 
-        List<Map<String, Object>> processRows = flowable.listInstanceVariables(engine, instanceId);
+        List<Map<String, Object>> processRows =
+                flowable.listInstanceVariables(engine, CallPriority.INTERACTIVE, instanceId);
         if (processRows == null) {
             // Ended between the historic read and now — serve the historic projection.
             return historicVariables(engine, instanceId);
@@ -309,14 +317,17 @@ public class InstanceDetailService {
         // Execution-local segregation (SPEC §4): every non-root execution may hold locals —
         // multi-instance loop variables live there. Empty scopes are dropped, not rendered.
         List<ExecutionScope> executionScopes = new ArrayList<>();
-        for (Map<String, Object> execution : flowable.listExecutions(engine, instanceId, engine.maxPageSizeOrDefault())
+        for (Map<String, Object> execution : flowable.listExecutions(
+                        engine, CallPriority.INTERACTIVE, instanceId, engine.maxPageSizeOrDefault())
                 .dataOrEmpty()) {
             String executionId = str(execution, "id");
             if (executionId == null || executionId.equals(instanceId)) continue; // root = process scope
-            List<VariableDto> locals = flowable.listExecutionLocalVariables(engine, executionId).stream()
-                    .map(row -> typedRow(row, "local", executionId, null))
-                    .sorted(Comparator.comparing(VariableDto::name, Comparator.nullsLast(Comparator.naturalOrder())))
-                    .toList();
+            List<VariableDto> locals =
+                    flowable.listExecutionLocalVariables(engine, CallPriority.INTERACTIVE, executionId).stream()
+                            .map(row -> typedRow(row, "local", executionId, null))
+                            .sorted(Comparator.comparing(
+                                    VariableDto::name, Comparator.nullsLast(Comparator.naturalOrder())))
+                            .toList();
             if (!locals.isEmpty()) {
                 executionScopes.add(new ExecutionScope(
                         executionId, str(execution, "activityId"), str(execution, "parentId"), locals));
@@ -336,8 +347,8 @@ public class InstanceDetailService {
         requireHistoric(engine, instanceId);
         boolean local = executionId != null && !executionId.isBlank();
         Map<String, Object> row = local
-                ? flowable.getExecutionVariable(engine, executionId, name)
-                : flowable.getInstanceVariable(engine, instanceId, name);
+                ? flowable.getExecutionVariable(engine, CallPriority.INTERACTIVE, executionId, name)
+                : flowable.getInstanceVariable(engine, CallPriority.INTERACTIVE, instanceId, name);
         if (row == null) {
             throw new ResponseStatusException(
                     HttpStatus.NOT_FOUND,
@@ -361,7 +372,7 @@ public class InstanceDetailService {
     private InstanceVariables historicVariables(EngineConfig engine, String instanceId) {
         List<VariableDto> rows = new ArrayList<>();
         for (Map<String, Object> row : flowable.listHistoricVariableInstances(
-                        engine, instanceId, engine.maxPageSizeOrDefault())
+                        engine, CallPriority.INTERACTIVE, instanceId, engine.maxPageSizeOrDefault())
                 .dataOrEmpty()) {
             @SuppressWarnings("unchecked")
             Map<String, Object> variable = row.get("variable") instanceof Map<?, ?> v ? (Map<String, Object>) v : row;
@@ -423,7 +434,7 @@ public class InstanceDetailService {
     public String jobStacktrace(String engineId, String instanceId, String jobId, JobLaneKind lane) {
         EngineConfig engine = registry.require(engineId);
         requireHistoric(engine, instanceId);
-        String stacktrace = flowable.jobExceptionStacktrace(engine, lane, jobId);
+        String stacktrace = flowable.jobExceptionStacktrace(engine, CallPriority.INTERACTIVE, lane, jobId);
         if (stacktrace == null) {
             throw new ResponseStatusException(
                     HttpStatus.NOT_FOUND,
@@ -472,7 +483,10 @@ public class InstanceDetailService {
         if (engine.tenantId() != null && !engine.tenantId().isBlank()) {
             filters.put("tenantId", engine.tenantId());
         }
-        return flowable.listExternalWorkerJobs(engine, filters, 0, engine.maxPageSizeOrDefault()).dataOrEmpty().stream()
+        return externalJobs
+                .listExternalWorkerJobs(engine, CallPriority.INTERACTIVE, filters, 0, engine.maxPageSizeOrDefault())
+                .dataOrEmpty()
+                .stream()
                 .map(InstanceDetailService::externalWorkerRow)
                 .toList();
     }
@@ -527,7 +541,8 @@ public class InstanceDetailService {
 
         Map<String, Map<String, Object>> runtimeById = new LinkedHashMap<>();
         if (str(historic, "endTime") == null) {
-            for (Map<String, Object> task : flowable.listRuntimeTasks(engine, instanceId, engine.maxPageSizeOrDefault())
+            for (Map<String, Object> task : flowable.listRuntimeTasks(
+                            engine, CallPriority.INTERACTIVE, instanceId, engine.maxPageSizeOrDefault())
                     .dataOrEmpty()) {
                 String id = str(task, "id");
                 if (id != null) runtimeById.put(id, task);
@@ -537,7 +552,8 @@ public class InstanceDetailService {
         long historicTotal = 0;
         Map<String, TaskDto> rows = new LinkedHashMap<>();
         try {
-            FlowablePage page = flowable.listHistoricTaskInstances(engine, instanceId, engine.maxPageSizeOrDefault());
+            FlowablePage page = flowable.listHistoricTaskInstances(
+                    engine, CallPriority.INTERACTIVE, instanceId, engine.maxPageSizeOrDefault());
             historicTotal = page.total();
             for (Map<String, Object> task : page.dataOrEmpty()) {
                 String id = str(task, "id");
@@ -606,7 +622,8 @@ public class InstanceDetailService {
         for (int depth = 0; depth < maxDepth; depth++) {
             String parentId = str(root, "superProcessInstanceId");
             if (parentId == null || !visited.add(parentId)) break;
-            Map<String, Object> parent = flowable.getHistoricProcessInstance(engine, parentId);
+            Map<String, Object> parent =
+                    flowable.getHistoricProcessInstance(engine, CallPriority.INTERACTIVE, parentId);
             if (parent == null) break; // parent purged from history — current node is the root
             root = parent;
         }
@@ -656,7 +673,7 @@ public class InstanceDetailService {
         body.put("superProcessInstanceId", parentInstanceId);
         body.put("size", Math.min(HIERARCHY_BREADTH_CAP, engine.maxPageSizeOrDefault()));
         withTenant(engine, body);
-        return flowable.queryHistoricProcessInstances(engine, body);
+        return flowable.queryHistoricProcessInstances(engine, CallPriority.INTERACTIVE, body);
     }
 
     /** Mutable BFS scaffold; the immutable DTO is assembled bottom-up at the end. */
@@ -730,7 +747,7 @@ public class InstanceDetailService {
             Set<String> visited,
             int[] budget,
             int pageSize) {
-        FlowablePage page = flowable.listHistoricActivities(engine, instanceId, 0, pageSize);
+        FlowablePage page = flowable.listHistoricActivities(engine, CallPriority.INTERACTIVE, instanceId, 0, pageSize);
         List<Map<String, Object>> rows = page.dataOrEmpty();
         boolean truncated = page.total() > rows.size();
 
@@ -887,7 +904,7 @@ public class InstanceDetailService {
                     new InstanceStatusFlags(true, false, false, false, false), true, List.of(), List.of(), null, null);
         }
         Lanes lanes = scanInstanceLanes(engine, instanceId);
-        Map<String, Object> runtime = flowable.getRuntimeProcessInstance(engine, instanceId);
+        Map<String, Object> runtime = flowable.getRuntimeProcessInstance(engine, CallPriority.INTERACTIVE, instanceId);
         boolean suspended = runtime != null && Boolean.TRUE.equals(runtime.get("suspended"));
         FailedChild failedChild = firstFailedDescendant(engine, instanceId);
         InstanceStatusFlags flags = new InstanceStatusFlags(
@@ -911,7 +928,7 @@ public class InstanceDetailService {
         if (ended) {
             return new InstanceStatusFlags(true, false, false, false, false);
         }
-        Map<String, Object> runtime = flowable.getRuntimeProcessInstance(engine, instanceId);
+        Map<String, Object> runtime = flowable.getRuntimeProcessInstance(engine, CallPriority.INTERACTIVE, instanceId);
         boolean suspended = runtime != null && Boolean.TRUE.equals(runtime.get("suspended"));
         boolean hasDeadLetter = !lanes.deadLetter().isEmpty();
         boolean hasFailing = !lanes.failing().isEmpty();
@@ -969,8 +986,9 @@ public class InstanceDetailService {
         if (engine.tenantId() != null && !engine.tenantId().isBlank()) {
             filters.put("tenantId", engine.tenantId());
         }
-        List<Map<String, Object>> rows =
-                flowable.listJobs(engine, JobLaneKind.DEADLETTER, filters, 0, 1).dataOrEmpty();
+        List<Map<String, Object>> rows = flowable.listJobs(
+                        engine, CallPriority.INTERACTIVE, JobLaneKind.DEADLETTER, filters, 0, 1)
+                .dataOrEmpty();
         return rows.isEmpty() ? null : rows.get(0);
     }
 
@@ -1001,7 +1019,7 @@ public class InstanceDetailService {
         if (engine.tenantId() != null && !engine.tenantId().isBlank()) {
             filters.put("tenantId", engine.tenantId());
         }
-        return flowable.listJobs(engine, lane, filters, 0, engine.maxPageSizeOrDefault())
+        return flowable.listJobs(engine, CallPriority.INTERACTIVE, lane, filters, 0, engine.maxPageSizeOrDefault())
                 .dataOrEmpty();
     }
 
@@ -1011,7 +1029,8 @@ public class InstanceDetailService {
         if (engine.tenantId() != null && !engine.tenantId().isBlank()) {
             filters.put("tenantId", engine.tenantId());
         }
-        return flowable.listJobs(engine, JobLaneKind.DEADLETTER, filters, 0, 1).total();
+        return flowable.listJobs(engine, CallPriority.INTERACTIVE, JobLaneKind.DEADLETTER, filters, 0, 1)
+                .total();
     }
 
     /* ================= vitals sub-assemblies ================= */
@@ -1027,7 +1046,11 @@ public class InstanceDetailService {
         Map<String, CurrentActivity> byActivityId = new LinkedHashMap<>();
         try {
             for (Map<String, Object> row : flowable.listUnfinishedActivities(
-                            engine, instanceId, engine.tenantId(), engine.maxPageSizeOrDefault())
+                            engine,
+                            CallPriority.INTERACTIVE,
+                            instanceId,
+                            engine.tenantId(),
+                            engine.maxPageSizeOrDefault())
                     .dataOrEmpty()) {
                 String activityId = str(row, "activityId");
                 if (activityId == null) continue;
@@ -1042,7 +1065,7 @@ public class InstanceDetailService {
         }
         try {
             for (Map<String, Object> execution : flowable.listExecutions(
-                            engine, instanceId, engine.maxPageSizeOrDefault())
+                            engine, CallPriority.INTERACTIVE, instanceId, engine.maxPageSizeOrDefault())
                     .dataOrEmpty()) {
                 String activityId = str(execution, "activityId");
                 if (activityId == null) continue; // the root execution carries no position
@@ -1086,7 +1109,7 @@ public class InstanceDetailService {
         String executionId = str(job, "executionId");
         if (executionId == null) return null;
         try {
-            Map<String, Object> execution = flowable.getExecution(engine, executionId);
+            Map<String, Object> execution = flowable.getExecution(engine, CallPriority.INTERACTIVE, executionId);
             return execution != null ? str(execution, "activityId") : null;
         } catch (Exception ex) {
             return null;
@@ -1097,7 +1120,7 @@ public class InstanceDetailService {
         List<WaitState> waits = new ArrayList<>();
         try {
             for (Map<String, Object> sub : flowable.listEventSubscriptions(
-                            engine, instanceId, engine.maxPageSizeOrDefault())
+                            engine, CallPriority.INTERACTIVE, instanceId, engine.maxPageSizeOrDefault())
                     .dataOrEmpty()) {
                 String eventType = str(sub, "eventType");
                 waits.add(new WaitState(
@@ -1134,7 +1157,8 @@ public class InstanceDetailService {
 
     /** The historic anchor row — exists for running AND completed instances. 404 when unknown. */
     public Map<String, Object> requireHistoric(EngineConfig engine, String instanceId) {
-        Map<String, Object> historic = flowable.getHistoricProcessInstance(engine, instanceId);
+        Map<String, Object> historic =
+                flowable.getHistoricProcessInstance(engine, CallPriority.INTERACTIVE, instanceId);
         if (historic == null) {
             throw new ResponseStatusException(
                     HttpStatus.NOT_FOUND, "process instance " + instanceId + " not found on engine " + engine.id());

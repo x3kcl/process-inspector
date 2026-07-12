@@ -16,7 +16,9 @@ import io.inspector.audit.AuditEntry;
 import io.inspector.audit.AuditOutcome;
 import io.inspector.audit.AuditService;
 import io.inspector.audit.ProtectedInstanceRepository;
-import io.inspector.client.FlowableEngineClient;
+import io.inspector.client.CmmnApiClient;
+import io.inspector.client.GuardedCaller.CallPriority;
+import io.inspector.client.ProcessApiClient;
 import io.inspector.config.InspectorProperties.EngineConfig;
 import io.inspector.registry.EngineCapabilities;
 import io.inspector.registry.EngineHealth;
@@ -50,7 +52,8 @@ class CmmnCorrectiveActionServiceTest {
     private static final String JOB = "j1";
 
     private final EngineConfig engine = TestEngines.engine(ENGINE, "http://engine.test/flowable-rest/service");
-    private final FlowableEngineClient client = mock(FlowableEngineClient.class);
+    private final ProcessApiClient client = mock(ProcessApiClient.class);
+    private final CmmnApiClient cmmnClient = mock(CmmnApiClient.class);
     private final AuditService audit = mock(AuditService.class);
     private final RbacAuthorizer rbac = mock(RbacAuthorizer.class);
     private final ProtectedInstanceRepository protectedInstances = mock(ProtectedInstanceRepository.class);
@@ -65,6 +68,7 @@ class CmmnCorrectiveActionServiceTest {
         service = new CorrectiveActionService(
                 registry,
                 client,
+                cmmnClient,
                 audit,
                 rbac,
                 protectedInstances,
@@ -100,7 +104,7 @@ class CmmnCorrectiveActionServiceTest {
     }
 
     private void deadLetterJobOnCase(String caseInstanceId) {
-        when(client.getCmmnDeadLetterJob(engine, JOB))
+        when(cmmnClient.getCmmnDeadLetterJob(engine, CallPriority.INTERACTIVE, JOB))
                 .thenReturn(Map.of(
                         "id", JOB,
                         "caseInstanceId", caseInstanceId,
@@ -134,18 +138,18 @@ class CmmnCorrectiveActionServiceTest {
 
         ActionResult result = retry();
 
-        InOrder order = inOrder(audit, client);
+        InOrder order = inOrder(audit, cmmnClient);
         // the server-fresh restatement reads the cmmn-api DLQ by-id (before the audit gate),
         // NOT the process-api lane
-        order.verify(client).getCmmnDeadLetterJob(engine, JOB);
+        order.verify(cmmnClient).getCmmnDeadLetterJob(engine, CallPriority.INTERACTIVE, JOB);
         // the audit "instance" is the caseInstanceId (audit_entry keys on a generic id)
         order.verify(audit)
                 .beginPending(eq("op"), eq(ENGINE), any(), eq(CASE), eq("retry-job"), any(), any(), any(), any());
         // and the one engine call is the CMMN move, never the BPMN one
-        order.verify(client).moveCmmnDeadLetterJob(engine, JOB);
+        order.verify(cmmnClient).moveCmmnDeadLetterJob(engine, CallPriority.INTERACTIVE, JOB);
         order.verify(audit).close(eq(pendingEntry), eq(AuditOutcome.ok), eq(200), any(), eq(true));
-        verify(client, never()).moveDeadLetterJob(any(), anyString());
-        verify(client, never()).getJob(any(), any(), anyString());
+        verify(client, never()).moveDeadLetterJob(any(), any(), anyString());
+        verify(client, never()).getJob(any(), any(), any(), anyString());
         assertThat(result.deltaStatement()).contains(JOB).contains("executable queue");
     }
 
@@ -160,8 +164,8 @@ class CmmnCorrectiveActionServiceTest {
                 .isInstanceOf(GuardRefusedException.class)
                 .satisfies(e -> assertThat(((GuardRefusedException) e).code()).isEqualTo("capability-unavailable"));
         verifyNoInteractions(audit);
-        verify(client, never()).getCmmnDeadLetterJob(any(), anyString());
-        verify(client, never()).moveCmmnDeadLetterJob(any(), anyString());
+        verify(cmmnClient, never()).getCmmnDeadLetterJob(any(), any(), anyString());
+        verify(cmmnClient, never()).moveCmmnDeadLetterJob(any(), any(), anyString());
     }
 
     @Test
@@ -172,7 +176,7 @@ class CmmnCorrectiveActionServiceTest {
                 .isInstanceOf(GuardRefusedException.class)
                 .satisfies(e -> assertThat(((GuardRefusedException) e).code()).isEqualTo("capability-unknown"));
         verifyNoInteractions(audit);
-        verify(client, never()).moveCmmnDeadLetterJob(any(), anyString());
+        verify(cmmnClient, never()).moveCmmnDeadLetterJob(any(), any(), anyString());
     }
 
     @Test
@@ -184,19 +188,20 @@ class CmmnCorrectiveActionServiceTest {
                 .isInstanceOf(GuardRefusedException.class)
                 .satisfies(e -> assertThat(((GuardRefusedException) e).code()).isEqualTo("verb-not-cmmn-scoped"));
         verifyNoInteractions(audit);
-        verify(client, never()).suspendOrActivateInstance(any(), anyString(), anyString());
+        verify(client, never()).suspendOrActivateInstance(any(), any(), anyString(), anyString());
     }
 
     @Test
     void aJobAlreadyGoneFromTheDlqIsAnHonestRefusalNotAMove() {
         scopeCapable();
-        when(client.getCmmnDeadLetterJob(engine, JOB)).thenReturn(null); // 404 by-id
+        when(cmmnClient.getCmmnDeadLetterJob(engine, CallPriority.INTERACTIVE, JOB))
+                .thenReturn(null); // 404 by-id
 
         assertThatThrownBy(this::retry)
                 .isInstanceOf(GuardRefusedException.class)
                 .satisfies(e -> assertThat(((GuardRefusedException) e).code()).isEqualTo("job-gone"));
         verifyNoInteractions(audit);
-        verify(client, never()).moveCmmnDeadLetterJob(any(), anyString());
+        verify(cmmnClient, never()).moveCmmnDeadLetterJob(any(), any(), anyString());
     }
 
     @Test
@@ -208,7 +213,7 @@ class CmmnCorrectiveActionServiceTest {
                 .isInstanceOf(GuardRefusedException.class)
                 .satisfies(e -> assertThat(((GuardRefusedException) e).code()).isEqualTo("job-case-mismatch"));
         verifyNoInteractions(audit);
-        verify(client, never()).moveCmmnDeadLetterJob(any(), anyString());
+        verify(cmmnClient, never()).moveCmmnDeadLetterJob(any(), any(), anyString());
     }
 
     /* ------------------- delete-deadletter (tier 3 / ADMIN) — the second CMMN verb ------------------- */
@@ -220,17 +225,17 @@ class CmmnCorrectiveActionServiceTest {
 
         ActionResult result = delete(operator, deleteRequest("stale orphan job, case abandoned"));
 
-        InOrder order = inOrder(audit, client);
+        InOrder order = inOrder(audit, cmmnClient);
         // same server-fresh by-id restatement as retry (before the audit gate) …
-        order.verify(client).getCmmnDeadLetterJob(engine, JOB);
+        order.verify(cmmnClient).getCmmnDeadLetterJob(engine, CallPriority.INTERACTIVE, JOB);
         order.verify(audit)
                 .beginPending(
                         eq("op"), eq(ENGINE), any(), eq(CASE), eq("delete-deadletter"), any(), any(), any(), any());
         // … but the one engine call is the CMMN delete, never the move or the BPMN delete
-        order.verify(client).deleteCmmnDeadLetterJob(engine, JOB);
+        order.verify(cmmnClient).deleteCmmnDeadLetterJob(engine, CallPriority.INTERACTIVE, JOB);
         order.verify(audit).close(eq(pendingEntry), eq(AuditOutcome.ok), eq(200), any(), eq(true));
-        verify(client, never()).moveCmmnDeadLetterJob(any(), anyString());
-        verify(client, never()).deleteDeadLetterJob(any(), anyString());
+        verify(cmmnClient, never()).moveCmmnDeadLetterJob(any(), any(), anyString());
+        verify(client, never()).deleteDeadLetterJob(any(), any(), anyString());
         // scope-honest delta: a CMMN case has no change-state rescue in this tool
         assertThat(result.deltaStatement()).contains(JOB).contains("orphaned").contains("no change-state for cases");
     }
@@ -245,7 +250,7 @@ class CmmnCorrectiveActionServiceTest {
                 .isInstanceOf(GuardRefusedException.class)
                 .satisfies(e -> assertThat(((GuardRefusedException) e).code()).isEqualTo("reason-required"));
         verifyNoInteractions(audit);
-        verify(client, never()).deleteCmmnDeadLetterJob(any(), anyString());
+        verify(cmmnClient, never()).deleteCmmnDeadLetterJob(any(), any(), anyString());
     }
 
     @Test
@@ -258,8 +263,8 @@ class CmmnCorrectiveActionServiceTest {
                 .isInstanceOf(GuardRefusedException.class)
                 .satisfies(e -> assertThat(((GuardRefusedException) e).code()).isEqualTo("rbac-denied"));
         verifyNoInteractions(audit);
-        verify(client, never()).deleteCmmnDeadLetterJob(any(), anyString());
+        verify(cmmnClient, never()).deleteCmmnDeadLetterJob(any(), any(), anyString());
         // refused before any capability probe or engine read
-        verify(client, never()).getCmmnDeadLetterJob(any(), anyString());
+        verify(cmmnClient, never()).getCmmnDeadLetterJob(any(), any(), anyString());
     }
 }

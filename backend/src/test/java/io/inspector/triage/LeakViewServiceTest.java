@@ -10,8 +10,8 @@ import static org.mockito.Mockito.never;
 import static org.mockito.Mockito.verify;
 import static org.mockito.Mockito.when;
 
-import io.inspector.client.FlowableEngineClient;
-import io.inspector.client.FlowableEngineClient.FlowablePage;
+import io.inspector.client.FlowablePage;
+import io.inspector.client.ProcessApiClient;
 import io.inspector.config.InspectorProperties.EngineConfig;
 import io.inspector.dto.LeakViewsResponse;
 import io.inspector.dto.LeakViewsResponse.LeakDefinitionCount;
@@ -55,22 +55,22 @@ class LeakViewServiceTest {
         return new FlowablePage(rows, total, 0, 500);
     }
 
-    private LeakViewService service(FlowableEngineClient client, EngineConfig... engines) {
+    private LeakViewService service(ProcessApiClient client, EngineConfig... engines) {
         return new LeakViewService(() -> List.of(engines), client, CLOCK, Duration.ofSeconds(20));
     }
 
     @Test
     void aggregate_mergesPerDefinition_fromCountOnlyQueries() {
-        FlowableEngineClient client = mock(FlowableEngineClient.class, RETURNS_DEEP_STUBS);
+        ProcessApiClient client = mock(ProcessApiClient.class, RETURNS_DEEP_STUBS);
         EngineConfig e1 = TestEngines.engine("e1", "http://e1");
         EngineConfig e2 = TestEngines.engine("e2", "http://e2");
-        when(client.listLatestProcessDefinitions(argThat(e -> e != null && e.id().equals("e1")), anyInt(), any()))
+        when(client.listLatestProcessDefinitions(argThat(e -> e != null && e.id().equals("e1")), any(), anyInt()))
                 .thenReturn(defs(2, "vacationRequest", "loanApproval"));
-        when(client.listLatestProcessDefinitions(argThat(e -> e != null && e.id().equals("e2")), anyInt(), any()))
+        when(client.listLatestProcessDefinitions(argThat(e -> e != null && e.id().equals("e2")), any(), anyInt()))
                 .thenReturn(defs(1, "vacationRequest"));
         when(client.queryRuntimeProcessInstances(any(), any(), any())).thenAnswer(inv -> {
             EngineConfig engine = inv.getArgument(0);
-            Map<String, Object> body = inv.getArgument(1);
+            Map<String, Object> body = inv.getArgument(2);
             assertThat(body).containsEntry("size", 1); // count-only, NEVER rows (iron rule)
             assertThat(ALLOWED_BODY_KEYS).containsAll(body.keySet());
             return count(totalFor(engine.id(), body));
@@ -99,18 +99,18 @@ class LeakViewServiceTest {
 
     @Test
     void suspendedWindow_isSuspendedTrueAtStartedBefore_neverSuspensionTime() {
-        FlowableEngineClient client = mock(FlowableEngineClient.class, RETURNS_DEEP_STUBS);
+        ProcessApiClient client = mock(ProcessApiClient.class, RETURNS_DEEP_STUBS);
         EngineConfig e1 = TestEngines.engine("e1", "http://e1");
-        when(client.listLatestProcessDefinitions(any(), anyInt(), any())).thenReturn(defs(1, "vacationRequest"));
+        when(client.listLatestProcessDefinitions(any(), any(), anyInt())).thenReturn(defs(1, "vacationRequest"));
         when(client.queryRuntimeProcessInstances(any(), any(), any())).thenAnswer(inv -> {
             EngineConfig engine = inv.getArgument(0);
-            return count(totalFor(engine.id(), inv.getArgument(1)));
+            return count(totalFor(engine.id(), inv.getArgument(2)));
         });
 
         service(client, e1).aggregate();
 
         ArgumentCaptor<Map<String, Object>> bodies = ArgumentCaptor.forClass(Map.class);
-        verify(client, org.mockito.Mockito.atLeastOnce()).queryRuntimeProcessInstances(any(), bodies.capture(), any());
+        verify(client, org.mockito.Mockito.atLeastOnce()).queryRuntimeProcessInstances(any(), any(), bodies.capture());
         // The one SUSPENDED leg is suspended=true AND uses startedBefore=now−7d — R-SEM-05:
         // age is measured off startTime, the ONLY time the REST API can evaluate.
         List<Map<String, Object>> suspendedLegs = bodies.getAllValues().stream()
@@ -125,17 +125,17 @@ class LeakViewServiceTest {
 
     @Test
     void unreachableEngine_namesIt_andFloorsToLowerBound() {
-        FlowableEngineClient client = mock(FlowableEngineClient.class, RETURNS_DEEP_STUBS);
+        ProcessApiClient client = mock(ProcessApiClient.class, RETURNS_DEEP_STUBS);
         EngineConfig e1 = TestEngines.engine("e1", "http://e1");
         EngineConfig e2 = TestEngines.engine("e2", "http://e2");
-        when(client.listLatestProcessDefinitions(argThat(e -> e != null && e.id().equals("e1")), anyInt(), any()))
+        when(client.listLatestProcessDefinitions(argThat(e -> e != null && e.id().equals("e1")), any(), anyInt()))
                 .thenReturn(defs(1, "vacationRequest"));
         when(client.queryRuntimeProcessInstances(any(), any(), any())).thenAnswer(inv -> {
             EngineConfig engine = inv.getArgument(0);
             if (engine.id().equals("e2")) {
                 throw new IllegalStateException("engine e2 is down");
             }
-            return count(totalFor(engine.id(), inv.getArgument(1)));
+            return count(totalFor(engine.id(), inv.getArgument(2)));
         });
 
         LeakViewsResponse response = service(client, e1, e2).aggregate();
@@ -150,13 +150,13 @@ class LeakViewServiceTest {
 
     @Test
     void truncatedDefinitionList_floorsToLowerBound() {
-        FlowableEngineClient client = mock(FlowableEngineClient.class, RETURNS_DEEP_STUBS);
+        ProcessApiClient client = mock(ProcessApiClient.class, RETURNS_DEEP_STUBS);
         EngineConfig e1 = TestEngines.engine("e1", "http://e1");
         // total (9) exceeds returned rows (1) — the key set is a lower bound.
-        when(client.listLatestProcessDefinitions(any(), anyInt(), any())).thenReturn(defs(9, "vacationRequest"));
+        when(client.listLatestProcessDefinitions(any(), any(), anyInt())).thenReturn(defs(9, "vacationRequest"));
         when(client.queryRuntimeProcessInstances(any(), any(), any())).thenAnswer(inv -> {
             EngineConfig engine = inv.getArgument(0);
-            return count(totalFor(engine.id(), inv.getArgument(1)));
+            return count(totalFor(engine.id(), inv.getArgument(2)));
         });
 
         assertThat(service(client, e1).aggregate().lowerBound()).isTrue();
@@ -164,7 +164,7 @@ class LeakViewServiceTest {
 
     @Test
     void noLeaks_returnsEmpty_withoutEnumeratingDefinitions() {
-        FlowableEngineClient client = mock(FlowableEngineClient.class, RETURNS_DEEP_STUBS);
+        ProcessApiClient client = mock(ProcessApiClient.class, RETURNS_DEEP_STUBS);
         EngineConfig e1 = TestEngines.engine("e1", "http://e1");
         // Every whole-engine pre-check total is zero — no per-definition scan should fire.
         when(client.queryRuntimeProcessInstances(any(), any(), any())).thenReturn(count(0));
@@ -173,7 +173,7 @@ class LeakViewServiceTest {
 
         assertThat(response.definitions()).isEmpty();
         assertThat(response.lowerBound()).isFalse();
-        verify(client, never()).listLatestProcessDefinitions(any(), anyInt(), any());
+        verify(client, never()).listLatestProcessDefinitions(any(), any(), anyInt());
     }
 
     /** Deterministic fixture: (engine, key, suspended, startedBefore) → count total. */

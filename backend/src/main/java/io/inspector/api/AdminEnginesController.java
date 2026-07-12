@@ -1,6 +1,7 @@
 package io.inspector.api;
 
-import io.inspector.client.FlowableEngineClient;
+import io.inspector.client.GuardedCaller.CallPriority;
+import io.inspector.client.ProcessApiClient;
 import io.inspector.config.InspectorProperties;
 import io.inspector.config.InspectorProperties.EngineConfig;
 import io.inspector.config.InspectorProperties.EngineEnvironment;
@@ -61,7 +62,7 @@ public class AdminEnginesController {
     private final InspectorProperties inspectorProperties;
     private final RegistryProperties registryProperties;
     private final RegistryPinRegistry pinRegistry;
-    private final FlowableEngineClient flowable;
+    private final ProcessApiClient processApi;
     private final Environment env;
 
     public AdminEnginesController(
@@ -69,13 +70,13 @@ public class AdminEnginesController {
             InspectorProperties inspectorProperties,
             RegistryProperties registryProperties,
             RegistryPinRegistry pinRegistry,
-            FlowableEngineClient flowable,
+            ProcessApiClient processApi,
             Environment env) {
         this.store = store;
         this.inspectorProperties = inspectorProperties;
         this.registryProperties = registryProperties;
         this.pinRegistry = pinRegistry;
-        this.flowable = flowable;
+        this.processApi = processApi;
         this.env = env;
     }
 
@@ -121,7 +122,7 @@ public class AdminEnginesController {
         boolean ok;
         String detail;
         try {
-            var info = flowable.engineInfo(engine(row));
+            var info = processApi.engineInfo(engine(row), CallPriority.INTERACTIVE);
             ok = info != null;
             detail = "version=" + (info != null ? info.get("version") : "?");
         } catch (RuntimeException e) {

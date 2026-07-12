@@ -16,7 +16,9 @@ import io.github.resilience4j.bulkhead.BulkheadConfig;
 import io.github.resilience4j.bulkhead.BulkheadRegistry;
 import io.github.resilience4j.circuitbreaker.CircuitBreakerConfig;
 import io.github.resilience4j.circuitbreaker.CircuitBreakerRegistry;
-import io.inspector.client.FlowableEngineClient;
+import io.inspector.client.ExternalJobApiClient;
+import io.inspector.client.GuardedCaller;
+import io.inspector.client.ProcessApiClient;
 import io.inspector.config.InspectorProperties;
 import io.inspector.config.InspectorProperties.EngineConfig;
 import io.inspector.dto.SearchRequest.InstanceStatus;
@@ -34,7 +36,7 @@ import org.springframework.mock.env.MockEnvironment;
 
 /**
  * Rung 2 (unit-test-patterns): "Explain this status" evidence assembled from a REAL
- * {@link FlowableEngineClient} against WireMock — so the {@link io.inspector.client.EngineCallRecorder}
+ * {@link ProcessApiClient} against WireMock — so the {@link io.inspector.client.EngineCallRecorder}
  * genuinely captures each leg's URL/method/body/status (R-L3-01, SPEC §3). The join semantics
  * themselves are proven at rung 4 (never mocked); here we prove the derivation is transcribed
  * into falsifiable, re-derived-and-labeled evidence.
@@ -63,13 +65,16 @@ class StatusEvidenceServiceTest {
                         .maxConcurrentCalls(8)
                         .maxWaitDuration(Duration.ofSeconds(5))
                         .build()));
-        FlowableEngineClient client = new FlowableEngineClient(env, breakers, bulkheads);
+        GuardedCaller guarded = new GuardedCaller(env, breakers, bulkheads);
+        ProcessApiClient client = new ProcessApiClient(guarded);
+        ExternalJobApiClient externalJobs = new ExternalJobApiClient(guarded);
         EngineConfig engine = TestEngines.engine(ENGINE, wm.baseUrl());
         EngineRegistry registry = mock(EngineRegistry.class);
         when(registry.require(ENGINE)).thenReturn(engine);
         InstanceDetailService detail = new InstanceDetailService(
                 registry,
                 client,
+                externalJobs,
                 new InspectorProperties(null, null, null, null, List.of()),
                 mock(io.inspector.audit.ProtectedInstanceRepository.class));
         service = new StatusEvidenceService(registry, detail);

@@ -1196,6 +1196,36 @@ issue #84) reconciled the section headers in THIS file (shared-views / registry-
 headers now read shipped, not "unbuilt") plus REQUIREMENTS-REGISTER, TRACEABILITY-MATRIX,
 RUNBOOK, OPERATIONS §8, OPERATOR-QUICK-START, ARCHITECTURE §2.4 and SPECIFICATION §12.
 
+### P2 #15 — Engine-client split (F2, F9) *(✅ LANDED 2026-07-12, issue #86)*
+`FlowableEngineClient` — a 1,425-line three-context god-class — is deleted and replaced by a
+shared resilience core plus one facade per REST context, all in `io.inspector.client`:
+`GuardedCaller` (@Component: HTTP-client build/cache, Resilience4j circuit-breaker + bulkhead
+wiring, the `CallPriority {INTERACTIVE, BACKGROUND, DEEP_PAGE}` enum, `evict(id)`, the
+`X-Forwarded-User` write-side header logic), `ProcessApiClient` (all BPMN/process-engine
+methods + `JobLaneKind`), `CmmnApiClient` (case/job methods — `getCmmnDeadLetterJob`,
+`moveCmmnDeadLetterJob`, `getCmmnCaseInstance`, etc.), and `ExternalJobApiClient`
+(`listExternalWorkerJobs`). `FlowablePage` is now a top-level record. This also fixes the
+CMMN/external-worker hardcoded-INTERACTIVE bug F2 named (both facades now take `CallPriority`
+like every other call).
+
+**Uniform `CallPriority` first-param (F9):** every facade method's signature is now
+`(EngineConfig engine, CallPriority priority, ...rest)` — no priority-less convenience
+overloads. Telescoping overloads were collapsed into one canonical signature per method (e.g.
+`listProcessDefinitionsByKey`'s 5 overloads → one `(engine, priority, key, version, start,
+size)`); callers that used to omit `size`/`start`/`version` now pass the canonical defaults
+explicitly. All ~19 consumer classes across `action`, `aggregate`, `bulk`, `cmmn`, `detail`,
+`migration`, `registry`, `resolve`, `sibling`, `snapshot`, `surgery`, `triage` were updated to
+the new constructor shapes and call sites (some, like `CorrectiveActionService` and
+`ResolveService`, now inject both `ProcessApiClient` and `CmmnApiClient` since they route
+BPMN and CMMN calls through different facades).
+
+*Tests:* `FlowableEngineClientTest` (383 lines, one grab-bag rung-2 WireMock suite) split into
+`GuardedCallerTest` (auth/timeout/redirect/breaker/evict/forwarded-user — cross-cutting
+concerns exercised through `ProcessApiClient` as a thin call vehicle), `ProcessApiClientTest`,
+`CmmnApiClientTest`, `ExternalJobApiClientTest` — one class per facade, matching the
+production split. Every consumer test's mock type/constructor/call-site was updated in
+lockstep. Full `mvn test` (798 tests) green; `mvn spotless:apply` clean.
+
 ## Build order inside any milestone
 backend DTO → engine client call → aggregator/join logic → controller → typed frontend API
 client → component. Every Flowable call gets an integration test against the dockerized

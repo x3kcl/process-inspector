@@ -24,9 +24,10 @@ import io.inspector.audit.AuditEntry;
 import io.inspector.audit.AuditService;
 import io.inspector.audit.ProtectedInstance;
 import io.inspector.audit.ProtectedInstanceRepository;
-import io.inspector.client.FlowableEngineClient;
-import io.inspector.client.FlowableEngineClient.FlowablePage;
-import io.inspector.client.FlowableEngineClient.JobLaneKind;
+import io.inspector.client.FlowablePage;
+import io.inspector.client.GuardedCaller.CallPriority;
+import io.inspector.client.ProcessApiClient;
+import io.inspector.client.ProcessApiClient.JobLaneKind;
 import io.inspector.config.InspectorProperties;
 import io.inspector.config.InspectorProperties.EngineEnvironment;
 import io.inspector.config.InspectorProperties.EngineMode;
@@ -72,7 +73,7 @@ class BulkJobServiceTest {
     private final CorrectiveActionService actions = mock(CorrectiveActionService.class);
     private final ProtectedInstanceRepository protectedInstances = mock(ProtectedInstanceRepository.class);
     private final AuditService audit = mock(AuditService.class);
-    private final FlowableEngineClient client = mock(FlowableEngineClient.class);
+    private final ProcessApiClient client = mock(ProcessApiClient.class);
     private final Authentication responder = new TestingAuthenticationToken("resp", "n/a", "ROLE_RESPONDER");
 
     private final Map<UUID, BulkJob> jobStore = new ConcurrentHashMap<>();
@@ -397,7 +398,8 @@ class BulkJobServiceTest {
 
     @Test
     void retryResolvesCurrentDeadLetterJobsPerInstance() {
-        when(client.listJobs(any(), eq(JobLaneKind.DEADLETTER), anyMap(), anyInt(), anyInt()))
+        when(client.listJobs(
+                        any(), eq(CallPriority.INTERACTIVE), eq(JobLaneKind.DEADLETTER), anyMap(), anyInt(), anyInt()))
                 .thenReturn(page(List.of(Map.of("id", "dlq-1"), Map.of("id", "dlq-2"))));
         when(actions.execute(any(), any(), eq(ActionVerb.RETRY_JOB), any(), any()))
                 .thenReturn(new ActionResult(UUID.randomUUID(), "c", "ok", 200, "moved"));
@@ -420,7 +422,8 @@ class BulkJobServiceTest {
 
     @Test
     void retryWithNoDeadLettersLeftSkipsAsAlreadyResolved() {
-        when(client.listJobs(any(), eq(JobLaneKind.DEADLETTER), anyMap(), anyInt(), anyInt()))
+        when(client.listJobs(
+                        any(), eq(CallPriority.INTERACTIVE), eq(JobLaneKind.DEADLETTER), anyMap(), anyInt(), anyInt()))
                 .thenReturn(page(List.of()));
 
         BulkDtos.BulkJobDto submitted = service.submit(
@@ -455,7 +458,8 @@ class BulkJobServiceTest {
         BulkJobItem item = new BulkJobItem(job.getId(), 0, ENGINE, "pi-1", "dlq-1", BulkJobItem.State.pending);
         item.settle(BulkJobItem.State.unknown, "timeout", null, Instant.EPOCH);
         itemStore.put(job.getId() + "#0", item);
-        when(client.getJob(any(), eq(JobLaneKind.DEADLETTER), eq("dlq-1"))).thenReturn(null);
+        when(client.getJob(any(), eq(CallPriority.INTERACTIVE), eq(JobLaneKind.DEADLETTER), eq("dlq-1")))
+                .thenReturn(null);
 
         BulkDtos.BulkItemDto verified = service.verifyNow(job.getId(), 0);
 
@@ -471,7 +475,8 @@ class BulkJobServiceTest {
         BulkJobItem item = new BulkJobItem(job.getId(), 0, ENGINE, "pi-1", "dlq-1", BulkJobItem.State.pending);
         item.settle(BulkJobItem.State.unknown, "timeout", null, Instant.EPOCH);
         itemStore.put(job.getId() + "#0", item);
-        when(client.getJob(any(), eq(JobLaneKind.DEADLETTER), eq("dlq-1"))).thenReturn(Map.of("id", "dlq-1"));
+        when(client.getJob(any(), eq(CallPriority.INTERACTIVE), eq(JobLaneKind.DEADLETTER), eq("dlq-1")))
+                .thenReturn(Map.of("id", "dlq-1"));
 
         BulkDtos.BulkItemDto verified = service.verifyNow(job.getId(), 0);
 

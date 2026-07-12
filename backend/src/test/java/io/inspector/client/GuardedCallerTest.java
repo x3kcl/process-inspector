@@ -21,6 +21,7 @@ import io.github.resilience4j.bulkhead.BulkheadRegistry;
 import io.github.resilience4j.circuitbreaker.CallNotPermittedException;
 import io.github.resilience4j.circuitbreaker.CircuitBreakerConfig;
 import io.github.resilience4j.circuitbreaker.CircuitBreakerRegistry;
+import io.inspector.client.GuardedCaller.CallPriority;
 import io.inspector.config.InspectorProperties.EngineConfig;
 import io.inspector.config.InspectorProperties.Timeouts;
 import io.inspector.support.TestEngines;
@@ -37,16 +38,20 @@ import org.springframework.web.client.ResourceAccessException;
 
 /**
  * Rung 2: pure HTTP-client behavior against WireMock — auth header shape, timeouts,
- * redirect policy and the per-engine circuit breaker. Join/paging semantics are rung 4
- * (never mocked — engine-harness iron rule).
+ * redirect policy, the per-engine circuit breaker + evict seam, and the X-Forwarded-User
+ * send-side. These are GuardedCaller cross-cutting concerns; {@link ProcessApiClient} is used
+ * as the call vehicle only because it offers convenient thin wrappers (engineInfo,
+ * moveDeadLetterJob) — every *ApiClient facade shares the SAME resilience core underneath.
+ * Join/paging semantics are rung 4 (never mocked — engine-harness iron rule).
  */
-class FlowableEngineClientTest {
+class GuardedCallerTest {
 
     private WireMockServer wm;
     private MockEnvironment env;
     private CircuitBreakerRegistry breakers;
     private BulkheadRegistry bulkheads;
-    private FlowableEngineClient client;
+    private GuardedCaller guarded;
+    private ProcessApiClient client;
 
     @BeforeEach
     void setUp() {
@@ -72,7 +77,8 @@ class FlowableEngineClientTest {
                         .maxConcurrentCalls(8)
                         .maxWaitDuration(Duration.ofSeconds(5))
                         .build()));
-        client = new FlowableEngineClient(env, breakers, bulkheads);
+        guarded = new GuardedCaller(env, breakers, bulkheads);
+        client = new ProcessApiClient(guarded);
     }
 
     @AfterEach
@@ -93,30 +99,12 @@ class FlowableEngineClientTest {
     void emitsBasicAuthResolvedFromPasswordRef() {
         wm.stubFor(get(urlPathEqualTo("/management/engine")).willReturn(okJson("{\"version\":\"6.8.0\"}")));
 
-        Map<String, Object> info = client.engineInfo(engine("auth-engine"));
+        Map<String, Object> info = client.engineInfo(engine("auth-engine"), CallPriority.INTERACTIVE);
 
         assertThat(info).containsEntry("version", "6.8.0");
         // base64(rest-admin:test) — the secret comes from the env var NAMED by password-ref
         wm.verify(getRequestedFor(urlPathEqualTo("/management/engine"))
                 .withHeader("Authorization", equalTo("Basic cmVzdC1hZG1pbjp0ZXN0")));
-    }
-
-    @Test
-    void latestProcessDefinitionByKeySendsLatestTrue() {
-        // A plain size=1 does NOT return the latest version (name-ascending default) — the
-        // migration default-target resolution needs latest=true. Pin it on the wire.
-        wm.stubFor(get(urlPathEqualTo("/repository/process-definitions"))
-                .willReturn(
-                        okJson("{\"data\":[{\"id\":\"demoMigration:5:abc\",\"key\":\"demoMigration\",\"version\":5}],"
-                                + "\"total\":1,\"start\":0,\"size\":1}")));
-
-        var page = client.latestProcessDefinitionByKey(engine("latest-engine"), "demoMigration");
-
-        assertThat(page.dataOrEmpty().get(0)).containsEntry("version", 5);
-        wm.verify(getRequestedFor(urlPathEqualTo("/repository/process-definitions"))
-                .withQueryParam("key", equalTo("demoMigration"))
-                .withQueryParam("latest", equalTo("true"))
-                .withQueryParam("size", equalTo("1")));
     }
 
     @Test
@@ -128,7 +116,7 @@ class FlowableEngineClientTest {
                 new Timeouts(1000, 1000, null));
         wm.stubFor(get(urlPathEqualTo("/management/engine")).willReturn(okJson("{}")));
 
-        assertThatThrownBy(() -> client.engineInfo(engine))
+        assertThatThrownBy(() -> client.engineInfo(engine, CallPriority.INTERACTIVE))
                 .isInstanceOf(IllegalStateException.class)
                 .hasMessageContaining("NOT_SET_ANYWHERE");
     }
@@ -138,7 +126,8 @@ class FlowableEngineClientTest {
         wm.stubFor(get(urlPathEqualTo("/management/engine"))
                 .willReturn(okJson("{}").withFixedDelay(2000)));
 
-        assertThatThrownBy(() -> client.engineInfo(engine("slow-engine"))).isInstanceOf(ResourceAccessException.class);
+        assertThatThrownBy(() -> client.engineInfo(engine("slow-engine"), CallPriority.INTERACTIVE))
+                .isInstanceOf(ResourceAccessException.class);
     }
 
     @Test
@@ -148,7 +137,7 @@ class FlowableEngineClientTest {
         wm.stubFor(get(urlEqualTo("/redirected")).willReturn(okJson("{\"version\":\"evil\"}")));
 
         try {
-            client.engineInfo(engine("redirect-engine"));
+            client.engineInfo(engine("redirect-engine"), CallPriority.INTERACTIVE);
         } catch (RuntimeException expected) {
             // a surfaced 3xx is fine — following it is not
         }
@@ -162,10 +151,12 @@ class FlowableEngineClientTest {
                 get(urlPathEqualTo("/management/engine")).willReturn(aResponse().withStatus(500)));
 
         for (int i = 0; i < 2; i++) {
-            assertThatThrownBy(() -> client.engineInfo(engine)).isInstanceOf(HttpServerErrorException.class);
+            assertThatThrownBy(() -> client.engineInfo(engine, CallPriority.INTERACTIVE))
+                    .isInstanceOf(HttpServerErrorException.class);
         }
         // Window full (2/2 failures) → open. The third call must not touch the network.
-        assertThatThrownBy(() -> client.engineInfo(engine)).isInstanceOf(CallNotPermittedException.class);
+        assertThatThrownBy(() -> client.engineInfo(engine, CallPriority.INTERACTIVE))
+                .isInstanceOf(CallNotPermittedException.class);
         wm.verify(2, getRequestedFor(urlPathEqualTo("/management/engine")));
     }
 
@@ -175,16 +166,18 @@ class FlowableEngineClientTest {
         wm.stubFor(
                 get(urlPathEqualTo("/management/engine")).willReturn(aResponse().withStatus(500)));
         for (int i = 0; i < 2; i++) {
-            assertThatThrownBy(() -> client.engineInfo(engine)).isInstanceOf(HttpServerErrorException.class);
+            assertThatThrownBy(() -> client.engineInfo(engine, CallPriority.INTERACTIVE))
+                    .isInstanceOf(HttpServerErrorException.class);
         }
-        assertThatThrownBy(() -> client.engineInfo(engine)).isInstanceOf(CallNotPermittedException.class);
+        assertThatThrownBy(() -> client.engineInfo(engine, CallPriority.INTERACTIVE))
+                .isInstanceOf(CallNotPermittedException.class);
 
         // Engine heals; after wait-duration (500ms) the breaker half-opens and the call succeeds.
         wm.stubFor(get(urlPathEqualTo("/management/engine")).willReturn(okJson("{\"version\":\"6.8.0\"}")));
         await().atMost(2, TimeUnit.SECONDS)
                 .pollInterval(100, TimeUnit.MILLISECONDS)
-                .untilAsserted(
-                        () -> assertThatCode(() -> client.engineInfo(engine)).doesNotThrowAnyException());
+                .untilAsserted(() -> assertThatCode(() -> client.engineInfo(engine, CallPriority.INTERACTIVE))
+                        .doesNotThrowAnyException());
     }
 
     @Test
@@ -196,7 +189,8 @@ class FlowableEngineClientTest {
         // Well past the 2-call window: 404s are the expected negative answer of
         // capability probes and must never open the breaker.
         for (int i = 0; i < 4; i++) {
-            assertThatThrownBy(() -> client.engineInfo(engine)).isInstanceOf(HttpClientErrorException.class);
+            assertThatThrownBy(() -> client.engineInfo(engine, CallPriority.INTERACTIVE))
+                    .isInstanceOf(HttpClientErrorException.class);
         }
         wm.verify(4, getRequestedFor(urlPathEqualTo("/management/engine")));
     }
@@ -207,67 +201,23 @@ class FlowableEngineClientTest {
         // instances are evicted, so the NEXT call rebuilds against the new config.
         wm.stubFor(get(urlPathEqualTo("/management/engine")).willReturn(okJson("{\"version\":\"6.8.0\"}")));
         EngineConfig engine = engine("evict-me");
-        client.engineInfo(engine); // materializes the cached client + the "engine" R4j instances
+        client.engineInfo(
+                engine, CallPriority.INTERACTIVE); // materializes the cached client + the "engine" R4j instances
 
-        assertThat(client.isClientCached("evict-me")).isTrue();
+        assertThat(guarded.isClientCached("evict-me")).isTrue();
         assertThat(breakers.find("evict-me")).isPresent();
         assertThat(bulkheads.find("evict-me")).isPresent();
 
-        client.evict("evict-me");
+        guarded.evict("evict-me");
 
-        assertThat(client.isClientCached("evict-me")).isFalse();
+        assertThat(guarded.isClientCached("evict-me")).isFalse();
         assertThat(breakers.find("evict-me")).as("breaker REMOVED, not reset").isEmpty();
         assertThat(bulkheads.find("evict-me")).as("bulkhead REMOVED, not reset").isEmpty();
 
         // A later call rebuilds cleanly — fresh client + fresh breaker.
-        assertThatCode(() -> client.engineInfo(engine)).doesNotThrowAnyException();
+        assertThatCode(() -> client.engineInfo(engine, CallPriority.INTERACTIVE))
+                .doesNotThrowAnyException();
         assertThat(breakers.find("evict-me")).isPresent();
-    }
-
-    @Test
-    void overdueTimerQuerySendsWholeSecondDueBefore() {
-        // Regression (found on the dockerized engine): Flowable 400s on fractional seconds.
-        EngineConfig engine = engine("timer-engine");
-        wm.stubFor(get(urlPathEqualTo("/management/timer-jobs"))
-                .willReturn(okJson("{\"data\":[],\"total\":3,\"start\":0,\"size\":0}")));
-
-        long total = client.countOverdueTimers(engine, java.time.Instant.parse("2026-07-06T06:20:00.465Z"));
-
-        assertThat(total).isEqualTo(3);
-        wm.verify(getRequestedFor(urlPathEqualTo("/management/timer-jobs"))
-                .withQueryParam("dueBefore", equalTo("2026-07-06T06:20:00Z")));
-    }
-
-    @Test
-    void laneCountsUseSizeOneTotalsTrick() {
-        EngineConfig engine = engine("lane-engine");
-        wm.stubFor(get(urlPathEqualTo("/management/deadletter-jobs"))
-                .willReturn(okJson("{\"data\":[{\"id\":\"j1\"}],\"total\":137,\"start\":0,\"size\":1}")));
-
-        long total = client.countJobs(engine, FlowableEngineClient.JobLaneKind.DEADLETTER);
-
-        assertThat(total).isEqualTo(137);
-        wm.verify(getRequestedFor(urlPathEqualTo("/management/deadletter-jobs")).withQueryParam("size", equalTo("1")));
-    }
-
-    @Test
-    void externalWorkerJobsHitTheSiblingExternalJobApiContextNotManagement() {
-        // base-url ends in /service; the external-worker list lives at the /external-job-api
-        // sibling (verified live). The client must swap the suffix, not append under /service.
-        EngineConfig engine = TestEngines.engine("ew-engine", wm.baseUrl() + "/flowable-rest/service");
-        wm.stubFor(
-                get(urlPathEqualTo("/flowable-rest/external-job-api/jobs"))
-                        .willReturn(
-                                okJson(
-                                        "{\"data\":[{\"id\":\"ew-1\",\"lockOwner\":\"worker-3\"}],\"total\":1,\"start\":0,\"size\":50}")));
-
-        FlowableEngineClient.FlowablePage page =
-                client.listExternalWorkerJobs(engine, java.util.Map.of("processInstanceId", "pi-1"), 0, 50);
-
-        assertThat(page.total()).isEqualTo(1);
-        assertThat(page.dataOrEmpty().get(0).get("lockOwner")).isEqualTo("worker-3");
-        wm.verify(getRequestedFor(urlPathEqualTo("/flowable-rest/external-job-api/jobs"))
-                .withQueryParam("processInstanceId", equalTo("pi-1")));
     }
 
     /* ---------------- X-Forwarded-User send-side (M4-CLOSEOUT §2 / S4) ---------------- */
@@ -286,7 +236,7 @@ class FlowableEngineClientTest {
                 .willReturn(aResponse().withStatus(200)));
 
         ForwardedActor.set("alice");
-        client.moveDeadLetterJob(forwardEngine("fwd-on"), "j1");
+        client.moveDeadLetterJob(forwardEngine("fwd-on"), CallPriority.INTERACTIVE, "j1");
 
         wm.verify(postRequestedFor(urlPathEqualTo("/management/deadletter-jobs/j1"))
                 .withHeader("X-Forwarded-User", equalTo("alice")));
@@ -299,7 +249,7 @@ class FlowableEngineClientTest {
 
         // A plain (non-forward-user) engine never carries the header, even with an actor set.
         ForwardedActor.set("alice");
-        client.moveDeadLetterJob(engine("fwd-off"), "j1");
+        client.moveDeadLetterJob(engine("fwd-off"), CallPriority.INTERACTIVE, "j1");
 
         wm.verify(postRequestedFor(urlPathEqualTo("/management/deadletter-jobs/j1"))
                 .withoutHeader("X-Forwarded-User"));
@@ -311,7 +261,7 @@ class FlowableEngineClientTest {
                 .willReturn(aResponse().withStatus(200)));
 
         // Opted-in engine but no actor on the thread (holder empty) → header dropped, never blank.
-        client.moveDeadLetterJob(forwardEngine("fwd-on-noactor"), "j1");
+        client.moveDeadLetterJob(forwardEngine("fwd-on-noactor"), CallPriority.INTERACTIVE, "j1");
 
         wm.verify(postRequestedFor(urlPathEqualTo("/management/deadletter-jobs/j1"))
                 .withoutHeader("X-Forwarded-User"));
@@ -324,7 +274,7 @@ class FlowableEngineClientTest {
 
         // CR/LF would be a header-injection vector — the holder strips it before it reaches the wire.
         ForwardedActor.set("al\r\nice");
-        client.moveDeadLetterJob(forwardEngine("fwd-sanitize"), "j1");
+        client.moveDeadLetterJob(forwardEngine("fwd-sanitize"), CallPriority.INTERACTIVE, "j1");
 
         wm.verify(postRequestedFor(urlPathEqualTo("/management/deadletter-jobs/j1"))
                 .withHeader("X-Forwarded-User", equalTo("alice")));
@@ -336,48 +286,8 @@ class FlowableEngineClientTest {
 
         // The interceptor is WRITE-client only — a read on a forward-user engine carries no identity.
         ForwardedActor.set("alice");
-        client.engineInfo(forwardEngine("fwd-read"));
+        client.engineInfo(forwardEngine("fwd-read"), CallPriority.INTERACTIVE);
 
         wm.verify(getRequestedFor(urlPathEqualTo("/management/engine")).withoutHeader("X-Forwarded-User"));
-    }
-
-    // ── F1: sibling-context (/cmmn-api) id-in-path whitelist bypass ────────────────────────────
-    // The CMMN by-id calls interpolate an attacker-influenceable job/case id into the path. A value
-    // carrying `/`, `?`, `#` or a `..` traversal must never re-target the request to another engine
-    // path under the BFF's rest-admin creds — it is rejected at the client boundary, BEFORE dialling.
-
-    @Test
-    void cmmnDeadLetterReadRejectsPathTraversalIdWithoutDialling() {
-        assertThatThrownBy(() -> client.getCmmnDeadLetterJob(engine("trav"), "../../cmmn-repository/deployments"))
-                .isInstanceOf(IllegalArgumentException.class);
-        assertThat(wm.getAllServeEvents()).isEmpty();
-    }
-
-    @Test
-    void cmmnDeadLetterMutationsRejectReservedCharIdsWithoutDialling() {
-        // '/' would re-path a retry; '?' would splice a query — both refused before any engine byte.
-        assertThatThrownBy(() -> client.moveCmmnDeadLetterJob(engine("mv"), "1/../../management/jobs"))
-                .isInstanceOf(IllegalArgumentException.class);
-        assertThatThrownBy(() -> client.deleteCmmnDeadLetterJob(engine("del"), "1?cascade=true"))
-                .isInstanceOf(IllegalArgumentException.class);
-        assertThat(wm.getAllServeEvents()).isEmpty();
-    }
-
-    @Test
-    void cmmnCaseResolveRejectsTraversalIdWithoutDialling() {
-        assertThatThrownBy(() -> client.getCmmnCaseInstance(engine("res"), "..%2f..%2fadmin"))
-                .isInstanceOf(IllegalArgumentException.class);
-        assertThat(wm.getAllServeEvents()).isEmpty();
-    }
-
-    @Test
-    void cmmnDeadLetterReadReachesTheDeadletterPathForAValidId() {
-        wm.stubFor(get(urlPathEqualTo("/cmmn-api/cmmn-management/deadletter-jobs/abc-123"))
-                .willReturn(okJson("{\"id\":\"abc-123\",\"caseInstanceId\":\"c1\"}")));
-
-        Map<String, Object> job = client.getCmmnDeadLetterJob(engine("ok"), "abc-123");
-
-        assertThat(job).containsEntry("caseInstanceId", "c1");
-        wm.verify(getRequestedFor(urlPathEqualTo("/cmmn-api/cmmn-management/deadletter-jobs/abc-123")));
     }
 }

@@ -279,7 +279,10 @@ tests + spec-sync in the same PR, and follows green-ci.
 15. **Engine-client split (F2, F9)** — `ProcessApiClient` / `CmmnApiClient` /
     `ExternalJobApiClient` facades over one `GuardedCaller` core; uniform `CallPriority`
     first-param; delete telescoping overloads; fix stale javadoc. *Do this BEFORE #16/#18
-    consumers (Copilot's sequencing catch).*
+    consumers (Copilot's sequencing catch).* **✅ LANDED 2026-07-12 (#86)** — see
+    IMPLEMENTATION-PLAN.md's "P2 #15" slice entry for the shipped shape; the CMMN/
+    external-worker hardcoded-INTERACTIVE bug this finding named is fixed as part of the
+    uniform-priority reorder.
 16. **One error contract (F4)** — global advice mapping everything onto ProblemDetail+`code`;
     `spring.mvc.problemdetails.enabled`; `gen:api` regen; frontend `ApiError` simplification.
 17. **Frontend fitness pack (U1, U2, U3, U5)** — lazy `/inspect` + `manualChunks`

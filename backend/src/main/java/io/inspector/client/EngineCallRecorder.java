@@ -6,7 +6,7 @@ import java.util.List;
 
 /**
  * A thread-local capture of the raw Flowable REST calls a single derivation makes — the
- * per-leg evidence behind "Explain this status" (R-L3-01, SPEC §3). {@link FlowableEngineClient}
+ * per-leg evidence behind "Explain this status" (R-L3-01, SPEC §3). {@link GuardedCaller}
  * writes one {@link Leg} per outbound call while a recording is {@linkplain #begin() active};
  * everything else is inert (the interceptor short-circuits on {@link #isActive()}), so the
  * capture costs nothing on the hot search/vitals paths.

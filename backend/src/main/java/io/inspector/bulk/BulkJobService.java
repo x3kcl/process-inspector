@@ -14,8 +14,9 @@ import io.inspector.audit.AuditService;
 import io.inspector.audit.OutcomeVerificationFailedException;
 import io.inspector.audit.ProtectedInstance;
 import io.inspector.audit.ProtectedInstanceRepository;
-import io.inspector.client.FlowableEngineClient;
-import io.inspector.client.FlowableEngineClient.JobLaneKind;
+import io.inspector.client.GuardedCaller.CallPriority;
+import io.inspector.client.ProcessApiClient;
+import io.inspector.client.ProcessApiClient.JobLaneKind;
 import io.inspector.config.InspectorProperties;
 import io.inspector.config.InspectorProperties.EngineConfig;
 import io.inspector.registry.EngineRegistry;
@@ -81,7 +82,7 @@ public class BulkJobService {
     private final ProtectedInstanceRepository protectedInstances;
     private final AuditService audit;
     private final EngineRegistry registry;
-    private final FlowableEngineClient client;
+    private final ProcessApiClient client;
     private final Clock clock;
     private final InspectorProperties props;
     private final ApplicationEventPublisher events;
@@ -105,7 +106,7 @@ public class BulkJobService {
             ProtectedInstanceRepository protectedInstances,
             AuditService audit,
             EngineRegistry registry,
-            FlowableEngineClient client,
+            ProcessApiClient client,
             Clock clock,
             InspectorProperties props,
             ApplicationEventPublisher events,
@@ -480,6 +481,7 @@ public class BulkJobService {
             jobIds = client
                     .listJobs(
                             engine,
+                            CallPriority.INTERACTIVE,
                             JobLaneKind.DEADLETTER,
                             Map.of("processInstanceId", item.getInstanceId()),
                             0,
@@ -641,7 +643,8 @@ public class BulkJobService {
                 if (item.getJobRef() == null) {
                     return new Verdict(null, "no job reference recorded — needs L3 review of the audit trail");
                 }
-                Map<String, Object> dlq = client.getJob(engine, JobLaneKind.DEADLETTER, item.getJobRef());
+                Map<String, Object> dlq =
+                        client.getJob(engine, CallPriority.INTERACTIVE, JobLaneKind.DEADLETTER, item.getJobRef());
                 return dlq == null
                         ? new Verdict(
                                 BulkJobItem.State.ok,
@@ -656,13 +659,15 @@ public class BulkJobService {
                 if (item.getJobRef() == null) {
                     return new Verdict(null, "no timer reference recorded — needs L3 review of the audit trail");
                 }
-                Map<String, Object> timer = client.getJob(engine, JobLaneKind.TIMER, item.getJobRef());
+                Map<String, Object> timer =
+                        client.getJob(engine, CallPriority.INTERACTIVE, JobLaneKind.TIMER, item.getJobRef());
                 return timer == null
                         ? new Verdict(BulkJobItem.State.ok, "verified: timer " + item.getJobRef() + " has fired")
                         : new Verdict(null, "timer " + item.getJobRef() + " is still queued — still-pending");
             }
             case SUSPEND, ACTIVATE -> {
-                Map<String, Object> instance = client.getRuntimeProcessInstance(engine, item.getInstanceId());
+                Map<String, Object> instance =
+                        client.getRuntimeProcessInstance(engine, CallPriority.INTERACTIVE, item.getInstanceId());
                 if (instance == null) {
                     return new Verdict(null, "instance is no longer running — completed or deleted since; needs L3");
                 }

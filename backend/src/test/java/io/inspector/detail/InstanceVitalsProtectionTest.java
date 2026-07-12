@@ -6,7 +6,9 @@ import static org.mockito.Mockito.when;
 
 import io.inspector.audit.ProtectedInstance;
 import io.inspector.audit.ProtectedInstanceRepository;
-import io.inspector.client.FlowableEngineClient;
+import io.inspector.client.ExternalJobApiClient;
+import io.inspector.client.GuardedCaller.CallPriority;
+import io.inspector.client.ProcessApiClient;
 import io.inspector.config.InspectorProperties;
 import io.inspector.config.InspectorProperties.EngineConfig;
 import io.inspector.dto.InstanceDetail;
@@ -32,15 +34,20 @@ class InstanceVitalsProtectionTest {
     private static final String INSTANCE = "pi-1";
 
     private final EngineConfig engine = TestEngines.engine(ENGINE, "http://engine.test/flowable-rest/service");
-    private final FlowableEngineClient flowable = mock(FlowableEngineClient.class);
+    private final ProcessApiClient flowable = mock(ProcessApiClient.class);
+    private final ExternalJobApiClient externalJobs = mock(ExternalJobApiClient.class);
     private final EngineRegistry registry = mock(EngineRegistry.class);
     private final ProtectedInstanceRepository protectedInstances = mock(ProtectedInstanceRepository.class);
     private final InstanceDetailService service = new InstanceDetailService(
-            registry, flowable, new InspectorProperties(null, null, null, null, List.of()), protectedInstances);
+            registry,
+            flowable,
+            externalJobs,
+            new InspectorProperties(null, null, null, null, List.of()),
+            protectedInstances);
 
     private void endedInstanceExists() {
         when(registry.require(ENGINE)).thenReturn(engine);
-        when(flowable.getHistoricProcessInstance(engine, INSTANCE))
+        when(flowable.getHistoricProcessInstance(engine, CallPriority.INTERACTIVE, INSTANCE))
                 .thenReturn(Map.of("id", INSTANCE, "endTime", "2026-07-10T09:05:00Z"));
     }
 
