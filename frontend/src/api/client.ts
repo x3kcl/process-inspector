@@ -6,12 +6,14 @@ import { getBasicAuth } from './auth'
 
 export class ApiError extends Error {
   readonly status: number
-  /** The parsed error body — action endpoints answer RFC-7807 ProblemDetails whose
-   *  machine-readable `code`/`outcome` properties drive the guard-ladder UI copy. */
+  /** The parsed error body — one contract everywhere (issue #87 — F4): every error the BFF
+   *  answers, from an action-endpoint guard refusal to a bare 403/404, is the SAME
+   *  RFC-7807 ProblemDetail shape, whose machine-readable `code`/`outcome` properties drive
+   *  the guard-ladder UI copy. */
   readonly body: unknown
-  /** The quotable support id (usability W1#6, R-AUD-04): the BFF stamps every error body
-   *  — ProblemDetail AND the bare Spring 403/404 shape — with the request's X-Request-Id,
-   *  which is also the audit rows' correlationId and the log lines' MDC id. */
+  /** The quotable support id (usability W1#6, R-AUD-04): the BFF stamps every ProblemDetail
+   *  body with the request's X-Request-Id, which is also the audit rows' correlationId and
+   *  the log lines' MDC id. */
   readonly requestId: string | undefined
 
   constructor(status: number, body: unknown) {
@@ -35,9 +37,8 @@ export class ApiError extends Error {
   private static sentence(status: number, body: unknown): string {
     if (status === 401) return 'Not signed in'
     if (body !== null && typeof body === 'object') {
-      // SearchController answers bad filter input as 400 {"error": "<message>"}.
-      if ('error' in body && typeof body.error === 'string') return body.error
-      // ProblemDetail: detail carries the operator-facing sentence.
+      // ProblemDetail: detail carries the operator-facing sentence; title is the fallback
+      // for the rare handler that omits one (e.g. a framework-level ProblemDetail).
       if ('detail' in body && typeof body.detail === 'string') return body.detail
       if ('title' in body && typeof body.title === 'string') return body.title
     }

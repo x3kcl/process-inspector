@@ -50,11 +50,15 @@ describe('xsrfHeaderValue', () => {
 
 describe('ApiError — the quotable request id (usability W1#6, R-AUD-04)', () => {
   it('exposes the body requestId and ends the message with the quote-this-ID next move', () => {
+    // One error contract (issue #87 — F4): the container /error fallback (RequestIdErrorAttributes)
+    // now renders the same ProblemDetail-shaped body as everything else.
     const error = new ApiError(404, {
-      timestamp: '2026-07-10T12:00:00Z',
+      type: 'about:blank',
+      title: 'Not Found',
       status: 404,
-      error: 'Not Found',
-      path: '/api/instances/engine-a/gone',
+      detail: 'Not Found',
+      instance: '/api/instances/engine-a/gone',
+      code: 'not-found',
       requestId: 'req-4711',
     })
     expect(error.requestId).toBe('req-4711')
@@ -72,7 +76,7 @@ describe('ApiError — the quotable request id (usability W1#6, R-AUD-04)', () =
   })
 
   it('never invents an id when the body carries none', () => {
-    const error = new ApiError(403, { status: 403, error: 'Forbidden' })
+    const error = new ApiError(403, { status: 403, title: 'Forbidden', code: 'forbidden' })
     expect(error.requestId).toBeUndefined()
     expect(error.message).not.toContain('Quote request ID')
   })

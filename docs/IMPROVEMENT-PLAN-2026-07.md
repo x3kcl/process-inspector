@@ -285,6 +285,13 @@ tests + spec-sync in the same PR, and follows green-ci.
     uniform-priority reorder.
 16. **One error contract (F4)** — global advice mapping everything onto ProblemDetail+`code`;
     `spring.mvc.problemdetails.enabled`; `gen:api` regen; frontend `ApiError` simplification.
+    **✅ LANDED 2026-07-12 (#87)** — see IMPLEMENTATION-PLAN.md's "P2 #16" slice entry for the
+    shipped shape. Deliberate deviation: does NOT set `spring.mvc.problemdetails.enabled` —
+    `ActionExceptionHandler`'s own `ResponseStatusException` handler plus a rewritten
+    `RequestIdErrorAttributes` (the container `/error` fallback) already converge every path on
+    ONE shape without it, and enabling the flag would let Boot's own autoconfigured handler race
+    the app's for `ResponseStatusException` without adding anything the app's handler doesn't
+    already do (no `code`/`requestId` stamping of its own).
 17. **Frontend fitness pack (U1, U2, U3, U5)** — lazy `/inspect` + `manualChunks`
     (target: halve the 1.5 MB entry); native-`<dialog>` `ModalShell`; grid "Open" `<Link>`
     column + Enter-to-open; `useProdGuard` + `<GuardFields>` extraction across the 13 modals.

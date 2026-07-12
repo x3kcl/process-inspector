@@ -4,13 +4,9 @@ import io.inspector.aggregate.SearchService;
 import io.inspector.dto.SearchRequest;
 import io.inspector.dto.SearchResponse;
 import io.inspector.security.ReadScopeGate;
-import jakarta.servlet.http.HttpServletRequest;
-import java.util.LinkedHashMap;
 import java.util.Map;
 import java.util.Set;
-import org.springframework.http.ResponseEntity;
 import org.springframework.security.core.Authentication;
-import org.springframework.web.bind.annotation.ExceptionHandler;
 import org.springframework.web.bind.annotation.PostMapping;
 import org.springframework.web.bind.annotation.RequestBody;
 import org.springframework.web.bind.annotation.RequestMapping;
@@ -47,7 +43,7 @@ public class SearchController {
      * The filter is re-sent in the body and stays authoritative; the cursor only carries the resume
      * offsets. A deep-paged set is a SNAPSHOT (pagingCoherence) — the frontend shows the "loaded more
      * as of …" seam and Refresh resets the chain. A crafted/expired/mismatched cursor throws
-     * IllegalArgumentException → 400 (below), never a 500.
+     * IllegalArgumentException → 400 (global {@link ActionExceptionHandler}), never a 500.
      */
     private SearchResponse deepPage(SearchRequest request, Set<String> readable) {
         SearchService.DeepPage page =
@@ -58,24 +54,5 @@ public class SearchController {
 
     private static boolean notBlank(String s) {
         return s != null && !s.isBlank();
-    }
-
-    /**
-     * Bad filter input (unparseable failure window, unknown sortBy) is a 400, not a 500. This is the
-     * one search-error body that does NOT flow through the container {@code /error} path or a
-     * {@code ProblemDetail}, so neither {@code RequestIdErrorAttributes} nor
-     * {@code ProblemDetailRequestIdAdvice} would stamp it — attach the requestId here so this error,
-     * like every other, is quotable to support (#118 item 4). The {@code error} key + top-level
-     * {@code requestId} match what the SPA's {@code ApiError} already reads.
-     */
-    @ExceptionHandler(IllegalArgumentException.class)
-    public ResponseEntity<Map<String, String>> badRequest(IllegalArgumentException e, HttpServletRequest request) {
-        Map<String, String> body = new LinkedHashMap<>();
-        body.put("error", e.getMessage());
-        Object requestId = request.getAttribute(RequestIdFilter.ATTRIBUTE);
-        if (requestId != null) {
-            body.put("requestId", requestId.toString());
-        }
-        return ResponseEntity.badRequest().body(body);
     }
 }

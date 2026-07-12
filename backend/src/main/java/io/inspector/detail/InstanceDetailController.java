@@ -11,11 +11,8 @@ import io.inspector.dto.InstanceTimeline;
 import io.inspector.dto.InstanceVariables;
 import io.inspector.dto.InstanceVariables.VariableDto;
 import java.util.Locale;
-import java.util.Map;
 import org.springframework.http.MediaType;
-import org.springframework.http.ResponseEntity;
 import org.springframework.security.access.prepost.PreAuthorize;
-import org.springframework.web.bind.annotation.ExceptionHandler;
 import org.springframework.web.bind.annotation.GetMapping;
 import org.springframework.web.bind.annotation.PathVariable;
 import org.springframework.web.bind.annotation.RequestMapping;
@@ -145,11 +142,5 @@ public class InstanceDetailController {
     @PreAuthorize("@rbac.atLeastOn(authentication, 'VIEWER', #engineId)")
     public InstanceTimeline timeline(@PathVariable String engineId, @PathVariable String instanceId) {
         return detail.timeline(engineId, instanceId);
-    }
-
-    /** Bad lane names and friends are the caller's mistake — 400, not 500. */
-    @ExceptionHandler(IllegalArgumentException.class)
-    public ResponseEntity<Map<String, String>> badRequest(IllegalArgumentException e) {
-        return ResponseEntity.badRequest().body(Map.of("error", e.getMessage()));
     }
 }
