@@ -30,6 +30,12 @@ export default defineConfig({
     proxy: {
       '/api': process.env.INSPECTOR_BFF_URL ?? 'http://localhost:8085',
     },
+    // e2e CI job (#85) only: native fs.watch calls inotify_init(), and Linux returns EMFILE
+    // (not ENOSPC) once fs.inotify.max_user_instances is exhausted — six concurrent runner
+    // slots on network_mode: host share that per-UID ceiling. The e2e dev server only SERVES
+    // the built app for Playwright (no live-editing benefit from native watching), so polling
+    // sidesteps inotify entirely; local dev keeps native fs events.
+    watch: process.env.CI ? { usePolling: true } : undefined,
   },
   test: {
     // Default stays node (pure-logic tests); component tests opt into jsdom per-file
