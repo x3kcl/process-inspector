@@ -6,6 +6,7 @@ import io.inspector.audit.ProtectedInstanceRepository;
 import io.inspector.bulk.BulkJobItemRepository;
 import io.inspector.bulk.BulkJobRepository;
 import io.inspector.registry.EngineRegistryRepository;
+import io.inspector.registry.RegistryWriteProposalRepository;
 import io.inspector.snapshot.SnapshotCountRepository;
 import io.inspector.triage.ErrorGroupAckRepository;
 import io.inspector.views.RecentSearchRepository;
@@ -78,6 +79,11 @@ public class NoDbTestSupport {
     @Bean
     EngineRegistryRepository engineRegistryRepository() {
         return Mockito.mock(EngineRegistryRepository.class);
+    }
+
+    @Bean
+    RegistryWriteProposalRepository registryWriteProposalRepository() {
+        return Mockito.mock(RegistryWriteProposalRepository.class);
     }
 
     /**

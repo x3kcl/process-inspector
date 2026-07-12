@@ -812,17 +812,101 @@ and delete is a soft tombstone; hot reload evicts the per-id client caches (no r
   The PROBE endpoint (a live dial surface) RE-VALIDATES the base-URL before dialling (Gemini S4
   review) — it re-resolves, so a URL validated-at-add that has since rebound to an internal address
   is refused before any connection.
-  **DEFERRED to a follow-up (noted, not silently skipped):** (1) FOUR-EYES dual-control
-  (`PENDING_APPROVAL`, approver≠proposer) — no such infra exists yet; typed-token is the interim prod
-  gate. (2) Socket-level connect-time IP-PINNING of the pinned IP on the LIVE `HttpClient` connect for
-  the health-loop + actual-operation dials (`isPinAllowed`) — validate-at-write + validate-at-probe are
-  the guards shipped here; socket pinning (custom resolver) fully closes the sub-millisecond
-  validate→connect TOCTOU on every dial path. Both tracked for S4b.
-- **S5 — admin UI.** Route `/admin/engines` (greyed-never-hidden), list with lifecycle
-  column + env band + secret-ref presence + "Test connection", add/edit form with live
+  **DEFERRED to S4b** (below): (1) FOUR-EYES dual-control (`PENDING_APPROVAL`, approver≠proposer) —
+  no such infra existed yet; typed-token was the interim prod gate. (2) Socket-level connect-time
+  IP-PINNING of the pinned IP on the LIVE `HttpClient` connect for the health-loop + actual-operation
+  dials (`isPinAllowed`) — validate-at-write + validate-at-probe were the guards shipped here.
+- **S5 — admin UI. ✅ LANDED 2026-07-09.** Route `/admin/engines` (greyed-never-hidden), list with
+  lifecycle column + env band + secret-ref presence + "Test connection", add/edit form with live
   rule-named SSRF validation, prod enable-read-write typed-token/four-eyes UI, R-UXQ-04
   zero-states. Types via `npm run gen:api` (never hand-written). Done-when: Playwright smoke
   (add→probe→enable→edit→disable→remove) + axe green.
+  *Shipped:* `AdminEnginesPage` (list + env band + lifecycle col + secret-ref PRESENCE + drift
+  banner + zero-state), `EngineFormModal` (add/edit, server SSRF-400 inline), `LifecycleModal`
+  (reason≥10 + read-write checkbox + typed-token on prod-enable-rw/remove/purge). Pure logic in
+  `lifecycle.ts` (`rowActions`, `needsTypedToken`, `toEnvironment`), unit-tested — no component-render
+  tests (codebase convention). Greyed-never-hidden nav link in `Shell.tsx`.
+- **S4b — four-eyes dual-control + connect-time IP-pinning. ✅ LANDED 2026-07-12 (#91).** Closes both
+  S4 deferrals in one slice: a second independent `REGISTRY_ADMIN` must approve a prod
+  enable-read-write / a remove / a purge, and every ordinary dial (health loop, every operation)
+  now connects to the resolve-then-pinned IP rather than re-resolving DNS on every call.
+  *Shipped — four-eyes:* `V16__registry_write_proposal.sql` (mirrors V14 `access_grant_proposal`:
+  proposer, proposer's REGISTRY_ADMIN groups, `engine_id`, `kind` ∈ {ENABLE_READ_WRITE, REMOVE,
+  PURGE}, summary, reason, status, 24h TTL). `RegistryChange` (kind + engineId, no serialized
+  payload needed — the three kinds carry no extra parameters) + `RegistryFourEyesPolicy` (pure:
+  prod enable-read-write, or ANY remove/purge regardless of environment — exactly the existing
+  typed-token scope). `EngineRegistryStore.enable/remove/purge` now return an `Outcome`
+  (`applied`|`proposed`) instead of the row/void directly; a JVM `writeLock` (mirroring
+  `AccessMappingAdminService`'s TOCTOU guard) serializes the lifecycle-guard-read → four-eyes-decision
+  → mutate/propose sequence. Independence is REGISTRY_ADMIN-group-based (mirroring
+  `distinctAccessAdminGroups()`, filtered on `FleetGrant.REGISTRY_ADMIN`): the proposer's own
+  REGISTRY_ADMIN groups are captured at propose time and excluded from the eligible-approver set;
+  `approve()` re-checks `approver != proposer` AND `approverGroups ∩ proposerGroups = ∅`, re-verifies
+  the lifecycle preconditions (state may have shifted since the proposal), then applies. Under a
+  dev/Basic session (no OIDC groups) independence reduces to "a different authenticated principal" —
+  a SECOND dev fixture (`registry-admin-2`) was added to `SecurityConfig.devUsers()` so this is
+  actually exercisable locally/in CI, not just in the DB-mode IdP-style test harness.
+  `AdminEnginesController.enable/remove/purge` return `EngineWriteOutcome` (200, not the old
+  200/204/void); new `GET /proposals` + `POST /proposals/{id}/approve`. **Deliberately NOT** folded
+  into the `DangerousActionReauthGate` dangerous set (that set is scoped to tier-3 verbs + bulk +
+  mapping writes, IDP-SECURITY.md §5) — registry CRUD keeps its own orthogonal REGISTRY_ADMIN +
+  typed-token + (now) four-eyes rail instead; noted as a re-visit if the two dangerous-set
+  definitions should ever merge.
+  *Shipped — connect-time IP-pinning:* rather than persisting a pinned IP to the DB (schema churn,
+  `EngineConfig` constructor churn) or wiring `RegistryUrlValidator` into `FlowableEngineClient`
+  directly (would require re-plumbing every dial site), the fix hooks JDK 18's JEP 418
+  `java.net.spi.InetAddressResolverProvider` SPI: `PinnedAddressResolverProvider` (registered via
+  `META-INF/services/java.net.spi.InetAddressResolverProvider`) intercepts ONLY hostnames explicitly
+  pinned by `RegistryPinRegistry` — every OTHER hostname (Postgres, the OIDC issuer, anything else
+  the JVM dials) falls straight through to the platform resolver untouched. `RegistryPinRegistry`
+  wraps `RegistryUrlValidator.validate(...)` (a drop-in decorator `EngineRegistryStore`/
+  `AdminEnginesController.probe` now call instead of the validator directly): a `Pinned` result also
+  registers `host → pinnedIp` with the provider. Pins are (re-)established at add/edit/probe AND at
+  boot + every registry reload (`RegistryPinRegistry.resync`, wired from `RegistryBootstrap` — INCL.
+  the `source: config` early-return path, which is still a live dial target — and
+  `RegistryReloadListener`, after evict/before reprobe). Every actual socket connect — the 30s health
+  loop and every operation dial, all funnelled through `FlowableEngineClient.build()` — therefore
+  answers from the pin without ever re-resolving DNS; the resolver re-checks the pinned IP against
+  the CURRENT egress policy via `RegistryUrlValidator.isPinAllowed` on every lookup (fail-closed
+  `UnknownHostException` on a denied pin), exactly the "re-check the pinned ip, never re-resolve"
+  contract the validator's own doc comment promised since S1. `FlowableEngineClient`'s constructor
+  and every call site are UNTOUCHED — the interception is transparent below the RestClient/HttpClient
+  layer. Tested against the REAL JVM resolution path (`InetAddress.getAllByName`) with a hostname
+  that cannot resolve over real DNS, not a mocked `Configuration` (a sealed JDK interface — can't be
+  mocked or hand-implemented outside the JDK).
+  **⚠️ GOTCHA (self-caught by the test suite, not the reviewers):** without a SecurityManager (the
+  only option since JEP 486), the JDK's `InetAddress` layer caches a SUCCESSFUL resolution FOREVER
+  for the process's life — a cache that sits ABOVE any resolver SPI, including ours. Left alone,
+  every claim above about re-checking on every connect would silently only be true for a hostname's
+  FIRST-EVER resolution in the JVM's life; every later admin re-pin would be masked by the stale
+  cache and never actually reach `PinnedAddressResolverProvider` again. Caught because a rung-1 test
+  that re-registered a different IP for the same host and re-resolved got back the FIRST ip, not the
+  second. Fixed with `Security.setProperty("networkaddress.cache.ttl", "0")` as the literal first
+  line of `ProcessInspectorApplication.main()` (must run before ANY DNS lookup anywhere in the
+  process — Postgres, OIDC, engines, …) and mirrored in `PinnedAddressResolverProviderTest`'s
+  `@BeforeAll` (which never runs through `main()`). Deliberately JVM-wide, not scoped to registry
+  hosts only — every outbound hostname now re-resolves per connection instead of caching forever,
+  which is itself a defensible hardening default for a credential-vault BFF, not just a side effect.
+  **Known limitation (Copilot + Gemini S4b review, both independently flagged):** the pin map is
+  keyed by hostname alone — two registry rows sharing a literal hostname (a realistic same-host
+  different-context-path multi-engine setup) share ONE pin, last-(re-)validation wins, and
+  round-robin DNS could make that pin flip between the rows' base-URLs' otherwise-identical
+  addresses. NOT a new failure mode this PR introduces: JVM DNS resolution is inherently
+  per-hostname, so both rows were always going to share whatever the resolver answered at connect
+  time even pre-S4b; pinning only moves WHEN that shared answer gets fixed (at the last validate,
+  not at each connect) — and every IP a host is ever pinned to has already passed the identical
+  SSRF/egress check, so this is a correctness quirk, not a security bypass. `PinnedAddressResolverProvider
+  .register` now logs loudly on an IP change so an operator notices; not otherwise fixed (would mean
+  abandoning per-hostname JEP 418 resolution or accepting engine-scoped non-determinism instead).
+  Tests: `RegistryFourEyesPolicyTest` (pure matrix), `EngineRegistryStoreWriteTest` (+propose/approve/
+  self-approve-refused/no-eligible-approver/expired-proposal cases), `PinnedAddressResolverProviderTest`
+  + `RegistryPinRegistryTest` (real-resolver end-to-end), `RegistryBootstrapTest`/
+  `RegistryReloadListenerTest` (updated for the resync call). Frontend: `EngineWriteOutcome`/
+  `EngineProposalView` types (regenerated via `npm run gen:api` — note `EngineProposalView` is
+  deliberately NOT named `ProposalView` like the IdP one; springdoc names OpenAPI schemas by simple
+  class name, and two same-named nested records collapsed into one wrong-shaped schema when first
+  tried), `adminEnginesView.ts#engineOutcomeNotice` (mirrors `accessView.ts`), a proposal inbox
+  section + outcome banner in `AdminEnginesPage.tsx` (mirrors `AdminAccessPage.tsx`).
 
 
 ### v2 — IdP & Security: identity wiring, access lifecycle & the who-can-do-what store *(design locked 2026-07-09, ★ S1–S6 core LANDED 2026-07-09/10 — remaining: IdP-unreachable break-glass door, Playwright/axe grant-flow gate, issue #94/#85)*

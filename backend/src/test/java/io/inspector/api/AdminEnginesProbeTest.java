@@ -13,6 +13,7 @@ import io.inspector.config.RegistryProperties;
 import io.inspector.config.RegistryProperties.Source;
 import io.inspector.registry.EngineRegistryRow;
 import io.inspector.registry.EngineRegistryStore;
+import io.inspector.registry.RegistryPinRegistry;
 import io.inspector.registry.RegistryUrlValidator;
 import java.util.List;
 import java.util.Set;
@@ -45,7 +46,7 @@ class AdminEnginesProbeTest {
                 store,
                 mock(InspectorProperties.class),
                 props,
-                new RegistryUrlValidator(),
+                new RegistryPinRegistry(new RegistryUrlValidator(), props),
                 flowable,
                 mock(Environment.class));
     }

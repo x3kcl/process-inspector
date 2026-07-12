@@ -302,7 +302,7 @@ add/edit before persistence AND is re-asserted at connection time (belt + braces
 | **Scheme** | `http` or `https` only. `https` required on `environment: prod`. | "prod engines must use https" |
 | **Egress allowlist** | Host must match `inspector.registry.egress-allowlist` (host globs / CIDRs). Not editable in-app. | "host not in the egress allowlist — add it out-of-band or use a dev-scoped inspector" |
 | **Address denylist (v4 + v6)** | Reject if the host or *any* resolved IP is loopback (`127/8`, `::1`), link-local (**incl. `169.254.169.254` + v6 `fe80::/10`**), private (RFC1918, `fc00::/7` ULA), CGNAT (`100.64/10`), the v4-mapped metadata form `::ffff:169.254.169.254`, multicast, or `0.0.0.0`/`::` — unless the allowlist explicitly permits it for a **dev** engine. | "host resolves to a private/internal address" |
-| **Resolve-then-pin** | Resolve once; validate all A/AAAA; **pin the validated literal IP** with a bounded TTL; connect to the pinned IP with the original `Host`. At connect, re-check the **pinned IP** against policy — **never re-resolve** (re-resolving at connect reopens the rebinding window). TTL expiry or a registry edit rebuilds (re-resolve + re-validate). | (internal — closes DNS rebinding) |
+| **Resolve-then-pin** | Resolve once; validate all A/AAAA; **pin the validated literal IP**; connect to the pinned IP with the original `Host`. At connect, re-check the **pinned IP** against policy — **never re-resolve** (re-resolving at connect reopens the rebinding window). A registry write (add/edit/probe) or reload rebuilds (re-resolve + re-validate) — **✅ SHIPPED S4b (#91)** via a JEP 418 `InetAddressResolverProvider` (`PinnedAddressResolverProvider`) that intercepts ONLY hostnames `RegistryPinRegistry` has pinned; every other hostname the JVM dials (Postgres, the OIDC issuer, …) is untouched. Event-driven, not a timer TTL: a pin is re-established at add/edit/probe and at boot + every registry reload, never on an ordinary health-loop tick or operation dial. | (internal — closes DNS rebinding) |
 | **Sibling-context URLs** | The `/external-job-api` and `/cmmn-api` URLs derived by string-munging `base-url` inherit the **same canonicalization + pinned IP + policy** — they are not a validation gap. | (internal) |
 | **No redirects** | `followRedirects(NEVER)` (already in `build()`); a 3xx from an engine base-URL is an error, never a hop. | "engine returned a redirect — base-URL misconfigured" |
 | **Credentials in URL** | Reject `user:pass@host` embedded credentials; auth is the `Auth` record only. | "put credentials in auth, not the URL" |
@@ -359,9 +359,13 @@ token (the engine id).
   at the door **and** re-checked in the service — the first plain fleet-scoped gate in the
   codebase (closest mechanic: `ViewsController`'s `atLeast`).
 - **Governance ladder**: read (list) = REGISTRY_ADMIN; cap/threshold edit = REGISTRY_ADMIN +
-  reason ≥10; add + probe = REGISTRY_ADMIN + reason; **enable read-write on prod** =
-  REGISTRY_ADMIN + typed token (engine id) + four-eyes (R-SAFE-08 PENDING_APPROVAL, approver ≠
-  proposer); remove = disabled-first + typed token; purge = second REGISTRY_ADMIN confirm.
+  reason ≥10; add + probe = REGISTRY_ADMIN + reason; **enable read-write on prod, remove, and
+  purge** = REGISTRY_ADMIN + typed token (engine id) + four-eyes — **✅ SHIPPED S4b (#91)**: a
+  `PENDING_APPROVAL` proposal (`registry_write_proposal`, V16) a SECOND independent REGISTRY_ADMIN
+  (proposer ≠ approver AND the approver's REGISTRY_ADMIN group(s) disjoint from the proposer's)
+  must approve via `POST /api/admin/engines/proposals/{id}/approve` before it applies; remove still
+  requires disabled-first, purge still requires removed-first. A non-prod enable (any mode) and a
+  prod enable staying read-only remain single-actor, matching the pre-S4b typed-token scope exactly.
 - **Audit** every write through the fail-closed `AuditService` — `action ∈ {registry-seed,
   registry-add, registry-edit, registry-probe, registry-enable, registry-disable,
   registry-remove, registry-purge}`, `instance_id` = engine id, `payload` = before/after
@@ -394,9 +398,11 @@ Postgres, logs, audit payloads, the OpenAPI schema, or `EngineDto`.
 | `POST /api/admin/engines` | Add (→ DRAFT). Body = the registry config sans secrets (refs by name). SSRF-validated, slug + duplicate-id checked, reason ≥10, audited. |
 | `PUT  /api/admin/engines/{id}` | Edit everything except `id`; re-validates, evicts client cache, re-probes. Audited before/after. |
 | `POST /api/admin/engines/{id}/probe` | Run the **read-only** probe now (version + capabilities); returns the result, transitions DRAFT→PROBED / PROBE_FAILED. Touches the engine with GETs only. |
-| `POST /api/admin/engines/{id}/enable` · `/disable` | Enable (→ ACTIVE) / disable (pause dispatch). `?mode=read-write` on prod ⇒ typed token + four-eyes. Audited. |
-| `DELETE /api/admin/engines/{id}` | Soft-delete (requires DISABLED) → tombstone. Typed token. Audited. |
-| `POST /api/admin/engines/{id}/purge` | Hard-remove a tombstone after retention. Second confirm. Audited. On remove/purge the R4j breaker+bulkhead named instances are **removed** (`registry.remove(name)`), not merely reset — a reset leaks the instance on churn. |
+| `POST /api/admin/engines/{id}/enable` · `/disable` | Enable (→ ACTIVE) / disable (pause dispatch). `readWrite: true` on prod ⇒ typed token + four-eyes — returns `EngineWriteOutcome {status: applied\|proposed, …}`, not the bare engine DTO. Audited. |
+| `DELETE /api/admin/engines/{id}` | Soft-delete (requires DISABLED) → tombstone. Typed token + four-eyes (ALWAYS, any environment). Returns `EngineWriteOutcome`. Audited. |
+| `POST /api/admin/engines/{id}/purge` | Hard-remove a tombstone after retention. Typed token + four-eyes (ALWAYS, any environment). Returns `EngineWriteOutcome`. Audited. On remove/purge the R4j breaker+bulkhead named instances are **removed** (`registry.remove(name)`), not merely reset — a reset leaks the instance on churn. |
+| `GET  /api/admin/engines/proposals` | The pending four-eyes inbox (`EngineProposalView[]`). REGISTRY_ADMIN. |
+| `POST /api/admin/engines/proposals/{id}/approve` | A second independent REGISTRY_ADMIN approves a pending proposal, which then applies. Returns `EngineWriteOutcome`. Audited (on apply). |
 | `GET  /api/admin/engines/drift` | The DB-vs-YAML drift report (added/removed/changed engines when `inspector.engines` is present but ignored) — feeds the admin-UI drift badge so an ignored `prod.yaml` edit is visible, never silent. REGISTRY_ADMIN. |
 
 `GET /api/me` gains a `registryAdmin: boolean` hint so the SPA greys the admin nav correctly.
@@ -470,9 +476,11 @@ Ordered so the dangerous plumbing lands and is tested behind nothing before any 
 **S1** SSRF validator + hostile corpus (pure, no wiring) · **S2** V7 + entity/repo/store +
 YAML-seed import + `source` switch · **S3** reload seam (`EngineRegistry.refresh` +
 `FlowableEngineClient.evict` + event + re-probe) · **S4** REGISTRY_ADMIN gate + admin API +
-fail-closed audit + governance (four-eyes/typed-token on prod) · **S5** admin UI + zero-states
-+ gen:api. Each slice: rung-1 unit → rung-3 Spring wiring/RBAC → rung-4 dockerized-engine IT
-(probe/edit against real flowable-rest, both profiles) → Playwright smoke.
+fail-closed audit + typed-token on prod · **S5** admin UI + zero-states + gen:api · **S4b**
+four-eyes dual-control (`PENDING_APPROVAL` proposals) + connect-time IP-pinning (JEP 418
+resolver SPI), closing both S4 deferrals. Each slice: rung-1 unit → rung-3 Spring wiring/RBAC →
+rung-4 dockerized-engine IT (probe/edit against real flowable-rest, both profiles) → Playwright
+smoke.
 
 ## 13. Test strategy (highlights)
 

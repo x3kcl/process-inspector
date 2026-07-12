@@ -11,12 +11,17 @@ import io.inspector.registry.RegistryDrift.DriftReport;
 import io.inspector.registry.RegistryUrlValidator.Rejected;
 import io.inspector.registry.RegistryUrlValidator.Result;
 import io.inspector.security.RbacAuthorizer;
+import io.inspector.security.mapping.FleetGrant;
+import io.inspector.security.mapping.MappingSource;
 import java.time.Clock;
+import java.time.Duration;
 import java.util.LinkedHashMap;
 import java.util.List;
 import java.util.Locale;
 import java.util.Map;
+import java.util.Set;
 import java.util.regex.Pattern;
+import java.util.stream.Collectors;
 import org.slf4j.Logger;
 import org.slf4j.LoggerFactory;
 import org.springframework.context.ApplicationEventPublisher;
@@ -54,30 +59,43 @@ public class EngineRegistryStore {
     private static final String SEED_REASON =
             "Registry seed: imported inspector.engines YAML into an empty registry (R-OPS-15)";
     private static final Pattern ID_PATTERN = Pattern.compile(InspectorProperties.ENGINE_ID_PATTERN);
+    private static final Duration PROPOSAL_TTL = Duration.ofHours(24);
 
     private final EngineRegistryRepository repository;
     private final AuditService audit;
     private final ApplicationEventPublisher events;
-    private final RegistryUrlValidator urlValidator;
     private final RegistryProperties registryProperties;
     private final RbacAuthorizer rbac;
     private final Clock clock;
+    private final RegistryWriteProposalRepository proposals;
+    private final MappingSource mappingSource;
+    private final RegistryPinRegistry pinRegistry;
+
+    // The BFF is single-instance (ARCH §5); registry writes are rare, human-paced admin acts. A JVM
+    // lock fully serializes the dangerous-write path (lifecycle guard read → four-eyes decision →
+    // mutate/propose) so two concurrent calls can't both observe a pre-mutation state — same TOCTOU
+    // guard AccessMappingAdminService uses for the mapping store (S4 review).
+    private final Object writeLock = new Object();
 
     public EngineRegistryStore(
             EngineRegistryRepository repository,
             AuditService audit,
             ApplicationEventPublisher events,
-            RegistryUrlValidator urlValidator,
             RegistryProperties registryProperties,
             RbacAuthorizer rbac,
-            Clock clock) {
+            Clock clock,
+            RegistryWriteProposalRepository proposals,
+            MappingSource mappingSource,
+            RegistryPinRegistry pinRegistry) {
         this.repository = repository;
         this.audit = audit;
         this.events = events;
-        this.urlValidator = urlValidator;
         this.registryProperties = registryProperties;
         this.rbac = rbac;
         this.clock = clock;
+        this.proposals = proposals;
+        this.mappingSource = mappingSource;
+        this.pinRegistry = pinRegistry;
     }
 
     /**
@@ -257,20 +275,28 @@ public class EngineRegistryStore {
         return row;
     }
 
-    /** Enable (→ ACTIVE) in the given mode. Requires PROBED or DISABLED (never a raw DRAFT). Audited. */
+    /**
+     * Enable (→ ACTIVE) in the given mode. Requires PROBED or DISABLED (never a raw DRAFT). A prod
+     * read-write flip is the dangerous set (R-SAFE-08, #91): it is parked as a four-eyes proposal
+     * instead of applied directly. Audited (on the eventual apply, not the propose — the propose
+     * itself is audited as {@code registry-proposal} in {@link #propose}).
+     */
     @Transactional
-    public EngineRegistryRow enable(String id, boolean readWrite, Authentication actor, String reason) {
-        String actorName = requireRegistryAdmin(actor);
-        EngineRegistryRow row = requireRow(id);
-        if (!LIFECYCLE_PROBED.equals(row.getLifecycle())
-                && !EngineRegistryMapper.LIFECYCLE_DISABLED.equals(row.getLifecycle())
-                && !EngineRegistryMapper.LIFECYCLE_ACTIVE.equals(row.getLifecycle())) {
-            throw new ResponseStatusException(
-                    HttpStatus.CONFLICT,
-                    "enable requires a probed or disabled engine (current: " + row.getLifecycle() + ")");
+    public Outcome enable(String id, boolean readWrite, Authentication actor, String reason) {
+        synchronized (writeLock) {
+            String actorName = requireRegistryAdmin(actor);
+            EngineRegistryRow row = requireRow(id);
+            assertEnableAllowed(row);
+            if (readWrite
+                    && RegistryFourEyesPolicy.requiresFourEyes(
+                            RegistryChange.Kind.ENABLE_READ_WRITE, row.getEnvironment())) {
+                return propose(RegistryChange.enableReadWrite(id), reason, actor);
+            }
+            String mode = readWrite ? EngineRegistryMapper.MODE_READ_WRITE : EngineRegistryMapper.MODE_READ_ONLY;
+            EngineRegistryRow updated =
+                    transition(row, EngineRegistryMapper.LIFECYCLE_ACTIVE, mode, ACTION_ENABLE, actorName, reason);
+            return Outcome.applied("enable engine '" + id + "' (" + mode + ")", updated);
         }
-        String mode = readWrite ? EngineRegistryMapper.MODE_READ_WRITE : EngineRegistryMapper.MODE_READ_ONLY;
-        return transition(row, EngineRegistryMapper.LIFECYCLE_ACTIVE, mode, ACTION_ENABLE, actorName, reason);
     }
 
     /** Disable (pause dispatch, R-SEM-11). Requires ACTIVE. Audited. */
@@ -285,14 +311,198 @@ public class EngineRegistryStore {
                 row, EngineRegistryMapper.LIFECYCLE_DISABLED, row.getMode(), ACTION_DISABLE, actorName, reason);
     }
 
-    /** Soft-delete → tombstone. Requires DISABLED (never a live engine). id→name survives. Audited. */
+    /**
+     * Soft-delete → tombstone. Requires DISABLED (never a live engine). id→name survives. ALWAYS the
+     * dangerous set (R-SAFE-08, #91) regardless of environment — parked as a four-eyes proposal.
+     */
     @Transactional
-    public void remove(String id, Authentication actor, String reason) {
-        String actorName = requireRegistryAdmin(actor);
-        EngineRegistryRow row = requireRow(id);
+    public Outcome remove(String id, Authentication actor, String reason) {
+        synchronized (writeLock) {
+            String actorName = requireRegistryAdmin(actor);
+            EngineRegistryRow row = requireRow(id);
+            assertRemoveAllowed(row);
+            if (RegistryFourEyesPolicy.requiresFourEyes(RegistryChange.Kind.REMOVE, row.getEnvironment())) {
+                return propose(RegistryChange.remove(id), reason, actor);
+            }
+            applyRemove(row, actorName, reason);
+            return Outcome.applied("remove engine '" + id + "'", row);
+        }
+    }
+
+    /**
+     * Hard-remove a tombstone after retention. Requires a REMOVED row. ALWAYS the dangerous set
+     * (R-SAFE-08, #91) regardless of environment — parked as a four-eyes proposal.
+     */
+    @Transactional
+    public Outcome purge(String id, Authentication actor, String reason) {
+        synchronized (writeLock) {
+            String actorName = requireRegistryAdmin(actor);
+            EngineRegistryRow row = repository
+                    .findById(id)
+                    .orElseThrow(() -> new ResponseStatusException(HttpStatus.NOT_FOUND, "Unknown engine: " + id));
+            assertPurgeAllowed(row);
+            if (RegistryFourEyesPolicy.requiresFourEyes(RegistryChange.Kind.PURGE, row.getEnvironment())) {
+                return propose(RegistryChange.purge(id), reason, actor);
+            }
+            applyPurge(row, actorName, reason);
+            return Outcome.applied("purge engine '" + id + "'", row);
+        }
+    }
+
+    /** A second independent REGISTRY_ADMIN approves a pending proposal, which then applies. */
+    @Transactional
+    public Outcome approve(long proposalId, Authentication auth) {
+        synchronized (writeLock) {
+            RegistryWriteProposal proposal = proposals
+                    .findById(proposalId)
+                    .orElseThrow(() -> new IllegalArgumentException("no such proposal: " + proposalId));
+            if (proposal.getStatus() != RegistryWriteProposal.Status.PENDING) {
+                throw new IllegalStateException("proposal " + proposalId + " is " + proposal.getStatus());
+            }
+            if (clock.instant().isAfter(proposal.getExpiresAt())) {
+                proposal.decide(RegistryWriteProposal.Status.EXPIRED, null, clock.instant());
+                proposals.save(proposal);
+                throw new IllegalStateException("proposal " + proposalId + " has expired");
+            }
+            String approverName = requireRegistryAdmin(auth);
+            assertEligibleApprover(proposal, approverName, registryAdminGroupsOf(auth));
+
+            EngineRegistryRow row = repository
+                    .findById(proposal.getEngineId())
+                    .orElseThrow(() -> new ResponseStatusException(
+                            HttpStatus.NOT_FOUND, "engine no longer exists: " + proposal.getEngineId()));
+            String applyReason = "four-eyes approval of proposal #" + proposalId + ": " + proposal.getReason();
+            RegistryChange.Kind kind = RegistryChange.Kind.valueOf(proposal.getKind());
+            switch (kind) {
+                case ENABLE_READ_WRITE -> {
+                    // State may have shifted since the proposal was raised — re-verify, not trust.
+                    assertEnableAllowed(row);
+                    transition(
+                            row,
+                            EngineRegistryMapper.LIFECYCLE_ACTIVE,
+                            EngineRegistryMapper.MODE_READ_WRITE,
+                            ACTION_ENABLE,
+                            approverName,
+                            applyReason);
+                }
+                case REMOVE -> {
+                    assertRemoveAllowed(row);
+                    applyRemove(row, approverName, applyReason);
+                }
+                case PURGE -> {
+                    assertPurgeAllowed(row);
+                    applyPurge(row, approverName, applyReason);
+                }
+            }
+            proposal.decide(RegistryWriteProposal.Status.APPROVED, approverName, clock.instant());
+            proposals.save(proposal);
+            return Outcome.applied(proposal.getSummary(), row);
+        }
+    }
+
+    public List<RegistryWriteProposal> pendingProposals() {
+        return proposals.findByStatusOrderByCreatedAtDesc(RegistryWriteProposal.Status.PENDING.name());
+    }
+
+    /* -------------------- four-eyes internals -------------------- */
+
+    private Outcome propose(RegistryChange change, String reason, Authentication actor) {
+        String proposer = actor.getName();
+        Set<String> proposerGroups = registryAdminGroupsOf(actor);
+        Set<String> eligible = eligibleApproverGroups(proposerGroups);
+        if (eligible.isEmpty()) {
+            throw new NoEligibleApproverException(
+                    "No eligible independent REGISTRY_ADMIN approver exists for this change — every "
+                            + "REGISTRY_ADMIN shares your group(s). Add a second independent REGISTRY_ADMIN "
+                            + "group or account before this action can be approved.");
+        }
+        RegistryWriteProposal proposal = new RegistryWriteProposal(
+                proposer,
+                String.join(",", proposerGroups),
+                change.engineId(),
+                change.kind(),
+                change.summary(),
+                reason,
+                clock.instant(),
+                clock.instant().plus(PROPOSAL_TTL));
+        proposals.save(proposal);
+        audit.recordConfigEvent(
+                "registry-proposal",
+                proposer,
+                true,
+                Map.of(
+                        "summary",
+                        change.summary(),
+                        "engineId",
+                        change.engineId(),
+                        "kind",
+                        change.kind().name()));
+        return Outcome.proposed(proposal.getId(), change.summary(), eligible);
+    }
+
+    private void assertEligibleApprover(
+            RegistryWriteProposal proposal, String approverName, Set<String> approverGroups) {
+        if (approverName.equals(proposal.getProposer())) {
+            throw new IneligibleApproverException("the proposer cannot approve their own proposal");
+        }
+        Set<String> proposerGroups = splitGroups(proposal.getProposerGroups());
+        if (!java.util.Collections.disjoint(approverGroups, proposerGroups)) {
+            throw new IneligibleApproverException(
+                    "an approver sharing the proposer's REGISTRY_ADMIN group is not independent");
+        }
+    }
+
+    /** This actor's REGISTRY_ADMIN-granting groups (empty for a dev/Basic session — see #91 notes). */
+    private Set<String> registryAdminGroupsOf(Authentication actor) {
+        Set<String> distinct = distinctRegistryAdminGroups();
+        return rbac.oidcGroups(actor).stream().filter(distinct::contains).collect(Collectors.toUnmodifiableSet());
+    }
+
+    private Set<String> distinctRegistryAdminGroups() {
+        return mappingSource.allFleetGrants().stream()
+                .filter(r -> r.grant() == FleetGrant.REGISTRY_ADMIN)
+                .map(MappingSource.FleetGrantRow::group)
+                .collect(Collectors.toUnmodifiableSet());
+    }
+
+    /** REGISTRY_ADMIN groups that are NOT one of the proposer's — the independent approver candidates. */
+    private Set<String> eligibleApproverGroups(Set<String> proposerGroups) {
+        return distinctRegistryAdminGroups().stream()
+                .filter(g -> !proposerGroups.contains(g))
+                .collect(Collectors.toUnmodifiableSet());
+    }
+
+    private static Set<String> splitGroups(String joined) {
+        if (joined == null || joined.isBlank()) {
+            return Set.of();
+        }
+        return Set.of(joined.split(","));
+    }
+
+    private void assertEnableAllowed(EngineRegistryRow row) {
+        if (!LIFECYCLE_PROBED.equals(row.getLifecycle())
+                && !EngineRegistryMapper.LIFECYCLE_DISABLED.equals(row.getLifecycle())
+                && !EngineRegistryMapper.LIFECYCLE_ACTIVE.equals(row.getLifecycle())) {
+            throw new ResponseStatusException(
+                    HttpStatus.CONFLICT,
+                    "enable requires a probed or disabled engine (current: " + row.getLifecycle() + ")");
+        }
+    }
+
+    private void assertRemoveAllowed(EngineRegistryRow row) {
         if (!EngineRegistryMapper.LIFECYCLE_DISABLED.equals(row.getLifecycle())) {
             throw new ResponseStatusException(HttpStatus.CONFLICT, "disable the engine before removing it");
         }
+    }
+
+    private void assertPurgeAllowed(EngineRegistryRow row) {
+        if (row.getRemovedAt() == null) {
+            throw new ResponseStatusException(HttpStatus.CONFLICT, "only a removed (tombstoned) engine can be purged");
+        }
+    }
+
+    private void applyRemove(EngineRegistryRow row, String actorName, String reason) {
+        String id = row.getId();
         Map<String, Object> payload = new LinkedHashMap<>();
         payload.put("id", id);
         payload.put("action", "tombstone");
@@ -306,16 +516,8 @@ public class EngineRegistryStore {
         events.publishEvent(new RegistryChangedEvent(id));
     }
 
-    /** Hard-remove a tombstone after retention. Requires a REMOVED row. Audited. */
-    @Transactional
-    public void purge(String id, Authentication actor, String reason) {
-        String actorName = requireRegistryAdmin(actor);
-        EngineRegistryRow row = repository
-                .findById(id)
-                .orElseThrow(() -> new ResponseStatusException(HttpStatus.NOT_FOUND, "Unknown engine: " + id));
-        if (row.getRemovedAt() == null) {
-            throw new ResponseStatusException(HttpStatus.CONFLICT, "only a removed (tombstoned) engine can be purged");
-        }
+    private void applyPurge(EngineRegistryRow row, String actorName, String reason) {
+        String id = row.getId();
         Map<String, Object> payload = new LinkedHashMap<>();
         payload.put("id", id);
         payload.put("action", "purge");
@@ -324,6 +526,32 @@ public class EngineRegistryStore {
         repository.delete(row);
         audit.close(entry, AuditOutcome.ok, null, "purged", true);
         events.publishEvent(new RegistryChangedEvent(id));
+    }
+
+    /** The outcome of a dangerous-write call: applied now, or parked as a proposal. */
+    public record Outcome(
+            String status, Long proposalId, Set<String> eligibleApproverGroups, String summary, EngineRegistryRow row) {
+        static Outcome applied(String summary, EngineRegistryRow row) {
+            return new Outcome("applied", null, Set.of(), summary, row);
+        }
+
+        static Outcome proposed(Long id, String summary, Set<String> eligible) {
+            return new Outcome("proposed", id, eligible, summary, null);
+        }
+    }
+
+    /** 409 — no independent approver exists (every REGISTRY_ADMIN group is the proposer's own). */
+    public static class NoEligibleApproverException extends RuntimeException {
+        public NoEligibleApproverException(String message) {
+            super(message);
+        }
+    }
+
+    /** 403 — this approver is not independent of the proposal. */
+    public static class IneligibleApproverException extends RuntimeException {
+        public IneligibleApproverException(String message) {
+            super(message);
+        }
     }
 
     private EngineRegistryRow transition(
@@ -344,9 +572,13 @@ public class EngineRegistryStore {
         return row;
     }
 
-    /** SSRF rail (docs §5): reject a base-URL BEFORE any audit/write; the rule name is safe 400 copy. */
+    /**
+     * SSRF rail (docs §5): reject a base-URL BEFORE any audit/write; the rule name is safe 400 copy.
+     * Routes through {@link RegistryPinRegistry} (not the validator directly) so a successful add/edit
+     * also (re-)pins the host for connect-time reuse (R-OPS-13, #91).
+     */
     private void validateUrl(String baseUrl, EngineEnvironment environment) {
-        Result result = urlValidator.validate(baseUrl, environment, registryProperties.egressPolicy());
+        Result result = pinRegistry.validate(baseUrl, environment, registryProperties.egressPolicy());
         if (result instanceof Rejected rejected) {
             log.warn("Rejected registry base-URL '{}' on rail {}: {}", baseUrl, rejected.rail(), rejected.message());
             throw new ResponseStatusException(HttpStatus.BAD_REQUEST, rejected.message());

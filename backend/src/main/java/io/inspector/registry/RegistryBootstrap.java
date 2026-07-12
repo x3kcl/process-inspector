@@ -37,16 +37,19 @@ public class RegistryBootstrap implements ApplicationRunner {
     private final InspectorProperties inspectorProperties;
     private final EngineRegistryStore store;
     private final EngineRegistry registry;
+    private final RegistryPinRegistry pinRegistry;
 
     public RegistryBootstrap(
             RegistryProperties registryProperties,
             InspectorProperties inspectorProperties,
             EngineRegistryStore store,
-            EngineRegistry registry) {
+            EngineRegistry registry,
+            RegistryPinRegistry pinRegistry) {
         this.registryProperties = registryProperties;
         this.inspectorProperties = inspectorProperties;
         this.store = store;
         this.registry = registry;
+        this.pinRegistry = pinRegistry;
     }
 
     @Override
@@ -54,6 +57,9 @@ public class RegistryBootstrap implements ApplicationRunner {
         if (registryProperties.isConfigPinned()) {
             log.info("Engine registry is config-pinned (inspector.registry.source=config): "
                     + "CRUD disabled, YAML is authoritative, changes require a restart.");
+            // Config-pinned engines are still dialled by FlowableEngineClient — pin them too (R-OPS-13,
+            // #91), or this deployment mode would never close the DNS-rebinding TOCTOU.
+            pinRegistry.resync(registry.all());
             return;
         }
 
@@ -77,6 +83,7 @@ public class RegistryBootstrap implements ApplicationRunner {
         // Point EngineRegistry at the DB (S3): under source=db the store is the source of truth, so
         // the in-memory map now reflects the live rows (replacing the bootstrap map built from YAML).
         registry.reload(store.findLive());
+        pinRegistry.resync(registry.all()); // pin every live engine at boot (R-OPS-13, #91)
     }
 
     private void seedEmptyRegistry(List<EngineConfig> yamlEngines) {

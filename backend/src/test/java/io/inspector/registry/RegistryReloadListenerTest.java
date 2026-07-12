@@ -19,19 +19,22 @@ import org.mockito.InOrder;
 class RegistryReloadListenerTest {
 
     @Test
-    void reloads_then_evicts_then_reprobes_in_order() {
+    void reloads_then_evicts_then_repins_then_reprobes_in_order() {
         EngineRegistry registry = mock(EngineRegistry.class);
         EngineRegistryStore store = mock(EngineRegistryStore.class);
         FlowableEngineClient flowable = mock(FlowableEngineClient.class);
         EngineHealthService health = mock(EngineHealthService.class);
+        RegistryPinRegistry pinRegistry = mock(RegistryPinRegistry.class);
         when(store.findLive()).thenReturn(List.of());
+        when(registry.all()).thenReturn(List.of());
 
-        new RegistryReloadListener(registry, store, flowable, health)
+        new RegistryReloadListener(registry, store, flowable, health, pinRegistry)
                 .onRegistryChanged(new RegistryChangedEvent("eng"));
 
-        InOrder order = inOrder(registry, flowable, health);
+        InOrder order = inOrder(registry, flowable, pinRegistry, health);
         order.verify(registry).reload(List.of());
         order.verify(flowable).evict("eng");
+        order.verify(pinRegistry).resync(List.of());
         order.verify(health).reprobe("eng");
     }
 
@@ -41,10 +44,11 @@ class RegistryReloadListenerTest {
         EngineRegistryStore store = mock(EngineRegistryStore.class);
         FlowableEngineClient flowable = mock(FlowableEngineClient.class);
         EngineHealthService health = mock(EngineHealthService.class);
+        RegistryPinRegistry pinRegistry = mock(RegistryPinRegistry.class);
         when(store.findLive()).thenThrow(new RuntimeException("db blip"));
 
         // Must NOT throw — a reload hiccup cannot roll back / fail an already-committed registry write.
-        new RegistryReloadListener(registry, store, flowable, health)
+        new RegistryReloadListener(registry, store, flowable, health, pinRegistry)
                 .onRegistryChanged(new RegistryChangedEvent("eng"));
     }
 
@@ -54,10 +58,11 @@ class RegistryReloadListenerTest {
         EngineRegistryStore store = mock(EngineRegistryStore.class);
         FlowableEngineClient flowable = mock(FlowableEngineClient.class);
         EngineHealthService health = mock(EngineHealthService.class);
+        RegistryPinRegistry pinRegistry = mock(RegistryPinRegistry.class);
         when(store.findLive()).thenReturn(List.of());
         doThrow(new RuntimeException("evict boom")).when(flowable).evict("eng");
 
-        new RegistryReloadListener(registry, store, flowable, health)
+        new RegistryReloadListener(registry, store, flowable, health, pinRegistry)
                 .onRegistryChanged(new RegistryChangedEvent("eng"));
         verify(registry).reload(List.of()); // reload still ran before the evict blew up
     }
