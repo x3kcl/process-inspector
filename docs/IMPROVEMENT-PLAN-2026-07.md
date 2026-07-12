@@ -99,8 +99,14 @@ Seat IDs preserved: **F** = backend architecture, **S** = security, **U** = fron
   violated where it matters most, mid-incident); `ModalShell` under 13 destructive confirms has
   no focus trap/restore (swap to native `<dialog>`); 1.5 MB entry chunk — `/inspect` +
   bpmn-js + AG Grid ship statically in the entry (`main.tsx:8`), Stage-0 users pay it all.
-- **U4** — Zero component-level tests (vitest is node-env, logic-only; no spec covers
-  Stage-0, InspectPage shell, OpsDrawer/SSE, omnibox, admin pages).
+- **U4** — **PARTLY STALE, PARTLY LANDED 2026-07-12 (#89):** the "zero component-level tests"
+  premise was already false by the time this was picked up — `@testing-library/react` +
+  vitest's per-file jsdom pragma were in active use across ~19 files from earlier interleaved
+  work. `Shell.test.tsx` (401 gating, `BreakGlassBanner`, `SessionExpiryBanner`) and
+  `ResultsGrid.test.tsx`'s zero-state ladder are new; `StatusChip.test.tsx` predates the issue.
+  Still genuinely uncovered at the component level: Stage-0 (`TriagePage`) as a whole,
+  `InspectPage`'s shell/tab-switching, `OpsDrawer`/SSE, the omnibox's rendered UI (only its
+  pure-logic helpers are tested), admin pages.
 - **U10** — one raw `fetch()` (the access-review CSV/Markdown download) bypasses the client
   middleware. **U7/U8 LANDED 2026-07-12 (#85):** the omnibox's broken `role="listbox"` (no
   `role="option"` children) is now a plain `role="region"` link list; the axe gate is live.
@@ -332,8 +338,22 @@ tests + spec-sync in the same PR, and follows green-ci.
     two-field shape `<GuardFields>` renders). All pre-existing modal tests pass unchanged; 9 new
     unit tests cover the hook's reason/token gating semantics including the non-prod-driven
     override `LifecycleModal` needs for remove/purge. **Item complete — U1/U2/U3/U5 all landed.**
-18. **Component-test harness (U4)** — vitest jsdom project + testing-library; first targets:
-    Shell 401 gating/BreakGlassBanner, ResultsGrid zero-state ladder, StatusChip.
+18. **Component-test harness (U4)** — **✅ LANDED 2026-07-12 (#89)**: `@testing-library/react`
+    and the per-file `// @vitest-environment jsdom` pragma (vitest's sanctioned mixed-environment
+    pattern — `test.environment` stays `node` for the pure-logic majority; a file opts into a
+    real DOM only when it needs one) already existed and were in active use across ~19 files by
+    the time this issue was picked up — the 2026-07-10 audit's "no component renders anywhere"
+    finding had gone stale under the session's own interleaved work. Rather than force a
+    redundant `test.projects` split onto an already-working, officially-supported pattern, this
+    slice filled the two genuinely uncovered "first targets": `Shell.test.tsx` (new, 8 tests —
+    the 401/dev-sign-out gate via `useAnyAuthError`/`isSignedOut`, `BreakGlassBanner`, and
+    `SessionExpiryBanner`'s warn-before-guillotine countdown, each rendered through the real
+    `Shell` component with `api.GET` mocked and a real `QueryClient` seeded via
+    `QueryCache.build().setState()` to simulate an authentic cached 401 — not just the simpler
+    sign-out escape hatch) and `ResultsGrid.test.tsx`'s zero-state ladder (4 new tests: no-search-
+    yet, all-engines-failed, zero-under-partial-coverage, confirmed-zero — SPEC §10a's "never a
+    calm empty grid while an engine is down" made a regression test, not just a comment).
+    `StatusChip.test.tsx` already existed pre-issue. 499/499 vitest passing.
 19. **Test-support consolidation (F5, F6, Q8)** — one docker-free convention (profile-gated
     DB beans, retire the blanket `JdbcTemplate` mock), `EngineConfig` builder/test-factory,
     jacoco + vitest coverage thresholds (or amend TEST-STRATEGY to aspirational — no
