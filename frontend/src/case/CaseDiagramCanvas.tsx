@@ -113,9 +113,11 @@ function applyMarkers(
   for (const id of markers.failedPlanItemElementIds) {
     try {
       canvas.addMarker(id, 'marker-deadletter')
+      // #118 item 4: title is mouse-hover-only — role="img" + aria-label is the SVG-overlay
+      // text twin (mirrors DiagramCanvas.tsx's BPMN fix).
       overlays.add(id, 'deadletter-badge', {
         position: { top: -10, right: 10 },
-        html: '<span class="dlq-overlay" title="dead-letter job on this plan item">⚠</span>',
+        html: '<span class="dlq-overlay" role="img" aria-label="dead-letter job on this plan item" title="dead-letter job on this plan item">⚠</span>',
       })
     } catch {
       // best-effort decoration over the diagram

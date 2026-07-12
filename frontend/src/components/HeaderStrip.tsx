@@ -48,7 +48,10 @@ function EngineCard({ engine }: { engine: EngineDto }) {
   const inactive = isInactiveLifecycle(engine.lifecycle)
   if (inactive) {
     return (
-      <div className="engine-card engine-card-disabled">
+      // #118 item 3: was a plain unfocusable div despite carrying real status text
+      // (lifecycle reason) — tabIndex makes it reachable, and its own text content is the
+      // accessible name (no separate aria-label to keep in sync with what's rendered).
+      <div className="engine-card engine-card-disabled" tabIndex={0}>
         <EnvBadge
           environment={engine.environment}
           accentColor={engine.accentColor}
@@ -63,7 +66,10 @@ function EngineCard({ engine }: { engine: EngineDto }) {
     )
   }
   return (
-    <div className={`engine-card${reachable ? '' : ' engine-card-down'}`}>
+    // #118 item 3: same tabIndex fix — unreachable/alarm status was previously
+    // mouse-hover-only (the `title` on the unreachable span isn't keyboard/SR reachable
+    // unless the card itself can receive focus first).
+    <div className={`engine-card${reachable ? '' : ' engine-card-down'}`} tabIndex={0}>
       <EnvBadge
         environment={engine.environment}
         accentColor={engine.accentColor}

@@ -8,6 +8,7 @@ import { AttributionCaveat } from '../../components/AttributionCaveat'
 import { Ts } from '../../lib/Ts'
 import { ticketHref } from '../../lib/ticket'
 import { auditOutcomeView } from '../../ops/outcome'
+import { RawJsonExport } from '../RawJsonExport'
 
 interface Props {
   engineId: string
@@ -56,62 +57,70 @@ function AuditLog({ engineId, instanceId }: Props) {
     )
   }
   if (audit.data.length === 0) {
-    return <div className="zero-state">No corrective actions recorded for this instance.</div>
+    return (
+      <>
+        <RawJsonExport data={audit.data} filename={`${engineId}-${instanceId}-audit.json`} />
+        <div className="zero-state">No corrective actions recorded for this instance.</div>
+      </>
+    )
   }
   return (
-    <table className="ledger-table audit-table">
-      <thead>
-        <tr>
-          <th scope="col">When</th>
-          <th scope="col">Actor</th>
-          <th scope="col">Action</th>
-          <th scope="col">Outcome</th>
-          <th scope="col">Reason</th>
-        </tr>
-      </thead>
-      <tbody>
-        {audit.data.map((entry) => {
-          // Theme T8 / R-UXQ-05: same verdict-word mapping as the global ops log —
-          // never raw "ok · null" internals (httpStatus arrives as a wire null).
-          const outcome = auditOutcomeView(entry.action, entry.outcome, entry.httpStatus)
-          return (
-            <tr key={entry.id ?? `${entry.ts ?? ''}${entry.action ?? ''}`}>
-              <td>
-                <Ts iso={entry.ts} relative />
-              </td>
-              <td>{entry.actor}</td>
-              <td>
-                <code>{entry.action}</code>
-                {entry.breakGlass === true && (
-                  <span className="status-badge" title="executed under break-glass">
-                    break-glass
+    <>
+      <RawJsonExport data={audit.data} filename={`${engineId}-${instanceId}-audit.json`} />
+      <table className="ledger-table audit-table">
+        <thead>
+          <tr>
+            <th scope="col">When</th>
+            <th scope="col">Actor</th>
+            <th scope="col">Action</th>
+            <th scope="col">Outcome</th>
+            <th scope="col">Reason</th>
+          </tr>
+        </thead>
+        <tbody>
+          {audit.data.map((entry) => {
+            // Theme T8 / R-UXQ-05: same verdict-word mapping as the global ops log —
+            // never raw "ok · null" internals (httpStatus arrives as a wire null).
+            const outcome = auditOutcomeView(entry.action, entry.outcome, entry.httpStatus)
+            return (
+              <tr key={entry.id ?? `${entry.ts ?? ''}${entry.action ?? ''}`}>
+                <td>
+                  <Ts iso={entry.ts} relative />
+                </td>
+                <td>{entry.actor}</td>
+                <td>
+                  <code>{entry.action}</code>
+                  {entry.breakGlass === true && (
+                    <span className="status-badge" title="executed under break-glass">
+                      break-glass
+                    </span>
+                  )}
+                </td>
+                <td>
+                  <span className={`outcome ${outcome.className}`} title={outcome.title}>
+                    {outcome.label}
                   </span>
-                )}
-              </td>
-              <td>
-                <span className={`outcome ${outcome.className}`} title={outcome.title}>
-                  {outcome.label}
-                </span>
-              </td>
-              <td className="audit-reason">
-                {entry.reason}
-                {entry.ticketId !== undefined && entry.ticketId !== '' && (
-                  <TicketRef template={ticketTemplate} ticketId={entry.ticketId} />
-                )}
-                {entry.payload !== undefined && entry.payload !== '' && (
-                  // The handover detail (SPEC §9): full request payload incl. old values
-                  // for variable edits — collapsed, the row stays scannable.
-                  <details className="audit-payload">
-                    <summary>payload</summary>
-                    <pre className="value-body">{prettyPayload(entry.payload)}</pre>
-                  </details>
-                )}
-              </td>
-            </tr>
-          )
-        })}
-      </tbody>
-    </table>
+                </td>
+                <td className="audit-reason">
+                  {entry.reason}
+                  {entry.ticketId !== undefined && entry.ticketId !== '' && (
+                    <TicketRef template={ticketTemplate} ticketId={entry.ticketId} />
+                  )}
+                  {entry.payload !== undefined && entry.payload !== '' && (
+                    // The handover detail (SPEC §9): full request payload incl. old values
+                    // for variable edits — collapsed, the row stays scannable.
+                    <details className="audit-payload">
+                      <summary>payload</summary>
+                      <pre className="value-body">{prettyPayload(entry.payload)}</pre>
+                    </details>
+                  )}
+                </td>
+              </tr>
+            )
+          })}
+        </tbody>
+      </table>
+    </>
   )
 }
 
@@ -148,6 +157,7 @@ function Notes({ engineId, instanceId }: Props) {
   return (
     <section className="notes" aria-label="Operator notes">
       <h3>Notes</h3>
+      <RawJsonExport data={notes.data} filename={`${engineId}-${instanceId}-notes.json`} />
       {notes.isError && (
         <div className="error-banner" role="alert">
           Notes failed: {notes.error.message}

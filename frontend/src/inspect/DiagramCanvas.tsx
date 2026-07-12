@@ -129,9 +129,12 @@ function applyMarkers(viewer: NavigatedViewer, markers: DiagramMarkers) {
   for (const id of markers.deadLetterActivityIds) {
     try {
       canvas.addMarker(id, 'marker-deadletter')
+      // #118 item 4: title is mouse-hover-only — role="img" + aria-label is the SVG-overlay
+      // text twin (these are injected as raw HTML via bpmn-js's Overlays API, not JSX, so
+      // they can't use the app's usual .visually-hidden pattern).
       overlays.add(id, 'deadletter-badge', {
         position: { top: -10, right: 10 },
-        html: '<span class="dlq-overlay" title="dead-letter job on this activity">⚠</span>',
+        html: '<span class="dlq-overlay" role="img" aria-label="dead-letter job on this activity" title="dead-letter job on this activity">⚠</span>',
       })
     } catch {
       // Same containment: markers are best-effort decoration over the diagram.
@@ -143,7 +146,7 @@ function applyMarkers(viewer: NavigatedViewer, markers: DiagramMarkers) {
       canvas.addMarker(id, 'marker-diverge-subject')
       overlays.add(id, `diverge-subject-${id}`, {
         position: { bottom: -6, left: -6 },
-        html: '<span class="diverge-glyph diverge-glyph-subject" title="only the failed run took this step">▲</span>',
+        html: '<span class="diverge-glyph diverge-glyph-subject" role="img" aria-label="only the failed run took this step" title="only the failed run took this step">▲</span>',
       })
     } catch {
       // best-effort decoration
@@ -154,7 +157,7 @@ function applyMarkers(viewer: NavigatedViewer, markers: DiagramMarkers) {
       canvas.addMarker(id, 'marker-diverge-sibling')
       overlays.add(id, `diverge-sibling-${id}`, {
         position: { bottom: -6, left: -6 },
-        html: '<span class="diverge-glyph diverge-glyph-sibling" title="only the successful sibling took this step">△</span>',
+        html: '<span class="diverge-glyph diverge-glyph-sibling" role="img" aria-label="only the successful sibling took this step" title="only the successful sibling took this step">△</span>',
       })
     } catch {
       // best-effort decoration
