@@ -115,6 +115,21 @@ class RequestIdSpringTest {
     }
 
     @Test
+    void searchBadFilterErrorCarriesTheRequestId() throws Exception {
+        // The one search-error body outside /error and ProblemDetail: SearchController's local
+        // IllegalArgumentException handler (bad sortBy / unparseable window). #118 item 4 — it must
+        // still be quotable to support.
+        ResponseEntity<String> response =
+                as("viewer").postForEntity("/api/search", Map.of("sortBy", "bogus"), String.class);
+        assertThat(response.getStatusCode()).isEqualTo(HttpStatus.BAD_REQUEST);
+
+        JsonNode body = mapper.readTree(response.getBody());
+        assertThat(body.path("error").asText()).contains("sortBy");
+        String headerId = response.getHeaders().getFirst("X-Request-Id");
+        assertThat(body.path("requestId").asText()).isNotBlank().isEqualTo(headerId);
+    }
+
+    @Test
     void bareSpring404CarriesTheRequestId() throws Exception {
         ResponseEntity<String> response = as("viewer").getForEntity("/api/definitely-not-a-route", String.class);
         assertThat(response.getStatusCode()).isEqualTo(HttpStatus.NOT_FOUND);
