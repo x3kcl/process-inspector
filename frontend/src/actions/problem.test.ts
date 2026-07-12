@@ -30,20 +30,6 @@ describe('parseActionProblem', () => {
     expect(problem.outcome).toBe('refused')
   })
 
-  it('recognises the bare Spring error shape — the request never reached the BFF handlers', () => {
-    const spring = parseActionProblem(403, {
-      timestamp: '2026-07-10T12:00:00Z',
-      status: 403,
-      error: 'Forbidden',
-      path: '/api/engines/engine-a/actions/retry',
-    })
-    expect(spring.bareSpringError).toBe(true)
-    // A ProblemDetail with a machine-readable code is NOT the bare shape.
-    const problemDetail = parseActionProblem(403, { code: 'rbac-denied', status: 403 })
-    expect(problemDetail.bareSpringError).toBe(false)
-    expect(parseActionProblem(403, undefined).bareSpringError).toBe(false)
-  })
-
   it('defaults unknown outcome strings to refused — never silently to "it ran"', () => {
     const problem = parseActionProblem(500, { code: 'weird', outcome: 'partial' })
     expect(problem.outcome).toBe('refused')
@@ -148,19 +134,28 @@ describe('problemBanner — the three-way SPEC §6 distinction stays visible', (
     expect(text).toContain("requires OPERATOR on engine 'engine-a'")
   })
 
-  it('a code-less 403 gets the honest default, never the RBAC copy (usability W1#1)', () => {
+  it('a body-less 403 gets the honest generic fallback, never the RBAC copy (usability W1#1)', () => {
+    // No body at all no longer represents anything the BFF actually sends (one error
+    // contract, issue #87 — F4) — it's a synthetic malformed-transport edge case, so it
+    // takes the same generic fallback every other code-less/detail-less status would.
     const text = problemBanner(parseActionProblem(403, undefined))
-    expect(text).toBe('The server refused this request before anything ran — HTTP 403.')
+    expect(text).toBe(
+      'The request was refused before anything ran — nothing happened. (Technical detail: HTTP 403.)',
+    )
     expect(text).not.toContain('Your role')
   })
 
-  it('a bare-Spring-shaped 403 adds the missing-CSRF hint with the sign-out remedy', () => {
+  it('a `forbidden`-coded 403 (Spring Security itself, e.g. missing CSRF) adds the sign-out hint', () => {
+    // One error contract (issue #87 — F4): the container /error fallback now carries a real
+    // `code` ('forbidden', from ProblemCodes.fromStatus) instead of the old bare Spring shape.
     const text = problemBanner(
       parseActionProblem(403, {
-        timestamp: '2026-07-10T12:00:00Z',
+        type: 'about:blank',
+        title: 'Forbidden',
         status: 403,
-        error: 'Forbidden',
-        path: '/api/engines/engine-a/actions/retry',
+        detail: 'Forbidden',
+        instance: '/api/engines/engine-a/actions/retry',
+        code: 'forbidden',
       }),
     )
     expect(text).toContain('The server refused this request before anything ran — HTTP 403.')
@@ -177,15 +172,13 @@ describe('requestId — the quotable support id (usability W1#6, R-AUD-04)', () 
     expect(parseActionProblem(403, { code: 'rbac-denied' }).requestId).toBeUndefined()
   })
 
-  it('parses the requestId off the bare Spring error shape too', () => {
+  it('parses the requestId off the container /error fallback shape too', () => {
     const problem = parseActionProblem(403, {
-      timestamp: '2026-07-10T12:00:00Z',
       status: 403,
-      error: 'Forbidden',
-      path: '/api/search',
+      detail: 'Forbidden',
+      code: 'forbidden',
       requestId: 'req-bare-1',
     })
-    expect(problem.bareSpringError).toBe(true)
     expect(problem.requestId).toBe('req-bare-1')
   })
 
@@ -204,9 +197,9 @@ describe('requestId — the quotable support id (usability W1#6, R-AUD-04)', () 
     )
     expect(guard).toContain('The reason must be at least 10 characters.')
     expect(guard).toContain('Quote request ID req-4712 to support')
-    // and the bare-shape fallback leg
+    // and the container /error fallback leg
     const bare = problemBanner(
-      parseActionProblem(403, { status: 403, error: 'Forbidden', requestId: 'req-4713' }),
+      parseActionProblem(403, { status: 403, code: 'forbidden', requestId: 'req-4713' }),
     )
     expect(bare).toContain('Quote request ID req-4713 to support')
   })

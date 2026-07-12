@@ -290,6 +290,28 @@ surfaced by `GET /api/engines` and pushed to the health strip via SSE.
 
 ## 4. BFF API surface (v2)
 
+**One error contract everywhere (issue #87 — F4).** Every error response, from a domain-specific
+action-layer refusal to Spring Security's own 401/403 to a typo'd route, is the SAME RFC-7807
+`ProblemDetail` shape — `type`/`title`/`status`/`detail`/`instance` plus two additive properties,
+`code` (machine-readable — a domain slug like `cas-conflict`/`rbac-denied` where the exception
+carries one, else a kebab-case slug of the HTTP status) and `requestId` (the quotable support id,
+R-AUD-04). Three call-site layers converge on it: `ActionExceptionHandler` (`@RestControllerAdvice`)
+handles every domain exception plus the two generic ones (`IllegalArgumentException` → 400
+`bad-request`, `ResponseStatusException` → its own status + a status-derived `code` — this is
+where all ~50 plain `throw new ResponseStatusException(status, "…")` call sites across the app
+land, with ZERO per-call-site changes); `ProblemDetailRequestIdAdvice` stamps `requestId` onto
+any `ProblemDetail` an advice or handler returns; `RequestIdErrorAttributes` renders the SAME
+shape for the container `/error` path — everything that never reaches a handler because the
+servlet/security filter chain answered first (`sendError`): the security 401/403 and the
+no-handler 404. `detail` on that last path is deliberately the HTTP status's stock reason phrase,
+never a raw exception message — unlike the handler-path exceptions (whose messages are always
+developer-authored, client-facing copy), anything reaching `/error` is by construction unexpected,
+so surfacing `.getMessage()` there would risk leaking internals. Frontend: `ApiError` (generic)
+and `parseActionProblem`/`ActionProblem` (the action guard-ladder's richer parser, SPEC §6) both
+collapsed from three shape-sniffing branches to one — no `bareSpringError` flag is needed anymore;
+a Spring-Security-originated 403 (typically a missing CSRF token) is now the stable machine code
+`forbidden`, distinguishable from a domain `rbac-denied` refusal by code alone.
+
 | Endpoint | Purpose |
 |---|---|
 | `GET  /api/engines` | Registry + live health/capabilities/job-lane counts (no secrets). The DISPLAY surface (usability W1#4/theme T6): every entry carries `mode` (`read-write\|read-only`) and `lifecycle` (`active\|disabled\|draft\|probed\|probe_failed`; under `source: config` derived from `enabled`), and the list includes NON-ACTIVE engines so the dashboard renders them greyed-with-reason instead of silently omitting them (R-SEM-17/R-GOV-04). Fan-out, search and mutation targets keep resolving through the enabled-only registry views (`all()`/`require()`) |

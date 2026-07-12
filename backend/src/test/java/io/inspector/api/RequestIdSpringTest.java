@@ -21,18 +21,15 @@ import org.springframework.test.context.ActiveProfiles;
 /**
  * R-AUD-04 / usability W1#6 (theme T5): every request gets ONE quotable id — inbound
  * {@code X-Request-Id} honored when header-safe, minted otherwise — echoed as a response header
- * on EVERY response and carried in EVERY error body:
- *
- * <ul>
- *   <li>handler-path errors (the {@link ActionExceptionHandler} ProblemDetails) via
- *       {@link ProblemDetailRequestIdAdvice};
- *   <li>the container {@code /error} path — the security 403 and the no-handler 404 whose bare
- *       {@code {timestamp,status,error,path}} shape the baseline run flagged — via
- *       {@link RequestIdErrorAttributes}.
- * </ul>
+ * on EVERY response and carried in EVERY error body. One error contract (issue #87 — F4): EVERY
+ * error path below renders the SAME {@code type/title/status/detail/instance/code/requestId}
+ * shape, whether it's a handler-path {@link ActionExceptionHandler} {@code ProblemDetail} (via
+ * {@link ProblemDetailRequestIdAdvice}) or the container {@code /error} path — the security
+ * 401/403 and the no-handler 404, which used to render Spring's bare
+ * {@code {timestamp,status,error,path}} shape — via {@link RequestIdErrorAttributes}.
  *
  * Real-HTTP rung 3 like the sibling suites: MockMvc never performs the sendError → ERROR
- * re-dispatch that renders the bare shape, so only a servlet container proves it.
+ * re-dispatch the container {@code /error} path needs, so only a servlet container proves it.
  */
 @SpringBootTest(webEnvironment = SpringBootTest.WebEnvironment.RANDOM_PORT)
 @ActiveProfiles("test")
@@ -102,39 +99,46 @@ class RequestIdSpringTest {
     }
 
     @Test
-    void bareSpring403CarriesTheRequestId() throws Exception {
-        // The security 403 (@PreAuthorize denial → sendError → /error) is the exact id-less
-        // bare shape the baseline run flagged (RUN-REPORT theme 5).
+    void containerPath403CarriesTheSameProblemDetailShapeAndRequestId() throws Exception {
+        // The security 403 (@PreAuthorize denial → sendError → /error) now renders the SAME
+        // ProblemDetail+code shape as a handler-path error (RequestIdErrorAttributes) — no
+        // longer Spring's bare {timestamp,status,error,path} (RUN-REPORT theme 5 / issue #87).
         ResponseEntity<String> response = as("viewer").postForEntity(RETRY, Map.of("jobId", "j1"), String.class);
         assertThat(response.getStatusCode()).isEqualTo(HttpStatus.FORBIDDEN);
 
         JsonNode body = mapper.readTree(response.getBody());
-        assertThat(body.path("status").asInt()).isEqualTo(403); // still the bare Spring shape…
-        String headerId = response.getHeaders().getFirst("X-Request-Id");
-        assertThat(body.path("requestId").asText()).isNotBlank().isEqualTo(headerId); // …but quotable
-    }
-
-    @Test
-    void searchBadFilterErrorCarriesTheRequestId() throws Exception {
-        // The one search-error body outside /error and ProblemDetail: SearchController's local
-        // IllegalArgumentException handler (bad sortBy / unparseable window). #118 item 4 — it must
-        // still be quotable to support.
-        ResponseEntity<String> response =
-                as("viewer").postForEntity("/api/search", Map.of("sortBy", "bogus"), String.class);
-        assertThat(response.getStatusCode()).isEqualTo(HttpStatus.BAD_REQUEST);
-
-        JsonNode body = mapper.readTree(response.getBody());
-        assertThat(body.path("error").asText()).contains("sortBy");
+        assertThat(body.path("status").asInt()).isEqualTo(403);
+        assertThat(body.path("code").asText()).isEqualTo("forbidden");
+        assertThat(body.path("title").asText()).isNotBlank();
+        assertThat(body.path("detail").asText()).isNotBlank();
         String headerId = response.getHeaders().getFirst("X-Request-Id");
         assertThat(body.path("requestId").asText()).isNotBlank().isEqualTo(headerId);
     }
 
     @Test
-    void bareSpring404CarriesTheRequestId() throws Exception {
+    void searchBadFilterErrorCarriesTheSameProblemDetailShapeAndRequestId() throws Exception {
+        // Bad sortBy / unparseable window: previously SearchController's own ad-hoc
+        // {"error":…} map handler, now the same global ProblemDetail+code as every other
+        // IllegalArgumentException (issue #87 — F4, one error contract).
+        ResponseEntity<String> response =
+                as("viewer").postForEntity("/api/search", Map.of("sortBy", "bogus"), String.class);
+        assertThat(response.getStatusCode()).isEqualTo(HttpStatus.BAD_REQUEST);
+
+        JsonNode body = mapper.readTree(response.getBody());
+        assertThat(body.path("code").asText()).isEqualTo("bad-request");
+        assertThat(body.path("detail").asText()).contains("sortBy");
+        String headerId = response.getHeaders().getFirst("X-Request-Id");
+        assertThat(body.path("requestId").asText()).isNotBlank().isEqualTo(headerId);
+    }
+
+    @Test
+    void noHandlerFound404CarriesTheSameProblemDetailShapeAndRequestId() throws Exception {
         ResponseEntity<String> response = as("viewer").getForEntity("/api/definitely-not-a-route", String.class);
         assertThat(response.getStatusCode()).isEqualTo(HttpStatus.NOT_FOUND);
 
         JsonNode body = mapper.readTree(response.getBody());
+        assertThat(body.path("status").asInt()).isEqualTo(404);
+        assertThat(body.path("code").asText()).isEqualTo("not-found");
         String headerId = response.getHeaders().getFirst("X-Request-Id");
         assertThat(body.path("requestId").asText()).isNotBlank().isEqualTo(headerId);
     }
