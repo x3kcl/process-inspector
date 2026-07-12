@@ -1,3 +1,4 @@
+import { RawJsonExport } from '../RawJsonExport'
 import { Link } from 'react-router'
 import { formatDateTime, formatSeconds, useDisplayZone } from '../../lib/format'
 import { useInstanceTimeline } from '../useInstanceQueries'
@@ -40,6 +41,7 @@ export default function TimelineTab({ engineId, instanceId }: Props) {
   const window = timeWindow(rows)
   return (
     <div className="timeline-tab">
+      <RawJsonExport data={query.data} filename={`${engineId}-${instanceId}-timeline.json`} />
       {truncated && (
         <p className="strip-note">
           Showing the first {activities.length} of {total} top-level activities — the engine page

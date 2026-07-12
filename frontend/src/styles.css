@@ -369,6 +369,14 @@ button.primary:disabled {
   cursor: pointer;
 }
 
+/* Per-tab raw-JSON export toolbar (R-L3-03): a right-aligned support-bundle row above each tab. */
+.raw-json-export {
+  display: flex;
+  gap: 6px;
+  justify-content: flex-end;
+  margin-bottom: 6px;
+}
+
 /* ---- M2c results ---- */
 .results-toolbar {
   display: flex;
