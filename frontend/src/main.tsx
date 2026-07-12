@@ -1,22 +1,42 @@
-import { StrictMode, Suspense, lazy } from 'react'
+import { StrictMode, Suspense, lazy, type ReactNode } from 'react'
 import { createRoot } from 'react-dom/client'
 import { QueryClient, QueryClientProvider } from '@tanstack/react-query'
 import { Navigate, RouterProvider, createBrowserRouter, useSearchParams } from 'react-router'
-import { AdminAccessPage } from './admin/AdminAccessPage'
-import { AdminEnginesPage } from './admin/AdminEnginesPage'
 import { ApiError } from './api/client'
-import { InspectPage } from './inspect/InspectPage'
-import { AuditLogPage } from './ops/AuditLogPage'
-import { SearchPage } from './search/SearchPage'
 import { hasSearch } from './search/urlState'
 import { Shell } from './shell/Shell'
-import { DefinitionVersionsPage } from './inspect/DefinitionVersionsPage'
 import { TriagePage } from './triage/TriagePage'
 import './styles.css'
 
-// The CMMN case detail pulls in cmmn-js (heavy) and is a rare path — keep it out of the
-// initial bundle, mirroring the lazy Stage-2 tab chunks.
+// U3 (#88): code-split every page that carries a heavy dependency out of the entry chunk. Only
+// TriagePage (the Stage-0 landing) stays eager. /inspect pulls in bpmn-js and /search + /audit pull
+// in ag-grid — the two biggest deps — so lazy-loading them (mirroring the already-lazy CasePage +
+// Stage-2 tab chunks) collapses the ~1.5 MB entry to ~240 kB; each heavy vendor is further isolated
+// into its own long-cacheable chunk via manualChunks (see vite.config.ts) and loaded only on its route.
+const SearchPage = lazy(() =>
+  import('./search/SearchPage').then((m) => ({ default: m.SearchPage })),
+)
+const InspectPage = lazy(() =>
+  import('./inspect/InspectPage').then((m) => ({ default: m.InspectPage })),
+)
 const CasePage = lazy(() => import('./case/CasePage').then((m) => ({ default: m.CasePage })))
+const AuditLogPage = lazy(() =>
+  import('./ops/AuditLogPage').then((m) => ({ default: m.AuditLogPage })),
+)
+const AdminEnginesPage = lazy(() =>
+  import('./admin/AdminEnginesPage').then((m) => ({ default: m.AdminEnginesPage })),
+)
+const AdminAccessPage = lazy(() =>
+  import('./admin/AdminAccessPage').then((m) => ({ default: m.AdminAccessPage })),
+)
+const DefinitionVersionsPage = lazy(() =>
+  import('./inspect/DefinitionVersionsPage').then((m) => ({ default: m.DefinitionVersionsPage })),
+)
+
+/** Wrap a lazily-loaded route element in a Suspense boundary with a consistent fallback. */
+function lazyRoute(node: ReactNode): ReactNode {
+  return <Suspense fallback={<p className="muted">Loading…</p>}>{node}</Suspense>
+}
 
 const queryClient = new QueryClient({
   defaultOptions: {
@@ -48,23 +68,16 @@ const router = createBrowserRouter([
     element: <Shell />,
     children: [
       { index: true, element: <HomeRoute /> },
-      { path: 'search', element: <SearchPage /> },
-      { path: 'inspect/:engineId/:instanceId', element: <InspectPage /> },
+      { path: 'search', element: lazyRoute(<SearchPage />) },
+      { path: 'inspect/:engineId/:instanceId', element: lazyRoute(<InspectPage />) },
       // Case Inspector Phase 2: the polymorphic CMMN sibling of /inspect (read-only, 6.8+).
-      {
-        path: 'case/:engineId/:caseInstanceId',
-        element: (
-          <Suspense fallback={<p className="muted">Loading case…</p>}>
-            <CasePage />
-          </Suspense>
-        ),
-      },
-      { path: 'audit', element: <AuditLogPage /> },
-      { path: 'admin/engines', element: <AdminEnginesPage /> },
-      { path: 'admin/access', element: <AdminAccessPage /> },
+      { path: 'case/:engineId/:caseInstanceId', element: lazyRoute(<CasePage />) },
+      { path: 'audit', element: lazyRoute(<AuditLogPage />) },
+      { path: 'admin/engines', element: lazyRoute(<AdminEnginesPage />) },
+      { path: 'admin/access', element: lazyRoute(<AdminAccessPage />) },
       {
         path: 'definitions/:engineId/:key/versions',
-        element: <DefinitionVersionsPage />,
+        element: lazyRoute(<DefinitionVersionsPage />),
       },
     ],
   },

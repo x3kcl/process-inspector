@@ -285,6 +285,11 @@ tests + spec-sync in the same PR, and follows green-ci.
 17. **Frontend fitness pack (U1, U2, U3, U5)** — lazy `/inspect` + `manualChunks`
     (target: halve the 1.5 MB entry); native-`<dialog>` `ModalShell`; grid "Open" `<Link>`
     column + Enter-to-open; `useProdGuard` + `<GuardFields>` extraction across the 13 modals.
+    **U3 LANDED:** the entry chunk dropped **1,562 kB → 237 kB** (gzip 435 → 74) — `/inspect`
+    (bpmn-js), `/search` + `/audit` (ag-grid), `/case` (cmmn-js) and the admin/definition pages
+    are all lazy route chunks now (only the triage landing is eager), and `manualChunks` isolates
+    bpmn-js/cmmn-js/diagram-js/ag-grid/codemirror/react into their own long-cacheable vendor
+    chunks. Remaining: U1 (grid Open/Enter), U2 (`<dialog>` focus trap), U5 (guard extraction).
 18. **Component-test harness (U4)** — vitest jsdom project + testing-library; first targets:
     Shell 401 gating/BreakGlassBanner, ResultsGrid zero-state ladder, StatusChip.
 19. **Test-support consolidation (F5, F6, Q8)** — one docker-free convention (profile-gated
