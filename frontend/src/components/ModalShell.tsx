@@ -82,7 +82,7 @@ export function ModalShell({ title, environment, onClose, children, footer }: Pr
       >
         <header className="modal-header">
           <span className={`env-badge env-${env}`}>{env.toUpperCase()}</span>
-          <h3>{title}</h3>
+          <h2>{title}</h2>
         </header>
         <div className="modal-body">{children}</div>
         <footer className="modal-footer">{footer}</footer>

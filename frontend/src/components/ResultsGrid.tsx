@@ -55,7 +55,9 @@ export function ResultsGrid({
         // Enter already open the row (R-UXQ-02) but both are invisible; a real <Link> makes it
         // discoverable, focusable, and "open in new tab"-able. Navigates to the same /inspect URL
         // onOpenDetails uses. stopPropagation so the click doesn't also toggle row selection.
-        headerName: '',
+        // headerName is non-empty (axe empty-table-header/has-visible-text): an icon-only
+        // header cell has no accessible name.
+        headerName: 'Open',
         colId: 'open',
         width: 82,
         sortable: false,

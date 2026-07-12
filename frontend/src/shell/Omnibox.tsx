@@ -126,7 +126,7 @@ function ResolvePanel({
   const matches = response.matches ?? []
   const reachability = summarizeReachability(response)
   return (
-    <div className="omnibox-panel" role="listbox" aria-label="Resolve results">
+    <div className="omnibox-panel" role="region" aria-label="Resolve results">
       {matches.length === 0 ? (
         <p className="zero-state">
           “{response.query}” was not found on any reachable engine

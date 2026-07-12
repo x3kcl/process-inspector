@@ -98,16 +98,23 @@ column; nightly runs the full cross.
   cannot produce cycles) — tested at rung 1 over a fixture parent-map.
 - Guard ladder E2E: register the same docker engine twice (`dev` + `prod`); drift fixtures
   via out-of-band engine mutation from Playwright; assert Enter-never-submits.
-- **Playwright harness (landed with v1.1 flow surgery, the first R4 rung):**
-  `frontend/playwright.config.ts` + `frontend/e2e/`, `npm run e2e`. Smokes are HERMETIC —
-  a `page.route` predicate on `/api/` fulfills every BFF call from canned DTOs (a URL
-  predicate, never the `**/api/**` glob, which would hijack Vite's `/src/api/*` modules),
-  so no BFF or engine runs in PR CI. Mock-BFF smokes assert UI *invariants* (the
-  flow-surgery specs record every `…/execute`/`…/restart` request and assert none fired
-  — simulation-first is a tested property, not a convention); flows that need REAL
-  engine semantics (drift fixtures above) stay on the live-stack rung. The
-  never-mock-Flowable rule governs BFF join logic, not browser-side smokes of
-  already-tested BFF contracts.
+- **Playwright harness (landed with v1.1 flow surgery, the first R4 rung; CI-gated 2026-07-12,
+  #85 — the second R4 rung, "axe accessibility checks hard-fail"):**
+  `frontend/playwright.config.ts` + `frontend/e2e/`, `npm run e2e` (the `e2e` CI job on every
+  PR/push). Smokes are HERMETIC — a `page.route` predicate on `/api/` fulfills every BFF call
+  from canned DTOs (a URL predicate, never the `**/api/**` glob, which would hijack Vite's
+  `/src/api/*` modules), so no BFF or engine is needed, only the Vite dev server. Mock-BFF
+  smokes assert UI *invariants* (the flow-surgery specs record every `…/execute`/`…/restart`
+  request and assert none fired — simulation-first is a tested property, not a convention);
+  flows that need REAL engine semantics (drift fixtures above) stay on the live-stack rung.
+  The never-mock-Flowable rule governs BFF join logic, not browser-side smokes of
+  already-tested BFF contracts. Every spec calls the shared `scanA11y()` helper (`e2e/a11y.ts`,
+  wraps `@axe-core/playwright`) at each settled UI state it already asserts against —
+  `scripts/check-e2e-a11y-coverage.mjs` hard-fails the build if a spec never calls it, closing
+  the gap an autouse fixture would leave (autouse would also risk scanning mid-transition DOM
+  and false-positive). Chromium is baked into the CI runner image
+  (`docker/ci-runner/Dockerfile`), not installed per-job — the runner is ephemeral and only
+  `/opt/hostedtoolcache` survives a restart.
 - Breakers: per-engine test profile (window 2, open 500ms) + WireMock fault/scenario recipes;
   assert cache hits don't count against the breaker.
 - Bulk cancel/UNKNOWN: latch-gated WireMock stub engine (dispatch order made total via

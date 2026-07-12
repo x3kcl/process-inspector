@@ -5,6 +5,7 @@
 // with "timing unknown", and an isCapped node shows an honest truncation warning.
 import { expect, test } from '@playwright/test'
 import type { Page } from '@playwright/test'
+import { scanA11y } from './a11y'
 
 const ENGINE = { id: 'eng1', name: 'Payments DEV', environment: 'dev', reachable: true }
 
@@ -91,6 +92,7 @@ test('the timeline nests a call-activity sub-lane, annotates the failure non-hue
   // The timeline is an accessibility tree.
   const tree = page.getByRole('tree')
   await expect(tree).toBeVisible()
+  await scanA11y(page, 'timeline tab loaded with tree')
 
   // The child's activity nests one level deep (aria-level 2) and is visually indented.
   await expect(page.getByRole('treeitem', { name: /childStart/, level: 2 })).toBeVisible()

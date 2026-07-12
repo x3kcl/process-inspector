@@ -6,6 +6,7 @@
 //      not off the 2.5s active poll (relaxed to 30s while the stream is live).
 import { expect, test } from '@playwright/test'
 import type { Page } from '@playwright/test'
+import { scanA11y } from './a11y'
 
 function engine(environment: string) {
   return {
@@ -64,8 +65,8 @@ interface MockState {
   jobListReads: number
 }
 
-/** Fulfills every /api call. Predicate (never the '**​/api/**' glob): the glob would also
- *  hijack Vite's /src/api/* module requests and brick the dev server (TEST-STRATEGY §9). */
+// Fulfills every /api call. Predicate (never the '**/api/**' glob): the glob would also
+// hijack Vite's /src/api/* module requests and brick the dev server (TEST-STRATEGY §9).
 async function mockBff(
   page: Page,
   opts: { role: string; environment: string },
@@ -130,6 +131,7 @@ test('select-all-matching: criteria-only submit, drawer hydrates off the SSE sig
   // as soon as rows exist, without touching a checkbox.
   const affordance = page.getByRole('button', { name: /Select all ~37 matching filter/ })
   await expect(affordance).toBeVisible()
+  await scanA11y(page, 'search results grid with select-all-matching affordance')
   await affordance.click()
 
   // Filter scope: verbs derive from the status chips; a pure FAILED filter offers retry.
@@ -137,6 +139,7 @@ test('select-all-matching: criteria-only submit, drawer hydrates off the SSE sig
   await expect(bar.getByText(/resolved\s+server-side at execution/)).toBeVisible()
   const retry = bar.getByRole('button', { name: 'Retry dead-letter jobs' })
   await expect(retry).toBeEnabled()
+  await scanA11y(page, 'bulk actions toolbar open')
   await retry.click()
 
   // The modal restates the criteria and the snapshot-vs-execution honesty line.
@@ -145,6 +148,7 @@ test('select-all-matching: criteria-only submit, drawer hydrates off the SSE sig
   await expect(modal.getByText('FAILED', { exact: true })).toBeVisible()
   await expect(modal.getByText('payment', { exact: true })).toBeVisible()
   await expect(modal.getByText(/server-resolved filter at execution time/)).toBeVisible()
+  await scanA11y(page, 'filter bulk retry modal open')
 
   const confirm = modal.getByRole('button', { name: /Retry dead-letter jobs — all matching/ })
   await expect(confirm).toBeDisabled()
@@ -169,6 +173,7 @@ test('select-all-matching: criteria-only submit, drawer hydrates off the SSE sig
   const drawer = page.getByRole('complementary', { name: 'Operations drawer' })
   await expect(drawer).toBeVisible()
   await expect(drawer.getByText('COMPLETED')).toBeVisible({ timeout: 10_000 })
+  await scanA11y(page, 'operations drawer after filter bulk completion')
 })
 
 test('a prod engine in filter scope demands the typed definition key', async ({ page }) => {
@@ -180,6 +185,7 @@ test('a prod engine in filter scope demands the typed definition key', async ({ 
 
   const modal = page.getByRole('dialog', { name: /every instance matching/ })
   await expect(modal.getByText(/PRODUCTION engine/)).toBeVisible()
+  await scanA11y(page, 'filter bulk modal on prod engine')
 
   // Reason alone must NOT unlock on prod — the typed token is the definition key
   // (never the raceable count: the members are re-resolved at execution time).
@@ -203,4 +209,5 @@ test('mixed status chips grey the incompatible verbs with the offender named', a
   const retry = page.getByRole('button', { name: 'Retry dead-letter jobs' })
   await expect(retry).toBeDisabled()
   await expect(retry).toHaveAttribute('title', /RETRYING/)
+  await scanA11y(page, 'bulk toolbar with incompatible verb disabled')
 })

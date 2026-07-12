@@ -6,6 +6,7 @@
 //   3. A deep-paged set is a SNAPSHOT (the calm seam line), and the depth wall is a filter seam.
 import { expect, test } from '@playwright/test'
 import type { Page } from '@playwright/test'
+import { scanA11y } from './a11y'
 
 function row(id: string, startTime: string) {
   return {
@@ -30,9 +31,9 @@ interface MockState {
   searches: Array<Record<string, unknown>>
 }
 
-/** Fulfills every /api call. URL predicate (never the '**​/api/**' glob, which would hijack Vite's
- *  /src/api/* module requests and brick the dev server — TEST-STRATEGY §9). The /api/search handler
- *  BRANCHES on the request body's cursor: page 1 hands back a nextCursor, page 2 ends the chain. */
+// Fulfills every /api call. URL predicate (never the '**/api/**' glob, which would hijack Vite's
+// /src/api/* module requests and brick the dev server — TEST-STRATEGY §9). The /api/search handler
+// BRANCHES on the request body's cursor: page 1 hands back a nextCursor, page 2 ends the chain.
 async function mockBff(
   page: Page,
   opts: { depthCappedOnPage2?: boolean } = {},
@@ -96,6 +97,7 @@ test('Load more appends the next cursor page and shows the snapshot seam', async
   await expect(page.getByText('2 instances', { exact: false })).toBeVisible()
   const loadMore = page.getByRole('button', { name: 'Load more' })
   await expect(loadMore).toBeVisible()
+  await scanA11y(page, 'search results page 1 with Load more visible')
 
   await loadMore.click()
 
@@ -103,6 +105,7 @@ test('Load more appends the next cursor page and shows the snapshot seam', async
   await expect(page.getByText('4 instances', { exact: false })).toBeVisible()
   await expect(page.getByRole('button', { name: 'Load more' })).toHaveCount(0)
   await expect(page.getByText(/Loaded more as of/)).toBeVisible()
+  await scanA11y(page, 'search results after Load more appended page 2')
 
   // The second request re-sent the SAME filter plus the opaque cursor — never an ID list.
   expect(state.searches).toHaveLength(2)
@@ -121,4 +124,5 @@ test('the depth wall offers a pre-filled time-bound filter seam', async ({ page 
   await expect(
     page.getByRole('button', { name: /Continue by narrowing to started before/ }),
   ).toBeVisible()
+  await scanA11y(page, 'depth wall time-bound filter seam shown')
 })

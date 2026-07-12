@@ -2,9 +2,10 @@
 // delete-deadletter is tier 3, so the BFF requires a reason (≥ 10 chars) UNCONDITIONALLY. This
 // test proves the reason the DestructiveModal collects actually reaches the request body — a
 // prior version dropped it (`run` sent only { jobId }), so every real delete was refused
-// `reason-required`. Hermetic (predicate route, never the '**​/api/**' glob — TEST-STRATEGY §9).
+// `reason-required`. Hermetic (predicate route, never the '**/api/**' glob — TEST-STRATEGY §9).
 import { expect, test } from '@playwright/test'
 import type { Page } from '@playwright/test'
+import { scanA11y } from './a11y'
 
 const ENGINE = {
   id: 'eng1',
@@ -76,6 +77,7 @@ test('an ADMIN delete sends the required reason in the request body (tier-3 reas
 
   const modal = page.getByRole('dialog')
   await expect(modal).toBeVisible()
+  await scanA11y(page, 'delete dead-letter job confirm modal open')
 
   // The confirm is disabled until a ≥10-char reason lands (DEV engine → no typed token gate).
   const confirm = modal.getByRole('button', { name: /Delete dead-letter job/ })
@@ -90,6 +92,7 @@ test('an ADMIN delete sends the required reason in the request body (tier-3 reas
     jobId: 'dl-1',
     reason: 'vendor confirmed the charge already settled',
   })
+  await scanA11y(page, 'dead-letter job deleted confirmation')
 })
 
 test('a RESPONDER cannot delete a dead-letter job — the tier-3 button is gated', async ({
@@ -101,4 +104,5 @@ test('a RESPONDER cannot delete a dead-letter job — the tier-3 button is gated
   const lane = page.locator('details.lane-deadLetter')
   await expect(lane.getByRole('button', { name: 'Retry job' })).toBeEnabled()
   await expect(lane.getByRole('button', { name: 'Delete', exact: true })).toBeDisabled()
+  await scanA11y(page, 'dead-letter lane with delete button gated for RESPONDER')
 })

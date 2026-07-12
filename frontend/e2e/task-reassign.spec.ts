@@ -5,6 +5,7 @@
 // SERVER-computed command verbatim rather than a client-assembled string.
 import { expect, test } from '@playwright/test'
 import type { Page } from '@playwright/test'
+import { scanA11y } from './a11y'
 
 const ENGINE = {
   id: 'eng1',
@@ -34,8 +35,8 @@ interface MockState {
   curlRequests: unknown[]
 }
 
-/** Predicate route (never the '**​/api/**' glob, which would also hijack Vite's /src/api/*
- *  module loads and brick the dev server — TEST-STRATEGY §9). */
+// Predicate route (never the '**/api/**' glob, which would also hijack Vite's /src/api/*
+// module loads and brick the dev server — TEST-STRATEGY §9).
 async function mockBff(page: Page, opts: { role: string }): Promise<MockState> {
   const state: MockState = { submits: [], curlRequests: [] }
   await page.route(
@@ -90,6 +91,7 @@ test('reassign: row action → modal → dispatch carries { taskId, assignee } t
   const modal = page.getByRole('dialog', { name: /Reassign/ })
   await expect(modal).toBeVisible()
   await expect(modal.getByText('kermit')).toBeVisible()
+  await scanA11y(page, 'reassign task modal open')
 
   // Confirm is disabled until a target id is entered.
   const confirm = modal.getByRole('button', { name: /^Reassign/ })
@@ -102,6 +104,7 @@ test('reassign: row action → modal → dispatch carries { taskId, assignee } t
   await expect(modal.getByText(/actions\/reassign-task'/)).toBeVisible()
   await expect(modal.getByText(/Authorization: Basic <your-credentials>/)).toBeVisible()
   expect(state.curlRequests.length).toBeGreaterThan(0)
+  await scanA11y(page, 'reassign modal with cURL command shown')
 
   await confirm.click()
 
@@ -120,4 +123,5 @@ test('return to team is greyed for a VIEWER, with the gate named', async ({ page
   await expect(reassign).toBeDisabled()
   await expect(reassign).toHaveAttribute('title', /OPERATOR/)
   expect(state.submits).toEqual([])
+  await scanA11y(page, 'tasks tab with reassign gated for VIEWER')
 })

@@ -19,5 +19,12 @@ export default tseslint.config(
       'react-hooks/exhaustive-deps': 'error',
     },
   },
+  {
+    files: ['e2e/**/*.ts'],
+    extends: [eslint.configs.recommended, ...tseslint.configs.strictTypeChecked],
+    languageOptions: {
+      parserOptions: { projectService: true, tsconfigRootDir: import.meta.dirname },
+    },
+  },
   prettier,
 )

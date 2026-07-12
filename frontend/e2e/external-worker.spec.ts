@@ -4,6 +4,7 @@
 // external-worker endpoint is never called (no empty lane, no spinner, no blind request).
 import { expect, test } from '@playwright/test'
 import type { Page } from '@playwright/test'
+import { scanA11y } from './a11y'
 
 function engine(externalWorkerJobs: boolean) {
   return {
@@ -29,7 +30,7 @@ interface MockState {
   externalWorkerCalls: number
 }
 
-/** Predicate route (never the '**​/api/**' glob — TEST-STRATEGY §9). */
+// Predicate route (never the '**/api/**' glob — TEST-STRATEGY §9).
 async function mockBff(page: Page, opts: { externalWorkerJobs: boolean }): Promise<MockState> {
   const state: MockState = { externalWorkerCalls: 0 }
   await page.route(
@@ -65,6 +66,7 @@ test('capable engine: the External Worker lane renders with the lock owner', asy
   // The lock owner is the crux column for a "stuck worker" incident.
   await expect(lane.getByText('worker-3')).toBeVisible()
   await expect(lane.getByText('chargeViaWorker')).toBeVisible()
+  await scanA11y(page, 'external worker lane with lock owner')
 })
 
 test('pre-6.8 engine: the lane is absent and the BFF endpoint is never called', async ({
@@ -78,4 +80,5 @@ test('pre-6.8 engine: the lane is absent and the BFF endpoint is never called', 
   // Graceful degradation: no external-worker lane, and no request ever left the browser.
   await expect(page.locator('details.lane-external-worker')).toHaveCount(0)
   expect(state.externalWorkerCalls).toBe(0)
+  await scanA11y(page, 'errors-jobs tab on pre-6.8 engine, external worker lane absent')
 })
