@@ -1,7 +1,8 @@
 # 🧭 REGISTRY CRUD — runtime engine lifecycle (design + panel, v2)
 
-**Status:** design locked, unbuilt (2026-07-09). Authoritative source-of-truth for the
-Registry-CRUD feature — the WHAT/WHY/HOW/WHEN below drive the deltas into
+**Status:** ★ **BUILT 2026-07-09** — S1–S5 landed, CI-green; S4b (four-eyes on dangerous registry
+writes + connect-time IP-pinning, issue #91) deferred (§10 below). Authoritative source-of-truth for
+the Registry-CRUD feature — the WHAT/WHY/HOW/WHEN below drive the deltas into
 `SPECIFICATION.md` (§4b), `ARCHITECTURE.md` (§3/§4/§5), `IMPLEMENTATION-PLAN.md` (v2 block)
 and `REQUIREMENTS-REGISTER.md` (R-OPS-13 expanded; R-OPS-15, R-SAFE-13 added). This doc
 deprecates the older one-line "registry CRUD (v2)" bullets it is referenced from.
@@ -438,9 +439,11 @@ CREATE TABLE engine_registry (
 );
 CREATE INDEX idx_engine_registry_live ON engine_registry (lifecycle) WHERE removed_at IS NULL;
 ```
-`advisories` / `require-second-approval` / `forward-user-header` / `jurisdiction` are deferred
-until their features build (they are absent from `EngineConfig` today too) — additive columns
-later, never a lie now.
+`advisories` / `require-second-approval` / `jurisdiction` are deferred until their features build
+(they are absent from `EngineConfig` today too) — additive columns later, never a lie now.
+`forward-user-header` shipped since (M4-CLOSEOUT §2/S4): `V9__engine_forward_user.sql` adds
+`forward_user boolean NOT NULL DEFAULT false`, live end-to-end (`EngineConfig.forwardUser` →
+`EngineRegistryRow`/`EngineRegistryMapper` → `InboundForwardedUserFilter`/`ForwardedActor` send-side).
 
 ---
 

@@ -894,7 +894,7 @@ copy is never identical to an RBAC denial (R-GOV-04, R-SEM-17).
 Combination rule unchanged: **AND between categories, OR within** — made visible by the
 compiled-criteria echo. Saved views: curated system views + user-named views + recent
 searches (§4 Stage 0; user-named views/recents are per-user server-backed as of v2/M4, system
-views stay client-derived) + **team-published shared views** (v2, demand-gated —
+views stay client-derived) + **team-published shared views** (v2, ★ built —
 [SHARED-VIEWS.md](SHARED-VIEWS.md), R-SEM-24/R-SAFE-16): an operator/admin publishes curated
 canon the team inherits, in a separate governed `shared_view` store (publish = snapshot-copy,
 `covers()`-gated by scope). Read-visibility is **scoped declutter, NOT a security boundary**
@@ -1142,21 +1142,26 @@ and would rewrite working M1/M2 code for no capability gain); Go/FastAPI/Kotlin 
     reason/review-by; business summary; timers-due-in-window; ops reporting; support bundle;
     forensic passthrough; stacktrace ergonomics; engine advisories; secret-rotation file refs;
     clock-skew badges; capability invalidation; CSV export; print styles; webhook.
-- **v2 (demand-driven, triggers stated):** **remediation playbooks (§5.1 — build trigger
-  R-GOV-08)**, migration (single w/ Inspector static pre-check → batch wizard + typed business-key confirm), definition
-  version comparison, CMMN, **registry CRUD** (runtime engine lifecycle — SPEC §4b, the
-  R-OPS-13/R-OPS-15/R-SAFE-13 SSRF + governance rails; design locked in
-  [REGISTRY-CRUD.md](REGISTRY-CRUD.md)), **shared
-  server-side (team) views** (an operator/admin publishes curated canon the team inherits —
-  design locked in [SHARED-VIEWS.md](SHARED-VIEWS.md), R-SEM-24/R-SAFE-16; separate governed
-  `shared_view` store, snapshot-copy publish, `covers()`-gated by scope, `overlaps()`-scoped
-  read-visibility as declutter, replay-time dangling-canon honesty; **build trigger:** distinct
-  owners repeatedly re-create the same canonical `search` string), **k-way-merge deep paging** (cursor-based browsing of the globally-sorted
-  merged stream — design locked + spike-gated in [KWAY-PAGING.md](KWAY-PAGING.md), R-SEM-22/23,
-  R-NFR-08; **build trigger:** operators repeatedly hit `perEngine.total > fetched` on a
-  time-sorted search without narrowing. NOTE: R-SEM-23, the deterministic total-order fix, is a
-  standalone MUST that ships regardless), maintenance snapshots + volume trends,
-  training mode, capability overrides.
+- **v2 (demand-driven, still pending):** **remediation playbooks (§5.1 — build trigger
+  R-GOV-08)**, migration batch wizard (single-instance migration + Inspector static pre-check
+  shipped; the multi-instance wizard is still pending), definition version comparison, CMMN
+  (Phase 0/1 shipped — R-SEM-20, docs/CMMN-CASE-DETAIL-PHASE-2.md; further phases pending),
+  maintenance snapshots + volume trends, training mode, capability overrides.
+- **v2 — SHIPPED (built directly on panel-review consensus rather than a fired demand signal;
+  historical trigger framing retained for provenance):** **registry CRUD** (runtime engine
+  lifecycle — SPEC §4b, the R-OPS-13/R-OPS-15/R-SAFE-13 SSRF + governance rails; S1–S5 landed,
+  [REGISTRY-CRUD.md](REGISTRY-CRUD.md); S4b four-eyes on dangerous writes + connect-time
+  IP-pinning deferred, issue #91), **shared server-side (team) views** (an operator/admin
+  publishes curated canon the team inherits — S1–S6 landed, [SHARED-VIEWS.md](SHARED-VIEWS.md),
+  R-SEM-24/R-SAFE-16; separate governed `shared_view` store, snapshot-copy publish,
+  `covers()`-gated by scope, `overlaps()`-scoped read-visibility as declutter, replay-time
+  dangling-canon honesty; the stated build trigger — distinct owners repeatedly re-creating the
+  same canonical `search` string — was never instrumented, the panel approved building directly),
+  **k-way-merge deep paging** (cursor-based browsing of the globally-sorted merged stream — ★
+  FEATURE COMPLETE, S0–S5 landed, [KWAY-PAGING.md](KWAY-PAGING.md), R-SEM-22/23, R-NFR-08; the
+  stated build trigger — operators repeatedly hitting `perEngine.total > fetched` on a
+  time-sorted search without narrowing — was superseded by the P0 wire-shape spike going ahead
+  and building ✅; R-SEM-23, the deterministic total-order fix, shipped as a standalone MUST).
 - **v2/M4 job-lane trend sparklines — SHIPPED (R-BAU-08):** each Stage-0 status tile carries a
   small trend line of that lane's recent count history, read from the snapshot store (a scheduled
   sampler persists per-engine, per-lane Stage-0 counts to Postgres on a thin background engine

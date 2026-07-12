@@ -54,10 +54,10 @@ exhaustive scenario→class index.
 | R-SEM-18 dual-write UNKNOWN | TS-AUD-02, TS-BULK-02 | `AuditServiceTest`, `CorrectiveActionServiceTest`, `FailClosedAuditIT` | L1·L4 | ✅ |
 | R-SEM-19 hierarchy breadth cap | TS-STAT-08, TS-DET-08 | `InstanceTimelineServiceTest`, `InstanceTimelineIT`; FE `timelineModel.test` | L1·L4·UNIT-FE | ✅ |
 | R-SEM-20 CMMN out-of-scope count | TS-STAT-16 | `OutOfScopeDeadlettersTest`, `TriageCmmnScopeIT` (6.8), **`TriageCmmnScopeLegacyIT` (6.3 null gate)** | L1·L4 | ✅ (legacy IT added this pass) |
-| R-SEM-22 k-way-merge cursor contract | (design) | `PagingCursorTest` (L1 codec/dedup/bound), crafted-cursor-refused-pre-fan-out (L2 WireMock), deep-scroll ITs (L4, config-lowered caps) | L1·L2·L4 | 🔲 design-locked + spike-gated (`docs/KWAY-PAGING.md`) |
-| R-SEM-23 deterministic total order | (design) | `StatusJoinTest` goldens: tiebreak order, `+00:00`/`Z` compare-equal, `nullsLast` | L1 | 🔲 standalone bug-fix, S1 (red-first goldens) |
-| R-SEM-24 team/shared saved-view model + honesty | (design) | `shared_view` migration/uniqueness IT (L4-DB, LOCAL-ONLY), `overlaps()` + derived-scope + read-visibility (L1 authorizer — dev ladder is global-only), replay resolvability partial-vs-total-dead-vs-clean-empty (L1) + greying vitest | L1·L4 | 🔲 design-locked + demand-gated (`docs/SHARED-VIEWS.md`) |
-| R-SAFE-16 team/shared saved-view governance | (design) | publish `covers()` gate + wildcard→ADMIN + content-bound refusal + forged owner/scope ignored (L1 authorizer + L3 door), audited fail-closed lifecycle via `recordConfigEvent` (L4-DB positive rows + **PRIVATE-write-no-audit negative** + mocked-throws→503+no-flip L3), concurrent-publish→409, injection caps | L1·L3·L4 | 🔲 design-locked (`docs/SHARED-VIEWS.md`); scoped RBAC not rung-3-reachable (dev ladder global-only) |
+| R-SEM-22 k-way-merge cursor contract | `PagingCursorTest` (L1 codec/dedup/bound), crafted-cursor-refused-pre-fan-out (L2 WireMock), deep-scroll ITs (L4, config-lowered caps) | `PagingCursorTest`, `KwayPagingIT`, `Kway7IT` | L1·L2·L4 | ✅ (S0–S5 landed, `docs/KWAY-PAGING.md`) |
+| R-SEM-23 deterministic total order | — (standalone bug-fix, no TS-id) | `StatusJoinTest` goldens: tiebreak order, `+00:00`/`Z` compare-equal, `nullsLast` | L1 | ✅ (landed as S1, red-first goldens) |
+| R-SEM-24 team/shared saved-view model + honesty | `shared_view` migration/uniqueness IT (L4-DB), `overlaps()` + derived-scope + read-visibility (L1 authorizer), replay resolvability partial-vs-total-dead-vs-clean-empty (L1) + greying vitest | `SharedViewScopeTest`, `SharedViewServiceTest`, `SharedViewIT` | L1·L4 | ✅ (S1–S6 landed, `docs/SHARED-VIEWS.md`); scoped RBAC not rung-3-reachable (dev ladder global-only) |
+| R-SAFE-16 team/shared saved-view governance | publish `covers()` gate + wildcard→ADMIN + content-bound refusal + forged owner/scope ignored (L1 authorizer + L3 door), audited fail-closed lifecycle via `recordConfigEvent` (L4-DB positive rows + **PRIVATE-write-no-audit negative** + mocked-throws→503+no-flip L3), concurrent-publish→409, injection caps | `SharedViewGovernanceIT`, `SharedViewFailClosedIT` | L1·L3·L4 | ✅ (landed, `docs/SHARED-VIEWS.md`); scoped RBAC not rung-3-reachable (dev ladder global-only) |
 | R-SAFE-17 scope-filtered reads (S2) | `ReadScopeGate` + `SearchController`/`SearchService` + `TriageScopeProjector`/`TriageController` | `ReadScopeGateTest` (L1: flag-off→null-unrestricted, global-grant→all, per-engine/per-tenant `overlaps()` narrowing, empty-grant→none), `SearchServiceScopeTest` (L2: out-of-scope engine labeled + **`verifyNoInteractions(flowable)` — never queried**, null-scope over-filters nothing), `TriageScopeProjectorTest` (L1: readable narrowing + re-summed roll-ups + drop no-scope group + PARTIAL group nulls DL/retrying split), `ErrorGroupCard.test.tsx` ("—" render for scoped split) | L1·L2 | ✅ Search + triage **dashboard** built (flag off by default, on under `oidc`); leak-views/trends aggregate-count scoping = follow-up (no per-engine dimension); scoped RBAC not rung-3-reachable (dev ladder global-only) |
 
 ### SAFE — operator safety & RBAC (risk rank R2)
@@ -67,10 +67,12 @@ exhaustive scenario→class index.
 | R-SAFE-02/04 reversibility + plain labels | TS-VERB-14 | FE `catalog.test` **(TS-VERB-14 block)**; `RbacGuardMatrixTest` (tier/floor) | UNIT-FE·L1 | ✅ (badge/label asserts added this pass) |
 | R-SAFE-03 tier-0 prod friction floor | TS-GUARD-01 | FE `catalog.test` (`needsTwoStepConfirm`) | UNIT-FE | ✅ |
 | R-SAFE-05 protected instances | TS-RBAC-03 | `CorrectiveActionServiceTest`, `ActionRbacGuardSpringTest`; FE `intersection.test` | L1·L3·UNIT-FE | ✅ |
-| R-SAFE-06/11 break-glass | TS-RBAC-04 | — | — | 🔲 (§C-2) |
+| R-SAFE-06/11 break-glass | TS-RBAC-04 | `BreakGlassFailureHandlerTest`, `BreakGlassThrottleTest`, `OidcKeycloakIT` (real-Keycloak sealed-login → ADMIN session + `breakGlass:true` + `/api/admin/access` 403) | L1·L3·L4 | ✅ (§C-2 gap closed by `OidcKeycloakIT`, nightly) |
 | R-SAFE-08 second-approval hooks | TS-RBAC-05 | — (audit columns exist; not exercised) | — | 🔲 (§C-3) |
 | R-SAFE-09 Verify-now | TS-BULK (verify) | `BulkJobServiceTest` (verifyNow…) | L1 | ✅ |
 | R-SAFE-12 group→scope hot-reload | TS-RBAC (scope) | `ScopeMappingServiceTest` | L1 | ✅ |
+| R-SAFE-14 mapping-CRUD governance (four-eyes, apex invariant) | — | `FourEyesPolicyTest`, `ApexInvariantCheckerTest`, `AdminAccessRbacSpringTest`, `AdminAccessReauthTest` | L1·L3 | ✅ |
+| R-SAFE-15 break-glass built (sealed chain, tamper-evident file-sink degrade) | — | `BreakGlassFailureHandlerTest`, `BreakGlassThrottleTest`, `OidcKeycloakIT` | L1·L4 | ✅; discoverable-entry-point interstitial is issue #94 (open) |
 | RBAC 100% matrix | **TS-RBAC-01** | **`RbacGuardMatrixTest`** (verb×role, completeness-guarded) + `ActionRbacGuardSpringTest` (HTTP wiring); scope isolation `ScopeMappingServiceTest`; read-only mode `CorrectiveActionServiceTest` | L1·L3 | 🟡 (OIDC-scoped-grant HTTP leg = §C-1) |
 
 ### AUD — audit & data protection
@@ -91,13 +93,14 @@ exhaustive scenario→class index.
 | R-NFR-03 cache TTL / refresh throttle | TS-TRI-06/07 | `TriageServiceTest`, `TriageAggregationIT` | L1·L4 | ✅ |
 | R-NFR-04 alarm thresholds | TS-TRI-02 | `EngineCapabilitiesTest`, health ITs | L1·L4 | 🟡 (threshold arithmetic L1 slice thin — §C-11) |
 | R-NFR-07 write-ms timeout | TS-BULK-02 | `InspectorPropertiesValidationTest`, `CorrectiveActionServiceTest` (timeout→UNKNOWN) | L1 | 🟡 (slow-engine L2 exercise = §C-6) |
-| R-NFR-08 deep-paging envelope | (design) | inbound-offset-cap-check (L1/L2), `DEEP_PAGE` bulkhead lane wiring (L3), deep-page cost harness (§C-11) | L1·L2 | 🔲 design-locked (`docs/KWAY-PAGING.md`); perf harness = §C-11 |
+| R-NFR-08 deep-paging envelope | inbound-offset-cap-check (L1/L2), `DEEP_PAGE` bulkhead lane wiring (L3), deep-page cost harness (§C-11) | `PagingCursorTest`, `KwayPagingIT`, `Kway7IT` | L1·L2·L4 | 🟡 envelope built (`docs/KWAY-PAGING.md`, S0-S5 landed); cost-curve perf harness = §C-11 |
 
 ### OPS / L3 / GOV / UXQ / BAU (representative)
 | Req | Scenario(s) | Suite(s) | Rung | Cov |
 |---|---|---|---|---|
 | R-OPS-01 readiness excludes engines | — | `EnginesApiSpringTest` (registry bind) | L3 | 🟡 (readiness probe assert = §C-12) |
 | R-OPS-07/08 injection / secret hygiene | TS-AUD-03/08, FIX-STUB-05 | `EnginesApiSpringTest`, `ActionCurlTest`, `AuditServiceTest` (redact), `CsvTest`/`AuditCsvExportSpringTest` (CSV formula-escape) | L1·L3 | 🟡 (hostile-msg CI fixture = §C-7) |
+| R-OPS-16 transport/header posture | — | `HttpHardeningSpringTest` (CSP enforce, HSTS off-by-default, nosniff/frame-options/referrer/permissions headers) | L3 | 🟡 (BFF headers ✅; demo-nginx header mirror + Traefik HSTS are config, not test-asserted) |
 | R-L3-01 explain-this-status | TS-DET-14, TS-STAT-13 | `StatusEvidenceServiceTest` (per-leg capture + plan choice + failedInSubprocess provenance, WireMock), `StatusChip.test.tsx` (chip→popover→re-derived label + child deep link), `DetailResolveIT`, `SearchServiceIT` (plan choice) | L2·L4 | 🟡 (per-flag provenance E2E = §C-9) |
 | R-L3-03 raw-JSON per-tab | TS-DET-13 | `RawJsonExport` on the Variables/Errors&Jobs/Tasks/Hierarchy/Timeline tabs (download + copy of the tab's cached DTO, `RawJsonExport.test.tsx`); data resolution `DetailResolveIT` | L1(fe)·L4 | ✅ built (was per-ROW-only; the per-TAB support-bundle export landed #118) |
 | R-GOV-04 read-only engine mode | TS-RBAC-01, TS-PROD-01 | `CorrectiveActionServiceTest`, `ActionRbacGuardSpringTest` | L1·L3 | ✅ |
@@ -142,7 +145,7 @@ Exhaustive TS-* → class(es). `—` = no automated suite yet (see §C). This is
 | TS-GUARD-01..05 | `CorrectiveActionServiceTest`, `ActionRbacGuardSpringTest`, `FlowSurgeryServiceTest`; FE `catalog.test` | L1·L3·UNIT-FE |
 | TS-RBAC-01 generated matrix | **`RbacGuardMatrixTest`** + `ActionRbacGuardSpringTest` | L1·L3 | 🟡 §C-1 |
 | TS-RBAC-02/03 | `ActionRbacGuardSpringTest`, `CorrectiveActionServiceTest`; FE `intersection.test` | L1·L3·UNIT-FE |
-| TS-RBAC-04 break-glass | — | — | 🔲 §C-2 |
+| TS-RBAC-04 break-glass | `BreakGlassFailureHandlerTest`, `BreakGlassThrottleTest`, `OidcKeycloakIT` | L1·L4 | ✅ (§C-2 closed) |
 | TS-RBAC-05 approval hooks | — | — | 🔲 §C-3 |
 | TS-BULK-01..10 | `BulkJobServiceTest`, `BulkErrorClassServiceTest`, `BulkFilterServiceTest`, `BulkErrorClassIT`, `BulkFilterIT`; FE `intersection.test`/`filterScope.test`; `filter-bulk.spec`/`retry-group.spec` | L1·L4·UNIT-FE·E2E |
 | TS-BULK-11 SSE progress | `SseHubTest`, `BulkFilterIT` | L1·L4 | 🟡 §C-8 (P3 soak) |
@@ -172,12 +175,15 @@ P3 later). **Closed this pass** items were gaps until this change and now have s
 - ~~C-0c TS-STAT-16 6.3 null gate~~ → **`TriageCmmnScopeLegacyIT`** (L4 against real 6.3.1: a
   non-empty BPMN DLQ lane still yields `outOfScopeDeadletters == null` — unknown, never a
   confident 0). The class was named in three docs but did not exist.
+- ~~C-2 Break-glass account~~ (issue #84 docs sweep) → **`BreakGlassFailureHandlerTest`**,
+  **`BreakGlassThrottleTest`** (L1) + **`OidcKeycloakIT`** (L4, real Keycloak: sealed-login →
+  ADMIN-global session, `breakGlass:true`, reason≥10-on-every-verb, 4h cap, `/api/admin/access`
+  refused). Residual: no discoverable entry point when the IdP is unreachable (issue #94, open).
 
 **Open**
 | # | Gap | Req/TS | Why open | Recommended shape | Prio |
 |---|---|---|---|---|---|
 | C-1 | OIDC scoped-grant HTTP leg of the RBAC matrix | R-SAFE-01, TS-RBAC-01 | `RbacGuardMatrixTest` proves verb×role over global (dev) grants; scope isolation is proven separately at L1 (`ScopeMappingServiceTest`). No single test drives an OIDC session with a *scoped* grant over HTTP to prove out-of-engine/out-of-tenant 403s end-to-end. | Add an `it`-profile `@SpringBootTest` with a stubbed OIDC user whose mounted mapping grants ADMIN only on `engine-a/tenant-a`; assert 403 on `engine-b` and on `tenant-b`, 2xx→502 in-scope. | P2 |
-| C-2 | Break-glass account | R-SAFE-06/11, TS-RBAC-04 | Feature is SHOULD-v1.x hooks; no `/break-glass` path test. | L3 test: sealed local account → ADMIN-global session, distinguished audit flag set, page-banner flag in `/api/me`, 4h cap; reason ≥10 mandatory on every verb incl. tier-0. | P2 |
 | C-3 | Second-approval / proposal hooks | R-SAFE-08, TS-RBAC-05 | Audit columns (`approved_by`, proposal state) exist but no test inserts/exercises them. | L4 audit-schema test: insert a PENDING_APPROVAL row, approver≠proposer enforced, TTL, both identities audited. | P2 |
 | C-4 | Resolver precedence L1 | R-SEM-04, TS-OMNI-01 | Kind-detection/ordering proven only at L4 (`DetailResolveIT`); no docker-free unit of the precedence logic. | Extract/parameterize the resolve order (process-instance→execution→task→job→composite→business-key) into an L1 test over fixtures. | P3 |
 | C-5 | Audit-integrity: pool exhaustion + reconciler sweep + DB REVOKE | R-AUD-03, R-TEST-10, TS-AUD-05 | `FailClosedAuditIT` covers DB-down fail-closed; `AuditServiceTest` covers hash-chain + dual-write translation. Not covered: Hikari saturation degradation, stale-PENDING startup sweep against real PG, and a REVOKE-UPDATE/DELETE proof. | Testcontainers PG suite `AuditIntegrityIT`: hold all connections → mutations fail-closed + `audit_insert_failures_total`++; seed stale PENDING → startup sweep → `unknown`; attempt UPDATE/DELETE as the app role → rejected. | **P1** |
@@ -185,8 +191,8 @@ P3 later). **Closed this pass** items were gaps until this change and now have s
 | C-7 | Hostile-message CI fixture | R-OPS-08, FIX-STUB-05 | The shift-report + CSV-export halves landed with W3-1 (`CsvTest`, `AuditCsvExportSpringTest`, FE `shiftReport.test`/`AuditLogPage.test`); what remains is the committed 1 MiB hostile-message fixture replayed through the normalizer + audit ingest. | A committed 1 MiB hostile-message fixture replayed through the normalizer + audit ingest. | P2 |
 | C-8 | SSE soak (P3) | R-SEM-14, R-TEST-05, TS-BULK-11 | `SseHubTest`+`BulkFilterIT` prove logic + one live stream; the 50-client/30-min soak is unrun. | Scheduled (non-PR) P3 harness: 50 EventSource clients through a 500-item bulk, assert zero dropped/dup, heap ±10%. | P3 |
 | C-9 | Explain-status per-flag provenance E2E · group copy-for-ticket | R-L3-01, R-AUD-06, TS-DET-14/11 | Backend derivation proven at L4; the rendered evidence view + Markdown copy variants have no E2E. | Playwright spec: open a FAILED instance → "explain this status" shows per-leg request/response + plan choice; copy-for-ticket emits the SPEC §4 line order. | P2 |
-| C-10 | Latency budget (P4 / R-NFR-02) | R-NFR-02, TS-TRI-06 | No perf harness in-repo; FIX-REF-01 reference dataset + k6/Gatling assertions unbuilt. | Nightly S2 job seeding FIX-REF-01, asserting the four P95 budgets + ≥99% landing cache hits. | P2 |
-| C-11 | Deep-paging cost curve (R-NFR-08) | R-NFR-08, R-SEM-22 | Design-locked, unbuilt; the O(offset) cost near the depth cap is unmeasured — sets the real per-engine cap and its separate (non-R-NFR-02) latency class. | S0 P0 spike measures offset-near-cap query cost per engine on 6.3/6.8/7.1; nightly deep-scroll perf assertion once built. | P3 |
+| C-10 | Latency budget (P4 / R-NFR-02) | R-NFR-02, TS-TRI-06 | `scripts/perf-scenario-p1.js` exists and asserts the four P95 budgets as k6 thresholds (has existed since the v1 release gate), but the FIX-REF-01 reference-dataset generator (`docker/seed-reference.sh`) is unbuilt and the script has never been wired into any CI workflow. | Build `docker/seed-reference.sh`; wire the existing k6 script into a nightly job seeded from it. Tracked: issue #93. | P2 |
+| C-11 | Deep-paging cost curve (R-NFR-08) | R-NFR-08, R-SEM-22 | R-SEM-22/R-NFR-08 are landed (k-way paging is feature-complete), but the O(offset) cost curve near the depth cap remains unmeasured — the S0 spike set only a conservative default cap, not the real per-engine ceiling. | A P3 spike measures offset-near-cap query cost per engine on 6.3/6.8/7.1; nightly deep-scroll perf assertion once measured. | P3 |
 | C-11 | Alarm-threshold arithmetic L1 | R-NFR-04, TS-TRI-02 | Thresholds exercised implicitly in health ITs; the warn/crit boundary math has no `Clock`-driven L1. | L1 over fixed-`Clock`: oldest-executable >5m warn / >15m crit; overdue-timer any=warn, >100=crit; ages floored at 0. | P3 |
 | C-12 | Readiness/liveness probe assertions | R-OPS-01 | Registry binding tested; the actuator readiness (PG+registry, NEVER engine) group isn't asserted. | L3: `/actuator/health/readiness` UP with engines down; DOWN with PG down. | P2 |
 | C-13 | axe accessibility wired per-spec | R-UXQ-01, TS-E2E-01/04 | axe is named as a CI hard-fail but not attached inside the current e2e specs. | Add `@axe-core/playwright` scan step to each e2e spec + the canonical-arc spec (C-16); fail on serious/critical. | P2 |

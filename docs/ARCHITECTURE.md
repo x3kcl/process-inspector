@@ -183,17 +183,18 @@ The merge uses a **deterministic total order** — the sort key then `compositeI
 tiebreak, with `startTime` compared as a parsed `Instant` (not a raw String, which mis-orders
 the offset-form vs `Z`-form timestamps different engines emit); ties are otherwise
 nondeterministic across requests (R-SEM-23, §2.3).
-v2 **k-way-merge deep paging** (demand-gated, design-locked + spike-gated, `docs/KWAY-PAGING.md`):
-a stateless opaque cursor pages the globally-sorted merged stream. It is a **tagged union by
-plan** — the MIXED/`startTime desc` plan carries a resumable per-engine offset; the
-INVERTED/`failureTime` plan has **no** engine-side resume position (it scans the DLQ unsorted and
-sorts on a BFF-derived key), so deep paging is MIXED-first and INVERTED is initially gated off.
+v2 **k-way-merge deep paging** (★ FEATURE COMPLETE 2026-07-09 — S0–S5 landed, CI-green,
+`docs/KWAY-PAGING.md`): a stateless opaque cursor pages the globally-sorted merged stream, wired
+into `POST /api/search` as the SAME endpoint with a cursor present (the SPA's "Load more"). It is a
+**tagged union by plan** — the MIXED/`startTime desc` plan carries a resumable per-engine offset;
+the INVERTED/`failureTime` plan has **no** engine-side resume position (it scans the DLQ unsorted
+and sorts on a BFF-derived key), so deep paging is MIXED-first and INVERTED is gated off.
 Do-no-harm: an inbound per-engine offset bound-check + size clamp **before** fan-out (the real
 DoS ceiling — a `filterHash`-bound cursor gives no integrity against a crafted one), a dedicated
 `DEEP_PAGE` bulkhead lane so deep scroll can't starve interactive search, a per-engine depth cap,
-and a cursor TTL. Built only if usage shows operators hitting `perEngine.total > fetched` on a
-time-sorted search without narrowing; a mandatory P0 wire-shape spike (6.3/6.8/7.1) precedes any
-build.
+and a cursor TTL. Built after the mandatory P0 wire-shape spike (6.3/6.8/7.1) confirmed the
+offset-cost model; the per-engine depth cap is a conservative interim default — the real O(offset)
+cost curve near the cap is still unmeasured (§C-11).
 
 ### 2.5 Drift — capability probing
 Engines run different Flowable versions. On registry load (and on demand) the BFF calls
@@ -310,7 +311,7 @@ surfaced by `GET /api/engines` and pushed to the health strip via SSE.
 | `GET  /api/instances/{engineId}/{id}/timeline` | Historic activity instances (Gantt rows, `startTime` asc, top-level truncation marker). A call-activity row nests the called instance's own activities as a `children` sub-lane, recursed under the hierarchy caps (depth 10, breadth 50/node, 500-node budget) with a `calledProcessInstanceId` cycle guard; a node truncated by any cap carries `isCapped`. Failing/unfinished nodes carry `liveJobState` (`FAILED`=dead-letter, `RETRYING`=failing-with-retries) joined from the runtime lanes — a dead-lettered async node, whose history row rolled back with its transaction, is **synthesized from the lanes** (phantom-node union) so the failure is never invisible |
 | `GET  /api/instances/{engineId}/{id}/audit` · `…/notes` | Per-instance action history + notes (CRUD) |
 | `GET·PUT /api/views` · `DELETE /api/views/{id}` | **v2/M4 per-user Saved Views** (SPEC §8) — the server-backed replacement for the v1 localStorage store. `PUT` upserts by name (re-saving a name replaces it); `DELETE` is ownership-scoped (404 if absent or owned by another). Every route is keyed on `authentication.getName()` server-side — never a client-supplied owner — so a user only ever sees/mutates their OWN rows. VIEWER floor. System views (R-SEM-05 relative windows) stay client-derived, not stored |
-| `GET·POST /api/team-views` · `PUT /api/team-views/{id}` · `POST …/{id}/unpublish` | **v2 team/shared Saved Views** (SPEC §8, SHARED-VIEWS.md, R-SEM-24/R-SAFE-16 — design-locked, demand-gated) — a **separate governed `shared_view` store**, not a flag on `saved_view`. `GET` returns the caller's `overlaps()`-visible canon (declutter, NOT a security boundary); `POST` publishes via **snapshot-copy** (create-only), gated by `covers(OPERATOR, scope)` where the scope is **derived from the view's `search` `engineIds`** (wildcard scope ⇒ ADMIN-on-scope; publish refused if the search reaches outside the declared scope). `PUT`/unpublish are author-or-scope-ADMIN moderation (default verb unpublish); **unpublish requires a reason ≥10 from EVERY caller — author included — bound to the audit row's reason column** (usability W2 #3; the former reason-free `DELETE /{id}` alias is removed with it); every transition audited fail-closed via `recordConfigEvent` (R-AUD-10, same tx). Concurrent-publish → 409. VIEWER floor to read |
+| `GET·POST /api/team-views` · `PUT /api/team-views/{id}` · `POST …/{id}/unpublish` | **v2 team/shared Saved Views** (SPEC §8, SHARED-VIEWS.md, R-SEM-24/R-SAFE-16 — ★ built, S1–S6 landed) — a **separate governed `shared_view` store**, not a flag on `saved_view`. `GET` returns the caller's `overlaps()`-visible canon (declutter, NOT a security boundary); `POST` publishes via **snapshot-copy** (create-only), gated by `covers(OPERATOR, scope)` where the scope is **derived from the view's `search` `engineIds`** (wildcard scope ⇒ ADMIN-on-scope; publish refused if the search reaches outside the declared scope). `PUT`/unpublish are author-or-scope-ADMIN moderation (default verb unpublish); **unpublish requires a reason ≥10 from EVERY caller — author included — bound to the audit row's reason column** (usability W2 #3; the former reason-free `DELETE /{id}` alias is removed with it); every transition audited fail-closed via `recordConfigEvent` (R-AUD-10, same tx). Concurrent-publish → 409. VIEWER floor to read |
 | `GET·POST /api/recents` | **v2/M4 per-user Recent Searches** (SPEC §8): `POST` records a just-executed search (deduped by search, capped at 10 newest-first in the BFF) and returns the caller's updated list. Same per-user ownership + VIEWER floor |
 | `POST /api/instances/{engineId}/{id}/actions/{verb}` | Verb catalog (SPEC §5); guard tier + reason enforced server-side. Includes `reassign-task` / `unassign-task` (v1.x #6, tier 1 / OPERATOR): server-fresh task restatement gates on the LIVE task (`GET /runtime/tasks/{taskId}` — a completed task 404s → "not active"), then one `PUT /runtime/tasks/{taskId}` `{"assignee":…\|null}`; the audit payload records old→new assignee |
 | `POST /api/instances/{engineId}/{id}/actions/{verb}/curl` | "Show as cURL" (v1.x #6): SERVER-computed command for the proposed action — same RBAC door as execute, but touches neither engine nor audit; renders THIS BFF's verb URL + JSON body + placeholder credential (never a live token, never the engine path). UI shows it verbatim |
@@ -426,8 +427,8 @@ nobody may "simplify" by exposing an engine directly.
   baselines; state-not-history, the config-event audit rows are the history),
   per-user Saved Views + Recent Searches (`saved_view` /
   `recent_search`, v2/M4 — keyed to the authenticated user; superseded the v1 localStorage
-  store, with a one-time client backfill), **team/shared Saved Views** (`shared_view`, v2 —
-  design-locked, demand-gated in SHARED-VIEWS.md — a **separate governed store**, NOT a flag on
+  store, with a one-time client backfill), **team/shared Saved Views** (`shared_view`, v2 — ★ built, S1–S6 landed,
+  design locked in SHARED-VIEWS.md — a **separate governed store**, NOT a flag on
   `saved_view`: publish = snapshot-copy, `covers()`-gated by a scope derived from the view's own
   `search` string, `overlaps()`-scoped read-visibility as declutter, lifecycle audited via
   `recordConfigEvent`; dangling-scope canon renders greyed-with-reason via R-SEM-17 id→name, never

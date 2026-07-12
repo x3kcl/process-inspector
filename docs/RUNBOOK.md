@@ -74,8 +74,14 @@ rejected") are the Inspector doing its job on a struggling engine. Distinguish:
 
 ### 2d. Users can't log in, engines fine
 IdP (OIDC) outage → break-glass, §4. A single user missing a permission is **not**
-break-glass: scope grants are a hot-reloaded mounted-file edit, effective ≤5 min
-(SPEC §2, R-SAFE-12) — page the platform admin instead.
+break-glass — page the platform admin instead. How the grant reaches them depends on
+`inspector.security.mapping-source` (IDP-SECURITY.md §6):
+- **`file`** (default): a scope grant is a hot-reloaded mounted-file edit, effective ≤5 min
+  (SPEC §2, R-SAFE-12); the `/admin/access` CRUD UI 403s.
+- **`db`**: grants are CRUD'd via `/admin/access` (ACCESS_ADMIN, audited fail-closed; any
+  widening change — role ≥OPERATOR with a wildcard engine/tenant, or a fleet-grant create/remove
+  — requires a second independent `ACCESS_ADMIN` approval) and resolve within the same ≤60 s
+  cache TTL — no file edit or restart needed.
 
 ## 3. Recovering a crashed bulk job (INTERRUPTED)
 
