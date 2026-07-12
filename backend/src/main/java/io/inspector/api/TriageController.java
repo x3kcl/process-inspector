@@ -5,9 +5,11 @@ import io.inspector.dto.TriageDashboardResponse;
 import io.inspector.dto.TriageTrendResponse;
 import io.inspector.triage.ErrorGroupAckService;
 import io.inspector.triage.LeakViewService;
+import io.inspector.triage.TriageScopeProjector;
 import io.inspector.triage.TriageService;
 import io.inspector.triage.TriageTrendService;
 import java.time.Duration;
+import org.springframework.security.core.Authentication;
 import org.springframework.web.bind.annotation.GetMapping;
 import org.springframework.web.bind.annotation.RequestMapping;
 import org.springframework.web.bind.annotation.RequestParam;
@@ -35,20 +37,30 @@ public class TriageController {
     private final TriageTrendService trends;
     private final ErrorGroupAckService acks;
     private final LeakViewService leakViews;
+    private final TriageScopeProjector scopeProjector;
 
     public TriageController(
-            TriageService triage, TriageTrendService trends, ErrorGroupAckService acks, LeakViewService leakViews) {
+            TriageService triage,
+            TriageTrendService trends,
+            ErrorGroupAckService acks,
+            LeakViewService leakViews,
+            TriageScopeProjector scopeProjector) {
         this.triage = triage;
         this.trends = trends;
         this.acks = acks;
         this.leakViews = leakViews;
+        this.scopeProjector = scopeProjector;
     }
 
     @GetMapping
-    public TriageDashboardResponse dashboard(@RequestParam(defaultValue = "false") boolean refresh) {
-        // R-BAU-01: ack state joins the CACHED aggregation at render time — live on every
-        // read, never cached with (or busting) the engine data.
-        return acks.decorate(triage.dashboard(refresh));
+    public TriageDashboardResponse dashboard(
+            @RequestParam(defaultValue = "false") boolean refresh, Authentication auth) {
+        // S2 (R-SAFE-17): scope the SHARED cached aggregation to the caller's readable engines as a
+        // per-request render-time projection (never a scope-aware cache key, never inside the
+        // aggregation the background sampler drives). Project first, THEN join ack state — decorate
+        // keys on signatureHash, which the projection preserves, so it operates on the scoped groups.
+        // R-BAU-01: ack state is live on every read, never cached with (or busting) the engine data.
+        return acks.decorate(scopeProjector.project(triage.dashboard(refresh), auth));
     }
 
     @GetMapping("/trends")
