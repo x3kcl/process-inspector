@@ -39,6 +39,20 @@ class NoDbTestSupportTest {
         }
     }
 
+    /**
+     * The scan-registered beans must stay singleton (Spring's own default, unset here) — a test
+     * stubbing {@code when(...)} on one {@code @Autowired} injection point and asserting
+     * {@code verify(...)} on another must observe the SAME mock, not two independent ones.
+     */
+    @Test
+    void twoLookupsOfTheSameRepositoryTypeReturnTheSameMockInstance() {
+        try (var ctx = new AnnotationConfigApplicationContext(NoDbTestSupport.class)) {
+            AuditEntryRepository a = ctx.getBean(AuditEntryRepository.class);
+            AuditEntryRepository b = ctx.getBean(AuditEntryRepository.class);
+            assertThat(a).isSameAs(b);
+        }
+    }
+
     private static void assertMocked(Object bean) {
         assertThat(mockingDetails(bean).isMock()).isTrue();
     }
