@@ -27,6 +27,10 @@ LABEL org.opencontainers.image.title="Process Inspector BFF" \
       org.opencontainers.image.description="Spring Boot BFF for the multi-engine Flowable Process Inspector" \
       org.opencontainers.image.source="https://github.com/x3kcl/process-inspector" \
       org.opencontainers.image.licenses="Apache-2.0"
+# Pick up patched Alpine packages ahead of the base image's own next release cut
+# (nightly Trivy scan gate, issue #93) — libexpat/p11-kit etc. get fixes upstream
+# well before eclipse-temurin re-cuts the jre-alpine tag.
+RUN apk upgrade --no-cache
 RUN addgroup -S app && adduser -S -G app app
 USER app
 WORKDIR /app
