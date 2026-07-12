@@ -32,7 +32,15 @@ import org.springframework.stereotype.Component;
  *
  * <p>Membership freshness rides for free on the re-auth: a re-auth login yields a NEW id-token, and
  * {@code RbacAuthorizer} resolves groups from the id-token claims on every check — so the replayed
- * verb runs on the just-re-pulled group set, not a token reached at an earlier check.
+ * verb runs on the just-re-pulled group set, not a token reached at an earlier check. Proven (not just
+ * asserted) by {@code RbacAuthorizerOidcFreshnessTest}.
+ *
+ * <p>Login-time conformance (issue #95): this class is the CHECK-time gate — it only ever sees
+ * whatever {@code auth_time} the IdP already returned. {@link ReauthConformantOidcUserService} is
+ * the belt-and-suspenders LOGIN-time gate: it fails a re-auth login outright, at the
+ * token-response boundary, if a nonconforming IdP ignored {@code max_age} and echoed a stale (or
+ * absent) {@code auth_time} — so a broken IdP surfaces immediately at login, not minutes later as
+ * a confusing 401 here.
  */
 @Component
 public class DangerousActionReauthGate {
