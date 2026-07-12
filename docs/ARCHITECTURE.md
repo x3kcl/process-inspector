@@ -358,8 +358,12 @@ nobody may "simplify" by exposing an engine directly.
   time — hardens the session/transport posture (**S2 built**: idle+absolute session caps,
   fixation scoped (`changeSessionId` on `oidc`, `none` on dev-Basic so the SSE isn't orphaned),
   `HttpOnly/Secure/SameSite=Lax`, the header set + **fail-closed verb gate**
-  (`canExecute .orElse(false)` + a pre-`@PreAuthorize` verb-existence 404), CSP report-only-first,
-  HSTS opt-in, CORS off — R-SAFE-07/R-OPS-16), and builds
+  (`canExecute .orElse(false)` + a pre-`@PreAuthorize` verb-existence 404), CSP enforcing (S5),
+  HSTS opt-in, CORS off — R-SAFE-07/R-OPS-16). **CSRF** is `CookieCsrfTokenRepository` +
+  `X-XSRF-TOKEN` echo (basic-per-request exempt); a `CsrfCookieFilter` MATERIALIZES Spring 6's
+  deferred token on every response so the `XSRF-TOKEN` cookie is reliably PRIMED — otherwise the
+  SPA's first post-login unsafe request raced an unwritten cookie into a bare 403 (#118 items 1&2).
+  It also builds
   break-glass (sealed local ADMIN on a distinct `/break-glass` chain that works when the IdP is
   down; ADMIN-global never fleet; audit degrades to a local file sink when Postgres is also down).
   **Brute-force throttle (S4):** the `/break-glass` door is protected by a self-healing PROGRESSIVE
