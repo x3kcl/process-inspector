@@ -174,3 +174,104 @@ jobs:
         run: |
           npm ci
           npm audit --audit-level=high
+
+  # P1 performance gate (SPEC §2 R-NFR-01, issue #93 Part B): the FIX-REF-01 reference
+  # dataset (TEST-SCENARIOS.md §1.6 — 3 defs x 3 versions x 4 failure signatures, ~20k
+  # historic + 2k active, 5k dead-letter jobs matching each engine's dlq-scan-cap, 200
+  # suspended, tenants a/b) is what the k6 thresholds in perf-scenario-p1.js are calibrated
+  # against; a smaller dataset would under-test the DLQ-scan-driven search_failed bound.
+  # Own compose stack + port block (disjoint from engine-its' 8091/8092/5435, and from
+  # ci.yml's per-slot 8091-8094/5435) since it runs in parallel with the other nightly jobs.
+  # NOT merge-blocking, same as the rest of this workflow — a perf regression is triaged
+  # same as an IT failure, not a push gate.
+  perf-p1:
+    runs-on: self-hosted
+    timeout-minutes: 45
+    env:
+      COMPOSE_PROFILES: "flowable-6,postgres"
+      PI_ENGINE_A_PORT: "8095"
+      PI_ENGINE_B_PORT: "8096"
+      PI_PG_PORT: "5436"
+      PI_BFF_PORT: "8097"
+      INSPECTOR_DB_URL: jdbc:postgresql://localhost:5436/inspector
+      CI_PROJECT: pi-ci-nightly-perf
+    steps:
+      - uses: actions/checkout@v4
+      - uses: actions/setup-java@v4
+        with:
+          distribution: temurin
+          java-version: "21"
+          cache: maven
+      - name: Docker Hub login (rate-limit mitigation)
+        continue-on-error: true
+        uses: docker/login-action@v3
+        with:
+          username: ${{ secrets.DOCKERHUB_USERNAME }}
+          password: ${{ secrets.DOCKERHUB_TOKEN }}
+      - name: Pre-clean CI harness residue (scoped to $CI_PROJECT)
+        run: docker compose -p "$CI_PROJECT" -f docker/docker-compose.dev.yml down -v --remove-orphans || true
+      - name: Boot harness (flowable-6 + postgres)
+        run: docker compose -p "$CI_PROJECT" -f docker/docker-compose.dev.yml up -d
+      - name: Wait for engines and postgres (bounded)
+        run: bash docker/smoke-test.sh flowable-6
+      # Full FIX-REF-01 scale (default --scale 1.0): ~27k starts/engine, empirically ~90s/
+      # engine at 32 workers against this harness — comfortably inside the timeout above.
+      # Explicit engine URLs: the flowable-6 profile only brings up A+B, and the script's
+      # own no-args default additionally probes the (here, absent) engine-7/legacy ports.
+      - name: Seed FIX-REF-01 reference dataset (REST-only, idempotent)
+        run: >-
+          python3 docker/seed-reference.py
+          "http://localhost:${PI_ENGINE_A_PORT}/flowable-rest/service"
+          "http://localhost:${PI_ENGINE_B_PORT}/flowable-rest/service"
+      - name: Build BFF jar
+        working-directory: backend
+        run: mvn -B -DskipTests package
+      - name: Boot BFF in the background, pointed at the seeded engines
+        working-directory: backend
+        env:
+          INSPECTOR_ENGINE_A_BASE_URL: http://localhost:${{ env.PI_ENGINE_A_PORT }}/flowable-rest/service
+          INSPECTOR_ENGINE_B_BASE_URL: http://localhost:${{ env.PI_ENGINE_B_PORT }}/flowable-rest/service
+          ENGINE_A_PASSWORD: test
+          ENGINE_B_PASSWORD: test
+          SERVER_PORT: ${{ env.PI_BFF_PORT }}
+        run: |
+          JAR=$(ls target/*.jar | head -1)
+          nohup java -jar "$JAR" > /tmp/bff-perf.log 2>&1 &
+          echo $! > /tmp/bff-perf.pid
+      - name: Wait for /v3/api-docs (bounded)
+        run: |
+          for _ in $(seq 1 90); do
+            curl -fsS "http://localhost:${PI_BFF_PORT}/v3/api-docs" > /dev/null && exit 0
+            sleep 2
+          done
+          echo "::error::BFF did not serve /v3/api-docs within 180s"
+          tail -200 /tmp/bff-perf.log
+          exit 1
+      # Dockerized k6 (host network so it reaches the BFF on localhost:$PI_BFF_PORT) — the
+      # dev viewer/dev credentials are the k6 script's own defaults (SecurityConfig, !oidc).
+      - name: k6 — P1 latency budgets (SPEC §2, R-NFR-01/02)
+        run: |
+          docker run --rm --network host \
+            -e BASE_URL="http://localhost:${PI_BFF_PORT}" \
+            -v "$PWD/scripts:/scripts:ro" \
+            -v /tmp:/out \
+            grafana/k6:2.1.0 run --summary-export=/out/k6-summary-p1.json /scripts/perf-scenario-p1.js
+      - uses: actions/upload-artifact@v4
+        if: always()
+        with:
+          name: k6-summary-p1
+          path: /tmp/k6-summary-p1.json
+          retention-days: 90
+          if-no-files-found: warn
+      - name: Dump BFF log
+        if: failure()
+        run: tail -200 /tmp/bff-perf.log || true
+      - name: Reap the background BFF
+        if: always()
+        run: kill "$(cat /tmp/bff-perf.pid 2>/dev/null)" 2>/dev/null || true
+      - name: Dump harness logs
+        if: failure()
+        run: docker compose -p "$CI_PROJECT" -f docker/docker-compose.dev.yml logs --no-color --timestamps
+      - name: Tear down CI harness
+        if: always()
+        run: docker compose -p "$CI_PROJECT" -f docker/docker-compose.dev.yml down -v --remove-orphans || true
