@@ -137,9 +137,10 @@ public class SecurityConfig {
                                 // describes the surface (no data, no secrets) so it stays open.
                                 "/v3/api-docs/**",
                                 // #94: the ONE discoverable door to break-glass must itself be reachable
-                                // pre-auth (permitAll on both chains, harmless on !oidc — no controller
-                                // is wired there — and BreakGlassLoginPageController self-gates a 404
-                                // when unconfigured even on oidc, matching the POST handler's own gate).
+                                // pre-auth. Shared here (not oidc-only) because BreakGlassLoginPageController
+                                // is a plain, non-profile-gated @RestController — it IS wired on !oidc too,
+                                // where it self-gates a 404 (BreakGlassProperties.enabled defaults false
+                                // there), the same gate the POST handler uses.
                                 "/break-glass")
                         .permitAll()
                         .anyRequest()

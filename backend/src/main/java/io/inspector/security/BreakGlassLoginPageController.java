@@ -46,7 +46,8 @@ public class BreakGlassLoginPageController {
     @GetMapping(value = "/break-glass", produces = MediaType.TEXT_HTML_VALUE)
     public ResponseEntity<String> loginPage(HttpServletRequest request) {
         // Same gate as SecurityConfig's own POST wiring — an unconfigured deployment gets a plain
-        // 404, identical to any other unmapped path, rather than revealing that break-glass exists
+        // 404 (this path is permitAll, so it never reaches the oauth2Login entry point's 302 that
+        // most OTHER unmapped paths get on the oidc chain), never revealing that break-glass exists
         // but isn't set up.
         if (!breakGlass.isEnabled() || breakGlassPassword == null || breakGlassPassword.isBlank()) {
             return ResponseEntity.status(HttpStatus.NOT_FOUND).build();
