@@ -289,11 +289,15 @@ public record PagingCursor(
             // here just as often as a genuine every-engine exhaustion, and the UI can't tell
             // "you've truly seen everything" from "narrow your search to see the rest" without
             // depthCapped. No new rows means no offset advances past this page, so the walled
-            // check is just baseOffsets vs. each engine's cap — the same test step 5 runs below.
+            // check is the exact same one step 5 runs below — same engine set
+            // (rawWindowKeys ∪ baseOffsets, offset defaults to 0) and the same >= cap test, so a
+            // targeted engine with a 0 depth cap is caught even on page 1 (baseOffsets empty).
+            Set<String> emptyPageEngines = new HashSet<>(rawWindowKeys.keySet());
+            emptyPageEngines.addAll(baseOffsets.keySet());
             boolean anyEngineWalled = false;
-            for (Map.Entry<String, Integer> offset : baseOffsets.entrySet()) {
-                int cap = depthCaps.getOrDefault(offset.getKey(), DEFAULT_DEPTH_CAP);
-                if (offset.getValue() >= cap) {
+            for (String eng : emptyPageEngines) {
+                int cap = depthCaps.getOrDefault(eng, DEFAULT_DEPTH_CAP);
+                if (baseOffsets.getOrDefault(eng, 0) >= cap) {
                     anyEngineWalled = true;
                     break;
                 }

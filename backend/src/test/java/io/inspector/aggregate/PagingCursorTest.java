@@ -331,6 +331,26 @@ class PagingCursorTest {
         }
 
         @Test
+        void aZeroDepthCapWallsAnEngineOnPageOneEvenWithNoIncomingOffset() {
+            // Copilot review (#175): a pathological but valid config (an engine's cap is 0) must
+            // read depthCapped on the VERY FIRST page too, where baseOffsets is empty (incoming is
+            // null) — the walled check has to default the missing offset to 0, exactly like step 5.
+            PageResult r = PagingCursor.mergePage(
+                    null,
+                    Map.of("a", List.of()),
+                    Map.of("a", List.of()),
+                    Map.of("a", 50L),
+                    10,
+                    "startTime",
+                    "H",
+                    Map.of("a", 0),
+                    1L);
+            assertThat(r.rows()).isEmpty();
+            assertThat(r.nextCursor()).isNull();
+            assertThat(r.depthCapped()).isTrue();
+        }
+
+        @Test
         void anEmptyResultBelowTheCapIsAGenuineEndNotDepthCapped() {
             // The discriminating counterpart to the walled-engine case below: an engine that is
             // genuinely exhausted (offset well below its cap, simply no rows left) must NOT read
