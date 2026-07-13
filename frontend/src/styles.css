@@ -1636,7 +1636,11 @@ button.primary:disabled {
   border-radius: 0 0 6px 6px;
   text-decoration: none;
 }
-.skip-link:focus-visible {
+/* :focus, not just :focus-visible — a skip-link is a keyboard-only affordance by construction
+   (it sits off-screen with nothing for a mouse to see or click), so the usual focus-visible-only
+   convention doesn't apply here: a UA without :focus-visible support must still reveal it (#178
+   review). */
+.skip-link:focus {
   top: 0;
 }
 .audit-tab {

@@ -252,15 +252,18 @@ function useSignedOut(): boolean {
  */
 function useRouteFocus() {
   const { pathname } = useLocation()
-  // Captured once at mount and never mutated — unlike a "have I run before" ref flipped
-  // inside the effect, this stays correct under StrictMode's dev-mode double-invoke
-  // (mount → cleanup → mount): a stateful flag's early-return branch left no cleanup to
-  // undo the flip, so the second invocation saw isInitialLoad already false and fired
-  // restoreRouteFocus() on the genuine first load, stealing focus onto <main> before the
-  // user ever pressed Tab (#168 — this is what defeated the skip-link).
-  const initialPathname = useRef(pathname)
+  // The last pathname this hook has actually handled — seeded with the current one so a
+  // genuine first load is a no-op (both of StrictMode's dev-mode double-invoke runs see the
+  // SAME pathname here and skip identically; a "have I run before" flag flipped inside the
+  // effect body instead breaks under that double-invoke, since its early-return branch left
+  // no cleanup to undo the flip before the second invocation ran — #168). Unlike a pathname
+  // snapshot fixed once at mount, this ref MOVES on every real transition, so navigating back
+  // to the initial route later still updates it in between and restoration fires again (#178
+  // review — a fixed snapshot silently ate that case).
+  const lastHandledPathname = useRef(pathname)
   useEffect(() => {
-    if (pathname === initialPathname.current) return
+    if (pathname === lastHandledPathname.current) return
+    lastHandledPathname.current = pathname
     // Next macrotask: lazy routes (CasePage, tab chunks) commit a Suspense fallback
     // first — give the route one tick to mount its landmark before targeting it.
     const timer = window.setTimeout(() => restoreRouteFocus(), 0)

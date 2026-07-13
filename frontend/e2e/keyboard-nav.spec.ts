@@ -144,6 +144,31 @@ test('after the grid→detail route change, focus never rests on <body>', async 
   await scanA11y(page, 'detail page focused on main after route change')
 })
 
+test('#178 review: navigating BACK to the app-initial route restores focus too, not just forward navigations', async ({
+  page,
+}) => {
+  await mockBff(page)
+  await page.goto('/search?definitionKey=payment')
+  const cell = page.getByText('ORD-77')
+  await cell.click()
+  await page.keyboard.press('Enter')
+  await expect(page).toHaveURL(/\/inspect\/eng1\/p-1/)
+
+  // A pathname-comparison fix that snapshots "the initial route" once at mount and skips
+  // restoration whenever the CURRENT pathname matches it would wrongly treat this return trip
+  // to /search (the route the app happened to boot on) as if it were the untouched first load.
+  await page.goBack()
+  await expect(page).toHaveURL(/\/search/)
+  await expect
+    .poll(async () =>
+      page.evaluate(() => {
+        const active = document.activeElement
+        return active === null || active === document.body ? 'body' : active.tagName
+      }),
+    )
+    .not.toBe('body')
+})
+
 test('detail tabs rove with arrow keys per the ARIA APG (manual activation)', async ({ page }) => {
   await mockBff(page)
   await page.goto('/inspect/eng1/p-1')
