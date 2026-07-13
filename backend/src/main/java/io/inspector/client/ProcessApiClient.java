@@ -461,6 +461,46 @@ public class ProcessApiClient {
                         .body(FlowablePage.class));
     }
 
+    /**
+     * GET /runtime/tasks?assignee= — every OPEN task currently assigned to a person, across the
+     * whole engine (not scoped to one instance). Feeds person-centric task search (#99, "what is
+     * Bob sitting on"). Bounded by {@code size} — never an unpaged fetch.
+     */
+    public FlowablePage listTasksByAssignee(EngineConfig engine, CallPriority priority, String assignee, int size) {
+        return guarded.call(
+                engine,
+                priority,
+                () -> guarded.readClient(engine)
+                        .get()
+                        .uri(uri -> uri.path("/runtime/tasks")
+                                .queryParam("assignee", assignee)
+                                .queryParam("size", size)
+                                .build())
+                        .retrieve()
+                        .body(FlowablePage.class));
+    }
+
+    /**
+     * GET /runtime/tasks?candidateUser= — every OPEN task a person could CLAIM, across the whole
+     * engine: unassigned tasks whose candidate users/groups include them (Flowable's own
+     * IdentityService resolves group membership when configured; a bare candidate-user link
+     * always matches). Feeds person-centric task search (#99). Bounded by {@code size}.
+     */
+    public FlowablePage listTasksByCandidateUser(
+            EngineConfig engine, CallPriority priority, String candidateUser, int size) {
+        return guarded.call(
+                engine,
+                priority,
+                () -> guarded.readClient(engine)
+                        .get()
+                        .uri(uri -> uri.path("/runtime/tasks")
+                                .queryParam("candidateUser", candidateUser)
+                                .queryParam("size", size)
+                                .build())
+                        .retrieve()
+                        .body(FlowablePage.class));
+    }
+
     /** GET /history/historic-task-instances/{id} — task resolution incl. completed tasks. Null = unknown. */
     @SuppressWarnings("unchecked")
     public Map<String, Object> getHistoricTaskInstance(EngineConfig engine, CallPriority priority, String taskId) {

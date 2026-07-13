@@ -997,6 +997,22 @@ export interface paths {
         patch?: never;
         trace?: never;
     };
+    "/api/tasks": {
+        parameters: {
+            query?: never;
+            header?: never;
+            path?: never;
+            cookie?: never;
+        };
+        get: operations["searchByPerson"];
+        put?: never;
+        post?: never;
+        delete?: never;
+        options?: never;
+        head?: never;
+        patch?: never;
+        trace?: never;
+    };
     "/api/team-views": {
         parameters: {
             query?: never;
@@ -2047,6 +2063,24 @@ export interface components {
             engineId?: string;
             /** Format: int32 */
             total?: number;
+        };
+        PersonTaskRow: {
+            assignee?: string;
+            createTime?: string;
+            dueDate?: string;
+            engineId?: string;
+            matchReason?: string;
+            processDefinitionKey?: string;
+            processInstanceId?: string;
+            taskDefinitionKey?: string;
+            taskId?: string;
+            taskName?: string;
+        };
+        PersonTaskSearchResponse: {
+            perEngine?: {
+                [key: string]: components["schemas"]["EngineResult"];
+            };
+            rows?: components["schemas"]["PersonTaskRow"][];
         };
         Point: {
             /** Format: int64 */
@@ -4040,6 +4074,29 @@ export interface operations {
                 };
                 content: {
                     "*/*": components["schemas"]["SearchResponse"];
+                };
+            };
+        };
+    };
+    searchByPerson: {
+        parameters: {
+            query: {
+                person: string;
+                engineIds?: string[];
+            };
+            header?: never;
+            path?: never;
+            cookie?: never;
+        };
+        requestBody?: never;
+        responses: {
+            /** @description OK */
+            200: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "*/*": components["schemas"]["PersonTaskSearchResponse"];
                 };
             };
         };

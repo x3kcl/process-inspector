@@ -32,6 +32,9 @@ const AdminAccessPage = lazy(() =>
 const DefinitionVersionsPage = lazy(() =>
   import('./inspect/DefinitionVersionsPage').then((m) => ({ default: m.DefinitionVersionsPage })),
 )
+const PersonTaskSearchPage = lazy(() =>
+  import('./tasks/PersonTaskSearchPage').then((m) => ({ default: m.PersonTaskSearchPage })),
+)
 
 /** Wrap a lazily-loaded route element in a Suspense boundary with a consistent fallback. */
 function lazyRoute(node: ReactNode): ReactNode {
@@ -69,6 +72,7 @@ const router = createBrowserRouter([
     children: [
       { index: true, element: <HomeRoute /> },
       { path: 'search', element: lazyRoute(<SearchPage />) },
+      { path: 'tasks', element: lazyRoute(<PersonTaskSearchPage />) },
       { path: 'inspect/:engineId/:instanceId', element: lazyRoute(<InspectPage />) },
       // Case Inspector Phase 2: the polymorphic CMMN sibling of /inspect (read-only, 6.8+).
       { path: 'case/:engineId/:caseInstanceId', element: lazyRoute(<CasePage />) },

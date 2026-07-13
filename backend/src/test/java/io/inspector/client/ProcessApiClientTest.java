@@ -130,4 +130,35 @@ class ProcessApiClientTest {
         assertThat(total).isEqualTo(137);
         wm.verify(getRequestedFor(urlPathEqualTo("/management/deadletter-jobs")).withQueryParam("size", equalTo("1")));
     }
+
+    @Test
+    void listTasksByAssigneeQueriesRuntimeTasksByAssignee() {
+        // Person-centric task search (#99): "what is bob directly assigned".
+        EngineConfig engine = engine("assignee-engine");
+        wm.stubFor(get(urlPathEqualTo("/runtime/tasks"))
+                .willReturn(okJson(
+                        "{\"data\":[{\"id\":\"t1\",\"assignee\":\"bob\"}],\"total\":1,\"start\":0,\"size\":1}")));
+
+        FlowablePage page = client.listTasksByAssignee(engine, CallPriority.INTERACTIVE, "bob", 200);
+
+        assertThat(page.dataOrEmpty()).hasSize(1);
+        wm.verify(getRequestedFor(urlPathEqualTo("/runtime/tasks"))
+                .withQueryParam("assignee", equalTo("bob"))
+                .withQueryParam("size", equalTo("200")));
+    }
+
+    @Test
+    void listTasksByCandidateUserQueriesRuntimeTasksByCandidateUser() {
+        // Person-centric task search (#99): "what could bob claim".
+        EngineConfig engine = engine("candidate-engine");
+        wm.stubFor(get(urlPathEqualTo("/runtime/tasks"))
+                .willReturn(okJson("{\"data\":[{\"id\":\"t2\"}],\"total\":1,\"start\":0,\"size\":1}")));
+
+        FlowablePage page = client.listTasksByCandidateUser(engine, CallPriority.INTERACTIVE, "bob", 200);
+
+        assertThat(page.dataOrEmpty()).hasSize(1);
+        wm.verify(getRequestedFor(urlPathEqualTo("/runtime/tasks"))
+                .withQueryParam("candidateUser", equalTo("bob"))
+                .withQueryParam("size", equalTo("200")));
+    }
 }

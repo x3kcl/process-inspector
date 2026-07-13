@@ -522,7 +522,11 @@ unresolvable with tier 0–1 verbs)
    task read. cURL is SERVER-computed (`POST …/actions/{verb}/curl`, placeholder credential,
    BFF endpoint) and rendered verbatim — NOT a client-side generator (that would break the
    search-cURL invariant and risk a live token in the DOM). Frontend: Tasks-tab row actions,
-   the shared `TaskAssignModal`, `CurlPreview`. Person-centric task search stays unscheduled.
+   the shared `TaskAssignModal`, `CurlPreview`. Person-centric task search **— landed (#99,
+   SPEC §4d).** `GET /api/tasks?person=` (`PersonTaskSearchService`, same fan-out/partial-
+   envelope shape as `/api/search`): two bounded `GET /runtime/tasks` legs per engine
+   (`assignee=`, `candidateUser=`), deduped by task id. Frontend: `/tasks` route
+   (`PersonTaskSearchPage`), reusing the EXISTING `TaskAssignModal` unchanged per row.
 7. External-worker job view (capability-gated, 6.8+). **— landed (v1.x #7).** The fifth
    read-only job lane. Backend: `GET …/jobs/external-worker` + `ExternalWorkerJobDto` (lock
    owner/expiration), capability-gated (reuses the version-derived `externalWorkerJobs` flag —

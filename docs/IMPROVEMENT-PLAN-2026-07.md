@@ -381,7 +381,8 @@ tests + spec-sync in the same PR, and follows green-ci.
 - **Usability-testing loop** over the six unproven v2 surfaces (team views, Load-more,
   MigrateModal, `/admin/engines`, `/admin/access`, break-glass banner) — the skill exists and
   is an explicit pre-pilot promise.
-- **Person-centric task search** (unscheduled since v1.x #6; long-standing operator ask).
+- ~~**Person-centric task search** (unscheduled since v1.x #6; long-standing operator ask).~~
+  **Landed (#99, SPEC §4d) — `GET /api/tasks?person=` + the `/tasks` route.**
 - **Dark theme / density / column chooser** (R-UXQ-08/09) — CSS token layer first (three PRs).
 - **Remediation playbooks (the v2 headline)** — honest gating this time: an S0 audit-mining
   measurement slice against pilot audit rows decides whether the R-GOV-08 trigger fires; the

@@ -63,6 +63,11 @@ export function Shell() {
               <Link to="/audit" className="topbar-link">
                 Ops log
               </Link>
+              {/* Person-centric task search (#99): "what is this person sitting on" — VIEWER-floor
+                  read, so it's an always-visible nav entry like Ops log, no role gate needed. */}
+              <Link to="/tasks" className="topbar-link">
+                Find tasks
+              </Link>
               <RegistryAdminLink />
               <AccessAdminLink />
               <Omnibox />
