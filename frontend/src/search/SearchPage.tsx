@@ -5,6 +5,7 @@ import { ApiError } from '../api/client'
 import { useMe } from '../api/me'
 import { useEngines } from '../api/useEngines'
 import { BulkBar } from '../bulk/BulkBar'
+import { DestructiveBulkEntry } from '../bulk/DestructiveBulkEntry'
 import { PartialResultsBanner } from '../components/PartialResultsBanner'
 import { ResultsGrid } from '../components/ResultsGrid'
 import { SearchRail } from '../components/SearchRail'
@@ -179,6 +180,15 @@ export function SearchPage() {
           visibleCount={(results.data?.rows ?? []).length}
           engines={engines.data ?? []}
           me={me.data}
+        />
+        {/* Tier-4 destructive-bulk wizard (SPEC §6/§7, issue #100): ADMIN-only, filter-scoped
+            only — a standalone entry point beside BulkBar, not folded into its
+            selection/queue-state offer machinery. */}
+        <DestructiveBulkEntry
+          criteria={results.data !== undefined ? request : null}
+          engines={engines.data ?? []}
+          me={me.data}
+          onSubmitted={refresh}
         />
         {/* Zero state: resume where you left off instead of a blank grid. */}
         {request === null && <RecentSearchList />}

@@ -6,6 +6,7 @@ import io.inspector.action.GuardRefusedException;
 import io.inspector.action.OutcomeUnknownException;
 import io.inspector.audit.AuditUnavailableException;
 import io.inspector.audit.OutcomeVerificationFailedException;
+import io.inspector.bulk.BulkCountDriftException;
 import io.inspector.security.reauth.ReauthRequiredException;
 import org.springframework.http.HttpStatus;
 import org.springframework.http.ProblemDetail;
@@ -108,6 +109,18 @@ public class ActionExceptionHandler {
         problem.setProperty("auditId", e.auditId());
         problem.setProperty("currentValue", e.currentValue());
         problem.setProperty("expectedOldValue", e.expectedOldValue());
+        return problem;
+    }
+
+    /** Tier-4 destructive-bulk wizard (issue #100): the typed count no longer matches the fresh scope. */
+    @ExceptionHandler(BulkCountDriftException.class)
+    ProblemDetail bulkCountDrift(BulkCountDriftException e) {
+        ProblemDetail problem = ProblemDetail.forStatusAndDetail(HttpStatus.CONFLICT, e.getMessage());
+        problem.setTitle("Scope drifted since preview — nothing happened");
+        problem.setProperty("code", "bulk-count-drift");
+        problem.setProperty("outcome", "refused");
+        problem.setProperty("confirmedCount", e.confirmedCount());
+        problem.setProperty("actualCount", e.actualCount());
         return problem;
     }
 

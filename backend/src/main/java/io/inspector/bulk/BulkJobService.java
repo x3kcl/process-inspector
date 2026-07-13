@@ -74,9 +74,19 @@ public class BulkJobService {
 
     private static final Logger log = LoggerFactory.getLogger(BulkJobService.class);
 
-    /** SPEC §7 v1 verb whitelist: queue-state verbs only — destructive bulk is the tier-4 wizard (deferred). */
+    /** SPEC §7 v1 verb whitelist: queue-state verbs, dispatched via the SELECTION/ERROR_CLASS/FILTER doors. */
     private static final Set<ActionVerb> BULK_VERBS =
             Set.of(ActionVerb.RETRY_JOB, ActionVerb.SUSPEND, ActionVerb.ACTIVATE, ActionVerb.TRIGGER_TIMER);
+
+    /**
+     * Tier-4 destructive-bulk wizard (SPEC §6/§7, issue #100): a SEPARATE, stricter whitelist —
+     * only {@link DestructiveBulkService} may submit through it (its own door, its own
+     * refuse-unscoped + typed-count-drift + ADMIN-hard-gate rails). {@code delete-deadletter}
+     * bulk is intentionally NOT included yet — it needs a job-level (not instance-level) scope
+     * resolver; deferred as a documented fast-follow (IMPLEMENTATION-PLAN.md), not silently
+     * dropped.
+     */
+    private static final Set<ActionVerb> DESTRUCTIVE_BULK_VERBS = Set.of(ActionVerb.TERMINATE_DELETE);
 
     private static final int DLQ_JOBS_PER_INSTANCE_CAP = 20;
 
@@ -199,6 +209,30 @@ public class BulkJobService {
         return submit(request, auth, extraEnvelopePayload, itemCap, BulkJob.ScopeKind.FILTER, scopeLabel);
     }
 
+    /**
+     * Package-door for the tier-4 destructive-bulk wizard (issue #100), used ONLY by
+     * {@link DestructiveBulkService} — which has already run its own refuse-unscoped, ADMIN
+     * hard-gate, and typed-count-drift rails against a FRESH resolution before calling this.
+     * Still converges on the same private {@code submit} below, so the dangerous-set reauth gate
+     * (line below) applies exactly once here too — the gate cannot be bypassed by ANY door.
+     */
+    BulkDtos.BulkJobDto submitDestructive(
+            BulkDtos.BulkSubmitRequest request,
+            Authentication auth,
+            Map<String, Object> extraEnvelopePayload,
+            String scopeLabel) {
+        return submit(
+                request,
+                auth,
+                extraEnvelopePayload,
+                BulkJob.ITEM_CAP,
+                BulkJob.ScopeKind.FILTER,
+                scopeLabel,
+                DESTRUCTIVE_BULK_VERBS,
+                "Destructive bulk supports terminate-delete only (delete-deadletter-at-scale is a"
+                        + " documented fast-follow). Nothing happened.");
+    }
+
     private BulkDtos.BulkJobDto submit(
             BulkDtos.BulkSubmitRequest request,
             Authentication auth,
@@ -206,20 +240,39 @@ public class BulkJobService {
             int itemCap,
             BulkJob.ScopeKind scopeKind,
             String scopeLabel) {
+        return submit(
+                request,
+                auth,
+                extraEnvelopePayload,
+                itemCap,
+                scopeKind,
+                scopeLabel,
+                BULK_VERBS,
+                "Bulk supports retry-job, suspend, activate and trigger-timer — destructive bulk goes"
+                        + " through the tier-4 wizard. Nothing happened.");
+    }
+
+    private BulkDtos.BulkJobDto submit(
+            BulkDtos.BulkSubmitRequest request,
+            Authentication auth,
+            Map<String, Object> extraEnvelopePayload,
+            int itemCap,
+            BulkJob.ScopeKind scopeKind,
+            String scopeLabel,
+            Set<ActionVerb> allowedVerbs,
+            String verbRefusalMessage) {
         // Dangerous-set freshness (IDP-SECURITY.md §5, R-SAFE-07): bulk is in the dangerous set
         // regardless of verb tier (it is the guard-tier-4 fan-out), so a stale OAuth2 session
         // re-authenticates ONCE — here at SUBMIT, where the session is live — never per persisted
         // item (a bulk job survives session expiry, R-SEM-10; the workers run this envelope's
-        // targets under the already-freshness-checked submit). All three entry doors (selection /
-        // error-class / filter) converge on this overload, so the gate cannot be bypassed.
+        // targets under the already-freshness-checked submit). All FOUR entry doors (selection /
+        // error-class / filter / destructive) converge on this overload, so the gate cannot be
+        // bypassed by any of them.
         reauth.enforce(auth);
         ActionVerb verb = ActionVerb.fromPath(request.verb() != null ? request.verb() : "")
-                .filter(BULK_VERBS::contains)
-                .orElseThrow(() -> new GuardRefusedException(
-                        HttpStatus.BAD_REQUEST,
-                        "bulk-verb-not-allowed",
-                        "Bulk supports retry-job, suspend, activate and trigger-timer in v1 — destructive bulk"
-                                + " needs the tier-4 wizard. Nothing happened."));
+                .filter(allowedVerbs::contains)
+                .orElseThrow(() ->
+                        new GuardRefusedException(HttpStatus.BAD_REQUEST, "bulk-verb-not-allowed", verbRefusalMessage));
         List<BulkDtos.BulkTarget> targets = request.items() != null ? request.items() : List.of();
         if (targets.isEmpty()) {
             throw new GuardRefusedException(
@@ -523,7 +576,8 @@ public class BulkJobService {
                 return false;
             }
             ActionRequest request = requestFor(job, verb, item.getJobRef());
-            ActionResult result = actions.execute(item.getEngineId(), item.getInstanceId(), verb, request, auth);
+            ActionResult result =
+                    actions.executeBulkItem(item.getEngineId(), item.getInstanceId(), verb, request, auth);
             item.settle(BulkJobItem.State.ok, result.deltaStatement(), result.auditId(), clock.instant());
             return false;
         } catch (GuardRefusedException e) {
@@ -609,7 +663,7 @@ public class BulkJobService {
         int retried = 0;
         UUID lastAudit = null;
         for (String dlqJobId : jobIds) {
-            ActionResult result = actions.execute(
+            ActionResult result = actions.executeBulkItem(
                     item.getEngineId(),
                     item.getInstanceId(),
                     ActionVerb.RETRY_JOB,

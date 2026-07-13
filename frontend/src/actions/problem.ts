@@ -20,6 +20,10 @@ export interface ActionProblem {
   currentValue?: unknown
   /** cas-conflict only: the value the edit expected to replace. */
   expectedOldValue?: unknown
+  /** bulk-count-drift only (tier-4 destructive-bulk wizard, issue #100): what the operator typed. */
+  confirmedCount?: number
+  /** bulk-count-drift only: the FRESH resolved count the typed count no longer matches. */
+  actualCount?: number
   engineStatus?: number
   engineBody?: string
   /** The quotable support id (usability W1#6, R-AUD-04): the BFF stamps every ProblemDetail
@@ -52,6 +56,9 @@ export function parseActionProblem(status: number, body: unknown): ActionProblem
     auditId: str(source, 'auditId'),
     currentValue: 'currentValue' in source ? source['currentValue'] : undefined,
     expectedOldValue: 'expectedOldValue' in source ? source['expectedOldValue'] : undefined,
+    confirmedCount:
+      typeof source['confirmedCount'] === 'number' ? source['confirmedCount'] : undefined,
+    actualCount: typeof source['actualCount'] === 'number' ? source['actualCount'] : undefined,
     engineStatus: typeof source['engineStatus'] === 'number' ? source['engineStatus'] : undefined,
     engineBody: str(source, 'engineBody'),
     requestId: str(source, 'requestId'),

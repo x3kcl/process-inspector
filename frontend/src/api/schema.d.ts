@@ -325,6 +325,38 @@ export interface paths {
         patch?: never;
         trace?: never;
     };
+    "/api/bulk/destructive": {
+        parameters: {
+            query?: never;
+            header?: never;
+            path?: never;
+            cookie?: never;
+        };
+        get?: never;
+        put?: never;
+        post: operations["submitDestructive"];
+        delete?: never;
+        options?: never;
+        head?: never;
+        patch?: never;
+        trace?: never;
+    };
+    "/api/bulk/destructive/preview": {
+        parameters: {
+            query?: never;
+            header?: never;
+            path?: never;
+            cookie?: never;
+        };
+        get?: never;
+        put?: never;
+        post: operations["previewDestructive"];
+        delete?: never;
+        options?: never;
+        head?: never;
+        patch?: never;
+        trace?: never;
+    };
     "/api/bulk/error-class": {
         parameters: {
             query?: never;
@@ -1321,6 +1353,24 @@ export interface components {
             artifact?: string;
             time?: string;
             version?: string;
+        };
+        BulkDestructivePreview: {
+            capped?: boolean;
+            /** Format: int64 */
+            count?: number;
+            perEngineCounts?: {
+                [key: string]: number;
+            };
+            prodInScope?: boolean;
+            sampleRows?: components["schemas"]["ProcessInstanceRow"][];
+        };
+        BulkDestructiveRequest: {
+            /** Format: int32 */
+            confirmedCount?: number;
+            criteria?: components["schemas"]["SearchRequest"];
+            reason?: string;
+            ticketId?: string;
+            verb?: string;
         };
         BulkErrorClassRequest: {
             /** Format: int32 */
@@ -3021,6 +3071,54 @@ export interface operations {
                 };
                 content: {
                     "*/*": components["schemas"]["BulkJobDto"];
+                };
+            };
+        };
+    };
+    submitDestructive: {
+        parameters: {
+            query?: never;
+            header?: never;
+            path?: never;
+            cookie?: never;
+        };
+        requestBody: {
+            content: {
+                "application/json": components["schemas"]["BulkDestructiveRequest"];
+            };
+        };
+        responses: {
+            /** @description OK */
+            200: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "*/*": components["schemas"]["BulkJobDto"];
+                };
+            };
+        };
+    };
+    previewDestructive: {
+        parameters: {
+            query?: never;
+            header?: never;
+            path?: never;
+            cookie?: never;
+        };
+        requestBody: {
+            content: {
+                "application/json": components["schemas"]["BulkDestructiveRequest"];
+            };
+        };
+        responses: {
+            /** @description OK */
+            200: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "*/*": components["schemas"]["BulkDestructivePreview"];
                 };
             };
         };
