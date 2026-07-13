@@ -262,6 +262,7 @@ class BulkErrorClassServiceTest {
                 null,
                 null,
                 null,
+                null,
                 null);
     }
 }

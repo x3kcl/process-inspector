@@ -160,8 +160,13 @@ public class InstanceDetailService {
      * and/or a {@code deleteReason}. Returns the termination reason (deleteReason preferred, else a
      * humanized state) for a terminated instance, or {@code null} for a normal completion / while
      * running. No engine-client change — the historic Map already carries these keys.
+     *
+     * <p>Public (#166): {@code SearchService} reuses this exact logic for the results-grid row
+     * mapping — the grid's status derivation had no termination-reason concept at all and fell
+     * back to a plain COMPLETED chip, one derivation site drifting from the other rather than the
+     * usual same-logic-in-two-places drift.
      */
-    static String terminationReason(Map<String, Object> historic, boolean ended) {
+    public static String terminationReason(Map<String, Object> historic, boolean ended) {
         if (!ended) {
             return null;
         }

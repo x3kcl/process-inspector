@@ -308,6 +308,7 @@ class BulkFilterServiceTest {
                 null,
                 null,
                 null,
+                null,
                 null);
     }
 }

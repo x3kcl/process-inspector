@@ -143,6 +143,39 @@ describe('ResultsGrid protected-instance badge (R-SAFE-05, issue #97 remainder)'
   })
 })
 
+describe('ResultsGrid status honesty (#166 — grid must not read COMPLETED for a terminated instance)', () => {
+  it('a row carrying terminationReason renders the TERMINATED chip, not COMPLETED', async () => {
+    const terminatedRow: ProcessInstanceRow = {
+      ...row,
+      compositeId: 'engine-a:pi-2',
+      processInstanceId: 'pi-2',
+      businessKey: 'ORDER-99',
+      status: 'COMPLETED',
+      terminationReason: 'customer requested cancellation',
+    }
+    render(
+      <MemoryRouter>
+        <ResultsGrid
+          response={{
+            rows: [row, terminatedRow],
+            perEngine: { 'engine-a': { ok: true, total: 2 } },
+          }}
+          enginesById={enginesById}
+          onOpenDetails={vi.fn()}
+        />
+      </MemoryRouter>,
+    )
+    await waitFor(() => screen.getAllByText('ORDER-99'))
+    expect(screen.getByText('TERMINATED')).toBeTruthy()
+  })
+
+  it('a row without terminationReason still renders its plain status (no regression)', async () => {
+    await renderGrid(vi.fn())
+    expect(screen.getByText('FAILED')).toBeTruthy()
+    expect(screen.queryByText('TERMINATED')).toBeNull()
+  })
+})
+
 describe('ResultsGrid zero states (SPEC §10a — U4/#89)', () => {
   it('no response yet: a neutral prompt, not an empty grid', () => {
     render(

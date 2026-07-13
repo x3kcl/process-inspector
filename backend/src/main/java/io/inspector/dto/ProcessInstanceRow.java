@@ -41,7 +41,16 @@ public record ProcessInstanceRow(
          * auto-excludes it, badge shown). null = protection store unreachable (unknown —
          * the BFF guard still refuses at execution time either way).
          */
-        Boolean protectedInstance) {
+        Boolean protectedInstance,
+        /**
+         * Status honesty (#166, mirrors {@code InstanceDetail#terminationReason}, #118/#105):
+         * {@code status} stays COMPLETED even for a terminated/deleted instance (the 5-value
+         * chip set + search facets/counts must not churn, SPEC §3) — this carries the engine's
+         * termination reason so the grid can render a TERMINATED chip instead of a misleading
+         * COMPLETED one, exactly like the detail page already does. Null for a genuine
+         * completion (and while running).
+         */
+        String terminationReason) {
 
     public ProcessInstanceRow withProtected(boolean isProtected) {
         return new ProcessInstanceRow(
@@ -63,6 +72,7 @@ public record ProcessInstanceRow(
                 endTime,
                 failureTime,
                 currentActivityOrError,
-                isProtected);
+                isProtected,
+                terminationReason);
     }
 }

@@ -42,6 +42,7 @@ class PagingCursorTest {
                 null,
                 null,
                 null,
+                null,
                 null);
     }
 

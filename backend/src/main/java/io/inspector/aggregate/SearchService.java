@@ -9,6 +9,7 @@ import io.inspector.client.ProcessApiClient;
 import io.inspector.client.ProcessApiClient.JobLaneKind;
 import io.inspector.config.InspectorProperties;
 import io.inspector.config.InspectorProperties.EngineConfig;
+import io.inspector.detail.InstanceDetailService;
 import io.inspector.dto.InstanceStatusFlags;
 import io.inspector.dto.ProcessInstanceRow;
 import io.inspector.dto.SearchRequest;
@@ -939,8 +940,9 @@ public class SearchService {
 
     /* ================= row assembly & query bodies ================= */
 
-    private ProcessInstanceRow row(
-            EngineConfig engine, Map<String, Object> pi, InstanceStatusFlags flags, Failure failure) {
+    // Package-private (not private) for SearchServiceRowTest — direct rung-1 coverage of the
+    // row-assembly mapping, same testability seam as InstanceDetailService.terminationReason.
+    ProcessInstanceRow row(EngineConfig engine, Map<String, Object> pi, InstanceStatusFlags flags, Failure failure) {
         String id = str(pi, "id");
         String definitionId = str(pi, "processDefinitionId");
         return new ProcessInstanceRow(
@@ -964,7 +966,8 @@ public class SearchService {
                 str(pi, "endTime"),
                 failure != null ? failure.failureTime() : null,
                 failure != null ? failure.snippet() : null,
-                null); // protectedInstance filled by markProtected() on the final page
+                null, // protectedInstance filled by markProtected() on the final page
+                InstanceDetailService.terminationReason(pi, flags.ended()));
     }
 
     /**
