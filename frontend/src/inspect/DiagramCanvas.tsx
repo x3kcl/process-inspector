@@ -28,6 +28,16 @@ interface Props {
   onSelectActivity?: (activityId: string) => void
   /** The activity currently selected FROM the tabs — highlighted and scrolled to. */
   selectedActivityId?: string
+  /**
+   * Issue #102 diagram-click picker: multi-select node sets a caller (e.g.
+   * ChangeStateModal) maintains itself — clicks still report up via onSelectActivity
+   * unchanged, this prop only drives the VISUAL marker set. Differentiated by stroke
+   * style + glyph (S/T badges), never hue alone, matching the sibling-diff precedent.
+   * Absent/empty on every other diagram — a plain array diff against the previous
+   * render, so passing the same reference twice is a no-op.
+   */
+  pickerSourceIds?: string[]
+  pickerTargetIds?: string[]
 }
 
 interface SelectionEvent {
@@ -39,13 +49,22 @@ interface SelectionEvent {
  * zoom/pan without modeling. The bpmn.io watermark the viewer injects is a license term
  * (R-GOV-05) and is left exactly as rendered — nothing here may touch it.
  */
-export function DiagramCanvas({ xml, markers, onSelectActivity, selectedActivityId }: Props) {
+export function DiagramCanvas({
+  xml,
+  markers,
+  onSelectActivity,
+  selectedActivityId,
+  pickerSourceIds,
+  pickerTargetIds,
+}: Props) {
   const hostRef = useRef<HTMLDivElement | null>(null)
   const viewerRef = useRef<NavigatedViewer | null>(null)
   // Bumped after each successful XML import so the selection effect re-applies its
   // marker on a fresh canvas (import wipes all markers).
   const [importGeneration, setImportGeneration] = useState(0)
   const prevSelectedRef = useRef<string>()
+  const prevPickerSourceRef = useRef<string[]>([])
+  const prevPickerTargetRef = useRef<string[]>([])
   // The click listener is bound ONCE with the viewer; the ref keeps it pointed at the
   // latest callback so a re-render (e.g. fresh marker data) never leaves it stale.
   const onSelectRef = useRef(onSelectActivity)
@@ -79,6 +98,8 @@ export function DiagramCanvas({ xml, markers, onSelectActivity, selectedActivity
         canvas.zoom('fit-viewport')
         applyMarkers(viewer, markers)
         prevSelectedRef.current = undefined
+        prevPickerSourceRef.current = []
+        prevPickerTargetRef.current = []
         setImportGeneration((generation) => generation + 1)
       })
       .catch(() => {
@@ -113,7 +134,80 @@ export function DiagramCanvas({ xml, markers, onSelectActivity, selectedActivity
     }
   }, [selectedActivityId, importGeneration])
 
+  // Issue #102 diagram-click picker sync: two independent multi-select sets, each
+  // diffed against its own previous render so an unrelated re-render never re-adds
+  // markers that are already applied (addMarker on an already-marked element is
+  // harmless but pointless churn).
+  useEffect(() => {
+    const viewer = viewerRef.current
+    if (viewer === null || importGeneration === 0) return
+    const canvas = viewer.get<Canvas>('canvas')
+    const overlays = viewer.get<Overlays>('overlays')
+    syncPickerMarkers(canvas, overlays, {
+      previous: prevPickerSourceRef.current,
+      next: pickerSourceIds ?? [],
+      markerClass: 'marker-picker-source',
+      overlayKey: 'picker-source',
+      glyph: 'S',
+      label: 'picked as the source (token canceled here)',
+    })
+    prevPickerSourceRef.current = pickerSourceIds ?? []
+    syncPickerMarkers(canvas, overlays, {
+      previous: prevPickerTargetRef.current,
+      next: pickerTargetIds ?? [],
+      markerClass: 'marker-picker-target',
+      overlayKey: 'picker-target',
+      glyph: 'T',
+      label: 'picked as the target (a fresh token starts here)',
+    })
+    prevPickerTargetRef.current = pickerTargetIds ?? []
+  }, [pickerSourceIds, pickerTargetIds, importGeneration])
+
   return <div className="diagram-canvas" ref={hostRef} />
+}
+
+/**
+ * Issue #102 diagram-click picker: diffs `next` against `previous` and adds/removes the
+ * marker class + a small lettered overlay badge only for ids that actually changed
+ * membership — same containment discipline as applyMarkers (an id the diagram doesn't
+ * know, e.g. a stale selection surviving a re-import, must not kill the render).
+ */
+function syncPickerMarkers(
+  canvas: Canvas,
+  overlays: Overlays,
+  opts: {
+    previous: string[]
+    next: string[]
+    markerClass: string
+    overlayKey: string
+    glyph: string
+    label: string
+  },
+) {
+  const { previous, next, markerClass, overlayKey, glyph, label } = opts
+  const nextSet = new Set(next)
+  for (const id of previous) {
+    if (nextSet.has(id)) continue
+    try {
+      canvas.removeMarker(id, markerClass)
+      overlays.remove({ element: id, type: `${overlayKey}-${id}` })
+    } catch {
+      // best-effort decoration
+    }
+  }
+  const previousSet = new Set(previous)
+  for (const id of next) {
+    if (previousSet.has(id)) continue
+    try {
+      canvas.addMarker(id, markerClass)
+      overlays.add(id, `${overlayKey}-${id}`, {
+        position: { top: -10, left: -10 },
+        html: `<span class="picker-glyph ${markerClass}-glyph" role="img" aria-label="${label}" title="${label}">${glyph}</span>`,
+      })
+    } catch {
+      // best-effort decoration
+    }
+  }
 }
 
 function applyMarkers(viewer: NavigatedViewer, markers: DiagramMarkers) {

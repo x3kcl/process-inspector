@@ -19,6 +19,7 @@ import { ActionHint } from '../components/ActionHint'
 import { useToast } from '../components/toast'
 import { ChangeStateModal } from '../surgery/ChangeStateModal'
 import { MigrateModal } from '../surgery/MigrateModal'
+import { RerunFromActivityModal } from '../surgery/RerunFromActivityModal'
 import { RestartModal } from '../surgery/RestartModal'
 import { ProtectModal } from './ProtectModal'
 
@@ -34,6 +35,7 @@ export function InstanceActions({ engineId, instanceId, vitals, engine }: Props)
   const action = useInstanceAction(engineId, instanceId)
   const [terminateOpen, setTerminateOpen] = useState(false)
   const [changeStateOpen, setChangeStateOpen] = useState(false)
+  const [rerunFromActivityOpen, setRerunFromActivityOpen] = useState(false)
   const [migrateOpen, setMigrateOpen] = useState(false)
   const [restartOpen, setRestartOpen] = useState(false)
   const [protectOpen, setProtectOpen] = useState(false)
@@ -185,6 +187,31 @@ export function InstanceActions({ engineId, instanceId, vitals, engine }: Props)
           <ActionHint id="change-state-hint" text={changeStateGate.reason} tone="gate" />
         )}
       </span>
+      {/* Issue #102 — the documented "rerun from activity" composite (TS-VERB-09): edit a
+          variable, then move, guided in one flow. Gated on the SAME floor as plain
+          Change-state (the stricter of its two constituent verbs — edit-variable never
+          needs more than OPERATOR/RECOVERABLE, change-state is the binding constraint). */}
+      <span className="action-slot">
+        <button
+          type="button"
+          className="copy-btn action-btn"
+          disabled={!changeStateGate.enabled}
+          aria-describedby={changeStateGate.enabled ? undefined : 'rerun-from-activity-hint'}
+          title={
+            changeStateGate.enabled
+              ? 'Fix a value, then move the token past a bad step — one guided flow'
+              : changeStateGate.detail
+          }
+          onClick={() => {
+            setRerunFromActivityOpen(true)
+          }}
+        >
+          Rerun from activity
+        </button>
+        {!changeStateGate.enabled && changeStateGate.reason !== undefined && (
+          <ActionHint id="rerun-from-activity-hint" text={changeStateGate.reason} tone="gate" />
+        )}
+      </span>
       <span className="action-slot">
         <button
           type="button"
@@ -247,6 +274,17 @@ export function InstanceActions({ engineId, instanceId, vitals, engine }: Props)
           engine={engine}
           onClose={() => {
             setChangeStateOpen(false)
+          }}
+        />
+      )}
+      {rerunFromActivityOpen && (
+        <RerunFromActivityModal
+          engineId={engineId}
+          instanceId={instanceId}
+          vitals={vitals}
+          engine={engine}
+          onClose={() => {
+            setRerunFromActivityOpen(false)
           }}
         />
       )}

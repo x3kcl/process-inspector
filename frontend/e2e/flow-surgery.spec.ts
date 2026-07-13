@@ -170,6 +170,138 @@ test('change-state is simulation-first: form, preview modal, cancel — execute 
   expect(executed).toEqual([])
 })
 
+test('issue #102: diagram-click picker adds a clicked node to sources/targets, same as the checklist', async ({
+  page,
+}) => {
+  const executed: string[] = []
+  await mockBff(page, RUNNING_VITALS, executed)
+  await page.goto('/inspect/eng1/inst-1')
+
+  await page.getByRole('button', { name: 'Change state / move token' }).click()
+  const form = page.getByRole('dialog', { name: /Change state \/ move token/ })
+  await expect(form).toBeVisible()
+
+  // Off by default — a plain click does nothing to either list.
+  const canvas = form.locator('.change-state-diagram .diagram-canvas')
+  await expect(canvas).toBeVisible()
+  await scanA11y(page, 'change-state form with the diagram picker mounted, mode off')
+
+  // Source mode: clicking the one active node (approveTask) checks it in the checklist —
+  // same state, two entry points, proving the diagram is a supplementary picker, not a
+  // parallel source of truth. bpmn-js tags every element's graphics group with
+  // data-element-id (diagram-js's own ElementRegistry constant) — a stable click target,
+  // unlike the text label, whose invisible djs-hit overlay intercepts pointer events.
+  await form.getByRole('button', { name: 'Click adds sources' }).click()
+  await canvas.locator('[data-element-id="approveTask"]').click()
+  await expect(
+    form
+      .getByRole('group', { name: 'source nodes' })
+      .getByRole('checkbox', { name: /Approve order/ }),
+  ).toBeChecked()
+
+  // Target mode: clicking an eligible catalog node (chargeTask) checks it too.
+  await form.getByRole('button', { name: 'Click adds targets' }).click()
+  await canvas.locator('[data-element-id="chargeTask"]').click()
+  await expect(
+    form
+      .getByRole('group', { name: 'target nodes' })
+      .getByRole('checkbox', { name: /Charge card/ }),
+  ).toBeChecked()
+
+  // Clicking an ineligible node in source mode (the end event holds no token) surfaces
+  // the inline hint rather than silently no-opping or crashing.
+  await form.getByRole('button', { name: 'Click adds sources' }).click()
+  await canvas.locator('[data-element-id="theEnd"]').click()
+  await expect(form.getByRole('alert').filter({ hasText: 'no active token' })).toBeVisible()
+
+  await form.getByRole('button', { name: 'Simulate move (1 → 1)' }).click()
+  await expect(page.getByRole('dialog', { name: 'Verify the move — simulation' })).toBeVisible()
+  expect(executed).toEqual([])
+})
+
+test('issue #102: rerun from activity — edit a variable, then guided straight into the move step', async ({
+  page,
+}) => {
+  const executed: string[] = []
+  const dispatched: string[] = []
+  await page.route(
+    (url) => url.pathname.startsWith('/api/'),
+    async (route) => {
+      const { pathname } = new URL(route.request().url())
+      const method = route.request().method()
+      if (method === 'POST' && /\/(change-state\/execute|restart)$/.exec(pathname) !== null) {
+        executed.push(pathname)
+        await route.fulfill({ status: 500, json: { title: 'must never be called' } })
+        return
+      }
+      if (method === 'POST' && pathname.endsWith('/actions/edit-variable')) {
+        dispatched.push(pathname)
+        await route.fulfill({
+          json: { outcome: 'applied', deltaStatement: 'amount changed to 500' },
+        })
+        return
+      }
+      if (pathname === '/api/me') {
+        await route.fulfill({ json: { role: 'OPERATOR', engineRoles: { eng1: 'OPERATOR' } } })
+      } else if (pathname === '/api/engines') {
+        await route.fulfill({ json: [ENGINE] })
+      } else if (pathname.endsWith('/diagram')) {
+        await route.fulfill({
+          json: { xml: DIAGRAM_XML, activeActivityIds: ['approveTask'], deadLetterActivityIds: [] },
+        })
+      } else if (pathname.endsWith('/change-state/preview')) {
+        await route.fulfill({ json: PREVIEW })
+      } else if (pathname.endsWith('/variables/amount')) {
+        await route.fulfill({ json: { name: 'amount', type: 'long', value: 100 } })
+      } else if (pathname.endsWith('/variables')) {
+        await route.fulfill({
+          json: {
+            processVariables: [{ name: 'amount', type: 'long', value: 100 }],
+            executionScopes: [],
+            source: 'runtime',
+          },
+        })
+      } else if (pathname === '/api/instances/eng1/inst-1') {
+        await route.fulfill({ json: RUNNING_VITALS })
+      } else if (pathname === '/api/bulk') {
+        await route.fulfill({ json: [] })
+      } else {
+        await route.fulfill({ json: {} })
+      }
+    },
+  )
+  await page.goto('/inspect/eng1/inst-1')
+
+  await page.getByRole('button', { name: 'Rerun from activity' }).click()
+  const edit = page.getByRole('dialog', { name: /Rerun from activity/ })
+  await expect(edit).toBeVisible()
+  await scanA11y(page, 'rerun-from-activity edit step open')
+
+  await edit.getByRole('combobox', { name: 'variable name' }).selectOption('amount')
+  await expect(edit.getByText('(no value / null)')).toHaveCount(0)
+  const review = edit.getByRole('button', { name: 'Review the edit…' })
+  await expect(review).toBeDisabled()
+  await edit.getByRole('textbox').fill('500')
+  await expect(review).toBeEnabled()
+  await review.click()
+
+  // Step 2: the EXISTING VerifyModal, unchanged — same component the standalone
+  // variable editor uses.
+  const verify = page.getByRole('dialog', { name: 'Verify the change' })
+  await expect(verify).toBeVisible()
+  await scanA11y(page, 'rerun-from-activity verify step (shared VerifyModal)')
+  await verify.getByRole('textbox').first().fill('INC-1234: bad amount before rerouting')
+  await verify.getByRole('button', { name: /Change amount/ }).click()
+
+  // Step 3: guided straight into the move step — the EXISTING ChangeStateModal,
+  // unchanged, including its own diagram-click picker.
+  const move = page.getByRole('dialog', { name: /Change state \/ move token/ })
+  await expect(move).toBeVisible()
+  await scanA11y(page, 'rerun-from-activity guided into the move step')
+  expect(dispatched).toEqual(['/api/instances/eng1/inst-1/actions/edit-variable'])
+  expect(executed).toEqual([])
+})
+
 test('restart-as-new is greyed on a running instance, with the gate named', async ({ page }) => {
   const executed: string[] = []
   await mockBff(page, RUNNING_VITALS, executed)
