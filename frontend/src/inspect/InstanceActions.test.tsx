@@ -79,4 +79,13 @@ describe('InstanceActions — R-SAFE-05 badge + per-verb reason', () => {
     expect(screen.queryByText('🔒 Protected')).toBeNull()
     expect(screen.queryByText('Protected — L3 action required')).toBeNull()
   })
+
+  it('#165: an OPERATOR sees the Protect trigger greyed-with-reason, not hidden', () => {
+    renderActions({ ...PROTECTED_VITALS, protectedInstance: false, protectionReason: undefined })
+    // Greyed-never-hidden (this file's own header doctrine) applies to the write-path trigger
+    // too — an OPERATOR sees WHY they can't mark protection, not a mysteriously absent button.
+    const trigger = screen.getByRole('button', { name: /🔒 Protect…/ })
+    expect(trigger).toHaveProperty('disabled', true)
+    expect(screen.getByText(/needs ADMIN on this engine/)).toBeTruthy()
+  })
 })

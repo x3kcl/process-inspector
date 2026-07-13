@@ -869,6 +869,22 @@ export interface paths {
         patch?: never;
         trace?: never;
     };
+    "/api/instances/{engineId}/{instanceId}/protect": {
+        parameters: {
+            query?: never;
+            header?: never;
+            path?: never;
+            cookie?: never;
+        };
+        get?: never;
+        put?: never;
+        post: operations["protect"];
+        delete?: never;
+        options?: never;
+        head?: never;
+        patch?: never;
+        trace?: never;
+    };
     "/api/instances/{engineId}/{instanceId}/restart": {
         parameters: {
             query?: never;
@@ -911,6 +927,22 @@ export interface paths {
         get: operations["timeline"];
         put?: never;
         post?: never;
+        delete?: never;
+        options?: never;
+        head?: never;
+        patch?: never;
+        trace?: never;
+    };
+    "/api/instances/{engineId}/{instanceId}/unprotect": {
+        parameters: {
+            query?: never;
+            header?: never;
+            path?: never;
+            cookie?: never;
+        };
+        get?: never;
+        put?: never;
+        post: operations["unprotect"];
         delete?: never;
         options?: never;
         head?: never;
@@ -2169,6 +2201,9 @@ export interface components {
             proposer?: string;
             reason?: string;
             summary?: string;
+        };
+        ProtectionRequest: {
+            reason: string;
         };
         PublishRequest: {
             description?: string;
@@ -3925,6 +3960,31 @@ export interface operations {
             };
         };
     };
+    protect: {
+        parameters: {
+            query?: never;
+            header?: never;
+            path: {
+                engineId: string;
+                instanceId: string;
+            };
+            cookie?: never;
+        };
+        requestBody: {
+            content: {
+                "application/json": components["schemas"]["ProtectionRequest"];
+            };
+        };
+        responses: {
+            /** @description No Content */
+            204: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content?: never;
+            };
+        };
+    };
     restart: {
         parameters: {
             query?: never;
@@ -3995,6 +4055,31 @@ export interface operations {
                 content: {
                     "*/*": components["schemas"]["InstanceTimeline"];
                 };
+            };
+        };
+    };
+    unprotect: {
+        parameters: {
+            query?: never;
+            header?: never;
+            path: {
+                engineId: string;
+                instanceId: string;
+            };
+            cookie?: never;
+        };
+        requestBody: {
+            content: {
+                "application/json": components["schemas"]["ProtectionRequest"];
+            };
+        };
+        responses: {
+            /** @description No Content */
+            204: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content?: never;
             };
         };
     };
