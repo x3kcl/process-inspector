@@ -20,6 +20,7 @@ import { useToast } from '../components/toast'
 import { ChangeStateModal } from '../surgery/ChangeStateModal'
 import { MigrateModal } from '../surgery/MigrateModal'
 import { RestartModal } from '../surgery/RestartModal'
+import { ProtectModal } from './ProtectModal'
 
 interface Props {
   engineId: string
@@ -35,6 +36,7 @@ export function InstanceActions({ engineId, instanceId, vitals, engine }: Props)
   const [changeStateOpen, setChangeStateOpen] = useState(false)
   const [migrateOpen, setMigrateOpen] = useState(false)
   const [restartOpen, setRestartOpen] = useState(false)
+  const [protectOpen, setProtectOpen] = useState(false)
   const me = useMe()
   const roleHint = roleOn(me.data, engineId)
   const ended = vitals.flags?.ended === true || vitals.endTime !== undefined
@@ -128,6 +130,25 @@ export function InstanceActions({ engineId, instanceId, vitals, engine }: Props)
         >
           🔒 Protected
         </span>
+      )}
+      {/* #165 write path: greyed-never-hidden, same as every other verb in this toolbar — only
+          an ADMIN on this engine may mark/unmark, so the button is disabled with the shared
+          ActionHint reason for anyone below that floor rather than disappearing outright. */}
+      <button
+        type="button"
+        className="protect-toggle"
+        disabled={roleHint !== 'ADMIN'}
+        onClick={() => {
+          setProtectOpen(true)
+        }}
+      >
+        {isProtected ? 'Unprotect…' : '🔒 Protect…'}
+      </button>
+      {roleHint !== 'ADMIN' && (
+        <ActionHint
+          id="protect-hint"
+          text="Marking or unmarking protection needs ADMIN on this engine."
+        />
       )}
       {/* W2 #2 (T11): single-click stays (§5.0 queue-state doctrine — no confirm), but the
           REVERSIBLE badge is visible and the outcome toast names the compensating verb. */}
@@ -247,6 +268,18 @@ export function InstanceActions({ engineId, instanceId, vitals, engine }: Props)
           engine={engine}
           onClose={() => {
             setRestartOpen(false)
+          }}
+        />
+      )}
+      {protectOpen && (
+        <ProtectModal
+          engineId={engineId}
+          instanceId={instanceId}
+          vitals={vitals}
+          engine={engine}
+          mode={isProtected ? 'unprotect' : 'protect'}
+          onClose={() => {
+            setProtectOpen(false)
           }}
         />
       )}

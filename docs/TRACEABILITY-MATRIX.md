@@ -66,7 +66,7 @@ exhaustive scenario→class index.
 | R-SAFE-01 RESPONDER role + verb floors | TS-RBAC-02 | **`RbacGuardMatrixTest`** (generated verb×role), `ActionRbacGuardSpringTest` | L1·L3 | ✅ (matrix added this pass) |
 | R-SAFE-02/04 reversibility + plain labels | TS-VERB-14 | FE `catalog.test` **(TS-VERB-14 block)**; `RbacGuardMatrixTest` (tier/floor) | UNIT-FE·L1 | ✅ (badge/label asserts added this pass) |
 | R-SAFE-03 tier-0 prod friction floor | TS-GUARD-01 | FE `catalog.test` (`needsTwoStepConfirm`) | UNIT-FE | ✅ |
-| R-SAFE-05 protected instances | TS-RBAC-03 | `CorrectiveActionServiceTest`, `ActionRbacGuardSpringTest`; FE `intersection.test` | L1·L3·UNIT-FE | ✅ |
+| R-SAFE-05 protected instances | TS-RBAC-03, TS-RBAC-03b | `CorrectiveActionServiceTest`, `ActionRbacGuardSpringTest` (read/enforce); `ProtectedInstanceServiceTest`, `ProtectedInstanceRbacSpringTest` (write, #165); FE `intersection.test`, `ProtectModal.test.tsx` | L1·L3·UNIT-FE | ✅ (instance-scope; definition-key scope not built) |
 | R-SAFE-06/11 break-glass | TS-RBAC-04 | `BreakGlassFailureHandlerTest`, `BreakGlassThrottleTest`, `OidcKeycloakIT` (real-Keycloak sealed-login → ADMIN session + `breakGlass:true` + `/api/admin/access` 403) | L1·L3·L4 | ✅ (§C-2 gap closed by `OidcKeycloakIT`, nightly) |
 | R-SAFE-08 second-approval hooks | TS-RBAC-05 | — (audit columns exist; not exercised) | — | 🔲 (§C-3) |
 | R-SAFE-09 Verify-now | TS-BULK (verify) | `BulkJobServiceTest` (verifyNow…) | L1 | ✅ |
