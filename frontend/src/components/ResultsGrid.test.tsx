@@ -156,7 +156,10 @@ describe('ResultsGrid status honesty (#166 — grid must not read COMPLETED for 
     render(
       <MemoryRouter>
         <ResultsGrid
-          response={{ rows: [row, terminatedRow], perEngine: { 'engine-a': { ok: true, total: 2 } } }}
+          response={{
+            rows: [row, terminatedRow],
+            perEngine: { 'engine-a': { ok: true, total: 2 } },
+          }}
           enginesById={enginesById}
           onOpenDetails={vi.fn()}
         />
