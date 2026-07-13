@@ -44,3 +44,47 @@ describe('InlineConfirm reversibility badge (W2 #2, T11)', () => {
     expect(screen.queryByText('RECOVERABLE')).toBeNull()
   })
 })
+
+describe('InlineConfirm focus restoration (#168 — a confirmed/cancelled armed control must not drop focus to <body>)', () => {
+  it('confirming a two-step verb returns focus to the base button, not <body>', () => {
+    render(
+      <InlineConfirm
+        meta={VERBS.retryJob}
+        gate={{ enabled: true }}
+        confirmText="Retry job j1?"
+        twoStep={true}
+        pending={false}
+        onConfirm={vi.fn()}
+      />,
+    )
+    fireEvent.click(screen.getByRole('button', { name: /Retry/ }))
+    const confirmButton = screen.getByRole('button', { name: 'Retry job j1?' })
+    confirmButton.focus()
+    fireEvent.click(confirmButton)
+
+    // Armed → base is a structurally different subtree (React unmounts the armed button) — the
+    // base button must have received focus, never the browser's unmount default of <body>.
+    expect(document.activeElement?.tagName).toBe('BUTTON')
+    expect(document.activeElement).not.toBe(document.body)
+  })
+
+  it('cancelling a two-step verb also returns focus to the base button', () => {
+    render(
+      <InlineConfirm
+        meta={VERBS.retryJob}
+        gate={{ enabled: true }}
+        confirmText="Retry job j1?"
+        twoStep={true}
+        pending={false}
+        onConfirm={vi.fn()}
+      />,
+    )
+    fireEvent.click(screen.getByRole('button', { name: /Retry/ }))
+    const cancelButton = screen.getByRole('button', { name: 'cancel' })
+    cancelButton.focus()
+    fireEvent.click(cancelButton)
+
+    expect(document.activeElement?.tagName).toBe('BUTTON')
+    expect(document.activeElement).not.toBe(document.body)
+  })
+})

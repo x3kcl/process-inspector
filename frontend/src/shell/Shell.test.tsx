@@ -118,6 +118,25 @@ describe('Shell auth gating (SPEC §4)', () => {
   })
 })
 
+describe('Skip-to-main-content link (#168 — bypass the ~11-stop header gauntlet)', () => {
+  it('is the FIRST focusable element and targets the id="main-content" landmark', async () => {
+    await renderShell({ role: 'RESPONDER', engineRoles: {} })
+    await waitFor(() => {
+      expect(screen.getByRole('link', { name: /flowable process inspector/i })).not.toBeNull()
+    })
+    const links = screen.getAllByRole('link')
+    // The skip-link must render before every OTHER header link (home, ops log, find tasks…) in
+    // DOM order — that's what makes it Tab stop #1 rather than one of the ~11 buried further in.
+    expect(links[0].textContent).toBe('Skip to main content')
+    expect(links[0].getAttribute('href')).toBe('#main-content')
+    // #main-content must exist and be a valid PROGRAMMATIC focus target (tabIndex={-1}) — an
+    // href="#id" only moves focus if the target is actually focusable.
+    const main = document.getElementById('main-content')
+    expect(main).not.toBeNull()
+    expect(main?.getAttribute('tabindex')).toBe('-1')
+  })
+})
+
 describe('BreakGlassBanner (IDP-SECURITY.md §7, R-SAFE-11)', () => {
   it('is permanently visible for a break-glass session', async () => {
     await renderShell({ role: 'ADMIN', engineRoles: {}, breakGlass: true })

@@ -74,6 +74,12 @@ export function CaseDiagramCanvas({
       if (cancelled || err) return // a malformed model leaves an empty canvas, never a crash
       const canvas = viewer.get<Canvas>('canvas')
       canvas.zoom('fit-viewport')
+      // #168 (lower-severity finding, mitigated but not fixed by the diagram already having a
+      // plain-text twin elsewhere on the page): the injected root <svg> is tabindex="0" for
+      // keyboard pan/zoom — a real, already-interactive tab stop with no accessible name.
+      // aria-label only (not role — the native interactive pan/zoom semantics stay intact).
+      const svg = hostRef.current?.querySelector('svg')
+      svg?.setAttribute('aria-label', 'CMMN case diagram — pannable and zoomable canvas')
       applyMarkers(viewer, markers, selectedElementId)
     })
     return () => {

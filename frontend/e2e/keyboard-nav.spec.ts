@@ -76,6 +76,28 @@ async function mockBff(page: Page): Promise<void> {
   )
 }
 
+test('#168: the skip-link is Tab stop #1 and bypasses the header gauntlet to main content', async ({
+  page,
+}) => {
+  await mockBff(page)
+  await page.goto('/search?definitionKey=payment')
+  await expect(page.getByText('ORD-77')).toBeVisible()
+
+  // The very first Tab from page load must land on the skip-link — not on some header
+  // control 11 deep, and not on <main> content directly (that would defeat the point:
+  // a keyboard user needs to KNOW the header exists and choose to skip it).
+  await page.keyboard.press('Tab')
+  const skipLink = page.getByRole('link', { name: 'Skip to main content' })
+  await expect(skipLink).toBeFocused()
+
+  await page.keyboard.press('Enter')
+  // Focus must land on the id="main-content" landmark — not merely scroll to it.
+  await expect
+    .poll(async () => page.evaluate(() => document.activeElement?.id))
+    .toBe('main-content')
+  await scanA11y(page, 'search page after using the skip-link')
+})
+
 test('Enter on a focused grid cell opens the detail route, and the hint is visible', async ({
   page,
 }) => {
@@ -120,6 +142,31 @@ test('after the grid→detail route change, focus never rests on <body>', async 
     )
     .toBe('H2')
   await scanA11y(page, 'detail page focused on main after route change')
+})
+
+test('#178 review: navigating BACK to the app-initial route restores focus too, not just forward navigations', async ({
+  page,
+}) => {
+  await mockBff(page)
+  await page.goto('/search?definitionKey=payment')
+  const cell = page.getByText('ORD-77')
+  await cell.click()
+  await page.keyboard.press('Enter')
+  await expect(page).toHaveURL(/\/inspect\/eng1\/p-1/)
+
+  // A pathname-comparison fix that snapshots "the initial route" once at mount and skips
+  // restoration whenever the CURRENT pathname matches it would wrongly treat this return trip
+  // to /search (the route the app happened to boot on) as if it were the untouched first load.
+  await page.goBack()
+  await expect(page).toHaveURL(/\/search/)
+  await expect
+    .poll(async () =>
+      page.evaluate(() => {
+        const active = document.activeElement
+        return active === null || active === document.body ? 'body' : active.tagName
+      }),
+    )
+    .not.toBe('body')
 })
 
 test('detail tabs rove with arrow keys per the ARIA APG (manual activation)', async ({ page }) => {

@@ -52,6 +52,13 @@ export function Shell() {
       <LiveProvider enabled={!authRequired}>
         <OpsDrawerProvider>
           <div className="app">
+            {/* #168: the FIRST focusable element on every page — a keyboard-only user hitting
+                Tab once, then Enter, bypasses the ~11-stop header gauntlet (nav links, admin
+                links, omnibox, zone toggle, sign-out, one card per configured engine) entirely
+                instead of tabbing through all of it to reach the actual page content. */}
+            <a href="#main-content" className="skip-link">
+              Skip to main content
+            </a>
             <BreakGlassBanner />
             <SessionExpiryBanner />
             <header className="topbar">
@@ -79,8 +86,11 @@ export function Shell() {
             </header>
             {authRequired && <SignIn />}
             {/* The app's ONE <main> landmark (axe landmark-one-main): every route's own
-                top-level element is a plain <div> so this never nests. */}
-            <main>
+                top-level element is a plain <div> so this never nests. tabIndex={-1} makes it
+                a valid PROGRAMMATIC focus target for the skip-link above (a plain <main> isn't
+                focusable, so #main-content would just scroll into view without moving focus)
+                without adding it to the normal Tab order. */}
+            <main id="main-content" tabIndex={-1}>
               <Outlet />
             </main>
             <OpsDrawer />
@@ -242,12 +252,18 @@ function useSignedOut(): boolean {
  */
 function useRouteFocus() {
   const { pathname } = useLocation()
-  const isInitialLoad = useRef(true)
+  // The last pathname this hook has actually handled — seeded with the current one so a
+  // genuine first load is a no-op (both of StrictMode's dev-mode double-invoke runs see the
+  // SAME pathname here and skip identically; a "have I run before" flag flipped inside the
+  // effect body instead breaks under that double-invoke, since its early-return branch left
+  // no cleanup to undo the flip before the second invocation ran — #168). Unlike a pathname
+  // snapshot fixed once at mount, this ref MOVES on every real transition, so navigating back
+  // to the initial route later still updates it in between and restoration fires again (#178
+  // review — a fixed snapshot silently ate that case).
+  const lastHandledPathname = useRef(pathname)
   useEffect(() => {
-    if (isInitialLoad.current) {
-      isInitialLoad.current = false
-      return
-    }
+    if (pathname === lastHandledPathname.current) return
+    lastHandledPathname.current = pathname
     // Next macrotask: lazy routes (CasePage, tab chunks) commit a Suspense fallback
     // first — give the route one tick to mount its landmark before targeting it.
     const timer = window.setTimeout(() => restoreRouteFocus(), 0)

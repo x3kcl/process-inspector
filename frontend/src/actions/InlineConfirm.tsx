@@ -32,6 +32,14 @@ export function InlineConfirm({
 }: Props) {
   const [armed, setArmed] = useState(false)
   const timer = useRef<number>()
+  // #168: the armed and base branches render structurally different JSX at the same tree
+  // position, so React unmounts the (currently-focused) armed button and mounts a fresh base
+  // button on confirm/cancel — the browser's default for a focused node leaving the DOM is
+  // to drop focus to <body>, silently, with no indication anything happened. Explicit
+  // user action (confirm or cancel — NOT the auto-disarm timeout, which must never steal
+  // focus from wherever the user has since moved on to) re-focuses the surviving control.
+  const baseButtonRef = useRef<HTMLButtonElement>(null)
+  const refocusBaseButton = useRef(false)
 
   useEffect(
     () => () => {
@@ -39,6 +47,13 @@ export function InlineConfirm({
     },
     [],
   )
+
+  useEffect(() => {
+    if (!armed && refocusBaseButton.current) {
+      refocusBaseButton.current = false
+      baseButtonRef.current?.focus()
+    }
+  }, [armed])
 
   const disabled = !gate.enabled || pending
   const title = !gate.enabled
@@ -54,6 +69,7 @@ export function InlineConfirm({
           className="copy-btn confirm-armed"
           disabled={pending}
           onClick={() => {
+            refocusBaseButton.current = true
             setArmed(false)
             window.clearTimeout(timer.current)
             onConfirm()
@@ -66,6 +82,7 @@ export function InlineConfirm({
           className="copy-btn"
           aria-label="cancel"
           onClick={() => {
+            refocusBaseButton.current = true
             setArmed(false)
             window.clearTimeout(timer.current)
           }}
@@ -79,6 +96,7 @@ export function InlineConfirm({
   return (
     <span className="action-slot">
       <button
+        ref={baseButtonRef}
         type="button"
         className="copy-btn action-btn"
         disabled={disabled}
