@@ -64,7 +64,12 @@ class SharedViewFailClosedIT {
 
     @Test
     void publishRefusesAndRollsBackWhenTheAuditWriteFails() {
-        when(audit.recordConfigEvent(anyString(), anyString(), anyBoolean(), any()))
+        // SharedViewService always funnels through the private auditOrCompensate(..., reason, ...)
+        // overload, which calls AuditService's 5-arg recordConfigEvent directly (reason=null for
+        // publish) — never the 4-arg convenience delegate this stub used to target. Stubbing the
+        // wrong overload left the real call unmocked (Mockito default: return null, no throw), so
+        // publish() proceeded as if the audit succeeded and this test could never fail closed.
+        when(audit.recordConfigEvent(anyString(), anyString(), anyBoolean(), any(), any()))
                 .thenThrow(new AuditUnavailableException(new RuntimeException("postgres down")));
 
         assertThatThrownBy(() -> service.publish(
