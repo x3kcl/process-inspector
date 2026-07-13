@@ -330,6 +330,67 @@ class PagingCursorTest {
             assertThat(r.nextCursor()).isNull();
         }
 
+        @Test
+        void anEmptyResultBelowTheCapIsAGenuineEndNotDepthCapped() {
+            // The discriminating counterpart to the walled-engine case below: an engine that is
+            // genuinely exhausted (offset well below its cap, simply no rows left) must NOT read
+            // depthCapped — only #167's specific "re-fetched a walled engine" empty result should.
+            Map<String, Integer> tightCaps = Map.of("a", 5000);
+            PagingCursor belowCap = new PagingCursor(
+                    PagingCursor.VERSION,
+                    1L,
+                    "H",
+                    "startTime",
+                    "desc",
+                    Map.of("a", 42),
+                    "2026-07-09T10:00:00Z",
+                    List.of());
+            PageResult r = PagingCursor.mergePage(
+                    belowCap,
+                    Map.of("a", List.of()),
+                    Map.of("a", List.of()),
+                    Map.of("a", 42L),
+                    10,
+                    "startTime",
+                    "H",
+                    tightCaps,
+                    1L);
+            assertThat(r.rows()).isEmpty();
+            assertThat(r.nextCursor()).isNull();
+            assertThat(r.depthCapped()).isFalse();
+        }
+
+        @Test
+        void anEmptyResultAfterAWalledEngineIsFlaggedDepthCappedNotAGenuineEnd() {
+            // #167: a caller re-fetching an engine already clamped at its cap (the PRIOR page set
+            // this offset) lands on emitCount==0 just as often as genuine every-engine exhaustion —
+            // the two must not be reported identically, or the UI can't distinguish "you've truly
+            // seen everything" from "narrow your search to see the rest".
+            Map<String, Integer> tightCaps = Map.of("a", 3);
+            PagingCursor walled = new PagingCursor(
+                    PagingCursor.VERSION,
+                    1L,
+                    "H",
+                    "startTime",
+                    "desc",
+                    Map.of("a", 3),
+                    "2026-07-09T10:00:00Z",
+                    List.of());
+            PageResult r = PagingCursor.mergePage(
+                    walled,
+                    Map.of("a", List.of()),
+                    Map.of("a", List.of()),
+                    Map.of("a", 50L),
+                    10,
+                    "startTime",
+                    "H",
+                    tightCaps,
+                    1L);
+            assertThat(r.rows()).isEmpty();
+            assertThat(r.nextCursor()).isNull();
+            assertThat(r.depthCapped()).isTrue();
+        }
+
         private int offset(PagingCursor cur, String engine) {
             return cur == null ? 0 : cur.offsets().getOrDefault(engine, 0);
         }

@@ -114,6 +114,25 @@ test('Load more appends the next cursor page and shows the snapshot seam', async
   expect(JSON.stringify(state.searches[1])).not.toContain('eng1:p-1')
 })
 
+test('#167: the "X of Y fetched" progress line grows with Load more instead of staying frozen', async ({
+  page,
+}) => {
+  await mockBff(page)
+  await page.goto('/search?status=ACTIVE&definitionKey=payment')
+
+  // Page 1: 2 of 4 fetched (the mock's own perEngine, unmodified by the fix — page 1 is correct
+  // by construction either way; the bug only ever showed up after Load more).
+  await expect(page.getByText('eng1 2 of 4 fetched', { exact: false })).toBeVisible()
+
+  await page.getByRole('button', { name: 'Load more' }).click()
+
+  // All 4 rows are now loaded (total: 4 in both mocked pages) — the progress line must reflect
+  // the ACCUMULATED count, not stay frozen at page 1's "2 of 4". Once fetched catches up to
+  // total the row no longer overflows, so the "X of Y fetched" line clears entirely (scoped to
+  // that phrasing, not a bare engineId match — the grid itself legitimately shows "eng1" too).
+  await expect(page.getByText(/of \d+ fetched/)).toHaveCount(0)
+})
+
 test('the depth wall offers a pre-filled time-bound filter seam', async ({ page }) => {
   await mockBff(page, { depthCappedOnPage2: true })
   await page.goto('/search?status=ACTIVE&definitionKey=payment')

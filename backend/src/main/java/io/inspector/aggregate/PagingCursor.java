@@ -284,7 +284,21 @@ public record PagingCursor(
         // 3. emit the top pageSize.
         int emitCount = Math.min(Math.max(pageSize, 0), kept.size());
         if (emitCount == 0) {
-            return new PageResult(List.of(), null, false); // nothing new — end of the stream.
+            // Nothing new — end of the stream, but WHY matters (#167): a caller re-fetching an
+            // engine already walled at its cap (the prior page clamped its offset there) lands
+            // here just as often as a genuine every-engine exhaustion, and the UI can't tell
+            // "you've truly seen everything" from "narrow your search to see the rest" without
+            // depthCapped. No new rows means no offset advances past this page, so the walled
+            // check is just baseOffsets vs. each engine's cap — the same test step 5 runs below.
+            boolean anyEngineWalled = false;
+            for (Map.Entry<String, Integer> offset : baseOffsets.entrySet()) {
+                int cap = depthCaps.getOrDefault(offset.getKey(), DEFAULT_DEPTH_CAP);
+                if (offset.getValue() >= cap) {
+                    anyEngineWalled = true;
+                    break;
+                }
+            }
+            return new PageResult(List.of(), null, anyEngineWalled);
         }
         List<ProcessInstanceRow> emitted = new ArrayList<>(kept.subList(0, emitCount));
 
