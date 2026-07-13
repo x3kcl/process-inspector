@@ -82,6 +82,30 @@ export function ResultsGrid({
         },
       },
       {
+        // R-SAFE-05 (goal-catalog #97 remainder): the point-of-action badge (InstanceActions)
+        // and the bulk-bar auto-exclusion already existed — this is the missing "see it before
+        // you even open the row" half, so a protected instance never looks like any other row
+        // in the results grid. headerName is non-empty for the same accessible-name reason as
+        // the Open column (an icon-only header has no accessible name).
+        headerName: 'Protected',
+        colId: 'protected',
+        width: 110,
+        sortable: false,
+        resizable: false,
+        suppressMovable: true,
+        cellRenderer: (p: CustomCellRendererProps<ProcessInstanceRow>) => {
+          if (p.data?.protectedInstance !== true) return null
+          return (
+            <span
+              className="protected-badge"
+              title="Protected instance — destructive verbs require ADMIN + a reason"
+            >
+              🔒 Protected
+            </span>
+          )
+        },
+      },
+      {
         headerName: 'Engine',
         field: 'engineName',
         width: 190,

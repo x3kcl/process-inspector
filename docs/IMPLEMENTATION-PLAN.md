@@ -455,7 +455,9 @@ unresolvable with tier 0–1 verbs)
    card button per engine × defKey:vN (greyed-never-hidden), tier-3 modal (PROD token =
    definition key — a typed count would attest a stale number), operations-drawer
    auto-focus handoff (context lift shared with the bulk bar), `['triage']` invalidation
-   on job settle. R-SEM-13 annotation demotion waits for group annotations (R-BAU-01).
+   on job settle. R-SEM-13 annotation demotion waits for group *annotations* (R-BAU-03,
+   still open) — NOT R-BAU-01's *acknowledge* verb (built 2026-07-11, issue #97's own text
+   originally conflated the two the same way this line did).
 2. **Select-all-matching-filter bulk + SSE progress. Landed 2026-07-07**:
    `POST /api/bulk/filter` (SPEC §7, ARCH §4) — criteria-only body (binding server-side
    re-resolution through `SearchService.resolveAllMatching`, the SAME plan paged to
@@ -1553,6 +1555,44 @@ RUNBOOK §8 records this distinction explicitly so "drilled" isn't overclaimed.
 code; verified via `bash -n` (both scripts), a live `--dry-run` resolve against the real GHCR
 images, and `docker compose config` fail-closed/success checks (see above). `mvn -o test` /
 `npm test` are unaffected (no `backend/`/`frontend/` source changed).
+
+### #97 — Goal-catalog MUST-v1 gaps, audit + remainder *(✅ 7/8 already landed 2026-07-11 under a `usability-w3-*` sprint that never updated this doc or closed the issue; remaining sliver ✅ LANDED 2026-07-13)*
+Issue #97 (filed 2026-07-10, referencing `docs/usability/GOAL-CATALOG.md` v1.0's same-day
+audit) listed 6 MUST-v1 gaps + 2 slivers. Before writing any code, a ground-truth audit
+against `origin/main` (not the issue text, not the stale GOAL-CATALOG snapshot) found
+**7 of the 8 items were already fully shipped** — backend AND frontend, with tests — in a
+same-day `usability-w3-*` commit series merged 2026-07-11 (PRs #116/#120/#121/#122/#123,
+one day after the issue was filed): R-BAU-01 acknowledge (`ErrorGroupAckService` +
+`AcknowledgeGroupModal.tsx`), R-BAU-02 leak views (`LeakViewService` +
+`LeakViewsSection.tsx`), R-AUD-05 shift report (`ops/shiftReport.ts` +
+`AuditLogPage.tsx`'s "Copy shift report"), R-AUD-08 audit CSV export
+(`AuditController#operationsLogCsv` + `ops/exportCsv.ts`), R-AUD-09 attribution caveat
+(`AttributionCaveat.tsx` on both audit surfaces), R-L3-01 explain-status
+(`StatusEvidenceService` + `StatusEvidenceModal.tsx`, wired off `StatusChip`), and the
+R-AUD-07 ticket-capture field sliver (`TicketField.tsx`). None of these PRs updated
+`docs/IMPLEMENTATION-PLAN.md` or closed #97 — this entry is the first record of that sprint
+in this file. Also caught: issue #97's own text claimed R-BAU-01 "blocks the R-SEM-13
+annotation demotion" — false; R-SEM-13 is gated on the separate, still-unbuilt R-BAU-03
+(annotations), a conflation the v1.x-fast-follows section above (§"Error-class bulk-retry")
+carried too, now fixed there as well.
+
+*Shipped here — the one genuine remainder:* the R-SAFE-05 sliver was **partial**, not
+built like the other 7 — the point-of-action badge (`InstanceActions.tsx`) and bulk-bar
+auto-exclusion existed (2026-07-11), but the results-grid itself carried no marker, so a
+protected instance looked identical to any other row until you opened it. New "Protected"
+column in `ResultsGrid.tsx` (a `🔒 Protected` badge, reusing the existing `.protected-badge`
+style — no new CSS) renders whenever `row.protectedInstance === true`; the backend field
+already existed (`ProcessInstanceRow.protectedInstance`, already consumed by
+`bulk/intersection.ts`), so this was frontend-only.
+
+*Genuinely still open, not part of this issue's own bullet list but surfaced by the audit:*
+R-BAU-03 (error-class annotations, blocks R-SEM-13), R-SAFE-10 (pre-action evidence
+snapshot), R-SEM-16 (SPA/BFF version-skew banner), and a frontend surface for R-OPS-14
+(`GET /api/diag` is backend-complete since issue #96 but has no admin UI page yet) —
+left for separate issues, not silently rolled into this one.
+
+*Tests:* `ResultsGrid.test.tsx` gains 2 cases (badge renders for a protected row and only
+that row; no badge at all when `protectedInstance` is undefined/false).
 
 ## Build order inside any milestone
 backend DTO → engine client call → aggregator/join logic → controller → typed frontend API
