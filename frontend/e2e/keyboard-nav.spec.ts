@@ -76,6 +76,28 @@ async function mockBff(page: Page): Promise<void> {
   )
 }
 
+test('#168: the skip-link is Tab stop #1 and bypasses the header gauntlet to main content', async ({
+  page,
+}) => {
+  await mockBff(page)
+  await page.goto('/search?definitionKey=payment')
+  await expect(page.getByText('ORD-77')).toBeVisible()
+
+  // The very first Tab from page load must land on the skip-link — not on some header
+  // control 11 deep, and not on <main> content directly (that would defeat the point:
+  // a keyboard user needs to KNOW the header exists and choose to skip it).
+  await page.keyboard.press('Tab')
+  const skipLink = page.getByRole('link', { name: 'Skip to main content' })
+  await expect(skipLink).toBeFocused()
+
+  await page.keyboard.press('Enter')
+  // Focus must land on the id="main-content" landmark — not merely scroll to it.
+  await expect
+    .poll(async () => page.evaluate(() => document.activeElement?.id))
+    .toBe('main-content')
+  await scanA11y(page, 'search page after using the skip-link')
+})
+
 test('Enter on a focused grid cell opens the detail route, and the hint is visible', async ({
   page,
 }) => {

@@ -96,6 +96,14 @@ export function DiagramCanvas({
         if (cancelled) return
         const canvas = viewer.get<Canvas>('canvas')
         canvas.zoom('fit-viewport')
+        // #168 (lower-severity finding, mitigated but not fixed by the diagram already
+        // having a plain-text twin elsewhere on the page): bpmn-js injects its own root
+        // <svg> with tabindex="0" for keyboard pan/zoom — a real, already-interactive tab
+        // stop with no accessible name at all. aria-label only (not role — the element's
+        // native interactive pan/zoom semantics stay intact, unlike role="img" which would
+        // claim it's a static, non-interactive picture).
+        const svg = hostRef.current?.querySelector('svg')
+        svg?.setAttribute('aria-label', 'BPMN process diagram — pannable and zoomable canvas')
         applyMarkers(viewer, markers)
         prevSelectedRef.current = undefined
         prevPickerSourceRef.current = []

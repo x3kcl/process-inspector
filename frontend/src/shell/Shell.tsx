@@ -52,6 +52,13 @@ export function Shell() {
       <LiveProvider enabled={!authRequired}>
         <OpsDrawerProvider>
           <div className="app">
+            {/* #168: the FIRST focusable element on every page — a keyboard-only user hitting
+                Tab once, then Enter, bypasses the ~11-stop header gauntlet (nav links, admin
+                links, omnibox, zone toggle, sign-out, one card per configured engine) entirely
+                instead of tabbing through all of it to reach the actual page content. */}
+            <a href="#main-content" className="skip-link">
+              Skip to main content
+            </a>
             <BreakGlassBanner />
             <SessionExpiryBanner />
             <header className="topbar">
@@ -79,8 +86,11 @@ export function Shell() {
             </header>
             {authRequired && <SignIn />}
             {/* The app's ONE <main> landmark (axe landmark-one-main): every route's own
-                top-level element is a plain <div> so this never nests. */}
-            <main>
+                top-level element is a plain <div> so this never nests. tabIndex={-1} makes it
+                a valid PROGRAMMATIC focus target for the skip-link above (a plain <main> isn't
+                focusable, so #main-content would just scroll into view without moving focus)
+                without adding it to the normal Tab order. */}
+            <main id="main-content" tabIndex={-1}>
               <Outlet />
             </main>
             <OpsDrawer />
@@ -242,12 +252,15 @@ function useSignedOut(): boolean {
  */
 function useRouteFocus() {
   const { pathname } = useLocation()
-  const isInitialLoad = useRef(true)
+  // Captured once at mount and never mutated — unlike a "have I run before" ref flipped
+  // inside the effect, this stays correct under StrictMode's dev-mode double-invoke
+  // (mount → cleanup → mount): a stateful flag's early-return branch left no cleanup to
+  // undo the flip, so the second invocation saw isInitialLoad already false and fired
+  // restoreRouteFocus() on the genuine first load, stealing focus onto <main> before the
+  // user ever pressed Tab (#168 — this is what defeated the skip-link).
+  const initialPathname = useRef(pathname)
   useEffect(() => {
-    if (isInitialLoad.current) {
-      isInitialLoad.current = false
-      return
-    }
+    if (pathname === initialPathname.current) return
     // Next macrotask: lazy routes (CasePage, tab chunks) commit a Suspense fallback
     // first — give the route one tick to mount its landmark before targeting it.
     const timer = window.setTimeout(() => restoreRouteFocus(), 0)
