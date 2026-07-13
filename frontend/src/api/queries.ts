@@ -18,6 +18,7 @@ import type {
   CasePlanItems,
   NoteDto,
   OutOfScopeDeadLetters,
+  PersonTaskSearchResponse,
   ResolveResponse,
   SearchRequest,
   SearchResponse,
@@ -39,6 +40,21 @@ export async function fetchEngines(): Promise<EngineDto[]> {
 
 export async function runSearch(request: SearchRequest): Promise<SearchResponse> {
   const { data, error, response } = await api.POST('/api/search', { body: request })
+  if (data === undefined) throw new ApiError(response.status, error)
+  return data
+}
+
+/**
+ * Person-centric task search (#99): every OPEN task assigned to, or claimable by, `person`
+ * across every readable engine. `engineIds` narrows the fan-out (undefined = every engine).
+ */
+export async function runPersonTaskSearch(
+  person: string,
+  engineIds?: string[],
+): Promise<PersonTaskSearchResponse> {
+  const { data, error, response } = await api.GET('/api/tasks', {
+    params: { query: { person, engineIds } },
+  })
   if (data === undefined) throw new ApiError(response.status, error)
   return data
 }

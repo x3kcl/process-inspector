@@ -596,6 +596,26 @@ most of the feature's cost, per R-SAFE-14/R-SAFE-15/R-GOV-06:
 Zero-states (R-UXQ-04): no eligible four-eyes approver → "recover via the file-pin"; config-pinned →
 "CRUD disabled (mapping source = file)"; IdP unreachable → the break-glass door.
 
+### 4d. Person task search — "what is this person sitting on?" *(v1.x #6 follow-up, #99)*
+
+A dedicated route (`/tasks`, VIEWER floor, no new role tier) that answers the operator question
+the Tasks tab could not: not "what tasks does THIS instance have" but "what OPEN tasks does THIS
+PERSON have, across every engine" — the "Bob is on vacation" query. Search state lives in the URL
+(`?person=`), mirroring Stage 1's shareable-link convention.
+
+- **Two legs per engine, fanned out the same way as Stage 1 search**: every OPEN task directly
+  **assigned** to the person, plus every OPEN task they could **claim** via a candidate-user/group
+  link — deduplicated by task id (a directly-assigned task never double-counts as a claimable
+  one). An unreachable engine degrades to a labeled entry on the per-engine envelope; the search
+  still answers with whatever engines responded (ARCH §2.2 partial-results contract, reused
+  verbatim).
+- **Feeds the EXISTING reassign / return-to-team verbs unchanged** (§5 verb table below) — this
+  page only finds the targets; each row's action button opens the same modal the instance Tasks
+  tab uses, gated by the same tier-1/OPERATOR floor and reason discipline.
+- **Non-goal (still unscheduled):** group-membership-aware candidate resolution beyond what the
+  engine's own `candidateUser` query answers, and a saved/pinned "my team" roster — this ships as
+  a plain one-person-at-a-time lookup.
+
 ## 5. Corrective actions — the verb catalog
 
 Every verb states what is preserved. Guard tiers per §6. All calls in
@@ -1137,9 +1157,9 @@ and would rewrite working M1/M2 code for no capability gain); Go/FastAPI/Kotlin 
   6. task reassign / return-to-team + **"Show as cURL"** on the action modals — **landed
      (v1.x #6)**. NOTE: an earlier draft paired reassign with person-centric task search
      ("never apart"); that coupling was relaxed — reassign/return-to-team shipped with the
-     cURL-honesty affordance instead, and person-centric task search remains the natural
-     follow-up (still unscheduled). Reassign is reachable today from the instance Tasks tab;
-     finding a person's tasks across instances is the pending half;
+     cURL-honesty affordance first, and person-centric task search **landed as the follow-up
+     (#99, §4d)**: reassign is reachable from the instance Tasks tab, and finding a person's
+     tasks across engines now has its own `/tasks` route feeding the same verbs;
   7. external-worker job view (capability-gated, 6.8+) — **landed (v1.x #7)**: the fifth
      read-only job lane (lock owner / expiration / retries / exception) + vitals count, sourced
      from the External Worker REST API's `/external-job-api/jobs` sibling context (the
