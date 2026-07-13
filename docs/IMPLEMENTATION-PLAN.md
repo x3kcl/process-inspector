@@ -465,9 +465,62 @@ unresolvable with tier 0–1 verbs)
   invalidation triad; no optimistic state. Net-new Playwright harness
   (`playwright.config.ts`, hermetic route-mocked BFF) with 3 smokes proving the
   simulation-first arc (execute is unreachable before a rendered preview and never fires
-  on cancel). Diagram-click *picker* stays v1.x polish.
+  on cancel). Diagram-click *picker* stays v1.x polish ✅ **LANDED 2026-07-13, issue #102**
+  — see below.
 - **Done when:** a token is moved off a failed node and the instance proceeds; the preview
   shows exactly the REST call; an MI body as source is refused with the reason.
+
+### #102 — Flow-surgery polish: diagram-click picker + rerun-from-activity *(✅ LANDED 2026-07-13, issue #102)*
+The two items this section explicitly deferred as v1.x polish ("Diagram change-state
+*picker* is polish", "Diagram-click *picker* stays v1.x polish").
+
+*Scope check before building:* issue #102's own title says "rerun-from-activity
+composite" as "terminate here + restart from activity X" — but Flowable's REST API has
+no start-at-activity primitive (confirmed via `ProcessInstanceBuilder`'s decompiled
+interface — only `startEventId`, never an arbitrary node), so that literal reading would
+need a brand-new ADMIN/tier-3/IRREVERSIBLE 3-call composite (terminate → start fresh →
+change-state) that neither this section nor `TEST-SCENARIOS.md`'s TS-VERB-09 ever
+scoped. Confirmed with the user before building: implement the documented version —
+"variable edits applied, then move — one guided composite, both halves audited" (the
+exact TS-VERB-09 wording, "variables-first composite = rerun-from-activity" above) — on
+the SAME still-live instance, staying at the existing OPERATOR/tier-2 change-state floor.
+
+*Shipped — diagram-click picker:* `DiagramCanvas.tsx` gains two optional multi-select
+props (`pickerSourceIds`/`pickerTargetIds`), diffed against the previous render and
+applied as two new marker classes (`marker-picker-source`/`-target`) + lettered S/T
+overlay badges — same "stroke style + glyph, never hue alone" discipline as the
+sibling-diff markers, and the same containment (an id the diagram doesn't know can't
+kill the render). `element.click` reporting is unchanged; a new caller-owned mode toggle
+(`ChangeStateModal`'s own `pickerMode` state, a `Segmented` control) decides whether a
+click adds to `sources` or `targets`, validated against the SAME eligibility sets the
+checklist already uses (`currentActivities` for sources, the parsed catalog for
+targets) — an ineligible click surfaces an inline hint rather than silently no-opping.
+The diagram is a supplementary picking surface, never the only one — the checklist keeps
+working unchanged (R-UXQ-02: every diagram fact needs a textual twin).
+
+*Shipped — rerun-from-activity:* new `RerunFromActivityModal.tsx`, three phases, **zero
+new backend endpoint** — a frontend-only composite reusing two already-audited,
+already-tested primitives verbatim: a new lightweight `EditStep` (case-scope scalar
+variables only — string/number/boolean; JSON variables are explicitly out of this
+composite's scope, with an inline pointer to the Variables tab) builds an `ActionRequest`
+and hands it to the **existing, unmodified** `VerifyModal` (the same component the
+standalone variable editor uses) for the edit half; on a successful `edit-variable`
+dispatch, the wizard transitions straight into the **existing, unmodified**
+`ChangeStateModal` (inheriting its own new diagram-click picker for free) for the move
+half. Both halves audited separately, exactly as if the two verbs had been run one after
+another by hand. Entry point in `InstanceActions.tsx`, gated on the same
+`changeStateGate` as the standalone Change-state button (the stricter of its two
+constituent verbs' floors).
+
+*Tests:* two new Playwright e2e smokes in `flow-surgery.spec.ts` (hermetic route-mocked,
+extending the existing simulation-first-execute-never-fires harness): the diagram-click
+picker toggling both lists via `data-element-id` clicks (bpmn-js's own stable per-element
+attribute — the text label itself is intercepted by an invisible hit-rect and isn't a
+reliable click target) plus the ineligible-node hint; the full rerun-from-activity arc
+asserting `edit-variable` dispatches exactly once and the wizard lands on the move step
+with zero premature `change-state/execute`/`restart` calls. Full e2e suite (42 specs)
+green, no regressions in the shared `DiagramCanvas`/`InstanceActions` components other
+features also exercise.
 
 ## v1.x — fast follows (each independently demoable)
 1. Error-class **bulk-retry-the-group** from the triage landing. **Landed 2026-07-07**:

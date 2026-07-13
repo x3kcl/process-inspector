@@ -5,7 +5,7 @@
 // it sends the EXACT request that was simulated — changing the selection drops the
 // preview and forces a re-simulate. Never optimistic: the execute mutation re-fetches
 // every instance segment + audit on settle (corrective-actions §4).
-import { useState } from 'react'
+import { useMemo, useState } from 'react'
 import type { EngineDto, InstanceDetail } from '../api/model'
 import { useChangeStateExecute, useChangeStatePreview } from '../api/surgery'
 import type { ChangeStatePreview, ChangeStateRequest } from '../api/surgery'
@@ -15,7 +15,9 @@ import { problemBanner } from '../actions/problem'
 import type { ActionProblem } from '../actions/problem'
 import { GuardFields, tokenLabel } from '../components/GuardFields'
 import { ModalShell } from '../components/ModalShell'
+import { Segmented } from '../components/Segmented'
 import { useToast } from '../components/toast'
+import { DiagramCanvas } from '../inspect/DiagramCanvas'
 import { useInstanceDiagram } from '../inspect/useInstanceQueries'
 import { activityLabel, parseActivityCatalog } from './activityCatalog'
 
@@ -43,14 +45,58 @@ export function ChangeStateModal({ engineId, instanceId, vitals, engine, onClose
   const [targets, setTargets] = useState<string[]>([])
   const [targetFilter, setTargetFilter] = useState('')
   const [simulated, setSimulated] = useState<Simulated | null>(null)
+  // Issue #102 diagram-click picker: which list a canvas click adds/removes from. 'off'
+  // keeps the diagram a plain read-only view (the checklist alone still works either
+  // way — the diagram is a supplementary picking surface, never the only one, since a
+  // diagram fact always needs a textual twin, R-UXQ-02).
+  const [pickerMode, setPickerMode] = useState<'off' | 'source' | 'target'>('off')
+  const [pickerHint, setPickerHint] = useState<string | null>(null)
 
   const environment = engine?.environment
   const active = vitals.currentActivities ?? []
+  const activeIds = new Set(active.map((current) => current.activityId ?? ''))
   const catalog = parseActivityCatalog(diagram.data?.xml)
+  const catalogIds = new Set(catalog.map((activity) => activity.id))
   const auditPath = `/inspect/${engineId}/${encodeURIComponent(instanceId)}?tab=audit`
+
+  // One stable markers object per data change (matching InspectPage's own precedent) —
+  // an inline object literal here would give DiagramCanvas a new prop reference on
+  // EVERY render (a checkbox toggle, a diagram click, typing in the target filter),
+  // forcing a full XML reimport + zoom-to-fit each time and resetting the operator's
+  // pan/zoom mid-pick.
+  const diagramMarkers = useMemo(
+    () => ({
+      activeActivityIds: (vitals.currentActivities ?? []).map(
+        (current) => current.activityId ?? '',
+      ),
+      deadLetterActivityIds: [],
+    }),
+    [vitals.currentActivities],
+  )
 
   const toggle = (list: string[], set: (next: string[]) => void, id: string) => {
     set(list.includes(id) ? list.filter((entry) => entry !== id) : [...list, id])
+  }
+
+  const onDiagramSelect = (id: string) => {
+    if (pickerMode === 'off') return
+    if (pickerMode === 'source') {
+      if (!activeIds.has(id)) {
+        setPickerHint(
+          'That node has no active token — pick a highlighted (active) node as a source.',
+        )
+        return
+      }
+      setPickerHint(null)
+      toggle(sources, setSources, id)
+      return
+    }
+    if (!catalogIds.has(id)) {
+      setPickerHint('That node was not found in the deployed definition.')
+      return
+    }
+    setPickerHint(null)
+    toggle(targets, setTargets, id)
   }
 
   const simulate = () => {
@@ -149,6 +195,39 @@ export function ChangeStateModal({ engineId, instanceId, vitals, engine, onClose
         Nothing is sent to the engine in this step — “Simulate move” renders the exact plan for
         verification first.
       </p>
+
+      {diagram.isSuccess && diagram.data.xml !== undefined && (
+        <div className="modal-field">
+          <span>Pick on the diagram (optional — the checklists below always work too)</span>
+          <Segmented<'off' | 'source' | 'target'>
+            ariaLabel="diagram click mode"
+            options={[
+              { value: 'off', label: 'Off' },
+              { value: 'source', label: 'Click adds sources' },
+              { value: 'target', label: 'Click adds targets' },
+            ]}
+            value={pickerMode}
+            onChange={(next) => {
+              setPickerMode(next)
+              setPickerHint(null)
+            }}
+          />
+          {pickerHint !== null && (
+            <p className="strip-note" role="alert">
+              {pickerHint}
+            </p>
+          )}
+          <div className="change-state-diagram">
+            <DiagramCanvas
+              xml={diagram.data.xml}
+              markers={diagramMarkers}
+              onSelectActivity={onDiagramSelect}
+              pickerSourceIds={sources}
+              pickerTargetIds={targets}
+            />
+          </div>
+        </div>
+      )}
 
       <div className="modal-field">
         <span>Source node(s) — the token is CANCELED here</span>

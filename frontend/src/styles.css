@@ -2883,6 +2883,43 @@ button.primary:disabled {
 .diverge-glyph-sibling {
   color: #57606f;
 }
+/* ---- issue #102 diagram-click picker (change-state source/target) ---- */
+/* .diagram-canvas's own default (45vh) is sized for a full detail page, too tall for a
+   modal — this wrapper constrains the nested DiagramCanvas without touching that shared
+   default (other .diagram-canvas mounts elsewhere are unaffected). */
+.change-state-diagram .diagram-canvas {
+  height: 28vh;
+}
+/* Same "stroke style + glyph, never hue alone" discipline as the sibling-diff markers
+   above: source = solid heavy outline + "S" badge, target = dashed outline + "T" badge —
+   distinguishable even without color, and never confusable with the diverge markers'
+   own solid/dashed pairing since the two features never render on the same canvas. */
+.diagram-canvas .marker-picker-source .djs-visual > :first-child {
+  stroke: #0a5c36 !important;
+  stroke-width: 4px !important;
+  stroke-dasharray: none !important;
+}
+.diagram-canvas .marker-picker-target .djs-visual > :first-child {
+  stroke: #0a5c36 !important;
+  stroke-width: 3px !important;
+  stroke-dasharray: 6 3 !important;
+}
+.picker-glyph {
+  display: inline-flex;
+  align-items: center;
+  justify-content: center;
+  width: 16px;
+  height: 16px;
+  border-radius: 3px;
+  font-weight: 700;
+  font-size: 11px;
+  color: #fff;
+  background: #0a5c36;
+}
+.marker-picker-target-glyph {
+  background: #0a5c36cc;
+}
+
 .diverge-legend {
   display: flex;
   gap: 18px;
