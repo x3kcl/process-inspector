@@ -589,9 +589,12 @@ most of the feature's cost, per R-SAFE-14/R-SAFE-15/R-GOV-06:
   `HttpOnly; Secure; SameSite=Lax`. **The live authorization gate fails closed** (an unknown verb
   path is never authorized-by-default).
 - **Break-glass** (built): a sealed local ADMIN account on a distinct `/break-glass` chain that
-  works when the IdP is down (reachable from an "Identity provider unreachable" interstitial),
-  4 h, ADMIN-global but never a fleet grant, loud + reason-on-every-verb; its audit degrades to a
-  local tamper-evident file sink when Postgres is also down.
+  works when the IdP is down, reachable via a directly-known URL (RUNBOOK §4) — a plain, JS-free
+  HTML form the BFF itself serves (no SPA load required: every non-`/api` path is
+  `authenticated()`, so the SPA can never load pre-auth, and there is no observable
+  "IdP-unreachable" event it could react to even if it could). 4 h, ADMIN-global but never a fleet
+  grant, loud + reason-on-every-verb; its audit degrades to a local tamper-evident file sink when
+  Postgres is also down.
 
 Zero-states (R-UXQ-04): no eligible four-eyes approver → "recover via the file-pin"; config-pinned →
 "CRUD disabled (mapping source = file)"; IdP unreachable → the break-glass door.

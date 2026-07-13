@@ -72,7 +72,7 @@ exhaustive scenario→class index.
 | R-SAFE-09 Verify-now | TS-BULK (verify) | `BulkJobServiceTest` (verifyNow…) | L1 | ✅ |
 | R-SAFE-12 group→scope hot-reload | TS-RBAC (scope) | `ScopeMappingServiceTest` | L1 | ✅ |
 | R-SAFE-14 mapping-CRUD governance (four-eyes, apex invariant) | — | `FourEyesPolicyTest`, `ApexInvariantCheckerTest`, `AdminAccessRbacSpringTest`, `AdminAccessReauthTest` | L1·L3 | ✅ |
-| R-SAFE-15 break-glass built (sealed chain, tamper-evident file-sink degrade) | — | `BreakGlassFailureHandlerTest`, `BreakGlassThrottleTest`, `OidcKeycloakIT` | L1·L4 | ✅; discoverable-entry-point interstitial is issue #94 (open) |
+| R-SAFE-15 break-glass built (sealed chain, tamper-evident file-sink degrade) | — | `BreakGlassFailureHandlerTest`, `BreakGlassThrottleTest`, `BreakGlassLoginPageControllerTest`, `OidcKeycloakIT` | L1·L4 | ✅; discoverable entry point (`GET /break-glass`) landed #94 |
 | RBAC 100% matrix | **TS-RBAC-01** | **`RbacGuardMatrixTest`** (verb×role, completeness-guarded) + `ActionRbacGuardSpringTest` (HTTP wiring); scope isolation `ScopeMappingServiceTest`; read-only mode `CorrectiveActionServiceTest` | L1·L3 | 🟡 (OIDC-scoped-grant HTTP leg = §C-1) |
 
 ### AUD — audit & data protection
