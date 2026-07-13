@@ -288,14 +288,15 @@ class BulkJobServiceTest {
         // Within-window session → the challenge passes ONCE at submit; the per-item workers then run
         // the whole fan-out with no further freshness check (a bulk job survives its session,
         // R-SEM-10 — the per-item rails are RBAC + audit, not re-auth).
-        when(actions.execute(any(), any(), any(), any(), any()))
+        when(actions.executeBulkItem(any(), any(), any(), any(), any()))
                 .thenReturn(new ActionResult(UUID.randomUUID(), "corr", "ok", 200, "done"));
 
         var dto = service.submit(suspendOf("pi-1", "pi-2"), oidcSession(Duration.ofMinutes(5)));
         var done = awaitFinished(dto.id());
 
         assertThat(done.state()).isEqualTo("COMPLETED");
-        verify(actions, org.mockito.Mockito.times(2)).execute(any(), any(), eq(ActionVerb.SUSPEND), any(), any());
+        verify(actions, org.mockito.Mockito.times(2))
+                .executeBulkItem(any(), any(), eq(ActionVerb.SUSPEND), any(), any());
     }
 
     /**
@@ -326,7 +327,7 @@ class BulkJobServiceTest {
     void protectedInstancesAreSettledAtSubmitAndNeverDispatched() {
         when(protectedInstances.findAllById(any()))
                 .thenReturn(List.of(new ProtectedInstance(ENGINE, "pi-2", "regulatory hold", "admin", Instant.EPOCH)));
-        when(actions.execute(any(), any(), any(), any(), any()))
+        when(actions.executeBulkItem(any(), any(), any(), any(), any()))
                 .thenReturn(new ActionResult(UUID.randomUUID(), "c", "ok", 200, "suspended"));
 
         BulkDtos.BulkJobDto submitted = service.submit(suspendOf("pi-1", "pi-2", "pi-3"), responder);
@@ -335,24 +336,24 @@ class BulkJobServiceTest {
         assertThat(done.state()).isEqualTo("COMPLETED");
         assertThat(done.items().get(1).state()).isEqualTo("skipped_protected");
         assertThat(done.tallies()).containsEntry("ok", 2L).containsEntry("skipped_protected", 1L);
-        verify(actions).execute(eq(ENGINE), eq("pi-1"), eq(ActionVerb.SUSPEND), any(), eq(responder));
-        verify(actions).execute(eq(ENGINE), eq("pi-3"), eq(ActionVerb.SUSPEND), any(), eq(responder));
+        verify(actions).executeBulkItem(eq(ENGINE), eq("pi-1"), eq(ActionVerb.SUSPEND), any(), eq(responder));
+        verify(actions).executeBulkItem(eq(ENGINE), eq("pi-3"), eq(ActionVerb.SUSPEND), any(), eq(responder));
     }
 
     /* ---------------- per-item outcome mapping (SPEC §7 classes) ---------------- */
 
     @Test
     void mapsGuardEngineAndTimeoutFailuresToTheirOutcomeClasses() {
-        when(actions.execute(eq(ENGINE), eq("pi-gone"), any(), any(), any()))
+        when(actions.executeBulkItem(eq(ENGINE), eq("pi-gone"), any(), any(), any()))
                 .thenThrow(
                         new GuardRefusedException(HttpStatus.NOT_FOUND, "instance-not-running", "already completed"));
-        when(actions.execute(eq(ENGINE), eq("pi-rejected"), any(), any(), any()))
+        when(actions.executeBulkItem(eq(ENGINE), eq("pi-rejected"), any(), any(), any()))
                 .thenThrow(new EngineRejectedException(UUID.randomUUID(), 409, "already suspended"));
-        when(actions.execute(eq(ENGINE), eq("pi-timeout"), any(), any(), any()))
+        when(actions.executeBulkItem(eq(ENGINE), eq("pi-timeout"), any(), any(), any()))
                 .thenThrow(new OutcomeUnknownException(
                         UUID.randomUUID(),
                         new ResourceAccessException("t/o", new HttpTimeoutException("request timed out"))));
-        when(actions.execute(eq(ENGINE), eq("pi-ok"), any(), any(), any()))
+        when(actions.executeBulkItem(eq(ENGINE), eq("pi-ok"), any(), any(), any()))
                 .thenReturn(new ActionResult(UUID.randomUUID(), "c", "ok", 200, "suspended"));
 
         BulkDtos.BulkJobDto submitted =
@@ -370,11 +371,11 @@ class BulkJobServiceTest {
     void circuitOpenMidBulkPausesDispatchInsteadOfBurningTheRestAsFailures() {
         // permits=1, stagger=0 ⇒ strict ordinal dispatch, one item at a time (deterministic).
         service = serviceWith(1, 0, new java.util.concurrent.CopyOnWriteArrayList<>());
-        when(actions.execute(eq(ENGINE), eq("pi-1"), any(), any(), any()))
+        when(actions.executeBulkItem(eq(ENGINE), eq("pi-1"), any(), any(), any()))
                 .thenReturn(new ActionResult(UUID.randomUUID(), "c", "ok", 200, "suspended"));
         // The breaker trips on pi-2: the BFF's guarded chokepoint fast-fails BEFORE any bytes
         // leave — CorrectiveActionService surfaces it as this shedding-load guard refusal.
-        when(actions.execute(eq(ENGINE), eq("pi-2"), any(), any(), any()))
+        when(actions.executeBulkItem(eq(ENGINE), eq("pi-2"), any(), any(), any()))
                 .thenThrow(new GuardRefusedException(
                         HttpStatus.SERVICE_UNAVAILABLE,
                         "engine-shedding-load",
@@ -396,8 +397,8 @@ class BulkJobServiceTest {
                 .containsEntry("failed", 1L)
                 .containsEntry("not_run", 2L);
         // The undispatched items were NEVER sent to the engine — do-no-harm held.
-        verify(actions, never()).execute(eq(ENGINE), eq("pi-3"), any(), any(), any());
-        verify(actions, never()).execute(eq(ENGINE), eq("pi-4"), any(), any(), any());
+        verify(actions, never()).executeBulkItem(eq(ENGINE), eq("pi-3"), any(), any(), any());
+        verify(actions, never()).executeBulkItem(eq(ENGINE), eq("pi-4"), any(), any(), any());
         // The fast-failed item carries the clean shedding-load reason, not an "unexpected" crash.
         assertThat(done.items().get(1).detail()).contains("shedding load");
         assertThat(done.items().get(2).detail()).contains("paused");
@@ -408,18 +409,18 @@ class BulkJobServiceTest {
         // permits=1, stagger=0 ⇒ strict ordinal dispatch. A generous 200ms bound / 10ms poll —
         // the mocked breaker "closes" after 2 polls, so this resolves in ~20ms, well inside it.
         service = serviceWith(1, 0, 200, 10, new java.util.concurrent.CopyOnWriteArrayList<>());
-        when(actions.execute(eq(ENGINE), eq("pi-1"), any(), any(), any()))
+        when(actions.executeBulkItem(eq(ENGINE), eq("pi-1"), any(), any(), any()))
                 .thenReturn(new ActionResult(UUID.randomUUID(), "c", "ok", 200, "suspended"));
         // pi-2's FIRST attempt trips the breaker; the bounded-wait retry (SECOND attempt, after
         // the mocked breaker reports recovered) succeeds — CallNotPermittedException guarantees
         // the first attempt never actually dispatched, so retrying it is safe (never a double-send).
-        when(actions.execute(eq(ENGINE), eq("pi-2"), any(), any(), any()))
+        when(actions.executeBulkItem(eq(ENGINE), eq("pi-2"), any(), any(), any()))
                 .thenThrow(new GuardRefusedException(
                         HttpStatus.SERVICE_UNAVAILABLE,
                         "engine-shedding-load",
                         "Engine 'engine-a' is shedding load (circuit open) — the action was not sent."))
                 .thenReturn(new ActionResult(UUID.randomUUID(), "c", "ok", 200, "suspended"));
-        when(actions.execute(eq(ENGINE), eq("pi-3"), any(), any(), any()))
+        when(actions.executeBulkItem(eq(ENGINE), eq("pi-3"), any(), any(), any()))
                 .thenReturn(new ActionResult(UUID.randomUUID(), "c", "ok", 200, "suspended"));
         when(guardedCaller.isOpen(eq(ENGINE), eq(CallPriority.INTERACTIVE))).thenReturn(true, true, false);
 
@@ -431,7 +432,7 @@ class BulkJobServiceTest {
         assertThat(done.items()).extracting(BulkDtos.BulkItemDto::state).containsExactly("ok", "ok", "ok");
         // pi-2's truthful outcome is its REAL (recovered) dispatch, never the transient circuit trip.
         assertThat(done.items().get(1).detail()).doesNotContain("shedding load");
-        verify(actions, org.mockito.Mockito.times(2)).execute(eq(ENGINE), eq("pi-2"), any(), any(), any());
+        verify(actions, org.mockito.Mockito.times(2)).executeBulkItem(eq(ENGINE), eq("pi-2"), any(), any(), any());
     }
 
     @Test
@@ -440,9 +441,9 @@ class BulkJobServiceTest {
         // test uses) — the breaker NEVER reports recovered, so this exercises the real poll loop
         // timing out, not just skipping it. Same final outcome as the bound=0 case: honest give-up.
         service = serviceWith(1, 0, 60, 10, new java.util.concurrent.CopyOnWriteArrayList<>());
-        when(actions.execute(eq(ENGINE), eq("pi-1"), any(), any(), any()))
+        when(actions.executeBulkItem(eq(ENGINE), eq("pi-1"), any(), any(), any()))
                 .thenReturn(new ActionResult(UUID.randomUUID(), "c", "ok", 200, "suspended"));
-        when(actions.execute(eq(ENGINE), eq("pi-2"), any(), any(), any()))
+        when(actions.executeBulkItem(eq(ENGINE), eq("pi-2"), any(), any(), any()))
                 .thenThrow(new GuardRefusedException(
                         HttpStatus.SERVICE_UNAVAILABLE,
                         "engine-shedding-load",
@@ -456,8 +457,8 @@ class BulkJobServiceTest {
         assertThat(done.state()).isEqualTo("INTERRUPTED");
         assertThat(done.items()).extracting(BulkDtos.BulkItemDto::state).containsExactly("ok", "failed", "not_run");
         assertThat(done.items().get(1).detail()).contains("shedding load");
-        verify(actions, org.mockito.Mockito.times(1)).execute(eq(ENGINE), eq("pi-2"), any(), any(), any());
-        verify(actions, never()).execute(eq(ENGINE), eq("pi-3"), any(), any(), any());
+        verify(actions, org.mockito.Mockito.times(1)).executeBulkItem(eq(ENGINE), eq("pi-2"), any(), any(), any());
+        verify(actions, never()).executeBulkItem(eq(ENGINE), eq("pi-3"), any(), any(), any());
         // The poll loop actually ran (not the bound=0 shortcut) — at least a couple of real polls
         // within the 60ms/10ms window before giving up.
         verify(guardedCaller, org.mockito.Mockito.atLeast(2)).isOpen(eq(ENGINE), eq(CallPriority.INTERACTIVE));
@@ -470,7 +471,7 @@ class BulkJobServiceTest {
         when(client.listJobs(
                         any(), eq(CallPriority.INTERACTIVE), eq(JobLaneKind.DEADLETTER), anyMap(), anyInt(), anyInt()))
                 .thenReturn(page(List.of(Map.of("id", "dlq-1"), Map.of("id", "dlq-2"))));
-        when(actions.execute(any(), any(), eq(ActionVerb.RETRY_JOB), any(), any()))
+        when(actions.executeBulkItem(any(), any(), eq(ActionVerb.RETRY_JOB), any(), any()))
                 .thenReturn(new ActionResult(UUID.randomUUID(), "c", "ok", 200, "moved"));
 
         BulkDtos.BulkJobDto submitted = service.submit(
@@ -485,8 +486,10 @@ class BulkJobServiceTest {
 
         assertThat(done.items().get(0).state()).isEqualTo("ok");
         assertThat(done.items().get(0).detail()).contains("2 dead-letter jobs");
-        verify(actions).execute(eq(ENGINE), eq("pi-1"), eq(ActionVerb.RETRY_JOB), argJob("dlq-1"), eq(responder));
-        verify(actions).execute(eq(ENGINE), eq("pi-1"), eq(ActionVerb.RETRY_JOB), argJob("dlq-2"), eq(responder));
+        verify(actions)
+                .executeBulkItem(eq(ENGINE), eq("pi-1"), eq(ActionVerb.RETRY_JOB), argJob("dlq-1"), eq(responder));
+        verify(actions)
+                .executeBulkItem(eq(ENGINE), eq("pi-1"), eq(ActionVerb.RETRY_JOB), argJob("dlq-2"), eq(responder));
         // OPERATIONS.md §2 (issue #96): the finished job's per-item outcomes are tallied once.
         assertThat(metrics.counter("bulk_item_outcomes_total", "state", "ok").count())
                 .isEqualTo(1.0);
@@ -644,7 +647,7 @@ class BulkJobServiceTest {
         var concurrent = new java.util.concurrent.atomic.AtomicInteger();
         var maxConcurrent = new java.util.concurrent.atomic.AtomicInteger();
         var gate = new java.util.concurrent.CountDownLatch(1);
-        when(actions.execute(any(), any(), any(), any(), any())).thenAnswer(inv -> {
+        when(actions.executeBulkItem(any(), any(), any(), any(), any())).thenAnswer(inv -> {
             entered.incrementAndGet();
             maxConcurrent.accumulateAndGet(concurrent.incrementAndGet(), Math::max);
             try {
@@ -670,7 +673,7 @@ class BulkJobServiceTest {
     void dispatchStartsOnOneEngineArePacedByTheStagger() {
         service = serviceWith(4, 120, new java.util.concurrent.CopyOnWriteArrayList<>());
         var startNanos = new java.util.concurrent.ConcurrentLinkedQueue<Long>();
-        when(actions.execute(any(), any(), any(), any(), any())).thenAnswer(inv -> {
+        when(actions.executeBulkItem(any(), any(), any(), any(), any())).thenAnswer(inv -> {
             startNanos.add(System.nanoTime());
             return new ActionResult(UUID.randomUUID(), "c", "ok", 200, "suspended");
         });
@@ -689,7 +692,7 @@ class BulkJobServiceTest {
     @Test
     void filterDoorAcceptsBeyondTheGridCapUpToTheQueryBulkCap() {
         service = serviceWith(8, 0, new java.util.concurrent.CopyOnWriteArrayList<>());
-        when(actions.execute(any(), any(), any(), any(), any()))
+        when(actions.executeBulkItem(any(), any(), any(), any(), any()))
                 .thenReturn(new ActionResult(UUID.randomUUID(), "c", "ok", 200, "suspended"));
         String[] ids = new String[BulkJob.ITEM_CAP + 1];
         for (int i = 0; i < ids.length; i++) ids[i] = "pi-" + i;
@@ -707,7 +710,7 @@ class BulkJobServiceTest {
 
     @Test
     void selectionDoorRecordsItsOwnScopeKindAndTickedCountLabel() {
-        when(actions.execute(any(), any(), any(), any(), any()))
+        when(actions.executeBulkItem(any(), any(), any(), any(), any()))
                 .thenReturn(new ActionResult(UUID.randomUUID(), "c", "ok", 200, "suspended"));
 
         BulkDtos.BulkJobDto submitted = service.submit(suspendOf("pi-1", "pi-2", "pi-3"), responder);
@@ -718,7 +721,7 @@ class BulkJobServiceTest {
 
     @Test
     void selectionDoorSingularizesTheLabelForOneInstance() {
-        when(actions.execute(any(), any(), any(), any(), any()))
+        when(actions.executeBulkItem(any(), any(), any(), any(), any()))
                 .thenReturn(new ActionResult(UUID.randomUUID(), "c", "ok", 200, "suspended"));
 
         BulkDtos.BulkJobDto submitted = service.submit(suspendOf("pi-1"), responder);
@@ -728,7 +731,7 @@ class BulkJobServiceTest {
 
     @Test
     void errorClassDoorRecordsItsScopeKindAndCallerSuppliedLabel() {
-        when(actions.execute(any(), any(), any(), any(), any()))
+        when(actions.executeBulkItem(any(), any(), any(), any(), any()))
                 .thenReturn(new ActionResult(UUID.randomUUID(), "c", "ok", 200, "suspended"));
 
         BulkDtos.BulkJobDto submitted = service.submit(
@@ -749,7 +752,7 @@ class BulkJobServiceTest {
     @Test
     void filterDoorRecordsItsScopeKindAndCallerSuppliedLabel() {
         service = serviceWith(8, 0, new java.util.concurrent.CopyOnWriteArrayList<>());
-        when(actions.execute(any(), any(), any(), any(), any()))
+        when(actions.executeBulkItem(any(), any(), any(), any(), any()))
                 .thenReturn(new ActionResult(UUID.randomUUID(), "c", "ok", 200, "suspended"));
 
         BulkDtos.BulkJobDto submitted = service.submit(
@@ -763,7 +766,7 @@ class BulkJobServiceTest {
     void publishesIdOnlyChangeEventsAcrossTheJobLifecycle() {
         List<Object> published = new java.util.concurrent.CopyOnWriteArrayList<>();
         service = serviceWith(4, 0, published);
-        when(actions.execute(any(), any(), any(), any(), any()))
+        when(actions.executeBulkItem(any(), any(), any(), any(), any()))
                 .thenReturn(new ActionResult(UUID.randomUUID(), "c", "ok", 200, "suspended"));
 
         BulkDtos.BulkJobDto submitted = service.submit(suspendOf("pi-1", "pi-2"), responder);

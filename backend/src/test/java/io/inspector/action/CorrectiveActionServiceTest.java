@@ -316,6 +316,54 @@ class CorrectiveActionServiceTest {
         verify(client, never()).deleteProcessInstance(any(), any(), anyString(), anyString());
     }
 
+    /* ---------------- executeBulkItem (tier-4 destructive-bulk wizard, issue #100) ---------------- */
+
+    @Test
+    void executeBulkItemSkipsReauthOnAStaleOidcSessionForATierThreeVerb() {
+        // R-SEM-10: a bulk job outlives its session — BulkJobService#submit already checked
+        // freshness ONCE against the live session before dispatch started. A per-item re-check
+        // against a moving clock (this session is 20 min stale, past the 15-min window) must NOT
+        // fire here — proving the fix for the latent per-item reauth-storm bug (issue #100).
+        when(client.getRuntimeProcessInstance(any(), eq(CallPriority.INTERACTIVE), eq("pi-1")))
+                .thenReturn(Map.of("id", "pi-1", "businessKey", "ORD-77", "suspended", false));
+        Authentication stale = oidcSession(Duration.ofMinutes(20), "ROLE_ADMIN");
+        ActionRequest request =
+                new ActionRequest("bulk teardown", null, null, null, null, null, null, null, null, null, null);
+
+        service.executeBulkItem(PROD, "pi-1", ActionVerb.TERMINATE_DELETE, request, stale);
+
+        verify(client).deleteProcessInstance(any(), eq(CallPriority.INTERACTIVE), eq("pi-1"), anyString());
+    }
+
+    @Test
+    void executeBulkItemSkipsTheTypedConfirmTokenOnProd() {
+        // A per-instance business-key token typed once cannot stand for N bulk items — the
+        // wizard's own "type the item count" gate at submit is the bulk-shaped equivalent.
+        when(client.getRuntimeProcessInstance(any(), eq(CallPriority.INTERACTIVE), eq("pi-1")))
+                .thenReturn(Map.of("id", "pi-1", "businessKey", "ORD-77", "suspended", false));
+        ActionRequest noToken =
+                new ActionRequest("bulk teardown", null, null, null, null, null, null, null, null, null, null);
+
+        service.executeBulkItem(PROD, "pi-1", ActionVerb.TERMINATE_DELETE, noToken, operator);
+
+        verify(client).deleteProcessInstance(any(), eq(CallPriority.INTERACTIVE), eq("pi-1"), anyString());
+    }
+
+    @Test
+    void executeBulkItemStillRunsEveryOtherRail() {
+        // RBAC, protected-instance guard, audit and the single-call/no-retry discipline are
+        // UNCHANGED for a bulk item — only the two live-session-shaped checks above are skipped.
+        when(rbac.hasRoleOn(any(), eq(Role.ADMIN), anyString())).thenReturn(false);
+        ActionRequest request =
+                new ActionRequest("bulk teardown", null, null, null, null, null, null, null, null, null, null);
+
+        assertThatThrownBy(() -> service.executeBulkItem(PROD, "pi-1", ActionVerb.TERMINATE_DELETE, request, operator))
+                .isInstanceOf(GuardRefusedException.class)
+                .satisfies(e -> assertThat(((GuardRefusedException) e).code()).isEqualTo("rbac-denied"));
+        verifyNoInteractions(audit);
+        verify(client, never()).deleteProcessInstance(any(), any(), anyString(), anyString());
+    }
+
     @Test
     void aTierZeroVerbNeverRequiresReauthEvenOnAnAncientOidcSession() {
         // The dangerous set is tier-3 only (no per-verb MFA storm): a day-old OIDC session still runs

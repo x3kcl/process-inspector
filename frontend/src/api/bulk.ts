@@ -13,6 +13,9 @@ export type BulkSubmitRequest = components['schemas']['BulkSubmitRequest']
 export type BulkTarget = components['schemas']['BulkTarget']
 export type BulkErrorClassRequest = components['schemas']['BulkErrorClassRequest']
 export type BulkFilterRequest = components['schemas']['BulkFilterRequest']
+// Tier-4 destructive-bulk wizard (SPEC §6/§7, issue #100).
+export type BulkDestructiveRequest = components['schemas']['BulkDestructiveRequest']
+export type BulkDestructivePreview = components['schemas']['BulkDestructivePreview']
 
 export const BULK_JOBS_KEY = ['bulk-jobs']
 
@@ -54,6 +57,30 @@ export async function submitBulkErrorClass(body: BulkErrorClassRequest): Promise
  */
 export async function submitBulkFilter(body: BulkFilterRequest): Promise<BulkJobDto> {
   const { data, error, response } = await api.POST('/api/bulk/filter', { body })
+  if (data === undefined) throw new ActionError(parseActionProblem(response.status, error))
+  return data
+}
+
+/**
+ * Tier-4 destructive-bulk wizard (SPEC §6/§7, issue #100): the scope-enumeration preview —
+ * read-only, never dispatches. NEVER trusted by the submit below; the BFF re-resolves
+ * everything server-fresh at submit time too.
+ */
+export async function previewDestructiveBulk(
+  body: BulkDestructiveRequest,
+): Promise<BulkDestructivePreview> {
+  const { data, error, response } = await api.POST('/api/bulk/destructive/preview', { body })
+  if (data === undefined) throw new ActionError(parseActionProblem(response.status, error))
+  return data
+}
+
+/**
+ * Tier-4 destructive-bulk wizard submit: re-resolves and re-validates everything server-fresh
+ * (the preview is advisory only) — including the typed-count attestation against the FRESH
+ * scope, never the preview's snapshot.
+ */
+export async function submitDestructiveBulk(body: BulkDestructiveRequest): Promise<BulkJobDto> {
+  const { data, error, response } = await api.POST('/api/bulk/destructive', { body })
   if (data === undefined) throw new ActionError(parseActionProblem(response.status, error))
   return data
 }
@@ -131,6 +158,25 @@ export function useSubmitBulkFilter() {
   return useMutation<BulkJobDto, ActionError, BulkFilterRequest>({
     retry: false,
     mutationFn: submitBulkFilter,
+    onSettled: async () => {
+      await queryClient.invalidateQueries({ queryKey: BULK_JOBS_KEY })
+    },
+  })
+}
+
+/** Read-only — no cache invalidation on settle, nothing was dispatched. */
+export function usePreviewDestructiveBulk() {
+  return useMutation<BulkDestructivePreview, ActionError, BulkDestructiveRequest>({
+    retry: false,
+    mutationFn: previewDestructiveBulk,
+  })
+}
+
+export function useSubmitDestructiveBulk() {
+  const queryClient = useQueryClient()
+  return useMutation<BulkJobDto, ActionError, BulkDestructiveRequest>({
+    retry: false,
+    mutationFn: submitDestructiveBulk,
     onSettled: async () => {
       await queryClient.invalidateQueries({ queryKey: BULK_JOBS_KEY })
     },

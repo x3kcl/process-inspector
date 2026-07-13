@@ -402,11 +402,32 @@ OPERATIONS.md §8.
   (partial; "continue as new job" re-scopes `not_run`+`failed`); other engine groups run on
   independently throughout. Per-item outcomes stay truthful either way: a recovered item ends
   up its REAL dispatch outcome, never mislabeled by the transient trip
-  (`BulkJobServiceTest`, rung-1, 2 new cases). Still
-  open: destructive bulk (terminate) deferred to the tier-4 wizard. WIRE GOTCHA: Jackson serializes absent
+  (`BulkJobServiceTest`, rung-1, 2 new cases). WIRE GOTCHA: Jackson serializes absent
   DTO fields as JSON null while openapi-typescript types them `?: undefined` — guard
   with `typeof x === 'string'` / `?? undefined`, never bare `!== undefined` (a null
   `continuedFrom` crashed the drawer until guarded).
+- **Tier-4 destructive-bulk wizard (SPEC §6/§7, issue #100) — landed, `terminate-delete`
+  only.** `POST /api/bulk/destructive/preview` (read-only scope enumeration, re-plans
+  server-fresh, never trusted by submit — same doctrine as migrate/change-state preview) +
+  `POST /api/bulk/destructive` (re-resolves and re-validates everything server-fresh:
+  refuse-unscoped, ADMIN hard-gated per target engine at the door, typed-count vs. a FRESH
+  resolution → `409 bulk-count-drift` on mismatch). Reuses the filter door's exhaustive
+  resolution (`BulkFilterResolution`, extracted so both doors share the same
+  degraded/truncated/drained/cap honesty checks) and `BulkJobService`'s existing
+  reauth-at-submit convergence pattern (`DESTRUCTIVE_BULK_VERBS`, a separate stricter
+  whitelist, via a new `submitDestructive` package door). **Security finding fixed as part of
+  this issue:** `CorrectiveActionService.execute()`'s tier-3 reauth re-check and per-instance
+  typed-confirm-token were unconditional — the moment a tier-3 verb entered bulk, a
+  long-running job would re-challenge per item once the freshness window elapsed mid-dispatch
+  (misclassified as a generic `failed` item, no auditId). Fixed with a dedicated
+  `executeBulkItem()` entry point that skips exactly those two live-session-shaped checks
+  (both already covered once, upstream, at bulk submit) — every other rail unchanged.
+  Frontend: `DestructiveBulkWizard` (auto-preview on open, per-engine scope readout, typed-count
+  gate reusing `useProdGuard`), a standalone ADMIN-gated `DestructiveBulkEntry` beside
+  `BulkBar` (not folded into its SELECTION/FILTER intersection-rule machinery — destructive
+  bulk is FILTER-scoped only). **Deferred, documented, not silently dropped:**
+  `delete-deadletter`-at-scale needs a job-level (not instance-level) scope resolver — a
+  distinct, mechanically similar follow-up.
 - Security test plan execution (TEST-STRATEGY §5, independent tester); performance scenarios
   P1/P2/P4; UAT sessions (R-TEST-08); operator quick-start + RUNBOOK.md; break-glass;
   release gate per SPEC §13.

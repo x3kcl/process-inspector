@@ -4,6 +4,7 @@ import io.inspector.bulk.BulkDtos;
 import io.inspector.bulk.BulkErrorClassService;
 import io.inspector.bulk.BulkFilterService;
 import io.inspector.bulk.BulkJobService;
+import io.inspector.bulk.DestructiveBulkService;
 import io.inspector.stream.SseHub;
 import java.util.List;
 import java.util.UUID;
@@ -33,13 +34,19 @@ public class BulkController {
     private final BulkJobService bulk;
     private final BulkErrorClassService errorClass;
     private final BulkFilterService filter;
+    private final DestructiveBulkService destructive;
     private final SseHub stream;
 
     public BulkController(
-            BulkJobService bulk, BulkErrorClassService errorClass, BulkFilterService filter, SseHub stream) {
+            BulkJobService bulk,
+            BulkErrorClassService errorClass,
+            BulkFilterService filter,
+            DestructiveBulkService destructive,
+            SseHub stream) {
         this.bulk = bulk;
         this.errorClass = errorClass;
         this.filter = filter;
+        this.destructive = destructive;
         this.stream = stream;
     }
 
@@ -74,6 +81,31 @@ public class BulkController {
     public BulkDtos.BulkJobDto submitFilter(
             @RequestBody BulkDtos.BulkFilterRequest request, Authentication authentication) {
         return filter.submit(request, authentication);
+    }
+
+    /**
+     * Tier-4 destructive-bulk wizard (SPEC §6/§7, issue #100): the scope-enumeration preview —
+     * read-only, no audit row, never dispatches. The door floor is ADMIN (not the coarse
+     * RESPONDER floor above every other bulk door) so a non-ADMIN operator is refused before the
+     * service does any resolution work at all.
+     */
+    @PostMapping("/destructive/preview")
+    @PreAuthorize("@rbac.atLeast(authentication, 'ADMIN')")
+    public BulkDtos.BulkDestructivePreview previewDestructive(
+            @RequestBody BulkDtos.BulkDestructiveRequest request, Authentication authentication) {
+        return destructive.preview(request, authentication);
+    }
+
+    /**
+     * Tier-4 destructive-bulk wizard submit: re-resolves and re-validates everything server-fresh
+     * (the preview above is advisory only), then hands off to the same persisted-job machinery
+     * every other bulk door uses.
+     */
+    @PostMapping("/destructive")
+    @PreAuthorize("@rbac.atLeast(authentication, 'ADMIN')")
+    public BulkDtos.BulkJobDto submitDestructive(
+            @RequestBody BulkDtos.BulkDestructiveRequest request, Authentication authentication) {
+        return destructive.submit(request, authentication);
     }
 
     /**

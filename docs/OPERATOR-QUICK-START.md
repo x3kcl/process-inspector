@@ -98,7 +98,7 @@ the fix is "ask for a grant", "wrong engine version", or "nothing to act on".
 | **1** — data mutation | Edit variable | Diff confirm (old → new, name, scope). Reason **required on prod**. Compare-and-set: if someone changed the value since you loaded it, you get a 409 and a fresh re-render — never a silent overwrite. |
 | **2** — flow surgery | Move token, complete task as | Confirm + required reason + the plan as a sentence + raw REST body preview. |
 | **3** — destructive, single | Terminate, delete dead-letter job | Full verification modal — see below. |
-| **4** — destructive, bulk | Bulk terminate | Wizard: scope enumeration → reason → on prod **type the item count** → async tracked job. **Refuse-unscoped**: no destructive bulk without at least one narrowing filter. |
+| **4** — destructive, bulk | Bulk terminate (**landed** — `terminate-delete` only; bulk delete-dead-letter-at-scale is a fast-follow) | Wizard: scope enumeration → reason → on prod **type the item count** → async tracked job. **Refuse-unscoped**: no destructive bulk without at least one narrowing filter. ADMIN only. |
 
 ### What the tier-3 verification modal actually guarantees
 

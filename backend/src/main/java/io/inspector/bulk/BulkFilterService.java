@@ -2,16 +2,12 @@ package io.inspector.bulk;
 
 import io.inspector.action.GuardRefusedException;
 import io.inspector.aggregate.SearchService;
-import io.inspector.dto.ProcessInstanceRow;
 import io.inspector.dto.SearchRequest;
 import io.inspector.dto.SearchRequest.InstanceStatus;
-import io.inspector.dto.SearchResponse;
 import io.inspector.registry.EngineRegistry;
-import java.util.ArrayList;
 import java.util.LinkedHashMap;
 import java.util.List;
 import java.util.Map;
-import java.util.stream.Collectors;
 import org.springframework.http.HttpStatus;
 import org.springframework.security.core.Authentication;
 import org.springframework.stereotype.Service;
@@ -78,58 +74,16 @@ public class BulkFilterService {
             criteria.engineIds().forEach(registry::require);
         }
 
-        // Re-resolution: the SAME plan the grid used, paged to exhaustion; the resolver owns
-        // the page size (the grid's pageSize is a display concern, not a scope bound).
-        SearchResponse resolved = search.resolveAllMatching(withoutPageSize(criteria), BulkJob.FILTER_ITEM_CAP);
-
-        // Fail-closed resolution (same doctrine as the error-class retry): an engine that
-        // did not answer means the member list is not trustworthy — refuse the whole submit.
-        for (Map.Entry<String, SearchResponse.EngineResult> e :
-                resolved.perEngine().entrySet()) {
-            if (!e.getValue().ok()) {
-                throw refuse(
-                        HttpStatus.BAD_GATEWAY,
-                        "filter-resolution-degraded",
-                        "Engine '" + e.getKey() + "' did not answer the filter resolution ("
-                                + e.getValue().error() + ") — the member list would be incomplete."
-                                + " Nothing happened.");
-            }
-            // A truncated failure-lane scan means matching instances exist that this
-            // resolution never saw — for a BINDING "all matching" that is a refusal, not a
-            // footnote (stricter than the error-class path, which is already scoped to one
-            // definition version).
-            String truncated = e.getValue().dlqScan() != null
-                    ? e.getValue().dlqScan()
-                    : e.getValue().failingScan();
-            if (truncated != null) {
-                throw refuse(
-                        HttpStatus.BAD_REQUEST,
-                        "filter-scan-truncated",
-                        "The failure-lane scan on engine '" + e.getKey() + "' hit its cap (" + truncated
-                                + ") — \"all matching\" would silently be a subset. Narrow the filter"
-                                + " (a definition key pushes the scan down). Nothing happened.");
-            }
-        }
-
-        Map<String, BulkDtos.BulkTarget> targets = new LinkedHashMap<>();
-        for (ProcessInstanceRow row : resolved.rows()) {
-            targets.putIfAbsent(
-                    row.compositeId(), new BulkDtos.BulkTarget(row.engineId(), row.processInstanceId(), null));
-        }
+        // Re-resolution: the SAME plan the grid used, paged to exhaustion (shared with the
+        // destructive-bulk wizard, BulkFilterResolution).
+        Map<String, BulkDtos.BulkTarget> targets =
+                BulkFilterResolution.resolveExhaustively(search, criteria, BulkJob.FILTER_ITEM_CAP);
         if (targets.isEmpty()) {
             throw refuse(
                     HttpStatus.CONFLICT,
                     "filter-drained",
                     "No instances currently match this filter — the set has drained since the grid"
                             + " rendered. Refresh the search. Nothing happened.");
-        }
-        if (targets.size() > BulkJob.FILTER_ITEM_CAP) {
-            throw refuse(
-                    HttpStatus.BAD_REQUEST,
-                    "bulk-cap-exceeded",
-                    "This filter resolves to more than " + BulkJob.FILTER_ITEM_CAP
-                            + " instances — over the query-bulk hard cap. Narrow the filter."
-                            + " Nothing happened.");
         }
 
         // Provenance for the envelope audit row: the criteria as submitted and what they
@@ -140,52 +94,12 @@ public class BulkFilterService {
 
         BulkDtos.BulkSubmitRequest submit = new BulkDtos.BulkSubmitRequest(
                 request.verb(), request.reason().trim(), request.ticketId(), null, List.copyOf(targets.values()));
-        return bulk.submit(submit, auth, Map.of("filter", filterMeta), BulkJob.FILTER_ITEM_CAP, scopeLabel(criteria));
-    }
-
-    /**
-     * Scope provenance (usability fix E1): a compact restatement of the criteria — statuses
-     * + definition key[+version] + engines — ported from the {@code criteriaChips} notion
-     * FilterBulkModal.tsx already shows the operator, kept ≤120 chars for the drawer.
-     */
-    private static String scopeLabel(SearchRequest criteria) {
-        List<String> parts = new ArrayList<>();
-        if (criteria.statuses() != null && !criteria.statuses().isEmpty()) {
-            parts.add(criteria.statuses().stream().map(Enum::name).collect(Collectors.joining(" + ")));
-        }
-        if (criteria.processDefinitionKey() != null
-                && !criteria.processDefinitionKey().isBlank()) {
-            parts.add(
-                    criteria.definitionVersion() != null
-                            ? criteria.processDefinitionKey() + " v" + criteria.definitionVersion()
-                            : criteria.processDefinitionKey());
-        }
-        if (criteria.engineIds() != null && !criteria.engineIds().isEmpty()) {
-            parts.add("engines: " + String.join(", ", criteria.engineIds()));
-        }
-        String label = String.join(" · ", parts);
-        return label.length() > 120 ? label.substring(0, 117) + "..." : label;
-    }
-
-    /** The 16-component record, minus the display-page bound (the resolver owns paging). */
-    private static SearchRequest withoutPageSize(SearchRequest c) {
-        return new SearchRequest(
-                c.engineIds(),
-                c.statuses(),
-                c.processDefinitionKey(),
-                c.definitionVersion(),
-                c.businessKey(),
-                c.businessKeyLike(),
-                c.startedAfter(),
-                c.startedBefore(),
-                c.failureTimeAfter(),
-                c.failureTimeBefore(),
-                c.errorText(),
-                c.signatureHash(),
-                c.currentActivity(),
-                c.variables(),
-                c.sortBy(),
-                null);
+        return bulk.submit(
+                submit,
+                auth,
+                Map.of("filter", filterMeta),
+                BulkJob.FILTER_ITEM_CAP,
+                BulkFilterResolution.scopeLabel(criteria));
     }
 
     private static GuardRefusedException refuse(HttpStatus status, String code, String message) {

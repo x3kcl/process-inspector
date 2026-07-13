@@ -47,6 +47,29 @@ public final class BulkDtos {
      */
     public record BulkFilterRequest(SearchRequest criteria, String verb, String reason, String ticketId) {}
 
+    /**
+     * Tier-4 destructive-bulk wizard (SPEC §6/§7, issue #100): the same "criteria are binding,
+     * never a resolved ID list" doctrine as {@link BulkFilterRequest}, plus the operator's typed
+     * scope attestation. {@code confirmedCount} is REQUIRED once the resolved scope touches a
+     * PROD engine (mirrors the single-target typed-business-key rule, SPEC §6 tier 3) — checked
+     * against a FRESH re-resolution at submit, never the preview's snapshot.
+     */
+    public record BulkDestructiveRequest(
+            SearchRequest criteria, String verb, String reason, String ticketId, Integer confirmedCount) {}
+
+    /**
+     * The destructive-bulk wizard's scope-enumeration step (SPEC §6 tier 4: "count, per-engine
+     * split, expandable list") — read-only, re-run server-fresh at submit, never trusted from an
+     * earlier preview (same re-plan-server-fresh doctrine as migrate/change-state preview).
+     * {@code sampleRows} is capped for display; {@code capped} says so honestly.
+     */
+    public record BulkDestructivePreview(
+            long count,
+            Map<String, Long> perEngineCounts,
+            List<io.inspector.dto.ProcessInstanceRow> sampleRows,
+            boolean capped,
+            boolean prodInScope) {}
+
     public record BulkItemDto(
             int ordinal,
             String engineId,

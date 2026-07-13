@@ -108,6 +108,44 @@ public class CorrectiveActionService {
             ActionVerb verb,
             ActionRequest request,
             Authentication auth) {
+        return execute(scope, engineId, targetId, verb, request, auth, false);
+    }
+
+    /**
+     * Bulk per-item dispatch entry point (tier-4 destructive-bulk wizard, issue #100). Identical
+     * to {@link #execute(String, String, ActionVerb, ActionRequest, Authentication)} EXCEPT it
+     * skips two pre-checks that only make sense for a live, single-target request:
+     *
+     * <ul>
+     *   <li>the dangerous-set freshness re-check (tier ≥3) — {@code BulkJobService#submit} already
+     *       ran it ONCE against the LIVE session before this job's workers started (R-SEM-10: a
+     *       bulk job outlives its session, so re-checking freshness per item — against a clock
+     *       that keeps moving — would incorrectly 401 the tail of a long-running fan-out);
+     *   <li>the PROD typed-confirm-token restatement (a per-instance business key) — meaningless
+     *       across N items; the bulk-shaped equivalent is the wizard's own "type the item COUNT"
+     *       gate, already checked ONCE at submit against the SAME frozen resolved scope these
+     *       items came from ({@code DestructiveBulkService}).
+     * </ul>
+     *
+     * Every other rail — RBAC, engine gates, protected-instance guard, reason, fail-closed audit,
+     * one engine call, honest close-out — runs exactly as it does for a single-target call.
+     * ⚠ Never call this from a request-thread controller — only from {@code BulkJobService}'s
+     * post-submit per-item dispatch, where both pre-checks are documented, already-discharged
+     * upstream invariants, not omissions.
+     */
+    public ActionResult executeBulkItem(
+            String engineId, String targetId, ActionVerb verb, ActionRequest request, Authentication auth) {
+        return execute(ActionScope.BPMN, engineId, targetId, verb, request, auth, true);
+    }
+
+    private ActionResult execute(
+            ActionScope scope,
+            String engineId,
+            String targetId,
+            ActionVerb verb,
+            ActionRequest request,
+            Authentication auth,
+            boolean isBulkItem) {
         EngineConfig engine = registry.require(engineId);
 
         // -- guards: everything above the audit insert refuses with "nothing happened" --
@@ -118,12 +156,9 @@ public class CorrectiveActionService {
         // A PRE-CONDITION — refused with "nothing happened" BEFORE the reason/typed-token rails, so
         // the SPA re-auths at verb intent, never after the operator has typed the confirm token
         // (⚠️ support-lead). Dev/basic + break-glass sessions are exempt (DangerousActionReauthGate).
-        // INVARIANT (⚠️ do not break): this method is ALSO the per-item executor for async bulk jobs.
-        // Bulk carries NO tier-3 verb today, so this never fires on a bulk item; bulk's OWN freshness
-        // gate runs ONCE at submit (BulkJobService#submit, S5d) — NOT here per persisted item: a bulk
-        // job outlives its session (R-SEM-10), so a per-item challenge would 401 the tail of a long
-        // fan-out. When tier-3 bulk lands (the tier-4 wizard) that submit-time gate already covers it.
-        if (verb.tier() >= 3) {
+        // A bulk-dispatched item (isBulkItem) skips this — BulkJobService#submit already ran it
+        // ONCE, against the live session, before dispatch started (see executeBulkItem's javadoc).
+        if (verb.tier() >= 3 && !isBulkItem) {
             reauth.enforce(auth);
         }
         // CMMN scope is capability-gated (scopeType, Flowable ≥ 6.8) BEFORE any engine read — an
@@ -137,7 +172,12 @@ public class CorrectiveActionService {
         String ticketId = ticketPolicy.validate(request.ticketId(), engine.environment());
 
         Target target = restateTarget(scope, engine, verb, targetId, request);
-        requireConfirmToken(engine, verb, target, request);
+        // A bulk-dispatched item skips the per-instance typed-confirm-token restatement — a
+        // business key typed once cannot stand for N items; the wizard's own "type the item
+        // COUNT" gate at submit is the bulk-shaped equivalent (see executeBulkItem's javadoc).
+        if (!isBulkItem) {
+            requireConfirmToken(engine, verb, target, request);
+        }
 
         // -- break-glass marker (S7): set from the PASSED auth on the dispatching thread BEFORE the
         // audit row is written, so a bulk job submitted under a sealed-account session flags EVERY
