@@ -22,6 +22,7 @@ import { VERBS } from '../actions/catalog'
 import { ModalShell } from '../components/ModalShell'
 import { useToast } from '../components/toast'
 import { BooleanWidget, NumberWidget, TextWidget } from '../inspect/variables/editor/FormMode'
+import { parseNumberInput } from '../inspect/variables/editor/editState'
 import { VerifyModal } from '../inspect/variables/editor/VerifyModal'
 import { ChangeStateModal } from './ChangeStateModal'
 
@@ -179,15 +180,28 @@ function EditStep({
   const [numberRaw, setNumberRaw] = useState('')
   const [boolValue, setBoolValue] = useState<boolean | undefined>(undefined)
 
+  // The number path reuses the codebase's OWN parser (editState.ts) rather than a bare
+  // Number(raw) — that would let "12abc" (NaN) or "1e999" (Infinity) through as "valid"
+  // while NumberWidget shows its own visible parse error, letting a submit dispatch a
+  // value that JSON.stringify silently coerces to null on the wire.
+  const numberParse =
+    scalarType === 'long' || scalarType === 'double'
+      ? parseNumberInput(numberRaw, scalarType)
+      : null
   const staged: unknown =
     scalarType === 'boolean'
       ? boolValue
       : scalarType === 'string'
         ? textValue
-        : numberRaw.trim() === ''
-          ? undefined
-          : Number(numberRaw)
-  const stagedValid = scalarType === 'boolean' ? boolValue !== undefined : staged !== undefined
+        : numberParse?.ok === true
+          ? numberParse.value
+          : undefined
+  const stagedValid =
+    scalarType === 'boolean'
+      ? boolValue !== undefined
+      : scalarType === 'string'
+        ? true
+        : numberParse?.ok === true
 
   return (
     <ModalShell

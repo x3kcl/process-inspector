@@ -5,7 +5,7 @@
 // it sends the EXACT request that was simulated — changing the selection drops the
 // preview and forces a re-simulate. Never optimistic: the execute mutation re-fetches
 // every instance segment + audit on settle (corrective-actions §4).
-import { useState } from 'react'
+import { useMemo, useState } from 'react'
 import type { EngineDto, InstanceDetail } from '../api/model'
 import { useChangeStateExecute, useChangeStatePreview } from '../api/surgery'
 import type { ChangeStatePreview, ChangeStateRequest } from '../api/surgery'
@@ -58,6 +58,21 @@ export function ChangeStateModal({ engineId, instanceId, vitals, engine, onClose
   const catalog = parseActivityCatalog(diagram.data?.xml)
   const catalogIds = new Set(catalog.map((activity) => activity.id))
   const auditPath = `/inspect/${engineId}/${encodeURIComponent(instanceId)}?tab=audit`
+
+  // One stable markers object per data change (matching InspectPage's own precedent) —
+  // an inline object literal here would give DiagramCanvas a new prop reference on
+  // EVERY render (a checkbox toggle, a diagram click, typing in the target filter),
+  // forcing a full XML reimport + zoom-to-fit each time and resetting the operator's
+  // pan/zoom mid-pick.
+  const diagramMarkers = useMemo(
+    () => ({
+      activeActivityIds: (vitals.currentActivities ?? []).map(
+        (current) => current.activityId ?? '',
+      ),
+      deadLetterActivityIds: [],
+    }),
+    [vitals.currentActivities],
+  )
 
   const toggle = (list: string[], set: (next: string[]) => void, id: string) => {
     set(list.includes(id) ? list.filter((entry) => entry !== id) : [...list, id])
@@ -205,10 +220,7 @@ export function ChangeStateModal({ engineId, instanceId, vitals, engine, onClose
           <div className="change-state-diagram">
             <DiagramCanvas
               xml={diagram.data.xml}
-              markers={{
-                activeActivityIds: active.map((current) => current.activityId ?? ''),
-                deadLetterActivityIds: [],
-              }}
+              markers={diagramMarkers}
               onSelectActivity={onDiagramSelect}
               pickerSourceIds={sources}
               pickerTargetIds={targets}

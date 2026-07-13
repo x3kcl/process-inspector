@@ -219,11 +219,11 @@ test('issue #102: diagram-click picker adds a clicked node to sources/targets, s
   expect(executed).toEqual([])
 })
 
-test('issue #102: rerun from activity — edit a variable, then guided straight into the move step', async ({
-  page,
-}) => {
-  const executed: string[] = []
-  const dispatched: string[] = []
+async function mockRerunFromActivityBff(
+  page: Page,
+  dispatched: string[],
+  executed: string[],
+): Promise<void> {
   await page.route(
     (url) => url.pathname.startsWith('/api/'),
     async (route) => {
@@ -270,6 +270,14 @@ test('issue #102: rerun from activity — edit a variable, then guided straight 
       }
     },
   )
+}
+
+test('issue #102: rerun from activity — edit a variable, then guided straight into the move step', async ({
+  page,
+}) => {
+  const executed: string[] = []
+  const dispatched: string[] = []
+  await mockRerunFromActivityBff(page, dispatched, executed)
   await page.goto('/inspect/eng1/inst-1')
 
   await page.getByRole('button', { name: 'Rerun from activity' }).click()
@@ -299,6 +307,39 @@ test('issue #102: rerun from activity — edit a variable, then guided straight 
   await expect(move).toBeVisible()
   await scanA11y(page, 'rerun-from-activity guided into the move step')
   expect(dispatched).toEqual(['/api/instances/eng1/inst-1/actions/edit-variable'])
+  expect(executed).toEqual([])
+})
+
+test("issue #102 review fix: a malformed number keeps Review disabled, matching the widget's own visible error", async ({
+  page,
+}) => {
+  const executed: string[] = []
+  const dispatched: string[] = []
+  await mockRerunFromActivityBff(page, dispatched, executed)
+  await page.goto('/inspect/eng1/inst-1')
+
+  await page.getByRole('button', { name: 'Rerun from activity' }).click()
+  const edit = page.getByRole('dialog', { name: /Rerun from activity/ })
+  await edit.getByRole('combobox', { name: 'variable name' }).selectOption('amount')
+  const review = edit.getByRole('button', { name: 'Review the edit…' })
+  const numberField = edit.getByRole('textbox', { name: 'new numeric value' })
+
+  // A garbage numeric string must never silently become NaN/Infinity → null on the
+  // wire — the widget's own visible parse error and the Review gate must agree.
+  await numberField.fill('12abc')
+  await expect(edit.getByRole('alert').filter({ hasText: 'is not a number' })).toBeVisible()
+  await expect(review).toBeDisabled()
+
+  await numberField.fill('1e999')
+  await expect(edit.getByRole('alert').filter({ hasText: 'not a finite number' })).toBeVisible()
+  await expect(review).toBeDisabled()
+
+  // A genuinely valid number clears the error and unlocks Review.
+  await numberField.fill('250')
+  await expect(edit.getByRole('alert')).toHaveCount(0)
+  await expect(review).toBeEnabled()
+
+  expect(dispatched).toEqual([])
   expect(executed).toEqual([])
 })
 
