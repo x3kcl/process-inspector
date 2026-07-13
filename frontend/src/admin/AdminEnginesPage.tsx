@@ -43,6 +43,14 @@ export function AdminEnginesPage() {
   const reportOutcome = (o: EngineWriteOutcome) => {
     setNotice(engineOutcomeNotice(o))
   }
+  // #169: Approve has no modal (unlike add/edit/enable/disable/remove/purge, which each
+  // surface their own mutation's error via a modal `error` prop) — without this, a real,
+  // specific server refusal (e.g. "the proposer cannot approve their own proposal") landed in
+  // React Query state and rendered nowhere; the only signal was the proposal silently staying
+  // pending. Registry CRUD is deliberately NOT behind the dangerous-set reauth gate
+  // (AdminEnginesController's own doc comment), so unlike AdminAccessPage's writeError this
+  // needs no 401/ReauthNotice branch.
+  const approveError = m.approve.error
 
   // Greyed-never-hidden (R-UXQ): the nav renders for everyone; the page itself states the gate.
   if (me.data !== undefined && me.data.registryAdmin !== true) {
@@ -84,6 +92,11 @@ export function AdminEnginesPage() {
       {notice !== null && (
         <div className="banner banner-info" role="status">
           {notice}
+        </div>
+      )}
+      {approveError instanceof ApiError && (
+        <div className="banner banner-warn" role="alert">
+          {approveError.message}
         </div>
       )}
 
