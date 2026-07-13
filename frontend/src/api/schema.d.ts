@@ -2202,7 +2202,7 @@ export interface components {
             summary?: string;
         };
         ProtectionRequest: {
-            reason?: string;
+            reason: string;
         };
         PublishRequest: {
             description?: string;

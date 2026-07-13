@@ -138,6 +138,7 @@ export function InstanceActions({ engineId, instanceId, vitals, engine }: Props)
         type="button"
         className="protect-toggle"
         disabled={roleHint !== 'ADMIN'}
+        aria-describedby={roleHint === 'ADMIN' ? undefined : 'protect-hint'}
         onClick={() => {
           setProtectOpen(true)
         }}
