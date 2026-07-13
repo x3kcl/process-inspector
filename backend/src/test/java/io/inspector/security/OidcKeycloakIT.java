@@ -183,6 +183,46 @@ class OidcKeycloakIT {
     }
 
     @Test
+    void theBreakGlassDoorIsReachableByAPlainBrowserAloneNeverMockMvcsCsrfBypass() throws Exception {
+        // #94: the test above proves the login MECHANICS via .with(csrf()), which injects a valid
+        // token directly and skips the real cookie handshake. This one drives exactly what a plain
+        // browser with NO JavaScript would: GET the page, read the Set-Cookie header AND scrape the
+        // hidden field's token out of the rendered HTML (never MockMvc's bypass), then POST exactly
+        // that — proving #94's confirmed gap ("unreachable via any browser-native means, even by
+        // someone who already knows the exact URL") is actually closed.
+        var getResult = mockMvc.perform(get("/break-glass"))
+                .andExpect(status().isOk())
+                .andExpect(content().contentTypeCompatibleWith("text/html"))
+                .andReturn();
+        String html = getResult.getResponse().getContentAsString();
+        assertThat(html)
+                .contains("<form method=\"post\" action=\"/break-glass\">")
+                .doesNotContain("<script");
+
+        jakarta.servlet.http.Cookie xsrfCookie = getResult.getResponse().getCookie("XSRF-TOKEN");
+        assertThat(xsrfCookie).isNotNull();
+
+        java.util.regex.Matcher hiddenField = java.util.regex.Pattern.compile("name=\"_csrf\" value=\"([^\"]+)\"")
+                .matcher(html);
+        assertThat(hiddenField.find()).isTrue();
+        String tokenFromForm = hiddenField.group(1);
+        assertThat(tokenFromForm).isNotBlank();
+
+        var login = mockMvc.perform(post("/break-glass")
+                        .cookie(xsrfCookie)
+                        .param("_csrf", tokenFromForm)
+                        .param("username", "break-glass")
+                        .param("password", "break-glass-secret"))
+                .andExpect(status().isFound())
+                .andReturn();
+        MockHttpSession session = (MockHttpSession) login.getRequest().getSession(false);
+        assertThat(session).isNotNull();
+        mockMvc.perform(get("/api/me").session(session))
+                .andExpect(status().isOk())
+                .andExpect(content().string(org.hamcrest.Matchers.containsString("\"breakGlass\":true")));
+    }
+
+    @Test
     void aRealKeycloakGroupsClaimIsAnArrayAndFlowsThroughTheResolver() throws Exception {
         Jwt idToken = passwordGrantIdToken("alice", "alice-pw");
 

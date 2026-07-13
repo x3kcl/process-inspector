@@ -1000,7 +1000,7 @@ and delete is a soft tombstone; hot reload evicts the per-id client caches (no r
   section + outcome banner in `AdminEnginesPage.tsx` (mirrors `AdminAccessPage.tsx`).
 
 
-### v2 — IdP & Security: identity wiring, access lifecycle & the who-can-do-what store *(design locked 2026-07-09, ★ S1–S6 core LANDED 2026-07-09/10; Playwright/axe grant-flow gate LANDED 2026-07-12 (#85) — remaining: IdP-unreachable break-glass door, issue #94)*
+### v2 — IdP & Security: identity wiring, access lifecycle & the who-can-do-what store *(design locked 2026-07-09, ★ S1–S6 core LANDED 2026-07-09/10; Playwright/axe grant-flow gate LANDED 2026-07-12 (#85); IdP-unreachable break-glass door LANDED 2026-07-14 (#94) — backend-only, see below)*
 Wires OIDC for real, hardens the session/transport posture, moves the group→scope mapping
 file→DB with a CRUD admin surface, and builds break-glass. **Full design + 5-seat panel +
 adversarial pass + threat model + API/DDL: `docs/IDP-SECURITY.md`.** Concretizes R-GOV-06
@@ -1132,10 +1132,19 @@ behind nothing before any UI reaches them:**
   (challenge outranks the file-pin 409; approve gated; dev basic passes to the next rail).
   *(S5 remaining — non-blocking follow-ups):* the optional
   belt-and-suspenders `OidcIdTokenValidator` (`auth_time`-vs-`max_age` conformance at login) +
-  userinfo/Graph membership re-pull; the SPA interstitial + verb-replay + warn-before-guillotine + the
-  IdP-unreachable [Break-glass sign-in] door (frontend, with S6). Done-when: identity-freshness
+  userinfo/Graph membership re-pull. Done-when: identity-freshness
   IT (removed group can't authorize tier-3 post-re-auth; no per-verb MFA storm within window);
   break-glass IT (works IdP-down; audit degrades DB-down and still proceeds; cannot reach fleet CRUD).
+  **Break-glass sign-in door LANDED 2026-07-14 (#94):** `GET /break-glass` — a plain, JS-free HTML
+  form served by `BreakGlassLoginPageController` at a directly-known URL (RUNBOOK.md §4), not an
+  auto-surfaced SPA interstitial — the SPA can never load pre-auth (every non-`/api` path is
+  `authenticated()`) and there is no observable "IdP-unreachable" event it could ever react to (a
+  down IdP fails as the browser's own native network error on the IdP's foreign origin). CSRF rides
+  a server-rendered hidden field, not the SPA's cookie/header echo — no JavaScript required. Tests:
+  `BreakGlassLoginPageControllerTest` (404 when unconfigured, form renders with the real CSRF
+  token when configured), `OidcKeycloakIT#theBreakGlassDoorIsReachableByAPlainBrowserAloneNeverMockMvcsCsrfBypass`
+  (a real GET→scrape-cookie-and-hidden-field→POST round-trip against live Keycloak — the FIRST
+  break-glass test that doesn't use MockMvc's `csrf()` bypass).
 - **S6 — admin UI + access-review + `/api/me` hints.** *(access-review BACKEND ✅ LANDED
   2026-07-09):* `GET /api/access-review` — the effective-grant export (the R-GOV-02 "who can do what"
   release-gate artifact): full mapping expansion with a **grant-type column (ladder|fleet)** + source
@@ -1177,8 +1186,8 @@ behind nothing before any UI reaches them:**
   through — its 4 h cap exists because the IdP is down). Tests: `AdminEnginesApiSpringTest`
   guillotine-instant (rung-3), `reauth.test.ts` `sessionExpiryState` (window/boundary/ceil-minutes),
   `e2e/reauth.spec.ts` (CTA / no-CTA / silent-far-away; suite 36 green). schema.d.ts regenerated.
-  *(FRONTEND remaining):* the
-  IdP-unreachable [Break-glass sign-in] door (issue #94). **The Playwright smoke
+  **Break-glass sign-in door LANDED 2026-07-14 (#94)** — backend-only, not a frontend
+  interstitial (see S5 above for why). **The Playwright smoke
   (grant→four-eyes→revoke) + axe/SR gate LANDED 2026-07-12 (#85):**
   `e2e/admin-access.spec.ts` (narrow-applies, widening-proposes+approve, 403-gated) +
   the `e2e` CI job running the full spec suite with an axe scan per settled state.

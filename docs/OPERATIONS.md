@@ -165,8 +165,12 @@ as "credential rejected", distinct from unreachable); non-root, read-only-FS con
 redirects followed on engine calls. Injection: engine/user text is data (no HTML
 interpretation — ESLint-enforced), CR/LF-strip + caps on ingest, CSV formula-escape.
 **Break-glass** (R-SAFE-06, built v2 — IDP-SECURITY.md §7): sealed local ADMIN account on a
-distinct `/break-glass` chain+path that works **when the IdP is down** (reachable from an
-inspector-owned "Identity provider unreachable" interstitial — no memorized URL), 4 h session,
+distinct `/break-glass` chain+path that works **when the IdP is down** — reachable via a
+directly-known URL (RUNBOOK §4), a plain JS-free HTML form the BFF itself serves. There is
+deliberately no auto-surfaced "IdP-unreachable" interstitial: every non-`/api` path is
+`authenticated()`, so the SPA can never load pre-auth, and a down IdP fails as the browser's own
+native network error on the IdP's foreign origin — no event the BFF's own origin, or the SPA's
+JS, ever observes. 4 h session,
 distinguished audit flag + alert-on-login + red page banner, mandatory reason ≥10 on every verb
 (per-session sticky reason for tier-0 repeats), rotate after use. ADMIN-global but **never**
 `ACCESS_ADMIN`/`REGISTRY_ADMIN` — a bricked mapping is recovered via the `INSPECTOR_ACCESS_ADMIN_GROUP`

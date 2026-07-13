@@ -135,7 +135,13 @@ public class SecurityConfig {
                                 "/login",
                                 // R-SEM-15: the OpenAPI contract feeds frontend codegen; it
                                 // describes the surface (no data, no secrets) so it stays open.
-                                "/v3/api-docs/**")
+                                "/v3/api-docs/**",
+                                // #94: the ONE discoverable door to break-glass must itself be reachable
+                                // pre-auth. Shared here (not oidc-only) because BreakGlassLoginPageController
+                                // is a plain, non-profile-gated @RestController — it IS wired on !oidc too,
+                                // where it self-gates a 404 (BreakGlassProperties.enabled defaults false
+                                // there), the same gate the POST handler uses.
+                                "/break-glass")
                         .permitAll()
                         .anyRequest()
                         .authenticated())
@@ -244,7 +250,11 @@ public class SecurityConfig {
         // Break-glass (R-SAFE-06/11): a sealed local ADMIN account on a distinct /break-glass form
         // login that works when the IdP is down (a local DaoAuthenticationProvider alongside OIDC).
         // Wired ONLY when configured (env password present) — oauth2Login stays the default entry
-        // point; the SPA reaches /break-glass from the IdP-unreachable interstitial (S6).
+        // point for the normal path. #94: there is no observable "IdP unreachable" event the SPA
+        // could ever react to (a down IdP fails as the browser's OWN native network error on the
+        // IdP's foreign origin — the SPA's own JS never loads pre-auth either, since every non-/api
+        // path is authenticated() below). /break-glass is reachable directly instead — a plain,
+        // JS-free HTML door (BreakGlassLoginPageController) at a documented URL (RUNBOOK.md §4).
         if (breakGlass.isEnabled() && breakGlassPassword != null && !breakGlassPassword.isBlank()) {
             var sealed = new InMemoryUserDetailsManager(User.withUsername(breakGlass.usernameOrDefault())
                     .password("{noop}" + breakGlassPassword)

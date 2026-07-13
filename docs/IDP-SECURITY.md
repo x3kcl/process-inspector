@@ -168,8 +168,10 @@ design; the findings that moved it are below, and every one is carried into §3�
   type (§5 / §12).
 - **The IdP-down door has no visible lever.** When Entra is down the `oidc` chain redirects into a
   dead Microsoft page — the operator never reaches an inspector page that mentions `/break-glass`.
-  Render an inspector-owned **"Identity provider unreachable"** interstitial with a visible
-  **[Break-glass sign-in]** action (§7 / §12). (Secondary: a per-session sticky reason for tier-0
+  **Resolved #94:** an in-app interstitial turned out to be structurally impossible (the SPA can
+  never load pre-auth, and a down IdP's failure is never observable by this app's own origin) — the
+  door is instead a directly-documented URL, `GET /break-glass`, serving a plain JS-free HTML form
+  (§7). (Secondary: a per-session sticky reason for tier-0
   repeats under break-glass avoids garbage reasons in a 50-job recovery; keep per-verb reason on
   tier ≥1.)
 - **A bulk-wizard draft is not a persisted job.** A session-cap guillotine mid-wizard destroys the
@@ -442,10 +444,14 @@ already in SPEC §6.
 - **A distinct chain + path.** `/break-glass` authenticates a **single sealed local ADMIN account**
   (env-ref `INSPECTOR_BREAK_GLASS_PASSWORD`, rotate-after-use documented). Prod-only; separate from
   the `oidc` chain so it works **when the IdP is down** — its reason to exist.
-- **The IdP-down door is reachable (⚠️ support-lead).** An OIDC failure/timeout renders an
-  inspector-owned **"Identity provider unreachable"** interstitial with a visible
-  **[Break-glass sign-in]** action → `/break-glass`, so the lever needs no memorized URL. This is
-  the *getting-in* half of R-SAFE-11's "dead simple and loud."
+- **The IdP-down door is reachable (⚠️ support-lead, resolved #94).** `GET /break-glass` serves a
+  plain, JS-free HTML sign-in form (`BreakGlassLoginPageController`) at a directly-documented URL
+  (RUNBOOK §4) — not an auto-surfaced SPA interstitial: every non-`/api` path is `authenticated()`,
+  so the SPA can never load pre-auth, and there is no "IdP unreachable" event it could ever observe
+  or react to (a down IdP fails as the browser's own native network error on the IdP's *foreign*
+  origin, never a response this app's own origin sees). CSRF rides a server-rendered hidden field,
+  not the SPA's cookie/header echo, so the door works even with JavaScript disabled. This is the
+  *getting-in* half of R-SAFE-11's "dead simple and loud."
 - **Scope:** ADMIN-**global** (bypasses authN + the group→scope mapping only). Does **not** bypass
   the guard ladder, read-only engine mode, the path whitelist, or fail-closed audit. Grants
   **neither** `ACCESS_ADMIN` **nor** `REGISTRY_ADMIN` — an IdP outage is not a licence to rewrite
@@ -524,7 +530,8 @@ already in SPEC §6.
 | `DELETE /api/admin/access/grants/{id}` | Remove a grant. Ladder-narrow = single-actor; **fleet remove = four-eyes** (+ alert); ≥2-apex invariant enforced; reason ≥10; audited. |
 | `GET  /api/admin/access/drift` | DB-vs-file drift report; **hard-alerts if the pinned file lacks a resolvable `ACCESS_ADMIN`**. `ACCESS_ADMIN`. |
 | `GET  /api/access-review` | Effective grant-tuple export (mapping expansion + caller's session grants), with a **grant-type column (ladder\|fleet)**. `ACCESS_ADMIN`. CSV/Markdown/JSON. Audited read. |
-| `POST /break-glass` (form) | Sealed-account login on the break-glass chain (prod). Fires the alert, opens the 4 h ADMIN-global session, banners every page, reachable from the IdP-unreachable interstitial. |
+| `GET  /break-glass` | The door itself (#94): a plain, JS-free HTML sign-in form at a directly-documented URL (RUNBOOK §4) — not an SPA route, since the SPA can never load pre-auth. `permitAll`; a 404 when unconfigured (never reveals whether break-glass exists). |
+| `POST /break-glass` (form) | Sealed-account login on the break-glass chain (prod). Fires the alert, opens the 4 h ADMIN-global session, banners every page. |
 | `GET  /api/me` (existing) | Gains `accessAdmin: boolean` + `breakGlass: boolean` hints (additive on `MeDto`) so the SPA greys the admin nav + shows the banner. |
 
 OIDC `issuer-uri`/`client-id`/secret-ref, `INSPECTOR_ACCESS_ADMIN_GROUP`, and
@@ -591,7 +598,8 @@ existing audit column + the local file sink).
 - **Dangerous-verb re-auth** fires at click/modal-open (never at submit); the interstitial returns to
   the same instance with a server-fresh modal (⚠️ support-lead). Session-cap re-auth is
   **warn-before-guillotine**, never a surprise takeover over a dirty draft (⚠️ UX/support).
-- **IdP-unreachable interstitial** with the visible [Break-glass sign-in] action (§7).
+- **The break-glass door** — `GET /break-glass`, a directly-documented URL rather than an
+  in-app interstitial (structurally impossible pre-auth — see §7) (#94).
 - **Access-review screen:** filterable "who can do what" table with a **grant-type column
   (ladder|fleet)** + CSV/Markdown export.
 - Types flow through `npm run gen:api` from the running BFF (never hand-written).
