@@ -1785,6 +1785,42 @@ the server string verbatim with the correct request body. Full e2e suite + `npx 
 run` (530 tests) green; the existing `task-reassign.spec.ts` cURL case re-verified
 unaffected by the `CurlPreview` prop refactor.
 
+### #104 slice 1/4 — CSS design-token layer (R-UXQ-08) *(✅ LANDED 2026-07-13, issue #104)*
+Per the plan's own scoping ("CSS token layer first, then three separate PRs — dark theme
+/ density / AG Grid column chooser"): this is slice 1, the token layer only. No theme
+switch, no `prefers-color-scheme`, no `.dark`/`[data-theme]` anywhere yet — those are the
+three follow-up PRs' job.
+
+*Audit before touching anything:* `styles.css` (3,577 lines) had **zero** existing CSS
+custom properties, zero `:root` block, zero theme infrastructure — a from-scratch token
+layer, not a refactor. 492 hex-color occurrences across ~140 distinct values; a genuine
+long tail (100+ values used once or twice, mostly near-duplicate pale-shade one-offs).
+Checked every SPEC §10a-flagged encoding class (`.marker-diverge-*`, `.marker-picker-*`
+from #102, `.status-badge`/`.status-chip.*`, `.callout-*`, `EnvBadge`'s `accentColor`) —
+**all already compliant**, color is decorative/reinforcing everywhere, shape/glyph/text
+carries the actual meaning. `EnvBadge`'s `accentColor` is a real per-engine
+admin-configured DB column (`V7__engine_registry.sql`) — correctly left as an untouched
+inline-style pass-through, never tokenized.
+
+*Shipped:* new `:root { }` block (~26 `--color-*` custom properties across neutral/
+danger/warning/info/success families) covering every color repeated ≥5 times. Mechanical,
+scripted, byte-identical substitution of those literals with `var(--color-*)` references
+— confirmed no-op by occurrence-count parity checks (each token's `var()` count matches
+its literal's pre-substitution count exactly) and a live-browser screenshot comparison
+before/after. The long tail of one-off near-duplicate shades is **deliberately left
+untokenized** — inventing tokens nobody asked for, or silently merging visually-distinct
+one-offs, is scope creep this slice doesn't need; each follow-up PR can tokenize what it
+actually touches.
+
+*Deliberately not done here:* AG Grid has zero custom `--ag-*` overrides today (stock
+`ag-theme-quartz`) — bridging into that vendor variable namespace is the column-chooser
+PR's job, not this one's.
+
+*Tests:* `npx vitest run` (533 tests) + full local CI green — a value-identical rename
+has no unit-testable behavior of its own. Live-verified via a Playwright screenshot
+against the real running app (topbar, status badges, DLQ counts) — visually
+indistinguishable from before, as expected for a byte-identical substitution.
+
 ## Build order inside any milestone
 backend DTO → engine client call → aggregator/join logic → controller → typed frontend API
 client → component. Every Flowable call gets an integration test against the dockerized
