@@ -2159,6 +2159,7 @@ export interface components {
             status?: "ACTIVE" | "SUSPENDED" | "COMPLETED" | "FAILED" | "RETRYING";
             superProcessInstanceId?: string;
             tenantId?: string;
+            terminationReason?: string;
         };
         ProposalView: {
             expiresAt?: string;

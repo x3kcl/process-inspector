@@ -341,6 +341,7 @@ class DestructiveBulkServiceTest {
                 null,
                 null,
                 null,
+                null,
                 null);
     }
 }

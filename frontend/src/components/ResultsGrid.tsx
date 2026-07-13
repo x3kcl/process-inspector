@@ -175,6 +175,7 @@ export function ResultsGrid({
             <StatusChip
               status={p.data.status}
               flags={p.data.flags}
+              terminationReason={p.data.terminationReason ?? undefined}
               engineId={p.data.engineId}
               instanceId={p.data.processInstanceId}
             />

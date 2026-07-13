@@ -236,6 +236,7 @@ public class DestructiveBulkService {
                         null,
                         null,
                         null,
+                        null,
                         null))
                 .toList();
         return new BulkDtos.BulkDestructivePreview(

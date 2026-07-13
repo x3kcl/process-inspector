@@ -332,6 +332,7 @@ class StatusJoinTest {
                     null,
                     failureTime,
                     null,
+                    null,
                     null);
         }
 
