@@ -267,6 +267,31 @@ TESTER BRIEF:
 >    only text/shape (assume you cannot distinguish colors): which of the engines you saw
 >    are prod, test, dev? What told you?
 
+## M10 · "Digging past page one" — wave 1 · user `viewer`
+COVERS: R-NFR-08 · R-SEM-23 · rubrics. Added issue #98 — R-NFR-08 has a written goal-arc
+in GOAL-CATALOG.md but was never wired into any mission narrative before this run.
+STAGING: standard seed only; the mission's own broad, unfiltered search is expected to
+surface enough rows (demo + ACME + wide-parent fixtures) across all reachable engines to
+require several Load-more clicks. No placeholders needed.
+
+TESTER BRIEF:
+> You're a viewer doing a routine audit sweep — no specific ticket, just "show me
+> everything the fleet has going on, oldest activity visible first if the tool lets you
+> pick that, otherwise whatever its default order is."
+>
+> 1. Run the widest search the tool lets you (no filters, or the loosest ones available)
+>    across every engine you can see. How many rows came back at once, and how do you
+>    know if that's everything or just a first page?
+> 2. Keep asking for more results the way the tool offers (whatever that affordance is
+>    called) until you can answer with confidence: did you reach the genuine end of the
+>    data, or did the tool stop you at some internal limit instead? Quote whatever told
+>    you which one it was.
+> 3. If the tool ever stopped you at a limit rather than a true end: does it tell you
+>    what to do next to see the rest (e.g. narrow the search)? Quote it, or say if it
+>    left you guessing.
+> 4. While paging through, did any row look duplicated or did you ever suspect one got
+>    skipped between pages? State yes/no and your evidence either way — don't guess.
+
 ---
 
 ## Placeholder contract (runner fills at stage time)

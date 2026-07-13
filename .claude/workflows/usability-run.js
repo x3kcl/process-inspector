@@ -17,11 +17,11 @@ const RESULTS_DIR = args?.resultsDir ?? `${REPO}/docs/usability/results/latest`
 const RUN_ID = args?.runId ?? 'adhoc'
 // Wave order is load-bearing: read-only first, mutating serialized, fleet-staging last,
 // M7 after M1/M3/M4 (it consumes their audit rows). See GOAL-CATALOG "RUN PROTOCOL".
-const MISSIONS = args?.missions ?? ['M1', 'M2', 'M9', 'M3', 'M4', 'M7', 'M5', 'M6', 'M8']
+const MISSIONS = args?.missions ?? ['M1', 'M2', 'M9', 'M10', 'M3', 'M4', 'M7', 'M5', 'M6', 'M8']
 const TESTER_MODEL = args?.testerModel ?? 'sonnet'
 
 const MISSION_USER = {
-  M1: 'responder', M2: 'responder', M9: 'responder',
+  M1: 'responder', M2: 'responder', M9: 'responder', M10: 'viewer',
   M3: 'operator', M4: 'operator', M7: 'operator',
   M5: 'viewer', M6: 'operator', M8: 'registry-admin',
 }
@@ -156,16 +156,41 @@ if (!stage || !stage.ok) {
 }
 log(`Staged. degraded=${JSON.stringify(stage.degraded ?? [])}`)
 
+// M8's STAGING note pins this to the existing engine-7 base URL specifically ("a REAL
+// reachable engine base URL to onboard — points at the existing engine-7 URL") — a plain
+// script-level constant, not something the stager agent needs to discover, so it's merged
+// in here rather than added to the stage prompt (keeps the stage agent() call's cache key
+// unchanged across re-runs of just this step).
+const placeholders = { ...stage.placeholders, SCRATCH_URL: 'http://localhost:8083/flowable-rest/service' }
+
 // Mission briefs live in docs/usability/MISSIONS.md — a reader agent extracts + fills them
-// (the workflow script itself has no fs access).
-const briefs = await agent(`Read ${REPO}/docs/usability/MISSIONS.md. Extract each mission's
+// (the workflow script itself has no fs access). Schema is an ARRAY of {id, brief}, not a
+// free-form {additionalProperties: string} dictionary — a bare additionalProperties-only
+// object schema (no enumerated `properties`) is unreliable for structured-output tool
+// calling: it was observed coming back wrapped as {input: "<stringified JSON>"} instead of
+// the requested top-level mapping, silently breaking every briefs?.[m] lookup below. An
+// array-of-objects schema has concrete named properties and round-trips reliably.
+const briefsList = await agent(`Read ${REPO}/docs/usability/MISSIONS.md. Extract each mission's
 TESTER BRIEF block (the quoted lines after "TESTER BRIEF:", strip the leading "> ").
-Substitute these placeholder values verbatim for {{NAME}} tokens: ${JSON.stringify(stage.placeholders)}.
-Return a JSON object mapping mission id (M1..M9) to the fully substituted brief STRING.
-Every {{...}} token must be resolved — if one has no value, replace it with the literal
-string MISSING and mention it. Return ONLY the object.`, {
-  schema: { type: 'object', additionalProperties: { type: 'string' } }, label: 'briefs', effort: 'low',
+Substitute these placeholder values verbatim for {{NAME}} tokens: ${JSON.stringify(placeholders)}.
+Return one entry per mission id found in the file (e.g. M1, M2, ... M10 if present) with the
+fully substituted brief STRING. Every {{...}} token must be resolved — if one has no value,
+replace it with the literal string MISSING and mention it.`, {
+  schema: {
+    type: 'object', required: ['missions'],
+    properties: {
+      missions: {
+        type: 'array',
+        items: {
+          type: 'object', required: ['id', 'brief'],
+          properties: { id: { type: 'string' }, brief: { type: 'string' } },
+        },
+      },
+    },
+  },
+  label: 'briefs', effort: 'low',
 })
+const briefs = Object.fromEntries((briefsList?.missions ?? []).map((m) => [m.id, m.brief]))
 
 // ---- Phase: Missions -------------------------------------------------------------------
 phase('Missions')

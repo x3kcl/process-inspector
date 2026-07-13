@@ -1619,6 +1619,86 @@ left for separate issues, not silently rolled into this one.
 *Tests:* `ResultsGrid.test.tsx` gains 2 cases (badge renders for a protected row and only
 that row; no badge at all when `protectedInstance` is undefined/false).
 
+### #98 — Usability loop over the six unproven v2 surfaces *(✅ run 2026-07-13, issue #98; harness fixes + break-glass verified separately; 5 findings filed as issues)*
+`docs/usability/GOAL-CATALOG.md` §2 P3's pre-pilot promise: run the existing
+`usability-run` named workflow (`.claude/workflows/usability-run.js`) over team/shared
+views, k-way Load-more paging, MigrateModal, `/admin/engines`, `/admin/access`, and the
+break-glass banner — none of which had ever been exercised by a real tester run before.
+
+*Harness bugs found + fixed before any mission could produce real data:*
+1. The "briefs" extraction agent's structured-output schema was a bare
+   `{additionalProperties: string}` object with no enumerated `properties` — unreliable
+   for tool-calling; it came back wrapped as `{input: "<stringified JSON>"}` instead of
+   the requested mapping, silently breaking every mission's brief lookup (100%
+   `FIXTURE_DRIFT` on the first real attempt, despite staging itself succeeding cleanly).
+   Fixed by switching to an array-of-`{id,brief}`-objects schema, which round-trips
+   reliably through structured output.
+2. `{{SCRATCH_URL}}` (M8's engine-onboarding target) was referenced in
+   `docs/usability/MISSIONS.md`'s placeholder contract but never computed by the stager
+   agent at all — a pre-existing gap, unrelated to (1). Fixed as a plain script-level
+   constant (`http://localhost:8083/flowable-rest/service`, per M8's own STAGING note
+   pinning it to engine-7) merged into the placeholders object, rather than added to the
+   stager's own prompt — this kept the (expensive) `stage` agent call's cache key
+   unchanged across the fix-and-rerun cycle.
+3. New mission **M10 "Digging past page one"** (wave 1, `viewer`) added to
+   `docs/usability/MISSIONS.md` + `usability-run.js`'s `MISSION_USER` map — R-NFR-08
+   (deep-paging envelope) had a written goal-arc in the catalog since it shipped but had
+   never been wired into any mission narrative, exactly matching this issue's own framing
+   of "never usability-tested."
+
+*Run outcome (full detail: `docs/usability/results/latest/RUN-REPORT.md`):* all 10
+missions (M1–M10) reconciled. **Zero Sev1 findings** — no mis-triage, no guard bypass, no
+wrong-target destructive action, no invisible apply, no hallucination/quiet-lie (every
+claimed fix ground-truth-verified against real engine/audit state). The 6 former
+MUST-v1 gaps from issue #97 were re-confirmed built by live testers (5 of 6 cleanly; the
+6th, R-SAFE-05, surfaced a deeper problem — see below). Two mission arcs (M5's F-G7
+engine-down staging, M6's F-G2 prod-flip + protected-instance staging) could not be
+exercised because their pre-stage hooks mutate **shared dev infrastructure** other
+parallel sessions in this repo may depend on (`docker stop` on a shared engine
+container, flipping a shared registry row's environment tag) — correctly blocked by the
+run-time safety classifier both times this was attempted; not forced through, and not
+counted as a product failure. `docs/usability/GOAL-CATALOG.md`'s theme list documents
+this as a repeat of a prior baseline report's explicit warning.
+
+*5 findings filed as issues (Sev1/Sev2, real product/UX bugs, distinct from the harness
+bugs above):*
+- **#165** — R-SAFE-05's protected-instance feature has a fully-built READ side
+  (enforcement, bulk skip, both badges) but **zero production write path** —
+  `ProtectedInstanceRepository` has no `.save()`/`.delete()` call anywhere outside test
+  code. No admin can actually protect an instance today. `GOAL-CATALOG.md` and
+  `REQUIREMENTS-REGISTER.md`'s R-SAFE-05 entries (both edited alongside the #97 PR, which
+  verified the read/display side only) are corrected back to `BUILT partial` in this
+  same change.
+- **#166** — search-results grid shows COMPLETED for an instance whose detail page
+  correctly shows TERMINATED (ground-truth-confirmed via `deleteReason`); likely the same
+  derivation site issue #105 already fixed for the detail page never got applied to the
+  grid's own status derivation.
+- **#167** — Load-more's "X of Y fetched" counter never updates after paging, and hitting
+  the internal depth cap (~513/1,598 in this run) gives no "why stopped" message —
+  R-NFR-08's own goal text explicitly requires distinguishing depth-cap from true-end.
+- **#168** — keyboard-only navigation: first Tab skips ~11 header elements, no
+  focus-adjacent confirmation after a mutating action, and (compounded by both) the M9
+  keyboard retry task took 46 interactions against a 15-interaction budget.
+- **#169** — a four-eyes self-approval refusal (403, guard works correctly) produces zero
+  UI feedback — confusing today, would become a real invisible-apply risk if the guard
+  ever regressed.
+
+*Break-glass banner (one of the six named surfaces) — separately verified, NOT via the
+usability-run harness:* the dev-stack harness this workflow drives cannot reach the
+`oidc` profile at all (break-glass only exists there). Stood up a standing, loopback-only
+Keycloak + `oidc`-profile BFF instance and drove it directly with Playwright: the
+break-glass login mechanism itself (POST → session flag → 4h cap → banner render, the
+last confirmed by existing `Shell.test.tsx` coverage) works correctly end-to-end, but
+there is **no reachable UI path to invoke it at all** — no server-rendered `/break-glass`
+page (raw 404), no SPA component, and the app's cookie-based CSRF scheme requires
+JavaScript cooperation a plain HTML form couldn't provide even if a page existed. Posted
+as hard evidence on the existing issue #94 (which already named this gap) rather than
+filing a duplicate.
+
+*Tests:* none — this is a testing/investigation run, not application code. Harness fixes
+verified via `node --check` + the actual 10-mission live run completing successfully
+after both fixes landed.
+
 ## Build order inside any milestone
 backend DTO → engine client call → aggregator/join logic → controller → typed frontend API
 client → component. Every Flowable call gets an integration test against the dockerized

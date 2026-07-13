@@ -398,20 +398,25 @@ SUCCESS: 3/3 intent→verb matches, citing the secondary labels.
 FIXTURE: standard seed (`demoTimerWait`, `demoFailingPayment`).
 
 ### R-SAFE-05 · Protected instances
-PRIO MUST-v1 · CLASS UI-STAGED · BUILT yes
+PRIO MUST-v1 · CLASS UI-STAGED · BUILT partial
 GOAL: On a protected instance, every verb must read intentionally-locked with the L3
 floor named; a bulk sweeping it must report it `skipped (protected)` — never silently act.
 ENTRY: `/inspect/...` protected instance · user `operator`; bulk as `operator`.
 SUCCESS: tester explains why they can't act + who can; bulk report shows the skip class.
-FIXTURE: runner marks one FAILED instance protected as `admin` (restore after).
-BUILT NOTE (repo audit, updated 2026-07-13): backend + bulk skip built
-(`ProtectedInstance*`, `CorrectiveActionService`, `BulkJobService`, surfaced in
-`BulkBar`/`OpsDrawer`); the point-of-action badge + per-verb disabled-with-reason landed
-in `InstanceActions.tsx` (usability W3 sliver, 2026-07-11). The one remaining gap this
-same note used to flag — no marker on the results-grid ROW itself, only at the point of
-action — is now closed too: `ResultsGrid.tsx` renders a `🔒 Protected` badge column so a
-protected instance never looks like any other row before the tester even opens it
-(issue #97 remainder).
+FIXTURE: runner marks one FAILED instance protected — **currently impossible**, see note.
+BUILT NOTE (repo audit, corrected 2026-07-13 by a real usability run, issue #98 —
+supersedes the same-day 07-13 "BUILT yes" note above it): the READ side genuinely is
+built — enforcement (`CorrectiveActionService`), bulk skip (`BulkJobService`), and every
+display surface (`InstanceActions.tsx` point-of-action badge, `ResultsGrid.tsx` row
+badge) all correctly reflect `protected_instance` rows when one exists. **But there is no
+WRITE path anywhere in production code** — `ProtectedInstanceRepository` has zero
+`.save()`/`.delete()` calls under `backend/src/main/java`; only tests populate the table,
+via direct repository injection as a test seam. No admin, however privileged, can
+actually protect an instance through the running application today. The prior "BUILT
+yes" note verified the read/enforcement/display side only and never checked the write
+side — this run's staging step tried to mark a fixture instance protected and found
+nothing to call. A usability MISSION cannot exercise this goal's FIXTURE at all until a
+mark/unmark endpoint exists.
 
 ### R-SAFE-06 · Break-glass account
 PRIO MUST-v1 · CLASS UI-STAGED (oidc only) · BUILT partial
@@ -876,15 +881,19 @@ between rounds.
 | F-G10 | Sacrificial destructive cohort | terminate / deadletter-delete / migrate arcs; wrong-instance near-miss | runner seeds instances with businessKey `uxrun-<mission>-<n>` immediately before the arc; testers may only destroy instances carrying their tag — a near-identical untagged twin sits beside each (the near-miss probe) | run-time stage |
 
 ## Known-absent surfaces (evaluator-only; reconciliation separates "not built" from "broken")
-**MUST-v1 gaps as of 2026-07-10 (issue #97): ALL 8 now BUILT (repo-verified 2026-07-13,
-issue #97 remainder).** R-BAU-01 acknowledge (2026-07-11) · R-BAU-02 leak views
-(2026-07-11) · R-AUD-05 shift report (2026-07-11) · R-AUD-08 audit CSV export
-(2026-07-11) · R-AUD-09 attribution caveat (2026-07-11) · R-L3-01 explain-status
-(2026-07-11) · R-AUD-07 ticket-capture field sliver (2026-07-11) · R-SAFE-05
-row-badge/verb-reason sliver (point-of-action 2026-07-11, results-grid row badge
-2026-07-13). Note: R-BAU-01 built "acknowledge" only, NOT "annotate" — that's the
-separate, still-open R-BAU-03 below; issue #97's own text conflated the two when it
-described R-BAU-01 as blocking R-SEM-13 (R-SEM-13 is gated on R-BAU-03, not R-BAU-01).
+**MUST-v1 gaps as of 2026-07-10 (issue #97): 7 of 8 confirmed BUILT (repo-verified
+2026-07-13, issue #97 remainder; live-run-verified 2026-07-13, issue #98).** R-BAU-01
+acknowledge (2026-07-11) · R-BAU-02 leak views (2026-07-11) · R-AUD-05 shift report
+(2026-07-11) · R-AUD-08 audit CSV export (2026-07-11) · R-AUD-09 attribution caveat
+(2026-07-11) · R-L3-01 explain-status (2026-07-11) · R-AUD-07 ticket-capture field
+sliver (2026-07-11) — all 7 exercised successfully by real testers in the issue #98
+usability run, ground-truth-verified, zero quiet lies. **R-SAFE-05 is the exception —
+corrected back to `BUILT partial` (see its own entry above): the point-of-action and
+results-grid badges are real, but there is no production write path to ever set
+`protectedInstance=true` in the first place, so the badge can never fire outside a
+test.** Note: R-BAU-01 built "acknowledge" only, NOT "annotate" — that's the separate,
+still-open R-BAU-03 below; issue #97's own text conflated the two when it described
+R-BAU-01 as blocking R-SEM-13 (R-SEM-13 is gated on R-BAU-03, not R-BAU-01).
 SHOULD/COULD gaps (plan-route, not tested): R-BAU-03/04/05/06/07/08 · R-UXQ-08/09/10 ·
 R-L3-04/06 · R-SEM-13 · R-SEM-16 · R-SAFE-10. R-OPS-14 flipped to built BACKEND-ONLY
 (`GET /api/diag`, issue #96, 2026-07-13) — no frontend diagnostics page exists yet.
