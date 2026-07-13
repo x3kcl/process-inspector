@@ -111,6 +111,38 @@ describe('ResultsGrid root-vs-child marker (W2 #7, R-UXQ-12)', () => {
   })
 })
 
+describe('ResultsGrid protected-instance badge (R-SAFE-05, issue #97 remainder)', () => {
+  it('a protected row wears the 🔒 badge; an unprotected row does not', async () => {
+    const protectedRow: ProcessInstanceRow = {
+      ...row,
+      compositeId: 'engine-a:pi-2',
+      processInstanceId: 'pi-2',
+      businessKey: 'ORDER-88',
+      protectedInstance: true,
+    }
+    render(
+      <MemoryRouter>
+        <ResultsGrid
+          response={{
+            rows: [row, protectedRow],
+            perEngine: { 'engine-a': { ok: true, total: 2 } },
+          }}
+          enginesById={enginesById}
+          onOpenDetails={vi.fn()}
+        />
+      </MemoryRouter>,
+    )
+    await waitFor(() => screen.getAllByText('ORDER-88'))
+    const badges = screen.getAllByText('🔒 Protected')
+    expect(badges).toHaveLength(1)
+  })
+
+  it('protectedInstance undefined/false renders no badge at all', async () => {
+    await renderGrid(vi.fn())
+    expect(screen.queryByText('🔒 Protected')).toBeNull()
+  })
+})
+
 describe('ResultsGrid zero states (SPEC §10a — U4/#89)', () => {
   it('no response yet: a neutral prompt, not an empty grid', () => {
     render(
