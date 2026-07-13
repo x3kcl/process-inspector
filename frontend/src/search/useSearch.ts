@@ -64,8 +64,30 @@ export function useSearchResults(request: SearchRequest | null) {
     // and its statusCounts are empty). The deep-paging markers come from the LAST (freshest) page.
     const first = pages[0]
     const last = pages[pages.length - 1]
+    // #167: `fetched` is the one perEngine field that must NOT stay frozen at page 1 — it's the
+    // "X of Y fetched" progress readout, and Load-more exists specifically to grow it. Recompute
+    // it from the accumulated, de-duped row set (never trust summing each page's own `fetched`,
+    // which would double-count rows re-emitted across a boundary tie-cluster); `total` and every
+    // other field stay from page 1 as before.
+    const fetchedByEngine = new Map<string, number>()
+    for (const row of rows) {
+      if (row.engineId === undefined) continue
+      fetchedByEngine.set(row.engineId, (fetchedByEngine.get(row.engineId) ?? 0) + 1)
+    }
+    const perEngine =
+      first.perEngine === undefined
+        ? first.perEngine
+        : Object.fromEntries(
+            Object.entries(first.perEngine).map(([engineId, result]) => [
+              engineId,
+              result.ok === true
+                ? { ...result, fetched: fetchedByEngine.get(engineId) ?? result.fetched }
+                : result,
+            ]),
+          )
     return {
       ...first,
+      perEngine,
       rows,
       nextCursor: last.nextCursor,
       depthCapped: last.depthCapped,
