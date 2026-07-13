@@ -12,6 +12,10 @@
   --color-white: #fff;
   --color-ink: #1e272e;
   --color-text-body: #40515e;
+  /* text-muted/-secondary/-dim below are near-visually-identical (single-digit RGB
+     distance) — kept separate here since this pass is a no-decisions mechanical rename,
+     but the dark-theme slice should collapse or deliberately re-differentiate them
+     rather than inventing 3 near-identical dark greys (flagged by review, #104). */
   --color-text-muted: #4f6070;
   --color-text-secondary: #57606f;
   --color-text-faint: #5f6d7c;

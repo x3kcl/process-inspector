@@ -1802,7 +1802,7 @@ carries the actual meaning. `EnvBadge`'s `accentColor` is a real per-engine
 admin-configured DB column (`V7__engine_registry.sql`) — correctly left as an untouched
 inline-style pass-through, never tokenized.
 
-*Shipped:* new `:root { }` block (~26 `--color-*` custom properties across neutral/
+*Shipped:* new `:root { }` block (25 `--color-*` custom properties across neutral/
 danger/warning/info/success families) covering every color repeated ≥5 times. Mechanical,
 scripted, byte-identical substitution of those literals with `var(--color-*)` references
 — confirmed no-op by occurrence-count parity checks (each token's `var()` count matches
@@ -1811,6 +1811,19 @@ before/after. The long tail of one-off near-duplicate shades is **deliberately l
 untokenized** — inventing tokens nobody asked for, or silently merging visually-distinct
 one-offs, is scope creep this slice doesn't need; each follow-up PR can tokenize what it
 actually touches.
+
+*Adversarial review (Copilot + independent senior-review pass, Gemini API was
+quota-exhausted so a manual equivalent pass covered the same five angles):* both
+independently flagged the same real gap — `--color-text-secondary`/`--color-text-dim`/
+`--color-text-muted` (and `--color-danger-mid`/`--color-danger-alt`) sit within
+single-digit RGB distance of each other, i.e. visually indistinguishable, yet ship as
+separate tokens with no comment distinguishing intended semantic weight. Correctly left
+alone here (this slice is a mechanical, no-decisions rename — collapsing "near-identical"
+colors is a judgment call outside that scope), but flagged forward: the dark-theme slice
+must not naively invent 5-6 near-identical dark shades for what today renders as one or
+two greys/reds — collapse or deliberately re-differentiate them there. Both reviewers'
+other findings (token-count wording, naming bikeshedding, expanding this slice's scope to
+merge one-offs) were checked against source and refuted or judged not actionable.
 
 *Deliberately not done here:* AG Grid has zero custom `--ag-*` overrides today (stock
 `ag-theme-quartz`) — bridging into that vendor variable namespace is the column-chooser
