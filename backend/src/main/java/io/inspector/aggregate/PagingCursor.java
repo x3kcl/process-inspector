@@ -219,6 +219,18 @@ public record PagingCursor(
     public record PageResult(List<ProcessInstanceRow> rows, PagingCursor nextCursor, boolean depthCapped) {}
 
     /**
+     * Every engine in play this page: the ones with a raw window (even an empty one — the map
+     * key alone proves it was targeted) plus any the incoming cursor already carries an offset
+     * for. Shared by the emitCount==0 walled check and step 5's offset advance (#177) so the two
+     * can never compute a different engine set for the same merge call.
+     */
+    private static Set<String> engineSet(Map<String, List<String>> rawWindowKeys, Map<String, Integer> baseOffsets) {
+        Set<String> engines = new HashSet<>(rawWindowKeys.keySet());
+        engines.addAll(baseOffsets.keySet());
+        return engines;
+    }
+
+    /**
      * Merge one bounded window per engine into the next global page, in the R-SEM-23 total order,
      * and produce the cursor that resumes AFTER it. Pure — no engine I/O.
      *
@@ -289,13 +301,10 @@ public record PagingCursor(
             // here just as often as a genuine every-engine exhaustion, and the UI can't tell
             // "you've truly seen everything" from "narrow your search to see the rest" without
             // depthCapped. No new rows means no offset advances past this page, so the walled
-            // check is the exact same one step 5 runs below — same engine set
-            // (rawWindowKeys ∪ baseOffsets, offset defaults to 0) and the same >= cap test, so a
-            // targeted engine with a 0 depth cap is caught even on page 1 (baseOffsets empty).
-            Set<String> emptyPageEngines = new HashSet<>(rawWindowKeys.keySet());
-            emptyPageEngines.addAll(baseOffsets.keySet());
+            // check reuses engineSet(...) — the SAME engine-set helper step 5 calls below —
+            // so the two can't drift apart in a future edit (Copilot review, #177).
             boolean anyEngineWalled = false;
-            for (String eng : emptyPageEngines) {
+            for (String eng : engineSet(rawWindowKeys, baseOffsets)) {
                 int cap = depthCaps.getOrDefault(eng, DEFAULT_DEPTH_CAP);
                 if (baseOffsets.getOrDefault(eng, 0) >= cap) {
                     anyEngineWalled = true;
@@ -341,8 +350,7 @@ public record PagingCursor(
         for (ProcessInstanceRow r : emitted) {
             if (Objects.equals(key(r, sortBy), lastKey)) emittedAtBoundary.merge(r.engineId(), 1, Integer::sum);
         }
-        Set<String> engines = new HashSet<>(rawWindowKeys.keySet());
-        engines.addAll(baseOffsets.keySet());
+        Set<String> engines = engineSet(rawWindowKeys, baseOffsets);
         Map<String, Integer> newOffsets = new java.util.HashMap<>();
         boolean depthCapped = false;
         for (String eng : engines) {
