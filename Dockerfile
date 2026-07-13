@@ -11,7 +11,12 @@ WORKDIR /build
 COPY backend/pom.xml ./pom.xml
 RUN mvn -B -q dependency:go-offline
 COPY backend/src ./src
-RUN mvn -B package -DskipTests
+# NOT -DskipTests: backend/pom.xml deliberately binds surefire's skipTests to the custom
+# skip.surefire.tests property (so nightly's IT jobs can skip only failsafe via
+# -Dskip.surefire.tests=true) — the standard flag is a no-op here and silently re-ran the
+# whole 824-test unit suite (already covered by ci.yml's dedicated `unit` job) on every
+# image build.
+RUN mvn -B package -Dskip.surefire.tests=true
 
 # ---- (future) Stage: frontend build ----------------------------------------
 # Placeholder for the Vite build once the SPA ships in this image:
