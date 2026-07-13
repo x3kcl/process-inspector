@@ -1,5 +1,6 @@
 package io.inspector.security;
 
+import io.swagger.v3.oas.annotations.Hidden;
 import jakarta.servlet.http.HttpServletRequest;
 import org.springframework.beans.factory.annotation.Value;
 import org.springframework.http.HttpStatus;
@@ -24,7 +25,12 @@ import org.springframework.web.util.HtmlUtils;
  * <p>No JavaScript dependency either: the CSRF token rides a server-rendered hidden field (the
  * classic Spring Security form pattern), not the SPA's cookie-read/header-echo — a plain browser
  * can complete the whole flow.
+ *
+ * <p>{@code @Hidden} — this is a raw browser-rendered HTML page, never called through the SPA's
+ * typed {@code openapi-fetch} client, so it does not belong in the {@code /v3/api-docs} contract
+ * {@code schema.d.ts} is generated from (R-SEM-15).
  */
+@Hidden
 @RestController
 public class BreakGlassLoginPageController {
 
