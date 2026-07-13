@@ -1,29 +1,35 @@
 import { useState } from 'react'
 import { useQuery } from '@tanstack/react-query'
-import { fetchActionCurl } from '../api/actions'
-import type { ActionRequest } from '../api/actions'
+import type { ActionCurlResponse } from '../api/actions'
 import { CopyButton } from './CopyButton'
 
 interface Props {
-  engineId: string
-  instanceId: string
-  verb: string
-  /** The exact body the execute call will POST — the rendered command mirrors it. */
-  body: ActionRequest
+  /**
+   * Uniquely identifies this call for react-query's cache — mirror every input that
+   * would change the rendered command (scope, engine/instance/case id, verb, body).
+   */
+  queryKey: unknown[]
+  /**
+   * Issue #103: scope-agnostic — the instance and case routes both render this the SAME
+   * way, only which BFF endpoint is called differs. Callers pass fetchActionCurl or
+   * fetchCaseActionCurl bound to their own path params.
+   */
+  fetchCurl: () => Promise<ActionCurlResponse>
 }
 
 /**
- * "Show as cURL" (v1.x #6). The command is SERVER-computed — the BFF renders its own
- * endpoint with a PLACEHOLDER credential (never a live token) — and shown VERBATIM, exactly
- * like the search cURL (SearchRail): the UI never re-assembles it. Lazily fetched (nothing
- * hits the BFF until the operator opens the toggle) and re-fetched when the pending body
- * changes, so what is shown always matches what Confirm will send.
+ * "Show as cURL" (v1.x #6; issue #103 extended it to the tier-0 inline retry flows). The
+ * command is SERVER-computed — the BFF renders its own endpoint with a PLACEHOLDER
+ * credential (never a live token) — and shown VERBATIM, exactly like the search cURL
+ * (SearchRail): the UI never re-assembles it. Lazily fetched (nothing hits the BFF until
+ * the operator opens the toggle) and re-fetched when queryKey changes, so what is shown
+ * always matches what Confirm will send.
  */
-export function CurlPreview({ engineId, instanceId, verb, body }: Props) {
+export function CurlPreview({ queryKey, fetchCurl }: Props) {
   const [open, setOpen] = useState(false)
   const query = useQuery({
-    queryKey: ['action-curl', engineId, instanceId, verb, JSON.stringify(body)],
-    queryFn: () => fetchActionCurl(engineId, instanceId, verb, body),
+    queryKey: ['action-curl', ...queryKey],
+    queryFn: fetchCurl,
     enabled: open,
     staleTime: Infinity,
     retry: false,

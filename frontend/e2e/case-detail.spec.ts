@@ -106,13 +106,22 @@ interface DiagramOpts {
   role?: string
 }
 
-async function mockBff(page: Page, diagram: DiagramOpts): Promise<void> {
+const RETRY_CURL =
+  "curl -X POST 'http://localhost/api/cases/eng1/case-1/actions/retry-job' " +
+  "-H 'Content-Type: application/json' -H 'Authorization: Basic <your-credentials>' " +
+  '-d \'{"jobId":"job-1"}\''
+
+async function mockBff(page: Page, diagram: DiagramOpts, curlRequests?: unknown[]): Promise<void> {
   const role = diagram.role ?? 'RESPONDER'
   await page.route(
     (url) => url.pathname.startsWith('/api/'),
     async (route) => {
       const { pathname } = new URL(route.request().url())
-      if (pathname === '/api/me') {
+      const method = route.request().method()
+      if (method === 'POST' && pathname === '/api/cases/eng1/case-1/actions/retry-job/curl') {
+        curlRequests?.push(route.request().postDataJSON())
+        await route.fulfill({ json: { curl: RETRY_CURL } })
+      } else if (pathname === '/api/me') {
         await route.fulfill({ json: { role, engineRoles: { eng1: role } } })
       } else if (pathname === '/api/engines') {
         await route.fulfill({ json: [ENGINE] })
@@ -215,6 +224,28 @@ test('retrying a CMMN dead-letter job POSTs the case-scoped action and reports t
   // The server's delta statement surfaces as the success toast (never a bare "success").
   await expect(page.getByText(/moved back to the executable queue/)).toBeVisible()
   await scanA11y(page, 'retry success toast shown')
+})
+
+test('issue #103: the CMMN case retry gets the same server-computed "Show as cURL" as the BPMN retry', async ({
+  page,
+}) => {
+  const curlRequests: unknown[] = []
+  await mockBff(page, { graphicalNotationDefined: false }, curlRequests)
+  await page.goto('/case/eng1/case-1')
+
+  const panel = page.locator('.case-why-stuck')
+  await expect(panel.getByRole('button', { name: 'Retry job' })).toBeVisible()
+
+  // Never client-generated: nothing hits the BFF's /curl route until the toggle opens.
+  const toggle = panel.getByRole('button', { name: 'Show as cURL' })
+  await expect(toggle).toBeVisible()
+  expect(curlRequests.length).toBe(0)
+
+  await toggle.click()
+  await expect(panel.getByText(RETRY_CURL)).toBeVisible()
+  expect(curlRequests.length).toBeGreaterThan(0)
+  expect(curlRequests[0]).toMatchObject({ jobId: 'job-1' })
+  await scanA11y(page, 'CMMN case retry with the inline cURL preview open')
 })
 
 test('a RESPONDER cannot delete a CMMN dead-letter job — the tier-3 button is gated', async ({

@@ -1,6 +1,6 @@
 import { useMemo, useState } from 'react'
 import { Link, useParams } from 'react-router'
-import { useCaseAction } from '../api/caseActions'
+import { fetchCaseActionCurl, useCaseAction } from '../api/caseActions'
 import { useEngines } from '../api/useEngines'
 import { roleOn, useMe } from '../api/me'
 import { InlineConfirm } from '../actions/InlineConfirm'
@@ -8,6 +8,7 @@ import { VERBS, actionGate, needsTwoStepConfirm } from '../actions/catalog'
 import { problemBanner } from '../actions/problem'
 import { ActionHint } from '../components/ActionHint'
 import { CopyButton } from '../components/CopyButton'
+import { CurlPreview } from '../components/CurlPreview'
 import { EnvBadge } from '../components/EnvBadge'
 import { useToast } from '../components/toast'
 import { Ts } from '../lib/Ts'
@@ -202,6 +203,23 @@ export function CasePage() {
                           onConfirm={() => {
                             retryJob(job.id ?? '')
                           }}
+                        />
+                        {/* Issue #103: the CMMN case-retry sliver from the Phase-3 build — the
+                            same server-computed "Show as cURL" the BPMN dead-letter retry and
+                            every modal-based verb already carry. */}
+                        <CurlPreview
+                          queryKey={[
+                            'case',
+                            engineId,
+                            caseInstanceId,
+                            VERBS.retryJob.verb,
+                            job.id ?? '',
+                          ]}
+                          fetchCurl={() =>
+                            fetchCaseActionCurl(engineId, caseInstanceId, VERBS.retryJob.verb, {
+                              jobId: job.id,
+                            })
+                          }
                         />
                         {/* Delete is tier-3/ADMIN and irreversible for the case — a typed-confirm
                             modal, never an inline click (unlike retry). */}

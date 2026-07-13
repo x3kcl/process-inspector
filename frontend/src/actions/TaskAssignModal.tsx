@@ -5,8 +5,9 @@
 // "Show as cURL". Cancel-focused, Enter-never-submits (ModalShell). No resubmit after an
 // UNKNOWN outcome (corrective-actions §4).
 import { useState } from 'react'
-import type { TaskDto } from '../api/model'
+import { fetchActionCurl } from '../api/actions'
 import type { ActionRequest } from '../api/actions'
+import type { TaskDto } from '../api/model'
 import { ModalShell } from '../components/ModalShell'
 import { CurlPreview } from '../components/CurlPreview'
 import { GuardFields } from '../components/GuardFields'
@@ -153,7 +154,10 @@ export function TaskAssignModal({
         reasonLabel={`Reason${rule.required ? ' (required, at least 10 characters' : ' (optional'} — lands in the audit trail)`}
       />
 
-      <CurlPreview engineId={engineId} instanceId={instanceId} verb={meta.verb} body={body} />
+      <CurlPreview
+        queryKey={['instance', engineId, instanceId, meta.verb, JSON.stringify(body)]}
+        fetchCurl={() => fetchActionCurl(engineId, instanceId, meta.verb, body)}
+      />
 
       {problem !== undefined && (
         <div className="error-banner" role="alert">
