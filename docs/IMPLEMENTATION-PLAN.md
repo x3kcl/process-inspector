@@ -1131,7 +1131,7 @@ behind nothing before any UI reaches them:**
   before persist/audit; fresh → submits and is never re-challenged per item), `AdminAccessReauthTest`
   (challenge outranks the file-pin 409; approve gated; dev basic passes to the next rail).
   **Belt-and-suspenders login-time `auth_time` conformance + membership re-pull LANDED 2026-07-12
-  (#95, PR #148)** — see the dedicated `### #95` section below. Done-when: identity-freshness
+  (#95, PR #148)** — see the dedicated `### #95` section below. Validation: identity-freshness
   IT (removed group can't authorize tier-3 post-re-auth; no per-verb MFA storm within window);
   break-glass IT (works IdP-down; audit degrades DB-down and still proceeds; cannot reach fleet CRUD).
   **Break-glass sign-in door LANDED 2026-07-14 (#94):** `GET /break-glass` — a plain, JS-free HTML
