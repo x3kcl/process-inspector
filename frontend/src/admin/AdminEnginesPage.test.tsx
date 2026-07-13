@@ -41,16 +41,18 @@ afterEach(() => {
 })
 
 describe('AdminEnginesPage — four-eyes approve 403 feedback (#169)', () => {
-  it('renders no banner when the approve mutation has no error', () => {
-    render(<AdminEnginesPage />)
-    expect(screen.queryByRole('alert')).toBeNull()
+  it('renders no approve-error banner when the approve mutation has no error', () => {
+    const { container } = render(<AdminEnginesPage />)
+    expect(container.querySelector('.banner-warn')).toBeNull()
   })
 
   it('surfaces the exact server refusal as an alert banner when approve is refused', () => {
     approveError = new ApiError(403, { detail: 'the proposer cannot approve their own proposal' })
-    render(<AdminEnginesPage />)
-    const alert = screen.getByRole('alert')
-    expect(alert.textContent).toContain('the proposer cannot approve their own proposal')
+    const { container } = render(<AdminEnginesPage />)
+    const banner = container.querySelector('.banner-warn')
+    expect(banner).not.toBeNull()
+    expect(banner?.getAttribute('role')).toBe('alert')
+    expect(banner?.textContent).toContain('the proposer cannot approve their own proposal')
   })
 
   it('clicking Approve calls the mutation for the right proposal', () => {
