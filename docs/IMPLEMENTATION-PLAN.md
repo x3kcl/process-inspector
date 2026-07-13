@@ -1130,9 +1130,8 @@ behind nothing before any UI reaches them:**
   "∉ affected group" test runs on a fresh membership). Tests: `BulkJobServiceTest` (stale → challenged
   before persist/audit; fresh → submits and is never re-challenged per item), `AdminAccessReauthTest`
   (challenge outranks the file-pin 409; approve gated; dev basic passes to the next rail).
-  *(S5 remaining — non-blocking follow-ups):* the optional
-  belt-and-suspenders `OidcIdTokenValidator` (`auth_time`-vs-`max_age` conformance at login) +
-  userinfo/Graph membership re-pull. Done-when: identity-freshness
+  **Belt-and-suspenders login-time `auth_time` conformance + membership re-pull LANDED 2026-07-12
+  (#95, PR #148)** — see the dedicated `### #95` section below. Done-when: identity-freshness
   IT (removed group can't authorize tier-3 post-re-auth; no per-verb MFA storm within window);
   break-glass IT (works IdP-down; audit degrades DB-down and still proceeds; cannot reach fleet CRUD).
   **Break-glass sign-in door LANDED 2026-07-14 (#94):** `GET /break-glass` — a plain, JS-free HTML

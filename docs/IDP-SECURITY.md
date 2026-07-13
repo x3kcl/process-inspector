@@ -1,10 +1,12 @@
 # 🔐 IdP & SECURITY — identity wiring, access lifecycle & the who-can-do-what store (design + panel, v2)
 
-**Status:** ★ **S1–S6 core BUILT 2026-07-09/10** (design locked 2026-07-09, **hardened by a 5-seat
+**Status:** ★★ **FEATURE COMPLETE** (design locked 2026-07-09, **hardened by a 5-seat
 panel + independent adversarial pass (Gemini 2.5)** — the panel changed the design, not just the
-prose, see §2 and the `⚠️ panel:` markers). The login-time `auth_time` conformance validator +
-membership re-pull verification landed 2026-07-12 (issue #95, §5). Remaining: the IdP-unreachable
-break-glass door (issue #94) and the Playwright grant-flow + axe gate (issue #85). Authoritative
+prose, see §2 and the `⚠️ panel:` markers). S1–S6 core BUILT 2026-07-09/10; login-time `auth_time`
+conformance validator + membership re-pull verification landed 2026-07-12 (issue #95, §5); the
+IdP-unreachable break-glass door landed 2026-07-14 (issue #94, §7); the Playwright grant-flow +
+axe gate landed 2026-07-12 (issue #85). Remaining: the optional belt-and-suspenders
+background-group-re-pull layer (§5, gated on `offline_access` — never assumed to run). Authoritative
 source-of-truth for the
 **IdP-and-Security extension** — the
 WHAT/WHY/HOW/WHEN below drive the deltas into `SPECIFICATION.md` (new §2.4 + §4c),
