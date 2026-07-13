@@ -1752,6 +1752,30 @@ filing a duplicate.
 verified via `node --check` + the actual 10-mission live run completing successfully
 after both fixes landed.
 
+### #103 — "Show as cURL" in the tier-0 inline retry flows (BPMN + CMMN) *(✅ LANDED 2026-07-13, issue #103)*
+Sliver from the CMMN Phase-3 build: `POST …/actions/{verb}/curl` already existed for both
+scopes (instance and case), and every modal-based verb already surfaced it, but the tier-0
+`InlineConfirm` retry flows — BPMN dead-letter retry and CMMN case retry — didn't.
+
+*Shipped:* `CurlPreview.tsx` generalized from a hardcoded instance-scope fetch
+(`engineId`/`instanceId`/`verb`/`body` props) to a scope-agnostic `queryKey` +
+`fetchCurl: () => Promise<ActionCurlResponse>` pair — the instance and case routes render
+identically, only which BFF endpoint is called differs. New
+`fetchCaseActionCurl` in `api/caseActions.ts` mirrors `api/actions.ts`'s existing
+`fetchActionCurl`, hitting the already-live `/api/cases/{engineId}/{caseInstanceId}/actions/{verb}/curl`
+route (built in Phase 3, never consumed by the frontend until now). `CurlPreview` wired
+into `ErrorsJobsTab.tsx`'s dead-letter `InlineConfirm` and `CasePage.tsx`'s case-retry
+`InlineConfirm`, both lazy — nothing hits the BFF until the operator opens the "Show as
+cURL" toggle, matching the existing modal precedent and the never-client-generated
+invariant. `TaskAssignModal.tsx` (the one existing consumer) updated to the new prop
+shape, no behavior change.
+
+*Tests:* new e2e cases in `deadletter-delete.spec.ts` (BPMN) and `case-detail.spec.ts`
+(CMMN), both asserting the toggle fires zero `/curl` requests until clicked, then renders
+the server string verbatim with the correct request body. Full e2e suite + `npx vitest
+run` (530 tests) green; the existing `task-reassign.spec.ts` cURL case re-verified
+unaffected by the `CurlPreview` prop refactor.
+
 ## Build order inside any milestone
 backend DTO → engine client call → aggregator/join logic → controller → typed frontend API
 client → component. Every Flowable call gets an integration test against the dockerized

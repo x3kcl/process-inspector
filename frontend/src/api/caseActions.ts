@@ -5,7 +5,7 @@
 import { useMutation, useQueryClient } from '@tanstack/react-query'
 import { parseActionProblem } from '../actions/problem'
 import { ActionError } from './actions'
-import type { ActionRequest, ActionResult } from './actions'
+import type { ActionCurlResponse, ActionRequest, ActionResult } from './actions'
 import { api } from './client'
 
 export async function dispatchCaseAction(
@@ -16,6 +16,24 @@ export async function dispatchCaseAction(
 ): Promise<ActionResult> {
   const { data, error, response } = await api.POST(
     '/api/cases/{engineId}/{caseInstanceId}/actions/{verb}',
+    { params: { path: { engineId, caseInstanceId, verb } }, body },
+  )
+  if (data === undefined) throw new ActionError(parseActionProblem(response.status, error))
+  return data
+}
+
+/**
+ * "Show as cURL", CMMN scope sibling of api/actions.ts's fetchActionCurl (issue #103) —
+ * same server-computed, placeholder-credential, never-recomputed-client-side invariant.
+ */
+export async function fetchCaseActionCurl(
+  engineId: string,
+  caseInstanceId: string,
+  verb: string,
+  body: ActionRequest,
+): Promise<ActionCurlResponse> {
+  const { data, error, response } = await api.POST(
+    '/api/cases/{engineId}/{caseInstanceId}/actions/{verb}/curl',
     { params: { path: { engineId, caseInstanceId, verb } }, body },
   )
   if (data === undefined) throw new ActionError(parseActionProblem(response.status, error))

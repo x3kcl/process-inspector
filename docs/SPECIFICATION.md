@@ -626,8 +626,10 @@ built from the same code as the path whitelist, CI-failing on drift; the UI offe
 **"Show as cURL"** affordance (v1.x #6) is **server-computed** — the BFF renders the exact
 command it will dispatch to its OWN whitelisted verb endpoint with a placeholder credential
 (never a live token or an engine path), and the UI shows it verbatim (never re-assembled
-client-side, mirroring the search cURL invariant). Present on every tier-1+ action modal;
-the "copy as engine cURL" / REST Parity Appendix variant remains v2.
+client-side, mirroring the search cURL invariant). Present on every tier-1+ action modal
+**and every tier-0 inline retry flow** (BPMN dead-letter retry, CMMN case retry — issue
+#103 closed the modal-only gap); the "copy as engine cURL" / REST Parity Appendix variant
+remains v2.
 
 ### 5.0 Language safety & reversibility (R-SAFE-02/03/04)
 - Every verb renders a **plain-language secondary label**, spec'd here, not improvised:

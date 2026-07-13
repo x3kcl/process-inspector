@@ -240,8 +240,11 @@ duplicated the whole ladder + the audit-consistency risk). Only two seams differ
 
 Gated on `scopeType` (≥6.8) via the shared `CmmnCapabilities.requireScopeType` BEFORE any engine
 byte; a non-CMMN verb is refused (`verb-not-cmmn-scoped`). The server-computed "Show as cURL"
-targets the **BFF** case-action URL (never an engine path/credential). The CasePage "read-only"
-badge is retired; the case detail is otherwise still read-only (no suspend/terminate/edit).
+targets the **BFF** case-action URL (never an engine path/credential) — the route existed since
+this phase, but the CasePage retry flow itself didn't surface it in the UI until issue #103
+(2026-07-13) wired it into the same `InlineConfirm` the retry button lives in. The CasePage
+"read-only" badge is retired; the case detail is otherwise still read-only (no
+suspend/terminate/edit).
 
 **Delete honesty (scope-aware).** The `DELETE_DEADLETTER` delta and the modal's blast-radius copy
 are scope-aware: a CMMN case has **no change-state rescue** in this tool (unlike a BPMN process),

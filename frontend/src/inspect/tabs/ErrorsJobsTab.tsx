@@ -2,7 +2,7 @@ import { RawJsonExport } from '../RawJsonExport'
 import { useEffect, useMemo, useRef, useState } from 'react'
 import type { ExternalWorkerJobDto, InstanceJobs, JobDto, JobLaneId } from '../../api/model'
 import { JOB_LANES } from '../../api/model'
-import { useInstanceAction } from '../../api/actions'
+import { fetchActionCurl, useInstanceAction } from '../../api/actions'
 import type { ActionRequest } from '../../api/actions'
 import { fetchJobStacktrace } from '../../api/queries'
 import { useEngines } from '../../api/useEngines'
@@ -14,6 +14,7 @@ import type { Gate } from '../../actions/catalog'
 import { problemBanner } from '../../actions/problem'
 import { ActionHint } from '../../components/ActionHint'
 import { CopyButton } from '../../components/CopyButton'
+import { CurlPreview } from '../../components/CurlPreview'
 import { useToast } from '../../components/toast'
 import { Ts } from '../../lib/Ts'
 import { roleOn, useMe } from '../../api/me'
@@ -447,6 +448,14 @@ function JobActions({
           onConfirm={() => {
             run(VERBS.retryJob.verb)
           }}
+        />
+        {/* Issue #103: the tier-0 inline retry flow gets the same server-computed "Show as
+            cURL" every modal-based verb already carries — never client-generated. */}
+        <CurlPreview
+          queryKey={['instance', engineId, instanceId, VERBS.retryJob.verb, job.id ?? '']}
+          fetchCurl={() =>
+            fetchActionCurl(engineId, instanceId, VERBS.retryJob.verb, { jobId: job.id })
+          }
         />
         {/* W2 #6 (T7): the disabled Delete carries the visible ActionHint gate — the same
             pattern as its InlineConfirm sibling; never a title-only dead control. */}
