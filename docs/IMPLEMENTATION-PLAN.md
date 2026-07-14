@@ -2027,6 +2027,67 @@ claim was also softened to state the real (low-impact) gap rather than an unqual
 guarantee. Other AI-generated findings (imagined race conditions, SSR concerns in a
 pure-CSR app) did not hold up against the actual code and were rejected.
 
+### #104 slice 3/6 — density toggle (R-UXQ-09) _(✅ LANDED 2026-07-14, issue #104)_
+
+The grid half of R-UXQ-09 ("Grid: column chooser + density + layout persisted…
+reset-to-default") — column chooser and layout-capture stay open for a later slice; this
+slice is the density preference alone, applied globally to both AG Grid instances
+(`ResultsGrid.tsx`'s `.grid-host` and `AuditLogPage.tsx`'s `.grid-host.ops-log-grid`), not a
+per-grid setting.
+
+_Shipped:_
+
+- `frontend/src/lib/density.ts` — mirrors `lib/theme.ts`'s store exactly (lazy
+  `localStorage`-hydrated module value, listener `Set`, get/set/subscribe +
+  `useSyncExternalStore` hook), storage key `inspector.density`. `setDensity()` (and a
+  module-load call) applies the preference to `<html>`: `'comfortable'` REMOVES
+  `data-density` entirely (it's the CSS default, no selector needed — mirroring `theme.ts`'s
+  `'system'` case); `'compact'` sets `data-density`. Imported in `main.tsx` for its
+  module-load side effect, before `createRoot(...).render(...)`, same FOUC rationale as
+  `theme.ts`.
+- `frontend/src/components/DensityToggle.tsx` — mirrors `ThemeToggle.tsx`, a labeled
+  2-option `Segmented` (Comfortable/Compact), mounted next to `ThemeToggle` in `Shell.tsx`'s
+  topbar.
+- `styles.css`: a single `[data-density='compact'] .ag-theme-quartz { … }` block overriding
+  four of AG Grid Quartz's own `--ag-*` theme variables. Scoped to `.ag-theme-quartz` (not a
+  bespoke class) so the one global preference reaches both grid hosts automatically.
+
+_Compact values vs. the measured defaults —_ the installed `ag-grid-community` version is
+**32.3.9**; its Quartz theme derives `--ag-row-height`/`--ag-header-height` from
+`--ag-font-size` (14px) and `--ag-grid-size` (8px) (`ag-theme-quartz.css`), giving these
+actual defaults:
+
+| variable | measured default | compact override | reduction |
+| --- | --- | --- | --- |
+| `--ag-row-height` | 42px | **30px** | 28.6% |
+| `--ag-header-height` | 48px | **36px** | 25.0% |
+| `--ag-cell-horizontal-padding` | 16px | **12px** | 25.0% |
+| `--ag-font-size` | 14px | **13px** | 7.1% |
+
+Row/header height and horizontal padding land in the requested ~25–30% band; font-size only
+drops a point (7%) — shrinking it further started to compete with the row/header reduction
+for legibility, and this grid's own column defs have no oversized text to reclaim space
+from. `ResultsGrid.tsx`'s and `AuditLogPage.tsx`'s cell renderers were checked for
+interactive elements before picking these numbers: both grids' in-cell affordances are text
+links (`.grid-open-link`, the audit-log external link) and a copy-ID icon button — no
+in-grid `<button>` with a small hit target exists in either grid today — so 30px rows leave
+comfortable click room; a future in-cell button renderer should re-check this.
+
+_Verification:_ live Playwright check against the dev server — Comfortable vs. Compact
+screenshots of the search-results grid (visibly tighter, same viewport shows ~8 rows compact
+vs. ~5.5 comfortable, no clipping/overlap, "Open →" link and the copy-ID button stay
+comfortably sized) and of the ops-log grid; a compact+dark combination screenshot (no
+interaction with the dark-theme mechanism from slices 1/2a/2b); `localStorage` persistence
+confirmed across a full reload (`data-density` applied before first paint, matching
+`theme.ts`'s FOUC guard). Plus: `frontend/src/lib/density.test.ts` and
+`frontend/src/components/DensityToggle.test.ts` (new, mirroring `theme.test.ts` /
+`ThemeToggle.test.ts` exactly) + `npx vitest run` (all green) + `npm run build` (tsc + vite +
+the bpmn-watermark guard) + the full pre-existing e2e suite re-run (62/62 green — no
+regression from the new `data-density` attribute or CSS; no new Playwright spec added for
+this slice per its low-risk scope, pure CSS variables + a persisted preference, no
+contrast/accessibility color implications) + `scripts/ci-local.sh --full` (backend
+unaffected, unit ladder green).
+
 ## Build order inside any milestone
 
 backend DTO → engine client call → aggregator/join logic → controller → typed frontend API

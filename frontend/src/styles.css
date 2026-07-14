@@ -385,6 +385,16 @@ body {
   font-size: 12px;
 }
 
+/* R-UXQ-09 (#104 slice 3/6): the persisted grid-density control (Comfortable / Compact) in
+   the topbar. */
+.density-toggle {
+  white-space: nowrap;
+}
+.density-toggle .segment {
+  padding: 2px 8px;
+  font-size: 12px;
+}
+
 /* R-UXQ-03: the relative-age suffix every <Ts relative> renders. */
 .ts-relative {
   color: var(--color-text-muted);
@@ -991,6 +1001,23 @@ button.primary:disabled {
 .grid-host {
   flex: 1;
   width: 100%;
+}
+/* R-UXQ-09 (#104 slice 3/6): the persisted grid-density override. Scoped
+   `[data-density='compact'] .ag-theme-quartz` — not a per-grid class — so ONE global
+   preference (DensityToggle.tsx) tightens BOTH AG Grid hosts in the app (ResultsGrid's
+   `.grid-host` and AuditLogPage's `.grid-host.ops-log-grid`), mirroring how the
+   `[data-theme='dark']` blocks above apply globally rather than per-component. Values are
+   AG Grid Quartz's own `--ag-*` theme variables (see ag-theme-quartz.css), overridden
+   relative to their MEASURED defaults at the installed ag-grid-community version (32.3.9):
+   row-height 42px, header-height 48px, cell-horizontal-padding 16px, font-size 14px — see
+   docs/IMPLEMENTATION-PLAN.md's #104 slice 3/6 entry for the full default-vs-compact table
+   and the legibility/click-target check performed against ResultsGrid's/AuditLogPage's
+   in-cell links (no in-grid buttons exist in either grid today, only text links). */
+[data-density='compact'] .ag-theme-quartz {
+  --ag-row-height: 30px;
+  --ag-header-height: 36px;
+  --ag-cell-horizontal-padding: 12px;
+  --ag-font-size: 13px;
 }
 /* U1 (#88): the visible row-open affordance in the grid's leading column. */
 .grid-open-link {

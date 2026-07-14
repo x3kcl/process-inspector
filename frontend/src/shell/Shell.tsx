@@ -10,6 +10,7 @@ import {
   isReauthBody,
   sessionExpiryState,
 } from '../auth/reauth'
+import { DensityToggle } from '../components/DensityToggle'
 import { HeaderStrip } from '../components/HeaderStrip'
 import { IdentityStrip } from '../components/IdentityStrip'
 import { SignIn } from '../components/SignIn'
@@ -83,6 +84,8 @@ export function Shell() {
               <ZoneToggle />
               {/* R-UXQ-08: the persisted dark-theme control lives on every stage. */}
               <ThemeToggle />
+              {/* R-UXQ-09: the persisted grid-density control lives on every stage. */}
+              <DensityToggle />
               {/* Usability W3: who-am-I + Sign out (dev ladder). Hidden while signed out. */}
               {!authRequired && <IdentityStrip />}
               <HeaderStrip />
