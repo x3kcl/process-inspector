@@ -2057,21 +2057,21 @@ _Compact values vs. the measured defaults —_ the installed `ag-grid-community`
 `--ag-font-size` (14px) and `--ag-grid-size` (8px) (`ag-theme-quartz.css`), giving these
 actual defaults:
 
-| variable | measured default | compact override | reduction |
-| --- | --- | --- | --- |
-| `--ag-row-height` | 42px | **30px** | 28.6% |
-| `--ag-header-height` | 48px | **36px** | 25.0% |
-| `--ag-cell-horizontal-padding` | 16px | **12px** | 25.0% |
-| `--ag-font-size` | 14px | **13px** | 7.1% |
+| variable                       | measured default | compact override | reduction |
+| ------------------------------ | ---------------- | ---------------- | --------- |
+| `--ag-row-height`              | 42px             | **30px**         | 28.6%     |
+| `--ag-header-height`           | 48px             | **36px**         | 25.0%     |
+| `--ag-cell-horizontal-padding` | 16px             | **12px**         | 25.0%     |
+| `--ag-font-size`               | 14px             | **13px**         | 7.1%      |
 
 Row/header height and horizontal padding land in the requested ~25–30% band; font-size only
 drops a point (7%) — shrinking it further started to compete with the row/header reduction
 for legibility, and this grid's own column defs have no oversized text to reclaim space
 from. `ResultsGrid.tsx`'s and `AuditLogPage.tsx`'s cell renderers were checked for
 interactive elements before picking these numbers: both grids' in-cell affordances are text
-links (`.grid-open-link`, the audit-log external link) and a copy-ID icon button — no
-in-grid `<button>` with a small hit target exists in either grid today — so 30px rows leave
-comfortable click room; a future in-cell button renderer should re-check this.
+links (`.grid-open-link`, the audit-log external link) and one copy-ID icon button
+(`.copy-btn`, ~17px tall) — no button needs more room than it already uses, so 30px rows
+leave comfortable click room; a future in-cell button renderer should re-check this.
 
 _Verification:_ live Playwright check against the dev server — Comfortable vs. Compact
 screenshots of the search-results grid (visibly tighter, same viewport shows ~8 rows compact
