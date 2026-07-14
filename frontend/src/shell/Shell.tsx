@@ -79,6 +79,7 @@ export function Shell() {
               </Link>
               <RegistryAdminLink />
               <AccessAdminLink />
+              <RemediationDemandLink />
               <Omnibox />
               {/* R-UXQ-03: the one-click display-zone control lives on every stage. */}
               <ZoneToggle />
@@ -153,6 +154,33 @@ function AccessAdminLink() {
       title="Requires ACCESS_ADMIN"
     >
       Access
+    </span>
+  )
+}
+
+/**
+ * Issue #106 S0 nav entry — greyed-never-hidden: everyone sees "Demand check", but a
+ * non-ADMIN gets a greyed, unlinked label mirroring the BFF's ADMIN-anywhere gate. Uses
+ * the same simple me.role === 'ADMIN' check PublishToTeamButton does, rather than the
+ * finer per-engine ladder — this is a fleet-wide analysis, not scoped to one engine.
+ */
+function RemediationDemandLink() {
+  const me = useMe()
+  if (me.data?.role === 'ADMIN') {
+    return (
+      <Link to="/admin/remediation-demand" className="topbar-link">
+        Demand check
+      </Link>
+    )
+  }
+  return (
+    <span
+      className="topbar-link disabled"
+      aria-disabled="true"
+      aria-label="Demand check — requires the ADMIN role"
+      title="Requires ADMIN"
+    >
+      Demand check
     </span>
   )
 }

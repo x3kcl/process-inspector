@@ -45,4 +45,18 @@ public interface AuditEntryRepository extends JpaRepository<AuditEntry, UUID> {
 
     /** The startup/periodic reconciler's sweep set (SPEC §6): stale PENDING → unknown. */
     List<AuditEntry> findByOutcomeAndTsBefore(AuditOutcome outcome, Instant cutoff);
+
+    /**
+     * The #106 S0 remediation-demand mining scan (R-GOV-08): every instance-scoped audit
+     * row (definition-scoped verbs and BFF-store-only config events, both null instanceId,
+     * are excluded by construction), ordered so one instance's full history is always
+     * contiguous within and across pages — {@link io.inspector.audit.RemediationDemandAnalysisService}
+     * accumulates per-instance verb chains incrementally as it scans.
+     */
+    @Query("""
+            select a from AuditEntry a
+            where a.instanceId is not null
+            order by a.engineId asc, a.instanceId asc, a.ts asc, a.id asc
+            """)
+    List<AuditEntry> findInstanceScopedForSequenceMining(Pageable page);
 }
