@@ -646,7 +646,11 @@ count to a "≥N" lower bound under a truncated DLQ scan — see `CMMN-SCOPE-PHA
   into a named, literal-values-only verb sequence bound to an error-class signature; replay
   through the bulk-job machinery with per-step precondition rechecks and per-item-per-step
   outcomes. Requires: v1.x bulk framework + error-class grouping + audit old-value capture
-  (all landed earlier by design).
+  (all landed earlier by design). **S0 gate (issue #106) run 2026-07-14 — NOT met:**
+  `docs/reviews/S0-PLAYBOOK-DEMAND-2026-07.md` / `scripts/mine-playbook-demand.sql` mine
+  `audit_entry` for repeated ≥2-verb sequences per R-GOV-08; current data is one week of dev
+  traffic (no real pilot deployment yet), so the ≥3-pilot-months/≥10-instances bar cannot be
+  evaluated. Do not start the MVP until a re-run against real pilot audit data clears the gate.
 - **Migration** — **panel-reviewed design locked in [INSTANCE-MIGRATION.md](INSTANCE-MIGRATION.md)**:
   single-instance migrate with server-side `migrate/validate` first; slice-1 = auto-map + a
   validator-driven targeted mapping table + the definition-versions on-ramp. The full side-by-side
