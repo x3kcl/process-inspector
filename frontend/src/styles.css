@@ -264,15 +264,6 @@
     .state-running {
       color: var(--color-info-border);
     }
-    /* .drawer-live/.drawer-interrupted set only a colored (link/warning) background and
-       rely on inheriting a dark-appropriate text color — correct in light mode (inherits
-       the topbar-adjacent dark ink), wrong once ink inverts to light. --color-white's dark
-       value is dark, so it reads as intended: dark text on the light accent pill (the
-       exact intent .segment-active already expresses the same way). */
-    .drawer-live,
-    .drawer-interrupted {
-      color: var(--color-white);
-    }
     /* Chip/badge/keycap backgrounds hardcoded against a permanently-light canvas — pin them
        back to (mostly) their original light shade so the badge keeps its own recognizable
        identity rather than trying to invert a small saturated pill (status-chip.active/
@@ -315,10 +306,6 @@
   .env-dev,
   .state-running {
     color: var(--color-info-border);
-  }
-  .drawer-live,
-  .drawer-interrupted {
-    color: var(--color-white);
   }
   .status-chip.suspended {
     background: #fdebd0;

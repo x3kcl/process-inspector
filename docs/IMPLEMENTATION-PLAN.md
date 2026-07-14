@@ -12,7 +12,8 @@ green ×3 on applicable engine profiles, coverage floors met, zero open Sev1/Sev
 REQUIREMENTS-REGISTER IDs they discharge. The authoritative CI merge-gate list is
 OPERATIONS.md §8.
 
-## M0 — Scaffold *(done — only the listed slice-0 stragglers open)*
+## M0 — Scaffold _(done — only the listed slice-0 stragglers open)_
+
 - Repo layout, docker-compose dev harness. Profiles in `docker/docker-compose.dev.yml`
   (project name `process-inspector`): **`flowable-6`** (engine-a/engine-b, 6.8.0,
   :8081/:8082 — default via `docker/.env` `COMPOSE_PROFILES`), **`flowable-7`**
@@ -46,7 +47,8 @@ OPERATIONS.md §8.
 - **Still open (slice-0):** remaining FIX-PROC seeds (recursive / event-wait /
   multi-instance / parallel-join / CMMN case); the OPERATIONS §8 "still to land" gate list.
 
-## M1 — Engine Registry + health  *(landed, incl. the header-strip UI)*
+## M1 — Engine Registry + health _(landed, incl. the header-strip UI)_
+
 - Registry YAML binding per ARCH §3 (environment/mode enums, engine-id slug validation,
   duplicate-id fail-fast, `write-ms`, `dlq-scan-cap`, `alarm-thresholds`) + env-ref secrets.
 - Per-engine `RestClient` on the JDK HttpClient (no redirects) wrapped in per-engine
@@ -60,12 +62,13 @@ OPERATIONS.md §8.
   at 60s), `EngineHealth7IT` (7.1, same full arc on the Jakarta wire shapes) and
   `EngineHealthLegacyIT` (6.3.1, capability cliff: all four version caps reported absent).
 - **Done when:** header strip shows each engine with env-colored badge, version, lanes
-  *(landed: `HeaderStrip` off the shared 30s `/api/engines` poll — literal PROD/TEST/DEV
+  _(landed: `HeaderStrip` off the shared 30s `/api/engines` poll — literal PROD/TEST/DEV
   token + distinct border per band, accent color demoted to a dot, four lanes with DLQ
   alarm, oldest-exec/overdue-timer alarms, unreachable engines render as warning cards
-  without blanking healthy ones)*.
+  without blanking healthy ones)_.
 
-## M2 — Search & results  *(landed: M2a + M2b + M2c incl. the UI)*
+## M2 — Search & results _(landed: M2a + M2b + M2c incl. the UI)_
+
 - **M2a (landed, backend):** the status join per ARCH §2.3 — status = flags
   (`InstanceStatusFlags` + derived primary chip incl. RETRYING), DLQ-driven inverted plan
   for FAILED/RETRYING-only requests (bounded exhaustive paging, definition pushdown,
@@ -87,7 +90,7 @@ OPERATIONS.md §8.
   compiled-criteria echo + copy-as-cURL (`criteriaEcho`/`curl` envelope fields, pure
   `CriteriaEcho`), unindexed-variable-scan `log.warn` guardrail, 400 on bad filter input.
   Proven on all three profiles (`SearchServiceIT` +8, `Search7IT` +1, `SearchLegacyIT` +2).
-  *M2b UI landed:* the collapsible search rail with the full filter set; **URL-encoded
+  _M2b UI landed:_ the collapsible search rail with the full filter set; **URL-encoded
   search state** (typed codec `frontend/src/search/urlState.ts`, round-trip vitest-proven;
   the URL is the single source of truth and a shared link replays the search); rail
   collapses to criteria chips after a search; server `criteriaEcho` + copyable `curl`
@@ -104,7 +107,8 @@ OPERATIONS.md §8.
   mid-demo degrades to a labeled partial result; a 10k-DLQ engine shows the truncation badge
   instead of lying.
 
-## M3 — Instance detail (full-page route) + triage landing  *(LANDED 2026-07-06: backend incl. `…/tasks` + `/api/resolve`, frontend fully bound)*
+## M3 — Instance detail (full-page route) + triage landing _(LANDED 2026-07-06: backend incl. `…/tasks` + `/api/resolve`, frontend fully bound)_
+
 - **Detail page `/inspect/{engineId}/{id}`** (deep-linkable now, not M6): vitals header with
   "why stuck" strip (exception first line, retries state, waiting-for subscriptions/timers);
   **read-only bpmn-js diagram** (pulled forward from M5) with token + dead-letter markers,
@@ -187,7 +191,8 @@ OPERATIONS.md §8.
   opening a stuck instance shows why it's stuck without any click; the link pastes into a
   ticket and reopens the same view.
 
-## M4 — Corrective actions + audit + RBAC + Postgres  *(backend + action/editor UI landed 2026-07-06; ops-log page open)*
+## M4 — Corrective actions + audit + RBAC + Postgres _(backend + action/editor UI landed 2026-07-06; ops-log page open)_
+
 - **Postgres** joins the deployable: audit log, notes.
 - **Build-order constraint (binding):** `Flyway V1__init.sql` FIRST → JPA entities SECOND →
   repositories THIRD. Hibernate `ddl-auto=validate` in EVERY profile including tests —
@@ -249,12 +254,12 @@ OPERATIONS.md §8.
   `Form | Source` segmented switch with the CodeMirror 6 chunk lazy-loaded on first use
   (proven: no eager chunk request), Source→Form blocked while invalid, parse + 256 KiB
   warn / 5 MiB block gates; verification modal generating sentence + structural path diff
-  + fixed-order warnings + exact-request expander from the SAME request object, freshness
-  re-check on open blocking on drift, CAS-conflict replacement panel (three values,
-  start-over-only, no overwrite-anyway). Audit tab: collapsed payload expander (old
-  values for variable edits). Pure logic vitest-covered (problem/catalog/cascade/ticket/
-  editState/diff — 125 tests green); `npm run lint` + `npm run build` (watermark +
-  enterprise guards) clean.
+  - fixed-order warnings + exact-request expander from the SAME request object, freshness
+    re-check on open blocking on drift, CAS-conflict replacement panel (three values,
+    start-over-only, no overwrite-anyway). Audit tab: collapsed payload expander (old
+    values for variable edits). Pure logic vitest-covered (problem/catalog/cascade/ticket/
+    editState/diff — 125 tests green); `npm run lint` + `npm run build` (watermark +
+    enterprise guards) clean.
 - **M4 stragglers landed 2026-07-06 (same-day follow-up session):** `GET /api/me`
   (username + highest ladder role per engine via the SAME RbacAuthorizer resolution the
   guards use) with the SPA's role-greying switched from the dev-ladder username heuristic
@@ -285,12 +290,12 @@ OPERATIONS.md §8.
   failure policy is a **trichotomy** (fail-to-previous / fail-closed-ordering / fail-closed),
   NOT blanket fail-open (a scope-mapping-reload fail-open was a silent privilege-escalation
   hole); and the retention purge is **BFF-orchestrated through a `SECURITY DEFINER
-  purge_audit()`** (age + legal-hold DB-enforced) after the panel found `audit_entry` has **no
+purge_audit()`** (age + legal-hold DB-enforced) after the panel found `audit_entry` has **no
   monthly partitions today** (only DEFAULT — "drop old partitions" is a no-op) and that an
   external second-writer forks the JVM-serialized hash chain. Slices:
-  **S0** role/prod-like scaffolding *first* (grant regime under every later slice: non-owner
+  **S0** role/prod-like scaffolding _first_ (grant regime under every later slice: non-owner
   `inspector_app`, `USAGE` on `audit_entry_seq`, `ALTER DEFAULT PRIVILEGES`, `REVOKE
-  UPDATE/DELETE/TRUNCATE`, grant-level negative test, `prod-like` compose + Testcontainers-PG
+UPDATE/DELETE/TRUNCATE`, grant-level negative test, `prod-like` compose + Testcontainers-PG
   gate — none of which exist yet) → **S1** config-event primitive + scope-mapping reload events
   → **S2** `audit-payload` modes (V8 registry column; fix the pre-existing List-blind `redact()`;
   govern `response_snippet`) → **S3** ticketId validate/linkify/filter → **S4** X-Forwarded-User
@@ -355,6 +360,7 @@ OPERATIONS.md §8.
   defeat the point), not payload minimization.
 
 ## M5 — Bulk + hardening (v1 close-out; the former M6)
+
 - Grid-selection bulk as a **persisted tracked job** (R-SEM-10: state machine, startup
   reconciliation → INTERRUPTED, circuit-open dispatch pause, aggregate readout), cap 200,
   intersection-of-valid-actions, protected-instance auto-exclusion, acknowledgment gate over
@@ -436,11 +442,13 @@ OPERATIONS.md §8.
   reports every outcome class honestly; the §13 gate checklist is green.
 
 ## v1.1 — Flow surgery (former M5; entry criterion R-GOV-07: ≥N audited pilot incidents
+
 unresolvable with tier 0–1 verbs)
+
 - change-state as a guarded form verb (activity dropdowns) with BFF-simulation preview +
   REST-body display; guardrails (MI-body block, parallel-join warning, suspended-check,
   variables-first composite = rerun-from-activity); restart-as-new with the pin-vs-latest
-  definition fork. Diagram change-state *picker* is polish — only after the form verb works.
+  definition fork. Diagram change-state _picker_ is polish — only after the form verb works.
 - **Backend: LANDED 2026-07-06.** `FlowSurgeryService` + three whitelisted routes
   (`…/change-state/preview`, `…/change-state/execute`, `…/restart` — ARCH §4);
   `BpmnStructure` guardrail parser (MI scopes from the engine's `/model` JSON, gateway
@@ -465,16 +473,17 @@ unresolvable with tier 0–1 verbs)
   invalidation triad; no optimistic state. Net-new Playwright harness
   (`playwright.config.ts`, hermetic route-mocked BFF) with 3 smokes proving the
   simulation-first arc (execute is unreachable before a rendered preview and never fires
-  on cancel). Diagram-click *picker* stays v1.x polish ✅ **LANDED 2026-07-13, issue #102**
+  on cancel). Diagram-click _picker_ stays v1.x polish ✅ **LANDED 2026-07-13, issue #102**
   — see below.
 - **Done when:** a token is moved off a failed node and the instance proceeds; the preview
   shows exactly the REST call; an MI body as source is refused with the reason.
 
-### #102 — Flow-surgery polish: diagram-click picker + rerun-from-activity *(✅ LANDED 2026-07-13, issue #102)*
-The two items this section explicitly deferred as v1.x polish ("Diagram change-state
-*picker* is polish", "Diagram-click *picker* stays v1.x polish").
+### #102 — Flow-surgery polish: diagram-click picker + rerun-from-activity _(✅ LANDED 2026-07-13, issue #102)_
 
-*Scope check before building:* issue #102's own title says "rerun-from-activity
+The two items this section explicitly deferred as v1.x polish ("Diagram change-state
+_picker_ is polish", "Diagram-click _picker_ stays v1.x polish").
+
+_Scope check before building:_ issue #102's own title says "rerun-from-activity
 composite" as "terminate here + restart from activity X" — but Flowable's REST API has
 no start-at-activity primitive (confirmed via `ProcessInstanceBuilder`'s decompiled
 interface — only `startEventId`, never an arbitrary node), so that literal reading would
@@ -485,7 +494,7 @@ scoped. Confirmed with the user before building: implement the documented versio
 exact TS-VERB-09 wording, "variables-first composite = rerun-from-activity" above) — on
 the SAME still-live instance, staying at the existing OPERATOR/tier-2 change-state floor.
 
-*Shipped — diagram-click picker:* `DiagramCanvas.tsx` gains two optional multi-select
+_Shipped — diagram-click picker:_ `DiagramCanvas.tsx` gains two optional multi-select
 props (`pickerSourceIds`/`pickerTargetIds`), diffed against the previous render and
 applied as two new marker classes (`marker-picker-source`/`-target`) + lettered S/T
 overlay badges — same "stroke style + glyph, never hue alone" discipline as the
@@ -498,7 +507,7 @@ targets) — an ineligible click surfaces an inline hint rather than silently no
 The diagram is a supplementary picking surface, never the only one — the checklist keeps
 working unchanged (R-UXQ-02: every diagram fact needs a textual twin).
 
-*Shipped — rerun-from-activity:* new `RerunFromActivityModal.tsx`, three phases, **zero
+_Shipped — rerun-from-activity:_ new `RerunFromActivityModal.tsx`, three phases, **zero
 new backend endpoint** — a frontend-only composite reusing two already-audited,
 already-tested primitives verbatim: a new lightweight `EditStep` (case-scope scalar
 variables only — string/number/boolean; JSON variables are explicitly out of this
@@ -512,7 +521,7 @@ another by hand. Entry point in `InstanceActions.tsx`, gated on the same
 `changeStateGate` as the standalone Change-state button (the stricter of its two
 constituent verbs' floors).
 
-*Tests:* two new Playwright e2e smokes in `flow-surgery.spec.ts` (hermetic route-mocked,
+_Tests:_ two new Playwright e2e smokes in `flow-surgery.spec.ts` (hermetic route-mocked,
 extending the existing simulation-first-execute-never-fires harness): the diagram-click
 picker toggling both lists via `data-element-id` clicks (bpmn-js's own stable per-element
 attribute — the text label itself is intercepted by an invisible hit-rect and isn't a
@@ -523,14 +532,15 @@ green, no regressions in the shared `DiagramCanvas`/`InstanceActions` components
 features also exercise.
 
 ## v1.x — fast follows (each independently demoable)
+
 1. Error-class **bulk-retry-the-group** from the triage landing. **Landed 2026-07-07**:
    `POST /api/bulk/error-class` (SPEC §7, ARCH §4) — coordinates-only body, server-side
    member re-resolution through the capped signature scan into the unchanged M5 machinery;
    card button per engine × defKey:vN (greyed-never-hidden), tier-3 modal (PROD token =
    definition key — a typed count would attest a stale number), operations-drawer
    auto-focus handoff (context lift shared with the bulk bar), `['triage']` invalidation
-   on job settle. R-SEM-13 annotation demotion waits for group *annotations* (R-BAU-03,
-   still open) — NOT R-BAU-01's *acknowledge* verb (built 2026-07-11, issue #97's own text
+   on job settle. R-SEM-13 annotation demotion waits for group _annotations_ (R-BAU-03,
+   still open) — NOT R-BAU-01's _acknowledge_ verb (built 2026-07-11, issue #97's own text
    originally conflated the two the same way this line did).
 2. **Select-all-matching-filter bulk + SSE progress. Landed 2026-07-07**:
    `POST /api/bulk/filter` (SPEC §7, ARCH §4) — criteria-only body (binding server-side
@@ -549,8 +559,8 @@ features also exercise.
 3. **Named saved views (localStorage) + recent searches. Landed 2026-07-07** (pure
    frontend): a view = a named URL search string replayed through the M2b codec — no new
    state path (`frontend/src/views/`). Four curated system views on the Stage 0 landing
-   (SPEC §4; R-SEM-05 honest predicates — *Suspended > 24h (by start time)* uses
-   `startedBefore`, *Failed in the last hour* uses `failedAfter`; relative windows
+   (SPEC §4; R-SEM-05 honest predicates — _Suspended > 24h (by start time)_ uses
+   `startedBefore`, _Failed in the last hour_ uses `failedAfter`; relative windows
    materialize minute-floored at render), user-named views (save affordance in the Stage 1
    rail, same-name replace, delete on the landing), last-10 recent searches recorded only
    on successful execution with a generated criteria label. Stage 1 view strip highlights
@@ -563,8 +573,8 @@ features also exercise.
    hierarchy caps (depth 10, breadth 50/node, 500-node budget) with a `calledProcessInstanceId`
    cycle guard (R-TEST-07 — a real engine cannot cycle, so the guard is rung-1 tested). Each
    unfinished/failing node carries a joined live job state (`FAILED` = dead-letter, `RETRYING`
-   = failing job with retries left); the dead-lettered **async** node is *synthesized from the
-   live job lanes* because its `ACT_HI_ACTINST` row is rolled back with the failed transaction
+   = failing job with retries left); the dead-lettered **async** node is _synthesized from the
+   live job lanes_ because its `ACT_HI_ACTINST` row is rolled back with the failed transaction
    (phantom-node union — annotating historic rows alone would be a guaranteed false negative).
    A single `isCapped` flag marks a node whose sub-lane was truncated by any cap (breadth,
    depth, or node budget). **Job-lane trend sparklines are descoped to v2** (see below) — they
@@ -572,7 +582,7 @@ features also exercise.
 5. **Sibling diff** (SPEC §5.2). **Backend landed 2026-07-07**: two read-only endpoints under
    the Stage-2 composite path, VIEWER floor, **historic queries only** (never a runtime table —
    completed siblings live only in history). `GET …/{id}/nearest-sibling` resolves the smart
-   default — the most recently COMPLETED instance of the *same* `processDefinitionId`
+   default — the most recently COMPLETED instance of the _same_ `processDefinitionId`
    (`finished:true` + `sort=endTime desc`; "successful" = reached an end event, not
    dead-lettered), returning `found:false` (not an error) when a fresh version has no completed
    run. `GET …/{id}/diff/{siblingId}` composes a three-way `SiblingDiffResponse`: variable
@@ -594,7 +604,7 @@ features also exercise.
 6. Task reassign/return-to-team; "show as cURL" on every action modal. **— landed (v1.x #6).**
    Backend: `reassign-task` / `unassign-task` verbs (tier 1 / OPERATOR) through the existing
    action dispatcher (audit + RBAC + guard rails reused, not re-implemented); `PUT
-   /runtime/tasks/{taskId}` with `{"assignee":…|null}`; active-task gate via the server-fresh
+/runtime/tasks/{taskId}` with `{"assignee":…|null}`; active-task gate via the server-fresh
    task read. cURL is SERVER-computed (`POST …/actions/{verb}/curl`, placeholder credential,
    BFF endpoint) and rendered verbatim — NOT a client-side generator (that would break the
    search-cURL invariant and risk a live token in the DOM). Frontend: Tasks-tab row actions,
@@ -615,11 +625,12 @@ features also exercise.
    (refuse) on the real matrix. New seed process `demo-external-worker`. **v1.x release train
    complete.**
 
-### CMMN scope visibility — Phase 0 *(shipped 2026-07-07, R-SEM-20)*
+### CMMN scope visibility — Phase 0 _(shipped 2026-07-07, R-SEM-20)_
+
 Standalone first slice of a possible multi-engine **Case Inspector**; ships on its own and
 changes **no existing count's value**. A co-deployed CMMN engine shares flowable-rest's job
 tables, so its failing jobs land in the same dead-letter lane; the BPMN join already drops
-them (null `processInstanceId`), but they were dropped *silently*. Phase 0 **counts** them
+them (null `processInstanceId`), but they were dropped _silently_. Phase 0 **counts** them
 per-engine as `outOfScopeDeadletters` (gated on the `scopeType` capability, ~6.8+; `null` —
 unknown, never a lying zero — below that), so the health strip's raw dead-letter lane
 reconciles with FAILED instead of hiding untriaged server-side incidents. Backend fold in
@@ -630,6 +641,7 @@ Full design + wire-shape provenance + forward plan: **`docs/CMMN-SCOPE-PHASE-0.m
 count to a "≥N" lower bound under a truncated DLQ scan — see `CMMN-SCOPE-PHASE-0.md` §8.1.
 
 ## v2 — demand-driven
+
 - **Remediation playbooks** (SPEC §5.1 — the headline): distill an exemplar's audit rows
   into a named, literal-values-only verb sequence bound to an error-class signature; replay
   through the bulk-job machinery with per-step precondition rechecks and per-item-per-step
@@ -643,7 +655,7 @@ count to a "≥N" lower bound under a truncated DLQ scan — see `CMMN-SCOPE-PHA
   no Flyway collision — CRUD owns V7, migration adds no table).
 - **Job-lane trend sparklines** on the Stage-0 landing (per-engine dead-letter / timer /
   executable / suspended counts over time) — descoped here from v1.x #4 because v1 exposes
-  only *live* job-lane counts; a trend needs the **R-BAU-08** snapshot/time-series store
+  only _live_ job-lane counts; a trend needs the **R-BAU-08** snapshot/time-series store
   (ranked with maintenance snapshots + per-definition volume trends).
 - Definition version comparison + per-version instance counts (the migration on-ramp).
 - **CMMN Case Inspector — Phases 1-3** (Phase 0 counting already shipped in v1, above).
@@ -692,23 +704,23 @@ count to a "≥N" lower bound under a truncated DLQ scan — see `CMMN-SCOPE-PHA
       that shipped in the first slice: the cmmn-api leg already spends the whole `dlq-scan-cap` on
       CMMN rows, so it strictly dominates the diluted process-api orphan window — the merge yields
       no rows in the normal case, and its "degraded — Unknown case" fallback can't fire honestly
-      (a null-pid process-api orphan is only a *candidate* CMMN job; confirming it needs a by-id
+      (a null-pid process-api orphan is only a _candidate_ CMMN job; confirming it needs a by-id
       hydration that, on success, returns FULL context, not a degraded row). See §7.
-  **Phase 2 — LANDED 2026-07-08 (full-stack).** Polymorphic Stage-2 CMMN detail at
-  `/case/{engineId}/{caseInstanceId}` — the read-only sibling of `/inspect`: a `cmmn-js` case
-  diagram (with an honest no-layout state for a DI-less definition) + a plan-item state-machine
-  timeline. Backend `CaseDetailService`/`CaseDetailController` (three `GET /api/cases/…` endpoints,
-  VIEWER floor, gated 6.8+ via a shared `CmmnCapabilities.requireScopeType`); FAILED/RETRYING
-  joined by `planItemInstanceId` (NOT the job's `elementId`, which is the plan-item DEFINITION id —
-  the load-bearing wire trap); the plan-item timeline is **runtime-only** on 6.8 (no historic
-  plan-item REST API — an ended case degrades honestly). The watermark guard was generalized to
-  `/(bjs|cmmn)-powered-by/i` **first** (cmmn-js 0.20 actually emits the same `bjs-powered-by`
-  class; the generalization is forward defense). Frontend: `CasePage` + lazy `cmmn-js` chunk +
-  `CaseDiagramCanvas` + a pure `planItemModel` timeline; the Phase-1 drawer's case ids became
-  links. New DI-bearing seed `docker/processes/demo-case-detail.cmmn.xml`. Tests:
-  `CaseDetailServiceTest` (rung-1, incl. the Q7 join trap) + `CaseDetailIT` (rung-4 live 6.8) +
-  `planItemModel.test.ts` + `e2e/case-detail.spec.ts` (incl. a real in-browser cmmn-js render).
-  Live-verified vs real 6.8. Full design + wire provenance: **`docs/CMMN-CASE-DETAIL-PHASE-2.md`**.
+      **Phase 2 — LANDED 2026-07-08 (full-stack).** Polymorphic Stage-2 CMMN detail at
+      `/case/{engineId}/{caseInstanceId}` — the read-only sibling of `/inspect`: a `cmmn-js` case
+      diagram (with an honest no-layout state for a DI-less definition) + a plan-item state-machine
+      timeline. Backend `CaseDetailService`/`CaseDetailController` (three `GET /api/cases/…` endpoints,
+      VIEWER floor, gated 6.8+ via a shared `CmmnCapabilities.requireScopeType`); FAILED/RETRYING
+      joined by `planItemInstanceId` (NOT the job's `elementId`, which is the plan-item DEFINITION id —
+      the load-bearing wire trap); the plan-item timeline is **runtime-only** on 6.8 (no historic
+      plan-item REST API — an ended case degrades honestly). The watermark guard was generalized to
+      `/(bjs|cmmn)-powered-by/i` **first** (cmmn-js 0.20 actually emits the same `bjs-powered-by`
+      class; the generalization is forward defense). Frontend: `CasePage` + lazy `cmmn-js` chunk +
+      `CaseDiagramCanvas` + a pure `planItemModel` timeline; the Phase-1 drawer's case ids became
+      links. New DI-bearing seed `docker/processes/demo-case-detail.cmmn.xml`. Tests:
+      `CaseDetailServiceTest` (rung-1, incl. the Q7 join trap) + `CaseDetailIT` (rung-4 live 6.8) +
+      `planItemModel.test.ts` + `e2e/case-detail.spec.ts` (incl. a real in-browser cmmn-js render).
+      Live-verified vs real 6.8. Full design + wire provenance: **`docs/CMMN-CASE-DETAIL-PHASE-2.md`**.
   - **Phase 3 — LANDED 2026-07-08 (full-stack): CMMN dead-letter retry & delete.** The read-only
     case detail becomes actionable for the two dead-letter verbs a co-deployed CMMN case needs —
     **Retry job** (tier 0 / RESPONDER, inline confirm) and **Delete dead-letter job** (tier 3 /
@@ -730,14 +742,16 @@ count to a "≥N" lower bound under a truncated DLQ scan — see `CMMN-SCOPE-PHA
 - **OIDC hardening + access-lifecycle + group→scope CRUD + break-glass → the v2 IdP & Security
   block below (design locked).** Shared server-side saved views → now its own design block (below).
 
-### v2 — Shared (team-wide) saved views *(design locked 2026-07-09, ★ S1–S6 LANDED 2026-07-09 — see [SHARED-VIEWS.md](SHARED-VIEWS.md))*
+### v2 — Shared (team-wide) saved views _(design locked 2026-07-09, ★ S1–S6 LANDED 2026-07-09 — see [SHARED-VIEWS.md](SHARED-VIEWS.md))_
+
 An operator/admin publishes curated views the whole team (or a tenant/engine scope) inherits —
 "stuck payments in prod", "failed in the last hour" — so new responders get the team's canonical
-entry points instead of rebuilding them, and during an incident everyone *working the engine*
+entry points instead of rebuilding them, and during an incident everyone _working the engine_
 drills the same filter. Codifies runbook starting points as first-class objects. **Full design +
 6-seat panel + walls + RE-LOCK decisions + slice plan: `docs/SHARED-VIEWS.md`.** Adds R-SEM-24
 (team-view model + scoped read-visibility + replay-time resolvability honesty) and R-SAFE-16
 (publish/moderation governance). Promotes the folded v2 "shared server-side saved views" line.
+
 - **Demand-gated:** build only if operators repeatedly re-create each other's filters — instrument
   **duplicate canonical `search` strings across distinct owners**. Empty signal ⇒ don't build;
   private views stay the whole feature. NOT spike-gated — a shared view executes nothing against
@@ -758,8 +772,8 @@ drills the same filter. Codifies runbook starting points as first-class objects.
   caller-invariant today — if per-caller scoping ever lands the picker MUST badge the limitation).
 - **Dangling-canon honesty:** a shared view over a soft-tombstoned engine / redeployed definition /
   6.3 param-drop must NOT read as a clean all-clear — a **distinct "resolves to no live engine" state**
-  + per-engine unresolvable markers + **greyed-with-reason** canon (R-SEM-17 id→name survives), riding
-  the existing lower-bound envelope; no background poller.
+  - per-engine unresolvable markers + **greyed-with-reason** canon (R-SEM-17 id→name survives), riding
+    the existing lower-bound envelope; no background poller.
 - **Governance:** lifecycle audited fail-closed via `recordConfigEvent` (R-AUD-10, same `@Transactional`);
   moderation default = **unpublish** (reversible); reason≥10 + security-alert on another's moderation
   (not four-eyes). Publish is a deliberate second act off the hot save path; layout capture (R-UXQ-09)
@@ -770,23 +784,25 @@ drills the same filter. Codifies runbook starting points as first-class objects.
   moderate + audited fail-closed lifecycle → **S4** replay-time resolvability honesty → **S5** API
   surface + `gen:api` → **S6** frontend. No S0 spike; no rung-4-engine slice.
 
-### v2 — K-way-merge deep paging *(★ FEATURE COMPLETE 2026-07-09 — S0–S5 all merged, each CI-green; capability-gated 6.8+)*
+### v2 — K-way-merge deep paging _(★ FEATURE COMPLETE 2026-07-09 — S0–S5 all merged, each CI-green; capability-gated 6.8+)_
+
 Cursor-based browsing through the globally-sorted merged stream across all engines, without
 pulling everything into memory and without breaking sort correctness or the per-engine
 do-no-harm bounds. **Full design + 6-seat panel + wire-wall + RE-LOCK decisions + spike plan:
 `docs/KWAY-PAGING.md`.** Adds R-SEM-22 (cursor contract), R-SEM-23 (deterministic total order —
 a standalone MUST that ships first regardless), R-NFR-08 (deep-paging envelope). Discharges
 ARCH §2.4's parked "v2 can add k-way-merge cursors…" sentence.
+
 - **Demand-gated** (ARCH §2.4): build only if operators repeatedly hit `perEngine.total >
-  fetched` on a *time-sorted* search and do not narrow. The "narrow your filter" doctrine is the
+fetched` on a _time-sorted_ search and do not narrow. The "narrow your filter" doctrine is the
   default; deep paging serves the one honest case (a live wide incident whose discriminator is
   still being discovered).
-- **Reshaped by the panel:** a *uniform* offset cursor is unsound — the INVERTED/`failureTime`
+- **Reshaped by the panel:** a _uniform_ offset cursor is unsound — the INVERTED/`failureTime`
   plan scans the DLQ unsorted and sorts on a BFF-derived key, so it has no engine-side resume
   position. The cursor is a **tagged union by plan**, **MIXED/`startTime desc` first**; INVERTED
   deep paging is initially gated off (the overflow banner offers a pre-filled time-bound filter
   seam instead).
-- **Do-no-harm (R-NFR-08):** an inbound per-engine offset bound-check + `size` clamp *before*
+- **Do-no-harm (R-NFR-08):** an inbound per-engine offset bound-check + `size` clamp _before_
   fan-out (the real DoS ceiling — `filterHash` binding gives no integrity vs a crafted cursor);
   a dedicated `CallPriority.DEEP_PAGE` bulkhead lane so deep scroll can't starve interactive
   search; a per-engine, config-lowerable depth cap; a cursor TTL; deep pages excluded from the
@@ -812,7 +828,8 @@ ARCH §2.4's parked "v2 can add k-way-merge cursors…" sentence.
   config-lowered `deep-paging-max-depth:6`: multi-page scroll no-dup/skip cross-version, depthCapped,
   crafted-cursor 400, drop-engine honesty). Each CI-green + independently merged.
 
-### v2 — Registry CRUD: runtime engine lifecycle *(design locked 2026-07-09, ★ S1–S5 LANDED 2026-07-09 — S4b four-eyes + connect-time IP-pinning deferred, issue #91)*
+### v2 — Registry CRUD: runtime engine lifecycle _(design locked 2026-07-09, ★ S1–S5 LANDED 2026-07-09 — S4b four-eyes + connect-time IP-pinning deferred, issue #91)_
+
 The registry moves YAML→DB so ops can onboard/retire/tune engines without a deploy — the
 completion of the "BFF is now stateful" arc. **Full design + panel + threat model +
 API/DDL/state-machine: `docs/REGISTRY-CRUD.md`.** Discharges R-OPS-13
@@ -828,16 +845,17 @@ check-then-connect; trust is earned by a **read-only** probe (DRAFT→PROBED→A
 and delete is a soft tombstone; hot reload evicts the per-id client caches (no restart).
 
 **Slices — dangerous plumbing lands and is tested behind nothing before any UI reaches it:**
+
 - **S1 — SSRF validator (pure, no wiring). ✅ LANDED 2026-07-09.** `RegistryUrlValidator`: **canonicalize first**
   (trailing-dot, punycode, `..`-traversal, implicit-port) → scheme → egress-allowlist →
   **IPv6-complete** metadata/private/loopback/ULA denylist across all resolved IPs →
-  resolve-then-pin (pin the validated IP; connect-time re-checks the *pinned* IP, never
+  resolve-then-pin (pin the validated IP; connect-time re-checks the _pinned_ IP, never
   re-resolves) → credential-in-URL + redirect rejection. The `/external-job-api` + `/cmmn-api`
   **sibling URLs inherit the same pin + policy**. Ships with the **hostile-URL corpus** as a
   CI-gating rung-1 suite (every metadata-IP encoding incl. `::ffff:`, `..`/trailing-dot host, a
   rebinding stub, scheme/credential/redirect rejects). A quiet allow = Sev1 (R-TEST-03).
   Done-when: corpus green; validator rejects every hostile case, accepts the demo engines.
-  *Shipped:* `RegistryUrlValidator` + `RegistryAddresses`/`Cidr`/`RegistryEgressPolicy` +
+  _Shipped:_ `RegistryUrlValidator` + `RegistryAddresses`/`Cidr`/`RegistryEgressPolicy` +
   `HostResolver` seam; the denylist decodes glibc numeric v4 (decimal/hex/octal/short-form)
   AND recurses IPv6 v4-embeddings (v4-mapped `::ffff:`, v4-compatible, NAT64 `64:ff9b::/96`,
   6to4 `2002::/16`) so the metadata IP can't ride a transition prefix (Gemini S1 review).
@@ -849,15 +867,15 @@ and delete is a soft tombstone; hot reload evicts the per-id client caches (no r
   import on empty table (audited `registry-seed`); `inspector.registry.source: db|config`
   switch. `NoDbTestSupport` gains the new repo mock. Done-when: empty-table seed IT + non-empty
   WARN + config-pin 403 all green; `ddl-auto=validate` holds.
-  *Shipped:* `EngineRegistryRow`/`EngineRegistryRepository`/`EngineRegistryMapper` (row↔`EngineConfig`
+  _Shipped:_ `EngineRegistryRow`/`EngineRegistryRepository`/`EngineRegistryMapper` (row↔`EngineConfig`
   seam) + `@Transactional EngineRegistryStore` (fail-closed `registry-seed`, whole import in ONE tx)
-  + `RegistryBootstrap` (`ApplicationRunner`: config-pin skip / seed-on-empty / per-engine drift log,
-  fail-closed = boot with empty registry on audit failure, never crashes) + `RegistryDrift` (pure) +
-  `RegistryProperties` (`inspector.registry` — `source` + `egress-allowlist`/`egress-ports`). NB: S2
-  does NOT yet point `EngineRegistry` at the store (that + live reload is S3); the config-pin/CRUD-403
-  is enforced at the endpoint in S4, so here `source: config` simply makes the boot seeder inert. Test
-  profiles are `source: config` (seeder inert, existing suites unperturbed); `EngineRegistryStoreIT`
-  (own `it-registry` `source: db` profile, Testcontainers) proves seed→rows+audit + `ddl-auto=validate`.
+  - `RegistryBootstrap` (`ApplicationRunner`: config-pin skip / seed-on-empty / per-engine drift log,
+    fail-closed = boot with empty registry on audit failure, never crashes) + `RegistryDrift` (pure) +
+    `RegistryProperties` (`inspector.registry` — `source` + `egress-allowlist`/`egress-ports`). NB: S2
+    does NOT yet point `EngineRegistry` at the store (that + live reload is S3); the config-pin/CRUD-403
+    is enforced at the endpoint in S4, so here `source: config` simply makes the boot seeder inert. Test
+    profiles are `source: config` (seeder inert, existing suites unperturbed); `EngineRegistryStoreIT`
+    (own `it-registry` `source: db` profile, Testcontainers) proves seed→rows+audit + `ddl-auto=validate`.
 - **S3 — reload seam (strictly post-commit). ✅ LANDED 2026-07-09.** `EngineRegistry` moves the `enabled` filter
   from ctor to `all()` and gains `refresh(id)`; `FlowableEngineClient.evict(id)` drops the
   cached read/write RestClients (+ **removes**, not resets, the R4j named instances on
@@ -866,7 +884,7 @@ and delete is a soft tombstone; hot reload evicts the per-id client caches (no r
   rolled-back row. Done-when: rung-4 IT edits an ACTIVE engine's base-URL over REST and the next
   call hits the new host (Awaitility on the re-probe — never `Thread.sleep`); a forced
   audit-close failure leaves neither the row nor the in-memory map mutated.
-  *Shipped:* `EngineRegistry` holds enabled+disabled rows in a `volatile` map, `all()`/`require()`
+  _Shipped:_ `EngineRegistry` holds enabled+disabled rows in a `volatile` map, `all()`/`require()`
   stay **enabled-only** (unchanged contract) + new `resolve(id):Optional` for disabled id→name;
   `reload(Collection)` atomically swaps the map preserving health. `FlowableEngineClient.evict(id)`
   drops both RestClients + **removes** the R4j breaker/bulkhead per `CallPriority` lane.
@@ -888,31 +906,31 @@ and delete is a soft tombstone; hot reload evicts the per-id client caches (no r
   four-eyes + typed-token path (reuses R-SAFE-08); break-glass exclusion. `/api/me` gains
   `registryAdmin`. Done-when: RBAC matrix (door + service, per-engine-ADMIN refused,
   break-glass refused) + audit-integrity (fail-closed, redaction) green.
-  *Shipped:* `RbacAuthorizer.canAdministerRegistry` (orthogonal fleet grant; OIDC group in prod,
+  _Shipped:_ `RbacAuthorizer.canAdministerRegistry` (orthogonal fleet grant; OIDC group in prod,
   `ROLE_REGISTRY_ADMIN` authority in dev — a `registry-admin` dev user; per-engine ADMIN AND the
   break-glass ADMIN-global shape refused) checked at the `@PreAuthorize` DOOR **and** re-checked in
   `EngineRegistryStore` (SERVICE). `AdminEnginesController` GET/POST/PUT/DELETE + probe/enable/disable/
   purge/drift; store `add`(→DRAFT read-only)/`edit`/`recordProbe`/`enable`/`disable`/`remove`(tombstone,
   requires disabled)/`purge`(requires removed) — each SSRF-validated (add/edit, via `RegistryUrlValidator`
-  + `RegistryProperties.egressPolicy()`, rejected BEFORE any audit/write), fail-closed audited
-  `registry-*` with before/after (secret refs redacted), AFTER_COMMIT reload. Typed token (the engine
-  id) on prod enable-read-write + remove + purge. `source: config` ⇒ writes 409. `/api/me.registryAdmin`.
-  Tests: `EngineRegistryStoreWriteTest` (rung-1: RBAC service re-check, SSRF-reject-before-write,
-  lifecycle guards), `AdminEnginesApiSpringTest` (rung-3: door matrix registry-admin/admin/viewer/
-  unauth, SSRF 400, add 201, `/api/me` hint).
-  The PROBE endpoint (a live dial surface) RE-VALIDATES the base-URL before dialling (Gemini S4
-  review) — it re-resolves, so a URL validated-at-add that has since rebound to an internal address
-  is refused before any connection.
-  **DEFERRED to S4b** (below): (1) FOUR-EYES dual-control (`PENDING_APPROVAL`, approver≠proposer) —
-  no such infra existed yet; typed-token was the interim prod gate. (2) Socket-level connect-time
-  IP-PINNING of the pinned IP on the LIVE `HttpClient` connect for the health-loop + actual-operation
-  dials (`isPinAllowed`) — validate-at-write + validate-at-probe were the guards shipped here.
+  - `RegistryProperties.egressPolicy()`, rejected BEFORE any audit/write), fail-closed audited
+    `registry-*` with before/after (secret refs redacted), AFTER_COMMIT reload. Typed token (the engine
+    id) on prod enable-read-write + remove + purge. `source: config` ⇒ writes 409. `/api/me.registryAdmin`.
+    Tests: `EngineRegistryStoreWriteTest` (rung-1: RBAC service re-check, SSRF-reject-before-write,
+    lifecycle guards), `AdminEnginesApiSpringTest` (rung-3: door matrix registry-admin/admin/viewer/
+    unauth, SSRF 400, add 201, `/api/me` hint).
+    The PROBE endpoint (a live dial surface) RE-VALIDATES the base-URL before dialling (Gemini S4
+    review) — it re-resolves, so a URL validated-at-add that has since rebound to an internal address
+    is refused before any connection.
+    **DEFERRED to S4b** (below): (1) FOUR-EYES dual-control (`PENDING_APPROVAL`, approver≠proposer) —
+    no such infra existed yet; typed-token was the interim prod gate. (2) Socket-level connect-time
+    IP-PINNING of the pinned IP on the LIVE `HttpClient` connect for the health-loop + actual-operation
+    dials (`isPinAllowed`) — validate-at-write + validate-at-probe were the guards shipped here.
 - **S5 — admin UI. ✅ LANDED 2026-07-09.** Route `/admin/engines` (greyed-never-hidden), list with
   lifecycle column + env band + secret-ref presence + "Test connection", add/edit form with live
   rule-named SSRF validation, prod enable-read-write typed-token/four-eyes UI, R-UXQ-04
   zero-states. Types via `npm run gen:api` (never hand-written). Done-when: Playwright smoke
   (add→probe→enable→edit→disable→remove) + axe green.
-  *Shipped:* `AdminEnginesPage` (list + env band + lifecycle col + secret-ref PRESENCE + drift
+  _Shipped:_ `AdminEnginesPage` (list + env band + lifecycle col + secret-ref PRESENCE + drift
   banner + zero-state), `EngineFormModal` (add/edit, server SSRF-400 inline), `LifecycleModal`
   (reason≥10 + read-write checkbox + typed-token on prod-enable-rw/remove/purge). Pure logic in
   `lifecycle.ts` (`rowActions`, `needsTypedToken`, `toEnvironment`), unit-tested — no component-render
@@ -921,7 +939,7 @@ and delete is a soft tombstone; hot reload evicts the per-id client caches (no r
   S4 deferrals in one slice: a second independent `REGISTRY_ADMIN` must approve a prod
   enable-read-write / a remove / a purge, and every ordinary dial (health loop, every operation)
   now connects to the resolve-then-pinned IP rather than re-resolving DNS on every call.
-  *Shipped — four-eyes:* `V16__registry_write_proposal.sql` (mirrors V14 `access_grant_proposal`:
+  _Shipped — four-eyes:_ `V16__registry_write_proposal.sql` (mirrors V14 `access_grant_proposal`:
   proposer, proposer's REGISTRY_ADMIN groups, `engine_id`, `kind` ∈ {ENABLE_READ_WRITE, REMOVE,
   PURGE}, summary, reason, status, 24h TTL). `RegistryChange` (kind + engineId, no serialized
   payload needed — the three kinds carry no extra parameters) + `RegistryFourEyesPolicy` (pure:
@@ -943,7 +961,7 @@ and delete is a soft tombstone; hot reload evicts the per-id client caches (no r
   mapping writes, IDP-SECURITY.md §5) — registry CRUD keeps its own orthogonal REGISTRY_ADMIN +
   typed-token + (now) four-eyes rail instead; noted as a re-visit if the two dangerous-set
   definitions should ever merge.
-  *Shipped — connect-time IP-pinning:* rather than persisting a pinned IP to the DB (schema churn,
+  _Shipped — connect-time IP-pinning:_ rather than persisting a pinned IP to the DB (schema churn,
   `EngineConfig` constructor churn) or wiring `RegistryUrlValidator` into `FlowableEngineClient`
   directly (would require re-plumbing every dial site), the fix hooks JDK 18's JEP 418
   `java.net.spi.InetAddressResolverProvider` SPI: `PinnedAddressResolverProvider` (registered via
@@ -987,20 +1005,20 @@ and delete is a soft tombstone; hot reload evicts the per-id client caches (no r
   time even pre-S4b; pinning only moves WHEN that shared answer gets fixed (at the last validate,
   not at each connect) — and every IP a host is ever pinned to has already passed the identical
   SSRF/egress check, so this is a correctness quirk, not a security bypass. `PinnedAddressResolverProvider
-  .register` now logs loudly on an IP change so an operator notices; not otherwise fixed (would mean
+.register` now logs loudly on an IP change so an operator notices; not otherwise fixed (would mean
   abandoning per-hostname JEP 418 resolution or accepting engine-scoped non-determinism instead).
   Tests: `RegistryFourEyesPolicyTest` (pure matrix), `EngineRegistryStoreWriteTest` (+propose/approve/
   self-approve-refused/no-eligible-approver/expired-proposal cases), `PinnedAddressResolverProviderTest`
-  + `RegistryPinRegistryTest` (real-resolver end-to-end), `RegistryBootstrapTest`/
-  `RegistryReloadListenerTest` (updated for the resync call). Frontend: `EngineWriteOutcome`/
-  `EngineProposalView` types (regenerated via `npm run gen:api` — note `EngineProposalView` is
-  deliberately NOT named `ProposalView` like the IdP one; springdoc names OpenAPI schemas by simple
-  class name, and two same-named nested records collapsed into one wrong-shaped schema when first
-  tried), `adminEnginesView.ts#engineOutcomeNotice` (mirrors `accessView.ts`), a proposal inbox
-  section + outcome banner in `AdminEnginesPage.tsx` (mirrors `AdminAccessPage.tsx`).
+  - `RegistryPinRegistryTest` (real-resolver end-to-end), `RegistryBootstrapTest`/
+    `RegistryReloadListenerTest` (updated for the resync call). Frontend: `EngineWriteOutcome`/
+    `EngineProposalView` types (regenerated via `npm run gen:api` — note `EngineProposalView` is
+    deliberately NOT named `ProposalView` like the IdP one; springdoc names OpenAPI schemas by simple
+    class name, and two same-named nested records collapsed into one wrong-shaped schema when first
+    tried), `adminEnginesView.ts#engineOutcomeNotice` (mirrors `accessView.ts`), a proposal inbox
+    section + outcome banner in `AdminEnginesPage.tsx` (mirrors `AdminAccessPage.tsx`).
 
+### v2 — IdP & Security: identity wiring, access lifecycle & the who-can-do-what store _(design locked 2026-07-09, ★ S1–S6 core LANDED 2026-07-09/10; Playwright/axe grant-flow gate LANDED 2026-07-12 (#85); IdP-unreachable break-glass door LANDED 2026-07-14 (#94) — backend-only, see below)_
 
-### v2 — IdP & Security: identity wiring, access lifecycle & the who-can-do-what store *(design locked 2026-07-09, ★ S1–S6 core LANDED 2026-07-09/10; Playwright/axe grant-flow gate LANDED 2026-07-12 (#85); IdP-unreachable break-glass door LANDED 2026-07-14 (#94) — backend-only, see below)*
 Wires OIDC for real, hardens the session/transport posture, moves the group→scope mapping
 file→DB with a CRUD admin surface, and builds break-glass. **Full design + 5-seat panel +
 adversarial pass + threat model + API/DDL: `docs/IDP-SECURITY.md`.** Concretizes R-GOV-06
@@ -1021,6 +1039,7 @@ is down.
 
 **Slices — the identity foundation, fail-closed gate, and escalation rails land and are tested
 behind nothing before any UI reaches them:**
+
 - **S1 — OIDC wiring + ADR-003. ✅ LANDED 2026-07-09.** Real `oauth2-client` registration
   (`application-oidc.yml`: issuer-uri pinned to one tenant, client-id + secret-**ref**, PKCE via a
   customized `DefaultOAuth2AuthorizationRequestResolver`, `openid profile <groups>` scopes, exact
@@ -1029,13 +1048,13 @@ behind nothing before any UI reaches them:**
   claim → legible login failure; Entra groups-overage `_claim_names`/`_claim_sources` → detect +
   resolve-via-`OverageGroupResolver`-if-deployed ELSE legible fail; a silent zero = Sev1) wired into
   both the login mapper (strict) and the check-time `RbacAuthorizer` (issuer-pinned, quiet). Dev
-  chain untouched. *Tests:* rung-1 `OidcGroupResolverTest` (all trust branches, CI gate) + a
+  chain untouched. _Tests:_ rung-1 `OidcGroupResolverTest` (all trust branches, CI gate) + a
   **real-Keycloak `OidcKeycloakIT`** (Testcontainers — discovery/JWKS/PKCE against a live issuer +
   a real array `groups` claim through the resolver + issuer-pinning rejects a foreign tenant),
-  empirically proven locally. *CI note:* like every other DB/container IT in this repo the Keycloak
+  empirically proven locally. _CI note:_ like every other DB/container IT in this repo the Keycloak
   IT is **local-only** (not in `ci.yml`'s itClass matrix; CI gates on the rung-1 resolver matrix) —
   the zero-flake doctrine keeps container ITs off the per-PR path; a merge-blocking Keycloak leg +
-  Graph overage *resolution* (vs detection) are tracked follow-ups. Graph overage resolution and the
+  Graph overage _resolution_ (vs detection) are tracked follow-ups. Graph overage resolution and the
   `max_age`/refresh re-auth semantics land in **S5**.
 - **S2 — session + header hardening + fail-closed gate. ✅ LANDED 2026-07-09.** Session caps —
   idle **12h** (`server.servlet.session.timeout`) + absolute **24h** (`AbsoluteSessionTimeoutFilter`,
@@ -1048,11 +1067,11 @@ behind nothing before any UI reaches them:**
   **HSTS opt-in, off by default** (never double-emit vs the proxy). **Fail-closed gate:**
   `RbacAuthorizer.canExecute` → `.orElse(false)`, with a `VerbExistenceInterceptor` that 404s an
   unknown verb **before** `@PreAuthorize` so typo→404 survives while a known-but-forbidden verb is a
-  clean 403 and the authorization decision never defaults to allow. *Tests:*
+  clean 403 and the authorization decision never defaults to allow. _Tests:_
   `AbsoluteSessionTimeoutFilterTest` (fake-Clock cap, no sleep), `HttpHardeningSpringTest`
   (headers present + HSTS absent + CSP report-only; unknown verb → 404; forbidden verb → 403;
   **JSESSIONID stable across consecutive Basic XHRs**), `RbacGuardMatrixTest` updated to
-  fail-closed. Full unit ladder green (607). CSP *enforcement* tuning against the live bundle stays
+  fail-closed. Full unit ladder green (607). CSP _enforcement_ tuning against the live bundle stays
   report-only until observed (a Playwright/axe follow-up in S6); the SPA-serving nginx should mirror
   these headers (demo-deploy follow-up).
 - **S3 — mapping store (file→DB). ✅ LANDED 2026-07-09.** **Flyway `V13`** (`group_scope_grant` +
@@ -1064,14 +1083,14 @@ behind nothing before any UI reaches them:**
   store behind a ≤60s cache) + the boot file-seed import (`MappingSeeder`, audited `mapping-seed`,
   DB-authoritative once seeded) + the **env-bootstrap `ACCESS_ADMIN` apex overlay**
   (`inspector.security.mapping.access-admin-group` = the always-available floor, never a store row)
-  + the **≥1/≥2-`ACCESS_ADMIN` boot invariant** (`ApexInvariantChecker`, `@Profile("oidc")`: 0 apex
-  → refuse-to-boot loudly, 1 → boot with CRUD disabled, ≥2 → CRUD enabled). `RbacAuthorizer` +
-  `InspectorAuthoritiesMapper` now consume the seam (registry-admin resolution unified through
-  `fleetGrantsForGroups`, file-mode behavior identical). Profile-driven so the rung-3 suite keeps the
-  file source with **zero new `NoDbTestSupport` mocks** (the DB beans are `@Profile("db")`-only).
-  *Tests:* `FileMappingSourceTest` + `ApexInvariantCheckerTest` (rung-1, CI gate) + a real-Postgres
-  `MappingStoreDbIT` (seed + read + env-overlay + refresh, local-only). Full unit ladder green (621).
-  Drift-report + file-pin-403 land with the S4 CRUD surface that consumes them.
+  - the **≥1/≥2-`ACCESS_ADMIN` boot invariant** (`ApexInvariantChecker`, `@Profile("oidc")`: 0 apex
+    → refuse-to-boot loudly, 1 → boot with CRUD disabled, ≥2 → CRUD enabled). `RbacAuthorizer` +
+    `InspectorAuthoritiesMapper` now consume the seam (registry-admin resolution unified through
+    `fleetGrantsForGroups`, file-mode behavior identical). Profile-driven so the rung-3 suite keeps the
+    file source with **zero new `NoDbTestSupport` mocks** (the DB beans are `@Profile("db")`-only).
+    _Tests:_ `FileMappingSourceTest` + `ApexInvariantCheckerTest` (rung-1, CI gate) + a real-Postgres
+    `MappingStoreDbIT` (seed + read + env-overlay + refresh, local-only). Full unit ladder green (621).
+    Drift-report + file-pin-403 land with the S4 CRUD surface that consumes them.
 - **S4 — `ACCESS_ADMIN` + mapping CRUD API + governance. ✅ LANDED 2026-07-09.**
   `rbac.canAdministerAccess` (apex, orthogonal — never a ladder ADMIN / `REGISTRY_ADMIN` /
   break-glass; dev `access-admin` user) + `AdminAccessController` (`@PreAuthorize` door + service
@@ -1085,19 +1104,19 @@ behind nothing before any UI reaches them:**
   removal + CRUD-enabled-only-with-≥2; a **security-alert fire** on every `ACCESS_ADMIN` change
   (detective backstop, §9); the drift endpoint (no-file-apex hard-alert). Grants are value tuples so
   add/remove address them by tuple (edit = remove+add, client-composed — `PUT` deferred). Proposer &
-  approver re-auth binds to the **S5** challenge protocol. *Tests:* `FourEyesPolicyTest` (rung-1
+  approver re-auth binds to the **S5** challenge protocol. _Tests:_ `FourEyesPolicyTest` (rung-1
   escalation matrix, **CI gate**) + `AdminAccessRbacSpringTest` (rung-3: only `ACCESS_ADMIN` reaches
   it, ADMIN/`REGISTRY_ADMIN`/unauth refused, file-mode 409) + `AccessMappingAdminDbIT` (rung-4 real
   Postgres: apply / propose→approve / self-approve refused / ≥2-invariant, local-only). Unit ladder
   green (634); `schema.d.ts` regenerated for the new endpoints.
-- **S5 — dangerous-set re-auth protocol + break-glass.** *(S5a re-auth foundation ✅ LANDED
-  2026-07-09):* `ReauthAuthorizationRequestResolver` (PKCE always; on the `reauth` marker it injects
+- **S5 — dangerous-set re-auth protocol + break-glass.** _(S5a re-auth foundation ✅ LANDED
+  2026-07-09):_ `ReauthAuthorizationRequestResolver` (PKCE always; on the `reauth` marker it injects
   `max_age` = the freshness window + `prompt=login`, so a normal login carries no `max_age` — no
   per-login MFA storm — and the dangerous-set replay forces a fresh `auth_time`) wired into the oidc
   chain; the pure `SessionFreshness` bounded-window decision (absent `auth_time` fails closed);
   `inspector.security.oidc.freshness-window-s` (≤15 min). Tests: `SessionFreshnessTest` (rung-1) +
   `OidcKeycloakIT` (real IdP: normal login has no `max_age`; `?reauth=true` carries `max_age`+`prompt=login`).
-  *(S5b break-glass + hints ✅ LANDED 2026-07-09):* the sealed **break-glass** chain — a local ADMIN
+  _(S5b break-glass + hints ✅ LANDED 2026-07-09):_ the sealed **break-glass** chain — a local ADMIN
   account on a distinct `/break-glass` form login wired into the oidc chain ONLY when
   `INSPECTOR_BREAK_GLASS_PASSWORD` is set (works IdP-down; the oauth2 entry point is pinned
   explicitly so formLogin doesn't hijack it); ADMIN-global + a `ROLE_BREAK_GLASS` marker, **never**
@@ -1107,8 +1126,8 @@ behind nothing before any UI reaches them:**
   fail-closed exception; `AuditService` now flags EVERY sealed-session mutation `breakGlass:true`.
   `/api/me` gains `accessAdmin` + `breakGlass` hints (schema.d.ts regenerated). Tests:
   `OidcKeycloakIT` (real IdP + MockMvc: sealed login → ADMIN session, `breakGlass:true`,
-  `/api/admin/access` → 403). *(S5c inbound enforcement ✅ LANDED 2026-07-09 — the "`max_age`
-  recorded ≠ enforced" gap closed):* `DangerousActionReauthGate` reads the session principal's
+  `/api/admin/access` → 403). _(S5c inbound enforcement ✅ LANDED 2026-07-09 — the "`max_age`
+  recorded ≠ enforced" gap closed):_ `DangerousActionReauthGate` reads the session principal's
   `auth_time` and, on a **tier-3 verb**, refuses a stale (or absent-`auth_time`) OIDC session with a
   **401 + `reauth-required` marker** (`X-Reauth-Required` header + body `code`) — a pre-condition in
   `CorrectiveActionService.execute` placed BEFORE the reason/typed-token rails (challenge at verb
@@ -1120,8 +1139,8 @@ behind nothing before any UI reaches them:**
   so the SPA interstitials at modal open. Tests: `DangerousActionReauthGateTest` (rung-1: fresh/stale/
   absent-`auth_time`/dev/break-glass/window), `CorrectiveActionServiceTest` (tier-3 stale → challenge
   before token+audit; within-window → reaches token check; tier-0 never challenged),
-  `ActionExceptionHandlerTest` (401 + marker). *(S5d write-surface re-auth ✅ LANDED 2026-07-10 —
-  the dangerous set is now FULLY gated):* **bulk submit** — `reauth.enforce(auth)` at the single
+  `ActionExceptionHandlerTest` (401 + marker). _(S5d write-surface re-auth ✅ LANDED 2026-07-10 —
+  the dangerous set is now FULLY gated):_ **bulk submit** — `reauth.enforce(auth)` at the single
   private `BulkJobService#submit` convergence overload all three doors (selection / error-class /
   filter) funnel through, so the challenge fires ONCE at submit where the session is live, never per
   persisted item (a bulk job survives session expiry, R-SEM-10; bulk is dangerous regardless of verb
@@ -1144,12 +1163,12 @@ behind nothing before any UI reaches them:**
   token when configured), `OidcKeycloakIT#theBreakGlassDoorIsReachableByAPlainBrowserAloneNeverMockMvcsCsrfBypass`
   (a real GET→scrape-cookie-and-hidden-field→POST round-trip against live Keycloak — the FIRST
   break-glass test that doesn't use MockMvc's `csrf()` bypass).
-- **S6 — admin UI + access-review + `/api/me` hints.** *(access-review BACKEND ✅ LANDED
-  2026-07-09):* `GET /api/access-review` — the effective-grant export (the R-GOV-02 "who can do what"
+- **S6 — admin UI + access-review + `/api/me` hints.** _(access-review BACKEND ✅ LANDED
+  2026-07-09):_ `GET /api/access-review` — the effective-grant export (the R-GOV-02 "who can do what"
   release-gate artifact): full mapping expansion with a **grant-type column (ladder|fleet)** + source
   tag + the caller's own grants, `ACCESS_ADMIN`-gated + **audited read**, JSON/CSV/Markdown
   (RFC-4180-escaped CSV). `AccessReviewSpringTest` (rung-3: RBAC gate, formats, audit). The
-  `me.accessAdmin`/`breakGlass` hints landed in S5b. *(FRONTEND core ✅ LANDED 2026-07-09):*
+  `me.accessAdmin`/`breakGlass` hints landed in S5b. _(FRONTEND core ✅ LANDED 2026-07-09):_
   `/admin/access` route + `AdminAccessPage` — the effective mapping (env-banded `ladder-chip`s +
   **intrinsic `FleetChip`**: an in-chip glyph ◆ + a literal "FLEET" token + the kind, textual so it
   survives sort/filter + SR, never colour-alone — ⚠️ UX), an add/remove-grant form (Enter never
@@ -1159,7 +1178,7 @@ behind nothing before any UI reaches them:**
   download** (blob from `/api/access-review`). Shell nav: greyed-never-hidden **Access** link off
   `me.accessAdmin` + the permanent **red break-glass banner** off `me.breakGlass`. Pure helpers
   (`accessView.ts`) unit-tested (`accessView.test.ts`); lint/format/tsc/build/vitest(281) green.
-  *(FRONTEND re-auth interstitial + verb-intent pre-empt + resume ✅ LANDED 2026-07-10):*
+  _(FRONTEND re-auth interstitial + verb-intent pre-empt + resume ✅ LANDED 2026-07-10):_
   `src/auth/reauth.ts` (pure staleness decision off the `/api/me` `reauth` hint — `freshUntil`
   extends the `staleTime: Infinity` me-cache client-side; sessionStorage route checkpoint with
   10-min TTL + same-origin-path-only decode, open-redirect hygiene) + `ReauthNotice`/`useReauthStale`
@@ -1173,7 +1192,7 @@ behind nothing before any UI reaches them:**
   `reauth-required` 401s (a freshness challenge is never a sign-out → the SignIn overlay must not
   hijack it). Tests: `reauth.test.ts` + `problem.test.ts` (vitest, 296) + `e2e/reauth.spec.ts`
   (pre-empt / checkpoint+navigate / reactive challenge / resume; full suite 32 green).
-  *(warn-before-guillotine ✅ LANDED 2026-07-10, full-stack):* `/api/me` gains `sessionExpiresAt`
+  _(warn-before-guillotine ✅ LANDED 2026-07-10, full-stack):_ `/api/me` gains `sessionExpiresAt`
   — the session's `CREATED_AT` birth stamp + the effective absolute cap (the break-glass 4 h
   `SESSION_CAP_MS_ATTR` override honoured; a brand-new session is only created at response commit,
   so the unstamped first call answers now + cap, which IS its birth). The Shell renders a **passive**
@@ -1193,7 +1212,8 @@ behind nothing before any UI reaches them:**
 
 Each slice: rung-1 unit → rung-3 Spring wiring/RBAC → rung-4 Keycloak/Testcontainers IT → Playwright.
 
-### v2/M4 — State store + snapshot store: architectural boundary *(decided 2026-07-07, pre-build)*
+### v2/M4 — State store + snapshot store: architectural boundary _(decided 2026-07-07, pre-build)_
+
 The BFF shifts from transient proxy to **stateful telemetry aggregator**. Boundary decisions
 locked before build so the milestone doesn't re-litigate them:
 
@@ -1258,10 +1278,10 @@ locked before build so the milestone doesn't re-litigate them:
   per-engine series by bucket, and `toPolyline` maps to the line (flat → mid-height, not pinned to
   zero). A lane with no history renders nothing; meaning lives in the line shape + aria-label, hue
   only echoes the chip (the "hue is redundant" convention). Tests: rung-1 `TriageTrendServiceTest`
-  + `sparkline.test.ts`, rung-3 `TriageTrendApiSpringTest` (endpoint/clamp/JSON shape).
-  `NoDbTestSupport` gained the `SnapshotCountRepository` mock (an always-on service now reads it).
-  Schema regenerated from the running BFF (never hand-edited). Browser-verified end-to-end against
-  a seeded store — sparklines render with correct global sums + labels.
+  - `sparkline.test.ts`, rung-3 `TriageTrendApiSpringTest` (endpoint/clamp/JSON shape).
+    `NoDbTestSupport` gained the `SnapshotCountRepository` mock (an always-on service now reads it).
+    Schema regenerated from the running BFF (never hand-edited). Browser-verified end-to-end against
+    a seeded store — sparklines render with correct global sums + labels.
 
 - **Boot-readiness gate — ALREADY SATISFIED (docker-compose.demo.yml):** the containerized BFF
   gates on `depends_on: postgres: { condition: service_healthy }`, and the postgres service's
@@ -1273,22 +1293,23 @@ locked before build so the milestone doesn't re-litigate them:
 - **localStorage→relational (Saved Views + Recent Searches) — LANDED 2026-07-09 (full-stack):**
   the last v2/M4 boundary item — v1 localStorage payloads now persist per-user in the BFF (SPEC
   §8). `V6__saved_view_recent_search.sql`: `saved_view` (`UNIQUE(owner,name)` = upsert-by-name)
-  + `recent_search` (`UNIQUE(owner,search)` = dedupe; cap-10 in the BFF). Entities/repos +
-  `ViewStoreService` (ownership-scoped: every read/write keyed on `authentication.getName()`,
-  never a client field) + `ViewsController` (`GET·PUT /api/views`, `DELETE /api/views/{id}`,
-  `GET·POST /api/recents`; VIEWER floor). System views (R-SEM-05 relative windows) stay
-  client-derived. Frontend: `useViewStores` rewritten from `localStore` to TanStack Query against
-  the server (same `SavedViewsApi` shape — consumers barely change); `useRecordRecentSearch` is
-  now a stable hook; a one-time `useLegacyViewMigration` (run in `Shell` once authenticated) pushes
-  any pre-v2 localStorage entries to the server then clears the keys (best-effort, idempotent). The
-  dead `localStore.ts` + client upsert/dedupe/cap helpers were removed (that logic now lives
-  server-side, tested there). Tests: rung-1 `ViewStoreServiceTest`, rung-3 `ViewsApiSpringTest`
-  (ownership: a crafted `owner` body field is ignored; cross-user delete → 404), rung-4
-  `ViewStoreIT` (real Postgres: upsert-by-name, owner isolation, recents cap). Browser-verified
-  end-to-end: save→persist-across-reload, record recent→persist, delete→gone. `NoDbTestSupport`
-  gained both repo mocks. **v2/M4 milestone COMPLETE.**
+  - `recent_search` (`UNIQUE(owner,search)` = dedupe; cap-10 in the BFF). Entities/repos +
+    `ViewStoreService` (ownership-scoped: every read/write keyed on `authentication.getName()`,
+    never a client field) + `ViewsController` (`GET·PUT /api/views`, `DELETE /api/views/{id}`,
+    `GET·POST /api/recents`; VIEWER floor). System views (R-SEM-05 relative windows) stay
+    client-derived. Frontend: `useViewStores` rewritten from `localStore` to TanStack Query against
+    the server (same `SavedViewsApi` shape — consumers barely change); `useRecordRecentSearch` is
+    now a stable hook; a one-time `useLegacyViewMigration` (run in `Shell` once authenticated) pushes
+    any pre-v2 localStorage entries to the server then clears the keys (best-effort, idempotent). The
+    dead `localStore.ts` + client upsert/dedupe/cap helpers were removed (that logic now lives
+    server-side, tested there). Tests: rung-1 `ViewStoreServiceTest`, rung-3 `ViewsApiSpringTest`
+    (ownership: a crafted `owner` body field is ignored; cross-user delete → 404), rung-4
+    `ViewStoreIT` (real Postgres: upsert-by-name, owner isolation, recents cap). Browser-verified
+    end-to-end: save→persist-across-reload, record recent→persist, delete→gone. `NoDbTestSupport`
+    gained both repo mocks. **v2/M4 milestone COMPLETE.**
 
 ## 2026-07 whole-solution review → hardening plan
+
 A full-codebase 5-seat panel review (+ Gemini/Copilot external critique) at main `6129a88`
 produced a consolidated findings register and a risk-tiered improvement plan (P0 hotfixes →
 P1 security-tail/docs-truth → P2 structural debt → P3 product track):
@@ -1298,7 +1319,8 @@ issue #84) reconciled the section headers in THIS file (shared-views / registry-
 headers now read shipped, not "unbuilt") plus REQUIREMENTS-REGISTER, TRACEABILITY-MATRIX,
 RUNBOOK, OPERATIONS §8, OPERATOR-QUICK-START, ARCHITECTURE §2.4 and SPECIFICATION §12.
 
-### P2 #15 — Engine-client split (F2, F9) *(✅ LANDED 2026-07-12, issue #86)*
+### P2 #15 — Engine-client split (F2, F9) _(✅ LANDED 2026-07-12, issue #86)_
+
 `FlowableEngineClient` — a 1,425-line three-context god-class — is deleted and replaced by a
 shared resilience core plus one facade per REST context, all in `io.inspector.client`:
 `GuardedCaller` (@Component: HTTP-client build/cache, Resilience4j circuit-breaker + bulkhead
@@ -1321,14 +1343,15 @@ the new constructor shapes and call sites (some, like `CorrectiveActionService` 
 `ResolveService`, now inject both `ProcessApiClient` and `CmmnApiClient` since they route
 BPMN and CMMN calls through different facades).
 
-*Tests:* `FlowableEngineClientTest` (383 lines, one grab-bag rung-2 WireMock suite) split into
+_Tests:_ `FlowableEngineClientTest` (383 lines, one grab-bag rung-2 WireMock suite) split into
 `GuardedCallerTest` (auth/timeout/redirect/breaker/evict/forwarded-user — cross-cutting
 concerns exercised through `ProcessApiClient` as a thin call vehicle), `ProcessApiClientTest`,
 `CmmnApiClientTest`, `ExternalJobApiClientTest` — one class per facade, matching the
 production split. Every consumer test's mock type/constructor/call-site was updated in
 lockstep. Full `mvn test` (798 tests) green; `mvn spotless:apply` clean.
 
-### P2 #16 — One error contract (F4) *(✅ LANDED 2026-07-12, issue #87)*
+### P2 #16 — One error contract (F4) _(✅ LANDED 2026-07-12, issue #87)_
+
 Three different error-body shapes on one API — `ProblemDetail`+`code` (`ActionExceptionHandler`,
 the action/guard-ladder surface), three subtly-different hand-rolled `{"error": "…"}` maps
 (`SearchController`/`ResolveController`/`InstanceDetailController`, each a local
@@ -1338,7 +1361,7 @@ reached a handler: the security 401/403 `sendError` legs and the no-handler 404)
 ONE: every error the BFF answers now carries `type`/`title`/`status`/`detail`/`instance` plus
 `code` (machine-readable) and `requestId` (R-AUD-04).
 
-*Shipped:* `ActionExceptionHandler` gains two generic handlers ahead of its existing
+_Shipped:_ `ActionExceptionHandler` gains two generic handlers ahead of its existing
 domain-specific ones — `IllegalArgumentException` → 400 `bad-request` (subsuming the three
 ad-hoc map handlers, all deleted) and `ResponseStatusException` → the exception's own status +
 `ProblemCodes.fromStatus` (a new package-private kebab-case-slug helper, e.g.
@@ -1361,7 +1384,7 @@ domain refusal would use, not a shape-sniffing heuristic. `npm run gen:api` rege
 `schema.d.ts` byte-identical (springdoc doesn't type error responses without per-endpoint
 `@ApiResponse` annotations — out of scope here; confirmed via diff, not assumed).
 
-*Tests:* `RequestIdSpringTest` (the one file that explicitly documented and asserted all THREE
+_Tests:_ `RequestIdSpringTest` (the one file that explicitly documented and asserted all THREE
 old shapes side by side) rewritten to assert the SAME shape from every path — handler (400),
 security 403, ad-hoc-turned-global 400, no-handler 404 — all now carry `code`+`requestId`.
 `SearchDeepPageApiSpringTest`'s crafted-cursor-400 assertion moved from `.get("error")` to
@@ -1370,7 +1393,8 @@ security 403, ad-hoc-turned-global 400, no-handler 404 — all now carry `code`+
 `code: 'forbidden'`-based equivalents; `client.test.ts` updated to the new container-fallback
 body shape. Full `mvn test` (803 tests) + `npm test` (478 tests) green.
 
-### P2 #19 — Test-support consolidation (F5, F6, Q8) *(✅ LANDED 2026-07-12, issue #90)*
+### P2 #19 — Test-support consolidation (F5, F6, Q8) _(✅ LANDED 2026-07-12, issue #90)_
+
 Three unrelated pain points bundled under one finding: (1) `NoDbTestSupport` (the docker-free
 Spring context's persistence stand-in) required a hand-added `@Bean` mock for every new JPA
 repository, or all 33 dependent test classes broke at once with a diffuse
@@ -1381,7 +1405,7 @@ didn't expose; (3) `TEST-STRATEGY.md` claimed "backend line coverage ≥80%, fro
 ≥70%, measured and gating from M3" — untrue on both counts, no tool anywhere measured either
 number.
 
-*Shipped — (1):* `NoDbTestSupport` replaced its 12 individual `@Bean Mockito.mock(...)`
+_Shipped — (1):_ `NoDbTestSupport` replaced its 12 individual `@Bean Mockito.mock(...)`
 methods with a `BeanDefinitionRegistryPostProcessor` that classpath-scans `io.inspector` for
 every `interface X extends JpaRepository<...>` and registers a mock for each automatically —
 proven (not assumed) against the live codebase: the scan found 3 repositories
@@ -1391,7 +1415,7 @@ needs zero edits here. The lone `JdbcTemplate` mock (a framework type the scan c
 shouldn't discover) stays a single explicit, documented exception. `NoDbTestSupportTest`
 proves the mechanism directly, including the 3 previously-uncovered repos.
 
-*Shipped — (2):* `TestEngines` gains `TestEngines.builder(id, baseUrl)` — a fluent builder
+_Shipped — (2):_ `TestEngines` gains `TestEngines.builder(id, baseUrl)` — a fluent builder
 with a named setter per `EngineConfig` field, defaulting exactly like the existing named
 factories (`name=id`, DEV, enabled, everything else null/off). The 5 existing named factories
 (`engine(...)`, `engineInTenant`, `forwardUserEngine`, …) now delegate to the builder
@@ -1402,7 +1426,7 @@ internally instead of duplicating positional construction, and stay byte-identic
 builder. A NEW `EngineConfig` field means a new builder setter, never a constructor-arity
 bump anywhere else.
 
-*Shipped — (3):* jacoco (`backend/pom.xml`, `prepare-agent`+`report` goals bound to the `test`
+_Shipped — (3):_ jacoco (`backend/pom.xml`, `prepare-agent`+`report` goals bound to the `test`
 phase — runs automatically on every `mvn test`, backend included in CI's `unit` job, report at
 `target/site/jacoco/index.html`) and `@vitest/coverage-v8` (`frontend/vite.config.ts`
 `test.coverage` block, opt-in via the new `npm run test:coverage` script — deliberately NOT
@@ -1414,7 +1438,7 @@ blind gate today would have broken every build. Turning either into a real thres
 follow-up work now informed by a true starting point instead of an assumed one.
 `frontend/coverage/` (the html report) is gitignored + excluded from eslint/prettier.
 
-*Tests:* `NoDbTestSupportTest` (new, 2 cases). `EnginesControllerTest` +
+_Tests:_ `NoDbTestSupportTest` (new, 2 cases). `EnginesControllerTest` +
 `RegistryBootstrapTest` + `EngineRegistryReloadTest` + `RegistryPinRegistryTest` +
 `RegistryDriftTest` + `EngineRegistryMapperTest` migrated from raw `new EngineConfig(...)` to
 the builder, behavior-preserving (every prior explicit value threaded through unchanged).
@@ -1422,17 +1446,18 @@ Full `mvn verify` (805 unit + 151 IT, full engine matrix) green aside from the p
 unrelated `SharedViewFailClosedIT` failure (confirmed to also fail on `origin/main`); `npm
 test` (487 tests) + `npm run build` green; `scripts/ci-local.sh --full` green.
 
-### #95 — Login-time `auth_time` conformance + membership re-pull verification (R-SAFE-07) *(✅ LANDED 2026-07-12, issue #95)*
+### #95 — Login-time `auth_time` conformance + membership re-pull verification (R-SAFE-07) _(✅ LANDED 2026-07-12, issue #95)_
+
 IDP-SECURITY.md §5's dangerous-set re-auth protocol had only a CHECK-time freshness gate
 (`DangerousActionReauthGate`, landed S5c): it reads whatever `auth_time` the IdP already
-returned, but nothing verified the IdP actually *honored* the `max_age` it was asked for at
+returned, but nothing verified the IdP actually _honored_ the `max_age` it was asked for at
 login. A nonconforming IdP could silently echo the stale SSO session's old `auth_time` (or omit
 the claim), and the gap would only surface minutes later as a confusing 401 on an unrelated
 verb — never at the login itself, where the operator could see it immediately. Separately, the
 gate's own Javadoc asserted "membership freshness rides for free on the re-auth" with no test
 anywhere proving it.
 
-*Shipped — login-time gate:* `ReauthAuthorizationRequestResolver` now stashes a one-shot session
+_Shipped — login-time gate:_ `ReauthAuthorizationRequestResolver` now stashes a one-shot session
 marker (`REAUTH_SESSION_MARKER`) whenever it injects `max_age`/`prompt=login` — the same
 `HttpSession` is guaranteed current at the callback (OAuth2's own state-param CSRF defense
 depends on that continuity). `ReauthConformantOidcUserService` (new, wraps the default
@@ -1446,7 +1471,7 @@ Confirmed empirically (not assumed) that Spring's default OIDC validator chain d
 `aud`, `exp`/`iat` clock skew, and `azp`, but never `auth_time`/`max_age` — hence the two
 purpose-built gates rather than a validator hook.
 
-*Shipped — membership re-pull verification:* no production change (design already correct by
+_Shipped — membership re-pull verification:_ no production change (design already correct by
 construction — `RbacAuthorizer` caches nothing keyed by identity; `grantsFor`/`hasRoleOn` are
 pure functions of whatever `Authentication` is currently in `SecurityContextHolder`, so a re-auth
 round trip's fresh id-token is read on the very next check). Deliberately did NOT touch
@@ -1455,20 +1480,21 @@ already explain why: Entra puts groups in the id token, not userinfo, and the pi
 match the token the groups came from) — `RbacAuthorizerOidcFreshnessTest` proves the EXISTING
 mechanism re-resolves fresh across an `Authentication` swap, closing the previously-unverified gap.
 
-*Tests:* `ReauthConformantOidcUserServiceTest` (new, 6 cases — no marker/fresh/stale/absent/
+_Tests:_ `ReauthConformantOidcUserServiceTest` (new, 6 cases — no marker/fresh/stale/absent/
 marker-always-consumed/no-leak-into-next-login). `RbacAuthorizerOidcFreshnessTest` (new, 2 cases).
 `OidcKeycloakIT` gains `aRealKeycloakIdTokenCarriesAuthTime` — empirical proof a real Keycloak
 password-grant id-token actually carries `auth_time` (the real-world assumption the whole
 freshness mechanism rests on), plus all 6 existing cases still green against the live Keycloak +
 Testcontainers Postgres harness.
 
-### #126 — Scope-filter leak-views + trends (R-SAFE-17 remainder) *(✅ LANDED 2026-07-12, issue #126)*
+### #126 — Scope-filter leak-views + trends (R-SAFE-17 remainder) _(✅ LANDED 2026-07-12, issue #126)_
+
 Follow-up to the S2 read-scoping work (#81; R-SAFE-17): search and the triage dashboard were
 scope-filtered, but two triage read surfaces stayed fleet-wide because `LeakDefinitionCount`
 had no per-engine dimension to project post-cache the way `TriageScopeProjector` does the
 dashboard, and it was unverified whether `triage_snapshot` carried one either.
 
-*Shipped — leak-views:* `LeakDefinitionCount` gains `countsByEngine` (a
+_Shipped — leak-views:_ `LeakDefinitionCount` gains `countsByEngine` (a
 `Map<engineId, EngineLeakCount>`) and `partial` (boolean). `LeakViewService.aggregate()` already
 computed a per-engine breakdown transiently inside `EngineSlice` before summing it away at the
 `byKey` merge — the fix carries that breakdown through into the DTO instead of discarding it. New
@@ -1481,27 +1507,28 @@ only partially in scope keeps its recomputed totals and sets `partial=true` so t
 `unavailableEngines` is narrowed to readable engines (no engine-topology leak); `lowerBound`
 carries over unchanged (a fleet-wide honesty floor, not scope-dependent).
 
-*Shipped — trends:* verified (not assumed) that `triage_snapshot` rows already carry `engineId`
+_Shipped — trends:_ verified (not assumed) that `triage_snapshot` rows already carry `engineId`
 per the sampler's write path — no schema change needed. `TriageTrendService` gains a
 `ReadScopeGate` dependency and filters rows to the caller's readable engines before grouping into
 series; unlike leak-views/the dashboard, trends has no shared cache to protect (a direct
 per-request DB read every call), so scoping is a plain inline filter, not a separate projector.
 
-*Both* reuse the existing `inspector.security.scope-reads-enforced` flag for free via
+_Both_ reuse the existing `inspector.security.scope-reads-enforced` flag for free via
 `ReadScopeGate.readableEngineIds()` (`null` = enforcement off = unrestricted) — no new flag.
 
-*Tests:* `LeakViewScopeProjectorTest` (new, 4 rung-1 cases). `LeakViewServiceTest` extended with
+_Tests:_ `LeakViewScopeProjectorTest` (new, 4 rung-1 cases). `LeakViewServiceTest` extended with
 `countsByEngine`/`partial` assertions on the merge. `TriageTrendServiceTest` gains a scoped-row-
 filter case + a `ReadScopeGate` test seam. `TriageTrendApiSpringTest` unchanged and still green
 (dev/test profile has enforcement off, so the new `Authentication` parameter is a no-op there).
 
-### #96 — Observability follow-up (R-OPS-02/03, R-AUD-04) *(✅ LANDED 2026-07-13, issue #96, except cache hit rate)*
+### #96 — Observability follow-up (R-OPS-02/03, R-AUD-04) _(✅ LANDED 2026-07-13, issue #96, except cache hit rate)_
+
 Follow-up to the Q1 observability minimum (PR #77): actuator health + auth-gated Prometheus
 scrape were real, but the named application-metric contract, structured JSON logs, correlationId
 MDC fan-out propagation, `GET /api/diag`, and `deploy/` alert rules were all still honestly
 marked TO LAND in OPERATIONS §2/§3 + RUNBOOK §2b.
 
-*Shipped — metrics:* `audit_insert_failures_total` (tagged `site` — `beginPending`/
+_Shipped — metrics:_ `audit_insert_failures_total` (tagged `site` — `beginPending`/
 `recordConfigEvent`, the two INSERT paths) in `AuditService`'s existing fail-closed catch blocks.
 `engine_fanout_duration_seconds` (tags `engineId`/`leg`) wraps `GuardedCaller.call()` — the
 single resiliency chokepoint every facade call already runs through, so ONE instrumentation site
@@ -1509,12 +1536,13 @@ covers every engine call uniformly, timed around bulkhead+breaker+HTTP including
 (a fast-fail on an open breaker is itself a meaningful near-zero sample). `sse_emitters_active`
 (gauge over `SseHub.subscriberCount()`) + `sse_emitter_errors_total` (incremented on a dropped
 send or an emitter's own `onError`). `bulk_jobs_running` (gauge, `BulkJobRepository.countByState`)
-+ `bulk_item_outcomes_total` (tagged `state`, tallied once per finished job in the existing
-`closeEnvelope` tally step — semantically identical to counting at each `settle()` call site, one
-hook point instead of half a dozen). All four verified against a REAL running instance's
-`/actuator/prometheus` scrape, not assumed correct from the code alone.
 
-*Shipped — structured logs + correlationId fan-out:* `logback-spring.xml` (new) emits JSON via
+- `bulk_item_outcomes_total` (tagged `state`, tallied once per finished job in the existing
+  `closeEnvelope` tally step — semantically identical to counting at each `settle()` call site, one
+  hook point instead of half a dozen). All four verified against a REAL running instance's
+  `/actuator/prometheus` scrape, not assumed correct from the code alone.
+
+_Shipped — structured logs + correlationId fan-out:_ `logback-spring.xml` (new) emits JSON via
 `logstash-logback-encoder` gated on the `oidc` profile (this codebase's existing prod-like
 marker — e.g. `scope-reads-enforced` defaults on there too) rather than enumerating every
 dev/test/`it-*` profile by name (logback's `springProfile` matches exact names only, no
@@ -1526,7 +1554,7 @@ around each task — swapped into all 7 `Executors.newVirtualThreadPerTaskExecut
 engine-health prober): `RequestIdFilter` bound `correlationId` to MDC on the request thread years
 ago, but every virtual-thread fan-out silently lost it (thread-locals don't inherit) until now.
 
-*Shipped — `GET /api/diag`* (new `DiagController`/`DiagService`): door check is `@rbac.atLeast(..,
+_Shipped — `GET /api/diag`_ (new `DiagController`/`DiagService`): door check is `@rbac.atLeast(..,
 'ADMIN')` — ADMIN on at least one engine, the SAME coarse shape `AuditController#operationsLog`
 uses for the cross-engine operations log. Breaker states
 (`CircuitBreakerRegistry.getAllCircuitBreakers()`), cache AGES for the triage dashboard and
@@ -1541,7 +1569,7 @@ line from OPERATIONS §2's aspirational text — a materially bigger feature lay
 view on the EXISTING `EngineCallRecorder` (today only wired for on-demand "Explain this status"
 re-derivation), tracked separately.
 
-*Fixed post-adversarial-review, before merge:* the first cut's door check doubled as the ONLY
+_Fixed post-adversarial-review, before merge:_ the first cut's door check doubled as the ONLY
 check — every per-engine section (breakers/permits/recent-errors) went out fleet-wide to any
 caller who was ADMIN on even one engine, violating this codebase's own scope invariant
 (`ScopeGrant`: a grant on one engine/tenant authorizes nothing on another). Fixed by filtering
@@ -1554,7 +1582,7 @@ snippet of response content in that message (confirmed `HttpStatusCodeException.
 itself does NOT — it's just `"<status> <reasonPhrase>"` — but the Jackson path can), so messages
 are now truncated to 500 chars before being stored.
 
-*Shipped — alert rules:* `deploy/prometheus/alert-rules.yml` (new), matching RUNBOOK §7's table —
+_Shipped — alert rules:_ `deploy/prometheus/alert-rules.yml` (new), matching RUNBOOK §7's table —
 every expression checked against a real scrape, not assumed. `InspectorDown`,
 `AuditInsertFailures`, `AllCircuitBreakersOpen`, `SseEmitterErrorsSpiking`, and
 `DatabaseConnectionTimeoutsSpiking` (the honest proxy for Postgres-unreachable, via HikariCP's
@@ -1562,13 +1590,13 @@ own `hikaricp_connections_timeout_total`) fire off metrics this app emits today.
 `InspectorReadinessFailing`/`DiskSpaceHigh` are written but explicitly marked infra-dependent —
 they need `blackbox_exporter`/`node_exporter`, neither deployed by this repo's `docker/*.yml`.
 
-*Deliberately out of scope (honestly documented, not silently dropped):* triage-cache **hit
+_Deliberately out of scope (honestly documented, not silently dropped):_ triage-cache **hit
 rate** (age is shipped via `GET /api/diag`; a hit/miss ratio needs `Caffeine.recordStats()` +
 Micrometer's `CaffeineCacheMetrics` binder — not in issue #96's stated bullet list) and the
 audit-retention-purge dead-man alert (RUNBOOK already documents its LOG-based interim signal;
 a metric-based version needs new instrumentation this issue doesn't scope).
 
-*Tests:* `AuditServiceTest` extended with counter assertions on both failure sites.
+_Tests:_ `AuditServiceTest` extended with counter assertions on both failure sites.
 `GuardedCallerTest` gains 2 new cases (timed success + timed failure, tag assertions).
 `MdcPropagatingExecutorsTest` (new, 4 rung-1 cases: context visible on the worker, no-context
 stays no-context, no cross-contamination between tasks on a shared executor, caller's own context
@@ -1579,17 +1607,18 @@ recent-error the caller isn't ADMIN on, build-info presence). `DiagRbacSpringTes
 ADMIN reaches it, every lesser role 403s, unauthenticated 401s). `BulkJobServiceTest` gains a
 permit-gauge case.
 
-### P2 #21 — Release mechanics remainder (Q7) *(✅ code landed 2026-07-13, issue #92; live cutover/drill still pending human action)*
+### P2 #21 — Release mechanics remainder (Q7) _(✅ code landed 2026-07-13, issue #92; live cutover/drill still pending human action)_
+
 `docs/IMPROVEMENT-PLAN-2026-07.md` §2 P2 item 21's remaining slivers, after PR #68/#80 shipped
 the GHCR publish pipeline (`:edge`/`:sha-<short7>` on green main, `:vX.Y.Z`/`latest` on a
 version tag) and v0.1.0 released with public packages.
 
-*Shipped — digest capture:* `release.yml` and `publish-edge.yml` both give their
+_Shipped — digest capture:_ `release.yml` and `publish-edge.yml` both give their
 `docker/build-push-action@v6` steps an `id:` and add a step reading `steps.<id>.outputs.digest`
 into `$GITHUB_STEP_SUMMARY`; `release.yml`'s GitHub Release body also gets a "Digests" section
 so a versioned release's exact image identity outlives the transient job summary.
 
-*Shipped — demo pinned by digest:* `docker/docker-compose.demo.yml`'s `backend`/`frontend`
+_Shipped — demo pinned by digest:_ `docker/docker-compose.demo.yml`'s `backend`/`frontend`
 switch from `build:` (rebuild-from-working-tree — confirmed that's what was actually
 happening, `docker/DEMO-DEPLOY.md`'s old deploy command was `up -d --build`) to
 `image: ghcr.io/x3kcl/process-inspector-{bff,web}@${PI_BFF_DIGEST:?...}` — a required env var
@@ -1601,12 +1630,12 @@ tags the result `demo-YYYY-MM-DD-<shortsha>` — that file's git history is the 
 record ("git tag per demo deploy" from the issue). Does not auto-push; publishing the
 attribution commit/tag is a separate, printed, deliberate step.
 
-*Shipped — rollback:* new `docker/rollback-demo.sh <demo-tag>` restores a PRIOR deploy's
-*exact* digest pair straight from git history (`git show <tag>:docker/.env.demo`) rather than
+_Shipped — rollback:_ new `docker/rollback-demo.sh <demo-tag>` restores a PRIOR deploy's
+_exact_ digest pair straight from git history (`git show <tag>:docker/.env.demo`) rather than
 re-resolving a tag (which would be wrong — `:edge` moves). RUNBOOK.md §8 (new) documents the
 symptom → command → verification shape, mirroring §5's Postgres-restore entry.
 
-*Fixed post-adversarial-review, before merge:* Copilot + Gemini review of the first cut (Gemini
+_Fixed post-adversarial-review, before merge:_ Copilot + Gemini review of the first cut (Gemini
 hit a persistent 429 mid-review but did its own empirical bash verification instead of
 guessing) surfaced 5 real bugs in the two scripts, all confirmed by direct reproduction in a
 scratch git repo and fixed: (1) the deploy's `git commit`/rollback's `git commit` both aborted
@@ -1627,7 +1656,7 @@ validation (`^sha256:[0-9a-f]{64}$`) before writing any resolved value into `.en
 a gap where `jq -r '.digest'` silently prints the literal string `"null"` (exit 0) if a
 manifest's digest field were ever absent.
 
-*Deliberately not done here, honestly flagged rather than silently skipped:* the actual live
+_Deliberately not done here, honestly flagged rather than silently skipped:_ the actual live
 cutover of pi.naumann.cloud to digest pinning, and an against-prod rollback drill, were NOT
 performed as part of this change — this dev box IS hp04 (the same Docker daemon also runs
 unrelated personal-cloud services behind the same Traefik), so touching the live deploy is a
@@ -1637,12 +1666,13 @@ real published images (digest resolution succeeds), `docker compose config` fail
 the committed (empty) `docker/.env.demo`, and succeeds once real digests are substituted.
 RUNBOOK §8 records this distinction explicitly so "drilled" isn't overclaimed.
 
-*Tests:* none added — this is deploy tooling (bash + YAML + workflow config), not application
+_Tests:_ none added — this is deploy tooling (bash + YAML + workflow config), not application
 code; verified via `bash -n` (both scripts), a live `--dry-run` resolve against the real GHCR
 images, and `docker compose config` fail-closed/success checks (see above). `mvn -o test` /
 `npm test` are unaffected (no `backend/`/`frontend/` source changed).
 
-### #97 — Goal-catalog MUST-v1 gaps, audit + remainder *(✅ 7/8 already landed 2026-07-11 under a `usability-w3-*` sprint that never updated this doc or closed the issue; remaining sliver ✅ LANDED 2026-07-13)*
+### #97 — Goal-catalog MUST-v1 gaps, audit + remainder _(✅ 7/8 already landed 2026-07-11 under a `usability-w3-*` sprint that never updated this doc or closed the issue; remaining sliver ✅ LANDED 2026-07-13)_
+
 Issue #97 (filed 2026-07-10, referencing `docs/usability/GOAL-CATALOG.md` v1.0's same-day
 audit) listed 6 MUST-v1 gaps + 2 slivers. Before writing any code, a ground-truth audit
 against `origin/main` (not the issue text, not the stale GOAL-CATALOG snapshot) found
@@ -1662,7 +1692,7 @@ annotation demotion" — false; R-SEM-13 is gated on the separate, still-unbuilt
 (annotations), a conflation the v1.x-fast-follows section above (§"Error-class bulk-retry")
 carried too, now fixed there as well.
 
-*Shipped here — the one genuine remainder:* the R-SAFE-05 sliver was **partial**, not
+_Shipped here — the one genuine remainder:_ the R-SAFE-05 sliver was **partial**, not
 built like the other 7 — the point-of-action badge (`InstanceActions.tsx`) and bulk-bar
 auto-exclusion existed (2026-07-11), but the results-grid itself carried no marker, so a
 protected instance looked identical to any other row until you opened it. New "Protected"
@@ -1671,22 +1701,24 @@ style — no new CSS) renders whenever `row.protectedInstance === true`; the bac
 already existed (`ProcessInstanceRow.protectedInstance`, already consumed by
 `bulk/intersection.ts`), so this was frontend-only.
 
-*Genuinely still open, not part of this issue's own bullet list but surfaced by the audit:*
+_Genuinely still open, not part of this issue's own bullet list but surfaced by the audit:_
 R-BAU-03 (error-class annotations, blocks R-SEM-13), R-SAFE-10 (pre-action evidence
 snapshot), R-SEM-16 (SPA/BFF version-skew banner), and a frontend surface for R-OPS-14
 (`GET /api/diag` is backend-complete since issue #96 but has no admin UI page yet) —
 left for separate issues, not silently rolled into this one.
 
-*Tests:* `ResultsGrid.test.tsx` gains 2 cases (badge renders for a protected row and only
+_Tests:_ `ResultsGrid.test.tsx` gains 2 cases (badge renders for a protected row and only
 that row; no badge at all when `protectedInstance` is undefined/false).
 
-### #98 — Usability loop over the six unproven v2 surfaces *(✅ run 2026-07-13, issue #98; harness fixes + break-glass verified separately; 5 findings filed as issues)*
+### #98 — Usability loop over the six unproven v2 surfaces _(✅ run 2026-07-13, issue #98; harness fixes + break-glass verified separately; 5 findings filed as issues)_
+
 `docs/usability/GOAL-CATALOG.md` §2 P3's pre-pilot promise: run the existing
 `usability-run` named workflow (`.claude/workflows/usability-run.js`) over team/shared
 views, k-way Load-more paging, MigrateModal, `/admin/engines`, `/admin/access`, and the
 break-glass banner — none of which had ever been exercised by a real tester run before.
 
-*Harness bugs found + fixed before any mission could produce real data:*
+_Harness bugs found + fixed before any mission could produce real data:_
+
 1. The "briefs" extraction agent's structured-output schema was a bare
    `{additionalProperties: string}` object with no enumerated `properties` — unreliable
    for tool-calling; it came back wrapped as `{input: "<stringified JSON>"}` instead of
@@ -1707,7 +1739,7 @@ break-glass banner — none of which had ever been exercised by a real tester ru
    never been wired into any mission narrative, exactly matching this issue's own framing
    of "never usability-tested."
 
-*Run outcome (full detail: `docs/usability/results/latest/RUN-REPORT.md`):* all 10
+_Run outcome (full detail: `docs/usability/results/latest/RUN-REPORT.md`):_ all 10
 missions (M1–M10) reconciled. **Zero Sev1 findings** — no mis-triage, no guard bypass, no
 wrong-target destructive action, no invisible apply, no hallucination/quiet-lie (every
 claimed fix ground-truth-verified against real engine/audit state). The 6 former
@@ -1721,8 +1753,9 @@ run-time safety classifier both times this was attempted; not forced through, an
 counted as a product failure. `docs/usability/GOAL-CATALOG.md`'s theme list documents
 this as a repeat of a prior baseline report's explicit warning.
 
-*5 findings filed as issues (Sev1/Sev2, real product/UX bugs, distinct from the harness
-bugs above):*
+_5 findings filed as issues (Sev1/Sev2, real product/UX bugs, distinct from the harness
+bugs above):_
+
 - **#165** — R-SAFE-05's protected-instance feature has a fully-built READ side
   (enforcement, bulk skip, both badges) but **zero production write path** —
   `ProtectedInstanceRepository` has no `.save()`/`.delete()` call anywhere outside test
@@ -1744,8 +1777,8 @@ bugs above):*
   UI feedback — confusing today, would become a real invisible-apply risk if the guard
   ever regressed.
 
-*Break-glass banner (one of the six named surfaces) — separately verified, NOT via the
-usability-run harness:* the dev-stack harness this workflow drives cannot reach the
+_Break-glass banner (one of the six named surfaces) — separately verified, NOT via the
+usability-run harness:_ the dev-stack harness this workflow drives cannot reach the
 `oidc` profile at all (break-glass only exists there). Stood up a standing, loopback-only
 Keycloak + `oidc`-profile BFF instance and drove it directly with Playwright: the
 break-glass login mechanism itself (POST → session flag → 4h cap → banner render, the
@@ -1756,16 +1789,17 @@ JavaScript cooperation a plain HTML form couldn't provide even if a page existed
 as hard evidence on the existing issue #94 (which already named this gap) rather than
 filing a duplicate.
 
-*Tests:* none — this is a testing/investigation run, not application code. Harness fixes
+_Tests:_ none — this is a testing/investigation run, not application code. Harness fixes
 verified via `node --check` + the actual 10-mission live run completing successfully
 after both fixes landed.
 
-### #103 — "Show as cURL" in the tier-0 inline retry flows (BPMN + CMMN) *(✅ LANDED 2026-07-13, issue #103)*
+### #103 — "Show as cURL" in the tier-0 inline retry flows (BPMN + CMMN) _(✅ LANDED 2026-07-13, issue #103)_
+
 Sliver from the CMMN Phase-3 build: `POST …/actions/{verb}/curl` already existed for both
 scopes (instance and case), and every modal-based verb already surfaced it, but the tier-0
 `InlineConfirm` retry flows — BPMN dead-letter retry and CMMN case retry — didn't.
 
-*Shipped:* `CurlPreview.tsx` generalized from a hardcoded instance-scope fetch
+_Shipped:_ `CurlPreview.tsx` generalized from a hardcoded instance-scope fetch
 (`engineId`/`instanceId`/`verb`/`body` props) to a scope-agnostic `queryKey` +
 `fetchCurl: () => Promise<ActionCurlResponse>` pair — the instance and case routes render
 identically, only which BFF endpoint is called differs. New
@@ -1778,19 +1812,20 @@ cURL" toggle, matching the existing modal precedent and the never-client-generat
 invariant. `TaskAssignModal.tsx` (the one existing consumer) updated to the new prop
 shape, no behavior change.
 
-*Tests:* new e2e cases in `deadletter-delete.spec.ts` (BPMN) and `case-detail.spec.ts`
+_Tests:_ new e2e cases in `deadletter-delete.spec.ts` (BPMN) and `case-detail.spec.ts`
 (CMMN), both asserting the toggle fires zero `/curl` requests until clicked, then renders
 the server string verbatim with the correct request body. Full e2e suite + `npx vitest
 run` (530 tests) green; the existing `task-reassign.spec.ts` cURL case re-verified
 unaffected by the `CurlPreview` prop refactor.
 
-### #104 slice 1/4 — CSS design-token layer (R-UXQ-08) *(✅ LANDED 2026-07-13, issue #104)*
+### #104 slice 1/4 — CSS design-token layer (R-UXQ-08) _(✅ LANDED 2026-07-13, issue #104)_
+
 Per the plan's own scoping ("CSS token layer first, then three separate PRs — dark theme
 / density / AG Grid column chooser"): this is slice 1, the token layer only. No theme
 switch, no `prefers-color-scheme`, no `.dark`/`[data-theme]` anywhere yet — those are the
 three follow-up PRs' job.
 
-*Audit before touching anything:* `styles.css` (3,577 lines) had **zero** existing CSS
+_Audit before touching anything:_ `styles.css` (3,577 lines) had **zero** existing CSS
 custom properties, zero `:root` block, zero theme infrastructure — a from-scratch token
 layer, not a refactor. 492 hex-color occurrences across ~140 distinct values; a genuine
 long tail (100+ values used once or twice, mostly near-duplicate pale-shade one-offs).
@@ -1801,7 +1836,7 @@ carries the actual meaning. `EnvBadge`'s `accentColor` is a real per-engine
 admin-configured DB column (`V7__engine_registry.sql`) — correctly left as an untouched
 inline-style pass-through, never tokenized.
 
-*Shipped:* new `:root { }` block (25 `--color-*` custom properties across neutral/
+_Shipped:_ new `:root { }` block (25 `--color-*` custom properties across neutral/
 danger/warning/info/success families) covering every color repeated ≥5 times. Mechanical,
 scripted, byte-identical substitution of those literals with `var(--color-*)` references
 — confirmed no-op by occurrence-count parity checks (each token's `var()` count matches
@@ -1811,8 +1846,8 @@ untokenized** — inventing tokens nobody asked for, or silently merging visuall
 one-offs, is scope creep this slice doesn't need; each follow-up PR can tokenize what it
 actually touches.
 
-*Adversarial review (Copilot + independent senior-review pass, Gemini API was
-quota-exhausted so a manual equivalent pass covered the same five angles):* both
+_Adversarial review (Copilot + independent senior-review pass, Gemini API was
+quota-exhausted so a manual equivalent pass covered the same five angles):_ both
 independently flagged the same real gap — `--color-text-secondary`/`--color-text-dim`/
 `--color-text-muted` (and `--color-danger-mid`/`--color-danger-alt`) sit within
 single-digit RGB distance of each other, i.e. visually indistinguishable, yet ship as
@@ -1824,16 +1859,17 @@ two greys/reds — collapse or deliberately re-differentiate them there. Both re
 other findings (token-count wording, naming bikeshedding, expanding this slice's scope to
 merge one-offs) were checked against source and refuted or judged not actionable.
 
-*Deliberately not done here:* AG Grid has zero custom `--ag-*` overrides today (stock
+_Deliberately not done here:_ AG Grid has zero custom `--ag-*` overrides today (stock
 `ag-theme-quartz`) — bridging into that vendor variable namespace is the column-chooser
 PR's job, not this one's.
 
-*Tests:* `npx vitest run` (533 tests) + full local CI green — a value-identical rename
+_Tests:_ `npx vitest run` (533 tests) + full local CI green — a value-identical rename
 has no unit-testable behavior of its own. Live-verified via a Playwright screenshot
 against the real running app (topbar, status badges, DLQ counts) — visually
 indistinguishable from before, as expected for a byte-identical substitution.
 
-### #104 slice 2a/5 — extended surface tokens (R-UXQ-08) *(✅ LANDED 2026-07-14, issue #104)*
+### #104 slice 2a/5 — extended surface tokens (R-UXQ-08) _(✅ LANDED 2026-07-14, issue #104)_
+
 An EXPANSION pass, not the dark-theme switch itself: slice 1 only tokenized colors
 repeated ≥5 times. This slice lowers the bar to ≥2, adding 20 more `--color-*` custom
 properties (45 total, 47 after the role-split noted below) for the group of colors slice 1
@@ -1853,7 +1889,7 @@ each literal now appears exactly once in the file — inside its own `:root` def
 no consolidation of near-duplicate shades into one token, even where two of the 20 look
 alike; existing 25 slice-1 tokens untouched.
 
-*What's still deliberately untokenized:* after this slice, 95 distinct literal hex colors
+_What's still deliberately untokenized:_ after this slice, 95 distinct literal hex colors
 remain in the file body. Of those, **72 occur exactly once** — the true long tail slice 1
 flagged — and are deliberately left as-is; slice 2b (or later cleanup) should reach for
 scoped one-off dark-mode overrides on these rather than inventing 72 more global tokens
@@ -1866,10 +1902,10 @@ genuine cross-component repeats like `#1a4d80`, `#2c3e50`, `#566573`, `#a0aab5`,
 tokenization pass should re-run the ≥2 audit against the file as it stands rather than
 reusing this slice's now-stale candidate list.
 
-*Tests:* `npm run build` (tsc + vite) green; `npx prettier --write` reported the file
+_Tests:_ `npm run build` (tsc + vite) green; `npx prettier --write` reported the file
 already correctly formatted. Full local CI (`scripts/ci-local.sh --full`) green.
 
-*Adversarial review (Copilot + independent senior pass, Gemini quota-exhausted again):*
+_Adversarial review (Copilot + independent senior pass, Gemini quota-exhausted again):_
 scripted parity/boundary/build verification all independently reconfirmed clean. One real
 finding, fixed: `--color-surface-dark` and `--color-divider-subtle` had each been reused
 across two DIFFERENT visual roles at different call sites (one as a background fill, one as
@@ -1881,44 +1917,50 @@ from `--color-surface-dark` (background-only now, `.engine-card`/omnibox), and
 `--color-track-bg` (new, `.timing-track`'s fill) separated from `--color-divider-subtle`
 (border-only now). 47 tokens total after the split (was 45).
 
-### #104 slice 2b/5 — the dark-theme switch itself (R-UXQ-08) *(✅ LANDED 2026-07-14, issue #104)*
+### #104 slice 2b/5 — the dark-theme switch itself (R-UXQ-08) _(✅ LANDED 2026-07-14, issue #104)_
+
 The actual mechanism, building on slices 1/2a's now-complete token coverage: dark values
 for all 47 `--color-*` tokens + one new one, a persisted three-way preference (System /
 Light / Dark) with a `prefers-color-scheme` default, and a segmented `ThemeToggle` next to
 `ZoneToggle` in the topbar.
 
-*Shipped:*
+_Shipped:_
+
 - `frontend/src/lib/theme.ts` — mirrors `lib/format.ts`'s `DisplayZone` store exactly (lazy
   `localStorage`-hydrated module value, listener `Set`, get/set/subscribe +
   `useSyncExternalStore` hook), storage key `inspector.theme`. `setThemePreference()` (and a
   module-load call) applies the resolved state to `<html>`: `'system'` REMOVES `data-theme`
   entirely (the CSS media query alone decides, deliberately no `matchMedia` listener); `'light'`
   /`'dark'` set `data-theme`, which CSS overrides win in both directions. Imported in
-  `main.tsx` for its module-load side effect, before `createRoot(...).render(...)`, so
-  `data-theme` is set before first paint (no FOUC — deliberately skipped a separate inline
-  `<script>` for this, the React import ordering was sufficient in testing).
+  `main.tsx` for its module-load side effect, before `createRoot(...).render(...)`. Review
+  noted `<script type="module">` is treated like `defer` by browsers, so this isn't an
+  ironclad FOUC guarantee (an inline `<head>` script would be) for a user whose explicit
+  override contradicts system preference — low-impact in practice since `#root` is empty
+  until React mounts (only a blank `body { background }` could flash), but a real gap, not a
+  guarantee; deliberately not adding a separate inline `<script>` for this now.
 - `frontend/src/components/ThemeToggle.tsx` — mirrors `ZoneToggle.tsx`, a labeled 3-option
   `Segmented` (System/Light/Dark), mounted next to `ZoneToggle` in `Shell.tsx`'s topbar.
 - `styles.css`: a dark value for every one of the 47 tokens plus one genuinely new token,
   `--color-page-bg` (`body` had no explicit `background` at all before this — now
   `#fff` light / `#14181c` dark), duplicated across a `@media (prefers-color-scheme: dark) {
-  :root:not([data-theme='light']) { … } }` block (system default) and a
+:root:not([data-theme='light']) { … } }` block (system default) and a
   `:root[data-theme='dark'] { … }` block (explicit override, wins regardless of OS
   preference) — both required for correct cascade coverage. No existing token's LIGHT value
   or call site was touched.
 
-*Draft palette vs. what actually shipped — every deviation was a REAL axe-core
+_Draft palette vs. what actually shipped — every deviation was a REAL axe-core
 color-contrast failure, not a theoretical judgment call (`frontend/e2e/dark-theme.spec.ts`,
 5 states: triage landing, AG Grid search results, the errors-jobs instance tab, a tier-3
 destructive modal, and the operations drawer after a dispatch — chosen to spread across
 chips/badges, grid cells, form controls, and the topbar). Iterated to zero violations across
-~90 initial findings, mostly a small number of repeating root causes:*
+~90 initial findings, mostly a small number of repeating root causes:_
+
 - `--color-text-faint` (`#6c7d89`→**`#8fa0ab`**) and `--color-text-dim` (`#82929d`→
   **`#a4b2bb`**) were too dark against the app's own dark surfaces (`.strip-note`,
   `.count-unit`, `.engine-version`, etc. — real body text, not decorative).
 - `--color-danger-dark` (`#c0453a`→**`#e8695c`**), `--color-danger-mid` (`#cf5d4e`→
   **`#ea7a6e`**) and `--color-success` (`#3fa06a`→**`#4bb47c`**) were too dark/desaturated as
-  *text* accent colors (`.exception-class`, `.version-count`, the dead-letter `<summary>`,
+  _text_ accent colors (`.exception-class`, `.version-count`, the dead-letter `<summary>`,
   `.action-danger`, `.rev-reversible`) — brightening these three also fixed
   `.status-chip.failed`'s text-on-chip pairing for free, without pinning that chip to a
   literal.
@@ -1932,7 +1974,7 @@ chips/badges, grid cells, form controls, and the topbar). Iterated to zero viola
   `.modal-footer button.primary/.danger`, `.tab-active`) keeps winning via specificity.
   **Gotcha hit while building this:** nesting that fallback inside
   `:root[data-theme='dark'] { button { … } }` (or the `@media` equivalent) inflates its
-  *effective* specificity — `:root` and `[data-theme='dark']` each count as a class-level
+  _effective_ specificity — `:root` and `[data-theme='dark']` each count as a class-level
   selector, so the nested form actually outranks plain single-class rules like
   `.segment-active` and silently broke them. Fixed with `:where()`, which zeroes the
   specificity of its argument: `:where(:root:not([data-theme='light'])) button` /
@@ -1940,7 +1982,7 @@ chips/badges, grid cells, form controls, and the topbar). Iterated to zero viola
   intended. A parallel `:where(...) .ops-drawer code { color: var(--color-ink); }` covers
   the drawer's `<code>` verb/id spans the same way — deliberately scoped to the drawer
   rather than a blanket `code` selector, because AG Grid's own cell renderers also emit bare
-  `<code>` (composite-ID column) on AG Grid's *own* un-themed white cell background; #104 is
+  `<code>` (composite-ID column) on AG Grid's _own_ un-themed white cell background; #104 is
   explicit that AG Grid theming is a separate, later slice, and a blanket rule broke those
   cells in testing.
 - The topbar reuses `--color-ink`/`--color-white` in REVERSED roles (dark bar, light text) —
@@ -1957,24 +1999,36 @@ chips/badges, grid cells, form controls, and the topbar). Iterated to zero viola
   backgrounds were hardcoded against a permanently-light canvas and don't adapt on their
   own: `.env-dev`/`.state-running`'s text (reused `--color-info-border`, already correctly
   inverted, instead of a new literal), `.status-chip.suspended`'s background, `.protected-
-  badge`'s background/border, `.bulk-bar`'s background, `.grid-keys kbd`'s background, and
+badge`'s background/border, `.bulk-bar`'s background, `.grid-keys kbd`'s background, and
   `.leak-views-caption`'s color (reused the now-fixed `--color-text-faint`) — all pinned to a
   readable dark-scoped literal or reused token, following the SAME "pin the badge, don't
   invert it" precedent `.status-chip.active/.completed/.retrying/.terminated` already set
-  (pure literals, unaffected by theme). `.drawer-live`/`.drawer-interrupted` had no `color`
-  of their own (relied on inheriting the old dark-topbar's ink) — given an explicit
-  `color: var(--color-white)` (dark in dark mode — the same "dark text on a light accent
-  pill" intent `.segment-active` already expresses).
+  (pure literals, unaffected by theme). (`.drawer-live`/`.drawer-interrupted` were
+  initially given the same dark-scoped `color` override, but review found their only
+  color-setting ancestor, `.drawer-toggle`, already sets `color: var(--color-white)`
+  unconditionally in both themes — the override was a no-op and was removed.)
 
-*Tests:* `frontend/e2e/dark-theme.spec.ts` (new, 5 real axe-core scans, all green) + every
-pre-existing e2e a11y spec re-run (62/62 green — light-mode contrast unaffected, confirming
-no light value or call site was touched) + `npx vitest run` (546/546, incl. new
+_Tests:_ `frontend/e2e/dark-theme.spec.ts` (new, 5 real axe-core scans, all green) + every
+pre-existing e2e a11y spec re-run (57/57 green — light-mode contrast unaffected, confirming
+no light value or call site was touched) + `npx vitest run` (552/552, incl. new
 `lib/theme.test.ts` mirroring `format.test.ts`'s DisplayZone coverage and
 `components/ThemeToggle.test.ts` mirroring `ZoneToggle.test.ts`) + `npm run build` (tsc +
 vite + the bpmn-watermark guard) + `scripts/ci-local.sh --full` (backend unaffected, unit
 ladder green) all green.
 
+_Adversarial review (Copilot + manual senior pass, Gemini quota-exhausted both tries):_
+independently re-ran the full dark + light e2e suites and vitest against the committed
+code (not just read the diff) and re-derived the WCAG contrast math for the reported
+palette adjustments — all confirmed real. Two real findings, both fixed above: the
+`.drawer-live`/`.drawer-interrupted` override was a no-op (removed) and this section's
+test counts had drifted stale after the pre-merge rebase pulled in other sessions' landed
+work (57 pre-existing specs, not 62; 552 vitest tests, not 546 — corrected). The FOUC
+claim was also softened to state the real (low-impact) gap rather than an unqualified
+guarantee. Other AI-generated findings (imagined race conditions, SSR concerns in a
+pure-CSR app) did not hold up against the actual code and were rejected.
+
 ## Build order inside any milestone
+
 backend DTO → engine client call → aggregator/join logic → controller → typed frontend API
 client → component. Every Flowable call gets an integration test against the dockerized
 `flowable-rest` on BOTH compose profiles (no mocked Flowable responses for join logic — the
