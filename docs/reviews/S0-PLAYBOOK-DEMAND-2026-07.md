@@ -53,8 +53,7 @@ evidence of organic operator behavior — it should NOT be read as a near-signal
 
 The gate is honestly not evaluable yet: **there is no real pilot deployment with audit
 history to mine.** Building 2/3 of #106 now would repeat exactly the mistake the shared-views
-gate-bypass already taught this project once (per [[deferred-work-tracking]]) — building
-ahead of demonstrated demand.
+gate-bypass already taught this project once — building ahead of demonstrated demand.
 
 **What to do instead:** re-run `scripts/mine-playbook-demand.sh` against real pilot
 production audit data once ≥3 months of it exists (point `INSPECTOR_DB_URI` at the pilot

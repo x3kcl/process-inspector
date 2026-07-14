@@ -10,8 +10,10 @@
 #   PGHOST=... PGPORT=... PGUSER=... PGPASSWORD=... PGDATABASE=... scripts/mine-playbook-demand.sh
 set -euo pipefail
 DIR="$(cd "$(dirname "$0")" && pwd)"
+# -v ON_ERROR_STOP=1: psql -f otherwise exits 0 even on a SQL error, letting a broken query
+# masquerade as a clean (empty) result. -X: ignore any local ~/.psqlrc so output stays stable.
 if [ -n "${INSPECTOR_DB_URI:-}" ]; then
-  exec psql "$INSPECTOR_DB_URI" -f "$DIR/mine-playbook-demand.sql"
+  exec psql -X -v ON_ERROR_STOP=1 "$INSPECTOR_DB_URI" -f "$DIR/mine-playbook-demand.sql"
 fi
 : "${PGHOST:=localhost}"
 : "${PGPORT:=5433}"
@@ -19,4 +21,4 @@ fi
 : "${PGPASSWORD:=inspector}"
 : "${PGDATABASE:=inspector}"
 export PGHOST PGPORT PGUSER PGPASSWORD PGDATABASE
-exec psql -f "$DIR/mine-playbook-demand.sql"
+exec psql -X -v ON_ERROR_STOP=1 -f "$DIR/mine-playbook-demand.sql"
