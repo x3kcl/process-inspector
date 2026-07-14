@@ -74,6 +74,268 @@
   --color-success-alt: #1e8449;
   --color-success-border: #27ae60;
   --color-success-bg: #e8f8f0;
+  /* #104 slice 2b (R-UXQ-08): the one genuinely NEW token this slice adds (not a rename) —
+     body has no `background` rule at all today, so this makes the implicit white page
+     background explicit, which the dark cascade below then overrides. */
+  --color-page-bg: #fff;
+}
+
+/* #104 slice 2b (R-UXQ-08): the dark-theme value layer. Two blocks are BOTH required for
+   correct cascade coverage, not redundant: the media-query block below covers "system
+   default resolves to dark" (no explicit override, OS/browser prefers dark); the
+   `[data-theme='dark']` block further down covers "explicit override to dark regardless of
+   system preference" (ThemeToggle set it, or the OS is actually light but the user chose
+   dark anyway). `:not([data-theme='light'])` in the media-query selector lets an explicit
+   LIGHT override win even while the OS prefers dark. Every dark value below was verified
+   against a real axe-core color-contrast scan (frontend/e2e/dark-theme.spec.ts) — this is
+   not a theoretical role-inversion table, several values were adjusted from the design
+   draft to pass; see docs/IMPLEMENTATION-PLAN.md's #104 slice 2b entry for the list. */
+@media (prefers-color-scheme: dark) {
+  :root:not([data-theme='light']) {
+    /* neutrals */
+    --color-white: #1c2226;
+    --color-ink: #eef2f5;
+    --color-text-body: #c2ccd3;
+    --color-text-muted: #99a7b1;
+    --color-text-secondary: #b3bfc7;
+    --color-text-faint: #8fa0ab;
+    --color-text-dim: #a4b2bb;
+    --color-text-placeholder: #566573;
+    --color-border: #3a444c;
+    --color-border-light: #2c363d;
+    --color-border-muted: #4a565f;
+    --color-bg-subtle: #232b30;
+    /* extended surface tokens (slice 2a) */
+    --color-surface-dark: #0c1013;
+    --color-text-charcoal: #dfe6ea;
+    --color-text-on-dark: #f2f5f7;
+    --color-bg-faint: #1a2024;
+    --color-surface-code: #12171b;
+    --color-chip-bg-muted: #2a3136;
+    --color-chip-text-muted: #d8dde0;
+    --color-chip-border-muted: #5a666f;
+    --color-badge-bg-subtle: #262e33;
+    --color-divider-subtle: #2c363d;
+    --color-track-bg: #262e33;
+    --color-group-btn-border: #5c564c;
+    --color-group-btn-accent: #b08d52;
+    --color-fleet-accent: #d4a017;
+    /* danger / red family */
+    --color-danger: #e0574a;
+    --color-danger-dark: #e8695c;
+    --color-danger-mid: #ea7a6e;
+    --color-danger-alt: #d65c5c;
+    --color-danger-deep: #f4a99e;
+    --color-danger-bg: #3a1613;
+    --color-danger-bg-alt: #4a1a17;
+    --color-danger-fill: #451815;
+    /* warning / amber family */
+    --color-warning-text: #f0c674;
+    --color-warning-border: #d99a3d;
+    --color-warning-bg: #3a2f10;
+    --color-warning-bg-alt: #402f16;
+    --color-warning-retry-accent: #e0a339;
+    /* info / blue */
+    --color-link: #6ba3e0;
+    --color-info: #5ba3ea;
+    --color-info-border: #5a95d4;
+    --color-info-bg-alt: #16232f;
+    /* success / green */
+    --color-success: #4bb47c;
+    --color-success-alt: #43a873;
+    --color-success-border: #4ecb85;
+    --color-success-bg: #163325;
+    /* new in this slice */
+    --color-page-bg: #14181c;
+  }
+}
+:root[data-theme='dark'] {
+  /* Same values as the media-query block above — duplicated deliberately, see the comment
+     above this whole section for why both blocks are required. */
+  --color-white: #1c2226;
+  --color-ink: #eef2f5;
+  --color-text-body: #c2ccd3;
+  --color-text-muted: #99a7b1;
+  --color-text-secondary: #b3bfc7;
+  --color-text-faint: #8fa0ab;
+  --color-text-dim: #a4b2bb;
+  --color-text-placeholder: #566573;
+  --color-border: #3a444c;
+  --color-border-light: #2c363d;
+  --color-border-muted: #4a565f;
+  --color-bg-subtle: #232b30;
+  --color-surface-dark: #0c1013;
+  --color-text-charcoal: #dfe6ea;
+  --color-text-on-dark: #f2f5f7;
+  --color-bg-faint: #1a2024;
+  --color-surface-code: #12171b;
+  --color-chip-bg-muted: #2a3136;
+  --color-chip-text-muted: #d8dde0;
+  --color-chip-border-muted: #5a666f;
+  --color-badge-bg-subtle: #262e33;
+  --color-divider-subtle: #2c363d;
+  --color-track-bg: #262e33;
+  --color-group-btn-border: #5c564c;
+  --color-group-btn-accent: #b08d52;
+  --color-fleet-accent: #d4a017;
+  --color-danger: #e0574a;
+  --color-danger-dark: #e8695c;
+  --color-danger-mid: #ea7a6e;
+  --color-danger-alt: #d65c5c;
+  --color-danger-deep: #f4a99e;
+  --color-danger-bg: #3a1613;
+  --color-danger-bg-alt: #4a1a17;
+  --color-danger-fill: #451815;
+  --color-warning-text: #f0c674;
+  --color-warning-border: #d99a3d;
+  --color-warning-bg: #3a2f10;
+  --color-warning-bg-alt: #402f16;
+  --color-warning-retry-accent: #e0a339;
+  --color-link: #6ba3e0;
+  --color-info: #5ba3ea;
+  --color-info-border: #5a95d4;
+  --color-info-bg-alt: #16232f;
+  --color-success: #4bb47c;
+  --color-success-alt: #43a873;
+  --color-success-border: #4ecb85;
+  --color-success-bg: #163325;
+  --color-page-bg: #14181c;
+}
+
+/* #104 slice 2b dark-mode COMPONENT overrides — distinct from the custom-property
+   redefinitions above. These exist because a handful of call sites (pre-dating this slice)
+   either (a) reuse a token in a role that legitimately wants to stay non-inverted (the
+   topbar deliberately stays a dark bar in both themes — same "role collision" class as the
+   surface-dark/text-charcoal split from slice 2a, just not worth threading a whole new
+   token through for one component), or (b) hardcode a literal color that was never part of
+   the tokenized 47 and so never adapts on its own (chip/badge/kbd backgrounds designed once
+   against a permanently-light canvas). None of this touches the 47 tokens' LIGHT values or
+   any of their existing call sites — every rule below is a NEW, dark-scoped addition, found
+   by running frontend/e2e/dark-theme.spec.ts's real axe-core scan and fixing what it flagged
+   (not guessed up front — see docs/IMPLEMENTATION-PLAN.md's #104 slice 2b entry for the
+   full list and why each one broke). Duplicated across the media-query and [data-theme]
+   selectors for the same cascade-coverage reason as the custom properties above. */
+@media (prefers-color-scheme: dark) {
+  /* :where() zeroes the specificity of its argument — critical here. Nesting these
+     selectors normally (":root:not([data-theme='light']) button") would make the
+     scoping wrapper itself count toward specificity (:root + :not([data-theme]) = two
+     class-equivalents), which then OUTRANKS plain-class rules like .segment-active or
+     .action-danger and silently overrides their explicit `color` — a real bug hit while
+     building this (see docs/IMPLEMENTATION-PLAN.md's #104 slice 2b entry). :where() keeps
+     this rule at its intended (0,0,1) element-level specificity so any class-based color/
+     background rule still wins normally. */
+  :where(:root:not([data-theme='light'])) button {
+    /* Buttons don't reliably inherit color OR get a sensible default background from an
+       ancestor (UA stylesheet renders near-black text on a near-white "ButtonFace"
+       background regardless of the page's dark theme) — invisible in light mode (both
+       defaults already read fine there), exposed the instant the page goes dark. Every
+       button that already sets its own background/color (.copy-btn, .segment,
+       .segment-active, .modal-footer button.primary/.danger, .action-danger, .tab-active,
+       …) keeps winning on that property via specificity; this is only the fallback for the
+       ones that never set one (plain <button>, .protect-toggle, .curl-toggle, .rail-toggle,
+       .retry-group-btn, the modal Cancel button). */
+    background: var(--color-white);
+    color: var(--color-ink);
+  }
+  /* Scoped to the drawer (not a blanket `code` rule) deliberately — AG Grid's own cell
+     renderers also emit bare <code> (e.g. the composite-ID column) on AG Grid's own
+     un-themed white cell background; #104 is explicit that AG Grid theming is a separate,
+     later slice, so this must not reach into grid cells. */
+  :where(:root:not([data-theme='light'])) .ops-drawer code {
+    color: var(--color-ink);
+  }
+  :root:not([data-theme='light']) {
+    /* The topbar intentionally stays a dark bar in BOTH themes (a stable branded header,
+       not part of the page canvas) — its pre-existing literal children colors
+       (.topbar-link, .identity-who/-label/-role, "unknown") were designed against a
+       permanently-dark bar and keep working unmodified once the bar itself stops
+       inverting. Without this override, .topbar's own --color-ink/--color-white pairing
+       (correctly inverted for their PRIMARY roles: general text ink, card surfaces) would
+       flip the bar to a LIGHT background with dark text, breaking every one of those
+       literals at once. */
+    .topbar {
+      background: var(--color-surface-dark);
+      color: var(--color-text-on-dark);
+    }
+    /* .env-dev / .state-running's text is a literal designed for --color-info-bg-alt's
+       LIGHT value; reuse the info-border token (already correctly inverted) rather than
+       inventing a new literal for the same "dark text on the info tint" role. */
+    .env-dev,
+    .state-running {
+      color: var(--color-info-border);
+    }
+    /* .drawer-live/.drawer-interrupted set only a colored (link/warning) background and
+       rely on inheriting a dark-appropriate text color — correct in light mode (inherits
+       the topbar-adjacent dark ink), wrong once ink inverts to light. --color-white's dark
+       value is dark, so it reads as intended: dark text on the light accent pill (the
+       exact intent .segment-active already expresses the same way). */
+    .drawer-live,
+    .drawer-interrupted {
+      color: var(--color-white);
+    }
+    /* Chip/badge/keycap backgrounds hardcoded against a permanently-light canvas — pin them
+       back to (mostly) their original light shade so the badge keeps its own recognizable
+       identity rather than trying to invert a small saturated pill (status-chip.active/
+       .completed/.retrying/.terminated already do exactly this — pure literals, unaffected
+       by theme; these three just had ONE tokenized property each that broke the pairing). */
+    .status-chip.suspended {
+      background: #fdebd0;
+    }
+    .protected-badge {
+      background: #3a2f10;
+      border-color: #6b4a03;
+    }
+    .bulk-bar {
+      background: #16232f;
+    }
+    .grid-keys kbd {
+      background: #232b30;
+    }
+    /* Untokenized literal (outside the 47-token set) — reuse the now dark-safe text-faint
+       token instead of a bespoke value. */
+    .leak-views-caption {
+      color: var(--color-text-faint);
+    }
+  }
+}
+/* Same rules as the media-query block above — duplicated deliberately, see the comment at
+   the top of this whole dark-mode section for why both blocks are required. */
+:where([data-theme='dark']) button {
+  background: var(--color-white);
+  color: var(--color-ink);
+}
+:where([data-theme='dark']) .ops-drawer code {
+  color: var(--color-ink);
+}
+:root[data-theme='dark'] {
+  .topbar {
+    background: var(--color-surface-dark);
+    color: var(--color-text-on-dark);
+  }
+  .env-dev,
+  .state-running {
+    color: var(--color-info-border);
+  }
+  .drawer-live,
+  .drawer-interrupted {
+    color: var(--color-white);
+  }
+  .status-chip.suspended {
+    background: #fdebd0;
+  }
+  .protected-badge {
+    background: #3a2f10;
+    border-color: #6b4a03;
+  }
+  .bulk-bar {
+    background: #16232f;
+  }
+  .grid-keys kbd {
+    background: #232b30;
+  }
+  .leak-views-caption {
+    color: var(--color-text-faint);
+  }
 }
 
 * {
@@ -84,6 +346,7 @@ body {
   font-family: system-ui, sans-serif;
   font-size: 14px;
   color: var(--color-ink);
+  background: var(--color-page-bg);
 }
 
 .app {
@@ -122,6 +385,15 @@ body {
   white-space: nowrap;
 }
 .zone-toggle .segment {
+  padding: 2px 8px;
+  font-size: 12px;
+}
+
+/* R-UXQ-08: the persisted dark-theme control (System / Light / Dark) in the topbar. */
+.theme-toggle {
+  white-space: nowrap;
+}
+.theme-toggle .segment {
   padding: 2px 8px;
   font-size: 12px;
 }

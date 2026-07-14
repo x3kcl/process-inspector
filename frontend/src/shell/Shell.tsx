@@ -13,6 +13,7 @@ import {
 import { HeaderStrip } from '../components/HeaderStrip'
 import { IdentityStrip } from '../components/IdentityStrip'
 import { SignIn } from '../components/SignIn'
+import { ThemeToggle } from '../components/ThemeToggle'
 import { ZoneToggle } from '../components/ZoneToggle'
 import { ToastProvider } from '../components/toast'
 import { LiveProvider } from '../live/live'
@@ -80,6 +81,8 @@ export function Shell() {
               <Omnibox />
               {/* R-UXQ-03: the one-click display-zone control lives on every stage. */}
               <ZoneToggle />
+              {/* R-UXQ-08: the persisted dark-theme control lives on every stage. */}
+              <ThemeToggle />
               {/* Usability W3: who-am-I + Sign out (dev ladder). Hidden while signed out. */}
               {!authRequired && <IdentityStrip />}
               <HeaderStrip />

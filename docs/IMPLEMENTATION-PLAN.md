@@ -1881,6 +1881,99 @@ from `--color-surface-dark` (background-only now, `.engine-card`/omnibox), and
 `--color-track-bg` (new, `.timing-track`'s fill) separated from `--color-divider-subtle`
 (border-only now). 47 tokens total after the split (was 45).
 
+### #104 slice 2b/5 — the dark-theme switch itself (R-UXQ-08) *(✅ LANDED 2026-07-14, issue #104)*
+The actual mechanism, building on slices 1/2a's now-complete token coverage: dark values
+for all 47 `--color-*` tokens + one new one, a persisted three-way preference (System /
+Light / Dark) with a `prefers-color-scheme` default, and a segmented `ThemeToggle` next to
+`ZoneToggle` in the topbar.
+
+*Shipped:*
+- `frontend/src/lib/theme.ts` — mirrors `lib/format.ts`'s `DisplayZone` store exactly (lazy
+  `localStorage`-hydrated module value, listener `Set`, get/set/subscribe +
+  `useSyncExternalStore` hook), storage key `inspector.theme`. `setThemePreference()` (and a
+  module-load call) applies the resolved state to `<html>`: `'system'` REMOVES `data-theme`
+  entirely (the CSS media query alone decides, deliberately no `matchMedia` listener); `'light'`
+  /`'dark'` set `data-theme`, which CSS overrides win in both directions. Imported in
+  `main.tsx` for its module-load side effect, before `createRoot(...).render(...)`, so
+  `data-theme` is set before first paint (no FOUC — deliberately skipped a separate inline
+  `<script>` for this, the React import ordering was sufficient in testing).
+- `frontend/src/components/ThemeToggle.tsx` — mirrors `ZoneToggle.tsx`, a labeled 3-option
+  `Segmented` (System/Light/Dark), mounted next to `ZoneToggle` in `Shell.tsx`'s topbar.
+- `styles.css`: a dark value for every one of the 47 tokens plus one genuinely new token,
+  `--color-page-bg` (`body` had no explicit `background` at all before this — now
+  `#fff` light / `#14181c` dark), duplicated across a `@media (prefers-color-scheme: dark) {
+  :root:not([data-theme='light']) { … } }` block (system default) and a
+  `:root[data-theme='dark'] { … }` block (explicit override, wins regardless of OS
+  preference) — both required for correct cascade coverage. No existing token's LIGHT value
+  or call site was touched.
+
+*Draft palette vs. what actually shipped — every deviation was a REAL axe-core
+color-contrast failure, not a theoretical judgment call (`frontend/e2e/dark-theme.spec.ts`,
+5 states: triage landing, AG Grid search results, the errors-jobs instance tab, a tier-3
+destructive modal, and the operations drawer after a dispatch — chosen to spread across
+chips/badges, grid cells, form controls, and the topbar). Iterated to zero violations across
+~90 initial findings, mostly a small number of repeating root causes:*
+- `--color-text-faint` (`#6c7d89`→**`#8fa0ab`**) and `--color-text-dim` (`#82929d`→
+  **`#a4b2bb`**) were too dark against the app's own dark surfaces (`.strip-note`,
+  `.count-unit`, `.engine-version`, etc. — real body text, not decorative).
+- `--color-danger-dark` (`#c0453a`→**`#e8695c`**), `--color-danger-mid` (`#cf5d4e`→
+  **`#ea7a6e`**) and `--color-success` (`#3fa06a`→**`#4bb47c`**) were too dark/desaturated as
+  *text* accent colors (`.exception-class`, `.version-count`, the dead-letter `<summary>`,
+  `.action-danger`, `.rev-reversible`) — brightening these three also fixed
+  `.status-chip.failed`'s text-on-chip pairing for free, without pinning that chip to a
+  literal.
+- A missing-`color` latent bug, invisible in light mode, surfaced everywhere dark mode
+  inverted a button's background: `<button>` (and UA-default styling generally) does not
+  reliably inherit `color`, so `.segment`, `.copy-btn`/`.action-btn` variants, `.tab-button`,
+  `.rail-toggle`, `.retry-group-btn`, and the unclassed modal Cancel button all rendered
+  near-black default text. Fixed with **one** low-specificity dark-scoped rule giving every
+  button an explicit `background: var(--color-white); color: var(--color-ink);` fallback —
+  every button that already sets its own colors (`.segment-active`, `.action-danger`,
+  `.modal-footer button.primary/.danger`, `.tab-active`) keeps winning via specificity.
+  **Gotcha hit while building this:** nesting that fallback inside
+  `:root[data-theme='dark'] { button { … } }` (or the `@media` equivalent) inflates its
+  *effective* specificity — `:root` and `[data-theme='dark']` each count as a class-level
+  selector, so the nested form actually outranks plain single-class rules like
+  `.segment-active` and silently broke them. Fixed with `:where()`, which zeroes the
+  specificity of its argument: `:where(:root:not([data-theme='light'])) button` /
+  `:where([data-theme='dark']) button` stay genuinely low-specificity, as originally
+  intended. A parallel `:where(...) .ops-drawer code { color: var(--color-ink); }` covers
+  the drawer's `<code>` verb/id spans the same way — deliberately scoped to the drawer
+  rather than a blanket `code` selector, because AG Grid's own cell renderers also emit bare
+  `<code>` (composite-ID column) on AG Grid's *own* un-themed white cell background; #104 is
+  explicit that AG Grid theming is a separate, later slice, and a blanket rule broke those
+  cells in testing.
+- The topbar reuses `--color-ink`/`--color-white` in REVERSED roles (dark bar, light text) —
+  a coincidence of both tokens sharing a value in light mode only, the same "role collision"
+  class slice 2a already split `--color-surface-dark`/`--color-text-charcoal` for. Once ink/
+  white invert for their PRIMARY roles (general text, card surfaces), the topbar would flip
+  to a light bar with dark text, breaking every literal color designed against it
+  (`.topbar-link`, `.identity-who/-label/-role`, the "unknown" fallback, `.engine-name`'s
+  inherited color). Rather than thread a new token through one component, the topbar gets a
+  dark-scoped override pinning it to `var(--color-surface-dark)` / `var(--color-text-on-dark)`
+  — tokens that DON'T invert for this use — so it stays a stable dark bar in both themes and
+  every existing literal child color keeps working unmodified.
+- A handful of literal (never-tokenized, outside the 47-token set) badge/chip/keycap
+  backgrounds were hardcoded against a permanently-light canvas and don't adapt on their
+  own: `.env-dev`/`.state-running`'s text (reused `--color-info-border`, already correctly
+  inverted, instead of a new literal), `.status-chip.suspended`'s background, `.protected-
+  badge`'s background/border, `.bulk-bar`'s background, `.grid-keys kbd`'s background, and
+  `.leak-views-caption`'s color (reused the now-fixed `--color-text-faint`) — all pinned to a
+  readable dark-scoped literal or reused token, following the SAME "pin the badge, don't
+  invert it" precedent `.status-chip.active/.completed/.retrying/.terminated` already set
+  (pure literals, unaffected by theme). `.drawer-live`/`.drawer-interrupted` had no `color`
+  of their own (relied on inheriting the old dark-topbar's ink) — given an explicit
+  `color: var(--color-white)` (dark in dark mode — the same "dark text on a light accent
+  pill" intent `.segment-active` already expresses).
+
+*Tests:* `frontend/e2e/dark-theme.spec.ts` (new, 5 real axe-core scans, all green) + every
+pre-existing e2e a11y spec re-run (62/62 green — light-mode contrast unaffected, confirming
+no light value or call site was touched) + `npx vitest run` (546/546, incl. new
+`lib/theme.test.ts` mirroring `format.test.ts`'s DisplayZone coverage and
+`components/ThemeToggle.test.ts` mirroring `ZoneToggle.test.ts`) + `npm run build` (tsc +
+vite + the bpmn-watermark guard) + `scripts/ci-local.sh --full` (backend unaffected, unit
+ladder green) all green.
+
 ## Build order inside any milestone
 backend DTO → engine client call → aggregator/join logic → controller → typed frontend API
 client → component. Every Flowable call gets an integration test against the dockerized
