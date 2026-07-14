@@ -36,6 +36,16 @@ LABEL org.opencontainers.image.title="Process Inspector BFF" \
 # (nightly Trivy scan gate, issue #93) — libexpat/p11-kit etc. get fixes upstream
 # well before eclipse-temurin re-cuts the jre-alpine tag.
 RUN apk upgrade --no-cache
+# Strip packages the base image installs for ITS OWN build/verification tooling that
+# this headless JSON REST service never touches at runtime (no AWT/font/PDF/image
+# dependency anywhere in backend/pom.xml) — confirmed via `apk info --rdepends` that
+# none of these are JRE dependencies, only top-level /etc/apk/world entries. Removing
+# them is the only available remediation for CVE-2026-11822/11824/23865/41989
+# (libgcrypt, pulled in solely by gnupg), CVE-2016-2781 (coreutils), and
+# CVE-2025-30258 (freetype, pulled in solely by fontconfig/ttf-dejavu) — issue #191:
+# Alpine has not cut a patched revision of any of the three yet, so `apk upgrade`
+# above cannot fix this. Verified the app boots identically without them.
+RUN apk del --purge gnupg coreutils fontconfig ttf-dejavu
 RUN addgroup -S app && adduser -S -G app app
 USER app
 WORKDIR /app
