@@ -64,3 +64,64 @@ export function useUnprotectInstance(engineId: string, instanceId: string) {
     onSettled: invalidate,
   })
 }
+
+// #172: definition-key scope, deferred from #165. Same BFF-store-only shape — no engine call,
+// ADMIN-per-engine gated server-side, reason required either way.
+async function protectDefinition(
+  engineId: string,
+  definitionKey: string,
+  body: ProtectionRequest,
+): Promise<null> {
+  const { error, response } = await api.POST(
+    '/api/definitions/{engineId}/{definitionKey}/protect',
+    {
+      params: { path: { engineId, definitionKey } },
+      body,
+    },
+  )
+  if (!response.ok) throw new ActionError(parseActionProblem(response.status, error))
+  return null
+}
+
+async function unprotectDefinition(
+  engineId: string,
+  definitionKey: string,
+  body: ProtectionRequest,
+): Promise<null> {
+  const { error, response } = await api.POST(
+    '/api/definitions/{engineId}/{definitionKey}/unprotect',
+    {
+      params: { path: { engineId, definitionKey } },
+      body,
+    },
+  )
+  if (!response.ok) throw new ActionError(parseActionProblem(response.status, error))
+  return null
+}
+
+function useDefinitionProtectionInvalidation(engineId: string, definitionKey: string) {
+  const queryClient = useQueryClient()
+  return async () => {
+    await queryClient.invalidateQueries({
+      queryKey: ['definition-versions', engineId, definitionKey],
+    })
+  }
+}
+
+export function useProtectDefinition(engineId: string, definitionKey: string) {
+  const invalidate = useDefinitionProtectionInvalidation(engineId, definitionKey)
+  return useMutation<null, ActionError, ProtectionRequest>({
+    retry: false,
+    mutationFn: (body) => protectDefinition(engineId, definitionKey, body),
+    onSettled: invalidate,
+  })
+}
+
+export function useUnprotectDefinition(engineId: string, definitionKey: string) {
+  const invalidate = useDefinitionProtectionInvalidation(engineId, definitionKey)
+  return useMutation<null, ActionError, ProtectionRequest>({
+    retry: false,
+    mutationFn: (body) => unprotectDefinition(engineId, definitionKey, body),
+    onSettled: invalidate,
+  })
+}

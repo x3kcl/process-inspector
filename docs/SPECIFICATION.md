@@ -126,11 +126,18 @@ checklist).
   the platform-administrator SLA is stated in the runbook ("scope grant effective ≤5 min").
   If even that path is unavailable, break-glass (§6) is the fallback. A CRUD UI over the
   same store is v2, with its own guard tier.
-- **Protected instances** (R-SAFE-05) — L3+ may mark a composite ID or definition key
-  `protected` (reason required; setting/removing is tier-3, audited). Below the configured
-  role floor, ALL verbs are disabled-with-reason ("protected — L3 action required");
-  protection badge on rows, vitals header, and inside every confirm; bulk and group
-  operations auto-exclude protected members, reported as `skipped (protected)`.
+- **Protected instances** (R-SAFE-05) — L3+ may mark a composite ID (#165) or a whole
+  definition key (#172) `protected` (reason required; setting/removing is tier-3, audited).
+  Below the configured role floor, ALL verbs are disabled-with-reason ("protected — L3 action
+  required"); protection badge on rows, vitals header, and inside every confirm; bulk and
+  group operations auto-exclude protected members, reported as `skipped (protected)`.
+  **Enforcement boundary (#172):** definition-key protection is checked wherever the target's
+  definition key is already resolved without an extra engine round-trip — the two
+  definition-scoped verbs (suspend/activate-definition) and instance migration. Checking it on
+  every OTHER instance-targeting verb (retry, terminate, task actions…) and in bulk's
+  per-item dispatch needs each of those call sites to resolve a definition key it doesn't
+  fetch today; tracked as a follow-up (issue #184) rather than paying that engine-round-trip
+  cost inside this change.
 - **Read-only engine mode** (R-GOV-04) — registry `mode: read-write | read-only`; the BFF
   rejects every mutating verb against a read-only engine (greyed: "engine registered
   read-only"). This is the rollout ramp: prod engines onboard read-only first; mutation

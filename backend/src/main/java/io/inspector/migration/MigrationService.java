@@ -10,9 +10,7 @@ import io.inspector.action.TicketPolicy;
 import io.inspector.audit.AuditEntry;
 import io.inspector.audit.AuditOutcome;
 import io.inspector.audit.AuditService;
-import io.inspector.audit.AuditUnavailableException;
-import io.inspector.audit.ProtectedInstance;
-import io.inspector.audit.ProtectedInstanceRepository;
+import io.inspector.audit.ProtectionGuard;
 import io.inspector.client.FlowablePage;
 import io.inspector.client.ForwardedActor;
 import io.inspector.client.GuardedCaller.CallPriority;
@@ -32,7 +30,6 @@ import java.util.ArrayList;
 import java.util.LinkedHashMap;
 import java.util.List;
 import java.util.Map;
-import java.util.Optional;
 import java.util.function.Supplier;
 import org.springframework.http.HttpStatus;
 import org.springframework.security.core.Authentication;
@@ -66,7 +63,7 @@ public class MigrationService {
     private final BpmnStructureService structures;
     private final RbacAuthorizer rbac;
     private final AuditService audit;
-    private final ProtectedInstanceRepository protectedInstances;
+    private final ProtectionGuard protectionGuard;
     private final TicketPolicy ticketPolicy;
 
     public MigrationService(
@@ -75,14 +72,14 @@ public class MigrationService {
             BpmnStructureService structures,
             RbacAuthorizer rbac,
             AuditService audit,
-            ProtectedInstanceRepository protectedInstances,
+            ProtectionGuard protectionGuard,
             TicketPolicy ticketPolicy) {
         this.registry = registry;
         this.client = client;
         this.structures = structures;
         this.rbac = rbac;
         this.audit = audit;
-        this.protectedInstances = protectedInstances;
+        this.protectionGuard = protectionGuard;
         this.ticketPolicy = ticketPolicy;
     }
 
@@ -132,7 +129,11 @@ public class MigrationService {
         EngineConfig engine = plan.engine();
 
         assertNotMovedSincePreview(plan, request);
-        requireUnprotectedOrAdmin(auth, engine, instanceId);
+        // #172: dual-scope, unlike the other two callers of ProtectionGuard — plan() has already
+        // resolved fromKey for the diff/mapping machinery, so checking definition-scope protection
+        // costs nothing extra here (no additional engine round-trip, unlike CorrectiveActionService's
+        // instance-kind verbs or FlowSurgeryService's two callers).
+        protectionGuard.requireUnprotectedOrAdmin(auth, engine.id(), instanceId, plan.fromKey(), MIGRATE_ACTION);
         String reason = requireReason(request.reason());
         String ticketId = ticketPolicy.validate(request.ticketId(), engine.environment());
         requireConfirmToken(engine, plan, request.confirmToken());
@@ -396,24 +397,6 @@ public class MigrationService {
                             + " retry the migration. Nothing happened.");
         }
         return instance;
-    }
-
-    private void requireUnprotectedOrAdmin(Authentication auth, EngineConfig engine, String targetId) {
-        Optional<ProtectedInstance> protection;
-        try {
-            protection = protectedInstances.findById(new ProtectedInstance.Key(engine.id(), targetId));
-        } catch (RuntimeException e) {
-            // Protection registry and audit share one Postgres: unreadable = fail-closed (R-AUD-01).
-            throw new AuditUnavailableException(e);
-        }
-        if (protection.isPresent() && !rbac.hasRoleOn(auth, Role.ADMIN, engine.id())) {
-            throw new GuardRefusedException(
-                    HttpStatus.FORBIDDEN,
-                    "instance-protected",
-                    "Instance " + engine.id() + ":" + targetId + " is protected (R-SAFE-05): \""
-                            + protection.get().getReason() + "\" — L3 (ADMIN) action required for '" + MIGRATE_ACTION
-                            + "'.");
-        }
     }
 
     /** Tier-3 reason discipline: ALWAYS required, ≥10 chars, every environment. */

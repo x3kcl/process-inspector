@@ -84,6 +84,8 @@ class CorrectiveActionServiceTest {
     private final AuditService audit = mock(AuditService.class);
     private final RbacAuthorizer rbac = mock(RbacAuthorizer.class);
     private final ProtectedInstanceRepository protectedInstances = mock(ProtectedInstanceRepository.class);
+    private final io.inspector.audit.ProtectedDefinitionRepository protectedDefinitions =
+            mock(io.inspector.audit.ProtectedDefinitionRepository.class);
     private final Authentication operator = new TestingAuthenticationToken("op", "n/a", "ROLE_OPERATOR");
 
     private CorrectiveActionService service;
@@ -106,12 +108,13 @@ class CorrectiveActionServiceTest {
                 cmmnClient,
                 audit,
                 rbac,
-                protectedInstances,
+                new io.inspector.audit.ProtectionGuard(protectedInstances, protectedDefinitions, rbac),
                 new TicketPolicy(new io.inspector.config.AuditProperties(null, null, null)),
                 new DangerousActionReauthGate(new OidcProperties(null, false, null), Clock.fixed(NOW, ZoneOffset.UTC)));
 
         when(rbac.hasRoleOn(any(), any(), anyString())).thenReturn(true);
         when(protectedInstances.findById(any())).thenReturn(Optional.empty());
+        when(protectedDefinitions.findById(any())).thenReturn(Optional.empty());
 
         pendingEntry = new AuditEntry(
                 UUID.nameUUIDFromBytes("audit".getBytes(StandardCharsets.UTF_8)),
@@ -209,6 +212,27 @@ class CorrectiveActionServiceTest {
                 .isInstanceOf(GuardRefusedException.class)
                 .satisfies(e -> assertThat(((GuardRefusedException) e).code()).isEqualTo("instance-protected"));
         verifyNoInteractions(audit);
+    }
+
+    @Test
+    void definitionScopedVerbsNoLongerBypassProtectionEntirely() {
+        // #172: SUSPEND_DEFINITION/ACTIVATE_DEFINITION previously bypassed ANY protection check
+        // (TargetKind.DEFINITION early-returned from the instance-only guard, with nothing checking
+        // definition scope in its place) — proves the lookup now actually happens. Both this verb's
+        // role floor (ActionVerb.minRole() = ADMIN) and the protection admin-bypass consult the
+        // IDENTICAL rbac.hasRoleOn(auth, ADMIN, engineId) predicate, so a blocked-vs-allowed
+        // distinction via RBAC isn't observable here (the role-floor check always wins first) — the
+        // wiring itself, not an outcome difference, is what regressed silently before and is under
+        // test now.
+        when(rbac.hasRoleOn(any(), eq(Role.ADMIN), eq(DEV))).thenReturn(true);
+        when(client.getProcessDefinition(any(), eq(CallPriority.INTERACTIVE), eq("payment:3:def-1")))
+                .thenReturn(Map.of("key", "payment", "version", 3));
+        ActionRequest request = new ActionRequest(
+                "investigating a stuck rollout", null, null, null, null, null, null, null, null, null, null);
+
+        service.execute(DEV, "payment:3:def-1", ActionVerb.SUSPEND_DEFINITION, request, operator);
+
+        verify(protectedDefinitions).findById(new io.inspector.audit.ProtectedDefinition.Key(DEV, "payment"));
     }
 
     @Test

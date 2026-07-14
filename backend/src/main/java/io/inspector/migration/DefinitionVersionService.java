@@ -3,6 +3,8 @@ package io.inspector.migration;
 import io.github.resilience4j.bulkhead.BulkheadFullException;
 import io.github.resilience4j.circuitbreaker.CallNotPermittedException;
 import io.inspector.action.GuardRefusedException;
+import io.inspector.audit.ProtectedDefinition;
+import io.inspector.audit.ProtectedDefinitionRepository;
 import io.inspector.client.FlowablePage;
 import io.inspector.client.GuardedCaller.CallPriority;
 import io.inspector.client.ProcessApiClient;
@@ -13,6 +15,7 @@ import java.util.Comparator;
 import java.util.LinkedHashMap;
 import java.util.List;
 import java.util.Map;
+import java.util.Optional;
 import org.springframework.http.HttpStatus;
 import org.springframework.stereotype.Service;
 import org.springframework.web.client.ResourceAccessException;
@@ -33,10 +36,13 @@ public class DefinitionVersionService {
 
     private final EngineRegistry registry;
     private final ProcessApiClient client;
+    private final ProtectedDefinitionRepository protectedDefinitions;
 
-    public DefinitionVersionService(EngineRegistry registry, ProcessApiClient client) {
+    public DefinitionVersionService(
+            EngineRegistry registry, ProcessApiClient client, ProtectedDefinitionRepository protectedDefinitions) {
         this.registry = registry;
         this.client = client;
+        this.protectedDefinitions = protectedDefinitions;
     }
 
     public DefinitionVersionsResponse versions(String engineId, String key) {
@@ -84,7 +90,17 @@ public class DefinitionVersionService {
         versions.sort(Comparator.comparingInt(DefinitionVersionsResponse.DefinitionVersion::version)
                 .reversed());
         boolean complete = totalVersions <= versions.size();
-        return new DefinitionVersionsResponse(engineId, key, latest, totalVersions, complete, versions);
+        Optional<ProtectedDefinition> protection =
+                protectedDefinitions.findById(new ProtectedDefinition.Key(engineId, key));
+        return new DefinitionVersionsResponse(
+                engineId,
+                key,
+                latest,
+                totalVersions,
+                complete,
+                versions,
+                protection.isPresent(),
+                protection.map(ProtectedDefinition::getReason).orElse(null));
     }
 
     /** RUNNING instances on ONE definition version — count-only ({@code size=1}, read {@code total}). */

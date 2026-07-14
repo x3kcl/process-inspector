@@ -549,6 +549,38 @@ export interface paths {
         patch?: never;
         trace?: never;
     };
+    "/api/definitions/{engineId}/{definitionKey}/protect": {
+        parameters: {
+            query?: never;
+            header?: never;
+            path?: never;
+            cookie?: never;
+        };
+        get?: never;
+        put?: never;
+        post: operations["protect_1"];
+        delete?: never;
+        options?: never;
+        head?: never;
+        patch?: never;
+        trace?: never;
+    };
+    "/api/definitions/{engineId}/{definitionKey}/unprotect": {
+        parameters: {
+            query?: never;
+            header?: never;
+            path?: never;
+            cookie?: never;
+        };
+        get?: never;
+        put?: never;
+        post: operations["unprotect_1"];
+        delete?: never;
+        options?: never;
+        head?: never;
+        patch?: never;
+        trace?: never;
+    };
     "/api/definitions/{engineId}/{key}/versions": {
         parameters: {
             query?: never;
@@ -1619,6 +1651,8 @@ export interface components {
             key?: string;
             /** Format: int32 */
             latestVersion?: number;
+            protectedDefinition?: boolean;
+            protectionReason?: string;
             /** Format: int32 */
             totalVersions?: number;
             versions?: components["schemas"]["DefinitionVersion"][];
@@ -3444,6 +3478,56 @@ export interface operations {
                 content: {
                     "*/*": components["schemas"]["ActionResult"];
                 };
+            };
+        };
+    };
+    protect_1: {
+        parameters: {
+            query?: never;
+            header?: never;
+            path: {
+                engineId: string;
+                definitionKey: string;
+            };
+            cookie?: never;
+        };
+        requestBody: {
+            content: {
+                "application/json": components["schemas"]["ProtectionRequest"];
+            };
+        };
+        responses: {
+            /** @description No Content */
+            204: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content?: never;
+            };
+        };
+    };
+    unprotect_1: {
+        parameters: {
+            query?: never;
+            header?: never;
+            path: {
+                engineId: string;
+                definitionKey: string;
+            };
+            cookie?: never;
+        };
+        requestBody: {
+            content: {
+                "application/json": components["schemas"]["ProtectionRequest"];
+            };
+        };
+        responses: {
+            /** @description No Content */
+            204: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content?: never;
             };
         };
     };
