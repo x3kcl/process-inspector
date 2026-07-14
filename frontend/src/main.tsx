@@ -10,6 +10,9 @@ import { TriagePage } from './triage/TriagePage'
 // persisted/system theme to <html> before the first render, so there's no flash of the
 // wrong explicit override.
 import './lib/theme'
+// #104 slice 3/6 (R-UXQ-09): same rationale as theme.ts above — applies the persisted grid
+// density to <html> before the first render.
+import './lib/density'
 import './styles.css'
 
 // U3 (#88): code-split every page that carries a heavy dependency out of the entry chunk. Only
