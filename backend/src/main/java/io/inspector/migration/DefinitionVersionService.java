@@ -15,7 +15,8 @@ import java.util.Comparator;
 import java.util.LinkedHashMap;
 import java.util.List;
 import java.util.Map;
-import java.util.Optional;
+import org.slf4j.Logger;
+import org.slf4j.LoggerFactory;
 import org.springframework.http.HttpStatus;
 import org.springframework.stereotype.Service;
 import org.springframework.web.client.ResourceAccessException;
@@ -28,6 +29,8 @@ import org.springframework.web.client.ResourceAccessException;
  */
 @Service
 public class DefinitionVersionService {
+
+    private static final Logger log = LoggerFactory.getLogger(DefinitionVersionService.class);
 
     // The on-ramp shows the newest N versions with running counts — one count query per version,
     // so this is also the fan-out bound (a pathologically-redeployed key never triggers hundreds
@@ -90,8 +93,7 @@ public class DefinitionVersionService {
         versions.sort(Comparator.comparingInt(DefinitionVersionsResponse.DefinitionVersion::version)
                 .reversed());
         boolean complete = totalVersions <= versions.size();
-        Optional<ProtectedDefinition> protection =
-                protectedDefinitions.findById(new ProtectedDefinition.Key(engineId, key));
+        Protection protection = protectionOf(engineId, key);
         return new DefinitionVersionsResponse(
                 engineId,
                 key,
@@ -99,9 +101,32 @@ public class DefinitionVersionService {
                 totalVersions,
                 complete,
                 versions,
-                protection.isPresent(),
-                protection.map(ProtectedDefinition::getReason).orElse(null));
+                protection.isProtected(),
+                protection.reason());
     }
+
+    /**
+     * #172 Copilot review: this is otherwise an ENGINE-only read (no capability gate, no audit) —
+     * a Postgres outage must degrade to unknown, not take the whole on-ramp page down. Mirrors
+     * {@code InstanceDetailService#protectionOf}/{@code SearchService#markProtected}; the
+     * execution-time {@code ProtectionGuard} still refuses fail-closed regardless of what this
+     * read shows.
+     */
+    private Protection protectionOf(String engineId, String key) {
+        try {
+            return protectedDefinitions
+                    .findById(new ProtectedDefinition.Key(engineId, key))
+                    .map(p -> new Protection(true, p.getReason()))
+                    .orElseGet(() -> new Protection(false, null));
+        } catch (RuntimeException e) {
+            log.warn(
+                    "protected-definition lookup unavailable — versions carries protectedDefinition=null: {}",
+                    e.toString());
+            return new Protection(null, null);
+        }
+    }
+
+    private record Protection(Boolean isProtected, String reason) {}
 
     /** RUNNING instances on ONE definition version — count-only ({@code size=1}, read {@code total}). */
     private long runningInstanceCount(EngineConfig engine, String definitionId) {
