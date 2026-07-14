@@ -6,6 +6,10 @@ import { ApiError } from './api/client'
 import { hasSearch } from './search/urlState'
 import { Shell } from './shell/Shell'
 import { TriagePage } from './triage/TriagePage'
+// #104 slice 2b (R-UXQ-08): import for its module-load side effect only — applies the
+// persisted/system theme to <html> before the first render, so there's no flash of the
+// wrong explicit override.
+import './lib/theme'
 import './styles.css'
 
 // U3 (#88): code-split every page that carries a heavy dependency out of the entry chunk. Only
