@@ -783,6 +783,47 @@ button.primary:disabled {
   border-radius: 3px;
 }
 
+/* R-UXQ-09 (#104 slice 4/6): the results-grid column-visibility chooser — grid-scoped, so it
+   lives in the results toolbar (not the topbar like ThemeToggle/DensityToggle). Positioning
+   mirrors .omnibox-panel's dropdown-under-the-trigger pattern. */
+.column-chooser {
+  position: relative;
+}
+.column-chooser-panel {
+  position: absolute;
+  top: calc(100% + 4px);
+  right: 0;
+  min-width: 260px;
+  z-index: 30;
+  background: var(--color-white);
+  border: 1px solid var(--color-border);
+  border-radius: 8px;
+  box-shadow: 0 8px 24px rgba(30, 39, 46, 0.18);
+  padding: 8px 10px;
+  color: var(--color-ink);
+}
+.column-chooser-note {
+  margin: 0 0 8px;
+  font-size: 12px;
+  color: var(--color-text-muted);
+}
+.column-chooser-list {
+  list-style: none;
+  margin: 0 0 8px;
+  padding: 0;
+  display: flex;
+  flex-direction: column;
+  gap: 4px;
+}
+.column-chooser-list li {
+  display: flex;
+  align-items: center;
+  gap: 6px;
+}
+.column-chooser-reset {
+  width: 100%;
+}
+
 .partial-banner {
   display: flex;
   flex-direction: column;

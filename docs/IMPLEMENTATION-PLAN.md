@@ -2092,6 +2092,86 @@ this slice per its low-risk scope, pure CSS variables + a persisted preference, 
 contrast/accessibility color implications) + `scripts/ci-local.sh --full` (backend
 unaffected, unit ladder green).
 
+### #104 slice 4/6 — column chooser (R-UXQ-09) _(✅ LANDED 2026-07-14, issue #104)_
+
+The remaining grid-scoped half of R-UXQ-09's "Grid: column chooser + density + layout
+persisted…reset-to-default" — a custom hide/show dropdown for `ResultsGrid.tsx`'s 6 optional
+columns, plus a reset-to-default action. Layout capture (column order/width persisted through
+saved views) stays explicitly deferred — see the REQUIREMENTS-REGISTER note below.
+
+AG Grid **Community** edition has no built-in column tool panel (that's an Enterprise-only
+feature; ADR-002 mandates Community-only, per `ResultsGrid.tsx`'s own top-of-file comment), so
+this is a small custom dropdown rather than a vendor panel.
+
+_Locked vs. hideable split (`ResultsGrid.tsx`'s 10-column `columns` memo):_
+
+- **Locked (always visible, never offered in the chooser)** — `open` (colId `'open'`, the
+  row-open navigation link: hiding the only way to open a row is a usability trap),
+  `protected` (colId `'protected'`, the R-SAFE-05 protected-instance badge — one of
+  R-UXQ-09's "honesty indicators", so a protected instance can never look like any other row),
+  `engineName` (field, R-UXQ-09 names it "Engine" explicitly), `status` (field, R-UXQ-09 names
+  it "Status" explicitly; `StatusChip` carries the other inline honesty flags/badges).
+- **Hideable (offered in the chooser)** — `processInstanceId` (Process ID), `businessKey`
+  (Business Key), `definition` (colId, Definition), `startTime` (Start Time), `failureTime`
+  (Failure Time), `currentActivityOrError` (Current Activity / Error).
+
+_Shipped:_
+
+- `frontend/src/lib/columnVisibility.ts` — mirrors `lib/density.ts`'s store shape (lazy
+  `localStorage`-hydrated module value, listener `Set`, get/set/subscribe +
+  `useSyncExternalStore` hook) but the value is a **set** of hidden colId/field strings, not a
+  single enum: `getHiddenColumns(): ReadonlySet<string>`, `setColumnHidden(colId, hidden)`,
+  `resetColumnVisibility()` (back to the empty-set default), `subscribeHiddenColumns`,
+  `useHiddenColumns()`. Storage key `inspector.resultsGridHiddenColumns`, a JSON array. Default
+  (nothing stored, or storage unavailable) is the empty set — everything visible, matching
+  pre-existing behavior exactly, with no module-load DOM side effect (this store never touches
+  `document.documentElement`, unlike `theme.ts`/`density.ts`).
+- `frontend/src/components/ColumnChooser.tsx` — a toggle button
+  (`aria-expanded`/`aria-haspopup="true"`) opening a panel of real `<input type="checkbox">` +
+  `<label>` pairs, one per hideable column (checked = visible), a "Reset to default" button
+  (disabled once nothing is hidden), and a note explaining why Open/Engine/Status/Protected
+  aren't offered. Closes on Escape and on click-outside via a `document`-level
+  keydown/mousedown listener pair (no existing shared non-modal-dropdown pattern in this
+  codebase to reuse — `ModalShell.tsx`'s Escape handling is scoped to a full `<dialog>`).
+- `ResultsGrid.tsx`: each hideable `ColDef` gets `hide: hiddenColumns.has(colId)`, computed
+  declaratively inside the existing `columns` `useMemo` (no imperative
+  `api.setColumnsVisible` calls); `useHiddenColumns()`'s return value joins `enginesById` in
+  the memo's dependency array.
+- `SearchPage.tsx`: `<ColumnChooser />` mounted in the results toolbar, next to the Refresh
+  button (grid-scoped, not a global topbar preference like `ThemeToggle`/`DensityToggle`).
+- `AuditLogPage.tsx`'s grid is explicitly untouched — R-UXQ-09's "Engine/Status/honesty
+  indicators" language matches `ResultsGrid`'s columns specifically; out of scope for this
+  slice.
+
+_Verification:_ `frontend/src/lib/columnVisibility.test.ts` (12 cases, mirroring
+`density.test.ts`'s coverage: default, hide/unhide, multi-column tracking, reset, persistence
+round-trip, corrupt/non-array stored value, private-mode survival, subscribe/unsubscribe) +
+`frontend/src/components/ColumnChooser.test.ts` (9 cases: collapsed by default, exactly the 6
+hideable columns render checked, locked columns never appear, the explanatory note renders,
+un/re-checking round-trips through the store, reset re-checks everything and disables itself
+once nothing is hidden, Escape and click-outside both close the panel) + `npx vitest run` (all
+582 tests green) + `npm run build` (tsc + vite + bpmn-watermark/no-enterprise guards) +
+`npm run lint` (ESLint strict-type-checked, clean) + a new
+`frontend/e2e/column-chooser.spec.ts` (hide a column → disappears from the grid → survives a
+full page reload → reset restores it; a second spec covers click-outside-closes) with a
+`scanA11y()` call taken with the panel **open** (the new interactive surface) + re-run of
+`filter-bulk.spec.ts`, `dark-theme.spec.ts`, `deep-paging.spec.ts`, `saved-views.spec.ts` (13
+tests, all green — no regression to `ResultsGrid`) + `scripts/ci-local.sh --full` (backend
+unaffected, unit ladder green; frontend fast tier green).
+
+_Adversarial review (Copilot + manual pass, Gemini quota-exhausted):_ one real finding,
+fixed — Escape didn't restore focus after closing the panel (`ModalShell.tsx`'s own
+focus-restore precedent, which this component otherwise doesn't share code with). Fixed
+with a dedicated `toggleRef` restored to on Escape specifically — NOT on click-outside,
+which deliberately leaves focus alone since the user just clicked something else and
+forcing it back would fight that click. (An initial `previouslyFocused =
+document.activeElement` approach, mirroring `ModalShell.tsx` more literally, proved
+unreliable under jsdom's click-focus timing and was replaced with the explicit ref.) Two
+new test cases added. Other findings — `HIDEABLE_COLUMNS`' hand-duplication against
+`ResultsGrid.tsx`'s own column set — were judged an acceptable, non-blocking footgun given
+the low cardinality (6 columns) and no stronger existing single-source-of-truth pattern in
+this codebase to derive from; flagged as a good future cleanup, not required now.
+
 ## Build order inside any milestone
 
 backend DTO → engine client call → aggregator/join logic → controller → typed frontend API
