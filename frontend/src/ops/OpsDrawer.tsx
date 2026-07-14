@@ -317,6 +317,51 @@ function JobDetail({ jobId }: { jobId: string }) {
                     Verify now
                   </button>
                 )}
+                {/* #105: per-item retry-failed-only — "Continue as new job" above already
+                    covers retrying every not_run/failed item together; this covers retrying
+                    JUST this one, without pulling in the rest. Same submit mutation, same
+                    verb/reason, scoped to a single-item target list. */}
+                {item.state === 'failed' &&
+                  item.ordinal !== undefined &&
+                  typeof item.engineId === 'string' &&
+                  typeof item.instanceId === 'string' &&
+                  item.instanceId !== '' && (
+                    <button
+                      type="button"
+                      className="copy-btn"
+                      disabled={submit.isPending}
+                      title="submits a NEW tracked job retrying just this item"
+                      onClick={() => {
+                        submit.mutate(
+                          {
+                            verb: job.verb,
+                            reason: job.reason ?? undefined,
+                            continuedFrom: job.id,
+                            items: [
+                              {
+                                engineId: item.engineId ?? '',
+                                instanceId: item.instanceId ?? '',
+                                jobId: item.jobRef ?? undefined,
+                              },
+                            ],
+                          },
+                          {
+                            onSuccess: (next) => {
+                              toast({
+                                kind: 'success',
+                                text: `Retried item ${String(item.ordinal)} as new job ${(next.id ?? '').slice(0, 8)}….`,
+                              })
+                            },
+                            onError: (error) => {
+                              toast({ kind: 'error', text: problemBanner(error.problem) })
+                            },
+                          },
+                        )
+                      }}
+                    >
+                      Retry
+                    </button>
+                  )}
                 {/* Theme T8: re-queued is dispatch-only — its Verify now opens the item's
                     live Errors & Jobs evidence (did the step succeed, or is it back in the
                     DLQ?). A read-only link: it never re-fires the action (R-SAFE-09). */}
