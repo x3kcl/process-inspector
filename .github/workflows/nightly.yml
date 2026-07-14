@@ -57,13 +57,23 @@ jobs:
     timeout-minutes: 40
     env:
       COMPOSE_PROFILES: "flowable-6,postgres"
-      PI_ENGINE_A_PORT: "8091"
-      PI_ENGINE_B_PORT: "8092"
-      PI_PG_PORT: "5435"
-      INSPECTOR_DB_URL: jdbc:postgresql://localhost:5435/inspector
       CI_PROJECT: pi-ci-nightly-6
     steps:
       - uses: actions/checkout@v4
+      # Runner slots (docker/ci-runner/docker-compose.yml) carry a disjoint port block as
+      # container env so this job uses its ACTUAL slot's ports, never a hardcoded literal
+      # that may belong to a DIFFERENT slot a concurrent ci.yml PR job is using at the same
+      # time (#163 — this job used to hardcode slot-1's literal values unconditionally,
+      # regardless of which slot actually ran it). Resolved the same way ci.yml's
+      # "integration" job does; slot-1 values are the fallback for a slot-less runner.
+      - name: Resolve the slot port namespace
+        run: |
+          {
+            echo "PI_ENGINE_A_PORT=${PI_ENGINE_A_PORT:-8091}"
+            echo "PI_ENGINE_B_PORT=${PI_ENGINE_B_PORT:-8092}"
+            echo "PI_PG_PORT=${PI_PG_PORT:-5435}"
+            echo "INSPECTOR_DB_URL=jdbc:postgresql://localhost:${PI_PG_PORT:-5435}/inspector"
+          } >> "$GITHUB_ENV"
       - uses: actions/setup-java@v4
         with:
           distribution: temurin
@@ -180,8 +190,11 @@ jobs:
   # historic + 2k active, 5k dead-letter jobs matching each engine's dlq-scan-cap, 200
   # suspended, tenants a/b) is what the k6 thresholds in perf-scenario-p1.js are calibrated
   # against; a smaller dataset would under-test the DLQ-scan-driven search_failed bound.
-  # Own compose stack + port block (disjoint from engine-its' 8091/8092/5435, and from
-  # ci.yml's per-slot 8091-8094/5435) since it runs in parallel with the other nightly jobs.
+  # Own port block, resolved from the ACTUAL runner slot (#163) — never a hardcoded literal
+  # a concurrent job on that slot might also be using. The FALLBACK defaults below (used
+  # only on a slot-less runner, where no per-job disambiguation exists) stay their OWN
+  # disjoint set from engine-its' fallback, since both jobs run concurrently within the
+  # same nightly run.
   # NOT merge-blocking, same as the rest of this workflow — a perf regression is triaged
   # same as an IT failure, not a push gate.
   perf-p1:
@@ -189,14 +202,18 @@ jobs:
     timeout-minutes: 45
     env:
       COMPOSE_PROFILES: "flowable-6,postgres"
-      PI_ENGINE_A_PORT: "8095"
-      PI_ENGINE_B_PORT: "8096"
-      PI_PG_PORT: "5436"
-      PI_BFF_PORT: "8097"
-      INSPECTOR_DB_URL: jdbc:postgresql://localhost:5436/inspector
       CI_PROJECT: pi-ci-nightly-perf
     steps:
       - uses: actions/checkout@v4
+      - name: Resolve the slot port namespace
+        run: |
+          {
+            echo "PI_ENGINE_A_PORT=${PI_ENGINE_A_PORT:-8095}"
+            echo "PI_ENGINE_B_PORT=${PI_ENGINE_B_PORT:-8096}"
+            echo "PI_PG_PORT=${PI_PG_PORT:-5436}"
+            echo "PI_BFF_PORT=${PI_BFF_PORT:-8097}"
+            echo "INSPECTOR_DB_URL=jdbc:postgresql://localhost:${PI_PG_PORT:-5436}/inspector"
+          } >> "$GITHUB_ENV"
       - uses: actions/setup-java@v4
         with:
           distribution: temurin
