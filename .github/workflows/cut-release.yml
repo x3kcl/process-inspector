@@ -72,5 +72,9 @@ jobs:
       contents: write # release.yml creates the GitHub Release
       packages: write # ...and pushes to ghcr.io
     uses: ./.github/workflows/release.yml
+    secrets: inherit # workflow_call does NOT inherit repo secrets by default — without this,
+    # DOCKERHUB_USERNAME/DOCKERHUB_TOKEN are empty inside release.yml even though they're set
+    # at the repo level (ghcr.io login is unaffected: it uses the always-injected GITHUB_TOKEN,
+    # not a repo secret, which is why only the Docker Hub login step failed).
     with:
       tag: ${{ needs.tag.outputs.tag }}
