@@ -5,9 +5,18 @@
 # history to evaluate the gate against — see docs/reviews/S0-PLAYBOOK-DEMAND-2026-07.md).
 #
 # Usage:
-#   scripts/mine-playbook-demand.sh                 # uses $INSPECTOR_DB_URI or the dev default
-#   INSPECTOR_DB_URI=postgresql://user:pass@host:port/db scripts/mine-playbook-demand.sh
+#   scripts/mine-playbook-demand.sh                       # dev defaults below (PG* env vars)
+#   INSPECTOR_DB_URI=postgresql://... scripts/mine-playbook-demand.sh   # full connection string
+#   PGHOST=... PGPORT=... PGUSER=... PGPASSWORD=... PGDATABASE=... scripts/mine-playbook-demand.sh
 set -euo pipefail
 DIR="$(cd "$(dirname "$0")" && pwd)"
-DB_URI="${INSPECTOR_DB_URI:-postgresql://inspector:inspector@localhost:5433/inspector}"
-exec psql "$DB_URI" -f "$DIR/mine-playbook-demand.sql"
+if [ -n "${INSPECTOR_DB_URI:-}" ]; then
+  exec psql "$INSPECTOR_DB_URI" -f "$DIR/mine-playbook-demand.sql"
+fi
+: "${PGHOST:=localhost}"
+: "${PGPORT:=5433}"
+: "${PGUSER:=inspector}"
+: "${PGPASSWORD:=inspector}"
+: "${PGDATABASE:=inspector}"
+export PGHOST PGPORT PGUSER PGPASSWORD PGDATABASE
+exec psql -f "$DIR/mine-playbook-demand.sql"
