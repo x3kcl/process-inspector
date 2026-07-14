@@ -3,7 +3,10 @@
 # build.
 #
 # Usage:
-#   docker/deploy-demo.sh [IMAGE_TAG]              # default: edge. Also sha-<short7>/vX.Y.Z.
+#   docker/deploy-demo.sh [IMAGE_TAG]              # default: edge. Also sha-<short7>/X.Y.Z
+#                                                   # (the published IMAGE tag has no "v" —
+#                                                   # docker/metadata-action strips it from
+#                                                   # the vX.Y.Z git/release tag; issue #200).
 #   docker/deploy-demo.sh --dry-run [IMAGE_TAG]     # resolve + print, no compose/commit/tag
 #
 # What it does (issue #92 — demo compose pinned by digest, never a floating tag, and every
@@ -37,6 +40,17 @@ if [[ "${1:-}" == "--dry-run" ]]; then
   shift
 fi
 IMAGE_TAG="${1:-edge}"
+
+# The published image tag never carries the git/release tag's leading "v" (docker/
+# metadata-action's {{version}} pattern strips it) — a "vX.Y.Z" IMAGE_TAG will always 404
+# regardless of whether that version actually published, which is exactly what produced
+# issue #200's false "images never published" report. Catch the mistake with a clear
+# pointer to the fix instead of a generic registry "not found".
+if [[ "$IMAGE_TAG" =~ ^v[0-9]+\.[0-9]+\.[0-9]+ ]]; then
+  echo "IMAGE_TAG '$IMAGE_TAG' looks like a git/release tag, not a published image tag." >&2
+  echo "Published image tags drop the leading 'v' — try '${IMAGE_TAG#v}' instead." >&2
+  exit 1
+fi
 
 resolve_digest() {
   local digest

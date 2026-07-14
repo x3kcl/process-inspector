@@ -1614,8 +1614,9 @@ permit-gauge case.
 ### P2 #21 — Release mechanics remainder (Q7) _(✅ code landed 2026-07-13, issue #92; live cutover/drill still pending human action)_
 
 `docs/IMPROVEMENT-PLAN-2026-07.md` §2 P2 item 21's remaining slivers, after PR #68/#80 shipped
-the GHCR publish pipeline (`:edge`/`:sha-<short7>` on green main, `:vX.Y.Z`/`latest` on a
-version tag) and v0.1.0 released with public packages.
+the GHCR publish pipeline (`:edge`/`:sha-<short7>` on green main, `:X.Y.Z`/`latest` on a
+version tag — the published IMAGE tag drops the git/release tag's leading "v", issue #200)
+and v0.1.0 released with public packages.
 
 _Shipped — digest capture:_ `release.yml` and `publish-edge.yml` both give their
 `docker/build-push-action@v6` steps an `id:` and add a step reading `steps.<id>.outputs.digest`
@@ -2171,6 +2172,53 @@ new test cases added. Other findings — `HIDEABLE_COLUMNS`' hand-duplication ag
 `ResultsGrid.tsx`'s own column set — were judged an acceptable, non-blocking footgun given
 the low cardinality (6 columns) and no stronger existing single-source-of-truth pattern in
 this codebase to derive from; flagged as a good future cleanup, not required now.
+
+### #200 — versioned release images "never published to GHCR" (root-caused, fixed) _(✅ LANDED 2026-07-14, issue #200)_
+
+Filed as a suspected broken publish pipeline (`docker buildx imagetools inspect
+ghcr.io/x3kcl/process-inspector-bff:v0.4.0` → not found for every v0.1.0–v0.4.0). Investigated
+against the real GHCR registry (anonymous token + manifest/tag-list fetches, not just
+Actions-log reading) and the actual `cut-release.yml`/`release.yml` run history. Two separate,
+unrelated things were going on:
+
+1. **A real, already-fixed pipeline bug.** v0.3.0 and v0.4.0's `cut-release` runs genuinely
+   failed — `release.yml`'s `workflow_call` from `cut-release.yml` was missing
+   `secrets: inherit`, so `secrets.DOCKERHUB_USERNAME`/`DOCKERHUB_TOKEN` were empty inside
+   `release.yml`, the "Log in to Docker Hub" step failed, and the job aborted _before_ either
+   registry's push step ran — GHCR never got the image even though GHCR's own login (the
+   always-injected `GITHUB_TOKEN`, not a repo secret) was fine. Already fixed by a parallel
+   session's `fix(ci): inherit secrets when cut-release calls release.yml` — verified by
+   re-running `cut-release` end-to-end (v0.5.0): every step green, including both registry
+   pushes.
+2. **A tag-naming footgun that made even the SUCCESSFUL releases (v0.1.0, v0.2.0, and now
+   v0.5.0) look broken too.** `docker/metadata-action`'s `type=semver,pattern={{version}}`
+   strips the git/release tag's leading `v` when generating the published image tag — the git
+   tag is `v0.5.0`, the image tag is `0.5.0`. The issue's own reproduction command (and this
+   repo's OWN documentation in three places) used the `v`-prefixed form, which 404s
+   regardless of publish success. Confirmed empirically:
+   `ghcr.io/x3kcl/process-inspector-bff:v0.5.0` → not found;
+   `ghcr.io/x3kcl/process-inspector-bff:0.5.0` → resolves, matches the digest the workflow
+   actually pushed.
+
+_Fixed:_
+
+- `.github/workflows/release.yml` — new "Compute the published IMAGE tag" step
+  (`IMAGE_VERSION=${RELEASE_TAG#v}`, written to `$GITHUB_ENV`); the auto-generated GitHub
+  Release body's `PI_VERSION=` pull instruction and "pin the digest, not the floating tag"
+  line now use `IMAGE_VERSION`, not the git-tag-shaped `RELEASE_TAG` — every future release's
+  own official instructions now hand out a tag that actually resolves.
+- `docker/docker-compose.release.yml` and `docker/deploy-demo.sh`'s usage comments corrected
+  from `vX.Y.Z`/`v1.2.3` examples to the real (un-prefixed) format.
+- `deploy-demo.sh` also gained a defensive check: an `IMAGE_TAG` matching `^v\d+\.\d+\.\d+`
+  now fails fast with "try '<tag minus v>' instead" rather than a generic registry
+  "not found" — this exact mistake is what produced the issue, worth catching at the source
+  rather than just fixing the docs that led to it.
+
+_Verified NOT the cause (issue's own hypotheses #2/#3):_ GHCR package visibility/retention —
+both packages remain public and reachable (anonymous registry token acquisition succeeds;
+digest-based manifest fetches succeed for every published version); no evidence of tags being
+deleted post-publish. The "missing" versions were never successfully pushed in the first
+place (root cause 1), not deleted afterward.
 
 ## Build order inside any milestone
 

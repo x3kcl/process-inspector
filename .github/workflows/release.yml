@@ -55,6 +55,13 @@ jobs:
         with:
           # Explicit so the workflow_call path builds the tagged commit, not the caller's ref.
           ref: ${{ env.RELEASE_TAG }}
+      - name: Compute the published IMAGE tag (drops RELEASE_TAG's leading "v")
+        # docker/metadata-action's {{version}} pattern below strips the git/release tag's
+        # leading "v" when generating the actual image tag — RELEASE_TAG itself must keep
+        # it (it names the git tag / GitHub Release). Every user-facing instruction that
+        # tells someone what to PULL needs the un-prefixed form, or it 404s (issue #200 —
+        # this exact release body used to hand out the wrong value).
+        run: echo "IMAGE_VERSION=${RELEASE_TAG#v}" >> "$GITHUB_ENV"
       - uses: docker/setup-buildx-action@v3
       - name: Log in to ghcr.io
         uses: docker/login-action@v3
@@ -131,12 +138,12 @@ jobs:
             Pull the images (set the version you want, or omit `PI_VERSION` for `latest`):
             ```bash
             curl -LO https://github.com/${{ github.repository }}/releases/download/${{ env.RELEASE_TAG }}/docker-compose.release.yml
-            PI_VERSION=${{ env.RELEASE_TAG }} docker compose -f docker-compose.release.yml up -d
+            PI_VERSION=${{ env.IMAGE_VERSION }} docker compose -f docker-compose.release.yml up -d
             ```
             Images (published to both registries — compose defaults to Docker Hub, override with `PI_REGISTRY`):
             - Docker Hub: `docker.io/x3kcl/process-inspector-bff` · `docker.io/x3kcl/process-inspector-web`
             - GHCR: `ghcr.io/${{ github.repository }}-bff` · `ghcr.io/${{ github.repository }}-web`
 
-            Digests (issue #92 — pin these, not the floating `${{ env.RELEASE_TAG }}`/`latest` tag, for anything that must stay attributable to this exact build):
+            Digests (issue #92 — pin these, not the floating `${{ env.IMAGE_VERSION }}`/`latest` tag, for anything that must stay attributable to this exact build):
             - `ghcr.io/${{ github.repository }}-bff@${{ steps.build-bff.outputs.digest }}`
             - `ghcr.io/${{ github.repository }}-web@${{ steps.build-web.outputs.digest }}`
