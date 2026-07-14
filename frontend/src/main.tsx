@@ -42,6 +42,9 @@ const DefinitionVersionsPage = lazy(() =>
 const PersonTaskSearchPage = lazy(() =>
   import('./tasks/PersonTaskSearchPage').then((m) => ({ default: m.PersonTaskSearchPage })),
 )
+const RemediationDemandPage = lazy(() =>
+  import('./admin/RemediationDemandPage').then((m) => ({ default: m.RemediationDemandPage })),
+)
 
 /** Wrap a lazily-loaded route element in a Suspense boundary with a consistent fallback. */
 function lazyRoute(node: ReactNode): ReactNode {
@@ -86,6 +89,7 @@ const router = createBrowserRouter([
       { path: 'audit', element: lazyRoute(<AuditLogPage />) },
       { path: 'admin/engines', element: lazyRoute(<AdminEnginesPage />) },
       { path: 'admin/access', element: lazyRoute(<AdminAccessPage />) },
+      { path: 'admin/remediation-demand', element: lazyRoute(<RemediationDemandPage />) },
       {
         path: 'definitions/:engineId/:key/versions',
         element: lazyRoute(<DefinitionVersionsPage />),

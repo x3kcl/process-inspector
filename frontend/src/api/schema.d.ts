@@ -276,6 +276,22 @@ export interface paths {
         patch?: never;
         trace?: never;
     };
+    "/api/admin/remediation-demand": {
+        parameters: {
+            query?: never;
+            header?: never;
+            path?: never;
+            cookie?: never;
+        };
+        get: operations["analyze"];
+        put?: never;
+        post?: never;
+        delete?: never;
+        options?: never;
+        head?: never;
+        patch?: never;
+        trace?: never;
+    };
     "/api/audit": {
         parameters: {
             query?: never;
@@ -2275,6 +2291,20 @@ export interface components {
             label: string;
             search: string;
         };
+        RemediationDemandAnalysis: {
+            /** Format: int64 */
+            dataSpanDays?: number;
+            /** Format: date-time */
+            dataSpanEnd?: string;
+            /** Format: date-time */
+            dataSpanStart?: string;
+            demandTriggerFired?: boolean;
+            /** Format: int64 */
+            scannedRows?: number;
+            sequences?: components["schemas"]["SequenceFinding"][];
+            spanSufficient?: boolean;
+            truncated?: boolean;
+        };
         ResolveMatch: {
             businessKey?: string;
             compositeId?: string;
@@ -2365,6 +2395,13 @@ export interface components {
             statusCounts?: {
                 [key: string]: number;
             };
+        };
+        SequenceFinding: {
+            /** Format: int32 */
+            instanceCount?: number;
+            meetsThreshold?: boolean;
+            sampleInstances?: string[];
+            verbs?: string[];
         };
         Series: {
             engineId?: string;
@@ -3042,6 +3079,26 @@ export interface operations {
                     [name: string]: unknown;
                 };
                 content?: never;
+            };
+        };
+    };
+    analyze: {
+        parameters: {
+            query?: never;
+            header?: never;
+            path?: never;
+            cookie?: never;
+        };
+        requestBody?: never;
+        responses: {
+            /** @description OK */
+            200: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "*/*": components["schemas"]["RemediationDemandAnalysis"];
+                };
             };
         };
     };

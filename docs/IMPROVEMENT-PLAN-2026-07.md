@@ -387,7 +387,9 @@ tests + spec-sync in the same PR, and follows green-ci.
 - **Remediation playbooks (the v2 headline)** — honest gating this time: an S0 audit-mining
   measurement slice against pilot audit rows decides whether the R-GOV-08 trigger fires; the
   playbook test charter (R-TEST-09) is a build precondition. Then record-from-exemplar MVP →
-  replay-as-bulk-job.
+  replay-as-bulk-job. **S0 landed (#106) — `GET /api/admin/remediation-demand` +
+  `/admin/remediation-demand`, live measurement, verdict is a PO decision to read, not an
+  automatic trigger.** Steps 2/3 stay unstarted until that verdict says so.
 - Backlog beyond (unranked): batch migration + mapping wizard, INVERTED-plan deep paging,
   watchlists/shift delta, CSV export, ticket webhook, remaining FIX-PROC seeds, external
   pentest before any real pilot (external-review addition).
