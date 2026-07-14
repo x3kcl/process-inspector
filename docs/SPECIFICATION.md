@@ -131,13 +131,19 @@ checklist).
   Below the configured role floor, ALL verbs are disabled-with-reason ("protected — L3 action
   required"); protection badge on rows, vitals header, and inside every confirm; bulk and
   group operations auto-exclude protected members, reported as `skipped (protected)`.
-  **Enforcement boundary (#172):** definition-key protection is checked wherever the target's
-  definition key is already resolved without an extra engine round-trip — the two
-  definition-scoped verbs (suspend/activate-definition) and instance migration. Checking it on
-  every OTHER instance-targeting verb (retry, terminate, task actions…) and in bulk's
-  per-item dispatch needs each of those call sites to resolve a definition key it doesn't
-  fetch today; tracked as a follow-up (issue #184) rather than paying that engine-round-trip
-  cost inside this change.
+  **Enforcement boundary (#172, extended #184):** definition-key protection is checked
+  wherever the target's definition key is already resolved without an extra engine
+  round-trip — the two definition-scoped verbs (suspend/activate-definition), instance
+  migration, every job/instance/task-targeting `CorrectiveActionService` verb (retry,
+  terminate, task actions…, each populating the key from a fetch it already makes),
+  `FlowSurgeryService`'s change-state and restart-as-new, and bulk's per-item dispatch
+  (`BulkJobService` resolves each target's definition key server-side via a batched
+  runtime query at submit time — never trusting a client-supplied key — and settles
+  protected items as `skipped_protected` before any are dispatched). Still open:
+  `EDIT_VARIABLE`/`UNSTICK_EVENT` (execution-scoped fetches that don't carry a definition
+  ID) and CMMN targets (a different protection concept entirely, not just a missing
+  field) — extending either needs a genuinely extra engine round-trip or new design, not
+  wiring; no follow-up filed until a concrete need surfaces.
 - **Read-only engine mode** (R-GOV-04) — registry `mode: read-write | read-only`; the BFF
   rejects every mutating verb against a read-only engine (greyed: "engine registered
   read-only"). This is the rollout ramp: prod engines onboard read-only first; mutation

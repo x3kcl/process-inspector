@@ -249,6 +249,22 @@ class FlowSurgeryServiceTest {
     }
 
     @Test
+    void changeStateIsRefusedWhenTheInstancesOwnDefinitionIsProtected() {
+        // #184: planChangeState already resolves processDefinitionId (for the BPMN structure
+        // lookup) BEFORE requireUnprotectedOrAdmin now runs — free dual-scope checking. DEV's
+        // role floor for change-state is OPERATOR (only PROD is ADMIN-gated), so this is a
+        // genuine blocked-vs-allowed distinction, unlike #172's suspend-definition case.
+        when(protectedDefinitions.findById(new io.inspector.audit.ProtectedDefinition.Key(DEV, "demoFlowSurgery")))
+                .thenReturn(Optional.of(new io.inspector.audit.ProtectedDefinition(
+                        DEV, "demoFlowSurgery", "incident freeze", "admin", Instant.parse("2026-07-01T00:00:00Z"))));
+        when(rbac.hasRoleOn(any(), eq(Role.ADMIN), eq(DEV))).thenReturn(false);
+
+        assertThatThrownBy(() -> service.executeChangeState(DEV, "pi-1", move(null, "stepOne", "stepTwo"), operator))
+                .satisfies(e -> assertThat(refusal(e).code()).isEqualTo("definition-protected"));
+        verifyNoInteractions(audit);
+    }
+
+    @Test
     void capabilityGateRefusesPre64EnginesAndUnprobedOnes() {
         assertThatThrownBy(() -> service.previewChangeState(OLD, "pi-1", move(null, "stepOne", "stepTwo"), operator))
                 .satisfies(e -> assertThat(refusal(e).code()).isEqualTo("capability-unavailable"));
@@ -301,6 +317,24 @@ class FlowSurgeryServiceTest {
     }
 
     /* ---------------- restart-as-new ---------------- */
+
+    @Test
+    void restartIsRefusedWhenTheDeadInstancesOwnDefinitionIsProtected() {
+        // #184: the historic-instance fetch restart already needs (to confirm the instance is
+        // actually dead) was reordered ahead of requireUnprotectedOrAdmin — free dual-scope
+        // checking, no extra engine round-trip. Restart's role floor is OPERATOR, so this is a
+        // genuine blocked-vs-allowed distinction.
+        stubDeadInstance("pi-dead", "demoOrder:3:v3");
+        when(protectedDefinitions.findById(new io.inspector.audit.ProtectedDefinition.Key(DEV, "demoOrder")))
+                .thenReturn(Optional.of(new io.inspector.audit.ProtectedDefinition(
+                        DEV, "demoOrder", "post-incident hold", "admin", Instant.parse("2026-07-01T00:00:00Z"))));
+        when(rbac.hasRoleOn(any(), eq(Role.ADMIN), eq(DEV))).thenReturn(false);
+
+        assertThatThrownBy(() ->
+                        service.restartAsNew(DEV, "pi-dead", new RestartInstanceRequest(REASON, null, false), operator))
+                .satisfies(e -> assertThat(refusal(e).code()).isEqualTo("definition-protected"));
+        verifyNoInteractions(audit);
+    }
 
     @Test
     void restartRefusesARunningInstance() {

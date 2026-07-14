@@ -74,6 +74,8 @@ class BulkJobServiceTest {
     private final BulkJobItemRepository items = mock(BulkJobItemRepository.class);
     private final CorrectiveActionService actions = mock(CorrectiveActionService.class);
     private final ProtectedInstanceRepository protectedInstances = mock(ProtectedInstanceRepository.class);
+    private final io.inspector.audit.ProtectedDefinitionRepository protectedDefinitions =
+            mock(io.inspector.audit.ProtectedDefinitionRepository.class);
     private final AuditService audit = mock(AuditService.class);
     private final ProcessApiClient client = mock(ProcessApiClient.class);
     private final GuardedCaller guardedCaller = mock(GuardedCaller.class);
@@ -134,6 +136,7 @@ class BulkJobServiceTest {
         });
 
         when(protectedInstances.findAllById(any())).thenReturn(List.of());
+        when(protectedDefinitions.findAllById(any())).thenReturn(List.of());
         when(audit.beginPending(any(), any(), any(), any(), any(), any(), any(), any()))
                 .thenReturn(envelope());
 
@@ -145,6 +148,7 @@ class BulkJobServiceTest {
                 items,
                 actions,
                 protectedInstances,
+                protectedDefinitions,
                 audit,
                 registry,
                 client,
@@ -338,6 +342,38 @@ class BulkJobServiceTest {
         assertThat(done.tallies()).containsEntry("ok", 2L).containsEntry("skipped_protected", 1L);
         verify(actions).executeBulkItem(eq(ENGINE), eq("pi-1"), eq(ActionVerb.SUSPEND), any(), eq(responder));
         verify(actions).executeBulkItem(eq(ENGINE), eq("pi-3"), eq(ActionVerb.SUSPEND), any(), eq(responder));
+    }
+
+    @Test
+    void instancesOfAProtectedDefinitionAreSettledAtSubmitAndNeverDispatched() {
+        // #184: BulkTarget carries no definitionKey (never trust a client-supplied one for a
+        // security check) — resolved server-side via the batched processInstanceIds query.
+        when(client.queryRuntimeProcessInstances(any(), any(), any()))
+                .thenReturn(new FlowablePage(
+                        List.of(
+                                Map.of("id", "pi-1", "processDefinitionId", "demoOrder:1:a"),
+                                Map.of("id", "pi-2", "processDefinitionId", "payment:3:b"),
+                                Map.of("id", "pi-3", "processDefinitionId", "demoOrder:1:a")),
+                        3,
+                        0,
+                        3));
+        when(protectedDefinitions.findAllById(any()))
+                .thenReturn(List.of(new io.inspector.audit.ProtectedDefinition(
+                        ENGINE, "payment", "v3 rollout freeze", "admin", Instant.EPOCH)));
+        when(actions.executeBulkItem(any(), any(), any(), any(), any()))
+                .thenReturn(new ActionResult(UUID.randomUUID(), "c", "ok", 200, "suspended"));
+
+        BulkDtos.BulkJobDto submitted = service.submit(suspendOf("pi-1", "pi-2", "pi-3"), responder);
+        BulkDtos.BulkJobDto done = awaitFinished(submitted.id());
+
+        assertThat(done.state()).isEqualTo("COMPLETED");
+        // pi-2 is the ONLY item on the protected definition ("payment") — pi-1/pi-3 are on
+        // demoOrder, untouched.
+        assertThat(done.items().get(1).state()).isEqualTo("skipped_protected");
+        assertThat(done.tallies()).containsEntry("ok", 2L).containsEntry("skipped_protected", 1L);
+        verify(actions).executeBulkItem(eq(ENGINE), eq("pi-1"), eq(ActionVerb.SUSPEND), any(), eq(responder));
+        verify(actions).executeBulkItem(eq(ENGINE), eq("pi-3"), eq(ActionVerb.SUSPEND), any(), eq(responder));
+        verify(actions, org.mockito.Mockito.never()).executeBulkItem(eq(ENGINE), eq("pi-2"), any(), any(), any());
     }
 
     /* ---------------- per-item outcome mapping (SPEC §7 classes) ---------------- */
@@ -620,6 +656,7 @@ class BulkJobServiceTest {
                 items,
                 actions,
                 protectedInstances,
+                protectedDefinitions,
                 audit,
                 registry,
                 client,

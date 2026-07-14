@@ -125,7 +125,10 @@ public class FlowSurgeryService {
         EngineConfig engine = registry.require(engineId);
         // Server-fresh re-plan: every preview guard runs again against LIVE state.
         ChangeStatePlan plan = planChangeState(engine, instanceId, request, auth);
-        requireUnprotectedOrAdmin(auth, engine, CHANGE_STATE_ACTION, instanceId);
+        // #184: free — planChangeState already resolved processDefinitionId for the BPMN
+        // structure lookup, before this call even runs.
+        requireUnprotectedOrAdmin(
+                auth, engine, CHANGE_STATE_ACTION, instanceId, definitionKeyOf(plan.processDefinitionId()));
         String reason = requireReason(request.reason(), CHANGE_STATE_ACTION);
         String ticketId = ticketPolicy.validate(request.ticketId(), engine.environment());
 
@@ -376,16 +379,17 @@ public class FlowSurgeryService {
         EngineConfig engine = registry.require(engineId);
         requireRole(auth, Role.OPERATOR, engine.id(), RESTART_ACTION);
         requireWritableEngine(engine, RESTART_ACTION);
-        requireUnprotectedOrAdmin(auth, engine, RESTART_ACTION, instanceId);
-        String reason = requireReason(request.reason(), RESTART_ACTION);
-        String ticketId = ticketPolicy.validate(request.ticketId(), engine.environment());
-        boolean pinVersion = Boolean.TRUE.equals(request.pinDefinitionVersion());
 
+        // #184: the historic-instance fetch (needed for restart's own dead-instance eligibility
+        // checks below regardless) also carries processDefinitionId for free — moved ahead of
+        // requireUnprotectedOrAdmin so the definition-scope check costs nothing extra. Restart is
+        // a recovery-only, low-frequency verb, so running these reads even when protection
+        // ultimately refuses is a negligible do-no-harm tradeoff (unlike a hot-path verb).
+        // Narrows the "still-running"/"unknown-instance"/"not-ended" refusals to fire BEFORE
+        // protection now (previously after) — a deliberate, test-unconstrained ordering choice:
+        // an inapplicable request (wrong state) is arguably more fundamental than an
+        // authorization refusal, and the two are mutually exclusive outcomes either way.
         Map<String, Object> historic;
-        Map<String, Object> startBody;
-        List<String> carried;
-        Map<String, String> skipped;
-        String startDefinitionRef;
         try {
             // Restart resurrects DEAD instances only — a live one must be terminated or moved.
             if (client.getRuntimeProcessInstance(engine, CallPriority.INTERACTIVE, instanceId) != null) {
@@ -410,7 +414,25 @@ public class FlowSurgeryService {
                         "instance-not-ended",
                         "Instance " + instanceId + " has no end time yet — it is not dead. Nothing happened.");
             }
+        } catch (CallNotPermittedException | BulkheadFullException | ResourceAccessException e) {
+            throw engineUnreachablePreFlight(engine);
+        }
 
+        requireUnprotectedOrAdmin(
+                auth,
+                engine,
+                RESTART_ACTION,
+                instanceId,
+                definitionKeyOf(String.valueOf(historic.get("processDefinitionId"))));
+        String reason = requireReason(request.reason(), RESTART_ACTION);
+        String ticketId = ticketPolicy.validate(request.ticketId(), engine.environment());
+        boolean pinVersion = Boolean.TRUE.equals(request.pinDefinitionVersion());
+
+        Map<String, Object> startBody;
+        List<String> carried;
+        Map<String, String> skipped;
+        String startDefinitionRef;
+        try {
             String originalDefinitionId = String.valueOf(historic.get("processDefinitionId"));
             startDefinitionRef = resolveStartDefinition(engine, originalDefinitionId, historic, pinVersion);
 
@@ -612,12 +634,21 @@ public class FlowSurgeryService {
         }
     }
 
-    // Instance-scope only (#172 review note): definition-key protection isn't checked here because
-    // the definition key isn't cheaply available at either call site without an extra engine
-    // round-trip — tracked as a follow-up (see #172's closing comment) rather than adding that cost
-    // to change-state/restart's guard ladder here.
-    private void requireUnprotectedOrAdmin(Authentication auth, EngineConfig engine, String action, String targetId) {
-        protectionGuard.requireUnprotectedOrAdmin(auth, engine.id(), targetId, null, action);
+    // #184: dual-scope — both call sites now pass a definitionKey resolved from data they
+    // already fetch (see each), closing the gap #172 deliberately left open at review time.
+    private void requireUnprotectedOrAdmin(
+            Authentication auth, EngineConfig engine, String action, String targetId, String definitionKey) {
+        protectionGuard.requireUnprotectedOrAdmin(auth, engine.id(), targetId, definitionKey, action);
+    }
+
+    /**
+     * The {@code key} half of a {@code key:version:uuid} definitionId — Flowable's own format.
+     * Mirrors {@code resolveStartDefinition}'s identical fallback split further down this class.
+     */
+    private static String definitionKeyOf(String rawDefinitionId) {
+        if (rawDefinitionId == null) return null;
+        int idx = rawDefinitionId.indexOf(':');
+        return idx > 0 ? rawDefinitionId.substring(0, idx) : rawDefinitionId;
     }
 
     /** Tier-2 reason discipline (SPEC §6): ALWAYS required, ≥10 chars, every environment. */

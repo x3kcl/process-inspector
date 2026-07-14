@@ -236,6 +236,56 @@ class CorrectiveActionServiceTest {
     }
 
     @Test
+    void anInstanceVerbIsRefusedWhenTheInstancesOwnDefinitionIsProtectedEvenIfTheInstanceItselfIsNot() {
+        // #184: RETRY_JOB's role floor is RESPONDER (well below ADMIN), unlike #172's
+        // suspend-definition case above — so THIS test can prove a genuine blocked-vs-allowed
+        // distinction, not just that the lookup fires. jobTarget's response already carries
+        // processDefinitionId "for free" (#184's whole premise) — retrying a dead-letter job on
+        // a protected definition is refused even though pi-1 itself was never individually
+        // marked protected.
+        when(client.getJob(any(), eq(CallPriority.INTERACTIVE), eq(JobLaneKind.DEADLETTER), eq("j1")))
+                .thenReturn(Map.of(
+                        "id",
+                        "j1",
+                        "processInstanceId",
+                        "pi-1",
+                        "elementId",
+                        "chargeCard",
+                        "processDefinitionId",
+                        "payment:3:def-1"));
+        when(protectedDefinitions.findById(new io.inspector.audit.ProtectedDefinition.Key(DEV, "payment")))
+                .thenReturn(java.util.Optional.of(new io.inspector.audit.ProtectedDefinition(
+                        DEV, "payment", "v3 rollout freeze", "admin", Instant.parse("2026-07-01T00:00:00Z"))));
+        when(rbac.hasRoleOn(any(), eq(Role.ADMIN), eq(DEV))).thenReturn(false);
+
+        assertThatThrownBy(() -> service.execute(DEV, "pi-1", ActionVerb.RETRY_JOB, retryRequest(), operator))
+                .isInstanceOf(GuardRefusedException.class)
+                .satisfies(e -> assertThat(((GuardRefusedException) e).code()).isEqualTo("definition-protected"));
+        verifyNoInteractions(audit);
+    }
+
+    @Test
+    void anInstanceVerbProceedsWhenOnlyTheDefinitionIsCheckedAndItIsNotProtected() {
+        // The mirror-image control: same protected-definition lookup fires (proving it's not a
+        // no-op), but an unprotected key never refuses.
+        when(client.getJob(any(), eq(CallPriority.INTERACTIVE), eq(JobLaneKind.DEADLETTER), eq("j1")))
+                .thenReturn(Map.of(
+                        "id",
+                        "j1",
+                        "processInstanceId",
+                        "pi-1",
+                        "elementId",
+                        "chargeCard",
+                        "processDefinitionId",
+                        "payment:3:def-1"));
+
+        service.execute(DEV, "pi-1", ActionVerb.RETRY_JOB, retryRequest(), operator);
+
+        verify(protectedDefinitions).findById(new io.inspector.audit.ProtectedDefinition.Key(DEV, "payment"));
+        verify(audit).beginPending(any(), any(), any(), any(), any(), any(), any(), any(), any());
+    }
+
+    @Test
     void tierOneRequiresReasonOnProdButNotOnDev() {
         when(client.getInstanceVariable(any(), eq(CallPriority.INTERACTIVE), eq("pi-1"), eq("amount")))
                 .thenReturn(Map.of("name", "amount", "type", "integer", "value", 42));
