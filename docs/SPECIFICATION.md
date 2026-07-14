@@ -1174,8 +1174,8 @@ and would rewrite working M1/M2 code for no capability gain); Go/FastAPI/Kotlin 
   1. error-class bulk-retry from the landing group (pre-committed pilot gap) — **landed**;
   2. select-all-matching-filter bulk + SSE progress + operations drawer + drain — **landed**;
   3. named saved views; column chooser + density + dark theme (saved views, dark theme,
-     grid density, and grid column chooser **landed** — issue #104; saved-views
-     layout-capture remains);
+     grid density, grid column chooser, and saved-views column-visibility capture all
+     **landed** — issue #104, #197);
   4. timeline polish — **call-activity sub-lanes only** (failing async node synthesized from
      the live job lanes; `FAILED`/`RETRYING` live annotation). Job-lane trend sparklines were
      **descoped to v2** — they need the R-BAU-08 snapshot/time-series store, absent in v1;

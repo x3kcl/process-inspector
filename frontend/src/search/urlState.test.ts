@@ -1,6 +1,12 @@
 import { describe, expect, it } from 'vitest'
 import type { SearchRequest } from '../api/model'
-import { decodeSearch, encodeSearch, hasSearch } from './urlState'
+import {
+  decodeHiddenColumns,
+  decodeSearch,
+  encodeHiddenColumns,
+  encodeSearch,
+  hasSearch,
+} from './urlState'
 
 describe('search URL codec', () => {
   it('round-trips a fully loaded request', () => {
@@ -69,5 +75,41 @@ describe('search URL codec', () => {
   it('ignores a non-numeric pageSize', () => {
     const decoded = decodeSearch(new URLSearchParams('status=ACTIVE&pageSize=lots'))
     expect(decoded?.pageSize).toBeUndefined()
+  })
+})
+
+describe('column-layout codec (#197)', () => {
+  it('round-trips a hidden-column set, sorted for determinism', () => {
+    const params = new URLSearchParams()
+    encodeHiddenColumns(params, new Set(['startTime', 'businessKey']))
+    expect(params.get('cols')).toBe('businessKey,startTime')
+    expect(decodeHiddenColumns(params)).toEqual(new Set(['startTime', 'businessKey']))
+  })
+
+  it('an empty set omits the param entirely rather than writing cols=', () => {
+    const params = new URLSearchParams()
+    encodeHiddenColumns(params, new Set())
+    expect(params.has('cols')).toBe(false)
+    expect(decodeHiddenColumns(params)).toBeNull()
+  })
+
+  it('distinguishes "no suggestion" (null) from "an explicit empty suggestion"', () => {
+    expect(decodeHiddenColumns(new URLSearchParams('status=FAILED'))).toBeNull()
+  })
+
+  it('a bare cols param alone does not count as a search (Stage-0 routing untouched)', () => {
+    expect(hasSearch(new URLSearchParams('cols=businessKey'))).toBe(false)
+  })
+
+  it('cols never leaks into the decoded SearchRequest sent to the BFF', () => {
+    const decoded = decodeSearch(new URLSearchParams('status=FAILED&cols=businessKey,startTime'))
+    expect(decoded).not.toBeNull()
+    expect(decoded).not.toHaveProperty('cols')
+    expect('cols' in (decoded ?? {})).toBe(false)
+  })
+
+  it('survives a malformed/empty cols value without throwing', () => {
+    expect(decodeHiddenColumns(new URLSearchParams('cols='))).toEqual(new Set())
+    expect(decodeHiddenColumns(new URLSearchParams('cols=,,'))).toEqual(new Set())
   })
 })

@@ -59,6 +59,17 @@ export function setColumnHidden(colId: string, hidden: boolean): void {
   notify()
 }
 
+/**
+ * #197: replace the whole set in one call — "Use these columns" adopting a saved/shared
+ * view's suggested layout as the new persistent default. A bulk sibling to setColumnHidden,
+ * not a replacement for it (the ColumnChooser checkboxes still toggle one at a time).
+ */
+export function setHiddenColumns(next: ReadonlySet<string>): void {
+  hiddenColumns = new Set(next)
+  persist(hiddenColumns)
+  notify()
+}
+
 /** Back to the default (empty set = every hideable column visible). */
 export function resetColumnVisibility(): void {
   hiddenColumns = new Set()

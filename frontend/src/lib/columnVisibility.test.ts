@@ -128,4 +128,19 @@ describe('column-visibility store (R-UXQ-09)', () => {
     expect(listener).toHaveBeenCalledTimes(1)
     expect(cv.getHiddenColumns().size).toBe(0)
   })
+
+  it('setHiddenColumns (#197) replaces the whole set in one call, persists, and notifies', async () => {
+    const store = stubStorage()
+    const cv = await freshColumnVisibility()
+    cv.setColumnHidden('businessKey', true)
+    const listener = vi.fn()
+    cv.subscribeHiddenColumns(listener)
+    cv.setHiddenColumns(new Set(['startTime', 'currentActivityOrError']))
+    const hidden = cv.getHiddenColumns()
+    expect(hidden.has('businessKey')).toBe(false) // fully replaced, not merged
+    expect(hidden.has('startTime')).toBe(true)
+    expect(hidden.has('currentActivityOrError')).toBe(true)
+    expect(listener).toHaveBeenCalledTimes(1)
+    expect(store.get('inspector.resultsGridHiddenColumns')).toContain('startTime')
+  })
 })

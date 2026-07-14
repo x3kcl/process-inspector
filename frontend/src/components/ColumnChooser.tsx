@@ -8,7 +8,7 @@
 import { useEffect, useRef, useState } from 'react'
 import { resetColumnVisibility, setColumnHidden, useHiddenColumns } from '../lib/columnVisibility'
 
-interface ChooserColumn {
+export interface ChooserColumn {
   /** The ColDef colId/field used as the `hide` lookup key in ResultsGrid's columns memo. */
   id: string
   label: string
@@ -16,7 +16,11 @@ interface ChooserColumn {
 
 // Must match ResultsGrid.tsx's HIDEABLE column set exactly (locked columns — open, protected,
 // engineName, status — are never offered here; see the note rendered in the panel below).
-const HIDEABLE_COLUMNS: ChooserColumn[] = [
+// Exported (#197): the same allowlist a decoded URL `cols` suggestion is validated against —
+// this is the client-side equivalent of the server-side allowlist a DB-column-backed design
+// would have needed, since under the URL-encoded mechanism the BFF never sees this field at
+// all (docs/SHARED-VIEWS.md §8).
+export const HIDEABLE_COLUMNS: ChooserColumn[] = [
   { id: 'processInstanceId', label: 'Process ID' },
   { id: 'businessKey', label: 'Business Key' },
   { id: 'definition', label: 'Definition' },

@@ -29,6 +29,30 @@ export function hasSearch(params: URLSearchParams): boolean {
   return KEYS.some((key) => params.has(key))
 }
 
+// #197: saved/shared-view column-visibility capture, folded into the SAME URL-encoded
+// search string every saved/shared view already carries — never a side-channel DB column
+// (docs/SHARED-VIEWS.md §8). Deliberately NOT in KEYS: a URL carrying only `cols` and no
+// real filter is not "a search" (hasSearch()/Stage-0-vs-Stage-1 routing must stay
+// unaffected), and `cols` is not part of SearchRequest (the backend's wire type) — it never
+// crosses into an actual /api/search call, only into what gets saved/displayed.
+const COLS_KEY = 'cols'
+
+/** Sorted for determinism — two saves of the same hidden set must produce the same string. */
+export function encodeHiddenColumns(params: URLSearchParams, cols: ReadonlySet<string>): void {
+  if (cols.size === 0) {
+    params.delete(COLS_KEY)
+    return
+  }
+  params.set(COLS_KEY, Array.from(cols).sort().join(LIST_SEP))
+}
+
+/** Null when the URL carries no layout suggestion at all (vs. an explicit empty set). */
+export function decodeHiddenColumns(params: URLSearchParams): Set<string> | null {
+  const raw = params.get(COLS_KEY)
+  if (raw === null) return null
+  return new Set(raw.split(LIST_SEP).filter((id) => id !== ''))
+}
+
 export function encodeSearch(request: SearchRequest): URLSearchParams {
   const params = new URLSearchParams()
   const set = (key: string, value: string | undefined) => {
