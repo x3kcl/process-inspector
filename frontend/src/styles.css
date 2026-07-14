@@ -29,6 +29,12 @@
      ≥5 bar. Same mechanical, value-identical rename discipline as above — no consolidation
      of near-duplicate shades, even where two of these look alike at a glance. */
   --color-surface-dark: #2f3b45;
+  /* --color-text-charcoal shares --color-surface-dark's hex by coincidence of this pass's
+     value-identical constraint, but is a DISTINCT token: surface-dark is a background role
+     (engine-card, omnibox input), text-charcoal is a foreground role (.scope-drill's text on
+     a light chip) — a future dark-mode value swap must not point both at one value, since a
+     background wants to stay dark while text-on-light wants to invert to light (review, #104). */
+  --color-text-charcoal: #2f3b45;
   --color-text-on-dark: #e8edf1;
   --color-bg-faint: #fafbfc;
   --color-surface-code: #f7f9fb;
@@ -36,7 +42,10 @@
   --color-chip-text-muted: #3d3d3d;
   --color-chip-border-muted: #8d8d8d;
   --color-badge-bg-subtle: #f4f6f8;
+  /* --color-divider-subtle (border role) and --color-track-bg (fill/background role) share
+     this pass's hex by coincidence — split for the same reason as text-charcoal above. */
   --color-divider-subtle: #eceff1;
+  --color-track-bg: #eceff1;
   --color-group-btn-border: #c8c2b8;
   --color-group-btn-accent: #8a6d3b;
   --color-fleet-accent: #b8860b;
@@ -590,7 +599,7 @@ button.primary:disabled {
   border-radius: 6px;
   padding: 0 8px;
   font-size: 12px;
-  color: var(--color-surface-dark);
+  color: var(--color-text-charcoal);
   cursor: pointer;
 }
 .scope-drill:hover {
@@ -3207,7 +3216,7 @@ button.primary:disabled {
 .timing-track {
   position: relative;
   height: 9px;
-  background: var(--color-divider-subtle);
+  background: var(--color-track-bg);
   border-radius: 3px;
 }
 .timing-bar {

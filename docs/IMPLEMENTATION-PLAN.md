@@ -1836,7 +1836,8 @@ indistinguishable from before, as expected for a byte-identical substitution.
 ### #104 slice 2a/5 — extended surface tokens (R-UXQ-08) *(✅ LANDED 2026-07-14, issue #104)*
 An EXPANSION pass, not the dark-theme switch itself: slice 1 only tokenized colors
 repeated ≥5 times. This slice lowers the bar to ≥2, adding 20 more `--color-*` custom
-properties (45 total) for the group of colors slice 1 deliberately left out — chip/badge
+properties (45 total, 47 after the role-split noted below) for the group of colors slice 1
+deliberately left out — chip/badge
 surfaces (`--color-chip-bg-muted`, `--color-chip-text-muted`, `--color-chip-border-muted`,
 `--color-badge-bg-subtle`), dark surfaces (`--color-surface-dark`, `--color-text-on-dark`),
 panel backgrounds (`--color-bg-faint`, `--color-surface-code`), a divider
@@ -1867,6 +1868,18 @@ reusing this slice's now-stale candidate list.
 
 *Tests:* `npm run build` (tsc + vite) green; `npx prettier --write` reported the file
 already correctly formatted. Full local CI (`scripts/ci-local.sh --full`) green.
+
+*Adversarial review (Copilot + independent senior pass, Gemini quota-exhausted again):*
+scripted parity/boundary/build verification all independently reconfirmed clean. One real
+finding, fixed: `--color-surface-dark` and `--color-divider-subtle` had each been reused
+across two DIFFERENT visual roles at different call sites (one as a background fill, one as
+a foreground `color:`/border) purely because they happened to share a hex value — harmless
+today (value-identical), but a hazard for slice 2b's actual dark-value assignment, since a
+background wants to stay dark while foreground-on-light wants to invert to light. Split
+into role-specific tokens: `--color-text-charcoal` (new, `.scope-drill`'s text) separated
+from `--color-surface-dark` (background-only now, `.engine-card`/omnibox), and
+`--color-track-bg` (new, `.timing-track`'s fill) separated from `--color-divider-subtle`
+(border-only now). 47 tokens total after the split (was 45).
 
 ## Build order inside any milestone
 backend DTO → engine client call → aggregator/join logic → controller → typed frontend API
