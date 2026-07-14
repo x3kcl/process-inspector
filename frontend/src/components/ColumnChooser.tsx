@@ -29,14 +29,26 @@ export function ColumnChooser() {
   const hidden = useHiddenColumns()
   const [open, setOpen] = useState(false)
   const rootRef = useRef<HTMLDivElement>(null)
+  const toggleRef = useRef<HTMLButtonElement>(null)
 
   // Close on Escape and on click-outside — no existing shared pattern for a non-modal
   // dropdown in this codebase (ModalShell's Escape handling is scoped to a full <dialog>),
-  // so this is the standard document-listener approach, only attached while open.
+  // so this is the standard document-listener approach, only attached while open. Escape
+  // also restores focus to the toggle button — mirrors ModalShell.tsx's focus-restore
+  // precedent; without this, an Escape pressed while focus sits on a checkbox/reset button
+  // inside the panel would drop focus to <body> once that element unmounts (review finding,
+  // #104 slice 4/6). Restoring to the toggle button specifically (via toggleRef), not
+  // "whatever had focus before the panel opened" — the latter depends on the browser having
+  // already moved focus to the button as part of the click that opened it, which isn't
+  // reliable to assume across environments. Click-outside deliberately does NOT restore
+  // focus — the user just clicked something else, so forcing focus back would fight that.
   useEffect(() => {
     if (!open) return
     const onKeyDown = (event: KeyboardEvent) => {
-      if (event.key === 'Escape') setOpen(false)
+      if (event.key === 'Escape') {
+        setOpen(false)
+        toggleRef.current?.focus()
+      }
     }
     const onPointerDown = (event: MouseEvent) => {
       if (
@@ -58,6 +70,7 @@ export function ColumnChooser() {
   return (
     <div className="column-chooser" ref={rootRef}>
       <button
+        ref={toggleRef}
         type="button"
         aria-expanded={open}
         aria-haspopup="true"

@@ -2159,6 +2159,19 @@ full page reload → reset restores it; a second spec covers click-outside-close
 tests, all green — no regression to `ResultsGrid`) + `scripts/ci-local.sh --full` (backend
 unaffected, unit ladder green; frontend fast tier green).
 
+_Adversarial review (Copilot + manual pass, Gemini quota-exhausted):_ one real finding,
+fixed — Escape didn't restore focus after closing the panel (`ModalShell.tsx`'s own
+focus-restore precedent, which this component otherwise doesn't share code with). Fixed
+with a dedicated `toggleRef` restored to on Escape specifically — NOT on click-outside,
+which deliberately leaves focus alone since the user just clicked something else and
+forcing it back would fight that click. (An initial `previouslyFocused =
+document.activeElement` approach, mirroring `ModalShell.tsx` more literally, proved
+unreliable under jsdom's click-focus timing and was replaced with the explicit ref.) Two
+new test cases added. Other findings — `HIDEABLE_COLUMNS`' hand-duplication against
+`ResultsGrid.tsx`'s own column set — were judged an acceptable, non-blocking footgun given
+the low cardinality (6 columns) and no stronger existing single-source-of-truth pattern in
+this codebase to derive from; flagged as a good future cleanup, not required now.
+
 ## Build order inside any milestone
 
 backend DTO → engine client call → aggregator/join logic → controller → typed frontend API

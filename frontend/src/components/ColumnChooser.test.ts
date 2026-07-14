@@ -104,10 +104,29 @@ describe('<ColumnChooser>', () => {
     expect(screen.queryByRole('region', { name: 'Choose visible columns' })).toBeNull()
   })
 
+  it('Escape restores focus to the toggle button, even from a checkbox inside the panel', () => {
+    openChooser()
+    const checkbox = checkboxByLabel('Business Key')
+    checkbox.focus()
+    expect(document.activeElement).toBe(checkbox)
+    fireEvent.keyDown(document, { key: 'Escape' })
+    expect(document.activeElement).toBe(buttonByName('Columns ▾'))
+  })
+
   it('clicking outside the chooser closes the panel', () => {
     openChooser()
     expect(screen.getByRole('region', { name: 'Choose visible columns' })).toBeTruthy()
     fireEvent.mouseDown(document.body)
     expect(screen.queryByRole('region', { name: 'Choose visible columns' })).toBeNull()
+  })
+
+  it('clicking outside does NOT steal focus back to the toggle button', () => {
+    openChooser()
+    const outsideButton = document.createElement('button')
+    document.body.appendChild(outsideButton)
+    outsideButton.focus()
+    fireEvent.mouseDown(outsideButton)
+    expect(document.activeElement).toBe(outsideButton)
+    outsideButton.remove()
   })
 })
