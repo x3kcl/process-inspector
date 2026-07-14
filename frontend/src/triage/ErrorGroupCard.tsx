@@ -240,7 +240,7 @@ function EngineRow({
   })
   const [retryScope, setRetryScope] = useState<{
     definitionKey: string
-    version: number
+    version: number | undefined
     count: number
   } | null>(null)
   return (
@@ -336,6 +336,44 @@ function EngineRow({
                   <summary>+{String(overflow.length)} more versions</summary>
                   {overflow.map(renderVersion)}
                 </details>
+              )}
+              {/* #105 remainder: the per-version buttons above cover one defKey:vN slice at
+                  a time — with more than one version deployed, a whole-class door is worth
+                  its own affordance rather than clicking "Retry group" once per version. */}
+              {definition.versions.length > 1 && (
+                <span className="action-slot">
+                  <button
+                    type="button"
+                    className="retry-group-btn retry-group-all-versions-btn"
+                    disabled={!gate.enabled}
+                    aria-describedby={
+                      gate.enabled
+                        ? undefined
+                        : `retry-group-hint-${engineId}-${definition.definitionKey}-all`
+                    }
+                    title={
+                      gate.enabled
+                        ? `Retry every currently dead-lettered ${definition.definitionKey} instance in this error class, across ALL deployed versions (resolved server-side)`
+                        : gate.detail
+                    }
+                    onClick={() => {
+                      setRetryScope({
+                        definitionKey: definition.definitionKey,
+                        version: undefined,
+                        count: definition.total,
+                      })
+                    }}
+                  >
+                    Retry group (all versions)
+                  </button>
+                  {!gate.enabled && gate.reason !== undefined && (
+                    <ActionHint
+                      id={`retry-group-hint-${engineId}-${definition.definitionKey}-all`}
+                      text={gate.reason}
+                      tone="gate"
+                    />
+                  )}
+                </span>
               )}
             </span>
           )

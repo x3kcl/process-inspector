@@ -27,7 +27,9 @@ public final class BulkDtos {
      * from the same capped signature scan the triage cards are built on. {@code algoVersion}
      * pins the normalizer generation the card was rendered with (a hash from an older
      * algorithm must refuse, not silently match nothing). {@code engineId} narrows to one
-     * engine's row on the card; null = every engine the group spans.
+     * engine's row on the card; null = every engine the group spans. {@code definitionVersion}
+     * narrows to one deployed version (the per-version "Retry group" button); null = every
+     * deployed version of {@code processDefinitionKey} (#105 remainder, the whole-class door).
      */
     public record BulkErrorClassRequest(
             String signatureHash,

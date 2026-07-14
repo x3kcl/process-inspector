@@ -94,10 +94,9 @@ class BulkErrorClassServiceTest {
     }
 
     @Test
-    void missingDefinitionVersionRefused() {
+    void missingDefinitionKeyRefused() {
         assertThatThrownBy(() -> service.submit(
-                        new BulkDtos.BulkErrorClassRequest(
-                                HASH, ALGO, "payment", null, ENGINE, "ops-4711 incident", null),
+                        new BulkDtos.BulkErrorClassRequest(HASH, ALGO, null, 3, ENGINE, "ops-4711 incident", null),
                         responder))
                 .isInstanceOfSatisfying(
                         GuardRefusedException.class,
@@ -229,6 +228,39 @@ class BulkErrorClassServiceTest {
         ArgumentCaptor<SearchRequest> query = ArgumentCaptor.forClass(SearchRequest.class);
         verify(search).search(query.capture());
         assertThat(query.getValue().engineIds()).isNull();
+    }
+
+    /* ------------------------- #105 remainder: version-optional whole-class retry ------------------------- */
+
+    @Test
+    void omittedVersionResolvesAcrossEveryDeployedVersion() {
+        // Two instances of the SAME signature, deployed on DIFFERENT versions — the
+        // version-scoped door could never sweep both in one job; the whole-class door must.
+        when(search.search(any()))
+                .thenReturn(response(List.of(row("p-v1"), row("p-v2")), Map.of(ENGINE, EngineResult.success(2, 2))));
+        BulkDtos.BulkJobDto dto = mock(BulkDtos.BulkJobDto.class);
+        when(bulk.submit(any(), eq(responder), anyMap(), any())).thenReturn(dto);
+
+        BulkDtos.BulkJobDto out =
+                service.submit(request(HASH, ALGO, "payment", null, ENGINE, "ops-4711 incident"), responder);
+
+        assertThat(out).isSameAs(dto);
+        ArgumentCaptor<SearchRequest> query = ArgumentCaptor.forClass(SearchRequest.class);
+        verify(search).search(query.capture());
+        assertThat(query.getValue().processDefinitionKey()).isEqualTo("payment");
+        // The un-scoped case: SearchService already resolves a null version to every
+        // deployed definition ID for the key — no version filter is passed through.
+        assertThat(query.getValue().definitionVersion()).isNull();
+
+        @SuppressWarnings("unchecked")
+        ArgumentCaptor<Map<String, Object>> meta = ArgumentCaptor.forClass(Map.class);
+        ArgumentCaptor<String> scopeLabel = ArgumentCaptor.forClass(String.class);
+        verify(bulk).submit(any(), eq(responder), meta.capture(), scopeLabel.capture());
+        @SuppressWarnings("unchecked")
+        Map<String, Object> group = (Map<String, Object>) meta.getValue().get("errorClass");
+        // "vnull" would be a wire-format lie — the label must read as version-spanning.
+        assertThat(group).containsEntry("definition", "payment (all versions)");
+        assertThat(scopeLabel.getValue()).isEqualTo("payment (all versions) · error class");
     }
 
     /* ------------------------- fixtures ------------------------- */
