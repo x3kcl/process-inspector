@@ -7,7 +7,9 @@ instrumented in code — historical framing only). The WHAT/WHY/HOW/WHEN below d
 deltas into `SPECIFICATION.md` (§8/§4 Stage 0 + deferred list), `ARCHITECTURE.md` (the "BFF is stateful"
 views arc), `IMPLEMENTATION-PLAN.md` (v2 block) and `REQUIREMENTS-REGISTER.md` (**R-SEM-24, R-SAFE-16**
 added). Mirrors the doc-per-feature convention of `INSTANCE-MIGRATION.md` / `REGISTRY-CRUD.md` /
-`KWAY-PAGING.md`.
+`KWAY-PAGING.md`. **§4.6's "layout capture stays OUT" call was RE-OPENED and superseded 2026-07-14 —
+see §8** (issue #197): layout capture landed, URL-encoded, zero backend changes, with a
+confirm-prompt precedence rule that resolves both of §4.6's original objections.
 
 **Method:** a draft (a `visibility`+`scope` flip bolted onto the existing per-user `saved_view` row,
 with `ScopeGrant.covers()` reused for both the publish gate and read-visibility) was put before a
@@ -276,8 +278,13 @@ Save-as-private byte-identical (one field). Publish is a separate, greyed-never-
 Stage-0 saved-views section (`MeDto.engineRoles`), opening a confirm with the **derived-scope sentence** +
 optional description (≤500, R-OPS-08) + runbook URL (R-BAU-03 model). Precedence System → **Team** →
 Private; **non-color "Team" badge** on the chip, author/scope in tooltip + Stage-0 list only. Canon
-changes surface via the existing **Recent operations** tail (R-UXQ-06), never toasts. **Layout capture
-(R-UXQ-09) stays OUT** — it would break the view==URL invariant.
+changes surface via the existing **Recent operations** tail (R-UXQ-06), never toasts.
+
+~~**Layout capture (R-UXQ-09) stays OUT** — it would break the view==URL invariant.~~
+**SUPERSEDED 2026-07-14 — see §8.** Reopened for issue #197: landed URL-encoded (the SAME `search`
+string, not a side-channel store), preserving the view==URL invariant literally rather than breaking
+it; the "imposes one operator's ergonomics" half of this objection is resolved by a confirm-prompt at
+open-time, not by omitting the feature.
 
 ### 4.7 Injection (R-OPS-08, extended)
 Text-is-data (no HTML), CR/LF-strip, caps: name ≤200, description ≤500 — applied to name, description
@@ -365,3 +372,71 @@ No S0 spike; no rung-4-**engine** slice (a shared view touches no `ACT_*` table)
 
 Deeper SPEC §8 *behavioral* edits have landed with the build slices (spec-sync) — S1-S6 are all
 built; this section's deltas are historical (the pre-build plan), not a still-open TODO.
+
+---
+
+## 8. RE-OPENED: layout capture (issue #197, 2026-07-14) — §4.6's "stays OUT" call revisited
+
+§4.6 above locked "layout capture stays OUT — it would break the view==URL invariant." Issue #197
+asked to reopen that, after #104 shipped a real per-user column-visibility store
+(`inspector.resultsGridHiddenColumns`, global, not per-view) that saved/shared views don't capture.
+Re-run as a fresh 5-seat panel (UX, security, architect, test-manager + Copilot/Gemini adversarial
+6th) rather than a unilateral reversal, since the original call was a deliberate, reasoned rejection,
+not an oversight.
+
+**Unanimous mechanism verdict — fold layout into the URL, not a new DB column.** Since the BFF treats
+`search` as an opaque, size-capped string it never parses (`SaveViewRequest`/`PublishRequest` DTOs),
+and `SharedViewService.publish()` already snapshot-copies `search` byte-for-byte, adding a
+`cols=<sorted,ids>` query param to the SAME url-codec (`frontend/src/search/urlState.ts`) that already
+owns "the entire search state is URL-encoded" costs **zero backend/DB/migration changes** and
+preserves the view==URL invariant *literally*, not just narrowed — a deleted/unpublished canon's URL,
+if bookmarked, still fully reconstructs both search AND layout. `cols` is deliberately kept OUT of
+`urlState.ts`'s `KEYS` array (which drives `hasSearch()`'s Stage-0-vs-Stage-1 routing) — a URL
+carrying only `cols` and no real filter is not "a search."
+
+**The adversarial pass found the panel's first-draft precedence rule was a real flaw, not a
+nitpick.** The initial rule ("a viewer's own customized column choice always wins over any
+view-encoded suggestion, once they've ever customized anything") independently drew the identical
+objection from BOTH Copilot and Gemini: since nearly every active user eventually customizes columns,
+a shared view's suggested layout would in practice reach almost nobody past onboarding — a feature
+that's dead on arrival dressed up as a compromise. **Adopted fix (Gemini's alternative, refined):**
+layout is never silently applied OR silently suppressed. Opening any view (private, shared, or
+system) whose search string carries a `cols` suggestion that differs from your current effective
+columns shows a small dismissible inline prompt — "This view suggests different columns — Use these
+/ Keep mine" — resolved once per (search-identity, suggested-layout) pair and remembered
+(`frontend/src/lib/viewLayoutDecisions.ts`, a small capped localStorage decision cache, keyed off the
+normalized cols-excluded search string). Manually touching the column chooser while a prompt is
+pending counts as "keep mine." "Use these" adopts the suggestion as the new persistent global default
+(`columnVisibility.ts`) AND is what makes the URL self-describing — not two independent states to
+keep in sync.
+
+**No opt-in publish checkbox, no private/shared split.** An earlier draft of this design gave
+private views automatic always-apply capture and gated shared views behind a publish-time checkbox
+(default off). Simplified away once the confirm-prompt existed: the prompt itself is what protects
+against "one operator's ergonomics imposed on the team" (§4.6's second, independent objection,
+alongside URL-primacy) — uniformly, for private and shared views alike, without needing a second
+opt-in gate. Saving or publishing a view now *always* captures the currently-effective column set;
+the safety property lives entirely at open-time, not save-time.
+
+**Column-ID validation moves client-side, by necessity.** The security seat's guardrail ("validate
+column IDs against a live allowlist before persist/render") can't be a server-side check under this
+mechanism — the BFF never sees `cols` at all. Decoding filters against `ColumnChooser.tsx`'s existing
+`HIDEABLE_COLUMNS` allowlist; unknown/stale IDs (a column later renamed or removed) are silently
+dropped, never treated as an error — matching this project's fail-soft-on-decode convention elsewhere
+in `urlState.ts` (`decodeVariables`'s try/catch).
+
+**Accepted, documented tradeoff:** editing *only* the layout of an already-published shared view (no
+filter change) still changes its stored `search` string, and therefore its audit `searchSha256` —
+registering as a `view-update` audit event even though the query criteria didn't change. Low-frequency,
+non-security-relevant audit noise; not engineered around.
+
+**Scope:** saved/shared/system views only. Recent-searches (`recordRecentSearch`) is explicitly
+untouched — a lower-stakes, unnamed, already-URL-driven feature; folding layout into it is unscoped
+scope creep for this issue, not attempted here.
+
+Implementation: `frontend/src/search/urlState.ts` (new `encodeHiddenColumns`/`decodeHiddenColumns`,
+outside `KEYS`), `frontend/src/lib/columnVisibility.ts` (additive bulk `setHiddenColumns`),
+`frontend/src/lib/viewLayoutDecisions.ts` (new, the per-view decision cache),
+`frontend/src/search/SearchPage.tsx` (decode+compare+prompt wiring, the display-search string
+threaded to `SearchRail`/`ViewChips`). Zero backend files. No new Flyway migration, no `schema.d.ts`
+regen.

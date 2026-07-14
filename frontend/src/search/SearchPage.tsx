@@ -11,11 +11,14 @@ import { PartialResultsBanner } from '../components/PartialResultsBanner'
 import { ResultsGrid } from '../components/ResultsGrid'
 import { SearchRail } from '../components/SearchRail'
 import { formatClock, formatCount, useDisplayZone } from '../lib/format'
+import { useHiddenColumns } from '../lib/columnVisibility'
 import { RecentSearchList } from '../views/RecentSearchList'
+import { useLayoutSuggestion } from '../views/useLayoutSuggestion'
 import { ViewChips } from '../views/ViewChips'
 import { useRecordRecentSearch } from '../views/useViewStores'
 import { summarizePartials } from './partials'
 import { resultsMayBeStale, useLastMutationSettledAt } from './staleness'
+import { encodeHiddenColumns } from './urlState'
 import { useSearchResults, useSearchUrl } from './useSearch'
 
 /**
@@ -34,6 +37,20 @@ export function SearchPage() {
   const { request, submit, paramsKey } = useSearchUrl()
   const results = useSearchResults(request)
   const recordRecentSearch = useRecordRecentSearch()
+  // #197 (docs/SHARED-VIEWS.md §8): what a "Save current view"/"Publish" action captures is
+  // always the grid's TRUE current columns, folded into the search string being displayed —
+  // never whatever `cols` (if any) happened to arrive in the URL, which may since have been
+  // dismissed. displaySearch is what SaveViewControl/ViewChips read; paramsKey (unchanged)
+  // stays the actual search-execution identity (react-query key, recents) — columns must
+  // never trigger a re-fetch or a "different recent search" entry.
+  const hiddenColumns = useHiddenColumns()
+  const displaySearch = useMemo(() => {
+    const params = new URLSearchParams(paramsKey)
+    encodeHiddenColumns(params, hiddenColumns)
+    params.sort()
+    return params.toString()
+  }, [paramsKey, hiddenColumns])
+  const layoutSuggestion = useLayoutSuggestion(paramsKey)
   const [railCollapsed, setRailCollapsed] = useState(false)
   const collapsedForParams = useRef<string | null>(null)
   // M5 bulk selection (SPEC §7): checkbox rows flow into the intersection bar.
@@ -129,7 +146,7 @@ export function SearchPage() {
         key={paramsKey}
         engines={engines.data ?? []}
         initial={request}
-        currentSearch={request !== null ? paramsKey : null}
+        currentSearch={request !== null ? displaySearch : null}
         response={results.data}
         busy={results.isFetching}
         collapsed={railCollapsed}
@@ -140,7 +157,18 @@ export function SearchPage() {
       />
 
       <section className="pane pane-results">
-        <ViewChips currentSearch={paramsKey} />
+        <ViewChips currentSearch={displaySearch} />
+        {layoutSuggestion.cols !== null && (
+          <div className="banner banner-info" role="status">
+            This view suggests different visible columns than you currently have.{' '}
+            <button type="button" className="linklike" onClick={layoutSuggestion.apply}>
+              Use these columns
+            </button>{' '}
+            <button type="button" className="linklike" onClick={layoutSuggestion.dismiss}>
+              Keep mine
+            </button>
+          </div>
+        )}
         <div className="results-toolbar">
           <span className="snapshot">
             {results.data !== undefined
