@@ -168,12 +168,17 @@ public class CorrectiveActionService {
         String ticketId = ticketPolicy.validate(request.ticketId(), engine.environment());
 
         Target target = restateTarget(scope, engine, verb, targetId, request);
-        // #172: DEFINITION-kind verbs (suspend/activate-definition) get their OWN protection check
-        // here, now that the key is resolved — the instance-scope check above early-returned for
-        // this targetKind (it had no key to check against protected_definition without an extra,
-        // avoidable engine round-trip). Still before requireConfirmToken, matching the instance-scope
-        // ordering: protection refuses before the operator has typed anything further.
-        if (verb.targetKind() == ActionVerb.TargetKind.DEFINITION) {
+        // #172/#184: a SECOND protection check, now that the target is server-fresh-restated and
+        // may carry a definitionKey the instance-scope check above couldn't cheaply resolve
+        // (DEFINITION-kind verbs never had a key to check at all before restateTarget resolved
+        // it; most INSTANCE-kind verbs' restatement already reads processDefinitionId as part of
+        // their normal fetch, so populating Target.definitionKey there is free — see each target
+        // helper's javadoc for which. EDIT_VARIABLE/UNSTICK_EVENT and CMMN targets leave it null:
+        // extending those would need a genuinely EXTRA engine round-trip or (CMMN) a different
+        // protection concept entirely — #184 scoped that out; see its issue body). Still before
+        // requireConfirmToken, matching the instance-scope check's ordering: protection refuses
+        // before the operator has typed anything further.
+        if (target.definitionKey() != null) {
             protectionGuard.requireUnprotectedOrAdmin(auth, engine.id(), null, target.definitionKey(), verb.path());
         }
         // A bulk-dispatched item skips the per-instance typed-confirm-token restatement — a
@@ -416,7 +421,8 @@ public class CorrectiveActionService {
         payload.put("jobId", jobId);
         payload.put("elementId", job.get("elementId"));
         payload.put("exceptionMessage", job.get("exceptionMessage"));
-        return new Target(payload, jobId, "job id", null);
+        // #184: free — the job response already carries processDefinitionId.
+        return new Target(payload, jobId, "job id", null, definitionKeyOf(job.get("processDefinitionId")));
     }
 
     /**
@@ -470,7 +476,8 @@ public class CorrectiveActionService {
         payload.put("suspended", instance.get("suspended"));
         // Typed token = the business key; instances without one fall back to the instance id.
         String token = businessKey != null ? businessKey : instanceId;
-        return new Target(payload, token, "business key", null);
+        // #184: free — already read into the payload above.
+        return new Target(payload, token, "business key", null, definitionKeyOf(instance.get("processDefinitionId")));
     }
 
     /**
@@ -561,7 +568,8 @@ public class CorrectiveActionService {
         payload.put("taskId", taskId);
         payload.put("taskName", task.get("name"));
         payload.put("variables", auditVariables(request.variables()));
-        return new Target(payload, taskId, "task id", null);
+        // #184: free — the task response already carries processDefinitionId.
+        return new Target(payload, taskId, "task id", null, definitionKeyOf(task.get("processDefinitionId")));
     }
 
     /**
@@ -597,7 +605,8 @@ public class CorrectiveActionService {
         payload.put("taskName", task.get("name"));
         payload.put("oldAssignee", oldAssignee);
         payload.put("newAssignee", newAssignee);
-        return new Target(payload, taskId, "task id", null);
+        // #184: free — the task response already carries processDefinitionId.
+        return new Target(payload, taskId, "task id", null, definitionKeyOf(task.get("processDefinitionId")));
     }
 
     private Target executionTarget(EngineConfig engine, String instanceId, ActionRequest request) {
@@ -890,6 +899,19 @@ public class CorrectiveActionService {
     }
 
     /**
+     * The {@code key} half of a {@code key:version:uuid} definitionId — Flowable's own format,
+     * used as a fallback wherever a raw definitionId is all that's available (mirrors {@code
+     * FlowSurgeryService#resolveStartDefinition}'s identical split). Null-safe: several target
+     * helpers don't always have a definitionId to give (e.g. an unowned job — see each caller).
+     */
+    private static String definitionKeyOf(Object rawDefinitionId) {
+        if (rawDefinitionId == null) return null;
+        String s = String.valueOf(rawDefinitionId);
+        int idx = s.indexOf(':');
+        return idx > 0 ? s.substring(0, idx) : s;
+    }
+
+    /**
      * Server-fresh restatement of the verb's target: the audit payload (old values
      * included), the tier-3 typed-token expectation, and the CAS current value.
      */
@@ -898,9 +920,12 @@ public class CorrectiveActionService {
             String confirmToken,
             String confirmTokenName,
             Object currentVariableValue,
-            // #172: the resolved definition key, non-null only from definitionTarget() — DEFINITION-kind
-            // verbs are the one case where a definition-scope protection check can run without an extra
-            // engine round-trip (the key is already fetched here, for the audit payload).
+            // #172/#184: the resolved definition key, when the target's own restatement carries
+            // one for free — jobTarget/instanceTarget/taskTarget/taskAssignTarget/definitionTarget
+            // all populate it (see each). variableTarget/executionTarget/cmmnJobTarget leave it
+            // null (execution responses don't carry a definitionId; CMMN is a different scope
+            // entirely) — extending those needs a genuinely EXTRA engine round-trip or a whole
+            // new protection concept, scoped out of #184.
             String definitionKey) {
         Target(
                 Map<String, Object> auditPayload,

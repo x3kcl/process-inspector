@@ -1,5 +1,7 @@
 package io.inspector.bulk;
 
+import io.github.resilience4j.bulkhead.BulkheadFullException;
+import io.github.resilience4j.circuitbreaker.CallNotPermittedException;
 import io.inspector.action.ActionRequest;
 import io.inspector.action.ActionResult;
 import io.inspector.action.ActionVerb;
@@ -13,8 +15,10 @@ import io.inspector.audit.AuditEntry;
 import io.inspector.audit.AuditOutcome;
 import io.inspector.audit.AuditService;
 import io.inspector.audit.OutcomeVerificationFailedException;
+import io.inspector.audit.ProtectedDefinition;
 import io.inspector.audit.ProtectedInstance;
 import io.inspector.audit.ProtectedInstanceRepository;
+import io.inspector.client.FlowablePage;
 import io.inspector.client.GuardedCaller;
 import io.inspector.client.GuardedCaller.CallPriority;
 import io.inspector.client.ProcessApiClient;
@@ -28,12 +32,15 @@ import io.micrometer.core.instrument.Gauge;
 import io.micrometer.core.instrument.MeterRegistry;
 import java.time.Clock;
 import java.util.ArrayList;
+import java.util.HashMap;
+import java.util.HashSet;
 import java.util.LinkedHashMap;
 import java.util.List;
 import java.util.Map;
 import java.util.Set;
 import java.util.UUID;
 import java.util.concurrent.CompletableFuture;
+import java.util.concurrent.CompletionException;
 import java.util.concurrent.ConcurrentHashMap;
 import java.util.concurrent.ExecutorService;
 import java.util.concurrent.Semaphore;
@@ -48,6 +55,7 @@ import org.springframework.data.domain.PageRequest;
 import org.springframework.http.HttpStatus;
 import org.springframework.security.core.Authentication;
 import org.springframework.stereotype.Service;
+import org.springframework.web.client.ResourceAccessException;
 
 /**
  * M5 grid-selection bulk (SPEC §7, R-SEM-10/11): a PERSISTED tracked job — submit
@@ -94,6 +102,7 @@ public class BulkJobService {
     private final BulkJobItemRepository items;
     private final CorrectiveActionService actions;
     private final ProtectedInstanceRepository protectedInstances;
+    private final io.inspector.audit.ProtectedDefinitionRepository protectedDefinitions;
     private final AuditService audit;
     private final EngineRegistry registry;
     private final ProcessApiClient client;
@@ -144,6 +153,7 @@ public class BulkJobService {
             BulkJobItemRepository items,
             CorrectiveActionService actions,
             ProtectedInstanceRepository protectedInstances,
+            io.inspector.audit.ProtectedDefinitionRepository protectedDefinitions,
             AuditService audit,
             EngineRegistry registry,
             ProcessApiClient client,
@@ -157,6 +167,7 @@ public class BulkJobService {
         this.items = items;
         this.actions = actions;
         this.protectedInstances = protectedInstances;
+        this.protectedDefinitions = protectedDefinitions;
         this.audit = audit;
         this.registry = registry;
         this.client = client;
@@ -373,9 +384,120 @@ public class BulkJobService {
         List<ProtectedInstance.Key> keys = targets.stream()
                 .map(t -> new ProtectedInstance.Key(t.engineId(), t.instanceId()))
                 .toList();
-        return protectedInstances.findAllById(keys).stream()
+        Set<ProtectedInstance.Key> guarded = new HashSet<>(protectedInstances.findAllById(keys).stream()
                 .map(p -> new ProtectedInstance.Key(p.getEngineId(), p.getInstanceId()))
-                .collect(Collectors.toSet());
+                .collect(Collectors.toSet()));
+        guarded.addAll(definitionProtectedKeys(targets));
+        return guarded;
+    }
+
+    /**
+     * #184: definition-key scope for bulk's pre-dispatch auto-exclusion (the "same dual-scope
+     * check" the issue asked for). {@code BulkTarget} carries no definitionKey — a client-supplied
+     * one can never be trusted for a security check — so it's resolved SERVER-SIDE, grouped per
+     * engine, via the same batched {@code processInstanceIds} + canary-detect + per-id-fallback
+     * pattern {@code SearchService#suspendedFlags} already proved (some engines, e.g. 6.3.1,
+     * silently ignore the filter and return everything unfiltered). Returns synthetic
+     * {@code ProtectedInstance.Key}s (composite ID, not a real row) so the caller's existing
+     * {@code guarded.contains(...)} per-item check needs no changes for this second scope.
+     */
+    private Set<ProtectedInstance.Key> definitionProtectedKeys(List<BulkDtos.BulkTarget> targets) {
+        Set<ProtectedInstance.Key> guarded = new HashSet<>();
+        Map<String, List<BulkDtos.BulkTarget>> byEngine =
+                targets.stream().collect(Collectors.groupingBy(BulkDtos.BulkTarget::engineId));
+        for (Map.Entry<String, List<BulkDtos.BulkTarget>> entry : byEngine.entrySet()) {
+            EngineConfig engine = registry.require(entry.getKey());
+            Map<String, String> definitionKeyByInstance = definitionKeysOf(engine, entry.getValue());
+            Set<String> distinctKeys = new HashSet<>(definitionKeyByInstance.values());
+            distinctKeys.remove(null);
+            if (distinctKeys.isEmpty()) continue;
+            List<ProtectedDefinition.Key> defKeys = distinctKeys.stream()
+                    .map(k -> new ProtectedDefinition.Key(entry.getKey(), k))
+                    .toList();
+            Set<String> protectedDefKeys = protectedDefinitions.findAllById(defKeys).stream()
+                    .map(ProtectedDefinition::getDefinitionKey)
+                    .collect(Collectors.toSet());
+            if (protectedDefKeys.isEmpty()) continue;
+            for (BulkDtos.BulkTarget t : entry.getValue()) {
+                String key = definitionKeyByInstance.get(t.instanceId());
+                if (key != null && protectedDefKeys.contains(key)) {
+                    guarded.add(new ProtectedInstance.Key(t.engineId(), t.instanceId()));
+                }
+            }
+        }
+        return guarded;
+    }
+
+    /**
+     * {@code instanceId -> definitionKey} for a batch on ONE engine. Fail-closed on engine
+     * unreachability (same "engine-unreachable" refusal every other pre-flight engine read in
+     * this codebase uses) — a bulk submit that cannot verify definition-scope protection refuses
+     * the WHOLE submit rather than silently skipping the check.
+     */
+    private Map<String, String> definitionKeysOf(EngineConfig engine, List<BulkDtos.BulkTarget> targets) {
+        Set<String> ids = targets.stream().map(BulkDtos.BulkTarget::instanceId).collect(Collectors.toSet());
+        try {
+            Map<String, Object> body = new HashMap<>();
+            body.put("processInstanceIds", List.copyOf(ids));
+            body.put("size", ids.size());
+            FlowablePage page = client.queryRuntimeProcessInstances(engine, CallPriority.INTERACTIVE, body);
+            Map<String, String> byId = new HashMap<>();
+            boolean filterIgnored = page == null || page.total() > ids.size();
+            if (page != null) {
+                for (Map<String, Object> pi : page.dataOrEmpty()) {
+                    String id = String.valueOf(pi.get("id"));
+                    if (!ids.contains(id)) {
+                        filterIgnored = true;
+                        break;
+                    }
+                    byId.put(id, definitionKeyOf(pi));
+                }
+            }
+            if (!filterIgnored) return byId;
+
+            log.debug("Engine {} ignored processInstanceIds on the runtime query — per-id fallback", engine.id());
+            // ConcurrentHashMap rejects null values — definitionKeyOf legitimately returns null
+            // (e.g. a mock/test double, or a genuinely definitionId-less response), so the key
+            // must be resolved and checked BEFORE the put, never put-then-null.
+            Map<String, String> fallback = new ConcurrentHashMap<>();
+            List<CompletableFuture<Void>> futures = new ArrayList<>();
+            for (String id : ids) {
+                futures.add(CompletableFuture.runAsync(
+                        () -> {
+                            Map<String, Object> pi =
+                                    client.getRuntimeProcessInstance(engine, CallPriority.INTERACTIVE, id);
+                            String key = pi != null ? definitionKeyOf(pi) : null;
+                            if (key != null) fallback.put(id, key);
+                        },
+                        executor));
+            }
+            try {
+                CompletableFuture.allOf(futures.toArray(CompletableFuture[]::new))
+                        .join();
+            } catch (CompletionException e) {
+                // join() always wraps the per-task exception — unwrap it so the outer catch below
+                // still recognizes CallNotPermittedException/BulkheadFullException/ResourceAccessException
+                // (a raw parallelStream().forEach() doesn't reliably wrap, which would let these same
+                // exception types silently escape the intended fail-closed engine-unreachable refusal).
+                if (e.getCause() instanceof RuntimeException cause) throw cause;
+                throw e;
+            }
+            return fallback;
+        } catch (CallNotPermittedException | BulkheadFullException | ResourceAccessException e) {
+            throw new GuardRefusedException(
+                    HttpStatus.BAD_GATEWAY,
+                    "engine-unreachable",
+                    "Engine '" + engine.id() + "' did not answer the pre-flight definition-protection check."
+                            + " Nothing happened.");
+        }
+    }
+
+    private static String definitionKeyOf(Map<String, Object> instance) {
+        Object definitionId = instance.get("processDefinitionId");
+        if (definitionId == null) return null;
+        String s = String.valueOf(definitionId);
+        int idx = s.indexOf(':');
+        return idx > 0 ? s.substring(0, idx) : s;
     }
 
     /* ------------------------------- execution ------------------------------- */
