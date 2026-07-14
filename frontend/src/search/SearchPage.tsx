@@ -6,6 +6,7 @@ import { useMe } from '../api/me'
 import { useEngines } from '../api/useEngines'
 import { BulkBar } from '../bulk/BulkBar'
 import { DestructiveBulkEntry } from '../bulk/DestructiveBulkEntry'
+import { ColumnChooser } from '../components/ColumnChooser'
 import { PartialResultsBanner } from '../components/PartialResultsBanner'
 import { ResultsGrid } from '../components/ResultsGrid'
 import { SearchRail } from '../components/SearchRail'
@@ -157,6 +158,7 @@ export function SearchPage() {
               </span>
             )}
           </span>
+          <ColumnChooser />
           <button type="button" disabled={request === null || results.isFetching} onClick={refresh}>
             {results.isFetching ? 'Refreshing…' : 'Refresh'}
           </button>

@@ -10,6 +10,7 @@ import type {
   SelectionChangedEvent,
 } from 'ag-grid-community'
 import type { EngineDto, ProcessInstanceRow, SearchResponse } from '../api/model'
+import { useHiddenColumns } from '../lib/columnVisibility'
 import { formatCount } from '../lib/format'
 import { Ts } from '../lib/Ts'
 import { summarizePartials, zeroState } from '../search/partials'
@@ -43,6 +44,9 @@ export function ResultsGrid({
 }: Props) {
   const gridRef = useRef<AgGridReact<ProcessInstanceRow>>(null)
   const [selectedCount, setSelectedCount] = useState(0)
+  // R-UXQ-09 (#104 slice 4/6): ColumnChooser's persisted hide/show set — declarative `hide`
+  // recomputed via the memo below, not an imperative api.setColumnsVisible call.
+  const hiddenColumns = useHiddenColumns()
 
   useEffect(() => {
     if (deselectSignal !== undefined && deselectSignal > 0) gridRef.current?.api.deselectAll()
@@ -129,6 +133,7 @@ export function ResultsGrid({
       {
         headerName: 'Process ID',
         field: 'processInstanceId',
+        hide: hiddenColumns.has('processInstanceId'),
         width: 170,
         cellRenderer: (p: CustomCellRendererProps<ProcessInstanceRow>) => {
           const id = p.data?.processInstanceId
@@ -144,6 +149,7 @@ export function ResultsGrid({
       {
         headerName: 'Business Key',
         field: 'businessKey',
+        hide: hiddenColumns.has('businessKey'),
         width: 180,
         // W2 #7 (R-UXQ-12): root-vs-child marker — a businessKey search finds the whole
         // tree, and identically-keyed rows are indistinguishable without it. typeof-guarded
@@ -184,6 +190,7 @@ export function ResultsGrid({
       {
         headerName: 'Definition',
         colId: 'definition',
+        hide: hiddenColumns.has('definition'),
         width: 200,
         valueGetter: (p) => {
           if (p.data === undefined) return ''
@@ -197,6 +204,7 @@ export function ResultsGrid({
       {
         headerName: 'Start Time',
         field: 'startTime',
+        hide: hiddenColumns.has('startTime'),
         width: 230,
         cellRenderer: (p: CustomCellRendererProps<ProcessInstanceRow>) => (
           <Ts iso={p.data?.startTime} relative />
@@ -205,6 +213,7 @@ export function ResultsGrid({
       {
         headerName: 'Failure Time',
         field: 'failureTime',
+        hide: hiddenColumns.has('failureTime'),
         width: 230,
         cellRenderer: (p: CustomCellRendererProps<ProcessInstanceRow>) => (
           <Ts iso={p.data?.failureTime} relative />
@@ -213,12 +222,13 @@ export function ResultsGrid({
       {
         headerName: 'Current Activity / Error',
         field: 'currentActivityOrError',
+        hide: hiddenColumns.has('currentActivityOrError'),
         flex: 1,
         minWidth: 220,
         tooltipField: 'currentActivityOrError',
       },
     ],
-    [enginesById],
+    [enginesById, hiddenColumns],
   )
 
   const rowSelection = useMemo<RowSelectionOptions>(
