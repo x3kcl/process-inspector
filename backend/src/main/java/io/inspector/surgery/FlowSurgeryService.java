@@ -418,12 +418,13 @@ public class FlowSurgeryService {
             throw engineUnreachablePreFlight(engine);
         }
 
+        Object historicDefinitionId = historic.get("processDefinitionId");
         requireUnprotectedOrAdmin(
                 auth,
                 engine,
                 RESTART_ACTION,
                 instanceId,
-                definitionKeyOf(String.valueOf(historic.get("processDefinitionId"))));
+                definitionKeyOf(historicDefinitionId == null ? null : String.valueOf(historicDefinitionId)));
         String reason = requireReason(request.reason(), RESTART_ACTION);
         String ticketId = ticketPolicy.validate(request.ticketId(), engine.environment());
         boolean pinVersion = Boolean.TRUE.equals(request.pinDefinitionVersion());

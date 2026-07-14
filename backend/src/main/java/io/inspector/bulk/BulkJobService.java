@@ -40,6 +40,7 @@ import java.util.Map;
 import java.util.Set;
 import java.util.UUID;
 import java.util.concurrent.CompletableFuture;
+import java.util.concurrent.CompletionException;
 import java.util.concurrent.ConcurrentHashMap;
 import java.util.concurrent.ExecutorService;
 import java.util.concurrent.Semaphore;
@@ -459,11 +460,28 @@ public class BulkJobService {
             // (e.g. a mock/test double, or a genuinely definitionId-less response), so the key
             // must be resolved and checked BEFORE the put, never put-then-null.
             Map<String, String> fallback = new ConcurrentHashMap<>();
-            ids.parallelStream().forEach(id -> {
-                Map<String, Object> pi = client.getRuntimeProcessInstance(engine, CallPriority.INTERACTIVE, id);
-                String key = pi != null ? definitionKeyOf(pi) : null;
-                if (key != null) fallback.put(id, key);
-            });
+            List<CompletableFuture<Void>> futures = new ArrayList<>();
+            for (String id : ids) {
+                futures.add(CompletableFuture.runAsync(
+                        () -> {
+                            Map<String, Object> pi =
+                                    client.getRuntimeProcessInstance(engine, CallPriority.INTERACTIVE, id);
+                            String key = pi != null ? definitionKeyOf(pi) : null;
+                            if (key != null) fallback.put(id, key);
+                        },
+                        executor));
+            }
+            try {
+                CompletableFuture.allOf(futures.toArray(CompletableFuture[]::new))
+                        .join();
+            } catch (CompletionException e) {
+                // join() always wraps the per-task exception — unwrap it so the outer catch below
+                // still recognizes CallNotPermittedException/BulkheadFullException/ResourceAccessException
+                // (a raw parallelStream().forEach() doesn't reliably wrap, which would let these same
+                // exception types silently escape the intended fail-closed engine-unreachable refusal).
+                if (e.getCause() instanceof RuntimeException cause) throw cause;
+                throw e;
+            }
             return fallback;
         } catch (CallNotPermittedException | BulkheadFullException | ResourceAccessException e) {
             throw new GuardRefusedException(
