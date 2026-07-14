@@ -3,10 +3,13 @@
 # both Docker Hub and ghcr.io; this file defaults to Docker Hub. To pull from ghcr instead:
 #   PI_REGISTRY=ghcr.io/x3kcl docker compose -f docker-compose.release.yml up -d
 #
-#   PI_VERSION=v1.2.3 INSPECTOR_DEV_PASSWORD=... \
+#   PI_VERSION=1.2.3 INSPECTOR_DEV_PASSWORD=... \
 #     docker compose -f docker-compose.release.yml up -d
 #   → UI on http://localhost:${PI_HTTP_PORT:-8080}, sign-in ladder users
 #     viewer/responder/operator/admin with the password you set.
+#   PI_VERSION has NO leading "v" — that's the git/release tag name (v1.2.3), the published
+#   IMAGE tag drops it (docker/metadata-action's {{version}} pattern; issue #200). Omit
+#   PI_VERSION entirely for `latest`.
 #
 # Engines are YOURS to point at (the inspector integrates strictly over the Flowable
 # REST API — it never ships an engine). Defaults assume engines published on the DOCKER
