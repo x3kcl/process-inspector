@@ -10,9 +10,7 @@ import io.inspector.action.TicketPolicy;
 import io.inspector.audit.AuditEntry;
 import io.inspector.audit.AuditOutcome;
 import io.inspector.audit.AuditService;
-import io.inspector.audit.AuditUnavailableException;
-import io.inspector.audit.ProtectedInstance;
-import io.inspector.audit.ProtectedInstanceRepository;
+import io.inspector.audit.ProtectionGuard;
 import io.inspector.client.FlowablePage;
 import io.inspector.client.ForwardedActor;
 import io.inspector.client.GuardedCaller.CallPriority;
@@ -83,7 +81,7 @@ public class FlowSurgeryService {
     private final BpmnStructureService structures;
     private final AuditService audit;
     private final RbacAuthorizer rbac;
-    private final ProtectedInstanceRepository protectedInstances;
+    private final ProtectionGuard protectionGuard;
     private final TicketPolicy ticketPolicy;
 
     public FlowSurgeryService(
@@ -92,14 +90,14 @@ public class FlowSurgeryService {
             BpmnStructureService structures,
             AuditService audit,
             RbacAuthorizer rbac,
-            ProtectedInstanceRepository protectedInstances,
+            ProtectionGuard protectionGuard,
             TicketPolicy ticketPolicy) {
         this.registry = registry;
         this.client = client;
         this.structures = structures;
         this.audit = audit;
         this.rbac = rbac;
-        this.protectedInstances = protectedInstances;
+        this.protectionGuard = protectionGuard;
         this.ticketPolicy = ticketPolicy;
     }
 
@@ -614,21 +612,12 @@ public class FlowSurgeryService {
         }
     }
 
+    // Instance-scope only (#172 review note): definition-key protection isn't checked here because
+    // the definition key isn't cheaply available at either call site without an extra engine
+    // round-trip — tracked as a follow-up (see #172's closing comment) rather than adding that cost
+    // to change-state/restart's guard ladder here.
     private void requireUnprotectedOrAdmin(Authentication auth, EngineConfig engine, String action, String targetId) {
-        Optional<ProtectedInstance> protection;
-        try {
-            protection = protectedInstances.findById(new ProtectedInstance.Key(engine.id(), targetId));
-        } catch (RuntimeException e) {
-            // Protection registry and audit share one Postgres: unreadable = fail-closed (R-AUD-01).
-            throw new AuditUnavailableException(e);
-        }
-        if (protection.isPresent() && !rbac.hasRoleOn(auth, Role.ADMIN, engine.id())) {
-            throw new GuardRefusedException(
-                    HttpStatus.FORBIDDEN,
-                    "instance-protected",
-                    "Instance " + engine.id() + ":" + targetId + " is protected (R-SAFE-05): \""
-                            + protection.get().getReason() + "\" — L3 (ADMIN) action required for '" + action + "'.");
-        }
+        protectionGuard.requireUnprotectedOrAdmin(auth, engine.id(), targetId, null, action);
     }
 
     /** Tier-2 reason discipline (SPEC §6): ALWAYS required, ≥10 chars, every environment. */

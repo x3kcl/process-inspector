@@ -57,6 +57,8 @@ class CmmnCorrectiveActionServiceTest {
     private final AuditService audit = mock(AuditService.class);
     private final RbacAuthorizer rbac = mock(RbacAuthorizer.class);
     private final ProtectedInstanceRepository protectedInstances = mock(ProtectedInstanceRepository.class);
+    private final io.inspector.audit.ProtectedDefinitionRepository protectedDefinitions =
+            mock(io.inspector.audit.ProtectedDefinitionRepository.class);
     private final EngineRegistry registry = mock(EngineRegistry.class);
     private final Authentication operator = new TestingAuthenticationToken("op", "n/a", "ROLE_OPERATOR");
 
@@ -71,13 +73,14 @@ class CmmnCorrectiveActionServiceTest {
                 cmmnClient,
                 audit,
                 rbac,
-                protectedInstances,
+                new io.inspector.audit.ProtectionGuard(protectedInstances, protectedDefinitions, rbac),
                 new TicketPolicy(new io.inspector.config.AuditProperties(null, null, null)),
                 new io.inspector.security.reauth.DangerousActionReauthGate(
                         new io.inspector.security.OidcProperties(null, false, null), java.time.Clock.systemUTC()));
         when(registry.require(ENGINE)).thenReturn(engine);
         when(rbac.hasRoleOn(any(), any(), anyString())).thenReturn(true);
         when(protectedInstances.findById(any())).thenReturn(Optional.empty());
+        when(protectedDefinitions.findById(any())).thenReturn(Optional.empty());
 
         pendingEntry = new AuditEntry(
                 UUID.nameUUIDFromBytes("audit".getBytes(StandardCharsets.UTF_8)),

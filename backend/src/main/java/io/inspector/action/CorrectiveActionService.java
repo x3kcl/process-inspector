@@ -5,10 +5,8 @@ import io.github.resilience4j.circuitbreaker.CallNotPermittedException;
 import io.inspector.audit.AuditEntry;
 import io.inspector.audit.AuditOutcome;
 import io.inspector.audit.AuditService;
-import io.inspector.audit.AuditUnavailableException;
 import io.inspector.audit.BreakGlassActor;
-import io.inspector.audit.ProtectedInstance;
-import io.inspector.audit.ProtectedInstanceRepository;
+import io.inspector.audit.ProtectionGuard;
 import io.inspector.client.CmmnApiClient;
 import io.inspector.client.ForwardedActor;
 import io.inspector.client.GuardedCaller.CallPriority;
@@ -20,7 +18,6 @@ import io.inspector.config.InspectorProperties.EngineEnvironment;
 import io.inspector.config.InspectorProperties.EngineMode;
 import io.inspector.registry.EngineRegistry;
 import io.inspector.security.RbacAuthorizer;
-import io.inspector.security.Role;
 import io.inspector.security.reauth.DangerousActionReauthGate;
 import java.net.ConnectException;
 import java.net.http.HttpConnectTimeoutException;
@@ -29,7 +26,6 @@ import java.util.LinkedHashMap;
 import java.util.List;
 import java.util.Map;
 import java.util.Objects;
-import java.util.Optional;
 import org.springframework.http.HttpStatus;
 import org.springframework.security.core.Authentication;
 import org.springframework.stereotype.Service;
@@ -62,7 +58,7 @@ public class CorrectiveActionService {
     private final CmmnApiClient cmmnClient;
     private final AuditService audit;
     private final RbacAuthorizer rbac;
-    private final ProtectedInstanceRepository protectedInstances;
+    private final ProtectionGuard protectionGuard;
     private final TicketPolicy ticketPolicy;
     private final DangerousActionReauthGate reauth;
 
@@ -72,7 +68,7 @@ public class CorrectiveActionService {
             CmmnApiClient cmmnClient,
             AuditService audit,
             RbacAuthorizer rbac,
-            ProtectedInstanceRepository protectedInstances,
+            ProtectionGuard protectionGuard,
             TicketPolicy ticketPolicy,
             DangerousActionReauthGate reauth) {
         this.registry = registry;
@@ -80,7 +76,7 @@ public class CorrectiveActionService {
         this.cmmnClient = cmmnClient;
         this.audit = audit;
         this.rbac = rbac;
-        this.protectedInstances = protectedInstances;
+        this.protectionGuard = protectionGuard;
         this.ticketPolicy = ticketPolicy;
         this.reauth = reauth;
     }
@@ -172,6 +168,14 @@ public class CorrectiveActionService {
         String ticketId = ticketPolicy.validate(request.ticketId(), engine.environment());
 
         Target target = restateTarget(scope, engine, verb, targetId, request);
+        // #172: DEFINITION-kind verbs (suspend/activate-definition) get their OWN protection check
+        // here, now that the key is resolved — the instance-scope check above early-returned for
+        // this targetKind (it had no key to check against protected_definition without an extra,
+        // avoidable engine round-trip). Still before requireConfirmToken, matching the instance-scope
+        // ordering: protection refuses before the operator has typed anything further.
+        if (verb.targetKind() == ActionVerb.TargetKind.DEFINITION) {
+            protectionGuard.requireUnprotectedOrAdmin(auth, engine.id(), null, target.definitionKey(), verb.path());
+        }
         // A bulk-dispatched item skips the per-instance typed-confirm-token restatement — a
         // business key typed once cannot stand for N items; the wizard's own "type the item
         // COUNT" gate at submit is the bulk-shaped equivalent (see executeBulkItem's javadoc).
@@ -309,25 +313,15 @@ public class CorrectiveActionService {
         }
     }
 
+    // Instance-scope only here (#172 review note): checking a DEFINITION verb's target here would
+    // need its key, which isn't resolved until restateTarget/definitionTarget runs (an extra engine
+    // round-trip to get it earlier isn't worth it for two low-traffic verbs) — DEFINITION-kind verbs
+    // get their own, separate definition-scope check right after restateTarget instead (see execute()).
     private void requireUnprotectedOrAdmin(Authentication auth, EngineConfig engine, ActionVerb verb, String targetId) {
         if (verb.targetKind() != ActionVerb.TargetKind.INSTANCE) {
             return;
         }
-        Optional<ProtectedInstance> protection;
-        try {
-            protection = protectedInstances.findById(new ProtectedInstance.Key(engine.id(), targetId));
-        } catch (RuntimeException e) {
-            // The protection registry lives in the same Postgres as the audit log: if we
-            // cannot check it, we cannot audit either — same fail-closed refusal (R-AUD-01).
-            throw new AuditUnavailableException(e);
-        }
-        if (protection.isPresent() && !rbac.hasRoleOn(auth, Role.ADMIN, engine.id())) {
-            throw new GuardRefusedException(
-                    HttpStatus.FORBIDDEN,
-                    "instance-protected",
-                    "Instance " + engine.id() + ":" + targetId + " is protected (R-SAFE-05): \""
-                            + protection.get().getReason() + "\" — L3 (ADMIN) action required.");
-        }
+        protectionGuard.requireUnprotectedOrAdmin(auth, engine.id(), targetId, null, verb.path());
     }
 
     /** SPEC §6 reason ladder: tiers ≥2 always required; tier 1 required on prod; ≥10 chars when present. */
@@ -655,7 +649,7 @@ public class CorrectiveActionService {
         payload.put("definitionKey", key);
         payload.put("version", definition.get("version"));
         payload.put("includeProcessInstances", Boolean.TRUE.equals(request.includeProcessInstances()));
-        return new Target(payload, key, "definition key", null);
+        return new Target(payload, key, "definition key", null, key);
     }
 
     /* ------------------------------- dispatch ------------------------------- */
@@ -903,5 +897,17 @@ public class CorrectiveActionService {
             Map<String, Object> auditPayload,
             String confirmToken,
             String confirmTokenName,
-            Object currentVariableValue) {}
+            Object currentVariableValue,
+            // #172: the resolved definition key, non-null only from definitionTarget() — DEFINITION-kind
+            // verbs are the one case where a definition-scope protection check can run without an extra
+            // engine round-trip (the key is already fetched here, for the audit payload).
+            String definitionKey) {
+        Target(
+                Map<String, Object> auditPayload,
+                String confirmToken,
+                String confirmTokenName,
+                Object currentVariableValue) {
+            this(auditPayload, confirmToken, confirmTokenName, currentVariableValue, null);
+        }
+    }
 }

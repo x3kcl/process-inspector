@@ -15,11 +15,10 @@ import org.springframework.stereotype.Service;
 import org.springframework.web.server.ResponseStatusException;
 
 /**
- * R-SAFE-05 write path: mark/unmark a composite ID protected. Instance-scoped only for v1 —
- * the spec text also mentions definition-key-level protection, but the schema
- * ({@code protected_instance}: {@code engine_id}+{@code instance_id} PK) never carried that
- * scope, and this change does not add it (tracked as a separate follow-up rather than
- * expanding this write path's blast radius).
+ * R-SAFE-05 write path: mark/unmark a composite ID, OR a whole process-definition key (#172),
+ * protected. Definition-key scope was deferred from v1/#165 — the schema
+ * ({@code protected_instance}: {@code engine_id}+{@code instance_id} PK) never carried it; #172
+ * adds a sibling {@code protected_definition} table rather than nullable columns on this one.
  *
  * <p>Same shape as {@code ErrorGroupAckService}/{@code SharedViewService.unpublish} — a
  * BFF-store-only mutation under the corrective-actions rails minus the engine call (there is
@@ -42,16 +41,24 @@ public class ProtectedInstanceService {
 
     static final String ACTION_PROTECT = "instance-protect";
     static final String ACTION_UNPROTECT = "instance-unprotect";
+    static final String ACTION_PROTECT_DEFINITION = "definition-protect";
+    static final String ACTION_UNPROTECT_DEFINITION = "definition-unprotect";
     private static final int MIN_REASON_LENGTH = 10;
 
     private final ProtectedInstanceRepository repository;
+    private final ProtectedDefinitionRepository definitionRepository;
     private final AuditService audit;
     private final RbacAuthorizer rbac;
     private final Clock clock;
 
     public ProtectedInstanceService(
-            ProtectedInstanceRepository repository, AuditService audit, RbacAuthorizer rbac, Clock clock) {
+            ProtectedInstanceRepository repository,
+            ProtectedDefinitionRepository definitionRepository,
+            AuditService audit,
+            RbacAuthorizer rbac,
+            Clock clock) {
         this.repository = repository;
+        this.definitionRepository = definitionRepository;
         this.audit = audit;
         this.rbac = rbac;
         this.clock = clock;
@@ -117,6 +124,74 @@ public class ProtectedInstanceService {
         });
     }
 
+    /** Definition-key scope (#172): protects/unmarks-protected EVERY instance of this key. */
+    public void protectDefinition(Authentication auth, String engineId, String definitionKey, String reason) {
+        String clean = requireReason(reason);
+        requireAdminOn(auth, engineId);
+
+        ProtectedDefinition.Key key = new ProtectedDefinition.Key(engineId, definitionKey);
+        if (definitionRepository.findById(key).isPresent()) {
+            throw new GuardRefusedException(
+                    HttpStatus.CONFLICT,
+                    "already-protected",
+                    "Definition '" + definitionKey + "' on " + engineId
+                            + " is already protected — unprotect it first to change the reason.");
+        }
+
+        Instant now = clock.instant();
+        ProtectedDefinition saved;
+        try {
+            saved = definitionRepository.saveAndFlush(
+                    new ProtectedDefinition(engineId, definitionKey, clean, auth.getName(), now));
+        } catch (DataIntegrityViolationException race) {
+            throw new GuardRefusedException(
+                    HttpStatus.CONFLICT,
+                    "already-protected",
+                    "Definition '" + definitionKey + "' on " + engineId
+                            + " is already protected — unprotect it first to change the reason.");
+        }
+
+        auditOrCompensate(
+                ACTION_PROTECT_DEFINITION,
+                auth.getName(),
+                clean,
+                definitionPayload(engineId, definitionKey, clean),
+                () -> {
+                    definitionRepository.delete(saved);
+                    definitionRepository.flush();
+                });
+    }
+
+    public void unprotectDefinition(Authentication auth, String engineId, String definitionKey, String reason) {
+        String clean = requireReason(reason);
+        requireAdminOn(auth, engineId);
+
+        ProtectedDefinition.Key key = new ProtectedDefinition.Key(engineId, definitionKey);
+        Optional<ProtectedDefinition> existing = definitionRepository.findById(key);
+        if (existing.isEmpty()) {
+            throw new GuardRefusedException(
+                    HttpStatus.CONFLICT,
+                    "not-protected",
+                    "Definition '" + definitionKey + "' on " + engineId + " is not protected — refresh and try again.");
+        }
+        ProtectedDefinition detached = existing.get();
+
+        definitionRepository.delete(detached);
+        definitionRepository.flush();
+
+        auditOrCompensate(
+                ACTION_UNPROTECT_DEFINITION,
+                auth.getName(),
+                clean,
+                definitionPayload(engineId, definitionKey, clean),
+                () -> definitionRepository.saveAndFlush(new ProtectedDefinition(
+                        detached.getEngineId(),
+                        detached.getDefinitionKey(),
+                        detached.getReason(),
+                        detached.getCreatedBy(),
+                        detached.getTs())));
+    }
+
     private void requireAdminOn(Authentication auth, String engineId) {
         // The controller door is the ADMIN-per-engine floor; this is the service-layer
         // re-check (rails §2 — never trust the client, and @PreAuthorize alone can drift
@@ -144,6 +219,14 @@ public class ProtectedInstanceService {
         Map<String, Object> payload = new LinkedHashMap<>();
         payload.put("engineId", engineId);
         payload.put("instanceId", instanceId);
+        payload.put("reason", reason);
+        return payload;
+    }
+
+    private static Map<String, Object> definitionPayload(String engineId, String definitionKey, String reason) {
+        Map<String, Object> payload = new LinkedHashMap<>();
+        payload.put("engineId", engineId);
+        payload.put("definitionKey", definitionKey);
         payload.put("reason", reason);
         return payload;
     }

@@ -17,6 +17,12 @@ import java.util.List;
  *     {@code versions} are returned, with counts) — the operator sees the recent cohort, never a
  *     silently-truncated "all versions"
  * @param versions the deployed versions with counts, newest first (capped to the newest N)
+ * @param protectedDefinition whether this key is marked protected (R-SAFE-05, #172) — every
+ *     instance of it, on this engine, is refused below the ADMIN floor. Tri-state like {@code
+ *     InstanceDetail.protectedInstance}: null means the protection registry couldn't be read
+ *     (a Postgres outage never fails this otherwise-engine-only read; the execution-time
+ *     {@code ProtectionGuard} still refuses fail-closed regardless of what this page shows)
+ * @param protectionReason the reason given when protected; null when not protected or unknown
  */
 public record DefinitionVersionsResponse(
         String engineId,
@@ -24,7 +30,9 @@ public record DefinitionVersionsResponse(
         int latestVersion,
         int totalVersions,
         boolean complete,
-        List<DefinitionVersion> versions) {
+        List<DefinitionVersion> versions,
+        Boolean protectedDefinition,
+        String protectionReason) {
 
     /**
      * @param definitionId the concrete {@code key:version:uuid} id (a pinned migration target)

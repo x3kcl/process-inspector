@@ -69,6 +69,8 @@ class FlowSurgeryServiceTest {
     private final AuditService audit = mock(AuditService.class);
     private final RbacAuthorizer rbac = mock(RbacAuthorizer.class);
     private final ProtectedInstanceRepository protectedInstances = mock(ProtectedInstanceRepository.class);
+    private final io.inspector.audit.ProtectedDefinitionRepository protectedDefinitions =
+            mock(io.inspector.audit.ProtectedDefinitionRepository.class);
     private final Authentication operator = new TestingAuthenticationToken("op", "n/a", "ROLE_OPERATOR");
 
     private FlowSurgeryService service;
@@ -97,11 +99,12 @@ class FlowSurgeryServiceTest {
                 new BpmnStructureService(client),
                 audit,
                 rbac,
-                protectedInstances,
+                new io.inspector.audit.ProtectionGuard(protectedInstances, protectedDefinitions, rbac),
                 new io.inspector.action.TicketPolicy(new io.inspector.config.AuditProperties(null, null, null)));
 
         when(rbac.hasRoleOn(any(), any(), anyString())).thenReturn(true);
         when(protectedInstances.findById(any())).thenReturn(Optional.empty());
+        when(protectedDefinitions.findById(any())).thenReturn(Optional.empty());
 
         pendingEntry = new AuditEntry(
                 UUID.nameUUIDFromBytes("audit".getBytes(StandardCharsets.UTF_8)),
