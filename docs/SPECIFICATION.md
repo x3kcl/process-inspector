@@ -864,7 +864,7 @@ copy is never identical to an RBAC denial (R-GOV-04, R-SEM-17).
   the SAME live dispatch pass, not a resume of a finished job.
 - **v1.x #1 — error-class group retry** (landed): the triage landing's bulk-retry-the-group
   dispatches `POST /api/bulk/error-class` carrying the group's **coordinates only**
-  (`signatureHash + algoVersion + processDefinitionKey + definitionVersion [+ engineId]`,
+  (`signatureHash + algoVersion + processDefinitionKey [+ definitionVersion] [+ engineId]`,
   reason mandatory ≥10) — never a browser-enumerated ID list. The BFF re-resolves the
   FAILED members from the same capped signature scan the cards aggregate from and feeds
   them into the v1 machinery above (cap, rails, per-item report unchanged; RETRYING members
@@ -876,6 +876,12 @@ copy is never identical to an RBAC denial (R-GOV-04, R-SEM-17).
   member list is re-resolved server-side at dispatch, so a typed count would attest a
   stale number. The envelope audit row records the group provenance
   (`errorClass`: signature, algoVersion, defKey:vN, resolvedCount, scanTruncated).
+  **`definitionVersion` is optional (#105 remainder):** each deployed version on the card
+  keeps its own single-version "Retry group" button, and a definition with more than one
+  deployed version additionally gets a "Retry group (all versions)" button that omits
+  `definitionVersion` — the BFF then resolves the signature across every deployed version
+  of the key in ONE job, rather than one `defKey:vN` slice at a time. The envelope
+  provenance reads `defKey (all versions)` in that case, never a misleading `defKey:vnull`.
 - **v1.x #2 — select-all-matching-filter + SSE progress** (landed): the results grid's
   filter scope (affordance when every visible row is selected, or standalone once a
   filtered search ran) dispatches `POST /api/bulk/filter` carrying the **`SearchRequest`
@@ -887,8 +893,9 @@ copy is never identical to an RBAC denial (R-GOV-04, R-SEM-17).
   hard cap **5,000** (grid/error-class keep 200): over-cap ⇒ 400 refuse; zero matches ⇒
   409 `filter-drained`; a degraded engine ⇒ fail-closed 502; a **truncated failure-lane
   scan ⇒ refuse** (`filter-scan-truncated` — "all matching" must never silently be a
-  subset; stricter than the error-class path, which is already version-scoped and records
-  truncation as provenance). Filter-scope verbs derive from the status chips (intersection
+  subset; stricter than the error-class path, which stays scoped to one signature — one
+  definition key, optionally one version — and records truncation as provenance rather
+  than refusing). Filter-scope verbs derive from the status chips (intersection
   doctrine: a verb is offered only when every chip implies eligibility). Tier-3 confirm
   restates the criteria + the snapshot count as context ("~N — applies to the
   server-resolved filter at execution, not this snapshot"); PROD typed token = the

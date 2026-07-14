@@ -25,9 +25,14 @@ interface Props {
   engineId: string
   engine: EngineDto | undefined
   definitionKey: string
-  /** Numeric deployed version (the card chip's vN). */
-  version: number
-  /** The card's defKey:vN count — failure-lane total, shown as context (≥ when truncated). */
+  /**
+   * Numeric deployed version (the card chip's vN) — omit to retry the whole definition
+   * across EVERY deployed version in one job (#105 remainder), rather than one defKey:vN
+   * slice at a time. The BFF already resolves an omitted version to every deployed
+   * definition ID for the key.
+   */
+  version: number | undefined
+  /** The card's count for this scope — failure-lane total, shown as context (≥ when truncated). */
   count: number
   lowerBound: boolean
   onClose: () => void
@@ -64,6 +69,7 @@ export function RetryGroupModal({
   // tier — pre-empt at open via the /api/me hint, or react to the 401 reauth-required answer.
   const reauthNeeded = useReauthStale() || (problem !== undefined && isReauthChallenge(problem))
   const prefix = lowerBound ? '≥ ' : ''
+  const versionLabel = version === undefined ? '(all versions)' : `v${String(version)}`
 
   const confirm = () => {
     submit.mutate(
@@ -134,7 +140,7 @@ export function RetryGroupModal({
           title={longDetail}
           onClick={confirm}
         >
-          {submit.isPending ? 'Dispatching…' : `Retry group — ${definitionKey} v${String(version)}`}
+          {submit.isPending ? 'Dispatching…' : `Retry group — ${definitionKey} ${versionLabel}`}
         </button>
         {shortReason !== undefined && (
           <ActionHint id="retry-group-submit-hint" text={shortReason} tone="gate" />
@@ -156,7 +162,7 @@ export function RetryGroupModal({
           {prod && ' — a PRODUCTION engine'}:
         </p>
         <p>
-          <code>{definitionKey}</code> v{version} · error class{' '}
+          <code>{definitionKey}</code> {versionLabel} · error class{' '}
           <code>{group.exceptionClass ?? '(unknown exception)'}</code>
         </p>
         <p className="normalized-message">{group.normalizedMessage ?? '(no message)'}</p>
@@ -166,6 +172,12 @@ export function RetryGroupModal({
           <strong>currently dead-lettered</strong> — the member list is resolved server-side at
           dispatch (instances that drained or still hold retries are left alone), and the job
           reports the exact resolved count.
+          {version === undefined && (
+            <>
+              {' '}
+              This covers <strong>every deployed version</strong> of {definitionKey}, not just one.
+            </>
+          )}
         </p>
       </div>
 

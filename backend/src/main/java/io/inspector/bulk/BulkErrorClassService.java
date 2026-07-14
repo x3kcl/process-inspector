@@ -19,12 +19,17 @@ import org.springframework.stereotype.Service;
  * v1.x fast follow #1 (SPEC §7/§8): error-class group retry from the triage landing.
  *
  * <p>Server-side resolution is BINDING: the browser submits only the group's coordinates
- * (signature hash + definition key/version, optionally one engine) and the BFF re-resolves
- * the members itself — through {@link SearchService}, i.e. the same capped failure-lane
- * scan + signature-refinement bridge the triage cards were aggregated from, never the
- * grid-search plan and never a client-supplied ID list. The resolved targets then ride the
- * unchanged M5 rails ({@link BulkJobService#submit}): 200-item cap, per-item RBAC re-run,
- * protected auto-exclusion, fail-closed envelope audit, sequential per-item fan-out.
+ * (signature hash + definition key, optionally a version and/or one engine) and the BFF
+ * re-resolves the members itself — through {@link SearchService}, i.e. the same capped
+ * failure-lane scan + signature-refinement bridge the triage cards were aggregated from,
+ * never the grid-search plan and never a client-supplied ID list. The resolved targets then
+ * ride the unchanged M5 rails ({@link BulkJobService#submit}): 200-item cap, per-item RBAC
+ * re-run, protected auto-exclusion, fail-closed envelope audit, sequential per-item fan-out.
+ *
+ * <p>{@code definitionVersion} is OPTIONAL (#105 remainder): omitting it retries the error
+ * class across every deployed version of the definition key in one job, rather than one
+ * {@code defKey:vN} slice at a time — {@link SearchService} already resolves a null version
+ * to every deployed definition ID for the key (the un-scoped case is its most common path).
  *
  * <p>Only FAILED (dead-letter-bearing) members are targeted — RETRYING instances still own
  * live retry cycles and may self-heal; retrying them is not this verb's job.
@@ -56,12 +61,12 @@ public class BulkErrorClassService {
                             + " but the BFF now computes v" + ErrorSignatureNormalizer.ALGO_VERSION
                             + " — refresh the triage landing. Nothing happened.");
         }
-        if (isBlank(request.processDefinitionKey()) || request.definitionVersion() == null) {
+        if (isBlank(request.processDefinitionKey())) {
             throw refuse(
                     HttpStatus.BAD_REQUEST,
                     "error-class-definition-required",
-                    "Group retry is scoped to one definition version — processDefinitionKey and"
-                            + " definitionVersion are required.");
+                    "Group retry requires processDefinitionKey. definitionVersion is optional —"
+                            + " omit it to retry the whole definition across every deployed version.");
         }
         // A group retry acts on instances the operator never enumerated — the reason is
         // mandatory (same rule as every other bulk door, BulkJobService#submit).
@@ -139,7 +144,11 @@ public class BulkErrorClassService {
         Map<String, Object> groupMeta = new LinkedHashMap<>();
         groupMeta.put("signatureHash", request.signatureHash());
         groupMeta.put("algoVersion", ErrorSignatureNormalizer.ALGO_VERSION);
-        groupMeta.put("definition", request.processDefinitionKey() + ":v" + request.definitionVersion());
+        groupMeta.put(
+                "definition",
+                request.definitionVersion() != null
+                        ? request.processDefinitionKey() + ":v" + request.definitionVersion()
+                        : request.processDefinitionKey() + " (all versions)");
         if (engineIds != null) {
             groupMeta.put("engineId", request.engineId());
         }
@@ -149,8 +158,12 @@ public class BulkErrorClassService {
         BulkDtos.BulkSubmitRequest submit = new BulkDtos.BulkSubmitRequest(
                 "retry-job", request.reason(), request.ticketId(), null, List.copyOf(targets.values()));
         // Scope provenance (usability fix E1): definition key + version identify the group
-        // at a glance in the operations drawer, without re-deriving it from the envelope.
-        String scopeLabel = request.processDefinitionKey() + " v" + request.definitionVersion() + " · error class";
+        // at a glance in the operations drawer, without re-deriving it from the envelope. A
+        // version-omitted request spans every deployed version — say so rather than "vnull".
+        String scopeLabel = (request.definitionVersion() != null
+                        ? request.processDefinitionKey() + " v" + request.definitionVersion()
+                        : request.processDefinitionKey() + " (all versions)")
+                + " · error class";
         return bulk.submit(submit, auth, Map.of("errorClass", groupMeta), scopeLabel);
     }
 

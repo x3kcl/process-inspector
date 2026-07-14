@@ -3,10 +3,11 @@
 // aren't (36+13 jobs vs 46+7 instances) — every count on the triage card carries its
 // unit token, so the two families can never be silently cross-summed.
 import { QueryClient, QueryClientProvider } from '@tanstack/react-query'
-import { cleanup, render, screen } from '@testing-library/react'
+import { cleanup, fireEvent, render, screen } from '@testing-library/react'
 import { MemoryRouter } from 'react-router'
 import { afterEach, describe, expect, it } from 'vitest'
 import type { ErrorGroup } from '../api/model'
+import { OpsDrawerProvider } from '../ops/drawerState'
 import { ErrorGroupCard } from './ErrorGroupCard'
 
 afterEach(cleanup)
@@ -27,7 +28,9 @@ function renderCard(g: ErrorGroup = group) {
   render(
     <QueryClientProvider client={client}>
       <MemoryRouter>
-        <ErrorGroupCard group={g} enginesById={new Map()} lowerBound={false} />
+        <OpsDrawerProvider>
+          <ErrorGroupCard group={g} enginesById={new Map()} lowerBound={false} />
+        </OpsDrawerProvider>
       </MemoryRouter>
     </QueryClientProvider>,
   )
@@ -52,5 +55,36 @@ describe('ErrorGroupCard count-unit tokens (W2 #7, T9)', () => {
     expect(screen.getByTitle(/retries left/).textContent).toContain('—')
     // The recomputed instance total is still shown truthfully.
     expect(screen.getByTitle(/error class in the grid/).textContent).toMatch(/46\s*instances/)
+  })
+})
+
+describe('ErrorGroupCard whole-class retry (#105 remainder)', () => {
+  it('offers "Retry group (all versions)" only when more than one version is deployed', () => {
+    renderCard({
+      ...group,
+      countsByEngine: {
+        'engine-a': { 'payment:v1': 5, 'payment:v2': 10, 'orders:v1': 3 },
+      },
+    })
+    // payment has two deployed versions — the whole-class door is worth its own button.
+    expect(screen.getByRole('button', { name: 'Retry group (all versions)' })).not.toBeNull()
+    // orders has exactly one version — the per-version button already covers it; a second,
+    // functionally-identical "all versions" button would just be noise.
+    expect(screen.queryAllByRole('button', { name: 'Retry group (all versions)' })).toHaveLength(1)
+  })
+
+  it('opens the modal scoped to every version, not one defKey:vN slice', () => {
+    renderCard({
+      ...group,
+      countsByEngine: {
+        'engine-a': { 'payment:v1': 5, 'payment:v2': 10 },
+      },
+    })
+    fireEvent.click(screen.getByRole('button', { name: 'Retry group (all versions)' }))
+    expect(screen.getByRole('heading', { name: /run every failed step/ })).not.toBeNull()
+    expect(screen.getByText(/Retry group — payment \(all versions\)/)).not.toBeNull()
+    expect(screen.getByText(/every deployed version/)).not.toBeNull()
+    // The count context line sums BOTH versions (5 + 10 = 15), not just one slice.
+    expect(screen.getByText(/15 failing instances/)).not.toBeNull()
   })
 })
