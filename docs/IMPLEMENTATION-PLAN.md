@@ -1833,6 +1833,41 @@ has no unit-testable behavior of its own. Live-verified via a Playwright screens
 against the real running app (topbar, status badges, DLQ counts) — visually
 indistinguishable from before, as expected for a byte-identical substitution.
 
+### #104 slice 2a/5 — extended surface tokens (R-UXQ-08) *(✅ LANDED 2026-07-14, issue #104)*
+An EXPANSION pass, not the dark-theme switch itself: slice 1 only tokenized colors
+repeated ≥5 times. This slice lowers the bar to ≥2, adding 20 more `--color-*` custom
+properties (45 total) for the group of colors slice 1 deliberately left out — chip/badge
+surfaces (`--color-chip-bg-muted`, `--color-chip-text-muted`, `--color-chip-border-muted`,
+`--color-badge-bg-subtle`), dark surfaces (`--color-surface-dark`, `--color-text-on-dark`),
+panel backgrounds (`--color-bg-faint`, `--color-surface-code`), a divider
+(`--color-divider-subtle`), two `var(--border|--accent, <fallback>)` custom-property
+fallbacks (`--color-group-btn-border`, `--color-group-btn-accent`), a fleet-chip accent
+(`--color-fleet-accent`), plus danger/warning/info/success family extensions
+(`--color-danger-bg-alt`, `--color-danger-fill`, `--color-warning-bg-alt`,
+`--color-warning-retry-accent`, `--color-info-border`, `--color-info-bg-alt`,
+`--color-success-border`, `--color-success-bg`). Same mechanical discipline as slice 1:
+scripted, case-insensitive, word-boundary-safe substitution; occurrence-count parity
+verified per token (each `var()` count matches its literal's pre-substitution count, and
+each literal now appears exactly once in the file — inside its own `:root` definition);
+no consolidation of near-duplicate shades into one token, even where two of the 20 look
+alike; existing 25 slice-1 tokens untouched.
+
+*What's still deliberately untokenized:* after this slice, 95 distinct literal hex colors
+remain in the file body. Of those, **72 occur exactly once** — the true long tail slice 1
+flagged — and are deliberately left as-is; slice 2b (or later cleanup) should reach for
+scoped one-off dark-mode overrides on these rather than inventing 72 more global tokens
+nobody will reuse. Separately, a post-substitution audit found **23 more distinct values
+that do technically repeat ≥2 times** but fell outside this slice's fixed 20-item candidate
+list (most are SVG `stroke`/two-stop-gradient pairs repeated only within a single
+declaration — e.g. `#7fb3ea`, `#e79a9a`, `#efc4c4`, `#90a4ae`/`#cfd8dc` — plus a handful of
+genuine cross-component repeats like `#1a4d80`, `#2c3e50`, `#566573`, `#a0aab5`,
+`#721c24`, `#d1f2eb`, `#0a5c36`). These are flagged forward, not silently dropped: the next
+tokenization pass should re-run the ≥2 audit against the file as it stands rather than
+reusing this slice's now-stale candidate list.
+
+*Tests:* `npm run build` (tsc + vite) green; `npx prettier --write` reported the file
+already correctly formatted. Full local CI (`scripts/ci-local.sh --full`) green.
+
 ## Build order inside any milestone
 backend DTO → engine client call → aggregator/join logic → controller → typed frontend API
 client → component. Every Flowable call gets an integration test against the dockerized
