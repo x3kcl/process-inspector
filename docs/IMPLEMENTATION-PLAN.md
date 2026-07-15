@@ -2305,6 +2305,117 @@ directories were torn down after verification.
 diff); `bash -n` on both new scripts and the syntax-checked existing ones; both compose files'
 YAML parsed via `python3 -c "import yaml; yaml.safe_load(...)"`.
 
+### #201-followup — Docker-native backups: replacing host-systemd + host bind-mounts with compose services + named volumes _(✅ LANDED 2026-07-15; live activation deliberately NOT done — separate follow-up, same discipline as #201)_
+
+Issue #201's design needed host-level pieces (`sudo`-installed systemd timers, a
+`sudo`-created uid-70-chowned host bind-mount directory) the automation session operating this
+repo doesn't have host root for. This follow-up REPLACES the host-dependent pieces with fully
+Docker-native equivalents — new services in `docker/docker-compose.demo.yml`, scheduled
+**internally** (no host cron/systemd), storing backups in **named Docker volumes** (no host
+bind-mount), connecting to Postgres **over the network** rather than `docker exec`. Ports the
+exact same safety properties (checksums, `.partial`→rename crash-safety, retention pruning,
+the same integrity checks in the drill scripts) — a delivery-mechanism change, not a
+backup-strategy redesign.
+
+_Shipped:_
+
+- `docker/backup/audit-backup/{entrypoint.sh,backup-once.sh,crontab}` (new) + a new
+  `audit-backup` compose service (`postgres:16-alpine` base — has `pg_dump`; busybox `crond`
+  confirmed present at `/usr/sbin/crond`, empirically verified it inherits the container's
+  full environment unlike some cron implementations, so `PGPASSWORD` etc. reach the cron job
+  with no env-file workaround needed): nightly `pg_dump -Fc` over the network
+  (`PGHOST=postgres`, standard libpq env vars) to the new named volume
+  `inspector-logical-dumps`, same 02:30 UTC cadence / `.partial`→rename / sha256 sidecar /
+  35-day retention as `backup-audit-db.sh`. One-shot/manual: `docker compose ... run --rm
+  audit-backup /scripts/backup-once.sh`.
+- `docker/backup/audit-basebackup/{entrypoint.sh,basebackup-once.sh,crontab}` (new) + a new
+  `audit-basebackup` compose service: weekly (Sunday 04:00 UTC) `pg_basebackup -Ft -z -X none
+  -c fast` over the network to the new named volume `inspector-basebackups`, same
+  checksum/newest-3-retention as `basebackup-audit-db.sh`.
+- `docker/backup/wal-receiver/entrypoint.sh` (new) + a new `wal-receiver` compose service:
+  continuous WAL capture via `pg_receivewal` against the replication protocol, writing to the
+  new named volume `inspector-wal-archive` — **replaces** issue #201's
+  `archive_mode`/`archive_command` mechanism entirely (removed from `docker-compose.demo.yml`'s
+  `postgres` service; `pg_receivewal` needs only `wal_level=replica`, already pinned there).
+  Backed by a **permanent physical replication slot** (`--create-slot --if-not-exists` on
+  every start) so Postgres retains WAL for however long the receiver is down — the property
+  that makes it safe as a long-lived, restartable service. Runs `pg_receivewal` as the
+  `postgres` container's own uid (70) via `gosu`, not root: `pg_receivewal` writes each
+  segment `0600`, and a root-owned segment turned out to be unreadable to the `postgres`-uid
+  process a recovery `restore_command` runs as — hit this exact `Permission denied` in
+  rehearsal (see Verification below), fixed by chowning the volume + `gosu postgres` before
+  streaming.
+- `docker/backup/postgres/pg_hba-demo.conf` (new), wired into `docker-compose.demo.yml`'s
+  `postgres` service via `command: -c hba_file=...`: extends the upstream image's own
+  generated default `pg_hba.conf` with a `replication` entry for the internal docker network
+  (same `scram-sha-256` password requirement the image's existing ordinary-connection
+  catch-all already applies). REQUIRED — empirically confirmed the upstream default only
+  trusts replication connections from `127.0.0.1`/`::1`, so a plain network
+  `pg_basebackup`/`pg_receivewal` fails closed (`no pg_hba.conf entry for replication
+  connection from host "..."`) without it.
+- `deploy/restore-drill.sh` / `deploy/pitr-drill.sh` (updated): both now read from the named
+  volumes above DIRECTLY — `docker run`/`docker exec -v <volume>:...` mounts a named volume by
+  name regardless of host-path visibility, so no host-copy indirection is needed. Both keep a
+  legacy host-path mode (an explicit existing host path/dir as an argument or
+  `PI_WAL_ARCHIVE_HOST_DIR`) for anyone still on the superseded host-systemd mechanism.
+- `deploy/systemd/pi-audit-{backup,basebackup}.{service,timer}` (updated): header comments
+  mark them SUPERSEDED for this repo's Compose-based demo, pointing at the new compose
+  services — not deleted, since they document a real prior design that may still fit a
+  non-Compose (bare-host) deployment.
+- `docker/deploy-demo.sh` / `docker/rollback-demo.sh` (updated): their scoped `up -d` (issue
+  #201's own fix, avoiding accidental `postgres` config-drift reconciliation) now ALSO
+  includes the three new services (`audit-backup audit-basebackup wal-receiver`) alongside
+  `backend frontend` — they don't carry `postgres`'s "restart disrupts live traffic" risk (no
+  client ever connects to them; they only connect OUT), so routine reconciliation on every
+  deploy is safe and desirable rather than something to guard against. `postgres` itself stays
+  excluded, unchanged reasoning from #201.
+- Docs: `docs/OPERATIONS.md` §4, `docs/RUNBOOK.md` §5, `docs/IMPLEMENTATION-PLAN.md` (this
+  entry), and `deploy/README.md` all corrected (not just appended to) to describe the
+  Docker-native mechanism as the current path for the Compose-based demo, retiring the
+  #201-era host-systemd instructions as the primary story. Same honesty discipline #201
+  established: the RPO claim stays 24 h until a REAL drill runs against real accumulated WAL
+  history from the LIVE system — this issue's rehearsal, like #201's, only proves the
+  mechanism against disposable test infrastructure.
+
+_Verification — a real rehearsal against disposable `docker compose` infrastructure (its own
+throwaway Postgres + the three new services; never the live demo container, volumes, or
+`/var/backups/pi-audit` host directory — read-only `docker ps`/`docker volume ls` only to
+confirm they were untouched afterward):_ confirmed `busybox crond` present in
+`postgres:16-alpine` and that it inherits the container's full environment (no env-file
+workaround needed for `PGPASSWORD` to reach cron jobs); confirmed `pg_dump`/`pg_basebackup`/
+`pg_receivewal` all present; confirmed the upstream image's default `pg_hba.conf` refuses a
+network `pg_basebackup`/`pg_receivewal` (`no pg_hba.conf entry for replication connection`)
+and that the custom `pg_hba-demo.conf` (mounted via `hba_file=`) fixes it. Generated activity
+and forced `pg_switch_wal()` — confirmed WAL segments landed in the `inspector-wal-archive`
+volume. **The property that matters most**: killed `wal-receiver` mid-stream, confirmed the
+replication slot went `active=f` while holding `restart_lsn` at the pre-kill floor, generated
+5 more forced WAL switches' worth of activity while it stayed down, restarted the container —
+it resumed streaming from exactly `restart_lsn`, and every segment produced across the
+outage boundary was later confirmed complete (`stat` size = 16 MiB, no `.partial` suffix) and
+uncorrupted (`pg_waldump` parsed every segment cleanly, transactional boundaries — INSERT
+records through COMMIT through the SWITCH marker — all intact). Hit and fixed the root-owned
+WAL segment permission bug during this same rehearsal (see Shipped above). Proved
+`audit-backup`'s `pg_dump` and `audit-basebackup`'s `pg_basebackup` both succeed over the
+network with password auth (not `docker exec`). Proved retention pruning's 0/N/N+1 edge cases
+for both backup types (basebackup: 0→3 no prune, then a 4th run correctly pruned the oldest
+back to 3; logical dump: a faked 40-day-old dump was pruned on the next run while a faked
+34-day-old one was correctly retained, alongside real same-run dumps). Ran
+`deploy/pitr-drill.sh` against the new volume-based storage in both modes: "replay everything"
+recovered all 100 rows (50 seed + 25 pre-target + 25 post-target); `--target-time` pinned to
+the captured instant recovered exactly 75 (correctly excluding the post-target insert) — hit
+the SAME `INSERT; SELECT pg_switch_wal();` single-transaction artifact #201's own rehearsal
+already documented (this time against the new mechanism) and fixed it the same way (separate
+`psql` invocations per statement). Ran `deploy/restore-drill.sh` against the new
+`inspector-logical-dumps` volume, both with the default (newest-dump) selection and an
+explicit in-volume filename — passed, `audit_entry` came back partitioned with its rows. Also
+validated the ACTUAL shipped `docker/docker-compose.demo.yml` (not just a scratch mirror) by
+starting `postgres`/`audit-backup`/`audit-basebackup`/`wal-receiver` from it under an isolated
+compose project name, confirming the same behavior. All test containers, volumes, and networks
+were torn down after verification; the live `process-inspector-demo-*` containers/volumes were
+never started, stopped, recreated, or written to.
+
+`scripts/ci-local.sh --full` run clean.
+
 ## Build order inside any milestone
 
 backend DTO → engine client call → aggregator/join logic → controller → typed frontend API

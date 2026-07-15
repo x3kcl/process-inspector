@@ -51,100 +51,158 @@ Role passwords and grants are **cluster-global** (`pg_authid` / ACLs) — a logi
 **and** re-run this script, then verify grant-level enforcement (re-run `AuditRoleGrantsIT`'s
 assertions against the restored cluster), not merely that rows + the hash chain survived.
 
-## `backup-audit-db.sh` + `restore-drill.sh` — the audit golden-master's copies (P0 #4 / Q4)
+## `docker/backup/` — Docker-native backups (issue #201-followup) — THE CURRENT MECHANISM
 
-The 400-day audit chain had **zero copies** — one docker volume on one host. These close that:
+issue #201 first closed the audit golden-master's "zero copies" gap and then added continuous
+WAL/PITR tooling, but both relied on **host-level** pieces the compose-based demo deploy
+doesn't actually have available in its normal operating mode: `sudo`-installed systemd timers
+and a `sudo`-created, uid-70-chowned host bind-mount directory. This follow-up **replaces**
+those host-dependent pieces with fully Docker-native equivalents — new services in
+`docker/docker-compose.demo.yml`, scheduled **internally** (busybox crond baked into each
+service's own container — confirmed present in `postgres:16-alpine`), storing backups in
+**named Docker volumes** (no host bind-mount, no host root needed at all), connecting to
+Postgres **over the network** (`postgres:5432`) rather than `docker exec`-ing into the
+Postgres container. Same safety properties as the scripts they replace (see below) — this is
+a delivery-mechanism change, not a backup-strategy redesign.
 
-- **`backup-audit-db.sh`** — nightly `pg_dump -Fc` of the BFF's Postgres to `PI_BACKUP_DIR`
-  (ideally a second disk), checksummed, retention-pruned. Read-only against the live DB; safe
-  while serving. Schedule with `systemd/pi-audit-backup.timer` (or cron). Honest **RPO = the
-  timer interval (24 h)** — continuous WAL/PITR is the documented follow-up (OPERATIONS §4).
-- **`restore-drill.sh`** — restores the latest dump into a **throwaway** Postgres (never the
-  live DB) and asserts `audit_entry` returns **partitioned, with partitions + rows**. Makes the
-  "quarterly restore drill" executable. Complements — does not replace — the globals/roles
-  verification below: this drills DATA + SCHEMA restorability (`--no-owner`); a full DR drill
-  additionally restores `pg_dumpall --globals` + re-runs `audit-roles.sql` + `AuditRoleGrantsIT`.
+- **`audit-backup`** service (`docker/backup/audit-backup/`) — nightly `pg_dump -Fc` against
+  `postgres:5432` over the network (`PGHOST=postgres`, `PGUSER`/`PGPASSWORD`/`PGDATABASE` — all
+  standard libpq env vars `pg_dump` reads natively), to the named volume
+  `inspector-logical-dumps`. Same 02:30 UTC cadence, same `.partial`→`mv` crash-safety, same
+  `sha256sum` sidecar, same 35-day retention (`PI_BACKUP_RETENTION_DAYS`) as the script it
+  replaces. On-demand run (bypasses the cron wait):
+  ```bash
+  docker compose -f docker/docker-compose.demo.yml run --rm audit-backup /scripts/backup-once.sh
+  ```
+- **`audit-basebackup`** service (`docker/backup/audit-basebackup/`) — the PHYSICAL half PITR
+  needs (a `pg_dump` cannot be replayed forward through WAL). Weekly (Sunday 04:00 UTC)
+  `pg_basebackup -Ft -z -X none -c fast` over the network, to the named volume
+  `inspector-basebackups`, same checksum + newest-3 count-based retention
+  (`PI_BASEBACKUP_RETENTION_COUNT`) as the script it replaces.
+  ```bash
+  docker compose -f docker/docker-compose.demo.yml run --rm audit-basebackup /scripts/basebackup-once.sh
+  ```
+- **`wal-receiver`** service (`docker/backup/wal-receiver/`) — continuous WAL capture via
+  `pg_receivewal`, **replacing** issue #201's `archive_mode`/`archive_command` mechanism
+  entirely (removed from `docker/docker-compose.demo.yml`'s `postgres` service — WAL capture
+  now needs only `wal_level=replica`, already pinned there). Streams the replication protocol
+  against `postgres:5432`, writing segments to the named volume `inspector-wal-archive`,
+  backed by a **permanent physical replication slot** (`wal_receiver`, auto-created,
+  `--if-not-exists`) so Postgres retains WAL for as long as the service is down, however long
+  that is — the property that makes it safe to run as a long-lived, restartable container
+  service. **Proven via a kill/restart rehearsal** (see docs/IMPLEMENTATION-PLAN.md's
+  #201-followup entry): killed mid-stream, more WAL generated while down, restarted — resumed
+  with zero gap, zero duplicate/corrupt segments (`pg_waldump` clean on every segment,
+  `pg_replication_slots.restart_lsn` held the floor while `active=f`).
+  Runs as the `postgres` container's uid (70), not root — `pg_receivewal` writes each segment
+  `0600`, and a root-owned segment is unreadable to the `postgres`-uid recovery process in
+  `pitr-drill.sh`'s throwaway container (hit this exact `Permission denied` empirically before
+  fixing it — see `docker/backup/wal-receiver/entrypoint.sh`'s header).
+- **`docker/backup/postgres/pg_hba-demo.conf`** — a custom `pg_hba.conf`, wired into the
+  `postgres` service via `command: -c hba_file=...`, extending the upstream image's own
+  generated default with a `replication` entry for the internal docker network (same
+  `scram-sha-256` password requirement the image's existing ordinary-connection catch-all
+  already applies). REQUIRED for `audit-basebackup`/`wal-receiver`: verified empirically that
+  the upstream default's replication trust is `127.0.0.1`/`::1`-only, so a plain network
+  `pg_basebackup`/`pg_receivewal` fails closed (`no pg_hba.conf entry for replication
+  connection`) without this override.
 
-```bash
-PI_BACKUP_DIR=/mnt/backups/pi-audit deploy/backup-audit-db.sh   # nightly (timer-driven)
-deploy/restore-drill.sh                                          # verify newest dump restores
-```
+**Legacy / non-Compose deployments:** `backup-audit-db.sh` / `basebackup-audit-db.sh` /
+`deploy/systemd/pi-audit-{backup,basebackup}.*` still exist, now marked **SUPERSEDED** in their
+own headers for this repo's actual (Compose-based) demo — kept because they document a real
+prior design and may still be the right shape for a bare-host (non-Compose) Postgres reached
+via `docker exec`. Do not install the systemd units alongside the compose services — they'd
+race for the same `PI_BACKUP_DIR`.
 
-## `basebackup-audit-db.sh` + `pitr-drill.sh` — continuous WAL archiving / PITR tooling (issue #201)
+## `restore-drill.sh` / `pitr-drill.sh` — now read from the named volumes above
 
-The nightly logical dump above is a real, working "no copy at all" gap-closer, but its RPO is
-the 24 h timer interval. This adds the OTHER half of a PITR setup — continuous WAL archiving —
-as **shipped, ready-to-activate tooling**, not yet turned on against the live demo (see
-"Activating WAL archiving" below for why, and the two-step human process to actually do it).
+Both drill scripts were updated (issue #201-followup) to read from the new named-volume
+storage **directly** — no host-path copy needed; `docker run`/`docker exec -v <volume>:...`
+mounts a named volume by name regardless of host-path visibility:
 
-- **`docker/docker-compose.demo.yml`**'s `postgres` service now carries the config WAL
-  archiving needs (`archive_mode=on`, an idempotent `archive_command` copying segments to a
-  bind-mounted `${PI_BACKUP_DIR}/wal-archive`, `wal_level=replica` pinned explicitly though it's
-  already `postgres:16-alpine`'s own default) — but `archive_mode` only takes effect on a
-  Postgres **restart**, which this repo deliberately does NOT trigger as part of any routine
-  `docker compose up -d` reconciliation. See "Activating WAL archiving" below.
-- **`basebackup-audit-db.sh`** — the PHYSICAL half PITR needs (a `pg_dump` cannot be replayed
-  forward through WAL). Streams a compressed `pg_basebackup` tar to
-  `PI_BACKUP_DIR/basebackups/`, checksummed. **Weekly** cadence, keeping only the newest 3
-  (`PI_BASEBACKUP_RETENTION_COUNT`) — a physical base backup is the full data directory
-  (much bigger than a logical dump), and every backup after the first is redundant with the
-  continuously archived WAL for recovery purposes (WAL replay from any still-archived base
-  backup reaches the same point, just with a longer replay) — see the script's own header for
-  the full reasoning. Schedule with `systemd/pi-audit-basebackup.timer`.
-- **`pitr-drill.sh`** — mirrors `restore-drill.sh`'s safe-by-construction pattern exactly
-  (throwaway container + named volume, `trap cleanup EXIT`, never touches the live DB).
-  Restores the latest base backup, then replays archived WAL via Postgres 16's CURRENT
-  recovery mechanism (`recovery.signal` + `restore_command` in `postgresql.auto.conf` — NOT
-  the pre-12 `recovery.conf`, which Postgres removed outright), either to "everything
-  available" (default) or to an explicit `--target-time`. Runs the same
-  partitioned/partition-count/row-count integrity checks as `restore-drill.sh`.
+- **`restore-drill.sh`** — restores the newest dump from `inspector-logical-dumps` (or a
+  specific in-volume filename, or — for the superseded host mechanism — an explicit host path)
+  into a **throwaway** Postgres (never the live DB), `pg_restore`d straight from the
+  volume-mounted path inside that throwaway container. Asserts `audit_entry` returns
+  **partitioned, with partitions + rows**.
+  ```bash
+  deploy/restore-drill.sh                    # newest dump in inspector-logical-dumps
+  deploy/restore-drill.sh inspector-2026...   # a specific filename within that volume
+  deploy/restore-drill.sh /path/to.dump       # legacy host-path mode
+  ```
+- **`pitr-drill.sh`** — mirrors `restore-drill.sh`'s safe-by-construction pattern (throwaway
+  container + throwaway named volume for the unpacked base backup, `trap cleanup EXIT` removes
+  both, never touches the live DB). Restores the newest base backup from `inspector-basebackups`,
+  mounts `inspector-wal-archive` **read-only** into the recovery container, replays via
+  Postgres 16's current recovery mechanism (`recovery.signal` + `restore_command` — not the
+  pre-12 `recovery.conf`, which Postgres removed outright), either to "everything available"
+  or an explicit `--target-time`. Same integrity checks as `restore-drill.sh`.
+  ```bash
+  deploy/pitr-drill.sh                                          # replay everything available
+  deploy/pitr-drill.sh --target-time '2026-07-15 03:00:00Z'     # replay up to a specific instant
+  deploy/pitr-drill.sh base-20260715T040000Z.tar.gz               # a specific in-volume base backup
+  ```
 
-```bash
-PI_BACKUP_DIR=/mnt/backups/pi-audit deploy/basebackup-audit-db.sh          # weekly (timer-driven)
-deploy/pitr-drill.sh                                                        # replay everything available
-deploy/pitr-drill.sh --target-time '2026-07-15 03:00:00Z'                   # replay up to a specific instant
-```
+**Verified so far:** the FULL mechanism — `wal-receiver` streaming + persisting, the kill/
+restart/resume rehearsal above, `audit-backup`/`audit-basebackup` succeeding over the network
+with correct auth, retention pruning's 0/N/N+1 edge cases for both backup types, and both
+drill scripts end-to-end against the new volume-based storage (`pitr-drill.sh` in BOTH
+"replay everything" and `--target-time` modes, `restore-drill.sh` restoring a logical dump) —
+was rehearsed against **disposable** `docker compose` infrastructure (its own throwaway
+Postgres + the four new services), built and torn down solely for this verification, never the
+live demo container/volumes. One methodology note worth keeping for future rehearsals: batching
+an `INSERT` and `SELECT pg_switch_wal()` into a single multi-statement `psql -c` call sends
+them as ONE implicit transaction, so the switch's WAL record can be written **before** the
+insert's own COMMIT record — always run them as separate `psql` invocations when timing a
+target-time drill (this is the exact same "instructive rather than a script bug" artifact
+issue #201's own rehearsal already documented). NOT yet verified: a drill against REAL
+accumulated production WAL history from the live system. Until that real-world drill has run,
+`docs/OPERATIONS.md` §4's RPO claim deliberately stays at 24 h.
 
-**Verified so far:** the full mechanism (WAL archiving → base backup → PITR replay, both
-"replay everything" and `--target-time`) was rehearsed end-to-end against a **disposable**
-`postgres:16-alpine` container set up and torn down solely for this verification — never the
-live demo container. NOT yet verified: the drill against REAL accumulated production WAL
-history, because WAL archiving isn't active on the live container yet (see below). Until that
-real-world drill has run, `docs/OPERATIONS.md` §4's RPO claim deliberately stays at 24 h.
+### Activating Docker-native backups against the LIVE demo (deliberately NOT done by this PR)
 
-### Activating WAL archiving (deliberately NOT done by this PR — a separate, human-run step)
+Shipping the code is this PR's capability delivery. Turning it on against the LIVE
+`process-inspector-demo-postgres-1` is reserved as an explicit, separately-confirmed follow-up,
+exactly like issue #201's own activation was — split into a no-restart step and a
+restart-required step:
 
-Shipping the compose config is issue #201's capability delivery. Turning it on against the
-LIVE `process-inspector-demo-postgres-1` requires a Postgres **restart** (a real, if brief,
-disruption to the demo) and is reserved as an explicit follow-up, not bundled into a routine
-deploy:
-
-1. `mkdir -p "${PI_BACKUP_DIR:-/var/backups/pi-audit}/wal-archive"` on the host, owned so the
-   containerized `postgres` user (uid **70** in `postgres:16-alpine`, confirmed empirically)
-   can write into it — e.g. `chown 70:70 ".../wal-archive"` (or a docker helper container if
-   the host shell isn't already root: `docker run --rm -v ".../wal-archive:/w" alpine chown
-70:70 /w`).
-2. `docker compose -f docker/docker-compose.demo.yml up -d postgres` — recreates the
-   `postgres` service with the new `command:`, which **restarts Postgres** (brief connection
-   drop for `backend`; it reconnects via its Hikari pool).
-3. **Verify archiving is actually working before trusting it** — don't skip straight to the
-   base backup on faith. Confirm both: (a) `docker exec process-inspector-demo-postgres-1 ls
-/wal-archive` shows at least one file within a few minutes (Postgres archives a segment on
-   its own timer even at rest, or force one: `docker exec ... psql -U inspector -d inspector
--c 'SELECT pg_switch_wal();'`); (b) `docker exec ... psql -U inspector -d inspector -c
-'SELECT archived_count, failed_count, last_failed_wal, last_failed_time FROM
-pg_stat_archiver;'` shows `archived_count` incrementing and `failed_count` at 0 (or not
-   climbing). If `failed_count` is climbing, check `docker logs process-inspector-demo-postgres-1`
-   for the `archive_command` error before proceeding — see the "known limitation" comment on
-   `archive_command` in `docker-compose.demo.yml` for the one documented failure mode
-   (a stuck corrupt partial file) and how to clear it.
-4. Run `deploy/basebackup-audit-db.sh` once to establish the first physical base backup —
-   WAL archived before this point isn't useful without an anchor to replay it onto.
-5. Install the weekly timer: `sudo cp deploy/systemd/pi-audit-basebackup.* /etc/systemd/system/
-&& sudo systemctl daemon-reload && sudo systemctl enable --now pi-audit-basebackup.timer`.
-6. Once real WAL history has accumulated (days, not minutes), run `deploy/pitr-drill.sh`
-   against it for real and only THEN update `docs/OPERATIONS.md` §4's RPO claim — this PR's
-   own disposable-container rehearsal proves the MECHANISM, not the live deploy.
+1. **No Postgres restart needed** — `audit-backup` connects as an ORDINARY network client, and
+   the live `postgres` container's CURRENT `pg_hba.conf` (from issue #201's already-completed
+   manual activation) already trusts that. Bring it up and prove it immediately:
+   ```bash
+   docker compose -f docker/docker-compose.demo.yml up -d audit-backup
+   docker compose -f docker/docker-compose.demo.yml run --rm audit-backup /scripts/backup-once.sh
+   ```
+2. **`audit-basebackup` and `wal-receiver` need the `pg_hba` override first** — both connect
+   over the REPLICATION protocol, which the live container's CURRENT `pg_hba.conf` (predating
+   this PR) does not yet trust from the network. That requires recreating `postgres` with this
+   PR's `command:` (which ALSO removes the now-superseded `archive_mode`/`archive_command`
+   config from issue #201's own manual activation — one restart accomplishes both the
+   pg_hba fix and the archiving-mechanism cutover):
+   ```bash
+   docker compose -f docker/docker-compose.demo.yml up -d postgres   # RESTARTS Postgres — brief
+                                                                       # connection drop for backend;
+                                                                       # it reconnects via Hikari.
+   ```
+3. **Verify before trusting it** — don't skip straight to the base backup on faith:
+   ```bash
+   docker compose -f docker/docker-compose.demo.yml up -d audit-basebackup wal-receiver
+   docker logs process-inspector-demo-wal-receiver-1        # expect "starting log streaming"
+   docker exec process-inspector-demo-postgres-1 psql -U inspector -d inspector \
+     -c "SELECT slot_name, active, restart_lsn FROM pg_replication_slots;"   # active=t
+   docker compose -f docker/docker-compose.demo.yml run --rm audit-basebackup /scripts/basebackup-once.sh
+   ```
+4. **The pre-existing host WAL archive** (`${PI_BACKUP_DIR:-/var/backups/pi-audit}/wal-archive`,
+   from issue #201's manual `archive_command` activation) is NOT migrated into the new
+   `inspector-wal-archive` volume — this is a clean cutover point, not a merge. The host archive
+   remains as a historical/last-resort copy; all FUTURE PITR drills use the volume going
+   forward.
+5. Once real WAL history has accumulated (days, not minutes) in `inspector-wal-archive`, run
+   `deploy/pitr-drill.sh` against the LIVE volumes for real (their actual names are prefixed by
+   the compose project, e.g. `process-inspector-demo_inspector-wal-archive` — pass
+   `PI_WAL_ARCHIVE_VOLUME`/`PI_BASEBACKUPS_VOLUME` accordingly) and only THEN update
+   `docs/OPERATIONS.md` §4's RPO claim — this PR's own disposable-infrastructure rehearsal
+   proves the MECHANISM, not the live deploy.
 
 ## `prometheus/alert-rules.yml` — RUNBOOK §7's alert contract (issue #96, OPERATIONS §3)
 

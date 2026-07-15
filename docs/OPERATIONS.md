@@ -78,35 +78,52 @@ version-controlled/secret-managed form. Postgres runs **external to the BFF host
 target-state prod topology (never co-fate-shared). Flyway: forward-only, no down-migrations,
 backup before migrate; recovery from a bad migration = restore + roll forward.
 
-**Backup posture — honest current state (P0 #4 / Q4; PITR tooling added #201).** The BFF's
-Postgres holds the 400-day audit chain (revFADP); its retention + legal-hold machinery guards
-data that must not be lost. The shipping mechanism is a **nightly logical dump** —
-`deploy/backup-audit-db.sh` (`pg_dump -Fc` to a second-disk `PI_BACKUP_DIR`, checksummed,
-retention-pruned), scheduled by `deploy/systemd/pi-audit-backup.timer`. That makes the honest
-**RPO the timer interval (24 h)** — this first closed the "no copy at all" gap (the demo ran on
-a single docker volume). The restore drill is **executable, not aspirational**:
-`deploy/restore-drill.sh` restores the latest dump into a throwaway Postgres and asserts
-`audit_entry` came back partitioned with its partitions and rows — run it after wiring the
-backup and on a calendar cadence.
+**Backup posture — honest current state (P0 #4/Q4; PITR tooling #201; Docker-native
+#201-followup).** The BFF's Postgres holds the 400-day audit chain (revFADP); its retention +
+legal-hold machinery guards data that must not be lost. The shipping mechanism is a **nightly
+logical dump** — the `audit-backup` compose service (`docker/docker-compose.demo.yml`,
+`pg_dump -Fc` over the network to the named Docker volume `inspector-logical-dumps`,
+checksummed, retention-pruned), scheduled **internally** via busybox crond (no host systemd
+timer, no host bind-mount). That makes the honest **RPO the schedule interval (24 h)** — this
+first closed the "no copy at all" gap (the demo ran on a single docker volume). The restore
+drill is **executable, not aspirational**: `deploy/restore-drill.sh` restores the latest dump
+from that volume into a throwaway Postgres and asserts `audit_entry` came back partitioned with
+its partitions and rows — run it after wiring the backup and on a calendar cadence.
+(`deploy/backup-audit-db.sh` + `deploy/systemd/pi-audit-backup.*` — the original host-systemd
+mechanism — are superseded for this repo's Compose-based demo; kept for a non-Compose
+deployment style, see `deploy/README.md`.)
 
-**Continuous WAL archiving / PITR — tooling shipped, not yet activated in prod (#201).** The
-other half of a real PITR setup now exists as code: `docker/docker-compose.demo.yml`'s
-`postgres` service carries the `archive_mode=on` + `archive_command` config (WAL segments to a
-bind-mounted `PI_BACKUP_DIR/wal-archive`), `deploy/basebackup-audit-db.sh` takes the weekly
-PHYSICAL base backup a WAL replay needs as its anchor (a logical `pg_dump` cannot be replayed
-forward through WAL — the two mechanisms are incompatible), and `deploy/pitr-drill.sh` proves
-the whole chain by restoring a base backup and replaying archived WAL via Postgres 16's current
-recovery mechanism (`recovery.signal` + `restore_command`), either to "everything available" or
-an explicit `--target-time`. **This was rehearsed end-to-end against a disposable
-`postgres:16-alpine` container built and torn down solely for that verification** — both
-"replay everything" and a `--target-time` restore were proven to reconstruct the DB correctly
-at the intended point. **It has deliberately NOT been activated against the live demo
-container**: `archive_mode` only takes effect on a Postgres restart, which this PR does not
-perform — see `deploy/README.md`'s "Activating WAL archiving" for the exact (human-run,
-separately confirmed) two-step turn-on. Because the drill has only run against disposable test
-infrastructure and not against real accumulated production WAL history, the honest RPO claim
-**stays 24 h** until that live drill has actually run — this section will be updated again once
-it has.
+**Continuous WAL capture / PITR — tooling shipped, not yet activated in prod
+(#201-followup).** The other half of a real PITR setup now exists as fully Docker-native code:
+the `wal-receiver` compose service streams WAL continuously via `pg_receivewal` (replication
+protocol against `postgres:5432`, backed by a permanent physical replication slot so Postgres
+retains WAL for however long the receiver is down) into the named volume
+`inspector-wal-archive` — replacing issue #201's `archive_mode`/`archive_command` mechanism
+entirely (removed from the `postgres` service's config; `pg_receivewal` needs only
+`wal_level=replica`). The `audit-basebackup` service takes the weekly PHYSICAL base backup a
+WAL replay needs as its anchor (a logical `pg_dump` cannot be replayed forward through WAL —
+the two mechanisms are incompatible), to the named volume `inspector-basebackups`. Both connect
+over the network with password auth, needing a `pg_hba.conf` override
+(`docker/backup/postgres/pg_hba-demo.conf`) the upstream Postgres image doesn't ship by default
+for replication connections. `deploy/pitr-drill.sh` proves the whole chain by restoring a base
+backup (from the volume) and replaying archived WAL (from the volume, mounted read-only) via
+Postgres 16's current recovery mechanism (`recovery.signal` + `restore_command`), either to
+"everything available" or an explicit `--target-time`.
+
+**This was rehearsed end-to-end against disposable `docker compose` infrastructure (its own
+throwaway Postgres plus the three new services), built and torn down solely for that
+verification** — including the property that matters most for a long-lived streaming service:
+`wal-receiver` was killed mid-stream, more WAL was generated on the source while it was down,
+and it was restarted — resuming with **zero gap and zero duplicate/corrupt segments**
+(confirmed via `pg_waldump` on the affected segments and `pg_replication_slots.restart_lsn`
+holding the floor throughout the outage). `pitr-drill.sh` was proven in both "replay
+everything" and `--target-time` modes against the new volume-based storage, and
+`restore-drill.sh` against the new logical-dump volume. **It has deliberately NOT been
+activated against the live demo container** — see `deploy/README.md`'s "Activating Docker-native
+backups" for the exact (human-run, separately confirmed) turn-on steps. Because the drill has
+only run against disposable test infrastructure and not against real accumulated production WAL
+history, the honest RPO claim **stays 24 h** until that live drill has actually run — this
+section will be updated again once it has.
 
 ## 5. Deploys (R-OPS-05, R-SEM-16/17)
 `server.shutdown=graceful` (30 s); SIGTERM emits a terminal SSE `shutdown` event (once SSE

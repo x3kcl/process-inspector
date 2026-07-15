@@ -1,3 +1,7 @@
+# SUPERSEDED (issue #201-followup) — see pi-audit-basebackup.service's header. The
+# compose-based demo now schedules this internally via the `audit-basebackup` service's
+# busybox crond, same Sunday 04:00 UTC cadence, no systemd timer needed. Kept for a
+# non-Compose deployment style.
 [Unit]
 Description=Run the Process Inspector audit-DB physical base backup weekly
 

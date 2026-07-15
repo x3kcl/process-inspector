@@ -1,0 +1,4 @@
+# Weekly physical base backup, same cadence as the systemd timer it replaces
+# (deploy/systemd/pi-audit-basebackup.timer: Sunday 04:00 UTC — a different day/time than
+# audit-backup's nightly 02:30 UTC so the two never contend for the same I/O window).
+0 4 * * 0 /scripts/basebackup-once.sh >>/proc/1/fd/1 2>>/proc/1/fd/2

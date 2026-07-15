@@ -84,14 +84,22 @@ rm -f "$ENV_FILE.bak"
 
 echo "Pulling + redeploying..."
 docker compose -f "$COMPOSE_FILE" --env-file "$ENV_FILE" pull backend frontend
-# Scoped to the two services this script actually manages — NOT a blanket `up -d`. Since
-# issue #201, docker-compose.demo.yml's `postgres` service carries WAL-archiving config
-# (`command:` override) that isn't yet applied to the live container; an unscoped `up -d`
-# would detect that config drift on THIS routine digest-bump deploy and silently recreate
-# (restart) postgres as a side effect — exactly the un-deliberate activation issue #201's own
-# docs say must not happen. Activating it is a separate, explicit `up -d postgres` step (see
-# deploy/README.md "Activating WAL archiving").
-docker compose -f "$COMPOSE_FILE" --env-file "$ENV_FILE" up -d backend frontend
+# `up -d` is scoped, deliberately excluding `postgres` — NOT a blanket `up -d`. Since issue
+# #201, docker-compose.demo.yml's `postgres` service carries a `command:`/pg_hba override that
+# isn't yet applied to the live container; an unscoped `up -d` would detect that config drift
+# on THIS routine digest-bump deploy and silently recreate (restart) postgres as a side
+# effect — exactly the un-deliberate activation issue #201's own docs say must not happen.
+# Activating it is a separate, explicit `up -d postgres` step (see deploy/README.md
+# "Activating Docker-native backups").
+#
+# The three Docker-native backup sidecars (issue #201-followup — audit-backup,
+# audit-basebackup, wal-receiver) ARE included here, unlike postgres: they don't carry
+# postgres's "restart disrupts live traffic" risk (no client ever connects to them; they only
+# connect OUT to postgres), so routinely reconciling them on every deploy — picking up script/
+# crontab/image changes promptly — is safe and desirable rather than something to guard
+# against. wal-receiver's restart-then-resume behavior is exactly the property this PR's own
+# rehearsal proved safe (see docs/IMPLEMENTATION-PLAN.md's #201-followup entry).
+docker compose -f "$COMPOSE_FILE" --env-file "$ENV_FILE" up -d backend frontend audit-backup audit-basebackup wal-receiver
 
 echo "Verifying (expect 401 = chain healthy)..."
 sleep 5

@@ -41,10 +41,12 @@ trap - EXIT
 
 echo "Pulling + redeploying..."
 docker compose -f "$COMPOSE_FILE" --env-file "$ENV_FILE" pull backend frontend
-# Scoped to backend/frontend only — see deploy-demo.sh's identical comment (issue #201):
-# an unscoped `up -d` would also reconcile `postgres`'s WAL-archiving `command:` drift,
-# turning a routine rollback into an unintended Postgres restart.
-docker compose -f "$COMPOSE_FILE" --env-file "$ENV_FILE" up -d backend frontend
+# `postgres` stays excluded — see deploy-demo.sh's identical comment (issue #201): an
+# unscoped `up -d` would also reconcile `postgres`'s `command:`/pg_hba drift, turning a
+# routine rollback into an unintended Postgres restart. The three Docker-native backup
+# sidecars (issue #201-followup) ARE included, same reasoning as deploy-demo.sh: they carry
+# none of postgres's restart risk, so picking up config drift on a routine rollback is fine.
+docker compose -f "$COMPOSE_FILE" --env-file "$ENV_FILE" up -d backend frontend audit-backup audit-basebackup wal-receiver
 
 echo "Verifying (expect 401 = chain healthy)..."
 sleep 5
