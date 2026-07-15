@@ -52,6 +52,45 @@ services:
       - POSTGRES_PASSWORD=${POSTGRES_PASSWORD:-inspector}
     volumes:
       - inspector-demo-pgdata:/var/lib/postgresql/data
+      # WAL archive destination for continuous PITR (issue #201), mirroring the
+      # PI_BACKUP_DIR convention `backup-audit-db.sh`/`basebackup-audit-db.sh` already use —
+      # same second-disk-ideally host directory, a `wal-archive` subdir so logical dumps,
+      # physical basebackups and WAL segments don't collide on the host side.
+      - ${PI_BACKUP_DIR:-/var/backups/pi-audit}/wal-archive:/wal-archive
+    # NOT applied by a routine `docker compose up -d` reconciliation on its own — `command:`
+    # only takes effect on a container RECREATE, and `archive_mode` is postmaster-context (a
+    # Postgres restart, however triggered). Shipping this config is issue #201's capability
+    # delivery; deliberately NOT wired into any auto-reconciling deploy path — activating it
+    # against the LIVE demo container is a separate, explicit, human-run step (see
+    # deploy/README.md's "Activating WAL archiving" and docs/RUNBOOK.md).
+    #   docker compose -f docker/docker-compose.demo.yml up -d postgres   # recreates + restarts Postgres
+    # wal_level=replica is `postgres:16-alpine`'s own compiled-in default already (verified
+    # against a running 16.14 instance: `SHOW wal_level` → `replica`) — sufficient for
+    # `pg_basebackup`/WAL archiving without a separate `logical` bump this app doesn't need
+    # (no logical-replication consumer exists). Pinned explicitly anyway so this file stays
+    # correct even if a future base-image change ever lowered the compiled-in default.
+    command:
+      - postgres
+      - -c
+      - wal_level=replica
+      - -c
+      - archive_mode=on
+      # Idempotent copy: a re-tried archive of an already-copied segment is a no-op, never an
+      # overwrite — Postgres retries archive_command until it exits 0, and a partial/corrupt
+      # overwrite of a previously-good segment would be worse than a slow retry.
+      # KNOWN LIMITATION (this is PostgreSQL's own textbook example, with its own documented
+      # caveat, not something invented here): the check is non-atomic. If a cp is interrupted
+      # mid-write (OOM, disk full), the destination is left holding a corrupt partial file;
+      # `test ! -f` then sees it as "already archived" forever, and Postgres retries that
+      # segment indefinitely with no forward progress AND no automatic recovery — the corrupt
+      # file is never replaced or flagged. A production-hardened setup would use a
+      # tmpfile-then-atomic-rename `archive_command` (mirroring the `.partial`→`mv` idiom
+      # `backup-audit-db.sh`/`basebackup-audit-db.sh` already use) or a dedicated tool
+      # (pgBackRest/WAL-G). Accepted for this demo-scale setup; if `pg_stat_archiver` ever
+      # shows a stuck `last_failed_wal`, check for and manually clear a corrupt partial file
+      # at that path in the archive dir before it will progress again.
+      - -c
+      - archive_command=test ! -f /wal-archive/%f && cp %p /wal-archive/%f
     healthcheck:
       test: ["CMD-SHELL", "pg_isready -h 127.0.0.1 -U inspector -d inspector"]
       interval: 5s

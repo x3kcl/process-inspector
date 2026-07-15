@@ -84,7 +84,14 @@ rm -f "$ENV_FILE.bak"
 
 echo "Pulling + redeploying..."
 docker compose -f "$COMPOSE_FILE" --env-file "$ENV_FILE" pull backend frontend
-docker compose -f "$COMPOSE_FILE" --env-file "$ENV_FILE" up -d
+# Scoped to the two services this script actually manages — NOT a blanket `up -d`. Since
+# issue #201, docker-compose.demo.yml's `postgres` service carries WAL-archiving config
+# (`command:` override) that isn't yet applied to the live container; an unscoped `up -d`
+# would detect that config drift on THIS routine digest-bump deploy and silently recreate
+# (restart) postgres as a side effect — exactly the un-deliberate activation issue #201's own
+# docs say must not happen. Activating it is a separate, explicit `up -d postgres` step (see
+# deploy/README.md "Activating WAL archiving").
+docker compose -f "$COMPOSE_FILE" --env-file "$ENV_FILE" up -d backend frontend
 
 echo "Verifying (expect 401 = chain healthy)..."
 sleep 5

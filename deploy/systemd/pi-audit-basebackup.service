@@ -1,0 +1,25 @@
+# Weekly PHYSICAL base backup of the BFF's audit Postgres — the anchor for continuous PITR
+# (issue #201). Complements pi-audit-backup.timer's nightly LOGICAL dump; see
+# basebackup-audit-db.sh's header for why this one is physical + weekly instead of nightly.
+# Install on the demo host (hp04), same conventions as the nightly logical backup:
+#   sudo cp deploy/systemd/pi-audit-basebackup.* /etc/systemd/system/
+#   sudo systemctl daemon-reload && sudo systemctl enable --now pi-audit-basebackup.timer
+# Override the destination (shared with the logical dump + WAL archive) + retention count via
+# a drop-in:
+#   sudo systemctl edit pi-audit-basebackup.service   # [Service] Environment=PI_BACKUP_DIR=/mnt/backups/pi-audit
+#
+# Prerequisite this unit does NOT set up on its own: WAL archiving must already be ACTIVE on
+# the live `postgres` container (docker-compose.demo.yml's `command:` + a completed
+# `docker compose up -d postgres` recreate — see deploy/README.md "Activating WAL archiving")
+# — a base backup without a running WAL archive is just a slower, bigger logical dump.
+[Unit]
+Description=Process Inspector — weekly audit-DB physical base backup (PITR anchor)
+After=docker.service
+Requires=docker.service
+
+[Service]
+Type=oneshot
+Environment=PI_BACKUP_DIR=/var/backups/pi-audit
+# Adjust WorkingDirectory to the repo checkout on the host.
+WorkingDirectory=/home/flapci/workspace/process-inspector
+ExecStart=/home/flapci/workspace/process-inspector/deploy/basebackup-audit-db.sh

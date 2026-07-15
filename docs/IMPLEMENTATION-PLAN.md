@@ -2220,6 +2220,91 @@ digest-based manifest fetches succeed for every published version); no evidence 
 deleted post-publish. The "missing" versions were never successfully pushed in the first
 place (root cause 1), not deleted afterward.
 
+### #201 — Continuous WAL archiving + PITR tooling for the audit-store Postgres _(✅ tooling LANDED 2026-07-15, issue #201; live activation deliberately NOT done — separate follow-up)_
+
+The nightly logical dump (`backup-audit-db.sh`, P0 #4/Q4) closed the "zero copies" gap but
+left a 24 h RPO — this adds the OTHER half of a real PITR setup: continuous WAL archiving +
+the physical base backup it replays onto. WAL-based PITR needs a `pg_basebackup`, not the
+existing `pg_dump` — the two mechanisms are incompatible, so this is additive tooling, not a
+replacement.
+
+_Shipped:_
+
+- `docker/docker-compose.demo.yml`'s `postgres` service: a bind-mounted
+  `${PI_BACKUP_DIR}/wal-archive` volume, and a `command:` override
+  (`archive_mode=on`, an idempotent `archive_command`, `wal_level=replica` pinned explicitly).
+  Verified against a running instance (`SHOW wal_level` → `replica`, `SHOW archive_mode` →
+  `off`) that `postgres:16-alpine`'s own compiled-in default is already `wal_level=replica` —
+  sufficient for archiving without a `logical` bump this app has no consumer for; pinned
+  anyway so the file stays correct if a future base-image default ever changed. NOT applied
+  to `docker/docker-compose.release.yml` — that file targets a quick-start self-hosted
+  deploy where WAL-archive activation would need the same host-side directory/ownership
+  ceremony this issue documents for the demo, adding real complexity to a file whose whole
+  point is "up in one command"; skipped on purpose, not an oversight.
+- `deploy/basebackup-audit-db.sh` (new): streams a `pg_basebackup -Ft -z -X none` (tar+gzip,
+  no bundled WAL — pairs with the continuous archive instead) to
+  `PI_BACKUP_DIR/basebackups/`, checksummed, crash-safe `.partial`→rename. **Weekly**
+  retention keeping the newest 3 — a physical base backup is the full data directory (far
+  bigger than a logical dump), and every backup after the first is redundant with the
+  continuously archived WAL for recovery purposes; reasoning lives in the script's own header.
+- `deploy/systemd/pi-audit-basebackup.{service,timer}` (new): mirrors the existing
+  `pi-audit-backup.*` pair; scheduled Sunday 04:00 UTC — deliberately a different
+  day/time than the nightly logical dump's 02:30 UTC so the two never contend for the same
+  live-cluster read I/O window.
+- `deploy/pitr-drill.sh` (new): mirrors `restore-drill.sh`'s safe-by-construction pattern
+  (throwaway container — this time a throwaway *named volume* too, since the base backup has
+  to be unpacked into it by a one-shot helper container before the real Postgres container
+  starts against it — `trap cleanup EXIT` removes both). Restores the latest base backup, then
+  replays archived WAL via Postgres 16's CURRENT recovery mechanism — `recovery.signal` +
+  `restore_command` (+ optional `recovery_target_time`/`recovery_target_action=promote`) in
+  `postgresql.auto.conf`, confirmed this is the correct modern approach and NOT the pre-12
+  `recovery.conf` file Postgres removed outright. Takes `--target-time` (flag or
+  `PI_PITR_TARGET_TIME` env), defaulting to "replay everything available." Explicitly asserts
+  `pg_is_in_recovery() = false` (fully promoted, not just accepting hot-standby reads) before
+  running the same partitioned/partition-count/row-count integrity checks as
+  `restore-drill.sh`.
+- Docs: `docs/OPERATIONS.md` §4 now describes the new tooling as **shipped but not yet
+  activated in prod** — the RPO claim deliberately stays 24 h until a drill runs against real
+  accumulated live WAL history (not this issue's disposable-container rehearsal).
+  `docs/RUNBOOK.md` §5 gained a status note pointing at the same honesty framing (today's
+  actual 3 AM restore path is still the logical dump). `deploy/README.md` gained a full
+  section (mirroring the existing `backup-audit-db.sh`/`restore-drill.sh` one) plus an
+  "Activating WAL archiving" subsection spelling out the two-step human activation this PR
+  deliberately does not perform: (a) create+own the host `wal-archive` directory then
+  `docker compose -f docker/docker-compose.demo.yml up -d postgres` (recreates the service,
+  restarts Postgres — a real if brief disruption, reserved for a human to run with separate
+  confirmation), (b) run `basebackup-audit-db.sh` once to establish the first anchor, (c)
+  install the weekly timer, (d) once real WAL history has accumulated, run `pitr-drill.sh`
+  for real and only then bump the RPO claim.
+
+_Verification — a real rehearsal against disposable infrastructure (not the live demo
+container, never touched beyond read-only `SHOW`/`docker inspect` probes to confirm current
+config):_ stood up a throwaway `postgres:16-alpine` with the exact same `archive_mode`/
+`archive_command`/`wal_level` config as the compose change, hit an initial `Permission
+denied` from `archive_command` (the bind-mounted host dir defaults root-owned; fixed by
+`chown`-ing it to uid **70**, confirmed empirically as the `postgres` user inside this image
+— now called out explicitly in `deploy/README.md`'s activation steps), created a partitioned
+`audit_entry` table with rows, ran `basebackup-audit-db.sh` against it (verified retention
+pruning by running it 4×, confirming the oldest was dropped keeping 3), inserted more rows +
+forced WAL switches, captured a target timestamp, inserted yet more rows past that point, then
+ran `pitr-drill.sh` twice: with no target (recovered **all** rows — 100/100) and with
+`--target-time` pinned to the captured instant (recovered **exactly** the rows committed
+before it — 80/100, correctly excluding the later insert). Both runs' integrity checks
+(partitioned `audit_entry`, ≥1 partition, row count) passed and confirmed `pg_is_in_recovery()
+= false` (fully promoted). One rehearsal-only false start along the way, root-caused and
+instructive rather than a script bug: batching `INSERT; SELECT pg_switch_wal();` in one
+`psql -c` string runs them as a single implicit transaction, so the forced segment switch
+closed the WAL segment *before* the COMMIT record was written — `pg_waldump` on the archived
+segment confirmed the inserts were present but the transaction had no COMMIT record yet.
+Splitting into separate `psql -c` calls (each auto-commits) fixed the test; the drill itself
+correctly refused to replay the still-in-flight transaction both times, which is precisely the
+transactional-boundary correctness PITR must have. All test containers/volumes/scratch
+directories were torn down after verification.
+
+`scripts/ci-local.sh --full` run clean (deploy-tooling-only change, no backend/frontend
+diff); `bash -n` on both new scripts and the syntax-checked existing ones; both compose files'
+YAML parsed via `python3 -c "import yaml; yaml.safe_load(...)"`.
+
 ## Build order inside any milestone
 
 backend DTO → engine client call → aggregator/join logic → controller → typed frontend API
