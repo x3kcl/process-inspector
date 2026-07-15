@@ -2252,7 +2252,7 @@ _Shipped:_
   day/time than the nightly logical dump's 02:30 UTC so the two never contend for the same
   live-cluster read I/O window.
 - `deploy/pitr-drill.sh` (new): mirrors `restore-drill.sh`'s safe-by-construction pattern
-  (throwaway container — this time a throwaway *named volume* too, since the base backup has
+  (throwaway container — this time a throwaway _named volume_ too, since the base backup has
   to be unpacked into it by a one-shot helper container before the real Postgres container
   starts against it — `trap cleanup EXIT` removes both). Restores the latest base backup, then
   replays archived WAL via Postgres 16's CURRENT recovery mechanism — `recovery.signal` +
@@ -2294,7 +2294,7 @@ before it — 80/100, correctly excluding the later insert). Both runs' integrit
 = false` (fully promoted). One rehearsal-only false start along the way, root-caused and
 instructive rather than a script bug: batching `INSERT; SELECT pg_switch_wal();` in one
 `psql -c` string runs them as a single implicit transaction, so the forced segment switch
-closed the WAL segment *before* the COMMIT record was written — `pg_waldump` on the archived
+closed the WAL segment _before_ the COMMIT record was written — `pg_waldump` on the archived
 segment confirmed the inserts were present but the transaction had no COMMIT record yet.
 Splitting into separate `psql -c` calls (each auto-commits) fixed the test; the drill itself
 correctly refused to replay the still-in-flight transaction both times, which is precisely the
@@ -2327,10 +2327,10 @@ _Shipped:_
   (`PGHOST=postgres`, standard libpq env vars) to the new named volume
   `inspector-logical-dumps`, same 02:30 UTC cadence / `.partial`→rename / sha256 sidecar /
   35-day retention as `backup-audit-db.sh`. One-shot/manual: `docker compose ... run --rm
-  audit-backup /scripts/backup-once.sh`.
+audit-backup /scripts/backup-once.sh`.
 - `docker/backup/audit-basebackup/{entrypoint.sh,basebackup-once.sh,crontab}` (new) + a new
   `audit-basebackup` compose service: weekly (Sunday 04:00 UTC) `pg_basebackup -Ft -z -X none
-  -c fast` over the network to the new named volume `inspector-basebackups`, same
+-c fast` over the network to the new named volume `inspector-basebackups`, same
   checksum/newest-3-retention as `basebackup-audit-db.sh`.
 - `docker/backup/wal-receiver/entrypoint.sh` (new) + a new `wal-receiver` compose service:
   continuous WAL capture via `pg_receivewal` against the replication protocol, writing to the
@@ -2352,7 +2352,7 @@ _Shipped:_
   catch-all already applies). REQUIRED — empirically confirmed the upstream default only
   trusts replication connections from `127.0.0.1`/`::1`, so a plain network
   `pg_basebackup`/`pg_receivewal` fails closed (`no pg_hba.conf entry for replication
-  connection from host "..."`) without it.
+connection from host "..."`) without it.
 - `deploy/restore-drill.sh` / `deploy/pitr-drill.sh` (updated): both now read from the named
   volumes above DIRECTLY — `docker run`/`docker exec -v <volume>:...` mounts a named volume by
   name regardless of host-path visibility, so no host-copy indirection is needed. Both keep a
@@ -2415,6 +2415,26 @@ were torn down after verification; the live `process-inspector-demo-*` container
 never started, stopped, recreated, or written to.
 
 `scripts/ci-local.sh --full` run clean.
+
+_Adversarial review (Copilot + manual pass, Gemini quota-exhausted for 2.5-pro):_ four real
+findings, all fixed. (1) The permanent replication slot's decommissioning risk (unbounded
+disk growth if `wal-receiver` is ever removed without dropping it first) was undocumented —
+added to both the entrypoint header and `docs/RUNBOOK.md`. (2) `deploy-demo.sh`/
+`rollback-demo.sh` claimed routine deploys "pick up script/crontab changes promptly" for the
+three sidecars, but `docker compose up -d` only recreates on a CONFIG HASH change (image/env/
+volume list), not bind-mounted file content — an edit to `backup-once.sh`/`crontab` alone
+wouldn't actually trigger a recreate. Fixed with `--force-recreate` scoped to just those
+three services. (3) `deploy/backup-audit-db.sh`/`basebackup-audit-db.sh` (the original #201
+scripts) were missing the SUPERSEDED header the systemd unit files already got — added,
+matching style. (4) No CI gate syntax-checked any of this repo's growing set of deploy/CI
+shell scripts — every prior verification was a manual, one-time `bash -n` pass. Added
+`scripts/shell-syntax-check.sh` (tracked-file, shebang-detected, `bash -n`-only — no new
+tool/runner dependency) wired into both `ci-local.sh` and `.github/workflows/ci.yml`'s lint
+job, closing the gap going forward. One other gap found independently while fixing the
+above: `docs/RUNBOOK.md`'s top-of-file "Facts" section still claimed "RPO ≤ 5 min
+(Postgres WAL/PITR)" — a stale figure predating even issue #201's original honesty
+correction to `docs/OPERATIONS.md` §4, silently contradicting that same file's own §5
+further down. Corrected to the real current number (24h) with a pointer to §5.
 
 ## Build order inside any milestone
 

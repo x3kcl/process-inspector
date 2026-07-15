@@ -1,4 +1,14 @@
 #!/usr/bin/env bash
+# SUPERSEDED (issue #201-followup) for THIS repo's actual (Docker-Compose-based) demo
+# deployment — the demo now runs the `audit-backup` compose service in
+# docker/docker-compose.demo.yml instead (Docker-native: no host bind-mount, no host root
+# needed to install a timer, scheduled internally via busybox crond — see
+# docker/backup/audit-backup/ and deploy/README.md). This script is kept, UNMODIFIED
+# otherwise, because it documents a real prior design and may still be relevant for a
+# non-Compose deployment style (a bare-host Postgres reached via `docker exec`). Do not run
+# this against the hp04 demo host — it would race the compose service for the same
+# PI_BACKUP_DIR.
+#
 # backup-audit-db.sh — a real backup for the legally load-bearing audit store
 # (IMPROVEMENT-PLAN-2026-07 P0 #4 / Q4). The BFF's Postgres holds the 400-day audit chain
 # (revFADP) whose retention + legal-hold machinery (M4-closeout) guards data that, until now,

@@ -44,9 +44,12 @@ docker compose -f "$COMPOSE_FILE" --env-file "$ENV_FILE" pull backend frontend
 # `postgres` stays excluded — see deploy-demo.sh's identical comment (issue #201): an
 # unscoped `up -d` would also reconcile `postgres`'s `command:`/pg_hba drift, turning a
 # routine rollback into an unintended Postgres restart. The three Docker-native backup
-# sidecars (issue #201-followup) ARE included, same reasoning as deploy-demo.sh: they carry
-# none of postgres's restart risk, so picking up config drift on a routine rollback is fine.
-docker compose -f "$COMPOSE_FILE" --env-file "$ENV_FILE" up -d backend frontend audit-backup audit-basebackup wal-receiver
+# sidecars (issue #201-followup) ARE included with --force-recreate, same reasoning AND same
+# fix as deploy-demo.sh: they carry none of postgres's restart risk, and --force-recreate is
+# needed because their bind-mounted scripts don't change the compose config hash on their own.
+docker compose -f "$COMPOSE_FILE" --env-file "$ENV_FILE" up -d backend frontend
+docker compose -f "$COMPOSE_FILE" --env-file "$ENV_FILE" up -d --force-recreate \
+  audit-backup audit-basebackup wal-receiver
 
 echo "Verifying (expect 401 = chain healthy)..."
 sleep 5

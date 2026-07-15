@@ -95,11 +95,20 @@ docker compose -f "$COMPOSE_FILE" --env-file "$ENV_FILE" pull backend frontend
 # The three Docker-native backup sidecars (issue #201-followup — audit-backup,
 # audit-basebackup, wal-receiver) ARE included here, unlike postgres: they don't carry
 # postgres's "restart disrupts live traffic" risk (no client ever connects to them; they only
-# connect OUT to postgres), so routinely reconciling them on every deploy — picking up script/
-# crontab/image changes promptly — is safe and desirable rather than something to guard
-# against. wal-receiver's restart-then-resume behavior is exactly the property this PR's own
-# rehearsal proved safe (see docs/IMPLEMENTATION-PLAN.md's #201-followup entry).
-docker compose -f "$COMPOSE_FILE" --env-file "$ENV_FILE" up -d backend frontend audit-backup audit-basebackup wal-receiver
+# connect OUT to postgres), so routinely reconciling them on every deploy is safe and
+# desirable rather than something to guard against — wal-receiver's restart-then-resume
+# behavior is exactly the property this PR's own rehearsal proved safe (see
+# docs/IMPLEMENTATION-PLAN.md's #201-followup entry).
+#   --force-recreate, scoped to just these three: `docker compose up -d` only recreates a
+# service whose CONFIG HASH changed (image/env/volume list) — since these three mount their
+# scripts via a static bind-mount path (`./backup/...:/scripts:ro`), an edit to backup-once.sh/
+# crontab/entrypoint.sh content alone does NOT change that hash, so without --force-recreate a
+# routine deploy would silently keep running the OLD script content (review finding). backend/
+# frontend deliberately do NOT get --force-recreate — their digest pin already changes the
+# image reference itself, which IS a config-hash change compose picks up on its own.
+docker compose -f "$COMPOSE_FILE" --env-file "$ENV_FILE" up -d backend frontend
+docker compose -f "$COMPOSE_FILE" --env-file "$ENV_FILE" up -d --force-recreate \
+  audit-backup audit-basebackup wal-receiver
 
 echo "Verifying (expect 401 = chain healthy)..."
 sleep 5

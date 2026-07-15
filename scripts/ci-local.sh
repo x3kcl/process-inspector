@@ -46,6 +46,7 @@ fi
 # ---- lint job ----
 run "backend: spotless:check"      bash -c "cd '$ROOT/backend' && mvn -B -q spotless:check"
 run "security-audit (env-refs)"    bash -c "cd '$ROOT' && ./scripts/security-audit.sh"
+run "shell-syntax-check"           bash -c "cd '$ROOT' && ./scripts/shell-syntax-check.sh"
 
 # ---- frontend job (minus the drift gate, which needs a running BFF) ----
 run "frontend: eslint"             bash -c "cd '$ROOT/frontend' && npm run --silent lint"

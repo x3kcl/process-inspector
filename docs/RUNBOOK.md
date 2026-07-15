@@ -16,9 +16,11 @@ Deliverable per OPERATIONS §10 / SPEC §13. Deep background: OPERATIONS.md; who
 - **Restarting the BFF is safe.** No in-memory state matters: audit and bulk jobs are in
   Postgres, sessions re-authenticate, caches (triage, 20 s TTL) rebuild themselves. The
   one consequence of a restart is bulk-job interruption — §3 below, by design.
-- **RTO ≤ 15 min** (one-command redeploy, image pinned by digest). **RPO ≤ 5 min**
-  (Postgres WAL/PITR). Graceful shutdown window 30 s. Deploys: single instance, accepted
-  gap ≤ 2 min, announce in the support channel.
+- **RTO ≤ 15 min** (one-command redeploy, image pinned by digest). **RPO = 24 h today**
+  (the nightly logical-dump interval — §5 below has the full picture: Docker-native
+  WAL/PITR tooling exists but isn't yet activated against the live demo, so don't quote a
+  ≤5-min figure until that's actually live and drilled). Graceful shutdown window 30 s.
+  Deploys: single instance, accepted gap ≤ 2 min, announce in the support channel.
 - **Never** mitigate by pointing the Inspector at an engine database or by widening the
   path whitelist. Both are load-bearing security boundaries, not tuning knobs.
 
@@ -41,15 +43,18 @@ Deliverable per OPERATIONS §10 / SPEC §13. Deep background: OPERATIONS.md; who
 ## 2. "Inspector up but degraded"
 
 ### 2a. Readiness failing >2 min, liveness fine
+
 That's Postgres or its schema — the only readiness components. `pg_isready` against the
 Postgres host; check disk (>80% alert), connections (Hikari pool default 20 — exhaustion is
 alerted and visible in `/actuator/prometheus`). Postgres down has one more consequence:
 
 ### 2b. "Every mutation fails with an audit/Postgres error" — fail-closed is WORKING
+
 The audit write is **fail-closed for all tiers**: no audit row ⇒ no mutation issued,
 reads still work. This is not the outage — it is the designed response to the real outage
 (Postgres). **Fix Postgres; do not look for a way to bypass the audit.** There isn't one,
 deliberately.
+
 > **Metric note (P1 #12; wired 2026-07-13, issue #96):** `/actuator/health` +
 > `/actuator/prometheus` are live, and the **custom** `audit_insert_failures_total` counter
 > referenced here and in §7 is now **emitted** (tagged `site` — `beginPending` for the mutation
@@ -63,8 +68,10 @@ Until fixed, urgent engine mutations go
 through §6 (direct cURL, hand-logged).
 
 ### 2c. One engine red / searches partial
+
 Per-engine envelope errors ("timeout", "circuit open — engine shedding load", "credential
 rejected") are the Inspector doing its job on a struggling engine. Distinguish:
+
 - **`credential rejected` (401)** — the engine rotated `inspector-svc`'s password or the
   secret file/env is stale. Update the mounted secret (`password-file` refs re-read per
   attempt — no restart needed) or fix the env and restart.
@@ -76,9 +83,11 @@ rejected") are the Inspector doing its job on a struggling engine. Distinguish:
 - Engine version/capability gaps render as greyed verbs with a reason — not an incident.
 
 ### 2d. Users can't log in, engines fine
+
 IdP (OIDC) outage → break-glass, §4. A single user missing a permission is **not**
 break-glass — page the platform admin instead. How the grant reaches them depends on
 `inspector.security.mapping-source` (IDP-SECURITY.md §6):
+
 - **`file`** (default): a scope grant is a hot-reloaded mounted-file edit, effective ≤5 min
   (SPEC §2, R-SAFE-12); the `/admin/access` CRUD UI 403s.
 - **`db`**: grants are CRUD'd via `/admin/access` (ACCESS_ADMIN, audited fail-closed; any
@@ -93,17 +102,19 @@ job `PENDING → RUNNING → (COMPLETED | CANCELLED | INTERRUPTED)`; item
 `pending → dispatched → (ok | failed | skipped | skipped (protected) | unknown | not_run)`.
 
 What happens on a BFF crash/restart mid-job — automatically, in the startup sweep:
+
 - The RUNNING job is marked **INTERRUPTED**.
 - The single item in flight at the moment of the crash becomes **`unknown`** — it is
   **never re-fired** (it may have succeeded on the engine).
 - All undispatched items become **`not_run`**.
 
 Operator procedure (any OPERATOR can do this; you as Tier 2/3 just make sure it happens):
+
 1. After any restart, the operations drawer **banners INTERRUPTED jobs on next login** —
    also visible via `GET /api/bulk` or the `/audit` ops-log page.
 2. For each `unknown` item, click **Verify now** — the BFF re-runs the verb's precondition
    ("is job 8123 still in the DLQ?") and reclassifies to ok / still-pending / needs-L3
-   **with evidence**. Do this *before* any re-run: an unknown terminate that actually
+   **with evidence**. Do this _before_ any re-run: an unknown terminate that actually
    succeeded must not be "retried" onto a sibling.
 3. Use **"continue as new job"** on the banner — it creates a fresh tracked job pre-scoped
    to exactly the `not_run` + `failed` items (never the `unknown` ones). New job, new audit
@@ -151,13 +162,19 @@ The audit golden master is the thing being protected: verify its most recent row
 > `deploy/pitr-drill.sh` reads from the `inspector-basebackups`/`inspector-wal-archive` named
 > Docker volumes (written by the `audit-basebackup`/`wal-receiver` compose services — no host
 > bind-mount, no systemd timer) and was rehearsed end-to-end against disposable `docker
-> compose` infrastructure, including a kill/restart resumption proof for the continuous
+compose` infrastructure, including a kill/restart resumption proof for the continuous
 > `wal-receiver` stream — but this mechanism is **not yet activated** on the live demo
 > container (`deploy/README.md`'s "Activating Docker-native backups" has the exact turn-on
 > steps). Until that activation has happened and a drill has run against real accumulated WAL
 > history, the executable restore path at 3 AM is still `deploy/restore-drill.sh` (the nightly
 > logical dump, from the `inspector-logical-dumps` volume) — do not assume a WAL-based PITR
 > window that isn't live yet.
+>
+> **Decommissioning `wal-receiver`:** it holds a PERMANENT physical replication slot
+> (`wal_receiver`, by default) — Postgres retains WAL indefinitely for that slot regardless of
+> whether the receiver is running. If this service is ever permanently removed, drop the slot
+> first or the data volume grows unbounded:
+> `docker exec process-inspector-demo-postgres-1 psql -U inspector -d inspector -c "SELECT pg_drop_replication_slot('wal_receiver');"`
 
 ## 6. Last resort: direct cURL against an engine
 
@@ -198,16 +215,16 @@ deployed by this repo's `docker/*.yml`). `Readiness failing > 2 min` and `disk >
 but need an exporter this repo does not deploy (`blackbox_exporter`/`node_exporter` — see
 `deploy/README.md`); every other row already fires off a metric this app emits today.
 
-| Alert | First move |
-|---|---|
-| `InspectorDown` (liveness) | §1 |
-| Readiness failing > 2 min | §2a |
-| `audit_insert_failures_total > 0` | §2b — Postgres first; mutations are refusing by design |
+| Alert                                                    | First move                                                                                                                                                                                                                                                                                                                                                                                    |
+| -------------------------------------------------------- | --------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------- |
+| `InspectorDown` (liveness)                               | §1                                                                                                                                                                                                                                                                                                                                                                                            |
+| Readiness failing > 2 min                                | §2a                                                                                                                                                                                                                                                                                                                                                                                           |
+| `audit_insert_failures_total > 0`                        | §2b — Postgres first; mutations are refusing by design                                                                                                                                                                                                                                                                                                                                        |
 | No `audit-retention-purge` event in > ~2 days (dead-man) | The `@Scheduled` purge is stopped/failing. Check the BFF is up and `inspector.audit.retention-purge.enabled` is not `false`; look for `AUDIT_RETENTION_PURGE_ABORTED` (audit DB down → purge correctly did not run) and `AUDIT_DEFAULT_PARTITION_NONEMPTY` (rows in DEFAULT → create-ahead broken, nothing to drop). Data is over-retained, never wrongly deleted — safe to triage unhurried. |
-| Postgres unreachable / disk > 80% | §2a / §5; disk: check partition growth vs the sizing worksheet; confirm the retention purge is running (dead-man above) before extending |
-| All circuit breakers open | §2c — BFF egress, not the engines |
-| Break-glass login alert | Confirm it's expected (active P1 + IdP outage); otherwise treat as compromise: lock the account, rotate, review `breakGlass` audit rows |
-| SSE emitter errors spiking | Reverse-proxy buffering misconfig after a deploy (OPERATIONS §9 `prod-like` profile tests this); clients degrade to polling — not user-facing-critical |
+| Postgres unreachable / disk > 80%                        | §2a / §5; disk: check partition growth vs the sizing worksheet; confirm the retention purge is running (dead-man above) before extending                                                                                                                                                                                                                                                      |
+| All circuit breakers open                                | §2c — BFF egress, not the engines                                                                                                                                                                                                                                                                                                                                                             |
+| Break-glass login alert                                  | Confirm it's expected (active P1 + IdP outage); otherwise treat as compromise: lock the account, rotate, review `breakGlass` audit rows                                                                                                                                                                                                                                                       |
+| SSE emitter errors spiking                               | Reverse-proxy buffering misconfig after a deploy (OPERATIONS §9 `prod-like` profile tests this); clients degrade to polling — not user-facing-critical                                                                                                                                                                                                                                        |
 
 Paging route for everything above: the workflow platform team. Engine-health alarms (DLQ
 growth, executor starvation) route to the **engine's** owning team — the Inspector is the
@@ -231,10 +248,10 @@ docker/rollback-demo.sh demo-2026-07-12-a1b2c3d  # restores that tag's exact dig
 git push origin HEAD                            # publish the rollback commit
 ```
 
-This restores the *exact* previously-running images (no re-resolution of a floating tag —
+This restores the _exact_ previously-running images (no re-resolution of a floating tag —
 `:edge` may have moved since) and verifies the standard `/api/engines` 401 probe (DEMO-DEPLOY.md
 §"Troubleshooting a 502 / 504") before considering the rollback done. If that probe still
-fails, escalate to §2/§5 as normal — a rollback fixes a bad *image*, not a bad database state
+fails, escalate to §2/§5 as normal — a rollback fixes a bad _image_, not a bad database state
 or a Traefik/network issue.
 
 **Drilled:** 2026-07-13, `docker/deploy-demo.sh`/`docker/rollback-demo.sh` verified end-to-end

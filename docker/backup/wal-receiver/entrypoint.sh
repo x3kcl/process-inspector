@@ -20,6 +20,13 @@
 # (already 24h via the logical dump; this is a strict improvement, not the sole line of
 # defense).
 #
+# DECOMMISSIONING: a permanent slot means Postgres retains WAL FOREVER if this service is
+# ever removed without dropping the slot first — an orphaned slot silently grows the data
+# volume's disk usage without bound. If `wal-receiver` is ever permanently removed, first run
+# `docker exec process-inspector-demo-postgres-1 psql -U inspector -d inspector -c
+# "SELECT pg_drop_replication_slot('wal_receiver');"` (adjust the slot name to $PI_WAL_SLOT if
+# overridden) — see docs/RUNBOOK.md's Docker-native-backups section.
+#
 # REQUIRES: wal_level=replica (already the compose postgres service's pinned setting) and the
 # connecting role to carry the REPLICATION privilege — the bootstrap POSTGRES_USER-created
 # role has it implicitly per Postgres's own docs, confirmed empirically in this PR's

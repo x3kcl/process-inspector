@@ -28,6 +28,8 @@ jobs:
         run: mvn -B spotless:check
       - name: Security audit (env-ref secrets doctrine)
         run: ./scripts/security-audit.sh
+      - name: Shell syntax check (deploy/CI scripts)
+        run: ./scripts/shell-syntax-check.sh
 
   unit:
     runs-on: self-hosted
