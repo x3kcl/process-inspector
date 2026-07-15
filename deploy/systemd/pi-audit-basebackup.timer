@@ -1,0 +1,12 @@
+[Unit]
+Description=Run the Process Inspector audit-DB physical base backup weekly
+
+[Timer]
+# Sunday 04:00 UTC — a different day/time than pi-audit-backup.timer's nightly 02:30 UTC, so
+# the two never contend for the same I/O window (a physical base backup's `pg_basebackup` and
+# a logical `pg_dump` both read the live cluster; staggering them keeps that read load apart).
+OnCalendar=Sun *-*-* 04:00:00
+Persistent=true
+
+[Install]
+WantedBy=timers.target

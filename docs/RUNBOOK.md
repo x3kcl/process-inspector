@@ -147,6 +147,14 @@ procedure and verify `audit_entry` row counts against the pre-incident sizing wo
 The audit golden master is the thing being protected: verify its most recent rows survived
 (`SELECT max(ts) FROM audit_entry;`) and note any gap in the incident ticket.
 
+> **PITR tooling status (issue #201).** `deploy/pitr-drill.sh` +
+> `deploy/basebackup-audit-db.sh` exist and were rehearsed end-to-end against a disposable
+> Postgres — but continuous WAL archiving is **not yet activated** on the live demo container
+> (`deploy/README.md`'s "Activating WAL archiving" has the exact turn-on steps). Until that
+> activation has happened and a drill has run against real accumulated WAL history, the
+> executable restore path at 3 AM is still `deploy/restore-drill.sh` (the nightly logical
+> dump) — do not assume a WAL-based PITR window that isn't live yet.
+
 ## 6. Last resort: direct cURL against an engine
 
 When the Inspector is down/blocked but an engine needs an urgent fix. Only from hosts
