@@ -1,4 +1,14 @@
 #!/usr/bin/env bash
+# SUPERSEDED (issue #201-followup) for THIS repo's actual (Docker-Compose-based) demo
+# deployment — the demo now runs the `audit-basebackup` compose service in
+# docker/docker-compose.demo.yml instead (Docker-native: no host bind-mount, no host root
+# needed to install a timer, scheduled internally via busybox crond — see
+# docker/backup/audit-basebackup/ and deploy/README.md). This script is kept, UNMODIFIED
+# otherwise, because it documents a real prior design and may still be relevant for a
+# non-Compose deployment style (a bare-host Postgres reached via `docker exec`). Do not run
+# this against the hp04 demo host — it would race the compose service for the same
+# PI_BACKUP_DIR.
+#
 # basebackup-audit-db.sh — the PHYSICAL half of continuous PITR for the audit store
 # (issue #201). backup-audit-db.sh's nightly `pg_dump` is a LOGICAL dump: complete on its
 # own, but only as fresh as the last run (24h RPO). WAL archiving (docker-compose.demo.yml's

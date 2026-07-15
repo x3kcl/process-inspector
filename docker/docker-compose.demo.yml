@@ -52,21 +52,30 @@ services:
       - POSTGRES_PASSWORD=${POSTGRES_PASSWORD:-inspector}
     volumes:
       - inspector-demo-pgdata:/var/lib/postgresql/data
-      # WAL archive destination for continuous PITR (issue #201), mirroring the
-      # PI_BACKUP_DIR convention `backup-audit-db.sh`/`basebackup-audit-db.sh` already use —
-      # same second-disk-ideally host directory, a `wal-archive` subdir so logical dumps,
-      # physical basebackups and WAL segments don't collide on the host side.
-      - ${PI_BACKUP_DIR:-/var/backups/pi-audit}/wal-archive:/wal-archive
+      # Docker-native backups (issue #201-followup): a custom pg_hba.conf, extending the
+      # upstream image's own generated default with a `replication` entry that trusts the
+      # internal docker network under the SAME password requirement the image's existing
+      # catch-all `host all all all scram-sha-256` rule already applies to ordinary
+      # connections. Needed because `audit-basebackup` (pg_basebackup) and `wal-receiver`
+      # (pg_receivewal) now connect over the NETWORK from their own containers, not via a
+      # local docker-exec connection — verified empirically that the upstream default fails
+      # closed for a network replication connection without this. See
+      # docker/backup/postgres/pg_hba-demo.conf's header for the full rationale.
+      - ./backup/postgres/pg_hba-demo.conf:/etc/postgresql-custom/pg_hba.conf:ro
     # NOT applied by a routine `docker compose up -d` reconciliation on its own — `command:`
-    # only takes effect on a container RECREATE, and `archive_mode` is postmaster-context (a
-    # Postgres restart, however triggered). Shipping this config is issue #201's capability
-    # delivery; deliberately NOT wired into any auto-reconciling deploy path — activating it
-    # against the LIVE demo container is a separate, explicit, human-run step (see
-    # deploy/README.md's "Activating WAL archiving" and docs/RUNBOOK.md).
+    # only takes effect on a container RECREATE (a Postgres restart, however triggered).
+    # Activating this against the LIVE demo container is a separate, explicit, human-run step
+    # (see deploy/README.md's "Activating Docker-native backups" and docs/RUNBOOK.md).
     #   docker compose -f docker/docker-compose.demo.yml up -d postgres   # recreates + restarts Postgres
+    #
+    # issue #201-followup — SUPERSEDES issue #201's archive_mode/archive_command WAL-archiving
+    # config (removed below): continuous WAL capture now happens via the `wal-receiver`
+    # service's `pg_receivewal` (replication-protocol streaming, driven purely from
+    # `wal_level=replica` — archive_mode/archive_command are NOT needed for that mechanism,
+    # which is the whole point of the switch; see docker/backup/wal-receiver/entrypoint.sh).
     # wal_level=replica is `postgres:16-alpine`'s own compiled-in default already (verified
     # against a running 16.14 instance: `SHOW wal_level` → `replica`) — sufficient for
-    # `pg_basebackup`/WAL archiving without a separate `logical` bump this app doesn't need
+    # `pg_basebackup`/`pg_receivewal` without a separate `logical` bump this app doesn't need
     # (no logical-replication consumer exists). Pinned explicitly anyway so this file stays
     # correct even if a future base-image change ever lowered the compiled-in default.
     command:
@@ -74,28 +83,87 @@ services:
       - -c
       - wal_level=replica
       - -c
-      - archive_mode=on
-      # Idempotent copy: a re-tried archive of an already-copied segment is a no-op, never an
-      # overwrite — Postgres retries archive_command until it exits 0, and a partial/corrupt
-      # overwrite of a previously-good segment would be worse than a slow retry.
-      # KNOWN LIMITATION (this is PostgreSQL's own textbook example, with its own documented
-      # caveat, not something invented here): the check is non-atomic. If a cp is interrupted
-      # mid-write (OOM, disk full), the destination is left holding a corrupt partial file;
-      # `test ! -f` then sees it as "already archived" forever, and Postgres retries that
-      # segment indefinitely with no forward progress AND no automatic recovery — the corrupt
-      # file is never replaced or flagged. A production-hardened setup would use a
-      # tmpfile-then-atomic-rename `archive_command` (mirroring the `.partial`→`mv` idiom
-      # `backup-audit-db.sh`/`basebackup-audit-db.sh` already use) or a dedicated tool
-      # (pgBackRest/WAL-G). Accepted for this demo-scale setup; if `pg_stat_archiver` ever
-      # shows a stuck `last_failed_wal`, check for and manually clear a corrupt partial file
-      # at that path in the archive dir before it will progress again.
-      - -c
-      - archive_command=test ! -f /wal-archive/%f && cp %p /wal-archive/%f
+      - hba_file=/etc/postgresql-custom/pg_hba.conf
     healthcheck:
       test: ["CMD-SHELL", "pg_isready -h 127.0.0.1 -U inspector -d inspector"]
       interval: 5s
       timeout: 3s
       retries: 24
+    networks: [internal]
+    restart: unless-stopped
+
+  audit-backup:
+    # Docker-native nightly LOGICAL backup (issue #201-followup) — supersedes
+    # deploy/backup-audit-db.sh + deploy/systemd/pi-audit-backup.* for this compose-based demo
+    # deployment (see those files' own SUPERSEDED headers + deploy/README.md). Runs `pg_dump`
+    # over the NETWORK against `postgres:5432` (PGHOST/PGUSER/PGPASSWORD/PGDATABASE below —
+    # standard libpq env vars pg_dump reads natively), NOT `docker exec`. Scheduled by busybox
+    # crond (confirmed present in postgres:16-alpine — see
+    # docker/backup/audit-backup/entrypoint.sh) at the same 02:30 UTC cadence as the systemd
+    # timer it replaces. On-demand/manual run:
+    #   docker compose -f docker/docker-compose.demo.yml run --rm audit-backup /scripts/backup-once.sh
+    image: postgres:16-alpine
+    environment:
+      - PGHOST=postgres
+      - PGUSER=inspector
+      - PGPASSWORD=${POSTGRES_PASSWORD:-inspector}
+      - PGDATABASE=inspector
+      - PI_BACKUP_RETENTION_DAYS=35
+    volumes:
+      - ./backup/audit-backup:/scripts:ro
+      - inspector-logical-dumps:/dumps
+    entrypoint: ["/scripts/entrypoint.sh"]
+    depends_on:
+      postgres:
+        condition: service_healthy
+    networks: [internal]
+    restart: unless-stopped
+
+  audit-basebackup:
+    # Docker-native weekly PHYSICAL base backup (issue #201-followup) — supersedes
+    # deploy/basebackup-audit-db.sh + deploy/systemd/pi-audit-basebackup.*. Runs
+    # `pg_basebackup` over the NETWORK (same PGHOST/PGUSER/PGPASSWORD as `audit-backup`),
+    # requires the `postgres` service's pg_hba override above (a plain network replication
+    # connection is refused by the upstream image's default pg_hba.conf — verified
+    # empirically). Sunday 04:00 UTC, same cadence as the systemd timer it replaces.
+    # On-demand/manual run:
+    #   docker compose -f docker/docker-compose.demo.yml run --rm audit-basebackup /scripts/basebackup-once.sh
+    image: postgres:16-alpine
+    environment:
+      - PGHOST=postgres
+      - PGUSER=inspector
+      - PGPASSWORD=${POSTGRES_PASSWORD:-inspector}
+      - PI_BASEBACKUP_RETENTION_COUNT=3
+    volumes:
+      - ./backup/audit-basebackup:/scripts:ro
+      - inspector-basebackups:/basebackups
+    entrypoint: ["/scripts/entrypoint.sh"]
+    depends_on:
+      postgres:
+        condition: service_healthy
+    networks: [internal]
+    restart: unless-stopped
+
+  wal-receiver:
+    # Docker-native continuous WAL capture (issue #201-followup) — supersedes issue #201's
+    # archive_mode/archive_command mechanism (removed from the `postgres` service above).
+    # Streams the replication protocol via `pg_receivewal` against `postgres:5432`, backed by
+    # a permanent physical replication slot so Postgres retains WAL for as long as this
+    # service is down (proven safe to restart — see docker/backup/wal-receiver/entrypoint.sh's
+    # header and this PR's kill/restart rehearsal notes in docs/IMPLEMENTATION-PLAN.md).
+    image: postgres:16-alpine
+    environment:
+      - PGHOST=postgres
+      - PGUSER=inspector
+      - PGPASSWORD=${POSTGRES_PASSWORD:-inspector}
+      - PI_WAL_SLOT=wal_receiver
+    volumes:
+      - ./backup/wal-receiver:/scripts:ro
+      - inspector-wal-archive:/wal-archive
+    entrypoint: ["/scripts/entrypoint.sh"]
+    depends_on:
+      postgres:
+        condition: service_healthy
     networks: [internal]
     restart: unless-stopped
 
@@ -183,6 +251,11 @@ services:
 
 volumes:
   inspector-demo-pgdata:
+  # Docker-native backup storage (issue #201-followup) — named volumes, NOT host
+  # bind-mounts: no host directory to create/chown, no sudo needed. See deploy/README.md.
+  inspector-logical-dumps:      # audit-backup's nightly pg_dump output + .sha256 sidecars
+  inspector-basebackups:        # audit-basebackup's weekly pg_basebackup output + sidecars
+  inspector-wal-archive:        # wal-receiver's continuously streamed WAL segments
 
 networks:
   internal:

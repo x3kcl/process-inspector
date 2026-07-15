@@ -1,3 +1,10 @@
+# SUPERSEDED (issue #201-followup) for THIS repo's actual (Docker-Compose-based) demo
+# deployment — the demo now runs the `audit-basebackup` compose service in
+# docker/docker-compose.demo.yml instead (Docker-native: no host bind-mount, no host root
+# needed to install a timer — see docker/backup/audit-basebackup/ and deploy/README.md). Kept,
+# UNMODIFIED otherwise, for a non-Compose deployment style. Do not install this on the hp04
+# demo host — it would race the compose service for the same PI_BACKUP_DIR.
+#
 # Weekly PHYSICAL base backup of the BFF's audit Postgres — the anchor for continuous PITR
 # (issue #201). Complements pi-audit-backup.timer's nightly LOGICAL dump; see
 # basebackup-audit-db.sh's header for why this one is physical + weekly instead of nightly.

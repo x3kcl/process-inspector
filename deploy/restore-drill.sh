@@ -1,23 +1,41 @@
 #!/usr/bin/env bash
 # restore-drill.sh — make the "quarterly restore drill" (OPERATIONS §4) an EXECUTABLE proof
 # instead of a promise. A backup you have never restored is a backup you do not have. This
-# takes a dump produced by backup-audit-db.sh, restores it into a THROWAWAY Postgres container
-# (never the live DB), and verifies the audit store came back intact — the partitioned
-# audit_entry table exists, is itself partitioned, and carries rows.
+# takes a dump produced by `audit-backup` (the Docker-native compose service, issue
+# #201-followup) — or, for a host still running the superseded systemd mechanism (see
+# deploy/systemd/pi-audit-backup.*), one produced by `backup-audit-db.sh` — and restores it
+# into a THROWAWAY Postgres container (never the live DB), verifying the audit store came back
+# intact: the partitioned audit_entry table exists, is itself partitioned, and carries rows.
 #
 # Safe by construction: it dials no live database and mutates nothing outside its own scratch
-# container, which is always torn down. Run it after wiring the nightly backup, and on a
-# calendar cadence, so a silently-corrupt dump is caught in a drill, not in an incident.
+# container, which is always torn down. Run it after wiring the backup, and on a calendar
+# cadence, so a silently-corrupt dump is caught in a drill, not in an incident.
 #
-#   deploy/restore-drill.sh                 # newest dump in PI_BACKUP_DIR
-#   deploy/restore-drill.sh /path/to.dump   # a specific dump
+# STORAGE SOURCE (issue #201-followup — Docker-native backups):
+#   Dumps now live in a named Docker volume (`inspector-logical-dumps` by default), written by
+#   the `audit-backup` compose service — no host bind-mount, no host-path visibility. This
+#   script reads that volume DIRECTLY: the throwaway Postgres container mounts it read-only
+#   and `pg_restore` is pointed at the file inside the container (no host copy needed — named
+#   volumes are mountable by name regardless of host-path visibility). A one-shot Alpine
+#   helper picks the target file (newest, or PI_DUMP_FILE) and verifies its checksum before
+#   the restore.
 #
-# Env: PI_BACKUP_DIR (default /var/backups/pi-audit), PI_DB / PI_DB_USER (default inspector).
+#   Legacy/manual use: if you pass a PATH that exists on the host filesystem, that exact file
+#   is used instead (unchanged host-path behavior, for anyone still on the superseded
+#   deploy/systemd/pi-audit-backup.* mechanism or a manually-copied-out dump).
+#
+#   deploy/restore-drill.sh                       # newest dump in the inspector-logical-dumps volume
+#   deploy/restore-drill.sh inspector-20260715...  # a specific FILENAME within that volume
+#   deploy/restore-drill.sh /path/to.dump          # a specific HOST PATH (legacy mode)
+#
+# Env: PI_DUMPS_VOLUME (default inspector-logical-dumps), PI_DUMP_FILE (pick a specific
+#      filename within the volume instead of the newest — same effect as the positional-arg
+#      filename form), PI_DB / PI_DB_USER (default inspector).
 set -euo pipefail
 
-PI_BACKUP_DIR="${PI_BACKUP_DIR:-/var/backups/pi-audit}"
 PI_DB="${PI_DB:-inspector}"
 PI_DB_USER="${PI_DB_USER:-inspector}"
+PI_DUMPS_VOLUME="${PI_DUMPS_VOLUME:-inspector-logical-dumps}"
 SCRATCH="pi-restore-drill-$$"
 PGIMAGE="postgres:16-alpine"
 
@@ -28,24 +46,60 @@ trap cleanup EXIT
 
 command -v docker >/dev/null || die "docker not found on PATH"
 
-DUMP="${1:-}"
-if [[ -z "$DUMP" ]]; then
-  DUMP="$(ls -1t "$PI_BACKUP_DIR"/${PI_DB}-*.dump 2>/dev/null | head -1 || true)"
-  [[ -n "$DUMP" ]] || die "no ${PI_DB}-*.dump found in $PI_BACKUP_DIR (run backup-audit-db.sh first)"
-fi
-[[ -f "$DUMP" ]] || die "dump not found: $DUMP"
-log "drilling $DUMP"
+ARG="${1:-}"
+USE_VOLUME=1
+DUMP_HOST_PATH=""
+DUMP_FILENAME="${PI_DUMP_FILE:-}"
 
-# Integrity: if a checksum was recorded at backup time, it must still match.
-if [[ -f "${DUMP}.sha256" ]] && command -v sha256sum >/dev/null; then
-  ( cd "$(dirname "$DUMP")" && sha256sum -c "$(basename "$DUMP").sha256" ) >/dev/null \
-    || die "checksum mismatch — the dump is corrupt"
-  log "checksum OK"
+if [[ -n "$ARG" && -f "$ARG" ]]; then
+  # Legacy mode: an explicit host path that actually exists — unchanged behavior.
+  USE_VOLUME=0
+  DUMP_HOST_PATH="$ARG"
+elif [[ -n "$ARG" ]]; then
+  # Not a host path — treat it as a filename WITHIN the named volume.
+  DUMP_FILENAME="$ARG"
+fi
+
+if [[ "$USE_VOLUME" == "1" ]]; then
+  docker volume inspect "$PI_DUMPS_VOLUME" >/dev/null 2>&1 \
+    || die "no Docker volume '$PI_DUMPS_VOLUME' (run 'docker compose ... run --rm audit-backup /scripts/backup-once.sh' first, or pass a host path / PI_DUMPS_VOLUME)"
+
+  log "resolving target dump inside volume '$PI_DUMPS_VOLUME'"
+  # One-shot helper: picks the target file (newest ${PI_DB}-*.dump, or the exact
+  # DUMP_FILENAME if given), verifies its checksum if a sidecar exists, and prints the
+  # resolved filename on success — nothing is copied to the host.
+  SELECTED="$(docker run --rm -v "${PI_DUMPS_VOLUME}:/dumps:ro" "$PGIMAGE" sh -c "
+    set -eu
+    if [ -n '${DUMP_FILENAME}' ]; then
+      f='/dumps/${DUMP_FILENAME}'
+    else
+      f=\$(ls -1t /dumps/${PI_DB}-*.dump 2>/dev/null | head -1)
+    fi
+    [ -n \"\$f\" ] && [ -f \"\$f\" ] || { echo 'NOFILE' >&2; exit 1; }
+    if [ -f \"\${f}.sha256\" ]; then
+      ( cd /dumps && sha256sum -c \"\$(basename \"\${f}.sha256\")\" ) >&2 || { echo 'BADSUM' >&2; exit 1; }
+    fi
+    basename \"\$f\"
+  ")" || die "no matching dump found (or checksum mismatch) in volume '$PI_DUMPS_VOLUME'"
+  log "selected $SELECTED (checksum OK if a sidecar was present)"
+else
+  DUMP="$DUMP_HOST_PATH"
+  log "drilling $DUMP (legacy host-path mode)"
+  if [[ -f "${DUMP}.sha256" ]] && command -v sha256sum >/dev/null; then
+    ( cd "$(dirname "$DUMP")" && sha256sum -c "$(basename "$DUMP").sha256" ) >/dev/null \
+      || die "checksum mismatch — the dump is corrupt"
+    log "checksum OK"
+  fi
 fi
 
 log "starting throwaway Postgres ($PGIMAGE) as '$SCRATCH'"
-docker run -d --name "$SCRATCH" -e POSTGRES_PASSWORD=drill -e POSTGRES_USER="$PI_DB_USER" \
-  -e POSTGRES_DB="$PI_DB" "$PGIMAGE" >/dev/null
+if [[ "$USE_VOLUME" == "1" ]]; then
+  docker run -d --name "$SCRATCH" -e POSTGRES_PASSWORD=drill -e POSTGRES_USER="$PI_DB_USER" \
+    -e POSTGRES_DB="$PI_DB" -v "${PI_DUMPS_VOLUME}:/dumps:ro" "$PGIMAGE" >/dev/null
+else
+  docker run -d --name "$SCRATCH" -e POSTGRES_PASSWORD=drill -e POSTGRES_USER="$PI_DB_USER" \
+    -e POSTGRES_DB="$PI_DB" "$PGIMAGE" >/dev/null
+fi
 
 # Bounded readiness wait. The postgres image runs a TEMPORARY server during first-boot init
 # (create user/db, run init scripts) and then restarts — a single pg_isready/SELECT can catch
@@ -66,8 +120,13 @@ done
 log "restoring…"
 # --no-owner/--no-privileges: the drill role differs from prod; we are proving DATA + SCHEMA
 # restorability, not the role grants (those are deploy/sql/audit-roles.sql, applied separately).
-docker exec -i "$SCRATCH" pg_restore --no-owner --no-privileges -U "$PI_DB_USER" -d "$PI_DB" < "$DUMP" \
-  || die "pg_restore reported errors"
+if [[ "$USE_VOLUME" == "1" ]]; then
+  docker exec "$SCRATCH" pg_restore --no-owner --no-privileges -U "$PI_DB_USER" -d "$PI_DB" "/dumps/$SELECTED" \
+    || die "pg_restore reported errors"
+else
+  docker exec -i "$SCRATCH" pg_restore --no-owner --no-privileges -U "$PI_DB_USER" -d "$PI_DB" < "$DUMP" \
+    || die "pg_restore reported errors"
+fi
 
 q() { docker exec "$SCRATCH" psql -tAqX -U "$PI_DB_USER" -d "$PI_DB" -c "$1"; }
 

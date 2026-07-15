@@ -1,3 +1,6 @@
+# SUPERSEDED (issue #201-followup) — see pi-audit-backup.service's header. The compose-based
+# demo now schedules this internally via the `audit-backup` service's busybox crond, same
+# 02:30 UTC cadence, no systemd timer needed. Kept for a non-Compose deployment style.
 [Unit]
 Description=Run the Process Inspector audit-DB backup nightly
 

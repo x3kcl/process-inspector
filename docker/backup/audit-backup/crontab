@@ -1,0 +1,5 @@
+# Nightly logical backup, same cadence as the systemd timer it replaces
+# (deploy/systemd/pi-audit-backup.timer: 02:30 UTC daily).
+# Output redirected to /proc/1/fd/{1,2} so cron job output shows up in `docker logs
+# <container>` — PID 1 in this container is crond itself (entrypoint.sh execs `crond -f`).
+30 2 * * * /scripts/backup-once.sh >>/proc/1/fd/1 2>>/proc/1/fd/2
