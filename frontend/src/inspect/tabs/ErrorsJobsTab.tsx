@@ -543,16 +543,27 @@ function JobActions({
 
   if (lane === 'timer') {
     return (
-      <InlineConfirm
-        meta={VERBS.triggerTimer}
-        gate={gateFor(VERBS.triggerTimer)}
-        confirmText={`Fire timer for job ${job.id ?? '?'}?`}
-        twoStep={needsTwoStepConfirm(VERBS.triggerTimer, environment)}
-        pending={action.isPending}
-        onConfirm={() => {
-          run(VERBS.triggerTimer.verb)
-        }}
-      />
+      <span className="action-slot">
+        <InlineConfirm
+          meta={VERBS.triggerTimer}
+          gate={gateFor(VERBS.triggerTimer)}
+          confirmText={`Fire timer for job ${job.id ?? '?'}?`}
+          twoStep={needsTwoStepConfirm(VERBS.triggerTimer, environment)}
+          pending={action.isPending}
+          onConfirm={() => {
+            run(VERBS.triggerTimer.verb)
+          }}
+        />
+        {/* Issue #214: firing the timer only advances the retry schedule — it does nothing
+            about whatever is making the retry fail, and it's IRREVERSIBLE (no way to give
+            the attempt back). The reversibility note already says "no way back" in the
+            button's title, but that's hover-only; this is the same warning made visible
+            BEFORE the click, not discoverable only from the retries counter dropping after. */}
+        <ActionHint
+          tone="info"
+          text="Only advances the retry schedule — it won't fix whatever made this job fail, and the attempt can't be given back."
+        />
+      </span>
     )
   }
 
