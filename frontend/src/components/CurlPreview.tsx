@@ -1,6 +1,8 @@
 import { useState } from 'react'
 import { useQuery } from '@tanstack/react-query'
 import type { ActionCurlResponse } from '../api/actions'
+import type { Gate } from '../actions/catalog'
+import { ActionHint } from './ActionHint'
 import { CopyButton } from './CopyButton'
 
 interface Props {
@@ -15,6 +17,14 @@ interface Props {
    * fetchCaseActionCurl bound to their own path params.
    */
   fetchCurl: () => Promise<ActionCurlResponse>
+  /**
+   * Issue #213: when this preview sits next to a gated action (e.g. the tier-0 inline
+   * retry flow), pass that SAME gate so the toggle greys with a reason like its sibling
+   * button instead of staying clickable and failing opaquely with a bare 403 once opened.
+   * Callers whose CurlPreview only renders inside an already-gated surface (a modal that
+   * cannot open without the underlying action being permitted) can omit this.
+   */
+  gate?: Gate
 }
 
 /**
@@ -25,29 +35,41 @@ interface Props {
  * the operator opens the toggle) and re-fetched when queryKey changes, so what is shown
  * always matches what Confirm will send.
  */
-export function CurlPreview({ queryKey, fetchCurl }: Props) {
+export function CurlPreview({ queryKey, fetchCurl, gate }: Props) {
   const [open, setOpen] = useState(false)
+  const locked = gate?.enabled === false
+  // A gate can flip mid-session (e.g. #208's identity-switch scenario) while the preview
+  // is already open — `expanded` is the single source of truth for both the visible label
+  // and aria-expanded, so neither can drift from whether the body is actually rendered.
+  const expanded = open && !locked
   const query = useQuery({
     queryKey: ['action-curl', ...queryKey],
     queryFn: fetchCurl,
-    enabled: open,
+    enabled: expanded,
     staleTime: Infinity,
     retry: false,
   })
+  const hintId = `curl-preview-hint-${queryKey.join('-')}`
 
   return (
     <div className="curl-preview">
       <button
         type="button"
         className="curl-toggle"
-        aria-expanded={open}
+        disabled={locked}
+        aria-expanded={expanded}
+        aria-describedby={locked ? hintId : undefined}
+        title={locked ? (gate.detail ?? gate.reason) : undefined}
         onClick={() => {
           setOpen((prev) => !prev)
         }}
       >
-        {open ? 'Hide cURL' : 'Show as cURL'}
+        {expanded ? 'Hide cURL' : 'Show as cURL'}
       </button>
-      {open && (
+      {locked && gate.reason !== undefined && (
+        <ActionHint id={hintId} text={gate.reason} tone="gate" />
+      )}
+      {expanded && (
         <div className="curl-preview-body">
           {query.isPending && <p className="zero-state">Rendering the request…</p>}
           {query.isError && (

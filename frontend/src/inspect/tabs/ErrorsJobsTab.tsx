@@ -450,9 +450,13 @@ function JobActions({
           }}
         />
         {/* Issue #103: the tier-0 inline retry flow gets the same server-computed "Show as
-            cURL" every modal-based verb already carries — never client-generated. */}
+            cURL" every modal-based verb already carries — never client-generated.
+            Issue #213: gated with the SAME gate as the InlineConfirm above it, so a
+            RESPONDER-floor lock reads on this toggle too instead of opening and failing
+            opaquely with a bare 403. */}
         <CurlPreview
           queryKey={['instance', engineId, instanceId, VERBS.retryJob.verb, job.id ?? '']}
+          gate={gateFor(VERBS.retryJob)}
           fetchCurl={() =>
             fetchActionCurl(engineId, instanceId, VERBS.retryJob.verb, { jobId: job.id })
           }
