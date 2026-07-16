@@ -263,8 +263,13 @@ for (const m of MISSIONS) {
   const r = await agent(testerPrompt(m, MISSION_USER[m], effectiveBrief), {
     model: TESTER_MODEL, schema: TESTER_SCHEMA, label: `tester:${m}`, phase: 'Missions',
   })
+  // The synthetic task 1 is authoritative — drop any n:1 the tester returned anyway
+  // despite the RUNNER NOTE (an LLM not perfectly following the skip instruction),
+  // rather than risk two competing task-1 entries confusing the reconciler downstream.
   const rWithPreflight =
-    r !== null && m6PreflightBlocked !== null ? { ...r, tasks: [m6PreflightBlocked, ...(r.tasks ?? [])] } : r
+    r !== null && m6PreflightBlocked !== null
+      ? { ...r, tasks: [m6PreflightBlocked, ...(r.tasks ?? []).filter((t) => t.n !== 1)] }
+      : r
   results.push(rWithPreflight ?? { mission: m, tasks: [], protocolNotes: ['tester died'] })
 
   // post-stage hooks: ground truth + restoration
