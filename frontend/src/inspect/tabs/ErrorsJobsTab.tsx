@@ -546,17 +546,40 @@ function JobActions({
   }
 
   if (lane === 'timer') {
+    // Issue #214: the timer lane holds BOTH ordinary scheduled waits AND a failing job
+    // parked here between retry attempts (LANE_META's own "including" wording above) — an
+    // exceptionMessage from its last attempt is the signal that this specific job is the
+    // latter, not a guess. The two cases warrant different warnings: firing a genuine
+    // retry-delay timer wastes an attempt if the cause hasn't changed; firing an ordinary
+    // wait just skips ahead, which is a real (if smaller) surprise of its own.
+    const isRetryDelay = job.exceptionMessage !== undefined
     return (
-      <InlineConfirm
-        meta={VERBS.triggerTimer}
-        gate={gateFor(VERBS.triggerTimer)}
-        confirmText={`Fire timer for job ${job.id ?? '?'}?`}
-        twoStep={needsTwoStepConfirm(VERBS.triggerTimer, environment)}
-        pending={action.isPending}
-        onConfirm={() => {
-          run(VERBS.triggerTimer.verb)
-        }}
-      />
+      <>
+        <InlineConfirm
+          meta={VERBS.triggerTimer}
+          gate={gateFor(VERBS.triggerTimer)}
+          confirmText={`Fire timer for job ${job.id ?? '?'}?`}
+          twoStep={needsTwoStepConfirm(VERBS.triggerTimer, environment)}
+          pending={action.isPending}
+          onConfirm={() => {
+            run(VERBS.triggerTimer.verb)
+          }}
+        />
+        {/* The reversibility note already says "no way back" in the button's title, but
+            that's hover-only; this is the same warning made visible BEFORE the click, not
+            discoverable only from the retries counter dropping after. A sibling, not nested
+            inside InlineConfirm's own .action-slot span (which it already renders itself
+            when gated) — same convention as the dead-letter lane's InlineConfirm +
+            CurlPreview siblings above. */}
+        <ActionHint
+          tone="info"
+          text={
+            isRetryDelay
+              ? "Only advances the retry schedule — it won't fix whatever made this job fail, and the attempt can't be given back."
+              : "Skips the rest of the scheduled wait and continues immediately — this can't be given back."
+          }
+        />
+      </>
     )
   }
 
