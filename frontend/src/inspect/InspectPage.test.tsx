@@ -5,6 +5,7 @@
 // the engines list doesn't contain it), producing two contradictory claims about the same
 // request in one screen. The fix suppresses the second banner once the first already
 // explains the root cause.
+import { QueryClient, QueryClientProvider } from '@tanstack/react-query'
 import { cleanup, render, screen } from '@testing-library/react'
 import { MemoryRouter, Route, Routes } from 'react-router'
 import { afterEach, describe, expect, it, vi } from 'vitest'
@@ -54,12 +55,20 @@ afterEach(() => {
 const KNOWN_ENGINE: EngineDto = { id: 'engine-a', name: 'Engine A', environment: 'dev' }
 
 function renderPage(engineId: string) {
+  // The default tab (VariablesTab) lazy-loads AFTER this synchronous render and isn't
+  // awaited by these assertions, but wrap in a real provider with every query disabled
+  // as a safety net: if it (or anything else in the tree) ever does mount within a test's
+  // lifetime, it finds a provider instead of crashing, and `enabled: false` means none of
+  // its own queries actually fire a fetch.
+  const client = new QueryClient({ defaultOptions: { queries: { retry: false, enabled: false } } })
   render(
-    <MemoryRouter initialEntries={[`/inspect/${engineId}/pi-1`]}>
-      <Routes>
-        <Route path="/inspect/:engineId/:instanceId" element={<InspectPage />} />
-      </Routes>
-    </MemoryRouter>,
+    <QueryClientProvider client={client}>
+      <MemoryRouter initialEntries={[`/inspect/${engineId}/pi-1`]}>
+        <Routes>
+          <Route path="/inspect/:engineId/:instanceId" element={<InspectPage />} />
+        </Routes>
+      </MemoryRouter>
+    </QueryClientProvider>,
   )
 }
 
