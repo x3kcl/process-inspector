@@ -158,7 +158,15 @@ export function InspectPage() {
           </div>
         )}
         {vitals.isPending && <p className="zero-state">Loading instance vitals…</p>}
-        {vitals.isError && (
+        {/* #212: a 404 from an unregistered engineId and a 404 from a real engine that
+            genuinely has no such instance are BOTH plain HTTP 404s to instanceLoadFailureCopy
+            (it only sees the status code), so its "The engine answered — confirmed not-found"
+            framing was rendering directly alongside the "Unknown engine" banner above — two
+            contradictory claims about the same request in one screen. The registry-level case
+            is already fully explained by that banner; suppress the second, instance-existence-
+            specific one only then (an engine we DON'T yet know about — engines.isPending/
+            isError — still shows it, same as before). */}
+        {vitals.isError && !(engines.isSuccess && engine === undefined) && (
           // W2 #4 (T12): coverage-parameterized honesty — definitive when the engine
           // answered (404), hedged ONLY when it did not; never both at once.
           <div className="error-banner" role="alert">
