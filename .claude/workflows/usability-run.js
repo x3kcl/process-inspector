@@ -10,17 +10,24 @@ export const meta = {
 }
 
 // ---- parameters (all overridable via args) ------------------------------------------
-const REPO = args?.repo ?? '/home/flapci/workspace/pi-usability'
-const APP = args?.app ?? 'http://localhost:5173'
-const BFF = args?.bff ?? 'http://localhost:8085'
-const RESULTS_DIR = args?.resultsDir ?? `${REPO}/docs/usability/results/latest`
-const RUN_ID = args?.runId ?? 'adhoc'
+// The Workflow tool's `args` input arrives JSON-stringified rather than as a live object
+// in some invocation paths (confirmed by direct diagnostic 2026-07-16) — `args?.foo` on a
+// string is always undefined, so every override silently fell back to its script default
+// with no error. This is the actual root cause behind issue #215's app/bff/runId mismatch;
+// the earlier fix only added the log() tripwire below, which reports the (still-wrong)
+// resolved values without explaining why they were wrong. Parse defensively either way.
+const ARGS = typeof args === 'string' ? JSON.parse(args) : args
+const REPO = ARGS?.repo ?? '/home/flapci/workspace/pi-usability'
+const APP = ARGS?.app ?? 'http://localhost:5173'
+const BFF = ARGS?.bff ?? 'http://localhost:8085'
+const RESULTS_DIR = ARGS?.resultsDir ?? `${REPO}/docs/usability/results/latest`
+const RUN_ID = ARGS?.runId ?? 'adhoc'
 // Wave order is load-bearing: read-only first, mutating serialized, fleet-staging last,
 // M7 after M1/M3/M4 (it consumes their audit rows). See GOAL-CATALOG "RUN PROTOCOL".
 // M11 added (issue #205 usability-coverage extension) — wave 1, read-only, same class as
 // M10's own addition in #98; missing from this list until now (a real gap, not deliberate).
-const MISSIONS = args?.missions ?? ['M1', 'M2', 'M9', 'M10', 'M11', 'M3', 'M4', 'M7', 'M5', 'M6', 'M8']
-const TESTER_MODEL = args?.testerModel ?? 'sonnet'
+const MISSIONS = ARGS?.missions ?? ['M1', 'M2', 'M9', 'M10', 'M11', 'M3', 'M4', 'M7', 'M5', 'M6', 'M8']
+const TESTER_MODEL = ARGS?.testerModel ?? 'sonnet'
 
 const MISSION_USER = {
   M1: 'responder', M2: 'responder', M9: 'responder', M10: 'viewer', M11: 'viewer',
@@ -165,7 +172,7 @@ DO, in order:
      old ones): do NOT silently pick one. Terminate every extra one EXCEPT the
      most-recently-started (same "freshest wins" convention already used for
      PARENT_BK/ACTIVE_ID resolution and OOB_RESOLVE_CMD's target), so exactly one
-     survives under that businessKey — then note the cleanup in `notes` so it's visible,
+     survives under that businessKey — then note the cleanup in "notes" so it's visible,
      not silent. The goal is that a mission's "the sacrificial case" always resolves to
      exactly one instance, both for a fresh stack and a repeatedly-reused one.
    - uxrun-m3-1 and uxrun-m3-2: two demoUserTask instances on engine-a (businessKeys exactly those).
