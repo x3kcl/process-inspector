@@ -1,6 +1,6 @@
 export const meta = {
   name: 'usability-run',
-  description: 'Goal-based usability run: stage fixtures, drive 9 incident missions with naive Sonnet testers via Playwright MCP, ground-truth-verify, reconcile to a gate verdict',
+  description: 'Goal-based usability run: stage fixtures, drive 11 incident missions with naive Sonnet testers via Playwright MCP, ground-truth-verify, reconcile to a gate verdict',
   whenToUse: 'Prove the inspector ergonomics against docs/usability/GOAL-CATALOG.md — on demand or nightly. Requires the dev stack (engines + BFF :8085 + Vite :5173) up and the playwright MCP connected.',
   phases: [
     { title: 'Stage', detail: 'verify stack, seed, extract placeholders, seed uxrun cohorts' },
@@ -17,11 +17,13 @@ const RESULTS_DIR = args?.resultsDir ?? `${REPO}/docs/usability/results/latest`
 const RUN_ID = args?.runId ?? 'adhoc'
 // Wave order is load-bearing: read-only first, mutating serialized, fleet-staging last,
 // M7 after M1/M3/M4 (it consumes their audit rows). See GOAL-CATALOG "RUN PROTOCOL".
-const MISSIONS = args?.missions ?? ['M1', 'M2', 'M9', 'M10', 'M3', 'M4', 'M7', 'M5', 'M6', 'M8']
+// M11 added (issue #205 usability-coverage extension) — wave 1, read-only, same class as
+// M10's own addition in #98; missing from this list until now (a real gap, not deliberate).
+const MISSIONS = args?.missions ?? ['M1', 'M2', 'M9', 'M10', 'M11', 'M3', 'M4', 'M7', 'M5', 'M6', 'M8']
 const TESTER_MODEL = args?.testerModel ?? 'sonnet'
 
 const MISSION_USER = {
-  M1: 'responder', M2: 'responder', M9: 'responder', M10: 'viewer',
+  M1: 'responder', M2: 'responder', M9: 'responder', M10: 'viewer', M11: 'viewer',
   M3: 'operator', M4: 'operator', M7: 'operator',
   M5: 'viewer', M6: 'operator', M8: 'registry-admin',
 }
@@ -142,6 +144,7 @@ DO, in order:
    - LEGACY_ONLY_ID: an instance id that exists ONLY on engine-legacy (:8084) — e.g. a demoOrder completed instance there; verify it is absent from a/b/7.
    - CMMN_ENGINE: "engine-a".
    - PROTECTED_ID / MIGRATE_ID / TOUCHED_ID: see below.
+   - DUP_KEY (M11 / F-G11): no natural duplicate businessKey exists in the standard seed. Start TWO fresh acmeOrderOrchestrator instances on engine-a sharing one EXPLICIT businessKey "uxrun-dup-<short-random-suffix>" (verify both exist and share that exact key). Set DUP_KEY to that shared businessKey.
 5. Seed run cohorts over engine REST (idempotent-ish, tag by businessKey):
    - uxrun-m3-1 and uxrun-m3-2: two demoUserTask instances on engine-a (businessKeys exactly those).
    - uxrun-m4-1..8: eight demoFailingPayment instances on engine-a (amount 100, divisor 0) with those businessKeys — they dead-letter in ~40s.
