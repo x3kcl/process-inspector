@@ -75,9 +75,10 @@ COVERS: R-UXQ-13/a/b/c · R-SEM-09/a/b · R-NFR-06 · R-AUD-07 · R-SAFE-02 · r
 STAGING: standard seed; runner extracts {{ACTIVE_ID}} (ACTIVE demoUserTask instance),
 {{JSON_ID}} (an ACME instance with a structured/json variable, e.g. acmeVendorEnrichment),
 and prepares the colleague-simulation command {{OOB_MUTATION_CMD}} (out-of-band REST edit
-of the same variable, attributed to another dev user) and {{OOB_RESOLVE_CMD}} (retries the
-job on the second sacrificial instance as another user). Sacrificial F-G10 cohort tagged
-`uxrun-m3-*` for the destructive-comprehension question.
+of the same variable, attributed to another dev user) and {{OOB_RESOLVE_CMD}} (issue #226 —
+terminates the `uxrun-m3-2` sacrificial instance as another user, resolving it before the
+tester tries the same). Sacrificial F-G10 cohort tagged `uxrun-m3-*` for the
+destructive-comprehension question and the already-resolved-verb guard (R-SEM-09/b).
 
 TESTER BRIEF:
 
@@ -108,6 +109,15 @@ TESTER BRIEF:
 >    back? Answer BEFORE opening any final confirmation, from what the menus/dialogs
 >    tell you, and cite the wording. Then actually pause+resume it, but for (c) open the
 >    dialog, read it, and CANCEL.
+> 7. Last one, still as yourself. Case `uxrun-m3-2` needs to be shut down tonight per
+>    ops — the ticket says kill it permanently. FIRST — before you look at the case at
+>    all — run this command in your terminal (it simulates a colleague who got the exact
+>    same ticket and already acted on it): `{{OOB_RESOLVE_CMD}}`. THEN open the case and
+>    try to do the same thing yourself, the way you would permanently end a case. Report
+>    exactly what the tool tells you when you try — does it let you fire the action
+>    again on a case that's already ended, or does it tell you something different?
+>    Then find out WHO ended it and WHEN, using whatever the tool gives you (you may
+>    need to look beyond the action button itself).
 
 ## M4 · "Bad deploy cleanup" — wave 2 (serialized) · user `operator`
 
