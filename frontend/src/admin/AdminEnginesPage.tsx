@@ -340,7 +340,22 @@ function EngineRow({ engine, probing, onEdit, onProbe, onLifecycle }: RowProps) 
       <td>
         <span className={`env-badge env-${env}`}>{env.toUpperCase()}</span>
       </td>
-      <td>{LIFECYCLE_LABEL[lifecycle] ?? lifecycle}</td>
+      <td>
+        {lifecycle === 'probe_failed' ? (
+          // Issue #223: the SSRF-allowlist rejection (a pre-dial, submitted-URL-only check)
+          // can safely give a specific reason — nothing was dialled. A probe failure happens
+          // AFTER a real dial, so the connect exception itself stays server-side (topology
+          // oracle risk: differing failure text would let a registry-admin fingerprint what's
+          // reachable on the BFF's internal network). What CAN be surfaced safely is a
+          // generic next step + a pointer to where the real detail now actually lives
+          // (server-side audit trail — previously discarded, fixed alongside this).
+          <span title="The BFF could not reach or version-check this engine. Verify the base URL, port, and that the engine is actually running and network-reachable from the BFF host. The specific connection error is recorded server-side in this engine's audit trail (not shown here to avoid leaking internal network details through a UI response).">
+            {LIFECYCLE_LABEL[lifecycle]}
+          </span>
+        ) : (
+          (LIFECYCLE_LABEL[lifecycle] ?? lifecycle)
+        )}
+      </td>
       <td>{engine.mode}</td>
       <td>
         {ref == null ? (

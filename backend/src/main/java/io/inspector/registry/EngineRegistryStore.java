@@ -270,7 +270,16 @@ public class EngineRegistryStore {
         row.setLifecycle(next);
         row.setUpdatedAt(clock.instant());
         repository.save(row);
-        audit.close(entry, ok ? AuditOutcome.ok : AuditOutcome.failed, null, ok ? "probed" : "probe-failed", true);
+        // Issue #223: `detail` (the real version string or exception text from the live dial)
+        // was previously discarded here in favor of a redundant static "probed"/"probe-failed"
+        // literal that just repeats what `outcome` already says — the one place a probe
+        // failure's actual cause survived was the controller's now-unused local variable.
+        // audit.close already bounds/redacts (SNIPPET_MAX_BYTES, R-AUD-03 payload-mode
+        // governance), so this is safe to pass straight through. Still never surfaced to the
+        // UI directly (topology-oracle risk, per the controller's own comment) — this is the
+        // audit trail the comment always intended, now actually populated.
+        String snippet = detail != null && !detail.isBlank() ? detail : (ok ? "probed" : "probe-failed");
+        audit.close(entry, ok ? AuditOutcome.ok : AuditOutcome.failed, null, snippet, true);
         events.publishEvent(new RegistryChangedEvent(id));
         return row;
     }

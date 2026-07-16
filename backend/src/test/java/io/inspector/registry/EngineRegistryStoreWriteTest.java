@@ -3,6 +3,7 @@ package io.inspector.registry;
 import static org.assertj.core.api.Assertions.assertThat;
 import static org.assertj.core.api.Assertions.assertThatThrownBy;
 import static org.mockito.ArgumentMatchers.any;
+import static org.mockito.ArgumentMatchers.eq;
 import static org.mockito.Mockito.mock;
 import static org.mockito.Mockito.never;
 import static org.mockito.Mockito.verify;
@@ -207,6 +208,39 @@ class EngineRegistryStoreWriteTest {
         assertThat(outcome.row().getLifecycle()).isEqualTo("active");
         assertThat(outcome.row().getMode()).isEqualTo("read-write");
         verify(events).publishEvent(new RegistryChangedEvent("e"));
+    }
+
+    /* ---------- probe result recording (issue #223) ---------- */
+
+    @Test
+    void record_probe_persists_the_real_detail_to_the_audit_snippet_not_a_generic_literal() {
+        when(repo.findByIdAndRemovedAtIsNull("e")).thenReturn(Optional.of(rowWithLifecycle("e", "draft")));
+        AuditEntry entry = mock(AuditEntry.class);
+        when(audit.beginPending(any(), any(), any(), any(), any(), any(), any(), any()))
+                .thenReturn(entry);
+
+        store.recordProbe("e", false, admin, "java.net.ConnectException: Connection refused");
+
+        verify(audit)
+                .close(
+                        eq(entry),
+                        eq(io.inspector.audit.AuditOutcome.failed),
+                        eq((Integer) null),
+                        eq("java.net.ConnectException: Connection refused"),
+                        eq(true));
+    }
+
+    @Test
+    void record_probe_falls_back_to_a_generic_snippet_when_detail_is_blank() {
+        when(repo.findByIdAndRemovedAtIsNull("e")).thenReturn(Optional.of(rowWithLifecycle("e", "draft")));
+        AuditEntry entry = mock(AuditEntry.class);
+        when(audit.beginPending(any(), any(), any(), any(), any(), any(), any(), any()))
+                .thenReturn(entry);
+
+        store.recordProbe("e", true, admin, null);
+
+        verify(audit)
+                .close(eq(entry), eq(io.inspector.audit.AuditOutcome.ok), eq((Integer) null), eq("probed"), eq(true));
     }
 
     /* ---------- four-eyes (R-SAFE-08, #91) ---------- */

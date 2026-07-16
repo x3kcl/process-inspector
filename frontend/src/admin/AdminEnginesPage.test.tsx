@@ -19,9 +19,16 @@ vi.mock('../api/me', () => ({
 
 const approveMutate = vi.fn()
 let approveError: ApiError | undefined
+let enginesData: Array<{ id: string; name: string; lifecycle: string; mode: string }> = []
 
 vi.mock('./adminEngines', () => ({
-  useAdminEngines: () => ({ data: [], isPending: false, isError: false, error: undefined }),
+  useAdminEngines: () => ({
+    data: enginesData,
+    isPending: false,
+    isSuccess: true,
+    isError: false,
+    error: undefined,
+  }),
   useDrift: () => ({ data: { empty: true } }),
   useEngineProposals: () => ({
     data: [{ id: 1, summary: 'remove engine-b', proposer: 'admin', reason: 'decommission' }],
@@ -46,6 +53,7 @@ afterEach(() => {
   approveError = undefined
   meData = { username: 'admin', registryAdmin: true }
   mePending = false
+  enginesData = []
 })
 
 describe('AdminEnginesPage — fails closed while identity is unresolved (#208)', () => {
@@ -86,5 +94,25 @@ describe('AdminEnginesPage — four-eyes approve 403 feedback (#169)', () => {
     render(<AdminEnginesPage />)
     screen.getByRole('button', { name: 'Approve' }).click()
     expect(approveMutate).toHaveBeenCalledWith(1, expect.anything())
+  })
+})
+
+describe('AdminEnginesPage — probe-failed diagnostics (#223)', () => {
+  it('gives a probe_failed row an actionable, non-leaking remediation title', () => {
+    enginesData = [
+      { id: 'engine-c', name: 'Engine C', lifecycle: 'probe_failed', mode: 'read-only' },
+    ]
+    render(<AdminEnginesPage />)
+    const badge = screen.getByText('▲ Probe failed')
+    expect(badge.getAttribute('title')).toContain('audit trail')
+    // Never leak the raw connect exception into the UI — only a generic next step.
+    expect(badge.getAttribute('title')).not.toMatch(/Exception|refused|timeout/i)
+  })
+
+  it('other lifecycle states render no such title', () => {
+    enginesData = [{ id: 'engine-a', name: 'Engine A', lifecycle: 'active', mode: 'read-write' }]
+    render(<AdminEnginesPage />)
+    const badge = screen.getByText('✓ Active')
+    expect(badge.getAttribute('title')).toBeNull()
   })
 })
