@@ -543,7 +543,7 @@ function JobActions({
 
   if (lane === 'timer') {
     return (
-      <span className="action-slot">
+      <>
         <InlineConfirm
           meta={VERBS.triggerTimer}
           gate={gateFor(VERBS.triggerTimer)}
@@ -558,12 +558,15 @@ function JobActions({
             about whatever is making the retry fail, and it's IRREVERSIBLE (no way to give
             the attempt back). The reversibility note already says "no way back" in the
             button's title, but that's hover-only; this is the same warning made visible
-            BEFORE the click, not discoverable only from the retries counter dropping after. */}
+            BEFORE the click, not discoverable only from the retries counter dropping after.
+            A sibling, not nested inside InlineConfirm's own .action-slot span (which it
+            already renders itself when gated) — same convention as the dead-letter lane's
+            InlineConfirm + CurlPreview siblings above. */}
         <ActionHint
           tone="info"
           text="Only advances the retry schedule — it won't fix whatever made this job fail, and the attempt can't be given back."
         />
-      </span>
+      </>
     )
   }
 
