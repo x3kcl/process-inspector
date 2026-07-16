@@ -72,7 +72,7 @@ export function DetailTabBar({ active, onSelect }: Props) {
           user has no such prompt. Same discoverability doctrine as ResultsGrid's .grid-keys hint. */}
       <span className="tab-bar-keys">
         <kbd>←</kbd>
-        <kbd>→</kbd> moves between tabs · <kbd>Enter</kbd> opens the focused tab
+        <kbd>→</kbd> moves between tabs · <kbd>Enter</kbd> / <kbd>Space</kbd> opens the focused tab
       </span>
     </div>
   )

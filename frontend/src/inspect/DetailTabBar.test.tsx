@@ -76,6 +76,8 @@ describe('DetailTabBar roving focus (ARIA APG)', () => {
   it('shows a visible hint for the manual-activation pattern (#211)', () => {
     render(<DetailTabBar active="variables" onSelect={vi.fn()} />)
     const hint = screen.getByText(/moves between tabs/i)
+    // Native <button> activation means BOTH keys work — the hint must say so, not just Enter.
     expect(hint.textContent).toMatch(/Enter/)
+    expect(hint.textContent).toMatch(/Space/)
   })
 })
