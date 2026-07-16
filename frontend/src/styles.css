@@ -1452,6 +1452,11 @@ button.primary:disabled {
 .group-total:hover {
   text-decoration: underline;
 }
+.group-total-asof {
+  color: var(--color-text-faint);
+  font-size: 12px;
+  font-variant-numeric: tabular-nums;
+}
 .error-group-lanes {
   display: flex;
   gap: 12px;

@@ -26,6 +26,8 @@ interface Props {
   enginesById: Map<string, EngineDto>
   /** True when a failed engine or a truncated DLQ scan makes these counts lower bounds. */
   lowerBound: boolean
+  /** Stage 0 aggregation stamp — see the note on the count link below (issue #209). */
+  asOf: string | undefined
 }
 
 /**
@@ -35,7 +37,7 @@ interface Props {
  * ("v46: 0" beside "v47: 312") stay visible but unlinked: a search cannot scope to a
  * version yet, and a link promising zero rows would lie.
  */
-export function ErrorGroupCard({ group, enginesById, lowerBound }: Props) {
+export function ErrorGroupCard({ group, enginesById, lowerBound, asOf }: Props) {
   const prefix = lowerBound ? '≥ ' : ''
   const engineEntries = Object.entries(group.countsByEngine ?? {}).sort(
     (a, b) => sumCounts(b[1]) - sumCounts(a[1]) || a[0].localeCompare(b[0]),
@@ -80,6 +82,15 @@ export function ErrorGroupCard({ group, enginesById, lowerBound }: Props) {
           {prefix}
           {formatCount(group.total ?? 0)} <span className="count-unit">instances</span>
         </Link>
+        {/* #209: this count is the same Stage 0 aggregation stamp as the page-level "as of"
+            banner — clicking through runs a live Stage 1 search instead, so the two can
+            disagree by however much changed since this stamp. Visible (not hover-only, per
+            the same reasoning as #118 item 3) right at the number a user is about to trust. */}
+        {asOf !== undefined && (
+          <span className="group-total-asof" title="server-side aggregation stamp (BFF caches ~20s); the grid you're about to open runs a live query and can disagree with this count by however much changed since then">
+            as of <Ts iso={asOf} relative />
+          </span>
+        )}
         {/* The mute/ack affordance lives ON the card head (baseline run M7 task 5:
             "the same way monitoring tools silence a known alert") — never Suspend. */}
         <span className="action-slot">

@@ -32,7 +32,7 @@ function renderSections(groups: ErrorGroup[]) {
   render(
     <QueryClientProvider client={client}>
       <MemoryRouter>
-        <ErrorGroupSections groups={groups} enginesById={new Map()} lowerBound={false} />
+        <ErrorGroupSections groups={groups} enginesById={new Map()} lowerBound={false} asOf={undefined} />
       </MemoryRouter>
     </QueryClientProvider>,
   )
