@@ -279,7 +279,8 @@
     .bulk-bar {
       background: #16232f;
     }
-    .grid-keys kbd {
+    .grid-keys kbd,
+    .tab-bar-keys kbd {
       background: #232b30;
     }
     /* Untokenized literal (outside the 47-token set) — reuse the now dark-safe text-faint
@@ -317,7 +318,8 @@
   .bulk-bar {
     background: #16232f;
   }
-  .grid-keys kbd {
+  .grid-keys kbd,
+  .tab-bar-keys kbd {
     background: #232b30;
   }
   .leak-views-caption {
@@ -1079,11 +1081,13 @@ button.primary:disabled {
   font-size: 12px;
   color: var(--color-text-body);
 }
-/* R-UXQ-02: visible keyboard affordances for the results grid. */
-.grid-keys {
+/* R-UXQ-02: visible keyboard affordances for the results grid, and (#211) the detail tablist. */
+.grid-keys,
+.tab-bar-keys {
   color: var(--color-text-secondary);
 }
-.grid-keys kbd {
+.grid-keys kbd,
+.tab-bar-keys kbd {
   border: 1px solid var(--color-border);
   border-bottom-width: 2px;
   border-radius: 3px;
@@ -1091,6 +1095,11 @@ button.primary:disabled {
   font-size: 11px;
   font-family: inherit;
   background: #f6f8fa;
+}
+.tab-bar-keys {
+  display: block;
+  padding: 2px 12px 6px;
+  font-size: 12px;
 }
 
 .zero-state {

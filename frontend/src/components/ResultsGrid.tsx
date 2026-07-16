@@ -330,10 +330,13 @@ export function ResultsGrid({
           {selectedCount > 0 && ` · ${formatCount(selectedCount)} selected`}
         </span>
         {/* R-UXQ-02: the open affordance must be discoverable, next to the (screen-reader)
-            "Space to toggle row selection" hint AG Grid already announces. */}
+            "Space to toggle row selection" hint AG Grid already announces. Issue #211: this
+            told a keyboard-only user what to do ONCE focus was already on a row, but never how
+            to get there — Tab lands you in the grid's header/toolbar, not a row; AG Grid's own
+            convention is that ArrowDown from there moves focus onto the first row. */}
         <span className="grid-keys">
-          <kbd>Enter</kbd> opens the focused row · <kbd>Space</kbd> toggles selection · double-click
-          opens
+          <kbd>↓</kbd> moves into rows · <kbd>Enter</kbd> opens the focused row · <kbd>Space</kbd>{' '}
+          toggles selection · double-click opens
         </span>
         {selectedCount > 0 && (
           <button type="button" onClick={clearSelection}>

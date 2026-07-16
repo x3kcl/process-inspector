@@ -77,6 +77,12 @@ describe('ResultsGrid keyboard row-open (R-UXQ-02)', () => {
     expect(hint.textContent).toMatch(/Space/)
   })
 
+  it('tells a keyboard-only user how to get focus onto a row in the first place (#211)', async () => {
+    await renderGrid(vi.fn())
+    const hint = screen.getByText(/opens the focused row/i)
+    expect(hint.textContent).toMatch(/moves into rows/i)
+  })
+
   it('renders a visible Open link to the instance detail (U1) so row-open is not mouse-only', async () => {
     await renderGrid(vi.fn())
     const link = screen.getByRole('link', { name: /open/i })
