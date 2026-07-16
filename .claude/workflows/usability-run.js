@@ -16,7 +16,16 @@ export const meta = {
 // with no error. This is the actual root cause behind issue #215's app/bff/runId mismatch;
 // the earlier fix only added the log() tripwire below, which reports the (still-wrong)
 // resolved values without explaining why they were wrong. Parse defensively either way.
-const ARGS = typeof args === 'string' ? JSON.parse(args) : args
+function parseArgs(raw) {
+  if (typeof raw !== 'string') return raw
+  try {
+    return JSON.parse(raw)
+  } catch {
+    log(`args was a non-JSON string, ignoring and using script defaults: ${raw}`)
+    return undefined
+  }
+}
+const ARGS = parseArgs(args)
 const REPO = ARGS?.repo ?? '/home/flapci/workspace/pi-usability'
 const APP = ARGS?.app ?? 'http://localhost:5173'
 const BFF = ARGS?.bff ?? 'http://localhost:8085'
