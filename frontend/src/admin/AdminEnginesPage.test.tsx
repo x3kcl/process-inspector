@@ -7,8 +7,14 @@ import { cleanup, render, screen } from '@testing-library/react'
 import { afterEach, describe, expect, it, vi } from 'vitest'
 import { ApiError } from '../api/client'
 
+let meData: { username: string; registryAdmin: boolean } | undefined = {
+  username: 'admin',
+  registryAdmin: true,
+}
+let mePending = false
+
 vi.mock('../api/me', () => ({
-  useMe: () => ({ data: { username: 'admin', registryAdmin: true } }),
+  useMe: () => ({ data: meData, isPending: mePending }),
 }))
 
 const approveMutate = vi.fn()
@@ -38,6 +44,27 @@ afterEach(() => {
   cleanup()
   approveMutate.mockClear()
   approveError = undefined
+  meData = { username: 'admin', registryAdmin: true }
+  mePending = false
+})
+
+describe('AdminEnginesPage — fails closed while identity is unresolved (#208)', () => {
+  it('shows a neutral loading state, never the privileged table, while `me` is pending', () => {
+    mePending = true
+    meData = undefined
+    const { container } = render(<AdminEnginesPage />)
+    expect(screen.getByText('Resolving your access…')).toBeDefined()
+    expect(container.querySelector('.error-banner')).toBeNull()
+    expect(screen.queryByText('Add engine')).toBeNull()
+  })
+
+  it('shows the restricted banner, never the privileged table, once resolved as non-registry-admin', () => {
+    mePending = false
+    meData = { username: 'plain-admin', registryAdmin: false }
+    render(<AdminEnginesPage />)
+    expect(screen.getByRole('alert').textContent).toContain('REGISTRY_ADMIN')
+    expect(screen.queryByText('Add engine')).toBeNull()
+  })
 })
 
 describe('AdminEnginesPage — four-eyes approve 403 feedback (#169)', () => {
