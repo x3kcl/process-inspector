@@ -288,7 +288,11 @@ export function VerifyModal({
 
       <GuardFields
         guard={guard}
-        reasonLabel={`Reason ${rule.required ? '(required on PROD, ≥10 chars)' : '(optional, ≥10 chars when given)'}`}
+        // Issue #224: "optional, ≥10 chars when given" was technically correct (empty is
+        // fine; any non-empty attempt still needs 10+ chars) but "optional" led a tester
+        // to expect a short, abandoned attempt to be silently waved through rather than
+        // rejected — leading with the actual rule avoids that misreading.
+        reasonLabel={`Reason ${rule.required ? '(required on PROD, ≥10 chars)' : '(leave blank, or ≥10 chars)'}`}
       />
 
       <TicketField value={guard.ticket} onChange={guard.setTicket} />
