@@ -314,18 +314,23 @@ TESTER BRIEF:
 
 ## M11 · "Routine sweep: views, an escalation kit, and a suspicious ticket" — wave 1 · user `viewer`
 
-COVERS: R-SEM-05 · R-SEM-04/b · R-SEM-04/d · R-L3-02 · R-OPS-08 · rubrics. Added — four
-MUST-v1 goals with a written arc (three already BUILT yes/partial, one fixture already
-seeded) but zero mission coverage before this run, found by cross-referencing every
-COVERS list against the catalog (same class of gap that produced M10 for R-NFR-08).
+COVERS: R-SEM-05 · R-SEM-04/b/d · R-L3-02 · R-OPS-08 · rubrics. Added — four MUST-v1
+goals with a written arc (three already BUILT yes/partial, one fixture already seeded)
+but zero mission coverage before this run, found by cross-referencing every COVERS list
+against the catalog (same class of gap that produced M10 for R-NFR-08).
 STAGING: standard seed (F-G6's hostile `demoUserTask` instance, businessKey
 `<img src=x onerror=alert(1)>`, is already deployed by `docker/seed.sh` — runner just
 confirms it resolves). F-G11 (new): runner starts two fresh instances out-of-band via
 REST sharing one explicit businessKey `uxrun-dup-{{RUN_ID}}` immediately before the arc
 (any definition; `acmeOrderOrchestrator` is convenient — mirrors R-SEM-09's OOB-mutation
-staging pattern in M3). Runner extracts {{DUP_KEY}} (the shared businessKey used above)
-and confirms the existing system view "Suspended > 24h (by start time)" has at least one
-match (the standard-seed `demoUserTask` SUSPENDED instance already satisfies this).
+staging pattern in M3). This write is scoped to a fresh, mission-tagged businessKey that
+no other wave-1 mission's search terms, fixture IDs, or STAGING placeholders reference
+(M1/M2/M9/M10 each search for their own named fixtures — none search broadly enough to
+observe an unrelated new pair appearing) — safe to run concurrently with the rest of
+wave 1, unlike F-G7/F-G9/F-G10's cross-cutting stage flips. Runner extracts {{DUP_KEY}}
+(the shared businessKey used above) and confirms the existing system view
+"Suspended > 24h (by start time)" has at least one match (the standard-seed
+`demoUserTask` SUSPENDED instance already satisfies this).
 
 TESTER BRIEF:
 
@@ -343,8 +348,9 @@ TESTER BRIEF:
 >    colleague apart which one they meant.
 > 3. Separately, another ticket gives you a business key that should point at exactly
 >    one order: search for it the way you'd search for any single business key you
->    were handed (not by browsing the grid) and confirm you land somewhere specific,
->    not a results list you have to re-filter yourself.
+>    were handed (not by browsing the grid) and confirm the tool takes you straight to
+>    a results view already narrowed down to just that one order — not a broader list
+>    you still have to filter yourself.
 > 4. Pick any currently-failed case from a search. Without opening a network inspector or
 >    reading any source, get a copy-pasteable command-line command that would reproduce
 >    that exact search from a terminal. Then do the same for one action available on the

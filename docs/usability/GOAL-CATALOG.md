@@ -542,6 +542,21 @@ ENTRY: team views picker/moderation · users `operator` (author) + `admin` (mode
 SUCCESS: unpublish-with-reason completes; author's view intact; no overwrite path found.
 FIXTURE: a published team view from the R-SEM-24 arc.
 
+### R-SAFE-17 · Scope-filtered reads
+
+PRIO MUST-v1 (built) · CLASS UI-STAGED (oidc only) · BUILT yes
+GOAL: (deferred to prod-like leg) A per-engine/tenant VIEWER must never see another
+engine/tenant's failing instances, exception text, or business keys through the
+search/triage fan-outs by naming that engine explicitly — and an implicit "all engines"
+request must narrow silently to what they can see, never leaking which engines exist
+beyond their scope. Not attemptable in the dev run: `scope-reads-enforced` is OFF by
+default under `!oidc` (a documented no-op there), and every dev-ladder user
+(`viewer`/`responder`/`operator`/`admin`/`registry-admin`/`access-admin`) is
+global-scoped — there is no NARROWER-scoped identity to observe an exclusion against,
+the same gap R-SAFE-08 already has (F-G4). Needs the Keycloak prod-like leg (R-OPS-16)
+with a real per-engine-scoped grant, mirroring R-SAFE-06/07/11/15's deferral.
+FIXTURE: n/a in the dev run — see R-OPS-16.
+
 ## AUD — Audit & handover
 
 ### R-AUD-01 · Fail-closed audit
