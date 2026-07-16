@@ -28,6 +28,15 @@ const MISSION_USER = {
   M5: 'viewer', M6: 'operator', M8: 'registry-admin',
 }
 
+// Log the resolved targets up front — issue #215 (2026-07-16 run) found that an `args`
+// object CAN silently fail to reach this script (every param fell back to its default,
+// including RUN_ID, even though `args` was passed correctly to the Workflow tool call),
+// which sent the entire mission fleet at the shared default stack instead of an intended
+// isolated instance without any error. This is the cheapest possible tripwire: the
+// mismatch is visible in the progress log within seconds instead of discovered after a
+// multi-hour run completes.
+log(`Targets: repo=${REPO} app=${APP} bff=${BFF} runId=${RUN_ID} missions=${MISSIONS.join(',')}`)
+
 // ---- schemas -------------------------------------------------------------------------
 const STAGE_SCHEMA = {
   type: 'object', required: ['ok', 'placeholders'],

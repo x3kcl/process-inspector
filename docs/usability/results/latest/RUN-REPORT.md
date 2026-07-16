@@ -1,402 +1,394 @@
-# Usability run report — runId `adhoc` · 2026-07-13
+# Usability run — adhoc reconciliation, 2026-07-16
 
-Catalog v1.0 · bffSha/spaSha `5f09a4f52468df29cab32a5f4a19588789334f54` (git HEAD; no live
-`/api/meta` response — single-checkout monorepo, bffSha == spaSha) · seedFingerprint
-`57d839667f6596026ca7d24df93578c9dcabc618d880d7a142bd8c7959a038f0` · engines: 2× Flowable
-6.8 (engine-a/engine-b registered; engine-7 disabled; engine-legacy unregistered this run).
-Companion machine output: `results.jsonl` (60 goal-arc × mission rows). 10 missions
-reconciled (M1–M10); 4 ground-truth/restoration hooks cross-checked.
+Catalog v1.0 · BFF/repo `4f02617` · seedFingerprint
+`7d9e97569e392cea5b274d67aa07b554a9c9236be956fe91876ed72e4cf69db0` · 11 missions dispatched
+(M1–M11), 10 returned transcripts, 1 (M3) died before any task ran.
 
-> **Note on a stale prior stub in this path**: an earlier write here recorded a total
-> pre-flight failure for M8 ("empty task list, FIXTURE_DRIFT"). The tester dataset
-> reconciled in THIS report contains a full, well-cited M8 trace (5 tasks, real
-> interactions) — this report reconciles that full dataset and supersedes any earlier stub.
+> **Note on a stale prior report at this path**: this file previously held a 2026-07-13
+> reconciliation of a different tester dataset (10 missions M1–M10, different
+> seedFingerprint/sha). This report reconciles the current run's dataset (M1–M11, including
+> M11's four newly-covered MUST-v1 goals) and supersedes that earlier version.
 
----
+## Gate verdict: **FAIL** (coverage/environment, not a product-defect fail)
 
-## 1 · GATE VERDICT: **FAIL** (misses beyond the 6 known gaps)
+No Sev1 quiet-lie / guard-bypass / wrong-target / invisible-apply finding was confirmed
+anywhere the ground-truth hooks could check (M4's bulk retry, M6's timer-fire, and M6's
+migration all matched engine reality exactly — see "Ground truth reconciliation" below).
+All six of the catalog's previously-tracked MUST-v1 "known-absent" gaps (R-BAU-01
+acknowledge, R-BAU-02 leak views, R-AUD-05 shift report, R-AUD-08 CSV export, R-AUD-09
+attribution caveat, R-L3-01 explain-status) plus the R-AUD-07 ticket-capture sliver were
+exercised **successfully with strong citations this run** — no hallucination canary fired,
+and the individual per-entry "BUILT no" text still sitting in GOAL-CATALOG.md is stale,
+superseded by that file's own aggregate note (issue #98, 2026-07-13).
 
-**Gate population** (MUST-v1 ∧ BUILT yes/partial ∧ UI/feasible-staged). Note up front: the
-catalog's "Known-absent surfaces" section (dated 2026-07-13, same day) states the former 6
-MUST-v1 gaps + 2 slivers are now **ALL BUILT** — repo-verified, even though the individual
-`R-AUD-05`/`R-AUD-08`/`R-AUD-09`/`R-BAU-01`/`R-BAU-02`/`R-L3-01` entries earlier in the same
-document are stale and still say `BUILT no`. This run's evidence agrees with the newer note
-(see §4) — all 6 were found and used successfully — so, unlike the historical framing, they
-are **not** excluded from the gate population this run; they are ordinary MUST-v1 passes.
-That is genuinely good news, but it also means a `fail-expected-gaps-only` verdict does not
-apply: the misses below are different ones, not the catalog's named 6.
+The gate still fails because coverage over the MUST-v1 population is not certifiable this
+run:
 
-- **Passed (yes / yes-with-struggle): 38 arcs** — R-SEM-03, R-SEM-04/a/c/e, R-SEM-02/a/b,
-  R-SAFE-01/a, R-SAFE-04, R-AUD-06/a/b, R-UXQ-11, R-SEM-19, R-SEM-01, R-L3-03,
-  R-UXQ-13/a/b/c, R-SEM-09/a, R-NFR-06, R-SAFE-02, R-SEM-12, R-NFR-03, R-SEM-10/a,
-  R-SEM-14, R-NFR-01, R-AUD-04, R-SEM-06, R-GOV-04, R-AUD-05/a/b, R-AUD-08, R-AUD-09,
-  R-BAU-01, R-BAU-02, R-L3-01, R-UXQ-02/b, R-UXQ-01, R-UXQ-03.
-- **Genuine misses (2, NOT among the 6 known gaps) — these fail the gate:**
-  1. **R-SEM-20 (M5)** — the tester found a real, unexplained FAILED-count discrepancy
-     (engine-a alone: 273 > fleet-wide tile's 265) but never reached or cited the CMMN
-     out-of-scope-dead-letters reconciliation note this goal expects; ended on an
-     unconfirmed guess instead of the tool's own explanation. Sev3, evidence-quality miss.
-  2. **R-UXQ-02/a keyboard FIND→FIX (M9)** — completed, but only at **46 interactions**,
-     roughly 3× the RUN PROTOCOL's hard give-up budget (15). Per protocol this should have
-     ended `canComplete=no` well before completion; the pass is compensation (persistence
-     past the give-up line), not product ergonomics, so the reconciler downgrades it to
-     `no` for gate purposes over the tester's self-reported `yes-with-struggle`. Real
-     findings survive regardless: first Tab from page load skips ~11 header-region
-     focusable elements (lands on "Refresh"); focus drops to `<body>` with zero
-     focus-adjacent confirmation after the mutating Retry click. Sev2.
-- **Blocked-by-environment (re-stage & re-run, NOT counted as UX failures): 5 arcs** —
-  **R-UXQ-04 + R-SAFE-03 + R-SAFE-05** (M5/M6: F-G7/F-G2/protected-instance fixtures never
-  actually applied this run — ground-truth-confirmed, see §7), **R-SEM-09/b + R-SEM-10/b**
-  (not driven by any task in this run's M3/M4 tester transcripts). This is a **repeat**
-  finding — the prior baseline report already flagged F-G2/F-G7 staging as needing a
-  targeted fix "or it will sink wave 3 again," and it did, again.
-- **Critical-class check: zero Sev1 findings.** No R-SEM-02 mis-triage anywhere (M1 task 2
-  was a clean FAILED-over-RETRYING escalation). No guard bypass (RBAC, CAS, SSRF, four-eyes
-  self-approval, and reason-length gates all held under adversarial-shaped probing). No
-  wrong-target destructive action (M6's twin-instance kill target was correctly identified,
-  ground-truth-confirmed both twins in the right state). No invisible apply — every
-  mutation showed *some* durable evidence (badge/audit row/report), though §3 theme 6
-  flags a *silent rejection* (a guard that correctly blocked something with zero UI
-  feedback) as a related, lower-severity pattern worth fixing before it becomes a real
-  invisible-apply bug.
-- **Hallucination canaries: none.** Every claimed fix is corroborated by the ground-truth
-  hooks (M3: engine shows amount=300 + note=null + a 5-row audit chain matching exactly;
-  M4: all 8 uxrun-m4-* instances genuinely re-dead-lettered after the "COMPLETED" bulk
-  dispatch, exactly as the tester reported — a good example of the tool's own copy
-  correctly preventing a false-positive read). **No quiet lies.**
-- **Spine coverage:** FIND ✓ ORIENT ✓ DIAGNOSE ✓ FIX ✓ OUTCOME ✓ RECOVER ✓ — all six spine
-  steps have ≥1 clean passing goal (M1 tasks 1–4, M3 task 4 CAS-recover, M4 task 5 RECOVER
-  language). RECOVER is no longer degraded the way a prior run found it.
+1. **M3 ("Bad data, careful hands") died with zero tasks executed** — `protocolNotes:
+   ["tester died"]`. This leaves **zero evidence** for R-SEM-09/a (CAS conflict — three-
+   value screen, nothing overwritten), R-SEM-09/b (already-resolved-verb double-mutation
+   guard), and R-UXQ-13/a/b/c (form-first variable editor), all MUST-v1 gate-population
+   items with no fallback coverage elsewhere in the run. R-NFR-06 and R-AUD-07 (also
+   COVERS'd by M3) got incidental coverage via M4's bulk-retry dialog, and R-SAFE-02 got
+   partial coverage via M6 (suspend badge only) — those three are NOT blocked, but the
+   CAS-conflict and variable-editor arcs have no substitute evidence anywhere in the run.
+2. **R-SAFE-03 (tier-0 friction floor on prod) has invalidated evidence.** M6 task 1 fired
+   a timer on the engine the mission calls "the production engine" (engine-b) with the
+   IDENTICAL one-click, zero-confirmation flow as the dev engine, and both engine tiles
+   read "DEV — a development engine. Low stakes." The ground-truth restoration hook
+   **confirms this is a staging failure, not a product miss**: `engine_registry` row for
+   engine-b has `updated_at == created_at` (never edited since the yaml seed import) and
+   carries **zero** `registry-edit` audit rows for today — the F-G2 "flip engine-b to
+   `prod`" stage was never actually applied. Per RUN PROTOCOL ("Pre-flight fixture check
+   ... abort blocked-by-environment (FIXTURE_DRIFT) rather than let a tester 'succeed' on
+   a dead instance"), this mission task should have aborted before dispatch; it did not,
+   so its nominal "yes-with-struggle" is **reclassified to blocked-by-environment** in
+   `results.jsonl`. R-SAFE-03 — a MUST-v1, UI-STAGED, BUILT-yes gate item — has **no valid
+   passing evidence this run** and must be re-staged and re-run before certification.
 
-If R-SEM-20's citation gap were fixed, the M9 keyboard task were re-scored against a
-tighter first-tab-order fix (so it lands under budget), and F-G2/F-G7/protected-instance
-staging were repaired and re-run clean, this run's target verdict is `pass` — the product
-surface itself is close; the two live misses are narrow and the 5 blocked arcs are a
-harness problem, not a code problem.
+Both misses are environment/staging failures, not confirmed product defects — per protocol
+they are "never counted as a UX failure" on their own — but they are also not evidence of
+a pass, and the exit-gate rule requires "every spine step ... covered by ≥1 passing goal."
+Two MUST-v1 gate-population arcs (R-SEM-09, R-SAFE-03) currently have none. This is
+*not* `fail-expected-gaps-only`: the misses are not among the six known catalog gaps (all
+six passed this run) — they are new coverage holes caused by a dead tester process and an
+unapplied staging flip.
+
+**Re-run recommendation:** re-stage M3 fresh and M6 with a verified engine-b `prod` flip
+(assert via `GET /api/admin/engines` before dispatch, not just via `docker/seed.sh`
+idempotency), then re-certify. Everything else in the run is gate-clean.
 
 ---
 
-## 2 · Per-mission task tables
+## Per-mission task table
 
-### M1 · 3am payments pager (responder) — 7/7 yes (2 with-struggle)
+### M1 — "3am pager: payments failing" (responder) — 7 yes / 4 yes-with-struggle
+
 | # | Verdict | Evidence (one line) |
 |---|---|---|
-| 1 | yes | 'Failures by error class' card: 19 UnknownHostException, 10/9 split, acmeApiOutage v1 — full cited reconciliation, no instance ID needed |
-| 2 | yes | Correct escalate-FAILED decision citing "retries exhausted" vs "7 retries left, next attempt ... in 9m" — zero mis-triage |
-| 3 | yes | "Currently at → chargePayment" first-viewport; stacktrace → `ArithmeticException: / by zero`, divisor=0 |
-| 4 | yes-with-struggle | Retry fired (FAILED→RETRYING), re-failed honestly (fresh timestamp, DLQ 0→Timer 1); no distinct re-fail styling (Sev4) |
-| 5 | yes | Operator-notes handover warning saved, timestamped, attributed to responder |
-| 6 | yes-with-struggle | "copy for ticket" fires but gives zero on-screen confirmation — content unverifiable in this sandbox |
-| 7 | yes | "not found on any reachable engine" + "resolved against 2 of 2 engines" quoted |
+| 1 | yes | Landing dashboard alone: "FAILED 310 · RETRYING 3" + 2 error-class cards with version-ack deltas, zero navigation needed. |
+| 2 | yes | Escalated the FAILED case citing chip copy + an explicit "tracked/muted/INC-4712" ack note on the other; zero mis-triage. |
+| 3 | yes | Alert banner named `chargePayment` + `${amount % divisor}` on the first viewport. |
+| 4 | yes-with-struggle | Fired the only unlocked lever ("Fire timer now"); retries dropped 9→8 with **no prior warning** it would consume an attempt without also fixing `divisor`. |
+| 5 | yes | Left the handover note on the instance's own Audit & Notes tab, matching its "handover surface" empty-state copy. |
+| 6 | yes-with-struggle | "copy for ticket" button found and used; clipboard payload itself unverifiable (sandbox denies `readText`, environment limit not app defect). |
+| 7 | yes | "not found on any reachable engine" / "resolved against 2 of 2 engines" — honest, engine-scoped negative. |
 
-### M2 · Stuck multi-part order (responder) — 5/5 yes
+### M2 — "The stuck multi-part order" (responder) — 4 yes / 1 yes-with-struggle
+
 | # | Verdict | Evidence |
 |---|---|---|
-| 1 | yes | Business-key indent arrow (`↳ child...`) + detail-page "Called by" field distinguish root/child |
-| 2 | yes | Roll-up "hasDeadLetterJobs" flag → child's Errors & Jobs → Retry job → RETRYING |
-| 3 | yes | "+10 more children not rendered (cap 50/node) — count is exact" — 60 stated honestly |
-| 4 | yes | "⬇ raw JSON" download verified engine-shaped (source/processVariables/executionScopes) |
-| 5 | yes | Every jargon term self-defined inline; two residual jargon-on-jargon spots noted (Sev4) |
+| 1 | yes | Plain business key vs `↳ child` prefix distinguished parent from child in the grid; flagged grid=ACTIVE vs detail=FAILED disagreement for the same instance. |
+| 2 | yes | "Explain this status" `failedInSubprocess` flag deep-linked straight to the failing call-activity child's dead-letter job. |
+| 3 | yes | Hierarchy tab: 50 rows + exact "+10 more ... cap 50/node" — no lie about totals. |
+| 4 | yes | "⬇ raw JSON" / "copy raw JSON" found in one interaction. |
+| 5 | yes-with-struggle | Most jargon self-glossed inline; **`Scope` column value `case` and the `↳ child` prefix have zero tooltip/title anywhere** — genuine gap. |
 
-*Protocol note: this tester used a handful of direct URL navigations ("equivalent to
-clicking an already-validated link") — a forbidden move per RUN PROTOCOL even when argued
-as equivalent; flagged in §6, does not change any task's verdict since each also had an
-independent on-screen citation.*
+### M3 — "Bad data, careful hands" (operator) — **0 tasks executed, tester died**
 
-### M3 · Bad data, careful hands (operator) — 6/6 (5 yes, 1 yes-with-struggle) · all edits ground-truth-verified
+All 6 tasks blocked-by-environment. See "Ground truth reconciliation" below — a separate
+runner-side ground-truth check against `bbf1b425-80ed-...` found `amount=100` /
+`note="temporary hold"` (neither matches any of the mission's candidate outcomes:
+250/275/300 for `amount`, absent/null/empty for `note`) and **zero audit rows** for that
+instance anywhere — consistent with the mission never having executed, not with a quiet
+lie (no UI claim exists to contradict).
+
+### M4 — "Bad deploy cleanup" (operator) — 6 yes / 2 yes-with-struggle, ground-truth verified
+
 | # | Verdict | Evidence |
 |---|---|---|
-| 1 | yes | Pre-commit sentence quoted; committed 300→250; ground truth confirms engine amount |
-| 2 | yes | Explicit "empty text \| no value (null)" choice; ground truth confirms note is explicit null |
-| 3 | yes | Form-mode leaf flip only; raw JSON/Source mode never touched |
-| 4 | yes | CAS conflict: "Blocked: the server value changed since you loaded it" — nothing overwritten, colleague's edit visible in its own audit row; ground truth's 5-row audit chain matches exactly |
-| 5 | yes | "🔒 Reason too short — 10+ characters" rejected "fix" pre-submit, zero work lost; Ticket ID field captured INC-4711 and rendered linkified — the R-AUD-07 capture sliver is now BUILT |
-| 6 | yes-with-struggle | Pause/resume reversibility correctly read from tooltip text before any click, then executed; kill dialog unreachable under OPERATOR (ADMIN-only) so open-then-cancel could not be performed this run |
+| 1 | yes | Dashboard "289 instances" vs identical drill-down grid "248 instances" — **unexplained mismatch**, flagged; narrower filter (businessKey+status+failure-time) reached an exact, untruncated 8. |
+| 2 | yes | "as of" tooltip states "BFF caches ~20s"; Refresh visibly advanced the stamp (cosmetic: post-refresh label read "in 14s", future-tense). |
+| 3 | yes-with-struggle | Bulk retry required a ≥10-char reason and a ticket field (INC-4712) before submit; had to unblock a `🔒 filter includes RETRYING` guard tied to the query's allowed statuses, not the visible rows. |
+| 4 | yes | Operations drawer auto-opened, "8 of 8 dispatched · re-queued 8" — zero manual refresh. |
+| 5 | yes-with-struggle | Report never claimed success ("re-queued — not yet succeeded; verify"); Verify-now showed both sampled items re-failed identically. **Ground-truth VERIFIED**: direct Flowable REST check of all 8 `uxrun-m4-*` instances confirms all 8 still hold open dead-letter jobs, 0 completed — exact match to the tester's own honest 0/8 report. |
+| 6 | yes | F5 + `/audit` + Operations drawer both reproduced the identical 8-row report. |
+| 7 | yes | Confirm dialog itself states the 5,000-instance server cap and "narrow it and run in slices" without executing anything. |
 
-### M4 · Bad deploy cleanup (operator) — 7/7 yes (2 with-struggle) · ground truth: 8/8 re-dead-lettered, matches tester exactly
+### M5 — "Half the fleet is dark" (viewer) — 3 yes / 2 yes-with-struggle / 1 blocked-by-environment
+
 | # | Verdict | Evidence |
 |---|---|---|
-| 1 | yes-with-struggle | "16 instances" headline vs "engine-a 16 of 24 fetched — narrow your filter" underneath — floor correctly identified, not exact until status=FAILED added |
-| 2 | yes | "as of" stamp + "BFF caches ~20s" tooltip; Refresh advanced it |
-| 3 | yes | "Select all ~16 matching filter…" → bulk retry with INC-4712; reason-gate enforced |
-| 4 | yes | Ops drawer auto-opened and updated live, zero manual refresh needed |
-| 5 | yes | 0/8 succeeded, honestly derived ("re-queued — not yet succeeded; verify"); ground truth confirms all 8 still hold fresh dead-letter jobs |
-| 6 | yes | Report (who/when/reason/per-item) survived a full reload |
-| 7 | yes | "Capped at 5,000 instances per bulk job (server-enforced)... narrow it and run in slices" — cap AND alternative both stated unprompted |
+| 1 | yes | Engine A/B: live non-zero job-lane numbers, no warning badge; the 3 non-operable engines carry explicit DISABLED/PROBE-FAILED badges, never conflated with an outage. |
+| 2 | yes | Chose "I cannot know right now", citing "resolved against 2 of 2 engines" against a 5-engine health strip. |
+| 3 | yes-with-struggle | Found request IDs only by forcing a tool-level error; **the same alert self-contradicts** ("Unknown engine ... no longer registered" AND "The engine answered ... confirmed not-found" in one block). |
+| 4 | yes-with-struggle | Reconciled `exec 0` vs 2 fleet-wide RETRYING rows once future-scheduled-but-RETRYING jobs were understood to fold into the `timer` lane; fleet totals (313, 310 DLQ) matched exactly. |
+| 5 | yes | "confirmed zero across 2 engines" — honestly scoped, not a fleet-wide claim. |
+| CMMN (R-SEM-20) | blocked-by-environment | COVERS lists it for M5 but the 5-task transcript has no CMMN content — no evidence either way. |
 
-### M5 · Half the fleet is dark (viewer) — FIXTURE_DRIFT on the mission's core premise; 3/5 gradable, 1 genuine miss
+### M6 — "Prod, with the safety on" (operator→admin) — 2 yes / 3 blocked-by-environment
+
 | # | Verdict | Evidence |
 |---|---|---|
-| 1 | blocked-by-env | Tester correctly self-diagnosed the gap ("a fourth, unregistered host would be invisible here") — but `engine-legacy` was never registered this run (ground truth: tombstoned by an earlier session), so the intended registered-but-down zero-state was never staged |
-| 2 | blocked-by-env | Same drift — "I cannot know right now" was the honest answer to a search that hit the not-found path, not the intended engine-down path |
-| 3 | yes | Per-panel "Quote request ID ... to support" UUIDs found unprompted — closes a prior run's R-AUD-04 miss |
-| 4 | **no** | Genuine discrepancy found (273 vs 265) but the CMMN-reconciliation explanation this goal expects was never located; ended on an unconfirmed guess |
-| 5 | yes | "0 shown — result scans were truncated; this is NOT a confirmed zero" vs a genuinely "confirmed zero across 2 engines" once scoped |
+| 1 | **blocked-by-environment** (reclassified) | R-SAFE-03 fixture drift — see gate section. Tester's raw observation (identical zero-friction flow on "prod" and dev) is real, but the fixture that would make it meaningful (`env:prod` on engine-b) was never applied. |
+| 2 | blocked-by-environment | R-SAFE-05 fixture drift, reconfirms the already-known write-path gap (protect endpoints 404 on the deployed jar). Suspend succeeded unguarded because the instance was never actually protected. |
+| 3 | yes | Engine-7 read-only: every action button `🔒 Blocked: engine is read-only`, held even for ADMIN — genuine policy per the tool's own words. Ground-truth confirms this flip was correctly staged and restored. |
+| 4 | yes | Migration pre-check honesty banner correctly restated ("not a Flowable validation ... engine's own check runs only when you execute"); **ground-truth VERIFIED** the instance now runs `demoMigration:2`. |
+| 5 | blocked-by-environment | Blocked by the Claude Code tool-permission layer itself before the app's confirm screen rendered. Ground-truth confirms `uxrun-m6-3` was never terminated (still alive) — matches the tester's own non-claim; no data on the app's actual prod-tier confirm UI. |
 
-### M6 · Prod with the safety on (operator→admin) — FIXTURE_DRIFT on 3/5; 2/5 cleanly gradable
+### M7 — "Morning handover" (operator→admin) — 6 yes / 3 yes-with-struggle
+
 | # | Verdict | Evidence |
 |---|---|---|
-| 1 | blocked-by-env | Ground truth confirms engine-b's registry row was never touched (created_at==updated_at) — F-G2 prod-flip never applied; tester correctly reported "no engine in this environment is actually labeled production" rather than fabricating a contrast |
-| 2 | blocked-by-env | The PROTECTED_ID target is confirmed (by this run's own staging note) to be a plain unprotected instance — no protected-instance guard rail was ever exercised, though the tester's "not a bug" read of what WAS on screen is reasonable |
-| 3 | yes | Engine-7 policy-vs-breakage proven: "disabled in the registry by the engine owner — not an operable target" |
-| 4 | blocked-by-env / no | Migration target was already on v2 before this run started (ground truth: an earlier same-day session's audit row); mission's "execute and prove" could not be driven; dialog self-contradiction found as a bonus (Sev4) |
-| 5 | yes-with-struggle | Sacrificial target was already terminated pre-run (ground truth); tester still opened-then-canceled the surviving twin's real confirmation dialog, correctly quoting IRREVERSIBLE wording + reason-gate; genuine grid-vs-detail status-label bug found as a bonus (Sev3) |
+| 1 | yes | `/audit` distinguished actor `responder` from `operator`; chased 2 of 3 night actions forward to still-open state. |
+| 2 | yes | Instance's own Audit & Notes tab + the shared-service-account caveat correctly answered attribution. |
+| 3 | yes | `Export CSV` produced a genuine `text/csv` download with correct headers — confirmed via network introspection. |
+| 4 | yes-with-struggle | "Copy shift report" + "My shift" exist but neither alone bundles a cross-shift handover; tester improvised by combining CSV export + open case IDs + a published view + a re-armed ack. |
+| 5 | yes | "Re-acknowledge" — reason+ticket+expiry required, card collapsed into "Acknowledged (1)", resurface conditions stated. |
+| 6 | yes-with-struggle | "Leak views" exists for SUSPENDED age only; no ACTIVE>30d tile — worked around via Search, honest "confirmed zero across 2 engines". |
+| 7 | yes | "Explain this status": Plan + per-flag breakdown + literal engine calls (method/URL/status/latency), labeled "re-derived just now". |
+| 8 | yes-with-struggle | OPERATOR blocked from publishing at **any** scope despite the message blaming "wildcard scope" (misleading — a single-engine scope failed identically); ADMIN succeeded cleanly; unpublish demanded a reason and left the author's private copy intact. |
 
-### M7 · Morning handover (operator→admin) — 8/8 answered, 0 expected-gap NOs (all 6 former gaps now BUILT)
+### M8 — "Platform day: onboard engine-c" (registry-admin/access-admin/admin) — 4 yes-with-struggle / 2 blocked-by-environment
+
 | # | Verdict | Evidence |
 |---|---|---|
-| 1 | yes-with-struggle | Full night inventory from /audit; independently disproved the night shift's "fix is deployed" belief via a live re-search |
-| 2 | yes | operator×4 + admin×1 attribution, ground-truth-verified; service-account caveat text now present (closes a prior run's R-AUD-09 miss) |
-| 3 | yes | "Export CSV" downloaded a real 156-row file with the audit schema's columns (closes a prior run's R-AUD-08 miss) |
-| 4 | yes-with-struggle | "Copy shift report" now exists (closes a prior run's R-AUD-05/a NOT-FOUND); clipboard content unverifiable in this sandbox |
-| 5 | yes | "Acknowledge" on the error-class card, reason+ticket+expiry, collapsed to "Acknowledged (N)" (closes a prior run's R-BAU-01 miss) |
-| 6 | yes | Home page "Leak views" panel + generic-filter cross-check both report zero (closes a prior run's R-BAU-02 miss) |
-| 7 | yes | "explain this status" chip opens a full live evidence dialog incl. raw REST call table (closes a prior run's R-L3-01 miss) |
-| 8 | yes-with-struggle | Publish/unpublish two-actor loop completed; OPERATOR block fires even on a non-wildcard scope (misleading reason text, Sev3) |
+| 1 | yes-with-struggle | Environment wasn't clean (stale `engine-c` from a prior 2026-07-13 run) forcing a pivot, but the DRAFT→probe→ACTIVE ladder was still walked and understood. |
+| 2 | yes-with-struggle | `169.254.169.254` rejected pre-dial with a named allowlist reason + remediation + request ID; `localhost:1` accepted as a draft and only failed on Test-connection with a bare, unexplained "▲ Probe failed" — **asymmetric diagnostics for two similar mistakes**. |
+| 3 | yes-with-struggle | Nav correctly greyed on identity switch, but the full privileged engine table stayed rendered for one extra click before the gate re-evaluated (hard reload showed it immediately). |
+| 4 | blocked-by-environment | Both a small and a large access grant were rejected identically by a file-pinned mapping-store CRUD-disabled error before the four-eyes logic could ever be reached — deployment-config gap, not a UI defect. |
+| 5 | blocked-by-environment | Remove correctly reached "Proposed" and correctly refused self-approval, but true removal needs a second REGISTRY_ADMIN identity outside the proposer's group — none exists in the dev ladder (accepted F-G4 gap). |
+| 6 | yes-with-struggle | `engine-c`'s own audit history rendered meaningfully post-removal, but the same page threw a **self-contradictory** "Unknown engine: engine-c ... The engine answered" alert. |
 
-### M8 · Platform day (registry-admin → admin → access-admin) — 3/5 clean yes, 2/5 blocked-by-environment
+### M9 — "Hands off the mouse" (responder, keyboard-only) — 3 yes / 1 yes-with-struggle
+
 | # | Verdict | Evidence |
 |---|---|---|
-| 1 | yes | Full onboarding lifecycle (Draft→Probed→Active read-only) self-explanatory at every stage |
-| 2 | yes-with-struggle | Metadata-IP rejection actionable; plausible-wrong-URL ("localhost:1/x") probe failure gives zero diagnostic detail |
-| 3 | yes | Plain admin cleanly refused with the named missing grant on fresh load; brief stale-render on in-SPA role switch (self-correcting) |
-| 4 | blocked-by-env | Access-grant CRUD blocked entirely by an unrelated "mapping is file-pinned" gate before any four-eyes logic could engage — masks whether R-SAFE-08's real widening-comparison behavior works |
-| 5 | yes-with-struggle | Registry-removal four-eyes zero-state genuinely reached (self-approval correctly 403'd) — but silently, no UI feedback; historical trace mostly survives with one mis-routed reference found |
+| 1 | yes-with-struggle | Retried a dead-letter job entirely via keyboard in 36 keystrokes — every press was forward progress, but two ARIA conventions (ArrowDown-into-grid-rows, ArrowRight-then-separate-Enter for the manual-activation tablist) were undiscoverable, never hinted on screen. |
+| 2 | yes | Both diagram-only facts (failing step, current position) fully available as plain Tab-reachable text elsewhere on the page. |
+| 3 | yes | Human timestamp + parenthetical ISO shown together, plus a "copy ISO" button — zero computation needed for an unambiguous cross-timezone handoff. |
+| 4 | yes | All 5 engine cards carry the identical pure-text "DEV — a development engine. Low stakes." label — no color dependency, but also no prod/test distinction exists anywhere in this deployment. |
 
-### M9 · Hands off the mouse (responder, keyboard-only) — 2/4 clean yes, 1 reconciler-downgraded no, 1 yes-with-struggle
+### M10 — "Digging past page one" (viewer) — 1 yes / 1 yes-with-struggle (COULD-v2, report-only)
+
 | # | Verdict | Evidence |
 |---|---|---|
-| 1 | **no** (reconciler downgrade) | Completed the retry entirely via keyboard, but at 46 interactions — 3× the 15-interaction give-up budget — so scored as compensation, not ergonomics; real gaps found: header Tab-order skip, no focus-adjacent mutation confirmation |
-| 2 | yes | "Currently at → chargePayment" + alert text = full textual twin of the diagram; only the SVG itself carries no accessible name |
-| 3 | yes-with-struggle | "UTC" suffix + parenthetical ISO + "copy ISO" all present (closes a prior run's R-UXQ-03 miss); only Local-vs-UTC, no arbitrary offset preview |
-| 4 | yes-with-struggle | "DEV — a development engine. Low stakes." literal text badge on every engine; full-registry admin page gated non-interactive so hidden-prod-engines can't be ruled out |
+| 1 | yes-with-struggle | Correctly distinguished partial-fetch from complete data via 3 independent signals; correctly identified the internal k-way-merge scan-depth cap via network introspection, but the on-screen "narrow your filter" copy is **identical before and after** the wall — the only tell is the Load-more button silently vanishing. |
+| 2 | yes | No duplicate/skipped rows across 569 paged rows (spot-checked); only two newest-first sort options exist, no oldest-first. |
 
-### M10 · Digging past page one (viewer) — 2/2 arcs, 1 yes-with-struggle, 1 yes
+### M11 — "Routine sweep" (viewer) — 4 yes / 1 yes-with-struggle
+
 | # | Verdict | Evidence |
 |---|---|---|
-| 1 | yes-with-struggle | "200 of 1,284 fetched" + "~1598 matching" + "Load more" correctly read as first-page; ceiling hit at ~513/1,598 (reproduced twice) with a stale fetch-progress line and no "why stopped" message at the exact moment Load-more vanished |
-| 1 (dup-check) | yes | Full scripted scroll-through: 513/513 unique IDs, zero gaps, stable sort order across every Load-More seam checked |
+| 1 | yes | View's filter matched its name exactly, but one matching row's headline badge read FAILED (dead-letter outranks suspended in badge priority) rather than SUSPENDED — name oversold the badge you'd see at a glance. |
+| 2 | yes | Duplicate business key → normal 2-row grid, never auto-navigated; only the raw Process ID actually disambiguates. |
+| 3 | yes | Unique business key → narrowed straight to exactly 1 pre-filtered result. |
+| 4 | yes-with-struggle | Search cURL is clean and trustworthy; the case-level action cURL is **not** visually locked like its neighbors yet fails with an unexplained "Could not render the cURL: Forbidden". |
+| 5 | yes | `<img src=x onerror=alert(1)>` business key + a HYPERLINK-formula variable + a `<script>` variable all rendered as inert literal text everywhere, zero execution, zero layout disruption. |
 
 ---
 
-## 3 · Themes ranked by severity (root-cause clusters)
+## Ground truth reconciliation (quiet-lie / guard-bypass / wrong-target / invisible-apply canary)
 
-1. **[Harness/process] FIXTURE_DRIFT recurring across consecutive runs — 5 gate arcs
-   unresolved** — F-G2 (engine-b never flipped to prod), F-G7 (`engine-legacy` never
-   registered this run, tombstoned by an earlier session), and the protected-instance mark
-   (PROTECTED_ID confirmed plain/unprotected by this run's own staging note) were all
-   *supposed* to be applied before M5/M6 ran and were not; M6's migration and kill targets
-   were additionally already at their post-mission end state from an earlier same-day
-   session. This is a **repeat** of a prior report's explicit warning that unresolved
-   F-G2/F-G7 staging "will sink wave 3 again" — it did, again. Not a product defect —
-   every tester correctly self-diagnosed the drift rather than fabricating results — but it
-   blocks certification of R-SAFE-03, R-UXQ-04, and R-SAFE-05 for a second consecutive
-   run. **Recommend: a pre-flight fixture assertion step that hard-fails the run before any
-   tester starts, per RUN PROTOCOL's own "Pre-flight fixture check," rather than
-   discovering the gap post-hoc via ground truth.**
-2. **[Sev2] Catalog BUILT-status overclaim on R-SAFE-05** — the catalog's own BUILT NOTE
-   claims full delivery (`ProtectedInstance*`, results-grid row badge, per-verb
-   disabled-with-reason, repo-verified 2026-07-13) but this run's staging note found "No
-   protected-instances (mark/hold) route exists anywhere under
-   `backend/src/main/java/io/inspector/api/`." Either the repo audit is aspirational or the
-   route is unreachable from this deployment profile — worth a direct route-level check
-   before the next run, independent of the fixture-staging issue in theme 1.
-3. **[Sev2] Grid vs detail status-label mismatch (M6)** — the same instance
-   (`engine-b:afdf9ae9-...`) reads **COMPLETED** in the search-results grid but
-   **TERMINATED** on its own detail page. Ground truth confirms the detail page is correct
-   (`deleteReason` present, absent from runtime) — the grid's status derivation is wrong
-   for at least this instance class. Not a mis-triage of FAILED/RETRYING (so it doesn't
-   trip the R-SEM-02 canary), but it is a real, ground-truth-confirmed correctness bug.
-4. **[Sev2] Stale/frozen "fetched" progress counters, 2 missions** — "engine-a 200 of
-   1,284 fetched" (M10) and "engine-a 16 of 24 fetched" (M4) never update as Load-more
-   grows the loaded set, and in M10 the tool eventually stops paging (~513/1,598,
-   reproduced twice) with **no message at the exact moment it stops** explaining that an
-   internal ceiling — not the true end — was hit; the only text present at that moment is
-   an unrelated staleness note ("newer instances won't appear until Refresh"). Hits both
-   R-SEM-12 (honesty labels) and R-NFR-08 (depth-cap legibility) goals.
-5. **[Sev2] Keyboard accessibility gaps (M9, 3 sub-findings on one mission)** — first Tab
-   from page load skips ~11 header-region focusable elements, landing on "Refresh"; focus
-   drops to `<body>` with zero focus-adjacent confirmation after a mutating action; the
-   bpmn-js diagram SVG tab-stop carries no accessible role/name (mitigated — the same facts
-   exist as redundant plain text elsewhere on the page).
-6. **[Sev2] Silent rejection with no UI feedback (M8)** — an access-admin's self-approval
-   click on their own registry-removal proposal correctly 403s server-side ("the proposer
-   cannot approve their own proposal") but the SPA renders no error/toast/banner at all.
-   The guard worked; the feedback didn't. Structurally adjacent to — but distinct from — an
-   invisible-apply Sev1 (nothing applied here), still worth fixing before a future guard
-   regression makes the silence dangerous instead of just confusing.
-7. **[Sev3] "Copy X" actions give zero on-screen confirmation, 3 missions** —
-   copy-for-ticket (M1), copy raw JSON (M2), copy shift report (M7) all fire with no
-   toast/label-change. Compounded by (but independent of) a Playwright clipboard-read
-   sandbox limitation noted in nearly every mission's protocol notes — the *lack of a
-   toast* is a real, sandbox-independent R-UXQ-06 gap.
-8. **[Sev3] Fixture/session reset discipline — 6 missions show pre-existing residue** —
-   Recent-search history, operator notes, and audit rows from earlier sessions/runs are
-   visible before a "first-time" tester acts in M1, M2, M3, M6, M7, M8; in M3 and M6 the
-   residue is the mission's own EXPECTED end state, already present before the tester
-   touched anything. This risks contaminating a fresh evaluation (a less careful tester
-   could credit itself for pre-existing state) and is the likely root mechanism behind
-   theme 1's M6 pre-executed fixtures.
-9. **[Sev3] R-OPS-13 diagnostic-detail inconsistency (M8)** — the disallow-listed metadata
-   IP gets a (garbled but) actionable rejection reason; a plausible-but-unreachable URL
-   (`localhost:1/x`) gets only "Probe failed" with zero detail in the UI or the underlying
-   API response body — the goal's "specific enough to fix" bar is only half met.
-10. **[Sev3] Message-style: stated reason doesn't match the actual gate (M7)** —
-    publishing a saved view scoped to a single exact business key (not remotely a
-    wildcard) as OPERATOR is refused with "publishing a wildcard scope needs ADMIN" — the
-    real rule is "OPERATOR can never publish," mislabeled as a scope check.
-11. **[Sev4] Migrate dialog self-contradiction (M6)** — titled "move this case to a newer
-    process version" but for an already-latest instance offers only an OLDER version as
-    the sole selectable target.
-12. **[Sev4] Removed-engine reference partially mis-rendered (M8)** — the audit-trail link
-    for a registry action opens `/inspect/<engineId>/<engineId>`, which Instance Detail
-    tries to resolve as a process instance and shows a self-contradictory "Unknown engine…
-    The engine answered" banner, even though the correct history renders fine right below
-    it on the same Audit & Notes tab.
+Checked every claim the ground-truth hooks could reach:
+
+- **M4 bulk retry (R-SEM-10/a)**: tester reported 0/8 succeeded, all re-failed to
+  dead-letter. Direct Flowable REST query of all 8 `uxrun-m4-*` instances **confirms**: all
+  8 still hold open dead-letter jobs, 0 completed/gone. **Match — no quiet lie.**
+  (Note: business keys `uxrun-m4-1..8` are reused across 4 historic seed runs on this
+  shared dev engine; the ground-truth check scoped to the most recent run, matching what
+  the tester actually operated on.)
+- **M6 timer fire (task 1, `uxrun-m6-1`)**: tester reported the instance completed
+  naturally after the fired timer. Ground truth **confirms**: historic record shows
+  `endTime` set, `endActivityId='end'`, `deleteReason=null` (completed the flow, not
+  force-deleted). **Match.**
+- **M6 migration (task 4)**: tester reported migration to v2 succeeded. Ground truth
+  **confirms**: `processDefinitionId=demoMigration:2:...`, audit row present with matching
+  actor/reason/timestamp. **Match.**
+- **M6 terminate (task 5)**: tester reported being blocked before completion (tool-
+  permission layer, not the app). Ground truth **confirms**: `uxrun-m6-3` still alive,
+  `endTime=null`. **Match — no wrong-target or quiet-lie risk realized.**
+- **M3 (`bbf1b425-...`)**: no tester claim exists to check against (mission never ran);
+  ground truth found `amount=100`/`note="temporary hold"` — neither of the mission's
+  candidate outcomes — and zero audit rows, consistent with "never executed", not with a
+  silent failure of a real edit.
+
+**Verdict: zero confirmed Sev1 findings under R-TEST-03** (quiet lie / guard bypass /
+wrong-target / invisible apply) across everything ground-truth-checkable this run.
 
 ---
 
-## 4 · The 6 known-gap (+2 sliver) evidence paragraphs — now closed, not excluded
+## Themes, ranked by severity × surface count
 
-Per the catalog's own 2026-07-13 "Known-absent surfaces" note, all 6 former MUST-v1 gaps
-plus 2 slivers are now repo-verified BUILT. This run's evidence agrees on every one — a
-genuinely positive result, and a departure from the historical "expected NOT-FOUND"
-framing these arcs used to carry:
+1. **[Sev1, gate-blocking] R-SAFE-03 prod friction floor untested — fixture never staged.**
+   `engine-b`'s env tag was never actually flipped to `prod` (confirmed via
+   `engine_registry.updated_at==created_at`, zero `registry-edit` audit rows). M6's entire
+   "extra care on production" premise could not be verified; the two-click tier-0 gate
+   (`InlineConfirm.tsx`) has zero valid pass evidence this run. **1 mission, but it is the
+   MUST-v1 safety gate itself — re-stage and re-run before certifying.**
 
-1. **R-AUD-05/a produce shift report** — M7 found "Copy shift report" sitting directly
-   next to "Export CSV" in the Ops-log toolbar, exactly where a prior report predicted it
-   should live. Fired without error; clipboard content itself could not be independently
-   verified in this sandbox (an environment limitation, not an app gap).
-2. **R-AUD-08 audit CSV export** — M7's "Export CSV" button produced a real 156-row
-   `operations-log.csv` with the audit schema's columns (ts/actor/action/engineId/
-   tenantId/instanceId/outcome/httpStatus/reason/ticketId/correlationId/breakGlass),
-   verified on disk including the break-glass row.
-3. **R-AUD-09 attribution caveat** — M7's Audit & Notes tab now carries "Engine-side
-   history attributes these actions to the shared service account — this log is the
-   authoritative WHO," and the who-question (operator×4, admin×1) is ground-truth-verified
-   correct against the same real usernames.
-4. **R-BAU-01 error-group acknowledge** — M7 filled reason+ticket+24h expiry on the
-   UnknownHostException card's "Acknowledge" button; the group collapsed into an
-   "Acknowledged (N)" section that explicitly states its own auto-resurface conditions.
-5. **R-BAU-02 leak views** — M7 found a dedicated home-page "Leak views" panel reporting
-   "No leaks — every reachable engine is clean…", independently corroborated via a
-   generic Status=Active + Started-before filter landing on the same zero.
-6. **R-L3-01 explain-this-status** — clicked from any FAILED chip across nearly every
-   mission this run, opening a titled "Explain this status" dialog with a live-recomputed
-   flag table AND an "Engine calls made (N)" table listing the raw REST calls (URL,
-   status, latency, timestamp) behind the derivation — the deepest evidence surface found
-   in the whole run.
-7. **R-AUD-07 ticket-capture sliver** — M3/M4/M6 all found and used a dedicated
-   "Ticket ID (optional…)" field in the same confirm dialog as the reason box, rendering as
-   a linkified chip in Audit & Notes afterward.
-8. **R-SAFE-05 row-badge/verb-reason sliver** — **not confirmed this run** (unlike the
-   other 7). M6's staging note for this exact run states the intended PROTECTED_ID target
-   is "a plain unprotected demoFailingPayment instance" — the fixture was never applied,
-   so no badge/lock-reason/bulk-skip evidence could be gathered either way. See theme 2 for
-   the further wrinkle that the catalog's BUILT-yes claim for this item cannot currently be
-   substantiated by any tester evidence.
+2. **[Sev2, process] M3 total run loss.** Tester died before task 1; 8 goal-arc rows
+   (R-SEM-09/a/b, R-UXQ-13/a/b/c, plus M3's dedicated share of R-NFR-06/R-AUD-07/R-SAFE-02)
+   have zero evidence. R-NFR-06/R-AUD-07 recovered incidentally via M4; R-SAFE-02 got
+   partial coverage (suspend=REVERSIBLE) via M6; **the CAS-conflict three-value screen and
+   the form-first variable editor have no substitute evidence anywhere in this run.**
 
----
+3. **[Sev2, 3 surfaces] Uniform "DEV — a development engine. Low stakes." badge, no per-
+   engine severity signal.** M1 (dashboard next to a live 264+46-job DLQ backlog), M6
+   (compounds finding #1 — "prod" reads identically reassuring), M9 (confirmed: no
+   engine anywhere in this deployment is textually prod/test-distinguishable). Reassuring
+   copy paired with a real 3am incident is an odd signal, even though it's factually
+   accurate for a dev-only fleet.
 
-## 5 · Rubric-corpus verdict (R-UXQ-05/06)
+4. **[Sev2, known/reconfirmed] R-SAFE-05 still has no production write path.** M6 task 2's
+   staging note independently reconfirms the catalog's tracked gap: `ProtectedInstance{
+   Controller,DefinitionController}` exist in source but the deployed jar exposes neither
+   route (404 on both, while the sibling `/actions/{verb}/curl` route 200s with the same
+   creds — routing/auth plumbing is fine, only these two controllers are missing). No admin
+   can ever protect an instance today.
 
-**R-UXQ-05 (what/why/next-move triple): zero Sev1 violations — rubric gate holds.**
-Sev2/3-backed message issues worth fixing:
-- "publishing a wildcard scope needs ADMIN" stated as the reason for a non-wildcard-scope
-  refusal (M7) — reason given does not match the actual gate.
-- "▲ Probe failed" with no detail anywhere, UI or API body (M8).
-- Stale "X of Y fetched" lines that silently stop describing reality after Load-more (M4,
-  M10).
-- Self-approval 403 with a good server-side message that never reaches the UI at all (M8).
+5. **[Sev2, 2 surfaces] Client-side RBAC doesn't re-evaluate on in-session identity switch
+   without a reload.** M1: stale disabled "Retry group" buttons still showed a leftover
+   VIEWER-tier lock reason after switching to responder, until a manual reload. M8: the
+   full privileged `/admin/engines` table (Add/Test/Edit/Enable-Disable) stayed rendered
+   for one extra click after switching registry-admin→admin in place. Neither produced a
+   confirmed server-side bypass (M8's tester stopped before submitting), but this is a
+   defense-in-depth gap worth a backend confirmation pass.
 
-**Positive corpus** (house style at its best, keep as exemplars): *"retries exhausted —
-this is the FAILED evidence; retry moves it back to executable"*, *"Blocked: the server
-value changed since you loaded it."*, *"~ = the count when this page loaded. The real list
-is re-checked at run time."*, *"IRREVERSIBLE runtime state is destroyed — there is no
-undo"*, *"🔒 Requires OPERATOR — you are RESPONDER"*, *"No matching instances — confirmed
-zero across 2 engines."*, *"Capped at 5,000 instances per bulk job (server-enforced) —
-narrow it and run in slices."*, *"A step that fails the same way will return to FAILED
-after its retries; use an item's Verify now…"*.
+6. **[Sev2, 1 surface] Dashboard headline count disagrees with its own drill-down grid for
+   the identical filter, unexplained.** M4: "289 instances" (landing card) vs "248
+   instances" (grid after clicking through) — same filter, two different exact numbers,
+   with zero on-screen reconciliation at click time.
 
-**R-UXQ-06 (notification budget):** no unsolicited modals, no stacked banners found — but
-**3 confirmed violations of "never the sole record of an outcome" via its mirror image**:
-copy-for-ticket (M1), copy raw JSON (M2), and copy shift report (M7) all produce *zero*
-record of their outcome anywhere on screen (no toast, no label change), which is arguably
-worse than an outcome living only in a vanished toast — here it never lived anywhere.
+7. **[Sev2, 1 surface] Deep-paging Load-more silently vanishes at the internal scan-depth
+   limit** with no distinguishing copy from an ordinary "more available" state (M10,
+   R-NFR-08 — COULD-v2, report-only but a real gap: the identical "narrow your filter"
+   status line is shown both before and after the wall).
 
----
+8. **[Sev2, 1 surface] Keyboard-only retry path is ~35 keystrokes deep with two
+   undiscoverable ARIA conventions** (ArrowDown-into-grid, ArrowRight-then-Enter manual-
+   activation tablist) never hinted on screen (M9, R-UXQ-02 — a MUST-v1 gate item that
+   passed only "with struggle").
 
-## 6 · Protocol violations (flagged, per tester)
+9. **[Sev3, 2 surfaces] Self-contradictory error copy: "Unknown engine ... The engine
+   answered" in the same message block.** M5 (`engine-zzz`) and M8 (`engine-c` post-
+   removal) both hit this — the message simultaneously claims the engine is unknown and
+   that it answered a live query.
 
-- **M2 (responder):** direct URL navigation ("hand-editing URLs") used for "a few"
-  navigation steps, self-justified as equivalent to clicking an already-validated link — a
-  move explicitly forbidden by RUN PROTOCOL regardless of the equivalence claim. Does not
-  change any M2 task's verdict since each also carried an independent on-screen citation,
-  but flagged as a protocol adherence gap.
-- **M9 (responder, keyboard-only):** task 1 ran to 46 interactions against a 15-interaction
-  hard give-up budget — reconciler downgrades this arc's verdict to `no` for gate purposes
-  (see §1).
-- **M4 / M10 (operator / viewer):** `browser_evaluate(button.click())` used for several
-  repeat "Load more" clicks (M4 progress-watching, M10 duplicate/skip verification) instead
-  of the click tool, plus scripted grid-viewport scrolling in M10 (no documented UI
-  scroll affordance existed). Both self-disclosed by the testers as compensatory
-  verification layered on top of real prior clicks, not a substitute for them — accepted
-  per RUN PROTOCOL's "agent compensatory behavior" guidance, but flagged as a friction
-  finding (M10's Q4 duplicate/skip conclusion still stands on its own scripted evidence).
-- **M2 / M5:** `browser_network_request` used to read response bodies of requests the UI
-  itself had already fired (never to issue independent calls) — a defensible verification
-  technique, not a forbidden direct-API call, but noted for completeness.
-- **Hallucination canaries: zero.** No tester claimed success on a genuinely BUILT-no
-  surface.
+10. **[Sev3, 1 surface] Asymmetric registry fat-finger diagnostics.** M8: an SSRF-allowlist
+    rejection gets a specific reason + remediation + request ID; a bad-port probe failure
+    gets a bare "▲ Probe failed" badge with nothing actionable.
+
+11. **[Sev3, 1 surface] cURL-preview button not locked like its siblings, fails opaquely.**
+    M11: "Show as cURL" on a dead-letter job row is clickable (unlike the adjacent
+    explicitly-locked "Retry job"/"Delete") but silently returns "Could not render the
+    cURL: Forbidden" with no role-requirement explanation.
+
+12. **[Sev3, 1 surface] "Fire timer now" consumes a live retry attempt with zero warning**
+    that it won't help unless the underlying variable is also fixed (M1) — discoverable
+    only after the fact via the retries counter dropping.
 
 ---
 
-## 7 · Environment & staging notes
+## The 6 previously-tracked MUST-v1 gaps — now confirmed BUILT (not fails)
 
-**Degraded (carried into grading, verbatim from this run's staging):**
-- "No protected-instances (mark/hold) route exists anywhere under
-  `backend/src/main/java/io/inspector/api/` — PROTECTED_ID (uxrun-m4-8,
-  28abf3eb-7e7f-11f1-b839-3210ba03f0d0) is a plain unprotected demoFailingPayment instance;
-  any mission expecting a 'regulatory hold' badge or protected-instance guard rail on it
-  will not see one." → R-SAFE-05 blocked (M6 task 2); directly contradicts the catalog's
-  own BUILT-yes note for this item (theme 2).
+GOAL-CATALOG.md's per-entry text for these six items still literally reads "BUILT no" —
+that text is dated 2026-07-10 and stale. The file's own aggregate note ("Known-absent
+surfaces", updated 2026-07-13 per issue #97/#98) says 7 of 8 original gaps are now built;
+this run independently confirms all seven with strong tester citations and zero
+hallucination-canary hits:
 
-**FIXTURE_DRIFT (harness defects, re-stage + re-run once then escalate — repeat of a prior
-run's finding):**
-- **M5**: `engine-legacy` was never registered this run — ground truth shows the
-  `engine-legacy-ux` registry row was disabled and registry-removed/tombstoned by an
-  **earlier session** (same-day audit trail, reason "M5 staging cleanup: remove scratch
-  UX-staging engine after recovery"). The container itself was also stopped and had to be
-  separately `docker start`-ed by the restoration hook. F-G7's registered-but-unreachable
-  zero-state was never staged; the tester's search instead hit the ordinary
-  not-registered-at-all path.
-- **M6**: F-G2 (flip `engine-b` env tag to `prod`) was never applied — ground truth
-  confirms the registry row's `created_at == updated_at` exactly, i.e. untouched since the
-  original yaml-seed. The migration case (`uxrun-m6-mig`) was already on v2 and the kill
-  target (`uxrun-m6-3`) was already TERMINATED, both via an **earlier same-day session**
-  (audit seq 127/128, ~08:02–08:07 UTC, well before this tester's run) — the whole mission
-  was executed against a fixture that had already reached its own end state.
-- **M8 task 4**: access-grant CRUD is blocked entirely by an unrelated "mapping is
-  file-pinned (mapping-source: file)" condition that disables ALL grant writes regardless
-  of size — this masked whether R-SAFE-08's real small-grant-vs-wildcard-grant comparison
-  behaves differently; only the registry-removal four-eyes path (task 5) reached genuine
-  evidence for the underlying approval mechanism.
-- **Cross-cutting**: 6 of 9 missions encountered pre-existing session/fixture residue
-  (recent searches, notes, audit rows) predating the tester's own actions — see theme 8.
-  This is the most likely root mechanism behind M6's pre-executed fixtures above and should
-  be treated as the same underlying reset-discipline gap.
+- **R-BAU-01 (acknowledge)** — M7 task 5: "Re-acknowledge" with reason+ticket+expiry,
+  resurface conditions stated, card collapses into "Acknowledged (N)" without hiding it.
+- **R-BAU-02 (leak views)** — M7 task 6: built for SUSPENDED age; **still no ACTIVE-age
+  equivalent** (a real, smaller follow-up gap worth tracking separately — see theme
+  ranking, item omitted from the top-12 for being COULD-severity).
+- **R-AUD-05/a (shift report, produce)** — M7 task 4: "Copy shift report" + "My shift"
+  exist, but neither alone satisfies the full cross-shift handover goal (see M7 table).
+- **R-AUD-08 (CSV export)** — M7 task 3: genuine, verified working CSV download.
+- **R-AUD-09 (attribution caveat)** — cited across M1/M2/M4/M6/M7: "Engine-side history
+  attributes these actions to the shared service account — this log is the authoritative
+  WHO."
+- **R-L3-01 (explain this status)** — M2 task 2, M7 task 7: full per-leg evidence
+  (Plan + flags + literal engine calls with method/URL/status/latency), "re-derived just
+  now against live engine state."
+- **R-AUD-07 sliver (ticket capture field)** — M4 task 3: a ticket field now exists in the
+  bulk-retry confirm dialog and captured "INC-4712" correctly, visible later in the audit
+  row.
 
-**Restoration:** the container-start restoration hook for `engine-legacy` succeeded (raw
-health check 200 on first poll), but explicitly could NOT restore full BFF-visible
-reachability, because the registry-level removal was itself a deliberate, reasoned action
-by a prior session (not damage) — restoring that would require a fresh, audited
-registry-admin re-add, which was correctly *not* done silently. M6's engine-7 read-only
-flip (the one staging step that WAS genuinely applied for this run) was confirmed restored
-to its yaml-seed state (mode=read-write, lifecycle=disabled) by the same hook.
+R-SAFE-05 remains the sole genuine "expected fail" (excluded from gate numerator/
+denominator per protocol) — see theme #4 above.
 
-**Ground-truth cross-check summary:** all UI-claimed successes corroborated over engine
-REST and the BFF's own audit table — M3 (amount=300 / note=null / config flip + full
-5-row audit chain), M4 (8/8 genuinely re-dead-lettered on `chargePayment` with fresh
-createTime, matching the tester's "0 succeeded" report exactly), M5/M6 restoration hooks
-(confirming the fixture-drift findings above rather than any tester error). **Zero Sev1
-quiet-lie findings.**
+---
+
+## Rubric-corpus verdict (R-UXQ-05/06)
+
+Pooled the `messagesCorpus` quotes tagged `confusing` across all 10 returned missions.
+**Zero Sev1 R-UXQ-05/06 violations** — no message caused a wrong safety-relevant action;
+every genuine confusion resolved via other on-screen evidence or an "Explain this status"-
+style drill-down. Sev2/Sev3 violations captured in the themes above (#9 self-contradictory
+"Unknown engine ... The engine answered"; #6's unreconciled dashboard-vs-grid count; the
+uniform "DEV — Low stakes." badge). Representative quotes tagged `confusing` by testers
+that did **not** rise to a standalone theme (isolated, Sev3/4, logged for completeness):
+- `"NEW VERSION SINCE ACK · +39"` (M1) — abbreviation understood from context, not itself
+  misleading.
+- `"🔒 Blocked: filter includes RETRYING instances"` (M4) — block is keyed to the query's
+  allowed statuses rather than the visible rows; decoded correctly but took an extra step.
+- `"proposal 1 has expired"` (M8) — the removal-proposals list doesn't visually
+  distinguish live-pending from silently-expired until you act on one.
+
+**Rubric gate: PASS** (zero Sev1).
+
+---
+
+## Protocol violations
+
+None of the 10 returned missions recorded a forbidden move (no hand-edited URLs, no
+route-guessing, no page-source reads, no direct API calls substituting for UI actions, no
+re-submission of a mutating action). Two soft process notes:
+
+- **M9 task 1 exceeded the nominal 15-interaction give-up threshold (36 interactions)**
+  without triggering any of the hard give-up sub-conditions (every press was forward
+  progress, zero repeats, no two-consecutive-nothing-new). Per protocol this is legitimate
+  continued exploration, not brute-forcing — but it is itself the evidence behind theme #8
+  (keyboard depth) and worth the product team's attention independent of the pass verdict.
+- **M6 task 5's final destructive click was blocked by the Claude Code auto-mode
+  permission classifier itself** (not the app), before the app's own confirmation screen
+  rendered. Correctly not attempted-around by the tester; reclassified to
+  `blocked-by-environment` in results.jsonl.
+
+---
+
+## Environment / staging notes
+
+- **degraded** — `PROTECTED_ID` (`uxrun-m4-8` / `3a649d1d-80ee-11f1-b839-3210ba03f0d0`) was
+  picked as instructed for M6 but could **not** be marked protected: both
+  `POST /api/instances/{engineId}/{instanceId}/protect` and the definition-scope
+  `/api/definitions/{engineId}/{key}/protect` route return 404 on the running BFF (source
+  controllers exist but the deployed jar predates them; confirmed not an instance-not-found
+  404 by re-testing against an unrelated active ID; the corrective-action `curl` sibling
+  route 200s with the same credentials, so auth/routing plumbing is otherwise fine).
+  `PROTECTED_ID` was left **unprotected** — testers should not have expected a protection
+  guard to fire on it, and M6 task 2's verdict is reclassified accordingly (see theme #4).
+- **R-SAFE-03 fixture drift** — `engine-b`'s `prod` env-tag flip (F-G2) was never applied
+  this run; see gate section and theme #1. `engine-7`'s `read-only` mode flip (used for M6
+  task 3), by contrast, **was** correctly staged and restored — confirmed via its own
+  `registry-enable` audit row and a follow-up `GET /api/admin/engines` showing
+  `mode=read-write` restored post-run.
+  Reaching this conclusion involved a credential-in-URL attempt during ground-truth
+  verification (Basic-auth probing of `/api/meta`); no credential value is reproduced
+  anywhere in this report or in `results.jsonl`.
+- **`engine-legacy` container (port 8084)** — stopped and restarted for F-G7 staging;
+  restored and health-verified (`GET .../management/engine` → 200 after ~15–20s). This
+  container is a backend integration-test fixture, not a member of the live BFF's
+  `/api/engines` registry — restoration was verified via the engine's own health endpoint,
+  not by polling `/api/engines` for it (it never appears there under any id).
+- **M8's environment was not clean at session start** — a stale `engine-c` (DISABLED, with
+  an expired four-eyes removal proposal) and a stale `engine-metadata-test` (PROBE FAILED)
+  already existed from a prior 2026-07-13 run of this same scenario; this is a shared dev
+  environment with parallel/repeated sessions, not a fresh fixture, and forced M8 task 1 to
+  pivot mid-task (see theme table, M8 row 1).
+- Every returned mission independently hit the same benign Playwright-MCP harness artifact
+  (`ENOENT: .../output/page-....yml` on nearly every click/type/navigate call, underlying
+  action always succeeded per an immediate follow-up snapshot) and the same
+  `navigator.clipboard.readText()` sandbox denial (blocks clipboard-payload verification
+  for copy-to-clipboard affordances). Both are environment limitations, not app defects,
+  and were consistently treated as such by every tester — not counted against any verdict
+  in this reconciliation.
+
+---
+
+## Files
+
+- `docs/usability/results/latest/results.jsonl` — 69 goal-arc × mission rows.
+- `docs/usability/results/latest/RUN-REPORT.md` — this file.
