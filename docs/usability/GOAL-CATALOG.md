@@ -52,20 +52,24 @@ comparable per arc. Personas: default is the **3am first-time on-call engineer**
 ## GOV — Product governance
 
 ### R-GOV-01 · KPI instrumentation
+
 PRIO MUST-v1 · CLASS NOT-UI · BUILT n/a
 GOAL: n/a — KPIs are computed from BFF audit data; no operator-facing arc. The usability
 run itself feeds the "time-to-first-fix" intuition but does not verify the metric.
 
 ### R-GOV-02 · v1 release gate
+
 PRIO MUST-v1 · CLASS NOT-UI · BUILT n/a
 GOAL: n/a — release-gate checklist (security sign-off, perf budget, onboarding doc).
 The R-TEST-08-style run this catalog powers is one artifact ON that checklist.
 
 ### R-GOV-03 · Stakeholder table / onboarding checklists
+
 PRIO MUST-v1 · CLASS NOT-UI · BUILT n/a
 GOAL: n/a — organizational precondition.
 
 ### R-GOV-04 · Read-only engine mode
+
 PRIO MUST-v1 · CLASS UI-STAGED · BUILT yes
 GOAL: An operator working an instance on an engine registered read-only must understand,
 without filing a bug, that no mutating verb will work on this engine, why, and that this
@@ -76,6 +80,7 @@ an onboarding policy, not an outage" and does NOT report it as a defect.
 FIXTURE: runner flips one engine to `mode: read-only` via `/admin/engines` (restore after).
 
 ### R-GOV-05 · AG Grid Community + bpmn.io watermark
+
 PRIO MUST-v1 · CLASS UI (sliver) · BUILT yes
 GOAL: The diagram canvas must carry the visible bpmn.io watermark (license term) and the
 grid must be workable (selection count, copy IDs) without Enterprise affordances.
@@ -85,21 +90,25 @@ ID. (License/CI half verified by `check-bpmn-watermark.mjs`, not the tester.)
 FIXTURE: standard seed.
 
 ### R-GOV-06 · IdP contract (OIDC)
+
 PRIO MUST-v1 · CLASS NOT-UI (in dev run) · BUILT partial (dev=Basic)
 GOAL: n/a for the dev-profile run — dev ladder uses Basic-behind-a-form. OIDC login
 legibility (groups-overage reject-legibly) needs the prod-like Keycloak leg (R-OPS-16).
 
 ### R-GOV-07 · Release re-cut discipline
+
 PRIO MUST-v1 · CLASS NOT-UI · BUILT n/a
 GOAL: n/a — scope governance.
 
 ### R-GOV-08 · Playbook build trigger
+
 PRIO COULD-v2 · CLASS NOT-UI · BUILT n/a
 GOAL: n/a — audit-analysis trigger for a v2 feature.
 
 ## NFR — Service levels & envelope
 
 ### R-NFR-01 · Caps (fan-out, bulk 200/5000, preview 8 KiB…)
+
 PRIO MUST-v1 · CLASS UI (sliver) + INDIRECT · BUILT yes
 GOAL: When an operator crosses a cap (bulk over 200 via grid, over-cap filter bulk), the
 refusal must name the cap and the sanctioned alternative — never a silent trim.
@@ -107,9 +116,10 @@ ENTRY: `/search` FAILED results, attempt an over-cap bulk · user `operator`.
 SUCCESS: refusal states the numeric cap + next move ("use the filter-scope bulk" / "narrow
 the filter"). Numeric enforcement itself is CI (`R-NFR-*` test assertions).
 FIXTURE: needs a >200-member FAILED cohort to trip the grid cap honestly — see FIXTURE
-GAPS (F-G3); without it, the tester verifies the cap is *stated* in the bulk UI copy.
+GAPS (F-G3); without it, the tester verifies the cap is _stated_ in the bulk UI copy.
 
 ### R-NFR-02 · Latency budgets
+
 PRIO MUST-v1 · CLASS INDIRECT (perception sliver) · BUILT yes
 GOAL: No search/landing interaction leaves the tester without feedback long enough to
 wonder whether the app is broken (perceived responsiveness; numbers are CI's job).
@@ -117,6 +127,7 @@ ENTRY: `/` and `/search` · user `viewer`.
 SUCCESS: tester never reports "is it hung?"; loading states visible. CI: R-NFR-02 gates.
 
 ### R-NFR-03 · Triage cache TTL + refresh rate limit
+
 PRIO MUST-v1 · CLASS UI · BUILT yes
 GOAL: An engineer must be able to tell how old the triage numbers are, force a refresh,
 and — when refreshing too eagerly — get a legible "slow down" rather than a mystery error.
@@ -126,15 +137,17 @@ SUCCESS: tester states the data age from the "as of" stamp; after spamming Refre
 FIXTURE: standard seed.
 
 ### R-NFR-04 · Health-strip alarms (executor starvation)
+
 PRIO MUST-v1 · CLASS UI-STAGED (hard) · BUILT yes
 GOAL: A day-shift engineer glancing at the health strip must spot an executor-starvation
 signal (oldest executable job age / overdue timers) without opening any engine.
 ENTRY: `/` health strip · user `viewer`.
 SUCCESS: tester identifies which engine is unhealthy and which signal fired.
 FIXTURE: staging executor starvation on a healthy dockerized engine is impractical —
-DEFERRED from the standard run; verify alarm *presence/copy* only when it fires in CI.
+DEFERRED from the standard run; verify alarm _presence/copy_ only when it fires in CI.
 
 ### R-NFR-05 · Operating envelope + history-level gating
+
 PRIO MUST-v1 · CLASS UI-STAGED · BUILT partial
 GOAL: On an engine with history below `activity`, Timeline/sibling-diff must be greyed
 with the reason (probed), never broken or silently empty.
@@ -143,6 +156,7 @@ SUCCESS: tester reads the gate reason and knows the feature isn't broken.
 FIXTURE: needs an engine configured `history-level: none` — see FIXTURE GAPS (F-G5).
 
 ### R-NFR-06 · Reason ≥10 chars
+
 PRIO MUST-v1 · CLASS UI · BUILT yes
 GOAL: A tired operator entering a lazy reason ("fix") must be corrected inline, before
 submit, with the rule stated — never a post-submit failure.
@@ -152,10 +166,12 @@ the modal state.
 FIXTURE: standard seed.
 
 ### R-NFR-07 · write-ms timeout
+
 PRIO MUST-v1 · CLASS NOT-UI · BUILT yes
 GOAL: n/a directly — surfaces only through the UNKNOWN outcome copy (see R-SAFE-09).
 
 ### R-NFR-08 · Deep-paging envelope
+
 PRIO COULD-v2 · CLASS UI · BUILT yes
 GOAL: An engineer browsing a time-sorted result set past the first pages must always know
 whether "the end" is truly the end or the depth cap, and what to do next (narrow).
@@ -167,6 +183,7 @@ FIXTURE: standard seed (ACME suite provides volume); config-lowered cap optional
 ## SEM — Semantics & contracts
 
 ### R-SEM-01 · Glossary linkage
+
 PRIO MUST-v1 · CLASS UI · BUILT partial
 GOAL: A first-time engineer hitting an engine term ("dead-letter job", "process instance")
 must reach its plain-language definition without leaving the app or opening docs.
@@ -176,6 +193,7 @@ RETRYING semantics afterwards.
 FIXTURE: standard seed.
 
 ### R-SEM-02 · FAILED vs RETRYING mis-triage guard
+
 PRIO MUST-v1 · CLASS UI · BUILT yes
 GOAL (/a triage decision): Shown one FAILED and one RETRYING instance (brief gives two
 bare IDs, "you can escalate exactly one tonight — which?"), a first-time engineer must
@@ -189,8 +207,9 @@ vitals/why-stuck strip, citing on-screen text.
 FIXTURE: standard seed (`demoFailingPayment` FAILED, `demoFailingRetry` RETRYING).
 
 ### R-SEM-03 · Error-signature grouping
+
 PRIO MUST-v1 · CLASS UI (comprehension) + INDIRECT (contract) · BUILT yes
-GOAL: An engineer must grasp that the landing groups failures by *error class* — N
+GOAL: An engineer must grasp that the landing groups failures by _error class_ — N
 instances, one card — and that the count-by-version tells them which deploy broke.
 ENTRY: `/` error groups · user `viewer`.
 SUCCESS: tester states "one bug, N instances, concentrated in version X" from a card.
@@ -198,6 +217,7 @@ Normalization contract itself: golden-corpus CI (TEST-STRATEGY §4).
 FIXTURE: standard seed (`acmeApiOutage` produces a deterministic class).
 
 ### R-SEM-04 · Omnibox resolution semantics
+
 PRIO MUST-v1 · CLASS UI · BUILT yes
 GOAL: With only "something from a log" (an instance ID / job ID / business key), an
 engineer must land on the right instance across engines — and get an honest, engine-naming
@@ -211,6 +231,7 @@ last night, no IDs"), reach a failing instance via definition/status/time search
 FIXTURE: standard seed; runner supplies fresh IDs from seed output.
 
 ### R-SEM-05 · Curated-view predicate honesty
+
 PRIO MUST-v1 · CLASS UI · BUILT partial (system views: yes; leak-view variants: no)
 GOAL: A curated view's name must not promise what its predicate can't deliver — the tester
 using "Suspended > 24h (by start time)" must come away knowing the window is start-based.
@@ -219,6 +240,7 @@ SUCCESS: tester restates the predicate correctly after using the view.
 FIXTURE: standard seed (suspended `demoUserTask` instance exists).
 
 ### R-SEM-06 · Error-text search scope
+
 PRIO MUST-v1 · CLASS UI · BUILT yes
 GOAL: Searching failures by error text must find the seeded failure AND make the scan's
 truncation/scope limits visible; using error-text without a failure predicate must be
@@ -229,12 +251,15 @@ a rule, not a bug.
 FIXTURE: standard seed.
 
 ### R-SEM-07 · Requirement-ID discipline
+
 PRIO MUST-v1 · CLASS NOT-UI · BUILT n/a — ticket/test naming convention.
 
 ### R-SEM-08 · engineId slug / composite split
+
 PRIO MUST-v1 · CLASS NOT-UI · BUILT yes — startup validation; CI.
 
 ### R-SEM-09 · CAS + concurrent operators
+
 PRIO MUST-v1 · CLASS UI-STAGED · BUILT yes
 GOAL (/a CAS conflict): When someone else changed the variable under them, the operator
 must end up overwriting nothing, understanding WHO changed it and WHEN, and seeing exactly
@@ -250,6 +275,7 @@ double mutation fires.
 FIXTURE: standard seed + runner out-of-band REST mutation (R-TEST-07 helper pattern).
 
 ### R-SEM-10 · Bulk = persisted tracked job
+
 PRIO MUST-v1 · CLASS UI · BUILT yes
 GOAL (/a mixed-outcome report): After submitting a small bulk retry over a cohort that
 CANNOT all succeed, the operator must find the per-item outcome report — including after
@@ -266,6 +292,7 @@ skipped (e.g. one protected member or one already-resolved member) so the report
 never all-green; /b needs a cohort big enough to still be RUNNING when cancel is hit.
 
 ### R-SEM-11 · Circuit-open mid-bulk pause
+
 PRIO MUST-v1 · CLASS UI-STAGED (hard) · BUILT yes
 GOAL: A bulk interrupted by a tripping engine must read as INTERRUPTED with `not_run`
 items — never as failures — and offer continue-as-new scoped to the remainder.
@@ -275,6 +302,7 @@ FIXTURE: runner stops an engine container mid-bulk — timing-fragile; run as a 
 scripted probe, not a naive-tester arc. CI: R-SEM-11 tests.
 
 ### R-SEM-12 · Truncation badges + drill echo
+
 PRIO MUST-v1 · CLASS UI · BUILT yes
 GOAL: Numbers the operator anchors on (landing counts) must carry their honesty labels,
 and drilling a per-version count must echo the filter it is about to apply.
@@ -284,11 +312,13 @@ the drill landed them in (echo seen before/at commit).
 FIXTURE: standard seed.
 
 ### R-SEM-13 · Demoted retry under data-fix annotation
+
 PRIO SHOULD-v1.x · CLASS UI · BUILT no (annotations absent)
 GOAL: (plan-route) When a group's annotation implies "fix data first", the one-click group
 retry must warn/demote. Not attemptable until R-BAU-03 exists.
 
 ### R-SEM-14 · SSE liveness for bulk
+
 PRIO MUST-v1(decision)/SHOULD-v1.x · CLASS UI (observational) · BUILT yes
 GOAL: During a running bulk, progress must move on screen without any manual refresh.
 ENTRY: operations drawer during bulk · user `operator`.
@@ -296,14 +326,17 @@ SUCCESS: tester observes live progression; no F5 needed.
 FIXTURE: standard seed.
 
 ### R-SEM-15 · OpenAPI codegen
+
 PRIO MUST-v1 · CLASS NOT-UI · BUILT yes — contract tooling.
 
 ### R-SEM-16 · SPA/BFF version skew
+
 PRIO SHOULD-v1.x · CLASS UI-STAGED (hard) · BUILT no (repo audit: no skew banner/header)
 GOAL: (deferred) skew banner + dynamic-import failure → reload prompt. Needs a
 mid-session redeploy stage; not in the standard run.
 
 ### R-SEM-17 · Removed-engine references
+
 PRIO SHOULD-v1.x · CLASS UI-STAGED · BUILT partial
 GOAL: Audit rows / saved views naming a removed engine must render "removed engine <id>"
 — never crash or silently vanish.
@@ -312,12 +345,14 @@ SUCCESS: tester finds the removed-engine label and is not misled.
 FIXTURE: runner adds + removes a scratch engine via `/admin/engines`.
 
 ### R-SEM-18 · Dual-write UNKNOWN copy
+
 PRIO MUST-v1 · CLASS INDIRECT · BUILT yes
 GOAL: (CI-owned: R-TEST-10 audit-integrity suite) The UI arc — "dispatched — outcome
 verification failed", never a bare 500 — is only stageable by killing Postgres mid-write;
 excluded from the naive run.
 
 ### R-SEM-19 · Hierarchy breadth cap
+
 PRIO MUST-v1 · CLASS UI-STAGED · BUILT yes
 GOAL: Opening the Hierarchy tab of a parent with dozens of children must stay readable and
 responsive, show the first 50 with an explicit "+N more [load next 50]", and never lie
@@ -327,6 +362,7 @@ SUCCESS: tester states the true child count and pages further without browser lo
 FIXTURE: **F-G1 (new)** — a multi-instance call-activity parent spawning 60+ children.
 
 ### R-SEM-20 · CMMN out-of-scope dead-letters
+
 PRIO SHOULD-v1.x · CLASS UI · BUILT yes
 GOAL: An engineer reconciling the health strip's dead-letter lane with the FAILED chip
 must understand the "≥N CMMN jobs not triaged here" note and drill it to the scope-typed
@@ -336,6 +372,7 @@ SUCCESS: tester explains the gap and reaches the CMMN drawer (lanes + FAILED dri
 FIXTURE: standard seed (`demo-failing-case.cmmn` on 6.8 engines).
 
 ### R-SEM-21 · Migration honest pre-check
+
 PRIO COULD-v2 (built) · CLASS UI · BUILT yes
 GOAL: Migrating an instance v1→v2, the operator must (a) find the cohort entry point,
 (b) understand the pre-check is an Inspector estimate — NOT a Flowable validation, (c)
@@ -345,14 +382,17 @@ SUCCESS: migration completes; tester restates the honesty banner in their own wo
 FIXTURE: standard seed (`demo-migration-v1/v2`); verify a live v1 instance exists.
 
 ### R-SEM-22 · Deep-paging cursor contract
+
 PRIO COULD-v2 · CLASS UI · BUILT yes — covered by R-NFR-08's goal (same arc).
 
 ### R-SEM-23 · Deterministic total order
+
 PRIO SHOULD-v1.x · CLASS INDIRECT · BUILT yes
 GOAL: (CI-owned) Weak UI probe only: re-running the identical search must not visibly
 reshuffle equal-timestamp rows. Golden regressions are authoritative.
 
 ### R-SEM-24 · Team/shared views
+
 PRIO COULD-v2 (designed/landed) · CLASS UI · BUILT yes
 GOAL: An operator must publish a useful filter as team canon, and a colleague must find
 it, distinguish it from private/system views, and replay exactly the same search.
@@ -363,6 +403,7 @@ FIXTURE: standard seed.
 ## SAFE — Operator safety & RBAC
 
 ### R-SAFE-01 · RESPONDER tier + grant tooltips
+
 PRIO MUST-v1 · CLASS UI · BUILT yes
 GOAL: A responder must retry a failed job unaided, AND when they hit a wall (variable
 edit), the wall must name the missing grant so they know who to call — never a dead icon.
@@ -371,6 +412,7 @@ SUCCESS: retry succeeds with outcome; edit-variable greyed with role reason quot
 FIXTURE: standard seed.
 
 ### R-SAFE-02 · Reversibility badges
+
 PRIO MUST-v1 · CLASS UI · BUILT yes
 GOAL: Before committing any destructive verb, the operator must be able to answer "can I
 undo this?" from the UI alone — including retry's "queue move reversible, side effects
@@ -381,6 +423,7 @@ delete (recoverable — rescue named) correctly, citing on-screen text.
 FIXTURE: standard seed.
 
 ### R-SAFE-03 · Tier-0 friction floor on prod
+
 PRIO MUST-v1 · CLASS UI-STAGED · BUILT yes (`frontend/src/actions/InlineConfirm.tsx`)
 GOAL: On a prod engine, firing an irreversible tier-0 verb (trigger-timer) must take two
 deliberate clicks; on dev, one — and the operator must perceive the difference as
@@ -390,6 +433,7 @@ SUCCESS: two-step inline confirm observed on prod; single-click on dev.
 FIXTURE: **F-G2 (staging)** — flip one engine's env tag to `prod` via `/admin/engines`.
 
 ### R-SAFE-04 · Plain-language verb labels
+
 PRIO MUST-v1 · CLASS UI · BUILT yes
 GOAL: Given intents in plain words ("stop waiting and continue", "run the failed step
 again", "kill this case"), a first-time engineer must pick the right verb every time.
@@ -398,6 +442,7 @@ SUCCESS: 3/3 intent→verb matches, citing the secondary labels.
 FIXTURE: standard seed (`demoTimerWait`, `demoFailingPayment`).
 
 ### R-SAFE-05 · Protected instances
+
 PRIO MUST-v1 · CLASS UI-STAGED · BUILT partial
 GOAL: On a protected instance, every verb must read intentionally-locked with the L3
 floor named; a bulk sweeping it must report it `skipped (protected)` — never silently act.
@@ -419,16 +464,19 @@ nothing to call. A usability MISSION cannot exercise this goal's FIXTURE at all 
 mark/unmark endpoint exists.
 
 ### R-SAFE-06 · Break-glass account
+
 PRIO MUST-v1 · CLASS UI-STAGED (oidc only) · BUILT partial
 GOAL: (deferred to prod-like leg) Dev profile has no IdP to lose; break-glass door +
 bannering is exercised in the Keycloak prod-like run (R-OPS-16), not here.
 
 ### R-SAFE-07 · Session lifecycle / forced re-auth
+
 PRIO MUST-v1 (built v2) · CLASS UI-STAGED (oidc only) · BUILT yes
 GOAL: (deferred to prod-like leg) The dev Basic chain is exempt from the re-auth gate by
 design; the challenge→re-auth→replay arc and warn-before-guillotine need the OIDC profile.
 
 ### R-SAFE-08 · Four-eyes approval
+
 PRIO SHOULD-v1.x (hooks MUST) · CLASS UI-STAGED · BUILT partial (access-mapping writes)
 GOAL: An access-admin widening a grant must experience the second-approver stop as
 protection with a clear path (who can approve, what happens next), not as a dead end.
@@ -438,6 +486,7 @@ in audit.
 FIXTURE: needs a second ACCESS_ADMIN identity — see FIXTURE GAPS (F-G4).
 
 ### R-SAFE-09 · UNKNOWN "Verify now"
+
 PRIO SHOULD-v1.x · CLASS UI-STAGED (hard) · BUILT **yes** (`OpsDrawer.tsx` verifyBulkItem,
 `BulkController`) — repo audit corrected the draft's "unknown/deferred".
 GOAL: An UNKNOWN bulk item must offer Verify-now and reclassify with evidence the
@@ -445,17 +494,21 @@ operator can read. Producing a true UNKNOWN still requires a latch-gated stub
 (R-TEST-07), so this stays a scripted probe, not a naive arc — but it is a REAL surface.
 
 ### R-SAFE-10 · Pre-action evidence snapshot
+
 PRIO SHOULD-v1.x · CLASS INDIRECT · BUILT no (repo audit: zero hits)
 GOAL: (sliver) The tier-3 confirm states an evidence snapshot is being attached; tester
 merely confirms the statement exists. Audit content is CI's job.
 
 ### R-SAFE-11 · Break-glass semantics
+
 PRIO MUST-v1 · CLASS UI-STAGED (oidc only) · BUILT partial — see R-SAFE-06 deferral.
 
 ### R-SAFE-12 · Mapping storage (file→DB)
+
 PRIO MUST-v1 · CLASS NOT-UI · BUILT yes — storage mechanics; UI arcs live under R-SAFE-14.
 
 ### R-SAFE-13 · Registry CRUD governance
+
 PRIO COULD-v2 (designed/landed) · CLASS UI · BUILT yes
 GOAL: A platform admin onboarding a new engine must experience earned trust as a
 guided ladder: born DRAFT read-only → probe → human-confirmed ACTIVE; a missing secret
@@ -466,6 +519,7 @@ SUCCESS: lifecycle completed on a scratch entry; the `admin` user quotes the gat
 FIXTURE: scratch engine entry pointing at an existing engine URL; delete after.
 
 ### R-SAFE-14 · ACCESS_ADMIN apex + fail-closed gate
+
 PRIO COULD-v2 (designed/landed) · CLASS UI · BUILT yes
 GOAL: The access surface must communicate its apex nature: a plain `admin` is refused
 with the reason; an `access-admin` sees current grants legibly (who can do what, where)
@@ -475,9 +529,11 @@ SUCCESS: refusal names ACCESS_ADMIN; grants table readable; write audited.
 FIXTURE: standard dev ladder.
 
 ### R-SAFE-15 · Break-glass built (door + degraded audit)
+
 PRIO COULD-v2 · CLASS UI-STAGED (oidc only) · BUILT yes — deferred with R-SAFE-06.
 
 ### R-SAFE-16 · Shared-view governance
+
 PRIO COULD-v2 (built) · CLASS UI · BUILT yes
 GOAL: A scope-ADMIN moderating another's team view must find UNPUBLISH as the default
 verb (reversible), be required to give a reason, and the author's private copy must
@@ -489,15 +545,19 @@ FIXTURE: a published team view from the R-SEM-24 arc.
 ## AUD — Audit & handover
 
 ### R-AUD-01 · Fail-closed audit
+
 PRIO MUST-v1 · CLASS INDIRECT · BUILT yes — CI-owned (R-TEST-10); no naive-run stage.
 
 ### R-AUD-02 · Audit schema
+
 PRIO MUST-v1 · CLASS NOT-UI · BUILT yes — schema contract; CI.
 
 ### R-AUD-03 · Data protection / retention
+
 PRIO MUST-v1 · CLASS NOT-UI · BUILT yes — ops policy; CI + OPERATIONS.md.
 
 ### R-AUD-04 · correlationId everywhere
+
 PRIO MUST-v1 · CLASS UI (sliver) · BUILT yes
 GOAL: When something fails, the operator must be able to hand support a correlation ID
 without hunting — it rides the error envelope and copy-for-ticket.
@@ -506,6 +566,7 @@ SUCCESS: tester locates/copies a traceId from the error surface.
 FIXTURE: piggybacks on the R-UXQ-04 engine-down stage.
 
 ### R-AUD-05 · Shift report
+
 PRIO MUST-v1 · CLASS UI · BUILT no
 GOAL (/a produce): At end of shift, an operator must produce a handover artifact — "my
 activity this shift, UNKNOWNs first" — in one or two clicks from the audit surface.
@@ -517,6 +578,7 @@ the plan evidence; MUST-v1 gap). /b is answerable from filters today — grade h
 FIXTURE: audit rows from earlier missions (run this mission last).
 
 ### R-AUD-06 · Copy-for-ticket
+
 PRIO MUST-v1 · CLASS UI · BUILT yes
 GOAL (/a ticket): From a failed instance, one click must yield ticket-pasteable plain
 text carrying composite ID, definition+version, status, exception first line, failure
@@ -529,6 +591,7 @@ SUCCESS: /a pasted text contains the six facts; deep link resolves back to the s
 FIXTURE: standard seed.
 
 ### R-AUD-07 · ticketId on reasons
+
 PRIO SHOULD-v1.x (column MUST) · CLASS UI · BUILT partial (repo audit: linkify + filter
 built — `lib/ticket.ts`, `AuditLogPage`, `TicketPolicy` — but NO ticket input field in
 `DestructiveModal`/`InlineConfirm`: the capture half is dark in the UI)
@@ -539,6 +602,7 @@ linkified render half is verifiable only once a row carries a ticketId.
 FIXTURE: standard seed.
 
 ### R-AUD-08 · Audit CSV export
+
 PRIO MUST-v1 (CSV) · CLASS UI · BUILT **no** (repo audit: `AuditController` has no
 export path; only CSV in the backend is `AccessReviewController`) — **MUST-v1 gap #5**
 GOAL: An auditor asked "what did operator X do to engine-b this week?" must get the
@@ -548,6 +612,7 @@ SUCCESS: evaluator expects NOT-FOUND — honest give-up evidence for the plan.
 FIXTURE: audit rows from earlier arcs.
 
 ### R-AUD-09 · Attribution caveat
+
 PRIO MUST-v1 · CLASS UI · BUILT **no** (repo audit: no service-account caveat text in
 `AuditTab.tsx` or any tsx) — **MUST-v1 gap #6**
 GOAL: An engineer asking "WHO did this?" must land on the BFF audit answer and see the
@@ -558,32 +623,41 @@ NOT-FOUND — plan evidence.
 FIXTURE: prior actions from other arcs.
 
 ### R-AUD-10 · Config-event audit primitive
+
 PRIO MUST-v1 · CLASS NOT-UI · BUILT yes — ledger mechanics; CI.
 
 ## OPS — Operating the inspector
 
 ### R-OPS-01 · Liveness/readiness split
+
 PRIO MUST-v1 · CLASS NOT-UI · BUILT yes — probe semantics; CI/ops.
 
 ### R-OPS-02 · Prometheus metric set
+
 PRIO MUST-v1 · CLASS NOT-UI · BUILT yes — metrics contract.
 
 ### R-OPS-03 · Alert rules
+
 PRIO MUST-v1 · CLASS NOT-UI · BUILT yes — shipped rules; ops drill.
 
 ### R-OPS-04 · RTO/RPO
+
 PRIO MUST-v1 · CLASS NOT-UI · BUILT n/a — restore drill.
 
 ### R-OPS-05 · Graceful shutdown / drain
+
 PRIO MUST-v1/SHOULD · CLASS NOT-UI · BUILT yes — ops.
 
 ### R-OPS-06 · CI gate table
+
 PRIO MUST-v1 · CLASS NOT-UI · BUILT yes — CI governance.
 
 ### R-OPS-07 · Threat model / egress
+
 PRIO MUST-v1 · CLASS NOT-UI · BUILT yes — security architecture.
 
 ### R-OPS-08 · Injection defenses
+
 PRIO MUST-v1 · CLASS UI (sliver) + INDIRECT · BUILT yes
 GOAL: Hostile engine text (a business key or error message containing HTML/CSV formulas)
 must render as inert data everywhere the tester meets it.
@@ -593,9 +667,11 @@ FIXTURE: **F-G6 (new)** — one seeded instance with `<img onerror>`-style busin
 `=SUM()`-style variable value.
 
 ### R-OPS-09 · Image hygiene
+
 PRIO SHOULD-v1.x · CLASS NOT-UI · BUILT yes — CI.
 
 ### R-OPS-10 · prod-like profile / secret rotation
+
 PRIO SHOULD-v1.x · CLASS UI (sliver) · BUILT partial
 GOAL: (sliver) A 401-from-engine must render as "credential rejected" — a different
 health state than unreachable — so rotation mistakes are diagnosable from the strip.
@@ -604,13 +680,16 @@ SUCCESS: tester distinguishes credential-rejected from down.
 FIXTURE: staged via registry edit to a wrong `password-ref` — optional probe, not core.
 
 ### R-OPS-11 · Clock-skew badge
+
 PRIO SHOULD-v1.x · CLASS UI-STAGED (hard) · BUILT unknown — deferred; needs a skewed
 engine container.
 
 ### R-OPS-12 · Capability cache invalidation
+
 PRIO SHOULD-v1.x · CLASS NOT-UI · BUILT unknown — probe mechanics; CI.
 
 ### R-OPS-13 · Registry SSRF rails
+
 PRIO COULD-v2 (built) · CLASS UI · BUILT yes
 GOAL: A registry admin fat-fingering a base URL (metadata IP, loopback, http-on-prod)
 must get a rejection that names the violated rule and the next move — specific enough to
@@ -621,20 +700,24 @@ tester can state what to change.
 FIXTURE: none (rejection path only; nothing persisted).
 
 ### R-OPS-14 · /api/diag
+
 PRIO SHOULD-v1.x · CLASS NOT-UI · BUILT no (repo audit: no diag controller) — ADMIN API,
 no UI arc.
 
 ### R-OPS-15 · Registry hot reload
+
 PRIO COULD-v2 (built) · CLASS INDIRECT · BUILT yes
 GOAL: (rides R-SAFE-13 arc) After a registry edit, the fleet reflects it without restart —
 tester simply observes the strip updating post-edit.
 
 ### R-OPS-16 · Transport/header posture
+
 PRIO COULD-v2 (built) · CLASS NOT-UI · BUILT yes — headers; CI.
 
 ## UXQ — UX quality
 
 ### R-UXQ-01 · Color never alone
+
 PRIO MUST-v1 · CLASS UI · BUILT yes
 GOAL: Every environment/status/diff meaning must survive with color ignored: env bands
 carry PROD/TEST/DEV text, chips carry labels, diagram failure markers carry glyphs.
@@ -644,6 +727,7 @@ owns contrast.
 FIXTURE: standard seed.
 
 ### R-UXQ-02 · Keyboard & SR paths
+
 PRIO MUST-v1 · CLASS UI · BUILT partial
 GOAL: An engineer must complete FIND→FIX (search, open detail, retry the job) entirely
 keyboard-only, and every diagram-borne fact must have a focusable textual twin.
@@ -652,6 +736,7 @@ SUCCESS: full arc keyboard-only; textual twin of the failing activity found.
 FIXTURE: standard seed.
 
 ### R-UXQ-03 · Time display honesty
+
 PRIO MUST-v1 · CLASS UI · BUILT yes
 GOAL: The operator must be able to state exactly WHEN a failure happened — absolute +
 offset + relative — and flip the display to UTC in one action; ticket text is always UTC.
@@ -660,6 +745,7 @@ SUCCESS: tester reads the timestamp unambiguously; UTC toggle found; ticket text
 FIXTURE: standard seed.
 
 ### R-UXQ-04 · Zero-state catalog
+
 PRIO MUST-v1 · CLASS UI-STAGED · BUILT partial
 GOAL: "0 results with an engine down" must never read as a confirmed zero: the tester
 must correctly answer "does this instance exist?" with "unknown — billing engine was
@@ -669,6 +755,7 @@ SUCCESS: zero-under-partial distinguished from true zero (which must read positi
 FIXTURE: **F-G7 (staging)** — runner stops one engine container for the arc, restarts after.
 
 ### R-UXQ-05 · Message style
+
 PRIO MUST-v1 · CLASS UI (cross-cutting rubric) · BUILT yes
 GOAL: Every message a tester meets must parse as [what happened][why/gate][next move] with
 concrete object names; engine text visibly quoted, never blended into BFF prose.
@@ -677,6 +764,7 @@ SUCCESS: testers flag any message failing the triple or any bare Success/Failed/
 FIXTURE: n/a — scoring rubric across arcs.
 
 ### R-UXQ-06 · Notification budget
+
 PRIO MUST-v1 · CLASS UI (observational) · BUILT yes
 GOAL: Nothing steals focus uninvited: modals only user-initiated, one banner per scope,
 toasts only for own actions and never the sole record of an outcome.
@@ -686,22 +774,27 @@ in a vanished toast.
 FIXTURE: n/a — rubric.
 
 ### R-UXQ-07 · en-only + one formatter
+
 PRIO MUST-v1 · CLASS NOT-UI · BUILT yes — statement/mechanics.
 
 ### R-UXQ-08 · Dark theme
+
 PRIO SHOULD-v1.x · CLASS UI · BUILT no (per v1.x #3 partial: saved views only)
 GOAL: (plan-route + 1-min probe) A dark-preference OS must not get a blinding UI; probe
 records current behavior.
 
 ### R-UXQ-09 · Column chooser / density / layout persist
+
 PRIO SHOULD-v1.x · CLASS UI · BUILT no
 GOAL: (plan-route + probe) Operator hides noise columns; layout survives reload; honesty
 columns not hideable.
 
 ### R-UXQ-10 · Print / export variants
+
 PRIO SHOULD-v1.x · CLASS UI · BUILT no — plan-route.
 
 ### R-UXQ-11 · Subprocess roll-up deep-link
+
 PRIO MUST-v1 · CLASS UI · BUILT yes
 GOAL: Landing on the FAILED parent (`demoParent`), the engineer must reach the failing
 CHILD's Errors & Jobs tab in one click from the roll-up badge — the parent must never be
@@ -711,6 +804,7 @@ SUCCESS: tester retries the child's dead-letter job, having navigated via the ba
 FIXTURE: standard seed.
 
 ### R-UXQ-12 · Root-vs-child markers + shortcuts
+
 PRIO SHOULD-v1.x · CLASS UI · BUILT partial
 GOAL: Searching a business key that names a tree, the engineer must tell root from child
 rows; `/` must focus the omnibox from anywhere.
@@ -719,6 +813,7 @@ SUCCESS: root/child distinguished; `/` shortcut works.
 FIXTURE: standard seed.
 
 ### R-UXQ-13 · Variable editor (form-first)
+
 PRIO MUST-v1 · CLASS UI · BUILT yes
 GOAL: Three arcs on one surface: (a) a number edit shows the parsed echo and verifies as
 a generated sentence the tester can read back; (b) clearing a text value forces the
@@ -732,6 +827,7 @@ FIXTURE: standard seed (ACME instances carry structured variables).
 ## BAU — Day-shift features
 
 ### R-BAU-01 · Error-group acknowledge
+
 PRIO MUST-v1 · CLASS UI · BUILT no
 GOAL: A day-shift engineer triaging a known-noisy error group must acknowledge it (who +
 reason + expiry) so it collapses — labeled, never hidden — and trust it will resurface on
@@ -741,6 +837,7 @@ SUCCESS: honest not-found evidence (or the arc, if present).
 FIXTURE: standard seed.
 
 ### R-BAU-02 · Leak views
+
 PRIO MUST-v1 · CLASS UI · BUILT no
 GOAL: A day-shift engineer hunting slow leaks must find "Active > 30 days" style views
 grouped per definition. Expected NOT-FOUND today; also note the fixture honesty problem:
@@ -750,27 +847,34 @@ SUCCESS: honest not-found evidence; plan item.
 FIXTURE: n/a today; F-G8 (config-lowered leak windows) when built.
 
 ### R-BAU-03 · Error-class annotations
+
 PRIO SHOULD-v1.x · CLASS UI · BUILT no — plan-route (with R-SEM-13).
 
 ### R-BAU-04 · Person-centric task search
+
 PRIO SHOULD-v1.x · CLASS UI · BUILT no (reassign landed; search half unscheduled)
 GOAL: (probe) "Find everything assigned to k.meier" — record the gap; reassign-from-
 instance itself is covered under R-SAFE-01/04 arcs.
 
 ### R-BAU-05 · Watchlist
+
 PRIO SHOULD-v1.x · CLASS UI · BUILT no — plan-route.
 
 ### R-BAU-06 · Suspend reason/review-by
+
 PRIO SHOULD-v1.x · CLASS UI · BUILT no
 GOAL: (probe) Suspending an instance, does anything ask why/until-when? Record gap.
 
 ### R-BAU-07 · Copy business summary
+
 PRIO SHOULD-v1.x · CLASS UI · BUILT no — plan-route.
 
 ### R-BAU-08 · Timers-due-in-window
+
 PRIO SHOULD-v1.x · CLASS UI · BUILT no — plan-route.
 
 ### R-BAU-09 · Training profile + certification
+
 PRIO SHOULD-v1.x · CLASS NOT-UI · BUILT partial
 GOAL: n/a as tester arc — THIS harness (seed.sh + goal catalog + scripted reset) is the
 seed of the R-BAU-09 training profile; noted in the reuse doc.
@@ -778,6 +882,7 @@ seed of the R-BAU-09 training profile; noted in the reuse doc.
 ## L3 — Deep support
 
 ### R-L3-01 · "Explain this status"
+
 PRIO MUST-v1 · CLASS UI · BUILT no (no dedicated affordance found)
 GOAL: A skeptical L3 must be able to falsify a status chip: reach the per-leg evidence
 (which calls, what came back, what was truncated) from the chip itself. Expected
@@ -787,6 +892,7 @@ SUCCESS: honest not-found evidence (or the evidence view, if present).
 FIXTURE: standard seed.
 
 ### R-L3-02 · cURL parity
+
 PRIO MUST-v1 · CLASS UI · BUILT partial (BFF cURL landed; engine cURL v2)
 GOAL: An L3 must turn any search and any tier-1+ action into a runnable command without
 reverse-engineering the network tab.
@@ -795,6 +901,7 @@ SUCCESS: both cURLs copied; search cURL replays against the BFF (runner verifies
 FIXTURE: standard seed.
 
 ### R-L3-03 · Raw JSON escape hatch
+
 PRIO MUST-v1 (links) · CLASS UI · BUILT partial
 GOAL: From any detail tab, the L3 must download the raw JSON behind the rendered view —
 raw is the escape hatch, never the presentation.
@@ -803,9 +910,11 @@ SUCCESS: raw download per tab found and non-empty.
 FIXTURE: standard seed.
 
 ### R-L3-04 · Forensic passthrough
+
 PRIO SHOULD-v1.x · CLASS UI · BUILT no — plan-route.
 
 ### R-L3-05 · Stacktrace ergonomics
+
 PRIO SHOULD-v1.x · CLASS UI · BUILT partial
 GOAL: Facing a long stacktrace, the engineer must reach the root cause fast (root-cause-
 first folding / find-in-trace) and copy both raw and normalized forms.
@@ -815,35 +924,44 @@ recorded).
 FIXTURE: standard seed.
 
 ### R-L3-06 · Engine advisories
+
 PRIO SHOULD-v1.x · CLASS UI · BUILT no — plan-route.
 
 ## TEST — Test governance
 
 ### R-TEST-01 · Risk-ranked coverage floors
+
 PRIO MUST-v1 · CLASS NOT-UI · BUILT n/a — CI governance (status-join/RBAC/bulk floors).
 
 ### R-TEST-02 · Milestone entry/exit gates
+
 PRIO MUST-v1 · CLASS NOT-UI · BUILT n/a — gate process.
 
 ### R-TEST-03 · Defect taxonomy (quiet lie = Sev1)
+
 PRIO MUST-v1 · CLASS NOT-UI · BUILT n/a — but its taxonomy IS this run's severity rubric:
 any quiet lie / guard bypass / wrong-target / invisible apply found by a tester is Sev1.
 
 ### R-TEST-04 · Fixture catalog discipline
+
 PRIO MUST-v1 · CLASS NOT-UI · BUILT n/a — this catalog's FIXTURE GAPS table feeds it.
 
 ### R-TEST-05 · Performance scenarios
+
 PRIO MUST-v1 · CLASS NOT-UI · BUILT n/a — perf CI (R-NFR-02 defers here).
 
 ### R-TEST-06 · Security test plan
+
 PRIO MUST-v1 · CLASS NOT-UI · BUILT n/a — security CI (R-OPS-08/13 slivers defer here).
 
 ### R-TEST-07 · Testability hooks
+
 PRIO MUST-v1 · CLASS NOT-UI · BUILT yes — load-bearing for THIS harness: the out-of-band
 mutation helper is R-SEM-09's FIXTURE; `R1/PT1S`/`R10/PT1H` cycles are the seed's
 FAILED/RETRYING mechanics.
 
 ### R-TEST-08 · UAT with practicing engineers
+
 PRIO SHOULD-v1.x · CLASS meta · BUILT partial
 GOAL: This catalog + the agent run IS the standing rehearsal for R-TEST-08 — scripted
 incident scenarios, unassisted completion scoring (≥80% bar), trust-breaking observations
@@ -851,12 +969,15 @@ filed Sev1/Sev2. The human UAT still runs at M6; agents keep it honest between r
 N/N agent pass is WEAK evidence for humans (correlated testers) — de-risk, don't validate.
 
 ### R-TEST-09 · Soak/fault-injection
+
 PRIO COULD-v2 · CLASS NOT-UI · BUILT n/a.
 
 ### R-TEST-10 · Audit-integrity suite
+
 PRIO MUST-v1 · CLASS NOT-UI · BUILT yes — the CI owner of R-AUD-01/R-SEM-18 deferrals.
 
 ### R-TEST-08 · UAT with practicing engineers
+
 PRIO SHOULD-v1.x · CLASS meta · BUILT partial
 GOAL: This catalog + the Sonnet-agent run IS the standing rehearsal for R-TEST-08 —
 scripted incident scenarios, unassisted completion scoring (≥80% target), trust-breaking
@@ -867,20 +988,22 @@ between rounds.
 
 ## FIXTURE GAPS (new test data / staging this catalog needs)
 
-| ID | Need | Serves | Shape | Status |
-|---|---|---|---|---|
-| F-G1 | Wide MI parent (60 children) | R-SEM-19 breadth cap, timeline sub-lanes | `demo-wide-parent.bpmn20.xml` + `demo-wide-child.bpmn20.xml` (parallel MI call activity ×60, child parks on user task); 1 instance, businessKey `ORD-BATCH-2107` | **DEPLOYED** (engine-a, in seed.sh) |
-| F-G2 | Prod-tagged engine | R-SAFE-03 friction floor, typed prod tokens | staging: flip `engine-b` env tag to `prod` via registry for the safety wave; restore after | run-time stage |
-| F-G3 | >200-member FAILED cohort | R-NFR-01 grid-bulk cap refusal | OPTIONAL (~201 fast-fail instances, `R1/PT1S`); else verify cap copy only | deferred |
-| F-G4 | Second ACCESS_ADMIN identity | R-SAFE-08 four-eyes | dev-ladder gap: single `access-admin` today — the arc records the "no approver available" zero-state instead (itself R-UXQ-04-adjacent) | accepted gap |
-| F-G5 | History-dialed-down engine | R-NFR-05 history gating | compose override `history-level=none` — DEFERRED unless cheap | deferred |
-| F-G6 | Hostile-text instance | R-OPS-08 injection rendering | `demoUserTask` instance, businessKey `<img src=x onerror=alert(1)>`, vars `=HYPERLINK(...)` + `<script>` | **SEEDED** (engine-a, in seed.sh) |
-| F-G7 | Engine-down stage | R-UXQ-04 zero-under-partial, R-AUD-04 traceId | runner stops `engine-legacy` container during the honesty wave; restarts + verifies after | run-time stage |
-| F-G8 | Leak-window config | R-BAU-02 (when built) | config-lowered leak thresholds | blocked on feature |
-| F-G9 | Mixed-outcome bulk cohort | R-SEM-10/a RECOVER report | bulk target includes ≥1 protected or already-resolved member so the report is never all-green | run-time stage |
-| F-G10 | Sacrificial destructive cohort | terminate / deadletter-delete / migrate arcs; wrong-instance near-miss | runner seeds instances with businessKey `uxrun-<mission>-<n>` immediately before the arc; testers may only destroy instances carrying their tag — a near-identical untagged twin sits beside each (the near-miss probe) | run-time stage |
+| ID    | Need                                       | Serves                                                                 | Shape                                                                                                                                                                                                                                                                                                                                                                                    | Status                              |
+| ----- | ------------------------------------------ | ---------------------------------------------------------------------- | ---------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------- | ----------------------------------- |
+| F-G1  | Wide MI parent (60 children)               | R-SEM-19 breadth cap, timeline sub-lanes                               | `demo-wide-parent.bpmn20.xml` + `demo-wide-child.bpmn20.xml` (parallel MI call activity ×60, child parks on user task); 1 instance, businessKey `ORD-BATCH-2107`                                                                                                                                                                                                                         | **DEPLOYED** (engine-a, in seed.sh) |
+| F-G2  | Prod-tagged engine                         | R-SAFE-03 friction floor, typed prod tokens                            | staging: flip `engine-b` env tag to `prod` via registry for the safety wave; restore after                                                                                                                                                                                                                                                                                               | run-time stage                      |
+| F-G3  | >200-member FAILED cohort                  | R-NFR-01 grid-bulk cap refusal                                         | OPTIONAL (~201 fast-fail instances, `R1/PT1S`); else verify cap copy only                                                                                                                                                                                                                                                                                                                | deferred                            |
+| F-G4  | Second ACCESS_ADMIN identity               | R-SAFE-08 four-eyes                                                    | dev-ladder gap: single `access-admin` today — the arc records the "no approver available" zero-state instead (itself R-UXQ-04-adjacent)                                                                                                                                                                                                                                                  | accepted gap                        |
+| F-G5  | History-dialed-down engine                 | R-NFR-05 history gating                                                | compose override `history-level=none` — DEFERRED unless cheap                                                                                                                                                                                                                                                                                                                            | deferred                            |
+| F-G6  | Hostile-text instance                      | R-OPS-08 injection rendering                                           | `demoUserTask` instance, businessKey `<img src=x onerror=alert(1)>`, vars `=HYPERLINK(...)` + `<script>`                                                                                                                                                                                                                                                                                 | **SEEDED** (engine-a, in seed.sh)   |
+| F-G7  | Engine-down stage                          | R-UXQ-04 zero-under-partial, R-AUD-04 traceId                          | runner stops `engine-legacy` container during the honesty wave; restarts + verifies after                                                                                                                                                                                                                                                                                                | run-time stage                      |
+| F-G8  | Leak-window config                         | R-BAU-02 (when built)                                                  | config-lowered leak thresholds                                                                                                                                                                                                                                                                                                                                                           | blocked on feature                  |
+| F-G9  | Mixed-outcome bulk cohort                  | R-SEM-10/a RECOVER report                                              | bulk target includes ≥1 protected or already-resolved member so the report is never all-green                                                                                                                                                                                                                                                                                            | run-time stage                      |
+| F-G10 | Sacrificial destructive cohort             | terminate / deadletter-delete / migrate arcs; wrong-instance near-miss | runner seeds instances with businessKey `uxrun-<mission>-<n>` immediately before the arc; testers may only destroy instances carrying their tag — a near-identical untagged twin sits beside each (the near-miss probe)                                                                                                                                                                  | run-time stage                      |
+| F-G11 | Ambiguous-match pair (shared business key) | R-SEM-04/d disambiguation                                              | standard seed's `demoUserTask` instances carry no businessKey and `acmeOrderOrchestrator` keys are timestamp-unique — no natural duplicate exists today. Runner starts two fresh instances (any definition, e.g. `acmeOrderOrchestrator`) via out-of-band REST sharing one explicit businessKey `uxrun-dup-<runId>` immediately before the arc (mirrors R-SEM-09's OOB-mutation pattern) | run-time stage                      |
 
 ## Known-absent surfaces (evaluator-only; reconciliation separates "not built" from "broken")
+
 **MUST-v1 gaps as of 2026-07-10 (issue #97): 7 of 8 confirmed BUILT (repo-verified
 2026-07-13, issue #97 remainder; live-run-verified 2026-07-13, issue #98).** R-BAU-01
 acknowledge (2026-07-11) · R-BAU-02 leak views (2026-07-11) · R-AUD-05 shift report
@@ -902,12 +1025,15 @@ R-L3-04/06 · R-SEM-13 · R-SEM-16 · R-SAFE-10. R-OPS-14 flipped to built BACKE
 
 ## RUN PROTOCOL (panel-locked, 2026-07-10)
 
-**Missions, not tours.** Testers run the 9 mission narratives in
+**Missions, not tours.** Testers run the 11 mission narratives in
 `docs/usability/MISSIONS.md` (each bundles 4–8 goal arcs into one incident story); the
 1:1 catalog above is the evaluator's coverage map. Wave discipline (shared stack, one
 browser):
+
 - **Wave 1 — parallel-safe, read-only** (missions M1 payments-pager, M2 stuck-parent,
-  M9 keyboard-only re-run): viewer/responder users; notes are the only mutation.
+  M9 keyboard-only re-run, M10 digging-past-page-one, M11 routine-sweep): viewer/
+  responder/operator users; notes + the one out-of-band OOB-staged pair for M11's
+  disambiguation arc (runner-side, not a tester mutation) are the only mutations.
 - **Wave 2 — mutating, strictly serialized** (M3 bad-data, M4 bad-deploy-cleanup,
   M7 morning-handover LAST — it consumes the others' audit rows): definition-namespace
   ownership (M3 owns `demoUserTask`+ACME vars; M4 owns the `acmeApiOutage` cohort);
@@ -920,6 +1046,7 @@ browser):
   wrong-instance near-miss probe). Least-privilege login per mission.
 
 **Tester protocol (fed to every tester verbatim, enforced by the evaluator):**
+
 - Pre-registered intent: before every interaction, state "I expect clicking <element>
   will <Y>"; then act; then note observed. Wrong turns and backtracks are data, not shame.
 - Quote verbatim every message you actually meet, tagged confusing/fine (feeds the
@@ -936,6 +1063,7 @@ browser):
 - Verdict enum: `yes` / `yes-with-struggle` / `no` / `blocked-by-environment`.
 
 **Evaluator protocol:**
+
 - Citation-or-nothing; BUILT-no canaries invalidate a hallucinating tester's whole run.
 - **Ground truth check**: every claimed fix is re-verified over REST by the harness (a
   "Success" toast is the UI's optimism, not the engine's reality); mismatch = Sev1
@@ -951,6 +1079,7 @@ browser):
   never saw the tester's reasoning, only its trace.
 
 **Exit gate (this run and every nightly):**
+
 - Gate population: PRIO MUST-v1 ∧ BUILT yes/partial ∧ CLASS UI or feasible UI-STAGED.
 - Pass bar: verdict ∈ {yes, yes-with-struggle} from the (N of) tester(s), zero protocol
   violations behind it; every spine step (FIND→ORIENT→DIAGNOSE→FIX→OUTCOME→RECOVER)
@@ -972,16 +1101,39 @@ fails the night. Every register ID emits exactly one row per run (incl. NOT-UI w
 ## RESULT SCHEMA (one JSON line per goal-arc × tester)
 
 ```json
-{ "runId": "", "date": "", "catalogVersion": "1.0", "appVersion": {"bffSha": "", "spaSha": ""},
-  "seedFingerprint": "", "engineMatrix": ["6.3","6.8","7.1"],
-  "goalId": "R-SEM-04", "arcId": "b", "mission": "M1", "persona": "", "user": "viewer",
+{
+  "runId": "",
+  "date": "",
+  "catalogVersion": "1.0",
+  "appVersion": { "bffSha": "", "spaSha": "" },
+  "seedFingerprint": "",
+  "engineMatrix": ["6.3", "6.8", "7.1"],
+  "goalId": "R-SEM-04",
+  "arcId": "b",
+  "mission": "M1",
+  "persona": "",
+  "user": "viewer",
   "modelTier": "sonnet",
   "verdict": "yes | yes-with-struggle | no | blocked-by-environment | waived(NOT-UI) | blocked-not-built",
-  "interactions": 0, "snapshots": 0, "hintsUsed": 0,
-  "firstSignalElement": "", "confidenceStatement": "",
-  "wrongTurns": [], "confusionPoints": [{"step": 0, "quote": "", "surface": ""}],
-  "findings": [{"sev": "Sev1", "surface": "", "elementCite": "", "quote": "", "theme": ""}],
-  "rubricViolations": {"R-UXQ-05": 0, "R-UXQ-06": 0},
-  "protocolViolations": [], "groundTruthVerified": true,
-  "evidence": [".playwright-mcp/..."] }
+  "interactions": 0,
+  "snapshots": 0,
+  "hintsUsed": 0,
+  "firstSignalElement": "",
+  "confidenceStatement": "",
+  "wrongTurns": [],
+  "confusionPoints": [{ "step": 0, "quote": "", "surface": "" }],
+  "findings": [
+    {
+      "sev": "Sev1",
+      "surface": "",
+      "elementCite": "",
+      "quote": "",
+      "theme": ""
+    }
+  ],
+  "rubricViolations": { "R-UXQ-05": 0, "R-UXQ-06": 0 },
+  "protocolViolations": [],
+  "groundTruthVerified": true,
+  "evidence": [".playwright-mcp/..."]
+}
 ```
