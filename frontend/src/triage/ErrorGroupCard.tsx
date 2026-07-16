@@ -91,7 +91,10 @@ export function ErrorGroupCard({ group, enginesById, lowerBound, asOf }: Props) 
               adjacent instead of drifting toward the ack button under space-between; gated on
               a non-empty stamp since `Ts` itself renders nothing for an empty string. */}
           {asOf !== undefined && asOf !== '' && (
-            <span className="group-total-asof" title="server-side aggregation stamp (BFF caches ~20s); the grid you're about to open runs a live query and can disagree with this count by however much changed since then">
+            <span
+              className="group-total-asof"
+              title="server-side aggregation stamp (BFF caches ~20s); the grid you're about to open runs a live query and can disagree with this count by however much changed since then"
+            >
               as of <Ts iso={asOf} relative />
             </span>
           )}
