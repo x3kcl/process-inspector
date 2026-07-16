@@ -12,6 +12,7 @@ Evaluator blocks (`COVERS`, `STAGING`) are for the runner/reconciler only.
 ---
 
 ## M1 · "3am pager: payments failing" — wave 1 · user `responder`
+
 COVERS: R-SEM-03 · R-SEM-02/a/b · R-SEM-04/a/c/e · R-L3-05 · R-SAFE-04 · R-SAFE-01/a ·
 R-AUD-06/a/b · rubrics R-UXQ-05/06.
 STAGING: standard seed; runner extracts {{FAILED_ID}} (a demoFailingPayment instance id),
@@ -19,10 +20,11 @@ STAGING: standard seed; runner extracts {{FAILED_ID}} (a demoFailingPayment inst
 exists nowhere).
 
 TESTER BRIEF:
+
 > You are the on-call support engineer. It is 3am. You have never used this tool — you
-> only know it inspects the company's workflow engines. Your pager says: *"Expense/order
+> only know it inspects the company's workflow engines. Your pager says: _"Expense/order
 > back-office flows failing since last night. Ops chat mentions 'payment steps erroring
-> out'. No instance IDs in the alert."*
+> out'. No instance IDs in the alert."_
 >
 > 1. Get an overview: what exactly is broken right now, how much of it is there, and
 >    which deployment/version does it point at? Write down your conclusion and what on
@@ -44,19 +46,21 @@ TESTER BRIEF:
 >    belongs to, or state with confidence what you know about it.
 
 ## M2 · "The stuck multi-part order" — wave 1 · user `responder`
+
 COVERS: R-UXQ-12 · R-UXQ-11 · R-SEM-19 · R-SEM-01 · R-L3-03 · rubrics.
 STAGING: standard seed + F-G1 (deployed); runner extracts {{PARENT_BK}} (demoParent
 businessKey or id) and confirms the wide parent `ORD-BATCH-2107` has 60 children.
 
 TESTER BRIEF:
-> You are the on-call support engineer, first time in this tool. Ticket: *"Order
-> {{PARENT_BK}} is stuck. It's one of those multi-part orders that spawn sub-work."*
+
+> You are the on-call support engineer, first time in this tool. Ticket: _"Order
+> {{PARENT_BK}} is stuck. It's one of those multi-part orders that spawn sub-work."_
 >
 > 1. Find that order. If the search shows several related rows, state which one is the
 >    top-level order and how you can tell.
 > 2. The order shows as failed — but WHERE is the actual failure? Get to the exact failed
 >    step and fix it (run the failed step again). Describe the path you took.
-> 3. Separate ticket, same shift: *"Batch order ORD-BATCH-2107 looks stalled."* Open it
+> 3. Separate ticket, same shift: _"Batch order ORD-BATCH-2107 looks stalled."_ Open it
 >    and answer: how many sub-cases does it have in total, and are they all visible to
 >    you? Is the tool being honest about what it shows vs what exists? Cite the wording.
 > 4. An escalation engineer asks for "the raw data behind that variables view, exactly as
@@ -66,6 +70,7 @@ TESTER BRIEF:
 >    means WITHOUT leaving the app? Quote what the app gave you.
 
 ## M3 · "Bad data, careful hands" — wave 2 (serialized) · user `operator`
+
 COVERS: R-UXQ-13/a/b/c · R-SEM-09/a/b · R-NFR-06 · R-AUD-07 · R-SAFE-02 · rubrics.
 STAGING: standard seed; runner extracts {{ACTIVE_ID}} (ACTIVE demoUserTask instance),
 {{JSON_ID}} (an ACME instance with a structured/json variable, e.g. acmeVendorEnrichment),
@@ -75,6 +80,7 @@ job on the second sacrificial instance as another user). Sacrificial F-G10 cohor
 `uxrun-m3-*` for the destructive-comprehension question.
 
 TESTER BRIEF:
+
 > You are a workflow operator. Three data-repair jobs tonight; you know another team is
 > working the same incident, so tread carefully. You have a terminal available for the
 > one step below that says "run this command".
@@ -104,12 +110,14 @@ TESTER BRIEF:
 >    dialog, read it, and CANCEL.
 
 ## M4 · "Bad deploy cleanup" — wave 2 (serialized) · user `operator`
+
 COVERS: R-SEM-12 · R-SEM-10/a(/b optional) · R-SEM-14 · R-NFR-01 · R-NFR-03 · rubrics.
 STAGING: runner seeds F-G9/F-G10: ~10 fresh failing instances (fast dead-letter,
 `uxrun-m4-*` businessKeys, same definition+engine), marks ONE of them protected (admin,
 reason "pending legal review") so the bulk report is mixed; extracts {{DEF_NAME}}.
 
 TESTER BRIEF:
+
 > You are a workflow operator. The morning after a bad deploy of `{{DEF_NAME}}`: a batch
 > of cases failed identically overnight and the fix is out — failed steps just need to be
 > run again, in bulk.
@@ -130,6 +138,7 @@ TESTER BRIEF:
 >    scale? (Do not execute anything for this question.)
 
 ## M5 · "Half the fleet is dark" — wave 3 (exclusive) · user `viewer`
+
 COVERS: R-UXQ-04 · R-AUD-04 · R-SEM-20 · R-SEM-06 · rubrics.
 STAGING: F-G7 — runner stops the `engine-legacy` container, verifies the health probe
 flipped, extracts {{LEGACY_ONLY_ID}} (an instance id that exists ONLY on the stopped
@@ -137,6 +146,7 @@ legacy engine) + {{CMMN_ENGINE}} (engine-a). Runner restarts the container after
 verifies recovery.
 
 TESTER BRIEF:
+
 > You are the on-call engineer during a messy night: rumor says one of the engine hosts
 > is down, but nobody knows which.
 >
@@ -156,6 +166,7 @@ TESTER BRIEF:
 >    you got complete? What tells you either way?
 
 ## M6 · "Prod, with the safety on" — wave 3 (exclusive) · user `operator`, then `admin`
+
 COVERS: R-GOV-04 · R-SAFE-03 · R-SAFE-05 · R-SEM-21 · R-SAFE-02 (prod confirms) · rubrics.
 STAGING: F-G2 — runner flips `engine-b` env tag to `prod`; flips `engine-legacy` (or a
 scratch entry) to `mode: read-only`; marks {{PROTECTED_ID}} protected (reason "regulatory
@@ -164,6 +175,7 @@ hold"); seeds `uxrun-m6-*` sacrificial instances on engine-b incl. a migration c
 sacrificial target. Runner RESTORES all flips after and verifies.
 
 TESTER BRIEF:
+
 > You are a workflow operator on the PRODUCTION fleet. Extra care tonight.
 >
 > 1. On the production engine, case `uxrun-m6-1` waits on a timer that ops wants fired
@@ -185,12 +197,14 @@ TESTER BRIEF:
 >    destroy the right one — and what it demanded from you because this is production.
 
 ## M7 · "Morning handover" — wave 2, runs LAST · user `operator`, then `admin`
+
 COVERS: R-AUD-05/a/b · R-AUD-08 · R-AUD-09 · R-BAU-01 · R-BAU-02 · R-L3-01 · R-SEM-24 ·
 R-SAFE-16 (tail, optional) · rubrics.
 STAGING: requires M1/M3/M4 audit rows to exist. Runner extracts {{TOUCHED_ID}} (an
 instance another mission acted on).
 
 TESTER BRIEF:
+
 > You are the 7am day-shift engineer taking over. The night shift is gone.
 >
 > 1. From the tool: what did the night shift actually DO — and is anything they did still
@@ -216,6 +230,7 @@ TESTER BRIEF:
 >    what does the removal demand, and what happens to the author's own copy?
 
 ## M8 · "Platform day: onboard engine-c" — wave 3 (exclusive) · users `registry-admin`,
+
 `access-admin`, `admin`
 COVERS: R-SAFE-13 · R-OPS-13 · R-OPS-15 · R-SAFE-14 · R-SAFE-08 (zero-state) · R-SEM-17 ·
 rubrics.
@@ -223,6 +238,7 @@ STAGING: runner provides {{SCRATCH_URL}} (a REAL reachable engine base URL to on
 points at the existing engine-7 URL) and cleans up the scratch entry + any grants after.
 
 TESTER BRIEF:
+
 > You are the platform administrator. Today: onboard a new engine, fix a teammate's
 > access, and clean up.
 >
@@ -245,11 +261,13 @@ TESTER BRIEF:
 >    broken references?
 
 ## M9 · "Hands off the mouse" — wave 1 · user `responder` (keyboard-only re-run)
+
 COVERS: R-UXQ-02 · R-UXQ-01 · R-UXQ-03 · R-GOV-05 (watermark assert by runner) · rubrics.
 STAGING: standard seed; harness BLOCKS click tools for this mission (keyboard-only is
 tool-enforced, not instructed); glance answers must come from viewport screenshots.
 
 TESTER BRIEF:
+
 > You are the on-call engineer; your pointing device is broken — keyboard only tonight.
 > Additionally, your terminal renders POORLY: for any question about meaning, rely on
 > TEXT and SHAPES you can see, never on color.
@@ -268,6 +286,7 @@ TESTER BRIEF:
 >    are prod, test, dev? What told you?
 
 ## M10 · "Digging past page one" — wave 1 · user `viewer`
+
 COVERS: R-NFR-08 · R-SEM-23 · rubrics. Added issue #98 — R-NFR-08 has a written goal-arc
 in GOAL-CATALOG.md but was never wired into any mission narrative before this run.
 STAGING: standard seed only; the mission's own broad, unfiltered search is expected to
@@ -275,6 +294,7 @@ surface enough rows (demo + ACME + wide-parent fixtures) across all reachable en
 require several Load-more clicks. No placeholders needed.
 
 TESTER BRIEF:
+
 > You're a viewer doing a routine audit sweep — no specific ticket, just "show me
 > everything the fleet has going on, oldest activity visible first if the tool lets you
 > pick that, otherwise whatever its default order is."
@@ -292,11 +312,63 @@ TESTER BRIEF:
 > 4. While paging through, did any row look duplicated or did you ever suspect one got
 >    skipped between pages? State yes/no and your evidence either way — don't guess.
 
+## M11 · "Routine sweep: views, an escalation kit, and a suspicious ticket" — wave 1 · user `viewer`
+
+COVERS: R-SEM-05 · R-SEM-04/b/d · R-L3-02 · R-OPS-08 · rubrics. Added — four MUST-v1
+goals with a written arc (three already BUILT yes/partial, one fixture already seeded)
+but zero mission coverage before this run, found by cross-referencing every COVERS list
+against the catalog (same class of gap that produced M10 for R-NFR-08).
+STAGING: standard seed (F-G6's hostile `demoUserTask` instance, businessKey
+`<img src=x onerror=alert(1)>`, is already deployed by `docker/seed.sh` — runner just
+confirms it resolves). F-G11 (new): runner starts two fresh instances out-of-band via
+REST sharing one explicit businessKey `uxrun-dup-{{RUN_ID}}` immediately before the arc
+(any definition; `acmeOrderOrchestrator` is convenient — mirrors R-SEM-09's OOB-mutation
+staging pattern in M3). This write is scoped to a fresh, mission-tagged businessKey that
+no other wave-1 mission's search terms, fixture IDs, or STAGING placeholders reference
+(M1/M2/M9/M10 each search for their own named fixtures — none search broadly enough to
+observe an unrelated new pair appearing) — safe to run concurrently with the rest of
+wave 1, unlike F-G7/F-G9/F-G10's cross-cutting stage flips. Runner extracts {{DUP_KEY}}
+(the shared businessKey used above) and confirms the existing system view
+"Suspended > 24h (by start time)" has at least one match (the standard-seed
+`demoUserTask` SUSPENDED instance already satisfies this).
+
+TESTER BRIEF:
+
+> You're a viewer doing a routine end-of-shift sweep — a few small, unrelated things to
+> check before you go, no single incident driving any of them.
+>
+> 1. Open the saved view named "Suspended > 24h (by start time)" from the views list.
+>    Before reading anything else, state in your own words what you expect this view to
+>    show you. Then look at what it actually returns and check: does it match what the
+>    name promised, or did the name oversell/undersell what the predicate actually does?
+>    Cite whatever on-screen text told you.
+> 2. A colleague's ticket mentions a business key but not which case: `{{DUP_KEY}}`.
+>    Search for it. If more than one case comes back, do NOT just pick one — report
+>    exactly what the tool does when a lookup isn't unique, and how you'd tell your
+>    colleague apart which one they meant.
+> 3. Separately, another ticket gives you a business key that should point at exactly
+>    one order: search for it the way you'd search for any single business key you
+>    were handed (not by browsing the grid) and confirm the tool takes you straight to
+>    a results view already narrowed down to just that one order — not a broader list
+>    you still have to filter yourself.
+> 4. Pick any currently-failed case from a search. Without opening a network inspector or
+>    reading any source, get a copy-pasteable command-line command that would reproduce
+>    that exact search from a terminal. Then do the same for one action available on the
+>    case itself (any button that offers a preview, not just the search). Report whether
+>    both were easy to find and whether you'd trust either to actually work if you ran it.
+> 5. Last thing: a ticket references a case whose business key looks like this exact
+>    text (read it carefully, it may look like code or a formula — that's the point):
+>    `<img src=x onerror=alert(1)>`. Find it. Report exactly how that text rendered
+>    everywhere you saw it (the search row, the detail page, anywhere else) — did
+>    anything about the page's behavior or layout look different because of it, or did
+>    it just sit there as plain text?
+
 ---
 
 ## Placeholder contract (runner fills at stage time)
+
 `{{FAILED_ID}} {{RETRYING_ID}} {{GARBAGE_ID}} {{PARENT_BK}} {{ACTIVE_ID}} {{JSON_ID}}
 {{JSON_LEAF_TASK}} {{OOB_MUTATION_CMD}} {{OOB_RESOLVE_CMD}} {{DEF_NAME}}
 {{LEGACY_ONLY_ID}} {{CMMN_ENGINE}} {{PROTECTED_ID}} {{MIGRATE_ID}} {{TOUCHED_ID}}
-{{SCRATCH_URL}}`
+{{SCRATCH_URL}} {{RUN_ID}} {{DUP_KEY}}`
 Unresolved placeholders at run time = FIXTURE_DRIFT → mission blocked-by-environment.
