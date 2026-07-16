@@ -178,11 +178,20 @@ TESTER BRIEF:
 ## M6 · "Prod, with the safety on" — wave 3 (exclusive) · user `operator`, then `admin`
 
 COVERS: R-GOV-04 · R-SAFE-03 · R-SAFE-05 · R-SEM-21 · R-SAFE-02 (prod confirms) · rubrics.
-STAGING: F-G2 — runner flips `engine-b` env tag to `prod`; flips `engine-legacy` (or a
-scratch entry) to `mode: read-only`; marks {{PROTECTED_ID}} protected (reason "regulatory
-hold"); seeds `uxrun-m6-*` sacrificial instances on engine-b incl. a migration candidate
-{{MIGRATE_ID}} (demoMigration v1) and a near-identical untagged twin beside each
-sacrificial target. Runner RESTORES all flips after and verifies.
+STAGING: F-G2 — runner attempts to flip `engine-b` env tag to `prod`; flips
+`engine-legacy` (or a scratch entry) to `mode: read-only`; marks {{PROTECTED_ID}}
+protected (reason "regulatory hold"); seeds `uxrun-m6-*` sacrificial instances on engine-b
+incl. a migration candidate {{MIGRATE_ID}} (demoMigration v1) and a near-identical
+untagged twin beside each sacrificial target. Runner RESTORES all flips after and
+verifies. **Issue #227 (2026-07-16+):** the `engine-b` → `prod` flip is a permanent
+structural limitation, not a re-stageable fixture — `RegistryUrlValidator` rejects
+`prod`+non-https before any hostname resolution, and no dev-only engine here serves
+https. The runner pre-flight-checks this before dispatch: if it's not live (which is
+every run, until R-OPS-16), task 1 is answered directly by the runner and the tester is
+told to start at task 2 — no interactions are spent probing a fixture that can never
+land. Tasks 2-5 (`engine-legacy`/`engine-7` read-only, `{{MIGRATE_ID}}` migration, the
+`uxrun-m6-3`/`uxrun-m6-3t` destructive-kill pair) don't depend on the prod flip and are
+dispatched normally.
 
 TESTER BRIEF:
 

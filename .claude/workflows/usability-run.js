@@ -155,7 +155,19 @@ DO, in order:
    - PROTECTED_ID / MIGRATE_ID / TOUCHED_ID: see below.
    - DUP_KEY (M11 / F-G11): no natural duplicate businessKey exists in the standard seed. Start TWO fresh acmeOrderOrchestrator instances on engine-a sharing one EXPLICIT businessKey "uxrun-dup-<short-random-suffix>" (verify both exist and share that exact key). Set DUP_KEY to that shared businessKey.
    - OOB_RESOLVE_CMD (M3 / R-SEM-09/b, issue #226): a single curl command that TERMINATES the uxrun-m3-2 instance AS ANOTHER USER through the BFF (if uxrun-m3-2 resolves to more than one instance, target the most-recently-started one — same F-G10 defensive convention as PARENT_BK/ACTIVE_ID resolution): curl -su admin:dev -H 'Content-Type: application/json' -X POST ${BFF}/api/instances/engine-a/<uxrun-m3-2 instance id>/actions/terminate-delete -d '{"reason":"colleague already handled this one - INC-4713"}' — VERIFY the route+payload shape against ${REPO}/backend/src/main/java/io/inspector/api/CorrectiveActionController.java and action/ActionRequest.java (terminate-delete is tier 3/ADMIN; on engine-a, a DEV engine, no confirmToken is required — only reason ≥10 chars). Do NOT execute it now; the tester runs it themselves.
-5. Seed run cohorts over engine REST (idempotent-ish, tag by businessKey):
+5. Seed run cohorts over engine REST — DEDUPE BY BUSINESS KEY FIRST (issue #227, F-G10):
+   before creating ANY uxrun-<mission>-<n> instance below, query
+   /runtime/process-instances?businessKey=<key> on its target engine FIRST.
+   - Zero ACTIVE instances with that key: create exactly one (this is the normal case).
+   - Exactly one ACTIVE instance: REUSE it, do not create a second.
+   - TWO OR MORE already exist (a prior run's duplicate, already-accumulated — this
+     check-first discipline only prevents NEW ones, it doesn't retroactively clean up
+     old ones): do NOT silently pick one. Terminate every extra one EXCEPT the
+     most-recently-started (same "freshest wins" convention already used for
+     PARENT_BK/ACTIVE_ID resolution and OOB_RESOLVE_CMD's target), so exactly one
+     survives under that businessKey — then note the cleanup in `notes` so it's visible,
+     not silent. The goal is that a mission's "the sacrificial case" always resolves to
+     exactly one instance, both for a fresh stack and a repeatedly-reused one.
    - uxrun-m3-1 and uxrun-m3-2: two demoUserTask instances on engine-a (businessKeys exactly those).
    - uxrun-m4-1..8: eight demoFailingPayment instances on engine-a (amount 100, divisor 0) with those businessKeys — they dead-letter in ~40s.
    - uxrun-m6-1: demoTimerWait on engine-b (dueDuration PT24H); uxrun-m6-dev-1: same on engine-a; uxrun-m6-3 AND uxrun-m6-3-twin: two demoUserTask on engine-b (twin must look near-identical, businessKey uxrun-m6-3t); MIGRATE_ID: a demoMigration v1... check: definition key from ${REPO}/docker/processes/demo-migration-v1.bpmn20.xml (grep the process id); start one instance of the OLD version on engine-b, businessKey uxrun-m6-mig.
@@ -221,16 +233,58 @@ for (const m of MISSIONS) {
   if (m === 'M5') {
     await agent(`Stage F-G7: docker stop process-inspector-engine-legacy-1 ; then poll ${BFF}/api/engines (curl -su viewer:dev) until engine-legacy reports unreachable (max 90s). Return ok:true when the strip shows it down.`, { schema: HOOK_SCHEMA, label: 'stage:M5', phase: 'Missions', effort: 'low' })
   }
+  // Issue #227: F-G2 (tagging engine-b prod) is now KNOWN STRUCTURALLY IMPOSSIBLE against
+  // this dev-only, plain-http engine — RegistryUrlValidator hard-rejects prod+non-https
+  // before any hostname resolution (confirmed 2026-07-16, see issue #215's closing
+  // comment). This is NOT a transient staging miss to retry; it never applies. So this
+  // pre-flight check does NOT abort the whole M6 dispatch (tasks 2-5 — R-GOV-04, R-SEM-21,
+  // R-SAFE-02, R-SAFE-05 — don't depend on F-G2 at all and have produced valid evidence in
+  // every run to date; aborting the mission would throw that away for nothing). Instead:
+  // task 1 is answered by the runner directly (no tester interactions wasted probing a
+  // fixture that can never land), and the tester is told to start at task 2.
+  let m6PreflightBlocked = null
   if (m === 'M6') {
     await agent(`Stage F-G2 for mission M6. Using the BFF admin registry API (discover the exact routes in ${REPO}/backend/src/main/java/io/inspector/api/AdminEnginesController.java; auth registry-admin:dev):
 1. Set engine-b environment tag to "prod". 2. Set engine-legacy mode to "read-only" (if legacy is not editable, use engine-7 and note it). Record EXACTLY what you changed (before->after) in notes so it can be restored. Return ok:true only if the flips are live (verify via GET).`, { schema: HOOK_SCHEMA, label: 'stage:M6', phase: 'Missions' })
+    // Issue #227 review: a SEPARATE, dedicated GET decides task 1's fate — not the stage
+    // hook's own aggregate `ok` (which also folds in the UNRELATED read-only flip, so a
+    // read-only failure alone must never falsely pre-block task 1, and an agent's
+    // self-reported ok:true must never be trusted without an independent re-check).
+    const preflight = await agent(`GET the BFF admin registry API (${REPO}/backend/src/main/java/io/inspector/api/AdminEnginesController.java for the exact route; auth registry-admin:dev) and report ONLY engine-b's current environment field, verbatim, in groundTruth. Do not mutate anything.`, { schema: HOOK_SCHEMA, label: 'preflight:M6-engine-b-env', phase: 'Missions', effort: 'low' })
+    const engineBEnv = (preflight?.groundTruth ?? []).join(' ').toLowerCase()
+    if (!engineBEnv.includes('prod')) {
+      m6PreflightBlocked = {
+        n: 1,
+        verdict: 'blocked-by-environment',
+        answer:
+          'R-SAFE-03 not evaluable this run: engine-b cannot be tagged prod through the registry API — RegistryUrlValidator rejects environment=PROD unless scheme=https (checked before any hostname resolution), and every dev-only engine here serves plain http. This is a permanent structural limitation (deliberate SSRF guardrail, R-OPS-13), not a re-stageable fixture gap — see issue #215. Deferred to the R-OPS-16 prod-like leg.',
+        citations: [],
+        interactions: 0,
+        firstSignal: `runner pre-flight GET confirmed engine-b.environment != prod before dispatch (reported: ${engineBEnv || '(no value returned)'})`,
+      }
+      log('M6 task 1 pre-blocked (F-G2 structurally unstageable) — tester starts at task 2, no interactions spent on task 1')
+    }
   }
 
   log(`Running ${m} (user ${MISSION_USER[m]})`)
-  const r = await agent(testerPrompt(m, MISSION_USER[m], brief), {
+  const effectiveBrief =
+    m6PreflightBlocked !== null
+      ? `${brief}\n\nRUNNER NOTE: task 1's fixture (a genuinely prod-tagged engine-b) could not be staged this run — this is a known, permanent environment limitation (issue #215), already recorded. SKIP task 1 entirely and start your numbered tasks at task 2; do not attempt or comment on task 1.`
+      : brief
+  const r = await agent(testerPrompt(m, MISSION_USER[m], effectiveBrief), {
     model: TESTER_MODEL, schema: TESTER_SCHEMA, label: `tester:${m}`, phase: 'Missions',
   })
-  results.push(r ?? { mission: m, tasks: [], protocolNotes: ['tester died'] })
+  // The synthetic task 1 is authoritative — drop any n:1 the tester returned anyway
+  // despite the RUNNER NOTE (an LLM not perfectly following the skip instruction),
+  // rather than risk two competing task-1 entries confusing the reconciler downstream.
+  // The pre-flight evidence is valid regardless of whether the rest of the mission
+  // completes — a dead tester must not also erase task 1's already-known answer.
+  const baseResult = r ?? { mission: m, tasks: [], protocolNotes: ['tester died'] }
+  const rWithPreflight =
+    m6PreflightBlocked !== null
+      ? { ...baseResult, tasks: [m6PreflightBlocked, ...(baseResult.tasks ?? []).filter((t) => t.n !== 1)] }
+      : baseResult
+  results.push(rWithPreflight)
 
   // post-stage hooks: ground truth + restoration
   if (m === 'M3') {
