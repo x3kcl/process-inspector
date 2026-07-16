@@ -38,10 +38,14 @@ interface Props {
 export function CurlPreview({ queryKey, fetchCurl, gate }: Props) {
   const [open, setOpen] = useState(false)
   const locked = gate?.enabled === false
+  // A gate can flip mid-session (e.g. #208's identity-switch scenario) while the preview
+  // is already open — `expanded` is the single source of truth for both the visible label
+  // and aria-expanded, so neither can drift from whether the body is actually rendered.
+  const expanded = open && !locked
   const query = useQuery({
     queryKey: ['action-curl', ...queryKey],
     queryFn: fetchCurl,
-    enabled: open && !locked,
+    enabled: expanded,
     staleTime: Infinity,
     retry: false,
   })
@@ -53,19 +57,19 @@ export function CurlPreview({ queryKey, fetchCurl, gate }: Props) {
         type="button"
         className="curl-toggle"
         disabled={locked}
-        aria-expanded={open}
+        aria-expanded={expanded}
         aria-describedby={locked ? hintId : undefined}
         title={locked ? (gate.detail ?? gate.reason) : undefined}
         onClick={() => {
           setOpen((prev) => !prev)
         }}
       >
-        {open ? 'Hide cURL' : 'Show as cURL'}
+        {expanded ? 'Hide cURL' : 'Show as cURL'}
       </button>
       {locked && gate.reason !== undefined && (
         <ActionHint id={hintId} text={gate.reason} tone="gate" />
       )}
-      {open && !locked && (
+      {expanded && (
         <div className="curl-preview-body">
           {query.isPending && <p className="zero-state">Rendering the request…</p>}
           {query.isError && (
