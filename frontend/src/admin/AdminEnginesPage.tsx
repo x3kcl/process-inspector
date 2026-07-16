@@ -53,7 +53,23 @@ export function AdminEnginesPage() {
   const approveError = m.approve.error
 
   // Greyed-never-hidden (R-UXQ): the nav renders for everyone; the page itself states the gate.
-  if (me.data !== undefined && me.data.registryAdmin !== true) {
+  // Fails CLOSED while `me` is unresolved (isPending) — issue #208: a `data !== undefined`-only
+  // check let this fall through to the full privileged table for one render on every fresh
+  // mount (e.g. right after an in-session identity switch, when the query cache was just
+  // cleared and `me.data` is briefly `undefined` again), the one gate in the app that showed
+  // privileged content by default instead of restricting it. Every other full-page gate
+  // (Shell.tsx's nav links) already keys off a positive `=== true` match for the same reason.
+  if (me.isPending) {
+    return (
+      <div className="page">
+        <header className="page-header">
+          <h2>Engine registry</h2>
+        </header>
+        <p className="muted">Resolving your access…</p>
+      </div>
+    )
+  }
+  if (me.data?.registryAdmin !== true) {
     return (
       <div className="page">
         <header className="page-header">
