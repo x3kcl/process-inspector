@@ -72,4 +72,10 @@ describe('DetailTabBar roving focus (ARIA APG)', () => {
     expect(tab('Variables').getAttribute('aria-selected')).toBe('true')
     expect(tab('Timeline').getAttribute('aria-selected')).toBe('false')
   })
+
+  it('shows a visible hint for the manual-activation pattern (#211)', () => {
+    render(<DetailTabBar active="variables" onSelect={vi.fn()} />)
+    const hint = screen.getByText(/moves between tabs/i)
+    expect(hint.textContent).toMatch(/Enter/)
+  })
 })
