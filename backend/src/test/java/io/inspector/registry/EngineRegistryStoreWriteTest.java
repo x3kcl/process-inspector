@@ -231,7 +231,7 @@ class EngineRegistryStoreWriteTest {
     }
 
     @Test
-    void record_probe_falls_back_to_a_generic_snippet_when_detail_is_blank() {
+    void record_probe_falls_back_to_a_generic_snippet_when_detail_is_null() {
         when(repo.findByIdAndRemovedAtIsNull("e")).thenReturn(Optional.of(rowWithLifecycle("e", "draft")));
         AuditEntry entry = mock(AuditEntry.class);
         when(audit.beginPending(any(), any(), any(), any(), any(), any(), any(), any()))
@@ -241,6 +241,24 @@ class EngineRegistryStoreWriteTest {
 
         verify(audit)
                 .close(eq(entry), eq(io.inspector.audit.AuditOutcome.ok), eq((Integer) null), eq("probed"), eq(true));
+    }
+
+    @Test
+    void record_probe_falls_back_to_a_generic_snippet_when_detail_is_blank() {
+        when(repo.findByIdAndRemovedAtIsNull("e")).thenReturn(Optional.of(rowWithLifecycle("e", "draft")));
+        AuditEntry entry = mock(AuditEntry.class);
+        when(audit.beginPending(any(), any(), any(), any(), any(), any(), any(), any()))
+                .thenReturn(entry);
+
+        store.recordProbe("e", false, admin, "   ");
+
+        verify(audit)
+                .close(
+                        eq(entry),
+                        eq(io.inspector.audit.AuditOutcome.failed),
+                        eq((Integer) null),
+                        eq("probe-failed"),
+                        eq(true));
     }
 
     /* ---------- four-eyes (R-SAFE-08, #91) ---------- */
