@@ -153,6 +153,7 @@ export function TriagePage() {
             groups={groups}
             enginesById={enginesById}
             lowerBound={groupsLowerBound}
+            asOf={data?.asOf}
           />
         )}
       </section>

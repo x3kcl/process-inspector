@@ -23,13 +23,13 @@ const group: ErrorGroup = {
   countsByEngine: {},
 }
 
-function renderCard(g: ErrorGroup = group) {
+function renderCard(g: ErrorGroup = group, asOf?: string) {
   const client = new QueryClient({ defaultOptions: { queries: { retry: false, enabled: false } } })
   render(
     <QueryClientProvider client={client}>
       <MemoryRouter>
         <OpsDrawerProvider>
-          <ErrorGroupCard group={g} enginesById={new Map()} lowerBound={false} />
+          <ErrorGroupCard group={g} enginesById={new Map()} lowerBound={false} asOf={asOf} />
         </OpsDrawerProvider>
       </MemoryRouter>
     </QueryClientProvider>,
@@ -55,6 +55,18 @@ describe('ErrorGroupCard count-unit tokens (W2 #7, T9)', () => {
     expect(screen.getByTitle(/retries left/).textContent).toContain('—')
     // The recomputed instance total is still shown truthfully.
     expect(screen.getByTitle(/error class in the grid/).textContent).toMatch(/46\s*instances/)
+  })
+})
+
+describe('ErrorGroupCard staleness caveat on the headline count (#209)', () => {
+  it('shows a visible "as of" caveat next to the count when the aggregation stamp is known', () => {
+    renderCard(group, '2026-07-16T10:00:00Z')
+    expect(screen.getByText(/as of/).closest('.group-total-asof')).not.toBeNull()
+  })
+
+  it('renders no caveat when the aggregation stamp is unknown', () => {
+    renderCard(group, undefined)
+    expect(screen.queryByText(/as of/)).toBeNull()
   })
 })
 

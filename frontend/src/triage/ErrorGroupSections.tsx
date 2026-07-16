@@ -12,9 +12,15 @@ interface Props {
   groups: ErrorGroup[]
   enginesById: Map<string, EngineDto>
   lowerBound: boolean
+  /** The Stage 0 aggregation stamp (page-level "as of" banner) — threaded down so each
+   *  group's own count can carry the same freshness caveat at the point a user is about
+   *  to trust it (issue #209: a group's headline count can disagree with a live drill-down
+   *  search by however much changed since this stamp; the page-top banner alone left that
+   *  unexplained at the specific number a tester was looking at). */
+  asOf: string | undefined
 }
 
-export function ErrorGroupSections({ groups, enginesById, lowerBound }: Props) {
+export function ErrorGroupSections({ groups, enginesById, lowerBound, asOf }: Props) {
   const { active, acknowledged } = splitAcknowledged(groups)
   return (
     <>
@@ -30,6 +36,7 @@ export function ErrorGroupSections({ groups, enginesById, lowerBound }: Props) {
           group={group}
           enginesById={enginesById}
           lowerBound={lowerBound}
+          asOf={asOf}
         />
       ))}
       {acknowledged.length > 0 && (
@@ -43,6 +50,7 @@ export function ErrorGroupSections({ groups, enginesById, lowerBound }: Props) {
               group={group}
               enginesById={enginesById}
               lowerBound={lowerBound}
+              asOf={asOf}
             />
           ))}
         </details>
