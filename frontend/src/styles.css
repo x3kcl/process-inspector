@@ -1441,6 +1441,12 @@ button.primary:disabled {
 .normalized-message {
   color: var(--color-ink);
 }
+.group-total-wrap {
+  display: flex;
+  flex-direction: column;
+  align-items: flex-end;
+  gap: 2px;
+}
 .group-total {
   font-size: 18px;
   font-weight: 700;
@@ -1456,6 +1462,7 @@ button.primary:disabled {
   color: var(--color-text-faint);
   font-size: 12px;
   font-variant-numeric: tabular-nums;
+  white-space: nowrap;
 }
 .error-group-lanes {
   display: flex;

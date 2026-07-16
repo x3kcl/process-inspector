@@ -74,23 +74,28 @@ export function ErrorGroupCard({ group, enginesById, lowerBound, asOf }: Props) 
             </span>
           )}
         </span>
-        <Link
-          className="group-total"
-          to={`/search?${groupDrillParams(group)}`}
-          title="Open every FAILED + RETRYING instance of this one error class in the grid"
-        >
-          {prefix}
-          {formatCount(group.total ?? 0)} <span className="count-unit">instances</span>
-        </Link>
-        {/* #209: this count is the same Stage 0 aggregation stamp as the page-level "as of"
-            banner — clicking through runs a live Stage 1 search instead, so the two can
-            disagree by however much changed since this stamp. Visible (not hover-only, per
-            the same reasoning as #118 item 3) right at the number a user is about to trust. */}
-        {asOf !== undefined && (
-          <span className="group-total-asof" title="server-side aggregation stamp (BFF caches ~20s); the grid you're about to open runs a live query and can disagree with this count by however much changed since then">
-            as of <Ts iso={asOf} relative />
-          </span>
-        )}
+        <span className="group-total-wrap">
+          <Link
+            className="group-total"
+            to={`/search?${groupDrillParams(group)}`}
+            title="Open every FAILED + RETRYING instance of this one error class in the grid"
+          >
+            {prefix}
+            {formatCount(group.total ?? 0)} <span className="count-unit">instances</span>
+          </Link>
+          {/* #209: this count is the same Stage 0 aggregation stamp as the page-level "as of"
+              banner — clicking through runs a live Stage 1 search instead, so the two can
+              disagree by however much changed since this stamp. Visible (not hover-only, per
+              the same reasoning as #118 item 3) right at the number a user is about to trust.
+              Wrapped with the count (not a `.error-group-head` flex sibling) so it stays
+              adjacent instead of drifting toward the ack button under space-between; gated on
+              a non-empty stamp since `Ts` itself renders nothing for an empty string. */}
+          {asOf !== undefined && asOf !== '' && (
+            <span className="group-total-asof" title="server-side aggregation stamp (BFF caches ~20s); the grid you're about to open runs a live query and can disagree with this count by however much changed since then">
+              as of <Ts iso={asOf} relative />
+            </span>
+          )}
+        </span>
         {/* The mute/ack affordance lives ON the card head (baseline run M7 task 5:
             "the same way monitoring tools silence a known alert") — never Suspend. */}
         <span className="action-slot">
