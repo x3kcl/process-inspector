@@ -408,6 +408,12 @@ gap here: [link]" is the ticket-handover primitive.
   render "open logs" deep links from it. Absent template → no link (never a broken guess).
 - **Compare with sibling** (v1.x, §5.2): from a failed instance, one click diffs it against
   a successful instance of the same definition version.
+- **Disabled ≠ removed** (#248): the detail route of a registered-but-`disabled` engine
+  renders normally — the read surface resolves past a disable, exactly like the Audit &
+  Notes display always did — with an informational "disabled, not removed" banner naming
+  the state and its consequences (readable here; excluded from search; no actions until
+  re-enabled). Only a genuinely unregistered engine id gets the "Unknown engine" banner;
+  the two claims never co-render.
 
 #### Stage 2 — CMMN case detail: the polymorphic sibling route (Case Inspector Phase 2)
 A co-deployed **CMMN case** gets its own read-only, deep-linkable Stage-2 route

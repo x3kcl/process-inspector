@@ -7,7 +7,6 @@ import io.inspector.dto.InstanceStatusFlags;
 import io.inspector.dto.StatusEvidence;
 import io.inspector.dto.StatusEvidence.FlagFinding;
 import io.inspector.dto.StatusEvidence.Leg;
-import io.inspector.registry.EngineRegistry;
 import java.time.Instant;
 import java.util.ArrayList;
 import java.util.List;
@@ -31,16 +30,16 @@ public class StatusEvidenceService {
             + " original response bytes, so this is a fresh derivation — the flags below are re-computed on demand,"
             + " not a replay of what was shown earlier.";
 
-    private final EngineRegistry registry;
     private final InstanceDetailService detail;
 
-    public StatusEvidenceService(EngineRegistry registry, InstanceDetailService detail) {
-        this.registry = registry;
+    public StatusEvidenceService(InstanceDetailService detail) {
         this.detail = detail;
     }
 
     public StatusEvidence explain(String engineId, String instanceId) {
-        EngineConfig engine = registry.require(engineId);
+        // #248: same read-surface resolution as every other tab on this page — a disabled
+        // engine's status chip stays explainable; mutations still resolve via require().
+        EngineConfig engine = detail.engineForRead(engineId);
         EngineCallRecorder.begin();
         List<EngineCallRecorder.Leg> recorded;
         StatusDerivation derivation;
