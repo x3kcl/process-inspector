@@ -112,6 +112,18 @@ export function CasePage() {
           </span>
         </div>
 
+        {/* #252 (mirrors #248/#251 on InstancePage): a DISABLED engine is registered, not gone —
+            the registry still resolves it for reads, so this page's diagram/plan-item history
+            render normally. Say exactly that, instead of ever letting the disabled case fall
+            through to "Unknown engine"/not-found copy that would contradict the fully-rendered
+            page below. */}
+        {engine?.lifecycle === 'disabled' && (
+          <div className="banner banner-info" role="status">
+            Engine “{engine.name ?? engineId}” is disabled in the registry — disabled, not removed.
+            This case stays readable here, but it is excluded from search and takes no actions until
+            an administrator re-enables it.
+          </div>
+        )}
         {vitals.isPending && <p className="muted">Loading case…</p>}
         {vitals.isError && (
           <p className="error-note" role="alert">

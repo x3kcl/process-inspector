@@ -46,7 +46,7 @@ class CmmnScopeServiceTest {
     private final CmmnScopeService service = new CmmnScopeService(registry, flowable);
 
     private void health(EngineCapabilities capabilities) {
-        when(registry.require(ENGINE)).thenReturn(engine);
+        when(registry.resolveOrNotFound(ENGINE)).thenReturn(engine);
         when(registry.healthOf(ENGINE))
                 .thenReturn(new EngineHealth(true, "?", null, 0L, capabilities, null, null, null));
     }

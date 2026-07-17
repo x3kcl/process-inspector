@@ -128,6 +128,17 @@ public class EngineRegistry {
         return Optional.ofNullable(engines.get(engineId));
     }
 
+    /**
+     * {@link #resolve} with the read-surface's standard "unknown engine" 404 (#248/#252): a
+     * registered-but-disabled engine still resolves — only a genuinely unknown or
+     * tombstoned/removed id 404s. Read-only services that need this survive-a-disable seam
+     * call this directly instead of duplicating the resolve-or-404 snippet per service.
+     */
+    public EngineConfig resolveOrNotFound(String engineId) {
+        return resolve(engineId)
+                .orElseThrow(() -> new ResponseStatusException(NOT_FOUND, "Unknown engine: " + engineId));
+    }
+
     public EngineHealth healthOf(String engineId) {
         return health.getOrDefault(engineId, EngineHealth.unknown());
     }

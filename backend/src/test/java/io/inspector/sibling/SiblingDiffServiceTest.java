@@ -150,7 +150,7 @@ class SiblingDiffServiceTest {
         ProcessApiClient flowable = mock(ProcessApiClient.class);
         InstanceDetailService detail = mock(InstanceDetailService.class);
         EngineConfig engine = TestEngines.engine("engine-a", "http://engine-a");
-        when(registry.require("engine-a")).thenReturn(engine);
+        when(registry.resolveOrNotFound("engine-a")).thenReturn(engine);
         when(detail.requireHistoric(eq(engine), eq("subject-1")))
                 .thenReturn(Map.of("id", "subject-1", "processDefinitionId", "payment:3:abc"));
 
@@ -178,7 +178,7 @@ class SiblingDiffServiceTest {
         ProcessApiClient flowable = mock(ProcessApiClient.class);
         InstanceDetailService detail = mock(InstanceDetailService.class);
         EngineConfig engine = TestEngines.engine("engine-a", "http://engine-a");
-        when(registry.require("engine-a")).thenReturn(engine);
+        when(registry.resolveOrNotFound("engine-a")).thenReturn(engine);
         when(detail.requireHistoric(eq(engine), eq("subject-1")))
                 .thenReturn(Map.of("id", "subject-1", "processDefinitionId", "payment:3:abc"));
         when(flowable.queryHistoricProcessInstances(eq(engine), any(), any())).thenReturn(FlowablePage.empty());
@@ -196,7 +196,7 @@ class SiblingDiffServiceTest {
         ProcessApiClient flowable = mock(ProcessApiClient.class);
         InstanceDetailService detail = mock(InstanceDetailService.class);
         EngineConfig engine = TestEngines.engine("engine-a", "http://engine-a");
-        when(registry.require("engine-a")).thenReturn(engine);
+        when(registry.resolveOrNotFound("engine-a")).thenReturn(engine);
         when(detail.requireHistoric(eq(engine), eq("subject-1")))
                 .thenReturn(Map.of("id", "subject-1", "processDefinitionId", "payment:3:abc", "businessKey", "ORD-1"));
         when(detail.requireHistoric(eq(engine), eq("good-42")))
