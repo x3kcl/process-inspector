@@ -577,14 +577,17 @@ FIXTURE: piggybacks on the R-UXQ-04 engine-down stage.
 
 ### R-AUD-05 · Shift report
 
-PRIO MUST-v1 · CLASS UI · BUILT no
+PRIO MUST-v1 · CLASS UI · BUILT yes (/a with a nuance)
 GOAL (/a produce): At end of shift, an operator must produce a handover artifact — "my
 activity this shift, UNKNOWNs first" — in one or two clicks from the audit surface.
 GOAL (/b consume): the 7am engineer coming ON shift must answer, from the app: what did
 night shift do, what is still unresolved/UNKNOWN, did anyone touch instance X?
 ENTRY: `/audit` · user `operator` (after other missions created audit rows).
-SUCCESS: evaluator expects /a NOT-FOUND today (honest give-up + "where I expected it" =
-the plan evidence; MUST-v1 gap). /b is answerable from filters today — grade how hard.
+SUCCESS: /b RE-CONFIRMED BUILT — a full night-shift inventory including flagged
+unresolved items is producible from `/audit` filters. /a RE-CONFIRMED BUILT with a
+nuance: "Copy shift report" on `/audit` produces a structured report, but no dedicated
+fleet-wide free-text "my shift note" composition surface exists beyond it — genuine
+partial-coverage evidence, not a regression (2026-07-16-post-fix-full-recert-v2).
 FIXTURE: audit rows from earlier missions (run this mission last).
 
 ### R-AUD-06 · Copy-for-ticket
@@ -617,23 +620,24 @@ corroboration of a real, shipped capture field, not confabulation.
 
 ### R-AUD-08 · Audit CSV export
 
-PRIO MUST-v1 (CSV) · CLASS UI · BUILT **no** (repo audit: `AuditController` has no
-export path; only CSV in the backend is `AccessReviewController`) — **MUST-v1 gap #5**
+PRIO MUST-v1 (CSV) · CLASS UI · BUILT yes (RE-CONFIRMED: "Export CSV" on `/audit`
+downloads a genuine `operations-log.csv` with correct headers, 2026-07-16-post-fix-full-recert-v2)
 GOAL: An auditor asked "what did operator X do to engine-b this week?" must get the
 answer out of the app and into a spreadsheet without a developer.
 ENTRY: `/audit` · user `admin`.
-SUCCESS: evaluator expects NOT-FOUND — honest give-up evidence for the plan.
+SUCCESS: tester downloads a real CSV with correct content-type/content-disposition headers.
 FIXTURE: audit rows from earlier arcs.
 
 ### R-AUD-09 · Attribution caveat
 
-PRIO MUST-v1 · CLASS UI · BUILT **no** (repo audit: no service-account caveat text in
-`AuditTab.tsx` or any tsx) — **MUST-v1 gap #6**
+PRIO MUST-v1 · CLASS UI · BUILT yes (RE-CONFIRMED: the exact caveat text is present on
+the per-instance Audit & Notes tab, 2026-07-16-post-fix-full-recert-v2)
 GOAL: An engineer asking "WHO did this?" must land on the BFF audit answer and see the
 warning that engine-side history blames the service account.
 ENTRY: `/inspect/...?tab=audit` · user `viewer`.
-SUCCESS: who-question answerable from the tab (works today); the caveat is expected
-NOT-FOUND — plan evidence.
+SUCCESS: who-question answerable from the tab; the caveat text ("Engine-side history
+attributes these actions to the shared service account — this log is the authoritative
+WHO") is present verbatim.
 FIXTURE: prior actions from other arcs.
 
 ### R-AUD-10 · Config-event audit primitive
@@ -842,23 +846,30 @@ FIXTURE: standard seed (ACME instances carry structured variables).
 
 ### R-BAU-01 · Error-group acknowledge
 
-PRIO MUST-v1 · CLASS UI · BUILT no
+PRIO MUST-v1 · CLASS UI · BUILT yes (RE-CONFIRMED: group mutes into "Acknowledged (N)"
+without hiding data, dialog states the auto-resurface guarantee pre-commit,
+2026-07-16-post-fix-full-recert-v2). Built "acknowledge" only, NOT "annotate" — annotate
+is the separate, still-open R-BAU-03.
 GOAL: A day-shift engineer triaging a known-noisy error group must acknowledge it (who +
 reason + expiry) so it collapses — labeled, never hidden — and trust it will resurface on
-growth. Expected NOT-FOUND today: attempt + record; MUST-v1 gap for the plan.
+growth.
 ENTRY: `/` error groups · user `operator`.
-SUCCESS: honest not-found evidence (or the arc, if present).
+SUCCESS: group collapses labeled (not hidden); resurface guarantee (growth / new version
+/ expiry) stated before commit.
 FIXTURE: standard seed.
 
 ### R-BAU-02 · Leak views
 
-PRIO MUST-v1 · CLASS UI · BUILT no
+PRIO MUST-v1 · CLASS UI · BUILT yes (RE-CONFIRMED with a nuance,
+2026-07-16-post-fix-full-recert-v2)
 GOAL: A day-shift engineer hunting slow leaks must find "Active > 30 days" style views
-grouped per definition. Expected NOT-FOUND today; also note the fixture honesty problem:
-instance age cannot be seeded over REST — verification needs config-lowered windows.
+grouped per definition.
 ENTRY: `/` · user `viewer`.
-SUCCESS: honest not-found evidence; plan item.
-FIXTURE: n/a today; F-G8 (config-lowered leak windows) when built.
+SUCCESS: "Active > 30 days" is answerable via Search's Status+Started-before filters
+(cross-engine-confirmed). Nuance: the purpose-built one-click home-page "Leak views"
+widget itself covers SUSPENDED only, despite its name/description implying ACTIVE
+coverage too — worth a copy fix or a companion ACTIVE-leak link (tracked in results).
+FIXTURE: standard seed.
 
 ### R-BAU-03 · Error-class annotations
 
@@ -897,12 +908,13 @@ seed of the R-BAU-09 training profile; noted in the reuse doc.
 
 ### R-L3-01 · "Explain this status"
 
-PRIO MUST-v1 · CLASS UI · BUILT no (no dedicated affordance found)
+PRIO MUST-v1 · CLASS UI · BUILT yes (RE-CONFIRMED: full falsifiable evidence trail
+reached from the chip itself, 2026-07-16-post-fix-full-recert-v2)
 GOAL: A skeptical L3 must be able to falsify a status chip: reach the per-leg evidence
-(which calls, what came back, what was truncated) from the chip itself. Expected
-NOT-FOUND today; MUST-v1 gap.
+(which calls, what came back, what was truncated) from the chip itself.
 ENTRY: FAILED instance status chip · user `admin`.
-SUCCESS: honest not-found evidence (or the evidence view, if present).
+SUCCESS: "Explain this status" surfaces a named Plan, per-engine-call evidence
+(URL/status/latency/timestamp), and a flag-by-flag verdict table.
 FIXTURE: standard seed.
 
 ### R-L3-02 · cURL parity
