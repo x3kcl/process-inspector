@@ -317,6 +317,12 @@ Answers "what is broken, how much, where" in zero keystrokes:
 - Collapsible filter rail; collapses to chips once a search runs; the results grid gets the
   full width. The **entire search state is URL-encoded** — shareable links are an incident
   primitive, not a hardening feature.
+- An **all-blank submit is impossible by construction** (#246): whenever the form would
+  encode to an empty search (which fires no request and is indistinguishable from the
+  pre-search zero state), the Search button is disabled-with-reason — short visible line +
+  full-title explanation, same pattern as Refresh and inactive-engine rows. Blankness is
+  defined by the URL codec, not a field list: any state that encodes a param (a lone engine
+  tick, status, or non-default sort) keeps the button live, because it runs a real search.
 - Below the form: the **compiled-criteria echo** + **"copy as cURL"** against `/api/search`
   (makes the AND-between-categories / OR-within rule visible; teaches the API; replaces a
   query language, which Flowable's query REST cannot honestly execute — rejected, §11).
