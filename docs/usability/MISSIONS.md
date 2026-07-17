@@ -122,7 +122,7 @@ TESTER BRIEF:
 ## M4 · "Bad deploy cleanup" — wave 2 (serialized) · user `operator`
 
 COVERS: R-SEM-12 · R-SEM-10/a(/b optional) · R-SEM-14 · R-NFR-01 · R-NFR-03 · rubrics.
-STAGING: runner seeds F-G9/F-G10: ~10 fresh failing instances (fast dead-letter,
+STAGING: runner seeds F-G9/F-G10: eight fresh failing instances (fast dead-letter,
 `uxrun-m4-*` businessKeys, same definition+engine — but spanning TWO deployed versions
 of that definition, 5 on the newest / 3 on the oldest, so the per-version failure
 breakdown shows two distinct counts and task 1's per-version drill is actually
