@@ -97,6 +97,21 @@ describe('search URL codec', () => {
     expect(decoded?.definitionVersion).toBeUndefined()
   })
 
+  it('drops partially-numeric versions instead of silently reinterpreting them', () => {
+    // parseInt would turn these into v42 — a wrong-target of its own (#233 review).
+    for (const garbage of ['42xyz', '42.9', '-42', '0', 'latest', ' ']) {
+      const decoded = decodeSearch(new URLSearchParams(`definitionKey=order&version=${garbage}`))
+      expect(decoded?.definitionVersion, `version=${garbage}`).toBeUndefined()
+    }
+  })
+
+  it('honors an exact-integer scientific spelling instead of dropping it', () => {
+    // "4e2" IS 400 — dropping a value the user meant would silently widen the scope,
+    // and parseInt would have silently read it as v4.
+    const decoded = decodeSearch(new URLSearchParams('definitionKey=order&version=4e2'))
+    expect(decoded?.definitionVersion).toBe(400)
+  })
+
   it('omits the version param entirely when the request carries none', () => {
     const params = encodeSearch({ statuses: ['FAILED'], processDefinitionKey: 'order' })
     expect(params.has('version')).toBe(false)

@@ -54,6 +54,21 @@ export function decodeHiddenColumns(params: URLSearchParams): Set<string> | null
   return new Set(raw.split(LIST_SEP).filter((id) => id !== ''))
 }
 
+/**
+ * Strict positive-integer parse for the scope-critical version filter (#233 review):
+ * parseInt would silently reinterpret "42xyz"/"42.9" as v42 — a wrong-target of its own.
+ * Number() instead of a digits-only regex so an exact-integer spelling like "4e2" is
+ * honored as 400 rather than dropped (dropping a value the user meant would silently
+ * widen the scope); anything not an exact positive integer is dropped, same doctrine as
+ * unknown statuses ("drops unknown statuses instead of sending garbage to the BFF").
+ * Flowable definition versions start at 1, so 0 and negatives are garbage here.
+ */
+export function parseDefinitionVersion(raw: string): number | undefined {
+  if (raw.trim() === '') return undefined // Number('') is 0, not NaN
+  const parsed = Number(raw)
+  return Number.isSafeInteger(parsed) && parsed >= 1 ? parsed : undefined
+}
+
 export function encodeSearch(request: SearchRequest): URLSearchParams {
   const params = new URLSearchParams()
   const set = (key: string, value: string | undefined) => {
@@ -97,7 +112,7 @@ export function decodeSearch(params: URLSearchParams): SearchRequest | null {
   const pageSizeRaw = params.get('pageSize')
   const pageSize = pageSizeRaw === null ? undefined : Number.parseInt(pageSizeRaw, 10)
   const versionRaw = params.get('version')
-  const version = versionRaw === null ? undefined : Number.parseInt(versionRaw, 10)
+  const version = versionRaw === null ? undefined : parseDefinitionVersion(versionRaw)
   return {
     engineIds: list('engines'),
     statuses: list('status')?.filter(isInstanceStatus),
@@ -105,7 +120,7 @@ export function decodeSearch(params: URLSearchParams): SearchRequest | null {
     // #233: kept even without definitionKey — the BFF rejects that combination loudly
     // ("definitionVersion requires processDefinitionKey"); silently widening the scope
     // by dropping the filter is exactly the wrong-target bug this codec key fixes.
-    definitionVersion: version !== undefined && Number.isFinite(version) ? version : undefined,
+    definitionVersion: version,
     businessKey: get('businessKey'),
     businessKeyLike: get('businessKeyLike'),
     startedAfter: get('startedAfter'),

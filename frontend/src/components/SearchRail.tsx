@@ -4,6 +4,7 @@ import type { EngineDto, InstanceStatus, SearchRequest, SearchResponse } from '.
 import { ALL_STATUSES } from '../api/model'
 import { isInactiveLifecycle, lifecycleGloss } from '../lib/enginePolicy'
 import { formatCount } from '../lib/format'
+import { parseDefinitionVersion } from '../search/urlState'
 import { SaveViewControl } from '../views/SaveViewControl'
 import { CopyButton } from './CopyButton'
 
@@ -123,12 +124,12 @@ function RailForm({
   const submit = (event: FormEvent) => {
     event.preventDefault()
     const usedVariables = variables.filter((v) => v.name !== '')
-    const parsedVersion = Number.parseInt(definitionVersion, 10)
     onSubmit({
       engineIds: engineIds.length > 0 ? engineIds : undefined,
       statuses: statuses.length > 0 ? statuses : undefined,
       processDefinitionKey: definitionKey || undefined,
-      definitionVersion: Number.isFinite(parsedVersion) ? parsedVersion : undefined,
+      // Strict parse (#233 review): "42.9"/"42xyz" must never silently become v42.
+      definitionVersion: parseDefinitionVersion(definitionVersion),
       businessKey: businessKey || undefined,
       businessKeyLike: businessKeyLike || undefined,
       startedAfter: localToIso(startedAfter),
