@@ -70,9 +70,9 @@ describe('teamViewModel', () => {
   })
 
   it('surfaces the BFF’s own scope-aware 403 reason, not a hardcoded wildcard sentence (#234)', () => {
-    // The backend's canPublish() refusal already names the real rule; the UI must quote it.
+    // The backend's publish refusal names the actual scope/tier/standing (#247); the UI must quote it.
     const detail =
-      'publishing this scope needs an OPERATOR (or ADMIN for a wildcard scope) grant on it'
+      'publishing scope orders-prod/tenant-a needs an OPERATOR grant covering it — your best grant covering it is VIEWER'
     expect(publishError(new ApiError(403, { detail }))).toContain(detail)
     // The quotable request id rides along when the BFF stamped one (W1#6 contract).
     expect(publishError(new ApiError(403, { detail, requestId: 'req-42' }))).toContain('req-42')

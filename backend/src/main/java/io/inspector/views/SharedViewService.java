@@ -170,10 +170,10 @@ public class SharedViewService {
                     "the declared scope does not cover every engine this view's search queries"
                             + " — it would publish canon that reaches outside its label");
         }
-        if (!canPublish(rbac.grantsFor(auth), scope.engineId(), scope.tenantId())) {
+        Set<ScopeGrant> grants = rbac.grantsFor(auth);
+        if (!canPublish(grants, scope.engineId(), scope.tenantId())) {
             throw new ResponseStatusException(
-                    HttpStatus.FORBIDDEN,
-                    "publishing this scope needs an OPERATOR (or ADMIN for a wildcard scope) grant on it");
+                    HttpStatus.FORBIDDEN, publishRefusal(grants, scope.engineId(), scope.tenantId()));
         }
         if (repository
                 .findByNameAndScopeEngineIdAndScopeTenantId(name, scope.engineId(), scope.tenantId())
@@ -266,8 +266,35 @@ public class SharedViewService {
      * (the dev basic-auth ladder only mints global grants).
      */
     public static boolean canPublish(Set<ScopeGrant> grants, String scopeEngineId, String scopeTenantId) {
-        Role floor = SharedViewScope.isWildcard(scopeEngineId, scopeTenantId) ? Role.ADMIN : Role.OPERATOR;
+        Role floor = publishFloor(scopeEngineId, scopeTenantId);
         return grants.stream().anyMatch(g -> g.covers(floor, scopeEngineId, scopeTenantId));
+    }
+
+    /** The publish role floor for a scope shape: ADMIN for any wildcard scope, OPERATOR otherwise. */
+    static Role publishFloor(String scopeEngineId, String scopeTenantId) {
+        return SharedViewScope.isWildcard(scopeEngineId, scopeTenantId) ? Role.ADMIN : Role.OPERATOR;
+    }
+
+    /**
+     * The 403 detail for a refused publish (#247): names the ACTUAL attempted scope, the ONE tier
+     * that scope shape requires, and the caller's own standing on it — never a static restatement
+     * of the whole rule (which read as self-contradictory when scope-narrowing didn't change the
+     * outcome). Pure (rung-1 testable). Only ever built AFTER {@link #canPublish} refused.
+     */
+    static String publishRefusal(Set<ScopeGrant> grants, String scopeEngineId, String scopeTenantId) {
+        Role floor = publishFloor(scopeEngineId, scopeTenantId);
+        String scopeLabel =
+                (SharedViewScope.isWildcard(scopeEngineId, scopeTenantId) ? "the wildcard scope " : "scope ")
+                        + scopeEngineId + "/" + scopeTenantId;
+        // The caller's best role among grants whose ENGINE/TENANT contain the scope (VIEWER floor
+        // = pure containment check) — telling a caller their own standing leaks nothing.
+        String standing = grants.stream()
+                .filter(g -> g.covers(Role.VIEWER, scopeEngineId, scopeTenantId))
+                .map(ScopeGrant::role)
+                .max(java.util.Comparator.naturalOrder())
+                .map(best -> "your best grant covering it is " + best)
+                .orElse("you have no grant covering it");
+        return "publishing " + scopeLabel + " needs an " + floor + " grant covering it — " + standing;
     }
 
     /**
