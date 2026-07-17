@@ -124,7 +124,10 @@ Any deep-paging design must survive the Flowable REST wire-shape (REST-only iron
   (it is the footgun *and* would need AG Grid Enterprise → R-GOV-05 violation).
 - **The depth wall is a filter seam, not a dead-end nudge.** At the cap, hand back the last-shown
   sort key as a pre-filled time bound ("failed before 14:03:22 — apply to continue") — the honest
-  bridge between paging and narrowing, satisfying R-UXQ-05 ([what]+[why]+[next]).
+  bridge between paging and narrowing, satisfying R-UXQ-05 ([what]+[why]+[next]). The note renders
+  whenever `depthCapped` fired — with no accumulated rows to bound on, it explains the empty/thin
+  grid and points at manual narrowing instead of vanishing — and carries warning-note visual weight
+  (border + tint + bold, never hue alone), distinct from the muted seam/staleness prose (#245).
 - **Snapshot honesty:** the deep-paged set is already under the lower-bound amber; add one calm
   seam line ("loaded more as of 14:36 — newer failures won't appear until Refresh") and a
   `pagingCoherence` flag; **Refresh resets the cursor chain and drops any deep selection.**
@@ -324,8 +327,9 @@ wire-facts** — neither correction changes the RE-LOCK, but both are now known 
   (`useSearch.ts`), the flattened+compositeId-deduped feed fed to the client-side grid; overflow-only
   surfacing (the BFF emits the ENTRY `nextCursor` from `aggregate()` only when a MIXED/`startTime`
   search overflows, so `hasNextPage` gates the button); two-door selection preserved (no
-  loaded-rows-as-ID-list door); depth-wall filter seam (pre-filled `startedBefore` at the last-shown
-  key); snapshot seam line; Refresh resets the chain + drops the selection (keyed on the search
+  loaded-rows-as-ID-list door); depth-wall filter seam (`DepthWallNote`: pre-filled `startedBefore`
+  at the last-shown key, guarded on `depthCapped` alone — an empty accumulated set gets fallback
+  narrowing guidance, never a blank region — warning-weight styling, #245); snapshot seam line; Refresh resets the chain + drops the selection (keyed on the search
   identity, not per-page fetch). Playwright `e2e/deep-paging.spec.ts` (URL-predicate route mock branched
   on `cursor` — append/seam/end + criteria-only re-send). Backend: `aggregate()` mints the entry cursor
   via `mergePage`; `mixedPlan` always collects raw window keys.

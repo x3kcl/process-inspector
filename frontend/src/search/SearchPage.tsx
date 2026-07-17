@@ -16,6 +16,7 @@ import { RecentSearchList } from '../views/RecentSearchList'
 import { useLayoutSuggestion } from '../views/useLayoutSuggestion'
 import { ViewChips } from '../views/ViewChips'
 import { useRecordRecentSearch } from '../views/useViewStores'
+import { DepthWallNote } from './DepthWallNote'
 import { GRID_COUNT_PARTIAL_HINT, gridCountIsPartial, gridCountLabel } from './gridCount'
 import { summarizePartials } from './partials'
 import { resultsMayBeStale, useLastMutationSettledAt } from './staleness'
@@ -265,19 +266,15 @@ export function SearchPage() {
                   appear until Refresh.
                 </p>
               )}
-              {results.data.depthCapped === true && lastStartTime !== undefined && (
-                <p className="load-more-depthwall" role="note">
-                  Reached the paging depth on at least one engine.{' '}
-                  <button
-                    type="button"
-                    className="linklike"
-                    onClick={() => {
-                      if (request !== null) submit({ ...request, startedBefore: lastStartTime })
-                    }}
-                  >
-                    Continue by narrowing to started before {formatClock(Date.parse(lastStartTime))}
-                  </button>
-                </p>
+              {/* #245: guarded on depthCapped ALONE — with zero accumulated rows the note
+                  still renders (fallback copy, no seam CTA) instead of an empty region. */}
+              {results.data.depthCapped === true && (
+                <DepthWallNote
+                  lastStartTime={lastStartTime}
+                  onNarrow={(startedBefore) => {
+                    if (request !== null) submit({ ...request, startedBefore })
+                  }}
+                />
               )}
               {results.hasNextPage && (
                 <button
