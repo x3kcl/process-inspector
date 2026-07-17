@@ -32,6 +32,7 @@ import java.time.Clock;
 import java.time.Duration;
 import java.util.List;
 import java.util.Map;
+import java.util.Optional;
 import org.junit.jupiter.api.AfterEach;
 import org.junit.jupiter.api.BeforeEach;
 import org.junit.jupiter.api.Test;
@@ -74,14 +75,14 @@ class StatusEvidenceServiceTest {
         ExternalJobApiClient externalJobs = new ExternalJobApiClient(guarded);
         EngineConfig engine = TestEngines.engine(ENGINE, wm.baseUrl());
         EngineRegistry registry = mock(EngineRegistry.class);
-        when(registry.require(ENGINE)).thenReturn(engine);
+        when(registry.resolve(ENGINE)).thenReturn(Optional.of(engine));
         InstanceDetailService detail = new InstanceDetailService(
                 registry,
                 client,
                 externalJobs,
                 new InspectorProperties(null, null, null, null, List.of()),
                 mock(io.inspector.audit.ProtectedInstanceRepository.class));
-        service = new StatusEvidenceService(registry, detail);
+        service = new StatusEvidenceService(detail);
     }
 
     @AfterEach

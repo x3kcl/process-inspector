@@ -19,6 +19,7 @@ import io.inspector.registry.EngineHealth;
 import io.inspector.registry.EngineRegistry;
 import io.inspector.support.TestEngines;
 import java.util.List;
+import java.util.Optional;
 import org.junit.jupiter.api.Test;
 
 /**
@@ -44,7 +45,7 @@ class ExternalWorkerJobsServiceTest {
             mock(io.inspector.audit.ProtectedInstanceRepository.class));
 
     private void health(EngineCapabilities capabilities) {
-        when(registry.require(ENGINE)).thenReturn(engine);
+        when(registry.resolve(ENGINE)).thenReturn(Optional.of(engine));
         when(registry.healthOf(ENGINE))
                 .thenReturn(new EngineHealth(true, "?", null, 0L, capabilities, null, null, null));
     }

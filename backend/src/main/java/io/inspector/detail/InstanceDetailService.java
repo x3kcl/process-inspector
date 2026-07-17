@@ -103,10 +103,26 @@ public class InstanceDetailService {
         this.protectedInstances = protectedInstances;
     }
 
+    /* ================= engine resolution — the read surface ================= */
+
+    /**
+     * The engine a detail READ targets (#248): resolved via {@link EngineRegistry#resolve} so a
+     * registered-but-disabled engine keeps serving this page's read-only data — the same
+     * survive-a-disable doctrine the audit/notes display already follows — instead of 404ing
+     * "Unknown engine" one banner above a fully-rendered audit history on the very same page.
+     * A genuinely unknown (or tombstoned/removed) id still 404s with that text. Mutations are
+     * unaffected: every corrective action resolves through {@link EngineRegistry#require},
+     * which keeps refusing a disabled engine as an operable target.
+     */
+    EngineConfig engineForRead(String engineId) {
+        return registry.resolve(engineId)
+                .orElseThrow(() -> new ResponseStatusException(HttpStatus.NOT_FOUND, "Unknown engine: " + engineId));
+    }
+
     /* ================= vitals ================= */
 
     public InstanceDetail vitals(String engineId, String instanceId) {
-        EngineConfig engine = registry.require(engineId);
+        EngineConfig engine = engineForRead(engineId);
         Map<String, Object> historic = requireHistoric(engine, instanceId);
         boolean ended = str(historic, "endTime") != null;
 
@@ -249,7 +265,7 @@ public class InstanceDetailService {
     /* ================= diagram ================= */
 
     public InstanceDiagram diagram(String engineId, String instanceId) {
-        EngineConfig engine = registry.require(engineId);
+        EngineConfig engine = engineForRead(engineId);
         Map<String, Object> historic = requireHistoric(engine, instanceId);
         String definitionId = str(historic, "processDefinitionId");
         Map<String, Object> definition = flowable.getProcessDefinition(engine, CallPriority.INTERACTIVE, definitionId);
@@ -302,7 +318,7 @@ public class InstanceDetailService {
     /* ================= variables — the typed ledger ================= */
 
     public InstanceVariables variables(String engineId, String instanceId) {
-        EngineConfig engine = registry.require(engineId);
+        EngineConfig engine = engineForRead(engineId);
         Map<String, Object> historic = requireHistoric(engine, instanceId);
         if (str(historic, "endTime") != null) {
             return historicVariables(engine, instanceId);
@@ -348,7 +364,7 @@ public class InstanceDetailService {
      * base value the step-local editor stages and CASes against.
      */
     public VariableDto variable(String engineId, String instanceId, String name, String executionId) {
-        EngineConfig engine = registry.require(engineId);
+        EngineConfig engine = engineForRead(engineId);
         requireHistoric(engine, instanceId);
         boolean local = executionId != null && !executionId.isBlank();
         Map<String, Object> row = local
@@ -426,7 +442,7 @@ public class InstanceDetailService {
     /* ================= jobs — four lanes, kept distinct ================= */
 
     public InstanceJobs jobs(String engineId, String instanceId) {
-        EngineConfig engine = registry.require(engineId);
+        EngineConfig engine = engineForRead(engineId);
         requireHistoric(engine, instanceId);
         return new InstanceJobs(
                 laneRows(engine, instanceId, JobLaneKind.EXECUTABLE),
@@ -437,7 +453,7 @@ public class InstanceDetailService {
 
     /** Plain-text stacktrace, fetched on expand (SPEC §4) — 404 when the job moved on. */
     public String jobStacktrace(String engineId, String instanceId, String jobId, JobLaneKind lane) {
-        EngineConfig engine = registry.require(engineId);
+        EngineConfig engine = engineForRead(engineId);
         requireHistoric(engine, instanceId);
         String stacktrace = flowable.jobExceptionStacktrace(engine, CallPriority.INTERACTIVE, lane, jobId);
         if (stacktrace == null) {
@@ -480,7 +496,7 @@ public class InstanceDetailService {
      * server stays the gate.
      */
     public List<ExternalWorkerJobDto> externalWorkerJobs(String engineId, String instanceId) {
-        EngineConfig engine = registry.require(engineId);
+        EngineConfig engine = engineForRead(engineId);
         requireExternalWorkerCapability(engine);
         requireHistoric(engine, instanceId);
         Map<String, String> filters = new LinkedHashMap<>();
@@ -541,7 +557,7 @@ public class InstanceDetailService {
      * union doctrine as {@link #currentActivities}.
      */
     public InstanceTasks tasks(String engineId, String instanceId) {
-        EngineConfig engine = registry.require(engineId);
+        EngineConfig engine = engineForRead(engineId);
         Map<String, Object> historic = requireHistoric(engine, instanceId);
 
         Map<String, Map<String, Object>> runtimeById = new LinkedHashMap<>();
@@ -614,7 +630,7 @@ public class InstanceDetailService {
     /* ================= hierarchy — bounded, both directions ================= */
 
     public InstanceHierarchy hierarchy(String engineId, String instanceId) {
-        EngineConfig engine = registry.require(engineId);
+        EngineConfig engine = engineForRead(engineId);
         Map<String, Object> requested = requireHistoric(engine, instanceId);
         int maxDepth = props.hierarchyMaxDepthOrDefault();
 
@@ -720,7 +736,7 @@ public class InstanceDetailService {
     /* ================= timeline ================= */
 
     public InstanceTimeline timeline(String engineId, String instanceId) {
-        EngineConfig engine = registry.require(engineId);
+        EngineConfig engine = engineForRead(engineId);
         requireHistoric(engine, instanceId);
         int maxDepth = props.hierarchyMaxDepthOrDefault();
         // The cycle guard (R-TEST-07 doctrine): a real engine cannot produce a

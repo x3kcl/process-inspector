@@ -21,6 +21,7 @@ import io.inspector.registry.EngineRegistry;
 import io.inspector.support.TestEngines;
 import java.util.List;
 import java.util.Map;
+import java.util.Optional;
 import org.junit.jupiter.api.BeforeEach;
 import org.junit.jupiter.api.Test;
 
@@ -44,7 +45,7 @@ class InstanceTimelineServiceTest {
 
     @BeforeEach
     void setUp() {
-        when(registry.require(ENGINE)).thenReturn(engine);
+        when(registry.resolve(ENGINE)).thenReturn(Optional.of(engine));
         service = serviceWithMaxDepth(null); // null → default depth 10
         // Healthy by default: no jobs on any lane. Individual tests override specific lanes.
         when(flowable.listJobs(any(), any(), any(), any(), anyInt(), anyInt())).thenReturn(FlowablePage.empty());

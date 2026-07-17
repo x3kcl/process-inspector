@@ -188,6 +188,17 @@ export function InspectPage() {
             registered.
           </div>
         )}
+        {/* #248: a DISABLED engine is registered, not gone — the registry still resolves it
+            for reads, so this page's history/audit render normally. Say exactly that, instead
+            of ever letting the disabled case fall through to "Unknown engine"/not-found copy
+            that would contradict the fully-rendered Audit & Notes tab below. */}
+        {engine?.lifecycle === 'disabled' && (
+          <div className="banner banner-info" role="status">
+            Engine “{engine.name ?? engineId}” is disabled in the registry — disabled, not removed.
+            Its instances stay readable here, but it is excluded from search and takes no actions
+            until an administrator re-enables it.
+          </div>
+        )}
         {vitals.isPending && <p className="zero-state">Loading instance vitals…</p>}
         {/* #212: a 404 from an unregistered engineId and a 404 from a real engine that
             genuinely has no such instance are BOTH plain HTTP 404s to instanceLoadFailureCopy

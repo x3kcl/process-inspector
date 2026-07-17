@@ -46,7 +46,7 @@ class InstanceVitalsProtectionTest {
             protectedInstances);
 
     private void endedInstanceExists() {
-        when(registry.require(ENGINE)).thenReturn(engine);
+        when(registry.resolve(ENGINE)).thenReturn(Optional.of(engine));
         when(flowable.getHistoricProcessInstance(engine, CallPriority.INTERACTIVE, INSTANCE))
                 .thenReturn(Map.of("id", INSTANCE, "endTime", "2026-07-10T09:05:00Z"));
     }

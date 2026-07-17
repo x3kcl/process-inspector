@@ -117,6 +117,50 @@ describe('InspectPage — unknown-engine banner never contradicts the vitals-err
   })
 })
 
+describe('InspectPage — a DISABLED engine is explained as disabled, never "unknown" (#248)', () => {
+  const DISABLED_ENGINE: EngineDto = {
+    id: 'engine-c',
+    name: 'Engine C',
+    environment: 'test',
+    lifecycle: 'disabled',
+  }
+
+  it('shows the disabled-not-removed banner (and no unknown-engine claim) when vitals render', () => {
+    enginesData = [KNOWN_ENGINE, DISABLED_ENGINE]
+    vitalsData = {
+      engineId: 'engine-c',
+      processInstanceId: 'pi-1',
+      status: 'COMPLETED',
+      startTime: '2026-07-01T10:00:00Z',
+    }
+    renderPage('engine-c')
+
+    const banner = screen.getByRole('status')
+    expect(banner.textContent).toContain('disabled, not')
+    expect(banner.textContent).toContain('Engine “Engine C” is disabled in the registry')
+    // The engine IS registered — neither the unknown-engine banner nor its
+    // "no longer registered" claim may appear anywhere on the page.
+    expect(screen.queryByText(/Unknown engine/)).toBeNull()
+    expect(screen.queryByText(/no longer registered/)).toBeNull()
+    // The vitals themselves rendered — the header identifies the engine by name.
+    expect(screen.getByText('Engine C')).toBeTruthy()
+  })
+
+  it('keeps the disabled banner (never "unknown") even when the vitals fetch errors', () => {
+    enginesData = [KNOWN_ENGINE, DISABLED_ENGINE]
+    // Post-#248 backend a 404 on a disabled engine means the engine answered and the
+    // instance genuinely is not there — the definitive copy is now truthful alongside.
+    vitalsError = new ApiError(404, {
+      detail: 'process instance pi-1 not found on engine engine-c',
+    })
+    renderPage('engine-c')
+
+    expect(screen.getByRole('status').textContent).toContain('disabled, not')
+    expect(screen.queryByText(/Unknown engine/)).toBeNull()
+    expect(screen.queryByText(/no longer registered/)).toBeNull()
+  })
+})
+
 const STUCK_VITALS: InstanceDetail = {
   engineId: 'engine-a',
   processInstanceId: 'pi-1',
