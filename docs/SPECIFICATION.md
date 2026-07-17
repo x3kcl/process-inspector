@@ -1,6 +1,6 @@
 # 📄 SPECIFICATION — Flowable Multi-Instance Process Inspector
 
-Status: **v3.3** · Owner: workflow platform team ·
+Status: **v3.5** · Owner: workflow platform team ·
 Inspired by IBM BAW Process Inspector; refined against Camunda Operate/Cockpit, Temporal,
 Flowable Control, Conductor/Orkes, Airflow and Step Functions, and a four-seat design review
 (workflow-engine expert, senior support engineer, lead developer, UX expert — see
@@ -944,7 +944,7 @@ copy is never identical to an RBAC denial (R-GOV-04, R-SEM-17).
 | Current activity | activity id/name contains |
 | Error text | substring over exception snippets (BFF-side) |
 | Error signature | `signatureHash` — the normalized-signature hash (R-SEM-03), the triage card's drill-down; BFF-side over the failure-lane scans with the same one-representative-stacktrace refinement triage uses, so a refined card's hash matches its snippet-only jobs |
-| Tenant | when any engine is multi-tenant |
+| Tenant | **not an operator-selectable filter**: the tenant is pinned per engine in the registry (`tenant-id`) and threaded into every engine query automatically — a multi-tenant engine is inspected through its registered tenant, never chosen ad hoc from the search form (`SearchRequest` deliberately has no tenant field) |
 
 Combination rule unchanged: **AND between categories, OR within** — made visible by the
 compiled-criteria echo. Saved views: curated system views + user-named views + recent

@@ -123,8 +123,11 @@ TESTER BRIEF:
 
 COVERS: R-SEM-12 · R-SEM-10/a(/b optional) · R-SEM-14 · R-NFR-01 · R-NFR-03 · rubrics.
 STAGING: runner seeds F-G9/F-G10: ~10 fresh failing instances (fast dead-letter,
-`uxrun-m4-*` businessKeys, same definition+engine), marks ONE of them protected (admin,
-reason "pending legal review") so the bulk report is mixed; extracts {{DEF_NAME}}.
+`uxrun-m4-*` businessKeys, same definition+engine — but spanning TWO deployed versions
+of that definition, 5 on the newest / 3 on the oldest, so the per-version failure
+breakdown shows two distinct counts and task 1's per-version drill is actually
+falsifiable — issue #233 testability), marks ONE of them protected (admin, reason
+"pending legal review") so the bulk report is mixed; extracts {{DEF_NAME}}.
 
 TESTER BRIEF:
 
@@ -133,8 +136,12 @@ TESTER BRIEF:
 > run again, in bulk.
 >
 > 1. From the overview, how MANY cases exactly are we talking about — and is the number
->    the tool shows you exact or a floor? How do you know? Drill into that set and
->    confirm what you're looking at matches what you clicked.
+>    the tool shows you exact or a floor? How do you know? The failure breakdown also
+>    splits that set by definition VERSION: pick ONE specific per-version count, write
+>    down which version and which number you are about to click, then click exactly
+>    that count. Confirm BOTH that the list you land in has exactly that many rows AND
+>    that every row's version matches the version you clicked — if either doesn't hold,
+>    or rows from another version leak in, report it as a defect, with the numbers.
 > 2. How fresh are the overview numbers? Make them current.
 > 3. Select the affected `uxrun-m4-*` cases and run the failed steps again as one batch
 >    operation. Give a justification with your ticket INC-4712.
@@ -217,10 +224,14 @@ TESTER BRIEF:
 
 ## M7 · "Morning handover" — wave 2, runs LAST · user `operator`, then `admin`
 
-COVERS: R-AUD-05/a/b · R-AUD-08 · R-AUD-09 · R-BAU-01 · R-BAU-02 · R-L3-01 · R-SEM-24 ·
-R-SAFE-16 (tail, optional) · rubrics.
+COVERS: R-AUD-05/a/b · R-AUD-08 · R-AUD-09 · R-BAU-01 · R-BAU-02 · R-BAU-04 · R-L3-01 ·
+R-SEM-24 · R-SAFE-16 (tail, optional) · rubrics. Task 8a (the expected-refused wildcard
+publish) exists so the real backend rejection reason (#234 fix) renders for a tester at
+least once per run; task 9 added with R-BAU-04's flip to BUILT yes (shipped #99 — no
+mission exercised `/tasks` before).
 STAGING: requires M1/M3/M4 audit rows to exist. Runner extracts {{TOUCHED_ID}} (an
-instance another mission acted on).
+instance another mission acted on). Task 9 needs no staging: the standard seed's
+`demoWideChild` fan-out tasks are assignee'd `kermit` (F-G1).
 
 TESTER BRIEF:
 
@@ -245,8 +256,21 @@ TESTER BRIEF:
 >    evidence behind that status (what it checked, when, against which engine)? Describe
 >    what you found or where you looked.
 > 8. You built a useful search tonight — save it so your whole TEAM sees it (not just
->    you). Then, as `admin`, remove a teammate's published view that's now obsolete —
->    what does the removal demand, and what happens to the author's own copy?
+>    you). Do it in two attempts, in this order: (a) FIRST, while the search still
+>    targets ALL engines (no single-engine narrowing), try to publish it — you expect
+>    this to be refused. Report the exact wording the tool gives you for WHY it was
+>    refused, and whether that text alone tells you what would have to change (scope?
+>    role?) for the publish to succeed. (b) Then narrow the search to one engine and
+>    publish that — this one should go through. Then, as `admin`, remove a teammate's
+>    published view that's now obsolete — what does the removal demand, and what
+>    happens to the author's own copy?
+> 9. One more handover chore: your teammate `kermit` is out sick today. Find, from cold,
+>    everything kermit is currently sitting on across the whole fleet — every open task
+>    that is theirs, or that they could have picked up. How many did you find, and how
+>    does the tool tell "assigned to kermit" apart from "kermit could merely claim it"?
+>    Finally: could you hand one of those tasks to someone else right from where you
+>    found them? Get to the point where the handoff is clearly about to happen, then
+>    CANCEL — do not complete it.
 
 ## M8 · "Platform day: onboard engine-c" — wave 3 (exclusive) · users `registry-admin`,
 
