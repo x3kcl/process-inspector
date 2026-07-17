@@ -4,7 +4,9 @@
 //   2. decideResolveNavigation — what to do with a GET /api/resolve response. Exactly one
 //      ID-kind match navigates; business-key matches become a pre-filtered search (never
 //      an auto-navigate, R-SEM-04); anything else is an explicit disambiguation list.
-import type { ResolveMatch, ResolveResponse } from '../api/model'
+import type { EngineDto, ResolveMatch, ResolveResponse } from '../api/model'
+import { uncoveredEngines } from '../lib/coverage'
+import type { UncoveredEngine } from '../lib/coverage'
 
 export type OmniboxTarget =
   { kind: 'inspect'; engineId: string; instanceId: string } | { kind: 'resolve'; query: string }
@@ -69,12 +71,30 @@ export interface ReachabilitySummary {
   reached: number
   total: number
   unreachable: { engineId: string; error: string }[]
+  /**
+   * #236: registered engines the resolve never probed AT ALL (non-active lifecycle —
+   * disabled/draft/probe_failed — never enter the fan-out, so they have no perEngine
+   * entry). Without this, "resolved against 3 of 3 engines" reads exhaustive while more
+   * registered engines sat out invisibly.
+   */
+  uncovered: UncoveredEngine[]
 }
 
-export function summarizeReachability(response: ResolveResponse): ReachabilitySummary {
+export function summarizeReachability(
+  response: ResolveResponse,
+  registeredEngines?: readonly EngineDto[],
+): ReachabilitySummary {
   const probes = Object.entries(response.perEngine ?? {})
   const unreachable = probes
     .filter(([, probe]) => probe.ok !== true)
     .map(([engineId, probe]) => ({ engineId, error: probe.error ?? 'unreachable' }))
-  return { reached: probes.length - unreachable.length, total: probes.length, unreachable }
+  return {
+    reached: probes.length - unreachable.length,
+    total: probes.length,
+    unreachable,
+    uncovered: uncoveredEngines(
+      registeredEngines,
+      probes.map(([engineId]) => engineId),
+    ),
+  }
 }

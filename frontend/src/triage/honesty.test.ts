@@ -1,5 +1,10 @@
 import { describe, expect, it } from 'vitest'
-import { deriveHonesty, groupCountsAreLowerBound, statusCountsAreLowerBound } from './honesty'
+import {
+  coveredEngineIds,
+  deriveHonesty,
+  groupCountsAreLowerBound,
+  statusCountsAreLowerBound,
+} from './honesty'
 
 describe('deriveHonesty', () => {
   it('clean engines produce no lower bounds', () => {
@@ -98,5 +103,24 @@ describe('deriveHonesty', () => {
     })
     expect(honesty.truncatedScans).toEqual([{ engineId: 'a', marker: 'truncated@500' }])
     expect(honesty.outOfScope).toEqual([{ engineId: 'a', count: 2, floor: false }])
+  })
+})
+
+// #236: the failure-groups zero state claims "clean on every reachable engine" — the
+// covered set is what that sentence may claim over; everything registered beyond it must
+// be disclosed inline by the caller.
+describe('coveredEngineIds (#236)', () => {
+  it('returns only the engines that answered ok', () => {
+    expect(
+      coveredEngineIds({
+        a: { ok: true },
+        b: { ok: false, error: 'down' },
+        c: { ok: true, dlqScan: 'truncated@500' },
+      }),
+    ).toEqual(['a', 'c'])
+  })
+
+  it('an absent envelope covers nothing', () => {
+    expect(coveredEngineIds(undefined)).toEqual([])
   })
 })

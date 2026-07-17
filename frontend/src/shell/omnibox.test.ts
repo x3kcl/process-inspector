@@ -123,4 +123,43 @@ describe('summarizeReachability (R-SEM-12)', () => {
       { engineId: 'engine-down', error: 'timeout after 62000ms' },
     ])
   })
+
+  // #236: "resolved against 3 of 3 engines" must not read exhaustive while more registered
+  // engines were never probed at all (non-active lifecycle never enters the fan-out).
+  it('names registered engines the resolve never probed (#236)', () => {
+    const summary = summarizeReachability(
+      response([], { 'engine-a': { ok: true }, 'engine-b': { ok: true } }),
+      [
+        { id: 'engine-a', lifecycle: 'active', reachable: true },
+        { id: 'engine-b', lifecycle: 'active', reachable: true },
+        { id: 'engine-c', lifecycle: 'disabled' },
+        { id: 'engine-d', lifecycle: 'probe_failed' },
+      ],
+    )
+    expect(summary.reached).toBe(2)
+    expect(summary.total).toBe(2)
+    expect(summary.uncovered).toEqual([
+      { id: 'engine-c', reason: 'disabled' },
+      { id: 'engine-d', reason: 'probe failed' },
+    ])
+  })
+
+  it('a probe of every registered engine leaves nothing uncovered — no spurious tail (#236)', () => {
+    const summary = summarizeReachability(
+      response([], { 'engine-a': { ok: true }, 'engine-b': { ok: false, error: 'down' } }),
+      [
+        { id: 'engine-a', lifecycle: 'active', reachable: true },
+        { id: 'engine-b', lifecycle: 'active', reachable: false },
+      ],
+    )
+    // engine-b failed its probe — it is already named on the unreachable list, not doubly
+    // counted as uncovered.
+    expect(summary.uncovered).toEqual([])
+    expect(summary.unreachable).toEqual([{ engineId: 'engine-b', error: 'down' }])
+  })
+
+  it('no registered list (engines query not settled) degrades to no uncovered claim', () => {
+    const summary = summarizeReachability(response([], { 'engine-a': { ok: true } }))
+    expect(summary.uncovered).toEqual([])
+  })
 })

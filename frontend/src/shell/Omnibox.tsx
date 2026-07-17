@@ -2,10 +2,11 @@ import { useState } from 'react'
 import type { FormEvent } from 'react'
 import { Link, useNavigate } from 'react-router'
 import { useMutation } from '@tanstack/react-query'
-import type { ResolveMatch, ResolveResponse } from '../api/model'
+import type { EngineDto, ResolveMatch, ResolveResponse } from '../api/model'
 import { resolveQuery } from '../api/queries'
 import { useEngines } from '../api/useEngines'
 import { StatusChip } from '../components/StatusChip'
+import { uncoveredClause } from '../lib/coverage'
 import { encodeSearch } from '../search/urlState'
 import { classifyOmniboxInput, decideResolveNavigation, summarizeReachability } from './omnibox'
 
@@ -84,6 +85,7 @@ export function Omnibox() {
       {panel !== undefined && (
         <ResolvePanel
           response={panel}
+          registeredEngines={engines.data}
           onPick={(match) => {
             if (match.engineId !== undefined && match.processInstanceId !== undefined) {
               finish(`/inspect/${match.engineId}/${encodeURIComponent(match.processInstanceId)}`)
@@ -114,24 +116,27 @@ const KIND_LABELS: Record<string, string> = {
 /** The disambiguation dropdown: kind + engine + status per match, honesty line below. */
 function ResolvePanel({
   response,
+  registeredEngines,
   onPick,
   onSearchKey,
   onNavigate,
 }: {
   response: ResolveResponse
+  /** The full registry display list — so the honesty line can name engines NOT probed (#236). */
+  registeredEngines?: readonly EngineDto[]
   onPick: (match: ResolveMatch) => void
   onSearchKey: (businessKey: string) => void
   onNavigate: () => void
 }) {
   const matches = response.matches ?? []
-  const reachability = summarizeReachability(response)
+  const reachability = summarizeReachability(response, registeredEngines)
   return (
     <div className="omnibox-panel" role="region" aria-label="Resolve results">
       {matches.length === 0 ? (
         <p className="zero-state">
           “{response.query}” was not found on any reachable engine
-          {reachability.unreachable.length > 0 &&
-            ' — but some engines could not be searched (below)'}
+          {(reachability.unreachable.length > 0 || reachability.uncovered.length > 0) &&
+            ' — but some registered engines were not searched (below)'}
           .
         </p>
       ) : (
@@ -207,6 +212,11 @@ function ResolvePanel({
             · {probe.engineId} unreachable ({probe.error})
           </span>
         ))}
+        {/* #236: engines registered but never probed (non-active lifecycle) — named in the
+            SAME line, so "3 of 3 engines" can never read exhaustive while more exist. */}
+        {reachability.uncovered.length > 0 && (
+          <span className="health-down">{uncoveredClause(reachability.uncovered, 'checked')}</span>
+        )}
       </p>
     </div>
   )

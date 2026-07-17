@@ -1,5 +1,7 @@
 import { Link } from 'react-router'
 import type { LeakDefinitionCount, LeakWindows } from '../api/model'
+import { useEngines } from '../api/useEngines'
+import { uncoveredClause, uncoveredEngines } from '../lib/coverage'
 import { formatCount } from '../lib/format'
 import { LEAK_VIEWS, type LeakWindowId } from '../views/leakViews'
 import { useLeakViews } from './useTriage'
@@ -18,6 +20,7 @@ import { useLeakViews } from './useTriage'
  */
 export function LeakViewsSection() {
   const { data, isPending, isError } = useLeakViews()
+  const registeredEngines = useEngines().data
 
   // Secondary chrome: a failed/absent fetch simply hides the panel — it must never block the
   // failure signal above it.
@@ -27,6 +30,21 @@ export function LeakViewsSection() {
   const windows = data.windows ?? {}
   const lowerBound = data.lowerBound === true
   const unavailable = data.unavailableEngines ?? []
+  // #236: what "every reachable engine" excludes, named in the zero-state sentence itself.
+  // The leak fan-out only targets ACTIVE-lifecycle engines, and `unavailableEngines` are the
+  // ones that answered incompletely — so "fully checked" = active minus unavailable.
+  const unavailableIds = new Set(unavailable)
+  const uncovered = uncoveredEngines(
+    registeredEngines,
+    (registeredEngines ?? [])
+      .filter(
+        (engine) =>
+          (engine.lifecycle ?? 'active') === 'active' &&
+          engine.id !== undefined &&
+          !unavailableIds.has(engine.id),
+      )
+      .map((engine) => engine.id ?? ''),
+  )
 
   return (
     <section className="leak-views" aria-label="Leak views">
@@ -45,7 +63,7 @@ export function LeakViewsSection() {
       {definitions.length === 0 ? (
         <div className="zero-state">
           No leaks — every reachable engine is clean of long-running and long-suspended instances in
-          these windows.
+          these windows{uncoveredClause(uncovered, 'fully checked')}.
         </div>
       ) : (
         <ul className="leak-definition-list">

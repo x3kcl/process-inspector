@@ -1114,7 +1114,12 @@ and would rewrite working M1/M2 code for no capability gain); Go/FastAPI/Kotlin 
   no humor, no apology theater — the 3am rule. Not-found copy is coverage-parameterized:
   definitive ("resolved against N of N engines — confirmed not-found") when every engine
   answered, hedged ("the engine may be unreachable") ONLY under real partial coverage —
-  never both at once (usability W2 #4). Counts name their unit wherever the two families
+  never both at once (usability W2 #4). A coverage claim ("resolved against N of N
+  engines", "confirmed zero across N engines", "clean on every reachable engine") counts and
+  names the registered-but-excluded engines IN THE SAME SENTENCE — e.g. "(2 more registered
+  engines not checked: eng-c [disabled] — see Engines)" — never only in a separate panel
+  (#236: a wrong "does not exist" answer closes a real ticket, so the sentence alone must
+  reveal the check was not exhaustive). Counts name their unit wherever the two families
   co-render: job-lane numbers say **jobs**, status tiles and drill totals say **instances**
   (usability W2 #7 — 36+13 jobs vs 46+7 instances must never read as comparable).
 - **Notification budget.** Modals: user-initiated only. Banners: ambient degradation, one

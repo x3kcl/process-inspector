@@ -243,4 +243,45 @@ describe('ResultsGrid zero states (SPEC §10a — U4/#89)', () => {
     expect(screen.getByText(/confirmed zero across 1 engine/i)).not.toBeNull()
     expect(screen.queryByRole('alert')).toBeNull()
   })
+
+  // #236: "confirmed zero across N engines" must name — in the same sentence — the
+  // registered engines the search never covered, or the zero reads exhaustive when it isn't.
+  it('confirmed zero names the registered engines the search never covered (#236)', () => {
+    const registry = new Map<string, EngineDto>([
+      ['engine-a', { id: 'engine-a', name: 'Engine A', lifecycle: 'active', reachable: true }],
+      ['engine-b', { id: 'engine-b', name: 'Engine B', lifecycle: 'disabled' }],
+      [
+        'engine-c',
+        { id: 'engine-c', name: 'Engine C', lifecycle: 'probe_failed', reachable: false },
+      ],
+    ])
+    render(
+      <MemoryRouter>
+        <ResultsGrid
+          response={{ rows: [], perEngine: { 'engine-a': { ok: true, total: 0, fetched: 0 } } }}
+          enginesById={registry}
+          onOpenDetails={vi.fn()}
+        />
+      </MemoryRouter>,
+    )
+    const zero = screen.getByText(/confirmed zero across 1 engine/i)
+    expect(zero.textContent).toContain(
+      '(2 more registered engines not searched: engine-b [disabled], engine-c [probe failed] — see Engines)',
+    )
+  })
+
+  it('a genuinely exhaustive confirmed zero carries no spurious "more excluded" clause (#236)', () => {
+    render(
+      <MemoryRouter>
+        <ResultsGrid
+          response={{ rows: [], perEngine: { 'engine-a': { ok: true, total: 0, fetched: 0 } } }}
+          enginesById={enginesById}
+          onOpenDetails={vi.fn()}
+        />
+      </MemoryRouter>,
+    )
+    expect(screen.getByText(/confirmed zero across 1 engine/i).textContent).not.toContain(
+      'more registered',
+    )
+  })
 })

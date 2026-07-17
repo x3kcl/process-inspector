@@ -3,15 +3,16 @@
 // per R-SEM-05 (the SUSPENDED chip's link rides startedBefore, and its label says "started > 7
 // days ago", never time-since-suspension).
 import { QueryClient, QueryClientProvider } from '@tanstack/react-query'
-import { cleanup, render, screen, within } from '@testing-library/react'
+import { cleanup, render, screen, waitFor, within } from '@testing-library/react'
 import { MemoryRouter } from 'react-router'
 import { afterEach, describe, expect, it, vi } from 'vitest'
-import type { LeakViewsResponse } from '../api/model'
+import type { EngineDto, LeakViewsResponse } from '../api/model'
 import { decodeSearch } from '../search/urlState'
 import { LeakViewsSection } from './LeakViewsSection'
 
 const fetchLeakViews = vi.hoisted(() => vi.fn<() => Promise<LeakViewsResponse>>())
-vi.mock('../api/queries', () => ({ fetchLeakViews }))
+const fetchEngines = vi.hoisted(() => vi.fn<() => Promise<EngineDto[]>>())
+vi.mock('../api/queries', () => ({ fetchLeakViews, fetchEngines }))
 
 afterEach(cleanup)
 
@@ -21,8 +22,9 @@ const WINDOWS = {
   suspendedStartedOver7d: '2026-07-04T12:00:00Z',
 }
 
-function renderSection(response: LeakViewsResponse) {
+function renderSection(response: LeakViewsResponse, engines: EngineDto[] = []) {
   fetchLeakViews.mockResolvedValue(response)
+  fetchEngines.mockResolvedValue(engines)
   const client = new QueryClient({ defaultOptions: { queries: { retry: false } } })
   render(
     <QueryClientProvider client={client}>
@@ -130,14 +132,45 @@ describe('LeakViewsSection (R-BAU-02, honest per R-SEM-05)', () => {
   })
 
   it('renders an honest zero-state when nothing leaks', async () => {
-    renderSection({
-      asOf: '2026-07-11T12:00:00Z',
-      windows: WINDOWS,
-      lowerBound: false,
-      unavailableEngines: [],
-      definitions: [],
-    })
+    renderSection(
+      {
+        asOf: '2026-07-11T12:00:00Z',
+        windows: WINDOWS,
+        lowerBound: false,
+        unavailableEngines: [],
+        definitions: [],
+      },
+      [{ id: 'engine-a', lifecycle: 'active', reachable: true }],
+    )
 
-    expect(await screen.findByText(/No leaks/i)).toBeTruthy()
+    const zero = await screen.findByText(/No leaks/i)
+    // #236: a genuinely exhaustive check wears no spurious "more excluded" clause.
+    expect(zero.textContent).not.toContain('more registered')
+  })
+
+  // #236: "every reachable engine is clean" must name — in the same sentence — the
+  // registered engines the leak scan never (fully) covered.
+  it('the zero-state names unavailable and non-active registered engines inline (#236)', async () => {
+    renderSection(
+      {
+        asOf: '2026-07-11T12:00:00Z',
+        windows: WINDOWS,
+        lowerBound: true,
+        unavailableEngines: ['engine-b'],
+        definitions: [],
+      },
+      [
+        { id: 'engine-a', lifecycle: 'active', reachable: true },
+        { id: 'engine-b', lifecycle: 'active', reachable: false },
+        { id: 'engine-c', lifecycle: 'disabled' },
+      ],
+    )
+
+    await screen.findByText(/No leaks/i)
+    await waitFor(() => {
+      expect(screen.getByText(/No leaks/i).textContent).toContain(
+        '(2 more registered engines not fully checked: engine-b [currently unreachable], engine-c [disabled] — see Engines)',
+      )
+    })
   })
 })

@@ -49,6 +49,18 @@ export function deriveHonesty(
   return { failedEngines, truncatedScans, outOfScope }
 }
 
+/**
+ * #236: the engine ids the triage aggregate actually covered (answered ok). The
+ * failure-groups zero state claims "clean on every reachable engine" — everything
+ * registered but NOT in this set (failed legs, non-active lifecycle engines that never
+ * enter the fan-out) must be named in that same sentence.
+ */
+export function coveredEngineIds(perEngine: Record<string, PerEngineTriage> | undefined): string[] {
+  return Object.entries(perEngine ?? {})
+    .filter(([, result]) => result.ok === true)
+    .map(([engineId]) => engineId)
+}
+
 /** Status tiles are lower bounds only when an engine is missing from the aggregate. */
 export function statusCountsAreLowerBound(honesty: TriageHonesty): boolean {
   return honesty.failedEngines.length > 0
