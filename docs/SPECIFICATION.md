@@ -1130,6 +1130,12 @@ and would rewrite working M1/M2 code for no capability gain); Go/FastAPI/Kotlin 
   reveal the check was not exhaustive). Counts name their unit wherever the two families
   co-render: job-lane numbers say **jobs**, status tiles and drill totals say **instances**
   (usability W2 #7 — 36+13 jobs vs 46+7 instances must never read as comparable).
+  Independently-computed counts over the same apparent scope carry a measurement qualifier:
+  cached Stage-0 counts stamp their aggregation time ("as of …", #209), a page-capped grid
+  total says "loaded so far" (a complete count stays bare — no hedge noise), and the bulk
+  filter-scope `~N` discloses that it is the uncapped engine-reported match total and can
+  differ from the grid's fetched-row count (#244) — three honestly different numbers, never
+  three bare ones presented as one measurement.
 - **Notification budget.** Modals: user-initiated only. Banners: ambient degradation, one
   per scope, update-in-place, never stacked. Toasts: own-action outcomes only, max 3,
   overflow collapses to the drawer, never the sole record. Passive surfaces update silently,

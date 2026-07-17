@@ -1359,6 +1359,15 @@ button.primary:disabled {
   flex-wrap: wrap;
   margin: 8px 0 16px;
 }
+/* #244: the section-level aggregation stamp on the status tiles — same look as the
+   error-group as-of chip (#209): the tiles are one cached snapshot, drilling is live. */
+.status-summary-asof {
+  align-self: center;
+  color: var(--color-text-faint);
+  font-size: 12px;
+  font-variant-numeric: tabular-nums;
+  white-space: nowrap;
+}
 .status-tile {
   display: inline-flex;
   align-items: center;
