@@ -10,17 +10,33 @@ export const meta = {
 }
 
 // ---- parameters (all overridable via args) ------------------------------------------
-const REPO = args?.repo ?? '/home/flapci/workspace/pi-usability'
-const APP = args?.app ?? 'http://localhost:5173'
-const BFF = args?.bff ?? 'http://localhost:8085'
-const RESULTS_DIR = args?.resultsDir ?? `${REPO}/docs/usability/results/latest`
-const RUN_ID = args?.runId ?? 'adhoc'
+// The Workflow tool's `args` input arrives JSON-stringified rather than as a live object
+// in some invocation paths (confirmed by direct diagnostic 2026-07-16) — `args?.foo` on a
+// string is always undefined, so every override silently fell back to its script default
+// with no error. This is the actual root cause behind issue #215's app/bff/runId mismatch;
+// the earlier fix only added the log() tripwire below, which reports the (still-wrong)
+// resolved values without explaining why they were wrong. Parse defensively either way.
+function parseArgs(raw) {
+  if (typeof raw !== 'string') return raw
+  try {
+    return JSON.parse(raw)
+  } catch {
+    log(`args was a non-JSON string, ignoring and using script defaults: ${raw}`)
+    return undefined
+  }
+}
+const ARGS = parseArgs(args)
+const REPO = ARGS?.repo ?? '/home/flapci/workspace/pi-usability'
+const APP = ARGS?.app ?? 'http://localhost:5173'
+const BFF = ARGS?.bff ?? 'http://localhost:8085'
+const RESULTS_DIR = ARGS?.resultsDir ?? `${REPO}/docs/usability/results/latest`
+const RUN_ID = ARGS?.runId ?? 'adhoc'
 // Wave order is load-bearing: read-only first, mutating serialized, fleet-staging last,
 // M7 after M1/M3/M4 (it consumes their audit rows). See GOAL-CATALOG "RUN PROTOCOL".
 // M11 added (issue #205 usability-coverage extension) — wave 1, read-only, same class as
 // M10's own addition in #98; missing from this list until now (a real gap, not deliberate).
-const MISSIONS = args?.missions ?? ['M1', 'M2', 'M9', 'M10', 'M11', 'M3', 'M4', 'M7', 'M5', 'M6', 'M8']
-const TESTER_MODEL = args?.testerModel ?? 'sonnet'
+const MISSIONS = ARGS?.missions ?? ['M1', 'M2', 'M9', 'M10', 'M11', 'M3', 'M4', 'M7', 'M5', 'M6', 'M8']
+const TESTER_MODEL = ARGS?.testerModel ?? 'sonnet'
 
 const MISSION_USER = {
   M1: 'responder', M2: 'responder', M9: 'responder', M10: 'viewer', M11: 'viewer',
@@ -165,7 +181,7 @@ DO, in order:
      old ones): do NOT silently pick one. Terminate every extra one EXCEPT the
      most-recently-started (same "freshest wins" convention already used for
      PARENT_BK/ACTIVE_ID resolution and OOB_RESOLVE_CMD's target), so exactly one
-     survives under that businessKey — then note the cleanup in `notes` so it's visible,
+     survives under that businessKey — then note the cleanup in "notes" so it's visible,
      not silent. The goal is that a mission's "the sacrificial case" always resolves to
      exactly one instance, both for a fresh stack and a repeatedly-reused one.
    - uxrun-m3-1 and uxrun-m3-2: two demoUserTask instances on engine-a (businessKeys exactly those).
@@ -243,9 +259,12 @@ for (const m of MISSIONS) {
   // task 1 is answered by the runner directly (no tester interactions wasted probing a
   // fixture that can never land), and the tester is told to start at task 2.
   let m6PreflightBlocked = null
+  let m6StageNotes = []
   if (m === 'M6') {
-    await agent(`Stage F-G2 for mission M6. Using the BFF admin registry API (discover the exact routes in ${REPO}/backend/src/main/java/io/inspector/api/AdminEnginesController.java; auth registry-admin:dev):
-1. Set engine-b environment tag to "prod". 2. Set engine-legacy mode to "read-only" (if legacy is not editable, use engine-7 and note it). Record EXACTLY what you changed (before->after) in notes so it can be restored. Return ok:true only if the flips are live (verify via GET).`, { schema: HOOK_SCHEMA, label: 'stage:M6', phase: 'Missions' })
+    const m6Stage = await agent(`Stage F-G2 for mission M6. Using the BFF admin registry API (discover the exact routes in ${REPO}/backend/src/main/java/io/inspector/api/AdminEnginesController.java; auth registry-admin:dev):
+1. FIRST, GET the current environment tag of engine-b and the current mode of engine-legacy (or engine-7 if legacy is not editable) — record these exact pre-change values in notes before touching anything.
+2. Set engine-b environment tag to "prod". 3. Set engine-legacy mode to "read-only" (if legacy is not editable, use engine-7 and note it). Record EXACTLY what you changed (before->after, including which engine you actually used for the read-only flip) in notes so it can be restored to its true prior value, not an assumed default. Return ok:true only if the flips are live (verify via GET).`, { schema: HOOK_SCHEMA, label: 'stage:M6', phase: 'Missions' })
+    m6StageNotes = m6Stage?.notes ?? []
     // Issue #227 review: a SEPARATE, dedicated GET decides task 1's fate — not the stage
     // hook's own aggregate `ok` (which also folds in the UNRELATED read-only flip, so a
     // read-only failure alone must never falsely pre-block task 1, and an agent's
@@ -299,7 +318,7 @@ for (const m of MISSIONS) {
   if (m === 'M6') {
     hooks.push(await agent(`Restore + ground-truth after M6:
 1. GROUND TRUTH via engine REST on engine-b: (a) is instance with businessKey uxrun-m6-3 gone (terminated) and its twin uxrun-m6-3t STILL ALIVE? (b) what processDefinitionId does the instance with businessKey uxrun-m6-mig now run (did it migrate to v2)? (c) does uxrun-m6-1 still wait on its timer or did it advance (timer fired)?
-2. RESTORE registry flips: engine-b environment back to its pre-M6 value (check git-tracked ${REPO}/backend/src/main/resources/application.yml for the original tag, likely test), engine-legacy/engine-7 mode back to read-write — via the admin API (registry-admin:dev), verify via GET.
+2. RESTORE registry flips to their TRUE PRE-M6 VALUES — do NOT assume a default. The stage step recorded the exact pre-change values in these notes: ${JSON.stringify(m6StageNotes)}. Set engine-b's environment tag and the flipped engine's mode back to EXACTLY what those notes say they were before staging (fall back to environment=test / mode=read-write only if the notes are empty or don't name a value — log that fallback explicitly if you have to use it). Verify via GET after.
 Return groundTruth facts + restored:true only when verified.`, { schema: HOOK_SCHEMA, label: 'restore:M6', phase: 'Missions' }))
   }
 }
