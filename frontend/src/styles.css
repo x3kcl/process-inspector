@@ -2087,6 +2087,14 @@ button.primary:disabled {
 .skip-link:focus {
   top: 0;
 }
+/* #237: the inspect page's skip-to-retry control is a <button> (it switches the tab AND
+   moves focus — an in-page command, not an href target) sharing the skip-link look; strip
+   the UA button chrome so both skip controls render identically. */
+button.skip-link {
+  border: 0;
+  font: inherit;
+  cursor: pointer;
+}
 .audit-tab {
   display: flex;
   flex-direction: column;

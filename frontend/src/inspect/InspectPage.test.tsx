@@ -6,11 +6,12 @@
 // request in one screen. The fix suppresses the second banner once the first already
 // explains the root cause.
 import { QueryClient, QueryClientProvider } from '@tanstack/react-query'
-import { cleanup, render, screen } from '@testing-library/react'
+import { cleanup, fireEvent, render, screen } from '@testing-library/react'
 import { MemoryRouter, Route, Routes } from 'react-router'
 import { afterEach, describe, expect, it, vi } from 'vitest'
 import { ApiError } from '../api/client'
-import type { EngineDto } from '../api/model'
+import type { EngineDto, InstanceDetail } from '../api/model'
+import { DATA_SKIP_SOURCE } from './skipToRetry'
 
 let enginesData: EngineDto[] | undefined
 vi.mock('../api/useEngines', () => ({
@@ -22,14 +23,15 @@ vi.mock('../api/useEngines', () => ({
 }))
 
 let vitalsError: ApiError | undefined
+let vitalsData: InstanceDetail | undefined
 vi.mock('./useInstanceQueries', async () => {
   const actual =
     await vi.importActual<typeof import('./useInstanceQueries')>('./useInstanceQueries')
   return {
     ...actual,
     useInstanceVitals: () => ({
-      data: undefined,
-      isPending: vitalsError === undefined,
+      data: vitalsData,
+      isPending: vitalsError === undefined && vitalsData === undefined,
       isError: vitalsError !== undefined,
       error: vitalsError,
     }),
@@ -50,6 +52,7 @@ afterEach(() => {
   cleanup()
   enginesData = undefined
   vitalsError = undefined
+  vitalsData = undefined
 })
 
 const KNOWN_ENGINE: EngineDto = { id: 'engine-a', name: 'Engine A', environment: 'dev' }
@@ -104,5 +107,53 @@ describe('InspectPage — unknown-engine banner never contradicts the vitals-err
     // the vitals banner just because the registry hasn't answered yet.
     expect(screen.queryByText(/Unknown engine/)).toBeNull()
     expect(screen.getByText(/The engine answered/)).toBeTruthy()
+  })
+})
+
+const STUCK_VITALS: InstanceDetail = {
+  engineId: 'engine-a',
+  processInstanceId: 'pi-1',
+  status: 'FAILED',
+  startTime: '2026-07-01T10:00:00Z',
+  whyStuck: { deadLetterJobs: 2, exceptionFirstLine: 'boom', failingActivityId: 'callBilling' },
+}
+
+describe('skip-to-retry control (#237 — keyboard-only FIND→FIX efficiency)', () => {
+  it("renders as the page's FIRST focusable, ahead of the vitals-header gauntlet, when dead-letter jobs exist", () => {
+    enginesData = [KNOWN_ENGINE]
+    vitalsData = STUCK_VITALS
+    renderPage('engine-a')
+
+    const skip = screen.getByRole('button', {
+      name: /skip to failed job — retry \(2 dead-letter\)/i,
+    })
+    // The never-steal-focus guard in skipToRetry recognises the command source by this marker.
+    expect(skip.getAttribute(DATA_SKIP_SOURCE)).toBe('true')
+    // It must precede every vitals-header control in DOM order — that's what makes it Tab
+    // stop #1 on the page (same doctrine as the shell's #168 skip-link).
+    const copyId = screen.getByRole('button', { name: 'copy ID' })
+    expect(skip.compareDocumentPosition(copyId) & Node.DOCUMENT_POSITION_FOLLOWING).toBeTruthy()
+  })
+
+  it('activating it opens the Errors & Jobs tab', () => {
+    enginesData = [KNOWN_ENGINE]
+    vitalsData = STUCK_VITALS
+    renderPage('engine-a')
+
+    fireEvent.click(screen.getByRole('button', { name: /skip to failed job/i }))
+    const panel = document.querySelector('[role="tabpanel"]')
+    expect(panel?.getAttribute('aria-label')).toBe('Errors & Jobs')
+    expect(screen.getByRole('tab', { name: 'Errors & Jobs' }).getAttribute('aria-selected')).toBe(
+      'true',
+    )
+  })
+
+  it('is absent when the instance has no dead-letter evidence — never a dead skip target', () => {
+    enginesData = [KNOWN_ENGINE]
+    vitalsData = { engineId: 'engine-a', processInstanceId: 'pi-1', status: 'ACTIVE' }
+    renderPage('engine-a')
+
+    expect(screen.getByRole('button', { name: 'copy ID' })).toBeTruthy()
+    expect(screen.queryByRole('button', { name: /skip to failed job/i })).toBeNull()
   })
 })

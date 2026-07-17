@@ -1099,6 +1099,14 @@ and would rewrite working M1/M2 code for no capability gain); Go/FastAPI/Kotlin 
   activation stays manual. After every route change focus lands on the new route's main
   heading or nearest surviving landmark — never `<body>`. Modals: focus trapped,
   cancel-focused, Esc per tier, focus returns to invoker or nearest survivor.
+  Keyboard-only path LENGTH is a first-class concern, served by skip controls (the
+  standard off-screen-until-focused pattern): a shell-level "Skip to main content" link
+  bypasses the header gauntlet on every page, and the instance detail page — only while
+  the instance actually holds dead-letter jobs — renders a "Skip to failed job" control
+  as its first focusable, which opens Errors & Jobs and hands focus straight to the
+  failed job's Retry action (without ever stealing focus if the user has Tab'd on
+  meanwhile), so the common FIND→FIX retry arc costs a handful of key presses instead
+  of a full linear Tab traversal of the vitals header, diagram and tablist.
   **axe runs inside the Playwright suite as a CI hard failure.**
 - **Time.** Absolute timestamp + explicit offset + relative age, everywhere; user-selected
   display TZ (default browser-local, one-click UTC); "next retry" adds a countdown.

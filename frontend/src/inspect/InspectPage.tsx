@@ -43,6 +43,14 @@ export interface TabProps {
    * single top diagram renders the ▲/△ overlay. undefined clears it. Ignored by other tabs.
    */
   onDivergence?: (markers: DivergenceMarkerSet | undefined) => void
+  /**
+   * #237 skip-to-retry: true while the page-local skip control has requested that the
+   * Errors & Jobs tab hand focus to the first dead-letter action once its lane data is
+   * rendered. Consumed only by ErrorsJobsTab; every other tab ignores it.
+   */
+  focusDeadLetterAction?: boolean
+  /** ErrorsJobsTab reports the pending focus request as handled (or moot) through this. */
+  onDeadLetterActionFocused?: () => void
 }
 
 /**
@@ -109,11 +117,39 @@ export function InspectPage() {
   // tab's unmount, so leaving Compare reverts the diagram to its plain instance markers.
   const [divergence, setDivergence] = useState<DivergenceMarkerSet>()
 
+  // #237 skip-to-retry: the page-local skip control below arms this; ErrorsJobsTab consumes
+  // it (focuses the first dead-letter action once its lane data is on screen) and clears it.
+  const [retryFocusPending, setRetryFocusPending] = useState(false)
+  const onDeadLetterActionFocused = useCallback(() => {
+    setRetryFocusPending(false)
+  }, [])
+  const deadLetterCount = vitals.data?.whyStuck?.deadLetterJobs ?? 0
+
   const ActiveTab = TAB_COMPONENTS[tab]
 
   return (
     <div className="inspect">
       <h2 className="visually-hidden">Instance detail</h2>
+      {/* #237: a page-local skip control, same convention as the shell's #168 skip-link
+          (off-screen until focused). Rendered ONLY when the instance actually has dead-letter
+          evidence, as the page's FIRST focusable element: one Tab + Enter jumps a keyboard
+          user past the vitals-header action gauntlet, the diagram toggle and the tablist,
+          straight to the failed job's Retry action in the Errors & Jobs tab. */}
+      {deadLetterCount > 0 && (
+        <button
+          type="button"
+          className="skip-link"
+          // skipToRetry's never-steal-focus guard recognises the command's source by this
+          // attribute (= skipToRetry.DATA_SKIP_SOURCE; the InspectPage test pins the pairing).
+          data-skip-to-retry-source="true"
+          onClick={() => {
+            selectTab('errors-jobs')
+            setRetryFocusPending(true)
+          }}
+        >
+          Skip to failed job — retry ({deadLetterCount} dead-letter)
+        </button>
+      )}
       <header className="vitals">
         <div className="vitals-identity">
           <EnvBadge
@@ -233,6 +269,8 @@ export function InspectPage() {
             selectedActivityId={selectedActivityId}
             onShowOnDiagram={onShowOnDiagram}
             onDivergence={setDivergence}
+            focusDeadLetterAction={retryFocusPending && tab === 'errors-jobs'}
+            onDeadLetterActionFocused={onDeadLetterActionFocused}
           />
         </Suspense>
       </section>

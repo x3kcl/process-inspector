@@ -19,6 +19,7 @@ import { useToast } from '../../components/toast'
 import { Ts } from '../../lib/Ts'
 import { roleOn, useMe } from '../../api/me'
 import type { TabProps } from '../InspectPage'
+import { focusDeadLetterAction } from '../skipToRetry'
 import { useInstanceExternalWorkerJobs, useInstanceJobs } from '../useInstanceQueries'
 
 /** Lane metadata (SPEC §4): the lane IS the diagnosis, so each one explains itself. */
@@ -52,6 +53,8 @@ export default function ErrorsJobsTab({
   instanceId,
   selectedActivityId,
   onShowOnDiagram,
+  focusDeadLetterAction: focusRequested,
+  onDeadLetterActionFocused,
 }: TabProps) {
   const query = useInstanceJobs(engineId, instanceId)
   const engines = useEngines()
@@ -59,6 +62,18 @@ export default function ErrorsJobsTab({
   // Capability gate (v1.x #7): the fifth lane exists ONLY on a Flowable ≥ 6.8 engine. On a
   // pre-6.8 engine it is never rendered and its query never fires — true graceful degradation.
   const showExternalWorker = externalWorkerLaneVisible(engine)
+
+  // #237 skip-to-retry: once the lane data (or its error state) is on screen, complete the
+  // page-level skip command by focusing the first dead-letter action. Runs AFTER the commit
+  // that rendered the lanes, so the selector targets real DOM; focusDeadLetterAction itself
+  // refuses to steal focus if the user has Tab'd on meanwhile (R-UXQ-06). The request is
+  // reported handled either way — it is a one-shot command, never a standing subscription.
+  const settled = !query.isPending
+  useEffect(() => {
+    if (focusRequested !== true || !settled) return
+    focusDeadLetterAction()
+    onDeadLetterActionFocused?.()
+  }, [focusRequested, settled, onDeadLetterActionFocused])
 
   if (query.isPending) return <div className="zero-state">Loading job lanes…</div>
   if (query.isError) {
