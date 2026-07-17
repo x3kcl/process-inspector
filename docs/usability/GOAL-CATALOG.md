@@ -443,25 +443,20 @@ FIXTURE: standard seed (`demoTimerWait`, `demoFailingPayment`).
 
 ### R-SAFE-05 · Protected instances
 
-PRIO MUST-v1 · CLASS UI-STAGED · BUILT partial
+PRIO MUST-v1 · CLASS UI-STAGED · BUILT yes
 GOAL: On a protected instance, every verb must read intentionally-locked with the L3
 floor named; a bulk sweeping it must report it `skipped (protected)` — never silently act.
 ENTRY: `/inspect/...` protected instance · user `operator`; bulk as `operator`.
 SUCCESS: tester explains why they can't act + who can; bulk report shows the skip class.
-FIXTURE: runner marks one FAILED instance protected — **currently impossible**, see note.
-BUILT NOTE (repo audit, corrected 2026-07-13 by a real usability run, issue #98 —
-supersedes the same-day 07-13 "BUILT yes" note above it): the READ side genuinely is
-built — enforcement (`CorrectiveActionService`), bulk skip (`BulkJobService`), and every
-display surface (`InstanceActions.tsx` point-of-action badge, `ResultsGrid.tsx` row
-badge) all correctly reflect `protected_instance` rows when one exists. **But there is no
-WRITE path anywhere in production code** — `ProtectedInstanceRepository` has zero
-`.save()`/`.delete()` calls under `backend/src/main/java`; only tests populate the table,
-via direct repository injection as a test seam. No admin, however privileged, can
-actually protect an instance through the running application today. The prior "BUILT
-yes" note verified the read/enforcement/display side only and never checked the write
-side — this run's staging step tried to mark a fixture instance protected and found
-nothing to call. A usability MISSION cannot exercise this goal's FIXTURE at all until a
-mark/unmark endpoint exists.
+FIXTURE: runner marks one instance protected via the admin write path (see note).
+BUILT NOTE (corrected 2026-07-17 by the `2026-07-16-post-fix-full-recert-v2` usability
+run — supersedes the 2026-07-13 "BUILT partial, no write path" note above it): the
+protected-instance milestone (#165/#172/#184) shipped 2026-07-14, adding the admin
+mark/unmark write path this note previously said was missing. This run's M3
+(protected-instance skip inside a bulk job) and M6 (protected-instance block on every
+verb) both cleanly exercised a live, correctly-marked protected instance with zero
+quiet lies — the read/enforcement/display side (verified 2026-07-13) and the write side
+(verified 2026-07-17) are now both confirmed BUILT.
 
 ### R-SAFE-06 · Break-glass account
 
@@ -582,14 +577,17 @@ FIXTURE: piggybacks on the R-UXQ-04 engine-down stage.
 
 ### R-AUD-05 · Shift report
 
-PRIO MUST-v1 · CLASS UI · BUILT no
+PRIO MUST-v1 · CLASS UI · BUILT yes (/a with a nuance)
 GOAL (/a produce): At end of shift, an operator must produce a handover artifact — "my
 activity this shift, UNKNOWNs first" — in one or two clicks from the audit surface.
 GOAL (/b consume): the 7am engineer coming ON shift must answer, from the app: what did
 night shift do, what is still unresolved/UNKNOWN, did anyone touch instance X?
 ENTRY: `/audit` · user `operator` (after other missions created audit rows).
-SUCCESS: evaluator expects /a NOT-FOUND today (honest give-up + "where I expected it" =
-the plan evidence; MUST-v1 gap). /b is answerable from filters today — grade how hard.
+SUCCESS: /b RE-CONFIRMED BUILT — a full night-shift inventory including flagged
+unresolved items is producible from `/audit` filters. /a RE-CONFIRMED BUILT with a
+nuance: "Copy shift report" on `/audit` produces a structured report, but no dedicated
+fleet-wide free-text "my shift note" composition surface exists beyond it — genuine
+partial-coverage evidence, not a regression (2026-07-16-post-fix-full-recert-v2).
 FIXTURE: audit rows from earlier missions (run this mission last).
 
 ### R-AUD-06 · Copy-for-ticket
@@ -607,34 +605,39 @@ FIXTURE: standard seed.
 
 ### R-AUD-07 · ticketId on reasons
 
-PRIO SHOULD-v1.x (column MUST) · CLASS UI · BUILT partial (repo audit: linkify + filter
-built — `lib/ticket.ts`, `AuditLogPage`, `TicketPolicy` — but NO ticket input field in
-`DestructiveModal`/`InlineConfirm`: the capture half is dark in the UI)
+PRIO SHOULD-v1.x (column MUST) · CLASS UI · BUILT yes
 GOAL: A reason prompt must accept a ticket ID that later renders linkified in audit.
 ENTRY: any reason-bearing confirm · user `operator`.
-SUCCESS: evaluator expects the capture field NOT-FOUND (the sliver for the plan); the
-linkified render half is verifiable only once a row carries a ticketId.
+SUCCESS: tester finds and uses the ticket-capture field; the value renders linkified in audit.
 FIXTURE: standard seed.
+BUILT NOTE (corrected 2026-07-17 by the `2026-07-16-post-fix-full-recert-v2` usability
+run — the "capture half is dark in the UI" text above was already stale relative to
+this file's own aggregate note below, and is now also contradicted by fresh live
+evidence): a "Ticket ID (optional — recorded with the audit row and linked in the
+operations log)" field was independently found and used by two separate testers in two
+separate missions (M3 task 5, M4 task 3) with identical verbatim copy — strong
+corroboration of a real, shipped capture field, not confabulation.
 
 ### R-AUD-08 · Audit CSV export
 
-PRIO MUST-v1 (CSV) · CLASS UI · BUILT **no** (repo audit: `AuditController` has no
-export path; only CSV in the backend is `AccessReviewController`) — **MUST-v1 gap #5**
+PRIO MUST-v1 (CSV) · CLASS UI · BUILT yes (RE-CONFIRMED: "Export CSV" on `/audit`
+downloads a genuine `operations-log.csv` with correct headers, 2026-07-16-post-fix-full-recert-v2)
 GOAL: An auditor asked "what did operator X do to engine-b this week?" must get the
 answer out of the app and into a spreadsheet without a developer.
 ENTRY: `/audit` · user `admin`.
-SUCCESS: evaluator expects NOT-FOUND — honest give-up evidence for the plan.
+SUCCESS: tester downloads a real CSV with correct content-type/content-disposition headers.
 FIXTURE: audit rows from earlier arcs.
 
 ### R-AUD-09 · Attribution caveat
 
-PRIO MUST-v1 · CLASS UI · BUILT **no** (repo audit: no service-account caveat text in
-`AuditTab.tsx` or any tsx) — **MUST-v1 gap #6**
+PRIO MUST-v1 · CLASS UI · BUILT yes (RE-CONFIRMED: the exact caveat text is present on
+the per-instance Audit & Notes tab, 2026-07-16-post-fix-full-recert-v2)
 GOAL: An engineer asking "WHO did this?" must land on the BFF audit answer and see the
 warning that engine-side history blames the service account.
 ENTRY: `/inspect/...?tab=audit` · user `viewer`.
-SUCCESS: who-question answerable from the tab (works today); the caveat is expected
-NOT-FOUND — plan evidence.
+SUCCESS: who-question answerable from the tab; the caveat text ("Engine-side history
+attributes these actions to the shared service account — this log is the authoritative
+WHO") is present verbatim.
 FIXTURE: prior actions from other arcs.
 
 ### R-AUD-10 · Config-event audit primitive
@@ -843,23 +846,30 @@ FIXTURE: standard seed (ACME instances carry structured variables).
 
 ### R-BAU-01 · Error-group acknowledge
 
-PRIO MUST-v1 · CLASS UI · BUILT no
+PRIO MUST-v1 · CLASS UI · BUILT yes (RE-CONFIRMED: group mutes into "Acknowledged (N)"
+without hiding data, dialog states the auto-resurface guarantee pre-commit,
+2026-07-16-post-fix-full-recert-v2). Built "acknowledge" only, NOT "annotate" — annotate
+is the separate, still-open R-BAU-03.
 GOAL: A day-shift engineer triaging a known-noisy error group must acknowledge it (who +
 reason + expiry) so it collapses — labeled, never hidden — and trust it will resurface on
-growth. Expected NOT-FOUND today: attempt + record; MUST-v1 gap for the plan.
+growth.
 ENTRY: `/` error groups · user `operator`.
-SUCCESS: honest not-found evidence (or the arc, if present).
+SUCCESS: group collapses labeled (not hidden); resurface guarantee (growth / new version
+/ expiry) stated before commit.
 FIXTURE: standard seed.
 
 ### R-BAU-02 · Leak views
 
-PRIO MUST-v1 · CLASS UI · BUILT no
+PRIO MUST-v1 · CLASS UI · BUILT yes (RE-CONFIRMED with a nuance,
+2026-07-16-post-fix-full-recert-v2)
 GOAL: A day-shift engineer hunting slow leaks must find "Active > 30 days" style views
-grouped per definition. Expected NOT-FOUND today; also note the fixture honesty problem:
-instance age cannot be seeded over REST — verification needs config-lowered windows.
+grouped per definition.
 ENTRY: `/` · user `viewer`.
-SUCCESS: honest not-found evidence; plan item.
-FIXTURE: n/a today; F-G8 (config-lowered leak windows) when built.
+SUCCESS: "Active > 30 days" is answerable via Search's Status+Started-before filters
+(cross-engine-confirmed). Nuance: the purpose-built one-click home-page "Leak views"
+widget itself covers SUSPENDED only, despite its name/description implying ACTIVE
+coverage too — worth a copy fix or a companion ACTIVE-leak link (tracked in results).
+FIXTURE: standard seed.
 
 ### R-BAU-03 · Error-class annotations
 
@@ -898,12 +908,13 @@ seed of the R-BAU-09 training profile; noted in the reuse doc.
 
 ### R-L3-01 · "Explain this status"
 
-PRIO MUST-v1 · CLASS UI · BUILT no (no dedicated affordance found)
+PRIO MUST-v1 · CLASS UI · BUILT yes (RE-CONFIRMED: full falsifiable evidence trail
+reached from the chip itself, 2026-07-16-post-fix-full-recert-v2)
 GOAL: A skeptical L3 must be able to falsify a status chip: reach the per-leg evidence
-(which calls, what came back, what was truncated) from the chip itself. Expected
-NOT-FOUND today; MUST-v1 gap.
+(which calls, what came back, what was truncated) from the chip itself.
 ENTRY: FAILED instance status chip · user `admin`.
-SUCCESS: honest not-found evidence (or the evidence view, if present).
+SUCCESS: "Explain this status" surfaces a named Plan, per-engine-call evidence
+(URL/status/latency/timestamp), and a flag-by-flag verdict table.
 FIXTURE: standard seed.
 
 ### R-L3-02 · cURL parity
@@ -1025,11 +1036,12 @@ acknowledge (2026-07-11) · R-BAU-02 leak views (2026-07-11) · R-AUD-05 shift r
 (2026-07-11) · R-AUD-08 audit CSV export (2026-07-11) · R-AUD-09 attribution caveat
 (2026-07-11) · R-L3-01 explain-status (2026-07-11) · R-AUD-07 ticket-capture field
 sliver (2026-07-11) — all 7 exercised successfully by real testers in the issue #98
-usability run, ground-truth-verified, zero quiet lies. **R-SAFE-05 is the exception —
-corrected back to `BUILT partial` (see its own entry above): the point-of-action and
-results-grid badges are real, but there is no production write path to ever set
-`protectedInstance=true` in the first place, so the badge can never fire outside a
-test.** Note: R-BAU-01 built "acknowledge" only, NOT "annotate" — that's the separate,
+usability run, ground-truth-verified, zero quiet lies. **R-SAFE-05 was the exception at
+the time this note was written — since resolved: the protected-instance milestone
+(#165/#172/#184) shipped 2026-07-14, adding the write path this note originally said
+was missing, and the `2026-07-16-post-fix-full-recert-v2` usability run (2026-07-17)
+confirmed the write side live end-to-end (see its own entry above). All 8 of the
+original MUST-v1 gaps are now BUILT.** Note: R-BAU-01 built "acknowledge" only, NOT "annotate" — that's the separate,
 still-open R-BAU-03 below; issue #97's own text conflated the two when it described
 R-BAU-01 as blocking R-SEM-13 (R-SEM-13 is gated on R-BAU-03, not R-BAU-01).
 SHOULD/COULD gaps (plan-route, not tested): R-BAU-03/04/05/06/07/08 · R-UXQ-08/09/10 ·
