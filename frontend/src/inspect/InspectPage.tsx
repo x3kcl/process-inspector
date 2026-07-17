@@ -1,4 +1,4 @@
-import { Suspense, lazy, useCallback, useMemo, useRef, useState } from 'react'
+import { Suspense, lazy, useCallback, useEffect, useMemo, useRef, useState } from 'react'
 import type { ComponentType, LazyExoticComponent } from 'react'
 import { Link, useParams, useSearchParams } from 'react-router'
 import { ApiError } from '../api/client'
@@ -11,6 +11,7 @@ import { formatSeconds } from '../lib/format'
 import { Ts } from '../lib/Ts'
 import { DetailTabBar } from './DetailTabBar'
 import { DiagramCanvas } from './DiagramCanvas'
+import { restoreRouteFocus } from '../shell/routeFocus'
 import { instanceLoadFailureCopy } from './loadFailure'
 import type { DivergenceMarkerSet } from './comparison/diffFormat'
 import { InstanceActions } from './InstanceActions'
@@ -136,19 +137,13 @@ export function InspectPage() {
           user past the vitals-header action gauntlet, the diagram toggle and the tablist,
           straight to the failed job's Retry action in the Errors & Jobs tab. */}
       {deadLetterCount > 0 && (
-        <button
-          type="button"
-          className="skip-link"
-          // skipToRetry's never-steal-focus guard recognises the command's source by this
-          // attribute (= skipToRetry.DATA_SKIP_SOURCE; the InspectPage test pins the pairing).
-          data-skip-to-retry-source="true"
-          onClick={() => {
+        <SkipToRetryControl
+          deadLetterCount={deadLetterCount}
+          onActivate={() => {
             selectTab('errors-jobs')
             setRetryFocusPending(true)
           }}
-        >
-          Skip to failed job — retry ({deadLetterCount} dead-letter)
-        </button>
+        />
       )}
       <header className="vitals">
         <div className="vitals-identity">
@@ -275,6 +270,50 @@ export function InspectPage() {
         </Suspense>
       </section>
     </div>
+  )
+}
+
+/**
+ * The #237 skip-to-retry control. A <button>, not an <a href="#…">: activating it switches
+ * the tab AND arms a focus hand-off — an in-page command, not a fragment jump. Extracted so
+ * it can guard its own unmount: a background vitals refetch can clear the dead-letter
+ * evidence and remove this control WHILE it holds focus, and the browser's default for a
+ * focused node leaving the DOM is to drop focus to <body> silently (#168's hazard class).
+ * blur never fires on removal, so an onFocus/onBlur-tracked flag is checked in the unmount
+ * cleanup and focus is handed back to the route heading via the shared restoreRouteFocus
+ * (which itself refuses to act if focus survived somewhere real).
+ */
+function SkipToRetryControl({
+  deadLetterCount,
+  onActivate,
+}: {
+  deadLetterCount: number
+  onActivate: () => void
+}) {
+  const heldFocus = useRef(false)
+  useEffect(
+    () => () => {
+      if (heldFocus.current) restoreRouteFocus()
+    },
+    [],
+  )
+  return (
+    <button
+      type="button"
+      className="skip-link"
+      // skipToRetry's never-steal-focus guard recognises the command's source by this
+      // attribute (= skipToRetry.DATA_SKIP_SOURCE; the InspectPage test pins the pairing).
+      data-skip-to-retry-source="true"
+      onFocus={() => {
+        heldFocus.current = true
+      }}
+      onBlur={() => {
+        heldFocus.current = false
+      }}
+      onClick={onActivate}
+    >
+      Skip to failed job — retry ({deadLetterCount} dead-letter)
+    </button>
   )
 }
 

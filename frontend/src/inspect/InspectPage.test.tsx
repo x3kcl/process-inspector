@@ -64,15 +64,22 @@ function renderPage(engineId: string) {
   // lifetime, it finds a provider instead of crashing, and `enabled: false` means none of
   // its own queries actually fire a fetch.
   const client = new QueryClient({ defaultOptions: { queries: { retry: false, enabled: false } } })
-  render(
+  // The <main> wrapper mirrors the Shell's landmark — restoreRouteFocus (used by the
+  // skip-to-retry unmount guard below) targets `main h1, main h2`. makeTree builds a FRESH
+  // element each time: rerendering a referentially-identical element bails out of the
+  // re-render entirely, so the module-level mock data would never be re-read.
+  const makeTree = () => (
     <QueryClientProvider client={client}>
       <MemoryRouter initialEntries={[`/inspect/${engineId}/pi-1`]}>
-        <Routes>
-          <Route path="/inspect/:engineId/:instanceId" element={<InspectPage />} />
-        </Routes>
+        <main>
+          <Routes>
+            <Route path="/inspect/:engineId/:instanceId" element={<InspectPage />} />
+          </Routes>
+        </main>
       </MemoryRouter>
-    </QueryClientProvider>,
+    </QueryClientProvider>
   )
+  return { ...render(makeTree()), makeTree }
 }
 
 describe('InspectPage — unknown-engine banner never contradicts the vitals-error banner (#212)', () => {
@@ -155,5 +162,24 @@ describe('skip-to-retry control (#237 — keyboard-only FIND→FIX efficiency)',
 
     expect(screen.getByRole('button', { name: 'copy ID' })).toBeTruthy()
     expect(screen.queryByRole('button', { name: /skip to failed job/i })).toBeNull()
+  })
+
+  it('hands focus to the route heading — never <body> — if a data refresh unmounts it while focused', () => {
+    enginesData = [KNOWN_ENGINE]
+    vitalsData = STUCK_VITALS
+    const view = renderPage('engine-a')
+
+    const skip = screen.getByRole('button', { name: /skip to failed job/i })
+    skip.focus()
+    expect(document.activeElement).toBe(skip)
+
+    // A background vitals refetch clears the dead-letter evidence → the control unmounts.
+    // The browser's default would drop focus to <body> silently; the unmount guard hands
+    // it to the route heading instead (same survivor doctrine as restoreRouteFocus).
+    vitalsData = { ...STUCK_VITALS, whyStuck: undefined }
+    view.rerender(view.makeTree())
+
+    expect(screen.queryByRole('button', { name: /skip to failed job/i })).toBeNull()
+    expect(document.activeElement?.textContent).toBe('Instance detail')
   })
 })

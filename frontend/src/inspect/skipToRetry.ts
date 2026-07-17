@@ -42,14 +42,12 @@ export function focusDeadLetterAction(doc: Document = document): HTMLElement | n
     doc.querySelector<HTMLElement>(LANES_CONTAINER_SELECTOR)
   if (target === null) return null
   // The container fallback is not natively focusable — grant programmatic focusability
-  // without adding it to the Tab order (and never clobber an authored tabindex).
-  if (!target.hasAttribute('tabindex') && !isNativelyFocusable(target)) {
+  // without adding it to the Tab order. Never clobber an authored tabindex, and never
+  // demote something already focusable (tabIndex >= 0 covers button/a[href]/input/…,
+  // should the fallback selector ever match one).
+  if (!target.hasAttribute('tabindex') && target.tabIndex < 0) {
     target.setAttribute('tabindex', '-1')
   }
   target.focus()
   return doc.activeElement === target ? target : null
-}
-
-function isNativelyFocusable(element: HTMLElement): boolean {
-  return element instanceof HTMLButtonElement
 }
