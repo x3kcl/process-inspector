@@ -87,6 +87,53 @@ class SharedViewServiceTest {
         assertThat(SharedViewService.canPublish(globalAdmin, "*", "tenant-a")).isTrue();
     }
 
+    /* ---------------- publishRefusal detail (#247) ---------------- */
+
+    @Test
+    void concreteScopeRefusalNamesOperatorOnlyAndTheActualScopeAndStanding() {
+        // A VIEWER on the scope: the refusal names OPERATOR (the one tier this shape needs),
+        // the real scope literal, and the caller's own standing — never the wildcard/ADMIN branch.
+        Set<ScopeGrant> grants = Set.of(new ScopeGrant(Role.VIEWER, "orders-prod", "tenant-a"));
+        String detail = SharedViewService.publishRefusal(grants, "orders-prod", "tenant-a");
+        assertThat(detail)
+                .isEqualTo("publishing scope orders-prod/tenant-a needs an OPERATOR grant covering it"
+                        + " — your best grant covering it is VIEWER");
+        assertThat(detail).doesNotContain("ADMIN").doesNotContain("wildcard");
+    }
+
+    @Test
+    void concreteScopeRefusalWithNoCoveringGrantSaysSo() {
+        Set<ScopeGrant> grants = Set.of(new ScopeGrant(Role.OPERATOR, "orders-prod", "tenant-a"));
+        assertThat(SharedViewService.publishRefusal(grants, "billing-prod", "tenant-a"))
+                .isEqualTo("publishing scope billing-prod/tenant-a needs an OPERATOR grant covering it"
+                        + " — you have no grant covering it");
+    }
+
+    @Test
+    void wildcardScopeRefusalNamesAdminOnlyAndTheCallersActualStanding() {
+        // A GLOBAL operator attempting the wildcard scope: ADMIN is the requirement named — no
+        // "(or ...)" alternative — and the caller's own OPERATOR standing appears only as standing.
+        Set<ScopeGrant> globalOperator = Set.of(ScopeGrant.global(Role.OPERATOR));
+        String detail = SharedViewService.publishRefusal(globalOperator, "*", "*");
+        assertThat(detail)
+                .isEqualTo("publishing the wildcard scope */* needs an ADMIN grant covering it"
+                        + " — your best grant covering it is OPERATOR");
+
+        // A scoped operator holds nothing that contains a wildcard scope at all.
+        Set<ScopeGrant> scoped = Set.of(new ScopeGrant(Role.OPERATOR, "orders-prod", "tenant-a"));
+        assertThat(SharedViewService.publishRefusal(scoped, "*", "tenant-a"))
+                .isEqualTo("publishing the wildcard scope */tenant-a needs an ADMIN grant covering it"
+                        + " — you have no grant covering it");
+    }
+
+    @Test
+    void publishFloorEscalatesToAdminForAnyWildcardShapeOnly() {
+        assertThat(SharedViewService.publishFloor("orders-prod", "tenant-a")).isEqualTo(Role.OPERATOR);
+        assertThat(SharedViewService.publishFloor("*", "*")).isEqualTo(Role.ADMIN);
+        assertThat(SharedViewService.publishFloor("*", "tenant-a")).isEqualTo(Role.ADMIN);
+        assertThat(SharedViewService.publishFloor("orders-prod", "*")).isEqualTo(Role.ADMIN);
+    }
+
     /* ---------------- dangling-canon detection (S4, §4.5) ---------------- */
 
     @Test
