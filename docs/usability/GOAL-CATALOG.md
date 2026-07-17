@@ -232,7 +232,8 @@ FIXTURE: standard seed; runner supplies fresh IDs from seed output.
 
 ### R-SEM-05 · Curated-view predicate honesty
 
-PRIO MUST-v1 · CLASS UI · BUILT partial (system views: yes; leak-view variants: no)
+PRIO MUST-v1 · CLASS UI · BUILT yes (system views: yes; leak views shipped 2026-07-11 —
+see R-BAU-02, which tracks the leak-widget's SUSPENDED-only naming nuance)
 GOAL: A curated view's name must not promise what its predicate can't deliver — the tester
 using "Suspended > 24h (by start time)" must come away knowing the window is start-based.
 ENTRY: `/` saved views · user `viewer`.
@@ -298,8 +299,11 @@ GOAL: A bulk interrupted by a tripping engine must read as INTERRUPTED with `not
 items — never as failures — and offer continue-as-new scoped to the remainder.
 ENTRY: operations drawer during a bulk · user `operator`.
 SUCCESS: tester distinguishes not_run from failed and finds "continue as new job".
-FIXTURE: runner stops an engine container mid-bulk — timing-fragile; run as a single
-scripted probe, not a naive-tester arc. CI: R-SEM-11 tests.
+FIXTURE: would need the runner to stop an engine container mid-bulk — timing-fragile;
+a scripted probe, not a naive-tester arc, and that probe is NOT YET IMPLEMENTED in the
+harness (`.claude/workflows/usability-run.js` has no such hook — deferred, like F-G3/
+F-G5). Until it exists, the INTERRUPTED/not_run semantics are verified by CI only
+(R-SEM-11 tests).
 
 ### R-SEM-12 · Truncation badges + drill echo
 
@@ -452,15 +456,17 @@ FIXTURE: runner marks one instance protected via the admin write path (see note)
 BUILT NOTE (corrected 2026-07-17 by the `2026-07-16-post-fix-full-recert-v2` usability
 run — supersedes the 2026-07-13 "BUILT partial, no write path" note above it): the
 protected-instance milestone (#165/#172/#184) shipped 2026-07-14, adding the admin
-mark/unmark write path this note previously said was missing. This run's M3
-(protected-instance skip inside a bulk job) and M6 (protected-instance block on every
+mark/unmark write path this note previously said was missing. This run's M4
+(protected-instance skip inside a bulk job — the protected `uxrun-m4-8` member of the
+bulk cohort) and M6 (protected-instance block on every
 verb) both cleanly exercised a live, correctly-marked protected instance with zero
 quiet lies — the read/enforcement/display side (verified 2026-07-13) and the write side
 (verified 2026-07-17) are now both confirmed BUILT.
 
 ### R-SAFE-06 · Break-glass account
 
-PRIO MUST-v1 · CLASS UI-STAGED (oidc only) · BUILT partial
+PRIO MUST-v1 · CLASS UI-STAGED (oidc only) · BUILT yes (door shipped #94/PR #180,
+2026-07-14 — matches R-SAFE-15 and SPEC §4c "Break-glass (built)")
 GOAL: (deferred to prod-like leg) Dev profile has no IdP to lose; break-glass door +
 bannering is exercised in the Keycloak prod-like run (R-OPS-16), not here.
 
@@ -719,7 +725,8 @@ FIXTURE: none (rejection path only; nothing persisted).
 
 ### R-OPS-14 · /api/diag
 
-PRIO SHOULD-v1.x · CLASS NOT-UI · BUILT no (repo audit: no diag controller) — ADMIN API,
+PRIO SHOULD-v1.x · CLASS NOT-UI · BUILT yes BACKEND-ONLY (`GET /api/diag`,
+`DiagController`, issue #96, 2026-07-13; no frontend diagnostics page yet) — ADMIN API,
 no UI arc.
 
 ### R-OPS-15 · Registry hot reload
@@ -877,9 +884,20 @@ PRIO SHOULD-v1.x · CLASS UI · BUILT no — plan-route (with R-SEM-13).
 
 ### R-BAU-04 · Person-centric task search
 
-PRIO SHOULD-v1.x · CLASS UI · BUILT no (reassign landed; search half unscheduled)
-GOAL: (probe) "Find everything assigned to k.meier" — record the gap; reassign-from-
-instance itself is covered under R-SAFE-01/04 arcs.
+PRIO SHOULD-v1.x · CLASS UI · BUILT yes (#99 shipped 2026-07-14 — `/tasks` route, SPEC
+§4d; supersedes the earlier "search half unscheduled" note. Covered by M7 task 9.)
+GOAL: A day-shift engineer covering for an absent colleague must find, from cold, every
+OPEN task that person is sitting on across every readable engine — both directly
+assigned and merely claimable — and reach the existing reassign/return-to-team verbs
+from those rows without detouring through an instance's Tasks tab.
+ENTRY: `/` (the surface is the "Find tasks" top-bar link → `/tasks?person=`) · any user
+(VIEWER-floor read); the row verbs keep their own OPERATOR gate.
+SUCCESS: tester finds the surface unprompted, gets rows for a seeded assignee (e.g.
+`kermit` — the F-G1 wide-child fan-out tasks), correctly restates the Assigned-vs-
+Claimable match distinction from the on-screen chips, and reaches the reassign modal
+from a row (cancelling counts; the verb itself is R-SAFE-01/04 territory).
+FIXTURE: standard seed (`demoWideChild` tasks are assignee'd `kermit`; ACME definitions
+carry candidate groups).
 
 ### R-BAU-05 · Watchlist
 
@@ -1002,14 +1020,6 @@ PRIO COULD-v2 · CLASS NOT-UI · BUILT n/a.
 
 PRIO MUST-v1 · CLASS NOT-UI · BUILT yes — the CI owner of R-AUD-01/R-SEM-18 deferrals.
 
-### R-TEST-08 · UAT with practicing engineers
-
-PRIO SHOULD-v1.x · CLASS meta · BUILT partial
-GOAL: This catalog + the Sonnet-agent run IS the standing rehearsal for R-TEST-08 —
-scripted incident scenarios, unassisted completion scoring (≥80% target), trust-breaking
-observations filed Sev1/Sev2. The human UAT still runs at M6; the agents keep it honest
-between rounds.
-
 ---
 
 ## FIXTURE GAPS (new test data / staging this catalog needs)
@@ -1044,9 +1054,11 @@ confirmed the write side live end-to-end (see its own entry above). All 8 of the
 original MUST-v1 gaps are now BUILT.** Note: R-BAU-01 built "acknowledge" only, NOT "annotate" — that's the separate,
 still-open R-BAU-03 below; issue #97's own text conflated the two when it described
 R-BAU-01 as blocking R-SEM-13 (R-SEM-13 is gated on R-BAU-03, not R-BAU-01).
-SHOULD/COULD gaps (plan-route, not tested): R-BAU-03/04/05/06/07/08 · R-UXQ-08/09/10 ·
-R-L3-04/06 · R-SEM-13 · R-SEM-16 · R-SAFE-10. R-OPS-14 flipped to built BACKEND-ONLY
-(`GET /api/diag`, issue #96, 2026-07-13) — no frontend diagnostics page exists yet.
+SHOULD/COULD gaps (plan-route, not tested): R-BAU-03/05/06/07/08 · R-UXQ-08/09/10 ·
+R-L3-04/06 · R-SEM-13 · R-SEM-16 · R-SAFE-10. R-BAU-04 flipped to BUILT yes (#99,
+2026-07-14 — `/tasks`, see its entry; exercised by M7 task 9). R-OPS-14 flipped to built
+BACKEND-ONLY (`GET /api/diag`, issue #96, 2026-07-13) — no frontend diagnostics page
+exists yet.
 
 ---
 
