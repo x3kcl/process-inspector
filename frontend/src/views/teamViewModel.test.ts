@@ -68,4 +68,33 @@ describe('teamViewModel', () => {
     expect(publishError(new ApiError(503, {}))).toContain('Nothing was published')
     expect(publishError(new Error('network'))).toContain('Couldn’t publish')
   })
+
+  it('surfaces the BFF’s own scope-aware 403 reason, not a hardcoded wildcard sentence (#234)', () => {
+    // The backend's canPublish() refusal already names the real rule; the UI must quote it.
+    const detail =
+      'publishing this scope needs an OPERATOR (or ADMIN for a wildcard scope) grant on it'
+    expect(publishError(new ApiError(403, { detail }))).toContain(detail)
+    // The quotable request id rides along when the BFF stamped one (W1#6 contract).
+    expect(publishError(new ApiError(403, { detail, requestId: 'req-42' }))).toContain('req-42')
+    // Any server-stated reason is rendered verbatim — no client-side wildcard/ADMIN invention.
+    const other = 'your grant does not cover engine orders-prod'
+    expect(publishError(new ApiError(403, { detail: other }))).toContain(other)
+    expect(publishError(new ApiError(403, { detail: other }))).not.toContain('wildcard')
+  })
+
+  it('falls back to generic [what] copy when the 403 body is missing or malformed (#234)', () => {
+    for (const body of [
+      {},
+      null,
+      'nope',
+      { detail: 7 },
+      { detail: '  ' },
+      { title: 'Forbidden' },
+    ]) {
+      const message = publishError(new ApiError(403, body))
+      expect(message).toContain('permission')
+      // Never claim a wildcard/ADMIN reason we cannot know.
+      expect(message).not.toContain('wildcard')
+    }
+  })
 })
