@@ -3,12 +3,11 @@
 // compiled-criteria panel before the operator trusts it. The links reuse the M2b URL codec,
 // so a drill-through IS a shareable search.
 //
-// Honesty note: /api/search has no definition-version filter yet, so a per-version click
-// carries the tightest expressible scope — engine + definition key + FAILED/RETRYING. The
-// version column in the grid and the criteria echo make the wider scope visible instead of
-// pretending precision. The GROUP-level click, though, does carry the class signature
-// (usability round 2): landing on the grid pre-scoped to ONE error class makes the
-// select-all-matching-filter path the one-click whole-class action.
+// A per-version click carries the FULL clicked scope — engine + definition key + version +
+// FAILED/RETRYING (#233: the version param rides along, matching the count the label
+// promised; before, the link silently widened to every version). The GROUP-level click
+// carries the class signature (usability round 2): landing on the grid pre-scoped to ONE
+// error class makes the select-all-matching-filter path the one-click whole-class action.
 import type { ErrorGroup, InstanceStatus } from '../api/model'
 import { encodeSearch } from '../search/urlState'
 
@@ -24,12 +23,20 @@ export function splitDefinitionCount(key: string): { definitionKey: string; vers
   return { definitionKey: key, version: '' }
 }
 
-/** One definition-version count inside one engine of one error group. */
-export function definitionDrillParams(engineId: string, definitionKey: string): string {
+/**
+ * One definition-version count inside one engine of one error group. `version` is optional
+ * because a versionless "all" chip (a non-`defKey:vN` triage key) has no version to scope to.
+ */
+export function definitionDrillParams(
+  engineId: string,
+  definitionKey: string,
+  version?: number,
+): string {
   return encodeSearch({
     engineIds: [engineId],
     statuses: FAILURE_STATUSES,
     processDefinitionKey: definitionKey,
+    definitionVersion: version,
     sortBy: 'failureTime',
   }).toString()
 }

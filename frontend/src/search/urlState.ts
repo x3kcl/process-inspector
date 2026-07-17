@@ -11,6 +11,7 @@ const KEYS = [
   'engines',
   'status',
   'definitionKey',
+  'version',
   'businessKey',
   'businessKeyLike',
   'startedAfter',
@@ -64,6 +65,9 @@ export function encodeSearch(request: SearchRequest): URLSearchParams {
   setList('engines', request.engineIds)
   setList('status', request.statuses)
   set('definitionKey', request.processDefinitionKey)
+  if (request.definitionVersion !== undefined) {
+    params.set('version', String(request.definitionVersion))
+  }
   set('businessKey', request.businessKey)
   set('businessKeyLike', request.businessKeyLike)
   set('startedAfter', request.startedAfter)
@@ -92,10 +96,16 @@ export function decodeSearch(params: URLSearchParams): SearchRequest | null {
       .filter((item) => item !== '')
   const pageSizeRaw = params.get('pageSize')
   const pageSize = pageSizeRaw === null ? undefined : Number.parseInt(pageSizeRaw, 10)
+  const versionRaw = params.get('version')
+  const version = versionRaw === null ? undefined : Number.parseInt(versionRaw, 10)
   return {
     engineIds: list('engines'),
     statuses: list('status')?.filter(isInstanceStatus),
     processDefinitionKey: get('definitionKey'),
+    // #233: kept even without definitionKey — the BFF rejects that combination loudly
+    // ("definitionVersion requires processDefinitionKey"); silently widening the scope
+    // by dropping the filter is exactly the wrong-target bug this codec key fixes.
+    definitionVersion: version !== undefined && Number.isFinite(version) ? version : undefined,
     businessKey: get('businessKey'),
     businessKeyLike: get('businessKeyLike'),
     startedAfter: get('startedAfter'),

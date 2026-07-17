@@ -33,9 +33,10 @@ interface Props {
 /**
  * One normalized-exception-signature group (the triage centerpiece, SPEC §4 Stage 0).
  * Every count — group total, per engine, per definition version — is its own scope-explicit
- * click target into a pre-filtered Stage 1 search (R-SEM-12). Zero-fill version counts
- * ("v46: 0" beside "v47: 312") stay visible but unlinked: a search cannot scope to a
- * version yet, and a link promising zero rows would lie.
+ * click target into a pre-filtered Stage 1 search (R-SEM-12), and a per-version count links
+ * to exactly that version's rows (#233). Zero-fill version counts ("v46: 0" beside
+ * "v47: 312") stay visible but unlinked: they're the regression SIGNAL, and a link into a
+ * deliberately empty grid helps nobody.
  */
 export function ErrorGroupCard({ group, enginesById, lowerBound, asOf }: Props) {
   const prefix = lowerBound ? '≥ ' : ''
@@ -282,7 +283,7 @@ function EngineRow({
           const renderVersion = (versionCount: VersionCount) => {
             const label = versionCount.version === '' ? 'all' : versionCount.version
             // Zero-filled versions are the regression signal — visible, never a link
-            // (the search cannot scope to a version, so the link would over-promise).
+            // (a drill into a knowingly empty grid is noise, not navigation).
             if (versionCount.count === 0) {
               return (
                 <span key={label} className="version-count version-zero">
@@ -295,10 +296,18 @@ function EngineRow({
               <span key={label} className="version-count-cell">
                 <Link
                   className="version-count"
-                  to={`/search?${definitionDrillParams(engineId, definition.definitionKey)}`}
+                  to={`/search?${definitionDrillParams(
+                    engineId,
+                    definition.definitionKey,
+                    version ?? undefined,
+                  )}`}
                   title={
-                    `Search FAILED + RETRYING · ${engineId} · ${definition.definitionKey} — ` +
-                    'version scope is shown in the grid (no version filter in /api/search yet)'
+                    // #233: the link carries the exact clicked scope — including the
+                    // version when the chip names one (a versionless "all" chip spans
+                    // every version, and says so).
+                    version !== null
+                      ? `Search FAILED + RETRYING · ${engineId} · ${definition.definitionKey} v${String(version)}`
+                      : `Search FAILED + RETRYING · ${engineId} · ${definition.definitionKey} — all versions`
                   }
                 >
                   {label}: {prefix}

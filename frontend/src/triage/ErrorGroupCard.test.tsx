@@ -70,6 +70,38 @@ describe('ErrorGroupCard staleness caveat on the headline count (#209)', () => {
   })
 })
 
+describe('ErrorGroupCard per-version drill link (#233)', () => {
+  it('the per-version count links to a search scoped to exactly that version', () => {
+    renderCard({
+      ...group,
+      countsByEngine: {
+        'engine-a': { 'payment:v42': 35 },
+      },
+    })
+    const link = screen.getByRole('link', { name: /v42:\s*35/ })
+    const href = link.getAttribute('href') ?? ''
+    const params = new URLSearchParams(href.split('?')[1] ?? '')
+    expect(params.get('definitionKey')).toBe('payment')
+    expect(params.get('version')).toBe('42')
+    expect(link.getAttribute('title')).toContain('payment v42')
+  })
+
+  it('a versionless "all" chip links without a version filter and says so', () => {
+    renderCard({
+      ...group,
+      countsByEngine: {
+        'engine-a': { payment: 4 },
+      },
+    })
+    const link = screen.getByRole('link', { name: /all:\s*4/ })
+    const href = link.getAttribute('href') ?? ''
+    const params = new URLSearchParams(href.split('?')[1] ?? '')
+    expect(params.get('definitionKey')).toBe('payment')
+    expect(params.has('version')).toBe(false)
+    expect(link.getAttribute('title')).toContain('all versions')
+  })
+})
+
 describe('ErrorGroupCard whole-class retry (#105 remainder)', () => {
   it('offers "Retry group (all versions)" only when more than one version is deployed', () => {
     renderCard({
