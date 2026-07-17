@@ -154,11 +154,16 @@ export function publishError(e: unknown): string {
 /**
  * True when the error body carries an operator-facing ProblemDetail sentence — i.e.
  * ApiError.message holds the server's own `detail`, not a bare "HTTP 403" placeholder.
- * Mirrors ApiError.sentence()'s check (client.ts) but deliberately ignores `title`:
- * a framework-level body with only a title ("Forbidden") is no better than our fallback.
+ * Mirrors ApiError.sentence()'s check (client.ts) but is stricter on purpose: it ignores
+ * `title` (a framework-level "Forbidden" is no better than our fallback) and rejects a
+ * blank detail (which would render an empty — or suffix-only — alert).
  */
-function hasProblemDetail(body: unknown): boolean {
+function hasProblemDetail(body: unknown): body is { detail: string } {
   return (
-    body !== null && typeof body === 'object' && 'detail' in body && typeof body.detail === 'string'
+    body !== null &&
+    typeof body === 'object' &&
+    'detail' in body &&
+    typeof body.detail === 'string' &&
+    body.detail.trim() !== ''
   )
 }
