@@ -11,6 +11,7 @@ import type {
 } from 'ag-grid-community'
 import type { EngineDto, ProcessInstanceRow, SearchResponse } from '../api/model'
 import { useHiddenColumns } from '../lib/columnVisibility'
+import { uncoveredClause, uncoveredEngines } from '../lib/coverage'
 import { formatCount } from '../lib/format'
 import { Ts } from '../lib/Ts'
 import { summarizePartials, zeroState } from '../search/partials'
@@ -299,10 +300,18 @@ export function ResultsGrid({
         </div>
       )
     }
+    // #236: "confirmed zero across N engines" must name — in the same sentence — the
+    // registered engines the search never covered (non-active lifecycle, or outside the
+    // selected engine scope), or the zero reads exhaustive when it is not.
+    const uncovered = uncoveredEngines(
+      [...enginesById.values()],
+      Object.keys(response.perEngine ?? {}),
+    )
     return (
       <div className="zero-state">
         No matching instances — confirmed zero across {formatCount(summary.totalEngines)} engine
-        {summary.totalEngines === 1 ? '' : 's'}.
+        {summary.totalEngines === 1 ? '' : 's'}
+        {uncoveredClause(uncovered, 'searched')}.
       </div>
     )
   }

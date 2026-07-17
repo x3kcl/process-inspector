@@ -1,5 +1,7 @@
 import { useMemo, useState } from 'react'
 import type { EngineDto } from '../api/model'
+import { useEngines } from '../api/useEngines'
+import { uncoveredClause, uncoveredEngines } from '../lib/coverage'
 import { formatCount } from '../lib/format'
 import { Ts } from '../lib/Ts'
 import { glossTechnicalMessage } from '../lib/plainFailure'
@@ -8,7 +10,12 @@ import { CmmnScopeDrawer } from './CmmnScopeDrawer'
 import { ErrorGroupSections } from './ErrorGroupSections'
 import { LeakViewsSection } from './LeakViewsSection'
 import { StatusCounts } from './StatusCounts'
-import { deriveHonesty, groupCountsAreLowerBound, statusCountsAreLowerBound } from './honesty'
+import {
+  coveredEngineIds,
+  deriveHonesty,
+  groupCountsAreLowerBound,
+  statusCountsAreLowerBound,
+} from './honesty'
 import { useTriage, useTriageTrends } from './useTriage'
 
 /**
@@ -30,6 +37,13 @@ export function TriagePage() {
   }, [data?.engines])
 
   const honesty = useMemo(() => deriveHonesty(data?.perEngine), [data?.perEngine])
+  // #236: the registry DISPLAY list (includes non-active engines the aggregation never
+  // fans out over) — so the zero state can name what "every reachable engine" excludes.
+  const registeredEngines = useEngines().data
+  const uncovered = useMemo(
+    () => uncoveredEngines(registeredEngines, coveredEngineIds(data?.perEngine)),
+    [registeredEngines, data?.perEngine],
+  )
   const [scopeDrillEngine, setScopeDrillEngine] = useState<string | null>(null)
 
   if (triage.isPending) {
@@ -145,8 +159,10 @@ export function TriagePage() {
         </h2>
         {groups.length === 0 ? (
           <div className="zero-state">
+            {/* #236: the excluded engines are named in the SAME sentence — "every reachable
+                engine" alone hides that more registered engines sat out of this check. */}
             No failure groups — the dead-letter and retrying lanes are clean on every reachable
-            engine.
+            engine{uncoveredClause(uncovered, 'checked')}.
           </div>
         ) : (
           <ErrorGroupSections
