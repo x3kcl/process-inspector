@@ -854,11 +854,28 @@ button.primary:disabled {
   padding: 10px;
   border-top: 1px solid var(--color-border);
 }
-.load-more-seam,
-.load-more-depthwall {
+.load-more-seam {
   margin: 0;
   font-size: 12px;
   color: #6b7280;
+}
+/* #245: the depth wall is the one load-more message the user must ACT on to keep paging —
+   warning-toned box (the .rail-hint/.snapshot-stale language), never the muted seam/staleness
+   gray it sits beside. Border + weight carry the emphasis too, never hue alone (§10a). */
+.load-more-depthwall {
+  margin: 0;
+  font-size: 12px;
+  font-weight: 600;
+  color: var(--color-warning-text);
+  background: var(--color-warning-bg);
+  border: 1px solid var(--color-warning-border);
+  border-radius: 4px;
+  padding: 4px 8px;
+}
+/* The seam CTA inherits the warning ink (underline still marks it) — the global .linklike
+   blue has no contrast on the dark-theme warning tint. */
+.load-more-depthwall .linklike {
+  color: inherit;
 }
 .load-more button {
   border: 1px solid #b0bac6;
