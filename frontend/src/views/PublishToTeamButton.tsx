@@ -130,7 +130,14 @@ export function publishError(e: unknown): string {
   if (e instanceof ApiError) {
     switch (e.status) {
       case 403:
-        return 'You don’t have permission to publish this scope — publishing a wildcard scope needs ADMIN.'
+        // #234: the BFF's canPublish() refusal is genuinely scope-aware — its ProblemDetail
+        // `detail` states the REAL reason (OPERATOR floor for a plain scope, ADMIN only for a
+        // true wildcard). Surface it verbatim: ApiError.message already IS that detail plus
+        // the quotable request-id line (the one error contract, client.ts), the same way
+        // LifecycleModal/EngineFormModal render governed refusals. A hardcoded wildcard/ADMIN
+        // sentence here was factually wrong for every non-wildcard rejection.
+        if (hasProblemDetail(e.body)) return e.message
+        return 'You don’t have permission to publish this scope.'
       case 409:
         return 'Team canon with this name already exists in this scope. Pick another name or ask a scope admin.'
       case 400:
@@ -142,4 +149,16 @@ export function publishError(e: unknown): string {
     }
   }
   return 'Couldn’t publish this view to the team. Please try again.'
+}
+
+/**
+ * True when the error body carries an operator-facing ProblemDetail sentence — i.e.
+ * ApiError.message holds the server's own `detail`, not a bare "HTTP 403" placeholder.
+ * Mirrors ApiError.sentence()'s check (client.ts) but deliberately ignores `title`:
+ * a framework-level body with only a title ("Forbidden") is no better than our fallback.
+ */
+function hasProblemDetail(body: unknown): boolean {
+  return (
+    body !== null && typeof body === 'object' && 'detail' in body && typeof body.detail === 'string'
+  )
 }
