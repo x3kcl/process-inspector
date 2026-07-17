@@ -1,9 +1,14 @@
+// @vitest-environment jsdom
 // #118 item 3: the date/time filter split (two single-segment inputs, not one
 // datetime-local — see SearchRail.tsx's DateTimeFilterField doc comment) needs its
 // split/join round-trip proven, since a wrong combine would silently corrupt the search
 // filter's time bounds.
-import { describe, expect, it } from 'vitest'
-import { localToIso, splitLocal } from './SearchRail'
+import { QueryClient, QueryClientProvider } from '@tanstack/react-query'
+import { cleanup, fireEvent, render, screen } from '@testing-library/react'
+import { createElement } from 'react'
+import { afterEach, describe, expect, it, vi } from 'vitest'
+import type { SearchRequest } from '../api/model'
+import { localToIso, SearchRail, splitLocal } from './SearchRail'
 
 describe('splitLocal', () => {
   it('splits an ISO instant into separate date and time strings', () => {
@@ -42,5 +47,76 @@ describe('localToIso', () => {
 
   it('is undefined for a malformed date/time combination', () => {
     expect(localToIso({ date: 'not-a-date', time: '09:00' })).toBeUndefined()
+  })
+})
+
+// #233: the rail is the URL's editor — a drill-link's version scope must survive a form
+// re-submit (silently dropping it would reopen the wrong-target bug the drill fix closed).
+describe('SearchRail definition-version round-trip (#233)', () => {
+  afterEach(cleanup)
+
+  function renderRail(initial: SearchRequest, onSubmit: (request: SearchRequest) => void) {
+    const client = new QueryClient({
+      defaultOptions: { queries: { retry: false, enabled: false } },
+    })
+    render(
+      createElement(
+        QueryClientProvider,
+        { client },
+        createElement(SearchRail, {
+          engines: [],
+          initial,
+          currentSearch: null,
+          response: undefined,
+          busy: false,
+          collapsed: false,
+          onToggle: () => undefined,
+          onSubmit,
+        }),
+      ),
+    )
+  }
+
+  it('re-submitting the form keeps the version filter from the URL', () => {
+    const onSubmit = vi.fn()
+    renderRail(
+      { processDefinitionKey: 'payment', definitionVersion: 42, statuses: ['FAILED'] },
+      onSubmit,
+    )
+    fireEvent.click(screen.getByRole('button', { name: /^Search/ }))
+    expect(onSubmit).toHaveBeenCalledTimes(1)
+    const submitted = onSubmit.mock.calls[0]?.[0] as SearchRequest
+    expect(submitted.processDefinitionKey).toBe('payment')
+    expect(submitted.definitionVersion).toBe(42)
+  })
+
+  it('a non-integer typed version blocks the submit at the input (native step validation)', () => {
+    const onSubmit = vi.fn()
+    renderRail({ processDefinitionKey: 'payment' }, onSubmit)
+    fireEvent.change(screen.getByLabelText('Definition version'), { target: { value: '42.9' } })
+    fireEvent.click(screen.getByRole('button', { name: /^Search/ }))
+    // step=1 makes 42.9 a stepMismatch — constraint validation stops the form.
+    expect(onSubmit).not.toHaveBeenCalled()
+  })
+
+  it('a scientific-notation version submits as its exact integer, never a parseInt mangle', () => {
+    const onSubmit = vi.fn()
+    renderRail({ processDefinitionKey: 'payment' }, onSubmit)
+    // "4e2" passes the number input's own validation because it IS 400; parseInt would
+    // have silently read it as v4, and dropping it would silently widen the scope.
+    fireEvent.change(screen.getByLabelText('Definition version'), { target: { value: '4e2' } })
+    fireEvent.click(screen.getByRole('button', { name: /^Search/ }))
+    expect(onSubmit).toHaveBeenCalledTimes(1)
+    const submitted = onSubmit.mock.calls[0]?.[0] as SearchRequest
+    expect(submitted.definitionVersion).toBe(400)
+  })
+
+  it('clearing the version field submits without a version filter', () => {
+    const onSubmit = vi.fn()
+    renderRail({ processDefinitionKey: 'payment', definitionVersion: 42 }, onSubmit)
+    fireEvent.change(screen.getByLabelText('Definition version'), { target: { value: '' } })
+    fireEvent.click(screen.getByRole('button', { name: /^Search/ }))
+    const submitted = onSubmit.mock.calls[0]?.[0] as SearchRequest
+    expect(submitted.definitionVersion).toBeUndefined()
   })
 })

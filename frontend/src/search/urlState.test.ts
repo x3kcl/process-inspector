@@ -14,6 +14,7 @@ describe('search URL codec', () => {
       engineIds: ['engine-a', 'engine-b'],
       statuses: ['FAILED', 'RETRYING'],
       processDefinitionKey: 'orderFulfilment',
+      definitionVersion: 42,
       businessKey: 'ORD-4711',
       businessKeyLike: 'ORD-',
       startedAfter: '2026-07-01T00:00:00Z',
@@ -75,6 +76,45 @@ describe('search URL codec', () => {
   it('ignores a non-numeric pageSize', () => {
     const decoded = decodeSearch(new URLSearchParams('status=ACTIVE&pageSize=lots'))
     expect(decoded?.pageSize).toBeUndefined()
+  })
+
+  it('round-trips the definition version (#233 per-version drill)', () => {
+    const request: SearchRequest = {
+      statuses: ['FAILED'],
+      processDefinitionKey: 'orderFulfilment',
+      definitionVersion: 7,
+    }
+    const decoded = decodeSearch(new URLSearchParams(`?${encodeSearch(request).toString()}`))
+    expect(decoded?.definitionVersion).toBe(7)
+    // A version param alone counts as a search — the BFF then rejects it loudly
+    // (definitionVersion requires processDefinitionKey) instead of the codec silently
+    // widening the scope by dropping it.
+    expect(hasSearch(new URLSearchParams('version=7'))).toBe(true)
+  })
+
+  it('ignores a non-numeric version instead of sending NaN to the BFF', () => {
+    const decoded = decodeSearch(new URLSearchParams('definitionKey=order&version=latest'))
+    expect(decoded?.definitionVersion).toBeUndefined()
+  })
+
+  it('drops partially-numeric versions instead of silently reinterpreting them', () => {
+    // parseInt would turn these into v42 — a wrong-target of its own (#233 review).
+    for (const garbage of ['42xyz', '42.9', '-42', '0', 'latest', ' ']) {
+      const decoded = decodeSearch(new URLSearchParams(`definitionKey=order&version=${garbage}`))
+      expect(decoded?.definitionVersion, `version=${garbage}`).toBeUndefined()
+    }
+  })
+
+  it('honors an exact-integer scientific spelling instead of dropping it', () => {
+    // "4e2" IS 400 — dropping a value the user meant would silently widen the scope,
+    // and parseInt would have silently read it as v4.
+    const decoded = decodeSearch(new URLSearchParams('definitionKey=order&version=4e2'))
+    expect(decoded?.definitionVersion).toBe(400)
+  })
+
+  it('omits the version param entirely when the request carries none', () => {
+    const params = encodeSearch({ statuses: ['FAILED'], processDefinitionKey: 'order' })
+    expect(params.has('version')).toBe(false)
   })
 })
 

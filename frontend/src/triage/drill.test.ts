@@ -44,6 +44,22 @@ describe('drill params round-trip through the M2b URL codec', () => {
     expect(request?.sortBy).toBe('failureTime')
   })
 
+  it('per-version drill carries the clicked version — never a silently wider scope (#233)', () => {
+    const request = decodeSearch(
+      new URLSearchParams(definitionDrillParams('engine-a', 'orderFulfilment', 42)),
+    )
+    expect(request?.processDefinitionKey).toBe('orderFulfilment')
+    expect(request?.definitionVersion).toBe(42)
+    expect(request?.statuses).toEqual(['FAILED', 'RETRYING'])
+  })
+
+  it('versionless "all" chip drill omits the version filter', () => {
+    const request = decodeSearch(
+      new URLSearchParams(definitionDrillParams('engine-a', 'orderFulfilment')),
+    )
+    expect(request?.definitionVersion).toBeUndefined()
+  })
+
   it('engine drill carries engine + failure lanes only', () => {
     const request = decodeSearch(new URLSearchParams(engineDrillParams('engine-b')))
     expect(request?.engineIds).toEqual(['engine-b'])

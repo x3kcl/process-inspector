@@ -4,6 +4,7 @@ import type { EngineDto, InstanceStatus, SearchRequest, SearchResponse } from '.
 import { ALL_STATUSES } from '../api/model'
 import { isInactiveLifecycle, lifecycleGloss } from '../lib/enginePolicy'
 import { formatCount } from '../lib/format'
+import { parseDefinitionVersion } from '../search/urlState'
 import { SaveViewControl } from '../views/SaveViewControl'
 import { CopyButton } from './CopyButton'
 
@@ -94,6 +95,12 @@ function RailForm({
   const [engineIds, setEngineIds] = useState<string[]>(initial?.engineIds ?? [])
   const [statuses, setStatuses] = useState<InstanceStatus[]>(initial?.statuses ?? [])
   const [definitionKey, setDefinitionKey] = useState(initial?.processDefinitionKey ?? '')
+  // #233: the version filter must round-trip through the form like every other field —
+  // a drill-link's version scope silently vanishing on the next rail submit would be the
+  // same wrong-target bug the drill fix closed.
+  const [definitionVersion, setDefinitionVersion] = useState(
+    initial?.definitionVersion !== undefined ? String(initial.definitionVersion) : '',
+  )
   const [businessKey, setBusinessKey] = useState(initial?.businessKey ?? '')
   const [businessKeyLike, setBusinessKeyLike] = useState(initial?.businessKeyLike ?? '')
   const [startedAfter, setStartedAfter] = useState(() => splitLocal(initial?.startedAfter))
@@ -121,6 +128,8 @@ function RailForm({
       engineIds: engineIds.length > 0 ? engineIds : undefined,
       statuses: statuses.length > 0 ? statuses : undefined,
       processDefinitionKey: definitionKey || undefined,
+      // Strict parse (#233 review): "42.9"/"42xyz" must never silently become v42.
+      definitionVersion: parseDefinitionVersion(definitionVersion),
       businessKey: businessKey || undefined,
       businessKeyLike: businessKeyLike || undefined,
       startedAfter: localToIso(startedAfter),
@@ -216,6 +225,20 @@ function RailForm({
               setDefinitionKey(e.target.value)
             }}
             placeholder="orderFulfilment"
+          />
+        </label>
+        <label>
+          Definition version
+          <input
+            type="number"
+            min={1}
+            step={1}
+            value={definitionVersion}
+            onChange={(e) => {
+              setDefinitionVersion(e.target.value)
+            }}
+            placeholder="42"
+            title="Scope to one deployed version of the definition key above (requires a definition key)"
           />
         </label>
         <label>
