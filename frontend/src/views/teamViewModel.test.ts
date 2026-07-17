@@ -83,7 +83,14 @@ describe('teamViewModel', () => {
   })
 
   it('falls back to generic [what] copy when the 403 body is missing or malformed (#234)', () => {
-    for (const body of [{}, null, 'nope', { detail: 7 }, { detail: '  ' }, { title: 'Forbidden' }]) {
+    for (const body of [
+      {},
+      null,
+      'nope',
+      { detail: 7 },
+      { detail: '  ' },
+      { title: 'Forbidden' },
+    ]) {
       const message = publishError(new ApiError(403, body))
       expect(message).toContain('permission')
       // Never claim a wildcard/ADMIN reason we cannot know.
