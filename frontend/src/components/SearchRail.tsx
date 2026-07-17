@@ -4,7 +4,7 @@ import type { EngineDto, InstanceStatus, SearchRequest, SearchResponse } from '.
 import { ALL_STATUSES } from '../api/model'
 import { isInactiveLifecycle, lifecycleGloss } from '../lib/enginePolicy'
 import { formatCount } from '../lib/format'
-import { parseDefinitionVersion } from '../search/urlState'
+import { encodeSearch, hasSearch, parseDefinitionVersion } from '../search/urlState'
 import { SaveViewControl } from '../views/SaveViewControl'
 import { CopyButton } from './CopyButton'
 
@@ -20,6 +20,15 @@ interface Props {
   onToggle: () => void
   onSubmit: (request: SearchRequest) => void
 }
+
+// #246: an all-blank submit would encode an empty URL, decode back to null and fire no
+// request at all — indistinguishable on screen from the pre-search zero state. The button
+// is disabled-with-reason instead (same doctrine as the results-pane Refresh button and
+// the greyed inactive-engine rows): short visible line + long title (SPEC §10a A-copy).
+export const BLANK_SEARCH_HINT = 'Every filter is blank — set at least one to enable Search.'
+/** The LONG explanation (title) behind the disabled Search button (SPEC A-copy). */
+export const BLANK_SEARCH_TITLE =
+  'Search is disabled: every filter is blank, so there is nothing to search for and no request would be sent — set at least one filter above (engine, status, definition, time window, error text or variable) to enable it'
 
 const STATUS_LABELS: Record<InstanceStatus, string> = {
   ACTIVE: 'Active',
@@ -121,10 +130,9 @@ function RailForm({
   const toggle = <T,>(list: T[], item: T): T[] =>
     list.includes(item) ? list.filter((x) => x !== item) : [...list, item]
 
-  const submit = (event: FormEvent) => {
-    event.preventDefault()
+  const buildRequest = (): SearchRequest => {
     const usedVariables = variables.filter((v) => v.name !== '')
-    onSubmit({
+    return {
       engineIds: engineIds.length > 0 ? engineIds : undefined,
       statuses: statuses.length > 0 ? statuses : undefined,
       processDefinitionKey: definitionKey || undefined,
@@ -143,7 +151,22 @@ function RailForm({
         usedVariables.length > 0
           ? usedVariables.map((v) => ({ name: v.name, operation: v.operation, value: v.value }))
           : undefined,
-    })
+    }
+  }
+
+  // #246: "blank" is defined by the SAME codec that decides whether a search fires —
+  // a request that encodes to zero owned params is exactly one that would never run
+  // (hasSearch() is false, useSearchResults stays disabled). Note this deliberately
+  // tracks the ENCODED form: a lone non-default sort or engine tick DOES fire a search
+  // today, so it keeps the button live.
+  const blank = !hasSearch(encodeSearch(buildRequest()))
+
+  const submit = (event: FormEvent) => {
+    event.preventDefault()
+    // Guard the handler too: programmatic/implicit submission (form.requestSubmit,
+    // dispatched submit events) does not consult the button's disabled state.
+    if (blank) return
+    onSubmit(buildRequest())
   }
 
   // §8 facets: counts only for statuses the executed plan could observe; any count under
@@ -373,7 +396,18 @@ function RailForm({
         </label>
       </fieldset>
 
-      <button type="submit" className="primary" disabled={busy}>
+      {blank && (
+        <p id="blank-search-hint" className="rail-hint" title={BLANK_SEARCH_TITLE}>
+          {BLANK_SEARCH_HINT}
+        </p>
+      )}
+      <button
+        type="submit"
+        className="primary"
+        disabled={busy || blank}
+        title={blank ? BLANK_SEARCH_TITLE : undefined}
+        aria-describedby={blank ? 'blank-search-hint' : undefined}
+      >
         {busy ? 'Searching…' : 'Search'}
       </button>
     </form>

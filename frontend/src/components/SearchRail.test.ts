@@ -8,7 +8,13 @@ import { cleanup, fireEvent, render, screen } from '@testing-library/react'
 import { createElement } from 'react'
 import { afterEach, describe, expect, it, vi } from 'vitest'
 import type { SearchRequest } from '../api/model'
-import { localToIso, SearchRail, splitLocal } from './SearchRail'
+import {
+  BLANK_SEARCH_HINT,
+  BLANK_SEARCH_TITLE,
+  localToIso,
+  SearchRail,
+  splitLocal,
+} from './SearchRail'
 
 describe('splitLocal', () => {
   it('splits an ISO instant into separate date and time strings', () => {
@@ -50,33 +56,33 @@ describe('localToIso', () => {
   })
 })
 
+afterEach(cleanup)
+
+function renderRail(initial: SearchRequest | null, onSubmit: (request: SearchRequest) => void) {
+  const client = new QueryClient({
+    defaultOptions: { queries: { retry: false, enabled: false } },
+  })
+  return render(
+    createElement(
+      QueryClientProvider,
+      { client },
+      createElement(SearchRail, {
+        engines: [],
+        initial,
+        currentSearch: null,
+        response: undefined,
+        busy: false,
+        collapsed: false,
+        onToggle: () => undefined,
+        onSubmit,
+      }),
+    ),
+  )
+}
+
 // #233: the rail is the URL's editor — a drill-link's version scope must survive a form
 // re-submit (silently dropping it would reopen the wrong-target bug the drill fix closed).
 describe('SearchRail definition-version round-trip (#233)', () => {
-  afterEach(cleanup)
-
-  function renderRail(initial: SearchRequest, onSubmit: (request: SearchRequest) => void) {
-    const client = new QueryClient({
-      defaultOptions: { queries: { retry: false, enabled: false } },
-    })
-    render(
-      createElement(
-        QueryClientProvider,
-        { client },
-        createElement(SearchRail, {
-          engines: [],
-          initial,
-          currentSearch: null,
-          response: undefined,
-          busy: false,
-          collapsed: false,
-          onToggle: () => undefined,
-          onSubmit,
-        }),
-      ),
-    )
-  }
-
   it('re-submitting the form keeps the version filter from the URL', () => {
     const onSubmit = vi.fn()
     renderRail(
@@ -118,5 +124,65 @@ describe('SearchRail definition-version round-trip (#233)', () => {
     fireEvent.click(screen.getByRole('button', { name: /^Search/ }))
     const submitted = onSubmit.mock.calls[0]?.[0] as SearchRequest
     expect(submitted.definitionVersion).toBeUndefined()
+  })
+})
+
+// #246: an all-blank submit fires no request by design (empty encode → decodeSearch null →
+// query disabled) — so the button must be disabled-with-reason, never a silent dead click.
+describe('SearchRail blank-filter guard (#246)', () => {
+  it('disables Search with the reason (title + visible hint) when every filter is blank', () => {
+    const onSubmit = vi.fn()
+    renderRail(null, onSubmit)
+    const button = screen.getByRole('button', { name: 'Search' })
+    expect(button).toHaveProperty('disabled', true)
+    expect(button.getAttribute('title')).toBe(BLANK_SEARCH_TITLE)
+    expect(button.getAttribute('aria-describedby')).toBe('blank-search-hint')
+    expect(screen.getByText(BLANK_SEARCH_HINT)).toBeTruthy()
+  })
+
+  it('a programmatic submit of the blank form never reaches onSubmit (handler guard)', () => {
+    const onSubmit = vi.fn()
+    const { container } = renderRail(null, onSubmit)
+    const form = container.querySelector('form')
+    expect(form).not.toBeNull()
+    if (form !== null) fireEvent.submit(form)
+    expect(onSubmit).not.toHaveBeenCalled()
+  })
+
+  it('typing any single filter enables the button, and submitting then works', () => {
+    const onSubmit = vi.fn()
+    renderRail(null, onSubmit)
+    fireEvent.change(screen.getByLabelText('Definition key'), { target: { value: 'payment' } })
+    const button = screen.getByRole('button', { name: 'Search' })
+    expect(button).toHaveProperty('disabled', false)
+    expect(button.getAttribute('title')).toBeNull()
+    expect(screen.queryByText(BLANK_SEARCH_HINT)).toBeNull()
+    fireEvent.click(button)
+    expect(onSubmit).toHaveBeenCalledTimes(1)
+    const submitted = onSubmit.mock.calls[0]?.[0] as SearchRequest
+    expect(submitted.processDefinitionKey).toBe('payment')
+  })
+
+  it('a status tick alone counts as a filter', () => {
+    const onSubmit = vi.fn()
+    renderRail(null, onSubmit)
+    fireEvent.click(screen.getByLabelText(/^Active/))
+    expect(screen.getByRole('button', { name: 'Search' })).toHaveProperty('disabled', false)
+  })
+
+  it('clearing the only filter re-disables the button', () => {
+    const onSubmit = vi.fn()
+    renderRail({ errorText: 'SocketTimeout' }, onSubmit)
+    expect(screen.getByRole('button', { name: 'Search' })).toHaveProperty('disabled', false)
+    fireEvent.change(screen.getByLabelText('Error text'), { target: { value: '' } })
+    expect(screen.getByRole('button', { name: 'Search' })).toHaveProperty('disabled', true)
+  })
+
+  it('a non-default sort alone keeps the button live — it fires a real search today', () => {
+    // Blankness is defined by the URL codec (hasSearch over the encoded request), not an
+    // ad-hoc field list: sortBy=failureTime alone encodes a param and DOES run a search.
+    const onSubmit = vi.fn()
+    renderRail({ sortBy: 'failureTime' }, onSubmit)
+    expect(screen.getByRole('button', { name: 'Search' })).toHaveProperty('disabled', false)
   })
 })
