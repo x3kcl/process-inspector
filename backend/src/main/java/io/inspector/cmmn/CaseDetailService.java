@@ -309,7 +309,7 @@ public class CaseDetailService {
     /* ============================ helpers ============================ */
 
     private EngineConfig requireGatedEngine(String engineId) {
-        EngineConfig engine = registry.require(engineId);
+        EngineConfig engine = registry.resolveOrNotFound(engineId);
         CmmnCapabilities.requireScopeType(registry, engine);
         return engine;
     }

@@ -60,7 +60,7 @@ public class CmmnScopeService {
         // The enumeration re-requires the engine and re-runs the 6.8+ gate — the single source of
         // truth for both, so a pre-6.8 engine is refused here too before any lane query leaves.
         OutOfScopeDeadLetters deadletters = outOfScopeDeadLetters(engineId);
-        EngineConfig engine = registry.require(engineId);
+        EngineConfig engine = registry.resolveOrNotFound(engineId);
 
         Map<String, String> filters = new LinkedHashMap<>();
         if (engine.tenantId() != null && !engine.tenantId().isBlank()) {
@@ -94,7 +94,7 @@ public class CmmnScopeService {
 
     /** The enumerated out-of-scope (CMMN) dead-letter jobs on one engine. */
     public OutOfScopeDeadLetters outOfScopeDeadLetters(String engineId) {
-        EngineConfig engine = registry.require(engineId);
+        EngineConfig engine = registry.resolveOrNotFound(engineId);
         CmmnCapabilities.requireScopeType(registry, engine);
 
         Map<String, String> filters = new LinkedHashMap<>();

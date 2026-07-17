@@ -54,7 +54,7 @@ public class SiblingDiffService {
     /* ================= resolver: nearest completed sibling ================= */
 
     public NearestSiblingResponse nearestSibling(String engineId, String instanceId) {
-        EngineConfig engine = registry.require(engineId);
+        EngineConfig engine = registry.resolveOrNotFound(engineId);
         Map<String, Object> historic = detail.requireHistoric(engine, instanceId);
         String definitionId = str(historic, "processDefinitionId");
         String defKey = definitionKeyOf(definitionId);
@@ -90,7 +90,7 @@ public class SiblingDiffService {
     /* ================= resolver: the three-way diff ================= */
 
     public SiblingDiffResponse diff(String engineId, String subjectId, String siblingId) {
-        EngineConfig engine = registry.require(engineId);
+        EngineConfig engine = registry.resolveOrNotFound(engineId);
         Map<String, Object> subjectHistoric = detail.requireHistoric(engine, subjectId);
         Map<String, Object> siblingHistoric = detail.requireHistoric(engine, siblingId);
 
