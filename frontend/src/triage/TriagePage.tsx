@@ -148,6 +148,7 @@ export function TriagePage() {
         counts={data?.statusCounts}
         lowerBound={statusCountsAreLowerBound(honesty)}
         trends={trends}
+        asOf={data?.asOf}
       />
 
       <section className="error-groups" aria-label="Failures by error class">

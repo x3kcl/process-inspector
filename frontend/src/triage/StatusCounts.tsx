@@ -2,6 +2,7 @@ import { Link } from 'react-router'
 import type { InstanceStatus, TriageTrendResponse } from '../api/model'
 import { ALL_STATUSES, isInstanceStatus } from '../api/model'
 import { formatCount } from '../lib/format'
+import { Ts } from '../lib/Ts'
 import { statusDrillParams } from './drill'
 import { LaneSparkline } from './LaneSparkline'
 
@@ -11,13 +12,15 @@ interface Props {
   lowerBound: boolean
   /** v2/M4 snapshot trends (R-BAU-08); undefined while loading or if the store is unavailable. */
   trends?: TriageTrendResponse
+  /** The Stage 0 aggregation stamp — these tiles are that cached snapshot, not live (#244). */
+  asOf?: string
 }
 
 /**
  * Stage 0 global status counts (query totals, never row fetches — computed server-side).
  * Each tile drills through to a pre-filtered Stage 1 search on that status (R-SEM-12).
  */
-export function StatusCounts({ counts, lowerBound, trends }: Props) {
+export function StatusCounts({ counts, lowerBound, trends, asOf }: Props) {
   if (counts === undefined) return null
   const known = ALL_STATUSES.filter((status) => status in counts)
   // Statuses the server may add later still render — just without a canonical slot.
@@ -41,6 +44,19 @@ export function StatusCounts({ counts, lowerBound, trends }: Props) {
           <Count value={counts[status] ?? 0} lowerBound={lowerBound} />
         </span>
       ))}
+      {/* #244: same labeling doctrine as the error-group totals (#209) — these tiles are a
+          CACHED aggregation snapshot, while clicking one runs a LIVE Stage 1 search, so the
+          two can disagree. One visible section-level stamp (not one per tile — the tiles
+          share a single aggregation), gated on a non-empty stamp like group-total-asof. */}
+      {asOf !== undefined && asOf !== '' && (
+        <span
+          className="status-summary-asof"
+          role="note"
+          title="server-side aggregation stamp (BFF caches ~20s); each tile opens a live search that can disagree with these counts by however much changed since then"
+        >
+          as of <Ts iso={asOf} relative />
+        </span>
+      )}
     </section>
   )
 }

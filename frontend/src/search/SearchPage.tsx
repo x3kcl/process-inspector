@@ -10,12 +10,13 @@ import { ColumnChooser } from '../components/ColumnChooser'
 import { PartialResultsBanner } from '../components/PartialResultsBanner'
 import { ResultsGrid } from '../components/ResultsGrid'
 import { SearchRail } from '../components/SearchRail'
-import { formatClock, formatCount, useDisplayZone } from '../lib/format'
+import { formatClock, useDisplayZone } from '../lib/format'
 import { useHiddenColumns } from '../lib/columnVisibility'
 import { RecentSearchList } from '../views/RecentSearchList'
 import { useLayoutSuggestion } from '../views/useLayoutSuggestion'
 import { ViewChips } from '../views/ViewChips'
 import { useRecordRecentSearch } from '../views/useViewStores'
+import { GRID_COUNT_PARTIAL_HINT, gridCountIsPartial, gridCountLabel } from './gridCount'
 import { summarizePartials } from './partials'
 import { resultsMayBeStale, useLastMutationSettledAt } from './staleness'
 import { encodeHiddenColumns } from './urlState'
@@ -171,11 +172,31 @@ export function SearchPage() {
         )}
         <div className="results-toolbar">
           <span className="snapshot">
-            {results.data !== undefined
-              ? `${formatCount((results.data.rows ?? []).length)} instances · as of ${formatClock(results.dataUpdatedAt)}`
-              : request !== null
-                ? 'Searching…'
-                : 'No search yet'}
+            {results.data !== undefined ? (
+              <>
+                {/* #244: this number is rows.length — a capped prefix once more pages exist
+                    (deep-paging cursor or depth wall) — so it says "loaded so far" then, and
+                    stays a bare exact count when the set is complete. */}
+                <span
+                  title={
+                    gridCountIsPartial(results.hasNextPage, results.data.depthCapped)
+                      ? GRID_COUNT_PARTIAL_HINT
+                      : undefined
+                  }
+                >
+                  {gridCountLabel(
+                    (results.data.rows ?? []).length,
+                    results.hasNextPage,
+                    results.data.depthCapped,
+                  )}
+                </span>
+                {` · as of ${formatClock(results.dataUpdatedAt)}`}
+              </>
+            ) : request !== null ? (
+              'Searching…'
+            ) : (
+              'No search yet'
+            )}
             {staleAfterMutation && (
               <span
                 className="snapshot-stale"

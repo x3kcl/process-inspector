@@ -103,8 +103,12 @@ export function BulkBar({
     matchTotal !== undefined
       ? `Select all ${approx} matching filter…`
       : 'Select all matching filter…'
+  // #244: the second sentence is the cross-count reconciliation — ~N is each engine's
+  // FULL reported match total, while the grid only fetches capped pages, so ~N can
+  // legitimately exceed the row count shown above. Without saying so, the two read as
+  // the same measurement disagreeing.
   const scopeCountHint =
-    '~ = the count when this page loaded. The real list is re-checked at run time.'
+    '~ = the engine-reported match total when this page loaded. It counts every match — not just the rows the grid has fetched (grid pages are capped) — so it can differ from the grid count. The real list is re-checked at run time.'
 
   if (filterScope && criteria !== null) {
     const filterEngineIds = enginesInScope(criteria, engines).map((engine) => engine.id ?? '')
