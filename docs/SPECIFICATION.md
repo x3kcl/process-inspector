@@ -1,6 +1,6 @@
 # 📄 SPECIFICATION — Flowable Multi-Instance Process Inspector
 
-Status: **v3.5** · Owner: workflow platform team ·
+Status: **v3.6** · Owner: workflow platform team ·
 Inspired by IBM BAW Process Inspector; refined against Camunda Operate/Cockpit, Temporal,
 Flowable Control, Conductor/Orkes, Airflow and Step Functions, and a four-seat design review
 (workflow-engine expert, senior support engineer, lead developer, UX expert — see
@@ -644,6 +644,41 @@ PERSON have, across every engine" — the "Bob is on vacation" query. Search sta
   engine's own `candidateUser` query answers, and a saved/pinned "my team" roster — this ships as
   a plain one-person-at-a-time lookup.
 
+### 4e. Incident ledger — persisted failure-class lifecycle *(v2, R-BAU-10 — design locked 2026-07-18, [INCIDENT-LEDGER.md](INCIDENT-LEDGER.md))*
+
+Stage 0 answers "what is failing NOW"; the ledger answers "what happened, when, and did it
+come back". A dedicated route (`/incidents`, VIEWER floor) lists one **incident** per
+normalized error signature (the same R-SEM-03 `(algoVersion, sha256)` contract — fleet-wide:
+one root cause = one card, per-engine × definition breakdown inside), persisted by the BFF
+so history survives DLQ drains:
+
+- **Lifecycle**: `OPEN → RESOLVED → REGRESSED`. Resolve is strictly human (OPERATOR+,
+  required reason ≥10 chars + optional ticketId, audited as a config event; optional
+  explicit **"also acknowledge"** checkbox invokes the R-BAU-01 ack flow as a second,
+  separately-audited action). Reopen is the human undo. REGRESSED is automatic —
+  gated on a **post-resolve zero-state** (at least one sampler cycle must observe the
+  class absent/zero after resolve, so retry-lag can never instantly regress a fresh
+  resolve) plus a configurable minimum count (`inspector.incidents.regression-min-count`).
+  "Quiet" (no sighting inside `inspector.incidents.quiet-window`, default 24h) is derived
+  at render, never stored.
+- **Episodes**: each open→resolve cycle is a persisted episode (started/ended/by/reason/
+  ticket/peak) — per-episode time-to-resolution is readable off the detail view, the
+  post-incident-review substrate.
+- **Timeline**: a per-incident occurrence time-series (total / dead-letter / retrying per
+  sampler bucket) powers arrival-rate sparklines and the detail chart; truncated samples
+  carry the R-SEM-12 lower-bound marking end-to-end (a truncated point renders as a floor,
+  never a dip). 400-day drop-partition retention; incident + episode rows persist.
+- **Ingestion**: piggybacks the R-BAU-08 sampler cycle's existing aggregation — **zero
+  additional engine calls**; down engines leave honest gaps (never fabricated zeros); a
+  normalizer bump orphans old-generation incidents into a collapsed "archived generations"
+  section (needs-re-binding doctrine, like acks).
+- **Actions in context**: "Retry all in this incident" is the EXISTING error-class bulk
+  door (§7 v1.x #1, RESPONDER, full bulk rails) invoked with the incident's signature;
+  recent error-class bulk jobs for the signature render read-only on the detail. The
+  ledger itself never mutates engine state.
+- **Non-goals v1** (recorded with the panel review): assignee/severity fields, auto-resolve
+  policies, external alerting/deploy correlation, reporting dashboards/CSV export.
+
 ## 5. Corrective actions — the verb catalog
 
 Every verb states what is preserved. Guard tiers per §6. All calls in
@@ -1273,6 +1308,14 @@ and would rewrite working M1/M2 code for no capability gain); Go/FastAPI/Kotlin 
   team lead; data-classification one-pager approved; zero open Sev1/Sev2.
 
 ## Change log
+- **v3.6** — Incident Ledger designed (§4e, R-BAU-10, [INCIDENT-LEDGER.md](INCIDENT-LEDGER.md)):
+  persisted failure-class lifecycle over the R-SEM-03 fingerprint — incidents
+  (OPEN/RESOLVED/REGRESSED with zero-state-gated regression), episodes (per-cycle MTTR),
+  occurrence time-series (truncation-honest sparklines, 400d drop-partition), resolve/
+  reopen as audited config-events with opt-in also-acknowledge; ingestion piggybacks the
+  R-BAU-08 sampler (zero new engine calls; ARCHITECTURE §2.7). Panel-reviewed by three
+  models (architecture / data-model / product seats), all APPROVE-WITH-CHANGES, changes
+  folded in.
 - **v3.5** — M3 detail-data backend landed: Stage 0 status counts gain synthesized
   FAILED/RETRYING keys (§4 Stage 0 — distinct-instance counts from the failure-lane scans,
   FAILED precedence, lower-bound under truncation); search gains `definitionVersion`

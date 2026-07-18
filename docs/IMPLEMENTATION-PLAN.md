@@ -1312,6 +1312,45 @@ locked before build so the milestone doesn't re-litigate them:
     end-to-end: save→persist-across-reload, record recent→persist, delete→gone. `NoDbTestSupport`
     gained both repo mocks. **v2/M4 milestone COMPLETE.**
 
+### v2 — Incident Ledger: persisted failure-class lifecycle & history _(design locked 2026-07-18 — [INCIDENT-LEDGER.md](INCIDENT-LEDGER.md), R-BAU-10; 3-model panel-reviewed: architecture / data-model / product seats, all APPROVE-WITH-CHANGES, changes folded in)_
+
+The "Sentry for process engines" delta over Stage 0: clustering, fingerprinting, acks and
+error-class bulk retry all EXIST — what evaporates is history. One incident row per R-SEM-03
+signature (fleet-wide), episodes per open→resolve cycle (MTTR), an occurrence time-series
+(sparklines), zero-state-gated REGRESSED detection, resolve/reopen as audited config-events.
+Ingestion piggybacks the R-BAU-08 sampler (zero new engine calls). Slices (each its own PR,
+green-CI-merged, spec-sync in the same PR):
+
+- **S1 — ledger substrate** (backend-only, no REST surface): V18 migration (`incident` +
+  `incident_episode` + `incident_occurrence`), `io.inspector.incident` package
+  (state-machine service, entities/repos, native upserts, optimistic + state-conditional
+  transitions), `AggregationSample` seam + `AggregationSampledEvent`, partition-maintenance
+  extension, config `inspector.incidents.{enabled,quiet-window,regression-min-count}`.
+  Done-when: rung-1 state-machine suite green (incl. zero-state regression gate, episode
+  lifecycle, algo-bump orphaning); sampler cycle writes ledger rows against a real Postgres;
+  no OpenAPI drift.
+- **S2 — read API**: `GET /api/incidents` (bounded list, R-SAFE-17 service-layer scope
+  projection, derived quiet, generation split) + `GET /api/incidents/{id}` (episodes +
+  windowed occurrence series + live ErrorGroup/ack join). ARCH §4 rows + `gen:api` regen.
+  Done-when: rung-3 RBAC/scope tests green.
+- **S3 — lifecycle verbs**: `POST /api/incidents/{id}/resolve` (reason ≥10, ticketId?,
+  `alsoAcknowledge?` → second separately-audited ack action) + `/reopen`; OPERATOR floor;
+  config-event audit rows incl. regression events from S1. Done-when: rung-3 verb + audit
+  coverage green; optimistic-lock conflict behavior asserted.
+- **S4 — frontend**: `/incidents` route + topbar link, sectioned list
+  (REGRESSED→OPEN→QUIET→RESOLVED-collapsed), cards with truncation-honest sparklines,
+  detail (timeline, episodes/MTTR, breakdown, resolve-with-ack-checkbox / reopen /
+  retry-all via the EXISTING error-class bulk modal, prefiltered-search deep link).
+  Done-when: vitest green + browser-verified against the dev stack.
+- **S5 — hardening & close-out**: local-only dockerized-engine IT arc (seed failing →
+  OPEN → retry-all → drain → zero-state → resolve → re-seed → REGRESSED + new episode),
+  related-bulk-jobs join on detail, edge cases, DATA-CLASSIFICATION + TRACEABILITY rows,
+  docs close-out.
+
+Deferred (issue-on-demand per R-GOV-08): assignee/severity, auto-resolve policies, alert/
+deploy correlation, MTTR reporting dashboard/CSV, per-engine episode splits, SQL-side scope
+filtering.
+
 ## 2026-07 whole-solution review → hardening plan
 
 A full-codebase 5-seat panel review (+ Gemini/Copilot external critique) at main `6129a88`
