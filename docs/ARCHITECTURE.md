@@ -241,8 +241,9 @@ algo_version)` (the R-SEM-03 binding contract; a normalizer bump orphans the gen
 never silently rebinds), carrying state `OPEN/RESOLVED/REGRESSED`, first/last-seen, latest
 totals + `counts_by_engine` display blob, and a JPA `@Version` column — every transition is
 optimistic-locked AND state-conditional (`… WHERE state = :expected`) so a sampler cycle
-interleaving with a human resolve/reopen misses rather than clobbers. `incident_episode` —
-one row per open→resolve cycle (started/ended/resolved_by/reason/ticket/peak); resolve
+interleaving with a human resolve/reopen misses rather than clobbers; the regression gate's
+flag is the `seen_zero_since_resolve` column. `incident_episode` — one row per open→resolve
+cycle (`start_state` `OPEN|REGRESSED`, started/ended/resolved_by/reason/ticket/peak); resolve
 metadata lives here, making per-episode MTTR a plain column subtraction. `incident_occurrence`
 — the narrow time-series, `PRIMARY KEY (incident_id, sampled_at)` (the business key — a
 surrogate id would not be unique across partitions), range-partitioned monthly with the
