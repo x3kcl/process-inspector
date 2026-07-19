@@ -56,6 +56,7 @@ class IncidentQueryServiceTest {
     private final TriageService triage = mock(TriageService.class);
     private final TriageScopeProjector projector = mock(TriageScopeProjector.class);
     private final ErrorGroupAckService acks = mock(ErrorGroupAckService.class);
+    private final RelatedBulkJobsService relatedBulkJobs = mock(RelatedBulkJobsService.class);
     private final Authentication auth = mock(Authentication.class);
     private final IncidentQueryService service = service(Duration.ofHours(24));
 
@@ -260,6 +261,32 @@ class IncidentQueryServiceTest {
         assertThat(detail.live()).isSameAs(group);
     }
 
+    /* ---------------- the related-bulk-jobs join (S5) ---------------- */
+
+    @Test
+    void detailCarriesTheRelatedBulkJobsJoinForTheIncidentsOwnSignature() {
+        Incident row = row(ID, "hash-1", CURRENT, IncidentState.OPEN, NOW, 4, fleet());
+        stubEmptyDetail(row);
+        IncidentDetail.RelatedBulkJob job = new IncidentDetail.RelatedBulkJob(
+                java.util.UUID.randomUUID(),
+                "retry-job",
+                "COMPLETED",
+                "responder",
+                NOW.minusSeconds(300),
+                NOW.minusSeconds(280),
+                2,
+                "ERROR_CLASS",
+                "order v3 · error class",
+                Map.of("ok", 2L));
+        when(relatedBulkJobs.forSignature("hash-1", CURRENT)).thenReturn(List.of(job));
+
+        IncidentDetail detail = service.detail(ID, 24, auth);
+
+        // keyed on THIS incident's (signatureHash, algoVersion) — never a generic recent list
+        assertThat(detail.relatedBulkJobs()).containsExactly(job);
+        verify(relatedBulkJobs).forSignature("hash-1", CURRENT);
+    }
+
     @Test
     void aRetiredGenerationNeverMatchesTheLiveAggregation() {
         Incident row = row(ID, "hash-1", CURRENT + 1, IncidentState.OPEN, NOW, 4, fleet());
@@ -284,6 +311,7 @@ class IncidentQueryServiceTest {
                 triage,
                 projector,
                 acks,
+                relatedBulkJobs,
                 new ObjectMapper(),
                 Clock.fixed(NOW, ZoneOffset.UTC),
                 new InspectorProperties(

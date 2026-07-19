@@ -82,3 +82,28 @@ describe('timelinePolyline', () => {
     expect(timelinePolyline([])).toBe('')
   })
 })
+
+describe('occurrence gaps — the engine-down cycle renders honestly (S5 edge case)', () => {
+  // INCIDENT-LEDGER.md §5: a down engine is ABSENT from the aggregation, so its cycles write
+  // no occurrence row — the series arrives NON-CONTIGUOUS. The helper must carry exactly the
+  // observed samples through: no interpolated point, no fabricated zero bridging the gap.
+  it('never interpolates or zero-fills a missing bucket', () => {
+    const observed = [
+      { sampledAt: '2026-07-18T09:00:00Z', total: 6 },
+      { sampledAt: '2026-07-18T09:01:00Z', total: 8 },
+      // 09:02 and 09:03 missing — the engine was down; nothing was observed
+      { sampledAt: '2026-07-18T09:04:00Z', total: 7 },
+    ]
+    const points = timelinePoints(observed)
+    expect(points).toHaveLength(3) // one point per OBSERVATION — no synthetic points
+    expect(points.map((p) => p.total)).toEqual([6, 8, 7]) // no fabricated zeros
+
+    const coords = timelineCoords(points, 100, 20)
+    expect(coords).toHaveLength(3)
+    // the polyline has exactly one vertex per observation — a gap never mints a vertex
+    expect(timelinePolyline(coords).split(' ')).toHaveLength(3)
+    // and the y-scale spans the OBSERVED min..max (6..8) — a fabricated zero would have
+    // stretched the scale to 0..8 and dragged every real point toward the top edge
+    expect(coords.map((c) => c.y)).toEqual([20, 0, 10])
+  })
+})

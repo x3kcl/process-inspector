@@ -1,6 +1,7 @@
 # Incident Ledger — persisted failure-class lifecycle & history (R-BAU-10)
 
-Status: DESIGN v2 (post-panel) · 2026-07-18 · v2 demand-driven track
+Status: **BUILT** — S1–S5 all landed 2026-07-19 (S1 PR #262 · S2 PR #263 · S3 PR #264 ·
+S4 PR #266 · S5 issue #261) · design v2 (post-panel) locked 2026-07-18 · v2 demand-driven track
 
 ## 0. Provenance
 
@@ -206,8 +207,14 @@ the snapshot store). Store down → warn once + skip.
 
 "Retry all in this incident" = the **existing** `POST /api/bulk/error-class` (RESPONDER,
 full bulk rails) invoked with the incident's signature/algoVersion. The incident detail
-also lists recent bulk jobs whose error-class scope matches the signature (read-only join
-on the bulk-job store) so remediation outcomes are visible in context.
+also lists recent bulk jobs whose error-class scope matches the signature (read-only join,
+`relatedBulkJobs` — S5) so remediation outcomes are visible in context. **S5 implementation
+note:** the `bulk_job` row's V4 scope descriptor is a human label ("defKey vN · error class")
+and never carried the signature — the join therefore runs off the submit's ENVELOPE audit row
+(`payload.errorClass.signatureHash/algoVersion` + `payload.bulkJobId`), newest first, bounded,
+then batch-reads the job/item stores; shape mirrors the `GET /api/bulk` list item, and the
+bulk surface's own VIEWER-floor unprojected read rules are mirrored (nothing narrower exists
+to mirror — incident-level R-SAFE-17 scope is enforced upstream by the detail read itself).
 
 ## 7. Ack relationship (R-BAU-01) — complementary, not overlapping
 

@@ -922,6 +922,26 @@ PRIO SHOULD-v1.x · CLASS NOT-UI · BUILT partial
 GOAL: n/a as tester arc — THIS harness (seed.sh + goal catalog + scripted reset) is the
 seed of the R-BAU-09 training profile; noted in the reuse doc.
 
+### R-BAU-10 · Incident ledger (persisted failure-class lifecycle)
+
+PRIO SHOULD-v2 · CLASS UI-STAGED · BUILT yes (S1–S5 landed 2026-07-19; candidate mission —
+not yet exercised in a usability run)
+GOAL: A day-after-the-outage engineer must reconstruct what happened to a failure class
+WITHOUT having watched it live: starting cold, find the incident for a named error, restate
+when it started, whether it regressed after someone claimed a fix, who resolved it and why,
+and whether a bulk retry was already attempted (and how it went) — all from the ledger, then
+resolve (or reopen) it with an audited reason and KNOW the claim stuck.
+ENTRY: `/` (the surface is the "Incidents" top-bar link → `/incidents`) · user `operator`.
+SUCCESS: tester finds `/incidents` unprompted; cites the incident's section (REGRESSED vs
+OPEN vs QUIET vs RESOLVED) and first/last-seen from on-screen text; on the detail, cites the
+arrival-rate timeline, an episode row (who/when/reason for a past resolve), and the "Recent
+bulk retries" line (state + "N of M dispatched" tallies); completes a resolve with a ≥10-char
+reason and cites the incident moving to the RESOLVED section (or a reopen moving it back).
+FIXTURE: staged — the runner must pre-drive a lifecycle so history EXISTS (seed a failing
+class over REST, let a sampler cycle open the incident, submit an error-class bulk retry,
+resolve, re-seed to force REGRESSED — the `IncidentLedgerArcIT` arc is the recipe); the
+standard seed alone yields only fresh OPEN incidents with no episodes/retries to read.
+
 ## L3 — Deep support
 
 ### R-L3-01 · "Explain this status"

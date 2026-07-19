@@ -47,6 +47,33 @@ public interface AuditEntryRepository extends JpaRepository<AuditEntry, UUID> {
     List<AuditEntry> findByOutcomeAndTsBefore(AuditOutcome outcome, Instant cutoff);
 
     /**
+     * The incident detail's related-bulk-jobs join (R-BAU-10 S5, INCIDENT-LEDGER.md §6): the
+     * {@code bulk_job} row itself does NOT persist the error-class signature — its V4 scope
+     * descriptor is the human label ("defKey vN · error class"), while the signature lives in
+     * the submit's ENVELOPE audit row ({@code BulkErrorClassService} → {@code BulkJobService}:
+     * {@code payload.errorClass.signatureHash/algoVersion} + {@code payload.bulkJobId}) — so the
+     * audit golden master IS the join table here, read-only. Only error-class envelopes carry
+     * the {@code errorClass} key, which makes the jsonb path filter the door discriminator; the
+     * {@code bulk:} action prefix narrows the scan cheaply first. {@code algoVersion} is matched
+     * as jsonb text (the {@code ->>} projection of the stored number). Newest submit first,
+     * bounded — the planner walks {@code idx_audit_ts} backwards and stops at the limit.
+     */
+    @Query(value = """
+            select a.payload ->> 'bulkJobId'
+            from audit_entry a
+            where a.action like 'bulk:%'
+              and a.payload -> 'errorClass' ->> 'signatureHash' = :signatureHash
+              and a.payload -> 'errorClass' ->> 'algoVersion' = :algoVersion
+              and a.payload ->> 'bulkJobId' is not null
+            order by a.ts desc
+            limit :limit
+            """, nativeQuery = true)
+    List<String> findRecentErrorClassBulkJobIds(
+            @Param("signatureHash") String signatureHash,
+            @Param("algoVersion") String algoVersion,
+            @Param("limit") int limit);
+
+    /**
      * The #106 S0 remediation-demand mining scan (R-GOV-08): every instance-scoped audit
      * row (definition-scoped verbs and BFF-store-only config events, both null instanceId,
      * are excluded by construction), ordered so one instance's full history is always

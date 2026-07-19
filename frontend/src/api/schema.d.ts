@@ -1982,6 +1982,7 @@ export interface components {
             episodes?: components["schemas"]["Episode"][];
             incident?: components["schemas"]["IncidentSummary"];
             live?: components["schemas"]["ErrorGroup"];
+            relatedBulkJobs?: components["schemas"]["RelatedBulkJob"][];
             series?: components["schemas"]["OccurrencePoint"][];
             seriesWindow?: string;
         };
@@ -2429,6 +2430,24 @@ export interface components {
         RecordRecentRequest: {
             label: string;
             search: string;
+        };
+        RelatedBulkJob: {
+            /** Format: date-time */
+            finishedAt?: string;
+            /** Format: uuid */
+            id?: string;
+            scopeKind?: string;
+            scopeLabel?: string;
+            state?: string;
+            /** Format: date-time */
+            submittedAt?: string;
+            submittedBy?: string;
+            tallies?: {
+                [key: string]: number;
+            };
+            /** Format: int32 */
+            totalItems?: number;
+            verb?: string;
         };
         RemediationDemandAnalysis: {
             /** Format: int64 */
