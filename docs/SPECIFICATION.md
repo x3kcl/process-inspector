@@ -1,6 +1,6 @@
 # 📄 SPECIFICATION — Flowable Multi-Instance Process Inspector
 
-Status: **v3.6** · Owner: workflow platform team ·
+Status: **v3.7** · Owner: workflow platform team ·
 Inspired by IBM BAW Process Inspector; refined against Camunda Operate/Cockpit, Temporal,
 Flowable Control, Conductor/Orkes, Airflow and Step Functions, and a four-seat design review
 (workflow-engine expert, senior support engineer, lead developer, UX expert — see
@@ -644,7 +644,7 @@ PERSON have, across every engine" — the "Bob is on vacation" query. Search sta
   engine's own `candidateUser` query answers, and a saved/pinned "my team" roster — this ships as
   a plain one-person-at-a-time lookup.
 
-### 4e. Incident ledger — persisted failure-class lifecycle *(v2, R-BAU-10 — design locked 2026-07-18, [INCIDENT-LEDGER.md](INCIDENT-LEDGER.md))*
+### 4e. Incident ledger — persisted failure-class lifecycle *(v2, R-BAU-10 — ★ SHIPPED, S1–S5 landed 2026-07-19, [INCIDENT-LEDGER.md](INCIDENT-LEDGER.md))*
 
 Stage 0 answers "what is failing NOW"; the ledger answers "what happened, when, and did it
 come back". A dedicated route (`/incidents`, VIEWER floor) lists one **incident** per
@@ -1080,8 +1080,8 @@ and would rewrite working M1/M2 code for no capability gain); Go/FastAPI/Kotlin 
   served at `/v3/api-docs` (key-ordered, fixed info version → deterministic output) →
   **`openapi-typescript`** generated `frontend/src/api/schema.d.ts` (`npm run gen:api`
   against a running BFF) + the singleton `openapi-fetch` client, committed; CI regenerates
-  and **fails on diff** — cross-language drift is a build failure *(drift gate in CI still
-  to land — needs a booted BFF in the workflow)*.
+  and **fails on diff** — cross-language drift is a build failure *(the drift gate is live
+  in CI: the workflow boots the real BFF, regenerates `schema.d.ts`, and fails on any diff)*.
 - **Frontend:** React 18 + TypeScript `strict` + Vite (Node 22 LTS, npm). **TanStack Query
   v5** — polling drives all v1 liveness (health strip, drawer); **SSE arrives in v1.x with
   tracked bulk** (R-SEM-14 resolves the earlier v1/v1.x ambiguity; lifecycle contract —
@@ -1269,8 +1269,9 @@ and would rewrite working M1/M2 code for no capability gain); Go/FastAPI/Kotlin 
 - **v2 (demand-driven, still pending):** **remediation playbooks (§5.1 — build trigger
   R-GOV-08)**, migration batch wizard (single-instance migration + Inspector static pre-check
   shipped; the multi-instance wizard is still pending), definition version comparison, CMMN
-  (Phase 0/1 shipped — R-SEM-20, docs/CMMN-CASE-DETAIL-PHASE-2.md; further phases pending),
-  maintenance snapshots + volume trends, training mode, capability overrides.
+  (Phases 0–3 shipped — scope counting/drill, the read-only case detail route, and the case
+  dead-letter retry/delete verbs, R-SEM-20/§5.3, docs/CMMN-CASE-DETAIL-PHASE-2.md; further
+  phases pending), maintenance snapshots + volume trends, training mode, capability overrides.
 - **v2 — SHIPPED (built directly on panel-review consensus rather than a fired demand signal;
   historical trigger framing retained for provenance):** **registry CRUD** (runtime engine
   lifecycle — SPEC §4b, the R-OPS-13/R-OPS-15/R-SAFE-13 SSRF + governance rails; S1–S5 landed,
@@ -1292,6 +1293,12 @@ and would rewrite working M1/M2 code for no capability gain); Go/FastAPI/Kotlin 
   lane), so the trend reads never touch the live engine. A lane with no history shows no line
   (never a fabricated flat trend); the line's shape + an accessible label carry the meaning, hue
   only echoes the lane chip.
+- **v2 Incident Ledger — SHIPPED (R-BAU-10):** the persisted failure-class lifecycle of §4e —
+  `/incidents` list + detail (VIEWER floor), `OPEN → RESOLVED → REGRESSED` with the
+  zero-state-gated regression, per-episode MTTR, the truncation-honest occurrence timeline,
+  resolve/reopen as audited config events with the opt-in also-acknowledge; ingestion
+  piggybacks the R-BAU-08 sampler cycle (zero new engine calls). S1–S5 landed 2026-07-19
+  ([INCIDENT-LEDGER.md](INCIDENT-LEDGER.md)).
 
 ## 13. Success metrics & v1 release gate (R-GOV-01/02)
 
@@ -1309,6 +1316,15 @@ and would rewrite working M1/M2 code for no capability gain); Go/FastAPI/Kotlin 
   team lead; data-classification one-pager approved; zero open Sev1/Sev2.
 
 ## Change log
+- **v3.7** — Incident Ledger **SHIPPED** (§4e header + §12 release train: S1–S5 all landed
+  2026-07-19 — ledger substrate, read API, resolve/reopen lifecycle verbs, `/incidents`
+  frontend, hardening/close-out; [INCIDENT-LEDGER.md](INCIDENT-LEDGER.md) status BUILT).
+  Currency sweep: the OpenAPI drift gate is recorded as live in CI (§10 — it boots the real
+  BFF and fails on `schema.d.ts` diff); CMMN §12 entry corrected to Phases 0–3 shipped
+  (case detail route + case dead-letter verbs, §5.3). New user-facing documentation set:
+  [PRODUCT-GUIDE.md](PRODUCT-GUIDE.md) (the operator-facing product manual) +
+  `docs/tutorials/` (eight task-based walkthroughs against the demo deployment) — docs
+  only, no behavior change.
 - **v3.6** — Incident Ledger designed (§4e, R-BAU-10, [INCIDENT-LEDGER.md](INCIDENT-LEDGER.md)):
   persisted failure-class lifecycle over the R-SEM-03 fingerprint — incidents
   (OPEN/RESOLVED/REGRESSED with zero-state-gated regression), episodes (per-cycle MTTR),

@@ -5,9 +5,20 @@ instances across **multiple independent Flowable engines** — strictly via the 
 
 ## Documents
 
+**Using the Inspector** (operator-facing):
+
 | File | Content |
 |---|---|
-| [docs/SPECIFICATION.md](docs/SPECIFICATION.md) | The product spec **v2.0** (design principles, status model, three-stage UI, verb catalog, guard ladder, release train) |
+| [docs/PRODUCT-GUIDE.md](docs/PRODUCT-GUIDE.md) | **The user-facing manual**: roles, every surface (triage landing, incidents, search, instance/case detail, bulk, admin), how to read the honesty markers, and which actions exist at which role floor |
+| [docs/tutorials/](docs/tutorials/) | Eight task-based walkthroughs — sign in to the demo (https://pi.naumann.cloud, ladder users, password `dev`) or the local dev compose and follow the numbered steps |
+| [docs/OPERATOR-QUICK-START.md](docs/OPERATOR-QUICK-START.md) | Ten minutes of onboarding before your first shift; pair with [docs/AUDIT-ATTRIBUTION.md](docs/AUDIT-ATTRIBUTION.md) before your first mutation |
+| [docs/RUNBOOK.md](docs/RUNBOOK.md) · [docs/OPERATIONS.md](docs/OPERATIONS.md) | Operating the Inspector itself: health, recovery, break-glass, threat model, CI gates |
+
+**Design & engineering** (the docs are the spec):
+
+| File | Content |
+|---|---|
+| [docs/SPECIFICATION.md](docs/SPECIFICATION.md) | The product spec (design principles, status model, three-stage UI, verb catalog, guard ladder, release train) |
 | [docs/ARCHITECTURE.md](docs/ARCHITECTURE.md) | Multi-instance design: BFF topology, composite IDs, fan-out with partial results, the corrected FAILED/dead-letter status join, **Engine Registry data model** |
 | [docs/IMPLEMENTATION-PLAN.md](docs/IMPLEMENTATION-PLAN.md) | Milestones M0–M6 + v1.x/v2 release train, module by module |
 | [docs/DESIGN-REVIEW.md](docs/DESIGN-REVIEW.md) | Provenance: research, the four-seat panel (v2.0), tech-stack ADRs (v2.2), the 14-seat board (v3.0) |
@@ -116,11 +127,13 @@ password `dev` unless `INSPECTOR_DEV_PASSWORD` is set).
 
 ## Status
 
-Bootstrap stage: **M1 (registry + health), M2 (fan-out search + results grid), the M3/M4
-backends (triage aggregations, corrective actions + audit + RBAC) and the three-stage UI
-(`/` triage landing · `/search` · `/inspect/{engineId}/{id}` with lazy tabs) are coded**;
-the instance-detail data endpoints (vitals/diagram/variables/jobs/hierarchy/timeline,
-`/api/resolve`), action UI and bulk ops follow the implementation plan.
+Feature-complete through the v2 release train (SPECIFICATION §12): the three-stage UI
+(`/` triage landing · `/search` with deep paging · `/inspect/{engineId}/{id}` full-page
+detail), the corrective-action verb catalog behind the guard ladder + fail-closed audit,
+tracked bulk operations with SSE progress, saved/shared views, person task search
+(`/tasks`), the CMMN case detail route, single-instance migration, registry + access
+administration (`/admin/engines`, `/admin/access`), break-glass, and the incident ledger
+(`/incidents`). Per-slice provenance: [docs/IMPLEMENTATION-PLAN.md](docs/IMPLEMENTATION-PLAN.md).
 
 ## License
 

@@ -237,8 +237,10 @@ Interactions: incident detail shows ack state read-only; resolve offers the opt-
   distinct** — a truncated sample is a floor, not a dip), per-engine×definition breakdown,
   sample raw message, episode list with per-episode duration (MTTR), lifecycle strip,
   related bulk jobs; actions:
-  Resolve (with the opt-in ack checkbox) / Reopen (OPERATOR), Retry-all (RESPONDER, existing
-  modal), deep-link to prefiltered `/search`.
+  Resolve (with the opt-in ack checkbox) / Reopen (OPERATOR), per-slice **"Retry group"**
+  on the breakdown rows (RESPONDER, the existing error-class modal — as built: the
+  per-definition slices ARE the error-class door; no separate whole-incident button),
+  deep-link to prefiltered `/search`.
 - TanStack Query hooks per convention; generated types via `npm run gen:api`; no
   hand-written DTOs or fetch wrappers.
 
