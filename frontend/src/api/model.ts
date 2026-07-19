@@ -109,3 +109,18 @@ export function isInstanceStatus(value: string): value is InstanceStatus {
  */
 export const CMMN_STATUSES = ['ACTIVE', 'FAILED', 'COMPLETED', 'TERMINATED'] as const
 export type CmmnStatus = (typeof CMMN_STATUSES)[number]
+
+// Incident Ledger (R-BAU-10, docs/INCIDENT-LEDGER.md) — persisted failure-class lifecycle.
+// The BFF's `state` fields are plain (unannotated) strings on the wire (no springdoc @enum);
+// the known SERVER-REPORTED literals are named here for the UI (QUIET is a client-derived
+// display state, not a wire value — see incidents/sections.ts), but every reader must
+// tolerate an unknown value (fail toward visible, never silently dropped).
+export type IncidentSummary = components['schemas']['IncidentSummary']
+export type IncidentDetail = components['schemas']['IncidentDetail']
+export type IncidentResolution = components['schemas']['IncidentResolution']
+export type IncidentEpisode = components['schemas']['Episode']
+export type OccurrencePoint = components['schemas']['OccurrencePoint']
+export type AckSliceOutcome = components['schemas']['AckSliceOutcome']
+
+export const INCIDENT_STATES = ['OPEN', 'REGRESSED', 'RESOLVED'] as const
+export type IncidentState = (typeof INCIDENT_STATES)[number]

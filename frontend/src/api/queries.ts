@@ -16,6 +16,8 @@ import type {
   CaseDetail,
   CaseDiagram,
   CasePlanItems,
+  IncidentDetail,
+  IncidentSummary,
   NoteDto,
   OutOfScopeDeadLetters,
   PersonTaskSearchResponse,
@@ -88,6 +90,36 @@ export async function fetchTriageTrends(hours: number): Promise<TriageTrendRespo
  */
 export async function fetchLeakViews(): Promise<LeakViewsResponse> {
   const { data, error, response } = await api.GET('/api/triage/leak-views')
+  if (data === undefined) throw new ApiError(response.status, error)
+  return data
+}
+
+/**
+ * The Incident Ledger list (R-BAU-10, docs/INCIDENT-LEDGER.md §6): VIEWER floor, unpaginated
+ * (bounded by distinct failure classes), scope-projected server-side. `state` filters
+ * case-insensitively (the BFF 400s on an unknown value); `windowHours` keeps only incidents
+ * last seen inside the window (absent = the whole ledger, clamped like `/api/triage/trends`).
+ */
+export async function fetchIncidents(
+  state?: string,
+  windowHours?: number,
+): Promise<IncidentSummary[]> {
+  const { data, error, response } = await api.GET('/api/incidents', {
+    params: { query: { state, window: windowHours } },
+  })
+  if (data === undefined) throw new ApiError(response.status, error)
+  return data
+}
+
+/**
+ * One incident's full detail: the ledger row, its episode history, the windowed occurrence
+ * series (for the timeline chart) and the live Stage-0 `ErrorGroup` join (read-only ack
+ * state, "Retry group" coordinates). Unknown or out-of-scope id ⇒ 404 — never leaked as a 403.
+ */
+export async function fetchIncident(id: number, windowHours?: number): Promise<IncidentDetail> {
+  const { data, error, response } = await api.GET('/api/incidents/{id}', {
+    params: { path: { id }, query: { window: windowHours } },
+  })
   if (data === undefined) throw new ApiError(response.status, error)
   return data
 }
