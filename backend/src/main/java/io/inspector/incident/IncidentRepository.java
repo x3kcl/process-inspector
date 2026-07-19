@@ -105,6 +105,76 @@ public interface IncidentRepository extends JpaRepository<Incident, Long> {
             @Param("countsByEngine") String countsByEngine);
 
     /**
+     * The S3 human resolve (INCIDENT-LEDGER §6): OPEN/REGRESSED → RESOLVED, state-conditional on
+     * the state the operator SAW ({@code expectedState}) so an interleaved sampler regression or
+     * concurrent resolve makes this miss (0 rows ⇒ the verb answers 409, retryable — never a
+     * clobber, never a 500). Resets {@code seen_zero_since_resolve} so the regression gate is
+     * armed FRESH: a post-resolve zero observation is required all over again (§3.2/§5 zombie
+     * guard). Resolve metadata (by/reason/ticket) lands on the closed EPISODE, not here.
+     */
+    @Modifying
+    @Transactional
+    @Query(value = """
+                    UPDATE incident
+                    SET state = 'RESOLVED',
+                        seen_zero_since_resolve = false,
+                        version = version + 1
+                    WHERE id = :id AND state = :expectedState
+                    """, nativeQuery = true)
+    int transitionToResolved(@Param("id") long id, @Param("expectedState") String expectedState);
+
+    /**
+     * Fail-closed audit compensation for {@link #transitionToResolved}: the resolve's config
+     * event could not be written, so the claim is undone — state back to what the operator saw.
+     * {@code seen_zero_since_resolve} needs no restore: it is false in every non-RESOLVED state
+     * (only {@link #markSeenZeroSinceResolve} sets it, RESOLVED-conditional). Conditional on the
+     * row still being RESOLVED.
+     */
+    @Modifying
+    @Transactional
+    @Query(value = """
+                    UPDATE incident
+                    SET state = :previousState,
+                        seen_zero_since_resolve = false,
+                        version = version + 1
+                    WHERE id = :id AND state = 'RESOLVED'
+                    """, nativeQuery = true)
+    int revertResolve(@Param("id") long id, @Param("previousState") String previousState);
+
+    /**
+     * The S3 human reopen ("resolved by mistake", INCIDENT-LEDGER §3.2): RESOLVED → OPEN,
+     * distinct from the automatic REGRESSED transition — {@code regression_count} and
+     * {@code last_regressed_at} are deliberately NOT touched (an undo is not a regression).
+     * Clears the zero-state gate flag. State-conditional: 0 rows ⇒ 409, retryable.
+     */
+    @Modifying
+    @Transactional
+    @Query(value = """
+                    UPDATE incident
+                    SET state = 'OPEN',
+                        seen_zero_since_resolve = false,
+                        version = version + 1
+                    WHERE id = :id AND state = 'RESOLVED'
+                    """, nativeQuery = true)
+    int transitionToReopened(@Param("id") long id);
+
+    /**
+     * Fail-closed audit compensation for {@link #transitionToReopened}: back to RESOLVED with the
+     * zero-state gate flag restored to its pre-reopen value. Conditional on the row still being
+     * OPEN.
+     */
+    @Modifying
+    @Transactional
+    @Query(value = """
+                    UPDATE incident
+                    SET state = 'RESOLVED',
+                        seen_zero_since_resolve = :previousSeenZero,
+                        version = version + 1
+                    WHERE id = :id AND state = 'OPEN'
+                    """, nativeQuery = true)
+    int revertReopen(@Param("id") long id, @Param("previousSeenZero") boolean previousSeenZero);
+
+    /**
      * The fail-closed audit compensation (mirrors {@code ErrorGroupAckService}): if the
      * regression's R-AUD-10 config event cannot be written, the transition is undone — state
      * back to RESOLVED with the gate re-armed and the counters restored ({@code previousRegressedAt}

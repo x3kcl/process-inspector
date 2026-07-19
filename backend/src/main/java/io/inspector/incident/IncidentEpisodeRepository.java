@@ -1,5 +1,6 @@
 package io.inspector.incident;
 
+import java.time.Instant;
 import java.util.List;
 import java.util.Optional;
 import org.springframework.data.jpa.repository.JpaRepository;
@@ -16,6 +17,51 @@ public interface IncidentEpisodeRepository extends JpaRepository<IncidentEpisode
 
     /** The per-episode history, newest first (idx_incident_episode_incident). */
     List<IncidentEpisode> findByIncidentIdOrderByStartedAtDesc(long incidentId);
+
+    /** The LAST episode regardless of liveness — the reopen verb's target (INCIDENT-LEDGER §3.2). */
+    Optional<IncidentEpisode> findFirstByIncidentIdOrderByStartedAtDesc(long incidentId);
+
+    /**
+     * The S3 resolve stamp (INCIDENT-LEDGER §3.2): closes one episode with the resolve metadata
+     * — {@code ended_at}/{@code resolved_by}/{@code resolve_reason}/{@code ticket_id} live HERE,
+     * not on {@code incident}. Conditional on the episode still being live, so it doubles as the
+     * reopen-compensation restore (a just-reopened episode is live again). 0 rows = already
+     * closed by a racer — skip quietly.
+     */
+    @Modifying
+    @Transactional
+    @Query(value = """
+                    UPDATE incident_episode
+                    SET ended_at = :endedAt,
+                        resolved_by = :resolvedBy,
+                        resolve_reason = :resolveReason,
+                        ticket_id = :ticketId
+                    WHERE id = :id AND ended_at IS NULL
+                    """, nativeQuery = true)
+    int closeEpisode(
+            @Param("id") long id,
+            @Param("endedAt") Instant endedAt,
+            @Param("resolvedBy") String resolvedBy,
+            @Param("resolveReason") String resolveReason,
+            @Param("ticketId") String ticketId);
+
+    /**
+     * The S3 reopen (human undo, INCIDENT-LEDGER §3.2): the LAST episode goes live again —
+     * {@code ended_at} back to NULL and the resolve metadata cleared — rather than minting a new
+     * one ({@code regression_count} stays honest: a mistaken resolve was never a regression).
+     * Also the resolve verb's audit-failure compensation (undoes {@link #closeEpisode}).
+     */
+    @Modifying
+    @Transactional
+    @Query(value = """
+                    UPDATE incident_episode
+                    SET ended_at = NULL,
+                        resolved_by = NULL,
+                        resolve_reason = NULL,
+                        ticket_id = NULL
+                    WHERE id = :id AND ended_at IS NOT NULL
+                    """, nativeQuery = true)
+    int reopenEpisode(@Param("id") long id);
 
     /**
      * Bumps the LIVE episode's peak to the cycle's observed total, monotonically ({@code

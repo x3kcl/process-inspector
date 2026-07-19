@@ -164,6 +164,16 @@ public class IncidentQueryService {
     /* ---------------- projection ---------------- */
 
     /**
+     * The S3 seam: one incident through the SAME per-request scope projection the list/detail
+     * use, or {@code null} when the caller's readable-engine set intersects none of its engines
+     * — the lifecycle verbs gate on this so a scoped OPERATOR cannot resolve/reopen (or even
+     * confirm the existence of) an incident they cannot see, answering the identical 404.
+     */
+    public IncidentSummary projectForCaller(Incident row, Authentication auth) {
+        return summarize(row, gate.readableEngineIds(auth), clock.instant());
+    }
+
+    /**
      * The scope-projected list-item shape, or {@code null} when the incident holds no readable
      * engine (zero intersection — omitted, never partially leaked). Honesty rules in class doc.
      */
@@ -274,7 +284,8 @@ public class IncidentQueryService {
         }
     }
 
-    private static ResponseStatusException notFound() {
+    /** Package-visible so the S3 lifecycle verbs answer the byte-identical 404 (no existence leak). */
+    static ResponseStatusException notFound() {
         return new ResponseStatusException(HttpStatus.NOT_FOUND, "no such incident");
     }
 }

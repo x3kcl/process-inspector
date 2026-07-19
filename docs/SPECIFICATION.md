@@ -655,7 +655,7 @@ so history survives DLQ drains:
 - **Lifecycle**: `OPEN → RESOLVED → REGRESSED`. Resolve is strictly human (OPERATOR+,
   required reason ≥10 chars + optional ticketId, audited as a config event; optional
   explicit **"also acknowledge"** checkbox invokes the R-BAU-01 ack flow as a second,
-  separately-audited action). Reopen is the human undo. REGRESSED is automatic —
+  separately-audited action). Reopen is the human undo (reason required). REGRESSED is automatic —
   gated on a **post-resolve zero-state** (at least one sampler cycle must observe the
   class absent/zero after resolve, so retry-lag can never instantly regress a fresh
   resolve) plus a configurable minimum count (`inspector.incidents.regression-min-count`).
