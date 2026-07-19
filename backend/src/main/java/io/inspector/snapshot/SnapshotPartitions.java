@@ -6,9 +6,14 @@ import java.time.YearMonth;
 import java.util.Optional;
 
 /**
- * Pure naming + range arithmetic for the monthly range-partitions of {@code triage_snapshot}
- * (V5__triage_snapshot.sql). Kept side-effect-free so the create-ahead / drop-behind decisions
- * are rung-1 testable; {@link SnapshotPartitionMaintainer} is the only thing that runs DDL.
+ * Pure naming + range arithmetic for monthly range-partitions, kept side-effect-free so the
+ * create-ahead / drop-behind decisions are rung-1 testable; the maintainers (via {@link
+ * MonthlyPartitionMaintenance}) are the only thing that runs DDL.
+ *
+ * <p>Born for {@code triage_snapshot} (V5__triage_snapshot.sql) — the no-prefix overloads keep
+ * that call surface — and generalized by a {@code childPrefix} parameter for every further
+ * monthly-partitioned table ({@code incident_occurrence}, V18: prefix
+ * {@code incident_occurrence_y}) rather than copy-pasting the math (R-BAU-10 slice 1).
  */
 public final class SnapshotPartitions {
 
@@ -19,7 +24,12 @@ public final class SnapshotPartitions {
 
     /** The child partition name for a month. */
     public static String name(YearMonth month) {
-        return String.format("%s%04dm%02d", PREFIX, month.getYear(), month.getMonthValue());
+        return name(PREFIX, month);
+    }
+
+    /** The child partition name for a month under an arbitrary {@code childPrefix}. */
+    public static String name(String childPrefix, YearMonth month) {
+        return String.format("%s%04dm%02d", childPrefix, month.getYear(), month.getMonthValue());
     }
 
     /**
@@ -27,18 +37,28 @@ public final class SnapshotPartitions {
      * exclusive upper, matching Postgres RANGE partition bounds.
      */
     public static Bounds boundsFor(YearMonth month) {
+        return boundsFor(PREFIX, month);
+    }
+
+    /** {@link #boundsFor(YearMonth)} under an arbitrary {@code childPrefix}. */
+    public static Bounds boundsFor(String childPrefix, YearMonth month) {
         return new Bounds(
-                name(month),
+                name(childPrefix, month),
                 month.atDay(1) + " 00:00:00+00",
                 month.plusMonths(1).atDay(1) + " 00:00:00+00");
     }
 
     /** The month a child partition name encodes, or empty if it is not a monthly child (e.g. the DEFAULT). */
     public static Optional<YearMonth> monthOf(String partitionName) {
-        if (partitionName == null || !partitionName.startsWith(PREFIX)) {
+        return monthOf(PREFIX, partitionName);
+    }
+
+    /** {@link #monthOf(String)} under an arbitrary {@code childPrefix}. */
+    public static Optional<YearMonth> monthOf(String childPrefix, String partitionName) {
+        if (partitionName == null || !partitionName.startsWith(childPrefix)) {
             return Optional.empty();
         }
-        String tail = partitionName.substring(PREFIX.length()); // "2026m07"
+        String tail = partitionName.substring(childPrefix.length()); // "2026m07"
         int m = tail.indexOf('m');
         if (m < 0) {
             return Optional.empty();
@@ -58,7 +78,12 @@ public final class SnapshotPartitions {
      * DELETEd). The exclusive upper bound (first day of the next month) must be ≤ cutoff.
      */
     public static boolean isExpired(String partitionName, LocalDate cutoff) {
-        return monthOf(partitionName)
+        return isExpired(PREFIX, partitionName, cutoff);
+    }
+
+    /** {@link #isExpired(String, LocalDate)} under an arbitrary {@code childPrefix}. */
+    public static boolean isExpired(String childPrefix, String partitionName, LocalDate cutoff) {
+        return monthOf(childPrefix, partitionName)
                 .map(month -> !month.plusMonths(1).atDay(1).isAfter(cutoff))
                 .orElse(false);
     }

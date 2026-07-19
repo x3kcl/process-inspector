@@ -14,6 +14,9 @@ inspector:
   # v2/M4 snapshot sampler OFF — this profile is docker-free (no DB / JdbcTemplate).
   snapshot:
     enabled: false
+  # R-BAU-10 incident ledger OFF too — same reason (no ledger store in this profile).
+  incidents:
+    enabled: false
   audit:
     partition-maintenance:
       enabled: false

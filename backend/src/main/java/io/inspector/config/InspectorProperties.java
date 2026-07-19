@@ -26,6 +26,7 @@ public record InspectorProperties(
         @Valid Triage triage,
         @Valid Bulk bulk,
         @Valid Snapshot snapshot,
+        @Valid Incidents incidents,
         @Valid List<EngineConfig> engines) {
     /** Engine ids are stable slugs used in composite instance IDs (R-SEM-08) — never rename. */
     public static final String ENGINE_ID_PATTERN = "^[a-z0-9][a-z0-9._-]{0,63}$";
@@ -132,7 +133,38 @@ public record InspectorProperties(
         }
     }
 
-    // Two constructors → Spring cannot infer the binder; pin it to the canonical one.
+    public Incidents incidentsOrDefault() {
+        return incidents != null ? incidents : new Incidents(null, null, null, null);
+    }
+
+    /**
+     * v2 Incident Ledger knobs (R-BAU-10, docs/INCIDENT-LEDGER.md §5). {@code enabled} gates the
+     * event-consuming ledger independently of the sampler (sampler off ⇒ both stores idle);
+     * {@code quietWindow} is the READ-time "quiet" derivation horizon (never stored);
+     * {@code regressionMinCount} is the regression-gate hysteresis (a RESOLVED incident
+     * re-fires only at/above this live total, after a post-resolve zero/absent cycle);
+     * {@code retentionDays} (400, revFADP — aligned with the snapshot store) is the
+     * {@code incident_occurrence} drop-partition horizon.
+     */
+    public record Incidents(Boolean enabled, Duration quietWindow, Integer regressionMinCount, Integer retentionDays) {
+        public boolean enabledOrDefault() {
+            return enabled == null || enabled;
+        }
+
+        public Duration quietWindowOrDefault() {
+            return quietWindow != null ? quietWindow : Duration.ofHours(24);
+        }
+
+        public int regressionMinCountOrDefault() {
+            return regressionMinCount != null ? regressionMinCount : 1;
+        }
+
+        public int retentionDaysOrDefault() {
+            return retentionDays != null ? retentionDays : 400;
+        }
+    }
+
+    // Multiple constructors → Spring cannot infer the binder; pin it to the canonical one.
     @ConstructorBinding
     public InspectorProperties {
         engines = engines != null ? List.copyOf(engines) : List.of();
@@ -142,6 +174,21 @@ public record InspectorProperties(
                 throw new IllegalStateException("Duplicate engine id in registry: " + engine.id());
             }
         }
+    }
+
+    /**
+     * Incidents-less convenience constructor — the {@code incidents} block is optional (v2
+     * R-BAU-10 add, defaults via {@link #incidentsOrDefault()}). Keeps pre-ledger call sites on
+     * the 6-arg shape rather than churning them (unit-test-patterns: no constructor churn).
+     */
+    public InspectorProperties(
+            Integer fanoutParallelism,
+            Integer hierarchyMaxDepth,
+            Triage triage,
+            Bulk bulk,
+            Snapshot snapshot,
+            List<EngineConfig> engines) {
+        this(fanoutParallelism, hierarchyMaxDepth, triage, bulk, snapshot, null, engines);
     }
 
     /**
@@ -155,7 +202,7 @@ public record InspectorProperties(
             Triage triage,
             Bulk bulk,
             List<EngineConfig> engines) {
-        this(fanoutParallelism, hierarchyMaxDepth, triage, bulk, null, engines);
+        this(fanoutParallelism, hierarchyMaxDepth, triage, bulk, null, null, engines);
     }
 
     public record EngineConfig(
