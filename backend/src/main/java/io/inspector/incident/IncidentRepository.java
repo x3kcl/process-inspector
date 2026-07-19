@@ -22,6 +22,12 @@ public interface IncidentRepository extends JpaRepository<Incident, Long> {
 
     Optional<Incident> findBySignatureHashAndAlgoVersion(String signatureHash, int algoVersion);
 
+    /** The S2 list read, most-recently-seen first (bounded, unpaginated v1 — INCIDENT-LEDGER §6). */
+    List<Incident> findAllByOrderByLastSeenDesc();
+
+    /** The S2 list read with the {@code state=} filter (idx_incident_state). */
+    List<Incident> findByStateOrderByLastSeenDesc(IncidentState state);
+
     /** The zero-state sweep's candidates: RESOLVED rows whose regression gate is still closed. */
     List<Incident> findByStateAndSeenZeroSinceResolveFalse(IncidentState state);
 
