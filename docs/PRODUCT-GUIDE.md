@@ -117,8 +117,10 @@ one root cause = one card, with the per-engine × definition breakdown inside. V
   message, the **episode list with per-episode duration** (your MTTR record), and **Recent
   bulk retries** — a read-only join of error-class bulk jobs matching this signature, so
   remediation outcomes are visible in context. "Search these instances" deep-links to the
-  live class in the grid. Remediation itself is dispatched from the Stage-0 card's "Retry
-  group" buttons, not from the ledger — the ledger never mutates engine state.
+  live class in the grid. The breakdown rows carry the same **"Retry group"** buttons as
+  the Stage-0 card (RESPONDER, the error-class bulk door §10) — available only while the
+  class is currently live; on a quiet or resolved class there is nothing left to retry.
+  The ledger itself never mutates engine state.
 
 ### Resolve vs. Acknowledge — the #1 confusion risk
 
