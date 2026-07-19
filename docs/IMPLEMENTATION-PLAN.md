@@ -1312,7 +1312,7 @@ locked before build so the milestone doesn't re-litigate them:
     end-to-end: save→persist-across-reload, record recent→persist, delete→gone. `NoDbTestSupport`
     gained both repo mocks. **v2/M4 milestone COMPLETE.**
 
-### v2 — Incident Ledger: persisted failure-class lifecycle & history _(design locked 2026-07-18 — [INCIDENT-LEDGER.md](INCIDENT-LEDGER.md), R-BAU-10; 3-model panel-reviewed: architecture / data-model / product seats, all APPROVE-WITH-CHANGES, changes folded in)_ — **★ FEATURE COMPLETE: S1–S5 ALL LANDED 2026-07-19** (S1 PR #262 · S2 PR #263 · S3 PR #264 · S4 PR #266 · S5 this slice's PR)
+### v2 — Incident Ledger: persisted failure-class lifecycle & history _(design locked 2026-07-18 — [INCIDENT-LEDGER.md](INCIDENT-LEDGER.md), R-BAU-10; 3-model panel-reviewed: architecture / data-model / product seats, all APPROVE-WITH-CHANGES, changes folded in)_ — **★ FEATURE COMPLETE: S1–S5 ALL LANDED 2026-07-19** (S1 PR #262 · S2 PR #263 · S3 PR #264 · S4 PR #266 · S5 #267)
 
 The "Sentry for process engines" delta over Stage 0: clustering, fingerprinting, acks and
 error-class bulk retry all EXIST — what evaporates is history. One incident row per R-SEM-03
@@ -1342,7 +1342,7 @@ green-CI-merged, spec-sync in the same PR):
   detail (timeline, episodes/MTTR, breakdown, resolve-with-ack-checkbox / reopen /
   retry-all via the EXISTING error-class bulk modal, prefiltered-search deep link).
   Done-when: vitest green + browser-verified against the dev stack.
-- **S5 — hardening & close-out** _(✅ LANDED 2026-07-19, this slice's PR — issue #261)_:
+- **S5 — hardening & close-out** _(✅ LANDED 2026-07-19, #267 — issue #261)_:
   local-only dockerized-engine IT arc `IncidentLedgerArcIT` (run-unique generated failing
   process → OPEN → error-class retry-all → drain → resolve → reopen → re-resolve →
   zero-state armed by an observing cycle → re-seed → REGRESSED + new episode + one
