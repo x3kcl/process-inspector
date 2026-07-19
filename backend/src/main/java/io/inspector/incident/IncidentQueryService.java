@@ -105,15 +105,21 @@ public class IncidentQueryService {
         IncidentState filter = parseState(state);
         Set<String> readable = gate.readableEngineIds(auth);
         Instant now = clock.instant();
-        List<Incident> rows = filter != null
-                ? incidents.findByStateOrderByLastSeenDesc(filter)
-                : incidents.findAllByOrderByLastSeenDesc();
         Instant since = windowHours != null ? now.minus(Duration.ofHours(clampWindow(windowHours))) : null;
+        // The recency window is pushed down to the store — the ledger may outgrow "tens to
+        // hundreds" long before v2 pagination lands, and an in-memory filter would fetch it all.
+        List<Incident> rows;
+        if (since != null) {
+            rows = filter != null
+                    ? incidents.findByStateAndLastSeenGreaterThanEqualOrderByLastSeenDesc(filter, since)
+                    : incidents.findAllByLastSeenGreaterThanEqualOrderByLastSeenDesc(since);
+        } else {
+            rows = filter != null
+                    ? incidents.findByStateOrderByLastSeenDesc(filter)
+                    : incidents.findAllByOrderByLastSeenDesc();
+        }
         List<IncidentSummary> out = new ArrayList<>();
         for (Incident row : rows) {
-            if (since != null && row.getLastSeen().isBefore(since)) {
-                continue;
-            }
             IncidentSummary summary = summarize(row, readable, now);
             if (summary != null) {
                 out.add(summary);
@@ -135,6 +141,8 @@ public class IncidentQueryService {
         if (summary == null) {
             throw notFound(); // out of scope == absent: never leak existence (not a 403)
         }
+        // Unbounded by design: episode count = 1 + regression_count, and every regression needs a
+        // human resolve in between — a pathological ledger has dozens, not thousands.
         List<IncidentDetail.Episode> history = episodes.findByIncidentIdOrderByStartedAtDesc(id).stream()
                 .map(IncidentQueryService::toEpisode)
                 .toList();
@@ -258,8 +266,11 @@ public class IncidentQueryService {
             Map<String, Map<String, Long>> parsed = json.readValue(countsByEngine, COUNTS_SHAPE);
             return parsed != null ? parsed : Map.of();
         } catch (JsonProcessingException e) {
-            // The ledger's own writer serialized this blob — a parse failure is store corruption.
-            throw new IllegalStateException("counts_by_engine deserialization failed", e);
+            // The ledger's own writer serialized this blob — a parse failure is store corruption
+            // and should be LOUD, but still inside the one-error-contract (RFC-7807, not a bare
+            // 500): ResponseStatusException routes through the shared handler.
+            throw new ResponseStatusException(
+                    HttpStatus.INTERNAL_SERVER_ERROR, "incident store corrupted: counts_by_engine unreadable", e);
         }
     }
 

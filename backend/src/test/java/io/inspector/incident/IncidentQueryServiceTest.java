@@ -6,6 +6,7 @@ import static org.mockito.ArgumentMatchers.any;
 import static org.mockito.ArgumentMatchers.anyLong;
 import static org.mockito.ArgumentMatchers.eq;
 import static org.mockito.Mockito.mock;
+import static org.mockito.Mockito.never;
 import static org.mockito.Mockito.verify;
 import static org.mockito.Mockito.when;
 
@@ -194,17 +195,18 @@ class IncidentQueryServiceTest {
     /* ---------------- window clamping ---------------- */
 
     @Test
-    void listWindowIsClampedToThirtyDays() {
+    void listWindowIsClampedToThirtyDaysAndPushedDownToTheStore() {
         when(gate.readableEngineIds(auth)).thenReturn(null);
-        // 800h-old incident: a raw 100000h window would keep it; the 720h clamp drops it.
+        // A raw 100000h window must reach the store as the 720h clamp — never in-memory filtering.
         Incident recent = row(1L, "recent", CURRENT, IncidentState.OPEN, NOW.minus(Duration.ofHours(2)), 5, fleet());
-        Incident ancient =
-                row(2L, "ancient", CURRENT, IncidentState.OPEN, NOW.minus(Duration.ofHours(800)), 5, fleet());
-        when(incidents.findAllByOrderByLastSeenDesc()).thenReturn(List.of(recent, ancient));
+        when(incidents.findAllByLastSeenGreaterThanEqualOrderByLastSeenDesc(NOW.minus(Duration.ofHours(720))))
+                .thenReturn(List.of(recent));
 
         List<IncidentSummary> out = service.list(null, 100000, auth);
 
         assertThat(out).extracting(IncidentSummary::signatureHash).containsExactly("recent");
+        verify(incidents).findAllByLastSeenGreaterThanEqualOrderByLastSeenDesc(NOW.minus(Duration.ofHours(720)));
+        verify(incidents, never()).findAllByOrderByLastSeenDesc();
     }
 
     @Test
