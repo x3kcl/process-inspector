@@ -67,6 +67,7 @@ public class IncidentQueryService {
     private final TriageService triage;
     private final TriageScopeProjector scopeProjector;
     private final ErrorGroupAckService acks;
+    private final RelatedBulkJobsService relatedBulkJobs;
     private final ObjectMapper json;
     private final Clock clock;
     private final Duration quietWindow;
@@ -79,6 +80,7 @@ public class IncidentQueryService {
             TriageService triage,
             TriageScopeProjector scopeProjector,
             ErrorGroupAckService acks,
+            RelatedBulkJobsService relatedBulkJobs,
             ObjectMapper json,
             Clock clock,
             InspectorProperties properties) {
@@ -89,6 +91,7 @@ public class IncidentQueryService {
         this.triage = triage;
         this.scopeProjector = scopeProjector;
         this.acks = acks;
+        this.relatedBulkJobs = relatedBulkJobs;
         this.json = json;
         this.clock = clock;
         this.quietWindow = properties.incidentsOrDefault().quietWindowOrDefault();
@@ -158,7 +161,16 @@ public class IncidentQueryService {
                         point.getRetryingCount(),
                         point.isTruncated()))
                 .toList();
-        return new IncidentDetail(summary, history, Duration.ofHours(clamped).toString(), series, liveGroup(row, auth));
+        return new IncidentDetail(
+                summary,
+                history,
+                Duration.ofHours(clamped).toString(),
+                series,
+                liveGroup(row, auth),
+                // S5: read-only remediation join — the bulk-jobs surface's own read rules are
+                // VIEWER-floor with no engine-scope projection, so nothing narrower applies here
+                // (RelatedBulkJobsService class doc); incident-level scope was enforced above.
+                relatedBulkJobs.forSignature(row.getSignatureHash(), row.getAlgoVersion()));
     }
 
     /* ---------------- projection ---------------- */

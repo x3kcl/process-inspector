@@ -1312,7 +1312,7 @@ locked before build so the milestone doesn't re-litigate them:
     end-to-end: save→persist-across-reload, record recent→persist, delete→gone. `NoDbTestSupport`
     gained both repo mocks. **v2/M4 milestone COMPLETE.**
 
-### v2 — Incident Ledger: persisted failure-class lifecycle & history _(design locked 2026-07-18 — [INCIDENT-LEDGER.md](INCIDENT-LEDGER.md), R-BAU-10; 3-model panel-reviewed: architecture / data-model / product seats, all APPROVE-WITH-CHANGES, changes folded in)_
+### v2 — Incident Ledger: persisted failure-class lifecycle & history _(design locked 2026-07-18 — [INCIDENT-LEDGER.md](INCIDENT-LEDGER.md), R-BAU-10; 3-model panel-reviewed: architecture / data-model / product seats, all APPROVE-WITH-CHANGES, changes folded in)_ — **★ FEATURE COMPLETE: S1–S5 ALL LANDED 2026-07-19** (S1 PR #262 · S2 PR #263 · S3 PR #264 · S4 PR #266 · S5 #267)
 
 The "Sentry for process engines" delta over Stage 0: clustering, fingerprinting, acks and
 error-class bulk retry all EXIST — what evaporates is history. One incident row per R-SEM-03
@@ -1321,7 +1321,7 @@ signature (fleet-wide), episodes per open→resolve cycle (MTTR), an occurrence 
 Ingestion piggybacks the R-BAU-08 sampler (zero new engine calls). Slices (each its own PR,
 green-CI-merged, spec-sync in the same PR):
 
-- **S1 — ledger substrate** (backend-only, no REST surface): V18 migration (`incident` +
+- **S1 — ledger substrate** _(✅ LANDED 2026-07-19, PR #262)_ (backend-only, no REST surface): V18 migration (`incident` +
   `incident_episode` + `incident_occurrence`), `io.inspector.incident` package
   (state-machine service, entities/repos, native upserts, optimistic + state-conditional
   transitions), `AggregationSample` seam + `AggregationSampledEvent`, partition-maintenance
@@ -1329,23 +1329,30 @@ green-CI-merged, spec-sync in the same PR):
   Done-when: rung-1 state-machine suite green (incl. zero-state regression gate, episode
   lifecycle, algo-bump orphaning); sampler cycle writes ledger rows against a real Postgres;
   no OpenAPI drift.
-- **S2 — read API**: `GET /api/incidents` (bounded list, R-SAFE-17 service-layer scope
+- **S2 — read API** _(✅ LANDED 2026-07-19, PR #263)_: `GET /api/incidents` (bounded list, R-SAFE-17 service-layer scope
   projection, derived quiet, generation split) + `GET /api/incidents/{id}` (episodes +
   windowed occurrence series + live ErrorGroup/ack join). ARCH §4 rows + `gen:api` regen.
   Done-when: rung-3 RBAC/scope tests green.
-- **S3 — lifecycle verbs**: `POST /api/incidents/{id}/resolve` (reason ≥10, ticketId?,
+- **S3 — lifecycle verbs** _(✅ LANDED 2026-07-19, PR #264)_: `POST /api/incidents/{id}/resolve` (reason ≥10, ticketId?,
   `alsoAcknowledge?` → second separately-audited ack action) + `/reopen`; OPERATOR floor;
   config-event audit rows incl. regression events from S1. Done-when: rung-3 verb + audit
   coverage green; optimistic-lock conflict behavior asserted.
-- **S4 — frontend**: `/incidents` route + topbar link, sectioned list
+- **S4 — frontend** _(✅ LANDED 2026-07-19, PR #266)_: `/incidents` route + topbar link, sectioned list
   (REGRESSED→OPEN→QUIET→RESOLVED-collapsed), cards with truncation-honest sparklines,
   detail (timeline, episodes/MTTR, breakdown, resolve-with-ack-checkbox / reopen /
   retry-all via the EXISTING error-class bulk modal, prefiltered-search deep link).
   Done-when: vitest green + browser-verified against the dev stack.
-- **S5 — hardening & close-out**: local-only dockerized-engine IT arc (seed failing →
-  OPEN → retry-all → drain → zero-state → resolve → re-seed → REGRESSED + new episode),
-  related-bulk-jobs join on detail, edge cases, DATA-CLASSIFICATION + TRACEABILITY rows,
-  docs close-out.
+- **S5 — hardening & close-out** _(✅ LANDED 2026-07-19, #267 — issue #261)_:
+  local-only dockerized-engine IT arc `IncidentLedgerArcIT` (run-unique generated failing
+  process → OPEN → error-class retry-all → drain → resolve → reopen → re-resolve →
+  zero-state armed by an observing cycle → re-seed → REGRESSED + new episode + one
+  `incident-regressed` config event; NOT in ci.yml's itClass — engine-harness doctrine),
+  related-bulk-jobs join on the detail (`relatedBulkJobs`: the submit ENVELOPE audit row is
+  the join table — the `bulk_job` scope label never carried the signature; VIEWER-floor
+  bulk-read rules mirrored, no new mutation path), edge-case tests (occurrence-gap
+  no-interpolation at UNIT-FE; quiet-boundary + generation split were already S2-covered),
+  DATA-CLASSIFICATION verified complete (incident/episodes/occurrences rows all present from
+  S1), TRACEABILITY R-BAU-10 row, goal-catalog candidate mission, docs close-out.
 
 Deferred (issue-on-demand per R-GOV-08): assignee/severity, auto-resolve policies, alert/
 deploy correlation, MTTR reporting dashboard/CSV, per-engine episode splits, SQL-side scope

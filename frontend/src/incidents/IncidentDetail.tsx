@@ -14,6 +14,7 @@ import { useMe } from '../api/me'
 import { worstEnvironment } from '../triage/ackState'
 import { CopyButton } from '../components/CopyButton'
 import { Ts } from '../lib/Ts'
+import { talliesLine } from '../ops/outcome'
 import { IncidentBreakdownTable } from './IncidentBreakdownTable'
 import { IncidentTimeline } from './IncidentTimeline'
 import { episodeDurationLabel } from './duration'
@@ -64,6 +65,7 @@ export function IncidentDetail() {
 
   const incident = detail.data.incident
   const live = detail.data.live
+  const relatedBulkJobs = detail.data.relatedBulkJobs ?? []
   const episodes = [...(detail.data.episodes ?? [])].sort((a, b) =>
     (b.startedAt ?? '').localeCompare(a.startedAt ?? ''),
   )
@@ -213,6 +215,34 @@ export function IncidentDetail() {
           </li>
         ))}
         {episodes.length === 0 && <li className="zero-state">No episodes recorded.</li>}
+      </ul>
+
+      {/* S5: the read-only remediation join — recent error-class bulk retries whose submit
+          matched THIS signature, in the ops drawer's own vocabulary (state chip + scope chip
+          + the R-SEM-11 tallies line). Item-level detail stays on the Operations drawer. */}
+      <h2>Recent bulk retries</h2>
+      <ul className="related-jobs-list">
+        {relatedBulkJobs.map((job) => (
+          <li key={job.id ?? job.submittedAt} className="related-job-row">
+            <span className={`job-state state-${(job.state ?? '').toLowerCase()}`}>
+              {job.state ?? 'unknown'}
+            </span>{' '}
+            <code>{job.verb ?? ''}</code>
+            {typeof job.scopeLabel === 'string' && job.scopeLabel !== '' && (
+              <>
+                {' '}
+                <code className="criteria-chip">{job.scopeLabel}</code>
+              </>
+            )}{' '}
+            <span className="job-meta">
+              {job.submittedBy ?? '(unknown)'} · <Ts iso={job.submittedAt} relative />
+            </span>{' '}
+            <span className="job-tallies">{talliesLine(job)}</span>
+          </li>
+        ))}
+        {relatedBulkJobs.length === 0 && (
+          <li className="zero-state">No error-class bulk retries recorded for this incident.</li>
+        )}
       </ul>
 
       {modal === 'resolve' && incident !== undefined && (

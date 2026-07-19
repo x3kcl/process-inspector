@@ -5,6 +5,7 @@ import {
   outcomeClassName,
   outcomeIsDispatchOnly,
   outcomeLabel,
+  talliesLine,
 } from './outcome'
 
 describe('outcomeLabel — usability round 1, Theme G', () => {
@@ -102,5 +103,31 @@ describe('outcomeClassName', () => {
     expect(outcomeClassName('retry-job', 'failed')).toBe('outcome-failed')
     expect(outcomeClassName('retry-job', 'skipped_protected')).toBe('outcome-skipped-protected')
     expect(outcomeClassName('retry-job', 'not_run')).toBe('outcome-not-run')
+  })
+})
+
+describe('talliesLine — the R-SEM-11 honesty summary (S5: shared with the incident detail)', () => {
+  it('summarises dispatched count and per-state tallies, verb-aware', () => {
+    expect(talliesLine({ verb: 'retry-job', totalItems: 3, tallies: { ok: 2, failed: 1 } })).toBe(
+      '3 of 3 dispatched · re-queued 2 · failed 1',
+    )
+  })
+
+  it('excludes never-dispatched states from the dispatched count, never below zero', () => {
+    expect(
+      talliesLine({
+        verb: 'suspend',
+        totalItems: 4,
+        tallies: { ok: 1, not_run: 2, skipped_protected: 1 },
+      }),
+    ).toBe('1 of 4 dispatched · done 1 · skipped (protected) 1 · not run 2')
+    expect(talliesLine({ verb: 'suspend', totalItems: 0, tallies: { pending: 1 } })).toBe(
+      '0 of 0 dispatched',
+    )
+  })
+
+  it('degrades to the bare count line when tallies are absent (a RelatedBulkJob mid-run)', () => {
+    expect(talliesLine({ verb: 'retry-job', totalItems: 2 })).toBe('2 of 2 dispatched')
+    expect(talliesLine({})).toBe('0 of 0 dispatched')
   })
 })

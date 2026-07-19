@@ -70,3 +70,39 @@ export function auditOutcomeView(
     title: `audit outcome "${normalized}" · ${statusEvidence !== '' ? statusEvidence : 'no HTTP status recorded'}`,
   }
 }
+
+/** The minimal job shape {@link talliesLine} needs — satisfied by both the ops drawer's
+ *  `BulkJobDto` and the incident detail's `RelatedBulkJob` (the same list-item contract). */
+export interface TalliedJob {
+  verb?: string
+  totalItems?: number
+  tallies?: Record<string, number>
+}
+
+/**
+ * The "N of M dispatched · ok X · failed Y" honesty line (R-SEM-11) — extracted from the
+ * ops drawer (S5) so the incident detail's related-bulk-retries section renders the SAME
+ * summary vocabulary instead of a parallel one. Verb-aware via {@link outcomeLabel}
+ * (a retry-job "ok" tally reads "re-queued", never "ok" — Theme G).
+ */
+export function talliesLine(job: TalliedJob): string {
+  const tallies = job.tallies ?? {}
+  const total = job.totalItems ?? 0
+  const settledOrder = [
+    'ok',
+    'failed',
+    'skipped',
+    'skipped_protected',
+    'unknown',
+    'not_run',
+  ] as const
+  const dispatched =
+    total -
+    (tallies['pending'] ?? 0) -
+    (tallies['not_run'] ?? 0) -
+    (tallies['skipped_protected'] ?? 0)
+  const parts = settledOrder
+    .filter((key) => (tallies[key] ?? 0) > 0)
+    .map((key) => `${outcomeLabel(job.verb, key)} ${String(tallies[key] ?? 0)}`)
+  return `${String(Math.max(dispatched, 0))} of ${String(total)} dispatched${parts.length > 0 ? ' · ' + parts.join(' · ') : ''}`
+}

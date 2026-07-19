@@ -4233,6 +4233,20 @@ button.skip-link {
 .episode-row.episode-live {
   border-left: 3px solid var(--color-danger);
 }
+/* S5: the incident detail's related-bulk-retries rows — the episode-row frame with the
+   ops drawer's own chip vocabulary (.job-state / .criteria-chip / .job-tallies) inside. */
+.related-jobs-list {
+  list-style: none;
+  margin: 8px 0;
+  padding: 0;
+}
+.related-job-row {
+  border: 1px solid var(--color-border);
+  border-radius: 6px;
+  padding: 6px 10px;
+  margin-bottom: 6px;
+  font-size: 13px;
+}
 .episode-duration {
   font-weight: 600;
   color: var(--color-text-body);

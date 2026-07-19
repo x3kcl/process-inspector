@@ -22,7 +22,7 @@ import { problemBanner } from '../actions/problem'
 import { useToast } from '../components/toast'
 import { useLive, useLiveEvent } from '../live/live'
 import { Ts } from '../lib/Ts'
-import { outcomeCellLabel, outcomeClassName, outcomeIsDispatchOnly, outcomeLabel } from './outcome'
+import { outcomeCellLabel, outcomeClassName, outcomeIsDispatchOnly, talliesLine } from './outcome'
 
 export function OpsDrawer() {
   const { open, setOpen, focusJobId, clearFocus } = useOpsDrawer()
@@ -81,29 +81,6 @@ export function OpsDrawer() {
       )}
     </aside>
   )
-}
-
-function talliesLine(job: BulkJobDto): string {
-  const tallies = job.tallies ?? {}
-  const total = job.totalItems ?? 0
-  const settledOrder = [
-    'ok',
-    'failed',
-    'skipped',
-    'skipped_protected',
-    'unknown',
-    'not_run',
-  ] as const
-  const dispatched =
-    total -
-    (tallies['pending'] ?? 0) -
-    (tallies['not_run'] ?? 0) -
-    (tallies['skipped_protected'] ?? 0)
-  const parts = settledOrder
-    .filter((key) => (tallies[key] ?? 0) > 0)
-    // Theme G: verb-aware — a retry-job "ok" tally reads "re-queued", never "ok".
-    .map((key) => `${outcomeLabel(job.verb, key)} ${String(tallies[key] ?? 0)}`)
-  return `${String(Math.max(dispatched, 0))} of ${String(total)} dispatched${parts.length > 0 ? ' · ' + parts.join(' · ') : ''}`
 }
 
 function JobCard({ job, focused }: { job: BulkJobDto; focused: boolean }) {

@@ -121,6 +121,7 @@ export type IncidentResolution = components['schemas']['IncidentResolution']
 export type IncidentEpisode = components['schemas']['Episode']
 export type OccurrencePoint = components['schemas']['OccurrencePoint']
 export type AckSliceOutcome = components['schemas']['AckSliceOutcome']
+export type RelatedBulkJob = components['schemas']['RelatedBulkJob']
 
 export const INCIDENT_STATES = ['OPEN', 'REGRESSED', 'RESOLVED'] as const
 export type IncidentState = (typeof INCIDENT_STATES)[number]
