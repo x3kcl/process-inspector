@@ -77,6 +77,12 @@ export function Shell() {
               <Link to="/tasks" className="topbar-link">
                 Find tasks
               </Link>
+              {/* Incident Ledger (R-BAU-10, INCIDENT-LEDGER.md §8): VIEWER-floor read (the
+                  lifecycle verbs are OPERATOR-gated inside the page itself, greyed-never-hidden
+                  like every other action) — always-visible like Ops log/Find tasks. */}
+              <Link to="/incidents" className="topbar-link">
+                Incidents
+              </Link>
               <RegistryAdminLink />
               <AccessAdminLink />
               <RemediationDemandLink />

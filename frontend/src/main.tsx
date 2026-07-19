@@ -45,6 +45,14 @@ const PersonTaskSearchPage = lazy(() =>
 const RemediationDemandPage = lazy(() =>
   import('./admin/RemediationDemandPage').then((m) => ({ default: m.RemediationDemandPage })),
 )
+// Incident Ledger (R-BAU-10, docs/INCIDENT-LEDGER.md §8) — persisted failure-class history,
+// distinct from the Stage-0 landing above.
+const IncidentsPage = lazy(() =>
+  import('./incidents/IncidentsPage').then((m) => ({ default: m.IncidentsPage })),
+)
+const IncidentDetail = lazy(() =>
+  import('./incidents/IncidentDetail').then((m) => ({ default: m.IncidentDetail })),
+)
 
 /** Wrap a lazily-loaded route element in a Suspense boundary with a consistent fallback. */
 function lazyRoute(node: ReactNode): ReactNode {
@@ -83,6 +91,8 @@ const router = createBrowserRouter([
       { index: true, element: <HomeRoute /> },
       { path: 'search', element: lazyRoute(<SearchPage />) },
       { path: 'tasks', element: lazyRoute(<PersonTaskSearchPage />) },
+      { path: 'incidents', element: lazyRoute(<IncidentsPage />) },
+      { path: 'incidents/:id', element: lazyRoute(<IncidentDetail />) },
       { path: 'inspect/:engineId/:instanceId', element: lazyRoute(<InspectPage />) },
       // Case Inspector Phase 2: the polymorphic CMMN sibling of /inspect (read-only, 6.8+).
       { path: 'case/:engineId/:caseInstanceId', element: lazyRoute(<CasePage />) },

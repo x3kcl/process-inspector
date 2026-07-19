@@ -4053,3 +4053,221 @@ button.skip-link {
 .acknowledged-section .error-group {
   border-left-color: var(--color-text-muted);
 }
+
+/* ---- Incident Ledger (R-BAU-10, docs/INCIDENT-LEDGER.md §8) ---- */
+.incident-section h2 {
+  font-size: 15px;
+  margin: 16px 0 8px;
+}
+/* Reuses .error-group's card shape verbatim (same border/radius/padding rhythm) — the
+   left-border colour is the ONE thing that varies per state, echoing .status-chip's own
+   per-lane hues so the two surfaces read as one visual language. */
+.incident-card {
+  border: 1px solid var(--color-border);
+  border-left: 4px solid var(--color-border-muted);
+  border-radius: 8px;
+  padding: 10px 12px;
+  margin-bottom: 10px;
+}
+.incident-card.incident-open {
+  border-left-color: var(--color-danger);
+}
+.incident-card.incident-quiet {
+  border-left-color: var(--color-text-placeholder);
+}
+.incident-card.incident-resolved {
+  border-left-color: var(--color-success-border);
+}
+/* REGRESSED is the one alarm-styled state (SPEC §10a: a text token + border, never hue
+   alone) — same dark-red-on-light-pink treatment as .lane-alarm, just as a left border +
+   chip instead of a filled pill (a whole card painted alarm-red would be too loud). */
+.incident-card.incident-regressed {
+  border-left-color: var(--color-danger-deep);
+  background: var(--color-danger-bg);
+}
+.incident-state-chip {
+  padding: 1px 8px;
+  border-radius: 9px;
+  font-size: 12px;
+  font-weight: 700;
+  text-transform: uppercase;
+  letter-spacing: 0.03em;
+}
+.incident-state-chip.incident-open {
+  background: var(--color-danger-fill);
+  color: var(--color-danger-dark);
+}
+.incident-state-chip.incident-quiet {
+  background: var(--color-bg-subtle);
+  color: var(--color-text-body);
+}
+.incident-state-chip.incident-resolved {
+  background: var(--color-success-bg);
+  color: var(--color-success-alt);
+}
+.incident-state-chip.incident-regressed {
+  background: var(--color-danger-deep);
+  color: #ffd7d0;
+}
+.incident-card-head {
+  display: flex;
+  justify-content: space-between;
+  align-items: baseline;
+  gap: 12px;
+  flex-wrap: wrap;
+}
+.incident-signature {
+  display: flex;
+  align-items: baseline;
+  gap: 8px;
+  min-width: 0;
+  flex-wrap: wrap;
+}
+.incident-total {
+  font-size: 18px;
+  font-weight: 700;
+  color: var(--color-danger-dark);
+  white-space: nowrap;
+  font-variant-numeric: tabular-nums;
+}
+.incident-meta-line {
+  display: flex;
+  gap: 10px;
+  flex-wrap: wrap;
+  font-size: 12px;
+  color: var(--color-text-secondary);
+  margin-top: 4px;
+}
+.incident-card-link {
+  font-weight: 600;
+  text-decoration: none;
+}
+.incident-card-link:hover {
+  text-decoration: underline;
+}
+.archived-generations-toggle {
+  margin: 10px 0;
+}
+
+/* ---- incident detail ---- */
+.lifecycle-strip {
+  display: flex;
+  flex-wrap: wrap;
+  gap: 16px;
+  font-size: 13px;
+  color: var(--color-text-body);
+  border: 1px solid var(--color-border);
+  border-radius: 8px;
+  padding: 8px 12px;
+  margin: 10px 0;
+}
+.lifecycle-strip dt {
+  font-weight: 600;
+  color: var(--color-text-secondary);
+}
+.lifecycle-strip dd {
+  margin: 0;
+}
+.incident-timeline-wrap {
+  margin: 10px 0;
+}
+.incident-timeline {
+  width: 100%;
+  height: 90px;
+  background: var(--color-bg-faint);
+  border: 1px solid var(--color-border);
+  border-radius: 6px;
+}
+.incident-timeline polyline {
+  stroke: var(--color-danger);
+  fill: none;
+  stroke-width: 1.5;
+  vector-effect: non-scaling-stroke;
+}
+.incident-timeline-point {
+  fill: var(--color-danger);
+}
+/* Truncated samples are a FLOOR, not a dip (§5) — a HOLLOW, DASHED marker instead of a
+   normal filled dot, plus the legend note below: the shape carries the meaning, not colour. */
+.incident-timeline-point-truncated {
+  fill: none;
+  stroke: var(--color-warning-border);
+  stroke-width: 1.5;
+  stroke-dasharray: 2 1.5;
+}
+.incident-timeline-legend {
+  font-size: 11px;
+  color: var(--color-text-faint);
+  margin: 4px 0 0;
+}
+.breakdown-table {
+  width: 100%;
+  border-collapse: collapse;
+  font-size: 13px;
+  margin: 8px 0;
+}
+.breakdown-table th {
+  text-align: left;
+  color: var(--color-text-secondary);
+  font-weight: 600;
+  border-bottom: 1px solid var(--color-border);
+  padding: 4px 8px;
+}
+.breakdown-table td {
+  padding: 4px 8px;
+  border-bottom: 1px solid var(--color-divider-subtle);
+  vertical-align: top;
+}
+.episode-list {
+  list-style: none;
+  margin: 8px 0;
+  padding: 0;
+}
+.episode-row {
+  border: 1px solid var(--color-border);
+  border-radius: 6px;
+  padding: 6px 10px;
+  margin-bottom: 6px;
+  font-size: 13px;
+}
+.episode-row.episode-live {
+  border-left: 3px solid var(--color-danger);
+}
+.episode-duration {
+  font-weight: 600;
+  color: var(--color-text-body);
+}
+.resolve-ack-outcomes {
+  list-style: none;
+  margin: 8px 0 0;
+  padding: 0;
+  font-size: 13px;
+}
+.resolve-ack-outcomes li {
+  padding: 3px 0;
+  border-bottom: 1px solid var(--color-divider-subtle);
+}
+.resolve-ack-ok {
+  color: var(--color-success-alt);
+}
+.resolve-ack-failed {
+  color: var(--color-danger-dark);
+}
+.checkbox-field {
+  display: flex;
+  flex-direction: row;
+  align-items: center;
+  gap: 0.4rem;
+  font-weight: 400;
+}
+.raw-message-block {
+  font-family: ui-monospace, SFMono-Regular, Menlo, monospace;
+  font-size: 12px;
+  white-space: pre-wrap;
+  word-break: break-word;
+  background: var(--color-surface-code);
+  border: 1px solid var(--color-border);
+  border-radius: 6px;
+  padding: 8px 10px;
+  margin: 6px 0;
+}
