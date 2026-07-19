@@ -27,7 +27,7 @@ export interface paths {
             path?: never;
             cookie?: never;
         };
-        get: operations["list_4"];
+        get: operations["list_5"];
         put?: never;
         post?: never;
         delete?: never;
@@ -636,7 +636,39 @@ export interface paths {
             path?: never;
             cookie?: never;
         };
+        get: operations["list_4"];
+        put?: never;
+        post?: never;
+        delete?: never;
+        options?: never;
+        head?: never;
+        patch?: never;
+        trace?: never;
+    };
+    "/api/incidents": {
+        parameters: {
+            query?: never;
+            header?: never;
+            path?: never;
+            cookie?: never;
+        };
         get: operations["list_3"];
+        put?: never;
+        post?: never;
+        delete?: never;
+        options?: never;
+        head?: never;
+        patch?: never;
+        trace?: never;
+    };
+    "/api/incidents/{id}": {
+        parameters: {
+            query?: never;
+            header?: never;
+            path?: never;
+            cookie?: never;
+        };
+        get: operations["detail"];
         put?: never;
         post?: never;
         delete?: never;
@@ -1795,6 +1827,22 @@ export interface components {
             /** Format: int32 */
             writeMs?: number;
         };
+        Episode: {
+            /** Format: int64 */
+            durationSeconds?: number;
+            /** Format: date-time */
+            endedAt?: string;
+            /** Format: int64 */
+            id?: number;
+            /** Format: int64 */
+            peakTotal?: number;
+            resolveReason?: string;
+            resolvedBy?: string;
+            startState?: string;
+            /** Format: date-time */
+            startedAt?: string;
+            ticketId?: string;
+        };
         ErrorGroup: {
             acknowledgement?: components["schemas"]["ErrorGroupAcknowledgement"];
             /** Format: int32 */
@@ -1890,6 +1938,43 @@ export interface components {
             processInstanceId?: string;
             requested?: boolean;
             startTime?: string;
+        };
+        IncidentDetail: {
+            episodes?: components["schemas"]["Episode"][];
+            incident?: components["schemas"]["IncidentSummary"];
+            live?: components["schemas"]["ErrorGroup"];
+            series?: components["schemas"]["OccurrencePoint"][];
+            seriesWindow?: string;
+        };
+        IncidentSummary: {
+            /** Format: int32 */
+            algoVersion?: number;
+            countsByEngine?: {
+                [key: string]: {
+                    [key: string]: number;
+                };
+            };
+            currentGeneration?: boolean;
+            exceptionClass?: string;
+            /** Format: date-time */
+            firstSeen?: string;
+            /** Format: int64 */
+            id?: number;
+            /** Format: date-time */
+            lastRegressedAt?: string;
+            /** Format: date-time */
+            lastSeen?: string;
+            /** Format: int64 */
+            lastTotal?: number;
+            lastTruncated?: boolean;
+            normalizedMessage?: string;
+            partial?: boolean;
+            quiet?: boolean;
+            /** Format: int32 */
+            regressionCount?: number;
+            sampleRawMessage?: string;
+            signatureHash?: string;
+            state?: string;
         };
         InstanceDetail: {
             businessKey?: string;
@@ -2150,6 +2235,17 @@ export interface components {
             instanceId?: string;
             /** Format: date-time */
             ts?: string;
+        };
+        OccurrencePoint: {
+            /** Format: int64 */
+            deadLetterCount?: number;
+            /** Format: int64 */
+            retryingCount?: number;
+            /** Format: date-time */
+            sampledAt?: string;
+            /** Format: int64 */
+            total?: number;
+            truncated?: boolean;
         };
         OutOfScopeDeadLetters: {
             jobs?: components["schemas"]["CmmnDeadLetterJob"][];
@@ -2628,7 +2724,7 @@ export interface operations {
             };
         };
     };
-    list_4: {
+    list_5: {
         parameters: {
             query?: never;
             header?: never;
@@ -3631,7 +3727,7 @@ export interface operations {
             };
         };
     };
-    list_3: {
+    list_4: {
         parameters: {
             query?: never;
             header?: never;
@@ -3647,6 +3743,53 @@ export interface operations {
                 };
                 content: {
                     "*/*": components["schemas"]["EngineDto"][];
+                };
+            };
+        };
+    };
+    list_3: {
+        parameters: {
+            query?: {
+                state?: string;
+                window?: number;
+            };
+            header?: never;
+            path?: never;
+            cookie?: never;
+        };
+        requestBody?: never;
+        responses: {
+            /** @description OK */
+            200: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "*/*": components["schemas"]["IncidentSummary"][];
+                };
+            };
+        };
+    };
+    detail: {
+        parameters: {
+            query?: {
+                window?: number;
+            };
+            header?: never;
+            path: {
+                id: number;
+            };
+            cookie?: never;
+        };
+        requestBody?: never;
+        responses: {
+            /** @description OK */
+            200: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "*/*": components["schemas"]["IncidentDetail"];
                 };
             };
         };

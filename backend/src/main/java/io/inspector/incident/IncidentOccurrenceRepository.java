@@ -39,4 +39,8 @@ public interface IncidentOccurrenceRepository extends JpaRepository<IncidentOccu
 
     /** One incident's series ascending — the S2 windowed read path (and the IT assertions). */
     List<IncidentOccurrence> findByIdIncidentIdOrderByIdSampledAtAsc(long incidentId);
+
+    /** The S2 detail read: one incident's series inside a clamped window, ascending. */
+    List<IncidentOccurrence> findByIdIncidentIdAndIdSampledAtGreaterThanEqualOrderByIdSampledAtAsc(
+            long incidentId, Instant since);
 }
