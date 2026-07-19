@@ -143,6 +143,7 @@ Source seats in brackets. Conflicts resolved per DESIGN-REVIEW round-3 addendum.
 | R-BAU-07 | Copy business summary (plain-language state, definition name, no exceptions/IDs/engine names) | SHOULD-v1.x | support eng |
 | R-BAU-08 | Timers-due-in-window filter (maintenance prep); maintenance snapshot + post-window verification sweep; per-definition volume trends + growth flag — all over the same snapshot store as R-BAU-05 | SHOULD-v1.x (filter) / COULD-v2 (rest) | support eng |
 | R-BAU-09 | Training: seeded scenario compose profile (every triage shape + scripted reset); certification checklist per role before IdP grant | SHOULD-v1.x | team lead |
+| R-BAU-10 | Incident ledger: persisted failure-class lifecycle over the R-SEM-03 fingerprint — incident rows (OPEN/RESOLVED/REGRESSED, optimistic-locked), per-episode records (MTTR substrate), occurrence time-series (400d drop-partition), zero-state-gated regression detection, resolve/reopen (OPERATOR, audited config-events, opt-in also-acknowledge); ingestion piggybacks the R-BAU-08 sampler cycle (zero new engine calls); truncation honesty end-to-end — see [INCIDENT-LEDGER.md](INCIDENT-LEDGER.md) | SHOULD-v2 | support eng + panel 2026-07-18 |
 
 ## L3 — Deep-support & escapes
 | ID | Requirement | Prio | Source |

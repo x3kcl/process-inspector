@@ -226,6 +226,40 @@ permits. Retention is **drop-partition** (400-day revFADP): the table is `PARTIT
 DELETEs) those past the horizon, so the sweep never locks the partition being written. A NULL
 out-of-scope count writes no row — the series stays honest rather than fabricating a zero.
 
+### 2.7 Memory — the incident ledger (v2, R-BAU-10)
+The snapshot store (§2.6) remembers *counts*; the incident ledger remembers *failure
+classes*. Same ingestion beat, different consumer: `SnapshotSource.sample()` returns an
+`AggregationSample` (lane counts + the aggregation's `ErrorGroup` list from one pass), the
+sampler writes `triage_snapshot` as before, then publishes a synchronous
+`AggregationSampledEvent`; `IncidentLedgerService` consumes it behind its own flag
+(`inspector.incidents.enabled`) with its own failure isolation (a ledger error warns once
+and never fails the cycle). **Zero additional engine calls** — the ledger is a pure DB-side
+consumer of what the sampler already computed; disabling the sampler idles both stores.
+
+Three tables (V18). `incident` — one mutable row per fleet-wide `(signature_hash,
+algo_version)` (the R-SEM-03 binding contract; a normalizer bump orphans the generation,
+never silently rebinds), carrying state `OPEN/RESOLVED/REGRESSED`, first/last-seen, latest
+totals + `counts_by_engine` display blob, and a JPA `@Version` column — every transition is
+optimistic-locked AND state-conditional (`… WHERE state = :expected`) so a sampler cycle
+interleaving with a human resolve/reopen misses rather than clobbers; the regression gate's
+flag is the `seen_zero_since_resolve` column. `incident_episode` — one row per open→resolve
+cycle (`start_state` `OPEN|REGRESSED`, started/ended/resolved_by/reason/ticket/peak); resolve
+metadata lives here, making per-episode MTTR a plain column subtraction. `incident_occurrence`
+— the narrow time-series, `PRIMARY KEY (incident_id, sampled_at)` (the business key — a
+surrogate id would not be unique across partitions), range-partitioned monthly with the
+same create-ahead-empty/drop-behind maintenance as §2.6 (explicitly extended to this
+table), FK to the never-deleted `incident` rows, idempotent bucketed `ON CONFLICT` upsert.
+
+The state machine's one subtlety is the **regression gate**: `RESOLVED → REGRESSED` fires
+only after `seen_zero_since_resolve` (at least one post-resolve cycle observed the class
+absent or zero — otherwise the ~20s aggregation cache plus engine retry-lag would regress
+every fresh resolve instantly) and only at/above `regression-min-count`. While gated, cycles
+still update totals and occurrence rows — the data stays honest; only the state waits.
+Truncation flags travel into both `incident` and occurrence rows (R-SEM-12 end-to-end).
+Reads are scope-projected per R-SAFE-17 in the service layer (the list is bounded and
+unpaginated in v1; the `TriageScopeProjector` doctrine, not a SQL predicate — revisit only
+if incident cardinality grows). Full schema, API and panel provenance: [INCIDENT-LEDGER.md](INCIDENT-LEDGER.md).
+
 ## 3. Engine Registry — data model
 
 v1 is **config-first** (YAML + env-var secret refs, 12-factor). The identical shape becomes a
