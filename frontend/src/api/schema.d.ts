@@ -677,6 +677,38 @@ export interface paths {
         patch?: never;
         trace?: never;
     };
+    "/api/incidents/{id}/reopen": {
+        parameters: {
+            query?: never;
+            header?: never;
+            path?: never;
+            cookie?: never;
+        };
+        get?: never;
+        put?: never;
+        post: operations["reopenIncident"];
+        delete?: never;
+        options?: never;
+        head?: never;
+        patch?: never;
+        trace?: never;
+    };
+    "/api/incidents/{id}/resolve": {
+        parameters: {
+            query?: never;
+            header?: never;
+            path?: never;
+            cookie?: never;
+        };
+        get?: never;
+        put?: never;
+        post: operations["resolveIncident"];
+        delete?: never;
+        options?: never;
+        head?: never;
+        patch?: never;
+        trace?: never;
+    };
     "/api/instances/{engineId}/{instanceId}": {
         parameters: {
             query?: never;
@@ -1357,6 +1389,13 @@ export interface components {
             fleetGrants?: components["schemas"]["FleetView"][];
             ladderGrants?: components["schemas"]["LadderView"][];
         };
+        AckSliceOutcome: {
+            acknowledged?: boolean;
+            code?: string;
+            definitionKey?: string;
+            engineId?: string;
+            message?: string;
+        };
         AcknowledgeErrorGroupRequest: {
             /** Format: int32 */
             algoVersion?: number;
@@ -1946,6 +1985,10 @@ export interface components {
             series?: components["schemas"]["OccurrencePoint"][];
             seriesWindow?: string;
         };
+        IncidentResolution: {
+            acknowledgements?: components["schemas"]["AckSliceOutcome"][];
+            incident?: components["schemas"]["IncidentSummary"];
+        };
         IncidentSummary: {
             /** Format: int32 */
             algoVersion?: number;
@@ -2400,6 +2443,14 @@ export interface components {
             sequences?: components["schemas"]["SequenceFinding"][];
             spanSufficient?: boolean;
             truncated?: boolean;
+        };
+        ReopenIncidentRequest: {
+            reason?: string;
+        };
+        ResolveIncidentRequest: {
+            alsoAcknowledge?: boolean;
+            reason?: string;
+            ticketId?: string;
         };
         ResolveMatch: {
             businessKey?: string;
@@ -3790,6 +3841,58 @@ export interface operations {
                 };
                 content: {
                     "*/*": components["schemas"]["IncidentDetail"];
+                };
+            };
+        };
+    };
+    reopenIncident: {
+        parameters: {
+            query?: never;
+            header?: never;
+            path: {
+                id: number;
+            };
+            cookie?: never;
+        };
+        requestBody: {
+            content: {
+                "application/json": components["schemas"]["ReopenIncidentRequest"];
+            };
+        };
+        responses: {
+            /** @description OK */
+            200: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "*/*": components["schemas"]["IncidentSummary"];
+                };
+            };
+        };
+    };
+    resolveIncident: {
+        parameters: {
+            query?: never;
+            header?: never;
+            path: {
+                id: number;
+            };
+            cookie?: never;
+        };
+        requestBody: {
+            content: {
+                "application/json": components["schemas"]["ResolveIncidentRequest"];
+            };
+        };
+        responses: {
+            /** @description OK */
+            200: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "*/*": components["schemas"]["IncidentResolution"];
                 };
             };
         };
