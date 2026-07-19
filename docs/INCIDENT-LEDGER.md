@@ -158,7 +158,10 @@ The triage aggregation already runs on the 2-permit BACKGROUND lane once per
 engine load whenever it missed the ~20s triage cache. Therefore:
 
 - `SnapshotSource.sample()` widens to return an `AggregationSample(laneCounts, errorGroups,
-  sampledAt)` (the lane counts' and groups' single aggregation pass).
+  sampledAt, truncatedEngineIds)` (the lane counts' and groups' single aggregation pass).
+  The fourth component exists because `ErrorGroup` carries no truncation flag — group
+  truncation is derivable only from the per-engine envelope's `dlqScan="truncated@N"`
+  marker, and the truncation-honesty mandate (§8) needs that carrier at ingest time.
 - `SnapshotSampler` keeps its snapshot-store write, then **publishes a synchronous Spring
   `AggregationSampledEvent`** carrying the sample. `IncidentLedgerService` is an
   `@EventListener` gated by `inspector.incidents.enabled` (default true, independent of
@@ -255,7 +258,8 @@ Interactions: incident detail shows ack state read-only; resolve offers the opt-
 - **S1 — ledger substrate (backend-only, no REST):** V18 (3 tables), `io.inspector.incident`
   package (`IncidentLedgerService` state machine, entities/repos, native upserts),
   `AggregationSample` seam + `AggregationSampledEvent`, partition maintenance extension,
-  config `inspector.incidents.{enabled,quiet-window,regression-min-count}`. No OpenAPI drift.
+  config `inspector.incidents.{enabled,quiet-window,regression-min-count,retention-days}`
+  (retention default 400, aligned with the snapshot store). No OpenAPI drift.
 - **S2 — read API:** `GET /api/incidents` + `GET /api/incidents/{id}` (episodes, series,
   live join, scope projection); `gen:api` regen.
 - **S3 — lifecycle verbs:** resolve (incl. `alsoAcknowledge`) / reopen + audit events +

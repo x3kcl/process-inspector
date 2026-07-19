@@ -22,9 +22,10 @@
 --    Range-partitioned monthly like triage_snapshot; the DEFAULT catch-all
 --    guarantees an INSERT never fails on partition housekeeping; retention is
 --    DROP-PARTITION at 400 days (IncidentOccurrencePartitionMaintainer).
---  * FK kept on the partitioned child (panel P4): incident rows are never
---    deleted, months are created AHEAD while EMPTY (zero-cost FK validation),
---    and a partition DROP is metadata-only.
+--  * FK kept from the partitioned occurrence table to `incident` (panel P4) —
+--    declared on the PARENT, as Postgres requires; every partition inherits it.
+--    Safe because incident rows are never deleted, months are created AHEAD
+--    while EMPTY (zero-cost FK validation), and a partition DROP is metadata-only.
 --
 -- ddl-auto=validate holds (iron rule): the io.inspector.incident entities
 -- align to THIS file.

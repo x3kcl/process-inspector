@@ -1325,7 +1325,7 @@ green-CI-merged, spec-sync in the same PR):
   `incident_episode` + `incident_occurrence`), `io.inspector.incident` package
   (state-machine service, entities/repos, native upserts, optimistic + state-conditional
   transitions), `AggregationSample` seam + `AggregationSampledEvent`, partition-maintenance
-  extension, config `inspector.incidents.{enabled,quiet-window,regression-min-count}`.
+  extension, config `inspector.incidents.{enabled,quiet-window,regression-min-count,retention-days}`.
   Done-when: rung-1 state-machine suite green (incl. zero-state regression gate, episode
   lifecycle, algo-bump orphaning); sampler cycle writes ledger rows against a real Postgres;
   no OpenAPI drift.
