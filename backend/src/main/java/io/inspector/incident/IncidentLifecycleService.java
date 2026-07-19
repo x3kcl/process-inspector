@@ -238,7 +238,10 @@ public class IncidentLifecycleService {
     private List<String[]> breakdownSlices(Incident row) {
         Map<String, Map<String, Long>> counts;
         try {
-            Map<String, Map<String, Long>> parsed = json.readValue(row.getCountsByEngine(), COUNTS_SHAPE);
+            // NOT-NULL in V18, but readValue(null) would throw IAE past the catch below — and the
+            // contract here is degrade-to-empty, never fail the already-committed resolve.
+            String blob = row.getCountsByEngine();
+            Map<String, Map<String, Long>> parsed = blob != null ? json.readValue(blob, COUNTS_SHAPE) : null;
             counts = parsed != null ? parsed : Map.of();
         } catch (JsonProcessingException e) {
             counts = Map.of(); // corrupted display blob: the ack outcome list degrades to empty
@@ -250,7 +253,7 @@ public class IncidentLifecycleService {
                 return; // a zero-filled sibling version is not an acknowledgeable slice
             }
             String definitionKey = definitionKeyOf(defVersionKey);
-            if (seen.add(engineId + ' ' + definitionKey)) {
+            if (seen.add(engineId + '\0' + definitionKey)) {
                 slices.add(new String[] {engineId, definitionKey});
             }
         }));
