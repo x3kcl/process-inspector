@@ -112,8 +112,9 @@ export type CmmnStatus = (typeof CMMN_STATUSES)[number]
 
 // Incident Ledger (R-BAU-10, docs/INCIDENT-LEDGER.md) — persisted failure-class lifecycle.
 // The BFF's `state` fields are plain (unannotated) strings on the wire (no springdoc @enum);
-// the known literals are named here for the UI, but every reader must tolerate an unknown
-// value (fail toward visible, never silently dropped — see incidents/sections.ts).
+// the known SERVER-REPORTED literals are named here for the UI (QUIET is a client-derived
+// display state, not a wire value — see incidents/sections.ts), but every reader must
+// tolerate an unknown value (fail toward visible, never silently dropped).
 export type IncidentSummary = components['schemas']['IncidentSummary']
 export type IncidentDetail = components['schemas']['IncidentDetail']
 export type IncidentResolution = components['schemas']['IncidentResolution']
