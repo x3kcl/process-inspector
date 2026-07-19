@@ -222,11 +222,14 @@ Interactions: incident detail shows ack state read-only; resolve offers the opt-
 - List sections: REGRESSED (alarm styling, first) → OPEN (active) → QUIET → RESOLVED
   (collapsed) — current algo generation by default, "archived generations" toggle.
 - Card: state chip, exception class + normalized message, first/last seen, live total
-  (lower-bound badge when truncated, R-SEM-12), engines/definitions summary, arrival
-  sparkline (occurrence series; **truncated points rendered visually distinct** — a
-  truncated sample is a floor, not a dip).
-- Detail: timeline chart, per-engine×definition breakdown, sample raw message, episode
-  list with per-episode duration (MTTR), lifecycle strip, related bulk jobs; actions:
+  (lower-bound badge when truncated, R-SEM-12), engines/definitions summary. NO per-card
+  sparkline (S4 decision): the list payload carries no occurrence series, and fetching one
+  per card would N+1 the API — the arrival timeline lives on the detail page only, where
+  the series is already part of the response.
+- Detail: timeline chart (occurrence series; **truncated points rendered visually
+  distinct** — a truncated sample is a floor, not a dip), per-engine×definition breakdown,
+  sample raw message, episode list with per-episode duration (MTTR), lifecycle strip,
+  related bulk jobs; actions:
   Resolve (with the opt-in ack checkbox) / Reopen (OPERATOR), Retry-all (RESPONDER, existing
   modal), deep-link to prefiltered `/search`.
 - TanStack Query hooks per convention; generated types via `npm run gen:api`; no

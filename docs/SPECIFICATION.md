@@ -665,7 +665,8 @@ so history survives DLQ drains:
   ticket/peak) — per-episode time-to-resolution is readable off the detail view, the
   post-incident-review substrate.
 - **Timeline**: a per-incident occurrence time-series (total / dead-letter / retrying per
-  sampler bucket) powers arrival-rate sparklines and the detail chart; truncated samples
+  sampler bucket) powers the detail view's arrival-rate timeline (detail-only — list cards
+  carry no series, deliberately avoiding a per-card N+1); truncated samples
   carry the R-SEM-12 lower-bound marking end-to-end (a truncated point renders as a floor,
   never a dip). 400-day drop-partition retention; incident + episode rows persist.
 - **Ingestion**: piggybacks the R-BAU-08 sampler cycle's existing aggregation — **zero
