@@ -8,6 +8,7 @@ import org.slf4j.Logger;
 import org.slf4j.LoggerFactory;
 import org.springframework.boot.autoconfigure.condition.ConditionalOnProperty;
 import org.springframework.boot.context.event.ApplicationReadyEvent;
+import org.springframework.context.ApplicationEventPublisher;
 import org.springframework.context.event.EventListener;
 import org.springframework.scheduling.annotation.Scheduled;
 import org.springframework.stereotype.Component;
@@ -24,6 +25,12 @@ import org.springframework.stereotype.Component;
  * store being unavailable degrades to a skipped cycle (one warn), never a failure — mirrors
  * {@link io.inspector.audit.AuditPendingSweeper}. Gated off in unit-test profiles via
  * {@code inspector.snapshot.enabled}.
+ *
+ * <p>After the store write, the cycle's whole {@link AggregationSample} is published as a
+ * synchronous {@link AggregationSampledEvent} (ARCH §2.7) so the incident ledger — and any
+ * future consumer — rides the SAME aggregation pass. The publish is failure-isolated: a
+ * listener exception is caught and warned here, never breaking the return value or the cycle
+ * (and disabling the sampler idles every downstream store — documented in INCIDENT-LEDGER §5).
  */
 @Component
 @ConditionalOnProperty(name = "inspector.snapshot.enabled", havingValue = "true", matchIfMissing = true)
@@ -35,13 +42,19 @@ public class SnapshotSampler {
     private final SnapshotCountRepository repository;
     private final SnapshotBucket bucket;
     private final Clock clock;
+    private final ApplicationEventPublisher events;
 
     public SnapshotSampler(
-            SnapshotSource source, SnapshotCountRepository repository, InspectorProperties properties, Clock clock) {
+            SnapshotSource source,
+            SnapshotCountRepository repository,
+            InspectorProperties properties,
+            Clock clock,
+            ApplicationEventPublisher events) {
         this.source = source;
         this.repository = repository;
         this.bucket = new SnapshotBucket(properties.snapshotOrDefault().bucketWidthOrDefault());
         this.clock = clock;
+        this.events = events;
     }
 
     @EventListener(ApplicationReadyEvent.class)
@@ -63,13 +76,14 @@ public class SnapshotSampler {
      */
     public int sampleOnce() {
         Instant at = bucket.floor(clock.instant());
-        List<EngineLaneCount> observations;
+        AggregationSample sample;
         try {
-            observations = source.sample();
+            sample = source.sample();
         } catch (RuntimeException e) {
             log.warn("snapshot sample skipped — aggregation failed: {}", e.toString());
             return 0;
         }
+        List<EngineLaneCount> observations = sample.laneCounts();
         try {
             for (EngineLaneCount o : observations) {
                 repository.upsert(o.engineId(), o.lane().name(), o.count(), at);
@@ -80,6 +94,13 @@ public class SnapshotSampler {
         }
         if (!observations.isEmpty()) {
             log.debug("snapshot: wrote {} lane counts at bucket {}", observations.size(), at);
+        }
+        // AFTER the store write, on the successful path only: a failed aggregation or an
+        // unavailable store must not fabricate an "observed" cycle for downstream consumers.
+        try {
+            events.publishEvent(new AggregationSampledEvent(sample, at));
+        } catch (RuntimeException e) {
+            log.warn("aggregation-sampled listener failed — snapshot cycle unaffected: {}", e.toString());
         }
         return observations.size();
     }

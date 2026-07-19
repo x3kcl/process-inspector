@@ -38,6 +38,25 @@ class SnapshotPartitionsTest {
     }
 
     @Test
+    void generalizesToAnyChildPrefix() {
+        // the incident_occurrence reuse (R-BAU-10 S1) — same math, different table family
+        String prefix = "incident_occurrence_y";
+        assertThat(SnapshotPartitions.name(prefix, YearMonth.of(2026, 7))).isEqualTo("incident_occurrence_y2026m07");
+        var b = SnapshotPartitions.boundsFor(prefix, YearMonth.of(2026, 12));
+        assertThat(b.name()).isEqualTo("incident_occurrence_y2026m12");
+        assertThat(b.toExclusive()).isEqualTo("2027-01-01 00:00:00+00");
+        assertThat(SnapshotPartitions.monthOf(prefix, "incident_occurrence_y2026m07"))
+                .contains(YearMonth.of(2026, 7));
+        // one family's children never match another family's prefix — no cross-table drops
+        assertThat(SnapshotPartitions.monthOf(prefix, "triage_snapshot_y2026m07"))
+                .isEmpty();
+        assertThat(SnapshotPartitions.isExpired(prefix, "incident_occurrence_y2026m07", LocalDate.parse("2026-08-01")))
+                .isTrue();
+        assertThat(SnapshotPartitions.isExpired(prefix, "incident_occurrence_default", LocalDate.parse("2099-01-01")))
+                .isFalse();
+    }
+
+    @Test
     void expiredOnlyWhenTheWholeMonthIsOnOrBeforeTheCutoff() {
         // July 2026's exclusive upper bound is 2026-08-01. It is expired iff cutoff >= that bound.
         assertThat(SnapshotPartitions.isExpired("triage_snapshot_y2026m07", LocalDate.parse("2026-08-01")))
