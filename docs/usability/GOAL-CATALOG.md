@@ -924,8 +924,8 @@ seed of the R-BAU-09 training profile; noted in the reuse doc.
 
 ### R-BAU-10 · Incident ledger (persisted failure-class lifecycle)
 
-PRIO SHOULD-v2 · CLASS UI-STAGED · BUILT yes (S1–S5 landed 2026-07-19; candidate mission —
-not yet exercised in a usability run)
+PRIO SHOULD-v2 · CLASS UI-STAGED · BUILT yes (S1–S5 landed 2026-07-19; exercised by
+mission **M12**, added 2026-07-19 — authored, not yet run against a tester)
 GOAL: A day-after-the-outage engineer must reconstruct what happened to a failure class
 WITHOUT having watched it live: starting cold, find the incident for a named error, restate
 when it started, whether it regressed after someone claimed a fix, who resolved it and why,
@@ -1084,7 +1084,7 @@ exists yet.
 
 ## RUN PROTOCOL (panel-locked, 2026-07-10)
 
-**Missions, not tours.** Testers run the 11 mission narratives in
+**Missions, not tours.** Testers run the 12 mission narratives in
 `docs/usability/MISSIONS.md` (each bundles 4–8 goal arcs into one incident story); the
 1:1 catalog above is the evaluator's coverage map. Wave discipline (shared stack, one
 browser):
@@ -1098,8 +1098,9 @@ browser):
   ownership (M3 owns `demoUserTask`+ACME vars; M4 owns the `acmeApiOutage` cohort);
   bulk arcs ≤10 items, filter-scoped to their cohort.
 - **Wave 3 — fleet-staging, exclusive** (M5 half-the-fleet-dark, M6 prod-with-safety-on,
-  M8 platform-admin): F-G7/F-G2/read-only flips and registry/access writes change reality
-  for everyone — nothing else runs; runner verifies restoration before declaring the run
+  M8 platform-admin, M12 morning-after-the-error): F-G7/F-G2/read-only flips, registry/
+  access writes, and M12's sampler cycles + incident-ledger writes change reality for
+  everyone — nothing else runs; runner verifies restoration before declaring the run
   done (reseed checkpoint between waves; `docker/seed.sh` is idempotent).
 - **Destructive verbs ONLY against F-G10 sacrificial fixtures** (tag rule doubles as the
   wrong-instance near-miss probe). Least-privilege login per mission.
