@@ -29,6 +29,39 @@ const LIFECYCLE_LABEL: Record<string, string> = {
   removed: '🗑 Removed',
 }
 
+// #275: plain-language, per-class remediation text — VISIBLE row text, not tooltip-only, and
+// distinguishable class-to-class so "nothing listening", "missing secret ref" and "the engine
+// answered but not usefully" no longer all read as the same generic wording. Kept to safe,
+// exception-TYPE-derived facts only (ProbeFailureClassifier, backend) — never the raw
+// exception message, which stays audit-only (topology oracle risk, see the tooltip below).
+const PROBE_FAILURE_TEXT: Record<string, string> = {
+  ssrf_rejected:
+    'rejected before dialing — this base URL now resolves to a disallowed or internal address',
+  missing_secret_ref: 'missing credential — the configured secret env var is not set on the BFF',
+  auth_rejected: 'the engine rejected the credentials (401/403)',
+  unexpected_response:
+    'reached the engine, but got an unexpected response — check the base URL and engine version',
+  unreachable:
+    'could not reach the engine — verify the base URL, port, and that it is running and network-reachable from the BFF host',
+}
+
+// Pre-#275 rows (probed once, never re-probed since) carry no failure class at all — fall back
+// to the same generic wording the whole table used to show for every failure.
+function probeFailureText(failureClass: string | null | undefined): string {
+  const key = failureClass ?? ''
+  return PROBE_FAILURE_TEXT[key] ?? PROBE_FAILURE_TEXT.unreachable
+}
+
+// #275 point 4: the OLD copy promised "the specific connection error is recorded server-side in
+// this engine's audit trail" — true of the DATA (AuditService#close's response_snippet, issue
+// #223/#231) but false of the UI: the Operations Log page never renders response_snippet, so
+// there was no actual path for a registry admin to go read it. This corrected copy stops
+// implying a UI path that doesn't exist; it still explains WHY the raw text isn't shown here.
+const PROBE_FAILED_TOOLTIP =
+  "The full connection error is captured server-side on this engine's probe audit entry — " +
+  'not shown here (or in the Operations Log) to avoid leaking internal network details ' +
+  'through the UI; retrievable via the audit API/DB by an engineer who needs the exact text.'
+
 type FormState = { mode: 'add' } | { mode: 'edit'; engine: AdminEngineDto } | null
 type LifecycleState = { action: LifecycleAction; engine: AdminEngineDto } | null
 
@@ -331,6 +364,47 @@ interface RowProps {
   onLifecycle: (action: LifecycleAction) => void
 }
 
+// #275: the Lifecycle cell for one row — visible-text failure detail for probe_failed (point 1/2),
+// and an explicit positive reachability badge for active engines (point 3), distinct from the
+// mere "no error seen yet" reading of a bare lifecycle label.
+function lifecycleCell(engine: AdminEngineDto, lifecycle: string) {
+  if (lifecycle === 'probe_failed') {
+    // Issue #223/#231 established the doctrine this still follows: the raw exception TEXT stays
+    // audit-only (topology oracle risk — differing text would let an admin fingerprint what's
+    // reachable on the BFF's internal network). #275 adds a coarse, UI-safe failure CLASS
+    // (ProbeFailureClassifier, backend) that IS safe to show as visible text, distinguishing
+    // "nothing listening" from "missing secret ref" from "engine answered, but not usefully".
+    return (
+      <span className="lifecycle-negative" title={PROBE_FAILED_TOOLTIP}>
+        {LIFECYCLE_LABEL[lifecycle]} — {probeFailureText(engine.lastProbeFailureClass)}
+      </span>
+    )
+  }
+  if (lifecycle === 'active') {
+    return <ActiveHealthBadge reachableNow={engine.reachableNow} />
+  }
+  return <>{LIFECYCLE_LABEL[lifecycle] ?? lifecycle}</>
+}
+
+/**
+ * #275 point 3: "active" (enabled) is a POLICY state, not a live health signal — the tester
+ * finding was that an active row's checkmark reads as "not failing" (mere absence of an error),
+ * indistinguishable from "confirmed healthy just now". This joins in the SAME live
+ * EngineHealthService result the header strip already shows (`EngineRegistry#healthOf`, 30s
+ * cycle) so the badge is an honest, freshness-checked claim, never a fabricated one:
+ * `reachableNow` is `null`/`undefined` until that engine has been probed at least once since
+ * becoming active (never confused with a confirmed true/false).
+ */
+function ActiveHealthBadge({ reachableNow }: { reachableNow: boolean | null | undefined }) {
+  if (reachableNow === true) {
+    return <span className="lifecycle-positive">{LIFECYCLE_LABEL.active} — reachable</span>
+  }
+  if (reachableNow === false) {
+    return <span className="lifecycle-negative">{LIFECYCLE_LABEL.active} — ⚠ unreachable now</span>
+  }
+  return <span className="muted">{LIFECYCLE_LABEL.active} — health pending</span>
+}
+
 function EngineRow({ engine, probing, onEdit, onProbe, onLifecycle }: RowProps) {
   const env = engine.environment ?? 'unknown'
   const lifecycle = engine.lifecycle ?? 'draft'
@@ -346,22 +420,7 @@ function EngineRow({ engine, probing, onEdit, onProbe, onLifecycle }: RowProps) 
       <td>
         <span className={`env-badge env-${env}`}>{env.toUpperCase()}</span>
       </td>
-      <td>
-        {lifecycle === 'probe_failed' ? (
-          // Issue #223: the SSRF-allowlist rejection (a pre-dial, submitted-URL-only check)
-          // can safely give a specific reason — nothing was dialled. A probe failure happens
-          // AFTER a real dial, so the connect exception itself stays server-side (topology
-          // oracle risk: differing failure text would let a registry-admin fingerprint what's
-          // reachable on the BFF's internal network). What CAN be surfaced safely is a
-          // generic next step + a pointer to where the real detail now actually lives
-          // (server-side audit trail — previously discarded, fixed alongside this).
-          <span title="The BFF could not reach or version-check this engine. Verify the base URL, port, and that the engine is actually running and network-reachable from the BFF host. The specific connection error is recorded server-side in this engine's audit trail (not shown here to avoid leaking internal network details through a UI response).">
-            {LIFECYCLE_LABEL[lifecycle]}
-          </span>
-        ) : (
-          (LIFECYCLE_LABEL[lifecycle] ?? lifecycle)
-        )}
-      </td>
+      <td>{lifecycleCell(engine, lifecycle)}</td>
       <td>{engine.mode}</td>
       <td>
         {ref == null ? (

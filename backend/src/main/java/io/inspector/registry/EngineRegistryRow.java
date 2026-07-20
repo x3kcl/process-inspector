@@ -40,6 +40,12 @@ public class EngineRegistryRow {
     @Column(name = "lifecycle", nullable = false)
     private String lifecycle;
 
+    // The coarse, UI-safe reason the LAST probe failed (issue #275) — one of
+    // ProbeFailureClassifier's constants, or null when the row isn't currently probe_failed (incl.
+    // never-probed rows). Cleared back to null the moment a later probe succeeds.
+    @Column(name = "last_probe_failure_class")
+    private String lastProbeFailureClass;
+
     @Column(name = "accent_color")
     private String accentColor;
 
@@ -159,6 +165,14 @@ public class EngineRegistryRow {
 
     public void setLifecycle(String lifecycle) {
         this.lifecycle = lifecycle;
+    }
+
+    public String getLastProbeFailureClass() {
+        return lastProbeFailureClass;
+    }
+
+    public void setLastProbeFailureClass(String lastProbeFailureClass) {
+        this.lastProbeFailureClass = lastProbeFailureClass;
     }
 
     public String getAccentColor() {

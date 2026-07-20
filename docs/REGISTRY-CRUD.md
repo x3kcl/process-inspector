@@ -188,9 +188,18 @@ reload races, and "quiet lies" (a guardrail that fails open silently). Findings 
 - **The probe is an oracle** if failures are reported precisely to the UI (connection-refused
   vs timeout leaks internal topology). Resolved: **validation**-time rejections are specific
   (nothing was dialed — no oracle), but **probe**-time failures are coarse to the UI
-  ("engine unreachable") with the detail in the audit row only; a fixed short probe timeout
-  bounds timing leakage. Probes use the **fixed, known-idempotent** capability GETs (never an
-  admin-chosen path — that would itself be an oracle), with backoff on repeated failure. See §5/§6.
+  ("engine unreachable") with the raw exception TEXT in the audit row's `response_snippet`
+  only; a fixed short probe timeout bounds timing leakage. Probes use the **fixed,
+  known-idempotent** capability GETs (never an admin-chosen path — that would itself be an
+  oracle), with backoff on repeated failure. See §5/§6. — **Amended #275**: "coarse" was
+  read by testers as "generic to the point of unreadable" — every probe failure (nothing
+  listening, a missing secret ref, a rejected credential, a genuinely-answering-but-wrong
+  engine) rendered as the SAME line. The line the oracle argument actually draws is at
+  exception *message* vs exception *TYPE*: a small closed set of failure-class buckets
+  (`unreachable`/`missing_secret_ref`/`auth_rejected`/`unexpected_response`/`ssrf_rejected`,
+  `ProbeFailureClassifier`) is derived from the exception's TYPE only, persisted on the row,
+  and rendered as VISIBLE text — never the message, hostname, port, or stack trace, so the
+  oracle property still holds.
 - **Resilience4j instances must be *removed*, not reset, on tombstone/purge** — a reset leaves
   the named instance in the registry (memory creep on churn). The ≤20-engine cap (R-NFR-01)
   bounds it, and CRUD writes are rate-limited. See §9.
@@ -310,11 +319,12 @@ add/edit before persistence AND is re-asserted at connection time (belt + braces
 | **Secret ref present** | The `password-ref`/`token-ref` env var must exist before enable; absence blocks ACTIVE. | "secret env var `ENGINE_X_PASSWORD` is not present in this deployment" |
 
 **Validation-time rejections are specific** (nothing was dialed — the rule name is safe copy);
-**probe/connect-time failures are coarse** to the UI ("engine unreachable") with the detail in
-the audit row only, so the probe can't be used as an internal-topology oracle (connection-refused
-vs timeout). A fixed short probe timeout bounds timing leakage. Optional hardening: pin the BFF's
-`HttpClient` to a trusted resolver so the system resolver can't map an internal hostname behind
-the validator's back.
+**probe/connect-time failures are coarse** to the UI (a small closed set of failure-CLASS
+buckets, #275 — see §2's "the probe is an oracle" amendment) with the raw exception message in
+the audit row's `response_snippet` only, so the probe can't be used as an internal-topology
+oracle (connection-refused vs timeout). A fixed short probe timeout bounds timing leakage.
+Optional hardening: pin the BFF's `HttpClient` to a trusted resolver so the system resolver
+can't map an internal hostname behind the validator's back.
 
 The validator ships with a **hostile-input corpus** (metadata IP in many encodings — decimal,
 octal, IPv6-mapped/`::ffff:`, trailing-dot, uppercase-hex; `..`-traversal + trailing-dot host;
@@ -394,7 +404,7 @@ Postgres, logs, audit payloads, the OpenAPI schema, or `EngineDto`.
 
 | Endpoint | Purpose |
 |---|---|
-| `GET  /api/admin/engines` | Full registry incl. disabled/draft/tombstoned rows + lifecycle state + secret-ref *presence* (never values). REGISTRY_ADMIN. Distinct from the secret-free, enabled-only `GET /api/engines`. |
+| `GET  /api/admin/engines` | Full registry incl. disabled/draft/tombstoned rows + lifecycle state + secret-ref *presence* (never values). REGISTRY_ADMIN. Distinct from the secret-free, enabled-only `GET /api/engines`. Every row's `AdminEngineDto` also carries `lastProbeFailureClass` (#275 — set only while `lifecycle=probe_failed`, one of `unreachable`/`missing_secret_ref`/`auth_rejected`/`unexpected_response`/`ssrf_rejected`, cleared the moment a later probe succeeds) and `reachableNow` (set only for `lifecycle=active`, mirroring the live `EngineHealthService` result off `EngineRegistry#healthOf`; `null` until that engine has been checked at least once — never fabricated true/false). |
 | `POST /api/admin/engines` | Add (→ DRAFT). Body = the registry config sans secrets (refs by name). SSRF-validated, slug + duplicate-id checked, reason ≥10, audited. |
 | `PUT  /api/admin/engines/{id}` | Edit everything except `id`; re-validates, evicts client cache, re-probes. Audited before/after. |
 | `POST /api/admin/engines/{id}/probe` | Run the **read-only** probe now (version + capabilities); returns the result, transitions DRAFT→PROBED / PROBE_FAILED. Touches the engine with GETs only. |
@@ -458,7 +468,15 @@ CREATE INDEX idx_engine_registry_live ON engine_registry (lifecycle) WHERE remov
 - Route `/admin/engines`, REGISTRY_ADMIN-gated, greyed-never-hidden in the nav with the
   reason for others.
 - **List**: env-banded rows, lifecycle column (shape + label per R-UXQ-01), secret-ref
-  presence, health echo, "Test connection" (read-only probe) inline.
+  presence, health echo, "Test connection" (read-only probe) inline. A `probe_failed` row
+  shows its failure-CLASS remediation text INLINE (#275 — "missing credential", "rejected
+  before dialing", …, not just a bare "▲ Probe failed"); the raw connect exception stays a
+  `title` tooltip pointer at the audit trail's `response_snippet`, never claiming a UI path
+  to it that doesn't exist (the Operations Log grid doesn't render that field). An `active`
+  row shows an explicit positive `reachableNow` badge sourced from the same live
+  `EngineHealthService` result the header strip uses — distinct from "health pending" (not
+  yet checked) and from a `disabled` row's policy-state badge, so "not failing" is never
+  confused with "confirmed healthy just now".
 - **Add/Edit form**: typed fields matching `EngineConfig`; live SSRF validation with the
   rule-named failure copy; secret entered as a **ref name** with a present/absent indicator;
   env band on the confirm; the prod enable-read-write path carries the typed-token + four-eyes

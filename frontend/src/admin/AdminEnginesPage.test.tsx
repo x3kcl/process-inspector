@@ -19,7 +19,14 @@ vi.mock('../api/me', () => ({
 
 const approveMutate = vi.fn()
 let approveError: ApiError | undefined
-let enginesData: Array<{ id: string; name: string; lifecycle: string; mode: string }> = []
+let enginesData: Array<{
+  id: string
+  name: string
+  lifecycle: string
+  mode: string
+  lastProbeFailureClass?: string
+  reachableNow?: boolean | null
+}> = []
 let enginesError: ApiError | undefined
 
 vi.mock('./adminEngines', () => ({
@@ -116,22 +123,107 @@ describe('AdminEnginesPage — four-eyes approve 403 feedback (#169)', () => {
   })
 })
 
-describe('AdminEnginesPage — probe-failed diagnostics (#223)', () => {
-  it('gives a probe_failed row an actionable, non-leaking remediation title', () => {
+describe('AdminEnginesPage — probe-failed diagnostics (#223, extended #275)', () => {
+  it('surfaces the failure class as VISIBLE row text, not tooltip-only, with a non-leaking tooltip', () => {
+    enginesData = [
+      {
+        id: 'engine-c',
+        name: 'Engine C',
+        lifecycle: 'probe_failed',
+        mode: 'read-only',
+        lastProbeFailureClass: 'unreachable',
+      },
+    ]
+    render(<AdminEnginesPage />)
+    // #275 point 1: the reason is readable text in the row, not hidden behind a hover-only title.
+    const badge = screen.getByText(/▲ Probe failed —/)
+    expect(badge.textContent).toContain('could not reach the engine')
+    // Never leak the raw connect exception into the UI — only the coarse, safe class.
+    expect(badge.textContent).not.toMatch(/Exception|refused|timeout/i)
+    // #275 point 4: the tooltip no longer claims a discoverable UI path that doesn't exist —
+    // it still explains the audit trail holds the full text, without over-promising.
+    expect(badge.getAttribute('title')).toContain('audit')
+    expect(badge.getAttribute('title')).not.toContain('recorded server-side in this')
+    expect(badge.getAttribute('title')).not.toMatch(/Exception|refused|timeout/i)
+  })
+
+  it('differentiates missing-secret-ref from a generic unreachable failure', () => {
+    enginesData = [
+      {
+        id: 'engine-d',
+        name: 'Engine D',
+        lifecycle: 'probe_failed',
+        mode: 'read-only',
+        lastProbeFailureClass: 'missing_secret_ref',
+      },
+    ]
+    render(<AdminEnginesPage />)
+    expect(screen.getByText(/▲ Probe failed —/).textContent).toContain('missing credential')
+  })
+
+  it('differentiates an SSRF-at-probe rejection from a generic unreachable failure', () => {
+    enginesData = [
+      {
+        id: 'engine-e',
+        name: 'Engine E',
+        lifecycle: 'probe_failed',
+        mode: 'read-only',
+        lastProbeFailureClass: 'ssrf_rejected',
+      },
+    ]
+    render(<AdminEnginesPage />)
+    expect(screen.getByText(/▲ Probe failed —/).textContent).toContain('rejected before dialing')
+  })
+
+  it('falls back to the generic wording for a pre-#275 row with no stored failure class', () => {
     enginesData = [
       { id: 'engine-c', name: 'Engine C', lifecycle: 'probe_failed', mode: 'read-only' },
     ]
     render(<AdminEnginesPage />)
-    const badge = screen.getByText('▲ Probe failed')
-    expect(badge.getAttribute('title')).toContain('audit trail')
-    // Never leak the raw connect exception into the UI — only a generic next step.
-    expect(badge.getAttribute('title')).not.toMatch(/Exception|refused|timeout/i)
+    expect(screen.getByText(/▲ Probe failed —/).textContent).toContain('could not reach the engine')
+  })
+})
+
+describe('AdminEnginesPage — positive reachability badge (#275)', () => {
+  it('shows an explicit reachable badge, distinct from mere "no error seen yet"', () => {
+    enginesData = [
+      {
+        id: 'engine-a',
+        name: 'Engine A',
+        lifecycle: 'active',
+        mode: 'read-write',
+        reachableNow: true,
+      },
+    ]
+    render(<AdminEnginesPage />)
+    expect(screen.getByText(/✓ Active —/).textContent).toContain('reachable')
   })
 
-  it('other lifecycle states render no such title', () => {
+  it('flags a currently-unreachable ACTIVE engine distinctly, even though it stays enabled', () => {
+    enginesData = [
+      {
+        id: 'engine-b',
+        name: 'Engine B',
+        lifecycle: 'active',
+        mode: 'read-write',
+        reachableNow: false,
+      },
+    ]
+    render(<AdminEnginesPage />)
+    expect(screen.getByText(/✓ Active —/).textContent).toContain('unreachable now')
+  })
+
+  it('reads as "health pending", never a fabricated healthy/unreachable claim, before the first live check', () => {
     enginesData = [{ id: 'engine-a', name: 'Engine A', lifecycle: 'active', mode: 'read-write' }]
     render(<AdminEnginesPage />)
-    const badge = screen.getByText('✓ Active')
+    const badge = screen.getByText(/✓ Active —/)
+    expect(badge.textContent).toContain('health pending')
     expect(badge.getAttribute('title')).toBeNull()
+  })
+
+  it('a DISABLED row still reads as a policy decision, unaffected by the reachability badge', () => {
+    enginesData = [{ id: 'engine-7', name: 'Engine 7', lifecycle: 'disabled', mode: 'read-only' }]
+    render(<AdminEnginesPage />)
+    expect(screen.getByText('⏸ Disabled')).toBeDefined()
   })
 })

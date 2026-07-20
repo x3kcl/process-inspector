@@ -1454,6 +1454,7 @@ export interface components {
             dlqScanCap?: number;
             environment?: string;
             id?: string;
+            lastProbeFailureClass?: string;
             lifecycle?: string;
             /** Format: int32 */
             maxPageSize?: number;
@@ -1461,6 +1462,7 @@ export interface components {
             name?: string;
             passwordRef?: string;
             passwordRefPresent?: boolean;
+            reachableNow?: boolean;
             /** Format: int32 */
             readMs?: number;
             /** Format: date-time */
