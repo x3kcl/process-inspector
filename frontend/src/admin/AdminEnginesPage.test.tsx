@@ -20,14 +20,15 @@ vi.mock('../api/me', () => ({
 const approveMutate = vi.fn()
 let approveError: ApiError | undefined
 let enginesData: Array<{ id: string; name: string; lifecycle: string; mode: string }> = []
+let enginesError: ApiError | undefined
 
 vi.mock('./adminEngines', () => ({
   useAdminEngines: () => ({
-    data: enginesData,
+    data: enginesError === undefined ? enginesData : undefined,
     isPending: false,
-    isSuccess: true,
-    isError: false,
-    error: undefined,
+    isSuccess: enginesError === undefined,
+    isError: enginesError !== undefined,
+    error: enginesError,
   }),
   useDrift: () => ({ data: { empty: true } }),
   useEngineProposals: () => ({
@@ -54,6 +55,7 @@ afterEach(() => {
   meData = { username: 'admin', registryAdmin: true }
   mePending = false
   enginesData = []
+  enginesError = undefined
 })
 
 describe('AdminEnginesPage — fails closed while identity is unresolved (#208)', () => {
@@ -72,6 +74,23 @@ describe('AdminEnginesPage — fails closed while identity is unresolved (#208)'
     render(<AdminEnginesPage />)
     expect(screen.getByRole('alert').textContent).toContain('REGISTRY_ADMIN')
     expect(screen.queryByText('Add engine')).toBeNull()
+  })
+
+  it('surfaces the refused list query’s quotable request id on the grant-block (#272, R-AUD-04)', () => {
+    mePending = false
+    meData = { username: 'plain-admin', registryAdmin: false }
+    // The list query fired and was refused 403 server-side — its ProblemDetail carries the id.
+    enginesError = new ApiError(403, { code: 'forbidden', requestId: 'req-reg-42' })
+    render(<AdminEnginesPage />)
+    expect(screen.getByText('Quote request ID req-reg-42 to support.')).toBeDefined()
+  })
+
+  it('omits the request-id line when the refused query carried no id', () => {
+    mePending = false
+    meData = { username: 'plain-admin', registryAdmin: false }
+    enginesError = new ApiError(403, { code: 'forbidden' })
+    render(<AdminEnginesPage />)
+    expect(screen.queryByText(/Quote request ID/)).toBeNull()
   })
 })
 

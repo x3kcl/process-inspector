@@ -4,6 +4,8 @@
 // refused pre-flight (nothing happened) / engine rejected (nothing happened, engine's
 // words quoted) / dispatched-unverified (assume it happened until verified).
 
+import { withRequestId } from './requestId'
+
 export type ProblemOutcome = 'refused' | 'failed' | 'unknown'
 
 export interface ActionProblem {
@@ -87,10 +89,7 @@ export function isReauthChallenge(problem: ActionProblem): boolean {
  * client-side.
  */
 export function problemBanner(problem: ActionProblem): string {
-  const sentence = bannerSentence(problem)
-  return problem.requestId === undefined
-    ? sentence
-    : `${sentence} Quote request ID ${problem.requestId} to support.`
+  return withRequestId(bannerSentence(problem), problem.requestId)
 }
 
 function bannerSentence(problem: ActionProblem): string {

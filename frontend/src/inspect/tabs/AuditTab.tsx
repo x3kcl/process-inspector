@@ -1,6 +1,7 @@
 import { useState } from 'react'
 import type { FormEvent } from 'react'
 import { useMutation, useQuery, useQueryClient } from '@tanstack/react-query'
+import { withRequestId } from '../../actions/requestId'
 import { ApiError } from '../../api/client'
 import { useTicketUrlTemplate } from '../../api/meta'
 import { createInstanceNote, fetchInstanceAudit, fetchInstanceNotes } from '../../api/queries'
@@ -189,7 +190,11 @@ function Notes({ engineId, instanceId }: Props) {
         {create.isError && (
           <p className="signin-error" role="alert">
             {create.error instanceof ApiError && create.error.status === 403
-              ? 'Adding notes requires the RESPONDER role on this engine.'
+              ? // #272 (R-AUD-04): bespoke 403 copy still carries the quotable request id.
+                withRequestId(
+                  'Adding notes requires the RESPONDER role on this engine.',
+                  create.error.requestId,
+                )
               : create.error.message}
           </p>
         )}

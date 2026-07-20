@@ -347,7 +347,15 @@ so surfacing `.getMessage()` there would risk leaking internals. Frontend: `ApiE
 and `parseActionProblem`/`ActionProblem` (the action guard-ladder's richer parser, SPEC §6) both
 collapsed from three shape-sniffing branches to one — no `bareSpringError` flag is needed anymore;
 a Spring-Security-originated 403 (typically a missing CSRF token) is now the stable machine code
-`forbidden`, distinguishable from a domain `rbac-denied` refusal by code alone.
+`forbidden`, distinguishable from a domain `rbac-denied` refusal by code alone. The quotable-id
+next move ("Quote request ID … to support.") is worded in ONE place (`actions/requestId.ts`) and
+appended by EVERY user-facing error surface (#272): the generic `ApiError.describe` and the
+guard-ladder `problemBanner` string paths, and — via the shared `RequestIdNote` component — the
+bespoke grant-blocked / route-guard alerts whose copy is hand-authored JSX (the `/admin/engines`
+REGISTRY_ADMIN block, `/admin/access` ACCESS_ADMIN block, `/admin/remediation-demand` ADMIN block,
+and the Audit-tab note-add RESPONDER-403 hint, which folds the id in via the same `withRequestId`).
+So a user reading only the page — never the network inspector — always finds a correlation id,
+even on the 403 route-guard surfaces that render their own copy instead of an `ApiError` message.
 
 | Endpoint | Purpose |
 |---|---|
