@@ -19,4 +19,13 @@ describe('incidentSearchParams', () => {
     expect(params.get('signature')).toBe('abc123')
     expect(params.has('engines')).toBe(false)
   })
+
+  // #279: the incident row's algoVersion threads through to the drill link's generation stamp.
+  it('stamps the incident signature generation onto the drill link', () => {
+    const params = new URLSearchParams(
+      incidentSearchParams({ signatureHash: 'abc123', algoVersion: 2 }),
+    )
+    expect(params.get('signature')).toBe('abc123')
+    expect(params.get('algo')).toBe('2')
+  })
 })

@@ -262,8 +262,17 @@ Answers "what is broken, how much, where" in zero keystrokes:
   **Drill-through is scope-explicit** (R-SEM-12): each per-version count is its own click
   target, and the resulting filter state is echoed before commit. The group-total click
   carries the signature hash into the Stage-1 search (`signature` URL param → the search
-  plan's signature filter), so the landing's whole-class scope survives the drill and the
-  filter-scope bulk (§7 v1.x #2) becomes the one-action whole-class remediation path. Each per-version count
+  plan's signature filter) **stamped with the generation it was minted under** (`algo` URL
+  param = the card's `algoVersion`, R-SEM-03), so the landing's whole-class scope survives the
+  drill and the filter-scope bulk (§7 v1.x #2) becomes the one-action whole-class remediation
+  path. **Stale-generation honesty** (#279): a signature filter whose `algo` is not the current
+  `ALGO_VERSION` matches no current failure by construction, so the search returns zero rows
+  **with an honest reason** (`signatureGeneration` on the search response → an "0 shown — this
+  link is from a retired fingerprint generation" empty-state) instead of a silent zero — the
+  read-path analogue of the write-path 409 refusal (§7 v1.x #1), degrading rather than refusing.
+  An un-versioned legacy `signature` link (a bookmark from before the stamp existed) is treated
+  as **assumed-unknown generation, never assumed-current**: it still runs the search (it may
+  carry a current hash) but carries the same advisory so a zero result is not misread. Each per-version count
   also offers **bulk-retry-the-group** (§7 v1.x #1) — demoted/warned when the group's
   annotation implies a data fix first (R-SEM-13; the demotion activates with group
   annotations, R-BAU-01 — until then the offer is un-demoted). This is the triage
@@ -1005,7 +1014,7 @@ copy is never identical to an RBAC denial (R-GOV-04, R-SEM-17).
 | Business data | `businessKey` (exact + `businessKeyLike`), variables (name/operator/value, `like` supported). ⚠ Variable-value search hits typically-unindexed engine tables (`ACT_RU/HI_VARINST`): the form warns and nudges "narrow by definition"; a per-engine flag can require it. On engines that silently drop the like-filter (6.3-era), `businessKeyLike` degrades to a per-engine error in the envelope — never silently unfiltered rows (ARCH §2.3) |
 | Current activity | activity id/name contains |
 | Error text | substring over exception snippets (BFF-side) |
-| Error signature | `signatureHash` — the normalized-signature hash (R-SEM-03), the triage card's drill-down; BFF-side over the failure-lane scans as an EXACT match on the job row's own snippet hash. Since algo v2 a card's identity is always its snippet hash (#270), so the drill needs no stacktrace fetch and no sample budget, and can no longer return zero rows for a card that is currently failing |
+| Error signature | `signatureHash` (+ `signatureAlgoVersion`) — the normalized-signature hash (R-SEM-03), the triage card's drill-down; BFF-side over the failure-lane scans as an EXACT match on the job row's own snippet hash. Since algo v2 a card's identity is always its snippet hash (#270), so the drill needs no stacktrace fetch and no sample budget, and can no longer return zero rows for a card that is currently failing. **`signatureAlgoVersion` binds the hash to the normalizer generation that minted it** (#279): a non-current generation matches nothing by construction, so the search short-circuits to zero-with-reason (`signatureGeneration` response field) without touching an engine; an absent stamp (legacy link) is assumed-unknown — still run, still advised (see §4) |
 | Tenant | **not an operator-selectable filter**: the tenant is pinned per engine in the registry (`tenant-id`) and threaded into every engine query automatically — a multi-tenant engine is inspected through its registered tenant, never chosen ad hoc from the search form (`SearchRequest` deliberately has no tenant field) |
 
 Combination rule unchanged: **AND between categories, OR within** — made visible by the

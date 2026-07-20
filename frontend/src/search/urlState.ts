@@ -38,6 +38,13 @@ export function hasSearch(params: URLSearchParams): boolean {
 // crosses into an actual /api/search call, only into what gets saved/displayed.
 const COLS_KEY = 'cols'
 
+// #279: the normalizer generation the `signature` param was minted under, riding ALONGSIDE it.
+// Deliberately NOT in KEYS (same doctrine as `cols`): a bare `?algo=2` with no `signature` is not
+// "a search", and it is meaningless without a hash to stamp — it is only ever read/written next to
+// `signature`. Carrying it lets the read path tell a stale-generation drill link (a retired
+// fingerprint generation) apart from a genuine zero (SearchResponse.signatureGeneration).
+const ALGO_KEY = 'algo'
+
 /** Sorted for determinism — two saves of the same hidden set must produce the same string. */
 export function encodeHiddenColumns(params: URLSearchParams, cols: ReadonlySet<string>): void {
   if (cols.size === 0) {
@@ -91,6 +98,11 @@ export function encodeSearch(request: SearchRequest): URLSearchParams {
   set('failedBefore', request.failureTimeBefore)
   set('errorText', request.errorText)
   set('signature', request.signatureHash)
+  // #279: stamp the generation only when there's a signature to bind it to — a bare `algo` is
+  // meaningless (and would not round-trip through decodeSearch, which only reads it beside a hash).
+  if (request.signatureHash !== undefined && request.signatureAlgoVersion !== undefined) {
+    params.set(ALGO_KEY, String(request.signatureAlgoVersion))
+  }
   set('activity', request.currentActivity)
   set('sortBy', request.sortBy)
   if (request.pageSize !== undefined) params.set('pageSize', String(request.pageSize))
@@ -113,6 +125,13 @@ export function decodeSearch(params: URLSearchParams): SearchRequest | null {
   const pageSize = pageSizeRaw === null ? undefined : Number.parseInt(pageSizeRaw, 10)
   const versionRaw = params.get('version')
   const version = versionRaw === null ? undefined : parseDefinitionVersion(versionRaw)
+  const signatureHash = get('signature')
+  // #279: read the generation stamp ONLY beside a signature. A legacy/unstamped link (an old
+  // bookmark from before this param existed) leaves it undefined — assumed-UNKNOWN generation,
+  // never assumed-current; the BFF then degrades an empty result into an honest reason rather than
+  // a silent zero. Reuse parseDefinitionVersion's strict positive-integer parse (drop garbage).
+  const algoRaw = signatureHash !== undefined ? params.get(ALGO_KEY) : null
+  const signatureAlgoVersion = algoRaw === null ? undefined : parseDefinitionVersion(algoRaw)
   return {
     engineIds: list('engines'),
     statuses: list('status')?.filter(isInstanceStatus),
@@ -128,7 +147,8 @@ export function decodeSearch(params: URLSearchParams): SearchRequest | null {
     failureTimeAfter: get('failedAfter'),
     failureTimeBefore: get('failedBefore'),
     errorText: get('errorText'),
-    signatureHash: get('signature'),
+    signatureHash,
+    signatureAlgoVersion,
     currentActivity: get('activity'),
     sortBy: get('sortBy'),
     pageSize: pageSize !== undefined && Number.isFinite(pageSize) ? pageSize : undefined,

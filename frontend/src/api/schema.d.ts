@@ -2541,6 +2541,8 @@ export interface components {
             /** Format: int32 */
             pageSize?: number;
             processDefinitionKey?: string;
+            /** Format: int32 */
+            signatureAlgoVersion?: number;
             signatureHash?: string;
             sortBy?: string;
             startedAfter?: string;
@@ -2558,6 +2560,7 @@ export interface components {
                 [key: string]: components["schemas"]["EngineResult"];
             };
             rows?: components["schemas"]["ProcessInstanceRow"][];
+            signatureGeneration?: components["schemas"]["SignatureGeneration"];
             statusCounts?: {
                 [key: string]: number;
             };
@@ -2590,6 +2593,14 @@ export interface components {
             endTime?: string;
             processInstanceId?: string;
             startTime?: string;
+        };
+        SignatureGeneration: {
+            current?: boolean;
+            /** Format: int32 */
+            currentAlgoVersion?: number;
+            reason?: string;
+            /** Format: int32 */
+            requestedAlgoVersion?: number;
         };
         SseEmitter: {
             /** Format: int64 */

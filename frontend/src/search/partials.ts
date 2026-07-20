@@ -72,14 +72,27 @@ export function summarizePartials(
 /**
  * SPEC §10a: the empty grid has DISTINCT states — a calm "no matches" while an engine is
  * down would be a lie. Null when rows exist.
+ *
+ * #279 adds {@code stale-signature-generation}: a signature drill link built under a retired
+ * normalizer generation matches nothing by construction, so an empty grid must say WHY (the
+ * generation is retired) instead of reading as a confirmed zero. It ranks BELOW the reachability
+ * caveats (a down engine / truncated scan is a concrete "not a confirmed zero" that still applies)
+ * but ABOVE true-zero — the exact silent-zero case this closes is "all engines answered, zero rows,
+ * because the link's generation was retired".
  */
-export type ZeroState = 'all-engines-failed' | 'zero-under-partial-coverage' | 'true-zero'
+export type ZeroState =
+  | 'all-engines-failed'
+  | 'zero-under-partial-coverage'
+  | 'stale-signature-generation'
+  | 'true-zero'
 
 export function zeroState(response: SearchResponse): ZeroState | null {
   if ((response.rows ?? []).length > 0) return null
   const summary = summarizePartials(response.perEngine)
   if (summary.totalEngines > 0 && summary.okEngines === 0) return 'all-engines-failed'
   if (summary.lowerBound) return 'zero-under-partial-coverage'
+  // The BFF only attaches this notice for a non-current-generation signature filter (#279).
+  if (response.signatureGeneration !== undefined) return 'stale-signature-generation'
   return 'true-zero'
 }
 

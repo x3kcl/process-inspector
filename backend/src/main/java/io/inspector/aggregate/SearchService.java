@@ -16,7 +16,9 @@ import io.inspector.dto.SearchRequest;
 import io.inspector.dto.SearchRequest.InstanceStatus;
 import io.inspector.dto.SearchResponse;
 import io.inspector.dto.SearchResponse.EngineResult;
+import io.inspector.dto.SearchResponse.SignatureGeneration;
 import io.inspector.registry.EngineRegistry;
+import io.inspector.triage.ErrorSignatureNormalizer;
 import jakarta.annotation.PreDestroy;
 import java.time.Instant;
 import java.util.ArrayList;
@@ -163,6 +165,12 @@ public class SearchService {
             throw new IllegalArgumentException(
                     "deep paging is not available for FAILED/RETRYING-only searches — narrow by a failure-time window instead");
         }
+        // #279 defensive: a provably-empty (known-stale) signature never mints a cursor at the
+        // entry search, so a "Load more" for one cannot normally arrive — degrade to empty if it does.
+        SignatureGeneration signatureGeneration = signatureGenerationNotice(request);
+        if (signatureGeneration != null && signatureGeneration.provablyEmpty()) {
+            return new DeepPage(List.of(), Map.of(), null, false);
+        }
 
         List<EngineConfig> targets = resolveTargets(request, readableEngineIds);
         Map<String, Integer> depthCaps = new HashMap<>();
@@ -243,6 +251,26 @@ public class SearchService {
         String sortBy = notBlank(request.sortBy()) ? request.sortBy() : "startTime";
         if (!sortBy.equals("startTime") && !sortBy.equals("failureTime")) {
             throw new IllegalArgumentException("sortBy must be 'startTime' or 'failureTime', got '" + sortBy + "'");
+        }
+        // #279 signature-generation honesty (R-SEM-03): a signature drill link is bound to the
+        // normalizer generation that minted its hash. A KNOWN older/newer generation provably
+        // matches no freshly-computed hash, so short-circuit to zero-WITH-REASON without touching
+        // an engine — the read-path analogue of BulkErrorClassService's write-path refusal, but
+        // degrading (empty + honest reason) rather than refusing (409). A legacy/unstamped link
+        // still runs (it MIGHT carry a current hash) but carries the advisory so a zero is not
+        // misread as a confirmed "problem solved".
+        SignatureGeneration signatureGeneration = signatureGenerationNotice(request);
+        if (signatureGeneration != null && signatureGeneration.provablyEmpty()) {
+            return new SearchResponse(
+                    List.of(),
+                    Map.of(),
+                    new EnumMap<>(InstanceStatus.class),
+                    null,
+                    null,
+                    null,
+                    false,
+                    null,
+                    signatureGeneration);
         }
         List<EngineConfig> targets = resolveTargets(request, readableEngineIds);
         if (request.variables() != null
@@ -348,7 +376,51 @@ public class SearchService {
             if (entry.nextCursor() != null) nextCursor = entry.nextCursor().encode();
         }
         return new SearchResponse(
-                markProtected(rows), new HashMap<>(perEngine), statusCounts, null, null, nextCursor, depthCapped, null);
+                markProtected(rows),
+                new HashMap<>(perEngine),
+                statusCounts,
+                null,
+                null,
+                nextCursor,
+                depthCapped,
+                null,
+                signatureGeneration);
+    }
+
+    /**
+     * The #279 signature-generation notice for a signature-filtered search, or {@code null} when
+     * the search does not filter on a signature OR the link carries the current generation (no
+     * notice needed). Legacy/unstamped links ({@code signatureAlgoVersion == null}) are treated
+     * as UNKNOWN-generation, never assumed-current — the deliberate #279 decision: assuming
+     * current is exactly today's silent-zero default. Pure over the request (rung-1 testable).
+     */
+    static SignatureGeneration signatureGenerationNotice(SearchRequest req) {
+        if (!notBlank(req.signatureHash())) {
+            return null; // not a signature drill — nothing to reason about
+        }
+        int current = ErrorSignatureNormalizer.ALGO_VERSION;
+        Integer stamped = req.signatureAlgoVersion();
+        if (stamped != null && stamped == current) {
+            return null; // current generation — the hash matches fresh hashes, no notice
+        }
+        if (stamped == null) {
+            return new SignatureGeneration(
+                    false,
+                    null,
+                    current,
+                    "This link predates signature-generation stamping, so its error signature can't be tied to a"
+                            + " normalizer generation. If it shows nothing, the fingerprint generation it was built"
+                            + " under may have been retired (the inspector now computes v" + current + ") rather than"
+                            + " the failures being resolved — re-open the group from the triage landing or its incident.");
+        }
+        return new SignatureGeneration(
+                false,
+                stamped,
+                current,
+                "This link was built with error-signature generation v" + stamped + " but the inspector now computes v"
+                        + current + ", so a retired-generation signature matches no current failures. This is a stale"
+                        + " link, not a resolved problem — re-open the group from the triage landing or its incident to"
+                        + " search the current generation.");
     }
 
     /**
