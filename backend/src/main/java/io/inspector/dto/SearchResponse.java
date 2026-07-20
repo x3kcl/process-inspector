@@ -122,18 +122,28 @@ public record SearchResponse(
             long total, // engine-reported total for the primary query; lower bound if truncated
             String error,
             String dlqScan, // null = complete; "truncated@N" = dead-letter scan hit the cap
-            String failingScan // null = complete; "truncated@N" = withException scan hit the cap
-            ) {
+            String failingScan, // null = complete; "truncated@N" = withException scan hit the cap
+            // #273: THIS engine's own lane hit the deep-paging depth wall (PagingCursor.mergePage's
+            // per-engine offset clamp) — distinct from `fetched < total` alone, which is also true for
+            // an engine that simply has more pages left to fetch via ordinary "Load more". Only when
+            // `capped` is true will fetched<total persist forever on THIS engine; every other
+            // fetched<total engine will close the gap as paging continues.
+            boolean capped) {
         public static EngineResult success(long fetched, long total) {
-            return new EngineResult(true, fetched, total, null, null, null);
+            return new EngineResult(true, fetched, total, null, null, null, false);
         }
 
         public static EngineResult success(long fetched, long total, String dlqScan, String failingScan) {
-            return new EngineResult(true, fetched, total, null, dlqScan, failingScan);
+            return new EngineResult(true, fetched, total, null, dlqScan, failingScan, false);
         }
 
         public static EngineResult failure(String error) {
-            return new EngineResult(false, 0, 0, error, null, null);
+            return new EngineResult(false, 0, 0, error, null, null, false);
+        }
+
+        /** Copy with {@code capped} set — the deep-paging merge decorates this AFTER the fan-out. */
+        public EngineResult withCapped(boolean capped) {
+            return new EngineResult(ok, fetched, total, error, dlqScan, failingScan, capped);
         }
     }
 }

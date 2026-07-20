@@ -294,6 +294,9 @@ class PagingCursorTest {
             // The only engine is walled at its cap → the chain ENDS (no nextCursor); the UI offers the
             // depth-wall "narrow to continue" seam instead of looping on the same capped window.
             assertThat(r.nextCursor()).isNull();
+            // #273: the per-lane counterpart — WHICH engine is walled, so its OWN envelope can be
+            // decorated distinctly from a lane that merely has more pages left.
+            assertThat(r.cappedEngines()).containsExactly("a");
         }
 
         @Test
@@ -312,6 +315,9 @@ class PagingCursorTest {
             assertThat(r.depthCapped()).isTrue();
             assertThat(r.nextCursor()).isNotNull(); // b still pages
             assertThat(r.nextCursor().offsets()).containsEntry("a", 1); // a frozen at its cap
+            // #273: only 'a' is capped — 'b' still has budget, so it must NOT be flagged capped
+            // even though the aggregate depthCapped bit is true for the page.
+            assertThat(r.cappedEngines()).containsExactly("a");
         }
 
         @Test
@@ -348,6 +354,7 @@ class PagingCursorTest {
             assertThat(r.rows()).isEmpty();
             assertThat(r.nextCursor()).isNull();
             assertThat(r.depthCapped()).isTrue();
+            assertThat(r.cappedEngines()).containsExactly("a");
         }
 
         @Test
@@ -378,6 +385,7 @@ class PagingCursorTest {
             assertThat(r.rows()).isEmpty();
             assertThat(r.nextCursor()).isNull();
             assertThat(r.depthCapped()).isFalse();
+            assertThat(r.cappedEngines()).isEmpty();
         }
 
         @Test
@@ -409,6 +417,7 @@ class PagingCursorTest {
             assertThat(r.rows()).isEmpty();
             assertThat(r.nextCursor()).isNull();
             assertThat(r.depthCapped()).isTrue();
+            assertThat(r.cappedEngines()).containsExactly("a");
         }
 
         private int offset(PagingCursor cur, String engine) {

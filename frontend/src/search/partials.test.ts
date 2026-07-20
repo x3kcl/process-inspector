@@ -41,9 +41,35 @@ describe('summarizePartials', () => {
     const summary = summarizePartials({
       'orders-prod': { ok: true, fetched: 138, total: 2410 },
     })
-    expect(summary.overflowing).toEqual([{ engineId: 'orders-prod', fetched: 138, total: 2410 }])
+    expect(summary.overflowing).toEqual([
+      { engineId: 'orders-prod', fetched: 138, total: 2410, capped: false },
+    ])
     expect(summary.failed).toEqual([])
     expect(summary.lowerBound).toBe(true)
+  })
+
+  // #273: an overflowing engine's `capped` bit distinguishes "this lane's own depth wall was
+  // hit — Load more will NEVER close this gap" from "routine — more pages remain, keep clicking
+  // Load more" — the two must carry different data all the way from the envelope through to the
+  // summary, never collapse into the same overflow shape.
+  it('flags a walled engine (its OWN depth cap) distinctly from an ordinary overflowing one', () => {
+    const summary = summarizePartials({
+      'engine-a': { ok: true, fetched: 642, total: 1850, capped: true },
+      'engine-b': { ok: true, fetched: 900, total: 1200, capped: false },
+    })
+    expect(summary.overflowing).toEqual([
+      { engineId: 'engine-a', fetched: 642, total: 1850, capped: true },
+      { engineId: 'engine-b', fetched: 900, total: 1200, capped: false },
+    ])
+  })
+
+  it('treats an absent capped field as false — an older/uncapped envelope stays routine', () => {
+    const summary = summarizePartials({
+      'engine-a': { ok: true, fetched: 5, total: 10 },
+    })
+    expect(summary.overflowing).toEqual([
+      { engineId: 'engine-a', fetched: 5, total: 10, capped: false },
+    ])
   })
 })
 

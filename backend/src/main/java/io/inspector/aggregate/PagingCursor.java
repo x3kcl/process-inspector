@@ -215,8 +215,15 @@ public record PagingCursor(
 
     /* ---------------- the pure bounded k-way page merge ---------------- */
 
-    /** The outcome of one deep page: the emitted rows, the cursor for the NEXT page (null at end), and whether any engine hit its depth cap. */
-    public record PageResult(List<ProcessInstanceRow> rows, PagingCursor nextCursor, boolean depthCapped) {}
+    /**
+     * The outcome of one deep page: the emitted rows, the cursor for the NEXT page (null at end),
+     * whether any engine hit its depth cap, and (#273) exactly WHICH engines are walled at their
+     * cap this page — the per-lane counterpart to the aggregate {@code depthCapped} flag, so the
+     * UI can tell "this specific lane will never grow past its current fetched count" apart from
+     * "this lane just has more pages left, click Load more again".
+     */
+    public record PageResult(
+            List<ProcessInstanceRow> rows, PagingCursor nextCursor, boolean depthCapped, Set<String> cappedEngines) {}
 
     /**
      * Every engine in play this page: the ones with a raw window (even an empty one — the map
@@ -304,14 +311,15 @@ public record PagingCursor(
             // check reuses engineSet(...) — the SAME engine-set helper step 5 calls below —
             // so the two can't drift apart in a future edit (Copilot review, #177).
             boolean anyEngineWalled = false;
+            Set<String> walled = new HashSet<>();
             for (String eng : engineSet(rawWindowKeys, baseOffsets)) {
                 int cap = depthCaps.getOrDefault(eng, DEFAULT_DEPTH_CAP);
                 if (baseOffsets.getOrDefault(eng, 0) >= cap) {
                     anyEngineWalled = true;
-                    break;
+                    walled.add(eng);
                 }
             }
-            return new PageResult(List.of(), null, anyEngineWalled);
+            return new PageResult(List.of(), null, anyEngineWalled, walled);
         }
         List<ProcessInstanceRow> emitted = new ArrayList<>(kept.subList(0, emitCount));
 
@@ -353,6 +361,7 @@ public record PagingCursor(
         Set<String> engines = engineSet(rawWindowKeys, baseOffsets);
         Map<String, Integer> newOffsets = new java.util.HashMap<>();
         boolean depthCapped = false;
+        Set<String> cappedEngines = new HashSet<>();
         for (String eng : engines) {
             int rawGeBoundary = 0;
             if (lastKey != null) {
@@ -368,6 +377,7 @@ public record PagingCursor(
             if (next >= cap) {
                 next = cap;
                 depthCapped = true;
+                cappedEngines.add(eng);
             }
             newOffsets.put(eng, next);
         }
@@ -391,7 +401,7 @@ public record PagingCursor(
                 ? new PagingCursor(
                         VERSION, nowMillis, filterHash, sortBy, "desc", newOffsets, newBoundaryKey, newBoundaryIds)
                 : null;
-        return new PageResult(emitted, next, depthCapped);
+        return new PageResult(emitted, next, depthCapped, cappedEngines);
     }
 
     private static Instant key(ProcessInstanceRow r, String sortBy) {

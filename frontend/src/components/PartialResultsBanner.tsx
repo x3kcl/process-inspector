@@ -40,12 +40,25 @@ export function PartialResultsBanner({ summary, onRetry }: Props) {
           ⚠ {t.engineId}: {t.detail} — counts are lower bounds
         </span>
       ))}
-      {summary.overflowing.map((o) => (
-        <span key={o.engineId}>
-          {o.engineId} {formatCount(o.fetched)} of {formatCount(o.total)} fetched — narrow your
-          filter
-        </span>
-      ))}
+      {/* #273: the SAME "N of M fetched" shape covers two different terminal futures for this
+          lane — never render them identically. capped=true means Load more will NEVER close
+          this gap on this engine (its own depth wall) — the same warning tone as DepthWallNote,
+          "narrow your filter" is the only way forward. capped=false means the gap is routine —
+          clicking Load more (below the grid) keeps closing it — so the copy points there instead
+          of prematurely telling the user to narrow. */}
+      {summary.overflowing.map((o) =>
+        o.capped ? (
+          <span key={o.engineId} className="engine-overflow-capped">
+            ⚠ {o.engineId} {formatCount(o.fetched)} of {formatCount(o.total)} fetched — reached the
+            paging depth on this engine; Load more can’t reach the rest — narrow your filter
+          </span>
+        ) : (
+          <span key={o.engineId} className="engine-overflow-routine">
+            {o.engineId} {formatCount(o.fetched)} of {formatCount(o.total)} fetched so far — Load
+            more (below the grid) fetches the rest
+          </span>
+        ),
+      )}
     </div>
   )
 }

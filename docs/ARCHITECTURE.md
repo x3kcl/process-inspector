@@ -203,6 +203,16 @@ DoS ceiling — a `filterHash`-bound cursor gives no integrity against a crafted
 and a cursor TTL. Built after the mandatory P0 wire-shape spike (6.3/6.8/7.1) confirmed the
 offset-cost model; the per-engine depth cap is a conservative interim default — the real O(offset)
 cost curve near the cap is still unmeasured (§C-11).
+**Per-lane honesty (#273):** `SearchResponse.depthCapped` is an AGGREGATE bit (at least one
+engine is walled); it does not say WHICH engine, so a lane that merely has more pages left to
+fetch (routine overflow) and a lane that is permanently frozen below its total (its own depth
+wall) looked identical to the client. `EngineResult.capped` closes that gap — set by
+`PagingCursor.mergePage`'s per-engine offset clamp, decorated onto that engine's OWN envelope
+(`SearchService.deepPage`/`aggregate`'s entry cursor), and merged sticky-OR across the
+accumulated "Load more" chain in the frontend (`useSearch.mergeCappedFlag` — a later page's
+wall discovery must surface even though the rest of that engine's envelope stays frozen at
+page 1). The partial-results banner and the Load-more region both key off it to keep the two
+terminal futures visually and textually distinct (SPEC §4 Stage 1).
 
 ### 2.5 Drift — capability probing
 Engines run different Flowable versions. On registry load (and on demand) the BFF calls

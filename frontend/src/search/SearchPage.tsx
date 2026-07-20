@@ -10,7 +10,7 @@ import { ColumnChooser } from '../components/ColumnChooser'
 import { PartialResultsBanner } from '../components/PartialResultsBanner'
 import { ResultsGrid } from '../components/ResultsGrid'
 import { SearchRail } from '../components/SearchRail'
-import { formatClock, useDisplayZone } from '../lib/format'
+import { formatClock, formatCount, useDisplayZone } from '../lib/format'
 import { useHiddenColumns } from '../lib/columnVisibility'
 import { RecentSearchList } from '../views/RecentSearchList'
 import { useLayoutSuggestion } from '../views/useLayoutSuggestion'
@@ -18,6 +18,7 @@ import { ViewChips } from '../views/ViewChips'
 import { useRecordRecentSearch } from '../views/useViewStores'
 import { DepthWallNote } from './DepthWallNote'
 import { GRID_COUNT_PARTIAL_HINT, gridCountIsPartial, gridCountLabel } from './gridCount'
+import { isFullyDrainedAfterPaging, loadMoreRegionVisible } from './loadMoreState'
 import { summarizePartials } from './partials'
 import { resultsMayBeStale, useLastMutationSettledAt } from './staleness'
 import { encodeHiddenColumns } from './urlState'
@@ -254,11 +255,15 @@ export function SearchPage() {
 
         {/* v2 deep paging (docs/KWAY-PAGING.md §4): progressive "Load more", surfaced only on an
             overflowing time-ordered result set — never a row-model swap, no numbered pages, no
-            infinite scroll. The seam line keeps the snapshot honest; the depth wall is a filter seam. */}
+            infinite scroll. The seam line keeps the snapshot honest; the depth wall is a filter seam;
+            #273's "Showing all N" is the positive terminal counterpart once every lane has drained. */}
         {results.data !== undefined &&
-          (results.hasNextPage ||
-            results.data.pagingCoherence === 'snapshot' ||
-            results.data.depthCapped === true) && (
+          loadMoreRegionVisible(
+            results.hasNextPage,
+            results.data.pagingCoherence,
+            results.data.depthCapped,
+            results.pageCount,
+          ) && (
             <div className="load-more" role="region" aria-label="Load more results">
               {results.data.pagingCoherence === 'snapshot' && (
                 <p className="load-more-seam">
@@ -275,6 +280,17 @@ export function SearchPage() {
                     if (request !== null) submit({ ...request, startedBefore })
                   }}
                 />
+              )}
+              {/* #273: every lane drained AND it's not the depth wall — the button is GONE (never
+                  a permanently-enabled dead click) and this positive note takes its place. */}
+              {isFullyDrainedAfterPaging(
+                results.pageCount,
+                results.hasNextPage,
+                results.data.depthCapped,
+              ) && (
+                <p className="load-more-exhausted" role="status">
+                  Showing all {formatCount((results.data.rows ?? []).length)} results
+                </p>
               )}
               {results.hasNextPage && (
                 <button
