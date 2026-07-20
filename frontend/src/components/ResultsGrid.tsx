@@ -168,6 +168,10 @@ export function ResultsGrid({
                   ↳ child
                 </span>
               )}
+              {/* #271: a real space text node, not just CSS margin — the badge and the key
+                  must never read (or copy/paste, or get read by a screen reader) as one
+                  glued string like "↳ childseed-1784472371". */}
+              {child && ' '}
               {p.data?.businessKey}
             </span>
           )

@@ -115,6 +115,46 @@ describe('ResultsGrid root-vs-child marker (W2 #7, R-UXQ-12)', () => {
     // The marker explains itself: parent id in the title, for the identically-keyed tree case.
     expect(markers[0].getAttribute('title')).toContain('pi-1')
   })
+
+  // #271: the badge and the key were rendered with no separating element or whitespace, so
+  // the cell read as one glued string ("↳ childseed-1784472371") instead of a badge plus a
+  // distinct key. A CSS margin alone wouldn't catch a regression here (jsdom doesn't apply
+  // stylesheets), so this asserts the DOM/text level: the key is its own text node, and a
+  // real whitespace character — not just visual spacing — separates it from the badge text.
+  it('the business key is a distinct text node from the child badge, not glued to it (#271)', async () => {
+    const child: ProcessInstanceRow = {
+      ...row,
+      compositeId: 'engine-a:pi-2',
+      processInstanceId: 'pi-2',
+      businessKey: 'seed-1784472371',
+      superProcessInstanceId: 'pi-1',
+    }
+    render(
+      <MemoryRouter>
+        <ResultsGrid
+          response={{ rows: [child], perEngine: { 'engine-a': { ok: true, total: 1 } } }}
+          enginesById={enginesById}
+          onOpenDetails={vi.fn()}
+        />
+      </MemoryRouter>,
+    )
+    const marker = await waitFor(() => screen.getByText(/↳ child/))
+    const cell = marker.closest('.bk-cell')
+    if (cell === null) throw new Error('expected the marker to sit inside a .bk-cell')
+
+    // Never glued: "child" must not be immediately followed by the key with no separator.
+    expect(cell.textContent).not.toMatch(/↳ child(?=seed-1784472371)/)
+    // A real separator character sits between the badge text and the key in the DOM text —
+    // this is what a screen reader or a copy/paste would actually see, not just CSS spacing.
+    expect(cell.textContent).toMatch(/↳ child\s+seed-1784472371/)
+
+    // The key lives in its own text node, structurally distinct from the badge <span>'s text.
+    const keyTextNode = Array.from(cell.childNodes).find(
+      (n) => n.nodeType === Node.TEXT_NODE && n.textContent?.includes('seed-1784472371'),
+    )
+    expect(keyTextNode).toBeDefined()
+    expect(keyTextNode?.textContent?.trim()).toBe('seed-1784472371')
+  })
 })
 
 describe('ResultsGrid protected-instance badge (R-SAFE-05, issue #97 remainder)', () => {
