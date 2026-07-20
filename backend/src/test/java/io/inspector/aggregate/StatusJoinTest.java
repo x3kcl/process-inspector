@@ -255,53 +255,44 @@ class StatusJoinTest {
         @Test
         void snippetHashMatchKeepsExactlyThatGroupsJobs() {
             var kept = StatusJoin.filterBySignatureHash(
-                    java.util.List.of(divisorJob1, timeoutJob, divisorJob2),
-                    snippetHashOf("/ by zero"),
-                    job -> {
-                        throw new AssertionError("no stacktrace fetch needed on a snippet match");
-                    },
-                    0);
+                    java.util.List.of(divisorJob1, timeoutJob, divisorJob2), snippetHashOf("/ by zero"));
             assertThat(kept).containsExactly(divisorJob1, divisorJob2);
         }
 
+        /**
+         * #270 regression: a triage card's identity is its SNIPPET hash, so the drill matches
+         * with no stacktrace fetch at all. Under algo v1 a card could be keyed by a REFINED
+         * hash no member job's snippet produces; the drill then had to spend a bounded
+         * stacktrace budget to find them, and returned 0 rows for a plainly-failing card
+         * whenever that budget ran out or the fetch failed. The refined form must now simply
+         * not be a group identity.
+         */
         @Test
-        void refinedHashMatchesViaOneRepresentativeStacktracePerGroup() {
-            // The drill hash comes from a stacktrace-REFINED triage card — the snippet-only
-            // hash differs. The bridge fetches ONE representative stacktrace per group.
+        void aRefinedStacktraceHashIsNotAGroupIdentityAndMatchesNothing() {
             String refinedHash =
                     snippetHashOf("java.lang.ArithmeticException: / by zero\n\tat MapBasedELResolver.invoke(...)");
-            AtomicInteger fetches = new AtomicInteger();
-            var kept = StatusJoin.filterBySignatureHash(
-                    java.util.List.of(divisorJob1, divisorJob2, timeoutJob),
-                    refinedHash,
-                    job -> {
-                        fetches.incrementAndGet();
-                        return "job-3".equals(job.get("id"))
-                                ? "java.net.ConnectException: connection refused to 10.0.0.7"
-                                : "java.lang.ArithmeticException: / by zero\n\tat whatever(...)";
-                    },
-                    10);
-            assertThat(kept).containsExactly(divisorJob1, divisorJob2);
-            assertThat(fetches.get()).as("one fetch per GROUP, never per job").isEqualTo(2);
+            assertThat(refinedHash)
+                    .as("the refined form really is a different hash — otherwise this proves nothing")
+                    .isNotEqualTo(snippetHashOf("/ by zero"));
+
+            assertThat(StatusJoin.filterBySignatureHash(
+                            java.util.List.of(divisorJob1, divisorJob2, timeoutJob), refinedHash))
+                    .isEmpty();
         }
 
         @Test
-        void refinementStopsAtTheSampleBudgetAndAFailedFetchDegradesToTheSnippet() {
-            String refinedHash = snippetHashOf("java.lang.ArithmeticException: / by zero");
-            // Budget 0: no refinement allowed — nothing matches on snippet, nothing kept.
-            var kept = StatusJoin.filterBySignatureHash(
-                    java.util.List.of(divisorJob1, timeoutJob), refinedHash, job -> "unused", 0);
-            assertThat(kept).isEmpty();
-            // A null stacktrace (job gone between scan and fetch) degrades quietly.
-            var keptNullTrace =
-                    StatusJoin.filterBySignatureHash(java.util.List.of(divisorJob1), refinedHash, job -> null, 10);
-            assertThat(keptNullTrace).isEmpty();
+        void matchingIsPureOverTheRowsInHandRegardlessOfEngineState() {
+            // No fetcher, no budget: the same rows and hash always yield the same answer, so a
+            // drill can never degrade to "0 results" on a slow or warming engine (#270).
+            var rows = java.util.List.of(divisorJob1, timeoutJob, divisorJob2);
+            String wanted = snippetHashOf("/ by zero");
+            assertThat(StatusJoin.filterBySignatureHash(rows, wanted))
+                    .isEqualTo(StatusJoin.filterBySignatureHash(rows, wanted));
         }
 
         @Test
         void noMatchMeansEmptyNeverUnfiltered() {
-            var kept = StatusJoin.filterBySignatureHash(
-                    java.util.List.of(divisorJob1, timeoutJob), "0".repeat(64), job -> null, 10);
+            var kept = StatusJoin.filterBySignatureHash(java.util.List.of(divisorJob1, timeoutJob), "0".repeat(64));
             assertThat(kept).isEmpty();
         }
     }

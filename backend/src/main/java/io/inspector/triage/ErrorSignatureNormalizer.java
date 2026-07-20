@@ -14,8 +14,35 @@ import java.util.regex.Pattern;
  *
  * Input is whatever the engine gives us — a job row's {@code exceptionMessage} snippet
  * (single line, no class name) or a {@code /exception-stacktrace} body (head line +
- * Caused-by chain). Algorithm v1, proven against the captured golden corpus
- * (backend/src/test/resources/error-signatures/, TEST-STRATEGY §4):
+ * Caused-by chain). Algorithm v2, proven against the captured golden corpus
+ * (backend/src/test/resources/error-signatures/, TEST-STRATEGY §4).
+ *
+ * <p><b>IDENTITY CONTRACT (v2, #270) — the hash is ALWAYS computed from the SNIPPET.</b>
+ * This function is pure over its input; the contract is in who calls it with what. A
+ * group's identity hash comes from the job row's {@code exceptionMessage}, which every job
+ * carries, costs no extra call, and cannot fail. Stacktrace refinement still runs (bounded
+ * by {@code stacktrace-sample-cap}) but is <em>display-only</em>: it supplies the
+ * root-cause {@code exceptionClass} shown on the card and NEVER re-keys the group.
+ *
+ * <p>Why v1 was withdrawn: refinement REPLACED the identity, so whether a cycle happened to
+ * refine a group — a function of a largest-first budget and a fetch that can transiently
+ * fail — decided its hash. Measured over the captured corpus, the snippet and refined hashes
+ * differ on <b>60 of 60</b> entries (the two inputs describe the failure at different
+ * levels: {@code "Error while evaluating expression: ${amount % divisor}"} vs
+ * {@code "/ by zero"}), so any group flipping refinement state minted a second incident,
+ * split its MTTR, and left the retired hash's drill links matching nothing (#270).
+ * Dropping {@code exceptionClass} from the hash — the fix the issue originally proposed —
+ * would have closed 0 of those 60, because the message differs too.
+ *
+ * <p>Cost, accepted deliberately: identity is now the engine-reported wrapper message, so
+ * two root causes sharing one wrapper text group together. That over-merge already applied
+ * to every group past the sample cap under v1; v2 makes it uniform and honest rather than
+ * budget-dependent. It is NOT mitigated by folding definition/activity into the hash: acks
+ * are already keyed {@code (hash, algoVersion, engineId, definitionKey)} (V15) and the
+ * incident ledger is deliberately one row per FLEET-WIDE {@code (hash, algoVersion)} (V18),
+ * so that dimension is modelled at the binding layer on purpose.
+ *
+ * <p>Algorithm:
  *
  * <ol>
  *   <li><b>Class extraction</b> — the head line's {@code fully.qualified.Class: message}
@@ -41,7 +68,7 @@ import java.util.regex.Pattern;
 public final class ErrorSignatureNormalizer {
 
     /** Bump on ANY behavior change here, regenerate goldens, show the grouping diff (R-SEM-03). */
-    public static final int ALGO_VERSION = 1;
+    public static final int ALGO_VERSION = 2;
 
     private static final int MESSAGE_CAP = 200;
 
@@ -78,7 +105,27 @@ public final class ErrorSignatureNormalizer {
      * {@code (algoVersion, hash, sampleRawMessage)} — the sample lives on the group,
      * not here. {@code exceptionClass} is null for message-only snippets.
      */
-    public record ErrorSignature(int algoVersion, String exceptionClass, String normalizedMessage, String hash) {}
+    public record ErrorSignature(int algoVersion, String exceptionClass, String normalizedMessage, String hash) {
+
+        /**
+         * Adopt a root-cause class resolved from a representative stacktrace, keeping this
+         * signature's identity ({@code hash}, {@code algoVersion}, {@code normalizedMessage})
+         * untouched — the v2 display-only refinement contract (#270). A null/blank refined
+         * class is ignored, so a stacktrace that fails to parse leaves the snippet's own class
+         * standing rather than blanking it.
+         *
+         * <p>Deliberately asymmetric with {@link #normalize}: after this call {@code hash} is
+         * NO LONGER {@code sha256(exceptionClass + "|" + normalizedMessage)}. That is the
+         * point — the class is a label, the hash is the identity, and only the latter may key
+         * a binding.
+         */
+        public ErrorSignature withDisplayClass(String refinedClass) {
+            if (refinedClass == null || refinedClass.isBlank()) {
+                return this;
+            }
+            return new ErrorSignature(algoVersion, refinedClass, normalizedMessage, hash);
+        }
+    }
 
     /**
      * Normalize a raw engine payload — a job row's {@code exceptionMessage} or a full

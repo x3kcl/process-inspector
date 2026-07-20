@@ -20,6 +20,7 @@ import { IncidentTimeline } from './IncidentTimeline'
 import { episodeDurationLabel } from './duration'
 import { incidentSearchParams } from './drill'
 import { incidentGate } from './gate'
+import { countStripLabel } from './liveness'
 import { ReopenIncidentModal } from './ReopenIncidentModal'
 import { ResolveIncidentModal } from './ResolveIncidentModal'
 import { useIncident } from './useIncidents'
@@ -65,6 +66,7 @@ export function IncidentDetail() {
 
   const incident = detail.data.incident
   const live = detail.data.live
+  const countStrip = countStripLabel(live !== undefined)
   const relatedBulkJobs = detail.data.relatedBulkJobs ?? []
   const episodes = [...(detail.data.episodes ?? [])].sort((a, b) =>
     (b.startedAt ?? '').localeCompare(a.startedAt ?? ''),
@@ -135,8 +137,9 @@ export function IncidentDetail() {
         </p>
       )}
 
+      {/* R-NFR-08 honesty (#270) — see liveness.ts for why this is not just "Live total". */}
       <p className="strip-note">
-        Live total {incident?.lastTruncated === true ? '≥ ' : ''}
+        {countStrip.label} {incident?.lastTruncated === true ? '≥ ' : ''}
         {incident?.lastTotal ?? 0} instances
         {incident?.partial === true && (
           <span className="scope-badge" title="Only engines you can read are reflected">
@@ -144,9 +147,21 @@ export function IncidentDetail() {
             in your scope
           </span>
         )}
+        {countStrip.drillMayBeEmpty && incident !== undefined && (
+          <>
+            {' '}
+            <Ts iso={incident.lastSeen} relative />
+          </>
+        )}
         .{' '}
         {incident !== undefined && (
           <Link to={`/search?${incidentSearchParams(incident)}`}>Search these instances</Link>
+        )}
+        {countStrip.drillMayBeEmpty && (
+          <span className="strip-caveat">
+            {' '}
+            — this class is not failing right now, so the search may return nothing.
+          </span>
         )}
       </p>
 
