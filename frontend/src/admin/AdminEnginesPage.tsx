@@ -59,7 +59,7 @@ function probeFailureText(failureClass: string | null | undefined): string {
 // implying a UI path that doesn't exist; it still explains WHY the raw text isn't shown here.
 const PROBE_FAILED_TOOLTIP =
   "The full connection error is captured server-side on this engine's probe audit entry — " +
-  "not shown here (or in the Operations Log) to avoid leaking internal network details " +
+  'not shown here (or in the Operations Log) to avoid leaking internal network details ' +
   'through the UI; retrievable via the audit API/DB by an engineer who needs the exact text.'
 
 type FormState = { mode: 'add' } | { mode: 'edit'; engine: AdminEngineDto } | null

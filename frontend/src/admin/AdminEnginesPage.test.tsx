@@ -222,9 +222,7 @@ describe('AdminEnginesPage — positive reachability badge (#275)', () => {
   })
 
   it('a DISABLED row still reads as a policy decision, unaffected by the reachability badge', () => {
-    enginesData = [
-      { id: 'engine-7', name: 'Engine 7', lifecycle: 'disabled', mode: 'read-only' },
-    ]
+    enginesData = [{ id: 'engine-7', name: 'Engine 7', lifecycle: 'disabled', mode: 'read-only' }]
     render(<AdminEnginesPage />)
     expect(screen.getByText('⏸ Disabled')).toBeDefined()
   })
