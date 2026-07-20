@@ -345,8 +345,17 @@ Answers "what is broken, how much, where" in zero keystrokes:
   Error snippet, notes marker. Snapshot header: "as of 14:32:05 · Refresh"; auto-refresh is
   opt-in and **suspends while rows are selected**.
 - Partial results: slim amber banner ("2 of 3 engines · billing-prod: timeout [Retry]");
-  per-engine fetched/total chips ("orders-prod 138 of 2,410 — narrow your filter"); any count
-  produced under an engine error or truncation is labeled a **lower bound**.
+  per-engine fetched/total chips; any count produced under an engine error or truncation is
+  labeled a **lower bound**. A chip's phrasing depends on WHY the engine is still short of its
+  total (#273 — routine overflow and a walled lane must never read identically): routine
+  ("orders-prod 138 of 2,410 fetched so far — Load more fetches the rest") points at the button
+  below the grid, since clicking it keeps closing the gap; a lane that hit its OWN deep-paging
+  depth cap escalates instead ("engine-a 642 of 1,850 fetched — reached the paging depth on this
+  engine; Load more can't reach the rest — narrow your filter"), bold + warning-toned like
+  `DepthWallNote`, since no amount of further paging will ever close that gap. Once every lane
+  has genuinely drained (not the depth wall) after at least one "Load more" click, the button is
+  replaced by a positive terminal note ("Showing all 2,548 results") — the region never just
+  silently vanishes, and the button never stays clickable-but-dead.
 
 ### Stage 2 — Instance detail: a full-page, deep-linkable route
 `/inspect/{engineId}/{id}` from M3, not M6. **Deep links are tab-aware**
@@ -1297,7 +1306,8 @@ and would rewrite working M1/M2 code for no capability gain); Go/FastAPI/Kotlin 
   dangling-canon honesty; the stated build trigger — distinct owners repeatedly re-creating the
   same canonical `search` string — was never instrumented, the panel approved building directly),
   **k-way-merge deep paging** (cursor-based browsing of the globally-sorted merged stream — ★
-  FEATURE COMPLETE, S0–S5 landed, [KWAY-PAGING.md](KWAY-PAGING.md), R-SEM-22/23, R-NFR-08; the
+  FEATURE COMPLETE, S0–S5 landed + S6 per-lane exhausted-vs-capped honesty (#273, 2026-07-20),
+  [KWAY-PAGING.md](KWAY-PAGING.md), R-SEM-22/23, R-NFR-08; the
   stated build trigger — operators repeatedly hitting `perEngine.total > fetched` on a
   time-sorted search without narrowing — was superseded by the P0 wire-shape spike going ahead
   and building ✅; R-SEM-23, the deterministic total-order fix, shipped as a standalone MUST).

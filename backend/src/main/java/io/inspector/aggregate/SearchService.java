@@ -230,6 +230,11 @@ public class SearchService {
                 incoming, emittable, rawKeys, totals, globalPageSize, sortBy, filterHash, depthCaps, nowMillis);
         List<ProcessInstanceRow> rows = markProtected(new ArrayList<>(merged.rows()));
         String nextCursor = merged.nextCursor() != null ? merged.nextCursor().encode() : null;
+        // #273: decorate the walled engines' OWN envelope so the client can tell "this lane is
+        // permanently frozen below its total" apart from "this lane just has more to fetch".
+        for (String eng : merged.cappedEngines()) {
+            perEngine.computeIfPresent(eng, (id, r) -> r.withCapped(true));
+        }
         return new DeepPage(rows, new HashMap<>(perEngine), nextCursor, merged.depthCapped());
     }
 
@@ -346,6 +351,11 @@ public class SearchService {
                     System.currentTimeMillis());
             depthCapped = entry.depthCapped();
             if (entry.nextCursor() != null) nextCursor = entry.nextCursor().encode();
+            // #273: same per-lane decoration as deepPage() — page 1 can already wall an engine
+            // (a tiny configured depth cap, or a pathological cap of 0).
+            for (String eng : entry.cappedEngines()) {
+                perEngine.computeIfPresent(eng, (id, r) -> r.withCapped(true));
+            }
         }
         return new SearchResponse(
                 markProtected(rows), new HashMap<>(perEngine), statusCounts, null, null, nextCursor, depthCapped, null);

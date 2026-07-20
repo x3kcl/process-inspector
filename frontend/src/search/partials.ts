@@ -22,6 +22,10 @@ export interface EngineOverflow {
   engineId: string
   fetched: number
   total: number
+  // #273: this engine's OWN lane hit the deep-paging depth wall — fetched<total will persist
+  // no matter how many more times "Load more" is clicked, unlike an ordinary overflowing engine
+  // (capped=false) which simply has more pages left to fetch. The two must never read the same.
+  capped: boolean
 }
 
 export interface PartialSummary {
@@ -56,7 +60,7 @@ export function summarizePartials(
     const fetched = result.fetched ?? 0
     const total = result.total ?? 0
     if (total > fetched) {
-      overflowing.push({ engineId, fetched, total })
+      overflowing.push({ engineId, fetched, total, capped: result.capped === true })
     }
   }
   return {

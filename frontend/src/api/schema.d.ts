@@ -1818,6 +1818,7 @@ export interface components {
             summary?: string;
         };
         EngineResult: {
+            capped?: boolean;
             dlqScan?: string;
             error?: string;
             failingScan?: string;

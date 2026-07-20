@@ -858,6 +858,17 @@ button.primary:disabled {
   padding: 0 6px;
   cursor: pointer;
 }
+/* #273: the two "N of M fetched" terminal futures for one engine lane must never look alike.
+   capped = this engine's OWN depth wall — bold + the SAME warning ink as .load-more-depthwall
+   below, since it needs the identical "you must act (narrow) to see more" read. routine = just
+   more pages left — plain weight, muted ink, no urgency, matches .load-more-seam's "informational
+   only" register. */
+.engine-overflow-capped {
+  font-weight: 600;
+}
+.engine-overflow-routine {
+  color: var(--color-text-muted);
+}
 
 /* v2 deep paging — progressive "Load more" (docs/KWAY-PAGING.md §4). */
 .load-more {
@@ -872,6 +883,19 @@ button.primary:disabled {
   margin: 0;
   font-size: 12px;
   color: #6b7280;
+}
+/* #273: the positive terminal counterpart to the depth wall — every lane drained, nothing left
+   to fetch. Success-toned (never the warning amber the wall/overflow hints use above) so the two
+   terminal states read as opposites at a glance, not variants of the same "something's off" box. */
+.load-more-exhausted {
+  margin: 0;
+  font-size: 12px;
+  font-weight: 600;
+  color: var(--color-success);
+  background: var(--color-success-bg);
+  border: 1px solid var(--color-success-border);
+  border-radius: 4px;
+  padding: 4px 8px;
 }
 /* #245: the depth wall is the one load-more message the user must ACT on to keep paging —
    warning-toned box (the .rail-hint/.snapshot-stale language), never the muted seam/staleness

@@ -1,11 +1,13 @@
 # 🧭 K-WAY-MERGE DEEP PAGING — design + panel (v2, demand-gated)
 
-**Status:** ★ **FEATURE COMPLETE 2026-07-09 — S0–S5 all built + merged to main, each CI-green.**
+**Status:** ★ **FEATURE COMPLETE 2026-07-09 — S0–S5 all built + merged to main, each CI-green;**
+**S6 (per-lane exhausted-vs-capped honesty, #273) landed 2026-07-20.**
 Design locked; **S0 P0 spike discharged** (live 6.3/6.8/7.1 — §6.1) → MIXED-first slices built,
 **capability-gated 6.8+** (6.3.1 failed offset stability). S1 deterministic total order (R-SEM-23,
 standalone) · S2 backend cursor + bounded k-way merge (R-SEM-22/R-NFR-08, `DEEP_PAGE` lane) · S3 API
 surface · S4 frontend "Load more" (`useInfiniteQuery` + `aggregate()` entry cursor) · S5 live-engine
-ITs (6.8 + 7.1, config-lowered caps). Authoritative source-of-truth
+ITs (6.8 + 7.1, config-lowered caps) · S6 per-engine `capped` decoration + Load-more
+exhausted/capped UI distinction. Authoritative source-of-truth
 for the deep-paging feature (v2 demand-driven item #3). The WHAT/WHY/HOW/WHEN below drive the
 deltas into `SPECIFICATION.md` (§4/§8 + deferred list), `ARCHITECTURE.md` (§2.3/§2.4),
 `IMPLEMENTATION-PLAN.md` (v2 block) and `REQUIREMENTS-REGISTER.md` (R-SEM-22, R-SEM-23, R-NFR-08
@@ -199,7 +201,10 @@ Any deep-paging design must survive the Flowable REST wire-shape (REST-only iron
    - **Dedicated `CallPriority.DEEP_PAGE` bulkhead + breaker lane** (distinct instance name),
      so deep scroll degrades itself, never page-1 search.
    - **Per-engine depth cap**, config-lowerable, default set by the S0 measurement (candidate:
-     align to the 5,000 bulk cap). `depthCapped` is per-engine.
+     align to the 5,000 bulk cap). The clamp that trips it is computed per-engine inside
+     `PagingCursor.mergePage`; what S3 originally shipped as the wire shape was an AGGREGATE
+     `SearchResponse.depthCapped` bit only (true if ANY engine is walled, without saying which) —
+     S6/#273 closed the gap by also decorating the per-engine `EngineResult.capped` flag.
    - **Cursor TTL** (`issuedAt`) → 400 "cursor expired, start over".
    - **Bounded `boundaryIds`** (≤ window) with a documented fallback.
    - Deep pages are a **separate latency class**, excluded from the R-NFR-02 P95 gate.
@@ -221,9 +226,15 @@ Any deep-paging design must survive the Flowable REST wire-shape (REST-only iron
 
 - `SearchRequest`: add optional `cursor: string`. When present, `pageSize` is the **global** rows
   to emit; per-engine `size` is fixed at the window internally.
-- `SearchResponse`: add `nextCursor: string|null`, `depthCapped: boolean` (per-engine), and
-  `pagingCoherence` (`snapshot` when deep-paged). Existing `perEngine`/`statusCounts`/truncation
-  markers unchanged; deep-page markers ride the **same** `perEngine` envelope.
+- `SearchResponse`: add `nextCursor: string|null`, `depthCapped: boolean` (aggregate — true if
+  ANY engine is walled; S6/#273 adds the per-engine counterpart below), and `pagingCoherence`
+  (`snapshot` when deep-paged). Existing `perEngine`/`statusCounts`/truncation markers unchanged;
+  deep-page markers ride the **same** `perEngine` envelope.
+- `EngineResult` (S6/#273): add `capped: boolean` — THIS engine's own lane hit the depth wall,
+  distinct from the aggregate `depthCapped` above and from ordinary `fetched < total` overflow
+  (which just means more pages remain). Sticky once true; decorated by
+  `PagingCursor.mergePage`'s `cappedEngines` onto that engine's envelope, merged across the
+  "Load more" chain by reading the freshest page (`useSearch.mergeCappedFlag`).
 - Frontend: "Load more" via `useInfiniteQuery`, `getRowId` = `compositeId`; reuse the
   partial-results banner; depth-wall filter-seam CTA.
 
@@ -341,6 +352,26 @@ wire-facts** — neither correction changes the RE-LOCK, but both are now known 
   cross-version — the 7.1 `Z`-form vs 6.8 `+00:00`-form corroborates the R-SEM-23 Instant-parse);
   paging past the lowered cap flags `depthCapped`; a crafted over-cap cursor is a **400**; a dropped
   engine mid-scroll degrades to `perEngine.ok=false` inside a 200 with the healthy rows intact.
+- **S6 — Per-lane exhausted-vs-capped honesty (#273).** ✔ **LANDED 2026-07-20.** Usability run
+  2026-07-19 (M10 t2) found the aggregate `depthCapped` bit insufficient: a lane that merely has
+  more pages left to fetch and a lane permanently walled at its own depth cap both showed the
+  IDENTICAL "N of M fetched — narrow your filter" chip, and the Load-more button never confirmed
+  completion — it just silently stopped rendering once every lane drained. Fix: `PagingCursor.
+  mergePage`'s `PageResult` now also returns `cappedEngines` (which engines are walled THIS page,
+  not just whether any is); `SearchService.deepPage`/`aggregate` decorate the walled engines' own
+  `EngineResult.capped`; `useSearch.mergeCappedFlag` merges it sticky-OR across the accumulated
+  chain (a wall discovered on page 5 must surface even though the rest of that engine's envelope
+  stays frozen at page 1, like every other perEngine field). Frontend: `PartialResultsBanner`
+  branches each overflowing chip on `capped` — routine points at Load-more ("… fetched so far —
+  Load more … fetches the rest"), capped escalates with `DepthWallNote`'s warning weight
+  ("reached the paging depth on this engine … narrow your filter"); a new `loadMoreState.ts`
+  (`isFullyDrainedAfterPaging`/`loadMoreRegionVisible`) gates a positive terminal
+  "Showing all N results" note once paging (`pageCount > 1`) has genuinely drained every lane —
+  the button disappears for the SAME reason the note appears, never leaving a dead-but-enabled
+  click. Rung-1: `PagingCursorTest` (`cappedEngines` on every existing depth-wall case),
+  `useSearch.test.ts` (`mergeCappedFlag`/`mergeDeepPages`), `loadMoreState.test.ts`,
+  `partials.test.ts`, `PartialResultsBanner.test.tsx`. No new engine calls, no cap/TTL/bulkhead
+  change — presentation-and-envelope only.
 
 ---
 
