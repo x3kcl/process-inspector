@@ -390,7 +390,15 @@ public class TriageAggregationService {
      * {@code stacktrace-sample-cap}, largest groups first — N+1 on GROUPS, never on jobs)
      * to resolve the root-cause class per the R-SEM-03 unwrap contract, then zero-fills
      * sibling definition versions so version-specific failures are visible ("v47: 312,
-     * v46: 0"). Refinement failures degrade to the message-only signature — never the slice.
+     * v46: 0").
+     *
+     * <p><b>Refinement is DISPLAY-ONLY (algo v2, #270).</b> The group keeps its SNIPPET
+     * signature as identity — hash, algoVersion and normalizedMessage all derive from the
+     * job row's own {@code exceptionMessage}. A successful refinement contributes ONLY the
+     * root-cause {@code exceptionClass}. Under v1 the refined signature replaced the
+     * identity outright, so a group that fell outside the budget (or whose fetch failed) on
+     * one cycle and inside it on the next changed hash and minted a duplicate incident with
+     * a dead drill link. A refinement miss now costs a class label, never an identity.
      */
     private List<EngineGroup> refine(EngineConfig engine, Map<String, PreGroup> preGroups, CallPriority priority) {
         Map<String, List<String>> versionsByKey = definitionVersions(engine, preGroups, priority);
@@ -407,7 +415,10 @@ public class TriageAggregationService {
                     String stacktrace =
                             flowable.jobExceptionStacktrace(engine, priority, group.sampleLane, group.sampleJobId);
                     if (stacktrace != null && !stacktrace.isBlank()) {
-                        signature = ErrorSignatureNormalizer.normalize(stacktrace);
+                        // Display refinement ONLY: adopt the root-cause class, keep the
+                        // snippet-derived hash/message that key this group.
+                        signature = signature.withDisplayClass(
+                                ErrorSignatureNormalizer.normalize(stacktrace).exceptionClass());
                     }
                 } catch (Exception ex) {
                     log.debug("Stacktrace refinement failed on {}: {}", engine.id(), ex.toString());

@@ -103,10 +103,11 @@ categories:
   query REST has no OR-across-fields to compile to).
 - **BFF-side over the scan legs** — `failureTimeAfter/Before` (inclusive window over
   dead-letter/failing job `createTime`), `errorText` (case-insensitive substring over
-  exception snippets) and `signatureHash` (the R-SEM-03 triage drill-down: jobs group by
-  snippet signature; a group whose snippet hash misses gets ONE representative-stacktrace
-  refinement — same algorithm and sample cap as triage — so a refined card's hash still
-  matches its snippet-only jobs): Flowable cannot query instances by failure evidence, so
+  exception snippets) and `signatureHash` (the R-SEM-03 triage drill-down: an EXACT match on
+  each job row's own snippet hash — since algo v2 a card's identity IS its snippet hash
+  (#270), so this needs no representative-stacktrace fetch and no sample budget, and a drill
+  can no longer come back empty for a card that is plainly failing): Flowable cannot query
+  instances by failure evidence, so
   these filter the JOB rows **before grouping and root resolution** — a filtered-out child
   failure never rolls up its parent. Setting any of them means only failure-bearing rows
   can match; in the mixed plan, rows whose evidence is filtered away drop out.
@@ -282,7 +283,9 @@ inspector:
   triage:                            # Stage 0 landing knobs (SPEC §4)
     cache-ttl-s: 20                  # aggregation cache TTL — thundering-herd protection
     refresh-min-interval-s: 10       # Refresh-bypass throttle (per user once auth lands, M4+)
-    stacktrace-sample-cap: 25        # representative stacktrace fetches per round (group refinement)
+    stacktrace-sample-cap: 25        # representative stacktrace fetches per round — DISPLAY
+                                     # refinement only (root-cause class); since algo v2 it
+                                     # can never change a group's identity hash (#270)
   engines:
     - id: orders-prod                # stable slug, used in composite IDs — never rename
       name: "Orders µService (PROD)" # display name

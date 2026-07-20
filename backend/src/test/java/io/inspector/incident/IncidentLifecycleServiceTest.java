@@ -23,6 +23,7 @@ import io.inspector.dto.IncidentSummary;
 import io.inspector.dto.ReopenIncidentRequest;
 import io.inspector.dto.ResolveIncidentRequest;
 import io.inspector.triage.ErrorGroupAckService;
+import io.inspector.triage.ErrorSignatureNormalizer;
 import java.lang.reflect.Method;
 import java.time.Clock;
 import java.time.Instant;
@@ -78,7 +79,7 @@ class IncidentLifecycleServiceTest {
         assertThat(payload)
                 .containsEntry("incidentId", ID)
                 .containsEntry("signatureHash", "hash-1")
-                .containsEntry("algoVersion", 1)
+                .containsEntry("algoVersion", ErrorSignatureNormalizer.ALGO_VERSION)
                 .containsEntry("stateFrom", "OPEN")
                 .containsEntry("stateTo", "RESOLVED")
                 .containsEntry("reason", "gateway fixed")
@@ -186,7 +187,7 @@ class IncidentLifecycleServiceTest {
         assertThat(payload)
                 .containsEntry("incidentId", ID)
                 .containsEntry("signatureHash", "hash-1")
-                .containsEntry("algoVersion", 1)
+                .containsEntry("algoVersion", ErrorSignatureNormalizer.ALGO_VERSION)
                 .containsEntry("stateFrom", "RESOLVED")
                 .containsEntry("stateTo", "OPEN")
                 .containsEntry("episodeId", EPISODE_ID)
@@ -256,7 +257,7 @@ class IncidentLifecycleServiceTest {
         ArgumentCaptor<AcknowledgeErrorGroupRequest> ack = ArgumentCaptor.forClass(AcknowledgeErrorGroupRequest.class);
         verify(acks).acknowledge(ack.capture(), eq(auth));
         assertThat(ack.getValue().signatureHash()).isEqualTo("hash-1");
-        assertThat(ack.getValue().algoVersion()).isEqualTo(1);
+        assertThat(ack.getValue().algoVersion()).isEqualTo(ErrorSignatureNormalizer.ALGO_VERSION);
         assertThat(ack.getValue().reason()).isEqualTo("gateway fixed");
         assertThat(ack.getValue().ticketId()).isEqualTo("OPS-1");
         assertThat(ack.getValue().expiresAt()).isNull();
@@ -399,7 +400,7 @@ class IncidentLifecycleServiceTest {
         Incident row = mock(Incident.class);
         when(row.getId()).thenReturn(ID);
         when(row.getSignatureHash()).thenReturn("hash-1");
-        when(row.getAlgoVersion()).thenReturn(1);
+        when(row.getAlgoVersion()).thenReturn(ErrorSignatureNormalizer.ALGO_VERSION);
         when(row.getState()).thenReturn(state);
         when(row.getCountsByEngine())
                 .thenReturn(

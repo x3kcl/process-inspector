@@ -239,10 +239,24 @@ Answers "what is broken, how much, where" in zero keystrokes:
 - **Failures grouped by error class** — dead-letter (and RETRYING-tier) jobs grouped by
   **normalized exception signature**, with counts per engine and per definition version
   ("NPE in TaxCalculator — 312 · orders-prod · v47: 312, v46: 0"). **The signature is a
-  normative, versioned contract** (R-SEM-03): outermost non-wrapper exception class (unwrap
-  one level) + message with UUIDs, hex ≥8, digit runs, quoted literals and ISO timestamps
-  replaced by `#`, whitespace collapsed, 200-char cap; persisted as `(algoVersion, sha256,
-  sampleRawMessage)`. Acknowledgments, annotations and playbook bindings store the
+  normative, versioned contract** (R-SEM-03, **algo v2**): the group's IDENTITY is hashed
+  from the job row's own `exceptionMessage` — outermost non-wrapper exception class where the
+  message carries one (unwrap one level) + message with UUIDs, hex ≥8, digit runs, quoted
+  literals and ISO timestamps replaced by `#`, whitespace collapsed, 200-char cap; persisted
+  as `(algoVersion, sha256, sampleRawMessage)`.
+  **Stacktrace refinement is display-only and MUST NOT re-key a group.** A representative
+  `/exception-stacktrace` is still fetched within `stacktrace-sample-cap` to resolve and show
+  the root-cause class, but it never enters the hash. This is normative because refinement is
+  budget-bounded and can transiently fail: under v1 it REPLACED the identity, so one root
+  cause changed hash whenever a cycle's budget or network luck changed — minting duplicate
+  incidents, splitting MTTR, and leaving the retired hash's drill returning zero rows while
+  its card still claimed N instances (#270). The accepted cost is that two root causes sharing
+  one engine-reported wrapper message group together; that over-merge already applied to every
+  group past the sample cap, and is now uniform rather than budget-dependent. It is NOT
+  addressed by folding definition or activity into the hash — acks are already keyed
+  `(hash, algoVersion, engineId, definitionKey)` and an incident is deliberately one row per
+  fleet-wide `(hash, algoVersion)`, so that dimension belongs to the binding layer.
+  Acknowledgments, annotations and playbook bindings store the
   algoVersion; a normalizer change bumps it, flags bindings "needs re-binding" (never
   silently rebinds), and must pass the golden corpus (TEST-STRATEGY §4).
   **Drill-through is scope-explicit** (R-SEM-12): each per-version count is its own click
@@ -991,7 +1005,7 @@ copy is never identical to an RBAC denial (R-GOV-04, R-SEM-17).
 | Business data | `businessKey` (exact + `businessKeyLike`), variables (name/operator/value, `like` supported). ⚠ Variable-value search hits typically-unindexed engine tables (`ACT_RU/HI_VARINST`): the form warns and nudges "narrow by definition"; a per-engine flag can require it. On engines that silently drop the like-filter (6.3-era), `businessKeyLike` degrades to a per-engine error in the envelope — never silently unfiltered rows (ARCH §2.3) |
 | Current activity | activity id/name contains |
 | Error text | substring over exception snippets (BFF-side) |
-| Error signature | `signatureHash` — the normalized-signature hash (R-SEM-03), the triage card's drill-down; BFF-side over the failure-lane scans with the same one-representative-stacktrace refinement triage uses, so a refined card's hash matches its snippet-only jobs |
+| Error signature | `signatureHash` — the normalized-signature hash (R-SEM-03), the triage card's drill-down; BFF-side over the failure-lane scans as an EXACT match on the job row's own snippet hash. Since algo v2 a card's identity is always its snippet hash (#270), so the drill needs no stacktrace fetch and no sample budget, and can no longer return zero rows for a card that is currently failing |
 | Tenant | **not an operator-selectable filter**: the tenant is pinned per engine in the registry (`tenant-id`) and threaded into every engine query automatically — a multi-tenant engine is inspected through its registered tenant, never chosen ad hoc from the search form (`SearchRequest` deliberately has no tenant field) |
 
 Combination rule unchanged: **AND between categories, OR within** — made visible by the

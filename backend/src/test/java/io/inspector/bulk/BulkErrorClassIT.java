@@ -6,6 +6,7 @@ import static org.awaitility.Awaitility.await;
 import com.fasterxml.jackson.databind.JsonNode;
 import com.fasterxml.jackson.databind.ObjectMapper;
 import io.inspector.support.EngineSeed;
+import io.inspector.triage.ErrorSignatureNormalizer;
 import java.util.Map;
 import java.util.UUID;
 import java.util.concurrent.TimeUnit;
@@ -99,7 +100,7 @@ class BulkErrorClassIT {
                                 "signatureHash",
                                 signatureHash,
                                 "algoVersion",
-                                1,
+                                ErrorSignatureNormalizer.ALGO_VERSION,
                                 "processDefinitionKey",
                                 "demoFailingPayment",
                                 "definitionVersion",
@@ -148,7 +149,7 @@ class BulkErrorClassIT {
             JsonNode payload = mapper.readTree(envelope.path("payload").asText());
             JsonNode group = payload.path("errorClass");
             assertThat(group.path("signatureHash").asText()).isEqualTo(signatureHash);
-            assertThat(group.path("algoVersion").asInt()).isEqualTo(1);
+            assertThat(group.path("algoVersion").asInt()).isEqualTo(ErrorSignatureNormalizer.ALGO_VERSION);
             assertThat(group.path("definition").asText()).isEqualTo("demoFailingPayment:v" + version);
             assertThat(group.path("engineId").asText()).isEqualTo("engine-a");
             assertThat(group.path("resolvedCount").asInt()).isEqualTo(2);
@@ -167,7 +168,7 @@ class BulkErrorClassIT {
                                 "signatureHash",
                                 "0".repeat(64),
                                 "algoVersion",
-                                1,
+                                ErrorSignatureNormalizer.ALGO_VERSION,
                                 "processDefinitionKey",
                                 "demoFailingPayment",
                                 "definitionVersion",
@@ -189,7 +190,7 @@ class BulkErrorClassIT {
                                 "signatureHash",
                                 "f".repeat(64),
                                 "algoVersion",
-                                1,
+                                ErrorSignatureNormalizer.ALGO_VERSION,
                                 "processDefinitionKey",
                                 "demoFailingPayment",
                                 "definitionVersion",

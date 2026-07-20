@@ -53,6 +53,22 @@ cross-major hash convergence for tail-bearing 7.x messages. A normalizer change 
 `algoVersion`, re-run the capture, and show the grouping diff in the PR. Image bumps
 re-capture the corpus before capability sign-off.
 
+Since algo v2 the corpus also carries the **#270 stability gate**
+(`identityIsSnippetOnlyAndRefinementNeverRekeysAGroup`): for every entry, adopting a
+stacktrace-refined class as display must leave the hash untouched. Its first half is
+deliberately a *self-check* — it asserts the snippet and refined forms genuinely hash
+differently (they do, on 60/60 captured entries), because if those ever converged the rest of
+the gate would pass vacuously. That same assertion is the standing evidence for why #270's
+originally-proposed fix was rejected: the normalized MESSAGES differ too, so dropping the
+exception class from the hash would have closed none of the 60.
+
+**Never hardcode an algo version in a fixture** — use `ErrorSignatureNormalizer.ALGO_VERSION`.
+The v2 bump turned 18 ack/incident tests red at once, all with the same shape: a fixture
+pinned to `1` made the stale-generation guard fire, so the test exercised the refusal path
+instead of what it meant to test. Pinned literals fail loudly on the bump that follows them,
+but a pinned *stub key* (`findBySignatureHashAndAlgoVersion("h", 1)`) fails quietly — it just
+stops matching and the code under test sees an empty result.
+
 ## 5. Security testing (R-TEST-06)
 Scope: path-whitelist bypass (traversal, double-encoding, method override), the full
 RBAC×tenant×mode matrix incl. SSE and bulk endpoints, CSRF, ARCH §6 fencing probed **from

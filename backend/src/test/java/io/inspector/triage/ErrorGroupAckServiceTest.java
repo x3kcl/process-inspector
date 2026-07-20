@@ -43,6 +43,11 @@ import org.springframework.web.server.ResponseStatusException;
  */
 class ErrorGroupAckServiceTest {
 
+    /** The CURRENT normalizer generation — never a literal, so an ALGO_VERSION bump
+     * (#270 took it to v2) does not silently turn every fixture into a stale-generation
+     * refusal instead of testing what it means to test. */
+    private static final int ALGO = ErrorSignatureNormalizer.ALGO_VERSION;
+
     private static final Instant NOW = Instant.parse("2026-07-10T12:00:00Z");
 
     private ErrorGroupAckRepository repository;
@@ -73,11 +78,11 @@ class ErrorGroupAckServiceTest {
 
     private static ErrorGroup group(long total, Map<String, Map<String, Long>> countsByEngine) {
         return new ErrorGroup(
-                "hash-1", 1, "java.lang.NullPointerException", "boom #", "boom 42", total, total, 0, countsByEngine);
+                "hash-1", ALGO, "java.lang.NullPointerException", "boom #", "boom 42", total, total, 0, countsByEngine);
     }
 
     private static AcknowledgeErrorGroupRequest ackRequest(String reason) {
-        return new AcknowledgeErrorGroupRequest("hash-1", 1, reason, "OPS-7", null);
+        return new AcknowledgeErrorGroupRequest("hash-1", ALGO, reason, "OPS-7", null);
     }
 
     /* ---------------- acknowledge ---------------- */
@@ -128,7 +133,7 @@ class ErrorGroupAckServiceTest {
                         payload.capture());
         assertThat(payload.getValue())
                 .containsEntry("signatureHash", "hash-1")
-                .containsEntry("algoVersion", 1)
+                .containsEntry("algoVersion", ALGO)
                 .containsEntry("acknowledgedTotal", 10L)
                 .containsEntry("ticketId", "OPS-7");
         assertThat(payload.getValue().get("slices")).isEqualTo(List.of("e1 · orders:v3 · 10"));
@@ -138,8 +143,8 @@ class ErrorGroupAckServiceTest {
     void reacknowledgeReplacesThePreviousRowsWholesale() {
         liveGroup(group(20, Map.of("e1", Map.of("orders:v4", 20L))));
         ErrorGroupAck previous = new ErrorGroupAck(
-                "hash-1", 1, "e1", "orders", "op0", "earlier acknowledge", null, NOW.minusSeconds(600), null, 10, 3);
-        when(repository.findBySignatureHashAndAlgoVersion("hash-1", 1)).thenReturn(List.of(previous));
+                "hash-1", ALGO, "e1", "orders", "op0", "earlier acknowledge", null, NOW.minusSeconds(600), null, 10, 3);
+        when(repository.findBySignatureHashAndAlgoVersion("hash-1", ALGO)).thenReturn(List.of(previous));
 
         service.acknowledge(ackRequest("still the same outage"), operator);
 
@@ -191,14 +196,14 @@ class ErrorGroupAckServiceTest {
     void expiryMustBeParsableAndInTheFuture() {
         liveGroup(group(10, Map.of("e1", Map.of("orders:v3", 10L))));
         assertThatThrownBy(() -> service.acknowledge(
-                        new AcknowledgeErrorGroupRequest("hash-1", 1, "legitimate reason here", null, "tomorrowish"),
+                        new AcknowledgeErrorGroupRequest("hash-1", ALGO, "legitimate reason here", null, "tomorrowish"),
                         operator))
                 .isInstanceOfSatisfying(
                         GuardRefusedException.class, e -> assertThat(e.code()).isEqualTo("ack-expiry-invalid"));
         assertThatThrownBy(() -> service.acknowledge(
                         new AcknowledgeErrorGroupRequest(
                                 "hash-1",
-                                1,
+                                ALGO,
                                 "legitimate reason here",
                                 null,
                                 NOW.minusSeconds(60).toString()),
@@ -225,8 +230,8 @@ class ErrorGroupAckServiceTest {
     void auditFailureCompensatesTheStoreAndRefusesFailClosed() {
         liveGroup(group(10, Map.of("e1", Map.of("orders:v3", 10L))));
         ErrorGroupAck previous = new ErrorGroupAck(
-                "hash-1", 1, "e1", "orders", "op0", "earlier acknowledge", null, NOW.minusSeconds(600), null, 5, 2);
-        when(repository.findBySignatureHashAndAlgoVersion("hash-1", 1)).thenReturn(List.of(previous));
+                "hash-1", ALGO, "e1", "orders", "op0", "earlier acknowledge", null, NOW.minusSeconds(600), null, 5, 2);
+        when(repository.findBySignatureHashAndAlgoVersion("hash-1", ALGO)).thenReturn(List.of(previous));
         when(audit.recordConfigEvent(anyString(), anyString(), anyBoolean(), anyString(), any()))
                 .thenThrow(new AuditUnavailableException(new RuntimeException("db down")));
 
@@ -256,10 +261,11 @@ class ErrorGroupAckServiceTest {
     @Test
     void unacknowledgeDeletesTheRowsAndAudits() {
         ErrorGroupAck row = new ErrorGroupAck(
-                "hash-1", 1, "e1", "orders", "op0", "earlier acknowledge", null, NOW.minusSeconds(600), null, 10, 3);
-        when(repository.findBySignatureHashAndAlgoVersion("hash-1", 1)).thenReturn(List.of(row));
+                "hash-1", ALGO, "e1", "orders", "op0", "earlier acknowledge", null, NOW.minusSeconds(600), null, 10, 3);
+        when(repository.findBySignatureHashAndAlgoVersion("hash-1", ALGO)).thenReturn(List.of(row));
 
-        service.unacknowledge(new UnacknowledgeErrorGroupRequest("hash-1", 1, "outage resolved, un-muting"), operator);
+        service.unacknowledge(
+                new UnacknowledgeErrorGroupRequest("hash-1", ALGO, "outage resolved, un-muting"), operator);
 
         verify(repository).deleteAll(List.of(row));
         verify(audit)
@@ -269,9 +275,9 @@ class ErrorGroupAckServiceTest {
 
     @Test
     void unacknowledgeOfAnUnacknowledgedGroupIsRefused409() {
-        when(repository.findBySignatureHashAndAlgoVersion("hash-1", 1)).thenReturn(List.of());
+        when(repository.findBySignatureHashAndAlgoVersion("hash-1", ALGO)).thenReturn(List.of());
         assertThatThrownBy(() -> service.unacknowledge(
-                        new UnacknowledgeErrorGroupRequest("hash-1", 1, "legitimate reason here"), operator))
+                        new UnacknowledgeErrorGroupRequest("hash-1", ALGO, "legitimate reason here"), operator))
                 .isInstanceOfSatisfying(GuardRefusedException.class, e -> {
                     assertThat(e.status()).isEqualTo(HttpStatus.CONFLICT);
                     assertThat(e.code()).isEqualTo("error-group-not-acknowledged");
@@ -280,8 +286,8 @@ class ErrorGroupAckServiceTest {
 
     @Test
     void unacknowledgeRequiresTheReasonToo() {
-        assertThatThrownBy(
-                        () -> service.unacknowledge(new UnacknowledgeErrorGroupRequest("hash-1", 1, "short"), operator))
+        assertThatThrownBy(() ->
+                        service.unacknowledge(new UnacknowledgeErrorGroupRequest("hash-1", ALGO, "short"), operator))
                 .isInstanceOfSatisfying(
                         GuardRefusedException.class, e -> assertThat(e.code()).isEqualTo("reason-too-short"));
     }
@@ -289,13 +295,13 @@ class ErrorGroupAckServiceTest {
     @Test
     void unacknowledgeAuditFailureReinsertsTheRows() {
         ErrorGroupAck row = new ErrorGroupAck(
-                "hash-1", 1, "e1", "orders", "op0", "earlier acknowledge", null, NOW.minusSeconds(600), null, 10, 3);
-        when(repository.findBySignatureHashAndAlgoVersion("hash-1", 1)).thenReturn(List.of(row));
+                "hash-1", ALGO, "e1", "orders", "op0", "earlier acknowledge", null, NOW.minusSeconds(600), null, 10, 3);
+        when(repository.findBySignatureHashAndAlgoVersion("hash-1", ALGO)).thenReturn(List.of(row));
         when(audit.recordConfigEvent(anyString(), anyString(), anyBoolean(), anyString(), any()))
                 .thenThrow(new AuditUnavailableException(new RuntimeException("db down")));
 
         assertThatThrownBy(() -> service.unacknowledge(
-                        new UnacknowledgeErrorGroupRequest("hash-1", 1, "outage resolved, un-muting"), operator))
+                        new UnacknowledgeErrorGroupRequest("hash-1", ALGO, "outage resolved, un-muting"), operator))
                 .isInstanceOfSatisfying(
                         ResponseStatusException.class,
                         e -> assertThat(e.getStatusCode()).isEqualTo(HttpStatus.SERVICE_UNAVAILABLE));
@@ -310,7 +316,7 @@ class ErrorGroupAckServiceTest {
         TriageDashboardResponse cached =
                 new TriageDashboardResponse(NOW.toString(), List.of(), Map.of(), Map.of(), List.of(g), Map.of());
         ErrorGroupAck row = new ErrorGroupAck(
-                "hash-1", 1, "e1", "orders", "op0", "known outage window", null, NOW.minusSeconds(600), null, 10, 3);
+                "hash-1", ALGO, "e1", "orders", "op0", "known outage window", null, NOW.minusSeconds(600), null, 10, 3);
         when(repository.findAll()).thenReturn(List.of(row));
 
         TriageDashboardResponse decorated = service.decorate(cached);

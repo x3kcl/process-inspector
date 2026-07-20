@@ -778,34 +778,21 @@ public class SearchService {
             }
             if (truncated) break;
         }
-        return new LaneScan(applySignatureFilter(engine, lane, jobs, bff, priority), truncated, scanned);
+        return new LaneScan(applySignatureFilter(jobs, bff), truncated, scanned);
     }
 
     /**
-     * The signature drill-down over one lane's job rows (SPEC §8, R-SEM-03). The matching
-     * core is pure ({@link StatusJoin#filterBySignatureHash}); this seam injects the
-     * representative-stacktrace fetch — the same refinement triage applies, bounded by the
-     * SAME sample cap — and degrades a failed fetch to the snippet-only hash, never the leg.
+     * The signature drill-down over one lane's job rows (SPEC §8, R-SEM-03), delegating to the
+     * pure matcher ({@link StatusJoin#filterBySignatureHash}).
+     *
+     * <p>Algo v2 (#270) made group identity snippet-only, so this no longer injects a
+     * representative-stacktrace fetch or spends the sample cap: the job rows already carry
+     * everything the hash is computed from. One fewer engine call per drilled lane, and the
+     * drill can no longer come back empty for a card that is currently failing.
      */
-    private List<Map<String, Object>> applySignatureFilter(
-            EngineConfig engine,
-            JobLaneKind lane,
-            List<Map<String, Object>> jobs,
-            BffFilters bff,
-            CallPriority priority) {
+    private static List<Map<String, Object>> applySignatureFilter(List<Map<String, Object>> jobs, BffFilters bff) {
         if (bff.signatureHash() == null || jobs.isEmpty()) return jobs;
-        return StatusJoin.filterBySignatureHash(
-                jobs,
-                bff.signatureHash(),
-                job -> {
-                    try {
-                        return flowable.jobExceptionStacktrace(engine, priority, lane, str(job, "id"));
-                    } catch (Exception ex) {
-                        log.debug("Signature refinement failed on {}: {}", engine.id(), ex.toString());
-                        return null;
-                    }
-                },
-                props.triageOrDefault().stacktraceSampleCapOrDefault());
+        return StatusJoin.filterBySignatureHash(jobs, bff.signatureHash());
     }
 
     /** CMMN-filtered fold of job rows into per-instance failure evidence. */
@@ -869,8 +856,8 @@ public class SearchService {
             FlowablePage page = flowable.listJobs(
                     engine, priority, JobLaneKind.DEADLETTER, filters, 0, engine.maxPageSizeOrDefault());
             // Same failure-window/error-text/signature semantics as the inverted plan's scan legs.
-            Map<String, Failure> perInstance = indexByInstance(applyFailureFilters(
-                    applySignatureFilter(engine, JobLaneKind.DEADLETTER, page.dataOrEmpty(), bff, priority), bff));
+            Map<String, Failure> perInstance =
+                    indexByInstance(applyFailureFilters(applySignatureFilter(page.dataOrEmpty(), bff), bff));
             Failure failure = perInstance.get(id);
             if (failure != null) result.put(id, failure);
             return true;

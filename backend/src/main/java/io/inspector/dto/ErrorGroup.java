@@ -9,6 +9,15 @@ import java.util.Map;
  * key for acknowledgments, annotations and playbooks; bindings persist {@code algoVersion}
  * so a normalizer bump flags them "needs re-binding" instead of silently re-binding.
  *
+ * <p><b>Identity vs display since algo v2 (#270):</b> {@code signatureHash} and
+ * {@code normalizedMessage} both come from the job row's own {@code exceptionMessage} — the
+ * one input available for every group on every cycle. {@code exceptionClass} is a DISPLAY
+ * refinement that may come from a representative stacktrace, so a card typically reads
+ * "ArithmeticException — Error while evaluating expression: ${…}": the root-cause class
+ * alongside the engine-reported wrapper message that actually keys the group. Do NOT assume
+ * {@code hash == sha256(exceptionClass + "|" + normalizedMessage)} — that held under v1, and
+ * is precisely what made a group's identity depend on a budget-bounded, fallible fetch.
+ *
  * {@code countsByEngine} keys are {@code engineId → "defKey:vN" → count} — the inner key
  * carries the definition KEY because one root cause can span definitions. Versions of an
  * involved definition that produced zero failures are zero-filled: "v47: 312, v46: 0" is

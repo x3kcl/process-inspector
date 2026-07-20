@@ -411,9 +411,10 @@ class SearchServiceIT {
     void signatureHashDrillsFromATriageCardIntoExactlyItsInstances() throws Exception {
         awaitDeadLetters();
 
-        // Engine truth: the dead-letter job's snippet AND its stacktrace-refined signature
-        // (what a triage card carries after refinement) — computed with the SAME normative
-        // normalizer the BFF uses (R-SEM-03: the hash is the binding contract).
+        // Engine truth, computed with the SAME normative normalizer the BFF uses (R-SEM-03:
+        // the hash is the binding contract). Since algo v2 (#270) a triage card carries the
+        // SNIPPET hash; the stacktrace-refined hash is no longer any group's identity, and is
+        // read here only to prove — against a real engine — that the two genuinely differ.
         Map<String, Object> dlqPage = engine.get()
                 .uri("/management/deadletter-jobs?processInstanceId=" + directFailedId)
                 .retrieve()
@@ -428,9 +429,12 @@ class SearchServiceIT {
                 .body(String.class);
         String refinedHash = io.inspector.triage.ErrorSignatureNormalizer.normalize(stacktrace)
                 .hash();
-        assertThat(refinedHash).isNotEqualTo(snippetHash); // the bridge is load-bearing
+        // Live proof of #270's premise: on a REAL engine the same failure hashes differently
+        // depending on which payload you feed the normalizer. Under v1 that difference decided
+        // a group's identity based on whether a budget-bounded fetch happened to run.
+        assertThat(refinedHash).isNotEqualTo(snippetHash);
 
-        // Snippet-level hash: direct match on the scan legs.
+        // The triage-card hash: a direct match on the scan legs, no bridge, no budget.
         JsonNode bySnippet = search(Map.of(
                 "engineIds",
                 List.of("engine-a"),
@@ -442,7 +446,11 @@ class SearchServiceIT {
                 snippetHash));
         assertThat(ids(bySnippet.get("rows"))).containsExactlyInAnyOrder(parentId, childId, directFailedId);
 
-        // Refined hash (the triage drill): matches via the one-representative bridge.
+        // The refined hash is NOT a group identity under v2, so it matches nothing. This is
+        // the inverse of the v1 assertion that used to live here ("matches via the
+        // one-representative bridge"): that bridge existed only because a card could be keyed
+        // by a hash its own jobs' snippets never produce — and it silently matched NOTHING
+        // once its budget ran out or a fetch failed, which is what #270 was reported as.
         JsonNode byRefined = search(Map.of(
                 "engineIds",
                 List.of("engine-a"),
@@ -452,7 +460,9 @@ class SearchServiceIT {
                 businessKey,
                 "signatureHash",
                 refinedHash));
-        assertThat(ids(byRefined.get("rows"))).containsExactlyInAnyOrder(parentId, childId, directFailedId);
+        assertThat(byRefined.get("rows"))
+                .as("a stacktrace-refined hash is no longer any group's identity (#270)")
+                .isEmpty();
 
         // A foreign hash filters the child out on the scan leg — and with it the rolled-up
         // parent (same before-roll-up semantics as errorText).

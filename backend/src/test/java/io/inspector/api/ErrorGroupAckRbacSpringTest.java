@@ -14,6 +14,7 @@ import io.inspector.audit.AuditEntryRepository;
 import io.inspector.support.NoDbTestSupport;
 import io.inspector.triage.ErrorGroupAck;
 import io.inspector.triage.ErrorGroupAckRepository;
+import io.inspector.triage.ErrorSignatureNormalizer;
 import java.time.Instant;
 import java.util.List;
 import java.util.Map;
@@ -41,6 +42,11 @@ import org.springframework.test.context.ActiveProfiles;
 @Import(NoDbTestSupport.class)
 class ErrorGroupAckRbacSpringTest {
 
+    /** The CURRENT normalizer generation — never a literal, so an ALGO_VERSION bump
+     * (#270 took it to v2) does not silently turn every fixture into a stale-generation
+     * refusal instead of testing what it means to test. */
+    private static final int ALGO = ErrorSignatureNormalizer.ALGO_VERSION;
+
     private static final String ACK = "/api/triage/error-groups/acknowledge";
     private static final String UNACK = "/api/triage/error-groups/unacknowledge";
 
@@ -66,7 +72,7 @@ class ErrorGroupAckRbacSpringTest {
     }
 
     private static Map<String, Object> ackBody() {
-        return Map.of("signatureHash", "hash-1", "algoVersion", 1, "reason", "known outage, muting overnight");
+        return Map.of("signatureHash", "hash-1", "algoVersion", ALGO, "reason", "known outage, muting overnight");
     }
 
     @Test
@@ -104,7 +110,8 @@ class ErrorGroupAckRbacSpringTest {
     @Test
     void shortReasonIsANamed400BeforeGroupResolution() throws Exception {
         ResponseEntity<String> response = as("operator")
-                .postForEntity(ACK, Map.of("signatureHash", "hash-1", "algoVersion", 1, "reason", "meh"), String.class);
+                .postForEntity(
+                        ACK, Map.of("signatureHash", "hash-1", "algoVersion", ALGO, "reason", "meh"), String.class);
         assertThat(response.getStatusCode()).isEqualTo(HttpStatus.BAD_REQUEST);
         JsonNode problem = mapper.readTree(response.getBody());
         assertThat(problem.path("code").asText()).isEqualTo("reason-too-short");
@@ -129,7 +136,7 @@ class ErrorGroupAckRbacSpringTest {
         ResponseEntity<String> response = as("operator")
                 .postForEntity(
                         UNACK,
-                        Map.of("signatureHash", "hash-1", "algoVersion", 1, "reason", "outage resolved, un-muting"),
+                        Map.of("signatureHash", "hash-1", "algoVersion", ALGO, "reason", "outage resolved, un-muting"),
                         String.class);
 
         assertThat(response.getStatusCode()).isEqualTo(HttpStatus.NO_CONTENT);
@@ -145,7 +152,7 @@ class ErrorGroupAckRbacSpringTest {
         ResponseEntity<String> response = as("operator")
                 .postForEntity(
                         UNACK,
-                        Map.of("signatureHash", "hash-1", "algoVersion", 1, "reason", "outage resolved, un-muting"),
+                        Map.of("signatureHash", "hash-1", "algoVersion", ALGO, "reason", "outage resolved, un-muting"),
                         String.class);
 
         assertThat(response.getStatusCode()).isEqualTo(HttpStatus.SERVICE_UNAVAILABLE);
@@ -154,6 +161,6 @@ class ErrorGroupAckRbacSpringTest {
 
     private static ErrorGroupAck ackRow() {
         return new ErrorGroupAck(
-                "hash-1", 1, "probe-dev", "orders", "op1", "known outage window", null, Instant.now(), null, 10, 3);
+                "hash-1", ALGO, "probe-dev", "orders", "op1", "known outage window", null, Instant.now(), null, 10, 3);
     }
 }

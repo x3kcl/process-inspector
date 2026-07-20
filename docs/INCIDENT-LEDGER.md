@@ -26,9 +26,17 @@ persisted lifecycle, never a new grouping axis.
 
 ## 1. Problem
 
-Stage 0 already answers *"what is failing right now, grouped by root cause"* — the R-SEM-03
-`ErrorSignatureNormalizer` fingerprint feeds in-memory `ErrorGroup` cards, ack noise-control
-(R-BAU-01, `error_group_ack`), and cluster-scoped bulk retry (`POST /api/bulk/error-class`).
+Stage 0 already answers *"what is failing right now, grouped by failure class"* — the
+R-SEM-03 `ErrorSignatureNormalizer` fingerprint feeds in-memory `ErrorGroup` cards, ack
+noise-control (R-BAU-01, `error_group_ack`), and cluster-scoped bulk retry
+(`POST /api/bulk/error-class`).
+
+> Since algo **v2** (#270) that class is keyed on the engine-reported `exceptionMessage`, not
+> on the stacktrace-refined root cause: refinement is budget-bounded and can transiently fail,
+> so keying on it let one root cause change identity between sampler cycles — which for THIS
+> ledger meant two `incident` rows, two episode histories and a split MTTR for a single
+> outage. The root-cause class is still resolved and displayed; it just cannot re-key an
+> incident.
 
 What the product cannot answer today:
 

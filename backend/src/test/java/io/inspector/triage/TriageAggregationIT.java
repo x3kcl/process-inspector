@@ -142,12 +142,15 @@ class TriageAggregationIT {
         assertThat(counts.get("COMPLETED").asLong()).isGreaterThanOrEqualTo(1);
         assertThat(body.get("statusCounts")).isEqualTo(counts);
 
-        // the arithmetic group: root-cause class via stacktrace refinement, counts split
-        // by definition version, zero-filled with every deployed sibling version
+        // the arithmetic group: root-cause class still resolved via stacktrace refinement
+        // (DISPLAY-only since algo v2, #270 — arithmeticGroup() finds it BY that class),
+        // counts split by definition version, zero-filled with every deployed sibling version
         JsonNode group = arithmeticGroup(body);
-        assertThat(group.get("algoVersion").asInt()).isEqualTo(1);
+        assertThat(group.get("algoVersion").asInt()).isEqualTo(ErrorSignatureNormalizer.ALGO_VERSION);
         assertThat(group.get("signatureHash").asText()).hasSize(64);
-        assertThat(group.get("normalizedMessage").asText()).isEqualTo("/ by zero");
+        assertThat(group.get("normalizedMessage").asText())
+                .as("v2 identity is the engine-reported snippet, not the refined root cause (#270)")
+                .isEqualTo("Error while evaluating expression: ${amount % divisor}");
         assertThat(group.get("deadLetterCount").asLong()).isGreaterThanOrEqualTo(2);
         assertThat(group.get("retryingCount").asLong()).isGreaterThanOrEqualTo(1);
         JsonNode versioned = group.get("countsByEngine").get("engine-a");

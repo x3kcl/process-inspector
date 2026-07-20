@@ -472,6 +472,13 @@ body {
   color: var(--color-text-faint);
   font-size: 12px;
 }
+/* #270: the "may return nothing" caveat sits inside .strip-note but must NOT inherit its
+   faintness — it is the one line that stops an empty drill reading as a broken tool. Weight
+   carries the emphasis, not color alone (R-UXQ rubric). */
+.strip-caveat {
+  color: var(--color-text);
+  font-weight: 600;
+}
 .strip-error {
   color: #ffb3a7;
 }

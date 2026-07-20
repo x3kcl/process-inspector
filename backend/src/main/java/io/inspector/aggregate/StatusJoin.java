@@ -10,7 +10,6 @@ import java.time.format.DateTimeParseException;
 import java.util.ArrayList;
 import java.util.Comparator;
 import java.util.HashSet;
-import java.util.LinkedHashMap;
 import java.util.List;
 import java.util.Locale;
 import java.util.Map;
@@ -100,35 +99,27 @@ final class StatusJoin {
 
     /**
      * The signature drill-down predicate (SPEC §8, R-SEM-03): keeps the jobs whose
-     * normalized error signature matches {@code wantedHash}. Jobs group by their
-     * snippet-level signature first (a job row carries only {@code exceptionMessage});
-     * a group whose snippet hash misses gets ONE representative stacktrace via
-     * {@code stacktraceOf} — the same refinement triage applies before hashing its
-     * cards — bounded by {@code sampleBudget}, so a drill-down from a stacktrace-refined
-     * triage card still matches its snippet-only jobs. Pure given the injected fetcher
-     * (rung 1); the engine I/O lives in {@link SearchService}.
+     * normalized error signature matches {@code wantedHash}.
+     *
+     * <p>Under algo v2 (#270) a group's identity hash is ALWAYS its snippet hash, so this is
+     * an exact comparison over a field every job row already carries — no
+     * representative-stacktrace fetch, no sample budget, no partial match. Fully pure (rung 1)
+     * with no injected engine I/O at all.
+     *
+     * <p>v1 needed a bounded refinement pass here because a triage card could be keyed by a
+     * REFINED hash that its own member jobs' snippets never produce; a drill whose budget ran
+     * out — or whose fetch failed — then silently matched nothing while the card claimed N
+     * instances (#270's "Search these instances returns 0"). Making identity snippet-only
+     * deletes that failure mode instead of widening a budget against it.
      */
-    static List<Map<String, Object>> filterBySignatureHash(
-            List<Map<String, Object>> jobs,
-            String wantedHash,
-            Function<Map<String, Object>, String> stacktraceOf,
-            int sampleBudget) {
-        Map<String, List<Map<String, Object>>> bySnippetHash = new LinkedHashMap<>();
+    static List<Map<String, Object>> filterBySignatureHash(List<Map<String, Object>> jobs, String wantedHash) {
+        List<Map<String, Object>> matched = new ArrayList<>();
         for (Map<String, Object> job : jobs) {
             String hash = ErrorSignatureNormalizer.normalize(str(job, "exceptionMessage"))
                     .hash();
-            bySnippetHash.computeIfAbsent(hash, h -> new ArrayList<>()).add(job);
-        }
-        List<Map<String, Object>> matched = new ArrayList<>();
-        for (Map.Entry<String, List<Map<String, Object>>> group : bySnippetHash.entrySet()) {
-            boolean hit = group.getKey().equals(wantedHash);
-            if (!hit && sampleBudget-- > 0) {
-                String stacktrace = stacktraceOf.apply(group.getValue().get(0));
-                if (stacktrace != null && !stacktrace.isBlank()) {
-                    hit = ErrorSignatureNormalizer.normalize(stacktrace).hash().equals(wantedHash);
-                }
+            if (hash.equals(wantedHash)) {
+                matched.add(job);
             }
-            if (hit) matched.addAll(group.getValue());
         }
         return matched;
     }

@@ -13,6 +13,7 @@ import io.inspector.incident.IncidentEpisodeRepository;
 import io.inspector.incident.IncidentRepository;
 import io.inspector.incident.IncidentState;
 import io.inspector.support.NoDbTestSupport;
+import io.inspector.triage.ErrorSignatureNormalizer;
 import java.time.Instant;
 import java.util.List;
 import java.util.Optional;
@@ -154,7 +155,7 @@ class IncidentApiSpringTest {
         Incident row = mock(Incident.class);
         when(row.getId()).thenReturn(42L);
         when(row.getSignatureHash()).thenReturn("hash-1");
-        when(row.getAlgoVersion()).thenReturn(1);
+        when(row.getAlgoVersion()).thenReturn(ErrorSignatureNormalizer.ALGO_VERSION);
         when(row.getExceptionClass()).thenReturn("java.net.SocketTimeoutException");
         when(row.getNormalizedMessage()).thenReturn("timeout after # ms");
         when(row.getSampleRawMessage()).thenReturn("timeout after 5000 ms");

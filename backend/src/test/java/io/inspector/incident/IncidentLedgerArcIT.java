@@ -54,12 +54,14 @@ import org.testcontainers.containers.PostgreSQLContainer;
  *       ({@code ${itarcxxxxxxx}}): R-SEM-03 sanitization collapses quoted literals, UUIDs, hex
  *       and digit runs to {@code #} — an unquoted alphabetic token is the one shape that
  *       SURVIVES into the normalized message, keeping the signature unique AND recognizable.</li>
- *   <li><b>Stable hash across cycles.</b> Stacktrace refinement is budget-bounded
- *       largest-groups-first, so whether a small group gets refined (hash =
- *       {@code FlowableException|msg}) or stays snippet-only (hash = {@code |msg}) could flip
- *       BETWEEN cycles with shared-stack residue — minting two incidents mid-arc. Pinning
- *       {@code stacktrace-sample-cap: 0} makes every pass snippet-only: one stable hash, and
- *       the search-side member resolution matches on the same snippet hash (StatusJoin).</li>
+ *   <li><b>Stable hash across cycles</b> — now a PRODUCT guarantee, not a test workaround.
+ *       This class used to pin {@code stacktrace-sample-cap: 0} because whether a small group
+ *       got refined (hash = {@code FlowableException|msg}) or stayed snippet-only (hash =
+ *       {@code |msg}) could flip BETWEEN cycles and mint two incidents mid-arc. Algo v2
+ *       (#270) makes identity snippet-only for EVERY group at ANY cap, so the pin is gone and
+ *       the arc runs at the production default — which is the point: that same instability
+ *       was hitting real users on the demo, and a test that configures its way around a
+ *       product defect proves nothing about the product.</li>
  *   <li><b>Deterministic cycles.</b> The sampler bean stays enabled (the arc drives
  *       {@link SnapshotSampler#sampleOnce()} directly — each call is a synchronous fresh
  *       aggregation + ledger ingest, so post-cycle asserts need no Awaitility), but the
@@ -85,9 +87,9 @@ import org.testcontainers.containers.PostgreSQLContainer;
         properties = {
             "ENGINE_A_PASSWORD=test",
             // scheduler idle (initial delay = interval); cycles are driven by hand below
-            "inspector.snapshot.sample-interval=PT1H",
-            // snippet-only signatures — see class doc "Stable hash across cycles"
-            "inspector.triage.stacktrace-sample-cap=0"
+            "inspector.snapshot.sample-interval=PT1H"
+            // NO stacktrace-sample-cap pin: algo v2 keeps identity stable at the production
+            // default (#270) — see class doc "Stable hash across cycles".
         })
 @ActiveProfiles("it-actions")
 @TestInstance(TestInstance.Lifecycle.PER_CLASS)

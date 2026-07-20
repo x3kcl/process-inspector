@@ -73,15 +73,22 @@ class Triage7IT {
                 arithmetic = group;
             }
         }
+        // The group is FOUND BY its refined class, which is the point: algo v2 keeps
+        // stacktrace refinement working end-to-end against a real 7.x engine — it just
+        // demotes it to DISPLAY. Identity, asserted below, comes from the snippet (#270).
         assertThat(arithmetic)
-                .as("arithmetic root cause resolved from the 7.x stacktrace")
+                .as("arithmetic root cause still resolved from the 7.x stacktrace, as a display class")
                 .isNotNull();
 
         // The RAW 7.x message carries the execution-context tail; the normalized one
         // must not — that tail is per-instance runtime IDs, the anti-grouping poison.
+        // Still exercised under v2, and now on the path that MATTERS: the tail rides the
+        // snippet (sampleRawMessage IS the job's exceptionMessage), so sanitize() has to
+        // strip it off the identity input itself, not merely off a display string.
         assertThat(arithmetic.get("sampleRawMessage").asText()).contains("with Execution[");
         assertThat(arithmetic.get("normalizedMessage").asText())
-                .isEqualTo("/ by zero")
+                .as("v2 identity is the engine-reported snippet, not the refined root cause (#270)")
+                .isEqualTo("Error while evaluating expression: ${amount % divisor}")
                 .doesNotContain("Execution[");
 
         // per-version split + the RETRYING tier (timer lane) both flow on 7.x

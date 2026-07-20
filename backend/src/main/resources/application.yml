@@ -160,6 +160,9 @@ inspector:
   triage:
     cache-ttl-s: 20
     refresh-min-interval-s: 10
+    # Representative stacktrace fetches per round. DISPLAY refinement only (resolves the
+    # root-cause class shown on a card); since algo v2 it can never change a group's identity
+    # hash, so tuning this trades label quality — never grouping stability (#270).
     stacktrace-sample-cap: 25
     ack-resurface-threshold-pct: 20
   # v2/M4 job-lane snapshot store (R-BAU-08 trend sparklines): an @Scheduled virtual-thread

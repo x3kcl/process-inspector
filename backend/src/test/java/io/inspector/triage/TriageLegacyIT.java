@@ -83,7 +83,9 @@ class TriageLegacyIT {
                 .as("a silently-dropped 'suspended' flag would double-count the runtime set")
                 .isEqualTo(runtimeTotal);
 
-        // Root-cause grouping incl. stacktrace refinement + per-version split on 6.3.1.
+        // Failure-class grouping incl. stacktrace refinement + per-version split on 6.3.1.
+        // Under algo v2 refinement is DISPLAY-only (#270): the group is still FOUND BY the
+        // root-cause class it resolves from the 6.3.1 stacktrace, but keyed on the snippet.
         JsonNode arithmetic = null;
         for (JsonNode group : body.get("errorGroups")) {
             assertThat(group.get("normalizedMessage").asText()).isNotBlank();
@@ -93,7 +95,9 @@ class TriageLegacyIT {
             }
         }
         assertThat(arithmetic).isNotNull();
-        assertThat(arithmetic.get("normalizedMessage").asText()).isEqualTo("/ by zero");
+        assertThat(arithmetic.get("normalizedMessage").asText())
+                .as("v2 identity is the engine-reported snippet, not the refined root cause (#270)")
+                .isEqualTo("Error while evaluating expression: ${amount % divisor}");
         assertThat(arithmetic
                         .get("countsByEngine")
                         .get("engine-legacy")
