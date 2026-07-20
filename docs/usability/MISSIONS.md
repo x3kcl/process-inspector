@@ -232,6 +232,18 @@ mission exercised `/tasks` before).
 STAGING: requires M1/M3/M4 audit rows to exist. Runner extracts {{TOUCHED_ID}} (an
 instance another mission acted on). Task 9 needs no staging: the standard seed's
 `demoWideChild` fan-out tasks are assignee'd `kermit` (F-G1).
+BRIEF FIX 2026-07-19 (task 8b): the brief previously asserted the engine-narrowed publish
+"should go through" for `operator`. It does not, and that is SPEC'd behavior, not a bug —
+SHARED-VIEWS.md §4.3 escalates the publish floor to ADMIN for **any** wildcard scope
+(`SharedViewScope.isWildcard` is engine `*` **OR** tenant `*`, R-SAFE-14 wildcard-breadth).
+The dev ladder's engines are untenanted, so a one-engine search derives scope
+`engine-x/*` — still wildcard — and `operator` is refused at the floor. Note the refusal is
+NOT "operator holds no covering grant": form-login users get a synthesized
+`ScopeGrant.global(role)` (`RbacAuthorizer.grantsFor`), which does cover the scope; it is
+the floor that outranks them. Task 8b is now open-ended (report what the tool says) instead
+of asserting an outcome, so it still exercises the §4.3 refusal wording without encoding a
+false expectation. The consequence — on an untenanted fleet the OPERATOR publish floor is
+unreachable at any narrowing — is raised as issue #276.
 
 TESTER BRIEF:
 
@@ -260,10 +272,13 @@ TESTER BRIEF:
 >    targets ALL engines (no single-engine narrowing), try to publish it — you expect
 >    this to be refused. Report the exact wording the tool gives you for WHY it was
 >    refused, and whether that text alone tells you what would have to change (scope?
->    role?) for the publish to succeed. (b) Then narrow the search to one engine and
->    publish that — this one should go through. Then, as `admin`, remove a teammate's
->    published view that's now obsolete — what does the removal demand, and what
->    happens to the author's own copy?
+>    role?) for the publish to succeed. (b) Then narrow the search to one engine and try
+>    to publish that. Report what happens — does narrowing the scope alone let you
+>    publish, or does the tool still stop you and name something MORE than scope that you
+>    lack? Read the refusal (or success) carefully and say exactly what it told you was
+>    required. Then, as `admin`, publish that same one-engine view and remove a
+>    teammate's obsolete published view — what does the removal demand, and what happens
+>    to the author's own copy?
 > 9. One more handover chore: your teammate `kermit` is out sick today. Find, from cold,
 >    everything kermit is currently sitting on across the whole fleet — every open task
 >    that is theirs, or that they could have picked up. How many did you find, and how
@@ -408,9 +423,54 @@ TESTER BRIEF:
 
 ---
 
+## M12 · "The morning after: what happened to that error?" — wave 3 (exclusive) · user `operator`
+
+COVERS: R-BAU-10 (all success criteria) · R-SEM-12 (ledger lower-bound honesty) ·
+R-NFR-06 (reason ≥10 on resolve) · rubrics R-UXQ-05/06. Added 2026-07-19 — the catalog
+gained R-BAU-10 when the Incident Ledger shipped (S1–S5, PRs #262–#267) but the mission set
+predates the surface; same gap class M10/M11 closed (cross-reference of COVERS vs catalog).
+STAGING: staged lifecycle BEYOND the standard seed (the R-BAU-10 catalog FIXTURE recipe,
+mirroring `IncidentLedgerArcIT`): runner seeds a failing class over REST with a run-unique
+sanitization-surviving token, drives a sampler cycle (incident OPEN), submits an
+error-class bulk retry as `responder` (heal + drain), resolves as `operator` with reason
+"staged pre-run resolve", drives an absent-observing cycle (gate arms), re-seeds the
+failure, drives a final cycle → incident REGRESSED with 2 episodes + 1 completed bulk
+retry on record. Exclusive wave: sampler cycles + ledger writes are cross-cutting state.
+Runner extracts {{INCIDENT_CLASS}} (the incident's on-screen exception class or normalized
+message fragment, verbatim from `GET /api/incidents`).
+
+TESTER BRIEF:
+
+> You are the day-shift engineer. Yesterday evening there was some outage drama around a
+> workflow error — you were not there. All the handover note says is: _"we had waves of
+> '{{INCIDENT_CLASS}}' failures, someone claimed it was fixed, check on it in the
+> morning."_ You have never used this tool's history features.
+>
+> 1. Starting from the home page, find where this tool keeps the HISTORY of failures —
+>    not what is failing right now, but what happened over time. Say what you clicked.
+> 2. Find yesterday's `{{INCIDENT_CLASS}}` trouble. What state does the tool say it is in
+>    NOW, and what does that state mean? Quote the on-screen wording that told you.
+> 3. Reconstruct the story: when did this first appear, and did it come back AFTER
+>    someone claimed a fix? Cite what on screen proves the comeback (or proves there was
+>    none).
+> 4. Who claimed the fix, when, and what reason did they give? Cite where you found it.
+> 5. Was a mass retry attempted on this class at any point? If yes: did it work — how
+>    many items went through? Cite the exact line that told you.
+> 6. Look at the arrival chart. Is there any point where the tool warns you the numbers
+>    might be UNDERSTATING reality? If so, quote the marking; if not, say so plainly.
+> 7. Decide: given the comeback, mark this class as needing attention again OR as truly
+>    fixed — whichever the evidence supports — using the tool's own action for it. The
+>    tool will demand a justification; give a real one. Afterwards: how do you KNOW your
+>    claim was recorded? Cite what changed on screen.
+> 8. A colleague asks "so is this the same as acknowledging it on the dashboard?" Answer
+>    them in one sentence based on what the tool itself communicates about the
+>    difference (do not guess from prior tool experience).
+
+---
+
 ## Placeholder contract (runner fills at stage time)
 
-`{{FAILED_ID}} {{RETRYING_ID}} {{GARBAGE_ID}} {{PARENT_BK}} {{ACTIVE_ID}} {{JSON_ID}}
+`{{INCIDENT_CLASS}} {{FAILED_ID}} {{RETRYING_ID}} {{GARBAGE_ID}} {{PARENT_BK}} {{ACTIVE_ID}} {{JSON_ID}}
 {{JSON_LEAF_TASK}} {{OOB_MUTATION_CMD}} {{OOB_RESOLVE_CMD}} {{DEF_NAME}}
 {{LEGACY_ONLY_ID}} {{CMMN_ENGINE}} {{PROTECTED_ID}} {{MIGRATE_ID}} {{TOUCHED_ID}}
 {{SCRATCH_URL}} {{RUN_ID}} {{DUP_KEY}}`
