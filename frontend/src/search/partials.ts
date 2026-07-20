@@ -81,10 +81,7 @@ export function summarizePartials(
  * because the link's generation was retired".
  */
 export type ZeroState =
-  | 'all-engines-failed'
-  | 'zero-under-partial-coverage'
-  | 'stale-signature-generation'
-  | 'true-zero'
+  'all-engines-failed' | 'zero-under-partial-coverage' | 'stale-signature-generation' | 'true-zero'
 
 export function zeroState(response: SearchResponse): ZeroState | null {
   if ((response.rows ?? []).length > 0) return null
