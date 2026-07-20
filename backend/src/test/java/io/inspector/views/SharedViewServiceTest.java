@@ -127,6 +127,28 @@ class SharedViewServiceTest {
     }
 
     @Test
+    void wildcardRefusalOnAnUntenantedEngineNamesTheDeadEndExplicitly() {
+        // #276: the engine is already narrowed to ONE concrete value (not "*") but the scope is
+        // still wildcard because the tenant derived to "*" — this engine carries no tenant pin.
+        // That's structurally different from a missing-grant refusal: no further narrowing is
+        // possible, and the message must say so instead of reading as an ordinary grant gap.
+        Set<ScopeGrant> globalOperator = Set.of(ScopeGrant.global(Role.OPERATOR));
+        String detail = SharedViewService.publishRefusal(globalOperator, "orders-prod", "*");
+        assertThat(detail)
+                .isEqualTo("publishing the wildcard scope orders-prod/* needs an ADMIN grant covering it"
+                        + " — your best grant covering it is OPERATOR"
+                        + " — this engine has no tenant pin, so its scope is always wildcard-breadth;"
+                        + " narrowing to this engine alone cannot lower the floor below ADMIN (add a tenant pin"
+                        + " on the engine's registry entry to unlock a scoped OPERATOR publish)");
+
+        // Engine wildcard (fleet-wide, intentional) does NOT get the untenanted-derivation clause —
+        // narrowing the engine there genuinely would change the outcome, so it stays silent.
+        assertThat(SharedViewService.publishRefusal(globalOperator, "*", "*")).doesNotContain("no tenant pin");
+        assertThat(SharedViewService.publishRefusal(globalOperator, "*", "tenant-a"))
+                .doesNotContain("no tenant pin");
+    }
+
+    @Test
     void publishFloorEscalatesToAdminForAnyWildcardShapeOnly() {
         assertThat(SharedViewService.publishFloor("orders-prod", "tenant-a")).isEqualTo(Role.OPERATOR);
         assertThat(SharedViewService.publishFloor("*", "*")).isEqualTo(Role.ADMIN);

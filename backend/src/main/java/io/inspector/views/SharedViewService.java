@@ -280,12 +280,19 @@ public class SharedViewService {
      * that scope shape requires, and the caller's own standing on it — never a static restatement
      * of the whole rule (which read as self-contradictory when scope-narrowing didn't change the
      * outcome). Pure (rung-1 testable). Only ever built AFTER {@link #canPublish} refused.
+     *
+     * <p>#276: when the scope is wildcard SOLELY because the tenant derived to {@code '*'} (the
+     * engine itself is already a single, concrete value — i.e. this engine carries no tenant pin,
+     * SHARED-VIEWS.md §4.3), this is structurally NOT a missing-grant problem, and the UI's
+     * "narrow to one engine" affordance is a dead end: the caller cannot narrow any further, and no
+     * grant short of ADMIN will ever satisfy this scope. Callers get an explicit line saying so,
+     * instead of reading a same-shaped "…needs an X grant — your standing is Y" sentence as an
+     * ordinary grant gap.
      */
     static String publishRefusal(Set<ScopeGrant> grants, String scopeEngineId, String scopeTenantId) {
         Role floor = publishFloor(scopeEngineId, scopeTenantId);
-        String scopeLabel =
-                (SharedViewScope.isWildcard(scopeEngineId, scopeTenantId) ? "the wildcard scope " : "scope ")
-                        + scopeEngineId + "/" + scopeTenantId;
+        boolean wildcard = SharedViewScope.isWildcard(scopeEngineId, scopeTenantId);
+        String scopeLabel = (wildcard ? "the wildcard scope " : "scope ") + scopeEngineId + "/" + scopeTenantId;
         // The caller's best role among grants whose ENGINE/TENANT contain the scope (VIEWER floor
         // = pure containment check) — telling a caller their own standing leaks nothing.
         String standing = grants.stream()
@@ -294,7 +301,15 @@ public class SharedViewService {
                 .max(java.util.Comparator.naturalOrder())
                 .map(best -> "your best grant covering it is " + best)
                 .orElse("you have no grant covering it");
-        return "publishing " + scopeLabel + " needs an " + floor + " grant covering it — " + standing;
+        String detail = "publishing " + scopeLabel + " needs an " + floor + " grant covering it — " + standing;
+        boolean untenantedEngineDerivation =
+                wildcard && !SharedViewScope.ANY.equals(scopeEngineId) && SharedViewScope.ANY.equals(scopeTenantId);
+        if (untenantedEngineDerivation) {
+            detail += " — this engine has no tenant pin, so its scope is always wildcard-breadth; narrowing to"
+                    + " this engine alone cannot lower the floor below ADMIN (add a tenant pin on the engine's"
+                    + " registry entry to unlock a scoped OPERATOR publish)";
+        }
+        return detail;
     }
 
     /**

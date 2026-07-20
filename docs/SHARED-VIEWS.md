@@ -238,6 +238,12 @@ client assertion). `scope_tenant_id` is **derived from the engine's registry pin
   `grantsFor(auth)`. Global scope needs a global OPERATOR grant (`covers()` already enforces this —
   verified). **Any wildcard scope (`*` engine or tenant) escalates the floor to ADMIN-on-scope**
   (R-SAFE-14 wildcard-breadth). No new fleet grant.
+  **Untenanted-fleet consequence (#276, accepted as-is):** on a fleet where no engine carries a
+  tenant pin, `scope_tenant_id` derives to `*` for every scope (§4.2), so every derived scope is
+  wildcard-breadth regardless of how narrow `scope_engine_id` is. The OPERATOR publish floor is
+  therefore unreachable on such a fleet by design — only ADMIN can publish. Narrowing a shared
+  view to a single engine does not change this. Add tenant pins to registry entries to unlock
+  scoped OPERATOR publishing.
 - **Read-visibility = new `ScopeGrant.overlaps(floor, scopeEngine, scopeTenant)` (intersection):** a
   shared view is visible iff the caller holds any grant ≥VIEWER overlapping its scope; global-scoped canon
   visible to every authenticated user. `overlaps()` is a small addition to the scope model — **co-signed
