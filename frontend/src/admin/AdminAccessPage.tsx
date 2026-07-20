@@ -1,5 +1,6 @@
 import { useState } from 'react'
 import { ReauthNotice, useReauthStale } from '../actions/ReauthNotice'
+import { RequestIdNote } from '../actions/RequestIdNote'
 import { ApiError } from '../api/client'
 import { isReauthBody } from '../auth/reauth'
 import {
@@ -42,6 +43,8 @@ export function AdminAccessPage() {
           Requires the <strong>ACCESS_ADMIN</strong> grant — the apex authority over the group→scope
           mapping. You are signed in without it.
         </p>
+        {/* R-AUD-04 (#272): the refused read carries a quotable request id — surface it. */}
+        <RequestIdNote requestId={mapping.error.requestId} />
       </div>
     )
   }

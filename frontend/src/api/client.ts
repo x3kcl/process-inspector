@@ -1,6 +1,7 @@
 // The ONE HTTP client of the app. Every call goes through openapi-fetch against the
 // generated contract — hand-rolled fetch wrappers are forbidden (R-SEM-15).
 import createClient, { type Middleware } from 'openapi-fetch'
+import { withRequestId } from '../actions/requestId'
 import type { paths } from './schema'
 import { getBasicAuth } from './auth'
 
@@ -25,13 +26,9 @@ export class ApiError extends Error {
   }
 
   private static describe(status: number, body: unknown): string {
-    const sentence = ApiError.sentence(status, body)
-    const requestId = ApiError.requestIdOf(body)
     // The next-move line rides every error banner rendered off error.message (W1#6) —
-    // never invented client-side: only when the server sent one.
-    return requestId === undefined
-      ? sentence
-      : `${sentence} Quote request ID ${requestId} to support.`
+    // never invented client-side: only when the server sent one (shared wording, requestId.ts).
+    return withRequestId(ApiError.sentence(status, body), ApiError.requestIdOf(body))
   }
 
   private static sentence(status: number, body: unknown): string {

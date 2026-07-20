@@ -1,3 +1,4 @@
+import { RequestIdNote } from '../actions/RequestIdNote'
 import { ApiError } from '../api/client'
 import { Ts } from '../lib/Ts'
 import { useRemediationDemand, type SequenceFinding } from './remediationDemand'
@@ -20,6 +21,8 @@ export function RemediationDemandPage() {
           Requires the <strong>ADMIN</strong> role on at least one engine — the findings surface
           cross-engine operator behavior patterns. You are signed in without it.
         </p>
+        {/* R-AUD-04 (#272): the refused read carries a quotable request id — surface it. */}
+        <RequestIdNote requestId={analysis.error.requestId} />
       </div>
     )
   }

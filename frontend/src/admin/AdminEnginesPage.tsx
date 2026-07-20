@@ -3,6 +3,7 @@
 // shows secret-ref PRESENCE (never values), and drives the earned-trust lifecycle: add → probe →
 // enable → disable → remove → purge. All guards are server-side; this UI mirrors them.
 import { useState } from 'react'
+import { RequestIdNote } from '../actions/RequestIdNote'
 import { ApiError } from '../api/client'
 import { useMe } from '../api/me'
 import {
@@ -70,6 +71,10 @@ export function AdminEnginesPage() {
     )
   }
   if (me.data?.registryAdmin !== true) {
+    // R-AUD-04 (#272): the gate is decided client-side off the /api/me hint, but the list query
+    // still fired and was refused server-side — carry ITS quotable request id into the block
+    // alert so a user reading only the page can hand support a correlation id.
+    const blockedId = engines.error instanceof ApiError ? engines.error.requestId : undefined
     return (
       <div className="page">
         <header className="page-header">
@@ -79,6 +84,7 @@ export function AdminEnginesPage() {
           This surface requires the <strong>REGISTRY_ADMIN</strong> grant. Ask an administrator to
           add you to the registry-admin group.
         </p>
+        <RequestIdNote requestId={blockedId} />
       </div>
     )
   }

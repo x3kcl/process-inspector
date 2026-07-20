@@ -472,6 +472,13 @@ body {
   color: var(--color-text-faint);
   font-size: 12px;
 }
+/* #272 (R-AUD-04): the quotable-support-id next move rendered under a bespoke error/grant-block
+   alert. Muted, but a hair heavier than a strip-note — it is the one line a user hands support. */
+.request-id-note {
+  color: var(--color-text-muted);
+  font-size: 13px;
+  margin-top: 4px;
+}
 /* #270: the "may return nothing" caveat sits inside .strip-note but must NOT inherit its
    faintness — it is the one line that stops an empty drill reading as a broken tool. Weight
    carries the emphasis, not color alone (R-UXQ rubric). */
