@@ -1,7 +1,11 @@
 import { useEffect } from 'react'
 import { useRouteError } from 'react-router'
 import { glossTechnicalMessage } from '../lib/plainFailure'
-import { chunkErrorRecoveryOutcome, isChunkLoadError, markChunkReloadAttempted } from './chunkErrorRecovery'
+import {
+  chunkErrorRecoveryOutcome,
+  isChunkLoadError,
+  markChunkReloadAttempted,
+} from './chunkErrorRecovery'
 
 function errorMessage(error: unknown): string {
   if (error instanceof Error) return error.message

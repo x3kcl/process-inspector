@@ -57,9 +57,7 @@ describe('isChunkLoadError (#265)', () => {
   })
 
   it('handles a plain string thrown value', () => {
-    expect(isChunkLoadError('Failed to fetch dynamically imported module: /assets/x.js')).toBe(
-      true,
-    )
+    expect(isChunkLoadError('Failed to fetch dynamically imported module: /assets/x.js')).toBe(true)
   })
 
   it('handles non-Error, non-string thrown values without throwing', () => {
