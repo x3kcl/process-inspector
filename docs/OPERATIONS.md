@@ -129,9 +129,17 @@ section will be updated again once it has.
 `server.shutdown=graceful` (30 s); SIGTERM emits a terminal SSE `shutdown` event (once SSE
 exists) so clients reconnect instead of erroring. Deploy policy: single instance, accepted
 window ≤2 min, announced in the support channel. Before planned restarts:
-`POST /api/admin/drain` refuses new bulk jobs and reports running ones (v1.x). SPA/BFF skew:
-`index.html` no-cache, hashed assets immutable, `/api/meta` + `X-Inspector-Version`,
-mismatch → non-blocking reload banner; dynamic-import failure → reload prompt.
+`POST /api/admin/drain` refuses new bulk jobs and reports running ones (v1.x). SPA/BFF skew
+(**issue #265, built**): nginx serves `/index.html` with `Cache-Control: no-cache` (a stale
+cached shell after a redeploy is the root cause of a stale asset manifest) and `/assets/*`
+as `public, max-age=31536000, immutable` with a hard `try_files … =404` — a stale tab's
+pre-redeploy hashed chunk request never falls through to the SPA shell's 200 (that 200-as-
+HTML-for-a-.js-request was the cryptic failure mode). A dynamic-import failure on a lazy
+route (`ChunkErrorBoundary`, one `errorElement` per lazy route in `main.tsx`) auto-reloads
+the page ONCE — `sessionStorage`-guarded (`chunkErrorRecovery.ts`) so a genuinely broken
+deploy can't loop reloads forever — and falls back to the standard `.error-banner` panel on
+a second sighting. `/api/meta` + `X-Inspector-Version` skew-mismatch → non-blocking reload
+banner remains NOT built (tracked separately from #265).
 **Versioned image releases:** pushing a `v*` tag runs `.github/workflows/release.yml` on the
 self-hosted runner — builds the two shipping images and publishes each to **both**
 `docker.io/x3kcl/process-inspector-{bff,web}` and `ghcr.io/x3kcl/process-inspector-{bff,web}`

@@ -3,6 +3,7 @@ import { createRoot } from 'react-dom/client'
 import { QueryClient, QueryClientProvider } from '@tanstack/react-query'
 import { Navigate, RouterProvider, createBrowserRouter, useSearchParams } from 'react-router'
 import { ApiError } from './api/client'
+import { ChunkErrorBoundary } from './routing/ChunkErrorBoundary'
 import { hasSearch } from './search/urlState'
 import { Shell } from './shell/Shell'
 import { TriagePage } from './triage/TriagePage'
@@ -81,6 +82,13 @@ function HomeRoute() {
   return <TriagePage />
 }
 
+// #265: every lazy route gets the same errorElement — a stale tab's dynamic import() of a
+// pre-redeploy chunk hash throws, and this catches it (see ChunkErrorBoundary.tsx) instead
+// of falling through to react-router's default error screen. Declared per-route rather than
+// once on the parent '/' route so a chunk failure replaces only the content area — Shell's
+// topbar/omnibox/health strip stay mounted, not the whole app.
+const chunkErrorElement = <ChunkErrorBoundary />
+
 // SPEC §4: three stages, three routes — triage lands first, search is Stage 1,
 // /inspect/{engineId}/{id} is the full-page, deep-linkable Stage 2.
 const router = createBrowserRouter([
@@ -89,20 +97,53 @@ const router = createBrowserRouter([
     element: <Shell />,
     children: [
       { index: true, element: <HomeRoute /> },
-      { path: 'search', element: lazyRoute(<SearchPage />) },
-      { path: 'tasks', element: lazyRoute(<PersonTaskSearchPage />) },
-      { path: 'incidents', element: lazyRoute(<IncidentsPage />) },
-      { path: 'incidents/:id', element: lazyRoute(<IncidentDetail />) },
-      { path: 'inspect/:engineId/:instanceId', element: lazyRoute(<InspectPage />) },
+      { path: 'search', element: lazyRoute(<SearchPage />), errorElement: chunkErrorElement },
+      {
+        path: 'tasks',
+        element: lazyRoute(<PersonTaskSearchPage />),
+        errorElement: chunkErrorElement,
+      },
+      {
+        path: 'incidents',
+        element: lazyRoute(<IncidentsPage />),
+        errorElement: chunkErrorElement,
+      },
+      {
+        path: 'incidents/:id',
+        element: lazyRoute(<IncidentDetail />),
+        errorElement: chunkErrorElement,
+      },
+      {
+        path: 'inspect/:engineId/:instanceId',
+        element: lazyRoute(<InspectPage />),
+        errorElement: chunkErrorElement,
+      },
       // Case Inspector Phase 2: the polymorphic CMMN sibling of /inspect (read-only, 6.8+).
-      { path: 'case/:engineId/:caseInstanceId', element: lazyRoute(<CasePage />) },
-      { path: 'audit', element: lazyRoute(<AuditLogPage />) },
-      { path: 'admin/engines', element: lazyRoute(<AdminEnginesPage />) },
-      { path: 'admin/access', element: lazyRoute(<AdminAccessPage />) },
-      { path: 'admin/remediation-demand', element: lazyRoute(<RemediationDemandPage />) },
+      {
+        path: 'case/:engineId/:caseInstanceId',
+        element: lazyRoute(<CasePage />),
+        errorElement: chunkErrorElement,
+      },
+      { path: 'audit', element: lazyRoute(<AuditLogPage />), errorElement: chunkErrorElement },
+      {
+        path: 'admin/engines',
+        element: lazyRoute(<AdminEnginesPage />),
+        errorElement: chunkErrorElement,
+      },
+      {
+        path: 'admin/access',
+        element: lazyRoute(<AdminAccessPage />),
+        errorElement: chunkErrorElement,
+      },
+      {
+        path: 'admin/remediation-demand',
+        element: lazyRoute(<RemediationDemandPage />),
+        errorElement: chunkErrorElement,
+      },
       {
         path: 'definitions/:engineId/:key/versions',
         element: lazyRoute(<DefinitionVersionsPage />),
+        errorElement: chunkErrorElement,
       },
     ],
   },
