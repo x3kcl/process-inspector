@@ -146,6 +146,21 @@ export function AuditLogPage() {
     setApplied(draft)
   }
 
+  // R-UXQ-06 (#274): "Copy shift report" copies whatever the grid CURRENTLY shows — if that's
+  // a narrower slice than the full log (typically the "My shift" preset: this actor since
+  // shift start), the copy confirmation must say so explicitly. A tester previously read the
+  // silent copy as if it had just narrowed the grid and mistook the filtered view for the
+  // default one; announcing the scope at the moment of copying removes that inference entirely.
+  const isMyShiftFilter =
+    applied.actor !== '' && applied.actor === (me.data?.username ?? '') && applied.since !== ''
+  const isAnyFilterApplied =
+    applied.actor !== '' || applied.action !== '' || applied.ticketId !== '' || applied.since !== ''
+  const shiftReportConfirmLabel = isMyShiftFilter
+    ? 'Copied · filtered to your shift ✓'
+    : isAnyFilterApplied
+      ? 'Copied · filtered view, not the full log ✓'
+      : undefined
+
   // R-AUD-05: "my activity, this shift" — the signed-in user since shift start (last 8h).
   const applyMyShift = () => {
     const preset: Filters = { ...EMPTY, actor: me.data?.username ?? '', since: shiftStartIso() }
@@ -236,6 +251,7 @@ export function AuditLogPage() {
           {log.data !== undefined && (
             <CopyButton
               label="Copy shift report"
+              confirmLabel={shiftReportConfirmLabel}
               text={buildShiftReport(log.data, {
                 actor: applied.actor !== '' ? applied.actor : (me.data?.username ?? ''),
                 sinceIso: applied.since,

@@ -6,7 +6,7 @@
 // request in one screen. The fix suppresses the second banner once the first already
 // explains the root cause.
 import { QueryClient, QueryClientProvider } from '@tanstack/react-query'
-import { cleanup, fireEvent, render, screen } from '@testing-library/react'
+import { cleanup, fireEvent, render, screen, waitFor } from '@testing-library/react'
 import { MemoryRouter, Route, Routes } from 'react-router'
 import { afterEach, describe, expect, it, vi } from 'vitest'
 import { ApiError } from '../api/client'
@@ -225,5 +225,23 @@ describe('skip-to-retry control (#237 — keyboard-only FIND→FIX efficiency)',
 
     expect(screen.queryByRole('button', { name: /skip to failed job/i })).toBeNull()
     expect(document.activeElement?.textContent).toBe('Instance detail')
+  })
+})
+
+describe('"Copy for ticket" gives visible copy confirmation (R-UXQ-06, #274)', () => {
+  it('shows "Copied ✓" after a click — the tester must never be left guessing whether it worked', async () => {
+    const writeText = vi.fn().mockResolvedValue(undefined)
+    vi.stubGlobal('navigator', { clipboard: { writeText } })
+    enginesData = [KNOWN_ENGINE]
+    vitalsData = STUCK_VITALS
+    renderPage('engine-a')
+
+    const copyButton = screen.getByRole('button', { name: 'copy for ticket' })
+    fireEvent.click(copyButton)
+
+    await waitFor(() => {
+      expect(writeText).toHaveBeenCalled()
+      expect(screen.getByRole('button', { name: 'Copied ✓' })).toBeTruthy()
+    })
   })
 })

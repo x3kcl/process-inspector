@@ -136,4 +136,38 @@ describe('AuditLogPage W3-1 audit-surface slivers', () => {
     expect(text.indexOf('pi-9')).toBeLessThan(text.indexOf('pi-3'))
     expect(text).toContain('2026-07-11T05:00:00.000Z')
   })
+
+  // R-UXQ-06 (#274): a tester previously got zero feedback from "Copy shift report", then
+  // separately mistook a filter-narrowed grid for the default view — the copy confirmation
+  // must both (a) always be visible and (b) say so explicitly whenever the copied report is
+  // scoped narrower than the full log, instead of leaving that an unannounced side effect.
+  it('shows a plain "Copied ✓" — with no false "filtered to your shift" claim — over the unfiltered log (#274)', async () => {
+    const writeText = vi.fn().mockResolvedValue(undefined)
+    vi.stubGlobal('navigator', { clipboard: { writeText } })
+    renderPage()
+
+    const copyButton = await screen.findByRole('button', { name: /Copy shift report/ })
+    fireEvent.click(copyButton)
+
+    await waitFor(() => {
+      expect(writeText).toHaveBeenCalled()
+      expect(screen.getByRole('button', { name: 'Copied ✓' })).toBeTruthy()
+    })
+    expect(screen.queryByText(/filtered to your shift/)).toBeNull()
+  })
+
+  it('announces "filtered to your shift" in the copy confirmation once "My shift" is applied (#274)', async () => {
+    const writeText = vi.fn().mockResolvedValue(undefined)
+    vi.stubGlobal('navigator', { clipboard: { writeText } })
+    renderPage()
+
+    fireEvent.click(await screen.findByRole('button', { name: /My shift/ }))
+    const copyButton = await screen.findByRole('button', { name: /Copy shift report/ })
+    fireEvent.click(copyButton)
+
+    await waitFor(() => {
+      expect(writeText).toHaveBeenCalled()
+      expect(screen.getByRole('button', { name: 'Copied · filtered to your shift ✓' })).toBeTruthy()
+    })
+  })
 })
