@@ -35,12 +35,16 @@ describe('mergeCappedFlag (#273)', () => {
 describe('mergeDeepPages (#273 capped propagation)', () => {
   it('surfaces a wall discovered only on a later page, not frozen at page 1', () => {
     const p1 = page({
-      rows: [{ compositeId: 'engine-a:1', engineId: 'engine-a', startTime: '2026-07-19T10:00:00Z' }],
+      rows: [
+        { compositeId: 'engine-a:1', engineId: 'engine-a', startTime: '2026-07-19T10:00:00Z' },
+      ],
       perEngine: { 'engine-a': { ok: true, fetched: 1, total: 5000, capped: false } },
       nextCursor: 'c1',
     })
     const p2 = page({
-      rows: [{ compositeId: 'engine-a:2', engineId: 'engine-a', startTime: '2026-07-19T09:00:00Z' }],
+      rows: [
+        { compositeId: 'engine-a:2', engineId: 'engine-a', startTime: '2026-07-19T09:00:00Z' },
+      ],
       perEngine: { 'engine-a': { ok: true, fetched: 1, total: 5000, capped: true } },
       nextCursor: undefined,
       depthCapped: true,
@@ -53,12 +57,16 @@ describe('mergeDeepPages (#273 capped propagation)', () => {
 
   it('keeps capped false for an engine that never hit its wall across the whole chain', () => {
     const p1 = page({
-      rows: [{ compositeId: 'engine-b:1', engineId: 'engine-b', startTime: '2026-07-19T10:00:00Z' }],
+      rows: [
+        { compositeId: 'engine-b:1', engineId: 'engine-b', startTime: '2026-07-19T10:00:00Z' },
+      ],
       perEngine: { 'engine-b': { ok: true, fetched: 1, total: 3, capped: false } },
       nextCursor: 'c1',
     })
     const p2 = page({
-      rows: [{ compositeId: 'engine-b:2', engineId: 'engine-b', startTime: '2026-07-19T09:00:00Z' }],
+      rows: [
+        { compositeId: 'engine-b:2', engineId: 'engine-b', startTime: '2026-07-19T09:00:00Z' },
+      ],
       perEngine: { 'engine-b': { ok: true, fetched: 1, total: 3, capped: false } },
       nextCursor: undefined,
     })

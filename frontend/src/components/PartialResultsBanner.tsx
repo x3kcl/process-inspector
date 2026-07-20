@@ -49,8 +49,8 @@ export function PartialResultsBanner({ summary, onRetry }: Props) {
       {summary.overflowing.map((o) =>
         o.capped ? (
           <span key={o.engineId} className="engine-overflow-capped">
-            ⚠ {o.engineId} {formatCount(o.fetched)} of {formatCount(o.total)} fetched — reached
-            the paging depth on this engine; Load more can’t reach the rest — narrow your filter
+            ⚠ {o.engineId} {formatCount(o.fetched)} of {formatCount(o.total)} fetched — reached the
+            paging depth on this engine; Load more can’t reach the rest — narrow your filter
           </span>
         ) : (
           <span key={o.engineId} className="engine-overflow-routine">
