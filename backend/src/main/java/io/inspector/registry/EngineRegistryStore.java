@@ -258,6 +258,18 @@ public class EngineRegistryStore {
     /** Record a read-only probe result — DRAFT/PROBE_FAILED → PROBED | PROBE_FAILED. Audited. */
     @Transactional
     public EngineRegistryRow recordProbe(String id, boolean ok, Authentication actor, String detail) {
+        return recordProbe(id, ok, actor, detail, null);
+    }
+
+    /**
+     * {@link #recordProbe(String, boolean, Authentication, String)} plus the coarse, UI-safe
+     * failure class (issue #275, {@link ProbeFailureClassifier}) — ignored when {@code ok}, and
+     * cleared back to null the moment a probe succeeds so a stale class never survives a later
+     * green probe.
+     */
+    @Transactional
+    public EngineRegistryRow recordProbe(
+            String id, boolean ok, Authentication actor, String detail, String failureClass) {
         String actorName = requireRegistryAdmin(actor);
         EngineRegistryRow row = requireRow(id);
         String next = ok ? LIFECYCLE_PROBED : LIFECYCLE_PROBE_FAILED;
@@ -268,6 +280,7 @@ public class EngineRegistryStore {
         AuditEntry entry = audit.beginPending(
                 actorName, id, row.getTenantId(), id, ACTION_PROBE, "read-only probe", null, payload);
         row.setLifecycle(next);
+        row.setLastProbeFailureClass(ok ? null : failureClass);
         row.setUpdatedAt(clock.instant());
         repository.save(row);
         // Issue #223: `detail` (the real version string or exception text from the live dial)

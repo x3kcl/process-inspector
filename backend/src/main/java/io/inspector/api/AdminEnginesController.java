@@ -6,9 +6,12 @@ import io.inspector.config.InspectorProperties;
 import io.inspector.config.InspectorProperties.EngineConfig;
 import io.inspector.config.InspectorProperties.EngineEnvironment;
 import io.inspector.config.RegistryProperties;
+import io.inspector.registry.EngineHealth;
+import io.inspector.registry.EngineRegistry;
 import io.inspector.registry.EngineRegistryMapper;
 import io.inspector.registry.EngineRegistryRow;
 import io.inspector.registry.EngineRegistryStore;
+import io.inspector.registry.ProbeFailureClassifier;
 import io.inspector.registry.RegistryDrift.DriftReport;
 import io.inspector.registry.RegistryPinRegistry;
 import io.inspector.registry.RegistryWrite;
@@ -64,6 +67,7 @@ public class AdminEnginesController {
     private final RegistryPinRegistry pinRegistry;
     private final ProcessApiClient processApi;
     private final Environment env;
+    private final EngineRegistry registry;
 
     public AdminEnginesController(
             EngineRegistryStore store,
@@ -71,13 +75,15 @@ public class AdminEnginesController {
             RegistryProperties registryProperties,
             RegistryPinRegistry pinRegistry,
             ProcessApiClient processApi,
-            Environment env) {
+            Environment env,
+            EngineRegistry registry) {
         this.store = store;
         this.inspectorProperties = inspectorProperties;
         this.registryProperties = registryProperties;
         this.pinRegistry = pinRegistry;
         this.processApi = processApi;
         this.env = env;
+        this.registry = registry;
     }
 
     @GetMapping
@@ -116,11 +122,17 @@ public class AdminEnginesController {
                 .validate(row.getBaseUrl(), environment, registryProperties.egressPolicy())
                 .isAllowed()) {
             // Coarse to the UI (no oracle); the rejecting rail is in the store's log + audit.
-            return toDto(store.recordProbe(id, false, authentication, "ssrf re-validation failed at probe"));
+            return toDto(store.recordProbe(
+                    id,
+                    false,
+                    authentication,
+                    "ssrf re-validation failed at probe",
+                    ProbeFailureClassifier.SSRF_REJECTED));
         }
 
         boolean ok;
         String detail;
+        String failureClass = null;
         try {
             var info = processApi.engineInfo(engine(row), CallPriority.INTERACTIVE);
             ok = info != null;
@@ -128,8 +140,12 @@ public class AdminEnginesController {
         } catch (RuntimeException e) {
             ok = false;
             detail = e.toString(); // audit only — never surfaced (topology oracle)
+            // #275: the exception TYPE (never its message text — that stays audit-only, same
+            // topology-oracle doctrine as `detail`) sorts into a small closed set of UI-safe
+            // buckets so the admin table can say WHY without leaking WHAT/WHERE.
+            failureClass = ProbeFailureClassifier.classify(e);
         }
-        return toDto(store.recordProbe(id, ok, authentication, detail));
+        return toDto(store.recordProbe(id, ok, authentication, detail, failureClass));
     }
 
     private static EngineConfig engine(EngineRegistryRow row) {
@@ -244,7 +260,25 @@ public class AdminEnginesController {
                 row.getSource(),
                 row.getCreatedAt(),
                 row.getUpdatedAt(),
-                row.getRemovedAt());
+                row.getRemovedAt(),
+                row.getLastProbeFailureClass(),
+                reachableNow(row));
+    }
+
+    /**
+     * #275: a positive, freshness-checked reachability signal — DISTINCT from "no error seen
+     * yet". Only meaningful for an ACTIVE row (the one lifecycle the 30s {@code EngineHealthService}
+     * loop actually keeps probing); every other lifecycle yields {@code null} ("not applicable")
+     * rather than a fabricated true/false. {@code checkedAtEpochMs == 0} is
+     * {@link EngineHealth#unknown()}'s sentinel for "never probed yet" — also null, so "not yet
+     * checked" can never be confused with a confirmed-reachable or confirmed-unreachable result.
+     */
+    private Boolean reachableNow(EngineRegistryRow row) {
+        if (!"active".equals(row.getLifecycle())) {
+            return null;
+        }
+        EngineHealth health = registry.healthOf(row.getId());
+        return health.checkedAtEpochMs() > 0 ? health.reachable() : null;
     }
 
     /** Secret-ref PRESENCE — is the named env var set in THIS deployment? Never the value. */
@@ -300,7 +334,13 @@ public class AdminEnginesController {
             String source,
             Instant createdAt,
             Instant updatedAt,
-            Instant removedAt) {}
+            Instant removedAt,
+            // #275: one of ProbeFailureClassifier's constants, or null (row isn't currently
+            // probe_failed, incl. never-probed rows).
+            String lastProbeFailureClass,
+            // #275: null = not applicable (only ever set for an `active` row) or not yet
+            // freshly checked; true/false = a confirmed, timestamped EngineHealthService result.
+            Boolean reachableNow) {}
 
     public record EngineWriteRequest(
             String id, // POST only (immutable); ignored on PUT

@@ -3877,6 +3877,17 @@ button.skip-link {
   gap: 0.35rem;
   white-space: nowrap;
 }
+/* #275: the Lifecycle cell's failure-class / positive-reachability text — color is NEVER the
+   only signal (the label text itself already says "reachable"/"unreachable now"/"Probe failed"),
+   this just adds emphasis so the eye finds the row's verdict fast. */
+.lifecycle-positive {
+  color: var(--color-success-alt);
+  font-weight: 600;
+}
+.lifecycle-negative {
+  color: var(--danger, var(--color-danger));
+  font-weight: 600;
+}
 .engine-form {
   display: flex;
   flex-direction: column;
