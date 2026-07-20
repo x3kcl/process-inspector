@@ -57,6 +57,10 @@ export function groupDrillParams(group: ErrorGroup): string {
     engineIds,
     statuses: FAILURE_STATUSES,
     signatureHash: group.signatureHash,
+    // #279: stamp the normalizer generation the card was rendered under so the drilled search can
+    // tell a retired-generation hash (an old bookmarked/stale-tab link, after an ALGO_VERSION bump)
+    // apart from a genuine zero — the search wire's opaque hash otherwise carries no generation.
+    signatureAlgoVersion: group.algoVersion,
     sortBy: 'failureTime',
   }).toString()
 }

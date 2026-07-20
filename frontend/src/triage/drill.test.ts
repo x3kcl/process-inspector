@@ -89,6 +89,20 @@ describe('drill params round-trip through the M2b URL codec', () => {
     expect(request?.signatureHash).toBe('f'.repeat(64))
   })
 
+  // #279: the drill link stamps the generation the card was rendered under, so a later
+  // ALGO_VERSION bump can be told apart from a genuine zero.
+  it('group drill stamps the signature generation alongside the hash', () => {
+    const params = new URLSearchParams(
+      groupDrillParams({
+        signatureHash: 'f'.repeat(64),
+        algoVersion: 2,
+        countsByEngine: { 'engine-a': { 'k:v1': 1 } },
+      }),
+    )
+    expect(params.get('algo')).toBe('2')
+    expect(decodeSearch(params)?.signatureAlgoVersion).toBe(2)
+  })
+
   it('status tile drill is the bare status filter', () => {
     const request = decodeSearch(new URLSearchParams(statusDrillParams('SUSPENDED')))
     expect(request?.statuses).toEqual(['SUSPENDED'])

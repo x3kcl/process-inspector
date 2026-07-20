@@ -8,12 +8,16 @@ import { groupDrillParams } from '../triage/drill'
 
 export interface IncidentDrillScope {
   signatureHash?: string
+  // #279: the incident row carries algoVersion (IncidentSummary/IncidentDetail) — thread it through
+  // so the drill link stamps the generation it was built under, same as the triage card's group link.
+  algoVersion?: number
   countsByEngine?: Record<string, Record<string, number>>
 }
 
 export function incidentSearchParams(incident: IncidentDrillScope): string {
   return groupDrillParams({
     signatureHash: incident.signatureHash,
+    algoVersion: incident.algoVersion,
     countsByEngine: incident.countsByEngine,
   })
 }

@@ -304,6 +304,18 @@ export function ResultsGrid({
         </div>
       )
     }
+    // #279: a stale-generation signature drill link (a retired fingerprint generation) reads as an
+    // honest reason, not a calm zero — the search-URL analogue of the incidents page's "Archived
+    // generations". The BFF supplies the sentence (generation numbers, next step); render it verbatim.
+    if (state === 'stale-signature-generation') {
+      return (
+        <div className="zero-state zero-warn" role="alert">
+          0 shown —{' '}
+          {response.signatureGeneration?.reason ??
+            'this error-signature link is from a retired fingerprint generation; this is NOT a confirmed zero.'}
+        </div>
+      )
+    }
     // #236: "confirmed zero across N engines" must name — in the same sentence — the
     // registered engines the search never covered (non-active lifecycle, or outside the
     // selected engine scope), or the zero reads exhaustive when it is not.

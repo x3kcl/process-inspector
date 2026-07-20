@@ -35,7 +35,42 @@ public record SearchResponse(
         // the normal single-shot search path.
         String nextCursor,
         boolean depthCapped,
-        String pagingCoherence) {
+        String pagingCoherence,
+        // #279 signature-generation honesty. Non-null ONLY when the search filtered on a
+        // signatureHash whose generation is not the current ErrorSignatureNormalizer.ALGO_VERSION
+        // — so an empty grid can say WHY (a retired fingerprint generation) instead of reading as
+        // a confirmed zero. A known-mismatch (stamped, non-current) short-circuits to zero rows
+        // without touching an engine; an unstamped legacy link runs the search but carries the
+        // advisory so a zero result is not misread. Omitted (NON_NULL) on every ordinary search.
+        SignatureGeneration signatureGeneration) {
+
+    /**
+     * The signature-generation notice attached to a signature-filtered search whose link was NOT
+     * built under the current normalizer generation (#279, R-SEM-03 needs-re-binding doctrine —
+     * the read-path analogue of the incident ledger's {@code IncidentSummary.currentGeneration}).
+     *
+     * @param current               whether the filtered signature is the current generation (always
+     *                              false when this notice is present — a current link needs none)
+     * @param requestedAlgoVersion  the generation the link carried, or {@code null} for a legacy /
+     *                              unstamped link (assumed-UNKNOWN generation, #279 decision)
+     * @param currentAlgoVersion    {@code ErrorSignatureNormalizer.ALGO_VERSION} at read time
+     * @param reason                a human sentence for the empty-state
+     */
+    @JsonInclude(JsonInclude.Include.NON_NULL)
+    public record SignatureGeneration(
+            boolean current, Integer requestedAlgoVersion, int currentAlgoVersion, String reason) {
+
+        /**
+         * True when the link is a KNOWN older/newer generation (stamped, non-current): its hash
+         * provably matches no freshly-computed (current-generation) hash, so the search can
+         * short-circuit to zero without touching an engine. An unstamped legacy link ({@code
+         * requestedAlgoVersion == null}) is NOT provably empty — it might carry a current hash —
+         * so it runs the search and this notice is advisory only.
+         */
+        public boolean provablyEmpty() {
+            return requestedAlgoVersion != null;
+        }
+    }
 
     /**
      * Pre-deep-paging 5-arg shape → no cursor, not depth-capped, single-shot coherence. Keeps the
@@ -50,10 +85,34 @@ public record SearchResponse(
         this(rows, perEngine, statusCounts, criteriaEcho, curl, null, false, null);
     }
 
-    /** Controller-side decoration: same aggregation result, presentation fields filled, deep-page markers preserved. */
+    /**
+     * Pre-#279 8-arg shape (no {@code signatureGeneration}) → an ordinary search that carries no
+     * generation notice. Keeps the deep-paging paths and existing tests off constructor churn.
+     */
+    public SearchResponse(
+            List<ProcessInstanceRow> rows,
+            Map<String, EngineResult> perEngine,
+            Map<InstanceStatus, Long> statusCounts,
+            List<String> criteriaEcho,
+            String curl,
+            String nextCursor,
+            boolean depthCapped,
+            String pagingCoherence) {
+        this(rows, perEngine, statusCounts, criteriaEcho, curl, nextCursor, depthCapped, pagingCoherence, null);
+    }
+
+    /** Controller-side decoration: same aggregation result, presentation fields filled, markers preserved. */
     public SearchResponse withPresentation(List<String> criteriaEcho, String curl) {
         return new SearchResponse(
-                rows, perEngine, statusCounts, criteriaEcho, curl, nextCursor, depthCapped, pagingCoherence);
+                rows,
+                perEngine,
+                statusCounts,
+                criteriaEcho,
+                curl,
+                nextCursor,
+                depthCapped,
+                pagingCoherence,
+                signatureGeneration);
     }
 
     @JsonInclude(JsonInclude.Include.NON_NULL)

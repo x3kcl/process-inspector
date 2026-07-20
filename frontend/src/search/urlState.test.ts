@@ -30,6 +30,39 @@ describe('search URL codec', () => {
     expect(decodeSearch(encodeSearch(request))).toEqual(request)
   })
 
+  // #279: the signature generation stamp rides alongside `signature` and round-trips.
+  it('round-trips the signature generation stamp beside the signature', () => {
+    const request: SearchRequest = {
+      statuses: ['FAILED', 'RETRYING'],
+      signatureHash: 'a'.repeat(64),
+      signatureAlgoVersion: 2,
+    }
+    const params = encodeSearch(request)
+    expect(params.get('signature')).toBe('a'.repeat(64))
+    expect(params.get('algo')).toBe('2')
+    expect(decodeSearch(params)).toEqual(request)
+  })
+
+  it('drops the generation stamp when there is no signature to bind it to', () => {
+    const params = encodeSearch({ statuses: ['FAILED'], signatureAlgoVersion: 2 })
+    expect(params.has('algo')).toBe(false)
+  })
+
+  it('treats a legacy signature link (no algo param) as an unstamped signatureAlgoVersion', () => {
+    // An old bookmark from before #279 — assumed-unknown generation; the BFF surfaces the reason.
+    const decoded = decodeSearch(new URLSearchParams('status=FAILED&signature=' + 'b'.repeat(64)))
+    expect(decoded?.signatureHash).toBe('b'.repeat(64))
+    expect(decoded?.signatureAlgoVersion).toBeUndefined()
+  })
+
+  it('ignores a bare algo param with no signature (not a search trigger, not decoded)', () => {
+    const params = new URLSearchParams('algo=2')
+    expect(hasSearch(params)).toBe(false)
+    // Even if some other filter is present, algo is read only beside a signature.
+    const decoded = decodeSearch(new URLSearchParams('status=FAILED&algo=2'))
+    expect(decoded?.signatureAlgoVersion).toBeUndefined()
+  })
+
   it('round-trips through actual URL serialization (the shareable-link path)', () => {
     const request: SearchRequest = {
       statuses: ['FAILED'],
