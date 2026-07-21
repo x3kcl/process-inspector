@@ -69,8 +69,8 @@ jobs:
       - name: Resolve the slot port namespace
         run: |
           {
-            echo "PI_ENGINE_A_PORT=${PI_ENGINE_A_PORT:-8091}"
-            echo "PI_ENGINE_B_PORT=${PI_ENGINE_B_PORT:-8092}"
+            echo "PI_ENGINE_A_PORT=${PI_ENGINE_A_PORT:-8691}"
+            echo "PI_ENGINE_B_PORT=${PI_ENGINE_B_PORT:-8692}"
             echo "PI_PG_PORT=${PI_PG_PORT:-5435}"
             echo "INSPECTOR_DB_URL=jdbc:postgresql://localhost:${PI_PG_PORT:-5435}/inspector"
           } >> "$GITHUB_ENV"
@@ -208,10 +208,10 @@ jobs:
       - name: Resolve the slot port namespace
         run: |
           {
-            echo "PI_ENGINE_A_PORT=${PI_ENGINE_A_PORT:-8095}"
-            echo "PI_ENGINE_B_PORT=${PI_ENGINE_B_PORT:-8096}"
+            echo "PI_ENGINE_A_PORT=${PI_ENGINE_A_PORT:-8695}"
+            echo "PI_ENGINE_B_PORT=${PI_ENGINE_B_PORT:-8696}"
             echo "PI_PG_PORT=${PI_PG_PORT:-5436}"
-            echo "PI_BFF_PORT=${PI_BFF_PORT:-8097}"
+            echo "PI_BFF_PORT=${PI_BFF_PORT:-8697}"
             echo "INSPECTOR_DB_URL=jdbc:postgresql://localhost:${PI_PG_PORT:-5436}/inspector"
           } >> "$GITHUB_ENV"
       - uses: actions/setup-java@v4
