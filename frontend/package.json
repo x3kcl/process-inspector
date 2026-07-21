@@ -50,5 +50,25 @@
     "typescript-eslint": "^8.62.1",
     "vite": "^7.3.6",
     "vitest": "^4.1.10"
+  },
+  "//overrides": [
+    "Transitive advisories under @redocly/openapi-core (via openapi-typescript, our gen:api",
+    "toolchain). Both fixes are SEMVER-COMPATIBLE with what the parents already ask for — we",
+    "are pulling a patch forward, not forcing a major across a range boundary:",
+    "  js-yaml         GHSA-52cp-r559-cp3m  vulnerable <=4.2.0, patched 4.3.0; redocly wants ^4",
+    "  brace-expansion GHSA-3jxr-9vmj-r5cp  vulnerable <=2.1.1, patched 2.1.2; minimatch@5 wants ^2",
+    "`npm audit fix` cannot reach these itself (they sit under an already-latest pinned dep), so",
+    "the override is the mechanism, not a policy exception.",
+    "SCOPED to the redocly subtree DELIBERATELY: eslint pulls its own brace-expansion@5 (via",
+    "minimatch@10) which is NOT in the vulnerable range — a top-level override would drag it",
+    "back to 2.x, a silent major downgrade of a healthy dep.",
+    "DROP each entry once the parent ships a release resolving the patched version on its own —",
+    "recheck with `npm ls js-yaml brace-expansion`."
+  ],
+  "overrides": {
+    "@redocly/openapi-core": {
+      "js-yaml": "^4.3.0",
+      "brace-expansion": "^2.1.2"
+    }
   }
 }
