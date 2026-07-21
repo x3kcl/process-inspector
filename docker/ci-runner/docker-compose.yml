@@ -11,7 +11,7 @@
 # serialize WITHIN a runner, so no two jobs ever share a port namespace concurrently —
 # cross-PR runs and same-run matrix legs both parallelize across slots, collision-free.
 #   slot  engines (A/B/7/legacy)   BFF-pg  drift-BFF  e2e   compose projects
-#   s1    8091 8092 8093 8094      5435    8086       4173  pi-ci-s1-<profile>
+#   s1    8691 8692 8693 8694      5435    8086       4173  pi-ci-s1-<profile>
 #   s2    8191 8192 8193 8194      5445    8186       4273  pi-ci-s2-<profile>
 #   s3    8291 8292 8293 8294      5455    8286       4373  pi-ci-s3-<profile>
 #   s4    8391 8392 8393 8394      5465    8386       4473  pi-ci-s4-<profile>
@@ -19,6 +19,12 @@
 #   s6    8591 8592 8593 8594      5485    8586       4673  pi-ci-s6-<profile>
 # (The frontend job's throwaway Postgres uses a Docker-assigned random host port — see
 # ci.yml — so it needs no slot entry.)
+# s1's engines sit at 869x, out of pattern with s2–s6's 81xx–85xx, DELIBERATELY: this box is
+# shared with other projects, and 8092 — s1's original engine-B port — is permanently bound by
+# an unrelated compose stack (cryt), which hard-failed every perf/integration job that landed on
+# s1 while passing on all other slots (nightly #23, 2026-07-21). The 809x band abuts a crowded
+# foreign range (8080-8090 in use); 869x is clear. Check `ss -ltnp` for foreign listeners before
+# reassigning any slot block here.
 # NEVER register a runner outside this file: a foreign runner has no slot, so its jobs
 # would race a slot's fixed ports. ci-runner.sh `ensure` fails if one is online.
 #
@@ -70,10 +76,10 @@ services:
       RUNNER_NAME: hp04-docker-s1
       RUNNER_WORKDIR: /home/flapci/ci-runner-work-s1
       PI_CI_SLOT: "1"
-      PI_ENGINE_A_PORT: "8091"
-      PI_ENGINE_B_PORT: "8092"
-      PI_ENGINE_7_PORT: "8093"
-      PI_ENGINE_LEGACY_PORT: "8094"
+      PI_ENGINE_A_PORT: "8691"
+      PI_ENGINE_B_PORT: "8692"
+      PI_ENGINE_7_PORT: "8693"
+      PI_ENGINE_LEGACY_PORT: "8694"
       PI_PG_PORT: "5435"
       PI_BFF_PORT: "8086"
       PI_E2E_PORT: "4173"

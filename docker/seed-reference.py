@@ -27,7 +27,7 @@ failure signatures this dataset produces are ones the normalizer is already test
 
 Usage:
     python3 docker/seed-reference.py                     # every reachable KNOWN_PORTS engine
-    python3 docker/seed-reference.py http://localhost:8091/flowable-rest/service
+    python3 docker/seed-reference.py http://localhost:8691/flowable-rest/service
     python3 docker/seed-reference.py --workers 40 --scale 0.01   # 1% scale, for a dry run
 
 --scale multiplies every count (historic/active/dlq/suspended) — use a small value to prove
