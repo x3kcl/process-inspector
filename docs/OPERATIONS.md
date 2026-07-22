@@ -246,7 +246,9 @@ regenerates `schema.d.ts`, `git diff --exit-code`) · `docker` (multi-stage imag
 `integration` matrix over **flowable-6 / flowable-7 / legacy** (compose up →
 `docker/smoke-test.sh` bounded readiness gate incl. postgres `pg_isready` → `docker/seed.sh`
 → failsafe per-profile IT).
-**Landed in `.github/workflows/nightly.yml` (NOT merge-blocking — 02:00 UTC + `workflow_dispatch`):**
+**Landed in `.github/workflows/nightly.yml` (NOT merge-blocking — 02:17 UTC + `workflow_dispatch`;
+a companion `nightly-watchdog.yml` at 08:41 UTC re-dispatches and opens a `ci`/`P4` alert issue if
+GitHub's scheduler silently drops the cron — issue #290):**
 a **Testcontainers Postgres/Keycloak suite** (`container-its` job, 14 self-provisioning ITs —
 audit partition/retention/roles + fail-closed, shared/team-view governance, mapping/registry
 store CRUD, and **a real Keycloak `oidc` leg** — `OidcKeycloakIT`, sealed-login + `max_age`/
