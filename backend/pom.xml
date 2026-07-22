@@ -19,6 +19,9 @@
 
   <properties>
     <java.version>21</java.version>
+    <!-- CVE-2026-54291 (HIGH, pgjdbc <=42.7.11): override spring-boot-starter-parent's
+         managed version until it picks up the fix on its own. -->
+    <postgresql.version>42.7.13</postgresql.version>
     <resilience4j.version>2.4.0</resilience4j.version>
     <springdoc.version>2.8.14</springdoc.version>
     <wiremock.version>3.13.2</wiremock.version>
