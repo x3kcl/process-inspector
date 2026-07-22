@@ -12,7 +12,10 @@ name: nightly
 
 on:
   schedule:
-    - cron: "0 2 * * *" # 02:00 UTC daily
+    # 02:17 UTC daily — deliberately NOT top-of-hour: GitHub's scheduler load (and thus its
+    # documented drop/skip of schedule triggers) clusters at :00, which is what skipped this
+    # cron on 2026-07-22 (issue #290). nightly-watchdog.yml recovers a miss regardless.
+    - cron: "17 2 * * *"
   workflow_dispatch: {}
 
 concurrency:

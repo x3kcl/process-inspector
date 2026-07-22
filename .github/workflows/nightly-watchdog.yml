@@ -1,0 +1,86 @@
+# Watchdog for the nightly cron (issue #290). GitHub's scheduler is documented to DELAY or
+# silently SKIP a `schedule:` trigger under high Actions load — and on 2026-07-22 it did
+# exactly that to `nightly.yml`, with no signal: no run, nothing queued, runners idle. The
+# nightly's whole point is catching corrective-action/audit/governance/OIDC regressions
+# "within a day"; a silently-skipped run stretches that window invisibly.
+#
+# This workflow runs a few hours AFTER the nightly's own slot and asks one question: did any
+# nightly run get created since 00:00 UTC today (scheduled OR a manual workflow_dispatch —
+# a human covering it counts)? If yes, it exits quietly. If no, it SELF-HEALS by dispatching
+# a recovery nightly run, and opens a deduplicated `ci`/`P4` alert issue so the miss is still
+# visible to a human (tracking how often GitHub drops the cron).
+#
+# Why this can recover on its own without a PAT: `workflow_dispatch` (and `repository_dispatch`)
+# are the DOCUMENTED exceptions to GitHub's "events initiated by GITHUB_TOKEN don't start new
+# runs" rule — so the built-in token with `actions: write` is enough to kick nightly.yml. No
+# extra secret, honoring the env-ref-only iron rule (there's simply nothing to ref here).
+#
+# This watchdog is itself a `schedule:`, so it shares the same theoretical skip risk — mitigated
+# by running at an off-peak, non-top-of-hour minute (GitHub load, and thus skips, cluster at
+# :00). It's the cheapest available hedge; a scheduler that drops BOTH offset crons on the same
+# day is a broad GitHub incident no in-repo mechanism can paper over.
+name: nightly-watchdog
+
+on:
+  schedule:
+    - cron: "41 8 * * *" # 08:41 UTC — ~6h after nightly's 02:17 slot, off-peak minute
+  workflow_dispatch: {}
+
+permissions:
+  actions: write # dispatch a recovery nightly.yml run
+  issues: write # open the miss-alert issue
+
+concurrency:
+  group: nightly-watchdog
+  cancel-in-progress: false
+
+jobs:
+  check:
+    runs-on: self-hosted
+    timeout-minutes: 10
+    steps:
+      - name: Recover a skipped nightly and alert (issue #290)
+        env:
+          GH_TOKEN: ${{ secrets.GITHUB_TOKEN }}
+        run: |
+          set -euo pipefail
+          api() { curl -fsS -H "Authorization: Bearer $GH_TOKEN" -H "Accept: application/vnd.github+json" "$@"; }
+
+          TODAY="$(date -u +%Y-%m-%dT00:00:00Z)"
+          # total_count of nightly runs CREATED since midnight UTC — scheduled or manual.
+          RUNS_URL="${GITHUB_API_URL}/repos/${GITHUB_REPOSITORY}/actions/workflows/nightly.yml/runs"
+          COUNT=$(api -G "$RUNS_URL" --data-urlencode "created=>=${TODAY}" --data-urlencode "per_page=1" | jq -r '.total_count')
+
+          if [ "$COUNT" != "0" ]; then
+            echo "nightly already has ${COUNT} run(s) created since ${TODAY} — nothing to do."
+            exit 0
+          fi
+
+          echo "::warning::No nightly run since ${TODAY} — GitHub's scheduler appears to have skipped the cron. Dispatching a recovery run."
+
+          # Self-heal: start nightly.yml on main. 204 No Content on success (-f treats it so).
+          api -X POST "${RUNS_URL%/runs}/dispatches" -d '{"ref":"main"}'
+          echo "Recovery nightly dispatched on main."
+
+          # Durable human signal — deduplicated so a multi-day GitHub outage doesn't pile up
+          # a new issue every morning. Best-effort: a failure to alert must never fail the
+          # (already-succeeded) recovery dispatch.
+          MARKER="Nightly cron skipped"
+          EXISTING=$(api -G "${GITHUB_API_URL}/search/issues" \
+            --data-urlencode "q=repo:${GITHUB_REPOSITORY} is:issue is:open in:title ${MARKER}" \
+            | jq -r '.total_count' || echo "unknown")
+
+          if [ "$EXISTING" = "0" ]; then
+            BODY=$(printf '%s\n' \
+              "GitHub's scheduler did not fire \`nightly.yml\`'s cron since **${TODAY}** — see issue #290 for the documented skip-under-load behavior." \
+              "" \
+              "This watchdog (\`nightly-watchdog.yml\`) auto-dispatched a **recovery nightly run** on \`main\`, so tonight's coverage is not lost. Check the [nightly runs](${GITHUB_SERVER_URL}/${GITHUB_REPOSITORY}/actions/workflows/nightly.yml) for its result and triage any red as usual." \
+              "" \
+              "Closing note: this is a GitHub-side scheduling gap, not a repo defect. Close once the recovery run is green. Frequent recurrence would justify revisiting the cron time or moving off scheduled triggers.")
+            api -X POST "${GITHUB_API_URL}/repos/${GITHUB_REPOSITORY}/issues" \
+              -d "$(jq -n --arg t "${MARKER} $(date -u +%F) — recovery run dispatched" --arg b "$BODY" \
+                   '{title:$t, body:$b, labels:["ci","P4"]}')" >/dev/null \
+              && echo "Opened miss-alert issue." || echo "::warning::Recovery dispatched, but opening the alert issue failed (non-fatal)."
+          else
+            echo "An open '${MARKER}' issue already exists (${EXISTING}); not opening a duplicate."
+          fi
