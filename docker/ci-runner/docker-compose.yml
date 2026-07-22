@@ -4,12 +4,19 @@
 # skill's step 0 before any push or PR.
 #
 # PARALLELISM MODEL — port-namespace slots, not a free-for-all:
-# CI harness ports are fixed remaps (they cannot be dynamic: compose, smoke-test.sh,
-# seed.sh and the IT base-urls all read PI_*_PORT from the process environment). So each
-# runner service below is a SLOT that carries its own disjoint, pre-computed port block as
-# container env; ci.yml honors that env (with the slot-1 values as fallback). Jobs
-# serialize WITHIN a runner, so no two jobs ever share a port namespace concurrently —
-# cross-PR runs and same-run matrix legs both parallelize across slots, collision-free.
+# CI harness ports are fixed remaps (compose, smoke-test.sh, seed.sh and the IT base-urls
+# all read PI_*_PORT from the process environment, so the block below is each slot's
+# PREFERRED port set, not a dynamic pool). Each runner service below is a SLOT that
+# carries its own disjoint, pre-computed port block as container env; ci.yml/nightly.yml
+# honor that env (with the slot-1 values as fallback). Jobs serialize WITHIN a runner, so
+# no two jobs ever share a port namespace concurrently — cross-PR runs and same-run matrix
+# legs both parallelize across slots, collision-free.
+#
+# scripts/free-port.sh adds a thin self-healing layer on top: every "Resolve the slot port
+# namespace" step checks its preferred port is actually free on the host and, if not, falls
+# back to the next free one within a small window bounded to that SAME slot's own band —
+# so ONE port in a slot's block being permanently squatted by something unrelated (see the
+# s1/cryt story below) no longer needs a manual reassignment of the whole table to recover.
 #   slot  engines (A/B/7/legacy)   BFF-pg  drift-BFF  e2e   compose projects
 #   s1    8691 8692 8693 8694      5435    8086       4173  pi-ci-s1-<profile>
 #   s2    8191 8192 8193 8194      5445    8186       4273  pi-ci-s2-<profile>

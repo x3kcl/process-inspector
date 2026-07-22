@@ -74,10 +74,13 @@ jobs:
       - uses: actions/checkout@v4
       # Runner slots (docker/ci-runner/docker-compose.yml) carry a disjoint port block as
       # container env so concurrent jobs never collide; slot-1 values are the fallback for
-      # a slot-less runner.
+      # a slot-less runner. scripts/free-port.sh double-checks the slot's own port is
+      # actually free on THIS host and falls back within the slot's own band otherwise
+      # (#163/#288 — a slot's fixed port can end up permanently squatted by something
+      # unrelated; this makes that self-healing instead of needing a manual reassignment).
       - name: Resolve the slot port namespace
         working-directory: .
-        run: echo "BFF_PORT=${PI_BFF_PORT:-8086}" >> "$GITHUB_ENV"
+        run: echo "BFF_PORT=$(scripts/free-port.sh "${PI_BFF_PORT:-8086}")" >> "$GITHUB_ENV"
       - uses: actions/setup-node@v4
         with:
           node-version: "22"
@@ -166,8 +169,11 @@ jobs:
       # Runner slots share the HOST network (network_mode: host) — each slot's Vite dev
       # server must bind a disjoint port or two concurrent e2e jobs (different PRs, same
       # instant) collide; slot-1's value is the fallback for a slot-less runner.
+      # scripts/free-port.sh confirms the slot's port is actually free on this host and
+      # falls back within the slot's own band otherwise (see the frontend job's step).
       - name: Resolve the slot port namespace
-        run: echo "PI_E2E_PORT=${PI_E2E_PORT:-4173}" >> "$GITHUB_ENV"
+        working-directory: .
+        run: echo "PI_E2E_PORT=$(scripts/free-port.sh "${PI_E2E_PORT:-4173}")" >> "$GITHUB_ENV"
       - uses: actions/setup-node@v4
         with:
           node-version: "22"
@@ -227,17 +233,29 @@ jobs:
       # container env so concurrent jobs on different slots never collide either. The
       # compose file, smoke-test.sh, seed.sh and the IT base-urls all read PI_*_PORT from
       # the process environment; slot-1 values are the fallback for a slot-less runner.
+      # scripts/free-port.sh double-checks each port is actually free on THIS host and
+      # falls back within the slot's own band otherwise (#163/#288 — a slot's fixed port
+      # can end up permanently squatted by something unrelated; this makes that
+      # self-healing instead of needing a manual reassignment). Windows stay well inside
+      # the ~100-port gap to the next slot's band, and each engine port is resolved
+      # avoiding the ones already picked for its own siblings so two of A/B/7/legacy can
+      # never collide with each other.
       # CI_PROJECT: distinct per-slot compose project (never the dev "process-inspector")
       # so container names can't clash and teardown only removes THIS job's containers.
       - name: Resolve the slot port namespace
         run: |
           {
-            echo "PI_ENGINE_A_PORT=${PI_ENGINE_A_PORT:-8691}"
-            echo "PI_ENGINE_B_PORT=${PI_ENGINE_B_PORT:-8692}"
-            echo "PI_ENGINE_7_PORT=${PI_ENGINE_7_PORT:-8693}"
-            echo "PI_ENGINE_LEGACY_PORT=${PI_ENGINE_LEGACY_PORT:-8694}"
-            echo "PI_PG_PORT=${PI_PG_PORT:-5435}"
-            echo "INSPECTOR_DB_URL=jdbc:postgresql://localhost:${PI_PG_PORT:-5435}/inspector"
+            a=$(scripts/free-port.sh "${PI_ENGINE_A_PORT:-8691}" 20)
+            b=$(scripts/free-port.sh "${PI_ENGINE_B_PORT:-8692}" 20 "$a")
+            seven=$(scripts/free-port.sh "${PI_ENGINE_7_PORT:-8693}" 20 "$a" "$b")
+            legacy=$(scripts/free-port.sh "${PI_ENGINE_LEGACY_PORT:-8694}" 20 "$a" "$b" "$seven")
+            pg=$(scripts/free-port.sh "${PI_PG_PORT:-5435}" 5)
+            echo "PI_ENGINE_A_PORT=$a"
+            echo "PI_ENGINE_B_PORT=$b"
+            echo "PI_ENGINE_7_PORT=$seven"
+            echo "PI_ENGINE_LEGACY_PORT=$legacy"
+            echo "PI_PG_PORT=$pg"
+            echo "INSPECTOR_DB_URL=jdbc:postgresql://localhost:${pg}/inspector"
             echo "CI_PROJECT=pi-ci-s${PI_CI_SLOT:-1}-${{ matrix.profile }}"
           } >> "$GITHUB_ENV"
       - uses: actions/setup-java@v4

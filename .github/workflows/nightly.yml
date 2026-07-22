@@ -66,13 +66,20 @@ jobs:
       # time (#163 — this job used to hardcode slot-1's literal values unconditionally,
       # regardless of which slot actually ran it). Resolved the same way ci.yml's
       # "integration" job does; slot-1 values are the fallback for a slot-less runner.
+      # scripts/free-port.sh additionally double-checks each port is actually free on THIS
+      # host and falls back within the slot's own band otherwise (#163/#288 — a slot's
+      # fixed port can end up permanently squatted by something unrelated; this makes that
+      # self-healing instead of needing a manual reassignment).
       - name: Resolve the slot port namespace
         run: |
           {
-            echo "PI_ENGINE_A_PORT=${PI_ENGINE_A_PORT:-8691}"
-            echo "PI_ENGINE_B_PORT=${PI_ENGINE_B_PORT:-8692}"
-            echo "PI_PG_PORT=${PI_PG_PORT:-5435}"
-            echo "INSPECTOR_DB_URL=jdbc:postgresql://localhost:${PI_PG_PORT:-5435}/inspector"
+            a=$(scripts/free-port.sh "${PI_ENGINE_A_PORT:-8691}" 20)
+            b=$(scripts/free-port.sh "${PI_ENGINE_B_PORT:-8692}" 20 "$a")
+            pg=$(scripts/free-port.sh "${PI_PG_PORT:-5435}" 5)
+            echo "PI_ENGINE_A_PORT=$a"
+            echo "PI_ENGINE_B_PORT=$b"
+            echo "PI_PG_PORT=$pg"
+            echo "INSPECTOR_DB_URL=jdbc:postgresql://localhost:${pg}/inspector"
           } >> "$GITHUB_ENV"
       - uses: actions/setup-java@v4
         with:
@@ -205,14 +212,22 @@ jobs:
       CI_PROJECT: pi-ci-nightly-perf
     steps:
       - uses: actions/checkout@v4
+      # scripts/free-port.sh double-checks each port is actually free on THIS host and
+      # falls back within this job's own band otherwise (#163/#288 — a fixed port can end
+      # up permanently squatted by something unrelated; this makes that self-healing
+      # instead of needing a manual reassignment).
       - name: Resolve the slot port namespace
         run: |
           {
-            echo "PI_ENGINE_A_PORT=${PI_ENGINE_A_PORT:-8695}"
-            echo "PI_ENGINE_B_PORT=${PI_ENGINE_B_PORT:-8696}"
-            echo "PI_PG_PORT=${PI_PG_PORT:-5436}"
-            echo "PI_BFF_PORT=${PI_BFF_PORT:-8697}"
-            echo "INSPECTOR_DB_URL=jdbc:postgresql://localhost:${PI_PG_PORT:-5436}/inspector"
+            a=$(scripts/free-port.sh "${PI_ENGINE_A_PORT:-8695}" 20)
+            b=$(scripts/free-port.sh "${PI_ENGINE_B_PORT:-8696}" 20 "$a")
+            pg=$(scripts/free-port.sh "${PI_PG_PORT:-5436}" 5)
+            bff=$(scripts/free-port.sh "${PI_BFF_PORT:-8697}" 20)
+            echo "PI_ENGINE_A_PORT=$a"
+            echo "PI_ENGINE_B_PORT=$b"
+            echo "PI_PG_PORT=$pg"
+            echo "PI_BFF_PORT=$bff"
+            echo "INSPECTOR_DB_URL=jdbc:postgresql://localhost:${pg}/inspector"
           } >> "$GITHUB_ENV"
       - uses: actions/setup-java@v4
         with:
