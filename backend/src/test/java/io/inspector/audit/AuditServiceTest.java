@@ -21,6 +21,12 @@ import org.junit.jupiter.api.BeforeEach;
 import org.junit.jupiter.api.Test;
 import org.mockito.ArgumentCaptor;
 import org.springframework.dao.DataAccessResourceFailureException;
+import org.springframework.transaction.PlatformTransactionManager;
+import org.springframework.transaction.TransactionDefinition;
+import org.springframework.transaction.support.AbstractPlatformTransactionManager;
+import org.springframework.transaction.support.DefaultTransactionStatus;
+import org.springframework.transaction.support.TransactionSynchronizationManager;
+import org.springframework.transaction.support.TransactionTemplate;
 
 /**
  * Rung 1 for the audit write path: fail-closed insert (R-AUD-01), the R-SEM-18 close-out
@@ -31,15 +37,55 @@ class AuditServiceTest {
 
     private final AuditEntryRepository repository = mock(AuditEntryRepository.class);
     private final SimpleMeterRegistry metrics = new SimpleMeterRegistry();
+    private final PlatformTransactionManager txManager = noOpTxManager();
     private final AuditService service = new AuditService(
             repository,
             new ObjectMapper(),
             Clock.fixed(Instant.parse("2026-07-06T12:00:00Z"), ZoneOffset.UTC),
-            metrics);
+            metrics,
+            txManager);
 
     @BeforeEach
     void passThroughSave() {
         when(repository.saveAndFlush(any(AuditEntry.class))).thenAnswer(inv -> inv.getArgument(0));
+    }
+
+    /**
+     * Rung-1 stand-in for a real {@code PlatformTransactionManager} (mirrors
+     * {@code IncidentLedgerServiceTest#noOpTx}): physical begin/commit/rollback are no-ops (the
+     * repository itself is mocked — there is no real resource to commit), but it EXTENDS {@link
+     * AbstractPlatformTransactionManager} so Spring's own propagation bookkeeping is real —
+     * critically including {@code doSuspend}/{@code doResume}, which the base class refuses by
+     * default ({@code TransactionSuspensionNotSupportedException}). Overriding them is what lets
+     * the {@code *InsideAnActiveOuterTransaction} tests below genuinely nest a
+     * {@code PROPAGATION_REQUIRES_NEW} call (AuditService's {@code newTransaction}) inside an
+     * already-active outer transaction driven by the SAME manager, and observe the real
+     * suspend/resume of {@link TransactionSynchronizationManager}'s active-transaction state.
+     */
+    private static PlatformTransactionManager noOpTxManager() {
+        return new AbstractPlatformTransactionManager() {
+            @Override
+            protected Object doGetTransaction() {
+                return new Object();
+            }
+
+            @Override
+            protected void doBegin(Object transaction, TransactionDefinition definition) {}
+
+            @Override
+            protected void doCommit(DefaultTransactionStatus status) {}
+
+            @Override
+            protected void doRollback(DefaultTransactionStatus status) {}
+
+            @Override
+            protected Object doSuspend(Object transaction) {
+                return new Object(); // dummy "suspended resources" holder — nothing real to suspend
+            }
+
+            @Override
+            protected void doResume(Object transaction, Object suspendedResources) {}
+        };
     }
 
     @Test
@@ -329,6 +375,90 @@ class AuditServiceTest {
         } finally {
             org.slf4j.MDC.remove(io.inspector.api.RequestIdFilter.MDC_KEY);
         }
+    }
+
+    @Test
+    void beginPendingStillSucceedsOutsideAnyTransactionTheNormalPath() {
+        // The normal path (no Spring transaction manager involved at all — the common case for
+        // every real caller today) must be entirely unaffected by the ReentrantLock swap or the
+        // REQUIRES_NEW wrapping.
+        assertThat(TransactionSynchronizationManager.isActualTransactionActive())
+                .isFalse();
+        when(repository.findTopByOrderBySeqDesc()).thenReturn(Optional.empty());
+
+        AuditEntry entry = service.beginPending(
+                "operator", "engine-a", null, "pi-1", "retry-job", "routine", null, Map.of("jobId", "j1"));
+
+        assertThat(entry.getOutcome()).isEqualTo(AuditOutcome.PENDING);
+        assertThat(entry.getChainHash()).isNotBlank();
+    }
+
+    @Test
+    void recordConfigEventStillSucceedsOutsideAnyTransactionTheNormalPath() {
+        assertThat(TransactionSynchronizationManager.isActualTransactionActive())
+                .isFalse();
+        when(repository.findTopByOrderBySeqDesc()).thenReturn(Optional.empty());
+
+        AuditEntry entry = service.recordConfigEvent("audit-legal-hold-set", "admin", true, Map.of("window", "30d"));
+
+        assertThat(entry.getOutcome()).isEqualTo(AuditOutcome.ok);
+        assertThat(entry.getChainHash()).isNotBlank();
+    }
+
+    @Test
+    void beginPendingCommitsInItsOwnTransactionEvenWhenCalledInsideAnActiveOuterTransaction() {
+        // THE INVARIANT (issue #306, M4-CLOSEOUT.md:46/126): the chain-head-read + insert must
+        // COMMIT while chainLock is held. A bare `saveAndFlush()` relying on SimpleJpaRepository's
+        // own REQUIRED transaction would only guarantee that in the no-ambient-transaction case —
+        // and EngineRegistryStore's CRUD methods (seed/add/edit/probe/enable/disable/remove/purge/
+        // approve) are THEMSELVES @Transactional and call beginPending directly, which is exactly
+        // the shape that would silently defer the commit past chainLock.unlock() and let a second
+        // writer fork the chain. Prove AuditService's own PROPAGATION_REQUIRES_NEW template
+        // defuses this: drive a REAL outer transaction (via the same propagation-aware fake
+        // manager) and call beginPending from inside it.
+        when(repository.findTopByOrderBySeqDesc()).thenReturn(Optional.empty());
+        TransactionTemplate outerTx = new TransactionTemplate(txManager);
+
+        AuditEntry entry = outerTx.execute(status -> {
+            assertThat(TransactionSynchronizationManager.isActualTransactionActive())
+                    .as("the simulated outer/ambient transaction (e.g. EngineRegistryStore.add) is genuinely active")
+                    .isTrue();
+
+            AuditEntry result = service.beginPending(
+                    "operator", "engine-a", null, "pi-1", "retry-job", "reason long enough", null, Map.of());
+
+            // Back inside the outer callback: the outer transaction was correctly SUSPENDED then
+            // RESUMED around beginPending's own REQUIRES_NEW transaction, which already committed
+            // and returned — proof the write ran and committed in its OWN transaction rather than
+            // silently joining (and deferring the commit past chainLock.unlock() inside) this one.
+            assertThat(TransactionSynchronizationManager.isActualTransactionActive())
+                    .as("the outer transaction resumed correctly after the inner write returned")
+                    .isTrue();
+            return result;
+        });
+
+        assertThat(entry.getOutcome()).isEqualTo(AuditOutcome.PENDING);
+        assertThat(entry.getChainHash()).isNotBlank();
+    }
+
+    @Test
+    void recordConfigEventCommitsInItsOwnTransactionEvenWhenCalledInsideAnActiveOuterTransaction() {
+        when(repository.findTopByOrderBySeqDesc()).thenReturn(Optional.empty());
+        TransactionTemplate outerTx = new TransactionTemplate(txManager);
+
+        AuditEntry entry = outerTx.execute(status -> {
+            assertThat(TransactionSynchronizationManager.isActualTransactionActive())
+                    .isTrue();
+            AuditEntry result =
+                    service.recordConfigEvent("config-scope-mapping-reload", "system", true, Map.of("sha256", "abc"));
+            assertThat(TransactionSynchronizationManager.isActualTransactionActive())
+                    .as("the outer transaction resumed correctly after the inner write returned")
+                    .isTrue();
+            return result;
+        });
+
+        assertThat(entry.getOutcome()).isEqualTo(AuditOutcome.ok);
+        assertThat(entry.getChainHash()).isNotBlank();
     }
 
     @Test
