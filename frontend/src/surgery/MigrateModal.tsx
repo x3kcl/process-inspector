@@ -12,7 +12,8 @@ import { useDefinitionVersions, useMigrateExecute, useMigratePreview } from '../
 import type { MigrationPreview, MigrationRequest } from '../api/migrate'
 import { VERBS } from '../actions/catalog'
 import { businessKeyOrInstanceToken, useProdGuard } from '../actions/guard'
-import { problemBanner } from '../actions/problem'
+import { isReauthChallenge, problemBanner } from '../actions/problem'
+import { ReauthNotice, useReauthStale } from '../actions/ReauthNotice'
 import { GuardFields, tokenLabel } from '../components/GuardFields'
 import { ModalShell } from '../components/ModalShell'
 import { useToast } from '../components/toast'
@@ -51,6 +52,12 @@ export function MigrateModal({ engineId, instanceId, vitals, engine, onClose }: 
     environment,
     expectedToken,
   })
+  // Dangerous-set freshness (IDP-SECURITY.md §5, issue #295): migrate is tier-3 like the
+  // DestructiveModal verbs, so it gets the same pre-emptive /api/me hint check (called
+  // unconditionally — hooks rule — even though it only gates the execute step below; preview
+  // is deliberately never gated, matching the BFF's reauth.enforce() placement in
+  // MigrationService.execute()).
+  const reauthStale = useReauthStale()
 
   // Default the target to the latest version that is NOT the instance's current one.
   // Memoized so the default-target effect doesn't re-run on every render.
@@ -100,13 +107,18 @@ export function MigrateModal({ engineId, instanceId, vitals, engine, onClose }: 
     const problem = executeM.error?.problem
     // UNKNOWN outcome = the migrate may have reached the engine — never a resubmit.
     const dispatchedMaybe = problem !== undefined && problem.outcome === 'unknown'
+    // Reactive half of the freshness check: the BFF's reauth.enforce() 401'd this exact
+    // execute submit (the pre-emptive hint above may have missed a session that went stale
+    // mid-modal). Either signal disables the confirm button and swaps in ReauthNotice.
+    const reauthNeeded = reauthStale || (problem !== undefined && isReauthChallenge(problem))
     const canExecute =
       preview.executable === true &&
       !dirty &&
       reasonOk &&
       tokenOk &&
       !executeM.isPending &&
-      !dispatchedMaybe
+      !dispatchedMaybe &&
+      !reauthNeeded
 
     const execute = () => {
       const request: MigrationRequest = {
@@ -164,13 +176,15 @@ export function MigrateModal({ engineId, instanceId, vitals, engine, onClose }: 
                 className="danger"
                 disabled={!canExecute}
                 title={
-                  !reasonOk
-                    ? 'a reason of at least 10 characters is required'
-                    : !tokenOk
-                      ? `type the ${tokenName} exactly to enable`
-                      : dispatchedMaybe
-                        ? 'outcome unknown — re-check the instance instead of resubmitting'
-                        : undefined
+                  reauthNeeded
+                    ? 're-authenticate to enable — your sign-in is too old for this action'
+                    : !reasonOk
+                      ? 'a reason of at least 10 characters is required'
+                      : !tokenOk
+                        ? `type the ${tokenName} exactly to enable`
+                        : dispatchedMaybe
+                          ? 'outcome unknown — re-check the instance instead of resubmitting'
+                          : undefined
                 }
                 onClick={execute}
               >
@@ -283,10 +297,14 @@ export function MigrateModal({ engineId, instanceId, vitals, engine, onClose }: 
           tokenFieldLabel={tokenLabel(tokenName, expectedToken, 'migrate')}
         />
 
-        {problem !== undefined && (
-          <div className="error-banner" role="alert">
-            {problemBanner(problem)}
-          </div>
+        {reauthNeeded ? (
+          <ReauthNotice />
+        ) : (
+          problem !== undefined && (
+            <div className="error-banner" role="alert">
+              {problemBanner(problem)}
+            </div>
+          )
         )}
       </ModalShell>
     )

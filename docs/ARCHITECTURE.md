@@ -508,10 +508,14 @@ nobody may "simplify" by exposing an engine directly.
   `401 reauth-required` challenge on every dangerous entry — tier-3 verbs (in
   `CorrectiveActionService.execute`, before reason/typed-token/audit), **bulk submit** (once at the
   `BulkJobService#submit` convergence all three doors funnel through — never per persisted item, a
-  bulk job outlives its session, R-SEM-10), and **mapping writes incl. the four-eyes approve**
+  bulk job outlives its session, R-SEM-10), **mapping writes incl. the four-eyes approve**
   (`AdminAccessController`, before the file-pin 409 — the approver's independence test runs on fresh
-  membership). The SPA re-auths at verb intent and replays; non-OIDC sessions (dev Basic re-auths
-  every XHR; break-glass can't bounce a down IdP) are exempt.
+  membership), and **instance migration execute** (`MigrationService.execute`, after `plan()`
+  resolves engine/role/writability but before the compare-and-set/reason/typed-token rails — issue
+  #295 found this entry missing entirely, since `MIGRATE` has no `ActionVerb` for the tier-3 branch
+  to key on; `preview()` stays ungated, being read-only). The SPA re-auths at verb intent and
+  replays; non-OIDC sessions (dev Basic re-auths every XHR; break-glass can't bounce a down IdP) are
+  exempt.
 - **Attribution:** engines see the shared service account; Flowable's `ACT_HI_*` tables
   therefore attribute mutations to it. The BFF audit log is the sole authoritative
   human-attribution record. Engines with `forward-user-header: true` additionally receive
