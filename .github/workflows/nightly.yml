@@ -1,9 +1,10 @@
 # Nightly full integration suite (Q2 — IMPROVEMENT-PLAN-2026-07 P0 #5). The PR merge gate
 # (ci.yml) runs 16 read-oriented engine ITs; the zero-flake doctrine keeps the mutating,
 # audit-integrity, DB-CRUD and Keycloak ITs off the per-PR path. This workflow runs those
-# 25 local-only ITs once a night (and on demand) so a regression in a corrective-action rail,
-# the fail-closed audit chain, four-eyes governance, registry reload or OIDC resolution is
-# caught within a day instead of at the next manual local run.
+# 27 local-only ITs once a night (and on demand) so a regression in a corrective-action rail,
+# the fail-closed audit chain, four-eyes governance, registry reload, OIDC resolution or the
+# incident-ledger substrate (#294) is caught within a day instead of at the next manual local
+# run.
 #
 # NOT merge-blocking: a red nightly is triaged in the morning routine, not a push gate.
 # Runs on the same single self-hosted runner (docker/ci-runner) — serialized after any PR run.
@@ -49,7 +50,7 @@ jobs:
         working-directory: backend
         run: >-
           mvn -B verify -Dskip.surefire.tests=true
-          -Dit.test=AuditRoleGrantsIT,AuditPartitionCarveIT,AuditPartitionMaintainerIT,AuditRetentionPurgeIT,AuditRetentionPurgerIT,SharedViewIT,SharedViewFailClosedIT,SharedViewGovernanceIT,ViewStoreIT,AccessMappingAdminDbIT,MappingStoreDbIT,EngineRegistryStoreIT,EngineRegistryReloadIT,OidcKeycloakIT
+          -Dit.test=AuditRoleGrantsIT,AuditPartitionCarveIT,AuditPartitionMaintainerIT,AuditRetentionPurgeIT,AuditRetentionPurgerIT,SharedViewIT,SharedViewFailClosedIT,SharedViewGovernanceIT,ViewStoreIT,AccessMappingAdminDbIT,MappingStoreDbIT,EngineRegistryStoreIT,EngineRegistryReloadIT,OidcKeycloakIT,IncidentLedgerIT
 
   # Engine-dependent ITs: the mutating corrective-action / flow-surgery / migration / bulk rails
   # and the seed-driven detail/timeline/snapshot ITs. Same compose harness the ci.yml matrix
@@ -107,7 +108,7 @@ jobs:
         working-directory: backend
         run: >-
           mvn -B verify -Dskip.surefire.tests=true
-          -Dit.test=CorrectiveActionIT,CmmnCorrectiveActionIT,FailClosedAuditIT,FlowSurgeryIT,BulkFilterIT,BulkErrorClassIT,SnapshotSamplerIT,DefinitionVersionsIT,MigrationIT,DetailResolveIT,InstanceTimelineIT
+          -Dit.test=CorrectiveActionIT,CmmnCorrectiveActionIT,FailClosedAuditIT,FlowSurgeryIT,BulkFilterIT,BulkErrorClassIT,SnapshotSamplerIT,DefinitionVersionsIT,MigrationIT,DetailResolveIT,InstanceTimelineIT,IncidentLedgerArcIT
       - name: Dump harness logs
         if: failure()
         run: docker compose -p "$CI_PROJECT" -f docker/docker-compose.dev.yml logs --no-color --timestamps
