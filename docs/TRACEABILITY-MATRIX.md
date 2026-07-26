@@ -80,7 +80,7 @@ exhaustive scenario→class index.
 |---|---|---|---|---|
 | R-AUD-01 fail-closed audit | TS-AUD-01 | `AuditServiceTest`, `FailClosedAuditIT`, `CorrectiveActionServiceTest` | L1·L4 | ✅ |
 | R-AUD-02 normative schema | TS-AUD-02 | `AuditServiceTest`, `CorrectiveActionIT` | L1·L4 | ✅ |
-| R-AUD-03 redaction / role-gate / hash chain | TS-AUD-03/04/05 | `AuditServiceTest` (redact, hash-chain, truncation) | L1 | 🟡 (DB REVOKE + tamper read-path = §C-5) |
+| R-AUD-03 redaction / role-gate / hash chain | TS-AUD-03/04/05 | `AuditServiceTest` (redact, hash-chain, truncation), `AuditChainVerifierTest` + `AuditIntegrityIT` (chain-walk verifier — see closed-this-pass entry below) | L1·L4 | 🟡 (DB REVOKE + reconciler-sweep = §C-5; tamper read-path CLOSED, see §C below) |
 | R-AUD-05 shift report | TS-AUD-07 | FE `shiftReport.test` (UNKNOWNs-first, UTC ISO), `AuditLogPage.test` (My-shift preset + copy) | UNIT-FE | 🟡 (rendered E2E leg = usability nightly re-run) |
 | R-AUD-06 copy-for-ticket | TS-DET-11 | FE `ticket.test` | UNIT-FE | 🟡 (E2E leg pending — §C-9) |
 | R-AUD-08 CSV export + formula-escape | TS-AUD-08 | `CsvTest` (escape rules), `AuditCsvExportSpringTest` (streaming endpoint, hostile cells, filter parity, RBAC) | L1·L3 | ✅ |
@@ -94,6 +94,7 @@ exhaustive scenario→class index.
 | R-NFR-04 alarm thresholds | TS-TRI-02 | `EngineCapabilitiesTest`, health ITs | L1·L4 | 🟡 (threshold arithmetic L1 slice thin — §C-11) |
 | R-NFR-07 write-ms timeout | TS-BULK-02 | `InspectorPropertiesValidationTest`, `CorrectiveActionServiceTest` (timeout→UNKNOWN) | L1 | 🟡 (slow-engine L2 exercise = §C-6) |
 | R-NFR-08 deep-paging envelope | inbound-offset-cap-check (L1/L2), `DEEP_PAGE` bulkhead lane wiring (L3), deep-page cost harness (§C-11) | `PagingCursorTest`, `KwayPagingIT`, `Kway7IT` | L1·L2·L4 | 🟡 envelope built (`docs/KWAY-PAGING.md`, S0-S5 landed); cost-curve perf harness = §C-11 |
+| R-TEST-05 performance scenarios P1–P4 (TEST-STRATEGY §7) | P2 (50k-row DLQ vs `dlq-scan-cap`), P4 (100 landing loads/5s) | `DlqScanCapVolumeIT` (nightly job `dlq-scan-cap-p2`, issue #299); `scripts/perf-scenario-p1.js` (nightly job `perf-p1`, §C-10) | L2·perf | 🟡 P2/P4 built; P1 (10-stub-engine partial-failure fan-out) and P3 (SSE/bulk soak) remain open — §C-8 (P3), §C-19 (P1, issue #298) |
 
 ### OPS / L3 / GOV / UXQ / BAU (representative)
 | Req | Scenario(s) | Suite(s) | Rung | Cov |
@@ -116,7 +117,7 @@ exhaustive scenario→class index.
 |---|---|---|
 | R-TEST-01 risk floors | R1 `StatusJoinTest`; R2 `RbacGuardMatrixTest`+`ActionRbacGuardSpringTest`; R3 `BulkJobServiceTest`; R4 Playwright smokes | 🟡 (R4 canonical-arc E2E = §C-16) |
 | R-TEST-07 testability hooks | `NoSleepInTestsArchTest` (ArchUnit sleep ban), `Clock`-driven `TriageServiceTest`, cycle-guard `StatusJoinTest`/`InstanceTimelineServiceTest` | ✅ |
-| R-TEST-10 audit-integrity suite | `FailClosedAuditIT` (fail-closed), `AuditServiceTest` (dual-write translate) | 🟡 (pool-exhaustion + reconciler-sweep IT = §C-5) |
+| R-TEST-10 audit-integrity suite | `FailClosedAuditIT` (fail-closed), `AuditServiceTest` (dual-write translate), `AuditChainVerifierTest`+`AuditIntegrityIT` (chain-walk verifier) | 🟡 (pool-exhaustion + reconciler-sweep IT = §C-5; chain-walk verifier CLOSED, see §C below) |
 
 ---
 
@@ -168,6 +169,28 @@ recommended suite shape, and a priority (P1 release-gating risk floor · P2 SHOU
 P3 later). **Closed this pass** items were gaps until this change and now have suites.
 
 **Closed this pass**
+- ~~C-20 Hash-chain tamper evidence had no verifier~~ (issue #304 — distinct from §C-5, which
+  covers Hikari pool exhaustion, the stale-PENDING reconciler sweep, and the DB REVOKE proof,
+  NOT a chain walk) → **`AuditChainVerifierTest`** (L1, mocked repository: intact chain,
+  a tampered row detected at its exact seq without cascading to later rows, an unexplained
+  seq gap flagged, a retention-purge checkpoint boundary correctly NOT flagged, the row cap
+  bounding the walk) + **`AuditIntegrityIT`** (L4, real Postgres 16: the same four behaviors
+  against a real `AuditService`-written chain, a real superuser-bypasses-the-append-only-
+  trigger tamper, and a real `AuditRetentionPurger` partition drop) + `GET
+  /api/admin/audit/integrity` (ADMIN-gated, itself an audited read). Before this pass,
+  `chainHash()` was written on every row but never read back and recomputed anywhere in the
+  codebase — a hash chain nobody walks detects nothing. Building the verifier's own IT
+  surfaced two PRE-EXISTING write-time defects that made a from-storage recompute
+  impossible even for an untampered row — both fixed in the same change (`AuditService`):
+  (1) `payload` is a jsonb column, which reorders object keys by byte-length-then-lexicographic
+  and drops input whitespace, so a hash computed over the pre-storage string could never be
+  reproduced from a later read (`canonicalizePayload` now pre-sorts to jsonb's own order before
+  hashing); (2) `Clock.systemUTC()` can return sub-microsecond digits that `timestamptz`
+  silently truncates on INSERT, so the in-memory `ts` used for hashing could differ from what
+  Postgres would ever return again (`AuditService.now()` truncates to microseconds before
+  building the entry). Residual, tracked separately (issue #311, PO-gated): the chain is
+  unkeyed SHA-256 — it detects tampering by anyone who cannot recompute the forward hashes,
+  not an actor with full DB write access; HMAC keying would close that gap.
 - ~~C-0a TS-RBAC-01 generated verb×role matrix~~ → **`RbacGuardMatrixTest`** (L1, 52 matrix
   rows + completeness/structural guards). The R2 floor previously rested on hand-picked
   `ActionRbacGuardSpringTest` spot checks with no dedicated `RbacAuthorizer` test.
@@ -202,10 +225,12 @@ P3 later). **Closed this pass** items were gaps until this change and now have s
 | C-16 | **Canonical incident-arc E2E (R4 floor)** | R-TEST-01 R4, TS-E2E-01 | Current e2e specs are isolated per-surface smokes; no single hermetic journey covers triage→search→detail→fix→verify→audit→copy-ticket. | One `canonical-arc.spec.ts`: landing group → drill to filtered grid → open FAILED → why-stuck strip → edit `divisor` 0→1 → retry DLQ → status COMPLETED → audit tab both actions → copy-for-ticket; axe throughout (C-13). Keep hermetic via `page.route`. | **P1** |
 | C-17 | Six join-bugs labeled as red-first regressions | R-TEST-02, TS-STAT-15 | `StatusJoinTest` covers the join semantics but the six DESIGN-REVIEW bugs aren't individually named/annotated as the M2a regression set. | Annotate/rename the six covering cases with the DESIGN-REVIEW bug IDs so the M2a gate is legible. | P3 |
 | C-18 | Interactive Search-panel E2E | TS-SRCH-06/07 | `saved-views.spec` replays URL state; no spec builds a search *through the form* (type criteria, chips, run, copy-URL round-trip, copy-as-cURL). | Playwright: construct a filter in the panel, assert compiled-criteria echo, copy URL → fresh session reproduces rows, copy-as-cURL body matches. | P2 |
+| C-19 | R-TEST-05 P1 fan-out under partial failure (10 stub engines, 3 slow, 2 timing out) | R-TEST-05, TEST-STRATEGY §7 | Nothing implements it (the nightly `perf-p1` job is P4, a latency SLA against 5 healthy engines — a naming collision with TEST-STRATEGY's P1 ordinal, not the same scenario). No automated proof that the Resilience4j breaker/bulkhead deliver do-no-harm when several engines degrade at once. | 10 in-process HTTP stub engines (WireMock, `ProcessApiClientTest` precedent), 3 slow/2 timing out, registered via the config-pinned registry test seam; assert healthy-engine P95 holds, breaker opens/closes, no permit starvation, honest truncated/partial envelopes; own nightly job on a distinct name (never `perf-scenario-p1.js`). | **P1** (issue #298) |
 
-**Priority summary:** P1 (release-gating) open gaps: **C-5** (audit-integrity pool/sweep/REVOKE)
-and **C-16** (canonical-arc E2E). Everything else is P2/P3 and maps to the SHOULD-v1.x / perf /
-process lanes already scheduled in IMPLEMENTATION-PLAN.
+**Priority summary:** P1 (release-gating) open gaps: **C-5** (audit-integrity pool/sweep/REVOKE),
+**C-16** (canonical-arc E2E), and **C-19** (R-TEST-05 P1 fan-out under partial failure, issue
+#298). Everything else is P2/P3 and maps to the SHOULD-v1.x / perf / process lanes already
+scheduled in IMPLEMENTATION-PLAN.
 
 ---
 

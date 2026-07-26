@@ -172,9 +172,22 @@ annotated tag, and *calls* `release.yml` as a reusable workflow — required bec
 ## 6. The audit golden master, operationally (R-AUD-01/02/03)
 - **Fail-closed**: tier ≥1 mutations are not issued if the audit INSERT fails; the error
   names Postgres.
-- DB role: INSERT/SELECT only (REVOKE UPDATE/DELETE) + guard trigger; per-row hash chain for
-  tamper evidence; monthly range partitions; retention default 400 days with an audited
-  purge job; legal-hold procedure (suspend purge per engine/tenant/window).
+- DB role: INSERT/SELECT only (REVOKE UPDATE/DELETE) + guard trigger; per-row hash chain,
+  **walked and recomputed by a verifier** (`GET /api/admin/audit/integrity`, ADMIN-only,
+  itself an audited read — `AuditChainVerifier`, issue #304): it recomputes each row's hash
+  in `seq` order (a bounded batch/keyset walk, never a full in-memory load) and reports the
+  first mismatch/gap plus a summary (rows checked, partitions spanned), recognizing a
+  retention-purge partition boundary via `AuditRetentionPurger`'s checkpoint config event
+  rather than flagging it as a false positive. **What the chain actually proves:** unkeyed
+  SHA-256 detects a row altered by anyone who cannot recompute the forward hashes — in
+  practice, anyone without direct superuser write access to this Postgres — but NOT an actor
+  with that level of access, who can disable the append-only guard trigger, alter a row, and
+  re-derive every hash after it so the walk shows nothing wrong. The append-only DB guard +
+  REVOKE + per-row chaining is the delivered mechanism; HMAC keying (closing the
+  full-DB-write-access gap) is tracked separately (issue #311, PO-gated). Run the verifier
+  periodically and after any Postgres restore (§5, RUNBOOK §5); monthly range partitions;
+  retention default 400 days with an audited purge job; legal-hold procedure (suspend purge
+  per engine/tenant/window).
   **Monthly partitioning is live (S5a):** `V10` carved the DEFAULT partition into
   `audit_entry_YYYY_MM` children (append-only never relaxed — the carve moves rows by
   DETACH/CREATE/INSERT/TRUNCATE/ATTACH with `seq`/`chain_hash` verbatim), and
@@ -201,7 +214,14 @@ annotated tag, and *calls* `release.yml` as a reusable workflow — required bec
   explicitly sized (default 20) and alerted on exhaustion.
 
 ## 7. Threat model (R-OPS-07/08, ARCH §8)
-Compromise of the BFF = admin on every registered engine. Mitigations: egress allowlist
+Compromise of the BFF = admin on every registered engine. **Where the audit chain's tamper
+evidence actually sits in this model:** a compromised BFF process holds only the
+`inspector_app` DB role, which the append-only guard trigger + REVOKE UPDATE/DELETE
+(OPERATIONS §6) already block from rewriting or deleting audit history — that threat IS
+covered. The unkeyed hash chain's own honest limit is a DIFFERENT, stronger actor: one with
+direct superuser write access to the audit Postgres (able to disable the guard trigger
+itself), who could alter a row and recompute every hash after it undetected — HMAC keying
+would close that gap (issue #311, PO-gated, not yet built). Mitigations: egress allowlist
 (engines + Postgres only); actuator `env`/`configprops`/`heapdump` disabled or sanitized;
 **one unique credential per engine** — never shared; secrets as 0400 mounted files where
 possible (`password-file` refs re-read per attempt → rotation without restart; a 401 surfaces

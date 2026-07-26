@@ -17,9 +17,12 @@ export type IncidentResolution = components['schemas']['IncidentResolution']
 export type IncidentSummary = components['schemas']['IncidentSummary']
 
 /**
- * The ledger list — unpaginated (bounded by distinct failure classes), scope-projected
- * server-side. Polls gently like Stage 0 (60s); the "Refresh" affordance the triage page has
- * bypasses ITS 20s cache, but the ledger carries no such cache, so this list needs none.
+ * The ledger list — unpaginated (bounded by distinct failure classes, and since issue #308
+ * ALSO hard-capped server-side: `data.truncated` is honest whenever that cap dropped the
+ * oldest rows), scope-projected server-side. Polls gently like Stage 0 (60s); the "Refresh"
+ * affordance the triage page has bypasses ITS 20s cache, but the ledger carries no such cache,
+ * so this list needs none. Deliberately no default `windowHours` here — an absent window still
+ * means "the whole ledger up to the cap" (INCIDENT-LEDGER §6), never a silently narrowed one.
  */
 export function useIncidents(state?: string, windowHours?: number) {
   return useQuery({

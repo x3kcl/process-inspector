@@ -1,13 +1,13 @@
 package io.inspector.api;
 
 import io.inspector.dto.IncidentDetail;
+import io.inspector.dto.IncidentListResponse;
 import io.inspector.dto.IncidentResolution;
 import io.inspector.dto.IncidentSummary;
 import io.inspector.dto.ReopenIncidentRequest;
 import io.inspector.dto.ResolveIncidentRequest;
 import io.inspector.incident.IncidentLifecycleService;
 import io.inspector.incident.IncidentQueryService;
-import java.util.List;
 import org.springframework.security.access.prepost.PreAuthorize;
 import org.springframework.security.core.Authentication;
 import org.springframework.web.bind.annotation.GetMapping;
@@ -27,7 +27,9 @@ import org.springframework.web.bind.annotation.RestController;
  * its sections (REGRESSED/OPEN/QUIET/RESOLVED + generation split) from the full list.
  * {@code state} filters case-insensitively (unknown ⇒ 400 ProblemDetail); {@code window}
  * (hours, clamped to 30 days like {@code /api/triage/trends}) keeps only incidents last seen
- * inside the window.
+ * inside the window; an absent window still means the WHOLE ledger, but never truly unbounded
+ * (issue #308) — the response is hard-capped server-side ({@code inspector.incidents.list-cap})
+ * and carries an honest {@code truncated} flag when the cap dropped the oldest rows.
  *
  * <p>GET /api/incidents/{id} — the list item + full episode history + windowed occurrence
  * series + the live Stage-0 join ({@code window} hours, same clamp, default 24). Unknown id ⇒
@@ -62,7 +64,7 @@ public class IncidentController {
 
     @GetMapping
     @PreAuthorize("@rbac.atLeast(authentication, 'VIEWER')")
-    public List<IncidentSummary> list(
+    public IncidentListResponse list(
             @RequestParam(required = false) String state,
             @RequestParam(required = false) Integer window,
             Authentication auth) {

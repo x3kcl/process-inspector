@@ -116,6 +116,7 @@ export type CmmnStatus = (typeof CMMN_STATUSES)[number]
 // display state, not a wire value — see incidents/sections.ts), but every reader must
 // tolerate an unknown value (fail toward visible, never silently dropped).
 export type IncidentSummary = components['schemas']['IncidentSummary']
+export type IncidentListResponse = components['schemas']['IncidentListResponse']
 export type IncidentDetail = components['schemas']['IncidentDetail']
 export type IncidentResolution = components['schemas']['IncidentResolution']
 export type IncidentEpisode = components['schemas']['Episode']

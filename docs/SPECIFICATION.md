@@ -1070,8 +1070,14 @@ tree rows stay distinguishable (R-UXQ-12 half, usability W2 #7).
 - **Data protection** (R-AUD-03): variable payloads in audit rows and notes are potentially
   personal data. Retention default 400 days with an audited purge; per-engine `audit-payload:
   full | redacted | metadata-only`; secret-name denylist → `«redacted»`; payload bodies
-  role-gated OPERATOR+; DB role INSERT/SELECT-only + hash-chain tamper evidence; erasure =
-  skeleton-preserving redaction. Details: OPERATIONS.md §6. Never logs secrets.
+  role-gated OPERATOR+; DB role INSERT/SELECT-only + per-row hash chaining, walked and
+  recomputed by an ADMIN-only, audited verifier (`GET /api/admin/audit/integrity`, issue
+  #304) — **stated precisely**: this is an unkeyed SHA-256 chain, so it detects tampering by
+  anyone who cannot recompute the forward hashes (i.e. anyone without direct superuser write
+  access to the audit Postgres), not an actor with full DB write access, who could tamper a row
+  and re-derive every hash after it undetected. HMAC keying would close that gap and is
+  tracked separately (issue #311, PO-gated); erasure = skeleton-preserving redaction. Details:
+  OPERATIONS.md §6. Never logs secrets.
 - Surfaced four ways: **per-instance tab** (what did the last shift try), **global
   operations log** page (filterable by actor/action/engine/ticketId/time, with a streaming
   **CSV export** over the same filters — R-AUD-08; formula-escaped per R-OPS-08, skeleton

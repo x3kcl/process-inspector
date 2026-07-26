@@ -3,6 +3,7 @@ package io.inspector.incident;
 import java.time.Instant;
 import java.util.List;
 import java.util.Optional;
+import org.springframework.data.domain.Pageable;
 import org.springframework.data.jpa.repository.JpaRepository;
 import org.springframework.data.jpa.repository.Modifying;
 import org.springframework.data.jpa.repository.Query;
@@ -22,17 +23,23 @@ public interface IncidentRepository extends JpaRepository<Incident, Long> {
 
     Optional<Incident> findBySignatureHashAndAlgoVersion(String signatureHash, int algoVersion);
 
-    /** The S2 list read, most-recently-seen first (bounded, unpaginated v1 — INCIDENT-LEDGER §6). */
-    List<Incident> findAllByOrderByLastSeenDesc();
+    /**
+     * The S2 list read, most-recently-seen first (bounded, unpaginated-v1 — INCIDENT-LEDGER §6).
+     * {@code pageable} is ALWAYS supplied by the service (issue #308: a hard cap+1 page, never an
+     * unbounded fetch) — a plain {@code Pageable} keeps the "no pagination v1" wire contract (no
+     * page-number param on the door) while making an unbounded query structurally impossible.
+     */
+    List<Incident> findAllByOrderByLastSeenDesc(Pageable pageable);
 
-    /** The S2 list read with the {@code state=} filter (idx_incident_state). */
-    List<Incident> findByStateOrderByLastSeenDesc(IncidentState state);
+    /** The S2 list read with the {@code state=} filter (idx_incident_state), capped as above. */
+    List<Incident> findByStateOrderByLastSeenDesc(IncidentState state, Pageable pageable);
 
-    /** The S2 list read with the {@code window=} recency filter pushed down (never in-memory). */
-    List<Incident> findAllByLastSeenGreaterThanEqualOrderByLastSeenDesc(Instant since);
+    /** The S2 list read with the {@code window=} recency filter pushed down, capped as above. */
+    List<Incident> findAllByLastSeenGreaterThanEqualOrderByLastSeenDesc(Instant since, Pageable pageable);
 
-    /** The S2 list read with both {@code state=} and {@code window=} pushed down. */
-    List<Incident> findByStateAndLastSeenGreaterThanEqualOrderByLastSeenDesc(IncidentState state, Instant since);
+    /** The S2 list read with both {@code state=} and {@code window=} pushed down, capped as above. */
+    List<Incident> findByStateAndLastSeenGreaterThanEqualOrderByLastSeenDesc(
+            IncidentState state, Instant since, Pageable pageable);
 
     /** The zero-state sweep's candidates: RESOLVED rows whose regression gate is still closed. */
     List<Incident> findByStateAndSeenZeroSinceResolveFalse(IncidentState state);

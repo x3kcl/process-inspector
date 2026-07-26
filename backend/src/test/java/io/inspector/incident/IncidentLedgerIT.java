@@ -1,6 +1,7 @@
 package io.inspector.incident;
 
 import static org.assertj.core.api.Assertions.assertThat;
+import static org.assertj.core.api.Assertions.assertThatCode;
 
 import io.inspector.dto.ErrorGroup;
 import io.inspector.snapshot.AggregationSample;
@@ -289,6 +290,132 @@ class IncidentLedgerIT {
                 Integer.class,
                 "%" + hash + "%");
         assertThat(regressionAudit).isEqualTo(1);
+    }
+
+    /**
+     * Issue #307 true-up: proves the {@code regress()} audit-failure compensation
+     * (INCIDENT-LEDGER §5) is REACHABLE and CORRECT against a REAL Postgres/Hibernate stack —
+     * not the dead code the pre-#316 shared-transaction shape produced (see
+     * {@link IncidentLedgerService}'s class javadoc for the derivation). {@code
+     * IncidentLedgerServiceTest}'s mocked-repository tests can prove {@code regress()} CALLS the
+     * compensation, but the poison-propagation mechanism the old bug relied on runs through a
+     * REAL shared Hibernate session/JDBC connection — no hand-rolled {@code
+     * PlatformTransactionManager} fake can honestly gate that either way, so this IT injects a
+     * genuine audit-insert failure (a scoped trigger, narrowly targeted at this test's own
+     * signature hash so it never touches any other test's writes) and asserts against real
+     * committed rows: the state claim and the unaudited episode are undone, the triggering
+     * totals — genuinely observed — survive as plain observation, and no audit row for the
+     * failed regression exists. A final cycle proves the ledger is left in a clean, fully
+     * recoverable state (no residual poison from the failed attempt).
+     */
+    @Test
+    void auditInsertFailureCompensatesTheRegressionAgainstRealPostgres() {
+        String hash = "it-" + UUID.randomUUID();
+        Instant t0 = Instant.parse("2026-07-26T09:00:00Z");
+
+        // 1. first sighting → OPEN
+        ledger.ingest(sample(t0, group(hash, 6, 6, 0)), t0);
+        Incident row = incidents.findBySignatureHashAndAlgoVersion(hash, 1).orElseThrow();
+
+        // 2. a human resolves (mirrors the other mid-cycle-resolve tests' simulated verb effect)
+        jdbc.update(
+                "UPDATE incident_episode SET ended_at = now(), resolved_by = 'it-operator',"
+                        + " resolve_reason = 'fixed by config rollout' WHERE incident_id = ? AND ended_at IS NULL",
+                row.getId());
+        jdbc.update(
+                "UPDATE incident SET state = 'RESOLVED', seen_zero_since_resolve = false, version = version + 1"
+                        + " WHERE id = ?",
+                row.getId());
+
+        // 3. a genuinely complete cycle observes the class absent → the zero-state gate arms
+        Instant t1 = t0.plusSeconds(60);
+        ledger.ingest(sample(t1), t1);
+        assertThat(incidents
+                        .findBySignatureHashAndAlgoVersion(hash, 1)
+                        .orElseThrow()
+                        .isSeenZeroSinceResolve())
+                .isTrue();
+
+        // 4. inject a deterministic audit-insert failure scoped to THIS incident's regression row
+        installAuditFailureTrigger(hash);
+        try {
+            // 5. the class returns → the gate is open → regress() attempts the transition, the
+            //    audit write fails, the compensation runs — the cycle never throws
+            Instant t2 = t0.plusSeconds(120);
+            assertThatCode(() -> ledger.ingest(sample(t2, group(hash, 3, 3, 0)), t2))
+                    .doesNotThrowAnyException();
+
+            Incident afterFailedRegression =
+                    incidents.findBySignatureHashAndAlgoVersion(hash, 1).orElseThrow();
+            assertThat(afterFailedRegression.getState())
+                    .as("the REGRESSED transition is undone")
+                    .isEqualTo(IncidentState.RESOLVED);
+            assertThat(afterFailedRegression.getRegressionCount()).isZero();
+            assertThat(afterFailedRegression.getLastRegressedAt()).isNull();
+            assertThat(afterFailedRegression.isSeenZeroSinceResolve())
+                    .as("the gate re-arms so a later successful cycle can still regress it")
+                    .isTrue();
+            assertThat(afterFailedRegression.getLastTotal())
+                    .as("the triggering total is a plain observation, not part of the reverted transition")
+                    .isEqualTo(3);
+
+            List<IncidentEpisode> eps = episodes.findByIncidentIdOrderByStartedAtDesc(afterFailedRegression.getId());
+            assertThat(eps)
+                    .as("the REGRESSED episode the failed attempt opened was deleted by the compensation")
+                    .hasSize(1);
+            assertThat(eps.get(0).getEndedAt()).isNotNull();
+
+            Integer auditRows = jdbc.queryForObject(
+                    "SELECT count(*) FROM audit_entry WHERE action = 'incident-regressed' AND payload::text LIKE ?",
+                    Integer.class,
+                    "%" + hash + "%");
+            assertThat(auditRows).as("the failed insert never landed a row").isZero();
+        } finally {
+            uninstallAuditFailureTrigger();
+        }
+
+        // 6. no residual poison: the SAME gate-armed incident regresses cleanly once the audit
+        //    store is healthy again
+        Instant t3 = t0.plusSeconds(180);
+        ledger.ingest(sample(t3, group(hash, 4, 4, 0)), t3);
+        Incident regressed =
+                incidents.findBySignatureHashAndAlgoVersion(hash, 1).orElseThrow();
+        assertThat(regressed.getState()).isEqualTo(IncidentState.REGRESSED);
+        assertThat(regressed.getRegressionCount()).isEqualTo(1);
+        Integer auditRows = jdbc.queryForObject(
+                "SELECT count(*) FROM audit_entry WHERE action = 'incident-regressed' AND payload::text LIKE ?",
+                Integer.class,
+                "%" + hash + "%");
+        assertThat(auditRows).isEqualTo(1);
+    }
+
+    /**
+     * A scoped {@code BEFORE INSERT} trigger on {@code audit_entry} (the same partitioned parent
+     * {@code audit_entry_append_only} already triggers on in V1 — row-level triggers on a
+     * partitioned table clone to every partition) that raises for exactly one incident's
+     * regression audit row, so the injected failure can never leak into any other test's writes.
+     */
+    private void installAuditFailureTrigger(String hash) {
+        jdbc.execute("""
+                CREATE OR REPLACE FUNCTION test_fail_audit_insert_307() RETURNS trigger AS $$
+                BEGIN
+                    IF NEW.action = 'incident-regressed' AND NEW.payload->>'signatureHash' = '%s' THEN
+                        RAISE EXCEPTION 'issue #307 IT: synthetic audit-insert failure';
+                    END IF;
+                    RETURN NEW;
+                END;
+                $$ LANGUAGE plpgsql
+                """.formatted(hash));
+        jdbc.execute("""
+                CREATE TRIGGER test_fail_audit_insert_307_trigger
+                    BEFORE INSERT ON audit_entry
+                    FOR EACH ROW EXECUTE FUNCTION test_fail_audit_insert_307()
+                """);
+    }
+
+    private void uninstallAuditFailureTrigger() {
+        jdbc.execute("DROP TRIGGER IF EXISTS test_fail_audit_insert_307_trigger ON audit_entry");
+        jdbc.execute("DROP FUNCTION IF EXISTS test_fail_audit_insert_307()");
     }
 
     private List<String> childPartitions() {

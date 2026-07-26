@@ -23,7 +23,7 @@ export function IncidentsPage() {
     return map
   }, [engines.data])
 
-  const sections = useMemo(() => bucketIncidents(incidents.data ?? []), [incidents.data])
+  const sections = useMemo(() => bucketIncidents(incidents.data?.items ?? []), [incidents.data])
 
   if (incidents.isPending) {
     return <div className="triage zero-state">Loading the incident ledger…</div>
@@ -46,7 +46,8 @@ export function IncidentsPage() {
     )
   }
 
-  const total = incidents.data.length
+  const total = incidents.data.items?.length ?? 0
+  const truncated = incidents.data.truncated === true
   const empty =
     sections.regressed.length +
       sections.open.length +
@@ -65,6 +66,15 @@ export function IncidentsPage() {
         triage cards above, which recompute per poll and forget the moment a class drains. An
         incident here survives across a drain/resolve/regression cycle.
       </p>
+
+      {truncated && (
+        <div className="partial-banner" role="alert">
+          Showing the {formatCount(total)} most recently seen incidents — the ledger holds more than
+          that, and the oldest ones are the ones left out here. A narrower <code>window</code> or{' '}
+          <code>state</code> query against <code>/api/incidents</code> returns a smaller, complete
+          slice instead of this capped fleet-wide view.
+        </div>
+      )}
 
       {empty && (
         <div className="zero-state">

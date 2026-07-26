@@ -72,14 +72,14 @@ class IncidentScopeApiSpringTest {
         // spanning: probe-dev 4 + probe-prod 8 (fleet 12); foreign: probe-prod only
         Incident spanning = row(1L, "spanning", "{\"probe-dev\":{\"order:v3\":4},\"probe-prod\":{\"order:v3\":8}}", 12);
         Incident foreign = row(2L, "foreign", "{\"probe-prod\":{\"pay:v1\":8}}", 8);
-        when(incidents.findAllByOrderByLastSeenDesc()).thenReturn(List.of(spanning, foreign));
+        when(incidents.findAllByOrderByLastSeenDesc(any())).thenReturn(List.of(spanning, foreign));
 
         ResponseEntity<String> res = viewer().getForEntity("/api/incidents", String.class);
 
         assertThat(res.getStatusCode()).isEqualTo(HttpStatus.OK);
         JsonNode body = mapper.readTree(res.getBody());
-        assertThat(body).hasSize(1); // the foreign incident is OMITTED, not blanked
-        JsonNode item = body.get(0);
+        assertThat(body.path("items")).hasSize(1); // the foreign incident is OMITTED, not blanked
+        JsonNode item = body.path("items").get(0);
         assertThat(item.get("signatureHash").asText()).isEqualTo("spanning");
         assertThat(item.get("partial").asBoolean()).isTrue();
         assertThat(item.get("lastTotal").asLong()).isEqualTo(4); // recomputed, never the fleet 12

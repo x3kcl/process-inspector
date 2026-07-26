@@ -100,6 +100,22 @@ export interface paths {
         patch?: never;
         trace?: never;
     };
+    "/api/admin/audit/integrity": {
+        parameters: {
+            query?: never;
+            header?: never;
+            path?: never;
+            cookie?: never;
+        };
+        get: operations["check"];
+        put?: never;
+        post?: never;
+        delete?: never;
+        options?: never;
+        head?: never;
+        patch?: never;
+        trace?: never;
+    };
     "/api/admin/engines": {
         parameters: {
             query?: never;
@@ -1498,6 +1514,22 @@ export interface components {
             /** Format: date-time */
             ts?: string;
         };
+        AuditIntegrityReport: {
+            findings?: components["schemas"]["Finding"][];
+            /** Format: int64 */
+            findingsTotal?: number;
+            findingsTruncated?: boolean;
+            /** Format: int64 */
+            firstProblemSeq?: number;
+            intact?: boolean;
+            /** Format: int64 */
+            lastSeqChecked?: number;
+            /** Format: int32 */
+            partitionsSpanned?: number;
+            rowCapHit?: boolean;
+            /** Format: int64 */
+            rowsChecked?: number;
+        };
         BreakerStatus: {
             instanceName?: string;
             state?: string;
@@ -1944,6 +1976,15 @@ export interface components {
             retries?: number;
             tenantId?: string;
         };
+        Finding: {
+            detail?: string;
+            /** Format: int64 */
+            previousSeq?: number;
+            /** Format: int64 */
+            seq?: number;
+            /** @enum {string} */
+            type?: "HASH_MISMATCH" | "UNEXPLAINED_GAP" | "RETENTION_BOUNDARY";
+        };
         FlagFinding: {
             deepLinkInstanceId?: string;
             detail?: string;
@@ -1989,6 +2030,10 @@ export interface components {
             relatedBulkJobs?: components["schemas"]["RelatedBulkJob"][];
             series?: components["schemas"]["OccurrencePoint"][];
             seriesWindow?: string;
+        };
+        IncidentListResponse: {
+            items?: components["schemas"]["IncidentSummary"][];
+            truncated?: boolean;
         };
         IncidentResolution: {
             acknowledgements?: components["schemas"]["AckSliceOutcome"][];
@@ -2939,6 +2984,26 @@ export interface operations {
             };
         };
     };
+    check: {
+        parameters: {
+            query?: never;
+            header?: never;
+            path?: never;
+            cookie?: never;
+        };
+        requestBody?: never;
+        responses: {
+            /** @description OK */
+            200: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "*/*": components["schemas"]["AuditIntegrityReport"];
+                };
+            };
+        };
+    };
     list_2: {
         parameters: {
             query?: never;
@@ -3850,7 +3915,7 @@ export interface operations {
                     [name: string]: unknown;
                 };
                 content: {
-                    "*/*": components["schemas"]["IncidentSummary"][];
+                    "*/*": components["schemas"]["IncidentListResponse"];
                 };
             };
         };

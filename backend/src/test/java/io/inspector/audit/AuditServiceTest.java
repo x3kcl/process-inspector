@@ -470,6 +470,44 @@ class AuditServiceTest {
         assertThat(entry.getCorrelationId()).isNotBlank();
     }
 
+    /**
+     * Issue #304: {@code AuditChainVerifier}'s IT discovered that Postgres's jsonb column
+     * reorders object keys by (byte length, then lexicographic) — NOT insertion order — so a
+     * payload hashed in whatever order the caller supplied could never be recomputed by reading
+     * the row back. {@link AuditService#canonicalizePayload} pre-sorts to jsonb's own order;
+     * asserting the exact ordering here (against the real ordering AuditIntegrityIT confirmed
+     * against a real Postgres 16: shorter keys first, same-length keys lexicographic) pins that
+     * contract at rung 1, cheaply, without a database.
+     */
+    @Test
+    void canonicalizePayloadOrdersKeysTheWayJsonbWillStoreThem() throws Exception {
+        Map<String, Object> payload = new LinkedHashMap<>();
+        payload.put("test", 1); // 4 chars — inserted first, must sort AFTER shorter keys
+        payload.put("i", 2); // 1 char — shortest, must sort first
+        payload.put("ab", 3);
+        payload.put("ac", 4); // same length as "ab" — lexicographic tie-break
+        payload.put("b", 5); // 1 char, lexicographically before "i"
+
+        Map<String, Object> canonical = AuditService.canonicalizePayload(payload);
+
+        assertThat(new ObjectMapper().writeValueAsString(canonical))
+                .isEqualTo("{\"b\":5,\"i\":2,\"ab\":3,\"ac\":4,\"test\":1}");
+    }
+
+    @Test
+    void canonicalizePayloadRecursesIntoNestedMapsAndLists() throws Exception {
+        Map<String, Object> nested = new LinkedHashMap<>();
+        nested.put("zz", "z");
+        nested.put("a", "a");
+        Map<String, Object> payload = new LinkedHashMap<>();
+        payload.put("variables", nested);
+
+        Map<String, Object> canonical = AuditService.canonicalizePayload(payload);
+
+        assertThat(new ObjectMapper().writeValueAsString(canonical))
+                .isEqualTo("{\"variables\":{\"a\":\"a\",\"zz\":\"z\"}}");
+    }
+
     private static AuditEntry entry(String id) {
         return new AuditEntry(
                 java.util.UUID.nameUUIDFromBytes(id.getBytes(StandardCharsets.UTF_8)),

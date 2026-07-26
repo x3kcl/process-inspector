@@ -7,6 +7,8 @@ import java.nio.charset.StandardCharsets;
 import java.security.MessageDigest;
 import java.security.NoSuchAlgorithmException;
 import java.time.Clock;
+import java.time.Instant;
+import java.time.temporal.ChronoUnit;
 import java.util.HexFormat;
 import java.util.LinkedHashMap;
 import java.util.List;
@@ -52,7 +54,13 @@ import org.springframework.transaction.support.TransactionTemplate;
 public class AuditService {
 
     private static final Logger log = LoggerFactory.getLogger(AuditService.class);
-    private static final String CHAIN_GENESIS = "genesis";
+
+    /**
+     * Package-visible (not {@code private}) so {@link AuditChainVerifier} recomputes the SAME
+     * seed a fresh chain starts from — one definition of "genesis", never a second copy that
+     * could drift from this one (issue #304).
+     */
+    static final String CHAIN_GENESIS = "genesis";
 
     /**
      * Reserved sentinel {@code engine_id} for config-event rows (R-AUD-10): facts that are not
@@ -214,7 +222,7 @@ public class AuditService {
             String ticketId,
             Map<String, Object> payload,
             AuditPayloadMode mode) {
-        String payloadJson = toJson(applyPayloadMode(redact(payload), mode));
+        String payloadJson = toJson(canonicalizePayload(applyPayloadMode(redact(payload), mode)));
         chainLock.lock();
         try {
             // ISSUE #306: runs in its OWN REQUIRES_NEW transaction (see #newTransaction /
@@ -229,7 +237,7 @@ public class AuditService {
                         UUID.randomUUID(),
                         requestCorrelationId(),
                         actor,
-                        clock.instant(),
+                        now(),
                         engineId,
                         tenantId,
                         instanceId,
@@ -285,7 +293,7 @@ public class AuditService {
      */
     public AuditEntry recordConfigEvent(
             String action, String actor, boolean succeeded, String reason, Map<String, Object> payload) {
-        String payloadJson = toJson(redact(payload));
+        String payloadJson = toJson(canonicalizePayload(redact(payload)));
         chainLock.lock();
         try {
             // ISSUE #306: see beginPending's identical REQUIRES_NEW rationale above.
@@ -298,7 +306,7 @@ public class AuditService {
                         UUID.randomUUID(),
                         requestCorrelationId(),
                         actor,
-                        clock.instant(),
+                        now(),
                         CONFIG_ENGINE_ID,
                         null,
                         null,
@@ -329,6 +337,23 @@ public class AuditService {
         } finally {
             chainLock.unlock();
         }
+    }
+
+    /**
+     * The write-time clock read, truncated to microseconds (issue #304, found writing {@code
+     * AuditChainVerifier}'s IT). {@code timestamptz} only stores microsecond precision — Postgres
+     * silently rounds away anything finer the instant a row is inserted — but {@code
+     * Clock.systemUTC()} (see {@code TimeConfig}) can return genuine sub-microsecond digits on
+     * Linux/OpenJDK. {@link #chainHash} folds {@code ts.toString()} into its material using the
+     * IN-MEMORY value captured here; if that value carries precision the DB will discard, no
+     * external reader can EVER recompute a matching hash for this row — not a tamper, an
+     * unrecoverable read/write mismatch. Truncating here makes the value used for hashing and the
+     * value the DB will durably store byte-identical, so a later chain walk sees exactly what was
+     * hashed. Purely a precision floor — SPEC's audit timestamp guarantees were never
+     * sub-microsecond to begin with.
+     */
+    private Instant now() {
+        return clock.instant().truncatedTo(ChronoUnit.MICROS);
     }
 
     /**
@@ -526,6 +551,54 @@ public class AuditService {
         return value; // a scalar coordinate (an id, a name in a list) — keep it
     }
 
+    /**
+     * Reorders a payload's keys to the order Postgres's {@code jsonb} column (V1) will ALWAYS
+     * emit once this value is stored (issue #304, found writing {@link AuditChainVerifier}'s IT):
+     * jsonb's binary container sorts object keys by byte length ascending, then lexicographically
+     * — NOT by insertion order — for its internal representation, and every later read (even a
+     * bare cast to {@code text}) reflects that order, never the order the app originally
+     * constructed. {@link #chainHash} folds {@code payload} into its material as the in-memory
+     * string built here, BEFORE the row is ever sent to Postgres; if that string's key order
+     * doesn't already match what jsonb will store, no future reader can ever recompute a matching
+     * hash — not a tamper, a write/storage mismatch (the same class of problem {@link #now} exists
+     * to prevent for {@code ts}). Applying jsonb's own ordering here, up front, makes the
+     * pre-storage and post-storage byte sequences identical (module the whitespace {@code
+     * AuditChainVerifier}'s reserialization already accounts for), so a chain walk can recompute
+     * every payload-bearing row's hash exactly. Recurses into nested maps/lists — {@link #redact}
+     * and {@link #applyPayloadMode} already do their own map/list traversal, so this runs AFTER
+     * both, as the final shaping step before {@link #toJson}.
+     */
+    static Map<String, Object> canonicalizePayload(Map<String, Object> payload) {
+        Map<String, Object> ordered = new java.util.TreeMap<>(AuditService::jsonbKeyOrder);
+        for (Map.Entry<String, Object> entry : payload.entrySet()) {
+            ordered.put(entry.getKey(), canonicalKeyOrder(entry.getValue()));
+        }
+        return ordered;
+    }
+
+    private static Object canonicalKeyOrder(Object value) {
+        if (value instanceof Map<?, ?> nested) {
+            return canonicalizePayload(stringKeyed(nested));
+        }
+        if (value instanceof List<?> list) {
+            return list.stream().map(AuditService::canonicalKeyOrder).toList();
+        }
+        return value;
+    }
+
+    /**
+     * Postgres's jsonb object-key comparator: shorter keys first (by UTF-8 byte length, matching
+     * what jsonb actually compares), then byte/lexicographic order within the same length —
+     * empirically confirmed against a real Postgres 16 (issue #304). Never returns 0 for two
+     * distinct keys (map keys are unique, and {@code String.compareTo} is 0 only for equal
+     * strings), so this is safe as a {@code TreeMap} comparator.
+     */
+    private static int jsonbKeyOrder(String a, String b) {
+        int byLength =
+                Integer.compare(a.getBytes(StandardCharsets.UTF_8).length, b.getBytes(StandardCharsets.UTF_8).length);
+        return byLength != 0 ? byLength : a.compareTo(b);
+    }
+
     public static boolean isSecretName(String name) {
         if (name == null) {
             return false;
@@ -562,7 +635,12 @@ public class AuditService {
         }
     }
 
-    private static String chainHash(String previousHash, AuditEntry e) {
+    /**
+     * Package-visible (not {@code private}) so {@link AuditChainVerifier} recomputes each row's
+     * hash with the EXACT SAME function the writer used — a hand-copied second implementation is
+     * exactly the kind of drift that would make the verifier lie (issue #304).
+     */
+    static String chainHash(String previousHash, AuditEntry e) {
         String material = String.join(
                 "|",
                 previousHash,

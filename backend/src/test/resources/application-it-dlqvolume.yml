@@ -1,0 +1,52 @@
+# Rung-2/4-adjacent registry for DlqScanCapVolumeIT (R-TEST-05 P2, issue #299): a single
+# STUB engine (StubFlowableEngine, io.inspector.support — an in-process JDK HttpServer, no
+# docker) simulating a 50k-row DEADLETTER lane. DLQ_STUB_PORT is registered via
+# @DynamicPropertySource by the test itself.
+#
+# dlq-scan-cap / max-page-size are left at the REAL production defaults (5000 / 200,
+# InspectorProperties.EngineConfig#dlqScanCapOrDefault/#maxPageSizeOrDefault) rather than the
+# artificially tiny cap the existing truncation fixtures use (engine-tiny: cap 2) — the whole
+# point of P2 is proving the cap holds at the DOCUMENTED operating scale (TEST-STRATEGY §7),
+# not merely that a cap exists.
+inspector:
+  registry:
+    source: config
+  # v2/M4 snapshot sampler's SCHEDULED poll is off (docker-free, no DB) — the test still
+  # autowires PollingSnapshotSource directly, which needs no DataSource of its own.
+  snapshot:
+    enabled: false
+  # R-BAU-10 incident ledger off too — no ledger store in this docker-free profile; the
+  # occurrence.truncated derivation from truncatedEngineIds is proven at rung 1 by
+  # IncidentLedgerServiceTest, this suite proves the SOURCE flag is set correctly at volume.
+  incidents:
+    enabled: false
+  audit:
+    partition-maintenance:
+      enabled: false
+  fanout-parallelism: 8
+  engines:
+    - id: dlq-volume
+      name: "Stub engine (50k-row DLQ volume fixture)"
+      base-url: "http://localhost:${DLQ_STUB_PORT}/flowable-rest/service"
+      environment: dev
+      accent-color: "#c0392b"
+      enabled: true
+      mode: read-only
+      auth:
+        type: basic
+        username: rest-admin
+        password-ref: DLQ_STUB_PASSWORD
+      timeouts:
+        connect-ms: 2000
+        read-ms: 10000
+        write-ms: 10000
+      max-page-size: 200
+      dlq-scan-cap: 5000
+
+# Docker-free / engine-only profile — the BFF Postgres is NOT part of the context (NoDbTestSupport).
+spring:
+  autoconfigure:
+    exclude:
+      - org.springframework.boot.autoconfigure.jdbc.DataSourceAutoConfiguration
+      - org.springframework.boot.autoconfigure.orm.jpa.HibernateJpaAutoConfiguration
+      - org.springframework.boot.autoconfigure.flyway.FlywayAutoConfiguration

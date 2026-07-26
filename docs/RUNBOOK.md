@@ -185,6 +185,23 @@ procedure and verify `audit_entry` row counts against the pre-incident sizing wo
 The audit golden master is the thing being protected: verify its most recent rows survived
 (`SELECT max(ts) FROM audit_entry;`) and note any gap in the incident ticket.
 
+> **Run the chain-walk integrity verifier after every restore (issue #304).** A row-count
+> check alone can't tell you the chain wasn't altered mid-restore (a bad PITR target, a
+> partial WAL replay, a manual row fix) — walk it: `GET /api/admin/audit/integrity`
+> (ADMIN session; itself an audited read, `AuditChainVerifier`). Read `intact`, `rowsChecked`,
+> `partitionsSpanned`, and `firstProblemSeq` in the response. A clean `intact: true` after a
+> restore is the actual proof the golden master survived, not just its row count. Also run it
+> **periodically** (a monthly cron hitting the endpoint under an ADMIN service account is
+> enough — there is no `@Scheduled` job for this, deliberately: unlike the retention purge,
+> a stopped verifier fails silently with no dead-man to page on, so treat "nobody ran it in
+> N months" as the same kind of gap issue #304 itself called out — an unrun chain-walk proves
+> nothing). Remember what a finding actually means (OPERATIONS §6/§7): a `HASH_MISMATCH` means
+> a row was altered by someone who could NOT recompute the forward chain (in practice, anyone
+> without direct Postgres superuser access) — investigate as a real incident. An
+> `UNEXPLAINED_GAP` at a seq with no matching `AuditRetentionPurger` checkpoint likewise
+> deserves investigation. A `RETENTION_BOUNDARY` finding is expected and benign (a normal
+> retention-purge drop, checkpointed before the DROP) — not an alert.
+>
 > **PITR tooling status (issue #201, Docker-native since #201-followup).**
 > `deploy/pitr-drill.sh` reads from the `inspector-basebackups`/`inspector-wal-archive` named
 > Docker volumes (written by the `audit-basebackup`/`wal-receiver` compose services — no host

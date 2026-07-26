@@ -89,12 +89,12 @@ The catalog is realized in [TEST-SCENARIOS.md](TEST-SCENARIOS.md) §1 (fixtures 
 the scenario mapping (`TS-*`) in its §§2–12.
 
 ## 7. Performance scenarios (R-TEST-05, replaces "Load-test fan-out")
-| # | Scenario | Threshold | When |
-|---|---|---|---|
-| P1 | 10 stub engines, 3 slow (read-ms−500), 2 timing out | search P95 ≤ read-ms+2s; correct envelope; BFF health P99 <200ms throughout | M2 exit, re-run M6, nightly |
-| P2 | 50k-row DLQ vs `dlq-scan-cap` | scan ≤10s, `truncated@cap`, un-scanned never shown healthy | M2 exit, nightly |
-| P3 | 50 SSE clients through a 500-item bulk, 30 min | zero dropped/dup events; heap ±10% | gates the v1.x SSE/bulk item |
-| P4 | 100 landing loads in 5s | one engine-query round per aggregation (≥99% cache hits); Refresh rate-limit holds | M3 exit |
+| # | Scenario | Threshold | When | Status |
+|---|---|---|---|---|
+| P1 | 10 stub engines, 3 slow (read-ms−500), 2 timing out | search P95 ≤ read-ms+2s; correct envelope; BFF health P99 <200ms throughout | M2 exit, re-run M6, nightly | 🔲 unbuilt (issue #298) |
+| P2 | 50k-row DLQ vs `dlq-scan-cap` | scan ≤10s, `truncated@cap`, un-scanned never shown healthy | M2 exit, nightly | ✅ `DlqScanCapVolumeIT` (nightly job `dlq-scan-cap-p2`, issue #299) |
+| P3 | 50 SSE clients through a 500-item bulk, 30 min | zero dropped/dup events; heap ±10% | gates the v1.x SSE/bulk item | 🔲 unbuilt (§C-8) |
+| P4 | 100 landing loads in 5s | one engine-query round per aggregation (≥99% cache hits); Refresh rate-limit holds | M3 exit | ✅ `perf-scenario-p1.js` (nightly job `perf-p1`, §C-10) |
 
 ## 8. Capability matrix (R-TEST — SHOULD)
 Per capability flag × profile: probe detects expected value; supported → verb succeeds E2E;

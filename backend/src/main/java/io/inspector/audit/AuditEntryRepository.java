@@ -107,4 +107,35 @@ public interface AuditEntryRepository extends JpaRepository<AuditEntry, UUID> {
             order by a.engineId asc, a.instanceId asc, a.ts asc, a.id asc
             """)
     List<AuditEntry> findInstanceScopedForSequenceMining(Pageable page);
+
+    /**
+     * The {@link AuditChainVerifier}'s keyset-paginated forward walk (issue #304): {@code seq > x
+     * ORDER BY seq ASC LIMIT n} rather than an OFFSET page, so each batch costs the same
+     * regardless of how far into the chain the walk already is — the {@code V20} index makes this
+     * an index scan, not a full-table sort. Bounded batch size is the caller's job (a
+     * {@link Pageable} of size N), never a full in-memory load.
+     */
+    List<AuditEntry> findBySeqGreaterThanOrderBySeqAsc(long seq, Pageable page);
+
+    /**
+     * The retention-purge chain-boundary checkpoint (issue #304): {@link AuditRetentionPurger}
+     * writes a {@code phase: checkpoint} config event immediately BEFORE dropping a partition,
+     * recording the first row that will SURVIVE the drop — its seq and its own (unaffected)
+     * {@code chain_hash}. The verifier looks this up whenever it finds a seq gap, to tell an
+     * AUDITED, expected partition boundary apart from an unexplained hole. Newest first (a seq can
+     * in principle be checkpointed more than once only if the same boundary were purged twice,
+     * which cannot happen — rows once dropped are gone — so this is a defensive tie-break, not a
+     * load-bearing one).
+     */
+    @Query(value = """
+            select a.payload ->> 'firstSurvivingChainHash'
+            from audit_entry a
+            where a.engine_id = '_inspector'
+              and a.action = 'audit-retention-purge'
+              and a.payload ->> 'phase' = 'checkpoint'
+              and (a.payload ->> 'firstSurvivingSeq')::bigint = :seq
+            order by a.ts desc
+            limit 1
+            """, nativeQuery = true)
+    Optional<String> findRetentionCheckpointHashForFirstSurvivingSeq(@Param("seq") long seq);
 }

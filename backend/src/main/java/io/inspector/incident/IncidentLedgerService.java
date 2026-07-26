@@ -63,6 +63,27 @@ import org.springframework.transaction.support.TransactionTemplate;
  * (the {@code ErrorGroupAckService} discipline): if the audit write fails, the transition is
  * compensated away and only the observed totals survive — but a poll cycle never crashes, so
  * the failure is a warn, not a thrown 503.
+ *
+ * <p><b>Why the compensation is reachable, not dead code (issue #307, true-up after #316):</b>
+ * {@link #regress}'s {@code audit.recordConfigEvent} call PARTICIPATES in this group's ambient
+ * {@link #tx} (the plain {@code REQUIRED}-propagation template — see {@link #ingestGroup}), but
+ * {@link AuditService}'s own insert runs in ITS OWN {@code PROPAGATION_REQUIRES_NEW} transaction
+ * (see {@code AuditService#chainLock}'s javadoc, #306). Spring suspends the ambient transaction
+ * for the duration of that inner one; if the insert fails, ONLY the inner, already-{@code
+ * isNewTransaction()}, physical transaction is rolled back — the ambient one is resumed
+ * untouched (never marked rollback-only), so {@link #regress}'s {@code catch} block runs its
+ * compensating {@code episodes.delete}/{@code incidents.revertRegression} calls inside a still
+ * -healthy ambient transaction, which then commits normally. Before #316, {@code AuditService}
+ * called {@code repository.saveAndFlush} directly, joining (not suspending) the ambient
+ * transaction — an insert failure there poisoned the SAME physical transaction the compensating
+ * writes ran in, so the ambient {@code tx.executeWithoutResult} commit later detected the
+ * rollback-only flag and threw {@code UnexpectedRollbackException}, undoing the compensation
+ * along with everything else. This specific poison-propagation mechanism runs through a REAL
+ * shared Hibernate session/JDBC connection — a hand-rolled {@code PlatformTransactionManager}
+ * fake (as {@code IncidentLedgerServiceTest}'s mocked-repository tests use) cannot reproduce it
+ * either way, so {@code IncidentLedgerIT} proves the CURRENT (post-#316) behavior against a
+ * real Postgres/Hibernate stack: a genuine audit-insert failure, injected via a scoped trigger,
+ * lands the compensating writes while the audit row itself never appears.
  */
 @Service
 @ConditionalOnProperty(name = "inspector.incidents.enabled", havingValue = "true", matchIfMissing = true)
