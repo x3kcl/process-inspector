@@ -184,10 +184,11 @@ public class IncidentQueryService {
                 Duration.ofHours(clamped).toString(),
                 series,
                 liveGroup(row, auth),
-                // S5: read-only remediation join — the bulk-jobs surface's own read rules are
-                // VIEWER-floor with no engine-scope projection, so nothing narrower applies here
-                // (RelatedBulkJobsService class doc); incident-level scope was enforced above.
-                relatedBulkJobs.forSignature(row.getSignatureHash(), row.getAlgoVersion()));
+                // S5: read-only remediation join, scope-narrowed too (R-SAFE-17, issue #329) —
+                // the SAME readable set resolved above for the incident's own projection, since a
+                // signature can span an engine the caller can read and one they cannot even when
+                // the incident itself clears the zero-intersection gate.
+                relatedBulkJobs.forSignature(row.getSignatureHash(), row.getAlgoVersion(), readable));
     }
 
     /* ---------------- projection ---------------- */

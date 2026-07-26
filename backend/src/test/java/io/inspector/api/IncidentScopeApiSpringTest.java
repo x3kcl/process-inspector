@@ -2,12 +2,20 @@ package io.inspector.api;
 
 import static org.assertj.core.api.Assertions.assertThat;
 import static org.mockito.ArgumentMatchers.any;
+import static org.mockito.ArgumentMatchers.eq;
 import static org.mockito.Mockito.mock;
+import static org.mockito.Mockito.never;
 import static org.mockito.Mockito.reset;
+import static org.mockito.Mockito.verify;
 import static org.mockito.Mockito.when;
 
 import com.fasterxml.jackson.databind.JsonNode;
 import com.fasterxml.jackson.databind.ObjectMapper;
+import io.inspector.audit.AuditEntryRepository;
+import io.inspector.bulk.BulkJob;
+import io.inspector.bulk.BulkJobItem;
+import io.inspector.bulk.BulkJobItemRepository;
+import io.inspector.bulk.BulkJobRepository;
 import io.inspector.incident.Incident;
 import io.inspector.incident.IncidentRepository;
 import io.inspector.incident.IncidentState;
@@ -17,6 +25,7 @@ import java.time.Instant;
 import java.util.List;
 import java.util.Optional;
 import java.util.Set;
+import java.util.UUID;
 import org.junit.jupiter.api.AfterEach;
 import org.junit.jupiter.api.Test;
 import org.springframework.beans.factory.annotation.Autowired;
@@ -54,12 +63,21 @@ class IncidentScopeApiSpringTest {
     @Autowired
     IncidentRepository incidents;
 
+    @Autowired
+    AuditEntryRepository audits;
+
+    @Autowired
+    BulkJobRepository jobs;
+
+    @Autowired
+    BulkJobItemRepository items;
+
     @MockitoBean
     ReadScopeGate gate;
 
     @AfterEach
     void resetMocks() {
-        reset(incidents);
+        reset(incidents, audits, jobs, items);
     }
 
     private TestRestTemplate viewer() {
@@ -119,6 +137,94 @@ class IncidentScopeApiSpringTest {
         JsonNode incident = mapper.readTree(res.getBody()).path("incident");
         assertThat(incident.path("partial").asBoolean()).isFalse();
         assertThat(incident.path("lastTotal").asLong()).isEqualTo(4); // fleet total carried verbatim
+    }
+
+    /* ---------------- related-bulk-jobs join scoping (S5, R-SAFE-17, issue #329) ---------------- */
+
+    @Test
+    void relatedBulkJobsOmitsAJobTouchingNoReadableEngine() throws Exception {
+        when(gate.readableEngineIds(any(Authentication.class))).thenReturn(Set.of("probe-dev"));
+        Incident mine = row(4L, "mine-4", "{\"probe-dev\":{\"order:v3\":4}}", 4);
+        when(incidents.findById(4L)).thenReturn(Optional.of(mine));
+        UUID jobId = UUID.randomUUID();
+        when(audits.findRecentErrorClassBulkJobIds("mine-4", "1", 10)).thenReturn(List.of(jobId.toString()));
+        when(jobs.findAllById(List.of(jobId))).thenReturn(List.of(bulkJob(jobId, 2)));
+        // the job's items are ALL on an engine outside the caller's scope
+        when(items.findByJobIdInAndEngineIdIn(any(), eq(Set.of("probe-dev")))).thenReturn(List.of());
+
+        ResponseEntity<String> res = viewer().getForEntity("/api/incidents/4", String.class);
+
+        assertThat(res.getStatusCode()).isEqualTo(HttpStatus.OK);
+        JsonNode body = mapper.readTree(res.getBody());
+        assertThat(body.path("relatedBulkJobs")).isEmpty(); // omitted entirely, never a hidden item set
+    }
+
+    @Test
+    void relatedBulkJobsNarrowsASpanningJobWithRecomputedTotalsAndTallies() throws Exception {
+        when(gate.readableEngineIds(any(Authentication.class))).thenReturn(Set.of("probe-dev"));
+        Incident mine = row(5L, "mine-5", "{\"probe-dev\":{\"order:v3\":4}}", 4);
+        when(incidents.findById(5L)).thenReturn(Optional.of(mine));
+        UUID jobId = UUID.randomUUID();
+        // fleet-wide the job has 2 items (probe-dev + probe-prod); only probe-dev is readable
+        List<BulkJobItem> visible = List.of(bulkItem(jobId, 0, "probe-dev", "i-1"));
+        when(audits.findRecentErrorClassBulkJobIds("mine-5", "1", 10)).thenReturn(List.of(jobId.toString()));
+        when(jobs.findAllById(List.of(jobId))).thenReturn(List.of(bulkJob(jobId, 2)));
+        when(items.findByJobIdInAndEngineIdIn(any(), eq(Set.of("probe-dev")))).thenReturn(visible);
+
+        ResponseEntity<String> res = viewer().getForEntity("/api/incidents/5", String.class);
+
+        assertThat(res.getStatusCode()).isEqualTo(HttpStatus.OK);
+        JsonNode relatedJob =
+                mapper.readTree(res.getBody()).path("relatedBulkJobs").get(0);
+        // recomputed from the visible item only — never the fleet-wide 2 the job actually spans
+        // (the sharpest leak issue #329 closes: the OTHER engine's item never reaches this caller)
+        assertThat(relatedJob.path("totalItems").asInt()).isEqualTo(1);
+        assertThat(relatedJob.path("tallies").path("ok").asInt()).isEqualTo(1);
+    }
+
+    @Test
+    void anUnscopedCallerSeesTheFullRelatedBulkJobsJoin() throws Exception {
+        when(gate.readableEngineIds(any(Authentication.class))).thenReturn(null);
+        Incident mine = row(6L, "mine-6", "{\"probe-dev\":{\"order:v3\":4}}", 4);
+        when(incidents.findById(6L)).thenReturn(Optional.of(mine));
+        UUID jobId = UUID.randomUUID();
+        List<BulkJobItem> allItems =
+                List.of(bulkItem(jobId, 0, "probe-dev", "i-1"), bulkItem(jobId, 1, "probe-prod", "i-2"));
+        when(audits.findRecentErrorClassBulkJobIds("mine-6", "1", 10)).thenReturn(List.of(jobId.toString()));
+        when(jobs.findAllById(List.of(jobId))).thenReturn(List.of(bulkJob(jobId, 2)));
+        when(items.findByJobIdIn(any())).thenReturn(allItems);
+
+        ResponseEntity<String> res = viewer().getForEntity("/api/incidents/6", String.class);
+
+        assertThat(res.getStatusCode()).isEqualTo(HttpStatus.OK);
+        JsonNode relatedJob =
+                mapper.readTree(res.getBody()).path("relatedBulkJobs").get(0);
+        assertThat(relatedJob.path("totalItems").asInt()).isEqualTo(2);
+        verify(items, never()).findByJobIdInAndEngineIdIn(any(), any());
+    }
+
+    private static BulkJob bulkJob(UUID id, int totalItems) {
+        return new BulkJob(
+                id,
+                "k.meier",
+                Instant.parse("2026-07-20T09:00:00Z"),
+                "retry-job",
+                "ops-4711 incident replay",
+                "OPS-1",
+                totalItems,
+                null,
+                BulkJob.ScopeKind.ERROR_CLASS,
+                "order v3 · error class");
+    }
+
+    private static BulkJobItem bulkItem(UUID jobId, int ordinal, String engineId, String instanceId) {
+        BulkJobItem row = new BulkJobItem(jobId, ordinal, engineId, instanceId, null, BulkJobItem.State.pending);
+        row.settle(
+                BulkJobItem.State.ok,
+                "job moved back to the executable queue",
+                null,
+                Instant.parse("2026-07-20T09:01:00Z"));
+        return row;
     }
 
     private static Incident row(long id, String hash, String countsJson, long lastTotal) {
