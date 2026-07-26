@@ -32,13 +32,9 @@
 # frontend/npm-audit-allowlist.json — scripts/check-npm-audit-allowlist.mjs verifies this
 # automatically (checkTrivyIgnoreDrift) and fails the run on drift, so the two dated
 # exceptions can never quietly diverge.
-vulnerabilities:
-  - id: GHSA-qwww-vcr4-c8h2
-    expired_at: 2026-10-24
-    statement: >
-      react-router RSC-mode-only CSRF-adjacent bypass. This app is a data-mode SPA
-      (frontend/src/main.tsx builds its router exclusively via createBrowserRouter; a
-      repo-wide grep for RSC entry points under frontend/src returns nothing). The fix is
-      react-router@8, a major bump tracked separately as issue #310 so it gets its own
-      review. Full justification of record lives in frontend/npm-audit-allowlist.json's
-      matching entry — keep expired_at identical across both files.
+#
+# GHSA-qwww-vcr4-c8h2 (react-router) retired 2026-07-26 (#335): react-router bumped to 8.3.0,
+# past the advisory's vulnerable range entirely (7.12.0-8.2.0) — no longer an exception, a
+# genuine fix. Removed from here AND from frontend/npm-audit-allowlist.json in the same
+# change so the two files stay in lockstep with nothing to drift against.
+vulnerabilities: []
