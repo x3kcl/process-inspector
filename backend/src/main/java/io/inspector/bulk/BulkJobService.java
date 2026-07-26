@@ -31,12 +31,15 @@ import io.micrometer.core.instrument.Counter;
 import io.micrometer.core.instrument.Gauge;
 import io.micrometer.core.instrument.MeterRegistry;
 import java.time.Clock;
+import java.time.Duration;
+import java.time.Instant;
 import java.util.ArrayList;
 import java.util.HashMap;
 import java.util.HashSet;
 import java.util.LinkedHashMap;
 import java.util.List;
 import java.util.Map;
+import java.util.Objects;
 import java.util.Set;
 import java.util.UUID;
 import java.util.concurrent.CompletableFuture;
@@ -53,6 +56,7 @@ import org.springframework.context.ApplicationEventPublisher;
 import org.springframework.context.event.EventListener;
 import org.springframework.data.domain.PageRequest;
 import org.springframework.http.HttpStatus;
+import org.springframework.scheduling.annotation.Scheduled;
 import org.springframework.security.core.Authentication;
 import org.springframework.stereotype.Service;
 import org.springframework.web.client.ResourceAccessException;
@@ -143,7 +147,7 @@ public class BulkJobService {
      * Jobs whose dispatch to an engine gave up on an open circuit / saturated bulkhead mid-run
      * — the item that tripped it got a BOUNDED wait-and-retry first (issue #101); this is only
      * populated when that bound is exceeded (R-SEM-11). Recorded by the tripped engine group,
-     * consumed by {@link #run} to finish the job INTERRUPTED (partial) rather than COMPLETED —
+     * consumed by {@link #runInternal} to finish the job INTERRUPTED (partial) rather than COMPLETED —
      * undispatched work is surfaced for a "continue as new job", never silently burned as failures.
      */
     private final Set<UUID> circuitPaused = ConcurrentHashMap.newKeySet();
@@ -375,7 +379,16 @@ public class BulkJobService {
         }
         items.saveAllAndFlush(itemRows);
 
-        executor.submit(() -> run(jobId, envelope, auth));
+        // #303 defect 2: a plain executor.submit(...) Future was discarded — an exception that
+        // somehow still escaped run()'s own try/catch/finally below (a raw Error, not a
+        // RuntimeException) would vanish silently, exactly like the bug this whole fix addresses.
+        // CompletableFuture.runAsync's .exceptionally is the same idiom already used for each
+        // per-engine dispatch group below — never discarded again.
+        CompletableFuture.runAsync(() -> run(jobId, envelope, auth), executor).exceptionally(ex -> {
+            log.error("bulk job {} run() thread escaped uncaught — settling INTERRUPTED", jobId, ex);
+            settleAfterRunFailure(jobId);
+            return null;
+        });
         events.publishEvent(new BulkJobChangedEvent(jobId));
         return BulkDtos.BulkJobDto.of(job, itemRows, true);
     }
@@ -502,7 +515,31 @@ public class BulkJobService {
 
     /* ------------------------------- execution ------------------------------- */
 
+    /**
+     * The dispatch-loop try/catch/finally (#303 defect 2): {@link #runInternal} used to leave
+     * {@code findById/markRunning}, the item load, the paused/cancelled settle, and
+     * {@code finish}/{@code closeEnvelope} completely unguarded — a store blip at any one of
+     * those left the job {@code RUNNING} forever, recoverable only at the next BFF restart. Any
+     * {@link RuntimeException} escaping {@link #runInternal} is now caught here and the job is
+     * settled {@code INTERRUPTED} from whatever the store can still show
+     * ({@link #settleAfterRunFailure}); the {@code finally} always releases this job's entries in
+     * {@link #cancelRequested}/{@link #circuitPaused} (fresh UUIDs are never reused across
+     * submits, so a leaked entry is an unbounded memory leak, not a functional bug, but still
+     * worth closing) whether {@link #runInternal} succeeded, threw, or was recovered.
+     */
     private void run(UUID jobId, AuditEntry envelope, Authentication auth) {
+        try {
+            runInternal(jobId, envelope, auth);
+        } catch (RuntimeException e) {
+            log.error("bulk job {} run() failed — settling INTERRUPTED from the last observable state", jobId, e);
+            settleAfterRunFailure(jobId);
+        } finally {
+            cancelRequested.remove(jobId);
+            circuitPaused.remove(jobId);
+        }
+    }
+
+    private void runInternal(UUID jobId, AuditEntry envelope, Authentication auth) {
         BulkJob job = jobs.findById(jobId).orElseThrow();
         job.markRunning();
         jobs.saveAndFlush(job);
@@ -547,7 +584,8 @@ public class BulkJobService {
             }
             items.saveAllAndFlush(all);
         }
-        cancelRequested.remove(jobId);
+        // cancelRequested/circuitPaused cleanup for this jobId now lives in run()'s finally —
+        // circuitPaused was already consumed above (its return value drives `paused`).
         BulkJob.State terminal =
                 cancelled ? BulkJob.State.CANCELLED : paused ? BulkJob.State.INTERRUPTED : BulkJob.State.COMPLETED;
         job.finish(terminal, clock.instant());
@@ -997,40 +1035,206 @@ public class BulkJobService {
 
     /* ------------------------------- reconciliation (SPEC §7) ------------------------------- */
 
+    private static final List<BulkJob.State> LIVE_BULK_STATES = List.of(BulkJob.State.PENDING, BulkJob.State.RUNNING);
+
     /** Startup sweep: no automatic resume, EVER — interrupted work is surfaced, not re-fired. */
     @EventListener(ApplicationReadyEvent.class)
     public void reconcileInterrupted() {
         List<BulkJob> stale;
         try {
-            stale = jobs.findByStateIn(List.of(BulkJob.State.PENDING, BulkJob.State.RUNNING));
+            stale = jobs.findByStateIn(LIVE_BULK_STATES);
         } catch (RuntimeException e) {
             log.warn("bulk reconciliation sweep skipped — store unavailable: {}", e.toString());
             return;
         }
         for (BulkJob job : stale) {
             List<BulkJobItem> all = items.findByJobIdOrderByOrdinal(job.getId());
-            for (BulkJobItem item : all) {
-                if (item.getState() == BulkJobItem.State.dispatched) {
-                    // In flight at crash: the engine may have applied it. NEVER re-fired.
-                    item.settle(
-                            BulkJobItem.State.unknown,
-                            "in flight when the BFF stopped — may have applied; use Verify now",
-                            item.getAuditId(),
-                            clock.instant());
-                } else if (item.getState() == BulkJobItem.State.pending) {
-                    item.settle(BulkJobItem.State.not_run, "BFF stopped before dispatch", null, clock.instant());
-                }
-            }
-            items.saveAllAndFlush(all);
-            BulkJob.State before = job.getState();
-            job.finish(BulkJob.State.INTERRUPTED, clock.instant());
-            jobs.saveAndFlush(job);
-            log.warn(
-                    "bulk job {} ({} × {}) swept {} → INTERRUPTED — offer 'continue as new job'",
-                    job.getId(),
-                    job.getTotalItems(),
-                    job.getVerb(),
-                    before);
+            settleInterrupted(
+                    job,
+                    all,
+                    "in flight when the BFF stopped — may have applied; use Verify now",
+                    "BFF stopped before dispatch",
+                    "offer 'continue as new job'");
         }
+    }
+
+    /**
+     * Best-effort recovery for a {@link #runInternal} failure — or an escaped {@link Error} the
+     * outer {@link #run} catch didn't even see (#303 defect 2). Re-derives the job's CURRENT item
+     * states fresh from the store (never assumes where {@link #runInternal} failed) and settles
+     * it exactly as {@link #reconcileInterrupted()} would. If the store is unreachable here too,
+     * the job is left RUNNING/PENDING for {@link #sweepStaleRunning()} or the next restart's
+     * {@link #reconcileInterrupted()} — never silently swallowed.
+     */
+    private void settleAfterRunFailure(UUID jobId) {
+        try {
+            BulkJob job = jobs.findById(jobId).orElse(null);
+            if (job == null) {
+                log.error("bulk job {} vanished from the store after a run() failure — cannot settle", jobId);
+                return;
+            }
+            if (job.getState() != BulkJob.State.PENDING && job.getState() != BulkJob.State.RUNNING) {
+                return; // already settled (e.g. finish() itself succeeded before the failure) — nothing to do
+            }
+            List<BulkJobItem> all = items.findByJobIdOrderByOrdinal(jobId);
+            settleInterrupted(
+                    job,
+                    all,
+                    "run() failed mid-flight — may have applied; use Verify now",
+                    "run() failed before dispatch",
+                    "run() failed outside its per-engine dispatch guards");
+        } catch (RuntimeException e) {
+            log.error(
+                    "bulk job {} could not be settled after a run() failure — left for the periodic"
+                            + " stale-RUNNING sweep",
+                    jobId,
+                    e);
+        }
+    }
+
+    /**
+     * Shared by {@link #reconcileInterrupted()}, {@link #settleAfterRunFailure}, and
+     * {@link #sweepStaleRunning()}: settle every item still {@code dispatched}/{@code pending}
+     * (an already-settled outcome is never touched), finish the job {@code INTERRUPTED}, close
+     * its still-open envelope with the REAL per-item tally (if it can still be located — the
+     * generic {@link io.inspector.audit.AuditPendingSweeper} is the backstop otherwise, delivering
+     * its own javadoc's "M5 extends this sweep to bulk INTERRUPTED" promise honestly, #303), and
+     * publish the change event so a browser already watching the job sees it.
+     */
+    private void settleInterrupted(
+            BulkJob job, List<BulkJobItem> all, String dispatchedDetail, String pendingDetail, String logReason) {
+        for (BulkJobItem item : all) {
+            if (item.getState() == BulkJobItem.State.dispatched) {
+                // In flight when this sweep fired: the engine may have applied it. NEVER re-fired.
+                item.settle(BulkJobItem.State.unknown, dispatchedDetail, item.getAuditId(), clock.instant());
+            } else if (item.getState() == BulkJobItem.State.pending) {
+                item.settle(BulkJobItem.State.not_run, pendingDetail, null, clock.instant());
+            }
+        }
+        items.saveAllAndFlush(all);
+        BulkJob.State before = job.getState();
+        job.finish(BulkJob.State.INTERRUPTED, clock.instant());
+        jobs.saveAndFlush(job);
+        cancelRequested.remove(job.getId());
+        circuitPaused.remove(job.getId());
+        audit.findPendingBulkEnvelope(job.getId())
+                .ifPresentOrElse(
+                        envelope -> closeEnvelope(envelope, all),
+                        () -> log.warn(
+                                "bulk job {} swept INTERRUPTED but its envelope audit row could not be located — the"
+                                        + " periodic PENDING sweeper will close it",
+                                job.getId()));
+        events.publishEvent(new BulkJobChangedEvent(job.getId()));
+        log.warn(
+                "bulk job {} ({} × {}) swept {} → INTERRUPTED — {}",
+                job.getId(),
+                job.getTotalItems(),
+                job.getVerb(),
+                before,
+                logReason);
+    }
+
+    /* ------------------------------- stale-RUNNING sweep (#303) ------------------------------- */
+
+    /** Same grace window {@link io.inspector.audit.AuditPendingSweeper} applies to its own PENDING bound. */
+    private static final Duration STALE_RUNNING_GRACE = Duration.ofSeconds(60);
+
+    /**
+     * A generous multiplier over the worst single ITEM's own wait (its engine's write budget plus
+     * one full circuit-pause bound, {@link #staleRunningBudget()}) — a healthy job, however large
+     * or however staggered, keeps making steady per-item progress well inside this multiple of
+     * that single-item worst case; only a job with NO forward motion at all for this long is
+     * presumed genuinely stuck.
+     */
+    private static final int STALE_RUNNING_MARGIN = 3;
+
+    /**
+     * Delivers {@link io.inspector.audit.AuditPendingSweeper}'s own javadoc promise ("M5 extends
+     * this sweep to bulk INTERRUPTED") honestly (#303): a bulk job that is {@code RUNNING} (or
+     * still {@code PENDING} — never even reached {@link #runInternal}) with NO item-state progress
+     * for longer than {@link #staleRunningBudget()} is settled exactly as
+     * {@link #reconcileInterrupted()} settles a crash-restart job. NOTHING is ever resumed or
+     * re-fired (RUNBOOK §3, PRODUCT-GUIDE) — this is a sweep, never a retry.
+     *
+     * <p>Runs ALONGSIDE, never instead of, {@link #reconcileInterrupted()}: that startup sweep
+     * catches every RUNNING/PENDING job after an actual BFF restart (the JVM died, so any such job
+     * is certainly dead); this periodic sweep is the safety net for a job stuck WITHOUT the
+     * process dying — the one edge case {@link #run}'s own try/catch/finally (added alongside
+     * this, #303) cannot cover, e.g. a genuine deadlock or an uncaught {@link Error} that somehow
+     * evades even the {@code CompletableFuture.exceptionally} backstop in {@code submit}.
+     *
+     * <p><b>Accepted race window:</b> the staleness bound is deliberately generous so a healthy
+     * job is never caught mid-stride, but it cannot be zero-risk against a job that legitimately
+     * finishes in the same instant this sweep decides it is stale — {@link #sweepOneIfStale}'s
+     * re-fetch-and-recheck immediately before mutating narrows that window to essentially nothing.
+     * If both writers still land, the append-only guard trigger and this method's own idempotent
+     * settle logic make the loser's write a harmless no-op or a logged, non-fatal rejection
+     * ({@code AuditEntry}'s outcome column only accepts a further update from {@code PENDING} or
+     * {@code unknown} — see {@code V1__init.sql}), never a corrupted row.
+     */
+    @Scheduled(fixedDelayString = "PT60S", initialDelayString = "PT90S")
+    public void sweepStaleRunning() {
+        List<BulkJob> live;
+        try {
+            live = jobs.findByStateIn(LIVE_BULK_STATES);
+        } catch (RuntimeException e) {
+            log.warn("bulk stale-RUNNING sweep skipped — store unavailable: {}", e.toString());
+            return;
+        }
+        if (live.isEmpty()) {
+            return;
+        }
+        Instant cutoff = clock.instant().minus(staleRunningBudget());
+        for (BulkJob job : live) {
+            try {
+                sweepOneIfStale(job, cutoff);
+            } catch (RuntimeException e) {
+                log.error("bulk stale-RUNNING sweep failed for job {}: {}", job.getId(), e.toString());
+            }
+        }
+    }
+
+    private void sweepOneIfStale(BulkJob job, Instant cutoff) {
+        List<BulkJobItem> all = items.findByJobIdOrderByOrdinal(job.getId());
+        Instant lastProgress = all.stream()
+                .map(BulkJobItem::getFinishedAt)
+                .filter(Objects::nonNull)
+                .max(Instant::compareTo)
+                .orElse(job.getSubmittedAt());
+        if (lastProgress.isAfter(cutoff)) {
+            return; // healthy — still progressing within the bound
+        }
+        // Narrow the TOCTOU window against the job's own runInternal() finishing concurrently:
+        // re-fetch and re-confirm it is STILL live immediately before mutating (class javadoc).
+        BulkJob fresh = jobs.findById(job.getId()).orElse(null);
+        if (fresh == null || (fresh.getState() != BulkJob.State.PENDING && fresh.getState() != BulkJob.State.RUNNING)) {
+            return;
+        }
+        settleInterrupted(
+                fresh,
+                all,
+                "no item-state progress within the staleness bound (" + staleRunningBudget()
+                        + ") — the job appears stuck; may have applied, use Verify now",
+                "swept: the job appeared stuck and never reached this item",
+                "no item-state progress within the staleness bound — offer 'continue as new job'");
+    }
+
+    /**
+     * {@code GRACE + margin × (maxWriteMs + circuitPauseMaxMs)} — documented per the #303 plan:
+     * conservative enough that a healthy job, however large or staggered, never crosses it while
+     * still making progress (every completed/failed/skipped/unknown item bumps the "last
+     * progress" clock — see {@link #sweepOneIfStale}), while a job with no forward motion at all
+     * for this long is presumed genuinely stuck.
+     */
+    private Duration staleRunningBudget() {
+        long perItemWorstCaseMs = maxWriteMs() + props.bulkOrDefault().circuitPauseMaxMsOrDefault();
+        return STALE_RUNNING_GRACE.plus(Duration.ofMillis(perItemWorstCaseMs * STALE_RUNNING_MARGIN));
+    }
+
+    private long maxWriteMs() {
+        return props.engines().stream()
+                .map(e -> e.timeoutsOrDefault().write())
+                .max(Integer::compareTo)
+                .orElse(10_000);
     }
 }

@@ -924,6 +924,19 @@ copy is never identical to an RBAC denial (R-GOV-04, R-SEM-17).
   the item in flight at crash becomes `unknown` (never re-fired); undispatched become
   `not_run`. No automatic resume, ever: the operations drawer banners INTERRUPTED jobs on
   next login and offers "continue as new job" pre-scoped to `not_run` + `failed`.
+  **The job always settles, crash or no crash (#303):** every statement in the dispatch
+  loop — not just the per-item engine calls — is guarded, so a store blip at submit,
+  dispatch-start, or finish settles the job INTERRUPTED immediately instead of leaving it
+  RUNNING until the next restart. A separate periodic sweep (alongside the startup one)
+  catches the residual case of a job stuck WITHOUT the BFF process dying — no item-state
+  progress for longer than a conservative bound (the largest configured engine write
+  budget plus one circuit-pause, times a margin, plus the same grace window the audit
+  reconciler uses) — and settles it exactly like a crash-restart job. A healthy job,
+  however large or staggered, keeps making steady per-item progress and is never caught by
+  this bound; the job's still-open envelope audit row is likewise excluded from the audit
+  reconciler's own PENDING sweep for as long as the job itself is genuinely live, so a
+  healthy long-running bulk run is never stamped `unknown` mid-flight (previously it was —
+  a false NEEDS-VERIFICATION alarm on a job that was simply still running).
 - **Scope provenance** (usability fix E1, `V4__bulk_job_scope.sql`): every persisted job
   records which of the three submit doors produced it — `scope_kind ∈ SELECTION |
   ERROR_CLASS | FILTER` — plus a `scope_label` one-liner summarizing what was targeted

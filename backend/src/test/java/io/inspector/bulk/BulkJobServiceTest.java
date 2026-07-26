@@ -161,6 +161,32 @@ class BulkJobServiceTest {
                 metrics);
     }
 
+    /**
+     * An independent copy of {@code job}'s CURRENT field values — used by tests that simulate a
+     * {@code saveAndFlush} failure, so the fake store's "persisted" view stays decoupled from a
+     * live {@code BulkJob} reference the service keeps mutating after that failed save (a shared
+     * mutable reference would silently leak the in-process mutation into what looks persisted).
+     */
+    private static BulkJob snapshot(BulkJob job) {
+        BulkJob copy = new BulkJob(
+                job.getId(),
+                job.getSubmittedBy(),
+                job.getSubmittedAt(),
+                job.getVerb(),
+                job.getReason(),
+                job.getTicketId(),
+                job.getTotalItems(),
+                job.getContinuedFrom(),
+                job.getScopeKind(),
+                job.getScopeLabel());
+        if (job.getState() == BulkJob.State.RUNNING) {
+            copy.markRunning();
+        } else if (job.getState() != BulkJob.State.PENDING) {
+            copy.finish(job.getState(), job.getFinishedAt());
+        }
+        return copy;
+    }
+
     private static UUID keyJob(BulkJobItem.Key key) {
         // Key has no getters; identity comparison via reflection-free equals trick.
         try {
@@ -630,6 +656,184 @@ class BulkJobServiceTest {
         assertThat(done.getState()).isEqualTo(BulkJobItem.State.ok); // settled outcomes untouched
         assertThat(inFlight.getState()).isEqualTo(BulkJobItem.State.unknown); // never re-fired
         assertThat(waiting.getState()).isEqualTo(BulkJobItem.State.not_run);
+    }
+
+    /**
+     * #303 plan step 2: {@code reconcileInterrupted()} now ALSO closes the job's still-open
+     * envelope (with the real per-item tally) and publishes the change event — delivering
+     * {@code AuditPendingSweeper}'s own javadoc promise honestly instead of leaving the envelope
+     * for that generic sweeper's blanket "unknown".
+     */
+    @Test
+    void reconciliationAlsoClosesTheEnvelopeAndPublishesTheChangeEvent() {
+        List<Object> published = new java.util.concurrent.CopyOnWriteArrayList<>();
+        service = serviceWith(4, 0, published);
+        BulkJob job = new BulkJob(UUID.randomUUID(), "resp", Instant.EPOCH, "suspend", null, null, 1, null);
+        job.markRunning();
+        jobStore.put(job.getId(), job);
+        BulkJobItem inFlight = new BulkJobItem(job.getId(), 0, ENGINE, "pi-1", null, BulkJobItem.State.pending);
+        inFlight.markDispatched();
+        itemStore.put(job.getId() + "#0", inFlight);
+        AuditEntry envelope = new AuditEntry(
+                UUID.randomUUID(),
+                "corr",
+                "resp",
+                Instant.EPOCH,
+                ENGINE,
+                null,
+                null,
+                "bulk:suspend",
+                null,
+                null,
+                null,
+                false);
+        when(audit.findPendingBulkEnvelope(job.getId())).thenReturn(Optional.of(envelope));
+
+        service.reconcileInterrupted();
+
+        verify(audit).close(eq(envelope), eq(io.inspector.audit.AuditOutcome.unknown), any(), any(), eq(false));
+        assertThat(published)
+                .anySatisfy(e -> assertThat(e)
+                        .isInstanceOfSatisfying(
+                                BulkJobChangedEvent.class,
+                                changed -> assertThat(changed.jobId()).isEqualTo(job.getId())));
+    }
+
+    /* ---------------- run() failure boundary (#303 defect 2: the job always settles) ---------------- */
+
+    /**
+     * A store blip right at the finish line (the {@code job.finish}+{@code saveAndFlush} pair)
+     * used to leave the job RUNNING forever, recoverable only at the next BFF restart. Now
+     * {@code run()}'s outer try/catch settles it INTERRUPTED immediately — honestly, since the
+     * blip means the real terminal outcome (COMPLETED) was never confirmed persisted — while the
+     * items' ALREADY-settled outcomes (dispatch succeeded before the blip) are left untouched.
+     */
+    @Test
+    void aStoreBlipRightAtFinishStillSettlesTheJobInterruptedRatherThanLeavingItRunningForever() {
+        when(actions.executeBulkItem(any(), any(), any(), any(), any()))
+                .thenReturn(new ActionResult(UUID.randomUUID(), "c", "ok", 200, "suspended"));
+        java.util.concurrent.atomic.AtomicBoolean firstTerminalSaveFailed =
+                new java.util.concurrent.atomic.AtomicBoolean();
+        // doAnswer(...).when(...), NOT when(...).thenAnswer(...): the latter would actually
+        // CALL jobs.saveAndFlush(any()) to register the new stub, re-invoking the setUp()
+        // stub already registered for it (with any()'s null placeholder) as a side effect.
+        //
+        // jobStore holds an independent SNAPSHOT (never the live `job` reference runInternal()
+        // keeps mutating) — a real JPA saveAndFlush() failure leaves the DB row at its last
+        // COMMITTED state; a shared mutable reference would let the in-process object's later
+        // mutation "leak" into what this fake store reports as persisted, silently defeating
+        // the very failure this test injects.
+        org.mockito.Mockito.doAnswer(inv -> {
+                    BulkJob job = inv.getArgument(0);
+                    boolean terminal =
+                            job.getState() != BulkJob.State.PENDING && job.getState() != BulkJob.State.RUNNING;
+                    if (terminal && firstTerminalSaveFailed.compareAndSet(false, true)) {
+                        throw new RuntimeException("simulated store blip at finish");
+                    }
+                    jobStore.put(job.getId(), snapshot(job));
+                    return job;
+                })
+                .when(jobs)
+                .saveAndFlush(any());
+
+        BulkDtos.BulkJobDto submitted = service.submit(suspendOf("pi-1", "pi-2"), responder);
+        BulkDtos.BulkJobDto done = awaitFinished(submitted.id());
+
+        // Never claims the COMPLETED it couldn't confirm was persisted — settles INTERRUPTED,
+        // honestly, instead of being stuck RUNNING until a restart.
+        assertThat(done.state()).isEqualTo("INTERRUPTED");
+        // The items' REAL outcomes (already settled before the blip) are untouched — they were
+        // neither `dispatched` nor `pending` any more, so the recovery settle left them alone.
+        assertThat(done.items()).extracting(BulkDtos.BulkItemDto::state).containsExactly("ok", "ok");
+    }
+
+    /**
+     * A store blip loading the item list — the FIRST unguarded statement inside the old
+     * {@code run()} after {@code markRunning} — now settles every item {@code not_run} (nothing
+     * was ever dispatched) instead of leaving the job RUNNING forever.
+     */
+    @Test
+    void aStoreBlipLoadingItemsBeforeAnyDispatchStillSettlesEveryItemNotRun() {
+        java.util.concurrent.atomic.AtomicInteger calls = new java.util.concurrent.atomic.AtomicInteger();
+        // doAnswer(...).when(...) — see the sibling test above for why re-stubbing an
+        // already-stubbed any()-matched method with when(...).thenAnswer(...) is unsafe.
+        org.mockito.Mockito.doAnswer(inv -> {
+                    if (calls.getAndIncrement() == 0) {
+                        throw new RuntimeException("simulated store blip loading items");
+                    }
+                    UUID jobId = inv.getArgument(0);
+                    return itemStore.values().stream()
+                            .filter(item -> item.getJobId().equals(jobId))
+                            .sorted(java.util.Comparator.comparingInt(BulkJobItem::getOrdinal))
+                            .collect(java.util.stream.Collectors.toCollection(ArrayList::new));
+                })
+                .when(items)
+                .findByJobIdOrderByOrdinal(any());
+
+        BulkDtos.BulkJobDto submitted = service.submit(suspendOf("pi-1", "pi-2"), responder);
+        BulkDtos.BulkJobDto done = awaitFinished(submitted.id());
+
+        assertThat(done.state()).isEqualTo("INTERRUPTED");
+        assertThat(done.items()).extracting(BulkDtos.BulkItemDto::state).containsExactly("not_run", "not_run");
+        verifyNoInteractions(actions); // nothing was ever dispatched
+    }
+
+    /* ---------------- periodic stale-RUNNING sweep (#303 plan step 2) ---------------- */
+
+    /**
+     * A job with NO item-state progress since well past the staleness bound is settled exactly
+     * like a crash-restart job (INTERRUPTED, dispatched → unknown, pending → not_run); a job
+     * whose last item settled just a moment ago is left completely alone, however old its
+     * {@code submittedAt} — proving the bound tracks PROGRESS, not overall job age, so a
+     * healthy, merely-large-or-slow job is never swept mid-run (the #303 headline defect).
+     */
+    @Test
+    void staleRunningSweepSettlesAStuckJobButNeverTouchesOneStillMakingProgress() {
+        BulkJob stuck =
+                new BulkJob(UUID.randomUUID(), "resp", NOW.minus(Duration.ofHours(1)), "suspend", null, null, 2, null);
+        stuck.markRunning();
+        jobStore.put(stuck.getId(), stuck);
+        BulkJobItem stuckDispatched =
+                new BulkJobItem(stuck.getId(), 0, ENGINE, "pi-1", null, BulkJobItem.State.pending);
+        stuckDispatched.markDispatched();
+        BulkJobItem stuckPending = new BulkJobItem(stuck.getId(), 1, ENGINE, "pi-2", null, BulkJobItem.State.pending);
+        itemStore.put(stuck.getId() + "#0", stuckDispatched);
+        itemStore.put(stuck.getId() + "#1", stuckPending);
+
+        // Same distant submittedAt as the stuck job — but its one item settled a MOMENT ago:
+        // genuine, recent progress the sweep must respect.
+        BulkJob healthy =
+                new BulkJob(UUID.randomUUID(), "resp", NOW.minus(Duration.ofHours(1)), "suspend", null, null, 1, null);
+        healthy.markRunning();
+        jobStore.put(healthy.getId(), healthy);
+        BulkJobItem healthyItem = new BulkJobItem(healthy.getId(), 0, ENGINE, "pi-3", null, BulkJobItem.State.pending);
+        healthyItem.settle(BulkJobItem.State.ok, "suspended", null, NOW.minusSeconds(1));
+        itemStore.put(healthy.getId() + "#0", healthyItem);
+
+        service.sweepStaleRunning();
+
+        assertThat(jobStore.get(stuck.getId()).getState()).isEqualTo(BulkJob.State.INTERRUPTED);
+        assertThat(stuckDispatched.getState()).isEqualTo(BulkJobItem.State.unknown);
+        assertThat(stuckPending.getState()).isEqualTo(BulkJobItem.State.not_run);
+
+        assertThat(jobStore.get(healthy.getId()).getState()).isEqualTo(BulkJob.State.RUNNING); // untouched
+        assertThat(healthyItem.getState()).isEqualTo(BulkJobItem.State.ok); // untouched
+    }
+
+    /** A job just PENDING (never even reached {@code runInternal}) is caught by the same sweep. */
+    @Test
+    void staleRunningSweepAlsoCatchesAJobStuckPendingBeforeItEverStartedRunning() {
+        BulkJob neverStarted =
+                new BulkJob(UUID.randomUUID(), "resp", NOW.minus(Duration.ofHours(1)), "suspend", null, null, 1, null);
+        jobStore.put(neverStarted.getId(), neverStarted); // stays PENDING — markRunning() never called
+        BulkJobItem stillPending =
+                new BulkJobItem(neverStarted.getId(), 0, ENGINE, "pi-1", null, BulkJobItem.State.pending);
+        itemStore.put(neverStarted.getId() + "#0", stillPending);
+
+        service.sweepStaleRunning();
+
+        assertThat(jobStore.get(neverStarted.getId()).getState()).isEqualTo(BulkJob.State.INTERRUPTED);
+        assertThat(stillPending.getState()).isEqualTo(BulkJobItem.State.not_run);
     }
 
     /* ---------------- v1.x #2: engine protection (permits + stagger) ---------------- */
