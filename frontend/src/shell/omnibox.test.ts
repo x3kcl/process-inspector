@@ -162,4 +162,24 @@ describe('summarizeReachability (R-SEM-12)', () => {
     const summary = summarizeReachability(response([], { 'engine-a': { ok: true } }))
     expect(summary.uncovered).toEqual([])
   })
+
+  // S2 (R-SAFE-17, #300): an explicit engine:id composite naming an out-of-scope engine gets
+  // a LABELED envelope — distinct from a genuine reachability failure, never merged into
+  // "unreachable" (that would read as "the engine is down" rather than "you can't see it").
+  it('labels an out-of-scope engine separately from a genuinely unreachable one (#300)', () => {
+    const summary = summarizeReachability(
+      response([], {
+        'engine-a': { ok: true },
+        'engine-b': {
+          ok: false,
+          error: 'the engine "engine-b" is outside your access scope',
+          outOfScope: true,
+        },
+      }),
+    )
+    expect(summary.reached).toBe(1)
+    expect(summary.total).toBe(2)
+    expect(summary.unreachable).toEqual([])
+    expect(summary.outOfScope).toEqual([{ engineId: 'engine-b' }])
+  })
 })

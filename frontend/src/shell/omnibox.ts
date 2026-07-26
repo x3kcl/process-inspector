@@ -72,6 +72,15 @@ export interface ReachabilitySummary {
   total: number
   unreachable: { engineId: string; error: string }[]
   /**
+   * S2 (R-SAFE-17, #300): engines an explicit {@code engine:id} composite named that sit
+   * OUTSIDE the caller's read scope — a labeled envelope, distinct from a genuine
+   * reachability failure so the banner can say "you can't see this engine" rather than
+   * "this engine is down". Never populated for the implicit "all engines" fan-out, which
+   * narrows to the readable set silently instead (labeling every excluded engine there
+   * would leak the existence of engines outside the caller's scope).
+   */
+  outOfScope: { engineId: string }[]
+  /**
    * #236: registered engines the resolve never probed AT ALL (non-active lifecycle —
    * disabled/draft/probe_failed — never enter the fan-out, so they have no perEngine
    * entry). Without this, "resolved against 3 of 3 engines" reads exhaustive while more
@@ -85,13 +94,17 @@ export function summarizeReachability(
   registeredEngines?: readonly EngineDto[],
 ): ReachabilitySummary {
   const probes = Object.entries(response.perEngine ?? {})
+  const outOfScope = probes
+    .filter(([, probe]) => probe.outOfScope === true)
+    .map(([engineId]) => ({ engineId }))
   const unreachable = probes
-    .filter(([, probe]) => probe.ok !== true)
+    .filter(([, probe]) => probe.ok !== true && probe.outOfScope !== true)
     .map(([engineId, probe]) => ({ engineId, error: probe.error ?? 'unreachable' }))
   return {
-    reached: probes.length - unreachable.length,
+    reached: probes.length - unreachable.length - outOfScope.length,
     total: probes.length,
     unreachable,
+    outOfScope,
     uncovered: uncoveredEngines(
       registeredEngines,
       probes.map(([engineId]) => engineId),

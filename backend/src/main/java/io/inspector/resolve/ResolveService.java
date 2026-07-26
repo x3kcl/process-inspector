@@ -18,6 +18,7 @@ import java.util.ArrayList;
 import java.util.LinkedHashMap;
 import java.util.List;
 import java.util.Map;
+import java.util.Set;
 import java.util.concurrent.CompletableFuture;
 import java.util.concurrent.ExecutorService;
 import java.util.concurrent.TimeUnit;
@@ -35,6 +36,12 @@ import org.springframework.stereotype.Service;
  * different kinds — the response is always a disambiguation list, the UI decides
  * navigation. An unreachable engine degrades to a {@code perEngine} error entry, never a
  * failed resolve (partial results are the contract, flowable-rest skill §6).
+ *
+ * <p>Scope-filtered exactly like {@code SearchService}/{@code PersonTaskSearchService} (S2,
+ * R-SAFE-17): the caller only fans out over engines its grants {@code overlap} at VIEWER. An
+ * implicit "all engines" query narrows to that set SILENTLY; an explicit {@code engine:id}
+ * naming an out-of-scope engine short-circuits to a single labeled
+ * {@link EngineProbe#outOfScope(String)} entry instead — no engine is called on that leg.
  */
 @Service
 public class ResolveService {
@@ -65,7 +72,16 @@ public class ResolveService {
         this.detail = detail;
     }
 
-    public ResolveResponse resolve(String query) {
+    /**
+     * @param readableEngineIds the S2 (R-SAFE-17) read-scope set, resolved by the controller on
+     *     the request thread — {@code null} = unrestricted (enforcement off or a global grant),
+     *     never treated as "empty". An implicit "all engines" fan-out narrows to this set
+     *     SILENTLY; an explicit {@code engine:id} composite naming an engine outside it short-
+     *     circuits to a labeled {@link EngineProbe#outOfScope(String)} entry — no engine is
+     *     called (register mandate: {@code overlaps}, not {@code covers}, already baked into
+     *     {@code readableEngineIds} by {@link io.inspector.security.ReadScopeGate}).
+     */
+    public ResolveResponse resolve(String query, Set<String> readableEngineIds) {
         String q = query == null ? "" : query.trim();
         if (q.isEmpty()) {
             throw new IllegalArgumentException("q must not be blank");
@@ -73,20 +89,37 @@ public class ResolveService {
 
         // Composite engine:id — only a REGISTERED engine id makes the prefix a composite
         // (mirrors the client-side classifier): "order:4711" stays an opaque business key.
-        List<EngineConfig> targets = registry.all();
+        List<EngineConfig> registered = registry.all();
+        List<EngineConfig> targets = registered;
         String needle = q;
+        boolean explicitEngine = false;
+        EngineConfig outOfScopeNamed = null;
         int at = q.indexOf(':');
         if (at > 0) {
             String prefix = q.substring(0, at);
             String rest = q.substring(at + 1).trim();
-            EngineConfig named = targets.stream()
+            EngineConfig named = registered.stream()
                     .filter(e -> e.id().equals(prefix))
                     .findFirst()
                     .orElse(null);
             if (named != null && !rest.isEmpty()) {
-                targets = List.of(named);
                 needle = rest;
+                explicitEngine = true;
+                if (readableEngineIds != null && !readableEngineIds.contains(named.id())) {
+                    // S2 (R-SAFE-17): explicitly named, out of scope — labeled, not silent.
+                    outOfScopeNamed = named;
+                    targets = List.of();
+                } else {
+                    targets = List.of(named);
+                }
             }
+        }
+        // Implicit "all engines" fan-out narrows SILENTLY to the readable set (labeling every
+        // excluded engine here would leak the existence of engines outside the caller's scope).
+        if (!explicitEngine && readableEngineIds != null) {
+            targets = targets.stream()
+                    .filter(e -> readableEngineIds.contains(e.id()))
+                    .toList();
         }
 
         String id = needle;
@@ -97,6 +130,9 @@ public class ResolveService {
 
         List<ResolveMatch> matches = new ArrayList<>();
         Map<String, EngineProbe> perEngine = new LinkedHashMap<>();
+        if (outOfScopeNamed != null) {
+            perEngine.put(outOfScopeNamed.id(), EngineProbe.outOfScope(outOfScopeNamed.id()));
+        }
         for (Map.Entry<EngineConfig, CompletableFuture<List<ResolveMatch>>> e : futures.entrySet()) {
             EngineConfig engine = e.getKey();
             // Same outer-guard doctrine as the search fan-out: the real limits are the

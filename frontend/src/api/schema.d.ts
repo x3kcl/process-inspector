@@ -1808,6 +1808,7 @@ export interface components {
         EngineProbe: {
             error?: string;
             ok?: boolean;
+            outOfScope?: boolean;
         };
         EngineProposalView: {
             engineId?: string;
