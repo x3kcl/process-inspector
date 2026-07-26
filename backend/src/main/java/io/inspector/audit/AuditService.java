@@ -14,9 +14,16 @@ import java.util.Locale;
 import java.util.Map;
 import java.util.Set;
 import java.util.UUID;
+import java.util.concurrent.locks.ReentrantLock;
 import org.slf4j.Logger;
 import org.slf4j.LoggerFactory;
+import org.springframework.lang.Nullable;
 import org.springframework.stereotype.Service;
+import org.springframework.transaction.PlatformTransactionManager;
+import org.springframework.transaction.TransactionDefinition;
+import org.springframework.transaction.support.AbstractPlatformTransactionManager;
+import org.springframework.transaction.support.DefaultTransactionStatus;
+import org.springframework.transaction.support.TransactionTemplate;
 
 /**
  * The audit golden master's write path (SPEC §9). Two rules dominate everything here:
@@ -34,7 +41,11 @@ import org.springframework.stereotype.Service;
  * Inserts are single-writer serialized for the tamper-evidence hash chain: each row's
  * {@code chain_hash} covers its immutable insert-time fields plus the previous row's
  * hash (mutable outcome columns are excluded — they change in place by design). The BFF
- * is a single instance (ARCH §5), so a process-local lock suffices.
+ * is a single instance (ARCH §5), so a process-local lock suffices — a {@link ReentrantLock}
+ * (issue #306), not {@code synchronized}: with {@code spring.threads.virtual.enabled=true} on
+ * Java 21, {@code synchronized} around blocking I/O (the two JDBC round trips per insert) pins
+ * the carrier thread and is a defect class until the JDK 24 bump. See {@link #chainLock}'s
+ * javadoc for the commit-inside-lock invariant this swap must preserve.
  */
 @Service
 public class AuditService {
@@ -66,13 +77,105 @@ public class AuditService {
     private final ObjectMapper mapper;
     private final Clock clock;
     private final MeterRegistry metrics;
-    private final Object chainLock = new Object();
 
-    public AuditService(AuditEntryRepository repository, ObjectMapper mapper, Clock clock, MeterRegistry metrics) {
+    /**
+     * Serializes the chain-head-read + insert critical section in {@link #beginPending} and
+     * {@link #recordConfigEvent} for the tamper-evident hash chain.
+     *
+     * <p><b>LOAD-BEARING INVARIANT (issue #306, M4-CLOSEOUT.md:46/126): the insert must
+     * COMMIT while this lock is held</b> — or a second writer can acquire the lock, read the same
+     * not-yet-committed row as the chain head, and insert on top of it: two rows claiming the same
+     * predecessor, i.e. a FORKED chain. This is exactly the second-writer hazard M4-CLOSEOUT.md:46
+     * rejected the external-cron retention-purge design over, applied here to any caller of these
+     * two methods.
+     *
+     * <p><b>Why this is not just "true by accident":</b> a naive implementation (bare {@code
+     * repository.saveAndFlush(...)} relying on {@code SimpleJpaRepository}'s own {@code REQUIRED}
+     * transaction) only commits synchronously while the lock is held IF no caller has an ambient
+     * transaction open — {@code REQUIRED} silently JOINS one if present, deferring the physical
+     * commit to that outer transaction's boundary, which is AFTER {@code unlock()}. This is not
+     * hypothetical: {@code EngineRegistryStore}'s CRUD methods (seed/add/edit/probe/enable/
+     * disable/remove/purge/approve) are themselves {@code @Transactional} and call
+     * {@link #beginPending}/{@link #recordConfigEvent} directly — exactly the shape that would
+     * silently break the invariant. {@link #newTransaction} makes the property true BY
+     * CONSTRUCTION instead of by caller discipline: every insert here runs inside its OWN {@code
+     * PROPAGATION_REQUIRES_NEW} transaction, which Spring suspends-and-resumes around any ambient
+     * one, and which commits synchronously when {@link TransactionTemplate#execute} returns — i.e.
+     * still inside this lock's hold, before {@code unlock()} — regardless of what the caller is
+     * doing. See {@code AuditServiceTest} for the proof (a write from inside a real outer
+     * transaction still lands, in its own transaction, without joining or blocking on it).
+     *
+     * <p><b>Future option, deliberately out of scope for #306:</b> replace the
+     * lock+read+insert pair with a single {@code INSERT ... SELECT ... FOR UPDATE} (or a
+     * Postgres advisory lock keyed off the chain) so the chain-head read and the insert are one
+     * statement inside one DB transaction — would drop the JVM-process-local-lock assumption
+     * (ARCH §5's "single BFF instance") entirely, at the cost of a heavier migration.
+     */
+    private final ReentrantLock chainLock = new ReentrantLock();
+
+    /**
+     * Always {@code PROPAGATION_REQUIRES_NEW} — see {@link #chainLock}'s javadoc for why. Built
+     * once per {@code AuditService} instance (constructor) rather than injected as the shared
+     * default-propagation {@code TransactionTemplate} bean other services use (e.g.
+     * {@code IncidentLedgerService}'s {@code REQUIRED} template) — that default would silently
+     * join an ambient transaction, which is the exact hazard this exists to prevent.
+     */
+    private final TransactionTemplate newTransaction;
+
+    /**
+     * The docker-free test harness ({@code NoDbTestSupport}) has no real {@code DataSource}, so
+     * Spring Boot never auto-configures a {@code PlatformTransactionManager} in those ~33 context
+     * — and deliberately so: registering ANY bean of that type there would flip on
+     * {@code @EnableTransactionManagement}'s declarative-{@code @Transactional} AOP proxying
+     * (Spring Boot's {@code TransactionAutoConfiguration} gates it on
+     * {@code @ConditionalOnBean(TransactionManager.class)}), which would then start wrapping
+     * every {@code @Transactional} repository method — including the ones on the Mockito-mocked
+     * JPA repositories those tests already rely on behaving as plain, unproxied mocks. So the
+     * manager here is genuinely optional: the {@code @Nullable} constructor parameter resolves to
+     * {@code null} in that harness (no bean to inject, nothing thrown), and THIS no-op stand-in
+     * is used instead. It is never reached in production (a real {@code DataSource} always yields
+     * a real {@code JpaTransactionManager}) nor in the Testcontainers-backed *IT suite (same
+     * reason) — only in tests where the repository itself is already a mock and there is no real
+     * commit to make correct in the first place.
+     */
+    private static final PlatformTransactionManager NO_OP_TRANSACTION_MANAGER =
+            new AbstractPlatformTransactionManager() {
+                @Override
+                protected Object doGetTransaction() {
+                    return new Object();
+                }
+
+                @Override
+                protected void doBegin(Object transaction, TransactionDefinition definition) {}
+
+                @Override
+                protected void doCommit(DefaultTransactionStatus status) {}
+
+                @Override
+                protected void doRollback(DefaultTransactionStatus status) {}
+
+                @Override
+                protected Object doSuspend(Object transaction) {
+                    return new Object();
+                }
+
+                @Override
+                protected void doResume(Object transaction, Object suspendedResources) {}
+            };
+
+    public AuditService(
+            AuditEntryRepository repository,
+            ObjectMapper mapper,
+            Clock clock,
+            MeterRegistry metrics,
+            @Nullable PlatformTransactionManager transactionManager) {
         this.repository = repository;
         this.mapper = mapper;
         this.clock = clock;
         this.metrics = metrics;
+        this.newTransaction =
+                new TransactionTemplate(transactionManager != null ? transactionManager : NO_OP_TRANSACTION_MANAGER);
+        this.newTransaction.setPropagationBehavior(TransactionDefinition.PROPAGATION_REQUIRES_NEW);
     }
 
     /**
@@ -111,8 +214,12 @@ public class AuditService {
             Map<String, Object> payload,
             AuditPayloadMode mode) {
         String payloadJson = toJson(applyPayloadMode(redact(payload), mode));
+        chainLock.lock();
         try {
-            synchronized (chainLock) {
+            // ISSUE #306: runs in its OWN REQUIRES_NEW transaction (see #newTransaction /
+            // #chainLock javadocs) — commits synchronously before this call returns, i.e. still
+            // inside the lock, regardless of any ambient transaction on the calling thread.
+            return newTransaction.execute(status -> {
                 String previousHash = repository
                         .findTopByOrderBySeqDesc()
                         .map(AuditEntry::getChainHash)
@@ -133,7 +240,7 @@ public class AuditService {
                 entry.setPayloadMode(mode);
                 entry.setChainHash(chainHash(previousHash, entry));
                 return repository.saveAndFlush(entry);
-            }
+            });
         } catch (RuntimeException e) {
             // R-OPS-02 (issue #96): the fail-closed gate itself firing IS the alertable event —
             // RUNBOOK §2b/§7 name this counter directly (`audit_insert_failures_total > 0` ⇒
@@ -141,6 +248,8 @@ public class AuditService {
             metrics.counter("audit_insert_failures_total", "site", "beginPending")
                     .increment();
             throw new AuditUnavailableException(e);
+        } finally {
+            chainLock.unlock();
         }
     }
 
@@ -176,8 +285,10 @@ public class AuditService {
     public AuditEntry recordConfigEvent(
             String action, String actor, boolean succeeded, String reason, Map<String, Object> payload) {
         String payloadJson = toJson(redact(payload));
+        chainLock.lock();
         try {
-            synchronized (chainLock) {
+            // ISSUE #306: see beginPending's identical REQUIRES_NEW rationale above.
+            return newTransaction.execute(status -> {
                 String previousHash = repository
                         .findTopByOrderBySeqDesc()
                         .map(AuditEntry::getChainHash)
@@ -198,7 +309,7 @@ public class AuditService {
                 entry.close(succeeded ? AuditOutcome.ok : AuditOutcome.failed, null, null, false);
                 entry.setChainHash(chainHash(previousHash, entry));
                 return repository.saveAndFlush(entry);
-            }
+            });
         } catch (RuntimeException e) {
             // R-OPS-02 (issue #96): same counter, tagged by site — a config-event failure is the
             // SAME underlying condition (the audit DB is unavailable) as a mutation's beginPending
@@ -214,6 +325,8 @@ public class AuditService {
                     action,
                     e.toString());
             throw new AuditUnavailableException(e);
+        } finally {
+            chainLock.unlock();
         }
     }
 
