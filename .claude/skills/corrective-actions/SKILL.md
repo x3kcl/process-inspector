@@ -51,3 +51,45 @@ clear message. Never let the click travel to the engine to die as a 404.
 The proxy layer exposes ONLY the cataloged calls (see `flowable-rest` skill §4). Never a
 generic pass-through `/proxy/**` route — that would hand every UI user the full engine
 management API, bypassing RBAC and audit.
+
+## Review checklist — rails ArchUnit can't structurally enforce (issue #309)
+Two of #309's rules exist as automated ArchUnit guards (`MutatingEndpointRbacArchTest`,
+`RestClientWhitelistArchTest` — see `docs/TEST-STRATEGY.md`'s ArchUnit section). Two more
+candidates were spiked and dropped because expressing them would need a hand-maintained list
+or a check ArchUnit's API doesn't expose — reviewers must check these by hand instead:
+
+- **Every read fan-out over `EngineRegistry.all()` is scope-filtered by `ReadScopeGate`
+  (R-SAFE-17, "Reads are scoped too").** Spiked hard, dropped: the codebase has THREE
+  incompatible shapes that all reach the same correct outcome — (1) the calling controller
+  resolves `readScope.readableEngineIds(auth)` and threads the `Set<String>` down as a plain
+  parameter (`SearchController`→`SearchService`, `ResolveController`→`ResolveService` — the
+  service class never references `ReadScopeGate` at all, so a "class calls `.all()` ⇒ class
+  also references `ReadScopeGate`" rule false-negatives on these); (2) an unscoped aggregator
+  (`TriageAggregationService`, `LeakViewService`) builds the raw DTO and a SEPARATE
+  `*ScopeProjector` class filters it post-hoc, wired together only at the controller — no
+  compile-time link between the two files an ArchUnit rule can pin; (3) several `.all()`
+  call sites (`RegistryBootstrap`, `RegistryReloadListener`, `EngineHealthService`,
+  `MeController`) are infra bookkeeping or self-lookups that genuinely need no scoping at
+  all. Any single mechanical predicate flags real (2) cases and false-positives on (1) and
+  (3) indistinguishably. **When adding a new fan-out over `EngineRegistry.all()` that
+  surfaces fleet data to a caller, manually verify one of: the result is scope-filtered
+  before it reaches the caller, OR the endpoint doesn't answer with cross-engine data at
+  all (e.g. it echoes the caller's own grants like `MeController`), OR it's pure infra
+  bookkeeping with no `Authentication` in scope.**
+- **No `synchronized` around blocking I/O in a virtual-thread world (CLAUDE.md's
+  Java-21-VT rule, issue #306).** Spiked, dropped: ArchUnit's `JavaModifier.SYNCHRONIZED`
+  only sees a `synchronized` METHOD; every real instance in this codebase is a `synchronized
+  (lock) { … }` BLOCK guarding a plain `Object` field (the exact pattern `AuditService` and
+  `SseHub`'s own doc comments describe replacing with `ReentrantLock`) — ArchUnit's public
+  API has no block/statement-level (monitorenter/monitorexit) visibility to key a rule on.
+  Even ignoring that gap, "blocking I/O" has no closed structural definition short of a
+  hand-maintained list of qualifying types (JPA repositories, `EntityManager`, `RestClient`,
+  `RestTemplate`, `java.nio.file.Files`, sockets, …) — precisely the disqualifier #309's
+  expressibility gate rules out. **When adding or reviewing a `synchronized` block, manually
+  verify it does not wrap a JDBC call, an HTTP call, or blocking file I/O; prefer
+  `ReentrantLock` per CLAUDE.md.** The #309 spike found the pattern still live in
+  `EngineRegistryStore` (4 blocks, all wrapping JDBC via `repository.save`/`audit.*`) and
+  `AccessMappingAdminService` (2 blocks, same shape) — `ScopeMappingService` and
+  `BreakGlassAuditSink` synchronize over blocking file I/O. None of these were introduced by
+  this PR; they predate issue #306's fix (which only touched `AuditService`). Worth a
+  dedicated follow-up (tracked as issue #327).

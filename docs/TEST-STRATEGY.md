@@ -76,6 +76,56 @@ outside the trusted network path**, secret non-leakage in envelopes/audit, actua
 CSV formula injection, hostile-exception-message fixture. Executed by an independent tester
 during M6; zero high findings at GA. Continuous: SCA hard-fails known-exploitable or CVSS ≥7.
 
+## 5a. ArchUnit structural guards (R-TEST-03, R-TEST-06 — issue #309)
+Any CLAUDE.md sentence asserting universal rail coverage ("every mutating endpoint follows
+ALL the corrective-actions rails", "the BFF whitelists engine paths") is backed by an
+enumerable, CI-enforced test wherever the invariant is genuinely structurally expressible;
+where it isn't, a documented manual-review checklist item substitutes (never a silent gap).
+**Expressibility-gated**: a candidate is only landed as an ArchUnit rule if it needs no
+hand-maintained roster/list to stay both correct and enforced; otherwise it is dropped in
+favor of a checklist item, stated explicitly.
+
+Landed (`backend/src/test/java/io/inspector/...`):
+- `NoSleepInTestsArchTest` (`io.inspector`) — `Thread.sleep`/`TimeUnit.sleep` banned from
+  every test class (§9's anti-flakiness doctrine).
+- `security.reauth.DangerousActionReauthCoverageArchTest` (issue #295) — a **hand-maintained
+  roster** (not structurally derivable: tier lives only on the `ActionVerb` enum, so a
+  non-`ActionVerb` dangerous surface has no shared marker to key on) of classes that must call
+  `DangerousActionReauthGate.enforce(auth)`. This is the deliberate, documented fallback #295
+  chose over a fake structural check; #309 defers to it rather than building a second,
+  competing mechanism.
+- `api.MutatingEndpointRbacArchTest` (issue #309) — every method in `io.inspector.api..`
+  mapped to `@PostMapping`/`@PutMapping`/`@DeleteMapping`/`@PatchMapping` must carry
+  `@PreAuthorize` at method or controller-class level. ONE named exception:
+  `SearchController.search` (a VIEWER-floor read gated by `ReadScopeGate`, not an RBAC tier —
+  `@PostMapping` only because the filter travels as a request body).
+- `client.RestClientWhitelistArchTest` (issue #309) — no class outside `io.inspector.client..`
+  depends on `RestClient` directly (the F1 URI-concat whitelist-bypass class,
+  docs/IMPROVEMENT-PLAN-2026-07.md). ONE named exception: `AlertWebhookSender`
+  (`io.inspector.security.mapping`) builds its own `RestClient` to fire break-glass/
+  access-change webhook alerts — it never talks to a registered Flowable engine, so routing
+  it through `GuardedCaller` doesn't apply.
+
+Both new #309 rules were proven to actually catch drift (not just vacuously pass) before
+landing: each was run once against a deliberately broken copy of the tree (a stripped
+`@PreAuthorize`; a scratch class depending on `RestClient` outside the client package) and
+confirmed red, then the tree was restored and confirmed green.
+
+Spiked and **dropped** (too fuzzy to express without a hand-maintained list or beyond
+ArchUnit's structural surface) — manual-review checklist items instead, in the
+`corrective-actions` skill:
+- Every read fan-out over `EngineRegistry.all()` consults `ReadScopeGate` (R-SAFE-17) — three
+  incompatible call shapes coexist (parameter-threaded, cross-class post-hoc projector,
+  genuinely-unscoped infra/self-lookup) with no structural signal that discriminates a real
+  gap from a false positive.
+- No `synchronized` around blocking I/O (CLAUDE.md's Java-21-VT rule, issue #306) — ArchUnit's
+  `JavaModifier.SYNCHRONIZED` only sees `synchronized` METHODS; every real instance here is a
+  `synchronized (lock) { … }` BLOCK, which ArchUnit's API has no visibility into, and "blocking
+  I/O" has no closed structural definition short of a hand-maintained type list. The spike
+  surfaced the pattern still live in `EngineRegistryStore`/`AccessMappingAdminService`/
+  `ScopeMappingService`/`BreakGlassAuditSink` (predating #306, which only fixed `AuditService`)
+  — tracked as issue #327, not fixed in the #309 PR (test-only scope).
+
 ## 6. Fixture catalog (R-TEST-04)
 Every seed process / captured payload has a stable ID (`FIX-STATUS-03: suspended+DLQ
 collision`), an owner (lead dev), and a purpose. The SPEC §3 flag matrix maps to fixtures —
