@@ -269,10 +269,13 @@ same create-ahead-empty/drop-behind maintenance as §2.6 (explicitly extended to
 table), FK to the never-deleted `incident` rows, idempotent bucketed `ON CONFLICT` upsert.
 
 The state machine's one subtlety is the **regression gate**: `RESOLVED → REGRESSED` fires
-only after `seen_zero_since_resolve` (at least one post-resolve cycle observed the class
+only after `seen_zero_since_resolve` (at least one post-resolve cycle **observed** the class
 absent or zero — otherwise the ~20s aggregation cache plus engine retry-lag would regress
-every fresh resolve instantly) and only at/above `regression-min-count`. While gated, cycles
-still update totals and occurrence rows — the data stays honest; only the state waits.
+every fresh resolve instantly) and only at/above `regression-min-count`. "Observed" requires
+the owning engine to have actually been reached that cycle (`AggregationSample.cycleComplete`,
+#302): a cycle where any registry engine is unreachable cannot arm the gate for any incident,
+since it cannot tell a genuine absence from a blind spot. While gated, cycles still update
+totals and occurrence rows — the data stays honest; only the state waits.
 Truncation flags travel into both `incident` and occurrence rows (R-SEM-12 end-to-end).
 Reads are scope-projected per R-SAFE-17 in the service layer (the list is bounded and
 unpaginated in v1; the `TriageScopeProjector` doctrine, not a SQL predicate — revisit only
