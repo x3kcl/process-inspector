@@ -22,6 +22,7 @@ import io.inspector.registry.EngineCapabilities;
 import io.inspector.registry.EngineRegistry;
 import io.inspector.security.RbacAuthorizer;
 import io.inspector.security.Role;
+import io.inspector.security.reauth.DangerousActionReauthGate;
 import io.inspector.surgery.BpmnStructure;
 import io.inspector.surgery.BpmnStructureService;
 import java.net.ConnectException;
@@ -65,6 +66,7 @@ public class MigrationService {
     private final AuditService audit;
     private final ProtectionGuard protectionGuard;
     private final TicketPolicy ticketPolicy;
+    private final DangerousActionReauthGate reauth;
 
     public MigrationService(
             EngineRegistry registry,
@@ -73,7 +75,8 @@ public class MigrationService {
             RbacAuthorizer rbac,
             AuditService audit,
             ProtectionGuard protectionGuard,
-            TicketPolicy ticketPolicy) {
+            TicketPolicy ticketPolicy,
+            DangerousActionReauthGate reauth) {
         this.registry = registry;
         this.client = client;
         this.structures = structures;
@@ -81,6 +84,7 @@ public class MigrationService {
         this.audit = audit;
         this.protectionGuard = protectionGuard;
         this.ticketPolicy = ticketPolicy;
+        this.reauth = reauth;
     }
 
     /* --------------------------------- preview (S1) --------------------------------- */
@@ -127,6 +131,19 @@ public class MigrationService {
     public ActionResult execute(String engineId, String instanceId, MigrationRequest request, Authentication auth) {
         MigrationPlan plan = plan(engineId, instanceId, request, auth);
         EngineConfig engine = plan.engine();
+
+        // Dangerous-set freshness (IDP-SECURITY.md §5, R-SAFE-07 / issue #295): migrate is tier-3
+        // (SPEC §5) but MIGRATE is not (and can never be) an ActionVerb, so
+        // CorrectiveActionService's `verb.tier() >= 3` branch never covers it — this call is the
+        // fix for that gap. Placed here, right after plan() resolves engine/role/writability (and
+        // re-reads the server-fresh state preview() and execute() share), but BEFORE
+        // assertNotMovedSincePreview/reason/confirm-token, so a stale operator re-authenticates at
+        // verb intent — never after typing the confirm token (⚠️ support-lead; same ordering as
+        // CorrectiveActionService.execute() and AdminAccessController's mapping writes).
+        // Deliberately NOT inside plan(): plan() is shared with preview() (read-only, never
+        // gated — gating it would fight the /api/me hint protocol), so the freshness check can
+        // only live in this execute()-only branch, after plan()'s shared reads have already run.
+        reauth.enforce(auth);
 
         assertNotMovedSincePreview(plan, request);
         // #172: dual-scope, unlike the other two callers of ProtectionGuard — plan() has already

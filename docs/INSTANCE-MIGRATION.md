@@ -239,6 +239,18 @@ Mirror `FlowSurgeryService.planChangeState` ORDER exactly:
    422; cross-tenant refused. Resolve version → concrete `toProcessDefinitionId` and **pin it**.
 7. **Call-activity children** — count child/called executions; blast-radius copy must state they
    are **NOT migrated** (they keep their own definition). Never imply the sub-process moved.
+8. **Dangerous-set re-auth — EXECUTE ONLY (issue #295, IDP-SECURITY.md §5, R-SAFE-07).** Migrate is
+   tier-3 by spec (§0), so a stale OIDC session must re-authenticate before it can execute — same
+   protocol as terminate/delete/suspend-definition. `MIGRATE` is not (and cannot be) an `ActionVerb`,
+   so `CorrectiveActionService`'s `verb.tier() >= 3` branch never reaches it; `MigrationService`
+   calls `reauth.enforce(auth)` itself, in `execute()`, right after `plan()` returns (steps 1–7
+   above have all run) and BEFORE the §5 compare-and-set / reason / typed-confirm rails below — a
+   stale operator is challenged at verb intent, never after typing the confirm token. This was
+   found MISSING entirely in the initial S1/S2 build (spec said tier-3, no gate existed, no
+   documented exemption) — landed after the fact, not part of the original P0 design. **Deliberately
+   NOT on `preview()`**: it is read-only and shares `plan()` with execute, so gating `plan()` itself
+   would gate preview too, fighting the `/api/me` reauth-hint protocol the SPA pre-empts with at
+   modal open.
 
 ## 4. Corrective-actions rails — every one
 - **Audit**: `beginPending` AFTER the server-fresh re-plan, BEFORE the migrate call. Payload

@@ -331,7 +331,15 @@ The `oidc` chain exists; this makes it a contract.
 ## 5. Access lifecycle & session hardening (R-SAFE-07)
 
 Three layers, honest about what each guarantees. **The dangerous set** = tier-3 `ActionVerb`s +
-bulk (guard-tier 4) + every mapping write (there is no tier-4 *verb*).
+bulk (guard-tier 4) + every mapping write (there is no tier-4 *verb*) + instance migration execute
+(SPEC §5 tier-3, but `MIGRATE` is not — and can never be — an `ActionVerb`, so it needed its own
+`reauth.enforce()` call site; issue #295 found it missing entirely — a spec-tier-3 surface with no
+documented exemption and no gate. Fixed in `MigrationService.execute()`, placed after `plan()`
+resolves engine/role/writability but before the compare-and-set/reason/typed-token rails — same
+verb-intent ordering as the other four call sites. `preview()` stays deliberately ungated, being
+read-only). The dangerous set is not derivable from a single structural property today (tier lives
+only on `ActionVerb`) — `DangerousActionReauthCoverageArchTest` is the hand-maintained drift guard
+until a real marker exists (issue #309).
 
 - **Session caps + cookie flags (mandatory, cheap).** `sessionManagement`: idle **12 h**, absolute
   **24 h**; **fixation protection** — but *scoped correctly*: `changeSessionId` on the `oidc`/form
