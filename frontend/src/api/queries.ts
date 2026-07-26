@@ -17,7 +17,7 @@ import type {
   CaseDiagram,
   CasePlanItems,
   IncidentDetail,
-  IncidentSummary,
+  IncidentListResponse,
   NoteDto,
   OutOfScopeDeadLetters,
   PersonTaskSearchResponse,
@@ -95,15 +95,17 @@ export async function fetchLeakViews(): Promise<LeakViewsResponse> {
 }
 
 /**
- * The Incident Ledger list (R-BAU-10, docs/INCIDENT-LEDGER.md §6): VIEWER floor, unpaginated
- * (bounded by distinct failure classes), scope-projected server-side. `state` filters
- * case-insensitively (the BFF 400s on an unknown value); `windowHours` keeps only incidents
- * last seen inside the window (absent = the whole ledger, clamped like `/api/triage/trends`).
+ * The Incident Ledger list (R-BAU-10, docs/INCIDENT-LEDGER.md §6): VIEWER floor, still
+ * unpaginated (bounded by distinct failure classes), scope-projected server-side. `state`
+ * filters case-insensitively (the BFF 400s on an unknown value); `windowHours` keeps only
+ * incidents last seen inside the window (absent = the whole ledger, up to the server's hard
+ * cap — issue #308, clamped like `/api/triage/trends`). `truncated` on the response is honest
+ * whenever that cap dropped the oldest rows — never render the list without checking it.
  */
 export async function fetchIncidents(
   state?: string,
   windowHours?: number,
-): Promise<IncidentSummary[]> {
+): Promise<IncidentListResponse> {
   const { data, error, response } = await api.GET('/api/incidents', {
     params: { query: { state, window: windowHours } },
   })

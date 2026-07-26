@@ -4,6 +4,7 @@ import static org.assertj.core.api.Assertions.assertThat;
 import static org.assertj.core.api.Assertions.assertThatThrownBy;
 import static org.mockito.ArgumentMatchers.any;
 import static org.mockito.ArgumentMatchers.anyLong;
+import static org.mockito.ArgumentMatchers.argThat;
 import static org.mockito.ArgumentMatchers.eq;
 import static org.mockito.Mockito.mock;
 import static org.mockito.Mockito.never;
@@ -15,6 +16,7 @@ import io.inspector.config.InspectorProperties;
 import io.inspector.config.InspectorProperties.Incidents;
 import io.inspector.dto.ErrorGroup;
 import io.inspector.dto.IncidentDetail;
+import io.inspector.dto.IncidentListResponse;
 import io.inspector.dto.IncidentSummary;
 import io.inspector.dto.TriageDashboardResponse;
 import io.inspector.security.ReadScopeGate;
@@ -76,9 +78,9 @@ class IncidentQueryServiceTest {
                 NOW.minus(Duration.ofHours(24)).minusSeconds(1),
                 5,
                 fleet());
-        when(incidents.findAllByOrderByLastSeenDesc()).thenReturn(List.of(atBoundary, pastBoundary));
+        when(incidents.findAllByOrderByLastSeenDesc(any())).thenReturn(List.of(atBoundary, pastBoundary));
 
-        List<IncidentSummary> out = service.list(null, null, auth);
+        List<IncidentSummary> out = service.list(null, null, auth).items();
 
         assertThat(out).extracting(IncidentSummary::quiet).containsExactly(false, true);
     }
@@ -90,9 +92,9 @@ class IncidentQueryServiceTest {
         when(gate.readableEngineIds(auth)).thenReturn(null);
         Incident fresh = row(1L, "fresh", CURRENT, IncidentState.OPEN, NOW, 5, fleet());
         Incident orphaned = row(2L, "orphaned", CURRENT + 1, IncidentState.OPEN, NOW, 5, fleet());
-        when(incidents.findAllByOrderByLastSeenDesc()).thenReturn(List.of(fresh, orphaned));
+        when(incidents.findAllByOrderByLastSeenDesc(any())).thenReturn(List.of(fresh, orphaned));
 
-        List<IncidentSummary> out = service.list(null, null, auth);
+        List<IncidentSummary> out = service.list(null, null, auth).items();
 
         assertThat(out).extracting(IncidentSummary::currentGeneration).containsExactly(true, false);
     }
@@ -103,9 +105,9 @@ class IncidentQueryServiceTest {
     void enforcementOffCarriesTheFleetRowVerbatim() {
         when(gate.readableEngineIds(auth)).thenReturn(null);
         Incident fleetRow = row(ID, "hash-1", CURRENT, IncidentState.OPEN, NOW, 12, fleet());
-        when(incidents.findAllByOrderByLastSeenDesc()).thenReturn(List.of(fleetRow));
+        when(incidents.findAllByOrderByLastSeenDesc(any())).thenReturn(List.of(fleetRow));
 
-        IncidentSummary summary = service.list(null, null, auth).get(0);
+        IncidentSummary summary = service.list(null, null, auth).items().get(0);
 
         assertThat(summary.lastTotal()).isEqualTo(12);
         assertThat(summary.partial()).isFalse();
@@ -116,9 +118,9 @@ class IncidentQueryServiceTest {
     void fullyInScopeCarriesTheStoredFleetTotal() {
         when(gate.readableEngineIds(auth)).thenReturn(Set.of("engine-a", "engine-b"));
         Incident fleetRow = row(ID, "hash-1", CURRENT, IncidentState.OPEN, NOW, 12, fleet());
-        when(incidents.findAllByOrderByLastSeenDesc()).thenReturn(List.of(fleetRow));
+        when(incidents.findAllByOrderByLastSeenDesc(any())).thenReturn(List.of(fleetRow));
 
-        IncidentSummary summary = service.list(null, null, auth).get(0);
+        IncidentSummary summary = service.list(null, null, auth).items().get(0);
 
         assertThat(summary.lastTotal()).isEqualTo(12); // stored fleet value, not a recompute
         assertThat(summary.partial()).isFalse();
@@ -129,9 +131,9 @@ class IncidentQueryServiceTest {
         when(gate.readableEngineIds(auth)).thenReturn(Set.of("engine-a"));
         // fleet lastTotal 12 = engine-a 4 + engine-b 8; the caller may only see engine-a
         Incident fleetRow = row(ID, "hash-1", CURRENT, IncidentState.OPEN, NOW, 12, fleet());
-        when(incidents.findAllByOrderByLastSeenDesc()).thenReturn(List.of(fleetRow));
+        when(incidents.findAllByOrderByLastSeenDesc(any())).thenReturn(List.of(fleetRow));
 
-        IncidentSummary summary = service.list(null, null, auth).get(0);
+        IncidentSummary summary = service.list(null, null, auth).items().get(0);
 
         assertThat(summary.lastTotal()).isEqualTo(4); // never the fleet 12 presented as scoped
         assertThat(summary.partial()).isTrue();
@@ -143,9 +145,9 @@ class IncidentQueryServiceTest {
         when(gate.readableEngineIds(auth)).thenReturn(Set.of("engine-a"));
         Incident mine = row(1L, "mine", CURRENT, IncidentState.OPEN, NOW, 4, "{\"engine-a\":{\"order:v3\":4}}");
         Incident foreign = row(2L, "foreign", CURRENT, IncidentState.OPEN, NOW, 8, "{\"engine-b\":{\"pay:v1\":8}}");
-        when(incidents.findAllByOrderByLastSeenDesc()).thenReturn(List.of(mine, foreign));
+        when(incidents.findAllByOrderByLastSeenDesc(any())).thenReturn(List.of(mine, foreign));
 
-        List<IncidentSummary> out = service.list(null, null, auth);
+        List<IncidentSummary> out = service.list(null, null, auth).items();
 
         assertThat(out).extracting(IncidentSummary::signatureHash).containsExactly("mine");
     }
@@ -178,11 +180,12 @@ class IncidentQueryServiceTest {
     @Test
     void stateFilterIsCaseInsensitiveAndHitsTheStateQuery() {
         when(gate.readableEngineIds(auth)).thenReturn(null);
-        when(incidents.findByStateOrderByLastSeenDesc(IncidentState.REGRESSED)).thenReturn(List.of());
+        when(incidents.findByStateOrderByLastSeenDesc(eq(IncidentState.REGRESSED), any()))
+                .thenReturn(List.of());
 
-        assertThat(service.list("regressed", null, auth)).isEmpty();
+        assertThat(service.list("regressed", null, auth).items()).isEmpty();
 
-        verify(incidents).findByStateOrderByLastSeenDesc(IncidentState.REGRESSED);
+        verify(incidents).findByStateOrderByLastSeenDesc(eq(IncidentState.REGRESSED), any());
     }
 
     @Test
@@ -200,14 +203,83 @@ class IncidentQueryServiceTest {
         when(gate.readableEngineIds(auth)).thenReturn(null);
         // A raw 100000h window must reach the store as the 720h clamp — never in-memory filtering.
         Incident recent = row(1L, "recent", CURRENT, IncidentState.OPEN, NOW.minus(Duration.ofHours(2)), 5, fleet());
-        when(incidents.findAllByLastSeenGreaterThanEqualOrderByLastSeenDesc(NOW.minus(Duration.ofHours(720))))
+        when(incidents.findAllByLastSeenGreaterThanEqualOrderByLastSeenDesc(
+                        eq(NOW.minus(Duration.ofHours(720))), any()))
                 .thenReturn(List.of(recent));
 
-        List<IncidentSummary> out = service.list(null, 100000, auth);
+        List<IncidentSummary> out = service.list(null, 100000, auth).items();
 
         assertThat(out).extracting(IncidentSummary::signatureHash).containsExactly("recent");
-        verify(incidents).findAllByLastSeenGreaterThanEqualOrderByLastSeenDesc(NOW.minus(Duration.ofHours(720)));
-        verify(incidents, never()).findAllByOrderByLastSeenDesc();
+        verify(incidents)
+                .findAllByLastSeenGreaterThanEqualOrderByLastSeenDesc(eq(NOW.minus(Duration.ofHours(720))), any());
+        verify(incidents, never()).findAllByOrderByLastSeenDesc(any());
+    }
+
+    /* ---------------- issue #308: server-side hard cap + truncation flag ---------------- */
+
+    @Test
+    void listAtOrUnderTheCapIsNotFlaggedTruncated() {
+        when(gate.readableEngineIds(auth)).thenReturn(null);
+        IncidentQueryService capped = service(Duration.ofHours(24), 3);
+        List<Incident> rows = List.of(
+                row(1L, "a", CURRENT, IncidentState.OPEN, NOW, 1, fleet()),
+                row(2L, "b", CURRENT, IncidentState.OPEN, NOW, 1, fleet()),
+                row(3L, "c", CURRENT, IncidentState.OPEN, NOW, 1, fleet()));
+        when(incidents.findAllByOrderByLastSeenDesc(any())).thenReturn(rows);
+
+        IncidentListResponse out = capped.list(null, null, auth);
+
+        assertThat(out.truncated()).isFalse();
+        assertThat(out.items()).hasSize(3);
+    }
+
+    @Test
+    void listOverTheCapDropsTheOldestAndFlagsTruncated_windowAbsent() {
+        when(gate.readableEngineIds(auth)).thenReturn(null);
+        IncidentQueryService capped = service(Duration.ofHours(24), 3);
+        // Ordered lastSeen DESC — the store returns cap+1 rows (newest first), the 4th (oldest)
+        // must be the one dropped.
+        List<Incident> rows = List.of(
+                row(1L, "newest", CURRENT, IncidentState.OPEN, NOW, 1, fleet()),
+                row(2L, "middle-1", CURRENT, IncidentState.OPEN, NOW.minusSeconds(1), 1, fleet()),
+                row(3L, "middle-2", CURRENT, IncidentState.OPEN, NOW.minusSeconds(2), 1, fleet()),
+                row(4L, "oldest", CURRENT, IncidentState.OPEN, NOW.minusSeconds(3), 1, fleet()));
+        when(incidents.findAllByOrderByLastSeenDesc(any())).thenReturn(rows);
+
+        IncidentListResponse out = capped.list(null, null, auth);
+
+        assertThat(out.truncated()).isTrue();
+        assertThat(out.items())
+                .extracting(IncidentSummary::signatureHash)
+                .containsExactly("newest", "middle-1", "middle-2");
+    }
+
+    @Test
+    void listOverTheCapDropsTheOldestAndFlagsTruncated_windowPresent() {
+        when(gate.readableEngineIds(auth)).thenReturn(null);
+        IncidentQueryService capped = service(Duration.ofHours(24), 2);
+        List<Incident> rows = List.of(
+                row(1L, "newest", CURRENT, IncidentState.OPEN, NOW, 1, fleet()),
+                row(2L, "middle", CURRENT, IncidentState.OPEN, NOW.minusSeconds(1), 1, fleet()),
+                row(3L, "oldest", CURRENT, IncidentState.OPEN, NOW.minusSeconds(2), 1, fleet()));
+        when(incidents.findAllByLastSeenGreaterThanEqualOrderByLastSeenDesc(any(), any()))
+                .thenReturn(rows);
+
+        IncidentListResponse out = capped.list(null, 24, auth);
+
+        assertThat(out.truncated()).isTrue();
+        assertThat(out.items()).extracting(IncidentSummary::signatureHash).containsExactly("newest", "middle");
+    }
+
+    @Test
+    void theStoreFetchIsAlwaysCapPlusOne_neverUnbounded() {
+        when(gate.readableEngineIds(auth)).thenReturn(null);
+        IncidentQueryService capped = service(Duration.ofHours(24), 7);
+        when(incidents.findAllByOrderByLastSeenDesc(any())).thenReturn(List.of());
+
+        capped.list(null, null, auth);
+
+        verify(incidents).findAllByOrderByLastSeenDesc(argThat(pageable -> pageable.getPageSize() == 8));
     }
 
     @Test
@@ -303,6 +375,12 @@ class IncidentQueryServiceTest {
     /* ---------------- fixtures ---------------- */
 
     private IncidentQueryService service(Duration quietWindow) {
+        return service(quietWindow, null);
+    }
+
+    /** {@code listCap} null keeps the production default (500) — tests use a small cap to
+     *  exercise truncation without a 500-row fixture. */
+    private IncidentQueryService service(Duration quietWindow, Integer listCap) {
         return new IncidentQueryService(
                 incidents,
                 episodes,
@@ -315,7 +393,13 @@ class IncidentQueryServiceTest {
                 new ObjectMapper(),
                 Clock.fixed(NOW, ZoneOffset.UTC),
                 new InspectorProperties(
-                        null, null, null, null, null, new Incidents(true, quietWindow, null, null), List.of()));
+                        null,
+                        null,
+                        null,
+                        null,
+                        null,
+                        new Incidents(true, quietWindow, null, null, listCap),
+                        List.of()));
     }
 
     /** Mocked persisted row (the entity is setter-less by design — the S1 test convention). */

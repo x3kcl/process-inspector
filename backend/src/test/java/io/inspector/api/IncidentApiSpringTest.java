@@ -1,6 +1,8 @@
 package io.inspector.api;
 
 import static org.assertj.core.api.Assertions.assertThat;
+import static org.mockito.ArgumentMatchers.any;
+import static org.mockito.ArgumentMatchers.eq;
 import static org.mockito.Mockito.mock;
 import static org.mockito.Mockito.reset;
 import static org.mockito.Mockito.when;
@@ -79,14 +81,15 @@ class IncidentApiSpringTest {
     @Test
     void viewerListsTheLedgerWithDerivedFields() throws Exception {
         Incident row = incidentRow();
-        when(incidents.findAllByOrderByLastSeenDesc()).thenReturn(List.of(row));
+        when(incidents.findAllByOrderByLastSeenDesc(any())).thenReturn(List.of(row));
 
         ResponseEntity<String> res = as("viewer").getForEntity("/api/incidents", String.class);
 
         assertThat(res.getStatusCode()).isEqualTo(HttpStatus.OK);
         JsonNode body = mapper.readTree(res.getBody());
-        assertThat(body).hasSize(1);
-        JsonNode item = body.get(0);
+        assertThat(body.path("truncated").asBoolean()).isFalse();
+        assertThat(body.path("items")).hasSize(1);
+        JsonNode item = body.path("items").get(0);
         assertThat(item.get("signatureHash").asText()).isEqualTo("hash-1");
         assertThat(item.get("state").asText()).isEqualTo("OPEN");
         assertThat(item.get("currentGeneration").asBoolean()).isTrue();
@@ -142,7 +145,8 @@ class IncidentApiSpringTest {
 
     @Test
     void aCaseInsensitiveStateFilterIsAccepted() {
-        when(incidents.findByStateOrderByLastSeenDesc(IncidentState.RESOLVED)).thenReturn(List.of());
+        when(incidents.findByStateOrderByLastSeenDesc(eq(IncidentState.RESOLVED), any()))
+                .thenReturn(List.of());
 
         assertThat(as("viewer")
                         .getForEntity("/api/incidents?state=resolved", String.class)

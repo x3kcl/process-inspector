@@ -1990,6 +1990,10 @@ export interface components {
             series?: components["schemas"]["OccurrencePoint"][];
             seriesWindow?: string;
         };
+        IncidentListResponse: {
+            items?: components["schemas"]["IncidentSummary"][];
+            truncated?: boolean;
+        };
         IncidentResolution: {
             acknowledgements?: components["schemas"]["AckSliceOutcome"][];
             incident?: components["schemas"]["IncidentSummary"];
@@ -3850,7 +3854,7 @@ export interface operations {
                     [name: string]: unknown;
                 };
                 content: {
-                    "*/*": components["schemas"]["IncidentSummary"][];
+                    "*/*": components["schemas"]["IncidentListResponse"];
                 };
             };
         };

@@ -192,12 +192,16 @@ inspector:
   # derivation horizon (never stored); regression-min-count is the RESOLVED→REGRESSED gate
   # hysteresis (fires only at/above this live total, after a post-resolve zero/absent cycle);
   # retention-days is the incident_occurrence drop-partition horizon (400d revFADP, aligned
-  # with the snapshot store — incident/episode rows persist, they ARE the memory).
+  # with the snapshot store — incident/episode rows persist, they ARE the memory). list-cap
+  # (issue #308) is the hard server-side ceiling on GET /api/incidents' bounded (still
+  # unpaginated) list — an absent window means the whole ledger up to this cap, never truly
+  # unbounded; the response's `truncated` flag says so honestly when it bites.
   incidents:
     enabled: true
     quiet-window: PT24H
     regression-min-count: 1
     retention-days: 400
+    list-cap: 500
   # Audit golden-master retention (M4-CLOSEOUT §A2 / S5b). retention-days MUST be ≥ 400 — the
   # purge_audit() DB floor refuses any younger cutoff, so a smaller value would never purge.
   # The @Scheduled AuditRetentionPurger drops whole aged-out monthly partitions (one at a time,
