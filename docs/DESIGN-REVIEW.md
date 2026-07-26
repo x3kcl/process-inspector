@@ -350,3 +350,18 @@ audited fail-closed.
 **Doc deltas:** new `docs/IDP-SECURITY.md` (authoritative); SPEC §4c; ARCH §5; OPERATIONS §7/§8;
 REQUIREMENTS-REGISTER R-GOV-06 (concretized) + R-SAFE-07/12 (expanded) + R-SAFE-14/15 + R-OPS-16;
 IMPLEMENTATION-PLAN v2 IdP-Security block (S1–S6). No code — design locked, unbuilt.
+
+## Addendum — #311 HMAC-key the audit hash chain: won't-do (2026-07-26)
+
+**Question:** should the per-row audit hash chain be HMAC-keyed instead of plain unkeyed
+SHA-256 (issue #311)? **Decision:** won't-do — accept the documented limitation. #304/PR #324
+shipped the chain-walk integrity verifier and made the docs (SPECIFICATION/DATA-CLASSIFICATION/
+OPERATIONS/ARCHITECTURE) honest about exactly what the unkeyed chain detects — tampering by
+anyone who cannot recompute the forward hashes — and does not: an actor with direct DB
+superuser write access, who can disable the append-only guard trigger, alter a row, and
+re-derive every hash after it, undetected. HMAC keying's marginal value targets precisely that
+DB-superuser tamperer, but on the current single-host deployment (BFF + Postgres both on hp04)
+the key would live in that same attacker's trust domain — bar-raising, not gap-closing — while
+adding real key-management cost (rotation, storage, recovery). **Revisit trigger:** the audit
+store moving to a separate trust domain from the BFF (e.g. a managed/remote Postgres the BFF's
+own credentials cannot reach with superuser rights).
