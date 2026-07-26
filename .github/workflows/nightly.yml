@@ -52,6 +52,31 @@ jobs:
           mvn -B verify -Dskip.surefire.tests=true
           -Dit.test=AuditRoleGrantsIT,AuditPartitionCarveIT,AuditPartitionMaintainerIT,AuditRetentionPurgeIT,AuditRetentionPurgerIT,SharedViewIT,SharedViewFailClosedIT,SharedViewGovernanceIT,ViewStoreIT,AccessMappingAdminDbIT,MappingStoreDbIT,EngineRegistryStoreIT,EngineRegistryReloadIT,OidcKeycloakIT,IncidentLedgerIT
 
+  # R-TEST-05 P2 (issue #299, TEST-STRATEGY.md §7): 50k-row DLQ vs dlq-scan-cap, at the
+  # documented operating scale — see docs/TRACEABILITY-MATRIX.md §A (R-TEST-05 row). Fully
+  # self-contained: DlqScanCapVolumeIT boots an in-process JDK HttpServer stub engine
+  # (io.inspector.support.StubFlowableEngine, its own ephemeral port) instead of a compose
+  # engine, so this job needs no docker socket, no port-block resolution, and can never
+  # collide with a concurrent PR/nightly job's slot (the #163/#288 port-squatting class of
+  # flake this repo has hit before on compose-backed jobs). Genuinely independent of every
+  # other nightly job — a red run here never blocks or queues behind the engine matrix.
+  # Distinct name from `perf-p1` on purpose (that job is R-NFR-02/P4, a latency SLA against
+  # healthy engines — TEST-STRATEGY's P1/P2/P4 ordinals are NOT incident-severity tiers;
+  # see the naming-collision note on issue #298).
+  dlq-scan-cap-p2:
+    runs-on: self-hosted
+    timeout-minutes: 15
+    steps:
+      - uses: actions/checkout@v4
+      - uses: actions/setup-java@v4
+        with:
+          distribution: temurin
+          java-version: "21"
+          cache: maven
+      - name: R-TEST-05 P2 — 50k-row DLQ scan-cap volume suite (docker-free)
+        working-directory: backend
+        run: mvn -B verify -Dskip.surefire.tests=true -Dit.test=DlqScanCapVolumeIT
+
   # Engine-dependent ITs: the mutating corrective-action / flow-surgery / migration / bulk rails
   # and the seed-driven detail/timeline/snapshot ITs. Same compose harness the ci.yml matrix
   # uses (flowable-6 + postgres, port-remapped off the dev/demo stacks); the ITs' OWN datasource
