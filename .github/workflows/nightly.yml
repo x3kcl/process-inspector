@@ -200,7 +200,11 @@ jobs:
           load: true
           tags: process-inspector:nightly-scan
           cache-from: type=gha
-          cache-to: type=gha,mode=max
+          # Same GHA-cache-export-slowness timeout hit ci.yml's docker job 3x today
+          # (mode=max upload of build-stage layers stalling the "exporting to GitHub Actions
+          # Cache" step) — mode=min + ignore-error=true so a slow/broken cache service can
+          # never block this job either.
+          cache-to: type=gha,mode=min,ignore-error=true
       - name: Trivy image scan (HIGH/CRITICAL fixed-in-upstream vulns fail the run)
         uses: aquasecurity/trivy-action@v0.36.0
         with:

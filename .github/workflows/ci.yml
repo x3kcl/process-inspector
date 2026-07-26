@@ -205,7 +205,13 @@ jobs:
           context: .
           push: false
           cache-from: type=gha
-          cache-to: type=gha,mode=max
+          # mode=max exported ALL build-stage layers (maven-deps/npm) and GitHub's cache
+          # service uploading them has timed out this job 3x today (once on #337, twice on
+          # #339 head 44ba1ec, run 30211616618 — a single layer write took 630s then the next
+          # hung to the 20m ceiling) despite the image build itself finishing in ~2.5min.
+          # mode=min only exports final-stage layers (small, fast); ignore-error=true means a
+          # slow/broken cache service can never fail an otherwise-green build.
+          cache-to: type=gha,mode=min,ignore-error=true
 
   integration:
     runs-on: self-hosted

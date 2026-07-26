@@ -94,7 +94,9 @@ jobs:
           tags: ${{ steps.meta-bff.outputs.tags }}
           labels: ${{ steps.meta-bff.outputs.labels }}
           cache-from: type=gha
-          cache-to: type=gha,mode=max
+          # Same GHA-cache-export-slowness that timed out ci.yml's docker job 3x today —
+          # mode=min + ignore-error=true so a slow/broken cache service can't block a release.
+          cache-to: type=gha,mode=min,ignore-error=true
 
       - name: Web image tags
         id: meta-web
@@ -115,7 +117,9 @@ jobs:
           tags: ${{ steps.meta-web.outputs.tags }}
           labels: ${{ steps.meta-web.outputs.labels }}
           cache-from: type=gha
-          cache-to: type=gha,mode=max
+          # Same GHA-cache-export-slowness that timed out ci.yml's docker job 3x today —
+          # mode=min + ignore-error=true so a slow/broken cache service can't block a release.
+          cache-to: type=gha,mode=min,ignore-error=true
 
       - name: Record digests (issue #92 — always attributable to a SHA, never a floating tag)
         run: |
