@@ -14,6 +14,7 @@ import java.util.LinkedHashMap;
 import java.util.List;
 import java.util.Locale;
 import java.util.Map;
+import java.util.Optional;
 import java.util.Set;
 import java.util.UUID;
 import java.util.concurrent.locks.ReentrantLock;
@@ -364,6 +365,17 @@ public class AuditService {
     private static String requestCorrelationId() {
         String requestId = org.slf4j.MDC.get(io.inspector.api.RequestIdFilter.MDC_KEY);
         return requestId != null ? requestId : UUID.randomUUID().toString();
+    }
+
+    /**
+     * Locate a bulk job's still-open envelope row (#303) for the periodic stale-RUNNING and
+     * crash-restart reconciliation sweeps — {@code BulkJobService} never talks to
+     * {@link AuditEntryRepository} directly, mirroring every other caller in this codebase.
+     * Empty means the envelope is already closed (nothing to reconcile there) or the row cannot
+     * be correlated; either way the generic {@link AuditPendingSweeper} is the backstop.
+     */
+    public Optional<AuditEntry> findPendingBulkEnvelope(UUID bulkJobId) {
+        return repository.findPendingBulkEnvelope(bulkJobId.toString());
     }
 
     /**

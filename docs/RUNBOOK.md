@@ -126,6 +126,33 @@ Operator procedure (any OPERATOR can do this; you as Tier 2/3 just make sure it 
 Circuit-open during a bulk run pauses dispatch (items stay `pending`) — that resolves
 itself when the engine recovers; it is not INTERRUPTED and needs no recovery action.
 
+### 3a. A job settles INTERRUPTED without a BFF restart (#303)
+
+Two more paths land a job in the SAME INTERRUPTED state above — recover them exactly like
+a crash (steps 1–4), even though the BFF never restarted:
+
+- **A store blip mid-dispatch.** Every statement in the dispatch loop (not just the
+  per-item engine calls) is guarded — a Postgres blip at submit, at dispatch-start, or at
+  finish settles the job INTERRUPTED immediately, honestly (it can no longer claim a
+  COMPLETED it never confirmed was persisted), instead of leaving it RUNNING until you
+  notice and restart the BFF yourself.
+- **A genuinely stuck job (deadlock, an uncaught `Error`) with the process still alive.** A
+  periodic sweep (independent of the startup one) settles a `RUNNING`/`PENDING` job with NO
+  item-state progress for longer than a conservative bound — the largest configured engine
+  write budget plus one circuit-pause wait, times a margin, plus a grace window — exactly
+  as the startup sweep would. **A healthy job, however large or slow-staggered, keeps
+  making steady per-item progress and is never caught by this bound** — if you see a job
+  swept INTERRUPTED this way, treat it as a real stuck-process signal worth investigating
+  (not routine noise), the same as an unexplained restart.
+
+**A healthy long-running bulk job's audit envelope is no longer falsely flagged either.**
+The separate audit PENDING reconciler (SPECIFICATION §7, R-SEM-18) used to sweep ANY stale-PENDING row —
+including a bulk job's envelope — to `unknown` purely because the job hadn't finished yet,
+which used to land a perfectly healthy, still-running job in the shift report's NEEDS
+VERIFICATION section with a scary WARN. That reconciler now skips a bulk envelope for as
+long as `bulk_job.state` is `PENDING`/`RUNNING` — the two sweeps above are what actually
+close it out, honestly, the moment the job is genuinely done or genuinely stuck.
+
 ## 4. Break-glass (IdP down during a P1)
 
 Exists for exactly one scenario: **operators cannot authenticate (IdP outage) while an

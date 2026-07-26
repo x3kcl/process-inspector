@@ -47,6 +47,27 @@ public interface AuditEntryRepository extends JpaRepository<AuditEntry, UUID> {
     List<AuditEntry> findByOutcomeAndTsBefore(AuditOutcome outcome, Instant cutoff);
 
     /**
+     * A bulk job's still-open submit-time envelope row (#303): correlates on the payload's
+     * {@code bulkJobId} — the SAME join mechanics {@link #findRecentErrorClassBulkJobIds} and
+     * {@code RelatedBulkJobsService} already rely on, since the entity's own {@code bulk_job_id}
+     * column is never populated at write time. Used by {@code BulkJobService}'s stale-RUNNING and
+     * crash-restart reconciliation sweeps to close the envelope with the real per-item tally
+     * instead of leaving it for {@code AuditPendingSweeper}'s generic blanket {@code unknown}.
+     * {@code LIMIT 1} because exactly one PENDING envelope can exist per bulk job (opened once at
+     * submit, closed once at finish); newest-first is defensive in case more than one somehow
+     * matches.
+     */
+    @Query(value = """
+            select * from audit_entry
+            where outcome = 'PENDING'
+              and action like 'bulk:%'
+              and payload ->> 'bulkJobId' = :bulkJobId
+            order by ts desc
+            limit 1
+            """, nativeQuery = true)
+    Optional<AuditEntry> findPendingBulkEnvelope(@Param("bulkJobId") String bulkJobId);
+
+    /**
      * The incident detail's related-bulk-jobs join (R-BAU-10 S5, INCIDENT-LEDGER.md §6): the
      * {@code bulk_job} row itself does NOT persist the error-class signature — its V4 scope
      * descriptor is the human label ("defKey vN · error class"), while the signature lives in
