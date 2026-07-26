@@ -32,8 +32,10 @@
 # s1 while passing on all other slots (nightly #23, 2026-07-21). The 809x band abuts a crowded
 # foreign range (8080-8090 in use); 869x is clear. Check `ss -ltnp` for foreign listeners before
 # reassigning any slot block here.
-# NEVER register a runner outside this file: a foreign runner has no slot, so its jobs
-# would race a slot's fixed ports. ci-runner.sh `ensure` fails if one is online.
+# hp02 runs a second, smaller slot set with its own per-host port table —
+# docker-compose.hp02.yml (scripts/ci-runner.sh picks the file by hostname).
+# NEVER register a runner outside these slot files: a foreign runner has no slot, so its
+# jobs would race a slot's fixed ports. ci-runner.sh `ensure` fails if one is online.
 #
 # Design constraints preserved from the single-runner original (see ci.yml):
 # - network_mode host: job steps address published ports via localhost, so each slot's
