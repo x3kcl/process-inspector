@@ -165,6 +165,17 @@ inspector:
     # hash, so tuning this trades label quality — never grouping stability (#270).
     stacktrace-sample-cap: 25
     ack-resurface-threshold-pct: 20
+  # Bulk fan-out engine-protection knobs (SPEC §7, v1.x #2) + the live bulk-progress SSE
+  # stream's guardrails (issue #301): sse-subscriber-cap bounds the emitter registry (beyond
+  # it a subscribe completes immediately and the browser degrades to polling); sse-coalesce-ms
+  # collapses repeat bulk-job events for the SAME job within the window into one flush.
+  bulk:
+    engine-permits: 4
+    stagger-ms: 250
+    circuit-pause-max-ms: 20000
+    circuit-pause-poll-ms: 1000
+    sse-subscriber-cap: 200
+    sse-coalesce-ms: 250
   # v2/M4 job-lane snapshot store (R-BAU-08 trend sparklines): an @Scheduled virtual-thread
   # sampler runs the Stage-0 count aggregation on the thin `sampler` bulkhead and upserts one
   # narrow row per (engine, lane) bucket into triage_snapshot. The UI reads history from

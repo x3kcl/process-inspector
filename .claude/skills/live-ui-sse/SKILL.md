@@ -18,11 +18,25 @@ works over plain HTTP through the Vite proxy, and needs no broker.
    early send gets replayed by Spring after the handler returns → broken-pipe noise).
 2. **Bridge domain events** — `@EventListener` on events you already publish
    (`EngineHealthChangedEvent`, `BulkItemCompletedEvent`, …) → `send(eventName, payload)` to
-   every emitter.
-3. **`send()` must never throw** — it runs on the publishing thread (could be the health
-   scheduler or a bulk executor). Guard the whole loop; on a failed write just drop that
-   emitter (do NOT `complete()` an errored emitter — it re-flushes and throws a secondary
-   `AsyncRequestNotUsableException`). `synchronized` so concurrent events don't interleave.
+   every emitter. If a listener sits on a latency-sensitive publisher (a bulk item worker
+   holding an engine dispatch permit, a request thread) and its event is bursty/id-only,
+   don't call `send()` from the listener itself — schedule a coalesced flush per key instead
+   (issue #301: `SseHub.onBulkJobChanged` dedupes repeats for the SAME job within a short
+   window onto one background flush) so the publisher never pays for more than a map insert.
+3. **`send()` must never throw, and never blocks the publisher** — it runs on the publishing
+   thread (could be the health scheduler or a bulk executor), so it only ever SNAPSHOTS the
+   emitter list and hands each write off to its own virtual thread; the publisher returns
+   immediately. Guard every write; on a failure just drop that emitter (do NOT `complete()`
+   an errored emitter — it re-flushes and throws a secondary `AsyncRequestNotUsableException`).
+   Serialize concurrent writes to the SAME emitter with a per-emitter `java.util.concurrent`
+   `ReentrantLock` — **never `synchronized`**: on Java 21 virtual threads, blocking inside a
+   monitor (or contending on one) pins the carrier, and a hub-wide monitor would let one
+   stalled browser's write pace every other subscriber AND the publisher (issue #301 — the
+   whole point of per-emitter locks is that a stalled tab can only ever hold up its OWN
+   lock/virtual-thread). `stop()` (shutdown) must take the SAME per-emitter locks before
+   completing an emitter, or it races a concurrent send for that emitter. Cap subscriber
+   count; beyond the cap, complete the new emitter immediately rather than growing the
+   registry unbounded — EventSource's own reconnection logic then degrades the UI to polling.
 4. **Poll-style data → ONE shared periodic push** — engine health must be actively probed;
    the existing `EngineHealthService` scheduler builds the snapshot once and broadcasts it,
    **returning early when there are no emitters**. N browsers share one probe; never let each

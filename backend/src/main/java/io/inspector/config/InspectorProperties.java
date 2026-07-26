@@ -85,9 +85,22 @@ public record InspectorProperties(
      * circuitPausePollMs}. The default ceiling (20s) is a deliberate hair past the "engine"
      * breaker's own {@code wait-duration-in-open-state} (15s, application.yml) — long enough for
      * one HALF_OPEN probe cycle to actually resolve, never an unbounded wait.
+     *
+     * <p>{@code sseSubscriberCap}/{@code sseCoalesceMs} (issue #301): the live bulk-progress
+     * stream ({@link io.inspector.stream.SseHub}) caps live subscribers so a burst of open tabs
+     * can't grow the emitter registry unbounded — beyond the cap a subscribe attempt is
+     * completed immediately and the browser's own EventSource reconnection logic degrades the
+     * UI to polling (OPERATIONS §2 / RUNBOOK §7). Repeat {@code bulk-job} events for the SAME
+     * job within {@code sseCoalesceMs} of each other coalesce into one flush — the events are
+     * id-only signals the client refetches from, so only the LAST one in a burst need ever ship.
      */
     public record Bulk(
-            Integer enginePermits, Integer staggerMs, Integer circuitPauseMaxMs, Integer circuitPausePollMs) {
+            Integer enginePermits,
+            Integer staggerMs,
+            Integer circuitPauseMaxMs,
+            Integer circuitPausePollMs,
+            Integer sseSubscriberCap,
+            Integer sseCoalesceMs) {
         public int enginePermitsOrDefault() {
             return enginePermits != null ? enginePermits : 4;
         }
@@ -102,6 +115,23 @@ public record InspectorProperties(
 
         public long circuitPausePollMsOrDefault() {
             return circuitPausePollMs != null ? circuitPausePollMs : 1_000L;
+        }
+
+        public int sseSubscriberCapOrDefault() {
+            return sseSubscriberCap != null ? sseSubscriberCap : 200;
+        }
+
+        public long sseCoalesceMsOrDefault() {
+            return sseCoalesceMs != null ? sseCoalesceMs : 250L;
+        }
+
+        /**
+         * Pre-#301 4-arg convenience — keeps every existing call site (production defaults,
+         * tests) on the original shape rather than churning them (unit-test-patterns: no
+         * constructor churn). The two new fields default via the {@code OrDefault()} accessors.
+         */
+        public Bulk(Integer enginePermits, Integer staggerMs, Integer circuitPauseMaxMs, Integer circuitPausePollMs) {
+            this(enginePermits, staggerMs, circuitPauseMaxMs, circuitPausePollMs, null, null);
         }
     }
 
