@@ -40,6 +40,13 @@ import org.springframework.transaction.support.TransactionTemplate;
  * on RESOLVED rows. Every cycle upserts the bucketed occurrence row (idempotent, mirrors the
  * snapshot store).
  *
+ * <p><b>"Observed" requires the owning engine was reached (#302, R-BAU-10)</b>: the
+ * absence-triggered write above only ever fires on a {@link AggregationSample#cycleComplete()}
+ * cycle — i.e. every registry engine's envelope came back {@code ok()} this pass. A cycle where
+ * one engine was unreachable cannot tell "the class is gone" apart from "we didn't get to look",
+ * so it skips the zero-state sweep entirely rather than arm the gate from a gap. Live groups
+ * are unaffected — they still ingest normally on an incomplete cycle.
+ *
  * <p><b>Transaction boundaries — one transaction per GROUP, not per cycle</b> (design left the
  * call to the implementation): a cycle touches many unrelated failure classes, and a
  * per-cycle transaction would let one poisoned group roll back every other group's honest
@@ -123,13 +130,20 @@ public class IncidentLedgerService {
                 }
             }
         }
-        try {
-            sweepZeroState(sample);
-        } catch (RuntimeException e) {
-            failed++;
-            if (firstFailure == null) {
-                firstFailure = e;
+        if (sample.cycleComplete()) {
+            try {
+                sweepZeroState(sample);
+            } catch (RuntimeException e) {
+                failed++;
+                if (firstFailure == null) {
+                    firstFailure = e;
+                }
             }
+        } else {
+            // #302: an unreachable engine this cycle means every group it owns is UNOBSERVED,
+            // not absent — arming the gate here would fire a false REGRESSED on recovery. Live
+            // groups above were still ingested honestly; only the absence-triggered write waits.
+            log.debug("incident-ledger: skipping the zero-state sweep — this cycle did not reach every engine");
         }
         if (failed > 0) {
             // warn ONCE per cycle, never throw — store unavailability degrades to a skipped cycle
@@ -230,6 +244,13 @@ public class IncidentLedgerService {
      * this cycle observed absent or zero gets its zero-state gate armed. Old-generation rows
      * (orphaned by an ALGO_VERSION bump) are absent by definition and arm too — harmless: their
      * hash space is retired, so the gate can never fire for them.
+     *
+     * <p><b>Only ever invoked when {@link AggregationSample#cycleComplete()} is true</b> (#302):
+     * "observed absent" requires the group's owning engine to have actually been reached this
+     * cycle. A blind cycle (one registry engine's envelope not {@code ok()}) cannot tell absent
+     * apart from unreachable, so the caller skips this method entirely rather than treat a gap
+     * as a zero — arming from an unobserved engine would let a single hiccup regress every
+     * RESOLVED incident behind it.
      */
     private void sweepZeroState(AggregationSample sample) {
         Set<String> live = new HashSet<>();

@@ -259,6 +259,50 @@ class IncidentLedgerServiceTest {
         verify(incidents, never()).markSeenZeroSinceResolve(anyLong());
     }
 
+    /* ---------------- #302: the blind-cycle gate ---------------- */
+
+    @Test
+    void aBlindCycleLeavesAResolvedIncidentsZeroStateGateUnarmed() {
+        // findByStateAndSeenZeroSinceResolveFalse is deliberately NOT stubbed: a blind cycle must
+        // skip the sweep before ever calling it — if it were invoked anyway, Mockito's null-list
+        // default would NPE here and fail the test, which is exactly the signal we want.
+
+        // one engine's slice failed this cycle (cycleComplete=false) and the group is entirely
+        // absent from the sample — the false-positive scenario from #302: an unreachable engine
+        // must never be read as "the class resolved".
+        service.ingest(new AggregationSample(List.of(), List.of(), NOW, Set.of(), false), BUCKET);
+
+        verify(incidents, never()).markSeenZeroSinceResolve(anyLong());
+        verify(incidents, never()).findByStateAndSeenZeroSinceResolveFalse(any());
+    }
+
+    @Test
+    void aGenuinelyCompleteCycleWithTheGroupAbsentStillArmsTheGate() {
+        Incident resolved = incident(IncidentState.RESOLVED, false);
+        when(incidents.findByStateAndSeenZeroSinceResolveFalse(IncidentState.RESOLVED))
+                .thenReturn(List.of(resolved));
+
+        // every registry engine was reached (cycleComplete=true) and the group is genuinely
+        // absent — this IS an observed-zero, so the gate arms.
+        service.ingest(new AggregationSample(List.of(), List.of(), NOW, Set.of(), true), BUCKET);
+
+        verify(incidents).markSeenZeroSinceResolve(ID);
+    }
+
+    @Test
+    void aBlindCycleStillIngestsLiveGroupsHonestly() {
+        stubSaveReturningId();
+        when(incidents.findBySignatureHashAndAlgoVersion("hash-1", 1)).thenReturn(java.util.Optional.empty());
+
+        // a live group ingests normally even on an incomplete cycle — only the absence-triggered
+        // sweep is gated on cycleComplete, per INCIDENT-LEDGER §5 (#302 scope).
+        service.ingest(
+                new AggregationSample(List.of(), List.of(group("hash-1", 1, 7, 5, 2)), NOW, Set.of(), false), BUCKET);
+
+        verify(incidents).save(any(Incident.class));
+        verify(occurrences).upsert(ID, BUCKET, 7, 5, 2, false);
+    }
+
     /* ---------------- truncation honesty ---------------- */
 
     @Test

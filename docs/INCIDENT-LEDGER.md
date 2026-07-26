@@ -167,10 +167,13 @@ The triage aggregation already runs on the 2-permit BACKGROUND lane once per
 engine load whenever it missed the ~20s triage cache. Therefore:
 
 - `SnapshotSource.sample()` widens to return an `AggregationSample(laneCounts, errorGroups,
-  sampledAt, truncatedEngineIds)` (the lane counts' and groups' single aggregation pass).
-  The fourth component exists because `ErrorGroup` carries no truncation flag — group
-  truncation is derivable only from the per-engine envelope's `dlqScan="truncated@N"`
-  marker, and the truncation-honesty mandate (§8) needs that carrier at ingest time.
+  sampledAt, truncatedEngineIds, cycleComplete)` (the lane counts' and groups' single
+  aggregation pass). The fourth component exists because `ErrorGroup` carries no truncation
+  flag — group truncation is derivable only from the per-engine envelope's
+  `dlqScan="truncated@N"` marker, and the truncation-honesty mandate (§8) needs that carrier
+  at ingest time. The fifth (`cycleComplete`, #302) is true only when EVERY registry engine's
+  envelope came back `ok()` this pass — the sole input to the regression gate's "observed"
+  test below; it changes nothing else about ingestion.
 - `SnapshotSampler` keeps its snapshot-store write, then **publishes a synchronous Spring
   `AggregationSampledEvent`** carrying the sample. `IncidentLedgerService` is an
   `@EventListener` gated by `inspector.incidents.enabled` (default true, independent of
@@ -188,8 +191,8 @@ Per live group per cycle (all in one transaction, optimistic-locked):
 3. RESOLVED row → **regression gate**: transition to REGRESSED (+ new episode
    start_state=REGRESSED, `regression_count++`, config-event audit row recording the
    triggering count) only if BOTH:
-   - `seen_zero_since_resolve` is true — i.e. at least one post-resolve cycle observed the
-     group absent or zero (kills the cache/retry-lag "zombie incident": a fresh resolve
+   - `seen_zero_since_resolve` is true — i.e. at least one post-resolve cycle **observed**
+     the group absent or zero (kills the cache/retry-lag "zombie incident": a fresh resolve
      cannot instantly regress), AND
    - live total ≥ `inspector.incidents.regression-min-count` (default 1; configurable
      hysteresis per panel).
@@ -197,12 +200,23 @@ Per live group per cycle (all in one transaction, optimistic-locked):
    data stays honest; only the state transition waits).
 4. Always: upsert the bucketed `incident_occurrence` row.
 
-Absent groups: write nothing — except that for RESOLVED incidents an absent/zero group sets
-`seen_zero_since_resolve = true` (the one deliberate absence-triggered write). "Quiet" is
-DERIVED at read time (`last_seen < now − inspector.incidents.quiet-window`, default 24h),
-never stored. Down engines → absent from aggregation → gaps, no fabricated zeros (their
-groups' totals may dip; the occurrence rows record what was observed — same honesty rule as
-the snapshot store). Store down → warn once + skip.
+**"Observed" means the owning engine was reached this cycle (#302).** The absence-triggered
+write below — arming `seen_zero_since_resolve` — fires ONLY on a `cycleComplete` cycle (every
+registry engine's envelope `ok()`). A cycle where one engine is unreachable cannot tell
+"the class is gone" apart from "we didn't get to look" — arming from that gap would let a
+single engine hiccup regress every RESOLVED incident behind it on recovery, each with a
+config-event audit row that never actually regressed. Nothing else about ingestion changes on
+an incomplete cycle: live groups above still update totals/occurrence/episode peak exactly as
+on a complete one — only the absence-triggered write waits for a cycle that can actually vouch
+for the absence.
+
+Absent groups: write nothing — except that for RESOLVED incidents an absent/zero group
+observed on a COMPLETE cycle sets `seen_zero_since_resolve = true` (the one deliberate
+absence-triggered write). "Quiet" is DERIVED at read time (`last_seen < now −
+inspector.incidents.quiet-window`, default 24h), never stored. Down engines → absent from
+aggregation → gaps, no fabricated zeros (their groups' totals may dip; the occurrence rows
+record what was observed — same honesty rule as the snapshot store) — AND their absence never
+arms the regression gate for any incident, live or resolved. Store down → warn once + skip.
 
 ## 6. API surface (springdoc-scanned; records; RFC-7807; no delete — the ledger is history)
 

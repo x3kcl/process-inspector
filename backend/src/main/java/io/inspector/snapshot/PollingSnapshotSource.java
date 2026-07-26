@@ -49,10 +49,17 @@ public class PollingSnapshotSource implements SnapshotSource {
         // Out-of-scope (CMMN) dead-letters — a NULL count means "cannot discriminate" (pre-6.8),
         // NOT zero, so we write no row and the trend stays honest (SPEC §4 Stage 0). Alongside,
         // collect the R-SEM-12 truncation markers: an engine whose failure-lane scan hit the cap
-        // makes every group count it contributes a lower bound — the ledger needs to know.
+        // makes every group count it contributes a lower bound — the ledger needs to know. Also
+        // track whether EVERY registry engine came back ok this pass (#302, R-BAU-10): the
+        // incident ledger's zero-state regression gate must never treat an unreachable engine's
+        // groups as "observed absent" — a blind cycle is not a resolved one.
         Set<String> truncatedEngines = new LinkedHashSet<>();
+        boolean cycleComplete = true;
         for (var byEngine : dashboard.perEngine().entrySet()) {
             PerEngineTriage envelope = byEngine.getValue();
+            if (!envelope.ok()) {
+                cycleComplete = false;
+            }
             if (envelope.ok() && envelope.outOfScopeDeadletters() != null) {
                 out.add(new EngineLaneCount(
                         byEngine.getKey(), SnapshotLane.OUT_OF_SCOPE_DLQ, envelope.outOfScopeDeadletters()));
@@ -63,7 +70,7 @@ public class PollingSnapshotSource implements SnapshotSource {
         }
         List<io.inspector.dto.ErrorGroup> groups =
                 dashboard.errorGroups() != null ? dashboard.errorGroups() : List.of();
-        return new AggregationSample(out, groups, clock.instant(), truncatedEngines);
+        return new AggregationSample(out, groups, clock.instant(), truncatedEngines, cycleComplete);
     }
 
     /** Maps a status-count key to its lane; skips any key not in the fixed lane set (defensive). */

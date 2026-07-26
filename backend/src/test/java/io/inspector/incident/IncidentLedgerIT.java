@@ -213,6 +213,84 @@ class IncidentLedgerIT {
         assertThat(auditRows).isEqualTo(1);
     }
 
+    /**
+     * The #302 defect, reproduced then proven fixed against REAL Postgres persistence: a cycle
+     * where an owning engine was unreachable ({@code cycleComplete=false}) must never arm the
+     * zero-state gate, even though the group is entirely absent from that cycle's sample (the
+     * exact shape an unreachable-engine cycle produces — see {@link
+     * io.inspector.snapshot.PollingSnapshotSource}). Only a genuinely COMPLETE cycle observing
+     * the class absent may arm it; only then may the class's return regress the incident.
+     */
+    @Test
+    void aBlindCycleNeverArmsTheGateSoTheFailuresReturnNeverRegresses() {
+        String hash = "it-" + UUID.randomUUID();
+        Instant t0 = Instant.parse("2026-07-25T09:00:00Z");
+
+        // 1. first sighting → OPEN
+        ledger.ingest(sample(t0, group(hash, 6, 6, 0)), t0);
+        Incident row = incidents.findBySignatureHashAndAlgoVersion(hash, 1).orElseThrow();
+
+        // 2. a human resolves (mirrors the mid-cycle-resolve test's simulated verb effect)
+        jdbc.update(
+                "UPDATE incident_episode SET ended_at = now(), resolved_by = 'it-operator',"
+                        + " resolve_reason = 'fixed by config rollout' WHERE incident_id = ? AND ended_at IS NULL",
+                row.getId());
+        jdbc.update(
+                "UPDATE incident SET state = 'RESOLVED', seen_zero_since_resolve = false, version = version + 1"
+                        + " WHERE id = ?",
+                row.getId());
+
+        // 3. a BLIND cycle: the owning engine was unreachable, so the group is absent from the
+        //    sample for a reason that has NOTHING to do with resolution — the gate must stay shut.
+        Instant t1 = t0.plusSeconds(60);
+        ledger.ingest(sample(t1, false), t1);
+        assertThat(incidents
+                        .findBySignatureHashAndAlgoVersion(hash, 1)
+                        .orElseThrow()
+                        .isSeenZeroSinceResolve())
+                .as("an unreachable-engine cycle must never be read as an observed zero (#302)")
+                .isFalse();
+
+        // 4. the failure returns on a live (complete) cycle — since the gate never armed, this
+        //    must NOT regress; the observation still stays honest (totals refresh).
+        Instant t2 = t0.plusSeconds(120);
+        ledger.ingest(sample(t2, group(hash, 5, 5, 0)), t2);
+        Incident stillResolved =
+                incidents.findBySignatureHashAndAlgoVersion(hash, 1).orElseThrow();
+        assertThat(stillResolved.getState()).isEqualTo(IncidentState.RESOLVED);
+        assertThat(stillResolved.getRegressionCount()).isZero();
+        assertThat(stillResolved.getLastTotal()).isEqualTo(5);
+        Integer noRegressionAudit = jdbc.queryForObject(
+                "SELECT count(*) FROM audit_entry WHERE action = 'incident-regressed' AND payload::text LIKE ?",
+                Integer.class,
+                "%" + hash + "%");
+        assertThat(noRegressionAudit)
+                .as("no bogus incident-regressed audit row")
+                .isZero();
+
+        // 5. a genuinely COMPLETE cycle that observes the class absent DOES arm the gate...
+        Instant t3 = t0.plusSeconds(180);
+        ledger.ingest(sample(t3), t3);
+        assertThat(incidents
+                        .findBySignatureHashAndAlgoVersion(hash, 1)
+                        .orElseThrow()
+                        .isSeenZeroSinceResolve())
+                .isTrue();
+
+        // 6. ...and only THEN does the failure's return correctly regress it.
+        Instant t4 = t0.plusSeconds(240);
+        ledger.ingest(sample(t4, group(hash, 4, 4, 0)), t4);
+        Incident regressed =
+                incidents.findBySignatureHashAndAlgoVersion(hash, 1).orElseThrow();
+        assertThat(regressed.getState()).isEqualTo(IncidentState.REGRESSED);
+        assertThat(regressed.getRegressionCount()).isEqualTo(1);
+        Integer regressionAudit = jdbc.queryForObject(
+                "SELECT count(*) FROM audit_entry WHERE action = 'incident-regressed' AND payload::text LIKE ?",
+                Integer.class,
+                "%" + hash + "%");
+        assertThat(regressionAudit).isEqualTo(1);
+    }
+
     private List<String> childPartitions() {
         return jdbc.queryForList("""
                 SELECT c.relname
@@ -225,6 +303,12 @@ class IncidentLedgerIT {
 
     private static AggregationSample sample(Instant sampledAt, ErrorGroup... groups) {
         return new AggregationSample(List.of(), List.of(groups), sampledAt, Set.of());
+    }
+
+    /** #302: a cycle whose completeness is explicit — {@code cycleComplete=false} simulates an
+     * unreachable owning engine (the group is simply absent, same shape as a real one). */
+    private static AggregationSample sample(Instant sampledAt, boolean cycleComplete, ErrorGroup... groups) {
+        return new AggregationSample(List.of(), List.of(groups), sampledAt, Set.of(), cycleComplete);
     }
 
     private static ErrorGroup group(String hash, long total, long deadLetters, long retrying) {

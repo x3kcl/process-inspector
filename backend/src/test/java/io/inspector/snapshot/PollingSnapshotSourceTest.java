@@ -113,6 +113,53 @@ class PollingSnapshotSourceTest {
         assertThat(source.sample().truncatedEngineIds()).containsExactly("engine-a");
     }
 
+    /* ---------------- #302: cycleComplete — the blind-cycle honesty marker ---------------- */
+
+    @Test
+    void cycleIsCompleteWhenEveryRegistryEngineCameBackOk() {
+        when(aggregation.aggregate(CallPriority.BACKGROUND))
+                .thenReturn(dashboard(
+                        Map.of(
+                                "engine-a", Map.of("ACTIVE", 1L),
+                                "engine-b", Map.of("ACTIVE", 1L)),
+                        List.of(),
+                        Map.of(
+                                "engine-a", new PerEngineTriage(true, null, "complete", null, false),
+                                "engine-b", new PerEngineTriage(true, null, "complete", null, false))));
+
+        assertThat(source.sample().cycleComplete()).isTrue();
+    }
+
+    @Test
+    void cycleIsIncompleteWhenAnyRegistryEngineEnvelopeFailed() {
+        when(aggregation.aggregate(CallPriority.BACKGROUND))
+                .thenReturn(dashboard(
+                        Map.of("engine-a", Map.of("ACTIVE", 1L)), // engine-b absent — it's down
+                        List.of(),
+                        Map.of(
+                                "engine-a", new PerEngineTriage(true, null, "complete", null, false),
+                                "engine-b", new PerEngineTriage(false, "connection refused", null, null, false))));
+
+        assertThat(source.sample().cycleComplete())
+                .as("one unreachable registry engine makes the whole cycle blind (#302)")
+                .isFalse();
+    }
+
+    @Test
+    void aTruncatedButReachableEngineStillCountsAsCycleComplete() {
+        // truncation (scan cap hit) is a lower-bound honesty concern, NOT unreachability — the
+        // engine answered, so the cycle observed it. cycleComplete and truncatedEngineIds are
+        // orthogonal flags.
+        when(aggregation.aggregate(CallPriority.BACKGROUND))
+                .thenReturn(dashboard(
+                        Map.of("engine-a", Map.of("ACTIVE", 1L)),
+                        List.of(),
+                        Map.of("engine-a", new PerEngineTriage(true, null, "truncated@500", null, false))));
+
+        assertThat(source.sample().cycleComplete()).isTrue();
+        assertThat(source.sample().truncatedEngineIds()).containsExactly("engine-a");
+    }
+
     private static TriageDashboardResponse dashboard(
             Map<String, Map<String, Long>> statusCountsByEngine,
             List<ErrorGroup> errorGroups,
