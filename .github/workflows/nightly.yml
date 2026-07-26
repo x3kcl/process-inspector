@@ -190,11 +190,22 @@ jobs:
           node-version: "22"
           cache: npm
           cache-dependency-path: frontend/package-lock.json
-      - name: Frontend dependency audit (npm audit — the npm-native advisory source, high+ hard-fails)
-        working-directory: frontend
+      # A bare `npm audit --audit-level=high` goes permanently red the moment ANY high+
+      # advisory has no in-range fix (issue #297 — react-router's RSC-only CVE, and the
+      # @redocly/openapi-core -> minimatch -> brace-expansion chain stalled at a major
+      # boundary) — training the team to ignore this job entirely, which is worse than no
+      # gate. scripts/check-npm-audit-allowlist.mjs diffs the audit output against a
+      # checked-in, dated allowlist (frontend/npm-audit-allowlist.json): it still hard-fails
+      # on any high/critical advisory that ISN'T allowlisted, and additionally fails once an
+      # allowlist entry's own expiry date passes (even if the advisory is still unfixed) so
+      # an exception can't just sit there forever — someone has to re-look, re-check for a
+      # fresh in-range fix, and renew (new date + justification) or escalate. Runnable
+      # locally: `node scripts/check-npm-audit-allowlist.mjs` (needs `frontend/node_modules`
+      # from a prior `npm ci`).
+      - name: Frontend dependency audit (npm audit vs. the dated allowlist — issue #297)
         run: |
-          npm ci
-          npm audit --audit-level=high
+          (cd frontend && npm ci)
+          node scripts/check-npm-audit-allowlist.mjs
 
   # P1 performance gate (SPEC §2 R-NFR-01, issue #93 Part B): the FIX-REF-01 reference
   # dataset (TEST-SCENARIOS.md §1.6 — 3 defs x 3 versions x 4 failure signatures, ~20k
