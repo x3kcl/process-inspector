@@ -50,7 +50,7 @@ jobs:
         working-directory: backend
         run: >-
           mvn -B verify -Dskip.surefire.tests=true
-          -Dit.test=AuditRoleGrantsIT,AuditPartitionCarveIT,AuditPartitionMaintainerIT,AuditRetentionPurgeIT,AuditRetentionPurgerIT,SharedViewIT,SharedViewFailClosedIT,SharedViewGovernanceIT,ViewStoreIT,AccessMappingAdminDbIT,MappingStoreDbIT,EngineRegistryStoreIT,EngineRegistryReloadIT,OidcKeycloakIT,IncidentLedgerIT
+          -Dit.test=AuditRoleGrantsIT,AuditPartitionCarveIT,AuditPartitionMaintainerIT,AuditRetentionPurgeIT,AuditRetentionPurgerIT,AuditIntegrityIT,SharedViewIT,SharedViewFailClosedIT,SharedViewGovernanceIT,ViewStoreIT,AccessMappingAdminDbIT,MappingStoreDbIT,EngineRegistryStoreIT,EngineRegistryReloadIT,OidcKeycloakIT,IncidentLedgerIT
 
   # R-TEST-05 P2 (issue #299, TEST-STRATEGY.md §7): 50k-row DLQ vs dlq-scan-cap, at the
   # documented operating scale — see docs/TRACEABILITY-MATRIX.md §A (R-TEST-05 row). Fully

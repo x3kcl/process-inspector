@@ -80,7 +80,7 @@ exhaustive scenario→class index.
 |---|---|---|---|---|
 | R-AUD-01 fail-closed audit | TS-AUD-01 | `AuditServiceTest`, `FailClosedAuditIT`, `CorrectiveActionServiceTest` | L1·L4 | ✅ |
 | R-AUD-02 normative schema | TS-AUD-02 | `AuditServiceTest`, `CorrectiveActionIT` | L1·L4 | ✅ |
-| R-AUD-03 redaction / role-gate / hash chain | TS-AUD-03/04/05 | `AuditServiceTest` (redact, hash-chain, truncation) | L1 | 🟡 (DB REVOKE + tamper read-path = §C-5) |
+| R-AUD-03 redaction / role-gate / hash chain | TS-AUD-03/04/05 | `AuditServiceTest` (redact, hash-chain, truncation), `AuditChainVerifierTest` + `AuditIntegrityIT` (chain-walk verifier — see closed-this-pass entry below) | L1·L4 | 🟡 (DB REVOKE + reconciler-sweep = §C-5; tamper read-path CLOSED, see §C below) |
 | R-AUD-05 shift report | TS-AUD-07 | FE `shiftReport.test` (UNKNOWNs-first, UTC ISO), `AuditLogPage.test` (My-shift preset + copy) | UNIT-FE | 🟡 (rendered E2E leg = usability nightly re-run) |
 | R-AUD-06 copy-for-ticket | TS-DET-11 | FE `ticket.test` | UNIT-FE | 🟡 (E2E leg pending — §C-9) |
 | R-AUD-08 CSV export + formula-escape | TS-AUD-08 | `CsvTest` (escape rules), `AuditCsvExportSpringTest` (streaming endpoint, hostile cells, filter parity, RBAC) | L1·L3 | ✅ |
@@ -117,7 +117,7 @@ exhaustive scenario→class index.
 |---|---|---|
 | R-TEST-01 risk floors | R1 `StatusJoinTest`; R2 `RbacGuardMatrixTest`+`ActionRbacGuardSpringTest`; R3 `BulkJobServiceTest`; R4 Playwright smokes | 🟡 (R4 canonical-arc E2E = §C-16) |
 | R-TEST-07 testability hooks | `NoSleepInTestsArchTest` (ArchUnit sleep ban), `Clock`-driven `TriageServiceTest`, cycle-guard `StatusJoinTest`/`InstanceTimelineServiceTest` | ✅ |
-| R-TEST-10 audit-integrity suite | `FailClosedAuditIT` (fail-closed), `AuditServiceTest` (dual-write translate) | 🟡 (pool-exhaustion + reconciler-sweep IT = §C-5) |
+| R-TEST-10 audit-integrity suite | `FailClosedAuditIT` (fail-closed), `AuditServiceTest` (dual-write translate), `AuditChainVerifierTest`+`AuditIntegrityIT` (chain-walk verifier) | 🟡 (pool-exhaustion + reconciler-sweep IT = §C-5; chain-walk verifier CLOSED, see §C below) |
 
 ---
 
@@ -169,6 +169,28 @@ recommended suite shape, and a priority (P1 release-gating risk floor · P2 SHOU
 P3 later). **Closed this pass** items were gaps until this change and now have suites.
 
 **Closed this pass**
+- ~~C-20 Hash-chain tamper evidence had no verifier~~ (issue #304 — distinct from §C-5, which
+  covers Hikari pool exhaustion, the stale-PENDING reconciler sweep, and the DB REVOKE proof,
+  NOT a chain walk) → **`AuditChainVerifierTest`** (L1, mocked repository: intact chain,
+  a tampered row detected at its exact seq without cascading to later rows, an unexplained
+  seq gap flagged, a retention-purge checkpoint boundary correctly NOT flagged, the row cap
+  bounding the walk) + **`AuditIntegrityIT`** (L4, real Postgres 16: the same four behaviors
+  against a real `AuditService`-written chain, a real superuser-bypasses-the-append-only-
+  trigger tamper, and a real `AuditRetentionPurger` partition drop) + `GET
+  /api/admin/audit/integrity` (ADMIN-gated, itself an audited read). Before this pass,
+  `chainHash()` was written on every row but never read back and recomputed anywhere in the
+  codebase — a hash chain nobody walks detects nothing. Building the verifier's own IT
+  surfaced two PRE-EXISTING write-time defects that made a from-storage recompute
+  impossible even for an untampered row — both fixed in the same change (`AuditService`):
+  (1) `payload` is a jsonb column, which reorders object keys by byte-length-then-lexicographic
+  and drops input whitespace, so a hash computed over the pre-storage string could never be
+  reproduced from a later read (`canonicalizePayload` now pre-sorts to jsonb's own order before
+  hashing); (2) `Clock.systemUTC()` can return sub-microsecond digits that `timestamptz`
+  silently truncates on INSERT, so the in-memory `ts` used for hashing could differ from what
+  Postgres would ever return again (`AuditService.now()` truncates to microseconds before
+  building the entry). Residual, tracked separately (issue #311, PO-gated): the chain is
+  unkeyed SHA-256 — it detects tampering by anyone who cannot recompute the forward hashes,
+  not an actor with full DB write access; HMAC keying would close that gap.
 - ~~C-0a TS-RBAC-01 generated verb×role matrix~~ → **`RbacGuardMatrixTest`** (L1, 52 matrix
   rows + completeness/structural guards). The R2 floor previously rested on hand-picked
   `ActionRbacGuardSpringTest` spot checks with no dedicated `RbacAuthorizer` test.

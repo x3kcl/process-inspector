@@ -1,0 +1,23 @@
+-- ============================================================================
+-- V20__audit_seq_index.sql — index the tamper-evidence chain's ordering column
+-- (issue #304, AuditChainVerifier). The chain-walk integrity verifier scans
+-- `audit_entry` in seq order via keyset pagination (`WHERE seq > :last ORDER BY
+-- seq ASC LIMIT :batch`), and `AuditService.beginPending`/`recordConfigEvent`
+-- already do `ORDER BY seq DESC LIMIT 1` on every single write to find the
+-- chain head. audit_entry's only existing indexes are (engine_id, instance_id,
+-- ts) and (ts) — neither serves an ORDER BY seq scan, so both of the above force
+-- a sequential scan + sort of the WHOLE table without this index. On a
+-- long-lived deployment ("this table can be large") that is the opposite of
+-- "bound the work" for a periodic verifier run.
+--
+-- audit_entry is PARTITION BY RANGE (ts) — creating the index on the PARENT
+-- creates a genuine partitioned index: Postgres builds it on every EXISTING
+-- child (audit_entry_default + any monthly partitions already carved by V10 /
+-- AuditPartitionMaintainer) and automatically attaches a matching local index
+-- to every partition created afterwards (AuditPartitionMaintainer's
+-- create-ahead, and any manual partition an operator adds) — no maintenance
+-- burden added to that code path, no audit-roles.sql change needed (grants are
+-- per-table, not per-index).
+-- ============================================================================
+
+CREATE INDEX idx_audit_seq ON audit_entry (seq);
