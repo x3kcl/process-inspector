@@ -125,6 +125,19 @@ public final class StubFlowableEngine implements AutoCloseable {
         return this;
     }
 
+    /**
+     * R-TEST-05 P1 (issue #298): flips a degraded stub back to instant, healthy responses — the
+     * "flip one stub back to healthy and assert recovery" fixture for the breaker half-open→closed
+     * proof. Clears BOTH degraded modes (a stub previously {@link #hangForever() hung} or merely
+     * {@link #withResponseDelayMs delayed} both become immediately healthy), so one method covers
+     * either starting condition.
+     */
+    public StubFlowableEngine recoverToHealthy() {
+        this.hangForever = false;
+        this.responseDelayMs = 0;
+        return this;
+    }
+
     @Override
     public void close() {
         delayScheduler.shutdownNow();

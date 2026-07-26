@@ -77,6 +77,30 @@ jobs:
         working-directory: backend
         run: mvn -B verify -Dskip.surefire.tests=true -Dit.test=DlqScanCapVolumeIT
 
+  # R-TEST-05 P1 (issue #298, TEST-STRATEGY.md §7): "10 stub engines, 3 slow, 2 timing out" —
+  # partial-failure fan-out do-no-harm. Same docker-free, self-contained shape as
+  # dlq-scan-cap-p2 above (extends the SAME StubFlowableEngine foundation, io.inspector.support,
+  # that job's PR #322 built as a reusable base): 10 in-process JDK HttpServer stub engines on
+  # their own ephemeral ports, no compose stack, no port-block resolution, no collision with a
+  # concurrent PR/nightly job's slot. Genuinely independent of every other nightly job.
+  # Distinct name from BOTH `perf-p1` and `dlq-scan-cap-p2` on purpose — TEST-STRATEGY's P1/P2/P4
+  # are ordinals in its performance-scenario catalog, not incident-severity tiers (`perf-p1` is
+  # actually P4, R-NFR-02, a latency SLA against 5 HEALTHY engines — the naming-collision note
+  # on issue #298).
+  fanout-partial-failure-p1:
+    runs-on: self-hosted
+    timeout-minutes: 15
+    steps:
+      - uses: actions/checkout@v4
+      - uses: actions/setup-java@v4
+        with:
+          distribution: temurin
+          java-version: "21"
+          cache: maven
+      - name: R-TEST-05 P1 — 10-stub-engine partial-failure fan-out suite (docker-free)
+        working-directory: backend
+        run: mvn -B verify -Dskip.surefire.tests=true -Dit.test=FanoutPartialFailureIT
+
   # Engine-dependent ITs: the mutating corrective-action / flow-surgery / migration / bulk rails
   # and the seed-driven detail/timeline/snapshot ITs. Same compose harness the ci.yml matrix
   # uses (flowable-6 + postgres, port-remapped off the dev/demo stacks); the ITs' OWN datasource

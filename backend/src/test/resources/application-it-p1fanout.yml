@@ -1,0 +1,211 @@
+# R-TEST-05 P1 (issue #298, TEST-STRATEGY.md §7): "10 stub engines, 3 slow (read-ms−500), 2
+# timing out" — partial-failure fan-out do-no-harm. Ten StubFlowableEngine instances
+# (io.inspector.support — the reusable foundation #299/PR #322 built for exactly this suite):
+# 5 healthy, 3 slow, 2 hung. Ports registered via @DynamicPropertySource by the test itself.
+#
+# Breaker/bulkhead deliberately SHRUNK from production (application.yml) so the suite proves
+# open/close and permit-isolation behavior on a nightly-job time budget, the same doctrine as
+# the "test" profile's shrunk breaker (window 2, open 500ms) — see unit-test-patterns skill:
+# - circuitbreaker: window 2 / min-calls 2 / wait 500ms open / 2 permitted half-open calls —
+#   two consecutive read-timeouts trip it, and the wait is short enough for an Awaitility poll
+#   bound in seconds, not minutes.
+# - bulkhead: max-concurrent-calls 2 (down from production's 8) so the starvation proof can
+#   genuinely saturate ONE engine's own permits with a handful of concurrent test calls,
+#   instead of needing to fire 9+ concurrent requests to prove the same isolation property.
+#   Every OTHER assertion in this suite only ever sends one concurrent call per engine, so the
+#   lowered cap does not perturb them.
+resilience4j:
+  circuitbreaker:
+    configs:
+      engine:
+        sliding-window-type: COUNT_BASED
+        sliding-window-size: 2
+        minimum-number-of-calls: 2
+        failure-rate-threshold: 50
+        wait-duration-in-open-state: 500ms
+        permitted-number-of-calls-in-half-open-state: 2
+        record-exceptions:
+          - org.springframework.web.client.ResourceAccessException
+          - org.springframework.web.client.HttpServerErrorException
+        ignore-exceptions:
+          - org.springframework.web.client.HttpClientErrorException
+  bulkhead:
+    configs:
+      engine:
+        max-concurrent-calls: 2
+        max-wait-duration: 5s
+
+inspector:
+  registry:
+    source: config
+  # Docker-free, same reasoning as application-it-dlqvolume.yml: no ledger/sampler/partition
+  # maintainer store in this profile.
+  snapshot:
+    enabled: false
+  incidents:
+    enabled: false
+  audit:
+    partition-maintenance:
+      enabled: false
+  # All 10 stub engines fan out with NO BFF-side queuing (R-NFR-01 caps interactive fan-out at
+  # 10) — the assertions below are about PER-ENGINE resilience isolation (breaker/bulkhead),
+  # not incidental queuing on SearchService's shared engineSlots semaphore, so that confound is
+  # removed by giving every engine its own slot.
+  fanout-parallelism: 10
+  engines:
+    - id: healthy-1
+      name: "Stub (healthy 1)"
+      base-url: "http://localhost:${P1_PORT_HEALTHY_1}/flowable-rest/service"
+      environment: dev
+      enabled: true
+      mode: read-only
+      auth:
+        type: none
+      max-page-size: 50
+      dlq-scan-cap: 200
+      timeouts:
+        connect-ms: 500
+        read-ms: 1500
+        write-ms: 1500
+    - id: healthy-2
+      name: "Stub (healthy 2)"
+      base-url: "http://localhost:${P1_PORT_HEALTHY_2}/flowable-rest/service"
+      environment: dev
+      enabled: true
+      mode: read-only
+      auth:
+        type: none
+      max-page-size: 50
+      dlq-scan-cap: 200
+      timeouts:
+        connect-ms: 500
+        read-ms: 1500
+        write-ms: 1500
+    - id: healthy-3
+      name: "Stub (healthy 3)"
+      base-url: "http://localhost:${P1_PORT_HEALTHY_3}/flowable-rest/service"
+      environment: dev
+      enabled: true
+      mode: read-only
+      auth:
+        type: none
+      max-page-size: 50
+      dlq-scan-cap: 200
+      timeouts:
+        connect-ms: 500
+        read-ms: 1500
+        write-ms: 1500
+    - id: healthy-4
+      name: "Stub (healthy 4)"
+      base-url: "http://localhost:${P1_PORT_HEALTHY_4}/flowable-rest/service"
+      environment: dev
+      enabled: true
+      mode: read-only
+      auth:
+        type: none
+      max-page-size: 50
+      dlq-scan-cap: 200
+      timeouts:
+        connect-ms: 500
+        read-ms: 1500
+        write-ms: 1500
+    - id: healthy-5
+      name: "Stub (healthy 5)"
+      base-url: "http://localhost:${P1_PORT_HEALTHY_5}/flowable-rest/service"
+      environment: dev
+      enabled: true
+      mode: read-only
+      auth:
+        type: none
+      max-page-size: 50
+      dlq-scan-cap: 200
+      timeouts:
+        connect-ms: 500
+        read-ms: 1500
+        write-ms: 1500
+    # Slow: withResponseDelayMs(read-ms - 500) = 1000ms, set by the test itself — still well
+    # inside the 1500ms read timeout, so these calls SUCCEED, just slowly (TEST-STRATEGY §7).
+    - id: slow-1
+      name: "Stub (slow 1)"
+      base-url: "http://localhost:${P1_PORT_SLOW_1}/flowable-rest/service"
+      environment: dev
+      enabled: true
+      mode: read-only
+      auth:
+        type: none
+      max-page-size: 50
+      dlq-scan-cap: 200
+      timeouts:
+        connect-ms: 500
+        read-ms: 1500
+        write-ms: 1500
+    - id: slow-2
+      name: "Stub (slow 2)"
+      base-url: "http://localhost:${P1_PORT_SLOW_2}/flowable-rest/service"
+      environment: dev
+      enabled: true
+      mode: read-only
+      auth:
+        type: none
+      max-page-size: 50
+      dlq-scan-cap: 200
+      timeouts:
+        connect-ms: 500
+        read-ms: 1500
+        write-ms: 1500
+    - id: slow-3
+      name: "Stub (slow 3)"
+      base-url: "http://localhost:${P1_PORT_SLOW_3}/flowable-rest/service"
+      environment: dev
+      enabled: true
+      mode: read-only
+      auth:
+        type: none
+      max-page-size: 50
+      dlq-scan-cap: 200
+      timeouts:
+        connect-ms: 500
+        read-ms: 1500
+        write-ms: 1500
+    # Timing out: hangForever(), set by the test itself — never responds, so the CLIENT's own
+    # read-ms (1500) is what ends the call (do-no-harm — the exact contract this suite exists
+    # to exercise).
+    - id: hang-1
+      name: "Stub (timing out 1)"
+      base-url: "http://localhost:${P1_PORT_HANG_1}/flowable-rest/service"
+      environment: dev
+      enabled: true
+      mode: read-only
+      auth:
+        type: none
+      max-page-size: 50
+      dlq-scan-cap: 200
+      timeouts:
+        connect-ms: 500
+        read-ms: 1500
+        write-ms: 1500
+    - id: hang-2
+      name: "Stub (timing out 2)"
+      base-url: "http://localhost:${P1_PORT_HANG_2}/flowable-rest/service"
+      environment: dev
+      enabled: true
+      mode: read-only
+      auth:
+        type: none
+      max-page-size: 50
+      dlq-scan-cap: 200
+      timeouts:
+        connect-ms: 500
+        read-ms: 1500
+        write-ms: 1500
+
+# Docker-free / engine-only profile — the BFF Postgres is NOT part of the context
+# (NoDbTestSupport mocks the JPA repos + JdbcTemplate). RANDOM_PORT (not NONE, unlike the P2
+# volume suite) because this suite also asserts BFF actuator-health responsiveness through a
+# real embedded web server (TestRestTemplate), the same recipe as ActuatorEndpointsSpringTest.
+spring:
+  autoconfigure:
+    exclude:
+      - org.springframework.boot.autoconfigure.jdbc.DataSourceAutoConfiguration
+      - org.springframework.boot.autoconfigure.orm.jpa.HibernateJpaAutoConfiguration
+      - org.springframework.boot.autoconfigure.flyway.FlywayAutoConfiguration
