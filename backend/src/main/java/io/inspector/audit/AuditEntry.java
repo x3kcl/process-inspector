@@ -154,6 +154,16 @@ public class AuditEntry {
         this.chainHash = chainHash;
     }
 
+    /**
+     * Test-support only (issue #304): {@code seq} is DB-assigned ({@code insertable=false,
+     * updatable=false}), so rung-1 {@link AuditChainVerifierTest} fixtures — built without a real
+     * Postgres — need a way to stand up rows at chosen seq positions. Never called by production
+     * code; package-visible like {@link #setChainHash}.
+     */
+    void setSeq(Long seq) {
+        this.seq = seq;
+    }
+
     public UUID getId() {
         return id;
     }
