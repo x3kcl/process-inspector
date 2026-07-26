@@ -1,0 +1,122 @@
+# hp02's runner slots — the second host of the CI fleet (capacity + resilience: hp04
+# rebooting or being saturated no longer stalls every PR). Same port-namespace slot
+# model as docker-compose.yml on hp04 — read that file's header for the full design
+# (fixed per-slot port blocks, network_mode host, shared docker.sock, ephemeral
+# one-job-per-container lifecycle). This file only states what differs on hp02.
+#
+# Port blocks are chosen against hp02's OWN listener set (ports are host-local, so
+# overlap with hp04's table would be fine — these don't anyway, except that hp04's
+# s2-s4 bands happen to be free here and are reused 1:1 for hp02's s1-s3). Surveyed
+# 2026-07-26 via `ss -ltn`: hp02's crowded ranges are 3000-3003, 7575-7878, 8080-8099,
+# 8443-8989 (Jellyfin/UniFi/arr-stack et al.) — the 81xx-83xx engine bands, 54x5
+# postgres picks, and 42xx-44xx e2e ports are all clear. free-port.sh gives each job
+# the same bounded within-band fallback as on hp04 if one of these gets squatted.
+#   slot  engines (A/B/7/legacy)   BFF-pg  drift-BFF  e2e   compose projects
+#   s1    8191 8192 8193 8194      5445    8186       4273  pi-ci-s1-<profile>
+#   s2    8291 8292 8293 8294      5455    8286       4373  pi-ci-s2-<profile>
+#   s3    8391 8392 8393 8394      5465    8386       4473  pi-ci-s3-<profile>
+# Slot numbers restart at s1 per host: PI_CI_SLOT namespaces compose projects and
+# work dirs on THIS host's daemon only; runner names (hp02-docker-sN) are what must
+# be unique repo-wide. scripts/ci-runner.sh picks this file by hostname.
+#
+# THREE slots, not six: hp02 is the busier shared box (flap prod deploy, media and
+# home services); 3 x (10 cpus / 12g) ceilings + harness stacks stay well inside its
+# headroom while roughly halving fleet-wide queue depth. Never register a runner
+# outside the slot files — see the iron rule in docker-compose.yml.
+name: pi-ci-runner
+
+x-runner: &runner
+  build: .
+  image: process-inspector/ci-runner:latest
+  restart: unless-stopped
+  network_mode: host
+  # Same ceilings as hp04's slots: caps each runner's own mvn/npm/java processes;
+  # harness containers run on the host daemon outside these limits.
+  cpus: 10
+  mem_limit: 12g
+  # e2e (#85): Vite's FSWatcher needs a large nofile ulimit — see docker-compose.yml.
+  ulimits:
+    nofile:
+      soft: 65536
+      hard: 65536
+
+x-runner-env: &runner-env
+  RUNNER_SCOPE: repo
+  REPO_URL: https://github.com/x3kcl/process-inspector
+  # Env-ref only (iron rule). Exchanged for a short-lived registration token at start;
+  # the PAT itself is never written to disk by the runner.
+  ACCESS_TOKEN: ${GITHUB_PERSONAL_ACCESS_TOKEN:?export the GitHub PAT in the launching shell}
+  # One job per container: after each job the runner exits and the restart policy brings
+  # up a fresh, cleanly re-registered one — no state bleed, self-healing.
+  EPHEMERAL: "true"
+  DISABLE_AUTO_UPDATE: "true"
+
+services:
+  runner-s1:
+    <<: *runner
+    container_name: pi-ci-runner-s1
+    environment:
+      <<: *runner-env
+      RUNNER_NAME: hp02-docker-s1
+      RUNNER_WORKDIR: /home/flapci/ci-runner-work-s1
+      PI_CI_SLOT: "1"
+      PI_ENGINE_A_PORT: "8191"
+      PI_ENGINE_B_PORT: "8192"
+      PI_ENGINE_7_PORT: "8193"
+      PI_ENGINE_LEGACY_PORT: "8194"
+      PI_PG_PORT: "5445"
+      PI_BFF_PORT: "8186"
+      PI_E2E_PORT: "4273"
+    volumes:
+      - /var/run/docker.sock:/var/run/docker.sock
+      # Identical host/container path: anything a job bind-mounts into a container goes
+      # through the HOST daemon, so workspace paths must resolve identically on the host.
+      - /home/flapci/ci-runner-work-s1:/home/flapci/ci-runner-work-s1
+      # setup-java/setup-node tool downloads survive the ephemeral restarts. Per-slot:
+      # concurrent extractions into a shared cache would race.
+      - toolcache-s1:/opt/hostedtoolcache
+
+  runner-s2:
+    <<: *runner
+    container_name: pi-ci-runner-s2
+    environment:
+      <<: *runner-env
+      RUNNER_NAME: hp02-docker-s2
+      RUNNER_WORKDIR: /home/flapci/ci-runner-work-s2
+      PI_CI_SLOT: "2"
+      PI_ENGINE_A_PORT: "8291"
+      PI_ENGINE_B_PORT: "8292"
+      PI_ENGINE_7_PORT: "8293"
+      PI_ENGINE_LEGACY_PORT: "8294"
+      PI_PG_PORT: "5455"
+      PI_BFF_PORT: "8286"
+      PI_E2E_PORT: "4373"
+    volumes:
+      - /var/run/docker.sock:/var/run/docker.sock
+      - /home/flapci/ci-runner-work-s2:/home/flapci/ci-runner-work-s2
+      - toolcache-s2:/opt/hostedtoolcache
+
+  runner-s3:
+    <<: *runner
+    container_name: pi-ci-runner-s3
+    environment:
+      <<: *runner-env
+      RUNNER_NAME: hp02-docker-s3
+      RUNNER_WORKDIR: /home/flapci/ci-runner-work-s3
+      PI_CI_SLOT: "3"
+      PI_ENGINE_A_PORT: "8391"
+      PI_ENGINE_B_PORT: "8392"
+      PI_ENGINE_7_PORT: "8393"
+      PI_ENGINE_LEGACY_PORT: "8394"
+      PI_PG_PORT: "5465"
+      PI_BFF_PORT: "8386"
+      PI_E2E_PORT: "4473"
+    volumes:
+      - /var/run/docker.sock:/var/run/docker.sock
+      - /home/flapci/ci-runner-work-s3:/home/flapci/ci-runner-work-s3
+      - toolcache-s3:/opt/hostedtoolcache
+
+volumes:
+  toolcache-s1:
+  toolcache-s2:
+  toolcache-s3:
