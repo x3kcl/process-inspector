@@ -6,6 +6,7 @@ import com.fasterxml.jackson.databind.ObjectMapper;
 import io.inspector.config.InspectorProperties;
 import io.inspector.dto.ErrorGroup;
 import io.inspector.dto.IncidentDetail;
+import io.inspector.dto.IncidentListResponse;
 import io.inspector.dto.IncidentSummary;
 import io.inspector.dto.TriageDashboardResponse;
 import io.inspector.security.ReadScopeGate;
@@ -22,6 +23,7 @@ import java.util.List;
 import java.util.Locale;
 import java.util.Map;
 import java.util.Set;
+import org.springframework.data.domain.PageRequest;
 import org.springframework.http.HttpStatus;
 import org.springframework.security.core.Authentication;
 import org.springframework.stereotype.Service;
@@ -71,6 +73,7 @@ public class IncidentQueryService {
     private final ObjectMapper json;
     private final Clock clock;
     private final Duration quietWindow;
+    private final int listCap;
 
     public IncidentQueryService(
             IncidentRepository incidents,
@@ -95,31 +98,45 @@ public class IncidentQueryService {
         this.json = json;
         this.clock = clock;
         this.quietWindow = properties.incidentsOrDefault().quietWindowOrDefault();
+        this.listCap = properties.incidentsOrDefault().listCapOrDefault();
     }
 
     /**
-     * The bounded ledger list, most-recently-seen first. No pagination in v1 BY DESIGN
-     * (INCIDENT-LEDGER §6): cardinality is distinct failure classes — tens to hundreds — and the
-     * client derives its sections (REGRESSED/OPEN/QUIET/RESOLVED, generation split) from the
-     * full list. {@code state} filters case-insensitively (unknown ⇒ 400); {@code windowHours}
-     * (optional, clamped to 30 days) keeps only incidents last seen inside the window.
+     * The bounded ledger list, most-recently-seen first. Still unpaginated in v1 BY DESIGN
+     * (INCIDENT-LEDGER §6, no page-number/cursor param) — cardinality is distinct failure
+     * classes — tens to hundreds — and the client derives its sections
+     * (REGRESSED/OPEN/QUIET/RESOLVED, generation split) from the full list. An absent
+     * {@code windowHours} still means "the whole ledger", but never truly UNBOUNDED (issue
+     * #308): the store fetch is always capped at {@code inspector.incidents.list-cap} + 1 rows so
+     * an unbounded query is structurally impossible even when a caller omits the window, and
+     * {@link IncidentListResponse#truncated()} tells the truth whenever the cap actually bit.
+     * Because the fetch is ordered {@code lastSeen DESC}, a truncation always drops the OLDEST
+     * rows — the response stays the freshest possible slice, never an arbitrary one. {@code
+     * state} filters case-insensitively (unknown ⇒ 400); {@code windowHours} (optional, clamped
+     * to 30 days) keeps only incidents last seen inside the window.
      */
-    public List<IncidentSummary> list(String state, Integer windowHours, Authentication auth) {
+    public IncidentListResponse list(String state, Integer windowHours, Authentication auth) {
         IncidentState filter = parseState(state);
         Set<String> readable = gate.readableEngineIds(auth);
         Instant now = clock.instant();
         Instant since = windowHours != null ? now.minus(Duration.ofHours(clampWindow(windowHours))) : null;
-        // The recency window is pushed down to the store — the ledger may outgrow "tens to
-        // hundreds" long before v2 pagination lands, and an in-memory filter would fetch it all.
+        // Fetch cap+1 so a full page (size == cap+1) tells us there WAS a row beyond the cap,
+        // without needing a separate count query. The recency window is still pushed down to
+        // the store either way — never an in-memory filter over a potentially huge table.
+        PageRequest page = PageRequest.of(0, listCap + 1);
         List<Incident> rows;
         if (since != null) {
             rows = filter != null
-                    ? incidents.findByStateAndLastSeenGreaterThanEqualOrderByLastSeenDesc(filter, since)
-                    : incidents.findAllByLastSeenGreaterThanEqualOrderByLastSeenDesc(since);
+                    ? incidents.findByStateAndLastSeenGreaterThanEqualOrderByLastSeenDesc(filter, since, page)
+                    : incidents.findAllByLastSeenGreaterThanEqualOrderByLastSeenDesc(since, page);
         } else {
             rows = filter != null
-                    ? incidents.findByStateOrderByLastSeenDesc(filter)
-                    : incidents.findAllByOrderByLastSeenDesc();
+                    ? incidents.findByStateOrderByLastSeenDesc(filter, page)
+                    : incidents.findAllByOrderByLastSeenDesc(page);
+        }
+        boolean truncated = rows.size() > listCap;
+        if (truncated) {
+            rows = rows.subList(0, listCap);
         }
         List<IncidentSummary> out = new ArrayList<>();
         for (Incident row : rows) {
@@ -128,7 +145,7 @@ public class IncidentQueryService {
                 out.add(summary);
             }
         }
-        return out;
+        return new IncidentListResponse(out, truncated);
     }
 
     /**

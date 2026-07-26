@@ -164,7 +164,7 @@ public record InspectorProperties(
     }
 
     public Incidents incidentsOrDefault() {
-        return incidents != null ? incidents : new Incidents(null, null, null, null);
+        return incidents != null ? incidents : new Incidents(null, null, null, null, null);
     }
 
     /**
@@ -174,9 +174,14 @@ public record InspectorProperties(
      * {@code regressionMinCount} is the regression-gate hysteresis (a RESOLVED incident
      * re-fires only at/above this live total, after a post-resolve zero/absent cycle);
      * {@code retentionDays} (400, revFADP — aligned with the snapshot store) is the
-     * {@code incident_occurrence} drop-partition horizon.
+     * {@code incident_occurrence} drop-partition horizon; {@code listCap} (issue #308,
+     * INCIDENT-LEDGER §6) is the hard server-side ceiling on {@code GET /api/incidents}' bounded
+     * (no-pagination-v1) list — an ABSENT {@code window} still means "the whole ledger", but now
+     * "the whole ledger up to the cap", never truly unbounded; dropped rows are always the OLDEST
+     * by {@code lastSeen} and the response says so via {@code truncated}.
      */
-    public record Incidents(Boolean enabled, Duration quietWindow, Integer regressionMinCount, Integer retentionDays) {
+    public record Incidents(
+            Boolean enabled, Duration quietWindow, Integer regressionMinCount, Integer retentionDays, Integer listCap) {
         public boolean enabledOrDefault() {
             return enabled == null || enabled;
         }
@@ -191,6 +196,10 @@ public record InspectorProperties(
 
         public int retentionDaysOrDefault() {
             return retentionDays != null ? retentionDays : 400;
+        }
+
+        public int listCapOrDefault() {
+            return listCap != null ? listCap : 500;
         }
     }
 

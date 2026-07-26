@@ -237,7 +237,7 @@ arms the regression gate for any incident, live or resolved. Store down → warn
 
 | Route | Floor | Semantics |
 |---|---|---|
-| `GET /api/incidents?state=&window=` | VIEWER | bounded list (no pagination v1), sections derivable client-side; `state` case-insensitive (invalid → 400); `window` = `lastSeen`-recency filter in hours (absent = whole ledger, clamped like `/api/triage/trends`); `quiet` derived; algo-generation split (`currentGeneration` flag); **R-SAFE-17 scoping**: service-layer projection filtering `counts_by_engine` to the caller's engine scope, partially-scoped totals recomputed from surviving engines + `partial=true` (LeakView doctrine, never the fleet number), zero-intersection incidents omitted (TriageScopeProjector doctrine) |
+| `GET /api/incidents?state=&window=` | VIEWER | bounded list (still no pagination v1 — no page-number/cursor param), sections derivable client-side; `state` case-insensitive (invalid → 400); `window` = `lastSeen`-recency filter in hours (**absent = whole ledger, up to the hard cap — see below**, clamped like `/api/triage/trends`); `quiet` derived; algo-generation split (`currentGeneration` flag); **R-SAFE-17 scoping**: service-layer projection filtering `counts_by_engine` to the caller's engine scope, partially-scoped totals recomputed from surviving engines + `partial=true` (LeakView doctrine, never the fleet number), zero-intersection incidents omitted (TriageScopeProjector doctrine). **Hard cap + truncation (issue #308):** the response is `IncidentListResponse{items, truncated}` — the store fetch is ALWAYS capped at `inspector.incidents.list-cap` (default 500) + 1 rows, ordered `lastSeen DESC`, so an unbounded query is structurally impossible even when `window` is omitted; when the cap bites, the OLDEST rows are the ones dropped (the response stays the freshest possible slice) and `truncated=true` tells the caller so — the no-pagination-v1 decision stands (an absent window still means "the whole ledger"), it just now means "up to the cap" rather than truly unbounded. The frontend renders a truncation badge whenever `truncated` is `true` and never presents a capped list as complete (ARCHITECTURE §2.3). |
 | `GET /api/incidents/{id}` | VIEWER | ledger row + episodes + windowed occurrence series (clamped like `/api/triage/trends`) + LIVE `ErrorGroup` join at render (incl. read-only ack state) |
 | `POST /api/incidents/{id}/resolve` | OPERATOR | body `{reason ≥10, ticketId?, alsoAcknowledge?}`; closes the live episode, state→RESOLVED, resets `seen_zero_since_resolve=false`; config-event audit. `alsoAcknowledge=true` additionally invokes the EXISTING ack flow per involved engine×definitionKey as a second, separately-audited action (explicit opt-in checkbox in UI — panel P3) |
 | `POST /api/incidents/{id}/reopen` | OPERATOR | body `{reason ≥10}` — **S3 deviation from this table's original body-less row**: reopen un-claims a human "we fixed this" attestation, and the audit doctrine (R-AUD-10; the un-acknowledge precedent, which also demands a reason) requires the why in the audit row's reason column. Human undo: reopens the last episode (`ended_at`→NULL, resolve metadata cleared), state→OPEN, `regression_count` NOT incremented; config-event audit. Distinct from automatic REGRESSED |
@@ -265,6 +265,14 @@ Interactions: incident detail shows ack state read-only; resolve offers the opt-
 - New lazy route `/incidents` + Shell topbar link (VIEWER-visible).
 - List sections: REGRESSED (alarm styling, first) → OPEN (active) → QUIET → RESOLVED
   (collapsed) — current algo generation by default, "archived generations" toggle.
+- **List-level truncation badge (issue #308):** whenever `GET /api/incidents` answers
+  `truncated=true` (the server-side hard cap dropped the oldest rows), the page renders a
+  banner above the sections naming the count shown and hinting at a narrower `window`/`state`
+  query — never silently rendered as if the capped list were the whole ledger (ARCHITECTURE
+  §2.3). Deliberately NOT a default window on `useIncidents()` — an absent window still means
+  "the whole ledger up to the cap" (§6), and adding a silent UI default was explicitly ruled
+  out (it would hide old RESOLVED/quiet incidents and the algo-generation split from sections
+  the design derives from the full list).
 - Card: state chip, exception class + normalized message, first/last seen, live total
   (lower-bound badge when truncated, R-SEM-12), engines/definitions summary. NO per-card
   sparkline (S4 decision): the list payload carries no occurrence series, and fetching one

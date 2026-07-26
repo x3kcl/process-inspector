@@ -389,7 +389,13 @@ class IncidentLedgerServiceTest {
                 new ObjectMapper(),
                 noOpTx(),
                 new InspectorProperties(
-                        null, null, null, null, null, new Incidents(true, null, regressionMinCount, null), List.of()));
+                        null,
+                        null,
+                        null,
+                        null,
+                        null,
+                        new Incidents(true, null, regressionMinCount, null, null),
+                        List.of()));
     }
 
     /** Rung-1 stand-in: transaction semantics themselves are proven DB-side in the IT. */
