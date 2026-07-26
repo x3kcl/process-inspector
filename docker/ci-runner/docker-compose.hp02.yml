@@ -5,24 +5,30 @@
 # one-job-per-container lifecycle). This file only states what differs on hp02.
 #
 # Port blocks are chosen against hp02's OWN listener set (ports are host-local, so
-# overlap with hp04's table would be fine — these don't anyway, except that hp04's
-# s2-s4 bands happen to be free here and are reused 1:1 for hp02's s1-s3). Surveyed
-# 2026-07-26 via `ss -ltn`: hp02's crowded ranges are 3000-3003, 7575-7878, 8080-8099,
-# 8443-8989 (Jellyfin/UniFi/arr-stack et al.) — the 81xx-83xx engine bands, 54x5
-# postgres picks, and 42xx-44xx e2e ports are all clear. free-port.sh gives each job
+# overlap with hp04's table would be fine — s1-s5 reuse hp04's s2-s6 bands 1:1 and
+# s6 reuses hp04's s1 block since they're all free here). Surveyed 2026-07-26 via
+# `ss -ltn`: hp02's crowded ranges are 3000-3003, 7575-7878, 8080-8099 (but 8086
+# itself is clear), 8443-8989 in spots (8443/8686/8765/8843/8880/8888/8920/8989 —
+# Jellyfin/UniFi/arr-stack et al.; none inside an 8x91-8x94 engine block), plus the
+# 54x5 postgres picks and 41xx-46xx e2e ports all clear. free-port.sh gives each job
 # the same bounded within-band fallback as on hp04 if one of these gets squatted.
 #   slot  engines (A/B/7/legacy)   BFF-pg  drift-BFF  e2e   compose projects
 #   s1    8191 8192 8193 8194      5445    8186       4273  pi-ci-s1-<profile>
 #   s2    8291 8292 8293 8294      5455    8286       4373  pi-ci-s2-<profile>
 #   s3    8391 8392 8393 8394      5465    8386       4473  pi-ci-s3-<profile>
+#   s4    8491 8492 8493 8494      5475    8486       4573  pi-ci-s4-<profile>
+#   s5    8591 8592 8593 8594      5485    8586       4673  pi-ci-s5-<profile>
+#   s6    8691 8692 8693 8694      5435    8086       4173  pi-ci-s6-<profile>
 # Slot numbers restart at s1 per host: PI_CI_SLOT namespaces compose projects and
 # work dirs on THIS host's daemon only; runner names (hp02-docker-sN) are what must
 # be unique repo-wide. scripts/ci-runner.sh picks this file by hostname.
 #
-# THREE slots, not six: hp02 is the busier shared box (flap prod deploy, media and
-# home services); 3 x (10 cpus / 12g) ceilings + harness stacks stay well inside its
-# headroom while roughly halving fleet-wide queue depth. Never register a runner
-# outside the slot files — see the iron rule in docker-compose.yml.
+# SIX slots, matching hp04 (12 fleet-wide): started at three, widened once the first
+# hp02 job legs ran green. Worst-case sums (60c / 72g ceilings + ~40g harness) fit
+# hp02 (96c / 755G) with room for its other tenants (flap prod deploy, media and
+# home services) — ceilings are caps, not reservations, so idle slots cost nothing.
+# Never register a runner outside the slot files — see the iron rule in
+# docker-compose.yml.
 name: pi-ci-runner
 
 x-runner: &runner
@@ -116,7 +122,70 @@ services:
       - /home/flapci/ci-runner-work-s3:/home/flapci/ci-runner-work-s3
       - toolcache-s3:/opt/hostedtoolcache
 
+  runner-s4:
+    <<: *runner
+    container_name: pi-ci-runner-s4
+    environment:
+      <<: *runner-env
+      RUNNER_NAME: hp02-docker-s4
+      RUNNER_WORKDIR: /home/flapci/ci-runner-work-s4
+      PI_CI_SLOT: "4"
+      PI_ENGINE_A_PORT: "8491"
+      PI_ENGINE_B_PORT: "8492"
+      PI_ENGINE_7_PORT: "8493"
+      PI_ENGINE_LEGACY_PORT: "8494"
+      PI_PG_PORT: "5475"
+      PI_BFF_PORT: "8486"
+      PI_E2E_PORT: "4573"
+    volumes:
+      - /var/run/docker.sock:/var/run/docker.sock
+      - /home/flapci/ci-runner-work-s4:/home/flapci/ci-runner-work-s4
+      - toolcache-s4:/opt/hostedtoolcache
+
+  runner-s5:
+    <<: *runner
+    container_name: pi-ci-runner-s5
+    environment:
+      <<: *runner-env
+      RUNNER_NAME: hp02-docker-s5
+      RUNNER_WORKDIR: /home/flapci/ci-runner-work-s5
+      PI_CI_SLOT: "5"
+      PI_ENGINE_A_PORT: "8591"
+      PI_ENGINE_B_PORT: "8592"
+      PI_ENGINE_7_PORT: "8593"
+      PI_ENGINE_LEGACY_PORT: "8594"
+      PI_PG_PORT: "5485"
+      PI_BFF_PORT: "8586"
+      PI_E2E_PORT: "4673"
+    volumes:
+      - /var/run/docker.sock:/var/run/docker.sock
+      - /home/flapci/ci-runner-work-s5:/home/flapci/ci-runner-work-s5
+      - toolcache-s5:/opt/hostedtoolcache
+
+  runner-s6:
+    <<: *runner
+    container_name: pi-ci-runner-s6
+    environment:
+      <<: *runner-env
+      RUNNER_NAME: hp02-docker-s6
+      RUNNER_WORKDIR: /home/flapci/ci-runner-work-s6
+      PI_CI_SLOT: "6"
+      PI_ENGINE_A_PORT: "8691"
+      PI_ENGINE_B_PORT: "8692"
+      PI_ENGINE_7_PORT: "8693"
+      PI_ENGINE_LEGACY_PORT: "8694"
+      PI_PG_PORT: "5435"
+      PI_BFF_PORT: "8086"
+      PI_E2E_PORT: "4173"
+    volumes:
+      - /var/run/docker.sock:/var/run/docker.sock
+      - /home/flapci/ci-runner-work-s6:/home/flapci/ci-runner-work-s6
+      - toolcache-s6:/opt/hostedtoolcache
+
 volumes:
   toolcache-s1:
   toolcache-s2:
   toolcache-s3:
+  toolcache-s4:
+  toolcache-s5:
+  toolcache-s6:
