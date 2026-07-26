@@ -168,6 +168,16 @@ jobs:
   # Supply-chain gates (Q9/issue #93): image vuln scan, SBOM, and both dependency trees'
   # audits. NOT merge-blocking (nightly-only) — a fresh CVE landing on an existing pinned
   # version must not turn every in-flight PR red; it's triaged same as an IT failure.
+  #
+  # Trivy DB caching: run 30207549362 hit this job's timeout (~30min) apparently on Trivy DB
+  # download slowness, vs. ~5min on the 05:42 run the same day. Checked whether a cache was
+  # missing before adding one: aquasecurity/trivy-action@v0.36.0 (pinned below, all three
+  # steps) already restores/saves the Trivy DB via `actions/cache` internally (its `cache`
+  # input defaults to `true`, unset here) keyed on the current UTC date — so the DB is
+  # already reused across same-day runs without any wiring in THIS workflow. The slow run was
+  # most likely a cache-miss cold pull (first run of a UTC day, or a cache eviction) hitting
+  # slow egress on this box, not an absent cache mechanism — left as-is per the trivy-action
+  # docs; do not add a second/duplicate `actions/cache` step around these Trivy steps.
   supply-chain:
     runs-on: self-hosted
     timeout-minutes: 30
@@ -226,6 +236,14 @@ jobs:
           severity: HIGH,CRITICAL
           ignore-unfixed: true
           exit-code: "1"
+      # Dated-exception doctrine, extended to Trivy's leg (follow-up to #297): Trivy's fs
+      # scan of the lockfile is a SECOND, independent gate over the same data as the
+      # npm-audit allowlist gate below, and was never made allowlist-aware — it used to
+      # hard-fail on the identical GHSA-qwww-vcr4-c8h2 finding the npm-audit gate already
+      # allowlists. frontend/.trivyignore.yaml carries the matching dated exception (its own
+      # `expired_at` governs the gate the same way the npm allowlist's `expires` does — see
+      # that file's header for the verified expiry behavior). Scoped to THIS step only via
+      # `trivyignores` — never the image scan or the backend pom.xml fs scan above.
       - name: Frontend dependency audit — Trivy fs scan (HIGH/CRITICAL hard-fails)
         uses: aquasecurity/trivy-action@v0.36.0
         with:
@@ -234,6 +252,7 @@ jobs:
           severity: HIGH,CRITICAL
           ignore-unfixed: true
           exit-code: "1"
+          trivyignores: frontend/.trivyignore.yaml
       - uses: actions/setup-node@v4
         with:
           node-version: "22"

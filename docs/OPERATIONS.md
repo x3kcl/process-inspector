@@ -296,6 +296,23 @@ review sweep (`deferred-work-tracking` cadence) — re-run `npm view <pkg> versi
 open entry before renewing, since "no fix available" is frequently wrong on a second look
 (the `npm-audit-redocly-overrides` lesson).
 
+**Trivy fs-scan gate on the lockfile — same dated-exception doctrine, second mechanism.**
+The npm-audit gate above only made `npm audit` allowlist-aware; the `supply-chain` job's
+Trivy fs scan of `frontend/package-lock.json` is an INDEPENDENT gate over the same lockfile
+and kept hard-failing on the identical advisory (react-router's RSC-only CVE,
+`GHSA-qwww-vcr4-c8h2`) after #297 landed. `frontend/.trivyignore.yaml`, wired into that one
+step via the `trivyignores` action input (`TRIVY_IGNOREFILE` under the hood — never the
+image-scan step or the backend `pom.xml` fs-scan step), carries the matching exception using
+Trivy's own YAML ignore-file mechanism: a per-finding `expired_at` (the plain-text
+`.trivyignore` format has no room for a real justification and only supports a bare
+`exp:YYYY-MM-DD` suffix). Once `expired_at` passes, Trivy prunes the entry before matching —
+the finding reports as active again and the gate goes red, mirroring the npm allowlist's own
+expiry behavior exactly. **Drift rule:** every GHSA id/date pair in `frontend/.trivyignore.yaml`
+must match its counterpart in `frontend/npm-audit-allowlist.json` exactly — the two dated
+exceptions cover the same lockfile advisories via two different tools, and
+`scripts/check-npm-audit-allowlist.mjs` cross-checks both files and fails the run on drift.
+Renew both together.
+
 **Genuinely still to land:** Playwright smoke + axe (no CI wiring exists at all yet, tracked
 issue #85, blocked on #88's remaining U5 frontend-fitness prerequisite — U1/U2 landed) · a
 dedicated static WireMock fixture suite for 6.x/7.x error-JSON shape (partially covered

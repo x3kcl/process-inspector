@@ -142,6 +142,29 @@ function daysUntil(isoDate, now) {
   return Math.floor(ms / (24 * 60 * 60 * 1000))
 }
 
+// Trivy's OWN fs scan of frontend/package-lock.json (nightly.yml's supply-chain job) is a
+// SECOND gate over the same lockfile data, carrying its own dated exception in
+// frontend/.trivyignore.yaml (follow-up to #297 — see that file's header). The two must
+// never drift silently: every GHSA id Trivy ignores there must match this allowlist's
+// `expires` date exactly. Deliberately a light regex scan, not a full YAML parse — this
+// repo's frontend has no YAML parser dependency to reach for, and the ignore file's shape
+// is small and fully under our own control.
+function checkTrivyIgnoreDrift(root, allowlistByGhsaId) {
+  const path = resolve(root, 'frontend/.trivyignore.yaml')
+  if (!existsSync(path)) return []
+  const text = readFileSync(path, 'utf8')
+  const entryRe = /-\s*id:\s*(GHSA-[a-z0-9-]+)[\s\S]*?expired_at:\s*(\S+)/gi
+  const drift = []
+  let m
+  while ((m = entryRe.exec(text))) {
+    const [, ghsaId, expiredAt] = m
+    const entry = allowlistByGhsaId.get(ghsaId.toUpperCase())
+    if (!entry) drift.push(`${ghsaId} is ignored in frontend/.trivyignore.yaml but has no frontend/npm-audit-allowlist.json entry`)
+    else if (entry.expires !== expiredAt) drift.push(`${ghsaId} expiry drift: trivyignore.yaml=${expiredAt} vs allowlist.json=${entry.expires}`)
+  }
+  return drift
+}
+
 function main() {
   const opts = parseArgs(process.argv.slice(2))
   const root = repoRoot()
@@ -179,6 +202,8 @@ function main() {
     }
   }
 
+  const trivyDrift = checkTrivyIgnoreDrift(root, allowlistByGhsaId)
+
   console.log(`check-npm-audit-allowlist: ${advisories.size} high/critical advisor${advisories.size === 1 ? 'y' : 'ies'} found in ${opts.dir}`)
   for (const { advisory, entry } of covered) {
     console.log(`  [allowlisted, ${daysUntil(entry.expires, now)}d remaining] ${advisory.ghsaId} — ${advisory.title}`)
@@ -197,16 +222,23 @@ function main() {
     }
   }
 
-  if (unallowlisted.length > 0 || expired.length > 0) {
+  for (const line of trivyDrift) {
+    console.log(`  [TRIVY IGNORE DRIFT] ${line}`)
+  }
+
+  if (unallowlisted.length > 0 || expired.length > 0 || trivyDrift.length > 0) {
     console.error('')
     console.error(
-      `check-npm-audit-allowlist: FAILED — ${unallowlisted.length} un-allowlisted/expired-coverage advisor${unallowlisted.length === 1 ? 'y' : 'ies'}, ${expired.length} expired allowlist entr${expired.length === 1 ? 'y' : 'ies'}.`,
+      `check-npm-audit-allowlist: FAILED — ${unallowlisted.length} un-allowlisted/expired-coverage advisor${unallowlisted.length === 1 ? 'y' : 'ies'}, ${expired.length} expired allowlist entr${expired.length === 1 ? 'y' : 'ies'}, ${trivyDrift.length} Trivy-ignore drift issue${trivyDrift.length === 1 ? '' : 's'}.`,
     )
     console.error(
       'Fix a patchable advisory with `npm audit fix` (postcss-style); for one with no in-range fix, add/renew a dated entry in',
       allowlistPath.replace(`${root}/`, ''),
       'with a fresh justification and expiry — see scripts/check-npm-audit-allowlist.mjs header comment.',
     )
+    if (trivyDrift.length > 0) {
+      console.error('Keep frontend/.trivyignore.yaml in lockstep with this allowlist — same GHSA id, same expiry date.')
+    }
     process.exit(1)
   }
 
