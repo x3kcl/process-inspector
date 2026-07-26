@@ -1,0 +1,44 @@
+# Trivy YAML ignore file for the "Frontend dependency audit — Trivy fs scan" step of
+# nightly.yml's `supply-chain` job ONLY (scan-ref: frontend/package-lock.json). Wired in via
+# that step's `trivyignores` input — do NOT point the image-scan step or the backend
+# `pom.xml` fs-scan step at this file; the duplicate-gate problem this fixes is scoped to the
+# lockfile only.
+#
+# Follow-up to issue #297. #297's own gate (frontend/npm-audit-allowlist.json +
+# scripts/check-npm-audit-allowlist.mjs, wired into this same job) already carries a dated
+# exception for this advisory, but Trivy's fs scan of the SAME lockfile is a second,
+# independent gate over the same data that was never made allowlist-aware — it still
+# hard-fails on the identical finding (nightly run 30189828987). This file extends the same
+# dated-exception doctrine to Trivy's leg using Trivy's own native mechanism.
+#
+# Format note: the plain-text `.trivyignore` format only supports a bare `exp:YYYY-MM-DD`
+# suffix per line — no room for a real justification, and easy to lose track of why an
+# entry exists. The YAML `.trivyignore.yaml` format supports a per-finding `expired_at` field
+# plus a free-text `statement`, so the exception and its reasoning stay together, checked in.
+# Requires passing this file's path explicitly via the `trivyignores` action input (or
+# `--ignorefile` / `TRIVY_IGNOREFILE` on a bare `trivy` CLI invocation) — Trivy does not
+# autodiscover `.trivyignore.yaml` in a directory the way it does the plain `.trivyignore`.
+#
+# Expiry behavior (verified against aquasecurity/trivy v0.70.0 source — the version pinned by
+# aquasecurity/trivy-action@v0.36.0, which nightly.yml's supply-chain job uses for all three
+# Trivy steps — pkg/result/ignore.go, IgnoreFindings.Prune): once `expired_at` passes, Trivy
+# PRUNES the entry before matching, i.e. it stops being ignored and is reported as an ACTIVE
+# finding again — same fail-open-to-red behavior as the npm-audit allowlist's own expiry
+# check. There is no silent grace period; the gate goes red on the SHA of the first run after
+# expiry until a human renews (fresh justification + date) or escalates.
+#
+# DRIFT RULE: every entry below for a frontend lockfile advisory MUST carry the same GHSA id
+# and the same `expired_at` date as its counterpart entry in
+# frontend/npm-audit-allowlist.json — scripts/check-npm-audit-allowlist.mjs verifies this
+# automatically (checkTrivyIgnoreDrift) and fails the run on drift, so the two dated
+# exceptions can never quietly diverge.
+vulnerabilities:
+  - id: GHSA-qwww-vcr4-c8h2
+    expired_at: 2026-10-24
+    statement: >
+      react-router RSC-mode-only CSRF-adjacent bypass. This app is a data-mode SPA
+      (frontend/src/main.tsx builds its router exclusively via createBrowserRouter; a
+      repo-wide grep for RSC entry points under frontend/src returns nothing). The fix is
+      react-router@8, a major bump tracked separately as issue #310 so it gets its own
+      review. Full justification of record lives in frontend/npm-audit-allowlist.json's
+      matching entry — keep expired_at identical across both files.
