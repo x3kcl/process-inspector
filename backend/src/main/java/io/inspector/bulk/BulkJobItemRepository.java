@@ -22,5 +22,13 @@ public interface BulkJobItemRepository extends JpaRepository<BulkJobItem, BulkJo
     /** Batch read for cross-job tallies (the incident related-jobs join) — ONE query, never per-job. */
     List<BulkJobItem> findByJobIdIn(Collection<UUID> jobIds);
 
+    /**
+     * S2 (R-SAFE-17) scoped variant of {@link #findByJobIdIn} for the incident related-jobs batch
+     * tally (issue #329): same "push the predicate into the query, never filter an already-fetched
+     * batch in memory" rule as {@link #findByJobIdAndEngineIdInOrderByOrdinal}. {@code engineIds}
+     * must never be an empty collection (the caller short-circuits before reaching this query).
+     */
+    List<BulkJobItem> findByJobIdInAndEngineIdIn(Collection<UUID> jobIds, Collection<String> engineIds);
+
     List<BulkJobItem> findByJobIdAndStateIn(UUID jobId, List<BulkJobItem.State> states);
 }

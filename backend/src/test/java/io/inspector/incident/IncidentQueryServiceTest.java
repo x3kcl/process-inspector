@@ -350,13 +350,36 @@ class IncidentQueryServiceTest {
                 "ERROR_CLASS",
                 "order v3 · error class",
                 Map.of("ok", 2L));
-        when(relatedBulkJobs.forSignature("hash-1", CURRENT)).thenReturn(List.of(job));
+        when(relatedBulkJobs.forSignature("hash-1", CURRENT, null)).thenReturn(List.of(job));
 
         IncidentDetail detail = service.detail(ID, 24, auth);
 
         // keyed on THIS incident's (signatureHash, algoVersion) — never a generic recent list
         assertThat(detail.relatedBulkJobs()).containsExactly(job);
-        verify(relatedBulkJobs).forSignature("hash-1", CURRENT);
+        // the SAME readable-engine set resolved for the incident's own scope check (R-SAFE-17,
+        // issue #329) — enforcement is off here (stubEmptyDetail), so null, unrestricted.
+        verify(relatedBulkJobs).forSignature("hash-1", CURRENT, null);
+    }
+
+    @Test
+    void detailThreadsTheResolvedReadableSetIntoTheRelatedBulkJobsJoin() {
+        Incident row = row(ID, "hash-1", CURRENT, IncidentState.OPEN, NOW, 4, "{\"engine-a\":{\"order:v3\":4}}");
+        when(gate.readableEngineIds(auth)).thenReturn(Set.of("engine-a"));
+        when(incidents.findById(ID)).thenReturn(Optional.of(row));
+        when(episodes.findByIncidentIdOrderByStartedAtDesc(anyLong())).thenReturn(List.of());
+        when(occurrences.findByIdIncidentIdAndIdSampledAtGreaterThanEqualOrderByIdSampledAtAsc(
+                        anyLong(), any(Instant.class)))
+                .thenReturn(List.of());
+        TriageDashboardResponse empty = dashboard();
+        when(triage.dashboard(false)).thenReturn(empty);
+        when(projector.project(any(), eq(auth))).thenReturn(empty);
+        when(acks.decorate(any())).thenReturn(empty);
+        when(relatedBulkJobs.forSignature("hash-1", CURRENT, Set.of("engine-a")))
+                .thenReturn(List.of());
+
+        service.detail(ID, 24, auth);
+
+        verify(relatedBulkJobs).forSignature("hash-1", CURRENT, Set.of("engine-a"));
     }
 
     @Test
