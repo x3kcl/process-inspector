@@ -57,15 +57,27 @@ public record ResolveResponse(String query, List<ResolveMatch> matches, Map<Stri
             InstanceStatusFlags flags,
             InstanceStatus status) {}
 
-    /** Per-engine reachability envelope (R-SEM-12). */
+    /**
+     * Per-engine reachability envelope (R-SEM-12). {@code outOfScope} (S2, R-SAFE-17)
+     * distinguishes a caller's read-scope exclusion — an explicit {@code engine:id} composite
+     * naming an engine outside the caller's grants — from a genuine reachability failure: the
+     * two are rendered differently by the "resolved against N of M engines" banner (one says
+     * "you can't see this engine", the other "this engine is down"). An implicit "all engines"
+     * fan-out never produces this variant — it narrows to the readable set silently instead
+     * (labeling every excluded engine there would leak the existence of engines outside scope).
+     */
     @JsonInclude(JsonInclude.Include.NON_NULL)
-    public record EngineProbe(boolean ok, String error) {
+    public record EngineProbe(boolean ok, String error, boolean outOfScope) {
         public static EngineProbe reached() {
-            return new EngineProbe(true, null);
+            return new EngineProbe(true, null, false);
         }
 
         public static EngineProbe failed(String error) {
-            return new EngineProbe(false, error);
+            return new EngineProbe(false, error, false);
+        }
+
+        public static EngineProbe outOfScope(String engineId) {
+            return new EngineProbe(false, "the engine \"" + engineId + "\" is outside your access scope", true);
         }
     }
 }

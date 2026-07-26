@@ -135,7 +135,9 @@ function ResolvePanel({
       {matches.length === 0 ? (
         <p className="zero-state">
           “{response.query}” was not found on any reachable engine
-          {(reachability.unreachable.length > 0 || reachability.uncovered.length > 0) &&
+          {(reachability.unreachable.length > 0 ||
+            reachability.outOfScope.length > 0 ||
+            reachability.uncovered.length > 0) &&
             ' — but some registered engines were not searched (below)'}
           .
         </p>
@@ -210,6 +212,15 @@ function ResolvePanel({
           <span key={probe.engineId} className="health-down">
             {' '}
             · {probe.engineId} unreachable ({probe.error})
+          </span>
+        ))}
+        {/* S2 (R-SAFE-17, #300): an explicitly-named engine outside the caller's read scope —
+            rendered distinctly from "unreachable" (the engine is fine, the caller just can't
+            see it), never merged into the generic error wording. */}
+        {reachability.outOfScope.map((probe) => (
+          <span key={probe.engineId} className="health-down">
+            {' '}
+            · {probe.engineId} is outside your access scope
           </span>
         ))}
         {/* #236: engines registered but never probed (non-active lifecycle) — named in the

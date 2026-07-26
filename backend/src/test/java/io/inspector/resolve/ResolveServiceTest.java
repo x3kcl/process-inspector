@@ -69,7 +69,7 @@ class ResolveServiceTest {
         when(cmmnFlowable.getCmmnCaseDefinition(engine, CallPriority.INTERACTIVE, "def-uuid"))
                 .thenReturn(def("demoFailingCase", "Demo failing case"));
 
-        ResolveResponse response = service.resolve(CASE_ID);
+        ResolveResponse response = service.resolve(CASE_ID, null);
 
         assertThat(response.matches()).singleElement().satisfies(m -> {
             assertThat(m.kind()).isEqualTo(MatchKind.CMMN_CASE);
@@ -96,7 +96,7 @@ class ResolveServiceTest {
         when(cmmnFlowable.getHistoricCmmnCaseInstance(engine, CallPriority.INTERACTIVE, CASE_ID))
                 .thenReturn(endedCase);
 
-        ResolveResponse response = service.resolve(CASE_ID);
+        ResolveResponse response = service.resolve(CASE_ID, null);
 
         assertThat(response.matches()).singleElement().satisfies(m -> {
             assertThat(m.kind()).isEqualTo(MatchKind.CMMN_CASE);
@@ -109,7 +109,7 @@ class ResolveServiceTest {
         // scopeType absent — an older engine whose cmmn context is dead-letter-blind (spike Q3).
         engineWith(new EngineCapabilities(true, true, false, false, true));
 
-        ResolveResponse response = service.resolve(CASE_ID);
+        ResolveResponse response = service.resolve(CASE_ID, null);
 
         assertThat(response.matches()).isEmpty(); // honest "not found on any reachable engine"
         assertThat(response.perEngine().get(ENGINE).ok()).isTrue();

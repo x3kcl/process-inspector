@@ -85,4 +85,24 @@ describe('Omnibox negative-result coverage disclosure (#236)', () => {
     expect(panel.textContent).toContain('engine-b unreachable (timeout)')
     expect(panel.textContent).not.toContain('more registered')
   })
+
+  // S2 (R-SAFE-17, #300): an explicit engine:id composite naming an out-of-scope engine is
+  // rendered as a LABELED scope exclusion, distinct from a genuine reachability failure —
+  // never worded as "unreachable" (which would misleadingly suggest the engine is down).
+  it('renders an out-of-scope engine distinctly from an unreachable one', async () => {
+    const panel = await submitGarbageId([ACTIVE_A, ACTIVE_B], {
+      query: 'engine-b:deadbeef-0000',
+      matches: [],
+      perEngine: {
+        'engine-b': {
+          ok: false,
+          outOfScope: true,
+          error: 'the engine "engine-b" is outside your access scope',
+        },
+      },
+    })
+    expect(panel.textContent).toContain('resolved against 0 of 1 engines')
+    expect(panel.textContent).toContain('engine-b is outside your access scope')
+    expect(panel.textContent).not.toContain('engine-b unreachable')
+  })
 })
