@@ -2,7 +2,7 @@
 // engines and instances, Postgres-truth, filterable by actor / action / time window.
 // Read-only — the per-instance Audit & Notes tab stays the handover surface.
 import { useMemo, useState } from 'react'
-import type { FormEvent } from 'react'
+import type { SubmitEvent } from 'react'
 import { AgGridReact } from 'ag-grid-react'
 import type { CustomCellRendererProps } from 'ag-grid-react'
 import type { ColDef } from 'ag-grid-community'
@@ -141,7 +141,8 @@ export function AuditLogPage() {
     [ticketTemplate],
   )
 
-  const apply = (event: FormEvent) => {
+  // React 19 types deprecate FormEvent in favor of SubmitEvent for a form's onSubmit.
+  const apply = (event: SubmitEvent) => {
     event.preventDefault()
     setApplied(draft)
   }

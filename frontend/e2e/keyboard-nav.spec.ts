@@ -119,6 +119,12 @@ test('Enter on a focused grid cell opens the detail route, and the hint is visib
 
   await expect(page).toHaveURL(/\/inspect\/eng1\/p-1/)
   await expect(page.getByText('eng1:p-1')).toBeVisible()
+  // The vitals header (asserted above) commits before the default Variables tab's lazy
+  // chunk + query settle — scanning immediately after only the vitals text is a real race
+  // (RawJsonExport, the ⬇ raw JSON button, renders nothing until that tab's data has
+  // loaded — see its own doc comment), not an accessibility defect. Wait for the tab to
+  // actually finish loading, same discipline as the dark-theme suite's tab-content scans.
+  await expect(page.getByRole('button', { name: '⬇ raw JSON' })).toBeVisible()
   await scanA11y(page, 'instance detail page opened via keyboard')
 })
 

@@ -14,8 +14,9 @@ sections in the same change — see the `spec-sync` skill. Read the relevant ski
 - Java **21** / Spring Boot **≥3.5** / Maven. Blocking + **virtual threads**; no WebFlux,
   no preview APIs. `RestClient` per engine, wrapped in **Resilience4j** circuit breaker +
   bulkhead (do-no-harm, SPEC §2). JPA + Flyway + Postgres 16; Caffeine for the triage cache.
-- React **18** + TypeScript **≥5** `strict` + Vite, Node 22. TanStack Query v5,
-  React Router v7, AG Grid Community, bpmn-js.
+- React **19** (≥19.2.7) + TypeScript **≥5** `strict` + Vite, Node 22. TanStack Query v5,
+  React Router **v8** (≥8.3.0; `RouterProvider` from `react-router/dom`, everything else from
+  `react-router`), AG Grid Community, bpmn-js.
 - API contract: springdoc-openapi (`GET /v3/api-docs` on the running BFF) → generated
   `frontend/src/api/schema.d.ts` via `npm run gen:api` (committed; regenerate after DTO
   changes; all calls go through the singleton `openapi-fetch` client in

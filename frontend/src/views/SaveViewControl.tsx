@@ -1,5 +1,5 @@
 import { useState } from 'react'
-import type { FormEvent } from 'react'
+import type { SubmitEvent } from 'react'
 import { useSavedViews } from './useViewStores'
 
 /**
@@ -30,7 +30,8 @@ export function SaveViewControl({ search }: { search: string | null }) {
 
   const trimmed = name.trim()
   const replaces = views.some((view) => view.name === trimmed)
-  const submit = (event: FormEvent) => {
+  // React 19 types deprecate FormEvent in favor of SubmitEvent for a form's onSubmit.
+  const submit = (event: SubmitEvent) => {
     event.preventDefault()
     if (trimmed === '') return
     save(trimmed, search)

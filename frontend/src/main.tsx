@@ -1,7 +1,11 @@
 import { StrictMode, Suspense, lazy, type ReactNode } from 'react'
 import { createRoot } from 'react-dom/client'
 import { QueryClient, QueryClientProvider } from '@tanstack/react-query'
-import { Navigate, RouterProvider, createBrowserRouter, useSearchParams } from 'react-router'
+import { Navigate, createBrowserRouter, useSearchParams } from 'react-router'
+// react-router v8: DOM-specific APIs (RouterProvider's hydration/ViewTransition/scroll-restoration
+// wiring) moved to the 'react-router/dom' subpath; everything else stays on 'react-router'
+// (the migration guide: only this import path changes for a data-mode SPA with no loaders/actions).
+import { RouterProvider } from 'react-router/dom'
 import { ApiError } from './api/client'
 import { ChunkErrorBoundary } from './routing/ChunkErrorBoundary'
 import { hasSearch } from './search/urlState'

@@ -1,5 +1,5 @@
 import { useState } from 'react'
-import type { FormEvent } from 'react'
+import type { SubmitEvent } from 'react'
 import { Link, useNavigate } from 'react-router'
 import { useMutation } from '@tanstack/react-query'
 import type { EngineDto, ResolveMatch, ResolveResponse } from '../api/model'
@@ -46,7 +46,8 @@ export function Omnibox() {
     void navigate(to)
   }
 
-  const submit = (event: FormEvent) => {
+  // React 19 types deprecate FormEvent in favor of SubmitEvent for a form's onSubmit.
+  const submit = (event: SubmitEvent) => {
     event.preventDefault()
     const engineIds = (engines.data ?? [])
       .map((engine) => engine.id)

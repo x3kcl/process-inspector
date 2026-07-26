@@ -1144,11 +1144,13 @@ and would rewrite working M1/M2 code for no capability gain); Go/FastAPI/Kotlin 
   against a running BFF) + the singleton `openapi-fetch` client, committed; CI regenerates
   and **fails on diff** — cross-language drift is a build failure *(the drift gate is live
   in CI: the workflow boots the real BFF, regenerates `schema.d.ts`, and fails on any diff)*.
-- **Frontend:** React 18 + TypeScript `strict` + Vite (Node 22 LTS, npm). **TanStack Query
-  v5** — polling drives all v1 liveness (health strip, drawer); **SSE arrives in v1.x with
-  tracked bulk** (R-SEM-14 resolves the earlier v1/v1.x ambiguity; lifecycle contract —
+- **Frontend:** React 19 (≥19.2.7) + TypeScript `strict` + Vite (Node 22 LTS, npm). **TanStack
+  Query v5** — polling drives all v1 liveness (health strip, drawer); **SSE arrives in v1.x
+  with tracked bulk** (R-SEM-14 resolves the earlier v1/v1.x ambiguity; lifecycle contract —
   heartbeat, session binding, id-only events, documented event catalog — lands with it).
-  React Router v7 + typed search-param codec. Zustand only when the operations drawer
+  React Router v8 (≥8.3.0; `RouterProvider` imports from `react-router/dom`, everything else
+  from `react-router` — the v8 package-split) + typed search-param codec. Zustand only when
+  the operations drawer
   lands. **AG Grid Community ONLY** (ADR-002 / R-GOV-05): the v1 grid is designed against
   Community features (selection count = custom footer; ID copy = copy buttons; filtering in
   the search rail — no Enterprise status bar/set filters/range selection/context menu); CI
@@ -1183,7 +1185,7 @@ and would rewrite working M1/M2 code for no capability gain); Go/FastAPI/Kotlin 
   layered jar). One origin, one session. No GraalVM native.
 - **Agent ergonomics** (from the Claude-expert review): repo `CLAUDE.md` with **scoped**
   build/test commands (`mvn -o test -Dtest=…`, never the full suite in the loop), pinned
-  version floors (Boot ≥3.5, React ≥18, TS ≥5), and the `.claude/skills/*` doctrine set.
+  version floors (Boot ≥3.5, React ≥19.2.7, TS ≥5), and the `.claude/skills/*` doctrine set.
 - **Dev harness:** dockerized `flowable-rest` engines in **three compose profiles** —
   current 6.x, one pre-6.4/6.5 image (capability cliffs: change-state 6.4+, migration ~6.5+,
   external-worker jobs 6.8+, `scopeType` ~6.8+), and a **Flowable 7.x profile** (the flap

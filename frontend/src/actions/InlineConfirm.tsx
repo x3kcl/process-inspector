@@ -31,7 +31,10 @@ export function InlineConfirm({
   onConfirm,
 }: Props) {
   const [armed, setArmed] = useState(false)
-  const timer = useRef<number>()
+  // React 19 typings dropped the zero-arg useRef<T>() overload; an explicit undefined
+  // initializer is required now (behavior is identical — this was always `undefined`
+  // until the first `window.setTimeout` assignment below).
+  const timer = useRef<number | undefined>(undefined)
   // #168: the armed and base branches render structurally different JSX at the same tree
   // position, so React unmounts the (currently-focused) armed button and mounts a fresh base
   // button on confirm/cancel — the browser's default for a focused node leaving the DOM is

@@ -365,3 +365,65 @@ the key would live in that same attacker's trust domain — bar-raising, not gap
 adding real key-management cost (rotation, storage, recovery). **Revisit trigger:** the audit
 store moving to a separate trust domain from the BFF (e.g. a managed/remote Postgres the BFF's
 own credentials cannot reach with superuser rights).
+
+## Addendum (2026-07-26) — ADR-001 stack-pin bump: React 18→19 + React Router v7→v8 (#335)
+
+**Trigger:** issue #310 (the react-router `GHSA-qwww-vcr4-c8h2` HIGH advisory has no 7.x fix)
+discovered mid-implementation that **every** react-router 8.x release (8.0.0–8.3.0) declares
+`peerDependencies: { react: ">=19.2.7" }` — the router major is not an independent bump, it
+drags React 18→19 with it. That made the router fix itself a second ADR-001 stack-pin change,
+too large to land under a security-patch issue without its own review — split out as this issue
+per #310's re-scope comment.
+
+**Compatibility verdict (verified against the INSTALLED versions before any bump, not
+changelog prose — `npm view <pkg> peerDependencies`/`dist-tags`/`versions` against the live
+registry, plus a sandbox install of `react-router@8.3.0` to inspect its actual `exports` map):**
+
+| Dependency | Installed | React 19 peer support | Action |
+|---|---|---|---|
+| ag-grid-community / ag-grid-react | 32.3.9 | `peerDependencies.react: "^16 \|\| ^17 \|\| ^18 \|\| ^19"` already | none — no bump |
+| @tanstack/react-query | 5.101.2 | `peerDependencies.react: "^18 \|\| ^19"` already | none — no bump |
+| @testing-library/react | 16.3.2 | `peerDependencies.react: "^18.0.0 \|\| ^19.0.0"` already | none — types-only bump (`@types/react` ^19.2.17, `@types/react-dom` ^19.2.3) |
+| bpmn-js / cmmn-js | 18.19.0 / 0.20.0 | no React peer dependency at all (framework-agnostic canvas libs; our own wrapper components hold the only React surface) | none |
+| openapi-fetch | 0.17.0 | no React peer dependency (fetch wrapper) | none |
+| @vitejs/plugin-react | 5.2.0 | no React peer dependency (JSX transform is version-independent) | none |
+| react-router | 7.18.1 → **8.3.0** | v8.x requires `react/react-dom >=19.2.7` (the forcing dependency) | major bump, paired with the React bump |
+
+**No pinned heavy dependency required a major bump of itself to support React 19 — the abort
+criterion in #335 was not triggered.** react/react-dom → **^19.2.8**, react-router → **^8.3.0**,
+`@types/react`/`@types/react-dom` → **^19.2.17**/**^19.2.3**. `@testing-library/react` itself
+stays at 16.3.2 (already React-19-compatible).
+
+**Breaking-change inventory actually hit** (small, as #310's comment predicted the router side
+would be — React 19 was the real scope):
+- react-router v8 splits DOM-specific exports into `react-router/dom`; `RouterProvider` moves
+  there (`createBrowserRouter`, `Navigate`, `useSearchParams`, `useNavigate`, `useParams`,
+  `Link`, `useLocation`, `useRouteError`, `Outlet`, `errorElement` all stay on `react-router`
+  unchanged — confirmed against v8.3.0's own `exports`/`.d.ts`, not just the migration guide).
+  One call site (`frontend/src/main.tsx`).
+- React 19 types drop the zero-argument `useRef<T>()` overload (an explicit initializer is
+  required now) — two call sites (`InlineConfirm.tsx`, `DiagramCanvas.tsx`).
+- React 19 types deprecate `FormEvent`/`FormEventHandler` in favor of `SubmitEvent`/
+  `SubmitEventHandler` for a form's `onSubmit` — eight call sites, all `(event) => {
+  event.preventDefault(); … }` handlers, mechanical rename.
+- No `forwardRef`, no `defaultProps`, no `ReactDOM.render`, no string refs, no
+  `react-dom/test-utils` imports anywhere in `frontend/src` — the rest of the React 19 removal
+  list was already clean.
+
+**`useRouteFocus` (#168 StrictMode effect-guard) re-verified under React 19 StrictMode:** a new
+regression test (`Shell.test.tsx`, "useRouteFocus under React 19 StrictMode") mounts `Shell`
+inside `<StrictMode>` with real nested routes and a real `Link` navigation, spying on
+`restoreRouteFocus` to prove it fires **zero** times on initial load and **exactly once** per
+real pathname change — never twice from StrictMode's dev double-invoke. Sanity-checked by
+temporarily reintroducing the exact #168 bug pattern (a fixed "have I run before" boolean
+instead of the pathname-tracking ref) and confirming the new test fails; the existing
+`lastHandledPathname` ref guard needed no changes.
+
+**GHSA-qwww-vcr4-c8h2 retired** from `frontend/npm-audit-allowlist.json` (react-router is now
+past the vulnerable range); `npm audit --audit-level=high` and
+`scripts/check-npm-audit-allowlist.mjs` both clean without it (the unrelated
+`GHSA-mh99-v99m-4gvg` brace-expansion entry, added by a parallel PR, is untouched — different
+advisory, different dependency chain).
+
+**Doc deltas:** CLAUDE.md + SPECIFICATION.md §10 stack-pin lines (React 18→19, Router v7→v8).
+Closes #335, closes #310.

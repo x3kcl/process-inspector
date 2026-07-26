@@ -6,12 +6,6 @@
       "package": "brace-expansion",
       "justification": "Transitive under @redocly/openapi-core (pinned exactly to minimatch@5.1.9) <- openapi-typescript@7.13.0 (latest 7.x) <- gen:api, a build-time-only devDependency. No in-range fix exists as of 2026-07-26: minimatch@5.1.9 declares brace-expansion@^2.0.1, and 2.1.2 (already applied via a subtree-scoped package.json override) is the newest 2.x release, but the advisory's vulnerable range now extends through 5.0.7 across every major, so 2.1.2 is still inside it -- the fix (5.0.8) sits outside minimatch's declared ^2.0.1 range. Forcing a cross-major override (2.x -> 5.x) into a subtree whose only consumer has never been exercised against the new major's API would swap a proven-safe toolchain for an unproven one, for a devDependency that never reaches the built frontend bundle or the deployed BFF. The glob patterns brace-expansion expands here come only from this repo's own OpenAPI spec resolution during `npm run gen:api`, never from attacker-controlled input, so runtime exposure is nil. Separately, eslint's OWN brace-expansion copy (via minimatch@10.2.5, unrelated subtree) was NOT exception-worthy -- a fresh in-range patch (5.0.8, published 2026-07-23) existed and was pulled forward with a plain `npm update`, no override, no exception.",
       "expires": "2026-10-24"
-    },
-    {
-      "ghsaId": "GHSA-qwww-vcr4-c8h2",
-      "package": "react-router",
-      "justification": "Advisory is RSC (React Server Components) rendering-mode only: an action request handled via the RSC payload path can execute before a would-be 400 rejection lands, a CSRF-relevant bypass. This app never enables or imports RSC -- frontend/src/main.tsx builds its router exclusively via `createBrowserRouter` (the SPA/data-router mode), and a repo-wide grep for `unstable_RSC`, `\"use server\"`, `ServerRouter`, `RSCStaticRouter`, `createFromReadableStream`, and `react-router/rsc` returns nothing under frontend/src. The fix is react-router@8.3.0, a major version bump -- tracked separately as issue #310 so the bump gets its own review instead of being rushed in under a security patch. Re-run the RSC-usage grep at renewal; if RSC is ever adopted this exception must be pulled immediately and #310 pulled forward.",
-      "expires": "2026-10-24"
     }
   ]
 }
