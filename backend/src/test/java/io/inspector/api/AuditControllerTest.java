@@ -9,6 +9,7 @@ import io.inspector.audit.AuditEntry;
 import io.inspector.audit.AuditEntryRepository;
 import io.inspector.audit.AuditService;
 import io.inspector.security.RbacAuthorizer;
+import io.inspector.security.ReadScopeGate;
 import io.inspector.security.Role;
 import java.time.Instant;
 import java.util.List;
@@ -22,12 +23,26 @@ import org.springframework.security.core.Authentication;
  * engineId that no operator is scoped to, so the usual per-engine OPERATOR gate would hide them
  * from every engine-scoped admin. They are visible to ANY ADMIN instead; every other row keeps
  * the per-engine OPERATOR+ payload gate.
+ *
+ * <p>These tests run with {@link ReadScopeGate} stubbed to {@code null} — enforcement OFF, the
+ * legacy fleet-wide behaviour this class has always proven. The R-SAFE-17 scoped-reads behaviour
+ * (issue #296) is proven separately in {@link AuditScopeApiSpringTest}, which is the mandatory
+ * enforcement-ON slice — these tests alone would pass unchanged whether or not scoping was wired
+ * up correctly.
  */
 class AuditControllerTest {
 
     private final AuditEntryRepository repository = mock(AuditEntryRepository.class);
     private final RbacAuthorizer rbac = mock(RbacAuthorizer.class);
-    private final AuditController controller = new AuditController(repository, rbac);
+    private final ReadScopeGate readScope = mock(ReadScopeGate.class);
+    private final AuditController controller = new AuditController(repository, rbac, readScope);
+
+    {
+        // Mockito's default answer for a Set-returning method is an EMPTY set, not null — stub
+        // it explicitly to null (enforcement OFF) so this class keeps proving the legacy
+        // fleet-wide behaviour rather than silently exercising the R-SAFE-17 scoped path.
+        when(readScope.readableEngineIds(any())).thenReturn(null);
+    }
 
     private static AuditEntry row(String engineId) {
         return new AuditEntry(

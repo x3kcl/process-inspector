@@ -1010,6 +1010,13 @@ copy is never identical to an RBAC denial (R-GOV-04, R-SEM-17).
   a partial result set (engine down / truncation) is **blocked until explicitly
   acknowledged** ("billing-prod excluded — proceed anyway?").
 - No cross-engine transactionality — stated in the UI, not just the docs.
+- **Scope-filtered reads (S2, R-SAFE-17, issue #296):** the drawer's list/detail reads
+  (`GET /api/bulk[/{id}]`) were the last fleet-wide bulk reads at the VIEWER floor. Under
+  `inspector.security.scope-reads-enforced`, a job touching no readable engine is omitted from
+  the list; a job spanning both a readable and an unreadable engine keeps appearing with its
+  item list/tallies narrowed to the visible subset (never the full `engine:instance` target
+  list); a detail read whose only items sit outside the caller's scope answers the same 404 as
+  an unknown job id — existence is never leaked. Off ⇒ legacy fleet-wide reads.
 
 ## 8. Search & filtering (full list)
 
@@ -1072,7 +1079,11 @@ tree rows stay distinguishable (R-UXQ-12 half, usability W2 #7).
   operations** on the triage landing, and the **shift report** (R-AUD-05): a "My shift"
   preset (current user, since shift start = last 8 h) + one-click plain-text export
   ("Copy shift report", UTC ISO timestamps), UNKNOWN outcomes grouped first under
-  NEEDS VERIFICATION.
+  NEEDS VERIFICATION. **Scope-filtered reads (S2, R-SAFE-17, issue #296):** the global
+  operations log and its CSV export were the last fleet-wide reads at the VIEWER floor — under
+  `inspector.security.scope-reads-enforced` they narrow to the caller's readable engines (an
+  `_inspector` config-event row then requires fleet ADMIN); off ⇒ legacy fleet-wide reads
+  (ARCHITECTURE §4/§5).
 - **Notes** per composite ID (BFF-owned; author + timestamp; "has notes" grid marker).
   Copy-for-ticket includes the latest note + a one-line actions-taken summary (R-AUD-06);
   a group-level copy-for-ticket exists on Stage 0 (v1.x). Reasons carry an optional

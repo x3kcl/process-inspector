@@ -5,8 +5,10 @@ import io.inspector.bulk.BulkErrorClassService;
 import io.inspector.bulk.BulkFilterService;
 import io.inspector.bulk.BulkJobService;
 import io.inspector.bulk.DestructiveBulkService;
+import io.inspector.security.ReadScopeGate;
 import io.inspector.stream.SseHub;
 import java.util.List;
+import java.util.Set;
 import java.util.UUID;
 import org.springframework.http.MediaType;
 import org.springframework.security.access.prepost.PreAuthorize;
@@ -26,6 +28,12 @@ import org.springframework.web.servlet.mvc.method.annotation.SseEmitter;
  * item is a normal single-target action with its own scoped-RBAC check and audit row).
  * Failures answer as the same ProblemDetails the single-target endpoints use
  * ({@link ActionExceptionHandler}).
+ *
+ * <p><b>Scope-filtered reads (S2, R-SAFE-17, issue #296):</b> {@link #recent} and {@link #get}
+ * were the last fleet-wide bulk-job reads at the VIEWER floor — every mutating door above already
+ * runs the full per-item guard chain. {@code readableEngineIds} is resolved from {@link
+ * ReadScopeGate} on the request thread and threaded into {@code BulkJobService}, which pushes it
+ * into the repository queries (never filters an already-fetched list in memory).
  */
 @RestController
 @RequestMapping("/api/bulk")
@@ -36,18 +44,21 @@ public class BulkController {
     private final BulkFilterService filter;
     private final DestructiveBulkService destructive;
     private final SseHub stream;
+    private final ReadScopeGate readScope;
 
     public BulkController(
             BulkJobService bulk,
             BulkErrorClassService errorClass,
             BulkFilterService filter,
             DestructiveBulkService destructive,
-            SseHub stream) {
+            SseHub stream,
+            ReadScopeGate readScope) {
         this.bulk = bulk;
         this.errorClass = errorClass;
         this.filter = filter;
         this.destructive = destructive;
         this.stream = stream;
+        this.readScope = readScope;
     }
 
     @PostMapping
@@ -122,14 +133,18 @@ public class BulkController {
     /** The operations drawer's hydration read — persisted jobs survive BFF restarts and browser refreshes. */
     @GetMapping
     @PreAuthorize("@rbac.atLeast(authentication, 'VIEWER')")
-    public List<BulkDtos.BulkJobDto> recent(@RequestParam(defaultValue = "20") int limit) {
-        return bulk.recent(limit);
+    public List<BulkDtos.BulkJobDto> recent(
+            @RequestParam(defaultValue = "20") int limit, Authentication authentication) {
+        // S2 (R-SAFE-17): resolved on the request thread, never inside the fan-out.
+        Set<String> readable = readScope.readableEngineIds(authentication);
+        return bulk.recent(limit, readable);
     }
 
     @GetMapping("/{id}")
     @PreAuthorize("@rbac.atLeast(authentication, 'VIEWER')")
-    public BulkDtos.BulkJobDto get(@PathVariable UUID id) {
-        return bulk.get(id);
+    public BulkDtos.BulkJobDto get(@PathVariable UUID id, Authentication authentication) {
+        Set<String> readable = readScope.readableEngineIds(authentication);
+        return bulk.get(id, readable);
     }
 
     /**

@@ -859,17 +859,57 @@ public class BulkJobService {
 
     /* ------------------------------- reads ------------------------------- */
 
-    public List<BulkDtos.BulkJobDto> recent(int limit) {
-        return jobs.findAllByOrderBySubmittedAtDesc(PageRequest.of(0, Math.min(Math.max(limit, 1), 100))).stream()
-                .map(job -> BulkDtos.BulkJobDto.of(job, items.findByJobIdOrderByOrdinal(job.getId()), false))
+    /**
+     * S2 (R-SAFE-17) scoped variant of the operations drawer's list read (issue #296). {@code
+     * readableEngineIds} is the caller's {@link io.inspector.security.ReadScopeGate} set, resolved
+     * by {@code BulkController} on the request thread — {@code null} = enforcement off =
+     * unrestricted (legacy fleet-wide reads, unchanged). Under enforcement, a job touching NO
+     * readable engine is omitted from the list entirely (never listed with a hidden item set);
+     * a job spanning both readable and unreadable engines still appears, with {@link
+     * #itemsFor} narrowing its tallies/items to the readable subset.
+     */
+    public List<BulkDtos.BulkJobDto> recent(int limit, Set<String> readableEngineIds) {
+        int cap = Math.min(Math.max(limit, 1), 100);
+        if (readableEngineIds != null && readableEngineIds.isEmpty()) {
+            return List.of(); // caller can read no engine at all — nothing to list
+        }
+        List<BulkJob> jobList = readableEngineIds == null
+                ? jobs.findAllByOrderBySubmittedAtDesc(PageRequest.of(0, cap))
+                : jobs.findRecentByReadableEngineIds(readableEngineIds, PageRequest.of(0, cap));
+        return jobList.stream()
+                .map(job -> BulkDtos.BulkJobDto.of(job, itemsFor(job.getId(), readableEngineIds), false))
                 .toList();
     }
 
-    public BulkDtos.BulkJobDto get(UUID id) {
+    /**
+     * S2 (R-SAFE-17) scoped variant of the detail read (issue #296): a job with zero items in the
+     * caller's readable set answers the SAME 404 as an unknown id — existence of an out-of-scope
+     * job is never leaked (the same doctrine {@code IncidentQueryService} uses for a
+     * zero-intersection incident detail). A partially-in-scope job still returns, with {@link
+     * #itemsFor} narrowing its item list/tallies to the readable subset only — the full per-item
+     * {@code engine:instance} target list (the sharpest leak in issue #296) never reaches a
+     * caller who cannot read that engine.
+     */
+    public BulkDtos.BulkJobDto get(UUID id, Set<String> readableEngineIds) {
         BulkJob job = jobs.findById(id)
                 .orElseThrow(() ->
                         new GuardRefusedException(HttpStatus.NOT_FOUND, "bulk-job-unknown", "No bulk job " + id + "."));
-        return BulkDtos.BulkJobDto.of(job, items.findByJobIdOrderByOrdinal(id), true);
+        List<BulkJobItem> visible = itemsFor(id, readableEngineIds);
+        if (readableEngineIds != null && visible.isEmpty()) {
+            throw new GuardRefusedException(HttpStatus.NOT_FOUND, "bulk-job-unknown", "No bulk job " + id + ".");
+        }
+        return BulkDtos.BulkJobDto.of(job, visible, true);
+    }
+
+    /** {@code null} = unrestricted (all items); an empty readable set short-circuits to none. */
+    private List<BulkJobItem> itemsFor(UUID jobId, Set<String> readableEngineIds) {
+        if (readableEngineIds == null) {
+            return items.findByJobIdOrderByOrdinal(jobId);
+        }
+        if (readableEngineIds.isEmpty()) {
+            return List.of();
+        }
+        return items.findByJobIdAndEngineIdInOrderByOrdinal(jobId, readableEngineIds);
     }
 
     /** One engine's permit-pool saturation (issue #96, {@code GET /api/diag}). */

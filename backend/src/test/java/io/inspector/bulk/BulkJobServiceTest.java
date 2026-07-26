@@ -211,7 +211,7 @@ class BulkJobServiceTest {
                 .until(() -> jobStore.get(id) != null
                         && jobStore.get(id).getState() != BulkJob.State.PENDING
                         && jobStore.get(id).getState() != BulkJob.State.RUNNING);
-        return service.get(id);
+        return service.get(id, null); // null = enforcement off / unrestricted (this suite's baseline)
     }
 
     /* ---------------- submit-time guards ---------------- */

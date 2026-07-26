@@ -101,6 +101,15 @@ public final class BulkDtos {
      * detail read only. {@code scopeKind}/{@code scopeLabel} (usability fix E1) are the
      * scope-provenance descriptor threaded from whichever of the three submit doors
      * (ticked selection / error-class group / filter) produced the job.
+     *
+     * <p>{@code totalItems} is derived from the {@code items} list passed to {@link #of} — NOT
+     * carried over from {@link BulkJob#getTotalItems}. Under S2 (R-SAFE-17) scope-filtered reads
+     * (issue #296) {@code items} is already narrowed to the caller's readable engines by {@code
+     * BulkJobService}, so this recomputes the honest visible total for a partially-in-scope job
+     * (the {@code TriageScopeProjector}/{@code LeakViewScopeProjector} "recompute from survivors"
+     * doctrine) — never leaking the existence of items on engines outside the caller's scope via
+     * a fleet-wide count. Unscoped reads pass the FULL item list, so this is a no-op there (every
+     * item is submitted 1:1 with the job's total by construction).
      */
     public record BulkJobDto(
             UUID id,
@@ -133,7 +142,7 @@ public final class BulkDtos {
                     job.getReason(),
                     job.getTicketId(),
                     job.getContinuedFrom(),
-                    job.getTotalItems(),
+                    items.size(),
                     job.getScopeKind().name(),
                     job.getScopeLabel(),
                     tallies,

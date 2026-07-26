@@ -1,6 +1,7 @@
 package io.inspector.audit;
 
 import java.time.Instant;
+import java.util.Collection;
 import java.util.List;
 import java.util.Optional;
 import java.util.UUID;
@@ -41,6 +42,39 @@ public interface AuditEntryRepository extends JpaRepository<AuditEntry, UUID> {
             @Param("engineId") String engineId,
             @Param("ticketId") String ticketId,
             @Param("since") Instant since,
+            Pageable page);
+
+    /**
+     * S2 (R-SAFE-17) scoped variant of {@link #findLog}, used ONLY when read-scope enforcement
+     * is on (the caller resolved a non-null {@code readableEngineIds} from {@code ReadScopeGate}).
+     * The engine-scope predicate is pushed into THIS query — never filtered in memory after
+     * fetching — so the CSV export's page-boundary math ({@code AuditController}) stays correct.
+     * {@code readableEngineIds} must never be an empty collection: JPQL's {@code IN ()} on an
+     * empty parameter is unreliable across providers, so an empty readable set is the caller's
+     * job to substitute with an impossible sentinel id before calling this. Config-event rows
+     * ({@code engine_id = '_inspector'}, {@link AuditService#CONFIG_ENGINE_ID}, R-AUD-10) carry no
+     * engine scope of their own, so they fall outside every per-engine readable set by
+     * construction — visible here ONLY when {@code adminAnywhere} is true (fleet ADMIN), the same
+     * safe default as the config-event PAYLOAD gate in {@code AuditController#payloadVisible}.
+     */
+    @Query("""
+            select a from AuditEntry a
+            where (:actor is null or a.actor = :actor)
+              and (:action is null or a.action = :action)
+              and (:engineId is null or a.engineId = :engineId)
+              and (:ticketId is null or a.ticketId = :ticketId)
+              and a.ts >= :since
+              and (a.engineId in :readableEngineIds or (a.engineId = '_inspector' and :adminAnywhere = true))
+            order by a.ts desc
+            """)
+    List<AuditEntry> findLogScoped(
+            @Param("actor") String actor,
+            @Param("action") String action,
+            @Param("engineId") String engineId,
+            @Param("ticketId") String ticketId,
+            @Param("since") Instant since,
+            @Param("readableEngineIds") Collection<String> readableEngineIds,
+            @Param("adminAnywhere") boolean adminAnywhere,
             Pageable page);
 
     /** The startup/periodic reconciler's sweep set (SPEC §6): stale PENDING → unknown. */
