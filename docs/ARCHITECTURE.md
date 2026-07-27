@@ -599,21 +599,37 @@ nobody may "simplify" by exposing an engine directly.
 ## 6. Inspecting an embedded-engine application (the flap case)
 
 The companion system **flap** embeds Flowable **7.0.0** (`flowable-spring-boot-starter`)
-behind its own UI and does **not** expose the Flowable REST API — so it is not inspectable
-until it does. The integration recipe (an afternoon on the flap side):
+behind its own UI. It did **not** expose the Flowable REST API — so it was not inspectable
+until it did. The recipe below is now LANDED on both sides (flap's
+`docs/process-inspector-integration.md`); each step carries what the implementation
+actually taught.
 
 1. **Add** `org.flowable:flowable-spring-boot-starter-rest` (same version as the embedded
-   engine) — mounts the process REST API under **`/process-api/**`** in flap's servlet
-   context. Flowable 7's REST surface is the direct continuation of the V6 API for
-   everything the inspector uses (`/query/*`, `/history/*`, `/runtime/*`, `/management/*`,
-   `/repository/*`).
+   engine) — the engine starter alone does NOT bring it. It mounts one DispatcherServlet
+   per engine at the servlet-context ROOT: `/process-api`, `/cmmn-api`, `/dmn-api`,
+   `/idm-api`, `/external-job-api`. Flowable 7's REST surface is the direct continuation of
+   the V6 API for everything the inspector uses (`/query/*`, `/history/*`, `/runtime/*`,
+   `/management/*`, `/repository/*`).
+   > A guarded-but-unmapped path is invisible: flap's chain matched `/process-api/**` long
+   > before this dependency existed, and an unauthenticated probe got the same 302-to-login
+   > either way. Only a request that PASSES auth distinguishes 404 from "not allowed" —
+   > check a REST integration with credentials, never with an anonymous curl.
 2. **Secure it explicitly**: a dedicated `SecurityFilterChain` ordered ahead of the UI
-   chain, matching `/process-api/**`, HTTP Basic, `STATELESS`, CSRF off *for that matcher
-   only* (API calls must not create UI sessions), a dedicated machine account
-   (`inspector-svc`) with the `access-rest-api` privilege, credential injected as an env
-   secret and referenced from the inspector registry via `password-ref`. flowable-rest
-   authorization is binary — network scoping plus the inspector's BFF RBAC is the entire
-   defense.
+   chain, HTTP Basic, `STATELESS`, CSRF off *for that matcher only* (API calls must not
+   create UI sessions), a dedicated machine account whose credential is injected as an env
+   secret and referenced from the inspector registry via `password-ref`. Three things the
+   landing proved:
+   - **Match every mounted context, not just `/process-api`.** A context left to the UI
+     chain is merely `.authenticated()`, i.e. open to any ordinary user with a session —
+     and `/idm-api` mints users and grants privileges. flap gates `/idm-api` + `/dmn-api`
+     to administrators ONLY: the inspection account cannot reach them, so a stolen
+     inspector credential cannot promote itself.
+   - **Name your matchers.** Once a second DispatcherServlet exists, Spring Security's
+     `requestMatchers(String)` cannot tell MVC patterns from servlet paths and throws AT
+     REQUEST TIME — a 500 on every path, login page included, from a change that compiles
+     and boots clean. Every rule becomes an explicit `antMatcher(...)`.
+   - **Authorization is binary** at the engine — network scoping plus the inspector's BFF
+     RBAC is the entire defense.
    **Network scoping must match the actual topology, or it silently fails:**
    - *Plain Docker*: a dedicated backend bridge network shared only by the inspector and
      the engine is the cleanest fence — the path is simply unroutable from elsewhere; no
@@ -629,7 +645,21 @@ until it does. The integration recipe (an afternoon on the flap side):
    - Never rely on `X-Forwarded-For` from an untrusted hop — any client can set it.
 3. **Registry entry**: `base-url: https://flap-host/process-api` — base-URL shapes vary per
    deployment (`…/flowable-rest/service` on the standalone image); nothing outside config
-   may assume a path shape.
+   may assume a path shape. What the base-url DOES determine is where the **sibling
+   contexts** live, because Flowable publishes CMMN and external-worker beside the process
+   API rather than under it. `EngineApiContexts` owns that one derivation for all three
+   consumers (`CmmnApiClient`, `ExternalJobApiClient`, the registry's pinned result):
+
+   | Layout | base-url | CMMN sibling |
+   |---|---|---|
+   | standalone war | `…/flowable-rest/service` | `…/flowable-rest/cmmn-api` |
+   | embedded (Boot) | `…/process-api` | `…/cmmn-api` |
+
+   A base-url in neither shape falls back to APPENDING the sibling — a wrong 404 on an
+   optional lane, never a call aimed at some other engine's context. Getting this wrong is
+   silent in the worst way: appending on a Boot engine 404s, and a 404 reads as "capability
+   absent", so the Case Inspector and external-worker lanes would report *no such feature*
+   on an engine that has both.
 4. **Native attribution (optional, recommended for flap)**: set
    `forward-user-header: true` in the registry; flap's `/process-api/**` chain adds a small
    interceptor that reads `X-Forwarded-User` and sets the Flowable authenticated user for
@@ -640,9 +670,13 @@ until it does. The integration recipe (an afternoon on the flap side):
 
 **Inspector-side implications:** the CI engine matrix includes a **7.x profile** (probe
 treats 7.x as passing all 6.x capability cliffs unless proven otherwise; watch the
-batch-migration payload shape, §2.5); the inspector never links Flowable libraries, so no
-version-lockstep with flap — the codebases stay idiomatically similar (both Spring) but
-physically decoupled over HTTP.
+batch-migration payload shape, §2.5) **and a `flap` profile** — the war images cannot
+exercise either the Boot layout or an application's own auth, so the harness runs the real
+flap image as an engine (`docker/docker-compose.dev.yml --profile flap`) and
+`BootLayoutEngineIT` drives the whole arc on it: deploy over REST, organic dead-letter,
+Stage-0 failed lane, retry through the BFF, audit row. The inspector never links Flowable
+libraries, so no version-lockstep with flap — the codebases stay idiomatically similar
+(both Spring) but physically decoupled over HTTP.
 **Error-shape drift (7.x):** Flowable 7 sits on Spring Boot 3/Jakarta, and standard Spring
 error responses (which Flowable wraps or sometimes leaks) changed shape across that
 baseline. The BFF's engine-error interceptors — and specifically the exception-snippet

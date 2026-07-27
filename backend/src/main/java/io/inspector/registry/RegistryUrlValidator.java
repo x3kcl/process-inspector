@@ -1,5 +1,6 @@
 package io.inspector.registry;
 
+import io.inspector.config.EngineApiContexts;
 import io.inspector.config.InspectorProperties.EngineEnvironment;
 import java.net.IDN;
 import java.net.InetAddress;
@@ -291,17 +292,14 @@ public class RegistryUrlValidator {
     }
 
     /**
-     * The {@code /external-job-api} and {@code /cmmn-api} sibling contexts, derived by the same
-     * convention as {@link io.inspector.client.GuardedCaller} but from the CANONICAL base —
-     * so a trailing-dot or {@code ..}-traversal host can't produce a sibling the validator never saw.
+     * The {@code /external-job-api} and {@code /cmmn-api} sibling contexts, derived by the ONE
+     * shared convention ({@link EngineApiContexts} — which layouts replace their last segment and
+     * which append) but from the CANONICAL base, so a trailing-dot or {@code ..}-traversal host
+     * can't produce a sibling the validator never saw.
      */
     private static String siblingBase(Canonical c, String sibling) {
         String origin = c.baseUrl.substring(0, c.baseUrl.length() - c.path.length());
-        String path = c.path;
-        String siblingPath = path.endsWith("/service")
-                ? path.substring(0, path.length() - "/service".length()) + sibling
-                : path + sibling;
-        return origin + siblingPath;
+        return origin + EngineApiContexts.sibling(c.path, sibling);
     }
 
     private List<InetAddress> resolveHost(String host) throws UnknownHostException {

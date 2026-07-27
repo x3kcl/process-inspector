@@ -12,13 +12,13 @@
 # Jellyfin/UniFi/arr-stack et al.; none inside an 8x91-8x94 engine block), plus the
 # 54x5 postgres picks and 41xx-46xx e2e ports all clear. free-port.sh gives each job
 # the same bounded within-band fallback as on hp04 if one of these gets squatted.
-#   slot  engines (A/B/7/legacy)   BFF-pg  drift-BFF  e2e   compose projects
-#   s1    8191 8192 8193 8194      5445    8186       4273  pi-ci-s1-<profile>
-#   s2    8291 8292 8293 8294      5455    8286       4373  pi-ci-s2-<profile>
-#   s3    8391 8392 8393 8394      5465    8386       4473  pi-ci-s3-<profile>
-#   s4    8491 8492 8493 8494      5475    8486       4573  pi-ci-s4-<profile>
-#   s5    8591 8592 8593 8594      5485    8586       4673  pi-ci-s5-<profile>
-#   s6    8691 8692 8693 8694      5435    8086       4173  pi-ci-s6-<profile>
+#   slot  engines (A/B/7/legacy/flap)    BFF-pg  drift-BFF  e2e   compose projects
+#   s1    8191 8192 8193 8194 8195     5445    8186       4273  pi-ci-s1-<profile>
+#   s2    8291 8292 8293 8294 8295     5455    8286       4373  pi-ci-s2-<profile>
+#   s3    8391 8392 8393 8394 8395     5465    8386       4473  pi-ci-s3-<profile>
+#   s4    8491 8492 8493 8494 8495     5475    8486       4573  pi-ci-s4-<profile>
+#   s5    8591 8592 8593 8594 8595     5485    8586       4673  pi-ci-s5-<profile>
+#   s6    8691 8692 8693 8694 8695     5435    8086       4173  pi-ci-s6-<profile>
 # Slot numbers restart at s1 per host: PI_CI_SLOT namespaces compose projects and
 # work dirs on THIS host's daemon only; runner names (hp02-docker-sN) are what must
 # be unique repo-wide. scripts/ci-runner.sh picks this file by hostname.
@@ -70,6 +70,7 @@ services:
       PI_ENGINE_B_PORT: "8192"
       PI_ENGINE_7_PORT: "8193"
       PI_ENGINE_LEGACY_PORT: "8194"
+      PI_ENGINE_FLAP_PORT: "8195"
       PI_PG_PORT: "5445"
       PI_BFF_PORT: "8186"
       PI_E2E_PORT: "4273"
@@ -94,6 +95,7 @@ services:
       PI_ENGINE_B_PORT: "8292"
       PI_ENGINE_7_PORT: "8293"
       PI_ENGINE_LEGACY_PORT: "8294"
+      PI_ENGINE_FLAP_PORT: "8295"
       PI_PG_PORT: "5455"
       PI_BFF_PORT: "8286"
       PI_E2E_PORT: "4373"
@@ -114,6 +116,7 @@ services:
       PI_ENGINE_B_PORT: "8392"
       PI_ENGINE_7_PORT: "8393"
       PI_ENGINE_LEGACY_PORT: "8394"
+      PI_ENGINE_FLAP_PORT: "8395"
       PI_PG_PORT: "5465"
       PI_BFF_PORT: "8386"
       PI_E2E_PORT: "4473"
@@ -134,6 +137,7 @@ services:
       PI_ENGINE_B_PORT: "8492"
       PI_ENGINE_7_PORT: "8493"
       PI_ENGINE_LEGACY_PORT: "8494"
+      PI_ENGINE_FLAP_PORT: "8495"
       PI_PG_PORT: "5475"
       PI_BFF_PORT: "8486"
       PI_E2E_PORT: "4573"
@@ -154,6 +158,7 @@ services:
       PI_ENGINE_B_PORT: "8592"
       PI_ENGINE_7_PORT: "8593"
       PI_ENGINE_LEGACY_PORT: "8594"
+      PI_ENGINE_FLAP_PORT: "8595"
       PI_PG_PORT: "5485"
       PI_BFF_PORT: "8586"
       PI_E2E_PORT: "4673"
@@ -174,6 +179,7 @@ services:
       PI_ENGINE_B_PORT: "8692"
       PI_ENGINE_7_PORT: "8693"
       PI_ENGINE_LEGACY_PORT: "8694"
+      PI_ENGINE_FLAP_PORT: "8695"
       PI_PG_PORT: "5435"
       PI_BFF_PORT: "8086"
       PI_E2E_PORT: "4173"

@@ -8,9 +8,13 @@
 # implies the ITs' @BeforeAll reachability precheck passes.
 set -euo pipefail
 
-PROFILE="${1:?usage: smoke-test.sh <flowable-6|flowable-7|legacy>}"
+PROFILE="${1:?usage: smoke-test.sh <flowable-6|flowable-7|legacy|flap>}"
 DEADLINE=$(($(date +%s) + 180)) # engines take 30-60s to boot; 6.3.1 can be slower
+# Defaults for the flowable-rest war images; the `flap` profile overrides both below —
+# an application that embeds the engine publishes a different context and owns its own
+# credentials (see docker-compose.dev.yml's engine-flap service).
 CRED="rest-admin:test"
+ENGINE_PATH="/flowable-rest/service"
 # CI_PROJECT (set by the self-hosted-runner CI job) scopes `compose exec` to CI's own
 # project so the postgres readiness probe hits CI's container, not an already-up dev stack.
 # Unset locally → the compose file's own `name:` (process-inspector) is used, as before.
@@ -23,6 +27,11 @@ case "$PROFILE" in
   flowable-6) PORTS="${PI_ENGINE_A_PORT:-8081} ${PI_ENGINE_B_PORT:-8082}" ;;
   flowable-7) PORTS="${PI_ENGINE_7_PORT:-8083}" ;;
   legacy)     PORTS="${PI_ENGINE_LEGACY_PORT:-8084}" ;;
+  flap)
+    PORTS="${PI_ENGINE_FLAP_PORT:-8086}"
+    ENGINE_PATH="/process-api"
+    CRED="inspector:harness"
+    ;;
   *) echo "unknown profile: $PROFILE" >&2; exit 2 ;;
 esac
 
@@ -39,7 +48,7 @@ wait_for() { # description command...
 }
 
 for port in $PORTS; do
-  url="http://localhost:$port/flowable-rest/service/management/engine"
+  url="http://localhost:$port$ENGINE_PATH/management/engine"
   wait_for "engine :$port" curl -sfu "$CRED" -o /dev/null "$url"
 done
 

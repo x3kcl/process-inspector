@@ -3,8 +3,8 @@
 # REST-only — never touches engine tables (CLAUDE.md iron rule).
 #
 # Usage:
-#   docker/seed.sh                 # auto-discover: seeds EVERY reachable engine (:8081-:8084)
-#   docker/seed.sh <base-url>      # seed exactly that engine
+#   docker/seed.sh                 # auto-discover: seeds EVERY reachable engine (:8081-:8086)
+#   docker/seed.sh <base-url> [user:pass]   # seed exactly that engine
 #
 # Deployment idempotency is BY KEY: editing a process file does not redeploy it here —
 # reset the harness (docker compose down -v) or deploy the new version manually.
@@ -12,11 +12,21 @@
 # (the dev playground grows; CI runners are ephemeral).
 set -euo pipefail
 
+# The flowable-rest images' well-known account. Reassigned per engine during discovery —
+# every helper below reads this global — because the `flap` engine is an APPLICATION that
+# embeds Flowable and issues its own service account instead.
 CRED="rest-admin:test"
 DIR="$(cd "$(dirname "$0")" && pwd)"
-# Env-overridable (default = doctrinal dev ports) to match a remapped self-hosted-runner
-# harness; see docker-compose.dev.yml PI_ENGINE_*_PORT.
-KNOWN_PORTS="${PI_ENGINE_A_PORT:-8081} ${PI_ENGINE_B_PORT:-8082} ${PI_ENGINE_7_PORT:-8083} ${PI_ENGINE_LEGACY_PORT:-8084}"
+# One descriptor per harness engine: port|context-path|credentials. Ports are
+# env-overridable (default = doctrinal dev ports) to match a remapped self-hosted-runner
+# harness; see docker-compose.dev.yml PI_ENGINE_*_PORT. The last entry is the Boot layout —
+# an embedded engine publishes /process-api at the root, not one /flowable-rest context.
+KNOWN_ENGINES="\
+${PI_ENGINE_A_PORT:-8081}|/flowable-rest/service|rest-admin:test
+${PI_ENGINE_B_PORT:-8082}|/flowable-rest/service|rest-admin:test
+${PI_ENGINE_7_PORT:-8083}|/flowable-rest/service|rest-admin:test
+${PI_ENGINE_LEGACY_PORT:-8084}|/flowable-rest/service|rest-admin:test
+${PI_ENGINE_FLAP_PORT:-8086}|/process-api|inspector:harness"
 
 json_total() { python3 -c 'import sys,json; print(json.load(sys.stdin)["total"])'; }
 json_id()    { python3 -c 'import sys,json; print(json.load(sys.stdin)["id"])'; }
@@ -234,20 +244,25 @@ seed_engine() { # base-url
 }
 
 if [ $# -ge 1 ]; then
+  CRED="${2:-$CRED}"
   seed_engine "$1"
 else
   seeded=0
-  for port in $KNOWN_PORTS; do
-    url="http://localhost:$port/flowable-rest/service"
+  ports=""
+  while IFS='|' read -r port path cred; do
+    [ -n "$port" ] || continue
+    ports="$ports $port"
+    url="http://localhost:$port$path"
+    CRED="$cred"
     if curl -sfu "$CRED" --connect-timeout 2 --max-time 5 -o /dev/null "$url/management/engine"; then
       seed_engine "$url"
       seeded=$((seeded + 1))
     else
       echo "Engine on :$port not reachable — skipping."
     fi
-  done
+  done <<< "$KNOWN_ENGINES"
   if [ "$seeded" = "0" ]; then
-    echo "ERROR: no engine reachable on any of: $KNOWN_PORTS — start the harness first:" >&2
+    echo "ERROR: no engine reachable on any of:$ports — start the harness first:" >&2
     echo "  docker compose -f docker/docker-compose.dev.yml up -d" >&2
     exit 1
   fi

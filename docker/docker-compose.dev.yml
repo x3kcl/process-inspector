@@ -10,6 +10,9 @@
 #   legacy      — one pre-6.4 engine (:8084, Flowable 6.3.1) so the capability cliffs
 #                 (change-state 6.4+, migration 6.5+, external-worker/scopeType 6.8+)
 #                 are exercised against an engine that really lacks them.
+#   flap        — an APPLICATION embedding Flowable 7 (:8086), i.e. the Boot layout
+#                 (/process-api + sibling /cmmn-api, /external-job-api) behind its own
+#                 Basic-auth service account. The war engines above cannot exercise either.
 #   postgres    — the BFF's own database (M4: audit log, notes, protected instances).
 #                 In the default profile set since M4: the backend runs Flyway
 #                 (V1__init.sql) + ddl-auto=validate against it at startup.
@@ -59,6 +62,47 @@ services:
     environment:
       - FLOWABLE_REST_APP_ADMIN_USER-ID=rest-admin
       - FLOWABLE_REST_APP_ADMIN_PASSWORD=test
+
+  engine-flap:
+    # The BOOT-LAYOUT engine. Every engine above is the standalone `flowable-rest` war, which
+    # publishes its APIs under one /flowable-rest/… context; an APPLICATION that embeds Flowable
+    # (flowable-spring-boot-starter) publishes each engine's API at the ROOT instead —
+    # /process-api, and its siblings /cmmn-api + /external-job-api. That layout difference, and
+    # the fact that such an app owns its own security (a dedicated Basic-auth service account, not
+    # the images' well-known rest-admin/test), is exactly what the war engines cannot exercise.
+    #
+    # flap (github.com/x3kcl/flap — Flowable 7.0, Spring Boot 3) is the real instance of that
+    # shape and the engine this inspector runs against in production on hp02, so the harness uses
+    # it rather than a synthetic stand-in.
+    #
+    #   docker compose -f docker/docker-compose.dev.yml --profile flap up -d
+    #
+    # The image defaults to the published one (a ghcr login is needed for it). Working from a
+    # sibling flap checkout without one, build flap's own harness image and point this at it:
+    #   docker compose -f ../flap/docker-compose.base-test.yml build app
+    #   PI_FLAP_IMAGE=flap-app:local docker compose -f docker/docker-compose.dev.yml --profile flap up -d
+    image: ${PI_FLAP_IMAGE:-ghcr.io/x3kcl/flap:latest}
+    profiles: ["flap"]
+    ports:
+      - "${PI_ENGINE_FLAP_PORT:-8086}:8080"
+    environment:
+      # In-memory H2: the harness is disposable and seeds itself over REST on every run, so there
+      # is no state worth a volume — and none to leak between runs.
+      - DB_URL=jdbc:h2:mem:flap-harness;DB_CLOSE_DELAY=-1
+      - DB_USER=sa
+      - DB_PASSWORD=
+      - DB_DRIVER=org.h2.Driver
+      # The dedicated /process-api service account (flap's ProcessApiClientBootstrap). Harness
+      # credentials for a throwaway in-network engine — the same category as rest-admin/test
+      # above, never a real secret.
+      - PROCESS_API_CLIENT_USER=inspector
+      - PROCESS_API_CLIENT_PASSWORD=harness
+      - FLOWABLE_ADMIN_USER=admin
+      - FLOWABLE_ADMIN_PASSWORD=harness
+      # flap's optional outbound integrations, all explicitly off: the harness drives the ENGINE,
+      # never flap's own business processes, so nothing here may dial a real service.
+      - OLLAMA_URL=
+      - TZ=Europe/Berlin
 
   postgres:
     image: postgres:16-alpine

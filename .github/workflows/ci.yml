@@ -226,6 +226,15 @@ jobs:
             itClass: EngineHealth7IT,Search7IT,Triage7IT,ExternalWorkerJob7IT,Kway7IT
           - profile: legacy
             itClass: EngineHealthLegacyIT,SearchLegacyIT,TriageLegacyIT,ExternalWorkerJobLegacyIT,TriageCmmnScopeLegacyIT
+          # The Boot-layout leg: an APPLICATION embedding Flowable (flap), i.e. /process-api
+          # with root-level /cmmn-api + /external-job-api siblings behind its own Basic-auth
+          # service account. GATED ON A PULLABLE IMAGE: ghcr.io/x3kcl/flap is a private
+          # package, so this leg needs a runner that can pull it (see the `Registry login`
+          # step) or PI_FLAP_IMAGE pointing at a locally built one. It is deliberately NOT
+          # skippable at runtime — a leg that quietly passes without an engine is exactly the
+          # silent-green the harness doctrine forbids; if the pull fails, the leg goes red.
+          - profile: flap
+            itClass: BootLayoutEngineIT
     env:
       # Job-level so EVERY compose invocation (up/exec/logs) sees the same profile set —
       # CLI --profile flags would scope only the command they're passed to, leaving
@@ -255,11 +264,13 @@ jobs:
             b=$(scripts/free-port.sh "${PI_ENGINE_B_PORT:-8692}" 20 "$a")
             seven=$(scripts/free-port.sh "${PI_ENGINE_7_PORT:-8693}" 20 "$a" "$b")
             legacy=$(scripts/free-port.sh "${PI_ENGINE_LEGACY_PORT:-8694}" 20 "$a" "$b" "$seven")
+            flap=$(scripts/free-port.sh "${PI_ENGINE_FLAP_PORT:-8695}" 20 "$a" "$b" "$seven" "$legacy")
             pg=$(scripts/free-port.sh "${PI_PG_PORT:-5435}" 5)
             echo "PI_ENGINE_A_PORT=$a"
             echo "PI_ENGINE_B_PORT=$b"
             echo "PI_ENGINE_7_PORT=$seven"
             echo "PI_ENGINE_LEGACY_PORT=$legacy"
+            echo "PI_ENGINE_FLAP_PORT=$flap"
             echo "PI_PG_PORT=$pg"
             echo "INSPECTOR_DB_URL=jdbc:postgresql://localhost:${pg}/inspector"
             echo "CI_PROJECT=pi-ci-s${PI_CI_SLOT:-1}-${{ matrix.profile }}"
@@ -277,6 +288,18 @@ jobs:
         with:
           username: ${{ secrets.DOCKERHUB_USERNAME }}
           password: ${{ secrets.DOCKERHUB_TOKEN }}
+      # ghcr, for the private flap image the `flap` leg's engine comes from. Same
+      # skip-cleanly-when-absent shape as the Docker Hub step above; if the token is
+      # missing the login is a no-op and the leg fails LOUDLY at `up -d` (unauthorized)
+      # rather than passing without an engine.
+      - name: Registry login (ghcr — the flap harness image)
+        if: matrix.profile == 'flap'
+        continue-on-error: true
+        uses: docker/login-action@v3
+        with:
+          registry: ghcr.io
+          username: ${{ github.actor }}
+          password: ${{ secrets.GHCR_PULL_TOKEN || secrets.GITHUB_TOKEN }}
       # Persistent runner: a prior interrupted run may have left CI's own containers behind.
       # Scoped to $CI_PROJECT — never touches the dev/demo projects.
       - name: Pre-clean CI harness residue
