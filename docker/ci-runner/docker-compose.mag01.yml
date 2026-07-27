@@ -18,7 +18,7 @@
 #
 # TWO slots (14 fleet-wide), sized to the small host: 12 threads / 29G usable,
 # NON-ECC consumer hardware — CI-only by doctrine, nothing stateful lives here.
-# Ceilings are caps, not reservations: 2×(8c/10g runner caps) + per-job harness
+# Ceilings are caps, not reservations: 2×(10c/10g runner caps) + per-job harness
 # containers oversubscribe RAM slightly in the both-slots-worst-case; swap absorbs
 # the rare overlap, and jobs serialize within a slot. Widen only after sustained
 # green legs AND a RAM headroom check under both-slots load.
@@ -39,9 +39,10 @@ x-runner: &runner
   restart: unless-stopped
   network_mode: host
   # Caps each runner's own mvn/npm/java processes; harness containers run on the
-  # host daemon outside these limits. 8 of 12 threads / 10g of 29G per slot — see
-  # the sizing note in the header.
-  cpus: 8
+  # host daemon outside these limits. 10 of 12 threads / 10g of 29G per slot: the
+  # box is CI-only, so a lone job may use nearly everything; the 2-thread sliver
+  # keeps the OS/harness responsive when both slots peak — see the header.
+  cpus: 10
   mem_limit: 10g
   # e2e (#85): Vite's FSWatcher needs a large nofile ulimit — see docker-compose.yml.
   ulimits:
