@@ -215,7 +215,9 @@ jobs:
 
   integration:
     runs-on: self-hosted
-    timeout-minutes: 20
+    # 30, not 20: the flap leg BUILDS its engine from source (a full maven build) before the
+    # harness even starts. Warm BuildKit layers make the repeat cheap; a cold runner is not.
+    timeout-minutes: 30
     strategy:
       fail-fast: false
       matrix:
@@ -228,11 +230,8 @@ jobs:
             itClass: EngineHealthLegacyIT,SearchLegacyIT,TriageLegacyIT,ExternalWorkerJobLegacyIT,TriageCmmnScopeLegacyIT
           # The Boot-layout leg: an APPLICATION embedding Flowable (flap), i.e. /process-api
           # with root-level /cmmn-api + /external-job-api siblings behind its own Basic-auth
-          # service account. GATED ON A PULLABLE IMAGE: ghcr.io/x3kcl/flap is a private
-          # package, so this leg needs a runner that can pull it (see the `Registry login`
-          # step) or PI_FLAP_IMAGE pointing at a locally built one. It is deliberately NOT
-          # skippable at runtime — a leg that quietly passes without an engine is exactly the
-          # silent-green the harness doctrine forbids; if the pull fails, the leg goes red.
+          # service account. The engine is built from flap's master (see the checkout+build
+          # steps below), so this leg tracks the real engine rather than the last release.
           - profile: flap
             itClass: BootLayoutEngineIT
     env:
@@ -288,18 +287,23 @@ jobs:
         with:
           username: ${{ secrets.DOCKERHUB_USERNAME }}
           password: ${{ secrets.DOCKERHUB_TOKEN }}
-      # ghcr, for the private flap image the `flap` leg's engine comes from. Same
-      # skip-cleanly-when-absent shape as the Docker Hub step above; if the token is
-      # missing the login is a no-op and the leg fails LOUDLY at `up -d` (unauthorized)
-      # rather than passing without an engine.
-      - name: Registry login (ghcr — the flap harness image)
+      # The `flap` leg's engine is BUILT FROM flap's master, not pulled. Two reasons: the
+      # published image lags master (this leg exists to catch layout/auth drift, so it must
+      # test the engine as it is TODAY, not as it was at the last release), and building
+      # needs no registry credential at all — flap is a public repo.
+      - name: Check out flap (master) for the harness engine
         if: matrix.profile == 'flap'
-        continue-on-error: true
-        uses: docker/login-action@v3
+        uses: actions/checkout@v4
         with:
-          registry: ghcr.io
-          username: ${{ github.actor }}
-          password: ${{ secrets.GHCR_PULL_TOKEN || secrets.GITHUB_TOKEN }}
+          repository: x3kcl/flap
+          ref: master
+          path: .flap-src
+      - name: Build the flap harness engine image
+        if: matrix.profile == 'flap'
+        run: |
+          docker build -t flap-harness:ci .flap-src
+          echo "PI_FLAP_IMAGE=flap-harness:ci" >> "$GITHUB_ENV"
+          echo "flap master @ $(git -C .flap-src rev-parse --short HEAD)"
       # Persistent runner: a prior interrupted run may have left CI's own containers behind.
       # Scoped to $CI_PROJECT — never touches the dev/demo projects.
       - name: Pre-clean CI harness residue

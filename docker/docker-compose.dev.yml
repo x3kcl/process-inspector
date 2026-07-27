@@ -77,10 +77,13 @@ services:
     #
     #   docker compose -f docker/docker-compose.dev.yml --profile flap up -d
     #
-    # The image defaults to the published one (a ghcr login is needed for it). Working from a
-    # sibling flap checkout without one, build flap's own harness image and point this at it:
-    #   docker compose -f ../flap/docker-compose.base-test.yml build app
-    #   PI_FLAP_IMAGE=flap-app:local docker compose -f docker/docker-compose.dev.yml --profile flap up -d
+    # BUILD IT, don't pull it — flap is a public repo, and the published image lags master while
+    # this profile exists to catch layout/auth drift in the engine as it is TODAY:
+    #   git clone --depth 1 https://github.com/x3kcl/flap .flap-src   # or a sibling checkout
+    #   docker build -t flap-harness:ci .flap-src
+    #   PI_FLAP_IMAGE=flap-harness:ci docker compose -f docker/docker-compose.dev.yml --profile flap up -d
+    # CI does exactly this (ci.yml's `flap` leg). The published image remains the default for a
+    # quick look, but it is only as fresh as the last release.
     image: ${PI_FLAP_IMAGE:-ghcr.io/x3kcl/flap:latest}
     profiles: ["flap"]
     ports:

@@ -254,7 +254,10 @@ else
     ports="$ports $port"
     url="http://localhost:$port$path"
     CRED="$cred"
-    if curl -sfu "$CRED" --connect-timeout 2 --max-time 5 -o /dev/null "$url/management/engine"; then
+    # -sf alone exits 0 on a 3xx, so an app that redirects an unmapped/closed REST path to its
+    # login page would be "discovered" and then fail on the first real call. Require the 200.
+    if [ "$(curl -sfu "$CRED" --connect-timeout 2 --max-time 5 -o /dev/null \
+              -w '%{http_code}' "$url/management/engine" 2>/dev/null)" = "200" ]; then
       seed_engine "$url"
       seeded=$((seeded + 1))
     else

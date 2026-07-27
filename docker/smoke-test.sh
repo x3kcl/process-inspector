@@ -47,9 +47,21 @@ wait_for() { # description command...
   echo "READY: $what"
 }
 
+# `curl -sf` is NOT enough: it exits 0 on a 3xx. An application that embeds the engine answers
+# an unauthenticated/unmapped path with a 302 to its own login page, so a bare -sf probe reports
+# READY for an engine whose REST API is absent or closed — and the failure then surfaces two
+# steps later as an unrelated-looking seed error. Demand the 200 explicitly, and demand that the
+# body is really the engine document.
+engine_answers() { # url
+  local body
+  body="$(curl -sfu "$CRED" -w '\n%{http_code}' "$1" 2>/dev/null)" || return 1
+  [ "${body##*$'\n'}" = "200" ] || return 1
+  case "${body%$'\n'*}" in *'"version"'*) return 0 ;; *) return 1 ;; esac
+}
+
 for port in $PORTS; do
   url="http://localhost:$port$ENGINE_PATH/management/engine"
-  wait_for "engine :$port" curl -sfu "$CRED" -o /dev/null "$url"
+  wait_for "engine :$port" engine_answers "$url"
 done
 
 # TCP-forced (-h 127.0.0.1): the postgres image accepts SOCKET connections during
