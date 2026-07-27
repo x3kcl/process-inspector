@@ -3506,7 +3506,8 @@ button.skip-link {
   font-size: 11px;
   color: #1a4d80;
 }
-.sibling-picker-input {
+.sibling-picker-input,
+.sibling-picker-select {
   display: flex;
   flex-direction: column;
   gap: 3px;
@@ -3514,7 +3515,8 @@ button.skip-link {
   flex: 1;
   min-width: 240px;
 }
-.sibling-picker-input input {
+.sibling-picker-input input,
+.sibling-picker-select select {
   padding: 5px 7px;
 }
 

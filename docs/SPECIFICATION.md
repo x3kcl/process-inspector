@@ -811,9 +811,11 @@ applied to an error class is the differentiator.
 From a failed instance's detail page: **Compare with a sibling** — a completed instance of
 the same definition version (auto-suggested: the most recent successful sibling — same
 `processDefinitionId`, `finished` in the Flowable sense of reaching an end event rather than
-dead-lettering; or pick any instance by id in the disambiguation input). A brand-new
-definition version with no completed run yet auto-suggests nothing and drops straight to the
-manual input. Rendered as three synchronized diffs, **all from historic queries** (read-only,
+dead-lettering). The picker lists the recent completed siblings from the same scan (endTime
+desc, capped at the scan size) to choose from without pasting anything; the manual id input
+remains the escape hatch for anything outside that list — an older run, a cross-definition
+compare, or when the sibling query itself failed. A brand-new definition version with no
+completed run yet lists nothing and drops straight to the manual input. Rendered as three synchronized diffs, **all from historic queries** (read-only,
 cheap — the successful siblings are gone from runtime, so runtime tables are never touched):
 - **Variables** — key-by-key value differences on the **256 KiB capped projection** (the same
   truncated projection the ledger renders); a value over the cap is never fetched in full just

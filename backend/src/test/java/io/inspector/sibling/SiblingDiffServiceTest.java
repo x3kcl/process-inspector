@@ -159,8 +159,9 @@ class SiblingDiffServiceTest {
                 .thenReturn(new FlowablePage(
                         List.of(
                                 Map.of("id", "subject-1", "endTime", "2026-07-07T09:00:00Z"),
-                                Map.of("id", "good-42", "businessKey", "ORD-42", "endTime", "2026-07-07T08:00:00Z")),
-                        2,
+                                Map.of("id", "good-42", "businessKey", "ORD-42", "endTime", "2026-07-07T08:00:00Z"),
+                                Map.of("id", "good-41", "businessKey", "ORD-41", "endTime", "2026-07-07T07:00:00Z")),
+                        3,
                         0,
                         25));
 
@@ -170,6 +171,11 @@ class SiblingDiffServiceTest {
         assertThat(res.sibling().processInstanceId()).isEqualTo("good-42");
         assertThat(res.processDefinitionKey()).isEqualTo("payment");
         assertThat(res.definitionVersion()).isEqualTo(3);
+        // The picker list: every non-self row of the scan, engine order (endTime desc)
+        // preserved, headed by the auto-suggestion.
+        assertThat(res.candidates())
+                .extracting(NearestSiblingResponse.SiblingRef::processInstanceId)
+                .containsExactly("good-42", "good-41");
     }
 
     @Test
@@ -187,6 +193,7 @@ class SiblingDiffServiceTest {
                 new SiblingDiffService(registry, flowable, detail).nearestSibling("engine-a", "subject-1");
         assertThat(res.found()).isFalse();
         assertThat(res.sibling()).isNull();
+        assertThat(res.candidates()).isEmpty();
         assertThat(res.processDefinitionKey()).isEqualTo("payment");
     }
 

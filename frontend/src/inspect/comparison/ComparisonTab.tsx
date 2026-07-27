@@ -1,7 +1,7 @@
 import { useEffect, useState } from 'react'
 import { useSearchParams } from 'react-router'
-import type { SiblingInstanceRef } from '../../api/model'
-import { formatSeconds } from '../../lib/format'
+import type { SiblingInstanceRef, SiblingRef } from '../../api/model'
+import { formatDateTime, formatSeconds, useDisplayZone } from '../../lib/format'
 import { Ts } from '../../lib/Ts'
 import type { TabProps } from '../InspectPage'
 import { RawJsonExport } from '../RawJsonExport'
@@ -69,6 +69,7 @@ export default function ComparisonTab({ engineId, instanceId, onDivergence }: Ta
         usingSuggested={usingSuggested}
         suggested={suggested}
         suggestedRef={nearest.data?.found === true ? nearest.data.sibling : undefined}
+        candidates={nearest.data?.candidates ?? []}
         nearestPending={nearest.isPending}
         nearestFound={nearest.data?.found}
         onApply={applySibling}
@@ -149,11 +150,22 @@ export default function ComparisonTab({ engineId, instanceId, onDivergence }: Ta
   )
 }
 
+/** Plain-text option label — business key first (the operator-meaningful handle), id as
+ *  fallback; completion time + duration so "which run is the good precedent" reads inline. */
+function candidateLabel(c: SiblingRef): string {
+  const who = c.businessKey !== undefined ? `key ${c.businessKey}` : (c.processInstanceId ?? '')
+  const when = c.endTime !== undefined ? ` · completed ${formatDateTime(c.endTime)}` : ''
+  const took =
+    c.durationMs !== undefined ? ` · took ${formatSeconds(Math.round(c.durationMs / 1000))}` : ''
+  return `${who}${when}${took}`
+}
+
 function SiblingPicker({
   current,
   usingSuggested,
   suggested,
   suggestedRef,
+  candidates,
   nearestPending,
   nearestFound,
   onApply,
@@ -162,11 +174,15 @@ function SiblingPicker({
   usingSuggested: boolean
   suggested: string | undefined
   suggestedRef: SiblingInstanceRef | undefined
+  candidates: SiblingRef[]
   nearestPending: boolean
   nearestFound: boolean | undefined
   onApply: (id: string) => void
 }) {
   const [draft, setDraft] = useState('')
+  useDisplayZone() // re-render on the UTC toggle — candidateLabel reads the zone store
+  const selectValue =
+    current !== undefined && candidates.some((c) => c.processInstanceId === current) ? current : ''
   return (
     <form
       className="sibling-picker"
@@ -200,8 +216,29 @@ function SiblingPicker({
           <span className="value-muted">No sibling selected</span>
         )}
       </div>
+      {candidates.length > 0 && (
+        <label className="sibling-picker-select">
+          <span className="value-muted">Compare with a recent completed sibling</span>
+          <select
+            aria-label="recent completed siblings"
+            value={selectValue}
+            onChange={(event) => {
+              if (event.target.value !== '') onApply(event.target.value)
+            }}
+          >
+            <option value="">pick a sibling…</option>
+            {candidates.map((c) => (
+              <option key={c.processInstanceId} value={c.processInstanceId}>
+                {candidateLabel(c)}
+              </option>
+            ))}
+          </select>
+        </label>
+      )}
       <label className="sibling-picker-input">
-        <span className="value-muted">Compare with a different sibling</span>
+        <span className="value-muted">
+          {candidates.length > 0 ? 'Or paste any sibling id' : 'Compare with a different sibling'}
+        </span>
         <input
           type="text"
           aria-label="sibling process instance id"
