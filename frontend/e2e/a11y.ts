@@ -15,6 +15,22 @@ import AxeBuilder from '@axe-core/playwright'
  * scanned (e.g. "grant modal open") for the failure message and has no effect on the scan.
  */
 export async function scanA11y(page: Page, label: string): Promise<void> {
+  // Enforce the "settled state" contract, not just document it: on a fast runner host
+  // (mag01 rollout) a caller's visibility assertion can pass while a finite CSS
+  // animation/transition is still mid-flight — AG Grid's row-entrance fade after "Load
+  // more" put half-opacity ink in front of axe, yielding color-contrast readings of
+  // colors that exist on no settled screen. Wait out running FINITE animations before
+  // scanning; infinite ones (spinners) are excluded — they never drain, and a spec
+  // scanning beside a legitimate perpetual animation must not hang here.
+  await page.waitForFunction(
+    () =>
+      document.getAnimations().every((a) => {
+        const timing = a.effect?.getTiming()
+        return timing?.iterations === Infinity || a.playState !== 'running'
+      }),
+    undefined,
+    { timeout: 10_000 },
+  )
   const results = await new AxeBuilder({ page })
     // AG Grid Community's header viewport is a horizontally-scrollable div with tabindex="-1"
     // header cells — by design (the WAI-ARIA "grid" pattern), keyboard access is via arrow-key
