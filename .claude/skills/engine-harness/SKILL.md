@@ -16,12 +16,19 @@ curl -fsS -u rest-admin:test http://localhost:8081/flowable-rest/service/managem
 The 6.x pair is the `flowable-6` profile, activated by default via `docker/.env`
 (`COMPOSE_PROFILES=flowable-6`). Extras: `--profile flowable-7` = Flowable 7.1 on :8083;
 `--profile legacy` = Flowable 6.3.1 on :8084 (pre-cliff — same context path/creds on all);
+`--profile flap` = the BOOT-LAYOUT engine on :8086 — the real flap image, i.e. an
+APPLICATION embedding Flowable 7 rather than the war: `/process-api` with root-level
+`/cmmn-api` + `/external-job-api` siblings, behind its own Basic-auth service account
+(`inspector:harness`, NOT rest-admin/test). Needs a ghcr login for `ghcr.io/x3kcl/flap` (a private package; it grants THIS repo Actions read
+access, so CI pulls it with the run's own GITHUB_TOKEN — a local `docker login ghcr.io` needs a PAT
+with `read:packages`). Or skip the registry entirely and point `PI_FLAP_IMAGE` at an image built
+from a sibling checkout: `docker build -t flap-harness:local ../flap`.
 `--profile postgres` = the BFF's M4 DB on :5433. Seed with `bash docker/seed.sh` —
 no-arg mode auto-discovers and seeds EVERY reachable engine (:8081-:8084) with the full
 FIX-PROC-01..06 arc set incl. the REST-suspended and failing-child instances (idempotent
 BY KEY — after editing a process file, redeploy manually or `down -v`).
 Integration tests are failsafe `*IT` classes: `mvn test` needs no docker, `mvn verify`
-needs the FULL matrix up (flowable-6 + flowable-7 + legacy) — a down engine fails loudly
+needs the FULL matrix up (flowable-6 + flowable-7 + legacy + flap) — a down engine fails loudly
 with the compose command, never a silent skip. CI (`.github/workflows/ci.yml`) runs one
 matrix leg per profile, gated by `docker/smoke-test.sh` (bounded engine+postgres
 readiness — reproduce a leg locally with

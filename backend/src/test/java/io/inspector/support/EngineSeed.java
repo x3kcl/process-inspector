@@ -90,15 +90,29 @@ public final class EngineSeed {
     }
 
     public static RestClient engineClient(String baseUrl) {
+        return engineClient(baseUrl, "rest-admin", "test");
+    }
+
+    /**
+     * The credential-carrying form. The {@code flowable/flowable-rest} images all ship the same
+     * well-known {@code rest-admin/test} account, but an application that EMBEDS the engine issues
+     * its own — the flap harness authenticates as the dedicated {@code inspector} service account
+     * its {@code /process-api} chain admits.
+     */
+    public static RestClient engineClient(String baseUrl, String username, String password) {
         return RestClient.builder()
                 .baseUrl(baseUrl)
-                .defaultHeaders(h -> h.setBasicAuth("rest-admin", "test"))
+                .defaultHeaders(h -> h.setBasicAuth(username, password))
                 .build();
     }
 
     /** Loud fail with the compose command — a down engine must never look like a green skip. */
     public static RestClient requireReachable(String baseUrl, String composeProfileHint) {
-        RestClient engine = engineClient(baseUrl);
+        return requireReachable(engineClient(baseUrl), baseUrl, composeProfileHint);
+    }
+
+    /** As above, for an engine whose client already carries non-default credentials. */
+    public static RestClient requireReachable(RestClient engine, String baseUrl, String composeProfileHint) {
         try {
             engine.get().uri("/management/engine").retrieve().toBodilessEntity();
         } catch (Exception e) {

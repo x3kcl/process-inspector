@@ -10,3 +10,6 @@ frontend/coverage/
 test-results/
 playwright-report/
 .playwright-mcp/
+
+# CI-only: the flap master clone the `flap` integration leg builds its harness engine from.
+.flap-src/

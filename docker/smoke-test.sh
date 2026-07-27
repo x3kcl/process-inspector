@@ -8,9 +8,13 @@
 # implies the ITs' @BeforeAll reachability precheck passes.
 set -euo pipefail
 
-PROFILE="${1:?usage: smoke-test.sh <flowable-6|flowable-7|legacy>}"
+PROFILE="${1:?usage: smoke-test.sh <flowable-6|flowable-7|legacy|flap>}"
 DEADLINE=$(($(date +%s) + 180)) # engines take 30-60s to boot; 6.3.1 can be slower
+# Defaults for the flowable-rest war images; the `flap` profile overrides both below —
+# an application that embeds the engine publishes a different context and owns its own
+# credentials (see docker-compose.dev.yml's engine-flap service).
 CRED="rest-admin:test"
+ENGINE_PATH="/flowable-rest/service"
 # CI_PROJECT (set by the self-hosted-runner CI job) scopes `compose exec` to CI's own
 # project so the postgres readiness probe hits CI's container, not an already-up dev stack.
 # Unset locally → the compose file's own `name:` (process-inspector) is used, as before.
@@ -23,6 +27,11 @@ case "$PROFILE" in
   flowable-6) PORTS="${PI_ENGINE_A_PORT:-8081} ${PI_ENGINE_B_PORT:-8082}" ;;
   flowable-7) PORTS="${PI_ENGINE_7_PORT:-8083}" ;;
   legacy)     PORTS="${PI_ENGINE_LEGACY_PORT:-8084}" ;;
+  flap)
+    PORTS="${PI_ENGINE_FLAP_PORT:-8086}"
+    ENGINE_PATH="/process-api"
+    CRED="inspector:harness"
+    ;;
   *) echo "unknown profile: $PROFILE" >&2; exit 2 ;;
 esac
 
@@ -38,9 +47,21 @@ wait_for() { # description command...
   echo "READY: $what"
 }
 
+# `curl -sf` is NOT enough: it exits 0 on a 3xx. An application that embeds the engine answers
+# an unauthenticated/unmapped path with a 302 to its own login page, so a bare -sf probe reports
+# READY for an engine whose REST API is absent or closed — and the failure then surfaces two
+# steps later as an unrelated-looking seed error. Demand the 200 explicitly, and demand that the
+# body is really the engine document.
+engine_answers() { # url
+  local body
+  body="$(curl -sfu "$CRED" -w '\n%{http_code}' "$1" 2>/dev/null)" || return 1
+  [ "${body##*$'\n'}" = "200" ] || return 1
+  case "${body%$'\n'*}" in *'"version"'*) return 0 ;; *) return 1 ;; esac
+}
+
 for port in $PORTS; do
-  url="http://localhost:$port/flowable-rest/service/management/engine"
-  wait_for "engine :$port" curl -sfu "$CRED" -o /dev/null "$url"
+  url="http://localhost:$port$ENGINE_PATH/management/engine"
+  wait_for "engine :$port" engine_answers "$url"
 done
 
 # TCP-forced (-h 127.0.0.1): the postgres image accepts SOCKET connections during

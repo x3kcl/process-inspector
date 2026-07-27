@@ -1,6 +1,7 @@
 package io.inspector.client;
 
 import io.inspector.client.GuardedCaller.CallPriority;
+import io.inspector.config.EngineApiContexts;
 import io.inspector.config.InspectorProperties.EngineConfig;
 import java.util.Map;
 import org.springframework.http.MediaType;
@@ -25,15 +26,14 @@ public class CmmnApiClient {
 
     /**
      * The CMMN Management/Runtime/Repository/History REST APIs live under the {@code /cmmn-api}
-     * sibling of the process-api {@code /service} base — same convention as
-     * {@link ExternalJobApiClient#externalJobApiBase}. A non-standard deployment would need an
-     * explicit override, not offered here.
+     * SIBLING of the registered process-API base — beside it, never under it. Which segment it
+     * sits beside depends on the engine's deployment layout ({@code …/flowable-rest/service} for
+     * the standalone war, {@code …/process-api} for an embedded Spring Boot engine), so the
+     * derivation is shared with {@link ExternalJobApiClient#externalJobApiBase} and the registry's
+     * pinned result — see {@link EngineApiContexts}.
      */
     static String cmmnApiBase(EngineConfig engine) {
-        String base = engine.baseUrl();
-        return base.endsWith("/service")
-                ? base.substring(0, base.length() - "/service".length()) + "/cmmn-api"
-                : base + "/cmmn-api";
+        return EngineApiContexts.cmmnApi(engine.baseUrl());
     }
 
     /**

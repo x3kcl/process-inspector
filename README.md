@@ -44,6 +44,9 @@ docker compose -f docker/docker-compose.dev.yml up -d
 # Optional extras:
 docker compose -f docker/docker-compose.dev.yml --profile flowable-7 up -d   # Flowable 7.1 on :8083
 docker compose -f docker/docker-compose.dev.yml --profile legacy up -d       # Flowable 6.3.1 on :8084 (pre-cliff)
+docker compose -f docker/docker-compose.dev.yml --profile flap up -d         # flap on :8086 — an APPLICATION embedding
+                                                                            # Flowable 7 (Boot layout: /process-api +
+                                                                            # root-level /cmmn-api, /external-job-api)
 docker compose -f docker/docker-compose.dev.yml --profile postgres up -d     # BFF DB (M4) on :5433
 
 # 2. Seed the demo catalog (idempotent deploys, REST-only). No-arg mode auto-discovers

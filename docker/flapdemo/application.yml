@@ -1,0 +1,35 @@
+# Registry override for the flap demo stack (docker-compose.flapdemo.yml). Mounted at
+# /app/config/application.yml, which Spring reads at higher precedence than the image's
+# classpath copy — and since a list binds wholly from the winning source, this REPLACES the
+# built-in engine-a/engine-b demo registry rather than adding to it.
+inspector:
+  registry:
+    # dev-scoped engine on a private docker network: the SSRF rails only let a base-url
+    # resolving to a private address through for a `dev` engine whose address sits in an
+    # allowed CIDR, so the docker bridge range is named here explicitly.
+    egress-allowlist:
+      - engine-flap
+      - 172.16.0.0/12
+  engines:
+    - id: engine-flap
+      name: "flap (harness engine)"
+      # Boot layout: an application embedding Flowable serves /process-api, and the
+      # inspector derives /cmmn-api + /external-job-api as its ROOT-level siblings.
+      base-url: "http://engine-flap:8080/process-api"
+      # dev, not prod: this is a throwaway harness engine, and dev keeps the admin Engines
+      # page able to probe/edit the row (the prod rails require https). The hp02 stack that
+      # inspects PRODUCTION flap uses `prod` + `read-only` — see docs/deploy-hp02-flap.md.
+      environment: dev
+      accent-color: "#16a085"
+      enabled: true
+      mode: read-write
+      auth:
+        type: basic
+        username: inspector
+        password-ref: ENGINE_FLAP_PASSWORD
+      timeouts:
+        connect-ms: 2000
+        read-ms: 15000
+        write-ms: 15000
+      max-page-size: 100
+      dlq-scan-cap: 5000

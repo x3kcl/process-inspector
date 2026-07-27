@@ -1,0 +1,73 @@
+# The Process Inspector app pointed at a flap engine — the demo that shows flap's process
+# instances INSIDE the inspector UI (as opposed to docker-compose.dev.yml's `flap` profile,
+# which only stands up the engine so the ITs have something to inspect).
+#
+# Runs beside that harness and joins its network, so the BFF reaches the engine by its
+# compose service name:
+#   docker compose -f docker/docker-compose.dev.yml --profile flap up -d      # the engine
+#   bash docker/seed.sh                                                       # live data
+#   docker compose -f docker/docker-compose.flapdemo.yml up -d                # the inspector
+#   → UI on http://<host>:${PI_UI_PORT:-9080}, ladder users viewer|responder|operator|admin
+#
+# On hp02 the equivalent stack lives in the cloud user's own compose file, where the engine
+# is production flap and the BFF↔engine link is a dedicated `internal: true` network rather
+# than the harness project's default one — see docs/deploy-hp02-flap.md.
+name: process-inspector-flapdemo
+
+services:
+  pi-db:
+    image: postgres:16-alpine
+    environment:
+      - POSTGRES_DB=inspector
+      - POSTGRES_USER=inspector
+      - POSTGRES_PASSWORD=${PI_DB_PASSWORD:-inspector}
+    volumes:
+      - pi-flapdemo-pgdata:/var/lib/postgresql/data
+    healthcheck:
+      test: ["CMD-SHELL", "pg_isready -h 127.0.0.1 -U inspector -d inspector"]
+      interval: 5s
+      timeout: 3s
+      retries: 24
+    networks: [pi-net]
+    restart: unless-stopped
+
+  pi-bff:
+    image: ${PI_BFF_IMAGE:-process-inspector-bff:local}
+    environment:
+      - SERVER_PORT=8080
+      - INSPECTOR_DB_URL=jdbc:postgresql://pi-db:5432/inspector
+      - INSPECTOR_DB_USER=inspector
+      - INSPECTOR_DB_PASSWORD=${PI_DB_PASSWORD:-inspector}
+      - INSPECTOR_DEV_PASSWORD=${PI_UI_PASSWORD:-dev}
+      # Resolved by NAME from the registry's password-ref; matches the engine service
+      # account in docker-compose.dev.yml's `flap` profile.
+      - ENGINE_FLAP_PASSWORD=${PROCESS_API_CLIENT_PASSWORD:-harness}
+    volumes:
+      - ./flapdemo/application.yml:/app/config/application.yml:ro
+    depends_on:
+      pi-db:
+        condition: service_healthy
+    networks:
+      pi-net:
+        aliases:
+          - backend        # pi-web's nginx proxies /api to the literal http://backend:8080
+      engine: {}
+    restart: unless-stopped
+
+  pi-web:
+    image: ${PI_WEB_IMAGE:-process-inspector-web:local}
+    ports:
+      - "${PI_UI_PORT:-9080}:80"
+    depends_on: [pi-bff]
+    networks: [pi-net]
+    restart: unless-stopped
+
+networks:
+  pi-net:
+  # The harness project's own network — the engine (`engine-flap`) already lives there.
+  engine:
+    external: true
+    name: process-inspector_default
+
+volumes:
+  pi-flapdemo-pgdata:

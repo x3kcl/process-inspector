@@ -1,0 +1,39 @@
+# Rung-4 registry for the BOOT-LAYOUT engine harness (compose profile `flap`, :8086).
+#
+# What makes this profile different from every other IT registry: the base-url ends in
+# `/process-api`, not `/flowable-rest/service`. That is the layout an APPLICATION embedding
+# Flowable publishes, and it moves the sibling contexts the inspector derives — `/cmmn-api`,
+# `/external-job-api` — from `…/flowable-rest/*` to the server ROOT. The credentials are the
+# application's own dedicated service account, not the flowable-rest images' rest-admin/test.
+#
+# Real DB (no autoconfig exclusions): the ITs on this profile drive a corrective action, and a
+# mutation without the audit store is refused fail-closed. Datasource comes from a Testcontainers
+# Postgres via @DynamicPropertySource, same as the it-actions profile.
+inspector:
+  # Registry CRUD off in tests: config-pinned so the boot seeder is inert. Seed/drift is proven
+  # by EngineRegistryStoreIT.
+  registry:
+    source: config
+  fanout-parallelism: 4
+  engines:
+    - id: engine-flap
+      name: "flap (Boot-layout harness)"
+      base-url: "http://localhost:${PI_ENGINE_FLAP_PORT:8086}/process-api"
+      environment: dev
+      accent-color: "#16a085"
+      enabled: true
+      mode: read-write
+      # The action leg asserts the captured payload, like the it-actions profile.
+      audit-payload: full
+      auth:
+        type: basic
+        username: inspector
+        password-ref: ENGINE_FLAP_PASSWORD
+      timeouts:
+        connect-ms: 2000
+        # An embedded engine shares its JVM with a whole application; it is not the war image's
+        # single-purpose request loop, so the read budget is the generous end of the range.
+        read-ms: 15000
+        write-ms: 15000
+      max-page-size: 10
+      dlq-scan-cap: 500

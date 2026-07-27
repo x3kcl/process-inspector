@@ -1,6 +1,7 @@
 package io.inspector.client;
 
 import io.inspector.client.GuardedCaller.CallPriority;
+import io.inspector.config.EngineApiContexts;
 import io.inspector.config.InspectorProperties.EngineConfig;
 import java.util.Map;
 import org.springframework.stereotype.Component;
@@ -22,16 +23,15 @@ public class ExternalJobApiClient {
     }
 
     /**
-     * The External Worker REST API lives beside the management API, not under it: the engine's
-     * {@code base-url} ends in {@code /service}; the external-job-api is its {@code
-     * /external-job-api} sibling. Derived by convention (no extra config); a non-standard
-     * deployment would need an explicit override, not offered in v1.x.
+     * The External Worker REST API lives beside the management API, not under it: the
+     * {@code /external-job-api} sibling of the registered process-API base. Which segment it sits
+     * beside depends on the engine's deployment layout ({@code …/flowable-rest/service} for the
+     * standalone war, {@code …/process-api} for an embedded Spring Boot engine), so the derivation
+     * is shared with {@link CmmnApiClient#cmmnApiBase} and the registry's pinned result — see
+     * {@link EngineApiContexts}.
      */
     static String externalJobApiBase(EngineConfig engine) {
-        String base = engine.baseUrl();
-        return base.endsWith("/service")
-                ? base.substring(0, base.length() - "/service".length()) + "/external-job-api"
-                : base + "/external-job-api";
+        return EngineApiContexts.externalJobApi(engine.baseUrl());
     }
 
     /**
