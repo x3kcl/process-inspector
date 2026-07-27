@@ -1,5 +1,5 @@
 import { useState } from 'react'
-import type { FormEvent } from 'react'
+import type { SubmitEvent } from 'react'
 import { ApiError } from '../api/client'
 import { useMe } from '../api/me'
 import { ActionHint } from '../components/ActionHint'
@@ -56,7 +56,8 @@ export function PublishToTeamButton({ name, search }: { name: string; search: st
     )
   }
 
-  const submit = (event: FormEvent) => {
+  // React 19 types deprecate FormEvent in favor of SubmitEvent for a form's onSubmit.
+  const submit = (event: SubmitEvent) => {
     event.preventDefault()
     setBusy(true)
     setError(null)

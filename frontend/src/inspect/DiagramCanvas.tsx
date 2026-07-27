@@ -62,7 +62,9 @@ export function DiagramCanvas({
   // Bumped after each successful XML import so the selection effect re-applies its
   // marker on a fresh canvas (import wipes all markers).
   const [importGeneration, setImportGeneration] = useState(0)
-  const prevSelectedRef = useRef<string>()
+  // React 19 typings dropped the zero-arg useRef<T>() overload — explicit undefined
+  // initializer, same runtime behavior as before.
+  const prevSelectedRef = useRef<string | undefined>(undefined)
   const prevPickerSourceRef = useRef<string[]>([])
   const prevPickerTargetRef = useRef<string[]>([])
   // The click listener is bound ONCE with the viewer; the ref keeps it pointed at the

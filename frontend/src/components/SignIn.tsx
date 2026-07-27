@@ -1,5 +1,5 @@
 import { useState } from 'react'
-import type { FormEvent } from 'react'
+import type { SubmitEvent } from 'react'
 import { useQueryClient } from '@tanstack/react-query'
 import { clearBasicAuth, setBasicAuth } from '../api/auth'
 import { ApiError } from '../api/client'
@@ -17,7 +17,8 @@ export function SignIn() {
   const [busy, setBusy] = useState(false)
   const [message, setMessage] = useState<string | null>(null)
 
-  const submit = (event: FormEvent) => {
+  // React 19 types deprecate FormEvent in favor of SubmitEvent for a form's onSubmit.
+  const submit = (event: SubmitEvent) => {
     event.preventDefault()
     setBusy(true)
     setMessage(null)

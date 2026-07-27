@@ -1,5 +1,5 @@
 import { useState } from 'react'
-import type { FormEvent } from 'react'
+import type { SubmitEvent } from 'react'
 import { useMutation, useQuery, useQueryClient } from '@tanstack/react-query'
 import { withRequestId } from '../../actions/requestId'
 import { ApiError } from '../../api/client'
@@ -149,7 +149,8 @@ function Notes({ engineId, instanceId }: Props) {
     },
   })
 
-  const submit = (event: FormEvent) => {
+  // React 19 types deprecate FormEvent in favor of SubmitEvent for a form's onSubmit.
+  const submit = (event: SubmitEvent) => {
     event.preventDefault()
     const body = draft.trim()
     if (body !== '') create.mutate(body)

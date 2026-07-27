@@ -1,5 +1,5 @@
 import { useState } from 'react'
-import type { FormEvent } from 'react'
+import type { SubmitEvent } from 'react'
 import type { EngineDto, InstanceStatus, SearchRequest, SearchResponse } from '../api/model'
 import { ALL_STATUSES } from '../api/model'
 import { isInactiveLifecycle, lifecycleGloss } from '../lib/enginePolicy'
@@ -161,7 +161,8 @@ function RailForm({
   // today, so it keeps the button live.
   const blank = !hasSearch(encodeSearch(buildRequest()))
 
-  const submit = (event: FormEvent) => {
+  // React 19 types deprecate FormEvent in favor of SubmitEvent for a form's onSubmit.
+  const submit = (event: SubmitEvent) => {
     event.preventDefault()
     // Guard the handler too: programmatic/implicit submission (form.requestSubmit,
     // dispatched submit events) does not consult the button's disabled state.

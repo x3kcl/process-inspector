@@ -4,9 +4,10 @@
 // expiry banners (IDP-SECURITY.md §5/§7) had no test at any layer besides the Playwright
 // smoke — this is the cheap component-level rung that would have caught a regression before
 // a full browser run.
+import { StrictMode } from 'react'
 import { QueryClient, QueryClientProvider } from '@tanstack/react-query'
-import { cleanup, render, screen, waitFor } from '@testing-library/react'
-import { MemoryRouter } from 'react-router'
+import { cleanup, fireEvent, render, screen, waitFor } from '@testing-library/react'
+import { Link, MemoryRouter, Route, Routes } from 'react-router'
 import { afterEach, beforeAll, describe, expect, it, vi } from 'vitest'
 import { ApiError } from '../api/client'
 import { setSignedOut } from '../api/session'
@@ -25,6 +26,20 @@ vi.mock('../api/client', async () => {
 vi.mock('../api/me', () => ({
   useMe: vi.fn(),
 }))
+// #168/#335 regression guard: spy on the real restoreRouteFocus while keeping its real
+// behavior, so the StrictMode test below can assert useRouteFocus's ref-guard fires it
+// exactly ONCE per real pathname change — never once per StrictMode dev double-invoke.
+const restoreRouteFocusSpy = vi.fn()
+vi.mock('./routeFocus', async () => {
+  const actual = await vi.importActual<typeof import('./routeFocus')>('./routeFocus')
+  return {
+    ...actual,
+    restoreRouteFocus: (...args: Parameters<typeof actual.restoreRouteFocus>) => {
+      restoreRouteFocusSpy()
+      return actual.restoreRouteFocus(...args)
+    },
+  }
+})
 
 beforeAll(() => {
   // jsdom ships neither — Shell's child tree touches both (AG-grid-adjacent widgets,
@@ -51,6 +66,7 @@ afterEach(() => {
   cleanup()
   setSignedOut(false) // module-level state — never leak into the next test
   emptyGet.mockClear()
+  restoreRouteFocusSpy.mockClear()
 })
 
 async function renderShell(meData: unknown) {
@@ -166,5 +182,78 @@ describe('SessionExpiryBanner (IDP-SECURITY.md §5, R-SAFE-07 warn-before-guillo
       expect(screen.getByRole('link', { name: /flowable process inspector/i })).not.toBeNull()
     })
     expect(screen.queryByText(/session expires in/i)).toBeNull()
+  })
+})
+
+describe('useRouteFocus under React 19 StrictMode (#168/#335 regression guard)', () => {
+  // Mirrors the production router shape (Shell wraps Outlet; each page's own top-level
+  // element is a plain node, never nesting a second <main>) closely enough to exercise
+  // useRouteFocus's ref-guard through a REAL pathname change, wrapped in StrictMode so
+  // React 19's dev double-invoke of render + effects is actually in play.
+  async function renderStrictShellWithRoutes(meData: unknown) {
+    const { useMe } = await import('../api/me')
+    vi.mocked(useMe).mockReturnValue({ data: meData } as ReturnType<typeof useMe>)
+    const client = new QueryClient({ defaultOptions: { queries: { retry: false } } })
+    render(
+      <StrictMode>
+        <QueryClientProvider client={client}>
+          <MemoryRouter initialEntries={['/']}>
+            <Routes>
+              <Route path="/" element={<Shell />}>
+                <Route
+                  index
+                  element={
+                    <div>
+                      <h2>Home</h2>
+                      <Link to="/other">Go elsewhere</Link>
+                    </div>
+                  }
+                />
+                <Route
+                  path="other"
+                  element={
+                    <div>
+                      <h2>Other</h2>
+                    </div>
+                  }
+                />
+              </Route>
+            </Routes>
+          </MemoryRouter>
+        </QueryClientProvider>
+      </StrictMode>,
+    )
+  }
+
+  it('never fires on the initial load, even with StrictMode double-invoking the effect', async () => {
+    await renderStrictShellWithRoutes({ role: 'RESPONDER', engineRoles: {} })
+    await waitFor(() => {
+      expect(screen.getByRole('heading', { name: 'Home' })).not.toBeNull()
+    })
+    // The hook queues restoreRouteFocus onto a macrotask (window.setTimeout(…, 0)) — give it
+    // a turn. lastHandledPathname is SEEDED with the pathname at mount, so a genuine first
+    // load must be a no-op on BOTH of StrictMode's dev-mode invocations, not just deduped.
+    await new Promise((resolve) => setTimeout(resolve, 20))
+    expect(restoreRouteFocusSpy).not.toHaveBeenCalled()
+  })
+
+  it('a real pathname change calls restoreRouteFocus exactly once — never twice from the StrictMode double-invoke', async () => {
+    await renderStrictShellWithRoutes({ role: 'RESPONDER', engineRoles: {} })
+    await waitFor(() => {
+      expect(screen.getByRole('heading', { name: 'Home' })).not.toBeNull()
+    })
+    fireEvent.click(screen.getByRole('link', { name: 'Go elsewhere' }))
+    await waitFor(() => {
+      expect(screen.getByRole('heading', { name: 'Other' })).not.toBeNull()
+    })
+    await waitFor(() => {
+      expect(restoreRouteFocusSpy).toHaveBeenCalledTimes(1)
+    })
+    // Let any stray second invocation surface before asserting the count holds steady —
+    // the #168 bug was exactly a fixed "have I run before" flag that a second StrictMode
+    // effect run flipped back, silently re-arming a duplicate fire.
+    await new Promise((resolve) => setTimeout(resolve, 20))
+    expect(restoreRouteFocusSpy).toHaveBeenCalledTimes(1)
+    expect(document.activeElement?.textContent).toBe('Other')
   })
 })

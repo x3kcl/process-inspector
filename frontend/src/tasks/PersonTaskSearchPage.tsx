@@ -1,4 +1,5 @@
 import { useState } from 'react'
+import type { SubmitEvent } from 'react'
 import { useQuery } from '@tanstack/react-query'
 import { useSearchParams } from 'react-router'
 import type { ActionRequest } from '../api/actions'
@@ -51,7 +52,9 @@ export function PersonTaskSearchPage() {
   const [problem, setProblem] = useState<ActionProblem | undefined>(undefined)
   const action = useInstanceAction(modal?.row.engineId ?? '', modal?.row.processInstanceId ?? '')
 
-  const submit = (event: React.FormEvent) => {
+  // React 19 types deprecate FormEvent ("doesn't actually exist") in favor of the precise
+  // SubmitEvent for a form's onSubmit handler.
+  const submit = (event: SubmitEvent) => {
     event.preventDefault()
     const trimmed = draft.trim()
     setParams(trimmed === '' ? {} : { person: trimmed }, { replace: false })
