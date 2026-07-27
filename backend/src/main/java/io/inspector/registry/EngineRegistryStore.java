@@ -20,6 +20,7 @@ import java.util.List;
 import java.util.Locale;
 import java.util.Map;
 import java.util.Set;
+import java.util.concurrent.locks.ReentrantLock;
 import java.util.regex.Pattern;
 import java.util.stream.Collectors;
 import org.slf4j.Logger;
@@ -74,8 +75,14 @@ public class EngineRegistryStore {
     // The BFF is single-instance (ARCH §5); registry writes are rare, human-paced admin acts. A JVM
     // lock fully serializes the dangerous-write path (lifecycle guard read → four-eyes decision →
     // mutate/propose) so two concurrent calls can't both observe a pre-mutation state — same TOCTOU
-    // guard AccessMappingAdminService uses for the mapping store (S4 review).
-    private final Object writeLock = new Object();
+    // guard AccessMappingAdminService uses for the mapping store (S4 review). A {@link ReentrantLock}
+    // (issue #327, same treatment as #306's AuditService.chainLock), not {@code synchronized}: each
+    // critical section below wraps JDBC (repository.save/delete/findById) plus AuditService calls,
+    // and with spring.threads.virtual.enabled=true on Java 21, synchronized around blocking I/O pins
+    // the carrier thread — a defect class per CLAUDE.md's iron rule. No transaction restructuring
+    // here: the @Transactional boundary and AuditService's own REQUIRES_NEW commit (already made
+    // safe for exactly this call shape by #306) are unchanged, only the lock primitive.
+    private final ReentrantLock writeLock = new ReentrantLock();
 
     public EngineRegistryStore(
             EngineRegistryRepository repository,
@@ -305,7 +312,8 @@ public class EngineRegistryStore {
      */
     @Transactional
     public Outcome enable(String id, boolean readWrite, Authentication actor, String reason) {
-        synchronized (writeLock) {
+        writeLock.lock();
+        try {
             String actorName = requireRegistryAdmin(actor);
             EngineRegistryRow row = requireRow(id);
             assertEnableAllowed(row);
@@ -318,6 +326,8 @@ public class EngineRegistryStore {
             EngineRegistryRow updated =
                     transition(row, EngineRegistryMapper.LIFECYCLE_ACTIVE, mode, ACTION_ENABLE, actorName, reason);
             return Outcome.applied("enable engine '" + id + "' (" + mode + ")", updated);
+        } finally {
+            writeLock.unlock();
         }
     }
 
@@ -339,7 +349,8 @@ public class EngineRegistryStore {
      */
     @Transactional
     public Outcome remove(String id, Authentication actor, String reason) {
-        synchronized (writeLock) {
+        writeLock.lock();
+        try {
             String actorName = requireRegistryAdmin(actor);
             EngineRegistryRow row = requireRow(id);
             assertRemoveAllowed(row);
@@ -348,6 +359,8 @@ public class EngineRegistryStore {
             }
             applyRemove(row, actorName, reason);
             return Outcome.applied("remove engine '" + id + "'", row);
+        } finally {
+            writeLock.unlock();
         }
     }
 
@@ -357,7 +370,8 @@ public class EngineRegistryStore {
      */
     @Transactional
     public Outcome purge(String id, Authentication actor, String reason) {
-        synchronized (writeLock) {
+        writeLock.lock();
+        try {
             String actorName = requireRegistryAdmin(actor);
             EngineRegistryRow row = repository
                     .findById(id)
@@ -368,13 +382,16 @@ public class EngineRegistryStore {
             }
             applyPurge(row, actorName, reason);
             return Outcome.applied("purge engine '" + id + "'", row);
+        } finally {
+            writeLock.unlock();
         }
     }
 
     /** A second independent REGISTRY_ADMIN approves a pending proposal, which then applies. */
     @Transactional
     public Outcome approve(long proposalId, Authentication auth) {
-        synchronized (writeLock) {
+        writeLock.lock();
+        try {
             RegistryWriteProposal proposal = proposals
                     .findById(proposalId)
                     .orElseThrow(() -> new IllegalArgumentException("no such proposal: " + proposalId));
@@ -419,6 +436,8 @@ public class EngineRegistryStore {
             proposal.decide(RegistryWriteProposal.Status.APPROVED, approverName, clock.instant());
             proposals.save(proposal);
             return Outcome.applied(proposal.getSummary(), row);
+        } finally {
+            writeLock.unlock();
         }
     }
 

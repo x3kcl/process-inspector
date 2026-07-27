@@ -77,19 +77,12 @@ or a check ArchUnit's API doesn't expose — reviewers must check these by hand 
   all (e.g. it echoes the caller's own grants like `MeController`), OR it's pure infra
   bookkeeping with no `Authentication` in scope.**
 - **No `synchronized` around blocking I/O in a virtual-thread world (CLAUDE.md's
-  Java-21-VT rule, issue #306).** Spiked, dropped: ArchUnit's `JavaModifier.SYNCHRONIZED`
-  only sees a `synchronized` METHOD; every real instance in this codebase is a `synchronized
-  (lock) { … }` BLOCK guarding a plain `Object` field (the exact pattern `AuditService` and
-  `SseHub`'s own doc comments describe replacing with `ReentrantLock`) — ArchUnit's public
-  API has no block/statement-level (monitorenter/monitorexit) visibility to key a rule on.
-  Even ignoring that gap, "blocking I/O" has no closed structural definition short of a
-  hand-maintained list of qualifying types (JPA repositories, `EntityManager`, `RestClient`,
-  `RestTemplate`, `java.nio.file.Files`, sockets, …) — precisely the disqualifier #309's
-  expressibility gate rules out. **When adding or reviewing a `synchronized` block, manually
-  verify it does not wrap a JDBC call, an HTTP call, or blocking file I/O; prefer
-  `ReentrantLock` per CLAUDE.md.** The #309 spike found the pattern still live in
-  `EngineRegistryStore` (4 blocks, all wrapping JDBC via `repository.save`/`audit.*`) and
-  `AccessMappingAdminService` (2 blocks, same shape) — `ScopeMappingService` and
-  `BreakGlassAuditSink` synchronize over blocking file I/O. None of these were introduced by
-  this PR; they predate issue #306's fix (which only touched `AuditService`). Worth a
-  dedicated follow-up (tracked as issue #327).
+  Java-21-VT rule, issue #306).** SUPERSEDED 2026-07-27 by issue #327, which swapped the last
+  four live `synchronized (lock) { … }` sites (`EngineRegistryStore`,
+  `AccessMappingAdminService`, `ScopeMappingService`, `BreakGlassAuditSink`) to `ReentrantLock`
+  and landed `NoSynchronizedInMainSourceTest` (`backend/src/test/java/io/inspector/`,
+  docs/TEST-STRATEGY.md §5a) — a structural (source-text, not ArchUnit — see that test's
+  Javadoc for why ArchUnit itself still can't express this) guard banning the `synchronized`
+  keyword anywhere in `io.inspector` main sources, method or block. This checklist item is no
+  longer a manual-review-only gap: a reintroduced `synchronized` of any shape now fails CI on
+  its own. Left here for history/context only — nothing to manually check anymore.

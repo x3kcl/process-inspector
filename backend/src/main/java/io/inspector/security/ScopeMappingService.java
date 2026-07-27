@@ -18,6 +18,7 @@ import java.util.List;
 import java.util.Map;
 import java.util.Set;
 import java.util.concurrent.atomic.AtomicReference;
+import java.util.concurrent.locks.ReentrantLock;
 import org.slf4j.Logger;
 import org.slf4j.LoggerFactory;
 import org.springframework.stereotype.Service;
@@ -60,6 +61,15 @@ public class ScopeMappingService {
     // snapshot's byGroup with another's contentHash (Gemini S1).
     private final AtomicReference<Snapshot> snapshot =
             new AtomicReference<>(new Snapshot(Map.of(), null, Instant.EPOCH));
+
+    // A ReentrantLock (issue #327, same treatment as #306's AuditService.chainLock), not
+    // {@code synchronized (this)}: the critical section below wraps a blocking local file read
+    // (readMapping() → Files.readAllBytes) and with spring.threads.virtual.enabled=true on Java
+    // 21, synchronized around blocking I/O pins the carrier thread — a defect class per
+    // CLAUDE.md's iron rule. The JDBC/audit call already lives OUTSIDE this section (D1a, see
+    // current()'s own comment below) — that part is unchanged, only the lock primitive guarding
+    // the file read is swapped.
+    private final ReentrantLock reloadLock = new ReentrantLock();
 
     private record Snapshot(Map<String, List<ScopeGrant>> byGroup, String contentHash, Instant loadedAt) {
         Snapshot withLoadedAt(Instant t) {
@@ -109,7 +119,8 @@ public class ScopeMappingService {
         }
 
         Change change;
-        synchronized (this) {
+        reloadLock.lock();
+        try {
             snap = snapshot.get();
             Instant now = clock.instant();
             if (Duration.between(snap.loadedAt(), now).getSeconds() < ttl) {
@@ -121,6 +132,8 @@ public class ScopeMappingService {
             // fast path (serve the previous mapping, never block on the audit DB below) and this
             // reload is not emitted twice.
             snapshot.set(change.interim());
+        } finally {
+            reloadLock.unlock();
         }
         if (!change.needsAudit()) {
             return snapshot.get(); // no change, or empty/unreadable file — nothing to record

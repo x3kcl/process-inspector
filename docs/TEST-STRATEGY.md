@@ -105,11 +105,25 @@ Landed (`backend/src/test/java/io/inspector/...`):
   (`io.inspector.security.mapping`) builds its own `RestClient` to fire break-glass/
   access-change webhook alerts — it never talks to a registered Flowable engine, so routing
   it through `GuardedCaller` doesn't apply.
+- `NoSynchronizedInMainSourceTest` (issue #327, follow-up to #309/#306) — NOT an ArchUnit
+  rule (#309 originally spiked and dropped this candidate — see below for why). A plain
+  source-text scan asserting zero `synchronized` keyword occurrences (method OR block, outside
+  comments) anywhere under `src/main/java/io/inspector`. #327 eliminated the last four
+  `synchronized (lock) { … }` sites (`EngineRegistryStore`, `AccessMappingAdminService`,
+  `ScopeMappingService`, `BreakGlassAuditSink`, all swapped to `ReentrantLock`), which changed
+  the expressibility calculus versus #309's spike: with ZERO legitimate `synchronized` usage of
+  any kind left, the fuzzy "is this particular synchronized around blocking I/O" question that
+  blocked an ArchUnit rule is moot — no hand-maintained type list, no method-vs-block
+  distinction needed, just "is the keyword present at all". Still can't be an ArchUnit rule
+  (its bytecode-level API has no block/statement visibility, per #309's finding below), so this
+  is a textual guard instead — same ban, different mechanism.
 
 Both new #309 rules were proven to actually catch drift (not just vacuously pass) before
 landing: each was run once against a deliberately broken copy of the tree (a stripped
 `@PreAuthorize`; a scratch class depending on `RestClient` outside the client package) and
-confirmed red, then the tree was restored and confirmed green.
+confirmed red, then the tree was restored and confirmed green. `NoSynchronizedInMainSourceTest`
+(#327) was proven the same way: run once against a scratch `synchronized (this) { … }` block
+reintroduced into `ScopeMappingService`, confirmed red, then reverted and confirmed green.
 
 Spiked and **dropped** (too fuzzy to express without a hand-maintained list or beyond
 ArchUnit's structural surface) — manual-review checklist items instead, in the
@@ -118,13 +132,18 @@ ArchUnit's structural surface) — manual-review checklist items instead, in the
   incompatible call shapes coexist (parameter-threaded, cross-class post-hoc projector,
   genuinely-unscoped infra/self-lookup) with no structural signal that discriminates a real
   gap from a false positive.
-- No `synchronized` around blocking I/O (CLAUDE.md's Java-21-VT rule, issue #306) — ArchUnit's
-  `JavaModifier.SYNCHRONIZED` only sees `synchronized` METHODS; every real instance here is a
-  `synchronized (lock) { … }` BLOCK, which ArchUnit's API has no visibility into, and "blocking
-  I/O" has no closed structural definition short of a hand-maintained type list. The spike
-  surfaced the pattern still live in `EngineRegistryStore`/`AccessMappingAdminService`/
-  `ScopeMappingService`/`BreakGlassAuditSink` (predating #306, which only fixed `AuditService`)
-  — tracked as issue #327, not fixed in the #309 PR (test-only scope).
+- No `synchronized` around blocking I/O AS AN ARCHUNIT RULE (CLAUDE.md's Java-21-VT rule,
+  issue #306) — ArchUnit's `JavaModifier.SYNCHRONIZED` only sees `synchronized` METHODS; every
+  real instance in this codebase was a `synchronized (lock) { … }` BLOCK, which ArchUnit's API
+  has no visibility into. At the time of the #309 spike, "blocking I/O" also had no closed
+  structural definition short of a hand-maintained type list (some `synchronized` usage might
+  have been legitimately non-blocking). The spike surfaced the pattern still live in
+  `EngineRegistryStore`/`AccessMappingAdminService`/`ScopeMappingService`/`BreakGlassAuditSink`
+  (predating #306, which only fixed `AuditService`) — tracked as issue #327, and NOW LANDED as
+  `NoSynchronizedInMainSourceTest` above (a source-text scan, not ArchUnit — #327 made the
+  broader ban expressible once zero legitimate `synchronized` usage remained; the ArchUnit
+  block-visibility gap itself is unchanged and would still block an ArchUnit-native version of
+  this rule).
 
 ## 6. Fixture catalog (R-TEST-04)
 Every seed process / captured payload has a stable ID (`FIX-STATUS-03: suspended+DLQ
