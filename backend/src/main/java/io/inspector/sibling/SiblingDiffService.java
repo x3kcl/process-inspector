@@ -79,10 +79,17 @@ public class SiblingDiffService {
 
         FlowablePage page = flowable.queryHistoricProcessInstances(engine, CallPriority.INTERACTIVE, body);
         List<Map<String, Object>> rows = page.dataOrEmpty();
+        // Every non-self row becomes a picker candidate — the whole scan is already paid for,
+        // so offering a choice costs no extra engine I/O. The head stays the auto-suggestion.
+        List<SiblingRef> candidates = new ArrayList<>(rows.size());
         for (Map<String, Object> row : rows) {
             String candidateId = str(row, "id");
             if (candidateId == null || candidateId.equals(instanceId)) continue; // never diff against self
-            return new NearestSiblingResponse(true, siblingRef(row), rows.size(), definitionId, defKey, defVersion);
+            candidates.add(siblingRef(row));
+        }
+        if (!candidates.isEmpty()) {
+            return new NearestSiblingResponse(
+                    true, candidates.get(0), List.copyOf(candidates), rows.size(), definitionId, defKey, defVersion);
         }
         return NearestSiblingResponse.none(rows.size(), definitionId, defKey, defVersion);
     }

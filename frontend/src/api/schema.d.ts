@@ -2310,6 +2310,7 @@ export interface components {
             reason?: string;
         };
         NearestSiblingResponse: {
+            candidates?: components["schemas"]["SiblingRef"][];
             /** Format: int32 */
             candidatesScanned?: number;
             definitionId?: string;
