@@ -147,6 +147,11 @@ test('after the grid→detail route change, focus never rests on <body>', async 
       }),
     )
     .toBe('H2')
+  // Same discipline as the keyboard-open test above: the vitals/H2 commit before the default
+  // Variables tab's lazy chunk + query settle. On a fast host (mag01) axe reached .tab-body
+  // while it was still a content-less scrollable shell → scrollable-region-focusable. Wait for
+  // the tab's real content before scanning.
+  await expect(page.getByRole('button', { name: '⬇ raw JSON' })).toBeVisible()
   await scanA11y(page, 'detail page focused on main after route change')
 })
 
