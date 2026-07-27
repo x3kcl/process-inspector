@@ -2,14 +2,15 @@
 # ci-runner.sh — manage the dockerized self-hosted GitHub Actions runner slots
 # (docker/ci-runner/ — port-namespace parallelism, one disjoint port block per slot).
 # Host-aware: picks this host's compose file (hp04 → docker-compose.yml, hp02 →
-# docker-compose.hp02.yml), so the same commands manage whichever side you're on;
-# container/GitHub state it starts, stops and counts is this host's slot set only.
+# docker-compose.hp02.yml, mag01 → docker-compose.mag01.yml), so the same commands
+# manage whichever host you're on; container/GitHub state it starts, stops and
+# counts is this host's slot set only.
 #
 # Usage: scripts/ci-runner.sh <ensure|status|start|stop|logs>
 #
 #   ensure  start this host's runner slots if needed and block (bounded) until at least
-#           one is ONLINE at GitHub; FAIL if any FOREIGN runner (name not hp0N-docker-s<N>,
-#           i.e. from neither host's slot file) is online — a runner without a slot has no
+#           one is ONLINE at GitHub; FAIL if any FOREIGN runner (name not <host>-docker-s<N>
+#           for a fleet host, i.e. from no host's slot file) is online — a runner without a slot has no
 #           port namespace, so its jobs would race a slot's fixed harness ports (see
 #           docker/ci-runner/docker-compose.yml).
 #           Run this BEFORE pushing to main or creating a PR (green-ci skill, step 0).
@@ -27,11 +28,12 @@ SCRIPT_DIR="$(cd "$(dirname "${BASH_SOURCE[0]}")" && pwd)"
 # LOCAL (this host's — what start/stop/ensure manage) and the repo-wide slot pattern
 # (any host's — what the foreign-runner invariant accepts).
 case "$(hostname -s)" in
-  hp02) COMPOSE_FILE="$SCRIPT_DIR/../docker/ci-runner/docker-compose.hp02.yml" ;;
-  *)    COMPOSE_FILE="$SCRIPT_DIR/../docker/ci-runner/docker-compose.yml" ;;
+  hp02)  COMPOSE_FILE="$SCRIPT_DIR/../docker/ci-runner/docker-compose.hp02.yml" ;;
+  mag01) COMPOSE_FILE="$SCRIPT_DIR/../docker/ci-runner/docker-compose.mag01.yml" ;;
+  *)     COMPOSE_FILE="$SCRIPT_DIR/../docker/ci-runner/docker-compose.yml" ;;
 esac
 REPO="x3kcl/process-inspector"
-SLOT_NAME_PATTERN='^hp0[0-9]+-docker-s[0-9]+$'
+SLOT_NAME_PATTERN='^(hp0[0-9]+|mag[0-9]+)-docker-s[0-9]+$'
 LOCAL_SLOT_PREFIX="$(hostname -s)-docker-s"
 
 die() { echo "ci-runner: $*" >&2; exit 1; }
