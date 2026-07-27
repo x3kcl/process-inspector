@@ -11,6 +11,7 @@ import java.time.Clock;
 import java.util.HexFormat;
 import java.util.LinkedHashMap;
 import java.util.Map;
+import java.util.concurrent.locks.ReentrantLock;
 import org.slf4j.Logger;
 import org.slf4j.LoggerFactory;
 import org.springframework.stereotype.Component;
@@ -33,7 +34,14 @@ public class BreakGlassAuditSink {
     private final Path sinkFile;
     private final ObjectMapper mapper;
     private final Clock clock;
-    private final Object lock = new Object();
+
+    // A ReentrantLock (issue #327, same treatment as #306's AuditService.chainLock), not
+    // {@code synchronized}: the critical section below wraps blocking file I/O (createDirectories/
+    // writeString, and — transitively via lastHash() — readAllLines) and with
+    // spring.threads.virtual.enabled=true on Java 21, synchronized around blocking I/O pins the
+    // carrier thread — a defect class per CLAUDE.md's iron rule. The append-file/hash-chain
+    // semantics are unchanged, only the lock primitive.
+    private final ReentrantLock lock = new ReentrantLock();
 
     public BreakGlassAuditSink(BreakGlassProperties props, ObjectMapper mapper, Clock clock) {
         this.sinkFile = Path.of(props.sinkFileOrDefault());
@@ -46,34 +54,35 @@ public class BreakGlassAuditSink {
      * even the file sink is unwritable (then break-glass truly cannot proceed — nothing is unaudited).
      */
     public boolean append(String actor, String event, Map<String, Object> payload) {
-        synchronized (lock) {
-            try {
-                String prevHash = lastHash();
-                Map<String, Object> row = new LinkedHashMap<>();
-                row.put("ts", clock.instant().toString());
-                row.put("actor", actor);
-                row.put("event", event);
-                row.put("payload", payload);
-                row.put("prevHash", prevHash);
-                String body = mapper.writeValueAsString(row);
-                String hash = sha256(prevHash + body);
-                String line = "{\"hash\":\"" + hash + "\",\"row\":" + body + "}\n";
-                if (sinkFile.getParent() != null) {
-                    Files.createDirectories(sinkFile.getParent());
-                }
-                Files.writeString(
-                        sinkFile, line, StandardCharsets.UTF_8, StandardOpenOption.CREATE, StandardOpenOption.APPEND);
-                log.warn(
-                        "BREAK_GLASS_FILE_SINK actor={} event={} — Postgres audit was unavailable; wrote to the "
-                                + "tamper-evident file sink {} (reconcile into audit_entry on recovery)",
-                        actor,
-                        event,
-                        sinkFile);
-                return true;
-            } catch (IOException | RuntimeException e) {
-                log.error("BREAK_GLASS_FILE_SINK_UNWRITABLE actor={} event={} — {}", actor, event, e.toString());
-                return false;
+        lock.lock();
+        try {
+            String prevHash = lastHash();
+            Map<String, Object> row = new LinkedHashMap<>();
+            row.put("ts", clock.instant().toString());
+            row.put("actor", actor);
+            row.put("event", event);
+            row.put("payload", payload);
+            row.put("prevHash", prevHash);
+            String body = mapper.writeValueAsString(row);
+            String hash = sha256(prevHash + body);
+            String line = "{\"hash\":\"" + hash + "\",\"row\":" + body + "}\n";
+            if (sinkFile.getParent() != null) {
+                Files.createDirectories(sinkFile.getParent());
             }
+            Files.writeString(
+                    sinkFile, line, StandardCharsets.UTF_8, StandardOpenOption.CREATE, StandardOpenOption.APPEND);
+            log.warn(
+                    "BREAK_GLASS_FILE_SINK actor={} event={} — Postgres audit was unavailable; wrote to the "
+                            + "tamper-evident file sink {} (reconcile into audit_entry on recovery)",
+                    actor,
+                    event,
+                    sinkFile);
+            return true;
+        } catch (IOException | RuntimeException e) {
+            log.error("BREAK_GLASS_FILE_SINK_UNWRITABLE actor={} event={} — {}", actor, event, e.toString());
+            return false;
+        } finally {
+            lock.unlock();
         }
     }
 

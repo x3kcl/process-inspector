@@ -11,6 +11,7 @@ import java.util.LinkedHashMap;
 import java.util.List;
 import java.util.Map;
 import java.util.Set;
+import java.util.concurrent.locks.ReentrantLock;
 import java.util.stream.Collectors;
 import org.springframework.context.annotation.Profile;
 import org.springframework.security.core.Authentication;
@@ -34,8 +35,13 @@ public class AccessMappingAdminService {
     // The BFF is single-instance (ARCH §5); mapping writes are rare, human-paced admin acts. A
     // JVM lock fully serializes them so the read-check-then-apply (CRUD-enabled, the ≥2-apex
     // invariant, the duplicate/four-eyes-count reads) is atomic w.r.t. the mutation — no TOCTOU
-    // where two concurrent apex removals both see ≥2 and drop below it (Copilot S4 review).
-    private final Object writeLock = new Object();
+    // where two concurrent apex removals both see ≥2 and drop below it (Copilot S4 review). A
+    // {@link ReentrantLock} (issue #327, same treatment as #306's AuditService.chainLock), not
+    // {@code synchronized}: both critical sections below wrap JDBC (proposals.findById/save,
+    // audit.beginPending/close), and with spring.threads.virtual.enabled=true on Java 21,
+    // synchronized around blocking I/O pins the carrier thread — a defect class per CLAUDE.md's
+    // iron rule.
+    private final ReentrantLock writeLock = new ReentrantLock();
 
     private final MappingStore store;
     private final MappingSource mappingSource;
@@ -107,7 +113,8 @@ public class AccessMappingAdminService {
 
     /** Apply a single-actor change, or park a widening one as a four-eyes proposal. */
     public Outcome submit(GrantChange change, String reason, Authentication auth) {
-        synchronized (writeLock) {
+        writeLock.lock();
+        try {
             assertCrudEnabled();
             assertInvariantPreserved(change);
 
@@ -117,12 +124,15 @@ public class AccessMappingAdminService {
             }
             applyAudited(change, actor(auth), reason);
             return Outcome.applied(change.summary());
+        } finally {
+            writeLock.unlock();
         }
     }
 
     /** A second independent ACCESS_ADMIN approves a pending proposal, which then applies. */
     public Outcome approve(long proposalId, Authentication auth) {
-        synchronized (writeLock) {
+        writeLock.lock();
+        try {
             AccessGrantProposal proposal = proposals
                     .findById(proposalId)
                     .orElseThrow(() -> new IllegalArgumentException("no such proposal: " + proposalId));
@@ -150,6 +160,8 @@ public class AccessMappingAdminService {
             proposal.decide(AccessGrantProposal.Status.APPROVED, approver, clock.instant());
             proposals.save(proposal);
             return Outcome.applied(change.summary());
+        } finally {
+            writeLock.unlock();
         }
     }
 
