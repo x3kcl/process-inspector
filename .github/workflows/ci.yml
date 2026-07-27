@@ -215,9 +215,7 @@ jobs:
 
   integration:
     runs-on: self-hosted
-    # 30, not 20: the flap leg BUILDS its engine from source (a full maven build) before the
-    # harness even starts. Warm BuildKit layers make the repeat cheap; a cold runner is not.
-    timeout-minutes: 30
+    timeout-minutes: 20
     strategy:
       fail-fast: false
       matrix:
@@ -230,8 +228,9 @@ jobs:
             itClass: EngineHealthLegacyIT,SearchLegacyIT,TriageLegacyIT,ExternalWorkerJobLegacyIT,TriageCmmnScopeLegacyIT
           # The Boot-layout leg: an APPLICATION embedding Flowable (flap), i.e. /process-api
           # with root-level /cmmn-api + /external-job-api siblings behind its own Basic-auth
-          # service account. The engine is built from flap's master (see the checkout+build
-          # steps below), so this leg tracks the real engine rather than the last release.
+          # service account — neither of which the war images above can exercise. The engine is
+          # ghcr.io/x3kcl/flap:latest, which flap republishes on every push to master, pulled
+          # fresh each run (see the steps below).
           - profile: flap
             itClass: BootLayoutEngineIT
     env:
@@ -287,23 +286,26 @@ jobs:
         with:
           username: ${{ secrets.DOCKERHUB_USERNAME }}
           password: ${{ secrets.DOCKERHUB_TOKEN }}
-      # The `flap` leg's engine is BUILT FROM flap's master, not pulled. Two reasons: the
-      # published image lags master (this leg exists to catch layout/auth drift, so it must
-      # test the engine as it is TODAY, not as it was at the last release), and building
-      # needs no registry credential at all — flap is a public repo.
-      - name: Check out flap (master) for the harness engine
+      # ghcr, for the flap image the `flap` leg's engine comes from. flap is a PRIVATE repo, so
+      # its source cannot be cloned here — but its publish-image.yml pushes
+      # ghcr.io/x3kcl/flap:latest on every push to master, and this repo's GITHUB_TOKEN can read
+      # that package. So `:latest` IS flap master, a few minutes behind.
+      - name: Registry login (ghcr — the flap harness image)
         if: matrix.profile == 'flap'
-        uses: actions/checkout@v4
+        uses: docker/login-action@v3
         with:
-          repository: x3kcl/flap
-          ref: master
-          path: .flap-src
-      - name: Build the flap harness engine image
+          registry: ghcr.io
+          username: ${{ github.actor }}
+          password: ${{ secrets.GITHUB_TOKEN }}
+      # Pull EVERY run. A self-hosted runner keeps its image cache for weeks, so without this the
+      # leg silently tests whatever flap looked like the first time this slot ran it — the exact
+      # drift this leg exists to catch. Reported by digest so the log says what was tested.
+      - name: Pull the flap harness engine (latest master build)
         if: matrix.profile == 'flap'
         run: |
-          docker build -t flap-harness:ci .flap-src
-          echo "PI_FLAP_IMAGE=flap-harness:ci" >> "$GITHUB_ENV"
-          echo "flap master @ $(git -C .flap-src rev-parse --short HEAD)"
+          docker pull ghcr.io/x3kcl/flap:latest
+          docker image inspect ghcr.io/x3kcl/flap:latest \
+            --format 'flap engine under test: {{index .RepoDigests 0}} built {{.Created}}'
       # Persistent runner: a prior interrupted run may have left CI's own containers behind.
       # Scoped to $CI_PROJECT — never touches the dev/demo projects.
       - name: Pre-clean CI harness residue
