@@ -79,9 +79,10 @@ services:
     #
     # The default image is flap's own master build: its publish-image.yml pushes
     # ghcr.io/x3kcl/flap:latest on every push to master, so `:latest` IS master a few minutes
-    # behind — but the repo is private, so pulling it needs a ghcr login with read:packages.
-    # CI logs in with its GITHUB_TOKEN and re-pulls every run (a self-hosted runner would
-    # otherwise keep a weeks-old layer). Without ghcr access, build from a sibling checkout:
+    # behind. The package is private but grants the inspector repo Actions read access, so CI
+    # pulls it with the run's own GITHUB_TOKEN and re-pulls every run (a self-hosted runner
+    # would otherwise keep a weeks-old layer). Locally, `docker login ghcr.io` with a PAT
+    # carrying read:packages — or skip the registry and build from a sibling checkout:
     #   docker build -t flap-harness:local ../flap
     #   PI_FLAP_IMAGE=flap-harness:local docker compose -f docker/docker-compose.dev.yml --profile flap up -d
     # Either way the readiness gate demands a REAL 200 from /process-api/management/engine, so
