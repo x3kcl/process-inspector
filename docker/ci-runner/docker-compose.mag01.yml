@@ -1,0 +1,110 @@
+# mag01's runner slots — third host of the CI fleet, and its fast-single-thread lane
+# (Ryzen 5 9600X: 6c/12t Zen 5 — the fastest per-core silicon in the fleet by a wide
+# margin; CPU-bound build/test legs that crawl on hp02's slow cores fly here). Same
+# port-namespace slot model as docker-compose.yml on hp04 — read that file's header
+# for the full design (fixed per-slot port blocks, network_mode host, shared
+# docker.sock, ephemeral one-job-per-container lifecycle). This file only states what
+# differs on mag01.
+#
+# Port blocks are chosen against mag01's OWN listener set (ports are host-local).
+# Surveyed 2026-07-27 via `ss -ltn`: a fresh box — only 22/53/61209 listening, every
+# band free. s1/s2 reuse hp04's s2/s3 blocks 1:1:
+#   slot  engines (A/B/7/legacy)   BFF-pg  drift-BFF  e2e   compose projects
+#   s1    8191 8192 8193 8194      5445    8186       4273  pi-ci-s1-<profile>
+#   s2    8291 8292 8293 8294      5455    8286       4373  pi-ci-s2-<profile>
+# Slot numbers restart at s1 per host: PI_CI_SLOT namespaces compose projects and
+# work dirs on THIS host's daemon only; runner names (mag01-docker-sN) are what must
+# be unique repo-wide. scripts/ci-runner.sh picks this file by hostname.
+#
+# TWO slots (14 fleet-wide), sized to the small host: 12 threads / 29G usable,
+# NON-ECC consumer hardware — CI-only by doctrine, nothing stateful lives here.
+# Ceilings are caps, not reservations: 2×(8c/10g runner caps) + per-job harness
+# containers oversubscribe RAM slightly in the both-slots-worst-case; swap absorbs
+# the rare overlap, and jobs serialize within a slot. Widen only after sustained
+# green legs AND a RAM headroom check under both-slots load.
+# Never register a runner outside the slot files — see the iron rule in
+# docker-compose.yml.
+#
+# Host prep that is NOT in this file (done 2026-07-27): csiostor blacklisted in
+# /etc/modprobe.d/ (Chelsio FCoE driver crashes boot / hangs reboot on this T540 —
+# Ethernet is cxgb4 and unaffected); polkit rule allows sudo-group reboot. A
+# timing-profile note: this host's fast cores are the fleet's opposite extreme to
+# hp02 — a test that fails only here is a latent race (hp02 rollout precedent:
+# issue #333 / PR #334), root-cause it before blaming the host.
+name: pi-ci-runner
+
+x-runner: &runner
+  build: .
+  image: process-inspector/ci-runner:latest
+  restart: unless-stopped
+  network_mode: host
+  # Caps each runner's own mvn/npm/java processes; harness containers run on the
+  # host daemon outside these limits. 8 of 12 threads / 10g of 29G per slot — see
+  # the sizing note in the header.
+  cpus: 8
+  mem_limit: 10g
+  # e2e (#85): Vite's FSWatcher needs a large nofile ulimit — see docker-compose.yml.
+  ulimits:
+    nofile:
+      soft: 65536
+      hard: 65536
+
+x-runner-env: &runner-env
+  RUNNER_SCOPE: repo
+  REPO_URL: https://github.com/x3kcl/process-inspector
+  # Env-ref only (iron rule). Exchanged for a short-lived registration token at start;
+  # the PAT itself is never written to disk by the runner.
+  ACCESS_TOKEN: ${GITHUB_PERSONAL_ACCESS_TOKEN:?export the GitHub PAT in the launching shell}
+  # One job per container: after each job the runner exits and the restart policy brings
+  # up a fresh, cleanly re-registered one — no state bleed, self-healing.
+  EPHEMERAL: "true"
+  DISABLE_AUTO_UPDATE: "true"
+
+services:
+  runner-s1:
+    <<: *runner
+    container_name: pi-ci-runner-s1
+    environment:
+      <<: *runner-env
+      RUNNER_NAME: mag01-docker-s1
+      RUNNER_WORKDIR: /home/flapci/ci-runner-work-s1
+      PI_CI_SLOT: "1"
+      PI_ENGINE_A_PORT: "8191"
+      PI_ENGINE_B_PORT: "8192"
+      PI_ENGINE_7_PORT: "8193"
+      PI_ENGINE_LEGACY_PORT: "8194"
+      PI_PG_PORT: "5445"
+      PI_BFF_PORT: "8186"
+      PI_E2E_PORT: "4273"
+    volumes:
+      - /var/run/docker.sock:/var/run/docker.sock
+      # Identical host/container path: anything a job bind-mounts into a container goes
+      # through the HOST daemon, so workspace paths must resolve identically on the host.
+      - /home/flapci/ci-runner-work-s1:/home/flapci/ci-runner-work-s1
+      # setup-java/setup-node tool downloads survive the ephemeral restarts. Per-slot:
+      # concurrent extractions into a shared cache would race.
+      - toolcache-s1:/opt/hostedtoolcache
+
+  runner-s2:
+    <<: *runner
+    container_name: pi-ci-runner-s2
+    environment:
+      <<: *runner-env
+      RUNNER_NAME: mag01-docker-s2
+      RUNNER_WORKDIR: /home/flapci/ci-runner-work-s2
+      PI_CI_SLOT: "2"
+      PI_ENGINE_A_PORT: "8291"
+      PI_ENGINE_B_PORT: "8292"
+      PI_ENGINE_7_PORT: "8293"
+      PI_ENGINE_LEGACY_PORT: "8294"
+      PI_PG_PORT: "5455"
+      PI_BFF_PORT: "8286"
+      PI_E2E_PORT: "4373"
+    volumes:
+      - /var/run/docker.sock:/var/run/docker.sock
+      - /home/flapci/ci-runner-work-s2:/home/flapci/ci-runner-work-s2
+      - toolcache-s2:/opt/hostedtoolcache
+
+volumes:
+  toolcache-s1:
+  toolcache-s2:
