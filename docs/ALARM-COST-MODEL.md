@@ -10,6 +10,9 @@ never re-sorts Stage 0 itself, and reconciles with #352's Incident Ledger self-h
 ships enabled and self-gates per class on its own sample floor — R1's gate governs the FEATURE
 ITSELF: the ordering is a single global switch over shared cards, so it ships inert and
 flipping it requires re-measuring §7 with the §5 method.
+**Amendment round (#365, 2026-08-04): burst-aware frequency — §4.1a (formula) + §14 (measurement,
+build-slice spec, panel) — DESIGN LOCKED, build slice pending.** No behavior changes until that
+slice lands; the flag default and every §7 gate axis are untouched.
 
 ## 0. Provenance
 
@@ -25,6 +28,17 @@ adapts; Shoush & Dumas, *When to Intervene?* (BPM 2022, 10.1007/978-3-031-16171-
 ranking cases for scarce operator attention; Wang/Yang/Chen/Shah, *An Overview of Industrial
 Alarm Systems* (IEEE TASE 2016, 10.1109/TASE.2015.2464234) — the alarm-overload human-factors
 case SPEC §4 already gestures at ("alarm fatigue within weeks").
+
+Amendment round #365 adds the alarm-management human-factors base (full-text calibration
+digest: #356 comment 5182803157): Beebe, Ferrer, Logerot, *The connection of peak alarm rates
+to plant incidents and what you can do to minimize* (Process Safety Progress 32(1), 2013,
+10.1002/prs.11539) — "peak rates are responsible for operators missing critical alarms and
+average rates are not"; their case data shows sites with fine averages (0.83–1 alarms/10 min)
+still hitting peaks of 117–211/10 min (evidence grade: practitioner paper, 4 uncontrolled
+sites — cited for the consensus ceilings and the framing, not as causal proof). Normative:
+**ANSI/ISA-18.2** (flood defined as ≥ 10 annunciated alarms per 10 min per operator, ending
+when the rate drops below 5 per 10 min — an asymmetric, hysteresis-bearing *peak-window*
+definition, not an average) and **EEMUA 191** (the same ceilings as benchmarks).
 
 Panel review (repo convention, two independent seats — full outcome in §10): the Gemini
 seat reviewed and returned APPROVE-WITH-CHANGES (findings adopted below); the GitHub-Models
@@ -270,6 +284,106 @@ Rules:
   it, so a standing population is never re-banked as fresh growth, and
   `arrivalsAreTheGrowthSignalNotTheSizeSignal` passes unchanged.
 
+### 4.1a Burst-aware frequency (amendment #365 — DESIGN LOCKED, build slice pending)
+
+**The gap this closes.** `F` is a 28-day *volume* measure and `R` only sees `lastSeen` age, so
+two classes both "last seen now" with 100 arrivals score identically whether those arrivals
+trickled over four weeks or landed in the last ten minutes — yet the second is exactly the
+flood shape the literature says demands attention first ("peak rates are responsible for
+operators missing critical alarms and average rates are not" — Beebe et al. 2013,
+10.1002/prs.11539; ISA-18.2's flood definition is a 10-minute *peak window*, §0). Burstiness
+is invisible to the shipped ordering. The amendment makes `F` peak-aware by a **windowed
+decomposition** — not a bolt-on term — of the arrivals it already counts:
+
+```
+F(c) = log2(1 + arrivals_28d(c))                          when NOT flooding(c) — UNCHANGED
+F(c) = log2(1 + arrivals_28d(c) + (γ−1) · burst_W(c))     when flooding(c)
+     ≡ log2(1 + outside_W(c) + γ · burst_W(c))            since arrivals_28d = outside_W + burst_W
+
+burst_W(c)  = positive TRUSTED deltas over (asOf−W, asOf]     — same discipline as arrivals_28d
+prior_W(c)  = positive TRUSTED deltas over (asOf−2W, asOf−W]  — the gate's hold input, only
+flooding(c) = burst_W ≥ onset  OR  (burst_W ≥ exit AND prior_W ≥ onset)
+```
+
+Defaults (new keys under `inspector.triage.attention.*`, consulted only when the master flag
+is on): `burst-window` W = **PT10M** — ISA-18.2's own flood window; `burst-onset` = **10** and
+`burst-exit` = **5** — ISA-18.2's asymmetric flood onset/end verbatim, so the hysteresis is
+the standard's, not our invention (the #347 dwell doctrine independently confirmed at the
+source, §0); `burst-weight` γ = **8** — one flood-window arrival weighs eight trickled ones.
+γ's rationale (panel fix — stated, not implied): the operative quantity is the BOUNDED
+inflation ceiling `1 + log2(γ)/log2(1 + onset)` below, and γ = 8 (3 bits) puts that ceiling
+at ≈ 1.87× — deliberately the same order as the M factor's 2× clamp, so no single factor can
+dominate the others' full range. It cannot be data-fitted today (the pilot has zero recorded
+floods, §14.4); it is a knob, not a law, and is re-examined at §7 gate time with real flood
+data like every other calibration.
+
+**The five named invariants, preserved:**
+
+- **§5.5 neutrality guarantee.** No history ⇒ `burst_W = 0` ⇒ not flooding ⇒ `F = log2(1+0)
+  = 0`, and below onset `F` is **byte-identical to the shipped formula** — the amendment is
+  provably inert outside flood conditions, so the no-history degradation to exactly count-only
+  ordering (and `AttentionOrderingNeutralityTest`) holds unchanged. Measured: synthetic
+  scenario (d), §14.4 — every empty-history score 0.0, order == count-only.
+- **§13 F2 semantics.** The burst bins inherit the trusted-samples discipline verbatim — a
+  delta counts only when BOTH endpoints were fully observed; both untrust reasons (R-SEM-12
+  truncation AND #302 blind cycles) discard identically. A wholly-untrusted 28d window still
+  reads `F = 1` + `arrivalsUnknown` (the burst bin is a subset of that window, so the gate
+  cannot fire either — no path to a fake zero OR a fake flood). New sub-case: a burst bin
+  that has samples but no TRUSTED one forces the gate OFF, leaves `F` at the shipped value,
+  and sets `factors.burstUnknown` — the tooltip says "recent arrival rate unknown", never
+  "not spiking". Because the burst term can only ever *raise* `F` behind a gate, an unknown
+  bin can only suppress a promotion — it can never demote, which is strictly safer than the
+  original F2 defect class (where unknown zeroed the score). An EMPTY bin (no row at all,
+  the sampler was down) reads `burst_W = 0`, gate off — a fleet-uniform degradation to the
+  shipped formula, same shape as F2's "no in-window row keeps F = 0" rule.
+- **§13 F3 semantics — no double-banking, by construction.** This is why the amendment is a
+  decomposition and not a multiplier. `arrivals_28d = outside_W + burst_W` is a PARTITION of
+  the very deltas F already counts: under flooding, `F = log2(1 + outside_W + γ·burst_W)`
+  counts every arrival **exactly once**, at weight 1 or weight γ, depending on which bin its
+  bucket falls in. The birth-seeded delta (the F3 fix) is one of those deltas: a class born
+  inside W counts its whole population once at weight γ — and may legitimately trigger the
+  gate, because a mass birth IS the largest flood (`0 → 5000` in one bucket: `F =
+  log2(1 + γ·5000) = 15.29`, vs shipped 12.29 — synthetic scenario (b), §14.4). A separate
+  multiplicative factor `B` on top of `F` was **rejected as a shape**: `F` already contains
+  the birth arrival, so any term that re-reads the same bucket re-banks it (`12.29 × clamp`),
+  and keeping it honest would need a hand-maintained exclusion filter that a future edit can
+  silently break. The partition identity cannot double-bank without breaking arithmetic. The
+  mid-life guard is untouched: a window merely *starting* mid-life still discards its
+  `LAG`-less first row, so a standing population is never re-banked as growth —
+  `arrivalsAreTheGrowthSignalNotTheSizeSignal` passes unchanged.
+- **Zero new engine calls.** The two bins are four more FILTERED columns on the SAME single
+  native `arrivalsSince` aggregate over `incident_occurrence` (§14.6) — one pass, zero
+  additional statements, BFF's own Postgres. The Stage 0 iron rule (count-only/`size=1`
+  aggregation + the dedicated DLQ scan, never the grid-search plan) is untouched: nothing is
+  added to the engine aggregation, ever.
+- **`inspector.triage.attention-ordering` stays default-off.** No new flag; the burst knobs
+  are dead configuration until the master flag is opted into, and the §7 gate (still NOT MET,
+  0 of 5 axes) governs that flip exactly as before.
+
+**Non-goals honored:** `R`, `M`, `S`, the R-SEM-23 tie-break (`total DESC → signatureHash
+ASC`), ack/resurface semantics and the flag default are not touched — the amendment changes
+`F` and only `F`.
+
+**Bounded influence, no clamp knob needed.** The gate requires `burst_W ≥ onset` (or the
+hold), so `log2(1 + arrivals_28d) ≥ log2(1 + onset) ≈ 3.46` whenever the boost applies, and
+the boost adds at most `log2(γ) = 3` bits: the multiplicative inflation of `F` is
+self-bounded at `1 + log2(γ)/log2(1 + onset) ≈ 1.87×`, shrinking as volume grows (flood-100:
+9.65 vs 6.66 ≈ 1.45×). Contrast M's explicit clamp: here the log does the clamping.
+
+**Hysteresis, stated honestly.** The gate is a stateless two-bin Schmitt trigger: entry needs
+a genuine onset in the current window; hold needs `burst_W ≥ exit` while the onset sits in
+the PRIOR window. `prior_W` must reach onset ALONE — summing the bins would open a back-door
+entry (6+6 across 20 min is not a 10-minute flood; proven in scenario (a), §14.4). Known
+approximation vs a stateful trigger: a flood lingering in `[exit, onset)` for longer than W
+without re-reaching onset drops the gate one window early. The 5-minute model TTL adds the
+same dwell it adds to every factor, and W > model-TTL, so a detected flood both surfaces
+within one TTL and survives at least one rebuild.
+
+**Rationale & wire (§4.3 extension).** When flooding, the per-card sentence gains the clause
+**"spiking: 40 in the last 10 min"** — the absolute count and window, per #365 ("beats a bare
+ratio"); when `burstUnknown`, the clause is "recent arrival rate unknown". Wire fields in
+§14.6.
+
 ### 4.2 Interface consumed from track R2 (#347 design / #351 API) — dependency, not duplication
 The score consumes, per `(signatureHash, algoVersion)`:
 
@@ -413,6 +527,7 @@ versioned and logged so a tooltip's numbers are reproducible.
 | Parameter | Estimator | Fallback while thin |
 |---|---|---|
 | `arrivals_28d(c)` (F) | sum of positive `total` deltas over 28 d occurrence rows, with the baseline **seeded at 0 for the incident's own first-ever row** (a class's birth IS an arrival; a window merely starting mid-life is not); truncated points (floors) never produce negative-then-positive phantom arrivals — deltas across a truncated boundary are discarded, **and identically across a BLIND boundary** (`cycle_complete = false`, V21: an unreachable engine makes a multi-engine class's total drop and recover, which is an outage, not 900 arrivals). The aggregate returns `observedSamples`/`trustedSamples` alongside the sum so "0 arrivals" and "no trustworthy sample" are distinguishable | 0 when the class has no in-window row; **neutral `F = 1` when it has rows but no trusted sample** |
+| `burst_W(c)` / `prior_W(c)` (F, §4.1a — amendment #365, build pending) | positive trusted-delta sums over `(asOf−W, asOf]` and `(asOf−2W, asOf−W]`, four FILTERED columns on the SAME `arrivalsSince` pass — identical trust discipline (truncation + blind boundaries discarded), identical F3 birth seeding (the birth delta lands in whichever bin holds its bucket, once), plus bin-scoped sample counts so a wholly-untrusted bin is distinguishable from a quiet one | gate off + shipped `F` when the bin is untrusted (`burstUnknown`) or empty; the amendment is inert outside flood conditions |
 | τ (R) | keep = quiet-window 24 h; re-estimate later from episode inter-arrival distribution | constant 24 h |
 | `medMTTR(c)` (M) | median closed-episode `ended_at − started_at`, per class with ≥ 3 closed episodes; fleet median otherwise | neutral 1 |
 | `p_heal(c)` (S) | **not estimated here** — consumed from #351 (§4.2) | neutral 1 |
@@ -664,3 +779,140 @@ with `inspector.triage.attention-ordering` OFF is unchanged and still provably i
 `cycle_complete`); no new engine call anywhere; no card hidden (R-BAU-01 ordering-only holds);
 `inspector.triage.attention-ordering` still defaults false and `AttentionOrderingNeutralityTest`
 still proves the flag-off path returns the very same object with zero queries.
+
+## 14. Amendment round — burst-aware frequency (#365, 2026-08-04, DESIGN)
+
+Formula and invariants in §4.1a; this section is the auditable record: provenance, the
+required measurement (§5's method re-run), the synthetic hypothesis proofs, the build-slice
+specification, and the panel. **Design only — no production code changes in this round.** The
+measurement script is `scripts/replay-burst-attention.py` (REST-only, VIEWER, `--cache`
+preserves the exact response bytes a quoted number derives from).
+
+### 14.1 Provenance
+Issue #365, minted from the full-text calibration digest (#356 comment 5182803157). Literature
+in §0 (amendment paragraph): Beebe et al. 2013 (10.1002/prs.11539) for peaks-not-averages;
+ISA-18.2 for the 10-minute flood window and the asymmetric onset-10/end-5 thresholds the
+defaults adopt verbatim; EEMUA 191 for the same ceilings as benchmarks. Evidence grades stated
+in §0 — the Beebe paper is practitioner-grade (4 uncontrolled sites) and is cited for framing
+and consensus ceilings, not causal proof.
+
+### 14.2 Sampler cadence & coverage (MEASURED 2026-08-04 ≈ 18:27–20:40 Z, §5 method)
+REST-only against `https://pi.naumann.cloud` as dev-ladder `viewer` (HTTP Basic, no DB
+access): `GET /api/incidents`, `GET /api/incidents/{4,5}?window=720`, `GET /api/triage`.
+Current-generation series: **21,909 points per class over 21,949 min** (99.81 % bucket
+coverage — §5.1's 99.8 % re-verified, not copied). Spacing mode **60 s** (21,869 of 21,908
+intervals); **39 gaps > 60 s, max 4.0 min, 80 min total**; **zero truncated rows**.
+
+**New measured fact the §5 round did not surface: 21,741 of 21,909 rows (99.2 %) are BLIND
+(`cycle_complete = false`).** Every row before **2026-08-04T15:39 Z** is blind; complete
+cycles begin exactly when the declared `engine-7` slot got a real engine (commit 015c9e1) —
+before that, a registered-but-unreachable engine made every cycle incomplete, and the V21
+fail-closed backfill marks all pre-V21 rows blind by design. The trusted era was therefore
+**168 minutes old at extraction**. This is the trust discipline working as specified (#302),
+and it is the honest headline of the feasibility note: **on this pilot the binding constraint
+on burst measurement is the trust discipline, not the cadence.**
+
+### 14.3 Data-feasibility note — the finest honest burst window (MEASURED)
+Bin honesty measured on the full minute grid (a bin is evaluated at model-build time, which
+lands anywhere — sample-anchored positions structurally cannot be empty and were not used):
+
+| W | empty bins (whole grid) | untrusted bins (whole series) | untrusted bins (trusted era) |
+|---|---|---|---|
+| 2 min | 0.009 % | 99.23 % | 0.000 % |
+| 5 min | 0.000 % | 99.24 % | 0.000 % |
+| 10 min | 0.000 % | 99.24 % | 0.000 % |
+| 15 min | 0.000 % | 99.24 % | 0.000 % |
+
+The whole-series untrusted fraction is the blind-prefix artifact above, not a cadence
+property — inside the trusted era every candidate window is 0.000 % untrusted. **The finest
+honest burst window this sampler supports is 5 minutes**: the max recorded gap is 4.0 min, so
+a 5-min bin always contains ≥ 1 sample, while 2-min bins measurably go empty (0.009 % of grid
+instants) and a 1–2-sample bin cannot distinguish "quiet" from "blind" robustly. **The
+default W is 10 minutes anyway** — it is ISA-18.2's own flood window, it guarantees ≥ 6
+samples across the worst recorded gap, and the gap-attribution slop (a delta spanning a gap
+banks up to 4 min of arrivals into one bucket, shifting them across a bin edge by at most
+that much) stays well under the window. Sub-hour resolution is comfortably supported;
+sub-5-minute is not honest on the measured cadence.
+
+### 14.4 Replay & synthetic proofs (MEASURED — the required simulation)
+**Pilot replay** (proposed burst-aware `A(c)` vs shipped `A(c)` vs count-only, every recorded
+bucket, R = M = S = 1 exactly as §5.5 measured them): **21,909 / 21,909 buckets identical —
+Kendall τ = 1.0000, 0 top-N position changes, 0 flood-gate activations.** During the blind
+prefix both classes read `arrivalsUnknown` ⇒ `F = 1` (a tie), and ties fall to the count-only
+tie-break; in the trusted era arrivals are genuinely 0. **A NULL RESULT, as expected and as
+§5.5 already found for the base score**: 2 near-static classes give ordering no room to move.
+No benefit claim is made from the pilot. A **birth-trusted counterfactual** (the one
+untrusted-birth bucket treated as trusted) exercises the gate on real data: incident 4's
+birth (22 ≥ onset) holds the gate for exactly the 10 in-window buckets, incident 5 (8 <
+onset) never fires, and the ordering STILL changes at 0 buckets — the gate moves scores, not
+this pilot's order.
+
+**Synthetic scenarios** (the hypothesis proof the pilot cannot supply; script §4, exact
+numbers):
+
+| Scenario | Shipped F | Proposed F | Verdict |
+|---|---|---|---|
+| (a) trickle: 100 arrivals / 28 d | 6.66 | 6.66 (gate off) | indistinguishable pair… |
+| (a) flood: same 100, all in last 10 min | 6.66 | **9.65** (gate on) | …now ranks the flood first — the #365 gap, closed |
+| (a) sub-onset: 9 in W | 6.66 | 6.66 (gate off) | byte-identical below the ISA onset |
+| (a) hysteresis: 7 in W, prior 12 / 4 in W, prior 12 | — | gate **on** / gate **off** | ISA asymmetric onset 10 / exit 5 |
+| (a) back-door probe: 6 in W + 6 prior | 6.66 | 6.66 (gate off) | 12/20 min is not a 10-min flood — hold leg needs a genuine onset |
+| (b) birth flood: 0 → 5000 in one bucket | 12.29 | **15.29** = log2(1 + 8·5000) | counted ONCE at weight γ (partition) — F3, no double-banking; the rejected multiplier shape would have re-banked it |
+| (c) wholly-untrusted 28 d window | 1 (`arrivalsUnknown`) | 1 (`arrivalsUnknown`, gate off) | F2 verbatim — neutral, never a fake zero |
+| (c) burst-bin-only untrusted | 5.67 | 5.67 (`burstUnknown`, gate off) | an unknown bin suppresses a promotion, never demotes |
+| (d) empty-history corpus | all 0.0 | all 0.0 | order == count-only exactly (§5.5 guarantee) |
+
+### 14.5 Build-slice specification (the contract for the #365 build agent)
+No re-derivation should be needed; deviations get named here per the §11/§12 precedent.
+
+- **Aggregate** — extend `IncidentOccurrenceRepository.arrivalsSince` (same single pass, new
+  params `:burstSince = asOf−W`, `:priorBurstSince = asOf−2W`, half-open bins `(from, to]`):
+  four new columns `burst_arrivals`, `prior_burst_arrivals` (both
+  `COALESCE(SUM(GREATEST(d.delta, 0)) FILTER (WHERE d.trusted AND <bin predicate>), 0)`) and
+  `burst_observed_samples`, `burst_trusted_samples` (`COUNT(*) FILTER` over differenceable
+  rows in the current bin; the prior bin needs no honesty counts — it only feeds the gate,
+  and an untrusted prior can only fail to hold a promotion). The inner projection additionally
+  exposes `o.sampled_at`. Invariant: `burst_arrivals ≤ arrivals` (same filters, narrower
+  time) — assert it in the IT.
+- **`ClassHistory`** — add `burstArrivals`, `priorBurstArrivals`, `burstUnknown`
+  (`burst_observed > 0 AND burst_trusted = 0`), `discardedBurstSamples`.
+- **Config** — `InspectorProperties.Attention` + `AttentionConfig`: `burst-window` (PT10M),
+  `burst-onset` (10), `burst-exit` (5), `burst-weight` (8.0), with `OrDefault` accessors like
+  every sibling knob. Two validation rails at binding: `burst-exit ≤ burst-onset` (an exit
+  above onset inverts the Schmitt semantics — refuse, don't reinterpret), and a startup
+  WARN when `burst-window ≤ model-ttl` (the §4.1a dwell argument assumes W > TTL; a smaller
+  W is legal but loses the a-flood-survives-one-rebuild property).
+- **Calculator** — `AttentionScoreCalculator.frequency(...)` grows the gate + decomposition
+  exactly as §4.1a; pure/static, no new dependencies.
+- **Wire** — `AttentionFactors` + `flooding` (boolean), `burstArrivals` (long),
+  `burstWindowSeconds` (long), `burstUnknown` (boolean), `discardedBurstSamples` (long);
+  `npm run gen:api` re-run and the diff committed.
+- **Rationale** — `AttentionRationale`: flooding ⇒ `spiking: {burstArrivals} in the last
+  {W as minutes} min`; `burstUnknown` ⇒ `recent arrival rate unknown`.
+- **Test rungs** (the same rungs as the F2/F3 correction round): `LedgerNativeQueriesIT` —
+  bin split inside/outside W; birth row inside W counts once in BOTH `arrivals` and
+  `burst_arrivals` (containment, exact values); wholly-untrusted bin ⇒ `burst_trusted_samples
+  = 0` with `burst_observed_samples > 0`; prior-bin column; mid-life window start still
+  discards its first row. Pure-static `AttentionScoreCalculatorTest` — flood-vs-trickle
+  ordering; sub-onset byte-identity with the shipped formula; Schmitt entry/hold/exit + the
+  back-door probe; `burstUnknown` forces gate off and never lowers F; whole-window unknown
+  still reads 1; `AttentionOrderingNeutralityTest` extended for the new factor fields, its
+  empty-ledger count-only assertions unchanged.
+- **Spec-sync** — this amendment is design-only and owes no doc delta beyond this file;
+  the build slice owes: SPECIFICATION §4 (attention-score sentence gains the burst clause),
+  the ARCHITECTURE §4 `GET /api/triage` row (factor list + burst-gate summary), and the
+  IMPLEMENTATION-PLAN research-track record — per that slice's DoD, the §9 posture.
+
+### 14.6 Panel review (repo convention — two independent seats, honest ledger)
+
+| Seat | Model | Verdict | Findings & disposition |
+|---|---|---|---|
+| Architecture/data | Gemini `gemini-2.5-flash` (2026-08-04; `gemini-2.5-pro` quota-blocked 429 — the §10 tier-fallback precedent) | **APPROVE** | Reviewed the full §4.1a + §14 text against the five invariants, the Schmitt edge cases, the SQL shape and the wire fields. Explicitly cleared: no double-counting path (partition), no demote/fake-zero path (gate is promote-only; unknown bin suppresses promotion only), neutrality intact, back-door-entry probe correct, W/onset/exit justified by ISA-18.2 + the feasibility measurement, filtered-column SQL shape standard and low-risk. **One MINOR (adopted)**: γ = 8 had no stated rationale — §4.1a now derives it from the bounded-inflation ceiling (≈ 1.87×, matched to the M clamp's 2× order) and flags it un-fittable until real floods exist. |
+| Product/ops | GitHub Models (`copilot` MCP) | **SEAT UNAVAILABLE** | The endpoint is permanently gone (HTTP 410, GitHub Models catalog sunset — verified 2026-08-04, not quota). Per the standing rule the seat was NOT filled by an unauthorized substitute and nobody self-graded in its place. **The second seat is owed** before or at the design-lock PR, same as §10. |
+
+Exact review exchange preserved in the amendment session transcript. Author's own adversarial
+pass (recorded because it changed the design before review): the first draft's gate hold leg
+read `burst_W + prior_W ≥ onset`, which admits a back-door ENTRY (6+6 across 20 min gates as
+a flood that never had an ISA onset) — corrected to `prior_W ≥ onset` alone and pinned by the
+scenario-(a) back-door probe in §14.4. Two post-review validation rails (exit ≤ onset,
+W-vs-TTL WARN) were added to §14.5 on the author's judgment, not panel findings.
