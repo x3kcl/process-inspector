@@ -19,9 +19,15 @@ round's feasibility measurement found 99.2 % of the pilot's occurrence rows are 
 TRUSTED span** and its earliest-satisfaction date moves ≈ 2026-09-14 → ≈ 2026-09-29 (§5.1,
 §5.5 and §7 corrections). G1–G4 were audited and are not trust-gated.
 
-**§8's usability A/B run plan is AUTHORED (issue #366, 2026-08-04) — comprehension probe +
-operator doc (R-SEM-25, `docs/usability/MISSIONS.md` M13, `docs/OPERATOR-QUICK-START.md`)
-specified end to end, run NOT YET EXECUTED (§8.8).** Issue #359 (the transiently-failing
+**§8's usability A/B run (issue #366) is ★ EXECUTED, 2026-08-04, N = 5 per arm — both §8.7
+gates met, so flag-on is RECOMMENDED (§8.8).** Under count-only every tester went to the
+biggest class; under attention ordering every tester went to the costliest one. But the
+reordering ALONE did not do the work: 3 of 5 arm-B testers still picked the largest class on
+first glance and switched only after reading the rationale tooltip — Laberge's display-alone
+finding reproduced on our own UI, and the argument for shipping the operator note WITH any
+flip. `S` was neutral and the §4.1a burst term inactive throughout, so neither was exercised
+(§8.8). The §7 data-maturity gate still governs the actual flip and is still NOT MET.
+Issue #359 (the transiently-failing
 self-heal seed fixture) landed 2026-08-04 as `85342e1`/PR #368 — ALL FOUR self-heal lanes,
 including `SELF_HEAL_LIKELY`/`SELF_HEAL_MIXED`, are now stageable for §8 (§8.6); the fixture
 is opt-in (`PI_SEED_SELF_HEALING=1`) and, by design, counts toward neither this doc's own §7
@@ -842,6 +848,17 @@ appended to the tester protocol only when `mission === 'M13'`:
 
 ### 8.6 Self-heal lane reachability — how to stage each lane (superseded #359 note below)
 
+> **Second correction, from the 2026-08-04 EXECUTED run (§8.8) — "stageable" is not
+> "cheap".** This section says all four lanes are reachable post-#368, and that is true. The
+> run then measured what it actually costs at the **production 60 s `sample-interval`**:
+> `SELF_HEAL_LIKELY` needs 10 unconfounded spells **plus** `dwell-cycles: 10` (~10 min)
+> before the lane even displays, while a spell is only ~20–30 s of real retrying — so spells
+> are barely separable in the series and one was already excluded as confounded. #368's ITs
+> get there by driving `sampler.sampleOnce()` against bucket boundaries, NOT via the
+> scheduled sampler. **Budget a dedicated 30–40 min staging pass, or accept a neutral `S` and
+> say so** — the executed run took the second option and recorded it. Do not read this
+> section as promising a cheap `S`.
+
 **Superseded, kept for provenance (repo correction convention, §13 / RETRYING-RISK-LANE.md
 §10 precedent):** this section originally read "`SELF_HEAL_LIKELY`/`SELF_HEAL_MIXED` are
 NOT reachable in fixtures until issue #359 lands" — TRUE when first authored (2026-08-04,
@@ -915,18 +932,37 @@ coverage regardless of which lane was reached.
    staged `S`-driven fixture is still usability evidence, never §7/§7.2 gate evidence
    (§8's own correction note).
 
-### 8.8 Verdict — NOT YET RUN
+### 8.8 Verdict — ★ EXECUTED 2026-08-04 (dev stack, hp04)
 
 | Arm | N testers | Median time-to-first-relevant-card | Comprehension pass rate (/b+/c) | Stability check | Verdict |
 |---|---|---|---|---|---|
-| A (flag off, control) | — | — | n/a (badge absent) | — | **NOT YET RUN** |
-| B (flag on) | — | — | — | — | **NOT YET RUN** |
+| A (flag off, control) | **5** | **planted class NEVER REACHED** (5/5 drilled the largest class instead; median time to *any* first drill 108.4 s, n=4 — A2 never drilled) | n/a (badge absent — 4/5 scored `unsupported`, 1 `partial`, all reporting no ordering text exists) | n/a | **control observed as designed** |
+| B (flag on) | **5** | **79.7 s** (66.4 / 66.8 / 79.7 / 85.4 / 184.5) | **10/10 = 100 %** | **PASS** — identical order across 3 refreshes | **both gates met** |
 
-**Decision (per §8.7's rule): NOT YET RUN — no recommendation until this table is filled
-from a real execution.** Self-heal lanes actually exercised: **NOT YET RUN**. Do not
-populate this table from anything other than a real `usability-run` execution against a
-live dev stack; a fabricated or extrapolated verdict here is exactly the failure mode this
-doc's own §5/§13 correction history exists to prevent.
+**Decision (per §8.7's rule): flag-on is RECOMMENDED — (comprehension pass) AND (arm B ≥ arm A) are both satisfied.** This is a recommendation to the session owner, not an activation: `inspector.triage.attention-ordering` remains **default-false**, and the §7 data-maturity gate is **still NOT MET (0 of 5)** and governs the actual flip independently of this usability result.
+
+**Fixture (dev stack, `uxrun-m13-*`).** 6 live classes. Planted costly class = `MethodNotFoundException` (`zooMethodNotFound`), **15 instances**, `M = 2.0` from 3 closed episodes (median 241 s) against a deliberately depressed fleet median (93 s, held down by 3 × ~12 s episodes on `StringIndexOutOfBoundsException`). Largest class = `ArithmeticException`, **34 instances**, `M = 1`. Server-computed order at dispatch: **15-member planted class (score 8.0) above the 34-member class (5.13)** — count-only would invert them. Rationale served: *"15 failing · last seen just now · typically takes 4 min to resolve · no self-heal history."*
+
+**Result in one line: under count-only every tester went to the biggest number; under attention ordering every tester went to the costliest class.** Arm A: 5/5 picked the 34-member class. Arm B: 5/5 finished on the planted 15-member class, 4/5 drilling into it.
+
+#### The finding that matters more than the pass — the ordering alone did not do the work
+
+**3 of 5 arm-B testers still picked the 34-member class on first glance** and only switched *after* hovering the rationale tooltip (B5, torn between the two, said so explicitly). The reordering by itself did not redirect them; **the explanation did**. That is Laberge's result reproduced in miniature on our own UI — display-alone is not the intervention, display-plus-strategy is — and it is the empirical argument for the operator note (§8.1) being shipped *with* any flag flip rather than after it.
+
+Sharpened by task /c (restate the ranking from the card face **without** re-reading the tooltip): **B3 `unsupported`, B1 and B2 `partial`** — testers could not reconstruct the ranking from visible text. B5 named the mechanism precisely: *"[the `ranked by attention` pill] names the mechanism but gives zero indication that hovering unlocks the actual reasoning, and a fast-scanning user … will default to raw instance/DLQ counts, which point at a different card than the one the ranking actually favors."* **The reasoning lives only in a hover.** A 3am reader who does not hover — or is on a device that cannot — gets a re-ordered list with no visible justification, and their instinct points elsewhere. Filed as a follow-up rather than silently absorbed into a green verdict.
+
+#### What this run did NOT exercise (do not read it as covered)
+
+- **`S` was neutral throughout.** Every class sat at `INSUFFICIENT_HISTORY` (`0`–`1 of 10 spells observed`); no class reached `SELF_HEAL_LIKELY`/`MIXED`, so **the self-heal demotion story was not tested**. Reaching the floor organically needs 10 unconfounded spells **plus** `dwell-cycles: 10` (~10 min at the 60 s beat) while a spell is only ~20–30 s of real retrying — which is precisely why #368's ITs drive `sampler.sampleOnce()` against bucket boundaries instead of the scheduled sampler. §8.6 lists these lanes as stageable; **at the 60 s production cadence that is true only with a dedicated staging pass this run did not spend.**
+- **The §4.1a burst term was not active.** `flooding: false`, `burstArrivals: 0` at dispatch — the staged burst aged out of `W = PT10M` before arm B started. The discriminator was `M` alone. **#365's burst gate is proven by simulation and unit/IT coverage, not by this run.**
+- **Ordering divergence here is attributable to `F`/`R`/`M` only**, exactly as §8.2 step 5 requires this case to be reported.
+
+#### Honesty notes
+- Arm B's 184.5 s outlier (B2) is **self-flagged by that tester as captured ~59 s late**, and B2 drilled a non-planted incident; kept in the median unadjusted rather than discarded.
+- Both arms ran the same fixture; the two arms are separate BFF process lifetimes (`INSPECTOR_TRIAGE_ATTENTION_ORDERING` set at start, per §8.4) — not a live flip.
+- This run is **usability evidence only**. The `PI_SEED_SELF_HEALING` fixture and every `uxrun-m13-*` instance count toward **neither** the R4 grouping-quality corpus **nor** this doc's §7 gate **nor** RETRYING-RISK-LANE.md's §7.2 gate.
+- Incidental defect surfaced by arm A (A3): the landing card read `34 instances` while the drilled grid read `42 instances`. Documented behaviour (the card's own tooltip warns the live query can disagree) but jarring on first read.
+- Recurring copy complaint across **8 of 10 testers**: *"1 spell excluded from this statistic (operator-confounded, a sampling gap, …)"* and `R-BAU-10` / `BFF` / `Stage-0` as unglossed jargon.
 
 ## 9. Doctrine compliance & non-goals
 
