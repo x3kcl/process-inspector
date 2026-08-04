@@ -1,0 +1,407 @@
+# Alarm & Attention Cost Model — cost-aware noise policy for Stage 0 + incident ledger (R1)
+
+Status: **DESIGN** — issue #348 (track R1, umbrella #356) · drafted 2026-08-04 from a live
+pilot-ledger measurement · panel: 1 of 2 seats complete, second seat owed (§10) · build
+slices #353 (backend attention score) and #354 (frontend ordering + rationale) are gated on
+this doc being locked AND on the data-maturity gate (§7) for pilot activation
+
+## 0. Provenance
+
+Drafted 2026-08-04 from (a) a hand inventory of every hand-tuned noise-control constant in
+the current codebase (§2, file:line cited) and (b) a REST-only extraction of the REAL pilot
+incident-ledger history from the live demo (`https://pi.naumann.cloud`) — method and raw
+numbers in §5, which is the auditable substrate for every calibration claim in this doc.
+Measured facts are labeled MEASURED; everything else is design proposal.
+
+Literature base (#348, DOIs verified in #356): Fahrenkrog-Petersen et al., *Fire Now, Fire
+Later* (KAIS 2022, 10.1007/s10115-021-01633-w) — the parameterized alarm cost model this doc
+adapts; Shoush & Dumas, *When to Intervene?* (BPM 2022, 10.1007/978-3-031-16171-1_13) —
+ranking cases for scarce operator attention; Wang/Yang/Chen/Shah, *An Overview of Industrial
+Alarm Systems* (IEEE TASE 2016, 10.1109/TASE.2015.2464234) — the alarm-overload human-factors
+case SPEC §4 already gestures at ("alarm fatigue within weeks").
+
+Panel review (repo convention, two independent seats — full outcome in §10): the Gemini
+seat reviewed and returned APPROVE-WITH-CHANGES (findings adopted below); the GitHub-Models
+seat was **unavailable at review time** (service-level HTTP 410 Gone) and was NOT
+substituted with an unauthorized model — the seat is recorded as owed, to be taken before
+or at the design-lock PR.
+
+## 1. Problem
+
+Stage 0's noise controls all work — the pilot has not rotted into alarm fatigue — but every
+one of them is a hand-tuned constant chosen by intuition at build time:
+
+- the two derived health-strip alarms (*oldest executable job age*, *overdue timers*) and
+  their R-NFR-04 thresholds,
+- the R-BAU-01 ack auto-resurface baseline factor (+20%),
+- the ack-expiry presets (no suggested default at all),
+- the incident-ledger regression hysteresis (`regression-min-count`),
+- and the triage-card ordering itself, which is **count-only**
+  (`TriageAggregationService.java:126` — `total DESC`): a 300-count known-noisy class
+  outranks an 8-count outage of a critical dependency forever.
+
+The prescriptive-monitoring literature replaces intuition with an explicit **cost model**:
+missed/late-attention cost vs. operator-attention cost, with mitigation effectiveness as a
+first-class parameter. This doc defines that model, states which knobs become model-derived
+and which honestly stay constants, and specifies how parameters are estimated from
+incident-ledger data — with a numeric data-maturity gate, because the pilot ledger is
+demonstrably too thin today (§5, §7).
+
+**This track orders and expires attention only. It prescribes no interventions** (issue
+#348 non-goal; #106 remediation playbooks stay untouched and gated). There are no
+notification channels (none exist; out of scope). Ordering **never hides a card** —
+acknowledged groups keep their labeled, never-hidden collapse semantics (R-BAU-01)
+verbatim.
+
+## 2. Current constants — inventory (MEASURED from code, 2026-08-04)
+
+| # | Knob | Current value | Where | Verdict (§3/§7) |
+|---|---|---|---|---|
+| C1 | Triage card ordering | count-only, `total DESC` | `backend/src/main/java/io/inspector/triage/TriageAggregationService.java:126` | → **model-derived** (attention score, §4) |
+| C2 | Ack-expiry default | **none** (expiry optional; server validates only ISO/future — `ErrorGroupAckService.java:221-238`); UI presets none/4h/24h/3d/7d/30d, initial selection `none` | `frontend/src/triage/AcknowledgeGroupModal.tsx:18-26,41` | → **model-derived suggestion** (class-P75 episode duration, §3.2), presets stay |
+| C3 | Auto-resurface baseline factor | +20 % past acked baseline | default in `backend/src/main/java/io/inspector/config/InspectorProperties.java:67-69` (`ack-resurface-threshold-pct`), consumed `ErrorGroupAckPolicy.java:85` | → **model-derived** (jitter-calibrated, §3.3) |
+| C4 | Regression hysteresis | `regression-min-count` = 1 (plus the zero-state gate) | `InspectorProperties.java:193-195`, consumed `IncidentLedgerService.java:224` | **stays a constant** (§3.4 — zero regressions ever observed; nothing to fit) |
+| C5 | R-NFR-04 alarm thresholds | oldest executable job: warn > 5 min / crit > 15 min; overdue-timer grace 60 s; any overdue = warn, > 100 = crit (SPEC §4); client display mirror warn = 300 s | `InspectorProperties.java:530-542` (`AlarmThresholds`); `frontend/src/components/HeaderStrip.tsx:15-17`; SPEC §4 "Alarm thresholds" | **stay constants** (§3.4 — zero starvation events in 21 d of snapshot history; per-engine override already exists) |
+| C6 | Recency-adjacent: incident quiet window | 24 h (read-time derivation) | `InspectorProperties.java:189-191` | reused as the recency half-life default τ (§4) — one operator mental model |
+| C7 | Context: triage cache TTL / refresh throttle | 20 s / 10 s | `InspectorProperties.java:55-61` | untouched (spec-pinned, R-NFR-03) |
+
+Incident-list ordering (`GET /api/incidents`) is `lastSeen DESC` under section grouping
+REGRESSED → OPEN → QUIET → RESOLVED (INCIDENT-LEDGER §6/§8) — the list keeps its section
+doctrine; the attention score orders **within** the live sections only (§4).
+
+## 3. The cost model
+
+Adapted from *Fire Now, Fire Later*: an attention policy is an alarm policy with explicit
+costs. Per error class `c` (R-SEM-03 fingerprint, the ledger identity):
+
+| Parameter | Meaning | Source |
+|---|---|---|
+| `c_att` | cost of drawing operator attention (surfacing/resurfacing a card) — the alarm-fatigue currency | constant per deployment; never per-class |
+| `c_miss(c)` | cost of delayed attention: live stuck instances × time, weighted by how expensive this class historically is to clear | `lastTotal` × MTTR statistics (ledger episodes) |
+| `eff(c)` | mitigation effectiveness — probability operator intervention actually drains the class | ledger occurrence deltas joined to intervention timestamps (§6; MEASURED once on the pilot, §5.4) |
+| `p_heal(c)` | self-heal probability | **consumed from track R2** (#347 design / #351 API) — interface in §4.2, never computed here |
+
+Expected net benefit of attending to `c` now:
+`B(c) = (1 − p_heal(c)) · eff(c) · c_miss(c) − c_att`. Three derivations fall out:
+
+### 3.1 Ordering (→ §4)
+`c_att` is identical across cards, so ranking by `B` reduces to ranking by the product
+score — no absolute cost calibration needed for ordering. This is why the ordering can ship
+first: it is the cost model's *ordinal* shadow and needs no currency unit.
+
+**`eff(c)` is deliberately NOT a factor of the v1 attention score** (panel fix — stated
+explicitly rather than implied): per-class effectiveness attribution is blocked for
+single-job verbs (redacted audit payloads carry no signature, §5.4/§6), so in v1 `eff`
+would collapse to a fleet-wide prior and discriminate nothing — a constant factor with an
+honesty problem. It parameterizes the conceptual model `B(c)` and the §3.2/§3.3
+derivations; it enters the *ordering* only in a future revision, if per-class attribution
+(bulk error-class envelopes first) ever produces per-class values that pass the same
+sample-size rails as every other estimate.
+
+### 3.2 Ack-expiry suggested default (C2)
+An ack is a bet that attention is not needed for a while. The break-even mute duration is
+when accrued expected miss-cost reaches `c_att`. Proxy without currency calibration: suggest
+the expiry preset nearest the class's **P75 closed-episode duration** ("episodes of this
+class usually resolve within X") once the class has ≥ 3 closed episodes; otherwise the
+fleet-tier P75; otherwise no suggestion (today's behavior, selection `none`). UI change is a
+**pre-selected preset + one-line why**; the operator always overrides; the resurface
+guarantees are untouched.
+
+### 3.3 Auto-resurface baseline factor (C3)
++20 % is currently arbitrary. Model-derived: the threshold should exceed normal
+within-episode count jitter so a resurface fires on genuine growth, at a target
+false-resurface budget. Estimator: per class, the coefficient of variation `CV(c)` of
+occurrence totals within stable episode segments; threshold
+`t(c) = max(floor_pct, k · CV(c))` with `floor_pct = 10 %`. `k` is fit by
+**counterfactual-ack replay** (panel fix — real acks are not required to *fit*): simulate
+an ack at every stable occurrence-series point, replay the threshold forward, and count
+simulated resurfaces not followed by genuine episode growth as false — computable from
+`incident_occurrence` alone, so the estimator is well-defined even at 0 real acks. Real ack
+lifecycles (gate G4) are then required to *validate* the derived threshold against actual
+operator behavior before it takes effect: **C3 switches to the derived value only after the
+full §7 gate**, and until then the constant 20 % stays and the config key keeps working as
+today (per-deployment override). Target budget: ≤ 1 false resurface per 30 ack-days on the
+replay.
+
+### 3.4 What stays a plain constant — honesty about thin data
+- **C5 R-NFR-04 thresholds**: executor starvation is engine-executor pathology observed in
+  the snapshot store, not the ledger — and the pilot has **zero** starvation events in 21
+  days of history (§5.6): nothing to fit, and the event is too rare to ever fit soon.
+  Per-engine YAML override remains the operator's control. Not model-derived.
+- **C4 regression hysteresis**: zero regressions (true or false) ever recorded (§5.3). The
+  zero-state gate (INCIDENT-LEDGER §5) is the primary anti-zombie control; `min-count = 1`
+  stays. Re-visit only if false regressions are ever actually observed and hurt.
+- `c_att` itself: no interruption-cost telemetry exists or is planned; it stays implicit
+  (it cancels out of ordering, and §3.2/§3.3 use proxies).
+
+## 4. Attention-score ordering (issue point 2)
+
+### 4.1 Score
+Per live (non-acknowledged) card `c`, computed BFF-side at render join time — exactly where
+ack state joins today, from ledger + R2 data already in the BFF's own Postgres. **Zero new
+engine calls; the Stage 0 iron rule (count-only/`size=1` aggregation queries + the dedicated
+DLQ scan, never the grid-search plan) is untouched** — the score consumes the aggregation's
+output, never adds a leg to it.
+
+```
+A(c) = F(c) · R(c) · M(c) · S(c)
+
+F(c) = log2(1 + arrivals_28d(c))          frequency — positive occurrence-total deltas,
+                                          28d trailing, from incident_occurrence
+R(c) = 2^(−age(lastSeen(c)) / τ)          recency — τ default 24h = the existing
+                                          quiet-window constant (C6)
+M(c) = clamp(medMTTR(c) / medMTTR(fleet), 0.5, 2)
+                                          historic cost — closed-episode durations only;
+                                          < 3 closed episodes ⇒ 1 (neutral) + "no history"
+S(c) = 1 − p_heal(c), floored at 0.25     self-heal demotion — R2 statistic (§4.2);
+                                          null/insufficient ⇒ 1 (neutral)
+```
+
+Tie-break: live `total DESC`, then `signatureHash ASC` — the R-SEM-23 deterministic total
+order, and the guarantee that **with no history the ordering degrades to exactly today's
+count-only ordering** (proven on the pilot data, §5.5 — this is a feature: neutral factors
+can never make the landing worse than today).
+
+Rules:
+- **Ordering only — never hides.** Every live card renders; acknowledged groups keep their
+  labeled collapse + auto-resurface semantics untouched; the score does not touch the
+  Acknowledged section's membership, only the sort within the live section.
+- The S factor consumes the R2 badge's **stabilized** (hysteresis-applied) rate, never a raw
+  per-cycle rate — ordering must not flap when the badge doesn't (the DMKD temporal-stability
+  rule #347 owns, inherited here by construction).
+- The 0.25 floor on `S` means a reliably-self-healing class is demoted at most 4×, never
+  zeroed — a mass self-heal class stays visible (same doctrine as never-hide).
+- Score factors ship in the DTO next to the card (`attention: {score, factors, rationale}`)
+  so the UI renders the one-sentence rationale (below) with real numbers, not vibes.
+
+### 4.2 Interface consumed from track R2 (#347 design / #351 API) — dependency, not duplication
+The score consumes, per `(signatureHash, algoVersion)`:
+
+```
+{ selfHealRate: number | null,   // stabilized, hysteresis-applied — the badge's value
+  sampleSize:   number,
+  insufficient: boolean,         // R2's own minimum-sample honesty rail
+  asOf:         instant }
+```
+
+`insufficient=true` or `null` ⇒ `S = 1` (neutral). This doc does not define how the rate is
+computed, stabilized, or floored — that is #347's design surface; #353 consumes whatever
+shape #351 ships, adapting the join only.
+
+### 4.3 Rationale — one tooltip sentence (hard requirement, issue #348)
+> "Ordered by the expected cost of waiting: freshness and growth, weighted by this class's
+> historic time-to-resolve — proven self-healers rank lower, and nothing is hidden."
+
+(Tightened per panel: one sentence, glanceable.) Per-card variant substitutes the numbers:
+*"21 failing · last seen 2 min ago · typically takes 4 h to resolve · no self-heal
+history."*
+
+## 5. MEASURED BASELINE — pilot-ledger extraction & ordering simulation (auditable)
+
+**Method.** 2026-08-04 ≈ 07:05–07:10 Z, against the live demo `https://pi.naumann.cloud`,
+authenticated as dev-ladder user `viewer` (HTTP Basic, VIEWER floor), **REST only** (no DB
+access; `docker exec` into the demo Postgres is out of bounds and was not attempted).
+Endpoints: `GET /api/incidents`, `GET /api/incidents/{1..5}?window=720` (episodes + 30-day
+occurrence series), `GET /api/triage`, `GET /api/engines`, `GET /api/audit?size=100`
+(returned 64 rows = the whole log), `GET /api/triage/trends`. Analysis: occurrence-series
+delta scan + audit-timestamp cross-matching (scripted, reproducible from the responses).
+
+### 5.1 Ledger volume & span (MEASURED)
+- **5 incidents** total; **2 current-generation** (algo v2: ids 4, 5), 3 archived (algo v1:
+  ids 1–3, orphaned by the 2026-07-20 v2 bump, all `quiet`). All 5 `state=OPEN` —
+  **0 RESOLVED, 0 REGRESSED, 0 reopens, ever**.
+- **5 episodes, all still live** (`endedAt` null) → **closed episodes = 0 → MTTR
+  observations = 0**.
+- Ledger first sighting 2026-07-19T07:08:47Z (whole-ledger span 16.0 d at extraction);
+  current-generation span 2026-07-20T12:38:02Z → 14.8 d.
+- Occurrence series: 60 s buckets; incidents 4/5 carry 21 229 points each vs ≈ 21 268
+  expected minute-buckets → **99.8 % sampler coverage** (~39 min of gaps).
+
+### 5.2 The two live classes (MEASURED)
+| | Incident 4 | Incident 5 |
+|---|---|---|
+| Class | `java.lang.ArithmeticException` — `${amount % divisor}` (demoFailingPayment + demoFailingRetry, engine-a/b) | `java.net.UnknownHostException` — acmeApiOutage, engine-a/b |
+| Live total | 21 (peak 22) | 8, constant |
+| Total-changes in 14.8 d | **1** (22→21, 2026-07-22T05:54Z) | **0** |
+| RETRYING excursions | **1**: 120 consecutive minute-buckets 2026-07-21T04:16→06:15Z (8 RETRYING / 14 DLQ), returning 8/8 to dead-letter at 06:16 — net drain 0 | 0 ever |
+
+### 5.3 Noise-control event counts (MEASURED)
+Acks: **0 ever** (no ack audit rows; both live groups unacknowledged) → resurfaces: 0 →
+ack-expiries: 0. Regressions: 0. R-NFR-04 alarm firings: 0 — 24 h trends show executable
+and timer lanes flat at 0 on both engines; live `oldestExecutableJobAge=null`,
+`overdueTimers=0`. Three engines registered (engine-a/b 6.8.0, engine-7 v7 Boot-layout).
+
+### 5.4 Intervention effectiveness (MEASURED — manual attribution, see honesty note)
+Whole audit log = 64 rows (2026-07-08 → 2026-07-27; **no operator action in the last 8
+days**): 48 retry-job, 3 bulk:retry-job envelopes, 6 edit-variable, 3 activate, 1
+restart-as-new, 3 registry-seed. Within the ledger-observable window (≥ 07-19):
+
+- 2026-07-19 07:11: 2 bulk envelopes + 10 retries → incident 1 drained 23→22 at 07:12 —
+  **1 drain / 10 retries**.
+- 2026-07-21 04:15:33: bulk retry, 30 items across both engines → the 120-min RETRYING
+  excursion above, all returned to DLQ — **0 drains / 30 retries**.
+- 2026-07-22 05:54:09 `edit-variable` + 05:54:14 `retry-job` on the SAME instance
+  (`4ba82687…`, engine-a — an instance that had survived a plain retry on 07-21) → incident
+  4 drained 22→21 in that same minute-bucket — **1 drain / 1 data-fix-then-retry**.
+- 2026-07-27: 1 retry + 1 activate → 0 drains.
+
+**Retry-only effectiveness: 1/41 ≈ 2.4 %. Data-fix-then-retry: 1/1.** (n is tiny, but it is
+the pilot's entire intervention history — and it is direct empirical support for the
+R-SEM-13 demoted-retry doctrine.)
+
+**Not exposed over REST (stated per the extraction mandate):** per-class ↔ audit-action
+attribution. Audit rows carry `instanceId` but no signature; `payload` is null over the API
+(R-AUD-03 minimization), so `relatedBulkJobs` is empty even for the 07-21 class-scoped bulk.
+The attribution above is manual cross-matching of audit timestamps/instance ids to
+occurrence-series inflections — reproducible but not an API aggregate. No API measures
+operator attention (time-to-first-drill etc.). #351 (self-heal statistics) does not exist
+yet, so no self-heal aggregate is exposed either.
+
+### 5.5 Ordering simulation — attention score vs count-only (MEASURED result)
+Replayed `A(c)` (§4.1) against count-only over all **21 229** minute-buckets of the
+current-generation window, factors computed from ledger data available *at each bucket*:
+`M = 1` at every bucket (0 closed episodes at all times); `S = 1` (no #351 statistics; even
+using the measured evidence as a stand-in, p_heal = 0 for BOTH classes — incident 4's one
+excursion returned 8/8 to DLQ, incident 5 never entered RETRYING); `R = 1` (both
+continuously live); `F` equal under the no-post-mint-arrivals convention, and ordered
+21-vs-8 under the count-initial-burst convention — same order as count-only either way.
+
+**Result: the attention ordering is IDENTICAL to count-only at 21 229 / 21 229 buckets —
+0 of 2 top-N positions change, Kendall τ = 1.0.** The 5-row incident list likewise: 0
+changes vs today's section + `lastSeen DESC` ordering.
+
+Worked examples (real buckets, factor-by-factor):
+
+**Ex 1 — extraction instant, 2026-08-04T07:05Z.**
+| factor | inc 4 (total 21) | inc 5 (total 8) |
+|---|---|---|
+| F | equal (0 arrivals both, trailing 28 d) | equal |
+| R | 1 (live) | 1 (live) |
+| M | 1 — no closed episodes | 1 — no closed episodes |
+| S | 1 — no R2 stats (measured p_heal = 0 anyway) | 1 — no R2 stats |
+| A | tie → tie-break total DESC → **1st** | **2nd** |
+
+Count-only: same order. Every factor that could discriminate is data-starved — this is the
+measured *reason* for the null result, not a model defect.
+
+**Ex 2 — mid-excursion, 2026-07-21T04:20Z.** Count-only: 22 vs 8, incident 4 first.
+Attention: same tie → same order. The instructive point is the failure mode the four-factor
+design *avoids*: a naive "recently touched, demote it" heuristic would have dropped incident
+4 below incident 5 while its 30 fresh retries were busy failing — the measured 0/30 drain
+proves that demotion would have buried the still-broken costlier class. The score has no
+touched-recently factor by design; only *proven* self-healing (R2, minimum-sample-gated)
+demotes.
+
+**Honest conclusion:** on the real pilot data the reordering makes **no difference at all**.
+The pilot is a near-static seeded demo: 2 concurrent live classes (ordering has no room to
+matter), 0 closed episodes (M inert), no R2 statistics (S inert), both classes continuously
+live (R inert). This is a legitimate finding (issue #348 point 3 anticipates it): it does
+not invalidate the model — it means the model's discriminating terms are exactly the data
+the ledger has not yet accumulated, so activation must be gated (§7) and the build ships
+flag-off (§9). No benefit claim is made for the pilot as it stands.
+
+### 5.6 What the pilot CAN already calibrate (MEASURED)
+Sampler cadence 60 s and 99.8 % series coverage (estimation windows in §6 are trustworthy);
+within-episode count jitter CV ≈ 0 on both classes (the §3.3 estimator currently returns
+the floor — a demo artifact, flagged as such, another gate argument); retry-only
+`eff ≈ 2.4 %` vs data-fix-then-retry `1/1` (n = 42, one class — a prior, not a per-class
+estimate); alarm-event base rate 0/21 d (the §3.4 stay-constant argument).
+
+## 6. Parameter-estimation plan (issue point 3)
+
+All estimators read `incident_episode` + `incident_occurrence` (+ the #351 store) in the
+BFF's own Postgres — no engine calls, no new tables. Recomputed on a daily schedule (or on
+demand) in #353, cached (Caffeine, same pattern as the triage cache), parameter values
+versioned and logged so a tooltip's numbers are reproducible.
+
+| Parameter | Estimator | Fallback while thin |
+|---|---|---|
+| `arrivals_28d(c)` (F) | sum of positive `total` deltas over 28 d occurrence rows; truncated points (floors) never produce negative-then-positive phantom arrivals — deltas across a truncated boundary are discarded | always computable (0 when absent) |
+| τ (R) | keep = quiet-window 24 h; re-estimate later from episode inter-arrival distribution | constant 24 h |
+| `medMTTR(c)` (M) | median closed-episode `ended_at − started_at`, per class with ≥ 3 closed episodes; fleet median otherwise | neutral 1 |
+| `p_heal(c)` (S) | **not estimated here** — consumed from #351 (§4.2) | neutral 1 |
+| `eff(c)` (§3) | drains attributable to interventions ÷ intervention count; needs the per-class action join `relatedBulkJobs` already defines (envelope-audit payload) — **blocked on redacted audit-payload mode for single-job verbs**; v1 scopes `eff` to bulk error-class actions only, where the envelope carries the signature | fleet prior 2.4 % (§5.4) |
+| resurface threshold `t(c)` (§3.3) | `max(10 %, k·CV(c))`, `k` fit by counterfactual-ack replay over `incident_occurrence` (no real acks needed to fit; G4 validates before activation) to a false-resurface budget ≤ 1/30 ack-days | constant 20 % (today's default) |
+| ack-expiry suggestion (§3.2) | class P75 closed-episode duration → nearest preset | no suggestion (today's `none`) |
+
+Estimation honesty rails: every derived value carries `sampleSize` + an `insufficient` flag
+mirroring R2's doctrine; an insufficient estimate renders as "no history", never as a
+number; truncated occurrence rows are floors (R-SEM-12) and never enter jitter/arrival
+estimators across their boundaries.
+
+## 7. Data-maturity gate (issue point 3 — numeric, from §5 measurements)
+
+The pilot activation of ANY model-derived behavior (ordering weights beyond neutral,
+expiry suggestion, derived resurface threshold) requires ALL of:
+
+| # | Gate | Measured today (2026-08-04) | Met? |
+|---|---|---|---|
+| G1 | ≥ 20 closed episodes fleet-wide AND ≥ 3 classes with ≥ 3 closed episodes each (M term) | 0 closed episodes, 0 classes | **NO** |
+| G2 | ≥ 6 distinct current-generation classes live concurrently at least once in trailing 28 d (ordering has room to matter) | max concurrent = 2 | **NO** |
+| G3 | #351 shipped; R2's own sufficiency rail passed for ≥ 25 % of live classes (S term) | not built | **NO** |
+| G4 | ≥ 10 completed ack lifecycles (ack → expiry/resurface/un-ack) recorded (C2/C3 calibration) | 0 acks ever | **NO** |
+| G5 | ≥ 56 d of current-generation ledger span (28 d fit + 28 d holdout) | 14.8 d | **NO** |
+
+**Gate status: NOT MET (0 of 5).** Earliest G5 satisfaction ≈ 2026-09-14; G1/G4 depend on
+operators actually resolving/acking — which the pilot's audit tail (no action in 8 days)
+shows is not yet routine. Until the gate: the score computes with neutral M/S (provably
+identical to count-only, §5.5), ships **flag-off** (`inspector.triage.attention-ordering`,
+default false), and no constant changes value. The gate is re-measured with the §5 method
+(REST-only, reproducible) and its status recorded in the PR that flips the flag.
+
+## 8. Measurement — proving the reordering helps (issue point 4)
+
+Plugs into the EXISTING usability harness (`usability-testing` skill, `usability-run`,
+`docs/usability/GOAL-CATALOG.md` format contract + `MISSIONS.md` tester briefs) — no
+parallel protocol.
+
+- **New goal** (minted in the build slice, catalog format `PRIO / CLASS / BUILT / GOAL /
+  ENTRY / SUCCESS / FIXTURE`): CLASS `UI-STAGED`; GOAL — *"a 3am first-time on-call engineer
+  landing on `/` with several failure classes on screen must start working on the class that
+  is genuinely costliest — not merely the largest — and cite what told them so."*
+  SUCCESS — tester picks the planted costly class AND cites the rationale tooltip text
+  (citation-or-nothing scoring, per the catalog contract).
+- **Staged fixture**: ≥ 4 error classes where the planted costly class (long historic MTTR,
+  no self-heal, fresh) is NOT the largest by count; a large, R2-proven self-healing class
+  ranks it out under count-only. Staged over REST seeding + a pre-seeded ledger fixture
+  (closed-episode history is stageable in the BFF's own Postgres via the normal lifecycle
+  verbs — resolve with reasons — never engine-table inserts).
+- **Metric — time-to-first-relevant-card**: wall-clock from `/` render to the tester's first
+  drill into the planted class, derived from the playwright transcript timestamps the
+  harness already records.
+- **A/B protocol**: same mission, N ≥ 5 naive testers per arm, arm A = flag off
+  (count-only), arm B = flag on. **Ship gate for #354's pilot activation**: median
+  time-to-first-relevant-card improves ≥ 25 % in arm B, no regression on the existing M1
+  step-1 overview verdicts, and a stability check — the same fixture re-rendered across 3
+  refreshes keeps an identical order (the DMKD stability requirement applied to ordering).
+
+## 9. Doctrine compliance & non-goals
+
+- **Stage 0 iron rule verbatim**: aggregations stay count-only/`size=1` + the dedicated DLQ
+  scan, never the grid-search plan; the score is a pure DB-side join over existing outputs —
+  zero new engine calls (the INCIDENT-LEDGER §9 posture).
+- **R-BAU-01 untouched**: acknowledged-collapse (labeled, never hidden), the three
+  resurface triggers, and un-ack semantics are unchanged; §3.3 only re-derives the
+  threshold *value*, behind the same config key.
+- **Ordering only, never hides**: no card is filtered, no section membership changes.
+- **#106 stays untouched** (issue non-goal): this track orders and expires attention only;
+  it prescribes no interventions and changes nothing about remediation playbooks.
+- **No notification channels** (none exist; out of scope).
+- **Truncation honesty (R-SEM-12)**: estimators treat truncated rows as floors; a card
+  whose score inputs were truncated carries the same badge doctrine as its counts.
+- **Explainability**: rationale is the one-sentence tooltip (§4.3) with per-card numbers —
+  a score no tooltip can explain is a rejected design by construction.
+- Spec-sync: this doc introduces no behavior change; SPECIFICATION/ARCHITECTURE/
+  IMPLEMENTATION-PLAN deltas land with the build slices (#353/#354) per their DoD, citing
+  this doc as the locked design.
+
+## 10. Panel review (repo convention — two independent seats, honest ledger)
+
+| Seat | Model | Verdict | Findings & disposition |
+|---|---|---|---|
+| Architecture/data | Gemini `gemini-2.5-flash` (2026-08-04; `gemini-2.5-pro` was quota-blocked 429 — same tier-fallback precedent as INCIDENT-LEDGER §0) | **APPROVE-WITH-CHANGES** | **BLOCKER (adopted)**: the §3.3 `k` estimator was undefined at 0 real acks ("ack-days" had no data) → re-specified as counterfactual-ack replay over `incident_occurrence` (fit needs no real acks), with G4 real-lifecycle validation before activation. **MAJOR (adopted)**: `eff(c)`'s weak per-class discriminatory power (single-verb attribution blocked by redacted payloads) was implicit → §3.1 now states explicitly that `eff` is NOT a v1 score factor and why. **MINOR (adopted)**: tooltip sentence tightened (§4.3). |
+| Product/ops | GitHub Models (via the `copilot` MCP) | **SEAT UNAVAILABLE** | The service answered HTTP **410 Gone** at the service level (catalog AND inference endpoints, retried, 2026-08-04) — not a per-model or quota error. Per the standing rule (no unauthorized substitute reviewers, no self-grading in a seat's place) the seat was NOT filled by another model. **The second seat is owed**: it must be taken before or at the design-lock PR, and its findings folded in before the doc's status moves past DESIGN. |
+
+Exact review exchanges are preserved in the implementation session transcript; the gate
+status in §7 and the measured numbers in §5 were not altered by review — only the three
+adopted fixes above.
