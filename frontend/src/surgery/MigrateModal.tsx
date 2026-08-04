@@ -9,7 +9,7 @@ import { useEffect, useMemo, useState } from 'react'
 import { Link } from 'react-router'
 import type { EngineDto, InstanceDetail } from '../api/model'
 import { useDefinitionVersions, useMigrateExecute, useMigratePreview } from '../api/migrate'
-import type { MigrationPreview, MigrationRequest } from '../api/migrate'
+import type { MigrationFinding, MigrationPreview, MigrationRequest } from '../api/migrate'
 import { VERBS } from '../actions/catalog'
 import { businessKeyOrInstanceToken, useProdGuard } from '../actions/guard'
 import { isReauthChallenge, problemBanner } from '../actions/problem'
@@ -27,6 +27,36 @@ interface Props {
 }
 
 const meta = VERBS.migrate
+
+// The estimate label the findings block MUST carry (INSTANCE-MIGRATION.md §14.4): a finding
+// is the Inspector's own shallow model comparison, never the engine's verdict. Kept next to
+// the findings themselves — the §5 banner states the same thing for the plan as a whole.
+const ESTIMATE_LABEL = 'BFF estimate — the engine is the only ground truth at execute.'
+
+/**
+ * Typed findings rendered by severity (§14.3). Advisory only: nothing here enables, disables
+ * or reorders a single tier-3 rail — the IRREVERSIBLE badge, reason, typed prod token, CAS
+ * digest and the ADMIN floor behave identically whether this list is empty or full.
+ */
+function FindingList({ findings }: { findings: MigrationFinding[] }) {
+  return (
+    <ul className="finding-list">
+      {findings.map((f, i) => (
+        <li key={`${f.code ?? 'finding'}-${f.activityId ?? 'instance'}-${String(i)}`}>
+          <code className="finding-code">{f.code}</code>{' '}
+          {/* Instance-level findings carry a JSON `null` activityId, which the generated type
+              models as optional — hence the typeof check, not a `!== undefined` one. */}
+          {typeof f.activityId === 'string' && f.activityId !== '' && (
+            <>
+              <strong>{f.activityId}</strong>{' '}
+            </>
+          )}
+          <span className="finding-detail">{f.detail}</span>
+        </li>
+      ))}
+    </ul>
+  )
+}
 
 export function MigrateModal({ engineId, instanceId, vitals, engine, onClose }: Props) {
   const toast = useToast()
@@ -100,8 +130,17 @@ export function MigrateModal({ engineId, instanceId, vitals, engine, onClose }: 
   // ---- Step 2: the pre-check result (mapping + verify) ----
   if (preview !== null) {
     const flagged = (preview.activities ?? []).filter((a) => a.blocker === true)
-    const warnings = (preview.activities ?? []).filter((a) => a.warning === true)
     const targets = preview.targetActivities ?? []
+    // Per-activity findings first (already in sorted-activity-id order), then the
+    // instance-level ones (§14.8) — grouped by severity, loudest first.
+    const allFindings: MigrationFinding[] = [
+      ...(preview.activities ?? []).flatMap((a) => a.findings ?? []),
+      ...(preview.findings ?? []),
+    ]
+    const bySeverity = (severity: string) => allFindings.filter((f) => f.severity === severity)
+    const blockerAdvice = bySeverity('BLOCKER_ADVICE')
+    const warningFindings = bySeverity('WARNING')
+    const infoFindings = bySeverity('INFO')
 
     const { reasonOk, tokenOk } = guard
     const problem = executeM.error?.problem
@@ -204,6 +243,15 @@ export function MigrateModal({ engineId, instanceId, vitals, engine, onClose }: 
             'Inspector pre-check — this is not a Flowable validation. The engine checks this only when you execute.'}
         </div>
 
+        {blockerAdvice.length > 0 && (
+          <div className="callout callout-prod" role="alert">
+            <p className="finding-heading">
+              Cannot build the migration instruction ({String(blockerAdvice.length)})
+            </p>
+            <FindingList findings={blockerAdvice} />
+          </div>
+        )}
+
         {flagged.length > 0 && (
           <div className="modal-field">
             <span className="verify-red">
@@ -247,18 +295,25 @@ export function MigrateModal({ engineId, instanceId, vitals, engine, onClose }: 
           </div>
         )}
 
-        {warnings.length > 0 && (
+        {warningFindings.length > 0 && (
           <div className="callout callout-amber" role="alert">
-            <ul className="warning-list">
-              {warnings.map((w) => (
-                <li key={w.fromActivityId}>
-                  <strong>{w.fromActivityId}: </strong>
-                  {w.detail}
-                </li>
-              ))}
-            </ul>
+            <p className="finding-heading">
+              Migrates, but look first ({String(warningFindings.length)})
+            </p>
+            <FindingList findings={warningFindings} />
           </div>
         )}
+
+        {infoFindings.length > 0 && (
+          <div className="callout callout-info">
+            <p className="finding-heading">
+              Consequences of migrating this instance ({String(infoFindings.length)})
+            </p>
+            <FindingList findings={infoFindings} />
+          </div>
+        )}
+
+        {allFindings.length > 0 && <p className="strip-note">{ESTIMATE_LABEL}</p>}
 
         <p className="reversibility-line">
           <span className={`reversibility rev-${meta.reversibility.toLowerCase()}`}>

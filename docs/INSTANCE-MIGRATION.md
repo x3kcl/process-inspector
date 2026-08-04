@@ -1,4 +1,4 @@
-# Instance Migration — design (v0.4, P0-spiked + panel-RE-LOCKED; §14 adds the named-findings taxonomy design, issue #349)
+# Instance Migration — design (v0.5, P0-spiked + panel-RE-LOCKED; §14 named-findings taxonomy ✅ BUILT, issues #349/#355)
 
 > Status: **P0 spike DONE + panel RE-LOCK DONE (2026-07-09) — ready for P1** (see the ✅ callout +
 > "P0 RE-LOCK DECISIONS" below). Was: **design draft**, reviewed by a 4-voice expert panel (Flowable-REST honesty,
@@ -74,12 +74,15 @@ validation.** The engine is the ground truth only at execute; there is no REST v
    to "what is sent" (TOCTOU defense); a crafted/edited client body can't diverge from the approved
    preview. The preview endpoint sits at the **same ADMIN floor + interactive bulkhead** as execute
    (it reads two models — never a lower-RBAC recon/amplification route).
-6. **Audit `migrate/v1` payload** (versioned now so batch slots in later): `engineValidated=false`
+6. **Audit `migrate-instance/v2` payload** (versioned now so batch slots in later; v1 → v2 per
+   §14.8): `engineValidated=false`
    (constant honesty marker), `fromProcessDefinitionId` (pinned), `toProcessDefinitionId` (resolved
    concrete id, pinned) + key/version, `activityMappings` (verbatim sent), `bffAutoMapped` /
-   `bffFlagged` (what the operator was shown, labelled estimate), `activityStateDigest` +
-   `activeActivities`, `childExecutionCount`, `endpoint`, `restBody`, `reversibility="IRREVERSIBLE"`,
-   `warnings`. **Closes:** *ok* → record the **observed post-migrate `processDefinitionId`** (prove
+   `bffMappedByOverride` (what the operator was shown, labelled estimate), `bffFindings` (the typed
+   §14 findings — `code`/`severity`/`activityId`/`detail`) + `taxonomyVersion`,
+   `activityStateDigest` +
+   `activeActivities`, `childExecutionCount`, `endpoint`, `restBody`, `reversibility="IRREVERSIBLE"`.
+   **Closes:** *ok* → record the **observed post-migrate `processDefinitionId`** (prove
    the move landed; don't infer from the void 200); *failed* → the **verbatim** engine error
    (32 KiB cap), `engineSucceeded=false`; *unknown* (post-dispatch timeout) → Verify-now, **never
    auto-retried** (migrate is non-idempotent, has no idempotency key).
@@ -254,9 +257,11 @@ Mirror `FlowSurgeryService.planChangeState` ORDER exactly:
 
 ## 4. Corrective-actions rails — every one
 - **Audit**: `beginPending` AFTER the server-fresh re-plan, BEFORE the migrate call. Payload
-  (`migrate/v1`): `fromDefinitionId`, **resolved** `toProcessDefinitionId` (pinned), `endpoint`
+  (`migrate-instance/v2`): `fromDefinitionId`, **resolved** `toProcessDefinitionId` (pinned),
+  `endpoint`
   string, `activityMappings`, `validationDigest` (hash of the EXECUTE-TIME re-validation, §5),
-  `childExecutionsUnaffected`, `warnings`. Close ok/failed/unknown. (Redaction hook reserved for
+  `childExecutionsUnaffected`, `bffFindings` + `taxonomyVersion` (§14.8; the v1 `bffWarnings`
+  string list is REPLACED, not kept alongside). Close ok/failed/unknown. (Redaction hook reserved for
   when variable-set lands.)
 - **Reason** ≥10 chars, always, every environment.
 - **Typed `MIGRATE`** on prod; blast-radius copy states from-version → to-version, instance id,
@@ -324,7 +329,7 @@ POST returns *before* any instance migrates ("200 = done" is false); (b) per-par
 over time and fail INDEPENDENTLY — no single ok/failed/unknown to close the audit on; (c) polling a
 batch is the opposite of "no auto-retry / UNKNOWN on timeout". It needs its own audit schema
 (batch id + per-part reconciliation) and a live-poll read path. **Defer, but version the audit
-payload (`migrate/v1`) now** so batch slots in without a schema break. Do NOT scaffold the poll
+payload (`migrate-instance/v2`) now** so batch slots in without a schema break. Do NOT scaffold the poll
 path against an unspiked, 6.5→7.x-variant wire shape.
 
 ## 8. Frontend (slice-1)
@@ -416,7 +421,7 @@ the resolution.
 
 - **Flyway — no collision.** CRUD claims **V7** (the `engine_registry` table + lifecycle/
   tombstone columns, REGISTRY-CRUD.md §10). Migration adds **NO new table** — it reuses
-  `audit_entry` (payload schema `migrate/v1`) and `protected_instance`. Migration therefore
+  `audit_entry` (payload schema `migrate-instance/v2`) and `protected_instance`. Migration therefore
   claims **no `V*__*.sql` file at all**, so the two features cannot race on a version number.
   *(Iron rule: schema is Flyway-only; migration introducing a table later would take the next
   free version at that time, not reserve one now.)*
@@ -453,11 +458,19 @@ the resolution.
 
 ## 14. Named-findings taxonomy for the preflight estimate (issue #349 design, 2026-08-04)
 
-> Status: **design, docs-only — gates build slice #355.** Extends (never relaxes) the P0 re-lock.
+> Status: **✅ BUILT (issue #355).** Extends (never relaxes) the P0 re-lock.
 > The literature motivation and phasing live in issues #349/#356. Everything in §14 was grounded
 > in a live simulation against a real dev engine (§14.2); measured facts are labelled **[M*]**,
-> design proposals are labelled **proposal**. spec-sync lockstep edits (SPEC §5 row wording,
-> ARCH §4 table, IMPLEMENTATION-PLAN) land WITH the #355 build, mirroring how §§0–13 were synced.
+> what were design proposals are now shipped as described. spec-sync lockstep edits (SPEC §5 row
+> wording, ARCH §4 table, REQUIREMENTS-REGISTER R-SEM-21) landed with the build.
+>
+> **As built:** `MigrationFinding` (7 codes, 3 severities, `TAXONOMY_VERSION = 1`),
+> `MigrationDiff`'s node-kind ladder + `instanceFindings()`, `ActivityDiffEntry.findings[]` with
+> severity DERIVED from findings (so `SCOPE_REMOVED`/`BOUNDARY_REMOVED` are non-blocking statuses),
+> `MigrationPreview.findings[]`, the `migrate-instance/v2` audit payload, and `MigrateModal`'s
+> severity-grouped findings block. Tests: `MigrationDiffTest` (rung 1, incl. a closed-vocabulary
+> guard) and `MigrationFindingsIT` (rung 4, live engines, the four §14.9 probe fixtures committed
+> as `docker/processes/tax-probe-{a,b,c,d}-v{1,2}.bpmn20.xml`).
 
 ### 14.0 The governing restraint — read first
 
@@ -784,6 +797,18 @@ Contract precedent (R-AUD-02: "per-verb versioned schemas"; §7: version now so 
 - An MI-root fixture proving the retained blocker path refuses 422 (and, if the engine
   accepts an unmapped MI-root shape anywhere, the backstop IT records the verbatim outcome —
   evidence for a future `taxonomyVersion` bump, not silently absorbed).
+
+  > **[M9] — evidence gathered by the #355 build (2026-08-04), recorded NOT acted on.** Probe D
+  > (`taxProbeD` v1→v2: a parallel MI subprocess `miScope` removed, `stepM` kept at the root)
+  > engine-direct with empty `activityMappings`: **6.8.0 → HTTP 200**, the MI executions collapse
+  > and the two `stepM` tokens re-home to the process root (`[miScope×3, stepM×2]` → `[stepM×2]`);
+  > **7.1.0 → HTTP 200** and `processDefinitionId` advances to v2, but the execution tree is
+  > **UNCHANGED** (`[miScope×3, stepM×2]`) — the tokens keep reporting an `activityId` the target
+  > model does not contain. The two majors DIVERGE on the resulting state, and 7.1's outcome is
+  > not obviously recoverable. The retention therefore stands: a downgrade needs a design change
+  > and a `TAXONOMY_VERSION` bump, and this evidence argues against one rather than for it.
+  > `MigrationFindingsIT.engineDirectProbeRecordsTheMultiInstanceOutcome_andTheBffRetentionIsDeliberate`
+  > keeps the observation live against whichever engine the harness runs.
 - Guard ITs of §10 unchanged — no rail moved, so no guard test may change EXCEPT the two
   422-`unmapped-activities` assertions that covered the false blockers, which flip to
   warning-carrying 200-preview/execute paths.

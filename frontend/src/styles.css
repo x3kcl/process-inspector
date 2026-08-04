@@ -2768,6 +2768,31 @@ button.skip-link {
   border: 2px solid var(--color-danger);
   font-weight: 600;
 }
+/* Neutral, non-alarming variant — the INFO tier of the migration-findings taxonomy
+   (INSTANCE-MIGRATION.md §14.3): a factual consequence of migrating, never a problem. */
+.callout-info {
+  background: var(--color-info-bg-alt);
+  color: var(--color-text-body);
+  border: 1px solid var(--color-info-border);
+}
+/* Typed migration pre-flight findings, grouped by severity inside the callouts above. */
+.finding-heading {
+  margin: 0 0 4px;
+  font-weight: 600;
+}
+.finding-list {
+  margin: 0;
+  padding-left: 18px;
+  display: grid;
+  gap: 6px;
+}
+.finding-code {
+  font-size: 11px;
+  letter-spacing: 0.02em;
+}
+.finding-detail {
+  font-weight: 400;
+}
 .verify-meta {
   margin: 0;
   font-size: 12px;

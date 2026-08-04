@@ -1,0 +1,74 @@
+<?xml version="1.0" encoding="UTF-8"?>
+<definitions xmlns="http://www.omg.org/spec/BPMN/20100524/MODEL"
+             xmlns:xsi="http://www.w3.org/2001/XMLSchema-instance"
+             xmlns:flowable="http://flowable.org/bpmn"
+             xmlns:bpmndi="http://www.omg.org/spec/BPMN/20100524/DI"
+             xmlns:omgdc="http://www.omg.org/spec/DD/20100524/DC"
+             xmlns:omgdi="http://www.omg.org/spec/DD/20100524/DI"
+             typeLanguage="http://www.w3.org/2001/XMLSchema"
+             expressionLanguage="http://www.w3.org/1999/XPath"
+             targetNamespace="http://inspector.io/demo">
+
+  <!-- Migration-findings taxonomy probe D, VERSION 1 (INSTANCE-MIGRATION.md §14.3 "MI-root
+       retention" + §14.9; IT fixture for MigrationFindingsIT, NOT part of the demo seed set).
+       `miScope` is a PARALLEL multi-instance subprocess. Its loopCharacteristics make it an MI
+       ROOT in the engine's /model JSON, which is exactly the signal BpmnStructure already
+       parses. When such a root is absent from the target it KEEPS the BLOCKER_ADVICE: no MI
+       case was calibrated, and P14-B requires calibration evidence for any downgrade. This
+       fixture is the designated evidence-gatherer for a future taxonomyVersion bump. -->
+  <process id="taxProbeD" name="Taxonomy probe D — multi-instance scope (v1)" isExecutable="true">
+    <startEvent id="start"/>
+    <sequenceFlow id="flowIn" sourceRef="start" targetRef="miScope"/>
+    <subProcess id="miScope" name="MI Scope">
+      <multiInstanceLoopCharacteristics isSequential="false">
+        <loopCardinality>2</loopCardinality>
+      </multiInstanceLoopCharacteristics>
+      <startEvent id="startM"/>
+      <sequenceFlow id="flowM1" sourceRef="startM" targetRef="stepM"/>
+      <userTask id="stepM" name="Step M" flowable:assignee="rest-admin"/>
+      <sequenceFlow id="flowM2" sourceRef="stepM" targetRef="endM"/>
+      <endEvent id="endM"/>
+    </subProcess>
+    <sequenceFlow id="flowOut" sourceRef="miScope" targetRef="end"/>
+    <endEvent id="end"/>
+  </process>
+
+  <bpmndi:BPMNDiagram id="BPMNDiagram_taxProbeD">
+    <bpmndi:BPMNPlane id="BPMNPlane_taxProbeD" bpmnElement="taxProbeD">
+      <bpmndi:BPMNShape id="BPMNShape_start" bpmnElement="start">
+        <omgdc:Bounds x="60" y="140" width="30" height="30"/>
+      </bpmndi:BPMNShape>
+      <bpmndi:BPMNShape id="BPMNShape_miScope" bpmnElement="miScope">
+        <omgdc:Bounds x="140" y="70" width="360" height="170"/>
+      </bpmndi:BPMNShape>
+      <bpmndi:BPMNShape id="BPMNShape_startM" bpmnElement="startM">
+        <omgdc:Bounds x="170" y="140" width="30" height="30"/>
+      </bpmndi:BPMNShape>
+      <bpmndi:BPMNShape id="BPMNShape_stepM" bpmnElement="stepM">
+        <omgdc:Bounds x="250" y="125" width="100" height="60"/>
+      </bpmndi:BPMNShape>
+      <bpmndi:BPMNShape id="BPMNShape_endM" bpmnElement="endM">
+        <omgdc:Bounds x="410" y="141" width="28" height="28"/>
+      </bpmndi:BPMNShape>
+      <bpmndi:BPMNShape id="BPMNShape_end" bpmnElement="end">
+        <omgdc:Bounds x="550" y="141" width="28" height="28"/>
+      </bpmndi:BPMNShape>
+      <bpmndi:BPMNEdge id="BPMNEdge_flowIn" bpmnElement="flowIn">
+        <omgdi:waypoint x="90" y="155"/>
+        <omgdi:waypoint x="140" y="155"/>
+      </bpmndi:BPMNEdge>
+      <bpmndi:BPMNEdge id="BPMNEdge_flowM1" bpmnElement="flowM1">
+        <omgdi:waypoint x="200" y="155"/>
+        <omgdi:waypoint x="250" y="155"/>
+      </bpmndi:BPMNEdge>
+      <bpmndi:BPMNEdge id="BPMNEdge_flowM2" bpmnElement="flowM2">
+        <omgdi:waypoint x="350" y="155"/>
+        <omgdi:waypoint x="410" y="155"/>
+      </bpmndi:BPMNEdge>
+      <bpmndi:BPMNEdge id="BPMNEdge_flowOut" bpmnElement="flowOut">
+        <omgdi:waypoint x="500" y="155"/>
+        <omgdi:waypoint x="550" y="155"/>
+      </bpmndi:BPMNEdge>
+    </bpmndi:BPMNPlane>
+  </bpmndi:BPMNDiagram>
+</definitions>

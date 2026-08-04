@@ -92,8 +92,20 @@ const FLAGGED_PREVIEW = {
       blocker: true,
       warning: false,
       detail: "No activity with id 'reviewTask' exists in the target version.",
+      // The typed finding the BFF now carries (INSTANCE-MIGRATION.md §14.3) — worded so it can
+      // never be read as an engine verdict.
+      findings: [
+        {
+          code: 'UNMAPPED_ACTIVE_ACTIVITY',
+          severity: 'BLOCKER_ADVICE',
+          activityId: 'reviewTask',
+          detail:
+            'The Inspector cannot build a migration instruction for this activity — there is nothing to send.',
+        },
+      ],
     },
   ],
+  findings: [],
   targetActivities: [{ id: 'approveTask', name: 'Approve order', type: 'userTask' }],
   activityStateDigest: 'digest-abc',
   callActivityChildCount: 0,
@@ -207,6 +219,12 @@ test('migrate is pre-check-first: pick version, map the flagged activity, execut
     check.getByRole('alert').filter({ hasText: 'not a Flowable validation' }),
   ).toBeVisible()
   await expect(check.getByText('can’t be auto-mapped')).toBeVisible()
+  // The typed BLOCKER_ADVICE finding (§14.3): "we cannot build the instruction", not a verdict.
+  await expect(check.getByText('Cannot build the migration instruction (1)')).toBeVisible()
+  await expect(check.getByText('there is nothing to send', { exact: false })).toBeVisible()
+  await expect(
+    check.getByText('BFF estimate — the engine is the only ground truth at execute.'),
+  ).toBeVisible()
   // No migrate button while an activity is unmapped — only Re-check.
   await expect(check.getByRole('button', { name: /^Migrate order-4711/ })).toHaveCount(0)
   await expect(check.getByRole('button', { name: 'Re-check mapping' })).toBeVisible()

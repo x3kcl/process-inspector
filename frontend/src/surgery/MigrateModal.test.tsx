@@ -102,6 +102,95 @@ const PREVIEW: MigrationPreview = {
   banner: 'Inspector pre-check — not a Flowable validation.',
 }
 
+/**
+ * The same instance, same target, same everything — but the pre-check now carries typed
+ * findings (INSTANCE-MIGRATION.md §14): two WARNINGs from the calibrated blocker→warning
+ * downgrades and the instance-level BOUNDARY_CLOCK_RESET info. Still `executable: true`:
+ * warnings and info never block, and no rail moves either way.
+ */
+const PREVIEW_WITH_FINDINGS: MigrationPreview = {
+  ...PREVIEW,
+  summary: 'All 3 active activit(ies) map. 2 advisory warning(s).',
+  activities: [
+    {
+      fromActivityId: 'bndC',
+      fromType: 'boundaryEvent',
+      status: 'BOUNDARY_REMOVED',
+      blocker: false,
+      warning: true,
+      detail: 'The boundary event bndC is gone from the target version.',
+      findings: [
+        {
+          code: 'BOUNDARY_SUBSCRIPTION_REMOVED',
+          severity: 'WARNING',
+          activityId: 'bndC',
+          detail: 'the deadline protection disappears at migrate, with no error anywhere.',
+        },
+      ],
+    },
+    {
+      fromActivityId: 'scopeA',
+      fromType: 'subProcess',
+      status: 'SCOPE_REMOVED',
+      blocker: false,
+      warning: true,
+      detail: 'The subprocess scope scopeA is gone from the target version.',
+      findings: [
+        {
+          code: 'ACTIVE_SCOPE_REMOVED',
+          severity: 'WARNING',
+          activityId: 'scopeA',
+          detail: 'the enclosing region dissolves and its tokens re-home outward.',
+        },
+      ],
+    },
+    {
+      fromActivityId: 'stepC',
+      fromType: 'userTask',
+      status: 'AUTO_MAPPED',
+      blocker: false,
+      warning: false,
+      detail: 'Maps by name.',
+      findings: [],
+    },
+  ],
+  findings: [
+    {
+      code: 'BOUNDARY_CLOCK_RESET',
+      severity: 'INFO',
+      detail: "a timer's clock MAY restart from the migrate call.",
+    },
+  ],
+}
+
+/** A blocked estimate: the one refusal — the BFF has nothing sendable for this token. */
+const PREVIEW_BLOCKED: MigrationPreview = {
+  ...PREVIEW,
+  executable: false,
+  summary: "1 active activit(ies) can't be auto-mapped — pick a target for each.",
+  activities: [
+    {
+      fromActivityId: 'miScope',
+      fromType: 'subProcess',
+      status: 'FLAGGED_UNMAPPED',
+      blocker: true,
+      warning: false,
+      detail: "No activity with id 'miScope' exists in the target version.",
+      findings: [
+        {
+          code: 'UNMAPPED_ACTIVE_ACTIVITY',
+          severity: 'BLOCKER_ADVICE',
+          activityId: 'miScope',
+          detail:
+            'The Inspector cannot build a migration instruction for this activity — there is nothing to send.',
+        },
+      ],
+    },
+  ],
+  targetActivities: [{ id: 'stepM', name: 'Step M', type: 'userTask' }],
+  findings: [],
+}
+
 function renderModal() {
   const client = new QueryClient({ defaultOptions: { queries: { retry: false } } })
   render(
@@ -120,10 +209,10 @@ function renderModal() {
 }
 
 /** Drive the modal from step 1 into step 2 (the pre-check result) via "Check mapping". */
-async function reachStepTwo() {
+async function reachStepTwo(preview: MigrationPreview = PREVIEW) {
   previewMutate.mockImplementation(
     (_body: unknown, opts?: { onSuccess?: (r: MigrationPreview) => void }) => {
-      opts?.onSuccess?.(PREVIEW)
+      opts?.onSuccess?.(preview)
     },
   )
   await waitFor(() => {
@@ -131,7 +220,7 @@ async function reachStepTwo() {
   })
   fireEvent.click(screen.getByRole('button', { name: /Check mapping/ }))
   await waitFor(() => {
-    expect(screen.getByText(/All 1 active activit/)).toBeTruthy()
+    expect(screen.getByText(preview.summary ?? '')).toBeTruthy()
   })
 }
 
@@ -198,5 +287,90 @@ describe('MigrateModal — dangerous-set reauth parity (issue #295)', () => {
       'disabled',
       false,
     )
+  })
+})
+
+describe('MigrateModal — typed pre-flight findings (INSTANCE-MIGRATION.md §14, issue #355)', () => {
+  it('renders findings grouped by severity, each with its code, activity and honest detail', async () => {
+    renderModal()
+    await reachStepTwo(PREVIEW_WITH_FINDINGS)
+
+    expect(screen.getByText(/Migrates, but look first \(2\)/)).toBeTruthy()
+    expect(screen.getByText('ACTIVE_SCOPE_REMOVED')).toBeTruthy()
+    expect(screen.getByText('BOUNDARY_SUBSCRIPTION_REMOVED')).toBeTruthy()
+    expect(screen.getByText(/the enclosing region dissolves/)).toBeTruthy()
+    expect(screen.getByText(/deadline protection disappears at migrate/)).toBeTruthy()
+
+    // The instance-level INFO is its own, non-alarming group.
+    expect(screen.getByText(/Consequences of migrating this instance \(1\)/)).toBeTruthy()
+    expect(screen.getByText('BOUNDARY_CLOCK_RESET')).toBeTruthy()
+    expect(screen.getByText(/clock MAY restart/)).toBeTruthy()
+
+    // …and the estimate is labelled as an estimate, never as an engine verdict.
+    expect(
+      screen.getByText(/BFF estimate — the engine is the only ground truth at execute\./),
+    ).toBeTruthy()
+    expect(screen.getByText(/not a Flowable validation/)).toBeTruthy()
+  })
+
+  it('a BLOCKER_ADVICE is worded as "we cannot build the instruction", never as an engine verdict', async () => {
+    renderModal()
+    await reachStepTwo(PREVIEW_BLOCKED)
+
+    expect(screen.getByText(/Cannot build the migration instruction \(1\)/)).toBeTruthy()
+    expect(screen.getByText('UNMAPPED_ACTIVE_ACTIVITY')).toBeTruthy()
+    expect(screen.getByText(/there is nothing to send/)).toBeTruthy()
+    // Blocked ⇒ the targeted mapping dropdown, and no execute button at all.
+    expect(screen.getByLabelText('target for miScope')).toBeTruthy()
+    expect(screen.queryByRole('button', { name: /^Migrate ORD-77 to v2$/ })).toBeNull()
+  })
+
+  it('a zero-finding pre-check renders no findings block and no estimate label', async () => {
+    renderModal()
+    await reachStepTwo(PREVIEW)
+
+    expect(screen.queryByText(/Migrates, but look first/)).toBeNull()
+    expect(screen.queryByText(/Consequences of migrating this instance/)).toBeNull()
+    expect(screen.queryByText(/BFF estimate — the engine is/)).toBeNull()
+  })
+
+  /**
+   * The advisory-only invariant (§14.6 / re-lock decision 3) as the UI enforces it: a green
+   * estimate and a warning-carrying one produce IDENTICAL guard behavior. Findings change what
+   * the operator READS, never what the modal DOES.
+   */
+  it('the tier-3 guard behavior is identical for a green and a warning-carrying estimate', async () => {
+    for (const preview of [PREVIEW, PREVIEW_WITH_FINDINGS]) {
+      cleanup()
+      meData = { reauth: { required: false, windowSeconds: 900 } }
+      renderModal()
+      await reachStepTwo(preview)
+
+      // IRREVERSIBLE badge — byte-for-byte unchanged.
+      expect(screen.getByText('IRREVERSIBLE')).toBeTruthy()
+
+      // The reason rail still gates execute, and a warning never pre-satisfies it.
+      const confirm = screen.getByRole('button', { name: /^Migrate ORD-77 to v2$/ })
+      expect(confirm).toHaveProperty('disabled', true)
+      expect(executeMutate).not.toHaveBeenCalled()
+
+      fireEvent.change(screen.getByLabelText(/Reason/), {
+        target: { value: 'operator requested migration for INC-42' },
+      })
+      expect(screen.getByRole('button', { name: /^Migrate ORD-77 to v2$/ })).toHaveProperty(
+        'disabled',
+        false,
+      )
+
+      // …and the execute body still carries the mandatory compare-and-set binding, unchanged.
+      fireEvent.click(screen.getByRole('button', { name: /^Migrate ORD-77 to v2$/ }))
+      expect(executeMutate).toHaveBeenCalledTimes(1)
+      expect(executeMutate.mock.calls[0][0]).toMatchObject({
+        expectedFromDefinitionId: 'demoMigration:1:def-1',
+        expectedActivityStateDigest: 'digest-1',
+        reason: 'operator requested migration for INC-42',
+      })
+      executeMutate.mockClear()
+    }
   })
 })

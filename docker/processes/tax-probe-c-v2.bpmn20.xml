@@ -1,0 +1,48 @@
+<?xml version="1.0" encoding="UTF-8"?>
+<definitions xmlns="http://www.omg.org/spec/BPMN/20100524/MODEL"
+             xmlns:xsi="http://www.w3.org/2001/XMLSchema-instance"
+             xmlns:flowable="http://flowable.org/bpmn"
+             xmlns:bpmndi="http://www.omg.org/spec/BPMN/20100524/DI"
+             xmlns:omgdc="http://www.omg.org/spec/DD/20100524/DC"
+             xmlns:omgdi="http://www.omg.org/spec/DD/20100524/DI"
+             typeLanguage="http://www.w3.org/2001/XMLSchema"
+             expressionLanguage="http://www.w3.org/1999/XPath"
+             targetNamespace="http://inspector.io/demo">
+
+  <!-- Migration-findings taxonomy probe C, VERSION 2 (INSTANCE-MIGRATION.md §14.2 [M4]).
+       The boundary timer `bndC` is GONE; `stepC` is unchanged. Live calibration on 6.8.0 and
+       7.1.0: the engine returned 200 with an EMPTY activityMappings list, and the boundary
+       execution AND its timer job were silently dropped (timer-jobs 1 -> 0) — the deadline
+       protection vanished with no error anywhere. That is the whole point of
+       BOUNDARY_SUBSCRIPTION_REMOVED being a loud WARNING rather than a false blocker.
+       Same key `taxProbeC`. -->
+  <process id="taxProbeC" name="Taxonomy probe C — boundary removed (v2)" isExecutable="true">
+    <startEvent id="start"/>
+    <sequenceFlow id="flowIn" sourceRef="start" targetRef="stepC"/>
+    <userTask id="stepC" name="Step C" flowable:assignee="rest-admin"/>
+    <sequenceFlow id="flowOut" sourceRef="stepC" targetRef="end"/>
+    <endEvent id="end"/>
+  </process>
+
+  <bpmndi:BPMNDiagram id="BPMNDiagram_taxProbeC">
+    <bpmndi:BPMNPlane id="BPMNPlane_taxProbeC" bpmnElement="taxProbeC">
+      <bpmndi:BPMNShape id="BPMNShape_start" bpmnElement="start">
+        <omgdc:Bounds x="60" y="140" width="30" height="30"/>
+      </bpmndi:BPMNShape>
+      <bpmndi:BPMNShape id="BPMNShape_stepC" bpmnElement="stepC">
+        <omgdc:Bounds x="150" y="125" width="100" height="60"/>
+      </bpmndi:BPMNShape>
+      <bpmndi:BPMNShape id="BPMNShape_end" bpmnElement="end">
+        <omgdc:Bounds x="310" y="141" width="28" height="28"/>
+      </bpmndi:BPMNShape>
+      <bpmndi:BPMNEdge id="BPMNEdge_flowIn" bpmnElement="flowIn">
+        <omgdi:waypoint x="90" y="155"/>
+        <omgdi:waypoint x="150" y="155"/>
+      </bpmndi:BPMNEdge>
+      <bpmndi:BPMNEdge id="BPMNEdge_flowOut" bpmnElement="flowOut">
+        <omgdi:waypoint x="250" y="155"/>
+        <omgdi:waypoint x="310" y="155"/>
+      </bpmndi:BPMNEdge>
+    </bpmndi:BPMNPlane>
+  </bpmndi:BPMNDiagram>
+</definitions>

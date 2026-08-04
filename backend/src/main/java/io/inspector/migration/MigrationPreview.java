@@ -12,8 +12,11 @@ import java.util.Map;
  * execute; a clean pre-check can still be rejected at apply time.
  *
  * @param engineValidated always {@code false} — the constant honesty marker (decision P0-6)
- * @param executable true iff no activity is FLAGGED_UNMAPPED (advisory warnings do not block)
+ * @param executable true iff no activity carries a BLOCKER_ADVICE finding (i.e. the BFF can
+ *     build a complete wire document); advisory warnings and info never block
  * @param activities every active activity, classified (auto-mapped / flagged / warning)
+ * @param findings INSTANCE-level typed findings (§14) — properties of the migration as a whole
+ *     rather than of one activity. Per-activity findings live on each {@code activities} entry.
  * @param activityStateDigest the token-position fingerprint the operator is approving; execute
  *     echoes it back so a move between preview and execute is refused (decision P0-4)
  * @param restBody the exact migration document execute will POST (server-rebuilt, decision P0-4)
@@ -31,6 +34,7 @@ public record MigrationPreview(
         boolean engineValidated,
         boolean executable,
         List<ActivityDiffEntry> activities,
+        List<MigrationFinding> findings,
         List<TargetActivity> targetActivities,
         String activityStateDigest,
         int callActivityChildCount,
