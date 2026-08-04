@@ -389,11 +389,13 @@ Inspector itself is Apache-2.0 (see the repo README / NOTICE).
 
 ## 16. The two playgrounds & the tutorials
 
-- **The demo** — <https://pi.naumann.cloud>: two seeded Flowable 6.8 dev engines
-  (`engine-a`, `engine-b`) with the ACME demo catalog, including deliberately-failing
-  definitions. Sign-in ladder (password `dev`): `viewer` · `responder` · `operator` ·
+- **The demo** — <https://pi.naumann.cloud>: three seeded dev engines — `engine-a` and
+  `engine-b` on Flowable 6.8.0, `engine-7` on 7.1.0 — with the ACME demo catalog, including
+  deliberately-failing definitions. The split majors are deliberate: capability gating and
+  version-divergent behaviour are only visible on a mixed fleet, which is the situation the
+  inspector exists for. Sign-in ladder (password `dev`): `viewer` · `responder` · `operator` ·
   `admin`, plus the fleet accounts `registry-admin` / `registry-admin-2` / `access-admin`.
-  Both engines are `dev`-tagged, so prod-only guards (typed tokens, mandatory tier-1
+  All three engines are `dev`-tagged, so prod-only guards (typed tokens, mandatory tier-1
   reasons) won't fire there — each tutorial flags what prod adds. It is shared: expect
   other people's fingerprints in the ops log.
 - **The local stack** — the repo's dev compose (`docker compose -f

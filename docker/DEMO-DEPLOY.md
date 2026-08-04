@@ -5,7 +5,8 @@ serves the SPA and reverse-proxies `/api` to the BFF, published as one HTTPS ori
 the existing hp04 Traefik.
 
 ```
-Traefik ──(docker_discovery, TLS)──▶ frontend (nginx: SPA + /api proxy) ──▶ backend (BFF) ──▶ engine-a / engine-b
+Traefik ──(docker_discovery, TLS)──▶ frontend (nginx: SPA + /api proxy) ──▶ backend (BFF) ──▶ engine-a / engine-b (6.8.0)
+                                                                            ├──▶ engine-7 (7.1.0)
                                                                             └──▶ postgres
 seed (one-shot): deploys the demo BPMN + starts one instance per status arc, then exits.
 ```
