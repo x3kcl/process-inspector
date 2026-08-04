@@ -427,6 +427,18 @@ delta scan + audit-timestamp cross-matching (scripted, reproducible from the res
 - Occurrence series: 60 s buckets; incidents 4/5 carry 21 229 points each vs ≈ 21 268
   expected minute-buckets → **99.8 % sampler coverage** (~39 min of gaps).
 
+**Correction (amendment round #365, 2026-08-04 — the span and coverage above lacked a trust
+qualifier, and that presentation was misleading).** These are RECORDED-series figures.
+Re-extraction (§14.2) found **99.2 % of the recorded rows BLIND** (`cycle_complete = false`;
+21 741 of 21 909): the registry carried a declared-but-unreachable `engine-7` slot from the
+current generation's birth until 2026-08-04T15:39 Z (when a real 7.1.0 engine filled it),
+and V21's fail-closed backfill marks all pre-V21 rows blind. Every §6 estimator DISCARDS
+blind deltas by design, so the **trusted** current-generation span — the only span the
+estimators can fit on — began at 2026-08-04T15:39 Z and was **168 min** old at
+re-extraction. The recorded span (14.8 d at first extraction, 15.2 d at re-extraction)
+remains true as a statement about rows on disk; it was wrong to present it as usable
+history. §7 G5 is corrected accordingly; zero truncated rows either way.
+
 ### 5.2 The two live classes (MEASURED)
 | | Incident 4 | Incident 5 |
 |---|---|---|
@@ -510,8 +522,24 @@ not invalidate the model — it means the model's discriminating terms are exact
 the ledger has not yet accumulated, so activation must be gated (§7) and the build ships
 flag-off (§9). No benefit claim is made for the pilot as it stands.
 
+**Correction (amendment round #365, 2026-08-04 — the MECHANISM stated above was wrong; the
+outcome stands).** The replay result is re-verified (§14.4: 21 909 / 21 909 buckets, τ = 1.0,
+0 position changes) but this section — written before the §13 F2 correction existed — says
+the classes tie because "F equal (0 arrivals both)". Under the F2 semantics as actually
+shipped, on the data as recorded, that is false for 99.2 % of the window: every bucket whose
+trailing window holds observed-but-no-TRUSTED samples (the blind prefix, §5.1 correction)
+reads `arrivalsUnknown` on BOTH classes ⇒ **F = 1 (the neutral identity), not F = 0** — a
+neutral tie falling through to the same count-only tie-break. Genuine zero-arrival `F = 0`
+ties occur only inside the trusted era (from 2026-08-04T15:39 Z). Same ordering, same τ,
+different — and now correctly documented — reason. The distinction matters beyond pedantry:
+the whole fleet rode the F2 degradation rule for two weeks, which is exactly why §7 G5 now
+gates on *trusted* span, not recorded span.
+
 ### 5.6 What the pilot CAN already calibrate (MEASURED)
-Sampler cadence 60 s and 99.8 % series coverage (estimation windows in §6 are trustworthy);
+Sampler cadence 60 s and 99.8 % series coverage — **corrected #365: bucket coverage said
+nothing about trust; 99.2 % of those buckets are blind (§5.1 correction), so "estimation
+windows in §6 are trustworthy" was FALSE before 2026-08-04T15:39 Z and is true only for the
+trusted era since**;
 within-episode count jitter CV ≈ 0 on both classes (the §3.3 estimator currently returns
 the floor — a demo artifact, flagged as such, another gate argument); retry-only
 `eff ≈ 2.4 %` vs data-fix-then-retry `1/1` (n = 42, one class — a prior, not a per-class
@@ -558,11 +586,38 @@ expiry suggestion, derived resurface threshold) requires ALL of:
 | G2 | ≥ 6 distinct current-generation classes live concurrently at least once in trailing 28 d (ordering has room to matter) | max concurrent = 2 | **NO** |
 | G3 | #351 shipped; R2's own sufficiency rail passed for ≥ 25 % of live classes (S term) | not built | **NO** |
 | G4 | ≥ 10 completed ack lifecycles (ack → expiry/resurface/un-ack) recorded (C2/C3 calibration) | 0 acks ever | **NO** |
-| G5 | ≥ 56 d of current-generation ledger span (28 d fit + 28 d holdout) | 14.8 d | **NO** |
+| G5 | ≥ 56 d of **TRUSTED** current-generation ledger span (28 d fit + 28 d holdout; redefined #365 — see correction below) | recorded 14.8 d, but **trusted 0.12 d** (era began 2026-08-04T15:39 Z, §5.1 correction) | **NO** |
 
-**Gate status: NOT MET (0 of 5).** Earliest G5 satisfaction ≈ 2026-09-14; G1/G4 depend on
-operators actually resolving/acking — which the pilot's audit tail (no action in 8 days)
-shows is not yet routine. Until the gate: the score computes with neutral M/S (provably
+**Gate status: NOT MET (0 of 5).**
+
+**Correction (amendment round #365, 2026-08-04): G5's measured value and earliest-satisfaction
+date were WRONG — recorded span is not usable span.** The 14.8 d figure, and the "earliest G5
+satisfaction ≈ 2026-09-14" previously stated here (birth 2026-07-20 + 56 d), counted rows the
+§6 estimators are FORBIDDEN to fit on: 99.2 % of the current-generation series is blind
+(§5.1 correction), and a fit-plus-holdout over discarded deltas is a fit over nothing. G5 is
+therefore **redefined over the trusted span** — first `cycle_complete = true` row → present,
+i.e. the same rows the estimators actually consume. Measured trusted span at re-extraction:
+**0.12 d** (168 min). Recomputed earliest satisfaction: 2026-08-04T15:39 Z + 56 d ≈
+**2026-09-29** — 15 days later than the false figure. Two definitional notes: (i) a FUTURE
+blind interval does not reset the clock (the discipline discards deltas *across* it; trusted
+rows on both sides stay fittable) but it thins both the fit and holdout halves, so a long
+outage pushes the date out correspondingly; (ii) the same stale "≈ 2026-09-14" appears in
+`AttentionScoreService`'s javadoc — a code-comment correction owed to the #365 build slice,
+not this docs round.
+
+**The other four axes, audited for the same trust sensitivity (#365):** **G1** (closed
+episodes) and **G4** (ack lifecycles) count lifecycle events in the BFF's own store —
+resolves and acks are operator actions, not occurrence-delta arithmetic — so they are NOT
+trust-gated (both measured 0 regardless, and both still depend on operators actually
+resolving/acking, which the pilot's audit tail — no action in 8 days at first extraction —
+shows is not yet routine). **G2** (concurrent live classes) reads class PRESENCE, not
+deltas; a blind cycle can only UNDER-count it (an unreachable engine's classes drop out of
+the aggregation), never over-count — so a G2 pass on blind-heavy data is still a genuine
+pass, the conservative direction; measured max 2 either way, unaffected. **G3** is R2's own
+sufficiency rail, and R2 already gap-voids any spell whose observed shape contains a blind
+sample (its trust discipline is internal, RETRYING-RISK-LANE) — no redefinition needed,
+though the blind prefix is also part of why the pilot has almost no judgeable spells. Only
+G5 needed redefinition. Until the gate: the score computes with neutral M/S (provably
 identical to count-only, §5.5), ships **flag-off** (`inspector.triage.attention-ordering`,
 default false), and no constant changes value. The gate is re-measured with the §5 method
 (REST-only, reproducible) and its status recorded in the PR that flips the flag.
