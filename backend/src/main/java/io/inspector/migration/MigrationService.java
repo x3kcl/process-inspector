@@ -108,6 +108,7 @@ public class MigrationService {
                 false,
                 plan.executable(),
                 plan.activities(),
+                plan.instanceFindings(),
                 plan.targetActivities(),
                 plan.activityStateDigest(),
                 plan.childCount(),
@@ -270,6 +271,13 @@ public class MigrationService {
         }
     }
 
+    /**
+     * The ONLY refusal the estimate performs, and it is not a prediction of the engine's verdict:
+     * a token-holding activity with no counterpart id and no operator mapping leaves the BFF with
+     * <em>nothing sendable</em> (§14.0 P14-D). Advisory findings — including the two blocker→
+     * warning downgrades §14 calibrated live ({@code ACTIVE_SCOPE_REMOVED},
+     * {@code BOUNDARY_SUBSCRIPTION_REMOVED}) — never reach this method.
+     */
     private void requireExecutable(MigrationPlan plan) {
         List<String> flagged = plan.activities().stream()
                 .filter(ActivityDiffEntry::isBlocker)
@@ -612,6 +620,19 @@ public class MigrationService {
             String activityStateDigest,
             int childCount) {
 
+        /** Instance-level typed findings (§14.8) — today only BOUNDARY_CLOCK_RESET. */
+        List<MigrationFinding> instanceFindings() {
+            return MigrationDiff.instanceFindings(activities);
+        }
+
+        /** Per-activity findings first (sorted-id order), then the instance-level ones. */
+        List<MigrationFinding> allFindings() {
+            List<MigrationFinding> all = new ArrayList<>();
+            activities.forEach(a -> all.addAll(a.findings()));
+            all.addAll(instanceFindings());
+            return all;
+        }
+
         boolean executable() {
             return activities.stream().noneMatch(ActivityDiffEntry::isBlocker);
         }
@@ -655,9 +676,21 @@ public class MigrationService {
                     + " work executed under the new version stands.";
         }
 
+        /**
+         * The R-AUD-02 per-verb versioned payload. <b>v2</b> (INSTANCE-MIGRATION.md §14.8):
+         * {@code bffWarnings} — an ad-hoc {@code "id (STATUS)"} string list — is REPLACED by the
+         * typed {@code bffFindings} plus {@code taxonomyVersion}. A replaced/retyped key bumps the
+         * schema string; audit readers discriminate on {@code schema} and render v1 rows as before.
+         * {@code engineValidated:false} is constant forever — no finding ever implies the engine
+         * checked anything.
+         *
+         * <p>A {@code BLOCKER_ADVICE} finding can never appear in a successful execute row (execute
+         * refuses 422 while any is unresolved); warnings and info CAN, including for the two cases
+         * §14 downgraded, which previously could not reach execute at all.
+         */
         Map<String, Object> auditPayload() {
             Map<String, Object> payload = new LinkedHashMap<>();
-            payload.put("schema", MIGRATE_ACTION + "/v1");
+            payload.put("schema", MIGRATE_ACTION + "/v2");
             payload.put("engineValidated", false); // the constant honesty marker (P0-6)
             payload.put("fromProcessDefinitionId", fromDefinitionId);
             payload.put("toProcessDefinitionId", target.definitionId());
@@ -667,11 +700,9 @@ public class MigrationService {
             payload.put("bffAutoMapped", idsWithStatus(ActivityDiffEntry.Status.AUTO_MAPPED));
             payload.put("bffMappedByOverride", idsWithStatus(ActivityDiffEntry.Status.MAPPED_BY_OVERRIDE));
             payload.put(
-                    "bffWarnings",
-                    activities.stream()
-                            .filter(ActivityDiffEntry::isWarning)
-                            .map(a -> a.fromActivityId() + " (" + a.status() + ")")
-                            .toList());
+                    "bffFindings",
+                    allFindings().stream().map(MigrationFinding::toAuditEntry).toList());
+            payload.put("taxonomyVersion", MigrationFinding.TAXONOMY_VERSION);
             payload.put("activityStateDigest", activityStateDigest);
             payload.put(
                     "activeActivities",

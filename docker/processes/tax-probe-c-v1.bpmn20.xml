@@ -1,0 +1,66 @@
+<?xml version="1.0" encoding="UTF-8"?>
+<definitions xmlns="http://www.omg.org/spec/BPMN/20100524/MODEL"
+             xmlns:xsi="http://www.w3.org/2001/XMLSchema-instance"
+             xmlns:flowable="http://flowable.org/bpmn"
+             xmlns:bpmndi="http://www.omg.org/spec/BPMN/20100524/DI"
+             xmlns:omgdc="http://www.omg.org/spec/DD/20100524/DC"
+             xmlns:omgdi="http://www.omg.org/spec/DD/20100524/DI"
+             typeLanguage="http://www.w3.org/2001/XMLSchema"
+             expressionLanguage="http://www.w3.org/1999/XPath"
+             targetNamespace="http://inspector.io/demo">
+
+  <!-- Migration-findings taxonomy probe C, VERSION 1 (INSTANCE-MIGRATION.md §14.2 [M2]/[M4]/[M5];
+       IT fixture for MigrationFindingsIT, NOT part of the demo seed set).
+       `stepC` carries an INTERRUPTING boundary timer `bndC` (PT72H). A token on stepC therefore
+       yields a CHILD execution with activityId "bndC" — boundary events ARE in the active
+       activity list. v2 removes the boundary (BOUNDARY_SUBSCRIPTION_REMOVED); v3 repeats it
+       byte-identically (BOUNDARY_CLOCK_RESET, whose behavior is version-divergent: the timer
+       restarted on 6.8.0 and was preserved on 7.1.0). -->
+  <process id="taxProbeC" name="Taxonomy probe C — boundary timer (v1)" isExecutable="true">
+    <startEvent id="start"/>
+    <sequenceFlow id="flowIn" sourceRef="start" targetRef="stepC"/>
+    <userTask id="stepC" name="Step C" flowable:assignee="rest-admin"/>
+    <sequenceFlow id="flowOut" sourceRef="stepC" targetRef="end"/>
+    <endEvent id="end"/>
+    <boundaryEvent id="bndC" name="Deadline" attachedToRef="stepC" cancelActivity="true">
+      <timerEventDefinition>
+        <timeDuration>PT72H</timeDuration>
+      </timerEventDefinition>
+    </boundaryEvent>
+    <sequenceFlow id="flowTimeout" sourceRef="bndC" targetRef="endTimeout"/>
+    <endEvent id="endTimeout"/>
+  </process>
+
+  <bpmndi:BPMNDiagram id="BPMNDiagram_taxProbeC">
+    <bpmndi:BPMNPlane id="BPMNPlane_taxProbeC" bpmnElement="taxProbeC">
+      <bpmndi:BPMNShape id="BPMNShape_start" bpmnElement="start">
+        <omgdc:Bounds x="60" y="140" width="30" height="30"/>
+      </bpmndi:BPMNShape>
+      <bpmndi:BPMNShape id="BPMNShape_stepC" bpmnElement="stepC">
+        <omgdc:Bounds x="150" y="125" width="100" height="60"/>
+      </bpmndi:BPMNShape>
+      <bpmndi:BPMNShape id="BPMNShape_bndC" bpmnElement="bndC">
+        <omgdc:Bounds x="215" y="171" width="30" height="30"/>
+      </bpmndi:BPMNShape>
+      <bpmndi:BPMNShape id="BPMNShape_end" bpmnElement="end">
+        <omgdc:Bounds x="310" y="141" width="28" height="28"/>
+      </bpmndi:BPMNShape>
+      <bpmndi:BPMNShape id="BPMNShape_endTimeout" bpmnElement="endTimeout">
+        <omgdc:Bounds x="310" y="250" width="28" height="28"/>
+      </bpmndi:BPMNShape>
+      <bpmndi:BPMNEdge id="BPMNEdge_flowIn" bpmnElement="flowIn">
+        <omgdi:waypoint x="90" y="155"/>
+        <omgdi:waypoint x="150" y="155"/>
+      </bpmndi:BPMNEdge>
+      <bpmndi:BPMNEdge id="BPMNEdge_flowOut" bpmnElement="flowOut">
+        <omgdi:waypoint x="250" y="155"/>
+        <omgdi:waypoint x="310" y="155"/>
+      </bpmndi:BPMNEdge>
+      <bpmndi:BPMNEdge id="BPMNEdge_flowTimeout" bpmnElement="flowTimeout">
+        <omgdi:waypoint x="230" y="201"/>
+        <omgdi:waypoint x="230" y="264"/>
+        <omgdi:waypoint x="310" y="264"/>
+      </bpmndi:BPMNEdge>
+    </bpmndi:BPMNPlane>
+  </bpmndi:BPMNDiagram>
+</definitions>

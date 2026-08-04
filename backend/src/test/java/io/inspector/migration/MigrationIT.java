@@ -281,7 +281,7 @@ class MigrationIT {
     }
 
     @Test
-    void executeMigratesTheLiveTokenAndAuditsMigrateV1() throws Exception {
+    void executeMigratesTheLiveTokenAndAuditsMigrateV2() throws Exception {
         String instanceId = startOn(fromDefId);
         assertThat(activeActivities(instanceId)).containsExactly("reviewTask");
 
@@ -296,7 +296,9 @@ class MigrationIT {
         assertThat(activeActivities(instanceId)).containsExactly("approveTask");
         assertThat(currentDefinitionId(instanceId)).isEqualTo(toDefId);
 
-        // The audit golden master holds the migrate/v1 document + the honesty marker.
+        // The audit golden master holds the migrate-instance/v2 document + the honesty marker.
+        // (v2 = §14.8: typed bffFindings + taxonomyVersion replace the ad-hoc bffWarnings list;
+        // the typed-findings payload itself is asserted in MigrationFindingsIT.)
         await().atMost(5, TimeUnit.SECONDS).untilAsserted(() -> {
             JsonNode rows = mapper.readTree(as("admin")
                     .getForEntity("/api/instances/engine-a/" + instanceId + "/audit", String.class)
@@ -306,7 +308,8 @@ class MigrationIT {
             assertThat(row.path("action").asText()).isEqualTo("migrate-instance");
             assertThat(row.path("outcome").asText()).isEqualTo("ok");
             assertThat(row.path("payload").asText())
-                    .contains("migrate-instance/v1")
+                    .contains("migrate-instance/v2")
+                    .contains("taxonomyVersion")
                     .contains("engineValidated")
                     .contains(toDefId)
                     .contains("reviewTask")

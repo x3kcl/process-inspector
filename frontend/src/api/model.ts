@@ -17,6 +17,13 @@ export type LeakDefinitionCount = components['schemas']['LeakDefinitionCount']
 export type LeakWindows = components['schemas']['LeakWindows']
 export type ErrorGroup = components['schemas']['ErrorGroup']
 export type ErrorGroupAcknowledgement = components['schemas']['ErrorGroupAcknowledgement']
+// Cost-aware attention score (research track R1, ALARM-COST-MODEL.md, #353/#354) — the optional
+// `attention` block embedded on ErrorGroup (Stage 0) AND IncidentSummary (Incident Ledger, below).
+// Flag-off by default (`inspector.triage.attention-ordering`, §7 gate NOT MET as of the design) —
+// ABSENT is the normal, well-tested case on every response today, never an error path; every
+// reader must render as if the score were never computed, not fabricate one.
+export type AttentionScore = components['schemas']['AttentionScore']
+export type AttentionFactors = components['schemas']['AttentionFactors']
 export type PerEngineTriage = components['schemas']['PerEngineTriage']
 export type OutOfScopeDeadLetters = components['schemas']['OutOfScopeDeadLetters']
 // v2/M4 job-lane trend store (R-BAU-08) — the Stage-0 sparkline series.
@@ -116,6 +123,12 @@ export type CmmnStatus = (typeof CMMN_STATUSES)[number]
 // display state, not a wire value — see incidents/sections.ts), but every reader must
 // tolerate an unknown value (fail toward visible, never silently dropped).
 export type IncidentSummary = components['schemas']['IncidentSummary']
+// Self-heal statistics (research track R2, RETRYING-RISK-LANE.md, #351/#352) — the optional
+// `selfHeal` block embedded on IncidentSummary (list + detail). `lane` is a plain string on the
+// wire (no springdoc @enum on this field); the known SERVER-REPORTED literals are named in
+// incidents/selfHeal.ts, and every reader must tolerate an unrecognized/absent lane (fail
+// toward rendering nothing, never toward fabricating a rate — see that module's doc comment).
+export type SelfHealStats = components['schemas']['SelfHealStats']
 export type IncidentListResponse = components['schemas']['IncidentListResponse']
 export type IncidentDetail = components['schemas']['IncidentDetail']
 export type IncidentResolution = components['schemas']['IncidentResolution']

@@ -16,7 +16,20 @@ Flowable Control, Conductor/Orkes, Airflow and Step Functions, and a four-seat d
 - **RETRYING** — a job has failed ≥1 time but retries remain; the engine will retry
   automatically; it may self-heal. Chip copy: "RETRYING (n/m, auto)". *(Internal flag name
   `hasFailingJobs` is unchanged; the display term was renamed from "FAILING" because "-ing"
-  reads as more urgent than "-ed" and drove mis-triage in walkthroughs.)*
+  reads as more urgent than "-ed" and drove mis-triage in walkthroughs.)* The chip may carry a
+  self-heal lane badge summarizing this class's recorded tendency to self-heal — see below
+  ([RETRYING-RISK-LANE.md](RETRYING-RISK-LANE.md), R2, #351/#352).
+- **Self-heal** — a RETRYING class leaving the failing state through engine-scheduled retries
+  alone, with no operator verb involved. Measured per error class from recorded history;
+  displayed as a lane on the RETRYING chip.
+- **Retrying spell** — one observed contiguous period (≥1 sampler bucket, 60s) in which an
+  error class held jobs in the RETRYING state; ends by self-healing or by escalation to
+  dead-letter. The unit of self-heal evidence.
+- **Self-heal lane** — the informational badge `usually self-heals / mixed self-heal record /
+  rarely self-heals / no reliable self-heal history yet`, derived from completed retrying
+  spells with a minimum-sample floor and hysteresis
+  ([RETRYING-RISK-LANE.md](RETRYING-RISK-LANE.md) §4). Informational only: it never enables,
+  disables, or softens any corrective action.
 - **Job lanes** — Flowable's four job queues: executable, timer, suspended, dead-letter.
   The lane a job sits in IS the diagnosis. A **fifth lane — external-worker jobs** (v1.x #7,
   read-only, Flowable 6.8+ only) sits alongside them, capability-gated: it renders only on a
@@ -291,6 +304,31 @@ Answers "what is broken, how much, where" in zero keystrokes:
   state joins the dashboard at render time (the aggregation cache never carries it); a
   normalizer bump orphans old-generation acks ("needs re-binding", never silent).
   Without this the landing rots into alarm fatigue within weeks.
+- **Attention ordering** *(v2, research track R1 — backend ★ SHIPPED #353, frontend ★ SHIPPED
+  #354, [ALARM-COST-MODEL.md](ALARM-COST-MODEL.md); FLAG-OFF by default)*: error-group cards are
+  ordered **count-only (`total DESC`)** — a 300-count known-noisy class outranks an 8-count
+  outage of a critical dependency forever. Behind `inspector.triage.attention-ordering`
+  (**default false**) they can instead be ordered by a cost-aware attention score
+  `A(c) = F · R · M · S` — arrival frequency × recency × historic time-to-resolve × a
+  self-heal demotion consuming the R2 lane — served on each card as
+  `attention {score, factors, rationale, suggestedAckExpirySeconds?}` with a ONE-SENTENCE
+  server-computed rationale ("21 failing · last seen 2 min ago · typically takes 4 h to
+  resolve · no self-heal history."). **Ordering only — never hides**: no card is filtered,
+  acknowledged groups keep their labeled never-hidden collapse and their resurface triggers,
+  and section membership is untouched. Every factor degrades to a multiplicative identity when
+  its evidence is missing, and ties break on `total DESC` then `signatureHash ASC`, so **with
+  no ledger history the ordering is exactly today's count-only ordering** — measured across
+  all 21,229 recorded pilot buckets (Kendall τ = 1.0, zero position changes). The flag ships
+  false because the design's numeric data-maturity gate is measured NOT MET (0 of 5 axes);
+  flipping it requires re-measuring that gate. **The frontend (#354) renders whatever order it
+  is served, never re-sorting Stage-0 cards itself** — the BFF already reorders `errorGroups`
+  server-side when the flag is on (`AttentionScoreService#decorate`, ALARM-COST-MODEL.md §11) —
+  and shows a visible `AttentionBadge` (`components/AttentionBadge.tsx`) carrying the server's
+  rationale VERBATIM in its tooltip alongside a fixed glossary sentence explaining the ordering;
+  the badge renders nothing when `attention` is absent (the shipped, flag-off, expected-today
+  case). No ordering toggle exists or was built — the design specifies none (§3.1/§11 describe
+  a single server-computed order, not an operator-facing choice). See §4e below for how this
+  reconciles with #352's Incident Ledger self-heal-risk sort.
 - **Annotations** (R-BAU-03, v1.x): OPERATOR+ may attach per-signature guidance (≤200 chars
   + runbook URL + optionally one **endorsed verb with conditions** — "Retry, but only after
   15:00"). Rendered on the group card and every member's why-stuck strip; the endorsed verb
@@ -709,6 +747,35 @@ so history survives DLQ drains:
   door (§7 v1.x #1, RESPONDER, full bulk rails) invoked with the incident's signature;
   recent error-class bulk jobs for the signature render read-only on the detail. The
   ledger itself never mutates engine state.
+- **Self-heal statistics** *(v2, research track R2 — backend ★ SHIPPED #351, frontend ★ SHIPPED
+  #352, [RETRYING-RISK-LANE.md](RETRYING-RISK-LANE.md))*: each list item and the detail carry an
+  optional `selfHeal` block — the per-class self-heal rate (Wilson-bounded), time-to-self-heal
+  p50/p90, and sample size, derived from the ledger's own occurrence + audit history (zero new
+  engine calls). `INSUFFICIENT_HISTORY` (below the 10-unconfounded-completed-spell floor) is
+  the expected, common-for-a-long-time state, not an edge case — the pilot's own measured
+  baseline has zero unconfounded completed spells today. Informational only (hard rail): never
+  gates, reorders, or auto-triggers any corrective action. The UI renders ONLY the server-served
+  displayed `lane` (`SelfHealBadge`, exact §4.1 copy, no client-side smoothing/recomputation) on
+  the Incident Ledger card and detail (`incidents/SelfHealBadge.tsx`); the Incident Ledger's
+  still-open sections (REGRESSED/OPEN/QUIET) additionally sort risk-ranked
+  `SELF_HEAL_UNLIKELY → MIXED → INSUFFICIENT_HISTORY → LIKELY`, ties by live total
+  (`incidents/selfHeal.ts#compareSelfHealRisk`) — ordering only, nothing is ever hidden. As
+  actually built, `selfHeal` is attached only to `IncidentSummary` (not Stage 0's own recomputed
+  `ErrorGroup` triage cards), so the risk-ranked view lives on the Incident Ledger, the closest
+  surface the shipped DTO drives. `SELF_HEAL_LIKELY`/`SELF_HEAL_MIXED` are not reachable
+  end-to-end on this deployment (the transiently-failing harness seed that would exercise them
+  is a deferred #351 follow-up) — covered by component tests over synthetic props instead.
+  **Reconciled with attention ordering (#354, ALARM-COST-MODEL.md §3.1/§11):** `IncidentSummary`
+  also carries the optional #353 `attention` score, and that score already folds in this SAME
+  self-heal signal (§11's `lane → p_heal` band map) — sorting by `compareSelfHealRisk` on top of
+  an attention-ordered list would double-count self-heal and silently override the server's
+  order. `incidents/attention.ts#compareIncidentOrder` (used by `sections.ts#bucketIncidents` in
+  place of a bare `compareSelfHealRisk`) ranks by the server `attention` score — mirroring the
+  backend's own `score DESC → total DESC → signatureHash ASC` tie-break — whenever it is present,
+  and falls back to EXACTLY the `compareSelfHealRisk` ordering above when it is absent (the
+  shipped, flag-off, expected-today case, unchanged from #352). The Incident Ledger card and
+  detail also render the shared `AttentionBadge` off `incident.attention` alongside the
+  self-heal badge.
 - **Non-goals v1** (recorded with the panel review): assignee/severity fields, auto-resolve
   policies, external alerting/deploy correlation, reporting dashboards/CSV export.
 
@@ -770,7 +837,7 @@ remains v2.
 | **Suspend process definition** | One call stops new AND (optionally) running instances of a definition — the real "bad deploy" brake (replaces bulk instance-suspend) | 3 |
 | **Terminate / delete instance** | Irreversible; runtime state destroyed; **cascade to call-activity children enumerated in the confirm** | 3 |
 | **Delete dead-letter job** | ⚠ Orphans the execution permanently (only rescue afterwards: change-state). ADMIN-only, explicit warning | 3 |
-| **Migrate instance** *(v2)* | Move instance to another deployed version of the same key. **Inspector static pre-check (NOT an engine validation** — Flowable's REST API exposes no migration validator, P0 spike 2026-07-09): a BFF model diff flags activities that can't auto-map; the engine is the ground truth only at apply. Honest banner ("this is not a Flowable validation … the engine's own check runs only when you execute"); ADMIN unconditional + typed **business-key** confirm on prod; IRREVERSIBLE, never auto-retried (post-dispatch timeout ⇒ UNKNOWN + verify-now); single first, batch later. See `docs/INSTANCE-MIGRATION.md` | 3 |
+| **Migrate instance** *(v2)* | Move instance to another deployed version of the same key. **Inspector static pre-check (NOT an engine validation** — Flowable's REST API exposes no migration validator, P0 spike 2026-07-09): a BFF model diff flags activities that can't auto-map; the engine is the ground truth only at apply. The pre-check emits **typed findings** (INSTANCE-MIGRATION.md §14 — a CLOSED 7-code vocabulary with `taxonomyVersion`, severities `BLOCKER_ADVICE`/`WARNING`/`INFO`), rendered by severity and labelled "BFF estimate — the engine is the only ground truth at execute". The ONLY refusal is document-construction impossibility (a token with no target id and no operator mapping ⇒ 422); a removed active **scope** and a removed **boundary subscription** are WARNINGS, not blockers — live calibration on Flowable 6.8/7.1 proved the engine accepts both, so blocking them made a legitimate recovery impossible through the BFF. **Findings are advisory-only: green or red, no rail moves.** Honest banner ("this is not a Flowable validation … the engine's own check runs only when you execute"); ADMIN unconditional + typed **business-key** confirm on prod; IRREVERSIBLE, never auto-retried (post-dispatch timeout ⇒ UNKNOWN + verify-now); single first, batch later. See `docs/INSTANCE-MIGRATION.md` | 3 |
 
 Explicitly **not offered** (API honesty, §11): timer *reschedule-to-later* (not exposed by
 open-source REST — the change-state workaround is documented instead), Temporal-style

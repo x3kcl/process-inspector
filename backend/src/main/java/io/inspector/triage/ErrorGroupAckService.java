@@ -1,9 +1,9 @@
 package io.inspector.triage;
 
 import io.inspector.action.GuardRefusedException;
+import io.inspector.attention.ResurfaceThresholdEstimator;
 import io.inspector.audit.AuditService;
 import io.inspector.audit.AuditUnavailableException;
-import io.inspector.config.InspectorProperties;
 import io.inspector.dto.AcknowledgeErrorGroupRequest;
 import io.inspector.dto.ErrorGroup;
 import io.inspector.dto.ErrorGroupAcknowledgement;
@@ -43,6 +43,15 @@ import org.springframework.web.server.ResponseStatusException;
  * never carries ack data, so an ack/unack is visible on the next read while engine fan-out
  * stays herd-protected. Baseline resolution reads the same cached aggregation the operator
  * is looking at — acknowledging attests the card that was on screen, not a fresher one.
+ *
+ * <p>The auto-resurface THRESHOLD now comes from {@link ResurfaceThresholdEstimator} instead of
+ * being read straight off {@code inspector.triage.ack-resurface-threshold-pct}
+ * (ALARM-COST-MODEL.md §3.3 / C3, #353). This changes NOTHING by default: the derived value is
+ * gated behind {@code inspector.triage.attention.derived-resurface-threshold} (false until the
+ * §7 data-maturity gate passes — G4 alone stands at zero acks ever recorded), so the estimator
+ * answers the same 20 % constant, and the config key keeps overriding exactly as before. The
+ * R-BAU-01 semantics themselves — labeled never-hidden collapse, the three resurface triggers,
+ * un-ack — are untouched; only the threshold's PROVENANCE moved.
  */
 @Service
 public class ErrorGroupAckService {
@@ -55,7 +64,7 @@ public class ErrorGroupAckService {
     private final AuditService audit;
     private final RbacAuthorizer rbac;
     private final Clock clock;
-    private final int resurfaceThresholdPct;
+    private final ResurfaceThresholdEstimator resurfaceThreshold;
 
     public ErrorGroupAckService(
             ErrorGroupAckRepository repository,
@@ -63,13 +72,13 @@ public class ErrorGroupAckService {
             AuditService audit,
             RbacAuthorizer rbac,
             Clock clock,
-            InspectorProperties props) {
+            ResurfaceThresholdEstimator resurfaceThreshold) {
         this.repository = repository;
         this.triage = triage;
         this.audit = audit;
         this.rbac = rbac;
         this.clock = clock;
-        this.resurfaceThresholdPct = props.triageOrDefault().ackResurfaceThresholdPctOrDefault();
+        this.resurfaceThreshold = resurfaceThreshold;
     }
 
     /* ---------------- the render-time join (read path) ---------------- */
@@ -99,8 +108,11 @@ public class ErrorGroupAckService {
                     List<ErrorGroupAck> rows = bySignature.getOrDefault(group.signatureHash(), List.of()).stream()
                             .filter(row -> row.getAlgoVersion() == group.algoVersion())
                             .toList();
-                    ErrorGroupAcknowledgement info =
-                            ErrorGroupAckPolicy.evaluate(group, rows, resurfaceThresholdPct, now);
+                    ErrorGroupAcknowledgement info = ErrorGroupAckPolicy.evaluate(
+                            group,
+                            rows,
+                            resurfaceThreshold.thresholdPct(group.signatureHash(), group.algoVersion()),
+                            now);
                     return info != null ? group.withAcknowledgement(info) : group;
                 })
                 .toList();
@@ -158,7 +170,8 @@ public class ErrorGroupAckService {
             repository.flush();
         });
 
-        return ErrorGroupAckPolicy.evaluate(group, fresh, resurfaceThresholdPct, now);
+        return ErrorGroupAckPolicy.evaluate(
+                group, fresh, resurfaceThreshold.thresholdPct(group.signatureHash(), group.algoVersion()), now);
     }
 
     public void unacknowledge(UnacknowledgeErrorGroupRequest request, Authentication auth) {

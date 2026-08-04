@@ -165,6 +165,33 @@ inspector:
     # hash, so tuning this trades label quality — never grouping stability (#270).
     stacktrace-sample-cap: 25
     ack-resurface-threshold-pct: 20
+    # R1 cost-aware attention ordering (docs/ALARM-COST-MODEL.md, #348 design / #353 build).
+    # DEFAULT FALSE and deliberately so: the §7 data-maturity gate is measured NOT MET (0 of 5
+    # axes — 0 closed episodes, max 2 concurrent live classes, 0 acks ever, 14.8d of ledger
+    # span; earliest G5 satisfaction ≈ 2026-09-14), and replaying A(c) over all 21,229 recorded
+    # pilot buckets reproduced today's count-only ordering EXACTLY (Kendall tau = 1.0, zero
+    # position changes). Off ⇒ nothing is computed, no `attention` block is served, and the card
+    # order is byte-for-byte `total DESC`. Flip it only alongside a re-measurement of §7.
+    attention-ordering: false
+    attention:
+      # The R factor's half-life. 24h ON PURPOSE — the same constant as
+      # inspector.incidents.quiet-window, so "stops being fresh" means one thing to an operator.
+      recency-half-life: PT24H
+      arrivals-window-days: 28
+      # The M factor's own sample-size floor: below 3 closed episodes the class has no MTTR and
+      # renders "no resolve-time history" — never a number (§6 estimation honesty rails).
+      min-closed-episodes: 3
+      mttr-clamp-low: 0.5
+      mttr-clamp-high: 2.0
+      # A proven self-healer is demoted at most 4x, NEVER zeroed — same doctrine as never-hide.
+      self-heal-floor: 0.25
+      model-ttl: PT5M
+      # C3 (§3.3): the counterfactual-ack-replay-derived auto-resurface threshold. FALSE until
+      # the FULL §7 gate passes — G4 alone (≥10 completed ack lifecycles) stands at zero acks
+      # ever recorded — so ack-resurface-threshold-pct above stays in force verbatim.
+      derived-resurface-threshold: false
+      resurface-floor-pct: 10
+      resurface-false-budget-per30-ack-days: 1.0
   # Bulk fan-out engine-protection knobs (SPEC §7, v1.x #2) + the live bulk-progress SSE
   # stream's guardrails (issue #301): sse-subscriber-cap bounds the emitter registry (beyond
   # it a subscribe completes immediately and the browser degrades to polling); sse-coalesce-ms
@@ -202,6 +229,23 @@ inspector:
     regression-min-count: 1
     retention-days: 400
     list-cap: 500
+  # RETRYING risk lane self-heal statistics (RETRYING-RISK-LANE.md, #351, gated on the locked
+  # design #347). Pure derive-on-read over the incident ledger's own occurrence + audit stores
+  # (zero new engine calls, zero new persistence) — enabled=true only starts the §4.2
+  # dwell-ticking listener; GET /api/incidents reads stay live either way and answer the safe
+  # INSUFFICIENT_HISTORY default for any class the listener hasn't ticked yet. window-days
+  # bounds the scan (≤ the 400d occurrence retention); floor is the §7.1 measured sample-size
+  # floor (10 unconfounded completed spells) below which no rate/interval renders; dwell-cycles
+  # is the minimum consecutive COMPLETE sampler cycles (~10 min at the 60s beat) a newly
+  # computed lane must hold before it becomes the DISPLAYED one. Data-maturity gate (§7.2, pilot
+  # ship gate for the RATE DISPLAY — not this computation) is NOT MET as of 2026-08-04
+  # (reviews/R2-SELFHEAL-BASELINE-2026-08.md) — every class renders INSUFFICIENT_HISTORY today,
+  # by construction of the floor, not because this is disabled.
+  selfheal:
+    enabled: true
+    window-days: 90
+    floor: 10
+    dwell-cycles: 10
   # Audit golden-master retention (M4-CLOSEOUT §A2 / S5b). retention-days MUST be ≥ 400 — the
   # purge_audit() DB floor refuses any younger cutoff, so a smaller value would never purge.
   # The @Scheduled AuditRetentionPurger drops whole aged-out monthly partitions (one at a time,

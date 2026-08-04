@@ -1,9 +1,15 @@
 # Alarm & Attention Cost Model — cost-aware noise policy for Stage 0 + incident ledger (R1)
 
-Status: **DESIGN** — issue #348 (track R1, umbrella #356) · drafted 2026-08-04 from a live
-pilot-ledger measurement · panel: 1 of 2 seats complete, second seat owed (§10) · build
-slices #353 (backend attention score) and #354 (frontend ordering + rationale) are gated on
-this doc being locked AND on the data-maturity gate (§7) for pilot activation
+Status: **DESIGN, backend + frontend build slices ★ SHIPPED** — issue #348 (track R1, umbrella
+#356) · drafted 2026-08-04 from a live pilot-ledger measurement · panel: 1 of 2 seats complete,
+second seat owed (§10) · build slices #353 (backend attention score — **built**, §11:
+`io.inspector.attention.*`, shipped **FLAG-OFF**, `inspector.triage.attention-ordering=false`)
+and #354 (frontend ordering + rationale — **built**, §11: renders whatever order it is served,
+never re-sorts Stage 0 itself, and reconciles with #352's Incident Ledger self-heal-risk sort)
+· **data-maturity gate NOT MET as of 2026-08-04** (§7, 0 of 5 axes). Unlike R2 — whose machinery
+ships enabled and self-gates per class on its own sample floor — R1's gate governs the FEATURE
+ITSELF: the ordering is a single global switch over shared cards, so it ships inert and
+flipping it requires re-measuring §7 with the §5 method.
 
 ## 0. Provenance
 
@@ -405,3 +411,117 @@ parallel protocol.
 Exact review exchanges are preserved in the implementation session transcript; the gate
 status in §7 and the measured numbers in §5 were not altered by review — only the three
 adopted fixes above.
+
+## 11. Build-slice record — #353 backend (★ SHIPPED)
+
+What landed, and where it deviates from or sharpens this design. **Nothing here changes any
+default behavior**: with `inspector.triage.attention-ordering` false (the shipped default) the
+whole surface is inert.
+
+- **Score (§4.1)** — `io.inspector.attention.AttentionScoreCalculator`, pure/static:
+  `A(c) = F·R·M·S` exactly as specified. Joined at render time in `AttentionScoreService`,
+  LAST in the `GET /api/triage` pipeline (scope projection → ack decoration → attention), and
+  served per card as `ErrorGroup.attention {score, factors, rationale,
+  suggestedAckExpirySeconds?}`. Same block on `IncidentSummary` (list + detail).
+- **Zero new engine calls, as designed.** Three bounded aggregates against the BFF's own
+  Postgres, cached whole (`attention.model-ttl`, 5m): `incident.last_seen` (R), a NEW native
+  positive-delta window aggregate over `incident_occurrence` (F — a DB-side `SUM(GREATEST(
+  total − LAG(total), 0))` rather than differencing ~40k minute-buckets per class in Java,
+  discarding any delta touching a truncated bucket per §6), and closed `incident_episode`
+  durations (M + the §3.2 P75 expiry suggestion). The Stage 0 count-only/`size=1` +
+  dedicated-DLQ-scan rule is untouched — nothing was added to the aggregation.
+- **Ordering** — `AttentionOrdering.BY_ATTENTION`: `score DESC → total DESC → signatureHash
+  ASC`. The incident LIST keeps its server order (`lastSeen DESC`; the #308 hard cap must drop
+  the oldest rows) and its client-derived sections — the score orders within the live sections,
+  where they are actually formed, per §2.
+- **Adapter to R2 (§4.2), as actually built.** #351 ships no standalone statistics endpoint and
+  no single "stabilized rate" field — stats are an embedded `selfHeal` block whose one
+  hysteresis-stabilized artifact is the server-dwelled DISPLAYED `lane` (its Wilson bounds are a
+  per-read point statistic, and are absent below the floor). The join therefore maps
+  **lane → `p_heal`** at the §4.1 band midpoints (LIKELY 0.75, MIXED 0.50, UNLIKELY 0.15;
+  `INSUFFICIENT_HISTORY`/absent ⇒ neutral 1) — honoring "consumes the stabilized value, never a
+  raw per-cycle rate" literally. `SELF_HEAL_LIKELY` lands exactly on the 0.25 floor, so the
+  design's "demoted at most 4×, never zeroed" is arithmetic rather than a separate clamp.
+- **`eff(c)` excluded from the v1 score**, per §3.1. Not implemented, not referenced.
+- **Rationale (§4.3)** — `AttentionRationale`, server-side, one `·`-separated sentence on one
+  line: `21 failing · last seen 2 min ago · typically takes 4 h to resolve · no self-heal
+  history.` Sub-floor estimates render "no resolve-time history"/"no self-heal history", never
+  a number.
+- **Model-derived knobs.** C6 (τ) and the §4.1 clamps/floors are config with the design's
+  selected values as defaults (`inspector.triage.attention.*`). C2 (ack-expiry suggestion) is
+  computed as the class P75 closed-episode duration and served on the attention block — absent
+  below `min-closed-episodes`, which is today's behavior (no suggestion). C3 (resurface
+  factor) moved its PROVENANCE to `ResurfaceThresholdEstimator` but **not its value**:
+  `derived-resurface-threshold` defaults false per §3.3, so `ack-resurface-threshold-pct` (20)
+  stays in force and its per-deployment override works unchanged. **C4 (`regression-min-count`)
+  and C5 (R-NFR-04 thresholds) were deliberately NOT touched**, per §3.4.
+- **The counterfactual-ack replay (§3.3) is implemented** (`CounterfactualAckReplay`, pure):
+  stable segments = maximal runs of non-truncated non-zero buckets; jitter = median per-segment
+  CV; `k` fit by grid search to the ≤1-false-resurface-per-30-ack-days budget, smallest
+  qualifying `k` winning so an ack can never become a permanent mute. It reads
+  `incident_occurrence` ALONE — the adopted panel BLOCKER fix, executable at the pilot's zero
+  recorded acks.
+- **No Flyway migration.** Pure derive-on-read aggregation over the existing V18 tables, exactly
+  as §6 anticipated.
+- **Neutrality is proven, not asserted** — `AttentionOrderingNeutralityTest`: flag off ⇒ the
+  decorator returns the VERY SAME object, runs zero queries, and serializes byte-for-byte
+  identically with no `attention` key; flag ON with an empty ledger ⇒ every score is 0.0 and
+  500 randomized corpora land in count-only order, which is §5.5's measured result restated as
+  an executable invariant. Ordering-only is proven too (every card survives; an acknowledged
+  card keeps its overlay identically).
+- **Deferred, NOT built in this slice:** the §8 usability goal/fixture/A-B protocol (that is
+  #354's surface plus a `usability-run`), and any re-measurement of §7 — the gate status
+  recorded above stands until the PR that flips the flag re-measures it with the §5 method.
+
+## 12. Build-slice record — #354 frontend (★ SHIPPED)
+
+What landed, and where a semantic conflict on the `research/phase-2-integration` integration
+base was reconciled deliberately.
+
+- **Stage 0 (`ErrorGroupCard.tsx`) does no client-side ordering at all.** The backend already
+  reorders `TriageDashboardResponse#errorGroups` itself (`AttentionScoreService#decorate` →
+  `AttentionOrdering.order`, §11); the existing `ErrorGroupSections`/`splitAcknowledged` split
+  was already order-preserving over its input array, so rendering the server's order required no
+  new client sort — only the tooltip (below) needed building.
+- **The conflict, on the Incident Ledger.** ALARM-COST-MODEL.md §11 says the incident LIST keeps
+  its server order (`lastSeen DESC`) and the score orders WITHIN the client-derived sections —
+  and those sections are exactly what #352 already forms in `incidents/sections.ts`, sorted by a
+  CLIENT-side `compareSelfHealRisk` (RETRYING-RISK-LANE.md §10). The two builds integrated
+  textually without conflict (different lines of the same file, different commits) but were
+  semantically incompatible: `A(c) = F·R·M·S`'s `S` factor is ALREADY the self-heal signal
+  (§11's `lane → p_heal` band map), so layering `compareSelfHealRisk` on top would double-count
+  self-heal and — worse — silently override the server's considered order with a client-only
+  re-derivation, exactly what §3.1 says the design exists to prevent ("the server ordering must
+  win").
+- **Resolution** — `incidents/attention.ts#compareIncidentOrder`, used by
+  `sections.ts#bucketIncidents` in place of the bare `compareSelfHealRisk` on the REGRESSED/OPEN/
+  QUIET sections: ranks by the server `attention.score` (mirroring the backend's own `score DESC
+  → total DESC → signatureHash ASC` tie-break, `AttentionOrdering.BY_ATTENTION`) whenever BOTH
+  sides of a comparison carry one; falls back to EXACTLY #352's original `compareSelfHealRisk`
+  otherwise. Since the flag ships off (§7/§9) and `attention` is therefore absent on every
+  response today, this is a no-behavior-change for #352 in practice — proven by
+  `sections.test.ts` still asserting the identical self-heal-lane order on that path, plus new
+  coverage of the attention-present path (which deliberately orders the OPPOSITE way the lane
+  alone would, to prove the score wins outright rather than blending) and a never-hide assertion
+  across every bucket. `compareSelfHealRisk` and the self-heal badge rendering (`SelfHealBadge`)
+  are otherwise UNTOUCHED — only the ordering role is superseded, per the issue's explicit
+  instruction to preserve badge rendering.
+- **Rationale tooltip** — `components/AttentionBadge.tsx`, a visible `"ranked by attention"` chip
+  shared by `ErrorGroupCard` (Stage 0) and `IncidentCard`/`IncidentDetail` (Incident Ledger),
+  since both `ErrorGroup` and `IncidentSummary` carry the same optional `attention` block. Renders
+  NOTHING when `attention` is absent (the shipped, flag-off, expected-today case) — no fabricated
+  "why". Its `title` tooltip (this codebase's glossary convention — no `/glossary` route) joins a
+  FIXED constant sentence (§4.3's generic explanation of what the ordering means) with the
+  SERVER's own one-sentence per-card rationale (`attention.rationale`), rendered VERBATIM —
+  never recomposed from `factors` client-side, per the issue's explicit rule.
+- **No ordering toggle built.** §3.1/§11 specify a single server-computed order behind one
+  deployment-wide flag, never an operator-facing attention-vs-count choice; §8's A/B protocol is
+  a `usability-run` measurement harness (arm A/B are test conditions), not a shipped UI control.
+  The issue is explicit that a toggle is built ONLY if the design specifies one — it does not.
+- **New generated-type usage, no regeneration.** `frontend/src/api/model.ts` gained
+  `AttentionScore`/`AttentionFactors` aliases over the schema #353 already committed
+  (`frontend/src/api/schema.d.ts`) — `npm run gen:api` was NOT re-run (not needed; the schema
+  already carried these types).
+- **Deferred, NOT built in this slice:** the §8 usability goal/fixture/A-B protocol and any
+  re-measurement of §7 remain open (unchanged from §11's own deferral) — #354 is the ordering +
+  tooltip UI only, not the usability-harness proof of benefit.

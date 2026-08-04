@@ -8,8 +8,10 @@
 // of what the S2 API shape actually supports — flagged for review.
 import { Link } from 'react-router'
 import type { EngineDto, IncidentSummary } from '../api/model'
+import { AttentionBadge } from '../components/AttentionBadge'
 import { engineSummary } from './breakdown'
 import { formatCount } from '../lib/format'
+import { SelfHealBadge } from './SelfHealBadge'
 import { Ts } from '../lib/Ts'
 
 interface Props {
@@ -59,6 +61,8 @@ export function IncidentCard({ incident, enginesById, variant }: Props) {
               in your scope
             </span>
           )}
+          <SelfHealBadge selfHeal={incident.selfHeal} partial={incident.partial} />
+          <AttentionBadge attention={incident.attention} />
         </span>
         <span
           className="incident-total"

@@ -1,0 +1,72 @@
+<?xml version="1.0" encoding="UTF-8"?>
+<definitions xmlns="http://www.omg.org/spec/BPMN/20100524/MODEL"
+             xmlns:xsi="http://www.w3.org/2001/XMLSchema-instance"
+             xmlns:flowable="http://flowable.org/bpmn"
+             xmlns:bpmndi="http://www.omg.org/spec/BPMN/20100524/DI"
+             xmlns:omgdc="http://www.omg.org/spec/DD/20100524/DC"
+             xmlns:omgdi="http://www.omg.org/spec/DD/20100524/DI"
+             typeLanguage="http://www.w3.org/2001/XMLSchema"
+             expressionLanguage="http://www.w3.org/1999/XPath"
+             targetNamespace="http://inspector.io/demo">
+
+  <!-- Migration-findings taxonomy probe A, VERSION 1 (INSTANCE-MIGRATION.md §14.2 [M2]/[M3];
+       IT fixture for MigrationFindingsIT, NOT part of the demo seed set).
+       A token parked on `stepA` inside the subprocess scope `scopeA` yields THREE runtime
+       executions: the instance root (activityId null), the SCOPE execution (activityId
+       "scopeA") and the leaf (activityId "stepA"). v2 removes `scopeA` entirely and keeps
+       `stepA` at the process root — live calibration proved the engine accepts that migration
+       with an EMPTY activityMappings list on flowable-rest 6.8.0 AND 7.1.0, which is why
+       ACTIVE_SCOPE_REMOVED is a WARNING and not the false blocker it used to be. -->
+  <process id="taxProbeA" name="Taxonomy probe A — active scope (v1)" isExecutable="true">
+    <startEvent id="start"/>
+    <sequenceFlow id="flowIn" sourceRef="start" targetRef="scopeA"/>
+    <subProcess id="scopeA" name="Scope A">
+      <startEvent id="startA"/>
+      <sequenceFlow id="flowA1" sourceRef="startA" targetRef="stepA"/>
+      <userTask id="stepA" name="Step A" flowable:assignee="rest-admin"/>
+      <sequenceFlow id="flowA2" sourceRef="stepA" targetRef="endA"/>
+      <endEvent id="endA"/>
+    </subProcess>
+    <sequenceFlow id="flowOut" sourceRef="scopeA" targetRef="end"/>
+    <endEvent id="end"/>
+  </process>
+
+  <bpmndi:BPMNDiagram id="BPMNDiagram_taxProbeA">
+    <bpmndi:BPMNPlane id="BPMNPlane_taxProbeA" bpmnElement="taxProbeA">
+      <bpmndi:BPMNShape id="BPMNShape_start" bpmnElement="start">
+        <omgdc:Bounds x="60" y="140" width="30" height="30"/>
+      </bpmndi:BPMNShape>
+      <bpmndi:BPMNShape id="BPMNShape_scopeA" bpmnElement="scopeA">
+        <omgdc:Bounds x="140" y="70" width="360" height="170"/>
+      </bpmndi:BPMNShape>
+      <bpmndi:BPMNShape id="BPMNShape_startA" bpmnElement="startA">
+        <omgdc:Bounds x="170" y="140" width="30" height="30"/>
+      </bpmndi:BPMNShape>
+      <bpmndi:BPMNShape id="BPMNShape_stepA" bpmnElement="stepA">
+        <omgdc:Bounds x="250" y="125" width="100" height="60"/>
+      </bpmndi:BPMNShape>
+      <bpmndi:BPMNShape id="BPMNShape_endA" bpmnElement="endA">
+        <omgdc:Bounds x="410" y="141" width="28" height="28"/>
+      </bpmndi:BPMNShape>
+      <bpmndi:BPMNShape id="BPMNShape_end" bpmnElement="end">
+        <omgdc:Bounds x="550" y="141" width="28" height="28"/>
+      </bpmndi:BPMNShape>
+      <bpmndi:BPMNEdge id="BPMNEdge_flowIn" bpmnElement="flowIn">
+        <omgdi:waypoint x="90" y="155"/>
+        <omgdi:waypoint x="140" y="155"/>
+      </bpmndi:BPMNEdge>
+      <bpmndi:BPMNEdge id="BPMNEdge_flowA1" bpmnElement="flowA1">
+        <omgdi:waypoint x="200" y="155"/>
+        <omgdi:waypoint x="250" y="155"/>
+      </bpmndi:BPMNEdge>
+      <bpmndi:BPMNEdge id="BPMNEdge_flowA2" bpmnElement="flowA2">
+        <omgdi:waypoint x="350" y="155"/>
+        <omgdi:waypoint x="410" y="155"/>
+      </bpmndi:BPMNEdge>
+      <bpmndi:BPMNEdge id="BPMNEdge_flowOut" bpmnElement="flowOut">
+        <omgdi:waypoint x="500" y="155"/>
+        <omgdi:waypoint x="550" y="155"/>
+      </bpmndi:BPMNEdge>
+    </bpmndi:BPMNPlane>
+  </bpmndi:BPMNDiagram>
+</definitions>

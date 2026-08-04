@@ -1448,11 +1448,12 @@ export interface components {
         ActivityDiffEntry: {
             blocker?: boolean;
             detail?: string;
+            findings?: components["schemas"]["MigrationFinding"][];
             fromActivityId?: string;
             fromName?: string;
             fromType?: string;
             /** @enum {string} */
-            status?: "AUTO_MAPPED" | "FLAGGED_UNMAPPED" | "MAPPED_BY_OVERRIDE" | "TYPE_CHANGED" | "NESTING_CHANGED";
+            status?: "AUTO_MAPPED" | "FLAGGED_UNMAPPED" | "MAPPED_BY_OVERRIDE" | "TYPE_CHANGED" | "NESTING_CHANGED" | "SCOPE_REMOVED" | "BOUNDARY_REMOVED";
             toActivityId?: string;
             toType?: string;
             warning?: boolean;
@@ -1492,6 +1493,34 @@ export interface components {
             updatedAt?: string;
             /** Format: int32 */
             writeMs?: number;
+        };
+        AttentionFactors: {
+            /** Format: int64 */
+            ageSeconds?: number;
+            /** Format: int64 */
+            arrivals28d?: number;
+            /** Format: int32 */
+            closedEpisodes?: number;
+            /** Format: double */
+            frequency?: number;
+            insufficientHistory?: boolean;
+            /** Format: int64 */
+            medianMttrSeconds?: number;
+            /** Format: double */
+            mttr?: number;
+            /** Format: double */
+            recency?: number;
+            /** Format: double */
+            selfHeal?: number;
+            selfHealLane?: string;
+        };
+        AttentionScore: {
+            factors?: components["schemas"]["AttentionFactors"];
+            rationale?: string;
+            /** Format: double */
+            score?: number;
+            /** Format: int64 */
+            suggestedAckExpirySeconds?: number;
         };
         AuditEntryDto: {
             action?: string;
@@ -1922,6 +1951,7 @@ export interface components {
             acknowledgement?: components["schemas"]["ErrorGroupAcknowledgement"];
             /** Format: int32 */
             algoVersion?: number;
+            attention?: components["schemas"]["AttentionScore"];
             countsByEngine?: {
                 [key: string]: {
                     [key: string]: number;
@@ -2042,6 +2072,7 @@ export interface components {
         IncidentSummary: {
             /** Format: int32 */
             algoVersion?: number;
+            attention?: components["schemas"]["AttentionScore"];
             countsByEngine?: {
                 [key: string]: {
                     [key: string]: number;
@@ -2066,6 +2097,7 @@ export interface components {
             /** Format: int32 */
             regressionCount?: number;
             sampleRawMessage?: string;
+            selfHeal?: components["schemas"]["SelfHealStats"];
             signatureHash?: string;
             state?: string;
         };
@@ -2264,6 +2296,14 @@ export interface components {
         MetaDto: {
             ticketUrlTemplate?: string;
         };
+        MigrationFinding: {
+            activityId?: string;
+            /** @enum {string} */
+            code?: "UNMAPPED_ACTIVE_ACTIVITY" | "ACTIVE_SCOPE_REMOVED" | "ACTIVE_IN_REMOVED_SCOPE" | "NESTING_PATH_CHANGED" | "TYPE_CHANGED_SAME_ID" | "BOUNDARY_SUBSCRIPTION_REMOVED" | "BOUNDARY_CLOCK_RESET";
+            detail?: string;
+            /** @enum {string} */
+            severity?: "BLOCKER_ADVICE" | "WARNING" | "INFO";
+        };
         MigrationMapping: {
             fromActivityId?: string;
             fromActivityIds?: string[];
@@ -2280,6 +2320,7 @@ export interface components {
             enginePath?: string;
             engineValidated?: boolean;
             executable?: boolean;
+            findings?: components["schemas"]["MigrationFinding"][];
             fromDefinitionId?: string;
             fromDefinitionKey?: string;
             /** Format: int32 */
@@ -2614,6 +2655,24 @@ export interface components {
             statusCounts?: {
                 [key: string]: number;
             };
+        };
+        SelfHealStats: {
+            /** Format: int32 */
+            excludedSpells?: number;
+            /** Format: int32 */
+            healed?: number;
+            lane?: string;
+            /** Format: int32 */
+            n?: number;
+            truncationTainted?: boolean;
+            /** Format: int64 */
+            ttsP50Seconds?: number;
+            /** Format: int64 */
+            ttsP90Seconds?: number;
+            /** Format: double */
+            wilsonHigh?: number;
+            /** Format: double */
+            wilsonLow?: number;
         };
         SequenceFinding: {
             /** Format: int32 */
