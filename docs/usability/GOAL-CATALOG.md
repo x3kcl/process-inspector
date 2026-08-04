@@ -404,6 +404,56 @@ ENTRY: `/search` save → publish as `operator`; consume as `viewer`.
 SUCCESS: two-actor arc completes; Team badge understood; replay state identical.
 FIXTURE: standard seed.
 
+### R-SEM-25 · Attention-ordering & self-heal comprehension
+
+PRIO SHOULD-v1.x (research-gated, track R1) · CLASS UI-STAGED (hard — needs
+`inspector.triage.attention-ordering=true` on the targeted BFF process AND a fixture where
+the attention-cost order diverges from count-only) · BUILT yes (`AttentionBadge`/
+`SelfHealBadge` render correctly today; the FEATURE itself ships flag-off — data-maturity
+gate NOT MET, ALARM-COST-MODEL.md §7 — so this goal sits OUTSIDE the standard nightly gate
+population; report-only until the gate re-measures green, same treatment as every other
+SHOULD/COULD BUILT-yes goal)
+GOAL (/a pick-the-costliest, timed): A first-time on-call engineer landing on `/` with
+several failure classes on screen must start working on the class that is genuinely
+costliest — not merely the largest — and cite what told them so (ALARM-COST-MODEL.md §8's
+own goal, minted here in catalog form). Direct benefit measurement: time from landing to
+first drill into the planted class.
+GOAL (/b ordering-rule restatement): Having read whatever on-screen text explains the
+ordering, the same engineer must correctly restate — in their own words — that position is
+NOT decided by raw failure count alone, citing at least two of the score's real
+ingredients (how fresh/growing the class is, how long it historically takes to resolve,
+whether it usually clears itself) from the tooltip text they actually read.
+GOAL (/c self-heal badge restatement): Meeting a `SelfHealBadge` on any card, the same
+engineer must correctly restate that its fraction+time is a HISTORIC rate over past
+retrying spells — never a live guarantee — and correctly derive the right posture (leave
+it / treat like FAILED / not enough history yet) from whichever lane they actually saw.
+ENTRY: `/` and `/incidents` · user `viewer`.
+SUCCESS: /a — the tester's first drill targets the planted costly-not-largest class, and
+the choice citation quotes the rationale tooltip (time-to-first-relevant-card is the
+metric, not a pass/fail on its own). /b and /c are graded **citation-or-nothing** — an
+answer with no on-screen quote scores `unsupported` regardless of correctness — against a
+combined **≥80% correct-restatement pass bar**, set deliberately above the ~60% label
+comprehension Laberge et al. 2014 (DOI 10.1016/j.ergon.2013.11.008) measured for this same
+class of compressed-label redesign — the level their data associates with the display's
+benefit disappearing entirely (the traditional list beat the redesigned display ALONE on
+orienting score, 52.3% vs 45.0%, p=0.04, and on response time; benefit appeared only paired
+with a trained response strategy, n=8 exploratory subsample, α=0.10).
+`docs/OPERATOR-QUICK-START.md`'s "Reading the attention ranking" note is that strategy's
+half; /b and /c measure whether it worked. /b correct: rejects "biggest number = top" and
+names ≥2 real factors. /c correct: identifies the rate as historic/past-tense AND states
+the right posture for the lane actually observed.
+FIXTURE: ALARM-COST-MODEL.md §8's staged A/B fixture (≥4 current-generation classes, the
+planted class NOT the largest by count) PLUS ≥1 live `SelfHealBadge`. **Self-heal lane
+reachability (issue #359 dependency, unresolved at authoring time):** the standard seed
+corpus fails every seeded process PERMANENTLY by construction, so `SELF_HEAL_UNLIKELY` and
+`INSUFFICIENT_HISTORY` are reachable today; `SELF_HEAL_LIKELY` and `SELF_HEAL_MIXED` (the
+lane /c's example copy — RETRYING-RISK-LANE.md §4.1's worked example "usually self-heals
+(12/14, typically ≤ 8 min)" — illustrates) need a TRANSIENTLY-failing seed process that
+recovers on its own, which issue #359 (in progress on another branch at authoring time)
+has not yet shipped. The run and its verdict must record which lane(s) were actually live
+that run; a run before #359 lands cannot exercise /c against LIKELY/MIXED copy and must
+say so rather than silently skip or fabricate coverage. Mission: `MISSIONS.md` M13.
+
 ## SAFE — Operator safety & RBAC
 
 ### R-SAFE-01 · RESPONDER tier + grant tooltips
@@ -1104,6 +1154,11 @@ browser):
   done (reseed checkpoint between waves; `docker/seed.sh` is idempotent).
 - **Destructive verbs ONLY against F-G10 sacrificial fixtures** (tag rule doubles as the
   wrong-instance near-miss probe). Least-privilege login per mission.
+- **M13 ("Why is this one first?", R-SEM-25) is NOT part of the standard 12-mission set.**
+  It requires a BFF process started with `INSPECTOR_TRIAGE_ATTENTION_ORDERING` set per arm
+  (a restart, not a live flip) and is invoked explicitly (`missions: ["M13"]`) only under
+  the R1 attention-ordering A/B protocol, ALARM-COST-MODEL.md §8 — never mixed into a
+  standard nightly/on-demand run, which shares one BFF process across every mission.
 
 **Tester protocol (fed to every tester verbatim, enforced by the evaluator):**
 

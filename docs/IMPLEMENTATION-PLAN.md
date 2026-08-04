@@ -2510,7 +2510,11 @@ without. Designs are in the per-feature docs; this records the sequencing only.
   **default false**, because the design's own data-maturity gate is measured NOT MET on 0 of 5
   axes) → `#354` frontend (`AttentionBadge` on Stage 0 and the Ledger; the Ledger's section
   comparator reconciled with #352's self-heal sort so the server's order wins rather than being
-  re-derived client-side). [ALARM-COST-MODEL.md](ALARM-COST-MODEL.md)
+  re-derived client-side). [ALARM-COST-MODEL.md](ALARM-COST-MODEL.md) — `#366` (2026-08-04,
+  docs-only) authored the operator-facing "how to read the ranking" note
+  ([OPERATOR-QUICK-START.md](OPERATOR-QUICK-START.md)) plus the §8 A/B usability run plan and
+  comprehension probe (catalog `R-SEM-25`, mission `M13`); the run itself is **NOT YET
+  EXECUTED**, sequenced after `#365` (a burst-term score amendment, in progress).
 - **R3 migration typed findings** — `#355` (typed, machine-readable migration preview findings
   replacing free-text). [INSTANCE-MIGRATION.md](INSTANCE-MIGRATION.md)
 

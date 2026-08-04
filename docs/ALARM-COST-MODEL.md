@@ -9,7 +9,12 @@ never re-sorts Stage 0 itself, and reconciles with #352's Incident Ledger self-h
 · **data-maturity gate NOT MET as of 2026-08-04** (§7, 0 of 5 axes). Unlike R2 — whose machinery
 ships enabled and self-gates per class on its own sample floor — R1's gate governs the FEATURE
 ITSELF: the ordering is a single global switch over shared cards, so it ships inert and
-flipping it requires re-measuring §7 with the §5 method.
+flipping it requires re-measuring §7 with the §5 method. **§8's usability A/B run plan is now
+AUTHORED (issue #366, 2026-08-04) — comprehension probe + operator doc (R-SEM-25,
+`docs/usability/MISSIONS.md` M13, `docs/OPERATOR-QUICK-START.md`) specified end to end, run
+NOT YET EXECUTED (§8.8): sequenced to follow issue #365 (a burst-term amendment to this same
+score, IN PROGRESS) and gated further by issue #359 (transiently-failing seed corpus, IN
+PROGRESS) for full self-heal-lane coverage.**
 
 ## 0. Provenance
 
@@ -456,27 +461,188 @@ default false), and no constant changes value. The gate is re-measured with the 
 
 Plugs into the EXISTING usability harness (`usability-testing` skill, `usability-run`,
 `docs/usability/GOAL-CATALOG.md` format contract + `MISSIONS.md` tester briefs) — no
-parallel protocol.
+parallel protocol. **Authored by issue #366 (2026-08-04) as an executable plan — NOT YET
+RUN**; §8.8 records that honestly and must not be filled from anything but a real
+execution.
 
-- **New goal** (minted in the build slice, catalog format `PRIO / CLASS / BUILT / GOAL /
-  ENTRY / SUCCESS / FIXTURE`): CLASS `UI-STAGED`; GOAL — *"a 3am first-time on-call engineer
-  landing on `/` with several failure classes on screen must start working on the class that
-  is genuinely costliest — not merely the largest — and cite what told them so."*
-  SUCCESS — tester picks the planted costly class AND cites the rationale tooltip text
-  (citation-or-nothing scoring, per the catalog contract).
-- **Staged fixture**: ≥ 4 error classes where the planted costly class (long historic MTTR,
-  no self-heal, fresh) is NOT the largest by count; a large, R2-proven self-healing class
-  ranks it out under count-only. Staged over REST seeding + a pre-seeded ledger fixture
-  (closed-episode history is stageable in the BFF's own Postgres via the normal lifecycle
-  verbs — resolve with reasons — never engine-table inserts).
-- **Metric — time-to-first-relevant-card**: wall-clock from `/` render to the tester's first
-  drill into the planted class, derived from the playwright transcript timestamps the
-  harness already records.
-- **A/B protocol**: same mission, N ≥ 5 naive testers per arm, arm A = flag off
-  (count-only), arm B = flag on. **Ship gate for #354's pilot activation**: median
-  time-to-first-relevant-card improves ≥ 25 % in arm B, no regression on the existing M1
-  step-1 overview verdicts, and a stability check — the same fixture re-rendered across 3
-  refreshes keeps an identical order (the DMKD stability requirement applied to ordering).
+**Sequencing (hard precondition):** this run must not execute before issue #365 (a
+burst-term amendment to this same attention score, `A(c) = F·R·M·S`) lands. #365 is IN
+PROGRESS on another branch at authoring time. Running arm B against a since-superseded
+scoring formula would test an ordering the shipped flag never actually serves once #365
+merges — whoever schedules this run re-checks #365's status first, and re-derives the
+fixture in §8.2 if the formula's shape changed underneath it.
+
+### 8.1 Goals under test (catalog entry R-SEM-25, `docs/usability/GOAL-CATALOG.md`)
+
+Three arcs, one staged mission (`docs/usability/MISSIONS.md` M13, "Why is this one
+first?"), one shared fixture:
+
+- **/a — the direct benefit measurement** (the goal this section originally sketched,
+  now minted in catalog form): a 3am first-time on-call engineer landing on `/` with
+  several failure classes on screen must start working on the class that is genuinely
+  costliest — not merely the largest — and cite what told them so. Metric:
+  time-to-first-relevant-card (§8.5).
+- **/b — ordering-rule comprehension**: the same engineer must correctly restate, from the
+  `AttentionBadge` tooltip, that card position is not decided by raw count alone.
+- **/c — self-heal badge comprehension**: meeting a `SelfHealBadge`, the same engineer
+  must correctly restate that its fraction+time is a historic rate over past retrying
+  spells, not a live guarantee, and derive the right posture from the lane they actually
+  saw.
+
+/b and /c together are **the trained-response-strategy half** the Laberge et al. 2014
+finding (DOI 10.1016/j.ergon.2013.11.008, full text read for issue #366) says the display
+needs to ship WITH: the traditional list beat the redesigned display ALONE on orienting
+score (52.3% vs 45.0%, p = 0.04) and on response time; the redesign's benefit appeared only
+paired with a trained response strategy (n = 8 exploratory subsample, α = 0.10), and ~60%
+label comprehension is the level their data associates with that benefit disappearing.
+`docs/OPERATOR-QUICK-START.md`'s "Reading the attention ranking" note (added alongside
+this plan) IS that strategy; /b and /c measure whether it worked, at a **≥80%
+correct-restatement pass bar** — deliberately above Laberge's ~60% failure-associated
+level — citation-or-nothing scored per the catalog contract (an answer with no on-screen
+quote scores `unsupported` regardless of correctness).
+
+### 8.2 Fixture staging (concrete steps)
+
+1. Standard seed: `docker/seed.sh` (idempotent) — the baseline `demoFailingPayment` (large
+   volume) and `acmeApiOutage` (small) classes already exist per the standard corpus.
+2. Plant ≥2 additional current-generation classes so the fleet carries **≥4 distinct
+   classes live concurrently** (mirrors the §7 gate's own G2 shape, but this is a STAGED
+   test condition, not a claim the gate is met): deploy-and-fail one more ACME definition
+   and one more `demoFailingRetry`-style timer-backed failure under a fresh business-key
+   prefix (`uxrun-m13-*`, the same F-G10 sacrificial-tag convention every other mission
+   uses), started over REST per `docker/seed.sh`'s own idiom — never an `ACT_*` table
+   insert (CLAUDE.md iron rule).
+3. Pick ONE freshly-planted class as **the planted costly class**: small member count
+   (3-5 instances, so it is never the largest by raw count), started immediately before
+   the run — maximizes `R` (recency) and, per §4.1's F3 correction, its own birth counts
+   as its whole population's arrival, maximizing `F` too.
+4. Give the planted class a real, non-neutral **M (historic cost) factor**: open→resolve
+   it **three times** (`min-closed-episodes: 3`, `InspectorProperties`) via the ledger's
+   own human lifecycle verb (`POST /api/incidents/{id}/resolve`, reason ≥10 chars per
+   R-NFR-06), leaving each incident open for a genuinely longer wall-clock stretch than
+   the fleet's other classes before resolving (M is a real elapsed-time ratio — minutes,
+   not milliseconds) so its `medMTTR` clamps toward `mttr-clamp-high` (2.0) relative to
+   the fleet median. Re-seed the failure over REST between each resolve so a fresh episode
+   opens each time.
+5. **What is NOT achievable pre-#359, and must not be faked**: the canonical "large
+   self-healing class demoted below a small costly one" story needs the `S` factor
+   non-neutral, which needs a class actually reaching `SELF_HEAL_LIKELY`/`MIXED` —
+   blocked on #359 (§8.6). Until #359 lands, every live class's `S` stays neutral (1) in
+   this fixture, same as the measured pilot (§5.5) — so a pre-#359 run's ordering
+   divergence is attributable to `F`/`R`/`M` alone. The run's own report must state this
+   explicitly; do not claim the S-driven story was exercised until it actually was.
+6. Confirm at least one live `SelfHealBadge` exists for task /c (any reachable lane — see
+   §8.6): the standard `demoFailingRetry` cohort or the freshly-planted timer-backed class
+   will show `INSUFFICIENT_HISTORY` or, once ≥1 spell completes, `SELF_HEAL_UNLIKELY`
+   (every seeded process fails permanently, so it never heals).
+7. Validate staging BEFORE dispatching testers: `curl -su viewer:dev
+   http://localhost:8085/api/triage?refresh=true` against arm B's BFF and confirm the
+   planted class's `attention.score` ranks it above at least one larger class — if it
+   doesn't, adjust step 3/4 (more elapsed OPEN time, or a fresher start) and re-check
+   rather than dispatch a mission the fixture can't actually support.
+
+### 8.3 Dev-ladder user & entry point
+
+`viewer` — VIEWER floor covers every M13 task (read-only comprehension probe, no
+mutation). Sign-in and navigation exactly per the standard tester protocol
+(`.claude/workflows/usability-run.js` `testerPrompt`/`PROTOCOL`): the tester enters at
+`/`, never at a destination tab.
+
+### 8.4 Per-arm flag mechanics
+
+The flag is a Spring Boot property (`inspector.triage.attention-ordering`,
+`InspectorProperties`), not a runtime toggle — flipping it means starting the arm's BFF
+process with a different environment override:
+
+- **Arm A (control, flag off)**: `cd backend && ENGINE_A_PASSWORD=test
+  ENGINE_B_PASSWORD=test ENGINE_7_PASSWORD=test mvn spring-boot:run`
+  (`docs/usability/RUNBOOK.md` prerequisite #2, unchanged — `attention-ordering` already
+  defaults false).
+- **Arm B (flag on)**: the same command with `INSPECTOR_TRIAGE_ATTENTION_ORDERING=true`
+  exported first (Spring relaxed binding onto `inspector.triage.attention-ordering`).
+  Confirm it took before staging: `curl -su viewer:dev
+  http://localhost:8085/api/triage | grep -o '"attention"'` must return a hit.
+- The two arms run against **separate BFF process lifetimes** — sequential restarts on the
+  same dev stack are fine, concurrent is not: M13 is config-staged/exclusive (§ RUN
+  PROTOCOL note in `GOAL-CATALOG.md`), and flipping the flag mid-run would silently
+  re-order every OTHER mission sharing that BFF.
+
+### 8.5 Metric derivation — time-to-first-relevant-card
+
+The existing `TESTER_SCHEMA` (`.claude/workflows/usability-run.js`) has no timestamp
+field today; whoever wires this run adds one (a one-line schema+prompt addition, not a
+product behavior change):
+
+- Tester instruction: immediately after `browser_navigate('/')` succeeds, call
+  `browser_evaluate(() => new Date().toISOString())` and record the result as
+  `landingIso`; immediately after the first successful navigation into the planted
+  class's detail page (task /a's drill), call it again and record `firstDrillIso`. Both
+  ride on M13's task entry as `timings: {landingIso, firstDrillIso}`.
+- `time-to-first-relevant-card = firstDrillIso − landingIso`, computed by the evaluator
+  (reconciler agent) per tester, per arm.
+- This is wall-clock as the AGENT experienced it (its own "thinking" time included) — an
+  honest proxy for "how many dead-end interactions before landing on the right one," not a
+  claim about human-operator seconds. Report it alongside `interactions` (already
+  tracked) and treat a step-count regression the same way nightly stats already do
+  (GOAL-CATALOG.md RUN PROTOCOL "Nightly statistics": "a 4-step task becoming 9 steps is a
+  regression even while green").
+
+### 8.6 Self-heal lane reachability — the #359 dependency (record honestly)
+
+| Lane | Reachable today (pre-#359)? | Why |
+|---|---|---|
+| `INSUFFICIENT_HISTORY` | **yes** | default state; needs no completed spells at all |
+| `SELF_HEAL_UNLIKELY` | **yes** | every seeded process fails PERMANENTLY by construction — spells complete, none heal |
+| `SELF_HEAL_MIXED` | **no — blocked on #359** | needs some spells to heal and some not; no seed process ever heals today |
+| `SELF_HEAL_LIKELY` | **no — blocked on #359** | needs most spells to heal; #359 (the transiently-failing seed corpus) is IN PROGRESS on another branch, not yet landed |
+
+Task /c's example copy (RETRYING-RISK-LANE.md §4.1's worked example, "usually self-heals
+(12/14, typically ≤ 8 min)") illustrates `SELF_HEAL_LIKELY` specifically — a run before
+#359 lands can only exercise /c against `INSUFFICIENT_HISTORY` or `SELF_HEAL_UNLIKELY`
+copy, and the S-driven ordering story (§8.2 step 5) stays neutral throughout. The verdict
+(§8.8) MUST state which lane(s) were actually met that run, never silently claim full
+coverage.
+
+### 8.7 Pass/fail arithmetic (as the executor applies it)
+
+1. **Comprehension gate** (/b + /c combined, arm B only): count correct, citation-grounded
+   restatements ÷ total /b+/c tasks attempted across all N ≥ 5 testers. **Pass iff ≥80%.**
+   An uncited answer scores `unsupported`, counted as NOT correct (citation-or-nothing),
+   regardless of semantic correctness. Arm A's /b+/c tasks are expected to answer
+   `blocked-by-environment` (the badge/tooltip render nothing, flag off) — recorded as the
+   control observation, excluded from the comprehension denominator, never scored as
+   failures.
+2. **Benefit gate** (/a, arm A vs arm B): median `time-to-first-relevant-card`(arm B) vs
+   median `time-to-first-relevant-card`(arm A) over N ≥ 5 testers per arm. **"Arm B ≥
+   arm A" means arm B's median is NOT SLOWER than arm A's** (lower elapsed time is
+   better). The existing ship-gate bar for a CLEAR recommend stays: arm B improving by
+   **≥25%**, no regression on the existing M1 step-1 overview verdicts, and a stability
+   check — the same fixture re-rendered across 3 refreshes keeps an identical order (the
+   DMKD stability requirement applied to ordering).
+3. **Decision rule (verbatim, as specified for this run): flag-on is recommended only on
+   (comprehension pass) AND (arm B ≥ arm A); a worse arm B is a real possible outcome per
+   Laberge — it must be recorded honestly if it happens.** Meeting the ≥25% bar
+   strengthens a "recommend" verdict but is not itself the gate; failing "arm B ≥ arm A" —
+   even by a small margin — fails the gate outright, comprehension notwithstanding. This
+   doc's own §5.5 already recorded one null result honestly on the pilot data; a negative
+   §8 result gets the identical treatment, not a quiet rerun until it looks better.
+4. Neither gate substitutes for §7's own numeric data-maturity gate. This run measures the
+   USABILITY of the ordering when it IS live; it does not re-measure whether the pilot's
+   ledger has matured enough to flip the flag in production. **Both must pass before
+   activation.**
+
+### 8.8 Verdict — NOT YET RUN
+
+| Arm | N testers | Median time-to-first-relevant-card | Comprehension pass rate (/b+/c) | Stability check | Verdict |
+|---|---|---|---|---|---|
+| A (flag off, control) | — | — | n/a (badge absent) | — | **NOT YET RUN** |
+| B (flag on) | — | — | — | — | **NOT YET RUN** |
+
+**Decision (per §8.7's rule): NOT YET RUN — no recommendation until this table is filled
+from a real execution.** Self-heal lanes actually exercised: **NOT YET RUN**. Do not
+populate this table from anything other than a real `usability-run` execution against a
+live dev stack; a fabricated or extrapolated verdict here is exactly the failure mode this
+doc's own §5/§13 correction history exists to prevent.
 
 ## 9. Doctrine compliance & non-goals
 
@@ -588,6 +754,9 @@ whole surface is inert.
 - **Deferred, NOT built in this slice:** the §8 usability goal/fixture/A-B protocol (that is
   #354's surface plus a `usability-run`), and any re-measurement of §7 — the gate status
   recorded above stands until the PR that flips the flag re-measures it with the §5 method.
+  **§8 is now fully AUTHORED (issue #366) but still NOT EXECUTED** — the plan, fixture
+  recipe, comprehension probe (catalog R-SEM-25, mission M13), and pass/fail arithmetic are
+  specified; §8.8's verdict table stays NOT YET RUN until a real A/B execution fills it.
 
 ## 12. Build-slice record — #354 frontend (★ SHIPPED)
 
@@ -640,7 +809,8 @@ base was reconciled deliberately.
   already carried these types).
 - **Deferred, NOT built in this slice:** the §8 usability goal/fixture/A-B protocol and any
   re-measurement of §7 remain open (unchanged from §11's own deferral) — #354 is the ordering +
-  tooltip UI only, not the usability-harness proof of benefit.
+  tooltip UI only, not the usability-harness proof of benefit. **§8 is now fully AUTHORED
+  (issue #366)** — see §11's own note; still not executed.
 
 ## 13. Correction round — adversarial review of the shipped #353/#354 code (★ LANDED)
 
