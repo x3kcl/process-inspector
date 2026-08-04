@@ -10,9 +10,12 @@ how to read its numbers honestly (lower bounds, "as of" stamps, jobs vs. instanc
 
 1. **Sign in.** You land on the triage page (`/`). Note the identity strip top right:
    "Signed in as **viewer** (VIEWER)".
-2. **Read the engine health strip** (header). Expect two engines, `Engine A (demo)` and
-   `Engine B (demo)`, each with a DEV environment badge, a version, and four job-lane
-   counts: `exec / timer / susp / DLQ`, unit-labeled **jobs**. A non-zero DLQ count is
+2. **Read the engine health strip** (header). Expect three engines — `Engine A (demo)` and
+   `Engine B (demo)` on Flowable 6.8.0, and `Engine 7 (demo)` on 7.1.0 — each with a DEV
+   environment badge, a version, and four job-lane
+   counts: `exec / timer / susp / DLQ`, unit-labeled **jobs**. The differing version badges
+   are the point: the inspector is one pane over a fleet that is not on one release, and
+   some capabilities are gated by engine version. A non-zero DLQ count is
    expected — the demo seeds deliberately-failing processes. If an engine shows
    "⚠ UNREACHABLE", that is a labeled degradation, not a crash: every count below now
    carries lower-bound honesty.
