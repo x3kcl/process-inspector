@@ -135,11 +135,51 @@ class AttentionOrderingNeutralityTest {
             assertThat(group.attention().factors().mttr()).isEqualTo(1.0);
             assertThat(group.attention().factors().selfHeal()).isEqualTo(1.0);
             assertThat(group.attention().factors().insufficientHistory()).isTrue();
+            // #365: no history ⇒ empty bins ⇒ the gate CANNOT fire, and an empty bin is a measured
+            // quiet rather than an unknown one (§4.1a: same shape as F2's "no in-window row").
+            assertThat(group.attention().factors().frequency()).isZero();
+            assertThat(group.attention().factors().flooding()).isFalse();
+            assertThat(group.attention().factors().burstArrivals()).isZero();
+            assertThat(group.attention().factors().burstUnknown()).isFalse();
+            assertThat(group.attention().factors().discardedBurstSamples()).isZero();
+            assertThat(group.attention().factors().burstWindowSeconds()).isEqualTo(600);
             assertThat(group.attention().rationale())
                     .contains("no resolve-time history")
-                    .contains("no self-heal history");
+                    .contains("no self-heal history")
+                    .doesNotContain("spiking")
+                    .doesNotContain("recent arrival rate unknown");
             assertThat(group.attention().suggestedAckExpirySeconds()).isNull();
         });
+    }
+
+    @Test
+    void aSubOnsetBurstReordersNOTHINGBecauseTheAmendmentIsInertBelowTheISAFloodThreshold() {
+        // The #365 amendment's own neutrality claim, at the SERVICE level rather than the
+        // calculator's: a fleet whose classes all had SOME recent arrivals — but none reaching
+        // ISA-18.2's onset — must still land in exactly the order the shipped formula produced.
+        Random random = new Random(365);
+        for (int round = 0; round < 200; round++) {
+            List<ErrorGroup> groups = distinctTotalGroups(random, 1 + random.nextInt(8));
+            List<String> shipped = orderedBy(groups, history -> subOnsetBurst(history, 0));
+            List<String> amended = orderedBy(groups, history -> subOnsetBurst(history, 1 + random.nextInt(9)));
+
+            assertThat(amended).containsExactlyElementsOf(shipped);
+        }
+    }
+
+    /** Scores a corpus through the real calculator with per-class evidence, then orders it. */
+    private static List<String> orderedBy(
+            List<ErrorGroup> groups, java.util.function.Function<Long, ClassHistory> evidence) {
+        List<ErrorGroup> scored = groups.stream()
+                .map(group -> group.withAttention(AttentionScoreCalculator.score(
+                        group.total(), evidence.apply(group.total()), null, null, AttentionConfig.defaults(), NOW)))
+                .toList();
+        return hashesOf(AttentionOrdering.order(scored));
+    }
+
+    /** Arrivals proportional to the class, of which {@code burst} landed inside W — sub-onset. */
+    private static ClassHistory subOnsetBurst(long total, long burst) {
+        return new ClassHistory(NOW, total, false, 0L, burst, 0L, false, 0L, List.of());
     }
 
     @Test
@@ -217,7 +257,7 @@ class AttentionOrderingNeutralityTest {
 
         verify(incidents).findByLastSeenGreaterThanEqual(any());
         // An empty ledger short-circuits before the two aggregates even run: no rows to join onto.
-        verify(occurrences, never()).arrivalsSince(any());
+        verify(occurrences, never()).arrivalsSince(any(), any(), any());
         verify(episodes, never()).closedEpisodeDurationSeconds();
     }
 
@@ -240,7 +280,7 @@ class AttentionOrderingNeutralityTest {
     private void emptyLedger() {
         when(incidents.findByLastSeenGreaterThanEqual(any())).thenReturn(List.of());
         when(episodes.closedEpisodeDurationSeconds()).thenReturn(List.of());
-        when(occurrences.arrivalsSince(any())).thenReturn(List.of());
+        when(occurrences.arrivalsSince(any(), any(), any())).thenReturn(List.of());
     }
 
     /** Today's rule verbatim: {@code TriageAggregationService} sorts {@code total DESC}, stably. */

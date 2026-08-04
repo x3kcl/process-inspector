@@ -2547,6 +2547,31 @@ Two rounds of adversarial review against the shipped Phase 2 code, both merged o
    unmarked. **No new migration** (V21 is the latest and already carries the column), no new
    engine call, no behaviour change with the flag off.
 
+### v2 research track R1 — burst-aware frequency amendment _(#365, ★ BUILT)_
+
+The shipped `F` was a 28-day VOLUME measure, so two classes both "last seen now" with 100
+arrivals ranked identically whether those arrivals trickled over four weeks or all landed in
+the last ten minutes — while the alarm-management literature the model is built on is explicit
+that PEAK rates, not averages, are what make operators miss things (ISA-18.2 defines a flood on
+a ten-minute peak window). The design round locked
+[ALARM-COST-MODEL.md §4.1a](ALARM-COST-MODEL.md) (formula, five preserved invariants, defaults
+W = PT10M / onset 10 / exit 5 / γ = 8, all four measured or taken verbatim from ISA-18.2) plus
+the §14 audit record; **this slice is the build**, specified column-by-column in §14.5 and
+recorded in §15.
+
+What landed: four more FILTERED columns on the SAME single `arrivalsSince` pass (zero new
+statements, zero new engine calls, **no Flyway migration** — the bins are computed, not stored),
+the two-bin Schmitt gate and the `outside_W + γ·burst_W` DECOMPOSITION in the pure calculator,
+five new `AttentionFactors` wire fields with the regenerated `schema.d.ts`, two config rails
+(`burst-exit ≤ burst-onset` refused at binding; a `burst-window ≤ model-ttl` startup WARN), and
+the burst clauses in the server-composed rationale. `inspector.triage.attention-ordering` stays
+**default false** and `AttentionOrderingNeutralityTest` still proves the flag-off path returns
+the very same object with zero queries; below the ISA onset `F` is byte-identical (bit-for-bit,
+asserted over a swept corpus) to the shipped formula, so the amendment is provably inert outside
+flood conditions. Same round: the stale "earliest G5 satisfaction ≈ 2026-09-14" was corrected to
+≈ 2026-09-29 in the two code comments that duplicated it — G5 counts TRUSTED ledger span, and
+the pilot's history was 99 % blind until the declared `engine-7` slot got a real engine.
+
 ## Build order inside any milestone
 
 backend DTO → engine client call → aggregator/join logic → controller → typed frontend API

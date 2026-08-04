@@ -4,8 +4,8 @@ import static org.assertj.core.api.Assertions.assertThat;
 
 import io.inspector.dto.ErrorGroup;
 import io.inspector.snapshot.AggregationSample;
+import java.time.Duration;
 import java.time.Instant;
-import java.util.HashMap;
 import java.util.List;
 import java.util.Map;
 import java.util.Set;
@@ -48,6 +48,12 @@ import org.testcontainers.containers.PostgreSQLContainer;
 @ActiveProfiles("it-actions")
 @TestInstance(TestInstance.Lifecycle.PER_CLASS)
 class LedgerNativeQueriesIT {
+
+    /** ISA-18.2's flood window and {@code inspector.triage.attention.burst-window}'s default. */
+    private static final Duration BURST_WINDOW = Duration.ofMinutes(10);
+
+    /** Anchors both bins past every fixture, so a pre-#365 assertion sees them empty. */
+    private static final Instant FAR_FUTURE = Instant.parse("2099-01-01T00:00:00Z");
 
     private static final PostgreSQLContainer<?> POSTGRES = new PostgreSQLContainer<>("postgres:16-alpine");
 
@@ -312,7 +318,188 @@ class LedgerNativeQueriesIT {
                 .containsExactly(t0.plusSeconds(300), t0.plusSeconds(240));
     }
 
+    /* ---------------- #365: the burst bins (ALARM-COST-MODEL §4.1a / §14.5) ---------------- */
+
+    @Test
+    void theBurstBinsSplitTheVerySameDeltasIntoInsideAndOutsideTheFloodWindow() {
+        String hash = "it-" + UUID.randomUUID();
+        Instant t0 = Instant.parse("2026-08-10T09:00:00Z");
+        Instant asOf = t0.plusSeconds(2_400); // 09:40 — W = 10 min ⇒ burst (09:30, 09:40]
+        ingest(hash, t0, 5, false); // 09:00 birth +5  ─ outside both bins
+        ingest(hash, t0.plusSeconds(600), 15, false); // 09:10 +10       ─ outside both bins
+        ingest(hash, t0.plusSeconds(1_500), 18, false); // 09:25 +3        ─ PRIOR bin
+        ingest(hash, t0.plusSeconds(2_100), 28, false); // 09:35 +10       ─ BURST bin
+        ingest(hash, asOf, 40, false); // 09:40 +12       ─ BURST bin
+
+        Aggregate row = aggregate(hash, t0, asOf);
+
+        // The base could only ever answer this one number — 40 arrivals over 40 minutes, with no
+        // way to say that 22 of them landed in the last ten (probe on the shipped SQL: [1,40,5,5]).
+        assertThat(row.arrivals()).isEqualTo(40);
+        assertThat(row.burstArrivals()).isEqualTo(22);
+        assertThat(row.priorBurstArrivals()).isEqualTo(3);
+        assertThat(row.burstObservedSamples()).isEqualTo(2);
+        assertThat(row.burstTrustedSamples()).isEqualTo(2);
+        // §13 F3, in SQL: the bins are FILTERS over the same delta set, never a second sum. So
+        // `outside` is a subtraction and every arrival is banked exactly once, at one weight.
+        assertThat(row.arrivals() - row.burstArrivals()).isEqualTo(18);
+    }
+
+    @Test
+    void theBinsAreHalfOpenSoASampleExactlyOnAnEdgeBelongsToTheOLDERBin() {
+        String hash = "it-" + UUID.randomUUID();
+        Instant t0 = Instant.parse("2026-08-10T11:00:00Z");
+        Instant asOf = t0.plusSeconds(2_400); // 11:40 ⇒ burst (11:30, 11:40], prior (11:20, 11:30]
+        ingest(hash, t0, 5, false); // 11:00 birth +5
+        ingest(hash, t0.plusSeconds(1_200), 15, false); // 11:20 +10 ─ ON the prior bin's own floor
+        ingest(hash, t0.plusSeconds(1_800), 22, false); // 11:30 +7  ─ ON the burst bin's floor
+        ingest(hash, asOf, 23, false); // 11:40 +1  ─ ON the burst bin's ceiling
+
+        Aggregate row = aggregate(hash, t0, asOf);
+
+        // (from, to] throughout: an edge sample falls OUT of the newer bin and INTO the older one,
+        // so no delta can ever be claimed by two bins at once (the partition, at its seams).
+        assertThat(row.arrivals()).isEqualTo(23);
+        assertThat(row.burstArrivals()).isEqualTo(1);
+        assertThat(row.priorBurstArrivals()).isEqualTo(7);
+    }
+
+    @Test
+    void aBirthInsideTheFloodWindowCountsItsWholePopulationOnceInBOTHArrivalsAndTheBurstBin() {
+        String hash = "it-" + UUID.randomUUID();
+        Instant windowStart = Instant.parse("2026-08-10T13:00:00Z");
+        Instant asOf = windowStart.plusSeconds(2_400); // 13:40 ⇒ burst (13:30, 13:40]
+        // The F3 birth delta, now inside W: `0 -> 5000` in ONE bucket is the largest flood there
+        // is, and §4.1a weighs it ONCE at gamma rather than re-banking it with a second factor.
+        ingest(hash, windowStart.plusSeconds(2_100), 5_000, false); // 13:35 birth
+        ingest(hash, asOf, 5_000, false); // 13:40 flat
+
+        Aggregate row = aggregate(hash, windowStart, asOf);
+
+        assertThat(row.arrivals()).isEqualTo(5_000);
+        assertThat(row.burstArrivals()).isEqualTo(5_000); // the SAME delta, seen through the bin
+        assertThat(row.priorBurstArrivals()).isZero();
+        assertThat(row.arrivals() - row.burstArrivals()).isZero(); // outside_W = 0 ⇒ F = log2(1+8*5000)
+    }
+
+    @Test
+    void aWhollyTruncatedBurstBinReportsObservedButZeroTrustedSamplesSoTheGateMustRefuseToFire() {
+        String hash = "it-" + UUID.randomUUID();
+        Instant t0 = Instant.parse("2026-08-10T15:00:00Z");
+        Instant asOf = t0.plusSeconds(2_400); // 15:40 ⇒ burst (15:30, 15:40]
+        ingest(hash, t0, 10, false); // birth +10, trusted
+        ingest(hash, t0.plusSeconds(600), 20, false); // +10, trusted
+        ingest(hash, t0.plusSeconds(2_100), 500, true); // 15:35 scan cap: a FLOOR, not a level
+        ingest(hash, asOf, 500, true); // 15:40 still capped
+
+        Aggregate row = aggregate(hash, t0, asOf);
+
+        // The 28d window is only PARTIALLY untrusted, so `arrivals` keeps what it could measure...
+        assertThat(row.arrivals()).isEqualTo(20);
+        assertThat(row.trustedSamples()).isEqualTo(2);
+        // ...but the BURST bin has samples and can trust none of them ⇒ burstUnknown ⇒ gate OFF.
+        // A capped engine must not be readable as "not spiking" — and it must not fake a flood.
+        assertThat(row.burstObservedSamples()).isEqualTo(2);
+        assertThat(row.burstTrustedSamples()).isZero();
+        assertThat(row.burstArrivals()).isZero();
+    }
+
+    @Test
+    void aWhollyBlindBurstBinReportsTheSameUnknownShapeAsAWhollyTruncatedOne() {
+        String hash = "it-" + UUID.randomUUID();
+        Instant t0 = Instant.parse("2026-08-10T17:00:00Z");
+        Instant asOf = t0.plusSeconds(2_400);
+        // #302's untrust reason, verbatim: an unreachable engine is missing members, so its
+        // drop-and-recover is an outage edge, never a burst. Both reasons discard identically.
+        ingest(hash, t0, 10, false, true); // birth +10
+        ingest(hash, t0.plusSeconds(600), 20, false, true); // +10
+        ingest(hash, t0.plusSeconds(2_100), 900, false, false); // 15:35 blind cycle
+        ingest(hash, asOf, 900, false, false); // 15:40 blind cycle
+
+        Aggregate row = aggregate(hash, t0, asOf);
+
+        assertThat(row.arrivals()).isEqualTo(20);
+        assertThat(row.burstObservedSamples()).isEqualTo(2);
+        assertThat(row.burstTrustedSamples()).isZero();
+        assertThat(row.burstArrivals()).isZero();
+    }
+
+    @Test
+    void aWindowSTARTINGInsideTheFloodWindowStillDiscardsItsFirstRowInsteadOfBankingAFakeFlood() {
+        String hash = "it-" + UUID.randomUUID();
+        Instant birth = Instant.parse("2026-08-10T19:00:00Z");
+        Instant asOf = birth.plusSeconds(2_400); // 19:40 ⇒ burst (19:30, 19:40]
+        Instant windowStart = birth.plusSeconds(1_980); // 19:33 — mid-life, and INSIDE the burst bin
+        // The nastiest shape the amendment could have introduced: if the birth seeding leaked to a
+        // window that merely OPENS mid-life, a standing 5 000-member class would read as a 5 003
+        // flood on every single rebuild, forever. The `first_seen` join keeps the 0 baseline on
+        // the incident's OWN first row only, so the mid-life first row stays undifferenceable and
+        // never reaches either bin.
+        ingest(hash, birth, 5_000, false);
+        ingest(hash, windowStart, 5_000, false);
+        ingest(hash, birth.plusSeconds(2_220), 5_003, false); // 19:37 +3 — the only real growth
+        ingest(hash, asOf, 5_003, false); // 19:40 flat
+
+        Aggregate row = aggregate(hash, windowStart, asOf);
+
+        assertThat(row.arrivals()).isEqualTo(3);
+        assertThat(row.burstArrivals()).isEqualTo(3);
+        assertThat(row.burstObservedSamples()).isEqualTo(2); // 19:37 and 19:40; 19:33 is undifferenceable
+        assertThat(row.priorBurstArrivals()).isZero();
+        // ...and the whole-life read still finds the birth, once, in both the window and the bin.
+        assertThat(aggregate(hash, birth, asOf).arrivals()).isEqualTo(5_003);
+    }
+
     /* ---------------- helpers ---------------- */
+
+    /**
+     * One incident's row from the aggregate, with the {@code burst_arrivals <= arrivals}
+     * containment invariant (§14.5) asserted on EVERY fixture in this class — the burst bin is a
+     * FILTER over the same deltas, so a violation would mean the partition (and with it §13 F3's
+     * no-double-banking guarantee) had been broken by a later edit.
+     */
+    private record Aggregate(
+            long arrivals,
+            long observedSamples,
+            long trustedSamples,
+            long burstArrivals,
+            long priorBurstArrivals,
+            long burstObservedSamples,
+            long burstTrustedSamples) {
+
+        private static final Aggregate ABSENT = new Aggregate(0, 0, 0, 0, 0, 0, 0);
+    }
+
+    /** Burst bins anchored on {@code asOf}: current {@code (asOf−W, asOf]}, prior one W before. */
+    private Aggregate aggregate(String hash, Instant since, Instant asOf) {
+        return aggregate(hash, since, asOf.minus(BURST_WINDOW), asOf.minus(BURST_WINDOW.multipliedBy(2)));
+    }
+
+    private Aggregate aggregate(String hash, Instant since, Instant burstSince, Instant priorBurstSince) {
+        long incidentId = incidentId(hash);
+        Aggregate found = Aggregate.ABSENT;
+        for (Object[] row : occurrences.arrivalsSince(since, burstSince, priorBurstSince)) {
+            Aggregate parsed = new Aggregate(
+                    number(row[1]),
+                    number(row[2]),
+                    number(row[3]),
+                    number(row[4]),
+                    number(row[5]),
+                    number(row[6]),
+                    number(row[7]));
+            assertThat(parsed.burstArrivals())
+                    .as("containment invariant burst_arrivals <= arrivals, incident %s", row[0])
+                    .isLessThanOrEqualTo(parsed.arrivals());
+            if (number(row[0]) == incidentId) {
+                found = parsed;
+            }
+        }
+        return found;
+    }
+
+    private static long number(Object value) {
+        return ((Number) value).longValue();
+    }
 
     private void ingest(String hash, Instant bucket, long total, boolean truncated) {
         ingest(hash, bucket, total, truncated, true);
@@ -364,26 +551,25 @@ class LedgerNativeQueriesIT {
     }
 
     private long arrivals(String hash, Instant since) {
-        return aggregateColumn(hash, since, 1);
+        return noBurstBins(hash, since).arrivals();
     }
 
     /** How many differenceable samples the window held (a class's own birth row counts as one). */
     private long observedSamples(String hash, Instant since) {
-        return aggregateColumn(hash, since, 2);
+        return noBurstBins(hash, since).observedSamples();
     }
 
     /** How many of those had BOTH endpoints fully observed — 0 means the window is unknown. */
     private long trustedSamples(String hash, Instant since) {
-        return aggregateColumn(hash, since, 3);
+        return noBurstBins(hash, since).trustedSamples();
     }
 
-    private long aggregateColumn(String hash, Instant since, int column) {
-        long incidentId = incidentId(hash);
-        Map<Long, Long> byIncident = new HashMap<>();
-        for (Object[] row : occurrences.arrivalsSince(since)) {
-            byIncident.put(((Number) row[0]).longValue(), ((Number) row[column]).longValue());
-        }
-        return byIncident.getOrDefault(incidentId, 0L);
+    /**
+     * The pre-#365 assertions, unchanged: bins anchored past the end of every fixture, so both are
+     * EMPTY and the four original columns must read exactly as they did before the amendment.
+     */
+    private Aggregate noBurstBins(String hash, Instant since) {
+        return aggregate(hash, since, FAR_FUTURE, FAR_FUTURE);
     }
 
     private List<Long> closedDurations(long incidentId) {

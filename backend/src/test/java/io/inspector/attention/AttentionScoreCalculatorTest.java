@@ -103,6 +103,195 @@ class AttentionScoreCalculatorTest {
         assertThat(factorsFor(ClassHistory.none()).arrivalsUnknown()).isFalse();
     }
 
+    /* ---------------- #365: burst-aware F (§4.1a) — the gate, and what it may NOT do ---------- */
+
+    @Test
+    void aFloodRanksAboveATrickleOfTheVerySameTwentyEightDayVolume() {
+        // The #365 gap, stated as a test: two classes, 100 arrivals each, both last seen NOW —
+        // indistinguishable to the shipped F (log2(101) both ways) even though one of them put
+        // its whole volume into the last ten minutes. ISA-18.2 calls that a flood.
+        ClassHistory trickle = burst(100, 0, 0);
+        ClassHistory flood = burst(100, 100, 0);
+
+        assertThat(factorsFor(trickle).frequency()).isCloseTo(6.6582, within(1e-4));
+        assertThat(factorsFor(flood).frequency()).isCloseTo(9.6457, within(1e-4)); // log2(1 + 8*100)
+        assertThat(factorsFor(flood).frequency())
+                .isGreaterThan(factorsFor(trickle).frequency());
+        assertThat(factorsFor(flood).flooding()).isTrue();
+        assertThat(factorsFor(trickle).flooding()).isFalse();
+        assertThat(factorsFor(flood).burstArrivals()).isEqualTo(100);
+        assertThat(factorsFor(flood).burstWindowSeconds()).isEqualTo(600);
+    }
+
+    @Test
+    void aBirthInsideTheWindowIsWeighedOnceAtGammaRatherThanReBankedByASecondFactor() {
+        // §13 F3 carried forward: `0 -> 5000` in one bucket IS the largest flood, and the
+        // decomposition counts that population exactly ONCE, at weight gamma. The rejected
+        // multiplier shape would have multiplied the shipped 12.288 by a clamp instead.
+        ClassHistory birthFlood = burst(5_000, 5_000, 0);
+
+        assertThat(factorsFor(birthFlood).frequency()).isCloseTo(15.2877, within(1e-4)); // log2(1+8*5000)
+        assertThat(factorsFor(birthFlood).flooding()).isTrue();
+    }
+
+    @Test
+    void theBoostIsSelfBoundedByTheLogSoNoSingleFactorCanRunAwayWithTheProduct() {
+        // §4.1a's gamma rationale: the gate cannot fire below the onset, so F's multiplicative
+        // inflation is bounded by 1 + log2(gamma)/log2(1 + onset) ~ 1.867 — the same order as the
+        // M clamp's 2x, deliberately, so no one factor can dominate the others' full range.
+        double ceiling = 1 + (Math.log(CONFIG.burstWeight()) / Math.log(2)) / shippedFrequency(CONFIG.burstOnset());
+        assertThat(ceiling).isCloseTo(1.867, within(1e-3));
+
+        // That figure is a BOUND, not an attained value: the tightest case is a flood sitting
+        // exactly on the onset with nothing outside the window, and it lands at 1.833.
+        double worstCase = AttentionScoreCalculator.frequency(burst(10, 10, 0), CONFIG) / shippedFrequency(10);
+        assertThat(worstCase).isCloseTo(1.833, within(1e-3)).isLessThan(ceiling);
+
+        // ...and the inflation SHRINKS as volume grows — a bigger flood is inflated relatively less.
+        assertThat(AttentionScoreCalculator.frequency(burst(100, 100, 0), CONFIG) / shippedFrequency(100))
+                .isCloseTo(1.4487, within(1e-4))
+                .isLessThan(worstCase);
+    }
+
+    @Test
+    void theBoostCanNeverAddMoreThanLog2GammaBitsWhateverTheBinsSay() {
+        // The unconditional form of the bound above, which does not lean on the gate at all: the
+        // decomposition replaces at most `arrivals` with `gamma * arrivals`, so F grows by at most
+        // log2(gamma) = 3 bits. Swept over every gating shape, valid or degenerate.
+        double maxBits = Math.log(CONFIG.burstWeight()) / Math.log(2);
+        for (long arrivals : new long[] {1, 5, 10, 11, 15, 100, 5_000, 1_000_000}) {
+            for (long burst : new long[] {0, 1, 5, 10, 11, 100, 5_000, 1_000_000}) {
+                for (long prior : new long[] {0, 10, 100}) {
+                    double actual = AttentionScoreCalculator.frequency(burst(arrivals, burst, prior), CONFIG);
+
+                    assertThat(actual - shippedFrequency(arrivals))
+                            .as("F uplift for arrivals=%d burst=%d prior=%d", arrivals, burst, prior)
+                            .isBetween(0.0, maxBits + 1e-9);
+                }
+            }
+        }
+    }
+
+    @Test
+    void belowTheOnsetTheAmendmentIsByteIdenticalToTheShippedFormula() {
+        // The §5.5 neutrality guarantee's load-bearing claim, proven at the BIT level rather than
+        // "close to": outside flood conditions the amendment must be provably inert, or the whole
+        // no-history-degrades-to-count-only argument (and AttentionOrderingNeutralityTest) moves.
+        for (long arrivals : new long[] {0, 1, 2, 3, 7, 9, 10, 50, 100, 1023, 5_000, 999_999}) {
+            for (long burst = 0; burst < 10; burst++) { // every sub-onset burst...
+                for (long prior = 0; prior < 10; prior++) { // ...against every sub-onset prior
+                    if (burst > arrivals) {
+                        continue;
+                    }
+                    double actual = AttentionScoreCalculator.frequency(burst(arrivals, burst, prior), CONFIG);
+
+                    assertThat(Double.doubleToRawLongBits(actual))
+                            .as("F(arrivals=%d, burst=%d, prior=%d) must be the shipped bits", arrivals, burst, prior)
+                            .isEqualTo(Double.doubleToRawLongBits(shippedFrequency(arrivals)));
+                }
+            }
+        }
+    }
+
+    @Test
+    void theGateIsISA182sAsymmetricSchmittTrigger() {
+        // Entry needs a genuine 10-minute onset (>= 10); the hold leg keeps a decaying flood up
+        // while it stays at or above the exit (5) AND the onset sits in the PRIOR window.
+        assertThat(flooding(12, 0)).isTrue(); // entry: 12 in W
+        assertThat(flooding(7, 12)).isTrue(); // hold: 7 now, onset last window
+        assertThat(flooding(5, 12)).isTrue(); // hold, exactly AT the exit threshold
+        assertThat(flooding(4, 12)).isFalse(); // drop: below the exit
+        assertThat(flooding(10, 0)).isTrue(); // entry, exactly AT the onset
+        assertThat(flooding(9, 0)).isFalse(); // one short of the onset
+        assertThat(flooding(0, 0)).isFalse(); // empty bins ⇒ never
+    }
+
+    @Test
+    void theHoldLegNeedsAGENUINEPriorOnsetSoTwoHalfFloodsCannotGateThroughTheBackDoor() {
+        // The author's own adversarial finding (§14.6): summing the bins would let 6 + 6 across
+        // TWENTY minutes gate as a flood that never had a ten-minute onset. `prior_W >= onset`
+        // alone closes that door.
+        assertThat(flooding(6, 6)).isFalse();
+        assertThat(AttentionScoreCalculator.frequency(burst(100, 6, 6), CONFIG)).isEqualTo(shippedFrequency(100));
+        // ...while a prior window that DID reach onset still holds the very same current bin up.
+        assertThat(flooding(6, 10)).isTrue();
+    }
+
+    @Test
+    void anUnknownBurstBinForcesTheGateOffAndCanNeverLowerTheShippedF() {
+        // §13 F2's discipline, inherited: a burst bin with samples but no TRUSTED one is UNKNOWN.
+        // Because the burst term only ever RAISES F behind the gate, unknown can suppress a
+        // promotion — never a demotion, which is strictly safer than the F2 defect class.
+        ClassHistory unknownBin = new ClassHistory(NOW, 100L, false, 0L, 0L, 0L, true, 240L, List.of());
+
+        assertThat(factorsFor(unknownBin).frequency()).isEqualTo(shippedFrequency(100));
+        assertThat(factorsFor(unknownBin).flooding()).isFalse();
+        assertThat(factorsFor(unknownBin).burstUnknown()).isTrue();
+        assertThat(factorsFor(unknownBin).discardedBurstSamples()).isEqualTo(240L);
+        assertThat(factorsFor(unknownBin).frequency()).isGreaterThanOrEqualTo(0.0);
+        assertThat(factorsFor(unknownBin).frequency())
+                .isEqualTo(factorsFor(burst(100, 0, 0)).frequency()); // never below the shipped value
+    }
+
+    @Test
+    void anUnknownBurstBinCannotFakeAFloodEitherEvenWithABurstCountSittingInTheRow() {
+        // Belt and braces: if a row ever carried both an untrusted bin AND a count, the count is
+        // not evidence — it was summed from deltas we already refused to trust.
+        ClassHistory contradictory = new ClassHistory(NOW, 100L, false, 0L, 40L, 40L, true, 240L, List.of());
+
+        assertThat(factorsFor(contradictory).flooding()).isFalse();
+        assertThat(factorsFor(contradictory).frequency()).isEqualTo(shippedFrequency(100));
+    }
+
+    @Test
+    void aWhollyUnknownArrivalWindowStillReadsTheNeutralOneAndNeverGatesAFlood() {
+        // §14.4 scenario (c): the burst bin is a SUBSET of the 28d window, so an unknown window
+        // cannot host a knowable flood. F stays the multiplicative identity — never a fake zero,
+        // and never a fake spike.
+        ClassHistory whollyUnknown = new ClassHistory(NOW, 0L, true, 40_320L, 0L, 0L, true, 1_440L, List.of());
+
+        assertThat(factorsFor(whollyUnknown).frequency()).isEqualTo(1.0);
+        assertThat(factorsFor(whollyUnknown).flooding()).isFalse();
+    }
+
+    @Test
+    void anArrivalsUnknownWindowCannotBeGatedByAContradictoryTrustedBurstBinEither() {
+        // Defence in depth for a shape the SQL cannot produce (bin ⊆ window): if it ever did,
+        // "unknown volume" must still win over "a bin that claims a flood".
+        ClassHistory contradictory = new ClassHistory(NOW, 0L, true, 40_320L, 50L, 0L, false, 0L, List.of());
+
+        assertThat(factorsFor(contradictory).frequency()).isEqualTo(1.0);
+        assertThat(factorsFor(contradictory).flooding()).isFalse();
+    }
+
+    @Test
+    void aBurstBinLargerThanItsOwnWindowIsClampedRatherThanAllowedToInventNegativeVolume() {
+        // The partition identity is `outside = arrivals - burst`, so a burst exceeding arrivals
+        // would manufacture NEGATIVE outside volume. The SQL cannot produce it (same filters,
+        // narrower time — asserted in LedgerNativeQueriesIT), so this is the arithmetic backstop.
+        ClassHistory impossible = burst(10, 40, 0);
+
+        assertThat(factorsFor(impossible).frequency()).isCloseTo(6.3399, within(1e-4)); // log2(1+8*10)
+        assertThat(factorsFor(impossible).burstArrivals()).isEqualTo(10);
+    }
+
+    @Test
+    void theRationaleSaysHowManyLandedInTheLastTenMinutesRatherThanABareRatio() {
+        AttentionScore spiking = score(120, burst(100, 40, 0), null, null);
+
+        assertThat(spiking.rationale()).contains("spiking: 40 in the last 10 min");
+    }
+
+    @Test
+    void anUnknownBurstBinSaysTheRecentRateIsUnknownRatherThanImplyingItIsQuiet() {
+        AttentionScore unknownBin =
+                score(120, new ClassHistory(NOW, 100L, false, 0L, 0L, 0L, true, 240L, List.of()), null, null);
+
+        assertThat(unknownBin.rationale())
+                .contains("recent arrival rate unknown")
+                .doesNotContain("spiking");
+    }
+
     /* ---------------- R: recency = 2^(-age/tau) ---------------- */
 
     @Test
@@ -261,6 +450,24 @@ class AttentionScoreCalculatorTest {
 
     private static ClassHistory arrivals(long count) {
         return ClassHistory.observed(NOW, count, List.of());
+    }
+
+    /** A fully-observed window whose deltas split into the two burst bins (§4.1a). */
+    private static ClassHistory burst(long arrivals, long burstArrivals, long priorBurstArrivals) {
+        return new ClassHistory(NOW, arrivals, false, 0L, burstArrivals, priorBurstArrivals, false, 0L, List.of());
+    }
+
+    private static boolean flooding(long burstArrivals, long priorBurstArrivals) {
+        return AttentionScoreCalculator.flooding(burst(1_000, burstArrivals, priorBurstArrivals), CONFIG);
+    }
+
+    /**
+     * The SHIPPED (pre-#365) F, recomputed here independently: {@code log2(1 + arrivals)}. Nothing
+     * in this fixture reads production code, so "byte-identical below the onset" is a claim about
+     * the amendment rather than a tautology.
+     */
+    private static double shippedFrequency(long arrivals) {
+        return Math.log(1 + arrivals) / Math.log(2);
     }
 
     private static SelfHealStats stats(SelfHealLane lane, int n, int healed) {

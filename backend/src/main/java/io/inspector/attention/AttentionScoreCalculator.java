@@ -16,6 +16,7 @@ import java.util.List;
  * A(c) = F(c) · R(c) · M(c) · S(c)
  *
  * F(c) = log2(1 + arrivals_28d(c))                    -- neutral 1 when the window was UNTRUSTED
+ *      = log2(1 + outside_W(c) + gamma*burst_W(c))    -- when flooding(c), #365 §4.1a
  * R(c) = 2^(-age(lastSeen(c)) / tau)
  * M(c) = clamp(medMTTR(c) / medMTTR(fleet), 0.5, 2)   -- neutral 1 below the episode floor
  * S(c) = max(1 - p_heal(c), 0.25)                     -- neutral 1 with no R2 lane
@@ -83,7 +84,8 @@ public final class AttentionScoreCalculator {
         ClassHistory evidence = history != null ? history : ClassHistory.none();
 
         long arrivals = Math.max(0, evidence.arrivals());
-        double frequency = frequency(arrivals, evidence.arrivalsUnknown());
+        boolean flooding = flooding(evidence, config);
+        double frequency = frequency(evidence, config);
 
         long ageSeconds = ageSeconds(evidence.lastSeen(), now);
         double recency = recency(ageSeconds, config.recencyHalfLife());
@@ -111,11 +113,16 @@ public final class AttentionScoreCalculator {
                 lane != null ? lane.name() : null,
                 insufficient,
                 evidence.arrivalsUnknown(),
-                Math.max(0L, evidence.discardedArrivalSamples()));
+                Math.max(0L, evidence.discardedArrivalSamples()),
+                flooding,
+                burstArrivals(evidence),
+                config.burstWindow().toSeconds(),
+                evidence.burstUnknown(),
+                Math.max(0L, evidence.discardedBurstSamples()));
         return new AttentionScore(
                 score,
                 factors,
-                AttentionRationale.sentence(liveTotal, ageSeconds, classMedian, selfHeal, evidence.arrivalsUnknown()),
+                AttentionRationale.sentence(liveTotal, factors, selfHeal),
                 suggestedAckExpirySeconds(closed, config));
     }
 
@@ -159,12 +166,70 @@ public final class AttentionScoreCalculator {
      * the flag on such a fleet systematically demoted the biggest classes below a one-member
      * class with a single arrival. Neutral-1 says "no arrival evidence here"; zero said "this
      * class is provably not growing", which the data never showed.
+     *
+     * <p><b>Burst-aware, behind a gate (#365, §4.1a).</b> {@code F} is a 28-day VOLUME measure and
+     * {@code R} only sees {@code lastSeen} age, so two classes both "last seen now" with 100
+     * arrivals scored identically whether those arrivals trickled over four weeks or all landed in
+     * the last ten minutes — while the alarm-management literature is explicit that PEAK rates,
+     * not average rates, are what make operators miss things (Beebe 2013; ISA-18.2 defines a flood
+     * on a ten-minute peak window). Under {@link #flooding} the window's arrivals are DECOMPOSED
+     * into {@code outside_W + burst_W} and the burst half is weighed at gamma. Below the onset
+     * this method returns the shipped expression itself, so the amendment is provably inert
+     * outside flood conditions.
      */
-    static double frequency(long arrivals, boolean arrivalsUnknown) {
-        if (arrivalsUnknown) {
+    static double frequency(ClassHistory evidence, AttentionConfig config) {
+        if (evidence.arrivalsUnknown()) {
             return 1.0;
         }
-        return log2(1 + arrivals);
+        long arrivals = Math.max(0, evidence.arrivals());
+        if (!flooding(evidence, config)) {
+            // BYTE-IDENTICAL to the shipped formula — the same expression, not an approximation of
+            // it. Everything §5.5's neutrality guarantee rests on lives on this one line.
+            return log2(1 + arrivals);
+        }
+        // The PARTITION, in code: `outside` is a SUBTRACTION of the burst bin from the very same
+        // sum, so the two bins cannot both bank the same delta however the SQL is later edited —
+        // an arithmetic guarantee rather than a review convention (§13 F3).
+        long burst = burstArrivals(evidence);
+        long outside = arrivals - burst;
+        return log2(1 + outside + config.burstWeight() * burst);
+    }
+
+    /**
+     * The §4.1a flood gate — a STATELESS two-bin Schmitt trigger on ISA-18.2's own asymmetric
+     * thresholds: entry needs a genuine onset in the current window; the hold leg keeps a decaying
+     * flood up while it stays at or above the exit AND the onset sits in the PRIOR window.
+     *
+     * <p><b>{@code prior_W} must reach the onset ALONE.</b> Summing the two bins would open a
+     * back-door entry — 6 arrivals now plus 6 arrivals in the previous window is 12 across TWENTY
+     * minutes, which never was a ten-minute flood and must not gate as one.
+     *
+     * <p><b>Untrusted evidence can only ever close this gate, never open it.</b> A burst bin with
+     * samples but not one trustworthy is UNKNOWN, and so is a wholly untrusted 28-day window (of
+     * which the bin is a subset). Both force the gate off, leaving {@code F} at its shipped value:
+     * the amendment can suppress a promotion it cannot justify, but it can never demote a class
+     * below where the shipped formula put it, which is strictly safer than the §13 F2 defect class
+     * this discipline is inherited from.
+     */
+    static boolean flooding(ClassHistory evidence, AttentionConfig config) {
+        if (evidence.arrivalsUnknown() || evidence.burstUnknown()) {
+            return false;
+        }
+        long burst = burstArrivals(evidence);
+        long prior = Math.max(0L, evidence.priorBurstArrivals());
+        return burst >= config.burstOnset() || (burst >= config.burstExit() && prior >= config.burstOnset());
+    }
+
+    /**
+     * The burst bin, clamped into its own window's total. {@code burst_arrivals <= arrivals} holds
+     * in SQL by construction (identical filters over a strictly narrower time range, asserted on
+     * every fixture in {@code LedgerNativeQueriesIT}); the clamp is the arithmetic backstop that
+     * keeps {@code outside = arrivals − burst} from ever going NEGATIVE if that ever stopped being
+     * true — a negative outside term would be double-banking with the sign flipped.
+     */
+    private static long burstArrivals(ClassHistory evidence) {
+        long arrivals = Math.max(0L, evidence.arrivals());
+        return Math.min(Math.max(0L, evidence.burstArrivals()), arrivals);
     }
 
     /** {@code 2^(-age/tau)} — 1 at age 0, 0.5 at one half-life. A null/future lastSeen reads 1. */

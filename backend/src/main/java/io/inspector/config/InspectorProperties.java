@@ -2,6 +2,7 @@ package io.inspector.config;
 
 import io.inspector.audit.AuditPayloadMode;
 import jakarta.validation.Valid;
+import jakarta.validation.constraints.AssertTrue;
 import jakarta.validation.constraints.NotBlank;
 import jakarta.validation.constraints.NotNull;
 import jakarta.validation.constraints.Pattern;
@@ -132,6 +133,14 @@ public record InspectorProperties(
      *       {@code t(c) = max(floor_pct, k·CV(c))}).</li>
      *   <li>{@code resurfaceFalseBudgetPer30AckDays} — the counterfactual-ack replay's target
      *       false-resurface budget, default 1.0 (§3.3).</li>
+     *   <li>{@code burstWindow}/{@code burstOnset}/{@code burstExit}/{@code burstWeight} — the
+     *       #365 burst-aware F (§4.1a). W = PT10M is ISA-18.2's own flood window (and the finest
+     *       window the measured 60s sampler cadence honestly supports is 5 min, §14.3); onset 10
+     *       / exit 5 are ISA-18.2's asymmetric flood onset/end verbatim, so the hysteresis is the
+     *       standard's rather than ours; gamma = 8 puts the BOUNDED inflation ceiling
+     *       {@code 1 + log2(gamma)/log2(1 + onset)} at ~1.87x — deliberately the same order as
+     *       the M clamp's 2x, so no one factor can dominate the others' full range. Dead
+     *       configuration until {@code inspector.triage.attention-ordering} is opted into.</li>
      * </ul>
      */
     public record Attention(
@@ -144,7 +153,77 @@ public record InspectorProperties(
             Duration modelTtl,
             Boolean derivedResurfaceThreshold,
             Integer resurfaceFloorPct,
-            Double resurfaceFalseBudgetPer30AckDays) {
+            Double resurfaceFalseBudgetPer30AckDays,
+            Duration burstWindow,
+            Integer burstOnset,
+            Integer burstExit,
+            Double burstWeight) {
+
+        /** Pre-#365 10-arg shape → burst defaults (unit-test-patterns: no constructor churn). */
+        public Attention(
+                Duration recencyHalfLife,
+                Integer arrivalsWindowDays,
+                Integer minClosedEpisodes,
+                Double mttrClampLow,
+                Double mttrClampHigh,
+                Double selfHealFloor,
+                Duration modelTtl,
+                Boolean derivedResurfaceThreshold,
+                Integer resurfaceFloorPct,
+                Double resurfaceFalseBudgetPer30AckDays) {
+            this(
+                    recencyHalfLife,
+                    arrivalsWindowDays,
+                    minClosedEpisodes,
+                    mttrClampLow,
+                    mttrClampHigh,
+                    selfHealFloor,
+                    modelTtl,
+                    derivedResurfaceThreshold,
+                    resurfaceFloorPct,
+                    resurfaceFalseBudgetPer30AckDays,
+                    null,
+                    null,
+                    null,
+                    null);
+        }
+
+        // Multiple constructors → Spring cannot infer the binder; pin it to the canonical one.
+        @ConstructorBinding
+        public Attention {}
+
+        /** ISA-18.2's flood window (§4.1a) — the bin width of BOTH burst columns. */
+        public Duration burstWindowOrDefault() {
+            return burstWindow != null ? burstWindow : Duration.ofMinutes(10);
+        }
+
+        /** ISA-18.2's flood ONSET — the gate's entry threshold, verbatim. */
+        public int burstOnsetOrDefault() {
+            return burstOnset != null ? burstOnset : 10;
+        }
+
+        /** ISA-18.2's flood END — the gate's (lower) hold threshold, verbatim. */
+        public int burstExitOrDefault() {
+            return burstExit != null ? burstExit : 5;
+        }
+
+        /** Gamma: one flood-window arrival weighs eight trickled ones (§4.1a). */
+        public double burstWeightOrDefault() {
+            return burstWeight != null ? burstWeight : 8.0;
+        }
+
+        /**
+         * REFUSE an inverted Schmitt trigger at binding rather than reinterpret it: with
+         * {@code exit > onset} the hold leg would admit bursts the entry leg rejects, i.e. a gate
+         * that fires on evidence too weak to have opened it. A deployment that means "no
+         * hysteresis" sets exit = onset.
+         */
+        @AssertTrue(
+                message = "inspector.triage.attention.burst-exit must be <= burst-onset"
+                        + " (an exit above onset inverts the Schmitt semantics)")
+        public boolean isBurstHysteresisOrdered() {
+            return burstExitOrDefault() <= burstOnsetOrDefault();
+        }
 
         public Duration recencyHalfLifeOrDefault() {
             return recencyHalfLife != null ? recencyHalfLife : Duration.ofHours(24);

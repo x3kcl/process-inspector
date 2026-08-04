@@ -324,7 +324,16 @@ Answers "what is broken, how much, where" in zero keystrokes:
   `factors.arrivalsUnknown` set, rather than the `F = 0` that used to zero the entire score for
   exactly the largest classes on any permanently scan-capped engine; and a class's own FIRST
   occurrence row now counts as the arrival of its whole population, which the delta-only
-  aggregate could never see. The flag ships
+  aggregate could never see. `F` is also **burst-aware behind a gate** (#365,
+  ALARM-COST-MODEL.md §4.1a): a 28-day volume alone cannot tell a class that trickled 100
+  arrivals over four weeks from one that took all 100 in the last ten minutes, so when the
+  ISA-18.2 flood gate fires (`burst_W ≥ 10`, or `≥ 5` while the previous window itself reached
+  10) the SAME arrivals are re-read as `log2(1 + outside_W + 8·burst_W)` — a decomposition, so
+  every arrival still counts exactly once, at weight 1 or weight 8 — and the sentence gains
+  "spiking: 40 in the last 10 min". Below the onset `F` is byte-identical to the formula above,
+  so the no-history guarantee is untouched; a burst window that was truncated or blind reads
+  `factors.burstUnknown` and forces the gate OFF ("recent arrival rate unknown"), which can
+  suppress a promotion but never cause a demotion. The flag ships
   false because the design's numeric data-maturity gate is measured NOT MET (0 of 5 axes);
   flipping it requires re-measuring that gate. **The frontend (#354) renders whatever order it
   is served, never re-sorting Stage-0 cards itself** — the BFF already reorders `errorGroups`
