@@ -47,12 +47,35 @@ public record InspectorProperties(
      * cap on representative stacktrace fetches used to refine error groups, and the
      * R-BAU-01 acknowledge auto-resurface threshold (an acked group resurfaces once its
      * member count grows PAST the acknowledged baseline by this percentage).
+     *
+     * <p>{@code attentionOrdering} (ALARM-COST-MODEL.md §7, #353) is the R1 master flag,
+     * DEFAULT FALSE: the data-maturity gate is measured NOT MET (0 of 5 axes) and the score is
+     * provably identical to count-only ordering on the recorded pilot history, so the whole
+     * feature is inert until an operator opts in. Off ⇒ nothing is computed, no {@code
+     * attention} block is served, and the card ordering is byte-for-byte today's ({@code total
+     * DESC}). {@code attention} carries the model's tuning knobs (§4.1/§6).
      */
     public record Triage(
             Integer cacheTtlS,
             Integer refreshMinIntervalS,
             Integer stacktraceSampleCap,
-            Integer ackResurfaceThresholdPct) {
+            Integer ackResurfaceThresholdPct,
+            Boolean attentionOrdering,
+            @Valid Attention attention) {
+
+        /** Pre-#353 4-arg shape → attention defaults (unit-test-patterns: no constructor churn). */
+        public Triage(
+                Integer cacheTtlS,
+                Integer refreshMinIntervalS,
+                Integer stacktraceSampleCap,
+                Integer ackResurfaceThresholdPct) {
+            this(cacheTtlS, refreshMinIntervalS, stacktraceSampleCap, ackResurfaceThresholdPct, null, null);
+        }
+
+        // Multiple constructors → Spring cannot infer the binder; pin it to the canonical one.
+        @ConstructorBinding
+        public Triage {}
+
         public int cacheTtlSOrDefault() {
             return cacheTtlS != null ? cacheTtlS : 20;
         }
@@ -67,6 +90,101 @@ public record InspectorProperties(
 
         public int ackResurfaceThresholdPctOrDefault() {
             return ackResurfaceThresholdPct != null ? ackResurfaceThresholdPct : 20;
+        }
+
+        /** The R1 master flag — DEFAULT FALSE (ALARM-COST-MODEL §7, gate NOT MET). */
+        public boolean attentionOrderingOrDefault() {
+            return attentionOrdering != null && attentionOrdering;
+        }
+
+        public Attention attentionOrDefault() {
+            return attention != null
+                    ? attention
+                    : new Attention(null, null, null, null, null, null, null, null, null, null);
+        }
+    }
+
+    /**
+     * The cost-aware attention model's knobs (ALARM-COST-MODEL.md §4.1/§6, #353). Every default
+     * here is the design's SELECTED value — none of them changes any behavior while
+     * {@code inspector.triage.attention-ordering} is false (the shipped default).
+     *
+     * <ul>
+     *   <li>{@code recencyHalfLife} — the R factor's tau. Default 24h, DELIBERATELY the same
+     *       constant as {@code inspector.incidents.quiet-window} (C6): one operator mental model
+     *       for "how long until this stops being fresh". Now model-derived-capable (a
+     *       deployment can re-estimate it from the episode inter-arrival distribution) instead
+     *       of a second hard-coded 24h.</li>
+     *   <li>{@code arrivalsWindowDays} — the F factor's trailing window, default 28.</li>
+     *   <li>{@code minClosedEpisodes} — the M factor's own sample-size floor, default 3. Below
+     *       it, M is neutral 1 and the median renders as "no history", never as a number.</li>
+     *   <li>{@code mttrClampLow}/{@code mttrClampHigh} — the M clamp, defaults 0.5 / 2.0: a
+     *       single pathological class can never dominate the product.</li>
+     *   <li>{@code selfHealFloor} — the S floor, default 0.25: a reliably self-healing class is
+     *       demoted at most 4x, NEVER zeroed (same doctrine as never-hide).</li>
+     *   <li>{@code modelTtl} — Caffeine TTL of the whole per-class ledger model, default 5 min
+     *       (§6 recompute cadence; the model is three bounded DB aggregates, no engine calls).</li>
+     *   <li>{@code derivedResurfaceThreshold} — C3. DEFAULT FALSE: §3.3 is explicit that the
+     *       resurface threshold switches to the derived value only AFTER the full §7 gate, so
+     *       until then the plain {@code ack-resurface-threshold-pct} constant (20%) stays in
+     *       force and this estimator is dormant.</li>
+     *   <li>{@code resurfaceFloorPct} — the derived threshold's floor, default 10 (§3.3
+     *       {@code t(c) = max(floor_pct, k·CV(c))}).</li>
+     *   <li>{@code resurfaceFalseBudgetPer30AckDays} — the counterfactual-ack replay's target
+     *       false-resurface budget, default 1.0 (§3.3).</li>
+     * </ul>
+     */
+    public record Attention(
+            Duration recencyHalfLife,
+            Integer arrivalsWindowDays,
+            Integer minClosedEpisodes,
+            Double mttrClampLow,
+            Double mttrClampHigh,
+            Double selfHealFloor,
+            Duration modelTtl,
+            Boolean derivedResurfaceThreshold,
+            Integer resurfaceFloorPct,
+            Double resurfaceFalseBudgetPer30AckDays) {
+
+        public Duration recencyHalfLifeOrDefault() {
+            return recencyHalfLife != null ? recencyHalfLife : Duration.ofHours(24);
+        }
+
+        public int arrivalsWindowDaysOrDefault() {
+            return arrivalsWindowDays != null ? arrivalsWindowDays : 28;
+        }
+
+        public int minClosedEpisodesOrDefault() {
+            return minClosedEpisodes != null ? minClosedEpisodes : 3;
+        }
+
+        public double mttrClampLowOrDefault() {
+            return mttrClampLow != null ? mttrClampLow : 0.5;
+        }
+
+        public double mttrClampHighOrDefault() {
+            return mttrClampHigh != null ? mttrClampHigh : 2.0;
+        }
+
+        public double selfHealFloorOrDefault() {
+            return selfHealFloor != null ? selfHealFloor : 0.25;
+        }
+
+        public Duration modelTtlOrDefault() {
+            return modelTtl != null ? modelTtl : Duration.ofMinutes(5);
+        }
+
+        /** C3 — DEFAULT FALSE (§3.3: derived only after the full §7 gate). */
+        public boolean derivedResurfaceThresholdOrDefault() {
+            return derivedResurfaceThreshold != null && derivedResurfaceThreshold;
+        }
+
+        public int resurfaceFloorPctOrDefault() {
+            return resurfaceFloorPct != null ? resurfaceFloorPct : 10;
+        }
+
+        public double resurfaceFalseBudgetPer30AckDaysOrDefault() {
+            return resurfaceFalseBudgetPer30AckDays != null ? resurfaceFalseBudgetPer30AckDays : 1.0;
         }
     }
 

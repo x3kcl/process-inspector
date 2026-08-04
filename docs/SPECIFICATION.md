@@ -304,6 +304,24 @@ Answers "what is broken, how much, where" in zero keystrokes:
   state joins the dashboard at render time (the aggregation cache never carries it); a
   normalizer bump orphans old-generation acks ("needs re-binding", never silent).
   Without this the landing rots into alarm fatigue within weeks.
+- **Attention ordering** *(v2, research track R1 — backend ★ SHIPPED #353,
+  [ALARM-COST-MODEL.md](ALARM-COST-MODEL.md); FLAG-OFF by default)*: error-group cards are
+  ordered **count-only (`total DESC`)** — a 300-count known-noisy class outranks an 8-count
+  outage of a critical dependency forever. Behind `inspector.triage.attention-ordering`
+  (**default false**) they can instead be ordered by a cost-aware attention score
+  `A(c) = F · R · M · S` — arrival frequency × recency × historic time-to-resolve × a
+  self-heal demotion consuming the R2 lane — served on each card as
+  `attention {score, factors, rationale, suggestedAckExpirySeconds?}` with a ONE-SENTENCE
+  server-computed rationale ("21 failing · last seen 2 min ago · typically takes 4 h to
+  resolve · no self-heal history."). **Ordering only — never hides**: no card is filtered,
+  acknowledged groups keep their labeled never-hidden collapse and their resurface triggers,
+  and section membership is untouched. Every factor degrades to a multiplicative identity when
+  its evidence is missing, and ties break on `total DESC` then `signatureHash ASC`, so **with
+  no ledger history the ordering is exactly today's count-only ordering** — measured across
+  all 21,229 recorded pilot buckets (Kendall τ = 1.0, zero position changes). The flag ships
+  false because the design's numeric data-maturity gate is measured NOT MET (0 of 5 axes);
+  flipping it requires re-measuring that gate. The ordered UI and its tooltip are the frontend
+  slice (#354, not yet built).
 - **Annotations** (R-BAU-03, v1.x): OPERATOR+ may attach per-signature guidance (≤200 chars
   + runbook URL + optionally one **endorsed verb with conditions** — "Retry, but only after
   15:00"). Rendered on the group card and every member's why-stuck strip; the endorsed verb

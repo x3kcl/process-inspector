@@ -43,4 +43,38 @@ public interface IncidentOccurrenceRepository extends JpaRepository<IncidentOccu
     /** The S2 detail read: one incident's series inside a clamped window, ascending. */
     List<IncidentOccurrence> findByIdIncidentIdAndIdSampledAtGreaterThanEqualOrderByIdSampledAtAsc(
             long incidentId, Instant since);
+
+    /**
+     * The attention score's F factor (ALARM-COST-MODEL.md §4.1/§6, #353): per incident, the sum
+     * of POSITIVE {@code total} deltas over a trailing window — "how many new members arrived",
+     * not "how big is it".
+     *
+     * <p>Deliberately a DB-side AGGREGATE, one row per incident: the alternative (fetching the
+     * minute-bucket rows and differencing them in Java) is ~40k rows per class per 28-day window.
+     * This is the BFF's OWN Postgres, never an engine — the Stage 0 count-only/{@code size=1}
+     * iron rule is about ENGINE queries and is untouched by design (§9: the score is a pure
+     * DB-side join over the aggregation's existing output, zero new engine calls).
+     *
+     * <p><b>Truncation honesty (R-SEM-12, §6):</b> a truncated sample is a FLOOR, not a level, so
+     * a delta touching a truncated point is discarded outright rather than being allowed to
+     * manufacture a phantom arrival when the scan cap stops biting. Returns {@code Object[]{
+     * incidentId, arrivals}}; incidents with no qualifying delta are simply absent (⇒ 0).
+     */
+    @Query(value = """
+                    SELECT d.incident_id, COALESCE(SUM(GREATEST(d.delta, 0)), 0)
+                    FROM (
+                        SELECT incident_id,
+                               total - LAG(total) OVER w                AS delta,
+                               truncated                                AS truncated,
+                               LAG(truncated) OVER w                    AS prev_truncated
+                        FROM incident_occurrence
+                        WHERE sampled_at >= :since
+                        WINDOW w AS (PARTITION BY incident_id ORDER BY sampled_at)
+                    ) d
+                    WHERE d.delta IS NOT NULL
+                      AND d.truncated = false
+                      AND d.prev_truncated = false
+                    GROUP BY d.incident_id
+                    """, nativeQuery = true)
+    List<Object[]> arrivalsSince(@Param("since") Instant since);
 }

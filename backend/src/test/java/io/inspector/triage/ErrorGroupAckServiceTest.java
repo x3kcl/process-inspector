@@ -12,6 +12,7 @@ import static org.mockito.Mockito.verify;
 import static org.mockito.Mockito.when;
 
 import io.inspector.action.GuardRefusedException;
+import io.inspector.attention.ResurfaceThresholdEstimator;
 import io.inspector.audit.AuditService;
 import io.inspector.audit.AuditUnavailableException;
 import io.inspector.config.InspectorProperties;
@@ -20,6 +21,8 @@ import io.inspector.dto.ErrorGroup;
 import io.inspector.dto.ErrorGroupAcknowledgement;
 import io.inspector.dto.TriageDashboardResponse;
 import io.inspector.dto.UnacknowledgeErrorGroupRequest;
+import io.inspector.incident.IncidentOccurrenceRepository;
+import io.inspector.incident.IncidentRepository;
 import io.inspector.security.RbacAuthorizer;
 import io.inspector.security.Role;
 import java.time.Clock;
@@ -67,7 +70,15 @@ class ErrorGroupAckServiceTest {
         when(repository.saveAll(any())).thenAnswer(inv -> inv.getArgument(0));
         InspectorProperties props = new InspectorProperties(
                 null, null, new InspectorProperties.Triage(null, null, null, 20), null, null, null);
-        service = new ErrorGroupAckService(repository, triage, audit, rbac, Clock.fixed(NOW, ZoneOffset.UTC), props);
+        // C3 default-off (ALARM-COST-MODEL §3.3): the estimator answers the plain 20% constant,
+        // so every ack assertion below is unchanged by #353 — which is the point of the gate.
+        ResurfaceThresholdEstimator thresholds = new ResurfaceThresholdEstimator(
+                mock(IncidentRepository.class),
+                mock(IncidentOccurrenceRepository.class),
+                Clock.fixed(NOW, ZoneOffset.UTC),
+                props);
+        service =
+                new ErrorGroupAckService(repository, triage, audit, rbac, Clock.fixed(NOW, ZoneOffset.UTC), thresholds);
     }
 
     private void liveGroup(ErrorGroup... groups) {
