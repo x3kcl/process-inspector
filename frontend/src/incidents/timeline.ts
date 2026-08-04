@@ -1,19 +1,37 @@
 // The incident detail's arrival-rate timeline (INCIDENT-LEDGER.md §8): an inline-SVG chart
 // over the windowed occurrence series, EXTENDING triage/sparkline.ts's scaling math (same
 // min/max-relative, y-inverted, "flat series draws mid-height" rules) rather than
-// reimplementing it — the one difference is that a truncated sample is a FLOOR, not a dip
-// (§5's honesty mandate), so every point keeps its own coordinate AND its truncated flag
-// instead of collapsing straight to a polyline string like the small lane sparklines do.
+// reimplementing it — the one difference is that a sample can be DISHONEST in two distinct ways,
+// so every point keeps its own coordinate AND both honesty flags instead of collapsing straight
+// to a polyline string like the small lane sparklines do:
+//
+//   * `truncated` — the failure-lane scan hit its cap, so the count is a FLOOR, not a level
+//     (R-SEM-12, §5's honesty mandate).
+//   * `blind` — `cycleComplete = false`: an engine was unreachable on the pass that wrote the
+//     row (#302/V21), so the sample is missing that engine's members entirely. The chart draws a
+//     DIP that is an OUTAGE, not a drain.
+//
+// The second flag is a review fix. V21 persists the marker and the ledger's own arrivals/spell
+// readers already honour it, but `IncidentDetail.OccurrencePoint` did not carry it — so this
+// chart rendered a blind-outage dip identically to a real recovery. That is the same class as
+// the iron rule "never render a status derived from truncated data without the badge", and it
+// is now marked exactly the way `truncated` already was.
 import type { OccurrencePoint } from '../api/model'
 
 export interface TimelinePoint {
   sampledAt: string
   total: number
   truncated: boolean
+  blind: boolean
 }
 
 /** Normalizes + sorts the wire series ascending by time. Optional fields coalesce (§ gotcha:
- *  generated DTO fields are optional) — a point with no sampledAt is unplottable and dropped. */
+ *  generated DTO fields are optional) — a point with no sampledAt is unplottable and dropped.
+ *
+ *  `blind` fails toward HONEST: an ABSENT `cycleComplete` (an older server, or a field the DTO
+ *  did not yet carry) reads as blind rather than as complete, mirroring V21's own fail-closed
+ *  backfill choice — asserting an observation nobody recorded is exactly the fabrication the
+ *  marker exists to stop. */
 export function timelinePoints(series: OccurrencePoint[] | undefined): TimelinePoint[] {
   return (series ?? [])
     .filter((point) => point.sampledAt !== undefined && point.sampledAt !== '')
@@ -21,6 +39,7 @@ export function timelinePoints(series: OccurrencePoint[] | undefined): TimelineP
       sampledAt: point.sampledAt ?? '',
       total: point.total ?? 0,
       truncated: point.truncated === true,
+      blind: point.cycleComplete !== true,
     }))
     .sort((a, b) => a.sampledAt.localeCompare(b.sampledAt))
 }
@@ -54,8 +73,9 @@ export function timelineCoords(
   })
 }
 
-/** The connecting line's SVG polyline attribute value (truncated points ride the same line —
- *  they only render a DIFFERENT marker on top, per {@link TimelineCoord.truncated}). */
+/** The connecting line's SVG polyline attribute value (truncated and blind points ride the same
+ *  line — they only render a DIFFERENT marker on top, per {@link TimelineCoord.truncated} /
+ *  {@link TimelineCoord.blind}). */
 export function timelinePolyline(coords: TimelineCoord[]): string {
   return coords.map((coord) => `${String(coord.x)},${String(coord.y)}`).join(' ')
 }

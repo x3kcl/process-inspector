@@ -11,6 +11,7 @@ import static org.mockito.Mockito.when;
 
 import io.inspector.config.InspectorProperties;
 import io.inspector.incident.Incident;
+import io.inspector.incident.IncidentOccurrence;
 import io.inspector.incident.IncidentOccurrenceRepository;
 import io.inspector.incident.IncidentRepository;
 import java.time.Clock;
@@ -70,12 +71,79 @@ class ResurfaceThresholdEstimatorTest {
         assertThat(estimator(true, 20).thresholdPct("hash-a", 2)).isEqualTo(20);
     }
 
+    /* ---------------- review FIX 4: opting in can only ever be MORE conservative ---------------- */
+
+    @Test
+    void aZeroJitterClassKeepsTheConstantInsteadOfSILENTLYHalvingIt() {
+        // The confirmed defect. For a low-jitter class — THE MEASURED PILOT STATE (§5.6, "CV ~ 0
+        // on both live classes") — every grid candidate collapsed to max(10, k*0*100) = 10, no
+        // resurface ever fired, so `falseResurfaces = 0 <= budget` held VACUOUSLY and k = 0.5 won
+        // immediately. thresholdPct then returned max(floorPct, ceil(0.5*0*100)) = 10. So merely
+        // OPTING IN moved every static class from a 20 % resurface threshold to a 10 % one —
+        // twice as many ack interruptions — via a "fit" satisfied by having no data, while §3.3
+        // sells the derived value as TIGHTENING the guard. Before the fix this asserted 10.
+        seriesOf(flat(21, 40));
+
+        assertThat(estimator(true, 20).thresholdPct("hash-a", 2)).isEqualTo(20);
+    }
+
+    @Test
+    void aFittedValueBelowTodaysConstantIsFlooredAtTheConstantNeverAppliedAsIs() {
+        // Second rail, independent of the first: even a class whose series DOES exercise the
+        // threshold can only ever move it UP. §3.3's whole purpose is to lift the guard clear of
+        // normal jitter; a derived value below today's constant would interrupt the operator more
+        // often than the constant does, which is the opposite of what the doc promises.
+        long[] noisy = new long[80];
+        for (int i = 0; i < noisy.length; i++) {
+            noisy[i] = i % 2 == 0 ? 60 : 140; // CV ~ 0.4 — fits a derived ~140 %
+        }
+        seriesOf(noisy);
+
+        assertThat(estimator(true, 200).thresholdPct("hash-a", 2)).isEqualTo(200);
+    }
+
+    @Test
+    void aGenuinelyNoisyClassStillEarnsItsDerivedThresholdWhenThatIsTheMoreConservativeOne() {
+        long[] noisy = new long[80];
+        for (int i = 0; i < noisy.length; i++) {
+            noisy[i] = i % 2 == 0 ? 60 : 140;
+        }
+        seriesOf(noisy);
+
+        assertThat(estimator(true, 20).thresholdPct("hash-a", 2)).isGreaterThan(20);
+    }
+
     @Test
     void aBrokenStoreNeverMakesTheAckPolicyLessPredictable() {
         when(incidents.findBySignatureHashAndAlgoVersion(anyString(), anyInt()))
                 .thenThrow(new IllegalStateException("store down"));
 
         assertThat(estimator(true, 20).thresholdPct("hash-a", 2)).isEqualTo(20);
+    }
+
+    private static long[] flat(long total, int buckets) {
+        long[] series = new long[buckets];
+        java.util.Arrays.fill(series, total);
+        return series;
+    }
+
+    /**
+     * Stubs the windowed occurrence read with a synthetic series. The entity has no public
+     * constructor anywhere in this codebase (rung-4 territory), so the two accessors the
+     * estimator actually reads are mocked — nothing else about the row matters here.
+     */
+    private void seriesOf(long[] totals) {
+        Incident row = mock(Incident.class);
+        when(row.getId()).thenReturn(7L);
+        when(incidents.findBySignatureHashAndAlgoVersion("hash-a", 2)).thenReturn(Optional.of(row));
+        List<IncidentOccurrence> points = new java.util.ArrayList<>(totals.length);
+        for (long total : totals) {
+            IncidentOccurrence point = mock(IncidentOccurrence.class);
+            when(point.getTotal()).thenReturn(total);
+            points.add(point);
+        }
+        when(occurrences.findByIdIncidentIdAndIdSampledAtGreaterThanEqualOrderByIdSampledAtAsc(anyLong(), any()))
+                .thenReturn(points);
     }
 
     private ResurfaceThresholdEstimator estimator(boolean derived, int constantPct) {

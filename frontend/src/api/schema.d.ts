@@ -1499,8 +1499,11 @@ export interface components {
             ageSeconds?: number;
             /** Format: int64 */
             arrivals28d?: number;
+            arrivalsUnknown?: boolean;
             /** Format: int32 */
             closedEpisodes?: number;
+            /** Format: int64 */
+            discardedArrivalSamples?: number;
             /** Format: double */
             frequency?: number;
             insufficientHistory?: boolean;
@@ -2372,6 +2375,7 @@ export interface components {
             ts?: string;
         };
         OccurrencePoint: {
+            cycleComplete?: boolean;
             /** Format: int64 */
             deadLetterCount?: number;
             /** Format: int64 */

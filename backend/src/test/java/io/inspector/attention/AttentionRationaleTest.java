@@ -15,7 +15,7 @@ class AttentionRationaleTest {
 
     @Test
     void theWorkedExampleFromTheDesignRendersVerbatim() {
-        String sentence = AttentionRationale.sentence(21, 120, 14_400L, null);
+        String sentence = AttentionRationale.sentence(21, 120, 14_400L, null, false);
 
         assertThat(sentence)
                 .isEqualTo("21 failing · last seen 2 min ago · typically takes 4 h to resolve · no self-heal history.");
@@ -23,7 +23,8 @@ class AttentionRationaleTest {
 
     @Test
     void itIsOneSentenceOnOneLineSoATooltipCanHoldIt() {
-        String sentence = AttentionRationale.sentence(4_312, 45, 90_000L, stats(SelfHealLane.SELF_HEAL_LIKELY, 14, 12));
+        String sentence =
+                AttentionRationale.sentence(4_312, 45, 90_000L, stats(SelfHealLane.SELF_HEAL_LIKELY, 14, 12), false);
 
         assertThat(sentence).doesNotContain("\n").endsWith(".");
         assertThat(sentence.chars().filter(c -> c == '.').count()).isEqualTo(1);
@@ -31,28 +32,28 @@ class AttentionRationaleTest {
 
     @Test
     void everySelfHealLaneGetsItsOwnEvidenceClauseWithTheRecordInIt() {
-        assertThat(AttentionRationale.sentence(1, 0, null, stats(SelfHealLane.SELF_HEAL_LIKELY, 14, 12)))
+        assertThat(AttentionRationale.sentence(1, 0, null, stats(SelfHealLane.SELF_HEAL_LIKELY, 14, 12), false))
                 .contains("usually self-heals (12/14)");
-        assertThat(AttentionRationale.sentence(1, 0, null, stats(SelfHealLane.SELF_HEAL_MIXED, 11, 6)))
+        assertThat(AttentionRationale.sentence(1, 0, null, stats(SelfHealLane.SELF_HEAL_MIXED, 11, 6), false))
                 .contains("mixed self-heal record (6/11)");
-        assertThat(AttentionRationale.sentence(1, 0, null, stats(SelfHealLane.SELF_HEAL_UNLIKELY, 12, 1)))
+        assertThat(AttentionRationale.sentence(1, 0, null, stats(SelfHealLane.SELF_HEAL_UNLIKELY, 12, 1), false))
                 .contains("rarely self-heals (1/12)");
-        assertThat(AttentionRationale.sentence(1, 0, null, stats(SelfHealLane.INSUFFICIENT_HISTORY, 3, 1)))
+        assertThat(AttentionRationale.sentence(1, 0, null, stats(SelfHealLane.INSUFFICIENT_HISTORY, 3, 1), false))
                 .contains("no self-heal history");
     }
 
     @Test
     void aSubFloorEstimateNeverRendersAsANumber() {
-        String sentence = AttentionRationale.sentence(8, 3_600, null, null);
+        String sentence = AttentionRationale.sentence(8, 3_600, null, null, false);
 
         assertThat(sentence).contains("no resolve-time history").doesNotContain("typically takes");
     }
 
     @Test
     void aBrandNewSightingReadsAsJustNowRatherThanZeroSecondsAgo() {
-        assertThat(AttentionRationale.sentence(8, 0, null, null)).contains("last seen just now");
-        assertThat(AttentionRationale.sentence(8, 59, null, null)).contains("last seen just now");
-        assertThat(AttentionRationale.sentence(8, 60, null, null)).contains("last seen 1 min ago");
+        assertThat(AttentionRationale.sentence(8, 0, null, null, false)).contains("last seen just now");
+        assertThat(AttentionRationale.sentence(8, 59, null, null, false)).contains("last seen just now");
+        assertThat(AttentionRationale.sentence(8, 60, null, null, false)).contains("last seen 1 min ago");
     }
 
     @Test

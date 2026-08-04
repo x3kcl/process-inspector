@@ -81,39 +81,70 @@ class LedgerNativeQueriesIT {
     void arrivalsSumThePositiveDeltasAndIgnoreEveryDrain() {
         String hash = "it-" + UUID.randomUUID();
         Instant t0 = Instant.parse("2026-08-01T09:00:00Z");
-        // 5 → 9 (+4) → 3 (drain, ignored) → 11 (+8) → 11 (flat) ⇒ 12 arrivals, NOT the level 11.
+        // Birth at 5 (+5, FIX 3) → 9 (+4) → 3 (drain, ignored) → 11 (+8) → 11 (flat)
+        // ⇒ 17 arrivals, NOT the level 11.
         ingest(hash, t0, 5, false);
         ingest(hash, t0.plusSeconds(60), 9, false);
         ingest(hash, t0.plusSeconds(120), 3, false);
         ingest(hash, t0.plusSeconds(180), 11, false);
         ingest(hash, t0.plusSeconds(240), 11, false);
 
-        assertThat(arrivals(hash, t0)).isEqualTo(12);
+        assertThat(arrivals(hash, t0)).isEqualTo(17);
     }
 
     @Test
     void aDeltaTouchingATruncatedBucketIsDiscardedBecauseAFloorIsNotALevel() {
         String hash = "it-" + UUID.randomUUID();
         Instant t0 = Instant.parse("2026-08-02T09:00:00Z");
-        // The middle bucket is a TRUNCATED floor of 500. Both deltas that touch it (5→500 and
-        // 500→7) are phantoms of the scan cap, not arrivals; only 7→9 (+2) is real.
+        // Birth at 5 (+5). The next bucket is a TRUNCATED floor of 500: both deltas that touch it
+        // (5→500 and 500→7) are phantoms of the scan cap, not arrivals; only 7→9 (+2) is real.
         ingest(hash, t0, 5, false);
         ingest(hash, t0.plusSeconds(60), 500, true);
         ingest(hash, t0.plusSeconds(120), 7, false);
         ingest(hash, t0.plusSeconds(180), 9, false);
 
-        assertThat(arrivals(hash, t0)).isEqualTo(2);
+        assertThat(arrivals(hash, t0)).isEqualTo(7);
+        // Two of the four samples were usable, so the window is PARTIAL, not unknown.
+        assertThat(observedSamples(hash, t0)).isEqualTo(4);
+        assertThat(trustedSamples(hash, t0)).isEqualTo(2);
+    }
+
+    /* ---------------- FIX 3: a class's own birth IS an arrival ---------------- */
+
+    @Test
+    void aClassesFirstEverBucketCountsItsWholePopulationAsArriving() {
+        String hash = "it-" + UUID.randomUUID();
+        Instant t0 = Instant.parse("2026-08-03T09:00:00Z");
+        // The review's confirmed defect: LAG(total) is NULL for the window's first row and the
+        // old predicate (`WHERE delta IS NOT NULL`) threw it away — so an incident's FIRST EVER
+        // occurrence row, which IS the arrival of its entire population, could never be counted.
+        // A bad deploy breaking 5 000 instances at once appeared with total = 5000, stayed flat,
+        // and scored arrivals = 0 ⇒ F = 0 ⇒ A = 0: permanently below a class that gained one
+        // member. 0 → 5 000 in one bucket is the LARGEST possible arrival event.
+        ingest(hash, t0, 5_000, false);
+        ingest(hash, t0.plusSeconds(60), 5_000, false); // flat ever after
+
+        assertThat(arrivals(hash, t0)).isEqualTo(5_000);
     }
 
     @Test
-    void aSingleBucketProducesNoArrivalsBecauseThereIsNoPredecessorToDifferenceAgainst() {
+    void aWindowThatMerelyStartsMidLifeDoesNotCountTheStandingPopulationAsArrivals() {
         String hash = "it-" + UUID.randomUUID();
-        Instant t0 = Instant.parse("2026-08-03T09:00:00Z");
-        ingest(hash, t0, 21, false);
+        Instant birth = Instant.parse("2026-08-03T11:00:00Z");
+        Instant windowStart = birth.plusSeconds(180);
+        // The other half of FIX 3, and the reason it is a JOIN on first_seen rather than a plain
+        // COALESCE(LAG(total), 0): only the incident's OWN first row gets the 0 baseline. A
+        // window opening mid-life still finds LAG NULL on its first row and still discards it —
+        // otherwise every 28-day window would re-bank the standing population as fresh growth,
+        // every time, and "arrivals" would silently become "size".
+        ingest(hash, birth, 5_000, false);
+        ingest(hash, birth.plusSeconds(60), 5_000, false);
+        ingest(hash, birth.plusSeconds(120), 5_000, false);
+        ingest(hash, windowStart, 5_000, false);
+        ingest(hash, windowStart.plusSeconds(60), 5_003, false); // +3, the only real growth
 
-        // The no-post-mint-arrivals convention (ALARM-COST-MODEL §6): the estimator sums DELTAS,
-        // so a class's founding burst is not retroactively invented as an arrival.
-        assertThat(arrivals(hash, t0)).isZero();
+        assertThat(arrivals(hash, windowStart)).isEqualTo(3);
+        assertThat(arrivals(hash, birth)).isEqualTo(5_003); // whole life: birth + growth, once
     }
 
     @Test
@@ -121,15 +152,65 @@ class LedgerNativeQueriesIT {
         String first = "it-" + UUID.randomUUID();
         String second = "it-" + UUID.randomUUID();
         Instant t0 = Instant.parse("2026-08-01T12:00:00Z");
-        ingest(first, t0, 1, false);
+        ingest(first, t0, 1, false); // birth: +1
         ingest(first, t0.plusSeconds(60), 4, false); // +3
-        ingest(second, t0, 10, false);
+        ingest(second, t0, 10, false); // birth: +10
         ingest(second, t0.plusSeconds(60), 17, false); // +7
 
-        assertThat(arrivals(first, t0)).isEqualTo(3);
-        assertThat(arrivals(second, t0)).isEqualTo(7);
+        assertThat(arrivals(first, t0)).isEqualTo(4);
+        assertThat(arrivals(second, t0)).isEqualTo(17);
         // A window starting after the whole series sees nothing at all.
         assertThat(arrivals(first, t0.plusSeconds(3600))).isZero();
+    }
+
+    /* ---------------- FIX 2: a wholly untrusted window is UNKNOWN, not zero ---------------- */
+
+    @Test
+    void aWindowWhoseEverySampleWasTruncatedReportsZeroTrustedSamplesSoTheCallerCanSayUnknown() {
+        String hash = "it-" + UUID.randomUUID();
+        Instant t0 = Instant.parse("2026-08-09T09:00:00Z");
+        // A big class on an engine PERMANENTLY at its failure-lane scan cap: every bucket is a
+        // floor, so every delta is discarded and the sum is 0. Before this fix that 0 was
+        // indistinguishable from "measured, and it did not grow" — and F = log2(1+0) = 0 zeroed
+        // A(c) = F*R*M*S outright, demoting exactly the largest classes. The counts are what let
+        // AttentionScoreService tell the two apart and degrade F to the neutral 1 instead.
+        for (int i = 0; i < 5; i++) {
+            ingest(hash, t0.plusSeconds(60L * i), 4_000, true);
+        }
+
+        assertThat(arrivals(hash, t0)).isZero();
+        assertThat(observedSamples(hash, t0)).isEqualTo(5); // birth + 4 differenceable deltas
+        assertThat(trustedSamples(hash, t0)).isZero(); // ⇒ arrivalsUnknown
+    }
+
+    @Test
+    void aWindowWhoseEverySampleWasBlindReportsTheSameUnknownShapeAsAWhollyTruncatedOne() {
+        String hash = "it-" + UUID.randomUUID();
+        Instant t0 = Instant.parse("2026-08-09T11:00:00Z");
+        for (int i = 0; i < 4; i++) {
+            ingest(hash, t0.plusSeconds(60L * i), 900, false, false); // engine unreachable all window
+        }
+
+        assertThat(arrivals(hash, t0)).isZero();
+        assertThat(observedSamples(hash, t0)).isEqualTo(4);
+        assertThat(trustedSamples(hash, t0)).isZero();
+    }
+
+    @Test
+    void aFullyObservedFlatWindowIsAMEASUREDZeroAndSaysSoWithTrustedSamples() {
+        String hash = "it-" + UUID.randomUUID();
+        Instant t0 = Instant.parse("2026-08-09T13:00:00Z");
+        // The control case that keeps "unknown" from swallowing "measured, and genuinely flat":
+        // a class born before the window whose every in-window sample was clean.
+        ingest(hash, t0.minusSeconds(120), 60, false);
+        ingest(hash, t0.minusSeconds(60), 60, false);
+        for (int i = 0; i < 4; i++) {
+            ingest(hash, t0.plusSeconds(60L * i), 60, false);
+        }
+
+        assertThat(arrivals(hash, t0)).isZero();
+        assertThat(observedSamples(hash, t0)).isEqualTo(3); // 4 rows, first has no in-window predecessor
+        assertThat(trustedSamples(hash, t0)).isEqualTo(3); // ⇒ NOT unknown: F stays a real 0
     }
 
     @Test
@@ -161,6 +242,9 @@ class LedgerNativeQueriesIT {
         // hosts 900 of its members for two buckets, then gets it back. Reading the blind rows as
         // observations makes the recovery edge a +900 ARRIVAL — 900 phantom members from a
         // two-minute blip, F jumping log2(1+0)=0 to log2(901)≈9.8, and compounding on every flap.
+        // Born (and long settled) BEFORE the window opens, so FIX 3's birth seeding is not in
+        // play here — this test is only about the outage edge.
+        ingest(hash, t0.minusSeconds(60), 1000, false, true);
         ingest(hash, t0, 1000, false, true);
         ingest(hash, t0.plusSeconds(60), 1000, false, true);
         ingest(hash, t0.plusSeconds(120), 100, false, false); // engine unreachable
@@ -280,10 +364,24 @@ class LedgerNativeQueriesIT {
     }
 
     private long arrivals(String hash, Instant since) {
+        return aggregateColumn(hash, since, 1);
+    }
+
+    /** How many differenceable samples the window held (a class's own birth row counts as one). */
+    private long observedSamples(String hash, Instant since) {
+        return aggregateColumn(hash, since, 2);
+    }
+
+    /** How many of those had BOTH endpoints fully observed — 0 means the window is unknown. */
+    private long trustedSamples(String hash, Instant since) {
+        return aggregateColumn(hash, since, 3);
+    }
+
+    private long aggregateColumn(String hash, Instant since, int column) {
         long incidentId = incidentId(hash);
         Map<Long, Long> byIncident = new HashMap<>();
         for (Object[] row : occurrences.arrivalsSince(since)) {
-            byIncident.put(((Number) row[0]).longValue(), ((Number) row[1]).longValue());
+            byIncident.put(((Number) row[0]).longValue(), ((Number) row[column]).longValue());
         }
         return byIncident.getOrDefault(incidentId, 0L);
     }
