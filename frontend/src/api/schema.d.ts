@@ -1493,6 +1493,34 @@ export interface components {
             /** Format: int32 */
             writeMs?: number;
         };
+        AttentionFactors: {
+            /** Format: int64 */
+            ageSeconds?: number;
+            /** Format: int64 */
+            arrivals28d?: number;
+            /** Format: int32 */
+            closedEpisodes?: number;
+            /** Format: double */
+            frequency?: number;
+            insufficientHistory?: boolean;
+            /** Format: int64 */
+            medianMttrSeconds?: number;
+            /** Format: double */
+            mttr?: number;
+            /** Format: double */
+            recency?: number;
+            /** Format: double */
+            selfHeal?: number;
+            selfHealLane?: string;
+        };
+        AttentionScore: {
+            factors?: components["schemas"]["AttentionFactors"];
+            rationale?: string;
+            /** Format: double */
+            score?: number;
+            /** Format: int64 */
+            suggestedAckExpirySeconds?: number;
+        };
         AuditEntryDto: {
             action?: string;
             actor?: string;
@@ -1922,6 +1950,7 @@ export interface components {
             acknowledgement?: components["schemas"]["ErrorGroupAcknowledgement"];
             /** Format: int32 */
             algoVersion?: number;
+            attention?: components["schemas"]["AttentionScore"];
             countsByEngine?: {
                 [key: string]: {
                     [key: string]: number;
@@ -2042,6 +2071,7 @@ export interface components {
         IncidentSummary: {
             /** Format: int32 */
             algoVersion?: number;
+            attention?: components["schemas"]["AttentionScore"];
             countsByEngine?: {
                 [key: string]: {
                     [key: string]: number;

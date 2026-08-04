@@ -12,6 +12,7 @@ import static org.mockito.Mockito.verify;
 import static org.mockito.Mockito.when;
 
 import com.fasterxml.jackson.databind.ObjectMapper;
+import io.inspector.attention.AttentionScoreService;
 import io.inspector.config.InspectorProperties;
 import io.inspector.config.InspectorProperties.Incidents;
 import io.inspector.dto.ErrorGroup;
@@ -61,6 +62,14 @@ class IncidentQueryServiceTest {
     private final ErrorGroupAckService acks = mock(ErrorGroupAckService.class);
     private final RelatedBulkJobsService relatedBulkJobs = mock(RelatedBulkJobsService.class);
     private final SelfHealStatsService selfHeal = mock(SelfHealStatsService.class);
+
+    /**
+     * #353 default-off (ALARM-COST-MODEL §7 — the data-maturity gate is NOT met): the service
+     * answers {@code null} for every class, so no {@code attention} block reaches the wire and
+     * every assertion in this class is unchanged.
+     */
+    private final AttentionScoreService attention = mock(AttentionScoreService.class);
+
     private final Authentication auth = mock(Authentication.class);
     private final IncidentQueryService service = service(Duration.ofHours(24));
 
@@ -416,6 +425,7 @@ class IncidentQueryServiceTest {
                 acks,
                 relatedBulkJobs,
                 selfHeal,
+                attention,
                 new ObjectMapper(),
                 Clock.fixed(NOW, ZoneOffset.UTC),
                 new InspectorProperties(

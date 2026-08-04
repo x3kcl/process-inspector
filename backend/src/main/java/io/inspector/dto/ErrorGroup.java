@@ -28,6 +28,11 @@ import java.util.Map;
  * store — null while unacknowledged, and ALWAYS null inside the cached aggregation (the
  * decorator joins it per request so ack state is live while engine data stays cached).
  *
+ * {@code attention} (ALARM-COST-MODEL.md §4, #353) is the SAME kind of render-time overlay, joined
+ * after ack state from the BFF's own incident ledger + the R2 self-heal statistic — never cached
+ * with the engine data, zero new engine calls. It is ALWAYS null unless
+ * {@code inspector.triage.attention-ordering} is on (the R1 data-maturity gate is not met, §7).
+ *
  * <p>{@code NON_NULL} so absent fields are OMITTED on the wire, matching the generated
  * contract's optionality ({@code acknowledgement?:}) — a serialized {@code null} would
  * defeat every {@code !== undefined} check in the SPA (external review, W3-2).
@@ -50,7 +55,34 @@ public record ErrorGroup(
         Long deadLetterCount,
         Long retryingCount, // failing-with-retries-left evidence (timer + executable lanes)
         Map<String, Map<String, Long>> countsByEngine,
-        ErrorGroupAcknowledgement acknowledgement) {
+        ErrorGroupAcknowledgement acknowledgement,
+        AttentionScore attention) {
+
+    /** The pre-#353 shape: engine data + ack overlay, no attention score (see class doc). */
+    public ErrorGroup(
+            String signatureHash,
+            int algoVersion,
+            String exceptionClass,
+            String normalizedMessage,
+            String sampleRawMessage,
+            long total,
+            Long deadLetterCount,
+            Long retryingCount,
+            Map<String, Map<String, Long>> countsByEngine,
+            ErrorGroupAcknowledgement acknowledgement) {
+        this(
+                signatureHash,
+                algoVersion,
+                exceptionClass,
+                normalizedMessage,
+                sampleRawMessage,
+                total,
+                deadLetterCount,
+                retryingCount,
+                countsByEngine,
+                acknowledgement,
+                null);
+    }
 
     /** The aggregation-side shape: engine data only, never an ack overlay (see class doc). */
     public ErrorGroup(
@@ -88,6 +120,23 @@ public record ErrorGroup(
                 deadLetterCount,
                 retryingCount,
                 countsByEngine,
-                info);
+                info,
+                attention);
+    }
+
+    /** Render-time decoration (#353), same never-mutate-the-cached-object contract as above. */
+    public ErrorGroup withAttention(AttentionScore score) {
+        return new ErrorGroup(
+                signatureHash,
+                algoVersion,
+                exceptionClass,
+                normalizedMessage,
+                sampleRawMessage,
+                total,
+                deadLetterCount,
+                retryingCount,
+                countsByEngine,
+                acknowledgement,
+                score);
     }
 }

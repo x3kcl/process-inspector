@@ -22,6 +22,23 @@ public interface IncidentEpisodeRepository extends JpaRepository<IncidentEpisode
     Optional<IncidentEpisode> findFirstByIncidentIdOrderByStartedAtDesc(long incidentId);
 
     /**
+     * The attention score's M factor and the §3.2 ack-expiry suggestion (ALARM-COST-MODEL.md §6,
+     * #353): every CLOSED episode's duration in seconds, as {@code Object[]{incidentId,
+     * seconds}}. Live episodes are excluded — an unfinished episode has no MTTR, and treating
+     * "still broken" as "took this long" would be the exact dishonesty §6's honesty rails forbid.
+     *
+     * <p>Deliberately unbounded-by-window and unpaged: episode cardinality is
+     * {@code 1 + regression_count} per incident and every regression needs a human resolve in
+     * between (INCIDENT-LEDGER §3.2) — a pathological ledger has dozens, not thousands.
+     */
+    @Query(value = """
+                    SELECT incident_id, EXTRACT(EPOCH FROM (ended_at - started_at))
+                    FROM incident_episode
+                    WHERE ended_at IS NOT NULL
+                    """, nativeQuery = true)
+    List<Object[]> closedEpisodeDurationSeconds();
+
+    /**
      * The S3 resolve stamp (INCIDENT-LEDGER §3.2): closes one episode with the resolve metadata
      * — {@code ended_at}/{@code resolved_by}/{@code resolve_reason}/{@code ticket_id} live HERE,
      * not on {@code incident}. Conditional on the episode still being live, so it doubles as the

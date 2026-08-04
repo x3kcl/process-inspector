@@ -394,6 +394,7 @@ class IncidentLifecycleServiceTest {
                 false,
                 0,
                 null,
+                null,
                 null);
     }
 

@@ -31,6 +31,14 @@ import java.util.Map;
  * regardless of its current live state); {@code lane = INSUFFICIENT_HISTORY} is the expected,
  * common-for-a-long-time answer (measured 2026-08-04, R2-SELFHEAL-BASELINE-2026-08.md).
  *
+ * <p>{@code attention} (ALARM-COST-MODEL.md §4, #353) is the cost-aware attention score, present
+ * only while {@code inspector.triage.attention-ordering} is on. The ledger list keeps its SERVER
+ * ordering ({@code lastSeen DESC} — the #308 hard cap must drop the OLDEST rows, so the store
+ * fetch order is load-bearing) and its section doctrine (REGRESSED → OPEN → QUIET → RESOLVED,
+ * derived client-side per INCIDENT-LEDGER §6/§8); the score orders WITHIN the live sections only,
+ * where those sections are actually formed. Ordering only — never hides, never changes section
+ * membership.
+ *
  * <p>{@code NON_NULL} so nullable fields ({@code exceptionClass}, {@code lastRegressedAt}) are
  * OMITTED on the wire, matching the generated contract's optionality (W3-2 doctrine).
  */
@@ -53,4 +61,5 @@ public record IncidentSummary(
         boolean partial, // true iff the breakdown was narrowed by scope projection
         int regressionCount,
         Instant lastRegressedAt,
-        SelfHealStats selfHeal) {}
+        SelfHealStats selfHeal,
+        AttentionScore attention) {}

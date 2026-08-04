@@ -1,5 +1,6 @@
 package io.inspector.api;
 
+import io.inspector.attention.AttentionScoreService;
 import io.inspector.dto.LeakViewsResponse;
 import io.inspector.dto.TriageDashboardResponse;
 import io.inspector.dto.TriageTrendResponse;
@@ -37,6 +38,7 @@ public class TriageController {
     private final TriageService triage;
     private final TriageTrendService trends;
     private final ErrorGroupAckService acks;
+    private final AttentionScoreService attention;
     private final LeakViewService leakViews;
     private final TriageScopeProjector scopeProjector;
     private final LeakViewScopeProjector leakViewScopeProjector;
@@ -45,12 +47,14 @@ public class TriageController {
             TriageService triage,
             TriageTrendService trends,
             ErrorGroupAckService acks,
+            AttentionScoreService attention,
             LeakViewService leakViews,
             TriageScopeProjector scopeProjector,
             LeakViewScopeProjector leakViewScopeProjector) {
         this.triage = triage;
         this.trends = trends;
         this.acks = acks;
+        this.attention = attention;
         this.leakViews = leakViews;
         this.scopeProjector = scopeProjector;
         this.leakViewScopeProjector = leakViewScopeProjector;
@@ -64,7 +68,11 @@ public class TriageController {
         // aggregation the background sampler drives). Project first, THEN join ack state — decorate
         // keys on signatureHash, which the projection preserves, so it operates on the scoped groups.
         // R-BAU-01: ack state is live on every read, never cached with (or busting) the engine data.
-        return acks.decorate(scopeProjector.project(triage.dashboard(refresh), auth));
+        // #353: the attention score joins LAST — after scoping and after ack state, because it reads
+        // both (the scoped totals it explains, the ack overlay it must leave alone). It is a
+        // no-op returning the very same object unless inspector.triage.attention-ordering is on
+        // (ALARM-COST-MODEL §7: the data-maturity gate is not met, so the feature ships inert).
+        return attention.decorate(acks.decorate(scopeProjector.project(triage.dashboard(refresh), auth)));
     }
 
     @GetMapping("/trends")
