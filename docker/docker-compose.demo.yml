@@ -44,6 +44,29 @@ services:
     networks: [internal]
     restart: unless-stopped
 
+  # The V7 engine. `application.yml` has ALWAYS declared an `engine-7` entry (placeholder
+  # INSPECTOR_ENGINE_7_BASE_URL, defaulting to the dev harness's localhost:8083) — until this
+  # service existed the demo showed a third, permanently-unreachable engine. Adding the
+  # container both fills that slot and makes the demo exercise what the inspector is FOR:
+  # one pane over engines on different majors.
+  #
+  # Pinned to 7.1.0 deliberately — the same version the dev harness and the CI `flowable-7`
+  # leg run, so the demo never runs a major/minor that nothing verifies. 7.0.1 and 7.2.0 also
+  # publish; adding either means adding it to the matrix FIRST (docker-compose.dev.yml +
+  # ci.yml), not here.
+  #
+  # V7 keeps the war layout — same /flowable-rest/service context and the same well-known
+  # creds as the 6.8 images above — so seed.sh needs no special case. (An engine that EMBEDS
+  # Flowable publishes /process-api at the ROOT instead; that's the `flap` Boot-layout engine
+  # in the dev harness, a different shape entirely.)
+  engine-7:
+    image: flowable/flowable-rest:7.1.0
+    environment:
+      - FLOWABLE_REST_APP_ADMIN_USER-ID=rest-admin
+      - FLOWABLE_REST_APP_ADMIN_PASSWORD=test
+    networks: [internal]
+    restart: unless-stopped
+
   postgres:
     image: postgres:16-alpine
     environment:
@@ -184,8 +207,10 @@ services:
       # engines' id/environment/auth and fail startup.
       - INSPECTOR_ENGINE_A_BASE_URL=http://engine-a:8080/flowable-rest/service
       - INSPECTOR_ENGINE_B_BASE_URL=http://engine-b:8080/flowable-rest/service
+      - INSPECTOR_ENGINE_7_BASE_URL=http://engine-7:8080/flowable-rest/service
       - ENGINE_A_PASSWORD=test
       - ENGINE_B_PASSWORD=test
+      - ENGINE_7_PASSWORD=test
       # Demo sign-in ladder password (dev auth chain; oidc profile is off here).
       - INSPECTOR_DEV_PASSWORD=${INSPECTOR_DEV_PASSWORD:-dev}
     depends_on:
@@ -226,12 +251,17 @@ services:
       - "traefik.http.middlewares.pi-header.headers.browserXssFilter=true"
       - "traefik.http.middlewares.pi-header.headers.customRequestHeaders.X-Forwarded-Proto=https"
 
-  # One-shot: wait for both engines, then deploy the demo processes + seed one instance per
+  # One-shot: wait for every engine, then deploy the demo processes + seed one instance per
   # status arc (COMPLETED / FAILED / RETRYING / SUSPENDED / ACTIVE / timer / sub-process).
   # REST-only (CLAUDE.md iron rule) — never touches ACT_* tables. Exits 0 when done.
+  #
+  # engine-7 (V7) seeds through the SAME path as the 6.8 engines: identical war context and
+  # credentials, and seed.sh is already parameterised by base-url. Deployment is idempotent
+  # BY KEY, so re-running against an already-seeded engine is a no-op; instance starts are
+  # NOT idempotent by design, so each redeploy adds one instance per arc per engine.
   seed:
     image: alpine:3.20
-    depends_on: [engine-a, engine-b]
+    depends_on: [engine-a, engine-b, engine-7]
     volumes:
       - ./:/seed:ro
     entrypoint: ["/bin/sh", "-c"]
@@ -239,7 +269,7 @@ services:
       - |
         set -e
         apk add --no-cache bash curl python3 >/dev/null
-        for e in engine-a engine-b; do
+        for e in engine-a engine-b engine-7; do
           url="http://$$e:8080/flowable-rest/service"
           echo "waiting for $$e ..."
           until curl -sf -u "rest-admin:test" -o /dev/null "$$url/management/engine"; do sleep 3; done
