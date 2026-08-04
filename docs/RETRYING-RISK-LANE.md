@@ -193,7 +193,17 @@ infrastructure, no model registry, nothing speculative ships in v1.
    §4.1 table (band width 0.10). Arithmetic at the floor (§7.1): one contrary outcome
    after a perfect 10/10 record moves the LB 0.722 → 0.623 — below the naive 0.70 boundary
    (would flip), above the 0.60 exit (holds); a second contrary outcome (LB 0.552) exits
-   legitimately. One outcome never flips a lane at the floor; two may.
+   legitimately. One outcome never flips a lane at the floor; two may. Provenance: ISA-18.2's
+   own alarm-flood definition uses this same asymmetric enter/exit shape — onset ≥ 10
+   annunciated alarms/10 min, flood ends below 5/10 min (Roohi & Izadi, *A review of alarm
+   flood analysis methods in industrial processes: pattern recognition and similarity
+   analysis*, Journal of Control 17(2), 2023, §2 eq. 2,
+   [10.61186/joc.17.2.113](https://doi.org/10.61186/joc.17.2.113); Beebe, Ferrer, Logerot,
+   *The connection of peak alarm rates to plant incidents and what you can do to minimize*,
+   Process Safety Progress 32(1), 2013,
+   [10.1002/prs.11539](https://doi.org/10.1002/prs.11539)) — the standard's own asymmetric
+   onset/exit split is a stronger citation for this enter/exit pattern than the DMKD
+   stability result alone grounds (§0).
 3. **Minimum dwell — SERVER-side.** A displayed lane change requires the newly computed
    lane to hold for ≥ 10 consecutive **complete** sampler cycles (~10 min at the 60 s
    beat; incomplete cycles — `cycleComplete=false` — don't advance the dwell counter,

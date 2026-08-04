@@ -234,7 +234,12 @@ Rules:
   Acknowledged section's membership, only the sort within the live section.
 - The S factor consumes the R2 badge's **stabilized** (hysteresis-applied) rate, never a raw
   per-cycle rate — ordering must not flap when the badge doesn't (the DMKD temporal-stability
-  rule #347 owns, inherited here by construction).
+  rule #347 owns, inherited here by construction). That hysteresis pattern
+  (RETRYING-RISK-LANE.md §4.2) is itself grounded in ISA-18.2's own asymmetric flood
+  onset/exit thresholds, not only the DMKD result — a stronger citation for the same
+  enter/exit design (Roohi & Izadi 2023, §2 eq. 2,
+  [10.61186/joc.17.2.113](https://doi.org/10.61186/joc.17.2.113); Beebe et al. 2013,
+  [10.1002/prs.11539](https://doi.org/10.1002/prs.11539)).
 - The 0.25 floor on `S` means a reliably-self-healing class is demoted at most 4×, never
   zeroed — a mass self-heal class stays visible (same doctrine as never-hide).
 - Score factors ship in the DTO next to the card (`attention: {score, factors, rationale}`)
@@ -489,6 +494,24 @@ parallel protocol.
 - **Ordering only, never hides**: no card is filtered, no section membership changes.
 - **#106 stays untouched** (issue non-goal): this track orders and expires attention only;
   it prescribes no interventions and changes nothing about remediation playbooks.
+- **Episode-shape matching (scoped, parked — do not port this algorithm)**: if the incident
+  ledger ever grows a "this spike looks like the 07-14 payment-gateway outage" feature, it is
+  **not** a Smith-Waterman/sequence-alignment problem. The two flood-matching papers score
+  alarm-*type* identity across thousands of distinct tags (Lai, Yang, Chen, *Online pattern
+  matching and prediction of incoming alarm floods*, J. Process Control 56, 2017,
+  [10.1016/j.jprocont.2017.01.003](https://doi.org/10.1016/j.jprocont.2017.01.003); Parvez,
+  Hu, Chen, *Real-time pattern matching and ranking for early prediction of industrial alarm
+  floods*, Control Engineering Practice, 2022,
+  [10.1016/j.conengprac.2021.105004](https://doi.org/10.1016/j.conengprac.2021.105004)) —
+  that mechanism **degenerates on a single error class's count curve**; the actual problem is
+  DTW/cross-correlation over a count series, not sequence alignment. What *would* transfer if
+  this is ever built: Gaussian time-weighting, incremental append-only computation, staged
+  candidate pruning, and FDR/MDR < 5 % as the quality bar (Lai 2017). Follow-on refs the
+  literature review flags as central, not yet held in this repo: Alinezhad, Roohi & Chen, *A
+  review of alarm root cause analysis*, Chemical Engineering Research & Design, 2022 (DOI
+  unresolved at time of writing — not cited here rather than guessed); Zhou, *Advanced
+  Methods for Alarm Monitoring and Alarm Flood Analysis*, University of Alberta thesis, 2021
+  (open access, no DOI).
 - **No notification channels** (none exist; out of scope).
 - **Truncation honesty (R-SEM-12)**: estimators treat truncated rows as floors; a card
   whose score inputs were truncated carries the same badge doctrine as its counts.
