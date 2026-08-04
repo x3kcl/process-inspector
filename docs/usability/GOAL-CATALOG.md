@@ -444,15 +444,23 @@ names ≥2 real factors. /c correct: identifies the rate as historic/past-tense 
 the right posture for the lane actually observed.
 FIXTURE: ALARM-COST-MODEL.md §8's staged A/B fixture (≥4 current-generation classes, the
 planted class NOT the largest by count) PLUS ≥1 live `SelfHealBadge`. **Self-heal lane
-reachability (issue #359 dependency, unresolved at authoring time):** the standard seed
-corpus fails every seeded process PERMANENTLY by construction, so `SELF_HEAL_UNLIKELY` and
-`INSUFFICIENT_HISTORY` are reachable today; `SELF_HEAL_LIKELY` and `SELF_HEAL_MIXED` (the
-lane /c's example copy — RETRYING-RISK-LANE.md §4.1's worked example "usually self-heals
-(12/14, typically ≤ 8 min)" — illustrates) need a TRANSIENTLY-failing seed process that
-recovers on its own, which issue #359 (in progress on another branch at authoring time)
-has not yet shipped. The run and its verdict must record which lane(s) were actually live
-that run; a run before #359 lands cannot exercise /c against LIKELY/MIXED copy and must
-say so rather than silently skip or fabricate coverage. Mission: `MISSIONS.md` M13.
+reachability — SUPERSEDED note (kept for provenance, repo correction convention):** this
+line originally said `SELF_HEAL_LIKELY`/`SELF_HEAL_MIXED` were unreachable pending issue
+#359 — TRUE at authoring (2026-08-04), FALSE now: #359 landed the same day as `85342e1`/
+PR #368. **All four lanes are reachable today**, gated 6.8+: `INSUFFICIENT_HISTORY`
+(default, no staging) and `SELF_HEAL_UNLIKELY` (the standard permanently-failing seed
+corpus) need nothing extra; `SELF_HEAL_LIKELY` (the lane /c's example copy — RETRYING-
+RISK-LANE.md §4.1's worked example "usually self-heals (12/14, typically ≤ 8 min)" —
+illustrates) and `SELF_HEAL_MIXED` need the opt-in `PI_SEED_SELF_HEALING=1` fixture
+(`docker/processes/demo-self-healing.bpmn20.xml` + its `-baseline` companion) staged per
+ALARM-COST-MODEL.md §8.2 step 5 — real spells at the unlowered production floor
+(`inspector.selfheal.floor`, default 10), realistically ~15–20+ minutes of dedicated
+pre-run staging (§8.2 step 5c's timing note). The opt-in fixture counts toward neither the
+R4 grouping-quality corpus nor RETRYING-RISK-LANE.md's own §7.2 gate — staging it for this
+mission is usability evidence only, never gate evidence (ALARM-COST-MODEL.md §8's own
+correction note). The run and its verdict must still record which lane(s) were actually
+live that run; `INSUFFICIENT_HISTORY`/`SELF_HEAL_UNLIKELY` remain legitimate, cheaper
+fallbacks when the full staging budget isn't available. Mission: `MISSIONS.md` M13.
 
 ## SAFE — Operator safety & RBAC
 

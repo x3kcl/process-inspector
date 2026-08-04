@@ -479,11 +479,19 @@ would flip fleet-wide ordering for every OTHER concurrent mission — never do t
 STAGING: for arm B, the runner seeds ≥4 current-generation error classes where the planted
 class is NOT the largest by raw count (ALARM-COST-MODEL.md §8 fixture recipe) and confirms
 at least one live `SelfHealBadge` is present before dispatch, noting which self-heal
-lane(s) are actually live this run (see R-SEM-25's FIXTURE note on the #359 dependency —
-`SELF_HEAL_LIKELY`/`MIXED` are not stageable until #359 lands). For arm A (the flag-off
-control run of the same mission), the same fixture is seeded but the badge/tooltip render
-nothing — tasks 2-4 are expected to answer honestly that nothing was found, which is itself
-the control observation, not a mission failure.
+lane(s) are actually live this run. **All four self-heal lanes are stageable today**
+(issue #359 landed as `85342e1`/PR #368; superseding this line's earlier "not stageable
+until #359 lands") — `SELF_HEAL_LIKELY`/`SELF_HEAL_MIXED` need the opt-in
+`PI_SEED_SELF_HEALING=1` fixture staged per ALARM-COST-MODEL.md §8.2 step 5 (real spells
+at the unlowered production floor, ~15–20+ minutes of dedicated pre-run staging — budget
+it before dispatch, not during the mission); that opt-in fixture counts toward neither the
+R4 grouping-quality corpus nor RETRYING-RISK-LANE.md's §7.2 gate (usability evidence only,
+never gate evidence). `INSUFFICIENT_HISTORY`/`SELF_HEAL_UNLIKELY` need no extra staging
+and remain legitimate, cheaper fallbacks (see R-SEM-25's FIXTURE note for the full
+reachability table). For arm A (the flag-off control run of the same mission), the same
+fixture is seeded but the badge/tooltip render nothing — tasks 2-4 are expected to answer
+honestly that nothing was found, which is itself the control observation, not a mission
+failure.
 
 TESTER BRIEF:
 

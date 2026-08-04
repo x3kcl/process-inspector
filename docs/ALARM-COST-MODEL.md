@@ -13,8 +13,11 @@ flipping it requires re-measuring §7 with the §5 method. **§8's usability A/B
 AUTHORED (issue #366, 2026-08-04) — comprehension probe + operator doc (R-SEM-25,
 `docs/usability/MISSIONS.md` M13, `docs/OPERATOR-QUICK-START.md`) specified end to end, run
 NOT YET EXECUTED (§8.8): sequenced to follow issue #365 (a burst-term amendment to this same
-score, IN PROGRESS) and gated further by issue #359 (transiently-failing seed corpus, IN
-PROGRESS) for full self-heal-lane coverage.**
+score, IN PROGRESS). Issue #359 (the transiently-failing self-heal seed fixture) landed
+2026-08-04 as `85342e1`/PR #368 — ALL FOUR self-heal lanes, including `SELF_HEAL_LIKELY`/
+`SELF_HEAL_MIXED`, are now stageable for §8 (§8.6); the fixture is opt-in
+(`PI_SEED_SELF_HEALING=1`) and, by design, counts toward neither this doc's own §7 gate nor
+RETRYING-RISK-LANE.md's §7.2 gate (§8's own sequencing note explains why).**
 
 ## 0. Provenance
 
@@ -472,6 +475,28 @@ scoring formula would test an ordering the shipped flag never actually serves on
 merges — whoever schedules this run re-checks #365's status first, and re-derives the
 fixture in §8.2 if the formula's shape changed underneath it.
 
+**Correction (2026-08-04, same day as authoring): issue #359 landed on `main` as `85342e1`
+(PR #368) while this plan was being written.** §8.2/§8.6 below were originally written
+against the pre-#368 reality ("every seed process fails permanently, so `SELF_HEAL_LIKELY`/
+`SELF_HEAL_MIXED` are unreachable") — that was TRUE at first authoring and is now
+SUPERSEDED, not silently rewritten (§13's own correction convention): #368 shipped
+`docker/processes/demo-self-healing.bpmn20.xml` (+ its `-baseline` companion), an opt-in
+(`PI_SEED_SELF_HEALING=1`, never on `seed.sh`'s default path) transiently-failing fixture
+that makes all four self-heal lanes reachable end-to-end. §8.2/§8.6 are rewritten below to
+reflect this.
+
+**The honesty rail that survives the good news unchanged:** the fixture is opt-in
+specifically so it counts toward **neither** the R4 grouping-quality corpus **nor**
+RETRYING-RISK-LANE.md's own §7.2 production data-maturity gate (R2's counterpart to this
+doc's §7) — both gates read real engine/ledger history over REST and have no way to tell a
+harness fixture's spells apart from organic pilot ones, so keeping the seed off by default
+on any deployment that measures either gate (the demo/pilot) is what protects both gates'
+honesty. **Staging this fixture for the M13 A/B run does not move this doc's §7 gate, or
+RETRYING-RISK-LANE.md's §7.2 gate, one inch.** The run's verdict (§8.8) is USABILITY
+evidence — whether the ordering and the operator note work when the ordering IS live — never
+evidence that either gate's real-history thresholds are met. Do not let a green M13 run be
+read, cited, or summarized as gate evidence.
+
 ### 8.1 Goals under test (catalog entry R-SEM-25, `docs/usability/GOAL-CATALOG.md`)
 
 Three arcs, one staged mission (`docs/usability/MISSIONS.md` M13, "Why is this one
@@ -524,17 +549,52 @@ quote scores `unsupported` regardless of correctness).
    not milliseconds) so its `medMTTR` clamps toward `mttr-clamp-high` (2.0) relative to
    the fleet median. Re-seed the failure over REST between each resolve so a fresh episode
    opens each time.
-5. **What is NOT achievable pre-#359, and must not be faked**: the canonical "large
-   self-healing class demoted below a small costly one" story needs the `S` factor
-   non-neutral, which needs a class actually reaching `SELF_HEAL_LIKELY`/`MIXED` —
-   blocked on #359 (§8.6). Until #359 lands, every live class's `S` stays neutral (1) in
-   this fixture, same as the measured pilot (§5.5) — so a pre-#359 run's ordering
-   divergence is attributable to `F`/`R`/`M` alone. The run's own report must state this
-   explicitly; do not claim the S-driven story was exercised until it actually was.
-6. Confirm at least one live `SelfHealBadge` exists for task /c (any reachable lane — see
-   §8.6): the standard `demoFailingRetry` cohort or the freshly-planted timer-backed class
-   will show `INSUFFICIENT_HISTORY` or, once ≥1 spell completes, `SELF_HEAL_UNLIKELY`
-   (every seeded process fails permanently, so it never heals).
+5. **The canonical "large self-healing class demoted below a small costly one" story is
+   now stageable** (superseded — #359/PR #368 shipped the fixture that makes `S`
+   non-neutral; see §8's own correction note and §8.6). The concrete recipe, 6.8+ engines
+   only (`demoSelfHealing`'s boundary-timer construct is gated the same as the rest of the
+   6.8+ fixture set):
+   a. **Inflate the class's raw count** — the class that must OUTRANK the planted small
+      costly class under naive count-only ordering. Run `PI_SEED_SELF_HEALING=1
+      docker/seed.sh` (or POST additional `demoSelfHealingBaseline` instances directly,
+      same body seed.sh uses) repeatedly to accumulate a genuinely large standing
+      dead-letter count on the shared `selfHealGhost` signature.
+   b. **Commit its self-heal lane to `SELF_HEAL_LIKELY` at the REAL, unlowered production
+      floor** (`inspector.selfheal.floor`, default 10 — do not lower it for this run; a
+      lowered floor tests a threshold the shipped deployment never actually uses). Start
+      ≥10 ADDITIONAL `demoSelfHealing` instances one at a time, directly over REST (the
+      same body seed.sh uses: `{"processDefinitionKey":"demoSelfHealing","variables":
+      [{"name":"healDelay","type":"string","value":"PT20S"}]}`), STAGGERED so each
+      instance's own retrying→healed transition is a genuinely distinct, non-overlapping
+      spell in the class's fleet-wide occurrence series — `RetrySpellExtractor` reads the
+      AGGREGATE series for the signature, so two instances retrying concurrently collapse
+      into one spell, not two. Confirm the class's live `retryingCount` has returned to 0
+      (one full sampler cycle after the previous instance healed) before starting the
+      next. `SELF_HEAL_MIXED` stages the same way with a deliberate minority of instances
+      given a `healDelay` LONGER than the retry cascade's own exhaustion time, so they
+      dead-letter before healing — a genuine organic escalation, no operator retry, no
+      audit row.
+   c. **Budget real wall-clock — the timing reality #368's own fix commit measured, not
+      nominal-cycle arithmetic**: the async executor's timer-job acquire poll adds
+      **~9–10 s to EVERY retry** regardless of the nominal interval, so even a
+      short-looking cascade burns real minutes, and a single heal spell is realistically
+      **~20–30 s+ of wall-clock, not the ~3 s a naive nominal-cycle calculation would
+      suggest**. Add the sampler's own 60 s cadence between spells (§5.6) so the
+      occurrence series actually records the zero-bucket that closes one spell before the
+      next begins. Ten sequential, non-overlapping spells at the real floor is realistically
+      **~15–20+ minutes of dedicated pre-run staging** — schedule it BEFORE tester
+      dispatch, as its own staging pass, never live during the mission.
+   d. Verify before dispatch: `curl -su viewer:dev http://localhost:8085/api/incidents`
+      (or the matching `GET /api/triage` error-group entry) shows the `selfHealGhost`
+      class's `selfHeal.lane == "SELF_HEAL_LIKELY"` — don't dispatch the tester against a
+      lane the fixture only INTENDED to reach.
+6. Confirm at least one live `SelfHealBadge` exists for task /c. Any of the four lanes now
+   satisfies this (§8.6); the fixture in step 5 gives `SELF_HEAL_LIKELY` specifically —
+   the lane task /c's example copy illustrates — but `INSUFFICIENT_HISTORY` (default, no
+   staging needed) or `SELF_HEAL_UNLIKELY` (the `demoSelfHealingBaseline` cohort alone, no
+   opt-in fixture required) are legitimate, much cheaper fallbacks if the full step-5
+   staging budget isn't available for a given run — the verdict (§8.8) must record which
+   lane(s) were actually live either way.
 7. Validate staging BEFORE dispatching testers: `curl -su viewer:dev
    http://localhost:8085/api/triage?refresh=true` against arm B's BFF and confirm the
    planted class's `attention.score` ranks it above at least one larger class — if it
@@ -588,21 +648,41 @@ appended to the tester protocol only when `mission === 'M13'`:
   (GOAL-CATALOG.md RUN PROTOCOL "Nightly statistics": "a 4-step task becoming 9 steps is a
   regression even while green").
 
-### 8.6 Self-heal lane reachability — the #359 dependency (record honestly)
+### 8.6 Self-heal lane reachability — how to stage each lane (superseded #359 note below)
 
-| Lane | Reachable today (pre-#359)? | Why |
+**Superseded, kept for provenance (repo correction convention, §13 / RETRYING-RISK-LANE.md
+§10 precedent):** this section originally read "`SELF_HEAL_LIKELY`/`SELF_HEAL_MIXED` are
+NOT reachable in fixtures until issue #359 lands" — TRUE when first authored (2026-08-04,
+before #368 merged), FALSE now. Issue #359 landed the same day as `85342e1`/PR #368. All
+four lanes are reachable today; the table below is now "how to stage each," not "what's
+blocked."
+
+| Lane | Reachable today? | How |
 |---|---|---|
-| `INSUFFICIENT_HISTORY` | **yes** | default state; needs no completed spells at all |
-| `SELF_HEAL_UNLIKELY` | **yes** | every seeded process fails PERMANENTLY by construction — spells complete, none heal |
-| `SELF_HEAL_MIXED` | **no — blocked on #359** | needs some spells to heal and some not; no seed process ever heals today |
-| `SELF_HEAL_LIKELY` | **no — blocked on #359** | needs most spells to heal; #359 (the transiently-failing seed corpus) is IN PROGRESS on another branch, not yet landed |
+| `INSUFFICIENT_HISTORY` | **yes, no staging** | default state; needs no completed spells at all |
+| `SELF_HEAL_UNLIKELY` | **yes, no opt-in fixture needed** | every STANDARD seeded process fails PERMANENTLY by construction — spells complete, none heal |
+| `SELF_HEAL_MIXED` | **yes, opt-in fixture** | `PI_SEED_SELF_HEALING=1` (§8.2 step 5) with a mix of healed and organically-escalated `demoSelfHealing` instances (short vs. long `healDelay`) |
+| `SELF_HEAL_LIKELY` | **yes, opt-in fixture** | `PI_SEED_SELF_HEALING=1`, ≥10 healed spells at the real production floor (§8.2 step 5) — `SelfHealLikelyLaneIT` proves this exact lane reachable end-to-end against real engine state |
+
+**Mechanism (issue #359, PR #368, `85342e1`):** `docker/processes/demo-self-healing.bpmn20.xml`
+is CLOCK-driven — a non-interrupting boundary timer sets `healed=true` in its own,
+always-committing transaction (a variable set inside the failing attempt's own transaction
+rolls back with it, so a counter incremented across a job's own retries cannot survive —
+proven live against flowable-rest 6.8). Its `-baseline` companion shares the same
+`selfHealGhost` error signature but fails fast and PERMANENTLY, keeping the class
+observable between spells (the ledger skips a zero-total group entirely). **Opt-in only**
+— `PI_SEED_SELF_HEALING=1` in `docker/seed.sh`, never on the default path — and, by
+design, this run's staging must never be mistaken for moving either data-maturity gate
+(§8's own correction note above; §8.2 step 5's own reminder). Gated 6.8+ (the
+boundary-timer construct).
 
 Task /c's example copy (RETRYING-RISK-LANE.md §4.1's worked example, "usually self-heals
-(12/14, typically ≤ 8 min)") illustrates `SELF_HEAL_LIKELY` specifically — a run before
-#359 lands can only exercise /c against `INSUFFICIENT_HISTORY` or `SELF_HEAL_UNLIKELY`
-copy, and the S-driven ordering story (§8.2 step 5) stays neutral throughout. The verdict
+(12/14, typically ≤ 8 min)") illustrates `SELF_HEAL_LIKELY` specifically — that lane, and
+the copy it illustrates, are now stageable and should be the target for arm B whenever the
+§8.2 step 5 staging budget (~15–20+ minutes) is available; `INSUFFICIENT_HISTORY`/
+`SELF_HEAL_UNLIKELY` remain legitimate, cheaper fallbacks (§8.2 step 6). The verdict
 (§8.8) MUST state which lane(s) were actually met that run, never silently claim full
-coverage.
+coverage regardless of which lane was reached.
 
 ### 8.7 Pass/fail arithmetic (as the executor applies it)
 
@@ -631,6 +711,17 @@ coverage.
    USABILITY of the ordering when it IS live; it does not re-measure whether the pilot's
    ledger has matured enough to flip the flag in production. **Both must pass before
    activation.**
+5. **This arithmetic is unchanged by §8.2 step 5/§8.6 now being able to stage a
+   non-neutral `S`.** Gates 1-4 above are stated purely in terms of the OBSERVED metrics
+   (comprehension pass rate, median time-to-first-relevant-card) — nothing in them assumes
+   which of `F`/`R`/`M`/`S` is doing the discriminating work in a given fixture. A
+   `SELF_HEAL_LIKELY`-staged run (§8.2 step 5) makes /a's benefit measurement MORE
+   representative of the design's own headline claim (a large, count-dominant class
+   genuinely demoted because it self-heals) than an `F`/`R`/`M`-only fixture would, but it
+   changes nothing about how gates 1-3 are computed or the decision rule in point 3 — the
+   arithmetic holds identically either way. It also does not change gate 4's boundary: a
+   staged `S`-driven fixture is still usability evidence, never §7/§7.2 gate evidence
+   (§8's own correction note).
 
 ### 8.8 Verdict — NOT YET RUN
 
