@@ -226,6 +226,13 @@ services:
       - INSPECTOR_REGISTRY_EGRESS_ALLOWLIST_2=engine-7
       - INSPECTOR_REGISTRY_EGRESS_ALLOWLIST_3=localhost
       - INSPECTOR_REGISTRY_EGRESS_ALLOWLIST_4=127.0.0.0/8
+      # The compose `internal` network, PINNED below under `networks:`. Naming the hosts is
+      # not enough on its own: clearing the allowlist rail only moves you to the NEXT rail,
+      # the v4/v6 internal-address denylist, which rejects the resolved 172.21.x address with
+      # "host resolves to a private/internal address". RegistryUrlValidator permits a private
+      # IP only when the engine is DEV-scoped AND the IP is inside an allowed CIDR — both
+      # conditions, not either. Keep in lockstep with the pinned subnet.
+      - INSPECTOR_REGISTRY_EGRESS_ALLOWLIST_5=172.21.0.0/16
       - ENGINE_A_PASSWORD=test
       - ENGINE_B_PASSWORD=test
       - ENGINE_7_PASSWORD=test
@@ -308,6 +315,20 @@ volumes:
 networks:
   internal:
     driver: bridge
+    # PINNED subnet, and it is load-bearing rather than tidiness. The registry's SSRF rail
+    # (RegistryUrlValidator) rejects any base-URL resolving to a private address UNLESS the
+    # engine is DEV-scoped *and* the resolved IP falls inside an explicitly allowed CIDR
+    # (`inspector.registry.egress-allowlist`, set on `backend` above). Docker otherwise
+    # assigns this subnet dynamically, so that allowlist entry would be correct only by
+    # coincidence and would silently stop matching the moment the network is recreated with
+    # a different range — re-breaking engine-7 with the opaque "host resolves to a
+    # private/internal address".
+    #
+    # 172.21.0.0/16 is simply what Docker had already assigned here, so pinning it changes
+    # no container's address. Keep this in lockstep with the EGRESS_ALLOWLIST entry.
+    ipam:
+      config:
+        - subnet: 172.21.0.0/16
   # The shared Traefik proxy network, created outside this stack. On hp04 its real Docker
   # name is `docker_discovery` (owned by the `docker` compose project); we attach by that
   # name but keep the local alias `discovery`.
