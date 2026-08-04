@@ -1,0 +1,110 @@
+<?xml version="1.0" encoding="UTF-8"?>
+<definitions xmlns="http://www.omg.org/spec/BPMN/20100524/MODEL"
+             xmlns:xsi="http://www.w3.org/2001/XMLSchema-instance"
+             xmlns:flowable="http://flowable.org/bpmn"
+             xmlns:bpmndi="http://www.omg.org/spec/BPMN/20100524/DI"
+             xmlns:omgdc="http://www.omg.org/spec/DD/20100524/DC"
+             xmlns:omgdi="http://www.omg.org/spec/DD/20100524/DI"
+             typeLanguage="http://www.w3.org/2001/XMLSchema"
+             expressionLanguage="http://www.w3.org/1999/XPath"
+             targetNamespace="http://inspector.io/demo">
+
+  <!-- Migration-findings taxonomy probe E, VERSION 1 (INSTANCE-MIGRATION.md §14.11 [M10];
+       IT fixture for MigrationFindingsIT, NOT part of the demo seed set).
+       The LOSSY scope collapse: a parallel fork INSIDE the subprocess scope `scopeP`, so the
+       scope holds TWO concurrent tokens (`stepP1`, `stepP2`) that must both reach `joinP`.
+       v2 removes `scopeP` and keeps every id. Measured on flowable-rest 6.8.0 AND 7.1.0: the
+       migrate returns HTTP 200 and reports success, but exactly ONE of the two tokens survives
+       — the other is ended with no error, no delete reason and no job, and completing the
+       survivor parks the instance FOREVER at `joinP` waiting for a branch that no longer
+       exists. That is why SCOPE_COLLAPSE_TOKEN_LOSS is a BLOCKER while the single-token
+       ACTIVE_SCOPE_REMOVED (probe A) stays a warning. -->
+  <process id="taxProbeE" name="Taxonomy probe E — lossy scope collapse (v1)" isExecutable="true">
+    <startEvent id="start"/>
+    <sequenceFlow id="flowIn" sourceRef="start" targetRef="scopeP"/>
+    <subProcess id="scopeP" name="Scope P">
+      <startEvent id="startP"/>
+      <sequenceFlow id="flowP0" sourceRef="startP" targetRef="forkP"/>
+      <parallelGateway id="forkP" name="Fork P"/>
+      <sequenceFlow id="flowP1" sourceRef="forkP" targetRef="stepP1"/>
+      <sequenceFlow id="flowP2" sourceRef="forkP" targetRef="stepP2"/>
+      <userTask id="stepP1" name="Step P1" flowable:assignee="rest-admin"/>
+      <userTask id="stepP2" name="Step P2" flowable:assignee="rest-admin"/>
+      <sequenceFlow id="flowP3" sourceRef="stepP1" targetRef="joinP"/>
+      <sequenceFlow id="flowP4" sourceRef="stepP2" targetRef="joinP"/>
+      <parallelGateway id="joinP" name="Join P"/>
+      <sequenceFlow id="flowP5" sourceRef="joinP" targetRef="endP"/>
+      <endEvent id="endP"/>
+    </subProcess>
+    <sequenceFlow id="flowOut" sourceRef="scopeP" targetRef="end"/>
+    <endEvent id="end"/>
+  </process>
+
+  <bpmndi:BPMNDiagram id="BPMNDiagram_taxProbeE">
+    <bpmndi:BPMNPlane id="BPMNPlane_taxProbeE" bpmnElement="taxProbeE">
+      <bpmndi:BPMNShape id="BPMNShape_start" bpmnElement="start">
+        <omgdc:Bounds x="60" y="180" width="30" height="30"/>
+      </bpmndi:BPMNShape>
+      <bpmndi:BPMNShape id="BPMNShape_scopeP" bpmnElement="scopeP">
+        <omgdc:Bounds x="140" y="60" width="560" height="270"/>
+      </bpmndi:BPMNShape>
+      <bpmndi:BPMNShape id="BPMNShape_startP" bpmnElement="startP">
+        <omgdc:Bounds x="170" y="180" width="30" height="30"/>
+      </bpmndi:BPMNShape>
+      <bpmndi:BPMNShape id="BPMNShape_forkP" bpmnElement="forkP">
+        <omgdc:Bounds x="240" y="175" width="40" height="40"/>
+      </bpmndi:BPMNShape>
+      <bpmndi:BPMNShape id="BPMNShape_stepP1" bpmnElement="stepP1">
+        <omgdc:Bounds x="330" y="100" width="100" height="60"/>
+      </bpmndi:BPMNShape>
+      <bpmndi:BPMNShape id="BPMNShape_stepP2" bpmnElement="stepP2">
+        <omgdc:Bounds x="330" y="230" width="100" height="60"/>
+      </bpmndi:BPMNShape>
+      <bpmndi:BPMNShape id="BPMNShape_joinP" bpmnElement="joinP">
+        <omgdc:Bounds x="490" y="175" width="40" height="40"/>
+      </bpmndi:BPMNShape>
+      <bpmndi:BPMNShape id="BPMNShape_endP" bpmnElement="endP">
+        <omgdc:Bounds x="600" y="181" width="28" height="28"/>
+      </bpmndi:BPMNShape>
+      <bpmndi:BPMNShape id="BPMNShape_end" bpmnElement="end">
+        <omgdc:Bounds x="750" y="181" width="28" height="28"/>
+      </bpmndi:BPMNShape>
+      <bpmndi:BPMNEdge id="BPMNEdge_flowIn" bpmnElement="flowIn">
+        <omgdi:waypoint x="90" y="195"/>
+        <omgdi:waypoint x="140" y="195"/>
+      </bpmndi:BPMNEdge>
+      <bpmndi:BPMNEdge id="BPMNEdge_flowP0" bpmnElement="flowP0">
+        <omgdi:waypoint x="200" y="195"/>
+        <omgdi:waypoint x="240" y="195"/>
+      </bpmndi:BPMNEdge>
+      <bpmndi:BPMNEdge id="BPMNEdge_flowP1" bpmnElement="flowP1">
+        <omgdi:waypoint x="260" y="175"/>
+        <omgdi:waypoint x="260" y="130"/>
+        <omgdi:waypoint x="330" y="130"/>
+      </bpmndi:BPMNEdge>
+      <bpmndi:BPMNEdge id="BPMNEdge_flowP2" bpmnElement="flowP2">
+        <omgdi:waypoint x="260" y="215"/>
+        <omgdi:waypoint x="260" y="260"/>
+        <omgdi:waypoint x="330" y="260"/>
+      </bpmndi:BPMNEdge>
+      <bpmndi:BPMNEdge id="BPMNEdge_flowP3" bpmnElement="flowP3">
+        <omgdi:waypoint x="430" y="130"/>
+        <omgdi:waypoint x="510" y="130"/>
+        <omgdi:waypoint x="510" y="175"/>
+      </bpmndi:BPMNEdge>
+      <bpmndi:BPMNEdge id="BPMNEdge_flowP4" bpmnElement="flowP4">
+        <omgdi:waypoint x="430" y="260"/>
+        <omgdi:waypoint x="510" y="260"/>
+        <omgdi:waypoint x="510" y="215"/>
+      </bpmndi:BPMNEdge>
+      <bpmndi:BPMNEdge id="BPMNEdge_flowP5" bpmnElement="flowP5">
+        <omgdi:waypoint x="530" y="195"/>
+        <omgdi:waypoint x="600" y="195"/>
+      </bpmndi:BPMNEdge>
+      <bpmndi:BPMNEdge id="BPMNEdge_flowOut" bpmnElement="flowOut">
+        <omgdi:waypoint x="700" y="195"/>
+        <omgdi:waypoint x="750" y="195"/>
+      </bpmndi:BPMNEdge>
+    </bpmndi:BPMNPlane>
+  </bpmndi:BPMNDiagram>
+</definitions>

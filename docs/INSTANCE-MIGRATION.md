@@ -1,4 +1,4 @@
-# Instance Migration — design (v0.5, P0-spiked + panel-RE-LOCKED; §14 named-findings taxonomy ✅ BUILT, issues #349/#355)
+# Instance Migration — design (v0.6, P0-spiked + panel-RE-LOCKED; §14 named-findings taxonomy ✅ BUILT, issues #349/#355; §14.11 token-loss blocker ✅ BUILT)
 
 > Status: **P0 spike DONE + panel RE-LOCK DONE (2026-07-09) — ready for P1** (see the ✅ callout +
 > "P0 RE-LOCK DECISIONS" below). Was: **design draft**, reviewed by a 4-voice expert panel (Flowable-REST honesty,
@@ -464,13 +464,18 @@ the resolution.
 > what were design proposals are now shipped as described. spec-sync lockstep edits (SPEC §5 row
 > wording, ARCH §4 table, REQUIREMENTS-REGISTER R-SEM-21) landed with the build.
 >
-> **As built:** `MigrationFinding` (7 codes, 3 severities, `TAXONOMY_VERSION = 1`),
+> **As built:** `MigrationFinding` (8 codes, 3 severities, `TAXONOMY_VERSION = 2`),
 > `MigrationDiff`'s node-kind ladder + `instanceFindings()`, `ActivityDiffEntry.findings[]` with
-> severity DERIVED from findings (so `SCOPE_REMOVED`/`BOUNDARY_REMOVED` are non-blocking statuses),
-> `MigrationPreview.findings[]`, the `migrate-instance/v2` audit payload, and `MigrateModal`'s
-> severity-grouped findings block. Tests: `MigrationDiffTest` (rung 1, incl. a closed-vocabulary
-> guard) and `MigrationFindingsIT` (rung 4, live engines, the four §14.9 probe fixtures committed
-> as `docker/processes/tax-probe-{a,b,c,d}-v{1,2}.bpmn20.xml`).
+> severity DERIVED from findings (so `SCOPE_REMOVED`/`BOUNDARY_REMOVED` are statuses, not
+> severities), `MigrationPreview.findings[]`, the `migrate-instance/v2` audit payload, and
+> `MigrateModal`'s severity-grouped findings block. Tests: `MigrationDiffTest` (rung 1, incl. a
+> closed-vocabulary guard) and `MigrationFindingsIT` (rung 4, live engines, the six probe fixtures
+> committed as `docker/processes/tax-probe-{a,b,c,d,e,f}-v{1,2}.bpmn20.xml`).
+>
+> ⚠ **§14.11 (2026-08-04) fixes a HIGH-severity data-loss regression #355 shipped**: the
+> `ACTIVE_SCOPE_REMOVED` downgrade was sound for the shape that was calibrated (ONE token in the
+> dissolving scope) and silently destructive for the shape that was not (TWO OR MORE). Read §14.11
+> before reading §14.3's table or its downgrade-asymmetry note — both are corrected there.
 
 ### 14.0 The governing restraint — read first
 
@@ -482,12 +487,21 @@ made explicit for this taxonomy:
   already fetches: the two `BpmnStructure` model reads (`/model` JSON + `/resourcedata` XML)
   and the instance's active-execution list (`GET /runtime/executions?processInstanceId=`,
   capped 200). A finding whose predicate would need another read does not exist.
-- **P14-B — severity moves only TOWARD the backstop.** Where live calibration proved the
-  engine accepts a case the current pre-check refuses (two such cases found, §14.2 M3/M4),
-  the finding is downgraded blocker→warning and the engine's own atomic apply-time rejection
-  (re-lock decision 10: "nothing was migrated — the engine rolls back the whole document")
-  remains the safety net. The taxonomy introduces **no new blocker** and never converts a
-  warning into a promise of success.
+- **P14-B — severity moves only TOWARD the backstop, and the backstop must EXIST.** Where live
+  calibration proved the engine accepts a case the current pre-check refuses (two such cases found,
+  §14.2 M3/M4), the finding is downgraded blocker→warning and the engine's own atomic apply-time
+  rejection (re-lock decision 10: "nothing was migrated — the engine rolls back the whole
+  document") remains the safety net.
+  **⚠ CORRECTED 2026-08-04 (§14.11).** As originally written this rule was applied to a *shape*
+  ("a removed active scope") when the calibration had only covered a *sub-case of that shape* (one
+  live token in it). It also silently assumed decision 10's backstop always exists. It does not:
+  where the engine returns **200 and reports success while destroying live tokens**, there is
+  nothing left to catch the mistake, and a downgrade is not "toward the backstop" — it is past it.
+  The rule now reads: **a downgrade requires calibration of the EXACT predicate being downgraded,
+  and a demonstrable failure mode that is visible to the operator afterwards.** Where measurement
+  shows an invisible, unreportable loss, the taxonomy DOES add a blocker (§14.11) — that is not
+  ceiling-creep, because the predicate is a count over data already held, not a model of the
+  engine's migration rules.
 - **P14-C — when in doubt, label.** A risk the BFF cannot observe over REST is WORDING inside
   a finding ("the estimate cannot know…"), never a new check. §14.5 lists every candidate check
   that was considered and dropped under this rule.
@@ -608,11 +622,18 @@ Findings are **typed annotations** carried per classified activity (and, for `IN
 instance); the mapping-mechanics statuses (`AUTO_MAPPED` / `MAPPED_BY_OVERRIDE` /
 `FLAGGED_UNMAPPED`) remain the execution-document machinery. Severities:
 
-- **`BLOCKER_ADVICE`** — execute refuses 422 until the operator supplies a mapping, ONLY
-  because no wire document can be built (P14-D). Not an outcome prediction. Panel-demanded
-  user-facing wording (so the name is never read as an engine verdict): *"The Inspector cannot
-  build a migration instruction for this activity — there is nothing to send. The engine is
-  known to reject documents missing it. Pick a target mapping."*
+- **`BLOCKER_ADVICE`** — execute refuses 422. **Two disjoint grounds**, neither an outcome
+  prediction:
+  1. *Nothing sendable* (P14-D) — no wire document can be built for a token-holding activity with
+     no counterpart id and no operator mapping. Panel-demanded user-facing wording (so the name is
+     never read as an engine verdict): *"The Inspector cannot build a migration instruction for
+     this activity — there is nothing to send. The engine is known to reject documents missing it.
+     Pick a target mapping."*
+  2. *Measured, unreportable destruction* (§14.11, added 2026-08-04) — the engine returns 200 and
+     ends live tokens silently, so decision 10's atomic-rejection backstop is structurally absent
+     and the estimate is the only place the loss can be caught. This ground is admitted ONLY on
+     live measurement of the exact predicate, and only where the predicate is computable from data
+     already held.
 - **`WARNING`** — migrates; the operator should look first. Never blocks.
 - **`INFO`** — a factual consequence of migrating this instance. Never blocks.
 
@@ -623,15 +644,21 @@ down each ladder; first match wins.
 | Code | Severity | Predicate (all inputs already fetched — P14-A) | Criterion approximated (§14.7) | Provenance |
 |---|---|---|---|---|
 | `UNMAPPED_ACTIVE_ACTIVITY` | `BLOCKER_ADVICE` | LEAF active id (source type ∉ {`subProcess`,`transaction`,`adHocSubProcess`} ∪ {`boundaryEvent`}) with `!target.has(id)` and no operator override | state-mapping totality: every token needs a well-defined target position | [M1] [M7] — the engine itself rejects exactly this |
-| `ACTIVE_SCOPE_REMOVED` | `WARNING` | active id whose source type IS a scope container, `!target.has(id)`, and the id is NOT a multi-instance root (`multiInstanceScopeOf(id) ≠ id`) | change-region reasoning: the enclosing region dissolves; tokens re-home | [M2] [M3] — engine accepted with empty mappings on 6.8.0 AND 7.1.0; **downgraded from today's false blocker (P14-B; see the downgrade-asymmetry note below)** |
+| `ACTIVE_SCOPE_REMOVED` | `WARNING` | active id whose source type IS a scope container, `!target.has(id)`, no multi-instance ancestor (`multiInstanceScopeOf(id)` empty), **and AT MOST ONE live token inside it** (§14.11) | change-region reasoning: the enclosing region dissolves; the single token re-homes | [M2] [M3] — engine accepted with empty mappings on 6.8.0 AND 7.1.0; **downgraded from the pre-#349 false blocker (P14-B; see the downgrade-asymmetry note below)** |
+| `SCOPE_COLLAPSE_TOKEN_LOSS` | `BLOCKER_ADVICE` | same as above but **TWO OR MORE live tokens inside** the dissolving scope — counted over the ACTIVE-EXECUTION MULTISET, excluding scope executions and boundary subscriptions (they are not token positions) | state-mapping totality: tokens with no target position are DESTROYED, not re-homed | [M10] §14.11 — engine returns **200** and keeps exactly ONE on 6.8.0 AND 7.1.0; the rest end with no error, no delete reason, no job. **The only blocker the taxonomy adds, and the only one no mapping can resolve** |
 | `ACTIVE_IN_REMOVED_SCOPE` | `WARNING` | LEAF active id that maps by id, but some scope id on its SOURCE `nestingPath` has `!target.has(scopeId)` (takes precedence over `NESTING_PATH_CHANGED`) | compliance/state-mapping: position preserved, containing state is not | [M2] [M3] — `stepA` `[scopeA] → []`, engine 200 |
 | `NESTING_PATH_CHANGED` | `WARNING` | same id + type, `sourcePath ≠ targetPath`, every source-path scope still exists in the target | change-region reasoning (moved between still-existing regions) | existing status, retyped; live-proven shape in [M1]-family runs |
 | `TYPE_CHANGED_SAME_ID` | `WARNING` (loud, distinct — decision P0-5 unchanged) | same id, different source/target element type | compliance violated silently: same position, different behavior | [M6] — wording MUST now say the new behavior **can execute immediately during the migrate call** (calibrated: a sync serviceTask ran the instance to completion) |
 | `BOUNDARY_SUBSCRIPTION_REMOVED` | `WARNING` | active id whose source type is `boundaryEvent` with `!target.has(id)` | loss of an event-region: a deadline/compensation path silently disappears | [M2] [M4] — engine 200 on 6.8.0 AND 7.1.0, timer job dropped without trace; **downgraded from today's false blocker (P14-B; see the downgrade-asymmetry note below)** |
 | `BOUNDARY_CLOCK_RESET` | `INFO` | ANY active `boundaryEvent`-typed execution exists (changed or not) | temporal-state non-preservation under re-subscription | [M5] — **version-divergent**: an IDENTICAL PT72H timer restarted at migrate time on 6.8.0 but kept its original due date on 7.1.0. Wording says "may reset", never "will"; the estimate never models per-version behavior (ceiling). Instance-specific surfacing of the existing banner clause |
 
-**MI-root retention (deliberate non-downgrade):** an active scope id that IS a multi-instance
-root and is absent from the target stays `UNMAPPED_ACTIVE_ACTIVITY` (`BLOCKER_ADVICE`). The
+**MI-scope retention (deliberate non-downgrade):** an active scope id with ANY multi-instance
+ancestor (`multiInstanceScopeOf(id)` non-empty — the MI root itself, or a plain subprocess nested
+inside an MI body) that is absent from the target stays `UNMAPPED_ACTIVE_ACTIVITY`
+(`BLOCKER_ADVICE`). *(Widened from "IS the MI root" to "has an MI ancestor" on 2026-08-04:
+a non-MI scope inside an MI body previewed green and then 500'd at execute with the engine's
+"…or its MI Parent" message ([M7]). That 500 is decision 10's backstop working correctly, so the
+widening is preflight HONESTY, not a safety fix.)* The
 primary reason is P14-B itself, applied symmetrically: **a severity downgrade requires
 calibration evidence, and no MI case was calibrated** — downgrading it would be an unproven
 prediction that the engine tolerates it, which is exactly the rule-guessing the ceiling forbids.
@@ -641,24 +668,42 @@ the `/model` JSON, the mandated MI source), so the predicate is free. The #355 M
 (§14.9) gathers the evidence; if the engine proves tolerant, a later `taxonomyVersion` bump
 downgrades it THEN — never speculatively now.
 
-**The downgrade-asymmetry note (panel-probed):** the two blocker→warning downgrades are
-calibrated on 6.8.0 and 7.1.0 only; 6.5–6.7 are uncalibrated (§14.2). They stand anyway,
-because the two failure modes are not symmetric. Keeping the blocker on an engine that accepts
-the migration makes a legitimate recovery **impossible through the BFF** (422 before any engine
-contact — no feedback, no path forward; [M3]/[M4] are precisely the bad-deploy shapes this
-feature exists for). Downgrading on an engine that turns out to reject it costs one execute
-that fails **atomically** with the engine's verbatim message surfaced and audited — which is
-re-lock decision 10's *designed* backstop path, not an accident. The finding wording carries
-the residual honestly: *"accepted without a mapping by the engines we calibrated (6.8/7.1);
-your engine may still reject at execute — atomically, with its exact message shown here."*
-Per-version severity switching was considered and rejected: a version→behavior matrix IS a
-reimplementation of engine migration rules (the ceiling), and it would rot silently as engines
-patch.
+**The downgrade-asymmetry note (panel-probed; ⚠ CORRECTED 2026-08-04 — read the correction
+first).** The two blocker→warning downgrades are calibrated on 6.8.0 and 7.1.0 only; 6.5–6.7 are
+uncalibrated (§14.2). They stand — **within their calibrated predicates** — because the two failure
+modes are not symmetric. Keeping the blocker on an engine that accepts the migration makes a
+legitimate recovery **impossible through the BFF** (422 before any engine contact — no feedback,
+no path forward; [M3]/[M4] are precisely the bad-deploy shapes this feature exists for).
+Downgrading on an engine that turns out to reject it costs one execute that fails **atomically**
+with the engine's verbatim message surfaced and audited — which is re-lock decision 10's *designed*
+backstop path, not an accident. The finding wording carries the residual honestly: *"accepted
+without a mapping by the engines we calibrated (6.8/7.1); your engine may still reject at execute —
+atomically, with its exact message shown here."* Per-version severity switching was considered and
+rejected: a version→behavior matrix IS a reimplementation of engine migration rules (the ceiling),
+and it would rot silently as engines patch.
+
+> **⚠ The correction (§14.11).** The argument above has a **premise that is false for one
+> sub-case**, and #355 shipped that sub-case as a HIGH-severity data-loss defect. It assumed the
+> cost of a wrong downgrade is always "one execute that fails atomically with the engine's message
+> surfaced". For a scope collapse with **≥2 live tokens inside**, the engine does **not** reject —
+> it returns **200**, reports success, and destroys all but one token ([M10], both majors). There is
+> no atomic failure, no message, no delete reason and no job: **decision 10's backstop is
+> structurally absent for that sub-case**, so the asymmetry the argument rests on does not hold
+> there. The lesson generalises past this one finding: *a downgrade's cost is only "one honest
+> engine rejection" where the engine actually rejects. Before downgrading, measure what the engine
+> does with the FULL shape the predicate admits — not just the fixture that motivated it — and if
+> any admitted shape produces an unreportable loss, split the predicate rather than widening the
+> downgrade over it.* The scope-collapse predicate is now split exactly that way:
+> `ACTIVE_SCOPE_REMOVED` (≤1 token, calibrated, warning) vs `SCOPE_COLLAPSE_TOKEN_LOSS` (≥2 tokens,
+> calibrated, blocker). `BOUNDARY_SUBSCRIPTION_REMOVED` was re-examined under the same lens and
+> stands: its loss (a dropped deadline) is real but the finding ANNOUNCES it explicitly and no
+> token is destroyed.
 
 **Net behavioral delta of the whole taxonomy:** two false blockers removed ([M3]/[M4] — cases
-the BFF today cannot execute at all but the engine accepts), everything else is naming, honest
-wording, and audit typing. No new checks beyond the source-node-kind split and the
-`nestingPath`-scope-existence lookup, both over data already parsed.
+the BFF cannot execute at all but the engine accepts), **one real blocker added** ([M10] — the
+lossy sub-case of the first of those, §14.11), everything else is naming, honest wording, and
+audit typing. No new checks beyond the source-node-kind split, the `nestingPath`-scope-existence
+lookup and §14.11's token COUNT over the same `nestingPath` — all over data already parsed.
 
 ### 14.4 Honest-wording requirements (issue point 1)
 
@@ -669,6 +714,20 @@ Every finding's `detail` must state what the estimate can and cannot know, in th
   a mapping in live calibration (6.8/7.1). Scope-local variables and event subscriptions of the
   removed scope have no target scope — **the estimate does not read execution-local variables
   and cannot know** what state is lost."
+  ⚠ **CORRECTED (§14.11).** The shipped text said the region "dissolves and its **tokens** re-home
+  outward" — affirmatively wrong, and the wording that made the loss look benign. Measured: exactly
+  ONE re-homes. The copy now states the measured behavior and the instance's own count:
+  *"…the enclosing region dissolves and its single live token re-homes outward. Live calibration
+  observed exactly ONE token surviving a scope collapse — additional concurrent tokens inside the
+  scope are ended silently by the engine (HTTP 200, no error, no delete reason, no job). N live
+  token(s) are inside this scope right now, so no token is destroyed by the collapse. …"*
+- `SCOPE_COLLAPSE_TOKEN_LOSS`: names the destruction, the concrete count, and that a mapping is NOT
+  the remedy — *"Migrating would DESTROY live work. The subprocess scope 'X' is gone from the target
+  version and N live tokens are inside it — the engine will keep 1. … The migrate call still returns
+  HTTP 200 and reports success, so nothing downstream can catch this: a parallel join left waiting
+  for a branch that no longer exists parks the instance forever. Supplying a target mapping does not
+  help — it only changes which token survives. The Inspector refuses to send it. Migrate this
+  instance before its branches fork, or deploy a target version that keeps 'X'."*
 - `BOUNDARY_SUBSCRIPTION_REMOVED`: "…the deadline/compensation protection this event provided
   disappears at migrate, with no error anywhere ([M4])."
 - `BOUNDARY_CLOCK_RESET`: "…boundary events are re-subscribed at migrate even when unchanged;
@@ -767,7 +826,9 @@ Contract precedent (R-AUD-02: "per-verb versioned schemas"; §7: version now so 
     `MAPPED_BY_OVERRIDE`-resolved history (execute refuses 422 while any is unresolved — [M8]);
     warnings/info CAN now appear for the two downgraded cases ([M3]/[M4]) that previously could
     not reach execute at all.
-  - **ADD `taxonomyVersion: 1`** — the findings-vocabulary generation, so a future vocabulary
+  - **ADD `taxonomyVersion`** (`1` as shipped by #355; **`2` since §14.11** — a code addition AND a
+    predicate/severity split of an existing code, both of which the rule below requires a bump for)
+    — the findings-vocabulary generation, so a future vocabulary
     change is detectable without another schema bump. Bump `taxonomyVersion` on ANY vocabulary
     semantics change: code additions, code renames, **and severity reassignments of an existing
     code** (panel-demanded — an audit reader must be able to interpret a historical row's
@@ -778,6 +839,14 @@ Contract precedent (R-AUD-02: "per-verb versioned schemas"; §7: version now so 
     `toProcessDefinitionId`/`Key`/`Version`, `activityMappings`, `bffAutoMapped`,
     `bffMappedByOverride`, `activityStateDigest`, `activeActivities`,
     `childExecutionsUnaffected`, `businessKey`, `endpoint`, `restBody`, `reversibility`.
+- **Payload minimization (R-AUD-03) keeps findings intact.** `bffFindings` is in `AuditService`'s
+  `VERBATIM_SUBTREE_KEYS`, so it survives `REDACTED` and `METADATA_ONLY` untouched, and
+  `taxonomyVersion` is a `SKELETON_KEYS` coordinate. A finding entry is wholly BFF-authored — two
+  frozen enum names, an activity id and static advisory text — so there is nothing to mask, while
+  dropping it destroys the record of what the operator was warned about before an IRREVERSIBLE
+  action. The exemption names the CONTAINER key deliberately: listing the inner `code`/`severity`/
+  `detail` names in `SKELETON_KEYS` would exempt those generic names in *every* payload and erode
+  "everything not listed fails toward minimization".
 - No Flyway change (payload is `jsonb`); audit readers discriminate on `schema` and render v1
   rows as today. The batch reservation (§7, `bulk/…` schema family) is unaffected.
 - Preview DTO (build #355): additive `findings[]` on each `ActivityDiffEntry` projection plus
@@ -797,6 +866,15 @@ Contract precedent (R-AUD-02: "per-verb versioned schemas"; §7: version now so 
 - An MI-root fixture proving the retained blocker path refuses 422 (and, if the engine
   accepts an unmapped MI-root shape anywhere, the backstop IT records the verbatim outcome —
   evidence for a future `taxonomyVersion` bump, not silently absorbed).
+- **Added by §14.11:** probes E and F (`tax-probe-e-v{1,2}` — a two-token parallel fork inside the
+  dissolving scope; `tax-probe-f-v{1,2}` — the same shape with THREE tokens and a scope RENAME
+  rather than a removal). Both prove the BFF refuses 422 `scope-collapse-token-loss` with the
+  instance untouched AND **no audit row** (the guard fires ahead of `audit.beginPending`, which is
+  what "before engine contact" means operationally). An engine-direct recorder keeps [M10] live on
+  both majors, asserting only the load-bearing invariant — a success response that destroyed a
+  token — so a future engine that fixes or rejects this goes red and forces a re-argument. Probe A
+  additionally now completes its migrated instance, pinning "the single-token collapse is not
+  over-blocked AND stays workable".
 
   > **[M9] — evidence gathered by the #355 build (2026-08-04), recorded NOT acted on.** Probe D
   > (`taxProbeD` v1→v2: a parallel MI subprocess `miScope` removed, `stepM` kept at the root)
@@ -848,3 +926,104 @@ attack ceiling-creep in the proposed checks:
   `models.github.ai` — the endpoint itself, not a quota refusal. Per the standing rule (no
   unauthorized substitute reviewer, no self-grading in its place) the second seat is recorded
   as NOT OBTAINED; the #355 build PR should request the second review if the server is back.
+
+### 14.11 The lossy scope collapse — a HIGH-severity regression #355 shipped, and its fix (2026-08-04)
+
+> Status: **✅ FIXED.** `TAXONOMY_VERSION 1 → 2`; new code `SCOPE_COLLAPSE_TOKEN_LOSS`
+> (`BLOCKER_ADVICE`); `ACTIVE_SCOPE_REMOVED` narrowed to its calibrated single-token predicate;
+> §14.0 P14-B and §14.3's downgrade-asymmetry note corrected in place above.
+
+#### The defect
+
+`#355` downgraded `ACTIVE_SCOPE_REMOVED` from blocker to `WARNING` for **any** dissolving scope.
+For a scope holding **≥2 concurrent tokens** that opened silent token destruction and a permanent
+deadlock. Reproduced live and end-to-end (adversarially, then re-verified in this fix session on
+both majors):
+
+```
+v1: subProcess scopeP { forkP ⇉ (stepP1, stepP2) → joinP }
+v2: same activities, wrapper subprocess removed, ALL ids unchanged
+BEFORE  [scopeP, stepP1, stepP2]      (+ the instance root, activityId null)
+MIGRATE http=200                      ← no error; audit closes ok; UI says "migrated, IRREVERSIBLE"
+AFTER   [stepP2]                      ← stepP1's token GONE: deleteReason null, no job, no trace
+complete stepP2 → FINAL [joinP], endTime = null   ← parked FOREVER at a 2-in join whose sibling
+                                                     branch no longer exists
+```
+
+- **N concurrent tokens collapse to exactly 1.** Explicit leaf mappings do not help — they only
+  change *which* token survives. This is not operator error.
+- A scope **rename** (`scopeA{…}` → `scopeB{…}`, all other ids identical) is affected identically:
+  to the engine and to the diff it is a removal.
+- **It is a regression, not a pre-existing gap.** Before #349/#355 `MigrationDiff` had no scope
+  branch at all, so this shape fell to `FLAGGED_UNMAPPED` ⇒ `executable:false` ⇒ 422 before any
+  engine contact.
+- The §14.3 downgrade-asymmetry argument was **premised on something false here** — see the
+  correction quoted inline in that note. There is no atomic rejection to fall back on.
+
+#### [M10] — the measured behavior (live, 2026-08-04, engine-direct, empty `activityMappings`)
+
+Probe E (`taxProbeE` v1→v2, `docker/processes/tax-probe-e-v{1,2}.bpmn20.xml`):
+
+| Engine | HTTP | Active activity ids before → after |
+|---|---|---|
+| flowable-rest **6.8.0** (:8081) | **200** | `[scopeP, stepP1, stepP2]` → `[stepP2]` |
+| flowable-rest **7.1.0** (:8083) | **200** | `[scopeP, stepP1, stepP2]` → `[stepP2]` |
+
+On 6.8.0 the follow-through was also measured: completing the surviving `stepP2` leaves the
+instance on `[joinP]` with `endTime = null` — unrecoverable through any inspector verb short of
+`change-state` surgery or termination. **Both majors agree**, unlike the MI case ([M9]), so the
+blocker rests on convergent evidence rather than one engine's behavior.
+
+#### The fix — predicate, and why it does not cross the ceiling
+
+For a scope `S` classified `SCOPE_REMOVED`, count the **live tokens inside `S`** and split:
+
+```
+liveTokensInside(S) = | { e ∈ activeExecutionMultiset
+                          : sourceType(e) ∉ SCOPE_TYPES ∪ {boundaryEvent}
+                          ∧ S ∈ sourceModel.nestingPath(e) } |
+
+liveTokensInside(S) ≤ 1  →  ACTIVE_SCOPE_REMOVED        (WARNING — the calibrated [M3] shape)
+liveTokensInside(S) > 1  →  SCOPE_COLLAPSE_TOKEN_LOSS   (BLOCKER_ADVICE — [M10])
+```
+
+- **Zero new engine calls (P14-A).** Both inputs are already held: the active-execution list
+  (`GET /runtime/executions`, capped 200) that feeds the diff and the CAS digest, and the parsed
+  source `BpmnStructure` whose `nestingPath` the taxonomy already uses. This is a COUNT over data
+  in hand, never a model of the engine's migration rules — that is why the ceiling permits it.
+- **Scope executions and boundary subscriptions are excluded**, because they are not token
+  positions ([M2]). Counting them would over-block two shapes verified safe: two-level nesting with
+  a single token (`[scopeOuter, scopeInner, stepX]` — three executions, ONE token) and a single task
+  carrying a boundary event.
+- **⚠ It must be read from the MULTISET.** `MigrationDiff.diff()` classifies per DISTINCT id
+  (`new TreeSet<>(activeActivityIds)`), so a fork holding two tokens on the SAME activity id is a
+  single diff row. The count is therefore taken from the raw `Collection<String> activeActivityIds`
+  parameter — the multiset `MigrationService.activeActivityIds()` builds one-entry-per-execution —
+  *before* that de-duplication, and threaded into `classify(…)`. Counting classified rows instead
+  would reproduce the original blindness on the same-id fork.
+- **No mapping resolves it**, so `MigrationService.requireExecutable()` refuses with its own code
+  `scope-collapse-token-loss` (422), checked BEFORE `unmapped-activities` (which is resolvable), and
+  `MigrateModal` deliberately does not offer a from→to dropdown for it. A fail-closed
+  `blocked-estimate` branch catches any future blocker code with no explicit branch.
+
+#### What did NOT change (advisory-only invariant, §14.6)
+
+Every tier-3 rail is untouched: ADMIN floor every environment, reason ≥10, typed `MIGRATE`/
+business-key confirm on prod, the mandatory `expectedFromDefinitionId` + `activityStateDigest`
+compare-and-set, semantic-inputs-only execute, interactive bulkhead, ONE never-retried engine call,
+`engineValidated:false` forever. `MigrationFindingsIT`'s
+`everyRailRefusesIdenticallyForGreen_warning_andBlockedEstimates` now drives **four** estimates —
+green, warning-carrying, blocked-unsendable and blocked-token-loss — and asserts byte-identical
+refusals across all four. The single-token collapse still previews executable, migrates through the
+BFF and remains **continuable to completion** (asserted end-to-end on both majors): re-blocking it
+would reinstate exactly the false blocker #349 existed to remove.
+
+#### Coverage gap closed at the same time
+
+`MigrationFindingsIT` hard-wired every call to `engine-a` (6.8), so nothing in the suite exercised
+7.1 — while §14's entire justification is "proven on 6.8 AND 7.1". A 7.x behavior change could have
+invalidated a downgrade with a green suite. The calibration-carrying tests are now
+`@ParameterizedTest` over `{engine-a (6.8), engine-7 (7.1)}` — both downgrades, both engine-direct
+recorders ([M9] and [M10]) and both new refusal tests — backed by a dedicated `it-findings` profile
+(a third engine in the shared `it-actions` registry would have widened every other suite's
+cross-engine fan-out).

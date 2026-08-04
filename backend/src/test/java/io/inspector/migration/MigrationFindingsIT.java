@@ -7,12 +7,16 @@ import com.fasterxml.jackson.databind.JsonNode;
 import com.fasterxml.jackson.databind.ObjectMapper;
 import io.inspector.support.EngineSeed;
 import java.nio.file.Path;
+import java.util.ArrayList;
+import java.util.LinkedHashMap;
 import java.util.List;
 import java.util.Map;
 import java.util.concurrent.TimeUnit;
 import org.junit.jupiter.api.BeforeAll;
 import org.junit.jupiter.api.Test;
 import org.junit.jupiter.api.TestInstance;
+import org.junit.jupiter.params.ParameterizedTest;
+import org.junit.jupiter.params.provider.MethodSource;
 import org.springframework.beans.factory.annotation.Autowired;
 import org.springframework.boot.test.context.SpringBootTest;
 import org.springframework.boot.test.web.client.TestRestTemplate;
@@ -27,44 +31,69 @@ import org.testcontainers.containers.PostgreSQLContainer;
 
 /**
  * Rung 4 (engine-harness): the INSTANCE-MIGRATION.md §14 typed-findings taxonomy against REAL
- * flowable-rest. Deploys the four §14.2/§14.9 probe topologies over REST (never a single
- * {@code ACT_*} write) and proves, on the live engine:
+ * flowable-rest. Deploys the six §14.2/§14.9/§14.11 probe topologies over REST (never a single
+ * {@code ACT_*} write) and proves, on the live engines:
  *
  * <ul>
- *   <li>the two <b>calibrated false blockers are gone</b> — a removed active SCOPE ([M3]) and a
- *       removed BOUNDARY subscription ([M4]) now preview as executable WARNINGS and migrate
- *       successfully THROUGH THE BFF, which was impossible before (422 before any engine contact);
+ *   <li>the two <b>calibrated false blockers are gone</b> — a removed active SCOPE holding ONE
+ *       token ([M3]) and a removed BOUNDARY subscription ([M4]) preview as executable WARNINGS,
+ *       migrate successfully THROUGH THE BFF and remain continuable to completion;
+ *   <li>the <b>lossy</b> sub-case of that same collapse is REFUSED before any engine contact
+ *       (§14.11 [M10]) — a scope holding two or more concurrent tokens, and the id-preserving
+ *       scope RENAME that is indistinguishable from it;
  *   <li>{@code TYPE_CHANGED_SAME_ID} is loud and its calibrated consequence is real — the new
  *       synchronous behavior runs during the migrate call itself ([M6]);
  *   <li>{@code BOUNDARY_CLOCK_RESET} is raised for an UNCHANGED timer, with the due date
  *       <b>recorded, never asserted</b> — [M5] is version-divergent (moved on 6.8, preserved on
  *       7.1) and a universal assert would enshrine one engine's behavior;
  *   <li>the MI-root blocker is <b>retained</b> (no uncalibrated downgrade) and execute refuses 422;
- *   <li><b>the rails are estimate-independent</b> — green, warning-carrying and blocked estimates
- *       hit byte-identical RBAC / CAS / reason / typed-confirm refusals;
+ *   <li><b>the rails are estimate-independent</b> — green, warning-carrying and BOTH kinds of
+ *       blocked estimate hit byte-identical RBAC / CAS / reason / typed-confirm refusals;
  *   <li>the execute audit row is {@code migrate-instance/v2} with typed {@code bffFindings} and no
  *       {@code bffWarnings}.
  * </ul>
  *
+ * <p><b>Both calibrated majors.</b> Every severity decision in §14 is justified by live behavior on
+ * flowable-rest 6.8.0 AND 7.1.0, so the calibration-carrying tests are parametrised over
+ * {@code {engine-a (6.8, :8081), engine-7 (7.1, :8083)}}. Testing only 6.8 would let a 7.x behavior
+ * change silently invalidate a downgrade with a green suite.
+ *
  * <p>Local-only (not in ci.yml itClass, like {@code MigrationIT}). Requires:
- * docker compose -f docker/docker-compose.dev.yml up -d
+ * docker compose -f docker/docker-compose.dev.yml --profile flowable-7 up -d
  */
-@SpringBootTest(webEnvironment = SpringBootTest.WebEnvironment.RANDOM_PORT, properties = "ENGINE_A_PASSWORD=test")
-@ActiveProfiles("it-actions")
+@SpringBootTest(
+        webEnvironment = SpringBootTest.WebEnvironment.RANDOM_PORT,
+        properties = {"ENGINE_A_PASSWORD=test", "ENGINE_7_PASSWORD=test"})
+@ActiveProfiles("it-findings")
 @TestInstance(TestInstance.Lifecycle.PER_CLASS)
 class MigrationFindingsIT {
 
-    private static final String ENGINE =
+    private static final String ENGINE_A_URL =
             "http://localhost:" + System.getenv().getOrDefault("PI_ENGINE_A_PORT", "8081") + "/flowable-rest/service";
+    private static final String ENGINE_7_URL =
+            "http://localhost:" + System.getenv().getOrDefault("PI_ENGINE_7_PORT", "8083") + "/flowable-rest/service";
 
-    private static final Path PROBE_A_V1 = Path.of("..", "docker", "processes", "tax-probe-a-v1.bpmn20.xml");
-    private static final Path PROBE_A_V2 = Path.of("..", "docker", "processes", "tax-probe-a-v2.bpmn20.xml");
-    private static final Path PROBE_B_V1 = Path.of("..", "docker", "processes", "tax-probe-b-v1.bpmn20.xml");
-    private static final Path PROBE_B_V2 = Path.of("..", "docker", "processes", "tax-probe-b-v2.bpmn20.xml");
-    private static final Path PROBE_C_V1 = Path.of("..", "docker", "processes", "tax-probe-c-v1.bpmn20.xml");
-    private static final Path PROBE_C_V2 = Path.of("..", "docker", "processes", "tax-probe-c-v2.bpmn20.xml");
-    private static final Path PROBE_D_V1 = Path.of("..", "docker", "processes", "tax-probe-d-v1.bpmn20.xml");
-    private static final Path PROBE_D_V2 = Path.of("..", "docker", "processes", "tax-probe-d-v2.bpmn20.xml");
+    /** The engines §14's severity decisions were calibrated on — both, always (7.1 coverage gap). */
+    private static List<String> calibratedEngines() {
+        return List.of("engine-a", "engine-7");
+    }
+
+    private static final Path PROBE_A_V1 = probe("tax-probe-a-v1.bpmn20.xml");
+    private static final Path PROBE_A_V2 = probe("tax-probe-a-v2.bpmn20.xml");
+    private static final Path PROBE_B_V1 = probe("tax-probe-b-v1.bpmn20.xml");
+    private static final Path PROBE_B_V2 = probe("tax-probe-b-v2.bpmn20.xml");
+    private static final Path PROBE_C_V1 = probe("tax-probe-c-v1.bpmn20.xml");
+    private static final Path PROBE_C_V2 = probe("tax-probe-c-v2.bpmn20.xml");
+    private static final Path PROBE_D_V1 = probe("tax-probe-d-v1.bpmn20.xml");
+    private static final Path PROBE_D_V2 = probe("tax-probe-d-v2.bpmn20.xml");
+    private static final Path PROBE_E_V1 = probe("tax-probe-e-v1.bpmn20.xml");
+    private static final Path PROBE_E_V2 = probe("tax-probe-e-v2.bpmn20.xml");
+    private static final Path PROBE_F_V1 = probe("tax-probe-f-v1.bpmn20.xml");
+    private static final Path PROBE_F_V2 = probe("tax-probe-f-v2.bpmn20.xml");
+
+    private static Path probe(String file) {
+        return Path.of("..", "docker", "processes", file);
+    }
 
     private static final PostgreSQLContainer<?> POSTGRES = new PostgreSQLContainer<>("postgres:16-alpine");
 
@@ -85,67 +114,88 @@ class MigrationFindingsIT {
     @Autowired
     ObjectMapper mapper;
 
-    private RestClient engine;
+    /**
+     * One engine leg's probe deployments. Every field is a PINNED {@code processDefinitionId} on
+     * that engine — definition ids are engine-local, so nothing here may be shared across legs.
+     *
+     * @param engine the direct flowable-rest client (out-of-band reads + the engine-direct probes)
+     * @param scopeFrom probe A v1: ONE token inside a scope that v2 removes ([M3])
+     * @param typeSame probe B redeployed byte-identical: the GREEN, zero-finding estimate
+     * @param boundaryIdentical probe C v3: the same boundary timer again — the clock-reset probe
+     * @param miFrom probe D: a multi-instance ROOT that v2 removes (blocker RETAINED)
+     * @param lossyFrom probe E v1: a parallel fork INSIDE the scope v2 removes — TWO tokens ([M10])
+     * @param renameFrom probe F v1: three tokens inside a scope v2 RENAMES rather than removes
+     */
+    private record Probes(
+            RestClient engine,
+            String scopeFrom,
+            String scopeTo,
+            String typeFrom,
+            String typeSame,
+            String typeTo,
+            String boundaryFrom,
+            String boundaryRemoved,
+            String boundaryIdentical,
+            String miFrom,
+            String miTo,
+            String lossyFrom,
+            String lossyTo,
+            String renameFrom,
+            String renameTo) {}
 
-    /** probe A: an active subprocess scope that disappears in the target ([M3]). */
-    private String scopeFrom;
-
-    private String scopeTo;
-    /** probe B: same id, userTask → synchronous serviceTask ([M6]); plus an IDENTICAL redeploy. */
-    private String typeFrom;
-
-    private String typeSame;
-    private String typeTo;
-    /** probe C: an interrupting boundary timer, removed in one target and identical in another. */
-    private String boundaryFrom;
-
-    private String boundaryRemoved;
-    private String boundaryIdentical;
-    /** probe D: a multi-instance ROOT that disappears in the target (blocker RETAINED). */
-    private String miFrom;
-
-    private String miTo;
+    private final Map<String, Probes> legs = new LinkedHashMap<>();
 
     @BeforeAll
     void seedProbeTopologies() {
-        engine = EngineSeed.requireReachable(ENGINE, "");
+        legs.put("engine-a", deployProbes(EngineSeed.requireReachable(ENGINE_A_URL, "")));
+        legs.put("engine-7", deployProbes(EngineSeed.requireReachable(ENGINE_7_URL, "--profile flowable-7")));
 
-        scopeFrom = definitionIdForVersion("taxProbeA", EngineSeed.deployNewVersion(engine, "taxProbeA", PROBE_A_V1));
-        scopeTo = definitionIdForVersion("taxProbeA", EngineSeed.deployNewVersion(engine, "taxProbeA", PROBE_A_V2));
-
-        typeFrom = definitionIdForVersion("taxProbeB", EngineSeed.deployNewVersion(engine, "taxProbeB", PROBE_B_V1));
-        // A byte-identical redeploy: the GREEN (zero-finding) estimate for the rails test.
-        typeSame = definitionIdForVersion("taxProbeB", EngineSeed.deployNewVersion(engine, "taxProbeB", PROBE_B_V1));
-        typeTo = definitionIdForVersion("taxProbeB", EngineSeed.deployNewVersion(engine, "taxProbeB", PROBE_B_V2));
-
-        boundaryFrom =
-                definitionIdForVersion("taxProbeC", EngineSeed.deployNewVersion(engine, "taxProbeC", PROBE_C_V1));
-        boundaryRemoved =
-                definitionIdForVersion("taxProbeC", EngineSeed.deployNewVersion(engine, "taxProbeC", PROBE_C_V2));
-        // §14.2 taxProbeC v3: the SAME boundary timer again — the clock-reset probe.
-        boundaryIdentical =
-                definitionIdForVersion("taxProbeC", EngineSeed.deployNewVersion(engine, "taxProbeC", PROBE_C_V1));
-
-        miFrom = definitionIdForVersion("taxProbeD", EngineSeed.deployNewVersion(engine, "taxProbeD", PROBE_D_V1));
-        miTo = definitionIdForVersion("taxProbeD", EngineSeed.deployNewVersion(engine, "taxProbeD", PROBE_D_V2));
-
-        // Fail-closed until the first health probe answers — wait for the dev id AND the prod twin.
+        // Fail-closed until the first health probe answers — wait for every registered id.
         await().atMost(60, TimeUnit.SECONDS)
                 .pollInterval(1, TimeUnit.SECONDS)
-                .until(() -> migrationCapable("engine-a") && migrationCapable("engine-a-prod"));
+                .until(() -> migrationCapable("engine-a")
+                        && migrationCapable("engine-a-prod")
+                        && migrationCapable("engine-7"));
+    }
+
+    private Probes deployProbes(RestClient engine) {
+        return new Probes(
+                engine,
+                deploy(engine, "taxProbeA", PROBE_A_V1),
+                deploy(engine, "taxProbeA", PROBE_A_V2),
+                deploy(engine, "taxProbeB", PROBE_B_V1),
+                // A byte-identical redeploy: the GREEN (zero-finding) estimate for the rails test.
+                deploy(engine, "taxProbeB", PROBE_B_V1),
+                deploy(engine, "taxProbeB", PROBE_B_V2),
+                deploy(engine, "taxProbeC", PROBE_C_V1),
+                deploy(engine, "taxProbeC", PROBE_C_V2),
+                // §14.2 taxProbeC v3: the SAME boundary timer again — the clock-reset probe.
+                deploy(engine, "taxProbeC", PROBE_C_V1),
+                deploy(engine, "taxProbeD", PROBE_D_V1),
+                deploy(engine, "taxProbeD", PROBE_D_V2),
+                deploy(engine, "taxProbeE", PROBE_E_V1),
+                deploy(engine, "taxProbeE", PROBE_E_V2),
+                deploy(engine, "taxProbeF", PROBE_F_V1),
+                deploy(engine, "taxProbeF", PROBE_F_V2));
+    }
+
+    private String deploy(RestClient engine, String key, Path bpmn) {
+        return definitionIdForVersion(engine, key, EngineSeed.deployNewVersion(engine, key, bpmn));
     }
 
     /* ============================ downgrade 1 — the removed SCOPE ============================ */
 
-    @Test
-    void removedActiveScopeIsNowAnExecutableWarning_andTheMigrationLandsThroughTheBff() throws Exception {
-        String instanceId = startOn(scopeFrom);
-        assertThat(activeExecutionActivityIds(instanceId)).containsExactlyInAnyOrder("scopeA", "stepA");
+    @ParameterizedTest(name = "{0}")
+    @MethodSource("calibratedEngines")
+    void singleTokenScopeCollapseIsAnExecutableWarning_migratesAndStillCompletes(String engineId) throws Exception {
+        Probes p = legs.get(engineId);
+        String instanceId = startOn(p, p.scopeFrom());
+        assertThat(activeExecutionActivityIds(p, instanceId)).containsExactlyInAnyOrder("scopeA", "stepA");
 
-        JsonNode preview = previewOk(instanceId, scopeTo);
+        JsonNode preview = previewOk(engineId, instanceId, p.scopeTo());
 
         // [M3]: the engine accepts this with an EMPTY mapping list on 6.8.0 and 7.1.0, so the BFF
-        // must not refuse it. Before §14 this preview was executable:false and execute 422'd.
+        // must not refuse it. Re-blocking it would reinstate the false blocker #349 removed.
         assertThat(preview.path("executable").asBoolean(false)).isTrue();
         assertThat(preview.path("restBody").path("activityMappings")).isEmpty();
 
@@ -155,6 +205,10 @@ class MigrationFindingsIT {
         assertThat(scope.path("status").asText()).isEqualTo("SCOPE_REMOVED");
         assertThat(findingCodes(scope)).containsExactly("ACTIVE_SCOPE_REMOVED");
         assertThat(scope.path("findings").get(0).path("severity").asText()).isEqualTo("WARNING");
+        // §14.11: the corrected copy states the MEASURED behavior — one survivor, not "tokens".
+        assertThat(scope.path("findings").get(0).path("detail").asText())
+                .contains("exactly ONE token surviving a scope collapse")
+                .contains("1 live token(s) are inside this scope");
 
         JsonNode leaf = activityEntry(preview, "stepA");
         assertThat(leaf.path("blocker").asBoolean(true)).isFalse();
@@ -162,23 +216,144 @@ class MigrationFindingsIT {
 
         // …and it genuinely migrates through the full tier-3 rails.
         ResponseEntity<String> response =
-                execute("engine-a", instanceId, boundBody(preview, scopeTo, "removed the scope in a bad deploy"));
-        assertThat(response.getStatusCode()).isEqualTo(HttpStatus.OK);
+                execute(engineId, instanceId, boundBody(preview, p.scopeTo(), "removed the scope in a bad deploy"));
+        assertThat(response.getStatusCode())
+                .as("execute body: %s", response.getBody())
+                .isEqualTo(HttpStatus.OK);
 
-        assertThat(currentDefinitionId(instanceId)).isEqualTo(scopeTo);
-        // The scope execution is gone; the token re-homed to the process root ([M3]).
-        assertThat(activeExecutionActivityIds(instanceId)).containsExactly("stepA");
+        assertThat(currentDefinitionId(p, instanceId)).isEqualTo(p.scopeTo());
+        // The scope execution is gone; the single token re-homed to the process root ([M3]).
+        assertThat(activeExecutionActivityIds(p, instanceId)).containsExactly("stepA");
+
+        // The one that matters for "do not over-block": the migrated instance is still WORKABLE.
+        completeFirstTask(p, instanceId);
+        await().atMost(10, TimeUnit.SECONDS)
+                .pollInterval(200, TimeUnit.MILLISECONDS)
+                .untilAsserted(() -> assertThat(historicEndTime(p, instanceId)).isNotNull());
+    }
+
+    /* ====================== §14.11 — the LOSSY collapse is REFUSED ====================== */
+
+    @ParameterizedTest(name = "{0}")
+    @MethodSource("calibratedEngines")
+    void twoConcurrentTokensInADissolvingScopeAreRefusedBeforeAnyEngineContact(String engineId) throws Exception {
+        Probes p = legs.get(engineId);
+        String instanceId = startOn(p, p.lossyFrom());
+        assertThat(activeExecutionActivityIds(p, instanceId)).containsExactlyInAnyOrder("scopeP", "stepP1", "stepP2");
+
+        JsonNode preview = previewOk(engineId, instanceId, p.lossyTo());
+
+        assertThat(preview.path("executable").asBoolean(true)).isFalse();
+        JsonNode scope = activityEntry(preview, "scopeP");
+        assertThat(scope.path("status").asText()).isEqualTo("SCOPE_REMOVED");
+        assertThat(scope.path("blocker").asBoolean(false)).isTrue();
+        assertThat(findingCodes(scope)).containsExactly("SCOPE_COLLAPSE_TOKEN_LOSS");
+        assertThat(scope.path("findings").get(0).path("severity").asText()).isEqualTo("BLOCKER_ADVICE");
+        assertThat(scope.path("findings").get(0).path("detail").asText())
+                .contains("2 live tokens are inside it")
+                .contains("the engine will keep 1")
+                .contains("Supplying a target mapping does not help");
+        // Both leaves auto-map by id — that is exactly why the loss was invisible.
+        assertThat(activityEntry(preview, "stepP1").path("blocker").asBoolean(true))
+                .isFalse();
+        assertThat(activityEntry(preview, "stepP2").path("blocker").asBoolean(true))
+                .isFalse();
+
+        ResponseEntity<String> response =
+                execute(engineId, instanceId, boundBody(preview, p.lossyTo(), "try the lossy scope collapse"));
+        assertThat(response.getStatusCode()).isEqualTo(HttpStatus.UNPROCESSABLE_ENTITY);
+        assertThat(mapper.readTree(response.getBody()).path("code").asText()).isEqualTo("scope-collapse-token-loss");
+
+        // Refused BEFORE engine contact: the instance is untouched AND no audit row exists (the
+        // guard fires ahead of audit.beginPending, which is what "nothing was sent" means here).
+        assertThat(currentDefinitionId(p, instanceId)).isEqualTo(p.lossyFrom());
+        assertThat(activeExecutionActivityIds(p, instanceId)).containsExactlyInAnyOrder("scopeP", "stepP1", "stepP2");
+        assertThat(auditRows(engineId, instanceId)).isEmpty();
+    }
+
+    @ParameterizedTest(name = "{0}")
+    @MethodSource("calibratedEngines")
+    void aScopeRENAMEWithThreeConcurrentTokensIsTheSameRefusal(String engineId) throws Exception {
+        Probes p = legs.get(engineId);
+        String instanceId = startOn(p, p.renameFrom());
+        assertThat(activeExecutionActivityIds(p, instanceId))
+                .containsExactlyInAnyOrder("scopeR", "stepR1", "stepR2", "stepR3");
+
+        JsonNode preview = previewOk(engineId, instanceId, p.renameTo());
+
+        assertThat(preview.path("executable").asBoolean(true)).isFalse();
+        JsonNode scope = activityEntry(preview, "scopeR");
+        assertThat(findingCodes(scope)).containsExactly("SCOPE_COLLAPSE_TOKEN_LOSS");
+        assertThat(scope.path("findings").get(0).path("detail").asText()).contains("3 live tokens are inside it");
+        assertThat(preview.path("summary").asText()).contains("silently destroy live work");
+
+        ResponseEntity<String> response =
+                execute(engineId, instanceId, boundBody(preview, p.renameTo(), "try the lossy scope rename"));
+        assertThat(response.getStatusCode()).isEqualTo(HttpStatus.UNPROCESSABLE_ENTITY);
+        assertThat(mapper.readTree(response.getBody()).path("code").asText()).isEqualTo("scope-collapse-token-loss");
+        assertThat(currentDefinitionId(p, instanceId)).isEqualTo(p.renameFrom());
+    }
+
+    /**
+     * The calibration this blocker rests on, kept LIVE against whichever engines the harness runs
+     * (the [M9] precedent). Fires the migrate ENGINE-DIRECT (out of band, bypassing the BFF — never
+     * a table write) on a throwaway instance and records exactly what the engine does with two
+     * concurrent tokens in a dissolving scope. Measured 2026-08-04 on 6.8.0 AND 7.1.0: HTTP
+     * <b>200</b>, {@code [scopeP, stepP1, stepP2] → [stepP2]} — one token gone, no error surfaced.
+     *
+     * <p>Only the load-bearing invariant is asserted: at least one token was DESTROYED on a success
+     * response, i.e. re-lock decision 10's atomic-rejection backstop is structurally absent for
+     * this shape. Should a future engine start preserving both (or start rejecting), this goes red
+     * and the severity must be re-argued from fresh evidence — which is the point.
+     */
+    @ParameterizedTest(name = "{0}")
+    @MethodSource("calibratedEngines")
+    void engineDirectProbeProvesTheCollapseDestroysTokensOnASuccessResponse(String engineId) {
+        Probes p = legs.get(engineId);
+        String probeInstance = startOn(p, p.lossyFrom());
+        List<String> before = activeExecutionActivityIds(p, probeInstance);
+
+        int status;
+        String body;
+        try {
+            ResponseEntity<String> direct = engineDirectMigrate(p, probeInstance, p.lossyTo());
+            status = direct.getStatusCode().value();
+            body = String.valueOf(direct.getBody());
+        } catch (org.springframework.web.client.RestClientResponseException e) {
+            status = e.getStatusCode().value();
+            body = e.getResponseBodyAsString();
+        }
+        List<String> after = activeExecutionActivityIds(p, probeInstance);
+        String observation = "engine-direct migrate of a 2-token scope collapse -> HTTP " + status + ", activity ids "
+                + before + " -> " + after + ", body " + body;
+
+        long survivors = after.stream().filter(id -> id.startsWith("stepP")).count();
+        assertThat(survivors)
+                .as(
+                        "§14.11: the engine reports SUCCESS while destroying live tokens, so the estimate is the"
+                                + " only place this can be caught. RECORDED: %s",
+                        observation)
+                .isLessThan(2);
+        assertThat(status)
+                .as("the collapse is not rejected — that is precisely the missing backstop. RECORDED: %s", observation)
+                .isEqualTo(200);
+
+        // Residue hygiene: this instance is now permanently parked (a join whose sibling is gone).
+        EngineSeed.deleteInstanceQuietly(p.engine(), probeInstance);
     }
 
     /* =========================== downgrade 2 — the removed BOUNDARY =========================== */
 
-    @Test
-    void removedBoundarySubscriptionIsNowAnExecutableWarning_andTheMigrationLandsThroughTheBff() throws Exception {
-        String instanceId = startOn(boundaryFrom);
-        assertThat(activeExecutionActivityIds(instanceId)).containsExactlyInAnyOrder("stepC", "bndC");
-        assertThat(timerJobDueDates(instanceId)).hasSize(1);
+    @ParameterizedTest(name = "{0}")
+    @MethodSource("calibratedEngines")
+    void removedBoundarySubscriptionIsNowAnExecutableWarning_andTheMigrationLandsThroughTheBff(String engineId)
+            throws Exception {
+        Probes p = legs.get(engineId);
+        String instanceId = startOn(p, p.boundaryFrom());
+        assertThat(activeExecutionActivityIds(p, instanceId)).containsExactlyInAnyOrder("stepC", "bndC");
+        assertThat(timerJobDueDates(p, instanceId)).hasSize(1);
 
-        JsonNode preview = previewOk(instanceId, boundaryRemoved);
+        JsonNode preview = previewOk(engineId, instanceId, p.boundaryRemoved());
 
         assertThat(preview.path("executable").asBoolean(false)).isTrue();
         JsonNode boundary = activityEntry(preview, "bndC");
@@ -191,17 +366,19 @@ class MigrationFindingsIT {
         assertThat(instanceFindingCodes(preview)).contains("BOUNDARY_CLOCK_RESET");
 
         ResponseEntity<String> response = execute(
-                "engine-a", instanceId, boundBody(preview, boundaryRemoved, "drop the obsolete deadline branch"));
-        assertThat(response.getStatusCode()).isEqualTo(HttpStatus.OK);
+                engineId, instanceId, boundBody(preview, p.boundaryRemoved(), "drop the obsolete deadline branch"));
+        assertThat(response.getStatusCode())
+                .as("execute body: %s", response.getBody())
+                .isEqualTo(HttpStatus.OK);
 
-        assertThat(currentDefinitionId(instanceId)).isEqualTo(boundaryRemoved);
+        assertThat(currentDefinitionId(p, instanceId)).isEqualTo(p.boundaryRemoved());
         // [M4]: the subscription AND its timer job vanish with no error anywhere — exactly the
         // silent loss the WARNING exists to announce.
         await().atMost(10, TimeUnit.SECONDS)
                 .pollInterval(200, TimeUnit.MILLISECONDS)
                 .untilAsserted(() -> {
-                    assertThat(activeExecutionActivityIds(instanceId)).containsExactly("stepC");
-                    assertThat(timerJobDueDates(instanceId)).isEmpty();
+                    assertThat(activeExecutionActivityIds(p, instanceId)).containsExactly("stepC");
+                    assertThat(timerJobDueDates(p, instanceId)).isEmpty();
                 });
     }
 
@@ -209,11 +386,12 @@ class MigrationFindingsIT {
 
     @Test
     void unchangedBoundaryTimerStillRaisesTheClockResetInfo_dueDateRecordedNotAsserted() throws Exception {
-        String instanceId = startOn(boundaryFrom);
-        List<String> before = timerJobDueDates(instanceId);
+        Probes p = legs.get("engine-a");
+        String instanceId = startOn(p, p.boundaryFrom());
+        List<String> before = timerJobDueDates(p, instanceId);
         assertThat(before).hasSize(1);
 
-        JsonNode preview = previewOk(instanceId, boundaryIdentical);
+        JsonNode preview = previewOk("engine-a", instanceId, p.boundaryIdentical());
 
         // Nothing about the model changed, so no activity carries a finding…
         assertThat(preview.path("executable").asBoolean(false)).isTrue();
@@ -228,8 +406,8 @@ class MigrationFindingsIT {
         assertThat(info.path("activityId").isNull()).isTrue();
         assertThat(info.path("detail").asText()).contains("MAY restart");
 
-        ResponseEntity<String> response =
-                execute("engine-a", instanceId, boundBody(preview, boundaryIdentical, "re-pin to the rebuilt version"));
+        ResponseEntity<String> response = execute(
+                "engine-a", instanceId, boundBody(preview, p.boundaryIdentical(), "re-pin to the rebuilt version"));
         assertThat(response.getStatusCode()).isEqualTo(HttpStatus.OK);
 
         // The timer is RE-SUBSCRIBED — that much is universal. Whether its due date moved is NOT:
@@ -239,7 +417,7 @@ class MigrationFindingsIT {
         await().atMost(10, TimeUnit.SECONDS)
                 .pollInterval(200, TimeUnit.MILLISECONDS)
                 .untilAsserted(() -> {
-                    List<String> after = timerJobDueDates(instanceId);
+                    List<String> after = timerJobDueDates(p, instanceId);
                     assertThat(after)
                             .as(
                                     "boundary timer due date before=%s after=%s (RECORDED, not asserted — [M5] is "
@@ -247,17 +425,18 @@ class MigrationFindingsIT {
                                     before, after)
                             .hasSize(1);
                 });
-        assertThat(currentDefinitionId(instanceId)).isEqualTo(boundaryIdentical);
+        assertThat(currentDefinitionId(p, instanceId)).isEqualTo(p.boundaryIdentical());
     }
 
     /* ================== the loud class: same id, different type ([M6]) ================== */
 
     @Test
     void sameIdTypeChangeWarnsLoudly_andTheNewBehaviorRunsDuringTheMigrateCall() throws Exception {
-        String instanceId = startOn(typeFrom);
-        assertThat(activeExecutionActivityIds(instanceId)).containsExactly("stepT");
+        Probes p = legs.get("engine-a");
+        String instanceId = startOn(p, p.typeFrom());
+        assertThat(activeExecutionActivityIds(p, instanceId)).containsExactly("stepT");
 
-        JsonNode preview = previewOk(instanceId, typeTo);
+        JsonNode preview = previewOk("engine-a", instanceId, p.typeTo());
         assertThat(preview.path("executable").asBoolean(false)).isTrue();
         JsonNode step = activityEntry(preview, "stepT");
         assertThat(step.path("status").asText()).isEqualTo("TYPE_CHANGED");
@@ -267,7 +446,7 @@ class MigrationFindingsIT {
                 .contains("execute IMMEDIATELY as part of the migrate call");
 
         ResponseEntity<String> response =
-                execute("engine-a", instanceId, boundBody(preview, typeTo, "swap the manual step for automation"));
+                execute("engine-a", instanceId, boundBody(preview, p.typeTo(), "swap the manual step for automation"));
         assertThat(response.getStatusCode()).isEqualTo(HttpStatus.OK);
 
         // [M6]: the synchronous serviceTask ran AS PART OF the migrate call — the instance is
@@ -275,7 +454,7 @@ class MigrationFindingsIT {
         await().atMost(10, TimeUnit.SECONDS)
                 .pollInterval(200, TimeUnit.MILLISECONDS)
                 .untilAsserted(() -> {
-                    assertThat(historicEndTime(instanceId)).isNotNull();
+                    assertThat(historicEndTime(p, instanceId)).isNotNull();
                 });
     }
 
@@ -283,10 +462,11 @@ class MigrationFindingsIT {
 
     @Test
     void multiInstanceRootWithNoTargetKeepsTheBlockerAndExecuteRefuses422() throws Exception {
-        String instanceId = startOn(miFrom);
-        assertThat(activeExecutionActivityIds(instanceId)).containsExactlyInAnyOrder("miScope", "stepM");
+        Probes p = legs.get("engine-a");
+        String instanceId = startOn(p, p.miFrom());
+        assertThat(activeExecutionActivityIds(p, instanceId)).containsExactlyInAnyOrder("miScope", "stepM");
 
-        JsonNode preview = previewOk(instanceId, miTo);
+        JsonNode preview = previewOk("engine-a", instanceId, p.miTo());
         assertThat(preview.path("executable").asBoolean(true)).isFalse();
         JsonNode miScope = activityEntry(preview, "miScope");
         assertThat(miScope.path("status").asText()).isEqualTo("FLAGGED_UNMAPPED");
@@ -295,10 +475,10 @@ class MigrationFindingsIT {
         assertThat(miScope.path("findings").get(0).path("severity").asText()).isEqualTo("BLOCKER_ADVICE");
 
         ResponseEntity<String> response =
-                execute("engine-a", instanceId, boundBody(preview, miTo, "attempt the MI scope removal"));
+                execute("engine-a", instanceId, boundBody(preview, p.miTo(), "attempt the MI scope removal"));
         assertThat(response.getStatusCode()).isEqualTo(HttpStatus.UNPROCESSABLE_ENTITY);
         assertThat(mapper.readTree(response.getBody()).path("code").asText()).isEqualTo("unmapped-activities");
-        assertThat(currentDefinitionId(instanceId)).isEqualTo(miFrom); // nothing happened
+        assertThat(currentDefinitionId(p, instanceId)).isEqualTo(p.miFrom()); // nothing happened
     }
 
     /**
@@ -308,28 +488,32 @@ class MigrationFindingsIT {
      * never a table write) on a throwaway instance and RECORDS what the engine actually does, so
      * a future {@code taxonomyVersion} bump can be argued from evidence instead of speculation.
      * It deliberately asserts no verdict about the engine: the only assertion is that the BFF's
-     * retention is <b>deliberate</b>, i.e. unchanged by whatever the engine tolerates.
+     * retention is <b>deliberate</b>, i.e. unchanged by whatever the engine tolerates. Run on BOTH
+     * calibrated majors — [M9] already found them DIVERGENT on the resulting state.
      */
-    @Test
-    void engineDirectProbeRecordsTheMultiInstanceOutcome_andTheBffRetentionIsDeliberate() throws Exception {
-        String probeInstance = startOn(miFrom);
+    @ParameterizedTest(name = "{0}")
+    @MethodSource("calibratedEngines")
+    void engineDirectProbeRecordsTheMultiInstanceOutcome_andTheBffRetentionIsDeliberate(String engineId)
+            throws Exception {
+        Probes p = legs.get(engineId);
+        String probeInstance = startOn(p, p.miFrom());
         int status;
         String body;
         try {
-            ResponseEntity<String> direct = engineDirectMigrate(probeInstance, miTo);
+            ResponseEntity<String> direct = engineDirectMigrate(p, probeInstance, p.miTo());
             status = direct.getStatusCode().value();
             body = String.valueOf(direct.getBody());
         } catch (org.springframework.web.client.RestClientResponseException e) {
             status = e.getStatusCode().value();
             body = e.getResponseBodyAsString();
         }
-        List<String> afterIds = activeExecutionActivityIds(probeInstance);
-        String observation = "engine-direct migrate of an UNMAPPED multi-instance root -> HTTP " + status
-                + ", activity ids now " + afterIds + ", body " + body;
+        List<String> afterIds = activeExecutionActivityIds(p, probeInstance);
+        String observation = "engine-direct migrate of an UNMAPPED multi-instance root on " + engineId + " -> HTTP "
+                + status + ", activity ids now " + afterIds + ", body " + body;
 
         // A fresh instance of the same shape: the BFF still blocks, whatever the engine tolerates.
-        String instanceId = startOn(miFrom);
-        JsonNode preview = previewOk(instanceId, miTo);
+        String instanceId = startOn(p, p.miFrom());
+        JsonNode preview = previewOk(engineId, instanceId, p.miTo());
         assertThat(preview.path("executable").asBoolean(true))
                 .as(
                         "MI-root retention is deliberate (§14.3): a downgrade needs a design change and a"
@@ -342,21 +526,24 @@ class MigrationFindingsIT {
 
     /**
      * The issue's explicitly named test. A green estimate (zero findings), a warning-carrying one
-     * and a blocked one must hit BYTE-IDENTICAL rails: ADMIN floor, mandatory CAS binding, reason
-     * ≥10 chars, and the prod typed-confirm. No finding — green, amber or red — shortcuts or adds
-     * a single guard, and nothing moves in any refusal.
+     * and BOTH blocked kinds — the unsendable-document blocker and §14.11's token-loss blocker —
+     * must hit BYTE-IDENTICAL rails: ADMIN floor, mandatory CAS binding, reason ≥10 chars, and the
+     * prod typed-confirm. No finding — green, amber or red — shortcuts or adds a single guard, and
+     * nothing moves in any refusal.
      */
     @Test
     void everyRailRefusesIdenticallyForGreen_warning_andBlockedEstimates() throws Exception {
+        Probes p = legs.get("engine-a");
         record Estimate(String label, String fromDefinitionId, String toDefinitionId) {}
         List<Estimate> estimates = List.of(
-                new Estimate("green (zero findings)", typeFrom, typeSame),
-                new Estimate("warning-carrying", scopeFrom, scopeTo),
-                new Estimate("blocked", miFrom, miTo));
+                new Estimate("green (zero findings)", p.typeFrom(), p.typeSame()),
+                new Estimate("warning-carrying", p.scopeFrom(), p.scopeTo()),
+                new Estimate("blocked (nothing sendable)", p.miFrom(), p.miTo()),
+                new Estimate("blocked (scope-collapse token loss)", p.lossyFrom(), p.lossyTo()));
 
         for (Estimate estimate : estimates) {
-            String instanceId = startOn(estimate.fromDefinitionId());
-            JsonNode preview = previewOk(instanceId, estimate.toDefinitionId());
+            String instanceId = startOn(p, estimate.fromDefinitionId());
+            JsonNode preview = previewOk("engine-a", instanceId, estimate.toDefinitionId());
             String label = estimate.label();
 
             // Rail 1 — ADMIN floor, unconditional every environment.
@@ -396,7 +583,7 @@ class MigrationFindingsIT {
                     .isEqualTo("confirm-token-mismatch");
 
             // Nothing moved through any of it.
-            assertThat(currentDefinitionId(instanceId))
+            assertThat(currentDefinitionId(p, instanceId))
                     .as("no rail refusal moved the instance — %s", label)
                     .isEqualTo(estimate.fromDefinitionId());
         }
@@ -406,18 +593,17 @@ class MigrationFindingsIT {
 
     @Test
     void executeAuditsMigrateInstanceV2WithTypedFindingsAndNoBffWarnings() throws Exception {
-        String instanceId = startOn(scopeFrom);
-        JsonNode preview = previewOk(instanceId, scopeTo);
-        assertThat(execute("engine-a", instanceId, boundBody(preview, scopeTo, "audit the typed findings payload"))
+        Probes p = legs.get("engine-a");
+        String instanceId = startOn(p, p.scopeFrom());
+        JsonNode preview = previewOk("engine-a", instanceId, p.scopeTo());
+        assertThat(execute("engine-a", instanceId, boundBody(preview, p.scopeTo(), "audit the typed findings payload"))
                         .getStatusCode())
                 .isEqualTo(HttpStatus.OK);
 
         await().atMost(5, TimeUnit.SECONDS)
                 .pollInterval(200, TimeUnit.MILLISECONDS)
                 .untilAsserted(() -> {
-                    JsonNode rows = mapper.readTree(as("admin")
-                            .getForEntity("/api/instances/engine-a/" + instanceId + "/audit", String.class)
-                            .getBody());
+                    JsonNode rows = auditRows("engine-a", instanceId);
                     assertThat(rows).isNotEmpty();
                     JsonNode row = rows.get(0);
                     assertThat(row.path("action").asText()).isEqualTo("migrate-instance");
@@ -460,10 +646,10 @@ class MigrationFindingsIT {
         return false;
     }
 
-    private JsonNode previewOk(String instanceId, String toDefinitionId) throws Exception {
+    private JsonNode previewOk(String engineId, String instanceId, String toDefinitionId) throws Exception {
         ResponseEntity<String> response = as("admin")
                 .postForEntity(
-                        "/api/instances/engine-a/" + instanceId + "/migrate/preview",
+                        "/api/instances/" + engineId + "/" + instanceId + "/migrate/preview",
                         Map.of("toDefinitionId", toDefinitionId),
                         String.class);
         assertThat(response.getStatusCode())
@@ -476,6 +662,12 @@ class MigrationFindingsIT {
         return as("admin")
                 .postForEntity(
                         "/api/instances/" + engineId + "/" + instanceId + "/migrate/execute", body, String.class);
+    }
+
+    private JsonNode auditRows(String engineId, String instanceId) throws Exception {
+        return mapper.readTree(as("admin")
+                .getForEntity("/api/instances/" + engineId + "/" + instanceId + "/audit", String.class)
+                .getBody());
     }
 
     private String code(ResponseEntity<String> response) throws Exception {
@@ -514,7 +706,7 @@ class MigrationFindingsIT {
     /* ---------------------------- direct engine reads / seeding ---------------------------- */
 
     @SuppressWarnings("unchecked")
-    private String definitionIdForVersion(String key, int version) {
+    private String definitionIdForVersion(RestClient engine, String key, int version) {
         Map<String, Object> page = engine.get()
                 .uri("/repository/process-definitions?key=" + key + "&version=" + version)
                 .retrieve()
@@ -524,8 +716,9 @@ class MigrationFindingsIT {
     }
 
     @SuppressWarnings("unchecked")
-    private String startOn(String definitionId) {
-        Map<String, Object> started = engine.post()
+    private String startOn(Probes p, String definitionId) {
+        Map<String, Object> started = p.engine()
+                .post()
                 .uri("/runtime/process-instances")
                 .contentType(MediaType.APPLICATION_JSON)
                 .body(Map.of("processDefinitionId", definitionId))
@@ -535,8 +728,9 @@ class MigrationFindingsIT {
     }
 
     @SuppressWarnings("unchecked")
-    private String currentDefinitionId(String instanceId) {
-        Map<String, Object> instance = engine.get()
+    private String currentDefinitionId(Probes p, String instanceId) {
+        Map<String, Object> instance = p.engine()
+                .get()
                 .uri("/runtime/process-instances/" + instanceId)
                 .retrieve()
                 .body(Map.class);
@@ -545,24 +739,45 @@ class MigrationFindingsIT {
 
     /** Active executions as the pre-check sees them ([M2]) — the instance root is filtered out. */
     @SuppressWarnings("unchecked")
-    private List<String> activeExecutionActivityIds(String instanceId) {
-        Map<String, Object> page = engine.get()
+    private List<String> activeExecutionActivityIds(Probes p, String instanceId) {
+        Map<String, Object> page = p.engine()
+                .get()
                 .uri("/runtime/executions?processInstanceId=" + instanceId + "&size=200")
                 .retrieve()
                 .body(Map.class);
-        return ((List<Map<String, Object>>) page.get("data"))
-                .stream()
-                        .map(row -> row.get("activityId"))
-                        .filter(java.util.Objects::nonNull)
-                        .map(String::valueOf)
-                        .distinct()
-                        .sorted()
-                        .toList();
+        List<String> ids = new ArrayList<>();
+        for (Map<String, Object> row : (List<Map<String, Object>>) page.get("data")) {
+            Object activityId = row.get("activityId");
+            if (activityId != null) {
+                ids.add(String.valueOf(activityId));
+            }
+        }
+        return ids.stream().distinct().sorted().toList();
+    }
+
+    /** Completes whichever user task the instance is parked on — the "still workable" proof. */
+    @SuppressWarnings("unchecked")
+    private void completeFirstTask(Probes p, String instanceId) {
+        Map<String, Object> page = p.engine()
+                .get()
+                .uri("/runtime/tasks?processInstanceId=" + instanceId)
+                .retrieve()
+                .body(Map.class);
+        List<Map<String, Object>> data = (List<Map<String, Object>>) page.get("data");
+        assertThat(data).as("expected a live user task on %s", instanceId).isNotEmpty();
+        p.engine()
+                .post()
+                .uri("/runtime/tasks/" + data.get(0).get("id"))
+                .contentType(MediaType.APPLICATION_JSON)
+                .body(Map.of("action", "complete"))
+                .retrieve()
+                .toBodilessEntity();
     }
 
     @SuppressWarnings("unchecked")
-    private List<String> timerJobDueDates(String instanceId) {
-        Map<String, Object> page = engine.get()
+    private List<String> timerJobDueDates(Probes p, String instanceId) {
+        Map<String, Object> page = p.engine()
+                .get()
                 .uri("/management/timer-jobs?processInstanceId=" + instanceId)
                 .retrieve()
                 .body(Map.class);
@@ -571,8 +786,9 @@ class MigrationFindingsIT {
     }
 
     @SuppressWarnings("unchecked")
-    private String historicEndTime(String instanceId) {
-        Map<String, Object> instance = engine.get()
+    private String historicEndTime(Probes p, String instanceId) {
+        Map<String, Object> instance = p.engine()
+                .get()
                 .uri("/history/historic-process-instances/" + instanceId)
                 .retrieve()
                 .body(Map.class);
@@ -584,8 +800,9 @@ class MigrationFindingsIT {
      * Out-of-band engine mutation (guard-ladder E2E precedent): straight to flowable-rest,
      * bypassing the BFF. REST only — never a table write.
      */
-    private ResponseEntity<String> engineDirectMigrate(String instanceId, String toDefinitionId) {
-        return engine.post()
+    private ResponseEntity<String> engineDirectMigrate(Probes p, String instanceId, String toDefinitionId) {
+        return p.engine()
+                .post()
                 .uri("/runtime/process-instances/" + instanceId + "/migrate")
                 .contentType(MediaType.APPLICATION_JSON)
                 .body(Map.of("toProcessDefinitionId", toDefinitionId, "activityMappings", List.of()))

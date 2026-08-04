@@ -1,0 +1,82 @@
+<?xml version="1.0" encoding="UTF-8"?>
+<definitions xmlns="http://www.omg.org/spec/BPMN/20100524/MODEL"
+             xmlns:xsi="http://www.w3.org/2001/XMLSchema-instance"
+             xmlns:flowable="http://flowable.org/bpmn"
+             xmlns:bpmndi="http://www.omg.org/spec/BPMN/20100524/DI"
+             xmlns:omgdc="http://www.omg.org/spec/DD/20100524/DC"
+             xmlns:omgdi="http://www.omg.org/spec/DD/20100524/DI"
+             typeLanguage="http://www.w3.org/2001/XMLSchema"
+             expressionLanguage="http://www.w3.org/1999/XPath"
+             targetNamespace="http://inspector.io/demo">
+
+  <!-- Migration-findings taxonomy probe E, VERSION 2 (INSTANCE-MIGRATION.md §14.11 [M10]).
+       The wrapper subprocess `scopeP` is GONE; the fork, both tasks and the join keep their
+       ids at the process root, so every token-holding activity auto-maps by id. That is
+       exactly what makes the defect silent: the pre-check saw two clean id matches plus one
+       dissolving scope, and the engine answers 200 while destroying one of the two tokens. -->
+  <process id="taxProbeE" name="Taxonomy probe E — lossy scope collapse (v2, scope removed)" isExecutable="true">
+    <startEvent id="start"/>
+    <sequenceFlow id="flowIn" sourceRef="start" targetRef="forkP"/>
+    <parallelGateway id="forkP" name="Fork P"/>
+    <sequenceFlow id="flowP1" sourceRef="forkP" targetRef="stepP1"/>
+    <sequenceFlow id="flowP2" sourceRef="forkP" targetRef="stepP2"/>
+    <userTask id="stepP1" name="Step P1" flowable:assignee="rest-admin"/>
+    <userTask id="stepP2" name="Step P2" flowable:assignee="rest-admin"/>
+    <sequenceFlow id="flowP3" sourceRef="stepP1" targetRef="joinP"/>
+    <sequenceFlow id="flowP4" sourceRef="stepP2" targetRef="joinP"/>
+    <parallelGateway id="joinP" name="Join P"/>
+    <sequenceFlow id="flowOut" sourceRef="joinP" targetRef="end"/>
+    <endEvent id="end"/>
+  </process>
+
+  <bpmndi:BPMNDiagram id="BPMNDiagram_taxProbeE">
+    <bpmndi:BPMNPlane id="BPMNPlane_taxProbeE" bpmnElement="taxProbeE">
+      <bpmndi:BPMNShape id="BPMNShape_start" bpmnElement="start">
+        <omgdc:Bounds x="60" y="180" width="30" height="30"/>
+      </bpmndi:BPMNShape>
+      <bpmndi:BPMNShape id="BPMNShape_forkP" bpmnElement="forkP">
+        <omgdc:Bounds x="150" y="175" width="40" height="40"/>
+      </bpmndi:BPMNShape>
+      <bpmndi:BPMNShape id="BPMNShape_stepP1" bpmnElement="stepP1">
+        <omgdc:Bounds x="250" y="100" width="100" height="60"/>
+      </bpmndi:BPMNShape>
+      <bpmndi:BPMNShape id="BPMNShape_stepP2" bpmnElement="stepP2">
+        <omgdc:Bounds x="250" y="230" width="100" height="60"/>
+      </bpmndi:BPMNShape>
+      <bpmndi:BPMNShape id="BPMNShape_joinP" bpmnElement="joinP">
+        <omgdc:Bounds x="410" y="175" width="40" height="40"/>
+      </bpmndi:BPMNShape>
+      <bpmndi:BPMNShape id="BPMNShape_end" bpmnElement="end">
+        <omgdc:Bounds x="520" y="181" width="28" height="28"/>
+      </bpmndi:BPMNShape>
+      <bpmndi:BPMNEdge id="BPMNEdge_flowIn" bpmnElement="flowIn">
+        <omgdi:waypoint x="90" y="195"/>
+        <omgdi:waypoint x="150" y="195"/>
+      </bpmndi:BPMNEdge>
+      <bpmndi:BPMNEdge id="BPMNEdge_flowP1" bpmnElement="flowP1">
+        <omgdi:waypoint x="170" y="175"/>
+        <omgdi:waypoint x="170" y="130"/>
+        <omgdi:waypoint x="250" y="130"/>
+      </bpmndi:BPMNEdge>
+      <bpmndi:BPMNEdge id="BPMNEdge_flowP2" bpmnElement="flowP2">
+        <omgdi:waypoint x="170" y="215"/>
+        <omgdi:waypoint x="170" y="260"/>
+        <omgdi:waypoint x="250" y="260"/>
+      </bpmndi:BPMNEdge>
+      <bpmndi:BPMNEdge id="BPMNEdge_flowP3" bpmnElement="flowP3">
+        <omgdi:waypoint x="350" y="130"/>
+        <omgdi:waypoint x="430" y="130"/>
+        <omgdi:waypoint x="430" y="175"/>
+      </bpmndi:BPMNEdge>
+      <bpmndi:BPMNEdge id="BPMNEdge_flowP4" bpmnElement="flowP4">
+        <omgdi:waypoint x="350" y="260"/>
+        <omgdi:waypoint x="430" y="260"/>
+        <omgdi:waypoint x="430" y="215"/>
+      </bpmndi:BPMNEdge>
+      <bpmndi:BPMNEdge id="BPMNEdge_flowOut" bpmnElement="flowOut">
+        <omgdi:waypoint x="450" y="195"/>
+        <omgdi:waypoint x="520" y="195"/>
+      </bpmndi:BPMNEdge>
+    </bpmndi:BPMNPlane>
+  </bpmndi:BPMNDiagram>
+</definitions>

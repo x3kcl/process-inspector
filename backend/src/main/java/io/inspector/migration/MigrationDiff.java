@@ -98,15 +98,24 @@ public final class MigrationDiff {
      * nesting change → clean auto-map. Type change stays ahead of the nesting findings: it is
      * the loudest class (decision P0-5) and a same-id-changed-type activity is the one silent
      * corruption path the operator must see first.
+     *
+     * <p>⚠ {@code activeActivityIds} is a <b>MULTISET</b> — one entry per active execution, so a
+     * fork with two tokens on the same activity id appears twice ({@code
+     * MigrationService.activeActivityIds()}). Classification is per DISTINCT id (the
+     * {@link TreeSet} below), but the scope-collapse token count in §14.11 needs the
+     * multiplicity, so the raw collection is threaded down to {@link #classify} rather than the
+     * de-duplicated view. Collapsing it before that count would make a two-tokens-on-one-id fork
+     * indistinguishable from a single token — the exact blindness that shipped the #355 defect.
      */
     public static List<ActivityDiffEntry> diff(
             ModelView source,
             ModelView target,
             Collection<String> activeActivityIds,
             List<MigrationMapping> overrides) {
+        List<String> activeMultiset = List.copyOf(activeActivityIds);
         List<ActivityDiffEntry> entries = new ArrayList<>();
-        for (String activeId : new TreeSet<>(activeActivityIds)) {
-            entries.add(classify(source, target, activeId, overrides));
+        for (String activeId : new TreeSet<>(activeMultiset)) {
+            entries.add(classify(source, target, activeId, overrides, activeMultiset));
         }
         return entries;
     }
@@ -124,7 +133,11 @@ public final class MigrationDiff {
     }
 
     private static ActivityDiffEntry classify(
-            ModelView source, ModelView target, String activeId, List<MigrationMapping> overrides) {
+            ModelView source,
+            ModelView target,
+            String activeId,
+            List<MigrationMapping> overrides,
+            List<String> activeMultiset) {
         String fromType = source.typeOf(activeId);
         String fromName = source.nameOf(activeId);
 
@@ -149,15 +162,32 @@ public final class MigrationDiff {
 
         // --- scope-container ladder: the token lives in a REGION, not on a leaf ([M2]). ---
         if (SCOPE_TYPES.contains(fromType) && missingFromTarget) {
-            boolean multiInstanceRoot = source.multiInstanceScopeOf(activeId)
-                    .filter(activeId::equals)
-                    .isPresent();
-            if (multiInstanceRoot) {
-                // Deliberate NON-downgrade (§14.3 "MI-root retention"): P14-B requires calibration
-                // evidence for any downgrade and no multi-instance case was calibrated. Downgrading
-                // here would be an unproven prediction that the engine tolerates it — exactly the
-                // rule-guessing the ceiling forbids.
+            // Deliberate NON-downgrade (§14.3 "MI-root retention"): P14-B requires calibration
+            // evidence for any downgrade and no multi-instance case was calibrated. Downgrading
+            // here would be an unproven prediction that the engine tolerates it — exactly the
+            // rule-guessing the ceiling forbids. Widened by #355's follow-up to ANY scope with a
+            // multi-instance ANCESTOR, not just an MI root: a plain subprocess nested inside an MI
+            // body previewed green and then 500'd at execute ("…or its MI Parent", [M7]) — the
+            // backstop working correctly, but a dishonest preflight.
+            if (source.multiInstanceScopeOf(activeId).isPresent()) {
                 return flagged(activeId, fromType, fromName);
+            }
+            // §14.11 — the ONE lossy sub-case. Read from the active-execution MULTISET, because a
+            // parallel fork can hold two tokens on ONE activity id and the classified-entry view
+            // (one row per distinct id) cannot see that.
+            long liveTokens = liveTokensInside(source, activeMultiset, activeId);
+            if (liveTokens > 1) {
+                return new ActivityDiffEntry(
+                        activeId,
+                        fromType,
+                        fromName,
+                        ActivityDiffEntry.Status.SCOPE_REMOVED,
+                        null,
+                        null,
+                        "The subprocess scope '" + activeId + "' is gone from the target version and " + liveTokens
+                                + " live tokens are inside it. The engine keeps exactly ONE and ends the rest"
+                                + " silently while returning success — refused before any engine contact.",
+                        List.of(MigrationFinding.scopeCollapseTokenLoss(activeId, liveTokens)));
             }
             return new ActivityDiffEntry(
                     activeId,
@@ -166,9 +196,9 @@ public final class MigrationDiff {
                     ActivityDiffEntry.Status.SCOPE_REMOVED,
                     null,
                     null,
-                    "The subprocess scope '" + activeId + "' is gone from the target version; its live tokens"
-                            + " re-home outward. No mapping is sent for the scope itself.",
-                    List.of(MigrationFinding.activeScopeRemoved(activeId)));
+                    "The subprocess scope '" + activeId + "' is gone from the target version; its single live token"
+                            + " re-homes outward. No mapping is sent for the scope itself.",
+                    List.of(MigrationFinding.activeScopeRemoved(activeId, liveTokens)));
         }
 
         // --- boundary-event ladder: a subscription, not a token position ([M2]/[M4]). ---
@@ -238,6 +268,27 @@ public final class MigrationDiff {
                 targetType,
                 "Maps by name — same id and type in both versions.",
                 List.of());
+    }
+
+    /**
+     * How many live TOKENS sit inside scope {@code scopeId} (§14.11's predicate). Counted over the
+     * active-execution multiset, so N tokens on one activity id count N times.
+     *
+     * <p>Only genuine token positions count. Scope executions ([M2]) and boundary-event
+     * subscriptions are active executions too, but they are not tokens: counting them would flag a
+     * two-level nesting or a single task with a boundary timer as "lossy" — both of which live
+     * calibration proved safe and continuable. Zero new engine calls: {@code nestingPath} comes
+     * from the already-parsed source model (P14-A).
+     */
+    private static long liveTokensInside(ModelView source, List<String> activeMultiset, String scopeId) {
+        return activeMultiset.stream()
+                .filter(id -> isTokenPosition(source.typeOf(id)))
+                .filter(id -> source.nestingPath(id).contains(scopeId))
+                .count();
+    }
+
+    private static boolean isTokenPosition(String type) {
+        return !SCOPE_TYPES.contains(type) && !BOUNDARY_EVENT_TYPE.equals(type);
     }
 
     private static ActivityDiffEntry flagged(String activeId, String fromType, String fromName) {

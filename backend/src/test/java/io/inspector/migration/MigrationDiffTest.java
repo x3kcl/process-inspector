@@ -215,10 +215,154 @@ class MigrationDiffTest {
         assertThat(codes(scope)).containsExactly(Code.ACTIVE_SCOPE_REMOVED);
         assertThat(scope.findings().get(0).detail())
                 .contains("Flowable 6.8 and 7.1")
-                .contains("cannot know what state is lost");
+                .contains("cannot know what state is lost")
+                // §14.11: the pre-#355-fix copy said "its tokens re-home outward" (plural). Only
+                // ONE ever does — the corrected wording must state the measured behavior.
+                .contains("exactly ONE token surviving a scope collapse")
+                .doesNotContain("its tokens re-home outward");
 
         // and the whole diff is now executable — nothing is unsendable.
         assertThat(diff).noneMatch(ActivityDiffEntry::isBlocker);
+    }
+
+    /* ------------- §14.11: the LOSSY sub-case of the same collapse is a BLOCKER ------------- */
+
+    @Test
+    void aScopeCollapseWithTwoConcurrentTokensInsideIsABlocker_notAWarning() {
+        // The #355 regression shape: a parallel fork INSIDE the dissolving scope. Measured [M10]:
+        // the engine returns 200, keeps exactly one token and ends the rest with no error, no
+        // delete reason and no job — so decision 10's atomic-rejection backstop cannot fire.
+        var source = model(Map.of(
+                "scopeP", ModelNode.of("subProcess"),
+                "stepP1", ModelNode.nested("userTask", "scopeP"),
+                "stepP2", ModelNode.nested("userTask", "scopeP")));
+        var target = model(Map.of(
+                "stepP1", ModelNode.of("userTask"),
+                "stepP2", ModelNode.of("userTask")));
+
+        List<ActivityDiffEntry> diff =
+                MigrationDiff.diff(source, target, List.of("scopeP", "stepP1", "stepP2"), List.of());
+
+        ActivityDiffEntry scope = entry(diff, "scopeP");
+        assertThat(scope.status()).isEqualTo(Status.SCOPE_REMOVED);
+        assertThat(scope.isBlocker()).isTrue();
+        assertThat(codes(scope)).containsExactly(Code.SCOPE_COLLAPSE_TOKEN_LOSS);
+        assertThat(scope.findings().get(0).severity()).isEqualTo(Severity.BLOCKER_ADVICE);
+        assertThat(scope.findings().get(0).detail())
+                .contains("2 live tokens are inside it")
+                .contains("the engine will keep 1")
+                .contains("Supplying a target mapping does not help");
+    }
+
+    @Test
+    void tokenMultiplicityIsReadFromTheMULTISET_twoTokensOnOneActivityIdStillBlock() {
+        // The trap #355 shipped: MigrationDiff classifies per DISTINCT id, so two tokens parked on
+        // the SAME id inside the scope are ONE diff row. Counting rows would see "1 token" and
+        // downgrade to a warning; the count must come from the active-execution multiset.
+        var source = model(Map.of(
+                "scopeP", ModelNode.of("subProcess"),
+                "stepP", ModelNode.nested("userTask", "scopeP")));
+        var target = model(Map.of("stepP", ModelNode.of("userTask")));
+
+        List<ActivityDiffEntry> oneToken = MigrationDiff.diff(source, target, List.of("scopeP", "stepP"), List.of());
+        assertThat(entry(oneToken, "scopeP").isBlocker()).isFalse();
+
+        // Same DISTINCT id set, two live executions on stepP (a multi-instance-free parallel fork
+        // that re-converges on one activity).
+        List<ActivityDiffEntry> twoTokens =
+                MigrationDiff.diff(source, target, List.of("scopeP", "stepP", "stepP"), List.of());
+        assertThat(entry(twoTokens, "scopeP").isBlocker()).isTrue();
+        assertThat(codes(entry(twoTokens, "scopeP"))).containsExactly(Code.SCOPE_COLLAPSE_TOKEN_LOSS);
+    }
+
+    @Test
+    void aScopeRENAMEWithConcurrentTokensIsTheSameLossyCollapse() {
+        // ids otherwise identical, only the scope id changed — indistinguishable to the engine
+        // from a removal, and equally lossy.
+        var source = model(Map.of(
+                "scopeA", ModelNode.of("subProcess"),
+                "stepP1", ModelNode.nested("userTask", "scopeA"),
+                "stepP2", ModelNode.nested("userTask", "scopeA")));
+        var target = model(Map.of(
+                "scopeB", ModelNode.of("subProcess"),
+                "stepP1", ModelNode.nested("userTask", "scopeB"),
+                "stepP2", ModelNode.nested("userTask", "scopeB")));
+
+        List<ActivityDiffEntry> diff =
+                MigrationDiff.diff(source, target, List.of("scopeA", "stepP1", "stepP2"), List.of());
+
+        assertThat(codes(entry(diff, "scopeA"))).containsExactly(Code.SCOPE_COLLAPSE_TOKEN_LOSS);
+        assertThat(diff).anyMatch(ActivityDiffEntry::isBlocker);
+    }
+
+    @Test
+    void threeConcurrentTokensReportTheirRealCount() {
+        var source = model(Map.of(
+                "scopeP", ModelNode.of("subProcess"),
+                "s1", ModelNode.nested("userTask", "scopeP"),
+                "s2", ModelNode.nested("userTask", "scopeP"),
+                "s3", ModelNode.nested("userTask", "scopeP")));
+        var target = model(
+                Map.of("s1", ModelNode.of("userTask"), "s2", ModelNode.of("userTask"), "s3", ModelNode.of("userTask")));
+
+        List<ActivityDiffEntry> diff =
+                MigrationDiff.diff(source, target, List.of("scopeP", "s1", "s2", "s3"), List.of());
+
+        assertThat(entry(diff, "scopeP").findings().get(0).detail()).contains("3 live tokens are inside it");
+    }
+
+    @Test
+    void nestedScopeExecutionsAreNotTokens_twoLevelNestingWithOneTokenStaysAWarning() {
+        // Both scopes dissolve. The active list holds scopeOuter, scopeInner AND stepX ([M2]) — but
+        // only stepX is a TOKEN. Counting scope executions would over-block a shape the reviewer
+        // verified is safe and continuable.
+        var source = model(Map.of(
+                "scopeOuter", ModelNode.of("subProcess"),
+                "scopeInner", ModelNode.nested("subProcess", "scopeOuter"),
+                "stepX", ModelNode.nested("userTask", "scopeOuter", "scopeInner")));
+        var target = model(Map.of("stepX", ModelNode.of("userTask")));
+
+        List<ActivityDiffEntry> diff =
+                MigrationDiff.diff(source, target, List.of("scopeOuter", "scopeInner", "stepX"), List.of());
+
+        assertThat(diff).noneMatch(ActivityDiffEntry::isBlocker);
+        assertThat(codes(entry(diff, "scopeOuter"))).containsExactly(Code.ACTIVE_SCOPE_REMOVED);
+        assertThat(codes(entry(diff, "scopeInner"))).containsExactly(Code.ACTIVE_SCOPE_REMOVED);
+    }
+
+    @Test
+    void aBoundarySubscriptionInsideTheScopeIsNotASecondToken() {
+        // bndX is a child execution of stepX's ([M2]) — one token, not two.
+        var source = model(Map.of(
+                "scopeP", ModelNode.of("subProcess"),
+                "stepX", ModelNode.nested("userTask", "scopeP"),
+                "bndX", ModelNode.nested("boundaryEvent", "scopeP")));
+        var target = model(Map.of("stepX", ModelNode.of("userTask")));
+
+        List<ActivityDiffEntry> diff =
+                MigrationDiff.diff(source, target, List.of("scopeP", "stepX", "bndX"), List.of());
+
+        assertThat(codes(entry(diff, "scopeP"))).containsExactly(Code.ACTIVE_SCOPE_REMOVED);
+        assertThat(entry(diff, "scopeP").isBlocker()).isFalse();
+    }
+
+    @Test
+    void aScopeNestedInsideAMultiInstanceBodyKeepsTheBlocker_notJustTheMiRootItself() {
+        // Preflight honesty: a plain subprocess inside an MI body previewed green and then 500'd at
+        // execute ("…or its MI Parent", [M7]). The MI guard now covers any MI DESCENDANT scope.
+        var source = model(Map.of(
+                "plainScope",
+                new ModelNode("subProcess", "plainScope", List.of("miRoot"), "miRoot"),
+                "miRoot",
+                ModelNode.miRoot("miRoot")));
+        var target = model(Map.of("other", ModelNode.of("userTask")));
+
+        List<ActivityDiffEntry> diff = MigrationDiff.diff(source, target, List.of("plainScope"), List.of());
+
+        assertThat(diff).singleElement().satisfies(e -> {
+            assertThat(e.status()).isEqualTo(Status.FLAGGED_UNMAPPED);
+            assertThat(codes(e)).containsExactly(Code.UNMAPPED_ACTIVE_ACTIVITY);
+        });
     }
 
     @Test
@@ -327,26 +471,32 @@ class MigrationDiffTest {
     /* ------------------------------- the taxonomy is CLOSED ------------------------------- */
 
     @Test
-    void theVocabularyIsExactlyTheSevenCodesLockedByTheDesign() {
-        // §14.3 locks seven proven-computable codes; §14.5 lists eight candidates DROPPED under
-        // the ceiling. That list is not a backlog — adding a code here without a design change
-        // and a taxonomyVersion bump is a rails violation, so pin the vocabulary.
+    void theVocabularyIsExactlyTheEightCodesLockedByTheDesign() {
+        // §14.3/§14.11 lock eight proven-computable codes; §14.5 lists eight candidates DROPPED
+        // under the ceiling. That list is not a backlog — adding a code here without a design
+        // change and a taxonomyVersion bump is a rails violation, so pin the vocabulary.
         assertThat(Code.values())
                 .containsExactlyInAnyOrder(
                         Code.UNMAPPED_ACTIVE_ACTIVITY,
                         Code.ACTIVE_SCOPE_REMOVED,
+                        Code.SCOPE_COLLAPSE_TOKEN_LOSS,
                         Code.ACTIVE_IN_REMOVED_SCOPE,
                         Code.NESTING_PATH_CHANGED,
                         Code.TYPE_CHANGED_SAME_ID,
                         Code.BOUNDARY_SUBSCRIPTION_REMOVED,
                         Code.BOUNDARY_CLOCK_RESET);
-        assertThat(MigrationFinding.TAXONOMY_VERSION).isEqualTo(1);
+        // §14.8: a severity reassignment or a code addition BOTH bump the taxonomy version.
+        assertThat(MigrationFinding.TAXONOMY_VERSION).isEqualTo(2);
     }
 
     @Test
-    void exactlyOneCodeIsEverABlockerAdvice() {
-        // §14.0 P14-B: the taxonomy introduces NO new blocker. The only refusal is
-        // document-construction impossibility.
+    void theOnlyTwoBlockerCodesAreTheDocumentedRefusals_everythingElseStaysAdvisory() {
+        // §14.0 P14-B/§14.11: exactly two refusal grounds — nothing sendable, and the one MEASURED
+        // destruction the engine reports as success. Every other finding is advisory.
+        assertThat(java.util.Arrays.stream(Code.values())
+                        .filter(c -> c == Code.UNMAPPED_ACTIVE_ACTIVITY || c == Code.SCOPE_COLLAPSE_TOKEN_LOSS))
+                .hasSize(2);
+
         var source = model(Map.of(
                 "gone", ModelNode.of("userTask"),
                 "scopeA", ModelNode.of("subProcess"),
@@ -355,6 +505,7 @@ class MigrationDiffTest {
                 "moved", ModelNode.nested("userTask", "scopeA")));
         var target = model(Map.of("typed", ModelNode.of("serviceTask"), "moved", ModelNode.of("userTask")));
 
+        // One token inside scopeA — the calibrated, safe collapse. Still exactly one blocker.
         List<ActivityDiffEntry> diff =
                 MigrationDiff.diff(source, target, List.of("gone", "scopeA", "bndC", "typed", "moved"), List.of());
 

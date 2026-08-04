@@ -272,23 +272,55 @@ public class MigrationService {
     }
 
     /**
-     * The ONLY refusal the estimate performs, and it is not a prediction of the engine's verdict:
-     * a token-holding activity with no counterpart id and no operator mapping leaves the BFF with
-     * <em>nothing sendable</em> (§14.0 P14-D). Advisory findings — including the two blocker→
-     * warning downgrades §14 calibrated live ({@code ACTIVE_SCOPE_REMOVED},
-     * {@code BOUNDARY_SUBSCRIPTION_REMOVED}) — never reach this method.
+     * The two refusals the estimate performs, neither of them a prediction of the engine's verdict.
+     *
+     * <ol>
+     *   <li>{@code scope-collapse-token-loss} (§14.11) — a dissolving scope holds two or more live
+     *       tokens. Measured on 6.8.0 and 7.1.0: the engine keeps exactly ONE, ends the rest
+     *       silently and returns <b>200</b>. Because the engine reports success, re-lock decision
+     *       10's atomic-rejection backstop cannot fire, so this is the one place the destruction
+     *       can be caught at all. Checked FIRST: it is unresolvable, while an unmapped activity has
+     *       an operator remedy.
+     *   <li>{@code unmapped-activities} (§14.0 P14-D) — a token-holding activity with no
+     *       counterpart id and no operator mapping leaves the BFF with <em>nothing sendable</em>.
+     * </ol>
+     *
+     * <p>Advisory findings — including the two blocker→warning downgrades §14 calibrated live
+     * ({@code ACTIVE_SCOPE_REMOVED} in its single-token form, {@code BOUNDARY_SUBSCRIPTION_REMOVED})
+     * — never reach this method.
      */
     private void requireExecutable(MigrationPlan plan) {
-        List<String> flagged = plan.activities().stream()
-                .filter(ActivityDiffEntry::isBlocker)
-                .map(ActivityDiffEntry::fromActivityId)
-                .toList();
+        List<String> lossyScopes = plan.idsWithFinding(MigrationFinding.Code.SCOPE_COLLAPSE_TOKEN_LOSS);
+        if (!lossyScopes.isEmpty()) {
+            throw new GuardRefusedException(
+                    HttpStatus.UNPROCESSABLE_ENTITY,
+                    "scope-collapse-token-loss",
+                    "Cannot migrate: the subprocess scope(s) " + lossyScopes + " disappear in the target version"
+                            + " while more than one live token is inside. The engine would return 200 and keep"
+                            + " exactly one of those tokens, ending the others silently — no error, no delete"
+                            + " reason, no audit trail — which can park this instance forever at a join whose"
+                            + " sibling branch no longer exists. A target mapping cannot fix it (it only changes"
+                            + " which token survives). Nothing happened.");
+        }
+        List<String> flagged = plan.idsWithFinding(MigrationFinding.Code.UNMAPPED_ACTIVE_ACTIVITY);
         if (!flagged.isEmpty()) {
             throw new GuardRefusedException(
                     HttpStatus.UNPROCESSABLE_ENTITY,
                     "unmapped-activities",
                     "Cannot migrate: " + flagged + " have no target mapping — the engine would reject the whole"
                             + " document. Supply a mapping for each and re-preview. Nothing happened.");
+        }
+        // Fail-closed backstop: a future BLOCKER_ADVICE code with no branch above must still refuse
+        // rather than silently execute a plan the preview rendered as blocked.
+        List<String> unhandled = plan.activities().stream()
+                .filter(ActivityDiffEntry::isBlocker)
+                .map(ActivityDiffEntry::fromActivityId)
+                .toList();
+        if (!unhandled.isEmpty()) {
+            throw new GuardRefusedException(
+                    HttpStatus.UNPROCESSABLE_ENTITY,
+                    "blocked-estimate",
+                    "Cannot migrate: " + unhandled + " carry a blocking pre-check finding. Nothing happened.");
         }
     }
 
@@ -637,13 +669,21 @@ public class MigrationService {
             return activities.stream().noneMatch(ActivityDiffEntry::isBlocker);
         }
 
+        /** Source activity ids carrying a given finding code, in the diff's stable sorted order. */
+        List<String> idsWithFinding(MigrationFinding.Code code) {
+            return activities.stream()
+                    .filter(a -> a.findings().stream().anyMatch(f -> f.code() == code))
+                    .map(ActivityDiffEntry::fromActivityId)
+                    .toList();
+        }
+
         Map<String, Object> restBody() {
             return migrationDocument(target.definitionId(), overrides);
         }
 
         String summary() {
-            long flagged =
-                    activities.stream().filter(ActivityDiffEntry::isBlocker).count();
+            List<String> unmapped = idsWithFinding(MigrationFinding.Code.UNMAPPED_ACTIVE_ACTIVITY);
+            List<String> lossyScopes = idsWithFinding(MigrationFinding.Code.SCOPE_COLLAPSE_TOKEN_LOSS);
             long warnings =
                     activities.stream().filter(ActivityDiffEntry::isWarning).count();
             StringBuilder sb = new StringBuilder("Migrate this instance from v")
@@ -654,7 +694,20 @@ public class MigrationService {
             if (executable()) {
                 sb.append("All ").append(activities.size()).append(" active activit(ies) map.");
             } else {
-                sb.append(flagged).append(" active activit(ies) can't be auto-mapped — pick a target for each.");
+                if (!unmapped.isEmpty()) {
+                    sb.append(unmapped.size())
+                            .append(" active activit(ies) can't be auto-mapped — pick a target for each.");
+                }
+                if (!lossyScopes.isEmpty()) {
+                    // Distinct copy: a mapping is NOT the remedy here, so never tell the operator
+                    // to pick one (§14.11).
+                    if (!unmapped.isEmpty()) {
+                        sb.append(" ");
+                    }
+                    sb.append(lossyScopes.size())
+                            .append(" subprocess scope(s) would collapse with more than one live token inside —")
+                            .append(" migrating would silently destroy live work, and no mapping can prevent it.");
+                }
             }
             if (warnings > 0) {
                 sb.append(" ").append(warnings).append(" advisory warning(s).");
