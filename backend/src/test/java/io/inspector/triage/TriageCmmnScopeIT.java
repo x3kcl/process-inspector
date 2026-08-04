@@ -9,6 +9,7 @@ import static org.awaitility.Awaitility.await;
 
 import com.fasterxml.jackson.databind.JsonNode;
 import com.github.tomakehurst.wiremock.WireMockServer;
+import io.inspector.registry.EngineHealthService;
 import io.inspector.support.EngineSeed;
 import io.inspector.support.NoDbTestSupport;
 import java.util.concurrent.TimeUnit;
@@ -72,6 +73,9 @@ class TriageCmmnScopeIT {
     @Autowired
     TestRestTemplate rest;
 
+    @Autowired
+    EngineHealthService healthService;
+
     private RestClient engine;
     private RestClient cmmn;
     private String caseInstanceId;
@@ -94,15 +98,14 @@ class TriageCmmnScopeIT {
                 .pollInterval(2, TimeUnit.SECONDS)
                 .until(() -> EngineSeed.cmmnDeadletterPresentForCase(cmmn, caseInstanceId));
 
-        // The health strip (and the scopeType capability the count is gated on) comes from
-        // the scheduled M1 probe — wait for one cycle before triage reads the registry.
-        await().atMost(60, TimeUnit.SECONDS)
-                .pollInterval(500, TimeUnit.MILLISECONDS)
-                .untilAsserted(() -> assertThat(rest.getForObject("/api/engines", JsonNode.class)
-                                .get(0)
-                                .get("reachable")
-                                .asBoolean())
-                        .isTrue());
+        // Health strip + scopeType capability come from the M1 probe — drive one cycle
+        // deterministically (EngineHealthIT / CaseDetailIT pattern), don't race the schedule.
+        healthService.probeAll();
+        assertThat(rest.getForObject("/api/engines", JsonNode.class)
+                        .get(0)
+                        .get("reachable")
+                        .asBoolean())
+                .isTrue();
     }
 
     @AfterAll
