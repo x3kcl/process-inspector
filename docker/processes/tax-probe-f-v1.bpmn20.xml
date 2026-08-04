@@ -1,0 +1,120 @@
+<?xml version="1.0" encoding="UTF-8"?>
+<definitions xmlns="http://www.omg.org/spec/BPMN/20100524/MODEL"
+             xmlns:xsi="http://www.w3.org/2001/XMLSchema-instance"
+             xmlns:flowable="http://flowable.org/bpmn"
+             xmlns:bpmndi="http://www.omg.org/spec/BPMN/20100524/DI"
+             xmlns:omgdc="http://www.omg.org/spec/DD/20100524/DC"
+             xmlns:omgdi="http://www.omg.org/spec/DD/20100524/DI"
+             typeLanguage="http://www.w3.org/2001/XMLSchema"
+             expressionLanguage="http://www.w3.org/1999/XPath"
+             targetNamespace="http://inspector.io/demo">
+
+  <!-- Migration-findings taxonomy probe F, VERSION 1 (INSTANCE-MIGRATION.md §14.11 [M10];
+       IT fixture for MigrationFindingsIT, NOT part of the demo seed set).
+       The RENAME variant of the lossy collapse, with THREE concurrent tokens: `scopeR` holds a
+       three-way parallel fork. v2 is byte-for-byte the same model except the subprocess id is
+       `scopeS` — indistinguishable from a removal to both the engine and the pre-check, and
+       equally lossy (three tokens in, one out). -->
+  <process id="taxProbeF" name="Taxonomy probe F — scope rename with three tokens (v1)" isExecutable="true">
+    <startEvent id="start"/>
+    <sequenceFlow id="flowIn" sourceRef="start" targetRef="scopeR"/>
+    <subProcess id="scopeR" name="Scope R">
+      <startEvent id="startR"/>
+      <sequenceFlow id="flowR0" sourceRef="startR" targetRef="forkR"/>
+      <parallelGateway id="forkR" name="Fork R"/>
+      <sequenceFlow id="flowR1" sourceRef="forkR" targetRef="stepR1"/>
+      <sequenceFlow id="flowR2" sourceRef="forkR" targetRef="stepR2"/>
+      <sequenceFlow id="flowR3" sourceRef="forkR" targetRef="stepR3"/>
+      <userTask id="stepR1" name="Step R1" flowable:assignee="rest-admin"/>
+      <userTask id="stepR2" name="Step R2" flowable:assignee="rest-admin"/>
+      <userTask id="stepR3" name="Step R3" flowable:assignee="rest-admin"/>
+      <sequenceFlow id="flowR4" sourceRef="stepR1" targetRef="joinR"/>
+      <sequenceFlow id="flowR5" sourceRef="stepR2" targetRef="joinR"/>
+      <sequenceFlow id="flowR6" sourceRef="stepR3" targetRef="joinR"/>
+      <parallelGateway id="joinR" name="Join R"/>
+      <sequenceFlow id="flowR7" sourceRef="joinR" targetRef="endR"/>
+      <endEvent id="endR"/>
+    </subProcess>
+    <sequenceFlow id="flowOut" sourceRef="scopeR" targetRef="end"/>
+    <endEvent id="end"/>
+  </process>
+
+  <bpmndi:BPMNDiagram id="BPMNDiagram_taxProbeF">
+    <bpmndi:BPMNPlane id="BPMNPlane_taxProbeF" bpmnElement="taxProbeF">
+      <bpmndi:BPMNShape id="BPMNShape_start" bpmnElement="start">
+        <omgdc:Bounds x="60" y="240" width="30" height="30"/>
+      </bpmndi:BPMNShape>
+      <bpmndi:BPMNShape id="BPMNShape_scopeR" bpmnElement="scopeR">
+        <omgdc:Bounds x="140" y="60" width="560" height="390"/>
+      </bpmndi:BPMNShape>
+      <bpmndi:BPMNShape id="BPMNShape_startR" bpmnElement="startR">
+        <omgdc:Bounds x="170" y="240" width="30" height="30"/>
+      </bpmndi:BPMNShape>
+      <bpmndi:BPMNShape id="BPMNShape_forkR" bpmnElement="forkR">
+        <omgdc:Bounds x="240" y="235" width="40" height="40"/>
+      </bpmndi:BPMNShape>
+      <bpmndi:BPMNShape id="BPMNShape_stepR1" bpmnElement="stepR1">
+        <omgdc:Bounds x="330" y="100" width="100" height="60"/>
+      </bpmndi:BPMNShape>
+      <bpmndi:BPMNShape id="BPMNShape_stepR2" bpmnElement="stepR2">
+        <omgdc:Bounds x="330" y="225" width="100" height="60"/>
+      </bpmndi:BPMNShape>
+      <bpmndi:BPMNShape id="BPMNShape_stepR3" bpmnElement="stepR3">
+        <omgdc:Bounds x="330" y="350" width="100" height="60"/>
+      </bpmndi:BPMNShape>
+      <bpmndi:BPMNShape id="BPMNShape_joinR" bpmnElement="joinR">
+        <omgdc:Bounds x="490" y="235" width="40" height="40"/>
+      </bpmndi:BPMNShape>
+      <bpmndi:BPMNShape id="BPMNShape_endR" bpmnElement="endR">
+        <omgdc:Bounds x="600" y="241" width="28" height="28"/>
+      </bpmndi:BPMNShape>
+      <bpmndi:BPMNShape id="BPMNShape_end" bpmnElement="end">
+        <omgdc:Bounds x="750" y="241" width="28" height="28"/>
+      </bpmndi:BPMNShape>
+      <bpmndi:BPMNEdge id="BPMNEdge_flowIn" bpmnElement="flowIn">
+        <omgdi:waypoint x="90" y="255"/>
+        <omgdi:waypoint x="140" y="255"/>
+      </bpmndi:BPMNEdge>
+      <bpmndi:BPMNEdge id="BPMNEdge_flowR0" bpmnElement="flowR0">
+        <omgdi:waypoint x="200" y="255"/>
+        <omgdi:waypoint x="240" y="255"/>
+      </bpmndi:BPMNEdge>
+      <bpmndi:BPMNEdge id="BPMNEdge_flowR1" bpmnElement="flowR1">
+        <omgdi:waypoint x="260" y="235"/>
+        <omgdi:waypoint x="260" y="130"/>
+        <omgdi:waypoint x="330" y="130"/>
+      </bpmndi:BPMNEdge>
+      <bpmndi:BPMNEdge id="BPMNEdge_flowR2" bpmnElement="flowR2">
+        <omgdi:waypoint x="280" y="255"/>
+        <omgdi:waypoint x="330" y="255"/>
+      </bpmndi:BPMNEdge>
+      <bpmndi:BPMNEdge id="BPMNEdge_flowR3" bpmnElement="flowR3">
+        <omgdi:waypoint x="260" y="275"/>
+        <omgdi:waypoint x="260" y="380"/>
+        <omgdi:waypoint x="330" y="380"/>
+      </bpmndi:BPMNEdge>
+      <bpmndi:BPMNEdge id="BPMNEdge_flowR4" bpmnElement="flowR4">
+        <omgdi:waypoint x="430" y="130"/>
+        <omgdi:waypoint x="510" y="130"/>
+        <omgdi:waypoint x="510" y="235"/>
+      </bpmndi:BPMNEdge>
+      <bpmndi:BPMNEdge id="BPMNEdge_flowR5" bpmnElement="flowR5">
+        <omgdi:waypoint x="430" y="255"/>
+        <omgdi:waypoint x="490" y="255"/>
+      </bpmndi:BPMNEdge>
+      <bpmndi:BPMNEdge id="BPMNEdge_flowR6" bpmnElement="flowR6">
+        <omgdi:waypoint x="430" y="380"/>
+        <omgdi:waypoint x="510" y="380"/>
+        <omgdi:waypoint x="510" y="275"/>
+      </bpmndi:BPMNEdge>
+      <bpmndi:BPMNEdge id="BPMNEdge_flowR7" bpmnElement="flowR7">
+        <omgdi:waypoint x="530" y="255"/>
+        <omgdi:waypoint x="600" y="255"/>
+      </bpmndi:BPMNEdge>
+      <bpmndi:BPMNEdge id="BPMNEdge_flowOut" bpmnElement="flowOut">
+        <omgdi:waypoint x="700" y="255"/>
+        <omgdi:waypoint x="750" y="255"/>
+      </bpmndi:BPMNEdge>
+    </bpmndi:BPMNPlane>
+  </bpmndi:BPMNDiagram>
+</definitions>

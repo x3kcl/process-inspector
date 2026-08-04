@@ -436,12 +436,31 @@ public class AuditService {
             "targetActivityId",
             "activityMappings",
             "cascade",
+            "taxonomyVersion",
             // Variable CONTAINERS are skeleton so the transform recurses INTO them (keeping the
             // variable NAMES = accountability, masking their values), rather than masking the whole
             // container and losing the names (Gemini S2).
             "variables",
             "carriedVariables",
             "skippedVariables");
+
+    /**
+     * Keys whose ENTIRE subtree is BFF-authored structure — no engine payload, no business data,
+     * no operator free text — and is therefore kept verbatim under every {@link AuditPayloadMode}.
+     *
+     * <p>Deliberately NOT expressed by listing the inner keys in {@link #SKELETON_KEYS}: those are
+     * matched by name anywhere in any payload, and generic names like {@code code}/{@code detail}
+     * would silently exempt a future verb's value-bearing key from minimization. This set names the
+     * CONTAINER instead, so the exemption cannot travel.
+     *
+     * <p>{@code bffFindings} (§14.8) is the record of exactly what the operator was warned about
+     * before an IRREVERSIBLE migration — the single most accountability-critical part of that
+     * payload. Its entries are {@code {code, severity, activityId, detail}}: two frozen enum names,
+     * an activity id ({@code activityId} is a skeleton coordinate already) and BFF-authored static
+     * advisory text. Dropping it under {@code METADATA_ONLY} or masking it under {@code REDACTED}
+     * destroyed the warning record while protecting nothing.
+     */
+    private static final Set<String> VERBATIM_SUBTREE_KEYS = Set.of("bffFindings");
 
     /** Replace values whose KEY matches the secret-name denylist, recursing through maps AND lists. */
     /**
@@ -516,7 +535,8 @@ public class AuditService {
      * Apply the per-engine minimization {@code mode} (R-AUD-03) — run AFTER {@link #redact}, whose
      * denylist is unconditional. {@code FULL} keeps everything; {@code REDACTED} masks every
      * non-skeleton leaf value with {@link #REDACTED} (keeping the key); {@code METADATA_ONLY} drops
-     * the non-skeleton entries entirely. Skeleton coordinates ({@link #SKELETON_KEYS}) survive both.
+     * the non-skeleton entries entirely. Skeleton coordinates ({@link #SKELETON_KEYS}) survive both,
+     * recursed into; {@link #VERBATIM_SUBTREE_KEYS} survive both untouched.
      */
     public static Map<String, Object> applyPayloadMode(Map<String, Object> payload, AuditPayloadMode mode) {
         if (payload == null) {
@@ -527,7 +547,9 @@ public class AuditService {
         }
         Map<String, Object> out = new LinkedHashMap<>();
         for (Map.Entry<String, Object> entry : payload.entrySet()) {
-            if (SKELETON_KEYS.contains(entry.getKey())) {
+            if (VERBATIM_SUBTREE_KEYS.contains(entry.getKey())) {
+                out.put(entry.getKey(), entry.getValue()); // wholly BFF-authored — nothing to mask
+            } else if (SKELETON_KEYS.contains(entry.getKey())) {
                 // Recurse INTO the coordinate's value so a nested value-bearing structure (a
                 // variables map: name→value) keeps its keys/names but masks its values, rather
                 // than being kept verbatim (Gemini S2).
