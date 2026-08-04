@@ -11,6 +11,22 @@ ships enabled and self-gates per class on its own sample floor — R1's gate gov
 ITSELF: the ordering is a single global switch over shared cards, so it ships inert and
 flipping it requires re-measuring §7 with the §5 method.
 
+**Amendment round (#365, 2026-08-04): burst-aware frequency — §4.1a (formula) + §14
+(measurement, build-slice spec, panel) — DESIGN LOCKED, and the build slice ★ SHIPPED (§15),
+still FLAG-OFF.** The flag default is untouched. **One §7 gate axis DID change**: the same
+round's feasibility measurement found 99.2 % of the pilot's occurrence rows are blind
+(`cycle_complete = false`, everything before 2026-08-04T15:39 Z), so **G5 is redefined over
+TRUSTED span** and its earliest-satisfaction date moves ≈ 2026-09-14 → ≈ 2026-09-29 (§5.1,
+§5.5 and §7 corrections). G1–G4 were audited and are not trust-gated.
+
+**§8's usability A/B run plan is AUTHORED (issue #366, 2026-08-04) — comprehension probe +
+operator doc (R-SEM-25, `docs/usability/MISSIONS.md` M13, `docs/OPERATOR-QUICK-START.md`)
+specified end to end, run NOT YET EXECUTED (§8.8).** Issue #359 (the transiently-failing
+self-heal seed fixture) landed 2026-08-04 as `85342e1`/PR #368 — ALL FOUR self-heal lanes,
+including `SELF_HEAL_LIKELY`/`SELF_HEAL_MIXED`, are now stageable for §8 (§8.6); the fixture
+is opt-in (`PI_SEED_SELF_HEALING=1`) and, by design, counts toward neither this doc's own §7
+gate nor RETRYING-RISK-LANE.md's §7.2 gate (§8's own sequencing note explains why).
+
 ## 0. Provenance
 
 Drafted 2026-08-04 from (a) a hand inventory of every hand-tuned noise-control constant in
@@ -25,6 +41,17 @@ adapts; Shoush & Dumas, *When to Intervene?* (BPM 2022, 10.1007/978-3-031-16171-
 ranking cases for scarce operator attention; Wang/Yang/Chen/Shah, *An Overview of Industrial
 Alarm Systems* (IEEE TASE 2016, 10.1109/TASE.2015.2464234) — the alarm-overload human-factors
 case SPEC §4 already gestures at ("alarm fatigue within weeks").
+
+Amendment round #365 adds the alarm-management human-factors base (full-text calibration
+digest: #356 comment 5182803157): Beebe, Ferrer, Logerot, *The connection of peak alarm rates
+to plant incidents and what you can do to minimize* (Process Safety Progress 32(1), 2013,
+10.1002/prs.11539) — "peak rates are responsible for operators missing critical alarms and
+average rates are not"; their case data shows sites with fine averages (0.83–1 alarms/10 min)
+still hitting peaks of 117–211/10 min (evidence grade: practitioner paper, 4 uncontrolled
+sites — cited for the consensus ceilings and the framing, not as causal proof). Normative:
+**ANSI/ISA-18.2** (flood defined as ≥ 10 annunciated alarms per 10 min per operator, ending
+when the rate drops below 5 per 10 min — an asymmetric, hysteresis-bearing *peak-window*
+definition, not an average) and **EEMUA 191** (the same ceilings as benchmarks).
 
 Panel review (repo convention, two independent seats — full outcome in §10): the Gemini
 seat reviewed and returned APPROVE-WITH-CHANGES (findings adopted below); the GitHub-Models
@@ -234,7 +261,12 @@ Rules:
   Acknowledged section's membership, only the sort within the live section.
 - The S factor consumes the R2 badge's **stabilized** (hysteresis-applied) rate, never a raw
   per-cycle rate — ordering must not flap when the badge doesn't (the DMKD temporal-stability
-  rule #347 owns, inherited here by construction).
+  rule #347 owns, inherited here by construction). That hysteresis pattern
+  (RETRYING-RISK-LANE.md §4.2) is itself grounded in ISA-18.2's own asymmetric flood
+  onset/exit thresholds, not only the DMKD result — a stronger citation for the same
+  enter/exit design (Roohi & Izadi 2023, §2 eq. 2,
+  [10.61186/joc.17.2.113](https://doi.org/10.61186/joc.17.2.113); Beebe et al. 2013,
+  [10.1002/prs.11539](https://doi.org/10.1002/prs.11539)).
 - The 0.25 floor on `S` means a reliably-self-healing class is demoted at most 4×, never
   zeroed — a mass self-heal class stays visible (same doctrine as never-hide).
 - Score factors ship in the DTO next to the card (`attention: {score, factors, rationale}`)
@@ -269,6 +301,106 @@ Rules:
   window that merely STARTS mid-life still finds `LAG` NULL on its first row and still discards
   it, so a standing population is never re-banked as fresh growth, and
   `arrivalsAreTheGrowthSignalNotTheSizeSignal` passes unchanged.
+
+### 4.1a Burst-aware frequency (amendment #365 — DESIGN LOCKED, build slice pending)
+
+**The gap this closes.** `F` is a 28-day *volume* measure and `R` only sees `lastSeen` age, so
+two classes both "last seen now" with 100 arrivals score identically whether those arrivals
+trickled over four weeks or landed in the last ten minutes — yet the second is exactly the
+flood shape the literature says demands attention first ("peak rates are responsible for
+operators missing critical alarms and average rates are not" — Beebe et al. 2013,
+10.1002/prs.11539; ISA-18.2's flood definition is a 10-minute *peak window*, §0). Burstiness
+is invisible to the shipped ordering. The amendment makes `F` peak-aware by a **windowed
+decomposition** — not a bolt-on term — of the arrivals it already counts:
+
+```
+F(c) = log2(1 + arrivals_28d(c))                          when NOT flooding(c) — UNCHANGED
+F(c) = log2(1 + arrivals_28d(c) + (γ−1) · burst_W(c))     when flooding(c)
+     ≡ log2(1 + outside_W(c) + γ · burst_W(c))            since arrivals_28d = outside_W + burst_W
+
+burst_W(c)  = positive TRUSTED deltas over (asOf−W, asOf]     — same discipline as arrivals_28d
+prior_W(c)  = positive TRUSTED deltas over (asOf−2W, asOf−W]  — the gate's hold input, only
+flooding(c) = burst_W ≥ onset  OR  (burst_W ≥ exit AND prior_W ≥ onset)
+```
+
+Defaults (new keys under `inspector.triage.attention.*`, consulted only when the master flag
+is on): `burst-window` W = **PT10M** — ISA-18.2's own flood window; `burst-onset` = **10** and
+`burst-exit` = **5** — ISA-18.2's asymmetric flood onset/end verbatim, so the hysteresis is
+the standard's, not our invention (the #347 dwell doctrine independently confirmed at the
+source, §0); `burst-weight` γ = **8** — one flood-window arrival weighs eight trickled ones.
+γ's rationale (panel fix — stated, not implied): the operative quantity is the BOUNDED
+inflation ceiling `1 + log2(γ)/log2(1 + onset)` below, and γ = 8 (3 bits) puts that ceiling
+at ≈ 1.87× — deliberately the same order as the M factor's 2× clamp, so no single factor can
+dominate the others' full range. It cannot be data-fitted today (the pilot has zero recorded
+floods, §14.4); it is a knob, not a law, and is re-examined at §7 gate time with real flood
+data like every other calibration.
+
+**The five named invariants, preserved:**
+
+- **§5.5 neutrality guarantee.** No history ⇒ `burst_W = 0` ⇒ not flooding ⇒ `F = log2(1+0)
+  = 0`, and below onset `F` is **byte-identical to the shipped formula** — the amendment is
+  provably inert outside flood conditions, so the no-history degradation to exactly count-only
+  ordering (and `AttentionOrderingNeutralityTest`) holds unchanged. Measured: synthetic
+  scenario (d), §14.4 — every empty-history score 0.0, order == count-only.
+- **§13 F2 semantics.** The burst bins inherit the trusted-samples discipline verbatim — a
+  delta counts only when BOTH endpoints were fully observed; both untrust reasons (R-SEM-12
+  truncation AND #302 blind cycles) discard identically. A wholly-untrusted 28d window still
+  reads `F = 1` + `arrivalsUnknown` (the burst bin is a subset of that window, so the gate
+  cannot fire either — no path to a fake zero OR a fake flood). New sub-case: a burst bin
+  that has samples but no TRUSTED one forces the gate OFF, leaves `F` at the shipped value,
+  and sets `factors.burstUnknown` — the tooltip says "recent arrival rate unknown", never
+  "not spiking". Because the burst term can only ever *raise* `F` behind a gate, an unknown
+  bin can only suppress a promotion — it can never demote, which is strictly safer than the
+  original F2 defect class (where unknown zeroed the score). An EMPTY bin (no row at all,
+  the sampler was down) reads `burst_W = 0`, gate off — a fleet-uniform degradation to the
+  shipped formula, same shape as F2's "no in-window row keeps F = 0" rule.
+- **§13 F3 semantics — no double-banking, by construction.** This is why the amendment is a
+  decomposition and not a multiplier. `arrivals_28d = outside_W + burst_W` is a PARTITION of
+  the very deltas F already counts: under flooding, `F = log2(1 + outside_W + γ·burst_W)`
+  counts every arrival **exactly once**, at weight 1 or weight γ, depending on which bin its
+  bucket falls in. The birth-seeded delta (the F3 fix) is one of those deltas: a class born
+  inside W counts its whole population once at weight γ — and may legitimately trigger the
+  gate, because a mass birth IS the largest flood (`0 → 5000` in one bucket: `F =
+  log2(1 + γ·5000) = 15.29`, vs shipped 12.29 — synthetic scenario (b), §14.4). A separate
+  multiplicative factor `B` on top of `F` was **rejected as a shape**: `F` already contains
+  the birth arrival, so any term that re-reads the same bucket re-banks it (`12.29 × clamp`),
+  and keeping it honest would need a hand-maintained exclusion filter that a future edit can
+  silently break. The partition identity cannot double-bank without breaking arithmetic. The
+  mid-life guard is untouched: a window merely *starting* mid-life still discards its
+  `LAG`-less first row, so a standing population is never re-banked as growth —
+  `arrivalsAreTheGrowthSignalNotTheSizeSignal` passes unchanged.
+- **Zero new engine calls.** The two bins are four more FILTERED columns on the SAME single
+  native `arrivalsSince` aggregate over `incident_occurrence` (§14.6) — one pass, zero
+  additional statements, BFF's own Postgres. The Stage 0 iron rule (count-only/`size=1`
+  aggregation + the dedicated DLQ scan, never the grid-search plan) is untouched: nothing is
+  added to the engine aggregation, ever.
+- **`inspector.triage.attention-ordering` stays default-off.** No new flag; the burst knobs
+  are dead configuration until the master flag is opted into, and the §7 gate (still NOT MET,
+  0 of 5 axes) governs that flip exactly as before.
+
+**Non-goals honored:** `R`, `M`, `S`, the R-SEM-23 tie-break (`total DESC → signatureHash
+ASC`), ack/resurface semantics and the flag default are not touched — the amendment changes
+`F` and only `F`.
+
+**Bounded influence, no clamp knob needed.** The gate requires `burst_W ≥ onset` (or the
+hold), so `log2(1 + arrivals_28d) ≥ log2(1 + onset) ≈ 3.46` whenever the boost applies, and
+the boost adds at most `log2(γ) = 3` bits: the multiplicative inflation of `F` is
+self-bounded at `1 + log2(γ)/log2(1 + onset) ≈ 1.87×`, shrinking as volume grows (flood-100:
+9.65 vs 6.66 ≈ 1.45×). Contrast M's explicit clamp: here the log does the clamping.
+
+**Hysteresis, stated honestly.** The gate is a stateless two-bin Schmitt trigger: entry needs
+a genuine onset in the current window; hold needs `burst_W ≥ exit` while the onset sits in
+the PRIOR window. `prior_W` must reach onset ALONE — summing the bins would open a back-door
+entry (6+6 across 20 min is not a 10-minute flood; proven in scenario (a), §14.4). Known
+approximation vs a stateful trigger: a flood lingering in `[exit, onset)` for longer than W
+without re-reaching onset drops the gate one window early. The 5-minute model TTL adds the
+same dwell it adds to every factor, and W > model-TTL, so a detected flood both surfaces
+within one TTL and survives at least one rebuild.
+
+**Rationale & wire (§4.3 extension).** When flooding, the per-card sentence gains the clause
+**"spiking: 40 in the last 10 min"** — the absolute count and window, per #365 ("beats a bare
+ratio"); when `burstUnknown`, the clause is "recent arrival rate unknown". Wire fields in
+§14.6.
 
 ### 4.2 Interface consumed from track R2 (#347 design / #351 API) — dependency, not duplication
 The score consumes, per `(signatureHash, algoVersion)`:
@@ -312,6 +444,18 @@ delta scan + audit-timestamp cross-matching (scripted, reproducible from the res
   current-generation span 2026-07-20T12:38:02Z → 14.8 d.
 - Occurrence series: 60 s buckets; incidents 4/5 carry 21 229 points each vs ≈ 21 268
   expected minute-buckets → **99.8 % sampler coverage** (~39 min of gaps).
+
+**Correction (amendment round #365, 2026-08-04 — the span and coverage above lacked a trust
+qualifier, and that presentation was misleading).** These are RECORDED-series figures.
+Re-extraction (§14.2) found **99.2 % of the recorded rows BLIND** (`cycle_complete = false`;
+21 741 of 21 909): the registry carried a declared-but-unreachable `engine-7` slot from the
+current generation's birth until 2026-08-04T15:39 Z (when a real 7.1.0 engine filled it),
+and V21's fail-closed backfill marks all pre-V21 rows blind. Every §6 estimator DISCARDS
+blind deltas by design, so the **trusted** current-generation span — the only span the
+estimators can fit on — began at 2026-08-04T15:39 Z and was **168 min** old at
+re-extraction. The recorded span (14.8 d at first extraction, 15.2 d at re-extraction)
+remains true as a statement about rows on disk; it was wrong to present it as usable
+history. §7 G5 is corrected accordingly; zero truncated rows either way.
 
 ### 5.2 The two live classes (MEASURED)
 | | Incident 4 | Incident 5 |
@@ -408,8 +552,24 @@ not invalidate the model — it means the model's discriminating terms are exact
 the ledger has not yet accumulated, so activation must be gated (§7) and the build ships
 flag-off (§9). No benefit claim is made for the pilot as it stands.
 
+**Correction (amendment round #365, 2026-08-04 — the MECHANISM stated above was wrong; the
+outcome stands).** The replay result is re-verified (§14.4: 21 909 / 21 909 buckets, τ = 1.0,
+0 position changes) but this section — written before the §13 F2 correction existed — says
+the classes tie because "F equal (0 arrivals both)". Under the F2 semantics as actually
+shipped, on the data as recorded, that is false for 99.2 % of the window: every bucket whose
+trailing window holds observed-but-no-TRUSTED samples (the blind prefix, §5.1 correction)
+reads `arrivalsUnknown` on BOTH classes ⇒ **F = 1 (the neutral identity), not F = 0** — a
+neutral tie falling through to the same count-only tie-break. Genuine zero-arrival `F = 0`
+ties occur only inside the trusted era (from 2026-08-04T15:39 Z). Same ordering, same τ,
+different — and now correctly documented — reason. The distinction matters beyond pedantry:
+the whole fleet rode the F2 degradation rule for two weeks, which is exactly why §7 G5 now
+gates on *trusted* span, not recorded span.
+
 ### 5.6 What the pilot CAN already calibrate (MEASURED)
-Sampler cadence 60 s and 99.8 % series coverage (estimation windows in §6 are trustworthy);
+Sampler cadence 60 s and 99.8 % series coverage — **corrected #365: bucket coverage said
+nothing about trust; 99.2 % of those buckets are blind (§5.1 correction), so "estimation
+windows in §6 are trustworthy" was FALSE before 2026-08-04T15:39 Z and is true only for the
+trusted era since**;
 within-episode count jitter CV ≈ 0 on both classes (the §3.3 estimator currently returns
 the floor — a demo artifact, flagged as such, another gate argument); retry-only
 `eff ≈ 2.4 %` vs data-fix-then-retry `1/1` (n = 42, one class — a prior, not a per-class
@@ -425,6 +585,7 @@ versioned and logged so a tooltip's numbers are reproducible.
 | Parameter | Estimator | Fallback while thin |
 |---|---|---|
 | `arrivals_28d(c)` (F) | sum of positive `total` deltas over 28 d occurrence rows, with the baseline **seeded at 0 for the incident's own first-ever row** (a class's birth IS an arrival; a window merely starting mid-life is not); truncated points (floors) never produce negative-then-positive phantom arrivals — deltas across a truncated boundary are discarded, **and identically across a BLIND boundary** (`cycle_complete = false`, V21: an unreachable engine makes a multi-engine class's total drop and recover, which is an outage, not 900 arrivals). The aggregate returns `observedSamples`/`trustedSamples` alongside the sum so "0 arrivals" and "no trustworthy sample" are distinguishable | 0 when the class has no in-window row; **neutral `F = 1` when it has rows but no trusted sample** |
+| `burst_W(c)` / `prior_W(c)` (F, §4.1a — amendment #365, build pending) | positive trusted-delta sums over `(asOf−W, asOf]` and `(asOf−2W, asOf−W]`, four FILTERED columns on the SAME `arrivalsSince` pass — identical trust discipline (truncation + blind boundaries discarded), identical F3 birth seeding (the birth delta lands in whichever bin holds its bucket, once), plus bin-scoped sample counts so a wholly-untrusted bin is distinguishable from a quiet one | gate off + shipped `F` when the bin is untrusted (`burstUnknown`) or empty; the amendment is inert outside flood conditions |
 | τ (R) | keep = quiet-window 24 h; re-estimate later from episode inter-arrival distribution | constant 24 h |
 | `medMTTR(c)` (M) | median closed-episode `ended_at − started_at`, per class with ≥ 3 closed episodes; fleet median otherwise | neutral 1 |
 | `p_heal(c)` (S) | **not estimated here** — consumed from #351 (§4.2) | neutral 1 |
@@ -455,11 +616,38 @@ expiry suggestion, derived resurface threshold) requires ALL of:
 | G2 | ≥ 6 distinct current-generation classes live concurrently at least once in trailing 28 d (ordering has room to matter) | max concurrent = 2 | **NO** |
 | G3 | #351 shipped; R2's own sufficiency rail passed for ≥ 25 % of live classes (S term) | not built | **NO** |
 | G4 | ≥ 10 completed ack lifecycles (ack → expiry/resurface/un-ack) recorded (C2/C3 calibration) | 0 acks ever | **NO** |
-| G5 | ≥ 56 d of current-generation ledger span (28 d fit + 28 d holdout) | 14.8 d | **NO** |
+| G5 | ≥ 56 d of **TRUSTED** current-generation ledger span (28 d fit + 28 d holdout; redefined #365 — see correction below) | recorded 14.8 d, but **trusted 0.12 d** (era began 2026-08-04T15:39 Z, §5.1 correction) | **NO** |
 
-**Gate status: NOT MET (0 of 5).** Earliest G5 satisfaction ≈ 2026-09-14; G1/G4 depend on
-operators actually resolving/acking — which the pilot's audit tail (no action in 8 days)
-shows is not yet routine. Until the gate: the score computes with neutral M/S (provably
+**Gate status: NOT MET (0 of 5).**
+
+**Correction (amendment round #365, 2026-08-04): G5's measured value and earliest-satisfaction
+date were WRONG — recorded span is not usable span.** The 14.8 d figure, and the "earliest G5
+satisfaction ≈ 2026-09-14" previously stated here (birth 2026-07-20 + 56 d), counted rows the
+§6 estimators are FORBIDDEN to fit on: 99.2 % of the current-generation series is blind
+(§5.1 correction), and a fit-plus-holdout over discarded deltas is a fit over nothing. G5 is
+therefore **redefined over the trusted span** — first `cycle_complete = true` row → present,
+i.e. the same rows the estimators actually consume. Measured trusted span at re-extraction:
+**0.12 d** (168 min). Recomputed earliest satisfaction: 2026-08-04T15:39 Z + 56 d ≈
+**2026-09-29** — 15 days later than the false figure. Two definitional notes: (i) a FUTURE
+blind interval does not reset the clock (the discipline discards deltas *across* it; trusted
+rows on both sides stay fittable) but it thins both the fit and holdout halves, so a long
+outage pushes the date out correspondingly; (ii) the same stale "≈ 2026-09-14" appears in
+`AttentionScoreService`'s javadoc — a code-comment correction owed to the #365 build slice,
+not this docs round.
+
+**The other four axes, audited for the same trust sensitivity (#365):** **G1** (closed
+episodes) and **G4** (ack lifecycles) count lifecycle events in the BFF's own store —
+resolves and acks are operator actions, not occurrence-delta arithmetic — so they are NOT
+trust-gated (both measured 0 regardless, and both still depend on operators actually
+resolving/acking, which the pilot's audit tail — no action in 8 days at first extraction —
+shows is not yet routine). **G2** (concurrent live classes) reads class PRESENCE, not
+deltas; a blind cycle can only UNDER-count it (an unreachable engine's classes drop out of
+the aggregation), never over-count — so a G2 pass on blind-heavy data is still a genuine
+pass, the conservative direction; measured max 2 either way, unaffected. **G3** is R2's own
+sufficiency rail, and R2 already gap-voids any spell whose observed shape contains a blind
+sample (its trust discipline is internal, RETRYING-RISK-LANE) — no redefinition needed,
+though the blind prefix is also part of why the pilot has almost no judgeable spells. Only
+G5 needed redefinition. Until the gate: the score computes with neutral M/S (provably
 identical to count-only, §5.5), ships **flag-off** (`inspector.triage.attention-ordering`,
 default false), and no constant changes value. The gate is re-measured with the §5 method
 (REST-only, reproducible) and its status recorded in the PR that flips the flag.
@@ -468,27 +656,277 @@ default false), and no constant changes value. The gate is re-measured with the 
 
 Plugs into the EXISTING usability harness (`usability-testing` skill, `usability-run`,
 `docs/usability/GOAL-CATALOG.md` format contract + `MISSIONS.md` tester briefs) — no
-parallel protocol.
+parallel protocol. **Authored by issue #366 (2026-08-04) as an executable plan — NOT YET
+RUN**; §8.8 records that honestly and must not be filled from anything but a real
+execution.
 
-- **New goal** (minted in the build slice, catalog format `PRIO / CLASS / BUILT / GOAL /
-  ENTRY / SUCCESS / FIXTURE`): CLASS `UI-STAGED`; GOAL — *"a 3am first-time on-call engineer
-  landing on `/` with several failure classes on screen must start working on the class that
-  is genuinely costliest — not merely the largest — and cite what told them so."*
-  SUCCESS — tester picks the planted costly class AND cites the rationale tooltip text
-  (citation-or-nothing scoring, per the catalog contract).
-- **Staged fixture**: ≥ 4 error classes where the planted costly class (long historic MTTR,
-  no self-heal, fresh) is NOT the largest by count; a large, R2-proven self-healing class
-  ranks it out under count-only. Staged over REST seeding + a pre-seeded ledger fixture
-  (closed-episode history is stageable in the BFF's own Postgres via the normal lifecycle
-  verbs — resolve with reasons — never engine-table inserts).
-- **Metric — time-to-first-relevant-card**: wall-clock from `/` render to the tester's first
-  drill into the planted class, derived from the playwright transcript timestamps the
-  harness already records.
-- **A/B protocol**: same mission, N ≥ 5 naive testers per arm, arm A = flag off
-  (count-only), arm B = flag on. **Ship gate for #354's pilot activation**: median
-  time-to-first-relevant-card improves ≥ 25 % in arm B, no regression on the existing M1
-  step-1 overview verdicts, and a stability check — the same fixture re-rendered across 3
-  refreshes keeps an identical order (the DMKD stability requirement applied to ordering).
+**Sequencing (hard precondition):** this run must not execute before issue #365 (a
+burst-term amendment to this same attention score, `A(c) = F·R·M·S`) lands. #365 is IN
+PROGRESS on another branch at authoring time. Running arm B against a since-superseded
+scoring formula would test an ordering the shipped flag never actually serves once #365
+merges — whoever schedules this run re-checks #365's status first, and re-derives the
+fixture in §8.2 if the formula's shape changed underneath it.
+
+**Correction (2026-08-04, same day as authoring): issue #359 landed on `main` as `85342e1`
+(PR #368) while this plan was being written.** §8.2/§8.6 below were originally written
+against the pre-#368 reality ("every seed process fails permanently, so `SELF_HEAL_LIKELY`/
+`SELF_HEAL_MIXED` are unreachable") — that was TRUE at first authoring and is now
+SUPERSEDED, not silently rewritten (§13's own correction convention): #368 shipped
+`docker/processes/demo-self-healing.bpmn20.xml` (+ its `-baseline` companion), an opt-in
+(`PI_SEED_SELF_HEALING=1`, never on `seed.sh`'s default path) transiently-failing fixture
+that makes all four self-heal lanes reachable end-to-end. §8.2/§8.6 are rewritten below to
+reflect this.
+
+**The honesty rail that survives the good news unchanged:** the fixture is opt-in
+specifically so it counts toward **neither** the R4 grouping-quality corpus **nor**
+RETRYING-RISK-LANE.md's own §7.2 production data-maturity gate (R2's counterpart to this
+doc's §7) — both gates read real engine/ledger history over REST and have no way to tell a
+harness fixture's spells apart from organic pilot ones, so keeping the seed off by default
+on any deployment that measures either gate (the demo/pilot) is what protects both gates'
+honesty. **Staging this fixture for the M13 A/B run does not move this doc's §7 gate, or
+RETRYING-RISK-LANE.md's §7.2 gate, one inch.** The run's verdict (§8.8) is USABILITY
+evidence — whether the ordering and the operator note work when the ordering IS live — never
+evidence that either gate's real-history thresholds are met. Do not let a green M13 run be
+read, cited, or summarized as gate evidence.
+
+### 8.1 Goals under test (catalog entry R-SEM-25, `docs/usability/GOAL-CATALOG.md`)
+
+Three arcs, one staged mission (`docs/usability/MISSIONS.md` M13, "Why is this one
+first?"), one shared fixture:
+
+- **/a — the direct benefit measurement** (the goal this section originally sketched,
+  now minted in catalog form): a 3am first-time on-call engineer landing on `/` with
+  several failure classes on screen must start working on the class that is genuinely
+  costliest — not merely the largest — and cite what told them so. Metric:
+  time-to-first-relevant-card (§8.5).
+- **/b — ordering-rule comprehension**: the same engineer must correctly restate, from the
+  `AttentionBadge` tooltip, that card position is not decided by raw count alone.
+- **/c — self-heal badge comprehension**: meeting a `SelfHealBadge`, the same engineer
+  must correctly restate that its fraction+time is a historic rate over past retrying
+  spells, not a live guarantee, and derive the right posture from the lane they actually
+  saw.
+
+/b and /c together are **the trained-response-strategy half** the Laberge et al. 2014
+finding (DOI 10.1016/j.ergon.2013.11.008, full text read for issue #366) says the display
+needs to ship WITH: the traditional list beat the redesigned display ALONE on orienting
+score (52.3% vs 45.0%, p = 0.04) and on response time; the redesign's benefit appeared only
+paired with a trained response strategy (n = 8 exploratory subsample, α = 0.10), and ~60%
+label comprehension is the level their data associates with that benefit disappearing.
+`docs/OPERATOR-QUICK-START.md`'s "Reading the attention ranking" note (added alongside
+this plan) IS that strategy; /b and /c measure whether it worked, at a **≥80%
+correct-restatement pass bar** — deliberately above Laberge's ~60% failure-associated
+level — citation-or-nothing scored per the catalog contract (an answer with no on-screen
+quote scores `unsupported` regardless of correctness).
+
+### 8.2 Fixture staging (concrete steps)
+
+1. Standard seed: `docker/seed.sh` (idempotent) — the baseline `demoFailingPayment` (large
+   volume) and `acmeApiOutage` (small) classes already exist per the standard corpus.
+2. Plant ≥2 additional current-generation classes so the fleet carries **≥4 distinct
+   classes live concurrently** (mirrors the §7 gate's own G2 shape, but this is a STAGED
+   test condition, not a claim the gate is met): deploy-and-fail one more ACME definition
+   and one more `demoFailingRetry`-style timer-backed failure under a fresh business-key
+   prefix (`uxrun-m13-*`, the same F-G10 sacrificial-tag convention every other mission
+   uses), started over REST per `docker/seed.sh`'s own idiom — never an `ACT_*` table
+   insert (CLAUDE.md iron rule).
+3. Pick ONE freshly-planted class as **the planted costly class**: small member count
+   (3-5 instances, so it is never the largest by raw count), started immediately before
+   the run — maximizes `R` (recency) and, per §4.1's F3 correction, its own birth counts
+   as its whole population's arrival, maximizing `F` too.
+4. Give the planted class a real, non-neutral **M (historic cost) factor**: open→resolve
+   it **three times** (`min-closed-episodes: 3`, `InspectorProperties`) via the ledger's
+   own human lifecycle verb (`POST /api/incidents/{id}/resolve`, reason ≥10 chars per
+   R-NFR-06), leaving each incident open for a genuinely longer wall-clock stretch than
+   the fleet's other classes before resolving (M is a real elapsed-time ratio — minutes,
+   not milliseconds) so its `medMTTR` clamps toward `mttr-clamp-high` (2.0) relative to
+   the fleet median. Re-seed the failure over REST between each resolve so a fresh episode
+   opens each time.
+5. **The canonical "large self-healing class demoted below a small costly one" story is
+   now stageable** (superseded — #359/PR #368 shipped the fixture that makes `S`
+   non-neutral; see §8's own correction note and §8.6). The concrete recipe, 6.8+ engines
+   only (`demoSelfHealing`'s boundary-timer construct is gated the same as the rest of the
+   6.8+ fixture set):
+   a. **Inflate the class's raw count** — the class that must OUTRANK the planted small
+      costly class under naive count-only ordering. Run `PI_SEED_SELF_HEALING=1
+      docker/seed.sh` (or POST additional `demoSelfHealingBaseline` instances directly,
+      same body seed.sh uses) repeatedly to accumulate a genuinely large standing
+      dead-letter count on the shared `selfHealGhost` signature.
+   b. **Commit its self-heal lane to `SELF_HEAL_LIKELY` at the REAL, unlowered production
+      floor** (`inspector.selfheal.floor`, default 10 — do not lower it for this run; a
+      lowered floor tests a threshold the shipped deployment never actually uses). Start
+      ≥10 ADDITIONAL `demoSelfHealing` instances one at a time, directly over REST (the
+      same body seed.sh uses: `{"processDefinitionKey":"demoSelfHealing","variables":
+      [{"name":"healDelay","type":"string","value":"PT20S"}]}`), STAGGERED so each
+      instance's own retrying→healed transition is a genuinely distinct, non-overlapping
+      spell in the class's fleet-wide occurrence series — `RetrySpellExtractor` reads the
+      AGGREGATE series for the signature, so two instances retrying concurrently collapse
+      into one spell, not two. Confirm the class's live `retryingCount` has returned to 0
+      (one full sampler cycle after the previous instance healed) before starting the
+      next. `SELF_HEAL_MIXED` stages the same way with a deliberate minority of instances
+      given a `healDelay` LONGER than the retry cascade's own exhaustion time, so they
+      dead-letter before healing — a genuine organic escalation, no operator retry, no
+      audit row.
+   c. **Budget real wall-clock — the timing reality #368's own fix commit measured, not
+      nominal-cycle arithmetic**: the async executor's timer-job acquire poll adds
+      **~9–10 s to EVERY retry** regardless of the nominal interval, so even a
+      short-looking cascade burns real minutes, and a single heal spell is realistically
+      **~20–30 s+ of wall-clock, not the ~3 s a naive nominal-cycle calculation would
+      suggest**. Add the sampler's own 60 s cadence between spells (§5.6) so the
+      occurrence series actually records the zero-bucket that closes one spell before the
+      next begins. Ten sequential, non-overlapping spells at the real floor is realistically
+      **~15–20+ minutes of dedicated pre-run staging** — schedule it BEFORE tester
+      dispatch, as its own staging pass, never live during the mission.
+   d. Verify before dispatch: `curl -su viewer:dev http://localhost:8085/api/incidents`
+      (or the matching `GET /api/triage` error-group entry) shows the `selfHealGhost`
+      class's `selfHeal.lane == "SELF_HEAL_LIKELY"` — don't dispatch the tester against a
+      lane the fixture only INTENDED to reach.
+6. Confirm at least one live `SelfHealBadge` exists for task /c. Any of the four lanes now
+   satisfies this (§8.6); the fixture in step 5 gives `SELF_HEAL_LIKELY` specifically —
+   the lane task /c's example copy illustrates — but `INSUFFICIENT_HISTORY` (default, no
+   staging needed) or `SELF_HEAL_UNLIKELY` (the `demoSelfHealingBaseline` cohort alone, no
+   opt-in fixture required) are legitimate, much cheaper fallbacks if the full step-5
+   staging budget isn't available for a given run — the verdict (§8.8) must record which
+   lane(s) were actually live either way.
+7. Validate staging BEFORE dispatching testers: `curl -su viewer:dev
+   http://localhost:8085/api/triage?refresh=true` against arm B's BFF and confirm the
+   planted class's `attention.score` ranks it above at least one larger class — if it
+   doesn't, adjust step 3/4 (more elapsed OPEN time, or a fresher start) and re-check
+   rather than dispatch a mission the fixture can't actually support.
+
+### 8.3 Dev-ladder user & entry point
+
+`viewer` — VIEWER floor covers every M13 task (read-only comprehension probe, no
+mutation). Sign-in and navigation exactly per the standard tester protocol
+(`.claude/workflows/usability-run.js` `testerPrompt`/`PROTOCOL`): the tester enters at
+`/`, never at a destination tab.
+
+### 8.4 Per-arm flag mechanics
+
+The flag is a Spring Boot property (`inspector.triage.attention-ordering`,
+`InspectorProperties`), not a runtime toggle — flipping it means starting the arm's BFF
+process with a different environment override:
+
+- **Arm A (control, flag off)**: `cd backend && ENGINE_A_PASSWORD=test
+  ENGINE_B_PASSWORD=test ENGINE_7_PASSWORD=test mvn spring-boot:run`
+  (`docs/usability/RUNBOOK.md` prerequisite #2, unchanged — `attention-ordering` already
+  defaults false).
+- **Arm B (flag on)**: the same command with `INSPECTOR_TRIAGE_ATTENTION_ORDERING=true`
+  exported first (Spring relaxed binding onto `inspector.triage.attention-ordering`).
+  Confirm it took before staging: `curl -su viewer:dev
+  http://localhost:8085/api/triage | grep -o '"attention"'` must return a hit.
+- The two arms run against **separate BFF process lifetimes** — sequential restarts on the
+  same dev stack are fine, concurrent is not: M13 is config-staged/exclusive (§ RUN
+  PROTOCOL note in `GOAL-CATALOG.md`), and flipping the flag mid-run would silently
+  re-order every OTHER mission sharing that BFF.
+
+### 8.5 Metric derivation — time-to-first-relevant-card
+
+`TESTER_SCHEMA` and `testerPrompt()` in `.claude/workflows/usability-run.js` carry the
+wiring: `tasks[].timings` (optional, absent for every mission but M13 — the standard
+12-mission run's schema validation is unaffected) and an `M13_TIMING_INSTRUCTION` block
+appended to the tester protocol only when `mission === 'M13'`:
+
+- Tester instruction: immediately after `browser_navigate('/')` succeeds, call
+  `browser_evaluate(() => new Date().toISOString())` and record the result as
+  `landingIso`; immediately after the first successful navigation into the planted
+  class's detail page (task 1's drill), call it again and record `firstDrillIso`. Both
+  ride on M13 task 1's own result as `timings: {landingIso, firstDrillIso}`.
+- `time-to-first-relevant-card = firstDrillIso − landingIso`, computed by the evaluator
+  (reconciler agent) per tester, per arm.
+- This is wall-clock as the AGENT experienced it (its own "thinking" time included) — an
+  honest proxy for "how many dead-end interactions before landing on the right one," not a
+  claim about human-operator seconds. Report it alongside `interactions` (already
+  tracked) and treat a step-count regression the same way nightly stats already do
+  (GOAL-CATALOG.md RUN PROTOCOL "Nightly statistics": "a 4-step task becoming 9 steps is a
+  regression even while green").
+
+### 8.6 Self-heal lane reachability — how to stage each lane (superseded #359 note below)
+
+**Superseded, kept for provenance (repo correction convention, §13 / RETRYING-RISK-LANE.md
+§10 precedent):** this section originally read "`SELF_HEAL_LIKELY`/`SELF_HEAL_MIXED` are
+NOT reachable in fixtures until issue #359 lands" — TRUE when first authored (2026-08-04,
+before #368 merged), FALSE now. Issue #359 landed the same day as `85342e1`/PR #368. All
+four lanes are reachable today; the table below is now "how to stage each," not "what's
+blocked."
+
+| Lane | Reachable today? | How |
+|---|---|---|
+| `INSUFFICIENT_HISTORY` | **yes, no staging** | default state; needs no completed spells at all |
+| `SELF_HEAL_UNLIKELY` | **yes, no opt-in fixture needed** | every STANDARD seeded process fails PERMANENTLY by construction — spells complete, none heal |
+| `SELF_HEAL_MIXED` | **yes, opt-in fixture** | `PI_SEED_SELF_HEALING=1` (§8.2 step 5) with a mix of healed and organically-escalated `demoSelfHealing` instances (short vs. long `healDelay`) |
+| `SELF_HEAL_LIKELY` | **yes, opt-in fixture** | `PI_SEED_SELF_HEALING=1`, ≥10 healed spells at the real production floor (§8.2 step 5) — `SelfHealLikelyLaneIT` proves this exact lane reachable end-to-end against real engine state |
+
+**Mechanism (issue #359, PR #368, `85342e1`):** `docker/processes/demo-self-healing.bpmn20.xml`
+is CLOCK-driven — a non-interrupting boundary timer sets `healed=true` in its own,
+always-committing transaction (a variable set inside the failing attempt's own transaction
+rolls back with it, so a counter incremented across a job's own retries cannot survive —
+proven live against flowable-rest 6.8). Its `-baseline` companion shares the same
+`selfHealGhost` error signature but fails fast and PERMANENTLY, keeping the class
+observable between spells (the ledger skips a zero-total group entirely). **Opt-in only**
+— `PI_SEED_SELF_HEALING=1` in `docker/seed.sh`, never on the default path — and, by
+design, this run's staging must never be mistaken for moving either data-maturity gate
+(§8's own correction note above; §8.2 step 5's own reminder). Gated 6.8+ (the
+boundary-timer construct).
+
+Task /c's example copy (RETRYING-RISK-LANE.md §4.1's worked example, "usually self-heals
+(12/14, typically ≤ 8 min)") illustrates `SELF_HEAL_LIKELY` specifically — that lane, and
+the copy it illustrates, are now stageable and should be the target for arm B whenever the
+§8.2 step 5 staging budget (~15–20+ minutes) is available; `INSUFFICIENT_HISTORY`/
+`SELF_HEAL_UNLIKELY` remain legitimate, cheaper fallbacks (§8.2 step 6). The verdict
+(§8.8) MUST state which lane(s) were actually met that run, never silently claim full
+coverage regardless of which lane was reached.
+
+### 8.7 Pass/fail arithmetic (as the executor applies it)
+
+1. **Comprehension gate** (/b + /c combined, arm B only): count correct, citation-grounded
+   restatements ÷ total /b+/c tasks attempted across all N ≥ 5 testers. **Pass iff ≥80%.**
+   An uncited answer scores `unsupported`, counted as NOT correct (citation-or-nothing),
+   regardless of semantic correctness. Arm A's /b+/c tasks are expected to answer
+   `blocked-by-environment` (the badge/tooltip render nothing, flag off) — recorded as the
+   control observation, excluded from the comprehension denominator, never scored as
+   failures.
+2. **Benefit gate** (/a, arm A vs arm B): median `time-to-first-relevant-card`(arm B) vs
+   median `time-to-first-relevant-card`(arm A) over N ≥ 5 testers per arm. **"Arm B ≥
+   arm A" means arm B's median is NOT SLOWER than arm A's** (lower elapsed time is
+   better). The existing ship-gate bar for a CLEAR recommend stays: arm B improving by
+   **≥25%**, no regression on the existing M1 step-1 overview verdicts, and a stability
+   check — the same fixture re-rendered across 3 refreshes keeps an identical order (the
+   DMKD stability requirement applied to ordering).
+3. **Decision rule (verbatim, as specified for this run): flag-on is recommended only on
+   (comprehension pass) AND (arm B ≥ arm A); a worse arm B is a real possible outcome per
+   Laberge — it must be recorded honestly if it happens.** Meeting the ≥25% bar
+   strengthens a "recommend" verdict but is not itself the gate; failing "arm B ≥ arm A" —
+   even by a small margin — fails the gate outright, comprehension notwithstanding. This
+   doc's own §5.5 already recorded one null result honestly on the pilot data; a negative
+   §8 result gets the identical treatment, not a quiet rerun until it looks better.
+4. Neither gate substitutes for §7's own numeric data-maturity gate. This run measures the
+   USABILITY of the ordering when it IS live; it does not re-measure whether the pilot's
+   ledger has matured enough to flip the flag in production. **Both must pass before
+   activation.**
+5. **This arithmetic is unchanged by §8.2 step 5/§8.6 now being able to stage a
+   non-neutral `S`.** Gates 1-4 above are stated purely in terms of the OBSERVED metrics
+   (comprehension pass rate, median time-to-first-relevant-card) — nothing in them assumes
+   which of `F`/`R`/`M`/`S` is doing the discriminating work in a given fixture. A
+   `SELF_HEAL_LIKELY`-staged run (§8.2 step 5) makes /a's benefit measurement MORE
+   representative of the design's own headline claim (a large, count-dominant class
+   genuinely demoted because it self-heals) than an `F`/`R`/`M`-only fixture would, but it
+   changes nothing about how gates 1-3 are computed or the decision rule in point 3 — the
+   arithmetic holds identically either way. It also does not change gate 4's boundary: a
+   staged `S`-driven fixture is still usability evidence, never §7/§7.2 gate evidence
+   (§8's own correction note).
+
+### 8.8 Verdict — NOT YET RUN
+
+| Arm | N testers | Median time-to-first-relevant-card | Comprehension pass rate (/b+/c) | Stability check | Verdict |
+|---|---|---|---|---|---|
+| A (flag off, control) | — | — | n/a (badge absent) | — | **NOT YET RUN** |
+| B (flag on) | — | — | — | — | **NOT YET RUN** |
+
+**Decision (per §8.7's rule): NOT YET RUN — no recommendation until this table is filled
+from a real execution.** Self-heal lanes actually exercised: **NOT YET RUN**. Do not
+populate this table from anything other than a real `usability-run` execution against a
+live dev stack; a fabricated or extrapolated verdict here is exactly the failure mode this
+doc's own §5/§13 correction history exists to prevent.
 
 ## 9. Doctrine compliance & non-goals
 
@@ -501,6 +939,24 @@ parallel protocol.
 - **Ordering only, never hides**: no card is filtered, no section membership changes.
 - **#106 stays untouched** (issue non-goal): this track orders and expires attention only;
   it prescribes no interventions and changes nothing about remediation playbooks.
+- **Episode-shape matching (scoped, parked — do not port this algorithm)**: if the incident
+  ledger ever grows a "this spike looks like the 07-14 payment-gateway outage" feature, it is
+  **not** a Smith-Waterman/sequence-alignment problem. The two flood-matching papers score
+  alarm-*type* identity across thousands of distinct tags (Lai, Yang, Chen, *Online pattern
+  matching and prediction of incoming alarm floods*, J. Process Control 56, 2017,
+  [10.1016/j.jprocont.2017.01.003](https://doi.org/10.1016/j.jprocont.2017.01.003); Parvez,
+  Hu, Chen, *Real-time pattern matching and ranking for early prediction of industrial alarm
+  floods*, Control Engineering Practice, 2022,
+  [10.1016/j.conengprac.2021.105004](https://doi.org/10.1016/j.conengprac.2021.105004)) —
+  that mechanism **degenerates on a single error class's count curve**; the actual problem is
+  DTW/cross-correlation over a count series, not sequence alignment. What *would* transfer if
+  this is ever built: Gaussian time-weighting, incremental append-only computation, staged
+  candidate pruning, and FDR/MDR < 5 % as the quality bar (Lai 2017). Follow-on refs the
+  literature review flags as central, not yet held in this repo: Alinezhad, Roohi & Chen, *A
+  review of alarm root cause analysis*, Chemical Engineering Research & Design, 2022 (DOI
+  unresolved at time of writing — not cited here rather than guessed); Zhou, *Advanced
+  Methods for Alarm Monitoring and Alarm Flood Analysis*, University of Alberta thesis, 2021
+  (open access, no DOI).
 - **No notification channels** (none exist; out of scope).
 - **Truncation honesty (R-SEM-12)**: estimators treat truncated rows as floors; a card
   whose score inputs were truncated carries the same badge doctrine as its counts.
@@ -600,6 +1056,9 @@ whole surface is inert.
 - **Deferred, NOT built in this slice:** the §8 usability goal/fixture/A-B protocol (that is
   #354's surface plus a `usability-run`), and any re-measurement of §7 — the gate status
   recorded above stands until the PR that flips the flag re-measures it with the §5 method.
+  **§8 is now fully AUTHORED (issue #366) but still NOT EXECUTED** — the plan, fixture
+  recipe, comprehension probe (catalog R-SEM-25, mission M13), and pass/fail arithmetic are
+  specified; §8.8's verdict table stays NOT YET RUN until a real A/B execution fills it.
 
 ## 12. Build-slice record — #354 frontend (★ SHIPPED)
 
@@ -652,7 +1111,8 @@ base was reconciled deliberately.
   already carried these types).
 - **Deferred, NOT built in this slice:** the §8 usability goal/fixture/A-B protocol and any
   re-measurement of §7 remain open (unchanged from §11's own deferral) — #354 is the ordering +
-  tooltip UI only, not the usability-harness proof of benefit.
+  tooltip UI only, not the usability-harness proof of benefit. **§8 is now fully AUTHORED
+  (issue #366)** — see §11's own note; still not executed.
 
 ## 13. Correction round — adversarial review of the shipped #353/#354 code (★ LANDED)
 
@@ -676,3 +1136,273 @@ with `inspector.triage.attention-ordering` OFF is unchanged and still provably i
 `cycle_complete`); no new engine call anywhere; no card hidden (R-BAU-01 ordering-only holds);
 `inspector.triage.attention-ordering` still defaults false and `AttentionOrderingNeutralityTest`
 still proves the flag-off path returns the very same object with zero queries.
+
+## 14. Amendment round — burst-aware frequency (#365, 2026-08-04, DESIGN)
+
+Formula and invariants in §4.1a; this section is the auditable record: provenance, the
+required measurement (§5's method re-run), the synthetic hypothesis proofs, the build-slice
+specification, and the panel. **Design only — no production code changes in this round.** The
+measurement script is `scripts/replay-burst-attention.py` (REST-only, VIEWER, `--cache`
+preserves the exact response bytes a quoted number derives from).
+
+### 14.1 Provenance
+Issue #365, minted from the full-text calibration digest (#356 comment 5182803157). Literature
+in §0 (amendment paragraph): Beebe et al. 2013 (10.1002/prs.11539) for peaks-not-averages;
+ISA-18.2 for the 10-minute flood window and the asymmetric onset-10/end-5 thresholds the
+defaults adopt verbatim; EEMUA 191 for the same ceilings as benchmarks. Evidence grades stated
+in §0 — the Beebe paper is practitioner-grade (4 uncontrolled sites) and is cited for framing
+and consensus ceilings, not causal proof.
+
+### 14.2 Sampler cadence & coverage (MEASURED 2026-08-04 ≈ 18:27–20:40 Z, §5 method)
+REST-only against `https://pi.naumann.cloud` as dev-ladder `viewer` (HTTP Basic, no DB
+access): `GET /api/incidents`, `GET /api/incidents/{4,5}?window=720`, `GET /api/triage`.
+Current-generation series: **21,909 points per class over 21,949 min** (99.81 % bucket
+coverage — §5.1's 99.8 % re-verified, not copied). Spacing mode **60 s** (21,869 of 21,908
+intervals); **39 gaps > 60 s, max 4.0 min, 80 min total**; **zero truncated rows**.
+
+**New measured fact the §5 round did not surface: 21,741 of 21,909 rows (99.2 %) are BLIND
+(`cycle_complete = false`).** Every row before **2026-08-04T15:39 Z** is blind; there is
+exactly ONE transition in the whole series (`false → true` at that instant, re-verified on a
+later extraction: 21,741 / 21,990 blind, 249 trusted rows, no flap back). Before it, a
+registered engine that did not come back `ok()` made every cycle incomplete, and the V21
+fail-closed backfill marks all pre-V21 rows blind by design. The trusted era was
+**168 minutes old at first extraction**.
+
+**Correction (2026-08-04, same round — the CAUSE first recorded here was wrong).** This note
+originally read "complete cycles begin exactly when the declared `engine-7` slot got a real
+engine (commit 015c9e1)". That is **not** what happened, and the contradicting evidence was
+available over the same REST surface: `GET /api/engines` reports `engine-7` as
+`lifecycle: "disabled"`, `reachable: false`, `healthError: "not probed yet"` — still, *after*
+the trusted era began — and `GET /api/triage`'s `perEngine` envelope contains only `engine-a`
+and `engine-b`. `PollingSnapshotSource` computes `cycleComplete` by iterating exactly that
+envelope, so the era turned trusted when `engine-7` **left the aggregation scope** (disabled
+in the registry), not when it became reachable. Note also that #369 ("allowlist in-network
+engine hosts so `engine-7` is actually reachable") had merged by this re-check and `engine-7`
+is *still* disabled and unprobed on the demo — so it is not the cause either.
+
+**What this changes, and what it does not.** The measured boundary is unchanged, so §7's G5
+redefinition over TRUSTED span and its ≈ 2026-09-29 date stand exactly as stated — they rest
+on the transition instant, not on its cause. What it does change is the *meaning* of the
+trusted era: those 249 rows are trusted about a **two-engine fleet**. A cycle is "complete"
+when every engine still IN scope answered, so disabling an unreachable engine converts blind
+cycles into trusted ones without any observability actually being recovered. That is arguably
+correct (a disabled engine is not part of the fleet) but it is a sharp edge worth naming:
+**the trusted-span clock can be restarted by a registry edit.** If `engine-7` is re-enabled
+and carries load, rows spanning that change are not differenceable against these, and the
+G5 clock should be re-measured rather than assumed to have run continuously.
+
+This is still the trust discipline working as specified (#302), and the honest headline of
+the feasibility note is unchanged: **on this pilot the binding constraint on burst measurement
+is the trust discipline, not the cadence.**
+
+### 14.3 Data-feasibility note — the finest honest burst window (MEASURED)
+Bin honesty measured on the full minute grid (a bin is evaluated at model-build time, which
+lands anywhere — sample-anchored positions structurally cannot be empty and were not used):
+
+| W | empty bins (whole grid) | untrusted bins (whole series) | untrusted bins (trusted era) |
+|---|---|---|---|
+| 2 min | 0.009 % | 99.23 % | 0.000 % |
+| 5 min | 0.000 % | 99.24 % | 0.000 % |
+| 10 min | 0.000 % | 99.24 % | 0.000 % |
+| 15 min | 0.000 % | 99.24 % | 0.000 % |
+
+The whole-series untrusted fraction is the blind-prefix artifact above, not a cadence
+property — inside the trusted era every candidate window is 0.000 % untrusted. **The finest
+honest burst window this sampler supports is 5 minutes**: the max recorded gap is 4.0 min, so
+a 5-min bin always contains ≥ 1 sample, while 2-min bins measurably go empty (0.009 % of grid
+instants) and a 1–2-sample bin cannot distinguish "quiet" from "blind" robustly. **The
+default W is 10 minutes anyway** — it is ISA-18.2's own flood window, it guarantees ≥ 6
+samples across the worst recorded gap, and the gap-attribution slop (a delta spanning a gap
+banks up to 4 min of arrivals into one bucket, shifting them across a bin edge by at most
+that much) stays well under the window. Sub-hour resolution is comfortably supported;
+sub-5-minute is not honest on the measured cadence.
+
+### 14.4 Replay & synthetic proofs (MEASURED — the required simulation)
+**Pilot replay** (proposed burst-aware `A(c)` vs shipped `A(c)` vs count-only, every recorded
+bucket, R = M = S = 1 exactly as §5.5 measured them): **21,909 / 21,909 buckets identical —
+Kendall τ = 1.0000, 0 top-N position changes, 0 flood-gate activations.** During the blind
+prefix both classes read `arrivalsUnknown` ⇒ `F = 1` (a tie), and ties fall to the count-only
+tie-break; in the trusted era arrivals are genuinely 0. **A NULL RESULT, as expected and as
+§5.5 already found for the base score**: 2 near-static classes give ordering no room to move.
+No benefit claim is made from the pilot. A **birth-trusted counterfactual** (the one
+untrusted-birth bucket treated as trusted) exercises the gate on real data: incident 4's
+birth (22 ≥ onset) holds the gate for exactly the 10 in-window buckets, incident 5 (8 <
+onset) never fires, and the ordering STILL changes at 0 buckets — the gate moves scores, not
+this pilot's order.
+
+**Synthetic scenarios** (the hypothesis proof the pilot cannot supply; script §4, exact
+numbers):
+
+| Scenario | Shipped F | Proposed F | Verdict |
+|---|---|---|---|
+| (a) trickle: 100 arrivals / 28 d | 6.66 | 6.66 (gate off) | indistinguishable pair… |
+| (a) flood: same 100, all in last 10 min | 6.66 | **9.65** (gate on) | …now ranks the flood first — the #365 gap, closed |
+| (a) sub-onset: 9 in W | 6.66 | 6.66 (gate off) | byte-identical below the ISA onset |
+| (a) hysteresis: 7 in W, prior 12 / 4 in W, prior 12 | — | gate **on** / gate **off** | ISA asymmetric onset 10 / exit 5 |
+| (a) back-door probe: 6 in W + 6 prior | 6.66 | 6.66 (gate off) | 12/20 min is not a 10-min flood — hold leg needs a genuine onset |
+| (b) birth flood: 0 → 5000 in one bucket | 12.29 | **15.29** = log2(1 + 8·5000) | counted ONCE at weight γ (partition) — F3, no double-banking; the rejected multiplier shape would have re-banked it |
+| (c) wholly-untrusted 28 d window | 1 (`arrivalsUnknown`) | 1 (`arrivalsUnknown`, gate off) | F2 verbatim — neutral, never a fake zero |
+| (c) burst-bin-only untrusted | 5.67 | 5.67 (`burstUnknown`, gate off) | an unknown bin suppresses a promotion, never demotes |
+| (d) empty-history corpus | all 0.0 | all 0.0 | order == count-only exactly (§5.5 guarantee) |
+
+### 14.5 Build-slice specification (the contract for the #365 build agent)
+No re-derivation should be needed; deviations get named here per the §11/§12 precedent.
+
+- **Aggregate** — extend `IncidentOccurrenceRepository.arrivalsSince` (same single pass, new
+  params `:burstSince = asOf−W`, `:priorBurstSince = asOf−2W`, half-open bins `(from, to]`):
+  four new columns `burst_arrivals`, `prior_burst_arrivals` (both
+  `COALESCE(SUM(GREATEST(d.delta, 0)) FILTER (WHERE d.trusted AND <bin predicate>), 0)`) and
+  `burst_observed_samples`, `burst_trusted_samples` (`COUNT(*) FILTER` over differenceable
+  rows in the current bin; the prior bin needs no honesty counts — it only feeds the gate,
+  and an untrusted prior can only fail to hold a promotion). The inner projection additionally
+  exposes `o.sampled_at`. Invariant: `burst_arrivals ≤ arrivals` (same filters, narrower
+  time) — assert it in the IT.
+- **`ClassHistory`** — add `burstArrivals`, `priorBurstArrivals`, `burstUnknown`
+  (`burst_observed > 0 AND burst_trusted = 0`), `discardedBurstSamples`.
+- **Config** — `InspectorProperties.Attention` + `AttentionConfig`: `burst-window` (PT10M),
+  `burst-onset` (10), `burst-exit` (5), `burst-weight` (8.0), with `OrDefault` accessors like
+  every sibling knob. Two validation rails at binding: `burst-exit ≤ burst-onset` (an exit
+  above onset inverts the Schmitt semantics — refuse, don't reinterpret), and a startup
+  WARN when `burst-window ≤ model-ttl` (the §4.1a dwell argument assumes W > TTL; a smaller
+  W is legal but loses the a-flood-survives-one-rebuild property).
+- **Calculator** — `AttentionScoreCalculator.frequency(...)` grows the gate + decomposition
+  exactly as §4.1a; pure/static, no new dependencies.
+- **Wire** — `AttentionFactors` + `flooding` (boolean), `burstArrivals` (long),
+  `burstWindowSeconds` (long), `burstUnknown` (boolean), `discardedBurstSamples` (long);
+  `npm run gen:api` re-run and the diff committed.
+- **Rationale** — `AttentionRationale`: flooding ⇒ `spiking: {burstArrivals} in the last
+  {W as minutes} min`; `burstUnknown` ⇒ `recent arrival rate unknown`.
+- **Test rungs** (the same rungs as the F2/F3 correction round): `LedgerNativeQueriesIT` —
+  bin split inside/outside W; birth row inside W counts once in BOTH `arrivals` and
+  `burst_arrivals` (containment, exact values); wholly-untrusted bin ⇒ `burst_trusted_samples
+  = 0` with `burst_observed_samples > 0`; prior-bin column; mid-life window start still
+  discards its first row. Pure-static `AttentionScoreCalculatorTest` — flood-vs-trickle
+  ordering; sub-onset byte-identity with the shipped formula; Schmitt entry/hold/exit + the
+  back-door probe; `burstUnknown` forces gate off and never lowers F; whole-window unknown
+  still reads 1; `AttentionOrderingNeutralityTest` extended for the new factor fields, its
+  empty-ledger count-only assertions unchanged.
+- **Spec-sync** — this amendment is design-only and owes no doc delta beyond this file;
+  the build slice owes: SPECIFICATION §4 (attention-score sentence gains the burst clause),
+  the ARCHITECTURE §4 `GET /api/triage` row (factor list + burst-gate summary), and the
+  IMPLEMENTATION-PLAN research-track record — per that slice's DoD, the §9 posture.
+
+### 14.6 Panel review (repo convention — two independent seats, honest ledger)
+
+| Seat | Model | Verdict | Findings & disposition |
+|---|---|---|---|
+| Architecture/data | Gemini `gemini-2.5-flash` (2026-08-04; `gemini-2.5-pro` quota-blocked 429 — the §10 tier-fallback precedent) | **APPROVE** | Reviewed the full §4.1a + §14 text against the five invariants, the Schmitt edge cases, the SQL shape and the wire fields. Explicitly cleared: no double-counting path (partition), no demote/fake-zero path (gate is promote-only; unknown bin suppresses promotion only), neutrality intact, back-door-entry probe correct, W/onset/exit justified by ISA-18.2 + the feasibility measurement, filtered-column SQL shape standard and low-risk. **One MINOR (adopted)**: γ = 8 had no stated rationale — §4.1a now derives it from the bounded-inflation ceiling (≈ 1.87×, matched to the M clamp's 2× order) and flags it un-fittable until real floods exist. |
+| Product/ops | GitHub Models (`copilot` MCP) | **SEAT UNAVAILABLE** | The endpoint is permanently gone (HTTP 410, GitHub Models catalog sunset — verified 2026-08-04, not quota). Per the standing rule the seat was NOT filled by an unauthorized substitute and nobody self-graded in its place. **The second seat is owed** before or at the design-lock PR, same as §10. |
+
+Exact review exchange preserved in the amendment session transcript. Author's own adversarial
+pass (recorded because it changed the design before review): the first draft's gate hold leg
+read `burst_W + prior_W ≥ onset`, which admits a back-door ENTRY (6+6 across 20 min gates as
+a flood that never had an ISA onset) — corrected to `prior_W ≥ onset` alone and pinned by the
+scenario-(a) back-door probe in §14.4. Two post-review validation rails (exit ≤ onset,
+W-vs-TTL WARN) were added to §14.5 on the author's judgment, not panel findings.
+
+## 15. Build-slice record — #365 burst-aware frequency (★ BUILT)
+
+What landed against the §14.5 contract, what the failing-before runs actually printed, and the
+two places the build deviated from or sharpened the spec. **Nothing here changes any default
+behavior**: `inspector.triage.attention-ordering` still ships false, and below the ISA onset `F`
+is byte-identical to the shipped formula, so even with the flag ON the amendment is inert
+outside flood conditions.
+
+### 15.1 Failing-before proof (the §13 convention — a wrong value, not "it did not compile")
+
+| Rung | Test | What the BASE produced |
+|---|---|---|
+| Pure static | flood-100 must read `log2(1 + 8·100) = 9.6457` | `AttentionScoreCalculator.frequency(100, false)` returned **6.6582114827517955** — the trickle value. The base cannot distinguish the two shapes at all (the trickle control passed at the same number, which is the point) |
+| Pure static | birth-5000 inside W must read `log2(1 + 8·5000) = 15.2877` | returned **12.288000889707574** |
+| Rung 4 (real Postgres) | the bin-split fixture (5 arrivals at 09:00, +10 at 09:10, +3 at 09:25, +10 at 09:35, +12 at 09:40; `asOf` 09:40, W = 10 min) must return 8 columns with `burst_arrivals = 22`, `prior_burst_arrivals = 3` | the shipped SQL returned the 4-column row **`[1, 40, 5, 5]`** — 40 arrivals over 40 minutes, with no column in which the 22 that landed in the last ten could ever appear |
+
+Everything else in the new suites is a guard, and each was written to fail on the base by
+construction (the burst columns and `AttentionFactors` fields did not exist).
+
+### 15.2 What landed
+
+- **Aggregate** — `IncidentOccurrenceRepository.arrivalsSince(since, burstSince, priorBurstSince)`:
+  the SAME single native pass, four more `FILTER`ed columns, `o.sampled_at` exposed on the inner
+  projection. **No Flyway migration** (the bins are computed, not stored) and **zero new engine
+  calls** — the Stage 0 count-only/`size=1` + dedicated-DLQ-scan rule is untouched. One statement
+  before, one statement after; the bins are anchored on the model-build instant, asserted by
+  `AttentionScoreServiceTest.theBurstBinsAreAnchoredOnTheModelBuildInstantOneWindowAndTwoWindowsBack`
+  (one captured call, three anchors).
+- **No double-banking, arithmetically rather than by convention.** `burst_arrivals` is not a
+  second measurement: it is the IDENTICAL aggregate expression over the IDENTICAL row set with
+  one extra time predicate, so it is a strict SUBSET of `arrivals` and `arrivals = outside_W +
+  burst_W` is a partition by construction. The calculator then derives `outside` by SUBTRACTION
+  (`long outside = arrivals - burst`) and weighs each half once — there is no code path in which
+  a delta can be added twice, and the containment invariant `burst_arrivals ≤ arrivals` is
+  asserted on EVERY fixture in `LedgerNativeQueriesIT` (the assertion lives in the shared helper,
+  so a future fixture inherits it). The bins are half-open `(from, to]`, pinned by
+  `theBinsAreHalfOpenSoASampleExactlyOnAnEdgeBelongsToTheOLDERBin`: an edge sample falls out of
+  the newer bin and into the older one, so no delta is ever claimed twice at a seam.
+- **`ClassHistory`** — `burstArrivals`, `priorBurstArrivals`, `burstUnknown`,
+  `discardedBurstSamples`, with the pre-#365 5-arg constructor retained (no call-site churn).
+- **Calculator** — `frequency(ClassHistory, AttentionConfig)` + a separate pure
+  `flooding(ClassHistory, AttentionConfig)`. The non-flooding branch returns the shipped
+  expression itself, not a re-derivation of it.
+- **Config** — `burst-window` PT10M, `burst-onset` 10, `burst-exit` 5, `burst-weight` 8.0 with
+  `OrDefault` accessors; `burst-exit ≤ burst-onset` refused at binding (`@AssertTrue`, proven in
+  `InspectorPropertiesValidationTest`), `burst-window ≤ model-ttl` logs a startup WARN.
+- **Wire** — `AttentionFactors` + `flooding`/`burstArrivals`/`burstWindowSeconds`/`burstUnknown`/
+  `discardedBurstSamples`; `npm run gen:api` re-run against the running BFF and the 8-line
+  `schema.d.ts` diff committed. No frontend component needed changing: the tooltip renders the
+  SERVER's rationale verbatim (§12) rather than recomposing it from `factors`.
+- **Rationale** — the flooding clause is `spiking: 40 in the last 10 min` (absolute count +
+  window, per #365's "beats a bare ratio"); the unknown-bin clause is `recent arrival rate
+  unknown`.
+
+### 15.3 Byte-identity below the onset, and how it is proven
+
+`AttentionScoreCalculatorTest.belowTheOnsetTheAmendmentIsByteIdenticalToTheShippedFormula`
+sweeps 12 arrival volumes × every sub-onset burst (0–9) × every sub-onset prior (0–9) and
+compares `Double.doubleToRawLongBits` against a test-local re-implementation of the SHIPPED
+formula — bit patterns, not `isCloseTo`, and against a fixture that reads no production code, so
+the claim is about the amendment rather than a tautology. `AttentionOrderingNeutralityTest` keeps
+its empty-ledger count-only assertions unchanged and gains
+`aSubOnsetBurstReordersNOTHINGBecauseTheAmendmentIsInertBelowTheISAFloodThreshold` (200
+randomised corpora scored twice — with and without sub-onset burst evidence — landing in the
+identical order), plus assertions that an empty ledger reports `flooding=false` /
+`burstUnknown=false` rather than an unknown bin. The flag-off proofs (same object, zero queries,
+byte-identical serialization) are untouched and still pass.
+
+### 15.4 Deviations from §14.5, named
+
+1. **`AttentionRationale.sentence` now takes the `AttentionFactors` block** instead of a growing
+   parameter list (it would have reached nine primitives). The sentence is therefore composed
+   from the EXACT numbers that produced the score rather than from a second derivation that could
+   drift from them. Test call sites moved to a test-local factory, per the unit-test-patterns
+   "no constructor churn" remedy.
+2. **`burstUnknown`'s clause is suppressed when `arrivalsUnknown` is also set.** §14.5 specifies
+   both clauses but not their interaction; a wholly-unknown 28-day window already implies the
+   last ten minutes are unknown, and §4.3's hard requirement is ONE glanceable sentence. It says
+   it once, at the widest scope actually measured. Pinned by
+   `anUnknownBurstBinSaysUnknownRatherThanQuietAndNeverBothWithTheWiderWindowsClause`.
+3. **Two arithmetic backstops §14.5 did not ask for.** The calculator clamps
+   `burst = min(max(0, burstArrivals), arrivals)` and the gate refuses to fire when
+   `arrivalsUnknown` — both are unreachable through the SQL (the bin is a subset of the window by
+   construction), and both are guards on the ONE thing that must never happen: a negative
+   `outside` term would be double-banking with the sign flipped, and an unknown window must never
+   host a knowable flood. Tested as explicitly-degenerate inputs, labelled as backstops.
+4. **§4.1a's inflation ceiling 1.867 is a BOUND, not an attained value** — measured while
+   writing the test: the tightest real case (a flood sitting exactly on the onset with nothing
+   outside W) inflates `F` by **1.833×**, and the ratio falls as volume grows (1.449× at
+   flood-100). The doc's figure drops the `+1` inside both logarithms, so it over-states the true
+   supremum slightly and remains a correct upper bound. The test now asserts the ceiling FORMULA,
+   the attained maximum, and their ordering; a companion test proves the unconditional form
+   (`F` grows by at most `log2(γ) = 3` bits) over a swept corpus including degenerate bins.
+
+### 15.5 Same-slice correction, not part of the amendment
+
+The stale "earliest G5 satisfaction ≈ 2026-09-14" was duplicated in two files the §5/§7 docs
+round could not touch — `AttentionScoreService`'s class javadoc and the
+`inspector.triage.attention-ordering` comment block in `application.yml`. Both now read
+**≈ 2026-09-29** and say **TRUSTED** span, matching §7's correction (G5 counts trusted span; the
+pilot's history was 99 % blind until 2026-08-04T15:39 Z — see §14.2's correction for why the
+cause is *not* the engine-7 slot getting a real engine). A repo-wide sweep found no third
+occurrence. The neighbouring "21,229
+recorded pilot buckets" figure was deliberately LEFT ALONE: it is the §5.5 extraction's own
+count, the §5/§7 correction did not restate it, and replacing it with §14.2's later re-extraction
+figure would have introduced a second, different error rather than removing one.

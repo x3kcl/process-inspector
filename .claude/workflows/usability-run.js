@@ -82,6 +82,17 @@ const TESTER_SCHEMA = {
           wrongTurns: { type: 'array', items: { type: 'string' } },
           confusion: { type: 'array', items: { type: 'string' }, description: 'verbatim misleading/unclear on-screen text + why' },
           gaveUpWhere: { type: 'string', description: 'on verdict=no: where you expected the affordance to live' },
+          // Optional, M13-only (ALARM-COST-MODEL.md §8.5's time-to-first-relevant-card
+          // metric). Every other mission leaves this absent — not in `required`, so
+          // schema validation for the standard 12-mission run is completely unaffected.
+          timings: {
+            type: 'object',
+            description: 'M13 task 1 ONLY: wall-clock ISO timestamps for the A/B benefit metric.',
+            properties: {
+              landingIso: { type: 'string', description: "ISO timestamp captured immediately after browser_navigate('/') succeeds" },
+              firstDrillIso: { type: 'string', description: "ISO timestamp captured immediately after the first successful navigation into the planted class's detail page" },
+            },
+          },
         },
       },
     },
@@ -135,10 +146,23 @@ TESTER PROTOCOL (mandatory):
   messagesCorpus, tagged fine/confusing.
 - Your structured output is the deliverable: fill every field of the schema per task.`
 
+// M13-only timing instruction (ALARM-COST-MODEL.md §8.5): the time-to-first-relevant-card
+// metric needs two wall-clock timestamps the harness cannot observe itself (the tester's
+// own browser actions), so the tester captures and reports them. Appended to the PROTOCOL
+// only for M13 — every other mission's prompt is byte-for-byte unchanged.
+const M13_TIMING_INSTRUCTION = `
+- M13 ONLY (ALARM-COST-MODEL.md §8.5): immediately after your FIRST successful
+  browser_navigate('/') this mission, call browser_evaluate(() => new Date().toISOString())
+  and remember the result as landingIso. Immediately after you first successfully navigate
+  into a specific failure class's detail page (task 1's drill), call
+  browser_evaluate(() => new Date().toISOString()) again and remember that as
+  firstDrillIso. Report both on task 1's result as timings: { landingIso, firstDrillIso }.`
+
 function testerPrompt(mission, user, brief) {
+  const timingNote = mission === 'M13' ? M13_TIMING_INSTRUCTION : ''
   return `You are a support engineer usability-testing an internal "Process Inspector" web
 app at ${APP}. Sign in as user "${user}" (password "dev").
-${PROTOCOL}
+${PROTOCOL}${timingNote}
 
 YOUR MISSION (${mission}):
 ${brief}`

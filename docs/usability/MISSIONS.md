@@ -468,6 +468,57 @@ TESTER BRIEF:
 
 ---
 
+## M13 · "Why is this one first?" — A/B protocol only, config-staged (exclusive) · user `viewer`
+
+COVERS: R-SEM-25/a/b/c (attention-ordering + self-heal comprehension, ALARM-COST-MODEL.md
+§8). **Not part of the standard 12-mission run.** Invoked explicitly (`missions: ["M13"]`)
+only under the R1 attention-ordering A/B protocol, once per arm, against a BFF process the
+runner has started with `INSPECTOR_TRIAGE_ATTENTION_ORDERING` set for that arm (§8's flag
+mechanics — a restart, not a live flip). Running M13 against the shared standard-run BFF
+would flip fleet-wide ordering for every OTHER concurrent mission — never do that.
+STAGING: for arm B, the runner seeds ≥4 current-generation error classes where the planted
+class is NOT the largest by raw count (ALARM-COST-MODEL.md §8 fixture recipe) and confirms
+at least one live `SelfHealBadge` is present before dispatch, noting which self-heal
+lane(s) are actually live this run. **All four self-heal lanes are stageable today**
+(issue #359 landed as `85342e1`/PR #368; superseding this line's earlier "not stageable
+until #359 lands") — `SELF_HEAL_LIKELY`/`SELF_HEAL_MIXED` need the opt-in
+`PI_SEED_SELF_HEALING=1` fixture staged per ALARM-COST-MODEL.md §8.2 step 5 (real spells
+at the unlowered production floor, ~15–20+ minutes of dedicated pre-run staging — budget
+it before dispatch, not during the mission); that opt-in fixture counts toward neither the
+R4 grouping-quality corpus nor RETRYING-RISK-LANE.md's §7.2 gate (usability evidence only,
+never gate evidence). `INSUFFICIENT_HISTORY`/`SELF_HEAL_UNLIKELY` need no extra staging
+and remain legitimate, cheaper fallbacks (see R-SEM-25's FIXTURE note for the full
+reachability table). For arm A (the flag-off control run of the same mission), the same
+fixture is seeded but the badge/tooltip render nothing — tasks 2-4 are expected to answer
+honestly that nothing was found, which is itself the control observation, not a mission
+failure.
+
+TESTER BRIEF:
+
+> You're a support engineer landing on this tool for the first time this shift — no
+> ticket yet, just checking what's going on before anything lands on your desk.
+>
+> 1. Open the landing page. Several failure classes are on screen. Before reading any
+>    hover text or explanation: if you had to start working on exactly ONE of these right
+>    now, which would you pick, and why? Then look for whatever the page tells you about
+>    why things are in the order they're in, and say whether that changes your pick. Cite
+>    whatever on-screen text you used to decide.
+> 2. Now, specifically: what do you believe decides which card sits at the top of this
+>    list? Quote the exact on-screen text (hover text counts) that told you, then explain
+>    in your own words what it's actually saying — don't just repeat the words back.
+> 3. Pick two specific cards from the list — one that sits higher than the other. Without
+>    re-reading the tooltip text, explain in your own words why you think one outranks the
+>    other. If you honestly can't tell just from looking, say so plainly.
+> 4. Go to the Incidents page. Find a card carrying some kind of "self-heal" indicator — a
+>    badge with a fraction and usually a time in it (or, if you find one that instead says
+>    something like "not enough history yet," that counts too — describe what you found).
+>    In your own words, what is this badge actually telling you about this error class?
+>    What would you personally do about this class right now, and why? Quote the exact
+>    badge text you're basing that on. If you find no such badge anywhere, say so and
+>    where you looked.
+
+---
+
 ## Placeholder contract (runner fills at stage time)
 
 `{{INCIDENT_CLASS}} {{FAILED_ID}} {{RETRYING_ID}} {{GARBAGE_ID}} {{PARENT_BK}} {{ACTIVE_ID}} {{JSON_ID}}

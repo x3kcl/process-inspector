@@ -33,6 +33,17 @@ import com.fasterxml.jackson.annotation.JsonInclude;
  * the NEUTRAL 1 rather than {@code log2(1 + 0) = 0}: {@code arrivals28d} is then "unknown", not
  * "none", and a tooltip must say so instead of reporting a zero the data never showed. Both
  * default to a fully-observed window ({@code false} / {@code 0}).
+ *
+ * <p><b>The burst block</b> ({@code flooding} / {@code burstArrivals} / {@code burstWindowSeconds}
+ * / {@code burstUnknown} / {@code discardedBurstSamples}) is the #365 amendment's own evidence
+ * (ALARM-COST-MODEL §4.1a). {@code F} is a 28-day VOLUME measure, so a class that took its whole
+ * volume in the last ten minutes used to be indistinguishable from one that trickled it over four
+ * weeks — while ISA-18.2 defines a flood on exactly that ten-minute peak window. When
+ * {@code flooding} is true the frequency reads {@code log2(1 + outside_W + gamma·burst_W)}: a
+ * DECOMPOSITION of the arrivals already counted, never a bolt-on multiplier, so every arrival is
+ * banked exactly once at weight 1 or weight gamma. {@code burstUnknown} is the bin's own honesty
+ * rail — samples, but not one trustworthy — and it forces the gate OFF, leaving {@code frequency}
+ * at its un-boosted value: an unknown bin can suppress a promotion, never cause a demotion.
  */
 @JsonInclude(JsonInclude.Include.NON_NULL)
 public record AttentionFactors(
@@ -47,4 +58,9 @@ public record AttentionFactors(
         String selfHealLane, // absent when no R2 statistic was available
         boolean insufficientHistory,
         boolean arrivalsUnknown, // the whole F window was untrusted ⇒ frequency reads neutral 1
-        long discardedArrivalSamples) {}
+        long discardedArrivalSamples,
+        boolean flooding, // the §4.1a Schmitt gate fired ⇒ frequency carries the burst weight
+        long burstArrivals, // the SUBSET of arrivals28d that landed inside the burst window
+        long burstWindowSeconds, // W, so the UI never has to guess what "recent" meant
+        boolean burstUnknown, // the burst bin had samples but not one trustworthy ⇒ gate off
+        long discardedBurstSamples) {}

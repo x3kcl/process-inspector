@@ -2510,7 +2510,11 @@ without. Designs are in the per-feature docs; this records the sequencing only.
   **default false**, because the design's own data-maturity gate is measured NOT MET on 0 of 5
   axes) → `#354` frontend (`AttentionBadge` on Stage 0 and the Ledger; the Ledger's section
   comparator reconciled with #352's self-heal sort so the server's order wins rather than being
-  re-derived client-side). [ALARM-COST-MODEL.md](ALARM-COST-MODEL.md)
+  re-derived client-side). [ALARM-COST-MODEL.md](ALARM-COST-MODEL.md) — `#366` (2026-08-04,
+  docs-only) authored the operator-facing "how to read the ranking" note
+  ([OPERATOR-QUICK-START.md](OPERATOR-QUICK-START.md)) plus the §8 A/B usability run plan and
+  comprehension probe (catalog `R-SEM-25`, mission `M13`); the run itself is **NOT YET
+  EXECUTED**, sequenced after `#365` (a burst-term score amendment, in progress).
 - **R3 migration typed findings** — `#355` (typed, machine-readable migration preview findings
   replacing free-text). [INSTANCE-MIGRATION.md](INSTANCE-MIGRATION.md)
 
@@ -2542,6 +2546,34 @@ Two rounds of adversarial review against the shipped Phase 2 code, both merged o
    overstated at the sample floor; and the detail sparkline rendering a blind-cycle dip
    unmarked. **No new migration** (V21 is the latest and already carries the column), no new
    engine call, no behaviour change with the flag off.
+
+### v2 research track R1 — burst-aware frequency amendment _(#365, ★ BUILT)_
+
+The shipped `F` was a 28-day VOLUME measure, so two classes both "last seen now" with 100
+arrivals ranked identically whether those arrivals trickled over four weeks or all landed in
+the last ten minutes — while the alarm-management literature the model is built on is explicit
+that PEAK rates, not averages, are what make operators miss things (ISA-18.2 defines a flood on
+a ten-minute peak window). The design round locked
+[ALARM-COST-MODEL.md §4.1a](ALARM-COST-MODEL.md) (formula, five preserved invariants, defaults
+W = PT10M / onset 10 / exit 5 / γ = 8, all four measured or taken verbatim from ISA-18.2) plus
+the §14 audit record; **this slice is the build**, specified column-by-column in §14.5 and
+recorded in §15.
+
+What landed: four more FILTERED columns on the SAME single `arrivalsSince` pass (zero new
+statements, zero new engine calls, **no Flyway migration** — the bins are computed, not stored),
+the two-bin Schmitt gate and the `outside_W + γ·burst_W` DECOMPOSITION in the pure calculator,
+five new `AttentionFactors` wire fields with the regenerated `schema.d.ts`, two config rails
+(`burst-exit ≤ burst-onset` refused at binding; a `burst-window ≤ model-ttl` startup WARN), and
+the burst clauses in the server-composed rationale. `inspector.triage.attention-ordering` stays
+**default false** and `AttentionOrderingNeutralityTest` still proves the flag-off path returns
+the very same object with zero queries; below the ISA onset `F` is byte-identical (bit-for-bit,
+asserted over a swept corpus) to the shipped formula, so the amendment is provably inert outside
+flood conditions. Same round: the stale "earliest G5 satisfaction ≈ 2026-09-14" was corrected to
+≈ 2026-09-29 in the two code comments that duplicated it — G5 counts TRUSTED ledger span, and
+the pilot's history was 99 % blind until 2026-08-04T15:39 Z. The CAUSE first recorded for that
+boundary was itself wrong and is corrected in ALARM-COST-MODEL.md §14.2: the era turned trusted
+when an unreachable engine left the aggregation scope (disabled in the registry), not when it
+became reachable — so the trusted-span clock can be restarted by a registry edit.
 
 ## Build order inside any milestone
 

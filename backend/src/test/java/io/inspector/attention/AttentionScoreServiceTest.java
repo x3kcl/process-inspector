@@ -5,6 +5,7 @@ import static org.mockito.ArgumentMatchers.any;
 import static org.mockito.ArgumentMatchers.anyInt;
 import static org.mockito.ArgumentMatchers.anyString;
 import static org.mockito.Mockito.mock;
+import static org.mockito.Mockito.verify;
 import static org.mockito.Mockito.verifyNoInteractions;
 import static org.mockito.Mockito.when;
 
@@ -20,10 +21,12 @@ import io.inspector.selfheal.SelfHealStatsService;
 import java.math.BigDecimal;
 import java.math.BigInteger;
 import java.time.Clock;
+import java.time.Duration;
 import java.time.Instant;
 import java.time.ZoneOffset;
 import java.util.List;
 import org.junit.jupiter.api.Test;
+import org.mockito.ArgumentCaptor;
 
 /**
  * Rung 1: {@code AttentionScoreService}'s JPA-facing glue with mocked stores — flag gating, the
@@ -60,7 +63,8 @@ class AttentionScoreServiceTest {
     void theModelJoinsArrivalsAndClosedEpisodesOntoTheLedgerRowsByIncidentId() {
         List<Incident> ledger = List.of(incident(4L, "hash-a", NOW.minusSeconds(86_400)));
         when(incidents.findByLastSeenGreaterThanEqual(any())).thenReturn(ledger);
-        when(occurrences.arrivalsSince(any())).thenReturn(List.<Object[]>of(arrivalRow(4L, 7L, 40L, 40L)));
+        when(occurrences.arrivalsSince(any(), any(), any()))
+                .thenReturn(List.<Object[]>of(arrivalRow(4L, 7L, 40L, 40L)));
         when(episodes.closedEpisodeDurationSeconds())
                 .thenReturn(List.<Object[]>of(row(4L, 3_600L), row(4L, 5_400L), row(4L, 7_200L)));
 
@@ -80,7 +84,7 @@ class AttentionScoreServiceTest {
     void theFleetMedianIsTakenAcrossEveryClosedEpisodeInTheLedgerNotJustThisClassSince() {
         List<Incident> ledger = List.of(incident(4L, "hash-a", NOW), incident(5L, "hash-b", NOW));
         when(incidents.findByLastSeenGreaterThanEqual(any())).thenReturn(ledger);
-        when(occurrences.arrivalsSince(any())).thenReturn(List.of());
+        when(occurrences.arrivalsSince(any(), any(), any())).thenReturn(List.of());
         when(episodes.closedEpisodeDurationSeconds())
                 .thenReturn(List.<Object[]>of(
                         row(4L, 7_200L),
@@ -101,9 +105,16 @@ class AttentionScoreServiceTest {
     void nativeAggregatesAreCoercedWhateverNumericTypeTheDriverHandsBack() {
         List<Incident> ledger = List.of(incident(4L, "hash-a", NOW));
         when(incidents.findByLastSeenGreaterThanEqual(any())).thenReturn(ledger);
-        when(occurrences.arrivalsSince(any()))
-                .thenReturn(List.<Object[]>of(
-                        new Object[] {BigInteger.valueOf(4), 15L, BigDecimal.valueOf(9), BigInteger.valueOf(9)}));
+        when(occurrences.arrivalsSince(any(), any(), any())).thenReturn(List.<Object[]>of(new Object[] {
+            BigInteger.valueOf(4),
+            15L,
+            BigDecimal.valueOf(9),
+            BigInteger.valueOf(9),
+            BigDecimal.valueOf(12),
+            BigInteger.valueOf(3),
+            BigDecimal.valueOf(4),
+            BigInteger.valueOf(4)
+        }));
         when(episodes.closedEpisodeDurationSeconds())
                 .thenReturn(List.<Object[]>of(new Object[] {BigDecimal.valueOf(4), BigDecimal.valueOf(60.7)}));
 
@@ -111,13 +122,74 @@ class AttentionScoreServiceTest {
 
         assertThat(scored.factors().arrivals28d()).isEqualTo(15);
         assertThat(scored.factors().closedEpisodes()).isEqualTo(1);
+        // ...including every burst column: a BigDecimal burst bin must gate exactly as a long one.
+        assertThat(scored.factors().burstArrivals()).isEqualTo(12);
+        assertThat(scored.factors().flooding()).isTrue();
+    }
+
+    /* ---------------- #365: the burst bins travel from the aggregate to the wire ------------- */
+
+    @Test
+    void theBurstBinsAreJoinedOntoTheClassAndGateTheFrequencyWithoutASecondQuery() {
+        List<Incident> ledger = List.of(incident(4L, "hash-a", NOW));
+        when(incidents.findByLastSeenGreaterThanEqual(any())).thenReturn(ledger);
+        // 100 arrivals in the window, ALL of them inside the last 10 minutes.
+        when(occurrences.arrivalsSince(any(), any(), any()))
+                .thenReturn(List.<Object[]>of(arrivalRow(4L, 100L, 40L, 40L, 100L, 0L, 10L, 10L)));
+        when(episodes.closedEpisodeDurationSeconds()).thenReturn(List.of());
+
+        AttentionScore scored = service(true).forClass("hash-a", 2, 120, null);
+
+        assertThat(scored.factors().flooding()).isTrue();
+        assertThat(scored.factors().burstArrivals()).isEqualTo(100);
+        assertThat(scored.factors().burstWindowSeconds()).isEqualTo(600);
+        assertThat(scored.factors().frequency()).isCloseTo(9.6457, org.assertj.core.api.Assertions.within(1e-4));
+        assertThat(scored.rationale()).contains("spiking: 100 in the last 10 min");
+    }
+
+    @Test
+    void aBurstBinWithSamplesButNoTrustedOneReadsUnknownAndLeavesTheFrequencyWhereItWas() {
+        List<Incident> ledger = List.of(incident(4L, "hash-a", NOW));
+        when(incidents.findByLastSeenGreaterThanEqual(any())).thenReturn(ledger);
+        // The wider window measured 100 arrivals; the last 10 minutes were wholly untrusted.
+        when(occurrences.arrivalsSince(any(), any(), any()))
+                .thenReturn(List.<Object[]>of(arrivalRow(4L, 100L, 40L, 30L, 0L, 0L, 10L, 0L)));
+        when(episodes.closedEpisodeDurationSeconds()).thenReturn(List.of());
+
+        AttentionScore scored = service(true).forClass("hash-a", 2, 120, null);
+
+        assertThat(scored.factors().burstUnknown()).isTrue();
+        assertThat(scored.factors().discardedBurstSamples()).isEqualTo(10L);
+        assertThat(scored.factors().flooding()).isFalse();
+        assertThat(scored.factors().frequency()).isCloseTo(6.6582, org.assertj.core.api.Assertions.within(1e-4));
+        assertThat(scored.rationale()).contains("recent arrival rate unknown");
+    }
+
+    @Test
+    void theBurstBinsAreAnchoredOnTheModelBuildInstantOneWindowAndTwoWindowsBack() {
+        List<Incident> ledger = List.of(incident(4L, "hash-a", NOW));
+        when(incidents.findByLastSeenGreaterThanEqual(any())).thenReturn(ledger);
+        when(occurrences.arrivalsSince(any(), any(), any())).thenReturn(List.of());
+        when(episodes.closedEpisodeDurationSeconds()).thenReturn(List.of());
+
+        service(true).forClass("hash-a", 2, 21, null);
+
+        ArgumentCaptor<Instant> since = ArgumentCaptor.forClass(Instant.class);
+        ArgumentCaptor<Instant> burstSince = ArgumentCaptor.forClass(Instant.class);
+        ArgumentCaptor<Instant> priorBurstSince = ArgumentCaptor.forClass(Instant.class);
+        verify(occurrences).arrivalsSince(since.capture(), burstSince.capture(), priorBurstSince.capture());
+
+        // ONE call, three anchors — the bins ride the existing pass rather than adding a leg.
+        assertThat(since.getValue()).isEqualTo(NOW.minus(Duration.ofDays(28)));
+        assertThat(burstSince.getValue()).isEqualTo(NOW.minus(Duration.ofMinutes(10)));
+        assertThat(priorBurstSince.getValue()).isEqualTo(NOW.minus(Duration.ofMinutes(20)));
     }
 
     @Test
     void anUnknownClassScoresNeutrallyRatherThanBeingBuried() {
         List<Incident> ledger = List.of(incident(4L, "hash-a", NOW));
         when(incidents.findByLastSeenGreaterThanEqual(any())).thenReturn(ledger);
-        when(occurrences.arrivalsSince(any())).thenReturn(List.of());
+        when(occurrences.arrivalsSince(any(), any(), any())).thenReturn(List.of());
         when(episodes.closedEpisodeDurationSeconds()).thenReturn(List.of());
 
         AttentionScore scored = service(true).forClass("hash-never-seen", 2, 8, null);
@@ -132,7 +204,7 @@ class AttentionScoreServiceTest {
     void theR2StatisticIsConsumedAsGivenAndNeverRecomputedHere() {
         List<Incident> ledger = List.of(incident(4L, "hash-a", NOW));
         when(incidents.findByLastSeenGreaterThanEqual(any())).thenReturn(ledger);
-        when(occurrences.arrivalsSince(any())).thenReturn(List.<Object[]>of(arrivalRow(4L, 3L, 9L, 9L)));
+        when(occurrences.arrivalsSince(any(), any(), any())).thenReturn(List.<Object[]>of(arrivalRow(4L, 3L, 9L, 9L)));
         when(episodes.closedEpisodeDurationSeconds()).thenReturn(List.of());
         SelfHealStats stats =
                 new SelfHealStats(SelfHealLane.SELF_HEAL_LIKELY.name(), 14, 12, 0.72, 0.98, 300L, 480L, 2, false);
@@ -154,7 +226,8 @@ class AttentionScoreServiceTest {
         // zeroing the whole product for exactly the fleet's biggest classes.
         List<Incident> ledger = List.of(incident(4L, "hash-a", NOW));
         when(incidents.findByLastSeenGreaterThanEqual(any())).thenReturn(ledger);
-        when(occurrences.arrivalsSince(any())).thenReturn(List.<Object[]>of(arrivalRow(4L, 0L, 40_320L, 0L)));
+        when(occurrences.arrivalsSince(any(), any(), any()))
+                .thenReturn(List.<Object[]>of(arrivalRow(4L, 0L, 40_320L, 0L)));
         when(episodes.closedEpisodeDurationSeconds()).thenReturn(List.of());
 
         AttentionScore scored = service(true).forClass("hash-a", 2, 4_000, null);
@@ -169,7 +242,8 @@ class AttentionScoreServiceTest {
     void aWindowThatLostSOMESamplesStillReportsTheArrivalsItCouldTrust() {
         List<Incident> ledger = List.of(incident(4L, "hash-a", NOW));
         when(incidents.findByLastSeenGreaterThanEqual(any())).thenReturn(ledger);
-        when(occurrences.arrivalsSince(any())).thenReturn(List.<Object[]>of(arrivalRow(4L, 7L, 40L, 28L)));
+        when(occurrences.arrivalsSince(any(), any(), any()))
+                .thenReturn(List.<Object[]>of(arrivalRow(4L, 7L, 40L, 28L)));
         when(episodes.closedEpisodeDurationSeconds()).thenReturn(List.of());
 
         AttentionScore scored = service(true).forClass("hash-a", 2, 21, null);
@@ -185,7 +259,7 @@ class AttentionScoreServiceTest {
         // "no history" case the neutrality guarantee rests on. It must NOT read as untrusted.
         List<Incident> ledger = List.of(incident(4L, "hash-a", NOW));
         when(incidents.findByLastSeenGreaterThanEqual(any())).thenReturn(ledger);
-        when(occurrences.arrivalsSince(any())).thenReturn(List.of());
+        when(occurrences.arrivalsSince(any(), any(), any())).thenReturn(List.of());
         when(episodes.closedEpisodeDurationSeconds()).thenReturn(List.of());
 
         AttentionScore scored = service(true).forClass("hash-a", 2, 21, null);
@@ -206,7 +280,7 @@ class AttentionScoreServiceTest {
     void aPoisonedSelfHealStatisticDemotesNothing() {
         List<Incident> ledger = List.of(incident(4L, "hash-a", NOW));
         when(incidents.findByLastSeenGreaterThanEqual(any())).thenReturn(ledger);
-        when(occurrences.arrivalsSince(any())).thenReturn(List.<Object[]>of(arrivalRow(4L, 1L, 9L, 9L)));
+        when(occurrences.arrivalsSince(any(), any(), any())).thenReturn(List.<Object[]>of(arrivalRow(4L, 1L, 9L, 9L)));
         when(episodes.closedEpisodeDurationSeconds()).thenReturn(List.of());
         when(selfHeal.get(anyString(), anyInt())).thenThrow(new IllegalStateException("boom"));
 
@@ -245,8 +319,24 @@ class AttentionScoreServiceTest {
         return new Object[] {incidentId, value};
     }
 
-    /** {@code arrivalsSince} hands back four columns: sum, differenceable samples, trusted ones. */
+    /**
+     * {@code arrivalsSince} hands back EIGHT columns: the window's sum, its differenceable and
+     * trusted sample counts, then the #365 burst bins — {@code burst_arrivals},
+     * {@code prior_burst_arrivals} and the current bin's own two honesty counts.
+     */
     private static Object[] arrivalRow(long incidentId, long arrivals, long observed, long trusted) {
-        return new Object[] {incidentId, arrivals, observed, trusted};
+        return arrivalRow(incidentId, arrivals, observed, trusted, 0L, 0L, 0L, 0L);
+    }
+
+    private static Object[] arrivalRow(
+            long incidentId,
+            long arrivals,
+            long observed,
+            long trusted,
+            long burst,
+            long priorBurst,
+            long burstObserved,
+            long burstTrusted) {
+        return new Object[] {incidentId, arrivals, observed, trusted, burst, priorBurst, burstObserved, burstTrusted};
     }
 }

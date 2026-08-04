@@ -78,6 +78,11 @@ auto-excludes them as `skipped (protected)`.
   hidden — and **auto-resurface** badged "GREW SINCE ACK: +45" / "NEW VERSION SINCE ACK" /
   "ACK EXPIRED". Ack is noise control for the landing; for "we fixed this", use the incident
   ledger's Resolve (§5 — the distinction matters).
+- **Attention ordering** (flag-gated, `inspector.triage.attention-ordering`, off by
+  default): when live, cards here AND on the Incident Ledger reorder by a cost-aware score
+  instead of raw count. See [OPERATOR-QUICK-START.md](OPERATOR-QUICK-START.md#reading-the-attention-ranking)
+  for how to read the ranking and the `ranked by attention` chip; design and rollout status
+  in [ALARM-COST-MODEL.md](ALARM-COST-MODEL.md).
 - **Status counts** — instance tiles per status, each a pre-filtered search link.
   FAILED/RETRYING are synthesized from the failure-lane scans and carry lower-bound badges
   under truncation, exactly like the grid.

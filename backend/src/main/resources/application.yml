@@ -167,11 +167,16 @@ inspector:
     ack-resurface-threshold-pct: 20
     # R1 cost-aware attention ordering (docs/ALARM-COST-MODEL.md, #348 design / #353 build).
     # DEFAULT FALSE and deliberately so: the §7 data-maturity gate is measured NOT MET (0 of 5
-    # axes — 0 closed episodes, max 2 concurrent live classes, 0 acks ever, 14.8d of ledger
-    # span; earliest G5 satisfaction ≈ 2026-09-14), and replaying A(c) over all 21,229 recorded
-    # pilot buckets reproduced today's count-only ordering EXACTLY (Kendall tau = 1.0, zero
-    # position changes). Off ⇒ nothing is computed, no `attention` block is served, and the card
-    # order is byte-for-byte `total DESC`. Flip it only alongside a re-measurement of §7.
+    # axes — 0 closed episodes, max 2 concurrent live classes, 0 acks ever, and 14.8d of RECORDED
+    # ledger span of which only 0.12d was TRUSTED: the pilot's history was 99% blind
+    # (cycle_complete = false) until 2026-08-04T15:39Z — the instant an unreachable engine left
+    # the aggregation scope, NOT the instant it became reachable (§14.2 correction).
+    # G5 counts trusted span — a fit-plus-holdout over discarded deltas is a
+    # fit over nothing — so earliest satisfaction is ≈ 2026-09-29, correcting the ≈ 2026-09-14
+    # stated here before the #365 amendment round re-measured it). Replaying A(c) over all 21,229
+    # recorded pilot buckets reproduced today's count-only ordering EXACTLY (Kendall tau = 1.0,
+    # zero position changes). Off ⇒ nothing is computed, no `attention` block is served, and the
+    # card order is byte-for-byte `total DESC`. Flip it only alongside a re-measurement of §7.
     attention-ordering: false
     attention:
       # The R factor's half-life. 24h ON PURPOSE — the same constant as
@@ -192,6 +197,21 @@ inspector:
       derived-resurface-threshold: false
       resurface-floor-pct: 10
       resurface-false-budget-per30-ack-days: 1.0
+      # Burst-aware F (#365, §4.1a) — dead configuration until attention-ordering is opted into.
+      # W = ISA-18.2's own 10-minute flood window (the finest window this sampler's measured 60s
+      # cadence honestly supports is 5 min, §14.3, so 10 has margin); onset 10 / exit 5 are
+      # ISA-18.2's asymmetric flood onset/end verbatim, giving a two-bin Schmitt trigger whose
+      # hold leg needs a GENUINE prior onset (summing the bins would gate 6+6 across 20 minutes
+      # as a "flood"). exit MUST be ≤ onset — an inverted pair is refused at binding, not
+      # reinterpreted. gamma = 8 weighs one flood-window arrival as eight trickled ones; what is
+      # actually bounded is the inflation ceiling 1 + log2(gamma)/log2(1 + onset) ≈ 1.87x, the
+      # same order as the M clamp's 2x, so no single factor can dominate the others' full range.
+      # Keep W > model-ttl (a shorter W logs a startup WARN): the bins are evaluated at model
+      # build time, so a flood must outlive one rebuild to be seen at all.
+      burst-window: PT10M
+      burst-onset: 10
+      burst-exit: 5
+      burst-weight: 8.0
   # Bulk fan-out engine-protection knobs (SPEC §7, v1.x #2) + the live bulk-progress SSE
   # stream's guardrails (issue #301): sse-subscriber-cap bounds the emitter registry (beyond
   # it a subscribe completes immediately and the browser degrades to polling); sse-coalesce-ms
