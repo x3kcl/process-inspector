@@ -5,6 +5,7 @@ import static org.awaitility.Awaitility.await;
 
 import com.fasterxml.jackson.databind.JsonNode;
 import com.fasterxml.jackson.databind.ObjectMapper;
+import io.inspector.registry.EngineHealthService;
 import io.inspector.support.EngineSeed;
 import java.util.Map;
 import java.util.concurrent.TimeUnit;
@@ -70,6 +71,9 @@ class CmmnCorrectiveActionIT {
     @Autowired
     ObjectMapper mapper;
 
+    @Autowired
+    EngineHealthService healthService;
+
     private RestClient cmmn;
     private String retryCaseId;
     private String deleteCaseId;
@@ -90,16 +94,15 @@ class CmmnCorrectiveActionIT {
                 .until(() -> EngineSeed.cmmnDeadletterPresentForCase(cmmn, retryCaseId)
                         && EngineSeed.cmmnDeadletterPresentForCase(cmmn, deleteCaseId));
 
-        // The CMMN retry capability-gates on scopeType from the scheduled probe — wait one cycle so
-        // the registry reports engine-a reachable + capable before we fire the mutation.
-        await().atMost(30, TimeUnit.SECONDS)
-                .pollInterval(500, TimeUnit.MILLISECONDS)
-                .untilAsserted(() -> assertThat(rest.withBasicAuth("admin", "dev")
-                                .getForObject("/api/engines", JsonNode.class)
-                                .get(0)
-                                .get("reachable")
-                                .asBoolean())
-                        .isTrue());
+        // CMMN retry capability-gates on scopeType from the M1 probe — drive one cycle
+        // deterministically (EngineHealthIT pattern), don't race the 30s fixedDelay schedule.
+        healthService.probeAll();
+        assertThat(rest.withBasicAuth("admin", "dev")
+                        .getForObject("/api/engines", JsonNode.class)
+                        .get(0)
+                        .get("reachable")
+                        .asBoolean())
+                .isTrue();
     }
 
     @AfterAll

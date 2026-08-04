@@ -152,7 +152,7 @@ jobs:
       - name: Wait for engines and postgres (bounded)
         run: bash docker/smoke-test.sh flowable-6
       - name: Seed demo processes (REST-only, idempotent)
-        run: bash docker/seed.sh
+        run: bash docker/seed.sh --profile flowable-6
       - name: Engine ITs (failsafe)
         working-directory: backend
         run: >-

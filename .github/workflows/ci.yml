@@ -278,7 +278,17 @@ jobs:
             b=$(scripts/free-port.sh "${PI_ENGINE_B_PORT:-8692}" 20 "$a")
             seven=$(scripts/free-port.sh "${PI_ENGINE_7_PORT:-8693}" 20 "$a" "$b")
             legacy=$(scripts/free-port.sh "${PI_ENGINE_LEGACY_PORT:-8694}" 20 "$a" "$b" "$seven")
-            flap=$(scripts/free-port.sh "${PI_ENGINE_FLAP_PORT:-8695}" 20 "$a" "$b" "$seven" "$legacy")
+            # Flap has no cross-slot-safe hardcoded default: the old `:-8695` WAS s1's
+            # preferred port, so a stale runner missing PI_ENGINE_FLAP_PORT silently
+            # collided with s1 (PR #364). Derive from the resolved A port (+4 = same
+            # slot band) when the env is absent; recreate the slot to pick up the env.
+            if [ -z "${PI_ENGINE_FLAP_PORT:-}" ]; then
+              echo "WARNING: PI_ENGINE_FLAP_PORT unset — deriving $((a + 4)) from A-port band; recreate the runner slot" >&2
+              flap_pref=$((a + 4))
+            else
+              flap_pref="$PI_ENGINE_FLAP_PORT"
+            fi
+            flap=$(scripts/free-port.sh "$flap_pref" 20 "$a" "$b" "$seven" "$legacy")
             pg=$(scripts/free-port.sh "${PI_PG_PORT:-5435}" 5)
             echo "PI_ENGINE_A_PORT=$a"
             echo "PI_ENGINE_B_PORT=$b"
@@ -328,8 +338,11 @@ jobs:
         run: docker compose -p "$CI_PROJECT" -f docker/docker-compose.dev.yml up -d
       - name: Wait for engines and postgres (bounded)
         run: bash docker/smoke-test.sh ${{ matrix.profile }}
+      # --profile scopes seed to THIS leg's engines. Auto-discover would also hit any
+      # other slot's reachable engines on the shared host (seen when a stale runner
+      # lacked PI_ENGINE_FLAP_PORT and free-port fell back to s1's 8695 — PR #364).
       - name: Seed demo processes (REST-only, idempotent)
-        run: bash docker/seed.sh
+        run: bash docker/seed.sh --profile ${{ matrix.profile }}
       - name: Integration tests (failsafe, ${{ matrix.itClass }})
         working-directory: backend
         run: mvn -B verify -Dit.test=${{ matrix.itClass }} -Dskip.surefire.tests=true

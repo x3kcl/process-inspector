@@ -9,6 +9,7 @@ import static org.awaitility.Awaitility.await;
 
 import com.fasterxml.jackson.databind.JsonNode;
 import com.github.tomakehurst.wiremock.WireMockServer;
+import io.inspector.registry.EngineHealthService;
 import io.inspector.support.EngineSeed;
 import io.inspector.support.NoDbTestSupport;
 import java.util.concurrent.TimeUnit;
@@ -71,6 +72,9 @@ class CaseDetailIT {
     @Autowired
     TestRestTemplate rest;
 
+    @Autowired
+    EngineHealthService healthService;
+
     private RestClient cmmn;
     private String caseInstanceId;
 
@@ -91,15 +95,17 @@ class CaseDetailIT {
                 .pollInterval(2, TimeUnit.SECONDS)
                 .until(() -> EngineSeed.cmmnDeadletterPresentForCase(cmmn, caseInstanceId));
 
-        // The detail endpoints capability-gate on scopeType, sourced from the scheduled M1 probe —
-        // wait one cycle so the registry reports the engine reachable + capable before we read.
-        await().atMost(30, TimeUnit.SECONDS)
-                .pollInterval(500, TimeUnit.MILLISECONDS)
-                .untilAsserted(() -> assertThat(rest.getForObject("/api/engines", JsonNode.class)
-                                .get(0)
-                                .get("reachable")
-                                .asBoolean())
-                        .isTrue());
+        // Detail endpoints capability-gate on scopeType from the M1 probe. Drive one cycle
+        // deterministically (EngineHealthIT pattern) — do NOT race the 30s fixedDelay schedule.
+        // On a loaded self-hosted slot (seen on mag01 after #363 widened the matrix) a mid-seed
+        // probe can fail while the engine is busy retrying the CMMN task, flip reachable=false,
+        // and the old 30s await then misses the next recovery cycle.
+        healthService.probeAll();
+        assertThat(rest.getForObject("/api/engines", JsonNode.class)
+                        .get(0)
+                        .get("reachable")
+                        .asBoolean())
+                .isTrue();
     }
 
     @AfterAll
