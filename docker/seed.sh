@@ -3,8 +3,14 @@
 # REST-only — never touches engine tables (CLAUDE.md iron rule).
 #
 # Usage:
-#   docker/seed.sh                 # auto-discover: seeds EVERY reachable engine (:8081-:8086)
-#   docker/seed.sh <base-url> [user:pass]   # seed exactly that engine
+#   docker/seed.sh                              # auto-discover: every reachable known engine
+#   docker/seed.sh --profile <name>             # seed ONLY that profile's engines (CI)
+#   docker/seed.sh <base-url> [user:pass]       # seed exactly that engine
+#
+# --profile is required in CI: auto-discover would seed ANY reachable engine on the
+# shared Docker host — including another slot's concurrent flap/flowable-7 — and a
+# mis-resolved PI_ENGINE_FLAP_PORT (fallback default = s1's 8695) caused exactly that
+# cross-slot race (PR #364, run 30927869125: flowable-6 on s6 seeded s1's flap).
 #
 # Deployment idempotency is BY KEY: editing a process file does not redeploy it here —
 # reset the harness (docker compose down -v) or deploy the new version manually.
@@ -21,12 +27,32 @@ DIR="$(cd "$(dirname "$0")" && pwd)"
 # env-overridable (default = doctrinal dev ports) to match a remapped self-hosted-runner
 # harness; see docker-compose.dev.yml PI_ENGINE_*_PORT. The last entry is the Boot layout —
 # an embedded engine publishes /process-api at the root, not one /flowable-rest context.
-KNOWN_ENGINES="\
-${PI_ENGINE_A_PORT:-8081}|/flowable-rest/service|rest-admin:test
-${PI_ENGINE_B_PORT:-8082}|/flowable-rest/service|rest-admin:test
-${PI_ENGINE_7_PORT:-8083}|/flowable-rest/service|rest-admin:test
-${PI_ENGINE_LEGACY_PORT:-8084}|/flowable-rest/service|rest-admin:test
-${PI_ENGINE_FLAP_PORT:-8086}|/process-api|inspector:harness"
+ENGINE_A="${PI_ENGINE_A_PORT:-8081}|/flowable-rest/service|rest-admin:test"
+ENGINE_B="${PI_ENGINE_B_PORT:-8082}|/flowable-rest/service|rest-admin:test"
+ENGINE_7="${PI_ENGINE_7_PORT:-8083}|/flowable-rest/service|rest-admin:test"
+ENGINE_LEGACY="${PI_ENGINE_LEGACY_PORT:-8084}|/flowable-rest/service|rest-admin:test"
+ENGINE_FLAP="${PI_ENGINE_FLAP_PORT:-8086}|/process-api|inspector:harness"
+KNOWN_ENGINES="$ENGINE_A
+$ENGINE_B
+$ENGINE_7
+$ENGINE_LEGACY
+$ENGINE_FLAP"
+
+# Map a smoke-test / ci.yml matrix profile to the engine descriptors it boots.
+# Keep in lockstep with docker/smoke-test.sh's case arms.
+engines_for_profile() {
+  case "$1" in
+    flowable-6) echo "$ENGINE_A
+$ENGINE_B" ;;
+    flowable-7) echo "$ENGINE_7" ;;
+    legacy) echo "$ENGINE_LEGACY" ;;
+    flap) echo "$ENGINE_FLAP" ;;
+    migration-findings) echo "$ENGINE_A
+$ENGINE_B
+$ENGINE_7" ;;
+    *) echo "unknown profile: $1 (want flowable-6|flowable-7|legacy|flap|migration-findings)" >&2; return 2 ;;
+  esac
+}
 
 json_total() { python3 -c 'import sys,json; print(json.load(sys.stdin)["total"])'; }
 json_id()    { python3 -c 'import sys,json; print(json.load(sys.stdin)["id"])'; }
@@ -243,12 +269,8 @@ seed_engine() { # base-url
   seed_acme "$E"
 }
 
-if [ $# -ge 1 ]; then
-  CRED="${2:-$CRED}"
-  seed_engine "$1"
-else
-  seeded=0
-  ports=""
+seed_descriptors() { # newline-separated port|path|cred descriptors
+  local seeded=0 ports="" port path cred url
   while IFS='|' read -r port path cred; do
     [ -n "$port" ] || continue
     ports="$ports $port"
@@ -263,11 +285,21 @@ else
     else
       echo "Engine on :$port not reachable — skipping."
     fi
-  done <<< "$KNOWN_ENGINES"
+  done <<< "$1"
   if [ "$seeded" = "0" ]; then
     echo "ERROR: no engine reachable on any of:$ports — start the harness first:" >&2
     echo "  docker compose -f docker/docker-compose.dev.yml up -d" >&2
     exit 1
   fi
   echo "Seeded $seeded engine(s)."
+}
+
+if [ "${1:-}" = "--profile" ]; then
+  PROFILE="${2:?usage: seed.sh --profile <flowable-6|flowable-7|legacy|flap|migration-findings>}"
+  seed_descriptors "$(engines_for_profile "$PROFILE")"
+elif [ $# -ge 1 ]; then
+  CRED="${2:-$CRED}"
+  seed_engine "$1"
+else
+  seed_descriptors "$KNOWN_ENGINES"
 fi
