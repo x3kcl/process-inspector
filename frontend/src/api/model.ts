@@ -17,6 +17,13 @@ export type LeakDefinitionCount = components['schemas']['LeakDefinitionCount']
 export type LeakWindows = components['schemas']['LeakWindows']
 export type ErrorGroup = components['schemas']['ErrorGroup']
 export type ErrorGroupAcknowledgement = components['schemas']['ErrorGroupAcknowledgement']
+// Cost-aware attention score (research track R1, ALARM-COST-MODEL.md, #353/#354) — the optional
+// `attention` block embedded on ErrorGroup (Stage 0) AND IncidentSummary (Incident Ledger, below).
+// Flag-off by default (`inspector.triage.attention-ordering`, §7 gate NOT MET as of the design) —
+// ABSENT is the normal, well-tested case on every response today, never an error path; every
+// reader must render as if the score were never computed, not fabricate one.
+export type AttentionScore = components['schemas']['AttentionScore']
+export type AttentionFactors = components['schemas']['AttentionFactors']
 export type PerEngineTriage = components['schemas']['PerEngineTriage']
 export type OutOfScopeDeadLetters = components['schemas']['OutOfScopeDeadLetters']
 // v2/M4 job-lane trend store (R-BAU-08) — the Stage-0 sparkline series.

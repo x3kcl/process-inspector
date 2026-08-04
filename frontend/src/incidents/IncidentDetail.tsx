@@ -12,6 +12,7 @@ import type { EngineDto } from '../api/model'
 import { useEngines } from '../api/useEngines'
 import { useMe } from '../api/me'
 import { worstEnvironment } from '../triage/ackState'
+import { AttentionBadge } from '../components/AttentionBadge'
 import { CopyButton } from '../components/CopyButton'
 import { Ts } from '../lib/Ts'
 import { talliesLine } from '../ops/outcome'
@@ -86,11 +87,13 @@ export function IncidentDetail() {
     <div className="triage">
       <h1>Incident {incident?.exceptionClass !== undefined && `— ${incident.exceptionClass}`}</h1>
       <p className="normalized-message">{incident?.normalizedMessage ?? '(no message)'}</p>
-      {incident?.selfHeal !== undefined && (
-        <p className="self-heal-line">
-          <SelfHealBadge selfHeal={incident.selfHeal} partial={incident.partial} />
-        </p>
-      )}
+      {incident !== undefined &&
+        (incident.selfHeal !== undefined || incident.attention !== undefined) && (
+          <p className="self-heal-line">
+            <SelfHealBadge selfHeal={incident.selfHeal} partial={incident.partial} />
+            <AttentionBadge attention={incident.attention} />
+          </p>
+        )}
 
       <dl className="lifecycle-strip">
         <div>

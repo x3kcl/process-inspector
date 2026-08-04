@@ -102,6 +102,26 @@ describe('ErrorGroupCard per-version drill link (#233)', () => {
   })
 })
 
+describe('ErrorGroupCard attention badge wiring (ALARM-COST-MODEL.md §4.3/§11, #354)', () => {
+  // The badge itself is fully covered by components/AttentionBadge.test.tsx; this only proves
+  // the Stage-0 card actually renders it off `group.attention`, absent or present — the server
+  // already reorders `errorGroups` itself (AttentionOrdering, §11), so the card renders in
+  // whatever order it receives without any client-side re-sort.
+  it('renders no attention badge when the group carries no server score (the expected-today case)', () => {
+    renderCard()
+    expect(screen.queryByText('ranked by attention')).toBeNull()
+  })
+
+  it('renders the attention badge with the server rationale when the score is present', () => {
+    renderCard({
+      ...group,
+      attention: { score: 4.2, rationale: '46 failing · last seen 2 min ago' },
+    })
+    const badge = screen.getByText('ranked by attention')
+    expect(badge.getAttribute('title')).toContain('46 failing · last seen 2 min ago')
+  })
+})
+
 describe('ErrorGroupCard whole-class retry (#105 remainder)', () => {
   it('offers "Retry group (all versions)" only when more than one version is deployed', () => {
     renderCard({

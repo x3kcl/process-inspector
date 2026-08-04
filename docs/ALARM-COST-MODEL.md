@@ -1,14 +1,15 @@
 # Alarm & Attention Cost Model — cost-aware noise policy for Stage 0 + incident ledger (R1)
 
-Status: **DESIGN, backend build slice ★ SHIPPED** — issue #348 (track R1, umbrella #356) ·
-drafted 2026-08-04 from a live pilot-ledger measurement · panel: 1 of 2 seats complete,
+Status: **DESIGN, backend + frontend build slices ★ SHIPPED** — issue #348 (track R1, umbrella
+#356) · drafted 2026-08-04 from a live pilot-ledger measurement · panel: 1 of 2 seats complete,
 second seat owed (§10) · build slices #353 (backend attention score — **built**, §11:
 `io.inspector.attention.*`, shipped **FLAG-OFF**, `inspector.triage.attention-ordering=false`)
-and #354 (frontend ordering + rationale — not yet built) · **data-maturity gate NOT MET as of
-2026-08-04** (§7, 0 of 5 axes). Unlike R2 — whose machinery ships enabled and self-gates per
-class on its own sample floor — R1's gate governs the FEATURE ITSELF: the ordering is a
-single global switch over shared cards, so it ships inert and flipping it requires
-re-measuring §7 with the §5 method.
+and #354 (frontend ordering + rationale — **built**, §11: renders whatever order it is served,
+never re-sorts Stage 0 itself, and reconciles with #352's Incident Ledger self-heal-risk sort)
+· **data-maturity gate NOT MET as of 2026-08-04** (§7, 0 of 5 axes). Unlike R2 — whose machinery
+ships enabled and self-gates per class on its own sample floor — R1's gate governs the FEATURE
+ITSELF: the ordering is a single global switch over shared cards, so it ships inert and
+flipping it requires re-measuring §7 with the §5 method.
 
 ## 0. Provenance
 
@@ -471,3 +472,56 @@ whole surface is inert.
 - **Deferred, NOT built in this slice:** the §8 usability goal/fixture/A-B protocol (that is
   #354's surface plus a `usability-run`), and any re-measurement of §7 — the gate status
   recorded above stands until the PR that flips the flag re-measures it with the §5 method.
+
+## 12. Build-slice record — #354 frontend (★ SHIPPED)
+
+What landed, and where a semantic conflict on the `research/phase-2-integration` integration
+base was reconciled deliberately.
+
+- **Stage 0 (`ErrorGroupCard.tsx`) does no client-side ordering at all.** The backend already
+  reorders `TriageDashboardResponse#errorGroups` itself (`AttentionScoreService#decorate` →
+  `AttentionOrdering.order`, §11); the existing `ErrorGroupSections`/`splitAcknowledged` split
+  was already order-preserving over its input array, so rendering the server's order required no
+  new client sort — only the tooltip (below) needed building.
+- **The conflict, on the Incident Ledger.** ALARM-COST-MODEL.md §11 says the incident LIST keeps
+  its server order (`lastSeen DESC`) and the score orders WITHIN the client-derived sections —
+  and those sections are exactly what #352 already forms in `incidents/sections.ts`, sorted by a
+  CLIENT-side `compareSelfHealRisk` (RETRYING-RISK-LANE.md §10). The two builds integrated
+  textually without conflict (different lines of the same file, different commits) but were
+  semantically incompatible: `A(c) = F·R·M·S`'s `S` factor is ALREADY the self-heal signal
+  (§11's `lane → p_heal` band map), so layering `compareSelfHealRisk` on top would double-count
+  self-heal and — worse — silently override the server's considered order with a client-only
+  re-derivation, exactly what §3.1 says the design exists to prevent ("the server ordering must
+  win").
+- **Resolution** — `incidents/attention.ts#compareIncidentOrder`, used by
+  `sections.ts#bucketIncidents` in place of the bare `compareSelfHealRisk` on the REGRESSED/OPEN/
+  QUIET sections: ranks by the server `attention.score` (mirroring the backend's own `score DESC
+  → total DESC → signatureHash ASC` tie-break, `AttentionOrdering.BY_ATTENTION`) whenever BOTH
+  sides of a comparison carry one; falls back to EXACTLY #352's original `compareSelfHealRisk`
+  otherwise. Since the flag ships off (§7/§9) and `attention` is therefore absent on every
+  response today, this is a no-behavior-change for #352 in practice — proven by
+  `sections.test.ts` still asserting the identical self-heal-lane order on that path, plus new
+  coverage of the attention-present path (which deliberately orders the OPPOSITE way the lane
+  alone would, to prove the score wins outright rather than blending) and a never-hide assertion
+  across every bucket. `compareSelfHealRisk` and the self-heal badge rendering (`SelfHealBadge`)
+  are otherwise UNTOUCHED — only the ordering role is superseded, per the issue's explicit
+  instruction to preserve badge rendering.
+- **Rationale tooltip** — `components/AttentionBadge.tsx`, a visible `"ranked by attention"` chip
+  shared by `ErrorGroupCard` (Stage 0) and `IncidentCard`/`IncidentDetail` (Incident Ledger),
+  since both `ErrorGroup` and `IncidentSummary` carry the same optional `attention` block. Renders
+  NOTHING when `attention` is absent (the shipped, flag-off, expected-today case) — no fabricated
+  "why". Its `title` tooltip (this codebase's glossary convention — no `/glossary` route) joins a
+  FIXED constant sentence (§4.3's generic explanation of what the ordering means) with the
+  SERVER's own one-sentence per-card rationale (`attention.rationale`), rendered VERBATIM —
+  never recomposed from `factors` client-side, per the issue's explicit rule.
+- **No ordering toggle built.** §3.1/§11 specify a single server-computed order behind one
+  deployment-wide flag, never an operator-facing attention-vs-count choice; §8's A/B protocol is
+  a `usability-run` measurement harness (arm A/B are test conditions), not a shipped UI control.
+  The issue is explicit that a toggle is built ONLY if the design specifies one — it does not.
+- **New generated-type usage, no regeneration.** `frontend/src/api/model.ts` gained
+  `AttentionScore`/`AttentionFactors` aliases over the schema #353 already committed
+  (`frontend/src/api/schema.d.ts`) — `npm run gen:api` was NOT re-run (not needed; the schema
+  already carried these types).
+- **Deferred, NOT built in this slice:** the §8 usability goal/fixture/A-B protocol and any
+  re-measurement of §7 remain open (unchanged from §11's own deferral) — #354 is the ordering +
+  tooltip UI only, not the usability-harness proof of benefit.
