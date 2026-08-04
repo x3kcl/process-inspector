@@ -56,9 +56,32 @@ describe('bucketIncidents', () => {
     expect(result.open).toContainEqual(weirdState)
   })
 
-  it('orders each bucket by lastSeen descending', () => {
+  it('orders each not-yet-resolved bucket by lastSeen descending when self-heal risk ties', () => {
     const older = incident({ id: 1, state: 'OPEN', lastSeen: '2026-07-01T00:00:00Z' })
     const newer = incident({ id: 2, state: 'OPEN', lastSeen: '2026-07-15T00:00:00Z' })
     expect(bucketIncidents([older, newer]).open).toEqual([newer, older])
+  })
+
+  it('risk-ranks the OPEN section by self-heal lane (RETRYING-RISK-LANE.md §10, issue #352 scope 2) — ordering only, nothing dropped', () => {
+    const likely = incident({
+      id: 1,
+      state: 'OPEN',
+      selfHeal: { lane: 'SELF_HEAL_LIKELY', n: 14, healed: 12, excludedSpells: 0 },
+    })
+    const unlikely = incident({
+      id: 2,
+      state: 'OPEN',
+      selfHeal: { lane: 'SELF_HEAL_UNLIKELY', n: 12, healed: 1, excludedSpells: 0 },
+    })
+    const insufficient = incident({
+      id: 3,
+      state: 'OPEN',
+      selfHeal: { lane: 'INSUFFICIENT_HISTORY', n: 2, healed: 0, excludedSpells: 0 },
+    })
+
+    const result = bucketIncidents([likely, insufficient, unlikely])
+    expect(result.open).toEqual([unlikely, insufficient, likely])
+    // Ordering only — every incident is still present, just reordered (R-BAU-01 never-hide).
+    expect(result.open).toHaveLength(3)
   })
 })

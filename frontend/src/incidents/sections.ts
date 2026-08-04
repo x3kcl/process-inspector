@@ -5,6 +5,7 @@
 // OPTIONAL on the wire (generated DTO) — every branch fails toward VISIBLE, never toward
 // silently dropping an incident a caller can't otherwise find (honesty over tidiness).
 import type { IncidentSummary } from '../api/model'
+import { compareSelfHealRisk } from './selfHeal'
 
 export interface IncidentSections {
   regressed: IncidentSummary[]
@@ -20,6 +21,16 @@ export interface IncidentSections {
 function byLastSeenDesc(a: IncidentSummary, b: IncidentSummary): number {
   return (b.lastSeen ?? '').localeCompare(a.lastSeen ?? '')
 }
+
+// Risk-ranked ordering (RETRYING-RISK-LANE.md §10, issue #352 scope item 2): "the risk-ranked
+// RETRYING view ordered SELF_HEAL_UNLIKELY -> MIXED -> INSUFFICIENT_HISTORY -> LIKELY". The
+// design sketch names "Stage 0 / search results" as the target surface; the #351 backend as
+// actually built only ever attaches `selfHeal` to IncidentSummary (never to Stage 0's own
+// recomputed ErrorGroup triage cards), so the ranked view lands here, on the Incident Ledger's
+// own not-yet-resolved sections -- the closest surface the shipped DTO can drive without a
+// hand-written parallel fetch. REGRESSED/OPEN/QUIET are still meaningfully "which of these
+// needs a look"; RESOLVED/archived stay `byLastSeenDesc` (historical record, no self-heal
+// urgency left to rank).
 
 export function bucketIncidents(incidents: IncidentSummary[]): IncidentSections {
   const regressed: IncidentSummary[] = []
@@ -49,9 +60,9 @@ export function bucketIncidents(incidents: IncidentSummary[]): IncidentSections 
     }
   }
 
-  regressed.sort(byLastSeenDesc)
-  open.sort(byLastSeenDesc)
-  quiet.sort(byLastSeenDesc)
+  regressed.sort(compareSelfHealRisk)
+  open.sort(compareSelfHealRisk)
+  quiet.sort(compareSelfHealRisk)
   resolved.sort(byLastSeenDesc)
   archived.sort(byLastSeenDesc)
 

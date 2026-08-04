@@ -10,6 +10,7 @@ import { Link } from 'react-router'
 import type { EngineDto, IncidentSummary } from '../api/model'
 import { engineSummary } from './breakdown'
 import { formatCount } from '../lib/format'
+import { SelfHealBadge } from './SelfHealBadge'
 import { Ts } from '../lib/Ts'
 
 interface Props {
@@ -59,6 +60,7 @@ export function IncidentCard({ incident, enginesById, variant }: Props) {
               in your scope
             </span>
           )}
+          <SelfHealBadge selfHeal={incident.selfHeal} partial={incident.partial} />
         </span>
         <span
           className="incident-total"

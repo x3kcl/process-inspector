@@ -4196,6 +4196,57 @@ button.skip-link {
 .incident-card-link:hover {
   text-decoration: underline;
 }
+
+/* ---- self-heal lane badge (RETRYING-RISK-LANE.md §4.1, R2, #351/#352) ----
+   INSUFFICIENT_HISTORY is the expected, common-for-a-long-time state (measured baseline,
+   reviews/R2-SELFHEAL-BASELINE-2026-08.md) — it reuses the same muted, low-weight treatment as
+   the existing informational `.status-badge`/`.scope-badge` chips deliberately, so it reads as
+   calm/legible rather than competing for attention. LIKELY/MIXED/UNLIKELY get the same
+   success/warning/danger hues the rest of the app already uses for those meanings (SPEC §10a:
+   the badge TEXT always carries the verdict too, colour is never the only signal). */
+.self-heal-cell {
+  display: inline-flex;
+  align-items: center;
+  gap: 4px;
+}
+.self-heal-badge {
+  border-radius: 8px;
+  padding: 0 6px;
+  font-size: 11px;
+  color: var(--color-text-body);
+  background: var(--color-badge-bg-subtle);
+  border: 1px solid var(--color-text-placeholder);
+}
+.self-heal-badge.lane-insufficient {
+  color: var(--color-text-secondary);
+}
+.self-heal-badge.lane-likely {
+  background: var(--color-success-bg);
+  color: var(--color-success-alt);
+  border-color: var(--color-success-border);
+}
+.self-heal-badge.lane-mixed {
+  background: var(--color-warning-bg);
+  color: var(--color-warning-text);
+  border-color: var(--color-warning-border);
+}
+.self-heal-badge.lane-unlikely {
+  background: var(--color-danger-bg);
+  color: var(--color-danger-dark);
+  border-color: var(--color-danger);
+}
+.self-heal-caveat-badge {
+  border: 1px solid var(--color-warning-border);
+  border-radius: 8px;
+  padding: 0 5px;
+  font-size: 11px;
+  color: var(--color-warning-text);
+  background: var(--color-warning-bg);
+}
+.self-heal-line {
+  margin: 4px 0;
+}
+
 .archived-generations-toggle {
   margin: 10px 0;
 }

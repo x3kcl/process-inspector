@@ -1,13 +1,14 @@
 # RETRYING risk lane — self-heal evidence for "it may self-heal" (R-BAU-11 candidate)
 
-Status: **DESIGN, backend build slice ★ SHIPPED** — research track R2 (#347, umbrella #356);
-panel pass 2026-08-04 (one seat reviewed, one honestly vacant — §12); gates build slices #351
-(stats API — **built**, `SelfHealStatsService` + `io.inspector.selfheal.*`, flag-off-by-floor:
-`inspector.selfheal.enabled=true` by default but every class self-gates at
-`INSUFFICIENT_HISTORY` until real volume accrues) / #352 (badge + risk-ranked view — not yet
-built) · **data-maturity gate NOT MET as of 2026-08-04** (§7; measured baseline
-`reviews/R2-SELFHEAL-BASELINE-2026-08.md`) — the gate governs ANNOUNCING the lane to the pilot
-(§7.2), not the #351 machinery, which ships regardless and renders honestly.
+Status: **DESIGN, backend + frontend build slices ★ SHIPPED** — research track R2 (#347,
+umbrella #356); panel pass 2026-08-04 (one seat reviewed, one honestly vacant — §12); gates
+build slices #351 (stats API — **built**, `SelfHealStatsService` + `io.inspector.selfheal.*`,
+flag-off-by-floor: `inspector.selfheal.enabled=true` by default but every class self-gates at
+`INSUFFICIENT_HISTORY` until real volume accrues) / #352 (badge + risk-ranked view — **built**,
+`frontend/src/incidents/{selfHeal.ts,SelfHealBadge.tsx}`, wired into `IncidentCard`/
+`IncidentDetail`/`sections.ts`) · **data-maturity gate NOT MET as of 2026-08-04** (§7; measured
+baseline `reviews/R2-SELFHEAL-BASELINE-2026-08.md`) — the gate governs ANNOUNCING the lane to
+the pilot (§7.2), not the #351/#352 machinery, which ships regardless and renders honestly.
 
 ## 0. Provenance
 
@@ -402,12 +403,24 @@ expect it not to).
   needs to know WHICH class a retry targeted, only whether one landed on a hosting engine
   inside the spell window) without touching the audit payload, but does not solve attribution
   itself.
-- **#352 frontend:** the lane badge on RETRYING-bearing error-group cards + incident
-  detail (chip copy per §4.1/§6); the risk-ranked RETRYING view ordered
-  `SELF_HEAL_UNLIKELY` → `MIXED` → `INSUFFICIENT_HISTORY` → `LIKELY` (attention-first;
-  ties by live total); truncation marker + exclusion tooltip + fleet-wide-scope tooltip
-  per §5. The client RENDERS the served displayed lane and never recomputes it (§4.2
-  rule 3 — stability state is server-side; a refresh cannot reset it).
+- **#352 frontend — ★ SHIPPED:** the lane badge (`SelfHealBadge.tsx`, exact §4.1/§6 copy,
+  built off `incidents/selfHeal.ts`'s pure `selfHealBadgeContent`) on the Incident Ledger card
+  (`IncidentCard.tsx`) + detail (`IncidentDetail.tsx`); truncation marker + exclusion tooltip +
+  fleet-wide-scope tooltip per §5 (`selfHealCaveat`/`selfHealScopeNote`). **Deviation from the
+  sketch, driven by the interface #351 actually shipped:** `selfHeal` is attached only to
+  `IncidentSummary`, never to Stage 0's own recomputed `ErrorGroup` triage cards (no such field
+  exists on that DTO) — so "the lane badge on RETRYING-bearing error-group cards" landed on the
+  Incident Ledger card instead, and the risk-ranked view (`sections.ts#bucketIncidents`, via
+  `compareSelfHealRisk`) reorders the Ledger's REGRESSED/OPEN/QUIET sections — ordering only,
+  nothing hidden (R-BAU-01) — `SELF_HEAL_UNLIKELY → MIXED → INSUFFICIENT_HISTORY → LIKELY`,
+  ties by live total, RESOLVED/archived sections unaffected (historical, no self-heal urgency to
+  rank). The client RENDERS the served displayed lane and never recomputes it (§4.2 rule 3 —
+  stability state is server-side; a refresh cannot reset it) — no local dwell, no smoothing.
+  Vitest coverage of every lane incl. the default `INSUFFICIENT_HISTORY` state
+  (`selfHeal.test.ts`, `SelfHealBadge.test.tsx`, `sections.test.ts`); `SELF_HEAL_LIKELY`/
+  `SELF_HEAL_MIXED` are exercised only over synthetic props (component-level, not end-to-end —
+  the harness seed that would make them reachable live is the same #351-deferred follow-up
+  noted above).
 
 ## 11. Non-goals & explicitly rejected
 
