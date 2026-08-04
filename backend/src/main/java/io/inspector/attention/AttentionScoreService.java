@@ -177,9 +177,14 @@ public class AttentionScoreService {
     }
 
     private AttentionModel build(Instant now) {
+        Instant since = now.minus(Duration.ofDays(config.arrivalsWindowDays()));
         Map<Long, String> keyByIncidentId = new LinkedHashMap<>();
         Map<String, Instant> lastSeenByKey = new LinkedHashMap<>();
-        for (Incident row : incidents.findAll()) {
+        // Window-scoped, never findAll(): `incident` rows are never deleted, so an unscoped
+        // fetch on this 5-minute rebuild grows without bound. A class last seen before the F
+        // window contributes nothing to it anyway (no in-window occurrence rows) and reads
+        // ClassHistory.none() — neutral, exactly as §4.1's degradation rule prescribes.
+        for (Incident row : incidents.findByLastSeenGreaterThanEqual(since)) {
             String key = AttentionModel.key(row.getSignatureHash(), row.getAlgoVersion());
             keyByIncidentId.put(row.getId(), key);
             lastSeenByKey.put(key, row.getLastSeen());
@@ -188,7 +193,6 @@ public class AttentionScoreService {
             return AttentionModel.empty();
         }
 
-        Instant since = now.minus(Duration.ofDays(config.arrivalsWindowDays()));
         Map<Long, Long> arrivalsById = new HashMap<>();
         for (Object[] arrival : occurrences.arrivalsSince(since)) {
             Long incidentId = asLong(arrival[0]);

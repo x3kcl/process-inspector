@@ -45,6 +45,23 @@ public interface IncidentRepository extends JpaRepository<Incident, Long> {
     List<Incident> findByStateAndSeenZeroSinceResolveFalse(IncidentState state);
 
     /**
+     * The working set for the two periodic per-class model builds — {@code SelfHealStatsService}'s
+     * 60s dwell tick and {@code AttentionScoreService}'s 5-minute model rebuild — each scoped to
+     * its own trailing window.
+     *
+     * <p>Neither may use {@code findAll()}: {@code incident} rows are NEVER deleted (only
+     * occurrence PARTITIONS drop, at 400 days), so the ledger's row count only ever grows and an
+     * unscoped fetch on a per-minute schedule degrades without bound — at 20k accumulated classes
+     * the dwell tick alone would issue ~40k per-class queries a minute. Scoping is also
+     * semantically free for both callers: a class whose {@code last_seen} predates the caller's
+     * window has, by construction, no occurrence row inside it (rows are written only when the
+     * class is observed, and every observation moves {@code last_seen}), so its derived history
+     * is already the neutral/insufficient default. Unpaged BY DESIGN — the bound is the window,
+     * and a cap here would silently DROP live classes from a model rather than truncate a list.
+     */
+    List<Incident> findByLastSeenGreaterThanEqual(Instant since);
+
+    /**
      * The per-cycle totals refresh for a row expected in {@code expectedState} (OPEN, REGRESSED,
      * or gate-closed RESOLVED — the data stays honest while only the state transition waits).
      * Never touches {@code seen_zero_since_resolve}. Returns 0 on a state race — skip quietly.

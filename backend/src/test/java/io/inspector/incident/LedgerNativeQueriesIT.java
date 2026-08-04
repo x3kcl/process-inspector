@@ -21,30 +21,33 @@ import org.springframework.test.context.DynamicPropertySource;
 import org.testcontainers.containers.PostgreSQLContainer;
 
 /**
- * The two NATIVE aggregates the attention model is built from, against a REAL Postgres 16
- * (Testcontainers) — {@code IncidentOccurrenceRepository.arrivalsSince} (a {@code LAG} window
- * function over a PARTITIONED table) and {@code
- * IncidentEpisodeRepository.closedEpisodeDurationSeconds} ({@code EXTRACT(EPOCH …)}).
+ * The ledger's NATIVE window/aggregate queries against a REAL Postgres 16 (Testcontainers) —
+ * {@code IncidentOccurrenceRepository.arrivalsSince} (the attention F factor: a {@code LAG}
+ * window function over a PARTITIONED table), {@code
+ * IncidentEpisodeRepository.closedEpisodeDurationSeconds} (the M factor, {@code EXTRACT(EPOCH …)})
+ * and {@code IncidentOccurrenceRepository.findSpellShapeRowsDescending} (the RETRYING lane's
+ * bounded spell substrate: a two-deep {@code LAG} filter mapped back onto the entity).
  *
- * <p>This IT exists because both queries are native and — with
- * {@code inspector.triage.attention-ordering} defaulting false (ALARM-COST-MODEL §7, the gate is
- * NOT met) — nothing on the default path ever executes them. Without a rung-4 test a malformed
- * statement would ship completely undetected and only surface on the day an operator flips the
- * flag. It also pins the two honesty rules the SQL, not the Java, is responsible for: arrivals are
- * positive DELTAS (never levels), and a delta touching a truncated bucket is discarded because a
- * truncated sample is a FLOOR, not a level (R-SEM-12).
+ * <p>This IT exists because all three are native and none of them runs on a default-flagged,
+ * pilot-data path — with {@code inspector.triage.attention-ordering} false (ALARM-COST-MODEL §7,
+ * the gate is NOT met) nothing executes the F/M aggregates at all. Without a rung-4 test a
+ * malformed statement would ship completely undetected and only surface on the day an operator
+ * flips the flag. It also pins the honesty rules the SQL, not the Java, is responsible for:
+ * arrivals are positive DELTAS (never levels); a delta touching a truncated bucket is discarded
+ * because a truncated sample is a FLOOR, not a level (R-SEM-12); and a delta touching a BLIND
+ * bucket is discarded because an unreachable engine is not a drain (#302).
  *
  * <p>Synthetic ingests through {@link IncidentLedgerService} — the ledger is a pure DB-side
  * consumer, so no engine is needed. Signature hashes are per-run UUIDs so a live dev stack
  * polluting the store can never break assertions. LOCAL-ONLY ({@code *IT}), like the other
- * DB-backed ITs. Lives in {@code io.inspector.incident} because it drives the two repository
+ * DB-backed ITs. Lives in {@code io.inspector.incident} because it drives the repository
  * queries directly — widening {@code IncidentLedgerService.ingest} to public for a test would be
  * the wrong trade.
  */
 @SpringBootTest(properties = {"ENGINE_A_PASSWORD=test", "inspector.snapshot.enabled=false"})
 @ActiveProfiles("it-actions")
 @TestInstance(TestInstance.Lifecycle.PER_CLASS)
-class AttentionAggregateQueriesIT {
+class LedgerNativeQueriesIT {
 
     private static final PostgreSQLContainer<?> POSTGRES = new PostgreSQLContainer<>("postgres:16-alpine");
 
@@ -148,12 +151,112 @@ class AttentionAggregateQueriesIT {
         assertThat(closedDurations(incidentId)).containsExactly(5_400L);
     }
 
+    /* ---------------- #302: a blind cycle is not movement ---------------- */
+
+    @Test
+    void aDeltaTouchingABlindBucketIsDiscardedBecauseAnUnreachableEngineIsNotADrain() {
+        String hash = "it-" + UUID.randomUUID();
+        Instant t0 = Instant.parse("2026-08-05T09:00:00Z");
+        // The review's exact outage sequence: a multi-engine class at 1000 loses the engine that
+        // hosts 900 of its members for two buckets, then gets it back. Reading the blind rows as
+        // observations makes the recovery edge a +900 ARRIVAL — 900 phantom members from a
+        // two-minute blip, F jumping log2(1+0)=0 to log2(901)≈9.8, and compounding on every flap.
+        ingest(hash, t0, 1000, false, true);
+        ingest(hash, t0.plusSeconds(60), 1000, false, true);
+        ingest(hash, t0.plusSeconds(120), 100, false, false); // engine unreachable
+        ingest(hash, t0.plusSeconds(180), 100, false, false); // still unreachable
+        ingest(hash, t0.plusSeconds(240), 1000, false, true); // back — NOT 900 new members
+        ingest(hash, t0.plusSeconds(300), 1000, false, true);
+
+        assertThat(arrivals(hash, t0)).isZero();
+    }
+
+    @Test
+    void arrivalsAcrossACompleteCycleAreStillCountedAfterABlindStretch() {
+        String hash = "it-" + UUID.randomUUID();
+        Instant t0 = Instant.parse("2026-08-06T09:00:00Z");
+        // Guard against over-discarding: only deltas TOUCHING a blind row are dropped.
+        ingest(hash, t0, 10, false, false); // blind
+        ingest(hash, t0.plusSeconds(60), 10, false, true); // discarded (predecessor blind)
+        ingest(hash, t0.plusSeconds(120), 14, false, true); // +4, both endpoints observed
+        ingest(hash, t0.plusSeconds(180), 20, false, true); // +6
+
+        assertThat(arrivals(hash, t0)).isEqualTo(10);
+    }
+
+    /* ---------------- the RETRYING lane's bounded spell substrate ---------------- */
+
+    @Test
+    void theSpellShapeQueryReturnsOnlyTheSpellItsClosingZeroAndTheLookaheadNewestFirst() {
+        String hash = "it-" + UUID.randomUUID();
+        Instant t0 = Instant.parse("2026-08-07T09:00:00Z");
+        // Nine quiet-ish buckets around a two-bucket spell: the 90-day window at a 60s beat is
+        // ~129 600 rows per class, so the reduction to shape-relevant rows is the whole point.
+        ingestJobs(hash, t0, 5, 5, 0, true);
+        ingestJobs(hash, t0.plusSeconds(60), 5, 5, 0, true);
+        ingestJobs(hash, t0.plusSeconds(120), 7, 5, 2, true); // spell starts
+        ingestJobs(hash, t0.plusSeconds(180), 6, 5, 1, false); // ...and a blind bucket inside it
+        ingestJobs(hash, t0.plusSeconds(240), 5, 5, 0, true); // closing zero
+        ingestJobs(hash, t0.plusSeconds(300), 5, 5, 0, true); // +1 look-ahead
+        ingestJobs(hash, t0.plusSeconds(360), 5, 5, 0, true); // quiet again — must NOT come back
+        ingestJobs(hash, t0.plusSeconds(420), 5, 5, 0, true);
+
+        List<IncidentOccurrence> rows = occurrences.findSpellShapeRowsDescending(incidentId(hash), t0, 100);
+
+        assertThat(rows.stream().map(row -> row.getId().getSampledAt()))
+                .containsExactly(t0.plusSeconds(300), t0.plusSeconds(240), t0.plusSeconds(180), t0.plusSeconds(120));
+        // ...and both honesty markers round-trip onto the entity (V21 mapping + ddl-auto=validate).
+        assertThat(rows.stream()
+                        .filter(row -> !row.isCycleComplete())
+                        .map(row -> row.getId().getSampledAt()))
+                .containsExactly(t0.plusSeconds(180));
+        assertThat(rows.get(0).getRetryingCount()).isZero();
+        assertThat(rows.get(3).getRetryingCount()).isEqualTo(2);
+    }
+
+    @Test
+    void theSpellShapeQueryCapKeepsTheNEWESTRowsSoTheCutIsLeftCensoredNotArbitrary() {
+        String hash = "it-" + UUID.randomUUID();
+        Instant t0 = Instant.parse("2026-08-08T09:00:00Z");
+        for (int i = 0; i < 6; i++) {
+            ingestJobs(hash, t0.plusSeconds(60L * i), 5, 5, 1, true); // one long unbroken spell
+        }
+
+        List<IncidentOccurrence> rows = occurrences.findSpellShapeRowsDescending(incidentId(hash), t0, 2);
+
+        assertThat(rows.stream().map(row -> row.getId().getSampledAt()))
+                .containsExactly(t0.plusSeconds(300), t0.plusSeconds(240));
+    }
+
     /* ---------------- helpers ---------------- */
 
     private void ingest(String hash, Instant bucket, long total, boolean truncated) {
+        ingest(hash, bucket, total, truncated, true);
+    }
+
+    private void ingest(String hash, Instant bucket, long total, boolean truncated, boolean cycleComplete) {
         AggregationSample sample = new AggregationSample(
-                List.of(), List.of(group(hash, total)), bucket, truncated ? Set.of("engine-a") : Set.of());
+                List.of(),
+                List.of(group(hash, total)),
+                bucket,
+                truncated ? Set.of("engine-a") : Set.of(),
+                cycleComplete);
         ledger.ingest(sample, bucket);
+    }
+
+    private void ingestJobs(
+            String hash, Instant bucket, long total, long deadLetters, long retrying, boolean cycleComplete) {
+        ErrorGroup group = new ErrorGroup(
+                hash,
+                1,
+                "java.net.SocketTimeoutException",
+                "timeout after # ms",
+                "timeout after 5000 ms",
+                total,
+                deadLetters,
+                retrying,
+                Map.of("engine-a", Map.of("order:v3", total)));
+        ledger.ingest(new AggregationSample(List.of(), List.of(group), bucket, Set.of(), cycleComplete), bucket);
     }
 
     private static ErrorGroup group(String hash, long total) {

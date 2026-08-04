@@ -21,7 +21,9 @@ package io.inspector.selfheal;
  *       after holding for {@code dwellCycles} consecutive COMPLETE sampler cycles. An
  *       INCOMPLETE cycle (mirroring the regression gate's "observed" doctrine, #302) neither
  *       advances nor resets the counter — "we didn't get to look" is not evidence either way,
- *       so the state simply passes through unchanged.</li>
+ *       so the state simply passes through unchanged. That check is the FIRST thing
+ *       {@link #advance} does, deliberately: it must gate the RESET branch as well as the
+ *       advance branch, or a flapping engine silently freezes every class's lane forever.</li>
  *   <li><b>Mid-spell monotonicity.</b> While a live spell is open, a risk-DECREASING candidate
  *       (order {@code LIKELY < MIXED < UNLIKELY}) is suppressed outright — it never even starts
  *       a dwell — except transitions into/out of {@code INSUFFICIENT_HISTORY}, which sit
@@ -41,15 +43,22 @@ public final class DwellStateMachine {
             boolean liveSpellPresent,
             boolean cycleComplete,
             int dwellCycles) {
+        if (!cycleComplete) {
+            // Rule 3, FIRST: an incomplete cycle contributes nothing either way — it neither
+            // advances NOR resets the counter. This has to gate the whole transition, not just
+            // the advance: the statistic recomputed from a blind cycle can land back on the
+            // displayed lane (an unreachable engine's spells simply vanish from the window),
+            // and letting that reach the "stable ⇒ any pending dwell resets" branch below means
+            // a class flapping more often than every dwellCycles beats NEVER commits a lane —
+            // permanently frozen on data the machine was explicitly told not to trust.
+            return state;
+        }
         SelfHealLane candidate = candidateLane(state.displayedLane(), n, floor, wilsonLow, wilsonHigh);
         if (liveSpellPresent && isRiskDecreasing(state.displayedLane(), candidate)) {
             candidate = state.displayedLane(); // rule 4: hold, never even start a dwell
         }
         if (candidate == state.displayedLane()) {
             return new DwellState(state.displayedLane(), null, 0); // stable: any pending dwell resets
-        }
-        if (!cycleComplete) {
-            return state; // an incomplete cycle contributes nothing either way (rule 3)
         }
         int cycles = candidate == state.pendingLane() ? state.pendingCycles() + 1 : 1;
         if (cycles >= dwellCycles) {

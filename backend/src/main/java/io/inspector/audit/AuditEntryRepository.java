@@ -137,22 +137,35 @@ public interface AuditEntryRepository extends JpaRepository<AuditEntry, UUID> {
      * signature via {@code relatedBulkJobs} (the envelope only carries the hash for
      * ERROR_CLASS scope) but DOES confound a spell — this query is the audit-side widening the
      * design calls for, deliberately broader than that join: ANY retry on a hosting engine,
-     * regardless of what it was scoped to. Ascending by {@code ts} —
-     * {@code io.inspector.selfheal.SelfHealStatsService} folds each row into a ±2-bucket
-     * confound window and only needs chronological order, never a limit. Callers must never
-     * pass an empty {@code engineIds} (JPQL {@code IN ()} is unreliable across providers — the
-     * same rule {@link #findLogScoped} documents).
+     * regardless of what it was scoped to. Callers must never pass an empty {@code engineIds}
+     * (JPQL {@code IN ()} is unreliable across providers — the same rule {@link #findLogScoped}
+     * documents).
+     *
+     * <p><b>A PROJECTION, not the entity</b> ({@link RetryAuditPoint}): the caller needs engine
+     * + timestamp only, and {@code AuditEntry.payload} is an eager basic attribute, so selecting
+     * the entity hydrated (and discarded) every matched row's payload JSON — variables included
+     * on an {@code audit-payload: full} engine — on an informational read path. The
+     * data-minimization claim in §10/§3.3 is now structural.
+     *
+     * <p><b>Bounded, newest first.</b> This runs per class per compute; over a 90-day self-heal
+     * window a bulk retry storm alone can be thousands of rows, so the caller ALWAYS supplies a
+     * capped {@link Pageable} (the {@link #findInstanceScopedForSequenceMining} precedent).
+     * {@code ts DESC} makes the cap drop the OLDEST evidence, which the caller turns into an
+     * honest window clamp rather than a silent under-exclusion — see
+     * {@code SelfHealStatsService#confoundWindows}. Order is otherwise irrelevant: each row
+     * becomes a ±2-bucket window and the windows are tested by overlap, not by sequence.
      */
     @Query("""
-            select a from AuditEntry a
+            select new io.inspector.audit.RetryAuditPoint(a.engineId, a.ts) from AuditEntry a
             where a.action = 'retry-job' and a.outcome = :outcome
               and a.engineId in :engineIds and a.ts >= :since
-            order by a.ts asc
+            order by a.ts desc
             """)
-    List<AuditEntry> findSuccessfulRetryJobAudits(
+    List<RetryAuditPoint> findSuccessfulRetryJobPoints(
             @Param("engineIds") Collection<String> engineIds,
             @Param("since") Instant since,
-            @Param("outcome") AuditOutcome outcome);
+            @Param("outcome") AuditOutcome outcome,
+            Pageable page);
 
     /**
      * The #106 S0 remediation-demand mining scan (R-GOV-08): every instance-scoped audit

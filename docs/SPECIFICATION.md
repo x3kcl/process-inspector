@@ -753,7 +753,11 @@ so history survives DLQ drains:
   p50/p90, and sample size, derived from the ledger's own occurrence + audit history (zero new
   engine calls). `INSUFFICIENT_HISTORY` (below the 10-unconfounded-completed-spell floor) is
   the expected, common-for-a-long-time state, not an edge case — the pilot's own measured
-  baseline has zero unconfounded completed spells today. Informational only (hard rail): never
+  baseline has zero unconfounded completed spells today. A spell is never judged from data the
+  BFF could not observe: any spell whose shape (or whose outcome look-ahead) includes a sample
+  taken while a registry engine was unreachable is excluded, as is one already in progress when
+  the window opened — an engine outage forges a "retries finished, nothing dead-lettered" edge,
+  and recording that as self-healing would be fabricated evidence (#302). Informational only (hard rail): never
   gates, reorders, or auto-triggers any corrective action. The UI renders ONLY the server-served
   displayed `lane` (`SelfHealBadge`, exact §4.1 copy, no client-side smoothing/recomputation) on
   the Incident Ledger card and detail (`incidents/SelfHealBadge.tsx`); the Incident Ledger's

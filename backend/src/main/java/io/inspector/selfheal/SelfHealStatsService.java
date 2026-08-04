@@ -5,9 +5,9 @@ import com.fasterxml.jackson.core.type.TypeReference;
 import com.fasterxml.jackson.databind.ObjectMapper;
 import com.github.benmanes.caffeine.cache.Cache;
 import com.github.benmanes.caffeine.cache.Caffeine;
-import io.inspector.audit.AuditEntry;
 import io.inspector.audit.AuditEntryRepository;
 import io.inspector.audit.AuditOutcome;
+import io.inspector.audit.RetryAuditPoint;
 import io.inspector.config.InspectorProperties;
 import io.inspector.dto.SelfHealStats;
 import io.inspector.incident.Incident;
@@ -19,6 +19,7 @@ import java.time.Clock;
 import java.time.Duration;
 import java.time.Instant;
 import java.util.ArrayList;
+import java.util.HashSet;
 import java.util.List;
 import java.util.Map;
 import java.util.Set;
@@ -26,6 +27,7 @@ import java.util.concurrent.ConcurrentHashMap;
 import org.slf4j.Logger;
 import org.slf4j.LoggerFactory;
 import org.springframework.context.event.EventListener;
+import org.springframework.data.domain.PageRequest;
 import org.springframework.stereotype.Service;
 
 /**
@@ -72,16 +74,47 @@ import org.springframework.stereotype.Service;
  * it DOES solve, audit-side and narrower in scope, is CONFOUND DETECTION: it never needs to
  * know WHICH class a retry targeted, only whether a retry landed on an engine the class
  * touches inside the spell's ±2-bucket window ({@link AuditEntryRepository
- * #findSuccessfulRetryJobAudits}) — engine + timestamp + outcome are all already on every
- * audit row, unminimized, so this reads ONLY existing non-payload columns. The general
- * per-signature attribution gap (episode-level "closed with/without action", and a precise
- * non-ERROR_CLASS join) remains open, exactly as the design records it.
+ * #findSuccessfulRetryJobPoints}) — engine + timestamp + outcome are all already on every
+ * audit row, unminimized, so this reads ONLY existing non-payload columns. That last clause is
+ * now STRUCTURAL rather than aspirational: the query is a {@link RetryAuditPoint} constructor
+ * projection, so {@code payload} is not in the SELECT list at all (selecting the ENTITY did
+ * hydrate it — it is an eager basic attribute — pulling variable-bearing JSON into heap on this
+ * informational path). The general per-signature attribution gap (episode-level "closed
+ * with/without action", and a precise non-ERROR_CLASS join) remains open, exactly as the design
+ * records it.
+ *
+ * <p><b>Every per-class read is bounded</b> ({@link #SPELL_ROW_CAP}, {@link #CONFOUND_AUDIT_CAP},
+ * and a DB-side reduction to spell-shape-relevant rows only): this runs per LISTED incident on
+ * the default-ON {@code GET /api/incidents} path AND for every class on the 60s dwell tick, so
+ * an unbounded per-class fetch here is the same defect class issue #308 hardened the ledger
+ * list against — and the one {@code IncidentOccurrenceRepository.arrivalsSince}'s javadoc
+ * explicitly rejects ("~40k rows per class per 28-day window").
  */
 @Service
 public class SelfHealStatsService {
 
     private static final Logger log = LoggerFactory.getLogger(SelfHealStatsService.class);
     private static final TypeReference<Map<String, Map<String, Long>>> COUNTS_SHAPE = new TypeReference<>() {};
+
+    /**
+     * Hard cap on the spell-shape rows read per class per compute (see
+     * {@link IncidentOccurrenceRepository#findSpellShapeRowsDescending}). 10 000 spell-adjacent
+     * rows is ~7 days of CONTINUOUSLY retrying buckets at the 60s beat — three orders of
+     * magnitude more evidence than the n ≥ 10 floor needs, while making the per-class heap cost
+     * of the 90-day window provably bounded rather than "129 600 rows if the class never
+     * settles". The cap drops the OLDEST rows and a spell straddling the cut is marked
+     * left-censored, so it can only shrink an honest {@code n}, never invent one.
+     */
+    static final int SPELL_ROW_CAP = 10_000;
+
+    /**
+     * Hard cap on the §3.3 confound scan per class per compute. A single 5 000-item bulk retry
+     * writes 5 000 {@code retry-job} audit rows, so the 90-day scan is unbounded in exactly the
+     * way {@link IncidentOccurrenceRepository#findSpellShapeRowsDescending} fixes on the other
+     * side. When it bites, the window is CLAMPED to the span with complete confound evidence
+     * (see {@link #confounds}) rather than the exclusions being silently dropped.
+     */
+    static final int CONFOUND_AUDIT_CAP = 5_000;
 
     private final IncidentRepository incidents;
     private final IncidentOccurrenceRepository occurrences;
@@ -160,8 +193,16 @@ public class SelfHealStatsService {
 
     /** Package-visible so tests drive ticks deterministically (the {@code IncidentLedgerServiceTest} shape). */
     void tick(boolean cycleComplete, Instant now) {
-        for (Incident row : incidents.findAll()) {
+        Set<String> ticked = new HashSet<>();
+        // NOT findAll(): `incident` rows are NEVER deleted (only occurrence PARTITIONS drop, at
+        // 400 days), so an unscoped fetch grows without bound forever and this loop runs every
+        // 60s. Scoping to the self-heal window is BEHAVIOUR-PRESERVING, not a trade: a class
+        // whose last_seen predates the window has no in-window occurrence row by construction
+        // (rows are only written when the class is observed, and every observation moves
+        // last_seen), so its statistic is already the INSUFFICIENT_HISTORY default.
+        for (Incident row : incidents.findByLastSeenGreaterThanEqual(now.minus(window))) {
             String key = key(row.getSignatureHash(), row.getAlgoVersion());
+            ticked.add(key);
             try {
                 ClassCompute computed = computeRaw(row, now);
                 rawCache.put(key, computed.raw());
@@ -182,44 +223,89 @@ public class SelfHealStatsService {
                 log.warn("self-heal stats: class {} skipped this cycle — {}", key, e.toString());
             }
         }
+        // Bounded like the Caffeine raw cache is: this map is keyed signatureHash#algoVersion and
+        // would otherwise accumulate a permanent entry per class ever seen — and an ALGO_VERSION
+        // bump re-keys every class, DOUBLING it (generation honesty, §5: an orphaned generation
+        // never comes back). A dropped key re-arms at DwellState.initial() — INSUFFICIENT_HISTORY
+        // at zero dwell progress, exactly the documented restart behaviour and exactly what the
+        // statistic of an out-of-window class computes anyway.
+        dwellStates.keySet().retainAll(ticked);
+    }
+
+    /**
+     * How many classes currently hold dwell state. The test seam for the map's BOUND (it is the
+     * one unbounded-by-construction structure in this service — see {@link #tick}); nothing in
+     * production reads it.
+     */
+    int trackedDwellClasses() {
+        return dwellStates.size();
     }
 
     /* ---------------- derive-on-read ---------------- */
 
     private record ClassCompute(RawSelfHealStats raw, boolean liveSpellPresent) {}
 
+    /**
+     * The confound evidence for one class: the ±2-bucket windows, plus the instant from which
+     * that evidence is COMPLETE ({@code null} = complete for the whole window). They differ only
+     * when {@link #CONFOUND_AUDIT_CAP} bit; see {@link #confounds}.
+     */
+    private record Confounds(List<ConfoundWindow> windows, Instant completeFrom) {}
+
     private ClassCompute computeRaw(Incident row, Instant now) {
         Instant since = now.minus(window);
-        List<IncidentOccurrence> points =
-                occurrences.findByIdIncidentIdAndIdSampledAtGreaterThanEqualOrderByIdSampledAtAsc(row.getId(), since);
-        List<SpellSample> samples = new ArrayList<>(points.size());
-        for (IncidentOccurrence point : points) {
+        Confounds confounds = confounds(row, since);
+        // Never judge a spell over a span whose confound evidence we know is incomplete: clamp
+        // the sample window instead of quietly counting spells we could not have excluded.
+        Instant from =
+                confounds.completeFrom() != null && confounds.completeFrom().isAfter(since)
+                        ? confounds.completeFrom()
+                        : since;
+        List<IncidentOccurrence> newestFirst =
+                occurrences.findSpellShapeRowsDescending(row.getId(), from, SPELL_ROW_CAP);
+        List<SpellSample> samples = new ArrayList<>(newestFirst.size());
+        for (int i = newestFirst.size() - 1; i >= 0; i--) { // DESC from the DB ⇒ chronological here
+            IncidentOccurrence point = newestFirst.get(i);
             samples.add(new SpellSample(
                     point.getId().getSampledAt(),
                     point.getDeadLetterCount(),
                     point.getRetryingCount(),
-                    point.isTruncated()));
+                    point.isTruncated(),
+                    point.isCycleComplete()));
         }
-        List<ConfoundWindow> confoundWindows = confoundWindows(row, since);
-        List<RetrySpell> spells = RetrySpellExtractor.extract(samples, bucketWidth, confoundWindows);
+        List<RetrySpell> spells = RetrySpellExtractor.extract(samples, bucketWidth, confounds.windows());
         RawSelfHealStats raw = SelfHealStatsComputer.compute(spells, floor);
         boolean live = spells.stream().anyMatch(RetrySpell::live);
         return new ClassCompute(raw, live);
     }
 
-    private List<ConfoundWindow> confoundWindows(Incident row, Instant since) {
+    /**
+     * The §3.3 audit-side confound scan, bounded. Rows come back NEWEST first, so a cap that
+     * bites leaves the evidence complete only from the oldest fetched retry onward — reported as
+     * {@code completeFrom} (that instant PLUS the ±2-bucket tolerance, since a spell must have
+     * its whole tolerance band covered to be judged) and honored by {@link #computeRaw} as a
+     * window clamp. Under-counting {@code n} is acceptable; counting a spell we could not have
+     * excluded is not.
+     */
+    private Confounds confounds(Incident row, Instant since) {
         Set<String> engineIds = engineIdsOf(row);
         if (engineIds.isEmpty()) {
-            return List.of();
+            return new Confounds(List.of(), null);
         }
         Duration tolerance = bucketWidth.multipliedBy(RetrySpellExtractor.CONFOUND_BUCKETS);
-        List<AuditEntry> retries = audits.findSuccessfulRetryJobAudits(engineIds, since, AuditOutcome.ok);
+        List<RetryAuditPoint> retries = audits.findSuccessfulRetryJobPoints(
+                engineIds, since, AuditOutcome.ok, PageRequest.of(0, CONFOUND_AUDIT_CAP));
         List<ConfoundWindow> windows = new ArrayList<>(retries.size());
-        for (AuditEntry entry : retries) {
-            windows.add(new ConfoundWindow(
-                    entry.getTs().minus(tolerance), entry.getTs().plus(tolerance)));
+        Instant oldest = null;
+        for (RetryAuditPoint point : retries) {
+            windows.add(
+                    new ConfoundWindow(point.ts().minus(tolerance), point.ts().plus(tolerance)));
+            if (oldest == null || point.ts().isBefore(oldest)) {
+                oldest = point.ts();
+            }
         }
-        return windows;
+        boolean capped = retries.size() >= CONFOUND_AUDIT_CAP && oldest != null;
+        return new Confounds(windows, capped ? oldest.plus(tolerance) : null);
     }
 
     private Set<String> engineIdsOf(Incident row) {

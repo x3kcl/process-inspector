@@ -61,6 +61,34 @@ class DwellStateMachineTest {
     }
 
     @Test
+    void anIncompleteCycleWhoseCandidateMatchesTheDisplayedLaneDoesNotResetTheDwellEither() {
+        // The other incomplete-cycle test only covers the case where the candidate STAYS
+        // different, which never reaches the reset branch. This is the one that matters in
+        // production: on a blind cycle an unreachable engine's spells simply vanish from the
+        // window, so the recomputed statistic drops back to the DISPLAYED lane — and the
+        // "stable ⇒ any pending dwell resets" branch would then wipe the dwell from data the
+        // machine was explicitly told not to trust. With an engine flapping more often than
+        // every DWELL cycles (~10 min at the 60s beat) no class would EVER commit a lane.
+        DwellState state = DwellState.initial();
+        for (int i = 0; i < DWELL - 1; i++) {
+            state = DwellStateMachine.advance(state, 10, 0.722, 1.0, FLOOR, false, true, DWELL);
+        }
+        assertThat(state.pendingCycles()).isEqualTo(DWELL - 1);
+
+        // blind cycle: the class's evidence is unobservable, so n reads back below the floor and
+        // the candidate is the currently displayed INSUFFICIENT_HISTORY.
+        state = DwellStateMachine.advance(state, 0, null, null, FLOOR, false, false, DWELL);
+
+        assertThat(state.pendingLane()).isEqualTo(SelfHealLane.SELF_HEAL_LIKELY);
+        assertThat(state.pendingCycles()).isEqualTo(DWELL - 1);
+
+        // ...and the very next complete cycle therefore commits, exactly as if the blind one
+        // had never happened.
+        state = DwellStateMachine.advance(state, 10, 0.722, 1.0, FLOOR, false, true, DWELL);
+        assertThat(state.displayedLane()).isEqualTo(SelfHealLane.SELF_HEAL_LIKELY);
+    }
+
+    @Test
     void aRevertingCandidateMidDwellResetsTheCounter() {
         DwellState state = DwellState.initial();
         state = DwellStateMachine.advance(state, 10, 0.722, 1.0, FLOOR, false, true, DWELL);
