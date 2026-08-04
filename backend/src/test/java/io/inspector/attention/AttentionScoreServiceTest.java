@@ -60,7 +60,7 @@ class AttentionScoreServiceTest {
     void theModelJoinsArrivalsAndClosedEpisodesOntoTheLedgerRowsByIncidentId() {
         List<Incident> ledger = List.of(incident(4L, "hash-a", NOW.minusSeconds(86_400)));
         when(incidents.findByLastSeenGreaterThanEqual(any())).thenReturn(ledger);
-        when(occurrences.arrivalsSince(any())).thenReturn(List.<Object[]>of(row(4L, 7L)));
+        when(occurrences.arrivalsSince(any())).thenReturn(List.<Object[]>of(arrivalRow(4L, 7L, 40L, 40L)));
         when(episodes.closedEpisodeDurationSeconds())
                 .thenReturn(List.<Object[]>of(row(4L, 3_600L), row(4L, 5_400L), row(4L, 7_200L)));
 
@@ -101,7 +101,9 @@ class AttentionScoreServiceTest {
     void nativeAggregatesAreCoercedWhateverNumericTypeTheDriverHandsBack() {
         List<Incident> ledger = List.of(incident(4L, "hash-a", NOW));
         when(incidents.findByLastSeenGreaterThanEqual(any())).thenReturn(ledger);
-        when(occurrences.arrivalsSince(any())).thenReturn(List.<Object[]>of(new Object[] {BigInteger.valueOf(4), 15L}));
+        when(occurrences.arrivalsSince(any()))
+                .thenReturn(List.<Object[]>of(
+                        new Object[] {BigInteger.valueOf(4), 15L, BigDecimal.valueOf(9), BigInteger.valueOf(9)}));
         when(episodes.closedEpisodeDurationSeconds())
                 .thenReturn(List.<Object[]>of(new Object[] {BigDecimal.valueOf(4), BigDecimal.valueOf(60.7)}));
 
@@ -130,7 +132,7 @@ class AttentionScoreServiceTest {
     void theR2StatisticIsConsumedAsGivenAndNeverRecomputedHere() {
         List<Incident> ledger = List.of(incident(4L, "hash-a", NOW));
         when(incidents.findByLastSeenGreaterThanEqual(any())).thenReturn(ledger);
-        when(occurrences.arrivalsSince(any())).thenReturn(List.<Object[]>of(row(4L, 3L)));
+        when(occurrences.arrivalsSince(any())).thenReturn(List.<Object[]>of(arrivalRow(4L, 3L, 9L, 9L)));
         when(episodes.closedEpisodeDurationSeconds()).thenReturn(List.of());
         SelfHealStats stats =
                 new SelfHealStats(SelfHealLane.SELF_HEAL_LIKELY.name(), 14, 12, 0.72, 0.98, 300L, 480L, 2, false);
@@ -140,6 +142,57 @@ class AttentionScoreServiceTest {
         assertThat(scored.factors().selfHealLane()).isEqualTo("SELF_HEAL_LIKELY");
         assertThat(scored.factors().selfHeal()).isEqualTo(0.25);
         assertThat(scored.rationale()).contains("usually self-heals (12/14)");
+    }
+
+    /* ---------------- review FIX 2: untrusted ≠ zero, and absent ≠ untrusted ---------------- */
+
+    @Test
+    void aWindowWithSamplesButNoTRUSTEDOneReportsUnknownArrivalsAndANeutralF() {
+        // The engine this class lives on has been at its failure-lane scan cap all window, so
+        // every sample was discarded. The aggregate still returns a row — with observedSamples > 0
+        // and trustedSamples = 0 — and THAT is what stops F collapsing to log2(1+0) = 0 and
+        // zeroing the whole product for exactly the fleet's biggest classes.
+        List<Incident> ledger = List.of(incident(4L, "hash-a", NOW));
+        when(incidents.findByLastSeenGreaterThanEqual(any())).thenReturn(ledger);
+        when(occurrences.arrivalsSince(any())).thenReturn(List.<Object[]>of(arrivalRow(4L, 0L, 40_320L, 0L)));
+        when(episodes.closedEpisodeDurationSeconds()).thenReturn(List.of());
+
+        AttentionScore scored = service(true).forClass("hash-a", 2, 4_000, null);
+
+        assertThat(scored.factors().arrivalsUnknown()).isTrue();
+        assertThat(scored.factors().discardedArrivalSamples()).isEqualTo(40_320L);
+        assertThat(scored.factors().frequency()).isEqualTo(1.0);
+        assertThat(scored.rationale()).contains("arrival volume unknown");
+    }
+
+    @Test
+    void aWindowThatLostSOMESamplesStillReportsTheArrivalsItCouldTrust() {
+        List<Incident> ledger = List.of(incident(4L, "hash-a", NOW));
+        when(incidents.findByLastSeenGreaterThanEqual(any())).thenReturn(ledger);
+        when(occurrences.arrivalsSince(any())).thenReturn(List.<Object[]>of(arrivalRow(4L, 7L, 40L, 28L)));
+        when(episodes.closedEpisodeDurationSeconds()).thenReturn(List.of());
+
+        AttentionScore scored = service(true).forClass("hash-a", 2, 21, null);
+
+        assertThat(scored.factors().arrivalsUnknown()).isFalse();
+        assertThat(scored.factors().discardedArrivalSamples()).isEqualTo(12L);
+        assertThat(scored.factors().frequency()).isEqualTo(3.0);
+    }
+
+    @Test
+    void anIncidentAbsentFromTheAggregateIsAGenuineZeroNotAnUnknown() {
+        // No in-window occurrence row at all ⇒ no evidence either way, which is the fleet-uniform
+        // "no history" case the neutrality guarantee rests on. It must NOT read as untrusted.
+        List<Incident> ledger = List.of(incident(4L, "hash-a", NOW));
+        when(incidents.findByLastSeenGreaterThanEqual(any())).thenReturn(ledger);
+        when(occurrences.arrivalsSince(any())).thenReturn(List.of());
+        when(episodes.closedEpisodeDurationSeconds()).thenReturn(List.of());
+
+        AttentionScore scored = service(true).forClass("hash-a", 2, 21, null);
+
+        assertThat(scored.factors().arrivalsUnknown()).isFalse();
+        assertThat(scored.factors().frequency()).isZero();
+        assertThat(scored.score()).isZero();
     }
 
     @Test
@@ -153,7 +206,7 @@ class AttentionScoreServiceTest {
     void aPoisonedSelfHealStatisticDemotesNothing() {
         List<Incident> ledger = List.of(incident(4L, "hash-a", NOW));
         when(incidents.findByLastSeenGreaterThanEqual(any())).thenReturn(ledger);
-        when(occurrences.arrivalsSince(any())).thenReturn(List.<Object[]>of(row(4L, 1L)));
+        when(occurrences.arrivalsSince(any())).thenReturn(List.<Object[]>of(arrivalRow(4L, 1L, 9L, 9L)));
         when(episodes.closedEpisodeDurationSeconds()).thenReturn(List.of());
         when(selfHeal.get(anyString(), anyInt())).thenThrow(new IllegalStateException("boom"));
 
@@ -190,5 +243,10 @@ class AttentionScoreServiceTest {
 
     private static Object[] row(long incidentId, long value) {
         return new Object[] {incidentId, value};
+    }
+
+    /** {@code arrivalsSince} hands back four columns: sum, differenceable samples, trusted ones. */
+    private static Object[] arrivalRow(long incidentId, long arrivals, long observed, long trusted) {
+        return new Object[] {incidentId, arrivals, observed, trusted};
     }
 }

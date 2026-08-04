@@ -20,6 +20,13 @@ import java.util.Locale;
  * 21 failing · last seen 2 min ago · typically takes 4 h to resolve · no self-heal history.
  * </pre>
  *
+ * <p>A FIFTH clause appears only when the F factor's window was wholly untrusted (review fix):
+ *
+ * <pre>
+ * 4000 failing · last seen just now · … · arrival volume unknown (scan truncated or engine
+ * unreachable all window).
+ * </pre>
+ *
  * <p>Every clause states EVIDENCE, never a verdict, and an estimate under its own sample-size
  * floor says "no history" instead of a number (§6 honesty rails). Nothing here prescribes an
  * intervention — this track orders attention only (§9 non-goal; issue #106 stays untouched).
@@ -36,9 +43,14 @@ public final class AttentionRationale {
      * @param medianMttrSeconds {@code null} below the closed-episode floor ⇒ "no resolve-time
      *     history"
      * @param selfHeal the R2 statistic, or {@code null} when none applied
+     * @param arrivalsUnknown true when EVERY differenceable occurrence sample in the F window was
+     *     discarded as truncated or blind. The score then runs on a NEUTRAL F, so the sentence
+     *     must say the arrival evidence is missing rather than let the reader assume the class
+     *     was measured and found flat.
      */
-    public static String sentence(long liveTotal, long ageSeconds, Long medianMttrSeconds, SelfHealStats selfHeal) {
-        List<String> clauses = new ArrayList<>(4);
+    public static String sentence(
+            long liveTotal, long ageSeconds, Long medianMttrSeconds, SelfHealStats selfHeal, boolean arrivalsUnknown) {
+        List<String> clauses = new ArrayList<>(5);
         clauses.add(liveTotal + " failing");
         clauses.add(ageSeconds < 60 ? "last seen just now" : "last seen " + humanize(ageSeconds) + " ago");
         clauses.add(
@@ -46,6 +58,9 @@ public final class AttentionRationale {
                         ? "typically takes " + humanize(medianMttrSeconds) + " to resolve"
                         : "no resolve-time history");
         clauses.add(selfHealClause(selfHeal));
+        if (arrivalsUnknown) {
+            clauses.add("arrival volume unknown (scan truncated or engine unreachable all window)");
+        }
         return String.join(" · ", clauses) + ".";
     }
 

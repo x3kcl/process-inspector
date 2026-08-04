@@ -186,7 +186,8 @@ public class IncidentQueryService {
                         point.getTotal(),
                         point.getDeadLetterCount(),
                         point.getRetryingCount(),
-                        point.isTruncated()))
+                        point.isTruncated(),
+                        point.isCycleComplete()))
                 .toList();
         return new IncidentDetail(
                 summary,

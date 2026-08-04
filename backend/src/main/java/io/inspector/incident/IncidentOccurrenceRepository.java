@@ -61,8 +61,7 @@ public interface IncidentOccurrenceRepository extends JpaRepository<IncidentOccu
      *
      * <p><b>Truncation honesty (R-SEM-12, §6):</b> a truncated sample is a FLOOR, not a level, so
      * a delta touching a truncated point is discarded outright rather than being allowed to
-     * manufacture a phantom arrival when the scan cap stops biting. Returns {@code Object[]{
-     * incidentId, arrivals}}; incidents with no qualifying delta are simply absent (⇒ 0).
+     * manufacture a phantom arrival when the scan cap stops biting.
      *
      * <p><b>Blind-cycle honesty (#302, V21):</b> exactly the same rule, second marker. A row
      * written while an engine was unreachable is missing that engine's members, so a
@@ -72,25 +71,55 @@ public interface IncidentOccurrenceRepository extends JpaRepository<IncidentOccu
      * the attention order for the full window and to compound on every flap). A delta is
      * therefore counted only when BOTH its endpoints were observed completely; the outage's
      * recovery edge is discarded, not banked.
+     *
+     * <p><b>Discarding is now COUNTED, not silent (review fix, §6 "Correction (post-ship)").</b>
+     * The two rules above are right, but as first shipped their only output was a smaller sum —
+     * so a class on an engine PERMANENTLY at its failure-lane scan cap had every one of its
+     * deltas discarded in every bucket, landed on {@code arrivals = 0}, and therefore on
+     * {@code F = log2(1) = 0}, which ZEROES {@code A(c) = F·R·M·S} outright. Truncation
+     * correlates with size, so that systematically demoted the LARGEST classes below a
+     * one-member class with a single arrival, and nothing said so. The aggregate therefore
+     * returns the sample COUNTS beside the sum: {@code Object[]{incidentId, arrivals,
+     * observedSamples, trustedSamples}}. A window with {@code observedSamples &gt; 0} and
+     * {@code trustedSamples = 0} is WHOLLY UNTRUSTED — the caller degrades {@code F} to the
+     * multiplicative identity 1 (§4.1's own degradation rule) instead of to a zero it cannot
+     * justify. Incidents with no in-window row at all are simply absent (⇒ genuinely 0
+     * arrivals, 0 samples).
+     *
+     * <p><b>A class's BIRTH is an arrival (review fix, §6).</b> {@code LAG} is NULL for the
+     * first row of the window, and as first shipped that row was filtered out entirely — so an
+     * incident's FIRST EVER occurrence row, which IS the arrival of its whole population, could
+     * never be counted. A bad deploy breaking 5 000 instances at once appeared with
+     * {@code total = 5000}, stayed flat, and scored {@code arrivals = 0 ⇒ F = 0 ⇒ A = 0} —
+     * permanently below a class that gained one member. The join onto {@code incident} fixes
+     * exactly that and nothing else: the baseline is seeded at 0 for the incident's OWN first
+     * row and only there. Because the ledger writes that row at the bucket FLOOR of the instant
+     * it stamps into {@code first_seen}, and every later row is at a strictly later bucket,
+     * {@code sampled_at &lt;= first_seen} selects that one row and no other. A window that
+     * merely STARTS mid-life still finds {@code LAG} NULL on its first row and still discards it
+     * — the standing population is not growth, so "arrivals are the growth signal, not the size
+     * signal" holds unchanged.
      */
     @Query(value = """
-                    SELECT d.incident_id, COALESCE(SUM(GREATEST(d.delta, 0)), 0)
+                    SELECT d.incident_id,
+                           COALESCE(SUM(GREATEST(d.delta, 0)) FILTER (WHERE d.trusted), 0) AS arrivals,
+                           COUNT(*)                                                        AS observed_samples,
+                           COUNT(*) FILTER (WHERE d.trusted)                               AS trusted_samples
                     FROM (
-                        SELECT incident_id,
-                               total - LAG(total) OVER w                AS delta,
-                               truncated                                AS truncated,
-                               LAG(truncated) OVER w                    AS prev_truncated,
-                               cycle_complete                           AS cycle_complete,
-                               LAG(cycle_complete) OVER w               AS prev_cycle_complete
-                        FROM incident_occurrence
-                        WHERE sampled_at >= :since
-                        WINDOW w AS (PARTITION BY incident_id ORDER BY sampled_at)
+                        SELECT o.incident_id,
+                               o.total - COALESCE(LAG(o.total) OVER w, 0)          AS delta,
+                               (LAG(o.total) OVER w IS NOT NULL
+                                    OR o.sampled_at <= i.first_seen)               AS differenceable,
+                               (o.truncated = false
+                                    AND o.cycle_complete
+                                    AND COALESCE(LAG(o.truncated) OVER w, false) = false
+                                    AND COALESCE(LAG(o.cycle_complete) OVER w, true)) AS trusted
+                        FROM incident_occurrence o
+                        JOIN incident i ON i.id = o.incident_id
+                        WHERE o.sampled_at >= :since
+                        WINDOW w AS (PARTITION BY o.incident_id ORDER BY o.sampled_at)
                     ) d
-                    WHERE d.delta IS NOT NULL
-                      AND d.truncated = false
-                      AND d.prev_truncated = false
-                      AND d.cycle_complete
-                      AND d.prev_cycle_complete
+                    WHERE d.differenceable
                     GROUP BY d.incident_id
                     """, nativeQuery = true)
     List<Object[]> arrivalsSince(@Param("since") Instant since);

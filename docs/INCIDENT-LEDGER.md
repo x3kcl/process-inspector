@@ -304,8 +304,14 @@ Interactions: incident detail shows ack state read-only; resolve offers the opt-
   sparkline (S4 decision): the list payload carries no occurrence series, and fetching one
   per card would N+1 the API — the arrival timeline lives on the detail page only, where
   the series is already part of the response.
-- Detail: timeline chart (occurrence series; **truncated points rendered visually
-  distinct** — a truncated sample is a floor, not a dip), per-engine×definition breakdown,
+- Detail: timeline chart (occurrence series; **BOTH honesty markers rendered visually
+  distinct, each with its own legend line** — a `truncated` sample is a floor, not a dip
+  (hollow/dashed), and a `cycleComplete = false` sample is BLIND (square): an engine was
+  unreachable when it was written, so the dip it draws is an outage, not a drain. The blind
+  marker is a post-ship correction — V21 has persisted `cycle_complete` since the ledger
+  blind-cycle fix, but `IncidentDetail.OccurrencePoint` did not carry it, so this chart drew an
+  outage identically to a real recovery; shape carries the meaning, never colour alone),
+  per-engine×definition breakdown,
   sample raw message, episode list with per-episode duration (MTTR), lifecycle strip,
   related bulk jobs; actions:
   Resolve (with the opt-in ack checkbox) / Reopen (OPERATOR), per-slice **"Retry group"**
@@ -318,8 +324,11 @@ Interactions: incident detail shows ack state read-only; resolve offers the opt-
 ## 9. Non-functional & doctrine compliance
 
 - **Do-no-harm:** zero new engine calls; DB writes bounded by live-groups-per-cycle.
-- **Honesty:** truncation flags end-to-end (ledger, occurrence, UI badges + sparkline
-  rendering); no fabricated zeros; quiet derived, never stored.
+- **Honesty:** truncation AND blind-cycle flags end-to-end (ledger, occurrence, DTO, UI badges
+  + sparkline rendering); no fabricated zeros; quiet derived, never stored. A reader that
+  DISCARDS an untrustworthy sample must also SAY it discarded it — the attention `F` factor's
+  arrivals aggregate reports its sample counts so a fully-discarded window reads "unknown"
+  (neutral) rather than the zero it arithmetically produces (ALARM-COST-MODEL.md §13 F2).
 - **Stage-0 rule** (count-only/size=1 + dedicated DLQ scan) untouched.
 - **Retention:** occurrence partitions drop at 400d (revFADP posture); `incident`/
   `incident_episode` rows persist (tiny, bounded by distinct failure classes; a

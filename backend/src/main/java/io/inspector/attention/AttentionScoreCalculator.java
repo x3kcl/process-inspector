@@ -15,7 +15,7 @@ import java.util.List;
  * <pre>
  * A(c) = F(c) · R(c) · M(c) · S(c)
  *
- * F(c) = log2(1 + arrivals_28d(c))
+ * F(c) = log2(1 + arrivals_28d(c))                    -- neutral 1 when the window was UNTRUSTED
  * R(c) = 2^(-age(lastSeen(c)) / tau)
  * M(c) = clamp(medMTTR(c) / medMTTR(fleet), 0.5, 2)   -- neutral 1 below the episode floor
  * S(c) = max(1 - p_heal(c), 0.25)                     -- neutral 1 with no R2 lane
@@ -23,7 +23,13 @@ import java.util.List;
  *
  * <p><b>The neutrality property this whole slice rests on.</b> Every discriminating factor
  * degrades to a MULTIPLICATIVE IDENTITY when its evidence is missing: no closed episodes ⇒ M = 1,
- * no R2 lane ⇒ S = 1, no ledger row ⇒ R = 1 and F = 0. So with an empty ledger every class scores
+ * no R2 lane ⇒ S = 1, no trustworthy arrival sample ⇒ F = 1. The ONE deliberate exception is a
+ * class with no ledger row (or a window whose samples were all trustworthy and all flat): there
+ * F = 0 and the score is 0 for EVERYONE, which is not a demotion but the whole-fleet collapse to
+ * the count-only tie-break — the design's stated guarantee. "No evidence at all" and "evidence we
+ * were not allowed to trust" are different claims and get different answers: the first is uniform
+ * across the fleet and harms nobody, the second correlates with class SIZE and demoted exactly
+ * the largest classes until this review fixed it. So with an empty ledger every class scores
  * exactly 0.0, the comparison falls through to the tie-break, and the tie-break IS today's
  * ordering ({@code total DESC}, then {@code signatureHash ASC} for the R-SEM-23 deterministic
  * total order). That is not an accident to be tolerated — it is the design's stated guarantee
@@ -77,7 +83,7 @@ public final class AttentionScoreCalculator {
         ClassHistory evidence = history != null ? history : ClassHistory.none();
 
         long arrivals = Math.max(0, evidence.arrivals());
-        double frequency = log2(1 + arrivals);
+        double frequency = frequency(arrivals, evidence.arrivalsUnknown());
 
         long ageSeconds = ageSeconds(evidence.lastSeen(), now);
         double recency = recency(ageSeconds, config.recencyHalfLife());
@@ -103,26 +109,62 @@ public final class AttentionScoreCalculator {
                 classMedian,
                 closed.size(),
                 lane != null ? lane.name() : null,
-                insufficient);
+                insufficient,
+                evidence.arrivalsUnknown(),
+                Math.max(0L, evidence.discardedArrivalSamples()));
         return new AttentionScore(
                 score,
                 factors,
-                AttentionRationale.sentence(liveTotal, ageSeconds, classMedian, selfHeal),
+                AttentionRationale.sentence(liveTotal, ageSeconds, classMedian, selfHeal, evidence.arrivalsUnknown()),
                 suggestedAckExpirySeconds(closed, config));
     }
 
     /**
      * The §3.2 ack-expiry SUGGESTION: an ack is a bet that attention is not needed for a while, so
-     * the honest proxy for "how long" is the class's P75 closed-episode duration — "episodes of
-     * this class usually resolve within X". Below the same closed-episode floor the M factor uses,
-     * there is NO suggestion (today's behavior: the UI's initial selection stays {@code none}).
-     * The operator always overrides and the R-BAU-01 resurface guarantees are untouched.
+     * the honest proxy for "how long" is the class's P75 closed-episode duration. Below the same
+     * closed-episode floor the M factor uses, there is NO suggestion (today's behavior: the UI's
+     * initial selection stays {@code none}). The operator always overrides and the R-BAU-01
+     * resurface guarantees are untouched.
+     *
+     * <p><b>What "P75" means here, and the copy correction it forced (review fix).</b>
+     * {@link Quantiles} is deliberately NEAREST-RANK and un-interpolated, so at the
+     * {@code min-closed-episodes = 3} floor {@code ceil(0.75 · 3) = 3} ⇒ index 2 ⇒ the LONGEST of
+     * the three recorded episodes. The estimator is kept — erring long is the safe direction for
+     * a mute suggestion (a too-short expiry buys an interruption the operator did not ask for),
+     * an interpolated quantile at n = 3 would invent precision the sample does not carry, and the
+     * same estimator is shared with {@code SelfHealStatsComputer} so "P75" means one thing across
+     * both research tracks. What was WRONG was the copy: "episodes of this class usually resolve
+     * within X" reads as a typical-case claim, while the statistic is "at least 75 % of the N
+     * recorded episodes resolved within X — and at N = 3 that is all three, i.e. the observed
+     * maximum". §3.2 now says the latter, in exactly those terms.
      */
     static Long suggestedAckExpirySeconds(List<Long> closedEpisodeSeconds, AttentionConfig config) {
         if (closedEpisodeSeconds.size() < config.minClosedEpisodes()) {
             return null;
         }
         return Quantiles.percentile(closedEpisodeSeconds, 0.75);
+    }
+
+    /**
+     * {@code log2(1 + arrivals)}, EXCEPT when the class's whole F window was untrustworthy — every
+     * differenceable sample discarded for truncation (R-SEM-12 floor) or blindness (#302). Then
+     * the honest answer is "unknown", and §4.1's degradation rule says an unknown factor reads as
+     * the MULTIPLICATIVE IDENTITY, not as zero.
+     *
+     * <p>This is the review's confirmed defect, and the reason it is a defect rather than a
+     * conservative choice: {@code F} is a FACTOR of {@code A(c) = F·R·M·S}, so {@code F = 0}
+     * zeroes the entire score whatever R, M and S say. On an engine permanently at its
+     * failure-lane scan cap EVERY group it touches is truncated in EVERY bucket, so every one of
+     * its classes collapsed to {@code A = 0} — and truncation correlates with SIZE, so enabling
+     * the flag on such a fleet systematically demoted the biggest classes below a one-member
+     * class with a single arrival. Neutral-1 says "no arrival evidence here"; zero said "this
+     * class is provably not growing", which the data never showed.
+     */
+    static double frequency(long arrivals, boolean arrivalsUnknown) {
+        if (arrivalsUnknown) {
+            return 1.0;
+        }
+        return log2(1 + arrivals);
     }
 
     /** {@code 2^(-age/tau)} — 1 at age 0, 0.5 at one half-life. A null/future lastSeen reads 1. */

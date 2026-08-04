@@ -2492,6 +2492,57 @@ above: `docs/RUNBOOK.md`'s top-of-file "Facts" section still claimed "RPO ≤ 5 
 correction to `docs/OPERATIONS.md` §4, silently contradicting that same file's own §5
 further down. Corrected to the real current number (24h) with a pointer to §5.
 
+### v2 research tracks — Phase 2 builds _(★ LANDED 2026-08-04, commit e3bd8b6 / PR #360 — issues #351 #352 #353 #354 #355)_
+
+The WHEN entry Phase 1 (commit 087f7cc, PR #357) set the precedent for and Phase 2 shipped
+without. Designs are in the per-feature docs; this records the sequencing only.
+
+- **R2 self-heal risk lane** — `#351` backend (`io.inspector.selfheal.*`: RETRYING-spell
+  extraction over the ledger's own `incident_occurrence` series, Wilson interval, tts p50/p90,
+  audit-side confound detection, SERVER-side dwell/hysteresis state machine ticked off the
+  existing `AggregationSampledEvent`; derive-on-read, zero new tables, zero new engine calls)
+  → `#352` frontend (`SelfHealBadge` on the Incident Ledger card + detail, exclusion and
+  fleet-scope caveats, risk-ranked section ordering). `INSUFFICIENT_HISTORY` is the measured,
+  expected-for-a-long-time lane. [RETRYING-RISK-LANE.md](RETRYING-RISK-LANE.md)
+- **R1 attention ordering** — `#353` backend (`io.inspector.attention.*`: `A(c) = F·R·M·S`,
+  the server-side one-sentence rationale, the C2 ack-expiry suggestion, and C3's
+  counterfactual-ack replay estimator — all behind `inspector.triage.attention-ordering`,
+  **default false**, because the design's own data-maturity gate is measured NOT MET on 0 of 5
+  axes) → `#354` frontend (`AttentionBadge` on Stage 0 and the Ledger; the Ledger's section
+  comparator reconciled with #352's self-heal sort so the server's order wins rather than being
+  re-derived client-side). [ALARM-COST-MODEL.md](ALARM-COST-MODEL.md)
+- **R3 migration typed findings** — `#355` (typed, machine-readable migration preview findings
+  replacing free-text). [INSTANCE-MIGRATION.md](INSTANCE-MIGRATION.md)
+
+Build order inside the phase followed the standing rule below: backend DTO → derive-on-read
+service → controller → generated types → component, with R1's `S` factor consuming R2's shipped
+lane rather than re-deriving it (a dependency, never a duplication).
+
+### v2 research tracks — adversarial review of the Phase 2 code → correction round _(★ LANDED 2026-08-04)_
+
+Two rounds of adversarial review against the shipped Phase 2 code, both merged onto
+`fix/review-integration` and completed by `fix/attention-scoring-correctness`:
+
+1. **Ledger blind-cycle integrity** (`9ab84d6`): `AggregationSample.cycleComplete` (#302) was
+   never persisted, so an engine outage's drop-and-recover was indistinguishable from movement —
+   phantom arrivals in R1's `F` factor, fabricated `SELF_HEALED` evidence in R2's lane, and a
+   dwell machine that never committed for a fast-flapping class. **V21** adds
+   `incident_occurrence.cycle_complete` (backfilled `false`, fail-closed). Same commit bounded
+   the two per-class self-heal reads (~129 600 rows per class per call on the default-ON
+   `GET /api/incidents` path) and made the R-AUD-03 "never touches the audit payload" claim
+   structural via a `RetryAuditPoint` projection.
+2. **Migration scope-collapse token loss** (`1f10551`).
+3. **Attention-scoring correctness** — seven confirmed defects in the #353/#354 code, all fixed
+   and each with a failing-before test; the full table (defect, severity, fix, proof) is
+   [ALARM-COST-MODEL.md §13](ALARM-COST-MODEL.md). Headlines: a non-transitive section
+   comparator that V8 sorted into silent garbage; scan-cap truncation zeroing `F` for exactly
+   the largest classes; a class's initial population being structurally invisible to a
+   delta-only aggregate; `derived-resurface-threshold` halving the guard it advertises as
+   tightening; a censored settle window scored as proven growth; nearest-rank "P75" copy that
+   overstated at the sample floor; and the detail sparkline rendering a blind-cycle dip
+   unmarked. **No new migration** (V21 is the latest and already carries the column), no new
+   engine call, no behaviour change with the flag off.
+
 ## Build order inside any milestone
 
 backend DTO → engine client call → aggregator/join logic → controller → typed frontend API

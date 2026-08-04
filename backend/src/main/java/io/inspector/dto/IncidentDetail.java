@@ -15,8 +15,10 @@ import java.util.UUID;
  * {@code durationSeconds} is derived ({@code endedAt − startedAt}) whenever the episode has
  * ended, omitted while it is live. {@code series} is the occurrence time-series inside the
  * requested window (server-clamped like {@code /api/triage/trends}), ascending; a
- * {@code truncated} point is a FLOOR, not a dip (R-SEM-12) — {@code seriesWindow} echoes the
- * clamped window actually applied (ISO-8601 duration).
+ * {@code truncated} point is a FLOOR, not a dip (R-SEM-12) and a {@code cycleComplete = false}
+ * point is BLIND — an engine was unreachable when it was written, so its dip is an outage rather
+ * than a drain (#302/V21) — {@code seriesWindow} echoes the clamped window actually applied
+ * (ISO-8601 duration).
  *
  * <p>{@code live} is the CURRENT {@link ErrorGroup} for this incident's
  * {@code (signatureHash, algoVersion)} — joined at render time from the SAME shared cached
@@ -54,9 +56,26 @@ public record IncidentDetail(
             long peakTotal, // max observed live total this episode
             Long durationSeconds) {} // endedAt − startedAt; omitted while live
 
-    /** One bucketed time-series point (INCIDENT-LEDGER.md §3.3) — the sparkline substrate. */
+    /**
+     * One bucketed time-series point (INCIDENT-LEDGER.md §3.3) — the sparkline substrate, with
+     * BOTH of the row's honesty markers (V21). {@code truncated} = the failure-lane scan hit its
+     * cap on that sample, so the count is a FLOOR, not a level (R-SEM-12). {@code cycleComplete}
+     * = every registry engine actually answered on the pass that wrote the row (#302); when it is
+     * false the sample is missing an unreachable engine's members, so the dip the chart draws is
+     * an OUTAGE, not a drain.
+     *
+     * <p>Shipping {@code cycleComplete} is the same iron rule that put {@code truncated} here —
+     * never render a status derived from truncated data without the badge. Without it the detail
+     * sparkline drew a blind-outage dip identically to a real recovery, which is precisely the
+     * confusion the marker was persisted to prevent.
+     */
     public record OccurrencePoint(
-            Instant sampledAt, long total, long deadLetterCount, long retryingCount, boolean truncated) {}
+            Instant sampledAt,
+            long total,
+            long deadLetterCount,
+            long retryingCount,
+            boolean truncated,
+            boolean cycleComplete) {}
 
     /**
      * One related error-class bulk retry — the {@code GET /api/bulk} list item's exact field

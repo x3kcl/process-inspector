@@ -318,7 +318,13 @@ Answers "what is broken, how much, where" in zero keystrokes:
   and section membership is untouched. Every factor degrades to a multiplicative identity when
   its evidence is missing, and ties break on `total DESC` then `signatureHash ASC`, so **with
   no ledger history the ordering is exactly today's count-only ordering** — measured across
-  all 21,229 recorded pilot buckets (Kendall τ = 1.0, zero position changes). The flag ships
+  all 21,229 recorded pilot buckets (Kendall τ = 1.0, zero position changes). "Missing evidence"
+  now includes **untrustworthy** evidence (post-ship correction, ALARM-COST-MODEL.md §13 F2/F3):
+  a class whose whole arrival window was truncated or blind reads `F = 1` (neutral) with
+  `factors.arrivalsUnknown` set, rather than the `F = 0` that used to zero the entire score for
+  exactly the largest classes on any permanently scan-capped engine; and a class's own FIRST
+  occurrence row now counts as the arrival of its whole population, which the delta-only
+  aggregate could never see. The flag ships
   false because the design's numeric data-maturity gate is measured NOT MET (0 of 5 axes);
   flipping it requires re-measuring that gate. **The frontend (#354) renders whatever order it
   is served, never re-sorting Stage-0 cards itself** — the BFF already reorders `errorGroups`
@@ -773,13 +779,22 @@ so history survives DLQ drains:
   also carries the optional #353 `attention` score, and that score already folds in this SAME
   self-heal signal (§11's `lane → p_heal` band map) — sorting by `compareSelfHealRisk` on top of
   an attention-ordered list would double-count self-heal and silently override the server's
-  order. `incidents/attention.ts#compareIncidentOrder` (used by `sections.ts#bucketIncidents` in
-  place of a bare `compareSelfHealRisk`) ranks by the server `attention` score — mirroring the
-  backend's own `score DESC → total DESC → signatureHash ASC` tie-break — whenever it is present,
-  and falls back to EXACTLY the `compareSelfHealRisk` ordering above when it is absent (the
-  shipped, flag-off, expected-today case, unchanged from #352). The Incident Ledger card and
-  detail also render the shared `AttentionBadge` off `incident.attention` alongside the
-  self-heal badge.
+  order. `incidents/attention.ts#incidentOrderComparator` (used by `sections.ts#bucketIncidents`
+  in place of a bare `compareSelfHealRisk`) ranks by the server `attention` score — mirroring
+  the backend's own `score DESC → total DESC → signatureHash ASC` tie-break — when EVERY row in
+  the list carries one, and falls back to EXACTLY the `compareSelfHealRisk` ordering above
+  otherwise (the shipped, flag-off, expected-today case, unchanged from #352). **The choice is
+  made ONCE per list, never per pair** (post-ship correction, ALARM-COST-MODEL.md §13 F1): as
+  first shipped it was a per-pair rule — the attention path only when BOTH sides carried the
+  block — which is non-transitive, admits a strict cycle, and, because V8 never throws on a
+  broken comparator, sorted the REGRESSED/OPEN/QUIET sections into silent garbage whenever a
+  mixed array arrived (one class whose scoring threw, or a model-cache TTL expiring mid-page, is
+  enough). A mixed list now degrades WHOLESALE to the well-tested self-heal ordering. The
+  Incident Ledger card and detail also render the shared `AttentionBadge` off
+  `incident.attention` alongside the self-heal badge, and the detail sparkline marks BOTH
+  occurrence honesty flags — `truncated` (a floor) and `cycleComplete = false` (blind: an engine
+  was unreachable, so the dip is an outage, not a drain) — with distinct shapes and their own
+  legend lines.
 - **Non-goals v1** (recorded with the panel review): assignee/severity fields, auto-resolve
   policies, external alerting/deploy correlation, reporting dashboards/CSV export.
 

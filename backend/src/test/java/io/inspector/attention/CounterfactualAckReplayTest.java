@@ -7,6 +7,7 @@ import io.inspector.attention.CounterfactualAckReplay.SeriesPoint;
 import java.time.Duration;
 import java.util.ArrayList;
 import java.util.List;
+import java.util.OptionalInt;
 import org.junit.jupiter.api.Test;
 
 /**
@@ -106,23 +107,67 @@ class CounterfactualAckReplayTest {
                 .isZero();
     }
 
+    /* ---------------- FIX 5: a censored settle window is not proof of growth ---------------- */
+
+    @Test
+    void anAckWhoseSettleWindowRunsPastTheSegmentEndIsDroppedInsteadOfJudgedGenuine() {
+        // The review's exact counterexample. `growthHeld` used to SHORTEN the settle window to
+        // the segment end instead of discarding the censored sample, so a resurface landing on
+        // the LAST index ran the check exactly once — at an index which by construction sits
+        // above the trigger, hence above the baseline — and therefore ALWAYS returned true.
+        // stableSegments breaks at every zero and every truncated bucket, so "class spikes, then
+        // drains to zero" puts the spike at the segment tail: the very shape that should count
+        // as a false resurface was banked as proven growth instead.
+        List<List<Long>> spikeAtTheTail = List.of(List.of(100L, 130L));
+
+        var outcome = CounterfactualAckReplay.replay(spikeAtTheTail, BUCKET, 20);
+
+        assertThat(outcome.resurfaces()).isZero();
+        assertThat(outcome.falseResurfaces()).isZero();
+        // The failing-before assertion: the old code accrued this ack's mute time and counted the
+        // resurface as genuine. A censored sample contributes to NEITHER side of the budget.
+        assertThat(outcome.ackDays()).isZero();
+    }
+
+    @Test
+    void aResurfaceWithAFullSettleWindowIsStillJudgedNormally() {
+        // Guard against over-discarding: SETTLE_BUCKETS buckets of room after the resurface is
+        // exactly enough, so this one IS judged — and judged false, because it falls straight back.
+        List<List<Long>> segments = List.of(sustain(100, 1, 130, 1, 100, CounterfactualAckReplay.SETTLE_BUCKETS));
+
+        var outcome = CounterfactualAckReplay.replay(segments, BUCKET, 20);
+
+        assertThat(outcome.resurfaces()).isEqualTo(1);
+        assertThat(outcome.falseResurfaces()).isEqualTo(1);
+    }
+
     /* ---------------- the fit ---------------- */
 
     @Test
     void theSmallestQualifyingKWinsSoAnAckNeverBecomesAPermanentMute() {
-        List<List<Long>> quiet = List.of(sustain(100, 60, 100, 60, 100, 60));
+        // Flat at 100, then a SUSTAINED step to 130 that holds: the very first grid point already
+        // fires a resurface (so the fit is exercised, not vacuous) and that resurface is genuine,
+        // so the budget is met without buying quiet.
+        List<List<Long>> steppedUp = List.of(sustain(100, 30, 130, 40, 130, 0));
 
-        // Nothing ever crosses even the floor here, so the very first grid point qualifies.
-        assertThat(CounterfactualAckReplay.fitK(quiet, BUCKET, FLOOR_PCT, BUDGET))
-                .isEqualTo(0.5);
+        assertThat(CounterfactualAckReplay.fitK(steppedUp, BUCKET, FLOOR_PCT, BUDGET))
+                .hasValue(0.5);
     }
 
     @Test
-    void theDerivedThresholdNeverDropsBelowTheFloorEvenAtZeroJitter() {
+    void aFlatClassIsUNFITTABLERatherThanFittedToTheSmallestKOnAnEmptyReplay() {
+        // FIX 4, the review's confirmed defect: at CV = 0 every grid candidate collapses to the
+        // floor, NOTHING ever crosses it, and `falsePer30AckDays = 0 <= budget` held VACUOUSLY —
+        // so k = 0.5 "won" and the derived threshold came out at the 10 % floor. For the measured
+        // pilot state (§5.6: CV ~ 0 on both live classes) that HALVED the shipped 20 % constant,
+        // doubling ack interruptions, on the strength of having no data at all.
         List<SeriesPoint> flat = points(new long[] {21, 21, 21, 21, 21, 21}, false);
 
+        assertThat(CounterfactualAckReplay.fitK(
+                        CounterfactualAckReplay.stableSegments(flat), BUCKET, FLOOR_PCT, BUDGET))
+                .isEmpty();
         assertThat(CounterfactualAckReplay.thresholdPct(flat, BUCKET, FLOOR_PCT, BUDGET))
-                .isEqualTo(FLOOR_PCT);
+                .isEmpty();
     }
 
     @Test
@@ -132,15 +177,18 @@ class CounterfactualAckReplayTest {
             noisy[i] = i % 2 == 0 ? 60 : 140; // CV ≈ 0.4 — heavy, sustained jitter
         }
 
-        int derived = CounterfactualAckReplay.thresholdPct(points(noisy, false), BUCKET, FLOOR_PCT, BUDGET);
+        // Still fittable: its SMALLEST candidate fires plenty, and the winning larger one
+        // suppressing them is the jitter guard §3.3 asks for — not an absence of evidence.
+        OptionalInt derived = CounterfactualAckReplay.thresholdPct(points(noisy, false), BUCKET, FLOOR_PCT, BUDGET);
 
-        assertThat(derived).isGreaterThan(FLOOR_PCT);
+        assertThat(derived).isPresent();
+        assertThat(derived.getAsInt()).isGreaterThan(FLOOR_PCT);
     }
 
     @Test
-    void aSeriesWithNothingToSegmentFallsBackToTheFloorRatherThanInventingAThreshold() {
+    void aSeriesWithNothingToSegmentIsUnfittableRatherThanInventingAThreshold() {
         assertThat(CounterfactualAckReplay.thresholdPct(List.of(), BUCKET, FLOOR_PCT, BUDGET))
-                .isEqualTo(FLOOR_PCT);
+                .isEmpty();
     }
 
     @Test
