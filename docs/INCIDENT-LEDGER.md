@@ -138,6 +138,7 @@ CREATE TABLE incident_occurrence (
     dead_letter_count bigint NOT NULL,
     retrying_count    bigint NOT NULL,
     truncated         boolean NOT NULL,
+    cycle_complete    boolean NOT NULL,                -- V21: every registry engine answered ok() (#302)
     PRIMARY KEY (incident_id, sampled_at)            -- business key IS the PK (panel: o3 BLOCKER fix)
 ) PARTITION BY RANGE (sampled_at);
 CREATE TABLE incident_occurrence_default PARTITION OF incident_occurrence DEFAULT;
@@ -152,6 +153,18 @@ CREATE TABLE incident_occurrence_default PARTITION OF incident_occurrence DEFAUL
 - FK kept (panel P4): `incident` rows are never deleted, partition DROP is metadata-only.
 - Idempotent upsert `ON CONFLICT (incident_id, sampled_at) DO UPDATE`, bucket-floored like
   `SnapshotBucket`. A poll is not a mutation: no corrective-action rails.
+- **TWO honesty markers, read identically (V21).** `truncated` says the counts are a scan-cap
+  FLOOR (R-SEM-12); `cycle_complete = false` says an engine was unreachable when they were
+  taken (#302), so members hosted there are simply MISSING from them. Both make the row
+  unusable as a LEVEL: every derived reader discards a delta touching one (`arrivalsSince`, the
+  attention F factor) and refuses to read a retrying-count edge at one as a spell boundary
+  (RETRYING-RISK-LANE §3.1). Persisting `cycle_complete` was the fix for a shipped defect
+  class: the flag existed on the SAMPLE but was consumed only by the regression gate, so a
+  two-minute engine outage read downstream as ~900 phantom arrivals AND as a fabricated
+  SELF_HEALED spell. Pre-V21 rows backfill to `false` — completeness was never recorded for
+  them, and asserting an unrecorded observation is exactly the fabrication this prevents; the
+  safe default (0 arrivals / INSUFFICIENT_HISTORY) is already the first-class expected state
+  for both consumers.
 
 ## 4. JSONB churn note (accepted risk)
 
@@ -172,8 +185,10 @@ engine load whenever it missed the ~20s triage cache. Therefore:
   flag — group truncation is derivable only from the per-engine envelope's
   `dlqScan="truncated@N"` marker, and the truncation-honesty mandate (§8) needs that carrier
   at ingest time. The fifth (`cycleComplete`, #302) is true only when EVERY registry engine's
-  envelope came back `ok()` this pass — the sole input to the regression gate's "observed"
-  test below; it changes nothing else about ingestion.
+  envelope came back `ok()` this pass. It is BOTH the regression gate's "observed" test below
+  AND (V21) a persisted column on every occurrence row — a live group still ingests on an
+  incomplete cycle, but the row it writes must SAY the cycle was blind or nothing downstream
+  can tell an outage's drop-and-recover apart from real movement.
 - `SnapshotSampler` keeps its snapshot-store write, then **publishes a synchronous Spring
   `AggregationSampledEvent`** carrying the sample. `IncidentLedgerService` is an
   `@EventListener` gated by `inspector.incidents.enabled` (default true, independent of
@@ -198,7 +213,8 @@ Per live group per cycle (all in one transaction, optimistic-locked):
      hysteresis per panel).
    While the gate is closed, the cycle still updates `last_seen`/totals/occurrence (the
    data stays honest; only the state transition waits).
-4. Always: upsert the bucketed `incident_occurrence` row.
+4. Always: upsert the bucketed `incident_occurrence` row — carrying BOTH honesty markers,
+   `truncated` and `cycle_complete` (§3.3).
 
 **The REGRESSED transition's audit write is fail-closed with a genuine compensation (R-AUD-10,
 issue #307).** The transition + new episode land in the group's ambient transaction, then
@@ -223,14 +239,24 @@ single engine hiccup regress every RESOLVED incident behind it on recovery, each
 config-event audit row that never actually regressed. Nothing else about ingestion changes on
 an incomplete cycle: live groups above still update totals/occurrence/episode peak exactly as
 on a complete one — only the absence-triggered write waits for a cycle that can actually vouch
-for the absence.
+for the absence. What DID change (V21) is that the occurrence row now RECORDS the blind cycle
+rather than dropping the marker on the floor. Writing an honest count while discarding "and an
+engine was unreachable when I counted" is not honesty: a multi-engine class's total drops and
+recovers with the outage, and the two derived readers built on this series — the attention
+score's positive-delta arrival sum and the RETRYING lane's spell-edge detector — were
+structurally unable to tell that apart from movement. The first banked the recovery as
+hundreds of phantom arrivals; the second read the artificial `retrying_count = 0` as a spell
+END with no DLQ growth and recorded the outage as SELF_HEALED evidence. Both now discard a
+blind row exactly as they already discard a truncated one.
 
 Absent groups: write nothing — except that for RESOLVED incidents an absent/zero group
 observed on a COMPLETE cycle sets `seen_zero_since_resolve = true` (the one deliberate
 absence-triggered write). "Quiet" is DERIVED at read time (`last_seen < now −
 inspector.incidents.quiet-window`, default 24h), never stored. Down engines → absent from
 aggregation → gaps, no fabricated zeros (their groups' totals may dip; the occurrence rows
-record what was observed — same honesty rule as the snapshot store) — AND their absence never
+record what was observed AND that the pass was blind, `cycle_complete = false`, so a dip that
+is really an unobserved engine is never differenced as movement — same honesty rule as the
+snapshot store) — AND their absence never
 arms the regression gate for any incident, live or resolved. Store down → warn once + skip.
 
 ## 6. API surface (springdoc-scanned; records; RFC-7807; no delete — the ledger is history)
@@ -278,8 +304,14 @@ Interactions: incident detail shows ack state read-only; resolve offers the opt-
   sparkline (S4 decision): the list payload carries no occurrence series, and fetching one
   per card would N+1 the API — the arrival timeline lives on the detail page only, where
   the series is already part of the response.
-- Detail: timeline chart (occurrence series; **truncated points rendered visually
-  distinct** — a truncated sample is a floor, not a dip), per-engine×definition breakdown,
+- Detail: timeline chart (occurrence series; **BOTH honesty markers rendered visually
+  distinct, each with its own legend line** — a `truncated` sample is a floor, not a dip
+  (hollow/dashed), and a `cycleComplete = false` sample is BLIND (square): an engine was
+  unreachable when it was written, so the dip it draws is an outage, not a drain. The blind
+  marker is a post-ship correction — V21 has persisted `cycle_complete` since the ledger
+  blind-cycle fix, but `IncidentDetail.OccurrencePoint` did not carry it, so this chart drew an
+  outage identically to a real recovery; shape carries the meaning, never colour alone),
+  per-engine×definition breakdown,
   sample raw message, episode list with per-episode duration (MTTR), lifecycle strip,
   related bulk jobs; actions:
   Resolve (with the opt-in ack checkbox) / Reopen (OPERATOR), per-slice **"Retry group"**
@@ -292,8 +324,11 @@ Interactions: incident detail shows ack state read-only; resolve offers the opt-
 ## 9. Non-functional & doctrine compliance
 
 - **Do-no-harm:** zero new engine calls; DB writes bounded by live-groups-per-cycle.
-- **Honesty:** truncation flags end-to-end (ledger, occurrence, UI badges + sparkline
-  rendering); no fabricated zeros; quiet derived, never stored.
+- **Honesty:** truncation AND blind-cycle flags end-to-end (ledger, occurrence, DTO, UI badges
+  + sparkline rendering); no fabricated zeros; quiet derived, never stored. A reader that
+  DISCARDS an untrustworthy sample must also SAY it discarded it — the attention `F` factor's
+  arrivals aggregate reports its sample counts so a fully-discarded window reads "unknown"
+  (neutral) rather than the zero it arithmetically produces (ALARM-COST-MODEL.md §13 F2).
 - **Stage-0 rule** (count-only/size=1 + dedicated DLQ scan) untouched.
 - **Retention:** occurrence partitions drop at 400d (revFADP posture); `incident`/
   `incident_episode` rows persist (tiny, bounded by distinct failure classes; a

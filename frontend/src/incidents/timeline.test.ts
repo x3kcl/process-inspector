@@ -5,12 +5,12 @@ import { timelineCoords, timelinePoints, timelinePolyline } from './timeline'
 describe('timelinePoints', () => {
   it('normalizes, coalesces optional fields, and sorts ascending by time', () => {
     const series: OccurrencePoint[] = [
-      { sampledAt: '2026-07-18T11:01:00Z', total: 5, truncated: true },
-      { sampledAt: '2026-07-18T11:00:00Z' },
+      { sampledAt: '2026-07-18T11:01:00Z', total: 5, truncated: true, cycleComplete: true },
+      { sampledAt: '2026-07-18T11:00:00Z', cycleComplete: true },
     ]
     expect(timelinePoints(series)).toEqual([
-      { sampledAt: '2026-07-18T11:00:00Z', total: 0, truncated: false },
-      { sampledAt: '2026-07-18T11:01:00Z', total: 5, truncated: true },
+      { sampledAt: '2026-07-18T11:00:00Z', total: 0, truncated: false, blind: false },
+      { sampledAt: '2026-07-18T11:01:00Z', total: 5, truncated: true, blind: false },
     ])
   })
 
@@ -20,6 +20,21 @@ describe('timelinePoints', () => {
 
   it('is empty for undefined series', () => {
     expect(timelinePoints(undefined)).toEqual([])
+  })
+
+  // Review fix: `cycleComplete = false` (#302/V21) means an engine was unreachable when the
+  // sample was written, so the sample is missing that engine's members and the dip it draws is
+  // an OUTAGE, not a drain. The DTO did not carry the marker at all, so this chart rendered a
+  // blind dip identically to a real recovery — the same class as the iron rule "never render a
+  // status derived from truncated data without the badge".
+  it('marks a blind sample, and marks an ABSENT cycleComplete blind too (fail toward honest)', () => {
+    const points = timelinePoints([
+      { sampledAt: 't1', total: 1000, cycleComplete: true },
+      { sampledAt: 't2', total: 100, cycleComplete: false }, // engine unreachable
+      { sampledAt: 't3', total: 1000 }, // older server / missing field ⇒ NOT asserted complete
+    ])
+
+    expect(points.map((point) => point.blind)).toEqual([false, true, true])
   })
 })
 
@@ -49,19 +64,23 @@ describe('timelineCoords', () => {
   it('centres a single point and yields nothing for empty', () => {
     const one = timelinePoints([{ sampledAt: 't1', total: 7 }])
     expect(timelineCoords(one, 100, 20)).toEqual([
-      { sampledAt: 't1', total: 7, truncated: false, x: 50, y: 10 },
+      { sampledAt: 't1', total: 7, truncated: false, blind: true, x: 50, y: 10 },
     ])
     expect(timelineCoords([], 100, 20)).toEqual([])
   })
 
-  it('carries the truncated flag through onto each coordinate', () => {
+  it('carries BOTH honesty flags through onto each coordinate', () => {
     const points = timelinePoints([
-      { sampledAt: 't1', total: 1, truncated: true },
-      { sampledAt: 't2', total: 2 },
+      { sampledAt: 't1', total: 1, truncated: true, cycleComplete: true },
+      { sampledAt: 't2', total: 2, cycleComplete: true },
+      { sampledAt: 't3', total: 3, cycleComplete: false },
     ])
     const coords = timelineCoords(points, 100, 20)
     expect(coords[0].truncated).toBe(true)
+    expect(coords[0].blind).toBe(false)
     expect(coords[1].truncated).toBe(false)
+    expect(coords[1].blind).toBe(false)
+    expect(coords[2].blind).toBe(true)
   })
 })
 

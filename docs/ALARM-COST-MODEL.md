@@ -107,11 +107,26 @@ sample-size rails as every other estimate.
 ### 3.2 Ack-expiry suggested default (C2)
 An ack is a bet that attention is not needed for a while. The break-even mute duration is
 when accrued expected miss-cost reaches `c_att`. Proxy without currency calibration: suggest
-the expiry preset nearest the class's **P75 closed-episode duration** ("episodes of this
-class usually resolve within X") once the class has ≥ 3 closed episodes; otherwise the
-fleet-tier P75; otherwise no suggestion (today's behavior, selection `none`). UI change is a
-**pre-selected preset + one-line why**; the operator always overrides; the resurface
-guarantees are untouched.
+the expiry preset nearest the class's **P75 closed-episode duration** once the class has ≥ 3
+closed episodes; otherwise the fleet-tier P75; otherwise no suggestion (today's behavior,
+selection `none`). UI change is a **pre-selected preset + one-line why**; the operator always
+overrides; the resurface guarantees are untouched.
+
+**Correction (post-ship, adversarial review 2026-08-04 — §13 F6).** The copy above originally
+read *"episodes of this class usually resolve within X"*, and that was FALSE at the sample
+size this estimator is gated at. `Quantiles` is deliberately **nearest-rank and
+un-interpolated** (shared with `SelfHealStatsComputer` so "P75" means one thing across both
+research tracks), so at `min-closed-episodes = 3` the rank is `ceil(0.75 · 3) = 3` ⇒ index 2 ⇒
+the **longest** of the three recorded episodes. "Usually resolve within X" reads as a
+typical-case claim; the number is an observed maximum. **The statistic is kept, the claim is
+corrected**: erring long is the safe direction for a mute suggestion (a too-short expiry buys
+an interruption nobody asked for), an interpolated quantile at n = 3 would invent precision the
+sample does not carry, and changing the estimator would also move R2's shipped `ttsP90` badge.
+The honest wording, and the one the code now carries, is: **"at least 75 % of the N recorded
+closed episodes resolved within X — and at N = 3 that is all three, i.e. the observed
+maximum."** The same nearest-rank shape applies to `SelfHealStatsComputer.percentile` for p90
+at n = 10 (rank `ceil(9) = 9` of 10 — the 9th of ten, not the maximum, so the existing
+"typically ≤ X min" copy there is already a `≤` bound and stays correct).
 
 ### 3.3 Auto-resurface baseline factor (C3)
 +20 % is currently arbitrary. Model-derived: the threshold should exceed normal
@@ -128,6 +143,50 @@ operator behavior before it takes effect: **C3 switches to the derived value onl
 full §7 gate**, and until then the constant 20 % stays and the config key keeps working as
 today (per-deployment override). Target budget: ≤ 1 false resurface per 30 ack-days on the
 replay.
+
+**Correction (post-ship, adversarial review 2026-08-04 — §13 F4/F5).** As first shipped, opting
+in to `derived-resurface-threshold` **halved** the guard instead of tightening it, on exactly
+the data this design was built for. Two independent defects, both fixed:
+
+- **A vacuous fit won.** For a low-jitter class — *the measured pilot state*, §5.6 "CV ≈ 0 on
+  both live classes" — every grid candidate collapses to `max(10, k·0·100) = 10 %`, nothing
+  ever crosses it, so `falseResurfaces = 0 ≤ budget` held **vacuously** and the smallest grid
+  point `k = 0.5` won immediately. `thresholdPct` then returned `max(floor_pct, ceil(0)) = 10`.
+  Merely opting in therefore moved every static class from a 20 % threshold to a 10 % one —
+  **twice as many ack interruptions** — via a fit satisfied by having no data. Now: a replay in
+  which the *smallest* candidate on the grid fires ZERO resurfaces is **UNFITTABLE** (the series
+  never exercised any threshold, so it carries no information about one) and the class keeps the
+  constant. Monotonicity makes the smallest-candidate probe exact rather than merely cheap, and
+  a genuinely noisy class is untouched — its small candidates fire plenty.
+- **A fitted value could still lower the guard.** Belt and braces, independent of the above: the
+  derived value is now **floored at `inspector.triage.ack-resurface-threshold-pct`**. §3.3's
+  purpose is to lift the threshold *clear of* jitter; a derived value below today's constant
+  would interrupt the operator more often than the constant does. **Opting in can now only ever
+  raise the threshold, never lower it.**
+- **Censored settle windows counted as proven growth.** `growthHeld` silently SHORTENED its
+  window to the segment end (`end = min(size-1, resurface + SETTLE_BUCKETS)`) instead of
+  discarding an unobservable sample. When the resurface landed on the LAST index the loop ran
+  exactly once, at an index that by construction sits above the trigger — so it **always
+  returned true**. And segments break at every zero and every truncated bucket, so the common
+  "class spikes, then drains to zero" shape puts the spike at the segment tail: precisely the
+  case that should count as a FALSE resurface was banked as genuine. The bias ran one way —
+  false resurfaces under-counted ⇒ fitted `k` too small ⇒ a shipped threshold delivering *more*
+  false resurfaces than the budget promises. Now an ack whose settle window would run past the
+  segment end is **skipped entirely** (neither numerator nor denominator of the budget).
+
+**Not changed, and why (the reviewer's secondary, PLAUSIBLE item — `ackDays` grows ~O(L²) in
+segment length while `falseResurfaces` grows ~O(L), so on long quiet segments the budget may be
+non-binding).** Judged NOT a defect. `ackDays` is an EXPOSURE denominator over independent
+simulated acks — the person-years construction — and numerator and denominator are pooled over
+the same set of simulated acks, so `Σfalse / Σexposure` is exactly "expected false resurfaces
+per ack-day if you ack at a uniformly random moment", which is the quantity the budget is
+phrased in. A long quiet segment giving a low rate is the correct answer, not a dilution
+artifact. And the fits it could distort are now structurally harmless: an under-fitted `k` can
+only produce a value at or below the constant, which the new floor pins back to the constant.
+**Residual, unverified:** an ack that never resurfaces still accrues its full exposure, and for
+the LAST segment of a series (which ends at the series end rather than at a genuine drain to
+zero) that exposure is itself right-censored. Not fixed — no case was constructed where it
+moves a fitted `k`, and the same floor bounds its effect.
 
 ### 3.4 What stays a plain constant — honesty about thin data
 - **C5 R-NFR-04 thresholds**: executor starvation is engine-executor pathology observed in
@@ -153,7 +212,8 @@ output, never adds a leg to it.
 A(c) = F(c) · R(c) · M(c) · S(c)
 
 F(c) = log2(1 + arrivals_28d(c))          frequency — positive occurrence-total deltas,
-                                          28d trailing, from incident_occurrence
+                                          28d trailing, from incident_occurrence;
+                                          1 (neutral) when the window was WHOLLY UNTRUSTED
 R(c) = 2^(−age(lastSeen(c)) / τ)          recency — τ default 24h = the existing
                                           quiet-window constant (C6)
 M(c) = clamp(medMTTR(c) / medMTTR(fleet), 0.5, 2)
@@ -179,6 +239,36 @@ Rules:
   zeroed — a mass self-heal class stays visible (same doctrine as never-hide).
 - Score factors ship in the DTO next to the card (`attention: {score, factors, rationale}`)
   so the UI renders the one-sentence rationale (below) with real numbers, not vibes.
+
+**Correction (post-ship, adversarial review 2026-08-04 — §13 F2/F3): `F` had two ways to read
+0 when the truth was "unknown" or "the whole class just arrived".**
+
+- **Untrusted ≠ zero.** `IncidentLedgerService.isTruncated` marks a group truncated when ANY
+  engine it touches hit the failure-lane scan cap, so on an engine PERMANENTLY at the cap every
+  group it contributes is truncated in EVERY bucket, every delta is discarded, `arrivals = 0`
+  and `F = log2(1) = 0`. `F` is a FACTOR, so that zeroed `A(c)` outright whatever R, M and S
+  said. Truncation correlates with SIZE, so enabling the flag on any fleet with a capped engine
+  **systematically demoted the biggest classes** — a 4 000-member class freshly seen on a capped
+  engine scored `A = 0`, below a one-member class with one arrival at `A = 1.0` — and nothing
+  signalled it (`insufficientHistory` only ever tracked M and S). The arrivals aggregate now
+  returns sample COUNTS beside the sum (`observedSamples`, `trustedSamples`); a window with
+  samples but no TRUSTED one reads **`F = 1` (the multiplicative identity, §4.1's own degradation
+  rule)**, and `factors.arrivalsUnknown` + `factors.discardedArrivalSamples` carry the fact onto
+  the wire so the tooltip can say "arrival volume unknown" instead of implying a measured zero.
+  Both untrust reasons — truncation (R-SEM-12) and blindness (`cycle_complete = false`, #302) —
+  feed the same signal. **A class with NO in-window row at all keeps `F = 0`**, deliberately:
+  that case is fleet-uniform, collapses every score to 0, and is exactly the count-only tie-break
+  the neutrality guarantee (§5.5) rests on.
+- **A class's BIRTH is an arrival.** `LAG(total)` is NULL for the window's first row and that row
+  was filtered out, so an incident's FIRST EVER occurrence row — which *is* the arrival of its
+  entire population — could never be counted. A bad deploy breaking 5 000 instances at once
+  appeared at `total = 5000`, stayed flat, and scored `arrivals = 0 ⇒ F = 0 ⇒ A = 0`, permanently
+  below a class that gained one member. `0 → 5000` in one bucket is the LARGEST possible arrival
+  event. The aggregate now joins `incident.first_seen` and seeds the baseline at 0 **for the
+  incident's own first row and only there**. This does not weaken "growth is not size" (§1): a
+  window that merely STARTS mid-life still finds `LAG` NULL on its first row and still discards
+  it, so a standing population is never re-banked as fresh growth, and
+  `arrivalsAreTheGrowthSignalNotTheSizeSignal` passes unchanged.
 
 ### 4.2 Interface consumed from track R2 (#347 design / #351 API) — dependency, not duplication
 The score consumes, per `(signatureHash, algoVersion)`:
@@ -322,18 +412,25 @@ versioned and logged so a tooltip's numbers are reproducible.
 
 | Parameter | Estimator | Fallback while thin |
 |---|---|---|
-| `arrivals_28d(c)` (F) | sum of positive `total` deltas over 28 d occurrence rows; truncated points (floors) never produce negative-then-positive phantom arrivals — deltas across a truncated boundary are discarded | always computable (0 when absent) |
+| `arrivals_28d(c)` (F) | sum of positive `total` deltas over 28 d occurrence rows, with the baseline **seeded at 0 for the incident's own first-ever row** (a class's birth IS an arrival; a window merely starting mid-life is not); truncated points (floors) never produce negative-then-positive phantom arrivals — deltas across a truncated boundary are discarded, **and identically across a BLIND boundary** (`cycle_complete = false`, V21: an unreachable engine makes a multi-engine class's total drop and recover, which is an outage, not 900 arrivals). The aggregate returns `observedSamples`/`trustedSamples` alongside the sum so "0 arrivals" and "no trustworthy sample" are distinguishable | 0 when the class has no in-window row; **neutral `F = 1` when it has rows but no trusted sample** |
 | τ (R) | keep = quiet-window 24 h; re-estimate later from episode inter-arrival distribution | constant 24 h |
 | `medMTTR(c)` (M) | median closed-episode `ended_at − started_at`, per class with ≥ 3 closed episodes; fleet median otherwise | neutral 1 |
 | `p_heal(c)` (S) | **not estimated here** — consumed from #351 (§4.2) | neutral 1 |
 | `eff(c)` (§3) | drains attributable to interventions ÷ intervention count; needs the per-class action join `relatedBulkJobs` already defines (envelope-audit payload) — **blocked on redacted audit-payload mode for single-job verbs**; v1 scopes `eff` to bulk error-class actions only, where the envelope carries the signature | fleet prior 2.4 % (§5.4) |
-| resurface threshold `t(c)` (§3.3) | `max(10 %, k·CV(c))`, `k` fit by counterfactual-ack replay over `incident_occurrence` (no real acks needed to fit; G4 validates before activation) to a false-resurface budget ≤ 1/30 ack-days | constant 20 % (today's default) |
-| ack-expiry suggestion (§3.2) | class P75 closed-episode duration → nearest preset | no suggestion (today's `none`) |
+| resurface threshold `t(c)` (§3.3) | `max(constant_pct, 10 %, k·CV(c))`, `k` fit by counterfactual-ack replay over `incident_occurrence` (no real acks needed to fit; G4 validates before activation) to a false-resurface budget ≤ 1/30 ack-days. **A replay whose smallest candidate fires no resurface is UNFITTABLE**, and a fitted value is floored at the constant — opting in can only ever raise the guard | constant 20 % (today's default) |
+| ack-expiry suggestion (§3.2) | class P75 closed-episode duration → nearest preset (nearest-rank: "≥ 75 % of the N recorded episodes resolved within X"; at N = 3 that is the observed maximum) | no suggestion (today's `none`) |
 
 Estimation honesty rails: every derived value carries `sampleSize` + an `insufficient` flag
 mirroring R2's doctrine; an insufficient estimate renders as "no history", never as a
 number; truncated occurrence rows are floors (R-SEM-12) and never enter jitter/arrival
-estimators across their boundaries.
+estimators across their boundaries, and blind occurrence rows (`cycle_complete = false`,
+#302/V21 — an engine was unreachable when the row was written) are excluded by the same rule
+for the same reason: neither is a level that may be differenced against a real one.
+**And discarding is COUNTED, never silent (post-ship correction, §13 F2):** an estimator that
+threw away every sample it had must report "unknown" and degrade to its neutral value, not
+report the zero that a fully-discarded window arithmetically produces. A silent zero is a
+claim the data never made — and, because truncation correlates with class size, it is a claim
+that is wrong in a systematically biased direction.
 
 ## 7. Data-maturity gate (issue point 3 — numeric, from §5 measurements)
 
@@ -395,6 +492,9 @@ parallel protocol.
 - **No notification channels** (none exist; out of scope).
 - **Truncation honesty (R-SEM-12)**: estimators treat truncated rows as floors; a card
   whose score inputs were truncated carries the same badge doctrine as its counts.
+- **Blind-cycle honesty (#302)**: a row written while any registry engine was unreachable is
+  marked `cycle_complete = false` and is never differenced against — an outage's
+  drop-and-recover is not arrival volume. Same lane as truncation, same discard rule.
 - **Explainability**: rationale is the one-sentence tooltip (§4.3) with per-card numbers —
   a score no tooltip can explain is a rejected design by construction.
 - Spec-sync: this doc introduces no behavior change; SPECIFICATION/ARCHITECTURE/
@@ -423,13 +523,29 @@ whole surface is inert.
   LAST in the `GET /api/triage` pipeline (scope projection → ack decoration → attention), and
   served per card as `ErrorGroup.attention {score, factors, rationale,
   suggestedAckExpirySeconds?}`. Same block on `IncidentSummary` (list + detail).
-- **Zero new engine calls, as designed.** Three bounded aggregates against the BFF's own
-  Postgres, cached whole (`attention.model-ttl`, 5m): `incident.last_seen` (R), a NEW native
-  positive-delta window aggregate over `incident_occurrence` (F — a DB-side `SUM(GREATEST(
-  total − LAG(total), 0))` rather than differencing ~40k minute-buckets per class in Java,
-  discarding any delta touching a truncated bucket per §6), and closed `incident_episode`
-  durations (M + the §3.2 P75 expiry suggestion). The Stage 0 count-only/`size=1` +
-  dedicated-DLQ-scan rule is untouched — nothing was added to the aggregation.
+- **Zero new engine calls, as designed** — the Stage 0 count-only/`size=1` + dedicated-DLQ-scan
+  rule is untouched; nothing was added to the aggregation. **Cost, RE-MEASURED 2026-08-04 after
+  the ledger blind-cycle fix and this review round** (`org.hibernate.SQL=DEBUG`, dev BFF, real
+  pilot ledger, `GET /api/incidents` with `attention-ordering=true`, 7 scored classes):
+  **25 statements cold, 1 warm.** The composition, and why the original one-line claim ("three
+  bounded aggregates … cached whole") was only two-thirds of the story:
+  - **The attention MODEL is exactly three fleet-wide reads, cached whole for
+    `attention.model-ttl` (5 m)** — `incident` rows with `last_seen ≥ now−28 d` (R; window-scoped,
+    no longer `findAll()`), ONE native window aggregate over `incident_occurrence` (F — a DB-side
+    `SUM(GREATEST(total − LAG(total), 0))` plus its sample counts, rather than differencing ~40 k
+    minute-buckets per class in Java, discarding any delta touching a truncated OR blind bucket
+    per §6), and closed `incident_episode` durations (M + the §3.2 P75 expiry suggestion). That
+    part of the claim held, and still holds.
+  - **The `S` factor is NOT part of that model, and is NOT on that cache.** It is consumed from
+    R2 per CLASS via `SelfHealStatsService.get`, whose own Caffeine TTL is the SAMPLER BEAT (60 s),
+    not 5 minutes; a miss costs **three more bounded reads per class** — the incident row, the
+    ≤ 5 000-row `RetryAuditPoint` confound projection, and the ≤ 10 000-row spell-shape occurrence
+    read. Measured: `1 (ledger list) + 3 (model) + 7 × 3 (per class) = 25`. All ten of those legs
+    are bounded, which is what the base branch's ledger fix changed — before it, the per-class
+    occurrence read was the unbounded 90-day window (~129 600 rows per class per call). Within
+    both TTLs the marginal cost of the whole decoration is **zero** statements (measured: a second
+    call inside 60 s issued exactly one query, the ledger list itself), and with
+    `inspector.selfheal.enabled` on the 60 s dwell tick pre-fills the per-class cache anyway.
 - **Ordering** — `AttentionOrdering.BY_ATTENTION`: `score DESC → total DESC → signatureHash
   ASC`. The incident LIST keeps its server order (`lastSeen DESC`; the #308 hard cap must drop
   the oldest rows) and its client-derived sections — the score orders within the live sections,
@@ -525,3 +641,26 @@ base was reconciled deliberately.
 - **Deferred, NOT built in this slice:** the §8 usability goal/fixture/A-B protocol and any
   re-measurement of §7 remain open (unchanged from §11's own deferral) — #354 is the ordering +
   tooltip UI only, not the usability-harness proof of benefit.
+
+## 13. Correction round — adversarial review of the shipped #353/#354 code (★ LANDED)
+
+An adversarial review of the code #353/#354 put on `main` confirmed seven defects by execution.
+All seven are fixed on `fix/attention-scoring-correctness`; the sections above carry the
+per-claim `Correction (post-ship)` notes (the RETRYING-RISK-LANE §10 precedent — a false claim
+is corrected in place and *named as having been false*, never silently rewritten). Behaviour
+with `inspector.triage.attention-ordering` OFF is unchanged and still provably inert.
+
+| # | Defect | Severity | Fix | Failing-before proof |
+|---|---|---|---|---|
+| F1 | `compareIncidentOrder` picked its rule PER PAIR (attention path only when BOTH sides carried `attention`), which is non-transitive and admits a strict cycle. V8 does not throw on a broken comparator, so it was a SILENT garbage sort of the REGRESSED/OPEN/QUIET sections. Reachable in production: `AttentionScoreService.forClass` catches `RuntimeException` per class → `null` → `@JsonInclude(NON_NULL)` omits the block, so one poisoned row or a mid-page model-TTL expiry serves a mixed array | **HIGH** | The rule is now a property of the ARRAY: `incidentOrderComparator(rows)` decides ONCE (`rows.every(r => r.attention !== undefined)`) and `bucketIncidents` applies that one comparator to all three live sections. Both branches are lexicographic total orders | The reviewer's exact triple, on the shipped code: `cmp(A,C) = −4`, `cmp(C,B) = −1`, `cmp(B,A) = −1` (i.e. `A < C < B < A`) and **3 distinct orderings across the 6 input permutations**. `attention.test.ts` now sorts all 6 and asserts ONE |
+| F2 | Scan-cap truncation zeroed `arrivals` for exactly the largest classes. `isTruncated` marks a group truncated if ANY engine it touches capped, so a permanently-capped engine discarded every delta in every bucket ⇒ `arrivals = 0` ⇒ `F = 0` ⇒ `A = 0` regardless of R/M/S. Nothing signalled it | **HIGH** | `arrivalsSince` returns `observedSamples`/`trustedSamples`; a wholly untrusted window degrades `F` to the neutral **1**, and `factors.arrivalsUnknown` / `discardedArrivalSamples` + a rationale clause say so. Covers BOTH untrust reasons (truncation and #302 blindness) | `LedgerNativeQueriesIT` ×2 (`aWindowWhoseEverySampleWasTruncated…`, `…WasBlind…`) error on the base SQL (2 columns); `AttentionScoreCalculatorTest.aWhollyUntrustedArrivalWindowReadsNeutralRatherThanZeroingTheWholeScore` + `theBigTruncatedClassNoLongerSortsBelowTheOneMemberClassWithOneArrival` |
+| F3 | A class's initial population was structurally invisible — `LAG` is NULL for the first row and it was filtered out, so an incident's first-ever occurrence row (the arrival of its whole population) could never be counted. `0 → 5000` in one bucket scored 0 arrivals, forever | **HIGH** | Join `incident.first_seen`; seed the baseline at 0 for the incident's OWN first row only (`sampled_at <= first_seen` selects exactly it, since the row is written at the bucket floor of `first_seen` and every later row is a strictly later bucket). A window starting mid-life is unchanged | `LedgerNativeQueriesIT.aClassesFirstEverBucketCountsItsWholePopulationAsArriving` (0 vs 5 000 on the base) + its guard `aWindowThatMerelyStartsMidLifeDoesNotCountTheStandingPopulationAsArrivals` |
+| F4 | `derived-resurface-threshold: true` silently HALVED the threshold (20 % → 10 %) on the measured pilot state, via a fit satisfied by having no data | **CONFIRMED** | Vacuous fits are unfittable → constant; a fitted value is floored at the constant. §3.3 correction note | `ResurfaceThresholdEstimatorTest.aZeroJitterClassKeepsTheConstantInsteadOfSILENTLYHalvingIt` (base returns 10) and `aFittedValueBelowTodaysConstantIsFlooredAtTheConstantNeverAppliedAsIs` (base returns 140 against a 200 constant) |
+| F5 | `growthHeld` truncated a censored settle window instead of discarding the sample, so a resurface on the segment's LAST index ALWAYS judged genuine — under-counting false resurfaces one way | **CONFIRMED** | An ack whose settle window would run past the segment end is skipped entirely (neither side of the budget). §3.3 correction note | `CounterfactualAckReplayTest.anAckWhoseSettleWindowRunsPastTheSegmentEndIsDroppedInsteadOfJudgedGenuine` — on the base, `[[100, 130]]` at 20 % accrued `ackDays = 6.94e-4` and banked the resurface as genuine |
+| F6 | Nearest-rank "P75" at the `min-closed-episodes = 3` floor IS the maximum, while the copy said "episodes of this class usually resolve within X" | LOW | **Copy fixed, statistic kept** — see §3.2's correction note for the full reasoning (safe direction, shared estimator, no invented precision) | Doc/javadoc change only; `theAckExpirySuggestionIsTheClassP75ClosedEpisodeDuration` unchanged |
+| F7 | The detail sparkline rendered a blind-cycle dip UNMARKED — `IncidentDetail.OccurrencePoint` carried `truncated` but not `cycleComplete` | honesty gap | `cycleComplete` added to the DTO (`npm run gen:api` re-run, diff committed); `timeline.ts` derives `blind` (an ABSENT field fails toward blind, mirroring V21's fail-closed backfill) and `IncidentTimeline` draws a distinct SQUARE marker + its own legend line — shape, never colour alone (SPEC §10a) | `IncidentTimeline.test.tsx` (3 cases) + `timeline.test.ts`'s blind case |
+
+**Scope discipline.** No new Flyway migration (V21 is the latest and already carries
+`cycle_complete`); no new engine call anywhere; no card hidden (R-BAU-01 ordering-only holds);
+`inspector.triage.attention-ordering` still defaults false and `AttentionOrderingNeutralityTest`
+still proves the flag-off path returns the very same object with zero queries.

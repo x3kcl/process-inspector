@@ -197,7 +197,7 @@ class AttentionOrderingNeutralityTest {
 
     @Test
     void aFailingLedgerDegradesToTodaysOrderingInsteadOfBreakingTheLanding() {
-        when(incidents.findAll()).thenThrow(new IllegalStateException("store down"));
+        when(incidents.findByLastSeenGreaterThanEqual(any())).thenThrow(new IllegalStateException("store down"));
         TriageDashboardResponse response = dashboard(group("h-a", 300), group("h-b", 21));
 
         TriageDashboardResponse decorated = service(true).decorate(response);
@@ -215,7 +215,7 @@ class AttentionOrderingNeutralityTest {
         service.decorate(dashboard(group("h-a", 3), group("h-b", 2), group("h-c", 1)));
         service.decorate(dashboard(group("h-a", 3), group("h-b", 2), group("h-c", 1)));
 
-        verify(incidents).findAll();
+        verify(incidents).findByLastSeenGreaterThanEqual(any());
         // An empty ledger short-circuits before the two aggregates even run: no rows to join onto.
         verify(occurrences, never()).arrivalsSince(any());
         verify(episodes, never()).closedEpisodeDurationSeconds();
@@ -238,7 +238,7 @@ class AttentionOrderingNeutralityTest {
     }
 
     private void emptyLedger() {
-        when(incidents.findAll()).thenReturn(List.of());
+        when(incidents.findByLastSeenGreaterThanEqual(any())).thenReturn(List.of());
         when(episodes.closedEpisodeDurationSeconds()).thenReturn(List.of());
         when(occurrences.arrivalsSince(any())).thenReturn(List.of());
     }

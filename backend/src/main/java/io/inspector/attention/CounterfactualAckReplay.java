@@ -3,6 +3,8 @@ package io.inspector.attention;
 import java.time.Duration;
 import java.util.ArrayList;
 import java.util.List;
+import java.util.OptionalDouble;
+import java.util.OptionalInt;
 
 /**
  * The C3 estimator for the R-BAU-01 auto-resurface threshold (ALARM-COST-MODEL.md §3.3, #353) —
@@ -50,8 +52,15 @@ public final class CounterfactualAckReplay {
     /** One occurrence row reduced to what the estimator reads. */
     public record SeriesPoint(long total, boolean truncated) {}
 
-    /** The replay's verdict over a whole class. */
-    public record ReplayOutcome(int falseResurfaces, double ackDays, double falsePer30AckDays) {}
+    /**
+     * The replay's verdict over a whole class. {@code resurfaces} counts every JUDGED resurface
+     * (false ones included) and exists so a caller can tell "the threshold met the budget" apart
+     * from "the threshold was never exercised" — the review's confirmed FIX 4: on a zero-jitter
+     * class no candidate ever fires, so {@code falsePer30AckDays = 0 ≤ budget} holds VACUOUSLY
+     * and the smallest grid {@code k} wins on no evidence at all. A fit is only a fit when the
+     * data actually exercised it.
+     */
+    public record ReplayOutcome(int resurfaces, int falseResurfaces, double ackDays, double falsePer30AckDays) {}
 
     /** Maximal runs of consecutive non-truncated, non-zero buckets (see class doc). */
     public static List<List<Long>> stableSegments(List<SeriesPoint> series) {
@@ -105,6 +114,7 @@ public final class CounterfactualAckReplay {
      */
     public static ReplayOutcome replay(List<List<Long>> segments, Duration bucketWidth, double thresholdPct) {
         double bucketDays = Math.max(1, bucketWidth.toSeconds()) / 86_400d;
+        int resurfaces = 0;
         int falseResurfaces = 0;
         double ackDays = 0;
         for (List<Long> segment : segments) {
@@ -125,6 +135,10 @@ public final class CounterfactualAckReplay {
                     ackDays += (segment.size() - 1 - ack) * bucketDays; // muted to the end, correctly
                     continue;
                 }
+                if (censored(segment, resurface)) {
+                    continue; // unobservable outcome — drop the SAMPLE, both numerator and denominator
+                }
+                resurfaces++;
                 ackDays += (resurface - ack) * bucketDays;
                 if (!growthHeld(segment, resurface, baseline)) {
                     falseResurfaces++;
@@ -132,13 +146,31 @@ public final class CounterfactualAckReplay {
             }
         }
         double per30 = ackDays > 0 ? falseResurfaces / ackDays * 30d : 0d;
-        return new ReplayOutcome(falseResurfaces, ackDays, per30);
+        return new ReplayOutcome(resurfaces, falseResurfaces, ackDays, per30);
     }
 
-    /** Genuine growth stays strictly above the acknowledged baseline for the settle window. */
+    /**
+     * True when the settle window would run past the end of the segment, so whether the growth
+     * held is simply NOT OBSERVABLE (review fix, FIX 5).
+     *
+     * <p>As first shipped {@link #growthHeld} silently SHORTENED the window
+     * ({@code end = min(size-1, resurface + SETTLE_BUCKETS)}) instead of discarding the censored
+     * sample. When the resurface landed on the LAST index the loop then ran exactly once, at an
+     * index which by construction holds a value above the trigger and therefore above the
+     * baseline — so it ALWAYS returned true. And {@link #stableSegments} breaks at every zero and
+     * every truncated bucket, so the very common "class spikes, then drains to zero" shape puts
+     * the spike at the segment TAIL: exactly the case that should have counted as a false
+     * resurface was instead recorded as proven growth. The bias ran one way — false resurfaces
+     * under-counted ⇒ fitted {@code k} too small ⇒ a shipped threshold delivering MORE false
+     * resurfaces than the budget promises. Censoring is not evidence of success.
+     */
+    private static boolean censored(List<Long> segment, int resurface) {
+        return resurface + SETTLE_BUCKETS > segment.size() - 1;
+    }
+
+    /** Genuine growth stays strictly above the acknowledged baseline for the WHOLE settle window. */
     private static boolean growthHeld(List<Long> segment, int resurface, long baseline) {
-        int end = Math.min(segment.size() - 1, resurface + SETTLE_BUCKETS);
-        for (int i = resurface; i <= end; i++) {
+        for (int i = resurface; i <= resurface + SETTLE_BUCKETS; i++) {
             if (segment.get(i) <= baseline) {
                 return false;
             }
@@ -148,34 +180,60 @@ public final class CounterfactualAckReplay {
 
     /**
      * The smallest {@code k} on the grid whose replayed threshold meets the false-resurface budget
-     * (§3.3 target: ≤ 1 per 30 ack-days). Smallest wins because an over-large {@code k} buys
-     * quiet by never resurfacing at all — the failure mode that turns an ack into a permanent
-     * mute, which R-BAU-01 exists to prevent.
+     * (§3.3 target: ≤ 1 per 30 ack-days), or EMPTY when the series cannot fit one at all.
+     * Smallest wins because an over-large {@code k} buys quiet by never resurfacing at all — the
+     * failure mode that turns an ack into a permanent mute, which R-BAU-01 exists to prevent.
+     *
+     * <p><b>Vacuous fits are rejected (review fix, FIX 4).</b> A budget met because NOTHING EVER
+     * FIRED is not a fit — the series never exercised any candidate on the grid, so it carries no
+     * information about the threshold at all. That is not a hypothetical: it is the MEASURED
+     * pilot state (§5.6, "CV ≈ 0 on both live classes"). With {@code CV = 0} every grid candidate
+     * collapses to {@code max(floorPct, 0) = floorPct}, nothing ever crosses it, and the very
+     * first {@code k = 0.5} "won" on that emptiness — so opting in moved every static class from
+     * a 20 % resurface threshold to a 10 % one (twice the ack interruptions) precisely because
+     * there was no data. The class is now reported UNFITTABLE and the caller keeps its constant.
+     *
+     * <p>The probe is the SMALLEST candidate only, and that is exactly right rather than merely
+     * cheap: {@code candidate(k)} is non-decreasing in {@code k} and the resurface count is
+     * non-increasing in the candidate, so "the smallest candidate fires nothing" is equivalent to
+     * "no candidate on the grid fires anything". A genuinely NOISY class is unaffected — its
+     * small candidates fire plenty, and the winning larger candidate suppressing them is the
+     * jitter guard §3.3 is asking for, not an absence of evidence.
      */
-    public static double fitK(
+    public static OptionalDouble fitK(
             List<List<Long>> segments, Duration bucketWidth, int floorPct, double budgetPer30AckDays) {
         double cv = coefficientOfVariation(segments);
+        if (replay(segments, bucketWidth, Math.max(floorPct, K_STEP * cv * 100d))
+                        .resurfaces()
+                == 0) {
+            return OptionalDouble.empty();
+        }
         for (double k = K_STEP; k <= K_MAX; k += K_STEP) {
             double candidate = Math.max(floorPct, k * cv * 100d);
             if (replay(segments, bucketWidth, candidate).falsePer30AckDays() <= budgetPer30AckDays) {
-                return k;
+                return OptionalDouble.of(k);
             }
         }
-        return K_MAX;
+        return OptionalDouble.of(K_MAX);
     }
 
     /**
      * The derived threshold percentage for one class — {@code max(floor_pct, k · CV(c))}, rounded
-     * UP so rounding never lowers the jitter guard below the fit.
+     * UP so rounding never lowers the jitter guard below the fit. EMPTY when the class's series
+     * cannot fit a {@code k} (no segments, or a replay that never fired); the caller then keeps
+     * its own constant, because a threshold nobody could derive is not a derived threshold.
      */
-    public static int thresholdPct(
+    public static OptionalInt thresholdPct(
             List<SeriesPoint> series, Duration bucketWidth, int floorPct, double budgetPer30AckDays) {
         List<List<Long>> segments = stableSegments(series);
         if (segments.isEmpty()) {
-            return floorPct;
+            return OptionalInt.empty();
         }
-        double k = fitK(segments, bucketWidth, floorPct, budgetPer30AckDays);
-        double derived = k * coefficientOfVariation(segments) * 100d;
-        return (int) Math.max(floorPct, Math.ceil(derived));
+        OptionalDouble k = fitK(segments, bucketWidth, floorPct, budgetPer30AckDays);
+        if (k.isEmpty()) {
+            return OptionalInt.empty();
+        }
+        double derived = k.getAsDouble() * coefficientOfVariation(segments) * 100d;
+        return OptionalInt.of((int) Math.max(floorPct, Math.ceil(derived)));
     }
 }

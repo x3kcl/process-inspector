@@ -11,14 +11,15 @@ import java.util.Map;
  * <p><b>The governing restraint (§14.0):</b> a finding is never a prediction of the engine's
  * verdict. Every predicate is computed ONLY from data the preview already fetches — the two
  * parsed {@link io.inspector.surgery.BpmnStructure} model reads and the instance's active
- * execution list (P14-A: zero new engine calls) — and the vocabulary is FROZEN at the seven
+ * execution list (P14-A: zero new engine calls) — and the vocabulary is FROZEN at the eight
  * codes below. Eight further candidate checks were considered and DROPPED in §14.5; that list
  * is a ceiling, not a backlog.
  *
  * <p><b>Advisory only (§14.6):</b> no finding — green, amber or red — moves a tier-3 rail. The
- * one refusal the pre-check performs ({@link Severity#BLOCKER_ADVICE}) is
- * document-construction impossibility, not an outcome prediction: with no target id and no
- * operator mapping the BFF has nothing sendable for that token.
+ * pre-check refuses on exactly two grounds, neither an outcome prediction
+ * ({@link Severity#BLOCKER_ADVICE}): document-construction impossibility (nothing sendable for a
+ * token), and the one MEASURED destruction the engine reports as success
+ * ({@link Code#SCOPE_COLLAPSE_TOKEN_LOSS}, §14.11).
  *
  * @param code the frozen vocabulary entry
  * @param severity what the operator should do about it
@@ -34,13 +35,25 @@ public record MigrationFinding(Code code, Severity severity, String activityId, 
      * payload (§14.8) so a historical row can be read under the vocabulary that produced it.
      * Bump on ANY vocabulary semantics change — code additions, code renames, <b>and severity
      * reassignments of an existing code</b>.
+     *
+     * <p><b>v2 (§14.11):</b> added {@link Code#SCOPE_COLLAPSE_TOKEN_LOSS} and narrowed
+     * {@link Code#ACTIVE_SCOPE_REMOVED} to the single-token case that was actually calibrated.
      */
-    public static final int TAXONOMY_VERSION = 1;
+    public static final int TAXONOMY_VERSION = 2;
 
     public enum Severity {
         /**
-         * Execute refuses 422 until the operator supplies a mapping, ONLY because no wire
-         * document can be built (§14.0 P14-D). Never an engine verdict.
+         * Execute refuses 422 — the Inspector will not send this migration. Two disjoint grounds,
+         * neither of them a prediction of the engine's verdict (§14.0 P14-D):
+         *
+         * <ol>
+         *   <li><b>Nothing sendable</b> — a token-holding activity has no counterpart id and no
+         *       operator mapping, so no wire document can be built at all
+         *       ({@link Code#UNMAPPED_ACTIVE_ACTIVITY}).
+         *   <li><b>Measured, unreportable destruction</b> — the engine returns 200 and destroys
+         *       live tokens silently, so decision 10's atomic-rejection backstop is structurally
+         *       absent ({@link Code#SCOPE_COLLAPSE_TOKEN_LOSS}, §14.11).
+         * </ol>
          */
         BLOCKER_ADVICE,
         /** Migrates; the operator should look first. Never blocks. */
@@ -49,12 +62,22 @@ public record MigrationFinding(Code code, Severity severity, String activityId, 
         INFO
     }
 
-    /** The seven proven-computable codes locked by §14.3. Nothing else may be added here without a design change and a {@link #TAXONOMY_VERSION} bump. */
+    /** The eight proven-computable codes locked by §14.3/§14.11. Nothing else may be added here without a design change and a {@link #TAXONOMY_VERSION} bump. */
     public enum Code {
         /** A leaf token with no counterpart id and no operator mapping — nothing is sendable. */
         UNMAPPED_ACTIVE_ACTIVITY,
-        /** An active scope container is gone from the target; its tokens re-home upward. */
+        /**
+         * An active scope container is gone from the target and holds AT MOST ONE live token —
+         * the shape live calibration actually measured: that one token re-homes outward.
+         */
         ACTIVE_SCOPE_REMOVED,
+        /**
+         * An active scope container is gone from the target and holds <b>two or more</b> live
+         * tokens. Measured: the engine keeps exactly ONE and ends the rest silently (HTTP 200, no
+         * error, no delete reason, no job) — see §14.11 [M10]. BLOCKER: the collapse destroys
+         * live work and decision 10's atomic-rejection backstop cannot fire on a 200.
+         */
+        SCOPE_COLLAPSE_TOKEN_LOSS,
         /** A token maps by id, but a scope on its source nesting path is gone from the target. */
         ACTIVE_IN_REMOVED_SCOPE,
         /** Same id and type, moved between scopes that BOTH still exist in the target. */
@@ -111,17 +134,49 @@ public record MigrationFinding(Code code, Severity severity, String activityId, 
                         + " The engine is known to reject documents missing it. Pick a target mapping.");
     }
 
-    static MigrationFinding activeScopeRemoved(String activityId) {
+    /**
+     * The measured collapse behavior, stated once and shared by both scope findings (§14.11).
+     * The pre-#355 wording ("its tokens re-home outward", plural) was affirmatively WRONG: live
+     * re-calibration on 6.8.0 and 7.1.0 showed exactly ONE survivor and no trace of the rest.
+     */
+    private static final String COLLAPSE_CALIBRATION = " Live calibration observed exactly ONE token surviving a"
+            + " scope collapse — additional concurrent tokens inside the scope are ended silently by the engine"
+            + " (HTTP 200, no error, no delete reason, no job).";
+
+    static MigrationFinding activeScopeRemoved(String activityId, long liveTokensInside) {
         return new MigrationFinding(
                 Code.ACTIVE_SCOPE_REMOVED,
                 Severity.WARNING,
                 activityId,
                 "This subprocess scope holds live state and no activity with id '" + activityId + "' exists in the"
-                        + " target version — the enclosing region dissolves and its tokens re-home outward."
+                        + " target version — the enclosing region dissolves and its single live token re-homes"
+                        + " outward." + COLLAPSE_CALIBRATION + " " + liveTokensInside
+                        + " live token(s) are inside this scope right now, so no token is destroyed by the collapse."
                         + CALIBRATION_RESIDUAL
                         + " Scope-local variables and event subscriptions of the removed scope have no target scope"
                         + " — the estimate does not read execution-local variables and cannot know what state is"
                         + " lost.");
+    }
+
+    /**
+     * The lossy sub-case of a scope collapse — the one finding in this vocabulary that is a
+     * BLOCKER on measured DESTRUCTION rather than on document-construction impossibility. The
+     * engine returns 200 and reports success, so re-lock decision 10's atomic-rejection backstop
+     * is structurally absent here: refusing in the BFF is the only place the loss can be caught.
+     */
+    static MigrationFinding scopeCollapseTokenLoss(String activityId, long liveTokensInside) {
+        return new MigrationFinding(
+                Code.SCOPE_COLLAPSE_TOKEN_LOSS,
+                Severity.BLOCKER_ADVICE,
+                activityId,
+                "Migrating would DESTROY live work. The subprocess scope '" + activityId + "' is gone from the target"
+                        + " version and " + liveTokensInside + " live tokens are inside it — the engine will keep 1."
+                        + COLLAPSE_CALIBRATION
+                        + " The migrate call still returns HTTP 200 and reports success, so nothing downstream can"
+                        + " catch this: a parallel join left waiting for a branch that no longer exists parks the"
+                        + " instance forever. Supplying a target mapping does not help — it only changes which token"
+                        + " survives. The Inspector refuses to send it. Migrate this instance before its branches"
+                        + " fork, or deploy a target version that keeps '" + activityId + "'.");
     }
 
     static MigrationFinding activeInRemovedScope(String activityId, String removedScopeId) {

@@ -84,9 +84,24 @@ A spell is **excluded from the statistic** when it is:
   could have produced or drained it (§3.3): evidence about operator retries, not autonomous
   healing;
 - **gap-voided** — the series has a sampling gap > 5 buckets inside it (sampler/BFF down;
-  the spell's shape is unobserved);
+  the spell's shape is unobserved), **or any sample in its observed shape — inside the run,
+  the zero-count sample that ends it, or the +1 look-ahead it is judged against — was written
+  on a BLIND cycle** (`cycle_complete = false`, #302/V21). This one is not a refinement, it is
+  a correctness rail: spell extraction is an EDGE DETECTOR on `retrying_count`, so an
+  unreachable engine FORGES edges. A class with RETRYING jobs on engine B and dead-letters on
+  engine A stays present while B is down (A's members keep `total > 0`), and the row written
+  that pass carries `retrying_count = 0` — the spell appears to END; the look-ahead then finds
+  A's dead-letter count unchanged and records **SELF_HEALED**. An engine outage entered as
+  evidence of autonomous healing, counted into `n`, the Wilson bound, the displayed lane, and
+  (via ALARM-COST-MODEL's `S` factor) a 4x rank demotion on a class that never healed. Neither
+  `truncation-tainted` (that is the scan cap) nor the >5-bucket gap check (the rows exist)
+  catches it. A blind-shaped spell is not judged AT ALL — its outcome stays `UNKNOWN`;
 - **truncation-tainted** — any sample in the spell has `truncated = true` (a truncated
-  sample is a floor, not a count — the spell's outcome cannot be trusted).
+  sample is a floor, not a count — the spell's outcome cannot be trusted);
+- **left-censored** — the spell was already in progress at the FIRST sample available (window
+  start, or the row cap): its start-of-spell dead-letter count is a MID-spell level, so an
+  escalation in the unobserved prefix reads as a clean heal, and the measured duration is
+  short by that prefix (which would bias p50/p90 low).
 
 Exclusions are counted and surfaced (§5), never silently dropped.
 
@@ -180,7 +195,12 @@ infrastructure, no model registry, nothing speculative ships in v1.
    lane to hold for ≥ 10 consecutive **complete** sampler cycles (~10 min at the 60 s
    beat; incomplete cycles — `cycleComplete=false` — don't advance the dwell counter,
    mirroring the regression gate's "observed" doctrine). A computation that reverts
-   mid-dwell resets it. The dwell state machine lives in `SelfHealStatsService` and the
+   mid-dwell resets it — but ONLY on a complete cycle: the completeness check gates the
+   whole transition, reset included. (Checking it after the "candidate == displayed ⇒
+   reset" branch is a live freeze bug: on a blind cycle the unreachable engine's spells
+   vanish from the window, so the recomputed candidate lands back on the displayed lane and
+   wipes the dwell — with an engine flapping more often than every 10 cycles, NO class ever
+   commits a lane, all of them frozen on data the machine was told not to trust.) The dwell state machine lives in `SelfHealStatsService` and the
    API serves the **displayed** lane, never the raw one — client-side dwell would reset
    on every refresh/tab (the exact instability DMKD forbids) and would let two operators
    see different lanes for the same class (panel G7). Single-instance BFF ⇒ in-memory
@@ -402,7 +422,13 @@ expect it not to).
   design recorded — see #358; this slice solves the narrower CONFOUND-detection need (it never
   needs to know WHICH class a retry targeted, only whether one landed on a hosting engine
   inside the spell window) without touching the audit payload, but does not solve attribution
-  itself.
+  itself. **Correction (post-ship):** "without touching the audit payload" was FALSE as first
+  shipped — the query selected the `AuditEntry` ENTITY, and `payload` is a plain eager basic
+  attribute (no `@Basic(LAZY)`, no bytecode enhancement in this build), so every matched row's
+  payload JSON — process VARIABLES included on an `audit-payload: full` engine — was hydrated
+  into heap on this informational path and then discarded unread. It is now a constructor
+  projection (`RetryAuditPoint(engineId, ts)`), so the column is not in the SELECT list at all
+  and the R-AUD-03 claim holds structurally rather than by convention.
 - **#352 frontend — ★ SHIPPED:** the lane badge (`SelfHealBadge.tsx`, exact §4.1/§6 copy,
   built off `incidents/selfHeal.ts`'s pure `selfHealBadgeContent`) on the Incident Ledger card
   (`IncidentCard.tsx`) + detail (`IncidentDetail.tsx`); truncation marker + exclusion tooltip +
@@ -438,7 +464,16 @@ expect it not to).
 - **No change to ARCHITECTURE §2.3 status derivation** or any corrective-action rail.
 - **No new persistence** — no spell table, no stats snapshots (derive-on-read; revisit
   only if the 90-day window scan measurably hurts, with the occurrence store's partition
-  pruning making that unlikely at current cardinality).
+  pruning making that unlikely at current cardinality). *Post-ship note:* the derive-on-read
+  scan DID hurt as first built — 90 days × 60 s buckets is ~129 600 rows per class per
+  compute, run per LISTED incident on the default-ON `GET /api/incidents` (list cap 500) and
+  again for every class on each 60 s dwell tick. The fix stayed inside this non-goal: no new
+  table, the ROW REDUCTION moved DB-side (a `LAG`-filtered query returning only
+  spell-shape-relevant rows — the spell, its closing zero, the +1 look-ahead) plus documented
+  hard caps on both per-class reads (spell rows and confound audits), with the cap dropping
+  the OLDEST rows so a straddling spell is left-censored rather than silently mis-judged. The
+  90-day window itself is retained: with the reduction it is a handful of rows for a typical
+  class, and shortening it would change the measured statistic's meaning.
 - **No per-engine rate splits in v1** (§5 scope note records the accepted aggregate).
 - **No sub-bucket retry counting** — the 60 s resolution floor is documented, not worked
   around (engine-side retry telemetry would need new engine calls, violating do-no-harm).

@@ -177,9 +177,14 @@ public class AttentionScoreService {
     }
 
     private AttentionModel build(Instant now) {
+        Instant since = now.minus(Duration.ofDays(config.arrivalsWindowDays()));
         Map<Long, String> keyByIncidentId = new LinkedHashMap<>();
         Map<String, Instant> lastSeenByKey = new LinkedHashMap<>();
-        for (Incident row : incidents.findAll()) {
+        // Window-scoped, never findAll(): `incident` rows are never deleted, so an unscoped
+        // fetch on this 5-minute rebuild grows without bound. A class last seen before the F
+        // window contributes nothing to it anyway (no in-window occurrence rows) and reads
+        // ClassHistory.none() — neutral, exactly as §4.1's degradation rule prescribes.
+        for (Incident row : incidents.findByLastSeenGreaterThanEqual(since)) {
             String key = AttentionModel.key(row.getSignatureHash(), row.getAlgoVersion());
             keyByIncidentId.put(row.getId(), key);
             lastSeenByKey.put(key, row.getLastSeen());
@@ -188,13 +193,16 @@ public class AttentionScoreService {
             return AttentionModel.empty();
         }
 
-        Instant since = now.minus(Duration.ofDays(config.arrivalsWindowDays()));
-        Map<Long, Long> arrivalsById = new HashMap<>();
+        // {incidentId, arrivals, observedSamples, trustedSamples} — the counts are what make the
+        // difference between "0 arrivals" and "we were not allowed to trust a single sample".
+        Map<Long, ArrivalEvidence> arrivalsById = new HashMap<>();
         for (Object[] arrival : occurrences.arrivalsSince(since)) {
             Long incidentId = asLong(arrival[0]);
             Long arrivals = asLong(arrival[1]);
-            if (incidentId != null && arrivals != null) {
-                arrivalsById.put(incidentId, arrivals);
+            Long observed = asLong(arrival[2]);
+            Long trusted = asLong(arrival[3]);
+            if (incidentId != null && arrivals != null && observed != null && trusted != null) {
+                arrivalsById.put(incidentId, new ArrivalEvidence(arrivals, observed, trusted));
             }
         }
 
@@ -211,13 +219,39 @@ public class AttentionScoreService {
         }
 
         Map<String, ClassHistory> byKey = new LinkedHashMap<>();
-        keyByIncidentId.forEach((incidentId, key) -> byKey.put(
-                key,
-                new ClassHistory(
-                        lastSeenByKey.get(key),
-                        arrivalsById.getOrDefault(incidentId, 0L),
-                        closedById.getOrDefault(incidentId, List.of()))));
+        keyByIncidentId.forEach((incidentId, key) -> {
+            ArrivalEvidence evidence = arrivalsById.getOrDefault(incidentId, ArrivalEvidence.NONE);
+            byKey.put(
+                    key,
+                    new ClassHistory(
+                            lastSeenByKey.get(key),
+                            evidence.arrivals(),
+                            evidence.unknown(),
+                            evidence.discarded(),
+                            closedById.getOrDefault(incidentId, List.of())));
+        });
         return new AttentionModel(byKey, Quantiles.median(fleetClosed));
+    }
+
+    /**
+     * One incident's row from {@code arrivalsSince}. {@link #unknown()} is the honesty rail the
+     * review added: a window that HAD differenceable samples but could trust NONE of them (a
+     * permanently scan-capped engine, or a whole-window outage) reports arrival volume as
+     * UNKNOWN, so {@code F} degrades to the multiplicative identity instead of zeroing the score.
+     * An incident absent from the aggregate had no in-window sample at all — a genuine zero, and
+     * the fleet-uniform "no history" degradation the design already guarantees.
+     */
+    private record ArrivalEvidence(long arrivals, long observedSamples, long trustedSamples) {
+
+        private static final ArrivalEvidence NONE = new ArrivalEvidence(0L, 0L, 0L);
+
+        boolean unknown() {
+            return observedSamples > 0 && trustedSamples == 0;
+        }
+
+        long discarded() {
+            return Math.max(0L, observedSamples - trustedSamples);
+        }
     }
 
     /** Native aggregates hand back {@code BigInteger}/{@code BigDecimal}/{@code Long} by driver. */

@@ -4334,6 +4334,16 @@ button.skip-link {
   stroke-width: 1.5;
   stroke-dasharray: 2 1.5;
 }
+/* Blind samples (cycle_complete = false, #302/V21) were written while an engine was unreachable,
+   so they are missing that engine's members entirely — a DIFFERENT kind of untrustworthy from a
+   truncated floor, and given a different SHAPE (square, not circle) so the two are never
+   confused. Same doctrine as above: the shape carries the meaning, never colour alone. */
+.incident-timeline-point-blind {
+  fill: none;
+  stroke: var(--color-text-secondary);
+  stroke-width: 1.5;
+  stroke-dasharray: 2 1.5;
+}
 .incident-timeline-legend {
   font-size: 11px;
   color: var(--color-text-faint);

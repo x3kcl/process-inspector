@@ -38,10 +38,69 @@ class AttentionScoreCalculatorTest {
     @Test
     void arrivalsAreTheGrowthSignalNotTheSizeSignal() {
         // The whole point of replacing count-only: a huge but static class has no ARRIVALS.
+        // UNCHANGED by the review's FIX 3 (the SQL now seeds a 0 baseline for a class's own FIRST
+        // EVER bucket, so a genuine 0 -> 5000 birth counts as 5000 arrivals): a class that merely
+        // EXISTS at 9 999 with no in-window growth still reports 0, because its birth is outside
+        // the window and every in-window delta is flat. "Big" and "grew" stay different claims.
         AttentionScore staticButHuge = score(9_999, arrivals(0), null, null);
         AttentionScore smallButGrowing = score(8, arrivals(15), null, null);
 
         assertThat(smallButGrowing.score()).isGreaterThan(staticButHuge.score());
+    }
+
+    /* ---------------- FIX 2: an UNTRUSTED window is unknown, never a proven zero ---------------- */
+
+    @Test
+    void aWhollyUntrustedArrivalWindowReadsNeutralRatherThanZeroingTheWholeScore() {
+        // The confirmed defect. `isTruncated` marks a group truncated when ANY engine it touches
+        // hit the failure-lane scan cap, so on an engine PERMANENTLY at the cap every group it
+        // contributes is truncated in every bucket, every delta is discarded, arrivals lands on 0
+        // and F = log2(1) = 0 — which zeroes A(c) = F*R*M*S whatever R, M and S say. Truncation
+        // correlates with SIZE, so that demoted exactly the largest classes, silently.
+        ClassHistory untrusted = new ClassHistory(NOW, 0L, true, 40_320L, List.of());
+
+        assertThat(factorsFor(untrusted).frequency()).isEqualTo(1.0);
+        assertThat(factorsFor(untrusted).arrivalsUnknown()).isTrue();
+        assertThat(factorsFor(untrusted).discardedArrivalSamples()).isEqualTo(40_320L);
+    }
+
+    @Test
+    void theBigTruncatedClassNoLongerSortsBelowTheOneMemberClassWithOneArrival() {
+        // The review's concrete pair: X has 4 000 members on a capped engine and was only just
+        // seen; Y has one member and one arrival on a small, healthy engine. Y used to win.
+        AttentionScore cappedAndHuge = score(4_000, new ClassHistory(NOW, 0L, true, 500L, List.of()), null, null);
+        AttentionScore tinyButMeasured = score(1, arrivals(1), null, null);
+
+        assertThat(cappedAndHuge.score()).isEqualTo(1.0);
+        assertThat(tinyButMeasured.score()).isEqualTo(1.0);
+        // A tie, broken by live total DESC — not a demotion. The point is that "unknown" must not
+        // read as "provably not growing"; it must not read as "growing fast" either.
+        assertThat(cappedAndHuge.score()).isGreaterThanOrEqualTo(tinyButMeasured.score());
+    }
+
+    @Test
+    void anUntrustedWindowSaysSoInTheRationaleInsteadOfLettingTheReaderAssumeItWasMeasured() {
+        AttentionScore scored = score(4_000, new ClassHistory(NOW, 0L, true, 500L, List.of()), null, null);
+
+        assertThat(scored.rationale()).contains("arrival volume unknown");
+    }
+
+    @Test
+    void aPartiallyDiscardedWindowStillReportsTheArrivalsItCouldTrustAndSaysHowManyItLost() {
+        ClassHistory partial = new ClassHistory(NOW, 7L, false, 12L, List.of());
+
+        assertThat(factorsFor(partial).frequency()).isEqualTo(3.0); // log2(1+7)
+        assertThat(factorsFor(partial).arrivalsUnknown()).isFalse();
+        assertThat(factorsFor(partial).discardedArrivalSamples()).isEqualTo(12L);
+    }
+
+    @Test
+    void aClassWithNoLedgerRowAtAllKeepsTheZeroFThatMakesTheWholeFleetTieToCountOnly() {
+        // The deliberate asymmetry: "no evidence at all" is fleet-uniform and collapses everyone
+        // to the count-only tie-break (the design's headline neutrality guarantee), while
+        // "evidence we were not allowed to trust" correlates with size and must not demote.
+        assertThat(factorsFor(ClassHistory.none()).frequency()).isEqualTo(0.0);
+        assertThat(factorsFor(ClassHistory.none()).arrivalsUnknown()).isFalse();
     }
 
     /* ---------------- R: recency = 2^(-age/tau) ---------------- */
@@ -64,7 +123,7 @@ class AttentionScoreCalculatorTest {
 
     @Test
     void aFutureLastSeenClampsToZeroAgeRatherThanExceedingOne() {
-        ClassHistory ahead = new ClassHistory(NOW.plusSeconds(3600), 0, List.of());
+        ClassHistory ahead = ClassHistory.observed(NOW.plusSeconds(3600), 0, List.of());
 
         assertThat(factorsFor(ahead).recency()).isEqualTo(1.0);
     }
@@ -73,7 +132,7 @@ class AttentionScoreCalculatorTest {
 
     @Test
     void mttrIsNeutralAndTheMedianIsAbsentBelowTheClosedEpisodeFloor() {
-        ClassHistory twoClosed = new ClassHistory(NOW, 5, List.of(3_600L, 7_200L));
+        ClassHistory twoClosed = ClassHistory.observed(NOW, 5, List.of(3_600L, 7_200L));
 
         AttentionScore scored = score(10, twoClosed, 3_600L, null);
 
@@ -85,7 +144,7 @@ class AttentionScoreCalculatorTest {
 
     @Test
     void atOrAboveTheFloorMttrIsTheClassMedianOverTheFleetMedian() {
-        ClassHistory threeClosed = new ClassHistory(NOW, 5, List.of(3_600L, 5_400L, 7_200L));
+        ClassHistory threeClosed = ClassHistory.observed(NOW, 5, List.of(3_600L, 5_400L, 7_200L));
 
         AttentionScore scored = score(10, threeClosed, 3_600L, null);
 
@@ -96,8 +155,8 @@ class AttentionScoreCalculatorTest {
 
     @Test
     void mttrIsClampedBothWaysSoOnePathologicalClassCannotDominateTheProduct() {
-        ClassHistory glacial = new ClassHistory(NOW, 5, List.of(999_999L, 999_999L, 999_999L));
-        ClassHistory instant = new ClassHistory(NOW, 5, List.of(1L, 1L, 1L));
+        ClassHistory glacial = ClassHistory.observed(NOW, 5, List.of(999_999L, 999_999L, 999_999L));
+        ClassHistory instant = ClassHistory.observed(NOW, 5, List.of(1L, 1L, 1L));
 
         assertThat(score(10, glacial, 3_600L, null).factors().mttr()).isEqualTo(2.0);
         assertThat(score(10, instant, 3_600L, null).factors().mttr()).isEqualTo(0.5);
@@ -106,7 +165,7 @@ class AttentionScoreCalculatorTest {
     @Test
     void mttrStaysNeutralWhenTheFleetHasNeverClosedAnEpisode() {
         // The measured pilot state: 0 closed episodes fleet-wide ⇒ no denominator exists.
-        ClassHistory threeClosed = new ClassHistory(NOW, 5, List.of(60L, 60L, 60L));
+        ClassHistory threeClosed = ClassHistory.observed(NOW, 5, List.of(60L, 60L, 60L));
 
         assertThat(score(10, threeClosed, null, null).factors().mttr()).isEqualTo(1.0);
     }
@@ -154,7 +213,7 @@ class AttentionScoreCalculatorTest {
 
     @Test
     void theScoreIsTheProductOfTheFourFactors() {
-        ClassHistory history = new ClassHistory(NOW.minusSeconds(86_400), 3, List.of(7_200L, 7_200L, 7_200L));
+        ClassHistory history = ClassHistory.observed(NOW.minusSeconds(86_400), 3, List.of(7_200L, 7_200L, 7_200L));
 
         AttentionScore scored = score(21, history, 3_600L, stats(SelfHealLane.SELF_HEAL_MIXED, 20, 10));
 
@@ -170,7 +229,7 @@ class AttentionScoreCalculatorTest {
     void insufficientHistoryIsTrueExactlyWhenNeitherDiscriminatingFactorHadEvidence() {
         assertThat(score(10, arrivals(5), null, null).factors().insufficientHistory())
                 .isTrue();
-        assertThat(score(10, new ClassHistory(NOW, 5, List.of(1L, 2L, 3L)), 2L, null)
+        assertThat(score(10, ClassHistory.observed(NOW, 5, List.of(1L, 2L, 3L)), 2L, null)
                         .factors()
                         .insufficientHistory())
                 .isFalse();
@@ -201,7 +260,7 @@ class AttentionScoreCalculatorTest {
     /* ---------------- fixtures ---------------- */
 
     private static ClassHistory arrivals(long count) {
-        return new ClassHistory(NOW, count, List.of());
+        return ClassHistory.observed(NOW, count, List.of());
     }
 
     private static SelfHealStats stats(SelfHealLane lane, int n, int healed) {

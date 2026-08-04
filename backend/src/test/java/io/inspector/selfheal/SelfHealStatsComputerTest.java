@@ -30,6 +30,7 @@ class SelfHealStatsComputerTest {
                 false,
                 false,
                 false,
+                false,
                 false);
     }
 
@@ -42,11 +43,12 @@ class SelfHealStatsComputerTest {
                 false,
                 false,
                 false,
+                false,
                 false);
     }
 
     private static RetrySpell live() {
-        return new RetrySpell(T0, T0, Duration.ZERO, RetrySpell.Outcome.UNKNOWN, false, false, false, true);
+        return new RetrySpell(T0, T0, Duration.ZERO, RetrySpell.Outcome.UNKNOWN, false, false, false, true, false);
     }
 
     private static RetrySpell confounded() {
@@ -58,12 +60,21 @@ class SelfHealStatsComputerTest {
                 true,
                 false,
                 false,
+                false,
                 false);
     }
 
     private static RetrySpell gapVoided() {
         return new RetrySpell(
-                T0, T0.plusSeconds(60), Duration.ofSeconds(60), RetrySpell.Outcome.UNKNOWN, false, true, false, false);
+                T0,
+                T0.plusSeconds(60),
+                Duration.ofSeconds(60),
+                RetrySpell.Outcome.UNKNOWN,
+                false,
+                true,
+                false,
+                false,
+                false);
     }
 
     private static RetrySpell truncationTaintedEscalated() {
@@ -75,6 +86,7 @@ class SelfHealStatsComputerTest {
                 false,
                 false,
                 true,
+                false,
                 false);
     }
 

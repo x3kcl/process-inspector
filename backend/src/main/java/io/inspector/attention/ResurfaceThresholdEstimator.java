@@ -13,6 +13,7 @@ import java.time.Duration;
 import java.util.ArrayList;
 import java.util.List;
 import java.util.Optional;
+import java.util.OptionalInt;
 import org.slf4j.Logger;
 import org.slf4j.LoggerFactory;
 import org.springframework.stereotype.Service;
@@ -32,8 +33,11 @@ import org.springframework.stereotype.Service;
  * <p>When an operator does opt in, the per-class estimate is fit by counterfactual-ack replay
  * ({@link CounterfactualAckReplay}) over that class's own occurrence series, cached for
  * {@code inspector.triage.attention.model-ttl}. Any failure, any class with too little series to
- * segment, and any class with no ledger row at all falls back to the constant — an ack policy
- * must never become less predictable because an estimator had a bad day.
+ * segment, any class whose replay never fired a resurface (an unfittable, evidence-free class),
+ * and any class with no ledger row at all falls back to the constant — an ack policy must never
+ * become less predictable because an estimator had a bad day. And a value that WAS fit is floored
+ * at the constant, so opting in can only ever raise the jitter guard, never quietly halve it (see
+ * {@link #fit}).
  */
 @Service
 public class ResurfaceThresholdEstimator {
@@ -87,6 +91,22 @@ public class ResurfaceThresholdEstimator {
         }
     }
 
+    /**
+     * <b>Opting in can only ever be MORE conservative</b> (review fix, ALARM-COST-MODEL §3.3
+     * correction). Two rails, both added because the shipped code did the opposite of what the
+     * design sells on the data the design was built for:
+     *
+     * <ol>
+     *   <li>An UNFITTABLE class keeps the constant — {@link CounterfactualAckReplay#thresholdPct}
+     *       is empty when no segment could be formed OR when the replay never fired a single
+     *       resurface (a fit satisfied by having no data; the measured pilot state, §5.6).
+     *   <li>A fitted value is FLOORED at {@code inspector.triage.ack-resurface-threshold-pct}.
+     *       §3.3's purpose is to lift the threshold clear of normal jitter so a resurface fires on
+     *       genuine growth; a derived value BELOW today's constant would instead interrupt the
+     *       operator more often than the constant does, which is the opposite of the guard the
+     *       doc promises. The derived value therefore only ever moves the threshold UP.
+     * </ol>
+     */
     private int fit(String signatureHash, int algoVersion) {
         Optional<Incident> row = incidents.findBySignatureHashAndAlgoVersion(signatureHash, algoVersion);
         if (row.isEmpty()) {
@@ -99,10 +119,11 @@ public class ResurfaceThresholdEstimator {
         for (IncidentOccurrence point : points) {
             series.add(new SeriesPoint(point.getTotal(), point.isTruncated()));
         }
-        List<List<Long>> segments = CounterfactualAckReplay.stableSegments(series);
-        if (segments.isEmpty()) {
+        OptionalInt derivedPct =
+                CounterfactualAckReplay.thresholdPct(series, bucketWidth, floorPct, budgetPer30AckDays);
+        if (derivedPct.isEmpty()) {
             return constantPct;
         }
-        return CounterfactualAckReplay.thresholdPct(series, bucketWidth, floorPct, budgetPer30AckDays);
+        return Math.max(constantPct, derivedPct.getAsInt());
     }
 }

@@ -24,6 +24,15 @@ import com.fasterxml.jackson.annotation.JsonInclude;
  * {@code insufficientHistory} is true exactly when BOTH discriminating factors were neutral by
  * absence (M and S) — i.e. the score carries no history-derived signal at all and the ordering
  * degrades to the count-only tie-break.
+ *
+ * <p>{@code arrivalsUnknown} / {@code discardedArrivalSamples} are the F factor's own honesty
+ * rail (review fix, ALARM-COST-MODEL §6 correction). An occurrence sample that was TRUNCATED
+ * (R-SEM-12 floor) or BLIND (#302, an engine was unreachable) may not be differenced against, so
+ * it is discarded — {@code discardedArrivalSamples} says how many were. When EVERY differenceable
+ * sample in the window was discarded, {@code arrivalsUnknown} is true and {@code frequency} is
+ * the NEUTRAL 1 rather than {@code log2(1 + 0) = 0}: {@code arrivals28d} is then "unknown", not
+ * "none", and a tooltip must say so instead of reporting a zero the data never showed. Both
+ * default to a fully-observed window ({@code false} / {@code 0}).
  */
 @JsonInclude(JsonInclude.Include.NON_NULL)
 public record AttentionFactors(
@@ -36,4 +45,6 @@ public record AttentionFactors(
         Long medianMttrSeconds, // absent below the closed-episode floor (neutral M)
         int closedEpisodes,
         String selfHealLane, // absent when no R2 statistic was available
-        boolean insufficientHistory) {}
+        boolean insufficientHistory,
+        boolean arrivalsUnknown, // the whole F window was untrusted ⇒ frequency reads neutral 1
+        long discardedArrivalSamples) {}

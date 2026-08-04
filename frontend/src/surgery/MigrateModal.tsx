@@ -129,7 +129,13 @@ export function MigrateModal({ engineId, instanceId, vitals, engine, onClose }: 
 
   // ---- Step 2: the pre-check result (mapping + verify) ----
   if (preview !== null) {
-    const flagged = (preview.activities ?? []).filter((a) => a.blocker === true)
+    // The from→to dropdown is offered ONLY where a mapping is the actual remedy, i.e. the
+    // FLAGGED_UNMAPPED set. A SCOPE_COLLAPSE_TOKEN_LOSS blocker (§14.11) is also `blocker:true`
+    // but no mapping can fix it — rendering a "choose target…" select for it would invite the
+    // operator to try something the BFF says outright does not help.
+    const flagged = (preview.activities ?? []).filter(
+      (a) => a.blocker === true && a.status === 'FLAGGED_UNMAPPED',
+    )
     const targets = preview.targetActivities ?? []
     // Per-activity findings first (already in sorted-activity-id order), then the
     // instance-level ones (§14.8) — grouped by severity, loudest first.
@@ -137,10 +143,18 @@ export function MigrateModal({ engineId, instanceId, vitals, engine, onClose }: 
       ...(preview.activities ?? []).flatMap((a) => a.findings ?? []),
       ...(preview.findings ?? []),
     ]
-    const bySeverity = (severity: string) => allFindings.filter((f) => f.severity === severity)
-    const blockerAdvice = bySeverity('BLOCKER_ADVICE')
-    const warningFindings = bySeverity('WARNING')
-    const infoFindings = bySeverity('INFO')
+    // Partitioned in ONE pass with an explicit `else`, so an unrecognized severity (a taxonomy
+    // the BFF bumped ahead of this build) lands in the WARNING callout instead of rendering in
+    // no callout and counting in no heading. Every branch fails toward VISIBLE — the same rule
+    // `incidents/sections.ts` states: never silently drop.
+    const blockerAdvice: MigrationFinding[] = []
+    const warningFindings: MigrationFinding[] = []
+    const infoFindings: MigrationFinding[] = []
+    for (const f of allFindings) {
+      if (f.severity === 'BLOCKER_ADVICE') blockerAdvice.push(f)
+      else if (f.severity === 'INFO') infoFindings.push(f)
+      else warningFindings.push(f)
+    }
 
     const { reasonOk, tokenOk } = guard
     const problem = executeM.error?.problem
@@ -245,8 +259,11 @@ export function MigrateModal({ engineId, instanceId, vitals, engine, onClose }: 
 
         {blockerAdvice.length > 0 && (
           <div className="callout callout-prod" role="alert">
+            {/* Two disjoint refusal grounds now share this severity (§14.11): "nothing sendable"
+                and "the migrate would silently destroy live tokens". Each finding's own detail
+                says which — the heading must not claim one of them for both. */}
             <p className="finding-heading">
-              Cannot build the migration instruction ({String(blockerAdvice.length)})
+              Blocked before the engine ({String(blockerAdvice.length)})
             </p>
             <FindingList findings={blockerAdvice} />
           </div>

@@ -5,7 +5,7 @@
 // OPTIONAL on the wire (generated DTO) — every branch fails toward VISIBLE, never toward
 // silently dropping an incident a caller can't otherwise find (honesty over tidiness).
 import type { IncidentSummary } from '../api/model'
-import { compareIncidentOrder } from './attention'
+import { incidentOrderComparator } from './attention'
 
 export interface IncidentSections {
   regressed: IncidentSummary[]
@@ -37,9 +37,20 @@ function byLastSeenDesc(a: IncidentSummary, b: IncidentSummary): number {
 // rows, and that score already folds in the self-heal signal (§11's lane→p_heal map) that
 // `compareSelfHealRisk` alone ranks by. Sorting by `compareSelfHealRisk` on top of a
 // server-attention-ordered list would double-count self-heal and override the server's order —
-// so the three not-yet-resolved sections below now sort by `compareIncidentOrder`, which ranks
-// by the server `attention` score when present and falls back to EXACTLY this original
-// `compareSelfHealRisk` ordering when it is absent (the flag-off, expected-today case, §7/§11).
+// so the three not-yet-resolved sections below now sort by the comparator
+// `incidentOrderComparator` picks, which ranks by the server `attention` score when EVERY row
+// carries one and falls back to EXACTLY this original `compareSelfHealRisk` ordering otherwise
+// (the flag-off, expected-today case, §7/§11).
+//
+// The comparator is resolved ONCE, from the WHOLE input list, and the same one drives all three
+// live sections (review fix). Two reasons, in order of importance:
+//   1. Correctness — the rule must be a property of the array being sorted, not of each pair.
+//      A per-pair rule is non-transitive and V8 silently sorts it into garbage (the executed
+//      counterexample is in attention.ts's own doc comment).
+//   2. Consistency — `inspector.triage.attention-ordering` is a single deployment-wide switch, so
+//      one poisoned row (or a model-cache TTL expiring mid-response) should degrade the WHOLE
+//      page to the well-tested self-heal ordering rather than leave REGRESSED ranked one way and
+//      OPEN another. Degrading uniformly is the honest, explainable behaviour.
 
 export function bucketIncidents(incidents: IncidentSummary[]): IncidentSections {
   const regressed: IncidentSummary[] = []
@@ -69,9 +80,10 @@ export function bucketIncidents(incidents: IncidentSummary[]): IncidentSections 
     }
   }
 
-  regressed.sort(compareIncidentOrder)
-  open.sort(compareIncidentOrder)
-  quiet.sort(compareIncidentOrder)
+  const compareByOrder = incidentOrderComparator(incidents)
+  regressed.sort(compareByOrder)
+  open.sort(compareByOrder)
+  quiet.sort(compareByOrder)
   resolved.sort(byLastSeenDesc)
   archived.sort(byLastSeenDesc)
 

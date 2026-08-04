@@ -1499,8 +1499,11 @@ export interface components {
             ageSeconds?: number;
             /** Format: int64 */
             arrivals28d?: number;
+            arrivalsUnknown?: boolean;
             /** Format: int32 */
             closedEpisodes?: number;
+            /** Format: int64 */
+            discardedArrivalSamples?: number;
             /** Format: double */
             frequency?: number;
             insufficientHistory?: boolean;
@@ -2299,7 +2302,7 @@ export interface components {
         MigrationFinding: {
             activityId?: string;
             /** @enum {string} */
-            code?: "UNMAPPED_ACTIVE_ACTIVITY" | "ACTIVE_SCOPE_REMOVED" | "ACTIVE_IN_REMOVED_SCOPE" | "NESTING_PATH_CHANGED" | "TYPE_CHANGED_SAME_ID" | "BOUNDARY_SUBSCRIPTION_REMOVED" | "BOUNDARY_CLOCK_RESET";
+            code?: "UNMAPPED_ACTIVE_ACTIVITY" | "ACTIVE_SCOPE_REMOVED" | "SCOPE_COLLAPSE_TOKEN_LOSS" | "ACTIVE_IN_REMOVED_SCOPE" | "NESTING_PATH_CHANGED" | "TYPE_CHANGED_SAME_ID" | "BOUNDARY_SUBSCRIPTION_REMOVED" | "BOUNDARY_CLOCK_RESET";
             detail?: string;
             /** @enum {string} */
             severity?: "BLOCKER_ADVICE" | "WARNING" | "INFO";
@@ -2372,6 +2375,7 @@ export interface components {
             ts?: string;
         };
         OccurrencePoint: {
+            cycleComplete?: boolean;
             /** Format: int64 */
             deadLetterCount?: number;
             /** Format: int64 */

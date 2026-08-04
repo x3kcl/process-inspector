@@ -318,7 +318,13 @@ Answers "what is broken, how much, where" in zero keystrokes:
   and section membership is untouched. Every factor degrades to a multiplicative identity when
   its evidence is missing, and ties break on `total DESC` then `signatureHash ASC`, so **with
   no ledger history the ordering is exactly today's count-only ordering** — measured across
-  all 21,229 recorded pilot buckets (Kendall τ = 1.0, zero position changes). The flag ships
+  all 21,229 recorded pilot buckets (Kendall τ = 1.0, zero position changes). "Missing evidence"
+  now includes **untrustworthy** evidence (post-ship correction, ALARM-COST-MODEL.md §13 F2/F3):
+  a class whose whole arrival window was truncated or blind reads `F = 1` (neutral) with
+  `factors.arrivalsUnknown` set, rather than the `F = 0` that used to zero the entire score for
+  exactly the largest classes on any permanently scan-capped engine; and a class's own FIRST
+  occurrence row now counts as the arrival of its whole population, which the delta-only
+  aggregate could never see. The flag ships
   false because the design's numeric data-maturity gate is measured NOT MET (0 of 5 axes);
   flipping it requires re-measuring that gate. **The frontend (#354) renders whatever order it
   is served, never re-sorting Stage-0 cards itself** — the BFF already reorders `errorGroups`
@@ -753,7 +759,11 @@ so history survives DLQ drains:
   p50/p90, and sample size, derived from the ledger's own occurrence + audit history (zero new
   engine calls). `INSUFFICIENT_HISTORY` (below the 10-unconfounded-completed-spell floor) is
   the expected, common-for-a-long-time state, not an edge case — the pilot's own measured
-  baseline has zero unconfounded completed spells today. Informational only (hard rail): never
+  baseline has zero unconfounded completed spells today. A spell is never judged from data the
+  BFF could not observe: any spell whose shape (or whose outcome look-ahead) includes a sample
+  taken while a registry engine was unreachable is excluded, as is one already in progress when
+  the window opened — an engine outage forges a "retries finished, nothing dead-lettered" edge,
+  and recording that as self-healing would be fabricated evidence (#302). Informational only (hard rail): never
   gates, reorders, or auto-triggers any corrective action. The UI renders ONLY the server-served
   displayed `lane` (`SelfHealBadge`, exact §4.1 copy, no client-side smoothing/recomputation) on
   the Incident Ledger card and detail (`incidents/SelfHealBadge.tsx`); the Incident Ledger's
@@ -769,13 +779,22 @@ so history survives DLQ drains:
   also carries the optional #353 `attention` score, and that score already folds in this SAME
   self-heal signal (§11's `lane → p_heal` band map) — sorting by `compareSelfHealRisk` on top of
   an attention-ordered list would double-count self-heal and silently override the server's
-  order. `incidents/attention.ts#compareIncidentOrder` (used by `sections.ts#bucketIncidents` in
-  place of a bare `compareSelfHealRisk`) ranks by the server `attention` score — mirroring the
-  backend's own `score DESC → total DESC → signatureHash ASC` tie-break — whenever it is present,
-  and falls back to EXACTLY the `compareSelfHealRisk` ordering above when it is absent (the
-  shipped, flag-off, expected-today case, unchanged from #352). The Incident Ledger card and
-  detail also render the shared `AttentionBadge` off `incident.attention` alongside the
-  self-heal badge.
+  order. `incidents/attention.ts#incidentOrderComparator` (used by `sections.ts#bucketIncidents`
+  in place of a bare `compareSelfHealRisk`) ranks by the server `attention` score — mirroring
+  the backend's own `score DESC → total DESC → signatureHash ASC` tie-break — when EVERY row in
+  the list carries one, and falls back to EXACTLY the `compareSelfHealRisk` ordering above
+  otherwise (the shipped, flag-off, expected-today case, unchanged from #352). **The choice is
+  made ONCE per list, never per pair** (post-ship correction, ALARM-COST-MODEL.md §13 F1): as
+  first shipped it was a per-pair rule — the attention path only when BOTH sides carried the
+  block — which is non-transitive, admits a strict cycle, and, because V8 never throws on a
+  broken comparator, sorted the REGRESSED/OPEN/QUIET sections into silent garbage whenever a
+  mixed array arrived (one class whose scoring threw, or a model-cache TTL expiring mid-page, is
+  enough). A mixed list now degrades WHOLESALE to the well-tested self-heal ordering. The
+  Incident Ledger card and detail also render the shared `AttentionBadge` off
+  `incident.attention` alongside the self-heal badge, and the detail sparkline marks BOTH
+  occurrence honesty flags — `truncated` (a floor) and `cycleComplete = false` (blind: an engine
+  was unreachable, so the dip is an outage, not a drain) — with distinct shapes and their own
+  legend lines.
 - **Non-goals v1** (recorded with the panel review): assignee/severity fields, auto-resolve
   policies, external alerting/deploy correlation, reporting dashboards/CSV export.
 
@@ -837,7 +856,7 @@ remains v2.
 | **Suspend process definition** | One call stops new AND (optionally) running instances of a definition — the real "bad deploy" brake (replaces bulk instance-suspend) | 3 |
 | **Terminate / delete instance** | Irreversible; runtime state destroyed; **cascade to call-activity children enumerated in the confirm** | 3 |
 | **Delete dead-letter job** | ⚠ Orphans the execution permanently (only rescue afterwards: change-state). ADMIN-only, explicit warning | 3 |
-| **Migrate instance** *(v2)* | Move instance to another deployed version of the same key. **Inspector static pre-check (NOT an engine validation** — Flowable's REST API exposes no migration validator, P0 spike 2026-07-09): a BFF model diff flags activities that can't auto-map; the engine is the ground truth only at apply. The pre-check emits **typed findings** (INSTANCE-MIGRATION.md §14 — a CLOSED 7-code vocabulary with `taxonomyVersion`, severities `BLOCKER_ADVICE`/`WARNING`/`INFO`), rendered by severity and labelled "BFF estimate — the engine is the only ground truth at execute". The ONLY refusal is document-construction impossibility (a token with no target id and no operator mapping ⇒ 422); a removed active **scope** and a removed **boundary subscription** are WARNINGS, not blockers — live calibration on Flowable 6.8/7.1 proved the engine accepts both, so blocking them made a legitimate recovery impossible through the BFF. **Findings are advisory-only: green or red, no rail moves.** Honest banner ("this is not a Flowable validation … the engine's own check runs only when you execute"); ADMIN unconditional + typed **business-key** confirm on prod; IRREVERSIBLE, never auto-retried (post-dispatch timeout ⇒ UNKNOWN + verify-now); single first, batch later. See `docs/INSTANCE-MIGRATION.md` | 3 |
+| **Migrate instance** *(v2)* | Move instance to another deployed version of the same key. **Inspector static pre-check (NOT an engine validation** — Flowable's REST API exposes no migration validator, P0 spike 2026-07-09): a BFF model diff flags activities that can't auto-map; the engine is the ground truth only at apply. The pre-check emits **typed findings** (INSTANCE-MIGRATION.md §14 — a CLOSED 8-code vocabulary with `taxonomyVersion`, severities `BLOCKER_ADVICE`/`WARNING`/`INFO`), rendered by severity and labelled "BFF estimate — the engine is the only ground truth at execute". Exactly **two** refusals, both 422: document-construction impossibility (a token with no target id and no operator mapping), and **`scope-collapse-token-loss`** — a dissolving subprocess scope holding **two or more live tokens**, where live calibration on 6.8/7.1 measured the engine returning **200 while silently destroying all but one token** (no error, no delete reason, no job), which can park the instance forever at a join whose sibling branch is gone; no mapping can fix it, so the estimate is the only place it can be caught (§14.11). A **single-token** removed scope and a removed **boundary subscription** are WARNINGS, not blockers — the engine accepts both, so blocking them made a legitimate recovery impossible through the BFF. **Findings are advisory-only: green or red, no rail moves.** Honest banner ("this is not a Flowable validation … the engine's own check runs only when you execute"); ADMIN unconditional + typed **business-key** confirm on prod; IRREVERSIBLE, never auto-retried (post-dispatch timeout ⇒ UNKNOWN + verify-now); single first, batch later. See `docs/INSTANCE-MIGRATION.md` | 3 |
 
 Explicitly **not offered** (API honesty, §11): timer *reschedule-to-later* (not exposed by
 open-source REST — the change-state workaround is documented instead), Temporal-style

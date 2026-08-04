@@ -9,7 +9,7 @@ import { cleanup, fireEvent, render, screen, waitFor } from '@testing-library/re
 import { MemoryRouter } from 'react-router'
 import { afterEach, describe, expect, it, vi } from 'vitest'
 import type { InstanceDetail } from '../api/model'
-import type { DefinitionVersionsResponse, MigrationPreview } from '../api/migrate'
+import type { DefinitionVersionsResponse, MigrationFinding, MigrationPreview } from '../api/migrate'
 import { ActionError } from '../api/actions'
 
 let meData: { reauth?: { required?: boolean; windowSeconds?: number; freshUntil?: string } } = {}
@@ -140,7 +140,7 @@ const PREVIEW_WITH_FINDINGS: MigrationPreview = {
           code: 'ACTIVE_SCOPE_REMOVED',
           severity: 'WARNING',
           activityId: 'scopeA',
-          detail: 'the enclosing region dissolves and its tokens re-home outward.',
+          detail: 'the enclosing region dissolves and its single live token re-homes outward.',
         },
       ],
     },
@@ -188,6 +188,67 @@ const PREVIEW_BLOCKED: MigrationPreview = {
     },
   ],
   targetActivities: [{ id: 'stepM', name: 'Step M', type: 'userTask' }],
+  findings: [],
+}
+
+/**
+ * The OTHER blocked shape (§14.11): a dissolving scope holding two concurrent tokens. Also
+ * `blocker: true`, but its status is SCOPE_REMOVED and no mapping can fix it — so it must NOT
+ * appear in the "pick a target" table.
+ */
+const PREVIEW_BLOCKED_TOKEN_LOSS: MigrationPreview = {
+  ...PREVIEW,
+  executable: false,
+  summary:
+    '1 subprocess scope(s) would collapse with more than one live token inside — migrating would silently destroy live work, and no mapping can prevent it.',
+  activities: [
+    {
+      fromActivityId: 'scopeP',
+      fromType: 'subProcess',
+      status: 'SCOPE_REMOVED',
+      blocker: true,
+      warning: false,
+      detail: "The subprocess scope 'scopeP' is gone and 2 live tokens are inside it.",
+      findings: [
+        {
+          code: 'SCOPE_COLLAPSE_TOKEN_LOSS',
+          severity: 'BLOCKER_ADVICE',
+          activityId: 'scopeP',
+          detail:
+            'Migrating would DESTROY live work. 2 live tokens are inside it — the engine will keep 1.',
+        },
+      ],
+    },
+  ],
+  targetActivities: [{ id: 'stepP1', name: 'Step P1', type: 'userTask' }],
+  findings: [],
+}
+
+/**
+ * A finding whose severity this build does not know — e.g. the BFF bumped `taxonomyVersion`
+ * ahead of the SPA. It must still be SEEN.
+ */
+const PREVIEW_UNKNOWN_SEVERITY: MigrationPreview = {
+  ...PREVIEW,
+  activities: [
+    {
+      fromActivityId: 'stepX',
+      fromType: 'userTask',
+      status: 'AUTO_MAPPED',
+      blocker: false,
+      warning: false,
+      detail: 'Maps by name.',
+      // Deliberately outside the generated union — that is the whole point of the case.
+      findings: [
+        {
+          code: 'SOMETHING_NEWER',
+          severity: 'CAUTION',
+          activityId: 'stepX',
+          detail: 'a severity this build has never heard of.',
+        },
+      ] as unknown as MigrationFinding[],
+    },
+  ],
   findings: [],
 }
 
@@ -313,16 +374,41 @@ describe('MigrateModal — typed pre-flight findings (INSTANCE-MIGRATION.md §14
     expect(screen.getByText(/not a Flowable validation/)).toBeTruthy()
   })
 
-  it('a BLOCKER_ADVICE is worded as "we cannot build the instruction", never as an engine verdict', async () => {
+  it('a BLOCKER_ADVICE is worded as our own refusal, never as an engine verdict', async () => {
     renderModal()
     await reachStepTwo(PREVIEW_BLOCKED)
 
-    expect(screen.getByText(/Cannot build the migration instruction \(1\)/)).toBeTruthy()
+    expect(screen.getByText(/Blocked before the engine \(1\)/)).toBeTruthy()
     expect(screen.getByText('UNMAPPED_ACTIVE_ACTIVITY')).toBeTruthy()
     expect(screen.getByText(/there is nothing to send/)).toBeTruthy()
     // Blocked ⇒ the targeted mapping dropdown, and no execute button at all.
     expect(screen.getByLabelText('target for miScope')).toBeTruthy()
     expect(screen.queryByRole('button', { name: /^Migrate ORD-77 to v2$/ })).toBeNull()
+  })
+
+  it('the token-loss blocker is loud but offers NO mapping dropdown — a mapping cannot fix it', async () => {
+    renderModal()
+    await reachStepTwo(PREVIEW_BLOCKED_TOKEN_LOSS)
+
+    expect(screen.getByText(/Blocked before the engine \(1\)/)).toBeTruthy()
+    expect(screen.getByText('SCOPE_COLLAPSE_TOKEN_LOSS')).toBeTruthy()
+    expect(screen.getByText(/Migrating would DESTROY live work/)).toBeTruthy()
+    // …and NOT in the "pick a target for each" table: offering a select here would invite the
+    // operator to try the one thing the BFF says outright does not help (§14.11).
+    expect(screen.queryByLabelText('target for scopeP')).toBeNull()
+    expect(screen.queryByText(/can’t be auto-mapped/)).toBeNull()
+    expect(screen.queryByRole('button', { name: /^Migrate ORD-77 to v2$/ })).toBeNull()
+  })
+
+  it('an UNRECOGNIZED severity still renders — the buckets fail toward visible, never silent', async () => {
+    renderModal()
+    await reachStepTwo(PREVIEW_UNKNOWN_SEVERITY)
+
+    // It lands in the WARNING callout and is COUNTED in that heading, rather than rendering in
+    // no callout and counting in no heading (the pre-fix three-literal-filters behavior).
+    expect(screen.getByText(/Migrates, but look first \(1\)/)).toBeTruthy()
+    expect(screen.getByText('SOMETHING_NEWER')).toBeTruthy()
+    expect(screen.getByText(/a severity this build has never heard of/)).toBeTruthy()
   })
 
   it('a zero-finding pre-check renders no findings block and no estimate label', async () => {

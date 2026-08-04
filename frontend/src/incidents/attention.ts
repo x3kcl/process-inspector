@@ -12,14 +12,16 @@
 // order with a client-only re-derivation. §3.1 is explicit that the whole point of this design is
 // that ordering is server-computed and explainable: the server ordering must win.
 //
-// THE RECONCILIATION: when a row carries a server `attention` score, rank by that score alone
-// (mirroring the backend's own tie-break, `AttentionOrdering.BY_ATTENTION` — score DESC, total
-// DESC, signatureHash ASC — so the client never presents an order the server itself wouldn't
-// choose). When `attention` is absent — the shipped, flag-off, EXPECTED case today (§7: the R1
+// THE RECONCILIATION: when EVERY row in the list carries a server `attention` score, rank by that
+// score alone (mirroring the backend's own tie-break, `AttentionOrdering.BY_ATTENTION` — score
+// DESC, total DESC, signatureHash ASC — so the client never presents an order the server itself
+// wouldn't choose). When any row lacks it — the shipped, flag-off, EXPECTED case today (§7: the R1
 // data-maturity gate is NOT MET; §11: `inspector.triage.attention-ordering` defaults false, so
 // every response omits the block) — fall back to exactly #352's `compareSelfHealRisk`, unchanged.
 // This is why the fallback path is the one every existing #352 test still exercises, and why it
-// must stay the well-tested "normal" path rather than an edge case.
+// must stay the well-tested "normal" path rather than an edge case. The choice is made ONCE PER
+// LIST, never per pair — see `incidentOrderComparator` for why that distinction is the whole
+// correctness argument (a per-pair rule is non-transitive, and V8 sorts it into garbage silently).
 //
 // WHERE this applies: per ALARM-COST-MODEL.md §11, the incident LIST keeps its server order
 // (`lastSeen DESC`) — the score is never used to reorder the fetch itself. It orders WITHIN the
@@ -41,21 +43,49 @@ function compareByAttentionScore(a: IncidentSummary, b: IncidentSummary): number
 }
 
 /**
- * The Incident Ledger section comparator (used by `sections.ts#bucketIncidents` in place of a
- * bare `compareSelfHealRisk`). Ordering only — never removes a row (R-BAU-01 never-hide, proven
- * by `sections.test.ts`'s reorder-survival assertion).
+ * Picks the Incident Ledger's section comparator ONCE for a whole list, and that "once" is the
+ * entire point (review fix — the previous version was a per-PAIR rule and was provably
+ * non-transitive).
  *
- * A row is treated as "scored" only when BOTH sides of a comparison carry `attention` — the flag
- * is a single deployment-wide switch (§7/§11), so in practice every row has it or none do; a
- * comparison that finds only one side scored (a transient rollout edge, never expected in
- * steady state) still fails toward the well-tested self-heal fallback rather than mixing an
- * incomparable score against a rank.
+ * The old `compareIncidentOrder(a, b)` chose the attention path only when BOTH sides carried
+ * `attention`, and `compareSelfHealRisk` otherwise. That is a different order relation depending
+ * on which pair you look at, which admits a strict cycle. The executed counterexample:
+ *
+ * ```
+ * A = { attention: { score: 5 }, selfHeal: { lane: 'INSUFFICIENT_HISTORY' } }
+ * B = {                          selfHeal: { lane: 'SELF_HEAL_MIXED' } }        // no attention
+ * C = { attention: { score: 1 }, selfHeal: { lane: 'SELF_HEAL_UNLIKELY' } }
+ * cmp(A, C) < 0   (score 5 beats score 1)
+ * cmp(C, B) < 0   (UNLIKELY outranks MIXED)
+ * cmp(B, A) < 0   (MIXED outranks INSUFFICIENT_HISTORY)   ⇒  A < C < B < A
+ * ```
+ *
+ * V8 does not throw on a broken comparator the way Java's TimSort does — it silently returns
+ * *some* permutation, and those same three rows produced FOUR different orderings depending on
+ * input order. That is a garbage sort in the REGRESSED / OPEN / QUIET sections, not a
+ * theoretical wart.
+ *
+ * It is also REACHABLE in production, which the old doc comment denied ("a transient rollout
+ * edge, never expected in steady state"): `AttentionScoreService.forClass` catches
+ * `RuntimeException` PER CLASS and returns `null`, and `IncidentSummary` is `@JsonInclude
+ * (NON_NULL)` — so one poisoned row, or a 5-minute model-cache TTL expiring mid-page, omits the
+ * block for SOME rows and a mixed array arrives client-side with the flag fully on.
+ *
+ * The fix makes the rule a property of the ARRAY: every row scored ⇒ rank by score (a total
+ * order on `score → lastTotal → signatureHash`); otherwise the whole list falls back to
+ * `compareSelfHealRisk` (a total order on `riskRank → lastTotal → lastSeen`). Both are
+ * lexicographic over a fixed key tuple, hence transitive, hence safe to hand to `sort`. Mixing
+ * them within one sort is what was never sound.
+ *
+ * Ordering only — never removes a row (R-BAU-01 never-hide, proven by `sections.test.ts`'s
+ * reorder-survival assertion).
  */
-export function compareIncidentOrder(a: IncidentSummary, b: IncidentSummary): number {
-  if (a.attention !== undefined && b.attention !== undefined) {
-    return compareByAttentionScore(a, b)
-  }
-  return compareSelfHealRisk(a, b)
+export function incidentOrderComparator(
+  rows: readonly IncidentSummary[],
+): (a: IncidentSummary, b: IncidentSummary) => number {
+  return rows.every((row) => row.attention !== undefined)
+    ? compareByAttentionScore
+    : compareSelfHealRisk
 }
 
 /** The server's one-sentence rationale (ALARM-COST-MODEL.md §4.3, built exactly per §11's

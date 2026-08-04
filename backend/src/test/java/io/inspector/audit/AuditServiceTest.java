@@ -316,6 +316,57 @@ class AuditServiceTest {
     }
 
     @Test
+    @SuppressWarnings("unchecked")
+    void migrationFindingsSurviveEveryPayloadModeIntact() {
+        // The record of what the operator was warned about before an IRREVERSIBLE migration is
+        // structural accountability, not payload data: `bffFindings` entries are two frozen enum
+        // names, an activity id and BFF-authored static advisory text (INSTANCE-MIGRATION.md
+        // §14.8). Under REDACTED they were masked and under METADATA_ONLY dropped entirely —
+        // protecting nothing and destroying the warning record.
+        Map<String, Object> payload = new LinkedHashMap<>();
+        payload.put("taxonomyVersion", 2);
+        payload.put(
+                "bffFindings",
+                List.of(Map.of(
+                        "code",
+                        "ACTIVE_SCOPE_REMOVED",
+                        "severity",
+                        "WARNING",
+                        "activityId",
+                        "scopeA",
+                        "detail",
+                        "the enclosing region dissolves…")));
+
+        for (AuditPayloadMode mode : List.of(AuditPayloadMode.REDACTED, AuditPayloadMode.METADATA_ONLY)) {
+            Map<String, Object> out = AuditService.applyPayloadMode(payload, mode);
+            assertThat(out).as("%s keeps the taxonomy generation", mode).containsEntry("taxonomyVersion", 2);
+            List<Map<String, Object>> findings = (List<Map<String, Object>>) out.get("bffFindings");
+            assertThat(findings).as("%s keeps the findings", mode).hasSize(1);
+            assertThat(findings.get(0))
+                    .as("%s keeps every finding field verbatim", mode)
+                    .containsEntry("code", "ACTIVE_SCOPE_REMOVED")
+                    .containsEntry("severity", "WARNING")
+                    .containsEntry("activityId", "scopeA")
+                    .containsEntry("detail", "the enclosing region dissolves…");
+        }
+    }
+
+    @Test
+    void theVerbatimExemptionDoesNotTravelToOtherKeys() {
+        // The exemption names the CONTAINER, never the inner key names — a future verb's payload
+        // key called `detail`/`code`/`severity` must still fail toward minimization.
+        Map<String, Object> payload = new LinkedHashMap<>();
+        payload.put("detail", "some engine response text");
+        payload.put("code", "SOMETHING");
+
+        assertThat(AuditService.applyPayloadMode(payload, AuditPayloadMode.REDACTED))
+                .containsEntry("detail", AuditService.REDACTED)
+                .containsEntry("code", AuditService.REDACTED);
+        assertThat(AuditService.applyPayloadMode(payload, AuditPayloadMode.METADATA_ONLY))
+                .isEmpty();
+    }
+
+    @Test
     void redactToleratesNonStringMapKeysWithoutThrowing() {
         Map<Object, Object> nonStringKeyed = new LinkedHashMap<>();
         nonStringKeyed.put(1, "x");

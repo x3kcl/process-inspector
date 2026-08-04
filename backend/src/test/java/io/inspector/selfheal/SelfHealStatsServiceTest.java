@@ -4,6 +4,8 @@ import static org.assertj.core.api.Assertions.assertThat;
 import static org.assertj.core.api.Assertions.assertThatCode;
 import static org.mockito.ArgumentMatchers.any;
 import static org.mockito.ArgumentMatchers.anyCollection;
+import static org.mockito.ArgumentMatchers.anyInt;
+import static org.mockito.ArgumentMatchers.anyLong;
 import static org.mockito.ArgumentMatchers.eq;
 import static org.mockito.Mockito.mock;
 import static org.mockito.Mockito.never;
@@ -20,11 +22,14 @@ import io.inspector.incident.Incident;
 import io.inspector.incident.IncidentOccurrenceRepository;
 import io.inspector.incident.IncidentRepository;
 import java.time.Clock;
+import java.time.Duration;
 import java.time.Instant;
 import java.time.ZoneOffset;
 import java.util.List;
 import java.util.Optional;
 import org.junit.jupiter.api.Test;
+import org.mockito.ArgumentCaptor;
+import org.springframework.data.domain.PageRequest;
 
 /**
  * Rung 1: {@code SelfHealStatsService}'s JPA-facing glue with mocked stores — the safe read-path
@@ -84,47 +89,48 @@ class SelfHealStatsServiceTest {
     void aKnownClassWithAnEmptySeriesIsAlsoInsufficientHistoryAndQueriesConfoundsOnItsEngines() {
         Incident row = incident(1L, "hash-1", 1, "{\"engine-a\":{\"def:v1\":5}}");
         when(incidents.findBySignatureHashAndAlgoVersion("hash-1", 1)).thenReturn(Optional.of(row));
-        when(occurrences.findByIdIncidentIdAndIdSampledAtGreaterThanEqualOrderByIdSampledAtAsc(eq(1L), any()))
-                .thenReturn(List.of());
-        when(audits.findSuccessfulRetryJobAudits(anyCollection(), any(), eq(AuditOutcome.ok)))
+        when(occurrences.findSpellShapeRowsDescending(eq(1L), any(), anyInt())).thenReturn(List.of());
+        when(audits.findSuccessfulRetryJobPoints(anyCollection(), any(), eq(AuditOutcome.ok), any()))
                 .thenReturn(List.of());
 
         SelfHealStats stats = service.get("hash-1", 1);
 
         assertThat(stats.lane()).isEqualTo("INSUFFICIENT_HISTORY");
         assertThat(stats.n()).isZero();
-        verify(audits).findSuccessfulRetryJobAudits(eq(java.util.Set.of("engine-a")), any(), eq(AuditOutcome.ok));
+        verify(audits)
+                .findSuccessfulRetryJobPoints(
+                        eq(java.util.Set.of("engine-a")),
+                        any(),
+                        eq(AuditOutcome.ok),
+                        eq(PageRequest.of(0, SelfHealStatsService.CONFOUND_AUDIT_CAP)));
     }
 
     @Test
     void aClassWithNoEnginesInItsDisplayBlobSkipsTheConfoundQueryEntirely() {
         Incident row = incident(2L, "hash-2", 1, "{}");
         when(incidents.findBySignatureHashAndAlgoVersion("hash-2", 1)).thenReturn(Optional.of(row));
-        when(occurrences.findByIdIncidentIdAndIdSampledAtGreaterThanEqualOrderByIdSampledAtAsc(eq(2L), any()))
-                .thenReturn(List.of());
+        when(occurrences.findSpellShapeRowsDescending(eq(2L), any(), anyInt())).thenReturn(List.of());
 
         service.get("hash-2", 1);
 
-        verify(audits, never()).findSuccessfulRetryJobAudits(anyCollection(), any(), any());
+        verify(audits, never()).findSuccessfulRetryJobPoints(anyCollection(), any(), any(), any());
     }
 
     @Test
     void aCorruptedDisplayBlobDegradesToNoConfoundDetectionRatherThanThrowing() {
         Incident row = incident(3L, "hash-3", 1, "not-json");
         when(incidents.findBySignatureHashAndAlgoVersion("hash-3", 1)).thenReturn(Optional.of(row));
-        when(occurrences.findByIdIncidentIdAndIdSampledAtGreaterThanEqualOrderByIdSampledAtAsc(eq(3L), any()))
-                .thenReturn(List.of());
+        when(occurrences.findSpellShapeRowsDescending(eq(3L), any(), anyInt())).thenReturn(List.of());
 
         assertThatCode(() -> service.get("hash-3", 1)).doesNotThrowAnyException();
-        verify(audits, never()).findSuccessfulRetryJobAudits(anyCollection(), any(), any());
+        verify(audits, never()).findSuccessfulRetryJobPoints(anyCollection(), any(), any(), any());
     }
 
     @Test
     void repeatedReadsWithinTheCacheTtlHitTheRepositoryOnlyOnce() {
         Incident row = incident(4L, "hash-4", 1, "{}");
         when(incidents.findBySignatureHashAndAlgoVersion("hash-4", 1)).thenReturn(Optional.of(row));
-        when(occurrences.findByIdIncidentIdAndIdSampledAtGreaterThanEqualOrderByIdSampledAtAsc(eq(4L), any()))
-                .thenReturn(List.of());
+        when(occurrences.findSpellShapeRowsDescending(eq(4L), any(), anyInt())).thenReturn(List.of());
 
         service.get("hash-4", 1);
         service.get("hash-4", 1);
@@ -137,12 +143,11 @@ class SelfHealStatsServiceTest {
     void aDwellTickNeverThrowsAndSkipsOnlyThePoisonedClass() {
         Incident bad = incident(5L, "hash-bad", 1, "{}");
         Incident good = incident(6L, "hash-good", 1, "{}");
-        when(incidents.findAll()).thenReturn(List.of(bad, good));
+        when(incidents.findByLastSeenGreaterThanEqual(any())).thenReturn(List.of(bad, good));
         when(incidents.findBySignatureHashAndAlgoVersion("hash-good", 1)).thenReturn(Optional.of(good));
-        when(occurrences.findByIdIncidentIdAndIdSampledAtGreaterThanEqualOrderByIdSampledAtAsc(eq(5L), any()))
+        when(occurrences.findSpellShapeRowsDescending(eq(5L), any(), anyInt()))
                 .thenThrow(new RuntimeException("boom — this class's read is poisoned"));
-        when(occurrences.findByIdIncidentIdAndIdSampledAtGreaterThanEqualOrderByIdSampledAtAsc(eq(6L), any()))
-                .thenReturn(List.of());
+        when(occurrences.findSpellShapeRowsDescending(eq(6L), any(), anyInt())).thenReturn(List.of());
 
         assertThatCode(() -> service.tick(true, NOW)).doesNotThrowAnyException();
 
@@ -153,7 +158,7 @@ class SelfHealStatsServiceTest {
 
     @Test
     void theEventListenerNeverThrowsEvenWhenTheLedgerRepositoryItselfIsUnavailable() {
-        when(incidents.findAll()).thenThrow(new RuntimeException("db unavailable"));
+        when(incidents.findByLastSeenGreaterThanEqual(any())).thenThrow(new RuntimeException("db unavailable"));
 
         assertThatCode(() -> service.onAggregationSampled(sampledEvent())).doesNotThrowAnyException();
     }
@@ -167,10 +172,45 @@ class SelfHealStatsServiceTest {
 
         serviceWithTickOff.onAggregationSampled(sampledEvent());
 
-        verify(incidents, never()).findAll();
+        verify(incidents, never()).findByLastSeenGreaterThanEqual(any());
         // reads still answer the safe default — the flag never gates GET /api/incidents.
         when(incidents.findBySignatureHashAndAlgoVersion("hash-off", 1)).thenReturn(Optional.empty());
         assertThat(serviceWithTickOff.get("hash-off", 1).lane()).isEqualTo("INSUFFICIENT_HISTORY");
+    }
+
+    /* ---------------- bounded work per tick ---------------- */
+
+    @Test
+    void theTickScansTheSelfHealWindowRatherThanEveryIncidentEverRecorded() {
+        // `incident` rows are NEVER deleted (only occurrence partitions drop, at 400 days), and
+        // this runs every 60s — findAll() here degrades without bound as the ledger accumulates.
+        when(incidents.findByLastSeenGreaterThanEqual(any())).thenReturn(List.of());
+
+        service.tick(true, NOW);
+
+        ArgumentCaptor<Instant> since = ArgumentCaptor.forClass(Instant.class);
+        verify(incidents).findByLastSeenGreaterThanEqual(since.capture());
+        assertThat(since.getValue()).isEqualTo(NOW.minus(Duration.ofDays(90))); // the configured window
+        verify(incidents, never()).findAll();
+    }
+
+    @Test
+    void dwellStateIsEvictedForClassesTheTickNoLongerSees() {
+        Incident first = incident(7L, "hash-gone", 1, "{}");
+        Incident second = incident(8L, "hash-live", 1, "{}");
+        when(occurrences.findSpellShapeRowsDescending(anyLong(), any(), anyInt()))
+                .thenReturn(List.of());
+
+        when(incidents.findByLastSeenGreaterThanEqual(any())).thenReturn(List.of(first, second));
+        service.tick(true, NOW);
+        assertThat(service.trackedDwellClasses()).isEqualTo(2);
+
+        // hash-gone fell out of the window (or its generation was orphaned by an ALGO_VERSION
+        // bump): its dwell entry must not live forever — the map is keyed per class+generation.
+        when(incidents.findByLastSeenGreaterThanEqual(any())).thenReturn(List.of(second));
+        service.tick(true, NOW);
+
+        assertThat(service.trackedDwellClasses()).isEqualTo(1);
     }
 
     private static io.inspector.snapshot.AggregationSampledEvent sampledEvent() {

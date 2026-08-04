@@ -57,9 +57,13 @@ public record ActivityDiffEntry(
         NESTING_CHANGED,
         /**
          * An active SCOPE CONTAINER (subProcess/transaction/adHocSubProcess) that is absent from
-         * the target and is not a multi-instance root. No mapping is sent: live calibration on
-         * Flowable 6.8.0 and 7.1.0 proved the engine dissolves the scope and re-homes the tokens
-         * on an empty mapping list (§14.2 [M3]). Advisory, never a blocker.
+         * the target and has no multi-instance ancestor. No mapping is sent for the scope itself.
+         *
+         * <p>⚠ This status is NOT a severity. With ONE live token inside, live calibration on
+         * Flowable 6.8.0 and 7.1.0 proved the engine dissolves the scope and re-homes that token on
+         * an empty mapping list (§14.2 [M3]) — advisory. With TWO OR MORE, the engine keeps exactly
+         * one and ends the rest silently on a 200 response (§14.11 [M10]) — a BLOCKER. Severity
+         * lives in {@link #findings()}, never in the status; read it there.
          */
         SCOPE_REMOVED,
         /**

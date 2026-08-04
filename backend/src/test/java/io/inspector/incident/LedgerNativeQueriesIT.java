@@ -1,0 +1,395 @@
+package io.inspector.incident;
+
+import static org.assertj.core.api.Assertions.assertThat;
+
+import io.inspector.dto.ErrorGroup;
+import io.inspector.snapshot.AggregationSample;
+import java.time.Instant;
+import java.util.HashMap;
+import java.util.List;
+import java.util.Map;
+import java.util.Set;
+import java.util.UUID;
+import org.junit.jupiter.api.Test;
+import org.junit.jupiter.api.TestInstance;
+import org.springframework.beans.factory.annotation.Autowired;
+import org.springframework.boot.test.context.SpringBootTest;
+import org.springframework.jdbc.core.JdbcTemplate;
+import org.springframework.test.context.ActiveProfiles;
+import org.springframework.test.context.DynamicPropertyRegistry;
+import org.springframework.test.context.DynamicPropertySource;
+import org.testcontainers.containers.PostgreSQLContainer;
+
+/**
+ * The ledger's NATIVE window/aggregate queries against a REAL Postgres 16 (Testcontainers) —
+ * {@code IncidentOccurrenceRepository.arrivalsSince} (the attention F factor: a {@code LAG}
+ * window function over a PARTITIONED table), {@code
+ * IncidentEpisodeRepository.closedEpisodeDurationSeconds} (the M factor, {@code EXTRACT(EPOCH …)})
+ * and {@code IncidentOccurrenceRepository.findSpellShapeRowsDescending} (the RETRYING lane's
+ * bounded spell substrate: a two-deep {@code LAG} filter mapped back onto the entity).
+ *
+ * <p>This IT exists because all three are native and none of them runs on a default-flagged,
+ * pilot-data path — with {@code inspector.triage.attention-ordering} false (ALARM-COST-MODEL §7,
+ * the gate is NOT met) nothing executes the F/M aggregates at all. Without a rung-4 test a
+ * malformed statement would ship completely undetected and only surface on the day an operator
+ * flips the flag. It also pins the honesty rules the SQL, not the Java, is responsible for:
+ * arrivals are positive DELTAS (never levels); a delta touching a truncated bucket is discarded
+ * because a truncated sample is a FLOOR, not a level (R-SEM-12); and a delta touching a BLIND
+ * bucket is discarded because an unreachable engine is not a drain (#302).
+ *
+ * <p>Synthetic ingests through {@link IncidentLedgerService} — the ledger is a pure DB-side
+ * consumer, so no engine is needed. Signature hashes are per-run UUIDs so a live dev stack
+ * polluting the store can never break assertions. LOCAL-ONLY ({@code *IT}), like the other
+ * DB-backed ITs. Lives in {@code io.inspector.incident} because it drives the repository
+ * queries directly — widening {@code IncidentLedgerService.ingest} to public for a test would be
+ * the wrong trade.
+ */
+@SpringBootTest(properties = {"ENGINE_A_PASSWORD=test", "inspector.snapshot.enabled=false"})
+@ActiveProfiles("it-actions")
+@TestInstance(TestInstance.Lifecycle.PER_CLASS)
+class LedgerNativeQueriesIT {
+
+    private static final PostgreSQLContainer<?> POSTGRES = new PostgreSQLContainer<>("postgres:16-alpine");
+
+    static {
+        POSTGRES.start();
+    }
+
+    @DynamicPropertySource
+    static void datasource(DynamicPropertyRegistry registry) {
+        registry.add("spring.datasource.url", POSTGRES::getJdbcUrl);
+        registry.add("spring.datasource.username", POSTGRES::getUsername);
+        registry.add("spring.datasource.password", POSTGRES::getPassword);
+    }
+
+    @Autowired
+    IncidentLedgerService ledger;
+
+    @Autowired
+    IncidentRepository incidents;
+
+    @Autowired
+    IncidentEpisodeRepository episodes;
+
+    @Autowired
+    IncidentOccurrenceRepository occurrences;
+
+    @Autowired
+    JdbcTemplate jdbc;
+
+    @Test
+    void arrivalsSumThePositiveDeltasAndIgnoreEveryDrain() {
+        String hash = "it-" + UUID.randomUUID();
+        Instant t0 = Instant.parse("2026-08-01T09:00:00Z");
+        // Birth at 5 (+5, FIX 3) → 9 (+4) → 3 (drain, ignored) → 11 (+8) → 11 (flat)
+        // ⇒ 17 arrivals, NOT the level 11.
+        ingest(hash, t0, 5, false);
+        ingest(hash, t0.plusSeconds(60), 9, false);
+        ingest(hash, t0.plusSeconds(120), 3, false);
+        ingest(hash, t0.plusSeconds(180), 11, false);
+        ingest(hash, t0.plusSeconds(240), 11, false);
+
+        assertThat(arrivals(hash, t0)).isEqualTo(17);
+    }
+
+    @Test
+    void aDeltaTouchingATruncatedBucketIsDiscardedBecauseAFloorIsNotALevel() {
+        String hash = "it-" + UUID.randomUUID();
+        Instant t0 = Instant.parse("2026-08-02T09:00:00Z");
+        // Birth at 5 (+5). The next bucket is a TRUNCATED floor of 500: both deltas that touch it
+        // (5→500 and 500→7) are phantoms of the scan cap, not arrivals; only 7→9 (+2) is real.
+        ingest(hash, t0, 5, false);
+        ingest(hash, t0.plusSeconds(60), 500, true);
+        ingest(hash, t0.plusSeconds(120), 7, false);
+        ingest(hash, t0.plusSeconds(180), 9, false);
+
+        assertThat(arrivals(hash, t0)).isEqualTo(7);
+        // Two of the four samples were usable, so the window is PARTIAL, not unknown.
+        assertThat(observedSamples(hash, t0)).isEqualTo(4);
+        assertThat(trustedSamples(hash, t0)).isEqualTo(2);
+    }
+
+    /* ---------------- FIX 3: a class's own birth IS an arrival ---------------- */
+
+    @Test
+    void aClassesFirstEverBucketCountsItsWholePopulationAsArriving() {
+        String hash = "it-" + UUID.randomUUID();
+        Instant t0 = Instant.parse("2026-08-03T09:00:00Z");
+        // The review's confirmed defect: LAG(total) is NULL for the window's first row and the
+        // old predicate (`WHERE delta IS NOT NULL`) threw it away — so an incident's FIRST EVER
+        // occurrence row, which IS the arrival of its entire population, could never be counted.
+        // A bad deploy breaking 5 000 instances at once appeared with total = 5000, stayed flat,
+        // and scored arrivals = 0 ⇒ F = 0 ⇒ A = 0: permanently below a class that gained one
+        // member. 0 → 5 000 in one bucket is the LARGEST possible arrival event.
+        ingest(hash, t0, 5_000, false);
+        ingest(hash, t0.plusSeconds(60), 5_000, false); // flat ever after
+
+        assertThat(arrivals(hash, t0)).isEqualTo(5_000);
+    }
+
+    @Test
+    void aWindowThatMerelyStartsMidLifeDoesNotCountTheStandingPopulationAsArrivals() {
+        String hash = "it-" + UUID.randomUUID();
+        Instant birth = Instant.parse("2026-08-03T11:00:00Z");
+        Instant windowStart = birth.plusSeconds(180);
+        // The other half of FIX 3, and the reason it is a JOIN on first_seen rather than a plain
+        // COALESCE(LAG(total), 0): only the incident's OWN first row gets the 0 baseline. A
+        // window opening mid-life still finds LAG NULL on its first row and still discards it —
+        // otherwise every 28-day window would re-bank the standing population as fresh growth,
+        // every time, and "arrivals" would silently become "size".
+        ingest(hash, birth, 5_000, false);
+        ingest(hash, birth.plusSeconds(60), 5_000, false);
+        ingest(hash, birth.plusSeconds(120), 5_000, false);
+        ingest(hash, windowStart, 5_000, false);
+        ingest(hash, windowStart.plusSeconds(60), 5_003, false); // +3, the only real growth
+
+        assertThat(arrivals(hash, windowStart)).isEqualTo(3);
+        assertThat(arrivals(hash, birth)).isEqualTo(5_003); // whole life: birth + growth, once
+    }
+
+    @Test
+    void arrivalsAreScopedToTheWindowAndKeyedPerIncident() {
+        String first = "it-" + UUID.randomUUID();
+        String second = "it-" + UUID.randomUUID();
+        Instant t0 = Instant.parse("2026-08-01T12:00:00Z");
+        ingest(first, t0, 1, false); // birth: +1
+        ingest(first, t0.plusSeconds(60), 4, false); // +3
+        ingest(second, t0, 10, false); // birth: +10
+        ingest(second, t0.plusSeconds(60), 17, false); // +7
+
+        assertThat(arrivals(first, t0)).isEqualTo(4);
+        assertThat(arrivals(second, t0)).isEqualTo(17);
+        // A window starting after the whole series sees nothing at all.
+        assertThat(arrivals(first, t0.plusSeconds(3600))).isZero();
+    }
+
+    /* ---------------- FIX 2: a wholly untrusted window is UNKNOWN, not zero ---------------- */
+
+    @Test
+    void aWindowWhoseEverySampleWasTruncatedReportsZeroTrustedSamplesSoTheCallerCanSayUnknown() {
+        String hash = "it-" + UUID.randomUUID();
+        Instant t0 = Instant.parse("2026-08-09T09:00:00Z");
+        // A big class on an engine PERMANENTLY at its failure-lane scan cap: every bucket is a
+        // floor, so every delta is discarded and the sum is 0. Before this fix that 0 was
+        // indistinguishable from "measured, and it did not grow" — and F = log2(1+0) = 0 zeroed
+        // A(c) = F*R*M*S outright, demoting exactly the largest classes. The counts are what let
+        // AttentionScoreService tell the two apart and degrade F to the neutral 1 instead.
+        for (int i = 0; i < 5; i++) {
+            ingest(hash, t0.plusSeconds(60L * i), 4_000, true);
+        }
+
+        assertThat(arrivals(hash, t0)).isZero();
+        assertThat(observedSamples(hash, t0)).isEqualTo(5); // birth + 4 differenceable deltas
+        assertThat(trustedSamples(hash, t0)).isZero(); // ⇒ arrivalsUnknown
+    }
+
+    @Test
+    void aWindowWhoseEverySampleWasBlindReportsTheSameUnknownShapeAsAWhollyTruncatedOne() {
+        String hash = "it-" + UUID.randomUUID();
+        Instant t0 = Instant.parse("2026-08-09T11:00:00Z");
+        for (int i = 0; i < 4; i++) {
+            ingest(hash, t0.plusSeconds(60L * i), 900, false, false); // engine unreachable all window
+        }
+
+        assertThat(arrivals(hash, t0)).isZero();
+        assertThat(observedSamples(hash, t0)).isEqualTo(4);
+        assertThat(trustedSamples(hash, t0)).isZero();
+    }
+
+    @Test
+    void aFullyObservedFlatWindowIsAMEASUREDZeroAndSaysSoWithTrustedSamples() {
+        String hash = "it-" + UUID.randomUUID();
+        Instant t0 = Instant.parse("2026-08-09T13:00:00Z");
+        // The control case that keeps "unknown" from swallowing "measured, and genuinely flat":
+        // a class born before the window whose every in-window sample was clean.
+        ingest(hash, t0.minusSeconds(120), 60, false);
+        ingest(hash, t0.minusSeconds(60), 60, false);
+        for (int i = 0; i < 4; i++) {
+            ingest(hash, t0.plusSeconds(60L * i), 60, false);
+        }
+
+        assertThat(arrivals(hash, t0)).isZero();
+        assertThat(observedSamples(hash, t0)).isEqualTo(3); // 4 rows, first has no in-window predecessor
+        assertThat(trustedSamples(hash, t0)).isEqualTo(3); // ⇒ NOT unknown: F stays a real 0
+    }
+
+    @Test
+    void onlyClosedEpisodesYieldADurationAndItIsMeasuredInSeconds() {
+        String hash = "it-" + UUID.randomUUID();
+        Instant t0 = Instant.parse("2026-08-01T15:00:00Z");
+        ingest(hash, t0, 6, false);
+        long incidentId = incidentId(hash);
+
+        // Live episode ⇒ absent from the aggregate: "still broken" is not an MTTR observation.
+        assertThat(closedDurations(incidentId)).isEmpty();
+
+        jdbc.update(
+                "UPDATE incident_episode SET ended_at = started_at + interval '90 minutes',"
+                        + " resolved_by = 'it-operator', resolve_reason = 'fixed by config rollout'"
+                        + " WHERE incident_id = ? AND ended_at IS NULL",
+                incidentId);
+
+        assertThat(closedDurations(incidentId)).containsExactly(5_400L);
+    }
+
+    /* ---------------- #302: a blind cycle is not movement ---------------- */
+
+    @Test
+    void aDeltaTouchingABlindBucketIsDiscardedBecauseAnUnreachableEngineIsNotADrain() {
+        String hash = "it-" + UUID.randomUUID();
+        Instant t0 = Instant.parse("2026-08-05T09:00:00Z");
+        // The review's exact outage sequence: a multi-engine class at 1000 loses the engine that
+        // hosts 900 of its members for two buckets, then gets it back. Reading the blind rows as
+        // observations makes the recovery edge a +900 ARRIVAL — 900 phantom members from a
+        // two-minute blip, F jumping log2(1+0)=0 to log2(901)≈9.8, and compounding on every flap.
+        // Born (and long settled) BEFORE the window opens, so FIX 3's birth seeding is not in
+        // play here — this test is only about the outage edge.
+        ingest(hash, t0.minusSeconds(60), 1000, false, true);
+        ingest(hash, t0, 1000, false, true);
+        ingest(hash, t0.plusSeconds(60), 1000, false, true);
+        ingest(hash, t0.plusSeconds(120), 100, false, false); // engine unreachable
+        ingest(hash, t0.plusSeconds(180), 100, false, false); // still unreachable
+        ingest(hash, t0.plusSeconds(240), 1000, false, true); // back — NOT 900 new members
+        ingest(hash, t0.plusSeconds(300), 1000, false, true);
+
+        assertThat(arrivals(hash, t0)).isZero();
+    }
+
+    @Test
+    void arrivalsAcrossACompleteCycleAreStillCountedAfterABlindStretch() {
+        String hash = "it-" + UUID.randomUUID();
+        Instant t0 = Instant.parse("2026-08-06T09:00:00Z");
+        // Guard against over-discarding: only deltas TOUCHING a blind row are dropped.
+        ingest(hash, t0, 10, false, false); // blind
+        ingest(hash, t0.plusSeconds(60), 10, false, true); // discarded (predecessor blind)
+        ingest(hash, t0.plusSeconds(120), 14, false, true); // +4, both endpoints observed
+        ingest(hash, t0.plusSeconds(180), 20, false, true); // +6
+
+        assertThat(arrivals(hash, t0)).isEqualTo(10);
+    }
+
+    /* ---------------- the RETRYING lane's bounded spell substrate ---------------- */
+
+    @Test
+    void theSpellShapeQueryReturnsOnlyTheSpellItsClosingZeroAndTheLookaheadNewestFirst() {
+        String hash = "it-" + UUID.randomUUID();
+        Instant t0 = Instant.parse("2026-08-07T09:00:00Z");
+        // Nine quiet-ish buckets around a two-bucket spell: the 90-day window at a 60s beat is
+        // ~129 600 rows per class, so the reduction to shape-relevant rows is the whole point.
+        ingestJobs(hash, t0, 5, 5, 0, true);
+        ingestJobs(hash, t0.plusSeconds(60), 5, 5, 0, true);
+        ingestJobs(hash, t0.plusSeconds(120), 7, 5, 2, true); // spell starts
+        ingestJobs(hash, t0.plusSeconds(180), 6, 5, 1, false); // ...and a blind bucket inside it
+        ingestJobs(hash, t0.plusSeconds(240), 5, 5, 0, true); // closing zero
+        ingestJobs(hash, t0.plusSeconds(300), 5, 5, 0, true); // +1 look-ahead
+        ingestJobs(hash, t0.plusSeconds(360), 5, 5, 0, true); // quiet again — must NOT come back
+        ingestJobs(hash, t0.plusSeconds(420), 5, 5, 0, true);
+
+        List<IncidentOccurrence> rows = occurrences.findSpellShapeRowsDescending(incidentId(hash), t0, 100);
+
+        assertThat(rows.stream().map(row -> row.getId().getSampledAt()))
+                .containsExactly(t0.plusSeconds(300), t0.plusSeconds(240), t0.plusSeconds(180), t0.plusSeconds(120));
+        // ...and both honesty markers round-trip onto the entity (V21 mapping + ddl-auto=validate).
+        assertThat(rows.stream()
+                        .filter(row -> !row.isCycleComplete())
+                        .map(row -> row.getId().getSampledAt()))
+                .containsExactly(t0.plusSeconds(180));
+        assertThat(rows.get(0).getRetryingCount()).isZero();
+        assertThat(rows.get(3).getRetryingCount()).isEqualTo(2);
+    }
+
+    @Test
+    void theSpellShapeQueryCapKeepsTheNEWESTRowsSoTheCutIsLeftCensoredNotArbitrary() {
+        String hash = "it-" + UUID.randomUUID();
+        Instant t0 = Instant.parse("2026-08-08T09:00:00Z");
+        for (int i = 0; i < 6; i++) {
+            ingestJobs(hash, t0.plusSeconds(60L * i), 5, 5, 1, true); // one long unbroken spell
+        }
+
+        List<IncidentOccurrence> rows = occurrences.findSpellShapeRowsDescending(incidentId(hash), t0, 2);
+
+        assertThat(rows.stream().map(row -> row.getId().getSampledAt()))
+                .containsExactly(t0.plusSeconds(300), t0.plusSeconds(240));
+    }
+
+    /* ---------------- helpers ---------------- */
+
+    private void ingest(String hash, Instant bucket, long total, boolean truncated) {
+        ingest(hash, bucket, total, truncated, true);
+    }
+
+    private void ingest(String hash, Instant bucket, long total, boolean truncated, boolean cycleComplete) {
+        AggregationSample sample = new AggregationSample(
+                List.of(),
+                List.of(group(hash, total)),
+                bucket,
+                truncated ? Set.of("engine-a") : Set.of(),
+                cycleComplete);
+        ledger.ingest(sample, bucket);
+    }
+
+    private void ingestJobs(
+            String hash, Instant bucket, long total, long deadLetters, long retrying, boolean cycleComplete) {
+        ErrorGroup group = new ErrorGroup(
+                hash,
+                1,
+                "java.net.SocketTimeoutException",
+                "timeout after # ms",
+                "timeout after 5000 ms",
+                total,
+                deadLetters,
+                retrying,
+                Map.of("engine-a", Map.of("order:v3", total)));
+        ledger.ingest(new AggregationSample(List.of(), List.of(group), bucket, Set.of(), cycleComplete), bucket);
+    }
+
+    private static ErrorGroup group(String hash, long total) {
+        return new ErrorGroup(
+                hash,
+                1,
+                "java.net.SocketTimeoutException",
+                "timeout after # ms",
+                "timeout after 5000 ms",
+                total,
+                total,
+                0,
+                Map.of("engine-a", Map.of("order:v3", total)));
+    }
+
+    private long incidentId(String hash) {
+        return incidents
+                .findBySignatureHashAndAlgoVersion(hash, 1)
+                .map(Incident::getId)
+                .orElseThrow();
+    }
+
+    private long arrivals(String hash, Instant since) {
+        return aggregateColumn(hash, since, 1);
+    }
+
+    /** How many differenceable samples the window held (a class's own birth row counts as one). */
+    private long observedSamples(String hash, Instant since) {
+        return aggregateColumn(hash, since, 2);
+    }
+
+    /** How many of those had BOTH endpoints fully observed — 0 means the window is unknown. */
+    private long trustedSamples(String hash, Instant since) {
+        return aggregateColumn(hash, since, 3);
+    }
+
+    private long aggregateColumn(String hash, Instant since, int column) {
+        long incidentId = incidentId(hash);
+        Map<Long, Long> byIncident = new HashMap<>();
+        for (Object[] row : occurrences.arrivalsSince(since)) {
+            byIncident.put(((Number) row[0]).longValue(), ((Number) row[column]).longValue());
+        }
+        return byIncident.getOrDefault(incidentId, 0L);
+    }
+
+    private List<Long> closedDurations(long incidentId) {
+        return episodes.closedEpisodeDurationSeconds().stream()
+                .filter(row -> ((Number) row[0]).longValue() == incidentId)
+                .map(row -> ((Number) row[1]).longValue())
+                .toList();
+    }
+}

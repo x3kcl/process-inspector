@@ -1,0 +1,76 @@
+# Rung-4 registry for MigrationFindingsIT (INSTANCE-MIGRATION.md §14 typed findings).
+#
+# A DEDICATED profile, not `it-actions`: §14's severity decisions are justified by live
+# calibration on BOTH migration-capable majors, so this suite must drive Flowable 6.8 AND
+# Flowable 7.1 — and adding a third engine to the shared `it-actions` registry would widen
+# every OTHER suite's cross-engine fan-out (bulk counts, triage aggregation, engine-list
+# indexing) for no reason. Same shape as it-actions otherwise: real Testcontainers Postgres,
+# Flyway + ddl-auto=validate, audit-payload full so the payload-verifying assertions can see
+# the values.
+#
+# Three registrations, two real engines:
+#   engine-a      — flowable-rest 6.8 (:8081), dev/read-write: the happy-path verbs
+#   engine-a-prod — the SAME 6.8 engine tagged prod: the prod-only guard branches
+#   engine-7      — flowable-rest 7.1 (:8083), dev/read-write: the SECOND calibrated major,
+#                   so a 7.x behavior change can no longer invalidate a downgrade silently
+inspector:
+  registry:
+    source: config
+  fanout-parallelism: 4
+  engines:
+    - id: engine-a
+      name: "Engine A (findings harness, Flowable 6.8)"
+      base-url: "http://localhost:${PI_ENGINE_A_PORT:8081}/flowable-rest/service"
+      environment: dev
+      accent-color: "#2e86de"
+      enabled: true
+      mode: read-write
+      audit-payload: full
+      auth:
+        type: basic
+        username: rest-admin
+        password-ref: ENGINE_A_PASSWORD
+      timeouts:
+        connect-ms: 2000
+        read-ms: 10000
+        write-ms: 10000
+      max-page-size: 10
+      dlq-scan-cap: 500
+
+    - id: engine-a-prod
+      name: "Engine A (prod twin)"
+      base-url: "http://localhost:${PI_ENGINE_A_PORT:8081}/flowable-rest/service"
+      environment: prod
+      accent-color: "#e74c3c"
+      enabled: true
+      mode: read-write
+      audit-payload: full
+      auth:
+        type: basic
+        username: rest-admin
+        password-ref: ENGINE_A_PASSWORD
+      timeouts:
+        connect-ms: 2000
+        read-ms: 10000
+        write-ms: 10000
+      max-page-size: 10
+      dlq-scan-cap: 500
+
+    - id: engine-7
+      name: "Engine 7 (findings harness, Flowable 7.1)"
+      base-url: "http://localhost:${PI_ENGINE_7_PORT:8083}/flowable-rest/service"
+      environment: dev
+      accent-color: "#8e44ad"
+      enabled: true
+      mode: read-write
+      audit-payload: full
+      auth:
+        type: basic
+        username: rest-admin
+        password-ref: ENGINE_7_PASSWORD
+      timeouts:
+        connect-ms: 2000
+        read-ms: 10000
+        write-ms: 10000
+      max-page-size: 10
+      dlq-scan-cap: 500

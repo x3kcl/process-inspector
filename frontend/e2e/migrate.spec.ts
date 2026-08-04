@@ -220,7 +220,7 @@ test('migrate is pre-check-first: pick version, map the flagged activity, execut
   ).toBeVisible()
   await expect(check.getByText('can’t be auto-mapped')).toBeVisible()
   // The typed BLOCKER_ADVICE finding (§14.3): "we cannot build the instruction", not a verdict.
-  await expect(check.getByText('Cannot build the migration instruction (1)')).toBeVisible()
+  await expect(check.getByText('Blocked before the engine (1)')).toBeVisible()
   await expect(check.getByText('there is nothing to send', { exact: false })).toBeVisible()
   await expect(
     check.getByText('BFF estimate — the engine is the only ground truth at execute.'),
