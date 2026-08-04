@@ -1,5 +1,6 @@
 package io.inspector.attention;
 
+import io.inspector.dto.AttentionFactors;
 import io.inspector.dto.SelfHealStats;
 import io.inspector.selfheal.SelfHealLane;
 import java.util.ArrayList;
@@ -27,6 +28,15 @@ import java.util.Locale;
  * unreachable all window).
  * </pre>
  *
+ * <p>...and the #365 burst clause only when the §4.1a flood gate actually fired — the absolute
+ * count and the window, because a bare ratio ("spiking 4x") does not tell an operator whether to
+ * act now. When the burst bin was UNKNOWN instead, the clause is "recent arrival rate unknown":
+ * never "not spiking", which the evidence cannot support.
+ *
+ * <pre>
+ * 120 failing · last seen just now · … · spiking: 40 in the last 10 min.
+ * </pre>
+ *
  * <p>Every clause states EVIDENCE, never a verdict, and an estimate under its own sample-size
  * floor says "no history" instead of a number (§6 honesty rails). Nothing here prescribes an
  * intervention — this track orders attention only (§9 non-goal; issue #106 stays untouched).
@@ -39,27 +49,34 @@ public final class AttentionRationale {
      * @param liveTotal the class's rendered member count (a lower bound when its scan truncated —
      *     the card's existing R-SEM-12 badge already says so; the sentence never re-asserts
      *     completeness)
-     * @param ageSeconds age of {@code lastSeen}; negative/zero reads as "just now"
-     * @param medianMttrSeconds {@code null} below the closed-episode floor ⇒ "no resolve-time
-     *     history"
+     * @param factors the score's own factor block — the sentence is composed from the EXACT
+     *     numbers that produced the score (age, the sub-floor-aware median, the two arrival
+     *     honesty rails and the #365 burst gate), never from a second derivation that could drift
+     *     away from them
      * @param selfHeal the R2 statistic, or {@code null} when none applied
-     * @param arrivalsUnknown true when EVERY differenceable occurrence sample in the F window was
-     *     discarded as truncated or blind. The score then runs on a NEUTRAL F, so the sentence
-     *     must say the arrival evidence is missing rather than let the reader assume the class
-     *     was measured and found flat.
      */
-    public static String sentence(
-            long liveTotal, long ageSeconds, Long medianMttrSeconds, SelfHealStats selfHeal, boolean arrivalsUnknown) {
-        List<String> clauses = new ArrayList<>(5);
+    public static String sentence(long liveTotal, AttentionFactors factors, SelfHealStats selfHeal) {
+        long ageSeconds = factors.ageSeconds();
+        List<String> clauses = new ArrayList<>(6);
         clauses.add(liveTotal + " failing");
         clauses.add(ageSeconds < 60 ? "last seen just now" : "last seen " + humanize(ageSeconds) + " ago");
         clauses.add(
-                medianMttrSeconds != null
-                        ? "typically takes " + humanize(medianMttrSeconds) + " to resolve"
+                factors.medianMttrSeconds() != null
+                        ? "typically takes " + humanize(factors.medianMttrSeconds()) + " to resolve"
                         : "no resolve-time history");
         clauses.add(selfHealClause(selfHeal));
-        if (arrivalsUnknown) {
+        if (factors.flooding()) {
+            // #365: the ABSOLUTE count and the window, never a bare ratio — "spiking 4x" tells an
+            // operator nothing about whether to walk over to the console now.
+            clauses.add("spiking: " + factors.burstArrivals() + " in the last "
+                    + Math.max(1L, factors.burstWindowSeconds() / 60L) + " min");
+        }
+        if (factors.arrivalsUnknown()) {
             clauses.add("arrival volume unknown (scan truncated or engine unreachable all window)");
+        } else if (factors.burstUnknown()) {
+            // Only when the WIDER window was measurable: "arrival volume unknown" already implies
+            // the recent rate is too, and one sentence must not say the same thing twice.
+            clauses.add("recent arrival rate unknown");
         }
         return String.join(" · ", clauses) + ".";
     }

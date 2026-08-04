@@ -1500,10 +1500,18 @@ export interface components {
             /** Format: int64 */
             arrivals28d?: number;
             arrivalsUnknown?: boolean;
+            /** Format: int64 */
+            burstArrivals?: number;
+            burstUnknown?: boolean;
+            /** Format: int64 */
+            burstWindowSeconds?: number;
             /** Format: int32 */
             closedEpisodes?: number;
             /** Format: int64 */
             discardedArrivalSamples?: number;
+            /** Format: int64 */
+            discardedBurstSamples?: number;
+            flooding?: boolean;
             /** Format: double */
             frequency?: number;
             insufficientHistory?: boolean;

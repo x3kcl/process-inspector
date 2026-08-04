@@ -14,7 +14,11 @@ public record AttentionConfig(
         int minClosedEpisodes,
         double mttrClampLow,
         double mttrClampHigh,
-        double selfHealFloor) {
+        double selfHealFloor,
+        Duration burstWindow,
+        int burstOnset,
+        int burstExit,
+        double burstWeight) {
 
     public static AttentionConfig from(InspectorProperties.Attention props) {
         return new AttentionConfig(
@@ -23,7 +27,11 @@ public record AttentionConfig(
                 props.minClosedEpisodesOrDefault(),
                 props.mttrClampLowOrDefault(),
                 props.mttrClampHighOrDefault(),
-                props.selfHealFloorOrDefault());
+                props.selfHealFloorOrDefault(),
+                props.burstWindowOrDefault(),
+                props.burstOnsetOrDefault(),
+                props.burstExitOrDefault(),
+                props.burstWeightOrDefault());
     }
 
     /** The design's selected defaults, for tests and any caller without bound properties. */

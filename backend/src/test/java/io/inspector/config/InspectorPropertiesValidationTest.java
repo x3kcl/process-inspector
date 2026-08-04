@@ -90,6 +90,37 @@ class InspectorPropertiesValidationTest {
         assertThat(engine.dlqScanCapOrDefault()).isEqualTo(5000);
     }
 
+    /* ---------------- #365: the burst knobs and their two rails (ALARM-COST-MODEL §14.5) ------ */
+
+    @Test
+    void theBurstDefaultsAreISA182sOwnFloodWindowAndAsymmetricThresholds() {
+        InspectorProperties.Attention defaults =
+                new InspectorProperties.Triage(null, null, null, null).attentionOrDefault();
+
+        assertThat(defaults.burstWindowOrDefault()).isEqualTo(java.time.Duration.ofMinutes(10));
+        assertThat(defaults.burstOnsetOrDefault()).isEqualTo(10);
+        assertThat(defaults.burstExitOrDefault()).isEqualTo(5);
+        assertThat(defaults.burstWeightOrDefault()).isEqualTo(8.0);
+        assertThat(defaults.isBurstHysteresisOrdered()).isTrue();
+    }
+
+    @Test
+    void anExitAboveTheOnsetIsREFUSEDAtBindingRatherThanQuietlyReinterpreted() {
+        // With exit > onset the hold leg would admit bursts the entry leg rejects — a gate that
+        // fires on evidence too weak to have opened it. There is no sane reinterpretation, so the
+        // binding fails instead of guessing at intent. "No hysteresis" is spelled exit = onset.
+        assertThat(validator.validate(attention(10, 20))).isNotEmpty();
+        assertThat(validator.validate(attention(10, 10))).isEmpty();
+        assertThat(validator.validate(attention(10, 5))).isEmpty();
+        assertThat(validator.validate(attention(10, 20)).iterator().next().getMessage())
+                .contains("burst-exit must be <= burst-onset");
+    }
+
+    private static InspectorProperties.Attention attention(int onset, int exit) {
+        return new InspectorProperties.Attention(
+                null, null, null, null, null, null, null, null, null, null, null, onset, exit, null);
+    }
+
     private static List<ConstraintViolation<EngineConfig>> violationsOn(EngineConfig engine, String property) {
         return validator.validate(engine).stream()
                 .filter(v -> v.getPropertyPath().toString().equals(property))

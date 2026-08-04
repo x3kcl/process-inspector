@@ -916,3 +916,109 @@ read `burst_W + prior_W ≥ onset`, which admits a back-door ENTRY (6+6 across 2
 a flood that never had an ISA onset) — corrected to `prior_W ≥ onset` alone and pinned by the
 scenario-(a) back-door probe in §14.4. Two post-review validation rails (exit ≤ onset,
 W-vs-TTL WARN) were added to §14.5 on the author's judgment, not panel findings.
+
+## 15. Build-slice record — #365 burst-aware frequency (★ BUILT)
+
+What landed against the §14.5 contract, what the failing-before runs actually printed, and the
+two places the build deviated from or sharpened the spec. **Nothing here changes any default
+behavior**: `inspector.triage.attention-ordering` still ships false, and below the ISA onset `F`
+is byte-identical to the shipped formula, so even with the flag ON the amendment is inert
+outside flood conditions.
+
+### 15.1 Failing-before proof (the §13 convention — a wrong value, not "it did not compile")
+
+| Rung | Test | What the BASE produced |
+|---|---|---|
+| Pure static | flood-100 must read `log2(1 + 8·100) = 9.6457` | `AttentionScoreCalculator.frequency(100, false)` returned **6.6582114827517955** — the trickle value. The base cannot distinguish the two shapes at all (the trickle control passed at the same number, which is the point) |
+| Pure static | birth-5000 inside W must read `log2(1 + 8·5000) = 15.2877` | returned **12.288000889707574** |
+| Rung 4 (real Postgres) | the bin-split fixture (5 arrivals at 09:00, +10 at 09:10, +3 at 09:25, +10 at 09:35, +12 at 09:40; `asOf` 09:40, W = 10 min) must return 8 columns with `burst_arrivals = 22`, `prior_burst_arrivals = 3` | the shipped SQL returned the 4-column row **`[1, 40, 5, 5]`** — 40 arrivals over 40 minutes, with no column in which the 22 that landed in the last ten could ever appear |
+
+Everything else in the new suites is a guard, and each was written to fail on the base by
+construction (the burst columns and `AttentionFactors` fields did not exist).
+
+### 15.2 What landed
+
+- **Aggregate** — `IncidentOccurrenceRepository.arrivalsSince(since, burstSince, priorBurstSince)`:
+  the SAME single native pass, four more `FILTER`ed columns, `o.sampled_at` exposed on the inner
+  projection. **No Flyway migration** (the bins are computed, not stored) and **zero new engine
+  calls** — the Stage 0 count-only/`size=1` + dedicated-DLQ-scan rule is untouched. One statement
+  before, one statement after; the bins are anchored on the model-build instant, asserted by
+  `AttentionScoreServiceTest.theBurstBinsAreAnchoredOnTheModelBuildInstantOneWindowAndTwoWindowsBack`
+  (one captured call, three anchors).
+- **No double-banking, arithmetically rather than by convention.** `burst_arrivals` is not a
+  second measurement: it is the IDENTICAL aggregate expression over the IDENTICAL row set with
+  one extra time predicate, so it is a strict SUBSET of `arrivals` and `arrivals = outside_W +
+  burst_W` is a partition by construction. The calculator then derives `outside` by SUBTRACTION
+  (`long outside = arrivals - burst`) and weighs each half once — there is no code path in which
+  a delta can be added twice, and the containment invariant `burst_arrivals ≤ arrivals` is
+  asserted on EVERY fixture in `LedgerNativeQueriesIT` (the assertion lives in the shared helper,
+  so a future fixture inherits it). The bins are half-open `(from, to]`, pinned by
+  `theBinsAreHalfOpenSoASampleExactlyOnAnEdgeBelongsToTheOLDERBin`: an edge sample falls out of
+  the newer bin and into the older one, so no delta is ever claimed twice at a seam.
+- **`ClassHistory`** — `burstArrivals`, `priorBurstArrivals`, `burstUnknown`,
+  `discardedBurstSamples`, with the pre-#365 5-arg constructor retained (no call-site churn).
+- **Calculator** — `frequency(ClassHistory, AttentionConfig)` + a separate pure
+  `flooding(ClassHistory, AttentionConfig)`. The non-flooding branch returns the shipped
+  expression itself, not a re-derivation of it.
+- **Config** — `burst-window` PT10M, `burst-onset` 10, `burst-exit` 5, `burst-weight` 8.0 with
+  `OrDefault` accessors; `burst-exit ≤ burst-onset` refused at binding (`@AssertTrue`, proven in
+  `InspectorPropertiesValidationTest`), `burst-window ≤ model-ttl` logs a startup WARN.
+- **Wire** — `AttentionFactors` + `flooding`/`burstArrivals`/`burstWindowSeconds`/`burstUnknown`/
+  `discardedBurstSamples`; `npm run gen:api` re-run against the running BFF and the 8-line
+  `schema.d.ts` diff committed. No frontend component needed changing: the tooltip renders the
+  SERVER's rationale verbatim (§12) rather than recomposing it from `factors`.
+- **Rationale** — the flooding clause is `spiking: 40 in the last 10 min` (absolute count +
+  window, per #365's "beats a bare ratio"); the unknown-bin clause is `recent arrival rate
+  unknown`.
+
+### 15.3 Byte-identity below the onset, and how it is proven
+
+`AttentionScoreCalculatorTest.belowTheOnsetTheAmendmentIsByteIdenticalToTheShippedFormula`
+sweeps 12 arrival volumes × every sub-onset burst (0–9) × every sub-onset prior (0–9) and
+compares `Double.doubleToRawLongBits` against a test-local re-implementation of the SHIPPED
+formula — bit patterns, not `isCloseTo`, and against a fixture that reads no production code, so
+the claim is about the amendment rather than a tautology. `AttentionOrderingNeutralityTest` keeps
+its empty-ledger count-only assertions unchanged and gains
+`aSubOnsetBurstReordersNOTHINGBecauseTheAmendmentIsInertBelowTheISAFloodThreshold` (200
+randomised corpora scored twice — with and without sub-onset burst evidence — landing in the
+identical order), plus assertions that an empty ledger reports `flooding=false` /
+`burstUnknown=false` rather than an unknown bin. The flag-off proofs (same object, zero queries,
+byte-identical serialization) are untouched and still pass.
+
+### 15.4 Deviations from §14.5, named
+
+1. **`AttentionRationale.sentence` now takes the `AttentionFactors` block** instead of a growing
+   parameter list (it would have reached nine primitives). The sentence is therefore composed
+   from the EXACT numbers that produced the score rather than from a second derivation that could
+   drift from them. Test call sites moved to a test-local factory, per the unit-test-patterns
+   "no constructor churn" remedy.
+2. **`burstUnknown`'s clause is suppressed when `arrivalsUnknown` is also set.** §14.5 specifies
+   both clauses but not their interaction; a wholly-unknown 28-day window already implies the
+   last ten minutes are unknown, and §4.3's hard requirement is ONE glanceable sentence. It says
+   it once, at the widest scope actually measured. Pinned by
+   `anUnknownBurstBinSaysUnknownRatherThanQuietAndNeverBothWithTheWiderWindowsClause`.
+3. **Two arithmetic backstops §14.5 did not ask for.** The calculator clamps
+   `burst = min(max(0, burstArrivals), arrivals)` and the gate refuses to fire when
+   `arrivalsUnknown` — both are unreachable through the SQL (the bin is a subset of the window by
+   construction), and both are guards on the ONE thing that must never happen: a negative
+   `outside` term would be double-banking with the sign flipped, and an unknown window must never
+   host a knowable flood. Tested as explicitly-degenerate inputs, labelled as backstops.
+4. **§4.1a's inflation ceiling 1.867 is a BOUND, not an attained value** — measured while
+   writing the test: the tightest real case (a flood sitting exactly on the onset with nothing
+   outside W) inflates `F` by **1.833×**, and the ratio falls as volume grows (1.449× at
+   flood-100). The doc's figure drops the `+1` inside both logarithms, so it over-states the true
+   supremum slightly and remains a correct upper bound. The test now asserts the ceiling FORMULA,
+   the attained maximum, and their ordering; a companion test proves the unconditional form
+   (`F` grows by at most `log2(γ) = 3` bits) over a swept corpus including degenerate bins.
+
+### 15.5 Same-slice correction, not part of the amendment
+
+The stale "earliest G5 satisfaction ≈ 2026-09-14" was duplicated in two files the §5/§7 docs
+round could not touch — `AttentionScoreService`'s class javadoc and the
+`inspector.triage.attention-ordering` comment block in `application.yml`. Both now read
+**≈ 2026-09-29** and say **TRUSTED** span, matching §7's correction (G5 counts trusted span; the
+pilot's history was 99 % blind until the declared `engine-7` slot got a real engine at
+2026-08-04T15:39 Z). A repo-wide sweep found no third occurrence. The neighbouring "21,229
+recorded pilot buckets" figure was deliberately LEFT ALONE: it is the §5.5 extraction's own
+count, the §5/§7 correction did not restate it, and replacing it with §14.2's later re-extraction
+figure would have introduced a second, different error rather than removing one.

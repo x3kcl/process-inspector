@@ -99,14 +99,48 @@ public interface IncidentOccurrenceRepository extends JpaRepository<IncidentOccu
      * merely STARTS mid-life still finds {@code LAG} NULL on its first row and still discards it
      * — the standing population is not growth, so "arrivals are the growth signal, not the size
      * signal" holds unchanged.
+     *
+     * <p><b>The burst bins (#365, ALARM-COST-MODEL §4.1a).</b> Four more FILTERED columns on this
+     * SAME single pass — no second statement, no new engine call, nothing added to the Stage 0
+     * aggregation: {@code burst_arrivals} over the trailing flood window {@code (asOf−W, asOf]},
+     * {@code prior_burst_arrivals} over {@code (asOf−2W, asOf−W]} (the Schmitt gate's hold input,
+     * never a score term), and {@code burst_observed_samples}/{@code burst_trusted_samples}, the
+     * current bin's own honesty counts. The prior bin needs no honesty counts: it can only fail to
+     * HOLD a promotion, never manufacture one.
+     *
+     * <p><b>Why this cannot double-bank</b> (the §13 F3 guarantee, in SQL). {@code burst_arrivals}
+     * is not a second measurement — it is the IDENTICAL aggregate expression over the IDENTICAL
+     * row set with one extra time predicate, so it is a strict SUBSET of {@code arrivals} and
+     * {@code arrivals = outside_W + burst_W} is a partition by construction. The caller derives
+     * {@code outside_W} by SUBTRACTION and weighs each half once, so every arrival contributes
+     * exactly once, at weight 1 or weight gamma. The bins are half-open {@code (from, to]}, so a
+     * sample sitting exactly on an edge belongs to the OLDER bin and to only one bin. The
+     * invariant {@code burst_arrivals <= arrivals} is asserted on every fixture in {@code
+     * LedgerNativeQueriesIT}. Both bins inherit the trust discipline above verbatim: an untrusted
+     * delta is discarded from them for exactly the reasons it is discarded from the window, and a
+     * bin with samples but no trusted one reports {@code burst_trusted_samples = 0}, which the
+     * caller reads as UNKNOWN (gate off) rather than as "quiet".
+     *
+     * @param since start of the 28-day F window (inclusive, as before)
+     * @param burstSince {@code asOf − W} — the exclusive floor of the current burst bin
+     * @param priorBurstSince {@code asOf − 2W} — the exclusive floor of the prior bin
      */
     @Query(value = """
                     SELECT d.incident_id,
                            COALESCE(SUM(GREATEST(d.delta, 0)) FILTER (WHERE d.trusted), 0) AS arrivals,
                            COUNT(*)                                                        AS observed_samples,
-                           COUNT(*) FILTER (WHERE d.trusted)                               AS trusted_samples
+                           COUNT(*) FILTER (WHERE d.trusted)                               AS trusted_samples,
+                           COALESCE(SUM(GREATEST(d.delta, 0)) FILTER (
+                               WHERE d.trusted AND d.sampled_at > :burstSince), 0)         AS burst_arrivals,
+                           COALESCE(SUM(GREATEST(d.delta, 0)) FILTER (
+                               WHERE d.trusted AND d.sampled_at > :priorBurstSince
+                                             AND d.sampled_at <= :burstSince), 0)          AS prior_burst_arrivals,
+                           COUNT(*) FILTER (WHERE d.sampled_at > :burstSince)              AS burst_observed_samples,
+                           COUNT(*) FILTER (WHERE d.trusted
+                                              AND d.sampled_at > :burstSince)              AS burst_trusted_samples
                     FROM (
                         SELECT o.incident_id,
+                               o.sampled_at,
                                o.total - COALESCE(LAG(o.total) OVER w, 0)          AS delta,
                                (LAG(o.total) OVER w IS NOT NULL
                                     OR o.sampled_at <= i.first_seen)               AS differenceable,
@@ -122,7 +156,10 @@ public interface IncidentOccurrenceRepository extends JpaRepository<IncidentOccu
                     WHERE d.differenceable
                     GROUP BY d.incident_id
                     """, nativeQuery = true)
-    List<Object[]> arrivalsSince(@Param("since") Instant since);
+    List<Object[]> arrivalsSince(
+            @Param("since") Instant since,
+            @Param("burstSince") Instant burstSince,
+            @Param("priorBurstSince") Instant priorBurstSince);
 
     /**
      * The RETRYING-lane's spell substrate (RETRYING-RISK-LANE.md §3.1, #351) — one class's

@@ -37,9 +37,14 @@ import org.springframework.stereotype.Service;
  * untouched — this service consumes the aggregation's output and never adds a leg to it.
  *
  * <p><b>Flag-off by default, and provably inert when off.</b> The R1 data-maturity gate is
- * measured NOT MET (§7, 0 of 5 axes; earliest G5 satisfaction ≈ 2026-09-14) and the score is
- * measured IDENTICAL to count-only ordering across all 21,229 recorded pilot buckets (§5.5,
- * Kendall tau = 1.0). With {@code inspector.triage.attention-ordering} false — the shipped default
+ * measured NOT MET (§7, 0 of 5 axes). G5 counts TRUSTED ledger span, not recorded span — the
+ * pilot's history was 99 % blind ({@code cycle_complete = false}) until the declared engine-7 slot
+ * got a real engine at 2026-08-04T15:39Z, and a fit-plus-holdout over discarded deltas is a fit
+ * over nothing — so earliest satisfaction is ≈ 2026-09-29, not the ≈ 2026-09-14 stated here before
+ * the #365 amendment round re-measured it (§7 correction). The score is measured IDENTICAL to
+ * count-only ordering across all 21,229 recorded pilot buckets (§5.5, Kendall tau = 1.0 — for most
+ * of them via the F2 neutrality rule, the whole fleet tied at an unknown-arrivals F of 1). With
+ * {@code inspector.triage.attention-ordering} false — the shipped default
  * — {@link #decorate} returns its argument UNCHANGED (the same instance): no query runs, no
  * {@code attention} block is serialized, and the card order is byte-for-byte today's. {@code
  * AttentionOrderingNeutralityTest} is the proof, and it also proves the stronger property that
@@ -87,6 +92,27 @@ public class AttentionScoreService {
         this.modelCache = Caffeine.newBuilder()
                 .expireAfterWrite(attention.modelTtlOrDefault())
                 .build();
+        warnIfTheBurstWindowIsShorterThanTheModelDwell(attention);
+    }
+
+    /**
+     * §4.1a's dwell argument assumes {@code W > model-ttl}: the burst bins are evaluated when the
+     * model is BUILT, so a flood detected at build time both surfaces within one TTL and survives
+     * at least one rebuild. A shorter window is legal (an operator may want a tighter flood
+     * definition) but silently loses that property — a flood can then open and close entirely
+     * inside one cached model and never be seen. Warn, never refuse: unlike an inverted Schmitt
+     * trigger this is a trade-off, not a contradiction.
+     */
+    private void warnIfTheBurstWindowIsShorterThanTheModelDwell(InspectorProperties.Attention attention) {
+        Duration burstWindow = attention.burstWindowOrDefault();
+        Duration modelTtl = attention.modelTtlOrDefault();
+        if (burstWindow.compareTo(modelTtl) <= 0) {
+            log.warn(
+                    "attention: burst-window {} <= model-ttl {} — a flood may open and close inside one"
+                            + " cached model and never surface (ALARM-COST-MODEL §4.1a expects W > TTL)",
+                    burstWindow,
+                    modelTtl);
+        }
     }
 
     /** True only when an operator has explicitly opted in (§7 — the gate is not met). */
@@ -193,16 +219,30 @@ public class AttentionScoreService {
             return AttentionModel.empty();
         }
 
-        // {incidentId, arrivals, observedSamples, trustedSamples} — the counts are what make the
-        // difference between "0 arrivals" and "we were not allowed to trust a single sample".
+        // {incidentId, arrivals, observedSamples, trustedSamples, burstArrivals,
+        //  priorBurstArrivals, burstObservedSamples, burstTrustedSamples} — ONE pass. The sample
+        // counts are what make the difference between "0 arrivals" and "we were not allowed to
+        // trust a single sample"; the burst bins are a FILTERED subset of the same deltas (§4.1a),
+        // anchored on the model-build instant, never a second query.
+        Instant burstSince = now.minus(config.burstWindow());
+        Instant priorBurstSince = now.minus(config.burstWindow().multipliedBy(2));
         Map<Long, ArrivalEvidence> arrivalsById = new HashMap<>();
-        for (Object[] arrival : occurrences.arrivalsSince(since)) {
+        for (Object[] arrival : occurrences.arrivalsSince(since, burstSince, priorBurstSince)) {
             Long incidentId = asLong(arrival[0]);
             Long arrivals = asLong(arrival[1]);
             Long observed = asLong(arrival[2]);
             Long trusted = asLong(arrival[3]);
             if (incidentId != null && arrivals != null && observed != null && trusted != null) {
-                arrivalsById.put(incidentId, new ArrivalEvidence(arrivals, observed, trusted));
+                arrivalsById.put(
+                        incidentId,
+                        new ArrivalEvidence(
+                                arrivals,
+                                observed,
+                                trusted,
+                                orZero(asLong(arrival[4])),
+                                orZero(asLong(arrival[5])),
+                                orZero(asLong(arrival[6])),
+                                orZero(asLong(arrival[7]))));
             }
         }
 
@@ -228,6 +268,10 @@ public class AttentionScoreService {
                             evidence.arrivals(),
                             evidence.unknown(),
                             evidence.discarded(),
+                            evidence.burstArrivals(),
+                            evidence.priorBurstArrivals(),
+                            evidence.burstUnknown(),
+                            evidence.discardedBurst(),
                             closedById.getOrDefault(incidentId, List.of())));
         });
         return new AttentionModel(byKey, Quantiles.median(fleetClosed));
@@ -241,9 +285,16 @@ public class AttentionScoreService {
      * An incident absent from the aggregate had no in-window sample at all — a genuine zero, and
      * the fleet-uniform "no history" degradation the design already guarantees.
      */
-    private record ArrivalEvidence(long arrivals, long observedSamples, long trustedSamples) {
+    private record ArrivalEvidence(
+            long arrivals,
+            long observedSamples,
+            long trustedSamples,
+            long burstArrivals,
+            long priorBurstArrivals,
+            long burstObservedSamples,
+            long burstTrustedSamples) {
 
-        private static final ArrivalEvidence NONE = new ArrivalEvidence(0L, 0L, 0L);
+        private static final ArrivalEvidence NONE = new ArrivalEvidence(0L, 0L, 0L, 0L, 0L, 0L, 0L);
 
         boolean unknown() {
             return observedSamples > 0 && trustedSamples == 0;
@@ -252,10 +303,28 @@ public class AttentionScoreService {
         long discarded() {
             return Math.max(0L, observedSamples - trustedSamples);
         }
+
+        /**
+         * The burst bin's own honesty rail (§4.1a), the same shape one window down: samples, but
+         * not one we were allowed to trust. It forces the flood gate OFF — an unknown rate can
+         * suppress a promotion, never justify one, and never a demotion.
+         */
+        boolean burstUnknown() {
+            return burstObservedSamples > 0 && burstTrustedSamples == 0;
+        }
+
+        long discardedBurst() {
+            return Math.max(0L, burstObservedSamples - burstTrustedSamples);
+        }
     }
 
     /** Native aggregates hand back {@code BigInteger}/{@code BigDecimal}/{@code Long} by driver. */
     private static Long asLong(Object value) {
         return value instanceof Number number ? number.longValue() : null;
+    }
+
+    /** A burst column a driver handed back as something un-numeric reads 0 — never a fake flood. */
+    private static long orZero(Long value) {
+        return value != null ? value : 0L;
     }
 }
