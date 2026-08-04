@@ -1,0 +1,64 @@
+<?xml version="1.0" encoding="UTF-8"?>
+<definitions xmlns="http://www.omg.org/spec/BPMN/20100524/MODEL"
+             xmlns:xsi="http://www.w3.org/2001/XMLSchema-instance"
+             xmlns:flowable="http://flowable.org/bpmn"
+             xmlns:bpmndi="http://www.omg.org/spec/BPMN/20100524/DI"
+             xmlns:omgdc="http://www.omg.org/spec/DD/20100524/DC"
+             xmlns:omgdi="http://www.omg.org/spec/DD/20100524/DI"
+             typeLanguage="http://www.w3.org/2001/XMLSchema"
+             expressionLanguage="http://www.w3.org/1999/XPath"
+             targetNamespace="http://inspector.io/demo">
+
+  <!-- Grouping-quality adversarial fixture (issue #350): a SECOND, genuinely distinct
+       unresolvable-identifier root cause ('phantom' vs zooMissingProperty's 'ghost' — a
+       different missing upstream data dependency, i.e. a different bug an operator would
+       investigate separately). Originally authored to probe a HYPOTHESIZED over-grouping
+       risk: PropertyNotFoundException's message ("Cannot resolve identifier 'x'") sanitizes
+       its quoted literal to '#'. Measured result: it does NOT collide with
+       zooMissingProperty — ErrorSignatureNormalizer's v2 identity contract (#270) hashes the
+       job row's OWN exceptionMessage snippet ("Unknown property used in expression:
+       ${ghost.total}" / "${phantom.balance}"), which still embeds the literal identifier
+       text; only the STACKTRACE-refined form (display-only, never re-keys per #270) quotes
+       and strips it. Kept as a documented NEAR-MISS case study — see
+       docs/reviews/R4-GROUPING-QUALITY-2026-08.md — alongside the acme-shipping-outage
+       fixture, which DOES demonstrate a real over-grouping collision. Used ONLY by the R4
+       grouping-quality harness (scripts/harvest-grouping-quality-corpus.py); excluded from
+       the primary organic-corpus metrics. Start with NO variables. R1/PT1S. -->
+  <process id="zooMissingPropertyVariant" name="Error Zoo: unresolvable identifier (variant)" isExecutable="true">
+    <startEvent id="start"/>
+    <sequenceFlow id="flow1" sourceRef="start" targetRef="failingTask"/>
+    <!-- Retry cycle MUST be the extension ELEMENT — the attribute form parses but is
+         silently ignored (proven on flowable-rest 6.8: attribute → default R3/PT10S). -->
+    <serviceTask id="failingTask" name="Read phantom balance"
+                 flowable:async="true"
+                 flowable:expression="${phantom.balance}">
+      <extensionElements>
+        <flowable:failedJobRetryTimeCycle>R1/PT1S</flowable:failedJobRetryTimeCycle>
+      </extensionElements>
+    </serviceTask>
+    <sequenceFlow id="flow2" sourceRef="failingTask" targetRef="end"/>
+    <endEvent id="end"/>
+  </process>
+
+  <bpmndi:BPMNDiagram id="BPMNDiagram_zooMissingPropertyVariant">
+    <bpmndi:BPMNPlane id="BPMNPlane_zooMissingPropertyVariant" bpmnElement="zooMissingPropertyVariant">
+      <bpmndi:BPMNShape id="BPMNShape_start" bpmnElement="start">
+        <omgdc:Bounds x="100" y="100" width="30" height="30"/>
+      </bpmndi:BPMNShape>
+      <bpmndi:BPMNShape id="BPMNShape_failingTask" bpmnElement="failingTask">
+        <omgdc:Bounds x="180" y="85" width="100" height="60"/>
+      </bpmndi:BPMNShape>
+      <bpmndi:BPMNShape id="BPMNShape_end" bpmnElement="end">
+        <omgdc:Bounds x="330" y="101" width="28" height="28"/>
+      </bpmndi:BPMNShape>
+      <bpmndi:BPMNEdge id="BPMNEdge_flow1" bpmnElement="flow1">
+        <omgdi:waypoint x="130" y="115"/>
+        <omgdi:waypoint x="180" y="115"/>
+      </bpmndi:BPMNEdge>
+      <bpmndi:BPMNEdge id="BPMNEdge_flow2" bpmnElement="flow2">
+        <omgdi:waypoint x="280" y="115"/>
+        <omgdi:waypoint x="330" y="115"/>
+      </bpmndi:BPMNEdge>
+    </bpmndi:BPMNPlane>
+  </bpmndi:BPMNDiagram>
+</definitions>

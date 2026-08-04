@@ -1,4 +1,4 @@
-# Instance Migration — design (v0.3, P0-spiked + panel-RE-LOCKED, ready for P1)
+# Instance Migration — design (v0.4, P0-spiked + panel-RE-LOCKED; §14 adds the named-findings taxonomy design, issue #349)
 
 > Status: **P0 spike DONE + panel RE-LOCK DONE (2026-07-09) — ready for P1** (see the ✅ callout +
 > "P0 RE-LOCK DECISIONS" below). Was: **design draft**, reviewed by a 4-voice expert panel (Flowable-REST honesty,
@@ -448,3 +448,378 @@ the resolution.
 - **Net:** the only *guaranteed* touch-both files are `ActionVerb.java` (append-only) and
   `schema.d.ts` (regen). Both have mechanical, non-semantic resolutions. **The two features are
   safe to build on independent branches off `main` and merge in either order.**
+
+---
+
+## 14. Named-findings taxonomy for the preflight estimate (issue #349 design, 2026-08-04)
+
+> Status: **design, docs-only — gates build slice #355.** Extends (never relaxes) the P0 re-lock.
+> The literature motivation and phasing live in issues #349/#356. Everything in §14 was grounded
+> in a live simulation against a real dev engine (§14.2); measured facts are labelled **[M*]**,
+> design proposals are labelled **proposal**. spec-sync lockstep edits (SPEC §5 row wording,
+> ARCH §4 table, IMPLEMENTATION-PLAN) land WITH the #355 build, mirroring how §§0–13 were synced.
+
+### 14.0 The governing restraint — read first
+
+The P0 re-lock ceiling governs every line of this section: **never reimplement the engine's
+migration rules — stay shallow and labelled** (decision P0-1 floor/ceiling, §2). Its corollaries,
+made explicit for this taxonomy:
+
+- **P14-A — zero new engine calls.** Every finding is computed ONLY from data the preview
+  already fetches: the two `BpmnStructure` model reads (`/model` JSON + `/resourcedata` XML)
+  and the instance's active-execution list (`GET /runtime/executions?processInstanceId=`,
+  capped 200). A finding whose predicate would need another read does not exist.
+- **P14-B — severity moves only TOWARD the backstop.** Where live calibration proved the
+  engine accepts a case the current pre-check refuses (two such cases found, §14.2 M3/M4),
+  the finding is downgraded blocker→warning and the engine's own atomic apply-time rejection
+  (re-lock decision 10: "nothing was migrated — the engine rolls back the whole document")
+  remains the safety net. The taxonomy introduces **no new blocker** and never converts a
+  warning into a promise of success.
+- **P14-C — when in doubt, label.** A risk the BFF cannot observe over REST is WORDING inside
+  a finding ("the estimate cannot know…"), never a new check. §14.5 lists every candidate check
+  that was considered and dropped under this rule.
+- **P14-D — the estimate stays advisory (re-lock decision 3, restated §14.6).** The only
+  "blocking" the pre-check performs — before and after this design — is **document-construction
+  impossibility**: a token-holding leaf activity with no counterpart id and no operator mapping
+  leaves the BFF with *nothing sendable* (auto-map cannot invent a target; the engine rejects
+  the whole document, [M7]). That refusal is about being unable to build the wire body the
+  operator approved, NOT about predicting the engine's verdict. No finding, green or red,
+  touches any tier-3 rail.
+
+### 14.1 What exists today (measured baseline)
+
+The current pre-check (`MigrationDiff` / `ActivityDiffEntry`) classifies each active activity
+id into five statuses: `AUTO_MAPPED`, `MAPPED_BY_OVERRIDE`, `FLAGGED_UNMAPPED` (blocker),
+`TYPE_CHANGED` (warning), `NESTING_CHANGED` (warning). The audit payload carries them as the
+ad-hoc string lists `bffAutoMapped` / `bffMappedByOverride` / `bffWarnings`. (The issue text's
+"`bffFlagged`" is the preview-side `FLAGGED_UNMAPPED` status: a flagged activity can never reach
+an execute audit row, because execute refuses 422 `unmapped-activities` first — [M8].) These are
+exactly the "ad-hoc flags" #349 asks to replace with typed, citable findings.
+
+### 14.2 Simulation method + measured facts (auditable)
+
+**Method.** Live run 2026-08-04 against the dev harness — engine-a, flowable-rest **6.8.0**
+(:8081) with the BFF from this checkout on :8085 (dev Postgres :5433), then the engine-side
+calibrations repeated on flowable-rest **7.1.0** (:8083, `flowable-7` profile). Seeded strictly
+over REST (`POST /repository/deployments`, `POST /runtime/process-instances`) — no `ACT_*`
+access. **Calibration scope (panel-demanded disclaimer):** the two migration-capable harness
+versions are 6.8.0 and 7.1.0; **6.5–6.7 are not in the harness and remain uncalibrated** — every
+severity decision below states which versions it was proven on, and the finding wording never
+claims more than that. Fixtures:
+the committed two-version `demoMigration` pair (`docker/processes/demo-migration-v{1,2}.bpmn20.xml`,
+deployed as v69/v70 on this engine) plus three THROWAWAY probe processes (not committed; #355
+turns them into committed IT fixtures, §14.9):
+
+- `taxProbeA` v1: `start → subProcess scopeA { startA → stepA(userTask) → endA } → end`;
+  v2: `scopeA` **removed entirely**, `stepA` keeps its id at the process root.
+- `taxProbeB` v1: `stepT` is a **userTask**; v2: same id `stepT`, now a **sync serviceTask**
+  (`flowable:expression="${1 + 1}"`).
+- `taxProbeC` v1: `stepC(userTask)` with interrupting **boundary timer** `bndC` (PT72H);
+  v2: `stepC` unchanged, boundary timer **removed**; v3: **identical** boundary timer to v1.
+
+All migrations below ran on the dev engine only. Facts:
+
+- **[M1] Preview wire shape (real BFF `POST …/migrate/preview`).** For a `demoMigration`
+  v69 instance parked on `reviewTask` targeting v70 (rename → `approveTask`):
+  ```json
+  { "engineId":"engine-a", "fromDefinitionId":"demoMigration:69:…", "toProcessDefinitionId":"demoMigration:70:…",
+    "engineValidated":false, "executable":false,
+    "activities":[ { "fromActivityId":"reviewTask", "fromType":"userTask", "fromName":"Review order",
+        "status":"FLAGGED_UNMAPPED", "toActivityId":null, "toType":null,
+        "detail":"No activity with id 'reviewTask' exists in the target version — …", "blocker":true, "warning":false } ],
+    "targetActivities":[ {"id":"start",…}, {"id":"approveTask","name":"Approve order","type":"userTask"}, {"id":"end",…} ],
+    "activityStateDigest":"080769936dab…", "callActivityChildCount":0,
+    "restBody":{ "toProcessDefinitionId":"demoMigration:70:…", "activityMappings":[] },
+    "summary":"Migrate this instance from v69 to v70. 1 active activit(ies) can't be auto-mapped — pick a target for each.",
+    "banner":"Inspector pre-check — this is not a Flowable validation. …" }
+  ```
+  With the operator mapping supplied, the same entry becomes `MAPPED_BY_OVERRIDE`,
+  `executable:true`, and `restBody.activityMappings` carries
+  `{"fromActivityId":"reviewTask","toActivityId":"approveTask"}`; execute then landed the token
+  on `approveTask` (engine 200; post-migrate re-read observed `demoMigration:70:…`).
+- **[M2] Scope executions and boundary events ARE in the active-activity list** (identical
+  shape on 6.8.0 and 7.1.0). A token on `stepA` inside `scopeA` yields THREE runtime
+  executions: the instance root (`activityId:null`, filtered out), the **scope execution**
+  (`activityId:"scopeA"`) and the leaf (`activityId:"stepA"`). A boundary timer yields a CHILD
+  execution of the task execution (`activityId:"bndC"`, parent = `stepC`'s execution). The diff
+  therefore classifies `scopeA` (`fromType:"subProcess"`) and `bndC`
+  (`fromType:"boundaryEvent"`) as active activities.
+- **[M3] Removed-scope migration: the engine accepts what the pre-check refuses** (proven on
+  **6.8.0 AND 7.1.0**). Preview for `taxProbeA` v1→v2 returned `scopeA → FLAGGED_UNMAPPED`
+  (**blocker**, `executable:false`) plus `stepA → NESTING_CHANGED` (`[scopeA] → []`).
+  Engine-direct `POST …/migrate` with **empty** `activityMappings` returned **200** on both
+  versions; afterwards the token sat on `stepA` at the root, the scope execution was gone,
+  `processDefinitionId` advanced. The current blocker on the scope execution is a **false
+  blocker**: through the BFF this legitimate migration is impossible today (422), while the
+  engine accepts it with auto-map alone.
+- **[M4] Removed-boundary migration: same false blocker** (proven on **6.8.0 AND 7.1.0**).
+  Preview for `taxProbeC` v1→v2 returned `bndC → FLAGGED_UNMAPPED` (**blocker**) plus
+  `stepC → AUTO_MAPPED`. Engine-direct migrate with empty mappings: **200** on both versions;
+  the `bndC` execution AND its timer job were silently dropped (timer-jobs count 1→0) — the
+  deadline protection vanished without any warning anywhere.
+- **[M5] Boundary timer clock across an unchanged model is VERSION-DIVERGENT.** `taxProbeC`
+  v1→v3 (byte-identical boundary timer), engine 200 on both versions, but: on **6.8.0** the
+  timer job was recreated with `dueDate` moved from `2026-08-07T07:09:29Z` (instance start +
+  72h) to `2026-08-07T07:11:12Z` (**migration time** + 72h) — the clock RESET; on **7.1.0**
+  the post-migrate `dueDate` was **unchanged** (`2026-08-07T07:22:27.011Z`, the original
+  start-relative deadline) — the clock was PRESERVED. Two consequences: (a) any "boundary
+  events *changed*" check would be misleadingly narrow (on 6.8 the reset happens with zero
+  model change); (b) the reset itself is engine-version behavior the estimate must state as
+  "may", never "will" — and must never model per-version (ceiling).
+- **[M6] Same-id type change: the new behavior can run IMMEDIATELY** (proven on **6.8.0 AND
+  7.1.0**). `taxProbeB` v1→v2 (on 6.8 through the full BFF execute rails; engine-direct on
+  7.1): engine 200, and the sync serviceTask **executed at migrate** — the instance ran to
+  completion before the BFF's post-migrate re-read
+  (`responseSnippet: {"observedProcessDefinitionId":"(instance ended)"}`; history confirms
+  `endTime` set, definition = v2, on both versions). "The token lands on different behavior"
+  understates it: the different behavior can EXECUTE as a side effect of the migrate call
+  itself.
+- **[M7] The engine's apply-time rejection (the backstop), verbatim on this stack.** Migrating
+  the `demoMigration` instance without a mapping: HTTP **500**,
+  `{"message":"Internal server error","exception":"Migration Activity mapping missing for
+  activity definition Id:'reviewTask' or its MI Parent"}` — atomic (nothing moved; the
+  subsequent mapped execute succeeded on the same instance). Note the engine's own wording
+  names leaf ids "**or its MI Parent**" as the mapping-requiring set.
+- **[M8] Audit contract as actually written.** The execute audit row's payload key set
+  (captured from `GET /api/instances/{engineId}/{id}/audit`): `schema`, `engineValidated`,
+  `fromProcessDefinitionId`, `toProcessDefinitionId`, `toProcessDefinitionKey`,
+  `toProcessDefinitionVersion`, `activityMappings`, `bffAutoMapped`, `bffMappedByOverride`,
+  `bffWarnings`, `activityStateDigest`, `activeActivities`, `childExecutionsUnaffected`,
+  `businessKey`, `endpoint`, `restBody`, `reversibility`. The schema discriminator string is
+  **`migrate-instance/v1`** (`MIGRATE_ACTION + "/v1"`); this doc's §7/§12 shorthand
+  "`migrate/v1`" refers to that string. There is no `bffFlagged` key in any real row (see §14.1).
+
+### 14.3 The taxonomy (proposal)
+
+Findings are **typed annotations** carried per classified activity (and, for `INFO`, per
+instance); the mapping-mechanics statuses (`AUTO_MAPPED` / `MAPPED_BY_OVERRIDE` /
+`FLAGGED_UNMAPPED`) remain the execution-document machinery. Severities:
+
+- **`BLOCKER_ADVICE`** — execute refuses 422 until the operator supplies a mapping, ONLY
+  because no wire document can be built (P14-D). Not an outcome prediction. Panel-demanded
+  user-facing wording (so the name is never read as an engine verdict): *"The Inspector cannot
+  build a migration instruction for this activity — there is nothing to send. The engine is
+  known to reject documents missing it. Pick a target mapping."*
+- **`WARNING`** — migrates; the operator should look first. Never blocks.
+- **`INFO`** — a factual consequence of migrating this instance. Never blocks.
+
+Classification runs per active execution id, first by **source-model node kind** (leaf /
+scope-container / boundary event — all three provably present in the active list, [M2]), then
+down each ladder; first match wins.
+
+| Code | Severity | Predicate (all inputs already fetched — P14-A) | Criterion approximated (§14.7) | Provenance |
+|---|---|---|---|---|
+| `UNMAPPED_ACTIVE_ACTIVITY` | `BLOCKER_ADVICE` | LEAF active id (source type ∉ {`subProcess`,`transaction`,`adHocSubProcess`} ∪ {`boundaryEvent`}) with `!target.has(id)` and no operator override | state-mapping totality: every token needs a well-defined target position | [M1] [M7] — the engine itself rejects exactly this |
+| `ACTIVE_SCOPE_REMOVED` | `WARNING` | active id whose source type IS a scope container, `!target.has(id)`, and the id is NOT a multi-instance root (`multiInstanceScopeOf(id) ≠ id`) | change-region reasoning: the enclosing region dissolves; tokens re-home | [M2] [M3] — engine accepted with empty mappings on 6.8.0 AND 7.1.0; **downgraded from today's false blocker (P14-B; see the downgrade-asymmetry note below)** |
+| `ACTIVE_IN_REMOVED_SCOPE` | `WARNING` | LEAF active id that maps by id, but some scope id on its SOURCE `nestingPath` has `!target.has(scopeId)` (takes precedence over `NESTING_PATH_CHANGED`) | compliance/state-mapping: position preserved, containing state is not | [M2] [M3] — `stepA` `[scopeA] → []`, engine 200 |
+| `NESTING_PATH_CHANGED` | `WARNING` | same id + type, `sourcePath ≠ targetPath`, every source-path scope still exists in the target | change-region reasoning (moved between still-existing regions) | existing status, retyped; live-proven shape in [M1]-family runs |
+| `TYPE_CHANGED_SAME_ID` | `WARNING` (loud, distinct — decision P0-5 unchanged) | same id, different source/target element type | compliance violated silently: same position, different behavior | [M6] — wording MUST now say the new behavior **can execute immediately during the migrate call** (calibrated: a sync serviceTask ran the instance to completion) |
+| `BOUNDARY_SUBSCRIPTION_REMOVED` | `WARNING` | active id whose source type is `boundaryEvent` with `!target.has(id)` | loss of an event-region: a deadline/compensation path silently disappears | [M2] [M4] — engine 200 on 6.8.0 AND 7.1.0, timer job dropped without trace; **downgraded from today's false blocker (P14-B; see the downgrade-asymmetry note below)** |
+| `BOUNDARY_CLOCK_RESET` | `INFO` | ANY active `boundaryEvent`-typed execution exists (changed or not) | temporal-state non-preservation under re-subscription | [M5] — **version-divergent**: an IDENTICAL PT72H timer restarted at migrate time on 6.8.0 but kept its original due date on 7.1.0. Wording says "may reset", never "will"; the estimate never models per-version behavior (ceiling). Instance-specific surfacing of the existing banner clause |
+
+**MI-root retention (deliberate non-downgrade):** an active scope id that IS a multi-instance
+root and is absent from the target stays `UNMAPPED_ACTIVE_ACTIVITY` (`BLOCKER_ADVICE`). The
+primary reason is P14-B itself, applied symmetrically: **a severity downgrade requires
+calibration evidence, and no MI case was calibrated** — downgrading it would be an unproven
+prediction that the engine tolerates it, which is exactly the rule-guessing the ceiling forbids.
+(Secondary, non-load-bearing support: the engine's own rejection text names "…or its MI Parent"
+as mapping-requiring, [M7].) `multiInstanceScopeOf` already exists in `BpmnStructure` (fed by
+the `/model` JSON, the mandated MI source), so the predicate is free. The #355 MI fixture
+(§14.9) gathers the evidence; if the engine proves tolerant, a later `taxonomyVersion` bump
+downgrades it THEN — never speculatively now.
+
+**The downgrade-asymmetry note (panel-probed):** the two blocker→warning downgrades are
+calibrated on 6.8.0 and 7.1.0 only; 6.5–6.7 are uncalibrated (§14.2). They stand anyway,
+because the two failure modes are not symmetric. Keeping the blocker on an engine that accepts
+the migration makes a legitimate recovery **impossible through the BFF** (422 before any engine
+contact — no feedback, no path forward; [M3]/[M4] are precisely the bad-deploy shapes this
+feature exists for). Downgrading on an engine that turns out to reject it costs one execute
+that fails **atomically** with the engine's verbatim message surfaced and audited — which is
+re-lock decision 10's *designed* backstop path, not an accident. The finding wording carries
+the residual honestly: *"accepted without a mapping by the engines we calibrated (6.8/7.1);
+your engine may still reject at execute — atomically, with its exact message shown here."*
+Per-version severity switching was considered and rejected: a version→behavior matrix IS a
+reimplementation of engine migration rules (the ceiling), and it would rot silently as engines
+patch.
+
+**Net behavioral delta of the whole taxonomy:** two false blockers removed ([M3]/[M4] — cases
+the BFF today cannot execute at all but the engine accepts), everything else is naming, honest
+wording, and audit typing. No new checks beyond the source-node-kind split and the
+`nestingPath`-scope-existence lookup, both over data already parsed.
+
+### 14.4 Honest-wording requirements (issue point 1)
+
+Every finding's `detail` must state what the estimate can and cannot know, in this shape —
+"what we compared / what the engine will do about it / what nobody can see over REST":
+
+- `ACTIVE_SCOPE_REMOVED` / `ACTIVE_IN_REMOVED_SCOPE`: "…the engine accepted this shape without
+  a mapping in live calibration (6.8/7.1). Scope-local variables and event subscriptions of the
+  removed scope have no target scope — **the estimate does not read execution-local variables
+  and cannot know** what state is lost."
+- `BOUNDARY_SUBSCRIPTION_REMOVED`: "…the deadline/compensation protection this event provided
+  disappears at migrate, with no error anywhere ([M4])."
+- `BOUNDARY_CLOCK_RESET`: "…boundary events are re-subscribed at migrate even when unchanged;
+  a timer's clock **may restart** from the migrate call — observed on 6.8 ([M5]: a 72h timer
+  elapsed 2 minutes restarted at 72h) while 7.1 preserved the original due date. **The estimate
+  cannot know which behavior your engine exhibits**, and cannot distinguish timer from
+  message/signal boundary events (the event-definition child is not parsed — deliberate,
+  §14.5), so this is stated for all."
+- `TYPE_CHANGED_SAME_ID`: "…the engine returns success and the new implementation **can execute
+  immediately as part of the migrate call** ([M6]) — verify the new behavior is intended NOW,
+  not later."
+- The §5 banner stays verbatim (it already discloses parked jobs, parallel-join state, and
+  semantic drift) — findings sharpen it per instance, never replace it.
+
+### 14.5 Considered and DROPPED (the ceiling in action — issue point 2)
+
+Each candidate below is dropped under P14-C, with the residual risk labelled instead:
+
+- **Gateway/parallel-join token arithmetic** (would flag joins that can never fire after
+  migration): predicting join satisfiability IS the engine's migration/execution semantics
+  (varies 6.5→7.x). DROPPED — banner clause ("parallel-join state") stands.
+- **Behavior/attribute drift at same id+type** (changed `flowable:expression`, listeners,
+  assignee, async flags, forms): the attribute space is unbounded and engine-version-variant;
+  diffing it is a slow slide into reimplementing the deployer. DROPPED — this is precisely the
+  acknowledged "stable-ID semantic divergence" residual limit; stays banner-labelled.
+- **Variable-scope loss analysis** (which execution-local variables die with a removed scope):
+  needs per-execution variable reads (new engine calls — violates P14-A) plus the engine's
+  variable-scoping rules. DROPPED — became the "cannot know" wording in §14.4.
+- **Boundary attachment-diff** (`attachedToRef` re-parse to detect an event moved to another
+  activity, or timer→message definition changes): would need new XML parsing for a marginal
+  refinement of `BOUNDARY_SUBSCRIPTION_REMOVED`/`BOUNDARY_CLOCK_RESET`, and [M5] proves the
+  dominant risk (clock reset) is change-independent anyway. DROPPED — id-presence form only.
+- **MI mapping-rule modelling** (one-to-many/many-to-one legality, MI-body re-entry): engine
+  rules. DROPPED beyond the single MI-root blocker retention argued in §14.3.
+- **Event-subprocess / event-registry / message-signal re-correlation analysis**: engine +
+  registry semantics. DROPPED — banner.
+- **Call-activity child reasoning**: stays what it is today — a counted blast-radius guard
+  ("N child instance(s) are NOT migrated"), not a finding; children are a different instance's
+  state.
+- **Any form of history/compliance replay** (the literature's full compliance check — §14.7):
+  requires the execution history AND the engine's replay semantics. Structurally above the
+  ceiling; this is the line the whole taxonomy exists to approximate *shallowly*, not cross.
+
+### 14.6 Advisory-only doctrine restated (issue point 3 — verbatim rails)
+
+The taxonomy changes what the estimate SAYS, never what the rails DO. Unchanged and untouched
+by any finding, any severity, any color of the estimate:
+
+- ADMIN floor, **unconditional every environment** (decision Q7/P0); reason ≥10 chars; typed
+  **`MIGRATE`**/business-key confirm on prod; IRREVERSIBLE badge; dangerous-set reauth at
+  execute (§3.8).
+- The §5 CAS: `expectedFromDefinitionId` + `activityStateDigest` both MANDATORY (400
+  `preview-required`), 409 on divergence. The digest input (sorted multiset of
+  `(activityId, executionCount)`) is NOT altered by the taxonomy — scope and boundary
+  executions stay IN the digest ([M2] is exactly why: their movement is real state movement).
+- Execute accepts SEMANTIC inputs only; the BFF rebuilds the wire body server-fresh (P0-4).
+- ONE engine call, never auto-retried; `unknown` ⇒ verify-now (P0-6/7).
+- **`engineValidated=false` — constant, forever** ([M8]); no finding ever implies the engine
+  checked anything. A green estimate (zero findings) shortcuts NOTHING; a red estimate gates
+  NOTHING beyond the P14-D document-construction refusal that exists today.
+
+### 14.7 Criteria mapping + citation honesty
+
+The two R3 reference papers are **paywalled and were not obtainable** for this design pass
+(checked the local papers folder and the research MCP on 2026-08-04; neither PDF present). Per
+issue instruction the mapping below therefore works from the criteria **as cited in open
+literature**, at named-concept granularity only — no specific claim is attributed to either
+paper's text, and no page/section citations are given:
+
+- *Correctness criteria for dynamic changes in workflow systems — a survey*, Rinderle,
+  Reichert, Dadam, DKE 50(1), 2004 — DOI `10.1016/j.datak.2004.01.002`: the **compliance**
+  family (an instance may adopt a changed schema when its current state/history has a valid
+  counterpart under it) and change-region/state-mapping reasoning.
+- *ADEPTflex — Supporting Dynamic Changes of Workflows Without Losing Control*, Reichert &
+  Dadam, JIIS 10, 1998 — DOI `10.1023/A:1008604709862`: structural change operations with
+  correctness guarantees (foundational for "deleting a region containing active work is the
+  dangerous case").
+
+The taxonomy approximates ONLY the token-position fragment of compliance: "does every live
+token have a well-defined, same-natured position in the target schema, and does its containing
+region survive?" Full compliance (history replay) and the papers' formal machinery are
+explicitly NOT implemented — that is the ceiling, not an omission. `BOUNDARY_CLOCK_RESET` has
+no criterion in this family; it is an empirically-proven engine behavior ([M5]) surfaced as
+fact.
+
+### 14.8 Audit `migrate/v1 → v2` payload evolution (issue point 4)
+
+Contract precedent (R-AUD-02: "per-verb versioned schemas"; §7: version now so batch slots in;
+[M8]: discriminator = `migrate-instance/v1`): additive keys may land within a version; a
+**replaced or retyped** key bumps the version. Findings replace `bffWarnings`, so:
+
+- **`schema: "migrate-instance/v2"`**, changes relative to v1:
+  - **ADD `bffFindings`**: `[{ "code", "severity", "activityId", "detail" }]` — the typed
+    findings the operator was shown at the preview execute was CAS-bound to. `BLOCKER_ADVICE`
+    entries still can never appear in an execute row's findings **except** as
+    `MAPPED_BY_OVERRIDE`-resolved history (execute refuses 422 while any is unresolved — [M8]);
+    warnings/info CAN now appear for the two downgraded cases ([M3]/[M4]) that previously could
+    not reach execute at all.
+  - **ADD `taxonomyVersion: 1`** — the findings-vocabulary generation, so a future vocabulary
+    change is detectable without another schema bump. Bump `taxonomyVersion` on ANY vocabulary
+    semantics change: code additions, code renames, **and severity reassignments of an existing
+    code** (panel-demanded — an audit reader must be able to interpret a historical row's
+    severity under the vocabulary that produced it). Payload KEY changes bump the schema
+    string itself.
+  - **REMOVE `bffWarnings`** (fully derivable from `bffFindings`; keeping both invites drift).
+  - **KEEP unchanged**: `engineValidated:false`, `fromProcessDefinitionId`,
+    `toProcessDefinitionId`/`Key`/`Version`, `activityMappings`, `bffAutoMapped`,
+    `bffMappedByOverride`, `activityStateDigest`, `activeActivities`,
+    `childExecutionsUnaffected`, `businessKey`, `endpoint`, `restBody`, `reversibility`.
+- No Flyway change (payload is `jsonb`); audit readers discriminate on `schema` and render v1
+  rows as today. The batch reservation (§7, `bulk/…` schema family) is unaffected.
+- Preview DTO (build #355): additive `findings[]` on each `ActivityDiffEntry` projection plus
+  instance-level `findings[]` for `BOUNDARY_CLOCK_RESET`; existing `status`/`blocker`/`warning`
+  fields stay (frontend regen via `npm run gen:api`, never hand-edited).
+
+### 14.9 Test obligations for build #355 (engine-harness, never mocked)
+
+- Commit the three probe topologies of §14.2 as IT fixtures (validate-bpmn rules: DI added,
+  stable keys) and assert the CALIBRATED behaviors: removed-scope and removed-boundary cases
+  execute **through the BFF** with warnings (the false blockers are gone) and land where [M3]/
+  [M4] observed; `TYPE_CHANGED_SAME_ID` execute observes the ended/advanced instance ([M6]);
+  `BOUNDARY_CLOCK_RESET` info present on every engine leg, with the timer `dueDate` RECORDED
+  per version, not asserted universally — [M5] is version-divergent (moved on 6.8, preserved
+  on 7.1), so a universal assert would enshrine one engine's behavior (Awaitility with
+  explicit bounds, never sleep).
+- An MI-root fixture proving the retained blocker path refuses 422 (and, if the engine
+  accepts an unmapped MI-root shape anywhere, the backstop IT records the verbatim outcome —
+  evidence for a future `taxonomyVersion` bump, not silently absorbed).
+- Guard ITs of §10 unchanged — no rail moved, so no guard test may change EXCEPT the two
+  422-`unmapped-activities` assertions that covered the false blockers, which flip to
+  warning-carrying 200-preview/execute paths.
+
+### 14.10 Panel review record (issue-mandated, 2026-08-04)
+
+Independent adversarial review by the two authorized reviewer models, each explicitly asked to
+attack ceiling-creep in the proposed checks:
+
+- **Gemini (gemini MCP, `gemini-2.5-flash`; `gemini-2.5-pro` was 429-rate-limited)** —
+  **APPROVE-WITH-CHANGES**, five demands, dispositions:
+  1. *Revert the two blocker→warning downgrades (calibration was 6.8-only).* **Partially
+     accepted:** the calibration was EXTENDED to 7.1.0 in response (all four probe migrations
+     re-run live; [M3]/[M4]/[M6] now hold on both majors, [M5] found version-divergent), and
+     the 6.5–6.7 gap is now a mandatory disclaimer (§14.2) + per-finding wording. The revert
+     itself is **rejected** with the downgrade-asymmetry argument recorded in §14.3: a kept
+     false blocker makes the recovery impossible with zero engine feedback; a wrong warning
+     costs one atomic, verbatim-surfaced engine rejection — the designed backstop (decision
+     10). Per-version severity switching rejected as ceiling-crossing.
+  2. *Downgrade the MI-root retention to warning (calling the blocker rules-creep).*
+     **Rejected — inverted:** P14-B requires calibration evidence for any downgrade, and no MI
+     case was calibrated; downgrading on speculation would be the actual rule-guessing. §14.3's
+     justification was REWRITTEN so the engine's error text is secondary, and the #355 MI
+     fixture is the designated evidence-gatherer for a later `taxonomyVersion` downgrade.
+  3. *Prominent calibration-scope disclaimer.* **Accepted** — §14.2 method block + per-finding
+     provenance cells + §14.4 wording.
+  4. *`BLOCKER_ADVICE` user-facing wording must not read as an engine verdict.* **Accepted** —
+     recommended copy added to the severity definition (§14.3).
+  5. *`taxonomyVersion` must also bump on severity reassignments.* **Accepted** — §14.8.
+
+  A confirmation round put all five dispositions (including both rejections and their
+  arguments) back to the same reviewer: final verdict **ACCEPT**, no remaining objections
+  ("the asymmetry argument … is compelling"; the MI-root rejection judged "principled and
+  correct").
+- **Copilot / GitHub Models (copilot MCP)** — **UNAVAILABLE 2026-08-04**: every call (model
+  catalog and inference, retried across the session) returned HTTP **410 Gone** from
+  `models.github.ai` — the endpoint itself, not a quota refusal. Per the standing rule (no
+  unauthorized substitute reviewer, no self-grading in its place) the second seat is recorded
+  as NOT OBTAINED; the #355 build PR should request the second review if the server is back.
