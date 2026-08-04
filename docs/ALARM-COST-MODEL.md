@@ -569,15 +569,16 @@ process with a different environment override:
 
 ### 8.5 Metric derivation — time-to-first-relevant-card
 
-The existing `TESTER_SCHEMA` (`.claude/workflows/usability-run.js`) has no timestamp
-field today; whoever wires this run adds one (a one-line schema+prompt addition, not a
-product behavior change):
+`TESTER_SCHEMA` and `testerPrompt()` in `.claude/workflows/usability-run.js` carry the
+wiring: `tasks[].timings` (optional, absent for every mission but M13 — the standard
+12-mission run's schema validation is unaffected) and an `M13_TIMING_INSTRUCTION` block
+appended to the tester protocol only when `mission === 'M13'`:
 
 - Tester instruction: immediately after `browser_navigate('/')` succeeds, call
   `browser_evaluate(() => new Date().toISOString())` and record the result as
   `landingIso`; immediately after the first successful navigation into the planted
-  class's detail page (task /a's drill), call it again and record `firstDrillIso`. Both
-  ride on M13's task entry as `timings: {landingIso, firstDrillIso}`.
+  class's detail page (task 1's drill), call it again and record `firstDrillIso`. Both
+  ride on M13 task 1's own result as `timings: {landingIso, firstDrillIso}`.
 - `time-to-first-relevant-card = firstDrillIso − landingIso`, computed by the evaluator
   (reconciler agent) per tester, per arm.
 - This is wall-clock as the AGENT experienced it (its own "thinking" time included) — an

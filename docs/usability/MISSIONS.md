@@ -498,17 +498,16 @@ TESTER BRIEF:
 > 2. Now, specifically: what do you believe decides which card sits at the top of this
 >    list? Quote the exact on-screen text (hover text counts) that told you, then explain
 >    in your own words what it's actually saying — don't just repeat the words back.
-> 3. Based on what you just read: is the card with the single biggest failure count always
->    the one at the top? Justify your answer from the same text. If you found nothing that
->    explains the ordering at all, say so plainly.
+> 3. Pick two specific cards from the list — one that sits higher than the other. Without
+>    re-reading the tooltip text, explain in your own words why you think one outranks the
+>    other. If you honestly can't tell just from looking, say so plainly.
 > 4. Go to the Incidents page. Find a card carrying some kind of "self-heal" indicator — a
 >    badge with a fraction and usually a time in it (or, if you find one that instead says
 >    something like "not enough history yet," that counts too — describe what you found).
->    Explain in your own words exactly what that badge is telling you: is it a promise
->    about what WILL happen to this class, or a record of what HAS happened to it before?
->    And given what it says, would you personally go fix this class right now, or leave it
->    be for now? Quote the exact badge text you're basing that on. If you find no such
->    badge anywhere, say so and where you looked.
+>    In your own words, what is this badge actually telling you about this error class?
+>    What would you personally do about this class right now, and why? Quote the exact
+>    badge text you're basing that on. If you find no such badge anywhere, say so and
+>    where you looked.
 
 ---
 
