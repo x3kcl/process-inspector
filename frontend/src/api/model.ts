@@ -116,6 +116,12 @@ export type CmmnStatus = (typeof CMMN_STATUSES)[number]
 // display state, not a wire value — see incidents/sections.ts), but every reader must
 // tolerate an unknown value (fail toward visible, never silently dropped).
 export type IncidentSummary = components['schemas']['IncidentSummary']
+// Self-heal statistics (research track R2, RETRYING-RISK-LANE.md, #351/#352) — the optional
+// `selfHeal` block embedded on IncidentSummary (list + detail). `lane` is a plain string on the
+// wire (no springdoc @enum on this field); the known SERVER-REPORTED literals are named in
+// incidents/selfHeal.ts, and every reader must tolerate an unrecognized/absent lane (fail
+// toward rendering nothing, never toward fabricating a rate — see that module's doc comment).
+export type SelfHealStats = components['schemas']['SelfHealStats']
 export type IncidentListResponse = components['schemas']['IncidentListResponse']
 export type IncidentDetail = components['schemas']['IncidentDetail']
 export type IncidentResolution = components['schemas']['IncidentResolution']

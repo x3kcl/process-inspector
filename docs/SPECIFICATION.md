@@ -722,15 +722,24 @@ so history survives DLQ drains:
   door (§7 v1.x #1, RESPONDER, full bulk rails) invoked with the incident's signature;
   recent error-class bulk jobs for the signature render read-only on the detail. The
   ledger itself never mutates engine state.
-- **Self-heal statistics** *(v2, research track R2 — backend ★ SHIPPED #351,
-  [RETRYING-RISK-LANE.md](RETRYING-RISK-LANE.md))*: each list item and the detail carry an
+- **Self-heal statistics** *(v2, research track R2 — backend ★ SHIPPED #351, frontend ★ SHIPPED
+  #352, [RETRYING-RISK-LANE.md](RETRYING-RISK-LANE.md))*: each list item and the detail carry an
   optional `selfHeal` block — the per-class self-heal rate (Wilson-bounded), time-to-self-heal
   p50/p90, and sample size, derived from the ledger's own occurrence + audit history (zero new
   engine calls). `INSUFFICIENT_HISTORY` (below the 10-unconfounded-completed-spell floor) is
   the expected, common-for-a-long-time state, not an edge case — the pilot's own measured
   baseline has zero unconfounded completed spells today. Informational only (hard rail): never
-  gates, reorders, or auto-triggers any corrective action. The risk-ranked view and chip badge
-  are the frontend slice (#352, not yet built).
+  gates, reorders, or auto-triggers any corrective action. The UI renders ONLY the server-served
+  displayed `lane` (`SelfHealBadge`, exact §4.1 copy, no client-side smoothing/recomputation) on
+  the Incident Ledger card and detail (`incidents/SelfHealBadge.tsx`); the Incident Ledger's
+  still-open sections (REGRESSED/OPEN/QUIET) additionally sort risk-ranked
+  `SELF_HEAL_UNLIKELY → MIXED → INSUFFICIENT_HISTORY → LIKELY`, ties by live total
+  (`incidents/selfHeal.ts#compareSelfHealRisk`) — ordering only, nothing is ever hidden. As
+  actually built, `selfHeal` is attached only to `IncidentSummary` (not Stage 0's own recomputed
+  `ErrorGroup` triage cards), so the risk-ranked view lives on the Incident Ledger, the closest
+  surface the shipped DTO drives. `SELF_HEAL_LIKELY`/`SELF_HEAL_MIXED` are not reachable
+  end-to-end on this deployment (the transiently-failing harness seed that would exercise them
+  is a deferred #351 follow-up) — covered by component tests over synthetic props instead.
 - **Non-goals v1** (recorded with the panel review): assignee/severity fields, auto-resolve
   policies, external alerting/deploy correlation, reporting dashboards/CSV export.
 

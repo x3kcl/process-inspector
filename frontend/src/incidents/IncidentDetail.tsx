@@ -23,6 +23,7 @@ import { incidentGate } from './gate'
 import { countStripLabel } from './liveness'
 import { ReopenIncidentModal } from './ReopenIncidentModal'
 import { ResolveIncidentModal } from './ResolveIncidentModal'
+import { SelfHealBadge } from './SelfHealBadge'
 import { useIncident } from './useIncidents'
 
 export function IncidentDetail() {
@@ -85,6 +86,11 @@ export function IncidentDetail() {
     <div className="triage">
       <h1>Incident {incident?.exceptionClass !== undefined && `— ${incident.exceptionClass}`}</h1>
       <p className="normalized-message">{incident?.normalizedMessage ?? '(no message)'}</p>
+      {incident?.selfHeal !== undefined && (
+        <p className="self-heal-line">
+          <SelfHealBadge selfHeal={incident.selfHeal} partial={incident.partial} />
+        </p>
+      )}
 
       <dl className="lifecycle-strip">
         <div>
