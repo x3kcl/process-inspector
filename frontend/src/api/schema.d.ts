@@ -1448,11 +1448,12 @@ export interface components {
         ActivityDiffEntry: {
             blocker?: boolean;
             detail?: string;
+            findings?: components["schemas"]["MigrationFinding"][];
             fromActivityId?: string;
             fromName?: string;
             fromType?: string;
             /** @enum {string} */
-            status?: "AUTO_MAPPED" | "FLAGGED_UNMAPPED" | "MAPPED_BY_OVERRIDE" | "TYPE_CHANGED" | "NESTING_CHANGED";
+            status?: "AUTO_MAPPED" | "FLAGGED_UNMAPPED" | "MAPPED_BY_OVERRIDE" | "TYPE_CHANGED" | "NESTING_CHANGED" | "SCOPE_REMOVED" | "BOUNDARY_REMOVED";
             toActivityId?: string;
             toType?: string;
             warning?: boolean;
@@ -2264,6 +2265,14 @@ export interface components {
         MetaDto: {
             ticketUrlTemplate?: string;
         };
+        MigrationFinding: {
+            activityId?: string;
+            /** @enum {string} */
+            code?: "UNMAPPED_ACTIVE_ACTIVITY" | "ACTIVE_SCOPE_REMOVED" | "ACTIVE_IN_REMOVED_SCOPE" | "NESTING_PATH_CHANGED" | "TYPE_CHANGED_SAME_ID" | "BOUNDARY_SUBSCRIPTION_REMOVED" | "BOUNDARY_CLOCK_RESET";
+            detail?: string;
+            /** @enum {string} */
+            severity?: "BLOCKER_ADVICE" | "WARNING" | "INFO";
+        };
         MigrationMapping: {
             fromActivityId?: string;
             fromActivityIds?: string[];
@@ -2280,6 +2289,7 @@ export interface components {
             enginePath?: string;
             engineValidated?: boolean;
             executable?: boolean;
+            findings?: components["schemas"]["MigrationFinding"][];
             fromDefinitionId?: string;
             fromDefinitionKey?: string;
             /** Format: int32 */

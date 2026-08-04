@@ -15,6 +15,8 @@ export type MigrationRequest = components['schemas']['MigrationRequest']
 export type MigrationPreview = components['schemas']['MigrationPreview']
 export type MigrationMapping = components['schemas']['MigrationMapping']
 export type ActivityDiffEntry = components['schemas']['ActivityDiffEntry']
+/** One typed pre-flight finding (INSTANCE-MIGRATION.md §14) — advisory, never a rail. */
+export type MigrationFinding = components['schemas']['MigrationFinding']
 export type TargetActivity = components['schemas']['TargetActivity']
 export type DefinitionVersionsResponse = components['schemas']['DefinitionVersionsResponse']
 export type DefinitionVersion = components['schemas']['DefinitionVersion']
