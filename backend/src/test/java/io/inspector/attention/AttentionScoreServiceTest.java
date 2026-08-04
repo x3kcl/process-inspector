@@ -59,7 +59,7 @@ class AttentionScoreServiceTest {
     @Test
     void theModelJoinsArrivalsAndClosedEpisodesOntoTheLedgerRowsByIncidentId() {
         List<Incident> ledger = List.of(incident(4L, "hash-a", NOW.minusSeconds(86_400)));
-        when(incidents.findAll()).thenReturn(ledger);
+        when(incidents.findByLastSeenGreaterThanEqual(any())).thenReturn(ledger);
         when(occurrences.arrivalsSince(any())).thenReturn(List.<Object[]>of(row(4L, 7L)));
         when(episodes.closedEpisodeDurationSeconds())
                 .thenReturn(List.<Object[]>of(row(4L, 3_600L), row(4L, 5_400L), row(4L, 7_200L)));
@@ -79,7 +79,7 @@ class AttentionScoreServiceTest {
     @Test
     void theFleetMedianIsTakenAcrossEveryClosedEpisodeInTheLedgerNotJustThisClassSince() {
         List<Incident> ledger = List.of(incident(4L, "hash-a", NOW), incident(5L, "hash-b", NOW));
-        when(incidents.findAll()).thenReturn(ledger);
+        when(incidents.findByLastSeenGreaterThanEqual(any())).thenReturn(ledger);
         when(occurrences.arrivalsSince(any())).thenReturn(List.of());
         when(episodes.closedEpisodeDurationSeconds())
                 .thenReturn(List.<Object[]>of(
@@ -100,7 +100,7 @@ class AttentionScoreServiceTest {
     @Test
     void nativeAggregatesAreCoercedWhateverNumericTypeTheDriverHandsBack() {
         List<Incident> ledger = List.of(incident(4L, "hash-a", NOW));
-        when(incidents.findAll()).thenReturn(ledger);
+        when(incidents.findByLastSeenGreaterThanEqual(any())).thenReturn(ledger);
         when(occurrences.arrivalsSince(any())).thenReturn(List.<Object[]>of(new Object[] {BigInteger.valueOf(4), 15L}));
         when(episodes.closedEpisodeDurationSeconds())
                 .thenReturn(List.<Object[]>of(new Object[] {BigDecimal.valueOf(4), BigDecimal.valueOf(60.7)}));
@@ -114,7 +114,7 @@ class AttentionScoreServiceTest {
     @Test
     void anUnknownClassScoresNeutrallyRatherThanBeingBuried() {
         List<Incident> ledger = List.of(incident(4L, "hash-a", NOW));
-        when(incidents.findAll()).thenReturn(ledger);
+        when(incidents.findByLastSeenGreaterThanEqual(any())).thenReturn(ledger);
         when(occurrences.arrivalsSince(any())).thenReturn(List.of());
         when(episodes.closedEpisodeDurationSeconds()).thenReturn(List.of());
 
@@ -129,7 +129,7 @@ class AttentionScoreServiceTest {
     @Test
     void theR2StatisticIsConsumedAsGivenAndNeverRecomputedHere() {
         List<Incident> ledger = List.of(incident(4L, "hash-a", NOW));
-        when(incidents.findAll()).thenReturn(ledger);
+        when(incidents.findByLastSeenGreaterThanEqual(any())).thenReturn(ledger);
         when(occurrences.arrivalsSince(any())).thenReturn(List.<Object[]>of(row(4L, 3L)));
         when(episodes.closedEpisodeDurationSeconds()).thenReturn(List.of());
         SelfHealStats stats =
@@ -144,7 +144,7 @@ class AttentionScoreServiceTest {
 
     @Test
     void aBrokenStoreYieldsNoScoreRatherThanABrokenRead() {
-        when(incidents.findAll()).thenThrow(new IllegalStateException("store down"));
+        when(incidents.findByLastSeenGreaterThanEqual(any())).thenThrow(new IllegalStateException("store down"));
 
         assertThat(service(true).forClass("hash-a", 2, 21, null)).isNull();
     }
@@ -152,7 +152,7 @@ class AttentionScoreServiceTest {
     @Test
     void aPoisonedSelfHealStatisticDemotesNothing() {
         List<Incident> ledger = List.of(incident(4L, "hash-a", NOW));
-        when(incidents.findAll()).thenReturn(ledger);
+        when(incidents.findByLastSeenGreaterThanEqual(any())).thenReturn(ledger);
         when(occurrences.arrivalsSince(any())).thenReturn(List.<Object[]>of(row(4L, 1L)));
         when(episodes.closedEpisodeDurationSeconds()).thenReturn(List.of());
         when(selfHeal.get(anyString(), anyInt())).thenThrow(new IllegalStateException("boom"));

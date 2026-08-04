@@ -23,11 +23,16 @@ class RetrySpellExtractorTest {
     }
 
     private static SpellSample sample(int minute, long dlq, long retrying) {
-        return new SpellSample(at(minute), dlq, retrying, false);
+        return new SpellSample(at(minute), dlq, retrying, false, true);
     }
 
     private static SpellSample truncated(int minute, long dlq, long retrying) {
-        return new SpellSample(at(minute), dlq, retrying, true);
+        return new SpellSample(at(minute), dlq, retrying, true, true);
+    }
+
+    /** A row written while an engine was unreachable (#302): counts may be missing members. */
+    private static SpellSample blind(int minute, long dlq, long retrying) {
+        return new SpellSample(at(minute), dlq, retrying, false, false);
     }
 
     @Test
@@ -175,6 +180,99 @@ class RetrySpellExtractorTest {
         assertThat(spells).hasSize(2);
         assertThat(spells.get(0).start()).isEqualTo(at(1));
         assertThat(spells.get(1).start()).isEqualTo(at(4));
+    }
+
+    /* ---------------- #302 blind cycles: an outage is not evidence ---------------- */
+
+    @Test
+    void anEngineOutageThatForgesASpellEndIsVoidedNotRecordedAsSelfHealed() {
+        // The live shape from the review: the class has RETRYING jobs on engine B and standing
+        // dead-letters on engine A. B is unreachable for ONE bucket — the group is still present
+        // (A's members keep total > 0) so a row IS written, but with retryingCount = 0 because
+        // B's retrying members are simply missing. The edge detector sees the spell "end"; the
+        // +1 look-ahead compares A's UNCHANGED dlq against spell start and finds no growth.
+        // Before the fix that is Outcome.SELF_HEALED, countable — an outage entered into n as
+        // evidence of autonomous healing, with nothing marking it tainted.
+        List<SpellSample> samples = List.of(
+                sample(0, 12, 0),
+                sample(1, 12, 4),
+                sample(2, 12, 4),
+                blind(3, 12, 0), // engine B unreachable — NOT "the retries finished"
+                sample(4, 12, 0));
+
+        List<RetrySpell> spells = RetrySpellExtractor.extract(samples, BUCKET, List.of());
+
+        assertThat(spells).hasSize(1);
+        RetrySpell spell = spells.get(0);
+        assertThat(spell.gapVoided()).isTrue();
+        assertThat(spell.excluded()).isTrue();
+        assertThat(spell.countable()).isFalse();
+        assertThat(spell.outcome()).isNotEqualTo(RetrySpell.Outcome.SELF_HEALED);
+    }
+
+    @Test
+    void aBlindSampleInsideTheSpellVoidsItLikeATruncatedOneTaintsIt() {
+        List<SpellSample> samples =
+                List.of(sample(0, 4, 0), sample(1, 4, 2), blind(2, 4, 1), sample(3, 4, 0), sample(4, 4, 0));
+
+        List<RetrySpell> spells = RetrySpellExtractor.extract(samples, BUCKET, List.of());
+
+        assertThat(spells).hasSize(1);
+        assertThat(spells.get(0).gapVoided()).isTrue();
+        assertThat(spells.get(0).countable()).isFalse();
+    }
+
+    @Test
+    void aBlindLookaheadCannotJudgeTheOutcomeEither() {
+        // The whole outcome test is "did the DLQ grow by the look-ahead bucket" — a blind
+        // look-ahead may be missing the very engine the escalation landed on.
+        List<SpellSample> samples = List.of(sample(0, 4, 0), sample(1, 4, 2), sample(2, 4, 0), blind(3, 4, 0));
+
+        List<RetrySpell> spells = RetrySpellExtractor.extract(samples, BUCKET, List.of());
+
+        assertThat(spells).hasSize(1);
+        assertThat(spells.get(0).gapVoided()).isTrue();
+        assertThat(spells.get(0).outcome()).isNotEqualTo(RetrySpell.Outcome.SELF_HEALED);
+        assertThat(spells.get(0).countable()).isFalse();
+    }
+
+    @Test
+    void aCompleteCycleSeriesIsStillJudgedNormally() {
+        // Guard against over-voiding: the marker must only bite when a sample was actually blind.
+        List<SpellSample> samples = List.of(sample(0, 12, 0), sample(1, 12, 4), sample(2, 12, 0), sample(3, 12, 0));
+
+        List<RetrySpell> spells = RetrySpellExtractor.extract(samples, BUCKET, List.of());
+
+        assertThat(spells.get(0).gapVoided()).isFalse();
+        assertThat(spells.get(0).countable()).isTrue();
+    }
+
+    /* ---------------- left censoring ---------------- */
+
+    @Test
+    void aSpellAlreadyInProgressAtTheFirstSampleIsLeftCensoredAndNeverCounted() {
+        // The window (or the row cap) opened MID-spell: dlqAtStart is a mid-spell level, so an
+        // escalation in the unobserved prefix reads as a clean heal, and the measured duration
+        // is short by that prefix — which would then bias p50/p90 low.
+        List<SpellSample> samples = List.of(sample(0, 7, 3), sample(1, 7, 2), sample(2, 7, 0), sample(3, 7, 0));
+
+        List<RetrySpell> spells = RetrySpellExtractor.extract(samples, BUCKET, List.of());
+
+        assertThat(spells).hasSize(1);
+        RetrySpell spell = spells.get(0);
+        assertThat(spell.leftCensored()).isTrue();
+        assertThat(spell.excluded()).isTrue();
+        assertThat(spell.countable()).isFalse();
+    }
+
+    @Test
+    void aSpellWhoseStartWasObservedIsNotCensored() {
+        List<SpellSample> samples = List.of(sample(0, 7, 0), sample(1, 7, 3), sample(2, 7, 0), sample(3, 7, 0));
+
+        List<RetrySpell> spells = RetrySpellExtractor.extract(samples, BUCKET, List.of());
+
+        assertThat(spells.get(0).leftCensored()).isFalse();
+        assertThat(spells.get(0).countable()).isTrue();
     }
 
     @Test

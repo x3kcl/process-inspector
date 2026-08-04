@@ -13,6 +13,13 @@ import jakarta.persistence.Table;
  *
  * <p>{@code truncated} keeps the series honest end-to-end (R-SEM-12): a truncated sample is a
  * FLOOR, not a dip — the UI renders such points visually distinct.
+ *
+ * <p>{@code cycleComplete} (V21) is the SECOND honesty marker, and it is read exactly like the
+ * first: false means an engine was unreachable on the pass that wrote this row (#302), so the
+ * counts may simply be missing that engine's members. A drop-and-recover across such a row is
+ * NOT movement, and a {@code retryingCount} edge at it is NOT a spell boundary — see
+ * {@link IncidentOccurrenceRepository#arrivalsSince} and
+ * {@code io.inspector.selfheal.RetrySpellExtractor}.
  */
 @Entity
 @Table(name = "incident_occurrence")
@@ -32,6 +39,9 @@ public class IncidentOccurrence {
 
     @Column(name = "truncated", nullable = false)
     private boolean truncated;
+
+    @Column(name = "cycle_complete", nullable = false)
+    private boolean cycleComplete;
 
     protected IncidentOccurrence() {
         // JPA
@@ -55,5 +65,10 @@ public class IncidentOccurrence {
 
     public boolean isTruncated() {
         return truncated;
+    }
+
+    /** False ⇒ a blind pass wrote this row (#302): unobserved, never "observed zero/absent". */
+    public boolean isCycleComplete() {
+        return cycleComplete;
     }
 }

@@ -147,7 +147,8 @@ export function selfHealCaveat(selfHeal: SelfHealStats): string | undefined {
   if (excluded > 0) {
     return (
       `${String(excluded)} spell${excluded === 1 ? '' : 's'} excluded from this statistic ` +
-      '(operator-confounded or a sampling gap — not counted toward the rate)'
+      '(operator-confounded, a sampling gap, an unreachable engine, or already in progress ' +
+      'when the window opened — not counted toward the rate)'
     )
   }
   return undefined

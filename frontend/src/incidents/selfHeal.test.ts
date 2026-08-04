@@ -81,7 +81,8 @@ describe('selfHealCaveat — honesty rails (§5 "Truncation propagates")', () =>
 
   it('names a generic exclusion caveat when spells were excluded but none were truncated', () => {
     expect(selfHealCaveat(stats({ excludedSpells: 2, truncationTainted: false }))).toBe(
-      '2 spells excluded from this statistic (operator-confounded or a sampling gap — not counted toward the rate)',
+      '2 spells excluded from this statistic (operator-confounded, a sampling gap, an unreachable engine, ' +
+        'or already in progress when the window opened — not counted toward the rate)',
     )
   })
 })

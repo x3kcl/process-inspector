@@ -19,6 +19,19 @@ import java.util.List;
  * standing non-zero DLQ at spell start does NOT disqualify (the delta is the evidence, not a
  * clean floor). When that look-ahead sample is missing or too far away to trust, the spell
  * cannot be honestly judged and is treated as gap-voided rather than guessed.
+ *
+ * <p><b>A blind sample is not evidence (#302, V21).</b> This transform is an EDGE DETECTOR on
+ * {@code retryingCount}, so an unobserved engine forges edges: a class with RETRYING jobs on
+ * engine B and dead-letters on engine A stays present (A's members keep {@code total > 0}) while
+ * B is unreachable, and the row written that pass carries {@code retryingCount = 0} — the spell
+ * appears to END. The look-ahead then compares A's UNCHANGED dead-letter count against spell
+ * start, finds no growth, and records {@code SELF_HEALED}: an engine outage entered as evidence
+ * of autonomous healing, counted into {@code n}, the Wilson bound, the displayed lane and (via
+ * the R1 {@code S} factor) a 4x rank demotion on a class that never healed. {@code
+ * truncationTainted} does not cover it (that is the scan cap) and {@link #hasInternalGap} never
+ * fires (the rows exist). So any spell CONTAINING, TERMINATED BY, or JUDGED AGAINST a
+ * {@code cycleComplete = false} sample is gap-voided outright — unobservable shape, never a
+ * guess (§5: never presents as complete).
  */
 public final class RetrySpellExtractor {
 
@@ -75,19 +88,34 @@ public final class RetrySpellExtractor {
 
         int shapeEnd = Math.min(zeroIdx, samples.size() - 1);
         boolean gapVoided = hasInternalGap(samples, start, shapeEnd, bucketWidth);
+        // A blind pass anywhere in the observed shape — inside the run OR the zero-count sample
+        // that appears to END it — makes every edge here a possible artifact of an unreachable
+        // engine rather than of the jobs. Same lane as a sampling gap: unobservable, and (unlike
+        // a sampling gap, whose surviving endpoints are at least real counts) not even judged —
+        // the outcome test itself would be reading a count with members missing from it.
+        boolean blindShape = hasBlindSample(samples, start, shapeEnd);
+        gapVoided = gapVoided || blindShape;
 
         RetrySpell.Outcome outcome = RetrySpell.Outcome.UNKNOWN;
-        if (!live) {
+        if (!live && !blindShape) {
             int lookaheadIdx = zeroIdx + 1; // the +1-bucket look-ahead past spell end
             if (lookaheadIdx < samples.size()
                     && withinLookaheadTolerance(
                             samples.get(zeroIdx).sampledAt(),
                             samples.get(lookaheadIdx).sampledAt(),
                             bucketWidth)) {
-                long dlqAtStart = samples.get(start).deadLetterCount();
-                long dlqAfterLookahead = samples.get(lookaheadIdx).deadLetterCount();
-                outcome =
-                        dlqAfterLookahead > dlqAtStart ? RetrySpell.Outcome.ESCALATED : RetrySpell.Outcome.SELF_HEALED;
+                if (samples.get(lookaheadIdx).cycleComplete()) {
+                    long dlqAtStart = samples.get(start).deadLetterCount();
+                    long dlqAfterLookahead = samples.get(lookaheadIdx).deadLetterCount();
+                    outcome = dlqAfterLookahead > dlqAtStart
+                            ? RetrySpell.Outcome.ESCALATED
+                            : RetrySpell.Outcome.SELF_HEALED;
+                } else {
+                    // The whole outcome test is "did the DLQ grow by the look-ahead bucket" — a
+                    // blind look-ahead may simply be missing the engine the escalation landed on,
+                    // so "no growth" there is not evidence of a heal.
+                    gapVoided = true;
+                }
             } else {
                 // No usable look-ahead: the spell's outcome cannot be honestly judged — an
                 // unobservable shape, never a guess (§5: never presents as complete).
@@ -96,8 +124,22 @@ public final class RetrySpellExtractor {
         }
 
         boolean confounded = !live && confoundWindows.stream().anyMatch(w -> w.overlaps(startAt, endAt));
+        // Already in progress at the very first sample we have (window start, or the row cap):
+        // dlqAtStart is a MID-spell level and the duration is short by the unobserved prefix.
+        boolean leftCensored = start == 0;
 
-        return new RetrySpell(startAt, endAt, duration, outcome, confounded, gapVoided, truncationTainted, live);
+        return new RetrySpell(
+                startAt, endAt, duration, outcome, confounded, gapVoided, truncationTainted, live, leftCensored);
+    }
+
+    /** True when any sample in {@code [start, endInclusive]} was written by a blind pass (#302). */
+    private static boolean hasBlindSample(List<SpellSample> samples, int start, int endInclusive) {
+        for (int k = start; k <= endInclusive; k++) {
+            if (!samples.get(k).cycleComplete()) {
+                return true;
+            }
+        }
+        return false;
     }
 
     private static boolean hasInternalGap(

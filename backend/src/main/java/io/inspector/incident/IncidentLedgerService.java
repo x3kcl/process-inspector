@@ -45,7 +45,12 @@ import org.springframework.transaction.support.TransactionTemplate;
  * cycle — i.e. every registry engine's envelope came back {@code ok()} this pass. A cycle where
  * one engine was unreachable cannot tell "the class is gone" apart from "we didn't get to look",
  * so it skips the zero-state sweep entirely rather than arm the gate from a gap. Live groups
- * are unaffected — they still ingest normally on an incomplete cycle.
+ * still ingest normally on an incomplete cycle — but every occurrence row now PERSISTS the
+ * marker ({@code incident_occurrence.cycle_complete}, V21) rather than dropping it on the floor:
+ * a blind row's counts are missing the unreachable engine's members, so the series must let
+ * every downstream reader (attention arrivals, RETRYING spell edges) discard it exactly the way
+ * they already discard a truncated one. Writing the row without the marker is what turned a
+ * two-minute outage into hundreds of phantom arrivals and into fabricated SELF_HEALED evidence.
  *
  * <p><b>Transaction boundaries — one transaction per GROUP, not per cycle</b> (design left the
  * call to the implementation): a cycle touches many unrelated failure classes, and a
@@ -182,19 +187,26 @@ public class IncidentLedgerService {
         String countsJson = toJson(group.countsByEngine());
         if (existing.isEmpty()) {
             try {
-                tx.executeWithoutResult(status -> insertOpen(group, sample.sampledAt(), truncated, countsJson, bucket));
+                tx.executeWithoutResult(status ->
+                        insertOpen(group, sample.sampledAt(), truncated, countsJson, bucket, sample.cycleComplete()));
             } catch (DataIntegrityViolationException e) {
                 // uq_incident arbiter: a concurrent first sighting won the race — next cycle updates it
                 log.debug("incident insert lost a first-sighting race (benign): {}", group.signatureHash());
             }
             return;
         }
-        tx.executeWithoutResult(
-                status -> observeExisting(existing.get(), group, sample.sampledAt(), truncated, countsJson, bucket));
+        tx.executeWithoutResult(status -> observeExisting(
+                existing.get(), group, sample.sampledAt(), truncated, countsJson, bucket, sample.cycleComplete()));
     }
 
     /** First sighting: OPEN incident + its live episode + the first occurrence point, atomically. */
-    private void insertOpen(ErrorGroup group, Instant seenAt, boolean truncated, String countsJson, Instant bucket) {
+    private void insertOpen(
+            ErrorGroup group,
+            Instant seenAt,
+            boolean truncated,
+            String countsJson,
+            Instant bucket,
+            boolean cycleComplete) {
         Incident row = incidents.save(new Incident(
                 group.signatureHash(),
                 group.algoVersion(),
@@ -206,11 +218,17 @@ public class IncidentLedgerService {
                 truncated,
                 countsJson));
         episodes.save(new IncidentEpisode(row.getId(), IncidentState.OPEN, seenAt, group.total()));
-        upsertOccurrence(row.getId(), group, bucket, truncated);
+        upsertOccurrence(row.getId(), group, bucket, truncated, cycleComplete);
     }
 
     private void observeExisting(
-            Incident row, ErrorGroup group, Instant seenAt, boolean truncated, String countsJson, Instant bucket) {
+            Incident row,
+            ErrorGroup group,
+            Instant seenAt,
+            boolean truncated,
+            String countsJson,
+            Instant bucket,
+            boolean cycleComplete) {
         switch (row.getState()) {
             case OPEN, REGRESSED -> {
                 int hit = incidents.updateObservedTotals(
@@ -231,7 +249,7 @@ public class IncidentLedgerService {
                 }
             }
         }
-        upsertOccurrence(row.getId(), group, bucket, truncated);
+        upsertOccurrence(row.getId(), group, bucket, truncated, cycleComplete);
     }
 
     /**
@@ -287,14 +305,27 @@ public class IncidentLedgerService {
         }
     }
 
-    private void upsertOccurrence(long incidentId, ErrorGroup group, Instant bucket, boolean truncated) {
+    /**
+     * The per-cycle time-series point. BOTH honesty markers are persisted with it (V21): the
+     * R-SEM-12 scan-cap {@code truncated} floor AND {@code cycleComplete} — whether every
+     * registry engine was actually reached on the pass that produced these counts (#302).
+     *
+     * <p>Live groups deliberately still write on an incomplete cycle (their totals are honest
+     * observations of the engines that DID answer), but the row must SAY so: without the marker
+     * a multi-engine class's total silently drops and recovers with an outage, and every
+     * downstream reader — the attention F factor's positive-delta sum, the RETRYING lane's
+     * spell edges — is structurally unable to tell that apart from real movement.
+     */
+    private void upsertOccurrence(
+            long incidentId, ErrorGroup group, Instant bucket, boolean truncated, boolean cycleComplete) {
         occurrences.upsert(
                 incidentId,
                 bucket,
                 group.total(),
                 group.deadLetterCount() != null ? group.deadLetterCount() : 0L,
                 group.retryingCount() != null ? group.retryingCount() : 0L,
-                truncated);
+                truncated,
+                cycleComplete);
     }
 
     /**

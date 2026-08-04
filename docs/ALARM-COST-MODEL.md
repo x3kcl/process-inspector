@@ -322,7 +322,7 @@ versioned and logged so a tooltip's numbers are reproducible.
 
 | Parameter | Estimator | Fallback while thin |
 |---|---|---|
-| `arrivals_28d(c)` (F) | sum of positive `total` deltas over 28 d occurrence rows; truncated points (floors) never produce negative-then-positive phantom arrivals — deltas across a truncated boundary are discarded | always computable (0 when absent) |
+| `arrivals_28d(c)` (F) | sum of positive `total` deltas over 28 d occurrence rows; truncated points (floors) never produce negative-then-positive phantom arrivals — deltas across a truncated boundary are discarded, **and identically across a BLIND boundary** (`cycle_complete = false`, V21: an unreachable engine makes a multi-engine class's total drop and recover, which is an outage, not 900 arrivals) | always computable (0 when absent) |
 | τ (R) | keep = quiet-window 24 h; re-estimate later from episode inter-arrival distribution | constant 24 h |
 | `medMTTR(c)` (M) | median closed-episode `ended_at − started_at`, per class with ≥ 3 closed episodes; fleet median otherwise | neutral 1 |
 | `p_heal(c)` (S) | **not estimated here** — consumed from #351 (§4.2) | neutral 1 |
@@ -333,7 +333,9 @@ versioned and logged so a tooltip's numbers are reproducible.
 Estimation honesty rails: every derived value carries `sampleSize` + an `insufficient` flag
 mirroring R2's doctrine; an insufficient estimate renders as "no history", never as a
 number; truncated occurrence rows are floors (R-SEM-12) and never enter jitter/arrival
-estimators across their boundaries.
+estimators across their boundaries, and blind occurrence rows (`cycle_complete = false`,
+#302/V21 — an engine was unreachable when the row was written) are excluded by the same rule
+for the same reason: neither is a level that may be differenced against a real one.
 
 ## 7. Data-maturity gate (issue point 3 — numeric, from §5 measurements)
 
@@ -395,6 +397,9 @@ parallel protocol.
 - **No notification channels** (none exist; out of scope).
 - **Truncation honesty (R-SEM-12)**: estimators treat truncated rows as floors; a card
   whose score inputs were truncated carries the same badge doctrine as its counts.
+- **Blind-cycle honesty (#302)**: a row written while any registry engine was unreachable is
+  marked `cycle_complete = false` and is never differenced against — an outage's
+  drop-and-recover is not arrival volume. Same lane as truncation, same discard rule.
 - **Explainability**: rationale is the one-sentence tooltip (§4.3) with per-card numbers —
   a score no tooltip can explain is a rejected design by construction.
 - Spec-sync: this doc introduces no behavior change; SPECIFICATION/ARCHITECTURE/
@@ -427,7 +432,7 @@ whole surface is inert.
   Postgres, cached whole (`attention.model-ttl`, 5m): `incident.last_seen` (R), a NEW native
   positive-delta window aggregate over `incident_occurrence` (F — a DB-side `SUM(GREATEST(
   total − LAG(total), 0))` rather than differencing ~40k minute-buckets per class in Java,
-  discarding any delta touching a truncated bucket per §6), and closed `incident_episode`
+  discarding any delta touching a truncated OR blind bucket per §6), and closed `incident_episode`
   durations (M + the §3.2 P75 expiry suggestion). The Stage 0 count-only/`size=1` +
   dedicated-DLQ-scan rule is untouched — nothing was added to the aggregation.
 - **Ordering** — `AttentionOrdering.BY_ATTENTION`: `score DESC → total DESC → signatureHash
