@@ -1161,13 +1161,39 @@ coverage — §5.1's 99.8 % re-verified, not copied). Spacing mode **60 s** (21,
 intervals); **39 gaps > 60 s, max 4.0 min, 80 min total**; **zero truncated rows**.
 
 **New measured fact the §5 round did not surface: 21,741 of 21,909 rows (99.2 %) are BLIND
-(`cycle_complete = false`).** Every row before **2026-08-04T15:39 Z** is blind; complete
-cycles begin exactly when the declared `engine-7` slot got a real engine (commit 015c9e1) —
-before that, a registered-but-unreachable engine made every cycle incomplete, and the V21
-fail-closed backfill marks all pre-V21 rows blind by design. The trusted era was therefore
-**168 minutes old at extraction**. This is the trust discipline working as specified (#302),
-and it is the honest headline of the feasibility note: **on this pilot the binding constraint
-on burst measurement is the trust discipline, not the cadence.**
+(`cycle_complete = false`).** Every row before **2026-08-04T15:39 Z** is blind; there is
+exactly ONE transition in the whole series (`false → true` at that instant, re-verified on a
+later extraction: 21,741 / 21,990 blind, 249 trusted rows, no flap back). Before it, a
+registered engine that did not come back `ok()` made every cycle incomplete, and the V21
+fail-closed backfill marks all pre-V21 rows blind by design. The trusted era was
+**168 minutes old at first extraction**.
+
+**Correction (2026-08-04, same round — the CAUSE first recorded here was wrong).** This note
+originally read "complete cycles begin exactly when the declared `engine-7` slot got a real
+engine (commit 015c9e1)". That is **not** what happened, and the contradicting evidence was
+available over the same REST surface: `GET /api/engines` reports `engine-7` as
+`lifecycle: "disabled"`, `reachable: false`, `healthError: "not probed yet"` — still, *after*
+the trusted era began — and `GET /api/triage`'s `perEngine` envelope contains only `engine-a`
+and `engine-b`. `PollingSnapshotSource` computes `cycleComplete` by iterating exactly that
+envelope, so the era turned trusted when `engine-7` **left the aggregation scope** (disabled
+in the registry), not when it became reachable. Note also that #369 ("allowlist in-network
+engine hosts so `engine-7` is actually reachable") had merged by this re-check and `engine-7`
+is *still* disabled and unprobed on the demo — so it is not the cause either.
+
+**What this changes, and what it does not.** The measured boundary is unchanged, so §7's G5
+redefinition over TRUSTED span and its ≈ 2026-09-29 date stand exactly as stated — they rest
+on the transition instant, not on its cause. What it does change is the *meaning* of the
+trusted era: those 249 rows are trusted about a **two-engine fleet**. A cycle is "complete"
+when every engine still IN scope answered, so disabling an unreachable engine converts blind
+cycles into trusted ones without any observability actually being recovered. That is arguably
+correct (a disabled engine is not part of the fleet) but it is a sharp edge worth naming:
+**the trusted-span clock can be restarted by a registry edit.** If `engine-7` is re-enabled
+and carries load, rows spanning that change are not differenceable against these, and the
+G5 clock should be re-measured rather than assumed to have run continuously.
+
+This is still the trust discipline working as specified (#302), and the honest headline of
+the feasibility note is unchanged: **on this pilot the binding constraint on burst measurement
+is the trust discipline, not the cadence.**
 
 ### 14.3 Data-feasibility note — the finest honest burst window (MEASURED)
 Bin honesty measured on the full minute grid (a bin is evaluated at model-build time, which
@@ -1374,8 +1400,9 @@ The stale "earliest G5 satisfaction ≈ 2026-09-14" was duplicated in two files 
 round could not touch — `AttentionScoreService`'s class javadoc and the
 `inspector.triage.attention-ordering` comment block in `application.yml`. Both now read
 **≈ 2026-09-29** and say **TRUSTED** span, matching §7's correction (G5 counts trusted span; the
-pilot's history was 99 % blind until the declared `engine-7` slot got a real engine at
-2026-08-04T15:39 Z). A repo-wide sweep found no third occurrence. The neighbouring "21,229
+pilot's history was 99 % blind until 2026-08-04T15:39 Z — see §14.2's correction for why the
+cause is *not* the engine-7 slot getting a real engine). A repo-wide sweep found no third
+occurrence. The neighbouring "21,229
 recorded pilot buckets" figure was deliberately LEFT ALONE: it is the §5.5 extraction's own
 count, the §5/§7 correction did not restate it, and replacing it with §14.2's later re-extraction
 figure would have introduced a second, different error rather than removing one.

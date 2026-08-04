@@ -169,8 +169,9 @@ inspector:
     # DEFAULT FALSE and deliberately so: the §7 data-maturity gate is measured NOT MET (0 of 5
     # axes — 0 closed episodes, max 2 concurrent live classes, 0 acks ever, and 14.8d of RECORDED
     # ledger span of which only 0.12d was TRUSTED: the pilot's history was 99% blind
-    # (cycle_complete = false) until the declared engine-7 slot got a real engine at
-    # 2026-08-04T15:39Z. G5 counts trusted span — a fit-plus-holdout over discarded deltas is a
+    # (cycle_complete = false) until 2026-08-04T15:39Z — the instant an unreachable engine left
+    # the aggregation scope, NOT the instant it became reachable (§14.2 correction).
+    # G5 counts trusted span — a fit-plus-holdout over discarded deltas is a
     # fit over nothing — so earliest satisfaction is ≈ 2026-09-29, correcting the ≈ 2026-09-14
     # stated here before the #365 amendment round re-measured it). Replaying A(c) over all 21,229
     # recorded pilot buckets reproduced today's count-only ordering EXACTLY (Kendall tau = 1.0,

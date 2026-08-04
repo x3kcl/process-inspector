@@ -38,8 +38,9 @@ import org.springframework.stereotype.Service;
  *
  * <p><b>Flag-off by default, and provably inert when off.</b> The R1 data-maturity gate is
  * measured NOT MET (§7, 0 of 5 axes). G5 counts TRUSTED ledger span, not recorded span — the
- * pilot's history was 99 % blind ({@code cycle_complete = false}) until the declared engine-7 slot
- * got a real engine at 2026-08-04T15:39Z, and a fit-plus-holdout over discarded deltas is a fit
+ * pilot's history was 99 % blind ({@code cycle_complete = false}) until 2026-08-04T15:39Z (the
+ * instant an unreachable engine left the aggregation scope, NOT the instant it became reachable —
+ * §14.2 correction), and a fit-plus-holdout over discarded deltas is a fit
  * over nothing — so earliest satisfaction is ≈ 2026-09-29, not the ≈ 2026-09-14 stated here before
  * the #365 amendment round re-measured it (§7 correction). The score is measured IDENTICAL to
  * count-only ordering across all 21,229 recorded pilot buckets (§5.5, Kendall tau = 1.0 — for most

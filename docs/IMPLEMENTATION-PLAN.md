@@ -2570,7 +2570,10 @@ the very same object with zero queries; below the ISA onset `F` is byte-identica
 asserted over a swept corpus) to the shipped formula, so the amendment is provably inert outside
 flood conditions. Same round: the stale "earliest G5 satisfaction ≈ 2026-09-14" was corrected to
 ≈ 2026-09-29 in the two code comments that duplicated it — G5 counts TRUSTED ledger span, and
-the pilot's history was 99 % blind until the declared `engine-7` slot got a real engine.
+the pilot's history was 99 % blind until 2026-08-04T15:39 Z. The CAUSE first recorded for that
+boundary was itself wrong and is corrected in ALARM-COST-MODEL.md §14.2: the era turned trusted
+when an unreachable engine left the aggregation scope (disabled in the registry), not when it
+became reachable — so the trusted-span clock can be restarted by a registry edit.
 
 ## Build order inside any milestone
 
