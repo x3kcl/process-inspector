@@ -8,8 +8,10 @@ import io.inspector.dto.ErrorGroup;
 import io.inspector.dto.IncidentDetail;
 import io.inspector.dto.IncidentListResponse;
 import io.inspector.dto.IncidentSummary;
+import io.inspector.dto.SelfHealStats;
 import io.inspector.dto.TriageDashboardResponse;
 import io.inspector.security.ReadScopeGate;
+import io.inspector.selfheal.SelfHealStatsService;
 import io.inspector.triage.ErrorGroupAckService;
 import io.inspector.triage.ErrorSignatureNormalizer;
 import io.inspector.triage.TriageScopeProjector;
@@ -70,6 +72,7 @@ public class IncidentQueryService {
     private final TriageScopeProjector scopeProjector;
     private final ErrorGroupAckService acks;
     private final RelatedBulkJobsService relatedBulkJobs;
+    private final SelfHealStatsService selfHeal;
     private final ObjectMapper json;
     private final Clock clock;
     private final Duration quietWindow;
@@ -84,6 +87,7 @@ public class IncidentQueryService {
             TriageScopeProjector scopeProjector,
             ErrorGroupAckService acks,
             RelatedBulkJobsService relatedBulkJobs,
+            SelfHealStatsService selfHeal,
             ObjectMapper json,
             Clock clock,
             InspectorProperties properties) {
@@ -95,6 +99,7 @@ public class IncidentQueryService {
         this.scopeProjector = scopeProjector;
         this.acks = acks;
         this.relatedBulkJobs = relatedBulkJobs;
+        this.selfHeal = selfHeal;
         this.json = json;
         this.clock = clock;
         this.quietWindow = properties.incidentsOrDefault().quietWindowOrDefault();
@@ -249,7 +254,21 @@ public class IncidentQueryService {
                 scoped,
                 partial,
                 row.getRegressionCount(),
-                row.getLastRegressedAt());
+                row.getLastRegressedAt(),
+                selfHealStats(row));
+    }
+
+    /**
+     * The RETRYING risk lane's per-class decoration (RETRYING-RISK-LANE.md, #351) — informational
+     * only, never gates the projection above. Degrade-safe: the self-heal surface never breaks
+     * the incident read it decorates.
+     */
+    private SelfHealStats selfHealStats(Incident row) {
+        try {
+            return selfHeal.get(row.getSignatureHash(), row.getAlgoVersion());
+        } catch (RuntimeException e) {
+            return null; // NON_NULL omits it on the wire — an incident read must never 500 for this
+        }
     }
 
     /**

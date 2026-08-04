@@ -20,6 +20,7 @@ import io.inspector.dto.IncidentListResponse;
 import io.inspector.dto.IncidentSummary;
 import io.inspector.dto.TriageDashboardResponse;
 import io.inspector.security.ReadScopeGate;
+import io.inspector.selfheal.SelfHealStatsService;
 import io.inspector.triage.ErrorGroupAckService;
 import io.inspector.triage.ErrorSignatureNormalizer;
 import io.inspector.triage.TriageScopeProjector;
@@ -59,6 +60,7 @@ class IncidentQueryServiceTest {
     private final TriageScopeProjector projector = mock(TriageScopeProjector.class);
     private final ErrorGroupAckService acks = mock(ErrorGroupAckService.class);
     private final RelatedBulkJobsService relatedBulkJobs = mock(RelatedBulkJobsService.class);
+    private final SelfHealStatsService selfHeal = mock(SelfHealStatsService.class);
     private final Authentication auth = mock(Authentication.class);
     private final IncidentQueryService service = service(Duration.ofHours(24));
 
@@ -413,6 +415,7 @@ class IncidentQueryServiceTest {
                 projector,
                 acks,
                 relatedBulkJobs,
+                selfHeal,
                 new ObjectMapper(),
                 Clock.fixed(NOW, ZoneOffset.UTC),
                 new InspectorProperties(

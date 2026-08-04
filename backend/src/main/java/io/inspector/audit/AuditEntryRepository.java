@@ -129,6 +129,32 @@ public interface AuditEntryRepository extends JpaRepository<AuditEntry, UUID> {
             @Param("limit") int limit);
 
     /**
+     * Self-heal confound detection, audit-side (RETRYING-RISK-LANE.md §3.3, #351): every
+     * successful {@code retry-job} audit row on an engine the class touches — single-target OR
+     * bulk item, ANY scope (both write the identical {@code action = verb.path()} row; only the
+     * bulk ENVELOPE carries the {@code bulk:} prefix {@link #findRecentErrorClassBulkJobIds}
+     * joins on). Proven live (§8 baseline): a FILTER-scoped bulk retry is NOT attributable to a
+     * signature via {@code relatedBulkJobs} (the envelope only carries the hash for
+     * ERROR_CLASS scope) but DOES confound a spell — this query is the audit-side widening the
+     * design calls for, deliberately broader than that join: ANY retry on a hosting engine,
+     * regardless of what it was scoped to. Ascending by {@code ts} —
+     * {@code io.inspector.selfheal.SelfHealStatsService} folds each row into a ±2-bucket
+     * confound window and only needs chronological order, never a limit. Callers must never
+     * pass an empty {@code engineIds} (JPQL {@code IN ()} is unreliable across providers — the
+     * same rule {@link #findLogScoped} documents).
+     */
+    @Query("""
+            select a from AuditEntry a
+            where a.action = 'retry-job' and a.outcome = :outcome
+              and a.engineId in :engineIds and a.ts >= :since
+            order by a.ts asc
+            """)
+    List<AuditEntry> findSuccessfulRetryJobAudits(
+            @Param("engineIds") Collection<String> engineIds,
+            @Param("since") Instant since,
+            @Param("outcome") AuditOutcome outcome);
+
+    /**
      * The #106 S0 remediation-demand mining scan (R-GOV-08): every instance-scoped audit
      * row (definition-scoped verbs and BFF-store-only config events, both null instanceId,
      * are excluded by construction), ordered so one instance's full history is always

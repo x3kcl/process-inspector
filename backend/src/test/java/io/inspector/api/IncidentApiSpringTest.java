@@ -101,6 +101,11 @@ class IncidentApiSpringTest {
                         .path("order:v3")
                         .asLong())
                 .isEqualTo(7);
+        // #351: INSUFFICIENT_HISTORY is the normal, permanent-for-now answer — no pilot history
+        // has ever produced an unconfounded completed spell (R2-SELFHEAL-BASELINE-2026-08.md).
+        assertThat(item.path("selfHeal").path("lane").asText()).isEqualTo("INSUFFICIENT_HISTORY");
+        assertThat(item.path("selfHeal").path("n").asInt()).isZero();
+        assertThat(item.path("selfHeal").has("wilsonLow")).isFalse(); // NON_NULL: absent below the floor
     }
 
     @Test

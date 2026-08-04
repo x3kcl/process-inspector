@@ -16,7 +16,20 @@ Flowable Control, Conductor/Orkes, Airflow and Step Functions, and a four-seat d
 - **RETRYING** — a job has failed ≥1 time but retries remain; the engine will retry
   automatically; it may self-heal. Chip copy: "RETRYING (n/m, auto)". *(Internal flag name
   `hasFailingJobs` is unchanged; the display term was renamed from "FAILING" because "-ing"
-  reads as more urgent than "-ed" and drove mis-triage in walkthroughs.)*
+  reads as more urgent than "-ed" and drove mis-triage in walkthroughs.)* The chip may carry a
+  self-heal lane badge summarizing this class's recorded tendency to self-heal — see below
+  ([RETRYING-RISK-LANE.md](RETRYING-RISK-LANE.md), R2, #351/#352).
+- **Self-heal** — a RETRYING class leaving the failing state through engine-scheduled retries
+  alone, with no operator verb involved. Measured per error class from recorded history;
+  displayed as a lane on the RETRYING chip.
+- **Retrying spell** — one observed contiguous period (≥1 sampler bucket, 60s) in which an
+  error class held jobs in the RETRYING state; ends by self-healing or by escalation to
+  dead-letter. The unit of self-heal evidence.
+- **Self-heal lane** — the informational badge `usually self-heals / mixed self-heal record /
+  rarely self-heals / no reliable self-heal history yet`, derived from completed retrying
+  spells with a minimum-sample floor and hysteresis
+  ([RETRYING-RISK-LANE.md](RETRYING-RISK-LANE.md) §4). Informational only: it never enables,
+  disables, or softens any corrective action.
 - **Job lanes** — Flowable's four job queues: executable, timer, suspended, dead-letter.
   The lane a job sits in IS the diagnosis. A **fifth lane — external-worker jobs** (v1.x #7,
   read-only, Flowable 6.8+ only) sits alongside them, capability-gated: it renders only on a
@@ -709,6 +722,15 @@ so history survives DLQ drains:
   door (§7 v1.x #1, RESPONDER, full bulk rails) invoked with the incident's signature;
   recent error-class bulk jobs for the signature render read-only on the detail. The
   ledger itself never mutates engine state.
+- **Self-heal statistics** *(v2, research track R2 — backend ★ SHIPPED #351,
+  [RETRYING-RISK-LANE.md](RETRYING-RISK-LANE.md))*: each list item and the detail carry an
+  optional `selfHeal` block — the per-class self-heal rate (Wilson-bounded), time-to-self-heal
+  p50/p90, and sample size, derived from the ledger's own occurrence + audit history (zero new
+  engine calls). `INSUFFICIENT_HISTORY` (below the 10-unconfounded-completed-spell floor) is
+  the expected, common-for-a-long-time state, not an edge case — the pilot's own measured
+  baseline has zero unconfounded completed spells today. Informational only (hard rail): never
+  gates, reorders, or auto-triggers any corrective action. The risk-ranked view and chip badge
+  are the frontend slice (#352, not yet built).
 - **Non-goals v1** (recorded with the panel review): assignee/severity fields, auto-resolve
   policies, external alerting/deploy correlation, reporting dashboards/CSV export.
 

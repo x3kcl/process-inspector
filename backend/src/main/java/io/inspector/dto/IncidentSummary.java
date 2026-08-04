@@ -23,6 +23,14 @@ import java.util.Map;
  * either way (a conservative floor marker: the truncated engine may be out of scope, but
  * "lower bound" can never overstate). A zero-intersection incident is omitted entirely.
  *
+ * <p>{@code selfHeal} (RETRYING-RISK-LANE.md, #351) is the RETRYING risk lane's per-class
+ * statistic — informational only (hard rail: never gates or reorders any corrective-action
+ * rail), derived entirely from the BFF's own ledger + audit stores ({@code
+ * io.inspector.selfheal.SelfHealStatsService}), zero new engine calls. Present on EVERY
+ * incident (not just RETRYING ones — the class's tendency to self-heal is meaningful history
+ * regardless of its current live state); {@code lane = INSUFFICIENT_HISTORY} is the expected,
+ * common-for-a-long-time answer (measured 2026-08-04, R2-SELFHEAL-BASELINE-2026-08.md).
+ *
  * <p>{@code NON_NULL} so nullable fields ({@code exceptionClass}, {@code lastRegressedAt}) are
  * OMITTED on the wire, matching the generated contract's optionality (W3-2 doctrine).
  */
@@ -44,4 +52,5 @@ public record IncidentSummary(
         Map<String, Map<String, Long>> countsByEngine, // engineId → "defKey:vN" → count
         boolean partial, // true iff the breakdown was narrowed by scope projection
         int regressionCount,
-        Instant lastRegressedAt) {}
+        Instant lastRegressedAt,
+        SelfHealStats selfHeal) {}

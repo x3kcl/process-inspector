@@ -1,9 +1,13 @@
 # RETRYING risk lane — self-heal evidence for "it may self-heal" (R-BAU-11 candidate)
 
-Status: **DESIGN** — research track R2 (#347, umbrella #356); panel pass 2026-08-04 (one
-seat reviewed, one honestly vacant — §12); gates build slices #351 (stats API) / #352
-(badge + risk-ranked view) · **data-maturity gate NOT MET as of 2026-08-04** (§7; measured
-baseline `reviews/R2-SELFHEAL-BASELINE-2026-08.md`)
+Status: **DESIGN, backend build slice ★ SHIPPED** — research track R2 (#347, umbrella #356);
+panel pass 2026-08-04 (one seat reviewed, one honestly vacant — §12); gates build slices #351
+(stats API — **built**, `SelfHealStatsService` + `io.inspector.selfheal.*`, flag-off-by-floor:
+`inspector.selfheal.enabled=true` by default but every class self-gates at
+`INSUFFICIENT_HISTORY` until real volume accrues) / #352 (badge + risk-ranked view — not yet
+built) · **data-maturity gate NOT MET as of 2026-08-04** (§7; measured baseline
+`reviews/R2-SELFHEAL-BASELINE-2026-08.md`) — the gate governs ANNOUNCING the lane to the pilot
+(§7.2), not the #351 machinery, which ships regardless and renders honestly.
 
 ## 0. Provenance
 
@@ -371,16 +375,33 @@ expect it not to).
 
 ## 10. Build-slice surface sketch (#351 / #352 — binding shape, not binding field names)
 
-- **#351 backend:** `SelfHealStatsService` (derive-on-read per §3.2, Caffeine-cached per
-  §3.2's key rule, audit-side confound rule §3.3) — it owns the §4.2 dwell/monotonicity
-  state machine and serves the **displayed** lane; `GET /api/incidents` list items +
-  detail gain an optional `selfHeal` block `{lane, n, healed, wilsonLow, wilsonHigh,
-  ttsP50Seconds?, ttsP90Seconds?, excludedSpells, truncationTainted}` (rate/interval
-  fields absent below the floor — the DTO cannot express a sub-floor rate; `tts*` absent
-  when `healed = 0`, panel G18); config `inspector.selfheal.{enabled, window-days=90,
-  floor=10, dwell-cycles=10}`; the §7.2 transiently-failing harness seed + IT arc;
-  springdoc + `gen:api` regen; VIEWER floor (read-only, no new mutating surface — the
-  corrective-actions skill's rails are untouched by construction).
+- **#351 backend — ★ SHIPPED:** `SelfHealStatsService` (`io.inspector.selfheal.*`,
+  derive-on-read per §3.2, Caffeine-cached with a TTL aligned to the sampler beat per §3.2's
+  key rule, audit-side confound rule §3.3 via `AuditEntryRepository#findSuccessfulRetryJobAudits`)
+  — it owns the §4.2 dwell/monotonicity state machine (`DwellStateMachine`, ticked once per
+  COMPLETE sampler cycle off the same `AggregationSampledEvent` `IncidentLedgerService`
+  consumes) and serves the **displayed** lane; `IncidentSummary` (embedded in both the
+  `GET /api/incidents` list items and the detail) gains an optional `selfHeal` block exactly
+  per the sketch — `{lane, n, healed, wilsonLow, wilsonHigh, ttsP50Seconds?, ttsP90Seconds?,
+  excludedSpells, truncationTainted}` (rate/interval fields absent below the floor — the DTO
+  cannot express a sub-floor rate; `tts*` absent when `healed = 0`, panel G18); config
+  `inspector.selfheal.{enabled=true, window-days=90, floor=10, dwell-cycles=10}` (`enabled`
+  gates ONLY the dwell tick — reads always stay live, the `inspector.incidents.enabled`
+  precedent); no Flyway migration (pure aggregation, as expected); springdoc + `gen:api` regen
+  committed. VIEWER floor (read-only, no new mutating surface — the corrective-actions skill's
+  rails are untouched by construction, zero references from `CorrectiveActionService`/any
+  guard). Math proven rung-1/pure (`WilsonIntervalTest`, `RetrySpellExtractorTest`,
+  `SelfHealStatsComputerTest`, `DwellStateMachineTest`) over synthetic fixtures — no real
+  self-heal data exists to test against (§8). **Deferred, NOT built in this slice:** the
+  §7.2/G12 transiently-failing harness seed process + its IT arc (`engine-harness`/
+  `validate-bpmn` territory, tracked separately) — the LIKELY/MIXED lane paths and the §7.2
+  gate check therefore remain unreachable end-to-end until that seed lands; the rung-1 math
+  tests do not depend on it. Per-class corrective-action ATTRIBUTION (episode-level "closed
+  with/without action", and exact non-ERROR_CLASS-scope attribution) remains the OPEN gap the
+  design recorded — see #358; this slice solves the narrower CONFOUND-detection need (it never
+  needs to know WHICH class a retry targeted, only whether one landed on a hosting engine
+  inside the spell window) without touching the audit payload, but does not solve attribution
+  itself.
 - **#352 frontend:** the lane badge on RETRYING-bearing error-group cards + incident
   detail (chip copy per §4.1/§6); the risk-ranked RETRYING view ordered
   `SELF_HEAL_UNLIKELY` → `MIXED` → `INSUFFICIENT_HISTORY` → `LIKELY` (attention-first;
