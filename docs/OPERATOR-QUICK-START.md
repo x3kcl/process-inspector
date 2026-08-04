@@ -65,6 +65,37 @@ activity), read-only BPMN diagram with token/error markers, then lazy tabs:
 Use **"Copy for ticket"** (composite ID, definition+version, status, exception, failure
 time, deep link — one click) instead of hand-assembling ticket text.
 
+## Reading the attention ranking
+
+Stage 0 and Incident cards sort **`total DESC`** today — biggest count first, always
+(`inspector.triage.attention-ordering` ships **off**, ALARM-COST-MODEL.md §7). On a
+deployment where it's flipped on, cards instead sort by a cost-aware score: freshness and
+growth, weighted by this class's historic time-to-resolve — proven self-healers rank
+lower. A 300-count known-noisy class no longer permanently outranks an 8-count outage of
+something that actually matters. When you meet it:
+
+- **Order ≠ severity; order = "work this one first."** The biggest number is not
+  necessarily on top anymore — don't eyeball position, read the rationale.
+- **The `ranked by attention` chip's tooltip has the real numbers** — e.g. "21 failing ·
+  last seen 2 min ago · typically takes 4 h to resolve · no self-heal history." Those are
+  the server's own computed numbers, not vibes; if a card feels wrongly placed, that
+  tooltip is where you check, not your gut.
+- **Nothing is ever hidden.** Every card still renders regardless of score — ordering only
+  reshuffles position within a section. Acknowledge/never-hide semantics (R-BAU-01) are
+  untouched.
+- **Self-healers are demoted, never buried.** A class that reliably clears on its own gets
+  pushed down **at most 4×** (the 0.25 floor on the self-heal factor) — fresh and costly
+  enough, it can still rank near the top; it can never disappear.
+- **`SelfHealBadge`'s fraction is history, not a promise.** "usually self-heals (12/14,
+  typically ≤ 8 min)" means 12 of 14 *past* retrying spells cleared themselves — it is not
+  a guarantee about this one. A low fraction ("rarely self-heals") means treat it like
+  FAILED.
+
+*Why this note exists: published research on a redesigned alarm display (Laberge et al.
+2014) found the redesign ALONE made triage measurably worse — the plain list beat it on
+orienting accuracy and response time; the benefit only showed up paired with a trained
+response strategy. This note is that strategy's half — see ALARM-COST-MODEL.md §8.*
+
 ## Job lanes — the lane IS the diagnosis
 
 Flowable has no "FAILED" instance state; failure lives in the **job queues**. The Inspector

@@ -5,7 +5,7 @@ The reusable, goal-based usability harness. Three artifacts, one entry point:
 | Artifact | Role |
 |---|---|
 | `docs/usability/GOAL-CATALOG.md` | **Evaluator-only** rubric registry: one goal per register requirement (120 IDs), testability class, BUILT state, fixture gaps, run protocol, exit gate, result schema. Version-bump on every change — verdicts are only comparable within one catalog version. |
-| `docs/usability/MISSIONS.md` | **Tester-visible** briefs: 9 incident narratives (M1–M9) bundling the UI-class goals into realistic arcs, with `{{PLACEHOLDER}}` tokens the runner fills from live engine state. Never show testers the catalog. |
+| `docs/usability/MISSIONS.md` | **Tester-visible** briefs: 12 standard incident narratives (M1–M12) bundling the UI-class goals into realistic arcs, with `{{PLACEHOLDER}}` tokens the runner fills from live engine state, plus M13 — an A/B-protocol-only mission (R1 attention-ordering comprehension, ALARM-COST-MODEL.md §8) never included in the standard set. Never show testers the catalog. |
 | `.claude/workflows/usability-run.js` | The runner: stages fixtures → runs missions serially with naive Sonnet testers over the playwright MCP → ground-truth-verifies mutations over engine REST → restores fleet staging → reconciles to a gate verdict + `results.jsonl` + `RUN-REPORT.md`. |
 
 ## Prerequisites
