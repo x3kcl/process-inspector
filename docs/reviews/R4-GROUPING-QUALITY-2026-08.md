@@ -3,6 +3,20 @@
 **Date:** 2026-08-04
 **Verdict: NO MATERIAL DEFICIT. Track ends here — no v3 algorithm issue filed.**
 
+> **⚠️ Fleet-provenance note (added 2026-08-04, same day).** The corpus behind this verdict
+> is a **static, committed fixture**
+> (`backend/src/test/resources/grouping-quality/corpus.json`), so nothing below is
+> invalidated by later fleet changes — the measurement re-runs identically forever. Recorded
+> here only so the next reader knows the fleet moved after publication: the demo gained a
+> third engine (`engine-7`, Flowable 7.1.0), and #359 added an opt-in transiently-failing
+> fixture (`PI_SEED_SELF_HEALING=1`, **off by default**, so it is absent from every default
+> seed and from this corpus).
+>
+> If the corpus is ever **re-harvested**, both facts matter: a 7.x engine appends runtime IDs
+> to exception messages (a known wire-shape difference), and the self-healing fixture would
+> contribute a new signature. Re-harvesting is therefore a deliberate act that changes the
+> baseline — not a refresh.
+
 This is a measurement-only track (#350, part of the 2026-08 literature sweep, #356). Its
 whole point is to prove or disprove a hypothesis with real numbers before anyone is allowed
 to change `ErrorSignatureNormalizer` — no normalizer change, no `ALGO_VERSION` bump, and no

@@ -5,6 +5,23 @@
 on today's history; build slices #351/#352 may build the machinery, which will honestly
 show "insufficient history" for every class (see `RETRYING-RISK-LANE.md` §7).**
 
+> **⚠️ Fleet-provenance note (added 2026-08-04, same day).** These numbers were measured
+> against a **two-engine demo fleet, both Flowable 6.8.0**. Since then the demo gained a
+> third engine (`engine-7`, Flowable 7.1.0 — it had always been *declared* in
+> `application.yml` but had no container). Re-running the script below will therefore NOT
+> reproduce these totals: the same seed processes now fail on three engines, so class
+> membership and arrival counts legitimately grow. That growth is **real** and is counted
+> honestly by the arrivals aggregate — it is not the phantom-arrival defect fixed in #361.
+>
+> The verdict is unaffected. The gate fails on *closed episodes* and *self-heals*, of which
+> a third engine running the same permanently-failing seeds produces exactly zero more.
+>
+> Issue #359's transiently-failing fixture does **not** appear in these numbers and must
+> not: it is opt-in (`PI_SEED_SELF_HEALING=1`, off by default) and deliberately NOT enabled
+> on the demo, because §7.2's gate reads engine history over REST and **cannot distinguish a
+> harness fixture's self-heals from organic ones**. Seeding it here would manufacture the
+> very evidence this gate exists to measure honestly.
+
 Everything in this file is a **measured fact** extracted from the live pilot deployment's
 own read APIs — no design proposals here (those live in `RETRYING-RISK-LANE.md`, which
 cites these numbers). Reproduce with:
