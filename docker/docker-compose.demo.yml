@@ -208,6 +208,24 @@ services:
       - INSPECTOR_ENGINE_A_BASE_URL=http://engine-a:8080/flowable-rest/service
       - INSPECTOR_ENGINE_B_BASE_URL=http://engine-b:8080/flowable-rest/service
       - INSPECTOR_ENGINE_7_BASE_URL=http://engine-7:8080/flowable-rest/service
+      # SSRF egress boundary (application.yml `inspector.registry.egress-allowlist`, default
+      # [localhost, 127.0.0.0/8]). This is DEPLOY CONFIG and deliberately NOT editable in-app,
+      # so a compromised REGISTRY_ADMIN cannot retarget an engine at an arbitrary host.
+      #
+      # engine-a/engine-b never needed it: their rows were yaml-SEEDED into engine_registry
+      # before the write-path validator applies, so they bypassed it historically. Any engine
+      # RETARGETED through the admin API afterwards must clear it — which is what a bare
+      # `INSPECTOR_ENGINE_7_BASE_URL` could not do on its own, and why the engine-7 row stayed
+      # pinned to the dev harness's localhost:8083 with lifecycle=disabled.
+      #
+      # In-network service names only. Demo/dev scope: this stack's engines are throwaway,
+      # host-port-less containers on the compose `internal` network. A prod inspector sets a
+      # strict list out-of-band and NEVER lists private ranges (application.yml §registry).
+      - INSPECTOR_REGISTRY_EGRESS_ALLOWLIST_0=engine-a
+      - INSPECTOR_REGISTRY_EGRESS_ALLOWLIST_1=engine-b
+      - INSPECTOR_REGISTRY_EGRESS_ALLOWLIST_2=engine-7
+      - INSPECTOR_REGISTRY_EGRESS_ALLOWLIST_3=localhost
+      - INSPECTOR_REGISTRY_EGRESS_ALLOWLIST_4=127.0.0.0/8
       - ENGINE_A_PASSWORD=test
       - ENGINE_B_PASSWORD=test
       - ENGINE_7_PASSWORD=test
