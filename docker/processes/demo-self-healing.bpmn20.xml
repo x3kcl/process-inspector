@@ -46,9 +46,19 @@
        race for the STANDALONE dev/demo instance seed.sh starts. Integration tests instead
        drive `healed` directly over REST at a moment they choose (Awaitility-bound on real
        observed engine state, never a nominal-duration race) and pin `healDelay` to "P1D" so
-       the boundary timer never interferes — see SelfHealTransientArcIT, which deploys its
-       OWN copy of this template with the retry cycle shortened and a run-unique identifier
-       substituted in place of `selfHealGhost`.
+       the boundary timer never interferes — see SelfHealSeed, which deploys TWO run-unique
+       copies of this template (a run-unique identifier substituted in place of
+       `selfHealGhost` in both): a HEAL copy keeping this long cascade, and an ESCALATE copy
+       whose cascade is substituted for a short, wide one. The two spell outcomes pull in
+       opposite directions — a heal spell must still be RETRYING when the test heals it,
+       an escalation spell must genuinely EXHAUST inside an Awaitility bound — so one shared
+       cascade cannot serve both; that is why the substitution point exists, and why the
+       literal above is what SelfHealSeed matches on (it fails loudly if this is edited).
+
+       MEASURED on flowable-6 (2026-08-04): the async executor's timer-job acquire poll adds
+       ~9-10s to EVERY retry regardless of the nominal interval, so this cascade is worth
+       minutes of retrying, and the demo instance's own `healDelay` should be read against
+       that effective rate, not the nominal one.
 
        Deploy this ALONGSIDE demo-self-healing-baseline.bpmn20.xml, which shares the EXACT
        same `selfHealGhost` identifier (same signature) but fails FAST and PERMANENTLY: a

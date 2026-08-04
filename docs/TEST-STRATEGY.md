@@ -211,6 +211,17 @@ column; nightly runs the full cross.
   distinguishable spell samples need real bucket separation between `sampler.sampleOnce()`
   calls, which a short bucket plus an explicit Awaitility wait for the next bucket boundary
   (`SelfHealSeed#awaitNextBucket`) makes cheap and deterministic instead of racing wall time.
+  **A retry cascade is a wall-clock budget, and a nominal cycle badly understates it:** measured
+  on flowable-6 (2026-08-04) the async executor's timer-job acquire poll adds ~9-10 s to EVERY
+  retry, so `R3/PT1S` is ~20 s of real retrying, not ~3 s. A spell that must SELF-HEAL has to
+  still be retrying when the test heals it (that budget must outlast a whole bucket wait *plus*
+  a `sampleOnce()` fleet scan, whose cost grows with the fleet), while a spell that must
+  ESCALATE has to genuinely exhaust inside an Awaitility bound — opposite directions, so
+  `SelfHealSeed` deploys the template TWICE per run, a HEAL copy (`R30/PT5S`) and an ESCALATE
+  copy (`R2/PT40S`, few retries/wide interval). One shared cascade made the mixed-lane IT
+  order-dependent: it passed alone and failed after a longer IT had grown the fleet, because
+  the heal landed after the job had already dead-lettered — and a dead-letter job never retries
+  on its own, so no longer Awaitility bound could ever have rescued it.
 - Hierarchy depth via one self-recursive seed process (`depth < maxDepth` in-parameter);
   **cycle-guard is the documented exception to the never-mock-Flowable rule** (real engines
   cannot produce cycles) — tested at rung 1 over a fixture parent-map.

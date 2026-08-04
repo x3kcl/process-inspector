@@ -114,7 +114,7 @@ class SelfHealDwellSuppressionIT {
     @BeforeAll
     void deployTheRunUniqueFixture() throws Exception {
         engine = EngineSeed.requireReachable(ENGINE, "");
-        fixture = SelfHealSeed.deploy(engine, "Dwell", "R3/PT1S");
+        fixture = SelfHealSeed.deploy(engine, "Dwell");
     }
 
     @AfterAll
@@ -140,7 +140,7 @@ class SelfHealDwellSuppressionIT {
 
         /* ---- two self-healed spells cross the floor=2 — candidate becomes MIXED ---- */
         selfHealOneSpell(); // spell 1: start -> RETRYING -> sample -> heal -> completed -> sample
-        String second = SelfHealSeed.startTransient(engine, fixture);
+        String second = SelfHealSeed.startHealable(engine, fixture);
         SelfHealSeed.awaitRetrying(engine, second);
         SelfHealSeed.awaitNextBucket(BUCKET_WIDTH);
         sampler.sampleOnce(); // spell 2 START — also spell 1's look-ahead (n still 1 here: spell 2 is live)
@@ -188,7 +188,7 @@ class SelfHealDwellSuppressionIT {
     }
 
     private void selfHealOneSpell() {
-        String instance = SelfHealSeed.startTransient(engine, fixture);
+        String instance = SelfHealSeed.startHealable(engine, fixture);
         SelfHealSeed.awaitRetrying(engine, instance);
         SelfHealSeed.awaitNextBucket(BUCKET_WIDTH);
         sampler.sampleOnce(); // START

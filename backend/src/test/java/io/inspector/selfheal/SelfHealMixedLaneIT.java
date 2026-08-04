@@ -110,7 +110,7 @@ class SelfHealMixedLaneIT {
     @BeforeAll
     void deployTheRunUniqueFixture() throws Exception {
         engine = EngineSeed.requireReachable(ENGINE, "");
-        fixture = SelfHealSeed.deploy(engine, "Mixed", "R3/PT1S");
+        fixture = SelfHealSeed.deploy(engine, "Mixed");
     }
 
     @AfterAll
@@ -136,8 +136,13 @@ class SelfHealMixedLaneIT {
         selfHealOneSpell();
         /* ---- spell B: self-heal ---- */
         selfHealOneSpell();
-        /* ---- spell C: escalate — deliberately never healed ---- */
-        String escalating = SelfHealSeed.startTransient(engine, fixture);
+        /* ---- spell C: escalate — deliberately never healed. The ESCALATE copy of the fixture
+        (SelfHealSeed#ESCALATE_RETRY_CYCLE), whose few-retries/wide-interval cascade is the
+        opposite trade-off from the heal spells above: it is still retrying at the START
+        sample below and then genuinely exhausts, on its own, inside awaitDeadLettered's
+        bound. A single shared cascade cannot do both, which is what made this test
+        order-dependent before (see that constant's measurements). ---- */
+        String escalating = SelfHealSeed.startEscalating(engine, fixture);
         SelfHealSeed.awaitRetrying(engine, escalating);
         SelfHealSeed.awaitNextBucket(BUCKET_WIDTH);
         sampler.sampleOnce(); // spell C START — also spell B's look-ahead
@@ -163,7 +168,7 @@ class SelfHealMixedLaneIT {
     }
 
     private void selfHealOneSpell() {
-        String instance = SelfHealSeed.startTransient(engine, fixture);
+        String instance = SelfHealSeed.startHealable(engine, fixture);
         SelfHealSeed.awaitRetrying(engine, instance);
         SelfHealSeed.awaitNextBucket(BUCKET_WIDTH);
         sampler.sampleOnce(); // START

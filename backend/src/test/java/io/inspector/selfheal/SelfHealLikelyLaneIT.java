@@ -114,7 +114,7 @@ class SelfHealLikelyLaneIT {
     @BeforeAll
     void deployTheRunUniqueFixture() throws Exception {
         engine = EngineSeed.requireReachable(ENGINE, "");
-        fixture = SelfHealSeed.deploy(engine, "Likely", "R3/PT1S");
+        fixture = SelfHealSeed.deploy(engine, "Likely");
     }
 
     @AfterAll
@@ -143,7 +143,7 @@ class SelfHealLikelyLaneIT {
         not something this test works around incorrectly: the warm-up spell absorbs it,
         and every spell after it starts at a non-zero array index. ---- */
         for (int i = 0; i < SPELLS + 1; i++) {
-            String instance = SelfHealSeed.startTransient(engine, fixture);
+            String instance = SelfHealSeed.startHealable(engine, fixture);
             SelfHealSeed.awaitRetrying(engine, instance);
             SelfHealSeed.awaitNextBucket(BUCKET_WIDTH);
             sampler.sampleOnce(); // spell i START (retryingCount>0) — also spell (i-1)'s look-ahead

@@ -96,6 +96,15 @@ run-unique process id **and** a run-unique unresolvable-identifier token (the
 statistic — is isolated from every other seed, a parallel session, and the FIX-SELFHEAL-01/02
 demo instances themselves.
 
+FIX-SELFHEAL-01 is deployed by the ITs **twice** per run, same token (so both land in the one
+incident class), differing only in retry cascade: a **HEAL copy** keeping `R30/PT5S` and an
+**ESCALATE copy** substituted to `R2/PT40S`. The two spell outcomes the MIXED lane needs pull in
+opposite directions — a heal spell must still be RETRYING when the test heals it, an escalation
+spell must genuinely EXHAUST inside an Awaitility bound — and measured on flowable-6 the async
+executor's acquire poll adds ~9-10 s to every retry, so the budget is wall clock, not the
+nominal cycle (see TEST-STRATEGY §9). Both outcomes remain real engine behavior: the escalation
+is an organic retry exhaustion, never a job moved to the dead-letter lane by the test.
+
 ### 1.2 The SPEC §3 flag matrix → fixture map (mandatory cells, TEST-STRATEGY §6)
 
 | Matrix cell | Recipe (all over REST; poll-with-deadline, never sleeps) | Fixture ID |
