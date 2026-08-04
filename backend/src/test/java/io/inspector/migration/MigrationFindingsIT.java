@@ -58,8 +58,10 @@ import org.testcontainers.containers.PostgreSQLContainer;
  * {@code {engine-a (6.8, :8081), engine-7 (7.1, :8083)}}. Testing only 6.8 would let a 7.x behavior
  * change silently invalidate a downgrade with a green suite.
  *
- * <p>Local-only (not in ci.yml itClass, like {@code MigrationIT}). Requires:
- * docker compose -f docker/docker-compose.dev.yml --profile flowable-7 up -d
+ * <p>CI: the {@code migration-findings} matrix leg in {@code .github/workflows/ci.yml} (#362)
+ * boots {@code flowable-6}+{@code flowable-7}+postgres and runs this class. Locally:
+ * {@code COMPOSE_PROFILES=flowable-6,flowable-7,postgres docker compose -f
+ * docker/docker-compose.dev.yml up -d}.
  */
 @SpringBootTest(
         webEnvironment = SpringBootTest.WebEnvironment.RANDOM_PORT,

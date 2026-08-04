@@ -220,11 +220,17 @@ jobs:
       fail-fast: false
       matrix:
         include:
+          # composeProfiles is explicit on every leg: most are "${profile},postgres", but the
+          # dual-major findings leg boots two engine profiles at once (#362). "profile" is the
+          # smoke-test.sh / CI_PROJECT alias and may differ from the compose profile set.
           - profile: flowable-6
+            composeProfiles: "flowable-6,postgres"
             itClass: EngineHealthIT,SearchServiceIT,TriageAggregationIT,TriageCmmnScopeIT,CaseDetailIT,KwayPagingIT
           - profile: flowable-7
+            composeProfiles: "flowable-7,postgres"
             itClass: EngineHealth7IT,Search7IT,Triage7IT,ExternalWorkerJob7IT,Kway7IT
           - profile: legacy
+            composeProfiles: "legacy,postgres"
             itClass: EngineHealthLegacyIT,SearchLegacyIT,TriageLegacyIT,ExternalWorkerJobLegacyIT,TriageCmmnScopeLegacyIT
           # The Boot-layout leg: an APPLICATION embedding Flowable (flap) — /process-api with
           # root-level /cmmn-api + /external-job-api siblings, behind its own Basic-auth service
@@ -233,12 +239,21 @@ jobs:
           # ghcr.io/x3kcl/flap:latest, republished by flap on every push to master; the package
           # grants this repo Actions read access, so the run's own GITHUB_TOKEN pulls it.
           - profile: flap
+            composeProfiles: "flap,postgres"
             itClass: BootLayoutEngineIT
+          # Dual-major typed-findings leg (#362): MigrationFindingsIT calibrates severity on
+          # BOTH 6.8 and 7.1 in one suite (it-findings profile), so this leg boots both
+          # compose profiles at once. "migration-findings" is a smoke-test alias, not a
+          # compose profile. Costs one extra engine vs the flowable-6 leg (A+B already; +7);
+          # engines run on the host daemon, outside the runner mem_limit.
+          - profile: migration-findings
+            composeProfiles: "flowable-6,flowable-7,postgres"
+            itClass: MigrationFindingsIT
     env:
       # Job-level so EVERY compose invocation (up/exec/logs) sees the same profile set —
       # CLI --profile flags would scope only the command they're passed to, leaving
       # logs/exec on the docker/.env default.
-      COMPOSE_PROFILES: "${{ matrix.profile }},postgres"
+      COMPOSE_PROFILES: ${{ matrix.composeProfiles }}
     steps:
       - uses: actions/checkout@v4
       # Self-hosted runners share hp04's Docker daemon with a live demo + interactive dev

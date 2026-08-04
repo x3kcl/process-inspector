@@ -263,9 +263,13 @@ from seeded-to-zero).
 in any test class = build failure) · `frontend` (**ESLint strict-type-checked + Prettier**,
 **Vitest**, watermark check, tsc, vite build) · **OpenAPI drift gate** (boots the BFF,
 regenerates `schema.d.ts`, `git diff --exit-code`) · `docker` (multi-stage image build) ·
-`integration` matrix over **flowable-6 / flowable-7 / legacy** (compose up →
-`docker/smoke-test.sh` bounded readiness gate incl. postgres `pg_isready` → `docker/seed.sh`
-→ failsafe per-profile IT).
+`integration` matrix over **flowable-6 / flowable-7 / legacy / flap /
+migration-findings** (compose up → `docker/smoke-test.sh` bounded readiness gate incl.
+postgres `pg_isready` → `docker/seed.sh` → failsafe per-profile IT). The
+`migration-findings` leg boots flowable-6 + flowable-7 together so
+`MigrationFindingsIT` can calibrate typed-findings severity on both majors in one
+suite (#362 — the `SCOPE_COLLAPSE_TOKEN_LOSS` tier-3 blocker must not be able to
+regress silently).
 **Landed in `.github/workflows/nightly.yml` (NOT merge-blocking — 02:17 UTC + `workflow_dispatch`;
 a companion `nightly-watchdog.yml` at 08:41 UTC re-dispatches and opens a `ci`/`P4` alert issue if
 GitHub's scheduler silently drops the cron — issue #290):**

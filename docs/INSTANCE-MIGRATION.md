@@ -1026,4 +1026,6 @@ invalidated a downgrade with a green suite. The calibration-carrying tests are n
 `@ParameterizedTest` over `{engine-a (6.8), engine-7 (7.1)}` — both downgrades, both engine-direct
 recorders ([M9] and [M10]) and both new refusal tests — backed by a dedicated `it-findings` profile
 (a third engine in the shared `it-actions` registry would have widened every other suite's
-cross-engine fan-out).
+cross-engine fan-out). The suite runs in CI on the `migration-findings` matrix leg (#362), which
+boots `flowable-6`+`flowable-7` together so a regression of `SCOPE_COLLAPSE_TOKEN_LOSS` cannot
+land green.
