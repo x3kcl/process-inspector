@@ -70,6 +70,32 @@ inline in each file's header comment.*
 | FIX-ACME-07 | `acmeOrderOrchestrator` | throws global **signal** `orderPlaced`, then **event-based gateway** [message `paymentConfirmed` (correlated by `orderId`) · signal `orderCancelled` · timer PT2H] | waiting-on-event fixtures at the gateway; correlated-response completion (seed delivers the message to the specific waiting execution over REST) |
 | FIX-ACME-08 | `acmePaymentService` | **signal start event** `orderPlaced` → Finance user task | async inter-process comms — one instance auto-started per orchestrator start; Finance queue |
 
+#### 1.1b Self-heal transient fixture (issue #359, RETRYING-RISK-LANE.md §7.2/G12)
+
+*Status: landed in `docker/processes/demo-self-healing.bpmn20.xml` +
+`demo-self-healing-baseline.bpmn20.xml`, gated 6.8+. UNLIKE every FIX-PROC/FIX-ACME fixture
+above, this pair is **not** deployed by `seed.sh`'s default (no-arg) path — every OTHER seed
+fixture fails permanently by construction, which is exactly what the R4 grouping-quality corpus
+(`backend/src/test/resources/grouping-quality/corpus.json`) and the R2 self-heal baseline
+(`docs/reviews/R2-SELFHEAL-BASELINE-2026-08.md`) were measured against; seeding an organically-
+self-healing process by default would shift "what the demo/dev fleet looks like" for every
+consumer of those measurements. Opt in with `PI_SEED_SELF_HEALING=1 docker/seed.sh` (or a
+targeted engine invocation). Integration coverage: `SelfHealLikelyLaneIT` /
+`SelfHealMixedLaneIT` / `SelfHealDwellSuppressionIT` (`backend/src/test/java/io/inspector/
+selfheal/`) each deploy their OWN run-unique copy over REST — never through `seed.sh` — so they
+never touch the opt-in demo fixture's state either.*
+
+| ID | Key | Shape / failure mechanism | Manufactures |
+|---|---|---|---|
+| FIX-SELFHEAL-01 | `demoSelfHealing` | async service task, `${healed eq true or selfHealGhost.total gt 0}` (EL short-circuit OR — `healed` starts undefined/falsy, so the throwing branch runs); `R30/PT5S`; a NON-INTERRUPTING boundary timer (`timeDuration=${healDelay}`) fires once and sets `healed=true` in its OWN transaction (proven live, 2026-08-04: a variable set inside the SAME attempt that then throws rolls back with it — a same-transaction counter cannot survive its own failure, which is why this is clock- not counter-driven) | a **transiently**-failing job: N organic dead-letter-lane failures, then the NEXT retry attempt succeeds outright — the only seed process in the harness capable of a genuine, unconfounded SELF_HEALED retrying spell |
+| FIX-SELFHEAL-02 | `demoSelfHealingBaseline` | same expression/identifier (same error signature — PropertyNotFoundException's message is the literal expression text, R-SEM-03), `R1/PT1S`, no boundary timer | a fast, PERMANENT dead-letter that keeps the shared class's fleet-wide total non-zero between FIX-SELFHEAL-01 spells (`IncidentLedgerService#ingest` skips a zero-total group entirely — without a standing dead-letter the class would vanish from the occurrence series the instant nothing is currently retrying, and consecutive spells would merge into one) |
+
+Both are seeded strictly over REST (no `ACT_*` writes) and, in the ITs, deployed under a
+run-unique process id **and** a run-unique unresolvable-identifier token (the
+`IncidentLedgerArcIT` trick) so each test's error signature — and therefore its self-heal
+statistic — is isolated from every other seed, a parallel session, and the FIX-SELFHEAL-01/02
+demo instances themselves.
+
 ### 1.2 The SPEC §3 flag matrix → fixture map (mandatory cells, TEST-STRATEGY §6)
 
 | Matrix cell | Recipe (all over REST; poll-with-deadline, never sleeps) | Fixture ID |

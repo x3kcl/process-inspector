@@ -8,7 +8,10 @@ flag-off-by-floor: `inspector.selfheal.enabled=true` by default but every class 
 `frontend/src/incidents/{selfHeal.ts,SelfHealBadge.tsx}`, wired into `IncidentCard`/
 `IncidentDetail`/`sections.ts`) · **data-maturity gate NOT MET as of 2026-08-04** (§7; measured
 baseline `reviews/R2-SELFHEAL-BASELINE-2026-08.md`) — the gate governs ANNOUNCING the lane to
-the pilot (§7.2), not the #351/#352 machinery, which ships regardless and renders honestly.
+the pilot (§7.2), not the #351/#352 machinery, which ships regardless and renders honestly ·
+panel finding **G12 (blocker) ★ BUILT** by issue #359: the transiently-failing harness seed
+(§7.2/§10) that makes the LIKELY/MIXED lanes and the dwell/hysteresis mechanism testable
+end-to-end — opt-in only, never counted toward the §7.2 gate itself.
 
 ## 0. Provenance
 
@@ -321,13 +324,32 @@ volume accrues (per-class floor self-gates the display). What the gate governs i
 default (`inspector.selfheal.enabled`, default `true` for computation, view promotion per
 deployment once the gate check — re-run `scripts/measure-selfheal-baseline.py` — passes).
 
-**Testability follow-up (panel G12, adopted):** because the demo seeds cannot self-heal,
-the lane's LIKELY/MIXED paths and the gate check itself are currently unreachable
-end-to-end. #351 adds a **transiently-failing seed process** to the engine-harness set
-(`validate-bpmn` doctrine: e.g. an HTTP task against a harness stub that recovers after
-N attempts, retry cycle long enough to span ≥ 2 sampler buckets) so integration tests can
-drive real SELF-HEALED spells through the real sampler — the pilot gate itself is
-unchanged (test coverage is not pilot evidence).
+**Testability follow-up (panel G12, ★ BUILT — issue #359):** because the demo seeds cannot
+self-heal, the lane's LIKELY/MIXED paths and the gate check itself were unreachable
+end-to-end on every deployment (dev, CI, the demo). #359 adds a **transiently-failing seed
+process** to the engine-harness set (`validate-bpmn` doctrine — TEST-SCENARIOS.md §1.1b,
+FIX-SELFHEAL-01/02): `demo-self-healing.bpmn20.xml` is CLOCK-driven (a non-interrupting
+boundary timer sets `healed=true` in its own transaction — a variable written inside the
+SAME attempt that then throws rolls back with it, so a counter incremented across a single
+job's own retries cannot survive; proven live, 2026-08-04), paired with
+`demo-self-healing-baseline.bpmn20.xml` (same error signature, fast + permanent) so the
+class stays observable between spells. Three new ITs
+(`SelfHealLikelyLaneIT`/`SelfHealMixedLaneIT`/`SelfHealDwellSuppressionIT`,
+`backend/src/test/java/io/inspector/selfheal/`) drive real unconfounded SELF_HEALED spells
+(REST-direct healing, bypassing the BFF so no audit row exists to confound-flag) through the
+real sampler → ledger → self-heal-stats pipeline, proving: a class actually committing
+`SELF_HEAL_LIKELY` at the production floor (n=10, unlowered); the `SELF_HEAL_MIXED` boundary
+(a genuine mix of self-heals and a real organic escalation); and — the most novel arc,
+nothing had ever exercised this against real engine state before — the §4.2 rule 3 SERVER
+dwell/hysteresis counter actually suppressing a displayed-lane flip across multiple REAL,
+distinct sampler cycles, then committing exactly on the Nth. **The fixture is opt-in only**
+(`PI_SEED_SELF_HEALING=1`, never part of `seed.sh`'s default path) and **counts toward
+NEITHER the R4 grouping-quality corpus nor the §7.2 production data-maturity gate** — the
+gate reads real engine history over its own REST surface and has no way to distinguish a
+harness fixture's spells from organic ones, so keeping it off by default on any deployment
+that measures that gate (the demo/pilot) is what actually protects the gate's honesty; test
+coverage of the LIKELY/MIXED code paths is not, and was never meant to be, pilot evidence
+that the gate's real-history thresholds are met.
 
 ## 8. Measured baseline 2026-08-04 (MEASURED FACTS, not proposals)
 
@@ -413,11 +435,12 @@ expect it not to).
   rails are untouched by construction, zero references from `CorrectiveActionService`/any
   guard). Math proven rung-1/pure (`WilsonIntervalTest`, `RetrySpellExtractorTest`,
   `SelfHealStatsComputerTest`, `DwellStateMachineTest`) over synthetic fixtures — no real
-  self-heal data exists to test against (§8). **Deferred, NOT built in this slice:** the
-  §7.2/G12 transiently-failing harness seed process + its IT arc (`engine-harness`/
-  `validate-bpmn` territory, tracked separately) — the LIKELY/MIXED lane paths and the §7.2
-  gate check therefore remain unreachable end-to-end until that seed lands; the rung-1 math
-  tests do not depend on it. Per-class corrective-action ATTRIBUTION (episode-level "closed
+  self-heal data existed to test against at the time (§8). **§7.2/G12 transiently-failing
+  harness seed process + its IT arc: ★ BUILT, issue #359** (`engine-harness`/`validate-bpmn`
+  territory, tracked separately — see §7.2's own note above for the full shape); the
+  LIKELY/MIXED lane paths and the dwell/hysteresis mechanism are now proven end-to-end
+  against real engine state, though the rung-1 math tests never depended on it. Per-class
+  corrective-action ATTRIBUTION (episode-level "closed
   with/without action", and exact non-ERROR_CLASS-scope attribution) remains the OPEN gap the
   design recorded — see #358; this slice solves the narrower CONFOUND-detection need (it never
   needs to know WHICH class a retry targeted, only whether one landed on a hosting engine
@@ -499,8 +522,11 @@ the same caveat; **G5** cache key must cover audit reads (or 60 s TTL); **G7** d
 monotonicity state machine moved server-side, API serves the displayed lane; **G9**
 backtest method clarified in §8; **G10** informs-attention vs gates-rails line drawn
 explicitly; **G11** fleet-wide-statistic tooltip for scoped viewers; **G12** (the
-blocker) transiently-failing harness seed added to #351 so LIKELY paths and the gate
-check are testable end-to-end; **G13** Wilson non-independence caveat; **G14**
+blocker) transiently-failing harness seed tracked separately from #351 and delivered by
+issue #359 — ★ BUILT: LIKELY/MIXED paths and the dwell/hysteresis mechanism are now
+testable end-to-end against real engine state; the §7.2 gate check itself remains governed
+by real pilot history only (the fixture is opt-in and explicitly excluded from that gate —
+see §7.2/§10); **G13** Wilson non-independence caveat; **G14**
 INSUFFICIENT_HISTORY placed outside the monotonicity risk order; **G15/G16/G18** floor
 rationale, coverage definition (≥ 95 % buckets), `tts*`-absence condition made precise.
 

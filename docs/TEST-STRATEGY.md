@@ -198,6 +198,19 @@ column; nightly runs the full cross.
   Canonical idiom + sizing table: `engine-harness` skill.
 - Truncation tested with test-registry `dlq-scan-cap: 50`, `max-page-size: 10` (never by
   seeding 10k jobs).
+- **Transient self-heal fixture (issue #359, RETRYING-RISK-LANE.md §7.2/G12):** the ONE seed
+  process that fails organically then SUCCEEDS — `docker/processes/demo-self-healing.bpmn20.xml`
+  (FIX-SELFHEAL-01/02, TEST-SCENARIOS §1.1b) — is clock-driven (a non-interrupting boundary
+  timer, not a counter, since a variable set inside a failing attempt rolls back with it) and
+  opt-in only (`PI_SEED_SELF_HEALING=1`), never part of `seed.sh`'s default path (would shift
+  the fleet the R2/R4 baselines were measured against). The ITs (`SelfHealLikelyLaneIT`/
+  `SelfHealMixedLaneIT`/`SelfHealDwellSuppressionIT`) drive healing/escalation directly over
+  REST instead — Awaitility-bound on real observed engine state, never racing the boundary
+  timer's nominal duration — and additionally shrink `inspector.snapshot.bucket-width` (default
+  60 s) per-test: the occurrence store upserts one row per `(incident, wall-clock bucket)`, so
+  distinguishable spell samples need real bucket separation between `sampler.sampleOnce()`
+  calls, which a short bucket plus an explicit Awaitility wait for the next bucket boundary
+  (`SelfHealSeed#awaitNextBucket`) makes cheap and deterministic instead of racing wall time.
 - Hierarchy depth via one self-recursive seed process (`depth < maxDepth` in-parameter);
   **cycle-guard is the documented exception to the never-mock-Flowable rule** (real engines
   cannot produce cycles) — tested at rung 1 over a fixture parent-map.

@@ -1,0 +1,126 @@
+<?xml version="1.0" encoding="UTF-8"?>
+<definitions xmlns="http://www.omg.org/spec/BPMN/20100524/MODEL"
+             xmlns:xsi="http://www.w3.org/2001/XMLSchema-instance"
+             xmlns:flowable="http://flowable.org/bpmn"
+             xmlns:bpmndi="http://www.omg.org/spec/BPMN/20100524/DI"
+             xmlns:omgdc="http://www.omg.org/spec/DD/20100524/DC"
+             xmlns:omgdi="http://www.omg.org/spec/DD/20100524/DI"
+             typeLanguage="http://www.w3.org/2001/XMLSchema"
+             expressionLanguage="http://www.w3.org/1999/XPath"
+             targetNamespace="http://inspector.io/demo">
+
+  <!-- issue #359 / RETRYING-RISK-LANE.md §7.2 finding G12: the ONE seed process in the
+       harness that fails TRANSIENTLY. Every other fixture (error-zoo, ACME) fails
+       PERMANENTLY by construction — correct for DLQ/triage testing, but it means the R2
+       self-heal risk lane's SELF_HEAL_LIKELY/SELF_HEAL_MIXED paths (and the §7.2 gate
+       check itself) have no end-to-end path anywhere: not dev, not CI, not the demo
+       (docs/reviews/R2-SELFHEAL-BASELINE-2026-08.md: pilot history shows zero self-heals,
+       structurally, because the demo's own seeds cannot self-heal).
+
+       SHAPE (validate-bpmn "counter- or clock-driven service task"): CLOCK-driven.
+       flowable:expression="${healed eq true or selfHealGhost.total gt 0}" — `healed` starts
+       undefined (falsy: EL `eq` against null never throws), so EL's short-circuit OR falls
+       through to `selfHealGhost.total` — an unresolvable identifier, PropertyNotFoundException,
+       the SAME organic-dead-letter mechanism as error-zoo-missing-property.bpmn20.xml (proven
+       live against flowable-rest 6.8, 2026-08-04: the exceptionMessage is the FULL literal
+       expression text, "Unknown property used in expression: ${...}" — exactly what lets a
+       run-unique identifier name keep this fixture's error signature isolated from every other
+       seed, the same token trick IncidentLedgerArcIT already relies on for #261).
+
+       A NON-INTERRUPTING boundary timer on the failing task (duration = the `healDelay`
+       process variable, an ISO-8601 duration, REQUIRED at instance start or the process
+       cannot even start) fires once and sets `healed=true` — in its OWN independent,
+       always-committing transaction, unlike a variable set INSIDE the failing task's own
+       attempt (proven live: that write rolls back with everything else in the same throwing
+       command — a same-transaction counter cannot survive its own failure, which is why this
+       is clock-driven rather than a variable incremented across job retries). Once `healed`
+       is true, the OR short-circuits and `selfHealGhost.total` is never evaluated again — the
+       task's very next retry attempt succeeds outright. Real engine-driven self-heal: zero
+       custom beans (flowable-rest has none), zero engine mutation performed by any test or
+       operator actor, zero inspector corrective-action audit row (so it can never be flagged
+       as confounded by RETRYING-RISK-LANE.md §3.3's audit-side scan — this is what makes it a
+       GENUINE unconfounded self-heal observation, not a operator-retry-shaped one).
+
+       R30/PT5S (extension ELEMENT — the attribute form is silently ignored, validate-bpmn
+       §2) is a deliberately LONG retry cascade so a short `healDelay` reliably outlasts the
+       race for the STANDALONE dev/demo instance seed.sh starts. Integration tests instead
+       drive `healed` directly over REST at a moment they choose (Awaitility-bound on real
+       observed engine state, never a nominal-duration race) and pin `healDelay` to "P1D" so
+       the boundary timer never interferes — see SelfHealTransientArcIT, which deploys its
+       OWN copy of this template with the retry cycle shortened and a run-unique identifier
+       substituted in place of `selfHealGhost`.
+
+       Deploy this ALONGSIDE demo-self-healing-baseline.bpmn20.xml, which shares the EXACT
+       same `selfHealGhost` identifier (same signature) but fails FAST and PERMANENTLY: a
+       spell can only be judged SELF_HEALED/ESCALATED while the class's fleet-wide total
+       stays non-zero between samples (RETRYING-RISK-LANE.md §3.1 — the ledger writes an
+       occurrence row only for a "live" group, `IncidentLedgerService#ingest`), so a
+       standing baseline dead-letter is what keeps the class observable across a transient
+       job's own retrying → healed/zero transition instead of the class vanishing from the
+       ledger entirely the instant nothing is currently failing.
+
+       Gated 6.8+ by seed.sh (boundary-timer + extension-element retry-cycle parity with the
+       rest of the 6.8+-gated fixture set; never deployed to the legacy 6.3.1 profile). -->
+  <process id="demoSelfHealing" name="Demo Self-Healing (transient failure)" isExecutable="true">
+    <startEvent id="start"/>
+    <sequenceFlow id="flow1" sourceRef="start" targetRef="attempt"/>
+    <serviceTask id="attempt" name="Transient attempt"
+                 flowable:async="true"
+                 flowable:expression="${healed eq true or selfHealGhost.total gt 0}">
+      <extensionElements>
+        <flowable:failedJobRetryTimeCycle>R30/PT5S</flowable:failedJobRetryTimeCycle>
+      </extensionElements>
+    </serviceTask>
+    <boundaryEvent id="healTimer" attachedToRef="attempt" cancelActivity="false">
+      <timerEventDefinition>
+        <timeDuration>${healDelay}</timeDuration>
+      </timerEventDefinition>
+    </boundaryEvent>
+    <sequenceFlow id="flowHeal" sourceRef="healTimer" targetRef="heal"/>
+    <serviceTask id="heal" name="Engine-driven heal (boundary timer — no operator, no audit row)"
+                 flowable:expression="${execution.setVariable('healed', true)}"/>
+    <sequenceFlow id="flowHealEnd" sourceRef="heal" targetRef="healedEnd"/>
+    <endEvent id="healedEnd"/>
+    <sequenceFlow id="flow2" sourceRef="attempt" targetRef="end"/>
+    <endEvent id="end"/>
+  </process>
+
+  <bpmndi:BPMNDiagram id="BPMNDiagram_demoSelfHealing">
+    <bpmndi:BPMNPlane id="BPMNPlane_demoSelfHealing" bpmnElement="demoSelfHealing">
+      <bpmndi:BPMNShape id="BPMNShape_start" bpmnElement="start">
+        <omgdc:Bounds x="100" y="100" width="30" height="30"/>
+      </bpmndi:BPMNShape>
+      <bpmndi:BPMNShape id="BPMNShape_attempt" bpmnElement="attempt">
+        <omgdc:Bounds x="180" y="85" width="100" height="60"/>
+      </bpmndi:BPMNShape>
+      <bpmndi:BPMNShape id="BPMNShape_end" bpmnElement="end">
+        <omgdc:Bounds x="330" y="101" width="28" height="28"/>
+      </bpmndi:BPMNShape>
+      <bpmndi:BPMNShape id="BPMNShape_healTimer" bpmnElement="healTimer">
+        <omgdc:Bounds x="212" y="130" width="30" height="30"/>
+      </bpmndi:BPMNShape>
+      <bpmndi:BPMNShape id="BPMNShape_heal" bpmnElement="heal">
+        <omgdc:Bounds x="200" y="200" width="100" height="60"/>
+      </bpmndi:BPMNShape>
+      <bpmndi:BPMNShape id="BPMNShape_healedEnd" bpmnElement="healedEnd">
+        <omgdc:Bounds x="350" y="215" width="28" height="28"/>
+      </bpmndi:BPMNShape>
+      <bpmndi:BPMNEdge id="BPMNEdge_flow1" bpmnElement="flow1">
+        <omgdi:waypoint x="130" y="115"/>
+        <omgdi:waypoint x="180" y="115"/>
+      </bpmndi:BPMNEdge>
+      <bpmndi:BPMNEdge id="BPMNEdge_flow2" bpmnElement="flow2">
+        <omgdi:waypoint x="280" y="115"/>
+        <omgdi:waypoint x="330" y="115"/>
+      </bpmndi:BPMNEdge>
+      <bpmndi:BPMNEdge id="BPMNEdge_flowHeal" bpmnElement="flowHeal">
+        <omgdi:waypoint x="227" y="160"/>
+        <omgdi:waypoint x="227" y="200"/>
+      </bpmndi:BPMNEdge>
+      <bpmndi:BPMNEdge id="BPMNEdge_flowHealEnd" bpmnElement="flowHealEnd">
+        <omgdi:waypoint x="300" y="230"/>
+        <omgdi:waypoint x="350" y="229"/>
+      </bpmndi:BPMNEdge>
+    </bpmndi:BPMNPlane>
+  </bpmndi:BPMNDiagram>
+</definitions>
