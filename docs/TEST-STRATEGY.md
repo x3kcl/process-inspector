@@ -69,6 +69,15 @@ instead of what it meant to test. Pinned literals fail loudly on the bump that f
 but a pinned *stub key* (`findBySignatureHashAndAlgoVersion("h", 1)`) fails quietly — it just
 stops matching and the code under test sees an empty result.
 
+**A separate, NON-gating corpus measures grouping *quality*, not the contract.** Issue #350
+(R4) added `backend/src/test/resources/grouping-quality/corpus.json`
+(`scripts/harvest-grouping-quality-corpus.py`, `GroupingQualityBaselineTest`) — a
+hand-labeled-ground-truth corpus used to measure over-/under-grouping (Drain/dedupT
+methodology) against the current normalizer. Do not confuse it with the golden corpus above:
+the golden corpus gates `ErrorSignatureNormalizer` itself (zero-unparseable, exact
+class-mapping, `#270` stability); the grouping-quality corpus never gates anything — it is a
+one-shot baseline + regression pin, findings in `docs/reviews/R4-GROUPING-QUALITY-2026-08.md`.
+
 ## 5. Security testing (R-TEST-06)
 Scope: path-whitelist bypass (traversal, double-encoding, method override), the full
 RBAC×tenant×mode matrix incl. SSE and bulk endpoints, CSRF, ARCH §6 fencing probed **from

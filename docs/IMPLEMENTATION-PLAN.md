@@ -187,6 +187,16 @@ OPERATIONS.md §8.
   bypass (`inspector.triage` knobs). Proven on all three profiles: `TriageAggregationIT`
   (WireMock transparent proxy — request-journal proof of cache hits and `size:1` wire
   bodies), `Triage7IT` (Jakarta error-shape drift), `TriageLegacyIT` (6.3.1 legs).
+  **Grouping-quality baseline (issue #350, R4, 2026-08-04) — NO MATERIAL DEFICIT, no
+  algorithm change:** measured algo v2's over-/under-grouping (Drain/dedupT methodology)
+  against a hand-labeled corpus harvested live over REST
+  (`scripts/harvest-grouping-quality-corpus.py` → `backend/src/test/resources/grouping-quality/corpus.json`,
+  `GroupingQualityBaselineTest`) — 0%/0% on the organic corpus against thresholds fixed
+  before measuring. One real, bounded over-grouping case was found and pinned as a case
+  study (two distinct ACME integrations sharing Flowable's generic HTTP-connector wrapper
+  message) but does not cross the material-deficit bar. Per the issue's own exit criterion,
+  no v3 algorithm issue was filed — full writeup in
+  `docs/reviews/R4-GROUPING-QUALITY-2026-08.md`.
 - **Done when:** from the landing, one click on an error group reaches a pre-filtered list;
   opening a stuck instance shows why it's stuck without any click; the link pastes into a
   ticket and reopens the same view.
