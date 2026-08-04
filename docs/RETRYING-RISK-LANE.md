@@ -420,7 +420,15 @@ expect it not to).
   (`selfHeal.test.ts`, `SelfHealBadge.test.tsx`, `sections.test.ts`); `SELF_HEAL_LIKELY`/
   `SELF_HEAL_MIXED` are exercised only over synthetic props (component-level, not end-to-end —
   the harness seed that would make them reachable live is the same #351-deferred follow-up
-  noted above).
+  noted above). **Ordering role superseded by #354 (ALARM-COST-MODEL.md §3.1/§4.1/§12):** once
+  #353's server attention score shipped on the SAME `IncidentSummary` rows — a score whose `S`
+  factor is itself derived from this lane (§11's `lane → p_heal` band map) — sorting by
+  `compareSelfHealRisk` on top of it would double-count self-heal and override the server's
+  order. `incidents/attention.ts#compareIncidentOrder` now drives `sections.ts#bucketIncidents`'
+  REGRESSED/OPEN/QUIET ordering, using the server `attention` score when present and falling back
+  to EXACTLY this `compareSelfHealRisk` ordering when it is absent — the shipped, flag-off,
+  expected-today case, so this section's behavior is UNCHANGED in practice. `compareSelfHealRisk`
+  itself and `SelfHealBadge`'s rendering are untouched — only the ordering ROLE moved.
 
 ## 11. Non-goals & explicitly rejected
 

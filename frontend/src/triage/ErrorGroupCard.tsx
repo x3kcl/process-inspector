@@ -4,6 +4,7 @@ import { useMe, roleOn } from '../api/me'
 import type { EngineDto, ErrorGroup } from '../api/model'
 import { actionGate, VERBS } from '../actions/catalog'
 import { ActionHint } from '../components/ActionHint'
+import { AttentionBadge } from '../components/AttentionBadge'
 import { EnvBadge } from '../components/EnvBadge'
 import { formatCount } from '../lib/format'
 import { Ts } from '../lib/Ts'
@@ -66,6 +67,7 @@ export function ErrorGroupCard({ group, enginesById, lowerBound, asOf }: Props) 
             </code>
           )}
           <span className="normalized-message">{group.normalizedMessage ?? '(no message)'}</span>
+          <AttentionBadge attention={group.attention} />
           {badge !== null && (
             <span
               className="grew-badge"

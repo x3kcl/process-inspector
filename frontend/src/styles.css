@@ -4272,6 +4272,18 @@ button.skip-link {
   margin: 4px 0;
 }
 
+/* ---- attention-ranking badge (ALARM-COST-MODEL.md §4.3/§11, #354) ----
+   Informational only, like `.scope-badge` — the ordering is a ranking hint, not a risk verdict,
+   so it deliberately does NOT borrow the self-heal lane's success/warning/danger hues. */
+.attention-badge {
+  border: 1px solid var(--color-text-placeholder);
+  border-radius: 8px;
+  padding: 0 6px;
+  font-size: 11px;
+  color: var(--color-text-secondary);
+  background: var(--color-badge-bg-subtle);
+}
+
 .archived-generations-toggle {
   margin: 10px 0;
 }

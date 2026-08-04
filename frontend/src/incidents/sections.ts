@@ -5,7 +5,7 @@
 // OPTIONAL on the wire (generated DTO) — every branch fails toward VISIBLE, never toward
 // silently dropping an incident a caller can't otherwise find (honesty over tidiness).
 import type { IncidentSummary } from '../api/model'
-import { compareSelfHealRisk } from './selfHeal'
+import { compareIncidentOrder } from './attention'
 
 export interface IncidentSections {
   regressed: IncidentSummary[]
@@ -31,6 +31,15 @@ function byLastSeenDesc(a: IncidentSummary, b: IncidentSummary): number {
 // hand-written parallel fetch. REGRESSED/OPEN/QUIET are still meaningfully "which of these
 // needs a look"; RESOLVED/archived stay `byLastSeenDesc` (historical record, no self-heal
 // urgency left to rank).
+//
+// #354 reconciliation (ALARM-COST-MODEL.md §3.1/§11 — see incidents/attention.ts's doc comment
+// for the full reasoning): #353 later attached a SERVER-computed attention score to these same
+// rows, and that score already folds in the self-heal signal (§11's lane→p_heal map) that
+// `compareSelfHealRisk` alone ranks by. Sorting by `compareSelfHealRisk` on top of a
+// server-attention-ordered list would double-count self-heal and override the server's order —
+// so the three not-yet-resolved sections below now sort by `compareIncidentOrder`, which ranks
+// by the server `attention` score when present and falls back to EXACTLY this original
+// `compareSelfHealRisk` ordering when it is absent (the flag-off, expected-today case, §7/§11).
 
 export function bucketIncidents(incidents: IncidentSummary[]): IncidentSections {
   const regressed: IncidentSummary[] = []
@@ -60,9 +69,9 @@ export function bucketIncidents(incidents: IncidentSummary[]): IncidentSections 
     }
   }
 
-  regressed.sort(compareSelfHealRisk)
-  open.sort(compareSelfHealRisk)
-  quiet.sort(compareSelfHealRisk)
+  regressed.sort(compareIncidentOrder)
+  open.sort(compareIncidentOrder)
+  quiet.sort(compareIncidentOrder)
   resolved.sort(byLastSeenDesc)
   archived.sort(byLastSeenDesc)
 

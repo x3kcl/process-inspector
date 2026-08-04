@@ -304,8 +304,8 @@ Answers "what is broken, how much, where" in zero keystrokes:
   state joins the dashboard at render time (the aggregation cache never carries it); a
   normalizer bump orphans old-generation acks ("needs re-binding", never silent).
   Without this the landing rots into alarm fatigue within weeks.
-- **Attention ordering** *(v2, research track R1 — backend ★ SHIPPED #353,
-  [ALARM-COST-MODEL.md](ALARM-COST-MODEL.md); FLAG-OFF by default)*: error-group cards are
+- **Attention ordering** *(v2, research track R1 — backend ★ SHIPPED #353, frontend ★ SHIPPED
+  #354, [ALARM-COST-MODEL.md](ALARM-COST-MODEL.md); FLAG-OFF by default)*: error-group cards are
   ordered **count-only (`total DESC`)** — a 300-count known-noisy class outranks an 8-count
   outage of a critical dependency forever. Behind `inspector.triage.attention-ordering`
   (**default false**) they can instead be ordered by a cost-aware attention score
@@ -320,8 +320,15 @@ Answers "what is broken, how much, where" in zero keystrokes:
   no ledger history the ordering is exactly today's count-only ordering** — measured across
   all 21,229 recorded pilot buckets (Kendall τ = 1.0, zero position changes). The flag ships
   false because the design's numeric data-maturity gate is measured NOT MET (0 of 5 axes);
-  flipping it requires re-measuring that gate. The ordered UI and its tooltip are the frontend
-  slice (#354, not yet built).
+  flipping it requires re-measuring that gate. **The frontend (#354) renders whatever order it
+  is served, never re-sorting Stage-0 cards itself** — the BFF already reorders `errorGroups`
+  server-side when the flag is on (`AttentionScoreService#decorate`, ALARM-COST-MODEL.md §11) —
+  and shows a visible `AttentionBadge` (`components/AttentionBadge.tsx`) carrying the server's
+  rationale VERBATIM in its tooltip alongside a fixed glossary sentence explaining the ordering;
+  the badge renders nothing when `attention` is absent (the shipped, flag-off, expected-today
+  case). No ordering toggle exists or was built — the design specifies none (§3.1/§11 describe
+  a single server-computed order, not an operator-facing choice). See §4e below for how this
+  reconciles with #352's Incident Ledger self-heal-risk sort.
 - **Annotations** (R-BAU-03, v1.x): OPERATOR+ may attach per-signature guidance (≤200 chars
   + runbook URL + optionally one **endorsed verb with conditions** — "Retry, but only after
   15:00"). Rendered on the group card and every member's why-stuck strip; the endorsed verb
@@ -758,6 +765,17 @@ so history survives DLQ drains:
   surface the shipped DTO drives. `SELF_HEAL_LIKELY`/`SELF_HEAL_MIXED` are not reachable
   end-to-end on this deployment (the transiently-failing harness seed that would exercise them
   is a deferred #351 follow-up) — covered by component tests over synthetic props instead.
+  **Reconciled with attention ordering (#354, ALARM-COST-MODEL.md §3.1/§11):** `IncidentSummary`
+  also carries the optional #353 `attention` score, and that score already folds in this SAME
+  self-heal signal (§11's `lane → p_heal` band map) — sorting by `compareSelfHealRisk` on top of
+  an attention-ordered list would double-count self-heal and silently override the server's
+  order. `incidents/attention.ts#compareIncidentOrder` (used by `sections.ts#bucketIncidents` in
+  place of a bare `compareSelfHealRisk`) ranks by the server `attention` score — mirroring the
+  backend's own `score DESC → total DESC → signatureHash ASC` tie-break — whenever it is present,
+  and falls back to EXACTLY the `compareSelfHealRisk` ordering above when it is absent (the
+  shipped, flag-off, expected-today case, unchanged from #352). The Incident Ledger card and
+  detail also render the shared `AttentionBadge` off `incident.attention` alongside the
+  self-heal badge.
 - **Non-goals v1** (recorded with the panel review): assignee/severity fields, auto-resolve
   policies, external alerting/deploy correlation, reporting dashboards/CSV export.
 
