@@ -27,6 +27,7 @@ public record InspectorProperties(
         @Valid Bulk bulk,
         @Valid Snapshot snapshot,
         @Valid Incidents incidents,
+        @Valid SelfHeal selfHeal,
         @Valid List<EngineConfig> engines) {
     /** Engine ids are stable slugs used in composite instance IDs (R-SEM-08) — never rename. */
     public static final String ENGINE_ID_PATTERN = "^[a-z0-9][a-z0-9._-]{0,63}$";
@@ -201,6 +202,59 @@ public record InspectorProperties(
         public int listCapOrDefault() {
             return listCap != null ? listCap : 500;
         }
+    }
+
+    public SelfHeal selfHealOrDefault() {
+        return selfHeal != null ? selfHeal : new SelfHeal(null, null, null, null);
+    }
+
+    /**
+     * The RETRYING risk lane's self-heal statistics knobs (RETRYING-RISK-LANE.md §7.1/§10,
+     * #351, gated on the locked design #347). {@code enabled} gates ONLY the §4.2 dwell-ticking
+     * event listener — reads stay live regardless (an unticked class answers the safe {@code
+     * INSUFFICIENT_HISTORY} default), the identical doctrine {@code inspector.incidents.enabled}
+     * established for the ledger's own read path. {@code windowDays} (90, ≤ the 400-day
+     * occurrence retention) bounds the derive-on-read scan. {@code floor} (10 — measured,
+     * RETRYING-RISK-LANE.md §7.1: the smallest n where even a perfect/zero record's Wilson bound
+     * clears 0.70/0.30, PLUS one spare observation so the floor-entry state sits inside the
+     * hysteresis band rather than on its knife edge) is the minimum unconfounded completed
+     * spells before any rate/interval renders. {@code dwellCycles} (10, ~10 minutes at the 60s
+     * sampler beat) is the minimum consecutive COMPLETE cycles a newly computed lane must hold
+     * before it becomes the DISPLAYED one (§4.2 rule 3).
+     */
+    public record SelfHeal(Boolean enabled, Integer windowDays, Integer floor, Integer dwellCycles) {
+        public boolean enabledOrDefault() {
+            return enabled == null || enabled;
+        }
+
+        public int windowDaysOrDefault() {
+            return windowDays != null ? windowDays : 90;
+        }
+
+        public int floorOrDefault() {
+            return floor != null ? floor : 10;
+        }
+
+        public int dwellCyclesOrDefault() {
+            return dwellCycles != null ? dwellCycles : 10;
+        }
+    }
+
+    /**
+     * Pre-self-heal 7-arg convenience constructor (no {@code selfHeal}) → defaults via
+     * {@link #selfHealOrDefault()}, so every existing call site (production config binding
+     * excepted — that always uses the full YAML-bound shape) keeps compiling unchanged
+     * (unit-test-patterns: no constructor churn).
+     */
+    public InspectorProperties(
+            Integer fanoutParallelism,
+            Integer hierarchyMaxDepth,
+            Triage triage,
+            Bulk bulk,
+            Snapshot snapshot,
+            Incidents incidents,
+            List<EngineConfig> engines) {
+        this(fanoutParallelism, hierarchyMaxDepth, triage, bulk, snapshot, incidents, null, engines);
     }
 
     // Multiple constructors → Spring cannot infer the binder; pin it to the canonical one.

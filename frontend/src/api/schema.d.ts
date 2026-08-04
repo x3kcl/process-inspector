@@ -2066,6 +2066,7 @@ export interface components {
             /** Format: int32 */
             regressionCount?: number;
             sampleRawMessage?: string;
+            selfHeal?: components["schemas"]["SelfHealStats"];
             signatureHash?: string;
             state?: string;
         };
@@ -2614,6 +2615,24 @@ export interface components {
             statusCounts?: {
                 [key: string]: number;
             };
+        };
+        SelfHealStats: {
+            /** Format: int32 */
+            excludedSpells?: number;
+            /** Format: int32 */
+            healed?: number;
+            lane?: string;
+            /** Format: int32 */
+            n?: number;
+            truncationTainted?: boolean;
+            /** Format: int64 */
+            ttsP50Seconds?: number;
+            /** Format: int64 */
+            ttsP90Seconds?: number;
+            /** Format: double */
+            wilsonHigh?: number;
+            /** Format: double */
+            wilsonLow?: number;
         };
         SequenceFinding: {
             /** Format: int32 */

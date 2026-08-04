@@ -393,6 +393,7 @@ class IncidentLifecycleServiceTest {
                 Map.of(),
                 false,
                 0,
+                null,
                 null);
     }
 

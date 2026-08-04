@@ -202,6 +202,23 @@ inspector:
     regression-min-count: 1
     retention-days: 400
     list-cap: 500
+  # RETRYING risk lane self-heal statistics (RETRYING-RISK-LANE.md, #351, gated on the locked
+  # design #347). Pure derive-on-read over the incident ledger's own occurrence + audit stores
+  # (zero new engine calls, zero new persistence) — enabled=true only starts the §4.2
+  # dwell-ticking listener; GET /api/incidents reads stay live either way and answer the safe
+  # INSUFFICIENT_HISTORY default for any class the listener hasn't ticked yet. window-days
+  # bounds the scan (≤ the 400d occurrence retention); floor is the §7.1 measured sample-size
+  # floor (10 unconfounded completed spells) below which no rate/interval renders; dwell-cycles
+  # is the minimum consecutive COMPLETE sampler cycles (~10 min at the 60s beat) a newly
+  # computed lane must hold before it becomes the DISPLAYED one. Data-maturity gate (§7.2, pilot
+  # ship gate for the RATE DISPLAY — not this computation) is NOT MET as of 2026-08-04
+  # (reviews/R2-SELFHEAL-BASELINE-2026-08.md) — every class renders INSUFFICIENT_HISTORY today,
+  # by construction of the floor, not because this is disabled.
+  selfheal:
+    enabled: true
+    window-days: 90
+    floor: 10
+    dwell-cycles: 10
   # Audit golden-master retention (M4-CLOSEOUT §A2 / S5b). retention-days MUST be ≥ 400 — the
   # purge_audit() DB floor refuses any younger cutoff, so a smaller value would never purge.
   # The @Scheduled AuditRetentionPurger drops whole aged-out monthly partitions (one at a time,
