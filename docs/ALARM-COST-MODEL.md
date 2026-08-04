@@ -345,6 +345,18 @@ restart-as-new, 3 registry-seed. Within the ledger-observable window (≥ 07-19)
 the pilot's entire intervention history — and it is direct empirical support for the
 R-SEM-13 demoted-retry doctrine.)
 
+**⚠️ Confounded — do not read this number naively (issue #358, follow-up track).** This
+corpus is dominated by seed processes that fail permanently by construction, biasing the
+rate toward zero the same way #347 found the self-heal rate unobservable on this corpus.
+`docs/reviews/R5-RETRY-EFFECTIVENESS-2026-08.md` partitions the same interventions by
+whether the target was a known always-fail fixture or the deployment's one documented
+organic class (`acmeApiOutage`) and finds the partitioned organic-only number is **still
+not informative** — not because the partition failed, but because `acmeApiOutage` is
+itself a deterministic, permanent failure by construction (an RFC 2606 reserved-`.invalid`
+host), a second, subtler instance of the identical confound one level down. Full method,
+the attribution mechanism that replaces the manual cross-matching below, and the
+pre-registered floor: see that report.
+
 **Not exposed over REST (stated per the extraction mandate):** per-class ↔ audit-action
 attribution. Audit rows carry `instanceId` but no signature; `payload` is null over the API
 (R-AUD-03 minimization), so `relatedBulkJobs` is empty even for the 07-21 class-scoped bulk.
