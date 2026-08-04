@@ -266,6 +266,35 @@ seed_engine() { # base-url
     echo "  demoExternalWorker skipped — engine $ver predates external workers (< 6.8)."
   fi
 
+  # issue #359 (RETRYING-RISK-LANE.md §7.2/G12) — the ONE transiently-failing seed process in
+  # the harness (validate-bpmn: clock-driven, via demo-self-healing.bpmn20.xml's boundary
+  # timer). OFF by default, opt in with PI_SEED_SELF_HEALING=1: every OTHER fixture here is
+  # what the R4 grouping-quality corpus (backend/src/test/resources/grouping-quality/corpus.json,
+  # docs/reviews/R4-GROUPING-QUALITY-2026-08.md) and the R2 self-heal baseline
+  # (docs/reviews/R2-SELFHEAL-BASELINE-2026-08.md) were measured against — both are static,
+  # committed snapshots, so this fixture can never silently invalidate them, but seeding it by
+  # default would still shift "what the demo/dev fleet looks like" for anyone who reseeds after
+  # this change, which the issue says to coordinate rather than do quietly. It also never counts
+  # toward the §7.2 production data-maturity gate either way — that gate reads real engine
+  # history over REST and has no way to tell a harness fixture's spells apart from organic ones,
+  # which is exactly why this stays opt-in on any deployment that cares about that gate's honesty
+  # (the demo/pilot). demoSelfHealingBaseline goes first: it establishes the standing dead-letter
+  # that keeps the shared class observable across demoSelfHealing's retrying-then-healed dips
+  # (see that file's own doc comment).
+  if [ "${PI_SEED_SELF_HEALING:-0}" = "1" ]; then
+    if python3 -c "import sys;v=('$ver'+'.0.0').split('.');sys.exit(0 if (int(v[0])>6 or (int(v[0])==6 and int(v[1])>=8)) else 1)" 2>/dev/null; then
+      deploy_if_missing "$E" demoSelfHealingBaseline demo-self-healing-baseline.bpmn20.xml
+      deploy_if_missing "$E" demoSelfHealing         demo-self-healing.bpmn20.xml
+      pid=$(start_instance "$E" '{"processDefinitionKey":"demoSelfHealingBaseline","variables":[]}')
+      echo "  demoSelfHealingBaseline $pid (standing dead-letter — keeps the class observable)"
+      pid=$(start_instance "$E" '{"processDefinitionKey":"demoSelfHealing","variables":[
+        {"name":"healDelay","type":"string","value":"PT30S"}]}')
+      echo "  demoSelfHealing         $pid (clock-driven — self-heals ~30s after its first failure)"
+    else
+      echo "  demoSelfHealing skipped — engine $ver predates the boundary-timer construct (< 6.8)."
+    fi
+  fi
+
   seed_acme "$E"
 }
 

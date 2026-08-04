@@ -1,0 +1,57 @@
+# issue #359 — activated ALONGSIDE it-actions (as the LATER, higher-precedence profile) by the
+# self-heal transient-arc ITs (SelfHealLikelyLaneIT / SelfHealMixedLaneIT /
+# SelfHealDwellSuppressionIT) ONLY. Spring Boot's list-valued property binding does not merge
+# list entries ACROSS property sources/profiles by index — the first source that contributes
+# any element to `inspector.engines` wins the WHOLE list — so this cannot just override
+# `engines[0].dlq-scan-cap` on top of application-it-actions.yml's list; it has to restate both
+# entries in full (same id/base-url/environment/auth as that file) with only the two numeric
+# caps changed.
+#
+# Why: the shared dev engine-a routinely exceeds application-it-actions.yml's 500 dlq-scan-cap
+# (measured 558+ pre-existing dead-letter jobs, 2026-08-04 — the same accumulation
+# TriageAggregationIT's known environmental failure is about). Flowable's default job sort is
+# "id asc" (chronological, proven live), so a capped scan silently EXCLUDES every job newer
+# than the cap — including a fresh, run-unique self-heal fixture's own dead-letters, which is
+# exactly the failure this profile fixes (proven live: the self-heal stats stayed at n=0
+# without it). Raised to match production's own default (application.yml: 5000), comfortably
+# above any realistic backlog; max-page-size raised too so the wider cap doesn't cost dozens of
+# extra round trips per sampler cycle against that same backlog.
+inspector:
+  engines:
+    - id: engine-a
+      name: "Engine A (actions harness)"
+      base-url: "http://localhost:${PI_ENGINE_A_PORT:8081}/flowable-rest/service"
+      environment: dev
+      accent-color: "#2e86de"
+      enabled: true
+      mode: read-write
+      audit-payload: full
+      auth:
+        type: basic
+        username: rest-admin
+        password-ref: ENGINE_A_PASSWORD
+      timeouts:
+        connect-ms: 2000
+        read-ms: 10000
+        write-ms: 10000
+      max-page-size: 200
+      dlq-scan-cap: 5000
+
+    - id: engine-a-prod
+      name: "Engine A (prod twin)"
+      base-url: "http://localhost:${PI_ENGINE_A_PORT:8081}/flowable-rest/service"
+      environment: prod
+      accent-color: "#e74c3c"
+      enabled: true
+      mode: read-write
+      audit-payload: full
+      auth:
+        type: basic
+        username: rest-admin
+        password-ref: ENGINE_A_PASSWORD
+      timeouts:
+        connect-ms: 2000
+        read-ms: 10000
+        write-ms: 10000
+      max-page-size: 200
+      dlq-scan-cap: 5000
