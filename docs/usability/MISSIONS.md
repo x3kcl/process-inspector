@@ -507,8 +507,8 @@ TESTER BRIEF:
 >    list? Quote the exact on-screen text (hover text counts) that told you, then explain
 >    in your own words what it's actually saying — don't just repeat the words back.
 > 3. Pick two specific cards from the list — one that sits higher than the other. Without
->    re-reading the tooltip text, explain in your own words why you think one outranks the
->    other. If you honestly can't tell just from looking, say so plainly.
+>    re-reading any explanation text, explain in your own words why you think one outranks
+>    the other. If you honestly can't tell just from looking, say so plainly.
 > 4. Go to the Incidents page. Find a card carrying some kind of "self-heal" indicator — a
 >    badge with a fraction and usually a time in it (or, if you find one that instead says
 >    something like "not enough history yet," that counts too — describe what you found).

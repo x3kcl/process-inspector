@@ -4284,6 +4284,17 @@ button.skip-link {
   background: var(--color-badge-bg-subtle);
 }
 
+/* #374 (ALARM-COST-MODEL.md §12.1): the per-card evidence sentence, promoted from hover-only
+   `title` to real visible text — a 3am reader who never hovers must see the SAME reasoning a
+   hovering one always could. One line, same weight as `.incident-meta-line`/`.ack-meta`'s own
+   "extra glanceable fact" treatment; the parent flex rows already wrap (`.error-signature`/
+   `.incident-signature`/`.self-heal-line`), so this simply flows onto its own line on a normal
+   card without any layout change at the three call sites. */
+.attention-rationale {
+  font-size: 12px;
+  color: var(--color-text-secondary);
+}
+
 .archived-generations-toggle {
   margin: 10px 0;
 }

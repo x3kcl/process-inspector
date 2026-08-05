@@ -35,12 +35,12 @@ describe('IncidentCard attention badge wiring (#354)', () => {
     expect(screen.queryByText('ranked by attention')).toBeNull()
   })
 
-  it('renders the attention badge with the server rationale when the score is present', () => {
+  it('renders the attention badge with the server rationale as VISIBLE text when the score is present (#374)', () => {
     renderCard({
       ...incident,
       attention: { score: 4.2, rationale: '8 failing · last seen just now' },
     })
-    const badge = screen.getByText('ranked by attention')
-    expect(badge.getAttribute('title')).toContain('8 failing · last seen just now')
+    expect(screen.getByText('ranked by attention')).not.toBeNull()
+    expect(screen.getByText('8 failing · last seen just now')).not.toBeNull()
   })
 })

@@ -112,13 +112,93 @@ describe('ErrorGroupCard attention badge wiring (ALARM-COST-MODEL.md §4.3/§11,
     expect(screen.queryByText('ranked by attention')).toBeNull()
   })
 
-  it('renders the attention badge with the server rationale when the score is present', () => {
+  it('renders the attention badge with the server rationale as VISIBLE text when the score is present (#374)', () => {
     renderCard({
       ...group,
       attention: { score: 4.2, rationale: '46 failing · last seen 2 min ago' },
     })
-    const badge = screen.getByText('ranked by attention')
-    expect(badge.getAttribute('title')).toContain('46 failing · last seen 2 min ago')
+    expect(screen.getByText('ranked by attention')).not.toBeNull()
+    expect(screen.getByText('46 failing · last seen 2 min ago')).not.toBeNull()
+  })
+})
+
+// #374 (ALARM-COST-MODEL.md §12.1): the measured usability run staged exactly this shape — a
+// 15-instance class the server ranks ABOVE a 34-instance class, because the 15-instance class
+// resolves far faster on average. Every raw number visible on the CARD FACE (instances, DLQ,
+// retrying) is larger on the 34-card, so only visible reasoning — not a hover — can tell a
+// non-hovering reader why the smaller card outranks the bigger one. This reproduces that pair
+// and asserts the reconciling text is real page content, not title-only.
+describe('ErrorGroupCard reconciles the visible face with the attention order (#374 repro)', () => {
+  it('shows why the smaller, costlier class outranks the bigger, cheaper one — without a hover', () => {
+    const costlySmall: ErrorGroup = {
+      ...group,
+      signatureHash: 'sig-costly-15',
+      exceptionClass: 'org.acme.MethodNotFoundException',
+      normalizedMessage: 'zoo method not found',
+      total: 15,
+      deadLetterCount: 15,
+      retryingCount: 0,
+      attention: {
+        score: 8.0,
+        rationale:
+          '15 failing · last seen just now · typically takes 4 min to resolve · no self-heal history.',
+      },
+    }
+    const bigButCheap: ErrorGroup = {
+      ...group,
+      signatureHash: 'sig-big-34',
+      exceptionClass: 'java.lang.ArithmeticException',
+      normalizedMessage: 'division by zero',
+      total: 34,
+      deadLetterCount: 34,
+      retryingCount: 0,
+      attention: {
+        score: 5.13,
+        rationale:
+          '34 failing · last seen 12 min ago · typically takes 3 h to resolve · no self-heal history.',
+      },
+    }
+    const client = new QueryClient({
+      defaultOptions: { queries: { retry: false, enabled: false } },
+    })
+    render(
+      <QueryClientProvider client={client}>
+        <MemoryRouter>
+          <OpsDrawerProvider>
+            <ErrorGroupCard
+              group={costlySmall}
+              enginesById={new Map()}
+              lowerBound={false}
+              asOf={undefined}
+            />
+            <ErrorGroupCard
+              group={bigButCheap}
+              enginesById={new Map()}
+              lowerBound={false}
+              asOf={undefined}
+            />
+          </OpsDrawerProvider>
+        </MemoryRouter>
+      </QueryClientProvider>,
+    )
+    // The raw numbers on the card face point the WRONG way (34 > 15 instances and DLQ jobs) —
+    // exactly the §8.8 measured contradiction. The visible rationale text is the only thing
+    // that can reconcile it for a reader who never hovers; `getByText` only matches rendered
+    // content, so a hover-only regression fails this exactly as it fails on the real UI.
+    expect(
+      screen.getByText(
+        '15 failing · last seen just now · typically takes 4 min to resolve · no self-heal history.',
+      ),
+    ).not.toBeNull()
+    expect(
+      screen.getByText(
+        '34 failing · last seen 12 min ago · typically takes 3 h to resolve · no self-heal history.',
+      ),
+    ).not.toBeNull()
+    // Sanity: the raw counts genuinely contradict the order (34 > 15), so the assertions above
+    // are reconciling a real contradiction, not a vacuous one.
+    expect(bigButCheap.total ?? 0).toBeGreaterThan(costlySmall.total ?? 0)
+    expect((bigButCheap.attention?.score ?? 0) < (costlySmall.attention?.score ?? 0)).toBe(true)
   })
 })
 

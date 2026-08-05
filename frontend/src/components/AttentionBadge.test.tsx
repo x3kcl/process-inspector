@@ -21,17 +21,21 @@ describe('AttentionBadge', () => {
     expect(container.firstChild).toBeNull()
   })
 
-  it('renders the visible marker and a tooltip carrying the SERVER rationale verbatim', () => {
+  it('renders the visible marker and the SERVER rationale VERBATIM as visible text (#374)', () => {
     const attention: AttentionScore = {
       score: 4.2,
       rationale:
         '21 failing · last seen 2 min ago · typically takes 4 h to resolve · no self-heal history.',
     }
     render(<AttentionBadge attention={attention} />)
-    const badge = screen.getByText('ranked by attention')
-    expect(badge.getAttribute('title')).toContain(
-      '21 failing · last seen 2 min ago · typically takes 4 h to resolve · no self-heal history.',
-    )
+    expect(screen.getByText('ranked by attention')).not.toBeNull()
+    // #374: this must be real page text a non-hovering reader sees, not a `title` attribute —
+    // `getByText` only matches rendered text content, so this fails on a hover-only regression.
+    expect(
+      screen.getByText(
+        '21 failing · last seen 2 min ago · typically takes 4 h to resolve · no self-heal history.',
+      ),
+    ).not.toBeNull()
   })
 
   it('the tooltip also carries the fixed glossary sentence explaining what the ordering means', () => {
@@ -51,7 +55,41 @@ describe('AttentionBadge', () => {
       factors: { frequency: 99, recency: 99, mttr: 99, selfHeal: 99 },
     }
     render(<AttentionBadge attention={attention} />)
+    expect(screen.getByText('CUSTOM SERVER SENTENCE — do not recompose me')).not.toBeNull()
+  })
+
+  // #374 (ALARM-COST-MODEL.md §12.1): the measured usability run found the reasoning "lives only
+  // in a hover" — 3 of 5 arm-B testers picked the wrong (bigger-number) card on first glance,
+  // and a free-recall task without re-reading the tooltip scored mostly `unsupported`/`partial`.
+  // A `title` attribute is invisible to touch, keyboard-only, and most screen-reader flows, so
+  // the fix must make the SAME server sentence real page content, not just reachable via hover.
+  it('#374: the per-card rationale is real VISIBLE text, not reachable only via a title/hover attribute', () => {
+    const attention: AttentionScore = {
+      score: 8.0,
+      rationale:
+        '15 failing · last seen just now · typically takes 4 min to resolve · no self-heal history.',
+    }
+    const { container } = render(<AttentionBadge attention={attention} />)
+    // `container.textContent` never includes attribute values (DOM semantics) — a naive
+    // `innerHTML.includes(...)` check would still pass on a hover-only `title="..."`
+    // regression, which is exactly the bug this test exists to catch. Only textContent proves
+    // the sentence renders as content a non-hovering reader actually sees.
+    expect(container.textContent).toContain(
+      '15 failing · last seen just now · typically takes 4 min to resolve · no self-heal history.',
+    )
+  })
+
+  it('#374: the visible rationale is distinct from the fixed glossary sentence, which stays hover-only', () => {
+    const attention: AttentionScore = {
+      score: 8.0,
+      rationale: '15 failing · typically takes 4 min to resolve · no self-heal history.',
+    }
+    render(<AttentionBadge attention={attention} />)
     const badge = screen.getByText('ranked by attention')
-    expect(badge.getAttribute('title')).toContain('CUSTOM SERVER SENTENCE — do not recompose me')
+    // The generic mechanism explainer (constant, not per-card evidence) still lives in `title`
+    // only — duplicating a second, longer, generic sentence into visible text on every card
+    // is exactly the "turn every card into a paragraph" outcome §4.3/§12 forbid.
+    expect(badge.getAttribute('title')).toMatch(/expected cost of waiting/)
+    expect(badge.getAttribute('title')).not.toContain('typically takes 4 min to resolve')
   })
 })

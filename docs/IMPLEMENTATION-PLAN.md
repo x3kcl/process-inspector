@@ -2575,6 +2575,29 @@ boundary was itself wrong and is corrected in ALARM-COST-MODEL.md §14.2: the er
 when an unreachable engine left the aggregation scope (disabled in the registry), not when it
 became reachable — so the trusted-span clock can be restarted by a registry edit.
 
+### v2 research track R1 — visible-rationale correction _(#374, ★ BUILT)_
+
+§8's executed A/B run (#373) found the finding that mattered more than its own pass: the
+per-card rationale #354 shipped lived ONLY in a hover `title`, and every raw number visible
+on the card face could point at a different, wrong class than the one the ranking actually
+favored — 3 of 5 arm-B testers picked the bigger-number card on first glance, and a
+free-recall task without re-reading the tooltip mostly failed. Design + build in the
+"Correction (post-ship) — issue #374" subsection under
+[ALARM-COST-MODEL.md §12](ALARM-COST-MODEL.md): the SAME server-computed one-sentence
+rationale (`attention.rationale`, no new DTO field) is
+promoted from `title` to real visible text on the card face
+(`components/AttentionBadge.tsx`); the fixed generic glossary sentence explaining the
+ranking mechanism (not per-card evidence) stays hover-only, so the one-glanceable-sentence
+cap and the no-toggle precedent are both untouched. Fixes keyboard-only/touch/screen-reader
+access as a consequence, not an add-on — visible text needs no hover trigger. Failing-before
+tests reproduce the exact §8.8 fixture shape (a 15-instance class outranking a 34-instance
+one) and assert the reconciling text is real page content (`textContent`), not merely present
+in a `title` attribute. No score/factor/tie-break change, no new server field, no ordering
+toggle, `inspector.triage.attention-ordering` still default false. Doc updates in lockstep:
+`SPECIFICATION.md` (`AttentionBadge` description), `OPERATOR-QUICK-START.md` ("Reading the
+attention ranking"), `usability/GOAL-CATALOG.md` + `MISSIONS.md` (R-SEM-25/M13's citation
+source, rubric unchanged).
+
 ## Build order inside any milestone
 
 backend DTO → engine client call → aggregator/join logic → controller → typed frontend API

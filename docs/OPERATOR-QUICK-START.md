@@ -76,10 +76,12 @@ something that actually matters. When you meet it:
 
 - **Order ≠ severity; order = "work this one first."** The biggest number is not
   necessarily on top anymore — don't eyeball position, read the rationale.
-- **The `ranked by attention` chip's tooltip has the real numbers** — e.g. "21 failing ·
-  last seen 2 min ago · typically takes 4 h to resolve · no self-heal history." Those are
-  the server's own computed numbers, not vibes; if a card feels wrongly placed, that
-  tooltip is where you check, not your gut.
+- **The line next to the `ranked by attention` chip has the real numbers, right on the
+  card — no hover needed** — e.g. "21 failing · last seen 2 min ago · typically takes 4 h
+  to resolve · no self-heal history." Those are the server's own computed numbers, not
+  vibes; if a card feels wrongly placed, that line is where you check, not your gut. (The
+  chip itself still carries a hover tooltip explaining what "ranked by attention" means in
+  general — the per-card numbers don't need a hover.)
 - **Nothing is ever hidden.** Every card still renders regardless of score — ordering only
   reshuffles position within a section. Acknowledge/never-hide semantics (R-BAU-01) are
   untouched.
