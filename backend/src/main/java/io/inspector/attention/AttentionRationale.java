@@ -8,8 +8,10 @@ import java.util.List;
 import java.util.Locale;
 
 /**
- * The ONE-SENTENCE, single-tooltip rationale (ALARM-COST-MODEL.md §4.3 — a hard requirement from
- * issue #348: "a score no tooltip can explain is a rejected design by construction").
+ * The ONE glanceable sentence rationale (ALARM-COST-MODEL.md §4.3 — a hard requirement from
+ * issue #348: "a score no rationale can explain is a rejected design by construction"). Rendered
+ * as visible page text on the card face since §12.1/issue #374 — previously reachable only via a
+ * hover {@code title} tooltip.
  *
  * <p>Computed SERVER-side so every consumer renders the identical sentence — the same doctrine
  * that put the R2 dwell state machine on the server (RETRYING-RISK-LANE §4.2 rule 3): two

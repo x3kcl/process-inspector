@@ -422,15 +422,18 @@ GOAL (/b ordering-rule restatement): Having read whatever on-screen text explain
 ordering, the same engineer must correctly restate — in their own words — that position is
 NOT decided by raw failure count alone, citing at least two of the score's real
 ingredients (how fresh/growing the class is, how long it historically takes to resolve,
-whether it usually clears itself) from the tooltip text they actually read.
+whether it usually clears itself) from the on-screen text they actually read (post-#374: the
+per-card rationale is now VISIBLE on the card face, not hover-only — only the generic
+"what does this ordering mean" glossary sentence stays in a hover tooltip).
 GOAL (/c self-heal badge restatement): Meeting a `SelfHealBadge` on any card, the same
 engineer must correctly restate that its fraction+time is a HISTORIC rate over past
 retrying spells — never a live guarantee — and correctly derive the right posture (leave
 it / treat like FAILED / not enough history yet) from whichever lane they actually saw.
 ENTRY: `/` and `/incidents` · user `viewer`.
 SUCCESS: /a — the tester's first drill targets the planted costly-not-largest class, and
-the choice citation quotes the rationale tooltip (time-to-first-relevant-card is the
-metric, not a pass/fail on its own). /b and /c are graded **citation-or-nothing** — an
+the choice citation quotes the rationale text (visible on the card face since #374 — see
+ALARM-COST-MODEL.md §12.1; time-to-first-relevant-card is the metric, not a pass/fail on its
+own). /b and /c are graded **citation-or-nothing** — an
 answer with no on-screen quote scores `unsupported` regardless of correctness — against a
 combined **≥80% correct-restatement pass bar**, set deliberately above the ~60% label
 comprehension Laberge et al. 2014 (DOI 10.1016/j.ergon.2013.11.008) measured for this same

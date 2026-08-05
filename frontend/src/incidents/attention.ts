@@ -88,11 +88,12 @@ export function incidentOrderComparator(
     : compareSelfHealRisk
 }
 
-/** The server's one-sentence rationale (ALARM-COST-MODEL.md §4.3, built exactly per §11's
- *  `AttentionRationale`) — rendered VERBATIM in the tooltip. Never recomposed from `factors`
- *  client-side: the design's explicit rule is that the tooltip shows "real numbers, not vibes"
- *  the SERVER computed (§4.1). `undefined` when the score is absent (flag off, or scoring was
- *  skipped for this row) — callers must render nothing, never fabricate a sentence. */
+/** The server's one glanceable sentence (ALARM-COST-MODEL.md §4.3, built exactly per §11's
+ *  `AttentionRationale`) — rendered VERBATIM as visible page text (§12.1, issue #374; hover-only
+ *  `title` was the pre-#374 shape). Never recomposed from `factors` client-side: the design's
+ *  explicit rule is that the card shows "real numbers, not vibes" the SERVER computed (§4.1).
+ *  `undefined` when the score is absent (flag off, or scoring was skipped for this row) —
+ *  callers must render nothing, never fabricate a sentence. */
 export function attentionRationale(attention: AttentionScore | undefined): string | undefined {
   return attention?.rationale
 }

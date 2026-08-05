@@ -339,11 +339,17 @@ Answers "what is broken, how much, where" in zero keystrokes:
   is served, never re-sorting Stage-0 cards itself** — the BFF already reorders `errorGroups`
   server-side when the flag is on (`AttentionScoreService#decorate`, ALARM-COST-MODEL.md §11) —
   and shows a visible `AttentionBadge` (`components/AttentionBadge.tsx`) carrying the server's
-  rationale VERBATIM in its tooltip alongside a fixed glossary sentence explaining the ordering;
-  the badge renders nothing when `attention` is absent (the shipped, flag-off, expected-today
-  case). No ordering toggle exists or was built — the design specifies none (§3.1/§11 describe
-  a single server-computed order, not an operator-facing choice). See §4e below for how this
-  reconciles with #352's Incident Ledger self-heal-risk sort.
+  rationale VERBATIM as **visible page text on the card face** (post-ship correction, issue
+  #374, ALARM-COST-MODEL.md §12.1 — the rationale shipped hover-only in `title` and a measured
+  A/B run found 3 of 5 testers picked the wrong, bigger-number card on first glance because
+  every visible count on the card face can point at a different class than the one the
+  ranking actually favors; only a hover reconciled them, which also fails touch/keyboard-only/
+  screen-reader readers). The fixed, generic glossary sentence explaining what the ordering
+  mechanism means (not per-card evidence) stays hover-only in the pill's `title`; the badge
+  renders nothing when `attention` is absent (the shipped, flag-off, expected-today case). No
+  ordering toggle exists or was built — the design specifies none (§3.1/§11 describe a single
+  server-computed order, not an operator-facing choice). See §4e below for how this reconciles
+  with #352's Incident Ledger self-heal-risk sort.
 - **Annotations** (R-BAU-03, v1.x): OPERATOR+ may attach per-signature guidance (≤200 chars
   + runbook URL + optionally one **endorsed verb with conditions** — "Retry, but only after
   15:00"). Rendered on the group card and every member's why-stuck strip; the endorsed verb

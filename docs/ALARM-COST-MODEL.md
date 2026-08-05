@@ -33,6 +33,17 @@ including `SELF_HEAL_LIKELY`/`SELF_HEAL_MIXED`, are now stageable for §8 (§8.6
 is opt-in (`PI_SEED_SELF_HEALING=1`) and, by design, counts toward neither this doc's own §7
 gate nor RETRYING-RISK-LANE.md's §7.2 gate (§8's own sequencing note explains why).
 
+**Post-ship correction round (#374, 2026-08-05): the reasoning must survive without a
+hover — ★ BUILT, ADDRESSED (§12's own correction note; re-run owed).** §8.8's "finding that
+matters more than the pass" is addressed in code: the per-card rationale sentence is now
+VISIBLE on the card face, not hover-only in the pill's `title` — the fixed generic mechanism
+sentence stays hover-only, the per-card evidence sentence does not. Pure rendering change, no
+new server field, no ordering toggle, flag default untouched. **The comprehension problem
+itself has not been re-measured** — §8.8's numbers predate this change; a fresh A/B run against
+the fixed component is still owed before the fix can be called PROVEN rather than merely
+plausible. Panel: gemini seat attempted repeatedly this session across three model IDs, all 429
+quota-blocked — **owed**, same disclosure as the standing copilot 410.
+
 ## 0. Provenance
 
 Drafted 2026-08-04 from (a) a hand inventory of every hand-tuned noise-control constant in
@@ -422,13 +433,24 @@ The score consumes, per `(signatureHash, algoVersion)`:
 computed, stabilized, or floored — that is #347's design surface; #353 consumes whatever
 shape #351 ships, adapting the join only.
 
-### 4.3 Rationale — one tooltip sentence (hard requirement, issue #348)
+### 4.3 Rationale — one glanceable sentence (hard requirement, issue #348)
 > "Ordered by the expected cost of waiting: freshness and growth, weighted by this class's
 > historic time-to-resolve — proven self-healers rank lower, and nothing is hidden."
 
 (Tightened per panel: one sentence, glanceable.) Per-card variant substitutes the numbers:
 *"21 failing · last seen 2 min ago · typically takes 4 h to resolve · no self-heal
 history."*
+
+**Correction (post-ship, issue #374 — §12's own correction note).** "One tooltip sentence"
+was the original heading, and it shipped both sentences above hover-only. The measured §8.8
+usability run found that hid the per-card evidence sentence from any non-hovering reader,
+directly contradicting the visible card-face numbers for 3 of 5 testers. The per-card variant
+(the second sentence, with real numbers) is now rendered as VISIBLE text on the card face; the
+generic mechanism sentence (the first, constant, quoted above) stays hover-only — it explains
+what the ordering means in the abstract, not per-card evidence, and duplicating a second fixed
+sentence onto every card would itself be the "paragraph" outcome this section's own hard
+requirement forbids. The one-sentence CAP itself is unchanged; only the per-card sentence's
+render location moved.
 
 ## 5. MEASURED BASELINE — pilot-ledger extraction & ordering simulation (auditable)
 
@@ -951,6 +973,12 @@ coverage regardless of which lane was reached.
 
 Sharpened by task /c (restate the ranking from the card face **without** re-reading the tooltip): **B3 `unsupported`, B1 and B2 `partial`** — testers could not reconstruct the ranking from visible text. B5 named the mechanism precisely: *"[the `ranked by attention` pill] names the mechanism but gives zero indication that hovering unlocks the actual reasoning, and a fast-scanning user … will default to raw instance/DLQ counts, which point at a different card than the one the ranking actually favors."* **The reasoning lives only in a hover.** A 3am reader who does not hover — or is on a device that cannot — gets a re-ordered list with no visible justification, and their instinct points elsewhere. Filed as a follow-up rather than silently absorbed into a green verdict.
 
+**Forward pointer (post-ship, #374 — see §12.1):** this whole subsection describes the UI as
+it stood when this run executed (hover-only `title`). That hover-only behaviour has since been
+changed — the per-card rationale now renders as visible page text — and this verdict predates
+that change. Read the paragraph above as the diagnosis that motivated §12.1's fix, not as a
+description of the shipped UI today; it has not been re-run against the fixed component.
+
 #### What this run did NOT exercise (do not read it as covered)
 
 - **`S` was neutral throughout.** Every class sat at `INSUFFICIENT_HISTORY` (`0`–`1 of 10 spells observed`); no class reached `SELF_HEAL_LIKELY`/`MIXED`, so **the self-heal demotion story was not tested**. Reaching the floor organically needs 10 unconfounded spells **plus** `dwell-cycles: 10` (~10 min at the 60 s beat) while a spell is only ~20–30 s of real retrying — which is precisely why #368's ITs drive `sampler.sampleOnce()` against bucket boundaries instead of the scheduled sampler. §8.6 lists these lanes as stageable; **at the 60 s production cadence that is true only with a dedicated staging pass this run did not spend.**
@@ -999,8 +1027,13 @@ Sharpened by task /c (restate the ranking from the card face **without** re-read
 - **Blind-cycle honesty (#302)**: a row written while any registry engine was unreachable is
   marked `cycle_complete = false` and is never differenced against — an outage's
   drop-and-recover is not arrival volume. Same lane as truncation, same discard rule.
-- **Explainability**: rationale is the one-sentence tooltip (§4.3) with per-card numbers —
-  a score no tooltip can explain is a rejected design by construction.
+- **Explainability**: rationale is one glanceable `·`-joined sentence with per-card numbers
+  (§4.3) — a score no rationale can explain is a rejected design by construction.
+  **Correction (post-ship, #374):** "the one-sentence tooltip" was true as first shipped by
+  #354 (hover-only `title`) but is no longer accurate — §12.1 promoted the same sentence to
+  visible page text on the card face after §8.8 measured that a hover-only reasoning path
+  actively hurt comprehension. The one-sentence cap this bullet describes is unchanged; only
+  where the sentence renders moved.
 - Spec-sync: this doc introduces no behavior change; SPECIFICATION/ARCHITECTURE/
   IMPLEMENTATION-PLAN deltas land with the build slices (#353/#354) per their DoD, citing
   this doc as the locked design.
@@ -1135,8 +1168,13 @@ base was reconciled deliberately.
   NOTHING when `attention` is absent (the shipped, flag-off, expected-today case) — no fabricated
   "why". Its `title` tooltip (this codebase's glossary convention — no `/glossary` route) joins a
   FIXED constant sentence (§4.3's generic explanation of what the ordering means) with the
-  SERVER's own one-sentence per-card rationale (`attention.rationale`), rendered VERBATIM —
-  never recomposed from `factors` client-side, per the issue's explicit rule.
+  SERVER's own one-sentence per-card rationale (`attention.rationale`), never recomposed from
+  `factors` client-side, per the issue's explicit rule. **Correction (post-ship, #374 — see
+  §12.1):** the claim above, that `title` joins the fixed sentence WITH the per-card rationale
+  "rendered VERBATIM", was true only as #354 first shipped it and is now superseded — §8.8
+  measured that hover-only reasoning actively hurt comprehension, so the per-card rationale was
+  promoted to visible text on the card face; `title` now carries ONLY the fixed glossary
+  sentence. Do not re-fold the rationale back into `title` on the strength of this paragraph.
 - **No ordering toggle built.** §3.1/§11 specify a single server-computed order behind one
   deployment-wide flag, never an operator-facing attention-vs-count choice; §8's A/B protocol is
   a `usability-run` measurement harness (arm A/B are test conditions), not a shipped UI control.
@@ -1147,8 +1185,180 @@ base was reconciled deliberately.
   already carried these types).
 - **Deferred, NOT built in this slice:** the §8 usability goal/fixture/A-B protocol and any
   re-measurement of §7 remain open (unchanged from §11's own deferral) — #354 is the ordering +
-  tooltip UI only, not the usability-harness proof of benefit. **§8 is now fully AUTHORED
+  rationale-display UI only (at ship time, hover `title`; superseded by #374's visible-text
+  promotion, §12.1 — "tooltip UI" here describes #354 as it shipped, not the mechanism as it
+  stands today), not the usability-harness proof of benefit. **§8 is now fully AUTHORED
   (issue #366)** — see §11's own note; still not executed.
+
+### 12.1 Correction (post-ship) — issue #374: the reasoning must survive without a hover (★ BUILT)
+
+§8.8's own executed run (PR #373) found the finding that matters more than the pass: the
+per-card rationale this slice shipped lived ONLY in the pill's `title` (hover tooltip). Every
+raw number visible on the card face — instance count, DLQ jobs, retrying jobs — can be LARGER
+on the class the ranking places LOWER, so the visible evidence actively contradicts the order
+and only a hover reconciled them. 3 of 5 arm-B testers picked the wrong (bigger-number) card on
+first glance; on the free-recall task (restate the ranking WITHOUT re-reading the tooltip) B3
+scored `unsupported`, B1/B2 `partial`. Tester B5: *"[the pill] names the mechanism but gives
+zero indication that hovering unlocks the actual reasoning ... a fast-scanning user will
+default to raw instance/DLQ counts, which point at a different card."* A hover is also not
+universally available — touch, keyboard-only, and most screen-reader flows never trigger a
+`title`.
+
+**The question.** What is the MINIMUM visible signal that reconciles the order with the
+numbers already on the card face, without violating §4.3's one-glanceable-sentence rule or
+§12's rejected-ordering-toggle precedent?
+
+**Shapes considered, and why three were rejected:**
+
+1. **Dominant-factor inline** (e.g. "4 min to resolve," picking whichever of `F`/`R`/`M`/`S`
+   most explains the ranking for this specific card pair) — **REJECTED**. Naming "the"
+   dominant factor requires NEW client-side logic that inspects `factors` and decides which
+   ingredient wins for a given comparison. That is exactly the "recompose the rationale from
+   `factors` client-side" this slice's own §12 explicitly forbids ("never recomposed from
+   `factors` client-side ... real numbers, not vibes the SERVER computed"). It is also a
+   second, possibly-drifting derivation of a claim the server's `rationale` string already
+   states correctly — on a different fixture pair `S` or the §4.1a burst term could be the
+   actual discriminator, and a client heuristic for "dominant" has no guarantee of agreeing
+   with the server's own composed sentence.
+2. **Rank affordance** (an explicit ordinal — "#1", "#2" — or a stated position) —
+   **REJECTED**. It answers "what order is this in," which the list position already answers
+   implicitly; it does not answer "why," which is what the measured failure is about. A
+   reader still sees `#1` sitting on a smaller number than `#2` and has no more grounds to
+   trust it — task /b (restate the ranking without re-reading) would score identically.
+3. **Interactive pill** (cursor affordance, chevron, or similar cue that invites hovering or
+   clicking) — **REJECTED**. It improves discoverability of the SAME hover-gated mechanism,
+   but the issue's own named failure mode is that hover is not universally available — a
+   cursor/chevron cue is itself invisible or meaningless on touch, keyboard-only, and most
+   screen-reader flows. It treats "nobody thought to hover" as the defect, when the actual
+   constraint is "hovering cannot be the only path to the reasoning at all."
+4. **Bare score number** (e.g. "8.0" beside the card) — **REJECTED, and probably harmful**.
+   An unlabelled float means nothing to a 3am reader without a scale anchor, and it is a
+   FOURTH number added to a card that already carries three that all point the wrong way —
+   more noise for exactly the failure mode measured ("go by the big number"), not less. It
+   also inverts the usual "bigger number wins" convention along yet another axis (8.0 > 5.13
+   here, but nothing on the card explains why a bigger score should trump a bigger count),
+   adding a second unexplained contradiction rather than resolving the first.
+5. **CHOSEN — promote the existing server-computed rationale sentence from `title` (hover) to
+   real visible text on the card face**, leaving the FIXED generic glossary sentence (what the
+   ranking mechanism means — not per-card evidence) in `title` on the pill, unchanged.
+
+**Why this is the minimum change that satisfies both hard constraints:**
+- **§4.3's one-glanceable-sentence rule is satisfied by construction, not by new discipline.**
+  `AttentionRationale` (backend, §11) already caps the rationale at one `·`-joined sentence.
+  Moving it to visible text does not grow it — the identical string moves out of an attribute
+  into a text node. No new composition, no new server field: the DTO already carried
+  `attention.rationale` (#353); this is a pure rendering change, exactly as the issue asked.
+- **It targets the diagnosed defect literally.** The measured problem statement is "the
+  reasoning lives only in a hover" — not "the mechanism name is invisible" (`ranked by
+  attention` already rendered visibly) and not "the order is unclear" (list position already
+  shows it). The one thing that was hover-gated was the per-card EVIDENCE sentence, and that
+  is the one thing this change moves.
+- **No ordering toggle is reintroduced.** Nothing becomes optional or user-togglable; every
+  card carrying a server score shows the identical one line it always could have shown on
+  hover. §12's rejected-toggle precedent is untouched.
+- **Fixes keyboard/touch/screen-reader for free, not as an add-on.** A `title` attribute has
+  no reliable keyboard-focus trigger in most browsers, no touch trigger at all, and
+  inconsistent screen-reader exposure. Ordinary rendered text needs none of that: it is
+  already part of the element's accessible name/text content the moment it renders — no ARIA,
+  no focus management, no extra affordance required.
+- **The glossary/rationale split is deliberate, not an oversight.** The FIXED constant
+  sentence ("Ordered by the expected cost of waiting...") explains the MECHANISM once, in the
+  abstract; it does not vary per card and carries no per-card evidence. Promoting it to visible
+  text on every card too would be the actual "turn every card into a paragraph" outcome §4.3/
+  §12 warn against — a second, longer, unchanging sentence repeated on every one of what could
+  be dozens of Stage-0 cards. Leaving it hover-only (discoverable, not load-bearing for the
+  per-card judgment) while making the per-card EVIDENCE sentence load-bearing-visible is the
+  narrowest cut that fixes the measured defect without also violating the size constraint the
+  defect's own fix must respect.
+
+**Panel review (repo convention — two independent seats, honest ledger).** The `gemini` MCP
+seat was attempted repeatedly on 2026-08-05 across three model IDs
+(`gemini-2.5-pro`, `gemini-2.5-flash`, `gemini-2.0-flash-001`) — **7 attempts total, at
+intervals spanning roughly 20 minutes**; `gemini_list_models` (a different, unmetered endpoint)
+succeeded throughout, but every `generateContent` call returned HTTP 429 (quota), including the
+final retry made after the rest of this build was already complete. Seven attempts across three
+model IDs all failing the same way reads as real exhausted project-level quota for the session,
+not a broken connection and not a per-model block (contrast the pro-only 429 tier-fallback
+precedent in §10/§14.6, where flash succeeded). **Seat 2 (product/ops, `copilot` MCP) remains
+the STANDING SEAT-UNAVAILABLE from §10/§14.6** — the endpoint is permanently gone (HTTP 410,
+GitHub Models catalog sunset), not a quota condition.
+
+Because seat 1 stayed unavailable on every retry, the subsequent adversarial review of this
+shipped correction (the findings folded into this section and into §13-adjacent code/doc
+fixes) was carried out by a **substitute independent seat — Claude Opus 5 — explicitly
+authorised by the session owner for that review only**. Recorded as exactly that, not as
+`gemini` and not as a new standing MCP seat: it is a one-time authorised substitution, not a
+change to the panel roster, and it does not discharge seat 1 — a real `gemini` re-attempt is
+still owed. **The second standing seat (product/ops) is still owed** and unaffected by this
+substitution — it stays unfilled per the same standing rule until the copilot endpoint is
+replaced. This correction's status therefore remains: one seat filled by an authorised
+substitute, one seat owed — not yet PANEL-REVIEWED by the repo's normal two-MCP-seat
+convention.
+
+**What landed.** `components/AttentionBadge.tsx`: the per-card rationale renders as a sibling
+`<span className="attention-rationale">` (real text content) instead of being folded into the
+pill's `title`; the pill's `title` now carries ONLY the fixed glossary sentence. No change to
+when the badge renders (still nothing when `attention` is absent — the shipped, flag-off,
+expected-today case) or to what triggers it. `styles.css` gained `.attention-rationale` (same
+weight/rhythm as `.incident-meta-line`/`.ack-meta`'s existing "extra glanceable fact"
+treatment). No DTO change, no `npm run gen:api` re-run (the schema already carried
+`attention.rationale`; this is rendering-only). `inspector.triage.attention-ordering` stays
+default **false** and the badge still renders nothing when `attention` is absent, so the
+change is inert exactly as before whenever the flag is off — nothing here touches
+`AttentionOrderingNeutralityTest`'s server-side guarantee, which this change does not go near.
+**Correction (post-ship, adversarial review):** the claim that "no layout change was needed at
+any of the three call sites" was wrong, and dropped the third call site's class name entirely.
+`AttentionBadge` returns a bare Fragment, so its pill and rationale span land as direct flex
+items of whichever container renders it. `ErrorGroupCard`'s `.error-signature` and
+`IncidentCard`'s `.incident-signature` are indeed `display: flex; gap: 8px` and needed no
+change. `IncidentDetail`'s call site — `.self-heal-line`, the third container, correctly named
+here — was NOT flex (`margin: 4px 0` only), so the pill text and the rationale span rendered
+flush with no gap between them. Fixed by making `.self-heal-line` itself
+`display: flex; gap: 8px; flex-wrap: wrap`, matching the other two containers' own pattern
+(chosen over a margin on `.attention-rationale` so the shared span class does not double up
+with the gap the other two containers already provide).
+
+**Failing-before proof.** `components/AttentionBadge.test.tsx` gained
+`#374: the per-card rationale is real VISIBLE text, not reachable only via a title/hover
+attribute`, asserting `container.textContent` (which never includes attribute values) contains
+the rationale string. Against the pre-fix component this failed — `textContent` was exactly
+`'ranked by attention'`, with the rationale reachable only via `getAttribute('title')`.
+Two more pre-existing tests updated to the same visible-text assertion also failed on the base
+for the identical reason (`renders the visible marker and a tooltip carrying the SERVER
+rationale verbatim`; `never composes the rationale from factors`). A new
+`triage/ErrorGroupCard.test.tsx` case reproduces the §8.8 fixture SHAPE directly — two cards
+whose raw counts contradict the ranking (15 vs 34 instances/DLQ, matching §8.8's planted pair)
+— and asserts BOTH per-card rationale sentences are reachable via `screen.getByText` (rendered
+content), which a hover-only regression fails exactly as the real UI failed 3 of 5 testers.
+`IncidentCard.test.tsx`'s existing coverage was updated the same way. All are described in
+full in the PR; every test passes against the fixed component.
+
+**Known-unreachable shape (adversarial review, not a defect today).**
+`AttentionBadge`'s render guard is `attentionRationale(attention) === undefined`
+(`incidents/attention.ts`); `attentionRationale` returns `attention?.rationale`. A `rationale`
+of `''` (empty string) would pass that guard and render an empty `<span
+className="attention-rationale">` plus the flex `gap` next to it — a visible blank gap with
+nothing in it. This is NOT reachable from the current server: `AttentionRationale.sentence`
+(§11) always emits at least four `·`-joined clauses and a trailing period, so it can never
+return `''`. Recorded here rather than defended against in code — adding an `=== undefined ||
+=== ''` guard for a shape the server structurally cannot produce would be speculative
+defensiveness with no failing test to justify it.
+
+**Scope discipline.** No score, factor, tie-break, or the §4.1a burst term touched. No new
+server field. No ordering toggle. No card hidden or filtered — R-BAU-01 untouched. The flag
+default is untouched and still governed by §7 (NOT MET). Spec-sync: `docs/SPECIFICATION.md`
+(the `AttentionBadge` description), `docs/OPERATOR-QUICK-START.md` ("Reading the attention
+ranking"), and `docs/usability/GOAL-CATALOG.md`/`MISSIONS.md` (R-SEM-25/M13's references to
+"the tooltip" as the citation source for /a and /b) are corrected in the same change — the
+rubric's PASS BAR and citation-or-nothing grading are unchanged, only the UI mechanism the
+citation comes from. **That the bar (≥80 %, the Laberge calibration) is unchanged is NOT a
+neutrality guarantee between a pre-#374 and a post-#374 run.** Before this fix, the citation
+source (the rationale sentence) was reachable only by hovering; after it, the identical
+sentence is unconditionally visible on every card. A tester's pass/fail no longer measures the
+same thing it measured in §8.8 — it now also measures whatever benefit or distraction the
+always-visible sentence itself creates, independent of the ordering. §8.8's recorded numbers
+and any future re-run against the fixed component are therefore **not directly comparable**;
+a higher (or lower) post-fix pass rate cannot be attributed to the ordering change alone.
 
 ## 13. Correction round — adversarial review of the shipped #353/#354 code (★ LANDED)
 

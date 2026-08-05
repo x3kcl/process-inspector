@@ -504,11 +504,13 @@ TESTER BRIEF:
 >    why things are in the order they're in, and say whether that changes your pick. Cite
 >    whatever on-screen text you used to decide.
 > 2. Now, specifically: what do you believe decides which card sits at the top of this
->    list? Quote the exact on-screen text (hover text counts) that told you, then explain
->    in your own words what it's actually saying — don't just repeat the words back.
+>    list? Quote the exact on-screen text (visible text counts — you should not need to
+>    hover anything to answer this) that told you, then explain in your own words what
+>    it's actually saying — don't just repeat the words back.
 > 3. Pick two specific cards from the list — one that sits higher than the other. Without
->    re-reading the tooltip text, explain in your own words why you think one outranks the
->    other. If you honestly can't tell just from looking, say so plainly.
+>    hovering anything, explain in your own words why you think one outranks the other,
+>    citing whatever on-screen text you used. If you honestly can't tell just from
+>    looking, say so plainly.
 > 4. Go to the Incidents page. Find a card carrying some kind of "self-heal" indicator — a
 >    badge with a fraction and usually a time in it (or, if you find one that instead says
 >    something like "not enough history yet," that counts too — describe what you found).
