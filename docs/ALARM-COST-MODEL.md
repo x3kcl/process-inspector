@@ -682,7 +682,9 @@ blind interval does not reset the clock (the discipline discards deltas *across*
 rows on both sides stay fittable) but it thins both the fit and holdout halves, so a long
 outage pushes the date out correspondingly; (ii) the same stale "≈ 2026-09-14" appears in
 `AttentionScoreService`'s javadoc — a code-comment correction owed to the #365 build slice,
-not this docs round.
+not this docs round. (iii) A registry edit can RESTART this clock without any observability
+changing (§14.2 correction; issue #372) — the design that makes the span composition-aware,
+and amends this gate to the CURRENT-ERA trusted span, is §16.
 
 **The other four axes, audited for the same trust sensitivity (#365):** **G1** (closed
 episodes) and **G4** (ack lifecycles) count lifecycle events in the BFF's own store —
@@ -1456,7 +1458,9 @@ cycles into trusted ones without any observability actually being recovered. Tha
 correct (a disabled engine is not part of the fleet) but it is a sharp edge worth naming:
 **the trusted-span clock can be restarted by a registry edit.** If `engine-7` is re-enabled
 and carries load, rows spanning that change are not differenceable against these, and the
-G5 clock should be re-measured rather than assumed to have run continuously.
+G5 clock should be re-measured rather than assumed to have run continuously. (This
+operational rail is the issue #372 status quo; the design that records scope on the row and
+retires the rail is §16.)
 
 This is still the trust discipline working as specified (#302), and the honest headline of
 the feasibility note is unchanged: **on this pilot the binding constraint on burst measurement
@@ -1673,3 +1677,363 @@ occurrence. The neighbouring "21,229
 recorded pilot buckets" figure was deliberately LEFT ALONE: it is the §5.5 extraction's own
 count, the §5/§7 correction did not restate it, and replacing it with §14.2's later re-extraction
 figure would have introduced a second, different error rather than removing one.
+
+## 16. Amendment round — observation SCOPE / fleet composition (#372, 2026-08-05, DESIGN)
+
+Design record for issue #372 ("the trusted-span clock can be restarted by a registry
+edit"), the R1 seat's answer to the three candidate shapes the issue lists. **Design only —
+no production code changes in this round**; the build contract is §16.8, the
+build-or-defer recommendation §16.9. This section EXTENDS §14.2's correction (which named
+the cause); it does not re-litigate it.
+
+### 16.1 Provenance
+
+Issue #372, minted from the #365 blind-prefix verification against the live pilot (PR #371
+follow-up). Grounding for every claim below is the SHIPPED code at `d8ab553`
+(`PollingSnapshotSource`, `IncidentLedgerService`, `IncidentOccurrenceRepository.arrivalsSince`
+/ `findSpellShapeRowsDescending`, `RetrySpellExtractor`, `DwellStateMachine`,
+`SelfHealStatsService`, `EngineRegistry`, `EngineRegistryStore`, `AuditService`) — each
+statement about a consumer or a data source below was read from source in this round, not
+assumed from the docs.
+
+### 16.2 The gap, stated precisely — quality vs scope
+
+`cycleComplete` answers "did every engine **we are watching** answer this pass?". Its scope
+is the enabled-engine set: `TriageAggregationService.aggregate` fans out over
+`registry.all()` (enabled only — the disabled filter moved into `all()` at Registry-CRUD S3)
+and puts an envelope into `perEngine` for EVERY engine it fanned out to, ok or not. An
+engine disabled in the registry is not in `registry.all()`, so it never enters the envelope
+— and `cycleComplete` goes true the moment the remaining engines all answer (§14.2's
+measured pilot fact: the ONE `false → true` transition in 21,990 rows coincides with the
+`engine-7` DISABLE, not with any observability recovering).
+
+That is #302 working as specified — for the two PER-CYCLE consumers, "did everyone in
+scope answer" is exactly right. The defect class lives in the PERSISTED series: two rows
+can both read `cycle_complete = true` while describing **different fleets**, and nothing on
+the row says so. Differencing a level against a non-comparable level is the exact hazard
+the `truncated` (R-SEM-12) and `cycle_complete` (#302/V21) disciplines exist to prevent —
+but both guard observation **quality**; neither guards observation **scope**. Concretely,
+both derived readers have a live scope hole today:
+
+- **Arrivals (F / burst bins):** re-enable `engine-7` with load on it and the growth edge
+  differences a two-engine level against a three-engine one — banked as arrivals by
+  `SUM(GREATEST(δ,0))`, with `trusted = true` on both endpoints. Symmetrically, a DISABLE
+  mid-window makes the drop edge a phantom "quiet" (clamped, not banked — but the level
+  shift silently survives as the new baseline).
+- **RETRYING spells (R2):** disable the engine that holds a class's RETRYING jobs while
+  another engine holds its dead-letters: `retrying_count` drops to 0 on a row that is
+  `cycle_complete = true`, the spell appears to END, and the look-ahead compares the
+  surviving engine's unchanged DLQ against spell start — **fabricated `SELF_HEALED`
+  evidence via a registry edit**, the same forged-edge mechanism the V21 javadoc describes
+  for unreachability, entering through the door V21 cannot see. `truncationTainted` does
+  not cover it, `hasBlindSample` does not fire (the rows are honestly complete for their
+  scope), `hasInternalGap` does not fire (the rows exist).
+- **G5 (§7):** the trusted-span clock is a gate input since #365, and a registry edit
+  moves it (measured: one edit flipped 99 % of the pilot history's trust status).
+
+**Recurrence — verified over REST while this design was being written (2026-08-05).**
+`GET /api/engines` on the live demo now reports `engine-7` as `lifecycle: active`,
+`reachable: true`, `engineVersion: 7.1.0` (health probe 04:38 Z): the fleet went from the
+§14.2 two-engine trusted era to THREE engines within a day of the DISABLE that started
+that era. Two composition changes inside 24 hours, on a quiet pilot, both routine admin
+operations — the hazard is recurring, not hypothetical. Under the shipped boolean, every
+post-re-enable row is indistinguishable from the two-engine era's trusted rows; under the
+standing §14.2 rail the G5 era must be re-measured and restarts ≈ 2026-08-05, moving
+earliest satisfaction to ≈ **2026-09-30** with or without this design. (The lifecycle flip
+is VERIFIED; the exact era-start instant in the occurrence series was not re-extracted this
+round — the ≈ date is arithmetic on the verified flip, and §7's G5 row now needs its
+scheduled rail-driven re-measurement regardless.)
+
+### 16.3 Consumer inventory (read from source — the contract for §16.6)
+
+Two DISTINCT consumption surfaces exist and they must not be conflated: the **in-memory
+per-cycle flag** (`AggregationSample.cycleComplete()`) and the **persisted column**
+(`incident_occurrence.cycle_complete`, V21).
+
+| # | Consumer | Reads | What it needs | Scope-aware change? |
+|---|---|---|---|---|
+| C1 | Zero-state regression gate — `IncidentLedgerService.ingest` → `sweepZeroState` (#302, R-BAU-10) | in-memory flag | "did everyone in CURRENT scope answer" — per-cycle, scope-relative BY DESIGN | **NO CHANGE** (issue non-goal, verbatim) |
+| C2 | Self-heal dwell tick — `SelfHealStatsService.tick` → `DwellStateMachine.advance` rule 3 (§4.2) | in-memory flag | same per-cycle meaning; incomplete cycles neither advance nor reset the dwell | **NO CHANGE** (§16.6 C2 records why) |
+| C3 | Arrivals aggregate — `IncidentOccurrenceRepository.arrivalsSince` (F factor #353 + burst bins #365) | column, in the `trusted` LAG predicate | "may this row be DIFFERENCED against its predecessor?" — needs quality AND scope comparability | **YES** — the gap lives here |
+| C4 | Spell substrate — `findSpellShapeRowsDescending` → `SpellSample` → `RetrySpellExtractor` gap-voiding (R2, #351) | column | "is this retrying-count EDGE a job event or an artifact?" — same two-part need | **YES** — the gap lives here |
+| C5 | API honesty surface — `IncidentDetail.Occurrence.cycleComplete` (sparkline markers; the §5/§14.2 REST-only measurement method reads this) | column via DTO | render/measure per-row honesty without DB access | **YES** — gains the scope field |
+| C6 | §7 G5 measurement (`scripts/replay-burst-attention.py` method — VIEWER, REST-only) | column via C5 | a trusted span that is also SAME-FLEET comparable | **YES** — definition amended (§16.7) |
+
+C1 and C2 are the "two existing consumers of `cycle_complete`" the issue protects: both
+consume the flag PER CYCLE, where scope-relativity is correct, and both are untouched.
+
+### 16.4 Shape decision — option 1, scope ON THE ROW; options 2 and 3 rejected
+
+**Chosen: option 1 — record fleet composition per occurrence row**, as a new column
+`incident_occurrence.fleet`: the canonical string of the enabled-engine id set the pass
+actually fanned out over. `cycle_complete` keeps its exact semantics for everyone; quality
+and scope become two orthogonal markers read together at difference time, precisely the way
+`truncated` and `cycle_complete` are already read together.
+
+Why the row and not the estimator — the same reason V21 moved the blind flag onto the row:
+the consumers that need it are a **native SQL window aggregate** (C3) and a **pure
+list-transform** (C4). A marker on the row lets both apply the discard rule locally (one
+more term in an existing `LAG` predicate; one more equality check in an existing span scan)
+and lets the REST-only measurement method (C6) see era boundaries without DB access.
+Scope-awareness anywhere OFF the row has to be **reconstructed** instead of **recorded**,
+which is where option 2 fails.
+
+**Option 2 (estimator reads the registry audit trail) — REJECTED, with its data source
+VERIFIED rather than assumed.** The trail EXISTS: `EngineRegistryStore.transition()` writes
+fail-closed audit entries (`registry-enable` / `registry-disable`, engine id in the entry's
+own `engine_id` column, payload `{id, from, to, mode}`), `registry-add/remove/purge/seed`
+likewise; audit retention MUST be ≥ 400 d (application.yml), matching occurrence retention.
+So the option is *implementable* — and still wrong, for four verified reasons:
+1. **`source: config` deployments have NO trail at all.** Under `inspector.registry.source:
+   config` (`RegistryBootstrap`), composition changes are YAML edits + restart — no audit
+   event is ever written. The estimator would be composition-aware on `db`-sourced
+   deployments and silently blind on config-pinned ones — a correctness property that
+   varies by deployment mode is not a gate rail.
+2. **Payload minimization:** `from`/`to` are not in `AuditService.SKELETON_KEYS`, so under
+   the DEFAULT `redacted` payload mode their values are masked. Direction survives via the
+   action name, but the reconstruction depends on parsing action names out of a
+   hash-chained, partitioned store designed for accountability, not for joining into a
+   60-second-beat aggregate.
+3. **Event-time ≠ sample-time.** The sampler reads a `volatile` registry snapshot;
+   `EngineRegistry.reload` swaps it post-commit while a cycle may be in flight. An audit
+   `ts` cannot say which snapshot a given occurrence row was actually written from —
+   reconstruction is an approximation at exactly the boundary rows where it matters.
+4. **It leaves C4 and C6 unserved.** `RetrySpellExtractor` is deliberately pure (rung-1
+   testable) and the G5 measurement is deliberately VIEWER/REST-only; both would need new
+   plumbing (an audit-derived segmentation feed; an audit-reading API surface) that is
+   strictly more machinery than one column.
+
+**Option 3 (status quo: the §14.2 documented rail) — REJECTED as the end state, KEPT as
+the interim.** "Re-measure §7 after any registry change" leaves a GATE INPUT movable by a
+routine, audited-but-unremarkable admin action, with nothing in the data to catch a missed
+re-measurement — convention-dependent in exactly the way #302 refused to leave blindness.
+And unlike a display feature, a RECORDING gap is unrecoverable: every trusted row written
+between now and the build is a row whose scope can never be attached retroactively (that
+is option 2's lesson). The rail stays in force until the build lands, then §14.2 gains a
+superseded-note (§16.8), corrected in place per the §13 convention.
+
+**Sub-decisions inside option 1** (the issue's "set hash, or a count"):
+- **A count — rejected**: cannot see a swap (disable A + enable B is a composition change
+  at constant count).
+- **A hash — rejected**: detects every change but destroys the "what changed" answer;
+  §14.2-style forensics and the REST measurement would be staring at an opaque token. The
+  literal canonical set is self-describing, a few dozen bytes for any realistic fleet, and
+  equality-comparable — the only operation any consumer needs.
+- **A normalized `fleet_era` table + FK — rejected**: adds a join to every consumer, an
+  era-management write path, and era-identity races for zero information gain over the
+  denormalized string on a table whose whole design is "narrow, partitioned, append-mostly".
+
+### 16.5 The marker — definition and write path
+
+- **Value:** the ids of the engines the pass INTENDED to observe — `perEngine.keySet()`,
+  which is `registry.all()` (enabled engines) at fan-out time, **including** engines whose
+  envelope came back not-ok (in scope, unobserved ⇒ that is `cycle_complete`'s job, not
+  `fleet`'s). Canonical form: ids sorted lexicographically (`String.compareTo`), joined
+  with `,`. Sorting matters: `perEngine` is registry-ordered and a pure REORDER is not a
+  composition change.
+- **Carriage:** `AggregationSample` gains `Set<String> fleetEngineIds` (filled by
+  `PollingSnapshotSource` from the envelope it already iterates — **zero new engine
+  calls**, the Stage 0 iron rule untouched); one static canonicalizer produces the string;
+  `IncidentLedgerService.upsertOccurrence` persists it on every row — INCLUDING blind
+  ones (scope is the intent set and is always known, even when quality is not).
+- **Migration `V22__incident_occurrence_fleet.sql`** (V22 verified next free):
+
+  ```sql
+  ALTER TABLE incident_occurrence
+      ADD COLUMN fleet text NOT NULL DEFAULT '';
+  COMMENT ON COLUMN incident_occurrence.fleet IS
+      'Canonical sorted comma-joined ids of the enabled engines the writing pass fanned out '
+      'over (#372) — the row''s observation SCOPE, orthogonal to the two quality markers. '
+      'Two rows are difference-comparable only when both carry the SAME non-empty fleet. '
+      'Empty string = unrecorded (pre-V22 backfill, or a write path that failed to state '
+      'scope): never comparable to anything, itself included.';
+  ```
+
+  Metadata-only on Postgres ≥ 11 (non-volatile default — the V21 precedent), cascades to
+  every monthly partition + the DEFAULT catch-all. `ddl-auto=validate` holds:
+  `IncidentOccurrence` gains the mapped field in the same change.
+- **Backfill = the fail-closed default, no UPDATE pass.** `''` means "scope was never
+  recorded", and the trusted predicates treat `''` as comparable to NOTHING — not even to
+  an adjacent `''` (two unrecorded scopes are not known to be the same scope). This is
+  V21's own rule applied unchanged: an unknown marker resolves to "untrusted", never to
+  "trusted". The DEFAULT is KEPT after migration so any future insert path that forgets to
+  state scope degrades safe; the ledger's upsert always passes it explicitly.
+- **The temptation explicitly refused:** seeding current-era rows (post
+  2026-08-04T15:39 Z) with the current fleet, on the strength of the §14.2 measurement
+  that no composition change occurred since. That would bake an out-of-band, deploy-time
+  observation into schema history as if the rows had recorded it — the exact fabrication
+  V21's backfill note refuses. Cost of refusing: the G5 era clock restarts at V22 deploy
+  (arithmetic in §16.9 — small now, growing with every week of deferral).
+- **Edge cases, named:** (i) an EMPTY enabled fleet writes no occurrence rows at all (no
+  engines ⇒ no groups), so `''` never legitimately occurs on a written row and is
+  unambiguous as the unrecorded sentinel; (ii) engine ids containing `,` could in theory
+  alias two different sets onto one string — registry ids are slug-shaped in practice and
+  minting one takes REGISTRY_ADMIN, so this is accepted and named (JUDGMENT, not verified
+  against a formal id charset rule; the build slice adds a cheap assert-and-warn in the
+  canonicalizer rather than a new validation surface).
+
+### 16.6 Per-consumer changes (C1–C6 — including the ones that must NOT change)
+
+- **C1 zero-state gate — UNCHANGED, verbatim.** Still driven by the in-memory
+  `sample.cycleComplete()`; still scope-relative. Note for the record: after a DISABLE, a
+  complete cycle "observes absent" classes that lived only on the disabled engine and arms
+  their zero-state flag. That is today's semantics, the issue's explicit non-goal, and
+  self-limiting: REGRESSED additionally requires the class to come BACK over
+  `regression-min-count`, which requires the engine re-enabled and answering — at which
+  point the regression is real evidence.
+- **C2 dwell tick — UNCHANGED.** Considered and rejected: gating `advance` on
+  fleet-vs-previous-cycle would freeze every class's lane for `dwellCycles` after each
+  registry edit, for zero honesty gain — the evidence feeding the statistic is already
+  scope-cleaned upstream by C4's voiding (and the §4.2 rule-3 freeze bug is a live warning
+  against exactly this kind of extra pass-through gate).
+- **C3 `arrivalsSince` — the `trusted` predicate gains the scope terms**, same shape as
+  the quality terms it joins:
+
+  ```sql
+  (o.truncated = false
+       AND o.cycle_complete
+       AND o.fleet <> ''
+       AND COALESCE(LAG(o.truncated) OVER w, false) = false
+       AND COALESCE(LAG(o.cycle_complete) OVER w, true)
+       AND COALESCE(LAG(o.fleet) OVER w, o.fleet) = o.fleet) AS trusted
+  ```
+
+  A delta is trusted only when both endpoints carry the SAME recorded fleet. The birth row
+  (LAG NULL, `sampled_at <= first_seen`) stays an arrival — `COALESCE(..., o.fleet)`
+  self-compares — because a birth differences against the seeded 0, not against another
+  fleet's level; it now additionally requires its OWN scope recorded (`fleet <> ''`). The
+  burst bins (#365) inherit the discipline automatically — they FILTER the same `d.trusted`
+  — and the F2 counting rule is untouched: a scope-discarded delta still counts in
+  `observed_samples` and not in `trusted_samples`, so a wholly scope-broken window degrades
+  to `F = 1` (unknown), never to a fake 0. Invariant `burst_arrivals ≤ arrivals` is
+  unaffected (same filters, narrower time).
+- **C4 spell substrate — scope joins the blind rule, same lane.**
+  `findSpellShapeRowsDescending` projects `fleet`; `SpellSample` gains it;
+  `RetrySpellExtractor` extends the existing #302 check: a judged span (the run, its
+  closing zero-count sample, and the look-ahead actually consulted) containing an
+  UNRECORDED fleet or MORE THAN ONE distinct fleet is **gap-voided** — an edge at a
+  composition boundary may be an artifact of the boundary, and the outcome test would
+  compare DLQ levels across different fleets. Unobservable shape, never a guess (§5 of
+  RETRYING-RISK-LANE) — identical disposition to `hasBlindSample`, one more reason feeding
+  the same `gapVoided` flag. Monotonicity note for the record: this change can only VOID
+  more spells (toward `INSUFFICIENT_HISTORY`), never mint one.
+- **C5 DTO — `IncidentDetail.Occurrence` gains `fleet`** (the canonical string, verbatim);
+  springdoc → `npm run gen:api` regen committed. Frontend RENDERING of era boundaries on
+  the sparkline is a named non-goal of the build slice (the field exists for measurement
+  and honesty; a timeline marker is a follow-up if ever asked for).
+- **C6 measurement method — §16.7.**
+
+### 16.7 G5, amended — the CURRENT-ERA trusted span
+
+An **era boundary** is any point in the fleet-wide series where the recorded fleet differs
+from the previous recorded fleet, or where scope is unrecorded (`''`). G5's span is
+measured **within the current era only**: from the first quality-trusted
+(`cycle_complete = true AND truncated = false`) row after the last era boundary, to
+present. §7's two definitional notes carry over intact: a blind interval INSIDE an era
+thins but does not reset (deltas across it are discarded; trusted rows both sides stay
+fittable and same-fleet); an era boundary DOES reset, because the 28 d fit + 28 d holdout
+must both difference within one fleet. The measurement stays VIEWER/REST-only via C5's
+field — the §5 method unchanged in kind. Until V22 ships, §7's G5 row and the §14.2
+operational rail stand exactly as written.
+
+### 16.8 Build-slice contract (option 1 — the #372 build agent's spec)
+
+Scope: ONE slice (worktree → local CI → PR → second-seat review → green CI on SHA).
+Recommended build seat per the issue: Opus 5, high effort (Flyway + the #365-amended
+aggregate).
+
+1. `V22__incident_occurrence_fleet.sql` exactly as §16.5; `IncidentOccurrence` +
+   `IncidentOccurrenceId` untouched PK; entity field + javadoc.
+2. `AggregationSample.fleetEngineIds` + `PollingSnapshotSource` fill +
+   canonicalizer (+ the comma assert-and-warn); `IncidentLedgerService.upsertOccurrence`
+   passes it; repository upsert takes the new column.
+3. C3 predicate change; C4 projection + `SpellSample` + extractor rule; C5 DTO +
+   `gen:api` regen.
+4. **Tests (the rung ladder, failing-before per the §13/§15.1 convention — each new
+   assertion must produce a WRONG VALUE on the base, not a compile error):**
+   - Rung 1 pure: `RetrySpellExtractorTest` — fleet change inside the run ⇒ voided; at the
+     closing zero ⇒ voided; look-ahead fleet ≠ span fleet ⇒ voided (base: fabricated
+     `SELF_HEALED` — the §16.2 scenario, now a named fixture); `''` in span ⇒ voided;
+     constant fleet ⇒ every existing fixture's outcome unchanged.
+     `PollingSnapshotSourceTest` — fleet = envelope keyset incl. a not-ok engine; canonical
+     string stable under registry reorder.
+   - Rung 4 (real Postgres): `LedgerNativeQueriesIT` — re-enable edge across a fleet
+     change NOT banked (base banks it: the failing-before number); disable edge not
+     negative-banked and the post-change baseline correctly re-seeds on the next
+     same-fleet pair; adjacent `''`/`''` pair NOT trusted; birth row with recorded fleet
+     still counts once (F3), birth row with `''` does not; burst bins inherit;
+     `burst_arrivals ≤ arrivals` on all new fixtures; constant-fleet fixtures byte-identical
+     to pre-change results.
+   - Must-not-change proofs: `IncidentLedgerServiceTest` zero-state suite untouched and
+     green; `DwellStateMachine` suite untouched; `AttentionOrderingNeutralityTest`
+     untouched (flag-off byte-identity holds — C3 runs only under the flag).
+   - `IncidentLedgerIT`: `fleet` persisted on blind AND complete cycles.
+5. **Spec-sync owed by the build slice** (this amendment is design-only and owes no delta
+   beyond this file): INCIDENT-LEDGER §3.3 (DDL block + "two quality markers, one scope
+   marker" wording), RETRYING-RISK-LANE §3.1 + §5 (scope voiding), SPECIFICATION /
+   ARCHITECTURE wherever the two-marker sentence appears (grep `cycle_complete`),
+   IMPLEMENTATION-PLAN research-track record, `application.yml` comment if any wording
+   references the marker pair, §7 G5 row re-measured + §14.2 rail superseded-note (in
+   place, named as superseded, never rewritten) + a §16 build record subsection here (the
+   §15 precedent). `AttentionScoreService` javadoc G5 date refreshed against the
+   post-deploy measured era start.
+6. **Behavior honesty note for the PR:** flag-off surfaces are untouched by C3 (provably —
+   neutrality test), but C4 feeds the DEFAULT-ON self-heal computation; the change is
+   monotonically conservative (voids, never mints) and on the pilot measurably ≈ nothing
+   (0 unconfounded completed spells exist to void, RETRYING-RISK-LANE §8). Say so in the
+   PR body; do not call the slice "no behavior change".
+
+### 16.9 Build now, or defer? — BUILD NOW, and the reason is the clock
+
+The honest case for deferral exists: §7 is NOT MET 0-of-5, G1–G4 are all also unmet,
+earliest G5 ≈ 2026-09-30 (moved by the 2026-08-05 re-enable — §16.2 recurrence note), and
+nothing consuming these markers ships enabled today. If this were a display or estimator
+feature, deferral would win.
+
+It is a **recording** feature, and that inverts the answer:
+
+1. **The gap is unrecoverable retroactively.** Scope-at-write-time cannot be reconstructed
+   later (§16.4's option-2 findings are the proof). Every trusted row written before V22
+   deploys is a row the eventual G5 fit can use only by CONVENTION ("we believe no registry
+   edit happened") — the §14.2 rail, permanently, for that data.
+2. **The fail-closed backfill makes deferral cost LINEAR — and today it is ≈ ZERO.** The
+   era clock restarts at V22 deploy (§16.5). But the pilot's era ALREADY restarted at the
+   2026-08-05 `engine-7` re-enable (§16.2 recurrence note): under the standing rail,
+   earliest G5 is ≈ 2026-09-30 with or without V22. Deployed promptly, V22's fail-closed
+   reset is absorbed into the reset that just happened organically — the marginal cost is
+   the days until deploy. Deferred to late September, the same migration costs the full
+   56 days and pushes G5 to ≈ late November. There will never be a cheaper moment than
+   immediately after a composition change, and one just occurred.
+3. **R2 is default-on today, and the trigger is routine.** The C4 scope hole (fabricated
+   `SELF_HEALED` via a registry edit) sits in a computation that runs on every deployment
+   now, gate or no gate — and the pilot's fleet composition changed TWICE within 24 hours
+   (§16.2), both times by ordinary registry operations. This is not a tail risk waiting
+   for an unusual event; it is the normal operating rhythm of the registry surface.
+4. **The slice is small** — one metadata-only migration, one predicate term, one extractor
+   rule, no new surfaces, no flag changes; §16.8 is implementable without re-derivation.
+
+Deferred explicitly: frontend era-boundary rendering (C5 note), any audit-trail
+cross-check of recorded fleets (option-2 machinery — YAGNI once the row records scope),
+and any change to C1/C2 (protected, not deferred).
+
+### 16.10 Panel review (repo convention — two independent seats, honest ledger)
+
+**0 of 2 standing seats completed this round — both owed.** Recorded exactly as it
+happened, per the §10 precedent for an incomplete panel:
+
+| Seat | Model | Verdict | Findings & disposition |
+|---|---|---|---|
+| Architecture/data | Gemini (`gemini` MCP) | **SEAT UNAVAILABLE THIS ROUND** | Attempted 3 times on 2026-08-05: `gemini-2.5-pro`, `gemini-2.5-flash` (the §10/§14.6 tier-fallback), then `gemini-3.1-pro-preview` — every `generateContent` call returned HTTP **429** while `gemini_list_models` succeeded on the same key, i.e. session-level quota exhaustion, not a transient rate blip (a sibling session independently measured 7 consecutive 429s across three model tiers the same day). Per the standing rule the seat was NOT filled by a substitute model and nobody self-graded in its place. The design lands without it **at the session owner's explicit direction**; the seat is owed before the doc's status moves past DESIGN. |
+| Product/ops | GitHub Models (`copilot` MCP) | **SEAT UNAVAILABLE** | Endpoint permanently gone (HTTP 410, GitHub Models catalog sunset — verified 2026-08-04, not quota; do not re-diagnose). Not filled by a substitute; nobody self-graded. **Owed**, same as §10/§14.6. |
+
+The session owner has arranged a **substitute independent review seat** (Claude Opus 5,
+session-owner authorised — the same handling as #374) to run against this committed text;
+its findings and dispositions are to be recorded HERE when they land, labelled as the
+substitute seat, explicitly NOT as either standing seat. Author's own adversarial notes,
+recorded because they shaped the design before any review (the §14.6 precedent — these are
+not a seat and grade nothing): (i) the first draft's C3 predicate would have let two
+adjacent backfilled `''` rows compare equal — closed by the "comparable to nothing, itself
+included" rule in §16.5; (ii) scope-gating the C2 dwell tick was drafted and withdrawn as
+a lane-freezer (§16.6 C2); (iii) the birth-row COALESCE self-compare was checked against
+the F3 seeding rule specifically so a birth inside a recorded fleet still counts once
+(§16.6 C3, pinned by a §16.8 fixture).
