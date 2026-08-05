@@ -4269,6 +4269,10 @@ button.skip-link {
   background: var(--color-warning-bg);
 }
 .self-heal-line {
+  display: flex;
+  align-items: baseline;
+  gap: 8px;
+  flex-wrap: wrap;
   margin: 4px 0;
 }
 
@@ -4286,10 +4290,18 @@ button.skip-link {
 
 /* #374 (ALARM-COST-MODEL.md §12.1): the per-card evidence sentence, promoted from hover-only
    `title` to real visible text — a 3am reader who never hovers must see the SAME reasoning a
-   hovering one always could. One line, same weight as `.incident-meta-line`/`.ack-meta`'s own
-   "extra glanceable fact" treatment; the parent flex rows already wrap (`.error-signature`/
-   `.incident-signature`/`.self-heal-line`), so this simply flows onto its own line on a normal
-   card without any layout change at the three call sites. */
+   hovering one always could. Same weight as `.incident-meta-line`/`.ack-meta`'s own "extra
+   glanceable fact" treatment. `AttentionBadge` returns a Fragment (no wrapping element), so its
+   pill (`.attention-badge`) and this span land as direct siblings of whatever flex container
+   renders it: `.error-signature`/`.incident-signature` are ALREADY `display: flex; gap: 8px` (own
+   rules above), so the gap between the pill and this span comes from THAT flex row's `gap`, not
+   from anything here. `.self-heal-line` (`IncidentDetail.tsx`) was the one call site that was
+   NOT flex — a plain `<p>` supplies no gap between adjacent inline spans (JSX strips the
+   whitespace between JSX children), so the pill text and this span rendered flush
+   ("ranked by attention15 failing · …"). Fixed by making `.self-heal-line` itself
+   `display: flex; gap: 8px; flex-wrap: wrap` (matching the other two containers' own pattern)
+   rather than adding a margin here, which would double up with the gap the OTHER two containers
+   already provide. */
 .attention-rationale {
   font-size: 12px;
   color: var(--color-text-secondary);

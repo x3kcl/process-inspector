@@ -20,10 +20,12 @@ import com.fasterxml.jackson.annotation.JsonInclude;
  * acknowledged groups keep their labeled never-hidden collapse and their auto-resurface
  * semantics, and no section membership changes. The score only sorts.
  *
- * <p>{@code rationale} is the ONE-SENTENCE, single-tooltip explanation with this card's real
- * numbers (§4.3) — a hard requirement, computed server-side so every consumer renders the same
- * sentence. {@code suggestedAckExpirySeconds} is the §3.2 model-derived ack-expiry SUGGESTION
- * (class P75 closed-episode duration, fleet P75 fallback) — absent while the class has too little
+ * <p>{@code rationale} is the ONE glanceable sentence explanation with this card's real numbers
+ * (§4.3) — a hard requirement, computed server-side so every consumer renders the same sentence.
+ * Rendered as visible page text on the card face since §12.1/issue #374 (previously hover-only
+ * in a {@code title} tooltip). {@code suggestedAckExpirySeconds} is the §3.2 model-derived
+ * ack-expiry SUGGESTION (class P75 closed-episode duration, fleet P75 fallback) — absent while
+ * the class has too little
  * closed-episode history, which is today's behavior (no suggestion, UI selection {@code none}).
  * It is a suggestion only: the operator always overrides and the resurface guarantees are
  * untouched.
