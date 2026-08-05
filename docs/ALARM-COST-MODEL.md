@@ -462,6 +462,27 @@ occurrence series), `GET /api/triage`, `GET /api/engines`, `GET /api/audit?size=
 (returned 64 rows = the whole log), `GET /api/triage/trends`. Analysis: occurrence-series
 delta scan + audit-timestamp cross-matching (scripted, reproducible from the responses).
 
+**⚠️ Discontinuity note (dated 2026-08-05, issue #377 — read this before differencing across
+2026-08-05T03:30 Z).** The demo's three Flowable engines had no persistent volume until
+issue #377's fix; a `--force-recreate` run at ~03:30 Z that day (repairing dropped DNS
+aliases, unrelated to engine data) silently destroyed every engine-side process instance,
+job and history row. The engines came back healthy and EMPTY, and the seed container
+quietly re-seeded a fresh minimal set, so the pilot ledger's own occurrence series shows a
+real, non-error discontinuity at that instant rather than a smooth continuation — measured
+impact: `ArithmeticException` (incident 4) 33→6, `UnknownHostException` (incident 5) 12→2,
+incidents 1–3 went `quiet=true`. The MEASURED figures below (§5.1–§5.6, extracted
+2026-08-04, i.e. entirely BEFORE the discontinuity) are historical records and remain valid
+exactly as stated — nothing here is retroactively adjusted, per the §13 correction
+convention: a fact is corrected in place and named as having changed, never silently
+rewritten. What changes is how any FUTURE re-extraction must be read: any measurement that
+spans 2026-08-05T03:30 Z is differencing across an artificial cliff in the engines'
+underlying state, not real signal about the alarm population. The BFF's own Postgres (audit
+log, incident/episode/occurrence rows) is on a named volume and was NOT affected — the
+ledger's bookkeeping of what happened before the cliff is intact; only the engines' live
+process/job state under it was reset. A re-extraction of this section, if performed, must
+say explicitly whether its window spans the cliff and, if so, must not report a single
+before/after delta across it without flagging the artifact.
+
 ### 5.1 Ledger volume & span (MEASURED)
 - **5 incidents** total; **2 current-generation** (algo v2: ids 4, 5), 3 archived (algo v1:
   ids 1–3, orphaned by the 2026-07-20 v2 bump, all `quiet`). All 5 `state=OPEN` —

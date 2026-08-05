@@ -19,6 +19,16 @@
 # discovery network. Sign in with the ladder users viewer/responder/operator/admin
 # (password ${INSPECTOR_DEV_PASSWORD:-dev}).
 #
+# ⚠️ issue #377 (READ THIS before you `--force-recreate` an engine): each engine now carries
+# its own named volume over flowable-rest's embedded H2 datastore — see the per-service
+# comments below for why, and how it was verified. Before this fix, the engines had no
+# volume at all: `docker compose up -d --force-recreate engine-a engine-b engine-7` (run
+# 2026-08-05 to repair DNS aliases, nothing to do with engine data) silently destroyed 16
+# days of pilot process/job/history state, and the engines came back healthy and EMPTY — the
+# seed container quietly re-ran, so the demo LOOKED fine. `docker/deploy-demo.sh` now refuses
+# any operation that would recreate an engine container unless `--allow-engine-recreate` is
+# passed (see that script).
+#
 # Overridable via the shell env or `--env-file docker/.env.demo`:
 #   NAUMANN_CLOUD, PI_SUBDOMAIN, INSPECTOR_DEV_PASSWORD, POSTGRES_PASSWORD
 #
@@ -28,19 +38,45 @@
 name: process-inspector-demo
 
 services:
+  # ⚠️ STATEFUL (issue #377). `flowable/flowable-rest` defaults to an embedded H2 database
+  # inside the container filesystem — verified against the image itself (6.8.0):
+  # `spring.datasource.url=jdbc:h2:~/flowable-db/db;AUTO_SERVER=TRUE;...` in
+  # /app/WEB-INF/classes/flowable-default.properties, where `~` is the `flowable` user's
+  # HOME (/home/flowable — confirmed via `getent passwd flowable` in the image). With no
+  # volume there, EVERY process instance, dead-letter job and history row lives and dies
+  # with this exact container. This bit for real on 2026-08-05: a `--force-recreate` run to
+  # repair DNS aliases (nothing to do with engine data) silently destroyed 16 days of pilot
+  # history; the engines came back healthy and EMPTY, and the seed container quietly re-ran,
+  # so the demo LOOKED fine. The named volume below now holds that H2 store, mounted at
+  # `/home/flowable` itself (NOT the nested `.../flowable-db` subpath) — verified empirically
+  # that Docker only carries over the image's existing `flowable:flowable` ownership when the
+  # volume is mounted at a path that already exists in the image; mounting an EMPTY volume
+  # directly at the nested path lands root-owned and unwritable by the `flowable` user,
+  # which would silently fail every write instead of erroring loudly.
+  #
+  # State now SURVIVES a `--force-recreate`, an image bump, or an env change (proven: seeded
+  # a process instance, force-recreated the container, history was still there) — but NOT
+  # `docker compose down -v` (the volume is destroyed with everything else) and NOT losing
+  # this named volume some other way (e.g. a fresh `docker volume rm`). `deploy-demo.sh`
+  # refuses to recreate an engine without `--allow-engine-recreate` — see that script.
   engine-a:
     image: flowable/flowable-rest:6.8.0
     environment:
       - FLOWABLE_REST_APP_ADMIN_USER-ID=rest-admin
       - FLOWABLE_REST_APP_ADMIN_PASSWORD=test
+    volumes:
+      - inspector-demo-engine-a-home:/home/flowable
     networks: [internal]
     restart: unless-stopped
 
+  # ⚠️ STATEFUL (issue #377) — same embedded-H2 exposure and fix as engine-a above.
   engine-b:
     image: flowable/flowable-rest:6.8.0
     environment:
       - FLOWABLE_REST_APP_ADMIN_USER-ID=rest-admin
       - FLOWABLE_REST_APP_ADMIN_PASSWORD=test
+    volumes:
+      - inspector-demo-engine-b-home:/home/flowable
     networks: [internal]
     restart: unless-stopped
 
@@ -59,11 +95,20 @@ services:
   # creds as the 6.8 images above — so seed.sh needs no special case. (An engine that EMBEDS
   # Flowable publishes /process-api at the ROOT instead; that's the `flap` Boot-layout engine
   # in the dev harness, a different shape entirely.)
+  #
+  # ⚠️ STATEFUL (issue #377) — same embedded-H2 exposure as engine-a/engine-b, but 7.1.0
+  # changed the datasource URL: verified against the 7.1.0 image itself,
+  # `spring.datasource.url=jdbc:h2:~/flowable-db/ossdb;AUTO_SERVER=TRUE;...` (note `ossdb`,
+  # not `db` — the only datastore-relevant diff between the two majors here). `~` resolves
+  # the same way (HOME=/home/flowable, confirmed via `getent passwd flowable` in THIS image
+  # too), so the same "mount the volume at /home/flowable itself" fix applies unchanged.
   engine-7:
     image: flowable/flowable-rest:7.1.0
     environment:
       - FLOWABLE_REST_APP_ADMIN_USER-ID=rest-admin
       - FLOWABLE_REST_APP_ADMIN_PASSWORD=test
+    volumes:
+      - inspector-demo-engine-7-home:/home/flowable
     networks: [internal]
     restart: unless-stopped
 
@@ -311,6 +356,13 @@ volumes:
   inspector-logical-dumps:      # audit-backup's nightly pg_dump output + .sha256 sidecars
   inspector-basebackups:        # audit-basebackup's weekly pg_basebackup output + sidecars
   inspector-wal-archive:        # wal-receiver's continuously streamed WAL segments
+  # Engine H2 datastores (issue #377) — one volume per engine so they stay genuinely
+  # independent (never shared), each mounted at that engine's own /home/flowable. See the
+  # per-service comments above for the embedded-H2 exposure this closes and how it was
+  # verified. `docker compose down -v` now destroys these too — see the top-of-file note.
+  inspector-demo-engine-a-home:
+  inspector-demo-engine-b-home:
+  inspector-demo-engine-7-home:
 
 networks:
   internal:
