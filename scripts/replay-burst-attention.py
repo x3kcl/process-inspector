@@ -40,7 +40,8 @@ import urllib.request
 BASE = os.environ.get("BASE", "https://pi.naumann.cloud")
 USER = os.environ.get("USER_", "viewer")
 PASS = os.environ.get("PASS", "dev")
-WINDOW_H = 720  # server clamps to 30 days
+WINDOW_H = 720  # server clamps to 30 days PER CALL (IncidentQueryService.MAX_WINDOW_HOURS)
+ERA_PAGES = int(os.environ.get("ERA_PAGES", "3"))  # extra `until` pages to walk back (#372)
 
 # ---- proposed §14 constants (kept here so the replay provably runs the same
 # ---- numbers the design document quotes) -----------------------------------
@@ -177,6 +178,25 @@ def kendall_tau(a, b):
     return (conc - disc) / (conc + disc)
 
 
+def era_boundary(series):
+    """The sampledAt of the first row of the CURRENT era, or None when none is reachable.
+
+    An era boundary is a row whose recorded `fleet` differs from its predecessor's, or whose
+    scope is unrecorded (""). Unrecorded is never comparable — not even to another unrecorded
+    row — so a "" row always opens a new era (ALARM-COST-MODEL §16.5/§16.7).
+    """
+    start = None
+    prev = None
+    for row in series:
+        fleet = row.get("fleet", "")
+        if prev is not None and fleet != prev:
+            # A CHANGE (only reachable at index >= 1 — the first row's own predecessor is
+            # outside this page, which is exactly why the caller pages backward).
+            start = row["sampledAt"] if fleet else None
+        prev = fleet
+    return start
+
+
 def main():
     ap = argparse.ArgumentParser()
     ap.add_argument("--cache", default=None)
@@ -192,6 +212,35 @@ def main():
     for i in current:
         details[i["id"]] = fetch(f"/api/incidents/{i['id']}?window={WINDOW_H}",
                                  args.cache, f"inc{i['id']}.json")
+
+    # ---------------- 0. era boundaries (#372) ----------------
+    # `fleet` is the row's observation SCOPE — the canonical sorted enabled-engine ids the pass
+    # fanned out over. An ERA BOUNDARY is any point where the recorded fleet differs from the
+    # previous one, or where scope is unrecorded (""). G5 is measured within the CURRENT era only
+    # (ALARM-COST-MODEL §16.7), and it needs >= 56 d of trusted span while ONE call reaches 30 —
+    # so when no boundary is visible in the newest window we page BACKWARD with the `until`
+    # cursor. Each call stays bounded to one clamped window; only the reachable total span grows.
+    print("\n## 0. observation SCOPE / era boundaries (MEASURED, #372)")
+    for iid, d in details.items():
+        series = list(d["series"])
+        oldest = series[0]["sampledAt"] if series else None
+        pages = 0
+        while oldest is not None and pages < ERA_PAGES and not era_boundary(series):
+            page = fetch(f"/api/incidents/{iid}?window={WINDOW_H}&until={oldest}",
+                         args.cache, f"inc{iid}-until-{pages}.json")
+            older = page["series"]
+            if not older:
+                break
+            series = older + series
+            oldest = series[0]["sampledAt"]
+            pages += 1
+        boundary = era_boundary(series)
+        fleets = sorted({r.get("fleet", "") for r in series})
+        span_d = ((parse(series[-1]["sampledAt"]) - parse(series[0]["sampledAt"])).total_seconds()
+                  / 86400) if series else 0.0
+        print(f"- incident {iid}: {len(series)} rows over {span_d:.1f} d "
+              f"({pages} extra cursor page(s)); fleets seen {fleets}; "
+              f"current era starts {boundary or 'BEFORE the reachable window'}")
 
     # ---------------- 1. cadence / coverage / gaps ----------------
     print("\n## 1. sampler cadence & coverage (MEASURED)")

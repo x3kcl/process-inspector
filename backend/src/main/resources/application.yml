@@ -173,7 +173,12 @@ inspector:
     # the aggregation scope, NOT the instant it became reachable (§14.2 correction).
     # G5 counts trusted span — a fit-plus-holdout over discarded deltas is a
     # fit over nothing — so earliest satisfaction is ≈ 2026-09-29, correcting the ≈ 2026-09-14
-    # stated here before the #365 amendment round re-measured it). Replaying A(c) over all 21,229
+    # stated here before the #365 amendment round re-measured it). Since #372 the trusted span is
+    # also CURRENT-ERA only: `incident_occurrence.fleet` (V22) records the pass's observation
+    # SCOPE beside the two quality markers, and a fit must difference within ONE fleet, so a
+    # registry composition change opens a new era. Pre-V22 rows carry '' (unrecorded, comparable
+    # to nothing), which restarts the clock at V22 deploy — deliberately, since scope at write
+    # time cannot be reconstructed and guessing it would be fabrication. Replaying A(c) over all 21,229
     # recorded pilot buckets reproduced today's count-only ordering EXACTLY (Kendall tau = 1.0,
     # zero position changes). Off ⇒ nothing is computed, no `attention` block is served, and the
     # card order is byte-for-byte `total DESC`. Flip it only alongside a re-measurement of §7.

@@ -41,8 +41,16 @@ import org.springframework.stereotype.Service;
  * pilot's history was 99 % blind ({@code cycle_complete = false}) until 2026-08-04T15:39Z (the
  * instant an unreachable engine left the aggregation scope, NOT the instant it became reachable —
  * §14.2 correction), and a fit-plus-holdout over discarded deltas is a fit
- * over nothing — so earliest satisfaction is ≈ 2026-09-29, not the ≈ 2026-09-14 stated here before
- * the #365 amendment round re-measured it (§7 correction). The score is measured IDENTICAL to
+ * over nothing — so earliest satisfaction was ≈ 2026-09-29, not the ≈ 2026-09-14 stated here before
+ * the #365 amendment round re-measured it (§7 correction). <b>Amended again by #372 (§16.7):</b>
+ * G5 now counts the trusted span of the CURRENT ERA — one unchanging observation scope
+ * ({@code incident_occurrence.fleet}, V22) — because a fit must difference within one fleet. V22
+ * records scope from its deploy forward and deliberately does NOT backfill a guessed fleet onto
+ * existing rows (scope at write time cannot be reconstructed; asserting it would be fabrication),
+ * so every pre-V22 row is {@code fleet = ''} = comparable to nothing and the era clock STARTS AT
+ * V22 DEPLOY: measured G5 resets to 0 d, earliest satisfaction ≈ V22 deploy + 56 d. The exact
+ * post-deploy era-start instant is owed as a §5-method measurement once the migration has run —
+ * it cannot be extracted beforehand, and this comment records the rule rather than a made-up date. The score is measured IDENTICAL to
  * count-only ordering across all 21,229 recorded pilot buckets (§5.5, Kendall tau = 1.0 — for most
  * of them via the F2 neutrality rule, the whole fleet tied at an unknown-arrivals F of 1). With
  * {@code inspector.triage.attention-ordering} false — the shipped default

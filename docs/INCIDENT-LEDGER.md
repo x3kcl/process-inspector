@@ -139,6 +139,7 @@ CREATE TABLE incident_occurrence (
     retrying_count    bigint NOT NULL,
     truncated         boolean NOT NULL,
     cycle_complete    boolean NOT NULL,                -- V21: every registry engine answered ok() (#302)
+    fleet             text NOT NULL DEFAULT '',        -- V22: the pass's observation SCOPE (#372)
     PRIMARY KEY (incident_id, sampled_at)            -- business key IS the PK (panel: o3 BLOCKER fix)
 ) PARTITION BY RANGE (sampled_at);
 CREATE TABLE incident_occurrence_default PARTITION OF incident_occurrence DEFAULT;
@@ -153,18 +154,35 @@ CREATE TABLE incident_occurrence_default PARTITION OF incident_occurrence DEFAUL
 - FK kept (panel P4): `incident` rows are never deleted, partition DROP is metadata-only.
 - Idempotent upsert `ON CONFLICT (incident_id, sampled_at) DO UPDATE`, bucket-floored like
   `SnapshotBucket`. A poll is not a mutation: no corrective-action rails.
-- **TWO honesty markers, read identically (V21).** `truncated` says the counts are a scan-cap
-  FLOOR (R-SEM-12); `cycle_complete = false` says an engine was unreachable when they were
-  taken (#302), so members hosted there are simply MISSING from them. Both make the row
-  unusable as a LEVEL: every derived reader discards a delta touching one (`arrivalsSince`, the
-  attention F factor) and refuses to read a retrying-count edge at one as a spell boundary
-  (RETRYING-RISK-LANE §3.1). Persisting `cycle_complete` was the fix for a shipped defect
-  class: the flag existed on the SAMPLE but was consumed only by the regression gate, so a
+- **TWO QUALITY markers, read identically (V21), plus ONE SCOPE marker (V22).** `truncated`
+  says the counts are a scan-cap FLOOR (R-SEM-12); `cycle_complete = false` says an engine was
+  unreachable when they were taken (#302), so members hosted there are simply MISSING from them.
+  Both make the row unusable as a LEVEL: every derived reader discards a delta touching one
+  (`arrivalsSince`, the attention F factor) and refuses to read a retrying-count edge at one as a
+  spell boundary (RETRYING-RISK-LANE §3.1). Persisting `cycle_complete` was the fix for a shipped
+  defect class: the flag existed on the SAMPLE but was consumed only by the regression gate, so a
   two-minute engine outage read downstream as ~900 phantom arrivals AND as a fabricated
   SELF_HEALED spell. Pre-V21 rows backfill to `false` — completeness was never recorded for
   them, and asserting an unrecorded observation is exactly the fabrication this prevents; the
   safe default (0 arrivals / INSUFFICIENT_HISTORY) is already the first-class expected state
   for both consumers.
+- **`fleet` is a different axis, not a third quality marker (V22, #372,
+  [ALARM-COST-MODEL.md](ALARM-COST-MODEL.md) §16).** The two markers above answer "how WELL did
+  we see what we were looking at"; `fleet` answers "WHAT were we looking at" — the canonical
+  sorted comma-joined ids of the ENABLED engines the writing pass fanned out over
+  (`registry.all()`, including engines whose envelope came back not-ok: in scope but unobserved
+  is `cycle_complete`'s story). It exists because both quality markers can be perfectly clean
+  across a registry composition change: a DISABLE removes an engine from `registry.all()`
+  entirely, so the pass never fails to hear from anyone, `cycle_complete` stays TRUE, and the
+  class's level silently loses that engine's members. Two rows are difference-comparable only
+  when both carry the SAME NON-EMPTY fleet — the same rule the quality markers get, on the other
+  axis. Without it, a routine admin action banks a re-enable's level shift as hundreds of phantom
+  arrivals and reads a disable as a RETRYING spell ENDING with no DLQ growth, i.e. a **fabricated
+  SELF_HEALED** minted by a registry edit. Pre-V22 rows backfill to `''` = **unrecorded**, which
+  is comparable to NOTHING, itself included (two unrecorded scopes are not KNOWN to be the same
+  scope): scope at write time cannot be reconstructed afterwards, so guessing it would be exactly
+  the fabrication the column exists to stop. The DEFAULT is KEPT so any future insert path that
+  forgets to state scope degrades safe.
 
 ## 4. JSONB churn note (accepted risk)
 
@@ -213,8 +231,9 @@ Per live group per cycle (all in one transaction, optimistic-locked):
      hysteresis per panel).
    While the gate is closed, the cycle still updates `last_seen`/totals/occurrence (the
    data stays honest; only the state transition waits).
-4. Always: upsert the bucketed `incident_occurrence` row — carrying BOTH honesty markers,
-   `truncated` and `cycle_complete` (§3.3).
+4. Always: upsert the bucketed `incident_occurrence` row — carrying both quality markers,
+   `truncated` and `cycle_complete`, AND the pass's observation scope `fleet` (§3.3). Scope is
+   recorded on BLIND rows too: it is the intent set, and is always known even when quality is not.
 
 **The REGRESSED transition's audit write is fail-closed with a genuine compensation (R-AUD-10,
 issue #307).** The transition + new episode land in the group's ambient transaction, then
@@ -256,7 +275,9 @@ inspector.incidents.quiet-window`, default 24h), never stored. Down engines → 
 aggregation → gaps, no fabricated zeros (their groups' totals may dip; the occurrence rows
 record what was observed AND that the pass was blind, `cycle_complete = false`, so a dip that
 is really an unobserved engine is never differenced as movement — same honesty rule as the
-snapshot store) — AND their absence never
+snapshot store; an engine DISABLED in the registry is a different case entirely — it never enters
+the fan-out, so the cycle stays complete and only `fleet` records the shrunken scope, V22/#372)
+— AND their absence never
 arms the regression gate for any incident, live or resolved. Store down → warn once + skip.
 
 ## 6. API surface (springdoc-scanned; records; RFC-7807; no delete — the ledger is history)

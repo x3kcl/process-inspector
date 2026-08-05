@@ -2386,6 +2386,7 @@ export interface components {
             cycleComplete?: boolean;
             /** Format: int64 */
             deadLetterCount?: number;
+            fleet?: string;
             /** Format: int64 */
             retryingCount?: number;
             /** Format: date-time */
@@ -3996,6 +3997,7 @@ export interface operations {
         parameters: {
             query?: {
                 window?: number;
+                until?: string;
             };
             header?: never;
             path: {

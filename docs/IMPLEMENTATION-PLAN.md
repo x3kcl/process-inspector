@@ -2575,6 +2575,45 @@ boundary was itself wrong and is corrected in ALARM-COST-MODEL.md §14.2: the er
 when an unreachable engine left the aggregation scope (disabled in the registry), not when it
 became reachable — so the trusted-span clock can be restarted by a registry edit.
 
+### v2 research tracks R1+R2 — observation SCOPE / fleet composition _(#372, ★ BUILT)_
+
+The #365 round ended by naming its own worst finding: the trusted-span clock — since #365 a G5
+gate INPUT — can be restarted by a routine registry edit. #372 is the fix, designed in
+[ALARM-COST-MODEL.md §16](ALARM-COST-MODEL.md) (build contract §16.8) and built here.
+
+The defect is not a quality problem, which is why both existing honesty markers were blind to
+it. A registry DISABLE removes an engine from `EngineRegistry.all()` entirely, so the pass never
+fans out to it and never fails to hear from it: `cycle_complete` stays honestly TRUE while a
+multi-engine class's LEVEL silently loses that engine's members. Downstream, a re-enable banks
+the level shift as hundreds of phantom arrivals in R1's `F` factor, and a disable reads in R2 as
+a RETRYING spell ENDING with no dead-letter growth — a **`SELF_HEALED` fabricated by an admin
+action**, in a DEFAULT-ON computation, with `truncationTainted`/`hasBlindSample`/`hasInternalGap`
+all silent.
+
+What landed: **V22** adds `incident_occurrence.fleet` (metadata-only `ADD COLUMN … NOT NULL
+DEFAULT ''`, cascading to the monthly partitions and the DEFAULT catch-all) recording the
+canonical sorted enabled-engine id set the writing pass fanned out over — the row's observation
+SCOPE, orthogonal to the two quality markers and read together with them at difference time.
+`arrivalsSince` gains the scope terms in the same `trusted` predicate (birth rows self-compare so
+FIX 3 survives; the #365 burst bins inherit for free); `RetrySpellExtractor` gap-voids any spell
+whose observed shape or consulted look-ahead straddles a composition boundary or an unrecorded
+scope (monotonic — it can only VOID, never mint); `IncidentDetail.OccurrencePoint` carries
+`fleet` on the wire. **Pre-V22 rows are NOT backfilled with a guessed fleet** — scope at write
+time cannot be reconstructed later (the registry audit trail does not exist at all under
+`inspector.registry.source: config`), so `''` = unrecorded = comparable to nothing, itself
+included; the cost is that the G5 era clock restarts at V22 deploy, which is why the design
+argued BUILD NOW rather than defer. `TriageAggregationService.aggregate` now captures
+`registry.all()` ONCE and drives both its fan-out and collect loops from that single snapshot, so
+`fleet` and `cycleComplete` describe one atomic registry read. A `before`/`until` cursor on the
+incident-detail series makes the amended G5 method (CURRENT-ERA trusted span, ≥ 56 d) actually
+reachable over REST past the 30-day per-call clamp. `inspector.triage.attention-ordering` stays
+**default false** and `AttentionOrderingNeutralityTest` is untouched and green; C1 (the R-BAU-10
+zero-state regression gate, #302) and C2 (the dwell tick) are deliberately UNCHANGED — §16.6
+records why, and the C1 false-REGRESSED mechanism the review surfaced is tracked separately as
+issue #380. Honest note: this is not a no-behavior-change slice — C4 feeds the default-ON
+self-heal computation, and the change is monotonically conservative (on the pilot, measurably
+≈ nothing: zero unconfounded completed spells exist to void).
+
 ### v2 research track R1 — visible-rationale correction _(#374, ★ BUILT)_
 
 §8's executed A/B run (#373) found the finding that mattered more than its own pass: the

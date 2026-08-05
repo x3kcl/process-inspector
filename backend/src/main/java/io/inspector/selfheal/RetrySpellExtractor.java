@@ -32,6 +32,19 @@ import java.util.List;
  * fires (the rows exist). So any spell CONTAINING, TERMINATED BY, or JUDGED AGAINST a
  * {@code cycleComplete = false} sample is gap-voided outright — unobservable shape, never a
  * guess (§5: never presents as complete).
+ *
+ * <p><b>Neither is a sample from a DIFFERENT FLEET (#372, V22).</b> The blind rule above closes
+ * the unreachability door; a registry DISABLE walks through a door it cannot see. Disable the
+ * engine holding a class's RETRYING jobs while another engine holds its dead-letters and the very
+ * same forged edge appears — {@code retryingCount} drops to 0 — except that every quality marker
+ * is CLEAN: the disabled engine simply left {@code EngineRegistry.all()}, so the pass never failed
+ * to hear from anyone it fanned out to and {@code cycleComplete} is honestly TRUE. The look-ahead
+ * then compares the surviving engine's unchanged dead-letter count against spell start and mints
+ * {@code SELF_HEALED} on the strength of an admin action. Scope therefore joins the blind rule in
+ * the same lane: a judged span (the run, its closing zero-count sample, and the look-ahead
+ * actually consulted) that contains an UNRECORDED fleet, or MORE THAN ONE distinct fleet, is
+ * gap-voided. Monotonic by construction — this rule can only VOID spells (toward
+ * {@code INSUFFICIENT_HISTORY}), never mint one.
  */
 public final class RetrySpellExtractor {
 
@@ -94,26 +107,36 @@ public final class RetrySpellExtractor {
         // a sampling gap, whose surviving endpoints are at least real counts) not even judged —
         // the outcome test itself would be reading a count with members missing from it.
         boolean blindShape = hasBlindSample(samples, start, shapeEnd);
-        gapVoided = gapVoided || blindShape;
+        // #372: the observed shape must also describe ONE fleet. A composition change anywhere in
+        // it means an edge here may be an artifact of the registry rather than of the jobs — and
+        // unlike a blind pass, nothing else on the row says so. An unrecorded scope ('') is never
+        // comparable, not even to another unrecorded one.
+        boolean scopeBroken = hasScopeBreak(samples, start, shapeEnd);
+        gapVoided = gapVoided || blindShape || scopeBroken;
 
         RetrySpell.Outcome outcome = RetrySpell.Outcome.UNKNOWN;
-        if (!live && !blindShape) {
+        if (!live && !blindShape && !scopeBroken) {
             int lookaheadIdx = zeroIdx + 1; // the +1-bucket look-ahead past spell end
             if (lookaheadIdx < samples.size()
                     && withinLookaheadTolerance(
                             samples.get(zeroIdx).sampledAt(),
                             samples.get(lookaheadIdx).sampledAt(),
                             bucketWidth)) {
-                if (samples.get(lookaheadIdx).cycleComplete()) {
+                SpellSample lookahead = samples.get(lookaheadIdx);
+                if (lookahead.cycleComplete()
+                        && lookahead.fleet().equals(samples.get(start).fleet())) {
                     long dlqAtStart = samples.get(start).deadLetterCount();
-                    long dlqAfterLookahead = samples.get(lookaheadIdx).deadLetterCount();
+                    long dlqAfterLookahead = lookahead.deadLetterCount();
                     outcome = dlqAfterLookahead > dlqAtStart
                             ? RetrySpell.Outcome.ESCALATED
                             : RetrySpell.Outcome.SELF_HEALED;
                 } else {
                     // The whole outcome test is "did the DLQ grow by the look-ahead bucket" — a
                     // blind look-ahead may simply be missing the engine the escalation landed on,
-                    // so "no growth" there is not evidence of a heal.
+                    // so "no growth" there is not evidence of a heal. A look-ahead from a DIFFERENT
+                    // FLEET (#372) fails for the mirror reason: the dead-letter level it reports is
+                    // taken over a different set of engines from the one the spell started on, so
+                    // the comparison is between two non-comparable levels, not a growth test.
                     gapVoided = true;
                 }
             } else {
@@ -136,6 +159,25 @@ public final class RetrySpellExtractor {
     private static boolean hasBlindSample(List<SpellSample> samples, int start, int endInclusive) {
         for (int k = start; k <= endInclusive; k++) {
             if (!samples.get(k).cycleComplete()) {
+                return true;
+            }
+        }
+        return false;
+    }
+
+    /**
+     * True when {@code [start, endInclusive]} does not describe ONE recorded fleet (#372): either
+     * some sample never recorded its scope ({@code ""} — comparable to nothing, itself included)
+     * or the scope CHANGED inside the span, which puts a registry composition boundary inside the
+     * shape the outcome is about to be judged on.
+     */
+    private static boolean hasScopeBreak(List<SpellSample> samples, int start, int endInclusive) {
+        String fleet = samples.get(start).fleet();
+        if (fleet.isEmpty()) {
+            return true;
+        }
+        for (int k = start + 1; k <= endInclusive; k++) {
+            if (!fleet.equals(samples.get(k).fleet())) {
                 return true;
             }
         }

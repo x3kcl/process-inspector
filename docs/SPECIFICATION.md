@@ -809,7 +809,11 @@ so history survives DLQ drains:
   `incident.attention` alongside the self-heal badge, and the detail sparkline marks BOTH
   occurrence honesty flags — `truncated` (a floor) and `cycleComplete = false` (blind: an engine
   was unreachable, so the dip is an outage, not a drain) — with distinct shapes and their own
-  legend lines.
+  legend lines. A THIRD occurrence field, `fleet` (V22/#372), records the pass's observation
+  SCOPE rather than its quality — which enabled engines it fanned out over — because a registry
+  disable/enable moves a multi-engine class's LEVEL with both quality flags perfectly clean. It
+  ships on the wire for measurement and honesty; rendering era boundaries on the sparkline is a
+  deliberate non-goal of that slice.
 - **Non-goals v1** (recorded with the panel review): assignee/severity fields, auto-resolve
   policies, external alerting/deploy correlation, reporting dashboards/CSV export.
 

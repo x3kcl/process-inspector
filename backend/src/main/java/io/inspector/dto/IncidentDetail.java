@@ -68,6 +68,14 @@ public record IncidentDetail(
      * never render a status derived from truncated data without the badge. Without it the detail
      * sparkline drew a blind-outage dip identically to a real recovery, which is precisely the
      * confusion the marker was persisted to prevent.
+     *
+     * <p>{@code fleet} (V22, #372) is the row's observation SCOPE, not a third quality marker: the
+     * canonical sorted comma-joined ids of the ENABLED engines the writing pass fanned out over
+     * ({@code ""} = scope unrecorded). Two points are difference-comparable only when both carry
+     * the SAME non-empty fleet — a registry disable/enable moves the level of a multi-engine class
+     * without either quality marker noticing. It ships so the VIEWER/REST-only measurement method
+     * (ALARM-COST-MODEL §16.7's era-boundary walk, G5) can see era boundaries inside the window it
+     * reaches. Frontend RENDERING of era boundaries is a named non-goal of this slice.
      */
     public record OccurrencePoint(
             Instant sampledAt,
@@ -75,7 +83,8 @@ public record IncidentDetail(
             long deadLetterCount,
             long retryingCount,
             boolean truncated,
-            boolean cycleComplete) {}
+            boolean cycleComplete,
+            String fleet) {}
 
     /**
      * One related error-class bulk retry — the {@code GET /api/bulk} list item's exact field

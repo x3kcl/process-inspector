@@ -95,8 +95,16 @@ public class TriageAggregationService {
      * bulkhead and can never starve an interactive search's permits (do-no-harm, PLAN v2/M4).
      */
     public TriageDashboardResponse aggregate(CallPriority priority) {
+        // ONE registry snapshot drives BOTH loops (#372, §16.8 item 2). registry.all() reads a
+        // volatile field that EngineRegistry.reload swaps post-commit, so reading it twice let a
+        // registry edit land BETWEEN the fan-out and the collect: perEngine's key set would then
+        // be the collect-time scope while the calls that produced it were the fan-out-time one.
+        // Since #372 that key set IS the row's recorded observation scope (AggregationSample
+        // .fleetEngineIds), so fleet and cycleComplete must describe the same atomic snapshot —
+        // not two reads that can disagree exactly at the composition boundary where it matters.
+        List<EngineConfig> fleet = registry.all();
         Map<String, Future<EngineSlice>> futures = new LinkedHashMap<>();
-        for (EngineConfig engine : registry.all()) {
+        for (EngineConfig engine : fleet) {
             futures.put(engine.id(), fanout.submit(() -> sliceOf(engine, priority)));
         }
 
@@ -106,7 +114,7 @@ public class TriageAggregationService {
         Map<String, PerEngineTriage> perEngine = new LinkedHashMap<>();
         Map<String, GroupAccumulator> groups = new LinkedHashMap<>();
 
-        for (EngineConfig engine : registry.all()) {
+        for (EngineConfig engine : fleet) {
             engines.add(EngineDto.from(engine, registry.healthOf(engine.id())));
             EngineSlice slice = resolve(engine.id(), futures.get(engine.id()));
             perEngine.put(engine.id(), slice.envelope());

@@ -8,6 +8,8 @@ import io.inspector.dto.ReopenIncidentRequest;
 import io.inspector.dto.ResolveIncidentRequest;
 import io.inspector.incident.IncidentLifecycleService;
 import io.inspector.incident.IncidentQueryService;
+import java.time.Instant;
+import org.springframework.format.annotation.DateTimeFormat;
 import org.springframework.security.access.prepost.PreAuthorize;
 import org.springframework.security.core.Authentication;
 import org.springframework.web.bind.annotation.GetMapping;
@@ -34,7 +36,10 @@ import org.springframework.web.bind.annotation.RestController;
  * <p>GET /api/incidents/{id} — the list item + full episode history + windowed occurrence
  * series + the live Stage-0 join ({@code window} hours, same clamp, default 24). Unknown id ⇒
  * 404 ProblemDetail; an incident entirely outside the caller's read scope answers the SAME 404
- * (existence is not leaked — deliberately not a 403).
+ * (existence is not leaked — deliberately not a 403). The optional {@code until} CURSOR (ISO-8601
+ * instant, #372) moves the window's upper bound so a caller can page BACKWARD past the 30-day
+ * clamp in bounded chunks — each call is still limited to one clamped window; only the reachable
+ * TOTAL span changes. Omit it and the read is exactly the pre-#372 one.
  *
  * <p>POST /api/incidents/{id}/resolve · /reopen — the S3 lifecycle verbs: <b>config-events,
  * not corrective actions</b> (the R-BAU-01 acknowledge's endpoint class — a BFF-store-only
@@ -74,8 +79,11 @@ public class IncidentController {
     @GetMapping("/{id}")
     @PreAuthorize("@rbac.atLeast(authentication, 'VIEWER')")
     public IncidentDetail detail(
-            @PathVariable long id, @RequestParam(defaultValue = "24") int window, Authentication auth) {
-        return service.detail(id, window, auth);
+            @PathVariable long id,
+            @RequestParam(defaultValue = "24") int window,
+            @RequestParam(required = false) @DateTimeFormat(iso = DateTimeFormat.ISO.DATE_TIME) Instant until,
+            Authentication auth) {
+        return service.detail(id, window, until, auth);
     }
 
     @PostMapping("/{id}/resolve")
