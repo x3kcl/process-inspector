@@ -363,6 +363,21 @@ that the gate's real-history thresholds are met.
 
 ## 8. Measured baseline 2026-08-04 (MEASURED FACTS, not proposals)
 
+**⚠️ Discontinuity note (dated 2026-08-05, issue #377 — read this before differencing across
+2026-08-05T03:30 Z).** The demo's three Flowable engines had no persistent volume until
+issue #377's fix; a `--force-recreate` run at ~03:30 Z that day (a DNS-alias repair,
+unrelated to engine data) silently destroyed every engine-side process instance, job and
+history row — the engines came back healthy and EMPTY, and the seed container quietly
+re-seeded a fresh minimal set. The baseline below was extracted 2026-08-04, entirely BEFORE
+the discontinuity, and remains valid exactly as stated — a historical record, not adjusted.
+It is called out here specifically because §8's completed-RETRYING-spell count and episode
+data are exactly the kind of figures a future re-measurement (§9's evaluation protocol) would
+recompute and diff against: any such re-measurement whose window spans 2026-08-05T03:30 Z is
+differencing across an artificial cliff in engine state, not a real change in self-heal
+behavior, and must say so explicitly rather than reporting a bare before/after delta. See
+[ALARM-COST-MODEL.md §5](ALARM-COST-MODEL.md) for the fuller incident account and measured
+impact numbers.
+
 Method + full tables: [reviews/R2-SELFHEAL-BASELINE-2026-08.md](reviews/R2-SELFHEAL-BASELINE-2026-08.md)
 (extraction via the deployment's own read APIs only; the demo Postgres was not accessed).
 Headline numbers this design is built on:

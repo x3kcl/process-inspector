@@ -4,6 +4,9 @@
 # Usage:
 #   docker/rollback-demo.sh <demo-tag>       # e.g. demo-2026-07-12-a1b2c3d
 #   docker/rollback-demo.sh --list           # show recent demo deploy tags, newest first
+#   docker/rollback-demo.sh --allow-engine-recreate <demo-tag>
+#                                             # override the issue #377 engine-recreate guard
+#                                             # below (see deploy-demo.sh's identical guard)
 #
 # Unlike deploy-demo.sh (which RESOLVES a tag's CURRENT digest — wrong for rollback, since a
 # floating tag like `edge` moves), this restores the exact PI_BFF_DIGEST/PI_WEB_DIGEST pair
@@ -15,12 +18,54 @@ REPO_ROOT="$(cd "$(dirname "${BASH_SOURCE[0]}")/.." && pwd)"
 COMPOSE_FILE="$REPO_ROOT/docker/docker-compose.demo.yml"
 ENV_FILE="$REPO_ROOT/docker/.env.demo"
 
+# issue #377 — same engine-recreate guard as deploy-demo.sh (see that script's header comment
+# for the full incident rationale). Neither `up` call below targets the engines today; this
+# guards against a future edit widening one of them.
+ENGINE_SERVICES=(engine-a engine-b engine-7)
+ALLOW_ENGINE_RECREATE=0
+
+compose_up_guarded() {
+  local -a services=()
+  local arg svc engine
+  for arg in "$@"; do
+    case "$arg" in
+      -*) ;;
+      *) services+=("$arg") ;;
+    esac
+  done
+  if [[ "$ALLOW_ENGINE_RECREATE" != "1" ]]; then
+    if [[ "${#services[@]}" -eq 0 ]]; then
+      echo "REFUSING: 'docker compose up' with no service list recreates EVERY service," >&2
+      echo "including the engines (issue #377). Pass --allow-engine-recreate to override." >&2
+      exit 1
+    fi
+    for svc in "${services[@]}"; do
+      for engine in "${ENGINE_SERVICES[@]}"; do
+        if [[ "$svc" == "$engine" ]]; then
+          echo "REFUSING: this would recreate '$engine'." >&2
+          echo "flowable-rest keeps its process/job/history state in a container-scoped H2" >&2
+          echo "store on a named volume (docker-compose.demo.yml, issue #377) — a rollback" >&2
+          echo "should never touch it as a side effect. Pass --allow-engine-recreate if" >&2
+          echo "recreating '$engine' is actually intended." >&2
+          exit 1
+        fi
+      done
+    done
+  fi
+  docker compose -f "$COMPOSE_FILE" --env-file "$ENV_FILE" up "$@"
+}
+
+while [[ "${1:-}" == --allow-engine-recreate ]]; do
+  ALLOW_ENGINE_RECREATE=1
+  shift
+done
+
 if [[ "${1:-}" == "--list" ]]; then
   git -C "$REPO_ROOT" tag -l 'demo-*' --sort=-creatordate | head -20
   exit 0
 fi
 
-TAG="${1:?usage: docker/rollback-demo.sh <demo-tag>  (docker/rollback-demo.sh --list to see options)}"
+TAG="${1:?usage: docker/rollback-demo.sh [--allow-engine-recreate] <demo-tag>  (docker/rollback-demo.sh --list to see options)}"
 
 if ! git -C "$REPO_ROOT" rev-parse -q --verify "refs/tags/$TAG" >/dev/null; then
   echo "no such tag: $TAG (try docker/rollback-demo.sh --list)" >&2
@@ -47,9 +92,8 @@ docker compose -f "$COMPOSE_FILE" --env-file "$ENV_FILE" pull backend frontend
 # sidecars (issue #201-followup) ARE included with --force-recreate, same reasoning AND same
 # fix as deploy-demo.sh: they carry none of postgres's restart risk, and --force-recreate is
 # needed because their bind-mounted scripts don't change the compose config hash on their own.
-docker compose -f "$COMPOSE_FILE" --env-file "$ENV_FILE" up -d backend frontend
-docker compose -f "$COMPOSE_FILE" --env-file "$ENV_FILE" up -d --force-recreate \
-  audit-backup audit-basebackup wal-receiver
+compose_up_guarded -d backend frontend
+compose_up_guarded -d --force-recreate audit-backup audit-basebackup wal-receiver
 
 echo "Verifying (expect 401 = chain healthy)..."
 sleep 5

@@ -42,6 +42,48 @@ git history (no re-resolution — safe against a floating tag having since moved
 redeploys. `docker/rollback-demo.sh --list` shows recent demo deploy tags. See RUNBOOK.md §8
 for the drilled procedure and when to reach for this vs. `deploy-demo.sh`.
 
+## Engine state (issue #377) — READ THIS before recreating an engine
+
+`engine-a`/`engine-b` (6.8.0) and `engine-7` (7.1.0) each keep their process/job/history data
+in `flowable-rest`'s embedded H2 store, which now lives on a **named volume per engine**
+(`inspector-demo-engine-a-home` / `-b-home` / `-7-home`, mounted at each container's
+`/home/flowable`) instead of the container's own throwaway filesystem — see the per-service
+comments in `docker/docker-compose.demo.yml` for the exact H2 paths verified against both
+images and how the volume-ownership fix was proven.
+
+This closes the gap that destroyed 16 days of pilot state on 2026-08-05: a
+`--force-recreate` against the engines (at the time, run to repair DNS aliases — nothing to
+do with engine data) silently wiped everything, and the demo *looked* fine afterwards
+because the seed container quietly re-ran a fresh minimal set. With the volume in place, a
+container recreate (image bump, env change, alias repair, `--force-recreate`) now survives —
+**but two things still destroy engine state**:
+
+- **`docker compose ... down -v`** removes named volumes along with containers/networks —
+  now including the three engine volumes above, not just `inspector-demo-pgdata` and the
+  backup volumes. `down -v` was already destructive to the BFF's own store; it is now ALSO
+  destructive to every engine's data. Never run it against this stack without a deliberate
+  decision to lose both.
+- **Detaching or deleting a volume directly** (`docker volume rm inspector-demo-engine-a-home`,
+  or recreating the stack under a different compose `name:`/project) — the volume, not the
+  container, is what's durable.
+
+`docker/deploy-demo.sh` and `docker/rollback-demo.sh` never target the engines (their `up`
+calls are scoped to `backend`/`frontend` and the backup sidecars) and both now hard-refuse
+any future call that WOULD recreate an engine — or that omits a service list, which
+`docker compose up` treats as "every service" — unless `--allow-engine-recreate` is passed
+explicitly:
+
+```bash
+docker/deploy-demo.sh --allow-engine-recreate edge
+docker/rollback-demo.sh --allow-engine-recreate demo-2026-07-12-a1b2c3d
+```
+
+A **manual** `docker compose -f docker/docker-compose.demo.yml up -d --force-recreate
+engine-a` outside either script is not gated by this — it never was, and can't be from
+inside a shell script someone isn't running. That's exactly what caused the incident. The
+volume is the actual fix; the script guard and this section are the "make the trap visible"
+half.
+
 ## TLS / HSTS — READ THIS if the browser blocks the site
 
 The demo router requests a Let's Encrypt cert via the `mytlschallenge` resolver. Until that

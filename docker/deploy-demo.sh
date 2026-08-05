@@ -8,6 +8,9 @@
 #                                                   # docker/metadata-action strips it from
 #                                                   # the vX.Y.Z git/release tag; issue #200).
 #   docker/deploy-demo.sh --dry-run [IMAGE_TAG]     # resolve + print, no compose/commit/tag
+#   docker/deploy-demo.sh --allow-engine-recreate [IMAGE_TAG]
+#                                                   # override the issue #377 engine-recreate
+#                                                   # guard below. Flags combine in any order.
 #
 # What it does (issue #92 — demo compose pinned by digest, never a floating tag, and every
 # deploy attributable to a SHA):
@@ -34,11 +37,67 @@ BFF_IMAGE="ghcr.io/x3kcl/process-inspector-bff"
 WEB_IMAGE="ghcr.io/x3kcl/process-inspector-web"
 DIGEST_RE='^sha256:[0-9a-f]{64}$'
 
+# issue #377 — engine-recreate guard. The demo engines now keep their state on a named
+# volume (docker-compose.demo.yml), but recreating one is still exactly the moment that
+# destroyed 16 days of pilot history on 2026-08-05: a `--force-recreate` run against
+# engine-a/engine-b/engine-7 to repair DNS aliases (nothing to do with engine data) left them
+# healthy and EMPTY, because at the time there was no volume at all. This script never
+# targets the engines today — both `up` calls below are explicitly scoped to backend/frontend
+# and the three backup sidecars — but `compose_up_guarded` (below) refuses ANY call from this
+# script that would recreate an engine, or that omits a service list entirely (which
+# `docker compose up` treats as "every service", engines included), unless
+# `--allow-engine-recreate` is passed. This is deliberately paranoid: it protects against a
+# future edit widening one of these calls, not just today's code.
+ENGINE_SERVICES=(engine-a engine-b engine-7)
+ALLOW_ENGINE_RECREATE=0
+
+# compose_up_guarded ARGS... — same argument shape as `docker compose ... up ARGS...`. Refuses
+# (exit 1) if ARGS names an engine service, or names no service at all, unless
+# --allow-engine-recreate was passed on this script's own command line. See the guard note
+# above for why.
+compose_up_guarded() {
+  local -a services=()
+  local arg svc engine
+  for arg in "$@"; do
+    case "$arg" in
+      -*) ;; # a flag (-d, --force-recreate, ...), not a service name
+      *) services+=("$arg") ;;
+    esac
+  done
+  if [[ "$ALLOW_ENGINE_RECREATE" != "1" ]]; then
+    if [[ "${#services[@]}" -eq 0 ]]; then
+      echo "REFUSING: 'docker compose up' with no service list recreates EVERY service," >&2
+      echo "including the engines (issue #377). Pass --allow-engine-recreate to override." >&2
+      exit 1
+    fi
+    for svc in "${services[@]}"; do
+      for engine in "${ENGINE_SERVICES[@]}"; do
+        if [[ "$svc" == "$engine" ]]; then
+          echo "REFUSING: this would recreate '$engine'." >&2
+          echo "flowable-rest keeps its process/job/history state in a container-scoped H2" >&2
+          echo "store on a named volume (docker-compose.demo.yml, issue #377) — a recreate is" >&2
+          echo "safe against ordinary config drift but this script should never do it as a" >&2
+          echo "side effect of an unrelated backend/frontend deploy. Pass" >&2
+          echo "--allow-engine-recreate if recreating '$engine' is actually intended." >&2
+          exit 1
+        fi
+      done
+    done
+  fi
+  docker compose -f "$COMPOSE_FILE" --env-file "$ENV_FILE" up "$@"
+}
+
 DRY_RUN=0
-if [[ "${1:-}" == "--dry-run" ]]; then
-  DRY_RUN=1
-  shift
-fi
+while [[ "${1:-}" == --* ]]; do
+  case "$1" in
+    --dry-run) DRY_RUN=1; shift ;;
+    --allow-engine-recreate) ALLOW_ENGINE_RECREATE=1; shift ;;
+    *)
+      echo "unknown flag: $1" >&2
+      exit 1
+      ;;
+  esac
+done
 IMAGE_TAG="${1:-edge}"
 
 # The published image tag never carries the git/release tag's leading "v" (docker/
@@ -106,9 +165,8 @@ docker compose -f "$COMPOSE_FILE" --env-file "$ENV_FILE" pull backend frontend
 # routine deploy would silently keep running the OLD script content (review finding). backend/
 # frontend deliberately do NOT get --force-recreate — their digest pin already changes the
 # image reference itself, which IS a config-hash change compose picks up on its own.
-docker compose -f "$COMPOSE_FILE" --env-file "$ENV_FILE" up -d backend frontend
-docker compose -f "$COMPOSE_FILE" --env-file "$ENV_FILE" up -d --force-recreate \
-  audit-backup audit-basebackup wal-receiver
+compose_up_guarded -d backend frontend
+compose_up_guarded -d --force-recreate audit-backup audit-basebackup wal-receiver
 
 echo "Verifying (expect 401 = chain healthy)..."
 sleep 5
