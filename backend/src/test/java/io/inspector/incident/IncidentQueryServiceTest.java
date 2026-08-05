@@ -305,6 +305,42 @@ class IncidentQueryServiceTest {
                         ID, NOW.minus(Duration.ofHours(720)));
     }
 
+    /* ---------------- #372 item 7: the `until` cursor past the 30-day clamp ---------------- */
+
+    @Test
+    void withoutTheCursorTheDetailReadIsExactlyThePreCursorOneMostRecentWindowInclusiveOfNow() {
+        // The single-call path must not change AT ALL: same finder, same lower bound, no upper
+        // bound — otherwise adding a cursor would silently move everyone's sparkline.
+        stubEmptyDetail(row(ID, "hash-1", CURRENT, IncidentState.OPEN, NOW, 4, fleet()));
+
+        service.detail(ID, 24, null, auth);
+
+        verify(occurrences)
+                .findByIdIncidentIdAndIdSampledAtGreaterThanEqualOrderByIdSampledAtAsc(
+                        ID, NOW.minus(Duration.ofHours(24)));
+        verify(occurrences, never())
+                .findByIdIncidentIdAndIdSampledAtGreaterThanEqualAndIdSampledAtLessThanOrderByIdSampledAtAsc(
+                        anyLong(), any(), any());
+    }
+
+    @Test
+    void theCursorMovesTheWindowsUpperBoundSoACallerCanPageBACKWARDPastTheClamp() {
+        // G5 needs >= 56 d of same-fleet trusted span; one call reaches 30. Chained bounded calls
+        // are what make the era-boundary walk REST-reachable at all (ALARM-COST-MODEL §16.7) —
+        // and each call is still limited to one clamped window, so nothing scans unbounded.
+        stubEmptyDetail(row(ID, "hash-1", CURRENT, IncidentState.OPEN, NOW, 4, fleet()));
+        Instant until = NOW.minus(Duration.ofHours(720));
+
+        IncidentDetail detail = service.detail(ID, 100000, until, auth);
+
+        assertThat(detail.seriesWindow()).isEqualTo("PT720H"); // the clamp still applies per call
+        verify(occurrences)
+                .findByIdIncidentIdAndIdSampledAtGreaterThanEqualAndIdSampledAtLessThanOrderByIdSampledAtAsc(
+                        ID, until.minus(Duration.ofHours(720)), until);
+        verify(occurrences, never())
+                .findByIdIncidentIdAndIdSampledAtGreaterThanEqualOrderByIdSampledAtAsc(anyLong(), any());
+    }
+
     /* ---------------- episodes ---------------- */
 
     @Test
@@ -491,6 +527,9 @@ class IncidentQueryServiceTest {
         when(episodes.findByIncidentIdOrderByStartedAtDesc(anyLong())).thenReturn(List.of());
         when(occurrences.findByIdIncidentIdAndIdSampledAtGreaterThanEqualOrderByIdSampledAtAsc(
                         anyLong(), any(Instant.class)))
+                .thenReturn(List.of());
+        when(occurrences.findByIdIncidentIdAndIdSampledAtGreaterThanEqualAndIdSampledAtLessThanOrderByIdSampledAtAsc(
+                        anyLong(), any(Instant.class), any(Instant.class)))
                 .thenReturn(List.of());
         TriageDashboardResponse empty = dashboard();
         when(triage.dashboard(false)).thenReturn(empty);

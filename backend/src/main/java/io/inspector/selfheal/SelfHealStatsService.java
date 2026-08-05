@@ -271,7 +271,8 @@ public class SelfHealStatsService {
                     point.getDeadLetterCount(),
                     point.getRetryingCount(),
                     point.isTruncated(),
-                    point.isCycleComplete()));
+                    point.isCycleComplete(),
+                    point.getFleet()));
         }
         List<RetrySpell> spells = RetrySpellExtractor.extract(samples, bucketWidth, confounds.windows());
         RawSelfHealStats raw = SelfHealStatsComputer.compute(spells, floor);

@@ -665,7 +665,7 @@ expiry suggestion, derived resurface threshold) requires ALL of:
 | G2 | ≥ 6 distinct current-generation classes live concurrently at least once in trailing 28 d (ordering has room to matter) | max concurrent = 2 | **NO** |
 | G3 | #351 shipped; R2's own sufficiency rail passed for ≥ 25 % of live classes (S term) | not built | **NO** |
 | G4 | ≥ 10 completed ack lifecycles (ack → expiry/resurface/un-ack) recorded (C2/C3 calibration) | 0 acks ever | **NO** |
-| G5 | ≥ 56 d of **TRUSTED** current-generation ledger span (28 d fit + 28 d holdout; redefined #365 — see correction below) | recorded 14.8 d, but **trusted 0.12 d** (era began 2026-08-04T15:39 Z, §5.1 correction) | **NO** |
+| G5 | ≥ 56 d of **TRUSTED CURRENT-ERA** ledger span (28 d fit + 28 d holdout; redefined #365, scoped to one fleet by #372 §16.7) | **0 d** — V22 (#372) records observation scope from its deploy forward and does NOT backfill a guessed fleet, so every pre-V22 row is `fleet = ''` (comparable to nothing) and the era clock starts at V22 deploy | **NO** |
 
 **Gate status: NOT MET (0 of 5).**
 
@@ -698,7 +698,26 @@ pass, the conservative direction; measured max 2 either way, unaffected. **G3** 
 sufficiency rail, and R2 already gap-voids any spell whose observed shape contains a blind
 sample (its trust discipline is internal, RETRYING-RISK-LANE) — no redefinition needed,
 though the blind prefix is also part of why the pilot has almost no judgeable spells. Only
-G5 needed redefinition. Until the gate: the score computes with neutral M/S (provably
+G5 needed redefinition.
+
+**Re-measurement (build round #372, 2026-08-05) — G5 is now 0 d, and that is the honest
+number.** §16.7 amends G5 to the trusted span **of the current ERA**: an era boundary is any
+point where the recorded `fleet` differs from its predecessor's, or where scope is unrecorded.
+V22 records `fleet` from its deploy forward and, per §16.5, deliberately refuses to backfill a
+guessed fleet onto existing rows — scope at write time cannot be reconstructed afterwards, and
+asserting it would be exactly the fabrication the column exists to prevent. Every pre-V22 row
+therefore carries `fleet = ''`, which is comparable to nothing (itself included), so **the
+current era begins at the first occurrence row written after V22 deploys** and G5's measured
+value resets to **0 d** with earliest satisfaction **≈ V22 deploy + 56 d**. This is a
+MECHANICAL reset, not a conventional one (§16.9's distinction): no analyst argument can talk
+past a `NOT NULL` column whose fail-closed value the trusted predicate treats as incomparable.
+It is also not a NEW cost — under the standing §14.2 rail the clock had already restarted at
+the 2026-08-04T15:39 Z era start (earliest ≈ 2026-09-29), so shipping promptly costs the days
+between the two and nothing more; deferring would have cost the full 56. The exact post-deploy
+era-start instant is **owed as a measurement**: it cannot be extracted before the migration
+runs, and this round records the rule rather than inventing the value. Re-measure with the §5
+REST-only method (now walking `until` per §16.8 item 7) once V22 is deployed, and record the
+number in the PR that flips the flag. Until the gate: the score computes with neutral M/S (provably
 identical to count-only, §5.5), ships **flag-off** (`inspector.triage.attention-ordering`,
 default false), and no constant changes value. The gate is re-measured with the §5 method
 (REST-only, reproducible) and its status recorded in the PR that flips the flag.
@@ -1462,6 +1481,18 @@ G5 clock should be re-measured rather than assumed to have run continuously. (Th
 operational rail is the issue #372 status quo; the design that records scope on the row and
 retires the rail is §16.)
 
+> **SUPERSEDED 2026-08-05 by the #372 build slice (§16.11) — kept in place, unrewritten, per the
+> §13 correction convention.** The paragraph above is left exactly as written because it is the
+> record of what was believed and enforced between 2026-08-04 and the V22 deploy, and because
+> §16.4's rejection of option 3 rests on reading it as it stood. What supersedes it: the
+> "re-measure §7 after any registry change" **convention** is no longer the mechanism — every
+> occurrence row now RECORDS its own observation scope (`incident_occurrence.fleet`, V22), the
+> derived readers refuse to difference across a scope change, and G5 is measured over the
+> CURRENT ERA (§16.7). The rail's *finding* stands verbatim and is the reason the column exists;
+> only its remedy is retired. The rail remains the ONLY protection for rows written BEFORE V22 —
+> those carry `fleet = ''` and are comparable to nothing, so in practice they are simply not
+> fittable rather than fittable-by-convention.
+
 This is still the trust discipline working as specified (#302), and the honest headline of
 the feasibility note is unchanged: **on this pilot the binding constraint on burst measurement
 is the trust discipline, not the cadence.**
@@ -1678,7 +1709,7 @@ recorded pilot buckets" figure was deliberately LEFT ALONE: it is the §5.5 extr
 count, the §5/§7 correction did not restate it, and replacing it with §14.2's later re-extraction
 figure would have introduced a second, different error rather than removing one.
 
-## 16. Amendment round — observation SCOPE / fleet composition (#372, 2026-08-05, DESIGN)
+## 16. Amendment round — observation SCOPE / fleet composition (#372, 2026-08-05, DESIGN + ★ BUILT)
 
 Design record for issue #372 ("the trusted-span clock can be restarted by a registry
 edit"), the R1 seat's answer to the three candidate shapes the issue lists. **Design only —
@@ -2192,3 +2223,107 @@ predicate would have let two adjacent backfilled `''` rows compare equal — clo
 was drafted and withdrawn as a lane-freezer (§16.6 C2); (iii) the birth-row COALESCE
 self-compare was checked against the F3 seeding rule specifically so a birth inside a
 recorded fleet still counts once (§16.6 C3, pinned by a §16.8 fixture).
+
+### 16.11 Build-slice record — #372 observation SCOPE (★ BUILT)
+
+What landed against the §16.8 contract, what the failing-before runs actually printed, and the
+deviations, named. **This slice is NOT "no behavior change"** (§16.8 item 6): C3 runs only under
+the default-false flag and `AttentionOrderingNeutralityTest` is untouched and green, but **C4
+feeds the DEFAULT-ON self-heal computation**. The C4 change is monotonically conservative — it
+can only VOID spells toward `INSUFFICIENT_HISTORY`, never mint one — and on the pilot it is
+measurably ≈ nothing (zero unconfounded completed spells exist to void, RETRYING-RISK-LANE §8).
+
+#### 16.11.1 Failing-before proof (the §13/§15.1 convention — a wrong value, not "it did not compile")
+
+Rung-1 and rung-4 numbers below were produced by running the new fixtures against the SHIPPED
+predicates (the `fleet` terms removed from `arrivalsSince`, the scope checks disabled in
+`RetrySpellExtractor`), so every one is a WRONG VALUE the base actually printed, not an
+absence-of-symbol.
+
+| Rung | Fixture | What the BASE produced |
+|---|---|---|
+| Pure static | **the headline** — §16.2's scenario: retrying jobs on `engine-b`, dead-letters on `engine-a`, `engine-b` DISABLED at the closing zero; every quality marker clean | `outcome=SELF_HEALED gapVoided=false countable=true excluded=false truncationTainted=false` — a **fabricated self-heal minted by a registry edit**, fully countable into `n` |
+| Pure static | fleet change INSIDE the run ⇒ voided | `gapVoided=false` (spell judged normally) |
+| Pure static | look-ahead from a different fleet ⇒ voided | `gapVoided=false`, outcome judged against a non-comparable DLQ level |
+| Pure static | unrecorded `''` anywhere in the shape ⇒ voided | `gapVoided=false`; the all-`''` series returned `SELF_HEALED` |
+| Rung 4 (real Postgres) | re-enable edge across a fleet change must NOT be banked (settled 100 → 1000 when a second engine returns) | **`arrivals = 900`, `observed = 3`, `trusted = 3`** — 900 phantom arrivals on rows all stamped trusted |
+| Rung 4 | disable edge: growth in the NEW era still measured, the boundary delta not trusted | `trusted_samples = 3` (the boundary counted as trusted); expected 2 |
+| Rung 4 | adjacent `''`/`''` pair not comparable (birth +10, then two unrecorded rows growing by 20) | **`arrivals = 30`** — the `''`-to-`''` delta banked; expected 10 |
+| Rung 4 | a birth row that never recorded its OWN scope is not an arrival | **`arrivals = 5000`**; expected 0 |
+| Rung 4 | the #365 burst bins inherit the discipline (re-enable inside the flood window) | **`arrivals = 900`** with the 880 landing in `burst_arrivals` — a registry edit read as an alarm FLOOD, i.e. top-of-order promotion |
+
+Everything else in the new suites is a guard written to fail on the base by construction (the
+`fleet` column, `AggregationSample.fleetEngineIds`, `FleetScope` and the `until` finder did not
+exist). `burst_arrivals ≤ arrivals` is asserted on every fixture by the shared helper, including
+all the new ones.
+
+#### 16.11.2 What landed
+
+- **`V22__incident_occurrence_fleet.sql`** exactly as §16.5 — `ADD COLUMN fleet text NOT NULL
+  DEFAULT ''` (metadata-only on PG ≥ 11, cascading to the monthly partitions and the DEFAULT
+  catch-all), the column COMMENT verbatim, **no backfill UPDATE**. V22 verified next free.
+  `IncidentOccurrence` gains the mapped field (`ddl-auto=validate` holds); the `IncidentOccurrenceId`
+  PK is untouched.
+- **`FleetScope`** — the one static canonicalizer (sorted, de-duplicated, comma-joined;
+  `UNRECORDED = ""`), with the comma guard degrading to `UNRECORDED` + WARN rather than recording
+  an aliasable string. `AggregationSample` gains `fleetEngineIds` + `canonicalFleet()`;
+  `PollingSnapshotSource` fills it from the envelope key set it already iterates (**zero new engine
+  calls**); `IncidentLedgerService` canonicalizes once per group and stamps it on every occurrence
+  row, blind ones included.
+- **The atomic snapshot (§16.8 item 2 / F4).** `TriageAggregationService.aggregate` now captures
+  `List<EngineConfig> fleet = registry.all()` ONCE and drives BOTH the fan-out loop and the collect
+  loop from that list, so `fleet` and `cycleComplete` describe one registry read. `registry.all()`
+  builds a fresh immutable list off a volatile map on every call, so the previous double read could
+  genuinely straddle an `EngineRegistry.reload` — precisely at the composition boundary where the
+  marker matters most.
+- **C3** — three terms added to the existing `trusted` predicate (`o.fleet <> ''`, and
+  `COALESCE(LAG(o.fleet) OVER w, o.fleet) = o.fleet`), same single native pass, no new statement.
+  The birth row self-compares so FIX 3 survives; the #365 burst bins inherit by filtering the same
+  `d.trusted`; the F2 counting rule is untouched (a scope-discarded delta counts in
+  `observed_samples`, not in `trusted_samples`, so a wholly scope-broken window degrades to
+  `F = 1`, never to a fake 0).
+- **C4** — `findSpellShapeRowsDescending` projects `fleet`; `SpellSample` carries it;
+  `RetrySpellExtractor` gap-voids a span containing an unrecorded or a second distinct fleet, and
+  refuses to judge an outcome against a look-ahead from a different fleet. One more reason feeding
+  the existing `gapVoided` flag — no new outcome, no new field.
+- **C5** — `IncidentDetail.OccurrencePoint.fleet`; `npm run gen:api` re-run against a running BFF
+  and the two-line `schema.d.ts` diff committed. No frontend component changed (era-boundary
+  rendering is the named non-goal).
+- **Item 7** — an optional `until` cursor on `GET /api/incidents/{id}`: `[until − clamped, until)`,
+  half-open so chained pages never repeat a row at the seam; a call WITHOUT it takes the identical
+  pre-#372 path (pinned by a test that verifies the old finder and asserts the new one is never
+  touched). `scripts/replay-burst-attention.py` gained an era-boundary section that walks the
+  cursor backward (`ERA_PAGES`, default 3) when no boundary is visible in the newest window.
+- **C1 and C2 UNCHANGED**, as §16.6 requires. `DwellStateMachineTest` and
+  `AttentionOrderingNeutralityTest` are byte-untouched and green.
+
+#### 16.11.3 Deviations from §16.8, named
+
+1. **`IncidentLedgerServiceTest` could not stay byte-untouched.** §16.8 item 4 asks for the
+   zero-state suite "untouched and green". `IncidentOccurrenceRepository.upsert` gained a column,
+   and that class asserts on it through Mockito — including the zero-state suite's own
+   `verify(occurrences, never()).upsert(...)`, whose matcher list is arity-coupled to the method.
+   The edit is therefore **arity-only**: every positive verification gained the expected scope
+   string (`""` — the samples in that class state no scope, so the fail-closed value is the
+   correct expectation) and the matcher-based ones gained `anyString()`. No assertion's meaning,
+   subject or expected behavior changed, and the suite is green. There is no way to add a column
+   to a mocked method's signature and leave its verifications textually unchanged; a `default`
+   7-arg overload would have compiled but made the verifications assert a call production no
+   longer makes, which is strictly worse.
+2. **§7's G5 row is re-measured as a RULE, not as a date.** §16.8 item 5 asks for the G5 row
+   "re-measured" and `AttentionScoreService`'s javadoc "refreshed against the post-deploy measured
+   era start". That instant does not exist yet — V22 has not run — and inventing it would be the
+   fabrication §16.5 refuses. Both places therefore state the mechanically-certain part (G5 resets
+   to 0 d; earliest ≈ V22 deploy + 56 d; the reset is mechanical, not conventional) and record the
+   exact era-start extraction as OWED, to be run with the §5 REST method once the migration has
+   deployed.
+3. **The comma guard fails CLOSED rather than merely warning.** §16.5 specifies an
+   "assert-and-warn". `FleetScope` warns AND returns `UNRECORDED`, because a scope string that
+   cannot be decoded unambiguously must not be recorded as if it could: an unrecorded scope
+   discards deltas (safe), an aliased one would silently compare two different fleets as equal
+   (the exact failure the column exists to prevent). Unreachable in practice — both id patterns
+   foreclose `,` — so this only changes what happens if that invariant is ever broken.
+4. **`scripts/replay-burst-attention.py` prints an era-boundary section rather than only walking
+   the cursor.** §16.8 item 7 asks the script to "walk the cursor when hunting an era boundary";
+   the boundary detection it needs to decide when to stop paging is the same logic a reader wants
+   reported, so it is emitted as section 0 of the replay output.

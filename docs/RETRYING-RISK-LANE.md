@@ -99,6 +99,21 @@ A spell is **excluded from the statistic** when it is:
   (via ALARM-COST-MODEL's `S` factor) a 4x rank demotion on a class that never healed. Neither
   `truncation-tainted` (that is the scan cap) nor the >5-bucket gap check (the rows exist)
   catches it. A blind-shaped spell is not judged AT ALL — its outcome stays `UNKNOWN`;
+- **scope-voided** (same `gapVoided` flag, V22/#372, [ALARM-COST-MODEL.md](ALARM-COST-MODEL.md)
+  §16) — the observed shape (the run, its closing zero-count sample, and the +1 look-ahead it is
+  judged against) contains MORE THAN ONE distinct recorded `fleet`, or an UNRECORDED one (`''`).
+  This closes the door the blind rule cannot see: an engine DISABLED in the registry never enters
+  `EngineRegistry.all()` at all, so the pass never fails to hear from anyone, `cycle_complete`
+  stays honestly TRUE — and disabling the engine that holds a class's RETRYING jobs while another
+  holds its dead-letters produces the IDENTICAL forged edge with every quality marker clean:
+  `retrying_count` drops to 0, the look-ahead finds the surviving engine's DLQ unchanged, and
+  **SELF_HEALED is fabricated by a routine admin action**. An edge at a composition boundary may
+  be an artifact of the boundary, and the outcome test would be comparing dead-letter LEVELS taken
+  over two different engine sets. Monotonic by construction: this rule can only VOID spells
+  (toward `INSUFFICIENT_HISTORY`), never mint one. Named consequence: because the dwell tick has
+  no gate of its own on this input series, a registry edit can make a class's DISPLAYED self-heal
+  lane visibly move over the next few complete cycles — not because retry behavior changed, but
+  because its evidence window was just scope-cleaned;
 - **truncation-tainted** — any sample in the spell has `truncated = true` (a truncated
   sample is a floor, not a count — the spell's outcome cannot be trusted);
 - **left-censored** — the spell was already in progress at the FIRST sample available (window
@@ -249,6 +264,11 @@ stability evaluation.
   badge carries the standard truncation marker and its tooltip counts the exclusions
   ("2 spells unmeasurable: truncated scan"). A rate computed over a partially-observed
   window never presents as complete.
+- **Unobservable SCOPE is unobservable shape (V22/#372).** The `fleet` marker joins `truncated`
+  and `cycle_complete` in the same discipline, one axis over: a spell whose shape straddles a
+  registry composition change, or whose scope was never recorded, is excluded rather than judged.
+  Never a guess — the alternative is not "a slightly noisier statistic", it is a **fabricated**
+  `SELF_HEALED` produced by an ordinary registry edit, which is worse than no measurement.
 - **Informational only — hard rail.** The lane must never gate, relax, reorder, or
   pre-fill any corrective-action rail: no verb availability, RBAC tier, guard,
   confirmation, cap, or bulk behavior reads it; no auto-retry/auto-resolve/auto-ack is

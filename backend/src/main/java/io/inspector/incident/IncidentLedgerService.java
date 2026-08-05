@@ -185,10 +185,14 @@ public class IncidentLedgerService {
                 incidents.findBySignatureHashAndAlgoVersion(group.signatureHash(), group.algoVersion());
         boolean truncated = isTruncated(group, sample.truncatedEngineIds());
         String countsJson = toJson(group.countsByEngine());
+        // #372/V22: the pass's observation SCOPE, canonicalized ONCE per group and stamped onto
+        // every occurrence row it writes — INCLUDING blind ones (scope is the intent set and is
+        // always known, even when quality is not).
+        String fleet = sample.canonicalFleet();
         if (existing.isEmpty()) {
             try {
-                tx.executeWithoutResult(status ->
-                        insertOpen(group, sample.sampledAt(), truncated, countsJson, bucket, sample.cycleComplete()));
+                tx.executeWithoutResult(status -> insertOpen(
+                        group, sample.sampledAt(), truncated, countsJson, bucket, sample.cycleComplete(), fleet));
             } catch (DataIntegrityViolationException e) {
                 // uq_incident arbiter: a concurrent first sighting won the race — next cycle updates it
                 log.debug("incident insert lost a first-sighting race (benign): {}", group.signatureHash());
@@ -196,7 +200,14 @@ public class IncidentLedgerService {
             return;
         }
         tx.executeWithoutResult(status -> observeExisting(
-                existing.get(), group, sample.sampledAt(), truncated, countsJson, bucket, sample.cycleComplete()));
+                existing.get(),
+                group,
+                sample.sampledAt(),
+                truncated,
+                countsJson,
+                bucket,
+                sample.cycleComplete(),
+                fleet));
     }
 
     /** First sighting: OPEN incident + its live episode + the first occurrence point, atomically. */
@@ -206,7 +217,8 @@ public class IncidentLedgerService {
             boolean truncated,
             String countsJson,
             Instant bucket,
-            boolean cycleComplete) {
+            boolean cycleComplete,
+            String fleet) {
         Incident row = incidents.save(new Incident(
                 group.signatureHash(),
                 group.algoVersion(),
@@ -218,7 +230,7 @@ public class IncidentLedgerService {
                 truncated,
                 countsJson));
         episodes.save(new IncidentEpisode(row.getId(), IncidentState.OPEN, seenAt, group.total()));
-        upsertOccurrence(row.getId(), group, bucket, truncated, cycleComplete);
+        upsertOccurrence(row.getId(), group, bucket, truncated, cycleComplete, fleet);
     }
 
     private void observeExisting(
@@ -228,7 +240,8 @@ public class IncidentLedgerService {
             boolean truncated,
             String countsJson,
             Instant bucket,
-            boolean cycleComplete) {
+            boolean cycleComplete,
+            String fleet) {
         switch (row.getState()) {
             case OPEN, REGRESSED -> {
                 int hit = incidents.updateObservedTotals(
@@ -249,7 +262,7 @@ public class IncidentLedgerService {
                 }
             }
         }
-        upsertOccurrence(row.getId(), group, bucket, truncated, cycleComplete);
+        upsertOccurrence(row.getId(), group, bucket, truncated, cycleComplete, fleet);
     }
 
     /**
@@ -317,7 +330,7 @@ public class IncidentLedgerService {
      * spell edges — is structurally unable to tell that apart from real movement.
      */
     private void upsertOccurrence(
-            long incidentId, ErrorGroup group, Instant bucket, boolean truncated, boolean cycleComplete) {
+            long incidentId, ErrorGroup group, Instant bucket, boolean truncated, boolean cycleComplete, String fleet) {
         occurrences.upsert(
                 incidentId,
                 bucket,
@@ -325,7 +338,8 @@ public class IncidentLedgerService {
                 group.deadLetterCount() != null ? group.deadLetterCount() : 0L,
                 group.retryingCount() != null ? group.retryingCount() : 0L,
                 truncated,
-                cycleComplete);
+                cycleComplete,
+                fleet);
     }
 
     /**

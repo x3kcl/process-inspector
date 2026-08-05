@@ -22,15 +22,16 @@ public interface IncidentOccurrenceRepository extends JpaRepository<IncidentOccu
     @Query(value = """
                     INSERT INTO incident_occurrence
                         (incident_id, sampled_at, total, dead_letter_count, retrying_count, truncated,
-                         cycle_complete)
+                         cycle_complete, fleet)
                     VALUES (:incidentId, :sampledAt, :total, :deadLetterCount, :retryingCount, :truncated,
-                            :cycleComplete)
+                            :cycleComplete, :fleet)
                     ON CONFLICT (incident_id, sampled_at)
                     DO UPDATE SET total = EXCLUDED.total,
                                   dead_letter_count = EXCLUDED.dead_letter_count,
                                   retrying_count = EXCLUDED.retrying_count,
                                   truncated = EXCLUDED.truncated,
-                                  cycle_complete = EXCLUDED.cycle_complete
+                                  cycle_complete = EXCLUDED.cycle_complete,
+                                  fleet = EXCLUDED.fleet
                     """, nativeQuery = true)
     int upsert(
             @Param("incidentId") long incidentId,
@@ -39,7 +40,8 @@ public interface IncidentOccurrenceRepository extends JpaRepository<IncidentOccu
             @Param("deadLetterCount") long deadLetterCount,
             @Param("retryingCount") long retryingCount,
             @Param("truncated") boolean truncated,
-            @Param("cycleComplete") boolean cycleComplete);
+            @Param("cycleComplete") boolean cycleComplete,
+            @Param("fleet") String fleet);
 
     /** One incident's series ascending — the S2 windowed read path (and the IT assertions). */
     List<IncidentOccurrence> findByIdIncidentIdOrderByIdSampledAtAsc(long incidentId);
@@ -47,6 +49,18 @@ public interface IncidentOccurrenceRepository extends JpaRepository<IncidentOccu
     /** The S2 detail read: one incident's series inside a clamped window, ascending. */
     List<IncidentOccurrence> findByIdIncidentIdAndIdSampledAtGreaterThanEqualOrderByIdSampledAtAsc(
             long incidentId, Instant since);
+
+    /**
+     * The same read with an explicit UPPER bound — the {@code until} cursor (#372 §16.8 item 7).
+     * Each call stays time-bounded exactly like the finder above (the "no window scans unbounded"
+     * property is preserved; only the reachable TOTAL span changes, by chaining calls), which is
+     * what lets a REST-only caller walk backward past {@code MAX_WINDOW_HOURS} to find an era
+     * boundary — G5 needs ≥ 56 d of same-fleet trusted span and the single-call surface reaches 30.
+     * Half-open {@code [since, until)} so chained pages never repeat a row at the seam.
+     */
+    List<IncidentOccurrence>
+            findByIdIncidentIdAndIdSampledAtGreaterThanEqualAndIdSampledAtLessThanOrderByIdSampledAtAsc(
+                    long incidentId, Instant since, Instant until);
 
     /**
      * The attention score's F factor (ALARM-COST-MODEL.md §4.1/§6, #353): per incident, the sum
@@ -71,6 +85,23 @@ public interface IncidentOccurrenceRepository extends JpaRepository<IncidentOccu
      * the attention order for the full window and to compound on every flap). A delta is
      * therefore counted only when BOTH its endpoints were observed completely; the outage's
      * recovery edge is discarded, not banked.
+     *
+     * <p><b>Scope honesty (#372, V22):</b> a THIRD term in the same predicate, and the first one
+     * that is not about observation quality at all. {@code cycle_complete} answers "did everyone
+     * we were watching answer?"; it says nothing about WHO we were watching. A registry disable
+     * drops an engine out of {@code EngineRegistry.all()}, so the pass never fans out to it, the
+     * cycle is honestly complete for its now-smaller scope, and the class's level shifts by that
+     * engine's whole membership with BOTH endpoints stamped trusted — a re-enable then banks the
+     * shift as arrivals. A delta is therefore counted only when both endpoints carry the SAME
+     * RECORDED fleet. {@code fleet = ''} (unrecorded — the V22 fail-closed backfill) is comparable
+     * to nothing, itself included, so an adjacent {@code ''}/{@code ''} pair is NOT trusted. The
+     * birth row keeps its arrival: {@code COALESCE(LAG(o.fleet) OVER w, o.fleet)} self-compares
+     * where {@code LAG} is NULL, because a birth differences against the seeded 0 rather than
+     * against another fleet's level — but it must still state its OWN scope ({@code fleet <> ''}).
+     * The burst bins inherit all of this automatically: they FILTER the same {@code d.trusted},
+     * so a scope-discarded delta counts in {@code observed_samples} and not in
+     * {@code trusted_samples} and a wholly scope-broken window degrades to UNKNOWN, never to a
+     * fake quiet.
      *
      * <p><b>Discarding is now COUNTED, not silent (review fix, §6 "Correction (post-ship)").</b>
      * The two rules above are right, but as first shipped their only output was a smaller sum —
@@ -146,8 +177,10 @@ public interface IncidentOccurrenceRepository extends JpaRepository<IncidentOccu
                                     OR o.sampled_at <= i.first_seen)               AS differenceable,
                                (o.truncated = false
                                     AND o.cycle_complete
+                                    AND o.fleet <> ''
                                     AND COALESCE(LAG(o.truncated) OVER w, false) = false
-                                    AND COALESCE(LAG(o.cycle_complete) OVER w, true)) AS trusted
+                                    AND COALESCE(LAG(o.cycle_complete) OVER w, true)
+                                    AND COALESCE(LAG(o.fleet) OVER w, o.fleet) = o.fleet) AS trusted
                         FROM incident_occurrence o
                         JOIN incident i ON i.id = o.incident_id
                         WHERE o.sampled_at >= :since
@@ -189,13 +222,19 @@ public interface IncidentOccurrenceRepository extends JpaRepository<IncidentOccu
      * {@code RetrySpellExtractor} marks LEFT-CENSORED and excludes from {@code n} (its
      * {@code dlqAtStart} would be mid-spell). A cap can therefore only shrink an honest {@code
      * n}; it can never manufacture an outcome.
+     *
+     * <p><b>{@code fleet} rides along (#372, V22)</b> so the extractor can void a spell whose
+     * observed shape straddles a registry composition change — the edge may be an artifact of the
+     * boundary rather than of the jobs, and the outcome test would be comparing dead-letter levels
+     * across two different fleets. Projected here rather than derived later: scope is a property
+     * of the ROW, exactly like the two quality markers beside it.
      */
     @Query(value = """
                     SELECT o.incident_id, o.sampled_at, o.total, o.dead_letter_count,
-                           o.retrying_count, o.truncated, o.cycle_complete
+                           o.retrying_count, o.truncated, o.cycle_complete, o.fleet
                     FROM (
                         SELECT incident_id, sampled_at, total, dead_letter_count, retrying_count,
-                               truncated, cycle_complete,
+                               truncated, cycle_complete, fleet,
                                LAG(retrying_count) OVER w    AS prev_retrying,
                                LAG(retrying_count, 2) OVER w AS prev2_retrying
                         FROM incident_occurrence

@@ -20,6 +20,15 @@ import jakarta.persistence.Table;
  * NOT movement, and a {@code retryingCount} edge at it is NOT a spell boundary — see
  * {@link IncidentOccurrenceRepository#arrivalsSince} and
  * {@code io.inspector.selfheal.RetrySpellExtractor}.
+ *
+ * <p>{@code fleet} (V22, #372) is a different kind of marker altogether: the two above are
+ * observation QUALITY ("how well did we see what we were looking at"), this one is observation
+ * SCOPE ("what were we looking at"). It carries the canonical sorted id set of the ENABLED
+ * engines the writing pass fanned out over. A registry disable/enable changes the scope without
+ * touching either quality marker — the pass is honestly complete for its new, smaller fleet — so
+ * two rows can both be {@code cycleComplete} and still be non-comparable levels. Difference two
+ * rows only when both carry the SAME non-empty fleet; {@code ""} means scope was never recorded
+ * and is comparable to nothing, itself included.
  */
 @Entity
 @Table(name = "incident_occurrence")
@@ -42,6 +51,9 @@ public class IncidentOccurrence {
 
     @Column(name = "cycle_complete", nullable = false)
     private boolean cycleComplete;
+
+    @Column(name = "fleet", nullable = false)
+    private String fleet;
 
     protected IncidentOccurrence() {
         // JPA
@@ -70,5 +82,13 @@ public class IncidentOccurrence {
     /** False ⇒ a blind pass wrote this row (#302): unobserved, never "observed zero/absent". */
     public boolean isCycleComplete() {
         return cycleComplete;
+    }
+
+    /**
+     * The row's observation SCOPE (V22, #372) — canonical sorted comma-joined enabled-engine ids.
+     * {@code ""} = unrecorded, which compares equal to NOTHING (not even to another {@code ""}).
+     */
+    public String getFleet() {
+        return fleet != null ? fleet : "";
     }
 }

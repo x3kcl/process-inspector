@@ -22,17 +22,33 @@ class RetrySpellExtractorTest {
         return T0.plus(Duration.ofMinutes(minuteOffset));
     }
 
+    /**
+     * The steady-state observation SCOPE for every pre-#372 fixture: one unchanging two-engine
+     * fleet, canonical form (sorted, comma-joined). Holding it CONSTANT is what keeps those
+     * fixtures' outcomes byte-identical to the pre-#372 suite — the scope rule only bites on a
+     * composition CHANGE or on an unrecorded scope.
+     */
+    private static final String FLEET = "engine-a,engine-b";
+
+    /** The same class after engine-b is DISABLED in the registry — a smaller, honest scope. */
+    private static final String FLEET_AFTER_DISABLE = "engine-a";
+
     private static SpellSample sample(int minute, long dlq, long retrying) {
-        return new SpellSample(at(minute), dlq, retrying, false, true);
+        return new SpellSample(at(minute), dlq, retrying, false, true, FLEET);
     }
 
     private static SpellSample truncated(int minute, long dlq, long retrying) {
-        return new SpellSample(at(minute), dlq, retrying, true, true);
+        return new SpellSample(at(minute), dlq, retrying, true, true, FLEET);
     }
 
     /** A row written while an engine was unreachable (#302): counts may be missing members. */
     private static SpellSample blind(int minute, long dlq, long retrying) {
-        return new SpellSample(at(minute), dlq, retrying, false, false);
+        return new SpellSample(at(minute), dlq, retrying, false, false, FLEET);
+    }
+
+    /** A row written by a pass whose ENABLED fleet was {@code fleet} (#372, V22). */
+    private static SpellSample scoped(int minute, long dlq, long retrying, String fleet) {
+        return new SpellSample(at(minute), dlq, retrying, false, true, fleet);
     }
 
     @Test
@@ -244,6 +260,122 @@ class RetrySpellExtractorTest {
         List<RetrySpell> spells = RetrySpellExtractor.extract(samples, BUCKET, List.of());
 
         assertThat(spells.get(0).gapVoided()).isFalse();
+        assertThat(spells.get(0).countable()).isTrue();
+    }
+
+    /* ---------------- #372 fleet composition: a registry edit is not evidence ---------------- */
+
+    @Test
+    void aRegistryDisableThatForgesASpellEndIsVoidedNotMintedAsSelfHealed() {
+        // The §16.2 scenario, end to end. The class holds its RETRYING jobs on engine-b and its
+        // standing dead-letters on engine-a. An operator DISABLES engine-b: it leaves
+        // EngineRegistry.all() entirely, so the pass never fans out to it, never fails to hear
+        // from it, and writes a row that is honestly cycle_complete = true, NOT truncated, with
+        // NO gap — with retryingCount = 0 because engine-b's retrying members are simply no
+        // longer in scope. The edge detector reads the spell as ENDED; the +1 look-ahead compares
+        // engine-a's UNCHANGED dead-letter count against spell start, finds no growth, and on the
+        // BASE records Outcome.SELF_HEALED, countable, gapVoided=false, truncationTainted=false —
+        // fabricated self-heal evidence minted by a routine admin action, invisible to every
+        // existing rail. Only the recorded SCOPE can see it.
+        List<SpellSample> samples = List.of(
+                scoped(0, 12, 0, FLEET),
+                scoped(1, 12, 4, FLEET),
+                scoped(2, 12, 4, FLEET),
+                scoped(3, 12, 0, FLEET_AFTER_DISABLE), // engine-b DISABLED — not "the retries finished"
+                scoped(4, 12, 0, FLEET_AFTER_DISABLE));
+
+        List<RetrySpell> spells = RetrySpellExtractor.extract(samples, BUCKET, List.of());
+
+        assertThat(spells).hasSize(1);
+        RetrySpell spell = spells.get(0);
+        assertThat(spell.outcome()).isNotEqualTo(RetrySpell.Outcome.SELF_HEALED);
+        assertThat(spell.outcome()).isEqualTo(RetrySpell.Outcome.UNKNOWN);
+        assertThat(spell.gapVoided()).isTrue();
+        assertThat(spell.excluded()).isTrue();
+        assertThat(spell.countable()).isFalse();
+        // ...and none of the pre-#372 rails would have caught it: the rows are complete and whole.
+        assertThat(spell.truncationTainted()).isFalse();
+        assertThat(spell.live()).isFalse();
+    }
+
+    @Test
+    void aFleetChangeINSIDETheRunVoidsTheSpellToo() {
+        // A re-enable mid-spell: the run's own retrying levels are taken over two different
+        // engine sets, so its shape (and its dlqAtStart baseline) is not one series.
+        List<SpellSample> samples = List.of(
+                scoped(0, 4, 0, FLEET_AFTER_DISABLE),
+                scoped(1, 4, 2, FLEET_AFTER_DISABLE),
+                scoped(2, 4, 3, FLEET), // engine-b re-enabled mid-run
+                scoped(3, 4, 0, FLEET),
+                scoped(4, 4, 0, FLEET));
+
+        List<RetrySpell> spells = RetrySpellExtractor.extract(samples, BUCKET, List.of());
+
+        assertThat(spells).hasSize(1);
+        assertThat(spells.get(0).gapVoided()).isTrue();
+        assertThat(spells.get(0).countable()).isFalse();
+    }
+
+    @Test
+    void aLookaheadFromADifferentFleetCannotJudgeTheOutcomeEither() {
+        // The run AND its closing zero describe one fleet, so the shape itself is clean — but the
+        // outcome test is "did the DLQ GROW by the look-ahead bucket", and a look-ahead taken over
+        // a different engine set reports a dead-letter level that is not comparable to spell
+        // start. Same disposition as a blind look-ahead: void, never guess.
+        List<SpellSample> samples = List.of(
+                scoped(0, 4, 0, FLEET),
+                scoped(1, 4, 2, FLEET),
+                scoped(2, 4, 0, FLEET),
+                scoped(3, 4, 0, FLEET_AFTER_DISABLE));
+
+        List<RetrySpell> spells = RetrySpellExtractor.extract(samples, BUCKET, List.of());
+
+        assertThat(spells).hasSize(1);
+        assertThat(spells.get(0).outcome()).isNotEqualTo(RetrySpell.Outcome.SELF_HEALED);
+        assertThat(spells.get(0).gapVoided()).isTrue();
+        assertThat(spells.get(0).countable()).isFalse();
+    }
+
+    @Test
+    void anUNRECORDEDFleetAnywhereInTheShapeVoidsTheSpell() {
+        // A pre-V22 row (or any write path that failed to state scope) carries "". It is
+        // comparable to NOTHING, itself included — so it can neither anchor a span nor extend one.
+        List<SpellSample> samples =
+                List.of(scoped(0, 4, 0, FLEET), scoped(1, 4, 2, FLEET), scoped(2, 4, 0, ""), scoped(3, 4, 0, FLEET));
+
+        List<RetrySpell> spells = RetrySpellExtractor.extract(samples, BUCKET, List.of());
+
+        assertThat(spells).hasSize(1);
+        assertThat(spells.get(0).gapVoided()).isTrue();
+        assertThat(spells.get(0).countable()).isFalse();
+    }
+
+    @Test
+    void aWhollyUnrecordedSeriesIsVoidedRatherThanTreatedAsOneFleet() {
+        // Two adjacent "" rows are NOT known to be the same scope, so an all-"" span (exactly what
+        // the V22 fail-closed backfill leaves behind) never judges an outcome.
+        List<SpellSample> samples =
+                List.of(scoped(0, 4, 0, ""), scoped(1, 4, 2, ""), scoped(2, 4, 0, ""), scoped(3, 4, 0, ""));
+
+        List<RetrySpell> spells = RetrySpellExtractor.extract(samples, BUCKET, List.of());
+
+        assertThat(spells).hasSize(1);
+        assertThat(spells.get(0).outcome()).isEqualTo(RetrySpell.Outcome.UNKNOWN);
+        assertThat(spells.get(0).gapVoided()).isTrue();
+        assertThat(spells.get(0).countable()).isFalse();
+    }
+
+    @Test
+    void aConstantRecordedFleetIsStillJudgedNormally() {
+        // Guard against over-voiding, the mirror of the #302 guard above: the scope rule must only
+        // bite on a composition CHANGE or an unrecorded scope, never on a steady fleet.
+        List<SpellSample> samples = List.of(
+                scoped(0, 12, 0, FLEET), scoped(1, 12, 4, FLEET), scoped(2, 12, 0, FLEET), scoped(3, 12, 0, FLEET));
+
+        List<RetrySpell> spells = RetrySpellExtractor.extract(samples, BUCKET, List.of());
+
+        assertThat(spells.get(0).gapVoided()).isFalse();
+        assertThat(spells.get(0).outcome()).isEqualTo(RetrySpell.Outcome.SELF_HEALED);
         assertThat(spells.get(0).countable()).isTrue();
     }
 

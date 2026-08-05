@@ -164,6 +164,24 @@ public class IncidentQueryService {
      * the SAME 404 (see class doc).
      */
     public IncidentDetail detail(long id, int windowHours, Authentication auth) {
+        return detail(id, windowHours, null, auth);
+    }
+
+    /**
+     * The same read with an optional {@code until} CURSOR (#372 §16.8 item 7): the series is
+     * {@code [until − clamped, until)} instead of {@code [now − clamped, now]}, so a caller can
+     * page BACKWARD past {@link #MAX_WINDOW_HOURS} in bounded chunks. Each call is still
+     * time-limited to at most one clamped window — the "no window scans unbounded" property is
+     * preserved; only the reachable TOTAL span changes.
+     *
+     * <p>Why it exists: the amended G5 gate (ALARM-COST-MODEL §16.7) measures the CURRENT-ERA
+     * trusted span and needs ≥ 56 d of it, while this surface reaches 30 — so the era boundary a
+     * VIEWER must walk back to is structurally unreachable in a single call, and the whole point
+     * of shipping {@code fleet} on the wire was to keep that measurement VIEWER/REST-only rather
+     * than quietly re-introducing a DB-access dependency. A {@code null} cursor is exactly the
+     * pre-#372 call: the most recent clamped window, inclusive of {@code now}.
+     */
+    public IncidentDetail detail(long id, int windowHours, Instant until, Authentication auth) {
         Set<String> readable = gate.readableEngineIds(auth);
         Instant now = clock.instant();
         Incident row = incidents.findById(id).orElseThrow(IncidentQueryService::notFound);
@@ -177,17 +195,24 @@ public class IncidentQueryService {
                 .map(IncidentQueryService::toEpisode)
                 .toList();
         int clamped = clampWindow(windowHours);
-        List<IncidentDetail.OccurrencePoint> series = occurrences
-                .findByIdIncidentIdAndIdSampledAtGreaterThanEqualOrderByIdSampledAtAsc(
-                        id, now.minus(Duration.ofHours(clamped)))
-                .stream()
+        Duration window = Duration.ofHours(clamped);
+        // No cursor ⇒ the pre-#372 read, unchanged: [now − clamped, now]. With one ⇒ the
+        // half-open page [until − clamped, until), so chained calls never repeat a row at the seam.
+        List<IncidentOccurrence> rows = until == null
+                ? occurrences.findByIdIncidentIdAndIdSampledAtGreaterThanEqualOrderByIdSampledAtAsc(
+                        id, now.minus(window))
+                : occurrences
+                        .findByIdIncidentIdAndIdSampledAtGreaterThanEqualAndIdSampledAtLessThanOrderByIdSampledAtAsc(
+                                id, until.minus(window), until);
+        List<IncidentDetail.OccurrencePoint> series = rows.stream()
                 .map(point -> new IncidentDetail.OccurrencePoint(
                         point.getId().getSampledAt(),
                         point.getTotal(),
                         point.getDeadLetterCount(),
                         point.getRetryingCount(),
                         point.isTruncated(),
-                        point.isCycleComplete()))
+                        point.isCycleComplete(),
+                        point.getFleet()))
                 .toList();
         return new IncidentDetail(
                 summary,

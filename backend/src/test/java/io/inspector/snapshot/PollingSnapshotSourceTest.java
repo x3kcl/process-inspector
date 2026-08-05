@@ -14,6 +14,7 @@ import io.inspector.triage.TriageAggregationService;
 import java.time.Clock;
 import java.time.Instant;
 import java.time.ZoneOffset;
+import java.util.LinkedHashMap;
 import java.util.List;
 import java.util.Map;
 import org.junit.jupiter.api.Test;
@@ -158,6 +159,67 @@ class PollingSnapshotSourceTest {
 
         assertThat(source.sample().cycleComplete()).isTrue();
         assertThat(source.sample().truncatedEngineIds()).containsExactly("engine-a");
+    }
+
+    /* ---------------- #372: fleetEngineIds — the pass's observation SCOPE ---------------- */
+
+    @Test
+    void theFleetIsTheWholeEnvelopeKeySetIncludingAnEngineThatAnsweredNotOk() {
+        // Scope is the INTENT set: an engine that was fanned out to but failed IS in scope, and
+        // saying so is cycleComplete's job, not fleet's. Conflating the two would make an outage
+        // look like a composition change and void everything twice over.
+        when(aggregation.aggregate(CallPriority.BACKGROUND))
+                .thenReturn(dashboard(
+                        Map.of("engine-a", Map.of("ACTIVE", 1L)),
+                        List.of(),
+                        Map.of(
+                                "engine-a", new PerEngineTriage(true, null, "complete", null, false),
+                                "engine-b", new PerEngineTriage(false, "connection refused", null, null, false))));
+
+        AggregationSample out = source.sample();
+
+        assertThat(out.fleetEngineIds()).containsExactlyInAnyOrder("engine-a", "engine-b");
+        assertThat(out.canonicalFleet()).isEqualTo("engine-a,engine-b");
+        assertThat(out.cycleComplete()).isFalse(); // the two markers stay orthogonal
+    }
+
+    @Test
+    void theCanonicalFleetStringIsStableUnderARegistryREORDER() {
+        // perEngine is registry-ORDERED, and moving an engine up the YAML list is not a
+        // composition change. Without the canonical sort every such edit would read as a new fleet
+        // and needlessly void every delta and every spell at the boundary.
+        Map<String, PerEngineTriage> forward = new LinkedHashMap<>();
+        forward.put("engine-a", new PerEngineTriage(true, null, "complete", null, false));
+        forward.put("engine-b", new PerEngineTriage(true, null, "complete", null, false));
+        forward.put("engine-7", new PerEngineTriage(true, null, "complete", null, false));
+        Map<String, PerEngineTriage> reordered = new LinkedHashMap<>();
+        reordered.put("engine-7", new PerEngineTriage(true, null, "complete", null, false));
+        reordered.put("engine-b", new PerEngineTriage(true, null, "complete", null, false));
+        reordered.put("engine-a", new PerEngineTriage(true, null, "complete", null, false));
+
+        when(aggregation.aggregate(CallPriority.BACKGROUND)).thenReturn(dashboard(Map.of(), List.of(), forward));
+        String first = source.sample().canonicalFleet();
+        when(aggregation.aggregate(CallPriority.BACKGROUND)).thenReturn(dashboard(Map.of(), List.of(), reordered));
+        String second = source.sample().canonicalFleet();
+
+        assertThat(first).isEqualTo("engine-7,engine-a,engine-b");
+        assertThat(second).isEqualTo(first);
+    }
+
+    @Test
+    void aDisabledEngineSimplyLeavesTheFleetWhileTheCycleStaysComplete() {
+        // The #372 defect in one assertion: a registry DISABLE never enters perEngine at all, so
+        // the pass is honestly complete for its now-smaller scope. Only `fleet` records the shrink.
+        when(aggregation.aggregate(CallPriority.BACKGROUND))
+                .thenReturn(dashboard(
+                        Map.of("engine-a", Map.of("ACTIVE", 1L)),
+                        List.of(),
+                        Map.of("engine-a", new PerEngineTriage(true, null, "complete", null, false))));
+
+        AggregationSample out = source.sample();
+
+        assertThat(out.cycleComplete()).isTrue();
+        assertThat(out.canonicalFleet()).isEqualTo("engine-a");
     }
 
     private static TriageDashboardResponse dashboard(

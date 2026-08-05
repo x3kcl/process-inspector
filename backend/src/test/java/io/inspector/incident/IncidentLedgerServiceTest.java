@@ -84,7 +84,7 @@ class IncidentLedgerServiceTest {
         assertThat(episode.getValue().getPeakTotal()).isEqualTo(7);
         assertThat(episode.getValue().getEndedAt()).isNull();
 
-        verify(occurrences).upsert(ID, BUCKET, 7, 5, 2, false, true);
+        verify(occurrences).upsert(ID, BUCKET, 7, 5, 2, false, true, "");
     }
 
     @Test
@@ -116,7 +116,7 @@ class IncidentLedgerServiceTest {
         verify(incidents).updateObservedTotals(eq(ID), eq("OPEN"), eq(NOW), eq(9L), eq(false), any());
         verify(episodes).bumpLivePeak(ID, 9);
         verify(episodes, never()).save(any());
-        verify(occurrences).upsert(ID, BUCKET, 9, 6, 3, false, true);
+        verify(occurrences).upsert(ID, BUCKET, 9, 6, 3, false, true, "");
     }
 
     @Test
@@ -131,7 +131,7 @@ class IncidentLedgerServiceTest {
 
         verify(episodes, never()).bumpLivePeak(anyLong(), anyLong());
         // the occurrence is still an honest observation of what the cycle saw
-        verify(occurrences).upsert(ID, BUCKET, 9, 6, 3, false, true);
+        verify(occurrences).upsert(ID, BUCKET, 9, 6, 3, false, true, "");
     }
 
     /* ---------------- the regression gate ---------------- */
@@ -146,7 +146,7 @@ class IncidentLedgerServiceTest {
         verify(incidents, never()).transitionToRegressed(anyLong(), any(), anyLong(), anyBoolean(), any());
         verify(audit, never()).recordConfigEvent(anyString(), anyString(), anyBoolean(), any());
         verify(incidents).updateObservedTotals(eq(ID), eq("RESOLVED"), eq(NOW), eq(8L), eq(false), any());
-        verify(occurrences).upsert(ID, BUCKET, 8, 8, 0, false, true);
+        verify(occurrences).upsert(ID, BUCKET, 8, 8, 0, false, true, "");
     }
 
     @Test
@@ -187,7 +187,7 @@ class IncidentLedgerServiceTest {
 
         verify(incidents, never()).transitionToRegressed(anyLong(), any(), anyLong(), anyBoolean(), any());
         verify(incidents).updateObservedTotals(eq(ID), eq("RESOLVED"), eq(NOW), eq(4L), eq(false), any());
-        verify(occurrences).upsert(ID, BUCKET, 4, 4, 0, false, true);
+        verify(occurrences).upsert(ID, BUCKET, 4, 4, 0, false, true, "");
     }
 
     @Test
@@ -201,7 +201,7 @@ class IncidentLedgerServiceTest {
 
         verify(episodes, never()).save(any());
         verify(audit, never()).recordConfigEvent(anyString(), anyString(), anyBoolean(), any());
-        verify(occurrences).upsert(ID, BUCKET, 8, 8, 0, false, true);
+        verify(occurrences).upsert(ID, BUCKET, 8, 8, 0, false, true, "");
     }
 
     @Test
@@ -245,7 +245,7 @@ class IncidentLedgerServiceTest {
         // a zero group must never create or refresh an incident
         verify(incidents, never()).save(any());
         verify(occurrences, never())
-                .upsert(anyLong(), any(), anyLong(), anyLong(), anyLong(), anyBoolean(), anyBoolean());
+                .upsert(anyLong(), any(), anyLong(), anyLong(), anyLong(), anyBoolean(), anyBoolean(), anyString());
     }
 
     @Test
@@ -305,7 +305,7 @@ class IncidentLedgerServiceTest {
         // engine's members, and every downstream reader needs to know that. Ingesting the row
         // while dropping the marker is what turned an outage into phantom arrivals and into
         // fabricated SELF_HEALED spells.
-        verify(occurrences).upsert(ID, BUCKET, 7, 5, 2, false, false);
+        verify(occurrences).upsert(ID, BUCKET, 7, 5, 2, false, false, "");
     }
 
     @Test
@@ -318,7 +318,7 @@ class IncidentLedgerServiceTest {
         service.ingest(
                 new AggregationSample(List.of(), List.of(group("hash-1", 1, 9, 6, 3)), NOW, Set.of(), false), BUCKET);
 
-        verify(occurrences).upsert(ID, BUCKET, 9, 6, 3, false, false);
+        verify(occurrences).upsert(ID, BUCKET, 9, 6, 3, false, false, "");
     }
 
     /* ---------------- truncation honesty ---------------- */
@@ -334,7 +334,7 @@ class IncidentLedgerServiceTest {
         ArgumentCaptor<Incident> row = ArgumentCaptor.forClass(Incident.class);
         verify(incidents).save(row.capture());
         assertThat(row.getValue().isLastTruncated()).isTrue();
-        verify(occurrences).upsert(ID, BUCKET, 500, 500, 0, true, true);
+        verify(occurrences).upsert(ID, BUCKET, 500, 500, 0, true, true, "");
     }
 
     @Test
@@ -348,7 +348,7 @@ class IncidentLedgerServiceTest {
         ArgumentCaptor<Incident> row = ArgumentCaptor.forClass(Incident.class);
         verify(incidents).save(row.capture());
         assertThat(row.getValue().isLastTruncated()).isFalse();
-        verify(occurrences).upsert(ID, BUCKET, 7, 5, 2, false, true);
+        verify(occurrences).upsert(ID, BUCKET, 7, 5, 2, false, true, "");
     }
 
     /* ---------------- occurrence bucketing + failure isolation ---------------- */
@@ -364,10 +364,10 @@ class IncidentLedgerServiceTest {
         service.ingest(sample(group("hash-1", 1, 9, 7, 2)), BUCKET);
 
         // same (incident, bucket) key both times — the DB's ON CONFLICT keeps it one row (IT-proven)
-        verify(occurrences).upsert(ID, BUCKET, 7, 5, 2, false, true);
-        verify(occurrences).upsert(ID, BUCKET, 9, 7, 2, false, true);
+        verify(occurrences).upsert(ID, BUCKET, 7, 5, 2, false, true, "");
+        verify(occurrences).upsert(ID, BUCKET, 9, 7, 2, false, true, "");
         verify(occurrences, times(2))
-                .upsert(eq(ID), eq(BUCKET), anyLong(), anyLong(), anyLong(), anyBoolean(), anyBoolean());
+                .upsert(eq(ID), eq(BUCKET), anyLong(), anyLong(), anyLong(), anyBoolean(), anyBoolean(), anyString());
     }
 
     @Test

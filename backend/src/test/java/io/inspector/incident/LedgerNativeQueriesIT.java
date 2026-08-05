@@ -55,6 +55,15 @@ class LedgerNativeQueriesIT {
     /** Anchors both bins past every fixture, so a pre-#365 assertion sees them empty. */
     private static final Instant FAR_FUTURE = Instant.parse("2099-01-01T00:00:00Z");
 
+    /** The steady observation SCOPE (#372, V22) every pre-#372 fixture in this class ingests under. */
+    private static final Set<String> FLEET = Set.of("engine-a");
+
+    /** The same pilot after a second engine is ENABLED — a different, larger fleet. */
+    private static final Set<String> FLEET_GROWN = Set.of("engine-a", "engine-7");
+
+    /** Scope NOT stated: the V22 fail-closed value, comparable to nothing, itself included. */
+    private static final Set<String> FLEET_UNRECORDED = Set.of();
+
     private static final PostgreSQLContainer<?> POSTGRES = new PostgreSQLContainer<>("postgres:16-alpine");
 
     static {
@@ -450,6 +459,172 @@ class LedgerNativeQueriesIT {
         assertThat(aggregate(hash, birth, asOf).arrivals()).isEqualTo(5_003);
     }
 
+    /* ---------------- #372: observation SCOPE — a registry edit is not movement ---------------- */
+
+    @Test
+    void aReEnableEdgeAcrossAFLEETChangeIsNotBankedAsArrivals() {
+        String hash = "it-" + UUID.randomUUID();
+        Instant t0 = Instant.parse("2026-08-11T09:00:00Z");
+        // A settled single-engine class; at t0+120 a second engine is RE-ENABLED in the registry
+        // and brings its own 900 members into scope. Every row here is cycle_complete = true and
+        // untruncated — the passes really were complete FOR THEIR SCOPE — so the two quality
+        // markers see nothing at all and the base banks the level shift as +900 arrivals (probe on
+        // the shipped SQL: arrivals=900, observed=3, trusted=3). Nobody's jobs failed.
+        ingest(hash, t0.minusSeconds(60), 100, false, true, FLEET);
+        ingest(hash, t0, 100, false, true, FLEET);
+        ingest(hash, t0.plusSeconds(60), 100, false, true, FLEET);
+        ingest(hash, t0.plusSeconds(120), 1000, false, true, FLEET_GROWN); // re-enable
+        ingest(hash, t0.plusSeconds(180), 1000, false, true, FLEET_GROWN);
+
+        assertThat(arrivals(hash, t0)).isZero();
+        // ...and the discard is COUNTED, never silent: the window is PARTIAL, not unknown.
+        assertThat(observedSamples(hash, t0)).isEqualTo(3);
+        assertThat(trustedSamples(hash, t0)).isEqualTo(2);
+    }
+
+    @Test
+    void aDisableEdgeIsNotNegativeBankedAndTheNewERABaselineReSeedsOnTheNextSameFleetPair() {
+        String hash = "it-" + UUID.randomUUID();
+        Instant t0 = Instant.parse("2026-08-11T11:00:00Z");
+        // The mirror operation. The drop edge was already clamped by SUM(GREATEST(delta,0)), but
+        // the level shift silently survived as the new baseline; what must hold now is that growth
+        // INSIDE the new era is still measured honestly the moment two same-fleet rows exist.
+        ingest(hash, t0.minusSeconds(60), 1000, false, true, FLEET_GROWN);
+        ingest(hash, t0, 1000, false, true, FLEET_GROWN);
+        ingest(hash, t0.plusSeconds(60), 100, false, true, FLEET); // disable: 900 members leave scope
+        ingest(hash, t0.plusSeconds(120), 100, false, true, FLEET);
+        ingest(hash, t0.plusSeconds(180), 150, false, true, FLEET); // +50 REAL growth, one fleet
+
+        assertThat(arrivals(hash, t0)).isEqualTo(50);
+        // t0 itself has no in-window predecessor (and is not the birth), so 3 differenceable rows;
+        // the disable edge at +60 is observed but not trusted, and the new era measures normally.
+        assertThat(observedSamples(hash, t0)).isEqualTo(3);
+        assertThat(trustedSamples(hash, t0)).isEqualTo(2);
+    }
+
+    @Test
+    void twoAdjacentUNRECORDEDRowsAreNotTrustedBecauseTheyAreNotKNOWNToShareAScope() {
+        String hash = "it-" + UUID.randomUUID();
+        Instant t0 = Instant.parse("2026-08-11T13:00:00Z");
+        // Exactly the shape the V22 fail-closed backfill leaves behind. The first draft of the
+        // predicate would have let '' compare equal to '' and banked this +20; §16.5's rule is
+        // "comparable to nothing, ITSELF INCLUDED" precisely so a pre-V22 stretch stays inert.
+        ingest(hash, t0, 10, false, true, FLEET); // birth, scope recorded: a real +10
+        ingest(hash, t0.plusSeconds(60), 10, false, true, FLEET_UNRECORDED);
+        ingest(hash, t0.plusSeconds(120), 30, false, true, FLEET_UNRECORDED); // +20 across ''/''
+
+        // The base banks all 30. Only the birth survives: neither the FLEET->'' edge nor the
+        // ''->'' one is difference-comparable, so the +20 is discarded rather than banked.
+        assertThat(arrivals(hash, t0)).isEqualTo(10);
+        assertThat(observedSamples(hash, t0)).isEqualTo(3);
+        assertThat(trustedSamples(hash, t0)).isEqualTo(1); // the birth alone
+    }
+
+    @Test
+    void aBirthRowWithARecordedFleetStillCountsItsWholePopulationOnce() {
+        String hash = "it-" + UUID.randomUUID();
+        Instant t0 = Instant.parse("2026-08-11T15:00:00Z");
+        // FIX 3 survives the new terms: LAG(fleet) is NULL on the incident's OWN first row, and
+        // COALESCE(..., o.fleet) self-compares there — a birth differences against the seeded 0,
+        // not against another fleet's level.
+        ingest(hash, t0, 5_000, false, true, FLEET);
+        ingest(hash, t0.plusSeconds(60), 5_000, false, true, FLEET);
+
+        assertThat(arrivals(hash, t0)).isEqualTo(5_000);
+        assertThat(trustedSamples(hash, t0)).isEqualTo(2);
+    }
+
+    @Test
+    void aBirthRowThatNeverRecordedItsOWNScopeIsNotAnArrival() {
+        String hash = "it-" + UUID.randomUUID();
+        Instant t0 = Instant.parse("2026-08-11T17:00:00Z");
+        // The other half of the birth rule: the self-compare must not smuggle an UNRECORDED row
+        // through. A birth still has to state the scope it was born into (`fleet <> ''`).
+        ingest(hash, t0, 5_000, false, true, FLEET_UNRECORDED);
+        ingest(hash, t0.plusSeconds(60), 5_000, false, true, FLEET_UNRECORDED);
+
+        assertThat(arrivals(hash, t0)).isZero();
+        assertThat(observedSamples(hash, t0)).isEqualTo(2);
+        assertThat(trustedSamples(hash, t0)).isZero();
+    }
+
+    @Test
+    void theBurstBinsInheritTheScopeDisciplineSoAReEnableIsNeverReadAsAFlood() {
+        String hash = "it-" + UUID.randomUUID();
+        Instant t0 = Instant.parse("2026-08-11T19:00:00Z");
+        Instant asOf = t0.plusSeconds(2_400); // 19:40 ⇒ burst (19:30, 19:40]
+        // The #365 bins FILTER the same d.trusted, so they inherit the terms for free — worth
+        // pinning, because a re-enable read as a flood is the loudest possible false alarm: it
+        // promotes the class to the top of the attention order on the strength of an admin action.
+        ingest(hash, t0, 10, false, true, FLEET); // 19:00 birth +10
+        ingest(hash, t0.plusSeconds(600), 20, false, true, FLEET); // 19:10 +10
+        ingest(hash, t0.plusSeconds(2_100), 900, false, true, FLEET_GROWN); // 19:35 re-enable
+        ingest(hash, asOf, 900, false, true, FLEET_GROWN); // 19:40 flat
+
+        Aggregate row = aggregate(hash, t0, asOf);
+
+        assertThat(row.arrivals()).isEqualTo(20); // the two real ones, kept
+        assertThat(row.burstArrivals()).isZero(); // NOT the 880 the base bins
+        assertThat(row.burstObservedSamples()).isEqualTo(2);
+        assertThat(row.burstTrustedSamples()).isEqualTo(1); // only the 19:40 same-fleet pair
+    }
+
+    @Test
+    void theSpellShapeQueryProjectsTheRowsRecordedFLEET() {
+        String hash = "it-" + UUID.randomUUID();
+        Instant t0 = Instant.parse("2026-08-11T21:00:00Z");
+        // C4's substrate: scope is a property of the ROW and must round-trip onto the entity
+        // (V22 mapping + ddl-auto=validate) exactly like the two quality markers beside it.
+        ingestJobs(hash, t0, 5, 5, 0, true, FLEET);
+        ingestJobs(hash, t0.plusSeconds(60), 7, 5, 2, true, FLEET); // spell starts
+        ingestJobs(hash, t0.plusSeconds(120), 5, 5, 0, true, FLEET_GROWN); // closing zero, NEW fleet
+        ingestJobs(hash, t0.plusSeconds(180), 5, 5, 0, true, FLEET_GROWN); // +1 look-ahead
+
+        List<IncidentOccurrence> rows = occurrences.findSpellShapeRowsDescending(incidentId(hash), t0, 100);
+
+        assertThat(rows.stream().map(IncidentOccurrence::getFleet))
+                .containsExactly("engine-7,engine-a", "engine-7,engine-a", "engine-a");
+    }
+
+    /* ---------------- #372 item 7: the `until` cursor past the 30-day clamp ---------------- */
+
+    @Test
+    void theUntilCursorReachesRowsOlderThanASingleClampedWindowAndTheSeamNeverRepeatsARow() {
+        String hash = "it-" + UUID.randomUUID();
+        Instant asOf = Instant.parse("2026-08-12T00:00:00Z");
+        Instant windowFloor = asOf.minus(Duration.ofDays(30)); // what ONE clamped call reaches back to
+        Instant old = asOf.minus(Duration.ofDays(45)); // 45 d back: structurally unreachable in one call
+        Instant recent = asOf.minus(Duration.ofDays(10));
+        // G5 needs >= 56 d of same-fleet trusted span and IncidentQueryService clamps a single call
+        // to MAX_WINDOW_HOURS = 30 d with no cursor — so before this the era boundary the amended
+        // G5 measures FROM could never be seen over REST at all (§16.7). Same fleet throughout, so
+        // this fixture is purely about REACHABILITY, not about the scope predicate.
+        ingest(hash, old, 10, false);
+        ingest(hash, windowFloor, 20, false); // exactly ON the seam
+        ingest(hash, recent, 30, false);
+        long id = incidentId(hash);
+
+        List<Instant> single =
+                occurrences
+                        .findByIdIncidentIdAndIdSampledAtGreaterThanEqualOrderByIdSampledAtAsc(id, windowFloor)
+                        .stream()
+                        .map(row -> row.getId().getSampledAt())
+                        .toList();
+        List<Instant> previousPage = occurrences
+                .findByIdIncidentIdAndIdSampledAtGreaterThanEqualAndIdSampledAtLessThanOrderByIdSampledAtAsc(
+                        id, windowFloor.minus(Duration.ofDays(30)), windowFloor)
+                .stream()
+                .map(row -> row.getId().getSampledAt())
+                .toList();
+
+        // One call still returns exactly the most recent clamped slice — no behavior change...
+        assertThat(single).containsExactly(windowFloor, recent);
+        // ...and the previous PAGE, still bounded to one window, reaches what it could not.
+        assertThat(previousPage).containsExactly(old);
+        // Half-open [since, until): the seam row belongs to the NEWER page and to only one page.
+        assertThat(previousPage).doesNotContain(windowFloor);
+    }
+
     /* ---------------- helpers ---------------- */
 
     /**
@@ -506,17 +681,45 @@ class LedgerNativeQueriesIT {
     }
 
     private void ingest(String hash, Instant bucket, long total, boolean truncated, boolean cycleComplete) {
+        ingest(hash, bucket, total, truncated, cycleComplete, FLEET);
+    }
+
+    /**
+     * Every pre-#372 fixture above ingests under the SAME {@link #FLEET}, so the scope terms in
+     * the trusted predicate are satisfied throughout and those fixtures' numbers are byte-identical
+     * to the pre-#372 suite — the scope rule only bites on a composition CHANGE or an unrecorded
+     * scope, both of which the #372 fixtures below stage explicitly.
+     */
+    private void ingest(
+            String hash,
+            Instant bucket,
+            long total,
+            boolean truncated,
+            boolean cycleComplete,
+            Set<String> fleetEngineIds) {
         AggregationSample sample = new AggregationSample(
                 List.of(),
                 List.of(group(hash, total)),
                 bucket,
                 truncated ? Set.of("engine-a") : Set.of(),
-                cycleComplete);
+                cycleComplete,
+                fleetEngineIds);
         ledger.ingest(sample, bucket);
     }
 
     private void ingestJobs(
             String hash, Instant bucket, long total, long deadLetters, long retrying, boolean cycleComplete) {
+        ingestJobs(hash, bucket, total, deadLetters, retrying, cycleComplete, FLEET);
+    }
+
+    private void ingestJobs(
+            String hash,
+            Instant bucket,
+            long total,
+            long deadLetters,
+            long retrying,
+            boolean cycleComplete,
+            Set<String> fleetEngineIds) {
         ErrorGroup group = new ErrorGroup(
                 hash,
                 1,
@@ -527,7 +730,9 @@ class LedgerNativeQueriesIT {
                 deadLetters,
                 retrying,
                 Map.of("engine-a", Map.of("order:v3", total)));
-        ledger.ingest(new AggregationSample(List.of(), List.of(group), bucket, Set.of(), cycleComplete), bucket);
+        ledger.ingest(
+                new AggregationSample(List.of(), List.of(group), bucket, Set.of(), cycleComplete, fleetEngineIds),
+                bucket);
     }
 
     private static ErrorGroup group(String hash, long total) {

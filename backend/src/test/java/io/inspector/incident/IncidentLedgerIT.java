@@ -2,6 +2,7 @@ package io.inspector.incident;
 
 import static org.assertj.core.api.Assertions.assertThat;
 import static org.assertj.core.api.Assertions.assertThatCode;
+import static org.assertj.core.api.Assertions.tuple;
 
 import io.inspector.dto.ErrorGroup;
 import io.inspector.snapshot.AggregationSample;
@@ -122,7 +123,31 @@ class IncidentLedgerIT {
                     assertThat(o.getDeadLetterCount()).isEqualTo(5);
                     assertThat(o.getRetryingCount()).isEqualTo(2);
                     assertThat(o.isTruncated()).isFalse();
+                    // #372/V22: the pass's observation SCOPE, canonical (sorted, comma-joined).
+                    assertThat(o.getFleet()).isEqualTo(CANONICAL_FLEET);
                 });
+    }
+
+    @Test
+    void theFleetIsRecordedOnBlindCyclesToo() {
+        // Scope is the INTENT set and is ALWAYS known — even when quality is not. A blind pass
+        // still knows which engines it fanned out to, so its row states its scope; dropping the
+        // marker on blind rows would make an outage indistinguishable from a pre-V22 row and would
+        // permanently sever the series at every blip.
+        String hash = "it-" + UUID.randomUUID();
+        Instant blindBucket = Instant.parse("2026-07-19T09:00:00Z");
+        Instant completeBucket = Instant.parse("2026-07-19T09:01:00Z");
+
+        ledger.ingest(sample(blindBucket, false, group(hash, 7, 5, 2)), blindBucket);
+        ledger.ingest(sample(completeBucket, true, group(hash, 8, 6, 2)), completeBucket);
+
+        long id = incidents
+                .findBySignatureHashAndAlgoVersion(hash, 1)
+                .orElseThrow()
+                .getId();
+        assertThat(occurrences.findByIdIncidentIdOrderByIdSampledAtAsc(id))
+                .extracting(IncidentOccurrence::isCycleComplete, IncidentOccurrence::getFleet)
+                .containsExactly(tuple(false, CANONICAL_FLEET), tuple(true, CANONICAL_FLEET));
     }
 
     @Test
@@ -428,14 +453,20 @@ class IncidentLedgerIT {
                 """, String.class);
     }
 
+    /** The steady observation SCOPE (#372, V22) the fleet-marker assertions expect on the row. */
+    private static final Set<String> FLEET = Set.of("engine-b", "engine-a");
+
+    /** Its canonical persisted form: sorted lexicographically, comma-joined. */
+    private static final String CANONICAL_FLEET = "engine-a,engine-b";
+
     private static AggregationSample sample(Instant sampledAt, ErrorGroup... groups) {
-        return new AggregationSample(List.of(), List.of(groups), sampledAt, Set.of());
+        return new AggregationSample(List.of(), List.of(groups), sampledAt, Set.of(), true, FLEET);
     }
 
     /** #302: a cycle whose completeness is explicit — {@code cycleComplete=false} simulates an
      * unreachable owning engine (the group is simply absent, same shape as a real one). */
     private static AggregationSample sample(Instant sampledAt, boolean cycleComplete, ErrorGroup... groups) {
-        return new AggregationSample(List.of(), List.of(groups), sampledAt, Set.of(), cycleComplete);
+        return new AggregationSample(List.of(), List.of(groups), sampledAt, Set.of(), cycleComplete, FLEET);
     }
 
     private static ErrorGroup group(String hash, long total, long deadLetters, long retrying) {

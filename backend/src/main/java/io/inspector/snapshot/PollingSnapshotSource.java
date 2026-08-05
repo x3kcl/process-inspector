@@ -52,11 +52,20 @@ public class PollingSnapshotSource implements SnapshotSource {
         // makes every group count it contributes a lower bound — the ledger needs to know. Also
         // track whether EVERY registry engine came back ok this pass (#302, R-BAU-10): the
         // incident ledger's zero-state regression gate must never treat an unreachable engine's
-        // groups as "observed absent" — a blind cycle is not a resolved one.
+        // groups as "observed absent" — a blind cycle is not a resolved one. Alongside that
+        // QUALITY marker, record the pass's observation SCOPE (#372, V22): the envelope's key set
+        // IS the enabled fleet the aggregation fanned out over (one atomic registry snapshot —
+        // TriageAggregationService captures registry.all() once and drives both of its loops from
+        // it), including engines that answered not-ok. In scope but unobserved is cycleComplete's
+        // story; which engines were in scope at all is this one's, and nothing else can tell it —
+        // a DISABLED engine never enters perEngine, so the cycle stays "complete" while the fleet
+        // silently shrinks under the series.
         Set<String> truncatedEngines = new LinkedHashSet<>();
+        Set<String> fleetEngineIds = new LinkedHashSet<>();
         boolean cycleComplete = true;
         for (var byEngine : dashboard.perEngine().entrySet()) {
             PerEngineTriage envelope = byEngine.getValue();
+            fleetEngineIds.add(byEngine.getKey());
             if (!envelope.ok()) {
                 cycleComplete = false;
             }
@@ -70,7 +79,7 @@ public class PollingSnapshotSource implements SnapshotSource {
         }
         List<io.inspector.dto.ErrorGroup> groups =
                 dashboard.errorGroups() != null ? dashboard.errorGroups() : List.of();
-        return new AggregationSample(out, groups, clock.instant(), truncatedEngines, cycleComplete);
+        return new AggregationSample(out, groups, clock.instant(), truncatedEngines, cycleComplete, fleetEngineIds);
     }
 
     /** Maps a status-count key to its lane; skips any key not in the fixed lane set (defensive). */
