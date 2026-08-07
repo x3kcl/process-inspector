@@ -27,14 +27,20 @@
        run-unique identifier name keep this fixture's error signature isolated from every other
        seed, the same token trick IncidentLedgerArcIT already relies on for #261).
 
-       A NON-INTERRUPTING boundary timer on the failing task (duration = the `healDelay`
-       process variable, an ISO-8601 duration, REQUIRED at instance start or the process
-       cannot even start) fires once and sets `healed=true` — in its OWN independent,
-       always-committing transaction, unlike a variable set INSIDE the failing task's own
-       attempt (proven live: that write rolls back with everything else in the same throwing
-       command — a same-transaction counter cannot survive its own failure, which is why this
-       is clock-driven rather than a variable incremented across job retries). Once `healed`
-       is true, the OR short-circuits and `selfHealGhost.total` is never evaluated again — the
+       A PARALLEL fork at start routes a second token to a timer INTERMEDIATE CATCH event
+       (duration = the `healDelay` process variable, an ISO-8601 duration, REQUIRED at
+       instance start or the process cannot even start); when it fires, `heal` sets
+       `healed=true`. The catch-event timer job is created in the START transaction — which
+       COMMITS — so the clock is armed no matter what the failing task does. ⚠ CORRECTED
+       2026-08-07 (was FALSE as shipped): the original shape used a non-interrupting
+       BOUNDARY timer on the failing task itself. For an async task every attempt transaction
+       ROLLS BACK on failure — taking the just-created boundary-timer job with it — so the
+       timer never survived to fire and the standalone fixture could never self-heal (proven
+       live on engine-a: zero `healTimer` jobs engine-wide while instances retried; the exact
+       same same-transaction rollback trap this comment already documented for counters).
+       The ITs never caught it BY DESIGN: they pin `healDelay=P1D` and drive `healed` over
+       REST, deliberately bypassing the timer path. Once `healed` is true, the OR
+       short-circuits and `selfHealGhost.total` is never evaluated again — the failing
        task's very next retry attempt succeeds outright. Real engine-driven self-heal: zero
        custom beans (flowable-rest has none), zero engine mutation performed by any test or
        operator actor, zero inspector corrective-action audit row (so it can never be flagged
@@ -73,7 +79,9 @@
        rest of the 6.8+-gated fixture set; never deployed to the legacy 6.3.1 profile). -->
   <process id="demoSelfHealing" name="Demo Self-Healing (transient failure)" isExecutable="true">
     <startEvent id="start"/>
-    <sequenceFlow id="flow1" sourceRef="start" targetRef="attempt"/>
+    <sequenceFlow id="flow1" sourceRef="start" targetRef="fork"/>
+    <parallelGateway id="fork"/>
+    <sequenceFlow id="flowAttempt" sourceRef="fork" targetRef="attempt"/>
     <serviceTask id="attempt" name="Transient attempt"
                  flowable:async="true"
                  flowable:expression="${healed eq true or selfHealGhost.total gt 0}">
@@ -81,18 +89,26 @@
         <flowable:failedJobRetryTimeCycle>R30/PT5S</flowable:failedJobRetryTimeCycle>
       </extensionElements>
     </serviceTask>
-    <boundaryEvent id="healTimer" attachedToRef="attempt" cancelActivity="false">
+    <sequenceFlow id="flowClock" sourceRef="fork" targetRef="healClock"/>
+    <intermediateCatchEvent id="healClock">
       <timerEventDefinition>
         <timeDuration>${healDelay}</timeDuration>
       </timerEventDefinition>
-    </boundaryEvent>
-    <sequenceFlow id="flowHeal" sourceRef="healTimer" targetRef="heal"/>
-    <serviceTask id="heal" name="Engine-driven heal (boundary timer — no operator, no audit row)"
+    </intermediateCatchEvent>
+    <sequenceFlow id="flowHeal" sourceRef="healClock" targetRef="heal"/>
+    <serviceTask id="heal" name="Engine-driven heal (armed at start, commits — no operator, no audit row)"
                  flowable:expression="${execution.setVariable('healed', true)}"/>
     <sequenceFlow id="flowHealEnd" sourceRef="heal" targetRef="healedEnd"/>
     <endEvent id="healedEnd"/>
     <sequenceFlow id="flow2" sourceRef="attempt" targetRef="end"/>
-    <endEvent id="end"/>
+    <!-- TERMINATE, not a plain end: when the attempt succeeds because `healed` was set
+         EXTERNALLY (the ITs' REST-driven path, healDelay pinned to P1D), the healClock
+         token would otherwise keep the instance alive until that timer fires. Terminate
+         reaps it; for the organic timer-driven path both tokens have already ended and
+         this is behavior-neutral. -->
+    <endEvent id="end">
+      <terminateEventDefinition/>
+    </endEvent>
   </process>
 
   <bpmndi:BPMNDiagram id="BPMNDiagram_demoSelfHealing">
@@ -106,8 +122,11 @@
       <bpmndi:BPMNShape id="BPMNShape_end" bpmnElement="end">
         <omgdc:Bounds x="330" y="101" width="28" height="28"/>
       </bpmndi:BPMNShape>
-      <bpmndi:BPMNShape id="BPMNShape_healTimer" bpmnElement="healTimer">
-        <omgdc:Bounds x="212" y="130" width="30" height="30"/>
+      <bpmndi:BPMNShape id="BPMNShape_fork" bpmnElement="fork">
+        <omgdc:Bounds x="135" y="95" width="40" height="40"/>
+      </bpmndi:BPMNShape>
+      <bpmndi:BPMNShape id="BPMNShape_healClock" bpmnElement="healClock">
+        <omgdc:Bounds x="145" y="215" width="30" height="30"/>
       </bpmndi:BPMNShape>
       <bpmndi:BPMNShape id="BPMNShape_heal" bpmnElement="heal">
         <omgdc:Bounds x="200" y="200" width="100" height="60"/>
@@ -117,15 +136,23 @@
       </bpmndi:BPMNShape>
       <bpmndi:BPMNEdge id="BPMNEdge_flow1" bpmnElement="flow1">
         <omgdi:waypoint x="130" y="115"/>
+        <omgdi:waypoint x="135" y="115"/>
+      </bpmndi:BPMNEdge>
+      <bpmndi:BPMNEdge id="BPMNEdge_flowAttempt" bpmnElement="flowAttempt">
+        <omgdi:waypoint x="175" y="115"/>
         <omgdi:waypoint x="180" y="115"/>
+      </bpmndi:BPMNEdge>
+      <bpmndi:BPMNEdge id="BPMNEdge_flowClock" bpmnElement="flowClock">
+        <omgdi:waypoint x="155" y="135"/>
+        <omgdi:waypoint x="155" y="215"/>
       </bpmndi:BPMNEdge>
       <bpmndi:BPMNEdge id="BPMNEdge_flow2" bpmnElement="flow2">
         <omgdi:waypoint x="280" y="115"/>
         <omgdi:waypoint x="330" y="115"/>
       </bpmndi:BPMNEdge>
       <bpmndi:BPMNEdge id="BPMNEdge_flowHeal" bpmnElement="flowHeal">
-        <omgdi:waypoint x="227" y="160"/>
-        <omgdi:waypoint x="227" y="200"/>
+        <omgdi:waypoint x="175" y="230"/>
+        <omgdi:waypoint x="200" y="230"/>
       </bpmndi:BPMNEdge>
       <bpmndi:BPMNEdge id="BPMNEdge_flowHealEnd" bpmnElement="flowHealEnd">
         <omgdi:waypoint x="300" y="230"/>

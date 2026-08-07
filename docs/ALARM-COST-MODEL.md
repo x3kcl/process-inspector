@@ -1034,6 +1034,84 @@ description of the shipped UI today; it has not been re-run against the fixed co
 - Incidental defect surfaced by arm A (A3): the landing card read `34 instances` while the drilled grid read `42 instances`. Documented behaviour (the card's own tooltip warns the live query can disagree) but jarring on first read.
 - Recurring copy complaint across **8 of 10 testers**: *"1 spell excluded from this statistic (operator-confounded, a sampling gap, …)"* and `R-BAU-10` / `BFF` / `Stage-0` as unglossed jargon.
 
+### 8.9 S-factor supplement — ★ EXECUTED 2026-08-07 (dev stack, hp04; closes §8.8's "S was neutral throughout" gap)
+
+A dedicated staging pass + 5-tester comprehension run exercising the self-heal demotion
+story end-to-end for the first time. **This is usability/testability evidence only** — the
+`PI_SEED_SELF_HEALING` fixture counts toward NEITHER this doc's §7 gate NOR
+RETRYING-RISK-LANE.md §7.2 (both still NOT MET), and the flag stays default-off.
+
+**Fixture defect found & fixed first.** The shipped `demo-self-healing.bpmn20.xml` could
+never self-heal standalone: its non-interrupting boundary timer was created inside the
+async attempt's own always-rolling-back transaction, so the clock never armed (zero
+`healTimer` jobs engine-wide while instances retried — the ITs bypass the timer BY DESIGN
+and structurally could not catch this). Fixed in this change: parallel-fork +
+timer-intermediate-catch (armed in the committing start transaction) + a terminate end so
+the ITs' externally-healed path still completes. See RETRYING-RISK-LANE.md's corrected G12
+note. First genuine engine-driven standalone self-heal: 2026-08-07, ~30s end-to-end.
+
+**Staging (all REST, no `ACT_*` access, unlowered floor 10):** ~33 staggered `PT10S`/`PT75S`
+spells + 15 standing baseline members + fresh comparator births. Committed:
+`SELF_HEAL_MIXED` first (9/11 observed), then **`SELF_HEAL_LIKELY` — n=23 observed spells,
+21 healed, Wilson LB 0.732 ≥ the real 0.70 enter threshold, 2 spells excluded, ttsP50 0s /
+ttsP90 60s** — dwell + Schmitt behavior observed live across the MIXED→LIKELY progression.
+
+**Sampler-aliasing finding (measured, new):** at the 60s beat, spells whose retrying window
+is shorter than one cycle are UNDER-OBSERVED — only ~11 of the first ~21 staged `PT10S`
+spells (retrying window ~15s) registered; `PT75S` spells (window > one beat) registered
+reliably. §8.2 step 5c's wall-clock note stands, but staging must ALSO size `healDelay`
+against the sampler cadence, not just the retry cascade. (Organic implication, honest but
+minor: very-short organic spells are systematically under-sampled by the 60s beat — the
+statistic sees the slower-healing tail, which biases the observed heal rate DOWN, the
+conservative direction.)
+
+**Ordering ground truth at dispatch:** the 25-member LIKELY class scored `S = 0.25` (full
+floor) and ranked **below a 7-member and a 2-member class** (score 1.35 vs 2.58/1.58),
+rationale "usually self-heals (21/23)", card visible at #4 of 7 — never hidden. The §8.2
+step-5 canonical story, live.
+
+**Tester run (5 naive Sonnet testers, sequential, `viewer`, M13 /b + /c + an S-focused
+triage-choice /a variant — NOT a full M13 A/B: no arm-A control, no timing metric):**
+
+| Graded task | Result |
+|---|---|
+| /b ordering-rule restatement (citation-or-nothing) | **5/5 correct** — every tester rejected biggest-count-first and quoted ≥2 real factors |
+| /c self-heal badge restatement (citation-or-nothing) | **5/5 correct** — historic-not-promise unanimous; postures graded per what each tester actually saw |
+| Combined vs the ≥80% bar | **10/10 = 100% — PASS** |
+
+All 5 chose the top-ranked card first, and all who saw the LIKELY class chose it as the one
+to leave alone (T5's rushed first glance picked wrongly from the truncated viewport, then
+self-corrected on scroll — recorded, not graded away).
+
+**Findings that survive the pass (follow-ups filed: #387, #388):**
+1. **Badge copy is inconsistent across surfaces** (T2/T3 → #387): Stage 0's inline rationale says
+   "usually self-heals (21/23)" — no unit, no timing — while `/incidents` renders the full
+   "(21/23, typically ≤ 1 min)" + the exclusions tooltip. The bare fraction invites reading
+   "21 of the 23 currently failing" (T3 named exactly this misread), and "no resolve-time
+   history · usually self-heals" juxtaposed reads as a contradiction (T2).
+2. **The badge's posture doesn't key on the visible population** (T4, the sharpest catch → #388):
+   with `DLQ 25 / retrying 0` on the card face, the CURRENT standing population has
+   exhausted retries and cannot self-heal — the spell statistic applies to future retrying
+   spells, not the standing dead-letters. T4 correctly derived "escalate, don't wait" from
+   the on-screen counts; partially fixture-shaped (the baseline members are permanent by
+   construction) but reachable organically whenever a LIKELY class sits between spells.
+3. (Recorded, no new issue): the generic ordering explanation remains hover-only by design
+   (#374 promoted only the per-card rationale), and T1 could not reconcile the demoted
+   LIKELY class ranking ABOVE three zero-score cards from visible fields alone —
+   zero-score cards' position is explained by nothing on their faces. The §8.8 A3
+   count-drift complaint (91 → 111 on drill) recurred verbatim (T4).
+
+**Honesty notes.** Grading judgment call, recorded: T4's /c posture ("escalate") diverges
+from the lane's canonical "leave it" but is the CORRECT derivation from the on-screen
+retrying-0 state — graded correct; finding 2 exists precisely because the rubric and the
+card face disagree. The #358 attribution agent's `mvn verify` ran ITs against the shared
+engines during early staging — its SelfHealSeed classes use run-unique tokens, so the
+`selfHealGhost` series is isolated by construction, but its residue classes were visible in
+the fleet the testers saw. Browser session persisted across testers (read-only, same
+`viewer` user; T2–T5 skipped sign-in). Spell tally: 33 staged heal-spells, 21 observed
+healed + 2 v1-era escalations observed (n=23); the unobserved remainder is the aliasing
+finding above, not silent loss.
+
 ## 9. Doctrine compliance & non-goals
 
 - **Stage 0 iron rule verbatim**: aggregations stay count-only/`size=1` + the dedicated DLQ
