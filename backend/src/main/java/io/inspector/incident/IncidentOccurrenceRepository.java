@@ -1,6 +1,7 @@
 package io.inspector.incident;
 
 import java.time.Instant;
+import java.util.Collection;
 import java.util.List;
 import org.springframework.data.jpa.repository.JpaRepository;
 import org.springframework.data.jpa.repository.Modifying;
@@ -42,6 +43,35 @@ public interface IncidentOccurrenceRepository extends JpaRepository<IncidentOccu
             @Param("truncated") boolean truncated,
             @Param("cycleComplete") boolean cycleComplete,
             @Param("fleet") String fleet);
+
+    /**
+     * The LAST-OBSERVED observation SCOPE of each named incident (#380) — {@code Object[]{
+     * incidentId, fleet}}, one row per incident that has any occurrence row at all.
+     *
+     * <p><b>Why this is the right basis.</b> The ledger writes an occurrence row exactly when a
+     * class is OBSERVED PRESENT (a zero/absent group writes nothing — INCIDENT-LEDGER §5), so an
+     * incident's newest occurrence row IS its last observation, and that row's {@code fleet} is
+     * the scope the observation was made under. The zero-state sweep needs precisely that: it may
+     * only read "the class is not here now" as evidence when "here" is the same fleet the class
+     * was last seen in. Comparing against the PREVIOUS CYCLE's fleet instead would be wrong — one
+     * cycle after a disable the fleet is stable again while the class's last sighting still
+     * belongs to the old one.
+     *
+     * <p><b>Absence from this result is itself an answer:</b> "no recorded last observation" (the
+     * incident's rows aged past the 400-day partition retention, or it has none). The caller
+     * fails CLOSED on it, exactly as it does on {@code fleet = ''} (pre-V22 backfill).
+     *
+     * <p>{@code DISTINCT ON} + the {@code (incident_id, sampled_at)} PK every partition inherits
+     * makes this one index-ordered pass per candidate; the id list is the RESOLVED-and-unarmed
+     * set, which the sweep has already fetched and already filtered down to the ABSENT ones.
+     */
+    @Query(value = """
+                    SELECT DISTINCT ON (o.incident_id) o.incident_id, o.fleet
+                    FROM incident_occurrence o
+                    WHERE o.incident_id IN (:incidentIds)
+                    ORDER BY o.incident_id, o.sampled_at DESC
+                    """, nativeQuery = true)
+    List<Object[]> lastObservedFleets(@Param("incidentIds") Collection<Long> incidentIds);
 
     /** One incident's series ascending — the S2 windowed read path (and the IT assertions). */
     List<IncidentOccurrence> findByIdIncidentIdOrderByIdSampledAtAsc(long incidentId);

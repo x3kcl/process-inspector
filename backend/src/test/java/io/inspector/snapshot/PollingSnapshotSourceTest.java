@@ -222,6 +222,25 @@ class PollingSnapshotSourceTest {
         assertThat(out.canonicalFleet()).isEqualTo("engine-a");
     }
 
+    @Test
+    void anEnabledFleetOfZeroEnginesIsBlindNotVacuouslyComplete() {
+        // #380 (the adjacent case): with NO enabled engines `perEngine` is empty, so the
+        // "did everyone answer?" loop never executes and the flag stayed vacuously TRUE — a pass
+        // that observed NOBODY claiming to be a complete observation of everybody. That is not
+        // "the fleet answered", it is "there was no fleet"; the honest reading is a BLIND cycle.
+        // #302's meaning for an UNREACHABLE engine is untouched — this is the empty-scope case,
+        // which #302 never had an opinion about.
+        when(aggregation.aggregate(CallPriority.BACKGROUND)).thenReturn(dashboard(Map.of(), List.of(), Map.of()));
+
+        AggregationSample out = source.sample();
+
+        assertThat(out.fleetEngineIds()).isEmpty();
+        assertThat(out.canonicalFleet()).isEmpty();
+        assertThat(out.cycleComplete())
+                .as("a fleet-empty cycle observed nothing and must not claim to be complete (#380)")
+                .isFalse();
+    }
+
     private static TriageDashboardResponse dashboard(
             Map<String, Map<String, Long>> statusCountsByEngine,
             List<ErrorGroup> errorGroups,

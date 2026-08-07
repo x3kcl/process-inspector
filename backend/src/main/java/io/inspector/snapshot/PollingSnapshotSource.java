@@ -77,6 +77,16 @@ public class PollingSnapshotSource implements SnapshotSource {
                 truncatedEngines.add(byEngine.getKey());
             }
         }
+        if (fleetEngineIds.isEmpty()) {
+            // #380 (the adjacent case): with NO enabled engines the loop above never executes, so
+            // "did everyone answer?" was VACUOUSLY true — a pass that observed nobody claiming to
+            // be a complete observation of everybody, which armed the ledger's zero-state gate for
+            // every RESOLVED incident at once. This is not "the fleet answered", it is "there was
+            // no fleet". #302's meaning is untouched: an engine that IS in scope and did not come
+            // back ok() still makes the cycle blind, exactly as before; this only says an EMPTY
+            // scope cannot be a complete observation of anything.
+            cycleComplete = false;
+        }
         List<io.inspector.dto.ErrorGroup> groups =
                 dashboard.errorGroups() != null ? dashboard.errorGroups() : List.of();
         return new AggregationSample(out, groups, clock.instant(), truncatedEngines, cycleComplete, fleetEngineIds);
