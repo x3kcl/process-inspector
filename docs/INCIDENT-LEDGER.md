@@ -204,7 +204,12 @@ engine load whenever it missed the ~20s triage cache. Therefore:
   `dlqScan="truncated@N"` marker, and the truncation-honesty mandate (§8) needs that carrier
   at ingest time. The fifth (`cycleComplete`, #302) is true only when EVERY registry engine's
   envelope came back `ok()` this pass. It is BOTH the regression gate's "observed" test below
-  AND (V21) a persisted column on every occurrence row — a live group still ingests on an
+  AND (V21) a persisted column on every occurrence row — and note that since #380 the
+  regression gate's "observed" test is `cycleComplete` **AND** scope comparability
+  (`fleet`, V22/#372): a pass with no recorded scope skips the sweep, and an absent RESOLVED
+  incident arms only under the fleet it was last observed on, so a registry DISABLE is no
+  longer mistaken for an observation of absence (a ZERO-engine pass is likewise blind, not
+  vacuously complete) — a live group still ingests on an
   incomplete cycle, but the row it writes must SAY the cycle was blind or nothing downstream
   can tell an outage's drop-and-recover apart from real movement.
 - `SnapshotSampler` keeps its snapshot-store write, then **publishes a synchronous Spring

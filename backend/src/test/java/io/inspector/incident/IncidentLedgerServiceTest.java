@@ -84,7 +84,7 @@ class IncidentLedgerServiceTest {
         assertThat(episode.getValue().getPeakTotal()).isEqualTo(7);
         assertThat(episode.getValue().getEndedAt()).isNull();
 
-        verify(occurrences).upsert(ID, BUCKET, 7, 5, 2, false, true, "");
+        verify(occurrences).upsert(ID, BUCKET, 7, 5, 2, false, true, CANONICAL_FLEET);
     }
 
     @Test
@@ -116,7 +116,7 @@ class IncidentLedgerServiceTest {
         verify(incidents).updateObservedTotals(eq(ID), eq("OPEN"), eq(NOW), eq(9L), eq(false), any());
         verify(episodes).bumpLivePeak(ID, 9);
         verify(episodes, never()).save(any());
-        verify(occurrences).upsert(ID, BUCKET, 9, 6, 3, false, true, "");
+        verify(occurrences).upsert(ID, BUCKET, 9, 6, 3, false, true, CANONICAL_FLEET);
     }
 
     @Test
@@ -131,7 +131,7 @@ class IncidentLedgerServiceTest {
 
         verify(episodes, never()).bumpLivePeak(anyLong(), anyLong());
         // the occurrence is still an honest observation of what the cycle saw
-        verify(occurrences).upsert(ID, BUCKET, 9, 6, 3, false, true, "");
+        verify(occurrences).upsert(ID, BUCKET, 9, 6, 3, false, true, CANONICAL_FLEET);
     }
 
     /* ---------------- the regression gate ---------------- */
@@ -146,7 +146,7 @@ class IncidentLedgerServiceTest {
         verify(incidents, never()).transitionToRegressed(anyLong(), any(), anyLong(), anyBoolean(), any());
         verify(audit, never()).recordConfigEvent(anyString(), anyString(), anyBoolean(), any());
         verify(incidents).updateObservedTotals(eq(ID), eq("RESOLVED"), eq(NOW), eq(8L), eq(false), any());
-        verify(occurrences).upsert(ID, BUCKET, 8, 8, 0, false, true, "");
+        verify(occurrences).upsert(ID, BUCKET, 8, 8, 0, false, true, CANONICAL_FLEET);
     }
 
     @Test
@@ -187,7 +187,7 @@ class IncidentLedgerServiceTest {
 
         verify(incidents, never()).transitionToRegressed(anyLong(), any(), anyLong(), anyBoolean(), any());
         verify(incidents).updateObservedTotals(eq(ID), eq("RESOLVED"), eq(NOW), eq(4L), eq(false), any());
-        verify(occurrences).upsert(ID, BUCKET, 4, 4, 0, false, true, "");
+        verify(occurrences).upsert(ID, BUCKET, 4, 4, 0, false, true, CANONICAL_FLEET);
     }
 
     @Test
@@ -201,7 +201,7 @@ class IncidentLedgerServiceTest {
 
         verify(episodes, never()).save(any());
         verify(audit, never()).recordConfigEvent(anyString(), anyString(), anyBoolean(), any());
-        verify(occurrences).upsert(ID, BUCKET, 8, 8, 0, false, true, "");
+        verify(occurrences).upsert(ID, BUCKET, 8, 8, 0, false, true, CANONICAL_FLEET);
     }
 
     @Test
@@ -236,6 +236,7 @@ class IncidentLedgerServiceTest {
         when(zero.getAlgoVersion()).thenReturn(1);
         when(incidents.findByStateAndSeenZeroSinceResolveFalse(IncidentState.RESOLVED))
                 .thenReturn(List.of(absent, zero));
+        stubLastObservedFleet(CANONICAL_FLEET, ID, 77L); // both last seen under THIS pass's fleet
 
         // "hash-zero" IS in the sample but with total 0 — an absence-observation, not a live group
         service.ingest(sample(group("hash-zero", 1, 0, 0, 0)), BUCKET);
@@ -271,7 +272,7 @@ class IncidentLedgerServiceTest {
         // one engine's slice failed this cycle (cycleComplete=false) and the group is entirely
         // absent from the sample — the false-positive scenario from #302: an unreachable engine
         // must never be read as "the class resolved".
-        service.ingest(new AggregationSample(List.of(), List.of(), NOW, Set.of(), false), BUCKET);
+        service.ingest(sample(false), BUCKET);
 
         verify(incidents, never()).markSeenZeroSinceResolve(anyLong());
         verify(incidents, never()).findByStateAndSeenZeroSinceResolveFalse(any());
@@ -282,10 +283,15 @@ class IncidentLedgerServiceTest {
         Incident resolved = incident(IncidentState.RESOLVED, false);
         when(incidents.findByStateAndSeenZeroSinceResolveFalse(IncidentState.RESOLVED))
                 .thenReturn(List.of(resolved));
+        // #380's must-not-change half: the class was last observed under THIS pass's fleet, so
+        // the absence is attributable to an observation and the gate arms exactly as it always
+        // has. (Its rung-4 twin — same arc against real Postgres, green on the pre-fix base —
+        // is IncidentLedgerIT.aGenuineDrainAndReturnOnAStableFleetStillRegresses.)
+        stubLastObservedFleet(CANONICAL_FLEET, ID);
 
         // every registry engine was reached (cycleComplete=true) and the group is genuinely
         // absent — this IS an observed-zero, so the gate arms.
-        service.ingest(new AggregationSample(List.of(), List.of(), NOW, Set.of(), true), BUCKET);
+        service.ingest(sample(true), BUCKET);
 
         verify(incidents).markSeenZeroSinceResolve(ID);
     }
@@ -297,15 +303,14 @@ class IncidentLedgerServiceTest {
 
         // a live group ingests normally even on an incomplete cycle — only the absence-triggered
         // sweep is gated on cycleComplete, per INCIDENT-LEDGER §5 (#302 scope).
-        service.ingest(
-                new AggregationSample(List.of(), List.of(group("hash-1", 1, 7, 5, 2)), NOW, Set.of(), false), BUCKET);
+        service.ingest(sample(false, group("hash-1", 1, 7, 5, 2)), BUCKET);
 
         verify(incidents).save(any(Incident.class));
         // ...but the row SAYS it was blind (V21): the counts may be missing an unreachable
         // engine's members, and every downstream reader needs to know that. Ingesting the row
         // while dropping the marker is what turned an outage into phantom arrivals and into
         // fabricated SELF_HEALED spells.
-        verify(occurrences).upsert(ID, BUCKET, 7, 5, 2, false, false, "");
+        verify(occurrences).upsert(ID, BUCKET, 7, 5, 2, false, false, CANONICAL_FLEET);
     }
 
     @Test
@@ -315,10 +320,85 @@ class IncidentLedgerServiceTest {
         when(incidents.updateObservedTotals(anyLong(), anyString(), any(), anyLong(), anyBoolean(), any()))
                 .thenReturn(1);
 
-        service.ingest(
-                new AggregationSample(List.of(), List.of(group("hash-1", 1, 9, 6, 3)), NOW, Set.of(), false), BUCKET);
+        service.ingest(sample(false, group("hash-1", 1, 9, 6, 3)), BUCKET);
 
-        verify(occurrences).upsert(ID, BUCKET, 9, 6, 3, false, false, "");
+        verify(occurrences).upsert(ID, BUCKET, 9, 6, 3, false, false, CANONICAL_FLEET);
+    }
+
+    /* ---------------- #380: the sweep may only arm on an OBSERVED absence ---------------- */
+
+    @Test
+    void aFleetChangeSinceTheClassWasLastObservedNeverArmsTheZeroStateGate() {
+        Incident resolved = incident(IncidentState.RESOLVED, false);
+        when(incidents.findByStateAndSeenZeroSinceResolveFalse(IncidentState.RESOLVED))
+                .thenReturn(List.of(resolved));
+        // The class was last OBSERVED under {engine-7, engine-a}. `occurrences` is left unstubbed
+        // for the last-observed-scope lookup, i.e. "this cycle cannot establish the scope the
+        // class was last seen under" — the fail-closed input.
+
+        // This cycle fanned out over {engine-a} ALONE: engine-7 was DISABLED, so it never entered
+        // registry.all(), nobody failed to answer, and cycleComplete is honestly TRUE for the
+        // shrunken scope. The class is absent — from a fleet that never hosted it. #380: that
+        // absence was never observed, so it is not evidence of absence.
+        service.ingest(new AggregationSample(List.of(), List.of(), NOW, Set.of(), true, Set.of("engine-a")), BUCKET);
+
+        verify(incidents, never()).markSeenZeroSinceResolve(anyLong());
+    }
+
+    @Test
+    void aClassLastObservedUnderADifferentFleetIsNotArmedEvenOnACompleteCycle() {
+        Incident resolved = incident(IncidentState.RESOLVED, false);
+        when(incidents.findByStateAndSeenZeroSinceResolveFalse(IncidentState.RESOLVED))
+                .thenReturn(List.of(resolved));
+        // stated explicitly this time: the class's newest occurrence row says it was last seen
+        // under {engine-7, engine-a} — the fleet BEFORE the disable.
+        stubLastObservedFleet("engine-7,engine-a", ID);
+
+        service.ingest(new AggregationSample(List.of(), List.of(), NOW, Set.of(), true, Set.of("engine-a")), BUCKET);
+
+        verify(incidents, never()).markSeenZeroSinceResolve(anyLong());
+    }
+
+    @Test
+    void aClassWhoseLastObservationRecordedNoScopeIsNotArmed() {
+        Incident resolved = incident(IncidentState.RESOLVED, false);
+        when(incidents.findByStateAndSeenZeroSinceResolveFalse(IncidentState.RESOLVED))
+                .thenReturn(List.of(resolved));
+        // a pre-V22 row: scope was never recorded, so it is comparable to NOTHING — not even to
+        // an identical-looking unrecorded scope. V21's fail-closed rule, applied unchanged.
+        stubLastObservedFleet("", ID);
+
+        service.ingest(sample(true), BUCKET);
+
+        verify(incidents, never()).markSeenZeroSinceResolve(anyLong());
+    }
+
+    @Test
+    void aFleetEmptyCycleArmsNoResolvedIncident() {
+        Incident absent = incident(IncidentState.RESOLVED, false);
+        Incident other = mock(Incident.class);
+        when(other.getId()).thenReturn(77L);
+        when(other.getSignatureHash()).thenReturn("hash-zero");
+        when(other.getAlgoVersion()).thenReturn(1);
+        when(incidents.findByStateAndSeenZeroSinceResolveFalse(IncidentState.RESOLVED))
+                .thenReturn(List.of(absent, other));
+
+        // #380, the adjacent case: zero enabled engines. Nothing was observed at all, so the
+        // pass's scope is UNRECORDED and it can vouch for no class's absence — arming here would
+        // regress EVERY resolved incident the moment the fleet came back.
+        service.ingest(new AggregationSample(List.of(), List.of(), NOW, Set.of(), true, Set.of()), BUCKET);
+
+        verify(incidents, never()).markSeenZeroSinceResolve(anyLong());
+    }
+
+    @Test
+    void aFleetEmptyCycleDoesNotEvenAskTheStoreForCandidates() {
+        // findByStateAndSeenZeroSinceResolveFalse is deliberately NOT stubbed, exactly as in the
+        // blind-cycle test: a cycle that cannot vouch for ANY absence must bail before the fetch.
+        service.ingest(new AggregationSample(List.of(), List.of(), NOW, Set.of(), true, Set.of()), BUCKET);
+
+        verify(incidents, never()).findByStateAndSeenZeroSinceResolveFalse(any());
+        verify(incidents, never()).markSeenZeroSinceResolve(anyLong());
     }
 
     /* ---------------- truncation honesty ---------------- */
@@ -329,12 +409,12 @@ class IncidentLedgerServiceTest {
         when(incidents.findBySignatureHashAndAlgoVersion("hash-1", 1)).thenReturn(java.util.Optional.empty());
 
         ErrorGroup group = group("hash-1", 1, 500, 500, 0); // engine-a's scan hit the cap
-        service.ingest(new AggregationSample(List.of(), List.of(group), NOW, Set.of("engine-a")), BUCKET);
+        service.ingest(new AggregationSample(List.of(), List.of(group), NOW, Set.of("engine-a"), true, FLEET), BUCKET);
 
         ArgumentCaptor<Incident> row = ArgumentCaptor.forClass(Incident.class);
         verify(incidents).save(row.capture());
         assertThat(row.getValue().isLastTruncated()).isTrue();
-        verify(occurrences).upsert(ID, BUCKET, 500, 500, 0, true, true, "");
+        verify(occurrences).upsert(ID, BUCKET, 500, 500, 0, true, true, CANONICAL_FLEET);
     }
 
     @Test
@@ -343,12 +423,12 @@ class IncidentLedgerServiceTest {
         when(incidents.findBySignatureHashAndAlgoVersion("hash-1", 1)).thenReturn(java.util.Optional.empty());
 
         ErrorGroup group = group("hash-1", 1, 7, 5, 2); // lives on engine-a only
-        service.ingest(new AggregationSample(List.of(), List.of(group), NOW, Set.of("engine-b")), BUCKET);
+        service.ingest(new AggregationSample(List.of(), List.of(group), NOW, Set.of("engine-b"), true, FLEET), BUCKET);
 
         ArgumentCaptor<Incident> row = ArgumentCaptor.forClass(Incident.class);
         verify(incidents).save(row.capture());
         assertThat(row.getValue().isLastTruncated()).isFalse();
-        verify(occurrences).upsert(ID, BUCKET, 7, 5, 2, false, true, "");
+        verify(occurrences).upsert(ID, BUCKET, 7, 5, 2, false, true, CANONICAL_FLEET);
     }
 
     /* ---------------- occurrence bucketing + failure isolation ---------------- */
@@ -364,8 +444,8 @@ class IncidentLedgerServiceTest {
         service.ingest(sample(group("hash-1", 1, 9, 7, 2)), BUCKET);
 
         // same (incident, bucket) key both times — the DB's ON CONFLICT keeps it one row (IT-proven)
-        verify(occurrences).upsert(ID, BUCKET, 7, 5, 2, false, true, "");
-        verify(occurrences).upsert(ID, BUCKET, 9, 7, 2, false, true, "");
+        verify(occurrences).upsert(ID, BUCKET, 7, 5, 2, false, true, CANONICAL_FLEET);
+        verify(occurrences).upsert(ID, BUCKET, 9, 7, 2, false, true, CANONICAL_FLEET);
         verify(occurrences, times(2))
                 .upsert(eq(ID), eq(BUCKET), anyLong(), anyLong(), anyLong(), anyBoolean(), anyBoolean(), anyString());
     }
@@ -386,13 +466,7 @@ class IncidentLedgerServiceTest {
         when(incidents.findBySignatureHashAndAlgoVersion("hash-bad", 1)).thenThrow(new RuntimeException("poisoned"));
         when(incidents.findBySignatureHashAndAlgoVersion("hash-good", 1)).thenReturn(java.util.Optional.empty());
 
-        service.ingest(
-                new AggregationSample(
-                        List.of(),
-                        List.of(group("hash-bad", 1, 3, 3, 0), group("hash-good", 1, 5, 5, 0)),
-                        NOW,
-                        Set.of()),
-                BUCKET);
+        service.ingest(sample(group("hash-bad", 1, 3, 3, 0), group("hash-good", 1, 5, 5, 0)), BUCKET);
 
         verify(incidents).save(any(Incident.class)); // hash-good landed despite hash-bad
     }
@@ -442,6 +516,15 @@ class IncidentLedgerServiceTest {
         when(incidents.save(any(Incident.class))).thenReturn(saved);
     }
 
+    /** #380: the scope each named incident's NEWEST occurrence row recorded. */
+    private void stubLastObservedFleet(String fleet, long... incidentIds) {
+        List<Object[]> rows = new java.util.ArrayList<>();
+        for (long incidentId : incidentIds) {
+            rows.add(new Object[] {incidentId, fleet});
+        }
+        when(occurrences.lastObservedFleets(any())).thenReturn(rows);
+    }
+
     private void stubEpisodeSaveReturningArgument() {
         when(episodes.save(any(IncidentEpisode.class))).thenAnswer(inv -> inv.getArgument(0));
     }
@@ -458,8 +541,24 @@ class IncidentLedgerServiceTest {
         return row;
     }
 
+    /** The steady observation SCOPE (#372/V22) every fixture here ingests under. */
+    private static final Set<String> FLEET = Set.of("engine-b", "engine-a");
+
+    /** Its canonical persisted form: sorted lexicographically, comma-joined. */
+    private static final String CANONICAL_FLEET = "engine-a,engine-b";
+
+    /**
+     * Production ALWAYS states its scope ({@code PollingSnapshotSource} fills
+     * {@code fleetEngineIds} from the envelope it iterates), so the shared fixture does too —
+     * the #380 gate only bites on a composition CHANGE or an unrecorded scope, both of which
+     * the tests that care about them stage explicitly.
+     */
     private static AggregationSample sample(ErrorGroup... groups) {
-        return new AggregationSample(List.of(), List.of(groups), NOW, Set.of());
+        return new AggregationSample(List.of(), List.of(groups), NOW, Set.of(), true, FLEET);
+    }
+
+    private static AggregationSample sample(boolean cycleComplete, ErrorGroup... groups) {
+        return new AggregationSample(List.of(), List.of(groups), NOW, Set.of(), cycleComplete, FLEET);
     }
 
     private static ErrorGroup group(String hash, int algoVersion, long total, long deadLetters, long retrying) {

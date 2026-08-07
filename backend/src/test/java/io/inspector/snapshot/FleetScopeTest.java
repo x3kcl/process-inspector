@@ -61,6 +61,30 @@ class FleetScopeTest {
         assertThat(FleetScope.canonical(ordered("engine-a", "b,c"))).isEqualTo(FleetScope.UNRECORDED);
     }
 
+    @Test
+    void twoScopesAreComparableOnlyWhenBOTHAreRecordedAndIdentical() {
+        assertThat(FleetScope.sameRecorded("engine-a,engine-b", "engine-a,engine-b"))
+                .isTrue();
+        assertThat(FleetScope.sameRecorded("engine-a,engine-b", "engine-a")).isFalse();
+        // an unrecorded scope compares equal to nothing — INCLUDING another unrecorded one: two
+        // scopes nobody wrote down are not KNOWN to be the same scope (V21's rule, unchanged).
+        assertThat(FleetScope.sameRecorded(FleetScope.UNRECORDED, FleetScope.UNRECORDED))
+                .isFalse();
+        assertThat(FleetScope.sameRecorded(FleetScope.UNRECORDED, "engine-a")).isFalse();
+        assertThat(FleetScope.sameRecorded("engine-a", FleetScope.UNRECORDED)).isFalse();
+        // "there is no such observation at all" (#380: no occurrence row survives) is the same
+        // answer as "scope unrecorded", and must never blow up on the way there.
+        assertThat(FleetScope.sameRecorded("engine-a", null)).isFalse();
+        assertThat(FleetScope.sameRecorded(null, null)).isFalse();
+    }
+
+    @Test
+    void isRecordedIsTheOneTestForWhetherAScopeSaysAnythingAtAll() {
+        assertThat(FleetScope.isRecorded("engine-a")).isTrue();
+        assertThat(FleetScope.isRecorded(FleetScope.UNRECORDED)).isFalse();
+        assertThat(FleetScope.isRecorded(null)).isFalse();
+    }
+
     private static Set<String> ordered(String... ids) {
         return new LinkedHashSet<>(Arrays.asList(ids));
     }

@@ -8,9 +8,13 @@ import io.inspector.config.InspectorProperties;
 import io.inspector.dto.ErrorGroup;
 import io.inspector.snapshot.AggregationSample;
 import io.inspector.snapshot.AggregationSampledEvent;
+import io.inspector.snapshot.FleetScope;
 import java.time.Instant;
+import java.util.ArrayList;
+import java.util.HashMap;
 import java.util.HashSet;
 import java.util.LinkedHashMap;
+import java.util.List;
 import java.util.Map;
 import java.util.Optional;
 import java.util.Set;
@@ -40,9 +44,11 @@ import org.springframework.transaction.support.TransactionTemplate;
  * on RESOLVED rows. Every cycle upserts the bucketed occurrence row (idempotent, mirrors the
  * snapshot store).
  *
- * <p><b>"Observed" requires the owning engine was reached (#302, R-BAU-10)</b>: the
- * absence-triggered write above only ever fires on a {@link AggregationSample#cycleComplete()}
- * cycle — i.e. every registry engine's envelope came back {@code ok()} this pass. A cycle where
+ * <p><b>"Observed" requires the owning engine was reached (#302, R-BAU-10) AND that it was in
+ * scope at all (#380)</b>: the absence-triggered write above fires only on a
+ * {@link AggregationSample#cycleComplete()} cycle whose observation SCOPE
+ * ({@link AggregationSample#canonicalFleet()}) equals the scope the class was last observed
+ * under — see {@link #sweepZeroState} for the full derivation of the second rail. A cycle where
  * one engine was unreachable cannot tell "the class is gone" apart from "we didn't get to look",
  * so it skips the zero-state sweep entirely rather than arm the gate from a gap. Live groups
  * still ingest normally on an incomplete cycle — but every occurrence row now PERSISTS the
@@ -292,30 +298,97 @@ public class IncidentLedgerService {
     }
 
     /**
-     * The one absence-triggered write (INCIDENT-LEDGER §5): every RESOLVED incident whose group
-     * this cycle observed absent or zero gets its zero-state gate armed. Old-generation rows
-     * (orphaned by an ALGO_VERSION bump) are absent by definition and arm too — harmless: their
-     * hash space is retired, so the gate can never fire for them.
+     * The one absence-triggered write (INCIDENT-LEDGER §5): a RESOLVED incident whose group this
+     * cycle OBSERVED absent or zero gets its zero-state gate armed.
      *
-     * <p><b>Only ever invoked when {@link AggregationSample#cycleComplete()} is true</b> (#302):
-     * "observed absent" requires the group's owning engine to have actually been reached this
-     * cycle. A blind cycle (one registry engine's envelope not {@code ok()}) cannot tell absent
-     * apart from unreachable, so the caller skips this method entirely rather than treat a gap
-     * as a zero — arming from an unobserved engine would let a single hiccup regress every
-     * RESOLVED incident behind it.
+     * <p><b>Quality rail — only ever invoked when {@link AggregationSample#cycleComplete()} is
+     * true</b> (#302): "observed absent" requires the group's owning engine to have actually been
+     * reached this cycle. A blind cycle (one registry engine's envelope not {@code ok()}) cannot
+     * tell absent apart from unreachable, so the caller skips this method entirely rather than
+     * treat a gap as a zero — arming from an unobserved engine would let a single hiccup regress
+     * every RESOLVED incident behind it.
+     *
+     * <p><b>Scope rail — the absence must be attributable to an OBSERVATION (#380).</b> The
+     * quality rail alone is not enough, and the hole it leaves is not exotic: a registry DISABLE
+     * removes an engine from {@code registry.all()} entirely, so the pass never fans out to it,
+     * nobody fails to answer, {@code cycleComplete} stays honestly TRUE for the now-smaller scope
+     * — and a class whose members lived ONLY on the departed engine reads as "absent" from a
+     * fleet that never hosted it. Arming there records an absence nobody looked for; with
+     * {@code regression-min-count} flooring at 1, ONE untouched member reappearing on re-enable
+     * was then sufficient to mint a REGRESSED, a fresh episode and a fail-closed config-event
+     * audit row, for a failure that never went away. So the gate arms only when this pass's
+     * observation scope EQUALS the scope the class was last observed under, and both are
+     * recorded ({@link FleetScope#sameRecorded}) — the same comparability rule the arrivals
+     * aggregate and the spell extractor already apply to their own differences.
+     *
+     * <p><b>Fail closed, deliberately.</b> An unrecorded scope on either side — this pass's
+     * (which covers the zero-enabled-engines cycle, where the empty fan-out has nothing to
+     * vouch for) or the class's last observation (a pre-V22 row, or none left after the
+     * 400-day partition retention) — does NOT arm. A missed arming is recoverable: the class is
+     * re-observed under the current fleet the next time it appears, and the very next genuine
+     * drain arms normally. A fabricated arming is not: it writes a permanent episode and an
+     * immutable audit row. Note that raising {@code regression-min-count} would have masked this,
+     * not fixed it — the defect is arming on an UNOBSERVED absence, not the size of the floor.
+     *
+     * <p><b>Unchanged:</b> a genuine drain on a STABLE fleet arms and regresses exactly as
+     * before — every occurrence row of the class carries that same fleet, so the comparison is
+     * an identity. Old-generation rows (orphaned by an ALGO_VERSION bump) simply stop arming
+     * unless their last sighting shares the current scope — harmless either way: their hash
+     * space is retired, so the gate can never fire for them.
      */
     private void sweepZeroState(AggregationSample sample) {
+        String fleet = sample.canonicalFleet();
+        if (!FleetScope.isRecorded(fleet)) {
+            // #380: a pass with NO observation scope (zero enabled engines — the completeness
+            // loop was vacuously true over an empty fan-out) observed nothing and can vouch for
+            // no class's absence. Bail before the candidate fetch: there is nothing to decide.
+            log.debug("incident-ledger: skipping the zero-state sweep — this cycle recorded no observation scope");
+            return;
+        }
         Set<String> live = new HashSet<>();
         for (ErrorGroup group : sample.errorGroups()) {
             if (group.total() > 0) {
                 live.add(identityKey(group.signatureHash(), group.algoVersion()));
             }
         }
+        List<Incident> absent = new ArrayList<>();
         for (Incident resolved : incidents.findByStateAndSeenZeroSinceResolveFalse(IncidentState.RESOLVED)) {
             if (!live.contains(identityKey(resolved.getSignatureHash(), resolved.getAlgoVersion()))) {
-                incidents.markSeenZeroSinceResolve(resolved.getId()); // conditional — a miss is fine
+                absent.add(resolved);
             }
         }
+        if (absent.isEmpty()) {
+            return;
+        }
+        Map<Long, String> lastObserved = lastObservedFleets(absent);
+        int outOfScope = 0;
+        for (Incident resolved : absent) {
+            if (FleetScope.sameRecorded(fleet, lastObserved.get(resolved.getId()))) {
+                incidents.markSeenZeroSinceResolve(resolved.getId()); // conditional — a miss is fine
+            } else {
+                outOfScope++;
+            }
+        }
+        if (outOfScope > 0) {
+            log.debug(
+                    "incident-ledger: {} resolved incident(s) absent this cycle were NOT armed — the fleet {} is not"
+                            + " the scope they were last observed under, so their absence was never observed (#380)",
+                    outOfScope,
+                    fleet);
+        }
+    }
+
+    /** {@code incidentId → the fleet its newest occurrence row recorded}; missing = no answer. */
+    private Map<Long, String> lastObservedFleets(List<Incident> candidates) {
+        List<Long> ids = new ArrayList<>(candidates.size());
+        for (Incident candidate : candidates) {
+            ids.add(candidate.getId());
+        }
+        Map<Long, String> byIncidentId = new HashMap<>();
+        for (Object[] row : occurrences.lastObservedFleets(ids)) {
+            byIncidentId.put(((Number) row[0]).longValue(), (String) row[1]);
+        }
+        return byIncidentId;
     }
 
     /**

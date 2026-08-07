@@ -318,6 +318,167 @@ class IncidentLedgerIT {
     }
 
     /**
+     * The #380 defect, reproduced then proven fixed against REAL Postgres persistence: TWO
+     * ROUTINE REGISTRY EDITS must not mint a false {@code REGRESSED}.
+     *
+     * <p>The class's members live ONLY on {@code engine-7}. An admin DISABLES that engine, so it
+     * leaves {@code registry.all()} entirely: nobody fails to answer, {@code cycleComplete} stays
+     * honestly TRUE for the now-smaller scope, and the class is "absent" — from a fleet that never
+     * hosted it. Arming the zero-state gate there records an absence that was never OBSERVED; the
+     * admin then re-enables and one untouched member is enough (`regression-min-count` floors at
+     * 1) to transition RESOLVED → REGRESSED with a fresh episode and a fail-closed config-event
+     * audit row, for a failure that never went away and never came back.
+     *
+     * <p>The tail of the arc proves the fix is a DELAY, not a mute: once the class has been
+     * re-observed under the new fleet, a genuine drain on that stable fleet arms exactly as
+     * before and the return regresses normally.
+     */
+    @Test
+    void twoRegistryEditsNeverMintAFalseRegression() {
+        String hash = "it-" + UUID.randomUUID();
+        Instant t0 = Instant.parse("2026-08-05T09:00:00Z");
+
+        // 1. the class is OBSERVED under the full fleet, hosted only on engine-7 → OPEN
+        ledger.ingest(sample(t0, FLEET_WITH_ENGINE_7, groupOn("engine-7", hash, 4)), t0);
+        Incident row = incidents.findBySignatureHashAndAlgoVersion(hash, 1).orElseThrow();
+        assertThat(row.getState()).isEqualTo(IncidentState.OPEN);
+
+        // 2. a human resolves (the simulated verb effect used by the other arcs in this class)
+        resolveAtTheStore(row.getId());
+
+        // 3. engine-7 is DISABLED. The cycle is COMPLETE — every engine it fanned out to answered
+        //    — and the class is absent. It was never looked for.
+        Instant t1 = t0.plusSeconds(60);
+        ledger.ingest(sample(t1, FLEET), t1);
+        assertThat(incidents
+                        .findBySignatureHashAndAlgoVersion(hash, 1)
+                        .orElseThrow()
+                        .isSeenZeroSinceResolve())
+                .as("a class whose only host just left the fleet was NOT observed absent (#380)")
+                .isFalse();
+
+        // 4. engine-7 is RE-ENABLED and the same untouched member reappears. The gate never
+        //    armed, so this is a plain observation: no transition, no episode, no audit row.
+        Instant t2 = t0.plusSeconds(120);
+        ledger.ingest(sample(t2, FLEET_WITH_ENGINE_7, groupOn("engine-7", hash, 4)), t2);
+        Incident afterReEnable =
+                incidents.findBySignatureHashAndAlgoVersion(hash, 1).orElseThrow();
+        assertThat(afterReEnable.getState()).isEqualTo(IncidentState.RESOLVED);
+        assertThat(afterReEnable.getRegressionCount()).isZero();
+        assertThat(afterReEnable.getLastTotal())
+                .as("the observation itself stays honest")
+                .isEqualTo(4);
+        assertThat(episodes.findByIncidentIdOrderByStartedAtDesc(afterReEnable.getId()))
+                .as("no fabricated episode")
+                .hasSize(1);
+        assertThat(regressionAuditRows(hash))
+                .as("no fabricated incident-regressed audit row")
+                .isZero();
+
+        // 5. the fix DELAYS, it does not mute: the class has now been re-observed under the new
+        //    fleet, so a genuine drain on that stable fleet arms the gate exactly as before...
+        Instant t3 = t0.plusSeconds(180);
+        ledger.ingest(sample(t3, FLEET_WITH_ENGINE_7), t3);
+        assertThat(incidents
+                        .findBySignatureHashAndAlgoVersion(hash, 1)
+                        .orElseThrow()
+                        .isSeenZeroSinceResolve())
+                .isTrue();
+
+        // 6. ...and the return regresses normally, with its one audit row.
+        Instant t4 = t0.plusSeconds(240);
+        ledger.ingest(sample(t4, FLEET_WITH_ENGINE_7, groupOn("engine-7", hash, 4)), t4);
+        Incident regressed =
+                incidents.findBySignatureHashAndAlgoVersion(hash, 1).orElseThrow();
+        assertThat(regressed.getState()).isEqualTo(IncidentState.REGRESSED);
+        assertThat(regressed.getRegressionCount()).isEqualTo(1);
+        assertThat(regressionAuditRows(hash)).isEqualTo(1);
+    }
+
+    /**
+     * #380's adjacent case against real persistence: with ZERO enabled engines the pass observed
+     * nothing at all, yet the completeness loop over an empty {@code perEngine} left the flag
+     * vacuously true — arming EVERY resolved incident at once. A pass with no observation scope
+     * can vouch for no class's absence.
+     */
+    @Test
+    void aFleetEmptyCycleArmsNoResolvedIncidentsGate() {
+        String hash = "it-" + UUID.randomUUID();
+        Instant t0 = Instant.parse("2026-08-05T11:00:00Z");
+
+        ledger.ingest(sample(t0, group(hash, 6, 6, 0)), t0);
+        Incident row = incidents.findBySignatureHashAndAlgoVersion(hash, 1).orElseThrow();
+        resolveAtTheStore(row.getId());
+
+        Instant t1 = t0.plusSeconds(60);
+        ledger.ingest(new AggregationSample(List.of(), List.of(), t1, Set.of(), true, Set.of()), t1);
+
+        assertThat(incidents
+                        .findBySignatureHashAndAlgoVersion(hash, 1)
+                        .orElseThrow()
+                        .isSeenZeroSinceResolve())
+                .as("no enabled engines ⇒ nothing was observed ⇒ nothing may be armed (#380)")
+                .isFalse();
+    }
+
+    /**
+     * The must-not-change proof: a genuine drain and return on a CONSTANT fleet regresses exactly
+     * as it always has — same transition, same episode count, same single audit row. #380's gate
+     * only ever bites on a composition CHANGE or an unrecorded scope.
+     */
+    @Test
+    void aGenuineDrainAndReturnOnAStableFleetStillRegresses() {
+        String hash = "it-" + UUID.randomUUID();
+        Instant t0 = Instant.parse("2026-08-05T13:00:00Z");
+
+        ledger.ingest(sample(t0, FLEET_WITH_ENGINE_7, groupOn("engine-7", hash, 6)), t0);
+        Incident row = incidents.findBySignatureHashAndAlgoVersion(hash, 1).orElseThrow();
+        resolveAtTheStore(row.getId());
+
+        // the class genuinely drains — same fleet, every host still watched
+        Instant t1 = t0.plusSeconds(60);
+        ledger.ingest(sample(t1, FLEET_WITH_ENGINE_7), t1);
+        assertThat(incidents
+                        .findBySignatureHashAndAlgoVersion(hash, 1)
+                        .orElseThrow()
+                        .isSeenZeroSinceResolve())
+                .isTrue();
+
+        // ...and it comes back
+        Instant t2 = t0.plusSeconds(120);
+        ledger.ingest(sample(t2, FLEET_WITH_ENGINE_7, groupOn("engine-7", hash, 2)), t2);
+        Incident regressed =
+                incidents.findBySignatureHashAndAlgoVersion(hash, 1).orElseThrow();
+        assertThat(regressed.getState()).isEqualTo(IncidentState.REGRESSED);
+        assertThat(regressed.getRegressionCount()).isEqualTo(1);
+        assertThat(regressed.getLastRegressedAt()).isEqualTo(t2);
+        assertThat(regressed.isSeenZeroSinceResolve()).isFalse();
+        assertThat(episodes.findByIncidentIdOrderByStartedAtDesc(regressed.getId()))
+                .hasSize(2);
+        assertThat(regressionAuditRows(hash)).isEqualTo(1);
+    }
+
+    /** The S3 resolve verb's store effect, simulated (the shape every arc in this class uses). */
+    private void resolveAtTheStore(long incidentId) {
+        jdbc.update(
+                "UPDATE incident_episode SET ended_at = now(), resolved_by = 'it-operator',"
+                        + " resolve_reason = 'fixed by config rollout' WHERE incident_id = ? AND ended_at IS NULL",
+                incidentId);
+        jdbc.update(
+                "UPDATE incident SET state = 'RESOLVED', seen_zero_since_resolve = false, version = version + 1"
+                        + " WHERE id = ?",
+                incidentId);
+    }
+
+    private int regressionAuditRows(String hash) {
+        Integer count = jdbc.queryForObject(
+                "SELECT count(*) FROM audit_entry WHERE action = 'incident-regressed' AND payload::text LIKE ?",
+                Integer.class,
+                "%" + hash + "%");
+        return count != null ? count : -1;
+    }
+
+    /**
      * Issue #307 true-up: proves the {@code regress()} audit-failure compensation
      * (INCIDENT-LEDGER §5) is REACHABLE and CORRECT against a REAL Postgres/Hibernate stack —
      * not the dead code the pre-#316 shared-transaction shape produced (see
@@ -459,14 +620,36 @@ class IncidentLedgerIT {
     /** Its canonical persisted form: sorted lexicographically, comma-joined. */
     private static final String CANONICAL_FLEET = "engine-a,engine-b";
 
+    /** {@link #FLEET} plus the engine the #380 arcs disable and re-enable. */
+    private static final Set<String> FLEET_WITH_ENGINE_7 = Set.of("engine-b", "engine-a", "engine-7");
+
     private static AggregationSample sample(Instant sampledAt, ErrorGroup... groups) {
         return new AggregationSample(List.of(), List.of(groups), sampledAt, Set.of(), true, FLEET);
+    }
+
+    /** #380: a COMPLETE cycle whose observation SCOPE is stated explicitly (a registry edit). */
+    private static AggregationSample sample(Instant sampledAt, Set<String> fleetEngineIds, ErrorGroup... groups) {
+        return new AggregationSample(List.of(), List.of(groups), sampledAt, Set.of(), true, fleetEngineIds);
     }
 
     /** #302: a cycle whose completeness is explicit — {@code cycleComplete=false} simulates an
      * unreachable owning engine (the group is simply absent, same shape as a real one). */
     private static AggregationSample sample(Instant sampledAt, boolean cycleComplete, ErrorGroup... groups) {
         return new AggregationSample(List.of(), List.of(groups), sampledAt, Set.of(), cycleComplete, FLEET);
+    }
+
+    /** #380: a class whose members live on ONE named engine — the host that gets disabled. */
+    private static ErrorGroup groupOn(String engineId, String hash, long total) {
+        return new ErrorGroup(
+                hash,
+                1,
+                "java.net.SocketTimeoutException",
+                "timeout after # ms",
+                "timeout after 5000 ms",
+                total,
+                total,
+                0,
+                Map.of(engineId, Map.of("order:v3", total)));
     }
 
     private static ErrorGroup group(String hash, long total, long deadLetters, long retrying) {

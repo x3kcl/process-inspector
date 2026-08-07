@@ -32,6 +32,12 @@ import java.util.Set;
  * cycle. Nothing else in the ledger's ingestion changes on an incomplete cycle — live groups
  * still update totals/occurrence honestly (same rule as {@code truncatedEngineIds}).
  *
+ * <p><b>One clarification, not a change of meaning (#380):</b> a pass over an EMPTY enabled
+ * fleet is reported INCOMPLETE. The flag asserts "the fleet answered"; over an empty fan-out
+ * the "did everyone answer?" test is vacuously true, which let a pass that observed NOBODY
+ * claim to be a complete observation of everybody. The rule for an engine that IS in scope and
+ * came back not-{@code ok()} is byte-for-byte unchanged.
+ *
  * <p>{@code fleetEngineIds} is the pass's observation SCOPE (V22, #372, ALARM-COST-MODEL §16):
  * the ENABLED engines this pass fanned out over — {@code registry.all()}, INCLUDING engines whose
  * envelope came back not-ok (in scope but unobserved is precisely what {@code cycleComplete}

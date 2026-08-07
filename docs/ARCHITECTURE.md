@@ -274,6 +274,13 @@ absent or zero — otherwise the ~20s aggregation cache plus engine retry-lag wo
 every fresh resolve instantly) and only at/above `regression-min-count`. "Observed" requires
 the owning engine to have actually been reached that cycle (`AggregationSample.cycleComplete`,
 #302): a cycle where any registry engine is unreachable cannot arm the gate for any incident,
+and — **since #380** — "observed" additionally requires the observation SCOPE to be
+comparable: the sweep is skipped when the pass recorded no `fleet` at all, and an absent
+RESOLVED incident is armed only when the pass's `fleet` matches the fleet it was last
+observed under. A registry DISABLE therefore no longer counts as having observed the classes
+that lived on the departed engine absent (which, with `regression-min-count` defaulting to 1,
+previously let a disable+re-enable pair mint a false REGRESSED). A cycle with ZERO enabled
+engines is now blind rather than vacuously complete, for the same reason.
 since it cannot tell a genuine absence from a blind spot. While gated, cycles still update
 totals and occurrence rows — the data stays honest; only the state waits.
 Truncation flags travel into both `incident` and occurrence rows (R-SEM-12 end-to-end), and

@@ -1952,12 +1952,31 @@ superseded-note (§16.8), corrected in place per the §13 convention.
   group.total() >= regressionMinCount` (`:242`) opens on the very first count back, not on
   a re-enable "at which point the regression is real evidence." Two routine registry edits
   (disable, then re-enable) mint a false REGRESSED with a fresh episode and a fail-closed
-  audit row — no faulty job ever having existed. **The scope call stands: C1 stays
-  UNCHANGED, and fixing this is not this design's job.** The honest disposition is
-  accepted / out-of-scope / tracked, as **issue #380**, which records this mechanism in
-  full plus the adjacent case: with ZERO enabled engines, `cycleComplete` is vacuously true
-  over an empty `perEngine`, so the same false-REGRESSED path is reachable with no engine
-  answering at all.
+  audit row — no faulty job ever having existed.
+
+  **★ SUPERSEDED (issue #380, 2026-08-07) — "C1 stays UNCHANGED" was true for THIS design
+  round and is no longer true of the code.** This section previously concluded: *"The scope
+  call stands: C1 stays UNCHANGED, and fixing this is not this design's job"*, dispositioned
+  accepted / out-of-scope / tracked as #380. That was the correct call for the #372 slice —
+  which is why #372's build (PR #384) left `sweepZeroState` byte-untouched and proved it so.
+  **#380 then fixed it as a separate, separately-justified change, using the `fleet` column
+  #372 had just landed.** The arming rule is now **scope-gated**:
+  - the sweep is skipped entirely when the current pass recorded **no** observation scope
+    (`fleet` unrecorded) — fail-closed, since an absence you cannot attribute to an
+    observation is not evidence of absence;
+  - an absent RESOLVED incident is armed **only** when the current pass's `fleet` equals the
+    fleet it was **last observed under**; a differing or unrecorded last-observed scope
+    leaves it unarmed (and logged, counted, never silent);
+  - the adjacent case is closed at source: with ZERO enabled engines
+    `PollingSnapshotSource` now sets `cycleComplete = false`, because an EMPTY scope cannot
+    be a complete observation of anything.
+
+  **`cycleComplete`'s meaning is untouched** — an engine that IS in scope and did not come
+  back `ok()` still makes the cycle blind, exactly as #302 requires. What changed is only
+  that a *scope change* no longer counts as an *observation*. A genuine drain on a stable
+  fleet arms and regresses exactly as before, and `regression-min-count` keeps its default
+  of 1 (raising it would have masked this, not fixed it, and would have altered genuine
+  regressions).
 - **C2 dwell tick — UNCHANGED.** Considered and rejected — the reason stated here is
   corrected (substitute-seat review, nit): the original text overstated the cost of gating
   `advance` on fleet-vs-previous-cycle as freezing every class's lane for `dwellCycles`

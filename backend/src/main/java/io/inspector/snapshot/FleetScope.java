@@ -63,4 +63,19 @@ public final class FleetScope {
         }
         return sorted.isEmpty() ? UNRECORDED : String.join(",", sorted);
     }
+
+    /** True when {@code fleet} states a scope at all — i.e. is comparable to anything (§16.5). */
+    public static boolean isRecorded(String fleet) {
+        return fleet != null && !fleet.isEmpty();
+    }
+
+    /**
+     * The ONE comparability rule (§16.5), lifted out of the SQL/extractor predicates that already
+     * implement it so the ledger's zero-state gate (#380) cannot drift from them: two scopes are
+     * comparable only when BOTH are recorded and identical. {@link #UNRECORDED} — and {@code null},
+     * "there is no such observation at all" — compares equal to nothing, itself included.
+     */
+    public static boolean sameRecorded(String a, String b) {
+        return isRecorded(a) && a.equals(b);
+    }
 }
