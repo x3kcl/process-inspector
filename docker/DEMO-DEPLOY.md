@@ -35,6 +35,34 @@ Sign in with the ladder users `viewer` / `responder` / `operator` / `admin`
 (password = `INSPECTOR_DEV_PASSWORD`, default `dev`). Override host/creds in
 `docker/.env.demo`.
 
+## Topology changes are NOT applied by these scripts (issue #370)
+
+`deploy-demo.sh` and `rollback-demo.sh` update **digest-pinned images**. Every `docker compose
+up` they issue is **service-scoped**, so a service added to or removed from
+`docker-compose.demo.yml` is *not* created or destroyed by running them.
+
+That scoping is deliberate — an unscoped `up -d` would re-run the one-shot `seed` service
+(whose instance starts are **not** idempotent, see `docker/seed.sh`'s header) and can recreate
+the `internal` network. On 2026-08-05 exactly that dropped the engines' compose DNS aliases,
+and the `--force-recreate` used to repair it destroyed 16 days of pilot ledger history.
+
+It used to be **silent**, which is what #370 fixed. When #368 added the `engine-7` service the
+deploy printed success, passed the `/api/engines → 401` chain check, committed `.env.demo` and
+tagged the release — while the container was never created. Both scripts now **refuse before
+touching `.env.demo`** if the compose service list and `docker compose ps --services --all`
+disagree, naming what is missing or extra:
+
+```
+REFUSING: the running topology does not match docker/docker-compose.demo.yml.
+  declared but NOT created: engine-7
+```
+
+Converge topology deliberately — prefer naming the specific services
+(`docker compose -f docker/docker-compose.demo.yml --env-file docker/.env.demo up -d <svc>`)
+and re-check `ps --services --all` afterwards — then re-run the deploy. `--allow-topology-drift`
+overrides the refusal; use it only when you have reconciled by hand and accept that the tag the
+script writes then claims a state it did not verify.
+
 ## Rollback
 
 `docker/rollback-demo.sh <demo-tag>` restores a PRIOR deploy's exact pinned digest pair from
