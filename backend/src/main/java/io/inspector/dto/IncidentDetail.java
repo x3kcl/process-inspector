@@ -33,6 +33,10 @@ import java.util.UUID;
  * {@code bulk_job} row's scope descriptor is a human label, not the signature), the shape
  * mirrors the {@code GET /api/bulk} list item (id, verb, state, actor, timestamps, scope
  * descriptor, per-item tallies — item details stay on the bulk surface). Newest submit first.
+ *
+ * <p>Each {@link Episode} carries {@code actionsDuringEpisode} (issue #358 item 2): an honest,
+ * audit-side aggregate of corrective actions attributed to that episode's window — see
+ * {@link EpisodeActionAttribution}'s doc for the join mechanism and its accepted limitations.
  */
 @JsonInclude(JsonInclude.Include.NON_NULL)
 public record IncidentDetail(
@@ -54,7 +58,38 @@ public record IncidentDetail(
             String resolveReason,
             String ticketId,
             long peakTotal, // max observed live total this episode
-            Long durationSeconds) {} // endedAt − startedAt; omitted while live
+            Long durationSeconds, // endedAt − startedAt; omitted while live
+            EpisodeActionAttribution actionsDuringEpisode) {}
+
+    /**
+     * The episode-level corrective-action attribution join (issue #358 item 2,
+     * RETRYING-RISK-LANE.md §3.2/§3.3/§10): every corrective-action audit row on an engine this
+     * incident's (current) {@code countsByEngine} touches, whose timestamp falls inside this
+     * episode's {@code [startedAt, endedAt-or-now]} window — {@code EpisodeActionAttributionService}.
+     * Reuses the EXACT audit-side engine+timestamp join #351's self-heal confound detection
+     * established (see that service's javadoc), widened from "successful retry-job in a
+     * ±2-bucket tolerance" to "every verb/outcome inside the episode's own precise boundaries".
+     *
+     * <p><b>Honest limitations, same shape as #351's confound rule:</b> this is an
+     * OVER-INCLUSIVE, class-agnostic aggregate, not an exact per-instance join — an action on the
+     * incident's engine during the episode window counts even if it targeted a DIFFERENT failure
+     * class active on that same engine at the same time (exact per-signature attribution would
+     * need the triggering signature stamped onto the audit row at write time, which this slice
+     * deliberately does NOT add — R-AUD-03 and the corrective-actions rails are untouched).
+     * {@code byVerb}/{@code byOutcome} are aggregate TALLIES only — no engine id, instance id,
+     * actor, or reason leaves this join, so nothing here can identify a target beyond what the
+     * incident detail already reveals. The engine set is the incident's CURRENT snapshot (same
+     * precedent as the self-heal confound scan): a class's historic per-episode engine set is not
+     * reconstructable from the ledger, so a registry change can shift which engines a HISTORIC
+     * episode's tally draws from. {@code truncated} is honest per the per-episode scan cap: never
+     * present a capped tally as complete.
+     */
+    @JsonInclude(JsonInclude.Include.NON_NULL)
+    public record EpisodeActionAttribution(
+            int count, // total attributed actions this episode (capped — see truncated)
+            Map<String, Long> byVerb, // action path (e.g. "retry-job") -> count
+            Map<String, Long> byOutcome, // ok | failed | unknown | PENDING -> count
+            boolean truncated) {}
 
     /**
      * One bucketed time-series point (INCIDENT-LEDGER.md §3.3) — the sparkline substrate, with

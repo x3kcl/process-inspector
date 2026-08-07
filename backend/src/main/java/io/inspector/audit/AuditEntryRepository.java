@@ -168,6 +168,36 @@ public interface AuditEntryRepository extends JpaRepository<AuditEntry, UUID> {
             Pageable page);
 
     /**
+     * Episode-level corrective-action attribution (INCIDENT-LEDGER.md §3.2, RETRYING-RISK-LANE.md
+     * §3.3/§10, issue #358 item 2): every corrective-action audit row — single-target OR bulk
+     * ITEM, never the {@code bulk:}-prefixed ENVELOPE summary row (excluded the same way
+     * {@link #findSuccessfulRetryJobPoints}'s javadoc distinguishes them) — on an engine the
+     * caller says the incident touches, inside an explicit {@code [since, until]} window (an
+     * episode's own {@code [startedAt, endedAt-or-now]} boundaries; see
+     * {@code EpisodeActionAttributionService}). Shares the EXACT audit-side join shape
+     * {@link #findSuccessfulRetryJobPoints} uses for #351's confound detection — engine +
+     * timestamp — widened from "successful retry-job only" to every verb/outcome, and narrowed
+     * from a ±2-bucket spell tolerance to the episode's precise boundaries. A PROJECTION for the
+     * identical R-AUD-03 reason as {@link RetryAuditPoint}/{@link AttributedActionPoint}: action
+     * + outcome only, {@code payload} never enters the SELECT. Callers must never pass an empty
+     * {@code engineIds} (the same JPQL {@code IN ()} caveat {@link #findLogScoped} and
+     * {@link #findSuccessfulRetryJobPoints} document) and must always supply a capped
+     * {@link Pageable} — a single large bulk retry can write thousands of per-item rows inside
+     * one episode window.
+     */
+    @Query("""
+            select new io.inspector.audit.AttributedActionPoint(a.action, a.outcome) from AuditEntry a
+            where a.action not like 'bulk:%'
+              and a.engineId in :engineIds and a.ts >= :since and a.ts <= :until
+            order by a.ts desc
+            """)
+    List<AttributedActionPoint> findAttributableActionPoints(
+            @Param("engineIds") Collection<String> engineIds,
+            @Param("since") Instant since,
+            @Param("until") Instant until,
+            Pageable page);
+
+    /**
      * The #106 S0 remediation-demand mining scan (R-GOV-08): every instance-scoped audit
      * row (definition-scoped verbs and BFF-store-only config events, both null instanceId,
      * are excluded by construction), ordered so one instance's full history is always

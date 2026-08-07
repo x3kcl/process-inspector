@@ -1943,6 +1943,7 @@ export interface components {
             writeMs?: number;
         };
         Episode: {
+            actionsDuringEpisode?: components["schemas"]["EpisodeActionAttribution"];
             /** Format: int64 */
             durationSeconds?: number;
             /** Format: date-time */
@@ -1957,6 +1958,17 @@ export interface components {
             /** Format: date-time */
             startedAt?: string;
             ticketId?: string;
+        };
+        EpisodeActionAttribution: {
+            byOutcome?: {
+                [key: string]: number;
+            };
+            byVerb?: {
+                [key: string]: number;
+            };
+            /** Format: int32 */
+            count?: number;
+            truncated?: boolean;
         };
         ErrorGroup: {
             acknowledgement?: components["schemas"]["ErrorGroupAcknowledgement"];

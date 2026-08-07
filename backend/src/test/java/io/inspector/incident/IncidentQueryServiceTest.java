@@ -61,6 +61,8 @@ class IncidentQueryServiceTest {
     private final TriageScopeProjector projector = mock(TriageScopeProjector.class);
     private final ErrorGroupAckService acks = mock(ErrorGroupAckService.class);
     private final RelatedBulkJobsService relatedBulkJobs = mock(RelatedBulkJobsService.class);
+    private final EpisodeActionAttributionService episodeActionAttribution =
+            mock(EpisodeActionAttributionService.class);
     private final SelfHealStatsService selfHeal = mock(SelfHealStatsService.class);
 
     /**
@@ -359,6 +361,46 @@ class IncidentQueryServiceTest {
         assertThat(detail.episodes().get(1).startState()).isEqualTo("OPEN");
     }
 
+    /**
+     * #358 item 2: the episode-level attribution join is keyed by episode id, threaded through
+     * unmodified onto each {@code Episode.actionsDuringEpisode} — never positional (an unstubbed
+     * or short map must not crash, and each episode must get exactly its OWN entry).
+     */
+    @Test
+    void episodesCarryTheirOwnActionAttributionKeyedByEpisodeId() {
+        Incident incident = row(ID, "hash-1", CURRENT, IncidentState.OPEN, NOW, 4, fleet());
+        stubEmptyDetail(incident);
+        IncidentEpisode live = episode(7L, IncidentState.REGRESSED, NOW.minusSeconds(60), null);
+        IncidentEpisode ended =
+                episode(6L, IncidentState.OPEN, NOW.minus(Duration.ofHours(3)), NOW.minus(Duration.ofHours(1)));
+        when(episodes.findByIncidentIdOrderByStartedAtDesc(ID)).thenReturn(List.of(live, ended));
+        IncidentDetail.EpisodeActionAttribution liveAttribution =
+                new IncidentDetail.EpisodeActionAttribution(0, Map.of(), Map.of(), false);
+        IncidentDetail.EpisodeActionAttribution endedAttribution =
+                new IncidentDetail.EpisodeActionAttribution(2, Map.of("retry-job", 2L), Map.of("ok", 2L), false);
+        when(episodeActionAttribution.forEpisodes(incident, List.of(live, ended)))
+                .thenReturn(Map.of(7L, liveAttribution, 6L, endedAttribution));
+
+        IncidentDetail detail = service.detail(ID, 24, auth);
+
+        assertThat(detail.episodes().get(0).actionsDuringEpisode()).isSameAs(liveAttribution);
+        assertThat(detail.episodes().get(1).actionsDuringEpisode()).isSameAs(endedAttribution);
+    }
+
+    @Test
+    void aMissingAttributionEntryRendersAsAnHonestlyOmittedField() {
+        stubEmptyDetail(row(ID, "hash-1", CURRENT, IncidentState.OPEN, NOW, 4, fleet()));
+        IncidentEpisode ended =
+                episode(6L, IncidentState.OPEN, NOW.minus(Duration.ofHours(3)), NOW.minus(Duration.ofHours(1)));
+        when(episodes.findByIncidentIdOrderByStartedAtDesc(ID)).thenReturn(List.of(ended));
+        // episodeActionAttribution left unstubbed — Mockito's default answer is an empty Map,
+        // so no entry exists for episode 6L. Must degrade to null (NON_NULL omits it), never NPE.
+
+        IncidentDetail detail = service.detail(ID, 24, auth);
+
+        assertThat(detail.episodes().get(0).actionsDuringEpisode()).isNull();
+    }
+
     /* ---------------- the live join ---------------- */
 
     @Test
@@ -460,6 +502,7 @@ class IncidentQueryServiceTest {
                 projector,
                 acks,
                 relatedBulkJobs,
+                episodeActionAttribution,
                 selfHeal,
                 attention,
                 new ObjectMapper(),

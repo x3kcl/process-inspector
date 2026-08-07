@@ -11,7 +11,11 @@ baseline `reviews/R2-SELFHEAL-BASELINE-2026-08.md`) — the gate governs ANNOUNC
 the pilot (§7.2), not the #351/#352 machinery, which ships regardless and renders honestly ·
 panel finding **G12 (blocker) ★ BUILT** by issue #359: the transiently-failing harness seed
 (§7.2/§10) that makes the LIKELY/MIXED lanes and the dwell/hysteresis mechanism testable
-end-to-end — opt-in only, never counted toward the §7.2 gate itself.
+end-to-end — opt-in only, never counted toward the §7.2 gate itself. **Episode-level
+corrective-action attribution (#358 item 2) ★ BUILT**, sharing this design's audit-side join
+(§3.3/§10): `EpisodeActionAttributionService` + `IncidentDetail.EpisodeActionAttribution`,
+`GET /api/incidents/{id}`'s `episodes[].actionsDuringEpisode` — see §3.3's updated close-out
+note and INCIDENT-LEDGER.md §6.
 
 ## 0. Provenance
 
@@ -177,6 +181,28 @@ rate is therefore explicitly *"of spells with no operator interference observed"
 the exclusion count is always surfaced beside `n` (panel G3). Exact per-signature
 attribution of non-ERROR_CLASS retries would require stamping signatures into per-item
 audit rows at action time — a candidate #351 follow-up, not assumed here.
+
+**Episode-level attribution (#358 item 2) ★ BUILT, reusing this exact join.**
+`EpisodeActionAttributionService` (`io.inspector.incident`) generalizes this section's
+audit-side confound query from "successful `retry-job` only, ±2 sampler buckets around a
+spell" to "every corrective-action verb and outcome, inside an `incident_episode`'s own
+precise `[startedAt, endedAt-or-now]` boundaries" — the SAME engine+timestamp shape, a
+sibling constructor-projection (`AttributedActionPoint`, `AuditEntryRepository
+#findAttributableActionPoints`) so `payload` never enters the SELECT. Because an episode is
+already keyed to `(signature_hash, algo_version)`, attributing an action to the episode IS
+attributing it to the class — at the episode grain the #358 issue text itself asks for,
+not the finer per-instance grain this section's last paragraph still leaves open (that
+would still need a signature stamped onto the audit row at write time, which this slice
+deliberately did NOT add — R-AUD-03 and `CorrectiveActionService`'s rails are untouched).
+Surfaced on `GET /api/incidents/{id}` as `episodes[].actionsDuringEpisode
+{count, byVerb, byOutcome, truncated}` (INCIDENT-LEDGER.md §6) — an aggregate-only tally
+(no engine id, instance id, actor, or reason), over-inclusive in the SAME accepted way this
+section's confound rule is (an action on the incident's current engine set during the
+window counts even if it targeted a different class sharing that engine). Currently
+uncomputable-as-a-rate exactly like §3.2's "episodes closed with/without action" statistic
+(zero episodes have ever closed in the pilot ledger, §8) — this slice makes the join
+EXIST and answer honestly the moment a real episode closes; it does not, by itself,
+produce a measured number.
 
 ### 3.4 Why not ML (v1)
 
@@ -499,7 +525,14 @@ expect it not to).
   design recorded — see #358; this slice solves the narrower CONFOUND-detection need (it never
   needs to know WHICH class a retry targeted, only whether one landed on a hosting engine
   inside the spell window) without touching the audit payload, but does not solve attribution
-  itself. **Correction (post-ship):** "without touching the audit payload" was FALSE as first
+  itself. **Update (#358 item 2, ★ BUILT):** the episode-level half of that OPEN gap is now
+  closed by `EpisodeActionAttributionService`, reusing this EXACT audit-side join — see §3.3's
+  "Episode-level attribution" note and INCIDENT-LEDGER.md §6 for the shape
+  (`episodes[].actionsDuringEpisode`). The exact non-ERROR_CLASS-scope, PER-INSTANCE
+  attribution (a signature stamped onto the audit row at action time) remains open — #358's
+  items 3/4 (re-measure, then consider a UI hint) stay data-blocked regardless, since the
+  pilot ledger has never closed an episode to attribute anything to (§8). **Correction
+  (post-ship):** "without touching the audit payload" was FALSE as first
   shipped — the query selected the `AuditEntry` ENTITY, and `payload` is a plain eager basic
   attribute (no `@Basic(LAZY)`, no bytecode enhancement in this build), so every matched row's
   payload JSON — process VARIABLES included on an `audit-payload: full` engine — was hydrated
