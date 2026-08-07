@@ -24,6 +24,34 @@ ENV_FILE="$REPO_ROOT/docker/.env.demo"
 ENGINE_SERVICES=(engine-a engine-b engine-7)
 ALLOW_ENGINE_RECREATE=0
 
+# issue #370 — same TOPOLOGY-DRIFT guard as deploy-demo.sh, and for the same reason: this
+# script also rewrites docker/.env.demo (the attribution record) and its `up` calls are
+# service-scoped, so a topology mismatch would be silently carried into a "successful"
+# rollback. If anything, drift is MORE likely here: the tag being restored may predate a
+# service that exists today, or postdate one that has since been removed.
+TOPOLOGY_DRIFT_OK=0
+
+assert_no_topology_drift() {
+  [[ "$TOPOLOGY_DRIFT_OK" == 1 ]] && return 0
+  local declared running missing extra
+  declared="$(docker compose -f "$COMPOSE_FILE" --env-file "$ENV_FILE" config --services 2>/dev/null | sort)"
+  running="$(docker compose -f "$COMPOSE_FILE" --env-file "$ENV_FILE" ps --services --all 2>/dev/null | sort)"
+  [[ -n "$declared" ]] || die "could not read the compose service list — refusing to roll back blind"
+  missing="$(comm -23 <(printf '%s\n' "$declared") <(printf '%s\n' "$running") | tr '\n' ' ' | sed 's/ *$//')"
+  extra="$(comm -13 <(printf '%s\n' "$declared") <(printf '%s\n' "$running") | tr '\n' ' ' | sed 's/ *$//')"
+  if [[ -n "$missing" || -n "$extra" ]]; then
+    echo "REFUSING: the running topology does not match $COMPOSE_FILE." >&2
+    [[ -n "$missing" ]] && echo "  declared but NOT created: $missing" >&2
+    [[ -n "$extra" ]] && echo "  running but no longer declared: $extra" >&2
+    echo "" >&2
+    echo "This script restores a prior digest pair; it does NOT create or remove services" >&2
+    echo "(issue #370). Reconcile the topology deliberately first — and read the seed" >&2
+    echo "non-idempotency and DNS-alias hazards in deploy-demo.sh's guard note before" >&2
+    echo "reaching for a bare 'up -d'. Override with --allow-topology-drift." >&2
+    exit 1
+  fi
+}
+
 compose_up_guarded() {
   local -a services=()
   local arg svc engine
@@ -55,8 +83,13 @@ compose_up_guarded() {
   docker compose -f "$COMPOSE_FILE" --env-file "$ENV_FILE" up "$@"
 }
 
-while [[ "${1:-}" == --allow-engine-recreate ]]; do
-  ALLOW_ENGINE_RECREATE=1
+while [[ "${1:-}" == --* ]]; do
+  case "$1" in
+    --allow-engine-recreate) ALLOW_ENGINE_RECREATE=1 ;;
+    --allow-topology-drift)  TOPOLOGY_DRIFT_OK=1 ;;
+    --list) break ;;
+    *) echo "unknown flag: $1" >&2; exit 1 ;;
+  esac
   shift
 done
 
@@ -71,6 +104,9 @@ if ! git -C "$REPO_ROOT" rev-parse -q --verify "refs/tags/$TAG" >/dev/null; then
   echo "no such tag: $TAG (try docker/rollback-demo.sh --list)" >&2
   exit 1
 fi
+
+# #370: refuse BEFORE touching .env.demo — it is the attribution record.
+assert_no_topology_drift
 
 echo "Restoring docker/.env.demo from $TAG..."
 # Resolve into a temp file first — `> "$ENV_FILE"` truncates the target as part of shell

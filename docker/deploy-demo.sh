@@ -9,6 +9,7 @@
 #                                                   # the vX.Y.Z git/release tag; issue #200).
 #   docker/deploy-demo.sh --dry-run [IMAGE_TAG]     # resolve + print, no compose/commit/tag
 #   docker/deploy-demo.sh --allow-engine-recreate [IMAGE_TAG]
+#   docker/deploy-demo.sh --allow-topology-drift [IMAGE_TAG]   # see the #370 guard below
 #                                                   # override the issue #377 engine-recreate
 #                                                   # guard below. Flags combine in any order.
 #
@@ -51,6 +52,66 @@ DIGEST_RE='^sha256:[0-9a-f]{64}$'
 ENGINE_SERVICES=(engine-a engine-b engine-7)
 ALLOW_ENGINE_RECREATE=0
 
+# issue #370 — TOPOLOGY-DRIFT guard. This script updates digest-pinned IMAGES; it deliberately
+# does NOT apply topology changes, because every `up` below is service-scoped (see the notes on
+# `postgres` and the engines). That scoping is correct, but until now it was SILENT: when #368
+# added an `engine-7` service to the compose file, the deploy printed its success banner,
+# passed the /api/engines 401 chain check (the BFF is up either way), committed `.env.demo` and
+# TAGGED the release — while the new container was never created. The demo was left
+# half-applied with its attribution record (that file's git history) claiming otherwise.
+#
+# So: before mutating anything, compare the compose file's service list against what the
+# project is actually running, and REFUSE on a mismatch with instructions. We refuse rather
+# than widening to a bare `up -d` (issue #370 option 2) for two measured reasons: an unscoped
+# `up -d` re-runs the one-shot `seed` service, whose instance starts are NOT idempotent by
+# design (docker/seed.sh header), and on 2026-08-05 an unscoped `up -d` on this very stack
+# recreated the `internal` network, dropped the engines' compose DNS aliases, and the
+# --force-recreate used to repair that destroyed 16 days of pilot history. Converging topology
+# is an operator decision with real blast radius, not a side effect of a digest bump.
+TOPOLOGY_DRIFT_OK=0
+
+assert_no_topology_drift() {
+  [[ "$TOPOLOGY_DRIFT_OK" == 1 ]] && return 0
+  local declared running missing extra
+  declared="$(docker compose -f "$COMPOSE_FILE" --env-file "$ENV_FILE" config --services 2>/dev/null | sort)"
+  # `ps --services` lists services with containers for THIS project, running or not; a
+  # one-shot service that has already exited still counts as applied, which is what we want
+  # (`seed` must not be reported as missing just because it did its job and stopped).
+  running="$(docker compose -f "$COMPOSE_FILE" --env-file "$ENV_FILE" ps --services --all 2>/dev/null | sort)"
+  if [[ -z "$declared" ]]; then
+    die "could not read the compose service list — refusing to deploy blind"
+  fi
+  missing="$(comm -23 <(printf '%s\n' "$declared") <(printf '%s\n' "$running") | tr '\n' ' ' | sed 's/ *$//')"
+  extra="$(comm -13 <(printf '%s\n' "$declared") <(printf '%s\n' "$running") | tr '\n' ' ' | sed 's/ *$//')"
+  if [[ -n "$missing" || -n "$extra" ]]; then
+    echo "REFUSING: the running topology does not match $COMPOSE_FILE." >&2
+    [[ -n "$missing" ]] && echo "  declared but NOT created: $missing" >&2
+    [[ -n "$extra" ]] && echo "  running but no longer declared: $extra" >&2
+    cat >&2 <<'DRIFT'
+
+This script applies digest-pinned IMAGE updates only — its `up` calls are service-scoped and
+do NOT create or remove services (issue #370). Deploying now would print success, commit
+docker/.env.demo and tag the release while the running stack did not match the file it claims
+to be deployed from, corrupting that file's git history as the attribution record.
+
+Converge the topology deliberately, then re-run this script. Note the hazards first:
+  * a bare `docker compose ... up -d` re-runs the one-shot `seed` service, and instance starts
+    are NOT idempotent (docker/seed.sh) — every run adds one instance per status arc per engine;
+  * it can also recreate the `internal` network. On 2026-08-05 that dropped the engines'
+    compose DNS aliases, and the --force-recreate used to repair it destroyed 16 days of
+    pilot ledger history (issues #370, #377).
+  * prefer naming the specific new/removed services, e.g.
+      docker compose -f docker/docker-compose.demo.yml --env-file docker/.env.demo up -d <svc>
+    and re-check `docker compose ... ps --services --all` afterwards.
+
+Override with --allow-topology-drift only if you have already reconciled it by hand and
+understand that the tag this script writes will claim a state you are asserting, not one it
+verified.
+DRIFT
+    exit 1
+  fi
+}
+
 # compose_up_guarded ARGS... — same argument shape as `docker compose ... up ARGS...`. Refuses
 # (exit 1) if ARGS names an engine service, or names no service at all, unless
 # --allow-engine-recreate was passed on this script's own command line. See the guard note
@@ -92,6 +153,7 @@ while [[ "${1:-}" == --* ]]; do
   case "$1" in
     --dry-run) DRY_RUN=1; shift ;;
     --allow-engine-recreate) ALLOW_ENGINE_RECREATE=1; shift ;;
+    --allow-topology-drift) TOPOLOGY_DRIFT_OK=1; shift ;;
     *)
       echo "unknown flag: $1" >&2
       exit 1
@@ -134,6 +196,10 @@ if [[ "$DRY_RUN" == "1" ]]; then
   echo "(--dry-run: not touching docker/.env.demo, not deploying, not tagging)"
   exit 0
 fi
+
+# #370: refuse BEFORE the first mutation — .env.demo is the attribution record, so it must
+# not be rewritten for a deploy that cannot fully apply.
+assert_no_topology_drift
 
 sed -i.bak \
   -e "s|^PI_BFF_DIGEST=.*|PI_BFF_DIGEST=$BFF_DIGEST|" \
