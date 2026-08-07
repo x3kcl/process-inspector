@@ -123,7 +123,7 @@
         <omgdc:Bounds x="330" y="101" width="28" height="28"/>
       </bpmndi:BPMNShape>
       <bpmndi:BPMNShape id="BPMNShape_fork" bpmnElement="fork">
-        <omgdc:Bounds x="140" y="95" width="40" height="40"/>
+        <omgdc:Bounds x="135" y="95" width="40" height="40"/>
       </bpmndi:BPMNShape>
       <bpmndi:BPMNShape id="BPMNShape_healClock" bpmnElement="healClock">
         <omgdc:Bounds x="145" y="215" width="30" height="30"/>
@@ -136,15 +136,15 @@
       </bpmndi:BPMNShape>
       <bpmndi:BPMNEdge id="BPMNEdge_flow1" bpmnElement="flow1">
         <omgdi:waypoint x="130" y="115"/>
-        <omgdi:waypoint x="140" y="115"/>
+        <omgdi:waypoint x="135" y="115"/>
       </bpmndi:BPMNEdge>
       <bpmndi:BPMNEdge id="BPMNEdge_flowAttempt" bpmnElement="flowAttempt">
-        <omgdi:waypoint x="180" y="115"/>
+        <omgdi:waypoint x="175" y="115"/>
         <omgdi:waypoint x="180" y="115"/>
       </bpmndi:BPMNEdge>
       <bpmndi:BPMNEdge id="BPMNEdge_flowClock" bpmnElement="flowClock">
-        <omgdi:waypoint x="160" y="135"/>
-        <omgdi:waypoint x="160" y="215"/>
+        <omgdi:waypoint x="155" y="135"/>
+        <omgdi:waypoint x="155" y="215"/>
       </bpmndi:BPMNEdge>
       <bpmndi:BPMNEdge id="BPMNEdge_flow2" bpmnElement="flow2">
         <omgdi:waypoint x="280" y="115"/>
