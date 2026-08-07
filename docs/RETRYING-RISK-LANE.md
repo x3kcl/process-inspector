@@ -358,10 +358,19 @@ deployment once the gate check — re-run `scripts/measure-selfheal-baseline.py`
 self-heal, the lane's LIKELY/MIXED paths and the gate check itself were unreachable
 end-to-end on every deployment (dev, CI, the demo). #359 adds a **transiently-failing seed
 process** to the engine-harness set (`validate-bpmn` doctrine — TEST-SCENARIOS.md §1.1b,
-FIX-SELFHEAL-01/02): `demo-self-healing.bpmn20.xml` is CLOCK-driven (a non-interrupting
-boundary timer sets `healed=true` in its own transaction — a variable written inside the
-SAME attempt that then throws rolls back with it, so a counter incremented across a single
-job's own retries cannot survive; proven live, 2026-08-04), paired with
+FIX-SELFHEAL-01/02): `demo-self-healing.bpmn20.xml` is CLOCK-driven (⚠️ **CORRECTED
+2026-08-07 — the shipped shape was FALSE-as-described and could never self-heal
+standalone**: it used a non-interrupting boundary timer ON the async failing task, but for
+an async task every failing attempt's transaction ROLLS BACK — taking the just-created
+boundary-timer job with it, the exact same-transaction rollback trap this sentence already
+documents for counters. Proven live on engine-a (2026-08-07): zero `healTimer` jobs
+engine-wide while instances retried; no instance ever healed. The ITs never caught it BY
+DESIGN — they pin `healDelay=P1D` and drive `healed` over REST, bypassing the timer path.
+The corrected shape arms the clock in a transaction that COMMITS: a parallel fork at start
+routes a second token to a timer intermediate-catch event → `heal` sets `healed=true`; the
+attempt path ends in a TERMINATE end so an externally-healed instance reaps the waiting
+clock token. First genuine engine-driven standalone self-heal: 2026-08-07, ~30s end-to-end
+at `healDelay=PT10S`), paired with
 `demo-self-healing-baseline.bpmn20.xml` (same error signature, fast + permanent) so the
 class stays observable between spells. Three new ITs
 (`SelfHealLikelyLaneIT`/`SelfHealMixedLaneIT`/`SelfHealDwellSuppressionIT`,
