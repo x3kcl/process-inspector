@@ -278,6 +278,13 @@ services:
       # IP only when the engine is DEV-scoped AND the IP is inside an allowed CIDR — both
       # conditions, not either. Keep in lockstep with the pinned subnet.
       - INSPECTOR_REGISTRY_EGRESS_ALLOWLIST_5=172.21.0.0/16
+      # ⚠ The /16 above unavoidably includes the bridge GATEWAY 172.21.0.1 — which is the
+      # hp04 HOST, where sshd, the prod Traefik and the dev harness listen. Pinning the
+      # egress port to the engines' in-network port (8080, which nothing binds host-side)
+      # collapses that gateway exposure: a DEV-scoped registration of 172.21.0.1:<port>
+      # now fails the port rail for every port that matters (issue #391, from the #375
+      # close-out review). A prod inspector sets this strictly out-of-band regardless.
+      - INSPECTOR_REGISTRY_EGRESS_PORTS_0=8080
       - ENGINE_A_PASSWORD=test
       - ENGINE_B_PASSWORD=test
       - ENGINE_7_PASSWORD=test
