@@ -466,6 +466,23 @@ takes 2 min to resolve · usually self-heals (21/23 past spells, typically ≤ 1
 one sentence, still glanceable — the CAP this section states is unchanged; MIXED/UNLIKELY
 clause copy is unaffected (out of #387's scope).
 
+**Correction (post-ship, #388 — §8.9 finding 2, ★ SHIPPED).** T4's own catch: a
+`SELF_HEAL_LIKELY` class showing `DLQ 25 / retrying 0` on the card face still read "usually
+self-heals (21/23)" with no signal that its CURRENT standing population had already
+exhausted retries — the historic rate describes past retrying spells, not the members
+visible right now. Fixed by appending, ONE code path, never a second string, a suffix to
+the SAME `SELF_HEAL_LIKELY` clause whenever the class's live `deadLetterCount > 0` under
+trusted counts (RETRYING-RISK-LANE.md §4.1/§4.2 carry the full trust-rule and stability
+detail): `" — not the N dead-lettered (no retries left)"`. Per-card variant, T4's own
+scenario: *"25 failing · last seen just now · typically takes 4 h to resolve · usually
+self-heals (21/23 past spells, typically ≤ 1 min) — not the 25 dead-lettered (no retries
+left)."* Still one sentence. Scope is deliberately narrow (v1): the Stage 0 dashboard's
+`AttentionRationale.decorate()` path only — never the `/incidents` `SelfHealBadge` text
+(that surface's tooltip instead gained a static, unconditional teaching sentence) and never
+the `forClass()`-composed rationale that also renders on `/incidents` (always the split
+absent, so always the base clause there) — a known limitation named in full in
+RETRYING-RISK-LANE.md §10.
+
 ## 5. MEASURED BASELINE — pilot-ledger extraction & ordering simulation (auditable)
 
 **Method.** 2026-08-04 ≈ 07:05–07:10 Z, against the live demo `https://pi.naumann.cloud`,

@@ -429,6 +429,13 @@ GOAL (/c self-heal badge restatement): Meeting a `SelfHealBadge` on any card, th
 engineer must correctly restate that its fraction+time is a HISTORIC rate over past
 retrying spells — never a live guarantee — and correctly derive the right posture (leave
 it / treat like FAILED / not enough history yet) from whichever lane they actually saw.
+**Exception, codified from the §8.9 T4 finding (issue #388):** a LIKELY class whose CURRENT
+population shows `retrying 0` alongside standing dead-lettered members is NOT "leave it" —
+those members have already exhausted retries and will not self-heal further, so "escalate/
+act on the standing dead-letters" is the CORRECT posture for exactly that on-screen state
+(`LIKELY + retrying 0` = the record is about past spells; act on standing dead-letters
+normally), even though it diverges from the lane's default canonical posture. Grade against
+what the card face actually showed, not the lane label alone.
 ENTRY: `/` and `/incidents` · user `viewer`.
 SUCCESS: /a — the tester's first drill targets the planted costly-not-largest class, and
 the choice citation quotes the rationale text (visible on the card face since #374 — see
@@ -444,7 +451,10 @@ with a trained response strategy, n=8 exploratory subsample, α=0.10).
 `docs/OPERATOR-QUICK-START.md`'s "Reading the attention ranking" note is that strategy's
 half; /b and /c measure whether it worked. /b correct: rejects "biggest number = top" and
 names ≥2 real factors. /c correct: identifies the rate as historic/past-tense AND states
-the right posture for the lane actually observed.
+the right posture for the lane actually observed — where "the lane actually observed"
+means the on-screen `retrying`/DLQ counts alongside it, not the lane label in isolation
+(#388): a LIKELY badge next to `retrying 0` and a standing DLQ count correctly grades as
+"escalate the dead-letters", not "leave it".
 FIXTURE: ALARM-COST-MODEL.md §8's staged A/B fixture (≥4 current-generation classes, the
 planted class NOT the largest by count) PLUS ≥1 live `SelfHealBadge`. **Self-heal lane
 reachability — SUPERSEDED note (kept for provenance, repo correction convention):** this

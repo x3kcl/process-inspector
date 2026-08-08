@@ -2,9 +2,13 @@ package io.inspector.attention;
 
 import static org.assertj.core.api.Assertions.assertThat;
 
+import io.inspector.attention.AttentionRationale.DeadLetterEvidence;
 import io.inspector.dto.AttentionFactors;
+import io.inspector.dto.ErrorGroup;
 import io.inspector.dto.SelfHealStats;
+import io.inspector.dto.TriageDashboardResponse.PerEngineTriage;
 import io.inspector.selfheal.SelfHealLane;
+import java.util.Map;
 import org.junit.jupiter.api.Test;
 
 /**
@@ -64,6 +68,174 @@ class AttentionRationaleTest {
         assertThat(sentence(1, 0, null, withoutTiming, false))
                 .contains("usually self-heals (21/23 past spells)")
                 .doesNotContain("typically");
+    }
+
+    /* ---------------- #388: the population-aware suffix ---------------- */
+
+    /**
+     * T4's own scenario (ALARM-COST-MODEL.md §8.9 finding 2 / issue #388): a LIKELY class
+     * showing 25 dead-lettered / 0 retrying on the card face, the same n=23/healed=21 worked
+     * example #387/#393 already locked, with 1-minute timing. This is the exact string the
+     * build's Definition of Done asks to be reported.
+     */
+    @Test
+    void theT4ScenarioComposesTheBaseClausePlusTheLockedSuffixVerbatim() {
+        SelfHealStats stats =
+                new SelfHealStats(SelfHealLane.SELF_HEAL_LIKELY.name(), 23, 21, 0.732, 0.98, 0L, 60L, 2, false);
+        DeadLetterEvidence trusted = new DeadLetterEvidence(25L, 0L, true);
+
+        String sentence = AttentionRationale.sentence(1, factors(0, null, false, false, 0L, false), stats, trusted);
+
+        assertThat(sentence)
+                .contains("usually self-heals (21/23 past spells, typically ≤ 1 min)"
+                        + " — not the 25 dead-lettered (no retries left)");
+    }
+
+    @Test
+    void theSuffixTriggersOnDeadLetterCountAloneIndependentOfRetryingCount() {
+        SelfHealStats likely = stats(SelfHealLane.SELF_HEAL_LIKELY, 14, 12);
+
+        // Retrying > 0 alongside standing dead-letters is routine (RETRYING-RISK-LANE.md §3.1) —
+        // the REQUEST-CHANGES-rejected v1 shape keyed on retrying == 0; the locked design does not.
+        String withLiveSpell = AttentionRationale.sentence(
+                1, factors(0, null, false, false, 0L, false), likely, new DeadLetterEvidence(3L, 5L, true));
+        assertThat(withLiveSpell).contains("— not the 3 dead-lettered (no retries left)");
+
+        String withNoLiveSpell = AttentionRationale.sentence(
+                1, factors(0, null, false, false, 0L, false), likely, new DeadLetterEvidence(3L, 0L, true));
+        assertThat(withNoLiveSpell).contains("— not the 3 dead-lettered (no retries left)");
+    }
+
+    @Test
+    void theSuffixNeverRendersWhenDeadLetterCountIsZeroOrNull() {
+        SelfHealStats likely = stats(SelfHealLane.SELF_HEAL_LIKELY, 14, 12);
+
+        assertThat(AttentionRationale.sentence(
+                        1, factors(0, null, false, false, 0L, false), likely, new DeadLetterEvidence(0L, 0L, true)))
+                .doesNotContain("dead-lettered");
+        assertThat(AttentionRationale.sentence(
+                        1,
+                        factors(0, null, false, false, 0L, false),
+                        likely,
+                        new DeadLetterEvidence(null, null, false)))
+                .doesNotContain("dead-lettered");
+    }
+
+    @Test
+    void theSuffixNeverRendersOnAnUntrustedSplitEvenWithAPositiveCount() {
+        SelfHealStats likely = stats(SelfHealLane.SELF_HEAL_LIKELY, 14, 12);
+
+        // countsTrusted=false with a positive count — the shape a truncated/partial-scope caller
+        // would (incorrectly) hand in if the trust bit were ignored.
+        String sentence = AttentionRationale.sentence(
+                1, factors(0, null, false, false, 0L, false), likely, new DeadLetterEvidence(25L, 0L, false));
+
+        assertThat(sentence).doesNotContain("dead-lettered").contains("usually self-heals (12/14 past spells");
+    }
+
+    @Test
+    void theAbsentEvidenceConstantNeverRendersTheSuffix() {
+        SelfHealStats likely = stats(SelfHealLane.SELF_HEAL_LIKELY, 14, 12);
+
+        assertThat(AttentionRationale.sentence(
+                        1, factors(0, null, false, false, 0L, false), likely, DeadLetterEvidence.ABSENT))
+                .doesNotContain("dead-lettered");
+        // The 3-arg convenience overload is exactly this: base clause, always.
+        assertThat(AttentionRationale.sentence(1, factors(0, null, false, false, 0L, false), likely))
+                .doesNotContain("dead-lettered");
+    }
+
+    @Test
+    void theSuffixIsScopedToTheLikelyLaneOnlyEvenWhenTriggerConditionsAreMet() {
+        DeadLetterEvidence trusted = new DeadLetterEvidence(9L, 0L, true);
+        AttentionFactors factors = factors(0, null, false, false, 0L, false);
+
+        assertThat(AttentionRationale.sentence(1, factors, stats(SelfHealLane.SELF_HEAL_MIXED, 11, 6), trusted))
+                .isEqualTo(AttentionRationale.sentence(
+                        1, factors, stats(SelfHealLane.SELF_HEAL_MIXED, 11, 6), DeadLetterEvidence.ABSENT))
+                .doesNotContain("dead-lettered");
+        assertThat(AttentionRationale.sentence(1, factors, stats(SelfHealLane.SELF_HEAL_UNLIKELY, 12, 1), trusted))
+                .doesNotContain("dead-lettered");
+        assertThat(AttentionRationale.sentence(1, factors, stats(SelfHealLane.INSUFFICIENT_HISTORY, 3, 1), trusted))
+                .doesNotContain("dead-lettered");
+    }
+
+    @Test
+    void deadLetterEvidenceOfReadsAbsentForANullGroup() {
+        assertThat(DeadLetterEvidence.of(null, Map.of())).isEqualTo(DeadLetterEvidence.ABSENT);
+    }
+
+    @Test
+    void deadLetterEvidenceOfIsUntrustedWhenTheScopeProjectorNulledTheSplit() {
+        // TriageScopeProjector nulls BOTH counts on a partially-scoped group (R-SAFE-17) — the
+        // fleet-wide N must never leak to a scoped viewer, so this must fail toward the base
+        // clause regardless of engine trust.
+        ErrorGroup partiallyScoped = new ErrorGroup(
+                "h", 2, "X", "msg", "raw", 10, null, null, Map.of("engine-a", Map.of("k:v1", 10L)), null);
+        Map<String, PerEngineTriage> perEngine =
+                Map.of("engine-a", new PerEngineTriage(true, null, "complete", 0, false));
+
+        DeadLetterEvidence evidence = DeadLetterEvidence.of(partiallyScoped, perEngine);
+
+        assertThat(evidence.countsTrusted()).isFalse();
+        assertThat(evidence.deadLetterCount()).isNull();
+        assertThat(evidence.retryingCount()).isNull();
+    }
+
+    @Test
+    void deadLetterEvidenceOfIsUntrustedWhenAnyTouchedEngineScanIsTruncated() {
+        // Even a timer/executable-only truncation suppresses the suffix (the #388 fold-in 3
+        // deliberate conflation) — never just a narrower deadletterTruncated check.
+        ErrorGroup group = new ErrorGroup(
+                "h",
+                2,
+                "X",
+                "msg",
+                "raw",
+                30,
+                25L,
+                0L,
+                Map.of("engine-a", Map.of("k:v1", 20L), "engine-b", Map.of("k:v1", 10L)));
+        Map<String, PerEngineTriage> perEngine = Map.of(
+                "engine-a", new PerEngineTriage(true, null, "complete", 0, false),
+                "engine-b", new PerEngineTriage(true, null, "truncated@500", 0, false));
+
+        assertThat(DeadLetterEvidence.of(group, perEngine).countsTrusted()).isFalse();
+    }
+
+    @Test
+    void deadLetterEvidenceOfIsUntrustedWhenATouchedEngineIsDownOrMissingFromPerEngine() {
+        ErrorGroup group =
+                new ErrorGroup("h", 2, "X", "msg", "raw", 10, 10L, 0L, Map.of("engine-a", Map.of("k:v1", 10L)));
+
+        assertThat(DeadLetterEvidence.of(group, Map.of()).countsTrusted()).isFalse(); // missing entirely
+        assertThat(DeadLetterEvidence.of(
+                                group, Map.of("engine-a", new PerEngineTriage(false, "down", null, null, false)))
+                        .countsTrusted())
+                .isFalse(); // ok=false
+    }
+
+    @Test
+    void deadLetterEvidenceOfIsTrustedWhenEveryTouchedEngineIsOkAndUntruncated() {
+        ErrorGroup group = new ErrorGroup(
+                "h",
+                2,
+                "X",
+                "msg",
+                "raw",
+                30,
+                25L,
+                0L,
+                Map.of("engine-a", Map.of("k:v1", 20L), "engine-b", Map.of("k:v1", 10L)));
+        Map<String, PerEngineTriage> perEngine = Map.of(
+                "engine-a", new PerEngineTriage(true, null, "complete", 0, false),
+                "engine-b", new PerEngineTriage(true, null, "complete", 0, false));
+
+        DeadLetterEvidence evidence = DeadLetterEvidence.of(group, perEngine);
+
+        assertThat(evidence.countsTrusted()).isTrue();
+        assertThat(evidence.deadLetterCount()).isEqualTo(25L);
+        assertThat(evidence.retryingCount()).isEqualTo(0L);
     }
 
     @Test

@@ -388,6 +388,24 @@ class AttentionScoreCalculatorTest {
     }
 
     @Test
+    void theSevenArgOverloadThreadsDeadLetterEvidenceIntoTheRationaleAndTheSixArgOverloadStaysAbsent() {
+        // #388's calculator-level contract: the extra overload is the ONLY place a non-ABSENT
+        // DeadLetterEvidence can reach AttentionRationale.sentence(); the pre-existing six-arg
+        // overload (used by every other test in this file) must keep composing the base clause.
+        SelfHealStats likely = stats(SelfHealLane.SELF_HEAL_LIKELY, 14, 12);
+        AttentionRationale.DeadLetterEvidence trusted = new AttentionRationale.DeadLetterEvidence(9L, 0L, true);
+
+        AttentionScore withEvidence =
+                AttentionScoreCalculator.score(10, arrivals(1), null, likely, CONFIG, NOW, trusted);
+        AttentionScore withoutEvidence = AttentionScoreCalculator.score(10, arrivals(1), null, likely, CONFIG, NOW);
+
+        assertThat(withEvidence.rationale()).contains("— not the 9 dead-lettered (no retries left)");
+        assertThat(withoutEvidence.rationale()).doesNotContain("dead-lettered");
+        // The DeadLetterEvidence parameter is copy-only — it must not perturb the score itself.
+        assertThat(withEvidence.score()).isEqualTo(withoutEvidence.score());
+    }
+
+    @Test
     void anUnknownLaneStringReadsAsNoHistoryRatherThanAsARiskClaim() {
         SelfHealStats garbled = new SelfHealStats("SELF_HEAL_PROBABLY_MAYBE", 12, 6, null, null, null, null, 0, false);
 

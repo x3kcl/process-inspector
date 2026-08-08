@@ -96,12 +96,24 @@ export function selfHealBadgeContent(
       // count, not the live population). Same unit word server-side (AttentionRationale) so the
       // two surfaces stay word-for-word identical for this lane — see the drift test in both
       // selfHeal.test.ts and AttentionRationaleTest.java.
+      //
+      // #388 (ALARM-COST-MODEL.md §8.9 finding 2): T4 met a LIKELY class showing `DLQ 25 /
+      // retrying 0` and correctly read "these won't self-heal further without action" — the
+      // "usually self-heals" text implies a passive "leave it" that only ever applies to members
+      // CURRENTLY in a retrying spell, not a standing dead-letter cohort. v1's fix lives
+      // server-side only (AttentionRationale's population-aware suffix, Stage 0 dashboard); this
+      // badge's text is UNCHANGED, but the tooltip gains the teaching sentence UNCONDITIONALLY —
+      // not only when there is a truncation/exclusion caveat to append it to — since T4's own
+      // scenario (no exclusions, no truncation) is exactly the case the conditional caveat below
+      // stays silent for.
       return {
         lane: 'SELF_HEAL_LIKELY',
         text: `usually self-heals (${String(healed)}/${String(n)} past spells${typical})`,
         tooltip:
           'This error class usually leaves the RETRYING state on its own — engine-scheduled ' +
-          `retries, no operator action — in ${String(healed)} of ${String(n)} observed retrying spells.`,
+          `retries, no operator action — in ${String(healed)} of ${String(n)} observed retrying spells. ` +
+          'The rate describes past retrying spells — standing dead-letter jobs need operator ' +
+          'action regardless.',
       }
     }
     case 'SELF_HEAL_MIXED':

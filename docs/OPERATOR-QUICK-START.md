@@ -92,6 +92,15 @@ something that actually matters. When you meet it:
   spells, typically ≤ 8 min)" means 12 of 14 *past* retrying spells cleared themselves — it
   is not a guarantee about this one. A low fraction ("rarely self-heals") means treat it
   like FAILED.
+- **LIKELY + retrying 0 = the record is about spells; act on standing dead-letters
+  normally.** "Usually self-heals" only ever describes members CURRENTLY in a retrying
+  spell — a class showing a healthy self-heal fraction alongside standing dead-letter jobs
+  (retrying 0, DLQ > 0) has already exhausted retries on those jobs; they will not clear
+  themselves, so escalate/retry them like any other FAILED cohort. The Stage 0 dashboard
+  says so directly when it applies — "usually self-heals (21/23 past spells, typically ≤ 1
+  min) — not the 25 dead-lettered (no retries left)" — and the `/incidents` badge's tooltip
+  carries the same warning as a standing reminder even when the count isn't spelled out on
+  that surface (issue #388).
 
 *Why this note exists: published research on a redesigned alarm display (Laberge et al.
 2014) found the redesign ALONE made triage measurably worse — the plain list beat it on
