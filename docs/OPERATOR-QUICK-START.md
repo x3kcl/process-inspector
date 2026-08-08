@@ -88,10 +88,10 @@ something that actually matters. When you meet it:
 - **Self-healers are demoted, never buried.** A class that reliably clears on its own gets
   pushed down **at most 4×** (the 0.25 floor on the self-heal factor) — fresh and costly
   enough, it can still rank near the top; it can never disappear.
-- **`SelfHealBadge`'s fraction is history, not a promise.** "usually self-heals (12/14,
-  typically ≤ 8 min)" means 12 of 14 *past* retrying spells cleared themselves — it is not
-  a guarantee about this one. A low fraction ("rarely self-heals") means treat it like
-  FAILED.
+- **`SelfHealBadge`'s fraction is history, not a promise.** "usually self-heals (12/14 past
+  spells, typically ≤ 8 min)" means 12 of 14 *past* retrying spells cleared themselves — it
+  is not a guarantee about this one. A low fraction ("rarely self-heals") means treat it
+  like FAILED.
 
 *Why this note exists: published research on a redesigned alarm display (Laberge et al.
 2014) found the redesign ALONE made triage measurably worse — the plain list beat it on

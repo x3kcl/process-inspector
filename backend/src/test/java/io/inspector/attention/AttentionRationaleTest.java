@@ -68,6 +68,9 @@ class AttentionRationaleTest {
 
     @Test
     void minutesCeilRoundsUpSoTheBoundNeverUnderstates() {
+        // 0s is a defensive edge (the DTO shouldn't serve a zero-second p90 for a healed spell in
+        // practice) — never below 1 minute regardless (PR #393 review, zero-edge).
+        assertThat(AttentionRationale.minutesCeil(0)).isEqualTo(1);
         assertThat(AttentionRationale.minutesCeil(45)).isEqualTo(1);
         assertThat(AttentionRationale.minutesCeil(60)).isEqualTo(1);
         assertThat(AttentionRationale.minutesCeil(61)).isEqualTo(2);

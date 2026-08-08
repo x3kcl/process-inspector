@@ -108,7 +108,7 @@ public final class AttentionRationale {
     /**
      * "(H/N past spells)", plus ", typically ≤ X min" when {@code ttsP90Seconds} is present — the
      * SELF_HEAL_LIKELY badge's own clause (RETRYING-RISK-LANE.md §4.1), never a fabricated number
-     * when the server has none (§6 honesty rails).
+     * when the server has none (RETRYING-RISK-LANE.md §5 honesty rails).
      */
     private static String likelyRecord(SelfHealStats selfHeal) {
         Long ttsP90 = selfHeal.ttsP90Seconds();

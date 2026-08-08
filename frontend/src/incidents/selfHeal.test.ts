@@ -51,6 +51,13 @@ describe('selfHealBadgeContent — exact copy per RETRYING-RISK-LANE.md §4.1', 
     expect(content?.text).toBe('usually self-heals (12/14 past spells)')
   })
 
+  it('SELF_HEAL_LIKELY floors the typical duration at 1 min even for a zero-second ttsP90Seconds (defensive edge — PR #393 review)', () => {
+    const content = selfHealBadgeContent(
+      stats({ lane: 'SELF_HEAL_LIKELY', n: 14, healed: 12, ttsP90Seconds: 0 }),
+    )
+    expect(content?.text).toBe('usually self-heals (12/14 past spells, typically ≤ 1 min)')
+  })
+
   // #387: Stage 0's card rationale (AttentionRationale.java, server-side) composes its own
   // self-heal clause separately from this badge — different language, same design source
   // (RETRYING-RISK-LANE.md §4.1). This locks the LIKELY-lane wire format this module owns so a
