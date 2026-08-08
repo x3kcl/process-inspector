@@ -453,8 +453,8 @@ line originally said `SELF_HEAL_LIKELY`/`SELF_HEAL_MIXED` were unreachable pendi
 PR #368. **All four lanes are reachable today**, gated 6.8+: `INSUFFICIENT_HISTORY`
 (default, no staging) and `SELF_HEAL_UNLIKELY` (the standard permanently-failing seed
 corpus) need nothing extra; `SELF_HEAL_LIKELY` (the lane /c's example copy — RETRYING-
-RISK-LANE.md §4.1's worked example "usually self-heals (12/14, typically ≤ 8 min)" —
-illustrates) and `SELF_HEAL_MIXED` need the opt-in `PI_SEED_SELF_HEALING=1` fixture
+RISK-LANE.md §4.1's worked example "usually self-heals (12/14 past spells, typically ≤ 8
+min)" — illustrates) and `SELF_HEAL_MIXED` need the opt-in `PI_SEED_SELF_HEALING=1` fixture
 (`docker/processes/demo-self-healing.bpmn20.xml` + its `-baseline` companion) staged per
 ALARM-COST-MODEL.md §8.2 step 5 — real spells at the unlowered production floor
 (`inspector.selfheal.floor`, default 10), realistically ~15–20+ minutes of dedicated

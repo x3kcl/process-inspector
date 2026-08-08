@@ -90,11 +90,39 @@ public final class AttentionRationale {
         }
         String record = " (" + selfHeal.healed() + "/" + selfHeal.n() + ")";
         return switch (lane) {
-            case SELF_HEAL_LIKELY -> "usually self-heals" + record;
+            // #387: this clause used to stop at the bare "(H/N)" fraction, which tester T3 read as
+            // "H of the N *currently failing* instances" — it is a lifetime historical spell count.
+            // The badge on /incidents (frontend/src/incidents/selfHeal.ts, same lane) already names
+            // the unit ("past spells") and, when the server has it, the timing half ("typically ≤ X
+            // min", sourced from the SAME ttsP90Seconds already served — never a second derivation,
+            // per this class's own doc comment). Mirror that format exactly here so the two surfaces
+            // read identically; AttentionRationaleTest + selfHeal.test.ts both lock this string so
+            // a future edit to either side goes red before the surfaces can drift apart again.
+            case SELF_HEAL_LIKELY -> "usually self-heals" + likelyRecord(selfHeal);
             case SELF_HEAL_MIXED -> "mixed self-heal record" + record;
             case SELF_HEAL_UNLIKELY -> "rarely self-heals" + record;
             case INSUFFICIENT_HISTORY -> "no self-heal history";
         };
+    }
+
+    /**
+     * "(H/N past spells)", plus ", typically ≤ X min" when {@code ttsP90Seconds} is present — the
+     * SELF_HEAL_LIKELY badge's own clause (RETRYING-RISK-LANE.md §4.1), never a fabricated number
+     * when the server has none (RETRYING-RISK-LANE.md §5 honesty rails).
+     */
+    private static String likelyRecord(SelfHealStats selfHeal) {
+        Long ttsP90 = selfHeal.ttsP90Seconds();
+        String typical = ttsP90 != null ? ", typically ≤ " + minutesCeil(ttsP90) + " min" : "";
+        return " (" + selfHeal.healed() + "/" + selfHeal.n() + " past spells" + typical + ")";
+    }
+
+    /**
+     * Ceiling minutes, mirroring frontend/src/incidents/selfHeal.ts's {@code minutesCeil} exactly:
+     * a "≤" bound must still hold after rounding, so this rounds UP, never nearest/down
+     * (RETRYING-RISK-LANE.md §3.1). Never below 1 minute.
+     */
+    static long minutesCeil(long seconds) {
+        return Math.max(1L, (seconds + 59) / 60);
     }
 
     /** The displayed (server-dwelled) lane, or {@code null} when absent/unparseable. */

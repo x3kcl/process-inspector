@@ -452,6 +452,20 @@ sentence onto every card would itself be the "paragraph" outcome this section's 
 requirement forbids. The one-sentence CAP itself is unchanged; only the per-card sentence's
 render location moved.
 
+**Correction (post-ship, #387 — §8.9 finding 1).** The per-card self-heal clause originally
+composed as a bare `"usually self-heals (H/N)"` — the §8.9 tester run's T2/T3 found this
+dropped both the "spells" unit word (T3 misread "21/23" as the live failing count, not a
+lifetime historical spell count) and the timing half (`ttsP90Seconds`) that `/incidents`'
+`SelfHealBadge` already rendered for the identical `SELF_HEAL_LIKELY` lane on the same class —
+two surfaces, two strings, from the same served statistic. Fixed by mirroring the badge's
+own format exactly (RETRYING-RISK-LANE.md §4.1, same correction cross-referenced there): a
+`SELF_HEAL_LIKELY` clause now reads `"usually self-heals (21/23 past spells, typically ≤ 1
+min)"` — timing omitted only when the server has none to give (§6 honesty rails; never a
+fabricated number). Per-card variant, updated: *"23 failing · last seen just now · typically
+takes 2 min to resolve · usually self-heals (21/23 past spells, typically ≤ 1 min)."* Still
+one sentence, still glanceable — the CAP this section states is unchanged; MIXED/UNLIKELY
+clause copy is unaffected (out of #387's scope).
+
 ## 5. MEASURED BASELINE — pilot-ledger extraction & ordering simulation (auditable)
 
 **Method.** 2026-08-04 ≈ 07:05–07:10 Z, against the live demo `https://pi.naumann.cloud`,
@@ -950,7 +964,7 @@ design, this run's staging must never be mistaken for moving either data-maturit
 boundary-timer construct).
 
 Task /c's example copy (RETRYING-RISK-LANE.md §4.1's worked example, "usually self-heals
-(12/14, typically ≤ 8 min)") illustrates `SELF_HEAL_LIKELY` specifically — that lane, and
+(12/14 past spells, typically ≤ 8 min)") illustrates `SELF_HEAL_LIKELY` specifically — that lane, and
 the copy it illustrates, are now stageable and should be the target for arm B whenever the
 §8.2 step 5 staging budget (~15–20+ minutes) is available; `INSUFFICIENT_HISTORY`/
 `SELF_HEAL_UNLIKELY` remain legitimate, cheaper fallbacks (§8.2 step 6). The verdict
