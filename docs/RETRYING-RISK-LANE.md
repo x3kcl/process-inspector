@@ -240,6 +240,17 @@ infrastructure, no model registry, nothing speculative ships in v1.
 | `SELF_HEAL_UNLIKELY` | Wilson UB ≤ 0.30 | UB > 0.40 | "rarely self-heals (1/12) — treat like FAILED" |
 | `INSUFFICIENT_HISTORY` | n < 10 (the floor, §7.1) | n ≥ 10 | "no reliable self-heal history yet (3 of 10 spells observed)" |
 
+**#388 — the `SELF_HEAL_LIKELY` row above is the BASE clause, specified derivationally, not
+a second fixed string.** On the Stage 0 dashboard only (`AttentionScoreService`'s
+`decorate()` path — never `/incidents`' `SelfHealBadge` text, and never the
+`forClass()`-composed rationale that also renders on `/incidents`; see §4.2's note and the
+known-limitation entry below), the composed sentence is *this table's base clause* + a suffix, appended after the
+base clause's closing `)`, whenever the class's live `deadLetterCount > 0` under TRUSTED
+counts (non-null split, every touched engine `ok` with an untruncated failure-lane scan):
+`" — not the N dead-lettered (no retries left)"` — e.g. `"usually self-heals (21/23 past
+spells, typically ≤ 1 min) — not the 25 dead-lettered (no retries left)"`. One code path
+composes both halves; there is no independent second string to drift from this one.
+
 ### 4.2 Stability rules (all five are normative for #352)
 
 1. **Completed-evidence-only.** The badge derives from *completed* spells exclusively; the
@@ -288,6 +299,13 @@ infrastructure, no model registry, nothing speculative ships in v1.
    monotonically — to "exceeded typical observed self-heal window" when elapsed > p90
    ("observed" because the p90 is of ≥ 1-bucket spells, §3.1/§3.2 — panel G8). Copy
    within a spell is a monotone sequence by construction; it never oscillates.
+
+**#388's suffix is live-count copy, not lane state — it sits OUTSIDE the five rules above.**
+It keys directly on the class's current `deadLetterCount` (the same "N failing"-style live
+count the sentence's first clause already quotes), so it can appear or disappear on any
+poll the moment the standing dead-letter count crosses zero — no dwell, no hysteresis, no
+minimum hold — exactly as today's live counts already do; only the LANE itself (the base
+clause's fraction/timing) is governed by rules 1-5's dwell/stability machinery.
 
 **Backtested (§8):** replaying the full recorded pilot history (45,996 samples), a naive
 per-cycle rule produced 2 displayed flips — both premature n=1 verdicts rendered from
@@ -591,6 +609,30 @@ expect it not to).
   same n/healed/ttsP90 inputs so the two composers (different languages, no shared code) cannot
   silently diverge again. MIXED/UNLIKELY copy is unchanged (out of #387's scope; #388 tracks the
   separate population-aware-posture gap).
+- **Correction (post-ship, #388, ALARM-COST-MODEL.md §8.9 finding 2 — the population-aware
+  suffix, ★ SHIPPED):** T4 met a `SELF_HEAL_LIKELY` class showing `DLQ 25 / retrying 0` and
+  correctly read "these won't self-heal further without action" — the badge's "usually
+  self-heals" implies a passive "leave it" that only ever applies to members CURRENTLY in a
+  retrying spell. Fixed, v1-scoped to the Stage 0 dashboard ONLY: `AttentionScoreService`'s
+  `decorate()` path appends the locked suffix (§4.1 above) to the `SELF_HEAL_LIKELY` clause
+  when `deadLetterCount > 0` under trusted counts; `forClass()` — the entry point behind
+  `IncidentQueryService.attentionScore`, which ALSO renders on `/incidents` via
+  `AttentionBadge` — always composes with the split absent, so its rationale never carries
+  the suffix for the identical class. **Known limitation, named explicitly (not silently
+  accepted): `/incidents` has TWO renderings that both stay at the base clause and diverge
+  from the Stage 0 dashboard for the same class** — (1) the client-composed `SelfHealBadge`
+  (`incidents/selfHeal.ts`), which instead gained a static, UNCONDITIONAL tooltip sentence
+  ("The rate describes past retrying spells — standing dead-letter jobs need operator action
+  regardless.") rather than the live count, and (2) the server-composed `forClass()`
+  rationale above, inert today (`inspector.triage.attention-ordering` ships off, §7).
+  Resolution path for both: plumb the dead-letter/retrying split into `IncidentSummary` —
+  deferred until demand shows it is worth the DTO surface, since v1's badge tooltip already
+  covers the comprehension gap the §8.9 finding raised. The trust rule's per-engine check
+  deliberately reuses the CONFLATED `dlqScan` truncation marker (the same one that
+  OR-conflates the timer/executable/deadletter lanes), not the narrower
+  `deadletterTruncated` flag — conservative, fail-toward-the-weaker-claim; do not "fix" this
+  to the narrower flag without re-checking `retryingCount`'s own trust needs against the
+  other two lanes first.
 
 ## 11. Non-goals & explicitly rejected
 

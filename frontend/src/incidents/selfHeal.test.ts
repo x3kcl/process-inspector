@@ -76,6 +76,32 @@ describe('selfHealBadgeContent — exact copy per RETRYING-RISK-LANE.md §4.1', 
     expect(withoutTiming?.text).toBe('usually self-heals (21/23 past spells)')
   })
 
+  // #388 (ALARM-COST-MODEL.md §8.9 finding 2, fold-in 1): the teaching sentence goes into the
+  // UNCONDITIONAL SELF_HEAL_LIKELY tooltip — not only the conditional exclusions caveat, which
+  // returns undefined in exactly T4's own scenario (no exclusions, no truncation).
+  it('SELF_HEAL_LIKELY tooltip unconditionally names standing dead-letters as needing action regardless of the rate', () => {
+    const content = selfHealBadgeContent(
+      stats({ lane: 'SELF_HEAL_LIKELY', n: 23, healed: 21, ttsP90Seconds: 60 }),
+    )
+    expect(content?.tooltip).toContain(
+      'The rate describes past retrying spells — standing dead-letter jobs need operator action regardless.',
+    )
+  })
+
+  it("SELF_HEAL_LIKELY tooltip carries the teaching sentence even with zero exclusions/truncation (T4's own scenario)", () => {
+    const noExclusions = stats({
+      lane: 'SELF_HEAL_LIKELY',
+      n: 23,
+      healed: 21,
+      ttsP90Seconds: 60,
+      excludedSpells: 0,
+    })
+    const content = selfHealBadgeContent(noExclusions)
+
+    expect(selfHealCaveat(noExclusions)).toBeUndefined() // the conditional caveat stays silent
+    expect(content?.tooltip).toContain('standing dead-letter jobs need operator action regardless')
+  })
+
   it('SELF_HEAL_MIXED', () => {
     const content = selfHealBadgeContent(stats({ lane: 'SELF_HEAL_MIXED', n: 11, healed: 6 }))
     expect(content?.text).toBe('mixed self-heal record (6/11)')

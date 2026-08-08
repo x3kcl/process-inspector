@@ -11,7 +11,10 @@ import static org.mockito.Mockito.when;
 
 import io.inspector.config.InspectorProperties;
 import io.inspector.dto.AttentionScore;
+import io.inspector.dto.ErrorGroup;
 import io.inspector.dto.SelfHealStats;
+import io.inspector.dto.TriageDashboardResponse;
+import io.inspector.dto.TriageDashboardResponse.PerEngineTriage;
 import io.inspector.incident.Incident;
 import io.inspector.incident.IncidentEpisodeRepository;
 import io.inspector.incident.IncidentOccurrenceRepository;
@@ -25,6 +28,7 @@ import java.time.Duration;
 import java.time.Instant;
 import java.time.ZoneOffset;
 import java.util.List;
+import java.util.Map;
 import org.junit.jupiter.api.Test;
 import org.mockito.ArgumentCaptor;
 
@@ -217,6 +221,121 @@ class AttentionScoreServiceTest {
         assertThat(scored.rationale()).contains("usually self-heals (12/14 past spells, typically ≤ 8 min)");
     }
 
+    @Test
+    void forClassNeverEmitsThePopulationSuffixEvenWhenTheStatsShapeMatchesTheTriggerKnownLimitation() {
+        // #388 known limitation, recorded in forClass()'s own doc comment: this entry point has
+        // no ErrorGroup/perEngine to derive the dead-letter split from, so it ALWAYS composes
+        // with DeadLetterEvidence.ABSENT — the /incidents rationale for a LIKELY class never
+        // carries the suffix the Stage 0 dashboard's decorate() path can append for that same
+        // class (see the decorate()-path tests below).
+        List<Incident> ledger = List.of(incident(4L, "hash-a", NOW));
+        when(incidents.findByLastSeenGreaterThanEqual(any())).thenReturn(ledger);
+        when(occurrences.arrivalsSince(any(), any(), any())).thenReturn(List.<Object[]>of(arrivalRow(4L, 3L, 9L, 9L)));
+        when(episodes.closedEpisodeDurationSeconds()).thenReturn(List.of());
+        SelfHealStats stats =
+                new SelfHealStats(SelfHealLane.SELF_HEAL_LIKELY.name(), 23, 21, 0.732, 0.98, 0L, 60L, 2, false);
+
+        AttentionScore scored = service(true).forClass("hash-a", 2, 25, stats);
+
+        assertThat(scored.rationale())
+                .contains("usually self-heals (21/23 past spells, typically ≤ 1 min)")
+                .doesNotContain("dead-lettered");
+    }
+
+    /* ---------------- #388: the decorate() dashboard path CAN supply real evidence --------- */
+
+    @Test
+    void decorateAppendsThePopulationSuffixWhenTheSplitIsTrustedAndDeadLettersArePresent() {
+        emptyLedger();
+        SelfHealStats stats =
+                new SelfHealStats(SelfHealLane.SELF_HEAL_LIKELY.name(), 23, 21, 0.732, 0.98, 0L, 60L, 2, false);
+        when(selfHeal.get("hash-a", 2)).thenReturn(stats);
+        ErrorGroup group =
+                new ErrorGroup("hash-a", 2, "X", "msg", "raw", 25, 25L, 0L, Map.of("engine-a", Map.of("k:v1", 25L)));
+        TriageDashboardResponse response = new TriageDashboardResponse(
+                NOW.toString(),
+                List.of(),
+                Map.of(),
+                Map.of(),
+                List.of(group),
+                Map.of("engine-a", new PerEngineTriage(true, null, "complete", 0, false)));
+
+        TriageDashboardResponse decorated = service(true).decorate(response);
+
+        assertThat(decorated.errorGroups().get(0).attention().rationale())
+                .contains("usually self-heals (21/23 past spells, typically ≤ 1 min)"
+                        + " — not the 25 dead-lettered (no retries left)");
+    }
+
+    @Test
+    void decorateFallsBackToTheBaseClauseWhenATouchedEngineScanIsTruncated() {
+        emptyLedger();
+        SelfHealStats stats =
+                new SelfHealStats(SelfHealLane.SELF_HEAL_LIKELY.name(), 23, 21, 0.732, 0.98, 0L, 60L, 2, false);
+        when(selfHeal.get("hash-a", 2)).thenReturn(stats);
+        ErrorGroup group =
+                new ErrorGroup("hash-a", 2, "X", "msg", "raw", 25, 25L, 0L, Map.of("engine-a", Map.of("k:v1", 25L)));
+        TriageDashboardResponse response = new TriageDashboardResponse(
+                NOW.toString(),
+                List.of(),
+                Map.of(),
+                Map.of(),
+                List.of(group),
+                Map.of("engine-a", new PerEngineTriage(true, null, "truncated@500", 0, false)));
+
+        TriageDashboardResponse decorated = service(true).decorate(response);
+
+        assertThat(decorated.errorGroups().get(0).attention().rationale())
+                .contains("usually self-heals (21/23 past spells, typically ≤ 1 min)")
+                .doesNotContain("dead-lettered");
+    }
+
+    @Test
+    void decorateFallsBackToTheBaseClauseWhenTheScopeProjectorNulledTheSplit() {
+        emptyLedger();
+        SelfHealStats stats =
+                new SelfHealStats(SelfHealLane.SELF_HEAL_LIKELY.name(), 23, 21, 0.732, 0.98, 0L, 60L, 2, false);
+        when(selfHeal.get("hash-a", 2)).thenReturn(stats);
+        // Partial-scope shape: TriageScopeProjector nulls both counts (R-SAFE-17) — total/
+        // countsByEngine stay truthful, but the fleet-wide split must never leak to this viewer.
+        ErrorGroup group = new ErrorGroup(
+                "hash-a", 2, "X", "msg", "raw", 25, null, null, Map.of("engine-a", Map.of("k:v1", 25L)), null);
+        TriageDashboardResponse response = new TriageDashboardResponse(
+                NOW.toString(),
+                List.of(),
+                Map.of(),
+                Map.of(),
+                List.of(group),
+                Map.of("engine-a", new PerEngineTriage(true, null, "complete", 0, false)));
+
+        TriageDashboardResponse decorated = service(true).decorate(response);
+
+        assertThat(decorated.errorGroups().get(0).attention().rationale())
+                .contains("usually self-heals (21/23 past spells, typically ≤ 1 min)")
+                .doesNotContain("dead-lettered");
+    }
+
+    @Test
+    void decorateNeverAppendsTheSuffixWhenThereAreNoDeadLetters() {
+        emptyLedger();
+        SelfHealStats stats =
+                new SelfHealStats(SelfHealLane.SELF_HEAL_LIKELY.name(), 23, 21, 0.732, 0.98, 0L, 60L, 2, false);
+        when(selfHeal.get("hash-a", 2)).thenReturn(stats);
+        ErrorGroup group =
+                new ErrorGroup("hash-a", 2, "X", "msg", "raw", 5, 0L, 5L, Map.of("engine-a", Map.of("k:v1", 5L)));
+        TriageDashboardResponse response = new TriageDashboardResponse(
+                NOW.toString(),
+                List.of(),
+                Map.of(),
+                Map.of(),
+                List.of(group),
+                Map.of("engine-a", new PerEngineTriage(true, null, "complete", 0, false)));
+
+        TriageDashboardResponse decorated = service(true).decorate(response);
+
+        assertThat(decorated.errorGroups().get(0).attention().rationale()).doesNotContain("dead-lettered");
+    }
+
     /* ---------------- review FIX 2: untrusted ≠ zero, and absent ≠ untrusted ---------------- */
 
     @Test
@@ -292,6 +411,12 @@ class AttentionScoreServiceTest {
     }
 
     /* ---------------- fixtures ---------------- */
+
+    private void emptyLedger() {
+        when(incidents.findByLastSeenGreaterThanEqual(any())).thenReturn(List.of());
+        when(episodes.closedEpisodeDurationSeconds()).thenReturn(List.of());
+        when(occurrences.arrivalsSince(any(), any(), any())).thenReturn(List.of());
+    }
 
     private AttentionScoreService service(boolean attentionOrdering) {
         InspectorProperties props = new InspectorProperties(

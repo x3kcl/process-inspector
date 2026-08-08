@@ -145,7 +145,7 @@ public class AttentionScoreService {
             Instant now = clock.instant();
             List<ErrorGroup> scored = new ArrayList<>(response.errorGroups().size());
             for (ErrorGroup group : response.errorGroups()) {
-                scored.add(group.withAttention(score(group, model, now)));
+                scored.add(group.withAttention(score(group, model, now, response.perEngine())));
             }
             return new TriageDashboardResponse(
                     response.asOf(),
@@ -166,6 +166,17 @@ public class AttentionScoreService {
      * ordering ({@code lastSeen DESC} — the #308 hard cap must drop the OLDEST rows) and its
      * client-derived sections; this only supplies the score those sections order WITHIN.
      * {@code null} when the flag is off or anything at all goes wrong.
+     *
+     * <p><b>#388 known limitation.</b> This entry point has no {@code ErrorGroup}/{@code
+     * perEngine} to derive the dead-letter split from, so it ALWAYS composes with
+     * {@link AttentionRationale.DeadLetterEvidence#ABSENT} — the {@code SELF_HEAL_LIKELY}
+     * rationale rendered on {@code /incidents} (via {@code IncidentQueryService.attentionScore})
+     * never carries the population-aware suffix, even when the Stage 0 dashboard's rationale for
+     * the SAME class does (see {@link #score(ErrorGroup, AttentionModel, Instant, Map)}).
+     * Recorded, not silently accepted: RETRYING-RISK-LANE.md §4.2 names this alongside the
+     * client-composed {@code SelfHealBadge}'s own divergence (which gets a static teaching
+     * sentence instead). Resolution path: plumb the split into {@code IncidentSummary} only if
+     * demand shows it is worth the DTO surface.
      */
     public AttentionScore forClass(String signatureHash, int algoVersion, long liveTotal, SelfHealStats stats) {
         if (!enabled) {
@@ -186,14 +197,24 @@ public class AttentionScoreService {
         }
     }
 
-    private AttentionScore score(ErrorGroup group, AttentionModel model, Instant now) {
+    /**
+     * The Stage 0 dashboard path — the ONLY caller that can ever supply real #388 evidence
+     * ({@code forClass()} always passes {@link AttentionRationale.DeadLetterEvidence#ABSENT},
+     * by construction, since it has no {@code ErrorGroup}/{@code perEngine} to derive it from).
+     */
+    private AttentionScore score(
+            ErrorGroup group,
+            AttentionModel model,
+            Instant now,
+            Map<String, TriageDashboardResponse.PerEngineTriage> perEngine) {
         return AttentionScoreCalculator.score(
                 group.total(),
                 model.historyOf(group.signatureHash(), group.algoVersion()),
                 model.fleetMedianMttrSeconds(),
                 selfHealStats(group),
                 config,
-                now);
+                now,
+                AttentionRationale.DeadLetterEvidence.of(group, perEngine));
     }
 
     /** The R2 statistic is a DEPENDENCY, never a duplication (§4.2) — and never a hard one. */

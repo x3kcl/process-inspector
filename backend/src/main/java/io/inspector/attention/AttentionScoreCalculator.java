@@ -81,6 +81,31 @@ public final class AttentionScoreCalculator {
             SelfHealStats selfHeal,
             AttentionConfig config,
             Instant now) {
+        return score(
+                liveTotal,
+                history,
+                fleetMedianMttrSeconds,
+                selfHeal,
+                config,
+                now,
+                AttentionRationale.DeadLetterEvidence.ABSENT);
+    }
+
+    /**
+     * #388: the population-aware suffix's own evidence, threaded through to
+     * {@link AttentionRationale#sentence}. {@code AttentionScoreService.forClass()} never
+     * supplies anything but {@link AttentionRationale.DeadLetterEvidence#ABSENT} (the six-arg
+     * overload above) — only its {@code decorate()} dashboard path can derive real evidence from
+     * an {@code ErrorGroup}, per the #388 design's locked build contract.
+     */
+    public static AttentionScore score(
+            long liveTotal,
+            ClassHistory history,
+            Long fleetMedianMttrSeconds,
+            SelfHealStats selfHeal,
+            AttentionConfig config,
+            Instant now,
+            AttentionRationale.DeadLetterEvidence deadLetters) {
         ClassHistory evidence = history != null ? history : ClassHistory.none();
 
         long arrivals = Math.max(0, evidence.arrivals());
@@ -122,7 +147,7 @@ public final class AttentionScoreCalculator {
         return new AttentionScore(
                 score,
                 factors,
-                AttentionRationale.sentence(liveTotal, factors, selfHeal),
+                AttentionRationale.sentence(liveTotal, factors, selfHeal, deadLetters),
                 suggestedAckExpirySeconds(closed, config));
     }
 
