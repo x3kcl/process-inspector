@@ -74,6 +74,7 @@ public class IncidentQueryService {
     private final TriageScopeProjector scopeProjector;
     private final ErrorGroupAckService acks;
     private final RelatedBulkJobsService relatedBulkJobs;
+    private final EpisodeActionAttributionService episodeActionAttribution;
     private final SelfHealStatsService selfHeal;
     private final AttentionScoreService attention;
     private final ObjectMapper json;
@@ -90,6 +91,7 @@ public class IncidentQueryService {
             TriageScopeProjector scopeProjector,
             ErrorGroupAckService acks,
             RelatedBulkJobsService relatedBulkJobs,
+            EpisodeActionAttributionService episodeActionAttribution,
             SelfHealStatsService selfHeal,
             AttentionScoreService attention,
             ObjectMapper json,
@@ -103,6 +105,7 @@ public class IncidentQueryService {
         this.scopeProjector = scopeProjector;
         this.acks = acks;
         this.relatedBulkJobs = relatedBulkJobs;
+        this.episodeActionAttribution = episodeActionAttribution;
         this.selfHeal = selfHeal;
         this.attention = attention;
         this.json = json;
@@ -191,8 +194,19 @@ public class IncidentQueryService {
         }
         // Unbounded by design: episode count = 1 + regression_count, and every regression needs a
         // human resolve in between — a pathological ledger has dozens, not thousands.
-        List<IncidentDetail.Episode> history = episodes.findByIncidentIdOrderByStartedAtDesc(id).stream()
-                .map(IncidentQueryService::toEpisode)
+        List<IncidentEpisode> episodeRows = episodes.findByIncidentIdOrderByStartedAtDesc(id);
+        // #358 item 2: the audit-side attribution join, keyed by episode id (never positional —
+        // see EpisodeActionAttributionService for why) — a missing key (e.g. an unstubbed test
+        // double, or a degrade-safe short-circuit) renders as an honestly-omitted NON_NULL field.
+        // FAIL-CLOSED (review round, R-SAFE-17): the join scans the incident's RAW unscoped
+        // engine set, so a partially-scoped caller must never receive its tallies — that would
+        // leak activity on an engine outside their own read scope. Mirrors #329's narrowing of
+        // relatedBulkJobs on this same endpoint: skip the scan entirely (never compute-then-hide)
+        // whenever the incident's own projection came back partial.
+        Map<Long, IncidentDetail.EpisodeActionAttribution> attributions =
+                summary.partial() ? Map.of() : episodeActionAttribution.forEpisodes(row, episodeRows);
+        List<IncidentDetail.Episode> history = episodeRows.stream()
+                .map(episode -> toEpisode(episode, attributions.get(episode.getId())))
                 .toList();
         int clamped = clampWindow(windowHours);
         Duration window = Duration.ofHours(clamped);
@@ -333,7 +347,8 @@ public class IncidentQueryService {
 
     /* ---------------- helpers ---------------- */
 
-    private static IncidentDetail.Episode toEpisode(IncidentEpisode episode) {
+    private static IncidentDetail.Episode toEpisode(
+            IncidentEpisode episode, IncidentDetail.EpisodeActionAttribution attribution) {
         Long durationSeconds = episode.getEndedAt() != null
                 ? Duration.between(episode.getStartedAt(), episode.getEndedAt()).toSeconds()
                 : null;
@@ -346,7 +361,8 @@ public class IncidentQueryService {
                 episode.getResolveReason(),
                 episode.getTicketId(),
                 episode.getPeakTotal(),
-                durationSeconds);
+                durationSeconds,
+                attribution);
     }
 
     private static IncidentState parseState(String state) {
