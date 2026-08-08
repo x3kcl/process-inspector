@@ -241,10 +241,10 @@ infrastructure, no model registry, nothing speculative ships in v1.
 | `INSUFFICIENT_HISTORY` | n < 10 (the floor, §7.1) | n ≥ 10 | "no reliable self-heal history yet (3 of 10 spells observed)" |
 
 **#388 — the `SELF_HEAL_LIKELY` row above is the BASE clause, specified derivationally, not
-a second fixed string.** On the Stage 0 dashboard only (`AttentionRationale`'s `decorate()`
-path — never `/incidents`' `SelfHealBadge` text, and never the `forClass()`-composed
-rationale that also renders on `/incidents`; see §4.2's note and the known-limitation entry
-below), the composed sentence is *this table's base clause* + a suffix, appended after the
+a second fixed string.** On the Stage 0 dashboard only (`AttentionScoreService`'s
+`decorate()` path — never `/incidents`' `SelfHealBadge` text, and never the
+`forClass()`-composed rationale that also renders on `/incidents`; see §4.2's note and the
+known-limitation entry below), the composed sentence is *this table's base clause* + a suffix, appended after the
 base clause's closing `)`, whenever the class's live `deadLetterCount > 0` under TRUSTED
 counts (non-null split, every touched engine `ok` with an untruncated failure-lane scan):
 `" — not the N dead-lettered (no retries left)"` — e.g. `"usually self-heals (21/23 past
@@ -613,7 +613,7 @@ expect it not to).
   suffix, ★ SHIPPED):** T4 met a `SELF_HEAL_LIKELY` class showing `DLQ 25 / retrying 0` and
   correctly read "these won't self-heal further without action" — the badge's "usually
   self-heals" implies a passive "leave it" that only ever applies to members CURRENTLY in a
-  retrying spell. Fixed, v1-scoped to the Stage 0 dashboard ONLY: `AttentionRationale`'s
+  retrying spell. Fixed, v1-scoped to the Stage 0 dashboard ONLY: `AttentionScoreService`'s
   `decorate()` path appends the locked suffix (§4.1 above) to the `SELF_HEAL_LIKELY` clause
   when `deadLetterCount > 0` under trusted counts; `forClass()` — the entry point behind
   `IncidentQueryService.attentionScore`, which ALSO renders on `/incidents` via

@@ -477,7 +477,7 @@ detail): `" — not the N dead-lettered (no retries left)"`. Per-card variant, T
 scenario: *"25 failing · last seen just now · typically takes 4 h to resolve · usually
 self-heals (21/23 past spells, typically ≤ 1 min) — not the 25 dead-lettered (no retries
 left)."* Still one sentence. Scope is deliberately narrow (v1): the Stage 0 dashboard's
-`AttentionRationale.decorate()` path only — never the `/incidents` `SelfHealBadge` text
+`AttentionScoreService.decorate()` path only — never the `/incidents` `SelfHealBadge` text
 (that surface's tooltip instead gained a static, unconditional teaching sentence) and never
 the `forClass()`-composed rationale that also renders on `/incidents` (always the split
 absent, so always the base clause there) — a known limitation named in full in

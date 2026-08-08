@@ -195,9 +195,18 @@ public final class AttentionRationale {
      * dead-letters is routine, so keying on {@code retrying == 0} was the rejected v1 shape,
      * REQUEST-CHANGES finding 3) — gated on {@link DeadLetterEvidence#countsTrusted()} so an
      * untrusted/partial-scope split NEVER renders it (fail toward the base clause, always the
-     * weaker claim). "Won't … without action" is not a forward-looking verdict: a dead-lettered
-     * job has structurally exhausted its retries at read time — evidence, not a promise about
-     * what an operator or a later engine-side mutation does next.
+     * weaker claim).
+     *
+     * <p><b>Honesty of "(no retries left)" — mixed-case honesty, per the locked re-verdict.</b>
+     * The shipped wording is a POINT-IN-TIME STATE FACT, not a forward-looking verdict: at THIS
+     * read, these N jobs have structurally exhausted their retry budget — true regardless of
+     * what happens next. A later engine-side mutation (an operator retry, a corrective action
+     * that clears or terminates the job) cannot retroactively falsify a snapshot statement about
+     * the state observed AT COMPOSITION TIME; it only means the NEXT {@code decorate()} call
+     * composes a different sentence from a different snapshot. Card/sentence atomicity holds by
+     * construction: this {@code N} is read from the exact SAME {@code ErrorGroup}/{@code
+     * decorate()} snapshot the card face itself renders, so the two can never quote different
+     * counts for the same read.
      */
     private static String populationSuffix(DeadLetterEvidence deadLetters) {
         if (deadLetters == null || !deadLetters.countsTrusted()) {

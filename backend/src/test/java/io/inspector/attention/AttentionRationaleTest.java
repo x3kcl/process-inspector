@@ -34,6 +34,31 @@ class AttentionRationaleTest {
         assertThat(sentence.chars().filter(c -> c == '.').count()).isEqualTo(1);
     }
 
+    /**
+     * PR #394 review: the CAP is "one sentence, one tooltip" — every optional clause this class
+     * can emit must be able to coexist without breaking that, not just the common cases the other
+     * tests exercise individually. Stacks every optional clause the composer can produce at once
+     * (the #365 burst clause, the arrivals-unknown honesty clause, AND the #388 population
+     * suffix on top of the SELF_HEAL_LIKELY base clause) and re-asserts the same one-line/
+     * one-period invariant under the maximum load, not just the minimal case above.
+     */
+    @Test
+    void staysOneSentenceOnOneLineWithTrustedSuffixEvidenceFloodingAndArrivalsUnknownAllPresentAtOnce() {
+        SelfHealStats likely = stats(SelfHealLane.SELF_HEAL_LIKELY, 14, 12);
+        DeadLetterEvidence trusted = new DeadLetterEvidence(9L, 0L, true);
+        AttentionFactors factors = factors(45, 90_000L, true, true, 40L, false);
+
+        String sentence = AttentionRationale.sentence(4_312, factors, likely, trusted);
+
+        assertThat(sentence).doesNotContain("\n").endsWith(".");
+        assertThat(sentence.chars().filter(c -> c == '.').count()).isEqualTo(1);
+        assertThat(sentence)
+                .contains("spiking: 40 in the last")
+                .contains("arrival volume unknown")
+                .contains("usually self-heals (12/14 past spells")
+                .contains("— not the 9 dead-lettered (no retries left)");
+    }
+
     @Test
     void everySelfHealLaneGetsItsOwnEvidenceClauseWithTheRecordInIt() {
         // stats() below sets ttsP90Seconds=600s (10 min) — SELF_HEAL_LIKELY therefore carries both
