@@ -35,7 +35,7 @@ describe('selfHealBadgeContent — exact copy per RETRYING-RISK-LANE.md §4.1', 
     const content = selfHealBadgeContent(
       stats({ lane: 'SELF_HEAL_LIKELY', n: 14, healed: 12, ttsP90Seconds: 480 }),
     )
-    expect(content?.text).toBe('usually self-heals (12/14, typically ≤ 8 min)')
+    expect(content?.text).toBe('usually self-heals (12/14 past spells, typically ≤ 8 min)')
   })
 
   it('SELF_HEAL_LIKELY rounds the typical duration UP so the "≤" bound never understates', () => {
@@ -43,12 +43,30 @@ describe('selfHealBadgeContent — exact copy per RETRYING-RISK-LANE.md §4.1', 
     const content = selfHealBadgeContent(
       stats({ lane: 'SELF_HEAL_LIKELY', n: 14, healed: 12, ttsP90Seconds: 481 }),
     )
-    expect(content?.text).toBe('usually self-heals (12/14, typically ≤ 9 min)')
+    expect(content?.text).toBe('usually self-heals (12/14 past spells, typically ≤ 9 min)')
   })
 
   it('SELF_HEAL_LIKELY omits the typical-duration clause when ttsP90Seconds is absent (defensive — DTO cannot express it below floor/zero-healed)', () => {
     const content = selfHealBadgeContent(stats({ lane: 'SELF_HEAL_LIKELY', n: 14, healed: 12 }))
-    expect(content?.text).toBe('usually self-heals (12/14)')
+    expect(content?.text).toBe('usually self-heals (12/14 past spells)')
+  })
+
+  // #387: Stage 0's card rationale (AttentionRationale.java, server-side) composes its own
+  // self-heal clause separately from this badge — different language, same design source
+  // (RETRYING-RISK-LANE.md §4.1). This locks the LIKELY-lane wire format this module owns so a
+  // future edit here cannot silently diverge from AttentionRationaleTest.java's mirrored
+  // assertion without both test suites turning red. If you change this string, change the Java
+  // one in the same commit.
+  it('SELF_HEAL_LIKELY format cannot drift from the backend rationale composer (#387)', () => {
+    const withTiming = selfHealBadgeContent(
+      stats({ lane: 'SELF_HEAL_LIKELY', n: 23, healed: 21, ttsP90Seconds: 60 }),
+    )
+    expect(withTiming?.text).toBe('usually self-heals (21/23 past spells, typically ≤ 1 min)')
+
+    const withoutTiming = selfHealBadgeContent(
+      stats({ lane: 'SELF_HEAL_LIKELY', n: 23, healed: 21 }),
+    )
+    expect(withoutTiming?.text).toBe('usually self-heals (21/23 past spells)')
   })
 
   it('SELF_HEAL_MIXED', () => {

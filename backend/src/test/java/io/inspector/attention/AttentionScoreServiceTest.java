@@ -213,7 +213,8 @@ class AttentionScoreServiceTest {
 
         assertThat(scored.factors().selfHealLane()).isEqualTo("SELF_HEAL_LIKELY");
         assertThat(scored.factors().selfHeal()).isEqualTo(0.25);
-        assertThat(scored.rationale()).contains("usually self-heals (12/14)");
+        // #387: the rationale mirrors /incidents' SelfHealBadge format exactly, unit word + timing.
+        assertThat(scored.rationale()).contains("usually self-heals (12/14 past spells, typically ≤ 8 min)");
     }
 
     /* ---------------- review FIX 2: untrusted ≠ zero, and absent ≠ untrusted ---------------- */

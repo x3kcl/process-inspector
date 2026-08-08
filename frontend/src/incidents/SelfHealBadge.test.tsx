@@ -41,7 +41,7 @@ describe('SelfHealBadge', () => {
         }}
       />,
     )
-    const badge = screen.getByText('usually self-heals (12/14, typically ≤ 8 min)')
+    const badge = screen.getByText('usually self-heals (12/14 past spells, typically ≤ 8 min)')
     expect(badge.className).toContain('lane-likely')
   })
 

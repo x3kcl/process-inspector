@@ -32,14 +32,47 @@ class AttentionRationaleTest {
 
     @Test
     void everySelfHealLaneGetsItsOwnEvidenceClauseWithTheRecordInIt() {
+        // stats() below sets ttsP90Seconds=600s (10 min) — SELF_HEAL_LIKELY therefore carries both
+        // the #387 unit word and the timing half; the other lanes are untouched by #387.
         assertThat(sentence(1, 0, null, stats(SelfHealLane.SELF_HEAL_LIKELY, 14, 12), false))
-                .contains("usually self-heals (12/14)");
+                .contains("usually self-heals (12/14 past spells, typically ≤ 10 min)");
         assertThat(sentence(1, 0, null, stats(SelfHealLane.SELF_HEAL_MIXED, 11, 6), false))
                 .contains("mixed self-heal record (6/11)");
         assertThat(sentence(1, 0, null, stats(SelfHealLane.SELF_HEAL_UNLIKELY, 12, 1), false))
                 .contains("rarely self-heals (1/12)");
         assertThat(sentence(1, 0, null, stats(SelfHealLane.INSUFFICIENT_HISTORY, 3, 1), false))
                 .contains("no self-heal history");
+    }
+
+    /**
+     * #387: Stage 0's rationale used to drop the timing half and the "spells" unit word that
+     * /incidents' SelfHealBadge already carried (frontend/src/incidents/selfHeal.ts,
+     * SELF_HEAL_LIKELY case) — same lane, same server-served {@code ttsP90Seconds}, two different
+     * strings. This locks BOTH variants (with timing, without) so the two surfaces cannot silently
+     * diverge again; frontend/src/incidents/selfHeal.test.ts's matching "cannot drift" test mirrors
+     * the same n/healed/ttsP90 inputs and asserts the identical string.
+     */
+    @Test
+    void selfHealLikelyMirrorsTheIncidentsBadgeExactlyWithAndWithoutTiming() {
+        SelfHealStats withTiming =
+                new SelfHealStats(SelfHealLane.SELF_HEAL_LIKELY.name(), 23, 21, 0.732, 0.98, 0L, 60L, 2, false);
+        assertThat(sentence(1, 0, null, withTiming, false))
+                .contains("usually self-heals (21/23 past spells, typically ≤ 1 min)");
+
+        SelfHealStats withoutTiming =
+                new SelfHealStats(SelfHealLane.SELF_HEAL_LIKELY.name(), 23, 21, 0.732, 0.98, null, null, 2, false);
+        assertThat(sentence(1, 0, null, withoutTiming, false))
+                .contains("usually self-heals (21/23 past spells)")
+                .doesNotContain("typically");
+    }
+
+    @Test
+    void minutesCeilRoundsUpSoTheBoundNeverUnderstates() {
+        assertThat(AttentionRationale.minutesCeil(45)).isEqualTo(1);
+        assertThat(AttentionRationale.minutesCeil(60)).isEqualTo(1);
+        assertThat(AttentionRationale.minutesCeil(61)).isEqualTo(2);
+        assertThat(AttentionRationale.minutesCeil(480)).isEqualTo(8);
+        assertThat(AttentionRationale.minutesCeil(481)).isEqualTo(9);
     }
 
     @Test

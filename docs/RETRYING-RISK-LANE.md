@@ -235,7 +235,7 @@ infrastructure, no model registry, nothing speculative ships in v1.
 
 | Lane | Enter | Exit (hysteresis) | Badge copy |
 |---|---|---|---|
-| `SELF_HEAL_LIKELY` | Wilson LB ≥ 0.70 | LB < 0.60 | "usually self-heals (12/14, typically ≤ 8 min)" |
+| `SELF_HEAL_LIKELY` | Wilson LB ≥ 0.70 | LB < 0.60 | "usually self-heals (12/14 past spells, typically ≤ 8 min)" |
 | `SELF_HEAL_MIXED` | otherwise (n ≥ floor) | — | "mixed self-heal record (6/11)" |
 | `SELF_HEAL_UNLIKELY` | Wilson UB ≤ 0.30 | UB > 0.40 | "rarely self-heals (1/12) — treat like FAILED" |
 | `INSUFFICIENT_HISTORY` | n < 10 (the floor, §7.1) | n ≥ 10 | "no reliable self-heal history yet (3 of 10 spells observed)" |
@@ -581,6 +581,16 @@ expect it not to).
   to EXACTLY this `compareSelfHealRisk` ordering when it is absent — the shipped, flag-off,
   expected-today case, so this section's behavior is UNCHANGED in practice. `compareSelfHealRisk`
   itself and `SelfHealBadge`'s rendering are untouched — only the ordering ROLE moved.
+- **Correction (post-ship, #387, ALARM-COST-MODEL.md §8.9 finding 1):** the §4.1 `SELF_HEAL_LIKELY`
+  badge copy above gained the "past spells" unit word (was a bare `(H/N)` fraction, misread by a
+  tester as "H of the N currently failing") in the SAME change that fixed Stage 0's rationale
+  clause (`AttentionRationale.java`), which had been composing `"usually self-heals (H/N)"` with
+  neither the unit word nor the timing half the badge already carried. Both surfaces now render
+  the identical `"usually self-heals (H/N past spells[, typically ≤ X min])"` string for this lane
+  — `selfHeal.test.ts` and `AttentionRationaleTest.java` each lock a "cannot drift" case against the
+  same n/healed/ttsP90 inputs so the two composers (different languages, no shared code) cannot
+  silently diverge again. MIXED/UNLIKELY copy is unchanged (out of #387's scope; #388 tracks the
+  separate population-aware-posture gap).
 
 ## 11. Non-goals & explicitly rejected
 

@@ -91,9 +91,14 @@ export function selfHealBadgeContent(
         selfHeal.ttsP90Seconds !== undefined
           ? `, typically ≤ ${String(minutesCeil(selfHeal.ttsP90Seconds))} min`
           : ''
+      // #387: the bare "H/N" fraction reads as "H of the N currently failing" to a first-time
+      // viewer (tester T3) — "past spells" names what is being counted (a lifetime historical
+      // count, not the live population). Same unit word server-side (AttentionRationale) so the
+      // two surfaces stay word-for-word identical for this lane — see the drift test in both
+      // selfHeal.test.ts and AttentionRationaleTest.java.
       return {
         lane: 'SELF_HEAL_LIKELY',
-        text: `usually self-heals (${String(healed)}/${String(n)}${typical})`,
+        text: `usually self-heals (${String(healed)}/${String(n)} past spells${typical})`,
         tooltip:
           'This error class usually leaves the RETRYING state on its own — engine-scheduled ' +
           `retries, no operator action — in ${String(healed)} of ${String(n)} observed retrying spells.`,
