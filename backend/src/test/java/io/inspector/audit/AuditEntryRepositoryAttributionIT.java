@@ -26,8 +26,11 @@ import org.testcontainers.containers.PostgreSQLContainer;
  * Postgres, exactly the reasoning {@link AuditEntryRepositoryScopeIT} documents for its sibling
  * query. LOCAL-ONLY (not in ci.yml's itClass), same precedent.
  *
- * <p>Requires: docker compose -f docker/docker-compose.dev.yml up -d (context boot only — no
- * engine call is made; this test only needs a Postgres, which Testcontainers supplies itself).
+ * <p>Requires only a reachable Docker daemon — Testcontainers provisions its own disposable
+ * Postgres, the Spring context boots with {@code ENGINE_A_PASSWORD} stubbed via the
+ * {@code @SpringBootTest} property above, and no engine call is ever made, so (unlike most of
+ * this package's other rung-4 tests) the {@code docker-compose.dev.yml} engine stack does not
+ * need to be up for this one.
  */
 @SpringBootTest(properties = "ENGINE_A_PASSWORD=test")
 @ActiveProfiles("it-actions")

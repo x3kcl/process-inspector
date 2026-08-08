@@ -198,8 +198,13 @@ public class IncidentQueryService {
         // #358 item 2: the audit-side attribution join, keyed by episode id (never positional —
         // see EpisodeActionAttributionService for why) — a missing key (e.g. an unstubbed test
         // double, or a degrade-safe short-circuit) renders as an honestly-omitted NON_NULL field.
+        // FAIL-CLOSED (review round, R-SAFE-17): the join scans the incident's RAW unscoped
+        // engine set, so a partially-scoped caller must never receive its tallies — that would
+        // leak activity on an engine outside their own read scope. Mirrors #329's narrowing of
+        // relatedBulkJobs on this same endpoint: skip the scan entirely (never compute-then-hide)
+        // whenever the incident's own projection came back partial.
         Map<Long, IncidentDetail.EpisodeActionAttribution> attributions =
-                episodeActionAttribution.forEpisodes(row, episodeRows);
+                summary.partial() ? Map.of() : episodeActionAttribution.forEpisodes(row, episodeRows);
         List<IncidentDetail.Episode> history = episodeRows.stream()
                 .map(episode -> toEpisode(episode, attributions.get(episode.getId())))
                 .toList();

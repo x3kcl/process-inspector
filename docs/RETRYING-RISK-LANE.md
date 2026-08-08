@@ -198,10 +198,26 @@ Surfaced on `GET /api/incidents/{id}` as `episodes[].actionsDuringEpisode
 {count, byVerb, byOutcome, truncated}` (INCIDENT-LEDGER.md §6) — an aggregate-only tally
 (no engine id, instance id, actor, or reason), over-inclusive in the SAME accepted way this
 section's confound rule is (an action on the incident's current engine set during the
-window counts even if it targeted a different class sharing that engine). Currently
-uncomputable-as-a-rate exactly like §3.2's "episodes closed with/without action" statistic
-(zero episodes have ever closed in the pilot ledger, §8) — this slice makes the join
-EXIST and answer honestly the moment a real episode closes; it does not, by itself,
+window counts even if it targeted a different class sharing that engine). **Fail-closed
+under R-SAFE-17 (review round):** the scan reads the incident's raw UNSCOPED engine set, so
+the whole field is OMITTED, never narrowed, whenever the incident's own detail projection is
+partially scoped — mirrors #329's `relatedBulkJobs` narrowing on this same endpoint, so a
+partially-scoped VIEWER can never learn about action activity on an engine outside their own
+read scope through this join.
+
+It also UNDER-counts at two edges, the mirror image of the over-inclusion above: an action
+landing in the sub-bucket instant strictly BEFORE `startedAt` (the episode's own
+first-observation timestamp, not a sampler bucket boundary) is excluded even when it is what
+caused the sighting — e.g. an operator's `edit-variable` a few hundred milliseconds ahead of
+the class first appearing in the aggregation pass that opens the episode never counts toward
+it; and an action taken while the incident sits RESOLVED — after one episode's `endedAt` and
+before a LATER regression's `startedAt` (the regression gate itself waits for a
+`seen_zero_since_resolve` cycle, §5, so this gap is not instantaneous) — falls inside
+NEITHER episode's window and is invisible to this join entirely, even though it may be
+exactly the action a reviewer would want credited (or blamed) for the class staying quiet, or
+failing to. Currently uncomputable-as-a-rate exactly like §3.2's "episodes closed with/without
+action" statistic (zero episodes have ever closed in the pilot ledger, §8) — this slice makes
+the join EXIST and answer honestly the moment a real episode closes; it does not, by itself,
 produce a measured number.
 
 ### 3.4 Why not ML (v1)

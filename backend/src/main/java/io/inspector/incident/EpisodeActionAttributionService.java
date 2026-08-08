@@ -3,8 +3,11 @@ package io.inspector.incident;
 import com.fasterxml.jackson.core.JsonProcessingException;
 import com.fasterxml.jackson.core.type.TypeReference;
 import com.fasterxml.jackson.databind.ObjectMapper;
+import com.github.benmanes.caffeine.cache.Cache;
+import com.github.benmanes.caffeine.cache.Caffeine;
 import io.inspector.audit.AttributedActionPoint;
 import io.inspector.audit.AuditEntryRepository;
+import io.inspector.config.InspectorProperties;
 import io.inspector.dto.IncidentDetail;
 import java.time.Clock;
 import java.time.Instant;
@@ -48,6 +51,14 @@ import org.springframework.stereotype.Service;
  * {@code IncidentDetail.Episode}). Degrade-safe like the self-heal decoration it borrows the
  * pattern from — a corrupted {@code counts_by_engine} blob drops attribution for that ONE
  * incident rather than 500ing the detail read it decorates.
+ *
+ * <p><b>Caffeine-cached, TTL aligned to the sampler beat</b> (review round; the {@code
+ * SelfHealStatsService} precedent, §3.2's "acceptable simple implementation" over a bespoke
+ * cache key): a per-episode scan is otherwise UNCACHED on a polled surface — a weeks-old,
+ * never-closed pilot episode would re-scan its full span on every incident detail render.
+ * Keyed by episode id alone (globally unique, one incident forever by FK — no cross-incident
+ * collision risk); a late-arriving audit row (e.g. a bulk item settling after its envelope)
+ * is visible again within one TTL, same staleness bound the self-heal confound cache accepts.
  */
 @Service
 public class EpisodeActionAttributionService {
@@ -61,21 +72,33 @@ public class EpisodeActionAttributionService {
     /**
      * Hard cap on the per-episode action scan (mirrors {@code SelfHealStatsService
      * #CONFOUND_AUDIT_CAP}'s reasoning): a single large bulk retry can write thousands of
-     * per-item audit rows inside one episode window, and this runs per episode per incident
-     * detail read. When it bites, {@code truncated=true} tells the truth instead of presenting a
-     * partial tally as complete — the cap drops the OLDEST rows (the query is {@code ts DESC}),
-     * so the count is always at least the freshest attributable activity.
+     * per-item audit rows inside one episode window, and this runs per episode per cache miss.
+     * When it bites, {@code truncated=true} tells the truth instead of presenting a partial
+     * tally as complete — the cap drops the OLDEST rows (the query is {@code ts DESC}), so the
+     * count is always at least the freshest attributable activity. The fetch itself asks for
+     * {@code EPISODE_ACTION_CAP + 1} (this file's own cap+1 idiom, see {@code
+     * IncidentQueryService#list}'s hard-cap comment): a full {@code cap+1} page proves the cap
+     * actually bit without a separate count query, and the caller trims back to {@code cap}
+     * before tallying so the truncated count itself never includes the sentinel row.
      */
     static final int EPISODE_ACTION_CAP = 5_000;
 
     private final AuditEntryRepository audits;
     private final ObjectMapper json;
     private final Clock clock;
+    private final Cache<Long, IncidentDetail.EpisodeActionAttribution> cache;
 
-    public EpisodeActionAttributionService(AuditEntryRepository audits, ObjectMapper json, Clock clock) {
+    public EpisodeActionAttributionService(
+            AuditEntryRepository audits, ObjectMapper json, Clock clock, InspectorProperties properties) {
         this.audits = audits;
         this.json = json;
         this.clock = clock;
+        // TTL aligned to the sampler beat (§3.2 precedent) — short enough that a late-settling
+        // audit row cannot stay unaccounted for long, simple enough to need no bespoke cache-key
+        // machinery keyed on "latest relevant audit row".
+        this.cache = Caffeine.newBuilder()
+                .expireAfterWrite(properties.snapshotOrDefault().bucketWidthOrDefault())
+                .build();
     }
 
     /**
@@ -87,7 +110,9 @@ public class EpisodeActionAttributionService {
      * SelfHealStatsService#engineIdsOf} already accepts: a class's historic per-episode engine set
      * is not reconstructable from the ledger, so a registry change can shift which engines a
      * historic episode's tally draws from. A corrupted/empty engine set degrades every episode to
-     * the honest empty attribution rather than failing the caller's read.
+     * the honest empty attribution rather than failing the caller's read. Because the engine set
+     * is UNSCOPED, {@code IncidentQueryService} must never call this for a partially-scoped
+     * incident projection (R-SAFE-17) — see its call site's comment.
      */
     public Map<Long, IncidentDetail.EpisodeActionAttribution> forEpisodes(
             Incident incident, List<IncidentEpisode> episodesNewestFirst) {
@@ -99,9 +124,8 @@ public class EpisodeActionAttributionService {
             }
             return out;
         }
-        Instant now = clock.instant();
         for (IncidentEpisode episode : episodesNewestFirst) {
-            out.put(episode.getId(), attribute(episode, engineIds, now));
+            out.put(episode.getId(), cache.get(episode.getId(), id -> attribute(episode, engineIds, clock.instant())));
         }
         return out;
     }
@@ -109,8 +133,15 @@ public class EpisodeActionAttributionService {
     private IncidentDetail.EpisodeActionAttribution attribute(
             IncidentEpisode episode, Set<String> engineIds, Instant now) {
         Instant until = episode.getEndedAt() != null ? episode.getEndedAt() : now;
+        // cap+1: a full page proves the cap bit without a separate count query (IncidentQueryService
+        // #list's idiom) — trim back to the cap before tallying so `count`/`truncated` never see
+        // the sentinel (cap+1)-th row.
         List<AttributedActionPoint> points = audits.findAttributableActionPoints(
-                engineIds, episode.getStartedAt(), until, PageRequest.of(0, EPISODE_ACTION_CAP));
+                engineIds, episode.getStartedAt(), until, PageRequest.of(0, EPISODE_ACTION_CAP + 1));
+        boolean truncated = points.size() > EPISODE_ACTION_CAP;
+        if (truncated) {
+            points = points.subList(0, EPISODE_ACTION_CAP);
+        }
         if (points.isEmpty()) {
             return EMPTY;
         }
@@ -120,7 +151,6 @@ public class EpisodeActionAttributionService {
             byVerb.merge(point.action(), 1L, Long::sum);
             byOutcome.merge(point.outcome().name(), 1L, Long::sum);
         }
-        boolean truncated = points.size() >= EPISODE_ACTION_CAP;
         return new IncidentDetail.EpisodeActionAttribution(points.size(), byVerb, byOutcome, truncated);
     }
 

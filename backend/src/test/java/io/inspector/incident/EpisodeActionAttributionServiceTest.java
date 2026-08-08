@@ -13,6 +13,7 @@ import com.fasterxml.jackson.databind.ObjectMapper;
 import io.inspector.audit.AttributedActionPoint;
 import io.inspector.audit.AuditEntryRepository;
 import io.inspector.audit.AuditOutcome;
+import io.inspector.config.InspectorProperties;
 import io.inspector.dto.IncidentDetail;
 import java.time.Clock;
 import java.time.Duration;
@@ -31,6 +32,12 @@ import org.springframework.data.domain.PageRequest;
  * AuditEntryRepository#findAttributableActionPoints}, hand-authored JPQL) is proven against a
  * REAL Postgres by {@code AuditEntryRepositoryAttributionIT} (rung 4) — this class only proves
  * the service calls it right and folds the result honestly.
+ *
+ * <p>Every {@code forEpisodes} call below hits a FRESH {@link EpisodeActionAttributionService}
+ * instance (one per test), so the review-round Caffeine cache never survives across tests and
+ * every stub is exercised exactly once per test — the cache's own TTL behavior is not this
+ * class's concern (Caffeine itself is trusted; {@code SelfHealStatsServiceTest} sets the same
+ * precedent for its sibling cache).
  */
 class EpisodeActionAttributionServiceTest {
 
@@ -39,7 +46,8 @@ class EpisodeActionAttributionServiceTest {
     private final AuditEntryRepository audits = mock(AuditEntryRepository.class);
     private final ObjectMapper json = new ObjectMapper();
     private final Clock clock = Clock.fixed(NOW, ZoneOffset.UTC);
-    private final EpisodeActionAttributionService service = new EpisodeActionAttributionService(audits, json, clock);
+    private final EpisodeActionAttributionService service = new EpisodeActionAttributionService(
+            audits, json, clock, new InspectorProperties(null, null, null, null, null, null, null, null));
 
     @Test
     void tallyByVerbAndOutcomeForAnEndedEpisode() {
@@ -85,16 +93,36 @@ class EpisodeActionAttributionServiceTest {
     void aCappedScanIsFlaggedTruncated_neverPresentedAsComplete() {
         Incident incident = incident("{\"engine-a\":{\"order:v3\":4}}");
         IncidentEpisode ended = episode(6L, NOW.minus(Duration.ofHours(3)), NOW.minus(Duration.ofHours(1)));
-        List<AttributedActionPoint> capped = java.util.stream.IntStream.range(
+        // cap+1 idiom: the repository hands back one MORE than the cap (a full page) so the
+        // service can tell "exactly at the cap" apart from "the cap bit" without a count query —
+        // see EpisodeActionAttributionService#attribute's cap+1 comment.
+        List<AttributedActionPoint> capPlusOne = java.util.stream.IntStream.range(
+                        0, EpisodeActionAttributionService.EPISODE_ACTION_CAP + 1)
+                .mapToObj(i -> new AttributedActionPoint("retry-job", AuditOutcome.ok))
+                .toList();
+        when(audits.findAttributableActionPoints(any(), any(), any(), any())).thenReturn(capPlusOne);
+
+        Map<Long, IncidentDetail.EpisodeActionAttribution> out = service.forEpisodes(incident, List.of(ended));
+
+        // trimmed back to the cap before tallying — the sentinel (cap+1)-th row never counts
+        assertThat(out.get(6L).count()).isEqualTo(EpisodeActionAttributionService.EPISODE_ACTION_CAP);
+        assertThat(out.get(6L).truncated()).isTrue();
+    }
+
+    @Test
+    void aFullPageExactlyAtTheCapIsNotFlaggedTruncated() {
+        Incident incident = incident("{\"engine-a\":{\"order:v3\":4}}");
+        IncidentEpisode ended = episode(6L, NOW.minus(Duration.ofHours(3)), NOW.minus(Duration.ofHours(1)));
+        List<AttributedActionPoint> exactlyAtCap = java.util.stream.IntStream.range(
                         0, EpisodeActionAttributionService.EPISODE_ACTION_CAP)
                 .mapToObj(i -> new AttributedActionPoint("retry-job", AuditOutcome.ok))
                 .toList();
-        when(audits.findAttributableActionPoints(any(), any(), any(), any())).thenReturn(capped);
+        when(audits.findAttributableActionPoints(any(), any(), any(), any())).thenReturn(exactlyAtCap);
 
         Map<Long, IncidentDetail.EpisodeActionAttribution> out = service.forEpisodes(incident, List.of(ended));
 
         assertThat(out.get(6L).count()).isEqualTo(EpisodeActionAttributionService.EPISODE_ACTION_CAP);
-        assertThat(out.get(6L).truncated()).isTrue();
+        assertThat(out.get(6L).truncated()).isFalse();
     }
 
     @Test
@@ -138,7 +166,8 @@ class EpisodeActionAttributionServiceTest {
                         eq(Set.of("engine-a")),
                         eq(startedAt),
                         eq(endedAt),
-                        eq(PageRequest.of(0, EpisodeActionAttributionService.EPISODE_ACTION_CAP)));
+                        // cap+1: a full page proves the cap bit without a separate count query
+                        eq(PageRequest.of(0, EpisodeActionAttributionService.EPISODE_ACTION_CAP + 1)));
     }
 
     /* ---------------- fixtures ---------------- */

@@ -755,6 +755,17 @@ so history survives DLQ drains:
 - **Episodes**: each open→resolve cycle is a persisted episode (started/ended/by/reason/
   ticket/peak) — per-episode time-to-resolution is readable off the detail view, the
   post-incident-review substrate.
+- **Episode action attribution** *(v2, #358 item 2)*: each episode on the detail view
+  additionally carries `actionsDuringEpisode {count, byVerb, byOutcome, truncated}` — a
+  read-only, audit-side aggregate of corrective actions attributed to that episode's
+  `[startedAt, endedAt-or-now]` window, closing the "per-class intervention outcomes are
+  underivable from any read API" gap (audit rows carry no signature; `payload` stays null
+  over REST, R-AUD-03). Zero payload de-minimization, zero new engine calls, zero changes to
+  any corrective-action rail — an over-inclusive, aggregate-only tally (no engine/instance
+  id, actor, or reason), never an exact per-instance join. Fail-closed under R-SAFE-17: the
+  block is OMITTED entirely, never narrowed, whenever the incident's own scope projection is
+  partial (mirrors this same section's `relatedBulkJobs` issue #329 narrowing, on the same
+  endpoint).
 - **Timeline**: a per-incident occurrence time-series (total / dead-letter / retrying per
   sampler bucket) powers the detail view's arrival-rate timeline (detail-only — list cards
   carry no series, deliberately avoiding a per-card N+1); truncated samples

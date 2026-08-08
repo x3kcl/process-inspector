@@ -387,6 +387,41 @@ class IncidentQueryServiceTest {
         assertThat(detail.episodes().get(1).actionsDuringEpisode()).isSameAs(endedAttribution);
     }
 
+    /**
+     * Review round (R-SAFE-17, fail-closed, #329's {@code relatedBulkJobs} narrowing precedent):
+     * the attribution scan reads the incident's RAW unscoped engine set, so a partially-scoped
+     * caller must NEVER receive its tallies — that would leak activity on an engine outside their
+     * own read scope. The join must not even be INVOKED for a partial projection (never
+     * compute-then-hide), so every episode's {@code actionsDuringEpisode} is honestly omitted.
+     */
+    @Test
+    void aPartiallyScopedIncidentOmitsActionsDuringEpisodeEntirely_neverInvokesTheJoin() {
+        // fleet() = engine-a (4) + engine-b (8); a caller who can only read engine-a sees a
+        // PARTIAL projection (narrowed 1 of 2 engines) — exactly IncidentQueryServiceTest's own
+        // partialScopeRecomputesTheTotalFromSurvivorsAndFlagsIt fixture shape.
+        Incident incident = row(ID, "hash-1", CURRENT, IncidentState.OPEN, NOW, 12, fleet());
+        when(gate.readableEngineIds(auth)).thenReturn(Set.of("engine-a"));
+        when(incidents.findById(ID)).thenReturn(Optional.of(incident));
+        IncidentEpisode ended =
+                episode(6L, IncidentState.OPEN, NOW.minus(Duration.ofHours(3)), NOW.minus(Duration.ofHours(1)));
+        when(episodes.findByIncidentIdOrderByStartedAtDesc(ID)).thenReturn(List.of(ended));
+        when(occurrences.findByIdIncidentIdAndIdSampledAtGreaterThanEqualOrderByIdSampledAtAsc(
+                        anyLong(), any(Instant.class)))
+                .thenReturn(List.of());
+        TriageDashboardResponse empty = dashboard();
+        when(triage.dashboard(false)).thenReturn(empty);
+        when(projector.project(any(), eq(auth))).thenReturn(empty);
+        when(acks.decorate(any())).thenReturn(empty);
+        when(relatedBulkJobs.forSignature("hash-1", CURRENT, Set.of("engine-a")))
+                .thenReturn(List.of());
+
+        IncidentDetail detail = service.detail(ID, 24, auth);
+
+        assertThat(detail.incident().partial()).isTrue();
+        assertThat(detail.episodes().get(0).actionsDuringEpisode()).isNull();
+        verify(episodeActionAttribution, never()).forEpisodes(any(), any());
+    }
+
     @Test
     void aMissingAttributionEntryRendersAsAnHonestlyOmittedField() {
         stubEmptyDetail(row(ID, "hash-1", CURRENT, IncidentState.OPEN, NOW, 4, fleet()));

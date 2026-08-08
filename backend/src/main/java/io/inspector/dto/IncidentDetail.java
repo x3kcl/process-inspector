@@ -75,14 +75,24 @@ public record IncidentDetail(
      * incident's engine during the episode window counts even if it targeted a DIFFERENT failure
      * class active on that same engine at the same time (exact per-signature attribution would
      * need the triggering signature stamped onto the audit row at write time, which this slice
-     * deliberately does NOT add — R-AUD-03 and the corrective-actions rails are untouched).
+     * deliberately does NOT add — R-AUD-03 and the corrective-actions rails are untouched). It can
+     * also UNDER-count at two edges: an action landing in the sub-{@code sampledAt}-beat instant
+     * strictly before {@code startedAt} (the episode's own first-observation timestamp, not a
+     * bucket boundary) is excluded even if it caused the sighting, and an action taken while the
+     * incident sat RESOLVED — after one episode's {@code endedAt} and before a later regression's
+     * {@code startedAt} — falls into neither episode's window and is invisible to this join
+     * entirely (see RETRYING-RISK-LANE.md §3.3 for the full discussion).
      * {@code byVerb}/{@code byOutcome} are aggregate TALLIES only — no engine id, instance id,
-     * actor, or reason leaves this join, so nothing here can identify a target beyond what the
-     * incident detail already reveals. The engine set is the incident's CURRENT snapshot (same
-     * precedent as the self-heal confound scan): a class's historic per-episode engine set is not
-     * reconstructable from the ledger, so a registry change can shift which engines a HISTORIC
-     * episode's tally draws from. {@code truncated} is honest per the per-episode scan cap: never
-     * present a capped tally as complete.
+     * actor, or reason ever leaves this join. The engine set feeding the scan is the incident's
+     * CURRENT (raw, unscoped) snapshot (same precedent as the self-heal confound scan): a class's
+     * historic per-episode engine set is not reconstructable from the ledger, so a registry change
+     * can shift which engines a HISTORIC episode's tally draws from — and BECAUSE the scan is
+     * unscoped, this whole field is OMITTED, never narrowed, whenever the incident's OWN
+     * projection is partially scoped (R-SAFE-17): a fail-closed choice mirroring #329's
+     * {@code relatedBulkJobs} narrowing on this same endpoint, so a partially-scoped VIEWER can
+     * never learn about action activity on an engine outside their own read scope through this
+     * field. {@code truncated} is honest per the per-episode scan cap: never present a capped
+     * tally as complete.
      */
     @JsonInclude(JsonInclude.Include.NON_NULL)
     public record EpisodeActionAttribution(
