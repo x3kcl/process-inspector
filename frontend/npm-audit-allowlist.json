@@ -1,11 +1,4 @@
 {
   "//": "Dated exceptions for scripts/check-npm-audit-allowlist.mjs (issue #297). Every entry MUST carry a real expiry date so an exception can't rot silently — the checker hard-fails on an expired entry even if the advisory is still unfixed, forcing a human to re-look and either renew (fresh justification + new date) or escalate. Re-run `npm view <pkg> versions` for a fresh in-range fix before renewing (see .claude/skills memory: npm-audit-redocly-overrides — 'no fix available' is usually wrong the first time you check, but confirm it's still wrong before renewing on autopilot).",
-  "entries": [
-    {
-      "ghsaId": "GHSA-mh99-v99m-4gvg",
-      "package": "brace-expansion",
-      "justification": "Transitive under @redocly/openapi-core (pinned exactly to minimatch@5.1.9) <- openapi-typescript@7.13.0 (latest 7.x) <- gen:api, a build-time-only devDependency. No in-range fix exists as of 2026-07-26: minimatch@5.1.9 declares brace-expansion@^2.0.1, and 2.1.2 (already applied via a subtree-scoped package.json override) is the newest 2.x release, but the advisory's vulnerable range now extends through 5.0.7 across every major, so 2.1.2 is still inside it -- the fix (5.0.8) sits outside minimatch's declared ^2.0.1 range. Forcing a cross-major override (2.x -> 5.x) into a subtree whose only consumer has never been exercised against the new major's API would swap a proven-safe toolchain for an unproven one, for a devDependency that never reaches the built frontend bundle or the deployed BFF. The glob patterns brace-expansion expands here come only from this repo's own OpenAPI spec resolution during `npm run gen:api`, never from attacker-controlled input, so runtime exposure is nil. Separately, eslint's OWN brace-expansion copy (via minimatch@10.2.5, unrelated subtree) was NOT exception-worthy -- a fresh in-range patch (5.0.8, published 2026-07-23) existed and was pulled forward with a plain `npm update`, no override, no exception.",
-      "expires": "2026-10-24"
-    }
-  ]
+  "entries": []
 }
