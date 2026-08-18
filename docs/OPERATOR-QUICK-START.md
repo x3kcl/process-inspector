@@ -70,7 +70,8 @@ time, deep link — one click) instead of hand-assembling ticket text.
 Stage 0 and Incident cards sort **`total DESC`** today — biggest count first, always
 (`inspector.triage.attention-ordering` ships **off**, ALARM-COST-MODEL.md §7). On a
 deployment where it's flipped on, cards instead sort by a cost-aware score: how recently the
-class was seen and how fast it is growing — proven self-healers rank lower. A 300-count
+class was seen and how fast it is growing — classes that reliably clear themselves soon rank
+lower. A 300-count
 known-noisy class no longer permanently outranks an 8-count outage of something that actually
 matters. It does **not** weigh how long this class historically took to resolve: that number is
 measured from first sighting to your resolve click, so it contains your own queue wait

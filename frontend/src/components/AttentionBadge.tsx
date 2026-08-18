@@ -32,7 +32,7 @@ import { attentionRationale } from '../incidents/attention'
 // per-card sentence still quotes its median as evidence — but no copy may say it moved the card.
 const GLOSSARY_SENTENCE =
   'Ordered by the expected cost of waiting: how recently this class was seen and how fast it is ' +
-  'growing — proven self-healers rank lower, and nothing is hidden.'
+  'growing — classes that reliably clear themselves soon rank lower, and nothing is hidden.'
 
 interface Props {
   attention: AttentionScore | undefined

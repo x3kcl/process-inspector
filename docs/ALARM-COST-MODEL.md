@@ -572,7 +572,7 @@ shape #351 ships, adapting the join only.
 
 ### 4.3 Rationale — one glanceable sentence (hard requirement, issue #348)
 > "Ordered by the expected cost of waiting: how recently this class was seen and how fast it is
-> growing — proven self-healers rank lower, and nothing is hidden."
+> growing — classes that reliably clear themselves soon rank lower, and nothing is hidden."
 
 (Tightened per panel: one sentence, glanceable.) Per-card variant substitutes the numbers:
 *"21 failing · last seen 2 min ago · typically 4 h from first sighting to resolve · no
