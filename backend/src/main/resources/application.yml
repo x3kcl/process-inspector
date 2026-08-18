@@ -199,8 +199,22 @@ inspector:
       min-closed-episodes: 3
       mttr-clamp-low: 0.5
       mttr-clamp-high: 2.0
-      # A proven self-healer is demoted at most 4x, NEVER zeroed — same doctrine as never-hide.
+      # INERT AT THIS VALUE, deliberately kept (#400 part A). The "demoted at most 4x, never
+      # zeroed" guarantee is LANE QUANTISATION arithmetic — S bottoms out at 1 - p_heal(LIKELY)
+      # = 1 - 0.75 = 0.25 — so every value <= 0.25 is selected by nothing and changes no score
+      # by a single bit (measured bit-identical across 30 700 simulated fleets,
+      # docs/reviews/R-ATTENTION-HARM-2026-08.md §6). It is NOT deleted because a value STRICTLY
+      # ABOVE 0.25 does bind and weakens demotion — the real deployment lever — and because it
+      # stays the guard if S is ever fed a rate above 0.75 directly.
       self-heal-floor: 0.25
+      # The S factor's heal horizon tau_heal, w = 2^(-t_heal / tau_heal) (#400 part B, §4.1b): a
+      # class that heals within the hour is demoted about as hard as today, one that heals in
+      # eight keeps 99.6 % of its score. A POLICY constant, not an estimate — deliberately NOT
+      # recency-half-life (at 24h an 8h heal still keeps 79 % of its demotion, i.e. exactly the
+      # regime measured at 80.73 % harm / 0.00 % help) and deliberately NOT derived from medMTTR
+      # (endogenous — it contains the operator queue wait this ordering controls, #398). Set it
+      # to roughly 4x your own hands-on service time if you know it.
+      self-heal-horizon: PT1H
       model-ttl: PT5M
       # C3 (§3.3): the counterfactual-ack-replay-derived auto-resurface threshold. FALSE until
       # the FULL §7 gate passes — G4 alone (≥10 completed ack lifecycles) stands at zero acks

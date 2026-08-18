@@ -88,9 +88,15 @@ card. When you meet it:
 - **Nothing is ever hidden.** Every card still renders regardless of score — ordering only
   reshuffles position within a section. Acknowledge/never-hide semantics (R-BAU-01) are
   untouched.
-- **Self-healers are demoted, never buried.** A class that reliably clears on its own gets
-  pushed down **at most 4×** (the 0.25 floor on the self-heal factor) — fresh and costly
-  enough, it can still rank near the top; it can never disappear.
+- **Self-healers are demoted, never buried — and only if they heal *soon*.** A class that
+  reliably clears on its own gets pushed down **at most 4×**; fresh and costly enough, it can
+  still rank near the top, and it can never disappear. Two things worth knowing about that
+  bound: it comes from the lane arithmetic itself (`1 − 0.75`), *not* from the
+  `self-heal-floor` setting, which does nothing at its shipped value; and the demotion now
+  scales with **how long** the class historically takes to heal. One that clears within the
+  hour is pushed down about as hard as before; one whose past spells took eight hours is
+  barely pushed down at all — waiting for it buys you nothing, so it stays where its size and
+  freshness put it.
 - **`SelfHealBadge`'s fraction is history, not a promise.** "usually self-heals (12/14 past
   spells, typically ≤ 8 min)" means 12 of 14 *past* retrying spells cleared themselves — it
   is not a guarantee about this one. A low fraction ("rarely self-heals") means treat it
