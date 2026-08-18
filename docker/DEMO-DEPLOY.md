@@ -25,10 +25,48 @@ into `docker/.env.demo`, redeploys, verifies, and commits+tags the result so wha
 is always attributable to one exact build (`git log docker/.env.demo`).
 
 ```bash
-# from the repo root, on the hp04 host (the external `docker_discovery` net must already exist)
+# from the DURABLE repo root, on the hp04 host (see the next paragraph — NOT from a
+# .claude/worktrees/* checkout) and with the external `docker_discovery` net already created
 docker/deploy-demo.sh          # defaults to the latest :edge (post-merge-to-main) build
 docker/deploy-demo.sh v0.3.0   # or pin a specific versioned release tag instead
 git push origin HEAD --tags    # publish the attribution commit + demo-YYYY-MM-DD-<sha> tag
+```
+
+### Deploy only from a durable checkout (issue #396)
+
+**Where you run the deploy from is part of what it deploys.** The compose file mounts the
+backup machinery by *relative* path (`./backup/audit-backup:/scripts:ro`,
+`./backup/postgres/pg_hba-demo.conf:…`), and compose resolves those against the compose
+file's own directory — so the checkout you deploy from is frozen into the live containers as
+their bind-mount source, for as long as those containers live. `deploy-demo.sh` prints the
+resolved path on every run:
+
+```
+Compose bind-mount root (frozen into the containers): /home/flapci/workspace/pi-wt-selfheal/docker
+```
+
+If that path can be deleted, the deploy is a latent outage. The 2026-08-08 deploy ran from
+`.claude/worktrees/cursor-demo-refresh-f543/`, which is auto-cleaned; when it went away
+`audit-backup` and `audit-basebackup` failed every cron run (**11 days with no logical dump**,
+no basebackup for 16), and `postgres` became a restart-bomb — Docker recreates a missing
+bind source as an empty root-owned *directory*, so `hba_file` points at a directory and the
+database refuses to start on its next restart.
+
+The script now **refuses** to run when its own root matches `*/.claude/worktrees/*`, printing
+the durable checkout to use instead. Unlike the #377 and #370 guards below there is
+deliberately **no override flag**: an override would freeze the mounts anyway, which is the
+entire harm, and re-running from the durable checkout is always available and always correct.
+
+Recovering a stack that was already deployed from a deleted path (re-point the mounts; the
+`postgres` step is a brief, deliberate demo-DB outage — data lives on a named volume):
+
+```bash
+cd <durable-checkout>/docker
+docker compose -p process-inspector-demo -f docker-compose.demo.yml --env-file .env.demo \
+  up -d --no-deps --force-recreate audit-backup audit-basebackup wal-receiver
+docker compose -p process-inspector-demo -f docker-compose.demo.yml --env-file .env.demo \
+  up -d --no-deps postgres
+docker exec process-inspector-demo-audit-backup-1 /scripts/backup-once.sh   # catch up the gap
 ```
 
 Sign in with the ladder users `viewer` / `responder` / `operator` / `admin`

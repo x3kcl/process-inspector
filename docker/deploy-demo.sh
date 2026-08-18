@@ -38,6 +38,13 @@ BFF_IMAGE="ghcr.io/x3kcl/process-inspector-bff"
 WEB_IMAGE="ghcr.io/x3kcl/process-inspector-web"
 DIGEST_RE='^sha256:[0-9a-f]{64}$'
 
+# Fail with a message on stderr. assert_no_topology_drift already called this; nothing
+# defined it, so under `set -e` that path aborted with "die: command not found" instead.
+die() {
+  echo "$*" >&2
+  exit 1
+}
+
 # issue #377 — engine-recreate guard. The demo engines now keep their state on a named
 # volume (docker-compose.demo.yml), but recreating one is still exactly the moment that
 # destroyed 16 days of pilot history on 2026-08-05: a `--force-recreate` run against
@@ -112,6 +119,54 @@ DRIFT
   fi
 }
 
+# issue #396 — EPHEMERAL-CHECKOUT guard. docker-compose.demo.yml mounts the backup machinery
+# by RELATIVE path (`./backup/audit-backup:/scripts:ro`, `./backup/postgres/pg_hba-demo.conf:…`),
+# and compose resolves those against the COMPOSE FILE's directory — so whichever checkout this
+# script runs from is frozen into the live containers' bind-mount sources for as long as those
+# containers exist, long after the deploy returns.
+#
+# On 2026-08-08 a deploy was run from `.claude/worktrees/cursor-demo-refresh-f543/`. That
+# worktree is auto-cleaned, and when it went away the four containers holding mounts into it
+# lost their scripts: `audit-backup` and `audit-basebackup` failed every cron run (no logical
+# dump between 2026-08-07 and 2026-08-18, no basebackup since 2026-08-02), and `postgres` was
+# left a restart-bomb — on its next restart Docker recreates the missing pg_hba source as an
+# empty root-owned DIRECTORY, `hba_file` then points at a directory, and the demo database
+# refuses to start. Nothing about the deploy itself looked wrong at the time.
+#
+# So: refuse to deploy from an auto-cleaned worktree. Unlike the #377/#370 guards there is
+# deliberately NO override flag — an override would freeze the mounts anyway, which is the
+# entire harm, and the remedy (re-run from the durable checkout) is always available and
+# always correct.
+assert_durable_checkout() {
+  case "$REPO_ROOT" in
+    */.claude/worktrees/*) ;;
+    *) return 0 ;;
+  esac
+  local durable
+  echo "REFUSING: this is an ephemeral worktree — $REPO_ROOT" >&2
+  # `git worktree list` prints the MAIN working tree first — that is the durable checkout by
+  # definition (linked worktrees can be pruned; the main one cannot). awk (not `head`) reads
+  # the pipe to EOF: `head -1` closes it early, and under `set -o pipefail` git's resulting
+  # SIGPIPE (141) would abort this guard before it could print anything. `|| durable=""` keeps
+  # a git failure from doing the same — the hint is a nicety, the refusal is the point.
+  durable="$(git -C "$REPO_ROOT" worktree list 2>/dev/null | awk 'NR == 1 { print $1 }')" || durable=""
+  cat >&2 <<'EPHEMERAL'
+
+docker-compose.demo.yml binds the backup machinery by RELATIVE path, so compose would freeze
+THIS directory into the live containers as their bind-mount source. `.claude/worktrees/*` is
+auto-cleaned: when it is removed the mounts dangle, audit-backup/audit-basebackup fail every
+cron run, and postgres will not start after its next restart (issue #396 — that outage cost
+11 days of demo audit backups).
+EPHEMERAL
+  if [[ -n "$durable" ]]; then
+    echo "Re-run the deploy from the durable checkout instead:" >&2
+    echo "  cd $durable && docker/deploy-demo.sh $*" >&2
+  else
+    echo "Re-run the deploy from a durable (non-worktree) clone instead." >&2
+  fi
+  exit 1
+}
+
 # compose_up_guarded ARGS... — same argument shape as `docker compose ... up ARGS...`. Refuses
 # (exit 1) if ARGS names an engine service, or names no service at all, unless
 # --allow-engine-recreate was passed on this script's own command line. See the guard note
@@ -162,6 +217,9 @@ while [[ "${1:-}" == --* ]]; do
 done
 IMAGE_TAG="${1:-edge}"
 
+# #396: refuse before doing any work at all — see the guard note above.
+assert_durable_checkout "$IMAGE_TAG"
+
 # The published image tag never carries the git/release tag's leading "v" (docker/
 # metadata-action's {{version}} pattern strips it) — a "vX.Y.Z" IMAGE_TAG will always 404
 # regardless of whether that version actually published, which is exactly what produced
@@ -207,6 +265,10 @@ sed -i.bak \
   "$ENV_FILE"
 rm -f "$ENV_FILE.bak"
 
+# #396: make the frozen path visible in the deploy log. Every relative bind mount in
+# docker-compose.demo.yml resolves against this directory and is baked into the containers
+# it creates — if this line ever names a path that can be deleted, the deploy is the bug.
+echo "Compose bind-mount root (frozen into the containers): $REPO_ROOT/docker"
 echo "Pulling + redeploying..."
 docker compose -f "$COMPOSE_FILE" --env-file "$ENV_FILE" pull backend frontend
 # `up -d` is scoped, deliberately excluding `postgres` — NOT a blanket `up -d`. Since issue

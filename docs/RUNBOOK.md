@@ -292,6 +292,13 @@ docker/rollback-demo.sh demo-2026-07-12-a1b2c3d  # restores that tag's exact dig
 git push origin HEAD                            # publish the rollback commit
 ```
 
+**Deploy from the durable checkout only.** `deploy-demo.sh` refuses to run from a
+`.claude/worktrees/*` path and prints the compose bind-mount root it froze into the
+containers (issue #396 — a deploy from an auto-cleaned worktree silently killed the demo's
+audit backups for 11 days and left postgres unable to restart). If you are staring at
+dangling `/scripts` mounts or `backup-once.sh: not found`, the recovery commands are in
+DEMO-DEPLOY.md §"Deploy only from a durable checkout".
+
 This restores the _exact_ previously-running images (no re-resolution of a floating tag —
 `:edge` may have moved since) and verifies the standard `/api/engines` 401 probe (DEMO-DEPLOY.md
 §"Troubleshooting a 502 / 504") before considering the rollback done. If that probe still
