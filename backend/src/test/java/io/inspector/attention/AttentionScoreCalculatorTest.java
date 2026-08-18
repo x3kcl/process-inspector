@@ -317,7 +317,7 @@ class AttentionScoreCalculatorTest {
         assertThat(factorsFor(ahead).recency()).isEqualTo(1.0);
     }
 
-    /* ---------------- M: historic cost, clamped, floored on sample size ---------------- */
+    /* -------- M: the RETAINED estimator — measured, reported, never multiplied in (#399) -------- */
 
     @Test
     void mttrIsNeutralAndTheMedianIsAbsentBelowTheClosedEpisodeFloor() {
@@ -338,12 +338,14 @@ class AttentionScoreCalculatorTest {
         AttentionScore scored = score(10, threeClosed, 3_600L, null);
 
         assertThat(scored.factors().medianMttrSeconds()).isEqualTo(5_400L);
+        // Still computed and still on the wire (#399 keeps the estimator + `factors.mttr` as
+        // honest evidence); `...ScoreIDENTICALLY...` below pins that it does not reach the score.
         assertThat(scored.factors().mttr()).isEqualTo(1.5);
-        assertThat(scored.rationale()).contains("typically takes 1.5 h to resolve");
+        assertThat(scored.rationale()).contains("typically 1.5 h from first sighting to resolve");
     }
 
     @Test
-    void mttrIsClampedBothWaysSoOnePathologicalClassCannotDominateTheProduct() {
+    void mttrIsClampedBothWaysSoTheReportedDiagnosticCanNeverRunAway() {
         ClassHistory glacial = ClassHistory.observed(NOW, 5, List.of(999_999L, 999_999L, 999_999L));
         ClassHistory instant = ClassHistory.observed(NOW, 5, List.of(1L, 1L, 1L));
 
@@ -357,6 +359,29 @@ class AttentionScoreCalculatorTest {
         ClassHistory threeClosed = ClassHistory.observed(NOW, 5, List.of(60L, 60L, 60L));
 
         assertThat(score(10, threeClosed, null, null).factors().mttr()).isEqualTo(1.0);
+    }
+
+    @Test
+    void twoClassesDifferingOnlyInClosedEpisodeDurationsScoreIDENTICALLYBecauseTheOrderingDoesNotConsumeM() {
+        // #399 (epic #398, finding 1): `medMTTR` is `ended_at − started_at` where the episode is
+        // OPENED at first sighting by the sampler and CLOSED by the operator's resolve click, so
+        // the statistic CONTAINS the operator's queue wait — the very quantity this ordering
+        // controls. It is endogenous to its own output, so it is not a service time and not a
+        // severity weight, and the v1 ordering must not consume it. Same shape as §3.1's
+        // exclusion of `eff(c)`: the estimator is honest evidence, the ORDERING input is not.
+        ClassHistory glacial = ClassHistory.observed(NOW, 5, List.of(999_999L, 999_999L, 999_999L));
+        ClassHistory quick = ClassHistory.observed(NOW, 5, List.of(1L, 1L, 1L));
+
+        AttentionScore slowToResolve = score(10, glacial, 3_600L, null);
+        AttentionScore quickToResolve = score(10, quick, 3_600L, null);
+
+        // F = log2(1 + 5) = 2.585, R = 1 (last seen now), S = 1 (no lane) — and nothing else.
+        assertThat(slowToResolve.score()).isEqualTo(quickToResolve.score());
+        assertThat(slowToResolve.score()).isCloseTo(2.584962500721156, within(1e-12));
+        // The ratio is still MEASURED and still shipped on the wire: honest evidence the operator
+        // (and a future uncontaminated re-entry) can read — it just does not move the card.
+        assertThat(slowToResolve.factors().mttr()).isEqualTo(2.0);
+        assertThat(quickToResolve.factors().mttr()).isEqualTo(0.5);
     }
 
     /* ---------------- S: self-heal demotion, from the STABILIZED lane ---------------- */
@@ -419,21 +444,23 @@ class AttentionScoreCalculatorTest {
     /* ---------------- the product, and the honesty flag ---------------- */
 
     @Test
-    void theScoreIsTheProductOfTheFourFactors() {
+    void theScoreIsTheProductOfFrequencyRecencyAndSelfHealWithMDeliberatelyLeftOut() {
         ClassHistory history = ClassHistory.observed(NOW.minusSeconds(86_400), 3, List.of(7_200L, 7_200L, 7_200L));
 
         AttentionScore scored = score(21, history, 3_600L, stats(SelfHealLane.SELF_HEAL_MIXED, 20, 10));
 
-        // F=log2(4)=2 · R=2^-1=0.5 · M=clamp(7200/3600)=2 · S=0.5 = 1.0
+        // F=log2(4)=2 · R=2^-1=0.5 · S=0.5 = 0.5 — and M is NOT in that product (#399, §17).
+        // It used to be, and this same fixture scored 1.0 because `M = clamp(7200/3600) = 2`
+        // doubled it; that doubling was the queue wait the ordering itself had produced.
         assertThat(scored.factors().frequency()).isEqualTo(2.0);
         assertThat(scored.factors().recency()).isEqualTo(0.5);
-        assertThat(scored.factors().mttr()).isEqualTo(2.0);
         assertThat(scored.factors().selfHeal()).isEqualTo(0.5);
-        assertThat(scored.score()).isCloseTo(1.0, within(1e-9));
+        assertThat(scored.factors().mttr()).isEqualTo(2.0); // measured, reported, not consumed
+        assertThat(scored.score()).isCloseTo(0.5, within(1e-9));
     }
 
     @Test
-    void insufficientHistoryIsTrueExactlyWhenNeitherDiscriminatingFactorHadEvidence() {
+    void insufficientHistoryIsTrueExactlyWhenNeitherHistoryDerivedEstimateHadEvidence() {
         assertThat(score(10, arrivals(5), null, null).factors().insufficientHistory())
                 .isTrue();
         assertThat(score(10, ClassHistory.observed(NOW, 5, List.of(1L, 2L, 3L)), 2L, null)

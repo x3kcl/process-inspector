@@ -309,11 +309,16 @@ Answers "what is broken, how much, where" in zero keystrokes:
   ordered **count-only (`total DESC`)** — a 300-count known-noisy class outranks an 8-count
   outage of a critical dependency forever. Behind `inspector.triage.attention-ordering`
   (**default false**) they can instead be ordered by a cost-aware attention score
-  `A(c) = F · R · M · S` — arrival frequency × recency × historic time-to-resolve × a
-  self-heal demotion consuming the R2 lane — served on each card as
+  `A(c) = F · R · S` — arrival frequency × recency × a self-heal demotion consuming the R2 lane
+  — served on each card as
   `attention {score, factors, rationale, suggestedAckExpirySeconds?}` with a ONE-SENTENCE
-  server-computed rationale ("21 failing · last seen 2 min ago · typically takes 4 h to
-  resolve · no self-heal history."). **Ordering only — never hides**: no card is filtered,
+  server-computed rationale ("21 failing · last seen 2 min ago · typically 4 h from first
+  sighting to resolve · no self-heal history."). The `M` (historic time-to-resolve) factor is
+  **identically 1** and is not an ordering input (post-ship correction, ALARM-COST-MODEL.md §17
+  / #399): `medMTTR` is measured from the sampler's first sighting to the operator's resolve
+  click, so it contains the operator's own queue wait and is endogenous to the ordering it fed.
+  The estimator, its clamp knobs and the `factors.mttr` wire field are all RETAINED as evidence
+  — the score simply does not consume them, and no copy may claim resolve time moved a card. **Ordering only — never hides**: no card is filtered,
   acknowledged groups keep their labeled never-hidden collapse and their resurface triggers,
   and section membership is untouched. Every factor degrades to a multiplicative identity when
   its evidence is missing, and ties break on `total DESC` then `signatureHash ASC`, so **with

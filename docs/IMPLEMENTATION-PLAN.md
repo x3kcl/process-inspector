@@ -2504,7 +2504,8 @@ without. Designs are in the per-feature docs; this records the sequencing only.
   → `#352` frontend (`SelfHealBadge` on the Incident Ledger card + detail, exclusion and
   fleet-scope caveats, risk-ranked section ordering). `INSUFFICIENT_HISTORY` is the measured,
   expected-for-a-long-time lane. [RETRYING-RISK-LANE.md](RETRYING-RISK-LANE.md)
-- **R1 attention ordering** — `#353` backend (`io.inspector.attention.*`: `A(c) = F·R·M·S`,
+- **R1 attention ordering** — `#353` backend (`io.inspector.attention.*`: `A(c) = F·R·S` — shipped
+  as `F·R·M·S`, with `M` neutralized post-ship by `#399`/epic `#398`, ALARM-COST-MODEL.md §17 —
   the server-side one-sentence rationale, the C2 ack-expiry suggestion, and C3's
   counterfactual-ack replay estimator — all behind `inspector.triage.attention-ordering`,
   **default false**, because the design's own data-maturity gate is measured NOT MET on 0 of 5

@@ -24,9 +24,15 @@
 import type { AttentionScore } from '../api/model'
 import { attentionRationale } from '../incidents/attention'
 
+// #399 (ALARM-COST-MODEL.md §4.3/§17): this sentence used to end "…weighted by this class’s
+// historic time-to-resolve", and that became FALSE — the v1 ordering no longer consumes the M
+// factor. `medMTTR` is measured from the sampler's first sighting to the operator's resolve
+// click, so it contains the operator's own queue wait and is endogenous to the ordering it fed;
+// the score now reads F·R·S. The measured ratio is still SHIPPED on `factors.mttr` and the
+// per-card sentence still quotes its median as evidence — but no copy may say it moved the card.
 const GLOSSARY_SENTENCE =
-  'Ordered by the expected cost of waiting: freshness and growth, weighted by this class’s ' +
-  'historic time-to-resolve — proven self-healers rank lower, and nothing is hidden.'
+  'Ordered by the expected cost of waiting: how recently this class was seen and how fast it is ' +
+  'growing — proven self-healers rank lower, and nothing is hidden.'
 
 interface Props {
   attention: AttentionScore | undefined
