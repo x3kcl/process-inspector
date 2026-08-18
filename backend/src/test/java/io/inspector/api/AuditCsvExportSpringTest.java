@@ -3,6 +3,8 @@ package io.inspector.api;
 import static org.assertj.core.api.Assertions.assertThat;
 import static org.mockito.ArgumentMatchers.any;
 import static org.mockito.ArgumentMatchers.eq;
+import static org.mockito.Mockito.atLeastOnce;
+import static org.mockito.Mockito.mockingDetails;
 import static org.mockito.Mockito.reset;
 import static org.mockito.Mockito.verify;
 import static org.mockito.Mockito.when;
@@ -117,7 +119,25 @@ class AuditCsvExportSpringTest {
                         String.class);
 
         assertThat(response.getStatusCode()).isEqualTo(HttpStatus.OK);
-        verify(repository)
+        // What this test claims is WHICH filters reach the repository — not how many times the
+        // request was delivered. Asserting the latter made it flaky: nightly #53 (2026-08-14)
+        // failed here with "wanted 1 time but was 2 times", both invocations carrying these
+        // exact filters, on a SHA that passed the next four nights. The export handler
+        // provably queries once per request (an empty page is short, so the streaming loop in
+        // AuditController breaks after page 0), so a second identical invocation means the GET
+        // itself was delivered twice — an idempotent request replayed underneath the client,
+        // which says nothing about the controller.
+        //
+        // So: assert the filters on EVERY query instead of the call count. That is tolerant of
+        // the replay and STRICTER than the old times(1) on what matters here — the loop passes
+        // the filters afresh on each iteration, so a refactor that carried them on page 0 only
+        // is a real regression class this now catches and times(1) never did. The
+        // call-count/paging contract is covered by aFullFirstPageDoesNotEndTheExport_andLimitClampsIt.
+        //
+        // Deliberately NOT verifyNoMoreInteractions: this mock is shared across the cached
+        // context and reset in @BeforeEach, so an unverified-interaction assertion would fail on
+        // any stray late interaction — trading this flake for a subtler one.
+        verify(repository, atLeastOnce())
                 .findLog(
                         eq("k.meier"),
                         eq("retry-job"),
@@ -125,6 +145,11 @@ class AuditCsvExportSpringTest {
                         eq("OPS-7"),
                         eq(Instant.parse("2026-07-10T00:00:00Z")),
                         any(Pageable.class));
+        assertThat(mockingDetails(repository).getInvocations())
+                .isNotEmpty()
+                .allSatisfy(invocation -> assertThat(invocation.getArguments())
+                        .startsWith(
+                                "k.meier", "retry-job", "engine-a", "OPS-7", Instant.parse("2026-07-10T00:00:00Z")));
     }
 
     @Test
