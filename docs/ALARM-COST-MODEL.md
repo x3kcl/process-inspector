@@ -263,8 +263,10 @@ R(c) = 2^(−age(lastSeen(c)) / τ)          recency — τ default 24h = the ex
 M(c) = clamp(medMTTR(c) / medMTTR(fleet), 0.5, 2)
                                           historic cost — closed-episode durations only;
                                           < 3 closed episodes ⇒ 1 (neutral) + "no history"
-S(c) = 1 − p_heal(c), floored at 0.25     self-heal demotion — R2 statistic (§4.2);
-                                          null/insufficient ⇒ 1 (neutral)
+S(c) = max(1 − p_heal(c)·w(c), floor)     self-heal demotion — R2 statistic (§4.2);
+       w(c) = 2^(−t_heal(c) / τ_heal)     null/insufficient lane ⇒ 1 (neutral);
+                                          absent t_heal ⇒ w = 0 ⇒ 1 (neutral), §4.1b
+                                          τ_heal default PT1H; floor default 0.25, INERT
 ```
 
 Tie-break: live `total DESC`, then `signatureHash ASC` — the R-SEM-23 deterministic total
@@ -284,8 +286,13 @@ Rules:
   enter/exit design (Roohi & Izadi 2023, §2 eq. 2,
   [10.61186/joc.17.2.113](https://doi.org/10.61186/joc.17.2.113); Beebe et al. 2013,
   [10.1002/prs.11539](https://doi.org/10.1002/prs.11539)).
-- The 0.25 floor on `S` means a reliably-self-healing class is demoted at most 4×, never
-  zeroed — a mass self-heal class stays visible (same doctrine as never-hide).
+- A reliably-self-healing class is demoted **at most 4×, never zeroed** — a mass self-heal
+  class stays visible (same doctrine as never-hide). That bound is **lane-quantisation
+  arithmetic, not the `self-heal-floor` clamp**: `S` bottoms out at `1 − p_heal(LIKELY) =
+  1 − 0.75 = 0.25`, exactly the default floor, reached from above and therefore never
+  selected. `inspector.triage.attention.self-heal-floor` is a provable no-op at **every value
+  ≤ 0.25** and binds only strictly above it (see the §18 correction — this bullet used to
+  credit the floor with a mechanism it does not deliver).
 - Score factors ship in the DTO next to the card (`attention: {score, factors, rationale}`)
   so the UI renders the one-sentence rationale (below) with real numbers, not vibes.
 
@@ -418,6 +425,104 @@ within one TTL and survives at least one rebuild.
 **"spiking: 40 in the last 10 min"** — the absolute count and window, per #365 ("beats a bare
 ratio"); when `burstUnknown`, the clause is "recent arrival rate unknown". Wire fields in
 §14.6.
+
+### 4.1b Timing-aware self-heal demotion (amendment #400, ★ BUILT)
+
+**The gap this closes.** `S` consumed the self-heal *probability* and never its *timing*, so a
+class that reliably heals **eventually** was demoted exactly as hard as one that heals **in a
+minute**. Measured, against the covariate the harm report pre-registered for precisely this
+question (`docs/reviews/R-ATTENTION-HARM-2026-08.md` §4c, `t_heal / mttr` swept):
+
+| `t_heal / mttr` | HARM | help |
+|---|---|---|
+| ≤ 4.00 | 15–33 % | 45–65 % |
+| **8.00** | **80.73 %** | **0.00 %** |
+| 16.00 | 78.60 % | 0.00 % |
+
+A clean phase change. While the heal lands inside the operator's own horizon the demotion is a
+large win; once it lands after the operator would have finished the whole board, deferring the
+class buys nothing and costs everything. The evidence needed to tell the two cases apart was
+**already on the wire** — `SelfHealStats.ttsP50Seconds`, the median observed duration of the
+class's SELF_HEALED spells (RETRYING-RISK-LANE.md §3.2) — so this amendment adds no query, no
+new R2 work and no engine call.
+
+**The term.**
+
+```
+S(c) = max(floor, 1 − p_heal(c) · w(c))
+w(c) = 2^(−t_heal(c) / τ_heal)          t_heal = SelfHealStats.ttsP50Seconds
+                                        τ_heal = attention.self-heal-horizon, default PT1H
+                                        t_heal absent ⇒ w = 0 ⇒ S = 1 (neutral)
+```
+
+**Why `τ_heal` is its own knob and not a constant already in the model.**
+
+- **Not `medMTTR`** (and nothing derived from it). #398 establishes that `medMTTR` is measured
+  from incident *birth* and therefore contains the operator's own queue wait — endogenous to the
+  ordering, and the whole reason `M` was neutralised. `t_heal` is engine-side and *not*
+  endogenous; that asymmetry is the point of the fix, and dividing the one by the other would
+  re-import exactly the contamination the round removed.
+- **Not the recency half-life τ (C6, 24 h).** Reusing it is arithmetically attractive and
+  substantively wrong: at τ = 24 h a class whose median self-heal is eight hours still keeps
+  **79 %** of its full demotion — i.e. the table row measured at 80.73 % harm / 0.00 % help would
+  be left almost exactly where it was. A constant chosen to express "how long until a *sighting*
+  goes stale" cannot also express "how long a *heal* is worth waiting for".
+- **PT1H, defended.** `τ_heal` is a **policy** statement — how far ahead this deployment is
+  willing to bet on a heal — not an estimate, so it carries no estimator's bias and no
+  endogeneity. One hour sits an order of magnitude above the 60 s sampler beat and the PT5M model
+  TTL (a heal the ordering could never have reacted to reads as immediate) and an order of
+  magnitude below the 24 h quiet window (a heal nobody will still be waiting for reads as never).
+  Curve: heal inside one bucket ⇒ `w = 1` (full shipped demotion); 1 h ⇒ 0.50; 8 h ⇒ 0.0039.
+  **Named limitation:** the harm search's phase change is at ~4–8 × *service time*, and a fixed
+  horizon cannot track a fleet's service time — but the only available service-time estimator is
+  the contaminated one, so a policy constant is the honest instrument. A deployment that knows
+  its own hands-on service time should set `self-heal-horizon ≈ 4 ×` it.
+
+**Two safety properties, by construction** (the §4.1a discipline: an amendment must be provably
+inert where the shipped behaviour was already right).
+
+1. `w ∈ [0, 1]` ⇒ `S ∈ [1 − p_heal, 1]`. The timing term can only ever **weaken** a demotion,
+   never deepen one. No class can be pushed below where the shipped formula put it.
+2. At `t_heal = 0`, `w = 2^0 = 1` and `S` is **byte-identical** to the shipped expression. That
+   is not an edge case: the spell resolution floor is one sampler bucket
+   (RETRYING-RISK-LANE.md §3.1), so every class healing inside 60 s reports `ttsP50Seconds = 0`.
+   The amendment is therefore exactly inert across the whole regime (`≤ 4 ×` rows) the harm
+   search says `S` genuinely wins in, and bites only in the regime it measured as harmful.
+
+**Degradation — `w = 0`, not `w = 1`, and the rule it follows.** `tts*` is absent whenever
+`healed = 0` or the raw sample sits below the `n < 10` floor, while the **displayed** lane can
+still be a dwelled risk lane at that moment, so "lane known, timing unknown" is reachable (a
+`SELF_HEAL_UNLIKELY` class with zero healed spells is the routine case). §4.1's degradation rule
+— *an unknown factor reads as the multiplicative identity* — gives `S = 1`. The rejected
+alternative, `w = 1` ("preserve today's behaviour"), asserts *this class heals immediately*, the
+single most demoting value available, on no evidence at all: the §13 F2 defect class exactly, and
+it fails toward burying a card rather than surfacing it.
+
+**Stabilization contract (§4.1), restated precisely.** `p_heal` still comes from the server-dwelled
+lane, so the discrete part of `S` is unchanged and cannot flap while the badge holds.
+`ttsP50Seconds` is **not** dwell-stabilized — `SelfHealStatsService` runs only the *lane* through
+`DwellStateMachine` and pairs it with the raw per-cycle statistic; §4.1's clause is written as if
+the whole R2 artifact were stabilized, and it is not (see §18). It is admissible here because the
+contract exists to prevent **discontinuous** reordering: the lane is a *classification*, so an
+epsilon move in the underlying rate flips `p_heal` 0.75 → 0.50 and jerks the ordering while the
+badge says nothing changed. `w` has no threshold to cross — continuous and monotone in `t_heal`,
+bounding the response at `|ΔS| ≤ p_heal · ln2/τ_heal · Δt` (at PT1H, a whole sampler bucket of
+movement in the median moves `S` by < 0.009) — and it is not a per-cycle rate but a 90-day order
+statistic over ≥ 10 completed spells, so moving it one bucket needs a whole spell to enter or
+leave the window *and* to cross the middle of the distribution. If a future estimator ever makes
+the duration jumpy, the fix is to dwell it in `SelfHealStatsService` next to the lane — never to
+re-derive or smooth it in the calculator (§4.2: adapt the join, never re-derive the statistic).
+
+**Rationale (§4.3): no new clause.** The `SELF_HEAL_LIKELY` clause already renders the timing
+evidence this factor now consumes — `"usually self-heals (21/23 past spells, typically ≤ 1 min)"`
+(#387, from `ttsP90Seconds`) — so the sentence's one-line cap is untouched and the reader can
+already see *why* a self-healer was or was not demoted. MIXED/UNLIKELY clauses stay timing-free:
+their demotion is 2× and 1.18× respectively, and adding a second timing string would break the
+locked frontend/backend parity on `selfHeal.ts` for no proportionate gain (named limitation).
+
+**Wire:** unchanged. No new `AttentionFactors` field, therefore no `schema.d.ts` regeneration and
+no frontend change — `factors.selfHeal` already carries the amended value and `factors.selfHealLane`
+the lane it came from.
 
 ### 4.2 Interface consumed from track R2 (#347 design / #351 API) — dependency, not duplication
 The score consumes, per `(signatureHash, algoVersion)`:
@@ -1245,7 +1350,12 @@ whole surface is inert.
   **lane → `p_heal`** at the §4.1 band midpoints (LIKELY 0.75, MIXED 0.50, UNLIKELY 0.15;
   `INSUFFICIENT_HISTORY`/absent ⇒ neutral 1) — honoring "consumes the stabilized value, never a
   raw per-cycle rate" literally. `SELF_HEAL_LIKELY` lands exactly on the 0.25 floor, so the
-  design's "demoted at most 4×, never zeroed" is arithmetic rather than a separate clamp.
+  design's "demoted at most 4×, never zeroed" is arithmetic rather than a separate clamp —
+  which also means the floor is INERT at its default, corrected everywhere it was miscredited
+  in §18/S1. **Extended by #400 (§4.1b):** the same `selfHeal` block's `ttsP50Seconds` now also
+  feeds a continuous timing weight `w`; the *stabilized* lane still supplies `p_heal`, and
+  §4.1b states exactly why a non-dwelled duration is admissible as a weight but would not be as
+  a threshold.
 - **`eff(c)` excluded from the v1 score**, per §3.1. Not implemented, not referenced.
 - **Rationale (§4.3)** — `AttentionRationale`, server-side, one `·`-separated sentence on one
   line: `21 failing · last seen 2 min ago · typically takes 4 h to resolve · no self-heal
@@ -2455,3 +2565,38 @@ all the new ones.
    the cursor.** §16.8 item 7 asks the script to "walk the cursor when hunting an era boundary";
    the boundary detection it needs to decide when to stop paging is the same logic a reader wants
    reported, so it is emitted as section 0 of the replay output.
+
+## 18. Correction round — the `S` factor: an inert floor and a blind spot (#400, ★ LANDED)
+
+Slice 2 of the #398 correction round (slice 1, the `M` neutralization, is §17). Two defects in one factor, both left on the record by #382
+and both re-verified against the shipped source before anything was changed. Behaviour with
+`inspector.triage.attention-ordering` OFF is unchanged and still provably inert;
+`AttentionOrderingNeutralityTest` is untouched and green.
+
+| # | Defect | Severity | Fix | Failing-before proof |
+|---|---|---|---|---|
+| S1 | **The `self-heal-floor` knob is inert and was advertised as a rail it does not deliver.** `S = max(floor, 1 − p_heal)` with `P_HEAL_LIKELY = 0.75` bottoms out at `max(0.25, 0.25)` — the default floor is *exactly* the lowest value lane quantisation can produce, reached from above, so it is never selected. Removing it entirely was bit-identical across all 30 700 simulated fleets. The "demoted at most 4×, never zeroed" guarantee is **true**, but delivered by quantisation, not by the clamp | honesty gap (no behaviour change) | **Knob kept, claim corrected in all six places** (§4.1's bullet, `OPERATOR-QUICK-START.md`, `application.yml`, `InspectorProperties`, `AttentionScoreCalculator`, `RetrySpellExtractor`). A floor **strictly above 0.25** *does* bind and weakens demotion — a legitimate deployment lever, and why deleting it was refused | Part A changes no behaviour, so its test **passes on the base by construction** — and that is the point: `theSelfHealFloorIsAProvableNoOpAtOrBelowTheLaneQuantisationMinimumAndBindsOnlyStrictlyAbove` pins *both* halves of the boundary (`≤ 0.25` ⇒ byte-identical over 4 floors × 4 lanes × 5 timings via `doubleToRawLongBits`; `> 0.25` ⇒ binds and raises `S`) so the false attribution cannot drift back into the copy |
+| S2 | **`S` read `p_heal` and never `t_heal`** — a class that heals *eventually* was demoted exactly as hard as one that heals *in a minute*. Measured at 80.73 % harm / 0.00 % help past ~8 service times (§4c), with count-only outright optimal there | **HIGH** (latent — flag-off) | §4.1b: `S = max(floor, 1 − p_heal · 2^(−t_heal/τ_heal))` over the already-served `SelfHealStats.ttsP50Seconds`, `τ_heal = attention.self-heal-horizon` (new, PT1H). Only ever weakens a demotion; byte-identical at `t_heal = 0` | On the base, `selfHealFactor(SELF_HEAL_LIKELY, …)` returned **0.25** where an 8-hour median heal must read **0.9970703125**, and **0.25** again where an *absent* `ttsP50` must read **1.0**; a MIXED class healing at the horizon returned **0.5** where it must read **0.75**. Three wrong values, not a compile error |
+
+**Named correction to the evidence base.** `docs/reviews/R-ATTENTION-HARM-2026-08.md` §6 states
+the `self-heal-floor` key "does nothing at any value below 0.75". The binding boundary is
+**0.25**, not 0.75: at `floor = 0.5` the clamp already selects for both `SELF_HEAL_LIKELY` (0.25)
+and `SELF_HEAL_MIXED` (0.50). The report's *headline* claim — the shipped 0.25 default is inert,
+bit-identically — is correct and is what this section acts on; only the stated width of the
+inert band was too wide. Recorded here rather than rewritten there: the report is evidence of
+record, and slice 3 (#398) re-runs it against the corrected Java.
+
+**Named correction to RETRYING-RISK-LANE.md §4.2.** That section closed with "only the LANE
+itself (the base clause's fraction/timing) is governed by rules 1-5's dwell/stability machinery".
+Read from source, the parenthetical is false: `SelfHealStatsService.get()` runs **only** the lane
+through `DwellStateMachine` and pairs it with the raw per-cycle `n`/`healed`/`ttsP50`/`ttsP90`
+straight off the 60 s Caffeine cache. This was harmless while the timing was pure copy; it stops
+being harmless the moment §4.1's stabilization contract has to be honoured by a *score*
+consumer, which is what #400 part B makes it. Corrected in place there, and §4.1b above states
+exactly which half of the artifact is stabilized, which is not, and why the non-stabilized half
+is admissible as a continuous weight (never as a threshold).
+
+**Scope discipline.** No Flyway migration, no new engine call, no new DTO field (therefore no
+`gen:api` regeneration and no frontend change), no card hidden.
+`inspector.triage.attention-ordering` still defaults false. `mttrFactor` / the `M` term (#399)
+and `scripts/attention-harm-search.py` (slice 3) are untouched by this slice.
