@@ -117,10 +117,16 @@ public record InspectorProperties(
      *       deployment can re-estimate it from the episode inter-arrival distribution) instead
      *       of a second hard-coded 24h.</li>
      *   <li>{@code arrivalsWindowDays} — the F factor's trailing window, default 28.</li>
-     *   <li>{@code minClosedEpisodes} — the M factor's own sample-size floor, default 3. Below
-     *       it, M is neutral 1 and the median renders as "no history", never as a number.</li>
-     *   <li>{@code mttrClampLow}/{@code mttrClampHigh} — the M clamp, defaults 0.5 / 2.0: a
-     *       single pathological class can never dominate the product.</li>
+     *   <li>{@code minClosedEpisodes} — the M estimator's own sample-size floor, default 3. Below
+     *       it, M is neutral 1 and the median renders as "no history", never as a number. It also
+     *       floors the §3.2 ack-expiry suggestion.</li>
+     *   <li>{@code mttrClampLow}/{@code mttrClampHigh} — the M clamp, defaults 0.5 / 2.0, so the
+     *       reported ratio can never run away. <b>Since #399 (§17) M is identically 1 in the v1
+     *       ORDERING</b> — {@code medMTTR} spans first sighting to the operator's resolve click,
+     *       so it contains the queue wait the ordering controls and is endogenous to it. These
+     *       knobs are RETAINED deliberately: they still shape the reported {@code factors.mttr}
+     *       evidence and make M's re-entry (behind an uncontaminated estimator) a one-line
+     *       change. Today they move no card's position.</li>
      *   <li>{@code selfHealFloor} — the S floor, default 0.25: a reliably self-healing class is
      *       demoted at most 4x, NEVER zeroed (same doctrine as never-hide).</li>
      *   <li>{@code modelTtl} — Caffeine TTL of the whole per-class ledger model, default 5 min

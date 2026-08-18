@@ -253,16 +253,18 @@ DLQ scan, never the grid-search plan) is untouched** — the score consumes the 
 output, never adds a leg to it.
 
 ```
-A(c) = F(c) · R(c) · M(c) · S(c)
+A(c) = F(c) · R(c) · S(c)                 M ≡ 1 in v1 — see the #399 correction below
 
 F(c) = log2(1 + arrivals_28d(c))          frequency — positive occurrence-total deltas,
                                           28d trailing, from incident_occurrence;
                                           1 (neutral) when the window was WHOLLY UNTRUSTED
 R(c) = 2^(−age(lastSeen(c)) / τ)          recency — τ default 24h = the existing
                                           quiet-window constant (C6)
-M(c) = clamp(medMTTR(c) / medMTTR(fleet), 0.5, 2)
-                                          historic cost — closed-episode durations only;
-                                          < 3 closed episodes ⇒ 1 (neutral) + "no history"
+M(c) ≡ 1                                  NOT an ordering term (#399, §17). The estimator
+       clamp(medMTTR(c) / medMTTR(fleet), 0.5, 2)
+                                          is retained, still MEASURED and still shipped as
+                                          factors.mttr evidence; < 3 closed episodes ⇒ 1
+                                          (neutral) + "no history"
 S(c) = 1 − p_heal(c), floored at 0.25     self-heal demotion — R2 statistic (§4.2);
                                           null/insufficient ⇒ 1 (neutral)
 ```
@@ -318,6 +320,36 @@ Rules:
   window that merely STARTS mid-life still finds `LAG` NULL on its first row and still discards
   it, so a standing population is never re-banked as fresh growth, and
   `arrivalsAreTheGrowthSignalNotTheSizeSignal` passes unchanged.
+
+**Correction (post-ship, #399 / epic #398 — the full round is §17): `M ≡ 1` in the v1 ordering,
+and the definition debt #382 named is paid here.**
+
+*What `medMTTR` actually measures, in the estimator's own terms.* The number is produced by
+`IncidentEpisodeRepository.closedEpisodeDurationSeconds()` — `EXTRACT(EPOCH FROM (ended_at −
+started_at))` over rows `WHERE ended_at IS NOT NULL`, i.e. CLOSED episodes only. `started_at` is
+stamped by `IncidentLedgerService` at the sampler's **first sighting** of the class (the episode
+is created in the same pass that first records the incident, and again on each automatic
+regression). `ended_at` is stamped by exactly one thing: the **S3 resolve verb**
+(`IncidentLifecycleService.resolve` → `IncidentEpisodeRepository.closeEpisode`), an OPERATOR
+click; nothing in the sampler, the ledger or any scheduled job ever closes an episode. So
+`medMTTR(c)` is the median **first-sighting-to-operator-resolve** duration — time-to-resolution
+measured from incident BIRTH, not from the moment anyone started working on it.
+
+*Therefore it is neither of the two things #382 asked between.* It is not a clean operator
+service time (that would license Smith's rule and make the shipped multiply backwards), and it
+is not a clean severity weight (that would license the multiply). It **contains the operator's
+queue wait** — the very quantity this ordering exists to allocate — which makes it ENDOGENOUS to
+its own output: rank a class low ⇒ it waits longer ⇒ its measured MTTR rises ⇒ `M` rises ⇒ it
+ranks higher next cycle. Under the shipped multiply that loop is *negative* (self-correcting,
+which is why nothing was ever on fire), but it means `M` was substantially measuring the QUEUE
+rather than the class.
+
+*So the v1 ordering does not consume it.* `M ≡ 1`. The estimator, the `min-closed-episodes`
+floor and `inspector.triage.attention.mttr-clamp-{low,high}` are all RETAINED; `factors.mttr`
+keeps reporting the real clamped ratio as evidence, and the rationale keeps quoting the median
+(with its span now named — §4.3's own correction). Only the SCORE stopped reading it. Precedent:
+§3.1's exclusion of `eff(c)` from the v1 score for an analogous honesty problem. Re-entry
+condition and the falsifier that would reverse this call: §17.
 
 ### 4.1a Burst-aware frequency (amendment #365 — DESIGN LOCKED, build slice pending)
 
@@ -434,12 +466,12 @@ computed, stabilized, or floored — that is #347's design surface; #353 consume
 shape #351 ships, adapting the join only.
 
 ### 4.3 Rationale — one glanceable sentence (hard requirement, issue #348)
-> "Ordered by the expected cost of waiting: freshness and growth, weighted by this class's
-> historic time-to-resolve — proven self-healers rank lower, and nothing is hidden."
+> "Ordered by the expected cost of waiting: how recently this class was seen and how fast it is
+> growing — proven self-healers rank lower, and nothing is hidden."
 
 (Tightened per panel: one sentence, glanceable.) Per-card variant substitutes the numbers:
-*"21 failing · last seen 2 min ago · typically takes 4 h to resolve · no self-heal
-history."*
+*"21 failing · last seen 2 min ago · typically 4 h from first sighting to resolve · no
+self-heal history."*
 
 **Correction (post-ship, issue #374 — §12's own correction note).** "One tooltip sentence"
 was the original heading, and it shipped both sentences above hover-only. The measured §8.8
@@ -482,6 +514,29 @@ left)."* Still one sentence. Scope is deliberately narrow (v1): the Stage 0 dash
 the `forClass()`-composed rationale that also renders on `/incidents` (always the split
 absent, so always the base clause there) — a known limitation named in full in
 RETRYING-RISK-LANE.md §10.
+
+**Correction (post-ship, #399 / epic #398 — §17). Both sentences made a claim the score no longer
+makes, and one of them made a claim the ledger never measured.**
+
+- *The glossary sentence said the ranking was "weighted by this class's historic
+  time-to-resolve".* That became FALSE the moment `M ≡ 1` (§4.1 correction): the v1 score is
+  `F · R · S`. It is corrected above, and in `frontend/src/components/AttentionBadge.tsx`'s
+  `GLOSSARY_SENTENCE` — the one place it renders — to name only what the ordering actually reads.
+  This is a copy fix, not a scope reduction: nothing about "ordered by the expected cost of
+  waiting" or "nothing is hidden" changes.
+- *The per-card clause said "typically takes 4 h to resolve".* That reads as a pure fix-time
+  claim — "this class takes 4 h of work" — while the statistic behind it is the median
+  **first-sighting-to-operator-resolve** duration, which includes however long the class sat in
+  the queue before anyone looked at it (§4.1 correction). **The statistic is kept, the claim is
+  corrected** — the same disposition as §3.2's P75 copy fix (F6): the number is the honest one to
+  show, it just has to say what it spans. The clause now reads *"typically 4 h from first sighting
+  to resolve"*, still one `·`-separated clause on one line, and the sub-floor case is unchanged
+  ("no resolve-time history"). Per-card variant, updated: *"21 failing · last seen 2 min ago ·
+  typically 4 h from first sighting to resolve · no self-heal history."*
+- The #387 and #388 correction notes above quote worked examples carrying the OLD clause
+  ("typically takes 2 min to resolve", "typically takes 4 h to resolve"). They are the record of
+  those rounds and are deliberately not rewritten; the clause they show is superseded by this
+  note, and their own subject (the self-heal / dead-letter clauses) is untouched by #399.
 
 ## 5. MEASURED BASELINE — pilot-ledger extraction & ordering simulation (auditable)
 
@@ -692,7 +747,7 @@ expiry suggestion, derived resurface threshold) requires ALL of:
 
 | # | Gate | Measured today (2026-08-04) | Met? |
 |---|---|---|---|
-| G1 | ≥ 20 closed episodes fleet-wide AND ≥ 3 classes with ≥ 3 closed episodes each (M term) | 0 closed episodes, 0 classes | **NO** |
+| G1 | ≥ 20 closed episodes fleet-wide AND ≥ 3 classes with ≥ 3 closed episodes each (closed-episode statistics — see the #399 note below for what this now gates) | 0 closed episodes, 0 classes | **NO** |
 | G2 | ≥ 6 distinct current-generation classes live concurrently at least once in trailing 28 d (ordering has room to matter) | max concurrent = 2 | **NO** |
 | G3 | #351 shipped; R2's own sufficiency rail passed for ≥ 25 % of live classes (S term) | not built | **NO** |
 | G4 | ≥ 10 completed ack lifecycles (ack → expiry/resurface/un-ack) recorded (C2/C3 calibration) | 0 acks ever | **NO** |
@@ -716,6 +771,21 @@ outage pushes the date out correspondingly; (ii) the same stale "≈ 2026-09-14"
 not this docs round. (iii) A registry edit can RESTART this clock without any observability
 changing (§14.2 correction; issue #372) — the design that makes the span composition-aware,
 and amends this gate to the CURRENT-ERA trusted span, is §16.
+
+**What G1 gates since #399 (§17) — restated, because it was written as the `M`-term gate.** `M`
+is no longer an ordering term, so G1 no longer gates a factor of the score. It is NOT retired,
+because every OTHER consumer of closed-episode statistics is still gated by this table and still
+needs exactly this sample:
+1. **The C2 ack-expiry suggestion (§3.2)** — the class's P75 closed-episode duration. Its own
+   per-class floor (`min-closed-episodes = 3`) is a *within-class* rail; G1's fleet-wide 20 is
+   what makes the suggestion credible across the fleet rather than in one lucky class.
+2. **The `factors.mttr` diagnostic and the rationale's resolve-time clause** — both render
+   measured numbers to an operator, and both are meaningless off a two-episode sample.
+3. **`M`'s eventual re-entry into the ordering** — for which G1 is now NECESSARY BUT NOT
+   SUFFICIENT. Re-entry additionally requires an uncontaminated estimator (measure from
+   first-operator-touch, or subtract the queue wait) *or* the §17 falsifier measured and passed.
+   A future round must not read "G1 met" as "turn `M` back on".
+G1's threshold, its measured value and its status are all unchanged by #399.
 
 **The other four axes, audited for the same trust sensitivity (#365):** **G1** (closed
 episodes) and **G4** (ack lifecycles) count lifecycle events in the BFF's own store —
@@ -1045,6 +1115,16 @@ coverage regardless of which lane was reached.
 **3 of 5 arm-B testers still picked the 34-member class on first glance** and only switched *after* hovering the rationale tooltip (B5, torn between the two, said so explicitly). The reordering by itself did not redirect them; **the explanation did**. That is Laberge's result reproduced in miniature on our own UI — display-alone is not the intervention, display-plus-strategy is — and it is the empirical argument for the operator note (§8.1) being shipped *with* any flag flip rather than after it.
 
 Sharpened by task /c (restate the ranking from the card face **without** re-reading the tooltip): **B3 `unsupported`, B1 and B2 `partial`** — testers could not reconstruct the ranking from visible text. B5 named the mechanism precisely: *"[the `ranked by attention` pill] names the mechanism but gives zero indication that hovering unlocks the actual reasoning, and a fast-scanning user … will default to raw instance/DLQ counts, which point at a different card than the one the ranking actually favors."* **The reasoning lives only in a hover.** A 3am reader who does not hover — or is on a device that cannot — gets a re-ordered list with no visible justification, and their instinct points elsewhere. Filed as a follow-up rather than silently absorbed into a green verdict.
+
+**Forward pointer (post-ship, #399 — see §17): this fixture's reordering was driven by `M`, and
+`M` is now identically 1, so this exact fixture would no longer reorder anything.** Recomputed
+against the corrected score (`F·R·S`, the same served numbers): planted class `8.0 / 2.0 = 4.0`,
+largest class `5.13 / 1 = 5.13` — i.e. the count-only order, un-inverted. The measured RESULT
+above stands as what happened on the day and is not rewritten; what it no longer is, is a live
+recipe. **A re-run must build its separation out of `F` and `R`** — a genuinely faster-growing or
+fresher costly class (or a `SELF_HEAL_LIKELY` demotion on the large one), not a depressed fleet
+MTTR median. The run's headline finding — that the reordering alone did not redirect testers, the
+explanation did (§12.1/#374) — is about the rationale, not about `M`, and is unaffected.
 
 **Forward pointer (post-ship, #374 — see §12.1):** this whole subsection describes the UI as
 it stood when this run executed (hover-only `title`). That hover-only behaviour has since been
@@ -2455,3 +2535,130 @@ all the new ones.
    the cursor.** §16.8 item 7 asks the script to "walk the cursor when hunting an era boundary";
    the boundary detection it needs to decide when to stop paging is the same logic a reader wants
    reported, so it is emitted as section 0 of the replay output.
+
+## 17. Correction round — `M ≡ 1` in the v1 ordering (#399, epic #398, ★ LANDED)
+
+Successor to **#382**, which was closed `not_planned` on 2026-08-05 with three findings
+deliberately left on the record ("reopen this, or open a successor, if the flag is ever
+reconsidered"). This is that successor's first slice. Evidence base:
+`docs/reviews/R-ATTENTION-HARM-2026-08.md` (PR #383, `3e17f9f`), reproducible via
+`scripts/attention-harm-search.py`. **`inspector.triage.attention-ordering` stays default-false
+for the whole epic** — nothing here flips the flag or moves the §7 gate; this round makes the
+shipped-but-inert score honest before the gate conversation may be reopened.
+
+### 17.1 What was wrong
+
+§4.1 shipped `A(c) = F·R·M·S` with `M = clamp(medMTTR(c)/medMTTR(fleet), 0.5, 2)`, and never said
+what `medMTTR` *is*. #382 framed that as a two-way ambiguity — operator **service time** (⇒ the
+multiply is backwards and Smith's rule applies, i.e. shortest-job-first, i.e. `1/M`) or a
+**severity weight** (⇒ the multiply is right) — and could not decide it from the document.
+
+**Read from source, it is neither.** The three stamps that define the statistic:
+
+| Stamp | Written by | Meaning |
+|---|---|---|
+| `started_at` | `IncidentLedgerService` — `new IncidentEpisode(id, OPEN, seenAt, total)` on the pass that first records the class (and again on each automatic regression) | the sampler's **first sighting** |
+| `ended_at` | `IncidentLifecycleService.resolve` → `IncidentEpisodeRepository.closeEpisode` — the **S3 resolve verb**, and nothing else in the codebase | an **operator click** |
+| the value | `closedEpisodeDurationSeconds()`: `EXTRACT(EPOCH FROM (ended_at − started_at))`, `WHERE ended_at IS NOT NULL` | first-sighting → operator-resolve |
+
+So `medMTTR` is time-to-resolution measured from incident BIRTH, and it therefore **contains the
+operator's queue wait** — the very quantity the ordering allocates. Two consequences, neither of
+which depends on the harm search's invented distributions (its §8):
+
+1. **It is endogenous.** Rank a class low → it waits longer → its measured MTTR rises → `M` rises
+   → next cycle it ranks higher. Under the shipped multiply that loop is **negative**
+   (self-correcting, so nothing explodes — this is why the shipped behavior was never an
+   incident) — but it means `M` was substantially measuring **the queue**, not the class.
+2. **Inverting to `1/M` flips that loop positive.** Rank low → longer TTR → smaller `1/M` → rank
+   lower still. That is a **starvation** mechanism, and it would have been introduced by the very
+   fix the harm search appears to recommend. The report's Smith reading is therefore **rejected**
+   — on the endogeneity ground, independently of any argument about its simulated distributions.
+
+### 17.2 The decision, and the seat that checked it
+
+**Option C: `M ≡ 1` in the v1 ordering; estimator and config knobs retained; `M` returns only
+behind an uncontaminated estimator.** Precedent is already in this document: §3.1 excludes
+`eff(c)` from the v1 score for an analogous honesty problem ("a constant factor with an honesty
+problem"), while keeping it in the conceptual model `B(c)`.
+
+Verified by an independent second panel seat (§10 convention; `gemini-3.5-flash` —
+`gemini-3.1-pro-preview` returned 429 and the Copilot seat is permanently 410/dead). It reached
+the same verdict, called option D ("split the estimator in this same round") a fantasy because
+first-operator-touch needs new telemetry plus a schema change, and named the falsifier recorded
+in §17.4. **One correction to that seat's reasoning, recorded for honesty:** it described the
+option-A loop as "chaotic"; the sign is negative/self-correcting, which is precisely why nothing
+is on fire today.
+
+### 17.3 What landed
+
+- **`AttentionScoreCalculator`** — `double score = frequency * recency * selfHealFactor`. `M` is
+  not a term. `mttrFactor()` is unchanged and still called; the class javadoc carries the
+  endogeneity argument rather than pointing at this document alone.
+- **`factors.mttr` keeps reporting the real clamped ratio** — the deliberate call, not an
+  omission. It is honest evidence about the class (and the rationale already quotes its median),
+  the retained estimator is what makes re-entry a one-line change, and reporting a hardcoded
+  `1.0` would have hidden a measurement to describe a rule that is documented instead. The wire
+  shape is unchanged: no field added, none removed, `schema.d.ts` untouched. The single consumer
+  that DID assert this factor moved a card — the `AttentionBadge` glossary tooltip — is corrected
+  (§4.3); no other consumer of `AttentionFactors.mttr()` makes an ordering claim (grepped across
+  `backend/src` and `frontend/src`; the frontend never renders `factors.mttr` at all).
+- **Rationale copy** — "typically takes 4 h to resolve" → "typically 4 h from first sighting to
+  resolve" (§4.3 correction). Same statistic, same one-line `·`-separated shape; the claim now
+  matches what was measured.
+- **Config** — `min-closed-episodes`, `mttr-clamp-low`, `mttr-clamp-high` all retained, with
+  `application.yml` and `InspectorProperties` now saying what they do and do NOT move.
+- **Docs in lockstep** — §4.1 (definition debt paid), §4.3 (both copy corrections), §7 (what G1
+  gates now), SPECIFICATION §2.4 and ARCHITECTURE §4's `GET /api/triage` row (the formula and the
+  `M` clause), OPERATOR-QUICK-START's "Reading the attention ranking".
+- **Untouched, deliberately:** the flag, the §7 gate values, `AttentionOrdering`, the S factor
+  (slice 2), `scripts/attention-harm-search.py` (slice 3 re-pins it to the corrected Java), and
+  every Stage 0 query. Zero new engine calls, zero new statements, no migration.
+
+**Failing-before proof (the §13/§15.1 convention — a wrong value, not "it did not compile"):**
+
+| Rung | Test | What the BASE produced |
+|---|---|---|
+| Pure static | `twoClassesDifferingOnlyInClosedEpisodeDurationsScoreIDENTICALLYBecauseTheOrderingDoesNotConsumeM` — two classes identical in arrivals (5), age (0) and lane (none), differing ONLY in their three closed-episode durations (3×999 999 s vs 3×1 s against a 3 600 s fleet median), must now both score `log2(6) = 2.584962500721156` | **5.169925001442312** vs **1.292481250360578** — the full 4× spread of the `[0.5, 2]` clamp, produced by nothing but how long an operator had taken to click resolve |
+| Pure static | `theScoreIsTheProductOfFrequencyRecencyAndSelfHealWithMDeliberatelyLeftOut` — `F=2 · R=0.5 · S=0.5` must be `0.5` | **1.0** — the same fixture, doubled by `M = clamp(7200/3600) = 2` |
+
+`AttentionOrderingNeutralityTest` is **byte-untouched and green** (12 tests): an empty ledger
+still collapses every score to 0.0 and the tie-break still reproduces count-only ordering exactly.
+It could not have caught this change either way — with no closed episodes `M` was already 1 — which
+is the point of pinning the new proof on a populated fixture instead.
+
+### 17.4 Re-entry condition, and the falsifier that would reverse this
+
+`M` returns to the ordering only behind an **uncontaminated** estimator: measure from
+**first-operator-touch** (a new telemetry point — nothing today records when an operator first
+looked at a class), or subtract the queue wait from the existing span. Either is a schema plus
+ingestion change and is explicitly out of scope for this epic.
+
+**The falsifier, recorded so a future round can execute it rather than re-argue it:** if median
+**time-to-touch** (first sighting → first operator interaction with the class) turns out to be
+**< 5 % of median episode duration**, then the queue wait is a rounding error inside `medMTTR`,
+the endogeneity is noise, and the report's Smith reading becomes live again — at which point the
+correct move is `1/M`, not the status quo ante `M`. That measurement is not possible today (see
+above: the touch timestamp does not exist), and G1 is 0 anyway. Deriving a touch proxy from the
+audit tail (first corrective action on an engine the class touches, the same over-inclusive join
+`EpisodeActionAttributionService` already runs) is the cheapest honest approximation and is the
+suggested first step — as an *approximation*, named as one, not as the estimator itself.
+
+### 17.5 What this round deliberately does NOT do
+
+- **It does not flip the flag, and it does not move the §7 gate.** Both stay exactly where they
+  were; §7's measured values are unchanged by this round.
+- **It does not remove the M estimator, the clamp knobs or the wire field.** Deleting them would
+  make re-entry an archaeology exercise and would drop honest evidence from the operator's view.
+- **It does not touch `eff(c)`, `S`, or the burst gate.** `S` is slice 2 of #398, in a parallel
+  branch.
+- **It does not re-run the §8 A/B usability arm.** The §8.8 fixture separated its two classes
+  with `M` alone, so it can no longer produce the reordering it was built to test (forward
+  pointer recorded there, with the recomputed numbers). Rebuilding that fixture on `F`/`R`/`S`
+  separation is a follow-up for whoever next executes §8, not this slice.
+- **It does not re-run the harm search.** Slice 3 re-pins `scripts/attention-harm-search.py` to
+  the corrected Java and records the delta in `docs/reviews/R-ATTENTION-HARM-2026-08.md`; until
+  then that review's tables describe the PRE-#399 score and say so nowhere — read them as the
+  record of the round that produced this one.
+- **It does not rewrite earlier sections' worked examples.** §8, §11 and §12's records quote
+  `A(c) = F·R·M·S` as the formula shipped at the time. They are records of their rounds; §4.1 and
+  this section carry the current formula.

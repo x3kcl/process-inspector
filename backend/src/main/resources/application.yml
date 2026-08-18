@@ -188,8 +188,14 @@ inspector:
       # inspector.incidents.quiet-window, so "stops being fresh" means one thing to an operator.
       recency-half-life: PT24H
       arrivals-window-days: 28
-      # The M factor's own sample-size floor: below 3 closed episodes the class has no MTTR and
+      # The M ESTIMATOR's own sample-size floor: below 3 closed episodes the class has no MTTR and
       # renders "no resolve-time history" — never a number (§6 estimation honesty rails).
+      # Since #399 (§17) M is identically 1 in the v1 ORDERING — medMTTR spans first sighting to
+      # the operator's resolve click, so it contains the queue wait the ordering itself controls
+      # and is endogenous to its own output. These three knobs are RETAINED deliberately: they
+      # still drive the measured `factors.mttr` diagnostic and the §3.2 ack-expiry suggestion, and
+      # they are what makes M's re-entry (behind an uncontaminated estimator) a one-line change.
+      # Changing them today moves the reported evidence and the ack-expiry preset, never a rank.
       min-closed-episodes: 3
       mttr-clamp-low: 0.5
       mttr-clamp-high: 2.0

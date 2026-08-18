@@ -13,18 +13,50 @@ import java.util.List;
  * clock of its own, so every branch is provable against synthetic inputs (rung-1 doctrine).
  *
  * <pre>
- * A(c) = F(c) · R(c) · M(c) · S(c)
+ * A(c) = F(c) · R(c) · S(c)                           -- M is IDENTICALLY 1 in v1 (#399, §17)
  *
  * F(c) = log2(1 + arrivals_28d(c))                    -- neutral 1 when the window was UNTRUSTED
  *      = log2(1 + outside_W(c) + gamma*burst_W(c))    -- when flooding(c), #365 §4.1a
  * R(c) = 2^(-age(lastSeen(c)) / tau)
- * M(c) = clamp(medMTTR(c) / medMTTR(fleet), 0.5, 2)   -- neutral 1 below the episode floor
+ * M(c) = 1                                            -- estimator retained, ordering input NOT
+ *        clamp(medMTTR(c) / medMTTR(fleet), 0.5, 2)   -- still MEASURED, shipped as factors.mttr
  * S(c) = max(1 - p_heal(c), 0.25)                     -- neutral 1 with no R2 lane
  * </pre>
  *
+ * <p><b>Why {@code M} does not multiply into the score</b> (#399, epic #398, ALARM-COST-MODEL.md
+ * §17). {@code medMTTR} is {@code ended_at − started_at} over CLOSED episodes, and read from
+ * source those two stamps are not the ends of a service time: {@code IncidentLedgerService} opens
+ * the episode at the sampler's FIRST SIGHTING of the class, and the only thing that ever closes
+ * one is the operator's S3 resolve verb ({@code IncidentLifecycleService.resolve}). So the
+ * statistic spans first-sighting → operator-resolve and therefore CONTAINS the operator's queue
+ * wait — the very quantity this ordering controls. That makes it ENDOGENOUS: rank a class low, it
+ * waits longer, its measured MTTR rises, {@code M} rises, it ranks higher next cycle. Under the
+ * shipped multiply that loop is negative/self-correcting (which is why nothing was on fire), but
+ * it means {@code M} was substantially measuring THE QUEUE rather than the class. Inverting it to
+ * {@code 1/M} — the Smith's-rule reading an adversarial harm search appeared to recommend
+ * (docs/reviews/R-ATTENTION-HARM-2026-08.md) — flips the same loop POSITIVE: rank low ⇒ longer TTR
+ * ⇒ smaller {@code 1/M} ⇒ rank lower still, i.e. a starvation mechanism. Both readings are
+ * therefore refused and {@code M ≡ 1}, on grounds independent of that report's invented
+ * distributions. The precedent is in this class already: {@code eff(c)} is excluded from the v1
+ * score for an analogous honesty problem (§3.1). {@code M} re-enters the ordering only behind an
+ * UNCONTAMINATED estimator (measured from first-operator-touch, or with the queue wait
+ * subtracted); the recorded falsifier is that if median time-to-touch turns out to be &lt; 5 % of
+ * median episode duration, the endogeneity is noise and the Smith reading becomes live again.
+ *
+ * <p><b>{@code mttrFactor()} stays, and {@code factors.mttr} keeps reporting the real clamped
+ * ratio</b> — deliberately, not by omission. The estimator, the {@code min-closed-episodes} floor
+ * and the {@code mttr-clamp-{low,high}} knobs are all retained so the re-entry above is a
+ * one-line change rather than an archaeology exercise, and the ratio is honest EVIDENCE about the
+ * class that the rationale's own resolve-time clause already quotes the median of. Reporting a
+ * hardcoded {@code 1.0} there would have hidden a measurement the operator can read, to describe
+ * an ordering rule that is documented instead. The one consumer that DID tell the operator this
+ * factor moved the card — the {@code AttentionBadge} glossary tooltip's "weighted by this class's
+ * historic time-to-resolve" — is corrected in the same change; no other consumer of
+ * {@code AttentionFactors.mttr()} makes an ordering claim.
+ *
  * <p><b>The neutrality property this whole slice rests on.</b> Every discriminating factor
- * degrades to a MULTIPLICATIVE IDENTITY when its evidence is missing: no closed episodes ⇒ M = 1,
- * no R2 lane ⇒ S = 1, no trustworthy arrival sample ⇒ F = 1. The ONE deliberate exception is a
+ * degrades to a MULTIPLICATIVE IDENTITY when its evidence is missing: no R2 lane ⇒ S = 1, no
+ * trustworthy arrival sample ⇒ F = 1 (and since #399 M is identically 1, evidence or not). The ONE deliberate exception is a
  * class with no ledger row (or a window whose samples were all trustworthy and all flat): there
  * F = 0 and the score is 0 for EVERYONE, which is not a demotion but the whole-fleet collapse to
  * the count-only tie-break — the design's stated guarantee. "No evidence at all" and "evidence we
@@ -123,7 +155,9 @@ public final class AttentionScoreCalculator {
         SelfHealLane lane = AttentionRationale.laneOf(selfHeal);
         double selfHealFactor = selfHealFactor(lane, config.selfHealFloor());
 
-        double score = frequency * recency * mttr * selfHealFactor;
+        // #399: M is NOT a term here — see the class javadoc. The ratio above is computed for
+        // `factors.mttr` (evidence + the retained estimator), never multiplied into the ordering.
+        double score = frequency * recency * selfHealFactor;
         boolean insufficient = classMedian == null && (lane == null || lane == SelfHealLane.INSUFFICIENT_HISTORY);
 
         AttentionFactors factors = new AttentionFactors(
@@ -184,8 +218,8 @@ public final class AttentionScoreCalculator {
      * the MULTIPLICATIVE IDENTITY, not as zero.
      *
      * <p>This is the review's confirmed defect, and the reason it is a defect rather than a
-     * conservative choice: {@code F} is a FACTOR of {@code A(c) = F·R·M·S}, so {@code F = 0}
-     * zeroes the entire score whatever R, M and S say. On an engine permanently at its
+     * conservative choice: {@code F} is a FACTOR of {@code A(c) = F·R·S}, so {@code F = 0}
+     * zeroes the entire score whatever R and S say. On an engine permanently at its
      * failure-lane scan cap EVERY group it touches is truncated in EVERY bucket, so every one of
      * its classes collapsed to {@code A = 0} — and truncation correlates with SIZE, so enabling
      * the flag on such a fleet systematically demoted the biggest classes below a one-member
@@ -266,7 +300,12 @@ public final class AttentionScoreCalculator {
         return Math.pow(2.0, -((double) ageSeconds / tau));
     }
 
-    /** Neutral 1 whenever either side of the ratio is unknown or degenerate — never a guess. */
+    /**
+     * The retained M ESTIMATOR — a diagnostic surfaced on {@code factors.mttr}, NOT a term of the
+     * v1 score (#399, §17; the class javadoc carries the endogeneity argument). Neutral 1 whenever
+     * either side of the ratio is unknown or degenerate — never a guess. Kept computing, with its
+     * clamp knobs, so re-entry behind an uncontaminated estimator is a one-line change.
+     */
     static double mttrFactor(Long classMedianSeconds, Long fleetMedianSeconds, AttentionConfig config) {
         if (classMedianSeconds == null || fleetMedianSeconds == null || fleetMedianSeconds <= 0) {
             return 1.0;
