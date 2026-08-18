@@ -545,3 +545,335 @@ weight, service time uniform:
   script is Python; both gates were run for the branch as a whole).
 - `docs/ALARM-COST-MODEL.md` was **not modified** — this report states findings; where
   their conclusions land is the owner's call.
+
+---
+
+## Addendum (2026-08-18, #401 — slice 3 of epic #398): re-pinned to the corrected score
+
+This section is **appended**, not a rewrite. Everything above describes the round that
+produced #399/#400 and is a record of that round; read it as such. This addendum re-pins
+`scripts/attention-harm-search.py` to the score **after** #399 (`M` dropped: `A(c) = F·R·S`)
+and #400 (`S` consumes self-heal timing: `S = max(floor, 1 − p_heal·w)`,
+`w = 2^(−t_heal/τ_heal)`, `τ_heal` default `PT1H`), and re-runs the full search at the
+**same seed, 20260805** — i.e. the identical 30 700 fleets, re-scored. Reproduce with
+`python3 scripts/attention-harm-search.py` / `--selftest-only` / `--quick`.
+
+**Headline verdict: the round helped, broadly and without making the pooled or per-regime
+aggregate numbers worse anywhere — but it did not fix everything, and one narrow sensitivity
+got measurably worse.** Pooled harm falls from **66.06 % → 54.70 %** and the wide-dynamic-range
+regime (G2) falls from **87.62 % → 61.02 %**. The one place the correction shows **zero**
+improvement is the exact synthetic point the original report flagged (§4c, `t_heal/mttr = 8`:
+still 80.73 % harm / 0.00 % help, bit-identical to the original run) — explained below, and it
+is a property of that probe's own design, not evidence #400 doesn't work. The one place the
+round measurably **cost** something is the GT-B sensitivity (§8c), where the charitable
+defense of `M` no longer has an `M` to defend.
+
+### A.1 The re-pinned self-test — every changed value, and why
+
+44 checks now (up from 36), 0 failures. Every value that moved is named:
+
+| Pinned check | Before (2026-08-05) | After (#401) | Why |
+|---|---|---|---|
+| `S` at each lane | `self_heal_factor(lane, cfg)` → 0.25/0.50/0.85/1.0 | `self_heal_factor(lane, tts_p50_s, floor, horizon)` → **same values at `tts_p50_s = 0`** | #400: `S` gained a timing argument; at `t_heal = 0` (`w = 1`) it is byte-identical to the old expression — pinned explicitly, not assumed |
+| "`M*S` dynamic range … 16.0" | `(2.0·1.0)/(0.5·0.25) = 16×` | **removed** — replaced by "`S` dynamic range (floor..1, t_heal=0) = 1/0.25 = **4.0×**" | #399: `M` is no longer a term, so the "other factor's" fixed range is `S` alone (4×), not `M·S` (16×). This is a *consequence* of the removal, not a reformulation choice — `M`'s own 4× contribution to the old 16× figure is simply gone |
+| "F out-ranges M·S only above ~4.3×10⁷ arrivals" | crossover ≈ 4.3×10⁷ (`lo=2`) | **crossover = exactly 80 arrivals** (`2^(4·log2(3)) − 1 = 81 − 1`) | Direct consequence of the span dropping 16× → 4×: `F` now out-ranges the bounded-range factor at *ordinary* fleet sizes instead of only at absurd ones. This is the single most important re-derived fact — it says `F` is a live discriminator on real fleets now, not just a tie-breaker |
+| `S` floor inertness | "floor 0.25 is INERT (never binds at any lane)" — checked at one implicit `t_heal` | **generalised across `t_heal`**: floor ≤ 0.25 is bit-identical (`==`, not `isCloseTo`) at all 4 lanes × 5 `tts_p50_s` values (`None, 0, 60, 3600, 86400`) | The worst case (most-demoting `S`) is still exactly at `t_heal = 0`; for every `t_heal > 0` the demoted value is *higher* (further from the floor), so if the floor doesn't bind at `t_heal = 0` it never does. Pinned rather than assumed |
+| `S` floor binding boundary | not pinned per-lane | **added**: floor 0.26/0.6 binds on LIKELY (0.25→0.26/0.6), floor 0.6 binds on MIXED (0.50→0.6), floor 0.6 does **not** bind on UNLIKELY (0.85 > 0.6) | Directly tests the §6/§18 correction (A.3 below) — the binding boundary is per-lane (0.25/0.50/0.85), not a single number |
+| `S` timing values | not present | **added**: LIKELY heals in 8 h (`tau_heal=1h`) → `1 − 0.75/256 = 0.9970703125`; heals at the horizon (1 h) → `1 − 0.375 = 0.625`; known lane + unknown timing → neutral `1.0`; timing only ever weakens a demotion (`S(t_heal) ≥ S(0)` for every lane × 7 `t_heal` values) | Pinned against `AttentionScoreCalculatorTest`'s own values for #400 part B, verbatim |
+| `M` checks (`mttr_factor`) | pinned | **unchanged, still pinned** | `M` is retained as the diagnostic behind `factors.mttr` (#399) — still computed, still tested, just never multiplied into the score. No value here changed |
+| `F`, `R`, gate, tie-break, neutrality checks | pinned | **unchanged** | Neither #399 nor #400 touches `F`, `R`, the burst gate, or the tie-break |
+
+No pinned value changed that I could not explain from #399/#400's own diffs — nothing here is
+a defect in either slice (see A.6).
+
+### A.2 Corrected vs. original — same fleets, same seed, side by side
+
+Every row below is `evaluate()`'s **corrected** column (`F·R·S`) next to a `original`
+column computed in the *same run*, on the *same fleet objects*, via the labelled
+counterfactual `attention_score_original` (`F·R·M·S`, the literal 2026-08-05 shipped
+formula, no timing) — so this is not two script versions diffed, it is one run scoring the
+same 30 700 fleets two ways. The `original` row exactly reproduces the 2026-08-05 report's
+own numbers (G0 76.70 %, G0b 0.00 %, POOLED 66.06 % [65.53,66.59], G2 87.62 %
+[86.63,88.55] — bit-identical), which is itself the proof that seed 20260805 regenerates the
+identical fleets.
+
+| regime | n | **corrected HARM** | 95% CI | help | original HARM (2026-08-05, reproduced here) | 95% CI | help |
+|---|---|---|---|---|---|---|---|
+| G0 pilot (decoupled) | 3 000 | 76.70 % | [75.15,78.18] | 22.37 % | 76.70 % | [75.15,78.18] | 22.37 % |
+| G0b pilot (coupled) | 3 000 | 0.00 % | [0.00,0.13] | 0.00 % | 0.00 % | [0.00,0.13] | 0.00 % |
+| G1 global LHS | 8 000 | **65.24 %** | [64.19,66.27] | 26.79 % | 72.09 % | [71.09,73.06] | 21.29 % |
+| G2 compression (predicted regime) | 4 500 | **61.02 %** | [59.59,62.44] | 32.71 % | 87.62 % | [86.63,88.55] | 10.67 % |
+| G3 converse (MTTR+heal) | 3 000 | **36.97 %** | [35.26,38.71] | 61.97 % | 70.03 % | [68.37,71.65] | 28.67 % |
+| G3b converse (self-heal only) | 3 000 | 32.20 % | [30.55,33.89] | 66.47 % | 33.43 % | [31.77,35.14] | 47.37 % |
+| G4 staleness | 3 000 | 89.13 % | [87.97,90.20] | 1.87 % | 89.13 % | [87.97,90.20] | 1.87 % |
+| G5 flood | 2 000 | **48.70 %** | [46.51,50.89] | 50.25 % | 71.30 % | [69.28,73.24] | 28.10 % |
+| G6 big K | 1 200 | **66.92 %** | [64.20,69.52] | 32.92 % | 88.83 % | [86.93,90.49] | 11.17 % |
+| **POOLED** | **30 700** | **54.70 %** | **[54.14,55.25]** | 31.25 % | **66.06 %** | **[65.53,66.59]** | 19.18 % |
+
+Conditioned on the two orders actually differing, corrected harm is **63.6 %**
+(54.70/(100−14.05)), down from the original's **77.5 %**.
+
+**Two regimes are bit-identical, correctly.** G0 and G4 have `M=1` in *both* formulas
+already (G0: zero closed episodes; G4: `heal_mode="none"`, no lane ever assigned), so
+neither `M`'s removal nor `S`'s new timing term has anything to act on. G0's own harm is
+entirely an `F` artifact (§9 "worst case" below); G4's is entirely `R` (unchanged from the
+original report's own finding — a stalled class demotes on staleness regardless of #398).
+
+**Every other regime improved, several sharply**, and none got worse in this table:
+G2 −26.6 pp, G5 −22.6 pp, G6 −21.9 pp, G3 −33.1 pp, G1 −6.9 pp. G3b's small improvement
+(−1.2 pp harm, but help rises 47.37 %→66.47 % and mean gap falls 0.073→0.059 — see the JSON
+for the fuller picture) reflects that regime already having `M ≡ 1` **exactly** in the
+*original* score too (`mttr_spread = 0.0` collapses every class's median to the identical
+fleet median, so `M = clamp(1.0, …) = 1.0` bit-for-bit even pre-#399) — #399 changes
+nothing there; the (small) movement is entirely #400.
+
+### A.3 Absolute quality — normalised regret, corrected vs. original vs. random vs. Smith
+
+| regime | count | **corrected** | original | random | Smith |
+|---|---|---|---|---|---|
+| G0 pilot (decoupled) | 0.1782 | 0.4349 | 0.4349 | 0.4731 | 0.0582 |
+| G0b pilot (coupled) | 0.1432 | 0.1432 | 0.1432 | 0.4674 | 0.0352 |
+| G1 global LHS | 0.2043 | **0.3653** | 0.4524 | 0.4693 | 0.0695 |
+| G2 compression | 0.1543 | **0.2076** | 0.4918 | 0.4589 | 0.0532 |
+| G3 converse (MTTR+heal) | 0.4522 | **0.3327** | 0.6160 | 0.4581 | 0.0504 |
+| G3b converse (self-heal only) | 0.3320 | **0.0626** | 0.1207 | 0.3729 | 0.3320 |
+| G4 staleness | 0.0010 | 0.3126 | 0.3126 | 0.4969 | 0.0010 |
+| G5 flood | 0.2583 | **0.2277** | 0.4601 | 0.4339 | 0.1845 |
+| G6 big K | 0.1712 | **0.2298** | 0.5062 | 0.4596 | 0.0407 |
+
+Corrected regret is **never worse than original** in this table, and in G1/G2/G3/G5/G6 it is
+no longer worse than the random control either (the original report's finding that attention
+was worse than a shuffle in four of nine regimes — G2, G3, G5, G6 — **no longer holds**:
+corrected regret sits below random in all of them now, though still well above Smith).
+G4 is unchanged (0.3126 both — `R`-only, as above) and remains the one regime where
+count-only is close to optimal (0.0010) while corrected is not.
+
+### A.4 Same-order fraction — did it "rise sharply"? Not pooled, and here's why
+
+The prediction (#401's own framing) was that with `M ≡ 1`, the corrected order should
+collapse onto count-only far more often. **It rose in every regime where `M` genuinely
+discriminated in the original score, and fell in the pilot's own G3b — pooled, the two
+roughly cancel (14.66 % → 14.00 %, a *decrease*, well outside the ~0.4 pp Wilson noise floor
+at this n but tiny in absolute terms).**
+
+| regime | corrected same-order | original same-order | direction |
+|---|---|---|---|
+| G0 | 0.93 % | 0.93 % | unchanged (M=1 in both already) |
+| G0b | 100.00 % | 100.00 % | unchanged |
+| G1 | **7.98 %** | 6.62 % | ↑ as predicted |
+| G2 | **6.27 %** | 1.71 % | ↑ sharply, as predicted |
+| G3 | 1.07 % | 1.30 % | ↓ slightly (within noise: ±0.4 pp Wilson half-width at n=3000) |
+| G3b | **0.93 %** | 18.30 % | ↓ sharply, opposite of the prediction |
+| G4 | 8.90 % | 8.90 % | unchanged |
+| G5 | **1.05 %** | 0.60 % | ↑ as predicted |
+| G6 | **0.17 %** | 0.00 % | ↑ as predicted |
+| **POOLED** | **14.00 %** | 14.66 % | ↓ (dominated by G3b) |
+
+**Why G3b moved the wrong way.** In G3b, `M ≡ 1` **exactly** in the original score too
+(A.2), so #399 changes nothing there — the movement is entirely #400. #400 gave `S` a
+*continuous* input (`t_heal`, drawn independently per class) where before it only had a
+*discrete* one (the lane, 4 values). A discrete-only `S` ties with the count order far more
+often by construction (only 4 possible `S` values to break ties with); handing it a
+continuous per-class covariate breaks most of those coincidental ties into a genuine total
+order, which mechanically **reduces** the same-order fraction even though (A.2, A.3) it
+makes the resulting order *better* on every other measure in this exact regime (help
+47.37 %→66.47 %, mean gap 0.073→0.059). More information reducing "accidental agreement
+with count-only" while improving actual quality is the expected shape of this effect, not a
+contradiction. G1/G2/G5/G6 show the *predicted* direction because those regimes have real
+`mttr_spread > 0`, so `M` was genuinely reordering things pre-#399 that #399 stops
+reordering.
+
+### A.5 The §4c `t_heal` sweep — the direct test of #400's fix
+
+| `t_heal / mttr` | corrected harm% | help% | original harm% | help% |
+|---|---|---|---|---|
+| 0.10 | 33.47 % | 43.53 % | 33.47 % | 43.53 % |
+| 0.25 | 31.00 % | 50.07 % | 31.00 % | 50.07 % |
+| 0.50 | 33.00 % | 45.27 % | 33.00 % | 45.27 % |
+| 1.00 | 31.53 % | 48.07 % | 31.53 % | 48.07 % |
+| 2.00 | 15.00 % | 64.60 % | 15.00 % | 64.60 % |
+| 4.00 | 32.73 % | 48.47 % | 32.73 % | 48.47 % |
+| **8.00** | **80.73 %** | **0.00 %** | **80.73 %** | **0.00 %** |
+| 16.00 | **46.87 %** | 0.00 % | 78.60 % | 0.00 % |
+
+**This is the one place the round shows zero measured benefit at the exact point the
+original report flagged, and it needs to be reported as such — not smoothed over.**
+Through `t_heal/mttr = 8` (inclusive — the original headline's own number), corrected and
+original are **bit-identical**, not just close. Only at 16× does correction show up
+(46.87 % vs 78.60 %).
+
+**Why, mechanically — verified by direct inspection of individual fleets, not just the
+aggregate.** This sweep's own fleet generator (`gen_heal_timing`, unchanged by this slice)
+gives every class in a fleet the **same absolute `t_heal`** (`heal_t_fixed_mult × mttr`,
+and `mttr_spread=0.0` makes `mttr` itself identical across classes too), with
+`count_spread=0.05` and arrivals rank-consistent with `n0`, so `F·R` is nearly flat across
+the fleet's 5 classes by construction — this probe exists to isolate `S`'s own effect, and
+it does that by suppressing everything else. Given one shared `t_heal` (hence one shared
+`w`), `1 − p_heal·w` is monotone decreasing in `p_heal` for **any** `w > 0` — so the
+*relative* ranking `S` imposes across lanes (UNLIKELY > MIXED > LIKELY) is **invariant to
+`w`**, i.e. invariant to `t_heal`, whenever `F·R` doesn't have enough spread to overturn it.
+Verified directly: for a `t_heal/mttr = 8` fleet, `S` values were **0.953 (LIKELY) vs. 0.25
+original** — a large absolute change — yet `order_attention == order_original` for that
+fleet, because the *ordinal* information `S` contributes didn't change, only its magnitude.
+Only once `w` shrinks enough (`t_heal/mttr = 16` ⇒ `w = 2^-16/6·60/60...` ≈ tiny) that the
+now-compressed `S` spread becomes comparable to the fleet's residual `F·R` noise does the
+order actually flip.
+
+**This is a limitation of the existing synthetic probe, not a defect in #400.** The probe
+was built (pre-#401) to cleanly isolate `p_heal`'s own effect by holding everything else
+flat — which is exactly what makes it structurally blind to a *magnitude-only* correction
+when `t_heal` is shared fleet-wide. The realistic regimes, where `t_heal` is drawn
+**independently per class** (G1, G2, G3, G3b, G5, G6 — A.2), show the fix working broadly
+and substantially. Read together: **#400 fixes the general per-class-varying case
+(measured, A.2) but this specific controlled single-point probe of "exactly 8× service
+time" cannot see it** — worth naming as a gap in the probe for whoever next touches this
+sweep, not a claim that #400 under-delivers.
+
+### A.6 Do the clamp/floor/horizon knobs bound the damage? (full run, n=8 000/4 500)
+
+**`M`'s clamp is now provably inert on the corrected score, everywhere tested** — widened
+`[0.1,10]`, removed `[0,∞)`, tightened `[0.8,1.25]`, or disabled `[1,1]`: **all four produce
+the exact same corrected harm rate as shipped** (G1: 65.24 % in all five rows; G2: 61.02 %
+in all five), because `M` is not a term of `F·R·S`. The same four variants move `original`
+substantially (G2: 64.62 %→89.98 % across the same range) — the direct falsifier of "the
+clamp still matters," run on request rather than merely asserted.
+
+**The `S` floor stays inert at 0.25** on both formulas (`S floor REMOVED (0.0)` is
+bit-identical to shipped on both corrected and original, in G1 and G2) — consistent with
+A.1/A.3.
+
+**Raising the floor moves corrected and original in *opposite* directions.**
+`S floor RAISED to 0.9` (≈ disables `S`, forcing it toward 1 for nearly every class):
+G2 corrected harm **falls** to 25.18 % (collapsing toward the near-optimal "`F` only"
+behaviour this regime has, A §4b in the original report), while G2 original harm **rises**
+to 93.96 % (matching the original report's own finding that disabling `S` there removes its
+one genuine benefit and makes `M`'s dominant error worse). Same knob, same fleets, opposite
+effect — because the corrected score has nothing left for a disabled `S` to be a net loss
+*against*.
+
+**`tau_heal` (new knob) behaves as designed.** Shortening it to 10 min weakens the timing
+term's reach (G2 corrected: 61.02 %→44.33 %, since `S` now decays to neutral over a much
+shorter half-life, so most of G2's per-class `t_heal` draws saturate `S`→1 well before the
+score sees them); lengthening it to 24 h strengthens it back toward
+original behaviour (G2 corrected: 61.02 %→66.69 %, still well short of original's 87.62 %
+since `M`'s removal is untouched by this knob). Monotone in the predicted direction both
+ways.
+
+### A.7 GT-B — the one sensitivity the round measurably cost something on
+
+The original report's §8(c) GT-B is the **charitable** reading of `M` (MTTR as a
+per-instance severity weight, operator service time held uniform) — the strongest available
+defense of `M`'s direction, explicitly caveated there as "not the brief's cost model."
+Since GT-B only reweights the **ground-truth cost**, not the score, it is a fair,
+same-fleets comparison against the original report's own GT-B numbers:
+
+| regime | original GT-B harm (2026-08-05) | corrected GT-B harm (this run) | Δ |
+|---|---|---|---|
+| G1 | 63.78 % | 64.16 % | +0.4 pp (noise) |
+| G2 | 55.40 % | 59.73 % | **+4.3 pp** |
+| G3 | **13.13 %** | **37.47 %** | **+24.3 pp** |
+
+**This is the round's one honest cost, and it is exactly what #399's own design doc predicts
+rather than a surprise.** GT-B existed specifically to test whether MTTR-as-severity makes
+`M`'s direction correct — in G3 it flipped the original verdict from 70.03 % harm to
+13.13 % harm. Since the corrected score doesn't consume `M` (or any severity proxy) at all,
+it cannot benefit from that reading anymore: G3 GT-B harm reverts to essentially G3's own
+baseline corrected number (36.97 %, A.2) because there is no `M` left to weight by
+severity. `ALARM-COST-MODEL.md` §17.1/§17.4 names this trade-off explicitly ("Both readings
+are refused… `M` re-enters the ordering only behind an uncontaminated estimator") and its
+own re-entry falsifier is the intended way back to recovering this upside, not a defect in
+#399 to be fixed here. Recorded as a **result**, per the brief: the round is a net
+improvement pooled and in every regime tested directly (A.2–A.3), but it gives up GT-B's
+best-case defense of `M` along with `M`'s dominant, larger downside — a trade the original
+report itself, and #399's design doc, already argued was correct to make.
+
+### A.8 Verdict on the two claims this slice was asked to check
+
+**1. "§6 overstates the inert band — the true boundary is 0.25, not 0.75; the headline (0.25
+default is bit-identically inert) is correct."** **Confirmed independently**, three ways: (a)
+direct algebra — `S = max(floor, 1−p_heal·w)` binds iff `floor > 1−p_heal·w`; at `w=1`
+(worst case) that is `floor > 0.25` for LIKELY, `floor > 0.50` for MIXED, `floor > 0.85` for
+UNLIKELY, so "does nothing below 0.75" is correct only for the UNLIKELY lane and wrong for
+the other two; (b) the re-pinned self-test now asserts exactly that per-lane boundary
+(A.1) and passes; (c) `ALARM-COST-MODEL.md` §18 already carries this identical correction
+verbatim ("The binding boundary is **0.25**, not 0.75: at `floor = 0.5` the clamp already
+selects for both `SELF_HEAL_LIKELY` (0.25) and `SELF_HEAL_MIXED` (0.50)… The report's
+*headline* claim… is correct") — so this finding is not new, it is independently
+re-derived and cross-checked against a correction #400 already recorded. One nuance worth
+naming precisely: at `floor = 0.5` MIXED's value is a **boundary tie** (already exactly
+0.50 pre-floor), not a value *change* — "selects" is mathematically true (`max` picks the
+floor argument) but produces no observable difference for MIXED at that exact floor; the
+observable change at `floor = 0.5` is LIKELY's alone (0.25→0.5). This generalises cleanly
+under #400's timing term too: the worst case (most-demoting `S`) is still exactly
+`t_heal = 0`, so the 0.25 boundary is unchanged by the timing amendment (A.1).
+
+**2. "`ttsP50Seconds` is NOT hysteresis-stabilized — only `lane` runs through
+`DwellStateMachine` — and the simulation can't say anything about flap risk."**
+**Confirmed** from source (`RETRYING-RISK-LANE.md` §4.2's own correction, and
+`ALARM-COST-MODEL.md` §18's "Named correction to RETRYING-RISK-LANE.md §4.2" both state it
+directly: `SelfHealStatsService.get()` runs only `lane` through `DwellStateMachine`;
+`n`/`healed`/`ttsP50Seconds`/`ttsP90Seconds` are served raw off the 60 s Caffeine cache).
+**And the second half is also correct: this harm-search simulation cannot speak to it,
+structurally.** Every fleet here is a single static snapshot — one score computed once per
+fleet, compared against a hidden-dynamics cost integral. There is no repeated-poll,
+multi-cycle model anywhere in this script (unlike `DwellStateMachine`'s own dedicated test
+suite, which *does* exercise repeated cycles). A raw, non-dwelled `ttsP50Seconds` that
+genuinely oscillated between polls — e.g. hovering near a `10`-spell sample-size floor, or
+near a horizon-relative threshold where `w` is sensitive — would be invisible to this
+method entirely; the ordering-stability argument #400 makes (§4.1b: `w` is continuous,
+monotone and bounded, `|ΔS| ≤ p_heal·ln2/τ_heal·Δt`, so a whole sampler bucket of movement
+in the median moves `S` by under 0.009 at the `PT1H` default) is analytic, not something
+this harness measures or could measure without a genuinely new multi-cycle simulation
+mode. Flagging as a named coverage gap (alongside `arrivalsUnknown`/`burstUnknown`, per §9
+of the original report) rather than attempting to address it here — out of scope for a
+re-pinning slice.
+
+### A.9 Defects found in #399/#400? None in the Java
+
+Every value that changed between the two self-test pins (A.1), every regime movement (A.2),
+and the one place the round didn't help (A.5) all trace cleanly to #399/#400's own
+documented mechanics — nothing here required a value I couldn't explain from the diffs, so
+nothing here is being reported as a slice defect per this issue's stop-condition. The
+closest thing to a gap found is **methodological, in the harm-search harness itself, not in
+`AttentionScoreCalculator`**: the §4c sweep's single-shared-`t_heal`-per-fleet design (A.5)
+makes it structurally insensitive to #400's fix at any one fixed multiple, which is worth
+naming for whoever next extends that sweep (e.g. a per-class-varying-`t_heal` variant of
+the same probe would show the fix's effect continuously rather than only past a threshold)
+— not a change made in this slice, per the rails against "improving" the port while pinning
+it.
+
+### A.10 What this addendum does and does not license
+
+**Licenses:** the correction round (#399+#400) measurably reduces harm pooled and in every
+regime directly comparable to the original run, without making any of those numbers worse;
+the wide-dynamic-range regime the brief predicted (G2) drops from 87.62 %→61.02 %; the `M`
+clamp knobs are now provably inert on the ordering (A.6); the two claims this slice was
+asked to check are both confirmed from source, independent of this simulation.
+
+**Does not license:** "the score is now harmless" — G2's own corrected harm rate is still
+61.02 % outright (65.1 % conditioned on the two orders actually differing), corrected regret
+still exceeds Smith's by a wide margin everywhere, and the single worst fleet found this run
+still shows attention costing
+4.33× what count-only costs on a realistic G2 fleet (96.8 % of the oracle-to-worst span) —
+the correction narrows the damage, it does not eliminate it. It does not license flipping
+`inspector.triage.attention-ordering` — still default-false, §7's gate is still NOT MET
+(0 of 5), and this remains a synthetic-fleet study exactly as caveated in §8/§9 above,
+unchanged by this slice. It does not license treating A.5's null result as "#400 doesn't
+work" — the realistic per-class regimes (A.2) are the more representative test and show it
+does.
+
+### A.11 Reproducibility
+
+- `scripts/attention-harm-search.py`, seed **20260805** (unchanged), numpy 1.26.4,
+  Python 3.12. `--selftest-only` reproduces A.1's 44/44 pass; the full run reproduces every
+  table above byte-for-byte (the `original` columns independently re-derive the 2026-08-05
+  report's own published numbers, confirming the fleets are identical).
+- **30 700 main fleets**, each now additionally scored against the labelled `original`
+  (pre-#398) counterfactual in the same pass — no second run needed for the before/after
+  comparison. Runtime this run: full log in the branch's own record; on the order of the
+  original's 8m25s (same fleet count, one extra cheap score per fleet).
+- `bash scripts/shell-syntax-check.sh` and `bash scripts/security-audit.sh` pass.
+- `docs/ALARM-COST-MODEL.md` was **not modified** by this slice (per the #401 rails); this
+  addendum records findings only. §17/§18 already anticipate and partially pre-empt two of
+  this addendum's findings (the §6 floor-boundary correction, A.8.1) — cross-referenced,
+  not duplicated as new claims.
