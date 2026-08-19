@@ -22,8 +22,12 @@ class AttentionRationaleTest {
     void theWorkedExampleFromTheDesignRendersVerbatim() {
         String sentence = sentence(21, 120, 14_400L, null, false);
 
+        // #399: the resolve-time clause names BOTH ends of the statistic. The median is
+        // first-sighting → operator-resolve, queue wait included, so "typically takes 4 h to
+        // resolve" was a fix-time claim the ledger never measured (ALARM-COST-MODEL §4.3/§17).
         assertThat(sentence)
-                .isEqualTo("21 failing · last seen 2 min ago · typically takes 4 h to resolve · no self-heal history.");
+                .isEqualTo("21 failing · last seen 2 min ago · typically 4 h from first sighting to resolve"
+                        + " · no self-heal history.");
     }
 
     @Test
@@ -279,7 +283,7 @@ class AttentionRationaleTest {
     void aSubFloorEstimateNeverRendersAsANumber() {
         String sentence = sentence(8, 3_600, null, null, false);
 
-        assertThat(sentence).contains("no resolve-time history").doesNotContain("typically takes");
+        assertThat(sentence).contains("no resolve-time history").doesNotContain("from first sighting");
     }
 
     @Test

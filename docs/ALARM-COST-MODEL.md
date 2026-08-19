@@ -253,18 +253,22 @@ DLQ scan, never the grid-search plan) is untouched** — the score consumes the 
 output, never adds a leg to it.
 
 ```
-A(c) = F(c) · R(c) · M(c) · S(c)
+A(c) = F(c) · R(c) · S(c)                 M ≡ 1 in v1 — see the #399 correction below
 
 F(c) = log2(1 + arrivals_28d(c))          frequency — positive occurrence-total deltas,
                                           28d trailing, from incident_occurrence;
                                           1 (neutral) when the window was WHOLLY UNTRUSTED
 R(c) = 2^(−age(lastSeen(c)) / τ)          recency — τ default 24h = the existing
                                           quiet-window constant (C6)
-M(c) = clamp(medMTTR(c) / medMTTR(fleet), 0.5, 2)
-                                          historic cost — closed-episode durations only;
-                                          < 3 closed episodes ⇒ 1 (neutral) + "no history"
-S(c) = 1 − p_heal(c), floored at 0.25     self-heal demotion — R2 statistic (§4.2);
-                                          null/insufficient ⇒ 1 (neutral)
+M(c) ≡ 1                                  NOT an ordering term (#399, §17). The estimator
+       clamp(medMTTR(c) / medMTTR(fleet), 0.5, 2)
+                                          is retained, still MEASURED and still shipped as
+                                          factors.mttr evidence; < 3 closed episodes ⇒ 1
+                                          (neutral) + "no history"
+S(c) = max(1 − p_heal(c)·w(c), floor)     self-heal demotion — R2 statistic (§4.2);
+       w(c) = 2^(−t_heal(c) / τ_heal)     null/insufficient lane ⇒ 1 (neutral);
+                                          absent t_heal ⇒ w = 0 ⇒ 1 (neutral), §4.1b
+                                          τ_heal default PT1H; floor default 0.25, INERT
 ```
 
 Tie-break: live `total DESC`, then `signatureHash ASC` — the R-SEM-23 deterministic total
@@ -284,8 +288,13 @@ Rules:
   enter/exit design (Roohi & Izadi 2023, §2 eq. 2,
   [10.61186/joc.17.2.113](https://doi.org/10.61186/joc.17.2.113); Beebe et al. 2013,
   [10.1002/prs.11539](https://doi.org/10.1002/prs.11539)).
-- The 0.25 floor on `S` means a reliably-self-healing class is demoted at most 4×, never
-  zeroed — a mass self-heal class stays visible (same doctrine as never-hide).
+- A reliably-self-healing class is demoted **at most 4×, never zeroed** — a mass self-heal
+  class stays visible (same doctrine as never-hide). That bound is **lane-quantisation
+  arithmetic, not the `self-heal-floor` clamp**: `S` bottoms out at `1 − p_heal(LIKELY) =
+  1 − 0.75 = 0.25`, exactly the default floor, reached from above and therefore never
+  selected. `inspector.triage.attention.self-heal-floor` is a provable no-op at **every value
+  ≤ 0.25** and binds only strictly above it (see the §18 correction — this bullet used to
+  credit the floor with a mechanism it does not deliver).
 - Score factors ship in the DTO next to the card (`attention: {score, factors, rationale}`)
   so the UI renders the one-sentence rationale (below) with real numbers, not vibes.
 
@@ -318,6 +327,36 @@ Rules:
   window that merely STARTS mid-life still finds `LAG` NULL on its first row and still discards
   it, so a standing population is never re-banked as fresh growth, and
   `arrivalsAreTheGrowthSignalNotTheSizeSignal` passes unchanged.
+
+**Correction (post-ship, #399 / epic #398 — the full round is §17): `M ≡ 1` in the v1 ordering,
+and the definition debt #382 named is paid here.**
+
+*What `medMTTR` actually measures, in the estimator's own terms.* The number is produced by
+`IncidentEpisodeRepository.closedEpisodeDurationSeconds()` — `EXTRACT(EPOCH FROM (ended_at −
+started_at))` over rows `WHERE ended_at IS NOT NULL`, i.e. CLOSED episodes only. `started_at` is
+stamped by `IncidentLedgerService` at the sampler's **first sighting** of the class (the episode
+is created in the same pass that first records the incident, and again on each automatic
+regression). `ended_at` is stamped by exactly one thing: the **S3 resolve verb**
+(`IncidentLifecycleService.resolve` → `IncidentEpisodeRepository.closeEpisode`), an OPERATOR
+click; nothing in the sampler, the ledger or any scheduled job ever closes an episode. So
+`medMTTR(c)` is the median **first-sighting-to-operator-resolve** duration — time-to-resolution
+measured from incident BIRTH, not from the moment anyone started working on it.
+
+*Therefore it is neither of the two things #382 asked between.* It is not a clean operator
+service time (that would license Smith's rule and make the shipped multiply backwards), and it
+is not a clean severity weight (that would license the multiply). It **contains the operator's
+queue wait** — the very quantity this ordering exists to allocate — which makes it ENDOGENOUS to
+its own output: rank a class low ⇒ it waits longer ⇒ its measured MTTR rises ⇒ `M` rises ⇒ it
+ranks higher next cycle. Under the shipped multiply that loop is *negative* (self-correcting,
+which is why nothing was ever on fire), but it means `M` was substantially measuring the QUEUE
+rather than the class.
+
+*So the v1 ordering does not consume it.* `M ≡ 1`. The estimator, the `min-closed-episodes`
+floor and `inspector.triage.attention.mttr-clamp-{low,high}` are all RETAINED; `factors.mttr`
+keeps reporting the real clamped ratio as evidence, and the rationale keeps quoting the median
+(with its span now named — §4.3's own correction). Only the SCORE stopped reading it. Precedent:
+§3.1's exclusion of `eff(c)` from the v1 score for an analogous honesty problem. Re-entry
+condition and the falsifier that would reverse this call: §17.
 
 ### 4.1a Burst-aware frequency (amendment #365 — DESIGN LOCKED, build slice pending)
 
@@ -419,6 +458,104 @@ within one TTL and survives at least one rebuild.
 ratio"); when `burstUnknown`, the clause is "recent arrival rate unknown". Wire fields in
 §14.6.
 
+### 4.1b Timing-aware self-heal demotion (amendment #400, ★ BUILT)
+
+**The gap this closes.** `S` consumed the self-heal *probability* and never its *timing*, so a
+class that reliably heals **eventually** was demoted exactly as hard as one that heals **in a
+minute**. Measured, against the covariate the harm report pre-registered for precisely this
+question (`docs/reviews/R-ATTENTION-HARM-2026-08.md` §4c, `t_heal / mttr` swept):
+
+| `t_heal / mttr` | HARM | help |
+|---|---|---|
+| ≤ 4.00 | 15–33 % | 45–65 % |
+| **8.00** | **80.73 %** | **0.00 %** |
+| 16.00 | 78.60 % | 0.00 % |
+
+A clean phase change. While the heal lands inside the operator's own horizon the demotion is a
+large win; once it lands after the operator would have finished the whole board, deferring the
+class buys nothing and costs everything. The evidence needed to tell the two cases apart was
+**already on the wire** — `SelfHealStats.ttsP50Seconds`, the median observed duration of the
+class's SELF_HEALED spells (RETRYING-RISK-LANE.md §3.2) — so this amendment adds no query, no
+new R2 work and no engine call.
+
+**The term.**
+
+```
+S(c) = max(floor, 1 − p_heal(c) · w(c))
+w(c) = 2^(−t_heal(c) / τ_heal)          t_heal = SelfHealStats.ttsP50Seconds
+                                        τ_heal = attention.self-heal-horizon, default PT1H
+                                        t_heal absent ⇒ w = 0 ⇒ S = 1 (neutral)
+```
+
+**Why `τ_heal` is its own knob and not a constant already in the model.**
+
+- **Not `medMTTR`** (and nothing derived from it). #398 establishes that `medMTTR` is measured
+  from incident *birth* and therefore contains the operator's own queue wait — endogenous to the
+  ordering, and the whole reason `M` was neutralised. `t_heal` is engine-side and *not*
+  endogenous; that asymmetry is the point of the fix, and dividing the one by the other would
+  re-import exactly the contamination the round removed.
+- **Not the recency half-life τ (C6, 24 h).** Reusing it is arithmetically attractive and
+  substantively wrong: at τ = 24 h a class whose median self-heal is eight hours still keeps
+  **79 %** of its full demotion — i.e. the table row measured at 80.73 % harm / 0.00 % help would
+  be left almost exactly where it was. A constant chosen to express "how long until a *sighting*
+  goes stale" cannot also express "how long a *heal* is worth waiting for".
+- **PT1H, defended.** `τ_heal` is a **policy** statement — how far ahead this deployment is
+  willing to bet on a heal — not an estimate, so it carries no estimator's bias and no
+  endogeneity. One hour sits an order of magnitude above the 60 s sampler beat and the PT5M model
+  TTL (a heal the ordering could never have reacted to reads as immediate) and an order of
+  magnitude below the 24 h quiet window (a heal nobody will still be waiting for reads as never).
+  Curve: heal inside one bucket ⇒ `w = 1` (full shipped demotion); 1 h ⇒ 0.50; 8 h ⇒ 0.0039.
+  **Named limitation:** the harm search's phase change is at ~4–8 × *service time*, and a fixed
+  horizon cannot track a fleet's service time — but the only available service-time estimator is
+  the contaminated one, so a policy constant is the honest instrument. A deployment that knows
+  its own hands-on service time should set `self-heal-horizon ≈ 4 ×` it.
+
+**Two safety properties, by construction** (the §4.1a discipline: an amendment must be provably
+inert where the shipped behaviour was already right).
+
+1. `w ∈ [0, 1]` ⇒ `S ∈ [1 − p_heal, 1]`. The timing term can only ever **weaken** a demotion,
+   never deepen one. No class can be pushed below where the shipped formula put it.
+2. At `t_heal = 0`, `w = 2^0 = 1` and `S` is **byte-identical** to the shipped expression. That
+   is not an edge case: the spell resolution floor is one sampler bucket
+   (RETRYING-RISK-LANE.md §3.1), so every class healing inside 60 s reports `ttsP50Seconds = 0`.
+   The amendment is therefore exactly inert across the whole regime (`≤ 4 ×` rows) the harm
+   search says `S` genuinely wins in, and bites only in the regime it measured as harmful.
+
+**Degradation — `w = 0`, not `w = 1`, and the rule it follows.** `tts*` is absent whenever
+`healed = 0` or the raw sample sits below the `n < 10` floor, while the **displayed** lane can
+still be a dwelled risk lane at that moment, so "lane known, timing unknown" is reachable (a
+`SELF_HEAL_UNLIKELY` class with zero healed spells is the routine case). §4.1's degradation rule
+— *an unknown factor reads as the multiplicative identity* — gives `S = 1`. The rejected
+alternative, `w = 1` ("preserve today's behaviour"), asserts *this class heals immediately*, the
+single most demoting value available, on no evidence at all: the §13 F2 defect class exactly, and
+it fails toward burying a card rather than surfacing it.
+
+**Stabilization contract (§4.1), restated precisely.** `p_heal` still comes from the server-dwelled
+lane, so the discrete part of `S` is unchanged and cannot flap while the badge holds.
+`ttsP50Seconds` is **not** dwell-stabilized — `SelfHealStatsService` runs only the *lane* through
+`DwellStateMachine` and pairs it with the raw per-cycle statistic; §4.1's clause is written as if
+the whole R2 artifact were stabilized, and it is not (see §18). It is admissible here because the
+contract exists to prevent **discontinuous** reordering: the lane is a *classification*, so an
+epsilon move in the underlying rate flips `p_heal` 0.75 → 0.50 and jerks the ordering while the
+badge says nothing changed. `w` has no threshold to cross — continuous and monotone in `t_heal`,
+bounding the response at `|ΔS| ≤ p_heal · ln2/τ_heal · Δt` (at PT1H, a whole sampler bucket of
+movement in the median moves `S` by < 0.009) — and it is not a per-cycle rate but a 90-day order
+statistic over ≥ 10 completed spells, so moving it one bucket needs a whole spell to enter or
+leave the window *and* to cross the middle of the distribution. If a future estimator ever makes
+the duration jumpy, the fix is to dwell it in `SelfHealStatsService` next to the lane — never to
+re-derive or smooth it in the calculator (§4.2: adapt the join, never re-derive the statistic).
+
+**Rationale (§4.3): no new clause.** The `SELF_HEAL_LIKELY` clause already renders the timing
+evidence this factor now consumes — `"usually self-heals (21/23 past spells, typically ≤ 1 min)"`
+(#387, from `ttsP90Seconds`) — so the sentence's one-line cap is untouched and the reader can
+already see *why* a self-healer was or was not demoted. MIXED/UNLIKELY clauses stay timing-free:
+their demotion is 2× and 1.18× respectively, and adding a second timing string would break the
+locked frontend/backend parity on `selfHeal.ts` for no proportionate gain (named limitation).
+
+**Wire:** unchanged. No new `AttentionFactors` field, therefore no `schema.d.ts` regeneration and
+no frontend change — `factors.selfHeal` already carries the amended value and `factors.selfHealLane`
+the lane it came from.
+
 ### 4.2 Interface consumed from track R2 (#347 design / #351 API) — dependency, not duplication
 The score consumes, per `(signatureHash, algoVersion)`:
 
@@ -434,12 +571,12 @@ computed, stabilized, or floored — that is #347's design surface; #353 consume
 shape #351 ships, adapting the join only.
 
 ### 4.3 Rationale — one glanceable sentence (hard requirement, issue #348)
-> "Ordered by the expected cost of waiting: freshness and growth, weighted by this class's
-> historic time-to-resolve — proven self-healers rank lower, and nothing is hidden."
+> "Ordered by the expected cost of waiting: how recently this class was seen and how fast it is
+> growing — classes that reliably clear themselves soon rank lower, and nothing is hidden."
 
 (Tightened per panel: one sentence, glanceable.) Per-card variant substitutes the numbers:
-*"21 failing · last seen 2 min ago · typically takes 4 h to resolve · no self-heal
-history."*
+*"21 failing · last seen 2 min ago · typically 4 h from first sighting to resolve · no
+self-heal history."*
 
 **Correction (post-ship, issue #374 — §12's own correction note).** "One tooltip sentence"
 was the original heading, and it shipped both sentences above hover-only. The measured §8.8
@@ -482,6 +619,29 @@ left)."* Still one sentence. Scope is deliberately narrow (v1): the Stage 0 dash
 the `forClass()`-composed rationale that also renders on `/incidents` (always the split
 absent, so always the base clause there) — a known limitation named in full in
 RETRYING-RISK-LANE.md §10.
+
+**Correction (post-ship, #399 / epic #398 — §17). Both sentences made a claim the score no longer
+makes, and one of them made a claim the ledger never measured.**
+
+- *The glossary sentence said the ranking was "weighted by this class's historic
+  time-to-resolve".* That became FALSE the moment `M ≡ 1` (§4.1 correction): the v1 score is
+  `F · R · S`. It is corrected above, and in `frontend/src/components/AttentionBadge.tsx`'s
+  `GLOSSARY_SENTENCE` — the one place it renders — to name only what the ordering actually reads.
+  This is a copy fix, not a scope reduction: nothing about "ordered by the expected cost of
+  waiting" or "nothing is hidden" changes.
+- *The per-card clause said "typically takes 4 h to resolve".* That reads as a pure fix-time
+  claim — "this class takes 4 h of work" — while the statistic behind it is the median
+  **first-sighting-to-operator-resolve** duration, which includes however long the class sat in
+  the queue before anyone looked at it (§4.1 correction). **The statistic is kept, the claim is
+  corrected** — the same disposition as §3.2's P75 copy fix (F6): the number is the honest one to
+  show, it just has to say what it spans. The clause now reads *"typically 4 h from first sighting
+  to resolve"*, still one `·`-separated clause on one line, and the sub-floor case is unchanged
+  ("no resolve-time history"). Per-card variant, updated: *"21 failing · last seen 2 min ago ·
+  typically 4 h from first sighting to resolve · no self-heal history."*
+- The #387 and #388 correction notes above quote worked examples carrying the OLD clause
+  ("typically takes 2 min to resolve", "typically takes 4 h to resolve"). They are the record of
+  those rounds and are deliberately not rewritten; the clause they show is superseded by this
+  note, and their own subject (the self-heal / dead-letter clauses) is untouched by #399.
 
 ## 5. MEASURED BASELINE — pilot-ledger extraction & ordering simulation (auditable)
 
@@ -692,7 +852,7 @@ expiry suggestion, derived resurface threshold) requires ALL of:
 
 | # | Gate | Measured today (2026-08-04) | Met? |
 |---|---|---|---|
-| G1 | ≥ 20 closed episodes fleet-wide AND ≥ 3 classes with ≥ 3 closed episodes each (M term) | 0 closed episodes, 0 classes | **NO** |
+| G1 | ≥ 20 closed episodes fleet-wide AND ≥ 3 classes with ≥ 3 closed episodes each (closed-episode statistics — see the #399 note below for what this now gates) | 0 closed episodes, 0 classes | **NO** |
 | G2 | ≥ 6 distinct current-generation classes live concurrently at least once in trailing 28 d (ordering has room to matter) | max concurrent = 2 | **NO** |
 | G3 | #351 shipped; R2's own sufficiency rail passed for ≥ 25 % of live classes (S term) | not built | **NO** |
 | G4 | ≥ 10 completed ack lifecycles (ack → expiry/resurface/un-ack) recorded (C2/C3 calibration) | 0 acks ever | **NO** |
@@ -716,6 +876,21 @@ outage pushes the date out correspondingly; (ii) the same stale "≈ 2026-09-14"
 not this docs round. (iii) A registry edit can RESTART this clock without any observability
 changing (§14.2 correction; issue #372) — the design that makes the span composition-aware,
 and amends this gate to the CURRENT-ERA trusted span, is §16.
+
+**What G1 gates since #399 (§17) — restated, because it was written as the `M`-term gate.** `M`
+is no longer an ordering term, so G1 no longer gates a factor of the score. It is NOT retired,
+because every OTHER consumer of closed-episode statistics is still gated by this table and still
+needs exactly this sample:
+1. **The C2 ack-expiry suggestion (§3.2)** — the class's P75 closed-episode duration. Its own
+   per-class floor (`min-closed-episodes = 3`) is a *within-class* rail; G1's fleet-wide 20 is
+   what makes the suggestion credible across the fleet rather than in one lucky class.
+2. **The `factors.mttr` diagnostic and the rationale's resolve-time clause** — both render
+   measured numbers to an operator, and both are meaningless off a two-episode sample.
+3. **`M`'s eventual re-entry into the ordering** — for which G1 is now NECESSARY BUT NOT
+   SUFFICIENT. Re-entry additionally requires an uncontaminated estimator (measure from
+   first-operator-touch, or subtract the queue wait) *or* the §17 falsifier measured and passed.
+   A future round must not read "G1 met" as "turn `M` back on".
+G1's threshold, its measured value and its status are all unchanged by #399.
 
 **The other four axes, audited for the same trust sensitivity (#365):** **G1** (closed
 episodes) and **G4** (ack lifecycles) count lifecycle events in the BFF's own store —
@@ -1046,6 +1221,16 @@ coverage regardless of which lane was reached.
 
 Sharpened by task /c (restate the ranking from the card face **without** re-reading the tooltip): **B3 `unsupported`, B1 and B2 `partial`** — testers could not reconstruct the ranking from visible text. B5 named the mechanism precisely: *"[the `ranked by attention` pill] names the mechanism but gives zero indication that hovering unlocks the actual reasoning, and a fast-scanning user … will default to raw instance/DLQ counts, which point at a different card than the one the ranking actually favors."* **The reasoning lives only in a hover.** A 3am reader who does not hover — or is on a device that cannot — gets a re-ordered list with no visible justification, and their instinct points elsewhere. Filed as a follow-up rather than silently absorbed into a green verdict.
 
+**Forward pointer (post-ship, #399 — see §17): this fixture's reordering was driven by `M`, and
+`M` is now identically 1, so this exact fixture would no longer reorder anything.** Recomputed
+against the corrected score (`F·R·S`, the same served numbers): planted class `8.0 / 2.0 = 4.0`,
+largest class `5.13 / 1 = 5.13` — i.e. the count-only order, un-inverted. The measured RESULT
+above stands as what happened on the day and is not rewritten; what it no longer is, is a live
+recipe. **A re-run must build its separation out of `F` and `R`** — a genuinely faster-growing or
+fresher costly class (or a `SELF_HEAL_LIKELY` demotion on the large one), not a depressed fleet
+MTTR median. The run's headline finding — that the reordering alone did not redirect testers, the
+explanation did (§12.1/#374) — is about the rationale, not about `M`, and is unaffected.
+
 **Forward pointer (post-ship, #374 — see §12.1):** this whole subsection describes the UI as
 it stood when this run executed (hover-only `title`). That hover-only behaviour has since been
 changed — the per-card rationale now renders as visible page text — and this verdict predates
@@ -1245,7 +1430,12 @@ whole surface is inert.
   **lane → `p_heal`** at the §4.1 band midpoints (LIKELY 0.75, MIXED 0.50, UNLIKELY 0.15;
   `INSUFFICIENT_HISTORY`/absent ⇒ neutral 1) — honoring "consumes the stabilized value, never a
   raw per-cycle rate" literally. `SELF_HEAL_LIKELY` lands exactly on the 0.25 floor, so the
-  design's "demoted at most 4×, never zeroed" is arithmetic rather than a separate clamp.
+  design's "demoted at most 4×, never zeroed" is arithmetic rather than a separate clamp —
+  which also means the floor is INERT at its default, corrected everywhere it was miscredited
+  in §18/S1. **Extended by #400 (§4.1b):** the same `selfHeal` block's `ttsP50Seconds` now also
+  feeds a continuous timing weight `w`; the *stabilized* lane still supplies `p_heal`, and
+  §4.1b states exactly why a non-dwelled duration is admissible as a weight but would not be as
+  a threshold.
 - **`eff(c)` excluded from the v1 score**, per §3.1. Not implemented, not referenced.
 - **Rationale (§4.3)** — `AttentionRationale`, server-side, one `·`-separated sentence on one
   line: `21 failing · last seen 2 min ago · typically takes 4 h to resolve · no self-heal
@@ -2455,3 +2645,165 @@ all the new ones.
    the cursor.** §16.8 item 7 asks the script to "walk the cursor when hunting an era boundary";
    the boundary detection it needs to decide when to stop paging is the same logic a reader wants
    reported, so it is emitted as section 0 of the replay output.
+
+## 17. Correction round — `M ≡ 1` in the v1 ordering (#399, epic #398, ★ LANDED)
+
+Successor to **#382**, which was closed `not_planned` on 2026-08-05 with three findings
+deliberately left on the record ("reopen this, or open a successor, if the flag is ever
+reconsidered"). This is that successor's first slice. Evidence base:
+`docs/reviews/R-ATTENTION-HARM-2026-08.md` (PR #383, `3e17f9f`), reproducible via
+`scripts/attention-harm-search.py`. **`inspector.triage.attention-ordering` stays default-false
+for the whole epic** — nothing here flips the flag or moves the §7 gate; this round makes the
+shipped-but-inert score honest before the gate conversation may be reopened.
+
+### 17.1 What was wrong
+
+§4.1 shipped `A(c) = F·R·M·S` with `M = clamp(medMTTR(c)/medMTTR(fleet), 0.5, 2)`, and never said
+what `medMTTR` *is*. #382 framed that as a two-way ambiguity — operator **service time** (⇒ the
+multiply is backwards and Smith's rule applies, i.e. shortest-job-first, i.e. `1/M`) or a
+**severity weight** (⇒ the multiply is right) — and could not decide it from the document.
+
+**Read from source, it is neither.** The three stamps that define the statistic:
+
+| Stamp | Written by | Meaning |
+|---|---|---|
+| `started_at` | `IncidentLedgerService` — `new IncidentEpisode(id, OPEN, seenAt, total)` on the pass that first records the class (and again on each automatic regression) | the sampler's **first sighting** |
+| `ended_at` | `IncidentLifecycleService.resolve` → `IncidentEpisodeRepository.closeEpisode` — the **S3 resolve verb**, and nothing else in the codebase | an **operator click** |
+| the value | `closedEpisodeDurationSeconds()`: `EXTRACT(EPOCH FROM (ended_at − started_at))`, `WHERE ended_at IS NOT NULL` | first-sighting → operator-resolve |
+
+So `medMTTR` is time-to-resolution measured from incident BIRTH, and it therefore **contains the
+operator's queue wait** — the very quantity the ordering allocates. Two consequences, neither of
+which depends on the harm search's invented distributions (its §8):
+
+1. **It is endogenous.** Rank a class low → it waits longer → its measured MTTR rises → `M` rises
+   → next cycle it ranks higher. Under the shipped multiply that loop is **negative**
+   (self-correcting, so nothing explodes — this is why the shipped behavior was never an
+   incident) — but it means `M` was substantially measuring **the queue**, not the class.
+2. **Inverting to `1/M` flips that loop positive.** Rank low → longer TTR → smaller `1/M` → rank
+   lower still. That is a **starvation** mechanism, and it would have been introduced by the very
+   fix the harm search appears to recommend. The report's Smith reading is therefore **rejected**
+   — on the endogeneity ground, independently of any argument about its simulated distributions.
+
+### 17.2 The decision, and the seat that checked it
+
+**Option C: `M ≡ 1` in the v1 ordering; estimator and config knobs retained; `M` returns only
+behind an uncontaminated estimator.** Precedent is already in this document: §3.1 excludes
+`eff(c)` from the v1 score for an analogous honesty problem ("a constant factor with an honesty
+problem"), while keeping it in the conceptual model `B(c)`.
+
+Verified by an independent second panel seat (§10 convention; `gemini-3.5-flash` —
+`gemini-3.1-pro-preview` returned 429 and the Copilot seat is permanently 410/dead). It reached
+the same verdict, called option D ("split the estimator in this same round") a fantasy because
+first-operator-touch needs new telemetry plus a schema change, and named the falsifier recorded
+in §17.4. **One correction to that seat's reasoning, recorded for honesty:** it described the
+option-A loop as "chaotic"; the sign is negative/self-correcting, which is precisely why nothing
+is on fire today.
+
+### 17.3 What landed
+
+- **`AttentionScoreCalculator`** — `double score = frequency * recency * selfHealFactor`. `M` is
+  not a term. `mttrFactor()` is unchanged and still called; the class javadoc carries the
+  endogeneity argument rather than pointing at this document alone.
+- **`factors.mttr` keeps reporting the real clamped ratio** — the deliberate call, not an
+  omission. It is honest evidence about the class (and the rationale already quotes its median),
+  the retained estimator is what makes re-entry a one-line change, and reporting a hardcoded
+  `1.0` would have hidden a measurement to describe a rule that is documented instead. The wire
+  shape is unchanged: no field added, none removed, `schema.d.ts` untouched. The single consumer
+  that DID assert this factor moved a card — the `AttentionBadge` glossary tooltip — is corrected
+  (§4.3); no other consumer of `AttentionFactors.mttr()` makes an ordering claim (grepped across
+  `backend/src` and `frontend/src`; the frontend never renders `factors.mttr` at all).
+- **Rationale copy** — "typically takes 4 h to resolve" → "typically 4 h from first sighting to
+  resolve" (§4.3 correction). Same statistic, same one-line `·`-separated shape; the claim now
+  matches what was measured.
+- **Config** — `min-closed-episodes`, `mttr-clamp-low`, `mttr-clamp-high` all retained, with
+  `application.yml` and `InspectorProperties` now saying what they do and do NOT move.
+- **Docs in lockstep** — §4.1 (definition debt paid), §4.3 (both copy corrections), §7 (what G1
+  gates now), SPECIFICATION §2.4 and ARCHITECTURE §4's `GET /api/triage` row (the formula and the
+  `M` clause), OPERATOR-QUICK-START's "Reading the attention ranking".
+- **Untouched, deliberately:** the flag, the §7 gate values, `AttentionOrdering`, the S factor
+  (slice 2), `scripts/attention-harm-search.py` (slice 3 re-pins it to the corrected Java), and
+  every Stage 0 query. Zero new engine calls, zero new statements, no migration.
+
+**Failing-before proof (the §13/§15.1 convention — a wrong value, not "it did not compile"):**
+
+| Rung | Test | What the BASE produced |
+|---|---|---|
+| Pure static | `twoClassesDifferingOnlyInClosedEpisodeDurationsScoreIDENTICALLYBecauseTheOrderingDoesNotConsumeM` — two classes identical in arrivals (5), age (0) and lane (none), differing ONLY in their three closed-episode durations (3×999 999 s vs 3×1 s against a 3 600 s fleet median), must now both score `log2(6) = 2.584962500721156` | **5.169925001442312** vs **1.292481250360578** — the full 4× spread of the `[0.5, 2]` clamp, produced by nothing but how long an operator had taken to click resolve |
+| Pure static | `theScoreIsTheProductOfFrequencyRecencyAndSelfHealWithMDeliberatelyLeftOut` — `F=2 · R=0.5 · S=0.5` must be `0.5` | **1.0** — the same fixture, doubled by `M = clamp(7200/3600) = 2` |
+
+`AttentionOrderingNeutralityTest` is **byte-untouched and green** (12 tests): an empty ledger
+still collapses every score to 0.0 and the tie-break still reproduces count-only ordering exactly.
+It could not have caught this change either way — with no closed episodes `M` was already 1 — which
+is the point of pinning the new proof on a populated fixture instead.
+
+### 17.4 Re-entry condition, and the falsifier that would reverse this
+
+`M` returns to the ordering only behind an **uncontaminated** estimator: measure from
+**first-operator-touch** (a new telemetry point — nothing today records when an operator first
+looked at a class), or subtract the queue wait from the existing span. Either is a schema plus
+ingestion change and is explicitly out of scope for this epic.
+
+**The falsifier, recorded so a future round can execute it rather than re-argue it:** if median
+**time-to-touch** (first sighting → first operator interaction with the class) turns out to be
+**< 5 % of median episode duration**, then the queue wait is a rounding error inside `medMTTR`,
+the endogeneity is noise, and the report's Smith reading becomes live again — at which point the
+correct move is `1/M`, not the status quo ante `M`. That measurement is not possible today (see
+above: the touch timestamp does not exist), and G1 is 0 anyway. Deriving a touch proxy from the
+audit tail (first corrective action on an engine the class touches, the same over-inclusive join
+`EpisodeActionAttributionService` already runs) is the cheapest honest approximation and is the
+suggested first step — as an *approximation*, named as one, not as the estimator itself.
+
+### 17.5 What this round deliberately does NOT do
+
+- **It does not flip the flag, and it does not move the §7 gate.** Both stay exactly where they
+  were; §7's measured values are unchanged by this round.
+- **It does not remove the M estimator, the clamp knobs or the wire field.** Deleting them would
+  make re-entry an archaeology exercise and would drop honest evidence from the operator's view.
+- **It does not touch `eff(c)`, `S`, or the burst gate.** `S` is slice 2 of #398, in a parallel
+  branch.
+- **It does not re-run the §8 A/B usability arm.** The §8.8 fixture separated its two classes
+  with `M` alone, so it can no longer produce the reordering it was built to test (forward
+  pointer recorded there, with the recomputed numbers). Rebuilding that fixture on `F`/`R`/`S`
+  separation is a follow-up for whoever next executes §8, not this slice.
+- **It does not re-run the harm search.** Slice 3 re-pins `scripts/attention-harm-search.py` to
+  the corrected Java and records the delta in `docs/reviews/R-ATTENTION-HARM-2026-08.md`; until
+  then that review's tables describe the PRE-#399 score and say so nowhere — read them as the
+  record of the round that produced this one.
+- **It does not rewrite earlier sections' worked examples.** §8, §11 and §12's records quote
+  `A(c) = F·R·M·S` as the formula shipped at the time. They are records of their rounds; §4.1 and
+  this section carry the current formula.
+
+## 18. Correction round — the `S` factor: an inert floor and a blind spot (#400, ★ LANDED)
+
+Slice 2 of the #398 correction round (slice 1, the `M` neutralization, is §17). Two defects in one factor, both left on the record by #382
+and both re-verified against the shipped source before anything was changed. Behaviour with
+`inspector.triage.attention-ordering` OFF is unchanged and still provably inert;
+`AttentionOrderingNeutralityTest` is untouched and green.
+
+| # | Defect | Severity | Fix | Failing-before proof |
+|---|---|---|---|---|
+| S1 | **The `self-heal-floor` knob is inert and was advertised as a rail it does not deliver.** `S = max(floor, 1 − p_heal)` with `P_HEAL_LIKELY = 0.75` bottoms out at `max(0.25, 0.25)` — the default floor is *exactly* the lowest value lane quantisation can produce, reached from above, so it is never selected. Removing it entirely was bit-identical across all 30 700 simulated fleets. The "demoted at most 4×, never zeroed" guarantee is **true**, but delivered by quantisation, not by the clamp | honesty gap (no behaviour change) | **Knob kept, claim corrected in all six places** (§4.1's bullet, `OPERATOR-QUICK-START.md`, `application.yml`, `InspectorProperties`, `AttentionScoreCalculator`, `RetrySpellExtractor`). A floor **strictly above 0.25** *does* bind and weakens demotion — a legitimate deployment lever, and why deleting it was refused | Part A changes no behaviour, so its test **passes on the base by construction** — and that is the point: `theSelfHealFloorIsAProvableNoOpAtOrBelowTheLaneQuantisationMinimumAndBindsOnlyStrictlyAbove` pins *both* halves of the boundary (`≤ 0.25` ⇒ byte-identical over 4 floors × 4 lanes × 5 timings via `doubleToRawLongBits`; `> 0.25` ⇒ binds and raises `S`) so the false attribution cannot drift back into the copy |
+| S2 | **`S` read `p_heal` and never `t_heal`** — a class that heals *eventually* was demoted exactly as hard as one that heals *in a minute*. Measured at 80.73 % harm / 0.00 % help past ~8 service times (§4c), with count-only outright optimal there | **HIGH** (latent — flag-off) | §4.1b: `S = max(floor, 1 − p_heal · 2^(−t_heal/τ_heal))` over the already-served `SelfHealStats.ttsP50Seconds`, `τ_heal = attention.self-heal-horizon` (new, PT1H). Only ever weakens a demotion; byte-identical at `t_heal = 0` | On the base, `selfHealFactor(SELF_HEAL_LIKELY, …)` returned **0.25** where an 8-hour median heal must read **0.9970703125**, and **0.25** again where an *absent* `ttsP50` must read **1.0**; a MIXED class healing at the horizon returned **0.5** where it must read **0.75**. Three wrong values, not a compile error |
+
+**Named correction to the evidence base.** `docs/reviews/R-ATTENTION-HARM-2026-08.md` §6 states
+the `self-heal-floor` key "does nothing at any value below 0.75". The binding boundary is
+**0.25**, not 0.75: at `floor = 0.5` the clamp already selects for both `SELF_HEAL_LIKELY` (0.25)
+and `SELF_HEAL_MIXED` (0.50). The report's *headline* claim — the shipped 0.25 default is inert,
+bit-identically — is correct and is what this section acts on; only the stated width of the
+inert band was too wide. Recorded here rather than rewritten there: the report is evidence of
+record, and slice 3 (#398) re-runs it against the corrected Java.
+
+**Named correction to RETRYING-RISK-LANE.md §4.2.** That section closed with "only the LANE
+itself (the base clause's fraction/timing) is governed by rules 1-5's dwell/stability machinery".
+Read from source, the parenthetical is false: `SelfHealStatsService.get()` runs **only** the lane
+through `DwellStateMachine` and pairs it with the raw per-cycle `n`/`healed`/`ttsP50`/`ttsP90`
+straight off the 60 s Caffeine cache. This was harmless while the timing was pure copy; it stops
+being harmless the moment §4.1's stabilization contract has to be honoured by a *score*
+consumer, which is what #400 part B makes it. Corrected in place there, and §4.1b above states
+exactly which half of the artifact is stabilized, which is not, and why the non-stabilized half
+is admissible as a continuous weight (never as a threshold).
+
+**Scope discipline.** No Flyway migration, no new engine call, no new DTO field (therefore no
+`gen:api` regeneration and no frontend change), no card hidden.
+`inspector.triage.attention-ordering` still defaults false. `mttrFactor` / the `M` term (#399)
+and `scripts/attention-harm-search.py` (slice 3) are untouched by this slice.

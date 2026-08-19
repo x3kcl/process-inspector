@@ -23,6 +23,7 @@ class AttentionScoreCalculatorTest {
 
     private static final Instant NOW = Instant.parse("2026-08-04T12:00:00Z");
     private static final AttentionConfig CONFIG = AttentionConfig.defaults();
+    private static final Duration HORIZON = CONFIG.selfHealHorizon();
 
     /* ---------------- F: frequency = log2(1 + arrivals) ---------------- */
 
@@ -317,7 +318,7 @@ class AttentionScoreCalculatorTest {
         assertThat(factorsFor(ahead).recency()).isEqualTo(1.0);
     }
 
-    /* ---------------- M: historic cost, clamped, floored on sample size ---------------- */
+    /* -------- M: the RETAINED estimator — measured, reported, never multiplied in (#399) -------- */
 
     @Test
     void mttrIsNeutralAndTheMedianIsAbsentBelowTheClosedEpisodeFloor() {
@@ -338,12 +339,14 @@ class AttentionScoreCalculatorTest {
         AttentionScore scored = score(10, threeClosed, 3_600L, null);
 
         assertThat(scored.factors().medianMttrSeconds()).isEqualTo(5_400L);
+        // Still computed and still on the wire (#399 keeps the estimator + `factors.mttr` as
+        // honest evidence); `...ScoreIDENTICALLY...` below pins that it does not reach the score.
         assertThat(scored.factors().mttr()).isEqualTo(1.5);
-        assertThat(scored.rationale()).contains("typically takes 1.5 h to resolve");
+        assertThat(scored.rationale()).contains("typically 1.5 h from first sighting to resolve");
     }
 
     @Test
-    void mttrIsClampedBothWaysSoOnePathologicalClassCannotDominateTheProduct() {
+    void mttrIsClampedBothWaysSoTheReportedDiagnosticCanNeverRunAway() {
         ClassHistory glacial = ClassHistory.observed(NOW, 5, List.of(999_999L, 999_999L, 999_999L));
         ClassHistory instant = ClassHistory.observed(NOW, 5, List.of(1L, 1L, 1L));
 
@@ -359,32 +362,158 @@ class AttentionScoreCalculatorTest {
         assertThat(score(10, threeClosed, null, null).factors().mttr()).isEqualTo(1.0);
     }
 
+    @Test
+    void twoClassesDifferingOnlyInClosedEpisodeDurationsScoreIDENTICALLYBecauseTheOrderingDoesNotConsumeM() {
+        // #399 (epic #398, finding 1): `medMTTR` is `ended_at − started_at` where the episode is
+        // OPENED at first sighting by the sampler and CLOSED by the operator's resolve click, so
+        // the statistic CONTAINS the operator's queue wait — the very quantity this ordering
+        // controls. It is endogenous to its own output, so it is not a service time and not a
+        // severity weight, and the v1 ordering must not consume it. Same shape as §3.1's
+        // exclusion of `eff(c)`: the estimator is honest evidence, the ORDERING input is not.
+        ClassHistory glacial = ClassHistory.observed(NOW, 5, List.of(999_999L, 999_999L, 999_999L));
+        ClassHistory quick = ClassHistory.observed(NOW, 5, List.of(1L, 1L, 1L));
+
+        AttentionScore slowToResolve = score(10, glacial, 3_600L, null);
+        AttentionScore quickToResolve = score(10, quick, 3_600L, null);
+
+        // F = log2(1 + 5) = 2.585, R = 1 (last seen now), S = 1 (no lane) — and nothing else.
+        assertThat(slowToResolve.score()).isEqualTo(quickToResolve.score());
+        assertThat(slowToResolve.score()).isCloseTo(2.584962500721156, within(1e-12));
+        // The ratio is still MEASURED and still shipped on the wire: honest evidence the operator
+        // (and a future uncontaminated re-entry) can read — it just does not move the card.
+        assertThat(slowToResolve.factors().mttr()).isEqualTo(2.0);
+        assertThat(quickToResolve.factors().mttr()).isEqualTo(0.5);
+    }
+
     /* ---------------- S: self-heal demotion, from the STABILIZED lane ---------------- */
 
     @Test
     void anAbsentOrInsufficientLaneIsNeutralRatherThanADemotion() {
-        assertThat(AttentionScoreCalculator.selfHealFactor(null, 0.25)).isEqualTo(1.0);
-        assertThat(AttentionScoreCalculator.selfHealFactor(SelfHealLane.INSUFFICIENT_HISTORY, 0.25))
+        assertThat(AttentionScoreCalculator.selfHealFactor(null, 0L, 0.25, HORIZON))
+                .isEqualTo(1.0);
+        assertThat(AttentionScoreCalculator.selfHealFactor(SelfHealLane.INSUFFICIENT_HISTORY, 0L, 0.25, HORIZON))
                 .isEqualTo(1.0);
     }
 
     @Test
     void aProvenSelfHealerIsDemotedAtMostFourfoldAndNeverZeroed() {
-        assertThat(AttentionScoreCalculator.selfHealFactor(SelfHealLane.SELF_HEAL_LIKELY, 0.25))
+        // At t_heal = 0 (a heal inside one sampler bucket) the lane quantisation alone produces
+        // the 4x bound — the floor is not what delivers it (#400 part A).
+        assertThat(AttentionScoreCalculator.selfHealFactor(SelfHealLane.SELF_HEAL_LIKELY, 0L, 0.25, HORIZON))
                 .isEqualTo(0.25);
-        assertThat(AttentionScoreCalculator.selfHealFactor(SelfHealLane.SELF_HEAL_MIXED, 0.25))
+        assertThat(AttentionScoreCalculator.selfHealFactor(SelfHealLane.SELF_HEAL_MIXED, 0L, 0.25, HORIZON))
                 .isEqualTo(0.5);
-        assertThat(AttentionScoreCalculator.selfHealFactor(SelfHealLane.SELF_HEAL_UNLIKELY, 0.25))
+        assertThat(AttentionScoreCalculator.selfHealFactor(SelfHealLane.SELF_HEAL_UNLIKELY, 0L, 0.25, HORIZON))
                 .isEqualTo(0.85);
     }
 
     @Test
-    void theFloorIsWhatKeepsAMassSelfHealClassOnScreen() {
-        // Same doctrine as never-hide: demote hard, never to zero.
-        AttentionScore healer = score(500, arrivals(7), null, stats(SelfHealLane.SELF_HEAL_LIKELY, 14, 12));
+    void aMassSelfHealClassStaysOnScreenBecauseOfLaneQUANTISATIONNotBecauseOfTheFloor() {
+        // Same doctrine as never-hide: demote hard, never to zero. The 4x bound is ARITHMETIC —
+        // 1 - P_HEAL_LIKELY(0.75) = 0.25 — and the configured floor merely TIES it (#400 part A).
+        AttentionScore healer = score(500, arrivals(7), null, immediateHealer(SelfHealLane.SELF_HEAL_LIKELY, 14, 12));
 
         assertThat(healer.factors().selfHeal()).isEqualTo(0.25);
         assertThat(healer.score()).isGreaterThan(0);
+    }
+
+    /* ---------------- #400 part A: the floor's REAL binding boundary is 0.25, not 0.75 -------- */
+
+    @Test
+    void theSelfHealFloorIsAProvableNoOpAtOrBelowTheLaneQuantisationMinimumAndBindsOnlyStrictlyAbove() {
+        // The claim this test exists to STOP DRIFTING BACK (#400 part A, R-ATTENTION-HARM §6):
+        // `S = max(floor, 1 - p_heal*w)` bottoms out at 0.25 (SELF_HEAL_LIKELY, heal inside one
+        // bucket), so every floor <= 0.25 is selected by NOTHING and the knob is inert. Above
+        // 0.25 it binds for real, which is why the knob is kept rather than deleted. Bit
+        // patterns, not isCloseTo: "no-op" is a byte claim.
+        for (double floor : new double[] {0.0, 0.1, 0.2, 0.25}) {
+            for (SelfHealLane lane : SelfHealLane.values()) {
+                for (Long tts : new Long[] {null, 0L, 60L, 3_600L, 86_400L}) {
+                    double floored = AttentionScoreCalculator.selfHealFactor(lane, tts, floor, HORIZON);
+                    double unfloored = AttentionScoreCalculator.selfHealFactor(lane, tts, 0.0, HORIZON);
+                    assertThat(Double.doubleToRawLongBits(floored))
+                            .as("floor %s, lane %s, tts %s", floor, lane, tts)
+                            .isEqualTo(Double.doubleToRawLongBits(unfloored));
+                }
+            }
+        }
+        // Strictly above 0.25 it BINDS and RAISES S — a legitimate deployment lever that weakens
+        // demotion, and the whole reason `self-heal-floor` is not deleted.
+        assertThat(AttentionScoreCalculator.selfHealFactor(SelfHealLane.SELF_HEAL_LIKELY, 0L, 0.26, HORIZON))
+                .isEqualTo(0.26);
+        assertThat(AttentionScoreCalculator.selfHealFactor(SelfHealLane.SELF_HEAL_LIKELY, 0L, 0.6, HORIZON))
+                .isEqualTo(0.6);
+        assertThat(AttentionScoreCalculator.selfHealFactor(SelfHealLane.SELF_HEAL_MIXED, 0L, 0.6, HORIZON))
+                .isEqualTo(0.6);
+        // ...and it is a FLOOR, never a ceiling: a lane already gentler than the floor is untouched.
+        assertThat(AttentionScoreCalculator.selfHealFactor(SelfHealLane.SELF_HEAL_UNLIKELY, 0L, 0.6, HORIZON))
+                .isEqualTo(0.85);
+    }
+
+    /* ---------------- #400 part B: S consumes t_heal, not only p_heal ---------------- */
+
+    @Test
+    void aClassThatHealsInEightHoursIsNoLongerDemotedAsIfItHealedInstantly() {
+        // The measured defect (R-ATTENTION-HARM §4c): past ~8x service time, deferring a
+        // self-healer measured 80.73 % HARM / 0.00 % help, because `S` read p_heal and never
+        // t_heal. w = 2^(-8h / PT1H) = 1/256, so the demotion all but vanishes.
+        double immediate = AttentionScoreCalculator.selfHealFactor(SelfHealLane.SELF_HEAL_LIKELY, 0L, 0.25, HORIZON);
+        double eventual =
+                AttentionScoreCalculator.selfHealFactor(SelfHealLane.SELF_HEAL_LIKELY, 28_800L, 0.25, HORIZON);
+
+        assertThat(immediate).isEqualTo(0.25);
+        assertThat(eventual).isCloseTo(1.0 - 0.75 / 256.0, within(1e-12));
+        // At the horizon itself the demotion is exactly halved — the half-life reading of tau.
+        assertThat(AttentionScoreCalculator.selfHealFactor(SelfHealLane.SELF_HEAL_LIKELY, 3_600L, 0.25, HORIZON))
+                .isCloseTo(1.0 - 0.375, within(1e-12));
+    }
+
+    @Test
+    void theTimingTermCanOnlyEverWEAKENADemotionNeverDeepenOne() {
+        // w in [0, 1] ⇒ S in [1 - p_heal, 1]: the amendment can decline to demote, but it can
+        // never push a class BELOW where the shipped formula put it (the §15.3 discipline).
+        for (SelfHealLane lane : SelfHealLane.values()) {
+            for (long tts : new long[] {0L, 1L, 60L, 600L, 3_600L, 86_400L, 7_776_000L}) {
+                double shipped = shippedSelfHealFactor(lane);
+                double amended = AttentionScoreCalculator.selfHealFactor(lane, tts, 0.25, HORIZON);
+                assertThat(amended).as("lane %s, tts %s", lane, tts).isGreaterThanOrEqualTo(shipped);
+            }
+        }
+    }
+
+    @Test
+    void aHealLandingInsideOneSamplerBucketIsBYTEIDENTICALToTheShippedFormula() {
+        // The regime the harm search says `S` genuinely WINS in (rows <= 4x service time) must be
+        // untouched by the amendment: t_heal = 0 ⇒ w = 2^0 = 1 exactly. Compared against a
+        // test-local re-implementation of the SHIPPED expression, so this is a claim about the
+        // amendment rather than a tautology.
+        for (SelfHealLane lane : SelfHealLane.values()) {
+            for (double floor : new double[] {0.0, 0.25, 0.5}) {
+                double amended = AttentionScoreCalculator.selfHealFactor(lane, 0L, floor, HORIZON);
+                assertThat(Double.doubleToRawLongBits(amended))
+                        .as("lane %s, floor %s", lane, floor)
+                        .isEqualTo(Double.doubleToRawLongBits(Math.max(floor, shippedSelfHealFactor(lane))));
+            }
+        }
+    }
+
+    @Test
+    void aKnownLaneWithNoTimingEvidenceReadsNeutralRatherThanAssertingAnInstantHeal() {
+        // §4.1's degradation doctrine, applied to the NEW sub-term: `tts*` is absent whenever
+        // healed = 0 or the raw sample fell back below the n < 10 floor, and the lane can still
+        // be a dwelled risk lane at that moment. Reading the missing weight as 1 would assert
+        // "this class heals immediately" — the most demoting value available, on no evidence
+        // whatsoever, which is the §13 F2 defect class exactly. Unknown ⇒ S = 1.
+        assertThat(AttentionScoreCalculator.selfHealFactor(SelfHealLane.SELF_HEAL_LIKELY, null, 0.25, HORIZON))
+                .isEqualTo(1.0);
+        assertThat(AttentionScoreCalculator.selfHealFactor(SelfHealLane.SELF_HEAL_MIXED, null, 0.25, HORIZON))
+                .isEqualTo(1.0);
+        assertThat(AttentionScoreCalculator.selfHealFactor(SelfHealLane.SELF_HEAL_UNLIKELY, null, 0.25, HORIZON))
+                .isEqualTo(1.0);
+        // End to end, through the whole score: a LIKELY lane with no duration distribution.
+        SelfHealStats noTiming =
+                new SelfHealStats(SelfHealLane.SELF_HEAL_LIKELY.name(), 14, 0, 0.72, 0.98, null, null, 0, false);
+        assertThat(score(10, arrivals(1), null, noTiming).factors().selfHeal()).isEqualTo(1.0);
     }
 
     @Test
@@ -419,21 +548,26 @@ class AttentionScoreCalculatorTest {
     /* ---------------- the product, and the honesty flag ---------------- */
 
     @Test
-    void theScoreIsTheProductOfTheFourFactors() {
+    void theScoreIsTheProductOfFrequencyRecencyAndSelfHealWithMDeliberatelyLeftOut() {
         ClassHistory history = ClassHistory.observed(NOW.minusSeconds(86_400), 3, List.of(7_200L, 7_200L, 7_200L));
 
-        AttentionScore scored = score(21, history, 3_600L, stats(SelfHealLane.SELF_HEAL_MIXED, 20, 10));
+        // immediateHealer() ⇒ t_heal = 0 ⇒ w = 1, so S is the SHIPPED 1 - p_heal exactly and the
+        // product arithmetic below stays the plain one it has always been (#400 part B is inert
+        // in this regime by construction — see aHealLandingInsideOneSamplerBucketIsBYTEIDENTICAL…).
+        AttentionScore scored = score(21, history, 3_600L, immediateHealer(SelfHealLane.SELF_HEAL_MIXED, 20, 10));
 
-        // F=log2(4)=2 · R=2^-1=0.5 · M=clamp(7200/3600)=2 · S=0.5 = 1.0
+        // F=log2(4)=2 · R=2^-1=0.5 · S=0.5 = 0.5 — and M is NOT in that product (#399, §17).
+        // It used to be, and this same fixture scored 1.0 because `M = clamp(7200/3600) = 2`
+        // doubled it; that doubling was the queue wait the ordering itself had produced.
         assertThat(scored.factors().frequency()).isEqualTo(2.0);
         assertThat(scored.factors().recency()).isEqualTo(0.5);
-        assertThat(scored.factors().mttr()).isEqualTo(2.0);
         assertThat(scored.factors().selfHeal()).isEqualTo(0.5);
-        assertThat(scored.score()).isCloseTo(1.0, within(1e-9));
+        assertThat(scored.factors().mttr()).isEqualTo(2.0); // measured, reported, not consumed
+        assertThat(scored.score()).isCloseTo(0.5, within(1e-9));
     }
 
     @Test
-    void insufficientHistoryIsTrueExactlyWhenNeitherDiscriminatingFactorHadEvidence() {
+    void insufficientHistoryIsTrueExactlyWhenNeitherHistoryDerivedEstimateHadEvidence() {
         assertThat(score(10, arrivals(5), null, null).factors().insufficientHistory())
                 .isTrue();
         assertThat(score(10, ClassHistory.observed(NOW, 5, List.of(1L, 2L, 3L)), 2L, null)
@@ -490,6 +624,25 @@ class AttentionScoreCalculatorTest {
 
     private static SelfHealStats stats(SelfHealLane lane, int n, int healed) {
         return new SelfHealStats(lane.name(), n, healed, 0.4, 0.9, 300L, 600L, 0, false);
+    }
+
+    /** A class whose median self-heal lands inside ONE sampler bucket ⇒ the shipped demotion. */
+    private static SelfHealStats immediateHealer(SelfHealLane lane, int n, int healed) {
+        return new SelfHealStats(lane.name(), n, healed, 0.4, 0.9, 0L, 60L, 0, false);
+    }
+
+    /**
+     * The SHIPPED (pre-#400) S, recomputed here independently: {@code 1 - p_heal(lane)} at the
+     * §4.1 band midpoints, with no timing term at all. Nothing in this fixture reads production
+     * code, so "byte-identical at t_heal = 0" is a claim about the amendment, not a tautology.
+     */
+    private static double shippedSelfHealFactor(SelfHealLane lane) {
+        return switch (lane) {
+            case SELF_HEAL_LIKELY -> 0.25;
+            case SELF_HEAL_MIXED -> 0.5;
+            case SELF_HEAL_UNLIKELY -> 0.85;
+            case INSUFFICIENT_HISTORY -> 1.0;
+        };
     }
 
     private static io.inspector.dto.AttentionFactors factorsFor(ClassHistory history) {

@@ -69,25 +69,35 @@ time, deep link — one click) instead of hand-assembling ticket text.
 
 Stage 0 and Incident cards sort **`total DESC`** today — biggest count first, always
 (`inspector.triage.attention-ordering` ships **off**, ALARM-COST-MODEL.md §7). On a
-deployment where it's flipped on, cards instead sort by a cost-aware score: freshness and
-growth, weighted by this class's historic time-to-resolve — proven self-healers rank
-lower. A 300-count known-noisy class no longer permanently outranks an 8-count outage of
-something that actually matters. When you meet it:
+deployment where it's flipped on, cards instead sort by a cost-aware score: how recently the
+class was seen and how fast it is growing — classes that reliably clear themselves soon rank
+lower. A 300-count
+known-noisy class no longer permanently outranks an 8-count outage of something that actually
+matters. It does **not** weigh how long this class historically took to resolve: that number is
+measured from first sighting to your resolve click, so it contains your own queue wait
+(ALARM-COST-MODEL.md §17) — it is still shown to you as evidence, it just does not move the
+card. When you meet it:
 
 - **Order ≠ severity; order = "work this one first."** The biggest number is not
   necessarily on top anymore — don't eyeball position, read the rationale.
 - **The line next to the `ranked by attention` chip has the real numbers, right on the
-  card — no hover needed** — e.g. "21 failing · last seen 2 min ago · typically takes 4 h
-  to resolve · no self-heal history." Those are the server's own computed numbers, not
-  vibes; if a card feels wrongly placed, that line is where you check, not your gut. (The
-  chip itself still carries a hover tooltip explaining what "ranked by attention" means in
-  general — the per-card numbers don't need a hover.)
+  card — no hover needed** — e.g. "21 failing · last seen 2 min ago · typically 4 h from
+  first sighting to resolve · no self-heal history." Those are the server's own computed
+  numbers, not vibes; if a card feels wrongly placed, that line is where you check, not your
+  gut. (The chip itself still carries a hover tooltip explaining what "ranked by attention"
+  means in general — the per-card numbers don't need a hover.)
 - **Nothing is ever hidden.** Every card still renders regardless of score — ordering only
   reshuffles position within a section. Acknowledge/never-hide semantics (R-BAU-01) are
   untouched.
-- **Self-healers are demoted, never buried.** A class that reliably clears on its own gets
-  pushed down **at most 4×** (the 0.25 floor on the self-heal factor) — fresh and costly
-  enough, it can still rank near the top; it can never disappear.
+- **Self-healers are demoted, never buried — and only if they heal *soon*.** A class that
+  reliably clears on its own gets pushed down **at most 4×**; fresh and costly enough, it can
+  still rank near the top, and it can never disappear. Two things worth knowing about that
+  bound: it comes from the lane arithmetic itself (`1 − 0.75`), *not* from the
+  `self-heal-floor` setting, which does nothing at its shipped value; and the demotion now
+  scales with **how long** the class historically takes to heal. One that clears within the
+  hour is pushed down about as hard as before; one whose past spells took eight hours is
+  barely pushed down at all — waiting for it buys you nothing, so it stays where its size and
+  freshness put it.
 - **`SelfHealBadge`'s fraction is history, not a promise.** "usually self-heals (12/14 past
   spells, typically ≤ 8 min)" means 12 of 14 *past* retrying spells cleared themselves — it
   is not a guarantee about this one. A low fraction ("rarely self-heals") means treat it

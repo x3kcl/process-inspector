@@ -26,12 +26,17 @@ import org.springframework.stereotype.Service;
 
 /**
  * The cost-aware attention score (ALARM-COST-MODEL.md §4, #353, gated on the locked design #348):
- * per error class, {@code A(c) = F·R·M·S} over the incident ledger's own history, joined at RENDER
- * time exactly where ack state joins today.
+ * per error class, {@code A(c) = F·R·S} over the incident ledger's own history, joined at RENDER
+ * time exactly where ack state joins today. (It was {@code F·R·M·S} until #399/§17 neutralized
+ * {@code M}: {@code medMTTR} is measured from first sighting to the operator's resolve click, so
+ * it contains the queue wait this ordering controls and is endogenous to its own output. The
+ * estimator and its clamp knobs are retained and still reported on {@code factors.mttr}; only the
+ * score stopped consuming it.)
  *
  * <p><b>Zero new engine calls</b> (§4.1/§9). Every input is already in the BFF's own Postgres: the
- * F factor is a DB-side positive-delta aggregate over {@code incident_occurrence}, M reads closed
- * {@code incident_episode} rows, R reads {@code incident.last_seen}, and S is CONSUMED from track
+ * F factor is a DB-side positive-delta aggregate over {@code incident_occurrence}, the M
+ * diagnostic reads closed {@code incident_episode} rows, R reads {@code incident.last_seen}, and
+ * S is CONSUMED from track
  * R2's statistic (#351) rather than recomputed here. The Stage 0 iron rule (count-only/{@code
  * size=1} aggregation queries plus the dedicated DLQ scan, never the grid-search plan) is
  * untouched — this service consumes the aggregation's output and never adds a leg to it.

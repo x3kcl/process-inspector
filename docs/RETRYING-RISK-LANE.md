@@ -100,7 +100,8 @@ A spell is **excluded from the statistic** when it is:
   that pass carries `retrying_count = 0` — the spell appears to END; the look-ahead then finds
   A's dead-letter count unchanged and records **SELF_HEALED**. An engine outage entered as
   evidence of autonomous healing, counted into `n`, the Wilson bound, the displayed lane, and
-  (via ALARM-COST-MODEL's `S` factor) a 4x rank demotion on a class that never healed. Neither
+  (via ALARM-COST-MODEL's `S` factor) a rank demotion of up to 4x on a class that never
+  healed. Neither
   `truncation-tainted` (that is the scan cap) nor the >5-bucket gap check (the rows exist)
   catches it. A blind-shaped spell is not judged AT ALL — its outcome stays `UNKNOWN`;
 - **scope-voided** (same `gapVoided` flag, V22/#372, [ALARM-COST-MODEL.md](ALARM-COST-MODEL.md)
@@ -304,8 +305,22 @@ composes both halves; there is no independent second string to drift from this o
 It keys directly on the class's current `deadLetterCount` (the same "N failing"-style live
 count the sentence's first clause already quotes), so it can appear or disappear on any
 poll the moment the standing dead-letter count crosses zero — no dwell, no hysteresis, no
-minimum hold — exactly as today's live counts already do; only the LANE itself (the base
-clause's fraction/timing) is governed by rules 1-5's dwell/stability machinery.
+minimum hold — exactly as today's live counts already do; only the **LANE** is governed by
+rules 1-5's dwell/stability machinery.
+
+**Correction (post-ship, #400 — a false claim named rather than silently rewritten, §10
+precedent).** The sentence above used to read "only the LANE itself (**the base clause's
+fraction/timing**) is governed by rules 1-5". The parenthetical was wrong. `SelfHealStatsService
+.get()` runs **only** `lane` through `DwellStateMachine`; `n`, `healed`, `ttsP50Seconds` and
+`ttsP90Seconds` are served raw off the 60 s Caffeine cache, so the clause's *fraction* and
+*timing* are per-read point statistics and have always been. Harmless while they were copy;
+it stopped being harmless when ALARM-COST-MODEL's `S` factor began consuming `ttsP50Seconds` as
+a score input under its own §4.1 stabilization contract. That contract is honoured by
+construction rather than by this claim: the *discrete* half of `S` (`p_heal`) reads the dwelled
+lane, and the timing enters only as a **continuous, monotone, bounded** weight with no threshold
+to flap across (ALARM-COST-MODEL.md §4.1b states the bound). If a future estimator ever makes the
+duration jumpy, the fix belongs **here**, next to the lane — never re-derived or smoothed in the
+consumer.
 
 **Backtested (§8):** replaying the full recorded pilot history (45,996 samples), a naive
 per-cycle rule produced 2 displayed flips — both premature n=1 verdicts rendered from

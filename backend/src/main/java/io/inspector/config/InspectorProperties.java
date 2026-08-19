@@ -117,12 +117,27 @@ public record InspectorProperties(
      *       deployment can re-estimate it from the episode inter-arrival distribution) instead
      *       of a second hard-coded 24h.</li>
      *   <li>{@code arrivalsWindowDays} — the F factor's trailing window, default 28.</li>
-     *   <li>{@code minClosedEpisodes} — the M factor's own sample-size floor, default 3. Below
-     *       it, M is neutral 1 and the median renders as "no history", never as a number.</li>
-     *   <li>{@code mttrClampLow}/{@code mttrClampHigh} — the M clamp, defaults 0.5 / 2.0: a
-     *       single pathological class can never dominate the product.</li>
-     *   <li>{@code selfHealFloor} — the S floor, default 0.25: a reliably self-healing class is
-     *       demoted at most 4x, NEVER zeroed (same doctrine as never-hide).</li>
+     *   <li>{@code minClosedEpisodes} — the M estimator's own sample-size floor, default 3. Below
+     *       it, M is neutral 1 and the median renders as "no history", never as a number. It also
+     *       floors the §3.2 ack-expiry suggestion.</li>
+     *   <li>{@code mttrClampLow}/{@code mttrClampHigh} — the M clamp, defaults 0.5 / 2.0, so the
+     *       reported ratio can never run away. <b>Since #399 (§17) M is identically 1 in the v1
+     *       ORDERING</b> — {@code medMTTR} spans first sighting to the operator's resolve click,
+     *       so it contains the queue wait the ordering controls and is endogenous to it. These
+     *       knobs are RETAINED deliberately: they still shape the reported {@code factors.mttr}
+     *       evidence and make M's re-entry (behind an uncontaminated estimator) a one-line
+     *       change. Today they move no card's position.</li>
+     *   <li>{@code selfHealFloor} — the S clamp, default 0.25. <b>Inert at its default, and that
+     *       is not a bug (#400 part A).</b> The "demoted at most 4x, never zeroed" guarantee is
+     *       delivered by LANE QUANTISATION, not by this knob: {@code S} bottoms out at
+     *       {@code 1 - P_HEAL_LIKELY = 0.25} exactly, so every value <b>&le; 0.25</b> is selected
+     *       by nothing and changes no score by a single bit. Kept because a value STRICTLY ABOVE
+     *       0.25 does bind and weakens demotion — a legitimate deployment lever — and because it
+     *       is the guard if {@code S} is ever fed a rate above 0.75 directly.
+     *       {@code AttentionScoreCalculatorTest} pins both halves of that boundary.</li>
+     *   <li>{@code selfHealHorizon} — the S factor's tau_heal, default PT1H (#400 part B). See
+     *       {@link Attention#selfHealHorizonOrDefault()} for why it is neither {@code
+     *       recencyHalfLife} nor anything derived from {@code medMTTR}.</li>
      *   <li>{@code modelTtl} — Caffeine TTL of the whole per-class ledger model, default 5 min
      *       (§6 recompute cadence; the model is three bounded DB aggregates, no engine calls).</li>
      *   <li>{@code derivedResurfaceThreshold} — C3. DEFAULT FALSE: §3.3 is explicit that the
@@ -157,7 +172,42 @@ public record InspectorProperties(
             Duration burstWindow,
             Integer burstOnset,
             Integer burstExit,
-            Double burstWeight) {
+            Double burstWeight,
+            Duration selfHealHorizon) {
+
+        /** Pre-#400 14-arg shape → the self-heal horizon default (no call-site churn). */
+        public Attention(
+                Duration recencyHalfLife,
+                Integer arrivalsWindowDays,
+                Integer minClosedEpisodes,
+                Double mttrClampLow,
+                Double mttrClampHigh,
+                Double selfHealFloor,
+                Duration modelTtl,
+                Boolean derivedResurfaceThreshold,
+                Integer resurfaceFloorPct,
+                Double resurfaceFalseBudgetPer30AckDays,
+                Duration burstWindow,
+                Integer burstOnset,
+                Integer burstExit,
+                Double burstWeight) {
+            this(
+                    recencyHalfLife,
+                    arrivalsWindowDays,
+                    minClosedEpisodes,
+                    mttrClampLow,
+                    mttrClampHigh,
+                    selfHealFloor,
+                    modelTtl,
+                    derivedResurfaceThreshold,
+                    resurfaceFloorPct,
+                    resurfaceFalseBudgetPer30AckDays,
+                    burstWindow,
+                    burstOnset,
+                    burstExit,
+                    burstWeight,
+                    null);
+        }
 
         /** Pre-#365 10-arg shape → burst defaults (unit-test-patterns: no constructor churn). */
         public Attention(
@@ -182,6 +232,7 @@ public record InspectorProperties(
                     derivedResurfaceThreshold,
                     resurfaceFloorPct,
                     resurfaceFalseBudgetPer30AckDays,
+                    null,
                     null,
                     null,
                     null,
@@ -210,6 +261,35 @@ public record InspectorProperties(
         /** Gamma: one flood-window arrival weighs eight trickled ones (§4.1a). */
         public double burstWeightOrDefault() {
             return burstWeight != null ? burstWeight : 8.0;
+        }
+
+        /**
+         * The S factor's HEAL HORIZON — tau_heal in {@code w = 2^(-t_heal / tau_heal)} (#400,
+         * §4.1b). Default PT1H.
+         *
+         * <p><b>Why a knob of its own rather than a reused constant.</b> It is deliberately NOT
+         * {@code recency-half-life}: at tau = 24 h a class whose median self-heal is eight hours
+         * still keeps 79 % of its full demotion, which is precisely the regime the harm search
+         * measured at 80.73 % harm / 0.00 % help — reusing C6 would leave the defect it is meant
+         * to close wide open. It is also deliberately NOT derived from {@code medMTTR}: that
+         * estimator contains the operator's own queue wait and is therefore ENDOGENOUS to the
+         * ordering (#398), and importing it here would re-import the very contamination that
+         * removed the M factor.
+         *
+         * <p><b>Why one hour.</b> tau_heal is a POLICY statement — "how far ahead this deployment
+         * is willing to bet on a heal" — not an estimate, so it carries no estimator's bias. One
+         * hour sits an order of magnitude above the 60 s sampler beat and the PT5M model TTL (so
+         * a heal the ordering could never react to reads as immediate) and an order of magnitude
+         * below the 24 h quiet window (so a heal nobody will still be waiting for reads as
+         * never). The resulting curve: a heal inside one bucket keeps the FULL shipped demotion,
+         * one hour halves it, eight hours leaves 0.4 % of it. A deployment that knows its own
+         * hands-on service time should set this to roughly four times it — the boundary the
+         * harm search's phase change actually sits on.
+         *
+         * <p>Dead configuration until {@code inspector.triage.attention-ordering} is opted into.
+         */
+        public Duration selfHealHorizonOrDefault() {
+            return selfHealHorizon != null ? selfHealHorizon : Duration.ofHours(1);
         }
 
         /**
