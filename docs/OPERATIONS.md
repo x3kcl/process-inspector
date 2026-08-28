@@ -317,6 +317,24 @@ exceptions cover the same lockfile advisories via two different tools, and
 `scripts/check-npm-audit-allowlist.mjs` cross-checks both files and fails the run on drift.
 Renew both together.
 
+**Trivy IMAGE scan — the `apk upgrade` cache trap (nightly #66/#67).** The BFF runtime image
+runs `apk upgrade --no-cache` so patched Alpine packages land ahead of eclipse-temurin's own
+next `21-jre-alpine` re-cut. That step's buildkit cache key is the literal command string,
+which never changes — so with a warm `cache-from: type=gha` the layer is replayed verbatim and
+the "fresh" image silently carries whatever package set was current when the layer was first
+built. Nightly runs 66 and 67 went red on `CVE-2026-14456` (`openssl`/`libcrypto3`/`libssl3`
+3.5.7-r0, fixed in 3.5.8-r0, already published in the Alpine repo) with **every** build layer
+logging `CACHED`: the scanned image was a byte-identical replay of the run-65 build, so no
+number of re-runs could ever have gone green. The runtime stage is therefore **named**
+(`FROM eclipse-temurin:21-jre-alpine AS runtime`) and every workflow that builds a BFF image
+for scanning or for publication passes `no-cache-filters: runtime` to
+`docker/build-push-action` — `nightly.yml` (`supply-chain`), `publish-edge.yml` and
+`release.yml` alike. Scoping it to the runtime stage keeps the expensive maven `build` stage
+cached, so the cost is seconds. **Applying it to the publish workflows is not optional:** if
+only the scan build were uncached, the gate would certify one artifact while users pulled a
+different, staler one. `ci.yml`'s docker job deliberately keeps a fully warm cache — it only
+proves the Dockerfile still builds, and is not a supply-chain gate.
+
 **Genuinely still to land:** Playwright smoke + axe (no CI wiring exists at all yet, tracked
 issue #85, blocked on #88's remaining U5 frontend-fitness prerequisite — U1/U2 landed) · a
 dedicated static WireMock fixture suite for 6.x/7.x error-JSON shape (partially covered
