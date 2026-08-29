@@ -1,0 +1,287 @@
+<!doctype html>
+<!-- process-inspector CI dashboard — static single page, fed by status.json (pushed from
+     the probe box hp04 by scripts/ci-dashboard-push.sh). No build step, no framework: the
+     server is a dumb static file server, all rendering happens here. Ages are computed
+     CLIENT-side from absolute epochs, so a dead pusher shows up as staleness rather than a
+     frozen "3s ago". Palette + status-pill rules follow the `dataviz` skill's reference
+     instance, dark mode (deliberately fixed, not an auto-flip — this is an ops wall);
+     status colour ALWAYS ships with a text label, never colour alone.
+     Sibling of flap's deploy/ci-dashboard, intentionally the same shape so the two boards
+     read alike on the same screen — but the content is GitHub Actions, not flap's local
+     gate: runner slots, per-workflow runs, the nightly broken out per job, and PR gates. -->
+<html lang="en">
+<head>
+<meta charset="utf-8">
+<meta name="viewport" content="width=device-width, initial-scale=1">
+<title>process-inspector CI</title>
+<!-- Inline data-URI favicon: an ops wall left on a spare monitor should not be quietly
+     logging a 404 for /favicon.ico on every load. -->
+<link rel="icon" href="data:image/svg+xml,%3Csvg xmlns='http://www.w3.org/2000/svg' viewBox='0 0 16 16'%3E%3Crect width='16' height='16' rx='3' fill='%231a1a19'/%3E%3Ccircle cx='8' cy='8' r='4' fill='%230ca30c'/%3E%3C/svg%3E">
+<style>
+  :root {
+    color-scheme: dark;
+    --surface-1: #1a1a19;      /* page */
+    --surface-2: #242423;      /* panels */
+    --surface-3: #2e2e2c;      /* rows / chips */
+    --border:    #383835;
+    --text-primary:   #ffffff;
+    --text-secondary: #c3c2b7;
+    --text-muted:     #8a897f;
+    --accent:    #3987e5;      /* series-1 dark — links & highlights */
+    --good:      #0ca30c;
+    --warning:   #fab219;
+    --serious:   #ec835a;
+    --critical:  #d03b3b;
+  }
+  * { box-sizing: border-box; }
+  body {
+    margin: 0; background: var(--surface-1); color: var(--text-primary);
+    font: 14px/1.45 system-ui, -apple-system, "Segoe UI", sans-serif;
+    padding: 20px; max-width: 1100px; margin-inline: auto;
+  }
+  a { color: var(--accent); text-decoration: none; }
+  a:hover { text-decoration: underline; }
+  code, .mono { font-family: ui-monospace, "Cascadia Code", Menlo, monospace; font-size: 12.5px; }
+
+  header { display: flex; align-items: baseline; gap: 14px; flex-wrap: wrap; margin-bottom: 18px; }
+  header h1 { font-size: 19px; margin: 0; letter-spacing: .01em; }
+  header .sub { color: var(--text-secondary); font-size: 13px; }
+  #staleness { margin-left: auto; }
+
+  .tiles { display: grid; grid-template-columns: repeat(auto-fit, minmax(170px, 1fr)); gap: 12px; margin-bottom: 18px; }
+  .tile {
+    background: var(--surface-2); border: 1px solid var(--border); border-radius: 10px;
+    padding: 12px 14px;
+  }
+  .tile .label { color: var(--text-muted); font-size: 11px; text-transform: uppercase; letter-spacing: .08em; }
+  .tile .value { font-size: 21px; font-weight: 600; margin-top: 3px; display: flex; align-items: center; gap: 8px; }
+  .tile .hint  { color: var(--text-secondary); font-size: 12px; margin-top: 2px;
+                 overflow: hidden; text-overflow: ellipsis; white-space: nowrap; }
+
+  .grid { display: grid; grid-template-columns: 1fr 1fr; gap: 12px; }
+  @media (max-width: 860px) { .grid { grid-template-columns: 1fr; } }
+  section {
+    background: var(--surface-2); border: 1px solid var(--border); border-radius: 10px;
+    padding: 12px 14px; margin-bottom: 12px;
+  }
+  section h2 { font-size: 12px; color: var(--text-muted); text-transform: uppercase;
+               letter-spacing: .08em; margin: 0 0 8px; font-weight: 600; }
+  .span2 { grid-column: 1 / -1; }
+
+  table { width: 100%; border-collapse: collapse; }
+  td, th { padding: 5px 8px; text-align: left; vertical-align: top; }
+  th { color: var(--text-muted); font-size: 11px; text-transform: uppercase; letter-spacing: .06em; font-weight: 600; }
+  tbody tr { border-top: 1px solid var(--border); }
+  td.mono { color: var(--text-secondary); }
+  .empty { color: var(--text-muted); font-style: italic; padding: 4px 8px; }
+
+  /* Status pills: dot + LABEL — the label carries the meaning, the colour reinforces it. */
+  .pill {
+    display: inline-flex; align-items: center; gap: 6px;
+    background: var(--surface-3); border-radius: 999px; padding: 2px 10px 2px 8px;
+    font-size: 12px; font-weight: 600; white-space: nowrap; color: var(--text-primary);
+  }
+  .pill .dot { width: 8px; height: 8px; border-radius: 50%; background: var(--text-muted); }
+  .pill.good     .dot { background: var(--good); }
+  .pill.warning  .dot { background: var(--warning); }
+  .pill.serious  .dot { background: var(--serious); }
+  .pill.critical .dot { background: var(--critical); }
+  .pill.neutral  .dot { background: var(--accent); }
+
+  .slotdots { display: flex; gap: 4px; flex-wrap: wrap; }
+  .slotdot {
+    width: 22px; height: 18px; border-radius: 4px; background: var(--surface-3);
+    display: inline-flex; align-items: center; justify-content: center;
+    font-size: 10px; font-weight: 700; color: var(--text-primary);
+  }
+  .slotdot.online  { background: #17501a; }
+  .slotdot.busy    { background: #1d4b7d; }
+  .slotdot.offline { background: #4a2323; color: var(--text-muted); }
+  footer { color: var(--text-muted); font-size: 12px; margin-top: 16px; }
+</style>
+</head>
+<body>
+<header>
+  <h1>process-inspector CI</h1>
+  <span class="sub" id="meta">loading…</span>
+  <span id="staleness"></span>
+</header>
+
+<div class="tiles">
+  <div class="tile"><div class="label">main — merge gate</div><div class="value" id="t-gate">–</div><div class="hint" id="t-gate-hint"></div></div>
+  <div class="tile"><div class="label">main — all workflows</div><div class="value" id="t-all">–</div><div class="hint" id="t-all-hint"></div></div>
+  <div class="tile"><div class="label">Nightly</div><div class="value" id="t-nightly">–</div><div class="hint" id="t-nightly-hint"></div></div>
+  <div class="tile"><div class="label">Runner slots</div><div class="value" id="t-slots">–</div><div class="hint" id="t-slots-hint"></div></div>
+  <div class="tile"><div class="label">Open PRs</div><div class="value" id="t-prs">–</div><div class="hint" id="t-prs-hint"></div></div>
+</div>
+
+<section><h2>main — head of the default branch</h2><div id="mainbox"></div></section>
+
+<section><h2>Runner slots — where CI runs</h2>
+  <table><thead><tr><th>box</th><th>state</th><th>slots</th></tr></thead>
+  <tbody id="boxes"></tbody></table>
+</section>
+
+<div class="grid">
+  <section><h2>Workflows — newest run of each</h2>
+    <table><thead><tr><th>workflow</th><th>run</th><th>state</th><th>age</th></tr></thead><tbody id="workflows"></tbody></table>
+  </section>
+  <section><h2>Nightly — newest run, per job</h2>
+    <table><thead><tr><th>job</th><th>state</th><th>took</th></tr></thead><tbody id="njobs"></tbody></table>
+  </section>
+  <section class="span2"><h2>Open pull requests</h2>
+    <table><thead><tr><th>PR</th><th>title</th><th>gate</th><th>what to do</th></tr></thead><tbody id="prs"></tbody></table>
+  </section>
+</div>
+
+<footer id="foot"></footer>
+
+<script>
+const REFRESH_MS = 15000;
+const $ = id => document.getElementById(id);
+const esc = s => String(s ?? "").replace(/[&<>"]/g, c => ({"&":"&amp;","<":"&lt;",">":"&gt;",'"':"&quot;"}[c]));
+const age = epoch => {
+  if (!epoch) return "?";
+  const s = Math.max(0, Math.floor(Date.now()/1000 - epoch));
+  return s < 120 ? s + "s" : s < 7200 ? Math.floor(s/60) + "m" : Math.floor(s/3600) + "h";
+};
+const pill = (cls, label) => `<span class="pill ${cls}"><span class="dot"></span>${esc(label)}</span>`;
+const dur = sec => !sec ? "" : sec < 90 ? `${sec}s` : `${Math.round(sec/60)}m`;
+
+// One mapping from a rollup/run state to a pill class, used everywhere — the board must
+// never disagree with itself about what "failure" looks like.
+const STATE_CLASS = {
+  success: "good", failure: "critical", running: "neutral", queued: "warning",
+  in_progress: "neutral", none: "warning", unknown: "warning",
+  cancelled: "serious", timed_out: "serious", skipped: "", startup_failure: "critical",
+};
+const statePill = (state, label) =>
+  pill(STATE_CLASS[state] ?? "warning", (label ?? state ?? "?").toUpperCase());
+
+// A run's effective state: conclusion once complete, else its status.
+const runState = r => r.status === "completed" ? (r.conclusion || "unknown") : (r.status || "unknown");
+
+function gateNote(g) {
+  if (!g || g.state === "none") return "no runs on this head — push, or check the runner slots";
+  if (g.state === "failure")    return `RED: ${(g.failed || []).join(", ")} — fix in this session, do not merge`;
+  if (g.state === "running")    return "gate in flight — wait for it, a push is not success";
+  if (g.state === "success")    return "green on this SHA — ready to merge";
+  return "";
+}
+
+function render(d) {
+  const genAge = Math.floor(Date.now()/1000 - d.generatedEpoch);
+  $("meta").innerHTML = `probed from ${esc(d.host)} · <a href="https://github.com/${esc(d.repo)}" target="_blank">${esc(d.repo)}</a> · data ${age(d.generatedEpoch)} old`;
+  $("staleness").innerHTML = genAge > 180
+    ? pill("serious", `STALE — pusher silent ${age(d.generatedEpoch)}`)
+    : pill("good", "live");
+
+  // ── tiles ────────────────────────────────────────────────────────────────────────
+  $("t-gate").innerHTML = statePill(d.main.gate.state);
+  $("t-gate-hint").textContent = `ci.yml on ${d.main.sha} — ${d.main.gate.label}`;
+  $("t-all").innerHTML = statePill(d.main.allGate.state);
+  $("t-all-hint").textContent = `${d.main.allGate.label} (nightly is not merge-blocking)`;
+
+  const nightly = (d.workflows || []).find(w => w.workflow === "nightly.yml");
+  const nFailed = (d.nightlyJobs || []).filter(j => j.conclusion && j.conclusion !== "success" && j.conclusion !== "skipped");
+  $("t-nightly").innerHTML = !nightly || !nightly.present
+    ? pill("warning", "NO RUNS") : statePill(runState(nightly));
+  $("t-nightly-hint").textContent = !nightly || !nightly.present ? "nightly.yml has never run"
+    : `#${nightly.number} · ${age(nightly.updatedEpoch)} ago` + (nFailed.length ? ` · ${nFailed.map(j => j.name).join(", ")}` : "");
+
+  const online = (d.slots || []).filter(s => s.status === "online").length;
+  const busy   = (d.slots || []).filter(s => s.busy).length;
+  $("t-slots").innerHTML = `${online}/${(d.slots || []).length}` +
+    ((d.slots || []).length && online === 0 ? " " + pill("critical", "ALL DOWN") : "");
+  $("t-slots-hint").textContent = (d.slots || []).length
+    ? `${busy} busy · ${(d.boxes || []).map(b => b.name).join(", ")}`
+    : "no runners registered — every run will queue forever";
+
+  $("t-prs").textContent = (d.prs || []).length;
+  const redPrs = (d.prs || []).filter(p => p.gate && p.gate.state === "failure").length;
+  $("t-prs-hint").textContent = redPrs ? `${redPrs} with a red gate` : "none red";
+
+  // ── main ─────────────────────────────────────────────────────────────────────────
+  $("mainbox").innerHTML =
+    `<div><span class="mono">${esc(d.main.sha)}</span> ${esc(d.main.subject)}</div>
+     <div style="color:var(--text-muted);font-size:12px;margin:4px 0 8px">
+       by ${esc(d.main.author)} · ${age(d.main.dateEpoch)} ago</div>
+     <div style="display:flex;gap:8px;flex-wrap:wrap">${
+       (d.main.runs || []).map(r =>
+         `<a href="${esc(r.url)}" target="_blank">${statePill(runState(r), `${r.workflow} ${runState(r)}`)}</a>`
+       ).join("") || `<span class="empty">no workflow runs on this SHA</span>`}</div>`;
+
+  // ── boxes ────────────────────────────────────────────────────────────────────────
+  $("boxes").innerHTML = (d.boxes || []).map(b => {
+    const slots = (d.slots || []).filter(s => s.box === b.name);
+    const state = b.online === 0 ? pill("critical", "ALL OFFLINE")
+                : b.online < b.total ? pill("warning", `${b.online}/${b.total} ONLINE`)
+                : pill("good", "ONLINE");
+    const dots = slots.map(s => {
+      const cls = s.status !== "online" ? "offline" : s.busy ? "busy" : "online";
+      const title = `${s.name}: ${s.status}${s.busy ? ", busy" : ", idle"}`;
+      return `<span class="slotdot ${cls}" title="${esc(title)}">s${esc(s.slot)}</span>`;
+    }).join("");
+    return `<tr><td class="mono">${esc(b.name)}</td><td>${state}</td>
+      <td><div class="slotdots">${dots}</div>
+      <div style="color:var(--text-muted);font-size:12px;margin-top:3px">${b.busy} busy · ${b.total - b.busy} idle</div></td></tr>`;
+  }).join("") || `<tr><td colspan="3" class="empty">no runners registered</td></tr>`;
+
+  // ── workflows ────────────────────────────────────────────────────────────────────
+  $("workflows").innerHTML = (d.workflows || []).map(w => w.present
+    ? `<tr><td class="mono">${esc(w.workflow)}</td>
+         <td><a href="${esc(w.url)}" target="_blank">#${esc(w.number)}</a>
+             <span class="mono" style="color:var(--text-muted)">${esc(w.branch || "")}</span></td>
+         <td>${statePill(runState(w))}</td>
+         <td class="mono">${age(w.updatedEpoch)}</td></tr>`
+    : `<tr><td class="mono">${esc(w.workflow)}</td><td colspan="3" class="empty">no runs</td></tr>`
+  ).join("");
+
+  // ── nightly jobs ─────────────────────────────────────────────────────────────────
+  $("njobs").innerHTML = (d.nightlyJobs || []).map(j =>
+    `<tr><td><a href="${esc(j.url)}" target="_blank">${esc(j.name)}</a>${
+        j.failedStep ? `<div style="color:var(--serious);font-size:12px">↳ ${esc(j.failedStep)}</div>` : ""}</td>
+       <td>${statePill(j.status === "completed" ? (j.conclusion || "unknown") : j.status)}</td>
+       <td class="mono">${esc(dur(j.durationSec))}</td></tr>`
+  ).join("") || `<tr><td colspan="3" class="empty">no nightly run found</td></tr>`;
+
+  // ── PRs ──────────────────────────────────────────────────────────────────────────
+  $("prs").innerHTML = (d.prs || []).map(p =>
+    `<tr><td><a href="${esc(p.url)}" target="_blank">#${esc(p.number)}</a>${
+        p.draft ? ` ${pill("", "draft")}` : ""}</td>
+       <td>${esc(p.title)}<div class="mono" style="color:var(--text-muted)">${esc(p.branch)} ${esc(p.sha)}</div></td>
+       <td>${p.gate ? statePill(p.gate.state) : pill("warning", "?")}
+           <div style="color:var(--text-muted);font-size:12px">${esc(p.gate ? p.gate.label : "")}</div></td>
+       <td style="color:var(--text-secondary);font-size:12px">${esc(gateNote(p.gate))}</td></tr>`
+  ).join("") || `<tr><td colspan="4" class="empty">no open PRs</td></tr>`;
+
+  $("foot").textContent =
+    `${(d.slots || []).length} runner slot(s) across ${(d.boxes || []).length} box(es) · ` +
+    `snapshot generated on ${d.host} at ${new Date(d.generatedEpoch * 1000).toLocaleString()}`;
+}
+
+let last = null;
+async function tick() {
+  try {
+    const r = await fetch("status.json", { cache: "no-store" });
+    last = await r.json();
+    render(last);
+  } catch (e) {
+    $("staleness").innerHTML = pill("critical", "FETCH FAILED");
+    $("meta").textContent = String(e);
+  }
+}
+tick();
+setInterval(tick, REFRESH_MS);
+// 1s live layer: only the age-derived bits, so staleness advances between pusher cycles.
+setInterval(() => {
+  if (!last) return;
+  const genAge = Math.floor(Date.now()/1000 - last.generatedEpoch);
+  $("meta").innerHTML = `probed from ${esc(last.host)} · <a href="https://github.com/${esc(last.repo)}" target="_blank">${esc(last.repo)}</a> · data ${age(last.generatedEpoch)} old`;
+  $("staleness").innerHTML = genAge > 180
+    ? pill("serious", `STALE — pusher silent ${age(last.generatedEpoch)}`)
+    : pill("good", "live");
+}, 1000);
+</script>
+</body>
+</html>

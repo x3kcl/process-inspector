@@ -355,6 +355,40 @@ runner is online. Ephemeral (one job per container, fresh registration each rest
 `restart: unless-stopped` for reboot survival. Registration: repo-scoped PAT via
 `GITHUB_PERSONAL_ACCESS_TOKEN` env ref, exchanged at start for short-lived tokens.
 
+**CI dashboard — one glanceable view of the estate (hp02 `:8091`).** `scripts/ci-status.sh`
+renders the whole Actions estate as one snapshot: the runner-slot fleet grouped by box,
+`main`'s own verdict, every workflow's newest run, the latest nightly **broken out per job
+with its failing STEP**, and each open PR's gate. Run it as text anywhere
+(`bash scripts/ci-status.sh`) or as JSON (`--json`).
+
+`scripts/ci-dashboard-push.sh` feeds the web version, a sibling of flap's board on the same
+box and deliberately the same shape so the two read alike:
+
+| piece | where | why there |
+| --- | --- | --- |
+| probe + render | **hp04** (per-minute cron) | the only box holding `GITHUB_PERSONAL_ACCESS_TOKEN` |
+| static page + `status.json` | **hp02**, `~/pi-ci-dashboard`, container `pi-ci-dashboard` | the always-on box the operator's browser points at |
+
+Only **rendered JSON** crosses the hop — the PAT never leaves hp04 and the dashboard host
+never needs, sees or stores a credential (env-ref iron rule). Set-up is
+`bash scripts/ci-dashboard-push.sh --deploy` then `--install-cron`; the page computes ages
+client-side from absolute epochs, so a dead pusher renders as an explicit **STALE** pill
+rather than a frozen "live" view. `--install-cron` **refuses to run from a `git worktree`**
+(`--git-dir` ≠ `--git-common-dir`): the cron line bakes in `$PWD`, and pinning the refresh
+to a worktree that later gets cleaned up is the same ephemeral-directory trap that froze the
+demo bind-mounts in #396.
+
+**Two verdicts for `main`, never conflated** — the board splits *merge gate* (`ci.yml` on
+that SHA: the `green-ci` definition of done) from *all workflows* (which folds in the
+explicitly non-merge-blocking nightly). Rolling them together would paint a perfectly
+mergeable `main` red every morning a nightly goes amber, which is exactly how a gate gets
+trained out of an operator's attention.
+
+Isolation on the shared box: its own compose project (deliberately **not** named
+`pi-ci-s<N>-*`, so no harness job's scoped `down -v --remove-orphans` can reach it), a
+bind-mounted site dir rather than a named volume, and `restart: unless-stopped`. It binds
+`0.0.0.0` on purpose — the box is WireGuard-only and the content is CI telemetry.
+
 ## 9. Compose profiles
 Dev engine profiles in `docker/docker-compose.dev.yml`: **`flowable-6`** (6.8.0 pair,
 default via `docker/.env` `COMPOSE_PROFILES`) / **`flowable-7`** (7.1.0, :8083) /
