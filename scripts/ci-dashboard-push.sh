@@ -10,6 +10,7 @@
 #   bash scripts/ci-dashboard-push.sh --install-cron  # refresh every minute (idempotent,
 #                                                     #   marker pi-ci-dashboard)
 #   bash scripts/ci-dashboard-push.sh --uninstall-cron
+#   bash scripts/ci-dashboard-push.sh --selftest         # render-only; can it run at all?
 #
 # The cron writes its last cycle's output to /tmp/pi-ci-dashboard-push.log (overwritten
 # each run, so it never grows) — read that first when the board goes STALE.
@@ -112,11 +113,16 @@ case "${1:-}" in
     # no-op under cron (no PAT — see the token block at the top). `env -i` is the closest
     # honest approximation of what cron hands us. A gate that installs a broken job and
     # lets the board rot is worse than no gate.
+    # Test THIS script, not ci-status.sh: the token block above lives here, so probing
+    # ci-status.sh directly under env -i fails even when the cron would have worked. (It
+    # did exactly that on the first install — the guard refused a working setup.) Test the
+    # entry point cron will actually invoke, in cron's environment, minus the side effects.
     if ! env -i HOME="$HOME" PATH=/usr/bin:/bin \
-         bash -c "cd '$PWD' && bash scripts/ci-status.sh --json" >/dev/null 2>&1; then
-      echo '── refusing: ci-status.sh cannot produce a snapshot in a cron-like environment'
-      echo '   (env -i). Usually the GitHub PAT: cron sources no rc file, so it must be'
-      echo '   resolvable from ~/.bashrc by the token block in this script.'
+         bash -c "cd '$PWD' && bash scripts/ci-dashboard-push.sh --selftest" >/dev/null 2>&1; then
+      echo '── refusing: the refresh cannot run in a cron-like environment (env -i).'
+      echo '   Usually the GitHub PAT: cron sources no rc file, so it must be resolvable'
+      echo '   from ~/.bashrc by the token block in this script. Reproduce with:'
+      echo "     env -i HOME=\$HOME PATH=/usr/bin:/bin bash -c \"cd '$PWD' && bash scripts/ci-dashboard-push.sh --selftest\""
       exit 7
     fi
     # Log to a FIXED file, overwritten each cycle: >/dev/null is what made the first broken
@@ -130,6 +136,11 @@ case "${1:-}" in
   --uninstall-cron)
     ( crontab -l 2>/dev/null | grep -v pi-ci-dashboard ) | crontab -
     echo "── pi-ci-dashboard cron removed from $(hostname -s)"
+    ;;
+  --selftest)
+    # Render only: no lock, no cache write, no rsync. Exists so --install-cron can prove
+    # the real entry point works under env -i without pushing a snapshot as a side effect.
+    bash scripts/ci-status.sh --json >/dev/null || exit 3
     ;;
   "") push_json ;;
   *) echo "usage: ci-dashboard-push.sh [--deploy | --install-cron | --uninstall-cron]"; exit 2 ;;

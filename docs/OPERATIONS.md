@@ -395,7 +395,10 @@ therefore lifts *only* that one `export` line out of `~/.bashrc` when the variab
 absent: not a second copy of the secret (env-ref iron rule — one source of truth), not a
 full `source` of the rc. `--install-cron` then **proves it works under `env -i` before
 installing**, and refuses (exit 7) if it can't — installing a job that silently no-ops is
-worse than installing nothing. The cron's last cycle is at
+worse than installing nothing. The probe runs `--selftest` (render-only: no lock, no rsync),
+i.e. the *same entry point cron invokes*, because the token resolution lives in
+`ci-dashboard-push.sh` — an earlier version probed `ci-status.sh` directly and refused a
+setup that would have worked. The cron's last cycle is at
 `/tmp/pi-ci-dashboard-push.log` (overwritten each run, so it never grows); read that first
 when the board goes stale, since `>/dev/null` is what made the original breakage invisible.
 
