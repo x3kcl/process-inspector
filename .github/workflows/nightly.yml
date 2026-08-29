@@ -200,6 +200,14 @@ jobs:
           load: true
           tags: process-inspector:nightly-scan
           cache-from: type=gha
+          # The runtime stage's `apk upgrade` re-resolves against the live Alpine index ONLY
+          # if it is not served from cache — its cache key is the literal command string, so
+          # a warm cache replays a stale package set forever. That is what reddened nightly
+          # #66/#67 on CVE-2026-14456: every layer logged `CACHED`, so the scanned image was
+          # a byte-identical replay of an older build and could never pick up the published
+          # openssl 3.5.8-r0. Scoped to the (small) runtime stage — the maven `build` stage
+          # keeps its cache, so this costs seconds, not the whole compile.
+          no-cache-filters: runtime
           # Same GHA-cache-export-slowness timeout hit ci.yml's docker job 3x today
           # (mode=max upload of build-stage layers stalling the "exporting to GitHub Actions
           # Cache" step) — mode=min + ignore-error=true so a slow/broken cache service can
