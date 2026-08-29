@@ -387,6 +387,18 @@ another worktree does. **After changing anything under `scripts/` or `deploy/ci-
 refresh that checkout** (`git -C ~/workspace/pi-wt-ci-dash pull --ff-only`) and re-run
 `--deploy` — otherwise the board keeps running the old code.
 
+**The cron needs the PAT, and cron has no rc.** `~/.bashrc` early-returns for
+non-interactive shells, so a cron-launched refresh sees no
+`GITHUB_PERSONAL_ACCESS_TOKEN`, `ci-status.sh` bails, and the board ages into STALE and
+never returns — the first cron installed here did exactly that. `ci-dashboard-push.sh`
+therefore lifts *only* that one `export` line out of `~/.bashrc` when the variable is
+absent: not a second copy of the secret (env-ref iron rule — one source of truth), not a
+full `source` of the rc. `--install-cron` then **proves it works under `env -i` before
+installing**, and refuses (exit 7) if it can't — installing a job that silently no-ops is
+worse than installing nothing. The cron's last cycle is at
+`/tmp/pi-ci-dashboard-push.log` (overwritten each run, so it never grows); read that first
+when the board goes stale, since `>/dev/null` is what made the original breakage invisible.
+
 **Two verdicts for `main`, never conflated** — the board splits *merge gate* (`ci.yml` on
 that SHA: the `green-ci` definition of done) from *all workflows* (which folds in the
 explicitly non-merge-blocking nightly). Rolling them together would paint a perfectly

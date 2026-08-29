@@ -11,6 +11,9 @@
 #                                                     #   marker pi-ci-dashboard)
 #   bash scripts/ci-dashboard-push.sh --uninstall-cron
 #
+# The cron writes its last cycle's output to /tmp/pi-ci-dashboard-push.log (overwritten
+# each run, so it never grows) — read that first when the board goes STALE.
+#
 # The cron runs from wherever you install it, so that checkout is what the board actually
 # executes: after changing anything under scripts/ or deploy/ci-dashboard/, refresh it
 # (`git -C ~/workspace/pi-wt-ci-dash pull --ff-only`) and re-run --deploy. --install-cron
@@ -32,10 +35,23 @@ cd "$(dirname "$0")/.." || exit 2
 # cron-proof PATH: cron's minimal PATH lacks the tools this needs on some boxes.
 export PATH="$HOME/.local/bin:/usr/local/bin:$PATH"
 
+# cron-proof TOKEN. cron runs a non-interactive, non-login shell, and this box keeps the
+# PAT as an `export` in ~/.bashrc — which early-returns for non-interactive shells
+# (`case $- in *i*) ;; *) return;; esac`, the Debian default). So under cron the variable is
+# simply absent, ci-status.sh bails, and every refresh fails: the board ages into STALE and
+# never comes back. Observed exactly that within minutes of installing the first cron.
+# Pull ONLY that one export line, rather than sourcing the whole rc (which would drag in the
+# interactive setup) and rather than copying the secret into a second file — the env-ref
+# iron rule wants exactly one source of truth for it. Never echoed, here or anywhere.
+if [ -z "${GITHUB_PERSONAL_ACCESS_TOKEN:-}" ] && [ -r "$HOME/.bashrc" ]; then
+  eval "$(grep -hE '^[[:space:]]*export[[:space:]]+GITHUB_PERSONAL_ACCESS_TOKEN=' "$HOME/.bashrc" | tail -1)"
+fi
+
 DASH_HOST="${PI_DASH_HOST:-flapci@172.16.62.253}"
 DASH_DIR="${PI_DASH_DIR:-~/pi-ci-dashboard}"
 DASH_PORT="${DASH_PORT:-8091}"
 LOCKFILE="/tmp/pi-ci-dashboard-push.lock"
+CRON_LOG="/tmp/pi-ci-dashboard-push.log"
 
 push_json() {
   # Serialize crons: a slow probe cycle (a dozen GitHub API calls) must queue-DROP, not
@@ -91,8 +107,23 @@ case "${1:-}" in
         exit 6
         ;;
     esac
+    # Prove the thing works in cron's ENVIRONMENT before installing it, not after: the
+    # first version of this cron ran happily from an interactive shell and was a silent
+    # no-op under cron (no PAT — see the token block at the top). `env -i` is the closest
+    # honest approximation of what cron hands us. A gate that installs a broken job and
+    # lets the board rot is worse than no gate.
+    if ! env -i HOME="$HOME" PATH=/usr/bin:/bin \
+         bash -c "cd '$PWD' && bash scripts/ci-status.sh --json" >/dev/null 2>&1; then
+      echo '── refusing: ci-status.sh cannot produce a snapshot in a cron-like environment'
+      echo '   (env -i). Usually the GitHub PAT: cron sources no rc file, so it must be'
+      echo '   resolvable from ~/.bashrc by the token block in this script.'
+      exit 7
+    fi
+    # Log to a FIXED file, overwritten each cycle: >/dev/null is what made the first broken
+    # cron invisible. Overwrite (not append) so it can never grow unbounded, while the last
+    # cycle's output is always there to read.
     ( crontab -l 2>/dev/null | grep -v pi-ci-dashboard
-      echo "* * * * * cd $PWD && bash scripts/ci-dashboard-push.sh >/dev/null 2>&1 # pi-ci-dashboard"
+      echo "* * * * * cd $PWD && bash scripts/ci-dashboard-push.sh >$CRON_LOG 2>&1 # pi-ci-dashboard"
     ) | crontab -
     echo "── $(hostname -s) crontab now:"; crontab -l | grep pi-ci-dashboard
     ;;
