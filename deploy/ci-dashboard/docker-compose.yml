@@ -1,0 +1,39 @@
+# ── process-inspector CI dashboard — tiny static web server on hp02, CONTAINERIZED ────
+# Serves deploy/ci-dashboard/html (index.html + the status.json that
+# scripts/ci-dashboard-push.sh refreshes from the probe box hp04). Sibling of flap's
+# deploy/ci-dashboard on the SAME box — hence the distinct project name, container name
+# and port; nothing here may collide with flap-ci-dashboard on :8090.
+#
+# Isolation rules, so the CI harness that also runs on hp02 can never disturb it:
+#   • own compose PROJECT, and deliberately NOT named `pi-ci-s<N>-*` — every harness job
+#     scopes its `down -v --remove-orphans` to its own `-p $CI_PROJECT`, and the runner
+#     slots' own compose file is a different project again, so none of them reach this;
+#   • lives in ~/pi-ci-dashboard on hp02, NOT in any checkout — no sync or clean touches it;
+#   • bind-mounted site dir, no named volume (nothing for a volume prune to reap);
+#   • restart: unless-stopped — survives reboots; a running container is not a prune target.
+# Two deliberate choices:
+#   • binds 0.0.0.0, not loopback — the whole point is the operator's browser. The box is
+#     only reachable over WireGuard and the content is CI telemetry, never a secret: the
+#     GitHub PAT stays on the probe box (hp04) and only rendered JSON is shipped here.
+#   • python:3.12-slim + http.server instead of nginx: the image is ALREADY cached on hp02
+#     (flap's dashboard uses it), so bring-up pulls nothing.
+name: pi-ci-dashboard
+
+services:
+  web:
+    image: python:3.12-slim
+    container_name: pi-ci-dashboard
+    restart: unless-stopped
+    user: "${DASH_UID:-1006}:${DASH_GID:-1006}"
+    working_dir: /site
+    volumes:
+      - ./html:/site:ro
+    ports:
+      - "${DASH_PORT:-8091}:8091"
+    command: ["python3", "-m", "http.server", "8091", "--bind", "0.0.0.0"]
+    healthcheck:
+      test: ["CMD", "python3", "-c", "import urllib.request; urllib.request.urlopen('http://127.0.0.1:8091/', timeout=3)"]
+      interval: 30s
+      timeout: 5s
+      retries: 3
+      start_period: 5s
