@@ -373,10 +373,19 @@ Only **rendered JSON** crosses the hop — the PAT never leaves hp04 and the das
 never needs, sees or stores a credential (env-ref iron rule). Set-up is
 `bash scripts/ci-dashboard-push.sh --deploy` then `--install-cron`; the page computes ages
 client-side from absolute epochs, so a dead pusher renders as an explicit **STALE** pill
-rather than a frozen "live" view. `--install-cron` **refuses to run from a `git worktree`**
-(`--git-dir` ≠ `--git-common-dir`): the cron line bakes in `$PWD`, and pinning the refresh
-to a worktree that later gets cleaned up is the same ephemeral-directory trap that froze the
-demo bind-mounts in #396.
+rather than a frozen "live" view.
+
+**Where the cron lives matters.** The crontab line bakes in `$PWD`, so that checkout *is*
+what the board executes every minute. `--install-cron` refuses to run from
+`.claude/worktrees/` — those are per-task agent scratch worktrees, and a cron pinned into
+one keeps working right up until the directory is cleaned up, then freezes the board (
+honestly, as STALE — but uselessly). Same ephemeral-directory shape that froze the demo
+bind-mounts in #396. A worktree as such is fine: this probe runs from the permanent
+`~/workspace/pi-wt-ci-dash` (sibling convention to `~/workspace/pi-wt-selfheal`, the
+sanctioned demo-deploy checkout), because the primary checkout cannot hold `main` while
+another worktree does. **After changing anything under `scripts/` or `deploy/ci-dashboard/`,
+refresh that checkout** (`git -C ~/workspace/pi-wt-ci-dash pull --ff-only`) and re-run
+`--deploy` — otherwise the board keeps running the old code.
 
 **Two verdicts for `main`, never conflated** — the board splits *merge gate* (`ci.yml` on
 that SHA: the `green-ci` definition of done) from *all workflows* (which folds in the
