@@ -11,6 +11,11 @@
 #                                                     #   marker pi-ci-dashboard)
 #   bash scripts/ci-dashboard-push.sh --uninstall-cron
 #
+# The cron runs from wherever you install it, so that checkout is what the board actually
+# executes: after changing anything under scripts/ or deploy/ci-dashboard/, refresh it
+# (`git -C ~/workspace/pi-wt-ci-dash pull --ff-only`) and re-run --deploy. --install-cron
+# refuses to run from .claude/worktrees/ so the cron can never be pinned to scratch space.
+#
 # Why the split: only hp04 can mint the API calls (the PAT is env-ref only and lives
 # there), and only hp02 is the always-on box the operator's browser points at. Shipping
 # RENDERED JSON rather than the token keeps the secret on exactly one box — the dashboard
@@ -65,20 +70,27 @@ case "${1:-}" in
     echo "── dashboard up: http://${DASH_HOST#*@}:${DASH_PORT}/"
     ;;
   --install-cron)
-    # The cron line bakes in $PWD, so installing it from a `git worktree` would pin the
-    # every-minute refresh to a directory that gets deleted the moment that worktree is
-    # cleaned up — the dashboard would then freeze and (correctly, but uselessly) show
-    # STALE forever. Same failure shape as the ephemeral-worktree demo deploy that froze
-    # the bind-mounts in #396; refuse it the same way.
-    # Canonical worktree test: --git-dir and --git-common-dir are the same path in a main
-    # checkout and diverge (…/.git/worktrees/<name> vs …/.git) inside a linked worktree.
-    if [ "$(git rev-parse --git-dir 2>/dev/null)" != "$(git rev-parse --git-common-dir 2>/dev/null)" ]; then
-      echo '── refusing: this is a git WORKTREE, not the main checkout.'
-      echo '   The cron bakes in $PWD and would point at a directory that disappears'
-      echo '   when the worktree is removed. Re-run from the main checkout.'
-      echo "   here: $PWD"
-      exit 6
-    fi
+    # The cron line bakes in $PWD, so it must live somewhere that still exists in a month.
+    # The trap is specifically the agent-scratch worktree tree under .claude/worktrees/:
+    # those are created and destroyed per task, so a cron pinned into one keeps running
+    # until the directory vanishes and then freezes the board (honestly, as STALE — but
+    # uselessly). Same ephemeral-directory shape that froze the demo bind-mounts in #396.
+    #
+    # A worktree as such is NOT the problem, and refusing all of them was wrong: this repo
+    # keeps PERMANENT worktrees outside that tree on purpose (~/workspace/pi-wt-selfheal is
+    # the sanctioned demo-deploy checkout, ~/workspace/pi-wt-ci-dash is this probe's), and
+    # the primary checkout cannot hold `main` while another worktree does. So gate on the
+    # ephemeral LOCATION, not on worktree-ness.
+    case "$PWD" in
+      */.claude/worktrees/*)
+        echo '── refusing: this is an EPHEMERAL agent worktree (.claude/worktrees/).'
+        echo '   The cron bakes in $PWD and would point at a directory that disappears'
+        echo '   when the worktree is cleaned up. Use the primary checkout or a permanent'
+        echo '   worktree under ~/workspace (e.g. ~/workspace/pi-wt-ci-dash).'
+        echo "   here: $PWD"
+        exit 6
+        ;;
+    esac
     ( crontab -l 2>/dev/null | grep -v pi-ci-dashboard
       echo "* * * * * cd $PWD && bash scripts/ci-dashboard-push.sh >/dev/null 2>&1 # pi-ci-dashboard"
     ) | crontab -
