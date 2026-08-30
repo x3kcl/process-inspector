@@ -134,7 +134,10 @@ public record InspectorProperties(
      *       by nothing and changes no score by a single bit. Kept because a value STRICTLY ABOVE
      *       0.25 does bind and weakens demotion — a legitimate deployment lever — and because it
      *       is the guard if {@code S} is ever fed a rate above 0.75 directly.
-     *       {@code AttentionScoreCalculatorTest} pins both halves of that boundary.</li>
+     *       {@code AttentionScoreCalculatorTest} pins both halves of that boundary. Constrained to
+     *       {@code [0, 1]} and REFUSED at binding outside it (#403) — see
+     *       {@link Attention#isSelfHealFloorAProbability()}: above 1 the clamp stops being a
+     *       demotion floor and becomes a promotion multiplier.</li>
      *   <li>{@code selfHealHorizon} — the S factor's tau_heal, default PT1H (#400 part B). See
      *       {@link Attention#selfHealHorizonOrDefault()} for why it is neither {@code
      *       recencyHalfLife} nor anything derived from {@code medMTTR}.</li>
@@ -303,6 +306,39 @@ public record InspectorProperties(
                         + " (an exit above onset inverts the Schmitt semantics)")
         public boolean isBurstHysteresisOrdered() {
             return burstExitOrDefault() <= burstOnsetOrDefault();
+        }
+
+        /**
+         * REFUSE a self-heal floor outside {@code [0, 1]} at binding, for the same reason as the
+         * Schmitt rail above: there is no sane reinterpretation, so guessing at intent is worse
+         * than failing.
+         *
+         * <p><b>A floor above 1 inverts the factor's sign.</b> {@code S = max(floor, 1 −
+         * p_heal·w)} is a DEMOTION — its whole job is to push proven self-healers down. Bind
+         * {@code self-heal-floor: 2.0} and {@code S = 2.0} for every class with a self-heal lane
+         * (max(2.0, 0.25) with a known timely heal; max(2.0, 1.0) with none), so the knob
+         * silently doubles their score and PROMOTES them to the top of the board — the exact
+         * opposite of what its name, its javadoc and OPERATOR-QUICK-START all say it does. The
+         * {@code > 1} case also breaks §4.1's degradation doctrine, which requires a factor with
+         * no evidence behind it to read as the multiplicative identity 1.0, never as 2.0.
+         *
+         * <p><b>Why refuse rather than clamp.</b> Silently clamping to 1.0 would hide an
+         * operator's misconfiguration instead of telling them — and this knob is documented at
+         * length (§18, {@link #selfHealFloorOrDefault()}), so a value that reads as deliberate
+         * deserves an answer, not a quiet correction. Note this is a REFUSAL of a value that
+         * bound successfully before #403; it was always nonsense, never merely unusual.
+         *
+         * <p>Negative floors are refused by the same rail. They are harmless today (a negative
+         * floor is never selected by {@code max}, so it is inert exactly like every value
+         * ≤ 0.25) but they are not a coherent statement about a probability-scale multiplier,
+         * and admitting them would leave the bound asserting only half of what it means.
+         */
+        @AssertTrue(
+                message = "inspector.triage.attention.self-heal-floor must be within [0, 1]"
+                        + " (a floor above 1 inverts S from a demotion into a promotion)")
+        public boolean isSelfHealFloorAProbability() {
+            double floor = selfHealFloorOrDefault();
+            return floor >= 0.0 && floor <= 1.0;
         }
 
         public Duration recencyHalfLifeOrDefault() {

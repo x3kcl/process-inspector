@@ -206,6 +206,10 @@ inspector:
       # docs/reviews/R-ATTENTION-HARM-2026-08.md §6). It is NOT deleted because a value STRICTLY
       # ABOVE 0.25 does bind and weakens demotion — the real deployment lever — and because it
       # stays the guard if S is ever fed a rate above 0.75 directly.
+      # CONSTRAINED TO [0, 1] and REFUSED at startup outside it (#403): S = max(floor, 1 - p*w)
+      # is a DEMOTION, so a floor above 1 makes every self-healing class score S = floor and
+      # PROMOTES it to the top of the board — the exact inverse of this knob's purpose. Refused
+      # rather than clamped, so a misconfiguration is answered instead of quietly corrected.
       self-heal-floor: 0.25
       # The S factor's heal horizon tau_heal, w = 2^(-t_heal / tau_heal) (#400 part B, §4.1b): a
       # class that heals within the hour is demoted about as hard as today, one that heals in
