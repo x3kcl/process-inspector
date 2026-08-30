@@ -268,6 +268,18 @@ jobs:
           name: sbom-web-image
           path: sbom-web-image.cdx.json
           retention-days: 90
+      # Base-image currency (issue #413) — the blind spot the scans above structurally
+      # cannot see. Both Trivy image steps scan AFTER `apk upgrade`, so a base that has
+      # aged but is still patchable scans GREEN: the drift is invisible precisely because
+      # the compensating mechanism works, and only becomes visible once a CVE lands that
+      # `apk upgrade` can no longer reach — i.e. after it is already a problem. That is how
+      # frontend/Dockerfile sat three Alpine minors behind the BFF (35 fixable HIGH/CRITICAL
+      # in the base as pulled) with every gate green, until #409/#411 went looking.
+      # Runs after the scans on purpose: a red here means "go bump a base within a day",
+      # which is nightly-shaped triage, not a push gate.
+      - name: Base-image currency (drift vs Alpine stable + skew between our images)
+        run: bash scripts/check-base-image-currency.sh
+
       # Backend dependency audit: Trivy's filesystem scanner over pom.xml, NOT OWASP
       # dependency-check-maven — tried that first, and a cold run against the real NVD API
       # hard-failed with HTTP 429 after several minutes (confirmed empirically): NVD

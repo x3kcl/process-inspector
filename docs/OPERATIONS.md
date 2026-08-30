@@ -403,6 +403,15 @@ setup that would have worked. The cron's last cycle is at
 `/tmp/pi-ci-dashboard-push.log` (overwritten each run, so it never grows); read that first
 when the board goes stale, since `>/dev/null` is what made the original breakage invisible.
 
+**Build in the merge gate, scan in the nightly — for BOTH images (issues #409, #412).**
+`ci.yml`'s `docker` job builds the BFF **and** the web image (`context: frontend`); neither
+is scanned there. That split is deliberate and worth not "helpfully" undoing: a vulnerability
+scan in the *merge* gate goes red the moment upstream publishes a CVE overnight, reddening
+every open PR for reasons that have nothing to do with the PR. So the merge gate answers
+*does it still build?* and the nightly answers *is it still clean?*. Until #412 the web image
+had neither — a PR could break `frontend/Dockerfile` and merge green, with the breakage
+surfacing a day later in the nightly or at `publish-edge` time on `main`.
+
 **Both shipping images are gated, not just the BFF (issue #409).** The web image
 (`frontend/Dockerfile` → `…-web`) was scanned by nothing until #409 and had no `apk upgrade`
 at all, so it published **35 fixable HIGH/CRITICAL findings (2 CRITICAL)** to ghcr.io, Docker
@@ -434,9 +443,27 @@ for an aging tag. Moving to `nginx:1.30-alpine` (nginx **1.30.4**, the stable br
 
 The residual 2 on the *fresh* tag are `CVE-2026-14456` — the very finding that reddened
 nightly #66/#67 on the BFF image. That is the standing lesson: **a current base tag narrows
-the window, it never closes it**, so both mechanisms stay. Keep the two images' Alpine
-majors aligned when practical; a base two majors behind is a drift signal worth acting on
-even while the gate is green.
+the window, it never closes it**, so both mechanisms stay.
+
+**Drift has its own alarm now (issue #413), because a green scan cannot raise one.** Both
+Trivy image steps scan *after* `apk upgrade`, so a base that has aged but is still patchable
+scans **green** — the drift is invisible exactly because the compensating mechanism is
+working, and only becomes visible once a CVE lands that `apk upgrade` can no longer reach,
+i.e. after it is already a problem. A green scan is evidence of a patched image, never of a
+current base. `scripts/check-base-image-currency.sh` (nightly `supply-chain`, runnable
+locally) measures what the scan structurally cannot:
+
+1. **drift** — every `FROM … AS runtime` base against current Alpine stable, failing past
+   `MAX_DRIFT` minors (default 1, deliberate slack: upstream tags legitimately lag a release
+   by weeks, and failing on that would train people to ignore the check);
+2. **skew** — our own shipping images against each other. They should share an Alpine minor;
+   the moment they diverge, one is aging, and that is the earliest honest signal available.
+
+Bases are **discovered, not listed** — a `FROM … AS runtime` stage is by construction the one
+that ships (that naming is already load-bearing for the `no-cache-filters` pairing), so a new
+shipping image is covered the day it is added, not the day someone remembers this file.
+Verified against the real regression: replayed with `nginx:1.27-alpine`, both the drift check
+(3 minors) and the skew check fire independently and the run exits 1.
 
 **Two verdicts for `main`, never conflated** — the board splits *merge gate* (`ci.yml` on
 that SHA: the `green-ci` definition of done) from *all workflows* (which folds in the
