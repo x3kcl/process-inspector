@@ -14,7 +14,23 @@ COPY . .
 RUN npm run build
 
 # ---- Stage 2: serve ---------------------------------------------------------
-FROM nginx:1.27-alpine
+# Stage NAME matters: every workflow that builds this image passes
+# `no-cache-filters: runtime` so the `apk upgrade` below is never served from a warm
+# buildkit cache. Its cache key is the literal command string, which never changes, so a
+# cached layer replays a months-old package set while pretending to be a fresh upgrade —
+# that is exactly what kept a fixed openssl out of the BFF image in #404. Do not drop
+# either half of the pair.
+FROM nginx:1.27-alpine AS runtime
+# Pick up patched Alpine packages ahead of the base image's own next release cut — the
+# same remediation the BFF runtime image has carried since #93, and the reason issue #409
+# existed: without it this image shipped 35 fixable HIGH/CRITICAL findings (2 CRITICAL),
+# including openssl 3.3.3-r0 against a published 3.3.7-r0, because nothing upgraded and
+# nothing scanned it. `nginx:1.27-alpine` tracks alpine 3.21, whose package set is well
+# behind the tag's own age.
+# Safe for the pinned nginx: nginx here comes from the alpine 3.21 repo (see
+# /etc/apk/repositories — no upstream nginx repo), and 1.27.5-r1 is already the newest
+# revision there, so this upgrades libraries WITHOUT moving nginx off 1.27.5. Verified.
+RUN apk upgrade --no-cache
 # OCI provenance for the registry listing (ghcr.io + Docker Hub). The publish
 # workflows also inject dynamic labels (revision/version) via docker/metadata-action.
 LABEL org.opencontainers.image.title="Process Inspector Web" \

@@ -232,6 +232,42 @@ jobs:
           name: sbom-image
           path: sbom-image.cdx.json
           retention-days: 90
+      # Web image, held to exactly the standard the BFF image above already is (issue
+      # #409). It was scanned by NOTHING until then, and shipped 35 fixable HIGH/CRITICAL
+      # findings (2 CRITICAL) to ghcr.io/Docker Hub and to the public demo — every one of
+      # them already patched upstream. Parity, not novelty: same build shape, same
+      # `no-cache-filters`, same scan flags, its own SBOM.
+      - name: Build web image (loaded locally for scanning, not pushed)
+        uses: docker/build-push-action@v6
+        with:
+          context: frontend
+          push: false
+          load: true
+          tags: process-inspector-web:nightly-scan
+          cache-from: type=gha
+          # Same reason as the BFF image above: the runtime stage's `apk upgrade` only
+          # re-resolves against the live Alpine index when it is not replayed from cache.
+          no-cache-filters: runtime
+          cache-to: type=gha,mode=min,ignore-error=true
+      - name: Trivy web-image scan (HIGH/CRITICAL fixed-in-upstream vulns fail the run)
+        uses: aquasecurity/trivy-action@v0.36.0
+        with:
+          image-ref: process-inspector-web:nightly-scan
+          severity: HIGH,CRITICAL
+          ignore-unfixed: true
+          exit-code: "1"
+      - name: SBOM (CycloneDX) for the built web image
+        uses: anchore/sbom-action@v0.22.0
+        with:
+          image: process-inspector-web:nightly-scan
+          format: cyclonedx-json
+          output-file: sbom-web-image.cdx.json
+      - uses: actions/upload-artifact@v4
+        if: always()
+        with:
+          name: sbom-web-image
+          path: sbom-web-image.cdx.json
+          retention-days: 90
       # Backend dependency audit: Trivy's filesystem scanner over pom.xml, NOT OWASP
       # dependency-check-maven — tried that first, and a cold run against the real NVD API
       # hard-failed with HTTP 429 after several minutes (confirmed empirically): NVD
