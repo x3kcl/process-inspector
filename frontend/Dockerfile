@@ -20,16 +20,18 @@ RUN npm run build
 # cached layer replays a months-old package set while pretending to be a fresh upgrade —
 # that is exactly what kept a fixed openssl out of the BFF image in #404. Do not drop
 # either half of the pair.
-FROM nginx:1.27-alpine AS runtime
+FROM nginx:1.30-alpine AS runtime
 # Pick up patched Alpine packages ahead of the base image's own next release cut — the
 # same remediation the BFF runtime image has carried since #93, and the reason issue #409
-# existed: without it this image shipped 35 fixable HIGH/CRITICAL findings (2 CRITICAL),
-# including openssl 3.3.3-r0 against a published 3.3.7-r0, because nothing upgraded and
-# nothing scanned it. `nginx:1.27-alpine` tracks alpine 3.21, whose package set is well
-# behind the tag's own age.
-# Safe for the pinned nginx: nginx here comes from the alpine 3.21 repo (see
-# /etc/apk/repositories — no upstream nginx repo), and 1.27.5-r1 is already the newest
-# revision there, so this upgrades libraries WITHOUT moving nginx off 1.27.5. Verified.
+# existed. STILL REQUIRED after the 1.30 bump, and measurably so: a freshly pulled
+# `nginx:1.30-alpine` still carries CVE-2026-14456 (libcrypto3/libssl3 3.5.7-r0 against a
+# published 3.5.8-r0) — literally the same finding that reddened nightly #66/#67 on the BFF
+# image. A current base tag narrows the gap; it never closes it. Measured at the bump:
+# 1.27-alpine base = 35 fixable HIGH/CRITICAL, 1.30-alpine base = 2, after this upgrade = 0.
+# Safe for the pinned nginx: nginx comes from the alpine repo (see /etc/apk/repositories —
+# no upstream nginx.org repo), and its packaged revision is already the newest there, so
+# this upgrades libraries WITHOUT moving nginx off the pinned minor. Re-verify on any base
+# tag change — it is the assumption that makes this whole line safe.
 RUN apk upgrade --no-cache
 # OCI provenance for the registry listing (ghcr.io + Docker Hub). The publish
 # workflows also inject dynamic labels (revision/version) via docker/metadata-action.

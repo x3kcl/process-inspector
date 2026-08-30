@@ -414,10 +414,29 @@ same scan flags and its own SBOM. **Rule: a shipping image without a scan is wor
 unscanned one — it reads as covered.** Any new published image gets all four (upgrade, named
 stage, scan, SBOM) in the same change that introduces it.
 
-Upgrading Alpine packages under a pinned base tag is safe *here* specifically because
-`nginx:1.27-alpine` takes nginx from the alpine `3.21` repo (no upstream nginx repo in
-`/etc/apk/repositories`) and `1.27.5-r1` is already the newest revision there — the upgrade
-moves libraries, never nginx. Re-check that assumption if the base tag ever changes.
+Upgrading Alpine packages under a pinned base tag is safe *here* specifically because the
+nginx image takes nginx from the **alpine** repo (no upstream `nginx.org` repo in
+`/etc/apk/repositories`) and its packaged revision is already the newest there — the upgrade
+moves libraries, never nginx. **Re-verify that on any base-tag change**; it is the assumption
+the whole line rests on.
+
+**Base tag currency is a separate axis from `apk upgrade`, and neither substitutes for the
+other.** #409 fixed the web image under `nginx:1.27-alpine`, which tracked alpine **3.21**
+while the BFF was already on **3.24** — `apk upgrade` was doing a lot of work to compensate
+for an aging tag. Moving to `nginx:1.30-alpine` (nginx **1.30.4**, the stable branch; alpine
+**3.24.1**, now matching the BFF) collapses that gap, measured at the bump:
+
+| | fixable HIGH/CRITICAL in the base |
+| --- | --- |
+| `nginx:1.27-alpine` (alpine 3.21.3) | **35** |
+| `nginx:1.30-alpine` (alpine 3.24.1) | **2** |
+| …after `apk upgrade` | **0** |
+
+The residual 2 on the *fresh* tag are `CVE-2026-14456` — the very finding that reddened
+nightly #66/#67 on the BFF image. That is the standing lesson: **a current base tag narrows
+the window, it never closes it**, so both mechanisms stay. Keep the two images' Alpine
+majors aligned when practical; a base two majors behind is a drift signal worth acting on
+even while the gate is green.
 
 **Two verdicts for `main`, never conflated** — the board splits *merge gate* (`ci.yml` on
 that SHA: the `green-ci` definition of done) from *all workflows* (which folds in the
