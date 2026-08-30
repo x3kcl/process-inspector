@@ -212,6 +212,23 @@ jobs:
           # mode=min only exports final-stage layers (small, fast); ignore-error=true means a
           # slow/broken cache service can never fail an otherwise-green build.
           cache-to: type=gha,mode=min,ignore-error=true
+      # The web image is a shipping artifact too, and until #412 NOTHING in the merge gate
+      # built it — a PR could break frontend/Dockerfile and merge green, with the breakage
+      # surfacing a day later in the nightly or (worse) at publish-edge time on `main`. The
+      # asymmetry was never a decision, just how the job grew.
+      # Build only, deliberately no Trivy scan: a vulnerability scan in the MERGE gate goes
+      # red the moment upstream publishes a CVE overnight, reddening every open PR for
+      # reasons that have nothing to do with the PR. That is exactly why the BFF image's
+      # scan lives in nightly.yml and not here. Split: build here (does it still build?),
+      # scan nightly (is it still clean?).
+      - name: Build web image (multi-stage, not pushed)
+        uses: docker/build-push-action@v6
+        with:
+          context: frontend
+          push: false
+          cache-from: type=gha
+          # Same mode=min + ignore-error rationale as the BFF step above.
+          cache-to: type=gha,mode=min,ignore-error=true
 
   integration:
     runs-on: self-hosted
