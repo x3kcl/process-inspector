@@ -278,9 +278,10 @@ audit partition/retention/roles + fail-closed, shared/team-view governance, mapp
 store CRUD, and **a real Keycloak `oidc` leg** — `OidcKeycloakIT`, sealed-login + `max_age`/
 `auth_time` semantics a lightweight stub can't exercise), an **`engine-its` job** (11
 mutating corrective-action/flow-surgery/migration/bulk ITs the PR gate skips for the
-zero-flake doctrine), a **`supply-chain` job** (Trivy image scan + fs-scans of `backend/pom.xml`
-and `frontend/package-lock.json`, HIGH/CRITICAL fixed-in-upstream hard-fails; a CycloneDX SBOM
-artifact for the built image; the frontend npm-audit gate below), and a **`perf-p1` job** (k6
+zero-flake doctrine), a **`supply-chain` job** (Trivy image scans of **both** shipping images —
+BFF and web — plus fs-scans of `backend/pom.xml` and `frontend/package-lock.json`,
+HIGH/CRITICAL fixed-in-upstream hard-fails; a CycloneDX SBOM artifact per image; the frontend
+npm-audit gate below), and a **`perf-p1` job** (k6
 against the seeded FIX-REF-01 reference dataset, asserting the SPEC §2 R-NFR-01/02 latency
 budgets). A red nightly is a morning-routine triage, not a push gate.
 
@@ -401,6 +402,22 @@ i.e. the *same entry point cron invokes*, because the token resolution lives in
 setup that would have worked. The cron's last cycle is at
 `/tmp/pi-ci-dashboard-push.log` (overwritten each run, so it never grows); read that first
 when the board goes stale, since `>/dev/null` is what made the original breakage invisible.
+
+**Both shipping images are gated, not just the BFF (issue #409).** The web image
+(`frontend/Dockerfile` → `…-web`) was scanned by nothing until #409 and had no `apk upgrade`
+at all, so it published **35 fixable HIGH/CRITICAL findings (2 CRITICAL)** to ghcr.io, Docker
+Hub and the public demo — every one already patched upstream, including openssl `3.3.3-r0`
+against a published `3.3.7-r0`. The BFF image would have hard-failed on any single one of
+them; the web image shipped all 35 because nothing looked at it. It now carries the same
+`apk upgrade --no-cache`, the same named `runtime` stage + `no-cache-filters` pairing, the
+same scan flags and its own SBOM. **Rule: a shipping image without a scan is worse than an
+unscanned one — it reads as covered.** Any new published image gets all four (upgrade, named
+stage, scan, SBOM) in the same change that introduces it.
+
+Upgrading Alpine packages under a pinned base tag is safe *here* specifically because
+`nginx:1.27-alpine` takes nginx from the alpine `3.21` repo (no upstream nginx repo in
+`/etc/apk/repositories`) and `1.27.5-r1` is already the newest revision there — the upgrade
+moves libraries, never nginx. Re-check that assumption if the base tag ever changes.
 
 **Two verdicts for `main`, never conflated** — the board splits *merge gate* (`ci.yml` on
 that SHA: the `green-ci` definition of done) from *all workflows* (which folds in the

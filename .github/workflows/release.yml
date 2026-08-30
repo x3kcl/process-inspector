@@ -122,6 +122,10 @@ jobs:
           tags: ${{ steps.meta-web.outputs.tags }}
           labels: ${{ steps.meta-web.outputs.labels }}
           cache-from: type=gha
+          # Same rule as the BFF image: without this a cached runtime stage would publish
+          # the very OS package set the nightly web-image gate just certified as fixed
+          # (#409). See frontend/Dockerfile's `runtime` stage comment.
+          no-cache-filters: runtime
           # Same GHA-cache-export-slowness that timed out ci.yml's docker job 3x today —
           # mode=min + ignore-error=true so a slow/broken cache service can't block a release.
           cache-to: type=gha,mode=min,ignore-error=true
