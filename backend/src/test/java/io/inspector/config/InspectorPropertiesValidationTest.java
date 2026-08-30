@@ -121,6 +121,49 @@ class InspectorPropertiesValidationTest {
                 null, null, null, null, null, null, null, null, null, null, null, onset, exit, null);
     }
 
+    /* ---------------- #403: the self-heal floor is a probability, and refused if it is not ---- */
+
+    @Test
+    void aSelfHealFloorAboveOneIsREFUSEDBecauseItWouldInvertSFromDemotionIntoPromotion() {
+        // S = max(floor, 1 - p_heal*w) is a DEMOTION. At floor = 2.0 every class with a self-heal
+        // lane scores S = 2.0 — max(2.0, 0.25) with a timely heal, max(2.0, 1.0) with none — so a
+        // knob whose entire purpose is to push proven self-healers DOWN instead doubles their
+        // score and promotes them to the top of the board. Refused rather than clamped: silently
+        // correcting to 1.0 would hide the misconfiguration from the operator who wrote it.
+        assertThat(validator.validate(attentionWithFloor(2.0))).isNotEmpty();
+        assertThat(validator.validate(attentionWithFloor(2.0)).iterator().next().getMessage())
+                .contains("self-heal-floor must be within [0, 1]");
+
+        // The boundary itself binds cleanly, and both endpoints are meaningful: 1.0 is "never
+        // demote at all", 0.0 is "no floor, let lane quantisation alone bound S".
+        assertThat(validator.validate(attentionWithFloor(1.0))).isEmpty();
+        assertThat(validator.validate(attentionWithFloor(0.0))).isEmpty();
+        assertThat(validator.validate(attentionWithFloor(0.25))).isEmpty();
+        assertThat(validator.validate(attentionWithFloor(0.5))).isEmpty();
+
+        // Negative is inert rather than harmful (max() never selects it), but it is not a
+        // coherent probability-scale multiplier — the same rail rejects it so the constraint
+        // asserts all of what it means, not half.
+        assertThat(validator.validate(attentionWithFloor(-0.1))).isNotEmpty();
+    }
+
+    @Test
+    void theSelfHealFloorRailIsSatisfiedByTheShippedDefault() {
+        // The knob is nullable; an unset floor must not trip its own constraint.
+        InspectorProperties.Attention defaults =
+                new InspectorProperties.Triage(null, null, null, null).attentionOrDefault();
+
+        assertThat(defaults.selfHealFloorOrDefault()).isEqualTo(0.25);
+        assertThat(defaults.isSelfHealFloorAProbability()).isTrue();
+        assertThat(validator.validate(defaults)).isEmpty();
+        assertThat(validator.validate(attentionWithFloor(null))).isEmpty();
+    }
+
+    private static InspectorProperties.Attention attentionWithFloor(Double floor) {
+        return new InspectorProperties.Attention(
+                null, null, null, null, null, floor, null, null, null, null, null, null, null, null);
+    }
+
     private static List<ConstraintViolation<EngineConfig>> violationsOn(EngineConfig engine, String property) {
         return validator.validate(engine).stream()
                 .filter(v -> v.getPropertyPath().toString().equals(property))

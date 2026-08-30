@@ -93,7 +93,9 @@ card. When you meet it:
   reliably clears on its own gets pushed down **at most 4×**; fresh and costly enough, it can
   still rank near the top, and it can never disappear. Two things worth knowing about that
   bound: it comes from the lane arithmetic itself (`1 − 0.75`), *not* from the
-  `self-heal-floor` setting, which does nothing at its shipped value; and the demotion now
+  `self-heal-floor` setting, which does nothing at its shipped value (and which the BFF now
+  refuses to start with if you set it outside `0`–`1`, since a value above 1 would turn that
+  demotion into a promotion); and the demotion now
   scales with **how long** the class historically takes to heal. One that clears within the
   hour is pushed down about as hard as before; one whose past spells took eight hours is
   barely pushed down at all — waiting for it buys you nothing, so it stays where its size and

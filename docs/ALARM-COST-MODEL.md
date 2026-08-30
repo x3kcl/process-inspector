@@ -294,7 +294,13 @@ Rules:
   1 − 0.75 = 0.25`, exactly the default floor, reached from above and therefore never
   selected. `inspector.triage.attention.self-heal-floor` is a provable no-op at **every value
   ≤ 0.25** and binds only strictly above it (see the §18 correction — this bullet used to
-  credit the floor with a mechanism it does not deliver).
+  credit the floor with a mechanism it does not deliver). It is **constrained to `[0, 1]` and
+  REFUSED at binding outside that range** (#403): `S` is a *demotion*, so a floor above 1
+  makes every class with a self-heal lane score `S = floor` and **promotes** it — the knob
+  would do the precise opposite of its name, its javadoc and its operator-facing copy, and
+  above 1 it also violates this section's own degradation rule that an unevidenced factor
+  reads as the identity 1.0. Refused rather than clamped, on the `burst-exit > burst-onset`
+  precedent: a value that has no sane reinterpretation is answered, not silently corrected.
 - Score factors ship in the DTO next to the card (`attention: {score, factors, rationale}`)
   so the UI renders the one-sentence rationale (below) with real numbers, not vibes.
 
