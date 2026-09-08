@@ -482,7 +482,12 @@ Three rules carry the whole value:
    this repo's own CI, which this repo's owner fixes. A consumer should display these and
    never file work on our behalf.
 3. **`state` is authoritative here**, so consumers stop inferring lane colour from our
-   internals and our field layout stops being their breaking change.
+   internals and our field layout stops being their breaking change. It is the merge-gate
+   verdict **escalated by any `critical` attention row** — with every runner slot offline the
+   gate is still green on the last SHA, so a gate-only mapping would paint this lane `ok`
+   while the project cannot run CI at all, which is the "board reads healthy when it is not"
+   failure the whole contract exists to prevent. Only `critical` escalates, so a red nightly
+   (`warning`) still leaves a mergeable `main` reading `ok`.
 
 Codes: `gate-red` (critical — `ci.yml` red on `main` HEAD), `nightly-red` (**warning**, not
 critical — the nightly is explicitly not merge-blocking, and paging on it is how a gate gets
