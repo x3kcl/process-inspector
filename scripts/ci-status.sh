@@ -239,22 +239,8 @@ JSON="$(jq -n \
          | select(.conclusion != null and .conclusion != "success" and .conclusion != "skipped")
          | .name] as $nightlyFailed
       | ([$d.main.runs[]? | select(.workflow == "ci.yml") | .url] | first) as $gateUrl
-      | {
-          schema: "ci-lane/1",
-          id: "pi",
-          generatedEpoch: $d.generatedEpoch,
-          # Mapping is deliberate and narrow. "none" (no ci.yml run yet for this SHA) reads
-          # as running: a run is expected on every push, and the pathological case where one
-          # never appears is caught by runners-down rather than by colouring the lane.
-          state: (
-            if $d.main.sha == "" then "error"
-            elif $d.main.gate.state == "failure" then "fail"
-            elif $d.main.gate.state == "success" then "ok"
-            else "running" end),
-          summary: (
-            if $d.main.sha == "" then "probe failed - could not read \($d.repo) from the API"
-            else "\($d.main.sha) · \($d.main.subject) · \($d.main.gate.label)" end),
-          attention: (
+      | (
+
             # gate-red is the green-ci definition of done: ci.yml on main HEAD. Kept SEPARATE
             # from nightly-red on purpose, because this repo splits the merge gate from the
             # explicitly non-merge-blocking nightly; folding them together would page on a
@@ -284,7 +270,29 @@ JSON="$(jq -n \
                   text: "\($redPrs | length) open PR(s) with a red gate: \($redPrs | map("#\(.number)") | join(", "))",
                   href: ($redPrs | first | .url)}]
                else [] end)
-          )
+          ) as $attn
+      | {
+          schema: "ci-lane/1",
+          id: "pi",
+          generatedEpoch: $d.generatedEpoch,
+          # Gate verdict first, then ESCALATED by any critical attention row. Escalation is
+          # the point: with every runner slot offline the merge gate is still green on the
+          # last SHA, so a gate-only mapping would paint this lane "ok" while the project
+          # cannot run CI at all — the exact "board reads healthy when it is not" failure
+          # this contract exists to prevent. Only CRITICAL escalates, so nightly-red (warning)
+          # still leaves a mergeable main reading ok, which was the whole of departure 1.
+          # "none" (no ci.yml run yet for this SHA) reads as running: a run is expected on
+          # every push, and the case where one never arrives is what runners-down catches.
+          state: (
+            if $d.main.sha == "" then "error"
+            elif ($attn | map(select(.sev == "critical")) | length) > 0 then "fail"
+            elif $d.main.gate.state == "failure" then "fail"
+            elif $d.main.gate.state == "success" then "ok"
+            else "running" end),
+          summary: (
+            if $d.main.sha == "" then "probe failed - could not read \($d.repo) from the API"
+            else "\($d.main.sha) · \($d.main.subject) · \($d.main.gate.label)" end),
+          attention: $attn
         })
   ')"
 
