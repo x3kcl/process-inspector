@@ -465,6 +465,38 @@ shipping image is covered the day it is added, not the day someone remembers thi
 Verified against the real regression: replayed with `nginx:1.27-alpine`, both the drift check
 (3 minors) and the skew check fire independently and the run exits 1.
 
+**`lane` — the cross-wall contract (`ci-lane/1`).** The mikrotik-dashboard CI hub
+aggregates this wall and flap's into one board. It used to re-derive lane state from this
+payload's internals and key its work items on *label text*, so every reword of
+`main.gate.label` minted a fresh duplicate P1 issue. `status.json` therefore carries an
+additive top-level `lane` block; everything else in the payload is unchanged, and a consumer
+may keep its own normaliser as a fallback.
+
+Three rules carry the whole value:
+
+1. **`code` is a stable slug; `text` is disposable prose.** Consumers key work items on
+   `(id, code)` and never on `text`. Codes here are **append-only** — an existing slug never
+   changes meaning or disappears without warning the consumer first. This is the rule that
+   kills the duplicate-issue class.
+2. **`owner` says who acts.** This wall only ever emits `self`: everything it can observe is
+   this repo's own CI, which this repo's owner fixes. A consumer should display these and
+   never file work on our behalf.
+3. **`state` is authoritative here**, so consumers stop inferring lane colour from our
+   internals and our field layout stops being their breaking change.
+
+Codes: `gate-red` (critical — `ci.yml` red on `main` HEAD), `nightly-red` (**warning**, not
+critical — the nightly is explicitly not merge-blocking, and paging on it is how a gate gets
+tuned out), `runners-down` (critical — zero online slots means every run queues forever),
+`pr-gate-red` (warning).
+
+**What this wall deliberately does NOT emit: `stale` and `wall-down`.** A generator cannot
+report its own death — if the pusher stops, `status.json` is simply never rewritten and
+whatever state it last held freezes in place, so a `stale` flag would be absent in exactly
+the case it exists for. Staleness is the consumer's call from `generatedEpoch`, which is the
+same reason the page computes ages client-side rather than baking in an age. `error` *is*
+ours: it means the generator ran but its probes failed, which is a genuinely different fact
+from a dead generator and one a consumer cannot otherwise distinguish.
+
 **Two verdicts for `main`, never conflated** — the board splits *merge gate* (`ci.yml` on
 that SHA: the `green-ci` definition of done) from *all workflows* (which folds in the
 explicitly non-merge-blocking nightly). Rolling them together would paint a perfectly

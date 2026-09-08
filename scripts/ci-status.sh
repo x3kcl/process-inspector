@@ -210,6 +210,82 @@ JSON="$(jq -n \
         online: (map(select(.status=="online")) | length),
         busy:   (map(select(.busy)) | length)
       }) )
+  # NB: this jq program is a SINGLE-QUOTED shell string, so no apostrophes below.
+  # ── ci-lane/1: the cross-wall contract (additive; every field above is unchanged) ──
+  # Consumed by the mikrotik-dashboard CI hub, which aggregates this wall and the flap one.
+  # It used to re-derive lane state from our internals and key its work items on LABEL
+  # TEXT, so every reword of main.gate.label minted a fresh duplicate P1 issue. Two rules
+  # fix that, and they are the only reason this block exists:
+  #   * code is a STABLE slug. Consumers key on (id, code) and NEVER on text; text is free
+  #     display prose we may reword at will. Codes are APPEND-ONLY here: an existing slug
+  #     never changes meaning or disappears without warning the consumer first.
+  #   * owner says who acts. This wall only ever emits "self", because everything it can
+  #     observe is CI for this repo, which the owner of this repo fixes. A consumer should
+  #     DISPLAY these and never file work on our behalf.
+  # NOT emitted here, deliberately: stale and wall-down. A generator cannot report its own
+  # death: if the pusher stops, this file is simply never rewritten and whatever state it
+  # last held freezes in place. Staleness is the decision of the CONSUMER, from
+  # generatedEpoch - which is also why the page computes ages client-side.
+  | .lane = (
+      . as $d
+      | ([$d.workflows[] | select(.workflow == "nightly.yml")] | first) as $nightly
+      | ($nightly
+         | if . == null or (.present | not) then null
+           elif .status == "completed" then (.conclusion // "unknown")
+           else .status end) as $nightlyState
+      | ([$d.slots[] | select(.status == "online")] | length) as $online
+      | [$d.prs[] | select(.gate != null and .gate.state == "failure")] as $redPrs
+      | [$d.nightlyJobs[]
+         | select(.conclusion != null and .conclusion != "success" and .conclusion != "skipped")
+         | .name] as $nightlyFailed
+      | ([$d.main.runs[]? | select(.workflow == "ci.yml") | .url] | first) as $gateUrl
+      | {
+          schema: "ci-lane/1",
+          id: "pi",
+          generatedEpoch: $d.generatedEpoch,
+          # Mapping is deliberate and narrow. "none" (no ci.yml run yet for this SHA) reads
+          # as running: a run is expected on every push, and the pathological case where one
+          # never appears is caught by runners-down rather than by colouring the lane.
+          state: (
+            if $d.main.sha == "" then "error"
+            elif $d.main.gate.state == "failure" then "fail"
+            elif $d.main.gate.state == "success" then "ok"
+            else "running" end),
+          summary: (
+            if $d.main.sha == "" then "probe failed - could not read \($d.repo) from the API"
+            else "\($d.main.sha) · \($d.main.subject) · \($d.main.gate.label)" end),
+          attention: (
+            # gate-red is the green-ci definition of done: ci.yml on main HEAD. Kept SEPARATE
+            # from nightly-red on purpose, because this repo splits the merge gate from the
+            # explicitly non-merge-blocking nightly; folding them together would page on a
+            # red nightly that blocks nothing.
+            (if $d.main.gate.state == "failure" then
+              [{code: "gate-red", sev: "critical", owner: "self",
+                text: "merge gate red on \($d.main.sha): \($d.main.gate.failed | join(", "))",
+                href: $gateUrl}]
+             else [] end)
+            + (if $nightlyState != null
+                  and ($nightlyState | . == "failure" or . == "timed_out"
+                       or . == "cancelled" or . == "startup_failure") then
+                [{code: "nightly-red", sev: "warning", owner: "self",
+                  text: ("nightly #\($nightly.number) \($nightlyState)"
+                         + (if ($nightlyFailed | length) > 0
+                            then ": \($nightlyFailed | join(", "))" else "" end)
+                         + " - triaged within a day, not merge-blocking"),
+                  href: $nightly.url}]
+               else [] end)
+            + (if ($d.slots | length) > 0 and $online == 0 then
+                [{code: "runners-down", sev: "critical", owner: "self",
+                  text: "0 of \($d.slots | length) self-hosted runner slots online - every run queues forever",
+                  href: null}]
+               else [] end)
+            + (if ($redPrs | length) > 0 then
+                [{code: "pr-gate-red", sev: "warning", owner: "self",
+                  text: "\($redPrs | length) open PR(s) with a red gate: \($redPrs | map("#\(.number)") | join(", "))",
+                  href: ($redPrs | first | .url)}]
+               else [] end)
+          )
+        })
   ')"
 
 if [[ -z "$JSON" ]] || ! jq -e . >/dev/null 2>&1 <<<"$JSON"; then
