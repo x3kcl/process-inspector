@@ -360,6 +360,12 @@ jobs:
       # lacked PI_ENGINE_FLAP_PORT and free-port fell back to s1's 8695 — PR #364).
       - name: Seed demo processes (REST-only, idempotent)
         run: bash docker/seed.sh --profile ${{ matrix.profile }}
+      # Rootless-DinD slots keep the job daemon's socket at /run/user/<uid>/docker.sock,
+      # not /var/run/docker.sock — Testcontainers' Ryuk mounts the latter, gets an empty
+      # directory, and dies before it can be inspected (404). Self-detecting and a no-op on
+      # host-socket slots; see the script header for the measurement.
+      - name: Point Testcontainers' Ryuk at the real socket on rootless slots
+        run: bash scripts/ci-testcontainers-socket.sh >> "$GITHUB_ENV"
       - name: Integration tests (failsafe, ${{ matrix.itClass }})
         working-directory: backend
         run: mvn -B verify -Dit.test=${{ matrix.itClass }} -Dskip.surefire.tests=true

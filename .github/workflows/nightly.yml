@@ -46,6 +46,12 @@ jobs:
         with:
           username: ${{ secrets.DOCKERHUB_USERNAME }}
           password: ${{ secrets.DOCKERHUB_TOKEN }}
+      # Rootless-DinD slots keep the job daemon's socket at /run/user/<uid>/docker.sock,
+      # not /var/run/docker.sock — Testcontainers' Ryuk mounts the latter, gets an empty
+      # directory, and dies before it can be inspected (404). Self-detecting and a no-op on
+      # host-socket slots; see the script header for the measurement.
+      - name: Point Testcontainers' Ryuk at the real socket on rootless slots
+        run: bash scripts/ci-testcontainers-socket.sh >> "$GITHUB_ENV"
       - name: Container ITs (Testcontainers — Postgres / Keycloak, no compose engine)
         working-directory: backend
         run: >-
@@ -153,6 +159,12 @@ jobs:
         run: bash docker/smoke-test.sh flowable-6
       - name: Seed demo processes (REST-only, idempotent)
         run: bash docker/seed.sh --profile flowable-6
+      # Rootless-DinD slots keep the job daemon's socket at /run/user/<uid>/docker.sock,
+      # not /var/run/docker.sock — Testcontainers' Ryuk mounts the latter, gets an empty
+      # directory, and dies before it can be inspected (404). Self-detecting and a no-op on
+      # host-socket slots; see the script header for the measurement.
+      - name: Point Testcontainers' Ryuk at the real socket on rootless slots
+        run: bash scripts/ci-testcontainers-socket.sh >> "$GITHUB_ENV"
       - name: Engine ITs (failsafe)
         working-directory: backend
         run: >-
