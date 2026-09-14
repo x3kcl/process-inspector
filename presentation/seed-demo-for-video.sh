@@ -15,7 +15,7 @@
 #
 # ⚠️ These rows land in the same pilot dataset the R1/R2 data-maturity gates mine. Every
 # instance carries a business key prefixed `PAY-OK-` / `PAY-FIX-`, and the run stamps its
-# window to presentation/.video-seed-window.txt, so the footage population can be excluded
+# window to presentation/DEMO-SEED-WINDOW.md, so the footage population can be excluded
 # from a later gate measurement.
 set -euo pipefail
 

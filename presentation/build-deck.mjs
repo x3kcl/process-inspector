@@ -412,7 +412,7 @@ section('Part two', 'What the method produced',
   bullets(s, [
     { b: 'Nothing here is a mock-up.', t: 'Every clip was recorded by driving the deployed application against three live Flowable engines — two on 6.8, one on 7.1 — carrying two months of accumulated demo history.' },
     { b: 'The corrective actions really ran.', t: 'In the “fix” clip a process variable is corrected and the failed step retried, and the instance ends COMPLETED on camera. In the “bulk” clip nine dead-lettered jobs are re-queued and reported individually.' },
-    { b: 'Click a video to play it.', t: 'Each one opens on a caption card and runs 20–55 seconds. They are also in presentation/videos/ as ordinary mp4 files for reuse in onboarding or a ticket.' },
+    { b: 'Click a video to play it.', t: 'Each one opens on a caption card and runs 20–60 seconds. They are also in presentation/videos/ as ordinary mp4 files for reuse in onboarding or a ticket.' },
     { b: 'Watch for the refusals, not the features.', t: 'Greyed-out buttons that name the missing permission, counts that admit they are lower bounds, a confirm button that restates the change instead of saying “OK”. That is the specification showing through.' },
   ], { size: 15, gap: 12 })
   chrome(s)

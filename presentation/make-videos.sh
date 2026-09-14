@@ -22,6 +22,12 @@ mkdir -p "$OUT" "$POSTER"
 ff() { docker run --rm -v "$HERE":/w -w /w --entrypoint /usr/local/bin/ffmpeg \
         linuxserver/ffmpeg:latest -hide_banner -loglevel error "$@"; }
 
+# The image runs as root, so everything it writes into the bind mount lands root-owned and
+# the next local `git add` / rebuild trips over it. Hand ownership back through the same
+# image (only root can chown root's files).
+reown() { docker run --rm -v "$HERE":/w --entrypoint chown linuxserver/ffmpeg:latest \
+            -R "$(id -u):$(id -g)" /w/videos /w/.video 2>/dev/null || true; }
+
 if [ "$POSTERS_ONLY" = 0 ]; then
 for src in "$RAW"/*.webm; do
   name="$(basename "$src" .webm)"
@@ -54,6 +60,8 @@ node -e '
   echo "poster $name @ ${mp4at}s of videos/$name.mp4"
   ff -y -ss "$mp4at" -i "videos/$name.mp4" -frames:v 1 -q:v 2 ".video/poster/$name.png"
 done
+
+reown
 
 echo
 ls -la "$OUT"
