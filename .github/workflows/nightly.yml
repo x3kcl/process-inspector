@@ -434,25 +434,36 @@ jobs:
           echo "::error::BFF did not serve /v3/api-docs within 180s"
           tail -200 /tmp/bff-perf.log
           exit 1
-      # The readiness gate above proves the BFF is up FROM THE RUNNER (that curl does not run
-      # in a container). k6 does run in one, and on a rootless-dind slot that is a different
-      # network namespace — its `localhost` is not the runner's. That is why the hardcoded
-      # BASE_URL this job used to pass k6 produced "connection refused" on every hp02 slot
-      # while passing on every hp04 one (nightly #85-#90). Resolve an address a CONTAINER can
-      # actually reach; the script header carries the full diagnosis. No-op on host-socket
-      # slots, and it fails naming every address it tried rather than leaving a bare refusal.
-      - name: Resolve a container-reachable BASE_URL for k6
-        run: bash scripts/ci-k6-base-url.sh >> "$GITHUB_ENV"
-      # Dockerized k6 — the dev viewer/dev credentials are the k6 script's own defaults
-      # (SecurityConfig, !oidc). These network flags must stay in lockstep with the ones
-      # ci-k6-base-url.sh probes with, or the address it picked will not resolve here.
-      - name: k6 — P1 latency budgets (SPEC §2, R-NFR-01/02)
+      # k6 runs as a BINARY on the runner, not in a container, because the BFF it measures is
+      # itself a plain `java -jar` ON the runner. A containerised k6 has to cross into the
+      # daemon's network namespace, and on the rootless-dind slots (hp02, rebuilt 2026-09-02)
+      # there is no route back — measured on nightly #91, which probed all three plausible
+      # addresses and was refused by each:
+      #   not reachable: http://localhost:8386 / http://host.docker.internal:8386 / http://172.17.0.1:8386
+      #   Daemon: 28.5.2 security=["name=seccomp,profile=builtin","name=rootless","name=cgroupns"]
+      # So this is not an addressing problem to be solved with a better guess; the hop itself
+      # has to go. Runner labels are identical across hosts, so the job cannot be pinned to a
+      # host-socket slot instead.
+      #
+      # Same k6 version the image shipped (v2.1.0 — `k6 version` confirms the identical
+      # commit), so perf-scenario-p1.js's calibrated thresholds measure what they did before;
+      # it also drops container networking from the CLIENT side of a latency measurement,
+      # which is strictly less noise between k6 and the BFF.
+      - name: Install k6 (pinned, checksum-verified)
         run: |
-          docker run --rm --network host --add-host=host.docker.internal:host-gateway \
-            -e BASE_URL="${PI_K6_BASE_URL}" \
-            -v "$PWD/scripts:/scripts:ro" \
-            -v /tmp:/out \
-            grafana/k6:2.1.0 run --summary-export=/out/k6-summary-p1.json /scripts/perf-scenario-p1.js
+          set -euo pipefail
+          ver=2.1.0
+          sha=295d961ebfca306f295f1133068dcd403a8171c87f387928f5f30b0fbcff858a
+          curl -fsSL "https://github.com/grafana/k6/releases/download/v${ver}/k6-v${ver}-linux-amd64.tar.gz" -o /tmp/k6.tgz
+          echo "${sha}  /tmp/k6.tgz" | sha256sum -c -
+          tar xzf /tmp/k6.tgz -C /tmp
+          install -m 0755 "/tmp/k6-v${ver}-linux-amd64/k6" /tmp/k6
+          /tmp/k6 version
+      # The dev viewer/dev credentials are the k6 script's own defaults (SecurityConfig, !oidc).
+      - name: k6 — P1 latency budgets (SPEC §2, R-NFR-01/02)
+        env:
+          BASE_URL: http://localhost:${{ env.PI_BFF_PORT }}
+        run: /tmp/k6 run --summary-export=/tmp/k6-summary-p1.json scripts/perf-scenario-p1.js
       - uses: actions/upload-artifact@v4
         if: always()
         with:
