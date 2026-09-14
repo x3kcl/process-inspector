@@ -1,2 +1,10 @@
 # Local render output from build-deck.mjs verification (see README.md).
 .render/
+# Intermediate video artefacts: raw Playwright .webm recordings, generated title cards and
+# poster frames. The finished mp4s in videos/ are the durable output; these are rebuildable
+# from them only by re-recording, so keep them locally but out of the repository.
+.video/
+# pptxgenjs is installed here on demand — it is not a project dependency (see README.md).
+node_modules/
+package-lock.json
+.video-targets.json
