@@ -31,6 +31,13 @@
 # and the right address differs per topology. So ask, with the SAME network flags k6 will
 # use — anything else proves nothing about what k6 will see.
 #
+# PRECONDITION THIS RESTS ON. The BFF must bind all interfaces, not loopback: a process bound
+# to 127.0.0.1 is invisible from any other network namespace no matter which address is used,
+# and every candidate below would fail. It does — backend/src/main/resources/application.yml
+# sets `server.port` only and never `server.address`, so Spring Boot's all-interfaces default
+# applies. If anyone ever pins `server.address: 127.0.0.1`, this script starts failing on the
+# rootless slots and THIS is the comment that explains why.
+#
 # Usage (in a workflow step, after the BFF is up and before k6):
 #   run: bash scripts/ci-k6-base-url.sh >> "$GITHUB_ENV"
 # Prints a single `PI_K6_BASE_URL=<url>` line for $GITHUB_ENV, or exits 1 naming every
