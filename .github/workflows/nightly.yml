@@ -434,12 +434,22 @@ jobs:
           echo "::error::BFF did not serve /v3/api-docs within 180s"
           tail -200 /tmp/bff-perf.log
           exit 1
-      # Dockerized k6 (host network so it reaches the BFF on localhost:$PI_BFF_PORT) — the
-      # dev viewer/dev credentials are the k6 script's own defaults (SecurityConfig, !oidc).
+      # The readiness gate above proves the BFF is up FROM THE RUNNER (that curl does not run
+      # in a container). k6 does run in one, and on a rootless-dind slot that is a different
+      # network namespace — its `localhost` is not the runner's. That is why the hardcoded
+      # BASE_URL this job used to pass k6 produced "connection refused" on every hp02 slot
+      # while passing on every hp04 one (nightly #85-#90). Resolve an address a CONTAINER can
+      # actually reach; the script header carries the full diagnosis. No-op on host-socket
+      # slots, and it fails naming every address it tried rather than leaving a bare refusal.
+      - name: Resolve a container-reachable BASE_URL for k6
+        run: bash scripts/ci-k6-base-url.sh >> "$GITHUB_ENV"
+      # Dockerized k6 — the dev viewer/dev credentials are the k6 script's own defaults
+      # (SecurityConfig, !oidc). These network flags must stay in lockstep with the ones
+      # ci-k6-base-url.sh probes with, or the address it picked will not resolve here.
       - name: k6 — P1 latency budgets (SPEC §2, R-NFR-01/02)
         run: |
-          docker run --rm --network host \
-            -e BASE_URL="http://localhost:${PI_BFF_PORT}" \
+          docker run --rm --network host --add-host=host.docker.internal:host-gateway \
+            -e BASE_URL="${PI_K6_BASE_URL}" \
             -v "$PWD/scripts:/scripts:ro" \
             -v /tmp:/out \
             grafana/k6:2.1.0 run --summary-export=/out/k6-summary-p1.json /scripts/perf-scenario-p1.js

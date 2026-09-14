@@ -9,7 +9,7 @@
     "check:watermark": "node scripts/check-bpmn-watermark.mjs",
     "check:enterprise": "node scripts/check-no-enterprise.mjs",
     "check:e2e-a11y-coverage": "node scripts/check-e2e-a11y-coverage.mjs",
-    "gen:api": "BFF=${INSPECTOR_BFF_URL:-http://localhost:8085}; curl -sf \"$BFF/v3/api-docs\" | grep -q SiblingDiffResponse || { echo \"ERROR: BFF at $BFF is stale or down (SiblingDiffResponse missing from contract) — aborting to avoid clobbering schema.d.ts\" >&2; exit 1; }; openapi-typescript \"$BFF/v3/api-docs\" -o src/api/schema.d.ts",
+    "gen:api": "BFF=${INSPECTOR_BFF_URL:-http://localhost:8085}; curl -sf \"$BFF/v3/api-docs\" | grep -q SiblingDiffResponse || { echo \"ERROR: BFF at $BFF is stale or down (SiblingDiffResponse missing from contract) \u2014 aborting to avoid clobbering schema.d.ts\" >&2; exit 1; }; openapi-typescript \"$BFF/v3/api-docs\" -o src/api/schema.d.ts",
     "lint": "eslint .",
     "format": "prettier --write .",
     "format:check": "prettier --check .",
@@ -53,21 +53,21 @@
   },
   "//overrides": [
     "Transitive advisories under @redocly/openapi-core (via openapi-typescript, our gen:api",
-    "toolchain). Both fixes are SEMVER-COMPATIBLE with what the parents already ask for — we",
+    "toolchain). Both fixes are SEMVER-COMPATIBLE with what the parents already ask for \u2014 we",
     "are pulling a patch forward, not forcing a major across a range boundary:",
     "  js-yaml         GHSA-52cp-r559-cp3m  vulnerable <=4.2.0, patched 4.3.0; redocly wants ^4",
     "  brace-expansion GHSA-3jxr-9vmj-r5cp  vulnerable <=2.1.1, patched 2.1.2; minimatch@5 wants ^2",
     "`npm audit fix` cannot reach these itself (they sit under an already-latest pinned dep), so",
     "the override is the mechanism, not a policy exception.",
     "SCOPED to the redocly subtree DELIBERATELY: eslint pulls its own brace-expansion@5 (via",
-    "minimatch@10) which is NOT in the vulnerable range — a top-level override would drag it",
+    "minimatch@10) which is NOT in the vulnerable range \u2014 a top-level override would drag it",
     "back to 2.x, a silent major downgrade of a healthy dep.",
-    "DROP each entry once the parent ships a release resolving the patched version on its own —",
+    "DROP each entry once the parent ships a release resolving the patched version on its own \u2014",
     "recheck with `npm ls js-yaml brace-expansion`."
   ],
   "overrides": {
     "@redocly/openapi-core": {
-      "js-yaml": "^4.3.0",
+      "js-yaml": "^4.3.2",
       "brace-expansion": "^2.1.2"
     }
   }
