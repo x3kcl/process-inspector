@@ -37,9 +37,16 @@ caption text used on both the title card and the slide. Add a clip there, add a 
 function in `record-clips.mjs`, and the other three steps pick it up.
 
 Steps 1–3 need the live demo reachable and the demo compose stack up (the seeder talks to the
-engines through a throwaway container on `process-inspector-demo_internal`). Step 4 only needs
-`videos/` and `.video/poster/`, both of which are produced by step 3 — `videos/` is committed,
-so the deck rebuilds without re-recording.
+engines through a throwaway container on `process-inspector-demo_internal`).
+
+**Rebuilding the deck from a fresh clone needs neither** — `videos/` is committed, and the
+poster frames `build-deck.mjs` needs are extracted from those mp4s, not from the gitignored
+recordings:
+
+```bash
+bash make-videos.sh --posters-only                # videos/*.mp4 -> .video/poster/*.png
+node build-deck.mjs starting-an-ai-project.pptx
+```
 
 ## The videos
 

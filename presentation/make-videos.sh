@@ -8,8 +8,12 @@
 # Each clip is prefixed with its title card so the poster frame PowerPoint shows before you
 # press play is a deliberate caption rather than a black or mid-scroll frame. A silent AAC
 # track is muxed in: some PowerPoint builds refuse to play a video-only mp4.
+#   bash make-videos.sh                 # encode the mp4s, then extract their poster frames
+#   bash make-videos.sh --posters-only  # just the posters, from the committed mp4s
 set -euo pipefail
 HERE="$(cd "$(dirname "$0")" && pwd)"
+POSTERS_ONLY=0
+[ "${1:-}" = "--posters-only" ] && POSTERS_ONLY=1
 RAW="$HERE/.video/raw"; TITLE="$HERE/.video/title"; POSTER="$HERE/.video/poster"
 OUT="$HERE/videos"
 TITLE_SECONDS="${TITLE_SECONDS:-2.2}"
@@ -18,6 +22,7 @@ mkdir -p "$OUT" "$POSTER"
 ff() { docker run --rm -v "$HERE":/w -w /w --entrypoint /usr/local/bin/ffmpeg \
         linuxserver/ffmpeg:latest -hide_banner -loglevel error "$@"; }
 
+if [ "$POSTERS_ONLY" = 0 ]; then
 for src in "$RAW"/*.webm; do
   name="$(basename "$src" .webm)"
   card="$TITLE/$name.png"
@@ -34,17 +39,20 @@ for src in "$RAW"/*.webm; do
      -c:a aac -b:a 48k -movflags +faststart \
      "videos/$name.mp4"
 done
+fi
 
-# Cover images for the deck: one representative UI frame per clip, at the second named in
-# clips.mjs. build-deck.mjs feeds these to addMedia({cover}) — the clip's own title card
-# would just duplicate the slide header.
+# Cover images for the deck, taken from the FINISHED mp4s rather than the raw recordings:
+# .video/ is gitignored, videos/ is committed, and build-deck.mjs needs a poster for every
+# clip — sourcing them from the raw .webm made the deck unbuildable from a clean clone.
+# The mp4 carries the title card in front, so the timestamp shifts by TITLE_SECONDS.
 echo
 node -e '
   import("./clips.mjs").then(({CLIPS}) =>
     console.log(CLIPS.map(c => c.name + " " + (c.poster ?? 10)).join("\n")))
 ' | while read -r name at; do
-  echo "poster $name @ ${at}s"
-  ff -y -ss "$at" -i ".video/raw/$name.webm" -frames:v 1 -q:v 2 ".video/poster/$name.png"
+  mp4at=$(awk -v a="$at" -v t="$TITLE_SECONDS" 'BEGIN{printf "%.2f", a + t}')
+  echo "poster $name @ ${mp4at}s of videos/$name.mp4"
+  ff -y -ss "$mp4at" -i "videos/$name.mp4" -frames:v 1 -q:v 2 ".video/poster/$name.png"
 done
 
 echo
