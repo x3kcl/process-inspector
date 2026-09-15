@@ -4,11 +4,26 @@
 # nightly's whole point is catching corrective-action/audit/governance/OIDC regressions
 # "within a day"; a silently-skipped run stretches that window invisibly.
 #
-# This workflow runs a few hours AFTER the nightly's own slot and asks one question: did any
-# nightly run get created since 00:00 UTC today (scheduled OR a manual workflow_dispatch —
-# a human covering it counts)? If yes, it exits quietly. If no, it SELF-HEALS by dispatching
-# a recovery nightly run, and opens a deduplicated `ci`/`P4` alert issue so the miss is still
-# visible to a human (tracking how often GitHub drops the cron).
+# This workflow runs a few hours AFTER the nightly's own slot and asks TWO questions.
+#
+# 1. DID IT RUN? Any nightly run created since 00:00 UTC today (scheduled OR a manual
+#    workflow_dispatch — a human covering it counts)? If no, it SELF-HEALS by dispatching a
+#    recovery nightly run, and opens a deduplicated `ci`/`P4` alert issue so the miss stays
+#    visible to a human (tracking how often GitHub drops the cron).
+#
+# 2. DID IT PASS? Until 2026-09-15 this workflow stopped at question 1, so a nightly that ran
+#    and FAILED was indistinguishable from a healthy one: nightly was red for six consecutive
+#    nights (#85–#90, 2026-09-09..14 — a rootless-dind networking break and three npm
+#    advisories) while this watchdog reported success every single morning. "A red nightly is
+#    triaged in the morning routine" (nightly.yml's header) is only true if something tells
+#    the morning. Now it does: a red run opens a deduplicated `ci`/`P3` issue NAMING the
+#    failed jobs, and a later green run CLOSES it again — so the alert is self-clearing, and
+#    therefore trustworthy rather than one more stale issue to learn to ignore.
+#
+# A red nightly is deliberately NOT auto-re-dispatched: unlike a skipped cron there is nothing
+# to recover, and re-running an hour-long suite that just failed for a real reason only burns
+# capacity. Nor does a red nightly fail THIS job — the watchdog is a reporter, and its own red
+# must keep meaning "the watchdog itself broke".
 #
 # Why this can recover on its own without a PAT: `workflow_dispatch` (and `repository_dispatch`)
 # are the DOCUMENTED exceptions to GitHub's "events initiated by GITHUB_TOKEN don't start new
@@ -51,8 +66,95 @@ jobs:
           RUNS_URL="${GITHUB_API_URL}/repos/${GITHUB_REPOSITORY}/actions/workflows/nightly.yml/runs"
           COUNT=$(api -G "$RUNS_URL" --data-urlencode "created=>=${TODAY}" --data-urlencode "per_page=1" | jq -r '.total_count')
 
+          # ---- question 2: it ran — but did it PASS? -------------------------------------
           if [ "$COUNT" != "0" ]; then
-            echo "nightly already has ${COUNT} run(s) created since ${TODAY} — nothing to do."
+            echo "nightly already has ${COUNT} run(s) created since ${TODAY} — checking the result."
+
+            RED_MARKER="Nightly is red"
+            OPEN_RED=$(api -G "${GITHUB_API_URL}/search/issues" \
+              --data-urlencode "q=repo:${GITHUB_REPOSITORY} is:issue is:open in:title ${RED_MARKER}" \
+              | jq -r '.items[0].number // empty')
+
+            # Only TODAY's runs, and only finished ones: at 08:41 UTC a 02:17 nightly is long
+            # done, and scoping this way means a recovery run still in flight is never judged.
+            LATEST=$(api -G "$RUNS_URL" --data-urlencode "created=>=${TODAY}" \
+                       --data-urlencode "status=completed" --data-urlencode "per_page=1" \
+                     | jq -r '.workflow_runs[0] // empty')
+
+            if [ -z "$LATEST" ]; then
+              # Nothing has FINISHED today. Normally that just means we looked early — but a run
+              # that still has not finished HOURS after it was created is stuck, and that is
+              # exactly as invisible as a red run used to be. nightly.yml's per-job
+              # `timeout-minutes` cap a genuine hang, but they never fire on a run that never got
+              # a runner at all — and "no runner online, so everything queues forever" is a
+              # failure mode this repo has actually hit (see scripts/ci-runner.sh's `ensure`).
+              PENDING=$(api -G "$RUNS_URL" --data-urlencode "created=>=${TODAY}" \
+                          --data-urlencode "per_page=1" | jq -r '.workflow_runs[0] // empty')
+              STUCK_AFTER_HOURS="${STUCK_AFTER_HOURS:-4}"
+              AGE_H=-1
+              if [ -n "$PENDING" ]; then
+                CREATED_AT=$(printf '%s' "$PENDING" | jq -r '.created_at')
+                AGE_H=$(( ( $(date -u +%s) - $(date -u -d "$CREATED_AT" +%s) ) / 3600 ))
+              fi
+              if [ -z "$PENDING" ] || [ "$AGE_H" -lt "$STUCK_AFTER_HOURS" ]; then
+                echo "no COMPLETED nightly run yet today (newest is ${AGE_H}h old) — leaving the result check to tomorrow."
+                exit 0
+              fi
+              CONCLUSION="never finished — still '$(printf '%s' "$PENDING" | jq -r '.status')' after ${AGE_H}h"
+              RUN_NO=$(printf '%s' "$PENDING" | jq -r '.run_number')
+              RUN_URL=$(printf '%s' "$PENDING" | jq -r '.html_url')
+              RUN_ID=$(printf '%s' "$PENDING" | jq -r '.id')
+            else
+              CONCLUSION=$(printf '%s' "$LATEST" | jq -r '.conclusion')
+              RUN_NO=$(printf '%s' "$LATEST" | jq -r '.run_number')
+              RUN_URL=$(printf '%s' "$LATEST" | jq -r '.html_url')
+              RUN_ID=$(printf '%s' "$LATEST" | jq -r '.id')
+              echo "latest completed nightly today: #${RUN_NO} -> ${CONCLUSION}"
+            fi
+
+            if [ "$CONCLUSION" = "success" ]; then
+              # Self-clearing: an alert nobody ever sees closed is an alert nobody believes.
+              if [ -n "$OPEN_RED" ]; then
+                api -X POST "${GITHUB_API_URL}/repos/${GITHUB_REPOSITORY}/issues/${OPEN_RED}/comments" \
+                  -d "$(jq -n --arg b "Nightly [#${RUN_NO}](${RUN_URL}) is green — closing automatically." '{body:$b}')" >/dev/null || true
+                api -X PATCH "${GITHUB_API_URL}/repos/${GITHUB_REPOSITORY}/issues/${OPEN_RED}" \
+                  -d '{"state":"closed","state_reason":"completed"}' >/dev/null \
+                  && echo "closed #${OPEN_RED} — nightly recovered." \
+                  || echo "::warning::nightly is green but closing #${OPEN_RED} failed; it will be retried tomorrow."
+              else
+                echo "nightly is green — nothing to do."
+              fi
+              exit 0
+            fi
+
+            # Anything that is not success and not still running is worth a human: failure,
+            # timed_out, cancelled, startup_failure.
+            echo "::warning::Nightly #${RUN_NO} concluded '${CONCLUSION}' — ${RUN_URL}"
+
+            if [ -n "$OPEN_RED" ]; then
+              echo "An open '${RED_MARKER}' issue already exists (#${OPEN_RED}); not opening a duplicate."
+              exit 0
+            fi
+
+            # Name the failing jobs: the difference between an alert and a triage starting point.
+            FAILED=$(api -G "${GITHUB_API_URL}/repos/${GITHUB_REPOSITORY}/actions/runs/${RUN_ID}/jobs" \
+                       --data-urlencode "per_page=100" \
+                     | jq -r '[.jobs[] | select(.conclusion != "success" and .conclusion != "skipped")
+                                       | "- **\(.name)** — `\(.conclusion)` on `\(.runner_name // "unknown runner")`"] | join("\n")')
+            [ -n "$FAILED" ] || FAILED="- (no individual job reported a failure — check the run itself)"
+
+            BODY=$(printf '%s\n' \
+              "Nightly [#${RUN_NO}](${RUN_URL}) concluded **${CONCLUSION}**." \
+              "" \
+              "$FAILED" \
+              "" \
+              "The nightly is not merge-blocking, but it is the only thing covering the mutating corrective-action, audit-integrity, governance, OIDC and incident-ledger ITs, plus the supply-chain and performance gates — so a red run means that coverage is not happening." \
+              "" \
+              "This issue is opened once and **closes itself** when a later nightly is green; it is not reopened per night while the failure persists. It is NOT auto-re-dispatched — re-running an hour-long suite that failed for a real reason only burns capacity.")
+            api -X POST "${GITHUB_API_URL}/repos/${GITHUB_REPOSITORY}/issues" \
+              -d "$(jq -n --arg t "${RED_MARKER} — #${RUN_NO} ${CONCLUSION} ($(date -u +%F))" --arg b "$BODY" \
+                   '{title:$t, body:$b, labels:["ci","P3"]}')" >/dev/null \
+              && echo "Opened red-nightly issue." || echo "::warning::Could not open the red-nightly issue (non-fatal)."
             exit 0
           fi
 
