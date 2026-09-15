@@ -46,6 +46,12 @@ jobs:
         with:
           username: ${{ secrets.DOCKERHUB_USERNAME }}
           password: ${{ secrets.DOCKERHUB_TOKEN }}
+      # Rootless-DinD slots keep the job daemon's socket at /run/user/<uid>/docker.sock,
+      # not /var/run/docker.sock — Testcontainers' Ryuk mounts the latter, gets an empty
+      # directory, and dies before it can be inspected (404). Self-detecting and a no-op on
+      # host-socket slots; see the script header for the measurement.
+      - name: Point Testcontainers' Ryuk at the real socket on rootless slots
+        run: bash scripts/ci-testcontainers-socket.sh >> "$GITHUB_ENV"
       - name: Container ITs (Testcontainers — Postgres / Keycloak, no compose engine)
         working-directory: backend
         run: >-
@@ -153,6 +159,12 @@ jobs:
         run: bash docker/smoke-test.sh flowable-6
       - name: Seed demo processes (REST-only, idempotent)
         run: bash docker/seed.sh --profile flowable-6
+      # Rootless-DinD slots keep the job daemon's socket at /run/user/<uid>/docker.sock,
+      # not /var/run/docker.sock — Testcontainers' Ryuk mounts the latter, gets an empty
+      # directory, and dies before it can be inspected (404). Self-detecting and a no-op on
+      # host-socket slots; see the script header for the measurement.
+      - name: Point Testcontainers' Ryuk at the real socket on rootless slots
+        run: bash scripts/ci-testcontainers-socket.sh >> "$GITHUB_ENV"
       - name: Engine ITs (failsafe)
         working-directory: backend
         run: >-
@@ -200,6 +212,14 @@ jobs:
           load: true
           tags: process-inspector:nightly-scan
           cache-from: type=gha
+          # The runtime stage's `apk upgrade` re-resolves against the live Alpine index ONLY
+          # if it is not served from cache — its cache key is the literal command string, so
+          # a warm cache replays a stale package set forever. That is what reddened nightly
+          # #66/#67 on CVE-2026-14456: every layer logged `CACHED`, so the scanned image was
+          # a byte-identical replay of an older build and could never pick up the published
+          # openssl 3.5.8-r0. Scoped to the (small) runtime stage — the maven `build` stage
+          # keeps its cache, so this costs seconds, not the whole compile.
+          no-cache-filters: runtime
           # Same GHA-cache-export-slowness timeout hit ci.yml's docker job 3x today
           # (mode=max upload of build-stage layers stalling the "exporting to GitHub Actions
           # Cache" step) — mode=min + ignore-error=true so a slow/broken cache service can
@@ -224,6 +244,54 @@ jobs:
           name: sbom-image
           path: sbom-image.cdx.json
           retention-days: 90
+      # Web image, held to exactly the standard the BFF image above already is (issue
+      # #409). It was scanned by NOTHING until then, and shipped 35 fixable HIGH/CRITICAL
+      # findings (2 CRITICAL) to ghcr.io/Docker Hub and to the public demo — every one of
+      # them already patched upstream. Parity, not novelty: same build shape, same
+      # `no-cache-filters`, same scan flags, its own SBOM.
+      - name: Build web image (loaded locally for scanning, not pushed)
+        uses: docker/build-push-action@v6
+        with:
+          context: frontend
+          push: false
+          load: true
+          tags: process-inspector-web:nightly-scan
+          cache-from: type=gha
+          # Same reason as the BFF image above: the runtime stage's `apk upgrade` only
+          # re-resolves against the live Alpine index when it is not replayed from cache.
+          no-cache-filters: runtime
+          cache-to: type=gha,mode=min,ignore-error=true
+      - name: Trivy web-image scan (HIGH/CRITICAL fixed-in-upstream vulns fail the run)
+        uses: aquasecurity/trivy-action@v0.36.0
+        with:
+          image-ref: process-inspector-web:nightly-scan
+          severity: HIGH,CRITICAL
+          ignore-unfixed: true
+          exit-code: "1"
+      - name: SBOM (CycloneDX) for the built web image
+        uses: anchore/sbom-action@v0.22.0
+        with:
+          image: process-inspector-web:nightly-scan
+          format: cyclonedx-json
+          output-file: sbom-web-image.cdx.json
+      - uses: actions/upload-artifact@v4
+        if: always()
+        with:
+          name: sbom-web-image
+          path: sbom-web-image.cdx.json
+          retention-days: 90
+      # Base-image currency (issue #413) — the blind spot the scans above structurally
+      # cannot see. Both Trivy image steps scan AFTER `apk upgrade`, so a base that has
+      # aged but is still patchable scans GREEN: the drift is invisible precisely because
+      # the compensating mechanism works, and only becomes visible once a CVE lands that
+      # `apk upgrade` can no longer reach — i.e. after it is already a problem. That is how
+      # frontend/Dockerfile sat three Alpine minors behind the BFF (35 fixable HIGH/CRITICAL
+      # in the base as pulled) with every gate green, until #409/#411 went looking.
+      # Runs after the scans on purpose: a red here means "go bump a base within a day",
+      # which is nightly-shaped triage, not a push gate.
+      - name: Base-image currency (drift vs Alpine stable + skew between our images)
+        run: bash scripts/check-base-image-currency.sh
+
       # Backend dependency audit: Trivy's filesystem scanner over pom.xml, NOT OWASP
       # dependency-check-maven — tried that first, and a cold run against the real NVD API
       # hard-failed with HTTP 429 after several minutes (confirmed empirically): NVD
@@ -366,15 +434,36 @@ jobs:
           echo "::error::BFF did not serve /v3/api-docs within 180s"
           tail -200 /tmp/bff-perf.log
           exit 1
-      # Dockerized k6 (host network so it reaches the BFF on localhost:$PI_BFF_PORT) — the
-      # dev viewer/dev credentials are the k6 script's own defaults (SecurityConfig, !oidc).
-      - name: k6 — P1 latency budgets (SPEC §2, R-NFR-01/02)
+      # k6 runs as a BINARY on the runner, not in a container, because the BFF it measures is
+      # itself a plain `java -jar` ON the runner. A containerised k6 has to cross into the
+      # daemon's network namespace, and on the rootless-dind slots (hp02, rebuilt 2026-09-02)
+      # there is no route back — measured on nightly #91, which probed all three plausible
+      # addresses and was refused by each:
+      #   not reachable: http://localhost:8386 / http://host.docker.internal:8386 / http://172.17.0.1:8386
+      #   Daemon: 28.5.2 security=["name=seccomp,profile=builtin","name=rootless","name=cgroupns"]
+      # So this is not an addressing problem to be solved with a better guess; the hop itself
+      # has to go. Runner labels are identical across hosts, so the job cannot be pinned to a
+      # host-socket slot instead.
+      #
+      # Same k6 version the image shipped (v2.1.0 — `k6 version` confirms the identical
+      # commit), so perf-scenario-p1.js's calibrated thresholds measure what they did before;
+      # it also drops container networking from the CLIENT side of a latency measurement,
+      # which is strictly less noise between k6 and the BFF.
+      - name: Install k6 (pinned, checksum-verified)
         run: |
-          docker run --rm --network host \
-            -e BASE_URL="http://localhost:${PI_BFF_PORT}" \
-            -v "$PWD/scripts:/scripts:ro" \
-            -v /tmp:/out \
-            grafana/k6:2.1.0 run --summary-export=/out/k6-summary-p1.json /scripts/perf-scenario-p1.js
+          set -euo pipefail
+          ver=2.1.0
+          sha=295d961ebfca306f295f1133068dcd403a8171c87f387928f5f30b0fbcff858a
+          curl -fsSL "https://github.com/grafana/k6/releases/download/v${ver}/k6-v${ver}-linux-amd64.tar.gz" -o /tmp/k6.tgz
+          echo "${sha}  /tmp/k6.tgz" | sha256sum -c -
+          tar xzf /tmp/k6.tgz -C /tmp
+          install -m 0755 "/tmp/k6-v${ver}-linux-amd64/k6" /tmp/k6
+          /tmp/k6 version
+      # The dev viewer/dev credentials are the k6 script's own defaults (SecurityConfig, !oidc).
+      - name: k6 — P1 latency budgets (SPEC §2, R-NFR-01/02)
+        env:
+          BASE_URL: http://localhost:${{ env.PI_BFF_PORT }}
+        run: /tmp/k6 run --summary-export=/tmp/k6-summary-p1.json scripts/perf-scenario-p1.js
       - uses: actions/upload-artifact@v4
         if: always()
         with:

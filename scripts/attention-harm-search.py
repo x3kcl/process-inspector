@@ -1,5 +1,14 @@
 #!/usr/bin/env python3
-"""Adversarial harm search on the SHIPPED attention-ordering score A(c) = F·R·M·S.
+"""Adversarial harm search on the SHIPPED attention-ordering score A(c) = F·R·S.
+
+Re-pinned (#401, epic #398, slice 3) against the CORRECTED score after #399 (M is
+identically 1 in the v1 ordering — the estimator is retained and still reported on
+`factors.mttr`/`M` here, but it no longer multiplies into the score) and #400 (S now
+consumes self-heal TIMING: `S = max(floor, 1 - p_heal * w)`, `w = 2^(-t_heal/tau_heal)`,
+`tau_heal` default PT1H). The pre-#399 shipped formula `F*R*M*S` is kept as a labelled
+counterfactual ablation so the before/after comparison runs on the IDENTICAL generated
+fleets in the SAME process, at the SAME seed — the strongest apples-to-apples comparison
+available, stronger than diffing two separate script versions.
 
 The question, stated so that it cannot be circular: **does A(c) order Stage-0 cards
 closer to the cost-minimising order than today's `total DESC` does, and where does it
@@ -74,6 +83,7 @@ class AttentionCfg:
     mttr_clamp_low: float = 0.5
     mttr_clamp_high: float = 2.0
     self_heal_floor: float = 0.25
+    self_heal_horizon_s: float = 3600.0  # Duration.ofHours(1) — tau_heal, #400 part B, PT1H default
     burst_window_s: float = 600.0  # Duration.ofMinutes(10)
     burst_onset: int = 10
     burst_exit: int = 5
@@ -130,11 +140,29 @@ def mttr_factor(class_median_s, fleet_median_s, cfg=DEFAULTS):
     return max(cfg.mttr_clamp_low, min(cfg.mttr_clamp_high, ratio))
 
 
-def self_heal_factor(lane, cfg=DEFAULTS):
-    """AttentionScoreCalculator.selfHealFactor — max(1-p_heal, floor); absent lane = 1."""
+def heal_timeliness(tts_p50_s, horizon_s):
+    """AttentionScoreCalculator.healTimeliness — w = 2^(-t_heal/tau_heal); unknown reads 0 (#400).
+
+    Unknown (None or negative) reads 0, NOT 1 — so S falls back to the multiplicative
+    identity per the degradation rule, rather than asserting an unevidenced instant heal.
+    """
+    if tts_p50_s is None or tts_p50_s < 0:
+        return 0.0
+    tau = max(1.0, horizon_s)
+    return math.pow(2.0, -(tts_p50_s / tau))
+
+
+def self_heal_factor(lane, tts_p50_s, floor, horizon_s):
+    """AttentionScoreCalculator.selfHealFactor — max(floor, 1 - p_heal*w); absent lane = 1 (#400).
+
+    At tts_p50_s = 0 (a heal inside one sampler bucket, w = 1) this is BYTE-IDENTICAL to the
+    pre-#400 shipped expression `max(floor, 1 - p_heal)` — the amendment is provably inert in
+    that regime. `w` decays the demotion toward 1 (never past it) as the heal lands later.
+    """
     if lane is None or lane == "INSUFFICIENT_HISTORY":
         return 1.0
-    return max(cfg.self_heal_floor, 1.0 - LANE_P_HEAL[lane])
+    p_heal = LANE_P_HEAL[lane]
+    return max(floor, 1.0 - p_heal * heal_timeliness(tts_p50_s, horizon_s))
 
 
 def median(values):
@@ -148,16 +176,26 @@ def median(values):
 
 
 def factor_values(ev, fleet_median_mttr_s, cfg=DEFAULTS):
+    """Returns (F, R, M, S). `M` is the RETAINED estimator (factors.mttr, #399) — computed for
+
+    reporting/counterfactual ablation, never multiplied into the shipped score itself; see
+    `attention_score`'s default `factors`.
+    """
     f = frequency(ev.arrivals, ev.arrivals_unknown, ev.burst, ev.prior_burst, ev.burst_unknown, cfg)
     r = recency(ev.age_s, cfg)
     class_med = ev.med_mttr_s if (ev.closed_episodes >= cfg.min_closed_episodes) else None
     m = mttr_factor(class_med, fleet_median_mttr_s, cfg)
-    s = self_heal_factor(ev.lane, cfg)
+    s = self_heal_factor(ev.lane, ev.tts_p50_s, cfg.self_heal_floor, cfg.self_heal_horizon_s)
     return f, r, m, s
 
 
-def attention_score(ev, fleet_median_mttr_s, cfg=DEFAULTS, factors=("F", "R", "M", "S")):
-    """A(c) = F·R·M·S. `factors` ablates terms to 1.0; "1/M" inverts M (direction probe)."""
+def attention_score(ev, fleet_median_mttr_s, cfg=DEFAULTS, factors=("F", "R", "S")):
+    """A(c) = F·R·S — the SHIPPED score since #399 (M dropped) + #400 (S consumes t_heal).
+
+    `factors` ablates terms to 1.0 and can re-include "M" or "1/M" (direction probe) as
+    COUNTERFACTUALS for comparison against the pre-#399 shipped formula — never as part of
+    the default (shipped) score.
+    """
     f, r, m, s = factor_values(ev, fleet_median_mttr_s, cfg)
     out = 1.0
     out *= f if "F" in factors else 1.0
@@ -241,20 +279,31 @@ def selftest():
     comp = frequency(4000, False, 0, 0, False, cfg) / frequency(40, False, 0, 0, False, cfg)
     _chk(fails, "F  compression 40 -> 4000 members (100x) reads as", comp, 2.23, tol=5e-3)
 
-    # --- the DOMINANCE arithmetic behind the compression hypothesis ---------
-    # F's dynamic range over a fleet is a RATIO OF LOGS; M*S's is a fixed 16x
-    # ((2.0*1.0)/(0.5*0.25)). Whenever F's range is the smaller one, M and S decide the
-    # order and F only breaks their ties — which is the whole harm mechanism.
-    ms_span = (DEFAULTS.mttr_clamp_high * 1.0) / (DEFAULTS.mttr_clamp_low * DEFAULTS.self_heal_floor)
-    _chk(fails, "M*S dynamic range (2.0*1.0)/(0.5*0.25)", ms_span, 16.0)
+    # --- the DOMINANCE arithmetic behind the compression hypothesis, RE-DERIVED for the
+    # #399/#400 corrected score ------------------------------------------------------------
+    # F's dynamic range over a fleet is a RATIO OF LOGS. Pre-#399 the OTHER factor's fixed
+    # range was M*S = 16x ((2.0*1.0)/(0.5*0.25)) — M alone contributed a 4x span and S
+    # another 4x. Since #399 M is IDENTICALLY 1 in the score, so the only bounded-range
+    # factor left is S, whose own range is [floor, 1] at its worst case (t_heal = 0, i.e.
+    # the #400 timing term at its most-demoting extreme, matching the pre-#400 formula) —
+    # a fixed 4x, not 16x. This is a REAL, NAMEABLE consequence of #399's removal (not a
+    # reformulation choice made here): S alone bounds a quarter of the range M*S used to.
+    s_span = 1.0 / DEFAULTS.self_heal_floor
+    _chk(fails, "S dynamic range (floor..1, t_heal=0) = 1/0.25", s_span, 4.0)
     f_span_1000x = frequency(40000, False, 0, 0, False, cfg) / frequency(40, False, 0, 0, False, cfg)
     _chk(fails, "F dynamic range over a 1000x arrival ratio", f_span_1000x, 2.854, tol=5e-3)
-    # the crossover: with the quietest class at `lo` arrivals, F out-ranges M*S only once the
-    # busiest class reaches 2^(16*log2(1+lo)) - 1 arrivals.
-    crossover = 2 ** (ms_span * log2(1 + 2)) - 1
-    _chkb(fails, "F out-ranges M*S only above ~4.3e7 arrivals (lo=2)", crossover > 4.0e7, True)
+    # the crossover: with the quietest class at `lo` arrivals, F out-ranges S only once the
+    # busiest class reaches 2^(4*log2(1+lo)) - 1 arrivals — DOWN from ~4.3e7 (M*S, 16x) to
+    # ~81 (S alone, 4x): dropping M shrinks the "other factor" span from 16x to 4x, so F now
+    # out-ranges it at ordinary fleet sizes instead of only at absurd ones.
+    crossover = 2 ** (s_span * log2(1 + 2)) - 1
+    # exact: 4*log2(3) = log2(3^4) = log2(81), so 2^(...) - 1 = 81 - 1 = 80 exactly.
+    _chk(fails, "F out-ranges S alone above 80 arrivals (lo=2)", crossover, 80.0, tol=1e-9)
+    _chkb(fails, "...which is DOWN from ~4.3e7 under the pre-#399 M*S span", crossover < 1000, True)
 
-    # --- M = clamp(medMTTR(c)/medMTTR(fleet), 0.5, 2) ------------------------
+    # --- M = clamp(medMTTR(c)/medMTTR(fleet), 0.5, 2) -- the RETAINED ESTIMATOR (#399) ------
+    # Still computed and pinned (it ships on `factors.mttr` as honest evidence) but NOT a
+    # term of `attention_score`'s default (shipped) factors — see that function's docstring.
     _chk(fails, "M  ratio 2x   -> 2.0", mttr_factor(120, 60, cfg), 2.0)
     _chk(fails, "M  ratio 10x  -> 2.0 (clamped)", mttr_factor(600, 60, cfg), 2.0)
     _chk(fails, "M  ratio 50x  -> 2.0 (clamped)", mttr_factor(3000, 60, cfg), 2.0)
@@ -262,20 +311,61 @@ def selftest():
     _chk(fails, "M  <3 closed episodes -> neutral 1", mttr_factor(None, 60, cfg), 1.0)
     _chk(fails, "M  fleet has no closed episode -> neutral 1", mttr_factor(600, None, cfg), 1.0)
 
-    # --- S = max(1 - p_heal, 0.25) -------------------------------------------
-    _chk(fails, "S  SELF_HEAL_LIKELY  (p=.75) -> 0.25 floor", self_heal_factor("SELF_HEAL_LIKELY", cfg), 0.25)
-    _chk(fails, "S  SELF_HEAL_MIXED   (p=.50) -> 0.50", self_heal_factor("SELF_HEAL_MIXED", cfg), 0.50)
-    _chk(fails, "S  SELF_HEAL_UNLIKELY(p=.15) -> 0.85", self_heal_factor("SELF_HEAL_UNLIKELY", cfg), 0.85)
-    _chk(fails, "S  INSUFFICIENT_HISTORY -> neutral 1", self_heal_factor("INSUFFICIENT_HISTORY", cfg), 1.0)
-    _chk(fails, "S  no lane at all -> neutral 1", self_heal_factor(None, cfg), 1.0)
-    # STRUCTURAL: the floor is INERT under the shipped lane adapter — the most demoting
-    # lane midpoint is exactly 1 - 0.75 = 0.25, so max(floor, 1-p) never selects the floor.
-    zero_floor = AttentionCfg(self_heal_floor=0.0)
-    same = all(
-        abs(self_heal_factor(lane, cfg) - self_heal_factor(lane, zero_floor)) < 1e-12
-        for lane in list(LANE_P_HEAL) + ["INSUFFICIENT_HISTORY", None]
+    # --- S = max(floor, 1 - p_heal*w),  w = 2^(-t_heal/tau_heal)  (#400) -----
+    # At t_heal = 0 (w = 1) this is byte-identical to the pre-#400 shipped values.
+    H = cfg.self_heal_horizon_s  # PT1H default
+    _chk(fails, "S  SELF_HEAL_LIKELY  (p=.75), t_heal=0 -> 0.25 floor", self_heal_factor("SELF_HEAL_LIKELY", 0.0, cfg.self_heal_floor, H), 0.25)
+    _chk(fails, "S  SELF_HEAL_MIXED   (p=.50), t_heal=0 -> 0.50", self_heal_factor("SELF_HEAL_MIXED", 0.0, cfg.self_heal_floor, H), 0.50)
+    _chk(fails, "S  SELF_HEAL_UNLIKELY(p=.15), t_heal=0 -> 0.85", self_heal_factor("SELF_HEAL_UNLIKELY", 0.0, cfg.self_heal_floor, H), 0.85)
+    _chk(fails, "S  INSUFFICIENT_HISTORY -> neutral 1", self_heal_factor("INSUFFICIENT_HISTORY", 0.0, cfg.self_heal_floor, H), 1.0)
+    _chk(fails, "S  no lane at all -> neutral 1", self_heal_factor(None, 0.0, cfg.self_heal_floor, H), 1.0)
+    # a KNOWN lane with NO timing evidence (tts_p50_s=None) reads w=0 -> neutral 1, never an
+    # unevidenced instant-heal assertion (§4.1 degradation rule, #400).
+    _chk(fails, "S  known lane, tts unknown -> neutral 1 (LIKELY)", self_heal_factor("SELF_HEAL_LIKELY", None, cfg.self_heal_floor, H), 1.0)
+    _chk(fails, "S  known lane, tts unknown -> neutral 1 (MIXED)", self_heal_factor("SELF_HEAL_MIXED", None, cfg.self_heal_floor, H), 1.0)
+
+    # --- #400 part B: the timing term, pinned against the Java test's own values ---------
+    # aClassThatHealsInEightHoursIsNoLongerDemotedAsIfItHealedInstantly:
+    # w(8h) = 2^(-28800/3600) = 2^-8 = 1/256, tau_heal = PT1H.
+    _chk(fails, "S  LIKELY heals in 8h (w=1/256) -> 1 - 0.75/256", self_heal_factor("SELF_HEAL_LIKELY", 28_800.0, 0.25, H), 1.0 - 0.75 / 256.0, tol=1e-9)
+    # at the horizon itself (t_heal = tau_heal = 1h) w = 0.5 -> demotion exactly halved.
+    _chk(fails, "S  LIKELY heals at the horizon (w=0.5) -> 1 - 0.375", self_heal_factor("SELF_HEAL_LIKELY", 3_600.0, 0.25, H), 1.0 - 0.375, tol=1e-9)
+
+    # --- #400 part A: the floor's REAL binding boundary is 0.25, not 0.75 ----------------
+    # Pinned against AttentionScoreCalculatorTest's
+    # theSelfHealFloorIsAProvableNoOpAtOrBelowTheLaneQuantisationMinimumAndBindsOnlyStrictlyAbove:
+    # at or below 0.25 the floor selects NOTHING, at any lane, at any t_heal (bit-identical
+    # to floor=0.0). The report's §6 headline — "the shipped 0.25 default is bit-identically
+    # inert" — is CONFIRMED here, generalised across t_heal too (the worst case, t_heal=0,
+    # is where 0.25 is reached exactly; for every t_heal>0 the demoted value is even higher,
+    # i.e. further from the floor, so if the floor doesn't bind at t_heal=0 it never does).
+    inert_at_or_below_25 = True
+    for floor in (0.0, 0.1, 0.2, 0.25):
+        for lane in list(LANE_P_HEAL) + ["INSUFFICIENT_HISTORY", None]:
+            for tts in (None, 0.0, 60.0, 3600.0, 86400.0):
+                floored = self_heal_factor(lane, tts, floor, H)
+                unfloored = self_heal_factor(lane, tts, 0.0, H)
+                if floored != unfloored:
+                    inert_at_or_below_25 = False
+    _chkb(fails, "S  floor is INERT at or below 0.25 (all lanes x all t_heal)", inert_at_or_below_25, True)
+    # STRICTLY above 0.25 the floor BINDS — first for LIKELY (whose t_heal=0 value sits
+    # exactly at 0.25), then for MIXED once the floor clears 0.50. §6's prose ("does nothing
+    # at any value below 0.75") is IMPRECISE about where binding starts: 0.75 is P_HEAL_LIKELY
+    # itself, not the demoted VALUE (1 - 0.75 = 0.25) the floor is compared against. The
+    # correct per-lane binding thresholds are 0.25 (LIKELY), 0.50 (MIXED), 0.85 (UNLIKELY).
+    _chk(fails, "S  floor 0.26 BINDS on LIKELY (0.25 -> 0.26)", self_heal_factor("SELF_HEAL_LIKELY", 0.0, 0.26, H), 0.26)
+    _chk(fails, "S  floor 0.6 BINDS on LIKELY (0.25 -> 0.6)", self_heal_factor("SELF_HEAL_LIKELY", 0.0, 0.6, H), 0.6)
+    _chk(fails, "S  floor 0.6 BINDS on MIXED (0.50 -> 0.6)", self_heal_factor("SELF_HEAL_MIXED", 0.0, 0.6, H), 0.6)
+    _chk(fails, "S  floor 0.6 does NOT bind on UNLIKELY (0.85 > 0.6)", self_heal_factor("SELF_HEAL_UNLIKELY", 0.0, 0.6, H), 0.85)
+
+    # the timing term can only ever WEAKEN a demotion, never deepen one: S(t_heal) >= S(0)
+    # for every lane, at the shipped floor.
+    weakens_only = all(
+        self_heal_factor(lane, tts, cfg.self_heal_floor, H) >= self_heal_factor(lane, 0.0, cfg.self_heal_floor, H) - 1e-12
+        for lane in LANE_P_HEAL
+        for tts in (0.0, 1.0, 60.0, 600.0, 3600.0, 86_400.0, 7_776_000.0)
     )
-    _chkb(fails, "S  floor 0.25 is INERT (never binds at any lane)", same, True)
+    _chkb(fails, "S  timing term only ever WEAKENS a demotion, never deepens one", weakens_only, True)
 
     # --- R = 2^(-age_hours/24) ----------------------------------------------
     _chk(fails, "R  age 0 h   -> 1.0", recency(0, cfg), 1.0)
@@ -322,6 +412,7 @@ class ClassEvidence:
     med_mttr_s: float | None
     closed_episodes: int
     lane: str | None
+    tts_p50_s: float | None = None  # SelfHealStats.ttsP50Seconds (#400 part B); None = unknown
 
 
 @dataclass
@@ -416,7 +507,7 @@ def order_count(fleet):
     return tuple(idx)
 
 
-def order_attention(fleet, cfg=DEFAULTS, factors=("F", "R", "M", "S")):
+def order_attention(fleet, cfg=DEFAULTS, factors=("F", "R", "S")):
     """AttentionOrdering.BY_ATTENTION: score DESC, then total DESC, then signatureHash ASC."""
     sc = [attention_score(fleet.evidence[c], fleet.fleet_median_mttr_s, cfg, factors) for c in range(fleet.K)]
     idx = sorted(range(fleet.K), key=lambda c: (-sc[c], -fleet.n0[c], fleet.sig[c]))
@@ -429,17 +520,58 @@ def order_smith(fleet):
     return tuple(idx)
 
 
+def self_heal_factor_original(lane, floor):
+    """The 2026-08-05 R-ATTENTION-HARM-2026-08 SHIPPED S — max(floor, 1-p_heal), no timing.
+
+    Byte-identical to `self_heal_factor(lane, 0.0, floor, ANY horizon)` since w(t_heal=0) = 1
+    exactly (#400's own inertness proof) — kept as an explicit, separate function (rather than
+    a call with tts forced to 0) so `attention_score_original` reads as what it is: the
+    ORIGINAL formula, not a special case of the new one.
+    """
+    if lane is None or lane == "INSUFFICIENT_HISTORY":
+        return 1.0
+    return max(floor, 1.0 - LANE_P_HEAL[lane])
+
+
+def attention_score_original(ev, fleet_median_mttr_s, cfg=DEFAULTS):
+    """A(c) = F·R·M·S exactly as shipped 2026-08-05 (pre-#398) — for the direct before/after
+
+    comparison this slice (#401) exists to make. Computed on the IDENTICAL fleet the
+    corrected `attention_score` sees (same evidence, same seed) so the two numbers are not
+    just "the same distributions" but literally the same generated fleets.
+    """
+    f, r, m, _s = factor_values(ev, fleet_median_mttr_s, cfg)
+    s_original = self_heal_factor_original(ev.lane, cfg.self_heal_floor)
+    return f * r * m * s_original
+
+
+def order_original(fleet, cfg=DEFAULTS):
+    """The pre-#398 shipped ordering: score DESC (via `attention_score_original`), then total
+
+    DESC, then signatureHash ASC — same tie-break as `order_attention`.
+    """
+    sc = [attention_score_original(fleet.evidence[c], fleet.fleet_median_mttr_s, cfg) for c in range(fleet.K)]
+    idx = sorted(range(fleet.K), key=lambda c: (-sc[c], -fleet.n0[c], fleet.sig[c]))
+    return tuple(idx)
+
+
+ORIGINAL = "original (F*R*M*S, pre-#398 2026-08-05)"
+
+
+# MAIN is the SHIPPED score since #399 (M dropped) + #400 (S consumes t_heal): F*R*S.
+# "F*R*M*S [pre-#399 shipped]" is kept as a labelled COUNTERFACTUAL — computed on the exact
+# same generated fleets, same seed, same process — so the before/after comparison this slice
+# exists to make (#401) needs no second run and no risk of RNG drift between versions.
 ABLATIONS = {
-    "attention (F*R*M*S)": ("F", "R", "M", "S"),
+    "attention (F*R*S)": ("F", "R", "S"),
     "F only": ("F",),
     "F*R": ("F", "R"),
-    "F*M": ("F", "M"),
     "F*S": ("F", "S"),
-    "F*R*S  (M off)": ("F", "R", "S"),
-    "F*R*M  (S off)": ("F", "R", "M"),
-    "F*R*(1/M)*S  [M flipped]": ("F", "R", "1/M", "S"),
+    "F*R*M*S  [pre-#399 shipped]": ("F", "R", "M", "S"),
+    "F*R*M  [M re-included, counterfactual]": ("F", "R", "M"),
+    "F*R*(1/M)*S  [M flipped, counterfactual]": ("F", "R", "1/M", "S"),
 }
-MAIN = "attention (F*R*M*S)"
+MAIN = "attention (F*R*S)"
 
 
 # ---------------------------------------------------------------------------
@@ -547,6 +679,13 @@ def make_fleet(rng, knobs, regime):
     fleet_med = median(known_meds) if known_meds else None
 
     sig = [f"{int(rng.integers(0, 1 << 48)):012x}" for _ in range(K)]
+    # tts_p50_s: the OBSERVED evidence for #400's timing term — "the median heal duration a
+    # PERFECT estimator would report", the same charitable-observer convention `lane_of`
+    # already uses for the lane itself (mirrors its own gate: known only when the lane is
+    # known and this regime heals at all). Derived from ALREADY-drawn `t_heal`/`lane_known` —
+    # no new RNG draw, so this does not perturb the fleet-generation sequence and the
+    # before/after comparison at seed 20260805 is against the IDENTICAL fleets.
+    tts_p50_known = lambda c: lane_known[c] and hm != "none"  # noqa: E731
     evidence = [
         ClassEvidence(
             arrivals=int(arrivals[c]),
@@ -557,7 +696,8 @@ def make_fleet(rng, knobs, regime):
             age_s=float(age_h[c] * 3600.0),
             med_mttr_s=med_known[c],
             closed_episodes=(3 if known[c] else 0),
-            lane=(lane_of(float(p_heal[c])) if (lane_known[c] and hm != "none") else "INSUFFICIENT_HISTORY"),
+            lane=(lane_of(float(p_heal[c])) if tts_p50_known(c) else "INSUFFICIENT_HISTORY"),
+            tts_p50_s=(float(t_heal[c] * SEC) if tts_p50_known(c) else None),
         )
         for c in range(K)
     ]
@@ -608,6 +748,7 @@ def evaluate(fleet, rng=None, cfg=DEFAULTS, ablations=True, committed=True, seve
     else:
         add(order_count(fleet))
         add(order_smith(fleet))
+        add(order_original(fleet, cfg))
         for fac in ABLATIONS.values():
             add(order_attention(fleet, cfg, fac))
         base = list(range(K))
@@ -628,6 +769,9 @@ def evaluate(fleet, rng=None, cfg=DEFAULTS, ablations=True, committed=True, seve
     o_count = order_count(fleet)
     out["count"] = float(costs[cand[o_count]])
     out["count|order"] = o_count
+    o_original = order_original(fleet, cfg)
+    out[ORIGINAL] = float(costs[cand[o_original]])
+    out[ORIGINAL + "|order"] = o_original
     variants = ABLATIONS if ablations else {MAIN: ABLATIONS[MAIN]}
     for name, fac in variants.items():
         o = order_attention(fleet, cfg, fac)
@@ -851,7 +995,7 @@ def describe(rec, title):
     L = [f"--- {title}", f"regime={f.regime}  K={f.K}  horizon={f.horizon:.1f} min  fleet median MTTR={fm}"]
     L.append(
         f"{'idx':>3} {'sig':>12} {'n0':>7} {'g/min':>8} {'mttr_min':>9} {'p_heal':>7} {'t_heal':>9} "
-        f"{'arrivals':>9} {'age_h':>6} {'lane':>20} {'F':>6} {'R':>6} {'M':>5} {'S':>5} {'A':>8}"
+        f"{'arrivals':>9} {'age_h':>6} {'lane':>20} {'F':>6} {'R':>6} {'M(diag)':>7} {'S':>5} {'A=F*R*S':>8}"
     )
     for c in range(f.K):
         e = f.evidence[c]
@@ -859,7 +1003,7 @@ def describe(rec, title):
         L.append(
             f"{c:>3} {f.sig[c]:>12} {f.n0[c]:>7.0f} {f.g[c]:>8.4f} {f.mttr[c]:>9.2f} {f.p_heal[c]:>7.3f} "
             f"{f.t_heal[c]:>9.1f} {e.arrivals:>9} {e.age_s/3600:>6.1f} {str(e.lane):>20} "
-            f"{F:>6.3f} {R:>6.3f} {M:>5.2f} {S:>5.2f} {F*R*M*S:>8.3f}"
+            f"{F:>6.3f} {R:>6.3f} {M:>7.2f} {S:>5.2f} {F*R*S:>8.3f}"
         )
     L.append(f"count     order {rec['count|order']}   E[cost] = {rec['count']:>14,.1f} instance-minutes")
     L.append(f"attention order {rec[MAIN+'|order']}   E[cost] = {rec[MAIN]:>14,.1f} instance-minutes")
@@ -915,10 +1059,11 @@ def main():
         ("G6 big K (7-9, pooled oracle)", gen_bigk(rng, 1200 // q)),
     ]
 
-    print("## 1. harm rate by regime")
-    print("##    HARM = regret(attention) > regret(count). The oracle cancels from that")
+    print("## 1. harm rate by regime — #401: CORRECTED (F*R*S, #399+#400) beside ORIGINAL")
+    print("##    (F*R*M*S as shipped 2026-08-05), on the IDENTICAL fleets, same seed 20260805.")
+    print("##    HARM = regret(policy) > regret(count). The oracle cancels from that")
     print("##    predicate, so every rate below is EXACT regardless of oracle method.")
-    print("##    gap = (regret_att - regret_count)/(worst - oracle), over harmed fleets only")
+    print("##    gap = (regret_policy - regret_count)/(worst - oracle), over harmed fleets only")
     print("##    (mean/p90/max). CI = Wilson score, z=1.96.\n")
 
     recs = {}
@@ -930,13 +1075,21 @@ def main():
             rs.append(r)
         recs[name] = rs
         st = harm_stats(rs)
+        st_orig = harm_stats(rs, ORIGINAL)
         S[name] = st
-        print("  " + fmt(st, name, 38))
+        S[name + " [ORIGINAL]"] = st_orig
+        print("  " + fmt(st, "  CORRECTED " + name, 38))
+        print("  " + fmt(st_orig, "  original  " + name, 38))
 
     pooled = [r for rs in recs.values() for r in rs]
     st_all = harm_stats(pooled)
+    st_all_orig = harm_stats(pooled, ORIGINAL)
     S["POOLED"] = st_all
-    print("  " + fmt(st_all, "POOLED (all regimes)", 38))
+    S["POOLED [ORIGINAL]"] = st_all_orig
+    print("  " + fmt(st_all, "  CORRECTED POOLED (all regimes)", 38))
+    print("  " + fmt(st_all_orig, "  original  POOLED (all regimes)", 38))
+    print(f"\n  (original report, same method, 2026-08-05: POOLED 66.06% [65.53,66.59], G2 87.62% [86.63,88.55] —")
+    print(f"   compare against the 'original' rows above, reproduced HERE on today's seeded fleets)")
 
     # ---- 2. the compression grid -----------------------------------------
     print("\n## 2. G2 compression grid — harm rate (and mean gap) by (count spread, MTTR spread)")
@@ -965,16 +1118,21 @@ def main():
         S.setdefault("attribution", {})[name] = {v: harm_stats(recs[name], v) for v in ABLATIONS}
 
     # ---- 4. clamp / floor: do they bound the damage? ----------------------
-    print("\n## 4. do the [0.5,2.0] M clamp and the 0.25 S floor BOUND the damage?")
-    print("##    identical fleets, identical score, only the clamp/floor moved")
+    print("\n## 4. do the [0.5,2.0] M clamp, the 0.25 S floor, and the new tau_heal BOUND the damage?")
+    print("##    identical fleets, identical score, only the clamp/floor/horizon moved.")
+    print("##    Since #399, M is NOT a term of the corrected score (F*R*S) — so its clamp")
+    print("##    variants are PREDICTED to be inert on 'corrected' here (they still move")
+    print("##    'original' F*R*M*S, printed alongside as the direct falsifier of that claim).")
     cfgs = {
-        "shipped  M[0.5,2] S floor .25": DEFAULTS,
+        "shipped  M[0.5,2] S floor .25 tau_heal=1h": DEFAULTS,
         "M clamp WIDENED to [0.1,10]": AttentionCfg(mttr_clamp_low=0.1, mttr_clamp_high=10.0),
         "M clamp REMOVED [0,inf)": AttentionCfg(mttr_clamp_low=0.0, mttr_clamp_high=float("inf")),
         "M clamp TIGHTENED to [0.8,1.25]": AttentionCfg(mttr_clamp_low=0.8, mttr_clamp_high=1.25),
         "M disabled  [1,1]": AttentionCfg(mttr_clamp_low=1.0, mttr_clamp_high=1.0),
         "S floor REMOVED (0.0)": AttentionCfg(self_heal_floor=0.0),
         "S floor RAISED to 0.9": AttentionCfg(self_heal_floor=0.9),
+        "tau_heal SHORTENED to 10min": AttentionCfg(self_heal_horizon_s=600.0),
+        "tau_heal LENGTHENED to 24h": AttentionCfg(self_heal_horizon_s=86400.0),
     }
     S["clamp"] = []
     for regime in ("G1 global LHS (all knobs)", "G2 compression probe"):
@@ -986,23 +1144,33 @@ def main():
                 r2 = evaluate(f, rng=rng, cfg=cfg, ablations=False)
                 rs.append(r2)
             st = harm_stats(rs)
+            st_orig = harm_stats(rs, ORIGINAL)
             S["clamp"].append({"regime": regime, "variant": label, **{k: st[k] for k in
-                               ("n", "harm_rate", "help_rate", "mean_gap", "p90_gap", "max_gap")}})
-            print("     " + fmt(st, label))
+                               ("n", "harm_rate", "help_rate", "mean_gap", "p90_gap", "max_gap")},
+                               "harm_rate_original": st_orig["harm_rate"]})
+            print("     corrected " + fmt(st, label))
+            print("     original  " + fmt(st_orig, label))
 
     # ---- 5. absolute quality ---------------------------------------------
     print("\n## 5. absolute quality — mean normalised regret (0 = oracle, 1 = worst order)")
-    print(f"  {'regime':<40} {'count':>9} {'attention':>10} {'random':>9} {'Smith':>9}")
+    print(f"  {'regime':<40} {'count':>9} {'corrected':>10} {'original':>10} {'random':>9} {'Smith':>9}")
     for name, rs in recs.items():
-        vals = {k: norm_regret(rs, k) for k in ("count", MAIN, "random", "smith")}
-        print(f"  {name:<40} {vals['count']:>9.4f} {vals[MAIN]:>10.4f} {vals['random']:>9.4f} {vals['smith']:>9.4f}")
+        vals = {k: norm_regret(rs, k) for k in ("count", MAIN, ORIGINAL, "random", "smith")}
+        print(f"  {name:<40} {vals['count']:>9.4f} {vals[MAIN]:>10.4f} {vals[ORIGINAL]:>10.4f} "
+              f"{vals['random']:>9.4f} {vals['smith']:>9.4f}")
         S.setdefault("normalised_regret", {})[name] = vals
 
-    # ---- 6. self-heal timing: WHEN does S help? ---------------------------
-    print("\n## 6. S factor vs self-heal TIMING — S reads p_heal but never t_heal")
-    print("##    flat counts, uniform service time, one class self-heals at t = mult x mttr")
+    # ---- 6. self-heal timing: the DIRECT test of #400's fix ---------------
+    print("\n## 6. S factor vs self-heal TIMING — #401 direct test of #400's fix")
+    print("##    Since #400, S consumes t_heal (tau_heal=PT1H default); 'original' is the")
+    print("##    pre-#400 S(lane)-only formula on the SAME fleets. The original report measured")
+    print("##    80.73% harm / 0.00% help at t_heal/mttr=8 — this is the re-run of exactly that.")
+    print("##    flat counts, uniform service time, classes self-heal at t = mult x mttr")
     S["heal_timing"] = {}
-    print(f"  {'t_heal / mttr':>14} {'harm%':>8} {'help%':>8} {'mean gap':>10} {'count NR':>9} {'att NR':>9}")
+    S["heal_timing_original"] = {}
+    print(f"  {'t_heal/mttr':>12} | {'CORRECTED (#399+#400) F*R*S':^46} | {'ORIGINAL (pre-#398) F*R*M*S':^46}")
+    print(f"  {'':>12} | {'harm%':>8} {'help%':>8} {'gap':>8} {'cnt NR':>8} {'att NR':>8} "
+          f"| {'harm%':>8} {'help%':>8} {'gap':>8} {'cnt NR':>8} {'att NR':>8}")
     for mult in (0.1, 0.25, 0.5, 1.0, 2.0, 4.0, 8.0, 16.0):
         rs = []
         for _ in range(1500 // q):
@@ -1015,9 +1183,13 @@ def main():
             r = evaluate(f, rng=rng, ablations=False)
             rs.append(r)
         st = harm_stats(rs)
+        st_orig = harm_stats(rs, ORIGINAL)
         S["heal_timing"][mult] = st
-        print(f"  {mult:>14.2f} {st['harm_rate']*100:>7.2f}% {st['help_rate']*100:>7.2f}% "
-              f"{st['mean_gap']:>10.3f} {norm_regret(rs,'count'):>9.4f} {norm_regret(rs,MAIN):>9.4f}")
+        S["heal_timing_original"][mult] = st_orig
+        print(f"  {mult:>12.2f} | {st['harm_rate']*100:>7.2f}% {st['help_rate']*100:>7.2f}% "
+              f"{st['mean_gap']:>8.3f} {norm_regret(rs,'count'):>8.4f} {norm_regret(rs,MAIN):>8.4f} "
+              f"| {st_orig['harm_rate']*100:>7.2f}% {st_orig['help_rate']*100:>7.2f}% "
+              f"{st_orig['mean_gap']:>8.3f} {norm_regret(rs,'count'):>8.4f} {norm_regret(rs,ORIGINAL):>8.4f}")
 
     # ---- 7. arrivals/backlog coupling ------------------------------------
     print("\n## 7. sensitivity to the INVENTED arrivals<->backlog coupling (F channel)")

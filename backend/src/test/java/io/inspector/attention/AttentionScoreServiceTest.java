@@ -1,6 +1,7 @@
 package io.inspector.attention;
 
 import static org.assertj.core.api.Assertions.assertThat;
+import static org.assertj.core.api.Assertions.within;
 import static org.mockito.ArgumentMatchers.any;
 import static org.mockito.ArgumentMatchers.anyInt;
 import static org.mockito.ArgumentMatchers.anyString;
@@ -216,7 +217,11 @@ class AttentionScoreServiceTest {
         AttentionScore scored = service(true).forClass("hash-a", 2, 21, stats);
 
         assertThat(scored.factors().selfHealLane()).isEqualTo("SELF_HEAL_LIKELY");
-        assertThat(scored.factors().selfHeal()).isEqualTo(0.25);
+        // #400 part B: the service threads the SERVED ttsP50Seconds (300 s) through untouched, so
+        // S = 1 - 0.75 * 2^(-300/3600) rather than the flat 0.25 the pre-#400 lane-only adapter
+        // produced. Still "consumed as given": the wiring reads the R2 field, it never re-derives
+        // a duration of its own.
+        assertThat(scored.factors().selfHeal()).isCloseTo(1.0 - 0.75 * Math.pow(2.0, -300.0 / 3600.0), within(1e-12));
         // #387: the rationale mirrors /incidents' SelfHealBadge format exactly, unit word + timing.
         assertThat(scored.rationale()).contains("usually self-heals (12/14 past spells, typically ≤ 8 min)");
     }

@@ -239,6 +239,29 @@ services:
     # Pinned by digest (issue #92) — never a floating tag, so what's running is always
     # attributable to one exact build. Set/updated by `docker/deploy-demo.sh`, never by hand.
     image: ghcr.io/x3kcl/process-inspector-bff@${PI_BFF_DIGEST:?PI_BFF_DIGEST is unset — run docker/deploy-demo.sh, see docker/DEMO-DEPLOY.md}
+    # Until now only `postgres` declared one, so `docker ps` could report the BFF "Up" while it
+    # was still starting Flyway/Hibernate or had died behind Traefik — the container being up
+    # is not the same claim as the API answering. `/actuator/health` is already exposed (one of
+    # the three endpoints under `management.endpoints`) and needs no auth, and `wget` ships in
+    # the image. start_period covers the ~13s boot measured on this host with headroom (this
+    # box also runs CI, so a cold start can be much slower than the happy path), so a slow
+    # start is never counted as a failure.
+    #
+    # This is Spring's AGGREGATE health, so it also goes down when Postgres does. That is the
+    # intent here, not a hazard: the BFF genuinely cannot serve audit, notes or the ledger
+    # without its database, and nothing in this stack ACTS on the status. Reviewed objection
+    # was that an aggregate probe would restart-loop the container on a transient DB blip —
+    # measured here and it does not: plain Docker only marks a container unhealthy, restart
+    # policies fire on container EXIT (that reaction is Swarm/Kubernetes behaviour). A
+    # container with an always-failing check and `--restart unless-stopped` sat at
+    # failing_streak=6, restarts=0, still running. Revisit only if something starts gating on
+    # this status.
+    healthcheck:
+      test: ["CMD", "wget", "-qO-", "http://127.0.0.1:8080/actuator/health"]
+      interval: 15s
+      timeout: 5s
+      retries: 5
+      start_period: 40s
     environment:
       - SERVER_PORT=8080
       # Trust Traefik's X-Forwarded-* (scheme/host) after TLS termination.
@@ -299,6 +322,22 @@ services:
   frontend:
     # Pinned by digest (issue #92) — see the `backend` service above for the rationale.
     image: ghcr.io/x3kcl/process-inspector-web@${PI_WEB_DIGEST:?PI_WEB_DIGEST is unset — run docker/deploy-demo.sh, see docker/DEMO-DEPLOY.md}
+    # This is the ONLY service Traefik routes to, so "is the demo up?" is really this check.
+    # `/` is the SPA index served by nginx — deliberately not an /api path, which would make a
+    # BFF outage read as a frontend failure and hide which half actually broke.
+    healthcheck:
+      test: ["CMD", "wget", "-qO-", "http://127.0.0.1/"]
+      interval: 15s
+      timeout: 5s
+      retries: 5
+      start_period: 20s
+    # NOTE: now that `backend` has a healthcheck this could become the
+    # `{backend: {condition: service_healthy}}` form used for postgres above, so nginx never
+    # serves 502s in the window between the two starting. Deliberately NOT done here: it
+    # changes start-up ordering and therefore what `deploy-demo.sh` does (its `up -d` would
+    # block on backend health, up to start_period + retries), and unlike the two healthchecks
+    # above that is not something already proven on the live stack. Worth doing, on its own,
+    # with a deploy to measure it.
     depends_on: [backend]
     networks: [internal, discovery]
     restart: unless-stopped

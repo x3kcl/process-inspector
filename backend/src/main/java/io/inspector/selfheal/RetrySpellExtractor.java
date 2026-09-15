@@ -27,7 +27,9 @@ import java.util.List;
  * appears to END. The look-ahead then compares A's UNCHANGED dead-letter count against spell
  * start, finds no growth, and records {@code SELF_HEALED}: an engine outage entered as evidence
  * of autonomous healing, counted into {@code n}, the Wilson bound, the displayed lane and (via
- * the R1 {@code S} factor) a 4x rank demotion on a class that never healed. {@code
+ * the R1 {@code S} factor) a rank demotion of up to 4x on a class that never healed — that
+ * bound is ALARM-COST-MODEL §4.1's lane quantisation, never the {@code self-heal-floor} knob,
+ * which is inert at its default (#400). {@code
  * truncationTainted} does not cover it (that is the scan cap) and {@link #hasInternalGap} never
  * fires (the rows exist). So any spell CONTAINING, TERMINATED BY, or JUDGED AGAINST a
  * {@code cycleComplete = false} sample is gap-voided outright — unobservable shape, never a

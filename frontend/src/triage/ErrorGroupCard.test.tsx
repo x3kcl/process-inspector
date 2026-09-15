@@ -141,7 +141,7 @@ describe('ErrorGroupCard reconciles the visible face with the attention order (#
       attention: {
         score: 8.0,
         rationale:
-          '15 failing · last seen just now · typically takes 4 min to resolve · no self-heal history.',
+          '15 failing · last seen just now · typically 4 min from first sighting to resolve · no self-heal history.',
       },
     }
     const bigButCheap: ErrorGroup = {
@@ -155,7 +155,7 @@ describe('ErrorGroupCard reconciles the visible face with the attention order (#
       attention: {
         score: 5.13,
         rationale:
-          '34 failing · last seen 12 min ago · typically takes 3 h to resolve · no self-heal history.',
+          '34 failing · last seen 12 min ago · typically 3 h from first sighting to resolve · no self-heal history.',
       },
     }
     const client = new QueryClient({
@@ -187,12 +187,12 @@ describe('ErrorGroupCard reconciles the visible face with the attention order (#
     // content, so a hover-only regression fails this exactly as it fails on the real UI.
     expect(
       screen.getByText(
-        '15 failing · last seen just now · typically takes 4 min to resolve · no self-heal history.',
+        '15 failing · last seen just now · typically 4 min from first sighting to resolve · no self-heal history.',
       ),
     ).not.toBeNull()
     expect(
       screen.getByText(
-        '34 failing · last seen 12 min ago · typically takes 3 h to resolve · no self-heal history.',
+        '34 failing · last seen 12 min ago · typically 3 h from first sighting to resolve · no self-heal history.',
       ),
     ).not.toBeNull()
     // Sanity: the raw counts genuinely contradict the order (34 > 15), so the assertions above

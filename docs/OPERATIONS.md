@@ -278,9 +278,10 @@ audit partition/retention/roles + fail-closed, shared/team-view governance, mapp
 store CRUD, and **a real Keycloak `oidc` leg** — `OidcKeycloakIT`, sealed-login + `max_age`/
 `auth_time` semantics a lightweight stub can't exercise), an **`engine-its` job** (11
 mutating corrective-action/flow-surgery/migration/bulk ITs the PR gate skips for the
-zero-flake doctrine), a **`supply-chain` job** (Trivy image scan + fs-scans of `backend/pom.xml`
-and `frontend/package-lock.json`, HIGH/CRITICAL fixed-in-upstream hard-fails; a CycloneDX SBOM
-artifact for the built image; the frontend npm-audit gate below), and a **`perf-p1` job** (k6
+zero-flake doctrine), a **`supply-chain` job** (Trivy image scans of **both** shipping images —
+BFF and web — plus fs-scans of `backend/pom.xml` and `frontend/package-lock.json`,
+HIGH/CRITICAL fixed-in-upstream hard-fails; a CycloneDX SBOM artifact per image; the frontend
+npm-audit gate below), and a **`perf-p1` job** (k6
 against the seeded FIX-REF-01 reference dataset, asserting the SPEC §2 R-NFR-01/02 latency
 budgets). A red nightly is a morning-routine triage, not a push gate.
 
@@ -317,6 +318,24 @@ exceptions cover the same lockfile advisories via two different tools, and
 `scripts/check-npm-audit-allowlist.mjs` cross-checks both files and fails the run on drift.
 Renew both together.
 
+**Trivy IMAGE scan — the `apk upgrade` cache trap (nightly #66/#67).** The BFF runtime image
+runs `apk upgrade --no-cache` so patched Alpine packages land ahead of eclipse-temurin's own
+next `21-jre-alpine` re-cut. That step's buildkit cache key is the literal command string,
+which never changes — so with a warm `cache-from: type=gha` the layer is replayed verbatim and
+the "fresh" image silently carries whatever package set was current when the layer was first
+built. Nightly runs 66 and 67 went red on `CVE-2026-14456` (`openssl`/`libcrypto3`/`libssl3`
+3.5.7-r0, fixed in 3.5.8-r0, already published in the Alpine repo) with **every** build layer
+logging `CACHED`: the scanned image was a byte-identical replay of the run-65 build, so no
+number of re-runs could ever have gone green. The runtime stage is therefore **named**
+(`FROM eclipse-temurin:21-jre-alpine AS runtime`) and every workflow that builds a BFF image
+for scanning or for publication passes `no-cache-filters: runtime` to
+`docker/build-push-action` — `nightly.yml` (`supply-chain`), `publish-edge.yml` and
+`release.yml` alike. Scoping it to the runtime stage keeps the expensive maven `build` stage
+cached, so the cost is seconds. **Applying it to the publish workflows is not optional:** if
+only the scan build were uncached, the gate would certify one artifact while users pulled a
+different, staler one. `ci.yml`'s docker job deliberately keeps a fully warm cache — it only
+proves the Dockerfile still builds, and is not a supply-chain gate.
+
 **Genuinely still to land:** Playwright smoke + axe (no CI wiring exists at all yet, tracked
 issue #85, blocked on #88's remaining U5 frontend-fitness prerequisite — U1/U2 landed) · a
 dedicated static WireMock fixture suite for 6.x/7.x error-JSON shape (partially covered
@@ -336,6 +355,163 @@ runner is online. Ephemeral (one job per container, fresh registration each rest
 (integration legs drive the shared daemon; trusted-operator model — no fork PRs),
 `restart: unless-stopped` for reboot survival. Registration: repo-scoped PAT via
 `GITHUB_PERSONAL_ACCESS_TOKEN` env ref, exchanged at start for short-lived tokens.
+
+**CI dashboard — one glanceable view of the estate (hp02 `:8091`).** `scripts/ci-status.sh`
+renders the whole Actions estate as one snapshot: the runner-slot fleet grouped by box,
+`main`'s own verdict, every workflow's newest run, the latest nightly **broken out per job
+with its failing STEP**, and each open PR's gate. Run it as text anywhere
+(`bash scripts/ci-status.sh`) or as JSON (`--json`).
+
+`scripts/ci-dashboard-push.sh` feeds the web version, a sibling of flap's board on the same
+box and deliberately the same shape so the two read alike:
+
+| piece | where | why there |
+| --- | --- | --- |
+| probe + render | **hp04** (per-minute cron) | the only box holding `GITHUB_PERSONAL_ACCESS_TOKEN` |
+| static page + `status.json` | **hp02**, `~/pi-ci-dashboard`, container `pi-ci-dashboard` | the always-on box the operator's browser points at |
+
+Only **rendered JSON** crosses the hop — the PAT never leaves hp04 and the dashboard host
+never needs, sees or stores a credential (env-ref iron rule). Set-up is
+`bash scripts/ci-dashboard-push.sh --deploy` then `--install-cron`; the page computes ages
+client-side from absolute epochs, so a dead pusher renders as an explicit **STALE** pill
+rather than a frozen "live" view.
+
+**Where the cron lives matters.** The crontab line bakes in `$PWD`, so that checkout *is*
+what the board executes every minute. `--install-cron` refuses to run from
+`.claude/worktrees/` — those are per-task agent scratch worktrees, and a cron pinned into
+one keeps working right up until the directory is cleaned up, then freezes the board (
+honestly, as STALE — but uselessly). Same ephemeral-directory shape that froze the demo
+bind-mounts in #396. A worktree as such is fine: this probe runs from the permanent
+`~/workspace/pi-wt-ci-dash` (sibling convention to `~/workspace/pi-wt-selfheal`, the
+sanctioned demo-deploy checkout), because the primary checkout cannot hold `main` while
+another worktree does. **After changing anything under `scripts/` or `deploy/ci-dashboard/`,
+refresh that checkout** (`git -C ~/workspace/pi-wt-ci-dash pull --ff-only`) and re-run
+`--deploy` — otherwise the board keeps running the old code.
+
+**The cron needs the PAT, and cron has no rc.** `~/.bashrc` early-returns for
+non-interactive shells, so a cron-launched refresh sees no
+`GITHUB_PERSONAL_ACCESS_TOKEN`, `ci-status.sh` bails, and the board ages into STALE and
+never returns — the first cron installed here did exactly that. `ci-dashboard-push.sh`
+therefore lifts *only* that one `export` line out of `~/.bashrc` when the variable is
+absent: not a second copy of the secret (env-ref iron rule — one source of truth), not a
+full `source` of the rc. `--install-cron` then **proves it works under `env -i` before
+installing**, and refuses (exit 7) if it can't — installing a job that silently no-ops is
+worse than installing nothing. The probe runs `--selftest` (render-only: no lock, no rsync),
+i.e. the *same entry point cron invokes*, because the token resolution lives in
+`ci-dashboard-push.sh` — an earlier version probed `ci-status.sh` directly and refused a
+setup that would have worked. The cron's last cycle is at
+`/tmp/pi-ci-dashboard-push.log` (overwritten each run, so it never grows); read that first
+when the board goes stale, since `>/dev/null` is what made the original breakage invisible.
+
+**Build in the merge gate, scan in the nightly — for BOTH images (issues #409, #412).**
+`ci.yml`'s `docker` job builds the BFF **and** the web image (`context: frontend`); neither
+is scanned there. That split is deliberate and worth not "helpfully" undoing: a vulnerability
+scan in the *merge* gate goes red the moment upstream publishes a CVE overnight, reddening
+every open PR for reasons that have nothing to do with the PR. So the merge gate answers
+*does it still build?* and the nightly answers *is it still clean?*. Until #412 the web image
+had neither — a PR could break `frontend/Dockerfile` and merge green, with the breakage
+surfacing a day later in the nightly or at `publish-edge` time on `main`.
+
+**Both shipping images are gated, not just the BFF (issue #409).** The web image
+(`frontend/Dockerfile` → `…-web`) was scanned by nothing until #409 and had no `apk upgrade`
+at all, so it published **35 fixable HIGH/CRITICAL findings (2 CRITICAL)** to ghcr.io, Docker
+Hub and the public demo — every one already patched upstream, including openssl `3.3.3-r0`
+against a published `3.3.7-r0`. The BFF image would have hard-failed on any single one of
+them; the web image shipped all 35 because nothing looked at it. It now carries the same
+`apk upgrade --no-cache`, the same named `runtime` stage + `no-cache-filters` pairing, the
+same scan flags and its own SBOM. **Rule: a shipping image without a scan is worse than an
+unscanned one — it reads as covered.** Any new published image gets all four (upgrade, named
+stage, scan, SBOM) in the same change that introduces it.
+
+Upgrading Alpine packages under a pinned base tag is safe *here* specifically because the
+nginx image takes nginx from the **alpine** repo (no upstream `nginx.org` repo in
+`/etc/apk/repositories`) and its packaged revision is already the newest there — the upgrade
+moves libraries, never nginx. **Re-verify that on any base-tag change**; it is the assumption
+the whole line rests on.
+
+**Base tag currency is a separate axis from `apk upgrade`, and neither substitutes for the
+other.** #409 fixed the web image under `nginx:1.27-alpine`, which tracked alpine **3.21**
+while the BFF was already on **3.24** — `apk upgrade` was doing a lot of work to compensate
+for an aging tag. Moving to `nginx:1.30-alpine` (nginx **1.30.4**, the stable branch; alpine
+**3.24.1**, now matching the BFF) collapses that gap, measured at the bump:
+
+| | fixable HIGH/CRITICAL in the base |
+| --- | --- |
+| `nginx:1.27-alpine` (alpine 3.21.3) | **35** |
+| `nginx:1.30-alpine` (alpine 3.24.1) | **2** |
+| …after `apk upgrade` | **0** |
+
+The residual 2 on the *fresh* tag are `CVE-2026-14456` — the very finding that reddened
+nightly #66/#67 on the BFF image. That is the standing lesson: **a current base tag narrows
+the window, it never closes it**, so both mechanisms stay.
+
+**Drift has its own alarm now (issue #413), because a green scan cannot raise one.** Both
+Trivy image steps scan *after* `apk upgrade`, so a base that has aged but is still patchable
+scans **green** — the drift is invisible exactly because the compensating mechanism is
+working, and only becomes visible once a CVE lands that `apk upgrade` can no longer reach,
+i.e. after it is already a problem. A green scan is evidence of a patched image, never of a
+current base. `scripts/check-base-image-currency.sh` (nightly `supply-chain`, runnable
+locally) measures what the scan structurally cannot:
+
+1. **drift** — every `FROM … AS runtime` base against current Alpine stable, failing past
+   `MAX_DRIFT` minors (default 1, deliberate slack: upstream tags legitimately lag a release
+   by weeks, and failing on that would train people to ignore the check);
+2. **skew** — our own shipping images against each other. They should share an Alpine minor;
+   the moment they diverge, one is aging, and that is the earliest honest signal available.
+
+Bases are **discovered, not listed** — a `FROM … AS runtime` stage is by construction the one
+that ships (that naming is already load-bearing for the `no-cache-filters` pairing), so a new
+shipping image is covered the day it is added, not the day someone remembers this file.
+Verified against the real regression: replayed with `nginx:1.27-alpine`, both the drift check
+(3 minors) and the skew check fire independently and the run exits 1.
+
+**`lane` — the cross-wall contract (`ci-lane/1`).** The mikrotik-dashboard CI hub
+aggregates this wall and flap's into one board. It used to re-derive lane state from this
+payload's internals and key its work items on *label text*, so every reword of
+`main.gate.label` minted a fresh duplicate P1 issue. `status.json` therefore carries an
+additive top-level `lane` block; everything else in the payload is unchanged, and a consumer
+may keep its own normaliser as a fallback.
+
+Three rules carry the whole value:
+
+1. **`code` is a stable slug; `text` is disposable prose.** Consumers key work items on
+   `(id, code)` and never on `text`. Codes here are **append-only** — an existing slug never
+   changes meaning or disappears without warning the consumer first. This is the rule that
+   kills the duplicate-issue class.
+2. **`owner` says who acts.** This wall only ever emits `self`: everything it can observe is
+   this repo's own CI, which this repo's owner fixes. A consumer should display these and
+   never file work on our behalf.
+3. **`state` is authoritative here**, so consumers stop inferring lane colour from our
+   internals and our field layout stops being their breaking change. It is the merge-gate
+   verdict **escalated by any `critical` attention row** — with every runner slot offline the
+   gate is still green on the last SHA, so a gate-only mapping would paint this lane `ok`
+   while the project cannot run CI at all, which is the "board reads healthy when it is not"
+   failure the whole contract exists to prevent. Only `critical` escalates, so a red nightly
+   (`warning`) still leaves a mergeable `main` reading `ok`.
+
+Codes: `gate-red` (critical — `ci.yml` red on `main` HEAD), `nightly-red` (**warning**, not
+critical — the nightly is explicitly not merge-blocking, and paging on it is how a gate gets
+tuned out), `runners-down` (critical — zero online slots means every run queues forever),
+`pr-gate-red` (warning).
+
+**What this wall deliberately does NOT emit: `stale` and `wall-down`.** A generator cannot
+report its own death — if the pusher stops, `status.json` is simply never rewritten and
+whatever state it last held freezes in place, so a `stale` flag would be absent in exactly
+the case it exists for. Staleness is the consumer's call from `generatedEpoch`, which is the
+same reason the page computes ages client-side rather than baking in an age. `error` *is*
+ours: it means the generator ran but its probes failed, which is a genuinely different fact
+from a dead generator and one a consumer cannot otherwise distinguish.
+
+**Two verdicts for `main`, never conflated** — the board splits *merge gate* (`ci.yml` on
+that SHA: the `green-ci` definition of done) from *all workflows* (which folds in the
+explicitly non-merge-blocking nightly). Rolling them together would paint a perfectly
+mergeable `main` red every morning a nightly goes amber, which is exactly how a gate gets
+trained out of an operator's attention.
+
+Isolation on the shared box: its own compose project (deliberately **not** named
+`pi-ci-s<N>-*`, so no harness job's scoped `down -v --remove-orphans` can reach it), a
+bind-mounted site dir rather than a named volume, and `restart: unless-stopped`. It binds
+`0.0.0.0` on purpose — the box is WireGuard-only and the content is CI telemetry.
 
 ## 9. Compose profiles
 Dev engine profiles in `docker/docker-compose.dev.yml`: **`flowable-6`** (6.8.0 pair,

@@ -13,18 +13,51 @@ import java.util.List;
  * clock of its own, so every branch is provable against synthetic inputs (rung-1 doctrine).
  *
  * <pre>
- * A(c) = F(c) · R(c) · M(c) · S(c)
+ * A(c) = F(c) · R(c) · S(c)                           -- M is IDENTICALLY 1 in v1 (#399, §17)
  *
  * F(c) = log2(1 + arrivals_28d(c))                    -- neutral 1 when the window was UNTRUSTED
  *      = log2(1 + outside_W(c) + gamma*burst_W(c))    -- when flooding(c), #365 §4.1a
  * R(c) = 2^(-age(lastSeen(c)) / tau)
- * M(c) = clamp(medMTTR(c) / medMTTR(fleet), 0.5, 2)   -- neutral 1 below the episode floor
- * S(c) = max(1 - p_heal(c), 0.25)                     -- neutral 1 with no R2 lane
+ * M(c) = 1                                            -- estimator retained, ordering input NOT
+ *        clamp(medMTTR(c) / medMTTR(fleet), 0.5, 2)   -- still MEASURED, shipped as factors.mttr
+ * S(c) = max(1 - p_heal(c)*w(c), floor)               -- neutral 1 with no R2 lane
+ *        w(c) = 2^(-t_heal(c) / tau_heal)             -- 0 (neutral S) with no t_heal
  * </pre>
  *
+ * <p><b>Why {@code M} does not multiply into the score</b> (#399, epic #398, ALARM-COST-MODEL.md
+ * §17). {@code medMTTR} is {@code ended_at − started_at} over CLOSED episodes, and read from
+ * source those two stamps are not the ends of a service time: {@code IncidentLedgerService} opens
+ * the episode at the sampler's FIRST SIGHTING of the class, and the only thing that ever closes
+ * one is the operator's S3 resolve verb ({@code IncidentLifecycleService.resolve}). So the
+ * statistic spans first-sighting → operator-resolve and therefore CONTAINS the operator's queue
+ * wait — the very quantity this ordering controls. That makes it ENDOGENOUS: rank a class low, it
+ * waits longer, its measured MTTR rises, {@code M} rises, it ranks higher next cycle. Under the
+ * shipped multiply that loop is negative/self-correcting (which is why nothing was on fire), but
+ * it means {@code M} was substantially measuring THE QUEUE rather than the class. Inverting it to
+ * {@code 1/M} — the Smith's-rule reading an adversarial harm search appeared to recommend
+ * (docs/reviews/R-ATTENTION-HARM-2026-08.md) — flips the same loop POSITIVE: rank low ⇒ longer TTR
+ * ⇒ smaller {@code 1/M} ⇒ rank lower still, i.e. a starvation mechanism. Both readings are
+ * therefore refused and {@code M ≡ 1}, on grounds independent of that report's invented
+ * distributions. The precedent is in this class already: {@code eff(c)} is excluded from the v1
+ * score for an analogous honesty problem (§3.1). {@code M} re-enters the ordering only behind an
+ * UNCONTAMINATED estimator (measured from first-operator-touch, or with the queue wait
+ * subtracted); the recorded falsifier is that if median time-to-touch turns out to be &lt; 5 % of
+ * median episode duration, the endogeneity is noise and the Smith reading becomes live again.
+ *
+ * <p><b>{@code mttrFactor()} stays, and {@code factors.mttr} keeps reporting the real clamped
+ * ratio</b> — deliberately, not by omission. The estimator, the {@code min-closed-episodes} floor
+ * and the {@code mttr-clamp-{low,high}} knobs are all retained so the re-entry above is a
+ * one-line change rather than an archaeology exercise, and the ratio is honest EVIDENCE about the
+ * class that the rationale's own resolve-time clause already quotes the median of. Reporting a
+ * hardcoded {@code 1.0} there would have hidden a measurement the operator can read, to describe
+ * an ordering rule that is documented instead. The one consumer that DID tell the operator this
+ * factor moved the card — the {@code AttentionBadge} glossary tooltip's "weighted by this class's
+ * historic time-to-resolve" — is corrected in the same change; no other consumer of
+ * {@code AttentionFactors.mttr()} makes an ordering claim.
+ *
  * <p><b>The neutrality property this whole slice rests on.</b> Every discriminating factor
- * degrades to a MULTIPLICATIVE IDENTITY when its evidence is missing: no closed episodes ⇒ M = 1,
- * no R2 lane ⇒ S = 1, no trustworthy arrival sample ⇒ F = 1. The ONE deliberate exception is a
+ * degrades to a MULTIPLICATIVE IDENTITY when its evidence is missing: no R2 lane ⇒ S = 1, no
+ * trustworthy arrival sample ⇒ F = 1 (and since #399 M is identically 1, evidence or not). The ONE deliberate exception is a
  * class with no ledger row (or a window whose samples were all trustworthy and all flat): there
  * F = 0 and the score is 0 for EVERYONE, which is not a demotion but the whole-fleet collapse to
  * the count-only tie-break — the design's stated guarantee. "No evidence at all" and "evidence we
@@ -46,9 +79,21 @@ import java.util.List;
  * hysteresis-applied value so the ordering cannot flap while the badge holds. #351 ships exactly
  * one stabilized artifact — the server-dwelled DISPLAYED lane — while its Wilson bounds are a
  * per-read point statistic, so the adapter maps lane → {@code p_heal} at the §4.1 band midpoints.
- * This is the "adapt the join, never re-derive the statistic" contract of §4.2. {@code
- * SELF_HEAL_LIKELY} lands exactly on the 0.25 floor: a proven self-healer is demoted 4x, never
- * zeroed, so a mass self-heal class still renders (same doctrine as never-hide).
+ * This is the "adapt the join, never re-derive the statistic" contract of §4.2.
+ *
+ * <p><b>The 0.25 floor is INERT, and the "at most 4x" guarantee comes from somewhere else</b>
+ * (#400 part A, R-ATTENTION-HARM-2026-08 §6). {@code SELF_HEAL_LIKELY} maps to
+ * {@code P_HEAL_LIKELY = 0.75}, so the most demoting value {@code S} can take is
+ * {@code 1 - 0.75 = 0.25} — the default floor EXACTLY, reached from above and therefore never
+ * selected. Deleting the clamp entirely was measured bit-identical across all 30 700 simulated
+ * fleets. A proven self-healer IS demoted at most 4x and never zeroed, but that bound is LANE
+ * QUANTISATION arithmetic, not a clamp; {@code inspector.triage.attention.self-heal-floor} is a
+ * provable no-op at every value {@code <= 0.25}. The knob is kept — not deleted — because a value
+ * STRICTLY ABOVE 0.25 does bind and weakens demotion (a legitimate deployment lever), and because
+ * it remains the guard if {@code S} is ever fed a rate above 0.75 directly. Both halves of that
+ * boundary are pinned by
+ * {@code AttentionScoreCalculatorTest#theSelfHealFloorIsAProvableNoOpAtOrBelowTheLaneQuantisationMinimumAndBindsOnlyStrictlyAbove}
+ * so the false attribution cannot drift back into the copy.
  */
 public final class AttentionScoreCalculator {
 
@@ -121,9 +166,12 @@ public final class AttentionScoreCalculator {
         double mttr = mttrFactor(classMedian, fleetMedianMttrSeconds, config);
 
         SelfHealLane lane = AttentionRationale.laneOf(selfHeal);
-        double selfHealFactor = selfHealFactor(lane, config.selfHealFloor());
+        Long healSeconds = selfHeal != null ? selfHeal.ttsP50Seconds() : null;
+        double selfHealFactor = selfHealFactor(lane, healSeconds, config.selfHealFloor(), config.selfHealHorizon());
 
-        double score = frequency * recency * mttr * selfHealFactor;
+        // #399: M is NOT a term here — see the class javadoc. The ratio above is computed for
+        // `factors.mttr` (evidence + the retained estimator), never multiplied into the ordering.
+        double score = frequency * recency * selfHealFactor;
         boolean insufficient = classMedian == null && (lane == null || lane == SelfHealLane.INSUFFICIENT_HISTORY);
 
         AttentionFactors factors = new AttentionFactors(
@@ -184,8 +232,8 @@ public final class AttentionScoreCalculator {
      * the MULTIPLICATIVE IDENTITY, not as zero.
      *
      * <p>This is the review's confirmed defect, and the reason it is a defect rather than a
-     * conservative choice: {@code F} is a FACTOR of {@code A(c) = F·R·M·S}, so {@code F = 0}
-     * zeroes the entire score whatever R, M and S say. On an engine permanently at its
+     * conservative choice: {@code F} is a FACTOR of {@code A(c) = F·R·S}, so {@code F = 0}
+     * zeroes the entire score whatever R and S say. On an engine permanently at its
      * failure-lane scan cap EVERY group it touches is truncated in EVERY bucket, so every one of
      * its classes collapsed to {@code A = 0} — and truncation correlates with SIZE, so enabling
      * the flag on such a fleet systematically demoted the biggest classes below a one-member
@@ -266,7 +314,12 @@ public final class AttentionScoreCalculator {
         return Math.pow(2.0, -((double) ageSeconds / tau));
     }
 
-    /** Neutral 1 whenever either side of the ratio is unknown or degenerate — never a guess. */
+    /**
+     * The retained M ESTIMATOR — a diagnostic surfaced on {@code factors.mttr}, NOT a term of the
+     * v1 score (#399, §17; the class javadoc carries the endogeneity argument). Neutral 1 whenever
+     * either side of the ratio is unknown or degenerate — never a guess. Kept computing, with its
+     * clamp knobs, so re-entry behind an uncontaminated estimator is a one-line change.
+     */
     static double mttrFactor(Long classMedianSeconds, Long fleetMedianSeconds, AttentionConfig config) {
         if (classMedianSeconds == null || fleetMedianSeconds == null || fleetMedianSeconds <= 0) {
             return 1.0;
@@ -275,8 +328,71 @@ public final class AttentionScoreCalculator {
         return Math.max(config.mttrClampLow(), Math.min(config.mttrClampHigh(), ratio));
     }
 
-    /** {@code max(1 - p_heal, floor)}; an absent or insufficient lane is neutral 1. */
-    static double selfHealFactor(SelfHealLane lane, double floor) {
+    /**
+     * {@code max(floor, 1 - p_heal * w(t_heal))} — the §4.1b amendment (#400 part B). An absent
+     * or insufficient lane is neutral 1, exactly as before.
+     *
+     * <p><b>The defect this closes.</b> {@code S} consumed the self-heal PROBABILITY and never its
+     * TIMING, so a class that reliably heals *eventually* was demoted precisely as hard as one
+     * that heals *in a minute*. Measured (R-ATTENTION-HARM-2026-08 §4c, the pre-registered
+     * {@code t_heal / mttr} covariate): while the heal lands within ~4 service times the demotion
+     * is a large win, but past ~8 service times deferring the class buys nothing and costs
+     * everything — <b>80.73 % harm, 0.00 % help</b>, with count-only becoming outright optimal.
+     * The evidence needed to tell the two apart was already on the wire: {@code
+     * SelfHealStats.ttsP50Seconds}, the median observed duration of this class's SELF_HEALED
+     * spells (RETRYING-RISK-LANE.md §3.2), needing no new query and no new R2 work.
+     *
+     * <p><b>Two properties that make the amendment safe by construction</b>, in the §4.1a
+     * discipline (an amendment must be provably inert where the shipped behaviour was right):
+     * <ol>
+     *   <li>{@code w ∈ [0, 1]} ⇒ {@code S ∈ [1 - p_heal, 1]}. The timing term can only ever
+     *       WEAKEN a demotion, never deepen one — no class can be pushed below where the shipped
+     *       formula put it, whatever {@code t_heal} says.</li>
+     *   <li>At {@code t_heal = 0}, {@code w = 2^0 = 1} and {@code S} is BYTE-IDENTICAL to the
+     *       shipped expression. That is not an edge case: the spell resolution floor is one
+     *       sampler bucket (§3.1), so every class healing inside 60 s reports {@code
+     *       ttsP50Seconds = 0} — i.e. the amendment is exactly inert across the whole regime the
+     *       harm search says {@code S} genuinely wins in.</li>
+     * </ol>
+     *
+     * <p><b>Absent timing degrades to the multiplicative identity, and why that is the §4.1
+     * answer.</b> {@code tts*} is absent whenever {@code healed = 0} or the raw sample sits below
+     * the {@code n < 10} floor, while the DISPLAYED lane can still be a dwelled risk lane at that
+     * moment (it is stabilized over ten cycles; the raw statistic is not), so "lane known, timing
+     * unknown" is reachable — a {@code SELF_HEAL_UNLIKELY} class with zero healed spells is the
+     * routine case. The rejected alternative was {@code w = 1} ("preserve today's behaviour"),
+     * and it is rejected for the same reason §13 F2 was a defect and not a conservative choice:
+     * it would assert <i>this class heals immediately</i> — the single most demoting value
+     * available — on no evidence whatsoever. §4.1's degradation rule says an unknown factor reads
+     * as the MULTIPLICATIVE IDENTITY, so an unknown {@code w} declines to demote at all and
+     * {@code S = 1}. That is also the safe direction here: it can only PROMOTE a class toward
+     * attention, never bury one, which is the same never-hide doctrine the rest of the model
+     * fails toward.
+     *
+     * <p><b>Stabilization contract (§4.1), honestly stated.</b> {@code p_heal} still comes from
+     * the server-dwelled lane, so the discrete part of {@code S} is unchanged and still cannot
+     * flap while the badge holds. {@code ttsP50Seconds} is <b>not</b> dwell-stabilized — {@code
+     * SelfHealStatsService} runs only the LANE through {@code DwellStateMachine} and pairs it with
+     * the raw per-cycle statistic — and this class is the first consumer for which that matters,
+     * so it is named rather than papered over. It is admissible here because the contract exists
+     * to prevent DISCONTINUOUS reordering: the lane is a classification, so an epsilon move in the
+     * underlying rate flips {@code p_heal} 0.75 → 0.50 and jerks the ordering while the badge says
+     * nothing changed. {@code w} has no threshold to cross — it is continuous and monotone in
+     * {@code t_heal}, bounding the response at {@code |ΔS| <= p_heal · ln2/tau_heal · Δt} (at the
+     * PT1H default, a whole sampler bucket of movement in the median moves {@code S} by under
+     * 0.009). It is additionally NOT a per-cycle rate but a 90-day order statistic over at least
+     * ten completed spells, so moving it one bucket requires a whole spell to enter or leave the
+     * window AND to cross the middle of the distribution. If a future estimator ever makes the
+     * duration jumpy, the fix is to dwell it in {@code SelfHealStatsService} next to the lane —
+     * never to re-derive or smooth it here (§4.2: adapt the join, never re-derive the statistic).
+     *
+     * @param ttsP50Seconds {@code SelfHealStats.ttsP50Seconds} — the class's MEDIAN observed
+     *     self-heal duration, or {@code null} when no duration distribution exists
+     * @param floor {@code inspector.triage.attention.self-heal-floor}; inert at every value
+     *     {@code <= 0.25} (see this class's own doc comment)
+     * @param horizon tau_heal, {@code inspector.triage.attention.self-heal-horizon}
+     */
+    static double selfHealFactor(SelfHealLane lane, Long ttsP50Seconds, double floor, Duration horizon) {
         if (lane == null || lane == SelfHealLane.INSUFFICIENT_HISTORY) {
             return 1.0;
         }
@@ -287,7 +403,24 @@ public final class AttentionScoreCalculator {
                     case SELF_HEAL_UNLIKELY -> P_HEAL_UNLIKELY;
                     case INSUFFICIENT_HISTORY -> 0.0;
                 };
-        return Math.max(floor, 1.0 - pHeal);
+        return Math.max(floor, 1.0 - pHeal * healTimeliness(ttsP50Seconds, horizon));
+    }
+
+    /**
+     * {@code w = 2^(-t_heal / tau_heal)} — 1 for a heal inside one sampler bucket, 0.5 at the
+     * horizon, ~0 far beyond it. Deliberately the SAME half-life family as {@link #recency}: one
+     * decay shape in the model means one operator mental model ("half-life"), and a continuous
+     * response is what lets a non-dwelled input in at all (see {@link #selfHealFactor}).
+     *
+     * <p><b>Unknown reads 0, not 1</b> — {@code S} then collapses to the multiplicative identity
+     * per §4.1's degradation rule, rather than asserting an instant heal nobody measured.
+     */
+    static double healTimeliness(Long ttsP50Seconds, Duration horizon) {
+        if (ttsP50Seconds == null || ttsP50Seconds < 0) {
+            return 0.0;
+        }
+        long tau = Math.max(1, horizon.toSeconds());
+        return Math.pow(2.0, -((double) ttsP50Seconds / tau));
     }
 
     private static long ageSeconds(Instant lastSeen, Instant now) {

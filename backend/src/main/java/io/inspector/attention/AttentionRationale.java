@@ -20,10 +20,16 @@ import java.util.Map;
  * that put the R2 dwell state machine on the server (RETRYING-RISK-LANE §4.2 rule 3): two
  * operators must never see two different explanations of the same ordering.
  *
- * <p>Shape — four clauses, {@code ·}-separated, one line, always terminated:
+ * <p>Shape — four clauses, {@code ·}-separated, one line, always terminated. The resolve-time
+ * clause states its own MEASUREMENT SPAN (#399/§4.3 correction): it is first-sighting-to-resolve,
+ * queue wait included, not a fix-time claim — the same reason the v1 ordering stopped consuming
+ * that statistic (§17).
+ *
+ * <p>Shape:
  *
  * <pre>
- * 21 failing · last seen 2 min ago · typically takes 4 h to resolve · no self-heal history.
+ * 21 failing · last seen 2 min ago · typically 4 h from first sighting to resolve · no
+ * self-heal history.
  * </pre>
  *
  * <p>A FIFTH clause appears only when the F factor's window was wholly untrusted (review fix):
@@ -137,9 +143,15 @@ public final class AttentionRationale {
         List<String> clauses = new ArrayList<>(6);
         clauses.add(liveTotal + " failing");
         clauses.add(ageSeconds < 60 ? "last seen just now" : "last seen " + humanize(ageSeconds) + " ago");
+        // #399: the clause names BOTH ends of the statistic on purpose. `medianMttrSeconds` is
+        // the median of `ended_at − started_at` over closed episodes, and the episode is opened at
+        // the sampler's FIRST SIGHTING and closed by the operator's resolve click — so the number
+        // includes however long the class sat in the queue before anyone looked at it. "Typically
+        // takes 4 h to resolve" read as a pure fix-time claim ("this class takes 4 h of work"),
+        // which the ledger has never measured and cannot.
         clauses.add(
                 factors.medianMttrSeconds() != null
-                        ? "typically takes " + humanize(factors.medianMttrSeconds()) + " to resolve"
+                        ? "typically " + humanize(factors.medianMttrSeconds()) + " from first sighting to resolve"
                         : "no resolve-time history");
         clauses.add(selfHealClause(selfHeal, deadLetters));
         if (factors.flooding()) {

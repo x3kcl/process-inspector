@@ -22,6 +22,14 @@
     <!-- CVE-2026-54291 (HIGH, pgjdbc <=42.7.11): override spring-boot-starter-parent's
          managed version until it picks up the fix on its own. -->
     <postgresql.version>42.7.13</postgresql.version>
+    <!-- CVE-2026-65182 / CVE-2026-65905 / CVE-2026-68525 (all CRITICAL, tomcat-embed-core
+         <=10.1.57): security-constraint bypass, DIGEST-auth replay bypass, and unauthorized
+         access. spring-boot-starter-parent 3.5.16 — the newest 3.5.x — still manages 10.1.55,
+         so there is no Boot patch to wait for; same override pattern as pgjdbc above.
+         NB the advisory names 10.1.58 as the fix, but Apache never published a 10.1.58 to
+         Maven Central (10.1.57 -> 10.1.59); 10.1.59 is the first AVAILABLE version carrying
+         the fixes. Drop this override once Boot's own managed version reaches >=10.1.59. -->
+    <tomcat.version>10.1.59</tomcat.version>
     <resilience4j.version>2.4.0</resilience4j.version>
     <springdoc.version>2.8.14</springdoc.version>
     <wiremock.version>3.13.2</wiremock.version>

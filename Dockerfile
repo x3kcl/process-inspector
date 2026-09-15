@@ -25,7 +25,7 @@ RUN mvn -B package -Dskip.surefire.tests=true
 # ...then COPY --from=frontend /dist into the runtime image's static resources.
 
 # ---- Stage 2: runtime --------------------------------------------------------
-FROM eclipse-temurin:21-jre-alpine
+FROM eclipse-temurin:21-jre-alpine AS runtime
 # OCI provenance for the registry listing (ghcr.io + Docker Hub). The publish
 # workflows also inject dynamic labels (revision/version) via docker/metadata-action.
 LABEL org.opencontainers.image.title="Process Inspector BFF" \
@@ -35,6 +35,16 @@ LABEL org.opencontainers.image.title="Process Inspector BFF" \
 # Pick up patched Alpine packages ahead of the base image's own next release cut
 # (nightly Trivy scan gate, issue #93) — libexpat/p11-kit etc. get fixes upstream
 # well before eclipse-temurin re-cuts the jre-alpine tag.
+#
+# ⚠️ This layer is a LIE under a warm layer cache: its cache key is the literal command
+# string, which never changes, so buildkit happily replays a months-old package set while
+# the whole point of the step is to resolve packages fresh. That is exactly what reddened
+# nightly #66/#67 (CVE-2026-14456, openssl 3.5.7-r0 → fixed in 3.5.8-r0, already in the
+# Alpine repo): every layer logged `CACHED`, so the "new" image was a byte-identical
+# replay of the one built days earlier. Hence the stage NAME above — every workflow that
+# builds a shipping or scanned BFF image passes `no-cache-filters: runtime` to
+# docker/build-push-action so this stage always re-resolves against the live Alpine index.
+# The expensive maven `build` stage keeps its cache. Do not drop either half.
 RUN apk upgrade --no-cache
 # Strip packages the base image installs for ITS OWN build/verification tooling that
 # this headless JSON REST service never touches at runtime (no AWT/font/PDF/image

@@ -25,7 +25,7 @@ describe('AttentionBadge', () => {
     const attention: AttentionScore = {
       score: 4.2,
       rationale:
-        '21 failing · last seen 2 min ago · typically takes 4 h to resolve · no self-heal history.',
+        '21 failing · last seen 2 min ago · typically 4 h from first sighting to resolve · no self-heal history.',
     }
     render(<AttentionBadge attention={attention} />)
     expect(screen.getByText('ranked by attention')).not.toBeNull()
@@ -33,7 +33,7 @@ describe('AttentionBadge', () => {
     // `getByText` only matches rendered text content, so this fails on a hover-only regression.
     expect(
       screen.getByText(
-        '21 failing · last seen 2 min ago · typically takes 4 h to resolve · no self-heal history.',
+        '21 failing · last seen 2 min ago · typically 4 h from first sighting to resolve · no self-heal history.',
       ),
     ).not.toBeNull()
   })
@@ -67,7 +67,7 @@ describe('AttentionBadge', () => {
     const attention: AttentionScore = {
       score: 8.0,
       rationale:
-        '15 failing · last seen just now · typically takes 4 min to resolve · no self-heal history.',
+        '15 failing · last seen just now · typically 4 min from first sighting to resolve · no self-heal history.',
     }
     const { container } = render(<AttentionBadge attention={attention} />)
     // `container.textContent` never includes attribute values (DOM semantics) — a naive
@@ -75,14 +75,15 @@ describe('AttentionBadge', () => {
     // regression, which is exactly the bug this test exists to catch. Only textContent proves
     // the sentence renders as content a non-hovering reader actually sees.
     expect(container.textContent).toContain(
-      '15 failing · last seen just now · typically takes 4 min to resolve · no self-heal history.',
+      '15 failing · last seen just now · typically 4 min from first sighting to resolve · no self-heal history.',
     )
   })
 
   it('#374: the visible rationale is distinct from the fixed glossary sentence, which stays hover-only', () => {
     const attention: AttentionScore = {
       score: 8.0,
-      rationale: '15 failing · typically takes 4 min to resolve · no self-heal history.',
+      rationale:
+        '15 failing · typically 4 min from first sighting to resolve · no self-heal history.',
     }
     render(<AttentionBadge attention={attention} />)
     const badge = screen.getByText('ranked by attention')
@@ -90,6 +91,8 @@ describe('AttentionBadge', () => {
     // only — duplicating a second, longer, generic sentence into visible text on every card
     // is exactly the "turn every card into a paragraph" outcome §4.3/§12 forbid.
     expect(badge.getAttribute('title')).toMatch(/expected cost of waiting/)
-    expect(badge.getAttribute('title')).not.toContain('typically takes 4 min to resolve')
+    expect(badge.getAttribute('title')).not.toContain(
+      'typically 4 min from first sighting to resolve',
+    )
   })
 })
