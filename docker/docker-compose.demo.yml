@@ -331,13 +331,14 @@ services:
       timeout: 5s
       retries: 5
       start_period: 20s
-    # NOTE: now that `backend` has a healthcheck this could become the
-    # `{backend: {condition: service_healthy}}` form used for postgres above, so nginx never
-    # serves 502s in the window between the two starting. Deliberately NOT done here: it
-    # changes start-up ordering and therefore what `deploy-demo.sh` does (its `up -d` would
-    # block on backend health, up to start_period + retries), and unlike the two healthchecks
-    # above that is not something already proven on the live stack. Worth doing, on its own,
-    # with a deploy to measure it.
+    # NOT `{backend: {condition: service_healthy}}`, which is the obvious-looking answer and
+    # measurably worse here. Reproduced on a throwaway stack mirroring a real deploy (BOTH
+    # digests change, so BOTH containers are recreated) against a backend that never goes
+    # healthy: compose tears this frontend down and replaces it with a container it then never
+    # starts (running=false), so the demo goes COMPLETELY DARK — versus today, where it stays
+    # up and only /api 502s. The start-up ordering is done in docker/deploy-demo.sh instead
+    # (`up -d backend` -> wait_for_healthy -> `up -d frontend`), which closes the same ~13s 502
+    # window while leaving the PREVIOUS frontend serving if the backend never comes up.
     depends_on: [backend]
     networks: [internal, discovery]
     restart: unless-stopped
