@@ -239,6 +239,18 @@ services:
     # Pinned by digest (issue #92) — never a floating tag, so what's running is always
     # attributable to one exact build. Set/updated by `docker/deploy-demo.sh`, never by hand.
     image: ghcr.io/x3kcl/process-inspector-bff@${PI_BFF_DIGEST:?PI_BFF_DIGEST is unset — run docker/deploy-demo.sh, see docker/DEMO-DEPLOY.md}
+    # Until now only `postgres` declared one, so `docker ps` could report the BFF "Up" while it
+    # was still starting Flyway/Hibernate or had died behind Traefik — the container being up
+    # is not the same claim as the API answering. `/actuator/health` is already exposed (one of
+    # the three endpoints under `management.endpoints`) and needs no auth, and `wget` ships in
+    # the image. start_period covers the ~13s boot measured on this host with headroom, so a
+    # slow start is never counted as a failure.
+    healthcheck:
+      test: ["CMD", "wget", "-qO-", "http://127.0.0.1:8080/actuator/health"]
+      interval: 15s
+      timeout: 5s
+      retries: 5
+      start_period: 40s
     environment:
       - SERVER_PORT=8080
       # Trust Traefik's X-Forwarded-* (scheme/host) after TLS termination.
@@ -299,6 +311,20 @@ services:
   frontend:
     # Pinned by digest (issue #92) — see the `backend` service above for the rationale.
     image: ghcr.io/x3kcl/process-inspector-web@${PI_WEB_DIGEST:?PI_WEB_DIGEST is unset — run docker/deploy-demo.sh, see docker/DEMO-DEPLOY.md}
+    # This is the ONLY service Traefik routes to, so "is the demo up?" is really this check.
+    # `/` is the SPA index served by nginx — deliberately not an /api path, which would make a
+    # BFF outage read as a frontend failure and hide which half actually broke.
+    healthcheck:
+      test: ["CMD", "wget", "-qO-", "http://127.0.0.1/"]
+      interval: 15s
+      timeout: 5s
+      retries: 5
+      start_period: 20s
+    # NOTE: now that `backend` has a healthcheck this could become the
+    # `{backend: {condition: service_healthy}}` form used for postgres above, so nginx never
+    # serves 502s during a deploy window. Deliberately NOT done here: that changes deploy
+    # SEQUENCING, and unlike the two healthchecks above it is not something already proven on
+    # the live stack. Worth measuring on its own.
     depends_on: [backend]
     networks: [internal, discovery]
     restart: unless-stopped
