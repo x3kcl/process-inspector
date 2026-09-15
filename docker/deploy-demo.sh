@@ -182,6 +182,12 @@ wait_for_healthy() {
   local svc="$1" deadline=$(( SECONDS + ${HEALTH_TIMEOUT:-180} )) cid status
   cid="$(docker compose -f "$COMPOSE_FILE" --env-file "$ENV_FILE" ps -q "$svc")" || cid=""
   [[ -n "$cid" ]] || die "wait_for_healthy: no container for service '$svc' — did 'up -d $svc' run?"
+  # `ps -q` prints one id per REPLICA. Nothing here is scaled today (this returns exactly one
+  # line), but if anything ever is, a multi-line $cid would be passed straight to `docker
+  # inspect`, whose multi-line output can never equal "healthy" — so the wait would spin to the
+  # deadline and fail with a misleading "did not report healthy". Say the real thing instead.
+  [[ "$(printf '%s\n' "$cid" | grep -c .)" -eq 1 ]] \
+    || die "wait_for_healthy: service '$svc' has more than one container; this helper assumes a single instance."
 
   if [[ "$(docker inspect "$cid" --format '{{if .State.Health}}yes{{end}}')" != "yes" ]]; then
     echo "  '$svc' declares no healthcheck — not waiting."
