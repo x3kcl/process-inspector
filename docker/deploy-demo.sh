@@ -167,6 +167,59 @@ EPHEMERAL
   exit 1
 }
 
+# wait_for_healthy SERVICE — block until SERVICE's container reports healthy, or fail.
+#
+# The point of failing here rather than later: this runs BEFORE `up -d frontend`, so a backend
+# that never comes up leaves the PREVIOUS frontend container untouched and still serving. That
+# is the whole reason the ordering is in this script instead of a compose `depends_on`
+# condition (see the note at the call site).
+#
+# Bounded by the service's own healthcheck budget with headroom: backend is start_period 40s +
+# 5 retries x 15s interval = ~115s worst case, so 180s can only be reached by something the
+# healthcheck itself would never resolve. A service with NO healthcheck is not an error — it
+# just cannot be waited on, so say that and carry on rather than block for 3 minutes.
+wait_for_healthy() {
+  local svc="$1" deadline=$(( SECONDS + ${HEALTH_TIMEOUT:-180} )) cid status
+  cid="$(docker compose -f "$COMPOSE_FILE" --env-file "$ENV_FILE" ps -q "$svc")" || cid=""
+  [[ -n "$cid" ]] || die "wait_for_healthy: no container for service '$svc' — did 'up -d $svc' run?"
+  # `ps -q` prints one id per REPLICA. Nothing here is scaled today (this returns exactly one
+  # line), but if anything ever is, a multi-line $cid would be passed straight to `docker
+  # inspect`, whose multi-line output can never equal "healthy" — so the wait would spin to the
+  # deadline and fail with a misleading "did not report healthy". Say the real thing instead.
+  [[ "$(printf '%s\n' "$cid" | grep -c .)" -eq 1 ]] \
+    || die "wait_for_healthy: service '$svc' has more than one container; this helper assumes a single instance."
+
+  if [[ "$(docker inspect "$cid" --format '{{if .State.Health}}yes{{end}}')" != "yes" ]]; then
+    echo "  '$svc' declares no healthcheck — not waiting."
+    return 0
+  fi
+
+  echo -n "Waiting for '$svc' to report healthy "
+  while :; do
+    status="$(docker inspect "$cid" --format '{{.State.Health.Status}}' 2>/dev/null || echo gone)"
+    case "$status" in
+      healthy) echo " ok (${SECONDS}s)"; return 0 ;;
+      gone)
+        # Terminal — there is nothing left to poll.
+        die "'$svc' container disappeared while waiting (crash on boot?). The frontend was deliberately NOT touched — the previous one is still serving."
+        ;;
+      # NOT terminal, despite how it reads: `unhealthy` only means the container has burned its
+      # retry budget SO FAR, and Docker flips it straight back to `healthy` the moment a later
+      # check passes. Measured while building this: a service whose readiness landed after its
+      # budget went `unhealthy` and then `healthy` 3s later. Treating `unhealthy` as terminal
+      # therefore aborts deploys that were merely slow — so the DEADLINE is the only bound, and
+      # `starting`/`unhealthy` are both just "not there yet".
+    esac
+    (( SECONDS < deadline )) || {
+      echo ""
+      docker compose -f "$COMPOSE_FILE" --env-file "$ENV_FILE" logs --no-color --tail 40 "$svc" >&2 || true
+      die "'$svc' did not report healthy within ${HEALTH_TIMEOUT:-180}s (last status: $status). The frontend was deliberately NOT touched — the previous one is still serving. Fix, or roll back with docker/rollback-demo.sh."
+    }
+    echo -n "."
+    sleep 3
+  done
+}
+
 # compose_up_guarded ARGS... — same argument shape as `docker compose ... up ARGS...`. Refuses
 # (exit 1) if ARGS names an engine service, or names no service at all, unless
 # --allow-engine-recreate was passed on this script's own command line. See the guard note
@@ -293,7 +346,25 @@ docker compose -f "$COMPOSE_FILE" --env-file "$ENV_FILE" pull backend frontend
 # routine deploy would silently keep running the OLD script content (review finding). backend/
 # frontend deliberately do NOT get --force-recreate — their digest pin already changes the
 # image reference itself, which IS a config-hash change compose picks up on its own.
-compose_up_guarded -d backend frontend
+# Sequenced deliberately: backend FIRST, wait for it to report healthy, and only then the
+# frontend. nginx proxies /api, so bringing both up at once serves ~13s of 502s on every
+# deploy while the BFF boots Flyway/Hibernate.
+#
+# The ordering lives HERE rather than as `depends_on: {backend: {condition: service_healthy}}`
+# in the compose file — which looks like the tidier answer and is measurably worse. Measured
+# on a throwaway stack reproducing a real deploy (BOTH digests change, so BOTH containers get
+# recreated) against a backend that never becomes healthy:
+#
+#   compose + condition : the running frontend is torn down and replaced by a container that
+#                         is never started (running=false) — the demo goes COMPLETELY DARK
+#   this script         : the wait fails before `up -d frontend` is ever reached — the OLD
+#                         frontend is still up and still serving the SPA
+#
+# Trading a 13s window of 502s for "one bad backend image takes the whole demo down" is the
+# wrong way round for a public demo. This way keeps the benefit and keeps the demo served.
+compose_up_guarded -d backend
+wait_for_healthy backend
+compose_up_guarded -d frontend
 compose_up_guarded -d --force-recreate audit-backup audit-basebackup wal-receiver
 
 echo "Verifying (expect 401 = chain healthy)..."
