@@ -76,21 +76,41 @@ jobs:
               | jq -r '.items[0].number // empty')
 
             # Only TODAY's runs, and only finished ones: at 08:41 UTC a 02:17 nightly is long
-            # done, but scoping this way means a still-running recovery run is never judged.
+            # done, and scoping this way means a recovery run still in flight is never judged.
             LATEST=$(api -G "$RUNS_URL" --data-urlencode "created=>=${TODAY}" \
                        --data-urlencode "status=completed" --data-urlencode "per_page=1" \
                      | jq -r '.workflow_runs[0] // empty')
 
             if [ -z "$LATEST" ]; then
-              echo "no COMPLETED nightly run yet today — leaving the result check to tomorrow."
-              exit 0
+              # Nothing has FINISHED today. Normally that just means we looked early — but a run
+              # that still has not finished HOURS after it was created is stuck, and that is
+              # exactly as invisible as a red run used to be. nightly.yml's per-job
+              # `timeout-minutes` cap a genuine hang, but they never fire on a run that never got
+              # a runner at all — and "no runner online, so everything queues forever" is a
+              # failure mode this repo has actually hit (see scripts/ci-runner.sh's `ensure`).
+              PENDING=$(api -G "$RUNS_URL" --data-urlencode "created=>=${TODAY}" \
+                          --data-urlencode "per_page=1" | jq -r '.workflow_runs[0] // empty')
+              STUCK_AFTER_HOURS="${STUCK_AFTER_HOURS:-4}"
+              AGE_H=-1
+              if [ -n "$PENDING" ]; then
+                CREATED_AT=$(printf '%s' "$PENDING" | jq -r '.created_at')
+                AGE_H=$(( ( $(date -u +%s) - $(date -u -d "$CREATED_AT" +%s) ) / 3600 ))
+              fi
+              if [ -z "$PENDING" ] || [ "$AGE_H" -lt "$STUCK_AFTER_HOURS" ]; then
+                echo "no COMPLETED nightly run yet today (newest is ${AGE_H}h old) — leaving the result check to tomorrow."
+                exit 0
+              fi
+              CONCLUSION="never finished — still '$(printf '%s' "$PENDING" | jq -r '.status')' after ${AGE_H}h"
+              RUN_NO=$(printf '%s' "$PENDING" | jq -r '.run_number')
+              RUN_URL=$(printf '%s' "$PENDING" | jq -r '.html_url')
+              RUN_ID=$(printf '%s' "$PENDING" | jq -r '.id')
+            else
+              CONCLUSION=$(printf '%s' "$LATEST" | jq -r '.conclusion')
+              RUN_NO=$(printf '%s' "$LATEST" | jq -r '.run_number')
+              RUN_URL=$(printf '%s' "$LATEST" | jq -r '.html_url')
+              RUN_ID=$(printf '%s' "$LATEST" | jq -r '.id')
+              echo "latest completed nightly today: #${RUN_NO} -> ${CONCLUSION}"
             fi
-
-            CONCLUSION=$(printf '%s' "$LATEST" | jq -r '.conclusion')
-            RUN_NO=$(printf '%s' "$LATEST" | jq -r '.run_number')
-            RUN_URL=$(printf '%s' "$LATEST" | jq -r '.html_url')
-            RUN_ID=$(printf '%s' "$LATEST" | jq -r '.id')
-            echo "latest completed nightly today: #${RUN_NO} -> ${CONCLUSION}"
 
             if [ "$CONCLUSION" = "success" ]; then
               # Self-clearing: an alert nobody ever sees closed is an alert nobody believes.
@@ -99,7 +119,8 @@ jobs:
                   -d "$(jq -n --arg b "Nightly [#${RUN_NO}](${RUN_URL}) is green — closing automatically." '{body:$b}')" >/dev/null || true
                 api -X PATCH "${GITHUB_API_URL}/repos/${GITHUB_REPOSITORY}/issues/${OPEN_RED}" \
                   -d '{"state":"closed","state_reason":"completed"}' >/dev/null \
-                  && echo "closed #${OPEN_RED} — nightly recovered."
+                  && echo "closed #${OPEN_RED} — nightly recovered." \
+                  || echo "::warning::nightly is green but closing #${OPEN_RED} failed; it will be retried tomorrow."
               else
                 echo "nightly is green — nothing to do."
               fi
@@ -117,7 +138,7 @@ jobs:
 
             # Name the failing jobs: the difference between an alert and a triage starting point.
             FAILED=$(api -G "${GITHUB_API_URL}/repos/${GITHUB_REPOSITORY}/actions/runs/${RUN_ID}/jobs" \
-                       --data-urlencode "per_page=50" \
+                       --data-urlencode "per_page=100" \
                      | jq -r '[.jobs[] | select(.conclusion != "success" and .conclusion != "skipped")
                                        | "- **\(.name)** — `\(.conclusion)` on `\(.runner_name // "unknown runner")`"] | join("\n")')
             [ -n "$FAILED" ] || FAILED="- (no individual job reported a failure — check the run itself)"
