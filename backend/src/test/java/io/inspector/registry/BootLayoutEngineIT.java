@@ -112,11 +112,14 @@ class BootLayoutEngineIT {
                 .get(0);
         assertThat(dto.get("id").asText()).isEqualTo(ENGINE_ID);
         assertThat(dto.get("reachable").asBoolean()).isTrue();
-        // An embedded Flowable 7 engine. A login page would have parsed as neither.
-        assertThat(dto.get("engineVersion").asText()).startsWith("7.");
+        // flap :latest tracks master (currently Flowable 8.x). A login page would parse as neither.
+        // Any major ≥7 clears every ARCH §2.5 cliff — same as the 7.x war leg.
+        String version = dto.get("engineVersion").asText();
+        int[] mm = EngineCapabilities.parseMajorMinor(version);
+        assertThat(mm).as("parseable Flowable version, got %s", version).isNotNull();
+        assertThat(mm[0]).isGreaterThanOrEqualTo(7);
         assertThat(dto.get("healthError").isNull()).isTrue();
 
-        // An embedded Flowable 7 engine clears every version cliff, exactly like the 7.x war.
         JsonNode caps = dto.get("capabilities");
         for (String cap :
                 new String[] {"changeState", "migration", "externalWorkerJobs", "scopeType", "activityHistory"}) {
