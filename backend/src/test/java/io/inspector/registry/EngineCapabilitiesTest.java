@@ -49,6 +49,13 @@ class EngineCapabilitiesTest {
     }
 
     @Test
+    void eightXPassesAllCliffs_sameAsSeven() {
+        // flap :latest moved to Flowable 8; cliffs are major>6, so 8.x equals 7.x here.
+        EngineCapabilities caps = EngineCapabilities.fromVersion("8.0.0", true);
+        assertThat(caps).isEqualTo(new EngineCapabilities(true, true, true, true, true));
+    }
+
+    @Test
     void unparseableVersionsYieldNoVersionCapabilities() {
         for (String garbage : new String[] {null, "", "  ", "unknown", "v6.8", "six.eight"}) {
             EngineCapabilities caps = EngineCapabilities.fromVersion(garbage, false);
