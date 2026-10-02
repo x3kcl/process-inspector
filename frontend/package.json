@@ -52,23 +52,23 @@
     "vitest": "^4.1.10"
   },
   "//overrides": [
-    "Transitive advisories under @redocly/openapi-core (via openapi-typescript, our gen:api",
-    "toolchain). Both fixes are SEMVER-COMPATIBLE with what the parents already ask for \u2014 we",
-    "are pulling a patch forward, not forcing a major across a range boundary:",
-    "  js-yaml         GHSA-52cp-r559-cp3m  vulnerable <=4.2.0, patched 4.3.0; redocly wants ^4",
-    "  brace-expansion GHSA-3jxr-9vmj-r5cp  vulnerable <=2.1.1, patched 2.1.2; minimatch@5 wants ^2",
-    "`npm audit fix` cannot reach these itself (they sit under an already-latest pinned dep), so",
-    "the override is the mechanism, not a policy exception.",
-    "SCOPED to the redocly subtree DELIBERATELY: eslint pulls its own brace-expansion@5 (via",
-    "minimatch@10) which is NOT in the vulnerable range \u2014 a top-level override would drag it",
-    "back to 2.x, a silent major downgrade of a healthy dep.",
-    "DROP each entry once the parent ships a release resolving the patched version on its own \u2014",
-    "recheck with `npm ls js-yaml brace-expansion`."
+    "Transitive advisories pulled forward in-range — never a major across a range boundary.",
+    "  @redocly/openapi-core (via openapi-typescript / gen:api):",
+    "    js-yaml         GHSA-52cp-r559-cp3m  patched 4.3.0+; redocly wants ^4",
+    "    brace-expansion GHSA-q2hr-2g5m-vwhr (+ siblings) patched 2.1.7+; minimatch@5 wants ^2",
+    "  top-level (eslint's minimatch@10 + jsdom):",
+    "    brace-expansion GHSA-q2hr-2g5m-vwhr (+ siblings) patched 5.0.12+; minimatch@10 wants ^5",
+    "    undici          GHSA-rfgv-xxqx-mfg5 / GHSA-w293-vg96-wgc3 patched 7.29.1+; jsdom wants ^7.25",
+    "Nested @redocly override keeps its brace-expansion on the 2.x line; the top-level",
+    "^5.0.12 only applies everywhere else. DROP each once the parent resolves the patch alone",
+    "— recheck with `npm ls js-yaml brace-expansion undici`."
   ],
   "overrides": {
+    "brace-expansion": "^5.0.12",
+    "undici": "^7.30.0",
     "@redocly/openapi-core": {
       "js-yaml": "^4.3.2",
-      "brace-expansion": "^2.1.2"
+      "brace-expansion": "^2.1.7"
     }
   }
 }
