@@ -232,6 +232,10 @@ jobs:
           severity: HIGH,CRITICAL
           ignore-unfixed: true
           exit-code: "1"
+          # Dated exceptions for jar-layer findings with no in-range OSS fix (currently
+          # CVE-2026-47884 — see backend/.trivyignore.yaml). Not shared with the web-image
+          # or frontend-lockfile steps.
+          trivyignores: backend/.trivyignore.yaml
       - name: SBOM (CycloneDX) for the built image
         uses: anchore/sbom-action@v0.22.0
         with:
@@ -308,6 +312,9 @@ jobs:
           severity: HIGH,CRITICAL
           ignore-unfixed: true
           exit-code: "1"
+          # Same dated-exception file as the BFF image scan above (jar vs pom are two gates
+          # over the same dependency set — keep them in lockstep).
+          trivyignores: backend/.trivyignore.yaml
       # Dated-exception doctrine, extended to Trivy's leg (follow-up to #297): Trivy's fs
       # scan of the lockfile is a SECOND, independent gate over the same data as the
       # npm-audit allowlist gate below, and was never made allowlist-aware — it used to
