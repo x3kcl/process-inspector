@@ -193,6 +193,13 @@ jobs:
   supply-chain:
     runs-on: self-hosted
     timeout-minutes: 30
+    # Prefer ghcr for the Trivy vuln DB. Default order is mirror.gcr.io then ghcr, but a
+    # transient 404 on the GCR mirror aborts the step before the fallback is tried
+    # (nightly 37885847772 — frontend fs scan died mid-DB download). Putting ghcr first
+    # keeps the four Trivy steps from failing the whole job on a mirror blip.
+    env:
+      TRIVY_DB_REPOSITORY: ghcr.io/aquasecurity/trivy-db:2,mirror.gcr.io/aquasec/trivy-db:2
+      TRIVY_JAVA_DB_REPOSITORY: ghcr.io/aquasecurity/trivy-java-db:1,mirror.gcr.io/aquasec/trivy-java-db:1
     steps:
       - uses: actions/checkout@v4
       # Mitigates Docker Hub 429s on the shared NAT pool (base images: maven, eclipse-temurin);
