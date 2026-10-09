@@ -6,24 +6,32 @@
 # `expired_at` prunes the entry after the date (Trivy v0.70.0 IgnoreFindings.Prune), so the
 # gate goes red again until a human renews or removes the entry. No silent grace period.
 #
-# CVE-2026-47884 (spring-webmvc XsltView path limitation → SSRF/RCE):
-#   - Affects Spring Framework 6.2.0–6.2.19 (we ship 6.2.19 via Boot 3.5.16).
-#   - OSS fix is ONLY 7.0.9; 6.2.20 is Enterprise Support Only. Spring has confirmed there
-#     will be no further OSS 6.2.x release (OSS support for 6.2 ended June 2026).
-#   - Boot 3.5.x is the newest 3.5 line and still manages 6.2.19; jumping to Boot 4.0.8
-#     (which manages Framework 7.0.9) is a Jackson-3 / modular-starter migration, not a
-#     property override — tracked separately, not a nightly unblock.
-#   - This BFF is REST-only (@RestController everywhere, React SPA on nginx). No XsltView,
-#     no server-side view rendering, no "/**" view-name resolution — the advisory's
-#     preconditions do not apply. Spring rates the issue MEDIUM; Trivy/NVD surface it as
-#     CRITICAL because a fixed version exists (on a different major).
+# Shared context for every entry below (Spring Framework 6.2.19 via Boot 3.5.16):
+#   - OSS fix is ONLY Framework 7.0.9; 6.2.20 is Enterprise Support Only. Spring has
+#     confirmed there will be no further OSS 6.2.x release (OSS support ended June 2026).
+#   - Boot 3.5.16 is the newest 3.5; jumping to Boot 4.0.8 (manages 7.0.9) is a Jackson-3 /
+#     modular-starter migration — tracked separately, not a nightly unblock.
+#   - Trivy/NVD surface these as CRITICAL because a fixed version exists on another major;
+#     Spring's own advisories are narrower. DROP every entry once Boot manages
+#     spring-framework ≥7.0.9 (or an OSS 6.2.x patch appears).
 #
-# DROP this entry once Boot manages spring-framework ≥7.0.9 (or an OSS 6.2.x patch appears).
+# CVE-2026-47884 — XsltView path limitation → SSRF/RCE. Requires XsltView + a "/**"
+# mapping that resolves a view name. This BFF is REST-only (@RestController everywhere,
+# React SPA on nginx): no XsltView, no server-side view rendering.
+#
+# CVE-2026-47890 — SSE stream corruption while rendering view fragments. Requires sending
+# view fragments over SSE. Our SseEmitter usage (SseHub / BulkController) streams JSON
+# event payloads only — no view-fragment rendering.
 vulnerabilities:
   - id: CVE-2026-47884
     expired_at: "2027-01-08T00:00:00Z"
     statement: >
       No OSS 6.2.x fix (Enterprise-only 6.2.20; OSS path is Framework 7.0.9 / Boot 4).
-      Product is a JSON BFF with no XsltView or server-side view rendering — advisory
-      preconditions do not apply. Revisit by expiry: either Boot 4 migration or renew with
-      a fresh check that 6.2 OSS still has no backport.
+      JSON BFF with no XsltView or server-side view rendering — advisory preconditions
+      do not apply. Revisit by expiry: Boot 4 migration or renew after rechecking 6.2 OSS.
+  - id: CVE-2026-47890
+    expired_at: "2027-01-08T00:00:00Z"
+    statement: >
+      No OSS 6.2.x fix (Enterprise-only 6.2.20; OSS path is Framework 7.0.9 / Boot 4).
+      SseEmitter streams JSON events only — no view-fragment SSE rendering. Revisit by
+      expiry: Boot 4 migration or renew after rechecking 6.2 OSS.
