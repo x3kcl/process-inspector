@@ -15,7 +15,7 @@
 #           docker/ci-runner/docker-compose.yml).
 #           Run this BEFORE pushing to main or creating a PR (green-ci skill, step 0).
 #   status  container states + GitHub-side registered-runner table
-#   start   docker compose build --pull + up -d (all slots; --pull refreshes the base
+#   start   docker pull <base> + compose build + up -d (all slots; the pull refreshes the base
 #           image so the baked-in runner never goes stale — see docker-compose.yml)
 #   stop    docker compose down (all slots)
 #   logs    tail a runner container log: logs [slot] [lines]  (default: slot 1, 100)
@@ -68,7 +68,9 @@ cmd_status() {
 
 cmd_start() {
   need_pat
-  docker compose -f "$COMPOSE_FILE" build --pull
+  # Explicit pull: `compose build --pull` left a 3-month-old base in place on hp04 (2026-10-20).
+  docker pull "$(awk '/^FROM/{print $2; exit}' "$SCRIPT_DIR/../docker/ci-runner/Dockerfile")"
+  docker compose -f "$COMPOSE_FILE" build
   docker compose -f "$COMPOSE_FILE" up -d
 }
 
