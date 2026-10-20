@@ -55,7 +55,7 @@ x-runner-env: &runner-env
   # One job per container: after each job the runner exits and the restart policy brings
   # up a fresh, cleanly re-registered one — no state bleed, self-healing.
   EPHEMERAL: "true"
-  DISABLE_AUTO_UPDATE: "true"
+  # Auto-update stays ON — see docker-compose.yml.
 
 services:
   runner-s1:

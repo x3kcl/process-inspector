@@ -15,7 +15,8 @@
 #           docker/ci-runner/docker-compose.yml).
 #           Run this BEFORE pushing to main or creating a PR (green-ci skill, step 0).
 #   status  container states + GitHub-side registered-runner table
-#   start   docker compose up -d --build (all slots)
+#   start   docker compose build --pull + up -d (all slots; --pull refreshes the base
+#           image so the baked-in runner never goes stale — see docker-compose.yml)
 #   stop    docker compose down (all slots)
 #   logs    tail a runner container log: logs [slot] [lines]  (default: slot 1, 100)
 #
@@ -67,7 +68,8 @@ cmd_status() {
 
 cmd_start() {
   need_pat
-  docker compose -f "$COMPOSE_FILE" up -d --build
+  docker compose -f "$COMPOSE_FILE" build --pull
+  docker compose -f "$COMPOSE_FILE" up -d
 }
 
 cmd_stop() { docker compose -f "$COMPOSE_FILE" down; }

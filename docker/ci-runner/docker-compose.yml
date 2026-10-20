@@ -74,7 +74,9 @@ x-runner-env: &runner-env
   # One job per container: after each job the runner exits and the restart policy brings
   # up a fresh, cleanly re-registered one — no state bleed, self-healing.
   EPHEMERAL: "true"
-  DISABLE_AUTO_UPDATE: "true"
+  # Auto-update stays ON: with it disabled, a runner baked into a months-old base image
+  # gets "Runner version vX is deprecated and cannot receive messages" from GitHub and
+  # every slot crash-loops (2026-10-20, v2.335.1). `ci-runner.sh start` also pulls a fresh base.
 
 services:
   runner-s1:
