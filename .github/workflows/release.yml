@@ -51,7 +51,7 @@ jobs:
     runs-on: self-hosted
     timeout-minutes: 30
     steps:
-      - uses: actions/checkout@v4
+      - uses: actions/checkout@v7
         with:
           # Explicit so the workflow_call path builds the tagged commit, not the caller's ref.
           ref: ${{ env.RELEASE_TAG }}

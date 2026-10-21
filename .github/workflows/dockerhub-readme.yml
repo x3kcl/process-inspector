@@ -24,7 +24,7 @@ jobs:
     runs-on: self-hosted
     timeout-minutes: 10
     steps:
-      - uses: actions/checkout@v4
+      - uses: actions/checkout@v7
 
       - name: Sync BFF overview
         uses: peter-evans/dockerhub-description@v4
