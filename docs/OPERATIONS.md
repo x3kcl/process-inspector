@@ -72,6 +72,16 @@ failures). No monitoring STACK (Prometheus/Alertmanager) is deployed by this rep
 mode: design principle 5 IS the fallback — the runbook carries direct-cURL recipes for the top
 verbs (see §7).
 
+**Monthly adversarial review — retired 2026-10-21 (#452).** The cloud routine
+`trig_01CKRinRd9fXRFFguDt3Gn9Y` (cron `0 6 1 * *`) fired on 2026-08-01, 09-01 and 10-01 and
+produced no `docs/reviews/MONTHLY-REVIEW-*.md` and no pull request. Each run ended on the
+usage-limit error. Repairing it (a cheaper rotating seat, a later clock, a newer model) still
+depends on a budget that already failed three months running, so the routine is retired rather
+than rescheduled. Follow-ups from here are the open `maturity-2026-10` issues. This session
+cannot delete the trigger through the automations API; the owner deletes
+`trig_01CKRinRd9fXRFFguDt3Gn9Y` in the Cursor automations UI. Until that click, a firing run
+that again hits the usage limit changes nothing in the repo.
+
 ## 4. Availability & recovery (R-OPS-04)
 RTO ≤ 15 min: IaC/one-command redeploy, image pinned by digest, registry YAML + secrets in
 version-controlled/secret-managed form. Postgres runs **external to the BFF host** in the
@@ -279,6 +289,14 @@ BPMN comments before a start-tag scan, and the BFF re-validates every id. Versio
 PRs are Dependabot's job (§8), not a hand-filed duplicate per advisory.
 
 ## 8. CI gates — the authoritative merge-blocking list (R-OPS-06)
+**`main` ruleset (#449).** A repository ruleset requires the `ci.yml` check names (`lint`,
+`unit`, `frontend`, `e2e`, `docker`, and each `integration` matrix leg), requires the branch
+to be up to date, and blocks force-push, deletion, and a non-linear history. No approving
+review is required. Repository admins may bypass the pull-request rule only (emergency path,
+RUNBOOK §0). A direct `git push origin main` is rejected. `cut-release.yml` pushes a tag and
+then calls `release.yml`; the ruleset targets `refs/heads/main` only, so a tag push is not
+blocked. It is not re-dispatched here: a dispatch cuts a real release and publishes images.
+
 **Landed in `.github/workflows/ci.yml` (merge-blocking):** `lint` (Spotless/palantir) ·
 `unit` (backend build + unit suite incl. the **ArchUnit anti-flakiness rule**: `Thread.sleep`
 in any test class = build failure) · `frontend` (**ESLint strict-type-checked + Prettier**,
