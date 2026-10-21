@@ -8,15 +8,12 @@ import { Link, useParams } from 'react-router'
 import { useDefinitionVersions } from '../api/migrate'
 import { roleOn, useMe } from '../api/me'
 import { ActionHint } from '../components/ActionHint'
-import { useEngines } from '../api/useEngines'
 import { Breadcrumbs } from '../shell/Breadcrumbs'
 import { definitionVersionCrumbs } from '../shell/breadcrumbs'
 import { ProtectDefinitionModal } from './ProtectDefinitionModal'
 
 export function DefinitionVersionsPage() {
   const { engineId, key } = useParams<{ engineId: string; key: string }>()
-  const engines = useEngines()
-  const engineName = (engines.data ?? []).find((candidate) => candidate.id === engineId)?.name
   const versions = useDefinitionVersions(engineId ?? '', key)
   const me = useMe()
   const roleHint = roleOn(me.data, engineId ?? '')
@@ -28,7 +25,6 @@ export function DefinitionVersionsPage() {
       <Breadcrumbs
         segments={definitionVersionCrumbs({
           engineId: engineId ?? '',
-          engineName,
           definitionKey: key ?? '',
         })}
       />

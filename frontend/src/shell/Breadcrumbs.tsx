@@ -1,4 +1,3 @@
-import { Link } from 'react-router'
 import type { Crumb } from './breadcrumbs'
 
 export function Breadcrumbs({ segments }: { segments: Crumb[] }) {
@@ -13,7 +12,7 @@ export function Breadcrumbs({ segments }: { segments: Crumb[] }) {
               {last || segment.to === undefined ? (
                 <span aria-current={last ? 'page' : undefined}>{segment.label}</span>
               ) : (
-                <Link to={segment.to}>{segment.label}</Link>
+                <a href={segment.to}>{segment.label}</a>
               )}
             </li>
           )
