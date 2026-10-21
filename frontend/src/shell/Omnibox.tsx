@@ -65,12 +65,13 @@ export function Omnibox() {
   return (
     <form className="omnibox" onSubmit={submit} role="search">
       <input
+        id="omnibox"
         value={value}
         onChange={(event) => {
           setValue(event.target.value)
           setPanel(undefined)
         }}
-        placeholder="paste an instance / task / job ID or a business key…"
+        placeholder="Paste an ID or business key — ⌘K"
         aria-label="Resolve any pasted ID across engines, or search a business key"
         title={
           'Paste a composite "engine:id", a raw process/execution/task/job ID, or a ' +

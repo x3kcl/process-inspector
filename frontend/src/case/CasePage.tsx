@@ -15,6 +15,8 @@ import { Ts } from '../lib/Ts'
 import { CaseDeleteModal } from './CaseDeleteModal'
 import { CaseDiagramCanvas } from './CaseDiagramCanvas'
 import { PlanItemTimeline } from './PlanItemTimeline'
+import { Breadcrumbs } from '../shell/Breadcrumbs'
+import { caseCrumbs } from '../shell/breadcrumbs'
 import { useCaseDiagram, useCasePlanItems, useCaseVitals } from './useCaseQueries'
 
 /**
@@ -96,6 +98,14 @@ export function CasePage() {
 
   return (
     <div className="case-page">
+      <Breadcrumbs
+        segments={caseCrumbs({
+          engineId,
+          engineName: engine?.name,
+          caseLabel:
+            vitals.data?.caseDefinitionName ?? vitals.data?.caseDefinitionKey ?? caseInstanceId,
+        })}
+      />
       <header className="case-header">
         <div className="case-header-row">
           <Link to="/" className="case-back">

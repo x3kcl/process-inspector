@@ -11,6 +11,8 @@ import { formatSeconds } from '../lib/format'
 import { Ts } from '../lib/Ts'
 import { DetailTabBar } from './DetailTabBar'
 import { DiagramCanvas } from './DiagramCanvas'
+import { Breadcrumbs } from '../shell/Breadcrumbs'
+import { inspectCrumbs } from '../shell/breadcrumbs'
 import { restoreRouteFocus } from '../shell/routeFocus'
 import { instanceLoadFailureCopy } from './loadFailure'
 import type { DivergenceMarkerSet } from './comparison/diffFormat'
@@ -145,6 +147,15 @@ export function InspectPage() {
           }}
         />
       )}
+      <Breadcrumbs
+        segments={inspectCrumbs({
+          engineId,
+          engineName: engine?.name,
+          definitionKey: vitals.data?.definitionKey,
+          definitionVersion: vitals.data?.definitionVersion,
+          instanceId,
+        })}
+      />
       <header className="vitals">
         <div className="vitals-identity">
           <EnvBadge

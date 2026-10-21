@@ -639,7 +639,15 @@ any reachable engine" naming the engines. When no BPMN kind matches on a scope-c
 out-of-scope drawer must be answered truthfully (do-no-harm / never-lie). The row carries no
 `compositeId`/`processInstanceId` (a case is not a process instance), so the route is built from
 the engine id and the matched case id. Older engines can't discriminate scope, so a CMMN case is
-never *claimed* there; the honest not-found stands.
+never *claimed* there; the honest not-found stands. **⌘K / Ctrl+K** focuses the box from
+any page, including a text field; Esc returns focus to the element that had it. `?` (outside
+a field) opens a shortcut list generated from the same binding table the handler uses.
+
+Detail routes render a breadcrumb from the URL plus the loaded payload (`nav` labelled
+Breadcrumb, current page `aria-current="page"`). The current segment is not a link, so
+`?tab=` stays. Engine links use the search codec's `engines` param. Definition and version
+link to `/definitions/{engineId}/{key}/versions` and a version-scoped search. Case detail
+is engine › case. Admin engines is Admin › Engines. There is no per-engine admin route.
 
 ### 4b. Registry administration — runtime engine lifecycle *(v2)*
 
@@ -1334,7 +1342,9 @@ and would rewrite working M1/M2 code for no capability gain); Go/FastAPI/Kotlin 
   activation stays manual. After every route change focus lands on the new route's main
   heading or nearest surviving landmark — never `<body>`. Modals: focus trapped,
   cancel-focused, Esc per tier, focus returns to invoker or nearest survivor.
-  Keyboard-only path LENGTH is a first-class concern, served by skip controls (the
+  ⌘K / Ctrl+K focuses the header omnibox from anywhere; `?` opens the shortcut list.
+  Detail routes show a URL-derived breadcrumb (engine › definition › version › instance,
+  engine › case, Admin › Engines). Keyboard-only path LENGTH is a first-class concern, served by skip controls (the
   standard off-screen-until-focused pattern): a shell-level "Skip to main content" link
   bypasses the header gauntlet on every page, and the instance detail page — only while
   the instance actually holds dead-letter jobs — renders a "Skip to failed job" control
