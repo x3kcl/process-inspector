@@ -1,15 +1,23 @@
 package io.inspector.snapshot;
 
 import io.inspector.client.GuardedCaller.CallPriority;
+import io.inspector.client.ProcessApiClient;
+import io.inspector.client.ProcessApiClient.JobLaneKind;
+import io.inspector.config.InspectorProperties;
+import io.inspector.config.InspectorProperties.EngineConfig;
 import io.inspector.dto.TriageDashboardResponse;
 import io.inspector.dto.TriageDashboardResponse.PerEngineTriage;
+import io.inspector.registry.EngineRegistry;
 import io.inspector.triage.TriageAggregationService;
 import java.time.Clock;
+import java.time.Duration;
+import java.time.Instant;
 import java.util.ArrayList;
 import java.util.LinkedHashSet;
 import java.util.List;
 import java.util.Optional;
 import java.util.Set;
+import org.springframework.beans.factory.annotation.Autowired;
 import org.springframework.stereotype.Component;
 
 /**
@@ -25,10 +33,27 @@ public class PollingSnapshotSource implements SnapshotSource {
 
     private final TriageAggregationService aggregation;
     private final Clock clock;
+    private final ProcessApiClient flowable;
+    private final EngineRegistry registry;
+    private final InspectorProperties properties;
 
+    /** Tests that only exercise the status-chip sample. */
     public PollingSnapshotSource(TriageAggregationService aggregation, Clock clock) {
+        this(aggregation, clock, null, null, null);
+    }
+
+    @Autowired
+    public PollingSnapshotSource(
+            TriageAggregationService aggregation,
+            Clock clock,
+            ProcessApiClient flowable,
+            EngineRegistry registry,
+            InspectorProperties properties) {
         this.aggregation = aggregation;
         this.clock = clock;
+        this.flowable = flowable;
+        this.registry = registry;
+        this.properties = properties;
     }
 
     @Override
@@ -87,9 +112,45 @@ public class PollingSnapshotSource implements SnapshotSource {
             // scope cannot be a complete observation of anything.
             cycleComplete = false;
         }
+        appendHistoryAndThroughput(out, fleetEngineIds);
         List<io.inspector.dto.ErrorGroup> groups =
                 dashboard.errorGroups() != null ? dashboard.errorGroups() : List.of();
         return new AggregationSample(out, groups, clock.instant(), truncatedEngines, cycleComplete, fleetEngineIds);
+    }
+
+    /** Count-only, per engine. A missing route writes no row. One engine's failure does not drop the pass. */
+    private void appendHistoryAndThroughput(List<EngineLaneCount> out, Set<String> engineIds) {
+        if (flowable == null || registry == null) {
+            return;
+        }
+        Instant now = clock.instant();
+        Duration interval = properties == null
+                ? Duration.ofSeconds(60)
+                : properties.snapshotOrDefault().sampleIntervalOrDefault();
+        Instant after = now.minus(interval);
+        for (String id : engineIds) {
+            EngineConfig engine = registry.resolve(id).orElse(null);
+            if (engine == null) {
+                continue;
+            }
+            try {
+                Long history = flowable.countJobsIfSupported(engine, CallPriority.BACKGROUND, JobLaneKind.HISTORY);
+                if (history != null) {
+                    out.add(new EngineLaneCount(id, SnapshotLane.HISTORY_BACKLOG, history));
+                }
+                Long started = flowable.countHistoricProcesses(engine, CallPriority.BACKGROUND, after, now, true, true);
+                if (started != null) {
+                    out.add(new EngineLaneCount(id, SnapshotLane.PROC_STARTED, started));
+                }
+                Long finished =
+                        flowable.countHistoricProcesses(engine, CallPriority.BACKGROUND, after, now, false, true);
+                if (finished != null) {
+                    out.add(new EngineLaneCount(id, SnapshotLane.PROC_FINISHED, finished));
+                }
+            } catch (RuntimeException ignored) {
+                // status rows already recorded; this engine's extra lanes wait for the next pass
+            }
+        }
     }
 
     /** Maps a status-count key to its lane; skips any key not in the fixed lane set (defensive). */

@@ -1852,6 +1852,8 @@ export interface components {
         };
         EngineDto: {
             accentColor?: string;
+            advice?: string;
+            adviceLevel?: string;
             capabilities?: components["schemas"]["EngineCapabilities"];
             engineVersion?: string;
             environment?: string;
@@ -1865,8 +1867,14 @@ export interface components {
             /** Format: int64 */
             oldestExecutableJobAge?: number;
             /** Format: int64 */
+            oldestHistoryJobAge?: number;
+            /** Format: int64 */
             overdueTimers?: number;
             reachable?: boolean;
+            /** Format: int64 */
+            startedCurrent?: number;
+            /** Format: int64 */
+            startedReference?: number;
             tenantId?: string;
         };
         EngineLeakCount: {
@@ -2231,6 +2239,8 @@ export interface components {
             deadletter?: number;
             /** Format: int64 */
             executable?: number;
+            /** Format: int64 */
+            history?: number;
             /** Format: int64 */
             suspended?: number;
             /** Format: int64 */

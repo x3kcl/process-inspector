@@ -7,6 +7,10 @@ import io.inspector.client.ProcessApiClient;
 import io.inspector.client.ProcessApiClient.JobLaneKind;
 import io.inspector.config.InspectorProperties.EngineConfig;
 import io.inspector.registry.EngineHealth.JobLanes;
+import io.inspector.snapshot.SnapshotCount;
+import io.inspector.snapshot.SnapshotCountRepository;
+import io.inspector.snapshot.SnapshotLane;
+import io.inspector.snapshot.ThroughputComparison;
 import jakarta.annotation.PreDestroy;
 import java.time.Clock;
 import java.time.Duration;
@@ -14,7 +18,9 @@ import java.time.Instant;
 import java.time.OffsetDateTime;
 import java.time.format.DateTimeFormatter;
 import java.util.LinkedHashMap;
+import java.util.List;
 import java.util.Map;
+import java.util.concurrent.ConcurrentHashMap;
 import java.util.concurrent.ExecutorService;
 import java.util.concurrent.Future;
 import org.slf4j.Logger;
@@ -42,12 +48,16 @@ public class EngineHealthService {
     private final EngineRegistry registry;
     private final ProcessApiClient flowable;
     private final Clock clock;
+    private final SnapshotCountRepository snapshots;
+    private final Map<String, HealthAdvisor.Hold> advice = new ConcurrentHashMap<>();
     private final ExecutorService probePool = MdcPropagatingExecutors.newVirtualThreadPerTaskExecutor();
 
-    public EngineHealthService(EngineRegistry registry, ProcessApiClient flowable, Clock clock) {
+    public EngineHealthService(
+            EngineRegistry registry, ProcessApiClient flowable, Clock clock, SnapshotCountRepository snapshots) {
         this.registry = registry;
         this.flowable = flowable;
         this.clock = clock;
+        this.snapshots = snapshots;
     }
 
     /** fixedDelay is measured from cycle completion, so slow probes never overlap. */
@@ -108,18 +118,51 @@ public class EngineHealthService {
         try {
             EngineCapabilities capabilities = EngineCapabilities.fromVersion(
                     version, flowable.probeActivityHistory(engine, CallPriority.INTERACTIVE));
+            Long history = historyCount(engine);
+            Long historyAge = history != null && history > 0 ? oldestHistoryAgeSec(engine) : null;
             JobLanes lanes = new JobLanes(
                     flowable.countJobs(engine, CallPriority.INTERACTIVE, JobLaneKind.EXECUTABLE),
                     flowable.countJobs(engine, CallPriority.INTERACTIVE, JobLaneKind.TIMER),
                     flowable.countJobs(engine, CallPriority.INTERACTIVE, JobLaneKind.SUSPENDED),
-                    flowable.countJobs(engine, CallPriority.INTERACTIVE, JobLaneKind.DEADLETTER));
+                    flowable.countJobs(engine, CallPriority.INTERACTIVE, JobLaneKind.DEADLETTER),
+                    history);
             Long oldestAgeSec = oldestExecutableJobAgeSec(engine, lanes.executable());
             long overdueTimers = flowable.countOverdueTimers(
                     engine,
                     CallPriority.INTERACTIVE,
                     clock.instant().minusSeconds(engine.alarmsOrDefault().overdueTimerGraceSOrDefault()));
+            ThroughputComparison.Windows starts = starts(engine.id());
+            EngineHealth measured = new EngineHealth(
+                    true,
+                    version,
+                    null,
+                    clock.millis(),
+                    capabilities,
+                    lanes,
+                    oldestAgeSec,
+                    overdueTimers,
+                    historyAge,
+                    null,
+                    null,
+                    starts.current(),
+                    starts.referenceMedian());
+            HealthAdvisor.Hold hold = HealthAdvisor.step(
+                    advice.get(engine.id()), HealthAdvisor.raw(measured, starts.current(), starts.referenceMedian()));
+            advice.put(engine.id(), hold);
             return new EngineHealth(
-                    true, version, null, clock.millis(), capabilities, lanes, oldestAgeSec, overdueTimers);
+                    true,
+                    version,
+                    null,
+                    clock.millis(),
+                    capabilities,
+                    lanes,
+                    oldestAgeSec,
+                    overdueTimers,
+                    historyAge,
+                    hold.level().name(),
+                    hold.text(),
+                    starts.current(),
+                    starts.referenceMedian());
         } catch (Exception ex) {
             log.debug("Lane/capability probe degraded for {}: {}", engine.id(), ex.toString());
             return new EngineHealth(
@@ -151,6 +194,44 @@ public class EngineHealthService {
             return null;
         }
         return Math.max(0, Duration.between(reference, clock.instant()).toSeconds());
+    }
+
+    /** Null when the route is missing or the call fails. Never a fabricated 0. */
+    private Long historyCount(EngineConfig engine) {
+        try {
+            return flowable.countJobsIfSupported(engine, CallPriority.INTERACTIVE, JobLaneKind.HISTORY);
+        } catch (RuntimeException e) {
+            log.debug("History lane unavailable for {}: {}", engine.id(), e.toString());
+            return null;
+        }
+    }
+
+    private Long oldestHistoryAgeSec(EngineConfig engine) {
+        Map<String, Object> job = flowable.oldestHistoryJob(engine, CallPriority.INTERACTIVE);
+        if (job == null) {
+            return null;
+        }
+        Instant created = parseFlowableDate(job.get("createTime"));
+        if (created == null) {
+            return null;
+        }
+        return Math.max(0, Duration.between(created, clock.instant()).toSeconds());
+    }
+
+    /** Reads the snapshot store only. An empty series is "no history yet", not a zero trend. */
+    private ThroughputComparison.Windows starts(String engineId) {
+        try {
+            List<SnapshotCount> rows = snapshots.findByEngineIdAndLaneAndSampledAtGreaterThanEqualOrderBySampledAtDesc(
+                    engineId, SnapshotLane.PROC_STARTED, clock.instant().minus(Duration.ofHours(24)));
+            if (rows == null) {
+                return new ThroughputComparison.Windows(null, null);
+            }
+            return ThroughputComparison.of(
+                    rows.stream().map(SnapshotCount::getCount).toList(), 10);
+        } catch (RuntimeException e) {
+            log.debug("Throughput read failed for {}: {}", engineId, e.toString());
+            return new ThroughputComparison.Windows(null, null);
+        }
     }
 
     static Instant parseFlowableDate(Object value) {

@@ -67,7 +67,7 @@ Flowable has no `FAILED` instance state; failure lives in job queues. Status is 
 the BFF as **flags** (`ended`, `suspended`, `hasDeadLetterJobs`, `hasFailingJobs`,
 `failedInSubprocess`), because statuses genuinely collide (a suspended instance keeps its
 dead-letter jobs — retrying one then burns its retries against the suspended instance, so
-the retry verb checks suspension and offers activate-first).
+the retry verb checks suspension and offers activate-first). History jobs are a fifth strip lane when `management/history-jobs` exists; a missing route stays null, never 0. The sampler also stores `HISTORY_BACKLOG`, `PROC_STARTED`, and `PROC_FINISHED`.
 
 **Plan selection by requested status set:** - **FAILED-only searches drive from the DLQ** (inverted plan): page   `GET /management/deadletter-jobs` to exhaustion (bounded, `processDefinitionId` pushed down   when a definition filter is set), collect `processInstanceId`s, resolve call-activity   children up the `superProcessInstanceId` chain (**max-depth 10**, cycle-guarded — a   looping call-activity structure must not recurse the BFF), then hydrate via   `POST /query/historic-process-instances` with the `processInstanceIds` list. - **Mixed searches**: primary historic query per filters → per-page enrichment of exactly   the displayed rows: runtime state (suspended flag) via `/query/process-instances` with   `processInstanceIds`; DLQ membership via `GET /management/deadletter-jobs?processInstanceId=`   (bounded N+1 over one page, parallelized).
 
