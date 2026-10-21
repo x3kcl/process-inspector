@@ -35,7 +35,7 @@
          manages jackson-bom 2.21.4; drop this once Boot's managed version reaches >=2.21.7. -->
     <jackson-bom.version>2.21.7</jackson-bom.version>
     <resilience4j.version>2.4.0</resilience4j.version>
-    <springdoc.version>2.8.14</springdoc.version>
+    <springdoc.version>3.1.1</springdoc.version>
     <wiremock.version>3.13.2</wiremock.version>
     <archunit.version>1.4.2</archunit.version>
     <logstash-logback-encoder.version>7.4</logstash-logback-encoder.version>
