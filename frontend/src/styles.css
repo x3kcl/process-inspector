@@ -447,8 +447,9 @@ body {
   text-overflow: ellipsis;
   white-space: nowrap;
 }
-.engine-system-link {
-  color: var(--color-text-body);
+/* The card is always the dark surface. Body-text color fails contrast on it. */
+.engine-card .engine-system-link {
+  color: #a0aab5;
 }
 .lanes {
   display: flex;
