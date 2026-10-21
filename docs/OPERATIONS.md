@@ -42,7 +42,8 @@ R-SAFE-06/07 (REQUIREMENTS-REGISTER.md).
 - `/actuator/prometheus` (auth-gated). Metric set: `audit_insert_failures_total`,
   `engine_fanout_duration_seconds` (tags `engineId`,`leg`), `resilience4j_circuitbreaker_state`,
   `sse_emitters_active` + `sse_emitter_errors_total`, `bulk_jobs_running` +
-  `bulk_item_outcomes_total`, Hikari pool, JVM/virtual-thread pinning. Triage-cache **hit rate**
+  `bulk_item_outcomes_total`, `oidc_login_failures_total`, `snapshot_last_success_seconds`,
+  `audit_retention_purge_failures_total`, Hikari pool, JVM/virtual-thread pinning. Triage-cache **hit rate**
   (as opposed to age, which `GET /api/diag` reports) remains TARGET, not wired.
 - Structured JSON logs (the `oidc` profile only — see status note above); every request gets a
   `correlationId` (accept `X-Request-Id` or generate), MDC-propagated across the virtual-thread
