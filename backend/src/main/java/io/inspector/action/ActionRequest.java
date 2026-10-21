@@ -22,7 +22,38 @@ public record ActionRequest(
         List<TypedVariable> variables,
         EventTrigger event,
         Boolean includeProcessInstances,
-        String assignee) {
+        String assignee,
+        String dueDate,
+        String jobLane) {
+
+    /** Pre-#485 body. dueDate and jobLane stay null. */
+    public ActionRequest(
+            String reason,
+            String ticketId,
+            String confirmToken,
+            String jobId,
+            String taskId,
+            String executionId,
+            VariableEdit variable,
+            List<TypedVariable> variables,
+            EventTrigger event,
+            Boolean includeProcessInstances,
+            String assignee) {
+        this(
+                reason,
+                ticketId,
+                confirmToken,
+                jobId,
+                taskId,
+                executionId,
+                variable,
+                variables,
+                event,
+                includeProcessInstances,
+                assignee,
+                null,
+                null);
+    }
 
     public static ActionRequest empty() {
         return new ActionRequest(null, null, null, null, null, null, null, null, null, null, null);

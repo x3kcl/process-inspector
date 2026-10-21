@@ -15,6 +15,7 @@ class EngineCapabilitiesTest {
         assertThat(caps.externalWorkerJobs()).isFalse();
         assertThat(caps.scopeType()).isFalse();
         assertThat(caps.activityHistory()).isTrue(); // probed, not derived
+        assertThat(caps.timerReschedule()).isFalse();
     }
 
     @Test
@@ -40,19 +41,20 @@ class EngineCapabilitiesTest {
         assertThat(caps.migration()).isTrue();
         assertThat(caps.externalWorkerJobs()).isTrue();
         assertThat(caps.scopeType()).isTrue();
+        assertThat(caps.timerReschedule()).isFalse();
     }
 
     @Test
     void sevenXPassesAllCliffs() {
         EngineCapabilities caps = EngineCapabilities.fromVersion("7.1.0", true);
-        assertThat(caps).isEqualTo(new EngineCapabilities(true, true, true, true, true));
+        assertThat(caps).isEqualTo(new EngineCapabilities(true, true, true, true, true, true));
     }
 
     @Test
     void eightXPassesAllCliffs_sameAsSeven() {
         // flap :latest moved to Flowable 8; cliffs are major>6, so 8.x equals 7.x here.
         EngineCapabilities caps = EngineCapabilities.fromVersion("8.0.0", true);
-        assertThat(caps).isEqualTo(new EngineCapabilities(true, true, true, true, true));
+        assertThat(caps).isEqualTo(new EngineCapabilities(true, true, true, true, true, true));
     }
 
     @Test

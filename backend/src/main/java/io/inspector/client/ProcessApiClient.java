@@ -797,6 +797,46 @@ public class ProcessApiClient {
     }
 
     /** POST /management/timer-jobs/{jobId} {"action":"move"} — fire a timer now. */
+    public void rescheduleTimer(EngineConfig engine, CallPriority priority, String jobId, String dueDate) {
+        guarded.run(
+                engine,
+                priority,
+                "reschedule-timer",
+                () -> guarded.writeClient(engine)
+                        .post()
+                        .uri(JobLaneKind.TIMER.path + "/{jobId}", jobId)
+                        .contentType(MediaType.APPLICATION_JSON)
+                        .body(Map.of("action", "reschedule", "dueDate", dueDate))
+                        .retrieve()
+                        .toBodilessEntity());
+    }
+
+    public void moveDeadLetterToHistoryJob(EngineConfig engine, CallPriority priority, String jobId) {
+        guarded.run(
+                engine,
+                priority,
+                "move-to-history-job",
+                () -> guarded.writeClient(engine)
+                        .post()
+                        .uri(JobLaneKind.DEADLETTER.path + "/{jobId}", jobId)
+                        .contentType(MediaType.APPLICATION_JSON)
+                        .body(Map.of("action", "moveToHistoryJob"))
+                        .retrieve()
+                        .toBodilessEntity());
+    }
+
+    public void deleteJob(EngineConfig engine, CallPriority priority, JobLaneKind lane, String jobId) {
+        guarded.run(
+                engine,
+                priority,
+                "delete-job",
+                () -> guarded.writeClient(engine)
+                        .delete()
+                        .uri(lane.path + "/{jobId}", jobId)
+                        .retrieve()
+                        .toBodilessEntity());
+    }
+
     public void moveTimerJob(EngineConfig engine, CallPriority priority, String jobId) {
         guarded.run(
                 engine,

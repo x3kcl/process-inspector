@@ -12,6 +12,7 @@ import { InlineConfirm } from '../../actions/InlineConfirm'
 import { VERBS, actionGate, needsTwoStepConfirm } from '../../actions/catalog'
 import type { Gate } from '../../actions/catalog'
 import { problemBanner } from '../../actions/problem'
+import type { ActionProblem } from '../../actions/problem'
 import { ActionHint } from '../../components/ActionHint'
 import { CopyButton } from '../../components/CopyButton'
 import { CurlPreview } from '../../components/CurlPreview'
@@ -454,6 +455,18 @@ function JobActions({
     const deleteGate = gateFor(VERBS.deleteDeadletter)
     return (
       <>
+        {job.handlerType?.toLowerCase().includes('history') === true && (
+          <InlineConfirm
+            meta={VERBS.moveToHistoryJob}
+            gate={gateFor(VERBS.moveToHistoryJob)}
+            confirmText={`Move history job ${job.id ?? '?'} back to the history queue?`}
+            twoStep={needsTwoStepConfirm(VERBS.moveToHistoryJob, environment)}
+            pending={action.isPending && !deleteOpen}
+            onConfirm={() => {
+              run(VERBS.moveToHistoryJob.verb)
+            }}
+          />
+        )}
         <InlineConfirm
           meta={VERBS.retryJob}
           gate={gateFor(VERBS.retryJob)}
@@ -594,19 +607,40 @@ function JobActions({
               : "Skips the rest of the scheduled wait and continues immediately — this can't be given back."
           }
         />
+        <RescheduleTimer
+          enabled={engine?.capabilities?.timerReschedule === true}
+          version={engine?.engineVersion}
+          blocked={isRetryDelay}
+          onSubmit={(dueDate) => {
+            run(VERBS.rescheduleTimer.verb, undefined, { dueDate })
+          }}
+        />
       </>
     )
   }
 
-  if (lane === 'suspended') {
-    return (
-      <span className="value-muted" title="suspended jobs release when the instance is activated">
-        activate the instance
-      </span>
-    )
-  }
-
-  return <span className="value-muted">—</span>
+  return (
+    <DeleteJobButton
+      job={job}
+      lane={lane}
+      gate={gateFor(VERBS.deleteJob)}
+      environment={environment}
+      engineName={engine?.name ?? engineId}
+      pending={action.isPending}
+      problem={action.error?.problem}
+      onReset={() => {
+        action.reset()
+      }}
+      onConfirm={(reason, ticketId) => {
+        run(VERBS.deleteJob.verb, undefined, {
+          reason,
+          ticketId,
+          jobLane: lane,
+          confirmToken: environment?.toLowerCase() === 'prod' ? (job.id ?? undefined) : undefined,
+        })
+      }}
+    />
+  )
 }
 
 /**
@@ -614,6 +648,123 @@ function JobActions({
  * yet; this runtime probe lights the link up the moment the backend adds it to the
  * contract — and renders nothing until then (never a broken guess).
  */
+function RescheduleTimer({
+  enabled,
+  version,
+  blocked,
+  onSubmit,
+}: {
+  enabled: boolean
+  version: string | undefined
+  blocked: boolean
+  onSubmit: (dueDate: string) => void
+}) {
+  const [due, setDue] = useState('')
+  const reason = blocked
+    ? 'This timer is a failing job between retries. Reschedule would change that retry.'
+    : enabled
+      ? 'Wait until a different time'
+      : `needs Flowable 7.x (engine is ${version ?? 'unknown'})`
+  return (
+    <form
+      className="action-slot"
+      onSubmit={(event) => {
+        event.preventDefault()
+        if (due !== '') onSubmit(new Date(due).toISOString())
+      }}
+    >
+      <input
+        type="datetime-local"
+        aria-label="New due date"
+        value={due}
+        disabled={!enabled || blocked}
+        onChange={(event) => {
+          setDue(event.target.value)
+        }}
+      />
+      <button
+        type="submit"
+        className="copy-btn"
+        disabled={!enabled || blocked || due === ''}
+        title={reason}
+      >
+        Reschedule
+      </button>
+      {(!enabled || blocked) && <ActionHint text={reason} tone="gate" />}
+    </form>
+  )
+}
+
+function DeleteJobButton({
+  job,
+  lane,
+  gate,
+  environment,
+  engineName,
+  pending,
+  problem,
+  onReset,
+  onConfirm,
+}: {
+  job: JobDto
+  lane: string
+  gate: Gate
+  environment: string | undefined
+  engineName: string
+  pending: boolean
+  problem: ActionProblem | undefined
+  onReset: () => void
+  onConfirm: (reason: string, ticketId: string | undefined) => void
+}) {
+  const [open, setOpen] = useState(false)
+  return (
+    <>
+      <button
+        type="button"
+        className="copy-btn action-btn action-danger"
+        disabled={!gate.enabled}
+        title={gate.enabled ? VERBS.deleteJob.plain : (gate.detail ?? gate.reason)}
+        onClick={() => {
+          onReset()
+          setOpen(true)
+        }}
+      >
+        Delete
+      </button>
+      {open && (
+        <DestructiveModal
+          meta={VERBS.deleteJob}
+          environment={environment}
+          engineName={engineName}
+          target={
+            <ul className="modal-target-list">
+              <li>
+                {lane} job <code>{job.id}</code>
+              </li>
+              <li className="cascade-warning">
+                ⚠ Deleting this job can orphan the execution. There is no undo.
+              </li>
+            </ul>
+          }
+          cascade={{ victims: [] }}
+          expectedToken={job.id ?? ''}
+          tokenName="job id"
+          confirmLabel={`Delete ${lane} job ${job.id ?? '?'}`}
+          pending={pending}
+          problem={problem}
+          onConfirm={(reason, ticketId) => {
+            onConfirm(reason, ticketId)
+            setOpen(false)
+          }}
+          onClose={() => {
+            setOpen(false)
+          }}
+        />
+      )}
+    </>
+  )
+}
+
 function jobTelemetryUrl(job: JobDto): string | undefined {
   const candidate = (job as Record<string, unknown>)['telemetryUrl']
   return typeof candidate === 'string' && candidate !== '' ? candidate : undefined

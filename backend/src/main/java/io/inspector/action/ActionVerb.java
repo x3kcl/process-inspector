@@ -15,6 +15,8 @@ import java.util.Optional;
 public enum ActionVerb {
     RETRY_JOB("retry-job", 0, Role.RESPONDER, TargetKind.INSTANCE),
     TRIGGER_TIMER("trigger-timer", 0, Role.RESPONDER, TargetKind.INSTANCE),
+    RESCHEDULE_TIMER("reschedule-timer", 1, Role.OPERATOR, TargetKind.INSTANCE),
+    MOVE_TO_HISTORY_JOB("move-to-history-job", 0, Role.RESPONDER, TargetKind.INSTANCE),
     SUSPEND("suspend", 0, Role.RESPONDER, TargetKind.INSTANCE),
     ACTIVATE("activate", 0, Role.RESPONDER, TargetKind.INSTANCE),
     UNSTICK_EVENT("unstick-event", 1, Role.RESPONDER, TargetKind.INSTANCE),
@@ -24,6 +26,7 @@ public enum ActionVerb {
     UNASSIGN_TASK("unassign-task", 1, Role.OPERATOR, TargetKind.INSTANCE),
     TERMINATE_DELETE("terminate-delete", 3, Role.ADMIN, TargetKind.INSTANCE),
     DELETE_DEADLETTER("delete-deadletter", 3, Role.ADMIN, TargetKind.INSTANCE),
+    DELETE_JOB("delete-job", 3, Role.ADMIN, TargetKind.INSTANCE),
     SUSPEND_DEFINITION("suspend-definition", 3, Role.ADMIN, TargetKind.DEFINITION),
     ACTIVATE_DEFINITION("activate-definition", 3, Role.ADMIN, TargetKind.DEFINITION);
 
