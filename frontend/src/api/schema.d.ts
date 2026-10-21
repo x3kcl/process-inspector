@@ -549,6 +549,22 @@ export interface paths {
         patch?: never;
         trace?: never;
     };
+    "/api/cases/{engineId}/{caseInstanceId}/identitylinks": {
+        parameters: {
+            query?: never;
+            header?: never;
+            path?: never;
+            cookie?: never;
+        };
+        get: operations["identityLinks_2"];
+        put?: never;
+        post?: never;
+        delete?: never;
+        options?: never;
+        head?: never;
+        patch?: never;
+        trace?: never;
+    };
     "/api/cases/{engineId}/{caseInstanceId}/plan-items": {
         parameters: {
             query?: never;
@@ -837,6 +853,38 @@ export interface paths {
         patch?: never;
         trace?: never;
     };
+    "/api/instances/{engineId}/{instanceId}/decisions": {
+        parameters: {
+            query?: never;
+            header?: never;
+            path?: never;
+            cookie?: never;
+        };
+        get: operations["decisions"];
+        put?: never;
+        post?: never;
+        delete?: never;
+        options?: never;
+        head?: never;
+        patch?: never;
+        trace?: never;
+    };
+    "/api/instances/{engineId}/{instanceId}/decisions/{decisionExecutionId}/audit": {
+        parameters: {
+            query?: never;
+            header?: never;
+            path?: never;
+            cookie?: never;
+        };
+        get: operations["decisionAudit"];
+        put?: never;
+        post?: never;
+        delete?: never;
+        options?: never;
+        head?: never;
+        patch?: never;
+        trace?: never;
+    };
     "/api/instances/{engineId}/{instanceId}/diagram": {
         parameters: {
             query?: never;
@@ -869,6 +917,22 @@ export interface paths {
         patch?: never;
         trace?: never;
     };
+    "/api/instances/{engineId}/{instanceId}/executions": {
+        parameters: {
+            query?: never;
+            header?: never;
+            path?: never;
+            cookie?: never;
+        };
+        get: operations["executions"];
+        put?: never;
+        post?: never;
+        delete?: never;
+        options?: never;
+        head?: never;
+        patch?: never;
+        trace?: never;
+    };
     "/api/instances/{engineId}/{instanceId}/explain-status": {
         parameters: {
             query?: never;
@@ -893,6 +957,22 @@ export interface paths {
             cookie?: never;
         };
         get: operations["hierarchy"];
+        put?: never;
+        post?: never;
+        delete?: never;
+        options?: never;
+        head?: never;
+        patch?: never;
+        trace?: never;
+    };
+    "/api/instances/{engineId}/{instanceId}/identitylinks": {
+        parameters: {
+            query?: never;
+            header?: never;
+            path?: never;
+            cookie?: never;
+        };
+        get: operations["identityLinks_1"];
         put?: never;
         post?: never;
         delete?: never;
@@ -1865,6 +1945,19 @@ export interface components {
             /** Format: int32 */
             retries?: number;
         };
+        DecisionPage: {
+            available?: boolean;
+            capped?: boolean;
+            rows?: components["schemas"]["DecisionRow"][];
+        };
+        DecisionRow: {
+            activityId?: string;
+            decisionKey?: string;
+            endTime?: string;
+            failed?: boolean;
+            id?: string;
+            startTime?: string;
+        };
         DefinitionVersion: {
             definitionId?: string;
             deploymentId?: string;
@@ -1915,6 +2008,7 @@ export interface components {
         EngineCapabilities: {
             activityHistory?: boolean;
             changeState?: boolean;
+            dmnHistory?: boolean;
             externalWorkerJobs?: boolean;
             idm?: boolean;
             migration?: boolean;
@@ -2100,11 +2194,26 @@ export interface components {
             name?: string;
             type?: string;
         };
+        ExecutionNode: {
+            activityId?: string;
+            capped?: boolean;
+            /** Format: int32 */
+            childTotal?: number;
+            id?: string;
+            parentId?: string;
+            suspended?: boolean;
+        };
         ExecutionScope: {
             activityId?: string;
             executionId?: string;
             parentExecutionId?: string;
             variables?: components["schemas"]["VariableDto"][];
+        };
+        ExecutionTree: {
+            /** Format: int32 */
+            breadthCap?: number;
+            nodes?: components["schemas"]["ExecutionNode"][];
+            pageCapped?: boolean;
         };
         ExternalWorkerJobDto: {
             createTime?: string;
@@ -2539,6 +2648,15 @@ export interface components {
             proposalId?: number;
             status?: string;
             summary?: string;
+        };
+        ParticipantPage: {
+            rows?: components["schemas"]["ParticipantRow"][];
+            running?: boolean;
+        };
+        ParticipantRow: {
+            removable?: boolean;
+            type?: string;
+            user?: string;
         };
         PathActivity: {
             activityId?: string;
@@ -3984,6 +4102,31 @@ export interface operations {
             };
         };
     };
+    identityLinks_2: {
+        parameters: {
+            query?: never;
+            header?: never;
+            path: {
+                engineId: string;
+                caseInstanceId: string;
+            };
+            cookie?: never;
+        };
+        requestBody?: never;
+        responses: {
+            /** @description OK */
+            200: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "*/*": {
+                        [key: string]: unknown;
+                    }[];
+                };
+            };
+        };
+    };
     planItems: {
         parameters: {
             query?: never;
@@ -4428,6 +4571,55 @@ export interface operations {
             };
         };
     };
+    decisions: {
+        parameters: {
+            query?: never;
+            header?: never;
+            path: {
+                engineId: string;
+                instanceId: string;
+            };
+            cookie?: never;
+        };
+        requestBody?: never;
+        responses: {
+            /** @description OK */
+            200: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "*/*": components["schemas"]["DecisionPage"];
+                };
+            };
+        };
+    };
+    decisionAudit: {
+        parameters: {
+            query?: never;
+            header?: never;
+            path: {
+                engineId: string;
+                instanceId: string;
+                decisionExecutionId: string;
+            };
+            cookie?: never;
+        };
+        requestBody?: never;
+        responses: {
+            /** @description OK */
+            200: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "*/*": {
+                        [key: string]: unknown;
+                    };
+                };
+            };
+        };
+    };
     diagram: {
         parameters: {
             query?: never;
@@ -4475,6 +4667,29 @@ export interface operations {
             };
         };
     };
+    executions: {
+        parameters: {
+            query?: never;
+            header?: never;
+            path: {
+                engineId: string;
+                instanceId: string;
+            };
+            cookie?: never;
+        };
+        requestBody?: never;
+        responses: {
+            /** @description OK */
+            200: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "*/*": components["schemas"]["ExecutionTree"];
+                };
+            };
+        };
+    };
     explainStatus: {
         parameters: {
             query?: never;
@@ -4517,6 +4732,29 @@ export interface operations {
                 };
                 content: {
                     "*/*": components["schemas"]["InstanceHierarchy"];
+                };
+            };
+        };
+    };
+    identityLinks_1: {
+        parameters: {
+            query?: never;
+            header?: never;
+            path: {
+                engineId: string;
+                instanceId: string;
+            };
+            cookie?: never;
+        };
+        requestBody?: never;
+        responses: {
+            /** @description OK */
+            200: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "*/*": components["schemas"]["ParticipantPage"];
                 };
             };
         };

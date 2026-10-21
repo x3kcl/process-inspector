@@ -2,6 +2,7 @@ package io.inspector.registry;
 
 import io.github.resilience4j.circuitbreaker.CallNotPermittedException;
 import io.inspector.api.MdcPropagatingExecutors;
+import io.inspector.client.DmnApiClient;
 import io.inspector.client.GuardedCaller.CallPriority;
 import io.inspector.client.ProcessApiClient;
 import io.inspector.client.ProcessApiClient.JobLaneKind;
@@ -50,6 +51,7 @@ public class EngineHealthService {
 
     private final EngineRegistry registry;
     private final ProcessApiClient flowable;
+    private final DmnApiClient dmn;
     private final Clock clock;
     private final SnapshotCountRepository snapshots;
     private final StartByKeyRepository startKeys;
@@ -59,11 +61,13 @@ public class EngineHealthService {
     public EngineHealthService(
             EngineRegistry registry,
             ProcessApiClient flowable,
+            DmnApiClient dmn,
             Clock clock,
             SnapshotCountRepository snapshots,
             StartByKeyRepository startKeys) {
         this.registry = registry;
         this.flowable = flowable;
+        this.dmn = dmn;
         this.clock = clock;
         this.snapshots = snapshots;
         this.startKeys = startKeys;
@@ -131,9 +135,16 @@ public class EngineHealthService {
             } catch (RuntimeException ex) {
                 log.debug("IDM probe skipped for {}: {}", engine.id(), ex.toString());
             }
+            boolean dmnHistory = false;
+            try {
+                dmnHistory = dmn.probe(engine, CallPriority.INTERACTIVE);
+            } catch (RuntimeException ex) {
+                log.debug("DMN probe skipped for {}: {}", engine.id(), ex.toString());
+            }
             EngineCapabilities capabilities = EngineCapabilities.fromVersion(
                             version, flowable.probeActivityHistory(engine, CallPriority.INTERACTIVE))
-                    .withIdm(idm);
+                    .withIdm(idm)
+                    .withDmnHistory(dmnHistory);
             Long history = historyCount(engine);
             Long historyAge = history != null && history > 0 ? oldestHistoryAgeSec(engine) : null;
             JobLanes lanes = new JobLanes(

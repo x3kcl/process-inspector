@@ -382,6 +382,12 @@ public class CaseDetailService {
         return URLDecoder.decode(url.substring(at + "/resources/".length()), StandardCharsets.UTF_8);
     }
 
+    public List<Map<String, Object>> identityLinks(String engineId, String caseInstanceId) {
+        EngineConfig engine = registry.require(engineId);
+        CmmnCapabilities.requireScopeType(registry, engine);
+        return flowable.listCaseIdentityLinks(engine, CallPriority.INTERACTIVE, caseInstanceId);
+    }
+
     private static String str(Map<String, Object> row, String key) {
         if (row == null) {
             return null;

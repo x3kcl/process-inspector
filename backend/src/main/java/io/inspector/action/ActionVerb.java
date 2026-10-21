@@ -30,6 +30,8 @@ public enum ActionVerb {
     UPDATE_TASK("update-task", 1, Role.OPERATOR, TargetKind.INSTANCE),
     ADD_IDENTITY_LINK("add-identity-link", 1, Role.OPERATOR, TargetKind.INSTANCE),
     REMOVE_IDENTITY_LINK("remove-identity-link", 1, Role.OPERATOR, TargetKind.INSTANCE),
+    ADD_PARTICIPANT("add-participant", 1, Role.OPERATOR, TargetKind.INSTANCE),
+    REMOVE_PARTICIPANT("remove-participant", 1, Role.OPERATOR, TargetKind.INSTANCE),
     DELETE_TASK("delete-task", 3, Role.ADMIN, TargetKind.INSTANCE),
     TERMINATE_DELETE("terminate-delete", 3, Role.ADMIN, TargetKind.INSTANCE),
     DELETE_DEADLETTER("delete-deadletter", 3, Role.ADMIN, TargetKind.INSTANCE),

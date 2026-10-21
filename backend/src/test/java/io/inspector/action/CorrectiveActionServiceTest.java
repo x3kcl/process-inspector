@@ -906,4 +906,48 @@ class CorrectiveActionServiceTest {
                 .satisfies(e -> assertThat(((GuardRefusedException) e).code()).isEqualTo("not-delegated"));
         verify(client, never()).taskAction(any(), any(), anyString(), anyString(), any());
     }
+
+    @Test
+    void terminatePrefixesDeleteReasonWithActorAndTicket() {
+        when(client.getRuntimeProcessInstance(any(), eq(CallPriority.INTERACTIVE), eq("pi-1")))
+                .thenReturn(Map.of("id", "pi-1"));
+        ActionRequest request = new ActionRequest(
+                "customer asked to stop this", "INC-1", null, null, null, null, null, null, null, null, null);
+
+        service.execute(DEV, "pi-1", ActionVerb.TERMINATE_DELETE, request, operator);
+
+        verify(client)
+                .deleteProcessInstance(
+                        any(),
+                        eq(CallPriority.INTERACTIVE),
+                        eq("pi-1"),
+                        eq("inspector:op:INC-1:customer asked to stop this"));
+    }
+
+    @Test
+    void removeParticipantRefusesTheStarterLink() {
+        when(client.getRuntimeProcessInstance(any(), eq(CallPriority.INTERACTIVE), eq("pi-1")))
+                .thenReturn(Map.of("id", "pi-1"));
+        ActionRequest request = new ActionRequest(
+                null,
+                null,
+                null,
+                null,
+                null,
+                null,
+                null,
+                null,
+                null,
+                null,
+                null,
+                null,
+                null,
+                null,
+                new ActionRequest.IdentityLink("users", "kermit", "starter"));
+
+        assertThatThrownBy(() -> service.execute(DEV, "pi-1", ActionVerb.REMOVE_PARTICIPANT, request, operator))
+                .isInstanceOf(GuardRefusedException.class)
+                .satisfies(e -> assertThat(((GuardRefusedException) e).code()).isEqualTo("starter-link"));
+        verify(client, never()).deleteInstanceIdentityLink(any(), any(), anyString(), anyString(), anyString());
+    }
 }
