@@ -427,3 +427,17 @@ advisory, different dependency chain).
 
 **Doc deltas:** CLAUDE.md + SPECIFICATION.md §10 stack-pin lines (React 18→19, Router v7→v8).
 Closes #335, closes #310.
+
+---
+
+# Addendum 2026-10-21 — Competitive review: Flowable Control deprecation → Flowable Hub 2026.1
+
+**Trigger:** Flowable 2026.1 deprecates Flowable Control (removed from 2026.2, limited
+maintenance until 2027-12-31) and ships Flowable Hub as the successor. **Method:** vendor
+release notes + Hub/Control user guides, parity matrix against SPECIFICATION/PRODUCT-GUIDE,
+and a live REST-feasibility measurement on the 6.8.0 and 7.1.0 engines' own Swagger
+documents. **Outcome:** the Inspector leads on the incident loop and trails on lifecycle
+administration; ten catch-up epics + one decision were filed under tracking issue #481.
+One existing claim was refuted: timer reschedule IS available over REST on 7.x
+(`TimerJobActionRequest {action: reschedule, dueDate}`), not on 6.x — SPEC §11 to be corrected
+with #512. Full text: [reviews/COMPETITIVE-FLOWABLE-HUB-2026-10.md](reviews/COMPETITIVE-FLOWABLE-HUB-2026-10.md).
