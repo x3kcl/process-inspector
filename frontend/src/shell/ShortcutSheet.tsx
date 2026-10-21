@@ -29,9 +29,9 @@ export function ShortcutSheet({ onClose }: { onClose: () => void }) {
         aria-modal="true"
         aria-label="Keyboard shortcuts"
       >
-        <header className="modal-header">
+        <div className="modal-header">
           <h2>Keyboard shortcuts</h2>
-        </header>
+        </div>
         <div className="modal-body">
           <table className="shortcut-table">
             <thead>
@@ -54,11 +54,11 @@ export function ShortcutSheet({ onClose }: { onClose: () => void }) {
             </tbody>
           </table>
         </div>
-        <footer className="modal-footer">
+        <div className="modal-footer">
           <button ref={closeRef} type="button" onClick={onClose}>
             Close
           </button>
-        </footer>
+        </div>
       </div>
     </div>
   )
