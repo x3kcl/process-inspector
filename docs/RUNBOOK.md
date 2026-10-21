@@ -23,6 +23,11 @@ Deliverable per OPERATIONS §10 / SPEC §13. Deep background: OPERATIONS.md; who
   Deploys: single instance, accepted gap ≤ 2 min, announce in the support channel.
 - **Never** mitigate by pointing the Inspector at an engine database or by widening the
   path whitelist. Both are load-bearing security boundaries, not tuning knobs.
+- **`main` ruleset (#449).** Direct pushes, force-pushes, and branch deletion are rejected.
+  The emergency path is the repository-admin bypass on the pull-request rule: an admin can
+  merge a pull request when the required checks cannot run. It is not a license to push
+  straight to `main`. Turn the bypass off again after the incident. Prefer a revert pull
+  request once the runners are back.
 
 ## 1. "Inspector down" (liveness failing / connection refused)
 

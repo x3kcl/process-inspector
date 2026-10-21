@@ -1,0 +1,23 @@
+name: Feature
+description: A change to what the Inspector should do
+title: "[feature] "
+labels: ["enhancement"]
+body:
+  - type: textarea
+    attributes:
+      label: Need
+      description: Who hits this, and what they do today instead.
+    validations:
+      required: true
+  - type: textarea
+    attributes:
+      label: Proposed behavior
+      description: What the operator sees, and which existing rail it reuses (guard ladder, bulk job, audit).
+    validations:
+      required: true
+  - type: textarea
+    attributes:
+      label: Spec home
+      description: Which section of SPECIFICATION.md or ARCHITECTURE.md this would update.
+    validations:
+      required: false
