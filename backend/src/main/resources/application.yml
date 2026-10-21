@@ -55,6 +55,15 @@ management:
   metrics:
     tags:
       application: process-inspector
+  # Off unless an operator sets the flag and an OTLP endpoint (#470). The endpoint is an
+  # env ref. Span attributes are engineId and leg only — no variable values.
+  tracing:
+    enabled: ${INSPECTOR_TRACING_ENABLED:false}
+    sampling:
+      probability: ${INSPECTOR_TRACING_SAMPLE:0.01}
+  otlp:
+    tracing:
+      endpoint: ${OTEL_EXPORTER_OTLP_ENDPOINT:}
 
 spring:
   threads:

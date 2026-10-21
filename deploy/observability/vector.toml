@@ -1,0 +1,14 @@
+# Example shipper for the BFF's JSON logs (#471). Not started by the demo compose.
+# Point it at the backend container's stdout, or at a file the collector already has.
+# Sample query once the lines are in Loki/ClickHouse/etc.:
+#   {application="process-inspector"} | json | verb != "" | actor = "k.meier"
+# The stable fields are listed in docs/OPERATIONS.md §2.
+
+[sources.bff]
+type = "docker_logs"
+include_containers = ["backend"]
+
+[sinks.stdout]
+type = "console"
+inputs = ["bff"]
+encoding.codec = "json"

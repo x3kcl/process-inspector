@@ -50,6 +50,37 @@ R-SAFE-06/07 (REQUIREMENTS-REGISTER.md).
   confirmed with a dedicated propagation test), logged on every engine call, persisted on every
   audit row, returned in every error envelope and UI toast. Never log secrets or variable
   payloads at INFO.
+
+**Stable JSON fields (#471).** Present on the `oidc` encoder. Names do not change without an
+OPERATIONS edit. `correlationId` is the request id (the issue text's `requestId`). `traceId`
+is present only when tracing is enabled.
+
+| Field | Stable | Meaning |
+|---|---|---|
+| `correlationId` | yes | Request id. MDC, response header, audit row. |
+| `traceId` | yes, when tracing is on | W3C trace id from Micrometer. Empty when tracing is off. |
+| `level` | yes | Log level. |
+| `logger` | yes | Logger name. |
+| `application` | yes | Always `process-inspector`. |
+| `engineId` | when the line is an engine call | Engine slug. Not on every line. |
+| `actor` | when the line is an audit/security event | Acting user. Not a free-form request field. |
+
+Never a secret, a variable value, or an exception body that embeds a payload. That rule is
+DATA-CLASSIFICATION. The shipper example is `deploy/observability/vector.toml`. A corrective-action
+query against the JSON is `application="process-inspector"` and a verb field on the audit log,
+not on every line.
+
+**Dashboards (#469).** `deploy/grafana/dashboards/` holds fleet, BFF, and operations.
+`docker compose --profile observability up` from `docker/` starts Prometheus (scrape password
+from `INSPECTOR_DEV_PASSWORD`) and Grafana with anonymous view on `127.0.0.1:3000`. The three
+dashboards are provisioned. They read the metrics above. Cache hit rate is still not a meter,
+so it is not a panel.
+
+**Tracing (#470).** Off unless `INSPECTOR_TRACING_ENABLED=true` and `OTEL_EXPORTER_OTLP_ENDPOINT`
+is set. Default sample is 1% (`INSPECTOR_TRACING_SAMPLE`). Each `GuardedCaller` call is a span
+`engine.call` tagged `engineId` and `leg` only. The chokepoint does not know the corrective-action
+verb, so it cannot force 100% sampling on those calls; set the sample to 1 for an incident.
+No variable values on the span.
 - ADMIN diagnostics `GET /api/diag` (v1.x): breaker states, cache AGES, permit-pool saturation,
   last-N engine errors with correlationIds, build info. Door gate is "ADMIN on at least one
   engine"; per-engine sections are then filtered to engines the caller holds ADMIN on (see status

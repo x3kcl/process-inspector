@@ -7,6 +7,8 @@ import io.inspector.config.InspectorProperties.Auth;
 import io.inspector.config.InspectorProperties.EngineConfig;
 import io.micrometer.core.instrument.MeterRegistry;
 import io.micrometer.core.instrument.Timer;
+import io.micrometer.observation.Observation;
+import io.micrometer.observation.ObservationRegistry;
 import java.net.http.HttpClient;
 import java.nio.charset.StandardCharsets;
 import java.time.Duration;
@@ -14,6 +16,7 @@ import java.util.Map;
 import java.util.concurrent.ConcurrentHashMap;
 import java.util.function.Supplier;
 import java.util.regex.Pattern;
+import org.springframework.beans.factory.annotation.Autowired;
 import org.springframework.core.env.Environment;
 import org.springframework.http.client.JdkClientHttpRequestFactory;
 import org.springframework.stereotype.Component;
@@ -65,17 +68,32 @@ public class GuardedCaller {
     // Mutating calls get their own client so write-ms (R-NFR-07) budgets them separately.
     private final Map<String, RestClient> writeClients = new ConcurrentHashMap<>();
 
+    private final ObservationRegistry observations;
+
+    /** Tests pass no tracing registry. Spring uses the injected one (#470). */
     public GuardedCaller(
             Environment env,
             CircuitBreakerRegistry breakers,
             BulkheadRegistry bulkheads,
             MeterRegistry metrics,
             RecentEngineErrors recentErrors) {
+        this(env, breakers, bulkheads, metrics, recentErrors, ObservationRegistry.NOOP);
+    }
+
+    @Autowired
+    public GuardedCaller(
+            Environment env,
+            CircuitBreakerRegistry breakers,
+            BulkheadRegistry bulkheads,
+            MeterRegistry metrics,
+            RecentEngineErrors recentErrors,
+            ObservationRegistry observations) {
         this.env = env;
         this.breakers = breakers;
         this.bulkheads = bulkheads;
         this.metrics = metrics;
         this.recentErrors = recentErrors;
+        this.observations = observations;
     }
 
     /**
@@ -133,6 +151,14 @@ public class GuardedCaller {
      * regardless of which higher-level call raised them.
      */
     public <T> T call(EngineConfig engine, CallPriority priority, Supplier<T> op) {
+        // Tags are ids and lane names only. Never a variable value or an exception body (#470).
+        return Observation.createNotStarted("engine.call", observations)
+                .lowCardinalityKeyValue("engineId", engine.id())
+                .lowCardinalityKeyValue("leg", priority.name())
+                .observe(() -> callGuarded(engine, priority, op));
+    }
+
+    private <T> T callGuarded(EngineConfig engine, CallPriority priority, Supplier<T> op) {
         String name = priority.instanceName(engine.id());
         Timer.Sample sample = Timer.start(metrics);
         try {
