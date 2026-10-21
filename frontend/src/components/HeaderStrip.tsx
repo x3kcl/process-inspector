@@ -10,6 +10,7 @@ const LANE_TITLES: Record<string, string> = {
   timer: 'timer jobs',
   susp: 'suspended jobs',
   DLQ: 'dead-letter jobs',
+  hist: 'async history jobs',
 }
 
 // Client-side mirror of the default alarm thresholds (SPEC §4: >5 min warn) — display
@@ -92,6 +93,13 @@ function EngineCard({ engine }: { engine: EngineDto }) {
             <Lane label="timer" value={lanes.timer} />
             <Lane label="susp" value={lanes.suspended} />
             <Lane label="DLQ" value={lanes.deadletter} alarm={(lanes.deadletter ?? 0) > 0} />
+            {lanes.history == null ? (
+              <span className="lane" title="history jobs are not available on this engine">
+                hist n/a
+              </span>
+            ) : (
+              <Lane label="hist" value={lanes.history} />
+            )}
             {/* W2 #7 (T9): unit token — the lane numbers count JOBS; the triage tiles
                 below count INSTANCES. Never let the two read as the same family. */}
             <span className="count-unit" title="lane numbers are JOB counts, not instance counts">
@@ -116,6 +124,19 @@ function EngineCard({ engine }: { engine: EngineDto }) {
       {reachable && overdue !== undefined && overdue > 0 && (
         <span className="engine-alarm alarm-warn">
           ⚠ {formatCount(overdue)} overdue timer{overdue === 1 ? '' : 's'}
+        </span>
+      )}
+      {reachable && engine.adviceLevel != null && engine.adviceLevel !== 'OK' && (
+        <span className="engine-alarm alarm-warn" title={engine.advice}>
+          {engine.adviceLevel} — {engine.advice}
+        </span>
+      )}
+      {reachable && engine.startedCurrent != null && (
+        <span className="strip-note" title="root instances started in the current window">
+          started {formatCount(engine.startedCurrent)}
+          {engine.startedReference !== undefined
+            ? ` vs ref ${formatCount(engine.startedReference)}`
+            : ' — no history yet'}
         </span>
       )}
     </div>

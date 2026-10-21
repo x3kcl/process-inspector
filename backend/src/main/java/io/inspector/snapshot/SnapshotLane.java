@@ -17,5 +17,11 @@ public enum SnapshotLane {
     FAILED,
     RETRYING,
     /** The CMMN (or otherwise non-BPMN) dead-letters this engine's BPMN join excludes, ~6.8+. */
-    OUT_OF_SCOPE_DLQ
+    OUT_OF_SCOPE_DLQ,
+    /** Async-history backlog. No row when the engine has no history-jobs route. */
+    HISTORY_BACKLOG,
+    /** Root process instances started during the sample bucket. */
+    PROC_STARTED,
+    /** Root process instances finished during the sample bucket. */
+    PROC_FINISHED
 }

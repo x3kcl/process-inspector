@@ -30,7 +30,7 @@ Flowable Control, Conductor/Orkes, Airflow and Step Functions, and a four-seat d
   spells with a minimum-sample floor and hysteresis
   ([RETRYING-RISK-LANE.md](RETRYING-RISK-LANE.md) §4). Informational only: it never enables,
   disables, or softens any corrective action.
-- **Job lanes** — Flowable's four job queues: executable, timer, suspended, dead-letter.
+- **Job lanes** — Flowable's four job queues: executable, timer, suspended, dead-letter, plus history jobs when `management/history-jobs` exists (otherwise the strip says not available, never 0).
   The lane a job sits in IS the diagnosis. A **fifth lane — external-worker jobs** (v1.x #7,
   read-only, Flowable 6.8+ only) sits alongside them, capability-gated: it renders only on a
   supporting engine (`EngineCapabilities.externalWorkerJobs`) and its crux column is the

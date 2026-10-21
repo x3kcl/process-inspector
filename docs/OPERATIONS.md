@@ -77,6 +77,8 @@ from `INSPECTOR_DEV_PASSWORD`), Grafana with anonymous view on `127.0.0.1:3000`,
 OpenTelemetry collector, and Jaeger. The three dashboards are provisioned. They read the
 metrics above. Cache hit rate is still not a meter, so it is not a panel.
 
+**Health advisor (#511).** The strip shows OK / WARN / CRIT from sampled signals: unreachable, oldest executable job over 5 minutes, overdue timers, history backlog over 5 minutes, and a drop in root starts versus the median of recent snapshot windows. A warning clears only after two quieter probes. Thresholds match R-NFR-04 (5 minutes). Executor pool gauges are not on this banner until an engine metrics URL exists (#510).
+
 **Tracing (#470, #564, #565).** Off unless `INSPECTOR_TRACING_ENABLED=true` and
 `OTEL_EXPORTER_OTLP_ENDPOINT` is set. Default sample is 1% (`INSPECTOR_TRACING_SAMPLE`).
 Reads are span `engine.call`, tagged `engineId` and `leg`. Corrective actions are span

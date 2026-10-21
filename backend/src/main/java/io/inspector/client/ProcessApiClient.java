@@ -42,7 +42,9 @@ public class ProcessApiClient {
         EXECUTABLE("/management/jobs"),
         TIMER("/management/timer-jobs"),
         SUSPENDED("/management/suspended-jobs"),
-        DEADLETTER("/management/deadletter-jobs");
+        DEADLETTER("/management/deadletter-jobs"),
+        /** Async-history backlog. Absent on engines that predate the route — callers treat 404 as not available. */
+        HISTORY("/management/history-jobs");
 
         final String path;
 
@@ -568,6 +570,81 @@ public class ProcessApiClient {
                         .retrieve()
                         .body(FlowablePage.class));
         return page != null ? page.total() : 0;
+    }
+
+    /**
+     * Same count as {@link #countJobs}, or null when the route is missing. A missing history lane
+     * must not become 0 (#507).
+     */
+    public Long countJobsIfSupported(EngineConfig engine, CallPriority priority, JobLaneKind lane) {
+        try {
+            return countJobs(engine, priority, lane);
+        } catch (HttpClientErrorException.NotFound e) {
+            return null;
+        }
+    }
+
+    /** Oldest history job (createTime asc), or null when the lane is empty or the route is missing. */
+    public Map<String, Object> oldestHistoryJob(EngineConfig engine, CallPriority priority) {
+        try {
+            FlowablePage page = guarded.call(
+                    engine,
+                    priority,
+                    () -> guarded.readClient(engine)
+                            .get()
+                            .uri(uri -> uri.path(JobLaneKind.HISTORY.path)
+                                    .queryParam("size", 1)
+                                    .queryParam("sort", "createTime")
+                                    .queryParam("order", "asc")
+                                    .build())
+                            .retrieve()
+                            .body(FlowablePage.class));
+            List<Map<String, Object>> rows = page != null ? page.dataOrEmpty() : List.of();
+            return rows.isEmpty() ? null : rows.get(0);
+        } catch (HttpClientErrorException.NotFound e) {
+            return null;
+        }
+    }
+
+    /**
+     * Count-only historic process instances in a window. Null when the history route is missing.
+     * {@code started} selects startedAfter/Before; otherwise finishedAfter/Before.
+     */
+    public Long countHistoricProcesses(
+            EngineConfig engine,
+            CallPriority priority,
+            Instant after,
+            Instant before,
+            boolean started,
+            boolean rootOnly) {
+        String afterName = started ? "startedAfter" : "finishedAfter";
+        String beforeName = started ? "startedBefore" : "finishedBefore";
+        String afterIso =
+                after.truncatedTo(java.time.temporal.ChronoUnit.SECONDS).toString();
+        String beforeIso =
+                before.truncatedTo(java.time.temporal.ChronoUnit.SECONDS).toString();
+        try {
+            FlowablePage page = guarded.call(
+                    engine,
+                    priority,
+                    () -> guarded.readClient(engine)
+                            .get()
+                            .uri(uri -> {
+                                var builder = uri.path("/history/historic-process-instances")
+                                        .queryParam("size", 1)
+                                        .queryParam(afterName, afterIso)
+                                        .queryParam(beforeName, beforeIso);
+                                if (rootOnly) {
+                                    builder.queryParam("excludeSubprocesses", "true");
+                                }
+                                return builder.build();
+                            })
+                            .retrieve()
+                            .body(FlowablePage.class));
+            return page != null ? page.total() : 0L;
+        } catch (HttpClientErrorException.NotFound e) {
+            return null;
+        }
     }
 
     /** Oldest executable job row (dueDate asc), or null when the lane is empty. */
