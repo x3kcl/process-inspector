@@ -661,6 +661,22 @@ export interface paths {
         patch?: never;
         trace?: never;
     };
+    "/api/engines/{id}/system": {
+        parameters: {
+            query?: never;
+            header?: never;
+            path?: never;
+            cookie?: never;
+        };
+        get: operations["system"];
+        put?: never;
+        post?: never;
+        delete?: never;
+        options?: never;
+        head?: never;
+        patch?: never;
+        trace?: never;
+    };
     "/api/incidents": {
         parameters: {
             query?: never;
@@ -1876,6 +1892,7 @@ export interface components {
             /** Format: int64 */
             startedReference?: number;
             tenantId?: string;
+            throughput?: components["schemas"]["ThroughputBoard"];
         };
         EngineLeakCount: {
             /** Format: int64 */
@@ -1910,6 +1927,18 @@ export interface components {
             ok?: boolean;
             /** Format: int64 */
             total?: number;
+        };
+        EngineSystemInfo: {
+            engineId?: string;
+            executorInternals?: string;
+            failures?: string[];
+            metricsPresent?: string[];
+            metricsStatus?: string;
+            properties?: {
+                [key: string]: unknown;
+            };
+            tables?: components["schemas"]["TableCount"][];
+            version?: string;
         };
         EngineWriteOutcome: {
             eligibleApproverGroups?: string[];
@@ -2765,6 +2794,11 @@ export interface components {
             /** @enum {string} */
             status?: "ACTIVE" | "SUSPENDED" | "COMPLETED" | "FAILED" | "RETRYING";
         };
+        TableCount: {
+            /** Format: int64 */
+            count?: number;
+            name?: string;
+        };
         TargetActivity: {
             id?: string;
             name?: string;
@@ -2798,6 +2832,23 @@ export interface components {
             search?: string;
             /** Format: date-time */
             updatedAt?: string;
+        };
+        ThroughputBoard: {
+            casesStarted10m?: components["schemas"]["ThroughputTile"];
+            definitionKeysCapped?: boolean;
+            finishes10m?: components["schemas"]["ThroughputTile"];
+            starts10m?: components["schemas"]["ThroughputTile"];
+            starts1h?: components["schemas"]["ThroughputTile"];
+            starts24h?: components["schemas"]["ThroughputTile"];
+            tasksCompleted10m?: components["schemas"]["ThroughputTile"];
+            tasksCreated10m?: components["schemas"]["ThroughputTile"];
+            topDefinitionKeys?: string[];
+        };
+        ThroughputTile: {
+            /** Format: int64 */
+            current?: number;
+            /** Format: int64 */
+            reference?: number;
         };
         TimelineActivity: {
             activityId?: string;
@@ -3988,6 +4039,28 @@ export interface operations {
                 };
                 content: {
                     "*/*": components["schemas"]["EngineDto"][];
+                };
+            };
+        };
+    };
+    system: {
+        parameters: {
+            query?: never;
+            header?: never;
+            path: {
+                id: string;
+            };
+            cookie?: never;
+        };
+        requestBody?: never;
+        responses: {
+            /** @description OK */
+            200: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "*/*": components["schemas"]["EngineSystemInfo"];
                 };
             };
         };

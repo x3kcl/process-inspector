@@ -10,6 +10,9 @@ import io.inspector.registry.EngineHealth.JobLanes;
 import io.inspector.snapshot.SnapshotCount;
 import io.inspector.snapshot.SnapshotCountRepository;
 import io.inspector.snapshot.SnapshotLane;
+import io.inspector.snapshot.StartByKeyRepository;
+import io.inspector.snapshot.ThroughputBoard;
+import io.inspector.snapshot.ThroughputBoard.ThroughputTile;
 import io.inspector.snapshot.ThroughputComparison;
 import jakarta.annotation.PreDestroy;
 import java.time.Clock;
@@ -49,15 +52,21 @@ public class EngineHealthService {
     private final ProcessApiClient flowable;
     private final Clock clock;
     private final SnapshotCountRepository snapshots;
+    private final StartByKeyRepository startKeys;
     private final Map<String, HealthAdvisor.Hold> advice = new ConcurrentHashMap<>();
     private final ExecutorService probePool = MdcPropagatingExecutors.newVirtualThreadPerTaskExecutor();
 
     public EngineHealthService(
-            EngineRegistry registry, ProcessApiClient flowable, Clock clock, SnapshotCountRepository snapshots) {
+            EngineRegistry registry,
+            ProcessApiClient flowable,
+            Clock clock,
+            SnapshotCountRepository snapshots,
+            StartByKeyRepository startKeys) {
         this.registry = registry;
         this.flowable = flowable;
         this.clock = clock;
         this.snapshots = snapshots;
+        this.startKeys = startKeys;
     }
 
     /** fixedDelay is measured from cycle completion, so slow probes never overlap. */
@@ -131,7 +140,8 @@ public class EngineHealthService {
                     engine,
                     CallPriority.INTERACTIVE,
                     clock.instant().minusSeconds(engine.alarmsOrDefault().overdueTimerGraceSOrDefault()));
-            ThroughputComparison.Windows starts = starts(engine.id());
+            ThroughputBoard board = board(engine.id());
+            ThroughputTile starts10 = board.starts10m();
             EngineHealth measured = new EngineHealth(
                     true,
                     version,
@@ -144,10 +154,11 @@ public class EngineHealthService {
                     historyAge,
                     null,
                     null,
-                    starts.current(),
-                    starts.referenceMedian());
+                    starts10.current(),
+                    starts10.reference(),
+                    board);
             HealthAdvisor.Hold hold = HealthAdvisor.step(
-                    advice.get(engine.id()), HealthAdvisor.raw(measured, starts.current(), starts.referenceMedian()));
+                    advice.get(engine.id()), HealthAdvisor.raw(measured, starts10.current(), starts10.reference()));
             advice.put(engine.id(), hold);
             return new EngineHealth(
                     true,
@@ -161,8 +172,9 @@ public class EngineHealthService {
                     historyAge,
                     hold.level().name(),
                     hold.text(),
-                    starts.current(),
-                    starts.referenceMedian());
+                    starts10.current(),
+                    starts10.reference(),
+                    board);
         } catch (Exception ex) {
             log.debug("Lane/capability probe degraded for {}: {}", engine.id(), ex.toString());
             return new EngineHealth(
@@ -219,19 +231,44 @@ public class EngineHealthService {
     }
 
     /** Reads the snapshot store only. An empty series is "no history yet", not a zero trend. */
-    private ThroughputComparison.Windows starts(String engineId) {
+    private ThroughputBoard board(String engineId) {
+        Instant since = clock.instant().minus(Duration.ofDays(8));
+        ThroughputTile empty = new ThroughputTile(null, null);
         try {
-            List<SnapshotCount> rows = snapshots.findByEngineIdAndLaneAndSampledAtGreaterThanEqualOrderBySampledAtDesc(
-                    engineId, SnapshotLane.PROC_STARTED, clock.instant().minus(Duration.ofHours(24)));
-            if (rows == null) {
-                return new ThroughputComparison.Windows(null, null);
-            }
-            return ThroughputComparison.of(
-                    rows.stream().map(SnapshotCount::getCount).toList(), 10);
+            List<Object[]> totals =
+                    startKeys.totalsSince(engineId, clock.instant().minus(Duration.ofMinutes(10)));
+            List<String> keys = totals == null
+                    ? List.of()
+                    : totals.stream()
+                            .limit(10)
+                            .map(row -> String.valueOf(row[0]))
+                            .toList();
+            Integer flag = startKeys.cappedSince(engineId, clock.instant().minus(Duration.ofMinutes(10)));
+            return new ThroughputBoard(
+                    tile(engineId, SnapshotLane.PROC_STARTED, since, 10),
+                    tile(engineId, SnapshotLane.PROC_STARTED, since, 60),
+                    tile(engineId, SnapshotLane.PROC_STARTED, since, 1440),
+                    tile(engineId, SnapshotLane.PROC_FINISHED, since, 10),
+                    tile(engineId, SnapshotLane.TASK_CREATED, since, 10),
+                    tile(engineId, SnapshotLane.TASK_COMPLETED, since, 10),
+                    tile(engineId, SnapshotLane.CASE_STARTED, since, 10),
+                    keys,
+                    flag != null && flag > 0);
         } catch (RuntimeException e) {
             log.debug("Throughput read failed for {}: {}", engineId, e.toString());
-            return new ThroughputComparison.Windows(null, null);
+            return new ThroughputBoard(empty, empty, empty, empty, empty, empty, empty, List.of(), false);
         }
+    }
+
+    private ThroughputTile tile(String engineId, SnapshotLane lane, Instant since, int width) {
+        List<SnapshotCount> rows =
+                snapshots.findByEngineIdAndLaneAndSampledAtGreaterThanEqualOrderBySampledAtDesc(engineId, lane, since);
+        if (rows == null) {
+            return new ThroughputTile(null, null);
+        }
+        ThroughputComparison.Windows windows = ThroughputComparison.of(
+                rows.stream().map(SnapshotCount::getCount).toList(), width);
+        return new ThroughputTile(windows.current(), windows.referenceMedian());
     }
 
     static Instant parseFlowableDate(Object value) {

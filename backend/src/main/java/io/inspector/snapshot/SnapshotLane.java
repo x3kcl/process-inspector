@@ -23,5 +23,11 @@ public enum SnapshotLane {
     /** Root process instances started during the sample bucket. */
     PROC_STARTED,
     /** Root process instances finished during the sample bucket. */
-    PROC_FINISHED
+    PROC_FINISHED,
+    /** User tasks created during the sample bucket. No row when history tasks 404. */
+    TASK_CREATED,
+    /** User tasks completed during the sample bucket. */
+    TASK_COMPLETED,
+    /** CMMN cases started during the sample bucket. No row when the route is absent. */
+    CASE_STARTED
 }

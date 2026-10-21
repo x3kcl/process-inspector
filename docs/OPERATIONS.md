@@ -77,6 +77,10 @@ from `INSPECTOR_DEV_PASSWORD`), Grafana with anonymous view on `127.0.0.1:3000`,
 OpenTelemetry collector, and Jaeger. The three dashboards are provisioned. They read the
 metrics above. Cache hit rate is still not a meter, so it is not a panel.
 
+**System info (#509, #510).** `GET /api/engines/{id}/system` returns version, schema properties, and table counts. A viewer gets the version line only. Copy and download live on `/admin/engines/{id}/system`. Executor numbers appear only when the registry row's `metrics_url` is set and passes the egress check. Otherwise the page says the engine does not expose them. A scrape that lacks `flowable_jobs_async_total{type="rejected"}` does not invent a zero.
+
+**Throughput (#508).** The strip compares root starts over 10 minutes, 1 hour, and 24 hours with the median of earlier windows of the same width. Tasks and CMMN case starts are the 10-minute tile. No samples yet reads "no history yet".
+
 **Health advisor (#511).** The strip shows OK / WARN / CRIT from sampled signals: unreachable, oldest executable job over 5 minutes, overdue timers, history backlog over 5 minutes, and a drop in root starts versus the median of recent snapshot windows. A warning clears only after two quieter probes. Thresholds match R-NFR-04 (5 minutes). Executor pool gauges are not on this banner until an engine metrics URL exists (#510).
 
 **Tracing (#470, #564, #565).** Off unless `INSPECTOR_TRACING_ENABLED=true` and

@@ -38,6 +38,9 @@ const AuditLogPage = lazy(() =>
 const AdminEnginesPage = lazy(() =>
   import('./admin/AdminEnginesPage').then((m) => ({ default: m.AdminEnginesPage })),
 )
+const EngineSystemPage = lazy(() =>
+  import('./admin/EngineSystemPage').then((m) => ({ default: m.EngineSystemPage })),
+)
 const AdminAccessPage = lazy(() =>
   import('./admin/AdminAccessPage').then((m) => ({ default: m.AdminAccessPage })),
 )
@@ -132,6 +135,11 @@ const router = createBrowserRouter([
       {
         path: 'admin/engines',
         element: lazyRoute(<AdminEnginesPage />),
+        errorElement: chunkErrorElement,
+      },
+      {
+        path: 'admin/engines/:id/system',
+        element: lazyRoute(<EngineSystemPage />),
         errorElement: chunkErrorElement,
       },
       {

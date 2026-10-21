@@ -54,6 +54,7 @@ class HealthAdvisorTest {
                 null,
                 null,
                 null,
+                null,
                 null);
         HealthAdvisor.Signal signal = HealthAdvisor.raw(staleHistory, null, null);
         assertThat(signal.level()).isEqualTo(HealthAdvisor.Level.WARN);

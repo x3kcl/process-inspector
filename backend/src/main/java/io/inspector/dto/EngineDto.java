@@ -35,7 +35,8 @@ public record EngineDto(
         String adviceLevel,
         String advice,
         Long startedCurrent,
-        Long startedReference) {
+        Long startedReference,
+        io.inspector.snapshot.ThroughputBoard throughput) {
 
     /** Pre-#484 call sites. The history and advice legs stay null. */
     public EngineDto(
@@ -74,6 +75,7 @@ public record EngineDto(
                 null,
                 null,
                 null,
+                null,
                 null);
     }
 
@@ -101,6 +103,7 @@ public record EngineDto(
                 health.adviceLevel(),
                 health.advice(),
                 health.startedCurrent(),
-                health.startedReference());
+                health.startedReference(),
+                health.throughput());
     }
 }
