@@ -1,0 +1,181 @@
+name: Supply-chain scans
+description: >-
+  Trivy image and filesystem scans, CycloneDX SBOMs, dated npm-audit allowlist,
+  and base-image currency. Shared by nightly.yml (job name stays supply-chain)
+  and supply-chain-pr.yml. workflow_call would prefix the job name and break the
+  CI dashboard, so this is a composite action instead (#446).
+
+inputs:
+  image-tag:
+    description: Local image tag suffix. Include the run id — slots share one Docker daemon.
+    required: true
+  file-issue:
+    description: Upsert the nightly advisory issue when true.
+    required: true
+    default: "false"
+  dockerhub-username:
+    description: Docker Hub user. Empty skips the login (continue-on-error).
+    required: false
+    default: ""
+  dockerhub-token:
+    description: Docker Hub token.
+    required: false
+    default: ""
+
+runs:
+  using: composite
+  steps:
+    - name: Trivy DB mirror order
+      shell: bash
+      run: |
+        # Prefer ghcr. Default order is mirror.gcr.io then ghcr, but a transient 404
+        # on the GCR mirror aborts the step before the fallback is tried
+        # (nightly 37885847772). #436.
+        echo "TRIVY_DB_REPOSITORY=ghcr.io/aquasecurity/trivy-db:2,mirror.gcr.io/aquasec/trivy-db:2" >> "$GITHUB_ENV"
+        echo "TRIVY_JAVA_DB_REPOSITORY=ghcr.io/aquasecurity/trivy-java-db:1,mirror.gcr.io/aquasec/trivy-java-db:1" >> "$GITHUB_ENV"
+        mkdir -p supply-chain-reports
+    - uses: actions/setup-node@v4
+      with:
+        node-version: "22"
+        cache: npm
+        cache-dependency-path: frontend/package-lock.json
+    - name: Docker Hub login (rate-limit mitigation)
+      continue-on-error: true
+      uses: docker/login-action@v3
+      with:
+        username: ${{ inputs.dockerhub-username }}
+        password: ${{ inputs.dockerhub-token }}
+    - uses: docker/setup-buildx-action@v3
+    - name: Build BFF image (loaded locally for scanning, not pushed)
+      id: build_bff
+      uses: docker/build-push-action@v6
+      with:
+        context: .
+        push: false
+        load: true
+        tags: process-inspector:${{ inputs.image-tag }}
+        cache-from: type=gha
+        # The runtime stage's `apk upgrade` re-resolves against the live Alpine index
+        # ONLY if it is not served from cache. A warm cache replays a stale package
+        # set forever (nightly #66/#67, CVE-2026-14456). Scoped to the runtime stage.
+        no-cache-filters: runtime
+        cache-to: type=gha,mode=min,ignore-error=true
+    - name: Trivy image scan (HIGH/CRITICAL fixed-in-upstream vulns fail the run)
+      id: trivy_bff
+      uses: aquasecurity/trivy-action@v0.36.0
+      with:
+        image-ref: process-inspector:${{ inputs.image-tag }}
+        format: json
+        output: supply-chain-reports/trivy-bff.json
+        severity: HIGH,CRITICAL
+        ignore-unfixed: true
+        exit-code: "1"
+        trivyignores: backend/.trivyignore.yaml
+    - name: SBOM (CycloneDX) for the built image
+      id: sbom_bff
+      if: steps.build_bff.outcome == 'success'
+      uses: anchore/sbom-action@v0.22.0
+      with:
+        image: process-inspector:${{ inputs.image-tag }}
+        format: cyclonedx-json
+        output-file: sbom-image.cdx.json
+    - uses: actions/upload-artifact@v4
+      if: steps.build_bff.outcome == 'success'
+      with:
+        name: sbom-image
+        path: sbom-image.cdx.json
+        retention-days: 90
+    - name: Build web image (loaded locally for scanning, not pushed)
+      id: build_web
+      if: ${{ !cancelled() }}
+      uses: docker/build-push-action@v6
+      with:
+        context: frontend
+        push: false
+        load: true
+        tags: process-inspector-web:${{ inputs.image-tag }}
+        cache-from: type=gha
+        no-cache-filters: runtime
+        cache-to: type=gha,mode=min,ignore-error=true
+    - name: Trivy web-image scan (HIGH/CRITICAL fixed-in-upstream vulns fail the run)
+      id: trivy_web
+      if: steps.build_web.outcome == 'success'
+      uses: aquasecurity/trivy-action@v0.36.0
+      with:
+        image-ref: process-inspector-web:${{ inputs.image-tag }}
+        format: json
+        output: supply-chain-reports/trivy-web.json
+        severity: HIGH,CRITICAL
+        ignore-unfixed: true
+        exit-code: "1"
+    - name: SBOM (CycloneDX) for the built web image
+      id: sbom_web
+      if: steps.build_web.outcome == 'success'
+      uses: anchore/sbom-action@v0.22.0
+      with:
+        image: process-inspector-web:${{ inputs.image-tag }}
+        format: cyclonedx-json
+        output-file: sbom-web-image.cdx.json
+    - uses: actions/upload-artifact@v4
+      if: steps.build_web.outcome == 'success'
+      with:
+        name: sbom-web-image
+        path: sbom-web-image.cdx.json
+        retention-days: 90
+    - name: Base-image currency (drift vs Alpine stable + skew between our images)
+      id: base_currency
+      if: ${{ !cancelled() }}
+      shell: bash
+      run: bash scripts/check-base-image-currency.sh
+    - name: Backend dependency audit (Trivy fs scan of pom.xml, HIGH/CRITICAL hard-fails)
+      id: trivy_pom
+      if: ${{ !cancelled() }}
+      uses: aquasecurity/trivy-action@v0.36.0
+      with:
+        scan-type: fs
+        scan-ref: backend/pom.xml
+        format: json
+        output: supply-chain-reports/trivy-pom.json
+        severity: HIGH,CRITICAL
+        ignore-unfixed: true
+        exit-code: "1"
+        trivyignores: backend/.trivyignore.yaml
+    - name: Frontend dependency audit — Trivy fs scan (HIGH/CRITICAL hard-fails)
+      id: trivy_npm
+      if: ${{ !cancelled() }}
+      uses: aquasecurity/trivy-action@v0.36.0
+      with:
+        scan-type: fs
+        scan-ref: frontend/package-lock.json
+        format: json
+        output: supply-chain-reports/trivy-lock.json
+        severity: HIGH,CRITICAL
+        ignore-unfixed: true
+        exit-code: "1"
+        trivyignores: frontend/.trivyignore.yaml
+    - name: Frontend dependency audit (npm audit vs. the dated allowlist — issue #297)
+      id: npm_audit
+      if: ${{ !cancelled() }}
+      shell: bash
+      env:
+        SUPPLY_CHAIN_NPM_REPORT: supply-chain-reports/npm-audit.json
+      run: |
+        (cd frontend && npm ci)
+        node scripts/check-npm-audit-allowlist.mjs
+    - name: Advisory table and nightly issue
+      if: ${{ !cancelled() }}
+      shell: bash
+      env:
+        FILE_ISSUE: ${{ inputs.file-issue }}
+        SCAN_FAILED: ${{ steps.build_bff.outcome == 'failure' || steps.trivy_bff.outcome == 'failure' || steps.sbom_bff.outcome == 'failure' || steps.build_web.outcome == 'failure' || steps.trivy_web.outcome == 'failure' || steps.sbom_web.outcome == 'failure' || steps.base_currency.outcome == 'failure' || steps.trivy_pom.outcome == 'failure' || steps.trivy_npm.outcome == 'failure' || steps.npm_audit.outcome == 'failure' }}
+        RUN_URL: ${{ github.server_url }}/${{ github.repository }}/actions/runs/${{ github.run_id }}
+        GH_TOKEN: ${{ github.token }}
+        GITHUB_REPOSITORY: ${{ github.repository }}
+      run: |
+        args=(--dir supply-chain-reports)
+        if [ "$FILE_ISSUE" = "true" ]; then args+=(--file-issue); fi
+        node scripts/supply-chain-triage.mjs "${args[@]}"
+    - name: Remove local scan images
+      if: always()
+      shell: bash
+      run: docker image rm -f "process-inspector:${{ inputs.image-tag }}" "process-inspector-web:${{ inputs.image-tag }}" || true

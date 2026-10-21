@@ -17,7 +17,13 @@ on:
     # documented drop/skip of schedule triggers) clusters at :00, which is what skipped this
     # cron on 2026-07-22 (issue #290). nightly-watchdog.yml recovers a miss regardless.
     - cron: "17 2 * * *"
-  workflow_dispatch: {}
+  workflow_dispatch:
+    inputs:
+      triage-drill:
+        description: "off runs the suite. red/green only upserts the advisory issue (#447) and skips every other job."
+        type: choice
+        options: [off, red, green]
+        default: off
 
 concurrency:
   group: nightly
@@ -31,6 +37,7 @@ jobs:
   # OIDC resolver IT.
   container-its:
     runs-on: self-hosted
+    if: github.event_name != 'workflow_dispatch' || !contains(fromJSON('["red","green"]'), inputs.triage-drill)
     timeout-minutes: 40
     steps:
       - uses: actions/checkout@v4
@@ -71,6 +78,7 @@ jobs:
   # see the naming-collision note on issue #298).
   dlq-scan-cap-p2:
     runs-on: self-hosted
+    if: github.event_name != 'workflow_dispatch' || !contains(fromJSON('["red","green"]'), inputs.triage-drill)
     timeout-minutes: 15
     steps:
       - uses: actions/checkout@v4
@@ -95,6 +103,7 @@ jobs:
   # on issue #298).
   fanout-partial-failure-p1:
     runs-on: self-hosted
+    if: github.event_name != 'workflow_dispatch' || !contains(fromJSON('["red","green"]'), inputs.triage-drill)
     timeout-minutes: 15
     steps:
       - uses: actions/checkout@v4
@@ -113,6 +122,7 @@ jobs:
   # is a Testcontainers Postgres, so the compose postgres profile is only there for parity.
   engine-its:
     runs-on: self-hosted
+    if: github.event_name != 'workflow_dispatch' || !contains(fromJSON('["red","green"]'), inputs.triage-drill)
     timeout-minutes: 40
     env:
       COMPOSE_PROFILES: "flowable-6,postgres"
@@ -177,204 +187,55 @@ jobs:
         if: always()
         run: docker compose -p "$CI_PROJECT" -f docker/docker-compose.dev.yml down -v --remove-orphans || true
 
-  # Supply-chain gates (Q9/issue #93): image vuln scan, SBOM, and both dependency trees'
-  # audits. NOT merge-blocking (nightly-only) — a fresh CVE landing on an existing pinned
-  # version must not turn every in-flight PR red; it's triaged same as an IT failure.
+  # Supply-chain gates (Q9/issue #93, path-filtered PRs in #446). The steps live in
+  # .github/actions/supply-chain so this job's name stays `supply-chain` (CI dashboard).
+  # A fresh CVE must not redden unrelated PRs; PRs that touch a dependency or image input
+  # run the same action from supply-chain-pr.yml. A red run upserts one advisory issue
+  # (#447); a green run closes it.
   #
-  # Trivy DB caching: run 30207549362 hit this job's timeout (~30min) apparently on Trivy DB
-  # download slowness, vs. ~5min on the 05:42 run the same day. Checked whether a cache was
-  # missing before adding one: aquasecurity/trivy-action@v0.36.0 (pinned below, all three
-  # steps) already restores/saves the Trivy DB via `actions/cache` internally (its `cache`
-  # input defaults to `true`, unset here) keyed on the current UTC date — so the DB is
-  # already reused across same-day runs without any wiring in THIS workflow. The slow run was
-  # most likely a cache-miss cold pull (first run of a UTC day, or a cache eviction) hitting
-  # slow egress on this box, not an absent cache mechanism — left as-is per the trivy-action
-  # docs; do not add a second/duplicate `actions/cache` step around these Trivy steps.
+  # Trivy DB caching: aquasecurity/trivy-action@v0.36.0 (pinned in the action) already
+  # restores/saves the Trivy DB via actions/cache, keyed on the UTC date. Do not add a
+  # second cache step. Run 30207549362's timeout was a cold DB pull, not a missing cache.
   supply-chain:
     runs-on: self-hosted
+    if: github.event_name != 'workflow_dispatch' || !contains(fromJSON('["red","green"]'), inputs.triage-drill)
+    permissions:
+      contents: read
+      issues: write
+      actions: write
     timeout-minutes: 30
-    # Prefer ghcr for the Trivy vuln DB. Default order is mirror.gcr.io then ghcr, but a
-    # transient 404 on the GCR mirror aborts the step before the fallback is tried
-    # (nightly 37885847772 — frontend fs scan died mid-DB download). Putting ghcr first
-    # keeps the four Trivy steps from failing the whole job on a mirror blip.
-    env:
-      TRIVY_DB_REPOSITORY: ghcr.io/aquasecurity/trivy-db:2,mirror.gcr.io/aquasec/trivy-db:2
-      TRIVY_JAVA_DB_REPOSITORY: ghcr.io/aquasecurity/trivy-java-db:1,mirror.gcr.io/aquasec/trivy-java-db:1
     steps:
       - uses: actions/checkout@v4
-      # Mitigates Docker Hub 429s on the shared NAT pool (base images: maven, eclipse-temurin);
-      # skips cleanly when secrets are absent.
-      - name: Docker Hub login (rate-limit mitigation)
-        continue-on-error: true
-        uses: docker/login-action@v3
+      - uses: ./.github/actions/supply-chain
         with:
-          username: ${{ secrets.DOCKERHUB_USERNAME }}
-          password: ${{ secrets.DOCKERHUB_TOKEN }}
-      - uses: docker/setup-buildx-action@v3
-      - name: Build BFF image (loaded locally for scanning, not pushed)
-        uses: docker/build-push-action@v6
-        with:
-          context: .
-          push: false
-          load: true
-          tags: process-inspector:nightly-scan
-          cache-from: type=gha
-          # The runtime stage's `apk upgrade` re-resolves against the live Alpine index ONLY
-          # if it is not served from cache — its cache key is the literal command string, so
-          # a warm cache replays a stale package set forever. That is what reddened nightly
-          # #66/#67 on CVE-2026-14456: every layer logged `CACHED`, so the scanned image was
-          # a byte-identical replay of an older build and could never pick up the published
-          # openssl 3.5.8-r0. Scoped to the (small) runtime stage — the maven `build` stage
-          # keeps its cache, so this costs seconds, not the whole compile.
-          no-cache-filters: runtime
-          # Same GHA-cache-export-slowness timeout hit ci.yml's docker job 3x today
-          # (mode=max upload of build-stage layers stalling the "exporting to GitHub Actions
-          # Cache" step) — mode=min + ignore-error=true so a slow/broken cache service can
-          # never block this job either.
-          cache-to: type=gha,mode=min,ignore-error=true
-      - name: Trivy image scan (HIGH/CRITICAL fixed-in-upstream vulns fail the run)
-        uses: aquasecurity/trivy-action@v0.36.0
-        with:
-          image-ref: process-inspector:nightly-scan
-          severity: HIGH,CRITICAL
-          ignore-unfixed: true
-          exit-code: "1"
-          # Dated exceptions for jar-layer findings with no in-range OSS fix (currently
-          # CVE-2026-47884 — see backend/.trivyignore.yaml). Not shared with the web-image
-          # or frontend-lockfile steps.
-          trivyignores: backend/.trivyignore.yaml
-      - name: SBOM (CycloneDX) for the built image
-        uses: anchore/sbom-action@v0.22.0
-        with:
-          image: process-inspector:nightly-scan
-          format: cyclonedx-json
-          output-file: sbom-image.cdx.json
-      - uses: actions/upload-artifact@v4
-        if: always()
-        with:
-          name: sbom-image
-          path: sbom-image.cdx.json
-          retention-days: 90
-      # Web image, held to exactly the standard the BFF image above already is (issue
-      # #409). It was scanned by NOTHING until then, and shipped 35 fixable HIGH/CRITICAL
-      # findings (2 CRITICAL) to ghcr.io/Docker Hub and to the public demo — every one of
-      # them already patched upstream. Parity, not novelty: same build shape, same
-      # `no-cache-filters`, same scan flags, its own SBOM.
-      - name: Build web image (loaded locally for scanning, not pushed)
-        uses: docker/build-push-action@v6
-        with:
-          context: frontend
-          push: false
-          load: true
-          tags: process-inspector-web:nightly-scan
-          cache-from: type=gha
-          # Same reason as the BFF image above: the runtime stage's `apk upgrade` only
-          # re-resolves against the live Alpine index when it is not replayed from cache.
-          no-cache-filters: runtime
-          cache-to: type=gha,mode=min,ignore-error=true
-      - name: Trivy web-image scan (HIGH/CRITICAL fixed-in-upstream vulns fail the run)
-        uses: aquasecurity/trivy-action@v0.36.0
-        with:
-          image-ref: process-inspector-web:nightly-scan
-          severity: HIGH,CRITICAL
-          ignore-unfixed: true
-          exit-code: "1"
-      - name: SBOM (CycloneDX) for the built web image
-        uses: anchore/sbom-action@v0.22.0
-        with:
-          image: process-inspector-web:nightly-scan
-          format: cyclonedx-json
-          output-file: sbom-web-image.cdx.json
-      - uses: actions/upload-artifact@v4
-        if: always()
-        with:
-          name: sbom-web-image
-          path: sbom-web-image.cdx.json
-          retention-days: 90
-      # Base-image currency (issue #413) — the blind spot the scans above structurally
-      # cannot see. Both Trivy image steps scan AFTER `apk upgrade`, so a base that has
-      # aged but is still patchable scans GREEN: the drift is invisible precisely because
-      # the compensating mechanism works, and only becomes visible once a CVE lands that
-      # `apk upgrade` can no longer reach — i.e. after it is already a problem. That is how
-      # frontend/Dockerfile sat three Alpine minors behind the BFF (35 fixable HIGH/CRITICAL
-      # in the base as pulled) with every gate green, until #409/#411 went looking.
-      # Runs after the scans on purpose: a red here means "go bump a base within a day",
-      # which is nightly-shaped triage, not a push gate.
-      - name: Base-image currency (drift vs Alpine stable + skew between our images)
-        run: bash scripts/check-base-image-currency.sh
+          image-tag: scan-${{ github.run_id }}
+          file-issue: "true"
+          dockerhub-username: ${{ secrets.DOCKERHUB_USERNAME }}
+          dockerhub-token: ${{ secrets.DOCKERHUB_TOKEN }}
 
-      # Backend dependency audit: Trivy's filesystem scanner over pom.xml, NOT OWASP
-      # dependency-check-maven — tried that first, and a cold run against the real NVD API
-      # hard-failed with HTTP 429 after several minutes (confirmed empirically): NVD
-      # throttles unregistered callers hard, and this repo deliberately provisions no
-      # NVD_API_KEY (env-ref-only secrets, iron rule — a personal NVD registration isn't a
-      # credential worth adding just for this gate). Trivy ships its own vulnerability DB
-      # (pulled from a container registry, not the NVD API per-request), so it doesn't hit
-      # this wall; it's also the same tool already used for the image scan above.
-      - name: Backend dependency audit (Trivy fs scan of pom.xml, HIGH/CRITICAL hard-fails)
-        uses: aquasecurity/trivy-action@v0.36.0
-        with:
-          scan-type: fs
-          scan-ref: backend/pom.xml
-          severity: HIGH,CRITICAL
-          ignore-unfixed: true
-          exit-code: "1"
-          # Same dated-exception file as the BFF image scan above (jar vs pom are two gates
-          # over the same dependency set — keep them in lockstep).
-          trivyignores: backend/.trivyignore.yaml
-      # Dated-exception doctrine, extended to Trivy's leg (follow-up to #297): Trivy's fs
-      # scan of the lockfile is a SECOND, independent gate over the same data as the
-      # npm-audit allowlist gate below, and was never made allowlist-aware — it used to
-      # hard-fail on the identical GHSA-qwww-vcr4-c8h2 finding the npm-audit gate already
-      # allowlists. frontend/.trivyignore.yaml carries the matching dated exception (its own
-      # `expired_at` governs the gate the same way the npm allowlist's `expires` does — see
-      # that file's header for the verified expiry behavior). Scoped to THIS step only via
-      # `trivyignores` — never the image scan or the backend pom.xml fs scan above.
-      - name: Frontend dependency audit — Trivy fs scan (HIGH/CRITICAL hard-fails)
-        uses: aquasecurity/trivy-action@v0.36.0
-        with:
-          scan-type: fs
-          scan-ref: frontend/package-lock.json
-          severity: HIGH,CRITICAL
-          ignore-unfixed: true
-          exit-code: "1"
-          trivyignores: frontend/.trivyignore.yaml
+  # Synthetic red/green for #447. Does not build images. Default dispatch (off) skips this job.
+  supply-chain-triage-drill:
+    if: github.event_name == 'workflow_dispatch' && contains(fromJSON('["red","green"]'), inputs.triage-drill)
+    runs-on: self-hosted
+    permissions:
+      contents: read
+      issues: write
+    timeout-minutes: 10
+    steps:
+      - uses: actions/checkout@v4
       - uses: actions/setup-node@v4
         with:
           node-version: "22"
-          cache: npm
-          cache-dependency-path: frontend/package-lock.json
-      # A bare `npm audit --audit-level=high` goes permanently red the moment ANY high+
-      # advisory has no in-range fix (issue #297 — react-router's RSC-only CVE, and the
-      # @redocly/openapi-core -> minimatch -> brace-expansion chain stalled at a major
-      # boundary) — training the team to ignore this job entirely, which is worse than no
-      # gate. scripts/check-npm-audit-allowlist.mjs diffs the audit output against a
-      # checked-in, dated allowlist (frontend/npm-audit-allowlist.json): it still hard-fails
-      # on any high/critical advisory that ISN'T allowlisted, and additionally fails once an
-      # allowlist entry's own expiry date passes (even if the advisory is still unfixed) so
-      # an exception can't just sit there forever — someone has to re-look, re-check for a
-      # fresh in-range fix, and renew (new date + justification) or escalate. Runnable
-      # locally: `node scripts/check-npm-audit-allowlist.mjs` (needs `frontend/node_modules`
-      # from a prior `npm ci`).
-      - name: Frontend dependency audit (npm audit vs. the dated allowlist — issue #297)
-        run: |
-          (cd frontend && npm ci)
-          node scripts/check-npm-audit-allowlist.mjs
+      - name: Upsert the advisory issue from a synthetic result
+        env:
+          GH_TOKEN: ${{ github.token }}
+          GITHUB_REPOSITORY: ${{ github.repository }}
+          RUN_URL: ${{ github.server_url }}/${{ github.repository }}/actions/runs/${{ github.run_id }}
+        run: node scripts/supply-chain-triage.mjs --drill ${{ inputs.triage-drill }} --file-issue
 
-  # P1 performance gate (SPEC §2 R-NFR-01, issue #93 Part B): the FIX-REF-01 reference
-  # dataset (TEST-SCENARIOS.md §1.6 — 3 defs x 3 versions x 4 failure signatures, ~20k
-  # historic + 2k active, 5k dead-letter jobs matching each engine's dlq-scan-cap, 200
-  # suspended, tenants a/b) is what the k6 thresholds in perf-scenario-p1.js are calibrated
-  # against; a smaller dataset would under-test the DLQ-scan-driven search_failed bound.
-  # Own port block, resolved from the ACTUAL runner slot (#163) — never a hardcoded literal
-  # a concurrent job on that slot might also be using. The FALLBACK defaults below (used
-  # only on a slot-less runner, where no per-job disambiguation exists) stay their OWN
-  # disjoint set from engine-its' fallback, since both jobs run concurrently within the
-  # same nightly run.
-  # NOT merge-blocking, same as the rest of this workflow — a perf regression is triaged
-  # same as an IT failure, not a push gate.
   perf-p1:
     runs-on: self-hosted
+    if: github.event_name != 'workflow_dispatch' || !contains(fromJSON('["red","green"]'), inputs.triage-drill)
     timeout-minutes: 45
     env:
       COMPOSE_PROFILES: "flowable-6,postgres"

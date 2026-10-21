@@ -1,0 +1,104 @@
+# Weekly dependency PRs (#445). Minor+patch land as one PR per ecosystem.
+# Majors stay separate. Time is off :00 so it does not pile onto the nightly cron.
+# Public repo: Dependabot's own updater runs on GitHub-hosted runners (self-hosted
+# Dependabot runners are refused for public repositories). The PR it opens still
+# triggers ci.yml on the slot runners — see that workflow for the flap-leg skip.
+version: 2
+updates:
+  - package-ecosystem: maven
+    directory: /backend
+    schedule:
+      interval: weekly
+      day: monday
+      time: "06:17"
+      timezone: Etc/UTC
+    labels: [supply-chain]
+    open-pull-requests-limit: 10
+    groups:
+      minor-and-patch:
+        update-types: [minor, patch]
+    ignore:
+      # Boot 4 is a coordinated migration (#439, #440), not a lone parent bump.
+      - dependency-name: org.springframework.boot:spring-boot-starter-parent
+        update-types: [version-update:semver-major]
+
+  - package-ecosystem: npm
+    directory: /frontend
+    schedule:
+      interval: weekly
+      day: monday
+      time: "06:17"
+      timezone: Etc/UTC
+    labels: [supply-chain]
+    open-pull-requests-limit: 10
+    groups:
+      minor-and-patch:
+        update-types: [minor, patch]
+    ignore:
+      # #456 owns the 32 → 36 migration. Patch/minor on 32.x still flow.
+      - dependency-name: ag-grid-community
+        update-types: [version-update:semver-major]
+      - dependency-name: ag-grid-react
+        update-types: [version-update:semver-major]
+      # #457 bumps Vite, Vitest, plugin-react, jsdom and coverage-v8 together.
+      - dependency-name: vite
+        update-types: [version-update:semver-major]
+      - dependency-name: vitest
+        update-types: [version-update:semver-major]
+      - dependency-name: "@vitejs/plugin-react"
+        update-types: [version-update:semver-major]
+      - dependency-name: jsdom
+        update-types: [version-update:semver-major]
+      - dependency-name: "@vitest/coverage-v8"
+        update-types: [version-update:semver-major]
+      # #458 is an adopt-or-pin evaluation, not an automatic TypeScript 7 PR.
+      - dependency-name: typescript
+        update-types: [version-update:semver-major]
+      # Diagram canvases. Majors are a product change (SPEC watermark + viewer contract).
+      - dependency-name: bpmn-js
+        update-types: [version-update:semver-major]
+      - dependency-name: cmmn-js
+        update-types: [version-update:semver-major]
+
+  - package-ecosystem: github-actions
+    directory: /
+    schedule:
+      interval: weekly
+      day: monday
+      time: "06:17"
+      timezone: Etc/UTC
+    labels: [supply-chain]
+    open-pull-requests-limit: 10
+    groups:
+      minor-and-patch:
+        update-types: [minor, patch]
+
+  - package-ecosystem: docker
+    directory: /
+    schedule:
+      interval: weekly
+      day: monday
+      time: "06:17"
+      timezone: Etc/UTC
+    labels: [supply-chain]
+    open-pull-requests-limit: 5
+
+  - package-ecosystem: docker
+    directory: /frontend
+    schedule:
+      interval: weekly
+      day: monday
+      time: "06:17"
+      timezone: Etc/UTC
+    labels: [supply-chain]
+    open-pull-requests-limit: 5
+
+  - package-ecosystem: docker
+    directory: /docker/ci-runner
+    schedule:
+      interval: weekly
+      day: monday
+      time: "06:17"
+      timezone: Etc/UTC
+    labels: [supply-chain]
+    open-pull-requests-limit: 5
