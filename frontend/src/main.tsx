@@ -53,6 +53,9 @@ const DefinitionVersionsPage = lazy(() =>
 const PersonTaskSearchPage = lazy(() =>
   import('./tasks/PersonTaskSearchPage').then((m) => ({ default: m.PersonTaskSearchPage })),
 )
+const TaskBrowsePage = lazy(() =>
+  import('./tasks/TaskBrowsePage').then((m) => ({ default: m.TaskBrowsePage })),
+)
 const RemediationDemandPage = lazy(() =>
   import('./admin/RemediationDemandPage').then((m) => ({ default: m.RemediationDemandPage })),
 )
@@ -112,6 +115,11 @@ const router = createBrowserRouter([
       {
         path: 'tasks',
         element: lazyRoute(<PersonTaskSearchPage />),
+        errorElement: chunkErrorElement,
+      },
+      {
+        path: 'task-browser',
+        element: lazyRoute(<TaskBrowsePage />),
         errorElement: chunkErrorElement,
       },
       {

@@ -5,8 +5,9 @@ package io.inspector.registry;
  * tools out per engine with a reason; the BFF rejects gated calls — never a confusing
  * 404 from the engine.
  *
- * Four flags fall out of version cliffs; {@code activityHistory} is probed because the
- * engine's history level is configuration, not version.
+ * Four flags fall out of version cliffs. {@code activityHistory} and {@code idm} are probed:
+ * history level and whether the REST app bundles IDM are configuration, not version. A missing
+ * IDM route is "not exposed", never "user does not exist".
  */
 public record EngineCapabilities(
         boolean changeState, // POST .../change-state — Flowable ≥ 6.4
@@ -14,8 +15,19 @@ public record EngineCapabilities(
         boolean externalWorkerJobs, // external-worker job queue — Flowable ≥ 6.8
         boolean scopeType, // scopeType field on job rows — Flowable ≥ 6.8
         boolean activityHistory, // history level records activities (probed, not derived)
-        boolean timerReschedule // POST timer-jobs reschedule — Flowable ≥ 7.0
+        boolean timerReschedule, // POST timer-jobs reschedule — Flowable ≥ 7.0
+        boolean idm // GET /identity/users — probed; false means the check is skipped
         ) {
+    public EngineCapabilities(
+            boolean changeState,
+            boolean migration,
+            boolean externalWorkerJobs,
+            boolean scopeType,
+            boolean activityHistory,
+            boolean timerReschedule) {
+        this(changeState, migration, externalWorkerJobs, scopeType, activityHistory, timerReschedule, false);
+    }
+
     public EngineCapabilities(
             boolean changeState,
             boolean migration,
@@ -23,6 +35,12 @@ public record EngineCapabilities(
             boolean scopeType,
             boolean activityHistory) {
         this(changeState, migration, externalWorkerJobs, scopeType, activityHistory, false);
+    }
+
+    /** Copy with the probed IDM flag. Version cliffs do not know whether IDM is installed. */
+    public EngineCapabilities withIdm(boolean idm) {
+        return new EngineCapabilities(
+                changeState, migration, externalWorkerJobs, scopeType, activityHistory, timerReschedule, idm);
     }
 
     public static EngineCapabilities none() {

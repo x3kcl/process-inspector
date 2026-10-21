@@ -440,6 +440,14 @@ public class CorrectiveActionService {
                 case COMPLETE_TASK -> taskTarget(engine, targetId, required(request.taskId(), "taskId"), request);
                 case REASSIGN_TASK, UNASSIGN_TASK ->
                     taskAssignTarget(engine, verb, targetId, required(request.taskId(), "taskId"), request);
+                case CLAIM_TASK,
+                        DELEGATE_TASK,
+                        RESOLVE_TASK,
+                        UPDATE_TASK,
+                        ADD_IDENTITY_LINK,
+                        REMOVE_IDENTITY_LINK,
+                        DELETE_TASK ->
+                    taskAdminTarget(engine, verb, targetId, required(request.taskId(), "taskId"), request);
                 case UNSTICK_EVENT -> executionTarget(engine, targetId, request);
                 case SUSPEND_DEFINITION, ACTIVATE_DEFINITION -> definitionTarget(engine, targetId, request);
             };
@@ -658,6 +666,9 @@ public class CorrectiveActionService {
         String newAssignee = verb == ActionVerb.REASSIGN_TASK
                 ? required(request.assignee(), "assignee").strip()
                 : null;
+        if (verb == ActionVerb.REASSIGN_TASK) {
+            requireIdentity(engine, "users", newAssignee);
+        }
         Map<String, Object> payload = new LinkedHashMap<>();
         payload.put("schema", verb.path() + "/v1");
         payload.put("taskId", taskId);
@@ -666,6 +677,181 @@ public class CorrectiveActionService {
         payload.put("newAssignee", newAssignee);
         // #184: free — the task response already carries processDefinitionId.
         return new Target(payload, taskId, "task id", null, definitionKeyOf(task.get("processDefinitionId")));
+    }
+
+    /**
+     * Claim, delegate, resolve, property update, identity-link edit, and delete. The live task
+     * read is the active-task gate. IDM is consulted only when the probe said the engine bundles
+     * it — a missing IDM route is not "user missing".
+     */
+    private Target taskAdminTarget(
+            EngineConfig engine, ActionVerb verb, String instanceId, String taskId, ActionRequest request) {
+        Map<String, Object> task = liveTask(engine, instanceId, taskId);
+        Map<String, Object> payload = new LinkedHashMap<>();
+        payload.put("schema", verb.path() + "/v1");
+        payload.put("taskId", taskId);
+        payload.put("taskName", task.get("name"));
+        switch (verb) {
+            case CLAIM_TASK -> {
+                String assignee = blankToNull(request.assignee());
+                if (assignee != null) {
+                    requireIdentity(engine, "users", assignee);
+                }
+                payload.put("oldAssignee", task.get("assignee"));
+                payload.put("newAssignee", assignee);
+            }
+            case DELEGATE_TASK -> {
+                String assignee = required(request.assignee(), "assignee").strip();
+                requireIdentity(engine, "users", assignee);
+                payload.put("oldAssignee", task.get("assignee"));
+                payload.put("newAssignee", assignee);
+            }
+            case RESOLVE_TASK -> {
+                Object state = task.get("delegationState");
+                if (state == null || !"pending".equalsIgnoreCase(String.valueOf(state))) {
+                    throw new GuardRefusedException(
+                            HttpStatus.BAD_REQUEST,
+                            "not-delegated",
+                            "Task " + taskId + " is not delegated. Delegate it first. Nothing happened.");
+                }
+                payload.put("delegationState", state);
+            }
+            case UPDATE_TASK -> payload.put("changes", taskChanges(engine, task, request));
+            case ADD_IDENTITY_LINK, REMOVE_IDENTITY_LINK -> payload.put("link", checkedLink(engine, verb, request));
+            case DELETE_TASK -> payload.put("processInstanceId", task.get("processInstanceId"));
+            default -> throw new IllegalStateException("not a task-admin verb: " + verb);
+        }
+        String token = verb == ActionVerb.DELETE_TASK ? taskId : null;
+        return new Target(payload, token, "task id", null, definitionKeyOf(task.get("processDefinitionId")));
+    }
+
+    private Map<String, Object> liveTask(EngineConfig engine, String instanceId, String taskId) {
+        Map<String, Object> task = client.getTask(engine, CallPriority.INTERACTIVE, taskId);
+        if (task == null) {
+            throw new GuardRefusedException(
+                    HttpStatus.NOT_FOUND,
+                    "task-gone",
+                    "Task " + taskId + " is not open (already completed?). Nothing happened.");
+        }
+        Object owner = task.get("processInstanceId");
+        if (owner != null && !instanceId.equals(String.valueOf(owner))) {
+            throw new GuardRefusedException(
+                    HttpStatus.BAD_REQUEST,
+                    "task-instance-mismatch",
+                    "Task " + taskId + " belongs to instance " + owner + ", not " + instanceId + ".");
+        }
+        return task;
+    }
+
+    /** Skip the lookup when IDM was not probed present. Never treat "IDM absent" as "user missing". */
+    private void requireIdentity(EngineConfig engine, String family, String identityId) {
+        var caps = registry.healthOf(engine.id()).capabilities();
+        if (caps == null || !caps.idm() || identityId == null || identityId.isBlank()) {
+            return;
+        }
+        if (!client.idmIdentityExists(engine, CallPriority.INTERACTIVE, family, identityId)) {
+            String kind = "groups".equals(family) ? "Group" : "User";
+            throw new GuardRefusedException(
+                    HttpStatus.BAD_REQUEST,
+                    "identity-missing",
+                    kind + " '" + identityId + "' is not in this engine's IDM. Nothing happened.");
+        }
+    }
+
+    private Map<String, Object> taskChanges(EngineConfig engine, Map<String, Object> task, ActionRequest request) {
+        ActionRequest.TaskPatch patch = request.task();
+        if (patch == null) {
+            throw missingField("task");
+        }
+        Map<String, Object> changes = new LinkedHashMap<>();
+        putChange(changes, "name", task, patch.name());
+        putChange(changes, "description", task, patch.description());
+        putChange(changes, "owner", task, patch.owner());
+        putChange(changes, "dueDate", task, patch.dueDate());
+        putChange(changes, "category", task, patch.category());
+        if (patch.priority() != null) {
+            Map<String, Object> pair = new LinkedHashMap<>();
+            pair.put("old", task != null ? task.get("priority") : null);
+            pair.put("new", patch.priority());
+            changes.put("priority", pair);
+        }
+        if (changes.isEmpty()) {
+            throw new GuardRefusedException(
+                    HttpStatus.BAD_REQUEST, "task-patch-empty", "Name a field to change. Nothing happened.");
+        }
+        if (patch.dueDate() != null && !patch.dueDate().isBlank()) {
+            try {
+                java.time.Instant.parse(patch.dueDate());
+            } catch (RuntimeException e) {
+                throw new GuardRefusedException(
+                        HttpStatus.BAD_REQUEST, "due-date-invalid", "Due date must be an ISO-8601 instant.");
+            }
+        }
+        if (patch.owner() != null && !patch.owner().isBlank()) {
+            requireIdentity(engine, "users", patch.owner().strip());
+        }
+        return changes;
+    }
+
+    private static void putChange(
+            Map<String, Object> changes, String field, Map<String, Object> task, String incoming) {
+        if (incoming == null) {
+            return;
+        }
+        Map<String, Object> pair = new LinkedHashMap<>();
+        pair.put("old", task != null ? task.get(field) : null);
+        pair.put("new", incoming);
+        changes.put(field, pair);
+    }
+
+    private Map<String, Object> checkedLink(EngineConfig engine, ActionVerb verb, ActionRequest request) {
+        ActionRequest.IdentityLink link = request.link();
+        if (link == null) {
+            throw missingField("link");
+        }
+        String family = link.family();
+        if (!"users".equals(family) && !"groups".equals(family)) {
+            throw new GuardRefusedException(
+                    HttpStatus.BAD_REQUEST, "link-family-invalid", "link.family must be users or groups.");
+        }
+        String identityId = required(link.identityId(), "link.identityId").strip();
+        String type =
+                blankToNull(link.type()) == null ? "candidate" : link.type().strip();
+        if (!"candidate".equals(type) && !"assignee".equals(type) && !"owner".equals(type)) {
+            throw new GuardRefusedException(
+                    HttpStatus.BAD_REQUEST, "link-type-invalid", "link.type must be candidate, assignee or owner.");
+        }
+        if (verb == ActionVerb.ADD_IDENTITY_LINK) {
+            requireIdentity(engine, family, identityId);
+        }
+        Map<String, Object> body = new LinkedHashMap<>();
+        body.put("family", family);
+        body.put("identityId", identityId);
+        body.put("type", type);
+        return body;
+    }
+
+    private static Map<String, Object> taskWriteBody(ActionRequest.TaskPatch patch) {
+        Map<String, Object> body = new LinkedHashMap<>();
+        if (patch.name() != null) {
+            body.put("name", blankToNull(patch.name()));
+        }
+        if (patch.description() != null) {
+            body.put("description", blankToNull(patch.description()));
+        }
+        if (patch.owner() != null) {
+            body.put("owner", blankToNull(patch.owner()));
+        }
+        if (patch.dueDate() != null) {
+            body.put("dueDate", blankToNull(patch.dueDate()));
+        }
+        if (patch.category() != null) {
+            body.put("category", blankToNull(patch.category()));
+        }
+        if (patch.priority() != null) {
+            body.put("priority", patch.priority());
+        }
+        return body;
     }
 
     private Target executionTarget(EngineConfig engine, String instanceId, ActionRequest request) {
@@ -781,6 +967,44 @@ public class CorrectiveActionService {
                         request.taskId(),
                         request.assignee().strip());
             case UNASSIGN_TASK -> client.setTaskAssignee(engine, CallPriority.INTERACTIVE, request.taskId(), null);
+            case CLAIM_TASK ->
+                client.taskAction(
+                        engine, CallPriority.INTERACTIVE, request.taskId(), "claim", blankToNull(request.assignee()));
+            case DELEGATE_TASK ->
+                client.taskAction(
+                        engine,
+                        CallPriority.INTERACTIVE,
+                        request.taskId(),
+                        "delegate",
+                        required(request.assignee(), "assignee").strip());
+            case RESOLVE_TASK -> client.taskAction(engine, CallPriority.INTERACTIVE, request.taskId(), "resolve", null);
+            case UPDATE_TASK ->
+                client.putTask(engine, CallPriority.INTERACTIVE, request.taskId(), taskWriteBody(request.task()));
+            case ADD_IDENTITY_LINK -> {
+                ActionRequest.IdentityLink link = request.link();
+                client.addIdentityLink(
+                        engine,
+                        CallPriority.INTERACTIVE,
+                        request.taskId(),
+                        link.family(),
+                        link.identityId().strip(),
+                        blankToNull(link.type()) == null
+                                ? "candidate"
+                                : link.type().strip());
+            }
+            case REMOVE_IDENTITY_LINK -> {
+                ActionRequest.IdentityLink link = request.link();
+                client.deleteIdentityLink(
+                        engine,
+                        CallPriority.INTERACTIVE,
+                        request.taskId(),
+                        link.family(),
+                        link.identityId().strip(),
+                        blankToNull(link.type()) == null
+                                ? "candidate"
+                                : link.type().strip());
+            }
+            case DELETE_TASK -> client.deleteTask(engine, CallPriority.INTERACTIVE, request.taskId());
             case UNSTICK_EVENT ->
                 client.executionAction(
                         engine, CallPriority.INTERACTIVE, request.executionId(), eventBody(request.event()));
@@ -875,6 +1099,19 @@ public class CorrectiveActionService {
             case UNASSIGN_TASK ->
                 "Task " + request.taskId() + " returned to its team — assignee cleared (was " + assigneeWas(target)
                         + "); it now falls back to its candidate groups.";
+            case CLAIM_TASK ->
+                blankToNull(request.assignee()) == null
+                        ? "Task " + request.taskId() + " unclaimed."
+                        : "Task " + request.taskId() + " claimed by '"
+                                + request.assignee().strip() + "'.";
+            case DELEGATE_TASK ->
+                "Task " + request.taskId() + " delegated to '"
+                        + request.assignee().strip() + "'. Resolve hands it back.";
+            case RESOLVE_TASK -> "Task " + request.taskId() + " resolved — delegation cleared.";
+            case UPDATE_TASK -> "Task " + request.taskId() + " updated: " + changePhrase(target) + ".";
+            case ADD_IDENTITY_LINK -> linkPhrase(request, "added on");
+            case REMOVE_IDENTITY_LINK -> linkPhrase(request, "removed from");
+            case DELETE_TASK -> "Task " + request.taskId() + " deleted — irreversible.";
             case UNSTICK_EVENT ->
                 capitalize(request.event().type()) + " delivered to execution " + request.executionId()
                         + " — the wait is over.";
@@ -893,6 +1130,36 @@ public class CorrectiveActionService {
                                 : "; running instances continue.");
             case ACTIVATE_DEFINITION -> "Definition " + targetId + " activated again.";
         };
+    }
+
+    private static String linkPhrase(ActionRequest request, String verb) {
+        ActionRequest.IdentityLink link = request.link();
+        String type =
+                blankToNull(link.type()) == null ? "candidate" : link.type().strip();
+        return "Identity link " + type + " " + link.family() + " '"
+                + link.identityId().strip() + "' " + verb + " task " + request.taskId() + ".";
+    }
+
+    private static String changePhrase(Target target) {
+        Object raw = target.auditPayload().get("changes");
+        if (!(raw instanceof Map<?, ?> changes) || changes.isEmpty()) {
+            return "no fields";
+        }
+        StringBuilder phrase = new StringBuilder();
+        for (Map.Entry<?, ?> entry : changes.entrySet()) {
+            if (phrase.length() > 0) {
+                phrase.append(", ");
+            }
+            Object pair = entry.getValue();
+            Object oldValue = pair instanceof Map<?, ?> map ? map.get("old") : null;
+            Object newValue = pair instanceof Map<?, ?> map ? map.get("new") : null;
+            phrase.append(entry.getKey())
+                    .append(' ')
+                    .append(oldValue)
+                    .append(" → ")
+                    .append(newValue);
+        }
+        return phrase.toString();
     }
 
     /** Old-assignee phrasing for the outcome toast — the server-fresh value captured at restatement. */

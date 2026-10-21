@@ -19,7 +19,12 @@ public final class BulkDtos {
      * one re-scopes ("continue as new job", SPEC §7 — no automatic resume, ever).
      */
     public record BulkSubmitRequest(
-            String verb, String reason, String ticketId, UUID continuedFrom, List<BulkTarget> items) {}
+            String verb, String reason, String ticketId, UUID continuedFrom, List<BulkTarget> items, String assignee) {
+        public BulkSubmitRequest(
+                String verb, String reason, String ticketId, UUID continuedFrom, List<BulkTarget> items) {
+            this(verb, reason, ticketId, continuedFrom, items, null);
+        }
+    }
 
     /**
      * The triage-landing group retry (v1.x #1, SPEC §7): the browser sends the error-class
