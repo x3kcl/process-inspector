@@ -83,7 +83,7 @@ jobs:
       - name: Resolve the slot port namespace
         working-directory: .
         run: echo "BFF_PORT=$(scripts/free-port.sh "${PI_BFF_PORT:-8086}")" >> "$GITHUB_ENV"
-      - uses: actions/setup-node@v4
+      - uses: actions/setup-node@v7
         with:
           node-version: "22"
           cache: npm
@@ -176,7 +176,7 @@ jobs:
       - name: Resolve the slot port namespace
         working-directory: .
         run: echo "PI_E2E_PORT=$(scripts/free-port.sh "${PI_E2E_PORT:-4173}")" >> "$GITHUB_ENV"
-      - uses: actions/setup-node@v4
+      - uses: actions/setup-node@v7
         with:
           node-version: "22"
           cache: npm
