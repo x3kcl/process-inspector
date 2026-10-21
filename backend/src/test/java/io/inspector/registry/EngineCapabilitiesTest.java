@@ -16,6 +16,7 @@ class EngineCapabilitiesTest {
         assertThat(caps.scopeType()).isFalse();
         assertThat(caps.activityHistory()).isTrue(); // probed, not derived
         assertThat(caps.timerReschedule()).isFalse();
+        assertThat(caps.idm()).isFalse(); // probed, not derived
     }
 
     @Test

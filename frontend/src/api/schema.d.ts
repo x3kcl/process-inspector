@@ -27,7 +27,7 @@ export interface paths {
             path?: never;
             cookie?: never;
         };
-        get: operations["list_6"];
+        get: operations["list_7"];
         put?: never;
         post?: never;
         delete?: never;
@@ -652,7 +652,7 @@ export interface paths {
             path?: never;
             cookie?: never;
         };
-        get: operations["list_5"];
+        get: operations["list_6"];
         put?: never;
         post?: never;
         delete?: never;
@@ -684,7 +684,7 @@ export interface paths {
             path?: never;
             cookie?: never;
         };
-        get: operations["list_4"];
+        get: operations["list_5"];
         put?: never;
         post?: never;
         delete?: never;
@@ -1132,7 +1132,7 @@ export interface paths {
             path?: never;
             cookie?: never;
         };
-        get: operations["list_3"];
+        get: operations["list_4"];
         put?: never;
         post?: never;
         delete?: never;
@@ -1229,6 +1229,38 @@ export interface paths {
             cookie?: never;
         };
         get: operations["searchByPerson"];
+        put?: never;
+        post?: never;
+        delete?: never;
+        options?: never;
+        head?: never;
+        patch?: never;
+        trace?: never;
+    };
+    "/api/tasks/browse": {
+        parameters: {
+            query?: never;
+            header?: never;
+            path?: never;
+            cookie?: never;
+        };
+        get: operations["list_3"];
+        put?: never;
+        post?: never;
+        delete?: never;
+        options?: never;
+        head?: never;
+        patch?: never;
+        trace?: never;
+    };
+    "/api/tasks/{engineId}/{taskId}/identitylinks": {
+        parameters: {
+            query?: never;
+            header?: never;
+            path?: never;
+            cookie?: never;
+        };
+        get: operations["identityLinks"];
         put?: never;
         post?: never;
         delete?: never;
@@ -1464,7 +1496,9 @@ export interface components {
             includeProcessInstances?: boolean;
             jobId?: string;
             jobLane?: string;
+            link?: components["schemas"]["IdentityLink"];
             reason?: string;
+            task?: components["schemas"]["TaskPatch"];
             taskId?: string;
             ticketId?: string;
             variable?: components["schemas"]["VariableEdit"];
@@ -1685,6 +1719,7 @@ export interface components {
             verb?: string;
         };
         BulkSubmitRequest: {
+            assignee?: string;
             /** Format: uuid */
             continuedFrom?: string;
             items?: components["schemas"]["BulkTarget"][];
@@ -1881,6 +1916,7 @@ export interface components {
             activityHistory?: boolean;
             changeState?: boolean;
             externalWorkerJobs?: boolean;
+            idm?: boolean;
             migration?: boolean;
             scopeType?: boolean;
             timerReschedule?: boolean;
@@ -2131,6 +2167,16 @@ export interface components {
             processInstanceId?: string;
             requested?: boolean;
             startTime?: string;
+        };
+        IdentityLink: {
+            family?: string;
+            identityId?: string;
+            type?: string;
+        };
+        IdentityLinkRow: {
+            family?: string;
+            identityId?: string;
+            type?: string;
         };
         IncidentDetail: {
             episodes?: components["schemas"]["Episode"][];
@@ -2839,6 +2885,10 @@ export interface components {
             name?: string;
             type?: string;
         };
+        TaskBrowsePage: {
+            cappedEngines?: string[];
+            rows?: components["schemas"]["TaskRow"][];
+        };
         TaskDto: {
             assignee?: string;
             createTime?: string;
@@ -2851,6 +2901,26 @@ export interface components {
             owner?: string;
             state?: string;
             taskDefinitionKey?: string;
+        };
+        TaskPatch: {
+            category?: string;
+            description?: string;
+            dueDate?: string;
+            name?: string;
+            owner?: string;
+            /** Format: int32 */
+            priority?: number;
+        };
+        TaskRow: {
+            assignee?: string;
+            createTime?: string;
+            dueDate?: string;
+            engineId?: string;
+            name?: string;
+            owner?: string;
+            processDefinitionId?: string;
+            processInstanceId?: string;
+            taskId?: string;
         };
         TeamViewDto: {
             author?: string;
@@ -3035,7 +3105,7 @@ export interface operations {
             };
         };
     };
-    list_6: {
+    list_7: {
         parameters: {
             query?: never;
             header?: never;
@@ -4058,7 +4128,7 @@ export interface operations {
             };
         };
     };
-    list_5: {
+    list_6: {
         parameters: {
             query?: never;
             header?: never;
@@ -4100,7 +4170,7 @@ export interface operations {
             };
         };
     };
-    list_4: {
+    list_5: {
         parameters: {
             query?: {
                 state?: string;
@@ -4822,7 +4892,7 @@ export interface operations {
             };
         };
     };
-    list_3: {
+    list_4: {
         parameters: {
             query?: {
                 lane?: string;
@@ -4995,6 +5065,59 @@ export interface operations {
                 };
                 content: {
                     "*/*": components["schemas"]["PersonTaskSearchResponse"];
+                };
+            };
+        };
+    };
+    list_3: {
+        parameters: {
+            query?: {
+                processDefinitionKey?: string;
+                assignee?: string;
+                owner?: string;
+                candidateGroup?: string;
+                unassigned?: boolean;
+                overdue?: boolean;
+                createdAfter?: string;
+                createdBefore?: string;
+                size?: number;
+            };
+            header?: never;
+            path?: never;
+            cookie?: never;
+        };
+        requestBody?: never;
+        responses: {
+            /** @description OK */
+            200: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "*/*": components["schemas"]["TaskBrowsePage"];
+                };
+            };
+        };
+    };
+    identityLinks: {
+        parameters: {
+            query?: never;
+            header?: never;
+            path: {
+                engineId: string;
+                taskId: string;
+            };
+            cookie?: never;
+        };
+        requestBody?: never;
+        responses: {
+            /** @description OK */
+            200: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "*/*": components["schemas"]["IdentityLinkRow"][];
                 };
             };
         };

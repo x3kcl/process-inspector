@@ -125,8 +125,15 @@ public class EngineHealthService {
 
         // Reachable. Later legs degrade the entry instead of blanking it.
         try {
+            boolean idm = false;
+            try {
+                idm = flowable.probeIdm(engine, CallPriority.INTERACTIVE);
+            } catch (RuntimeException ex) {
+                log.debug("IDM probe skipped for {}: {}", engine.id(), ex.toString());
+            }
             EngineCapabilities capabilities = EngineCapabilities.fromVersion(
-                    version, flowable.probeActivityHistory(engine, CallPriority.INTERACTIVE));
+                            version, flowable.probeActivityHistory(engine, CallPriority.INTERACTIVE))
+                    .withIdm(idm);
             Long history = historyCount(engine);
             Long historyAge = history != null && history > 0 ? oldestHistoryAgeSec(engine) : null;
             JobLanes lanes = new JobLanes(

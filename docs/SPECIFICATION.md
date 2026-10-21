@@ -747,6 +747,9 @@ PERSON have, across every engine" — the "Bob is on vacation" query. Search sta
 - **Non-goal (still unscheduled):** group-membership-aware candidate resolution beyond what the
   engine's own `candidateUser` query answers, and a saved/pinned "my team" roster — this ships as
   a plain one-person-at-a-time lookup.
+- **Task browser** (`/task-browser`, `GET /api/tasks/browse`) is additive. It filters open tasks
+  (definition, assignee, owner, candidate group, unassigned, overdue, created range) and bulk
+  reassigns the selection. It does not replace this person search.
 
 ### 4e. Incident ledger — persisted failure-class lifecycle *(v2, R-BAU-10 — ★ SHIPPED, S1–S5 landed 2026-07-19, [INCIDENT-LEDGER.md](INCIDENT-LEDGER.md))*
 
@@ -892,7 +895,12 @@ remains v2.
 | **Suspend / activate instance** | Execution pauses/resumes; executable jobs move to/from the suspended lane — a dead-letter job is unaffected (stays dead-lettered, Retry available) | 0 |
 | **Edit variable** | Via the §4a editor: form-first typed widgets, leaf-level json edits, opt-in source mode; old→new path-diff verification; compare-and-set; scope-aware (process vs execution) | 1 |
 | **Complete task with data** | Task closes with overridden output; warning: a skipped/forced task never writes its own outputs — edit them here (via the shared §4a change-set editor) | 1 |
-| **Reassign task / return to team** *(v1.x #6, landed)* | Reassign to a specific user, or clear the assignee (return-to-team) so the task falls back to its candidate groups; **ACTIVE tasks only** (a completed task can no longer be reassigned); task state otherwise untouched | 1 |
+| **Reassign task / return to team** *(v1.x #6, landed)* | Reassign to a specific user, or clear the assignee (return-to-team) so the task falls back to its candidate groups; **ACTIVE tasks only** (a completed task can no longer be reassigned); task state otherwise untouched. Bulk reassign/return uses the same verbs (cap 200, reason ≥ 10, per-item audit) | 1 |
+| **Claim / unclaim** | Claim sets the assignee (`POST` action `claim`). An empty assignee unclaims. IDM user check only when the engine bundles IDM | 1 |
+| **Delegate / resolve** | Delegate hands the task to another user (`delegationState=pending`). Resolve returns it. Resolve refuses a task that is not delegated | 1 |
+| **Update task** | `PUT` the named fields (name, description, owner, due date, priority, category). The audit row and the toast record old → new. A null field is left alone | 1 |
+| **Identity link add / remove** | Candidate (or assignee/owner) user or group on the task. IDM existence check on add only when IDM is probed present; a missing IDM route is not "user missing" | 1 |
+| **Delete task** | `DELETE` the open task, including a standalone task with no process instance. ADMIN, typed task id on prod | 3 |
 | **Rerun from activity (with overrides)** | Guided composite: variable edits first (§4a change-set), then change-state; token re-enters the chosen activity; history append-only | 2 |
 | **Change state / move token** | Cancels ALL executions at the source activity, starts at target; guardrails: blocked on multi-instance bodies, parallel-join warning, suspended-check (offer activate-first), preview labeled *BFF simulation* (engine has no dry-run) + exact REST body shown | 2 |
 | **Restart as new instance** | Completed/terminated instance re-launched with copied historic variables; **explicit fork: pin original definition version vs latest**; new instance ID | 2 |

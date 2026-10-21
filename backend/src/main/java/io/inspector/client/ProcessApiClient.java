@@ -463,6 +463,29 @@ public class ProcessApiClient {
                         .body(FlowablePage.class));
     }
 
+    /** GET /runtime/tasks with the caller's query. Blank values are omitted. Bounded by {@code size}. */
+    public FlowablePage listRuntimeTasks(
+            EngineConfig engine, CallPriority priority, Map<String, String> query, int size) {
+        return guarded.call(
+                engine,
+                priority,
+                () -> guarded.readClient(engine)
+                        .get()
+                        .uri(uri -> {
+                            var builder = uri.path("/runtime/tasks").queryParam("size", size);
+                            if (query != null) {
+                                query.forEach((key, value) -> {
+                                    if (value != null && !value.isBlank()) {
+                                        builder.queryParam(key, value);
+                                    }
+                                });
+                            }
+                            return builder.build();
+                        })
+                        .retrieve()
+                        .body(FlowablePage.class));
+    }
+
     /**
      * GET /runtime/tasks?assignee= — every OPEN task currently assigned to a person, across the
      * whole engine (not scoped to one instance). Feeds person-centric task search (#99, "what is
@@ -1045,6 +1068,155 @@ public class ProcessApiClient {
                         .body(body)
                         .retrieve()
                         .toBodilessEntity());
+    }
+
+    /**
+     * POST /runtime/tasks/{taskId} TaskActionRequest. Claim always sends {@code assignee}, including
+     * null, so an empty assignee unclaims. Resolve omits it.
+     */
+    public void taskAction(EngineConfig engine, CallPriority priority, String taskId, String action, String assignee) {
+        Map<String, Object> body = new LinkedHashMap<>();
+        body.put("action", action);
+        if (assignee != null || "claim".equals(action)) {
+            body.put("assignee", assignee);
+        }
+        guarded.run(
+                engine,
+                priority,
+                "task-" + action,
+                () -> guarded.writeClient(engine)
+                        .post()
+                        .uri("/runtime/tasks/{taskId}", taskId)
+                        .contentType(MediaType.APPLICATION_JSON)
+                        .body(body)
+                        .retrieve()
+                        .toBodilessEntity());
+    }
+
+    /** PUT /runtime/tasks/{taskId} — only the keys present in {@code body} are changed. */
+    public void putTask(EngineConfig engine, CallPriority priority, String taskId, Map<String, Object> body) {
+        guarded.run(
+                engine,
+                priority,
+                "update-task",
+                () -> guarded.writeClient(engine)
+                        .put()
+                        .uri("/runtime/tasks/{taskId}", taskId)
+                        .contentType(MediaType.APPLICATION_JSON)
+                        .body(body)
+                        .retrieve()
+                        .toBodilessEntity());
+    }
+
+    /** DELETE /runtime/tasks/{taskId}. */
+    public void deleteTask(EngineConfig engine, CallPriority priority, String taskId) {
+        guarded.run(
+                engine,
+                priority,
+                "delete-task",
+                () -> guarded.writeClient(engine)
+                        .delete()
+                        .uri("/runtime/tasks/{taskId}", taskId)
+                        .retrieve()
+                        .toBodilessEntity());
+    }
+
+    /** GET /runtime/tasks/{taskId}/identitylinks. Empty on 404. */
+    @SuppressWarnings("unchecked")
+    public List<Map<String, Object>> listIdentityLinks(EngineConfig engine, CallPriority priority, String taskId) {
+        try {
+            List<Map<String, Object>> rows = guarded.call(
+                    engine,
+                    priority,
+                    () -> guarded.readClient(engine)
+                            .get()
+                            .uri("/runtime/tasks/{taskId}/identitylinks", taskId)
+                            .retrieve()
+                            .body(List.class));
+            return rows == null ? List.of() : rows;
+        } catch (HttpClientErrorException.NotFound e) {
+            return List.of();
+        }
+    }
+
+    /** POST /runtime/tasks/{taskId}/identitylinks. {@code family} is users or groups. */
+    public void addIdentityLink(
+            EngineConfig engine, CallPriority priority, String taskId, String family, String identityId, String type) {
+        Map<String, Object> body = new LinkedHashMap<>();
+        body.put("groups".equals(family) ? "groupId" : "userId", identityId);
+        body.put("type", type);
+        guarded.run(
+                engine,
+                priority,
+                "add-identity-link",
+                () -> guarded.writeClient(engine)
+                        .post()
+                        .uri("/runtime/tasks/{taskId}/identitylinks", taskId)
+                        .contentType(MediaType.APPLICATION_JSON)
+                        .body(body)
+                        .retrieve()
+                        .toBodilessEntity());
+    }
+
+    /** DELETE /runtime/tasks/{taskId}/identitylinks/{family}/{identityId}/{type}. */
+    public void deleteIdentityLink(
+            EngineConfig engine, CallPriority priority, String taskId, String family, String identityId, String type) {
+        guarded.run(
+                engine,
+                priority,
+                "delete-identity-link",
+                () -> guarded.writeClient(engine)
+                        .delete()
+                        .uri(
+                                "/runtime/tasks/{taskId}/identitylinks/{family}/{identityId}/{type}",
+                                taskId,
+                                family,
+                                identityId,
+                                type)
+                        .retrieve()
+                        .toBodilessEntity());
+    }
+
+    /**
+     * GET /identity/{family}/{id}. False only on 404. Any other error propagates so a present
+     * IDM that refuses the read is not reported as "user missing".
+     */
+    public boolean idmIdentityExists(EngineConfig engine, CallPriority priority, String family, String identityId) {
+        try {
+            guarded.call(
+                    engine,
+                    priority,
+                    () -> guarded.readClient(engine)
+                            .get()
+                            .uri("/identity/{family}/{identityId}", family, identityId)
+                            .retrieve()
+                            .toBodilessEntity());
+            return true;
+        } catch (HttpClientErrorException.NotFound e) {
+            return false;
+        }
+    }
+
+    /**
+     * Capability probe: does this REST app bundle IDM? 200 = yes. Any 4xx (the route is absent
+     * on a process-only app) = no. A 404 is "IDM not installed", never "user does not exist".
+     */
+    public boolean probeIdm(EngineConfig engine, CallPriority priority) {
+        try {
+            guarded.call(
+                    engine,
+                    priority,
+                    () -> guarded.readClient(engine)
+                            .get()
+                            .uri(uri -> uri.path("/identity/users")
+                                    .queryParam("size", 1)
+                                    .build())
+                            .retrieve()
+                            .toBodilessEntity());
+            return true;
+        } catch (HttpClientErrorException e) {
+            return false;
+        }
     }
 
     /** GET /runtime/executions/{executionId} — server-fresh execution restatement. Null = gone. */
