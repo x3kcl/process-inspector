@@ -276,8 +276,9 @@ function selfCheck() {
   if (plan([{ number: 7 }], [], false).action !== 'close') throw new Error('green close')
   if (plan([], trivy, false).action !== 'open') throw new Error('red open')
   if (plan([{ number: 7 }], [], true).action !== 'update') throw new Error('failed step updates')
-  const body = renderBody({ findings: trivy, scanFailed: false, runUrl: 'https://example.test/run/1' })
-  if (!body.includes(MARKER) || !body.includes('CVE-2026-0001') || !body.includes('https://example.test/run/1')) {
+  const runUrl = 'run-marker-1'
+  const body = renderBody({ findings: trivy, scanFailed: false, runUrl })
+  if (!body.includes(MARKER) || !body.includes('CVE-2026-0001') || !body.includes(runUrl)) {
     throw new Error('body')
   }
   if (plan([{ number: 3 }, { number: 9 }], trivy, false).number !== 3) throw new Error('oldest tracker')
