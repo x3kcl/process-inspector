@@ -449,8 +449,9 @@ AG Grid #456, the Vite/Vitest toolchain #457, TypeScript #458, bpmn-js and cmmn-
 PRs carry the `supply-chain` label and match the path filter above, so they run both `ci.yml`
 and the scans. Dependabot's own updater cannot use self-hosted runners on a public
 repository (GitHub-hosted, not billed). The workflows it triggers do use the slot runners,
-with a read-only `GITHUB_TOKEN` and no Actions secrets — `ci.yml` skips the `flap` matrix
-leg for `dependabot[bot]` because that leg pulls a private ghcr image. Docker Hub login
+with a read-only `GITHUB_TOKEN` and no Actions secrets — `ci.yml` no-ops the `flap`
+leg's harness steps for `dependabot[bot]` (job-level `if` cannot see `matrix`) because
+that leg pulls a private ghcr image. Docker Hub login
 stays `continue-on-error` when the secret is absent.
 
 **Both shipping images are gated, not just the BFF (issue #409).** The web image
