@@ -35,7 +35,7 @@
 //          allowlist (a tooling failure, not an audit finding).
 
 import { execFileSync } from 'node:child_process'
-import { readFileSync, existsSync } from 'node:fs'
+import { readFileSync, existsSync, mkdirSync, writeFileSync } from 'node:fs'
 import { resolve, dirname } from 'node:path'
 import { fileURLToPath } from 'node:url'
 
@@ -89,7 +89,7 @@ function runNpmAudit(cwd) {
 // naming another vulnerable package) — only the former are actual advisories to allowlist.
 function collectHighSeverityAdvisories(auditJson) {
   const byGhsaId = new Map()
-  for (const pkgReport of Object.values(auditJson.vulnerabilities ?? {})) {
+  for (const [pkgName, pkgReport] of Object.entries(auditJson.vulnerabilities ?? {})) {
     for (const via of pkgReport.via ?? []) {
       if (typeof via === 'string') continue // a wrapper reference to another package, not an advisory
       const severity = via.severity ?? pkgReport.severity
@@ -99,7 +99,7 @@ function collectHighSeverityAdvisories(auditJson) {
       const displayId = match[0] // preserve the standard lowercase-body casing for display
       const key = displayId.toUpperCase() // case-insensitive matching against the allowlist
       if (!byGhsaId.has(key)) {
-        byGhsaId.set(key, { ghsaId: displayId, severity, title: via.title ?? '(no title)', url: via.url })
+        byGhsaId.set(key, { ghsaId: displayId, severity, title: via.title ?? '(no title)', url: via.url, package: pkgName })
       }
     }
   }
@@ -224,6 +224,31 @@ function main() {
 
   for (const line of trivyDrift) {
     console.log(`  [TRIVY IGNORE DRIFT] ${line}`)
+  }
+
+  // Sidecar for scripts/supply-chain-triage.mjs (#447). Absent unless the workflow asks.
+  const reportPath = process.env.SUPPLY_CHAIN_NPM_REPORT
+  if (reportPath) {
+    mkdirSync(dirname(reportPath), { recursive: true })
+    writeFileSync(
+      reportPath,
+      JSON.stringify(
+        {
+          ok: unallowlisted.length === 0 && expired.length === 0 && trivyDrift.length === 0,
+          unallowlisted: unallowlisted.map((a) => ({
+            ghsaId: a.ghsaId,
+            severity: a.severity,
+            title: a.title,
+            url: a.url,
+            package: a.package ?? '',
+          })),
+          expired,
+          drift: trivyDrift,
+        },
+        null,
+        2,
+      ),
+    )
   }
 
   if (unallowlisted.length > 0 || expired.length > 0 || trivyDrift.length > 0) {

@@ -257,6 +257,27 @@ double-emit; the demo Traefik HSTS is a moderate 24 h, no preload), CORS off. Re
 zero effective grants / seed failed" health indicator + alert** (READY alone can't tell seeded-fine
 from seeded-to-zero).
 
+**GitHub security features (#444), enabled on the public repository via the REST API**
+(admin `repo` scope). Re-check with `GET /repos/x3kcl/process-inspector` (`security_and_analysis`)
+and `GET /repos/x3kcl/process-inspector/vulnerability-alerts` (204 = on, 404 = off):
+
+| feature | API | state |
+| --- | --- | --- |
+| Dependabot alerts | `PUT /repos/{owner}/{repo}/vulnerability-alerts` | enabled |
+| Dependabot security updates | `PUT /repos/{owner}/{repo}/automated-security-fixes` | enabled |
+| Secret scanning | `PATCH` repo `security_and_analysis.secret_scanning.status=enabled` | enabled |
+| Secret scanning push protection | same PATCH, `secret_scanning_push_protection` | enabled |
+| CodeQL default setup | `PATCH /repos/{owner}/{repo}/code-scanning/default-setup` with `java-kotlin` and `javascript-typescript` | configured; analysis runs on GitHub-hosted runners, not the slot pool |
+
+CodeQL does not use the self-hosted slots. Secret-scanning non-provider patterns and validity
+checks stay off (not part of #444). Alerts are triaged in the GitHub Security tab; a true
+positive that security updates cannot open a PR for gets an issue, a false positive is
+dismissed there with a reason. First batch (2026-10-21): Dependabot alerts empty, secret
+scanning empty, one CodeQL alert (`js/incomplete-multi-character-sanitization` on
+`frontend/src/surgery/activityCatalog.ts`) dismissed as a false positive — the regex strips
+BPMN comments before a start-tag scan, and the BFF re-validates every id. Version-update
+PRs are Dependabot's job (§8), not a hand-filed duplicate per advisory.
+
 ## 8. CI gates — the authoritative merge-blocking list (R-OPS-06)
 **Landed in `.github/workflows/ci.yml` (merge-blocking):** `lint` (Spotless/palantir) ·
 `unit` (backend build + unit suite incl. the **ArchUnit anti-flakiness rule**: `Thread.sleep`
@@ -281,7 +302,11 @@ mutating corrective-action/flow-surgery/migration/bulk ITs the PR gate skips for
 zero-flake doctrine), a **`supply-chain` job** (Trivy image scans of **both** shipping images —
 BFF and web — plus fs-scans of `backend/pom.xml` and `frontend/package-lock.json`,
 HIGH/CRITICAL fixed-in-upstream hard-fails; a CycloneDX SBOM artifact per image; the frontend
-npm-audit gate below), and a **`perf-p1` job** (k6
+npm-audit gate below). The steps live in `.github/actions/supply-chain` so the job name stays
+`supply-chain`. A red run upserts one open issue titled `[supply-chain] Nightly advisory triage`
+(body marker `supply-chain-triage`, label `supply-chain`); a later green run closes that issue
+and no other `supply-chain` issue (#447). `workflow_dispatch` input `triage-drill=red|green`
+exercises the upsert without building images. And a **`perf-p1` job** (k6
 against the seeded FIX-REF-01 reference dataset, asserting the SPEC §2 R-NFR-01/02 latency
 budgets). A red nightly is a morning-routine triage, not a push gate.
 
@@ -329,8 +354,8 @@ logging `CACHED`: the scanned image was a byte-identical replay of the run-65 bu
 number of re-runs could ever have gone green. The runtime stage is therefore **named**
 (`FROM eclipse-temurin:21-jre-alpine AS runtime`) and every workflow that builds a BFF image
 for scanning or for publication passes `no-cache-filters: runtime` to
-`docker/build-push-action` — `nightly.yml` (`supply-chain`), `publish-edge.yml` and
-`release.yml` alike. Scoping it to the runtime stage keeps the expensive maven `build` stage
+`docker/build-push-action` — `.github/actions/supply-chain` (called by `nightly.yml` and
+`supply-chain-pr.yml`), `publish-edge.yml` and `release.yml` alike. Scoping it to the runtime stage keeps the expensive maven `build` stage
 cached, so the cost is seconds. **Applying it to the publish workflows is not optional:** if
 only the scan build were uncached, the gate would certify one artifact while users pulled a
 different, staler one. `ci.yml`'s docker job deliberately keeps a fully warm cache — it only
@@ -403,14 +428,30 @@ setup that would have worked. The cron's last cycle is at
 `/tmp/pi-ci-dashboard-push.log` (overwritten each run, so it never grows); read that first
 when the board goes stale, since `>/dev/null` is what made the original breakage invisible.
 
-**Build in the merge gate, scan in the nightly — for BOTH images (issues #409, #412).**
-`ci.yml`'s `docker` job builds the BFF **and** the web image (`context: frontend`); neither
-is scanned there. That split is deliberate and worth not "helpfully" undoing: a vulnerability
-scan in the *merge* gate goes red the moment upstream publishes a CVE overnight, reddening
-every open PR for reasons that have nothing to do with the PR. So the merge gate answers
-*does it still build?* and the nightly answers *is it still clean?*. Until #412 the web image
-had neither — a PR could break `frontend/Dockerfile` and merge green, with the breakage
-surfacing a day later in the nightly or at `publish-edge` time on `main`.
+**Build in the merge gate, scan on nightly and on dependency PRs — for BOTH images (issues #409, #412, #446).**
+`ci.yml`'s `docker` job builds the BFF **and** the web image (`context: frontend`); it still
+does not scan them. A vulnerability scan on *every* PR goes red the moment upstream publishes
+a CVE overnight, reddening work that did not touch a dependency. So ordinary PRs answer
+*does it still build?* and the nightly answers *is it still clean?*. The exception is
+`.github/workflows/supply-chain-pr.yml`: a pull request whose paths include `backend/pom.xml`,
+`frontend/package.json` / `package-lock.json`, either Dockerfile, `docker/ci-runner/**`, a
+Trivy ignore, or `frontend/npm-audit-allowlist.json` runs the same `.github/actions/supply-chain`
+composite as the nightly. It does not file the advisory issue (the nightly owns that). Image
+tags include the Actions run id because every slot shares the host Docker daemon. Until #412
+the web image had neither a build nor a scan — a PR could break `frontend/Dockerfile` and
+merge green.
+
+**Dependabot (#445).** `.github/dependabot.yml` opens weekly PRs (Monday 06:17 UTC, off the
+hour): maven `/backend`, npm `/frontend`, github-actions `/`, docker `/`, `/frontend`, and
+`/docker/ci-runner`. Minor and patch updates are grouped into one PR per ecosystem; majors
+are separate. Majors that already have a migration issue are ignored (Boot 4 parent #440,
+AG Grid #456, the Vite/Vitest toolchain #457, TypeScript #458, bpmn-js and cmmn-js). Those
+PRs carry the `supply-chain` label and match the path filter above, so they run both `ci.yml`
+and the scans. Dependabot's own updater cannot use self-hosted runners on a public
+repository (GitHub-hosted, not billed). The workflows it triggers do use the slot runners,
+with a read-only `GITHUB_TOKEN` and no Actions secrets — `ci.yml` skips the `flap` matrix
+leg for `dependabot[bot]` because that leg pulls a private ghcr image. Docker Hub login
+stays `continue-on-error` when the secret is absent.
 
 **Both shipping images are gated, not just the BFF (issue #409).** The web image
 (`frontend/Dockerfile` → `…-web`) was scanned by nothing until #409 and had no `apk upgrade`

@@ -231,6 +231,12 @@ jobs:
           cache-to: type=gha,mode=min,ignore-error=true
 
   integration:
+    # Dependabot PRs (#445) run here on the slot runners, but GitHub gives that
+    # actor a read-only GITHUB_TOKEN and withholds Actions secrets. The flap leg
+    # pulls a private ghcr image with that token, so it cannot pass. Skip only
+    # that leg; the public flowable-rest legs still run. Docker Hub login above
+    # is already continue-on-error when the secret is absent.
+    if: ${{ !(matrix.profile == 'flap' && github.actor == 'dependabot[bot]') }}
     runs-on: self-hosted
     timeout-minutes: 20
     strategy:
