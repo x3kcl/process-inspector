@@ -179,6 +179,10 @@ Tutorial: [04 — deep search and views](tutorials/04-deep-search-and-views.md).
 **Answers:** "why is THIS one stuck, and what do I do about it." Full-page, deep-linkable,
 tab-aware (`?tab=timeline`) — paste the link into a ticket.
 
+- **Breadcrumb** (engine › definition › version › instance) derived from the URL and the
+  loaded vitals. The instance segment is the current page and is not a link, so `?tab=`
+  stays put. Engine opens that engine's search; definition opens its version list; version
+  opens the version's search cohort.
 - **Vitals header** (always visible): definition + version, engine + environment badge,
   status chip + collision badges (+ "Explain this status"), business key, started/duration,
   current activity — and when failed, the **why-stuck strip**: exception first line, retries
@@ -249,6 +253,8 @@ assignee so the candidate group picks it up) — OPERATOR+, active tasks only. U
 engines degrade to a labeled partial envelope, same as search.
 
 ## 9. Case (CMMN) detail (`/case/{engineId}/{caseInstanceId}`)
+
+The breadcrumb is engine › case (the case segment is the current page).
 
 A co-deployed CMMN case gets its own read-mostly Stage-2 route (SPEC §4 "CMMN case detail",
 [CMMN-CASE-DETAIL-PHASE-2.md](CMMN-CASE-DETAIL-PHASE-2.md)) — reached from the Stage-0
@@ -351,6 +357,7 @@ Tutorial: [08 — handover and audit](tutorials/08-handover-and-audit.md).
 
 Greyed-never-hidden in the header for everyone else, with the missing grant named.
 
+- **Breadcrumb** on this page: Admin › Engines.
 - **`/admin/engines` — "Engines"** (REGISTRY_ADMIN, [REGISTRY-CRUD.md](REGISTRY-CRUD.md)):
   runtime engine lifecycle. A new engine is born **Draft + read-only**, must pass a
   **read-only probe** ("Test connection" — version + capabilities, never a mutating call),

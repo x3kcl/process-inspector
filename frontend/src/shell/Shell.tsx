@@ -23,6 +23,8 @@ import { OpsDrawerProvider } from '../ops/drawerState'
 import { useLegacyViewMigration } from '../views/legacyMigration'
 import { Omnibox } from './Omnibox'
 import { restoreRouteFocus } from './routeFocus'
+import { ShortcutSheet } from './ShortcutSheet'
+import { useShellShortcuts } from './useShellShortcuts'
 
 /**
  * The stage-independent frame (SPEC §4): topbar with the app title, the omnibox (pinned on
@@ -46,6 +48,7 @@ export function Shell() {
   // R-UXQ-02: after a route change, focus never stays on <body> — it lands on the new
   // route's main heading (or nearest survivor).
   useRouteFocus()
+  const shortcuts = useShellShortcuts()
   return (
     <ToastProvider>
       {/* App-scoped live channel (live-ui-sse): ONE EventSource for every surface — a
@@ -106,6 +109,7 @@ export function Shell() {
             <main id="main-content" tabIndex={-1}>
               <Outlet />
             </main>
+            {shortcuts.sheetOpen && <ShortcutSheet onClose={shortcuts.closeSheet} />}
             <OpsDrawer />
           </div>
         </OpsDrawerProvider>
