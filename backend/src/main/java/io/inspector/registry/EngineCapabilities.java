@@ -13,10 +13,20 @@ public record EngineCapabilities(
         boolean migration, // process-migration API — Flowable ≥ 6.5
         boolean externalWorkerJobs, // external-worker job queue — Flowable ≥ 6.8
         boolean scopeType, // scopeType field on job rows — Flowable ≥ 6.8
-        boolean activityHistory // history level records activities (probed, not derived)
+        boolean activityHistory, // history level records activities (probed, not derived)
+        boolean timerReschedule // POST timer-jobs reschedule — Flowable ≥ 7.0
         ) {
+    public EngineCapabilities(
+            boolean changeState,
+            boolean migration,
+            boolean externalWorkerJobs,
+            boolean scopeType,
+            boolean activityHistory) {
+        this(changeState, migration, externalWorkerJobs, scopeType, activityHistory, false);
+    }
+
     public static EngineCapabilities none() {
-        return new EngineCapabilities(false, false, false, false, false);
+        return new EngineCapabilities(false, false, false, false, false, false);
     }
 
     /**
@@ -26,13 +36,14 @@ public record EngineCapabilities(
     public static EngineCapabilities fromVersion(String version, boolean activityHistoryProbe) {
         int[] mm = parseMajorMinor(version);
         if (mm == null) {
-            return new EngineCapabilities(false, false, false, false, activityHistoryProbe);
+            return new EngineCapabilities(false, false, false, false, activityHistoryProbe, false);
         }
         int major = mm[0], minor = mm[1];
         boolean v64 = major > 6 || (major == 6 && minor >= 4);
         boolean v65 = major > 6 || (major == 6 && minor >= 5);
         boolean v68 = major > 6 || (major == 6 && minor >= 8);
-        return new EngineCapabilities(v64, v65, v68, v68, activityHistoryProbe);
+        boolean v70 = major >= 7;
+        return new EngineCapabilities(v64, v65, v68, v68, activityHistoryProbe, v70);
     }
 
     /** "6.8.0.1" → {6,8}; null when the version is missing or not dotted-numeric. */

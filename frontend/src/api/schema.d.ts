@@ -27,7 +27,7 @@ export interface paths {
             path?: never;
             cookie?: never;
         };
-        get: operations["list_5"];
+        get: operations["list_6"];
         put?: never;
         post?: never;
         delete?: never;
@@ -652,7 +652,7 @@ export interface paths {
             path?: never;
             cookie?: never;
         };
-        get: operations["list_4"];
+        get: operations["list_5"];
         put?: never;
         post?: never;
         delete?: never;
@@ -684,7 +684,7 @@ export interface paths {
             path?: never;
             cookie?: never;
         };
-        get: operations["list_3"];
+        get: operations["list_4"];
         put?: never;
         post?: never;
         delete?: never;
@@ -1125,6 +1125,22 @@ export interface paths {
         patch?: never;
         trace?: never;
     };
+    "/api/jobs": {
+        parameters: {
+            query?: never;
+            header?: never;
+            path?: never;
+            cookie?: never;
+        };
+        get: operations["list_3"];
+        put?: never;
+        post?: never;
+        delete?: never;
+        options?: never;
+        head?: never;
+        patch?: never;
+        trace?: never;
+    };
     "/api/me": {
         parameters: {
             query?: never;
@@ -1442,10 +1458,12 @@ export interface components {
         ActionRequest: {
             assignee?: string;
             confirmToken?: string;
+            dueDate?: string;
             event?: components["schemas"]["EventTrigger"];
             executionId?: string;
             includeProcessInstances?: boolean;
             jobId?: string;
+            jobLane?: string;
             reason?: string;
             taskId?: string;
             ticketId?: string;
@@ -1865,6 +1883,7 @@ export interface components {
             externalWorkerJobs?: boolean;
             migration?: boolean;
             scopeType?: boolean;
+            timerReschedule?: boolean;
         };
         EngineDto: {
             accentColor?: string;
@@ -2256,6 +2275,7 @@ export interface components {
             elementName?: string;
             exceptionMessage?: string;
             executionId?: string;
+            handlerType?: string;
             id?: string;
             lane?: string;
             processDefinitionId?: string;
@@ -2274,6 +2294,21 @@ export interface components {
             suspended?: number;
             /** Format: int64 */
             timer?: number;
+        };
+        JobRow: {
+            createTime?: string;
+            dueDate?: string;
+            elementId?: string;
+            engineId?: string;
+            exceptionMessage?: string;
+            jobId?: string;
+            lockOwner?: string;
+            processInstanceId?: string;
+        };
+        JobsPage: {
+            cappedEngines?: string[];
+            lane?: string;
+            rows?: components["schemas"]["JobRow"][];
         };
         LadderView: {
             engineId?: string;
@@ -3000,7 +3035,7 @@ export interface operations {
             };
         };
     };
-    list_5: {
+    list_6: {
         parameters: {
             query?: never;
             header?: never;
@@ -4023,7 +4058,7 @@ export interface operations {
             };
         };
     };
-    list_4: {
+    list_5: {
         parameters: {
             query?: never;
             header?: never;
@@ -4065,7 +4100,7 @@ export interface operations {
             };
         };
     };
-    list_3: {
+    list_4: {
         parameters: {
             query?: {
                 state?: string;
@@ -4783,6 +4818,30 @@ export interface operations {
                 };
                 content: {
                     "*/*": components["schemas"]["VariableDto"];
+                };
+            };
+        };
+    };
+    list_3: {
+        parameters: {
+            query?: {
+                lane?: string;
+                olderThanMinutes?: number;
+                size?: number;
+            };
+            header?: never;
+            path?: never;
+            cookie?: never;
+        };
+        requestBody?: never;
+        responses: {
+            /** @description OK */
+            200: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "*/*": components["schemas"]["JobsPage"];
                 };
             };
         };

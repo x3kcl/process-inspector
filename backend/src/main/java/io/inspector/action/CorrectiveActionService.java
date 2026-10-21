@@ -163,6 +163,9 @@ public class CorrectiveActionService {
         if (scope == ActionScope.CMMN) {
             requireCmmnScope(engine, verb);
         }
+        if (verb == ActionVerb.RESCHEDULE_TIMER) {
+            requireTimerReschedule(engine, request);
+        }
         requireUnprotectedOrAdmin(auth, engine, verb, targetId);
         String reason = normalizedReason(engine, verb, request);
         String ticketId = ticketPolicy.validate(request.ticketId(), engine.environment());
@@ -276,6 +279,52 @@ public class CorrectiveActionService {
     private static final java.util.Set<ActionVerb> CMMN_VERBS =
             java.util.Set.of(ActionVerb.RETRY_JOB, ActionVerb.DELETE_DEADLETTER);
 
+    private void requireTimerReschedule(EngineConfig engine, ActionRequest request) {
+        var caps = registry.healthOf(engine.id()).capabilities();
+        if (caps == null || !caps.timerReschedule()) {
+            String version = registry.healthOf(engine.id()).version();
+            throw new GuardRefusedException(
+                    HttpStatus.BAD_REQUEST,
+                    "timer-reschedule-unsupported",
+                    "needs Flowable 7.x (engine is " + (version == null ? "unknown" : version)
+                            + "). Nothing happened.");
+        }
+        String due = request.dueDate();
+        if (due == null || due.isBlank()) {
+            throw new GuardRefusedException(
+                    HttpStatus.BAD_REQUEST, "due-date-required", "A future due date is required.");
+        }
+        try {
+            if (!java.time.Instant.parse(due).isAfter(java.time.Instant.now())) {
+                throw new GuardRefusedException(
+                        HttpStatus.BAD_REQUEST,
+                        "due-date-past",
+                        "The due date must be in the future. Nothing happened.");
+            }
+        } catch (java.time.DateTimeException e) {
+            throw new GuardRefusedException(
+                    HttpStatus.BAD_REQUEST, "due-date-invalid", "dueDate must be an ISO-8601 instant.");
+        }
+    }
+
+    private static JobLaneKind deleteLane(ActionRequest request) {
+        String lane = request.jobLane();
+        if (lane == null) {
+            throw new GuardRefusedException(HttpStatus.BAD_REQUEST, "job-lane-required", "jobLane is required.");
+        }
+        return switch (lane.toLowerCase(java.util.Locale.ROOT)) {
+            case "executable", "jobs" -> JobLaneKind.EXECUTABLE;
+            case "timer" -> JobLaneKind.TIMER;
+            case "suspended" -> JobLaneKind.SUSPENDED;
+            case "history" -> JobLaneKind.HISTORY;
+            default ->
+                throw new GuardRefusedException(
+                        HttpStatus.BAD_REQUEST,
+                        "job-lane-unsupported",
+                        "delete-job does not cover lane '" + lane + "'. Dead-letter delete stays delete-deadletter.");
+        };
+    }
+
     /**
      * CMMN-scope gate: the verb must be CMMN-applicable AND the engine must advertise
      * {@code scopeType} (≥ 6.8). Both refuse before any engine bytes leave — an unsupported verb
@@ -380,10 +429,12 @@ public class CorrectiveActionService {
                 return cmmnJobTarget(engine, targetId, required(request.jobId(), "jobId"), verb);
             }
             return switch (verb) {
-                case RETRY_JOB, DELETE_DEADLETTER ->
+                case RETRY_JOB, DELETE_DEADLETTER, MOVE_TO_HISTORY_JOB ->
                     jobTarget(engine, JobLaneKind.DEADLETTER, targetId, required(request.jobId(), "jobId"), verb);
-                case TRIGGER_TIMER ->
+                case TRIGGER_TIMER, RESCHEDULE_TIMER ->
                     jobTarget(engine, JobLaneKind.TIMER, targetId, required(request.jobId(), "jobId"), verb);
+                case DELETE_JOB ->
+                    jobTarget(engine, deleteLane(request), targetId, required(request.jobId(), "jobId"), verb);
                 case SUSPEND, ACTIVATE, TERMINATE_DELETE -> instanceTarget(engine, targetId);
                 case EDIT_VARIABLE -> variableTarget(engine, targetId, request);
                 case COMPLETE_TASK -> taskTarget(engine, targetId, required(request.taskId(), "taskId"), request);
@@ -421,6 +472,14 @@ public class CorrectiveActionService {
         payload.put("jobId", jobId);
         payload.put("elementId", job.get("elementId"));
         payload.put("exceptionMessage", job.get("exceptionMessage"));
+        payload.put("dueDate", job.get("dueDate"));
+        if (verb == ActionVerb.RESCHEDULE_TIMER && job.get("exceptionMessage") != null) {
+            throw new GuardRefusedException(
+                    HttpStatus.BAD_REQUEST,
+                    "retry-timer",
+                    "Job " + jobId
+                            + " is a failing job waiting to retry. Reschedule would change that retry. Nothing happened.");
+        }
         // #184: free — the job response already carries processDefinitionId.
         return new Target(payload, jobId, "job id", null, definitionKeyOf(job.get("processDefinitionId")));
     }
@@ -681,7 +740,12 @@ public class CorrectiveActionService {
         switch (verb) {
             case RETRY_JOB -> client.moveDeadLetterJob(engine, CallPriority.INTERACTIVE, request.jobId());
             case TRIGGER_TIMER -> client.moveTimerJob(engine, CallPriority.INTERACTIVE, request.jobId());
+            case RESCHEDULE_TIMER ->
+                client.rescheduleTimer(engine, CallPriority.INTERACTIVE, request.jobId(), request.dueDate());
+            case MOVE_TO_HISTORY_JOB ->
+                client.moveDeadLetterToHistoryJob(engine, CallPriority.INTERACTIVE, request.jobId());
             case DELETE_DEADLETTER -> client.deleteDeadLetterJob(engine, CallPriority.INTERACTIVE, request.jobId());
+            case DELETE_JOB -> client.deleteJob(engine, CallPriority.INTERACTIVE, deleteLane(request), request.jobId());
             case SUSPEND -> client.suspendOrActivateInstance(engine, CallPriority.INTERACTIVE, targetId, "suspend");
             case ACTIVATE -> client.suspendOrActivateInstance(engine, CallPriority.INTERACTIVE, targetId, "activate");
             case TERMINATE_DELETE ->
@@ -778,6 +842,13 @@ public class CorrectiveActionService {
                 "Job " + request.jobId() + " moved back to the executable queue; engine-default retries restored."
                         + " The queue move is reversible; the side effects of the executed job are not.";
             case TRIGGER_TIMER -> "Timer job " + request.jobId() + " fired now and took its normal path.";
+            case RESCHEDULE_TIMER ->
+                "Timer job " + request.jobId() + " now waits until " + request.dueDate() + " (was "
+                        + target.auditPayload().get("dueDate") + "). Reschedule again to undo.";
+            case MOVE_TO_HISTORY_JOB -> "Dead-letter job " + request.jobId() + " moved back onto the history queue.";
+            case DELETE_JOB ->
+                "Job " + request.jobId() + " deleted from the " + request.jobLane()
+                        + " lane. The execution may be orphaned.";
             // #117: never assert a job lane move here — suspend/activate touches executable
             // jobs only, a dead-letter job stays dead-lettered, and this path never reads
             // job lanes. State only what the call itself guarantees.

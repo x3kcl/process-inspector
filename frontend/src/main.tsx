@@ -41,6 +41,9 @@ const AdminEnginesPage = lazy(() =>
 const EngineSystemPage = lazy(() =>
   import('./admin/EngineSystemPage').then((m) => ({ default: m.EngineSystemPage })),
 )
+const JobsExplorerPage = lazy(() =>
+  import('./jobs/JobsPage').then((m) => ({ default: m.JobsPage })),
+)
 const AdminAccessPage = lazy(() =>
   import('./admin/AdminAccessPage').then((m) => ({ default: m.AdminAccessPage })),
 )
@@ -105,6 +108,7 @@ const router = createBrowserRouter([
     children: [
       { index: true, element: <HomeRoute /> },
       { path: 'search', element: lazyRoute(<SearchPage />), errorElement: chunkErrorElement },
+      { path: 'jobs', element: lazyRoute(<JobsExplorerPage />), errorElement: chunkErrorElement },
       {
         path: 'tasks',
         element: lazyRoute(<PersonTaskSearchPage />),

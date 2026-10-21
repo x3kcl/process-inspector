@@ -1403,7 +1403,7 @@ and would rewrite working M1/M2 code for no capability gain); Go/FastAPI/Kotlin 
 - **English-only UI, deliberately** (R-UXQ-07) — the operator audience works in English and
   engine error text is English regardless. Hedges that stay mandatory: one string catalog
   per side, one shared formatter. Full localization is COULD-v2, demand-driven.
-- **No Temporal-style reset**, no timer reschedule, no engine-verified modification preview,
+- **No Temporal-style reset**, no engine-verified modification preview. Timer reschedule exists on Flowable 7+ (`action: reschedule`); 6.x greys it.
   no per-retry Gantt gaps, no async-executor thread internals — the REST API cannot honestly
   provide them; nearest honest equivalents are documented per verb.
 - **CMMN out of scope for v1** (jobs filtered from every join; `scopeType` carried in DTOs
