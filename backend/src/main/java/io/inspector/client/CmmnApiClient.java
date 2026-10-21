@@ -268,6 +268,7 @@ public class CmmnApiClient {
         guarded.run(
                 engine,
                 priority,
+                "move-cmmn-deadletter",
                 () -> guarded.writeClient(engine)
                         .post()
                         .uri(cmmnApiBase(engine) + "/cmmn-management/deadletter-jobs/{id}", id)
@@ -289,6 +290,7 @@ public class CmmnApiClient {
         guarded.run(
                 engine,
                 priority,
+                "delete-cmmn-deadletter",
                 () -> guarded.writeClient(engine)
                         .delete()
                         .uri(cmmnApiBase(engine) + "/cmmn-management/deadletter-jobs/{id}", id)

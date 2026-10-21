@@ -653,6 +653,7 @@ public class ProcessApiClient {
         guarded.run(
                 engine,
                 priority,
+                "move-deadletter",
                 () -> guarded.writeClient(engine)
                         .post()
                         .uri(JobLaneKind.DEADLETTER.path + "/{jobId}", jobId)
@@ -667,6 +668,7 @@ public class ProcessApiClient {
         guarded.run(
                 engine,
                 priority,
+                "move-timer",
                 () -> guarded.writeClient(engine)
                         .post()
                         .uri(JobLaneKind.TIMER.path + "/{jobId}", jobId)
@@ -681,6 +683,7 @@ public class ProcessApiClient {
         guarded.run(
                 engine,
                 priority,
+                "delete-deadletter",
                 () -> guarded.writeClient(engine)
                         .delete()
                         .uri(JobLaneKind.DEADLETTER.path + "/{jobId}", jobId)
@@ -694,6 +697,7 @@ public class ProcessApiClient {
         guarded.run(
                 engine,
                 priority,
+                action,
                 () -> guarded.writeClient(engine)
                         .put()
                         .uri("/runtime/process-instances/{id}", processInstanceId)
@@ -709,6 +713,7 @@ public class ProcessApiClient {
         guarded.run(
                 engine,
                 priority,
+                "delete-instance",
                 () -> guarded.writeClient(engine)
                         .delete()
                         .uri(uri -> uri.path("/runtime/process-instances/{id}")
@@ -750,6 +755,7 @@ public class ProcessApiClient {
         guarded.run(
                 engine,
                 priority,
+                "put-instance-variable",
                 () -> guarded.writeClient(engine)
                         .put()
                         .uri("/runtime/process-instances/{id}/variables/{name}", processInstanceId, name)
@@ -800,6 +806,7 @@ public class ProcessApiClient {
         guarded.run(
                 engine,
                 priority,
+                "put-execution-variable",
                 () -> guarded.writeClient(engine)
                         .put()
                         .uri("/runtime/executions/{id}/variables/{name}", executionId, name)
@@ -835,6 +842,7 @@ public class ProcessApiClient {
         guarded.run(
                 engine,
                 priority,
+                "complete-task",
                 () -> guarded.writeClient(engine)
                         .post()
                         .uri("/runtime/tasks/{taskId}", taskId)
@@ -856,6 +864,7 @@ public class ProcessApiClient {
         guarded.run(
                 engine,
                 priority,
+                "set-task-assignee",
                 () -> guarded.writeClient(engine)
                         .put()
                         .uri("/runtime/tasks/{taskId}", taskId)
@@ -889,9 +898,12 @@ public class ProcessApiClient {
      */
     public void executionAction(
             EngineConfig engine, CallPriority priority, String executionId, Map<String, Object> body) {
+        Object action = body.get("action");
+        String verb = action instanceof String s && !s.isBlank() ? s : "execution-action";
         guarded.run(
                 engine,
                 priority,
+                verb,
                 () -> guarded.writeClient(engine)
                         .put()
                         .uri("/runtime/executions/{executionId}", executionId)
@@ -931,6 +943,7 @@ public class ProcessApiClient {
         guarded.run(
                 engine,
                 priority,
+                action,
                 () -> guarded.writeClient(engine)
                         .put()
                         .uri("/repository/process-definitions/{id}", definitionId)
@@ -996,6 +1009,7 @@ public class ProcessApiClient {
         guarded.run(
                 engine,
                 priority,
+                "change-state",
                 () -> guarded.writeClient(engine)
                         .post()
                         .uri("/runtime/process-instances/{id}/change-state", processInstanceId)
@@ -1022,6 +1036,7 @@ public class ProcessApiClient {
         guarded.run(
                 engine,
                 priority,
+                "migrate",
                 () -> guarded.writeClient(engine)
                         .post()
                         .uri("/runtime/process-instances/{id}/migrate", processInstanceId)
@@ -1042,6 +1057,7 @@ public class ProcessApiClient {
         return guarded.call(
                 engine,
                 priority,
+                "start-instance",
                 () -> guarded.writeClient(engine)
                         .post()
                         .uri("/runtime/process-instances")

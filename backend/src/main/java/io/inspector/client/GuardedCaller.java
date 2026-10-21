@@ -151,11 +151,28 @@ public class GuardedCaller {
      * regardless of which higher-level call raised them.
      */
     public <T> T call(EngineConfig engine, CallPriority priority, Supplier<T> op) {
-        // Tags are ids and lane names only. Never a variable value or an exception body (#470).
-        return Observation.createNotStarted("engine.call", observations)
+        return observe(engine, priority, null, op);
+    }
+
+    /**
+     * Corrective action. Span name {@code engine.corrective}, plus a {@code verb} tag, so sampling
+     * stays at 100% without raising the read sample (#565). Reads keep the 3-arg {@link #call}.
+     */
+    public <T> T call(EngineConfig engine, CallPriority priority, String verb, Supplier<T> op) {
+        return observe(engine, priority, verb, op);
+    }
+
+    private <T> T observe(EngineConfig engine, CallPriority priority, String verb, Supplier<T> op) {
+        // Tags are ids, lane names, and the verb. Never a variable value or an exception body.
+        boolean corrective = verb != null && !verb.isBlank();
+        Observation observation = Observation.createNotStarted(
+                        corrective ? CorrectiveSampler.CORRECTIVE_SPAN : CorrectiveSampler.READ_SPAN, observations)
                 .lowCardinalityKeyValue("engineId", engine.id())
-                .lowCardinalityKeyValue("leg", priority.name())
-                .observe(() -> callGuarded(engine, priority, op));
+                .lowCardinalityKeyValue("leg", priority.name());
+        if (corrective) {
+            observation.lowCardinalityKeyValue("verb", verb);
+        }
+        return observation.observe(() -> callGuarded(engine, priority, op));
     }
 
     private <T> T callGuarded(EngineConfig engine, CallPriority priority, Supplier<T> op) {
@@ -181,6 +198,14 @@ public class GuardedCaller {
     /** Same guard, void-shaped — the mutation call sites (toBodilessEntity()). */
     public void run(EngineConfig engine, CallPriority priority, Runnable op) {
         call(engine, priority, () -> {
+            op.run();
+            return null;
+        });
+    }
+
+    /** Corrective void call. {@code verb} is a closed operation name, not a payload (#565). */
+    public void run(EngineConfig engine, CallPriority priority, String verb, Runnable op) {
+        call(engine, priority, verb, () -> {
             op.run();
             return null;
         });
