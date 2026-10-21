@@ -67,7 +67,7 @@ test('a deep-linked instance shows breadcrumbs and keeps ?tab=', async ({ page }
     'href',
     '/search?engines=eng1',
   )
-  await expect(trail.getByRole('link', { name: 'payment' })).toHaveAttribute(
+  await expect(trail.getByRole('link', { name: 'payment', exact: true })).toHaveAttribute(
     'href',
     '/definitions/eng1/payment/versions',
   )

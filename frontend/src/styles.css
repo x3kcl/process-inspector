@@ -4476,6 +4476,13 @@ button.skip-link {
   content: '›';
   color: var(--color-text-muted);
 }
+.breadcrumbs a,
+.breadcrumbs [aria-current='page'] {
+  color: var(--color-text-body);
+}
+.breadcrumbs a {
+  text-decoration: underline;
+}
 .breadcrumbs a:focus-visible,
 .shortcut-sheet button:focus-visible {
   outline: 2px solid var(--color-ink);

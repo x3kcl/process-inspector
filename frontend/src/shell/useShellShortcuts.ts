@@ -18,7 +18,9 @@ export function useShellShortcuts(): { sheetOpen: boolean; closeSheet: () => voi
         if (!(omnibox instanceof HTMLInputElement)) return
         event.preventDefault()
         const active = document.activeElement
-        if (active !== omnibox && active instanceof HTMLElement) previous.current = active
+        if (active !== omnibox && active instanceof HTMLElement && active !== document.body) {
+          previous.current = active
+        }
         omnibox.focus()
         omnibox.select()
         armed.current = true
@@ -34,8 +36,9 @@ export function useShellShortcuts(): { sheetOpen: boolean; closeSheet: () => voi
       armed.current = false
       const back = previous.current
       previous.current = null
-      if (back !== null && back.isConnected) back.focus()
-      else document.getElementById('main-content')?.focus()
+      if (back !== null && back.isConnected && back !== document.body) back.focus()
+      if (document.activeElement?.id === OMNIBOX_ID)
+        document.getElementById('main-content')?.focus()
     }
     document.addEventListener('keydown', onKeyDown, true)
     return () => {
