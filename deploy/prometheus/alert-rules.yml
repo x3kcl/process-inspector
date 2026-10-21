@@ -85,3 +85,33 @@ groups:
         annotations:
           summary: "SSE emitter errors spiking — clients are degrading to polling"
           runbook: "RUNBOOK.md §7 — usually a reverse-proxy buffering misconfig after a deploy; not user-facing-critical"
+
+      # One engine, not the whole fleet (#472). AllCircuitBreakersOpen stays the egress alarm.
+      - alert: EngineUnreachable
+        expr: resilience4j_circuitbreaker_state{state="open"} == 1
+        for: 5m
+        labels:
+          severity: warning
+        annotations:
+          summary: "One engine circuit breaker has been open for 5 minutes"
+          runbook: "RUNBOOK.md §7"
+
+      # A running bulk job that has recorded no item outcome for the window. The gauge has
+      # no progress clock of its own; absence of outcome increments is the signal we have.
+      - alert: BulkJobStuck
+        expr: bulk_jobs_running > 0 unless sum(increase(bulk_item_outcomes_total[15m])) > 0
+        for: 15m
+        labels:
+          severity: warning
+        annotations:
+          summary: "A bulk job is running and no item outcome was recorded for 15 minutes"
+          runbook: "RUNBOOK.md §7"
+
+      - alert: HikariPoolSaturation
+        expr: hikaricp_connections_active / hikaricp_connections_max > 0.9
+        for: 5m
+        labels:
+          severity: warning
+        annotations:
+          summary: "The BFF Postgres pool is above 90% of maximum"
+          runbook: "RUNBOOK.md §7"
