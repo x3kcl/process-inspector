@@ -115,3 +115,34 @@ groups:
         annotations:
           summary: "The BFF Postgres pool is above 90% of maximum"
           runbook: "RUNBOOK.md §7"
+
+      # Spike, not one cancelled login. Break-glass failures are a different handler.
+      - alert: OidcLoginFailures
+        expr: increase(oidc_login_failures_total[15m]) > 5
+        for: 5m
+        labels:
+          severity: warning
+        annotations:
+          summary: "OIDC logins are failing"
+          runbook: "RUNBOOK.md §7"
+
+      # 180s is three times the default 60s sample interval. The gauge starts at boot, so a
+      # sampler that never succeeds ages into this window. for: 5m ignores one slow cycle.
+      - alert: SnapshotSamplerStalled
+        expr: time() - snapshot_last_success_seconds > 180
+        for: 5m
+        labels:
+          severity: warning
+        annotations:
+          summary: "The snapshot sampler has not succeeded for over 3 minutes"
+          runbook: "RUNBOOK.md §7"
+
+      # An empty purge (nothing aged out) does not increment the counter.
+      - alert: AuditRetentionPurgeFailing
+        expr: increase(audit_retention_purge_failures_total[1h]) > 0
+        for: 5m
+        labels:
+          severity: warning
+        annotations:
+          summary: "The audit retention purge aborted or was refused"
+          runbook: "RUNBOOK.md §7"
