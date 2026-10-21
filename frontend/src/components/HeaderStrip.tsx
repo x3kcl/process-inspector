@@ -1,4 +1,6 @@
-import type { EngineDto } from '../api/model'
+import { useState } from 'react'
+import { Link } from 'react-router'
+import type { EngineDto, ThroughputTile } from '../api/model'
 import { useEngines } from '../api/useEngines'
 import { isInactiveLifecycle, lifecycleGloss } from '../lib/enginePolicy'
 import { formatCount, formatSeconds } from '../lib/format'
@@ -39,6 +41,7 @@ export function HeaderStrip() {
 }
 
 function EngineCard({ engine }: { engine: EngineDto }) {
+  const [window, setWindow] = useState<'10m' | '1h' | '24h'>('10m')
   const reachable = engine.reachable === true
   const lanes = engine.jobLanes
   const oldestAge = engine.oldestExecutableJobAge
@@ -131,16 +134,51 @@ function EngineCard({ engine }: { engine: EngineDto }) {
           {engine.adviceLevel} — {engine.advice}
         </span>
       )}
-      {reachable && engine.startedCurrent != null && (
-        <span className="strip-note" title="root instances started in the current window">
-          started {formatCount(engine.startedCurrent)}
-          {engine.startedReference !== undefined
-            ? ` vs ref ${formatCount(engine.startedReference)}`
-            : ' — no history yet'}
+      {reachable && engine.throughput != null && (
+        <span className="strip-note">
+          <select
+            aria-label="Throughput window"
+            value={window}
+            onChange={(event) => {
+              setWindow(event.target.value as '10m' | '1h' | '24h')
+            }}
+          >
+            <option value="10m">10 min</option>
+            <option value="1h">1 h</option>
+            <option value="24h">24 h</option>
+          </select>
+          {' starts '}
+          {tileText(startTile(engine, window))}
+          {' · finished '}
+          {tileText(engine.throughput.finishes10m)}
+          {engine.throughput.tasksCreated10m?.current != null &&
+            ` · tasks ${tileText(engine.throughput.tasksCreated10m)}`}
+          {(engine.throughput.topDefinitionKeys ?? []).length > 0 && (
+            <span title={engine.throughput.definitionKeysCapped === true ? 'key list is capped at 10' : undefined}>
+              {' · '}
+              {(engine.throughput.topDefinitionKeys ?? []).join(', ')}
+              {engine.throughput.definitionKeysCapped === true ? ' (sample)' : ''}
+            </span>
+          )}
         </span>
+      )}
+      {reachable && engine.id != null && (
+        <Link to={`/admin/engines/${engine.id}/system`}>system</Link>
       )}
     </div>
   )
+}
+
+function startTile(engine: EngineDto, window: '10m' | '1h' | '24h'): ThroughputTile | undefined {
+  if (window === '1h') return engine.throughput?.starts1h
+  if (window === '24h') return engine.throughput?.starts24h
+  return engine.throughput?.starts10m
+}
+
+function tileText(tile: ThroughputTile | undefined): string {
+  if (tile?.current == null) return 'no history yet'
+  if (tile.reference == null) return `${formatCount(tile.current)} — no history yet`
+  return `${formatCount(tile.current)} vs ref ${formatCount(tile.reference)}`
 }
 
 function Lane({

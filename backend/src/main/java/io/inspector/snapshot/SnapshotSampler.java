@@ -47,6 +47,7 @@ public class SnapshotSampler {
     private final Clock clock;
     private final ApplicationEventPublisher events;
     private final AtomicLong lastSuccessEpochSeconds = new AtomicLong();
+    private final StartByKeyRepository startKeys;
 
     public SnapshotSampler(
             SnapshotSource source,
@@ -55,11 +56,24 @@ public class SnapshotSampler {
             Clock clock,
             ApplicationEventPublisher events,
             MeterRegistry metrics) {
+        this(source, repository, properties, clock, events, metrics, null);
+    }
+
+    @org.springframework.beans.factory.annotation.Autowired
+    public SnapshotSampler(
+            SnapshotSource source,
+            SnapshotCountRepository repository,
+            InspectorProperties properties,
+            Clock clock,
+            ApplicationEventPublisher events,
+            MeterRegistry metrics,
+            StartByKeyRepository startKeys) {
         this.source = source;
         this.repository = repository;
         this.bucket = new SnapshotBucket(properties.snapshotOrDefault().bucketWidthOrDefault());
         this.clock = clock;
         this.events = events;
+        this.startKeys = startKeys;
         // Boot time, so a sampler that never succeeds still ages out of the alert window (#566).
         this.lastSuccessEpochSeconds.set(clock.instant().getEpochSecond());
         Gauge.builder("snapshot_last_success_seconds", lastSuccessEpochSeconds, value -> (double) value.get())
@@ -97,6 +111,12 @@ public class SnapshotSampler {
         try {
             for (EngineLaneCount o : observations) {
                 repository.upsert(o.engineId(), o.lane().name(), o.count(), at);
+            }
+            if (startKeys != null) {
+                for (DefinitionStart start : sample.topStarts()) {
+                    startKeys.save(
+                            new StartByKey(start.engineId(), start.key(), start.count(), start.catalogCapped(), at));
+                }
             }
         } catch (RuntimeException e) {
             log.warn("snapshot persist skipped — store unavailable: {}", e.toString());

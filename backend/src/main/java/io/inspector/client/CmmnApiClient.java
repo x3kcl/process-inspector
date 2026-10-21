@@ -3,6 +3,7 @@ package io.inspector.client;
 import io.inspector.client.GuardedCaller.CallPriority;
 import io.inspector.config.EngineApiContexts;
 import io.inspector.config.InspectorProperties.EngineConfig;
+import java.time.Instant;
 import java.util.Map;
 import org.springframework.http.MediaType;
 import org.springframework.stereotype.Component;
@@ -182,6 +183,30 @@ public class CmmnApiClient {
                 priority,
                 () -> guarded.readClient(engine).get().uri(uri).retrieve().body(FlowablePage.class));
         return page != null ? page.total() : 0;
+    }
+
+    /** Cases started in the window. Null when the CMMN history route is missing (pre-6.8). */
+    public Long countCasesStarted(EngineConfig engine, CallPriority priority, Instant after, Instant before) {
+        String afterIso =
+                after.truncatedTo(java.time.temporal.ChronoUnit.SECONDS).toString();
+        String beforeIso =
+                before.truncatedTo(java.time.temporal.ChronoUnit.SECONDS).toString();
+        java.net.URI uri = UriComponentsBuilder.fromUriString(
+                        cmmnApiBase(engine) + "/cmmn-history/historic-case-instances")
+                .queryParam("size", 1)
+                .queryParam("startedAfter", afterIso)
+                .queryParam("startedBefore", beforeIso)
+                .build()
+                .toUri();
+        try {
+            FlowablePage page = guarded.call(
+                    engine,
+                    priority,
+                    () -> guarded.readClient(engine).get().uri(uri).retrieve().body(FlowablePage.class));
+            return page != null ? page.total() : 0L;
+        } catch (org.springframework.web.client.HttpClientErrorException.NotFound e) {
+            return null;
+        }
     }
 
     /**

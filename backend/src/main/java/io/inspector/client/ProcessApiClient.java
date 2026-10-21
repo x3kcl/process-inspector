@@ -544,6 +544,22 @@ public class ProcessApiClient {
         }
     }
 
+    /** GET a management document. Used by system info; 404 is the caller's problem. */
+    @SuppressWarnings("unchecked")
+    public Map<String, Object> getMap(EngineConfig engine, CallPriority priority, String path) {
+        return guarded.call(
+                engine,
+                priority,
+                () -> guarded.readClient(engine).get().uri(path).retrieve().body(Map.class));
+    }
+
+    public FlowablePage getPage(EngineConfig engine, CallPriority priority, String path) {
+        return guarded.call(
+                engine,
+                priority,
+                () -> guarded.readClient(engine).get().uri(path).retrieve().body(FlowablePage.class));
+    }
+
     /** GET /management/engine — health + version probe. */
     @SuppressWarnings("unchecked")
     public Map<String, Object> engineInfo(EngineConfig engine, CallPriority priority) {
@@ -617,6 +633,17 @@ public class ProcessApiClient {
             Instant before,
             boolean started,
             boolean rootOnly) {
+        return countHistoricProcesses(engine, priority, after, before, started, rootOnly, null);
+    }
+
+    public Long countHistoricProcesses(
+            EngineConfig engine,
+            CallPriority priority,
+            Instant after,
+            Instant before,
+            boolean started,
+            boolean rootOnly,
+            String definitionKey) {
         String afterName = started ? "startedAfter" : "finishedAfter";
         String beforeName = started ? "startedBefore" : "finishedBefore";
         String afterIso =
@@ -637,8 +664,37 @@ public class ProcessApiClient {
                                 if (rootOnly) {
                                     builder.queryParam("excludeSubprocesses", "true");
                                 }
+                                if (definitionKey != null && !definitionKey.isBlank()) {
+                                    builder.queryParam("processDefinitionKey", definitionKey);
+                                }
                                 return builder.build();
                             })
+                            .retrieve()
+                            .body(FlowablePage.class));
+            return page != null ? page.total() : 0L;
+        } catch (HttpClientErrorException.NotFound e) {
+            return null;
+        }
+    }
+
+    /** Historic tasks created or completed in the window. Null when the route is missing. */
+    public Long countHistoricTasks(
+            EngineConfig engine, CallPriority priority, Instant after, Instant before, boolean completed) {
+        String afterName = completed ? "taskCompletedAfter" : "taskCreatedAfter";
+        String beforeName = completed ? "taskCompletedBefore" : "taskCreatedBefore";
+        String afterIso = after.truncatedTo(ChronoUnit.SECONDS).toString();
+        String beforeIso = before.truncatedTo(ChronoUnit.SECONDS).toString();
+        try {
+            FlowablePage page = guarded.call(
+                    engine,
+                    priority,
+                    () -> guarded.readClient(engine)
+                            .get()
+                            .uri(uri -> uri.path("/history/historic-task-instances")
+                                    .queryParam("size", 1)
+                                    .queryParam(afterName, afterIso)
+                                    .queryParam(beforeName, beforeIso)
+                                    .build())
                             .retrieve()
                             .body(FlowablePage.class));
             return page != null ? page.total() : 0L;

@@ -21,7 +21,8 @@ public record EngineHealth(
         String adviceLevel, // OK | WARN | CRIT; null before the first advice pass
         String advice,
         Long startedCurrent, // instances started in the current snapshot window; null = no history yet
-        Long startedReference) {
+        Long startedReference,
+        io.inspector.snapshot.ThroughputBoard throughput) {
     /** The four job queues plus history jobs when the engine exposes that route. Null history = not available. */
     public record JobLanes(long executable, long timer, long suspended, long deadletter, Long history) {
         public JobLanes(long executable, long timer, long suspended, long deadletter) {
@@ -48,6 +49,7 @@ public record EngineHealth(
                 jobLanes,
                 oldestExecutableJobAgeSec,
                 overdueTimers,
+                null,
                 null,
                 null,
                 null,
