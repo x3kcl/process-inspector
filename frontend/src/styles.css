@@ -447,6 +447,9 @@ body {
   text-overflow: ellipsis;
   white-space: nowrap;
 }
+.engine-system-link {
+  color: var(--color-text-body);
+}
 .lanes {
   display: flex;
   gap: 6px;

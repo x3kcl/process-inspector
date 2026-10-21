@@ -22,9 +22,12 @@ export function EngineSystemPage() {
         <>
           <p>Version: {info.version ?? 'unknown'}</p>
           <p>
-            Executor internals: {info.executorInternals ?? 'not exposed by this engine'} ({info.metricsStatus})
+            Executor internals: {info.executorInternals ?? 'not exposed by this engine'} (
+            {info.metricsStatus})
           </p>
-          {(info.failures ?? []).length > 0 && <p>Unavailable: {(info.failures ?? []).join(', ')}</p>}
+          {(info.failures ?? []).length > 0 && (
+            <p>Unavailable: {(info.failures ?? []).join(', ')}</p>
+          )}
           <table>
             <thead>
               <tr>

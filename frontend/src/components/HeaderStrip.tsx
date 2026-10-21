@@ -154,7 +154,13 @@ function EngineCard({ engine }: { engine: EngineDto }) {
           {engine.throughput.tasksCreated10m?.current != null &&
             ` · tasks ${tileText(engine.throughput.tasksCreated10m)}`}
           {(engine.throughput.topDefinitionKeys ?? []).length > 0 && (
-            <span title={engine.throughput.definitionKeysCapped === true ? 'key list is capped at 10' : undefined}>
+            <span
+              title={
+                engine.throughput.definitionKeysCapped === true
+                  ? 'key list is capped at 10'
+                  : undefined
+              }
+            >
               {' · '}
               {(engine.throughput.topDefinitionKeys ?? []).join(', ')}
               {engine.throughput.definitionKeysCapped === true ? ' (sample)' : ''}
@@ -163,7 +169,9 @@ function EngineCard({ engine }: { engine: EngineDto }) {
         </span>
       )}
       {reachable && engine.id != null && (
-        <Link to={`/admin/engines/${engine.id}/system`}>system</Link>
+        <Link className="engine-system-link" to={`/admin/engines/${engine.id}/system`}>
+          system
+        </Link>
       )}
     </div>
   )
