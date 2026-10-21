@@ -172,6 +172,14 @@ honesty marker. Priorities:
 | P3 | [#491](https://github.com/x3kcl/process-inspector/issues/491) Console ergonomics | #536 ⌘K + cheat sheet · #537 breadcrumbs |
 | P3 | [#492](https://github.com/x3kcl/process-inspector/issues/492) Decision: read-first MCP server | design + go/no-go only |
 
+Conventions follow the same-day maturity review (#438–#480): campaign label
+`hub-parity-2026-10`, `epic` on epics, one `model:*` implementation label per slice
+(`model:fable-5.1` wire-shape/capability gating and correctness-critical diffs,
+`model:opus-5.5` multi-file engineering with a test net, `model:sonnet-5.5` config/docs/small
+option extensions). The maturity set is platform scope, this set is product scope; the
+maturity P0s (#443, #449) and the Boot 4 spike (#439) should land before the P1 epics here
+start, and #459 (7.2/8.0 harness legs) precedes the new capability gates.
+
 Sequencing: P1 first (both close the "after the fix" gap: migrate the cohort, know what is
 live); P2 in the listed order (health and jobs serve the on-call loop directly; tasks, detail
 slivers, housekeeping and CMMN are administration parity); P3 when convenient. One epic in
