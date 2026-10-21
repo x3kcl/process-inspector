@@ -1,5 +1,4 @@
 import { useState } from 'react'
-import { Link } from 'react-router'
 import type { EngineDto, ThroughputTile } from '../api/model'
 import { useEngines } from '../api/useEngines'
 import { isInactiveLifecycle, lifecycleGloss } from '../lib/enginePolicy'
@@ -169,9 +168,9 @@ function EngineCard({ engine }: { engine: EngineDto }) {
         </span>
       )}
       {reachable && engine.id != null && (
-        <Link className="engine-system-link" to={`/admin/engines/${engine.id}/system`}>
+        <a className="engine-system-link" href={`/admin/engines/${engine.id}/system`}>
           system
-        </Link>
+        </a>
       )}
     </div>
   )
