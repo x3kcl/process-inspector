@@ -339,7 +339,7 @@ jobs:
         env:
           BASE_URL: http://localhost:${{ env.PI_BFF_PORT }}
         run: /tmp/k6 run --summary-export=/tmp/k6-summary-p1.json scripts/perf-scenario-p1.js
-      - uses: actions/upload-artifact@v4
+      - uses: actions/upload-artifact@v7
         if: always()
         with:
           name: k6-summary-p1
