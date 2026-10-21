@@ -37,10 +37,10 @@
     <resilience4j.version>2.4.0</resilience4j.version>
     <springdoc.version>2.8.14</springdoc.version>
     <wiremock.version>3.13.2</wiremock.version>
-    <archunit.version>1.4.2</archunit.version>
+    <archunit.version>1.5.1</archunit.version>
     <logstash-logback-encoder.version>7.4</logstash-logback-encoder.version>
     <spotless.version>2.46.1</spotless.version>
-    <jacoco.version>0.8.13</jacoco.version>
+    <jacoco.version>0.8.15</jacoco.version>
     <!-- CI matrix legs skip the unit suite (already run in the unit job) without
          killing failsafe: -Dskip.surefire.tests=true. -DskipTests would skip both. -->
     <skip.surefire.tests>false</skip.surefire.tests>
