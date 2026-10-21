@@ -61,7 +61,7 @@ jobs:
             type=raw,value=sha-${{ steps.src.outputs.short }}
       - name: Build + push BFF image
         id: build-bff
-        uses: docker/build-push-action@v6
+        uses: docker/build-push-action@v7
         with:
           context: .
           push: true
@@ -89,7 +89,7 @@ jobs:
             type=raw,value=sha-${{ steps.src.outputs.short }}
       - name: Build + push web image
         id: build-web
-        uses: docker/build-push-action@v6
+        uses: docker/build-push-action@v7
         with:
           context: frontend
           push: true
