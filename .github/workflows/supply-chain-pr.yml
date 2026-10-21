@@ -1,0 +1,45 @@
+# Same scans as nightly's supply-chain job, only when a PR touches a dependency or
+# image input (#446). Unrelated PRs stay on ci.yml's build-only docker job so an
+# upstream CVE cannot redden every open PR. Not a required check until #449 lands
+# branch protection; the check still shows on the PR.
+name: supply-chain-pr
+
+on:
+  pull_request:
+    paths:
+      - backend/pom.xml
+      - backend/.trivyignore.yaml
+      - frontend/package.json
+      - frontend/package-lock.json
+      - frontend/.trivyignore.yaml
+      - frontend/npm-audit-allowlist.json
+      - Dockerfile
+      - frontend/Dockerfile
+      - docker/ci-runner/**
+      - .github/actions/supply-chain/**
+      - .github/workflows/supply-chain-pr.yml
+      - .github/workflows/nightly.yml
+      - scripts/check-npm-audit-allowlist.mjs
+      - scripts/check-base-image-currency.sh
+      - scripts/supply-chain-triage.mjs
+
+permissions:
+  contents: read
+  actions: write
+
+concurrency:
+  group: supply-chain-pr-${{ github.ref }}
+  cancel-in-progress: true
+
+jobs:
+  supply-chain:
+    runs-on: self-hosted
+    timeout-minutes: 30
+    steps:
+      - uses: actions/checkout@v4
+      - uses: ./.github/actions/supply-chain
+        with:
+          image-tag: scan-${{ github.run_id }}
+          file-issue: "false"
+          dockerhub-username: ${{ secrets.DOCKERHUB_USERNAME }}
+          dockerhub-token: ${{ secrets.DOCKERHUB_TOKEN }}

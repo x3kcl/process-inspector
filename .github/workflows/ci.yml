@@ -273,6 +273,13 @@ jobs:
       COMPOSE_PROFILES: ${{ matrix.composeProfiles }}
     steps:
       - uses: actions/checkout@v4
+      # Dependabot PRs (#445) run on the slot runners, but that actor's token is
+      # read-only and cannot pull the private flap image. Job-level `if` cannot
+      # see `matrix` (actionlint / the context-availability table), so the leg
+      # sets SKIP_LEG and the harness steps no-op. Other profiles still run.
+      - name: Skip flap leg for Dependabot
+        if: matrix.profile == 'flap' && github.actor == 'dependabot[bot]'
+        run: echo "SKIP_LEG=1" >> "$GITHUB_ENV"
       # Self-hosted runners share hp04's Docker daemon with a live demo + interactive dev
       # stacks, so every published port is remapped off the dev defaults — and each runner
       # SLOT (docker/ci-runner/docker-compose.yml) carries its own disjoint remap block as
@@ -289,6 +296,7 @@ jobs:
       # CI_PROJECT: distinct per-slot compose project (never the dev "process-inspector")
       # so container names can't clash and teardown only removes THIS job's containers.
       - name: Resolve the slot port namespace
+        if: env.SKIP_LEG != '1'
         run: |
           {
             a=$(scripts/free-port.sh "${PI_ENGINE_A_PORT:-8691}" 20)
@@ -317,6 +325,7 @@ jobs:
             echo "CI_PROJECT=pi-ci-s${PI_CI_SLOT:-1}-${{ matrix.profile }}"
           } >> "$GITHUB_ENV"
       - uses: actions/setup-java@v4
+        if: env.SKIP_LEG != '1'
         with:
           distribution: temurin
           java-version: "21"
@@ -324,6 +333,7 @@ jobs:
       # Mitigates Docker Hub 429s on shared runner NAT pools; skips cleanly when the
       # secrets are absent (forks, or before they're configured).
       - name: Docker Hub login (rate-limit mitigation)
+        if: env.SKIP_LEG != '1'
         continue-on-error: true
         uses: docker/login-action@v3
         with:
@@ -332,7 +342,7 @@ jobs:
       # ghcr, for the flap leg's engine. The package is private and grants THIS REPO Actions
       # read access, so the run's own GITHUB_TOKEN suffices — no long-lived PAT in a secret.
       - name: Registry login (ghcr — the flap harness image)
-        if: matrix.profile == 'flap'
+        if: matrix.profile == 'flap' && github.actor != 'dependabot[bot]'
         uses: docker/login-action@v3
         with:
           registry: ghcr.io
@@ -342,7 +352,7 @@ jobs:
       # missing registry permission entirely (the leg "passed" its pull without contacting
       # ghcr), and it would equally hide a months-old flap. Print what is actually under test.
       - name: Pull the flap engine (flap republishes :latest on every push to master)
-        if: matrix.profile == 'flap'
+        if: matrix.profile == 'flap' && github.actor != 'dependabot[bot]'
         run: |
           docker pull ghcr.io/x3kcl/flap:latest
           docker image inspect ghcr.io/x3kcl/flap:latest \
@@ -350,31 +360,37 @@ jobs:
       # Persistent runner: a prior interrupted run may have left CI's own containers behind.
       # Scoped to $CI_PROJECT — never touches the dev/demo projects.
       - name: Pre-clean CI harness residue
+        if: env.SKIP_LEG != '1'
         run: docker compose -p "$CI_PROJECT" -f docker/docker-compose.dev.yml down -v --remove-orphans || true
       - name: Boot harness (${{ matrix.profile }} + postgres)
+        if: env.SKIP_LEG != '1'
         run: docker compose -p "$CI_PROJECT" -f docker/docker-compose.dev.yml up -d
       - name: Wait for engines and postgres (bounded)
+        if: env.SKIP_LEG != '1'
         run: bash docker/smoke-test.sh ${{ matrix.profile }}
       # --profile scopes seed to THIS leg's engines. Auto-discover would also hit any
       # other slot's reachable engines on the shared host (seen when a stale runner
       # lacked PI_ENGINE_FLAP_PORT and free-port fell back to s1's 8695 — PR #364).
       - name: Seed demo processes (REST-only, idempotent)
+        if: env.SKIP_LEG != '1'
         run: bash docker/seed.sh --profile ${{ matrix.profile }}
       # Rootless-DinD slots keep the job daemon's socket at /run/user/<uid>/docker.sock,
       # not /var/run/docker.sock — Testcontainers' Ryuk mounts the latter, gets an empty
       # directory, and dies before it can be inspected (404). Self-detecting and a no-op on
       # host-socket slots; see the script header for the measurement.
       - name: Point Testcontainers' Ryuk at the real socket on rootless slots
+        if: env.SKIP_LEG != '1'
         run: bash scripts/ci-testcontainers-socket.sh >> "$GITHUB_ENV"
       - name: Integration tests (failsafe, ${{ matrix.itClass }})
+        if: env.SKIP_LEG != '1'
         working-directory: backend
         run: mvn -B verify -Dit.test=${{ matrix.itClass }} -Dskip.surefire.tests=true
       - name: Dump harness logs
-        if: failure()
+        if: failure() && env.SKIP_LEG != '1'
         run: docker compose -p "$CI_PROJECT" -f docker/docker-compose.dev.yml logs --no-color --timestamps
       # Always tear down CI's own project so the persistent runner leaves no residue and
       # frees the remapped ports for the next leg. Never touches dev/demo (different project).
       - name: Tear down CI harness
-        if: always()
+        if: always() && env.SKIP_LEG != '1'
         run: docker compose -p "$CI_PROJECT" -f docker/docker-compose.dev.yml down -v --remove-orphans || true
 
