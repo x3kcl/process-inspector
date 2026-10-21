@@ -4,6 +4,7 @@ import io.inspector.client.GuardedCaller.CallPriority;
 import io.inspector.config.EngineApiContexts;
 import io.inspector.config.InspectorProperties.EngineConfig;
 import java.time.Instant;
+import java.util.List;
 import java.util.Map;
 import org.springframework.http.MediaType;
 import org.springframework.stereotype.Component;
@@ -136,6 +137,60 @@ public class CmmnApiClient {
         } catch (HttpClientErrorException.NotFound e) {
             return null;
         }
+    }
+
+    @SuppressWarnings("unchecked")
+    public List<Map<String, Object>> listCaseIdentityLinks(
+            EngineConfig engine, CallPriority priority, String caseInstanceId) {
+        String id = GuardedCaller.safeId(caseInstanceId);
+        try {
+            List<Map<String, Object>> rows = guarded.call(
+                    engine,
+                    priority,
+                    () -> guarded.readClient(engine)
+                            .get()
+                            .uri(cmmnApiBase(engine) + "/cmmn-runtime/case-instances/{id}/identitylinks", id)
+                            .retrieve()
+                            .body(List.class));
+            return rows == null ? List.of() : rows;
+        } catch (HttpClientErrorException.NotFound e) {
+            return List.of();
+        }
+    }
+
+    public void addCaseIdentityLink(
+            EngineConfig engine, CallPriority priority, String caseInstanceId, String user, String type) {
+        String id = GuardedCaller.safeId(caseInstanceId);
+        guarded.run(
+                engine,
+                priority,
+                "add-participant",
+                () -> guarded.writeClient(engine)
+                        .post()
+                        .uri(cmmnApiBase(engine) + "/cmmn-runtime/case-instances/{id}/identitylinks", id)
+                        .contentType(MediaType.APPLICATION_JSON)
+                        .body(Map.of("user", user, "type", type))
+                        .retrieve()
+                        .toBodilessEntity());
+    }
+
+    public void deleteCaseIdentityLink(
+            EngineConfig engine, CallPriority priority, String caseInstanceId, String user, String type) {
+        String id = GuardedCaller.safeId(caseInstanceId);
+        guarded.run(
+                engine,
+                priority,
+                "remove-participant",
+                () -> guarded.writeClient(engine)
+                        .delete()
+                        .uri(
+                                cmmnApiBase(engine)
+                                        + "/cmmn-runtime/case-instances/{id}/identitylinks/users/{user}/{type}",
+                                id,
+                                user,
+                                type)
+                        .retrieve()
+                        .toBodilessEntity());
     }
 
     /**

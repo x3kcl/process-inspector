@@ -322,6 +322,78 @@ public class ProcessApiClient {
                         .body(FlowablePage.class));
     }
 
+    /** GET /runtime/process-instances/{id}/identitylinks. Empty when the instance is not running. */
+    @SuppressWarnings("unchecked")
+    public List<Map<String, Object>> listRuntimeIdentityLinks(
+            EngineConfig engine, CallPriority priority, String processInstanceId) {
+        try {
+            List<Map<String, Object>> rows = guarded.call(
+                    engine,
+                    priority,
+                    () -> guarded.readClient(engine)
+                            .get()
+                            .uri("/runtime/process-instances/{id}/identitylinks", processInstanceId)
+                            .retrieve()
+                            .body(List.class));
+            return rows == null ? List.of() : rows;
+        } catch (HttpClientErrorException.NotFound e) {
+            return List.of();
+        }
+    }
+
+    /** GET /history/historic-process-instances/{id}/identitylinks. Empty on 404. */
+    @SuppressWarnings("unchecked")
+    public List<Map<String, Object>> listHistoricIdentityLinks(
+            EngineConfig engine, CallPriority priority, String processInstanceId) {
+        try {
+            List<Map<String, Object>> rows = guarded.call(
+                    engine,
+                    priority,
+                    () -> guarded.readClient(engine)
+                            .get()
+                            .uri("/history/historic-process-instances/{id}/identitylinks", processInstanceId)
+                            .retrieve()
+                            .body(List.class));
+            return rows == null ? List.of() : rows;
+        } catch (HttpClientErrorException.NotFound e) {
+            return List.of();
+        }
+    }
+
+    /** POST /runtime/process-instances/{id}/identitylinks {"user","type"}. Users only. */
+    public void addInstanceIdentityLink(
+            EngineConfig engine, CallPriority priority, String processInstanceId, String user, String type) {
+        guarded.run(
+                engine,
+                priority,
+                "add-participant",
+                () -> guarded.writeClient(engine)
+                        .post()
+                        .uri("/runtime/process-instances/{id}/identitylinks", processInstanceId)
+                        .contentType(MediaType.APPLICATION_JSON)
+                        .body(Map.of("user", user, "type", type))
+                        .retrieve()
+                        .toBodilessEntity());
+    }
+
+    /** DELETE /runtime/process-instances/{id}/identitylinks/users/{user}/{type}. */
+    public void deleteInstanceIdentityLink(
+            EngineConfig engine, CallPriority priority, String processInstanceId, String user, String type) {
+        guarded.run(
+                engine,
+                priority,
+                "remove-participant",
+                () -> guarded.writeClient(engine)
+                        .delete()
+                        .uri(
+                                "/runtime/process-instances/{id}/identitylinks/users/{user}/{type}",
+                                processInstanceId,
+                                user,
+                                type)
+                        .retrieve()
+                        .toBodilessEntity());
+    }
+
     /**
      * GET /runtime/process-instances/{id}/variables — the typed process-scope rows of a
      * RUNNING instance. Bare array on the wire (not the paged envelope). Null = not running.

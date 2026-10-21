@@ -16,8 +16,20 @@ public record EngineCapabilities(
         boolean scopeType, // scopeType field on job rows — Flowable ≥ 6.8
         boolean activityHistory, // history level records activities (probed, not derived)
         boolean timerReschedule, // POST timer-jobs reschedule — Flowable ≥ 7.0
-        boolean idm // GET /identity/users — probed; false means the check is skipped
+        boolean idm, // GET /identity/users — probed; false means the check is skipped
+        boolean dmnHistory // GET dmn-history — probed; false means the Decisions tab stays grey
         ) {
+    public EngineCapabilities(
+            boolean changeState,
+            boolean migration,
+            boolean externalWorkerJobs,
+            boolean scopeType,
+            boolean activityHistory,
+            boolean timerReschedule,
+            boolean idm) {
+        this(changeState, migration, externalWorkerJobs, scopeType, activityHistory, timerReschedule, idm, false);
+    }
+
     public EngineCapabilities(
             boolean changeState,
             boolean migration,
@@ -40,7 +52,27 @@ public record EngineCapabilities(
     /** Copy with the probed IDM flag. Version cliffs do not know whether IDM is installed. */
     public EngineCapabilities withIdm(boolean idm) {
         return new EngineCapabilities(
-                changeState, migration, externalWorkerJobs, scopeType, activityHistory, timerReschedule, idm);
+                changeState,
+                migration,
+                externalWorkerJobs,
+                scopeType,
+                activityHistory,
+                timerReschedule,
+                idm,
+                dmnHistory);
+    }
+
+    /** Copy with the probed DMN-history flag. A 401/404 means this account has no DMN context. */
+    public EngineCapabilities withDmnHistory(boolean dmnHistory) {
+        return new EngineCapabilities(
+                changeState,
+                migration,
+                externalWorkerJobs,
+                scopeType,
+                activityHistory,
+                timerReschedule,
+                idm,
+                dmnHistory);
     }
 
     public static EngineCapabilities none() {
