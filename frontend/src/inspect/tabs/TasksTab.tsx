@@ -11,6 +11,8 @@ import { roleOn, useMe } from '../../api/me'
 import { actionGate, VERBS } from '../../actions/catalog'
 import { TaskAssignModal } from '../../actions/TaskAssignModal'
 import type { TaskAssignMode } from '../../actions/TaskAssignModal'
+import { TaskVerbModal } from '../../actions/TaskVerbModal'
+import type { TaskVerbMode } from '../../actions/TaskVerbModal'
 import type { ActionProblem } from '../../actions/problem'
 import { ActionHint } from '../../components/ActionHint'
 import { useToast } from '../../components/toast'
@@ -40,7 +42,14 @@ export default function TasksTab({ engineId, instanceId }: Props) {
   const toast = useToast()
 
   const [modal, setModal] = useState<ModalState | null>(null)
+  const [verbModal, setVerbModal] = useState<{ mode: TaskVerbMode; task: TaskDto } | null>(null)
   const [problem, setProblem] = useState<ActionProblem | undefined>(undefined)
+  const deleteGate = actionGate({
+    meta: VERBS.deleteTask,
+    roleHint,
+    engineMode: engine?.mode,
+    environment: engine?.environment,
+  })
 
   // Role/engine-mode gate (greyed-never-hidden); the BFF stays the real gate. Reassign and
   // return-to-team share the same tier-1 OPERATOR floor, so one gate covers both.
@@ -120,6 +129,11 @@ export default function TasksTab({ engineId, instanceId }: Props) {
               onReturn={() => {
                 openModal('return', task)
               }}
+              deleteGate={deleteGate}
+              onVerb={(mode) => {
+                setProblem(undefined)
+                setVerbModal({ mode, task })
+              }}
             />
           ))}
         </tbody>
@@ -141,6 +155,22 @@ export default function TasksTab({ engineId, instanceId }: Props) {
           }}
         />
       )}
+      {verbModal !== null && (
+        <TaskVerbModal
+          mode={verbModal.mode}
+          engineId={engineId}
+          instanceId={instanceId}
+          engineName={engine?.name ?? engineId}
+          environment={engine?.environment}
+          task={verbModal.task}
+          pending={action.isPending}
+          problem={problem}
+          onConfirm={dispatch}
+          onClose={() => {
+            setVerbModal(null)
+          }}
+        />
+      )}
     </div>
   )
 }
@@ -148,11 +178,13 @@ export default function TasksTab({ engineId, instanceId }: Props) {
 interface RowProps {
   task: TaskDto
   gate: ReturnType<typeof actionGate>
+  deleteGate: ReturnType<typeof actionGate>
   onReassign: () => void
   onReturn: () => void
+  onVerb: (mode: TaskVerbMode) => void
 }
 
-function TaskRow({ task, gate, onReassign, onReturn }: RowProps) {
+function TaskRow({ task, gate, deleteGate, onReassign, onReturn, onVerb }: RowProps) {
   const active = (task.state ?? 'ACTIVE') === 'ACTIVE' && task.id !== undefined
   const assigned = task.assignee !== undefined
   return (
@@ -242,11 +274,80 @@ function TaskRow({ task, gate, onReassign, onReturn }: RowProps) {
                 )
               )}
             </span>
+            <VerbButton
+              label="Claim"
+              enabled={gate.enabled}
+              hint={gate.reason}
+              onClick={() => {
+                onVerb('claim')
+              }}
+            />
+            <VerbButton
+              label="Delegate"
+              enabled={gate.enabled}
+              hint={gate.reason}
+              onClick={() => {
+                onVerb('delegate')
+              }}
+            />
+            <VerbButton
+              label="Resolve"
+              enabled={gate.enabled}
+              hint={gate.reason}
+              onClick={() => {
+                onVerb('resolve')
+              }}
+            />
+            <VerbButton
+              label="Due date"
+              enabled={gate.enabled}
+              hint={gate.reason}
+              onClick={() => {
+                onVerb('due')
+              }}
+            />
+            <VerbButton
+              label="Add candidate"
+              enabled={gate.enabled}
+              hint={gate.reason}
+              onClick={() => {
+                onVerb('add-link')
+              }}
+            />
+            <VerbButton
+              label="Delete"
+              enabled={deleteGate.enabled}
+              hint={deleteGate.reason}
+              onClick={() => {
+                onVerb('delete')
+              }}
+            />
           </>
         ) : (
           <span className="value-muted">—</span>
         )}
       </td>
     </tr>
+  )
+}
+
+function VerbButton({
+  label,
+  enabled,
+  hint,
+  onClick,
+}: {
+  label: string
+  enabled: boolean
+  hint?: string
+  onClick: () => void
+}) {
+  return (
+    <span className="action-slot">
+      <button type="button" className="row-action" disabled={!enabled} onClick={onClick}>
+        {label}
+      </button>
+      {!enabled && hint !== undefined && <ActionHint text={hint} tone="gate" />}
+    </span>
   )
 }

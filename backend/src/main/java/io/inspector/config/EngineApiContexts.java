@@ -55,6 +55,11 @@ public final class EngineApiContexts {
         return sibling(baseUrl, "/external-job-api");
     }
 
+    /** The DMN history/repository REST context for this engine. */
+    public static String dmnApi(String baseUrl) {
+        return sibling(baseUrl, "/dmn-api");
+    }
+
     /**
      * {@code sibling} must start with {@code /}. Suffix matching is case-insensitive on the path
      * segment only — {@code /Process-Api} is the same context — while the returned URL keeps the
