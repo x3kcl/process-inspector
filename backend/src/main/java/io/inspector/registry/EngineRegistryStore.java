@@ -4,6 +4,7 @@ import io.inspector.audit.AuditEntry;
 import io.inspector.audit.AuditOutcome;
 import io.inspector.audit.AuditService;
 import io.inspector.config.InspectorProperties;
+import io.inspector.config.InspectorProperties.Auth;
 import io.inspector.config.InspectorProperties.EngineConfig;
 import io.inspector.config.InspectorProperties.EngineEnvironment;
 import io.inspector.config.RegistryProperties;
@@ -229,6 +230,7 @@ public class EngineRegistryStore {
             throw new ResponseStatusException(HttpStatus.CONFLICT, "engine id already registered: " + id);
         }
         validateUrl(w.baseUrl(), w.environment());
+        validateAuth(w);
 
         AuditEntry entry =
                 audit.beginPending(actorName, id, w.tenantId(), id, ACTION_ADD, reason, null, writePayload(null, w));
@@ -251,6 +253,7 @@ public class EngineRegistryStore {
         String actorName = requireRegistryAdmin(actor);
         EngineRegistryRow row = requireRow(id);
         validateUrl(w.baseUrl(), w.environment());
+        validateAuth(w);
 
         Map<String, Object> before = rowPayload(row);
         AuditEntry entry =
@@ -618,6 +621,17 @@ public class EngineRegistryStore {
      * Routes through {@link RegistryPinRegistry} (not the validator directly) so a successful add/edit
      * also (re-)pins the host for connect-time reuse (R-OPS-13, #91).
      */
+    private void validateAuth(RegistryWrite w) {
+        try {
+            AuthTypes.check(w);
+        } catch (IllegalArgumentException e) {
+            throw new ResponseStatusException(HttpStatus.BAD_REQUEST, e.getMessage());
+        }
+        if (Auth.Type.fromWire(w.authType()) == Auth.Type.oauth2_client_credentials) {
+            validateUrl(w.oauthTokenUrl(), w.environment());
+        }
+    }
+
     private void validateUrl(String baseUrl, EngineEnvironment environment) {
         Result result = pinRegistry.validate(baseUrl, environment, registryProperties.egressPolicy());
         if (result instanceof Rejected rejected) {
@@ -633,10 +647,17 @@ public class EngineRegistryStore {
         row.setAccentColor(w.accentColor());
         row.setTenantId(w.tenantId());
         row.setTelemetryUrlTemplate(w.telemetryUrlTemplate());
-        row.setAuthType(w.authType() != null ? w.authType() : "none");
+        row.setAuthType(Auth.Type.fromWire(w.authType()).wire());
         row.setAuthUsername(w.authUsername());
         row.setPasswordRef(w.passwordRef());
         row.setTokenRef(w.tokenRef());
+        row.setOauthTokenUrl(w.oauthTokenUrl());
+        row.setOauthClientId(w.oauthClientId());
+        row.setOauthClientSecretRef(w.oauthClientSecretRef());
+        row.setOauthScope(w.oauthScope());
+        row.setOauthAudience(w.oauthAudience());
+        row.setAuthHeaderName(w.headerName());
+        row.setAuthHeaderSecretRef(w.headerSecretRef());
         row.setConnectMs(w.connectMs());
         row.setReadMs(w.readMs());
         row.setWriteMs(w.writeMs());
@@ -660,6 +681,11 @@ public class EngineRegistryStore {
         p.put("authUsername", row.getAuthUsername());
         p.put("passwordRef", row.getPasswordRef());
         p.put("tokenRef", row.getTokenRef());
+        p.put("oauthTokenUrl", row.getOauthTokenUrl());
+        p.put("oauthClientId", row.getOauthClientId());
+        p.put("oauthClientSecretRef", row.getOauthClientSecretRef());
+        p.put("headerName", row.getAuthHeaderName());
+        p.put("headerSecretRef", row.getAuthHeaderSecretRef());
         return p;
     }
 
@@ -673,6 +699,11 @@ public class EngineRegistryStore {
         after.put("authUsername", w.authUsername());
         after.put("passwordRef", w.passwordRef());
         after.put("tokenRef", w.tokenRef());
+        after.put("oauthTokenUrl", w.oauthTokenUrl());
+        after.put("oauthClientId", w.oauthClientId());
+        after.put("oauthClientSecretRef", w.oauthClientSecretRef());
+        after.put("headerName", w.headerName());
+        after.put("headerSecretRef", w.headerSecretRef());
         Map<String, Object> payload = new LinkedHashMap<>();
         if (before != null) {
             payload.put("before", before);

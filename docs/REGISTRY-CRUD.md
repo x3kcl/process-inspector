@@ -398,6 +398,14 @@ picked up live because `resolveSecret` reads `Environment` per request). Rotatin
 name* is a registry edit that evicts the cached client (seam #2). No secret ever enters
 Postgres, logs, audit payloads, the OpenAPI schema, or `EngineDto`.
 
+`oauth2-client-credentials` (#490) stores `oauth_token_url`, `oauth_client_id`,
+`oauth_client_secret_ref`, optional `oauth_scope` and `oauth_audience`. The token URL is
+SSRF-validated like a base URL. The BFF caches the access token and refreshes it at 80% of
+`expires_in`, under a `ReentrantLock`. A read that comes back 401 refreshes once and retries
+that read; a mutation is never re-sent. `custom-header` stores `auth_header_name` (not
+`Authorization`, `Cookie`, or `Host`) and `auth_header_secret_ref`. Neither the bearer token
+nor the header value is logged, returned, or written to the audit payload.
+
 ---
 
 ## 9. API surface (ARCH §4 additions)
@@ -439,7 +447,7 @@ CREATE TABLE engine_registry (
     accent_color  text,
     tenant_id     text,
     telemetry_url_template text,
-    auth_type     text NOT NULL CHECK (auth_type IN ('basic','bearer','none')),
+    auth_type     text NOT NULL CHECK (auth_type IN ('basic','bearer','none','oauth2-client-credentials','custom-header')),
     auth_username text,
     password_ref  text,          -- env-var NAME only, never a secret value
     token_ref     text,          -- env-var NAME only

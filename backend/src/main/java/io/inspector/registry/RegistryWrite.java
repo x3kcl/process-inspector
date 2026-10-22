@@ -16,7 +16,7 @@ public record RegistryWrite(
         String accentColor,
         String tenantId,
         String telemetryUrlTemplate,
-        String authType, // basic | bearer | none
+        String authType, // basic | bearer | none | oauth2-client-credentials | custom-header
         String authUsername,
         String passwordRef,
         String tokenRef,
@@ -27,4 +27,11 @@ public record RegistryWrite(
         Integer dlqScanCap,
         Integer alarmOldestWarnMin,
         Integer alarmOldestCritMin,
-        Integer alarmOverdueGraceS) {}
+        Integer alarmOverdueGraceS,
+        String oauthTokenUrl,
+        String oauthClientId,
+        String oauthClientSecretRef,
+        String oauthScope,
+        String oauthAudience,
+        String headerName,
+        String headerSecretRef) {}
