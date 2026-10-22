@@ -71,6 +71,8 @@ class EngineHealthLegacyIT {
         for (String lane : new String[] {"executable", "timer", "suspended", "deadletter"}) {
             assertThat(lanes.get(lane).asLong()).as(lane).isGreaterThanOrEqualTo(0);
         }
+        // 6.3 has no management/history-jobs. Missing is null, never a fabricated 0.
+        assertThat(lanes.get("history").isNull()).isTrue();
         assertThat(dto.get("overdueTimers").isNumber()).isTrue();
         assertThat(dto.get("mode").asText()).isEqualTo("read-only");
     }

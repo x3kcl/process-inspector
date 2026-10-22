@@ -25,9 +25,15 @@ import io.inspector.client.GuardedCaller.CallPriority;
 import io.inspector.config.InspectorProperties.EngineConfig;
 import io.inspector.config.InspectorProperties.Timeouts;
 import io.inspector.support.TestEngines;
+import io.micrometer.common.KeyValue;
 import io.micrometer.core.instrument.simple.SimpleMeterRegistry;
+import io.micrometer.observation.Observation;
+import io.micrometer.observation.ObservationHandler;
+import io.micrometer.observation.ObservationRegistry;
 import java.time.Clock;
 import java.time.Duration;
+import java.util.ArrayList;
+import java.util.List;
 import java.util.Map;
 import java.util.concurrent.TimeUnit;
 import org.junit.jupiter.api.AfterEach;
@@ -330,5 +336,40 @@ class GuardedCallerTest {
         client.engineInfo(forwardEngine("fwd-read"), CallPriority.INTERACTIVE);
 
         wm.verify(getRequestedFor(urlPathEqualTo("/management/engine")).withoutHeader("X-Forwarded-User"));
+    }
+
+    @Test
+    void aCorrectiveRunNamesTheSpanAndTheVerb() {
+        List<Observation.Context> seen = new ArrayList<>();
+        ObservationRegistry registry = ObservationRegistry.create();
+        registry.observationConfig().observationHandler(new ObservationHandler<Observation.Context>() {
+            @Override
+            public void onStart(Observation.Context context) {
+                seen.add(context);
+            }
+
+            @Override
+            public boolean supportsContext(Observation.Context context) {
+                return true;
+            }
+        });
+        GuardedCaller traced = new GuardedCaller(env, breakers, bulkheads, metrics, recentErrors, registry);
+
+        traced.call(engine("span-engine"), CallPriority.INTERACTIVE, () -> "ok");
+        traced.run(engine("span-engine"), CallPriority.INTERACTIVE, "delete-instance", () -> {});
+
+        assertThat(seen)
+                .extracting(Observation.Context::getName)
+                .containsExactly(CorrectiveSampler.READ_SPAN, CorrectiveSampler.CORRECTIVE_SPAN);
+        assertThat(verbOf(seen.get(0))).isNull();
+        assertThat(verbOf(seen.get(1))).isEqualTo("delete-instance");
+    }
+
+    private static String verbOf(Observation.Context context) {
+        return context.getLowCardinalityKeyValues().stream()
+                .filter(kv -> "verb".equals(kv.getKey()))
+                .map(KeyValue::getValue)
+                .findFirst()
+                .orElse(null);
     }
 }

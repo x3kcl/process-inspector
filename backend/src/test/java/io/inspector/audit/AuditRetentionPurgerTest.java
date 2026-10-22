@@ -1,5 +1,6 @@
 package io.inspector.audit;
 
+import static org.assertj.core.api.Assertions.assertThat;
 import static org.mockito.ArgumentMatchers.any;
 import static org.mockito.ArgumentMatchers.anyBoolean;
 import static org.mockito.ArgumentMatchers.anyString;
@@ -8,10 +9,12 @@ import static org.mockito.ArgumentMatchers.contains;
 import static org.mockito.ArgumentMatchers.eq;
 import static org.mockito.Mockito.mock;
 import static org.mockito.Mockito.never;
+import static org.mockito.Mockito.reset;
 import static org.mockito.Mockito.verify;
 import static org.mockito.Mockito.when;
 
 import io.inspector.config.AuditProperties;
+import io.micrometer.core.instrument.simple.SimpleMeterRegistry;
 import java.time.Clock;
 import java.time.Instant;
 import java.time.ZoneOffset;
@@ -33,12 +36,15 @@ class AuditRetentionPurgerTest {
     private final Clock clock = Clock.fixed(Instant.parse("2026-07-15T00:00:00Z"), ZoneOffset.UTC);
     private final JdbcTemplate jdbc = mock(JdbcTemplate.class);
     private final AuditService audit = mock(AuditService.class);
+    private SimpleMeterRegistry metrics;
     private AuditRetentionPurger purger;
 
     @BeforeEach
     @SuppressWarnings("unchecked")
     void setUp() {
-        purger = new AuditRetentionPurger(jdbc, audit, new AuditProperties(null, null, null), clock);
+        reset(jdbc, audit);
+        metrics = new SimpleMeterRegistry();
+        purger = new AuditRetentionPurger(jdbc, audit, new AuditProperties(null, null, null), clock, metrics);
 
         // One aged-out child + the DEFAULT (never a candidate) + a future month (not expired).
         when(jdbc.queryForList(contains("pg_inherits"), eq(String.class), any()))
@@ -51,18 +57,16 @@ class AuditRetentionPurgerTest {
                 .thenReturn(new Object[] {100L, "hash-last"});
         when(jdbc.query(contains("seq >"), any(ResultSetExtractor.class), any()))
                 .thenReturn(new Object[] {101L, "hash-first"});
-        when(jdbc.queryForMap(contains("purge_audit"), any(), any()))
-                .thenReturn(Map.of(
-                        "dropped_partition",
-                        "audit_entry_2019_06",
-                        "range_from",
-                        "2019-06-01",
-                        "range_to",
-                        "2019-07-01"));
     }
 
     @Test
     void auditsAStartedCheckpointAndTerminalEventAroundTheDrop() {
+        when(jdbc.queryForMap(contains("purge_audit"), any(), any()))
+                .thenReturn(Map.of(
+                        "dropped_partition", "audit_entry_2019_06",
+                        "range_from", "2019-06-01",
+                        "range_to", "2019-07-01"));
+
         purger.purge();
 
         // started → checkpoint(with the chain boundary) → terminal, all tagged audit-retention-purge.
@@ -92,6 +96,8 @@ class AuditRetentionPurgerTest {
                                 && Integer.valueOf(1).equals(p.get("partitionsDropped"))));
         // Exactly the one aged, un-held partition was dropped (not DEFAULT, not the future month).
         verify(jdbc).queryForMap(contains("purge_audit"), eq("audit_entry_2019_06"), any());
+        assertThat(metrics.counter("audit_retention_purge_failures_total").count())
+                .isZero();
     }
 
     @Test
@@ -104,6 +110,8 @@ class AuditRetentionPurgerTest {
         purger.purge(); // must not throw
 
         verify(jdbc, never()).queryForMap(contains("purge_audit"), any(), any());
+        assertThat(metrics.counter("audit_retention_purge_failures_total").count())
+                .isEqualTo(1);
     }
 
     @Test
@@ -115,5 +123,7 @@ class AuditRetentionPurgerTest {
 
         verify(audit, never()).recordConfigEvent(anyString(), anyString(), anyBoolean(), any());
         verify(jdbc, never()).queryForMap(contains("purge_audit"), any(), any());
+        assertThat(metrics.counter("audit_retention_purge_failures_total").count())
+                .isZero();
     }
 }
