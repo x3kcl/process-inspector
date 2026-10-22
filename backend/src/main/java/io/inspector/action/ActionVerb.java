@@ -38,6 +38,11 @@ public enum ActionVerb {
     DELETE_JOB("delete-job", 3, Role.ADMIN, TargetKind.INSTANCE),
     DELETE_HISTORY("delete-history", 3, Role.ADMIN, TargetKind.INSTANCE),
     DELETE_CASE_HISTORY("delete-case-history", 3, Role.ADMIN, TargetKind.INSTANCE),
+    PLAN_ITEM_ACTION("plan-item-action", 1, Role.OPERATOR, TargetKind.INSTANCE),
+    CHANGE_PLAN_ITEM("change-plan-item", 1, Role.OPERATOR, TargetKind.INSTANCE),
+    TERMINATE_CASE("terminate-case", 3, Role.ADMIN, TargetKind.INSTANCE),
+    DELETE_CASE("delete-case", 3, Role.ADMIN, TargetKind.INSTANCE),
+    EDIT_CASE_VARIABLE("edit-case-variable", 1, Role.OPERATOR, TargetKind.INSTANCE),
     SUSPEND_DEFINITION("suspend-definition", 3, Role.ADMIN, TargetKind.DEFINITION),
     ACTIVATE_DEFINITION("activate-definition", 3, Role.ADMIN, TargetKind.DEFINITION);
 

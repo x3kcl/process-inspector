@@ -166,6 +166,14 @@ public class CorrectiveActionService {
         if (scope == ActionScope.CMMN) {
             requireCmmnScope(engine, verb);
         }
+        if (verb == ActionVerb.CHANGE_PLAN_ITEM
+                && engine.environment() == EngineEnvironment.PROD
+                && !rbac.hasRoleOn(auth, io.inspector.security.Role.ADMIN, engine.id())) {
+            throw new GuardRefusedException(
+                    HttpStatus.FORBIDDEN,
+                    "rbac-denied",
+                    "change-plan-item on a prod engine requires ADMIN. Nothing happened.");
+        }
         if (verb == ActionVerb.RESCHEDULE_TIMER) {
             requireTimerReschedule(engine, request);
         }
@@ -215,7 +223,7 @@ public class CorrectiveActionService {
                     engine.auditPayloadOrDefault());
 
             // -- CAS pre-check (audited: the last shift must see the refused attempt) --
-            if (verb == ActionVerb.EDIT_VARIABLE) {
+            if (verb == ActionVerb.EDIT_VARIABLE || verb == ActionVerb.EDIT_CASE_VARIABLE) {
                 Object current = target.currentVariableValue();
                 Object expected = request.variable().expectedOldValue();
                 if (!sameValue(expected, current)) {
@@ -283,7 +291,12 @@ public class CorrectiveActionService {
             ActionVerb.RETRY_JOB,
             ActionVerb.DELETE_DEADLETTER,
             ActionVerb.ADD_PARTICIPANT,
-            ActionVerb.REMOVE_PARTICIPANT);
+            ActionVerb.REMOVE_PARTICIPANT,
+            ActionVerb.PLAN_ITEM_ACTION,
+            ActionVerb.CHANGE_PLAN_ITEM,
+            ActionVerb.TERMINATE_CASE,
+            ActionVerb.DELETE_CASE,
+            ActionVerb.EDIT_CASE_VARIABLE);
 
     private void requireTimerReschedule(EngineConfig engine, ActionRequest request) {
         var caps = registry.healthOf(engine.id()).capabilities();
@@ -341,9 +354,7 @@ public class CorrectiveActionService {
             throw new GuardRefusedException(
                     HttpStatus.BAD_REQUEST,
                     "verb-not-cmmn-scoped",
-                    "'" + verb.path()
-                            + "' is not available on a CMMN case — dead-letter retry, delete, and participants are."
-                            + " Nothing happened.");
+                    "'" + verb.path() + "' is not available on a CMMN case. Nothing happened.");
         }
         CmmnCapabilities.requireScopeType(registry, engine);
     }
@@ -436,6 +447,13 @@ public class CorrectiveActionService {
                 if (verb == ActionVerb.ADD_PARTICIPANT || verb == ActionVerb.REMOVE_PARTICIPANT) {
                     return participantTarget(engine, targetId, request, verb, true);
                 }
+                if (verb == ActionVerb.PLAN_ITEM_ACTION
+                        || verb == ActionVerb.CHANGE_PLAN_ITEM
+                        || verb == ActionVerb.TERMINATE_CASE
+                        || verb == ActionVerb.DELETE_CASE
+                        || verb == ActionVerb.EDIT_CASE_VARIABLE) {
+                    return caseOpsTarget(engine, verb, targetId, request);
+                }
                 return cmmnJobTarget(engine, targetId, required(request.jobId(), "jobId"), verb);
             }
             return switch (verb) {
@@ -461,6 +479,8 @@ public class CorrectiveActionService {
                 case ADD_PARTICIPANT, REMOVE_PARTICIPANT -> participantTarget(engine, targetId, request, verb, false);
                 case DELETE_HISTORY -> historyTarget(engine, targetId, false);
                 case DELETE_CASE_HISTORY -> historyTarget(engine, targetId, true);
+                case PLAN_ITEM_ACTION, CHANGE_PLAN_ITEM, TERMINATE_CASE, DELETE_CASE, EDIT_CASE_VARIABLE ->
+                    throw notOnProcess(verb);
                 case UNSTICK_EVENT -> executionTarget(engine, targetId, request);
                 case SUSPEND_DEFINITION, ACTIVATE_DEFINITION -> definitionTarget(engine, targetId, request);
             };
@@ -761,6 +781,67 @@ public class CorrectiveActionService {
         return new Target(payload, id, "instance id", null, definitionKeyOf(definitionId));
     }
 
+    private static GuardRefusedException notOnProcess(ActionVerb verb) {
+        return new GuardRefusedException(
+                HttpStatus.BAD_REQUEST,
+                "verb-not-bpmn",
+                "'" + verb.path() + "' is a CMMN case verb. Nothing happened.");
+    }
+
+    private Target caseOpsTarget(EngineConfig engine, ActionVerb verb, String caseId, ActionRequest request) {
+        Map<String, Object> row = cmmnClient.getCmmnCaseInstance(engine, CallPriority.INTERACTIVE, caseId);
+        if (row == null) {
+            throw new GuardRefusedException(
+                    HttpStatus.NOT_FOUND, "case-not-running", "Case " + caseId + " is not running. Nothing happened.");
+        }
+        Map<String, Object> payload = new LinkedHashMap<>();
+        payload.put("schema", verb.path() + "/v1");
+        payload.put("caseId", caseId);
+        Object current = null;
+        if (verb == ActionVerb.PLAN_ITEM_ACTION || verb == ActionVerb.CHANGE_PLAN_ITEM) {
+            if (request.plan() == null) {
+                throw missingField("plan");
+            }
+            payload.put("action", request.plan().action());
+            payload.put("planItemInstanceId", request.plan().planItemInstanceId());
+            payload.put("definitionId", request.plan().definitionId());
+        }
+        if (verb == ActionVerb.EDIT_CASE_VARIABLE) {
+            ActionRequest.VariableEdit edit = requiredEdit(request);
+            Map<String, Object> variable =
+                    cmmnClient.getCaseVariable(engine, CallPriority.INTERACTIVE, caseId, edit.name());
+            if (variable == null) {
+                throw new GuardRefusedException(
+                        HttpStatus.NOT_FOUND,
+                        "variable-not-found",
+                        "Case variable '" + edit.name() + "' does not exist. Nothing happened.");
+            }
+            current = variable.get("value");
+            payload.put("name", edit.name());
+            payload.put("oldValue", current);
+            payload.put("newValue", edit.value());
+        }
+        String businessKey = row.get("businessKey") == null ? caseId : String.valueOf(row.get("businessKey"));
+        return new Target(payload, businessKey, "business key", current);
+    }
+
+    private static String planAction(ActionRequest request, String... allowed) {
+        String action =
+                request.plan() == null ? null : blankToNull(request.plan().action());
+        if (action == null) {
+            throw missingField("plan.action");
+        }
+        for (String candidate : allowed) {
+            if (candidate.equals(action)) {
+                return action;
+            }
+        }
+        throw new GuardRefusedException(
+                HttpStatus.BAD_REQUEST,
+                "plan-action-invalid",
+                "plan.action must be one of " + String.join(", ", allowed) + ".");
+    }
+
     private Target participantTarget(
             EngineConfig engine, String instanceId, ActionRequest request, ActionVerb verb, boolean cmmn) {
         ActionRequest.IdentityLink link = request.link();
@@ -1031,6 +1112,29 @@ public class CorrectiveActionService {
                             targetId,
                             request.link().identityId().strip(),
                             linkType(request));
+                case PLAN_ITEM_ACTION ->
+                    cmmnClient.planItemAction(
+                            engine,
+                            CallPriority.INTERACTIVE,
+                            required(request.plan().planItemInstanceId(), "plan.planItemInstanceId"),
+                            planAction(request, "trigger", "enable", "disable"));
+                case CHANGE_PLAN_ITEM ->
+                    cmmnClient.changePlanItemState(
+                            engine,
+                            CallPriority.INTERACTIVE,
+                            targetId,
+                            required(request.plan().definitionId(), "plan.definitionId"),
+                            planAction(request, "activate", "available", "terminate"));
+                case TERMINATE_CASE -> cmmnClient.terminateCase(engine, CallPriority.INTERACTIVE, targetId);
+                case DELETE_CASE -> cmmnClient.deleteCase(engine, CallPriority.INTERACTIVE, targetId);
+                case EDIT_CASE_VARIABLE ->
+                    cmmnClient.putCaseVariable(
+                            engine,
+                            CallPriority.INTERACTIVE,
+                            targetId,
+                            request.variable().name(),
+                            request.variable().type(),
+                            request.variable().value());
                 case REMOVE_PARTICIPANT ->
                     cmmnClient.deleteCaseIdentityLink(
                             engine,
@@ -1074,6 +1178,8 @@ public class CorrectiveActionService {
                 client.deleteHistoricProcessInstance(
                         engine, CallPriority.HOUSEKEEPING, targetId, engineDeleteReason(request));
             case DELETE_CASE_HISTORY -> cmmnClient.deleteHistoricCase(engine, CallPriority.HOUSEKEEPING, targetId);
+            case PLAN_ITEM_ACTION, CHANGE_PLAN_ITEM, TERMINATE_CASE, DELETE_CASE, EDIT_CASE_VARIABLE ->
+                throw notOnProcess(verb);
             case EDIT_VARIABLE -> {
                 ActionRequest.VariableEdit edit = request.variable();
                 String executionId = blankToNull(edit.executionId());
@@ -1257,6 +1363,19 @@ public class CorrectiveActionService {
                         + ". Irreversible.";
             case DELETE_CASE_HISTORY ->
                 "Historic case " + targetId + " deleted. The CMMN route takes no delete reason. Irreversible.";
+            case PLAN_ITEM_ACTION ->
+                "Plan item " + request.plan().planItemInstanceId() + " "
+                        + request.plan().action() + ".";
+            case CHANGE_PLAN_ITEM ->
+                "Plan item definition " + request.plan().definitionId() + " set to "
+                        + request.plan().action() + ". This is not an engine dry-run; the call already ran.";
+            case TERMINATE_CASE ->
+                "Case " + targetId + " terminated. The engine route stores no delete reason. Irreversible.";
+            case DELETE_CASE ->
+                "Case " + targetId
+                        + " deleted, including its history. The engine route stores no delete reason. Irreversible.";
+            case EDIT_CASE_VARIABLE ->
+                "Case variable '" + request.variable().name() + "' updated. The old value is in the audit row.";
             case UNSTICK_EVENT ->
                 capitalize(request.event().type()) + " delivered to execution " + request.executionId()
                         + " — the wait is over.";
@@ -1264,8 +1383,7 @@ public class CorrectiveActionService {
             case DELETE_DEADLETTER ->
                 "cmmn".equals(target.auditPayload().get("scope"))
                         ? "Dead-letter job " + request.jobId() + " deleted. The plan item is orphaned — the case"
-                                + " cannot continue past this step on its own, and this tool offers no CMMN rescue"
-                                + " verb (no change-state for cases)."
+                                + " cannot continue past this step on its own. Rescue is change-plan-item."
                         : "Dead-letter job " + request.jobId() + " deleted. The execution is orphaned — the only"
                                 + " rescue afterwards is change-state.";
             case SUSPEND_DEFINITION ->
