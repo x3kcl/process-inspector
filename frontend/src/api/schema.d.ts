@@ -27,7 +27,7 @@ export interface paths {
             path?: never;
             cookie?: never;
         };
-        get: operations["list_7"];
+        get: operations["list_8"];
         put?: never;
         post?: never;
         delete?: never;
@@ -613,6 +613,38 @@ export interface paths {
         patch?: never;
         trace?: never;
     };
+    "/api/definitions": {
+        parameters: {
+            query?: never;
+            header?: never;
+            path?: never;
+            cookie?: never;
+        };
+        get: operations["definitions"];
+        put?: never;
+        post?: never;
+        delete?: never;
+        options?: never;
+        head?: never;
+        patch?: never;
+        trace?: never;
+    };
+    "/api/definitions/{engineId}/{definitionId}": {
+        parameters: {
+            query?: never;
+            header?: never;
+            path?: never;
+            cookie?: never;
+        };
+        get: operations["definition"];
+        put?: never;
+        post?: never;
+        delete?: never;
+        options?: never;
+        head?: never;
+        patch?: never;
+        trace?: never;
+    };
     "/api/definitions/{engineId}/{definitionId}/actions/{verb}": {
         parameters: {
             query?: never;
@@ -623,6 +655,70 @@ export interface paths {
         get?: never;
         put?: never;
         post: operations["definitionAction"];
+        delete?: never;
+        options?: never;
+        head?: never;
+        patch?: never;
+        trace?: never;
+    };
+    "/api/definitions/{engineId}/{definitionId}/diff": {
+        parameters: {
+            query?: never;
+            header?: never;
+            path?: never;
+            cookie?: never;
+        };
+        get: operations["diff_1"];
+        put?: never;
+        post?: never;
+        delete?: never;
+        options?: never;
+        head?: never;
+        patch?: never;
+        trace?: never;
+    };
+    "/api/definitions/{engineId}/{definitionId}/jobs": {
+        parameters: {
+            query?: never;
+            header?: never;
+            path?: never;
+            cookie?: never;
+        };
+        get: operations["jobs_1"];
+        put?: never;
+        post?: never;
+        delete?: never;
+        options?: never;
+        head?: never;
+        patch?: never;
+        trace?: never;
+    };
+    "/api/definitions/{engineId}/{definitionId}/subscriptions": {
+        parameters: {
+            query?: never;
+            header?: never;
+            path?: never;
+            cookie?: never;
+        };
+        get: operations["subscriptions"];
+        put?: never;
+        post?: never;
+        delete?: never;
+        options?: never;
+        head?: never;
+        patch?: never;
+        trace?: never;
+    };
+    "/api/definitions/{engineId}/{definitionId}/xml": {
+        parameters: {
+            query?: never;
+            header?: never;
+            path?: never;
+            cookie?: never;
+        };
+        get: operations["xml"];
+        put?: never;
+        post?: never;
         delete?: never;
         options?: never;
         head?: never;
@@ -671,6 +767,54 @@ export interface paths {
         get: operations["versions"];
         put?: never;
         post?: never;
+        delete?: never;
+        options?: never;
+        head?: never;
+        patch?: never;
+        trace?: never;
+    };
+    "/api/deployments": {
+        parameters: {
+            query?: never;
+            header?: never;
+            path?: never;
+            cookie?: never;
+        };
+        get: operations["list_7"];
+        put?: never;
+        post?: never;
+        delete?: never;
+        options?: never;
+        head?: never;
+        patch?: never;
+        trace?: never;
+    };
+    "/api/deployments/{engineId}/{deploymentId}": {
+        parameters: {
+            query?: never;
+            header?: never;
+            path?: never;
+            cookie?: never;
+        };
+        get: operations["detail_1"];
+        put?: never;
+        post?: never;
+        delete?: never;
+        options?: never;
+        head?: never;
+        patch?: never;
+        trace?: never;
+    };
+    "/api/deployments/{engineId}/{deploymentId}/delete": {
+        parameters: {
+            query?: never;
+            header?: never;
+            path?: never;
+            cookie?: never;
+        };
+        get?: never;
+        put?: never;
+        post: operations["delete"];
         delete?: never;
         options?: never;
         head?: never;
@@ -1603,6 +1747,7 @@ export interface components {
             assignee?: string;
             confirmToken?: string;
             dueDate?: string;
+            effectiveAt?: string;
             event?: components["schemas"]["EventTrigger"];
             executionId?: string;
             includeProcessInstances?: boolean;
@@ -1749,6 +1894,14 @@ export interface components {
             rowCapHit?: boolean;
             /** Format: int64 */
             rowsChecked?: number;
+        };
+        BpmnDiffResponse: {
+            added?: components["schemas"]["ElementChange"][];
+            changed?: components["schemas"]["ElementChange"][];
+            engineId?: string;
+            leftDefinitionId?: string;
+            removed?: components["schemas"]["ElementChange"][];
+            rightDefinitionId?: string;
         };
         BreakerStatus: {
             instanceName?: string;
@@ -1908,6 +2061,32 @@ export interface components {
             truncated?: boolean;
             unavailableReason?: string;
         };
+        CatalogDefinition: {
+            category?: string;
+            countLowerBound?: boolean;
+            definitionId?: string;
+            deploymentId?: string;
+            engineId?: string;
+            key?: string;
+            kind?: string;
+            latest?: boolean;
+            name?: string;
+            protectedDefinition?: boolean;
+            /** Format: int64 */
+            runningCount?: number;
+            suspended?: boolean;
+            tenantId?: string;
+            /** Format: int32 */
+            version?: number;
+        };
+        CatalogDeployment: {
+            category?: string;
+            deploymentId?: string;
+            deploymentTime?: string;
+            engineId?: string;
+            name?: string;
+            tenantId?: string;
+        };
         ChangeStatePreview: {
             engineId?: string;
             enginePath?: string;
@@ -1961,6 +2140,15 @@ export interface components {
             confirmToken?: string;
             reason: string;
         };
+        ContainedDefinition: {
+            definitionId?: string;
+            key?: string;
+            name?: string;
+            /** Format: int64 */
+            runningCount?: number;
+            /** Format: int32 */
+            version?: number;
+        };
         CreateNote: {
             body: string;
         };
@@ -1990,6 +2178,38 @@ export interface components {
             id?: string;
             startTime?: string;
         };
+        DefinitionCatalogResponse: {
+            countsBounded?: boolean;
+            definitions?: components["schemas"]["CatalogDefinition"][];
+            perEngine?: {
+                [key: string]: components["schemas"]["EngineResult"];
+            };
+        };
+        DefinitionDetailResponse: {
+            category?: string;
+            definitionId?: string;
+            deploymentId?: string;
+            engineId?: string;
+            graphicalNotationDefined?: boolean;
+            key?: string;
+            kind?: string;
+            name?: string;
+            resourceName?: string;
+            suspended?: boolean;
+            tenantId?: string;
+            /** Format: int32 */
+            version?: number;
+            versions?: components["schemas"]["VersionRef"][];
+        };
+        DefinitionJobsResponse: {
+            lanes?: components["schemas"]["JobLaneCount"][];
+            scope?: string;
+        };
+        DefinitionSubscriptionsResponse: {
+            complete?: boolean;
+            scope?: string;
+            subscriptions?: components["schemas"]["SubscriptionRow"][];
+        };
         DefinitionVersion: {
             definitionId?: string;
             deploymentId?: string;
@@ -2012,6 +2232,41 @@ export interface components {
             totalVersions?: number;
             versions?: components["schemas"]["DefinitionVersion"][];
         };
+        DefinitionXmlResponse: {
+            xml?: string;
+        };
+        DeleteDeploymentRequest: {
+            cascade?: boolean;
+            confirmToken?: string;
+            reason?: string;
+            ticketId?: string;
+        };
+        DeleteDeploymentResponse: {
+            cascade?: boolean;
+            detail?: string;
+            outcome?: string;
+            /** Format: int64 */
+            runningCount?: number;
+        };
+        DeploymentCatalogResponse: {
+            deployments?: components["schemas"]["CatalogDeployment"][];
+            perEngine?: {
+                [key: string]: components["schemas"]["EngineResult"];
+            };
+        };
+        DeploymentDetailResponse: {
+            category?: string;
+            definitions?: components["schemas"]["ContainedDefinition"][];
+            deploymentId?: string;
+            deploymentTime?: string;
+            engineId?: string;
+            name?: string;
+            resources?: string[];
+            /** Format: int64 */
+            runningCount?: number;
+            runningCountBounded?: boolean;
+            tenantId?: string;
+        };
         DiagResponse: {
             asOf?: string;
             breakers?: components["schemas"]["BreakerStatus"][];
@@ -2031,6 +2286,12 @@ export interface components {
             reason?: string;
             runbookUrl?: string;
             search: string;
+        };
+        ElementChange: {
+            detail?: string;
+            id?: string;
+            name?: string;
+            type?: string;
         };
         EnableRequest: {
             confirmToken?: string;
@@ -2489,6 +2750,12 @@ export interface components {
             /** Format: int32 */
             retries?: number;
             tenantId?: string;
+        };
+        JobLaneCount: {
+            lane?: string;
+            lowerBound?: boolean;
+            /** Format: int64 */
+            total?: number;
         };
         JobLanes: {
             /** Format: int64 */
@@ -3045,6 +3312,14 @@ export interface components {
             /** @enum {string} */
             status?: "ACTIVE" | "SUSPENDED" | "COMPLETED" | "FAILED" | "RETRYING";
         };
+        SubscriptionRow: {
+            activityId?: string;
+            eventName?: string;
+            eventType?: string;
+            id?: string;
+            processInstanceId?: string;
+            startSubscription?: boolean;
+        };
         TableCount: {
             /** Format: int64 */
             count?: number;
@@ -3221,6 +3496,12 @@ export interface components {
             type?: string;
             value?: unknown;
         };
+        VersionRef: {
+            definitionId?: string;
+            latest?: boolean;
+            /** Format: int32 */
+            version?: number;
+        };
         WaitState: {
             activityId?: string;
             createdTime?: string;
@@ -3275,7 +3556,7 @@ export interface operations {
             };
         };
     };
-    list_7: {
+    list_8: {
         parameters: {
             query?: never;
             header?: never;
@@ -4250,6 +4531,54 @@ export interface operations {
             };
         };
     };
+    definitions: {
+        parameters: {
+            query?: {
+                engineIds?: string[];
+                key?: string;
+                name?: string;
+                latestOnly?: boolean;
+            };
+            header?: never;
+            path?: never;
+            cookie?: never;
+        };
+        requestBody?: never;
+        responses: {
+            /** @description OK */
+            200: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "*/*": components["schemas"]["DefinitionCatalogResponse"];
+                };
+            };
+        };
+    };
+    definition: {
+        parameters: {
+            query?: never;
+            header?: never;
+            path: {
+                engineId: string;
+                definitionId: string;
+            };
+            cookie?: never;
+        };
+        requestBody?: never;
+        responses: {
+            /** @description OK */
+            200: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "*/*": components["schemas"]["DefinitionDetailResponse"];
+                };
+            };
+        };
+    };
     definitionAction: {
         parameters: {
             query?: never;
@@ -4274,6 +4603,100 @@ export interface operations {
                 };
                 content: {
                     "*/*": components["schemas"]["ActionResult"];
+                };
+            };
+        };
+    };
+    diff_1: {
+        parameters: {
+            query: {
+                against: string;
+            };
+            header?: never;
+            path: {
+                engineId: string;
+                definitionId: string;
+            };
+            cookie?: never;
+        };
+        requestBody?: never;
+        responses: {
+            /** @description OK */
+            200: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "*/*": components["schemas"]["BpmnDiffResponse"];
+                };
+            };
+        };
+    };
+    jobs_1: {
+        parameters: {
+            query?: never;
+            header?: never;
+            path: {
+                engineId: string;
+                definitionId: string;
+            };
+            cookie?: never;
+        };
+        requestBody?: never;
+        responses: {
+            /** @description OK */
+            200: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "*/*": components["schemas"]["DefinitionJobsResponse"];
+                };
+            };
+        };
+    };
+    subscriptions: {
+        parameters: {
+            query?: never;
+            header?: never;
+            path: {
+                engineId: string;
+                definitionId: string;
+            };
+            cookie?: never;
+        };
+        requestBody?: never;
+        responses: {
+            /** @description OK */
+            200: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "*/*": components["schemas"]["DefinitionSubscriptionsResponse"];
+                };
+            };
+        };
+    };
+    xml: {
+        parameters: {
+            query?: never;
+            header?: never;
+            path: {
+                engineId: string;
+                definitionId: string;
+            };
+            cookie?: never;
+        };
+        requestBody?: never;
+        responses: {
+            /** @description OK */
+            200: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "*/*": components["schemas"]["DefinitionXmlResponse"];
                 };
             };
         };
@@ -4347,6 +4770,79 @@ export interface operations {
                 };
                 content: {
                     "*/*": components["schemas"]["DefinitionVersionsResponse"];
+                };
+            };
+        };
+    };
+    list_7: {
+        parameters: {
+            query?: {
+                engineIds?: string[];
+                name?: string;
+            };
+            header?: never;
+            path?: never;
+            cookie?: never;
+        };
+        requestBody?: never;
+        responses: {
+            /** @description OK */
+            200: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "*/*": components["schemas"]["DeploymentCatalogResponse"];
+                };
+            };
+        };
+    };
+    detail_1: {
+        parameters: {
+            query?: never;
+            header?: never;
+            path: {
+                engineId: string;
+                deploymentId: string;
+            };
+            cookie?: never;
+        };
+        requestBody?: never;
+        responses: {
+            /** @description OK */
+            200: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "*/*": components["schemas"]["DeploymentDetailResponse"];
+                };
+            };
+        };
+    };
+    delete: {
+        parameters: {
+            query?: never;
+            header?: never;
+            path: {
+                engineId: string;
+                deploymentId: string;
+            };
+            cookie?: never;
+        };
+        requestBody: {
+            content: {
+                "application/json": components["schemas"]["DeleteDeploymentRequest"];
+            };
+        };
+        responses: {
+            /** @description OK */
+            200: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "*/*": components["schemas"]["DeleteDeploymentResponse"];
                 };
             };
         };

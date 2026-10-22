@@ -1405,6 +1405,26 @@ public class ProcessApiClient {
             String definitionId,
             String action,
             boolean includeProcessInstances) {
+        suspendOrActivateDefinition(engine, priority, definitionId, action, includeProcessInstances, null);
+    }
+
+    /**
+     * Same PUT, with an optional ISO-8601 {@code date} so the engine schedules the suspend or
+     * activate instead of applying it on this call (#483 S6). Null date omits the field.
+     */
+    public void suspendOrActivateDefinition(
+            EngineConfig engine,
+            CallPriority priority,
+            String definitionId,
+            String action,
+            boolean includeProcessInstances,
+            String effectiveAt) {
+        Map<String, Object> body = new LinkedHashMap<>();
+        body.put("action", action);
+        body.put("includeProcessInstances", includeProcessInstances);
+        if (effectiveAt != null) {
+            body.put("date", effectiveAt);
+        }
         guarded.run(
                 engine,
                 priority,
@@ -1413,7 +1433,7 @@ public class ProcessApiClient {
                         .put()
                         .uri("/repository/process-definitions/{id}", definitionId)
                         .contentType(MediaType.APPLICATION_JSON)
-                        .body(Map.of("action", action, "includeProcessInstances", includeProcessInstances))
+                        .body(body)
                         .retrieve()
                         .toBodilessEntity());
     }
@@ -1530,5 +1550,134 @@ public class ProcessApiClient {
                         .body(body)
                         .retrieve()
                         .body(Map.class));
+    }
+
+    /**
+     * GET /repository/process-definitions — the catalog list. Blank filters are omitted so the
+     * engine does not treat an empty string as a match. {@code latest} null means every version.
+     */
+    public FlowablePage listProcessDefinitions(
+            EngineConfig engine,
+            CallPriority priority,
+            String key,
+            String nameLike,
+            Boolean latest,
+            String deploymentId,
+            int start,
+            int size) {
+        return guarded.call(
+                engine,
+                priority,
+                () -> guarded.readClient(engine)
+                        .get()
+                        .uri(uri -> {
+                            var b = uri.path("/repository/process-definitions").queryParam("size", size);
+                            if (start > 0) {
+                                b.queryParam("start", start);
+                            }
+                            if (key != null && !key.isBlank()) {
+                                b.queryParam("key", key);
+                            }
+                            if (nameLike != null && !nameLike.isBlank()) {
+                                b.queryParam("nameLike", nameLike);
+                            }
+                            if (latest != null) {
+                                b.queryParam("latest", latest);
+                            }
+                            if (deploymentId != null && !deploymentId.isBlank()) {
+                                b.queryParam("deploymentId", deploymentId);
+                            }
+                            return b.build();
+                        })
+                        .retrieve()
+                        .body(FlowablePage.class));
+    }
+
+    /** GET /runtime/event-subscriptions?processDefinitionId= — start and instance subscriptions. */
+    public FlowablePage listDefinitionEventSubscriptions(
+            EngineConfig engine, CallPriority priority, String processDefinitionId, int size) {
+        return guarded.call(
+                engine,
+                priority,
+                () -> guarded.readClient(engine)
+                        .get()
+                        .uri(uri -> uri.path("/runtime/event-subscriptions")
+                                .queryParam("processDefinitionId", processDefinitionId)
+                                .queryParam("size", size)
+                                .build())
+                        .retrieve()
+                        .body(FlowablePage.class));
+    }
+
+    /** GET /repository/deployments — name filter and newest-first. */
+    public FlowablePage listDeployments(
+            EngineConfig engine, CallPriority priority, String nameLike, int start, int size) {
+        return guarded.call(
+                engine,
+                priority,
+                () -> guarded.readClient(engine)
+                        .get()
+                        .uri(uri -> {
+                            var b = uri.path("/repository/deployments")
+                                    .queryParam("sort", "deployTime")
+                                    .queryParam("order", "desc")
+                                    .queryParam("size", size);
+                            if (start > 0) {
+                                b.queryParam("start", start);
+                            }
+                            if (nameLike != null && !nameLike.isBlank()) {
+                                b.queryParam("nameLike", nameLike);
+                            }
+                            return b.build();
+                        })
+                        .retrieve()
+                        .body(FlowablePage.class));
+    }
+
+    /** GET /repository/deployments/{id}. Null when the engine answers 404. */
+    @SuppressWarnings("unchecked")
+    public Map<String, Object> getDeployment(EngineConfig engine, CallPriority priority, String deploymentId) {
+        try {
+            return guarded.call(
+                    engine,
+                    priority,
+                    () -> guarded.readClient(engine)
+                            .get()
+                            .uri("/repository/deployments/{id}", deploymentId)
+                            .retrieve()
+                            .body(Map.class));
+        } catch (HttpClientErrorException.NotFound e) {
+            return null;
+        }
+    }
+
+    /** GET /repository/deployments/{id}/resources. */
+    public FlowablePage listDeploymentResources(EngineConfig engine, CallPriority priority, String deploymentId) {
+        return guarded.call(
+                engine,
+                priority,
+                () -> guarded.readClient(engine)
+                        .get()
+                        .uri("/repository/deployments/{id}/resources", deploymentId)
+                        .retrieve()
+                        .body(FlowablePage.class));
+    }
+
+    /**
+     * DELETE /repository/deployments/{id}?cascade= — irreversible. Not retried. {@code cascade}
+     * also deletes runtime instances (and, on the engine, their history).
+     */
+    public void deleteDeployment(EngineConfig engine, CallPriority priority, String deploymentId, boolean cascade) {
+        guarded.run(
+                engine,
+                priority,
+                "delete-deployment",
+                () -> guarded.writeClient(engine)
+                        .delete()
+                        .uri(uri -> uri.path("/repository/deployments/{id}")
+                                .queryParam("cascade", cascade)
+                                .build(deploymentId))
+                        .retrieve()
+                        .toBodilessEntity());
     }
 }

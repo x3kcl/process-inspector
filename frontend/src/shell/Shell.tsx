@@ -89,6 +89,12 @@ export function Shell() {
               <Link to="/incidents" className="topbar-link">
                 Incidents
               </Link>
+              <Link to="/definitions" className="topbar-link">
+                Definitions
+              </Link>
+              <Link to="/deployments" className="topbar-link">
+                Deployments
+              </Link>
               <HousekeepingLink />
               <RegistryAdminLink />
               <AccessAdminLink />
