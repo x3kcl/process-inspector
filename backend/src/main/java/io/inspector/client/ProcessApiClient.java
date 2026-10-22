@@ -772,6 +772,48 @@ public class ProcessApiClient {
         }
     }
 
+    /**
+     * GET /runtime/process-instances — the cohort list. Blank filters are omitted.
+     * {@code businessKey} and {@code businessKeyLike} are mutually exclusive; the caller picks one.
+     * Measured 2026-10-22 on 6.8: exact key, like, startedAfter and startedBefore all narrow
+     * {@code total}. The POST query's {@code businessKey} field did not.
+     */
+    public FlowablePage listRuntimeInstances(
+            EngineConfig engine,
+            CallPriority priority,
+            String processDefinitionId,
+            String businessKey,
+            String businessKeyLike,
+            String startedAfter,
+            String startedBefore,
+            int size) {
+        return guarded.call(
+                engine,
+                priority,
+                () -> guarded.readClient(engine)
+                        .get()
+                        .uri(uri -> {
+                            var builder = uri.path("/runtime/process-instances")
+                                    .queryParam("processDefinitionId", processDefinitionId)
+                                    .queryParam("size", size);
+                            if (businessKey != null && !businessKey.isBlank()) {
+                                builder.queryParam("businessKey", businessKey);
+                            }
+                            if (businessKeyLike != null && !businessKeyLike.isBlank()) {
+                                builder.queryParam("businessKeyLike", businessKeyLike);
+                            }
+                            if (startedAfter != null && !startedAfter.isBlank()) {
+                                builder.queryParam("startedAfter", startedAfter);
+                            }
+                            if (startedBefore != null && !startedBefore.isBlank()) {
+                                builder.queryParam("startedBefore", startedBefore);
+                            }
+                            return builder.build();
+                        })
+                        .retrieve()
+                        .body(FlowablePage.class));
+    }
+
     /** Finished historic process instances. Blank key and business key are omitted. */
     public FlowablePage listFinishedProcesses(
             EngineConfig engine,

@@ -130,6 +130,20 @@ public class MigrationService {
      * the audit as {@code failed}; a post-dispatch timeout is {@code unknown}, never re-fired.
      */
     public ActionResult execute(String engineId, String instanceId, MigrationRequest request, Authentication auth) {
+        return execute(engineId, instanceId, request, auth, true);
+    }
+
+    /**
+     * Cohort item (#482 S4). The cohort door already checked the prod typed <em>count</em>.
+     * Per-item business-key tokens would make a cohort unusable. Every other rail stays.
+     */
+    public ActionResult executeFromCohort(
+            String engineId, String instanceId, MigrationRequest request, Authentication auth) {
+        return execute(engineId, instanceId, request, auth, false);
+    }
+
+    private ActionResult execute(
+            String engineId, String instanceId, MigrationRequest request, Authentication auth, boolean confirmToken) {
         MigrationPlan plan = plan(engineId, instanceId, request, auth);
         EngineConfig engine = plan.engine();
 
@@ -154,7 +168,9 @@ public class MigrationService {
         protectionGuard.requireUnprotectedOrAdmin(auth, engine.id(), instanceId, plan.fromKey(), MIGRATE_ACTION);
         String reason = requireReason(request.reason());
         String ticketId = ticketPolicy.validate(request.ticketId(), engine.environment());
-        requireConfirmToken(engine, plan, request.confirmToken());
+        if (confirmToken) {
+            requireConfirmToken(engine, plan, request.confirmToken());
+        }
         requireExecutable(plan);
 
         AuditEntry entry = audit.beginPending(
