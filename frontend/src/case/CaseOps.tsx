@@ -126,7 +126,7 @@ export function CaseOps({ engineId, caseInstanceId, businessKey, planItems }: Pr
       </ul>
       <h3>Variables</h3>
       <ul>
-        {(variables.data ?? []).map((row) => (
+        {(Array.isArray(variables.data) ? variables.data : []).map((row) => (
           <li key={String(row.name)}>
             {String(row.name)} = {JSON.stringify(row.value ?? null)}
           </li>
