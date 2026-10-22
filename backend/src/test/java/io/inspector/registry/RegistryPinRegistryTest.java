@@ -37,7 +37,7 @@ class RegistryPinRegistryTest {
     private static EngineConfig engine(String id, String baseUrl) {
         return TestEngines.builder(id, baseUrl)
                 .environment(EngineEnvironment.TEST)
-                .auth(new Auth(Auth.Type.none, null, null, null))
+                .auth(Auth.none())
                 .mode(EngineMode.READ_WRITE)
                 .timeouts(new Timeouts(null, null, null))
                 .build();

@@ -79,7 +79,7 @@ class EngineRegistryStoreWriteTest {
     private static RegistryWrite write(String id, String baseUrl, EngineEnvironment env) {
         return new RegistryWrite(
                 id, "Name", baseUrl, env, null, null, null, "none", null, null, null, null, null, null, null, null,
-                null, null, null);
+                null, null, null, null, null, null, null, null, null, null);
     }
 
     /* ---------- RBAC service re-check (door-AND-service) ---------- */
