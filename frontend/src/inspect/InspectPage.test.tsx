@@ -143,7 +143,7 @@ describe('InspectPage — a DISABLED engine is explained as disabled, never "unk
     expect(screen.queryByText(/Unknown engine/)).toBeNull()
     expect(screen.queryByText(/no longer registered/)).toBeNull()
     // The vitals themselves rendered — the header identifies the engine by name.
-    expect(screen.getByText('Engine C')).toBeTruthy()
+    expect(screen.getByText('Engine C', { selector: '.engine-name' })).toBeTruthy()
   })
 
   it('keeps the disabled banner (never "unknown") even when the vitals fetch errors', () => {

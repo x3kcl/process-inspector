@@ -38,14 +38,38 @@ const AuditLogPage = lazy(() =>
 const AdminEnginesPage = lazy(() =>
   import('./admin/AdminEnginesPage').then((m) => ({ default: m.AdminEnginesPage })),
 )
+const EngineSystemPage = lazy(() =>
+  import('./admin/EngineSystemPage').then((m) => ({ default: m.EngineSystemPage })),
+)
+const JobsExplorerPage = lazy(() =>
+  import('./jobs/JobsPage').then((m) => ({ default: m.JobsPage })),
+)
 const AdminAccessPage = lazy(() =>
   import('./admin/AdminAccessPage').then((m) => ({ default: m.AdminAccessPage })),
+)
+const HousekeepingPage = lazy(() =>
+  import('./admin/HousekeepingPage').then((m) => ({ default: m.HousekeepingPage })),
 )
 const DefinitionVersionsPage = lazy(() =>
   import('./inspect/DefinitionVersionsPage').then((m) => ({ default: m.DefinitionVersionsPage })),
 )
+const DefinitionsPage = lazy(() =>
+  import('./catalog/DefinitionsPage').then((m) => ({ default: m.DefinitionsPage })),
+)
+const DefinitionDetailPage = lazy(() =>
+  import('./catalog/DefinitionDetailPage').then((m) => ({ default: m.DefinitionDetailPage })),
+)
+const DeploymentsPage = lazy(() =>
+  import('./catalog/DeploymentsPage').then((m) => ({ default: m.DeploymentsPage })),
+)
+const DeploymentDetailPage = lazy(() =>
+  import('./catalog/DeploymentDetailPage').then((m) => ({ default: m.DeploymentDetailPage })),
+)
 const PersonTaskSearchPage = lazy(() =>
   import('./tasks/PersonTaskSearchPage').then((m) => ({ default: m.PersonTaskSearchPage })),
+)
+const TaskBrowsePage = lazy(() =>
+  import('./tasks/TaskBrowsePage').then((m) => ({ default: m.TaskBrowsePage })),
 )
 const RemediationDemandPage = lazy(() =>
   import('./admin/RemediationDemandPage').then((m) => ({ default: m.RemediationDemandPage })),
@@ -102,9 +126,15 @@ const router = createBrowserRouter([
     children: [
       { index: true, element: <HomeRoute /> },
       { path: 'search', element: lazyRoute(<SearchPage />), errorElement: chunkErrorElement },
+      { path: 'jobs', element: lazyRoute(<JobsExplorerPage />), errorElement: chunkErrorElement },
       {
         path: 'tasks',
         element: lazyRoute(<PersonTaskSearchPage />),
+        errorElement: chunkErrorElement,
+      },
+      {
+        path: 'task-browser',
+        element: lazyRoute(<TaskBrowsePage />),
         errorElement: chunkErrorElement,
       },
       {
@@ -130,8 +160,18 @@ const router = createBrowserRouter([
       },
       { path: 'audit', element: lazyRoute(<AuditLogPage />), errorElement: chunkErrorElement },
       {
+        path: 'admin/housekeeping',
+        element: lazyRoute(<HousekeepingPage />),
+        errorElement: chunkErrorElement,
+      },
+      {
         path: 'admin/engines',
         element: lazyRoute(<AdminEnginesPage />),
+        errorElement: chunkErrorElement,
+      },
+      {
+        path: 'admin/engines/:id/system',
+        element: lazyRoute(<EngineSystemPage />),
         errorElement: chunkErrorElement,
       },
       {
@@ -145,8 +185,28 @@ const router = createBrowserRouter([
         errorElement: chunkErrorElement,
       },
       {
+        path: 'definitions',
+        element: lazyRoute(<DefinitionsPage />),
+        errorElement: chunkErrorElement,
+      },
+      {
         path: 'definitions/:engineId/:key/versions',
         element: lazyRoute(<DefinitionVersionsPage />),
+        errorElement: chunkErrorElement,
+      },
+      {
+        path: 'definitions/:engineId/:definitionId',
+        element: lazyRoute(<DefinitionDetailPage />),
+        errorElement: chunkErrorElement,
+      },
+      {
+        path: 'deployments',
+        element: lazyRoute(<DeploymentsPage />),
+        errorElement: chunkErrorElement,
+      },
+      {
+        path: 'deployments/:engineId/:deploymentId',
+        element: lazyRoute(<DeploymentDetailPage />),
         errorElement: chunkErrorElement,
       },
     ],

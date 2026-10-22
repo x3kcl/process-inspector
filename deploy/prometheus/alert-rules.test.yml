@@ -1,0 +1,79 @@
+# promtool test rules (#472). Covers one existing rule and the new engine-unreachable rule.
+rule_files:
+  - alert-rules.yml
+
+evaluation_interval: 1m
+
+tests:
+  - interval: 1m
+    input_series:
+      - series: 'up{job="process-inspector"}'
+        values: '0+0x5'
+    alert_rule_test:
+      - eval_time: 5m
+        alertname: InspectorDown
+        exp_alerts:
+          - exp_labels:
+              severity: critical
+              job: process-inspector
+            exp_annotations:
+              summary: "process-inspector is unreachable (liveness)"
+              runbook: "RUNBOOK.md §1"
+
+  - interval: 1m
+    input_series:
+      - series: 'resilience4j_circuitbreaker_state{name="orders",state="open"}'
+        values: '1+0x6'
+    alert_rule_test:
+      - eval_time: 5m
+        alertname: EngineUnreachable
+        exp_alerts:
+          - exp_labels:
+              severity: warning
+              name: orders
+              state: open
+            exp_annotations:
+              summary: "One engine circuit breaker has been open for 5 minutes"
+              runbook: "RUNBOOK.md §7"
+
+  - interval: 1m
+    input_series:
+      - series: oidc_login_failures_total
+        values: 0+1x20
+    alert_rule_test:
+      - eval_time: 15m
+        alertname: OidcLoginFailures
+        exp_alerts:
+          - exp_labels:
+              severity: warning
+            exp_annotations:
+              summary: "OIDC logins are failing"
+              runbook: "RUNBOOK.md §7"
+
+  - interval: 1m
+    input_series:
+      - series: snapshot_last_success_seconds
+        values: 0+0x15
+    alert_rule_test:
+      - eval_time: 9m
+        alertname: SnapshotSamplerStalled
+        exp_alerts:
+          - exp_labels:
+              severity: warning
+            exp_annotations:
+              summary: "The snapshot sampler has not succeeded for over 3 minutes"
+              runbook: "RUNBOOK.md §7"
+
+  - interval: 1m
+    input_series:
+      - series: audit_retention_purge_failures_total
+        values: 0 0 1+0x12
+    alert_rule_test:
+      - eval_time: 10m
+        alertname: AuditRetentionPurgeFailing
+        exp_alerts:
+          - exp_labels:
+              severity: warning
+            exp_annotations:
+              summary: "The audit retention purge aborted or was refused"
+              runbook: "RUNBOOK.md §7"

@@ -3,6 +3,9 @@ package io.inspector.api;
 import static org.assertj.core.api.Assertions.assertThat;
 import static org.awaitility.Awaitility.await;
 
+import io.micrometer.observation.Observation;
+import io.micrometer.observation.ObservationHandler;
+import io.micrometer.observation.ObservationRegistry;
 import java.util.concurrent.CopyOnWriteArrayList;
 import java.util.concurrent.ExecutorService;
 import java.util.concurrent.TimeUnit;
@@ -88,5 +91,31 @@ class MdcPropagatingExecutorsTest {
 
         assertThat(MDC.get("correlationId")).isEqualTo("req-caller");
         executor.shutdown();
+    }
+
+    @Test
+    void aSubmittedTaskSeesTheCallingThreadsObservation() throws Exception {
+        // A registry with no handlers is a noop and never opens a scope.
+        ObservationRegistry registry = ObservationRegistry.create();
+        registry.observationConfig().observationHandler(new ObservationHandler<Observation.Context>() {
+            @Override
+            public boolean supportsContext(Observation.Context context) {
+                return true;
+            }
+        });
+        Observation observation = Observation.start("server", registry);
+        ExecutorService executor = MdcPropagatingExecutors.newVirtualThreadPerTaskExecutor();
+        try (Observation.Scope ignored = observation.openScope()) {
+            String seen = executor.submit(() -> {
+                        Observation current = registry.getCurrentObservation();
+                        return current == null ? null : current.getContext().getName();
+                    })
+                    .get(2, TimeUnit.SECONDS);
+            assertThat(seen).isEqualTo("server");
+            assertThat(registry.getCurrentObservation().getContext().getName()).isEqualTo("server");
+        } finally {
+            observation.stop();
+            executor.shutdown();
+        }
     }
 }

@@ -1,0 +1,26 @@
+name: Maturity-review finding
+description: A finding from a periodic review of the running system
+title: "[maturity] "
+labels: ["maturity-2026-10"]
+body:
+  - type: input
+    attributes:
+      label: Review
+      description: Which review (date or document).
+    validations:
+      required: true
+  - type: textarea
+    attributes:
+      label: Finding
+    validations:
+      required: true
+  - type: dropdown
+    attributes:
+      label: Priority
+      options:
+        - P0
+        - P1
+        - P2
+        - P3
+    validations:
+      required: true

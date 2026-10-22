@@ -19,6 +19,8 @@ import { engineOutcomeNotice } from './adminEnginesView'
 import { EngineFormModal } from './EngineFormModal'
 import { rowActions, type LifecycleAction } from './lifecycle'
 import { LifecycleModal } from './LifecycleModal'
+import { Breadcrumbs } from '../shell/Breadcrumbs'
+import { adminEngineCrumbs } from '../shell/breadcrumbs'
 
 const LIFECYCLE_LABEL: Record<string, string> = {
   draft: '○ Draft',
@@ -96,6 +98,7 @@ export function AdminEnginesPage() {
   if (me.isPending) {
     return (
       <div className="page">
+        <Breadcrumbs segments={adminEngineCrumbs()} />
         <header className="page-header">
           <h2>Engine registry</h2>
         </header>
@@ -110,6 +113,7 @@ export function AdminEnginesPage() {
     const blockedId = engines.error instanceof ApiError ? engines.error.requestId : undefined
     return (
       <div className="page">
+        <Breadcrumbs segments={adminEngineCrumbs()} />
         <header className="page-header">
           <h2>Engine registry</h2>
         </header>
@@ -127,6 +131,7 @@ export function AdminEnginesPage() {
 
   return (
     <div className="page">
+      <Breadcrumbs segments={adminEngineCrumbs()} />
       <header className="page-header">
         <h2>Engine registry</h2>
         <p className="muted">

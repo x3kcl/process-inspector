@@ -1,9 +1,12 @@
 package io.inspector.snapshot;
 
 import io.inspector.config.InspectorProperties;
+import io.micrometer.core.instrument.Gauge;
+import io.micrometer.core.instrument.MeterRegistry;
 import java.time.Clock;
 import java.time.Instant;
 import java.util.List;
+import java.util.concurrent.atomic.AtomicLong;
 import org.slf4j.Logger;
 import org.slf4j.LoggerFactory;
 import org.springframework.boot.autoconfigure.condition.ConditionalOnProperty;
@@ -43,18 +46,39 @@ public class SnapshotSampler {
     private final SnapshotBucket bucket;
     private final Clock clock;
     private final ApplicationEventPublisher events;
+    private final AtomicLong lastSuccessEpochSeconds = new AtomicLong();
+    private final StartByKeyRepository startKeys;
 
     public SnapshotSampler(
             SnapshotSource source,
             SnapshotCountRepository repository,
             InspectorProperties properties,
             Clock clock,
-            ApplicationEventPublisher events) {
+            ApplicationEventPublisher events,
+            MeterRegistry metrics) {
+        this(source, repository, properties, clock, events, metrics, null);
+    }
+
+    @org.springframework.beans.factory.annotation.Autowired
+    public SnapshotSampler(
+            SnapshotSource source,
+            SnapshotCountRepository repository,
+            InspectorProperties properties,
+            Clock clock,
+            ApplicationEventPublisher events,
+            MeterRegistry metrics,
+            StartByKeyRepository startKeys) {
         this.source = source;
         this.repository = repository;
         this.bucket = new SnapshotBucket(properties.snapshotOrDefault().bucketWidthOrDefault());
         this.clock = clock;
         this.events = events;
+        this.startKeys = startKeys;
+        // Boot time, so a sampler that never succeeds still ages out of the alert window (#566).
+        this.lastSuccessEpochSeconds.set(clock.instant().getEpochSecond());
+        Gauge.builder("snapshot_last_success_seconds", lastSuccessEpochSeconds, value -> (double) value.get())
+                .description("Unix time of the last successful snapshot sample")
+                .register(metrics);
     }
 
     @EventListener(ApplicationReadyEvent.class)
@@ -88,10 +112,17 @@ public class SnapshotSampler {
             for (EngineLaneCount o : observations) {
                 repository.upsert(o.engineId(), o.lane().name(), o.count(), at);
             }
+            if (startKeys != null) {
+                for (DefinitionStart start : sample.topStarts()) {
+                    startKeys.save(
+                            new StartByKey(start.engineId(), start.key(), start.count(), start.catalogCapped(), at));
+                }
+            }
         } catch (RuntimeException e) {
             log.warn("snapshot persist skipped — store unavailable: {}", e.toString());
             return 0;
         }
+        lastSuccessEpochSeconds.set(clock.instant().getEpochSecond());
         if (!observations.isEmpty()) {
             log.debug("snapshot: wrote {} lane counts at bucket {}", observations.size(), at);
         }

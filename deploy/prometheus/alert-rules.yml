@@ -85,3 +85,64 @@ groups:
         annotations:
           summary: "SSE emitter errors spiking — clients are degrading to polling"
           runbook: "RUNBOOK.md §7 — usually a reverse-proxy buffering misconfig after a deploy; not user-facing-critical"
+
+      # One engine, not the whole fleet (#472). AllCircuitBreakersOpen stays the egress alarm.
+      - alert: EngineUnreachable
+        expr: resilience4j_circuitbreaker_state{state="open"} == 1
+        for: 5m
+        labels:
+          severity: warning
+        annotations:
+          summary: "One engine circuit breaker has been open for 5 minutes"
+          runbook: "RUNBOOK.md §7"
+
+      # A running bulk job that has recorded no item outcome for the window. The gauge has
+      # no progress clock of its own; absence of outcome increments is the signal we have.
+      - alert: BulkJobStuck
+        expr: bulk_jobs_running > 0 unless sum(increase(bulk_item_outcomes_total[15m])) > 0
+        for: 15m
+        labels:
+          severity: warning
+        annotations:
+          summary: "A bulk job is running and no item outcome was recorded for 15 minutes"
+          runbook: "RUNBOOK.md §7"
+
+      - alert: HikariPoolSaturation
+        expr: hikaricp_connections_active / hikaricp_connections_max > 0.9
+        for: 5m
+        labels:
+          severity: warning
+        annotations:
+          summary: "The BFF Postgres pool is above 90% of maximum"
+          runbook: "RUNBOOK.md §7"
+
+      # Spike, not one cancelled login. Break-glass failures are a different handler.
+      - alert: OidcLoginFailures
+        expr: increase(oidc_login_failures_total[15m]) > 5
+        for: 5m
+        labels:
+          severity: warning
+        annotations:
+          summary: "OIDC logins are failing"
+          runbook: "RUNBOOK.md §7"
+
+      # 180s is three times the default 60s sample interval. The gauge starts at boot, so a
+      # sampler that never succeeds ages into this window. for: 5m ignores one slow cycle.
+      - alert: SnapshotSamplerStalled
+        expr: time() - snapshot_last_success_seconds > 180
+        for: 5m
+        labels:
+          severity: warning
+        annotations:
+          summary: "The snapshot sampler has not succeeded for over 3 minutes"
+          runbook: "RUNBOOK.md §7"
+
+      # An empty purge (nothing aged out) does not increment the counter.
+      - alert: AuditRetentionPurgeFailing
+        expr: increase(audit_retention_purge_failures_total[1h]) > 0
+        for: 5m
+        labels:
+          severity: warning
+        annotations:
+          summary: "The audit retention purge aborted or was refused"
+          runbook: "RUNBOOK.md §7"

@@ -25,6 +25,7 @@
                      X-Request-Id response header and the audit row's correlation_id — one quotable
                      id across the log line, the response header, and the audit trail. -->
                 <includeMdcKeyName>correlationId</includeMdcKeyName>
+                <includeMdcKeyName>traceId</includeMdcKeyName>
                 <customFields>{"application":"process-inspector"}</customFields>
             </encoder>
         </appender>

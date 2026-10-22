@@ -179,6 +179,10 @@ Tutorial: [04 — deep search and views](tutorials/04-deep-search-and-views.md).
 **Answers:** "why is THIS one stuck, and what do I do about it." Full-page, deep-linkable,
 tab-aware (`?tab=timeline`) — paste the link into a ticket.
 
+- **Breadcrumb** (engine › definition › version › instance) derived from the URL and the
+  loaded vitals. The instance segment is the current page and is not a link, so `?tab=`
+  stays put. Engine opens that engine's search; definition opens its version list; version
+  opens the version's search cohort.
 - **Vitals header** (always visible): definition + version, engine + environment badge,
   status chip + collision badges (+ "Explain this status"), business key, started/duration,
   current activity — and when failed, the **why-stuck strip**: exception first line, retries
@@ -250,6 +254,8 @@ engines degrade to a labeled partial envelope, same as search.
 
 ## 9. Case (CMMN) detail (`/case/{engineId}/{caseInstanceId}`)
 
+The breadcrumb is engine › case (the case segment is the current page).
+
 A co-deployed CMMN case gets its own read-mostly Stage-2 route (SPEC §4 "CMMN case detail",
 [CMMN-CASE-DETAIL-PHASE-2.md](CMMN-CASE-DETAIL-PHASE-2.md)) — reached from the Stage-0
 out-of-scope drawer, the omnibox ("open the read-only case detail"), or a "Called from" link.
@@ -318,7 +324,7 @@ equivalent call — everything the UI does is scriptable).
 | 0 | Retry job · Retry now · Trigger timer · Suspend/Activate instance | RESPONDER | No modal; outcome toast with an explicit delta + audit link. Irreversible-side-effect verbs (trigger-timer, retry-now) get a two-step inline confirm on prod |
 | 1 | Unstick event (RESPONDER) · Edit variable · Complete task with data · Reassign / return to team | OPERATOR | Diff confirm (old→new); reason required on prod; variable edits are compare-and-set |
 | 2 | Rerun from activity · Change state / move token · Restart as new | OPERATOR (change-state: ADMIN on prod) | Confirm + required reason + plan-as-a-sentence + raw REST body; change-state preview is a labeled *BFF simulation* (no engine dry-run exists) |
-| 3 | Suspend definition · Terminate/delete · Delete dead-letter job · Migrate | ADMIN | Server-fresh target restatement, cascade victims enumerated, env band inside the modal, required reason; on prod a **typed target-specific token** (business key / job id / definition key — never a generic "yes"). Cancel-focused; Enter never submits |
+| 3 | Suspend/activate definition (optional schedule) · Terminate/delete · Delete dead-letter job · Delete deployment · Migrate | ADMIN | Server-fresh target restatement, cascade victims enumerated, env band inside the modal, required reason; on prod a **typed target-specific token** (business key / job id / definition key / deployment id — never a generic "yes"). Cancel-focused; Enter never submits |
 | 4 | Destructive bulk (terminate-delete) | ADMIN | The §10 wizard; on prod **type the count** |
 
 Three outcome classes for any mutation (SPEC §6): *refused pre-flight* (nothing happened),
@@ -351,6 +357,7 @@ Tutorial: [08 — handover and audit](tutorials/08-handover-and-audit.md).
 
 Greyed-never-hidden in the header for everyone else, with the missing grant named.
 
+- **Breadcrumb** on this page: Admin › Engines.
 - **`/admin/engines` — "Engines"** (REGISTRY_ADMIN, [REGISTRY-CRUD.md](REGISTRY-CRUD.md)):
   runtime engine lifecycle. A new engine is born **Draft + read-only**, must pass a
   **read-only probe** ("Test connection" — version + capabilities, never a mutating call),
@@ -384,6 +391,25 @@ the guard ladder, nor read-only engine mode, nor the path whitelist, nor audit. 
 tier 0 included — demands a reason; every action is flagged `break-glass`, bannered on every
 page, alerted on login, and listed first in the shift report. Afterwards: rotate the
 credential. If the page 404s, the deployment has no break-glass configured.
+
+## 14a. Definitions and deployments
+
+**Definitions** (`/definitions`) answers "what is deployed where": key, version, engine,
+running instances, suspended or not. Latest-only is on by default. A count shown with `≥`
+is a floor. Open a row for the diagram, the XML, what the version is waiting for
+(subscriptions), and how many jobs sit on each lane. **Compare** diffs two versions on the
+diagram (`+` added, `~` changed) and lists what was removed. That diff is the inspector's
+reading of the XML, not Flowable validating a migration. **Migrate** jumps to the existing
+version on-ramp.
+
+**Suspend definition** / **Activate definition** are ADMIN. Include running instances only
+when you mean to. A schedule time means the engine waits until then. On a prod engine you
+type the definition key.
+
+**Deployments** (`/deployments`) lists what produced those definitions. Delete is ADMIN,
+off for everyone else (the button stays, greyed). Cascade is off until you turn it on, and
+it is refused while instances are still running or the count could not be proved. On prod
+you type the deployment id. There is no upload.
 
 ## 15. Watermark & licensing note
 

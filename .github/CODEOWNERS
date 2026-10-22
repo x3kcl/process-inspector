@@ -1,0 +1,6 @@
+# Single maintainer. The ruleset does not require a review; this file is the
+# map of who owns each tree when a second person arrives.
+/backend/ @x3kcl
+/frontend/ @x3kcl
+/docs/ @x3kcl
+/.github/ @x3kcl

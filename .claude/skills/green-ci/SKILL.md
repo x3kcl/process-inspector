@@ -1,22 +1,23 @@
 ---
 name: green-ci
-description: A commit to main is not "done" until GitHub Actions is green on it. The mirror→push→watch→fix loop — run the CI gates locally first (scripts/ci-local.sh), then block on the real run (scripts/ci-watch.sh) and auto-fix any red before considering the commit successful. Read before committing or pushing anything to main.
+description: A change is not "done" until GitHub Actions is green on the pull-request head. The mirror→PR→watch→fix loop — run the CI gates locally first (scripts/ci-local.sh), then block on the real run (scripts/ci-watch.sh) and auto-fix any red before considering the change successful. Read before opening or merging a pull request. Direct pushes to main are rejected by the ruleset.
 ---
 # Keeping CI green (process-inspector)
 
 ## 🎯 When to use
-**Before every push to `main`, and after it.** Any commit that lands on `main` is incomplete
-until the GitHub Actions `ci` workflow is **green on that commit's SHA**. "It builds locally"
-and "the push succeeded" are NOT done — only a green remote run is. This skill is the
-definition of done for a commit.
+**Before every pull request, and before you merge it.** A change is incomplete until the
+GitHub Actions `ci` workflow is **green on the pull-request head SHA**. "It builds locally"
+and "the push succeeded" are NOT done — only a green remote run is. `main` rejects a direct
+push (repository ruleset). This skill is the definition of done for a change.
 
-Read it before you `git push`, and whenever `main` is red.
+Read it before you open a pull request, and whenever `main` is red.
 
 ## 🛑 Primary directive
-> **A commit to `main` is not successful until CI passes on GitHub for its SHA.**
-> If the push turns CI red, you own it: diagnose from the run logs, fix, re-push, and
-> re-watch — in the SAME work session — until it is green. Never leave `main` red and walk
-> away, and never report a push as "done" without a green run to point to.
+> **A pull request is not successful until CI passes on GitHub for its head SHA.**
+> If that run is red, you own it: diagnose from the run logs, fix, push the branch, and
+> re-watch — in the SAME work session — until it is green. Never merge red, and never
+> report a change as "done" without a green run to point to. Direct `git push origin main`
+> is rejected. The admin ruleset bypass is RUNBOOK §0, for emergencies only.
 
 Red `main` blocks every parallel session (this repo has several — see the memory index), so
 a formatting slip that reddens the `frontend` job costs everyone. Catch it locally.
@@ -37,8 +38,9 @@ a formatting slip that reddens the `frontend` job costs everyone. Catch it local
    └──────────────────────────────────────────────────────────────┘
               │ green locally
               ▼
-   ┌─ 2. PUSH ───────────────────────────────────────────────────┐
-   │  git push origin main                                         │
+   ┌─ 2. PULL REQUEST ────────────────────────────────────────────┐
+   │  git push -u origin HEAD && gh pr create                     │
+   │  # main rejects a direct push (ruleset #449)                 │
    └──────────────────────────────────────────────────────────────┘
               │
               ▼

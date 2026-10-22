@@ -10,7 +10,10 @@ One web UI over **multiple Flowable engines** (dev/test/prod), talking to them s
 their REST APIs. It never touches an engine database. Every instance is addressed by a
 **composite ID**: `engineId:processInstanceId` — e.g. `orders-prod:8123`. Paste either the
 composite ID, a bare instance/job/execution ID, or a business key into the **omnibox** (top
-bar) and the Inspector resolves it across all engines.
+bar) and the Inspector resolves it across all engines. **Ctrl+K** (⌘K on a Mac) focuses
+that box from any page. **?** outside a text field lists the keyboard shortcuts. On an
+instance, case, definition, or engine-admin page the breadcrumb under the header is the
+way back to the engine or the definition version.
 
 One rule colors everything: **do no harm**. The engines you inspect are usually already
 struggling when you open this tool. Calls are circuit-broken and bounded; when an engine

@@ -266,3 +266,17 @@ call-activity-cascade and change-state copy would be misleading for a case.
 - **Frontend hermetic e2e** (`case-detail.spec.ts`, +2): a RESPONDER sees Delete **disabled**
   (tier-3 gate); an ADMIN opens the typed-confirm modal, a ≥10-char reason enables the confirm, and
   the POST carries `{jobId, reason}` with the scope-honest delta surfacing as the toast.
+
+## Plan-item and case verbs (2026-10-22, #489)
+
+No seeded illegal-transition matrix was run on 6.8 and 7.1 in this session. The wire vocabulary used is the one in the Flowable REST models:
+
+| Call | Body | Notes |
+|---|---|---|
+| `PUT cmmn-runtime/plan-item-instances/{id}` | `{action: trigger\|enable\|disable}` | instance id, not the definition id |
+| `POST cmmn-runtime/case-instances/{id}/change-state` | `activatePlanItemDefinitionIds` / `moveToAvailablePlanItemDefinitionIds` / `terminatePlanItemDefinitionIds` | definition id (`elementId`). 7.x repetition fields are not sent |
+| `DELETE cmmn-runtime/case-instances/{id}` | none | terminate. No delete reason on the wire |
+| `DELETE cmmn-runtime/case-instances/{id}/delete` | none | deletes the case and its history. No delete reason on the wire |
+| `PUT …/variables/{name}` | `{name,type,value}` | compare-and-set against the live value first |
+
+`change-plan-item` is OPERATOR, and ADMIN on a prod engine. An illegal transition is the engine's own error, passed through. An ended case still has no historic plan-item timeline on 6.8.
