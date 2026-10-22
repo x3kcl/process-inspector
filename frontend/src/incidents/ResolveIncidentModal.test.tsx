@@ -17,7 +17,9 @@ type IncidentResolution = components['schemas']['IncidentResolution']
 const resolveMutate = vi.fn()
 let resolveError: ActionError | undefined
 const useResolveIncidentSpy = vi.fn((id: number) => {
-  void id // recorded via mock.calls for the "scoped to this incident id" assertion below
+  // recorded via mock.calls for the "scoped to this incident id" assertion below
+  // eslint-disable-next-line @typescript-eslint/no-meaningless-void-operator -- id is a value, not a call
+  void id
   return { mutate: resolveMutate, isPending: false, error: resolveError }
 })
 vi.mock('./useIncidents', () => ({

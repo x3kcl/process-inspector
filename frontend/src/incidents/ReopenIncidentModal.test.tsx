@@ -18,7 +18,9 @@ type IncidentSummary = components['schemas']['IncidentSummary']
 const reopenMutate = vi.fn()
 let reopenError: ActionError | undefined
 const useReopenIncidentSpy = vi.fn((id: number) => {
-  void id // recorded via mock.calls for the "scoped to the RESOLVED incident id" assertion below
+  // recorded via mock.calls for the "scoped to the RESOLVED incident id" assertion below
+  // eslint-disable-next-line @typescript-eslint/no-meaningless-void-operator -- id is a value, not a call
+  void id
   return { mutate: reopenMutate, isPending: false, error: reopenError }
 })
 vi.mock('./useIncidents', () => ({
