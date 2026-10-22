@@ -29,6 +29,8 @@ import io.inspector.client.ProcessApiClient.JobLaneKind;
 import io.inspector.config.InspectorProperties;
 import io.inspector.config.InspectorProperties.EngineEnvironment;
 import io.inspector.config.InspectorProperties.EngineMode;
+import io.inspector.registry.EngineCapabilities;
+import io.inspector.registry.EngineHealth;
 import io.inspector.registry.EngineRegistry;
 import io.inspector.security.OidcProperties;
 import io.inspector.security.RbacAuthorizer;
@@ -89,11 +91,12 @@ class CorrectiveActionServiceTest {
     private final Authentication operator = new TestingAuthenticationToken("op", "n/a", "ROLE_OPERATOR");
 
     private CorrectiveActionService service;
+    private EngineRegistry registry;
     private AuditEntry pendingEntry;
 
     @BeforeEach
     void setUp() {
-        EngineRegistry registry = new EngineRegistry(new InspectorProperties(
+        registry = new EngineRegistry(new InspectorProperties(
                 null,
                 null,
                 null,
@@ -816,5 +819,135 @@ class CorrectiveActionServiceTest {
         assertThat(result.deltaStatement())
                 .doesNotContain("returned to their queues")
                 .doesNotContain("suspended lane");
+    }
+
+    @Test
+    void unclaimSendsANullAssignee() {
+        openTaskOn("pi-1", "kermit");
+
+        service.execute(DEV, "pi-1", ActionVerb.CLAIM_TASK, reassignRequest(null), operator);
+
+        verify(client).taskAction(any(), eq(CallPriority.INTERACTIVE), eq("task-9"), eq("claim"), eq(null));
+    }
+
+    @Test
+    void delegateDispatchesAndSkipsIdmWhenTheProbeIsAbsent() {
+        openTaskOn("pi-1", "kermit");
+
+        var result = service.execute(DEV, "pi-1", ActionVerb.DELEGATE_TASK, reassignRequest("gonzo"), operator);
+
+        verify(client).taskAction(any(), eq(CallPriority.INTERACTIVE), eq("task-9"), eq("delegate"), eq("gonzo"));
+        verify(client, never()).idmIdentityExists(any(), any(), anyString(), any());
+        assertThat(result.deltaStatement()).contains("delegated to 'gonzo'");
+    }
+
+    @Test
+    void reassignRefusesAMissingIdmUser() {
+        openTaskOn("pi-1", "kermit");
+        registry.updateHealth(
+                DEV,
+                new EngineHealth(
+                        true, "7.1.0", null, 0, EngineCapabilities.none().withIdm(true), null, null, null));
+        when(client.idmIdentityExists(any(), eq(CallPriority.INTERACTIVE), eq("users"), eq("gonzo")))
+                .thenReturn(false);
+
+        assertThatThrownBy(() ->
+                        service.execute(DEV, "pi-1", ActionVerb.REASSIGN_TASK, reassignRequest("gonzo"), operator))
+                .isInstanceOf(GuardRefusedException.class)
+                .satisfies(e -> assertThat(((GuardRefusedException) e).code()).isEqualTo("identity-missing"));
+        verify(client, never()).setTaskAssignee(any(), any(), anyString(), any());
+    }
+
+    @Test
+    void updateTaskRecordsTheDueDateDiff() {
+        java.util.Map<String, Object> task = new java.util.HashMap<>();
+        task.put("id", "task-9");
+        task.put("processInstanceId", "pi-1");
+        task.put("name", "Manual review");
+        task.put("dueDate", "2026-01-01T00:00:00Z");
+        when(client.getTask(any(), eq(CallPriority.INTERACTIVE), eq("task-9"))).thenReturn(task);
+        ActionRequest request = new ActionRequest(
+                null,
+                null,
+                null,
+                null,
+                "task-9",
+                null,
+                null,
+                null,
+                null,
+                null,
+                null,
+                null,
+                null,
+                new ActionRequest.TaskPatch(null, null, null, "2026-12-01T00:00:00Z", null, null),
+                null);
+
+        var result = service.execute(DEV, "pi-1", ActionVerb.UPDATE_TASK, request, operator);
+
+        verify(client)
+                .putTask(
+                        any(),
+                        eq(CallPriority.INTERACTIVE),
+                        eq("task-9"),
+                        argThat(body -> "2026-12-01T00:00:00Z".equals(body.get("dueDate"))));
+        assertThat(result.deltaStatement())
+                .contains("dueDate")
+                .contains("2026-01-01T00:00:00Z")
+                .contains("2026-12-01T00:00:00Z");
+    }
+
+    @Test
+    void resolveRefusesATaskThatIsNotDelegated() {
+        openTaskOn("pi-1", "kermit");
+
+        assertThatThrownBy(() -> service.execute(DEV, "pi-1", ActionVerb.RESOLVE_TASK, reassignRequest(null), operator))
+                .isInstanceOf(GuardRefusedException.class)
+                .satisfies(e -> assertThat(((GuardRefusedException) e).code()).isEqualTo("not-delegated"));
+        verify(client, never()).taskAction(any(), any(), anyString(), anyString(), any());
+    }
+
+    @Test
+    void terminatePrefixesDeleteReasonWithActorAndTicket() {
+        when(client.getRuntimeProcessInstance(any(), eq(CallPriority.INTERACTIVE), eq("pi-1")))
+                .thenReturn(Map.of("id", "pi-1"));
+        ActionRequest request = new ActionRequest(
+                "customer asked to stop this", "INC-1", null, null, null, null, null, null, null, null, null);
+
+        service.execute(DEV, "pi-1", ActionVerb.TERMINATE_DELETE, request, operator);
+
+        verify(client)
+                .deleteProcessInstance(
+                        any(),
+                        eq(CallPriority.INTERACTIVE),
+                        eq("pi-1"),
+                        eq("inspector:op:INC-1:customer asked to stop this"));
+    }
+
+    @Test
+    void removeParticipantRefusesTheStarterLink() {
+        when(client.getRuntimeProcessInstance(any(), eq(CallPriority.INTERACTIVE), eq("pi-1")))
+                .thenReturn(Map.of("id", "pi-1"));
+        ActionRequest request = new ActionRequest(
+                null,
+                null,
+                null,
+                null,
+                null,
+                null,
+                null,
+                null,
+                null,
+                null,
+                null,
+                null,
+                null,
+                null,
+                new ActionRequest.IdentityLink("users", "kermit", "starter"));
+
+        assertThatThrownBy(() -> service.execute(DEV, "pi-1", ActionVerb.REMOVE_PARTICIPANT, request, operator))
+                .isInstanceOf(GuardRefusedException.class)
+                .satisfies(e -> assertThat(((GuardRefusedException) e).code()).isEqualTo("starter-link"));
+        verify(client, never()).deleteInstanceIdentityLink(any(), any(), anyString(), anyString(), anyString());
     }
 }

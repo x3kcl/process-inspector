@@ -1,0 +1,25 @@
+# Monthly list of remote branches whose tip is older than 30 days and whose
+# pull request is merged or closed (#451). Posts the list on that issue.
+# Deletion stays manual. GitHub-hosted so it does not take a slot runner.
+name: stale-branches
+
+on:
+  schedule:
+    - cron: "17 6 1 * *"
+  workflow_dispatch:
+
+permissions:
+  contents: read
+  issues: write
+  pull-requests: read
+
+jobs:
+  list:
+    runs-on: ubuntu-latest
+    timeout-minutes: 15
+    steps:
+      - uses: actions/checkout@v4
+      - name: Comment the candidate list on issue 451
+        env:
+          GH_TOKEN: ${{ github.token }}
+        run: python3 scripts/stale-branch-sweep.py --comment

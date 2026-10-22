@@ -228,13 +228,15 @@ public class SecurityConfig {
             HttpSecurity http,
             InspectorAuthoritiesMapper authoritiesMapper,
             ReauthConformantOidcUserService reauthConformantOidcUserService,
-            ClientRegistrationRepository clientRegistrations)
+            ClientRegistrationRepository clientRegistrations,
+            OidcLoginFailureHandler oidcLoginFailures)
             throws Exception {
         common(http)
                 // Session-fixation protection on the oidc chain: a fresh JSESSIONID at login (the SSE
                 // stream rides the post-login session, so a single change at login doesn't orphan it).
                 .sessionManagement(session -> session.sessionFixation(fixation -> fixation.changeSessionId()))
-                .oauth2Login(oauth -> oauth.authorizationEndpoint(endpoint -> endpoint.authorizationRequestResolver(
+                .oauth2Login(oauth -> oauth.failureHandler(oidcLoginFailures)
+                        .authorizationEndpoint(endpoint -> endpoint.authorizationRequestResolver(
                                 new ReauthAuthorizationRequestResolver(clientRegistrations, oidcProps)))
                         // Login-time auth_time conformance (issue #95) ahead of the authorities mapper —
                         // a nonconforming IdP's stale/absent auth_time on a reauth login fails the login

@@ -4,7 +4,7 @@ A multi-engine Flowable Process Inspector: Spring Boot 3 BFF (`backend/`) + Reac
 (`frontend/`), integrating with Flowable engines **strictly via the V6/V7 REST API**.
 
 ## The docs are the spec — keep them in lockstep
-`docs/SPECIFICATION.md` (WHAT) · `docs/ARCHITECTURE.md` (HOW/WHY) · `docs/IMPLEMENTATION-PLAN.md`
+New reader: `docs/START-HERE.md`. Then `docs/SPECIFICATION.md` (WHAT) · `docs/ARCHITECTURE.md` (HOW/WHY) · `docs/IMPLEMENTATION-PLAN.md`
 (WHEN) · `docs/DESIGN-REVIEW.md` (provenance). Any behavior change updates the matching doc
 sections in the same change — see the `spec-sync` skill. Read the relevant skill in
 `.claude/skills/` before touching its territory (`flowable-rest` for any engine call,
@@ -74,12 +74,13 @@ join logic (dockerized engine only — `engine-harness` skill).
   license term (R-GOV-05), enforced by `frontend/scripts/check-bpmn-watermark.mjs` in
   `npm run build`.
 - Spotless + ESLint are CI hard failures — run them before finishing.
-- A commit to `main` is not done until GitHub Actions is **green on its SHA** — a successful
-  `git push` is NOT success. Follow the `green-ci` skill: mirror the gates locally
-  (`scripts/ci-local.sh`), push, then block on the real run (`scripts/ci-watch.sh <sha>`,
-  backgrounded) and fix any red in the SAME session. Red `main` blocks every parallel session.
+- A change is not done until GitHub Actions is **green on the pull-request head SHA**.
+  `main` rejects a direct push (ruleset, #449). Follow the `green-ci` skill: mirror the
+  gates locally (`scripts/ci-local.sh`), open a pull request, then block on
+  `scripts/ci-watch.sh <head-sha>` and fix any red in the SAME session. The admin bypass
+  is the emergency path in RUNBOOK §0, not the normal flow.
 - CI runs on **dockerized self-hosted runner slots** (`docker/ci-runner/` — each slot owns
   a disjoint harness-port block; jobs serialize within a slot, parallelize across slots).
-  Before pushing to `main` or creating a PR, run `scripts/ci-runner.sh ensure` — it starts
+  Before creating a PR, run `scripts/ci-runner.sh ensure` — it starts
   the slots if down and fails if a foreign (slot-less) runner is online; with no runner
   online every CI run just queues forever.

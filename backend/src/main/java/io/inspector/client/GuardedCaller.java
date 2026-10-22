@@ -7,6 +7,8 @@ import io.inspector.config.InspectorProperties.Auth;
 import io.inspector.config.InspectorProperties.EngineConfig;
 import io.micrometer.core.instrument.MeterRegistry;
 import io.micrometer.core.instrument.Timer;
+import io.micrometer.observation.Observation;
+import io.micrometer.observation.ObservationRegistry;
 import java.net.http.HttpClient;
 import java.nio.charset.StandardCharsets;
 import java.time.Duration;
@@ -14,6 +16,7 @@ import java.util.Map;
 import java.util.concurrent.ConcurrentHashMap;
 import java.util.function.Supplier;
 import java.util.regex.Pattern;
+import org.springframework.beans.factory.annotation.Autowired;
 import org.springframework.core.env.Environment;
 import org.springframework.http.client.JdkClientHttpRequestFactory;
 import org.springframework.stereotype.Component;
@@ -65,17 +68,32 @@ public class GuardedCaller {
     // Mutating calls get their own client so write-ms (R-NFR-07) budgets them separately.
     private final Map<String, RestClient> writeClients = new ConcurrentHashMap<>();
 
+    private final ObservationRegistry observations;
+
+    /** Tests pass no tracing registry. Spring uses the injected one (#470). */
     public GuardedCaller(
             Environment env,
             CircuitBreakerRegistry breakers,
             BulkheadRegistry bulkheads,
             MeterRegistry metrics,
             RecentEngineErrors recentErrors) {
+        this(env, breakers, bulkheads, metrics, recentErrors, ObservationRegistry.NOOP);
+    }
+
+    @Autowired
+    public GuardedCaller(
+            Environment env,
+            CircuitBreakerRegistry breakers,
+            BulkheadRegistry bulkheads,
+            MeterRegistry metrics,
+            RecentEngineErrors recentErrors,
+            ObservationRegistry observations) {
         this.env = env;
         this.breakers = breakers;
         this.bulkheads = bulkheads;
         this.metrics = metrics;
         this.recentErrors = recentErrors;
+        this.observations = observations;
     }
 
     /**
@@ -93,7 +111,9 @@ public class GuardedCaller {
         // than page-1, and a scroller (or an attacker firing cursors at offset=cap-1) must NEVER
         // consume the 8 interactive permits page-1 search is waiting on. Its OWN per-engine lane
         // keyed "{id}:deep-page" so deep scroll degrades itself, never interactive search.
-        DEEP_PAGE("deep-page", "deep-page");
+        DEEP_PAGE("deep-page", "deep-page"),
+        // History deletes must not take the interactive permits or the sampler lane.
+        HOUSEKEEPING("housekeeping", "housekeeping");
 
         private final String config;
         private final String suffix;
@@ -133,6 +153,31 @@ public class GuardedCaller {
      * regardless of which higher-level call raised them.
      */
     public <T> T call(EngineConfig engine, CallPriority priority, Supplier<T> op) {
+        return observe(engine, priority, null, op);
+    }
+
+    /**
+     * Corrective action. Span name {@code engine.corrective}, plus a {@code verb} tag, so sampling
+     * stays at 100% without raising the read sample (#565). Reads keep the 3-arg {@link #call}.
+     */
+    public <T> T call(EngineConfig engine, CallPriority priority, String verb, Supplier<T> op) {
+        return observe(engine, priority, verb, op);
+    }
+
+    private <T> T observe(EngineConfig engine, CallPriority priority, String verb, Supplier<T> op) {
+        // Tags are ids, lane names, and the verb. Never a variable value or an exception body.
+        boolean corrective = verb != null && !verb.isBlank();
+        Observation observation = Observation.createNotStarted(
+                        corrective ? CorrectiveSampler.CORRECTIVE_SPAN : CorrectiveSampler.READ_SPAN, observations)
+                .lowCardinalityKeyValue("engineId", engine.id())
+                .lowCardinalityKeyValue("leg", priority.name());
+        if (corrective) {
+            observation.lowCardinalityKeyValue("verb", verb);
+        }
+        return observation.observe(() -> callGuarded(engine, priority, op));
+    }
+
+    private <T> T callGuarded(EngineConfig engine, CallPriority priority, Supplier<T> op) {
         String name = priority.instanceName(engine.id());
         Timer.Sample sample = Timer.start(metrics);
         try {
@@ -155,6 +200,14 @@ public class GuardedCaller {
     /** Same guard, void-shaped — the mutation call sites (toBodilessEntity()). */
     public void run(EngineConfig engine, CallPriority priority, Runnable op) {
         call(engine, priority, () -> {
+            op.run();
+            return null;
+        });
+    }
+
+    /** Corrective void call. {@code verb} is a closed operation name, not a payload (#565). */
+    public void run(EngineConfig engine, CallPriority priority, String verb, Runnable op) {
+        call(engine, priority, verb, () -> {
             op.run();
             return null;
         });

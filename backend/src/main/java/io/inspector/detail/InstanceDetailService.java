@@ -472,6 +472,7 @@ public class InstanceDetailService {
 
     static JobDto jobRow(Map<String, Object> job, JobLaneKind lane) {
         Object retries = job.get("retries");
+        String handler = str(job, "jobHandlerType");
         return new JobDto(
                 str(job, "id"),
                 lane.name(),
@@ -483,7 +484,8 @@ public class InstanceDetailService {
                 str(job, "elementName"),
                 str(job, "executionId"),
                 str(job, "processDefinitionId"),
-                str(job, "tenantId"));
+                str(job, "tenantId"),
+                handler != null ? handler : str(job, "handlerType"));
     }
 
     /* ============ external-worker jobs — the fifth queue (v1.x #7) ============ */

@@ -179,7 +179,7 @@ export function AuditLogPage() {
   }
 
   return (
-    <main className="ops-log-page">
+    <div className="ops-log-page">
       <header className="ops-log-header">
         <h2>Operations log</h2>
         {/* R-AUD-09: the engine-side history blames the shared service account — warn HERE,
@@ -286,6 +286,6 @@ export function AuditLogPage() {
             />
           </div>
         ))}
-    </main>
+    </div>
   )
 }

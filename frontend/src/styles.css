@@ -447,6 +447,10 @@ body {
   text-overflow: ellipsis;
   white-space: nowrap;
 }
+/* The card is always the dark surface. Body-text color fails contrast on it. */
+.engine-card .engine-system-link {
+  color: #a0aab5;
+}
 .lanes {
   display: flex;
   gap: 6px;
@@ -1731,6 +1735,26 @@ button.primary:disabled {
 .diagram-canvas .marker-deadletter .djs-visual > :first-child {
   stroke: var(--color-danger) !important;
   fill: var(--color-danger-fill) !important;
+}
+.diagram-canvas .marker-diff-added .djs-visual > :first-child {
+  stroke: var(--color-success-alt) !important;
+  stroke-width: 3px !important;
+}
+.diagram-canvas .marker-diff-changed .djs-visual > :first-child {
+  stroke-dasharray: 4 2 !important;
+  stroke-width: 3px !important;
+}
+.diff-glyph {
+  background: var(--color-bg);
+  border: 1px solid var(--color-border);
+  border-radius: 2px;
+  font-size: 12px;
+  line-height: 1;
+  padding: 0 3px;
+}
+[data-density='compact'] .catalog-table td,
+[data-density='compact'] .catalog-table th {
+  padding: 2px 6px;
 }
 .dlq-overlay {
   background: var(--color-danger);
@@ -4456,4 +4480,48 @@ button.skip-link {
   border-radius: 6px;
   padding: 8px 10px;
   margin: 6px 0;
+}
+
+.breadcrumbs ol {
+  display: flex;
+  flex-wrap: wrap;
+  gap: 0.35rem;
+  list-style: none;
+  margin: 0 0 0.6rem;
+  padding: 0;
+  font-size: 0.85rem;
+}
+.breadcrumbs li {
+  display: inline-flex;
+  gap: 0.35rem;
+  align-items: center;
+}
+.breadcrumbs li:not(:last-child)::after {
+  content: '›';
+  color: var(--color-text-muted);
+}
+.breadcrumbs a,
+.breadcrumbs [aria-current='page'] {
+  color: var(--color-text-body);
+}
+.breadcrumbs a {
+  text-decoration: underline;
+}
+.breadcrumbs a:focus-visible,
+.shortcut-sheet button:focus-visible {
+  outline: 2px solid var(--color-ink);
+  outline-offset: 2px;
+}
+.shortcut-table {
+  width: 100%;
+  border-collapse: collapse;
+}
+.shortcut-table th,
+.shortcut-table td {
+  text-align: left;
+  padding: 0.35rem 0.6rem 0.35rem 0;
+  vertical-align: top;
+}
+.shortcut-table kbd {
+  font-family: inherit;
 }

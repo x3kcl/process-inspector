@@ -150,8 +150,8 @@ test('a pasted CMMN Case id resolves to a navigable read-only case-detail link',
   await page.goto('/')
 
   // Paste a Case id into the omnibox and resolve it.
-  await page.getByPlaceholder(/paste an instance/).fill('case-0')
-  await page.getByPlaceholder(/paste an instance/).press('Enter')
+  await page.getByPlaceholder(/Paste an ID or business key/).fill('case-0')
+  await page.getByPlaceholder(/Paste an ID or business key/).press('Enter')
 
   // The resolve panel surfaces the CMMN case as a navigable, honestly-labelled row (Case
   // Inspector Phase 2 gave it a destination; Phase 1 rendered it as an inert dead-end).
