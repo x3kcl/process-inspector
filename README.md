@@ -1,5 +1,9 @@
 # Flowable Multi-Instance Process Inspector
 
+[![CI](https://github.com/x3kcl/process-inspector/actions/workflows/ci.yml/badge.svg)](https://github.com/x3kcl/process-inspector/actions/workflows/ci.yml)
+[![Release](https://img.shields.io/github/v/release/x3kcl/process-inspector)](https://github.com/x3kcl/process-inspector/releases/latest)
+[![License](https://img.shields.io/github/license/x3kcl/process-inspector)](LICENSE)
+
 A centralized management plane (BAW-Inspector-style) to search, troubleshoot and **fix** process
 instances across **multiple independent Flowable engines** — strictly via the Flowable V6 REST API.
 
@@ -12,7 +16,9 @@ instances across **multiple independent Flowable engines** — strictly via the 
 | [docs/PRODUCT-GUIDE.md](docs/PRODUCT-GUIDE.md) | **The user-facing manual**: roles, every surface (triage landing, incidents, search, instance/case detail, bulk, admin), how to read the honesty markers, and which actions exist at which role floor |
 | [docs/tutorials/](docs/tutorials/) | Eight task-based walkthroughs — sign in to the demo (https://pi.naumann.cloud, ladder users, password `dev`) or the local dev compose and follow the numbered steps |
 | [docs/OPERATOR-QUICK-START.md](docs/OPERATOR-QUICK-START.md) | Ten minutes of onboarding before your first shift; pair with [docs/AUDIT-ATTRIBUTION.md](docs/AUDIT-ATTRIBUTION.md) before your first mutation |
+| [docs/START-HERE.md](docs/START-HERE.md) | Two pages: what it is, the three stages, where each doc's truth lives, how to run and change it |
 | [docs/RUNBOOK.md](docs/RUNBOOK.md) · [docs/OPERATIONS.md](docs/OPERATIONS.md) | Operating the Inspector itself: health, recovery, break-glass, threat model, CI gates |
+| [SECURITY.md](SECURITY.md) · [CONTRIBUTING.md](CONTRIBUTING.md) | How to report a vulnerability, and how a change lands |
 
 **Design & engineering** (the docs are the spec):
 
@@ -130,13 +136,21 @@ password `dev` unless `INSPECTOR_DEV_PASSWORD` is set).
 
 ## Status
 
-Feature-complete through the v2 release train (SPECIFICATION §12): the three-stage UI
-(`/` triage landing · `/search` with deep paging · `/inspect/{engineId}/{id}` full-page
-detail), the corrective-action verb catalog behind the guard ladder + fail-closed audit,
-tracked bulk operations with SSE progress, saved/shared views, person task search
-(`/tasks`), the CMMN case detail route, single-instance migration, registry + access
-administration (`/admin/engines`, `/admin/access`), break-glass, and the incident ledger
-(`/incidents`). Per-slice provenance: [docs/IMPLEMENTATION-PLAN.md](docs/IMPLEMENTATION-PLAN.md).
+Latest release: [v0.11.1](https://github.com/x3kcl/process-inspector/releases/tag/v0.11.1)
+(2026-08-08). The line since v0.9.0 is the incident ledger, self-heal lanes, the CI
+dashboard, and the demo deploy hardening (durable engine state, subnet pin, sequenced
+healthchecks). Attention ordering is shipped and **flag-off**
+(`inspector.triage.attention-ordering`).
+
+The product shape is still the v2 train in [docs/SPECIFICATION.md](docs/SPECIFICATION.md) §12:
+the three-stage UI (`/` triage · `/search` · `/inspect/{engineId}/{id}`), the verb catalog
+behind the guard ladder and the fail-closed audit, tracked bulk operations, saved/shared
+views, person task search (`/tasks`), CMMN case detail, single-instance migration, registry
+and access administration, and break-glass. Per-slice provenance:
+[docs/IMPLEMENTATION-PLAN.md](docs/IMPLEMENTATION-PLAN.md).
+
+Open follow-up from the 2026-10-21 maturity review:
+[maturity-2026-10](https://github.com/x3kcl/process-inspector/issues?q=is%3Aissue+is%3Aopen+label%3Amaturity-2026-10).
 
 ## License
 

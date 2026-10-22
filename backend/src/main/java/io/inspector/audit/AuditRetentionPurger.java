@@ -2,6 +2,8 @@ package io.inspector.audit;
 
 import io.inspector.audit.AuditPartitions.Bounds;
 import io.inspector.config.AuditProperties;
+import io.micrometer.core.instrument.Counter;
+import io.micrometer.core.instrument.MeterRegistry;
 import java.sql.Timestamp;
 import java.time.Clock;
 import java.time.Instant;
@@ -53,12 +55,17 @@ public class AuditRetentionPurger {
     private final AuditService audit;
     private final AuditProperties properties;
     private final Clock clock;
+    private final Counter failures;
 
-    public AuditRetentionPurger(JdbcTemplate jdbc, AuditService audit, AuditProperties properties, Clock clock) {
+    public AuditRetentionPurger(
+            JdbcTemplate jdbc, AuditService audit, AuditProperties properties, Clock clock, MeterRegistry metrics) {
         this.jdbc = jdbc;
         this.audit = audit;
         this.properties = properties;
         this.clock = clock;
+        this.failures = Counter.builder("audit_retention_purge_failures_total")
+                .description("Retention purges that aborted, were refused, or could not read the store")
+                .register(metrics);
     }
 
     /** Daily, first run 1h after startup (never fires inside a short test run). */
@@ -73,11 +80,12 @@ public class AuditRetentionPurger {
         try {
             candidates = expiredUnheldPartitionsOldestFirst(cutoffDate);
         } catch (RuntimeException e) {
+            failures.increment();
             log.warn("audit retention purge skipped — store unavailable: {}", e.toString());
             return;
         }
         if (candidates.isEmpty()) {
-            return; // nothing aged out — the common case
+            return; // nothing aged out — not a failure (#566)
         }
 
         try {
@@ -101,6 +109,7 @@ public class AuditRetentionPurger {
                 } catch (RuntimeException dropEx) {
                     // Pre-filtered as un-held + aged, so a refusal here is a race or DB-floor catch —
                     // record it and stop; the un-dropped partition stays, safe.
+                    failures.increment();
                     audit.recordConfigEvent(ACTION, ACTOR, false, dropFailedPayload(partition, dropEx));
                     log.error(
                             "AUDIT_RETENTION_PURGE_REFUSED partition={} — purge_audit refused after checkpoint: {}",
@@ -113,6 +122,7 @@ public class AuditRetentionPurger {
             audit.recordConfigEvent(ACTION, ACTOR, true, completePayload(cutoff, dropped));
         } catch (AuditUnavailableException e) {
             // Fail-closed ordering: a config event could not be written → the DROP did not run.
+            failures.increment();
             log.error(
                     "AUDIT_RETENTION_PURGE_ABORTED — config event unrecordable; purge NOT run (fail-closed): {}",
                     e.toString());

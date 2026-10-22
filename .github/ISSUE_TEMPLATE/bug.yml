@@ -1,0 +1,29 @@
+name: Bug
+description: Something the Inspector does wrong against a real or harness engine
+title: "[bug] "
+labels: ["bug"]
+body:
+  - type: textarea
+    attributes:
+      label: What happened
+      description: What you did, what you expected, what you saw.
+    validations:
+      required: true
+  - type: textarea
+    attributes:
+      label: Engine version matrix
+      description: Flowable version and edition for each engine involved (for example 6.8.0 REST, 7.1.0 REST).
+    validations:
+      required: true
+  - type: textarea
+    attributes:
+      label: GET /api/diag
+      description: Paste the JSON from GET /api/diag on the BFF. Redact secrets. Leave empty if the BFF did not boot.
+    validations:
+      required: false
+  - type: input
+    attributes:
+      label: Inspector version
+      description: Release tag or image digest.
+    validations:
+      required: true

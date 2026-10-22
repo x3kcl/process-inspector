@@ -3,6 +3,9 @@
 import type { components } from './schema'
 
 export type EngineDto = components['schemas']['EngineDto']
+export type EngineSystemInfo = components['schemas']['EngineSystemInfo']
+export type ThroughputBoard = components['schemas']['ThroughputBoard']
+export type ThroughputTile = components['schemas']['ThroughputTile']
 export type JobLanes = components['schemas']['JobLanes']
 export type SearchRequest = components['schemas']['SearchRequest']
 export type SearchResponse = components['schemas']['SearchResponse']
