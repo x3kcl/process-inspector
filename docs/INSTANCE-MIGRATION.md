@@ -322,15 +322,41 @@ defensible do-no-harm alternative; this is a deliberate product call, flagged fo
 - On-ramp read: `GET /api/definitions/{engineId}/{key}/versions` → versions + per-version runtime
   instance counts (count-only queries, Stage-0 discipline).
 
-## 7. Why batch is deferred (unanimous)
+## 7. Cohort execution strategy (measured 2026-10-22, #493)
+
+The 2026-07 deferral below assumed an unspiked batch wire. Measured on live `flowable-rest`
+**6.8.0** (`:8081`) and **7.1.0** (`:8083`), rest-admin, `demoMigration` v1 (`reviewTask`) → v2
+(`approveTask`):
+
+| Call | 6.8.0 | 7.1.0 |
+|---|---|---|
+| `POST repository/process-definitions/{id}/migrate` with `toProcessDefinitionId` + `activityMappings` | **200, empty body.** Moves **every** running instance of that definition. A missing mapping is 500 naming the activity id. `{}` is 500 `Process definition key cannot be null`. | same |
+| same body plus `processInstanceIds: [one id]` | **Ignored.** Both seeded instances moved. Jackson drops the unknown field. | same (same document shape; filter not re-tested on 7.1 after 6.8 proved the field is not in the document) |
+| `POST …/batch-migrate` with the same document | **200, empty body.** A `processMigration` batch appears on `GET management/batches` (`searchKey` = source id, `searchKey2` = target id, `status` `inProgress` then parts complete). | 404 with Flowable's "no deployed process definition" when the id is unknown, so the route exists. Success body not separately captured. |
+| `GET management/batches/{id}/batch-parts` | **200, a JSON array** (not a page). Each part has `scopeId` = process instance id, `status` `success`, `completeTime`. | not re-captured |
+| `DELETE management/batches/{id}` on an already-complete batch | **204**, then GET **404**. Cleanup of the record. Cancel-while-running was not measured. | not re-captured |
+| `GET runtime/process-instances?processDefinitionId&businessKey=` | exact match narrows `total` | — |
+| `businessKeyLike`, `startedAfter`, `startedBefore` | all narrow `total` | — |
+| `POST query/process-instances` with `variables: [{name,value,operation:equals}]` | narrows `total` | — |
+| `POST query/process-instances` with `businessKey` | **does not narrow** (total unchanged) | — |
+| `POST cmmn-api/cmmn-runtime/case-instances/{id}/migrate` | **500** `Cannot find the case to migrate` — route exists | same |
+| `POST cmmn-api/cmmn-repository/case-definitions/{id}/migrate`, `batch-migrate`, `migrate-historic-instances` | Spring **404** (no route) | Flowable **404** `no deployed case definition` — route exists |
+| `POST cmmn-api/cmmn-history/historic-case-instances/{id}/migrate` | Spring **404** | **500** `Cannot find the historic case instance` — route exists |
+
+**Verdict for S4: strategy A.** A filtered cohort cannot be sent to by-definition migrate or
+batch-migrate. Execute is one `POST runtime/process-instances/{id}/migrate` per instance, the
+call single-instance migrate already uses, with the cohort's prod token being the **count**
+rather than each business key. The synchronous door caps at 50 and refuses a wider set instead
+of migrating a prefix. Engine batch stays unused.
+
+### 7.0 Why batch was deferred (2026-07, historical)
 By-definition migration returns an async **`Batch`**; work drains via batch-part jobs and you poll
 `GET /management/batches/{id}` (+ parts). This breaks the single-call doctrine three ways: (a) the
 POST returns *before* any instance migrates ("200 = done" is false); (b) per-part outcomes arrive
 over time and fail INDEPENDENTLY — no single ok/failed/unknown to close the audit on; (c) polling a
-batch is the opposite of "no auto-retry / UNKNOWN on timeout". It needs its own audit schema
-(batch id + per-part reconciliation) and a live-poll read path. **Defer, but version the audit
-payload (`migrate-instance/v2`) now** so batch slots in without a schema break. Do NOT scaffold the poll
-path against an unspiked, 6.5→7.x-variant wire shape.
+batch is the opposite of "no auto-retry / UNKNOWN on timeout". The 2026-10-22 measurement confirms
+that shape and adds the fact that the batch cannot express a filter, so the cohort door does not
+use it.
 
 ## 8. Frontend (slice-1)
 - **Entry**: (a) instance Details action menu — "Migrate — move this case to a newer process
