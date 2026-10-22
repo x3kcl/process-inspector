@@ -42,7 +42,8 @@ R-SAFE-06/07 (REQUIREMENTS-REGISTER.md).
 - `/actuator/prometheus` (auth-gated). Metric set: `audit_insert_failures_total`,
   `engine_fanout_duration_seconds` (tags `engineId`,`leg`), `resilience4j_circuitbreaker_state`,
   `sse_emitters_active` + `sse_emitter_errors_total`, `bulk_jobs_running` +
-  `bulk_item_outcomes_total`, Hikari pool, JVM/virtual-thread pinning. Triage-cache **hit rate**
+  `bulk_item_outcomes_total`, `oidc_login_failures_total`, `snapshot_last_success_seconds`,
+  `audit_retention_purge_failures_total`, Hikari pool, JVM/virtual-thread pinning. Triage-cache **hit rate**
   (as opposed to age, which `GET /api/diag` reports) remains TARGET, not wired.
 - Structured JSON logs (the `oidc` profile only — see status note above); every request gets a
   `correlationId` (accept `X-Request-Id` or generate), MDC-propagated across the virtual-thread
@@ -72,15 +73,29 @@ not on every line.
 
 **Dashboards (#469).** `deploy/grafana/dashboards/` holds fleet, BFF, and operations.
 `docker compose --profile observability up` from `docker/` starts Prometheus (scrape password
-from `INSPECTOR_DEV_PASSWORD`) and Grafana with anonymous view on `127.0.0.1:3000`. The three
-dashboards are provisioned. They read the metrics above. Cache hit rate is still not a meter,
-so it is not a panel.
+from `INSPECTOR_DEV_PASSWORD`), Grafana with anonymous view on `127.0.0.1:3000`, an
+OpenTelemetry collector, and Jaeger. The three dashboards are provisioned. They read the
+metrics above. Cache hit rate is still not a meter, so it is not a panel.
 
-**Tracing (#470).** Off unless `INSPECTOR_TRACING_ENABLED=true` and `OTEL_EXPORTER_OTLP_ENDPOINT`
-is set. Default sample is 1% (`INSPECTOR_TRACING_SAMPLE`). Each `GuardedCaller` call is a span
-`engine.call` tagged `engineId` and `leg` only. The chokepoint does not know the corrective-action
-verb, so it cannot force 100% sampling on those calls; set the sample to 1 for an incident.
-No variable values on the span.
+**System info (#509, #510).** `GET /api/engines/{id}/system` returns version, schema properties, and table counts. A viewer gets the version line only. Copy and download live on `/admin/engines/{id}/system`. Executor numbers appear only when the registry row's `metrics_url` is set and passes the egress check. Otherwise the page says the engine does not expose them. A scrape that lacks `flowable_jobs_async_total{type="rejected"}` does not invent a zero.
+
+**Throughput (#508).** The strip compares root starts over 10 minutes, 1 hour, and 24 hours with the median of earlier windows of the same width. Tasks and CMMN case starts are the 10-minute tile. No samples yet reads "no history yet".
+
+**Health advisor (#511).** The strip shows OK / WARN / CRIT from sampled signals: unreachable, oldest executable job over 5 minutes, overdue timers, history backlog over 5 minutes, and a drop in root starts versus the median of recent snapshot windows. A warning clears only after two quieter probes. Thresholds match R-NFR-04 (5 minutes). Executor pool gauges are not on this banner until an engine metrics URL exists (#510).
+
+**Tracing (#470, #564, #565).** Off unless `INSPECTOR_TRACING_ENABLED=true` and
+`OTEL_EXPORTER_OTLP_ENDPOINT` is set. Default sample is 1% (`INSPECTOR_TRACING_SAMPLE`).
+Reads are span `engine.call`, tagged `engineId` and `leg`. Corrective actions are span
+`engine.corrective`, tagged with those plus `verb`, and are always sampled. No variable
+values on a span. Jaeger UI is `http://127.0.0.1:16686` when the observability profile is up.
+Compose cannot attach env to `backend` only for that profile, so tracing stays off until the
+same command sets the collector URL:
+
+`INSPECTOR_TRACING_ENABLED=true OTEL_EXPORTER_OTLP_ENDPOINT=http://otel-collector:4318/v1/traces docker compose -f docker/docker-compose.demo.yml --profile observability up`
+
+The published demo image does not contain `engine.corrective` until the next image build.
+A search on that image can show `engine.call` children only. Build the backend locally to see
+the verb span.
 - ADMIN diagnostics `GET /api/diag` (v1.x): breaker states, cache AGES, permit-pool saturation,
   last-N engine errors with correlationIds, build info. Door gate is "ADMIN on at least one
   engine"; per-engine sections are then filtered to engines the caller holds ADMIN on (see status
@@ -228,7 +243,7 @@ annotated tag, and *calls* `release.yml` as a reusable workflow — required bec
   full-DB-write-access gap) is tracked separately (issue #311, PO-gated). Run the verifier
   periodically and after any Postgres restore (§5, RUNBOOK §5); monthly range partitions;
   retention default 400 days with an audited purge job; legal-hold procedure (suspend purge
-  per engine/tenant/window).
+  per engine/tenant/window). Engine history deletion is a separate ADMIN wizard (`POST /api/bulk/history`). It does not use the audit legal-hold table. Holds are `inspector.housekeeping.held-definition-keys` and `inspector.housekeeping.held-business-keys` (comma-separated; a business key ending in `*` is a prefix). A hold refusal writes `history-hold-refused`.
   **Monthly partitioning is live (S5a):** `V10` carved the DEFAULT partition into
   `audit_entry_YYYY_MM` children (append-only never relaxed — the carve moves rows by
   DETACH/CREATE/INSERT/TRUNCATE/ATTACH with `seq`/`chain_hash` verbatim), and

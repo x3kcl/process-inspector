@@ -30,7 +30,7 @@ Flowable Control, Conductor/Orkes, Airflow and Step Functions, and a four-seat d
   spells with a minimum-sample floor and hysteresis
   ([RETRYING-RISK-LANE.md](RETRYING-RISK-LANE.md) §4). Informational only: it never enables,
   disables, or softens any corrective action.
-- **Job lanes** — Flowable's four job queues: executable, timer, suspended, dead-letter.
+- **Job lanes** — Flowable's four job queues: executable, timer, suspended, dead-letter, plus history jobs when `management/history-jobs` exists (otherwise the strip says not available, never 0).
   The lane a job sits in IS the diagnosis. A **fifth lane — external-worker jobs** (v1.x #7,
   read-only, Flowable 6.8+ only) sits alongside them, capability-gated: it renders only on a
   supporting engine (`EngineCapabilities.externalWorkerJobs`) and its crux column is the
@@ -444,7 +444,7 @@ gap here: [link]" is the ticket-handover primitive.
   **Collapsible** via a header toggle (state persisted): a small process leaves the fixed-
   height canvas mostly empty, so folding it hands the reclaimed height to the tabs below; a
   tab's "show on diagram" auto-unfolds it.
-- **Tabs**: Variables · Errors & Jobs · Tasks · Hierarchy · Timeline · Audit & Notes —
+- **Tabs**: Variables · Errors & Jobs · Tasks · Participants · Executions · Decisions · Hierarchy · Timeline · Audit & Notes —
   each lazy-loaded (IBM's slow-detail lesson).
   - **Variables** — a **typed variable ledger, never a raw JSON dump** (the Flowable
     Control anti-pattern; R-UXQ-13). Rows: name · plain-language type chip (text / number /
@@ -747,6 +747,9 @@ PERSON have, across every engine" — the "Bob is on vacation" query. Search sta
 - **Non-goal (still unscheduled):** group-membership-aware candidate resolution beyond what the
   engine's own `candidateUser` query answers, and a saved/pinned "my team" roster — this ships as
   a plain one-person-at-a-time lookup.
+- **Task browser** (`/task-browser`, `GET /api/tasks/browse`) is additive. It filters open tasks
+  (definition, assignee, owner, candidate group, unassigned, overdue, created range) and bulk
+  reassigns the selection. It does not replace this person search.
 
 ### 4e. Incident ledger — persisted failure-class lifecycle *(v2, R-BAU-10 — ★ SHIPPED, S1–S5 landed 2026-07-19, [INCIDENT-LEDGER.md](INCIDENT-LEDGER.md))*
 
@@ -841,6 +844,20 @@ so history survives DLQ drains:
 - **Non-goals v1** (recorded with the panel review): assignee/severity fields, auto-resolve
   policies, external alerting/deploy correlation, reporting dashboards/CSV export.
 
+### Definitions and deployments (#483)
+
+`/definitions` is the cross-engine catalog: key, name, latest-only, per-version running
+counts (count-only, ≥ when a leg is capped or failed), suspended state, and a 20-second
+cache. A row opens `/definitions/{engineId}/{definitionId}` — read-only diagram and BPMN
+XML, start and instance event subscriptions, the four job lanes filtered by definition
+(lower bound when a lane fails), and a version selector. Compare renders an element diff
+on bpmn-js (added `+`, changed `~`, removed listed). It is a BFF structural diff, not an
+engine migration check. `/deployments` lists deployments; an ADMIN deletes one through the
+tier-3 verb (cascade off unless set, live-instance count re-checked at execute, typed
+deployment id on prod). Case definitions on a 6.8+ engine appear in the catalog; their
+diagram and BPMN job lanes say so instead of pretending to be process definitions.
+Uploading a deployment stays out (§11, decision #505).
+
 ## 5. Corrective actions — the verb catalog
 
 Every verb states what is preserved. Guard tiers per §6. All calls in
@@ -892,12 +909,19 @@ remains v2.
 | **Suspend / activate instance** | Execution pauses/resumes; executable jobs move to/from the suspended lane — a dead-letter job is unaffected (stays dead-lettered, Retry available) | 0 |
 | **Edit variable** | Via the §4a editor: form-first typed widgets, leaf-level json edits, opt-in source mode; old→new path-diff verification; compare-and-set; scope-aware (process vs execution) | 1 |
 | **Complete task with data** | Task closes with overridden output; warning: a skipped/forced task never writes its own outputs — edit them here (via the shared §4a change-set editor) | 1 |
-| **Reassign task / return to team** *(v1.x #6, landed)* | Reassign to a specific user, or clear the assignee (return-to-team) so the task falls back to its candidate groups; **ACTIVE tasks only** (a completed task can no longer be reassigned); task state otherwise untouched | 1 |
+| **Reassign task / return to team** *(v1.x #6, landed)* | Reassign to a specific user, or clear the assignee (return-to-team) so the task falls back to its candidate groups; **ACTIVE tasks only** (a completed task can no longer be reassigned); task state otherwise untouched. Bulk reassign/return uses the same verbs (cap 200, reason ≥ 10, per-item audit) | 1 |
+| **Claim / unclaim** | Claim sets the assignee (`POST` action `claim`). An empty assignee unclaims. IDM user check only when the engine bundles IDM | 1 |
+| **Delegate / resolve** | Delegate hands the task to another user (`delegationState=pending`). Resolve returns it. Resolve refuses a task that is not delegated | 1 |
+| **Update task** | `PUT` the named fields (name, description, owner, due date, priority, category). The audit row and the toast record old → new. A null field is left alone | 1 |
+| **Identity link add / remove** | Candidate (or assignee/owner) user or group on the task. IDM existence check on add only when IDM is probed present; a missing IDM route is not "user missing" | 1 |
+| **Delete task** | `DELETE` the open task, including a standalone task with no process instance. ADMIN, typed task id on prod | 3 |
 | **Rerun from activity (with overrides)** | Guided composite: variable edits first (§4a change-set), then change-state; token re-enters the chosen activity; history append-only | 2 |
-| **Change state / move token** | Cancels ALL executions at the source activity, starts at target; guardrails: blocked on multi-instance bodies, parallel-join warning, suspended-check (offer activate-first), preview labeled *BFF simulation* (engine has no dry-run) + exact REST body shown | 2 |
+| **Change state / move token** | Cancels ALL executions at the source activity, starts at target. The Executions tab shows each token; selecting one pre-fills that activity, and the move still cancels every token sitting on it. Guardrails: blocked on multi-instance bodies, parallel-join warning, suspended-check (offer activate-first), preview labeled *BFF simulation* (engine has no dry-run) + exact REST body shown | 2 |
 | **Restart as new instance** | Completed/terminated instance re-launched with copied historic variables; **explicit fork: pin original definition version vs latest**; new instance ID | 2 |
-| **Suspend process definition** | One call stops new AND (optionally) running instances of a definition — the real "bad deploy" brake (replaces bulk instance-suspend) | 3 |
-| **Terminate / delete instance** | Irreversible; runtime state destroyed; **cascade to call-activity children enumerated in the confirm** | 3 |
+| **Suspend / activate process definition** | One call stops or resumes new instances of a definition, and optionally running ones. An ISO-8601 `effectiveAt` schedules it; omitted means now. The "bad deploy" brake | 3 |
+| **Delete deployment** | Deletes one deployment. Cascade defaults off and is refused while running instances exist or the live count cannot be proved. Typed deployment id on prod. Irreversible. No upload (#505) | 3 |
+| **Add / remove participant** | User identity link on a running process or case (`participant` by default). The starter link is shown and cannot be removed. IDM check on add only when IDM is probed present | 1 |
+| **Terminate / delete instance** | Irreversible; runtime state destroyed; **cascade to call-activity children enumerated in the confirm**. The operator reason is sent to the engine as `deleteReason`, prefixed `inspector:<actor>[:ticket]:reason` and capped at 4000 characters. The engine still records the service account as the actor; the Inspector audit log is who asked | 3 |
 | **Delete dead-letter job** | ⚠ Orphans the execution permanently (only rescue afterwards: change-state). ADMIN-only, explicit warning | 3 |
 | **Migrate instance** *(v2)* | Move instance to another deployed version of the same key. **Inspector static pre-check (NOT an engine validation** — Flowable's REST API exposes no migration validator, P0 spike 2026-07-09): a BFF model diff flags activities that can't auto-map; the engine is the ground truth only at apply. The pre-check emits **typed findings** (INSTANCE-MIGRATION.md §14 — a CLOSED 8-code vocabulary with `taxonomyVersion`, severities `BLOCKER_ADVICE`/`WARNING`/`INFO`), rendered by severity and labelled "BFF estimate — the engine is the only ground truth at execute". Exactly **two** refusals, both 422: document-construction impossibility (a token with no target id and no operator mapping), and **`scope-collapse-token-loss`** — a dissolving subprocess scope holding **two or more live tokens**, where live calibration on 6.8/7.1 measured the engine returning **200 while silently destroying all but one token** (no error, no delete reason, no job), which can park the instance forever at a join whose sibling branch is gone; no mapping can fix it, so the estimate is the only place it can be caught (§14.11). A **single-token** removed scope and a removed **boundary subscription** are WARNINGS, not blockers — the engine accepts both, so blocking them made a legitimate recovery impossible through the BFF. **Findings are advisory-only: green or red, no rail moves.** Honest banner ("this is not a Flowable validation … the engine's own check runs only when you execute"); ADMIN unconditional + typed **business-key** confirm on prod; IRREVERSIBLE, never auto-retried (post-dispatch timeout ⇒ UNKNOWN + verify-now); single first, batch later. See `docs/INSTANCE-MIGRATION.md` | 3 |
 
@@ -980,8 +1004,7 @@ two dead-letter verbs a co-deployed CMMN case needs — **Retry job** (tier 0 / 
 dead-letter job in the case's "why-stuck" panel, capability-gated on `scopeType` (Flowable ≥ 6.8 —
 older engines are dead-letter-blind on the cmmn context, greyed never hidden). Retry is a tier-0
 inline confirm; delete is a tier-3 typed-confirm modal (required reason ≥ 10 chars; on prod, the
-typed token = the job id) whose blast-radius copy is scope-honest — a CMMN case has **no
-change-state rescue** in this tool, so deleting a dead-letter job orphans its plan item for good.
+typed token = the job id) whose blast-radius copy is scope-honest — deleting a dead-letter job orphans its plan item; the rescue is `change-plan-item`. Also on the case route: `plan-item-action` (trigger/enable/disable), `change-plan-item` (activate/available/terminate, ADMIN on prod), `terminate-case` and `delete-case` (tier 3, no engine delete reason), and `edit-case-variable` (compare-and-set). See `docs/CMMN-CASE-DETAIL-PHASE-2.md`.
 Only the two scope seams differ from BPMN: the server-fresh restatement reads the job by-id from
 the `/cmmn-management` DLQ (cap-free) and keys ownership on `caseInstanceId`, and the one engine
 call is the `/cmmn-management/deadletter-jobs/{id}` sibling — `POST … {"action":"move"}` for retry,
@@ -1049,6 +1072,7 @@ copy is never identical to an RBAC denial (R-GOV-04, R-SEM-17).
   earlier §7↔ARCH §4 ambiguity: one machinery, restart-safe), with per-item result report
   (successful IDs vs id→error table, Conductor `BulkResponse` style) and an **aggregate
   readout** "N of M dispatched · ok/failed/skipped/unknown" (R-SEM-11).
+- **Delete completed history** (`delete-history` / `delete-case-history`, ADMIN): finished instances only, an ended-before bound is mandatory, a definition key is mandatory on prod, a run over 5,000 matches is refused, a prod run types the count, and a protected definition key or an `inspector.housekeeping.held-*` hold refuses. Per-id DELETE on the housekeeping lane. Stop leaves the rest `not_run`. The CMMN delete route takes no delete reason. The id-list bulk POST is not the dispatcher (no per-id body). See `docs/reviews/HOUSEKEEPING-WIRE-SHAPE-2026-10-22.md`.
 - **Job state machine** (normative): job `PENDING → RUNNING → (COMPLETED | CANCELLED |
   INTERRUPTED)`; item `pending → dispatched → (ok | failed | skipped | skipped (protected) |
   unknown | not_run)`. On BFF startup a reconciliation sweep marks RUNNING → INTERRUPTED;
@@ -1389,7 +1413,7 @@ and would rewrite working M1/M2 code for no capability gain); Go/FastAPI/Kotlin 
 
 ## 11. Non-goals & explicitly rejected (with reasons)
 
-- No BPMN editing/deployment tooling; no engine-DB access (unchanged).
+- No BPMN editing and no deployment **upload** (decision #505, 2026-10-22: Hub's `.bar`/`.zip` upload stays out). Reading the definition and deployment catalogs and deleting a deployment are in scope (#483). No engine-DB access (unchanged).
 - No cross-engine transactional bulk (unchanged) and no fake global pagination (unchanged).
 - **No query language** — Flowable's query REST has no OR-across-fields/boolean nesting; a
   grammar would either lie or duplicate the form. The compiled-criteria echo + copy-as-cURL
@@ -1403,7 +1427,7 @@ and would rewrite working M1/M2 code for no capability gain); Go/FastAPI/Kotlin 
 - **English-only UI, deliberately** (R-UXQ-07) — the operator audience works in English and
   engine error text is English regardless. Hedges that stay mandatory: one string catalog
   per side, one shared formatter. Full localization is COULD-v2, demand-driven.
-- **No Temporal-style reset**, no timer reschedule, no engine-verified modification preview,
+- **No Temporal-style reset**, no engine-verified modification preview. Timer reschedule exists on Flowable 7+ (`action: reschedule`); 6.x greys it.
   no per-retry Gantt gaps, no async-executor thread internals — the REST API cannot honestly
   provide them; nearest honest equivalents are documented per verb.
 - **CMMN out of scope for v1** (jobs filtered from every join; `scopeType` carried in DTOs

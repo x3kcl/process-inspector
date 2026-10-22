@@ -20,7 +20,7 @@ The consequence is **binding and cannot be configured away**:
 > *every* task completion, variable edit, retry, suspension, and termination performed
 > through this tool — regardless of which human clicked the button.
 
-Querying the Flowable database will **no longer tell you which engineer moved the token.**
+Terminate/delete writes `deleteReason` as `inspector:<actor>[:ticket]:reason` so engine history quotes the request. The engine user on that row is still the service account. Querying the Flowable database will **no longer tell you which engineer moved the token.**
 If your incident reconstruction habit is "look at `ACT_HI_*`", that habit is now wrong for
 anything the Inspector touched.
 
