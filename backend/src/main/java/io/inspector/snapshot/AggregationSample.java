@@ -53,13 +53,25 @@ public record AggregationSample(
         Instant sampledAt,
         Set<String> truncatedEngineIds,
         boolean cycleComplete,
-        Set<String> fleetEngineIds) {
+        Set<String> fleetEngineIds,
+        List<DefinitionStart> topStarts) {
 
     public AggregationSample {
         laneCounts = laneCounts != null ? List.copyOf(laneCounts) : List.of();
         errorGroups = errorGroups != null ? List.copyOf(errorGroups) : List.of();
         truncatedEngineIds = truncatedEngineIds != null ? Set.copyOf(truncatedEngineIds) : Set.of();
         fleetEngineIds = fleetEngineIds != null ? Set.copyOf(fleetEngineIds) : Set.of();
+        topStarts = topStarts != null ? List.copyOf(topStarts) : List.of();
+    }
+
+    public AggregationSample(
+            List<EngineLaneCount> laneCounts,
+            List<ErrorGroup> errorGroups,
+            Instant sampledAt,
+            Set<String> truncatedEngineIds,
+            boolean cycleComplete,
+            Set<String> fleetEngineIds) {
+        this(laneCounts, errorGroups, sampledAt, truncatedEngineIds, cycleComplete, fleetEngineIds, List.of());
     }
 
     /**

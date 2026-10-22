@@ -1,15 +1,26 @@
 package io.inspector.snapshot;
 
+import io.inspector.client.CmmnApiClient;
+import io.inspector.client.FlowablePage;
 import io.inspector.client.GuardedCaller.CallPriority;
+import io.inspector.client.ProcessApiClient;
+import io.inspector.client.ProcessApiClient.JobLaneKind;
+import io.inspector.config.InspectorProperties;
+import io.inspector.config.InspectorProperties.EngineConfig;
 import io.inspector.dto.TriageDashboardResponse;
 import io.inspector.dto.TriageDashboardResponse.PerEngineTriage;
+import io.inspector.registry.EngineRegistry;
 import io.inspector.triage.TriageAggregationService;
 import java.time.Clock;
+import java.time.Duration;
+import java.time.Instant;
 import java.util.ArrayList;
 import java.util.LinkedHashSet;
 import java.util.List;
+import java.util.Map;
 import java.util.Optional;
 import java.util.Set;
+import org.springframework.beans.factory.annotation.Autowired;
 import org.springframework.stereotype.Component;
 
 /**
@@ -25,10 +36,30 @@ public class PollingSnapshotSource implements SnapshotSource {
 
     private final TriageAggregationService aggregation;
     private final Clock clock;
+    private final ProcessApiClient flowable;
+    private final CmmnApiClient cmmn;
+    private final EngineRegistry registry;
+    private final InspectorProperties properties;
 
+    /** Tests that only exercise the status-chip sample. */
     public PollingSnapshotSource(TriageAggregationService aggregation, Clock clock) {
+        this(aggregation, clock, null, null, null, null);
+    }
+
+    @Autowired
+    public PollingSnapshotSource(
+            TriageAggregationService aggregation,
+            Clock clock,
+            ProcessApiClient flowable,
+            CmmnApiClient cmmn,
+            EngineRegistry registry,
+            InspectorProperties properties) {
         this.aggregation = aggregation;
         this.clock = clock;
+        this.flowable = flowable;
+        this.cmmn = cmmn;
+        this.registry = registry;
+        this.properties = properties;
     }
 
     @Override
@@ -87,9 +118,92 @@ public class PollingSnapshotSource implements SnapshotSource {
             // scope cannot be a complete observation of anything.
             cycleComplete = false;
         }
+        List<DefinitionStart> topStarts = appendHistoryAndThroughput(out, fleetEngineIds);
         List<io.inspector.dto.ErrorGroup> groups =
                 dashboard.errorGroups() != null ? dashboard.errorGroups() : List.of();
-        return new AggregationSample(out, groups, clock.instant(), truncatedEngines, cycleComplete, fleetEngineIds);
+        return new AggregationSample(
+                out, groups, clock.instant(), truncatedEngines, cycleComplete, fleetEngineIds, topStarts);
+    }
+
+    /** Count-only, per engine. A missing route writes no row. One engine's failure does not drop the pass. */
+    private List<DefinitionStart> appendHistoryAndThroughput(List<EngineLaneCount> out, Set<String> engineIds) {
+        if (flowable == null || registry == null) {
+            return List.of();
+        }
+        Instant now = clock.instant();
+        Duration interval = properties == null
+                ? Duration.ofSeconds(60)
+                : properties.snapshotOrDefault().sampleIntervalOrDefault();
+        Instant after = now.minus(interval);
+        List<DefinitionStart> tops = new ArrayList<>();
+        for (String id : engineIds) {
+            EngineConfig engine = registry.resolve(id).orElse(null);
+            if (engine == null) {
+                continue;
+            }
+            try {
+                Long history = flowable.countJobsIfSupported(engine, CallPriority.BACKGROUND, JobLaneKind.HISTORY);
+                if (history != null) {
+                    out.add(new EngineLaneCount(id, SnapshotLane.HISTORY_BACKLOG, history));
+                }
+                Long started = flowable.countHistoricProcesses(engine, CallPriority.BACKGROUND, after, now, true, true);
+                if (started != null) {
+                    out.add(new EngineLaneCount(id, SnapshotLane.PROC_STARTED, started));
+                }
+                Long finished =
+                        flowable.countHistoricProcesses(engine, CallPriority.BACKGROUND, after, now, false, true);
+                if (finished != null) {
+                    out.add(new EngineLaneCount(id, SnapshotLane.PROC_FINISHED, finished));
+                }
+                addIfPresent(
+                        out,
+                        id,
+                        SnapshotLane.TASK_CREATED,
+                        flowable.countHistoricTasks(engine, CallPriority.BACKGROUND, after, now, false));
+                addIfPresent(
+                        out,
+                        id,
+                        SnapshotLane.TASK_COMPLETED,
+                        flowable.countHistoricTasks(engine, CallPriority.BACKGROUND, after, now, true));
+                if (cmmn != null) {
+                    addIfPresent(
+                            out,
+                            id,
+                            SnapshotLane.CASE_STARTED,
+                            cmmn.countCasesStarted(engine, CallPriority.BACKGROUND, after, now));
+                }
+                tops.addAll(topStarts(engine, after, now));
+            } catch (RuntimeException ignored) {
+                // status rows already recorded; this engine's extra lanes wait for the next pass
+            }
+        }
+        return tops;
+    }
+
+    private static void addIfPresent(List<EngineLaneCount> out, String engineId, SnapshotLane lane, Long count) {
+        if (count != null) {
+            out.add(new EngineLaneCount(engineId, lane, count));
+        }
+    }
+
+    /** At most 10 latest definition keys. The capped flag is true when the catalog page is not the whole list. */
+    private List<DefinitionStart> topStarts(EngineConfig engine, Instant after, Instant now) {
+        FlowablePage page = flowable.listLatestProcessDefinitions(engine, CallPriority.BACKGROUND, 10);
+        List<Map<String, Object>> rows = page == null ? List.of() : page.dataOrEmpty();
+        boolean capped = page != null && page.total() > rows.size();
+        List<DefinitionStart> out = new ArrayList<>();
+        for (Map<String, Object> row : rows) {
+            Object key = row.get("key");
+            if (!(key instanceof String definitionKey) || definitionKey.isBlank()) {
+                continue;
+            }
+            Long starts = flowable.countHistoricProcesses(
+                    engine, CallPriority.BACKGROUND, after, now, true, true, definitionKey);
+            if (starts != null) {
+                out.add(new DefinitionStart(engine.id(), definitionKey, starts, capped));
+            }
+        }
+        return out;
     }
 
     /** Maps a status-count key to its lane; skips any key not in the fixed lane set (defensive). */

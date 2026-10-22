@@ -2,8 +2,14 @@ package io.inspector.api;
 
 import io.inspector.dto.EngineDto;
 import io.inspector.registry.EngineRegistry;
+import io.inspector.registry.EngineSystemInfoService;
+import io.inspector.registry.EngineSystemInfoService.EngineSystemInfo;
+import io.inspector.security.RbacAuthorizer;
 import java.util.List;
+import org.springframework.security.core.Authentication;
+import org.springframework.security.core.GrantedAuthority;
 import org.springframework.web.bind.annotation.GetMapping;
+import org.springframework.web.bind.annotation.PathVariable;
 import org.springframework.web.bind.annotation.RequestMapping;
 import org.springframework.web.bind.annotation.RestController;
 
@@ -22,9 +28,11 @@ import org.springframework.web.bind.annotation.RestController;
 public class EnginesController {
 
     private final EngineRegistry registry;
+    private final EngineSystemInfoService systemInfo;
 
-    public EnginesController(EngineRegistry registry) {
+    public EnginesController(EngineRegistry registry, EngineSystemInfoService systemInfo) {
         this.registry = registry;
+        this.systemInfo = systemInfo;
     }
 
     @GetMapping
@@ -32,5 +40,16 @@ public class EnginesController {
         return registry.allForDisplay().stream()
                 .map(e -> EngineDto.from(e, registry.healthOf(e.id())))
                 .toList();
+    }
+
+    /** Version, properties, and table counts. A viewer gets the version line only (#509). */
+    @GetMapping("/{id}/system")
+    public EngineSystemInfo system(@PathVariable String id, Authentication auth) {
+        boolean full = auth != null
+                && auth.getAuthorities().stream()
+                        .map(GrantedAuthority::getAuthority)
+                        .anyMatch(role ->
+                                role.equals("ROLE_ADMIN") || role.equals(RbacAuthorizer.REGISTRY_ADMIN_AUTHORITY));
+        return systemInfo.load(id, full);
     }
 }
