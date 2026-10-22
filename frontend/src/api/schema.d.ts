@@ -1445,6 +1445,38 @@ export interface paths {
         patch?: never;
         trace?: never;
     };
+    "/api/migration/cohorts/execute": {
+        parameters: {
+            query?: never;
+            header?: never;
+            path?: never;
+            cookie?: never;
+        };
+        get?: never;
+        put?: never;
+        post: operations["executeCohort"];
+        delete?: never;
+        options?: never;
+        head?: never;
+        patch?: never;
+        trace?: never;
+    };
+    "/api/migration/cohorts/preview": {
+        parameters: {
+            query?: never;
+            header?: never;
+            path?: never;
+            cookie?: never;
+        };
+        get?: never;
+        put?: never;
+        post: operations["previewCohort"];
+        delete?: never;
+        options?: never;
+        head?: never;
+        patch?: never;
+        trace?: never;
+    };
     "/api/recents": {
         parameters: {
             query?: never;
@@ -2152,6 +2184,48 @@ export interface components {
         CmmnScopeFacet: {
             deadletters?: components["schemas"]["OutOfScopeDeadLetters"];
             lanes?: components["schemas"]["CmmnLaneCounts"];
+        };
+        CohortExecuteRequest: {
+            cohort?: components["schemas"]["CohortPreviewRequest"];
+            confirmToken?: string;
+            /** Format: int64 */
+            expectedCount?: number;
+            reason?: string;
+            ticketId?: string;
+        };
+        CohortExecuteResponse: {
+            /** Format: int64 */
+            count?: number;
+            engineId?: string;
+            items?: components["schemas"]["CohortItemOutcome"][];
+        };
+        CohortItemOutcome: {
+            detail?: string;
+            instanceId?: string;
+            outcome?: string;
+        };
+        CohortPreviewRequest: {
+            businessKey?: string;
+            businessKeyContains?: boolean;
+            fromDefinitionId?: string;
+            mappings?: components["schemas"]["MigrationMapping"][];
+            startedAfter?: string;
+            startedBefore?: string;
+            toDefinitionId?: string;
+            variableName?: string;
+            variableValue?: string;
+        };
+        CohortPreviewResponse: {
+            /** Format: int32 */
+            cap?: number;
+            /** Format: int64 */
+            count?: number;
+            engineId?: string;
+            fromDefinitionId?: string;
+            /** Format: int64 */
+            protectedCount?: number;
+            strategy?: string;
+            truncated?: boolean;
         };
         ConfirmRequest: {
             confirmToken?: string;
@@ -5833,6 +5907,58 @@ export interface operations {
                 };
                 content: {
                     "*/*": components["schemas"]["MetaDto"];
+                };
+            };
+        };
+    };
+    executeCohort: {
+        parameters: {
+            query: {
+                engineId: string;
+            };
+            header?: never;
+            path?: never;
+            cookie?: never;
+        };
+        requestBody: {
+            content: {
+                "application/json": components["schemas"]["CohortExecuteRequest"];
+            };
+        };
+        responses: {
+            /** @description OK */
+            200: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "*/*": components["schemas"]["CohortExecuteResponse"];
+                };
+            };
+        };
+    };
+    previewCohort: {
+        parameters: {
+            query: {
+                engineId: string;
+            };
+            header?: never;
+            path?: never;
+            cookie?: never;
+        };
+        requestBody: {
+            content: {
+                "application/json": components["schemas"]["CohortPreviewRequest"];
+            };
+        };
+        responses: {
+            /** @description OK */
+            200: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "*/*": components["schemas"]["CohortPreviewResponse"];
                 };
             };
         };
