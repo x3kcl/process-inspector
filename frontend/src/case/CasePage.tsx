@@ -15,6 +15,7 @@ import { Ts } from '../lib/Ts'
 import { CaseDeleteModal } from './CaseDeleteModal'
 import { CaseDiagramCanvas } from './CaseDiagramCanvas'
 import { PlanItemTimeline } from './PlanItemTimeline'
+import { CaseOps } from './CaseOps'
 import { Breadcrumbs } from '../shell/Breadcrumbs'
 import { caseCrumbs } from '../shell/breadcrumbs'
 import { useCaseDiagram, useCasePlanItems, useCaseVitals } from './useCaseQueries'
@@ -329,6 +330,14 @@ export function CasePage() {
           <p className="error-note" role="alert">
             Could not load plan items: {planItems.error.message}
           </p>
+        )}
+        {vitals.data !== undefined && (
+          <CaseOps
+            engineId={engineId}
+            caseInstanceId={caseInstanceId}
+            businessKey={vitals.data.businessKey}
+            planItems={planItems.data}
+          />
         )}
         {planItems.isSuccess && <PlanItemTimeline data={planItems.data} />}
       </section>

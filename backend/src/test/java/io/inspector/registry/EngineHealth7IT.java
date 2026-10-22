@@ -79,6 +79,7 @@ class EngineHealth7IT {
         }
 
         assertThat(dto.get("jobLanes").get("deadletter").asLong()).isGreaterThanOrEqualTo(1);
+        assertThat(dto.get("jobLanes").get("history").asLong()).isGreaterThanOrEqualTo(0);
         // Sane count, not zero: see EngineHealthIT — loaded runners can outlast the grace.
         assertThat(dto.get("overdueTimers").asLong()).isGreaterThanOrEqualTo(0);
     }
