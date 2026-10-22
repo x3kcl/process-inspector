@@ -27,7 +27,7 @@ class EnginesControllerTest {
         return TestEngines.builder(id, "http://" + id + "/flowable-rest/service")
                 .name("Engine " + id)
                 .enabled(enabled)
-                .auth(new Auth(Auth.Type.none, null, null, null))
+                .auth(Auth.none())
                 .mode(mode)
                 .timeouts(new Timeouts(null, null, null))
                 .alarmThresholds(new AlarmThresholds(null, null, null))
