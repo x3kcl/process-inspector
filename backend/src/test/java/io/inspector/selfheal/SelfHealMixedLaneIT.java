@@ -45,7 +45,7 @@ import org.testcontainers.containers.PostgreSQLContainer;
  * test is about the boundary computation, not the dwell mechanism ({@code
  * SelfHealDwellSuppressionIT} owns that).
  *
- * <p>LOCAL-ONLY (failsafe *IT, it-actions family — not in ci.yml's itClass).
+ * <p>LOCAL-ONLY relative to ci.yml (failsafe *IT, it-actions family). Nightly {@code engine-its}.
  *
  * <p>Requires: docker compose -f docker/docker-compose.dev.yml up -d (flowable-6 profile)
  */

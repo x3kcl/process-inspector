@@ -24,7 +24,7 @@ import org.testcontainers.containers.PostgreSQLContainer;
  * actually filters (as opposed to merely proving the service calls it with the right arguments,
  * which the mocked-repository {@code EpisodeActionAttributionServiceTest} covers) needs a REAL
  * Postgres, exactly the reasoning {@link AuditEntryRepositoryScopeIT} documents for its sibling
- * query. LOCAL-ONLY (not in ci.yml's itClass), same precedent.
+ * query. LOCAL-ONLY relative to ci.yml, nightly {@code container-its}, same precedent.
  *
  * <p>Requires only a reachable Docker daemon — Testcontainers provisions its own disposable
  * Postgres, the Spring context boots with {@code ENGINE_A_PASSWORD} stubbed via the

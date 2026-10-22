@@ -1,7 +1,7 @@
 # Nightly full integration suite (Q2 — IMPROVEMENT-PLAN-2026-07 P0 #5). The PR merge gate
 # (ci.yml) runs 16 read-oriented engine ITs; the zero-flake doctrine keeps the mutating,
 # audit-integrity, DB-CRUD and Keycloak ITs off the per-PR path. This workflow runs those
-# 27 local-only ITs once a night (and on demand) so a regression in a corrective-action rail,
+# 36 local-only ITs once a night (and on demand) so a regression in a corrective-action rail,
 # the fail-closed audit chain, four-eyes governance, registry reload, OIDC resolution or the
 # incident-ledger substrate (#294) is caught within a day instead of at the next manual local
 # run.
@@ -63,7 +63,7 @@ jobs:
         working-directory: backend
         run: >-
           mvn -B verify -Dskip.surefire.tests=true
-          -Dit.test=AuditRoleGrantsIT,AuditPartitionCarveIT,AuditPartitionMaintainerIT,AuditRetentionPurgeIT,AuditRetentionPurgerIT,AuditIntegrityIT,SharedViewIT,SharedViewFailClosedIT,SharedViewGovernanceIT,ViewStoreIT,AccessMappingAdminDbIT,MappingStoreDbIT,EngineRegistryStoreIT,EngineRegistryReloadIT,OidcKeycloakIT,IncidentLedgerIT
+          -Dit.test=AuditRoleGrantsIT,AuditPartitionCarveIT,AuditPartitionMaintainerIT,AuditRetentionPurgeIT,AuditRetentionPurgerIT,AuditIntegrityIT,SharedViewIT,SharedViewFailClosedIT,SharedViewGovernanceIT,ViewStoreIT,AccessMappingAdminDbIT,MappingStoreDbIT,EngineRegistryStoreIT,EngineRegistryReloadIT,OidcKeycloakIT,IncidentLedgerIT,LedgerNativeQueriesIT,AuditEntryRepositoryScopeIT,AuditEntryRepositoryAttributionIT
 
   # R-TEST-05 P2 (issue #299, TEST-STRATEGY.md §7): 50k-row DLQ vs dlq-scan-cap, at the
   # documented operating scale — see docs/TRACEABILITY-MATRIX.md §A (R-TEST-05 row). Fully
@@ -177,9 +177,13 @@ jobs:
         run: bash scripts/ci-testcontainers-socket.sh >> "$GITHUB_ENV"
       - name: Engine ITs (failsafe)
         working-directory: backend
+        # SelfHealLikelyLaneIT is several minutes of real engine retries. The 40-minute
+        # budget still covers the job: the whole nightly finished in about 20 minutes
+        # on 2026-10-22 before these six classes were added, and container-its already
+        # points Ryuk at the rootless socket via ci-testcontainers-socket.sh.
         run: >-
           mvn -B verify -Dskip.surefire.tests=true
-          -Dit.test=CorrectiveActionIT,CmmnCorrectiveActionIT,FailClosedAuditIT,FlowSurgeryIT,BulkFilterIT,BulkErrorClassIT,SnapshotSamplerIT,DefinitionVersionsIT,MigrationIT,DetailResolveIT,InstanceTimelineIT,IncidentLedgerArcIT
+          -Dit.test=CorrectiveActionIT,CmmnCorrectiveActionIT,FailClosedAuditIT,FlowSurgeryIT,BulkFilterIT,BulkErrorClassIT,SnapshotSamplerIT,DefinitionVersionsIT,MigrationIT,DetailResolveIT,InstanceTimelineIT,IncidentLedgerArcIT,SelfHealDwellSuppressionIT,SelfHealLikelyLaneIT,SelfHealMixedLaneIT
       - name: Dump harness logs
         if: failure()
         run: docker compose -p "$CI_PROJECT" -f docker/docker-compose.dev.yml logs --no-color --timestamps

@@ -233,11 +233,12 @@
           </execution>
         </executions>
       </plugin>
-      <!-- Test-support consolidation (Q8, issue #90): MEASURE line/branch coverage on every
-           `mvn test` run (report at target/site/jacoco/index.html + jacoco.xml), report-only —
-           no `check` goal, no threshold, nothing gates on it here. TEST-STRATEGY.md's coverage
-           floors were previously an unfalsifiable claim (no tool anywhere measured them); this
-           makes the number real and visible before any gate is added on top of it. -->
+      <!-- Floors measured 2026-10-22 on `mvn test` (unit scope, not the dockerized *IT suite):
+           bundle 67.9% line / 58.3% branch. The check sits a small margin under that
+           (65% / 56%) so a one-line miss does not flake the build. Packages already at
+           or above 80% line are held at 75%; packages under the bundle floor are not
+           given a package rule — raising those is #464. Ratchet: when a PR lifts the
+           measured bundle, raise these minimums in the same PR. TEST-STRATEGY.md §1. -->
       <plugin>
         <groupId>org.jacoco</groupId>
         <artifactId>jacoco-maven-plugin</artifactId>
@@ -255,6 +256,56 @@
             <goals>
               <goal>report</goal>
             </goals>
+          </execution>
+          <execution>
+            <id>check</id>
+            <phase>test</phase>
+            <goals>
+              <goal>check</goal>
+            </goals>
+            <configuration>
+              <rules>
+                <rule>
+                  <element>BUNDLE</element>
+                  <limits>
+                    <limit>
+                      <counter>LINE</counter>
+                      <value>COVEREDRATIO</value>
+                      <minimum>0.65</minimum>
+                    </limit>
+                    <limit>
+                      <counter>BRANCH</counter>
+                      <value>COVEREDRATIO</value>
+                      <minimum>0.56</minimum>
+                    </limit>
+                  </limits>
+                </rule>
+                <rule>
+                  <element>PACKAGE</element>
+                  <includes>
+                    <include>io.inspector.surgery</include>
+                    <include>io.inspector.config</include>
+                    <include>io.inspector.dto</include>
+                    <include>io.inspector.attention</include>
+                    <include>io.inspector.sibling</include>
+                    <include>io.inspector.stream</include>
+                    <include>io.inspector.bulk</include>
+                    <include>io.inspector.incident</include>
+                    <include>io.inspector.diag</include>
+                    <include>io.inspector.audit</include>
+                    <include>io.inspector.selfheal</include>
+                    <include>io.inspector.ops</include>
+                  </includes>
+                  <limits>
+                    <limit>
+                      <counter>LINE</counter>
+                      <value>COVEREDRATIO</value>
+                      <minimum>0.75</minimum>
+                    </limit>
+                  </limits>
+                </rule>
+              </rules>
+            </configuration>
           </execution>
         </executions>
       </plugin>

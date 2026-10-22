@@ -358,12 +358,14 @@ regress silently).
 **Landed in `.github/workflows/nightly.yml` (NOT merge-blocking — 02:17 UTC + `workflow_dispatch`;
 a companion `nightly-watchdog.yml` at 08:41 UTC re-dispatches and opens a `ci`/`P4` alert issue if
 GitHub's scheduler silently drops the cron — issue #290):**
-a **Testcontainers Postgres/Keycloak suite** (`container-its` job, 14 self-provisioning ITs —
+a **Testcontainers Postgres/Keycloak suite** (`container-its` job, 19 self-provisioning ITs —
 audit partition/retention/roles + fail-closed, shared/team-view governance, mapping/registry
-store CRUD, and **a real Keycloak `oidc` leg** — `OidcKeycloakIT`, sealed-login + `max_age`/
-`auth_time` semantics a lightweight stub can't exercise), an **`engine-its` job** (11
-mutating corrective-action/flow-surgery/migration/bulk ITs the PR gate skips for the
-zero-flake doctrine), a **`supply-chain` job** (Trivy image scans of **both** shipping images —
+store CRUD, the ledger native queries and the two audit-repository scope predicates
+(`LedgerNativeQueriesIT`, `AuditEntryRepositoryScopeIT`, `AuditEntryRepositoryAttributionIT`),
+and **a real Keycloak `oidc` leg** — `OidcKeycloakIT`, sealed-login + `max_age`/
+`auth_time` semantics a lightweight stub can't exercise), an **`engine-its` job** (15 ITs — the mutating corrective-action/flow-surgery/migration/bulk
+set plus `SelfHealDwellSuppressionIT`, `SelfHealLikelyLaneIT` and `SelfHealMixedLaneIT` —
+which the PR gate skips for the zero-flake doctrine), a **`supply-chain` job** (Trivy image scans of **both** shipping images —
 BFF and web — plus fs-scans of `backend/pom.xml` and `frontend/package-lock.json`,
 HIGH/CRITICAL fixed-in-upstream hard-fails; a CycloneDX SBOM artifact per image; the frontend
 npm-audit gate below). The steps live in `.github/actions/supply-chain` so the job name stays

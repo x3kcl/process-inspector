@@ -47,11 +47,12 @@ fi
 run "backend: spotless:check"      bash -c "cd '$ROOT/backend' && mvn -B -q spotless:check"
 run "security-audit (env-refs)"    bash -c "cd '$ROOT' && ./scripts/security-audit.sh"
 run "shell-syntax-check"           bash -c "cd '$ROOT' && ./scripts/shell-syntax-check.sh"
+run "orphan *IT guard"             bash -c "cd '$ROOT' && ./scripts/check-orphan-its.sh"
 
 # ---- frontend job (minus the drift gate, which needs a running BFF) ----
 run "frontend: eslint"             bash -c "cd '$ROOT/frontend' && npm run --silent lint"
 run "frontend: prettier check"     bash -c "cd '$ROOT/frontend' && npm run --silent format:check"
-run "frontend: vitest"             bash -c "cd '$ROOT/frontend' && npm run --silent test"
+run "frontend: vitest coverage"   bash -c "cd '$ROOT/frontend' && npm run --silent test:coverage"
 run "frontend: build (tsc+vite+guards)" bash -c "cd '$ROOT/frontend' && npm run --silent build"
 
 # ---- unit job (opt-in: slower) ----

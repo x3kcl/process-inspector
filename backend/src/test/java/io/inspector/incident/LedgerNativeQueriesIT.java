@@ -39,8 +39,8 @@ import org.testcontainers.containers.PostgreSQLContainer;
  *
  * <p>Synthetic ingests through {@link IncidentLedgerService} — the ledger is a pure DB-side
  * consumer, so no engine is needed. Signature hashes are per-run UUIDs so a live dev stack
- * polluting the store can never break assertions. LOCAL-ONLY ({@code *IT}), like the other
- * DB-backed ITs. Lives in {@code io.inspector.incident} because it drives the repository
+ * polluting the store can never break assertions. LOCAL-ONLY relative to ci.yml ({@code *IT}),
+ * nightly {@code container-its}. Lives in {@code io.inspector.incident} because it drives the repository
  * queries directly — widening {@code IncidentLedgerService.ingest} to public for a test would be
  * the wrong trade.
  */

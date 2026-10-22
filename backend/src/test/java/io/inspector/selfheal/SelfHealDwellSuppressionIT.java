@@ -55,7 +55,7 @@ import org.testcontainers.containers.PostgreSQLContainer;
  * is the precise, observable difference between the RAW statistic and the dwell-protected
  * DISPLAYED lane) and commit to MIXED only on the {@code dwell-cycles}-th identical cycle.
  *
- * <p>LOCAL-ONLY (failsafe *IT, it-actions family — not in ci.yml's itClass).
+ * <p>LOCAL-ONLY relative to ci.yml (failsafe *IT, it-actions family). Nightly {@code engine-its}.
  *
  * <p>Requires: docker compose -f docker/docker-compose.dev.yml up -d (flowable-6 profile)
  */
