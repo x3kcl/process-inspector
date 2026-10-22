@@ -1,5 +1,7 @@
 package io.inspector.api;
 
+import io.micrometer.context.ContextSnapshot;
+import io.micrometer.context.ContextSnapshotFactory;
 import java.util.List;
 import java.util.Map;
 import java.util.concurrent.AbstractExecutorService;
@@ -23,8 +25,15 @@ import org.slf4j.MDC;
  * afterward so the next task submitted to the SAME executor (a shared, long-lived field — e.g.
  * {@code BulkJobService}'s per-instance executor serving many jobs/requests over its lifetime)
  * never inherits a stale context from an unrelated, already-finished task.
+ *
+ * <p>The same snapshot also carries the Micrometer observation ({@link ContextSnapshot}). A fan-out
+ * child span then parents to the request span. MDC is still copied by hand: unit tests do not start
+ * Spring, and a context snapshot does not see SLF4J MDC unless that accessor is registered.
  */
 public final class MdcPropagatingExecutors {
+
+    private static final ContextSnapshotFactory SNAPSHOTS =
+            ContextSnapshotFactory.builder().build();
 
     private MdcPropagatingExecutors() {}
 
@@ -43,17 +52,18 @@ public final class MdcPropagatingExecutors {
         @Override
         public void execute(Runnable command) {
             Map<String, String> context = MDC.getCopyOfContextMap();
-            delegate.execute(() -> runWithContext(context, command));
+            ContextSnapshot observation = SNAPSHOTS.captureAll();
+            delegate.execute(() -> runWithContext(context, observation, command));
         }
 
-        private static void runWithContext(Map<String, String> context, Runnable command) {
+        private static void runWithContext(Map<String, String> context, ContextSnapshot observation, Runnable command) {
             Map<String, String> previous = MDC.getCopyOfContextMap();
             if (context != null) {
                 MDC.setContextMap(context);
             } else {
                 MDC.clear();
             }
-            try {
+            try (ContextSnapshot.Scope ignored = observation.setThreadLocals()) {
                 command.run();
             } finally {
                 if (previous != null) {

@@ -240,7 +240,7 @@ class CmmnCorrectiveActionServiceTest {
         verify(cmmnClient, never()).moveCmmnDeadLetterJob(any(), any(), anyString());
         verify(client, never()).deleteDeadLetterJob(any(), any(), anyString());
         // scope-honest delta: a CMMN case has no change-state rescue in this tool
-        assertThat(result.deltaStatement()).contains(JOB).contains("orphaned").contains("no change-state for cases");
+        assertThat(result.deltaStatement()).contains(JOB).contains("orphaned").contains("change-plan-item");
     }
 
     @Test
@@ -269,5 +269,34 @@ class CmmnCorrectiveActionServiceTest {
         verify(cmmnClient, never()).deleteCmmnDeadLetterJob(any(), any(), anyString());
         // refused before any capability probe or engine read
         verify(cmmnClient, never()).getCmmnDeadLetterJob(any(), any(), anyString());
+    }
+
+    @Test
+    void triggerPlanItemCallsThePlanItemRoute() {
+        scopeCapable();
+        when(cmmnClient.getCmmnCaseInstance(engine, CallPriority.INTERACTIVE, CASE))
+                .thenReturn(Map.of("id", CASE, "businessKey", "BK"));
+        ActionRequest request = new ActionRequest(
+                null,
+                null,
+                null,
+                null,
+                null,
+                null,
+                null,
+                null,
+                null,
+                null,
+                null,
+                null,
+                null,
+                null,
+                null,
+                null,
+                new ActionRequest.PlanItemChange("pii-1", null, "trigger"));
+
+        service.execute(ActionScope.CMMN, ENGINE, CASE, ActionVerb.PLAN_ITEM_ACTION, request, operator);
+
+        verify(cmmnClient).planItemAction(eq(engine), eq(CallPriority.INTERACTIVE), eq("pii-1"), eq("trigger"));
     }
 }

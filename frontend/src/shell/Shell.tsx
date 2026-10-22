@@ -80,12 +80,22 @@ export function Shell() {
               <Link to="/tasks" className="topbar-link">
                 Find tasks
               </Link>
+              <Link to="/task-browser" className="topbar-link">
+                Task browser
+              </Link>
               {/* Incident Ledger (R-BAU-10, INCIDENT-LEDGER.md §8): VIEWER-floor read (the
                   lifecycle verbs are OPERATOR-gated inside the page itself, greyed-never-hidden
                   like every other action) — always-visible like Ops log/Find tasks. */}
               <Link to="/incidents" className="topbar-link">
                 Incidents
               </Link>
+              <Link to="/definitions" className="topbar-link">
+                Definitions
+              </Link>
+              <Link to="/deployments" className="topbar-link">
+                Deployments
+              </Link>
+              <HousekeepingLink />
               <RegistryAdminLink />
               <AccessAdminLink />
               <RemediationDemandLink />
@@ -115,6 +125,23 @@ export function Shell() {
         </OpsDrawerProvider>
       </LiveProvider>
     </ToastProvider>
+  )
+}
+
+function HousekeepingLink() {
+  const me = useMe()
+  const admin = me.data?.role === 'ADMIN'
+  if (admin) {
+    return (
+      <Link to="/admin/housekeeping" className="topbar-link">
+        Housekeeping
+      </Link>
+    )
+  }
+  return (
+    <span className="topbar-link disabled" aria-disabled="true" title="Requires ADMIN">
+      Housekeeping
+    </span>
   )
 }
 

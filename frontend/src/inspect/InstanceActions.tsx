@@ -28,9 +28,17 @@ interface Props {
   instanceId: string
   vitals: InstanceDetail
   engine?: EngineDto
+  /** Activity selected on the diagram or the Executions tab. Prefills change-state. */
+  selectedActivityId?: string
 }
 
-export function InstanceActions({ engineId, instanceId, vitals, engine }: Props) {
+export function InstanceActions({
+  engineId,
+  instanceId,
+  vitals,
+  engine,
+  selectedActivityId,
+}: Props) {
   const toast = useToast()
   const action = useInstanceAction(engineId, instanceId)
   const [terminateOpen, setTerminateOpen] = useState(false)
@@ -272,6 +280,7 @@ export function InstanceActions({ engineId, instanceId, vitals, engine }: Props)
           instanceId={instanceId}
           vitals={vitals}
           engine={engine}
+          initialSource={selectedActivityId}
           onClose={() => {
             setChangeStateOpen(false)
           }}
