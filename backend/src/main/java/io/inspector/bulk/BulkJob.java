@@ -85,6 +85,10 @@ public class BulkJob {
     @Column(name = "scope_label")
     private String scopeLabel;
 
+    /** New assignee for a bulk reassign. Null for every other verb. */
+    @Column(name = "assignee")
+    private String assignee;
+
     protected BulkJob() {
         // JPA
     }
@@ -191,5 +195,13 @@ public class BulkJob {
 
     public String getScopeLabel() {
         return scopeLabel;
+    }
+
+    public String getAssignee() {
+        return assignee;
+    }
+
+    public void setAssignee(String assignee) {
+        this.assignee = assignee;
     }
 }

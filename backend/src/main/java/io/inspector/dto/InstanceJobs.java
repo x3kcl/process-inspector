@@ -26,5 +26,6 @@ public record InstanceJobs(
             String elementName,
             String executionId,
             String processDefinitionId,
-            String tenantId) {}
+            String tenantId,
+            String handlerType) {}
 }

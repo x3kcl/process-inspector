@@ -21,6 +21,9 @@ import io.inspector.security.RbacAuthorizer;
 import io.inspector.security.reauth.DangerousActionReauthGate;
 import java.net.ConnectException;
 import java.net.http.HttpConnectTimeoutException;
+import java.time.DateTimeException;
+import java.time.Instant;
+import java.time.OffsetDateTime;
 import java.util.ArrayList;
 import java.util.LinkedHashMap;
 import java.util.List;
@@ -163,6 +166,17 @@ public class CorrectiveActionService {
         if (scope == ActionScope.CMMN) {
             requireCmmnScope(engine, verb);
         }
+        if (verb == ActionVerb.CHANGE_PLAN_ITEM
+                && engine.environment() == EngineEnvironment.PROD
+                && !rbac.hasRoleOn(auth, io.inspector.security.Role.ADMIN, engine.id())) {
+            throw new GuardRefusedException(
+                    HttpStatus.FORBIDDEN,
+                    "rbac-denied",
+                    "change-plan-item on a prod engine requires ADMIN. Nothing happened.");
+        }
+        if (verb == ActionVerb.RESCHEDULE_TIMER) {
+            requireTimerReschedule(engine, request);
+        }
         requireUnprotectedOrAdmin(auth, engine, verb, targetId);
         String reason = normalizedReason(engine, verb, request);
         String ticketId = ticketPolicy.validate(request.ticketId(), engine.environment());
@@ -209,7 +223,7 @@ public class CorrectiveActionService {
                     engine.auditPayloadOrDefault());
 
             // -- CAS pre-check (audited: the last shift must see the refused attempt) --
-            if (verb == ActionVerb.EDIT_VARIABLE) {
+            if (verb == ActionVerb.EDIT_VARIABLE || verb == ActionVerb.EDIT_CASE_VARIABLE) {
                 Object current = target.currentVariableValue();
                 Object expected = request.variable().expectedOldValue();
                 if (!sameValue(expected, current)) {
@@ -273,8 +287,62 @@ public class CorrectiveActionService {
      * retry (tier 0 / RESPONDER) and delete (tier 3 / ADMIN). Both act on the {@code
      * /cmmn-management} DLQ projection; every other verb is process-instance shaped and refused.
      */
-    private static final java.util.Set<ActionVerb> CMMN_VERBS =
-            java.util.Set.of(ActionVerb.RETRY_JOB, ActionVerb.DELETE_DEADLETTER);
+    private static final java.util.Set<ActionVerb> CMMN_VERBS = java.util.Set.of(
+            ActionVerb.RETRY_JOB,
+            ActionVerb.DELETE_DEADLETTER,
+            ActionVerb.ADD_PARTICIPANT,
+            ActionVerb.REMOVE_PARTICIPANT,
+            ActionVerb.PLAN_ITEM_ACTION,
+            ActionVerb.CHANGE_PLAN_ITEM,
+            ActionVerb.TERMINATE_CASE,
+            ActionVerb.DELETE_CASE,
+            ActionVerb.EDIT_CASE_VARIABLE);
+
+    private void requireTimerReschedule(EngineConfig engine, ActionRequest request) {
+        var caps = registry.healthOf(engine.id()).capabilities();
+        if (caps == null || !caps.timerReschedule()) {
+            String version = registry.healthOf(engine.id()).version();
+            throw new GuardRefusedException(
+                    HttpStatus.BAD_REQUEST,
+                    "timer-reschedule-unsupported",
+                    "needs Flowable 7.x (engine is " + (version == null ? "unknown" : version)
+                            + "). Nothing happened.");
+        }
+        String due = request.dueDate();
+        if (due == null || due.isBlank()) {
+            throw new GuardRefusedException(
+                    HttpStatus.BAD_REQUEST, "due-date-required", "A future due date is required.");
+        }
+        try {
+            if (!java.time.Instant.parse(due).isAfter(java.time.Instant.now())) {
+                throw new GuardRefusedException(
+                        HttpStatus.BAD_REQUEST,
+                        "due-date-past",
+                        "The due date must be in the future. Nothing happened.");
+            }
+        } catch (java.time.DateTimeException e) {
+            throw new GuardRefusedException(
+                    HttpStatus.BAD_REQUEST, "due-date-invalid", "dueDate must be an ISO-8601 instant.");
+        }
+    }
+
+    private static JobLaneKind deleteLane(ActionRequest request) {
+        String lane = request.jobLane();
+        if (lane == null) {
+            throw new GuardRefusedException(HttpStatus.BAD_REQUEST, "job-lane-required", "jobLane is required.");
+        }
+        return switch (lane.toLowerCase(java.util.Locale.ROOT)) {
+            case "executable", "jobs" -> JobLaneKind.EXECUTABLE;
+            case "timer" -> JobLaneKind.TIMER;
+            case "suspended" -> JobLaneKind.SUSPENDED;
+            case "history" -> JobLaneKind.HISTORY;
+            default ->
+                throw new GuardRefusedException(
+                        HttpStatus.BAD_REQUEST,
+                        "job-lane-unsupported",
+                        "delete-job does not cover lane '" + lane + "'. Dead-letter delete stays delete-deadletter.");
+        };
+    }
 
     /**
      * CMMN-scope gate: the verb must be CMMN-applicable AND the engine must advertise
@@ -286,8 +354,7 @@ public class CorrectiveActionService {
             throw new GuardRefusedException(
                     HttpStatus.BAD_REQUEST,
                     "verb-not-cmmn-scoped",
-                    "'" + verb.path() + "' is not available on a CMMN case — only dead-letter retry and delete are"
-                            + " (Case Inspector Phase 3). Nothing happened.");
+                    "'" + verb.path() + "' is not available on a CMMN case. Nothing happened.");
         }
         CmmnCapabilities.requireScopeType(registry, engine);
     }
@@ -377,18 +444,43 @@ public class CorrectiveActionService {
             // process-api one; the guard above has already narrowed the verb set to the two
             // dead-letter verbs (retry / delete), which share this by-id restatement.
             if (scope == ActionScope.CMMN) {
+                if (verb == ActionVerb.ADD_PARTICIPANT || verb == ActionVerb.REMOVE_PARTICIPANT) {
+                    return participantTarget(engine, targetId, request, verb, true);
+                }
+                if (verb == ActionVerb.PLAN_ITEM_ACTION
+                        || verb == ActionVerb.CHANGE_PLAN_ITEM
+                        || verb == ActionVerb.TERMINATE_CASE
+                        || verb == ActionVerb.DELETE_CASE
+                        || verb == ActionVerb.EDIT_CASE_VARIABLE) {
+                    return caseOpsTarget(engine, verb, targetId, request);
+                }
                 return cmmnJobTarget(engine, targetId, required(request.jobId(), "jobId"), verb);
             }
             return switch (verb) {
-                case RETRY_JOB, DELETE_DEADLETTER ->
+                case RETRY_JOB, DELETE_DEADLETTER, MOVE_TO_HISTORY_JOB ->
                     jobTarget(engine, JobLaneKind.DEADLETTER, targetId, required(request.jobId(), "jobId"), verb);
-                case TRIGGER_TIMER ->
+                case TRIGGER_TIMER, RESCHEDULE_TIMER ->
                     jobTarget(engine, JobLaneKind.TIMER, targetId, required(request.jobId(), "jobId"), verb);
+                case DELETE_JOB ->
+                    jobTarget(engine, deleteLane(request), targetId, required(request.jobId(), "jobId"), verb);
                 case SUSPEND, ACTIVATE, TERMINATE_DELETE -> instanceTarget(engine, targetId);
                 case EDIT_VARIABLE -> variableTarget(engine, targetId, request);
                 case COMPLETE_TASK -> taskTarget(engine, targetId, required(request.taskId(), "taskId"), request);
                 case REASSIGN_TASK, UNASSIGN_TASK ->
                     taskAssignTarget(engine, verb, targetId, required(request.taskId(), "taskId"), request);
+                case CLAIM_TASK,
+                        DELEGATE_TASK,
+                        RESOLVE_TASK,
+                        UPDATE_TASK,
+                        ADD_IDENTITY_LINK,
+                        REMOVE_IDENTITY_LINK,
+                        DELETE_TASK ->
+                    taskAdminTarget(engine, verb, targetId, required(request.taskId(), "taskId"), request);
+                case ADD_PARTICIPANT, REMOVE_PARTICIPANT -> participantTarget(engine, targetId, request, verb, false);
+                case DELETE_HISTORY -> historyTarget(engine, targetId, false);
+                case DELETE_CASE_HISTORY -> historyTarget(engine, targetId, true);
+                case PLAN_ITEM_ACTION, CHANGE_PLAN_ITEM, TERMINATE_CASE, DELETE_CASE, EDIT_CASE_VARIABLE ->
+                    throw notOnProcess(verb);
                 case UNSTICK_EVENT -> executionTarget(engine, targetId, request);
                 case SUSPEND_DEFINITION, ACTIVATE_DEFINITION -> definitionTarget(engine, targetId, request);
             };
@@ -421,6 +513,14 @@ public class CorrectiveActionService {
         payload.put("jobId", jobId);
         payload.put("elementId", job.get("elementId"));
         payload.put("exceptionMessage", job.get("exceptionMessage"));
+        payload.put("dueDate", job.get("dueDate"));
+        if (verb == ActionVerb.RESCHEDULE_TIMER && job.get("exceptionMessage") != null) {
+            throw new GuardRefusedException(
+                    HttpStatus.BAD_REQUEST,
+                    "retry-timer",
+                    "Job " + jobId
+                            + " is a failing job waiting to retry. Reschedule would change that retry. Nothing happened.");
+        }
         // #184: free — the job response already carries processDefinitionId.
         return new Target(payload, jobId, "job id", null, definitionKeyOf(job.get("processDefinitionId")));
     }
@@ -599,6 +699,9 @@ public class CorrectiveActionService {
         String newAssignee = verb == ActionVerb.REASSIGN_TASK
                 ? required(request.assignee(), "assignee").strip()
                 : null;
+        if (verb == ActionVerb.REASSIGN_TASK) {
+            requireIdentity(engine, "users", newAssignee);
+        }
         Map<String, Object> payload = new LinkedHashMap<>();
         payload.put("schema", verb.path() + "/v1");
         payload.put("taskId", taskId);
@@ -607,6 +710,331 @@ public class CorrectiveActionService {
         payload.put("newAssignee", newAssignee);
         // #184: free — the task response already carries processDefinitionId.
         return new Target(payload, taskId, "task id", null, definitionKeyOf(task.get("processDefinitionId")));
+    }
+
+    /**
+     * Claim, delegate, resolve, property update, identity-link edit, and delete. The live task
+     * read is the active-task gate. IDM is consulted only when the probe said the engine bundles
+     * it — a missing IDM route is not "user missing".
+     */
+    private Target taskAdminTarget(
+            EngineConfig engine, ActionVerb verb, String instanceId, String taskId, ActionRequest request) {
+        Map<String, Object> task = liveTask(engine, instanceId, taskId);
+        Map<String, Object> payload = new LinkedHashMap<>();
+        payload.put("schema", verb.path() + "/v1");
+        payload.put("taskId", taskId);
+        payload.put("taskName", task.get("name"));
+        switch (verb) {
+            case CLAIM_TASK -> {
+                String assignee = blankToNull(request.assignee());
+                if (assignee != null) {
+                    requireIdentity(engine, "users", assignee);
+                }
+                payload.put("oldAssignee", task.get("assignee"));
+                payload.put("newAssignee", assignee);
+            }
+            case DELEGATE_TASK -> {
+                String assignee = required(request.assignee(), "assignee").strip();
+                requireIdentity(engine, "users", assignee);
+                payload.put("oldAssignee", task.get("assignee"));
+                payload.put("newAssignee", assignee);
+            }
+            case RESOLVE_TASK -> {
+                Object state = task.get("delegationState");
+                if (state == null || !"pending".equalsIgnoreCase(String.valueOf(state))) {
+                    throw new GuardRefusedException(
+                            HttpStatus.BAD_REQUEST,
+                            "not-delegated",
+                            "Task " + taskId + " is not delegated. Delegate it first. Nothing happened.");
+                }
+                payload.put("delegationState", state);
+            }
+            case UPDATE_TASK -> payload.put("changes", taskChanges(engine, task, request));
+            case ADD_IDENTITY_LINK, REMOVE_IDENTITY_LINK -> payload.put("link", checkedLink(engine, verb, request));
+            case DELETE_TASK -> payload.put("processInstanceId", task.get("processInstanceId"));
+            default -> throw new IllegalStateException("not a task-admin verb: " + verb);
+        }
+        String token = verb == ActionVerb.DELETE_TASK ? taskId : null;
+        return new Target(payload, token, "task id", null, definitionKeyOf(task.get("processDefinitionId")));
+    }
+
+    private Target historyTarget(EngineConfig engine, String id, boolean cmmn) {
+        Map<String, Object> row = cmmn
+                ? cmmnClient.getHistoricCmmnCaseInstance(engine, CallPriority.HOUSEKEEPING, id)
+                : client.getHistoricProcessInstance(engine, CallPriority.HOUSEKEEPING, id);
+        if (row == null) {
+            throw new GuardRefusedException(
+                    HttpStatus.NOT_FOUND,
+                    "history-gone",
+                    (cmmn ? "Case " : "Instance ") + id + " has no historic row. Nothing happened.");
+        }
+        if (row.get("endTime") == null) {
+            throw new GuardRefusedException(
+                    HttpStatus.CONFLICT,
+                    "still-running",
+                    (cmmn ? "Case " : "Instance ") + id + " is still running. Nothing happened.");
+        }
+        Map<String, Object> payload = new LinkedHashMap<>();
+        payload.put("schema", cmmn ? "delete-case-history/v1" : "delete-history/v1");
+        payload.put("id", id);
+        Object definitionId = row.get(cmmn ? "caseDefinitionId" : "processDefinitionId");
+        return new Target(payload, id, "instance id", null, definitionKeyOf(definitionId));
+    }
+
+    private static GuardRefusedException notOnProcess(ActionVerb verb) {
+        return new GuardRefusedException(
+                HttpStatus.BAD_REQUEST,
+                "verb-not-bpmn",
+                "'" + verb.path() + "' is a CMMN case verb. Nothing happened.");
+    }
+
+    private Target caseOpsTarget(EngineConfig engine, ActionVerb verb, String caseId, ActionRequest request) {
+        Map<String, Object> row = cmmnClient.getCmmnCaseInstance(engine, CallPriority.INTERACTIVE, caseId);
+        if (row == null) {
+            throw new GuardRefusedException(
+                    HttpStatus.NOT_FOUND, "case-not-running", "Case " + caseId + " is not running. Nothing happened.");
+        }
+        Map<String, Object> payload = new LinkedHashMap<>();
+        payload.put("schema", verb.path() + "/v1");
+        payload.put("caseId", caseId);
+        Object current = null;
+        if (verb == ActionVerb.PLAN_ITEM_ACTION || verb == ActionVerb.CHANGE_PLAN_ITEM) {
+            if (request.plan() == null) {
+                throw missingField("plan");
+            }
+            payload.put("action", request.plan().action());
+            payload.put("planItemInstanceId", request.plan().planItemInstanceId());
+            payload.put("definitionId", request.plan().definitionId());
+        }
+        if (verb == ActionVerb.EDIT_CASE_VARIABLE) {
+            ActionRequest.VariableEdit edit = requiredEdit(request);
+            Map<String, Object> variable =
+                    cmmnClient.getCaseVariable(engine, CallPriority.INTERACTIVE, caseId, edit.name());
+            if (variable == null) {
+                throw new GuardRefusedException(
+                        HttpStatus.NOT_FOUND,
+                        "variable-not-found",
+                        "Case variable '" + edit.name() + "' does not exist. Nothing happened.");
+            }
+            current = variable.get("value");
+            payload.put("name", edit.name());
+            payload.put("oldValue", current);
+            payload.put("newValue", edit.value());
+        }
+        String businessKey = row.get("businessKey") == null ? caseId : String.valueOf(row.get("businessKey"));
+        return new Target(payload, businessKey, "business key", current);
+    }
+
+    private static String planAction(ActionRequest request, String... allowed) {
+        String action =
+                request.plan() == null ? null : blankToNull(request.plan().action());
+        if (action == null) {
+            throw missingField("plan.action");
+        }
+        for (String candidate : allowed) {
+            if (candidate.equals(action)) {
+                return action;
+            }
+        }
+        throw new GuardRefusedException(
+                HttpStatus.BAD_REQUEST,
+                "plan-action-invalid",
+                "plan.action must be one of " + String.join(", ", allowed) + ".");
+    }
+
+    private Target participantTarget(
+            EngineConfig engine, String instanceId, ActionRequest request, ActionVerb verb, boolean cmmn) {
+        ActionRequest.IdentityLink link = request.link();
+        if (link == null) {
+            throw missingField("link");
+        }
+        if (link.family() != null && !"users".equals(link.family())) {
+            throw new GuardRefusedException(
+                    HttpStatus.BAD_REQUEST,
+                    "link-family-invalid",
+                    "Participants are users. This API has no group link. Nothing happened.");
+        }
+        String user = required(link.identityId(), "link.identityId").strip();
+        String type = linkType(request);
+        if (verb == ActionVerb.REMOVE_PARTICIPANT && "starter".equals(type)) {
+            throw new GuardRefusedException(
+                    HttpStatus.BAD_REQUEST,
+                    "starter-link",
+                    "The starter link is history, not a permission. Nothing happened.");
+        }
+        if (verb == ActionVerb.ADD_PARTICIPANT) {
+            requireIdentity(engine, "users", user);
+        }
+        if (cmmn) {
+            if (cmmnClient.getCmmnCaseInstance(engine, CallPriority.INTERACTIVE, instanceId) == null) {
+                throw new GuardRefusedException(
+                        HttpStatus.NOT_FOUND,
+                        "case-not-running",
+                        "Case " + instanceId + " is not running. Nothing happened.");
+            }
+        } else if (client.getRuntimeProcessInstance(engine, CallPriority.INTERACTIVE, instanceId) == null) {
+            throw new GuardRefusedException(
+                    HttpStatus.NOT_FOUND,
+                    "instance-not-running",
+                    "Instance " + instanceId + " is not running. Nothing happened.");
+        }
+        Map<String, Object> payload = new LinkedHashMap<>();
+        payload.put("schema", verb.path() + "/v1");
+        payload.put("user", user);
+        payload.put("type", type);
+        payload.put("scope", cmmn ? "cmmn" : "bpmn");
+        return new Target(payload, null, null, null);
+    }
+
+    private static String linkType(ActionRequest request) {
+        ActionRequest.IdentityLink link = request.link();
+        if (link == null || blankToNull(link.type()) == null) {
+            return "participant";
+        }
+        return link.type().strip();
+    }
+
+    /**
+     * Engine history attributes the delete to the service account. Prefix the operator reason so
+     * a reader of {@code deleteReason} can still see who asked, capped to the engine column.
+     */
+    static String engineDeleteReason(ActionRequest request) {
+        String actor = ForwardedActor.current() == null ? "unknown" : ForwardedActor.current();
+        String ticket = blankToNull(request.ticketId());
+        String body = blankToNull(request.reason()) == null
+                ? "terminated via process-inspector"
+                : request.reason().trim();
+        String prefixed = "inspector:" + actor + (ticket == null ? "" : ":" + ticket) + ":" + body;
+        return prefixed.length() <= 4000 ? prefixed : prefixed.substring(0, 4000);
+    }
+
+    private Map<String, Object> liveTask(EngineConfig engine, String instanceId, String taskId) {
+        Map<String, Object> task = client.getTask(engine, CallPriority.INTERACTIVE, taskId);
+        if (task == null) {
+            throw new GuardRefusedException(
+                    HttpStatus.NOT_FOUND,
+                    "task-gone",
+                    "Task " + taskId + " is not open (already completed?). Nothing happened.");
+        }
+        Object owner = task.get("processInstanceId");
+        if (owner != null && !instanceId.equals(String.valueOf(owner))) {
+            throw new GuardRefusedException(
+                    HttpStatus.BAD_REQUEST,
+                    "task-instance-mismatch",
+                    "Task " + taskId + " belongs to instance " + owner + ", not " + instanceId + ".");
+        }
+        return task;
+    }
+
+    /** Skip the lookup when IDM was not probed present. Never treat "IDM absent" as "user missing". */
+    private void requireIdentity(EngineConfig engine, String family, String identityId) {
+        var caps = registry.healthOf(engine.id()).capabilities();
+        if (caps == null || !caps.idm() || identityId == null || identityId.isBlank()) {
+            return;
+        }
+        if (!client.idmIdentityExists(engine, CallPriority.INTERACTIVE, family, identityId)) {
+            String kind = "groups".equals(family) ? "Group" : "User";
+            throw new GuardRefusedException(
+                    HttpStatus.BAD_REQUEST,
+                    "identity-missing",
+                    kind + " '" + identityId + "' is not in this engine's IDM. Nothing happened.");
+        }
+    }
+
+    private Map<String, Object> taskChanges(EngineConfig engine, Map<String, Object> task, ActionRequest request) {
+        ActionRequest.TaskPatch patch = request.task();
+        if (patch == null) {
+            throw missingField("task");
+        }
+        Map<String, Object> changes = new LinkedHashMap<>();
+        putChange(changes, "name", task, patch.name());
+        putChange(changes, "description", task, patch.description());
+        putChange(changes, "owner", task, patch.owner());
+        putChange(changes, "dueDate", task, patch.dueDate());
+        putChange(changes, "category", task, patch.category());
+        if (patch.priority() != null) {
+            Map<String, Object> pair = new LinkedHashMap<>();
+            pair.put("old", task != null ? task.get("priority") : null);
+            pair.put("new", patch.priority());
+            changes.put("priority", pair);
+        }
+        if (changes.isEmpty()) {
+            throw new GuardRefusedException(
+                    HttpStatus.BAD_REQUEST, "task-patch-empty", "Name a field to change. Nothing happened.");
+        }
+        if (patch.dueDate() != null && !patch.dueDate().isBlank()) {
+            try {
+                java.time.Instant.parse(patch.dueDate());
+            } catch (RuntimeException e) {
+                throw new GuardRefusedException(
+                        HttpStatus.BAD_REQUEST, "due-date-invalid", "Due date must be an ISO-8601 instant.");
+            }
+        }
+        if (patch.owner() != null && !patch.owner().isBlank()) {
+            requireIdentity(engine, "users", patch.owner().strip());
+        }
+        return changes;
+    }
+
+    private static void putChange(
+            Map<String, Object> changes, String field, Map<String, Object> task, String incoming) {
+        if (incoming == null) {
+            return;
+        }
+        Map<String, Object> pair = new LinkedHashMap<>();
+        pair.put("old", task != null ? task.get(field) : null);
+        pair.put("new", incoming);
+        changes.put(field, pair);
+    }
+
+    private Map<String, Object> checkedLink(EngineConfig engine, ActionVerb verb, ActionRequest request) {
+        ActionRequest.IdentityLink link = request.link();
+        if (link == null) {
+            throw missingField("link");
+        }
+        String family = link.family();
+        if (!"users".equals(family) && !"groups".equals(family)) {
+            throw new GuardRefusedException(
+                    HttpStatus.BAD_REQUEST, "link-family-invalid", "link.family must be users or groups.");
+        }
+        String identityId = required(link.identityId(), "link.identityId").strip();
+        String type =
+                blankToNull(link.type()) == null ? "candidate" : link.type().strip();
+        if (!"candidate".equals(type) && !"assignee".equals(type) && !"owner".equals(type)) {
+            throw new GuardRefusedException(
+                    HttpStatus.BAD_REQUEST, "link-type-invalid", "link.type must be candidate, assignee or owner.");
+        }
+        if (verb == ActionVerb.ADD_IDENTITY_LINK) {
+            requireIdentity(engine, family, identityId);
+        }
+        Map<String, Object> body = new LinkedHashMap<>();
+        body.put("family", family);
+        body.put("identityId", identityId);
+        body.put("type", type);
+        return body;
+    }
+
+    private static Map<String, Object> taskWriteBody(ActionRequest.TaskPatch patch) {
+        Map<String, Object> body = new LinkedHashMap<>();
+        if (patch.name() != null) {
+            body.put("name", blankToNull(patch.name()));
+        }
+        if (patch.description() != null) {
+            body.put("description", blankToNull(patch.description()));
+        }
+        if (patch.owner() != null) {
+            body.put("owner", blankToNull(patch.owner()));
+        }
+        if (patch.dueDate() != null) {
+            body.put("dueDate", blankToNull(patch.dueDate()));
+        }
+        if (patch.category() != null) {
+            body.put("category", blankToNull(patch.category()));
+        }
+        if (patch.priority() != null) {
+            body.put("priority", patch.priority());
+        }
+        return body;
     }
 
     private Target executionTarget(EngineConfig engine, String instanceId, ActionRequest request) {
@@ -658,6 +1086,10 @@ public class CorrectiveActionService {
         payload.put("definitionKey", key);
         payload.put("version", definition.get("version"));
         payload.put("includeProcessInstances", Boolean.TRUE.equals(request.includeProcessInstances()));
+        String effectiveAt = normalizedEffectiveAt(request.effectiveAt());
+        if (effectiveAt != null) {
+            payload.put("effectiveAt", effectiveAt);
+        }
         return new Target(payload, key, "definition key", null, key);
     }
 
@@ -673,6 +1105,43 @@ public class CorrectiveActionService {
                 case RETRY_JOB -> cmmnClient.moveCmmnDeadLetterJob(engine, CallPriority.INTERACTIVE, request.jobId());
                 case DELETE_DEADLETTER ->
                     cmmnClient.deleteCmmnDeadLetterJob(engine, CallPriority.INTERACTIVE, request.jobId());
+                case ADD_PARTICIPANT ->
+                    cmmnClient.addCaseIdentityLink(
+                            engine,
+                            CallPriority.INTERACTIVE,
+                            targetId,
+                            request.link().identityId().strip(),
+                            linkType(request));
+                case PLAN_ITEM_ACTION ->
+                    cmmnClient.planItemAction(
+                            engine,
+                            CallPriority.INTERACTIVE,
+                            required(request.plan().planItemInstanceId(), "plan.planItemInstanceId"),
+                            planAction(request, "trigger", "enable", "disable"));
+                case CHANGE_PLAN_ITEM ->
+                    cmmnClient.changePlanItemState(
+                            engine,
+                            CallPriority.INTERACTIVE,
+                            targetId,
+                            required(request.plan().definitionId(), "plan.definitionId"),
+                            planAction(request, "activate", "available", "terminate"));
+                case TERMINATE_CASE -> cmmnClient.terminateCase(engine, CallPriority.INTERACTIVE, targetId);
+                case DELETE_CASE -> cmmnClient.deleteCase(engine, CallPriority.INTERACTIVE, targetId);
+                case EDIT_CASE_VARIABLE ->
+                    cmmnClient.putCaseVariable(
+                            engine,
+                            CallPriority.INTERACTIVE,
+                            targetId,
+                            request.variable().name(),
+                            request.variable().type(),
+                            request.variable().value());
+                case REMOVE_PARTICIPANT ->
+                    cmmnClient.deleteCaseIdentityLink(
+                            engine,
+                            CallPriority.INTERACTIVE,
+                            targetId,
+                            request.link().identityId().strip(),
+                            linkType(request));
                 default ->
                     throw new IllegalStateException("CMMN verb not dispatchable: " + verb); // unreachable: guarded
             }
@@ -681,15 +1150,36 @@ public class CorrectiveActionService {
         switch (verb) {
             case RETRY_JOB -> client.moveDeadLetterJob(engine, CallPriority.INTERACTIVE, request.jobId());
             case TRIGGER_TIMER -> client.moveTimerJob(engine, CallPriority.INTERACTIVE, request.jobId());
+            case RESCHEDULE_TIMER ->
+                client.rescheduleTimer(engine, CallPriority.INTERACTIVE, request.jobId(), request.dueDate());
+            case MOVE_TO_HISTORY_JOB ->
+                client.moveDeadLetterToHistoryJob(engine, CallPriority.INTERACTIVE, request.jobId());
             case DELETE_DEADLETTER -> client.deleteDeadLetterJob(engine, CallPriority.INTERACTIVE, request.jobId());
+            case DELETE_JOB -> client.deleteJob(engine, CallPriority.INTERACTIVE, deleteLane(request), request.jobId());
             case SUSPEND -> client.suspendOrActivateInstance(engine, CallPriority.INTERACTIVE, targetId, "suspend");
             case ACTIVATE -> client.suspendOrActivateInstance(engine, CallPriority.INTERACTIVE, targetId, "activate");
             case TERMINATE_DELETE ->
-                client.deleteProcessInstance(
+                client.deleteProcessInstance(engine, CallPriority.INTERACTIVE, targetId, engineDeleteReason(request));
+            case ADD_PARTICIPANT ->
+                client.addInstanceIdentityLink(
                         engine,
                         CallPriority.INTERACTIVE,
                         targetId,
-                        request.reason() != null ? request.reason() : "terminated via process-inspector");
+                        request.link().identityId().strip(),
+                        linkType(request));
+            case REMOVE_PARTICIPANT ->
+                client.deleteInstanceIdentityLink(
+                        engine,
+                        CallPriority.INTERACTIVE,
+                        targetId,
+                        request.link().identityId().strip(),
+                        linkType(request));
+            case DELETE_HISTORY ->
+                client.deleteHistoricProcessInstance(
+                        engine, CallPriority.HOUSEKEEPING, targetId, engineDeleteReason(request));
+            case DELETE_CASE_HISTORY -> cmmnClient.deleteHistoricCase(engine, CallPriority.HOUSEKEEPING, targetId);
+            case PLAN_ITEM_ACTION, CHANGE_PLAN_ITEM, TERMINATE_CASE, DELETE_CASE, EDIT_CASE_VARIABLE ->
+                throw notOnProcess(verb);
             case EDIT_VARIABLE -> {
                 ActionRequest.VariableEdit edit = request.variable();
                 String executionId = blankToNull(edit.executionId());
@@ -717,6 +1207,44 @@ public class CorrectiveActionService {
                         request.taskId(),
                         request.assignee().strip());
             case UNASSIGN_TASK -> client.setTaskAssignee(engine, CallPriority.INTERACTIVE, request.taskId(), null);
+            case CLAIM_TASK ->
+                client.taskAction(
+                        engine, CallPriority.INTERACTIVE, request.taskId(), "claim", blankToNull(request.assignee()));
+            case DELEGATE_TASK ->
+                client.taskAction(
+                        engine,
+                        CallPriority.INTERACTIVE,
+                        request.taskId(),
+                        "delegate",
+                        required(request.assignee(), "assignee").strip());
+            case RESOLVE_TASK -> client.taskAction(engine, CallPriority.INTERACTIVE, request.taskId(), "resolve", null);
+            case UPDATE_TASK ->
+                client.putTask(engine, CallPriority.INTERACTIVE, request.taskId(), taskWriteBody(request.task()));
+            case ADD_IDENTITY_LINK -> {
+                ActionRequest.IdentityLink link = request.link();
+                client.addIdentityLink(
+                        engine,
+                        CallPriority.INTERACTIVE,
+                        request.taskId(),
+                        link.family(),
+                        link.identityId().strip(),
+                        blankToNull(link.type()) == null
+                                ? "candidate"
+                                : link.type().strip());
+            }
+            case REMOVE_IDENTITY_LINK -> {
+                ActionRequest.IdentityLink link = request.link();
+                client.deleteIdentityLink(
+                        engine,
+                        CallPriority.INTERACTIVE,
+                        request.taskId(),
+                        link.family(),
+                        link.identityId().strip(),
+                        blankToNull(link.type()) == null
+                                ? "candidate"
+                                : link.type().strip());
+            }
+            case DELETE_TASK -> client.deleteTask(engine, CallPriority.INTERACTIVE, request.taskId());
             case UNSTICK_EVENT ->
                 client.executionAction(
                         engine, CallPriority.INTERACTIVE, request.executionId(), eventBody(request.event()));
@@ -726,14 +1254,16 @@ public class CorrectiveActionService {
                         CallPriority.INTERACTIVE,
                         targetId,
                         "suspend",
-                        Boolean.TRUE.equals(request.includeProcessInstances()));
+                        Boolean.TRUE.equals(request.includeProcessInstances()),
+                        normalizedEffectiveAt(request.effectiveAt()));
             case ACTIVATE_DEFINITION ->
                 client.suspendOrActivateDefinition(
                         engine,
                         CallPriority.INTERACTIVE,
                         targetId,
                         "activate",
-                        Boolean.TRUE.equals(request.includeProcessInstances()));
+                        Boolean.TRUE.equals(request.includeProcessInstances()),
+                        normalizedEffectiveAt(request.effectiveAt()));
         }
     }
 
@@ -778,6 +1308,13 @@ public class CorrectiveActionService {
                 "Job " + request.jobId() + " moved back to the executable queue; engine-default retries restored."
                         + " The queue move is reversible; the side effects of the executed job are not.";
             case TRIGGER_TIMER -> "Timer job " + request.jobId() + " fired now and took its normal path.";
+            case RESCHEDULE_TIMER ->
+                "Timer job " + request.jobId() + " now waits until " + request.dueDate() + " (was "
+                        + target.auditPayload().get("dueDate") + "). Reschedule again to undo.";
+            case MOVE_TO_HISTORY_JOB -> "Dead-letter job " + request.jobId() + " moved back onto the history queue.";
+            case DELETE_JOB ->
+                "Job " + request.jobId() + " deleted from the " + request.jobLane()
+                        + " lane. The execution may be orphaned.";
             // #117: never assert a job lane move here — suspend/activate touches executable
             // jobs only, a dead-letter job stays dead-lettered, and this path never reads
             // job lanes. State only what the call itself guarantees.
@@ -804,6 +1341,41 @@ public class CorrectiveActionService {
             case UNASSIGN_TASK ->
                 "Task " + request.taskId() + " returned to its team — assignee cleared (was " + assigneeWas(target)
                         + "); it now falls back to its candidate groups.";
+            case CLAIM_TASK ->
+                blankToNull(request.assignee()) == null
+                        ? "Task " + request.taskId() + " unclaimed."
+                        : "Task " + request.taskId() + " claimed by '"
+                                + request.assignee().strip() + "'.";
+            case DELEGATE_TASK ->
+                "Task " + request.taskId() + " delegated to '"
+                        + request.assignee().strip() + "'. Resolve hands it back.";
+            case RESOLVE_TASK -> "Task " + request.taskId() + " resolved — delegation cleared.";
+            case UPDATE_TASK -> "Task " + request.taskId() + " updated: " + changePhrase(target) + ".";
+            case ADD_IDENTITY_LINK -> linkPhrase(request, "added on");
+            case REMOVE_IDENTITY_LINK -> linkPhrase(request, "removed from");
+            case DELETE_TASK -> "Task " + request.taskId() + " deleted — irreversible.";
+            case ADD_PARTICIPANT ->
+                "Participant '" + request.link().identityId().strip() + "' (" + linkType(request) + ") added.";
+            case REMOVE_PARTICIPANT ->
+                "Participant '" + request.link().identityId().strip() + "' (" + linkType(request) + ") removed.";
+            case DELETE_HISTORY ->
+                "Historic instance " + targetId + " deleted. Engine deleteReason is " + engineDeleteReason(request)
+                        + ". Irreversible.";
+            case DELETE_CASE_HISTORY ->
+                "Historic case " + targetId + " deleted. The CMMN route takes no delete reason. Irreversible.";
+            case PLAN_ITEM_ACTION ->
+                "Plan item " + request.plan().planItemInstanceId() + " "
+                        + request.plan().action() + ".";
+            case CHANGE_PLAN_ITEM ->
+                "Plan item definition " + request.plan().definitionId() + " set to "
+                        + request.plan().action() + ". This is not an engine dry-run; the call already ran.";
+            case TERMINATE_CASE ->
+                "Case " + targetId + " terminated. The engine route stores no delete reason. Irreversible.";
+            case DELETE_CASE ->
+                "Case " + targetId
+                        + " deleted, including its history. The engine route stores no delete reason. Irreversible.";
+            case EDIT_CASE_VARIABLE ->
+                "Case variable '" + request.variable().name() + "' updated. The old value is in the audit row.";
             case UNSTICK_EVENT ->
                 capitalize(request.event().type()) + " delivered to execution " + request.executionId()
                         + " — the wait is over.";
@@ -811,17 +1383,47 @@ public class CorrectiveActionService {
             case DELETE_DEADLETTER ->
                 "cmmn".equals(target.auditPayload().get("scope"))
                         ? "Dead-letter job " + request.jobId() + " deleted. The plan item is orphaned — the case"
-                                + " cannot continue past this step on its own, and this tool offers no CMMN rescue"
-                                + " verb (no change-state for cases)."
+                                + " cannot continue past this step on its own. Rescue is change-plan-item."
                         : "Dead-letter job " + request.jobId() + " deleted. The execution is orphaned — the only"
                                 + " rescue afterwards is change-state.";
             case SUSPEND_DEFINITION ->
                 "Definition " + targetId + " suspended — new instances are blocked"
                         + (Boolean.TRUE.equals(request.includeProcessInstances())
                                 ? ", running instances suspended too."
-                                : "; running instances continue.");
-            case ACTIVATE_DEFINITION -> "Definition " + targetId + " activated again.";
+                                : "; running instances continue.")
+                        + schedulePhrase(request);
+            case ACTIVATE_DEFINITION -> "Definition " + targetId + " activated again." + schedulePhrase(request);
         };
+    }
+
+    private static String linkPhrase(ActionRequest request, String verb) {
+        ActionRequest.IdentityLink link = request.link();
+        String type =
+                blankToNull(link.type()) == null ? "candidate" : link.type().strip();
+        return "Identity link " + type + " " + link.family() + " '"
+                + link.identityId().strip() + "' " + verb + " task " + request.taskId() + ".";
+    }
+
+    private static String changePhrase(Target target) {
+        Object raw = target.auditPayload().get("changes");
+        if (!(raw instanceof Map<?, ?> changes) || changes.isEmpty()) {
+            return "no fields";
+        }
+        StringBuilder phrase = new StringBuilder();
+        for (Map.Entry<?, ?> entry : changes.entrySet()) {
+            if (phrase.length() > 0) {
+                phrase.append(", ");
+            }
+            Object pair = entry.getValue();
+            Object oldValue = pair instanceof Map<?, ?> map ? map.get("old") : null;
+            Object newValue = pair instanceof Map<?, ?> map ? map.get("new") : null;
+            phrase.append(entry.getKey())
+                    .append(' ')
+                    .append(oldValue)
+                    .append(" → ")
+                    .append(newValue);
+        }
+        return phrase.toString();
     }
 
     /** Old-assignee phrasing for the outcome toast — the server-fresh value captured at restatement. */
@@ -876,6 +1478,31 @@ public class CorrectiveActionService {
 
     private static String blankToNull(String value) {
         return value == null || value.isBlank() ? null : value;
+    }
+
+    /** ISO-8601 instant. Blank is "now". Anything else is a 400 — the engine must not guess. */
+    private static String normalizedEffectiveAt(String raw) {
+        String value = blankToNull(raw);
+        if (value == null) {
+            return null;
+        }
+        try {
+            return Instant.parse(value).toString();
+        } catch (DateTimeException ignored) {
+            try {
+                return OffsetDateTime.parse(value).toInstant().toString();
+            } catch (DateTimeException e) {
+                throw new GuardRefusedException(
+                        HttpStatus.BAD_REQUEST,
+                        "invalid-effective-at",
+                        "effectiveAt must be an ISO-8601 instant, for example 2026-10-22T06:00:00Z.");
+            }
+        }
+    }
+
+    private static String schedulePhrase(ActionRequest request) {
+        String at = blankToNull(request.effectiveAt());
+        return at == null ? "" : " Scheduled for " + at + ".";
     }
 
     private static String capitalize(String value) {

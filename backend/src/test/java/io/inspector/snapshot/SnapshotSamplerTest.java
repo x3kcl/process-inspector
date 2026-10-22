@@ -2,14 +2,17 @@ package io.inspector.snapshot;
 
 import static org.assertj.core.api.Assertions.assertThat;
 import static org.mockito.ArgumentMatchers.any;
+import static org.mockito.Mockito.doReturn;
 import static org.mockito.Mockito.doThrow;
 import static org.mockito.Mockito.mock;
 import static org.mockito.Mockito.never;
+import static org.mockito.Mockito.reset;
 import static org.mockito.Mockito.verify;
 import static org.mockito.Mockito.when;
 
 import io.inspector.config.InspectorProperties;
 import io.inspector.config.InspectorProperties.Snapshot;
+import io.micrometer.core.instrument.simple.SimpleMeterRegistry;
 import java.time.Clock;
 import java.time.Duration;
 import java.time.Instant;
@@ -32,8 +35,9 @@ class SnapshotSamplerTest {
     private final SnapshotSource source = mock(SnapshotSource.class);
     private final SnapshotCountRepository repository = mock(SnapshotCountRepository.class);
     private final ApplicationEventPublisher events = mock(ApplicationEventPublisher.class);
+    private final SimpleMeterRegistry metrics = new SimpleMeterRegistry();
     private final SnapshotSampler sampler = new SnapshotSampler(
-            source, repository, props(Duration.ofSeconds(60)), Clock.fixed(NOW, ZoneOffset.UTC), events);
+            source, repository, props(Duration.ofSeconds(60)), Clock.fixed(NOW, ZoneOffset.UTC), events, metrics);
 
     @Test
     void upsertsEachObservationAtTheFlooredBucket() {
@@ -92,6 +96,44 @@ class SnapshotSamplerTest {
                         org.mockito.ArgumentMatchers.anyString(), org.mockito.ArgumentMatchers.anyString(),
                         org.mockito.ArgumentMatchers.anyLong(), org.mockito.ArgumentMatchers.any());
         verify(events, never()).publishEvent(any(Object.class));
+    }
+
+    @Test
+    void aSkippedSampleDoesNotAdvanceTheLastSuccessGauge() {
+        java.util.concurrent.atomic.AtomicReference<Instant> now =
+                new java.util.concurrent.atomic.AtomicReference<>(NOW);
+        Clock clock = new Clock() {
+            @Override
+            public Instant instant() {
+                return now.get();
+            }
+
+            @Override
+            public ZoneOffset getZone() {
+                return ZoneOffset.UTC;
+            }
+
+            @Override
+            public Clock withZone(java.time.ZoneId zone) {
+                return this;
+            }
+        };
+        SimpleMeterRegistry local = new SimpleMeterRegistry();
+        SnapshotSampler advancing =
+                new SnapshotSampler(source, repository, props(Duration.ofSeconds(60)), clock, events, local);
+        reset(source);
+        doThrow(new RuntimeException("all engines down")).when(source).sample();
+        now.set(NOW.plus(Duration.ofMinutes(10)));
+
+        advancing.sampleOnce();
+
+        assertThat(local.get("snapshot_last_success_seconds").gauge().value()).isEqualTo(NOW.getEpochSecond());
+        doReturn(sample(new EngineLaneCount("engine-a", SnapshotLane.ACTIVE, 1)))
+                .when(source)
+                .sample();
+        advancing.sampleOnce();
+        assertThat(local.get("snapshot_last_success_seconds").gauge().value())
+                .isEqualTo(NOW.plus(Duration.ofMinutes(10)).getEpochSecond());
     }
 
     private static AggregationSample sample(EngineLaneCount... laneCounts) {
