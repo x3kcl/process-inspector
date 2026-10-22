@@ -87,8 +87,13 @@ public class BulkJobService {
     private static final Logger log = LoggerFactory.getLogger(BulkJobService.class);
 
     /** SPEC §7 v1 verb whitelist: queue-state verbs, dispatched via the SELECTION/ERROR_CLASS/FILTER doors. */
-    private static final Set<ActionVerb> BULK_VERBS =
-            Set.of(ActionVerb.RETRY_JOB, ActionVerb.SUSPEND, ActionVerb.ACTIVATE, ActionVerb.TRIGGER_TIMER);
+    private static final Set<ActionVerb> BULK_VERBS = Set.of(
+            ActionVerb.RETRY_JOB,
+            ActionVerb.SUSPEND,
+            ActionVerb.ACTIVATE,
+            ActionVerb.TRIGGER_TIMER,
+            ActionVerb.REASSIGN_TASK,
+            ActionVerb.UNASSIGN_TASK);
 
     /**
      * Tier-4 destructive-bulk wizard (SPEC §6/§7, issue #100): a SEPARATE, stricter whitelist —
@@ -99,6 +104,9 @@ public class BulkJobService {
      * dropped.
      */
     private static final Set<ActionVerb> DESTRUCTIVE_BULK_VERBS = Set.of(ActionVerb.TERMINATE_DELETE);
+
+    private static final Set<ActionVerb> HISTORY_VERBS =
+            Set.of(ActionVerb.DELETE_HISTORY, ActionVerb.DELETE_CASE_HISTORY);
 
     private static final int DLQ_JOBS_PER_INSTANCE_CAP = 20;
 
@@ -248,6 +256,23 @@ public class BulkJobService {
                         + " documented fast-follow). Nothing happened.");
     }
 
+    /** Completed-history deletes. Cap is the filter cap. Per-id dispatch, Stop already cancels the next item. */
+    BulkDtos.BulkJobDto submitHousekeeping(
+            BulkDtos.BulkSubmitRequest request,
+            Authentication auth,
+            Map<String, Object> extraEnvelopePayload,
+            String scopeLabel) {
+        return submit(
+                request,
+                auth,
+                extraEnvelopePayload,
+                BulkJob.FILTER_ITEM_CAP,
+                BulkJob.ScopeKind.FILTER,
+                scopeLabel,
+                HISTORY_VERBS,
+                "Housekeeping supports delete-history and delete-case-history. Nothing happened.");
+    }
+
     private BulkDtos.BulkJobDto submit(
             BulkDtos.BulkSubmitRequest request,
             Authentication auth,
@@ -263,8 +288,8 @@ public class BulkJobService {
                 scopeKind,
                 scopeLabel,
                 BULK_VERBS,
-                "Bulk supports retry-job, suspend, activate and trigger-timer — destructive bulk goes"
-                        + " through the tier-4 wizard. Nothing happened.");
+                "Bulk supports retry-job, suspend, activate, trigger-timer, reassign-task and unassign-task —"
+                        + " destructive bulk goes through the tier-4 wizard. Nothing happened.");
     }
 
     private BulkDtos.BulkJobDto submit(
@@ -309,11 +334,23 @@ public class BulkJobService {
                     HttpStatus.BAD_REQUEST, "reason-too-short", "The reason must be at least 10 characters.");
         }
         String reason = request.reason().trim();
+        boolean taskVerb = verb == ActionVerb.REASSIGN_TASK || verb == ActionVerb.UNASSIGN_TASK;
+        if (verb == ActionVerb.REASSIGN_TASK
+                && (request.assignee() == null || request.assignee().isBlank())) {
+            throw new GuardRefusedException(
+                    HttpStatus.BAD_REQUEST, "assignee-required", "Bulk reassign needs an assignee. Nothing happened.");
+        }
         for (BulkDtos.BulkTarget target : targets) {
             registry.require(target.engineId()); // unknown engine refuses the WHOLE submit pre-flight
             if (target.instanceId() == null || target.instanceId().isBlank()) {
                 throw new GuardRefusedException(
                         HttpStatus.BAD_REQUEST, "bulk-target-invalid", "Every item needs an instanceId.");
+            }
+            if (taskVerb && (target.jobId() == null || target.jobId().isBlank())) {
+                throw new GuardRefusedException(
+                        HttpStatus.BAD_REQUEST,
+                        "bulk-target-invalid",
+                        "Every task item needs a task id. Nothing happened.");
             }
         }
 
@@ -357,6 +394,9 @@ public class BulkJobService {
                 request.continuedFrom(),
                 scopeKind,
                 label);
+        if (taskVerb && request.assignee() != null) {
+            job.setAssignee(request.assignee().strip());
+        }
         jobs.saveAndFlush(job);
         List<BulkJobItem> itemRows = new ArrayList<>();
         int ordinal = 0;
@@ -842,18 +882,19 @@ public class BulkJobService {
     }
 
     private ActionRequest requestFor(BulkJob job, ActionVerb verb, String jobRef) {
+        boolean task = verb == ActionVerb.REASSIGN_TASK || verb == ActionVerb.UNASSIGN_TASK;
         return new ActionRequest(
                 job.getReason(),
                 job.getTicketId(),
                 null,
                 needsJobRef(verb) ? jobRef : null,
+                task ? jobRef : null,
                 null,
                 null,
                 null,
                 null,
                 null,
-                null,
-                null);
+                task && verb == ActionVerb.REASSIGN_TASK ? job.getAssignee() : null);
     }
 
     private static boolean needsJobRef(ActionVerb verb) {
@@ -862,7 +903,11 @@ public class BulkJobService {
 
     private static BulkJobItem.State guardOutcome(GuardRefusedException e) {
         // "already resolved" class (R-SEM-09): the target is gone/done — a NORMAL outcome.
-        if ("job-gone".equals(e.code()) || "instance-not-running".equals(e.code())) {
+        if ("job-gone".equals(e.code())
+                || "instance-not-running".equals(e.code())
+                || "task-gone".equals(e.code())
+                || "task-not-active".equals(e.code())
+                || "history-gone".equals(e.code())) {
             return BulkJobItem.State.skipped;
         }
         if ("instance-protected".equals(e.code())) {
@@ -1006,7 +1051,7 @@ public class BulkJobService {
         EngineConfig engine = registry.require(item.getEngineId());
         Verdict verdict;
         try {
-            verdict = precondition(engine, verb, item);
+            verdict = precondition(engine, verb, item, job);
         } catch (RuntimeException e) {
             verdict = new Verdict(null, "engine did not answer the verification read: " + e.getMessage());
         }
@@ -1023,7 +1068,7 @@ public class BulkJobService {
 
     private record Verdict(BulkJobItem.State reclassifyTo, String evidence) {}
 
-    private Verdict precondition(EngineConfig engine, ActionVerb verb, BulkJobItem item) {
+    private Verdict precondition(EngineConfig engine, ActionVerb verb, BulkJobItem item, BulkJob job) {
         switch (verb) {
             case RETRY_JOB -> {
                 if (item.getJobRef() == null) {
@@ -1066,6 +1111,35 @@ public class BulkJobService {
                                 null,
                                 "instance is " + (suspended ? "suspended" : "active") + " — the " + verb.path()
                                         + " likely did not apply; still-pending");
+            }
+            case DELETE_HISTORY -> {
+                Map<String, Object> row =
+                        client.getHistoricProcessInstance(engine, CallPriority.HOUSEKEEPING, item.getInstanceId());
+                if (row == null) {
+                    return new Verdict(BulkJobItem.State.ok, "verified: historic instance is gone");
+                }
+                if (row.get("endTime") == null) {
+                    return new Verdict(null, "instance is still running");
+                }
+                return new Verdict(null, "historic instance is still present");
+            }
+            case REASSIGN_TASK, UNASSIGN_TASK -> {
+                if (item.getJobRef() == null) {
+                    return new Verdict(null, "no task reference recorded — needs L3 review of the audit trail");
+                }
+                Map<String, Object> task = client.getTask(engine, CallPriority.INTERACTIVE, item.getJobRef());
+                if (task == null) {
+                    return new Verdict(BulkJobItem.State.skipped, "task " + item.getJobRef() + " is no longer open");
+                }
+                String assignee = task.get("assignee") != null ? String.valueOf(task.get("assignee")) : null;
+                if (verb == ActionVerb.UNASSIGN_TASK) {
+                    return assignee == null
+                            ? new Verdict(BulkJobItem.State.ok, "verified: task is unassigned")
+                            : new Verdict(null, "task is still assigned to " + assignee);
+                }
+                return job.getAssignee() != null && job.getAssignee().equals(assignee)
+                        ? new Verdict(BulkJobItem.State.ok, "verified: assignee is " + assignee)
+                        : new Verdict(null, "assignee is " + assignee + " — reassign may not have applied");
             }
             default -> {
                 return new Verdict(null, "no precondition predicate for '" + verb.path() + "' — needs L3");

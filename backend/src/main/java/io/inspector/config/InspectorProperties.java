@@ -649,7 +649,9 @@ public record InspectorProperties(
             // row's lifecycle column via EngineRegistryMapper); null under source=config, where
             // lifecycleOrDefault() derives it from `enabled`. Display metadata only — every
             // operability decision keeps reading `enabled`/require().
-            String lifecycle) {
+            String lifecycle,
+            // Optional engine Micrometer URL. Blank means executor internals are not exposed (#510).
+            String metricsUrl) {
 
         // @ConfigurationProperties binding is ambiguous once a record has >1 constructor — pin the
         // canonical (18-arg) one as the bind target so the convenience ctors below are ignored.
@@ -697,6 +699,49 @@ public record InspectorProperties(
                     auditPayload,
                     forwardUser,
                     deepPagingMaxDepth,
+                    null,
+                    null);
+        }
+
+        /** Pre-metrics-url shape. Blank metrics URL means executor internals are not exposed. */
+        public EngineConfig(
+                String id,
+                String name,
+                String baseUrl,
+                EngineEnvironment environment,
+                String accentColor,
+                boolean enabled,
+                String tenantId,
+                String telemetryUrlTemplate,
+                Auth auth,
+                EngineMode mode,
+                Timeouts timeouts,
+                Integer maxPageSize,
+                Integer dlqScanCap,
+                AlarmThresholds alarmThresholds,
+                AuditPayloadMode auditPayload,
+                boolean forwardUser,
+                Integer deepPagingMaxDepth,
+                String lifecycle) {
+            this(
+                    id,
+                    name,
+                    baseUrl,
+                    environment,
+                    accentColor,
+                    enabled,
+                    tenantId,
+                    telemetryUrlTemplate,
+                    auth,
+                    mode,
+                    timeouts,
+                    maxPageSize,
+                    dlqScanCap,
+                    alarmThresholds,
+                    auditPayload,
+                    forwardUser,
+                    deepPagingMaxDepth,
+                    lifecycle,
                     null);
         }
 

@@ -30,7 +30,54 @@ public record EngineDto(
         EngineHealth.JobLanes jobLanes, // null when unknown/degraded
         Long oldestExecutableJobAge, // seconds; null when the lane is empty/unknown
         Long overdueTimers, // null when unknown
-        String healthError) {
+        String healthError,
+        Long oldestHistoryJobAge,
+        String adviceLevel,
+        String advice,
+        Long startedCurrent,
+        Long startedReference,
+        io.inspector.snapshot.ThroughputBoard throughput) {
+
+    /** Pre-#484 call sites. The history and advice legs stay null. */
+    public EngineDto(
+            String id,
+            String name,
+            String environment,
+            String accentColor,
+            String mode,
+            String lifecycle,
+            String tenantId,
+            boolean reachable,
+            String engineVersion,
+            String lastHealthCheck,
+            EngineCapabilities capabilities,
+            EngineHealth.JobLanes jobLanes,
+            Long oldestExecutableJobAge,
+            Long overdueTimers,
+            String healthError) {
+        this(
+                id,
+                name,
+                environment,
+                accentColor,
+                mode,
+                lifecycle,
+                tenantId,
+                reachable,
+                engineVersion,
+                lastHealthCheck,
+                capabilities,
+                jobLanes,
+                oldestExecutableJobAge,
+                overdueTimers,
+                healthError,
+                null,
+                null,
+                null,
+                null,
+                null,
+                null);
+    }
 
     /** The one registry-config + live-health mapping, shared by /api/engines and /api/triage. */
     public static EngineDto from(InspectorProperties.EngineConfig config, EngineHealth health) {
@@ -51,6 +98,12 @@ public record EngineDto(
                 health.jobLanes(),
                 health.oldestExecutableJobAgeSec(),
                 health.overdueTimers(),
-                health.error());
+                health.error(),
+                health.oldestHistoryJobAgeSec(),
+                health.adviceLevel(),
+                health.advice(),
+                health.startedCurrent(),
+                health.startedReference(),
+                health.throughput());
     }
 }
