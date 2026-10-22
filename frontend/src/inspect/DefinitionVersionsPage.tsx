@@ -10,6 +10,7 @@ import { roleOn, useMe } from '../api/me'
 import { ActionHint } from '../components/ActionHint'
 import { Breadcrumbs } from '../shell/Breadcrumbs'
 import { definitionVersionCrumbs } from '../shell/breadcrumbs'
+import { CohortMigrateModal } from './CohortMigrateModal'
 import { ProtectDefinitionModal } from './ProtectDefinitionModal'
 
 export function DefinitionVersionsPage() {
@@ -18,6 +19,7 @@ export function DefinitionVersionsPage() {
   const me = useMe()
   const roleHint = roleOn(me.data, engineId ?? '')
   const [protectOpen, setProtectOpen] = useState(false)
+  const [migrateFrom, setMigrateFrom] = useState<string | undefined>(undefined)
   const isProtected = versions.data?.protectedDefinition === true
 
   return (
@@ -75,6 +77,17 @@ export function DefinitionVersionsPage() {
         )}
       </header>
 
+      {migrateFrom != null && engineId !== undefined && versions.data != null && (
+        <CohortMigrateModal
+          engineId={engineId}
+          fromDefinitionId={migrateFrom}
+          versions={versions.data.versions ?? []}
+          onClose={() => {
+            setMigrateFrom(undefined)
+          }}
+        />
+      )}
+
       {protectOpen && engineId !== undefined && key !== undefined && (
         <ProtectDefinitionModal
           engineId={engineId}
@@ -123,12 +136,24 @@ export function DefinitionVersionsPage() {
                   <td className="num">{String(v.runningInstanceCount ?? 0)}</td>
                   <td>
                     {(v.runningInstanceCount ?? 0) > 0 && (
-                      <Link
-                        className="link-button"
-                        to={`/search?engineId=${engineId ?? ''}&processDefinitionId=${encodeURIComponent(v.definitionId ?? '')}`}
-                      >
-                        View instances
-                      </Link>
+                      <>
+                        <Link
+                          className="link-button"
+                          to={`/search?engineId=${engineId ?? ''}&processDefinitionId=${encodeURIComponent(v.definitionId ?? '')}`}
+                        >
+                          View instances
+                        </Link>{' '}
+                        <button
+                          type="button"
+                          className="link-button"
+                          disabled={roleHint !== 'ADMIN'}
+                          onClick={() => {
+                            setMigrateFrom(v.definitionId)
+                          }}
+                        >
+                          Migrate instances…
+                        </button>
+                      </>
                     )}
                   </td>
                 </tr>
