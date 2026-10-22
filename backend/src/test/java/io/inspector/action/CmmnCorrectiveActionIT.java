@@ -171,8 +171,9 @@ class CmmnCorrectiveActionIT {
         assertThat(response.getStatusCode()).isEqualTo(HttpStatus.OK);
         JsonNode result = mapper.readTree(response.getBody());
         assertThat(result.path("outcome").asText()).isEqualTo("ok");
-        // scope-honest delta: a CMMN case has no change-state rescue in this tool
-        assertThat(result.path("deltaStatement").asText()).contains("orphaned").contains("no change-state for cases");
+        // scope-honest delta: deleting a CMMN dead-letter orphans the plan item.
+        // Rescue is change-plan-item, not the BPMN change-state sentence.
+        assertThat(result.path("deltaStatement").asText()).contains("orphaned").contains("change-plan-item");
         assertThat(result.path("auditId").asText()).isNotBlank();
 
         // Delete is terminal (DELETE → HTTP 204): the job is gone from the CMMN DLQ for good —
