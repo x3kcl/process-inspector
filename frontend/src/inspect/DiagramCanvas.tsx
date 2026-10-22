@@ -18,6 +18,10 @@ export interface DiagramMarkers {
    */
   subjectOnlyActivityIds?: string[]
   siblingOnlyActivityIds?: string[]
+  /** Version diff (#483): elements present only on the diagram being shown. */
+  addedActivityIds?: string[]
+  /** Version diff (#483): same id, different name, type, or sequence-flow endpoints. */
+  changedActivityIds?: string[]
 }
 
 interface Props {
@@ -251,6 +255,28 @@ function applyMarkers(viewer: NavigatedViewer, markers: DiagramMarkers) {
       overlays.add(id, `diverge-subject-${id}`, {
         position: { bottom: -6, left: -6 },
         html: '<span class="diverge-glyph diverge-glyph-subject" role="img" aria-label="only the failed run took this step" title="only the failed run took this step">▲</span>',
+      })
+    } catch {
+      // best-effort decoration
+    }
+  }
+  for (const id of markers.addedActivityIds ?? []) {
+    try {
+      canvas.addMarker(id, 'marker-diff-added')
+      overlays.add(id, `diff-added-${id}`, {
+        position: { top: -8, left: -8 },
+        html: '<span class="diff-glyph diff-glyph-added" role="img" aria-label="added in this version" title="added in this version">+</span>',
+      })
+    } catch {
+      // best-effort decoration
+    }
+  }
+  for (const id of markers.changedActivityIds ?? []) {
+    try {
+      canvas.addMarker(id, 'marker-diff-changed')
+      overlays.add(id, `diff-changed-${id}`, {
+        position: { top: -8, right: -8 },
+        html: '<span class="diff-glyph diff-glyph-changed" role="img" aria-label="changed between versions" title="changed between versions">~</span>',
       })
     } catch {
       // best-effort decoration

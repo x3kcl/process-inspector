@@ -32,10 +32,13 @@ public class InstanceDetailController {
 
     private final InstanceDetailService detail;
     private final StatusEvidenceService statusEvidence;
+    private final InstanceParityService parity;
 
-    public InstanceDetailController(InstanceDetailService detail, StatusEvidenceService statusEvidence) {
+    public InstanceDetailController(
+            InstanceDetailService detail, StatusEvidenceService statusEvidence, InstanceParityService parity) {
         this.detail = detail;
         this.statusEvidence = statusEvidence;
+        this.parity = parity;
     }
 
     /** Vitals: identity, definition+version, flags, current activity, why-stuck, waiting-for. */
@@ -135,6 +138,37 @@ public class InstanceDetailController {
     @PreAuthorize("@rbac.atLeastOn(authentication, 'VIEWER', #engineId)")
     public InstanceHierarchy hierarchy(@PathVariable String engineId, @PathVariable String instanceId) {
         return detail.hierarchy(engineId, instanceId);
+    }
+
+    /** Participants (identity links). The starter row is history and not removable. */
+    @GetMapping("/identitylinks")
+    @PreAuthorize("@rbac.atLeastOn(authentication, 'VIEWER', #engineId)")
+    public InstanceParityService.ParticipantPage identityLinks(
+            @PathVariable String engineId, @PathVariable String instanceId) {
+        return parity.participants(engineId, instanceId);
+    }
+
+    /** Where every token sits. One engine page, breadth-capped per node. */
+    @GetMapping("/executions")
+    @PreAuthorize("@rbac.atLeastOn(authentication, 'VIEWER', #engineId)")
+    public ExecutionTreeBuilder.ExecutionTree executions(
+            @PathVariable String engineId, @PathVariable String instanceId) {
+        return parity.executions(engineId, instanceId);
+    }
+
+    /** DMN executions for this instance. {@code available=false} when the engine has no DMN context. */
+    @GetMapping("/decisions")
+    @PreAuthorize("@rbac.atLeastOn(authentication, 'VIEWER', #engineId)")
+    public InstanceParityService.DecisionPage decisions(
+            @PathVariable String engineId, @PathVariable String instanceId) {
+        return parity.decisions(engineId, instanceId);
+    }
+
+    @GetMapping("/decisions/{decisionExecutionId}/audit")
+    @PreAuthorize("@rbac.atLeastOn(authentication, 'VIEWER', #engineId)")
+    public java.util.Map<String, Object> decisionAudit(
+            @PathVariable String engineId, @PathVariable String instanceId, @PathVariable String decisionExecutionId) {
+        return parity.decisionAudit(engineId, decisionExecutionId);
     }
 
     /** Historic activity instances, startTime ascending — the Gantt rows. */
