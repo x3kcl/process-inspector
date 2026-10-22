@@ -28,6 +28,9 @@ const TAB_COMPONENTS: Record<TabId, LazyExoticComponent<ComponentType<TabProps>>
   variables: lazy(() => import('./tabs/VariablesTab')),
   'errors-jobs': lazy(() => import('./tabs/ErrorsJobsTab')),
   tasks: lazy(() => import('./tabs/TasksTab')),
+  participants: lazy(() => import('./tabs/ParticipantsTab')),
+  executions: lazy(() => import('./tabs/ExecutionsTab')),
+  decisions: lazy(() => import('./tabs/DecisionsTab')),
   hierarchy: lazy(() => import('./tabs/HierarchyTab')),
   timeline: lazy(() => import('./tabs/TimelineTab')),
   comparison: lazy(() => import('./comparison/ComparisonTab')),
@@ -243,6 +246,7 @@ export function InspectPage() {
             instanceId={instanceId}
             vitals={vitals.data}
             engine={engine}
+            selectedActivityId={selectedActivityId}
           />
         )}
       </header>
