@@ -933,9 +933,12 @@ public record InspectorProperties(
             String headerName,
             String headerSecretRef) {
 
-        /** Pre-#490 shape. The extra auth fields stay null. */
-        public Auth(Type type, String username, String passwordRef, String tokenRef) {
-            this(type, username, passwordRef, tokenRef, null, null, null, null, null, null, null);
+        public static Auth basic(String username, String passwordRef) {
+            return new Auth(Type.basic, username, passwordRef, null, null, null, null, null, null, null, null);
+        }
+
+        public static Auth none() {
+            return new Auth(Type.none, null, null, null, null, null, null, null, null, null, null);
         }
 
         public enum Type {
