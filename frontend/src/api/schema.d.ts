@@ -437,6 +437,38 @@ export interface paths {
         patch?: never;
         trace?: never;
     };
+    "/api/bulk/history": {
+        parameters: {
+            query?: never;
+            header?: never;
+            path?: never;
+            cookie?: never;
+        };
+        get?: never;
+        put?: never;
+        post: operations["submitHistory"];
+        delete?: never;
+        options?: never;
+        head?: never;
+        patch?: never;
+        trace?: never;
+    };
+    "/api/bulk/history/preview": {
+        parameters: {
+            query?: never;
+            header?: never;
+            path?: never;
+            cookie?: never;
+        };
+        get?: never;
+        put?: never;
+        post: operations["previewHistory"];
+        delete?: never;
+        options?: never;
+        head?: never;
+        patch?: never;
+        trace?: never;
+    };
     "/api/bulk/{id}": {
         parameters: {
             query?: never;
@@ -2277,6 +2309,26 @@ export interface components {
             requested?: boolean;
             startTime?: string;
         };
+        HistoryDeleteRequest: {
+            businessKey?: string;
+            /** Format: int32 */
+            confirmedCount?: number;
+            definitionKey?: string;
+            /** Format: int32 */
+            definitionVersion?: number;
+            engineIds?: string[];
+            finishedBefore?: string;
+            reason?: string;
+            scope?: string;
+            ticketId?: string;
+        };
+        HistoryPreview: {
+            capped?: boolean;
+            /** Format: int64 */
+            count?: number;
+            prodInScope?: boolean;
+            sampleIds?: string[];
+        };
         IdentityLink: {
             family?: string;
             identityId?: string;
@@ -3929,6 +3981,54 @@ export interface operations {
                 };
                 content: {
                     "*/*": components["schemas"]["BulkJobDto"];
+                };
+            };
+        };
+    };
+    submitHistory: {
+        parameters: {
+            query?: never;
+            header?: never;
+            path?: never;
+            cookie?: never;
+        };
+        requestBody: {
+            content: {
+                "application/json": components["schemas"]["HistoryDeleteRequest"];
+            };
+        };
+        responses: {
+            /** @description OK */
+            200: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "*/*": components["schemas"]["BulkJobDto"];
+                };
+            };
+        };
+    };
+    previewHistory: {
+        parameters: {
+            query?: never;
+            header?: never;
+            path?: never;
+            cookie?: never;
+        };
+        requestBody: {
+            content: {
+                "application/json": components["schemas"]["HistoryDeleteRequest"];
+            };
+        };
+        responses: {
+            /** @description OK */
+            200: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "*/*": components["schemas"]["HistoryPreview"];
                 };
             };
         };

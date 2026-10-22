@@ -111,7 +111,9 @@ public class GuardedCaller {
         // than page-1, and a scroller (or an attacker firing cursors at offset=cap-1) must NEVER
         // consume the 8 interactive permits page-1 search is waiting on. Its OWN per-engine lane
         // keyed "{id}:deep-page" so deep scroll degrades itself, never interactive search.
-        DEEP_PAGE("deep-page", "deep-page");
+        DEEP_PAGE("deep-page", "deep-page"),
+        // History deletes must not take the interactive permits or the sampler lane.
+        HOUSEKEEPING("housekeeping", "housekeeping");
 
         private final String config;
         private final String suffix;

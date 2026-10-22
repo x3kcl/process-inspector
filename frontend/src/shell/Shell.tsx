@@ -89,6 +89,7 @@ export function Shell() {
               <Link to="/incidents" className="topbar-link">
                 Incidents
               </Link>
+              <HousekeepingLink />
               <RegistryAdminLink />
               <AccessAdminLink />
               <RemediationDemandLink />
@@ -118,6 +119,23 @@ export function Shell() {
         </OpsDrawerProvider>
       </LiveProvider>
     </ToastProvider>
+  )
+}
+
+function HousekeepingLink() {
+  const me = useMe()
+  const admin = me.data?.role === 'ADMIN'
+  if (admin) {
+    return (
+      <Link to="/admin/housekeeping" className="topbar-link">
+        Housekeeping
+      </Link>
+    )
+  }
+  return (
+    <span className="topbar-link disabled" aria-disabled="true" title="Requires ADMIN">
+      Housekeeping
+    </span>
   )
 }
 

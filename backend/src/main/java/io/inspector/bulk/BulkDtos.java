@@ -61,6 +61,23 @@ public final class BulkDtos {
      * PROD engine (mirrors the single-target typed-business-key rule, SPEC §6 tier 3) — checked
      * against a FRESH re-resolution at submit, never the preview's snapshot.
      */
+    /**
+     * Delete completed history. {@code scope} is {@code bpmn} or {@code cmmn}. {@code finishedBefore}
+     * is mandatory. {@code definitionKey} is mandatory when the scope touches a prod engine.
+     */
+    public record HistoryDeleteRequest(
+            String scope,
+            List<String> engineIds,
+            String definitionKey,
+            Integer definitionVersion,
+            String businessKey,
+            String finishedBefore,
+            String reason,
+            String ticketId,
+            Integer confirmedCount) {}
+
+    public record HistoryPreview(long count, boolean capped, boolean prodInScope, List<String> sampleIds) {}
+
     public record BulkDestructiveRequest(
             SearchRequest criteria, String verb, String reason, String ticketId, Integer confirmedCount) {}
 

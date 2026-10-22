@@ -36,6 +36,8 @@ public enum ActionVerb {
     TERMINATE_DELETE("terminate-delete", 3, Role.ADMIN, TargetKind.INSTANCE),
     DELETE_DEADLETTER("delete-deadletter", 3, Role.ADMIN, TargetKind.INSTANCE),
     DELETE_JOB("delete-job", 3, Role.ADMIN, TargetKind.INSTANCE),
+    DELETE_HISTORY("delete-history", 3, Role.ADMIN, TargetKind.INSTANCE),
+    DELETE_CASE_HISTORY("delete-case-history", 3, Role.ADMIN, TargetKind.INSTANCE),
     SUSPEND_DEFINITION("suspend-definition", 3, Role.ADMIN, TargetKind.DEFINITION),
     ACTIVATE_DEFINITION("activate-definition", 3, Role.ADMIN, TargetKind.DEFINITION);
 

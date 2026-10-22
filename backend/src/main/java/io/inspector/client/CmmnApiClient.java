@@ -174,6 +174,53 @@ public class CmmnApiClient {
                         .toBodilessEntity());
     }
 
+    public FlowablePage listFinishedCases(
+            EngineConfig engine,
+            CallPriority priority,
+            String definitionKey,
+            String businessKey,
+            String finishedBefore,
+            int start,
+            int size) {
+        return guarded.call(
+                engine,
+                priority,
+                () -> guarded.readClient(engine)
+                        .get()
+                        .uri(UriComponentsBuilder.fromUriString(
+                                        cmmnApiBase(engine) + "/cmmn-history/historic-case-instances")
+                                .queryParam("finished", "true")
+                                .queryParam("finishedBefore", finishedBefore)
+                                .queryParam("size", size)
+                                .queryParam("start", start)
+                                .queryParamIfPresent(
+                                        "caseDefinitionKey", java.util.Optional.ofNullable(blankToNull(definitionKey)))
+                                .queryParamIfPresent(
+                                        "businessKey", java.util.Optional.ofNullable(blankToNull(businessKey)))
+                                .build(true)
+                                .toUri())
+                        .retrieve()
+                        .body(FlowablePage.class));
+    }
+
+    /** DELETE historic case. This route takes no delete reason. */
+    public void deleteHistoricCase(EngineConfig engine, CallPriority priority, String caseInstanceId) {
+        String id = GuardedCaller.safeId(caseInstanceId);
+        guarded.run(
+                engine,
+                priority,
+                "delete-case-history",
+                () -> guarded.writeClient(engine)
+                        .delete()
+                        .uri(cmmnApiBase(engine) + "/cmmn-history/historic-case-instances/{id}", id)
+                        .retrieve()
+                        .toBodilessEntity());
+    }
+
+    private static String blankToNull(String value) {
+        return value == null || value.isBlank() ? null : value;
+    }
+
     public void deleteCaseIdentityLink(
             EngineConfig engine, CallPriority priority, String caseInstanceId, String user, String type) {
         String id = GuardedCaller.safeId(caseInstanceId);

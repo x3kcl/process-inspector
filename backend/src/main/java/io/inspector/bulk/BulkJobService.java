@@ -105,6 +105,9 @@ public class BulkJobService {
      */
     private static final Set<ActionVerb> DESTRUCTIVE_BULK_VERBS = Set.of(ActionVerb.TERMINATE_DELETE);
 
+    private static final Set<ActionVerb> HISTORY_VERBS =
+            Set.of(ActionVerb.DELETE_HISTORY, ActionVerb.DELETE_CASE_HISTORY);
+
     private static final int DLQ_JOBS_PER_INSTANCE_CAP = 20;
 
     private final BulkJobRepository jobs;
@@ -251,6 +254,23 @@ public class BulkJobService {
                 DESTRUCTIVE_BULK_VERBS,
                 "Destructive bulk supports terminate-delete only (delete-deadletter-at-scale is a"
                         + " documented fast-follow). Nothing happened.");
+    }
+
+    /** Completed-history deletes. Cap is the filter cap. Per-id dispatch, Stop already cancels the next item. */
+    BulkDtos.BulkJobDto submitHousekeeping(
+            BulkDtos.BulkSubmitRequest request,
+            Authentication auth,
+            Map<String, Object> extraEnvelopePayload,
+            String scopeLabel) {
+        return submit(
+                request,
+                auth,
+                extraEnvelopePayload,
+                BulkJob.FILTER_ITEM_CAP,
+                BulkJob.ScopeKind.FILTER,
+                scopeLabel,
+                HISTORY_VERBS,
+                "Housekeeping supports delete-history and delete-case-history. Nothing happened.");
     }
 
     private BulkDtos.BulkJobDto submit(
@@ -886,7 +906,8 @@ public class BulkJobService {
         if ("job-gone".equals(e.code())
                 || "instance-not-running".equals(e.code())
                 || "task-gone".equals(e.code())
-                || "task-not-active".equals(e.code())) {
+                || "task-not-active".equals(e.code())
+                || "history-gone".equals(e.code())) {
             return BulkJobItem.State.skipped;
         }
         if ("instance-protected".equals(e.code())) {
@@ -1090,6 +1111,17 @@ public class BulkJobService {
                                 null,
                                 "instance is " + (suspended ? "suspended" : "active") + " — the " + verb.path()
                                         + " likely did not apply; still-pending");
+            }
+            case DELETE_HISTORY -> {
+                Map<String, Object> row =
+                        client.getHistoricProcessInstance(engine, CallPriority.HOUSEKEEPING, item.getInstanceId());
+                if (row == null) {
+                    return new Verdict(BulkJobItem.State.ok, "verified: historic instance is gone");
+                }
+                if (row.get("endTime") == null) {
+                    return new Verdict(null, "instance is still running");
+                }
+                return new Verdict(null, "historic instance is still present");
             }
             case REASSIGN_TASK, UNASSIGN_TASK -> {
                 if (item.getJobRef() == null) {
