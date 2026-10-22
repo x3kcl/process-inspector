@@ -3,6 +3,8 @@ package io.inspector.client;
 import io.inspector.client.GuardedCaller.CallPriority;
 import io.inspector.config.EngineApiContexts;
 import io.inspector.config.InspectorProperties.EngineConfig;
+import java.time.Instant;
+import java.util.List;
 import java.util.Map;
 import org.springframework.http.MediaType;
 import org.springframework.stereotype.Component;
@@ -137,6 +139,230 @@ public class CmmnApiClient {
         }
     }
 
+    @SuppressWarnings("unchecked")
+    public List<Map<String, Object>> listCaseIdentityLinks(
+            EngineConfig engine, CallPriority priority, String caseInstanceId) {
+        String id = GuardedCaller.safeId(caseInstanceId);
+        try {
+            List<Map<String, Object>> rows = guarded.call(
+                    engine,
+                    priority,
+                    () -> guarded.readClient(engine)
+                            .get()
+                            .uri(cmmnApiBase(engine) + "/cmmn-runtime/case-instances/{id}/identitylinks", id)
+                            .retrieve()
+                            .body(List.class));
+            return rows == null ? List.of() : rows;
+        } catch (HttpClientErrorException.NotFound e) {
+            return List.of();
+        }
+    }
+
+    public void addCaseIdentityLink(
+            EngineConfig engine, CallPriority priority, String caseInstanceId, String user, String type) {
+        String id = GuardedCaller.safeId(caseInstanceId);
+        guarded.run(
+                engine,
+                priority,
+                "add-participant",
+                () -> guarded.writeClient(engine)
+                        .post()
+                        .uri(cmmnApiBase(engine) + "/cmmn-runtime/case-instances/{id}/identitylinks", id)
+                        .contentType(MediaType.APPLICATION_JSON)
+                        .body(Map.of("user", user, "type", type))
+                        .retrieve()
+                        .toBodilessEntity());
+    }
+
+    public FlowablePage listFinishedCases(
+            EngineConfig engine,
+            CallPriority priority,
+            String definitionKey,
+            String businessKey,
+            String finishedBefore,
+            int start,
+            int size) {
+        return guarded.call(
+                engine,
+                priority,
+                () -> guarded.readClient(engine)
+                        .get()
+                        .uri(UriComponentsBuilder.fromUriString(
+                                        cmmnApiBase(engine) + "/cmmn-history/historic-case-instances")
+                                .queryParam("finished", "true")
+                                .queryParam("finishedBefore", finishedBefore)
+                                .queryParam("size", size)
+                                .queryParam("start", start)
+                                .queryParamIfPresent(
+                                        "caseDefinitionKey", java.util.Optional.ofNullable(blankToNull(definitionKey)))
+                                .queryParamIfPresent(
+                                        "businessKey", java.util.Optional.ofNullable(blankToNull(businessKey)))
+                                .build(true)
+                                .toUri())
+                        .retrieve()
+                        .body(FlowablePage.class));
+    }
+
+    /** DELETE historic case. This route takes no delete reason. */
+    public void deleteHistoricCase(EngineConfig engine, CallPriority priority, String caseInstanceId) {
+        String id = GuardedCaller.safeId(caseInstanceId);
+        guarded.run(
+                engine,
+                priority,
+                "delete-case-history",
+                () -> guarded.writeClient(engine)
+                        .delete()
+                        .uri(cmmnApiBase(engine) + "/cmmn-history/historic-case-instances/{id}", id)
+                        .retrieve()
+                        .toBodilessEntity());
+    }
+
+    private static String blankToNull(String value) {
+        return value == null || value.isBlank() ? null : value;
+    }
+
+    public void planItemAction(EngineConfig engine, CallPriority priority, String planItemInstanceId, String action) {
+        String id = GuardedCaller.safeId(planItemInstanceId);
+        guarded.run(
+                engine,
+                priority,
+                "plan-item-" + action,
+                () -> guarded.writeClient(engine)
+                        .put()
+                        .uri(cmmnApiBase(engine) + "/cmmn-runtime/plan-item-instances/{id}", id)
+                        .contentType(MediaType.APPLICATION_JSON)
+                        .body(Map.of("action", action))
+                        .retrieve()
+                        .toBodilessEntity());
+    }
+
+    public void changePlanItemState(
+            EngineConfig engine, CallPriority priority, String caseInstanceId, String definitionId, String action) {
+        String id = GuardedCaller.safeId(caseInstanceId);
+        String field =
+                switch (action) {
+                    case "activate" -> "activatePlanItemDefinitionIds";
+                    case "available" -> "moveToAvailablePlanItemDefinitionIds";
+                    case "terminate" -> "terminatePlanItemDefinitionIds";
+                    default -> throw new IllegalArgumentException(action);
+                };
+        guarded.run(
+                engine,
+                priority,
+                "change-plan-item",
+                () -> guarded.writeClient(engine)
+                        .post()
+                        .uri(cmmnApiBase(engine) + "/cmmn-runtime/case-instances/{id}/change-state", id)
+                        .contentType(MediaType.APPLICATION_JSON)
+                        .body(Map.of(field, List.of(definitionId)))
+                        .retrieve()
+                        .toBodilessEntity());
+    }
+
+    public void terminateCase(EngineConfig engine, CallPriority priority, String caseInstanceId) {
+        String id = GuardedCaller.safeId(caseInstanceId);
+        guarded.run(
+                engine,
+                priority,
+                "terminate-case",
+                () -> guarded.writeClient(engine)
+                        .delete()
+                        .uri(cmmnApiBase(engine) + "/cmmn-runtime/case-instances/{id}", id)
+                        .retrieve()
+                        .toBodilessEntity());
+    }
+
+    public void deleteCase(EngineConfig engine, CallPriority priority, String caseInstanceId) {
+        String id = GuardedCaller.safeId(caseInstanceId);
+        guarded.run(
+                engine,
+                priority,
+                "delete-case",
+                () -> guarded.writeClient(engine)
+                        .delete()
+                        .uri(cmmnApiBase(engine) + "/cmmn-runtime/case-instances/{id}/delete", id)
+                        .retrieve()
+                        .toBodilessEntity());
+    }
+
+    @SuppressWarnings("unchecked")
+    public List<Map<String, Object>> listCaseVariables(
+            EngineConfig engine, CallPriority priority, String caseInstanceId) {
+        String id = GuardedCaller.safeId(caseInstanceId);
+        try {
+            List<Map<String, Object>> rows = guarded.call(
+                    engine,
+                    priority,
+                    () -> guarded.readClient(engine)
+                            .get()
+                            .uri(cmmnApiBase(engine) + "/cmmn-runtime/case-instances/{id}/variables", id)
+                            .retrieve()
+                            .body(List.class));
+            return rows == null ? List.of() : rows;
+        } catch (HttpClientErrorException.NotFound e) {
+            return List.of();
+        }
+    }
+
+    @SuppressWarnings("unchecked")
+    public Map<String, Object> getCaseVariable(
+            EngineConfig engine, CallPriority priority, String caseInstanceId, String name) {
+        String id = GuardedCaller.safeId(caseInstanceId);
+        try {
+            return guarded.call(
+                    engine,
+                    priority,
+                    () -> guarded.readClient(engine)
+                            .get()
+                            .uri(cmmnApiBase(engine) + "/cmmn-runtime/case-instances/{id}/variables/{name}", id, name)
+                            .retrieve()
+                            .body(Map.class));
+        } catch (HttpClientErrorException.NotFound e) {
+            return null;
+        }
+    }
+
+    public void putCaseVariable(
+            EngineConfig engine, CallPriority priority, String caseInstanceId, String name, String type, Object value) {
+        String id = GuardedCaller.safeId(caseInstanceId);
+        Map<String, Object> body = new java.util.LinkedHashMap<>();
+        body.put("name", name);
+        if (type != null) {
+            body.put("type", type);
+        }
+        body.put("value", value);
+        guarded.run(
+                engine,
+                priority,
+                "edit-case-variable",
+                () -> guarded.writeClient(engine)
+                        .put()
+                        .uri(cmmnApiBase(engine) + "/cmmn-runtime/case-instances/{id}/variables/{name}", id, name)
+                        .contentType(MediaType.APPLICATION_JSON)
+                        .body(body)
+                        .retrieve()
+                        .toBodilessEntity());
+    }
+
+    public void deleteCaseIdentityLink(
+            EngineConfig engine, CallPriority priority, String caseInstanceId, String user, String type) {
+        String id = GuardedCaller.safeId(caseInstanceId);
+        guarded.run(
+                engine,
+                priority,
+                "remove-participant",
+                () -> guarded.writeClient(engine)
+                        .delete()
+                        .uri(
+                                cmmnApiBase(engine)
+                                        + "/cmmn-runtime/case-instances/{id}/identitylinks/users/{user}/{type}",
+                                id,
+                                user,
+                                type)
+                        .retrieve()
+                        .toBodilessEntity());
+    }
+
     /**
      * GET /cmmn-api/cmmn-history/historic-case-instances/{id} — an ENDED case by id (completed or
      * terminated), so a resolve of a finished case is answered truthfully rather than as "not
@@ -182,6 +408,30 @@ public class CmmnApiClient {
                 priority,
                 () -> guarded.readClient(engine).get().uri(uri).retrieve().body(FlowablePage.class));
         return page != null ? page.total() : 0;
+    }
+
+    /** Cases started in the window. Null when the CMMN history route is missing (pre-6.8). */
+    public Long countCasesStarted(EngineConfig engine, CallPriority priority, Instant after, Instant before) {
+        String afterIso =
+                after.truncatedTo(java.time.temporal.ChronoUnit.SECONDS).toString();
+        String beforeIso =
+                before.truncatedTo(java.time.temporal.ChronoUnit.SECONDS).toString();
+        java.net.URI uri = UriComponentsBuilder.fromUriString(
+                        cmmnApiBase(engine) + "/cmmn-history/historic-case-instances")
+                .queryParam("size", 1)
+                .queryParam("startedAfter", afterIso)
+                .queryParam("startedBefore", beforeIso)
+                .build()
+                .toUri();
+        try {
+            FlowablePage page = guarded.call(
+                    engine,
+                    priority,
+                    () -> guarded.readClient(engine).get().uri(uri).retrieve().body(FlowablePage.class));
+            return page != null ? page.total() : 0L;
+        } catch (org.springframework.web.client.HttpClientErrorException.NotFound e) {
+            return null;
+        }
     }
 
     /**
@@ -268,6 +518,7 @@ public class CmmnApiClient {
         guarded.run(
                 engine,
                 priority,
+                "move-cmmn-deadletter",
                 () -> guarded.writeClient(engine)
                         .post()
                         .uri(cmmnApiBase(engine) + "/cmmn-management/deadletter-jobs/{id}", id)
@@ -284,11 +535,51 @@ public class CmmnApiClient {
      * differs (the {@code /cmmn-api} context is a sibling of {@code /service}, so this builds an
      * absolute URI). Callers capability-gate ({@code scopeType}, ≥ 6.8) first.
      */
+    /**
+     * GET /cmmn-repository/case-definitions — catalog sibling of the process-definition list.
+     * Callers capability-gate ({@code scopeType}, ≥ 6.8) first.
+     */
+    public FlowablePage listCaseDefinitions(
+            EngineConfig engine, CallPriority priority, String key, String nameLike, Boolean latest, int size) {
+        UriComponentsBuilder b = UriComponentsBuilder.fromUriString(
+                        cmmnApiBase(engine) + "/cmmn-repository/case-definitions")
+                .queryParam("size", size);
+        if (key != null && !key.isBlank()) {
+            b.queryParam("key", key);
+        }
+        if (nameLike != null && !nameLike.isBlank()) {
+            b.queryParam("nameLike", nameLike);
+        }
+        if (latest != null) {
+            b.queryParam("latest", latest);
+        }
+        java.net.URI uri = b.build().toUri();
+        return guarded.call(
+                engine,
+                priority,
+                () -> guarded.readClient(engine).get().uri(uri).retrieve().body(FlowablePage.class));
+    }
+
+    /** Count-only running cases on one case definition ({@code size=1}, read {@code total}). */
+    public long countRunningCases(EngineConfig engine, CallPriority priority, String caseDefinitionId) {
+        java.net.URI uri = UriComponentsBuilder.fromUriString(cmmnApiBase(engine) + "/cmmn-runtime/case-instances")
+                .queryParam("caseDefinitionId", caseDefinitionId)
+                .queryParam("size", 1)
+                .build()
+                .toUri();
+        FlowablePage page = guarded.call(
+                engine,
+                priority,
+                () -> guarded.readClient(engine).get().uri(uri).retrieve().body(FlowablePage.class));
+        return page != null ? page.total() : 0;
+    }
+
     public void deleteCmmnDeadLetterJob(EngineConfig engine, CallPriority priority, String jobId) {
         String id = GuardedCaller.safeId(jobId);
         guarded.run(
                 engine,
                 priority,
+                "delete-cmmn-deadletter",
                 () -> guarded.writeClient(engine)
                         .delete()
                         .uri(cmmnApiBase(engine) + "/cmmn-management/deadletter-jobs/{id}", id)

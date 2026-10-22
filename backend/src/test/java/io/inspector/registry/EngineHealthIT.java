@@ -94,6 +94,8 @@ class EngineHealthIT {
         JsonNode lanes = dto.get("jobLanes");
         assertThat(lanes.get("deadletter").asLong()).isGreaterThanOrEqualTo(1);
         assertThat(lanes.get("executable").asLong()).isGreaterThanOrEqualTo(0);
+        assertThat(lanes.get("history").asLong()).isGreaterThanOrEqualTo(0);
+        assertThat(dto.get("adviceLevel").asText()).isIn("OK", "WARN", "CRIT");
 
         // Alarm legs answered without a 400. Not asserted zero: a loaded runner can hold
         // a past-due retry timer beyond the 60s grace — the contract here is that the

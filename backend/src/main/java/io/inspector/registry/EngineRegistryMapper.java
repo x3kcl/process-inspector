@@ -65,7 +65,8 @@ public final class EngineRegistryMapper {
                 AuditPayloadMode.fromWire(row.getAuditPayload()),
                 row.isForwardUser(),
                 null, // deepPagingMaxDepth: not a registry column — the 5000 default applies
-                row.getLifecycle()); // W1#4: the true lifecycle survives onto the display surface
+                row.getLifecycle(),
+                row.getMetricsUrl());
     }
 
     /**
@@ -112,6 +113,7 @@ public final class EngineRegistryMapper {
 
         row.setAuditPayload(engine.auditPayloadOrDefault().wire());
         row.setForwardUser(engine.forwardUser());
+        row.setMetricsUrl(engine.metricsUrl());
         row.setCreatedAt(now);
         row.setUpdatedAt(now);
         row.setSource(SOURCE_YAML_SEED);
