@@ -22,7 +22,7 @@ import org.testcontainers.containers.PostgreSQLContainer;
  * AuditEntryRepository#findLogScoped} is hand-authored JPQL with a correlated {@code engineId IN
  * (...)} predicate — proving it actually filters (as opposed to merely proving the controller
  * calls it with the right arguments, which the mocked-repository {@code AuditScopeApiSpringTest}
- * covers) needs a REAL Postgres. LOCAL-ONLY (not in ci.yml's itClass), like {@link
+ * covers) needs a REAL Postgres. LOCAL-ONLY relative to ci.yml, nightly {@code container-its}, like {@link
  * AuditRetentionPurgerIT} / {@link AuditRoleGrantsIT}.
  *
  * <p>Requires: docker compose -f docker/docker-compose.dev.yml up -d (context boot only — no

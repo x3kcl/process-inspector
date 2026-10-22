@@ -55,8 +55,8 @@ import org.testcontainers.containers.PostgreSQLContainer;
  * <p>Real engine timing, not a fixed sleep: each spell's heal-to-completion leg is dominated by
  * the async executor's acquire-poll lag (proven live, 2026-08-04: ~15-45s per leg on this
  * harness, independent of the nominal retry-cycle interval), so this arc runs several minutes
- * end to end. LOCAL-ONLY (failsafe *IT, it-actions family — not in ci.yml's itClass, same as
- * {@code IncidentLedgerArcIT}).
+ * end to end. LOCAL-ONLY relative to ci.yml (failsafe *IT, it-actions family, same as
+ * {@code IncidentLedgerArcIT}). Nightly {@code engine-its}.
  *
  * <p>Requires: docker compose -f docker/docker-compose.dev.yml up -d (flowable-6 profile)
  */

@@ -32,6 +32,8 @@ jobs:
         run: ./scripts/shell-syntax-check.sh
       - name: Prometheus alert rules
         run: bash scripts/check-alert-rules.sh
+      - name: Orphan integration-test guard
+        run: bash scripts/check-orphan-its.sh
 
   unit:
     runs-on: self-hosted
@@ -46,6 +48,13 @@ jobs:
       - name: Unit ladder (rungs 1-3 + ArchUnit sleep ban)
         working-directory: backend
         run: mvn -B test
+      - name: Upload JaCoCo report
+        if: success()
+        uses: actions/upload-artifact@v7
+        with:
+          name: jacoco-report
+          path: backend/target/site/jacoco/jacoco.xml
+          retention-days: 14
 
   frontend:
     runs-on: self-hosted
@@ -94,8 +103,15 @@ jobs:
         run: npm run lint
       - name: Format check (Prettier — hard failure, SPEC §10)
         run: npm run format:check
-      - name: Unit tests (vitest)
-        run: npm test
+      - name: Unit tests with coverage floors (vitest)
+        run: npm run test:coverage
+      - name: Upload vitest coverage summary
+        if: success()
+        uses: actions/upload-artifact@v7
+        with:
+          name: frontend-coverage
+          path: frontend/coverage/coverage-summary.json
+          retention-days: 14
       - name: Build (watermark + no-enterprise guards + tsc + vite)
         run: npm run build
       # ---- OpenAPI drift gate (R-SEM-15): cross-language drift is a CI failure. ----

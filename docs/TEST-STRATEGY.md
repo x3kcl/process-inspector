@@ -13,18 +13,27 @@ Test depth follows product risk, not code size:
 | R3 | **Bulk outcomes** | every outcome class (`ok/failed/skipped/skipped-protected/unknown/not_run`) produced by an automated test; timeout→UNKNOWN never re-fired; INTERRUPTED reconciliation |
 | R4 | **UI flows** | Playwright smoke of FIND→ORIENT→DIAGNOSE→FIX→VERIFY, ≤10 min in PR CI; axe accessibility checks hard-fail |
 
-**Backend line coverage ≥80%, frontend logic ≥70% are aspirational floors, not yet CI-gated**
-(test-support consolidation, Q8, issue #90 — this line previously claimed "measured and gating
-from M3," which was never true: no tool anywhere in the repo measured either number before
-2026-07-12). Both are now MEASURED, report-only: `mvn test` produces a jacoco report at
-`backend/target/site/jacoco/index.html`; `npm run test:coverage` produces one via
-`@vitest/coverage-v8` under `frontend/coverage/`. Neither is wired into the default `mvn
-test`/`npm test` CI steps or gated with a `check` rule — as of 2026-07-12, UNIT-ONLY coverage
-(the `mvn test`/`npm test` scope; the dockerized `*IT` suite adds meaningfully more but isn't
-measured here) sits at **~66% backend lines, ~38% frontend lines** — well under both floors, so
-gating on either today would break every build. The R1–R4 rows above remain the actually-enforced
-discipline: risk-ranked, individually curated test matrices per area, not a blanket percentage.
-Turning either floor into a real gate is tracked as follow-up work, informed by these baselines.
+**Backend line coverage and frontend coverage are CI gates** (issue #463), set a small margin
+under the 2026-10-22 unit-scope measurement so a one-line miss does not flake the build:
+
+| Gate | Measured 2026-10-22 | Floor |
+|---|---|---|
+| Backend bundle, `mvn test` | 67.9% line / 58.3% branch | 65% line / 56% branch (`jacoco:check` in the `unit` job) |
+| Backend packages already ≥80% line | surgery, config, dto, attention, sibling, stream, bulk, incident, diag, audit, selfheal, ops | 75% line each. Packages under the bundle floor have no package rule (#464) |
+| Frontend, `npm run test:coverage` | 57.3% line / 47.4% branch (2026-10-22, after the `queries.ts` and `EditorPanel` tests) | 55% line / 45% branch / 44% functions / 54% statements. `queries.ts` lines ≥90, `EditorPanel.tsx` lines ≥70 |
+
+**Ratchet.** A PR that raises a measured number raises the matching floor in the same PR.
+A floor is not lowered to land a change. The 80% backend / 70% frontend figures above the
+table stay the risk-ranked aspiration; they are not the gate, because several packages
+(`SearchService`'s home `io.inspector.aggregate`, `io.inspector.client`, `io.inspector.security.mapping`)
+are still well under them and a bundle floor at 80% would fail every build. `jacoco.xml` and
+`frontend/coverage/coverage-summary.json` are CI artifacts. `scripts/ci-dashboard-push.sh`
+copies the two line totals into `status.json` as a sparkline (one point per green `ci` run
+on main, and one per green nightly). The trend is visible after three of those samples.
+
+Both reports are unit-scope. The dockerized `*IT` suite adds coverage that is not in these
+numbers. `mvn test` runs `jacoco:check`; `npm test` does not (the frontend CI job runs
+`npm run test:coverage`).
 
 ## 2. Milestone gates (R-TEST-02)
 **Entry:** previous exit gate green; required fixtures exist. **Exit:** (a) full suite green on
@@ -203,8 +212,8 @@ column; nightly runs the full cross.
   (FIX-SELFHEAL-01/02, TEST-SCENARIOS §1.1b) — is clock-driven (a non-interrupting boundary
   timer, not a counter, since a variable set inside a failing attempt rolls back with it) and
   opt-in only (`PI_SEED_SELF_HEALING=1`), never part of `seed.sh`'s default path (would shift
-  the fleet the R2/R4 baselines were measured against). The ITs (`SelfHealLikelyLaneIT`/
-  `SelfHealMixedLaneIT`/`SelfHealDwellSuppressionIT`) drive healing/escalation directly over
+  the fleet the R2/R4 baselines were measured against).   The ITs (`SelfHealLikelyLaneIT`/
+  `SelfHealMixedLaneIT`/`SelfHealDwellSuppressionIT`, nightly `engine-its`) drive healing/escalation directly over
   REST instead — Awaitility-bound on real observed engine state, never racing the boundary
   timer's nominal duration — and additionally shrink `inspector.snapshot.bucket-width` (default
   60 s) per-test: the occurrence store upserts one row per `(incident, wall-clock bucket)`, so

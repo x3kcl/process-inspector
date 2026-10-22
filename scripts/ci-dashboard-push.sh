@@ -63,6 +63,10 @@ push_json() {
   if ! bash scripts/ci-status.sh --json > "$tmp" 2>/dev/null || ! jq -e . "$tmp" >/dev/null 2>&1; then
     rm -f "$tmp"; echo "── ci-status.sh --json failed — nothing pushed"; exit 3
   fi
+  # Coverage sparkline is best-effort. A probe without artifacts, or a dashboard host
+  # that is briefly unreachable, still pushes the rest of the snapshot.
+  bash scripts/ci-coverage-attach.sh "$tmp" \
+    || echo "── coverage sparkline skipped"
   # Local cache first (atomic rename): a shell on the probe box can read the same snapshot
   # the wall is showing, even when the rsync to hp02 hiccups.
   cp "$tmp" /tmp/pi-ci-status.json.tmp && mv /tmp/pi-ci-status.json.tmp /tmp/pi-ci-status.json

@@ -57,6 +57,7 @@
   .tile .value { font-size: 21px; font-weight: 600; margin-top: 3px; display: flex; align-items: center; gap: 8px; }
   .tile .hint  { color: var(--text-secondary); font-size: 12px; margin-top: 2px;
                  overflow: hidden; text-overflow: ellipsis; white-space: nowrap; }
+  .spark { color: var(--accent); vertical-align: middle; }
 
   .grid { display: grid; grid-template-columns: 1fr 1fr; gap: 12px; }
   @media (max-width: 860px) { .grid { grid-template-columns: 1fr; } }
@@ -113,6 +114,7 @@
   <div class="tile"><div class="label">Nightly</div><div class="value" id="t-nightly">–</div><div class="hint" id="t-nightly-hint"></div></div>
   <div class="tile"><div class="label">Runner slots</div><div class="value" id="t-slots">–</div><div class="hint" id="t-slots-hint"></div></div>
   <div class="tile"><div class="label">Open PRs</div><div class="value" id="t-prs">–</div><div class="hint" id="t-prs-hint"></div></div>
+  <div class="tile"><div class="label">Coverage</div><div class="value" id="t-cov">–</div><div class="hint" id="t-cov-hint"></div></div>
 </div>
 
 <section><h2>main — head of the default branch</h2><div id="mainbox"></div></section>
@@ -201,6 +203,17 @@ function render(d) {
   const redPrs = (d.prs || []).filter(p => p.gate && p.gate.state === "failure").length;
   $("t-prs-hint").textContent = redPrs ? `${redPrs} with a red gate` : "none red";
 
+  const series = (d.coverage && d.coverage.series) || [];
+  const lastCov = series.length ? series[series.length - 1] : null;
+  if (!lastCov || (lastCov.backendLine == null && lastCov.frontendLine == null)) {
+    $("t-cov").textContent = "–";
+    $("t-cov-hint").textContent = "waiting for a green ci run with coverage artifacts";
+  } else {
+    $("t-cov").innerHTML = `${esc(String(lastCov.backendLine))}% ${sparkline(series, "backendLine")}`;
+    $("t-cov-hint").textContent =
+      `backend line · frontend ${lastCov.frontendLine}% · ${series.length} sample${series.length === 1 ? "" : "s"}`;
+  }
+
   // ── main ─────────────────────────────────────────────────────────────────────────
   $("mainbox").innerHTML =
     `<div><span class="mono">${esc(d.main.sha)}</span> ${esc(d.main.subject)}</div>
@@ -261,6 +274,22 @@ function render(d) {
 }
 
 let last = null;
+
+function sparkline(series, key) {
+  const vals = series.map(p => p[key]).filter(v => typeof v === "number");
+  if (vals.length < 2) return "";
+  const min = Math.min(...vals);
+  const max = Math.max(...vals);
+  const w = 88;
+  const h = 22;
+  const pts = vals.map((v, i) => {
+    const x = (i / (vals.length - 1)) * w;
+    const y = h - 2 - ((v - min) / ((max - min) || 1)) * (h - 4);
+    return `${x.toFixed(1)},${y.toFixed(1)}`;
+  }).join(" ");
+  return `<svg class="spark" viewBox="0 0 ${w} ${h}" width="${w}" height="${h}" aria-hidden="true"><polyline fill="none" stroke="currentColor" stroke-width="1.5" points="${pts}"/></svg>`;
+}
+
 async function tick() {
   try {
     const r = await fetch("status.json", { cache: "no-store" });
