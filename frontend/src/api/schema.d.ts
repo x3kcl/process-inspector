@@ -613,6 +613,22 @@ export interface paths {
         patch?: never;
         trace?: never;
     };
+    "/api/cases/{engineId}/{caseInstanceId}/variables": {
+        parameters: {
+            query?: never;
+            header?: never;
+            path?: never;
+            cookie?: never;
+        };
+        get: operations["variables_1"];
+        put?: never;
+        post?: never;
+        delete?: never;
+        options?: never;
+        head?: never;
+        patch?: never;
+        trace?: never;
+    };
     "/api/definitions": {
         parameters: {
             query?: never;
@@ -1754,6 +1770,7 @@ export interface components {
             jobId?: string;
             jobLane?: string;
             link?: components["schemas"]["IdentityLink"];
+            plan?: components["schemas"]["PlanItemChange"];
             reason?: string;
             task?: components["schemas"]["TaskPatch"];
             taskId?: string;
@@ -3026,6 +3043,11 @@ export interface components {
                 [key: string]: components["schemas"]["EngineResult"];
             };
             rows?: components["schemas"]["PersonTaskRow"][];
+        };
+        PlanItemChange: {
+            action?: string;
+            definitionId?: string;
+            planItemInstanceId?: string;
         };
         Point: {
             /** Format: int64 */
@@ -4527,6 +4549,31 @@ export interface operations {
                 };
                 content: {
                     "*/*": components["schemas"]["CasePlanItems"];
+                };
+            };
+        };
+    };
+    variables_1: {
+        parameters: {
+            query?: never;
+            header?: never;
+            path: {
+                engineId: string;
+                caseInstanceId: string;
+            };
+            cookie?: never;
+        };
+        requestBody?: never;
+        responses: {
+            /** @description OK */
+            200: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "*/*": {
+                        [key: string]: unknown;
+                    }[];
                 };
             };
         };

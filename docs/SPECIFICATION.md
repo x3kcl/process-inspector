@@ -1004,8 +1004,7 @@ two dead-letter verbs a co-deployed CMMN case needs — **Retry job** (tier 0 / 
 dead-letter job in the case's "why-stuck" panel, capability-gated on `scopeType` (Flowable ≥ 6.8 —
 older engines are dead-letter-blind on the cmmn context, greyed never hidden). Retry is a tier-0
 inline confirm; delete is a tier-3 typed-confirm modal (required reason ≥ 10 chars; on prod, the
-typed token = the job id) whose blast-radius copy is scope-honest — a CMMN case has **no
-change-state rescue** in this tool, so deleting a dead-letter job orphans its plan item for good.
+typed token = the job id) whose blast-radius copy is scope-honest — deleting a dead-letter job orphans its plan item; the rescue is `change-plan-item`. Also on the case route: `plan-item-action` (trigger/enable/disable), `change-plan-item` (activate/available/terminate, ADMIN on prod), `terminate-case` and `delete-case` (tier 3, no engine delete reason), and `edit-case-variable` (compare-and-set). See `docs/CMMN-CASE-DETAIL-PHASE-2.md`.
 Only the two scope seams differ from BPMN: the server-fresh restatement reads the job by-id from
 the `/cmmn-management` DLQ (cap-free) and keys ownership on `caseInstanceId`, and the one engine
 call is the `/cmmn-management/deadletter-jobs/{id}` sibling — `POST … {"action":"move"}` for retry,

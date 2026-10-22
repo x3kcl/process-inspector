@@ -30,7 +30,46 @@ public record ActionRequest(
         String jobLane,
         TaskPatch task,
         IdentityLink link,
-        String effectiveAt) {
+        String effectiveAt,
+        PlanItemChange plan) {
+
+    /** Pre-#489 body. plan stays null. */
+    public ActionRequest(
+            String reason,
+            String ticketId,
+            String confirmToken,
+            String jobId,
+            String taskId,
+            String executionId,
+            VariableEdit variable,
+            List<TypedVariable> variables,
+            EventTrigger event,
+            Boolean includeProcessInstances,
+            String assignee,
+            String dueDate,
+            String jobLane,
+            TaskPatch task,
+            IdentityLink link,
+            String effectiveAt) {
+        this(
+                reason,
+                ticketId,
+                confirmToken,
+                jobId,
+                taskId,
+                executionId,
+                variable,
+                variables,
+                event,
+                includeProcessInstances,
+                assignee,
+                dueDate,
+                jobLane,
+                task,
+                link,
+                effectiveAt,
+                null);
+    }
 
     /** Pre-#486 body. task and link stay null. */
     public ActionRequest(
@@ -159,6 +198,12 @@ public record ActionRequest(
      */
     public record TaskPatch(
             String name, String description, String owner, String dueDate, Integer priority, String category) {}
+
+    /**
+     * CMMN plan-item edit. {@code action} is {@code trigger|enable|disable} on an instance, or
+     * {@code activate|available|terminate} on a plan-item definition.
+     */
+    public record PlanItemChange(String planItemInstanceId, String definitionId, String action) {}
 
     /** Identity link on a task. {@code family} is {@code users} or {@code groups}. */
     public record IdentityLink(String family, String identityId, String type) {}

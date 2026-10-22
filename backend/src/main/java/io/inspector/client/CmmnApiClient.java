@@ -221,6 +221,129 @@ public class CmmnApiClient {
         return value == null || value.isBlank() ? null : value;
     }
 
+    public void planItemAction(EngineConfig engine, CallPriority priority, String planItemInstanceId, String action) {
+        String id = GuardedCaller.safeId(planItemInstanceId);
+        guarded.run(
+                engine,
+                priority,
+                "plan-item-" + action,
+                () -> guarded.writeClient(engine)
+                        .put()
+                        .uri(cmmnApiBase(engine) + "/cmmn-runtime/plan-item-instances/{id}", id)
+                        .contentType(MediaType.APPLICATION_JSON)
+                        .body(Map.of("action", action))
+                        .retrieve()
+                        .toBodilessEntity());
+    }
+
+    public void changePlanItemState(
+            EngineConfig engine, CallPriority priority, String caseInstanceId, String definitionId, String action) {
+        String id = GuardedCaller.safeId(caseInstanceId);
+        String field =
+                switch (action) {
+                    case "activate" -> "activatePlanItemDefinitionIds";
+                    case "available" -> "moveToAvailablePlanItemDefinitionIds";
+                    case "terminate" -> "terminatePlanItemDefinitionIds";
+                    default -> throw new IllegalArgumentException(action);
+                };
+        guarded.run(
+                engine,
+                priority,
+                "change-plan-item",
+                () -> guarded.writeClient(engine)
+                        .post()
+                        .uri(cmmnApiBase(engine) + "/cmmn-runtime/case-instances/{id}/change-state", id)
+                        .contentType(MediaType.APPLICATION_JSON)
+                        .body(Map.of(field, List.of(definitionId)))
+                        .retrieve()
+                        .toBodilessEntity());
+    }
+
+    public void terminateCase(EngineConfig engine, CallPriority priority, String caseInstanceId) {
+        String id = GuardedCaller.safeId(caseInstanceId);
+        guarded.run(
+                engine,
+                priority,
+                "terminate-case",
+                () -> guarded.writeClient(engine)
+                        .delete()
+                        .uri(cmmnApiBase(engine) + "/cmmn-runtime/case-instances/{id}", id)
+                        .retrieve()
+                        .toBodilessEntity());
+    }
+
+    public void deleteCase(EngineConfig engine, CallPriority priority, String caseInstanceId) {
+        String id = GuardedCaller.safeId(caseInstanceId);
+        guarded.run(
+                engine,
+                priority,
+                "delete-case",
+                () -> guarded.writeClient(engine)
+                        .delete()
+                        .uri(cmmnApiBase(engine) + "/cmmn-runtime/case-instances/{id}/delete", id)
+                        .retrieve()
+                        .toBodilessEntity());
+    }
+
+    @SuppressWarnings("unchecked")
+    public List<Map<String, Object>> listCaseVariables(
+            EngineConfig engine, CallPriority priority, String caseInstanceId) {
+        String id = GuardedCaller.safeId(caseInstanceId);
+        try {
+            List<Map<String, Object>> rows = guarded.call(
+                    engine,
+                    priority,
+                    () -> guarded.readClient(engine)
+                            .get()
+                            .uri(cmmnApiBase(engine) + "/cmmn-runtime/case-instances/{id}/variables", id)
+                            .retrieve()
+                            .body(List.class));
+            return rows == null ? List.of() : rows;
+        } catch (HttpClientErrorException.NotFound e) {
+            return List.of();
+        }
+    }
+
+    @SuppressWarnings("unchecked")
+    public Map<String, Object> getCaseVariable(
+            EngineConfig engine, CallPriority priority, String caseInstanceId, String name) {
+        String id = GuardedCaller.safeId(caseInstanceId);
+        try {
+            return guarded.call(
+                    engine,
+                    priority,
+                    () -> guarded.readClient(engine)
+                            .get()
+                            .uri(cmmnApiBase(engine) + "/cmmn-runtime/case-instances/{id}/variables/{name}", id, name)
+                            .retrieve()
+                            .body(Map.class));
+        } catch (HttpClientErrorException.NotFound e) {
+            return null;
+        }
+    }
+
+    public void putCaseVariable(
+            EngineConfig engine, CallPriority priority, String caseInstanceId, String name, String type, Object value) {
+        String id = GuardedCaller.safeId(caseInstanceId);
+        Map<String, Object> body = new java.util.LinkedHashMap<>();
+        body.put("name", name);
+        if (type != null) {
+            body.put("type", type);
+        }
+        body.put("value", value);
+        guarded.run(
+                engine,
+                priority,
+                "edit-case-variable",
+                () -> guarded.writeClient(engine)
+                        .put()
+                        .uri(cmmnApiBase(engine) + "/cmmn-runtime/case-instances/{id}/variables/{name}", id, name)
+                        .contentType(MediaType.APPLICATION_JSON)
+                        .body(body)
+                        .retrieve()
+                        .toBodilessEntity());
+    }
+
     public void deleteCaseIdentityLink(
             EngineConfig engine, CallPriority priority, String caseInstanceId, String user, String type) {
         String id = GuardedCaller.safeId(caseInstanceId);
