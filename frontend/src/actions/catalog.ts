@@ -217,6 +217,27 @@ export const VERBS = {
     reversibilityNote: 'compensating verb: add participant',
     externalSideEffects: false,
   },
+  deleteHistory: {
+    verb: 'delete-history',
+    label: 'Delete history',
+    plain: 'erase the finished history of these cases',
+    tier: 3,
+    roleFloor: 'ADMIN',
+    reversibility: 'IRREVERSIBLE',
+    reversibilityNote: 'historic rows are destroyed — there is no undo',
+    externalSideEffects: true,
+  },
+  deleteCaseHistory: {
+    verb: 'delete-case-history',
+    label: 'Delete case history',
+    plain: 'erase the finished history of these CMMN cases',
+    tier: 3,
+    roleFloor: 'ADMIN',
+    reversibility: 'IRREVERSIBLE',
+    reversibilityNote:
+      'historic case rows are destroyed — the engine route stores no delete reason',
+    externalSideEffects: true,
+  },
   deleteTask: {
     verb: 'delete-task',
     label: 'Delete task',

@@ -47,6 +47,9 @@ const JobsExplorerPage = lazy(() =>
 const AdminAccessPage = lazy(() =>
   import('./admin/AdminAccessPage').then((m) => ({ default: m.AdminAccessPage })),
 )
+const HousekeepingPage = lazy(() =>
+  import('./admin/HousekeepingPage').then((m) => ({ default: m.HousekeepingPage })),
+)
 const DefinitionVersionsPage = lazy(() =>
   import('./inspect/DefinitionVersionsPage').then((m) => ({ default: m.DefinitionVersionsPage })),
 )
@@ -144,6 +147,11 @@ const router = createBrowserRouter([
         errorElement: chunkErrorElement,
       },
       { path: 'audit', element: lazyRoute(<AuditLogPage />), errorElement: chunkErrorElement },
+      {
+        path: 'admin/housekeeping',
+        element: lazyRoute(<HousekeepingPage />),
+        errorElement: chunkErrorElement,
+      },
       {
         path: 'admin/engines',
         element: lazyRoute(<AdminEnginesPage />),

@@ -456,6 +456,8 @@ public class CorrectiveActionService {
                         DELETE_TASK ->
                     taskAdminTarget(engine, verb, targetId, required(request.taskId(), "taskId"), request);
                 case ADD_PARTICIPANT, REMOVE_PARTICIPANT -> participantTarget(engine, targetId, request, verb, false);
+                case DELETE_HISTORY -> historyTarget(engine, targetId, false);
+                case DELETE_CASE_HISTORY -> historyTarget(engine, targetId, true);
                 case UNSTICK_EVENT -> executionTarget(engine, targetId, request);
                 case SUSPEND_DEFINITION, ACTIVATE_DEFINITION -> definitionTarget(engine, targetId, request);
             };
@@ -731,6 +733,29 @@ public class CorrectiveActionService {
         }
         String token = verb == ActionVerb.DELETE_TASK ? taskId : null;
         return new Target(payload, token, "task id", null, definitionKeyOf(task.get("processDefinitionId")));
+    }
+
+    private Target historyTarget(EngineConfig engine, String id, boolean cmmn) {
+        Map<String, Object> row = cmmn
+                ? cmmnClient.getHistoricCmmnCaseInstance(engine, CallPriority.HOUSEKEEPING, id)
+                : client.getHistoricProcessInstance(engine, CallPriority.HOUSEKEEPING, id);
+        if (row == null) {
+            throw new GuardRefusedException(
+                    HttpStatus.NOT_FOUND,
+                    "history-gone",
+                    (cmmn ? "Case " : "Instance ") + id + " has no historic row. Nothing happened.");
+        }
+        if (row.get("endTime") == null) {
+            throw new GuardRefusedException(
+                    HttpStatus.CONFLICT,
+                    "still-running",
+                    (cmmn ? "Case " : "Instance ") + id + " is still running. Nothing happened.");
+        }
+        Map<String, Object> payload = new LinkedHashMap<>();
+        payload.put("schema", cmmn ? "delete-case-history/v1" : "delete-history/v1");
+        payload.put("id", id);
+        Object definitionId = row.get(cmmn ? "caseDefinitionId" : "processDefinitionId");
+        return new Target(payload, id, "instance id", null, definitionKeyOf(definitionId));
     }
 
     private Target participantTarget(
@@ -1038,6 +1063,10 @@ public class CorrectiveActionService {
                         targetId,
                         request.link().identityId().strip(),
                         linkType(request));
+            case DELETE_HISTORY ->
+                client.deleteHistoricProcessInstance(
+                        engine, CallPriority.HOUSEKEEPING, targetId, engineDeleteReason(request));
+            case DELETE_CASE_HISTORY -> cmmnClient.deleteHistoricCase(engine, CallPriority.HOUSEKEEPING, targetId);
             case EDIT_VARIABLE -> {
                 ActionRequest.VariableEdit edit = request.variable();
                 String executionId = blankToNull(edit.executionId());
@@ -1214,6 +1243,11 @@ public class CorrectiveActionService {
                 "Participant '" + request.link().identityId().strip() + "' (" + linkType(request) + ") added.";
             case REMOVE_PARTICIPANT ->
                 "Participant '" + request.link().identityId().strip() + "' (" + linkType(request) + ") removed.";
+            case DELETE_HISTORY ->
+                "Historic instance " + targetId + " deleted. Engine deleteReason is " + engineDeleteReason(request)
+                        + ". Irreversible.";
+            case DELETE_CASE_HISTORY ->
+                "Historic case " + targetId + " deleted. The CMMN route takes no delete reason. Irreversible.";
             case UNSTICK_EVENT ->
                 capitalize(request.event().type()) + " delivered to execution " + request.executionId()
                         + " — the wait is over.";

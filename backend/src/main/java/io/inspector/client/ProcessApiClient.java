@@ -772,6 +772,54 @@ public class ProcessApiClient {
         }
     }
 
+    /** Finished historic process instances. Blank key and business key are omitted. */
+    public FlowablePage listFinishedProcesses(
+            EngineConfig engine,
+            CallPriority priority,
+            String definitionKey,
+            String businessKey,
+            String finishedBefore,
+            int start,
+            int size) {
+        return guarded.call(
+                engine,
+                priority,
+                () -> guarded.readClient(engine)
+                        .get()
+                        .uri(uri -> {
+                            var builder = uri.path("/history/historic-process-instances")
+                                    .queryParam("finished", "true")
+                                    .queryParam("finishedBefore", finishedBefore)
+                                    .queryParam("size", size)
+                                    .queryParam("start", start);
+                            if (definitionKey != null && !definitionKey.isBlank()) {
+                                builder.queryParam("processDefinitionKey", definitionKey);
+                            }
+                            if (businessKey != null && !businessKey.isBlank()) {
+                                builder.queryParam("businessKey", businessKey);
+                            }
+                            return builder.build();
+                        })
+                        .retrieve()
+                        .body(FlowablePage.class));
+    }
+
+    /** DELETE /history/historic-process-instances/{id}?deleteReason= */
+    public void deleteHistoricProcessInstance(
+            EngineConfig engine, CallPriority priority, String processInstanceId, String deleteReason) {
+        guarded.run(
+                engine,
+                priority,
+                "delete-history",
+                () -> guarded.writeClient(engine)
+                        .delete()
+                        .uri(uri -> uri.path("/history/historic-process-instances/{id}")
+                                .queryParam("deleteReason", deleteReason)
+                                .build(processInstanceId))
+                        .retrieve()
+                        .toBodilessEntity());
+    }
+
     /** Historic tasks created or completed in the window. Null when the route is missing. */
     public Long countHistoricTasks(
             EngineConfig engine, CallPriority priority, Instant after, Instant before, boolean completed) {

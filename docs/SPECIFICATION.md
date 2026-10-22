@@ -1058,6 +1058,7 @@ copy is never identical to an RBAC denial (R-GOV-04, R-SEM-17).
   earlier §7↔ARCH §4 ambiguity: one machinery, restart-safe), with per-item result report
   (successful IDs vs id→error table, Conductor `BulkResponse` style) and an **aggregate
   readout** "N of M dispatched · ok/failed/skipped/unknown" (R-SEM-11).
+- **Delete completed history** (`delete-history` / `delete-case-history`, ADMIN): finished instances only, an ended-before bound is mandatory, a definition key is mandatory on prod, a run over 5,000 matches is refused, a prod run types the count, and a protected definition key or an `inspector.housekeeping.held-*` hold refuses. Per-id DELETE on the housekeeping lane. Stop leaves the rest `not_run`. The CMMN delete route takes no delete reason. The id-list bulk POST is not the dispatcher (no per-id body). See `docs/reviews/HOUSEKEEPING-WIRE-SHAPE-2026-10-22.md`.
 - **Job state machine** (normative): job `PENDING → RUNNING → (COMPLETED | CANCELLED |
   INTERRUPTED)`; item `pending → dispatched → (ok | failed | skipped | skipped (protected) |
   unknown | not_run)`. On BFF startup a reconciliation sweep marks RUNNING → INTERRUPTED;

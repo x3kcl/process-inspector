@@ -126,6 +126,8 @@ resilience4j:
       # offset-near-cap query failing/timing out trips independently of interactive search.
       deep-page:
         base-config: engine
+      housekeeping:
+        base-config: engine
   # Do-no-harm companion to the breaker (ARCH §2.2): caps concurrent in-flight calls PER
   # ENGINE so the search plans' parallel enrichment legs queue instead of flooding an
   # engine that is typically already under load when this tool is open.
@@ -145,6 +147,9 @@ resilience4j:
       # interactive permits. Short wait — a contended deep page degrades, never queues long.
       deep-page:
         max-concurrent-calls: 2
+        max-wait-duration: 5s
+      housekeeping:
+        max-concurrent-calls: 1
         max-wait-duration: 5s
 
 inspector:

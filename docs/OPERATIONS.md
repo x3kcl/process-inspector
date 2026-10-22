@@ -243,7 +243,7 @@ annotated tag, and *calls* `release.yml` as a reusable workflow — required bec
   full-DB-write-access gap) is tracked separately (issue #311, PO-gated). Run the verifier
   periodically and after any Postgres restore (§5, RUNBOOK §5); monthly range partitions;
   retention default 400 days with an audited purge job; legal-hold procedure (suspend purge
-  per engine/tenant/window).
+  per engine/tenant/window). Engine history deletion is a separate ADMIN wizard (`POST /api/bulk/history`). It does not use the audit legal-hold table. Holds are `inspector.housekeeping.held-definition-keys` and `inspector.housekeeping.held-business-keys` (comma-separated; a business key ending in `*` is a prefix). A hold refusal writes `history-hold-refused`.
   **Monthly partitioning is live (S5a):** `V10` carved the DEFAULT partition into
   `audit_entry_YYYY_MM` children (append-only never relaxed — the carve moves rows by
   DETACH/CREATE/INSERT/TRUNCATE/ATTACH with `seq`/`chain_hash` verbatim), and
