@@ -674,7 +674,10 @@ will dial, so runtime CRUD is an **SSRF surface** aimed by the credential-vault 
 - **Secrets stay env-refs** (iron rule): the DB stores the `password-ref` *name*, never a
   value; the UI shows the ref name + a **presence** indicator ("`ENGINE_X_PASSWORD`: present ✓
   / not in this deployment ✗") so a missing secret is a pre-enable failure, not a first-call
-  surprise.
+  surprise. `oauth2-client-credentials` and `custom-header` are the same rule: token URL, client
+  id, header name, and secret-ref names only. The access token and header value are never stored,
+  logged, or returned. A read 401 refreshes the client-credentials token once; a mutation is not
+  retried.
 - **REGISTRY_ADMIN** is a fleet-level grant orthogonal to the VIEWER→ADMIN ladder — per-engine
   ADMIN does **not** confer it, and break-glass (R-SAFE-11) does **not** grant it (an IdP
   outage is no reason to repoint the vault). Every write is **audited fail-closed** like a

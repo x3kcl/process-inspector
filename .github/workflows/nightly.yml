@@ -40,8 +40,8 @@ jobs:
     if: github.event_name != 'workflow_dispatch' || !contains(fromJSON('["red","green"]'), inputs.triage-drill)
     timeout-minutes: 40
     steps:
-      - uses: actions/checkout@v4
-      - uses: actions/setup-java@v4
+      - uses: actions/checkout@v7
+      - uses: actions/setup-java@v6
         with:
           distribution: temurin
           java-version: "21"
@@ -81,8 +81,8 @@ jobs:
     if: github.event_name != 'workflow_dispatch' || !contains(fromJSON('["red","green"]'), inputs.triage-drill)
     timeout-minutes: 15
     steps:
-      - uses: actions/checkout@v4
-      - uses: actions/setup-java@v4
+      - uses: actions/checkout@v7
+      - uses: actions/setup-java@v6
         with:
           distribution: temurin
           java-version: "21"
@@ -106,8 +106,8 @@ jobs:
     if: github.event_name != 'workflow_dispatch' || !contains(fromJSON('["red","green"]'), inputs.triage-drill)
     timeout-minutes: 15
     steps:
-      - uses: actions/checkout@v4
-      - uses: actions/setup-java@v4
+      - uses: actions/checkout@v7
+      - uses: actions/setup-java@v6
         with:
           distribution: temurin
           java-version: "21"
@@ -128,7 +128,7 @@ jobs:
       COMPOSE_PROFILES: "flowable-6,postgres"
       CI_PROJECT: pi-ci-nightly-6
     steps:
-      - uses: actions/checkout@v4
+      - uses: actions/checkout@v7
       # Runner slots (docker/ci-runner/docker-compose.yml) carry a disjoint port block as
       # container env so this job uses its ACTUAL slot's ports, never a hardcoded literal
       # that may belong to a DIFFERENT slot a concurrent ci.yml PR job is using at the same
@@ -150,7 +150,7 @@ jobs:
             echo "PI_PG_PORT=$pg"
             echo "INSPECTOR_DB_URL=jdbc:postgresql://localhost:${pg}/inspector"
           } >> "$GITHUB_ENV"
-      - uses: actions/setup-java@v4
+      - uses: actions/setup-java@v6
         with:
           distribution: temurin
           java-version: "21"
@@ -205,7 +205,7 @@ jobs:
       actions: write
     timeout-minutes: 30
     steps:
-      - uses: actions/checkout@v4
+      - uses: actions/checkout@v7
       - uses: ./.github/actions/supply-chain
         with:
           image-tag: scan-${{ github.run_id }}
@@ -222,8 +222,8 @@ jobs:
       issues: write
     timeout-minutes: 10
     steps:
-      - uses: actions/checkout@v4
-      - uses: actions/setup-node@v4
+      - uses: actions/checkout@v7
+      - uses: actions/setup-node@v7
         with:
           node-version: "22"
       - name: Upsert the advisory issue from a synthetic result
@@ -241,7 +241,7 @@ jobs:
       COMPOSE_PROFILES: "flowable-6,postgres"
       CI_PROJECT: pi-ci-nightly-perf
     steps:
-      - uses: actions/checkout@v4
+      - uses: actions/checkout@v7
       # scripts/free-port.sh double-checks each port is actually free on THIS host and
       # falls back within this job's own band otherwise (#163/#288 — a fixed port can end
       # up permanently squatted by something unrelated; this makes that self-healing
@@ -259,7 +259,7 @@ jobs:
             echo "PI_BFF_PORT=$bff"
             echo "INSPECTOR_DB_URL=jdbc:postgresql://localhost:${pg}/inspector"
           } >> "$GITHUB_ENV"
-      - uses: actions/setup-java@v4
+      - uses: actions/setup-java@v6
         with:
           distribution: temurin
           java-version: "21"
@@ -339,7 +339,7 @@ jobs:
         env:
           BASE_URL: http://localhost:${{ env.PI_BFF_PORT }}
         run: /tmp/k6 run --summary-export=/tmp/k6-summary-p1.json scripts/perf-scenario-p1.js
-      - uses: actions/upload-artifact@v4
+      - uses: actions/upload-artifact@v7
         if: always()
         with:
           name: k6-summary-p1

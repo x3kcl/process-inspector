@@ -67,6 +67,27 @@ public class EngineRegistryRow {
     @Column(name = "token_ref")
     private String tokenRef;
 
+    @Column(name = "oauth_token_url")
+    private String oauthTokenUrl;
+
+    @Column(name = "oauth_client_id")
+    private String oauthClientId;
+
+    @Column(name = "oauth_client_secret_ref")
+    private String oauthClientSecretRef;
+
+    @Column(name = "oauth_scope")
+    private String oauthScope;
+
+    @Column(name = "oauth_audience")
+    private String oauthAudience;
+
+    @Column(name = "auth_header_name")
+    private String authHeaderName;
+
+    @Column(name = "auth_header_secret_ref")
+    private String authHeaderSecretRef;
+
     @Column(name = "connect_ms")
     private Integer connectMs;
 
@@ -233,6 +254,62 @@ public class EngineRegistryRow {
 
     public void setTokenRef(String tokenRef) {
         this.tokenRef = tokenRef;
+    }
+
+    public String getOauthTokenUrl() {
+        return oauthTokenUrl;
+    }
+
+    public void setOauthTokenUrl(String oauthTokenUrl) {
+        this.oauthTokenUrl = oauthTokenUrl;
+    }
+
+    public String getOauthClientId() {
+        return oauthClientId;
+    }
+
+    public void setOauthClientId(String oauthClientId) {
+        this.oauthClientId = oauthClientId;
+    }
+
+    public String getOauthClientSecretRef() {
+        return oauthClientSecretRef;
+    }
+
+    public void setOauthClientSecretRef(String oauthClientSecretRef) {
+        this.oauthClientSecretRef = oauthClientSecretRef;
+    }
+
+    public String getOauthScope() {
+        return oauthScope;
+    }
+
+    public void setOauthScope(String oauthScope) {
+        this.oauthScope = oauthScope;
+    }
+
+    public String getOauthAudience() {
+        return oauthAudience;
+    }
+
+    public void setOauthAudience(String oauthAudience) {
+        this.oauthAudience = oauthAudience;
+    }
+
+    public String getAuthHeaderName() {
+        return authHeaderName;
+    }
+
+    public void setAuthHeaderName(String authHeaderName) {
+        this.authHeaderName = authHeaderName;
+    }
+
+    public String getAuthHeaderSecretRef() {
+        return authHeaderSecretRef;
+    }
+
+    public void setAuthHeaderSecretRef(String authHeaderSecretRef) {
+        this.authHeaderSecretRef = authHeaderSecretRef;
     }
 
     public Integer getConnectMs() {

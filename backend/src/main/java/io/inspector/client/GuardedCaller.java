@@ -18,6 +18,7 @@ import java.util.function.Supplier;
 import java.util.regex.Pattern;
 import org.springframework.beans.factory.annotation.Autowired;
 import org.springframework.core.env.Environment;
+import org.springframework.http.HttpMethod;
 import org.springframework.http.client.JdkClientHttpRequestFactory;
 import org.springframework.stereotype.Component;
 import org.springframework.web.client.RestClient;
@@ -69,6 +70,7 @@ public class GuardedCaller {
     private final Map<String, RestClient> writeClients = new ConcurrentHashMap<>();
 
     private final ObservationRegistry observations;
+    private final OAuthTokenService tokens;
 
     /** Tests pass no tracing registry. Spring uses the injected one (#470). */
     public GuardedCaller(
@@ -77,7 +79,17 @@ public class GuardedCaller {
             BulkheadRegistry bulkheads,
             MeterRegistry metrics,
             RecentEngineErrors recentErrors) {
-        this(env, breakers, bulkheads, metrics, recentErrors, ObservationRegistry.NOOP);
+        this(env, breakers, bulkheads, metrics, recentErrors, ObservationRegistry.NOOP, null);
+    }
+
+    public GuardedCaller(
+            Environment env,
+            CircuitBreakerRegistry breakers,
+            BulkheadRegistry bulkheads,
+            MeterRegistry metrics,
+            RecentEngineErrors recentErrors,
+            ObservationRegistry observations) {
+        this(env, breakers, bulkheads, metrics, recentErrors, observations, null);
     }
 
     @Autowired
@@ -87,13 +99,15 @@ public class GuardedCaller {
             BulkheadRegistry bulkheads,
             MeterRegistry metrics,
             RecentEngineErrors recentErrors,
-            ObservationRegistry observations) {
+            ObservationRegistry observations,
+            OAuthTokenService tokens) {
         this.env = env;
         this.breakers = breakers;
         this.bulkheads = bulkheads;
         this.metrics = metrics;
         this.recentErrors = recentErrors;
         this.observations = observations;
+        this.tokens = tokens;
     }
 
     /**
@@ -318,6 +332,23 @@ public class GuardedCaller {
                 case bearer ->
                     builder.requestInterceptor((req, bytes, exec) -> {
                         req.getHeaders().setBearerAuth(resolveSecret(auth.tokenRef()));
+                        return exec.execute(req, bytes);
+                    });
+                case oauth2_client_credentials ->
+                    builder.requestInterceptor((req, bytes, exec) -> {
+                        req.getHeaders().setBearerAuth(tokens.bearer(engine));
+                        var response = exec.execute(req, bytes);
+                        // A read 401 refreshes the token once. A mutation is never re-sent.
+                        if (response.getStatusCode().value() == 401 && req.getMethod() == HttpMethod.GET) {
+                            tokens.invalidate(engine.id());
+                            req.getHeaders().setBearerAuth(tokens.bearer(engine));
+                            return exec.execute(req, bytes);
+                        }
+                        return response;
+                    });
+                case custom_header ->
+                    builder.requestInterceptor((req, bytes, exec) -> {
+                        req.getHeaders().set(auth.headerName(), resolveSecret(auth.headerSecretRef()));
                         return exec.execute(req, bytes);
                     });
                 case none -> {

@@ -413,8 +413,13 @@ function ActiveHealthBadge({ reachableNow }: { reachableNow: boolean | null | un
 function EngineRow({ engine, probing, onEdit, onProbe, onLifecycle }: RowProps) {
   const env = engine.environment ?? 'unknown'
   const lifecycle = engine.lifecycle ?? 'draft'
-  const ref = engine.passwordRef ?? engine.tokenRef
-  const present = engine.passwordRefPresent || engine.tokenRefPresent
+  const ref =
+    engine.passwordRef ?? engine.tokenRef ?? engine.oauthClientSecretRef ?? engine.headerSecretRef
+  const present =
+    engine.passwordRefPresent ||
+    engine.tokenRefPresent ||
+    engine.oauthClientSecretRefPresent ||
+    engine.headerSecretRefPresent
   const actions = rowActions(lifecycle)
   return (
     <tr className={`env-band-${env}`}>
