@@ -1,6 +1,11 @@
 package io.inspector.api;
 
 import io.inspector.action.ActionResult;
+import io.inspector.migration.CohortExecuteRequest;
+import io.inspector.migration.CohortExecuteResponse;
+import io.inspector.migration.CohortMigrationService;
+import io.inspector.migration.CohortPreviewRequest;
+import io.inspector.migration.CohortPreviewResponse;
 import io.inspector.migration.MigrationPreview;
 import io.inspector.migration.MigrationRequest;
 import io.inspector.migration.MigrationService;
@@ -10,6 +15,7 @@ import org.springframework.web.bind.annotation.PathVariable;
 import org.springframework.web.bind.annotation.PostMapping;
 import org.springframework.web.bind.annotation.RequestBody;
 import org.springframework.web.bind.annotation.RequestMapping;
+import org.springframework.web.bind.annotation.RequestParam;
 import org.springframework.web.bind.annotation.RestController;
 
 /**
@@ -24,9 +30,11 @@ import org.springframework.web.bind.annotation.RestController;
 public class MigrationController {
 
     private final MigrationService migration;
+    private final CohortMigrationService cohorts;
 
-    public MigrationController(MigrationService migration) {
+    public MigrationController(MigrationService migration, CohortMigrationService cohorts) {
         this.migration = migration;
+        this.cohorts = cohorts;
     }
 
     @PostMapping("/instances/{engineId}/{instanceId}/migrate/preview")
@@ -51,5 +59,21 @@ public class MigrationController {
             @RequestBody MigrationRequest request,
             Authentication authentication) {
         return migration.execute(engineId, instanceId, request, authentication);
+    }
+
+    /** Filtered cohort count (#482 S2). Does not call by-definition migrate. */
+    @PostMapping("/migration/cohorts/preview")
+    @PreAuthorize("@rbac.atLeastOn(authentication, 'ADMIN', #engineId)")
+    public CohortPreviewResponse previewCohort(
+            @RequestParam String engineId, @RequestBody CohortPreviewRequest request) {
+        return cohorts.preview(engineId, request);
+    }
+
+    /** Per-instance cohort execute (#482 S4), capped. Prod confirm token is the count. */
+    @PostMapping("/migration/cohorts/execute")
+    @PreAuthorize("@rbac.atLeastOn(authentication, 'ADMIN', #engineId)")
+    public CohortExecuteResponse executeCohort(
+            @RequestParam String engineId, @RequestBody CohortExecuteRequest request, Authentication authentication) {
+        return cohorts.execute(engineId, request, authentication);
     }
 }

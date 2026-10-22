@@ -411,6 +411,15 @@ off for everyone else (the button stays, greyed). Cascade is off until you turn 
 it is refused while instances are still running or the count could not be proved. On prod
 you type the deployment id. There is no upload.
 
+## 14b. Migrating a version's running instances
+
+On **Versions of a definition**, a version with running instances has **Migrate instances…**
+(ADMIN; greyed otherwise). Pick the target version, optionally narrow by business key, start
+time, or one variable value, and preview the count. The count is taken again when you confirm.
+On a prod engine you type that count. Each instance is migrated on its own; a protected
+instance is skipped; a pre-check that cannot build a mapping is skipped. More than 50 running
+instances is refused until you narrow the filter. This is not an engine batch.
+
 ## 15. Watermark & licensing note
 
 The BPMN/CMMN canvases are bpmn.io components; the **"Powered by bpmn.io" watermark is a
