@@ -5,18 +5,78 @@ package io.inspector.registry;
  * tools out per engine with a reason; the BFF rejects gated calls — never a confusing
  * 404 from the engine.
  *
- * Four flags fall out of version cliffs; {@code activityHistory} is probed because the
- * engine's history level is configuration, not version.
+ * Four flags fall out of version cliffs. {@code activityHistory} and {@code idm} are probed:
+ * history level and whether the REST app bundles IDM are configuration, not version. A missing
+ * IDM route is "not exposed", never "user does not exist".
  */
 public record EngineCapabilities(
         boolean changeState, // POST .../change-state — Flowable ≥ 6.4
         boolean migration, // process-migration API — Flowable ≥ 6.5
         boolean externalWorkerJobs, // external-worker job queue — Flowable ≥ 6.8
         boolean scopeType, // scopeType field on job rows — Flowable ≥ 6.8
-        boolean activityHistory // history level records activities (probed, not derived)
+        boolean activityHistory, // history level records activities (probed, not derived)
+        boolean timerReschedule, // POST timer-jobs reschedule — Flowable ≥ 7.0
+        boolean idm, // GET /identity/users — probed; false means the check is skipped
+        boolean dmnHistory // GET dmn-history — probed; false means the Decisions tab stays grey
         ) {
+    public EngineCapabilities(
+            boolean changeState,
+            boolean migration,
+            boolean externalWorkerJobs,
+            boolean scopeType,
+            boolean activityHistory,
+            boolean timerReschedule,
+            boolean idm) {
+        this(changeState, migration, externalWorkerJobs, scopeType, activityHistory, timerReschedule, idm, false);
+    }
+
+    public EngineCapabilities(
+            boolean changeState,
+            boolean migration,
+            boolean externalWorkerJobs,
+            boolean scopeType,
+            boolean activityHistory,
+            boolean timerReschedule) {
+        this(changeState, migration, externalWorkerJobs, scopeType, activityHistory, timerReschedule, false);
+    }
+
+    public EngineCapabilities(
+            boolean changeState,
+            boolean migration,
+            boolean externalWorkerJobs,
+            boolean scopeType,
+            boolean activityHistory) {
+        this(changeState, migration, externalWorkerJobs, scopeType, activityHistory, false);
+    }
+
+    /** Copy with the probed IDM flag. Version cliffs do not know whether IDM is installed. */
+    public EngineCapabilities withIdm(boolean idm) {
+        return new EngineCapabilities(
+                changeState,
+                migration,
+                externalWorkerJobs,
+                scopeType,
+                activityHistory,
+                timerReschedule,
+                idm,
+                dmnHistory);
+    }
+
+    /** Copy with the probed DMN-history flag. A 401/404 means this account has no DMN context. */
+    public EngineCapabilities withDmnHistory(boolean dmnHistory) {
+        return new EngineCapabilities(
+                changeState,
+                migration,
+                externalWorkerJobs,
+                scopeType,
+                activityHistory,
+                timerReschedule,
+                idm,
+                dmnHistory);
+    }
+
     public static EngineCapabilities none() {
-        return new EngineCapabilities(false, false, false, false, false);
+        return new EngineCapabilities(false, false, false, false, false, false);
     }
 
     /**
@@ -26,13 +86,14 @@ public record EngineCapabilities(
     public static EngineCapabilities fromVersion(String version, boolean activityHistoryProbe) {
         int[] mm = parseMajorMinor(version);
         if (mm == null) {
-            return new EngineCapabilities(false, false, false, false, activityHistoryProbe);
+            return new EngineCapabilities(false, false, false, false, activityHistoryProbe, false);
         }
         int major = mm[0], minor = mm[1];
         boolean v64 = major > 6 || (major == 6 && minor >= 4);
         boolean v65 = major > 6 || (major == 6 && minor >= 5);
         boolean v68 = major > 6 || (major == 6 && minor >= 8);
-        return new EngineCapabilities(v64, v65, v68, v68, activityHistoryProbe);
+        boolean v70 = major >= 7;
+        return new EngineCapabilities(v64, v65, v68, v68, activityHistoryProbe, v70);
     }
 
     /** "6.8.0.1" → {6,8}; null when the version is missing or not dotted-numeric. */

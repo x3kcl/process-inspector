@@ -9,7 +9,10 @@ import java.util.List;
  * engines; ≥10 chars whenever present. {@code confirmToken} is the tier-3 prod typed
  * token (target-specific — business key / job id / definition key, never a generic yes).
  * {@code assignee} is the reassign-task target user id; unassign-task ignores it (clears
- * the assignee → the task falls back to its candidate groups).
+ * the assignee → the task falls back to its candidate groups). {@code task} is the
+ * update-task patch (a null field is left alone). {@code link} is an identity-link edit.
+ * {@code effectiveAt} schedules suspend-definition / activate-definition (ISO-8601 instant);
+ * null means the engine applies the verb now.
  */
 public record ActionRequest(
         String reason,
@@ -22,7 +25,150 @@ public record ActionRequest(
         List<TypedVariable> variables,
         EventTrigger event,
         Boolean includeProcessInstances,
-        String assignee) {
+        String assignee,
+        String dueDate,
+        String jobLane,
+        TaskPatch task,
+        IdentityLink link,
+        String effectiveAt,
+        PlanItemChange plan) {
+
+    /** Pre-#489 body. plan stays null. */
+    public ActionRequest(
+            String reason,
+            String ticketId,
+            String confirmToken,
+            String jobId,
+            String taskId,
+            String executionId,
+            VariableEdit variable,
+            List<TypedVariable> variables,
+            EventTrigger event,
+            Boolean includeProcessInstances,
+            String assignee,
+            String dueDate,
+            String jobLane,
+            TaskPatch task,
+            IdentityLink link,
+            String effectiveAt) {
+        this(
+                reason,
+                ticketId,
+                confirmToken,
+                jobId,
+                taskId,
+                executionId,
+                variable,
+                variables,
+                event,
+                includeProcessInstances,
+                assignee,
+                dueDate,
+                jobLane,
+                task,
+                link,
+                effectiveAt,
+                null);
+    }
+
+    /** Pre-#486 body. task and link stay null. */
+    public ActionRequest(
+            String reason,
+            String ticketId,
+            String confirmToken,
+            String jobId,
+            String taskId,
+            String executionId,
+            VariableEdit variable,
+            List<TypedVariable> variables,
+            EventTrigger event,
+            Boolean includeProcessInstances,
+            String assignee,
+            String dueDate,
+            String jobLane) {
+        this(
+                reason,
+                ticketId,
+                confirmToken,
+                jobId,
+                taskId,
+                executionId,
+                variable,
+                variables,
+                event,
+                includeProcessInstances,
+                assignee,
+                dueDate,
+                jobLane,
+                null,
+                null,
+                null);
+    }
+
+    /** Pre-#483 body. effectiveAt stays null (suspend/activate applies immediately). */
+    public ActionRequest(
+            String reason,
+            String ticketId,
+            String confirmToken,
+            String jobId,
+            String taskId,
+            String executionId,
+            VariableEdit variable,
+            List<TypedVariable> variables,
+            EventTrigger event,
+            Boolean includeProcessInstances,
+            String assignee,
+            String dueDate,
+            String jobLane,
+            TaskPatch task,
+            IdentityLink link) {
+        this(
+                reason,
+                ticketId,
+                confirmToken,
+                jobId,
+                taskId,
+                executionId,
+                variable,
+                variables,
+                event,
+                includeProcessInstances,
+                assignee,
+                dueDate,
+                jobLane,
+                task,
+                link,
+                null);
+    }
+
+    /** Pre-#485 body. dueDate and jobLane stay null. */
+    public ActionRequest(
+            String reason,
+            String ticketId,
+            String confirmToken,
+            String jobId,
+            String taskId,
+            String executionId,
+            VariableEdit variable,
+            List<TypedVariable> variables,
+            EventTrigger event,
+            Boolean includeProcessInstances,
+            String assignee) {
+        this(
+                reason,
+                ticketId,
+                confirmToken,
+                jobId,
+                taskId,
+                executionId,
+                variable,
+                variables,
+                event,
+                includeProcessInstances,
+                assignee,
+                null,
+                null);
+    }
 
     public static ActionRequest empty() {
         return new ActionRequest(null, null, null, null, null, null, null, null, null, null, null);
@@ -45,6 +191,22 @@ public record ActionRequest(
 
     /** Typed engine variable — the declared type is preserved on the wire (flowable-rest §2). */
     public record TypedVariable(String name, String type, Object value) {}
+
+    /**
+     * update-task patch. A null component is left unchanged. An empty string clears a string
+     * field. {@code dueDate} is an ISO-8601 instant when set.
+     */
+    public record TaskPatch(
+            String name, String description, String owner, String dueDate, Integer priority, String category) {}
+
+    /**
+     * CMMN plan-item edit. {@code action} is {@code trigger|enable|disable} on an instance, or
+     * {@code activate|available|terminate} on a plan-item definition.
+     */
+    public record PlanItemChange(String planItemInstanceId, String definitionId, String action) {}
+
+    /** Identity link on a task. {@code family} is {@code users} or {@code groups}. */
+    public record IdentityLink(String family, String identityId, String type) {}
 
     /** unstick-event payload: what the waiting execution should receive. */
     public record EventTrigger(String type, String name) {

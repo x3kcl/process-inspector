@@ -8,6 +8,8 @@ import { Link, useParams } from 'react-router'
 import { useDefinitionVersions } from '../api/migrate'
 import { roleOn, useMe } from '../api/me'
 import { ActionHint } from '../components/ActionHint'
+import { Breadcrumbs } from '../shell/Breadcrumbs'
+import { definitionVersionCrumbs } from '../shell/breadcrumbs'
 import { ProtectDefinitionModal } from './ProtectDefinitionModal'
 
 export function DefinitionVersionsPage() {
@@ -20,6 +22,12 @@ export function DefinitionVersionsPage() {
 
   return (
     <div className="page">
+      <Breadcrumbs
+        segments={definitionVersionCrumbs({
+          engineId: engineId ?? '',
+          definitionKey: key ?? '',
+        })}
+      />
       <header className="page-header">
         <h2>
           Versions of <code>{key}</code>

@@ -313,6 +313,12 @@ services:
       - ENGINE_7_PASSWORD=test
       # Demo sign-in ladder password (dev auth chain; oidc profile is off here).
       - INSPECTOR_DEV_PASSWORD=${INSPECTOR_DEV_PASSWORD:-dev}
+      # Tracing stays off on a normal up. Compose cannot set these only when the
+      # observability profile is active — pass them with that profile (OPERATIONS §2).
+      # The published demo digest does not contain engine.corrective until the next image.
+      - INSPECTOR_TRACING_ENABLED=${INSPECTOR_TRACING_ENABLED:-false}
+      - INSPECTOR_TRACING_SAMPLE=${INSPECTOR_TRACING_SAMPLE:-0.01}
+      - OTEL_EXPORTER_OTLP_ENDPOINT=${OTEL_EXPORTER_OTLP_ENDPOINT:-}
     depends_on:
       postgres:
         condition: service_healthy
@@ -395,6 +401,57 @@ services:
         echo "demo seed complete."
     networks: [internal]
     restart: "no"
+
+  # Optional local view of metrics and traces (#469, #564). Not part of the public demo.
+  # `docker compose --profile observability up` from docker/. Tracing on the BFF stays off
+  # unless the command also sets INSPECTOR_TRACING_ENABLED and OTEL_EXPORTER_OTLP_ENDPOINT
+  # (OPERATIONS §2). Jaeger UI is 127.0.0.1:16686.
+  prometheus:
+    profiles: ["observability"]
+    image: prom/prometheus:v2.55.1
+    entrypoint: ["/bin/sh", "-c"]
+    command:
+      - |
+        printf '%s' "$${INSPECTOR_DEV_PASSWORD}" > /etc/prometheus/scrape-password
+        exec /bin/prometheus --config.file=/etc/prometheus/prometheus.yml
+    environment:
+      INSPECTOR_DEV_PASSWORD: ${INSPECTOR_DEV_PASSWORD:-dev}
+    volumes:
+      - ../deploy/prometheus/prometheus.demo.yml:/etc/prometheus/prometheus.yml:ro
+      - ../deploy/prometheus/alert-rules.yml:/etc/prometheus/alert-rules.yml:ro
+    networks: [internal]
+    ports:
+      - "127.0.0.1:9090:9090"
+  grafana:
+    profiles: ["observability"]
+    image: grafana/grafana:11.3.1
+    environment:
+      GF_AUTH_ANONYMOUS_ENABLED: "true"
+      GF_AUTH_ANONYMOUS_ORG_ROLE: Viewer
+      GF_AUTH_DISABLE_LOGIN_FORM: "true"
+    volumes:
+      - ../deploy/grafana/provisioning:/etc/grafana/provisioning:ro
+      - ../deploy/grafana/dashboards:/var/lib/grafana/dashboards:ro
+    networks: [internal]
+    ports:
+      - "127.0.0.1:3000:3000"
+    depends_on: [prometheus]
+  jaeger:
+    profiles: ["observability"]
+    image: jaegertracing/all-in-one:1.76.0
+    environment:
+      COLLECTOR_OTLP_ENABLED: "true"
+    networks: [internal]
+    ports:
+      - "127.0.0.1:16686:16686"
+  otel-collector:
+    profiles: ["observability"]
+    image: otel/opentelemetry-collector:0.163.1
+    command: ["--config=/etc/otelcol/config.yaml"]
+    volumes:
+      - ../deploy/observability/otel-collector.yaml:/etc/otelcol/config.yaml:ro
+    networks: [internal]
+    depends_on: [jaeger]
 
 volumes:
   inspector-demo-pgdata:

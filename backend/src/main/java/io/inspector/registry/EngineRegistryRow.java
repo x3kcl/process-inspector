@@ -115,6 +115,10 @@ public class EngineRegistryRow {
     @Column(name = "forward_user", nullable = false)
     private boolean forwardUser = false;
 
+    /** Optional Micrometer scrape URL. Null means the engine does not expose executor internals. */
+    @Column(name = "metrics_url")
+    private String metricsUrl;
+
     public EngineRegistryRow() {
         // JPA + test/DTO construction
     }
@@ -333,6 +337,14 @@ public class EngineRegistryRow {
 
     public void setForwardUser(boolean forwardUser) {
         this.forwardUser = forwardUser;
+    }
+
+    public String getMetricsUrl() {
+        return metricsUrl;
+    }
+
+    public void setMetricsUrl(String metricsUrl) {
+        this.metricsUrl = metricsUrl;
     }
 
     public String getSource() {

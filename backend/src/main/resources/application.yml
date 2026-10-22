@@ -55,6 +55,16 @@ management:
   metrics:
     tags:
       application: process-inspector
+  # Off unless an operator sets the flag and an OTLP endpoint (#470). Reads are engine.call
+  # at the sample rate. Corrective spans are engine.corrective and always sampled (#565).
+  # Span attributes are engineId, leg, and verb — no variable values.
+  tracing:
+    enabled: ${INSPECTOR_TRACING_ENABLED:false}
+    sampling:
+      probability: ${INSPECTOR_TRACING_SAMPLE:0.01}
+  otlp:
+    tracing:
+      endpoint: ${OTEL_EXPORTER_OTLP_ENDPOINT:}
 
 spring:
   threads:
@@ -116,6 +126,8 @@ resilience4j:
       # offset-near-cap query failing/timing out trips independently of interactive search.
       deep-page:
         base-config: engine
+      housekeeping:
+        base-config: engine
   # Do-no-harm companion to the breaker (ARCH §2.2): caps concurrent in-flight calls PER
   # ENGINE so the search plans' parallel enrichment legs queue instead of flooding an
   # engine that is typically already under load when this tool is open.
@@ -135,6 +147,9 @@ resilience4j:
       # interactive permits. Short wait — a contended deep page degrades, never queues long.
       deep-page:
         max-concurrent-calls: 2
+        max-wait-duration: 5s
+      housekeeping:
+        max-concurrent-calls: 1
         max-wait-duration: 5s
 
 inspector:
