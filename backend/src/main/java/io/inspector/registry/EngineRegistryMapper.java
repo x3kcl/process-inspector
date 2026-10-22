@@ -41,8 +41,19 @@ public final class EngineRegistryMapper {
         EngineMode mode = MODE_READ_ONLY.equals(row.getMode()) ? EngineMode.READ_ONLY : EngineMode.READ_WRITE;
         boolean enabled = LIFECYCLE_ACTIVE.equals(row.getLifecycle());
 
+        Auth.Type authType = Auth.Type.fromWire(row.getAuthType());
         Auth auth = new Auth(
-                Auth.Type.valueOf(row.getAuthType()), row.getAuthUsername(), row.getPasswordRef(), row.getTokenRef());
+                authType,
+                row.getAuthUsername(),
+                row.getPasswordRef(),
+                row.getTokenRef(),
+                row.getOauthTokenUrl(),
+                row.getOauthClientId(),
+                row.getOauthClientSecretRef(),
+                row.getOauthScope(),
+                row.getOauthAudience(),
+                row.getAuthHeaderName(),
+                row.getAuthHeaderSecretRef());
         Timeouts timeouts = new Timeouts(row.getConnectMs(), row.getReadMs(), row.getWriteMs());
         AlarmThresholds alarms = new AlarmThresholds(
                 row.getAlarmOldestWarnMin(), row.getAlarmOldestCritMin(), row.getAlarmOverdueGraceS());
@@ -88,11 +99,18 @@ public final class EngineRegistryMapper {
         row.setTelemetryUrlTemplate(engine.telemetryUrlTemplate());
 
         Auth auth = engine.auth();
-        row.setAuthType(auth != null ? auth.type().name() : Auth.Type.none.name());
+        row.setAuthType(auth != null ? auth.type().wire() : Auth.Type.none.wire());
         if (auth != null) {
             row.setAuthUsername(auth.username());
             row.setPasswordRef(auth.passwordRef());
             row.setTokenRef(auth.tokenRef());
+            row.setOauthTokenUrl(auth.oauthTokenUrl());
+            row.setOauthClientId(auth.oauthClientId());
+            row.setOauthClientSecretRef(auth.oauthClientSecretRef());
+            row.setOauthScope(auth.oauthScope());
+            row.setOauthAudience(auth.oauthAudience());
+            row.setAuthHeaderName(auth.headerName());
+            row.setAuthHeaderSecretRef(auth.headerSecretRef());
         }
 
         Timeouts timeouts = engine.timeouts();

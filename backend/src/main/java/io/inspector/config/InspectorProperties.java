@@ -916,11 +916,64 @@ public record InspectorProperties(
         READ_ONLY
     }
 
-    public record Auth(Type type, String username, String passwordRef, String tokenRef) {
+    /**
+     * Engine credentials. Secret fields are env-var NAMES, never values. The oauth and header
+     * components are null for basic/bearer/none. {@link Type#wire()} is the DB/API spelling.
+     */
+    public record Auth(
+            Type type,
+            String username,
+            String passwordRef,
+            String tokenRef,
+            String oauthTokenUrl,
+            String oauthClientId,
+            String oauthClientSecretRef,
+            String oauthScope,
+            String oauthAudience,
+            String headerName,
+            String headerSecretRef) {
+
+        public static Auth basic(String username, String passwordRef) {
+            return new Auth(Type.basic, username, passwordRef, null, null, null, null, null, null, null, null);
+        }
+
+        public static Auth none() {
+            return new Auth(Type.none, null, null, null, null, null, null, null, null, null, null);
+        }
+
         public enum Type {
             basic,
             bearer,
-            none
+            none,
+            oauth2_client_credentials("oauth2-client-credentials"),
+            custom_header("custom-header");
+
+            private final String wire;
+
+            Type() {
+                this.wire = name();
+            }
+
+            Type(String wire) {
+                this.wire = wire;
+            }
+
+            /** DB CHECK value and the admin API spelling. */
+            public String wire() {
+                return wire;
+            }
+
+            public static Type fromWire(String raw) {
+                if (raw == null || raw.isBlank()) {
+                    return none;
+                }
+                for (Type type : values()) {
+                    if (type.wire.equals(raw) || type.name().equals(raw)) {
+                        return type;
+                    }
+                }
+                throw new IllegalArgumentException("unknown auth type '" + raw + "'");
+            }
         }
     }
 
