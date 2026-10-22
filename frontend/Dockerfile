@@ -20,7 +20,7 @@ RUN npm run build
 # cached layer replays a months-old package set while pretending to be a fresh upgrade —
 # that is exactly what kept a fixed openssl out of the BFF image in #404. Do not drop
 # either half of the pair.
-FROM nginx:1.30-alpine AS runtime
+FROM nginx:1.31-alpine AS runtime
 # Pick up patched Alpine packages ahead of the base image's own next release cut — the
 # same remediation the BFF runtime image has carried since #93, and the reason issue #409
 # existed. STILL REQUIRED after the 1.30 bump, and measurably so: a freshly pulled

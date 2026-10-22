@@ -51,7 +51,7 @@ jobs:
     runs-on: self-hosted
     timeout-minutes: 30
     steps:
-      - uses: actions/checkout@v4
+      - uses: actions/checkout@v7
         with:
           # Explicit so the workflow_call path builds the tagged commit, not the caller's ref.
           ref: ${{ env.RELEASE_TAG }}
@@ -62,7 +62,7 @@ jobs:
         # tells someone what to PULL needs the un-prefixed form, or it 404s (issue #200 —
         # this exact release body used to hand out the wrong value).
         run: echo "IMAGE_VERSION=${RELEASE_TAG#v}" >> "$GITHUB_ENV"
-      - uses: docker/setup-buildx-action@v3
+      - uses: docker/setup-buildx-action@v4
       - name: Log in to ghcr.io
         uses: docker/login-action@v4
         with:
@@ -87,7 +87,7 @@ jobs:
             type=semver,pattern={{major}}.{{minor}},value=${{ env.RELEASE_TAG }}
       - name: Build + push BFF image
         id: build-bff
-        uses: docker/build-push-action@v6
+        uses: docker/build-push-action@v7
         with:
           context: .
           push: true
@@ -115,7 +115,7 @@ jobs:
             type=semver,pattern={{major}}.{{minor}},value=${{ env.RELEASE_TAG }}
       - name: Build + push web image
         id: build-web
-        uses: docker/build-push-action@v6
+        uses: docker/build-push-action@v7
         with:
           context: frontend
           push: true

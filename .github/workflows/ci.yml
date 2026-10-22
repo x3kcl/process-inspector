@@ -17,7 +17,7 @@ jobs:
     runs-on: self-hosted
     timeout-minutes: 10
     steps:
-      - uses: actions/checkout@v4
+      - uses: actions/checkout@v7
       - uses: actions/setup-java@v6
         with:
           distribution: temurin
@@ -37,7 +37,7 @@ jobs:
     runs-on: self-hosted
     timeout-minutes: 20
     steps:
-      - uses: actions/checkout@v4
+      - uses: actions/checkout@v7
       - uses: actions/setup-java@v6
         with:
           distribution: temurin
@@ -73,7 +73,7 @@ jobs:
           --health-timeout 3s
           --health-retries 20
     steps:
-      - uses: actions/checkout@v4
+      - uses: actions/checkout@v7
       # Runner slots (docker/ci-runner/docker-compose.yml) carry a disjoint port block as
       # container env so concurrent jobs never collide; slot-1 values are the fallback for
       # a slot-less runner. scripts/free-port.sh double-checks the slot's own port is
@@ -167,7 +167,7 @@ jobs:
       run:
         working-directory: frontend
     steps:
-      - uses: actions/checkout@v4
+      - uses: actions/checkout@v7
       # Runner slots share the HOST network (network_mode: host) — each slot's Vite dev
       # server must bind a disjoint port or two concurrent e2e jobs (different PRs, same
       # instant) collide; slot-1's value is the fallback for a slot-less runner.
@@ -199,10 +199,10 @@ jobs:
     runs-on: self-hosted
     timeout-minutes: 20
     steps:
-      - uses: actions/checkout@v4
-      - uses: docker/setup-buildx-action@v3
+      - uses: actions/checkout@v7
+      - uses: docker/setup-buildx-action@v4
       - name: Build BFF image (multi-stage, not pushed)
-        uses: docker/build-push-action@v6
+        uses: docker/build-push-action@v7
         with:
           context: .
           push: false
@@ -224,7 +224,7 @@ jobs:
       # scan lives in nightly.yml and not here. Split: build here (does it still build?),
       # scan nightly (is it still clean?).
       - name: Build web image (multi-stage, not pushed)
-        uses: docker/build-push-action@v6
+        uses: docker/build-push-action@v7
         with:
           context: frontend
           push: false
@@ -274,7 +274,7 @@ jobs:
       # logs/exec on the docker/.env default.
       COMPOSE_PROFILES: ${{ matrix.composeProfiles }}
     steps:
-      - uses: actions/checkout@v4
+      - uses: actions/checkout@v7
       # Dependabot PRs (#445) run on the slot runners, but that actor's token is
       # read-only and cannot pull the private flap image. Job-level `if` cannot
       # see `matrix` (actionlint / the context-availability table), so the leg

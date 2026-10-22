@@ -45,7 +45,7 @@ class EngineRegistryMapperTest {
                 true,
                 EngineMode.READ_WRITE,
                 EngineEnvironment.PROD,
-                new Auth(Auth.Type.basic, "svc", "ENGINE_ORDERS_PASSWORD", null));
+                Auth.basic("svc", "ENGINE_ORDERS_PASSWORD"));
 
         EngineRegistryRow row = EngineRegistryMapper.toSeedRow(yaml, NOW);
         assertThat(row.getLifecycle()).isEqualTo("active");
@@ -70,12 +70,7 @@ class EngineRegistryMapperTest {
 
     @Test
     void disabled_engine_seeds_disabled_lifecycle_but_stays_a_live_row() {
-        EngineConfig yaml = engine(
-                "engine-7",
-                false,
-                EngineMode.READ_ONLY,
-                EngineEnvironment.DEV,
-                new Auth(Auth.Type.none, null, null, null));
+        EngineConfig yaml = engine("engine-7", false, EngineMode.READ_ONLY, EngineEnvironment.DEV, Auth.none());
 
         EngineRegistryRow row = EngineRegistryMapper.toSeedRow(yaml, NOW);
         assertThat(row.getLifecycle()).isEqualTo("disabled");
