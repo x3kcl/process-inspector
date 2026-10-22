@@ -53,6 +53,18 @@ const HousekeepingPage = lazy(() =>
 const DefinitionVersionsPage = lazy(() =>
   import('./inspect/DefinitionVersionsPage').then((m) => ({ default: m.DefinitionVersionsPage })),
 )
+const DefinitionsPage = lazy(() =>
+  import('./catalog/DefinitionsPage').then((m) => ({ default: m.DefinitionsPage })),
+)
+const DefinitionDetailPage = lazy(() =>
+  import('./catalog/DefinitionDetailPage').then((m) => ({ default: m.DefinitionDetailPage })),
+)
+const DeploymentsPage = lazy(() =>
+  import('./catalog/DeploymentsPage').then((m) => ({ default: m.DeploymentsPage })),
+)
+const DeploymentDetailPage = lazy(() =>
+  import('./catalog/DeploymentDetailPage').then((m) => ({ default: m.DeploymentDetailPage })),
+)
 const PersonTaskSearchPage = lazy(() =>
   import('./tasks/PersonTaskSearchPage').then((m) => ({ default: m.PersonTaskSearchPage })),
 )
@@ -173,8 +185,28 @@ const router = createBrowserRouter([
         errorElement: chunkErrorElement,
       },
       {
+        path: 'definitions',
+        element: lazyRoute(<DefinitionsPage />),
+        errorElement: chunkErrorElement,
+      },
+      {
         path: 'definitions/:engineId/:key/versions',
         element: lazyRoute(<DefinitionVersionsPage />),
+        errorElement: chunkErrorElement,
+      },
+      {
+        path: 'definitions/:engineId/:definitionId',
+        element: lazyRoute(<DefinitionDetailPage />),
+        errorElement: chunkErrorElement,
+      },
+      {
+        path: 'deployments',
+        element: lazyRoute(<DeploymentsPage />),
+        errorElement: chunkErrorElement,
+      },
+      {
+        path: 'deployments/:engineId/:deploymentId',
+        element: lazyRoute(<DeploymentDetailPage />),
         errorElement: chunkErrorElement,
       },
     ],

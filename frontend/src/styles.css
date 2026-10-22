@@ -1736,6 +1736,26 @@ button.primary:disabled {
   stroke: var(--color-danger) !important;
   fill: var(--color-danger-fill) !important;
 }
+.diagram-canvas .marker-diff-added .djs-visual > :first-child {
+  stroke: var(--color-success-alt) !important;
+  stroke-width: 3px !important;
+}
+.diagram-canvas .marker-diff-changed .djs-visual > :first-child {
+  stroke-dasharray: 4 2 !important;
+  stroke-width: 3px !important;
+}
+.diff-glyph {
+  background: var(--color-bg);
+  border: 1px solid var(--color-border);
+  border-radius: 2px;
+  font-size: 12px;
+  line-height: 1;
+  padding: 0 3px;
+}
+[data-density='compact'] .catalog-table td,
+[data-density='compact'] .catalog-table th {
+  padding: 2px 6px;
+}
 .dlq-overlay {
   background: var(--color-danger);
   color: var(--color-white);

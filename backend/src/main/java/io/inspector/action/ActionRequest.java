@@ -11,6 +11,8 @@ import java.util.List;
  * {@code assignee} is the reassign-task target user id; unassign-task ignores it (clears
  * the assignee → the task falls back to its candidate groups). {@code task} is the
  * update-task patch (a null field is left alone). {@code link} is an identity-link edit.
+ * {@code effectiveAt} schedules suspend-definition / activate-definition (ISO-8601 instant);
+ * null means the engine applies the verb now.
  */
 public record ActionRequest(
         String reason,
@@ -27,7 +29,8 @@ public record ActionRequest(
         String dueDate,
         String jobLane,
         TaskPatch task,
-        IdentityLink link) {
+        IdentityLink link,
+        String effectiveAt) {
 
     /** Pre-#486 body. task and link stay null. */
     public ActionRequest(
@@ -59,6 +62,43 @@ public record ActionRequest(
                 dueDate,
                 jobLane,
                 null,
+                null,
+                null);
+    }
+
+    /** Pre-#483 body. effectiveAt stays null (suspend/activate applies immediately). */
+    public ActionRequest(
+            String reason,
+            String ticketId,
+            String confirmToken,
+            String jobId,
+            String taskId,
+            String executionId,
+            VariableEdit variable,
+            List<TypedVariable> variables,
+            EventTrigger event,
+            Boolean includeProcessInstances,
+            String assignee,
+            String dueDate,
+            String jobLane,
+            TaskPatch task,
+            IdentityLink link) {
+        this(
+                reason,
+                ticketId,
+                confirmToken,
+                jobId,
+                taskId,
+                executionId,
+                variable,
+                variables,
+                event,
+                includeProcessInstances,
+                assignee,
+                dueDate,
+                jobLane,
+                task,
+                link,
                 null);
     }
 

@@ -21,6 +21,9 @@ import io.inspector.security.RbacAuthorizer;
 import io.inspector.security.reauth.DangerousActionReauthGate;
 import java.net.ConnectException;
 import java.net.http.HttpConnectTimeoutException;
+import java.time.DateTimeException;
+import java.time.Instant;
+import java.time.OffsetDateTime;
 import java.util.ArrayList;
 import java.util.LinkedHashMap;
 import java.util.List;
@@ -1002,6 +1005,10 @@ public class CorrectiveActionService {
         payload.put("definitionKey", key);
         payload.put("version", definition.get("version"));
         payload.put("includeProcessInstances", Boolean.TRUE.equals(request.includeProcessInstances()));
+        String effectiveAt = normalizedEffectiveAt(request.effectiveAt());
+        if (effectiveAt != null) {
+            payload.put("effectiveAt", effectiveAt);
+        }
         return new Target(payload, key, "definition key", null, key);
     }
 
@@ -1141,14 +1148,16 @@ public class CorrectiveActionService {
                         CallPriority.INTERACTIVE,
                         targetId,
                         "suspend",
-                        Boolean.TRUE.equals(request.includeProcessInstances()));
+                        Boolean.TRUE.equals(request.includeProcessInstances()),
+                        normalizedEffectiveAt(request.effectiveAt()));
             case ACTIVATE_DEFINITION ->
                 client.suspendOrActivateDefinition(
                         engine,
                         CallPriority.INTERACTIVE,
                         targetId,
                         "activate",
-                        Boolean.TRUE.equals(request.includeProcessInstances()));
+                        Boolean.TRUE.equals(request.includeProcessInstances()),
+                        normalizedEffectiveAt(request.effectiveAt()));
         }
     }
 
@@ -1263,8 +1272,9 @@ public class CorrectiveActionService {
                 "Definition " + targetId + " suspended — new instances are blocked"
                         + (Boolean.TRUE.equals(request.includeProcessInstances())
                                 ? ", running instances suspended too."
-                                : "; running instances continue.");
-            case ACTIVATE_DEFINITION -> "Definition " + targetId + " activated again.";
+                                : "; running instances continue.")
+                        + schedulePhrase(request);
+            case ACTIVATE_DEFINITION -> "Definition " + targetId + " activated again." + schedulePhrase(request);
         };
     }
 
@@ -1350,6 +1360,31 @@ public class CorrectiveActionService {
 
     private static String blankToNull(String value) {
         return value == null || value.isBlank() ? null : value;
+    }
+
+    /** ISO-8601 instant. Blank is "now". Anything else is a 400 — the engine must not guess. */
+    private static String normalizedEffectiveAt(String raw) {
+        String value = blankToNull(raw);
+        if (value == null) {
+            return null;
+        }
+        try {
+            return Instant.parse(value).toString();
+        } catch (DateTimeException ignored) {
+            try {
+                return OffsetDateTime.parse(value).toInstant().toString();
+            } catch (DateTimeException e) {
+                throw new GuardRefusedException(
+                        HttpStatus.BAD_REQUEST,
+                        "invalid-effective-at",
+                        "effectiveAt must be an ISO-8601 instant, for example 2026-10-22T06:00:00Z.");
+            }
+        }
+    }
+
+    private static String schedulePhrase(ActionRequest request) {
+        String at = blankToNull(request.effectiveAt());
+        return at == null ? "" : " Scheduled for " + at + ".";
     }
 
     private static String capitalize(String value) {

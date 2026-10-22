@@ -844,6 +844,20 @@ so history survives DLQ drains:
 - **Non-goals v1** (recorded with the panel review): assignee/severity fields, auto-resolve
   policies, external alerting/deploy correlation, reporting dashboards/CSV export.
 
+### Definitions and deployments (#483)
+
+`/definitions` is the cross-engine catalog: key, name, latest-only, per-version running
+counts (count-only, ≥ when a leg is capped or failed), suspended state, and a 20-second
+cache. A row opens `/definitions/{engineId}/{definitionId}` — read-only diagram and BPMN
+XML, start and instance event subscriptions, the four job lanes filtered by definition
+(lower bound when a lane fails), and a version selector. Compare renders an element diff
+on bpmn-js (added `+`, changed `~`, removed listed). It is a BFF structural diff, not an
+engine migration check. `/deployments` lists deployments; an ADMIN deletes one through the
+tier-3 verb (cascade off unless set, live-instance count re-checked at execute, typed
+deployment id on prod). Case definitions on a 6.8+ engine appear in the catalog; their
+diagram and BPMN job lanes say so instead of pretending to be process definitions.
+Uploading a deployment stays out (§11, decision #505).
+
 ## 5. Corrective actions — the verb catalog
 
 Every verb states what is preserved. Guard tiers per §6. All calls in
@@ -904,7 +918,8 @@ remains v2.
 | **Rerun from activity (with overrides)** | Guided composite: variable edits first (§4a change-set), then change-state; token re-enters the chosen activity; history append-only | 2 |
 | **Change state / move token** | Cancels ALL executions at the source activity, starts at target. The Executions tab shows each token; selecting one pre-fills that activity, and the move still cancels every token sitting on it. Guardrails: blocked on multi-instance bodies, parallel-join warning, suspended-check (offer activate-first), preview labeled *BFF simulation* (engine has no dry-run) + exact REST body shown | 2 |
 | **Restart as new instance** | Completed/terminated instance re-launched with copied historic variables; **explicit fork: pin original definition version vs latest**; new instance ID | 2 |
-| **Suspend process definition** | One call stops new AND (optionally) running instances of a definition — the real "bad deploy" brake (replaces bulk instance-suspend) | 3 |
+| **Suspend / activate process definition** | One call stops or resumes new instances of a definition, and optionally running ones. An ISO-8601 `effectiveAt` schedules it; omitted means now. The "bad deploy" brake | 3 |
+| **Delete deployment** | Deletes one deployment. Cascade defaults off and is refused while running instances exist or the live count cannot be proved. Typed deployment id on prod. Irreversible. No upload (#505) | 3 |
 | **Add / remove participant** | User identity link on a running process or case (`participant` by default). The starter link is shown and cannot be removed. IDM check on add only when IDM is probed present | 1 |
 | **Terminate / delete instance** | Irreversible; runtime state destroyed; **cascade to call-activity children enumerated in the confirm**. The operator reason is sent to the engine as `deleteReason`, prefixed `inspector:<actor>[:ticket]:reason` and capped at 4000 characters. The engine still records the service account as the actor; the Inspector audit log is who asked | 3 |
 | **Delete dead-letter job** | ⚠ Orphans the execution permanently (only rescue afterwards: change-state). ADMIN-only, explicit warning | 3 |
@@ -1399,7 +1414,7 @@ and would rewrite working M1/M2 code for no capability gain); Go/FastAPI/Kotlin 
 
 ## 11. Non-goals & explicitly rejected (with reasons)
 
-- No BPMN editing/deployment tooling; no engine-DB access (unchanged).
+- No BPMN editing and no deployment **upload** (decision #505, 2026-10-22: Hub's `.bar`/`.zip` upload stays out). Reading the definition and deployment catalogs and deleting a deployment are in scope (#483). No engine-DB access (unchanged).
 - No cross-engine transactional bulk (unchanged) and no fake global pagination (unchanged).
 - **No query language** — Flowable's query REST has no OR-across-fields/boolean nesting; a
   grammar would either lie or duplicate the form. The compiled-criteria echo + copy-as-cURL

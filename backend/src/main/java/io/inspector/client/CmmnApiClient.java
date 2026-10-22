@@ -412,6 +412,45 @@ public class CmmnApiClient {
      * differs (the {@code /cmmn-api} context is a sibling of {@code /service}, so this builds an
      * absolute URI). Callers capability-gate ({@code scopeType}, ≥ 6.8) first.
      */
+    /**
+     * GET /cmmn-repository/case-definitions — catalog sibling of the process-definition list.
+     * Callers capability-gate ({@code scopeType}, ≥ 6.8) first.
+     */
+    public FlowablePage listCaseDefinitions(
+            EngineConfig engine, CallPriority priority, String key, String nameLike, Boolean latest, int size) {
+        UriComponentsBuilder b = UriComponentsBuilder.fromUriString(
+                        cmmnApiBase(engine) + "/cmmn-repository/case-definitions")
+                .queryParam("size", size);
+        if (key != null && !key.isBlank()) {
+            b.queryParam("key", key);
+        }
+        if (nameLike != null && !nameLike.isBlank()) {
+            b.queryParam("nameLike", nameLike);
+        }
+        if (latest != null) {
+            b.queryParam("latest", latest);
+        }
+        java.net.URI uri = b.build().toUri();
+        return guarded.call(
+                engine,
+                priority,
+                () -> guarded.readClient(engine).get().uri(uri).retrieve().body(FlowablePage.class));
+    }
+
+    /** Count-only running cases on one case definition ({@code size=1}, read {@code total}). */
+    public long countRunningCases(EngineConfig engine, CallPriority priority, String caseDefinitionId) {
+        java.net.URI uri = UriComponentsBuilder.fromUriString(cmmnApiBase(engine) + "/cmmn-runtime/case-instances")
+                .queryParam("caseDefinitionId", caseDefinitionId)
+                .queryParam("size", 1)
+                .build()
+                .toUri();
+        FlowablePage page = guarded.call(
+                engine,
+                priority,
+                () -> guarded.readClient(engine).get().uri(uri).retrieve().body(FlowablePage.class));
+        return page != null ? page.total() : 0;
+    }
+
     public void deleteCmmnDeadLetterJob(EngineConfig engine, CallPriority priority, String jobId) {
         String id = GuardedCaller.safeId(jobId);
         guarded.run(
