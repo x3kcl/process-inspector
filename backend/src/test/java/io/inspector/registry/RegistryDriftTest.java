@@ -25,7 +25,7 @@ class RegistryDriftTest {
         return TestEngines.builder(id, baseUrl)
                 .environment(env)
                 .enabled(enabled)
-                .auth(new Auth(Auth.Type.none, null, null, null))
+                .auth(Auth.none())
                 .mode(mode)
                 .timeouts(new Timeouts(null, null, null))
                 .alarmThresholds(new AlarmThresholds(null, null, null))

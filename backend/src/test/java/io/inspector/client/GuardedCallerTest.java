@@ -16,12 +16,14 @@ import static org.assertj.core.api.Assertions.assertThatThrownBy;
 import static org.awaitility.Awaitility.await;
 
 import com.github.tomakehurst.wiremock.WireMockServer;
+import com.github.tomakehurst.wiremock.stubbing.Scenario;
 import io.github.resilience4j.bulkhead.BulkheadConfig;
 import io.github.resilience4j.bulkhead.BulkheadRegistry;
 import io.github.resilience4j.circuitbreaker.CallNotPermittedException;
 import io.github.resilience4j.circuitbreaker.CircuitBreakerConfig;
 import io.github.resilience4j.circuitbreaker.CircuitBreakerRegistry;
 import io.inspector.client.GuardedCaller.CallPriority;
+import io.inspector.config.InspectorProperties.Auth;
 import io.inspector.config.InspectorProperties.EngineConfig;
 import io.inspector.config.InspectorProperties.Timeouts;
 import io.inspector.support.TestEngines;
@@ -363,6 +365,78 @@ class GuardedCallerTest {
                 .containsExactly(CorrectiveSampler.READ_SPAN, CorrectiveSampler.CORRECTIVE_SPAN);
         assertThat(verbOf(seen.get(0))).isNull();
         assertThat(verbOf(seen.get(1))).isEqualTo("delete-instance");
+    }
+
+    @Test
+    void customHeaderIsSentFromTheSecretRef() {
+        env.setProperty("ENGINE_API_KEY", "key-value");
+        Auth auth = new Auth(
+                Auth.Type.custom_header, null, null, null, null, null, null, null, null, "X-Api-Key", "ENGINE_API_KEY");
+        EngineConfig engine = TestEngines.builder("hdr", wm.baseUrl())
+                .auth(auth)
+                .timeouts(new Timeouts(1000, 1000, null))
+                .build();
+        wm.stubFor(get(urlPathEqualTo("/management/engine")).willReturn(okJson("{\"version\":\"1\"}")));
+
+        new ProcessApiClient(guarded).engineInfo(engine, CallPriority.INTERACTIVE);
+
+        wm.verify(getRequestedFor(urlPathEqualTo("/management/engine")).withHeader("X-Api-Key", equalTo("key-value")));
+    }
+
+    @Test
+    void oauthReadRetriesOnceAfter401AndAMutationDoesNot() {
+        env.setProperty("OAUTH_SECRET", "s3cret");
+        OAuthTokenService tokens = new OAuthTokenService(env, (url, environment) -> {});
+        GuardedCaller oauthGuarded =
+                new GuardedCaller(env, breakers, bulkheads, metrics, recentErrors, ObservationRegistry.NOOP, tokens);
+        ProcessApiClient oauthClient = new ProcessApiClient(oauthGuarded);
+        Auth auth = new Auth(
+                Auth.Type.oauth2_client_credentials,
+                null,
+                null,
+                null,
+                wm.baseUrl() + "/token",
+                "inspector",
+                "OAUTH_SECRET",
+                null,
+                null,
+                null,
+                null);
+        EngineConfig engine = TestEngines.builder("oauth", wm.baseUrl())
+                .auth(auth)
+                .timeouts(new Timeouts(1000, 1000, null))
+                .build();
+        wm.stubFor(post(urlPathEqualTo("/token"))
+                .inScenario("tokens")
+                .whenScenarioStateIs(Scenario.STARTED)
+                .willReturn(okJson("{\"access_token\":\"tok-1\",\"expires_in\":3600}"))
+                .willSetStateTo("refreshed"));
+        wm.stubFor(post(urlPathEqualTo("/token"))
+                .inScenario("tokens")
+                .whenScenarioStateIs("refreshed")
+                .willReturn(okJson("{\"access_token\":\"tok-2\",\"expires_in\":3600}")));
+        wm.stubFor(get(urlPathEqualTo("/management/engine"))
+                .inScenario("read")
+                .whenScenarioStateIs(Scenario.STARTED)
+                .willReturn(aResponse().withStatus(401))
+                .willSetStateTo("retry"));
+        wm.stubFor(get(urlPathEqualTo("/management/engine"))
+                .inScenario("read")
+                .whenScenarioStateIs("retry")
+                .willReturn(okJson("{\"version\":\"7\"}")));
+
+        Map<String, Object> info = oauthClient.engineInfo(engine, CallPriority.INTERACTIVE);
+
+        assertThat(info).containsEntry("version", "7");
+        wm.verify(2, postRequestedFor(urlPathEqualTo("/token")));
+        wm.verify(getRequestedFor(urlPathEqualTo("/management/engine"))
+                .withHeader("Authorization", equalTo("Bearer tok-2")));
+
+        wm.stubFor(post(urlPathEqualTo("/management/deadletter-jobs/job-1"))
+                .willReturn(aResponse().withStatus(401)));
+        assertThatThrownBy(() -> oauthClient.moveDeadLetterJob(engine, CallPriority.INTERACTIVE, "job-1"))
+                .isInstanceOf(HttpClientErrorException.Unauthorized.class);
+        wm.verify(1, postRequestedFor(urlPathEqualTo("/management/deadletter-jobs/job-1")));
     }
 
     private static String verbOf(Observation.Context context) {

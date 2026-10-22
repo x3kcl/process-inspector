@@ -52,7 +52,7 @@ public final class TestEngines {
     }
 
     public static Auth basicAuth(String username, String passwordRef) {
-        return new Auth(Auth.Type.basic, username, passwordRef, null);
+        return Auth.basic(username, passwordRef);
     }
 
     public static Builder builder(String id, String baseUrl) {

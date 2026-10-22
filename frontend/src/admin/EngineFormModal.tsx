@@ -8,7 +8,7 @@ import { ModalShell } from '../components/ModalShell'
 import type { AdminEngineDto, EngineWriteRequest } from './adminEngines'
 import { toEnvironment, type Environment } from './lifecycle'
 
-type AuthType = 'basic' | 'bearer' | 'none'
+type AuthType = 'basic' | 'bearer' | 'none' | 'oauth2-client-credentials' | 'custom-header'
 
 interface Props {
   /** Present = edit; absent = add. */
@@ -31,6 +31,14 @@ export function EngineFormModal({ existing, submitting, error, onSubmit, onClose
   const [authUsername, setAuthUsername] = useState(existing?.authUsername ?? '')
   const [passwordRef, setPasswordRef] = useState(existing?.passwordRef ?? '')
   const [tokenRef, setTokenRef] = useState(existing?.tokenRef ?? '')
+  const [oauthTokenUrl, setOauthTokenUrl] = useState(existing?.oauthTokenUrl ?? '')
+  const [oauthClientId, setOauthClientId] = useState(existing?.oauthClientId ?? '')
+  const [oauthClientSecretRef, setOauthClientSecretRef] = useState(
+    existing?.oauthClientSecretRef ?? '',
+  )
+  const [oauthScope, setOauthScope] = useState(existing?.oauthScope ?? '')
+  const [headerName, setHeaderName] = useState(existing?.headerName ?? '')
+  const [headerSecretRef, setHeaderSecretRef] = useState(existing?.headerSecretRef ?? '')
   // Admin CRUD, not verb-tiered: always required ≥10, regardless of environment.
   const guard = useProdGuard({ reasonRule: { required: true, minLength: 10 } })
   const { reason, setReason, reasonOk } = guard
@@ -47,6 +55,19 @@ export function EngineFormModal({ existing, submitting, error, onSubmit, onClose
       authUsername: authType === 'none' ? undefined : authUsername.trim() || undefined,
       passwordRef: authType === 'basic' ? passwordRef.trim() || undefined : undefined,
       tokenRef: authType === 'bearer' ? tokenRef.trim() || undefined : undefined,
+      oauthTokenUrl:
+        authType === 'oauth2-client-credentials' ? oauthTokenUrl.trim() || undefined : undefined,
+      oauthClientId:
+        authType === 'oauth2-client-credentials' ? oauthClientId.trim() || undefined : undefined,
+      oauthClientSecretRef:
+        authType === 'oauth2-client-credentials'
+          ? oauthClientSecretRef.trim() || undefined
+          : undefined,
+      oauthScope:
+        authType === 'oauth2-client-credentials' ? oauthScope.trim() || undefined : undefined,
+      headerName: authType === 'custom-header' ? headerName.trim() || undefined : undefined,
+      headerSecretRef:
+        authType === 'custom-header' ? headerSecretRef.trim() || undefined : undefined,
       reason: reason.trim(),
     })
   }
@@ -135,6 +156,8 @@ export function EngineFormModal({ existing, submitting, error, onSubmit, onClose
             <option value="none">none</option>
             <option value="basic">basic</option>
             <option value="bearer">bearer</option>
+            <option value="oauth2-client-credentials">oauth2 client credentials</option>
+            <option value="custom-header">custom header</option>
           </select>
         </label>
         {authType === 'basic' && (
@@ -171,6 +194,72 @@ export function EngineFormModal({ existing, submitting, error, onSubmit, onClose
               }}
             />
           </label>
+        )}
+        {authType === 'oauth2-client-credentials' && (
+          <>
+            <label>
+              Token URL
+              <input
+                value={oauthTokenUrl}
+                placeholder="https://idp.example.com/oauth/token"
+                onChange={(e) => {
+                  setOauthTokenUrl(e.target.value)
+                }}
+              />
+            </label>
+            <label>
+              Client id
+              <input
+                value={oauthClientId}
+                onChange={(e) => {
+                  setOauthClientId(e.target.value)
+                }}
+              />
+            </label>
+            <label>
+              Client secret ref <span className="muted">(env-var name, never a value)</span>
+              <input
+                value={oauthClientSecretRef}
+                placeholder="ENGINE_OAUTH_SECRET"
+                onChange={(e) => {
+                  setOauthClientSecretRef(e.target.value)
+                }}
+              />
+            </label>
+            <label>
+              Scope <span className="muted">(optional)</span>
+              <input
+                value={oauthScope}
+                onChange={(e) => {
+                  setOauthScope(e.target.value)
+                }}
+              />
+            </label>
+          </>
+        )}
+        {authType === 'custom-header' && (
+          <>
+            <label>
+              Header name
+              <input
+                value={headerName}
+                placeholder="X-Api-Key"
+                onChange={(e) => {
+                  setHeaderName(e.target.value)
+                }}
+              />
+            </label>
+            <label>
+              Header secret ref <span className="muted">(env-var name, never a value)</span>
+              <input
+                value={headerSecretRef}
+                placeholder="ENGINE_API_KEY"
+                onChange={(e) => {
+                  setHeaderSecretRef(e.target.value)
+                }}
+              />
+            </label>
+          </>
         )}
         <label>
           Reason <span className="muted">(≥10 chars, audited)</span>
