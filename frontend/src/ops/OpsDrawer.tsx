@@ -29,6 +29,7 @@ export function OpsDrawer() {
   const queryClient = useQueryClient()
   const live = useLive()
   const jobs = useBulkJobs(true, live)
+  const [housekeepingOnly, setHousekeepingOnly] = useState(false)
   const activeCount = (jobs.data ?? []).filter(jobActive).length
   const interrupted = (jobs.data ?? []).filter((job) => job.state === 'INTERRUPTED').length
 
@@ -70,7 +71,17 @@ export function OpsDrawer() {
       </button>
       {open && (
         <div className="drawer-body">
-          {jobs.data.map((job) => (
+          <label>
+            <input
+              type="checkbox"
+              checked={housekeepingOnly}
+              onChange={(event) => {
+                setHousekeepingOnly(event.target.checked)
+              }}
+            />{' '}
+            Housekeeping
+          </label>
+          {visibleJobs(jobs.data, housekeepingOnly).map((job) => (
             <JobCard
               key={job.id}
               job={job}
@@ -80,6 +91,16 @@ export function OpsDrawer() {
         </div>
       )}
     </aside>
+  )
+}
+
+function visibleJobs(jobs: BulkJobDto[], housekeepingOnly: boolean): BulkJobDto[] {
+  const rows = housekeepingOnly
+    ? jobs.filter((job) => job.verb === 'delete-history' || job.verb === 'delete-case-history')
+    : jobs
+  if (!housekeepingOnly) return rows
+  return [...rows].sort(
+    (left, right) => (right.tallies?.unknown ?? 0) - (left.tallies?.unknown ?? 0),
   )
 }
 

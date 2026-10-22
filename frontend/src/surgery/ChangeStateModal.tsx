@@ -26,6 +26,8 @@ interface Props {
   instanceId: string
   vitals: InstanceDetail
   engine?: EngineDto
+  /** Activity chosen on the Executions tab. Change-state still cancels every token on it. */
+  initialSource?: string
   onClose: () => void
 }
 
@@ -35,13 +37,20 @@ interface Simulated {
   preview: ChangeStatePreview
 }
 
-export function ChangeStateModal({ engineId, instanceId, vitals, engine, onClose }: Props) {
+export function ChangeStateModal({
+  engineId,
+  instanceId,
+  vitals,
+  engine,
+  initialSource,
+  onClose,
+}: Props) {
   const toast = useToast()
   const diagram = useInstanceDiagram(engineId, instanceId)
   const previewM = useChangeStatePreview(engineId, instanceId)
   const executeM = useChangeStateExecute(engineId, instanceId)
 
-  const [sources, setSources] = useState<string[]>([])
+  const [sources, setSources] = useState<string[]>(initialSource ? [initialSource] : [])
   const [targets, setTargets] = useState<string[]>([])
   const [targetFilter, setTargetFilter] = useState('')
   const [simulated, setSimulated] = useState<Simulated | null>(null)
