@@ -1844,6 +1844,9 @@ export interface components {
             /** Format: int32 */
             dlqScanCap?: number;
             environment?: string;
+            headerName?: string;
+            headerSecretRef?: string;
+            headerSecretRefPresent?: boolean;
             id?: string;
             lastProbeFailureClass?: string;
             lifecycle?: string;
@@ -1851,6 +1854,12 @@ export interface components {
             maxPageSize?: number;
             mode?: string;
             name?: string;
+            oauthAudience?: string;
+            oauthClientId?: string;
+            oauthClientSecretRef?: string;
+            oauthClientSecretRefPresent?: boolean;
+            oauthScope?: string;
+            oauthTokenUrl?: string;
             passwordRef?: string;
             passwordRefPresent?: boolean;
             reachableNow?: boolean;
@@ -2498,10 +2507,17 @@ export interface components {
             dlqScanCap?: number;
             /** @enum {string} */
             environment?: "DEV" | "TEST" | "PROD";
+            headerName?: string;
+            headerSecretRef?: string;
             id?: string;
             /** Format: int32 */
             maxPageSize?: number;
             name: string;
+            oauthAudience?: string;
+            oauthClientId?: string;
+            oauthClientSecretRef?: string;
+            oauthScope?: string;
+            oauthTokenUrl?: string;
             passwordRef?: string;
             /** Format: int32 */
             readMs?: number;
