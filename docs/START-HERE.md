@@ -33,6 +33,7 @@ A disabled engine stays readable and stays out of search. "Disabled" is not "del
 | What landed, in what order? | [IMPLEMENTATION-PLAN.md](IMPLEMENTATION-PLAN.md) |
 | How do I operate it? | [OPERATIONS.md](OPERATIONS.md) and [RUNBOOK.md](RUNBOOK.md) |
 | How do I use the console? | [PRODUCT-GUIDE.md](PRODUCT-GUIDE.md) |
+| Why Boot 4, and in what order? | [BOOT4-MIGRATION.md](BOOT4-MIGRATION.md) |
 
 If a behavior change does not update the matching doc, the change is incomplete.
 
