@@ -2,6 +2,7 @@ import { api, ApiError } from './client'
 import type {
   AuditEntryDto,
   EngineDto,
+  EngineSystemInfo,
   InstanceDetail,
   InstanceDiagram,
   InstanceHierarchy,
@@ -33,6 +34,14 @@ import type {
   TeamViewDto,
   VariableDto,
 } from './model'
+
+export async function fetchSystemInfo(id: string): Promise<EngineSystemInfo> {
+  const { data, error, response } = await api.GET('/api/engines/{id}/system', {
+    params: { path: { id } },
+  })
+  if (data === undefined) throw new ApiError(response.status, error)
+  return data
+}
 
 export async function fetchEngines(): Promise<EngineDto[]> {
   const { data, error, response } = await api.GET('/api/engines')
