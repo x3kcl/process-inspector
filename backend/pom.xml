@@ -111,6 +111,15 @@
       <groupId>io.micrometer</groupId>
       <artifactId>micrometer-registry-prometheus</artifactId>
     </dependency>
+    <!-- Tracing is off until INSPECTOR_TRACING_ENABLED=true (#470). Versions from the Boot BOM. -->
+    <dependency>
+      <groupId>io.micrometer</groupId>
+      <artifactId>micrometer-tracing-bridge-otel</artifactId>
+    </dependency>
+    <dependency>
+      <groupId>io.opentelemetry</groupId>
+      <artifactId>opentelemetry-exporter-otlp</artifactId>
+    </dependency>
     <!-- Structured JSON logs (issue #96, OPERATIONS.md §2) — logback-spring.xml uses this
          encoder outside dev/test profiles so a log-aggregation stack can parse fields
          (correlationId, level, logger, thread) instead of scraping a text pattern. -->

@@ -11,6 +11,8 @@ import { formatSeconds } from '../lib/format'
 import { Ts } from '../lib/Ts'
 import { DetailTabBar } from './DetailTabBar'
 import { DiagramCanvas } from './DiagramCanvas'
+import { Breadcrumbs } from '../shell/Breadcrumbs'
+import { inspectCrumbs } from '../shell/breadcrumbs'
 import { restoreRouteFocus } from '../shell/routeFocus'
 import { instanceLoadFailureCopy } from './loadFailure'
 import type { DivergenceMarkerSet } from './comparison/diffFormat'
@@ -26,6 +28,9 @@ const TAB_COMPONENTS: Record<TabId, LazyExoticComponent<ComponentType<TabProps>>
   variables: lazy(() => import('./tabs/VariablesTab')),
   'errors-jobs': lazy(() => import('./tabs/ErrorsJobsTab')),
   tasks: lazy(() => import('./tabs/TasksTab')),
+  participants: lazy(() => import('./tabs/ParticipantsTab')),
+  executions: lazy(() => import('./tabs/ExecutionsTab')),
+  decisions: lazy(() => import('./tabs/DecisionsTab')),
   hierarchy: lazy(() => import('./tabs/HierarchyTab')),
   timeline: lazy(() => import('./tabs/TimelineTab')),
   comparison: lazy(() => import('./comparison/ComparisonTab')),
@@ -145,6 +150,15 @@ export function InspectPage() {
           }}
         />
       )}
+      <Breadcrumbs
+        segments={inspectCrumbs({
+          engineId,
+          engineName: engine?.name,
+          definitionKey: vitals.data?.definitionKey,
+          definitionVersion: vitals.data?.definitionVersion,
+          instanceId,
+        })}
+      />
       <header className="vitals">
         <div className="vitals-identity">
           <EnvBadge
@@ -232,6 +246,7 @@ export function InspectPage() {
             instanceId={instanceId}
             vitals={vitals.data}
             engine={engine}
+            selectedActivityId={selectedActivityId}
           />
         )}
       </header>

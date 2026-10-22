@@ -35,7 +35,8 @@ class EnginesControllerTest {
     }
 
     private static EnginesController controllerOf(EngineConfig... engines) {
-        return new EnginesController(new EngineRegistry(new InspectorProperties(4, 10, null, null, List.of(engines))));
+        return new EnginesController(
+                new EngineRegistry(new InspectorProperties(4, 10, null, null, List.of(engines))), null);
     }
 
     @Test

@@ -42,7 +42,8 @@ R-SAFE-06/07 (REQUIREMENTS-REGISTER.md).
 - `/actuator/prometheus` (auth-gated). Metric set: `audit_insert_failures_total`,
   `engine_fanout_duration_seconds` (tags `engineId`,`leg`), `resilience4j_circuitbreaker_state`,
   `sse_emitters_active` + `sse_emitter_errors_total`, `bulk_jobs_running` +
-  `bulk_item_outcomes_total`, Hikari pool, JVM/virtual-thread pinning. Triage-cache **hit rate**
+  `bulk_item_outcomes_total`, `oidc_login_failures_total`, `snapshot_last_success_seconds`,
+  `audit_retention_purge_failures_total`, Hikari pool, JVM/virtual-thread pinning. Triage-cache **hit rate**
   (as opposed to age, which `GET /api/diag` reports) remains TARGET, not wired.
 - Structured JSON logs (the `oidc` profile only — see status note above); every request gets a
   `correlationId` (accept `X-Request-Id` or generate), MDC-propagated across the virtual-thread
@@ -50,6 +51,51 @@ R-SAFE-06/07 (REQUIREMENTS-REGISTER.md).
   confirmed with a dedicated propagation test), logged on every engine call, persisted on every
   audit row, returned in every error envelope and UI toast. Never log secrets or variable
   payloads at INFO.
+
+**Stable JSON fields (#471).** Present on the `oidc` encoder. Names do not change without an
+OPERATIONS edit. `correlationId` is the request id (the issue text's `requestId`). `traceId`
+is present only when tracing is enabled.
+
+| Field | Stable | Meaning |
+|---|---|---|
+| `correlationId` | yes | Request id. MDC, response header, audit row. |
+| `traceId` | yes, when tracing is on | W3C trace id from Micrometer. Empty when tracing is off. |
+| `level` | yes | Log level. |
+| `logger` | yes | Logger name. |
+| `application` | yes | Always `process-inspector`. |
+| `engineId` | when the line is an engine call | Engine slug. Not on every line. |
+| `actor` | when the line is an audit/security event | Acting user. Not a free-form request field. |
+
+Never a secret, a variable value, or an exception body that embeds a payload. That rule is
+DATA-CLASSIFICATION. The shipper example is `deploy/observability/vector.toml`. A corrective-action
+query against the JSON is `application="process-inspector"` and a verb field on the audit log,
+not on every line.
+
+**Dashboards (#469).** `deploy/grafana/dashboards/` holds fleet, BFF, and operations.
+`docker compose --profile observability up` from `docker/` starts Prometheus (scrape password
+from `INSPECTOR_DEV_PASSWORD`), Grafana with anonymous view on `127.0.0.1:3000`, an
+OpenTelemetry collector, and Jaeger. The three dashboards are provisioned. They read the
+metrics above. Cache hit rate is still not a meter, so it is not a panel.
+
+**System info (#509, #510).** `GET /api/engines/{id}/system` returns version, schema properties, and table counts. A viewer gets the version line only. Copy and download live on `/admin/engines/{id}/system`. Executor numbers appear only when the registry row's `metrics_url` is set and passes the egress check. Otherwise the page says the engine does not expose them. A scrape that lacks `flowable_jobs_async_total{type="rejected"}` does not invent a zero.
+
+**Throughput (#508).** The strip compares root starts over 10 minutes, 1 hour, and 24 hours with the median of earlier windows of the same width. Tasks and CMMN case starts are the 10-minute tile. No samples yet reads "no history yet".
+
+**Health advisor (#511).** The strip shows OK / WARN / CRIT from sampled signals: unreachable, oldest executable job over 5 minutes, overdue timers, history backlog over 5 minutes, and a drop in root starts versus the median of recent snapshot windows. A warning clears only after two quieter probes. Thresholds match R-NFR-04 (5 minutes). Executor pool gauges are not on this banner until an engine metrics URL exists (#510).
+
+**Tracing (#470, #564, #565).** Off unless `INSPECTOR_TRACING_ENABLED=true` and
+`OTEL_EXPORTER_OTLP_ENDPOINT` is set. Default sample is 1% (`INSPECTOR_TRACING_SAMPLE`).
+Reads are span `engine.call`, tagged `engineId` and `leg`. Corrective actions are span
+`engine.corrective`, tagged with those plus `verb`, and are always sampled. No variable
+values on a span. Jaeger UI is `http://127.0.0.1:16686` when the observability profile is up.
+Compose cannot attach env to `backend` only for that profile, so tracing stays off until the
+same command sets the collector URL:
+
+`INSPECTOR_TRACING_ENABLED=true OTEL_EXPORTER_OTLP_ENDPOINT=http://otel-collector:4318/v1/traces docker compose -f docker/docker-compose.demo.yml --profile observability up`
+
+The published demo image does not contain `engine.corrective` until the next image build.
+A search on that image can show `engine.call` children only. Build the backend locally to see
+the verb span.
 - ADMIN diagnostics `GET /api/diag` (v1.x): breaker states, cache AGES, permit-pool saturation,
   last-N engine errors with correlationIds, build info. Door gate is "ADMIN on at least one
   engine"; per-engine sections are then filtered to engines the caller holds ADMIN on (see status
@@ -71,6 +117,16 @@ failures). No monitoring STACK (Prometheus/Alertmanager) is deployed by this rep
 `/actuator/prometheus` in a real deploy. Paging route: the workflow platform team. Degraded
 mode: design principle 5 IS the fallback — the runbook carries direct-cURL recipes for the top
 verbs (see §7).
+
+**Monthly adversarial review — retired 2026-10-21 (#452).** The cloud routine
+`trig_01CKRinRd9fXRFFguDt3Gn9Y` (cron `0 6 1 * *`) fired on 2026-08-01, 09-01 and 10-01 and
+produced no `docs/reviews/MONTHLY-REVIEW-*.md` and no pull request. Each run ended on the
+usage-limit error. Repairing it (a cheaper rotating seat, a later clock, a newer model) still
+depends on a budget that already failed three months running, so the routine is retired rather
+than rescheduled. Follow-ups from here are the open `maturity-2026-10` issues. This session
+cannot delete the trigger through the automations API; the owner deletes
+`trig_01CKRinRd9fXRFFguDt3Gn9Y` in the Cursor automations UI. Until that click, a firing run
+that again hits the usage limit changes nothing in the repo.
 
 ## 4. Availability & recovery (R-OPS-04)
 RTO ≤ 15 min: IaC/one-command redeploy, image pinned by digest, registry YAML + secrets in
@@ -187,7 +243,7 @@ annotated tag, and *calls* `release.yml` as a reusable workflow — required bec
   full-DB-write-access gap) is tracked separately (issue #311, PO-gated). Run the verifier
   periodically and after any Postgres restore (§5, RUNBOOK §5); monthly range partitions;
   retention default 400 days with an audited purge job; legal-hold procedure (suspend purge
-  per engine/tenant/window).
+  per engine/tenant/window). Engine history deletion is a separate ADMIN wizard (`POST /api/bulk/history`). It does not use the audit legal-hold table. Holds are `inspector.housekeeping.held-definition-keys` and `inspector.housekeeping.held-business-keys` (comma-separated; a business key ending in `*` is a prefix). A hold refusal writes `history-hold-refused`.
   **Monthly partitioning is live (S5a):** `V10` carved the DEFAULT partition into
   `audit_entry_YYYY_MM` children (append-only never relaxed — the carve moves rows by
   DETACH/CREATE/INSERT/TRUNCATE/ATTACH with `seq`/`chain_hash` verbatim), and
@@ -279,6 +335,14 @@ BPMN comments before a start-tag scan, and the BFF re-validates every id. Versio
 PRs are Dependabot's job (§8), not a hand-filed duplicate per advisory.
 
 ## 8. CI gates — the authoritative merge-blocking list (R-OPS-06)
+**`main` ruleset (#449).** A repository ruleset requires the `ci.yml` check names (`lint`,
+`unit`, `frontend`, `e2e`, `docker`, and each `integration` matrix leg), requires the branch
+to be up to date, and blocks force-push, deletion, and a non-linear history. No approving
+review is required. Repository admins may bypass the pull-request rule only (emergency path,
+RUNBOOK §0). A direct `git push origin main` is rejected. `cut-release.yml` pushes a tag and
+then calls `release.yml`; the ruleset targets `refs/heads/main` only, so a tag push is not
+blocked. It is not re-dispatched here: a dispatch cuts a real release and publishes images.
+
 **Landed in `.github/workflows/ci.yml` (merge-blocking):** `lint` (Spotless/palantir) ·
 `unit` (backend build + unit suite incl. the **ArchUnit anti-flakiness rule**: `Thread.sleep`
 in any test class = build failure) · `frontend` (**ESLint strict-type-checked + Prettier**,

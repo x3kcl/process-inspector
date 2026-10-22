@@ -5,6 +5,7 @@ import io.inspector.bulk.BulkErrorClassService;
 import io.inspector.bulk.BulkFilterService;
 import io.inspector.bulk.BulkJobService;
 import io.inspector.bulk.DestructiveBulkService;
+import io.inspector.bulk.HousekeepingService;
 import io.inspector.security.ReadScopeGate;
 import io.inspector.stream.SseHub;
 import java.util.List;
@@ -43,6 +44,7 @@ public class BulkController {
     private final BulkErrorClassService errorClass;
     private final BulkFilterService filter;
     private final DestructiveBulkService destructive;
+    private final HousekeepingService housekeeping;
     private final SseHub stream;
     private final ReadScopeGate readScope;
 
@@ -51,12 +53,14 @@ public class BulkController {
             BulkErrorClassService errorClass,
             BulkFilterService filter,
             DestructiveBulkService destructive,
+            HousekeepingService housekeeping,
             SseHub stream,
             ReadScopeGate readScope) {
         this.bulk = bulk;
         this.errorClass = errorClass;
         this.filter = filter;
         this.destructive = destructive;
+        this.housekeeping = housekeeping;
         this.stream = stream;
         this.readScope = readScope;
     }
@@ -112,6 +116,20 @@ public class BulkController {
      * (the preview above is advisory only), then hands off to the same persisted-job machinery
      * every other bulk door uses.
      */
+    @PostMapping("/history/preview")
+    @PreAuthorize("@rbac.atLeast(authentication, 'ADMIN')")
+    public BulkDtos.HistoryPreview previewHistory(
+            @RequestBody BulkDtos.HistoryDeleteRequest request, Authentication authentication) {
+        return housekeeping.preview(request, authentication);
+    }
+
+    @PostMapping("/history")
+    @PreAuthorize("@rbac.atLeast(authentication, 'ADMIN')")
+    public BulkDtos.BulkJobDto submitHistory(
+            @RequestBody BulkDtos.HistoryDeleteRequest request, Authentication authentication) {
+        return housekeeping.submit(request, authentication);
+    }
+
     @PostMapping("/destructive")
     @PreAuthorize("@rbac.atLeast(authentication, 'ADMIN')")
     public BulkDtos.BulkJobDto submitDestructive(

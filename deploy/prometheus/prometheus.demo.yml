@@ -1,0 +1,16 @@
+# Demo scrape for the observability profile (#469). The password file is written at
+# container start from INSPECTOR_DEV_PASSWORD. Not a production scrape config.
+global:
+  scrape_interval: 15s
+
+rule_files:
+  - /etc/prometheus/alert-rules.yml
+
+scrape_configs:
+  - job_name: process-inspector
+    metrics_path: /actuator/prometheus
+    basic_auth:
+      username: viewer
+      password_file: /etc/prometheus/scrape-password
+    static_configs:
+      - targets: ["backend:8080"]
