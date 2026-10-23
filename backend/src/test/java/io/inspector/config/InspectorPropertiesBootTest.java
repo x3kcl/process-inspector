@@ -42,9 +42,6 @@ class InspectorPropertiesBootTest {
 
     @Configuration
     @EnableConfigurationProperties(InspectorProperties.class)
-    @ImportAutoConfiguration({
-        ConfigurationPropertiesAutoConfiguration.class,
-        ValidationAutoConfiguration.class
-    })
+    @ImportAutoConfiguration({ConfigurationPropertiesAutoConfiguration.class, ValidationAutoConfiguration.class})
     static class Boot {}
 }

@@ -1,15 +1,27 @@
 package io.inspector.config;
 
 import io.inspector.audit.AuditPayloadMode;
+import jakarta.validation.Constraint;
+import jakarta.validation.ConstraintValidator;
+import jakarta.validation.ConstraintValidatorContext;
+import jakarta.validation.Payload;
 import jakarta.validation.Valid;
 import jakarta.validation.constraints.AssertTrue;
+import jakarta.validation.constraints.DecimalMin;
+import jakarta.validation.constraints.Min;
 import jakarta.validation.constraints.NotBlank;
 import jakarta.validation.constraints.NotNull;
 import jakarta.validation.constraints.Pattern;
+import jakarta.validation.constraints.Positive;
+import java.lang.annotation.ElementType;
+import java.lang.annotation.Retention;
+import java.lang.annotation.RetentionPolicy;
+import java.lang.annotation.Target;
 import java.time.Duration;
 import java.util.HashSet;
 import java.util.List;
 import java.util.Set;
+import org.hibernate.validator.constraints.time.DurationMin;
 import org.springframework.boot.context.properties.ConfigurationProperties;
 import org.springframework.boot.context.properties.bind.ConstructorBinding;
 import org.springframework.validation.annotation.Validated;
@@ -22,8 +34,8 @@ import org.springframework.validation.annotation.Validated;
 @Validated
 @ConfigurationProperties(prefix = "inspector")
 public record InspectorProperties(
-        Integer fanoutParallelism,
-        Integer hierarchyMaxDepth,
+        @Positive Integer fanoutParallelism,
+        @Positive Integer hierarchyMaxDepth,
         @Valid Triage triage,
         @Valid Bulk bulk,
         @Valid Snapshot snapshot,
@@ -56,11 +68,14 @@ public record InspectorProperties(
      * attention} block is served, and the card ordering is byte-for-byte today's ({@code total
      * DESC}). {@code attention} carries the model's tuning knobs (§4.1/§6).
      */
+    @Validated
     public record Triage(
-            Integer cacheTtlS,
+            @Positive Integer cacheTtlS,
+            // No constraint: 0 and negative both disable the throttle (the comparison always allows refresh).
             Integer refreshMinIntervalS,
-            Integer stacktraceSampleCap,
-            Integer ackResurfaceThresholdPct,
+            @Min(0) Integer stacktraceSampleCap,
+            @Min(0) Integer ackResurfaceThresholdPct,
+            // No constraint: nullable flag; null defaults to false.
             Boolean attentionOrdering,
             @Valid Attention attention) {
 
@@ -161,22 +176,27 @@ public record InspectorProperties(
      *       configuration until {@code inspector.triage.attention-ordering} is opted into.</li>
      * </ul>
      */
+    @Validated
+    @AttentionOrder
     public record Attention(
-            Duration recencyHalfLife,
-            Integer arrivalsWindowDays,
-            Integer minClosedEpisodes,
-            Double mttrClampLow,
-            Double mttrClampHigh,
+            @DurationMin(seconds = 1) Duration recencyHalfLife,
+            @Positive Integer arrivalsWindowDays,
+            @Positive Integer minClosedEpisodes,
+            @DecimalMin("0.0") Double mttrClampLow,
+            @DecimalMin("0.0") Double mttrClampHigh,
+            // Range is isSelfHealFloorAProbability(): [0, 1]. Null defaults to 0.25.
             Double selfHealFloor,
-            Duration modelTtl,
+            @DurationMin(nanos = 1) Duration modelTtl,
+            // No constraint: nullable flag; null defaults to false.
             Boolean derivedResurfaceThreshold,
-            Integer resurfaceFloorPct,
-            Double resurfaceFalseBudgetPer30AckDays,
-            Duration burstWindow,
-            Integer burstOnset,
-            Integer burstExit,
-            Double burstWeight,
-            Duration selfHealHorizon) {
+            @Min(0) Integer resurfaceFloorPct,
+            @DecimalMin("0.0") Double resurfaceFalseBudgetPer30AckDays,
+            // No order vs modelTtl: a shorter window is legal and only WARNs (AttentionScoreService).
+            @DurationMin(seconds = 1) Duration burstWindow,
+            @Positive Integer burstOnset,
+            @Positive Integer burstExit,
+            @Positive Double burstWeight,
+            @DurationMin(seconds = 1) Duration selfHealHorizon) {
 
         /** Pre-#400 14-arg shape → the self-heal horizon default (no call-site churn). */
         public Attention(
@@ -301,9 +321,6 @@ public record InspectorProperties(
          * that fires on evidence too weak to have opened it. A deployment that means "no
          * hysteresis" sets exit = onset.
          */
-        @AssertTrue(
-                message = "inspector.triage.attention.burst-exit must be <= burst-onset"
-                        + " (an exit above onset inverts the Schmitt semantics)")
         public boolean isBurstHysteresisOrdered() {
             return burstExitOrDefault() <= burstOnsetOrDefault();
         }
@@ -408,13 +425,14 @@ public record InspectorProperties(
      * job within {@code sseCoalesceMs} of each other coalesce into one flush — the events are
      * id-only signals the client refetches from, so only the LAST one in a burst need ever ship.
      */
+    @Validated
     public record Bulk(
-            Integer enginePermits,
-            Integer staggerMs,
-            Integer circuitPauseMaxMs,
-            Integer circuitPausePollMs,
-            Integer sseSubscriberCap,
-            Integer sseCoalesceMs) {
+            @Positive Integer enginePermits,
+            @Min(0) Integer staggerMs,
+            @Min(0) Integer circuitPauseMaxMs,
+            @Min(0) Integer circuitPausePollMs,
+            @Min(0) Integer sseSubscriberCap,
+            @Min(0) Integer sseCoalesceMs) {
         public int enginePermitsOrDefault() {
             return enginePermits != null ? enginePermits : 4;
         }
@@ -459,7 +477,14 @@ public record InspectorProperties(
      * idempotency grid; {@code retentionDays} (400, revFADP) is the drop-partition horizon.
      * Disabled ({@code enabled=false}) in unit-test profiles so no background poll fires.
      */
-    public record Snapshot(Boolean enabled, Duration sampleInterval, Duration bucketWidth, Integer retentionDays) {
+    @Validated
+    public record Snapshot(
+            // No constraint: nullable flag; null defaults to enabled.
+            Boolean enabled,
+            @DurationMin(nanos = 1) Duration sampleInterval,
+            // Not ordered against sampleInterval: a longer interval with a shorter bucket is legal.
+            @DurationMin(seconds = 1) Duration bucketWidth,
+            @Positive Integer retentionDays) {
         public boolean enabledOrDefault() {
             return enabled == null || enabled;
         }
@@ -494,8 +519,14 @@ public record InspectorProperties(
      * "the whole ledger up to the cap", never truly unbounded; dropped rows are always the OLDEST
      * by {@code lastSeen} and the response says so via {@code truncated}.
      */
+    @Validated
     public record Incidents(
-            Boolean enabled, Duration quietWindow, Integer regressionMinCount, Integer retentionDays, Integer listCap) {
+            // No constraint: nullable flag; null defaults to enabled.
+            Boolean enabled,
+            @DurationMin(nanos = 1) Duration quietWindow,
+            @Positive Integer regressionMinCount,
+            @Positive Integer retentionDays,
+            @Positive Integer listCap) {
         public boolean enabledOrDefault() {
             return enabled == null || enabled;
         }
@@ -535,7 +566,13 @@ public record InspectorProperties(
      * sampler beat) is the minimum consecutive COMPLETE cycles a newly computed lane must hold
      * before it becomes the DISPLAYED one (§4.2 rule 3).
      */
-    public record SelfHeal(Boolean enabled, Integer windowDays, Integer floor, Integer dwellCycles) {
+    @Validated
+    public record SelfHeal(
+            // No constraint: nullable flag; null defaults to enabled. Reads stay live when false.
+            Boolean enabled,
+            @Positive Integer windowDays,
+            @Positive Integer floor,
+            @Positive Integer dwellCycles) {
         public boolean enabledOrDefault() {
             return enabled == null || enabled;
         }
@@ -611,28 +648,37 @@ public record InspectorProperties(
         this(fanoutParallelism, hierarchyMaxDepth, triage, bulk, null, null, engines);
     }
 
+    @Validated
     public record EngineConfig(
             @NotBlank @Pattern(regexp = ENGINE_ID_PATTERN, message = "engine id must match " + ENGINE_ID_PATTERN)
             String id,
 
+            // No constraint: free-form display label; blank is allowed.
             String name,
             @NotBlank String baseUrl,
             @NotNull EngineEnvironment environment,
+            // No constraint: free-form color; optional.
             String accentColor,
+            // No constraint: primitive flag, always present.
             boolean enabled,
+            // No constraint: optional tenant pin; blank means unscoped.
             String tenantId,
+            // No constraint: optional free-form template; absent means no link.
             // OPTIONAL APM/logs deep-link template (SPEC §4): {processInstanceId},
             // {executionId}, {businessKey}, {failureTime} placeholders. Absent → no link.
             String telemetryUrlTemplate,
             @Valid Auth auth,
+            // No constraint: enum; null defaults to READ_WRITE.
             EngineMode mode,
             @Valid Timeouts timeouts,
-            Integer maxPageSize,
-            Integer dlqScanCap,
+            @Positive Integer maxPageSize,
+            @Positive Integer dlqScanCap,
             @Valid AlarmThresholds alarmThresholds,
+            // No constraint: enum; null defaults to REDACTED.
             // Per-engine audit-payload minimization (R-AUD-03). Null → redacted (minimization by
             // default); YAML `audit-payload: full|redacted|metadata-only` binds here.
             AuditPayloadMode auditPayload,
+            // No constraint: primitive flag, default false.
             // Per-engine X-Forwarded-User send-side opt-in (M4-CLOSEOUT §2 / S4). Off by default —
             // forwarding employee identity (PII) is permitted only on genuinely-trusted engines;
             // YAML `forward-user: true` binds here. Never relied upon: the BFF audit log is master.
@@ -643,14 +689,15 @@ public record InspectorProperties(
             // Null → 5000 (aligned to the filter-bulk cap for one operator mental model; the S0
             // spike could not measure the O(offset) knee at test-safe scale). YAML
             // `deep-paging-max-depth: N` binds here — lowered to e.g. 6 in the S5 config-lowered IT.
-            Integer deepPagingMaxDepth,
+            @Positive Integer deepPagingMaxDepth,
+            // No constraint: free-form label; null is derived from enabled.
             // Registry lifecycle state for the DISPLAY surface (usability W1#4, theme T6):
             // draft|probed|probe_failed|active|disabled — authoritative under source=db (the
             // row's lifecycle column via EngineRegistryMapper); null under source=config, where
             // lifecycleOrDefault() derives it from `enabled`. Display metadata only — every
             // operability decision keeps reading `enabled`/require().
             String lifecycle,
-            // Optional engine Micrometer URL. Blank means executor internals are not exposed (#510).
+            // No constraint: optional URL; blank means executor internals are not exposed.
             String metricsUrl) {
 
         // @ConfigurationProperties binding is ambiguous once a record has >1 constructor — pin the
@@ -920,17 +967,28 @@ public record InspectorProperties(
      * Engine credentials. Secret fields are env-var NAMES, never values. The oauth and header
      * components are null for basic/bearer/none. {@link Type#wire()} is the DB/API spelling.
      */
+    @Validated
     public record Auth(
-            Type type,
+            @NotNull Type type,
+            // No constraint: optional; which secrets apply depends on type.
             String username,
+            // No constraint: env-var name, not a secret value; optional.
             String passwordRef,
+            // No constraint: env-var name; optional.
             String tokenRef,
+            // No constraint: optional URL; checked when a token is fetched.
             String oauthTokenUrl,
+            // No constraint: optional client id.
             String oauthClientId,
+            // No constraint: env-var name; optional.
             String oauthClientSecretRef,
+            // No constraint: optional free-form scope.
             String oauthScope,
+            // No constraint: optional free-form audience.
             String oauthAudience,
+            // No constraint: optional header name.
             String headerName,
+            // No constraint: env-var name; optional.
             String headerSecretRef) {
 
         public static Auth basic(String username, String passwordRef) {
@@ -977,7 +1035,11 @@ public record InspectorProperties(
         }
     }
 
-    public record Timeouts(Integer connectMs, Integer readMs, Integer writeMs) {
+    @Validated
+    public record Timeouts(
+            @Positive Integer connectMs,
+            @Positive Integer readMs,
+            @Positive Integer writeMs) {
         public int connect() {
             return connectMs != null ? connectMs : 2000;
         }
@@ -992,7 +1054,13 @@ public record InspectorProperties(
     }
 
     /** Executor-starvation alarm knobs (R-NFR-04), per-engine overridable. */
-    public record AlarmThresholds(Integer oldestJobWarnMin, Integer oldestJobCritMin, Integer overdueTimerGraceS) {
+    @Validated
+    public record AlarmThresholds(
+            // No constraint: advisory minutes, not compared by the BFF; null defaults to 5.
+            Integer oldestJobWarnMin,
+            // No constraint: advisory minutes, not compared by the BFF; null defaults to 15.
+            Integer oldestJobCritMin,
+            @Min(0) Integer overdueTimerGraceS) {
         public int oldestJobWarnMinOrDefault() {
             return oldestJobWarnMin != null ? oldestJobWarnMin : 5;
         }
@@ -1003,6 +1071,52 @@ public record InspectorProperties(
 
         public int overdueTimerGraceSOrDefault() {
             return overdueTimerGraceS != null ? overdueTimerGraceS : 60;
+        }
+    }
+
+    /**
+     * Cross-field rails on {@link Attention}: burst exit must not exceed onset, and the MTTR clamp
+     * must be a range. Burst-window vs model-ttl is absent — a shorter window is legal and only WARNs.
+     */
+    @Target(ElementType.TYPE)
+    @Retention(RetentionPolicy.RUNTIME)
+    @Constraint(validatedBy = AttentionOrderValidator.class)
+    public @interface AttentionOrder {
+        String message() default "attention knobs out of order";
+
+        Class<?>[] groups() default {};
+
+        Class<? extends Payload>[] payload() default {};
+    }
+
+    public static class AttentionOrderValidator implements ConstraintValidator<AttentionOrder, Attention> {
+
+        static final String BURST = "inspector.triage.attention.burst-exit must be <= burst-onset"
+                + " (an exit above onset inverts the Schmitt semantics)";
+        static final String MTTR = "inspector.triage.attention.mttr-clamp-low must be <= mttr-clamp-high";
+
+        @Override
+        public boolean isValid(Attention value, ConstraintValidatorContext ctx) {
+            if (value == null) {
+                return true;
+            }
+            boolean burstOk = value.burstExitOrDefault() <= value.burstOnsetOrDefault();
+            boolean mttrOk = value.mttrClampLowOrDefault() <= value.mttrClampHighOrDefault();
+            if (burstOk && mttrOk) {
+                return true;
+            }
+            ctx.disableDefaultConstraintViolation();
+            if (!burstOk) {
+                ctx.buildConstraintViolationWithTemplate(BURST)
+                        .addPropertyNode("burstExit")
+                        .addConstraintViolation();
+            }
+            if (!mttrOk) {
+                ctx.buildConstraintViolationWithTemplate(MTTR)
+                        .addPropertyNode("mttrClampLow")
+                        .addConstraintViolation();
+            }
+            return false;
         }
     }
 }

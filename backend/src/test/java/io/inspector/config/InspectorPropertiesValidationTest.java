@@ -230,44 +230,163 @@ class InspectorPropertiesValidationTest {
     static Stream<Arguments> invalidKnobs() {
         String url = "http://localhost:8081/x";
         return Stream.of(
-                knob("fanoutParallelism", new InspectorProperties(0, null, null, null, null), new InspectorProperties(10, null, null, null, null)),
-                knob("hierarchyMaxDepth", new InspectorProperties(null, 0, null, null, null), new InspectorProperties(null, 1, null, null, null)),
+                knob(
+                        "fanoutParallelism",
+                        new InspectorProperties(0, null, null, null, null),
+                        new InspectorProperties(10, null, null, null, null)),
+                knob(
+                        "hierarchyMaxDepth",
+                        new InspectorProperties(null, 0, null, null, null),
+                        new InspectorProperties(null, 1, null, null, null)),
                 knob("cacheTtlS", new Triage(0, null, null, null), new Triage(20, null, null, null)),
                 knob("stacktraceSampleCap", new Triage(null, null, -1, null), new Triage(null, null, 0, null)),
                 knob("ackResurfaceThresholdPct", new Triage(null, null, null, -1), new Triage(null, null, null, 200)),
-                knob("recencyHalfLife", attention(Duration.ZERO, null, null, null, null, null, null, null, null, null, null, null, null), attention(Duration.ofHours(24), null, null, null, null, null, null, null, null, null, null, null, null)),
-                knob("arrivalsWindowDays", attention(null, 0, null, null, null, null, null, null, null, null, null, null, null), attention(null, 28, null, null, null, null, null, null, null, null, null, null, null)),
-                knob("minClosedEpisodes", attention(null, null, 0, null, null, null, null, null, null, null, null, null, null), attention(null, null, 1, null, null, null, null, null, null, null, null, null, null)),
-                knob("mttrClampLow", attention(null, null, null, -0.1, null, null, null, null, null, null, null, null, null), attention(null, null, null, 0.0, null, null, null, null, null, null, null, null, null)),
-                knob("mttrClampHigh", attention(null, null, null, null, -0.1, null, null, null, null, null, null, null, null), attention(null, null, null, null, 0.0, null, null, null, null, null, null, null, null)),
+                knob(
+                        "recencyHalfLife",
+                        attention(
+                                Duration.ZERO, null, null, null, null, null, null, null, null, null, null, null, null),
+                        attention(
+                                Duration.ofHours(24),
+                                null,
+                                null,
+                                null,
+                                null,
+                                null,
+                                null,
+                                null,
+                                null,
+                                null,
+                                null,
+                                null,
+                                null)),
+                knob(
+                        "arrivalsWindowDays",
+                        attention(null, 0, null, null, null, null, null, null, null, null, null, null, null),
+                        attention(null, 28, null, null, null, null, null, null, null, null, null, null, null)),
+                knob(
+                        "minClosedEpisodes",
+                        attention(null, null, 0, null, null, null, null, null, null, null, null, null, null),
+                        attention(null, null, 1, null, null, null, null, null, null, null, null, null, null)),
+                knob(
+                        "mttrClampLow",
+                        attention(null, null, null, -0.1, null, null, null, null, null, null, null, null, null),
+                        attention(null, null, null, 0.0, null, null, null, null, null, null, null, null, null)),
+                knob(
+                        "mttrClampHigh",
+                        attention(null, null, null, null, -0.1, null, null, null, null, null, null, null, null),
+                        attention(null, null, null, 0.0, 0.0, null, null, null, null, null, null, null, null)),
                 order(
                         "mttrClampLow<=mttrClampHigh",
                         "mttrClampLow",
                         attention(null, null, null, 3.0, 1.0, null, null, null, null, null, null, null, null),
                         attention(null, null, null, 2.0, 2.0, null, null, null, null, null, null, null, null)),
-                knob("modelTtl", attention(null, null, null, null, null, Duration.ZERO, null, null, null, null, null, null, null), attention(null, null, null, null, null, Duration.ofMinutes(5), null, null, null, null, null, null, null)),
-                knob("resurfaceFloorPct", attention(null, null, null, null, null, null, -1, null, null, null, null, null, null), attention(null, null, null, null, null, null, 150, null, null, null, null, null, null)),
-                knob("resurfaceFalseBudgetPer30AckDays", attention(null, null, null, null, null, null, null, -0.1, null, null, null, null, null), attention(null, null, null, null, null, null, null, 0.0, null, null, null, null, null)),
-                knob("burstWindow", attention(null, null, null, null, null, null, null, null, Duration.ZERO, null, null, null, null), attention(null, null, null, null, null, null, null, null, Duration.ofMinutes(10), null, null, null, null)),
-                knob("burstOnset", attention(null, null, null, null, null, null, null, null, null, 0, null, null, null), attention(null, null, null, null, null, null, null, null, null, 10, null, null, null)),
-                knob("burstExit", attention(null, null, null, null, null, null, null, null, null, null, 0, null, null), attention(null, null, null, null, null, null, null, null, null, null, 5, null, null)),
-                knob("burstWeight", attention(null, null, null, null, null, null, null, null, null, null, null, 0.0, null), attention(null, null, null, null, null, null, null, null, null, null, null, 8.0, null)),
-                knob("selfHealHorizon", attention(null, null, null, null, null, null, null, null, null, null, null, null, Duration.ZERO), attention(null, null, null, null, null, null, null, null, null, null, null, null, Duration.ofHours(1))),
+                knob(
+                        "modelTtl",
+                        attention(
+                                null, null, null, null, null, Duration.ZERO, null, null, null, null, null, null, null),
+                        attention(
+                                null,
+                                null,
+                                null,
+                                null,
+                                null,
+                                Duration.ofMinutes(5),
+                                null,
+                                null,
+                                null,
+                                null,
+                                null,
+                                null,
+                                null)),
+                knob(
+                        "resurfaceFloorPct",
+                        attention(null, null, null, null, null, null, -1, null, null, null, null, null, null),
+                        attention(null, null, null, null, null, null, 150, null, null, null, null, null, null)),
+                knob(
+                        "resurfaceFalseBudgetPer30AckDays",
+                        attention(null, null, null, null, null, null, null, -0.1, null, null, null, null, null),
+                        attention(null, null, null, null, null, null, null, 0.0, null, null, null, null, null)),
+                knob(
+                        "burstWindow",
+                        attention(
+                                null, null, null, null, null, null, null, null, Duration.ZERO, null, null, null, null),
+                        attention(
+                                null,
+                                null,
+                                null,
+                                null,
+                                null,
+                                null,
+                                null,
+                                null,
+                                Duration.ofMinutes(10),
+                                null,
+                                null,
+                                null,
+                                null)),
+                knob(
+                        "burstOnset",
+                        attention(null, null, null, null, null, null, null, null, null, 0, null, null, null),
+                        attention(null, null, null, null, null, null, null, null, null, 10, null, null, null)),
+                knob(
+                        "burstExit",
+                        attention(null, null, null, null, null, null, null, null, null, null, 0, null, null),
+                        attention(null, null, null, null, null, null, null, null, null, null, 5, null, null)),
+                knob(
+                        "burstWeight",
+                        attention(null, null, null, null, null, null, null, null, null, null, null, 0.0, null),
+                        attention(null, null, null, null, null, null, null, null, null, null, null, 8.0, null)),
+                knob(
+                        "selfHealHorizon",
+                        attention(
+                                null, null, null, null, null, null, null, null, null, null, null, null, Duration.ZERO),
+                        attention(
+                                null,
+                                null,
+                                null,
+                                null,
+                                null,
+                                null,
+                                null,
+                                null,
+                                null,
+                                null,
+                                null,
+                                null,
+                                Duration.ofHours(1))),
                 knob("enginePermits", new Bulk(0, null, null, null), new Bulk(4, null, null, null)),
                 knob("staggerMs", new Bulk(null, -1, null, null), new Bulk(null, 0, null, null)),
                 knob("circuitPauseMaxMs", new Bulk(null, null, -1, null), new Bulk(null, null, 0, null)),
                 knob("circuitPausePollMs", new Bulk(null, null, null, -1), new Bulk(null, null, null, 0)),
-                knob("sseSubscriberCap", new Bulk(null, null, null, null, -1, null), new Bulk(null, null, null, null, 0, null)),
-                knob("sseCoalesceMs", new Bulk(null, null, null, null, null, -1), new Bulk(null, null, null, null, null, 0)),
-                knob("sampleInterval", new Snapshot(null, Duration.ZERO, null, null), new Snapshot(null, Duration.ofHours(1), Duration.ofSeconds(15), null)),
-                knob("bucketWidth", new Snapshot(null, null, Duration.ZERO, null), new Snapshot(null, Duration.ofHours(1), Duration.ofSeconds(15), null)),
+                knob(
+                        "sseSubscriberCap",
+                        new Bulk(null, null, null, null, -1, null),
+                        new Bulk(null, null, null, null, 0, null)),
+                knob(
+                        "sseCoalesceMs",
+                        new Bulk(null, null, null, null, null, -1),
+                        new Bulk(null, null, null, null, null, 0)),
+                knob(
+                        "sampleInterval",
+                        new Snapshot(null, Duration.ZERO, null, null),
+                        new Snapshot(null, Duration.ofHours(1), Duration.ofSeconds(15), null)),
+                knob(
+                        "bucketWidth",
+                        new Snapshot(null, null, Duration.ZERO, null),
+                        new Snapshot(null, Duration.ofHours(1), Duration.ofSeconds(15), null)),
                 order(
                         "snapshot.retentionDays",
                         "retentionDays",
                         new Snapshot(null, null, null, 0),
                         new Snapshot(null, null, null, 400)),
-                knob("quietWindow", new Incidents(null, Duration.ZERO, null, null, null), new Incidents(null, Duration.ofHours(24), null, null, null)),
-                knob("regressionMinCount", new Incidents(null, null, 0, null, null), new Incidents(null, null, 1, null, null)),
+                knob(
+                        "quietWindow",
+                        new Incidents(null, Duration.ZERO, null, null, null),
+                        new Incidents(null, Duration.ofHours(24), null, null, null)),
+                knob(
+                        "regressionMinCount",
+                        new Incidents(null, null, 0, null, null),
+                        new Incidents(null, null, 1, null, null)),
                 order(
                         "incidents.retentionDays",
                         "retentionDays",
@@ -277,8 +396,14 @@ class InspectorPropertiesValidationTest {
                 knob("windowDays", new SelfHeal(null, 0, null, null), new SelfHeal(null, 90, null, null)),
                 knob("floor", new SelfHeal(null, null, 0, null), new SelfHeal(null, null, 1, null)),
                 knob("dwellCycles", new SelfHeal(null, null, null, 0), new SelfHeal(null, null, null, 1)),
-                knob("maxPageSize", TestEngines.builder("ok-id", url).maxPageSize(0).build(), TestEngines.builder("ok-id", url).maxPageSize(2).build()),
-                knob("dlqScanCap", TestEngines.builder("ok-id", url).dlqScanCap(0).build(), TestEngines.builder("ok-id", url).dlqScanCap(50).build()),
+                knob(
+                        "maxPageSize",
+                        TestEngines.builder("ok-id", url).maxPageSize(0).build(),
+                        TestEngines.builder("ok-id", url).maxPageSize(2).build()),
+                knob(
+                        "dlqScanCap",
+                        TestEngines.builder("ok-id", url).dlqScanCap(0).build(),
+                        TestEngines.builder("ok-id", url).dlqScanCap(50).build()),
                 knob(
                         "deepPagingMaxDepth",
                         TestEngines.builder("ok-id", url).deepPagingMaxDepth(0).build(),
