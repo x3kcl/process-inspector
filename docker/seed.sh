@@ -30,11 +30,15 @@ DIR="$(cd "$(dirname "$0")" && pwd)"
 ENGINE_A="${PI_ENGINE_A_PORT:-8081}|/flowable-rest/service|rest-admin:test"
 ENGINE_B="${PI_ENGINE_B_PORT:-8082}|/flowable-rest/service|rest-admin:test"
 ENGINE_7="${PI_ENGINE_7_PORT:-8083}|/flowable-rest/service|rest-admin:test"
+ENGINE_72="${PI_ENGINE_72_PORT:-8094}|/flowable-rest/service|rest-admin:test"
+ENGINE_80="${PI_ENGINE_80_PORT:-8095}|/flowable-rest/service|rest-admin:test"
 ENGINE_LEGACY="${PI_ENGINE_LEGACY_PORT:-8084}|/flowable-rest/service|rest-admin:test"
 ENGINE_FLAP="${PI_ENGINE_FLAP_PORT:-8086}|/process-api|inspector:harness"
 KNOWN_ENGINES="$ENGINE_A
 $ENGINE_B
 $ENGINE_7
+$ENGINE_72
+$ENGINE_80
 $ENGINE_LEGACY
 $ENGINE_FLAP"
 
@@ -45,12 +49,14 @@ engines_for_profile() {
     flowable-6) echo "$ENGINE_A
 $ENGINE_B" ;;
     flowable-7) echo "$ENGINE_7" ;;
+    flowable-72) echo "$ENGINE_72" ;;
+    flowable-80) echo "$ENGINE_80" ;;
     legacy) echo "$ENGINE_LEGACY" ;;
     flap) echo "$ENGINE_FLAP" ;;
     migration-findings) echo "$ENGINE_A
 $ENGINE_B
 $ENGINE_7" ;;
-    *) echo "unknown profile: $1 (want flowable-6|flowable-7|legacy|flap|migration-findings)" >&2; return 2 ;;
+    *) echo "unknown profile: $1 (want flowable-6|flowable-7|flowable-72|flowable-80|legacy|flap|migration-findings)" >&2; return 2 ;;
   esac
 }
 
@@ -324,7 +330,7 @@ seed_descriptors() { # newline-separated port|path|cred descriptors
 }
 
 if [ "${1:-}" = "--profile" ]; then
-  PROFILE="${2:?usage: seed.sh --profile <flowable-6|flowable-7|legacy|flap|migration-findings>}"
+  PROFILE="${2:?usage: seed.sh --profile <flowable-6|flowable-7|flowable-72|flowable-80|legacy|flap|migration-findings>}"
   seed_descriptors "$(engines_for_profile "$PROFILE")"
 elif [ $# -ge 1 ]; then
   CRED="${2:-$CRED}"

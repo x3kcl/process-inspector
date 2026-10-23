@@ -9,7 +9,7 @@
 # implies the ITs' @BeforeAll reachability precheck passes.
 set -euo pipefail
 
-PROFILE="${1:?usage: smoke-test.sh <flowable-6|flowable-7|legacy|flap|migration-findings>}"
+PROFILE="${1:?usage: smoke-test.sh <flowable-6|flowable-7|flowable-72|flowable-80|legacy|flap|migration-findings>}"
 DEADLINE=$(($(date +%s) + 180)) # engines take 30-60s to boot; 6.3.1 can be slower
 # Defaults for the flowable-rest war images; the `flap` profile overrides both below —
 # an application that embeds the engine publishes a different context and owns its own
@@ -27,6 +27,8 @@ COMPOSE="docker compose ${CI_PROJECT:+-p $CI_PROJECT} -f $(dirname "$0")/docker-
 case "$PROFILE" in
   flowable-6) PORTS="${PI_ENGINE_A_PORT:-8081} ${PI_ENGINE_B_PORT:-8082}" ;;
   flowable-7) PORTS="${PI_ENGINE_7_PORT:-8083}" ;;
+  flowable-72) PORTS="${PI_ENGINE_72_PORT:-8094}" ;;
+  flowable-80) PORTS="${PI_ENGINE_80_PORT:-8095}" ;;
   legacy)     PORTS="${PI_ENGINE_LEGACY_PORT:-8084}" ;;
   # Dual-major MigrationFindingsIT leg (#362): COMPOSE_PROFILES=flowable-6,flowable-7,postgres
   # so A+B+7 are up. Probe all three — smoke-pass must cover every engine the suite's

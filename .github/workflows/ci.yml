@@ -264,6 +264,15 @@ jobs:
           - profile: flowable-7
             composeProfiles: "flowable-7,postgres"
             itClass: EngineHealth7IT,Search7IT,Triage7IT,ExternalWorkerJob7IT,Kway7IT
+          # 7.2 and 8.0 (#459) run the SAME *7IT classes. The resolve step points
+          # PI_ENGINE_7_PORT at this leg's engine so those classes are not forked.
+          # EngineVersionCanaryIT rejects a leg that is still talking to 7.1.0.
+          - profile: flowable-72
+            composeProfiles: "flowable-72,postgres"
+            itClass: EngineVersionCanaryIT,EngineHealth7IT,Search7IT,Triage7IT,ExternalWorkerJob7IT,Kway7IT
+          - profile: flowable-80
+            composeProfiles: "flowable-80,postgres"
+            itClass: EngineVersionCanaryIT,EngineHealth7IT,Search7IT,Triage7IT,ExternalWorkerJob7IT,Kway7IT
           - profile: legacy
             composeProfiles: "legacy,postgres"
             itClass: EngineHealthLegacyIT,SearchLegacyIT,TriageLegacyIT,ExternalWorkerJobLegacyIT,TriageCmmnScopeLegacyIT
@@ -309,8 +318,8 @@ jobs:
       # can end up permanently squatted by something unrelated; this makes that
       # self-healing instead of needing a manual reassignment). Windows stay well inside
       # the ~100-port gap to the next slot's band, and each engine port is resolved
-      # avoiding the ones already picked for its own siblings so two of A/B/7/legacy can
-      # never collide with each other.
+      # avoiding the ones already picked for its own siblings so two of A/B/7/72/80/legacy can
+      # never collide with each other. flowable-72/80 republish that port as PI_ENGINE_7_PORT.
       # CI_PROJECT: distinct per-slot compose project (never the dev "process-inspector")
       # so container names can't clash and teardown only removes THIS job's containers.
       - name: Resolve the slot port namespace
@@ -332,10 +341,36 @@ jobs:
               flap_pref="$PI_ENGINE_FLAP_PORT"
             fi
             flap=$(scripts/free-port.sh "$flap_pref" 20 "$a" "$b" "$seven" "$legacy")
+            # Same unset-derivation as flap (#364): a hardcoded s1 port would collide
+            # across slots until every runner is recreated with PI_ENGINE_72/80_PORT.
+            # +5/+6 sit in the same band as flap's +4 (s1: 8696/8697, s2: 8196/8197).
+            if [ -z "${PI_ENGINE_72_PORT:-}" ]; then
+              echo "WARNING: PI_ENGINE_72_PORT unset — deriving $((a + 5)) from A-port band; recreate the runner slot" >&2
+              p72_pref=$((a + 5))
+            else
+              p72_pref="$PI_ENGINE_72_PORT"
+            fi
+            if [ -z "${PI_ENGINE_80_PORT:-}" ]; then
+              echo "WARNING: PI_ENGINE_80_PORT unset — deriving $((a + 6)) from A-port band; recreate the runner slot" >&2
+              p80_pref=$((a + 6))
+            else
+              p80_pref="$PI_ENGINE_80_PORT"
+            fi
+            e72=$(scripts/free-port.sh "$p72_pref" 20 "$a" "$b" "$seven" "$legacy" "$flap")
+            e80=$(scripts/free-port.sh "$p80_pref" 20 "$a" "$b" "$seven" "$legacy" "$flap" "$e72")
             pg=$(scripts/free-port.sh "${PI_PG_PORT:-5435}" 5)
+            # *7IT and application-it7*.yml read PI_ENGINE_7_PORT. On the 7.2/8.0 legs
+            # that port is this leg's engine, not the 7.1 container (which is not up).
+            case "${{ matrix.profile }}" in
+              flowable-72) it_seven=$e72 ;;
+              flowable-80) it_seven=$e80 ;;
+              *) it_seven=$seven ;;
+            esac
             echo "PI_ENGINE_A_PORT=$a"
             echo "PI_ENGINE_B_PORT=$b"
-            echo "PI_ENGINE_7_PORT=$seven"
+            echo "PI_ENGINE_7_PORT=$it_seven"
+            echo "PI_ENGINE_72_PORT=$e72"
+            echo "PI_ENGINE_80_PORT=$e80"
             echo "PI_ENGINE_LEGACY_PORT=$legacy"
             echo "PI_ENGINE_FLAP_PORT=$flap"
             echo "PI_PG_PORT=$pg"

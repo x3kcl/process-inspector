@@ -5,8 +5,10 @@
 #                 dev pair. Activated by default via docker/.env (COMPOSE_PROFILES=flowable-6),
 #                 so the doctrinal `docker compose -f docker/docker-compose.dev.yml up -d`
 #                 keeps working unchanged.
-#   flowable-7  — one Flowable 7.x REST engine (:8083) to exercise the Spring Boot 3 /
+#   flowable-7  — one Flowable 7.1 REST engine (:8083) to exercise the Spring Boot 3 /
 #                 Jakarta capability cliffs against a modern engine.
+#   flowable-72 — Flowable 7.2.0 (:8094). Same rest-admin/test war as engine-7.
+#   flowable-80 — Flowable 8.0.0 (:8095). Same rest-admin/test war as engine-7.
 #   legacy      — one pre-6.4 engine (:8084, Flowable 6.3.1) so the capability cliffs
 #                 (change-state 6.4+, migration 6.5+, external-worker/scopeType 6.8+)
 #                 are exercised against an engine that really lacks them.
@@ -50,6 +52,25 @@ services:
     profiles: ["flowable-7"]
     ports:
       - "${PI_ENGINE_7_PORT:-8083}:8080"
+    environment:
+      - FLOWABLE_REST_APP_ADMIN_USER-ID=rest-admin
+      - FLOWABLE_REST_APP_ADMIN_PASSWORD=test
+
+  # No volume: 7.1 has none. Add one only if the image fails on /home/flowable ownership.
+  engine-72:
+    image: flowable/flowable-rest:7.2.0
+    profiles: ["flowable-72"]
+    ports:
+      - "${PI_ENGINE_72_PORT:-8094}:8080"
+    environment:
+      - FLOWABLE_REST_APP_ADMIN_USER-ID=rest-admin
+      - FLOWABLE_REST_APP_ADMIN_PASSWORD=test
+
+  engine-80:
+    image: flowable/flowable-rest:8.0.0
+    profiles: ["flowable-80"]
+    ports:
+      - "${PI_ENGINE_80_PORT:-8095}:8080"
     environment:
       - FLOWABLE_REST_APP_ADMIN_USER-ID=rest-admin
       - FLOWABLE_REST_APP_ADMIN_PASSWORD=test
