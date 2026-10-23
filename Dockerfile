@@ -25,7 +25,7 @@ RUN mvn -B package -Dskip.surefire.tests=true
 # ...then COPY --from=frontend /dist into the runtime image's static resources.
 
 # ---- Stage 2: runtime --------------------------------------------------------
-FROM eclipse-temurin:21-jre-alpine AS runtime
+FROM eclipse-temurin:25-jre-alpine AS runtime
 # OCI provenance for the registry listing (ghcr.io + Docker Hub). The publish
 # workflows also inject dynamic labels (revision/version) via docker/metadata-action.
 LABEL org.opencontainers.image.title="Process Inspector BFF" \
