@@ -148,18 +148,23 @@ IN:
 - **Single-instance** migrate, ACTIVE running instances only.
 - Target = another **deployed version of the same process key** (default: latest).
 - Non-skippable server-side **validate → execute**, always live, never cached.
-- **Auto-map first; a validator-driven targeted mapping table**: a manual `from→to` dropdown
-  appears ONLY for the specific activities the engine validator flags as unmapped. (Panel A,
-  4-1: refuse-if-insufficient would gut the marquee use case — a bad deploy that *renamed* an
-  activity is exactly where auto-map fails.)
+- **Auto-map first, then the mapping editor inside MigrateModal** (#498): flagged activities
+  still get a `from→to` target select — a renamed activity is the case auto-map cannot solve
+  (panel A, 4-1). The same pairs can be added with **Add to map**. Fan-out (`fromActivityId` +
+  `toActivityIds`) and fan-in (`fromActivityIds` + `toActivityId`) are allowed; many-to-many is
+  refused with a reason. **Expert** mode shows the `mappings` JSON the next check submits — the
+  object `MigrationMapping.form()` re-validates; the BFF still rebuilds `activityMappings`.
+  **Reset to generated** restores that JSON from the pairs, and unsaved expert text asks for a
+  discard confirm. Preview findings are marked **blocker** / **warning** / **info** in words.
+  A token-loss blocker still gets no target select (no mapping can fix it).
 - **Definition-versions on-ramp** (cohort visibility): a version list with per-version runtime
   instance counts ("37 running on v3 · latest v5"), the entry point that makes single-instance
   migration a real tool rather than a demo. **Elevated into slice-1** (UX panel).
 
 OUT (later slices, each its own design; resolves IMPLEMENTATION-PLAN §474-475):
-- **Full side-by-side diagram mapping wizard** — deferred to the batch slice, matching the plan.
-  Slice-1 offers only the targeted dropdown for flagged activities, plus an optional read-only
-  "show diagram" disclosure, not a dual-canvas mapping editor.
+- **Dual-canvas side-by-side diagram mapping** — still deferred. #498 added the table, the pair
+  list, and expert JSON inside MigrateModal; it does not mount a second bpmn-js viewer. The
+  table and the pair list are keyboard-operable (selects and buttons).
 - **Batch / by-definition migration** — deferred entirely (see §7).
 - Cross-process-key migration (hard 422 in v2).
 - Cross-tenant target (hard refuse).

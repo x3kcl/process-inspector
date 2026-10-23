@@ -10,6 +10,9 @@ import { Link } from 'react-router'
 import type { EngineDto, InstanceDetail } from '../api/model'
 import { useDefinitionVersions, useMigrateExecute, useMigratePreview } from '../api/migrate'
 import type { MigrationFinding, MigrationPreview, MigrationRequest } from '../api/migrate'
+import { MappingEditor } from './MappingEditor'
+import { compileMappings, parseMappingJson } from './mappingRules'
+import type { ActivityPair } from './mappingRules'
 import { VERBS } from '../actions/catalog'
 import { businessKeyOrInstanceToken, useProdGuard } from '../actions/guard'
 import { isReauthChallenge, problemBanner } from '../actions/problem'
@@ -33,6 +36,14 @@ const meta = VERBS.migrate
 // the findings themselves — the §5 banner states the same thing for the plan as a whole.
 const ESTIMATE_LABEL = 'BFF estimate — the engine is the only ground truth at execute.'
 
+/** Word, not hue: a finding marker stays readable without the callout color. */
+function severityWord(severity: string | undefined): string {
+  if (severity === 'BLOCKER_ADVICE') return 'blocker'
+  if (severity === 'WARNING') return 'warning'
+  if (severity === 'INFO') return 'info'
+  return severity ?? 'finding'
+}
+
 /**
  * Typed findings rendered by severity (§14.3). Advisory only: nothing here enables, disables
  * or reorders a single tier-3 rail — the IRREVERSIBLE badge, reason, typed prod token, CAS
@@ -46,6 +57,7 @@ function FindingList({ findings }: { findings: MigrationFinding[] }) {
           <code className="finding-code">{f.code}</code>{' '}
           {/* Instance-level findings carry a JSON `null` activityId, which the generated type
               models as optional — hence the typeof check, not a `!== undefined` one. */}
+          <span className="finding-severity">{severityWord(f.severity)}</span>{' '}
           {typeof f.activityId === 'string' && f.activityId !== '' && (
             <>
               <strong>{f.activityId}</strong>{' '}
@@ -67,7 +79,8 @@ export function MigrateModal({ engineId, instanceId, vitals, engine, onClose }: 
   const executeM = useMigrateExecute(engineId, instanceId)
 
   const [targetDefinitionId, setTargetDefinitionId] = useState<string | undefined>(undefined)
-  const [mappings, setMappings] = useState<Record<string, string>>({})
+  const [pairs, setPairs] = useState<ActivityPair[]>([])
+  const [expertText, setExpertText] = useState<string | null>(null)
   const [dirty, setDirty] = useState(false)
   const [preview, setPreview] = useState<MigrationPreview | null>(null)
 
@@ -102,16 +115,13 @@ export function MigrateModal({ engineId, instanceId, vitals, engine, onClose }: 
     }
   }, [targetChoices, targetDefinitionId])
 
-  const mappingList = () =>
-    Object.entries(mappings)
-      .filter(([, to]) => to !== '')
-      .map(([from, to]) => ({ fromActivityId: from, toActivityId: to }))
+  const submit = expertText === null ? compileMappings(pairs) : parseMappingJson(expertText)
 
   const check = () => {
-    if (targetDefinitionId === undefined) return
+    if (targetDefinitionId === undefined || !submit.ok) return
     const request: MigrationRequest = {
       toDefinitionId: targetDefinitionId,
-      mappings: mappingList(),
+      mappings: submit.mappings,
     }
     previewM.mutate(request, {
       onSuccess: (result) => {
@@ -120,11 +130,6 @@ export function MigrateModal({ engineId, instanceId, vitals, engine, onClose }: 
         setDirty(false)
       },
     })
-  }
-
-  const remap = (fromActivityId: string, toActivityId: string) => {
-    setMappings((prev) => ({ ...prev, [fromActivityId]: toActivityId }))
-    setDirty(true)
   }
 
   // ---- Step 2: the pre-check result (mapping + verify) ----
@@ -137,6 +142,16 @@ export function MigrateModal({ engineId, instanceId, vitals, engine, onClose }: 
       (a) => a.blocker === true && a.status === 'FLAGGED_UNMAPPED',
     )
     const targets = preview.targetActivities ?? []
+    const editorSources = flagged.flatMap((activity) => {
+      const id = activity.fromActivityId
+      if (id === undefined || id === '') return []
+      return [{ id, name: activity.fromName, type: activity.fromType }]
+    })
+    const editorTargets = targets.flatMap((activity) => {
+      const id = activity.id
+      if (id === undefined || id === '') return []
+      return [{ id, name: activity.name, type: activity.type }]
+    })
     // Per-activity findings first (already in sorted-activity-id order), then the
     // instance-level ones (§14.8) — grouped by severity, loudest first.
     const allFindings: MigrationFinding[] = [
@@ -167,6 +182,7 @@ export function MigrateModal({ engineId, instanceId, vitals, engine, onClose }: 
     const canExecute =
       preview.executable === true &&
       !dirty &&
+      submit.ok &&
       reasonOk &&
       tokenOk &&
       !executeM.isPending &&
@@ -174,9 +190,10 @@ export function MigrateModal({ engineId, instanceId, vitals, engine, onClose }: 
       !reauthNeeded
 
     const execute = () => {
+      if (!submit.ok) return
       const request: MigrationRequest = {
         toDefinitionId: targetDefinitionId,
-        mappings: mappingList(),
+        mappings: submit.mappings,
         reason: guard.reason.trim(),
         confirmToken: prod ? guard.typed : undefined,
         expectedFromDefinitionId: preview.fromDefinitionId,
@@ -218,7 +235,8 @@ export function MigrateModal({ engineId, instanceId, vitals, engine, onClose }: 
               <button
                 type="button"
                 className="primary"
-                disabled={previewM.isPending}
+                disabled={previewM.isPending || !submit.ok}
+                title={!submit.ok ? submit.reason : undefined}
                 onClick={check}
               >
                 {previewM.isPending ? 'Checking…' : 'Re-check mapping'}
@@ -275,42 +293,23 @@ export function MigrateModal({ engineId, instanceId, vitals, engine, onClose }: 
               {String(flagged.length)} active activit
               {flagged.length === 1 ? 'y' : 'ies'} can’t be auto-mapped — pick a target for each:
             </span>
-            <table className="mapping-table">
-              <tbody>
-                {flagged.map((a) => (
-                  <tr key={a.fromActivityId}>
-                    <td>
-                      <code>{a.fromActivityId}</code>
-                      {a.fromType !== undefined && (
-                        <span className="value-muted"> · {a.fromType}</span>
-                      )}
-                    </td>
-                    <td aria-hidden>→</td>
-                    <td>
-                      <select
-                        aria-label={`target for ${a.fromActivityId ?? ''}`}
-                        value={mappings[a.fromActivityId ?? ''] ?? ''}
-                        onChange={(e) => {
-                          remap(a.fromActivityId ?? '', e.target.value)
-                        }}
-                      >
-                        <option value="">choose target…</option>
-                        {targets.map((t) => (
-                          <option key={t.id} value={t.id ?? ''}>
-                            {t.name !== undefined && t.name !== ''
-                              ? `${t.name} (${t.id ?? ''})`
-                              : t.id}
-                            {t.type !== undefined && ` · ${t.type}`}
-                          </option>
-                        ))}
-                      </select>
-                    </td>
-                  </tr>
-                ))}
-              </tbody>
-            </table>
           </div>
         )}
+        <MappingEditor
+          sources={editorSources}
+          targets={editorTargets}
+          findings={allFindings}
+          pairs={pairs}
+          onPairsChange={(next) => {
+            setPairs(next)
+            setDirty(true)
+          }}
+          expertText={expertText}
+          onExpertTextChange={(text) => {
+            setExpertText(text)
+            setDirty(true)
+          }}
+        />
 
         {warningFindings.length > 0 && (
           <div className="callout callout-amber" role="alert">
@@ -396,7 +395,7 @@ export function MigrateModal({ engineId, instanceId, vitals, engine, onClose }: 
           <button
             type="button"
             className="primary"
-            disabled={targetDefinitionId === undefined || previewM.isPending}
+            disabled={targetDefinitionId === undefined || previewM.isPending || !submit.ok}
             onClick={check}
           >
             {previewM.isPending ? 'Checking…' : 'Check mapping →'}
@@ -438,7 +437,8 @@ export function MigrateModal({ engineId, instanceId, vitals, engine, onClose }: 
               // old target (a stale mapping must never carry to a different version).
               setTargetDefinitionId(e.target.value)
               setPreview(null)
-              setMappings({})
+              setPairs([])
+              setExpertText(null)
               setDirty(false)
             }}
           >
