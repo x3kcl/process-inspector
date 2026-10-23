@@ -158,6 +158,22 @@ resilience4j:
         max-wait-duration: 5s
 
 inspector:
+  # Boot-rejected ranges (#476, docs/OPERATIONS.md): null keeps the code default.
+  # fanout-parallelism >= 1; hierarchy-max-depth >= 1.
+  # triage.cache-ttl-s >= 1; stacktrace-sample-cap >= 0; ack-resurface-threshold-pct >= 0
+  # (a growth percent, not capped at 100). refresh-min-interval-s is unconstrained.
+  # attention: recency-half-life, burst-window, self-heal-horizon >= 1s; model-ttl > 0.
+  # arrivals-window-days >= 1; min-closed-episodes >= 1; mttr clamps >= 0 and low <= high.
+  # self-heal-floor in [0, 1]. resurface-floor-pct >= 0; resurface budget >= 0.
+  # burst-onset and burst-exit >= 1 with exit <= onset; burst-weight > 0.
+  # A burst-window shorter than model-ttl is legal (startup WARN only).
+  # bulk.engine-permits >= 1; stagger-ms, circuit-pause-*, sse-* >= 0 (0 is "off").
+  # snapshot.sample-interval > 0; bucket-width >= 1s (not ordered against the interval);
+  # retention-days >= 1. incidents.quiet-window > 0; regression-min-count >= 1;
+  # retention-days >= 1; list-cap >= 1. selfheal window-days, floor, dwell-cycles >= 1.
+  # Per engine: max-page-size, dlq-scan-cap, deep-paging-max-depth >= 1;
+  # connect-ms, read-ms, write-ms >= 1; overdue-timer-grace-s >= 0.
+  # auth.type is required when an auth block is present.
   # Transport/header/session posture (IDP-SECURITY.md §8, R-OPS-16). All defaults are safe; shown
   # here for legibility. CSP now ENFORCES (S5): the report-only observation window is over and the
   # permissive-but-real policy held against the bpmn-js/AG-Grid/CodeMirror bundle. A deploy mid
@@ -275,8 +291,9 @@ inspector:
   # v2/M4 job-lane snapshot store (R-BAU-08 trend sparklines): an @Scheduled virtual-thread
   # sampler runs the Stage-0 count aggregation on the thin `sampler` bulkhead and upserts one
   # narrow row per (engine, lane) bucket into triage_snapshot. The UI reads history from
-  # Postgres, never the live engine. bucket-width ≥ sample-interval so a normal (non-overlapping)
-  # fire always lands in a fresh bucket; a restart/overlap within a bucket upserts idempotently.
+  # Postgres, never the live engine. bucket-width ≥ sample-interval is the intended grid so a
+  # normal fire lands in a fresh bucket; it is NOT a boot refusal (a longer interval with a
+  # shorter bucket is legal). A restart/overlap within a bucket upserts idempotently.
   snapshot:
     enabled: true
     sample-interval: 60s
