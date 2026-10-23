@@ -80,6 +80,8 @@ before the call — a pre-6.8 engine has no such context to answer.
 | Complete task w/ data | `POST /runtime/tasks/{taskId}` `{"action":"complete","variables":[…]}` |
 | Edit variables | `PUT /runtime/process-instances/{id}/variables` |
 | Diagram source | `GET /repository/process-definitions/{defId}/resourcedata` (BPMN XML for bpmn-js) |
+| Migrate one case | `POST /cmmn-api/cmmn-runtime/case-instances/{id}/migrate` `{"toCaseDefinitionId"}` — 6.8 and 7.x. Audit `migrate-case/v1`. Pre-check uses plan-item definition ids |
+| Case migrate by definition, batch, historic | `POST /cmmn-api/cmmn-repository/case-definitions/{id}/migrate`, `…/batch-migrate`, `…/migrate-historic-instances`, `…/batch-migrate-historic-instances`, and `POST /cmmn-api/cmmn-history/historic-case-instances/{id}/migrate` — **7.x only**. On 6.x the BFF returns ProblemDetail `version-gate` and does not call the engine |
 
 ## 5. Composite IDs & capability gating
 - An instance ID is unique only WITHIN an engine. Outside a single engine call, always

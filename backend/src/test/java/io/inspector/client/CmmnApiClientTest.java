@@ -142,7 +142,8 @@ class CmmnApiClientTest {
                     .isInstanceOf(GuardRefusedException.class)
                     .hasMessageContaining("version gate")
                     .hasMessageContaining("6.8.0")
-                    .satisfies(e -> assertThat(((GuardRefusedException) e).code()).isEqualTo("version-gate"));
+                    .satisfies(
+                            e -> assertThat(((GuardRefusedException) e).code()).isEqualTo("version-gate"));
         }
         assertThat(wm.getAllServeEvents()).isEmpty();
     }
