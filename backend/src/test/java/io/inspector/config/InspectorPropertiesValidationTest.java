@@ -3,17 +3,30 @@ package io.inspector.config;
 import static org.assertj.core.api.Assertions.assertThat;
 import static org.assertj.core.api.Assertions.assertThatThrownBy;
 
+import io.inspector.config.InspectorProperties.AlarmThresholds;
+import io.inspector.config.InspectorProperties.Attention;
+import io.inspector.config.InspectorProperties.Auth;
+import io.inspector.config.InspectorProperties.Bulk;
 import io.inspector.config.InspectorProperties.EngineConfig;
+import io.inspector.config.InspectorProperties.Incidents;
+import io.inspector.config.InspectorProperties.SelfHeal;
+import io.inspector.config.InspectorProperties.Snapshot;
+import io.inspector.config.InspectorProperties.Timeouts;
+import io.inspector.config.InspectorProperties.Triage;
 import io.inspector.support.TestEngines;
 import jakarta.validation.ConstraintViolation;
 import jakarta.validation.Validation;
 import jakarta.validation.Validator;
 import jakarta.validation.ValidatorFactory;
+import java.time.Duration;
 import java.util.List;
+import java.util.stream.Stream;
 import org.junit.jupiter.api.AfterAll;
 import org.junit.jupiter.api.BeforeAll;
 import org.junit.jupiter.api.Test;
 import org.junit.jupiter.params.ParameterizedTest;
+import org.junit.jupiter.params.provider.Arguments;
+import org.junit.jupiter.params.provider.MethodSource;
 import org.junit.jupiter.params.provider.ValueSource;
 
 /** Rung 1: registry validation is pure record logic — no Spring context. */
@@ -167,6 +180,284 @@ class InspectorPropertiesValidationTest {
     private static List<ConstraintViolation<EngineConfig>> violationsOn(EngineConfig engine, String property) {
         return validator.validate(engine).stream()
                 .filter(v -> v.getPropertyPath().toString().equals(property))
+                .toList();
+    }
+
+    /* ---------------- #476: fail-fast ranges. One case per new constraint. Null stays valid. -- */
+
+    @ParameterizedTest(name = "{0}")
+    @MethodSource("invalidKnobs")
+    void rejectsOutOfRangeKnob(String name, String path, Object invalid, Object boundary) {
+        assertThat(paths(invalid)).as(name).contains(path);
+        assertThat(paths(boundary)).as(name).doesNotContain(path);
+    }
+
+    @Test
+    void legalEdgesAndShippedDefaultsStayValid() {
+        // Null components use OrDefault(). Zero stagger / circuit-pause is the supported "no wait".
+        // A burst window shorter than model-ttl is a legal trade-off (startup WARN, not a refusal).
+        // sample-interval PT1H with bucket-width PT15S is how the self-heal ITs idle the scheduler.
+        // refresh-min-interval may be negative: the throttle comparison treats it as "always allow".
+        assertThat(validator.validate(new InspectorProperties(null, null, null, null, null)))
+                .isEmpty();
+        assertThat(validator.validate(TestEngines.engine("ok-id", "http://localhost:8081/x")))
+                .isEmpty();
+        assertThat(validator.validate(new Triage(null, -1, 0, 200))).isEmpty();
+        assertThat(validator.validate(new Bulk(4, 0, 0, 0))).isEmpty();
+        assertThat(validator.validate(new Snapshot(null, Duration.ofHours(1), Duration.ofSeconds(15), null)))
+                .isEmpty();
+        assertThat(validator.validate(new Attention(
+                        null,
+                        null,
+                        null,
+                        null,
+                        null,
+                        null,
+                        Duration.ofMinutes(5),
+                        null,
+                        null,
+                        null,
+                        Duration.ofMinutes(1),
+                        null,
+                        null,
+                        null)))
+                .isEmpty();
+        assertThat(validator.validate(new AlarmThresholds(30, 5, 0))).isEmpty();
+        assertThat(validator.validate(Auth.none())).isEmpty();
+        assertThat(validator.validate(new SelfHeal(null, null, 2, 1))).isEmpty();
+    }
+
+    static Stream<Arguments> invalidKnobs() {
+        String url = "http://localhost:8081/x";
+        return Stream.of(
+                knob(
+                        "fanoutParallelism",
+                        new InspectorProperties(0, null, null, null, null),
+                        new InspectorProperties(10, null, null, null, null)),
+                knob(
+                        "hierarchyMaxDepth",
+                        new InspectorProperties(null, 0, null, null, null),
+                        new InspectorProperties(null, 1, null, null, null)),
+                knob("cacheTtlS", new Triage(0, null, null, null), new Triage(20, null, null, null)),
+                knob("stacktraceSampleCap", new Triage(null, null, -1, null), new Triage(null, null, 0, null)),
+                knob("ackResurfaceThresholdPct", new Triage(null, null, null, -1), new Triage(null, null, null, 200)),
+                knob(
+                        "recencyHalfLife",
+                        attention(
+                                Duration.ZERO, null, null, null, null, null, null, null, null, null, null, null, null),
+                        attention(
+                                Duration.ofHours(24),
+                                null,
+                                null,
+                                null,
+                                null,
+                                null,
+                                null,
+                                null,
+                                null,
+                                null,
+                                null,
+                                null,
+                                null)),
+                knob(
+                        "arrivalsWindowDays",
+                        attention(null, 0, null, null, null, null, null, null, null, null, null, null, null),
+                        attention(null, 28, null, null, null, null, null, null, null, null, null, null, null)),
+                knob(
+                        "minClosedEpisodes",
+                        attention(null, null, 0, null, null, null, null, null, null, null, null, null, null),
+                        attention(null, null, 1, null, null, null, null, null, null, null, null, null, null)),
+                knob(
+                        "mttrClampLow",
+                        attention(null, null, null, -0.1, null, null, null, null, null, null, null, null, null),
+                        attention(null, null, null, 0.0, null, null, null, null, null, null, null, null, null)),
+                knob(
+                        "mttrClampHigh",
+                        attention(null, null, null, null, -0.1, null, null, null, null, null, null, null, null),
+                        attention(null, null, null, 0.0, 0.0, null, null, null, null, null, null, null, null)),
+                order(
+                        "mttrClampLow<=mttrClampHigh",
+                        "mttrClampLow",
+                        attention(null, null, null, 3.0, 1.0, null, null, null, null, null, null, null, null),
+                        attention(null, null, null, 2.0, 2.0, null, null, null, null, null, null, null, null)),
+                knob(
+                        "modelTtl",
+                        attention(
+                                null, null, null, null, null, Duration.ZERO, null, null, null, null, null, null, null),
+                        attention(
+                                null,
+                                null,
+                                null,
+                                null,
+                                null,
+                                Duration.ofMinutes(5),
+                                null,
+                                null,
+                                null,
+                                null,
+                                null,
+                                null,
+                                null)),
+                knob(
+                        "resurfaceFloorPct",
+                        attention(null, null, null, null, null, null, -1, null, null, null, null, null, null),
+                        attention(null, null, null, null, null, null, 150, null, null, null, null, null, null)),
+                knob(
+                        "resurfaceFalseBudgetPer30AckDays",
+                        attention(null, null, null, null, null, null, null, -0.1, null, null, null, null, null),
+                        attention(null, null, null, null, null, null, null, 0.0, null, null, null, null, null)),
+                knob(
+                        "burstWindow",
+                        attention(
+                                null, null, null, null, null, null, null, null, Duration.ZERO, null, null, null, null),
+                        attention(
+                                null,
+                                null,
+                                null,
+                                null,
+                                null,
+                                null,
+                                null,
+                                null,
+                                Duration.ofMinutes(10),
+                                null,
+                                null,
+                                null,
+                                null)),
+                knob(
+                        "burstOnset",
+                        attention(null, null, null, null, null, null, null, null, null, 0, null, null, null),
+                        attention(null, null, null, null, null, null, null, null, null, 10, null, null, null)),
+                knob(
+                        "burstExit",
+                        attention(null, null, null, null, null, null, null, null, null, null, 0, null, null),
+                        attention(null, null, null, null, null, null, null, null, null, null, 5, null, null)),
+                knob(
+                        "burstWeight",
+                        attention(null, null, null, null, null, null, null, null, null, null, null, 0.0, null),
+                        attention(null, null, null, null, null, null, null, null, null, null, null, 8.0, null)),
+                knob(
+                        "selfHealHorizon",
+                        attention(
+                                null, null, null, null, null, null, null, null, null, null, null, null, Duration.ZERO),
+                        attention(
+                                null,
+                                null,
+                                null,
+                                null,
+                                null,
+                                null,
+                                null,
+                                null,
+                                null,
+                                null,
+                                null,
+                                null,
+                                Duration.ofHours(1))),
+                knob("enginePermits", new Bulk(0, null, null, null), new Bulk(4, null, null, null)),
+                knob("staggerMs", new Bulk(null, -1, null, null), new Bulk(null, 0, null, null)),
+                knob("circuitPauseMaxMs", new Bulk(null, null, -1, null), new Bulk(null, null, 0, null)),
+                knob("circuitPausePollMs", new Bulk(null, null, null, -1), new Bulk(null, null, null, 0)),
+                knob(
+                        "sseSubscriberCap",
+                        new Bulk(null, null, null, null, -1, null),
+                        new Bulk(null, null, null, null, 0, null)),
+                knob(
+                        "sseCoalesceMs",
+                        new Bulk(null, null, null, null, null, -1),
+                        new Bulk(null, null, null, null, null, 0)),
+                knob(
+                        "sampleInterval",
+                        new Snapshot(null, Duration.ZERO, null, null),
+                        new Snapshot(null, Duration.ofHours(1), Duration.ofSeconds(15), null)),
+                knob(
+                        "bucketWidth",
+                        new Snapshot(null, null, Duration.ZERO, null),
+                        new Snapshot(null, Duration.ofHours(1), Duration.ofSeconds(15), null)),
+                order(
+                        "snapshot.retentionDays",
+                        "retentionDays",
+                        new Snapshot(null, null, null, 0),
+                        new Snapshot(null, null, null, 400)),
+                knob(
+                        "quietWindow",
+                        new Incidents(null, Duration.ZERO, null, null, null),
+                        new Incidents(null, Duration.ofHours(24), null, null, null)),
+                knob(
+                        "regressionMinCount",
+                        new Incidents(null, null, 0, null, null),
+                        new Incidents(null, null, 1, null, null)),
+                order(
+                        "incidents.retentionDays",
+                        "retentionDays",
+                        new Incidents(null, null, null, 0, null),
+                        new Incidents(null, null, null, 400, null)),
+                knob("listCap", new Incidents(null, null, null, null, 0), new Incidents(null, null, null, null, 1)),
+                knob("windowDays", new SelfHeal(null, 0, null, null), new SelfHeal(null, 90, null, null)),
+                knob("floor", new SelfHeal(null, null, 0, null), new SelfHeal(null, null, 1, null)),
+                knob("dwellCycles", new SelfHeal(null, null, null, 0), new SelfHeal(null, null, null, 1)),
+                knob(
+                        "maxPageSize",
+                        TestEngines.builder("ok-id", url).maxPageSize(0).build(),
+                        TestEngines.builder("ok-id", url).maxPageSize(2).build()),
+                knob(
+                        "dlqScanCap",
+                        TestEngines.builder("ok-id", url).dlqScanCap(0).build(),
+                        TestEngines.builder("ok-id", url).dlqScanCap(50).build()),
+                knob(
+                        "deepPagingMaxDepth",
+                        TestEngines.builder("ok-id", url).deepPagingMaxDepth(0).build(),
+                        TestEngines.builder("ok-id", url).deepPagingMaxDepth(6).build()),
+                knob("connectMs", new Timeouts(0, null, null), new Timeouts(1000, null, null)),
+                knob("readMs", new Timeouts(null, 0, null), new Timeouts(null, 1000, null)),
+                knob("writeMs", new Timeouts(null, null, 0), new Timeouts(null, 1000, null)),
+                knob("overdueTimerGraceS", new AlarmThresholds(null, null, -1), new AlarmThresholds(null, null, 0)),
+                knob("type", new Auth(null, null, null, null, null, null, null, null, null, null, null), Auth.none()));
+    }
+
+    private static Arguments knob(String path, Object invalid, Object boundary) {
+        return order(path, path, invalid, boundary);
+    }
+
+    private static Arguments order(String name, String path, Object invalid, Object boundary) {
+        return Arguments.of(name, path, invalid, boundary);
+    }
+
+    private static Attention attention(
+            Duration recency,
+            Integer arrivals,
+            Integer minClosed,
+            Double clampLow,
+            Double clampHigh,
+            Duration modelTtl,
+            Integer floorPct,
+            Double budget,
+            Duration burstWindow,
+            Integer onset,
+            Integer exit,
+            Double weight,
+            Duration horizon) {
+        return new Attention(
+                recency,
+                arrivals,
+                minClosed,
+                clampLow,
+                clampHigh,
+                null,
+                modelTtl,
+                null,
+                floorPct,
+                budget,
+                burstWindow,
+                onset,
+                exit,
+                weight,
+                horizon);
+    }
+
+    private static List<String> paths(Object bean) {
+        return validator.validate(bean).stream()
+                .map(v -> v.getPropertyPath().toString())
                 .toList();
     }
 }

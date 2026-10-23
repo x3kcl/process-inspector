@@ -3,13 +3,9 @@ package io.inspector.client;
 import io.inspector.client.GuardedCaller.CallPriority;
 import io.inspector.config.InspectorProperties.EngineConfig;
 import java.time.Instant;
-import java.time.temporal.ChronoUnit;
-import java.util.LinkedHashMap;
 import java.util.List;
 import java.util.Map;
-import org.springframework.http.MediaType;
 import org.springframework.stereotype.Component;
-import org.springframework.web.client.HttpClientErrorException;
 
 /**
  * The process-api facade (Engine-client split, #86 — F2/F9): process-instance/history queries,
@@ -27,14 +23,16 @@ import org.springframework.web.client.HttpClientErrorException;
 @Component
 public class ProcessApiClient {
 
-    /** Runtime variable collections answer a BARE JSON array, not the paged envelope. */
-    private static final org.springframework.core.ParameterizedTypeReference<List<Map<String, Object>>> VARIABLE_LIST =
-            new org.springframework.core.ParameterizedTypeReference<>() {};
-
-    private final GuardedCaller guarded;
+    private final ProcessInstanceReadClient reads;
+    private final ProcessHealthClient health;
+    private final ProcessCorrectiveClient actions;
+    private final ProcessRepositoryClient repository;
 
     public ProcessApiClient(GuardedCaller guarded) {
-        this.guarded = guarded;
+        this.reads = new ProcessInstanceReadClient(guarded);
+        this.health = new ProcessHealthClient(guarded);
+        this.actions = new ProcessCorrectiveClient(guarded);
+        this.repository = new ProcessRepositoryClient(guarded);
     }
 
     /** The four job queues (flowable-rest skill §3) and their management paths. */
@@ -53,44 +51,16 @@ public class ProcessApiClient {
         }
     }
 
-    /* ---------- queries ---------- */
-
-    /** POST /query/historic-process-instances — the primary search query. */
     public FlowablePage queryHistoricProcessInstances(
             EngineConfig engine, CallPriority priority, Map<String, Object> body) {
-        return guarded.call(
-                engine,
-                priority,
-                () -> guarded.readClient(engine)
-                        .post()
-                        .uri("/query/historic-process-instances")
-                        .contentType(MediaType.APPLICATION_JSON)
-                        .body(body)
-                        .retrieve()
-                        .body(FlowablePage.class));
+        return reads.queryHistoricProcessInstances(engine, priority, body);
     }
 
-    /** POST /query/process-instances — runtime query (used for the suspended-ID set). */
     public FlowablePage queryRuntimeProcessInstances(
             EngineConfig engine, CallPriority priority, Map<String, Object> body) {
-        return guarded.call(
-                engine,
-                priority,
-                () -> guarded.readClient(engine)
-                        .post()
-                        .uri("/query/process-instances")
-                        .contentType(MediaType.APPLICATION_JSON)
-                        .body(body)
-                        .retrieve()
-                        .body(FlowablePage.class));
+        return reads.queryRuntimeProcessInstances(engine, priority, body);
     }
 
-    /**
-     * One page of a job lane (M2a scan legs). {@code filters} maps straight onto the
-     * collection's query params — {@code withException}, {@code processInstanceId},
-     * {@code processDefinitionId}, {@code tenantId}. No sort param: {@code createTime}
-     * is not an accepted job sort property, and the join legs don't care about order.
-     */
     public FlowablePage listJobs(
             EngineConfig engine,
             CallPriority priority,
@@ -98,629 +68,159 @@ public class ProcessApiClient {
             Map<String, String> filters,
             int start,
             int size) {
-        return guarded.call(
-                engine,
-                priority,
-                () -> guarded.readClient(engine)
-                        .get()
-                        .uri(uri -> {
-                            var b = uri.path(lane.path)
-                                    .queryParam("start", start)
-                                    .queryParam("size", size);
-                            filters.forEach(b::queryParam);
-                            return b.build();
-                        })
-                        .retrieve()
-                        .body(FlowablePage.class));
+        return reads.listJobs(engine, priority, lane, filters, start, size);
     }
 
-    /**
-     * GET /history/historic-process-instances/{id} — the hierarchy-walk resolver: the
-     * historic row (unlike the runtime one) carries {@code superProcessInstanceId} on every
-     * engine version, and exists for ended children too. Null when the id is unknown.
-     */
     @SuppressWarnings("unchecked")
     public Map<String, Object> getHistoricProcessInstance(
             EngineConfig engine, CallPriority priority, String processInstanceId) {
-        try {
-            return guarded.call(
-                    engine,
-                    priority,
-                    () -> guarded.readClient(engine)
-                            .get()
-                            .uri("/history/historic-process-instances/{id}", processInstanceId)
-                            .retrieve()
-                            .body(Map.class));
-        } catch (HttpClientErrorException.NotFound e) {
-            return null;
-        }
+        return reads.getHistoricProcessInstance(engine, priority, processInstanceId);
     }
 
-    /**
-     * GET /runtime/process-instances/{id} — per-row suspended fallback for engines whose
-     * runtime query ignores {@code processInstanceIds} (proven on 6.3.1: the unknown field
-     * is silently dropped and the query returns UNFILTERED data). 404 = not running.
-     */
     @SuppressWarnings("unchecked")
     public Map<String, Object> getRuntimeProcessInstance(
             EngineConfig engine, CallPriority priority, String processInstanceId) {
-        try {
-            return guarded.call(
-                    engine,
-                    priority,
-                    () -> guarded.readClient(engine)
-                            .get()
-                            .uri("/runtime/process-instances/{id}", processInstanceId)
-                            .retrieve()
-                            .body(Map.class));
-        } catch (HttpClientErrorException.NotFound e) {
-            return null;
-        }
+        return reads.getRuntimeProcessInstance(engine, priority, processInstanceId);
     }
 
-    /**
-     * GET /history/historic-activity-instances?processInstanceId=&finished=false — the
-     * current-activity leg (SPEC §8, M2b): the unfinished activity rows of ONE instance,
-     * matched in the BFF against the requested id/name substring. Identical wire shape on
-     * 6.3.1/6.8/7.1 (probed live). One page suffices — an instance holds a handful of
-     * unfinished activities, not thousands.
-     */
     public FlowablePage listUnfinishedActivities(
             EngineConfig engine, CallPriority priority, String processInstanceId, String tenantId, int size) {
-        return guarded.call(
-                engine,
-                priority,
-                () -> guarded.readClient(engine)
-                        .get()
-                        .uri(uri -> {
-                            var b = uri.path("/history/historic-activity-instances")
-                                    .queryParam("processInstanceId", processInstanceId)
-                                    .queryParam("finished", "false")
-                                    .queryParam("size", size);
-                            if (tenantId != null && !tenantId.isBlank()) b.queryParam("tenantId", tenantId);
-                            return b.build();
-                        })
-                        .retrieve()
-                        .body(FlowablePage.class));
+        return reads.listUnfinishedActivities(engine, priority, processInstanceId, tenantId, size);
     }
 
-    /**
-     * GET /repository/process-definitions?key= — resolves a definition-key filter to the
-     * concrete per-version definition ids for DLQ-scan pushdown (ARCH §2.3). {@code version}/
-     * {@code start} are nullable/zero for the common "all versions from page 1" case — this is the
-     * ONE canonical signature (Engine-client split, #86: collapses 5 telescoping overloads that used
-     * to exist here).
-     */
     public FlowablePage listProcessDefinitionsByKey(
             EngineConfig engine, CallPriority priority, String key, Integer version, int start, int size) {
-        return guarded.call(
-                engine,
-                priority,
-                () -> guarded.readClient(engine)
-                        .get()
-                        .uri(uri -> {
-                            var b = uri.path("/repository/process-definitions")
-                                    .queryParam("key", key)
-                                    .queryParam("size", size);
-                            if (start > 0) b.queryParam("start", start);
-                            if (version != null) b.queryParam("version", version);
-                            return b.build();
-                        })
-                        .retrieve()
-                        .body(FlowablePage.class));
+        return reads.listProcessDefinitionsByKey(engine, priority, key, version, start, size);
     }
 
-    /**
-     * Versions of a key sorted by version DESCENDING (newest first) — a STABLE order for the
-     * migration on-ramp's paging (the default sort is name-ascending, which makes start/size
-     * paging prone to missed/duplicated rows under concurrent deploys). {@code page.total()} is
-     * the full version count for the key, so the caller can detect truncation.
-     */
     public FlowablePage listProcessDefinitionVersionsDesc(
             EngineConfig engine, CallPriority priority, String key, int start, int size) {
-        return guarded.call(
-                engine,
-                priority,
-                () -> guarded.readClient(engine)
-                        .get()
-                        .uri(uri -> {
-                            var b = uri.path("/repository/process-definitions")
-                                    .queryParam("key", key)
-                                    .queryParam("sort", "version")
-                                    .queryParam("order", "desc")
-                                    .queryParam("size", size);
-                            if (start > 0) b.queryParam("start", start);
-                            return b.build();
-                        })
-                        .retrieve()
-                        .body(FlowablePage.class));
+        return reads.listProcessDefinitionVersionsDesc(engine, priority, key, start, size);
     }
 
-    /**
-     * The single LATEST-version definition for a key ({@code latest=true}). The plain
-     * {@code size=1} query does NOT return the latest — {@code /repository/process-definitions}
-     * defaults to name-ascending, so version disambiguation needs {@code latest=true}
-     * explicitly (used by instance migration's default-target resolution). Empty page when the
-     * key is undeployed.
-     */
     public FlowablePage latestProcessDefinitionByKey(EngineConfig engine, CallPriority priority, String key) {
-        return guarded.call(
-                engine,
-                priority,
-                () -> guarded.readClient(engine)
-                        .get()
-                        .uri(uri -> uri.path("/repository/process-definitions")
-                                .queryParam("key", key)
-                                .queryParam("latest", true)
-                                .queryParam("size", 1)
-                                .build())
-                        .retrieve()
-                        .body(FlowablePage.class));
+        return reads.latestProcessDefinitionByKey(engine, priority, key);
     }
 
-    /**
-     * The LATEST-version definition of EVERY key on the engine ({@code latest=true}) — a bounded
-     * metadata list of the deployed definition keys, NOT instance rows. Used by the Stage-0 leak
-     * views (R-BAU-02) to enumerate the keys it then counts per age window with count-only
-     * queries. {@code page.total()} lets the caller detect a key set larger than {@code size}
-     * (a lower bound). {@code latest=true} collapses the version history to one row per key.
-     */
     public FlowablePage listLatestProcessDefinitions(EngineConfig engine, CallPriority priority, int size) {
-        return guarded.call(
-                engine,
-                priority,
-                () -> guarded.readClient(engine)
-                        .get()
-                        .uri(uri -> uri.path("/repository/process-definitions")
-                                .queryParam("latest", true)
-                                .queryParam("size", size)
-                                .build())
-                        .retrieve()
-                        .body(FlowablePage.class));
+        return reads.listLatestProcessDefinitions(engine, priority, size);
     }
 
-    /**
-     * GET /management/{lane}/{jobId}/exception-stacktrace — plain-text stacktrace, used by
-     * the triage aggregation to refine ONE representative job per error group into its
-     * root-cause class (R-SEM-03 unwrap). Null when the job is gone (retried/deleted
-     * between scan and fetch — an acceptable snapshot race, the group falls back to its
-     * message-only signature).
-     */
     public String jobExceptionStacktrace(EngineConfig engine, CallPriority priority, JobLaneKind lane, String jobId) {
-        try {
-            return guarded.call(
-                    engine,
-                    priority,
-                    () -> guarded.readClient(engine)
-                            .get()
-                            .uri(lane.path + "/{jobId}/exception-stacktrace", jobId)
-                            .retrieve()
-                            .body(String.class));
-        } catch (HttpClientErrorException.NotFound e) {
-            return null;
-        }
+        return reads.jobExceptionStacktrace(engine, priority, lane, jobId);
     }
 
-    /* ---------- M3 detail/resolve reads (Stage 2, SPEC §4) ---------- */
-
-    /**
-     * GET /runtime/executions?processInstanceId= — the execution tree of ONE open instance
-     * (execution-local variable segregation, SPEC §4). One page suffices: an instance holds
-     * a handful of executions; the page cap keeps a pathological multi-instance loop bounded.
-     */
     public FlowablePage listExecutions(EngineConfig engine, CallPriority priority, String processInstanceId, int size) {
-        return guarded.call(
-                engine,
-                priority,
-                () -> guarded.readClient(engine)
-                        .get()
-                        .uri(uri -> uri.path("/runtime/executions")
-                                .queryParam("processInstanceId", processInstanceId)
-                                .queryParam("size", size)
-                                .build())
-                        .retrieve()
-                        .body(FlowablePage.class));
+        return reads.listExecutions(engine, priority, processInstanceId, size);
     }
 
-    /** GET /runtime/process-instances/{id}/identitylinks. Empty when the instance is not running. */
     @SuppressWarnings("unchecked")
     public List<Map<String, Object>> listRuntimeIdentityLinks(
             EngineConfig engine, CallPriority priority, String processInstanceId) {
-        try {
-            List<Map<String, Object>> rows = guarded.call(
-                    engine,
-                    priority,
-                    () -> guarded.readClient(engine)
-                            .get()
-                            .uri("/runtime/process-instances/{id}/identitylinks", processInstanceId)
-                            .retrieve()
-                            .body(List.class));
-            return rows == null ? List.of() : rows;
-        } catch (HttpClientErrorException.NotFound e) {
-            return List.of();
-        }
+        return reads.listRuntimeIdentityLinks(engine, priority, processInstanceId);
     }
 
-    /** GET /history/historic-process-instances/{id}/identitylinks. Empty on 404. */
     @SuppressWarnings("unchecked")
     public List<Map<String, Object>> listHistoricIdentityLinks(
             EngineConfig engine, CallPriority priority, String processInstanceId) {
-        try {
-            List<Map<String, Object>> rows = guarded.call(
-                    engine,
-                    priority,
-                    () -> guarded.readClient(engine)
-                            .get()
-                            .uri("/history/historic-process-instances/{id}/identitylinks", processInstanceId)
-                            .retrieve()
-                            .body(List.class));
-            return rows == null ? List.of() : rows;
-        } catch (HttpClientErrorException.NotFound e) {
-            return List.of();
-        }
+        return reads.listHistoricIdentityLinks(engine, priority, processInstanceId);
     }
 
-    /** POST /runtime/process-instances/{id}/identitylinks {"user","type"}. Users only. */
     public void addInstanceIdentityLink(
             EngineConfig engine, CallPriority priority, String processInstanceId, String user, String type) {
-        guarded.run(
-                engine,
-                priority,
-                "add-participant",
-                () -> guarded.writeClient(engine)
-                        .post()
-                        .uri("/runtime/process-instances/{id}/identitylinks", processInstanceId)
-                        .contentType(MediaType.APPLICATION_JSON)
-                        .body(Map.of("user", user, "type", type))
-                        .retrieve()
-                        .toBodilessEntity());
+        reads.addInstanceIdentityLink(engine, priority, processInstanceId, user, type);
     }
 
-    /** DELETE /runtime/process-instances/{id}/identitylinks/users/{user}/{type}. */
     public void deleteInstanceIdentityLink(
             EngineConfig engine, CallPriority priority, String processInstanceId, String user, String type) {
-        guarded.run(
-                engine,
-                priority,
-                "remove-participant",
-                () -> guarded.writeClient(engine)
-                        .delete()
-                        .uri(
-                                "/runtime/process-instances/{id}/identitylinks/users/{user}/{type}",
-                                processInstanceId,
-                                user,
-                                type)
-                        .retrieve()
-                        .toBodilessEntity());
+        reads.deleteInstanceIdentityLink(engine, priority, processInstanceId, user, type);
     }
 
-    /**
-     * GET /runtime/process-instances/{id}/variables — the typed process-scope rows of a
-     * RUNNING instance. Bare array on the wire (not the paged envelope). Null = not running.
-     */
     public List<Map<String, Object>> listInstanceVariables(
             EngineConfig engine, CallPriority priority, String processInstanceId) {
-        try {
-            return guarded.call(
-                    engine,
-                    priority,
-                    () -> guarded.readClient(engine)
-                            .get()
-                            .uri("/runtime/process-instances/{id}/variables", processInstanceId)
-                            .retrieve()
-                            .body(VARIABLE_LIST));
-        } catch (HttpClientErrorException.NotFound e) {
-            return null;
-        }
+        return reads.listInstanceVariables(engine, priority, processInstanceId);
     }
 
-    /**
-     * GET /runtime/executions/{id}/variables?scope=local — variables declared ON one
-     * execution node (multi-instance loop locals live here, SPEC §4). Bare array.
-     */
     public List<Map<String, Object>> listExecutionLocalVariables(
             EngineConfig engine, CallPriority priority, String executionId) {
-        try {
-            return guarded.call(
-                    engine,
-                    priority,
-                    () -> guarded.readClient(engine)
-                            .get()
-                            .uri(uri -> uri.path("/runtime/executions/{id}/variables")
-                                    .queryParam("scope", "local")
-                                    .build(executionId))
-                            .retrieve()
-                            .body(VARIABLE_LIST));
-        } catch (HttpClientErrorException.NotFound e) {
-            return List.of();
-        }
+        return reads.listExecutionLocalVariables(engine, priority, executionId);
     }
 
-    /**
-     * GET /history/historic-variable-instances?processInstanceId= — the variables of a
-     * COMPLETED instance (runtime endpoints 404 after the end event — flowable-rest skill §2).
-     */
     public FlowablePage listHistoricVariableInstances(
             EngineConfig engine, CallPriority priority, String processInstanceId, int size) {
-        return guarded.call(
-                engine,
-                priority,
-                () -> guarded.readClient(engine)
-                        .get()
-                        .uri(uri -> uri.path("/history/historic-variable-instances")
-                                .queryParam("processInstanceId", processInstanceId)
-                                .queryParam("size", size)
-                                .build())
-                        .retrieve()
-                        .body(FlowablePage.class));
+        return reads.listHistoricVariableInstances(engine, priority, processInstanceId, size);
     }
 
-    /** GET /history/historic-activity-instances — one timeline page, startTime ascending. */
     public FlowablePage listHistoricActivities(
             EngineConfig engine, CallPriority priority, String processInstanceId, int start, int size) {
-        return guarded.call(
-                engine,
-                priority,
-                () -> guarded.readClient(engine)
-                        .get()
-                        .uri(uri -> uri.path("/history/historic-activity-instances")
-                                .queryParam("processInstanceId", processInstanceId)
-                                .queryParam("sort", "startTime")
-                                .queryParam("order", "asc")
-                                .queryParam("start", start)
-                                .queryParam("size", size)
-                                .build())
-                        .retrieve()
-                        .body(FlowablePage.class));
+        return reads.listHistoricActivities(engine, priority, processInstanceId, start, size);
     }
 
-    /**
-     * GET /runtime/event-subscriptions?processInstanceId= — what a waiting instance waits
-     * FOR (message/signal names, SPEC §4 vitals). Not present on every engine version:
-     * callers degrade to an empty list on client errors, never fail the vitals.
-     */
     public FlowablePage listEventSubscriptions(
             EngineConfig engine, CallPriority priority, String processInstanceId, int size) {
-        return guarded.call(
-                engine,
-                priority,
-                () -> guarded.readClient(engine)
-                        .get()
-                        .uri(uri -> uri.path("/runtime/event-subscriptions")
-                                .queryParam("processInstanceId", processInstanceId)
-                                .queryParam("size", size)
-                                .build())
-                        .retrieve()
-                        .body(FlowablePage.class));
+        return reads.listEventSubscriptions(engine, priority, processInstanceId, size);
     }
 
-    /**
-     * GET /history/historic-task-instances?processInstanceId= — the instance's user tasks,
-     * COMPLETED and OPEN alike (an open task is a historic row with a null endTime). No
-     * engine-side sort: the accepted sort fields differ across 6.x/7.x, so callers order
-     * by start time in the BFF.
-     */
     public FlowablePage listHistoricTaskInstances(
             EngineConfig engine, CallPriority priority, String processInstanceId, int size) {
-        return guarded.call(
-                engine,
-                priority,
-                () -> guarded.readClient(engine)
-                        .get()
-                        .uri(uri -> uri.path("/history/historic-task-instances")
-                                .queryParam("processInstanceId", processInstanceId)
-                                .queryParam("size", size)
-                                .build())
-                        .retrieve()
-                        .body(FlowablePage.class));
+        return reads.listHistoricTaskInstances(engine, priority, processInstanceId, size);
     }
 
-    /**
-     * GET /runtime/tasks?processInstanceId= — the live task rows: suspension state,
-     * delegation, claim time. Also the only leg that sees tasks on an engine whose task
-     * history is dialed below audit level.
-     */
     public FlowablePage listRuntimeTasks(
             EngineConfig engine, CallPriority priority, String processInstanceId, int size) {
-        return guarded.call(
-                engine,
-                priority,
-                () -> guarded.readClient(engine)
-                        .get()
-                        .uri(uri -> uri.path("/runtime/tasks")
-                                .queryParam("processInstanceId", processInstanceId)
-                                .queryParam("size", size)
-                                .build())
-                        .retrieve()
-                        .body(FlowablePage.class));
+        return reads.listRuntimeTasks(engine, priority, processInstanceId, size);
     }
 
-    /** GET /runtime/tasks with the caller's query. Blank values are omitted. Bounded by {@code size}. */
     public FlowablePage listRuntimeTasks(
             EngineConfig engine, CallPriority priority, Map<String, String> query, int size) {
-        return guarded.call(
-                engine,
-                priority,
-                () -> guarded.readClient(engine)
-                        .get()
-                        .uri(uri -> {
-                            var builder = uri.path("/runtime/tasks").queryParam("size", size);
-                            if (query != null) {
-                                query.forEach((key, value) -> {
-                                    if (value != null && !value.isBlank()) {
-                                        builder.queryParam(key, value);
-                                    }
-                                });
-                            }
-                            return builder.build();
-                        })
-                        .retrieve()
-                        .body(FlowablePage.class));
+        return reads.listRuntimeTasks(engine, priority, query, size);
     }
 
-    /**
-     * GET /runtime/tasks?assignee= — every OPEN task currently assigned to a person, across the
-     * whole engine (not scoped to one instance). Feeds person-centric task search (#99, "what is
-     * Bob sitting on"). Bounded by {@code size} — never an unpaged fetch.
-     */
     public FlowablePage listTasksByAssignee(EngineConfig engine, CallPriority priority, String assignee, int size) {
-        return guarded.call(
-                engine,
-                priority,
-                () -> guarded.readClient(engine)
-                        .get()
-                        .uri(uri -> uri.path("/runtime/tasks")
-                                .queryParam("assignee", assignee)
-                                .queryParam("size", size)
-                                .build())
-                        .retrieve()
-                        .body(FlowablePage.class));
+        return reads.listTasksByAssignee(engine, priority, assignee, size);
     }
 
-    /**
-     * GET /runtime/tasks?candidateUser= — every OPEN task a person could CLAIM, across the whole
-     * engine: unassigned tasks whose candidate users/groups include them (Flowable's own
-     * IdentityService resolves group membership when configured; a bare candidate-user link
-     * always matches). Feeds person-centric task search (#99). Bounded by {@code size}.
-     */
     public FlowablePage listTasksByCandidateUser(
             EngineConfig engine, CallPriority priority, String candidateUser, int size) {
-        return guarded.call(
-                engine,
-                priority,
-                () -> guarded.readClient(engine)
-                        .get()
-                        .uri(uri -> uri.path("/runtime/tasks")
-                                .queryParam("candidateUser", candidateUser)
-                                .queryParam("size", size)
-                                .build())
-                        .retrieve()
-                        .body(FlowablePage.class));
+        return reads.listTasksByCandidateUser(engine, priority, candidateUser, size);
     }
 
-    /** GET /history/historic-task-instances/{id} — task resolution incl. completed tasks. Null = unknown. */
     @SuppressWarnings("unchecked")
     public Map<String, Object> getHistoricTaskInstance(EngineConfig engine, CallPriority priority, String taskId) {
-        try {
-            return guarded.call(
-                    engine,
-                    priority,
-                    () -> guarded.readClient(engine)
-                            .get()
-                            .uri("/history/historic-task-instances/{id}", taskId)
-                            .retrieve()
-                            .body(Map.class));
-        } catch (HttpClientErrorException.NotFound e) {
-            return null;
-        }
+        return reads.getHistoricTaskInstance(engine, priority, taskId);
     }
 
-    /**
-     * GET /repository/deployments/{deploymentId}/resourcedata/{resourceName} — the raw
-     * BPMN 2.0 XML exactly as deployed (Stage 2 diagram). {@code resourceName} may contain
-     * slashes ("processes/order.bpmn20.xml") — they are REAL path segments to Flowable, so
-     * each segment is encoded separately (an encoded %2F would 400 on Tomcat).
-     */
     public String deploymentResourceData(
             EngineConfig engine, CallPriority priority, String deploymentId, String resourceName) {
-        try {
-            return guarded.call(
-                    engine,
-                    priority,
-                    () -> guarded.readClient(engine)
-                            .get()
-                            .uri(uri -> uri.path("/repository/deployments/{id}/resourcedata/")
-                                    .pathSegment(resourceName.split("/"))
-                                    .build(deploymentId))
-                            .retrieve()
-                            .body(String.class));
-        } catch (HttpClientErrorException.NotFound e) {
-            return null;
-        }
+        return reads.deploymentResourceData(engine, priority, deploymentId, resourceName);
     }
 
-    /** GET a management document. Used by system info; 404 is the caller's problem. */
     @SuppressWarnings("unchecked")
     public Map<String, Object> getMap(EngineConfig engine, CallPriority priority, String path) {
-        return guarded.call(
-                engine,
-                priority,
-                () -> guarded.readClient(engine).get().uri(path).retrieve().body(Map.class));
+        return reads.getMap(engine, priority, path);
     }
 
     public FlowablePage getPage(EngineConfig engine, CallPriority priority, String path) {
-        return guarded.call(
-                engine,
-                priority,
-                () -> guarded.readClient(engine).get().uri(path).retrieve().body(FlowablePage.class));
+        return reads.getPage(engine, priority, path);
     }
 
-    /** GET /management/engine — health + version probe. */
     @SuppressWarnings("unchecked")
     public Map<String, Object> engineInfo(EngineConfig engine, CallPriority priority) {
-        return guarded.call(
-                engine,
-                priority,
-                () -> guarded.readClient(engine)
-                        .get()
-                        .uri("/management/engine")
-                        .retrieve()
-                        .body(Map.class));
+        return reads.engineInfo(engine, priority);
     }
 
-    /* ---------- M1 health-strip calls: size=1 totals, never row fetches ---------- */
-
-    /** Lane count via the size=1 total trick — no rows transferred. */
     public long countJobs(EngineConfig engine, CallPriority priority, JobLaneKind lane) {
-        FlowablePage page = guarded.call(
-                engine,
-                priority,
-                () -> guarded.readClient(engine)
-                        .get()
-                        .uri(uri -> uri.path(lane.path).queryParam("size", 1).build())
-                        .retrieve()
-                        .body(FlowablePage.class));
-        return page != null ? page.total() : 0;
+        return health.countJobs(engine, priority, lane);
     }
 
-    /**
-     * Same count as {@link #countJobs}, or null when the route is missing. A missing history lane
-     * must not become 0 (#507).
-     */
     public Long countJobsIfSupported(EngineConfig engine, CallPriority priority, JobLaneKind lane) {
-        try {
-            return countJobs(engine, priority, lane);
-        } catch (HttpClientErrorException.NotFound e) {
-            return null;
-        }
+        return health.countJobsIfSupported(engine, priority, lane);
     }
 
-    /** Oldest history job (createTime asc), or null when the lane is empty or the route is missing. */
     public Map<String, Object> oldestHistoryJob(EngineConfig engine, CallPriority priority) {
-        try {
-            FlowablePage page = guarded.call(
-                    engine,
-                    priority,
-                    () -> guarded.readClient(engine)
-                            .get()
-                            .uri(uri -> uri.path(JobLaneKind.HISTORY.path)
-                                    .queryParam("size", 1)
-                                    .queryParam("sort", "createTime")
-                                    .queryParam("order", "asc")
-                                    .build())
-                            .retrieve()
-                            .body(FlowablePage.class));
-            List<Map<String, Object>> rows = page != null ? page.dataOrEmpty() : List.of();
-            return rows.isEmpty() ? null : rows.get(0);
-        } catch (HttpClientErrorException.NotFound e) {
-            return null;
-        }
+        return health.oldestHistoryJob(engine, priority);
     }
 
-    /**
-     * Count-only historic process instances in a window. Null when the history route is missing.
-     * {@code started} selects startedAfter/Before; otherwise finishedAfter/Before.
-     */
     public Long countHistoricProcesses(
             EngineConfig engine,
             CallPriority priority,
@@ -728,7 +228,7 @@ public class ProcessApiClient {
             Instant before,
             boolean started,
             boolean rootOnly) {
-        return countHistoricProcesses(engine, priority, after, before, started, rootOnly, null);
+        return health.countHistoricProcesses(engine, priority, after, before, started, rootOnly);
     }
 
     public Long countHistoricProcesses(
@@ -739,45 +239,9 @@ public class ProcessApiClient {
             boolean started,
             boolean rootOnly,
             String definitionKey) {
-        String afterName = started ? "startedAfter" : "finishedAfter";
-        String beforeName = started ? "startedBefore" : "finishedBefore";
-        String afterIso =
-                after.truncatedTo(java.time.temporal.ChronoUnit.SECONDS).toString();
-        String beforeIso =
-                before.truncatedTo(java.time.temporal.ChronoUnit.SECONDS).toString();
-        try {
-            FlowablePage page = guarded.call(
-                    engine,
-                    priority,
-                    () -> guarded.readClient(engine)
-                            .get()
-                            .uri(uri -> {
-                                var builder = uri.path("/history/historic-process-instances")
-                                        .queryParam("size", 1)
-                                        .queryParam(afterName, afterIso)
-                                        .queryParam(beforeName, beforeIso);
-                                if (rootOnly) {
-                                    builder.queryParam("excludeSubprocesses", "true");
-                                }
-                                if (definitionKey != null && !definitionKey.isBlank()) {
-                                    builder.queryParam("processDefinitionKey", definitionKey);
-                                }
-                                return builder.build();
-                            })
-                            .retrieve()
-                            .body(FlowablePage.class));
-            return page != null ? page.total() : 0L;
-        } catch (HttpClientErrorException.NotFound e) {
-            return null;
-        }
+        return health.countHistoricProcesses(engine, priority, after, before, started, rootOnly, definitionKey);
     }
 
-    /**
-     * GET /runtime/process-instances — the cohort list. Blank filters are omitted.
-     * {@code businessKey} and {@code businessKeyLike} are mutually exclusive; the caller picks one.
-     * Measured 2026-10-22 on 6.8: exact key, like, startedAfter and startedBefore all narrow
-     * {@code total}. The POST query's {@code businessKey} field did not.
-     */
     public FlowablePage listRuntimeInstances(
             EngineConfig engine,
             CallPriority priority,
@@ -787,34 +251,10 @@ public class ProcessApiClient {
             String startedAfter,
             String startedBefore,
             int size) {
-        return guarded.call(
-                engine,
-                priority,
-                () -> guarded.readClient(engine)
-                        .get()
-                        .uri(uri -> {
-                            var builder = uri.path("/runtime/process-instances")
-                                    .queryParam("processDefinitionId", processDefinitionId)
-                                    .queryParam("size", size);
-                            if (businessKey != null && !businessKey.isBlank()) {
-                                builder.queryParam("businessKey", businessKey);
-                            }
-                            if (businessKeyLike != null && !businessKeyLike.isBlank()) {
-                                builder.queryParam("businessKeyLike", businessKeyLike);
-                            }
-                            if (startedAfter != null && !startedAfter.isBlank()) {
-                                builder.queryParam("startedAfter", startedAfter);
-                            }
-                            if (startedBefore != null && !startedBefore.isBlank()) {
-                                builder.queryParam("startedBefore", startedBefore);
-                            }
-                            return builder.build();
-                        })
-                        .retrieve()
-                        .body(FlowablePage.class));
+        return health.listRuntimeInstances(
+                engine, priority, processDefinitionId, businessKey, businessKeyLike, startedAfter, startedBefore, size);
     }
 
-    /** Finished historic process instances. Blank key and business key are omitted. */
     public FlowablePage listFinishedProcesses(
             EngineConfig engine,
             CallPriority priority,
@@ -823,637 +263,173 @@ public class ProcessApiClient {
             String finishedBefore,
             int start,
             int size) {
-        return guarded.call(
-                engine,
-                priority,
-                () -> guarded.readClient(engine)
-                        .get()
-                        .uri(uri -> {
-                            var builder = uri.path("/history/historic-process-instances")
-                                    .queryParam("finished", "true")
-                                    .queryParam("finishedBefore", finishedBefore)
-                                    .queryParam("size", size)
-                                    .queryParam("start", start);
-                            if (definitionKey != null && !definitionKey.isBlank()) {
-                                builder.queryParam("processDefinitionKey", definitionKey);
-                            }
-                            if (businessKey != null && !businessKey.isBlank()) {
-                                builder.queryParam("businessKey", businessKey);
-                            }
-                            return builder.build();
-                        })
-                        .retrieve()
-                        .body(FlowablePage.class));
+        return health.listFinishedProcesses(engine, priority, definitionKey, businessKey, finishedBefore, start, size);
     }
 
-    /** DELETE /history/historic-process-instances/{id}?deleteReason= */
     public void deleteHistoricProcessInstance(
             EngineConfig engine, CallPriority priority, String processInstanceId, String deleteReason) {
-        guarded.run(
-                engine,
-                priority,
-                "delete-history",
-                () -> guarded.writeClient(engine)
-                        .delete()
-                        .uri(uri -> uri.path("/history/historic-process-instances/{id}")
-                                .queryParam("deleteReason", deleteReason)
-                                .build(processInstanceId))
-                        .retrieve()
-                        .toBodilessEntity());
+        health.deleteHistoricProcessInstance(engine, priority, processInstanceId, deleteReason);
     }
 
-    /** Historic tasks created or completed in the window. Null when the route is missing. */
     public Long countHistoricTasks(
             EngineConfig engine, CallPriority priority, Instant after, Instant before, boolean completed) {
-        String afterName = completed ? "taskCompletedAfter" : "taskCreatedAfter";
-        String beforeName = completed ? "taskCompletedBefore" : "taskCreatedBefore";
-        String afterIso = after.truncatedTo(ChronoUnit.SECONDS).toString();
-        String beforeIso = before.truncatedTo(ChronoUnit.SECONDS).toString();
-        try {
-            FlowablePage page = guarded.call(
-                    engine,
-                    priority,
-                    () -> guarded.readClient(engine)
-                            .get()
-                            .uri(uri -> uri.path("/history/historic-task-instances")
-                                    .queryParam("size", 1)
-                                    .queryParam(afterName, afterIso)
-                                    .queryParam(beforeName, beforeIso)
-                                    .build())
-                            .retrieve()
-                            .body(FlowablePage.class));
-            return page != null ? page.total() : 0L;
-        } catch (HttpClientErrorException.NotFound e) {
-            return null;
-        }
+        return health.countHistoricTasks(engine, priority, after, before, completed);
     }
 
-    /** Oldest executable job row (dueDate asc), or null when the lane is empty. */
     public Map<String, Object> oldestExecutableJob(EngineConfig engine, CallPriority priority) {
-        FlowablePage page = guarded.call(
-                engine,
-                priority,
-                () -> guarded.readClient(engine)
-                        .get()
-                        .uri(uri -> uri.path(JobLaneKind.EXECUTABLE.path)
-                                .queryParam("size", 1)
-                                .queryParam("sort", "dueDate")
-                                .queryParam("order", "asc")
-                                .build())
-                        .retrieve()
-                        .body(FlowablePage.class));
-        List<Map<String, Object>> rows = page != null ? page.dataOrEmpty() : List.of();
-        return rows.isEmpty() ? null : rows.get(0);
+        return health.oldestExecutableJob(engine, priority);
     }
 
-    /** Count of timers already past due at {@code dueBefore} — the overdue-timer alarm. */
     public long countOverdueTimers(EngineConfig engine, CallPriority priority, Instant dueBefore) {
-        // Whole seconds only: Flowable's date parsing 400s on fractional seconds.
-        String dueBeforeIso = dueBefore.truncatedTo(ChronoUnit.SECONDS).toString();
-        FlowablePage page = guarded.call(
-                engine,
-                priority,
-                () -> guarded.readClient(engine)
-                        .get()
-                        .uri(uri -> uri.path(JobLaneKind.TIMER.path)
-                                .queryParam("size", 1)
-                                .queryParam("dueBefore", dueBeforeIso)
-                                .build())
-                        .retrieve()
-                        .body(FlowablePage.class));
-        return page != null ? page.total() : 0;
+        return health.countOverdueTimers(engine, priority, dueBefore);
     }
 
-    /**
-     * Capability probe: does the engine record activity history? 200 = yes; a 4xx
-     * (endpoint missing / history disabled) = no. Client errors are the expected
-     * negative answer here and never trip the breaker (ignore-exceptions config).
-     */
     public boolean probeActivityHistory(EngineConfig engine, CallPriority priority) {
-        try {
-            guarded.call(
-                    engine,
-                    priority,
-                    () -> guarded.readClient(engine)
-                            .get()
-                            .uri(uri -> uri.path("/history/historic-activity-instances")
-                                    .queryParam("size", 1)
-                                    .build())
-                            .retrieve()
-                            .body(FlowablePage.class));
-            return true;
-        } catch (HttpClientErrorException e) {
-            return false;
-        }
+        return health.probeActivityHistory(engine, priority);
     }
 
-    /* ---------- M4 corrective-action calls (flowable-rest skill §4 catalog) ---------- */
-
-    /** GET /management/{lane}/{jobId} — server-fresh job restatement before a job verb. Null = gone. */
     @SuppressWarnings("unchecked")
     public Map<String, Object> getJob(EngineConfig engine, CallPriority priority, JobLaneKind lane, String jobId) {
-        try {
-            return guarded.call(
-                    engine,
-                    priority,
-                    () -> guarded.readClient(engine)
-                            .get()
-                            .uri(lane.path + "/{jobId}", jobId)
-                            .retrieve()
-                            .body(Map.class));
-        } catch (HttpClientErrorException.NotFound e) {
-            return null;
-        }
+        return actions.getJob(engine, priority, lane, jobId);
     }
 
-    /** POST /management/deadletter-jobs/{jobId} {"action":"move"} — retry: DLQ → executable queue. */
     public void moveDeadLetterJob(EngineConfig engine, CallPriority priority, String jobId) {
-        guarded.run(
-                engine,
-                priority,
-                "move-deadletter",
-                () -> guarded.writeClient(engine)
-                        .post()
-                        .uri(JobLaneKind.DEADLETTER.path + "/{jobId}", jobId)
-                        .contentType(MediaType.APPLICATION_JSON)
-                        .body(Map.of("action", "move"))
-                        .retrieve()
-                        .toBodilessEntity());
+        actions.moveDeadLetterJob(engine, priority, jobId);
     }
 
-    /** POST /management/timer-jobs/{jobId} {"action":"move"} — fire a timer now. */
     public void rescheduleTimer(EngineConfig engine, CallPriority priority, String jobId, String dueDate) {
-        guarded.run(
-                engine,
-                priority,
-                "reschedule-timer",
-                () -> guarded.writeClient(engine)
-                        .post()
-                        .uri(JobLaneKind.TIMER.path + "/{jobId}", jobId)
-                        .contentType(MediaType.APPLICATION_JSON)
-                        .body(Map.of("action", "reschedule", "dueDate", dueDate))
-                        .retrieve()
-                        .toBodilessEntity());
+        actions.rescheduleTimer(engine, priority, jobId, dueDate);
     }
 
     public void moveDeadLetterToHistoryJob(EngineConfig engine, CallPriority priority, String jobId) {
-        guarded.run(
-                engine,
-                priority,
-                "move-to-history-job",
-                () -> guarded.writeClient(engine)
-                        .post()
-                        .uri(JobLaneKind.DEADLETTER.path + "/{jobId}", jobId)
-                        .contentType(MediaType.APPLICATION_JSON)
-                        .body(Map.of("action", "moveToHistoryJob"))
-                        .retrieve()
-                        .toBodilessEntity());
+        actions.moveDeadLetterToHistoryJob(engine, priority, jobId);
     }
 
     public void deleteJob(EngineConfig engine, CallPriority priority, JobLaneKind lane, String jobId) {
-        guarded.run(
-                engine,
-                priority,
-                "delete-job",
-                () -> guarded.writeClient(engine)
-                        .delete()
-                        .uri(lane.path + "/{jobId}", jobId)
-                        .retrieve()
-                        .toBodilessEntity());
+        actions.deleteJob(engine, priority, lane, jobId);
     }
 
     public void moveTimerJob(EngineConfig engine, CallPriority priority, String jobId) {
-        guarded.run(
-                engine,
-                priority,
-                "move-timer",
-                () -> guarded.writeClient(engine)
-                        .post()
-                        .uri(JobLaneKind.TIMER.path + "/{jobId}", jobId)
-                        .contentType(MediaType.APPLICATION_JSON)
-                        .body(Map.of("action", "move"))
-                        .retrieve()
-                        .toBodilessEntity());
+        actions.moveTimerJob(engine, priority, jobId);
     }
 
-    /** DELETE /management/deadletter-jobs/{jobId} — discard a dead-letter job (orphans the execution). */
     public void deleteDeadLetterJob(EngineConfig engine, CallPriority priority, String jobId) {
-        guarded.run(
-                engine,
-                priority,
-                "delete-deadletter",
-                () -> guarded.writeClient(engine)
-                        .delete()
-                        .uri(JobLaneKind.DEADLETTER.path + "/{jobId}", jobId)
-                        .retrieve()
-                        .toBodilessEntity());
+        actions.deleteDeadLetterJob(engine, priority, jobId);
     }
 
-    /** PUT /runtime/process-instances/{id} {"action":"suspend"|"activate"}. */
     public void suspendOrActivateInstance(
             EngineConfig engine, CallPriority priority, String processInstanceId, String action) {
-        guarded.run(
-                engine,
-                priority,
-                action,
-                () -> guarded.writeClient(engine)
-                        .put()
-                        .uri("/runtime/process-instances/{id}", processInstanceId)
-                        .contentType(MediaType.APPLICATION_JSON)
-                        .body(Map.of("action", action))
-                        .retrieve()
-                        .toBodilessEntity());
+        actions.suspendOrActivateInstance(engine, priority, processInstanceId, action);
     }
 
-    /** DELETE /runtime/process-instances/{id}?deleteReason= — terminate/delete (irreversible). */
     public void deleteProcessInstance(
             EngineConfig engine, CallPriority priority, String processInstanceId, String deleteReason) {
-        guarded.run(
-                engine,
-                priority,
-                "delete-instance",
-                () -> guarded.writeClient(engine)
-                        .delete()
-                        .uri(uri -> uri.path("/runtime/process-instances/{id}")
-                                .queryParam("deleteReason", deleteReason)
-                                .build(processInstanceId))
-                        .retrieve()
-                        .toBodilessEntity());
+        actions.deleteProcessInstance(engine, priority, processInstanceId, deleteReason);
     }
 
-    /** GET /runtime/process-instances/{id}/variables/{name} — the CAS pre-read (typed row). Null = absent. */
     @SuppressWarnings("unchecked")
     public Map<String, Object> getInstanceVariable(
             EngineConfig engine, CallPriority priority, String processInstanceId, String name) {
-        try {
-            return guarded.call(
-                    engine,
-                    priority,
-                    () -> guarded.readClient(engine)
-                            .get()
-                            .uri("/runtime/process-instances/{id}/variables/{name}", processInstanceId, name)
-                            .retrieve()
-                            .body(Map.class));
-        } catch (HttpClientErrorException.NotFound e) {
-            return null;
-        }
+        return actions.getInstanceVariable(engine, priority, processInstanceId, name);
     }
 
-    /**
-     * PUT /runtime/process-instances/{id}/variables/{name} — typed single-variable write.
-     * The declared type is preserved by the caller (string-ifying an integer breaks
-     * gateways downstream — flowable-rest skill §2).
-     */
     public void putInstanceVariable(
             EngineConfig engine,
             CallPriority priority,
             String processInstanceId,
             String name,
             Map<String, Object> typedVariable) {
-        guarded.run(
-                engine,
-                priority,
-                "put-instance-variable",
-                () -> guarded.writeClient(engine)
-                        .put()
-                        .uri("/runtime/process-instances/{id}/variables/{name}", processInstanceId, name)
-                        .contentType(MediaType.APPLICATION_JSON)
-                        .body(typedVariable)
-                        .retrieve()
-                        .toBodilessEntity());
+        actions.putInstanceVariable(engine, priority, processInstanceId, name, typedVariable);
     }
 
-    /**
-     * GET /runtime/executions/{executionId}/variables/{name}?scope=local — the CAS pre-read
-     * for an execution-local ("step-local") variable (SPEC §4a). {@code scope=local} means
-     * the engine returns ONLY a variable declared ON this execution, never a process-scope
-     * value shadowed down the tree — so the CAS reads the exact row the write will touch.
-     * Null = no such local variable (404).
-     */
     @SuppressWarnings("unchecked")
     public Map<String, Object> getExecutionVariable(
             EngineConfig engine, CallPriority priority, String executionId, String name) {
-        try {
-            return guarded.call(
-                    engine,
-                    priority,
-                    () -> guarded.readClient(engine)
-                            .get()
-                            .uri(uri -> uri.path("/runtime/executions/{id}/variables/{name}")
-                                    .queryParam("scope", "local")
-                                    .build(executionId, name))
-                            .retrieve()
-                            .body(Map.class));
-        } catch (HttpClientErrorException.NotFound e) {
-            return null;
-        }
+        return actions.getExecutionVariable(engine, priority, executionId, name);
     }
 
-    /**
-     * PUT /runtime/executions/{executionId}/variables/{name} — typed execution-local write.
-     * The body carries {@code scope:"local"} so the engine writes the variable ON this
-     * execution node rather than promoting it to process scope; the declared type is
-     * preserved by the caller (flowable-rest §2).
-     */
     public void putExecutionVariable(
             EngineConfig engine,
             CallPriority priority,
             String executionId,
             String name,
             Map<String, Object> typedVariable) {
-        guarded.run(
-                engine,
-                priority,
-                "put-execution-variable",
-                () -> guarded.writeClient(engine)
-                        .put()
-                        .uri("/runtime/executions/{id}/variables/{name}", executionId, name)
-                        .contentType(MediaType.APPLICATION_JSON)
-                        .body(typedVariable)
-                        .retrieve()
-                        .toBodilessEntity());
+        actions.putExecutionVariable(engine, priority, executionId, name, typedVariable);
     }
 
-    /** GET /runtime/tasks/{taskId} — server-fresh task restatement. Null = gone/completed. */
     @SuppressWarnings("unchecked")
     public Map<String, Object> getTask(EngineConfig engine, CallPriority priority, String taskId) {
-        try {
-            return guarded.call(
-                    engine,
-                    priority,
-                    () -> guarded.readClient(engine)
-                            .get()
-                            .uri("/runtime/tasks/{taskId}", taskId)
-                            .retrieve()
-                            .body(Map.class));
-        } catch (HttpClientErrorException.NotFound e) {
-            return null;
-        }
+        return actions.getTask(engine, priority, taskId);
     }
 
-    /** POST /runtime/tasks/{taskId} {"action":"complete","variables":[…]} — complete with data. */
     public void completeTask(
             EngineConfig engine, CallPriority priority, String taskId, List<Map<String, Object>> variables) {
-        Map<String, Object> body = variables == null || variables.isEmpty()
-                ? Map.of("action", "complete")
-                : Map.of("action", "complete", "variables", variables);
-        guarded.run(
-                engine,
-                priority,
-                "complete-task",
-                () -> guarded.writeClient(engine)
-                        .post()
-                        .uri("/runtime/tasks/{taskId}", taskId)
-                        .contentType(MediaType.APPLICATION_JSON)
-                        .body(body)
-                        .retrieve()
-                        .toBodilessEntity());
+        actions.completeTask(engine, priority, taskId, variables);
     }
 
-    /**
-     * PUT /runtime/tasks/{taskId} {"assignee": …} — reassign to a specific user, or clear
-     * the assignee ({@code null}) so the task falls back to its candidate groups
-     * (return-to-team). The key is sent even when the value is null, so Flowable treats it as
-     * an explicit set-to-null rather than "leave unchanged" (flowable-rest §4).
-     */
     public void setTaskAssignee(EngineConfig engine, CallPriority priority, String taskId, String assignee) {
-        Map<String, Object> body = new LinkedHashMap<>();
-        body.put("assignee", assignee);
-        guarded.run(
-                engine,
-                priority,
-                "set-task-assignee",
-                () -> guarded.writeClient(engine)
-                        .put()
-                        .uri("/runtime/tasks/{taskId}", taskId)
-                        .contentType(MediaType.APPLICATION_JSON)
-                        .body(body)
-                        .retrieve()
-                        .toBodilessEntity());
+        actions.setTaskAssignee(engine, priority, taskId, assignee);
     }
 
-    /**
-     * POST /runtime/tasks/{taskId} TaskActionRequest. Claim always sends {@code assignee}, including
-     * null, so an empty assignee unclaims. Resolve omits it.
-     */
     public void taskAction(EngineConfig engine, CallPriority priority, String taskId, String action, String assignee) {
-        Map<String, Object> body = new LinkedHashMap<>();
-        body.put("action", action);
-        if (assignee != null || "claim".equals(action)) {
-            body.put("assignee", assignee);
-        }
-        guarded.run(
-                engine,
-                priority,
-                "task-" + action,
-                () -> guarded.writeClient(engine)
-                        .post()
-                        .uri("/runtime/tasks/{taskId}", taskId)
-                        .contentType(MediaType.APPLICATION_JSON)
-                        .body(body)
-                        .retrieve()
-                        .toBodilessEntity());
+        actions.taskAction(engine, priority, taskId, action, assignee);
     }
 
-    /** PUT /runtime/tasks/{taskId} — only the keys present in {@code body} are changed. */
     public void putTask(EngineConfig engine, CallPriority priority, String taskId, Map<String, Object> body) {
-        guarded.run(
-                engine,
-                priority,
-                "update-task",
-                () -> guarded.writeClient(engine)
-                        .put()
-                        .uri("/runtime/tasks/{taskId}", taskId)
-                        .contentType(MediaType.APPLICATION_JSON)
-                        .body(body)
-                        .retrieve()
-                        .toBodilessEntity());
+        actions.putTask(engine, priority, taskId, body);
     }
 
-    /** DELETE /runtime/tasks/{taskId}. */
     public void deleteTask(EngineConfig engine, CallPriority priority, String taskId) {
-        guarded.run(
-                engine,
-                priority,
-                "delete-task",
-                () -> guarded.writeClient(engine)
-                        .delete()
-                        .uri("/runtime/tasks/{taskId}", taskId)
-                        .retrieve()
-                        .toBodilessEntity());
+        actions.deleteTask(engine, priority, taskId);
     }
 
-    /** GET /runtime/tasks/{taskId}/identitylinks. Empty on 404. */
     @SuppressWarnings("unchecked")
     public List<Map<String, Object>> listIdentityLinks(EngineConfig engine, CallPriority priority, String taskId) {
-        try {
-            List<Map<String, Object>> rows = guarded.call(
-                    engine,
-                    priority,
-                    () -> guarded.readClient(engine)
-                            .get()
-                            .uri("/runtime/tasks/{taskId}/identitylinks", taskId)
-                            .retrieve()
-                            .body(List.class));
-            return rows == null ? List.of() : rows;
-        } catch (HttpClientErrorException.NotFound e) {
-            return List.of();
-        }
+        return actions.listIdentityLinks(engine, priority, taskId);
     }
 
-    /** POST /runtime/tasks/{taskId}/identitylinks. {@code family} is users or groups. */
     public void addIdentityLink(
             EngineConfig engine, CallPriority priority, String taskId, String family, String identityId, String type) {
-        Map<String, Object> body = new LinkedHashMap<>();
-        body.put("groups".equals(family) ? "groupId" : "userId", identityId);
-        body.put("type", type);
-        guarded.run(
-                engine,
-                priority,
-                "add-identity-link",
-                () -> guarded.writeClient(engine)
-                        .post()
-                        .uri("/runtime/tasks/{taskId}/identitylinks", taskId)
-                        .contentType(MediaType.APPLICATION_JSON)
-                        .body(body)
-                        .retrieve()
-                        .toBodilessEntity());
+        actions.addIdentityLink(engine, priority, taskId, family, identityId, type);
     }
 
-    /** DELETE /runtime/tasks/{taskId}/identitylinks/{family}/{identityId}/{type}. */
     public void deleteIdentityLink(
             EngineConfig engine, CallPriority priority, String taskId, String family, String identityId, String type) {
-        guarded.run(
-                engine,
-                priority,
-                "delete-identity-link",
-                () -> guarded.writeClient(engine)
-                        .delete()
-                        .uri(
-                                "/runtime/tasks/{taskId}/identitylinks/{family}/{identityId}/{type}",
-                                taskId,
-                                family,
-                                identityId,
-                                type)
-                        .retrieve()
-                        .toBodilessEntity());
+        actions.deleteIdentityLink(engine, priority, taskId, family, identityId, type);
     }
 
-    /**
-     * GET /identity/{family}/{id}. False only on 404. Any other error propagates so a present
-     * IDM that refuses the read is not reported as "user missing".
-     */
     public boolean idmIdentityExists(EngineConfig engine, CallPriority priority, String family, String identityId) {
-        try {
-            guarded.call(
-                    engine,
-                    priority,
-                    () -> guarded.readClient(engine)
-                            .get()
-                            .uri("/identity/{family}/{identityId}", family, identityId)
-                            .retrieve()
-                            .toBodilessEntity());
-            return true;
-        } catch (HttpClientErrorException.NotFound e) {
-            return false;
-        }
+        return actions.idmIdentityExists(engine, priority, family, identityId);
     }
 
-    /**
-     * Capability probe: does this REST app bundle IDM? 200 = yes. Any 4xx (the route is absent
-     * on a process-only app) = no. A 404 is "IDM not installed", never "user does not exist".
-     */
     public boolean probeIdm(EngineConfig engine, CallPriority priority) {
-        try {
-            guarded.call(
-                    engine,
-                    priority,
-                    () -> guarded.readClient(engine)
-                            .get()
-                            .uri(uri -> uri.path("/identity/users")
-                                    .queryParam("size", 1)
-                                    .build())
-                            .retrieve()
-                            .toBodilessEntity());
-            return true;
-        } catch (HttpClientErrorException e) {
-            return false;
-        }
+        return actions.probeIdm(engine, priority);
     }
 
-    /** GET /runtime/executions/{executionId} — server-fresh execution restatement. Null = gone. */
     @SuppressWarnings("unchecked")
     public Map<String, Object> getExecution(EngineConfig engine, CallPriority priority, String executionId) {
-        try {
-            return guarded.call(
-                    engine,
-                    priority,
-                    () -> guarded.readClient(engine)
-                            .get()
-                            .uri("/runtime/executions/{executionId}", executionId)
-                            .retrieve()
-                            .body(Map.class));
-        } catch (HttpClientErrorException.NotFound e) {
-            return null;
-        }
+        return actions.getExecution(engine, priority, executionId);
     }
 
-    /**
-     * POST /runtime/executions/{executionId} — deliver what a waiting execution is
-     * blocked on: {"action":"messageEventReceived","messageName":…} /
-     * {"action":"signalEventReceived","signalName":…} / {"action":"trigger"}.
-     */
     public void executionAction(
             EngineConfig engine, CallPriority priority, String executionId, Map<String, Object> body) {
-        Object action = body.get("action");
-        String verb = action instanceof String s && !s.isBlank() ? s : "execution-action";
-        guarded.run(
-                engine,
-                priority,
-                verb,
-                () -> guarded.writeClient(engine)
-                        .put()
-                        .uri("/runtime/executions/{executionId}", executionId)
-                        .contentType(MediaType.APPLICATION_JSON)
-                        .body(body)
-                        .retrieve()
-                        .toBodilessEntity());
+        actions.executionAction(engine, priority, executionId, body);
     }
 
-    /** GET /repository/process-definitions/{definitionId} — server-fresh definition restatement. */
     @SuppressWarnings("unchecked")
     public Map<String, Object> getProcessDefinition(EngineConfig engine, CallPriority priority, String definitionId) {
-        try {
-            return guarded.call(
-                    engine,
-                    priority,
-                    () -> guarded.readClient(engine)
-                            .get()
-                            .uri("/repository/process-definitions/{id}", definitionId)
-                            .retrieve()
-                            .body(Map.class));
-        } catch (HttpClientErrorException.NotFound e) {
-            return null;
-        }
+        return repository.getProcessDefinition(engine, priority, definitionId);
     }
 
-    /**
-     * PUT /repository/process-definitions/{definitionId} {"action":"suspend"|"activate",
-     * "includeProcessInstances":…} — the "bad deploy" brake (SPEC §5 tier 3).
-     */
     public void suspendOrActivateDefinition(
             EngineConfig engine,
             CallPriority priority,
             String definitionId,
             String action,
             boolean includeProcessInstances) {
-        suspendOrActivateDefinition(engine, priority, definitionId, action, includeProcessInstances, null);
+        repository.suspendOrActivateDefinition(engine, priority, definitionId, action, includeProcessInstances);
     }
 
-    /**
-     * Same PUT, with an optional ISO-8601 {@code date} so the engine schedules the suspend or
-     * activate instead of applying it on this call (#483 S6). Null date omits the field.
-     */
     public void suspendOrActivateDefinition(
             EngineConfig engine,
             CallPriority priority,
@@ -1461,143 +437,39 @@ public class ProcessApiClient {
             String action,
             boolean includeProcessInstances,
             String effectiveAt) {
-        Map<String, Object> body = new LinkedHashMap<>();
-        body.put("action", action);
-        body.put("includeProcessInstances", includeProcessInstances);
-        if (effectiveAt != null) {
-            body.put("date", effectiveAt);
-        }
-        guarded.run(
-                engine,
-                priority,
-                action,
-                () -> guarded.writeClient(engine)
-                        .put()
-                        .uri("/repository/process-definitions/{id}", definitionId)
-                        .contentType(MediaType.APPLICATION_JSON)
-                        .body(body)
-                        .retrieve()
-                        .toBodilessEntity());
+        repository.suspendOrActivateDefinition(
+                engine, priority, definitionId, action, includeProcessInstances, effectiveAt);
     }
 
-    /* ---------- v1.1 flow-surgery calls (SPEC §5 tier 2, flowable-rest skill §4) ---------- */
-
-    /**
-     * GET /repository/process-definitions/{id}/model — the engine's parsed BpmnModel as
-     * JSON. Element entries carry {@code loopCharacteristics} explicitly, which is the
-     * authoritative multi-instance signal for the change-state guardrails. (Gateway TYPES
-     * are NOT distinguishable in this serialization — parallel-gateway analysis reads the
-     * deployed XML instead, see {@link #processDefinitionResourceData}.) Null = unknown id.
-     */
     @SuppressWarnings("unchecked")
     public Map<String, Object> getProcessDefinitionModel(
             EngineConfig engine, CallPriority priority, String definitionId) {
-        try {
-            return guarded.call(
-                    engine,
-                    priority,
-                    () -> guarded.readClient(engine)
-                            .get()
-                            .uri("/repository/process-definitions/{id}/model", definitionId)
-                            .retrieve()
-                            .body(Map.class));
-        } catch (HttpClientErrorException.NotFound e) {
-            return null;
-        }
+        return repository.getProcessDefinitionModel(engine, priority, definitionId);
     }
 
-    /**
-     * GET /repository/process-definitions/{id}/resourcedata — the deployed BPMN XML by
-     * DEFINITION id (no deployment/resource-name indirection). Used for the structural
-     * analysis the /model JSON cannot express (gateway element types). Null = unknown id.
-     */
     public String processDefinitionResourceData(EngineConfig engine, CallPriority priority, String definitionId) {
-        try {
-            return guarded.call(
-                    engine,
-                    priority,
-                    () -> guarded.readClient(engine)
-                            .get()
-                            .uri("/repository/process-definitions/{id}/resourcedata", definitionId)
-                            .retrieve()
-                            .body(String.class));
-        } catch (HttpClientErrorException.NotFound e) {
-            return null;
-        }
+        return repository.processDefinitionResourceData(engine, priority, definitionId);
     }
 
-    /**
-     * POST /runtime/process-instances/{id}/change-state — the token move. The body is
-     * EXACTLY the payload the preview showed the operator ({@code cancelActivityIds} /
-     * {@code startActivityIds}); the service audits it verbatim before dispatch.
-     */
     public void changeActivityState(
             EngineConfig engine, CallPriority priority, String processInstanceId, Map<String, Object> body) {
-        guarded.run(
-                engine,
-                priority,
-                "change-state",
-                () -> guarded.writeClient(engine)
-                        .post()
-                        .uri("/runtime/process-instances/{id}/change-state", processInstanceId)
-                        .contentType(MediaType.APPLICATION_JSON)
-                        .body(body)
-                        .retrieve()
-                        .toBodilessEntity());
+        repository.changeActivityState(engine, priority, processInstanceId, body);
     }
 
-    /**
-     * POST /runtime/process-instances/{id}/migrate — instance migration to another deployed
-     * version of the same process key (P0 spike 2026-07-09: this is the ONLY migration route
-     * exposed over REST — there is no validate endpoint). The body is the migration document
-     * ({@code toProcessDefinitionId} + {@code activityMappings}), returns empty on success; the
-     * engine rejects the WHOLE document atomically (HTTP 500 with a verbatim message) when a
-     * required activity mapping is missing. The service audits the document verbatim before
-     * dispatch and never retries.
-     */
     public void migrateInstance(
             EngineConfig engine,
             CallPriority priority,
             String processInstanceId,
             Map<String, Object> migrationDocument) {
-        guarded.run(
-                engine,
-                priority,
-                "migrate",
-                () -> guarded.writeClient(engine)
-                        .post()
-                        .uri("/runtime/process-instances/{id}/migrate", processInstanceId)
-                        .contentType(MediaType.APPLICATION_JSON)
-                        .body(migrationDocument)
-                        .retrieve()
-                        .toBodilessEntity());
+        repository.migrateInstance(engine, priority, processInstanceId, migrationDocument);
     }
 
-    /**
-     * POST /runtime/process-instances — start an instance (restart-as-new). The body pins
-     * either {@code processDefinitionId} (version pinned) or {@code processDefinitionKey}
-     * (latest) — never both. Returns the engine's instance representation (the new id).
-     */
     @SuppressWarnings("unchecked")
     public Map<String, Object> startProcessInstance(
             EngineConfig engine, CallPriority priority, Map<String, Object> body) {
-        return guarded.call(
-                engine,
-                priority,
-                "start-instance",
-                () -> guarded.writeClient(engine)
-                        .post()
-                        .uri("/runtime/process-instances")
-                        .contentType(MediaType.APPLICATION_JSON)
-                        .body(body)
-                        .retrieve()
-                        .body(Map.class));
+        return repository.startProcessInstance(engine, priority, body);
     }
 
-    /**
-     * GET /repository/process-definitions — the catalog list. Blank filters are omitted so the
-     * engine does not treat an empty string as a match. {@code latest} null means every version.
-     */
     public FlowablePage listProcessDefinitions(
             EngineConfig engine,
             CallPriority priority,
@@ -1607,119 +479,29 @@ public class ProcessApiClient {
             String deploymentId,
             int start,
             int size) {
-        return guarded.call(
-                engine,
-                priority,
-                () -> guarded.readClient(engine)
-                        .get()
-                        .uri(uri -> {
-                            var b = uri.path("/repository/process-definitions").queryParam("size", size);
-                            if (start > 0) {
-                                b.queryParam("start", start);
-                            }
-                            if (key != null && !key.isBlank()) {
-                                b.queryParam("key", key);
-                            }
-                            if (nameLike != null && !nameLike.isBlank()) {
-                                b.queryParam("nameLike", nameLike);
-                            }
-                            if (latest != null) {
-                                b.queryParam("latest", latest);
-                            }
-                            if (deploymentId != null && !deploymentId.isBlank()) {
-                                b.queryParam("deploymentId", deploymentId);
-                            }
-                            return b.build();
-                        })
-                        .retrieve()
-                        .body(FlowablePage.class));
+        return repository.listProcessDefinitions(engine, priority, key, nameLike, latest, deploymentId, start, size);
     }
 
-    /** GET /runtime/event-subscriptions?processDefinitionId= — start and instance subscriptions. */
     public FlowablePage listDefinitionEventSubscriptions(
             EngineConfig engine, CallPriority priority, String processDefinitionId, int size) {
-        return guarded.call(
-                engine,
-                priority,
-                () -> guarded.readClient(engine)
-                        .get()
-                        .uri(uri -> uri.path("/runtime/event-subscriptions")
-                                .queryParam("processDefinitionId", processDefinitionId)
-                                .queryParam("size", size)
-                                .build())
-                        .retrieve()
-                        .body(FlowablePage.class));
+        return repository.listDefinitionEventSubscriptions(engine, priority, processDefinitionId, size);
     }
 
-    /** GET /repository/deployments — name filter and newest-first. */
     public FlowablePage listDeployments(
             EngineConfig engine, CallPriority priority, String nameLike, int start, int size) {
-        return guarded.call(
-                engine,
-                priority,
-                () -> guarded.readClient(engine)
-                        .get()
-                        .uri(uri -> {
-                            var b = uri.path("/repository/deployments")
-                                    .queryParam("sort", "deployTime")
-                                    .queryParam("order", "desc")
-                                    .queryParam("size", size);
-                            if (start > 0) {
-                                b.queryParam("start", start);
-                            }
-                            if (nameLike != null && !nameLike.isBlank()) {
-                                b.queryParam("nameLike", nameLike);
-                            }
-                            return b.build();
-                        })
-                        .retrieve()
-                        .body(FlowablePage.class));
+        return repository.listDeployments(engine, priority, nameLike, start, size);
     }
 
-    /** GET /repository/deployments/{id}. Null when the engine answers 404. */
     @SuppressWarnings("unchecked")
     public Map<String, Object> getDeployment(EngineConfig engine, CallPriority priority, String deploymentId) {
-        try {
-            return guarded.call(
-                    engine,
-                    priority,
-                    () -> guarded.readClient(engine)
-                            .get()
-                            .uri("/repository/deployments/{id}", deploymentId)
-                            .retrieve()
-                            .body(Map.class));
-        } catch (HttpClientErrorException.NotFound e) {
-            return null;
-        }
+        return repository.getDeployment(engine, priority, deploymentId);
     }
 
-    /** GET /repository/deployments/{id}/resources. */
     public FlowablePage listDeploymentResources(EngineConfig engine, CallPriority priority, String deploymentId) {
-        return guarded.call(
-                engine,
-                priority,
-                () -> guarded.readClient(engine)
-                        .get()
-                        .uri("/repository/deployments/{id}/resources", deploymentId)
-                        .retrieve()
-                        .body(FlowablePage.class));
+        return repository.listDeploymentResources(engine, priority, deploymentId);
     }
 
-    /**
-     * DELETE /repository/deployments/{id}?cascade= — irreversible. Not retried. {@code cascade}
-     * also deletes runtime instances (and, on the engine, their history).
-     */
     public void deleteDeployment(EngineConfig engine, CallPriority priority, String deploymentId, boolean cascade) {
-        guarded.run(
-                engine,
-                priority,
-                "delete-deployment",
-                () -> guarded.writeClient(engine)
-                        .delete()
-                        .uri(uri -> uri.path("/repository/deployments/{id}")
-                                .queryParam("cascade", cascade)
-                                .build(deploymentId))
-                        .retrieve()
-                        .toBodilessEntity());
+        repository.deleteDeployment(engine, priority, deploymentId, cascade);
     }
 }

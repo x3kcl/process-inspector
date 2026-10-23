@@ -182,6 +182,26 @@ history, the honest RPO claim **stays 24 h** until that live drill has actually 
 section will be updated again once it has.
 
 ## 5. Deploys (R-OPS-05, R-SEM-16/17)
+
+### Inspector knobs rejected at boot (#476)
+
+A value outside these ranges fails startup and the message names the property. Null keeps the
+code default. `inspector.triage.refresh-min-interval-s` is not checked (zero or negative disables
+the throttle). `self-heal-floor` must be in `[0, 1]`. `burst-exit` must be `<= burst-onset` (both
+`>= 1`). `mttr-clamp-low` must be `<= mttr-clamp-high` (both `>= 0`). Durations:
+`recency-half-life`, `burst-window`, and `self-heal-horizon` are at least one second; `model-ttl`,
+`snapshot.sample-interval`, and `incidents.quiet-window` must be positive; `snapshot.bucket-width`
+is at least one second and is not ordered against the sample interval. A burst window shorter than
+`model-ttl` only logs a warning. Counts and caps: `fanout-parallelism`, `hierarchy-max-depth`,
+`arrivals-window-days`, `min-closed-episodes`, `engine-permits`, `regression-min-count`, both
+`retention-days`, `list-cap`, `selfheal.window-days`, `floor`, `dwell-cycles`, and per-engine
+`max-page-size`, `dlq-scan-cap`, `deep-paging-max-depth`, `connect-ms`, `read-ms`, `write-ms` are
+at least 1. `cache-ttl-s` is at least 1. `stacktrace-sample-cap`, `ack-resurface-threshold-pct`,
+`resurface-floor-pct`, the resurface budget, `stagger-ms`, both circuit-pause knobs, both SSE
+knobs, and `overdue-timer-grace-s` are at least 0 (those percents are not capped at 100).
+`burst-weight` is greater than 0. `auth.type` is required when an `auth` block is present.
+Advisory alarm minutes are not checked.
+
 `server.shutdown=graceful` (30 s); SIGTERM emits a terminal SSE `shutdown` event (once SSE
 exists) so clients reconnect instead of erroring. Deploy policy: single instance, accepted
 window ≤2 min, announced in the support channel. Before planned restarts:

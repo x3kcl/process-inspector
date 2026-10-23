@@ -2,11 +2,9 @@ package io.inspector.detail;
 
 import com.fasterxml.jackson.core.JsonProcessingException;
 import com.fasterxml.jackson.databind.ObjectMapper;
-import io.inspector.action.GuardRefusedException;
 import io.inspector.audit.ProtectedInstance;
 import io.inspector.audit.ProtectedInstanceRepository;
 import io.inspector.client.ExternalJobApiClient;
-import io.inspector.client.FlowablePage;
 import io.inspector.client.GuardedCaller.CallPriority;
 import io.inspector.client.ProcessApiClient;
 import io.inspector.client.ProcessApiClient.JobLaneKind;
@@ -19,17 +17,14 @@ import io.inspector.dto.InstanceDetail.WaitState;
 import io.inspector.dto.InstanceDetail.WhyStuck;
 import io.inspector.dto.InstanceDiagram;
 import io.inspector.dto.InstanceHierarchy;
-import io.inspector.dto.InstanceHierarchy.HierarchyNode;
 import io.inspector.dto.InstanceJobs;
 import io.inspector.dto.InstanceJobs.JobDto;
 import io.inspector.dto.InstanceStatusFlags;
 import io.inspector.dto.InstanceTasks;
 import io.inspector.dto.InstanceTasks.TaskDto;
 import io.inspector.dto.InstanceTimeline;
-import io.inspector.dto.InstanceTimeline.LiveJobState;
 import io.inspector.dto.InstanceTimeline.TimelineActivity;
 import io.inspector.dto.InstanceVariables;
-import io.inspector.dto.InstanceVariables.ExecutionScope;
 import io.inspector.dto.InstanceVariables.VariableDto;
 import io.inspector.registry.EngineCapabilities;
 import io.inspector.registry.EngineRegistry;
@@ -71,7 +66,7 @@ import org.springframework.web.server.ResponseStatusException;
 @Service
 public class InstanceDetailService {
 
-    private static final Logger log = LoggerFactory.getLogger(InstanceDetailService.class);
+    static final Logger log = LoggerFactory.getLogger(InstanceDetailService.class);
 
     /** SPEC §4 size safeguard: structured previews cap at 256 KiB serialized. */
     public static final int STRUCTURED_PREVIEW_CAP_BYTES = 256 * 1024;
@@ -84,11 +79,18 @@ public class InstanceDetailService {
 
     private static final ObjectMapper SIZER = new ObjectMapper();
 
-    private final EngineRegistry registry;
-    private final ProcessApiClient flowable;
-    private final ExternalJobApiClient externalJobs;
-    private final InspectorProperties props;
+    final EngineRegistry registry;
+    final ProcessApiClient flowable;
+    final ExternalJobApiClient externalJobs;
+    final InspectorProperties props;
     private final ProtectedInstanceRepository protectedInstances;
+
+    private final InstanceDiagramAssembler diagrams;
+    private final InstanceVariablesAssembler variableLedger;
+    private final InstanceJobsAssembler jobLanes;
+    private final InstanceTasksAssembler taskTab;
+    private final InstanceHierarchyAssembler hierarchyTab;
+    private final InstanceTimelineAssembler timelineTab;
 
     public InstanceDetailService(
             EngineRegistry registry,
@@ -101,6 +103,12 @@ public class InstanceDetailService {
         this.externalJobs = externalJobs;
         this.props = props;
         this.protectedInstances = protectedInstances;
+        this.diagrams = new InstanceDiagramAssembler(this);
+        this.variableLedger = new InstanceVariablesAssembler(this);
+        this.jobLanes = new InstanceJobsAssembler(this);
+        this.taskTab = new InstanceTasksAssembler(this);
+        this.hierarchyTab = new InstanceHierarchyAssembler(this);
+        this.timelineTab = new InstanceTimelineAssembler(this);
     }
 
     /* ================= engine resolution — the read surface ================= */
@@ -117,6 +125,42 @@ public class InstanceDetailService {
     EngineConfig engineForRead(String engineId) {
         return registry.resolve(engineId)
                 .orElseThrow(() -> new ResponseStatusException(HttpStatus.NOT_FOUND, "Unknown engine: " + engineId));
+    }
+
+    public InstanceDiagram diagram(String engineId, String instanceId) {
+        return diagrams.diagram(engineId, instanceId);
+    }
+
+    public InstanceVariables variables(String engineId, String instanceId) {
+        return variableLedger.variables(engineId, instanceId);
+    }
+
+    public VariableDto variable(String engineId, String instanceId, String name, String executionId) {
+        return variableLedger.variable(engineId, instanceId, name, executionId);
+    }
+
+    public InstanceJobs jobs(String engineId, String instanceId) {
+        return jobLanes.jobs(engineId, instanceId);
+    }
+
+    public String jobStacktrace(String engineId, String instanceId, String jobId, JobLaneKind lane) {
+        return jobLanes.jobStacktrace(engineId, instanceId, jobId, lane);
+    }
+
+    public List<ExternalWorkerJobDto> externalWorkerJobs(String engineId, String instanceId) {
+        return jobLanes.externalWorkerJobs(engineId, instanceId);
+    }
+
+    public InstanceTasks tasks(String engineId, String instanceId) {
+        return taskTab.tasks(engineId, instanceId);
+    }
+
+    public InstanceHierarchy hierarchy(String engineId, String instanceId) {
+        return hierarchyTab.hierarchy(engineId, instanceId);
+    }
+
+    public InstanceTimeline timeline(String engineId, String instanceId) {
+        return timelineTab.timeline(engineId, instanceId);
     }
 
     /* ================= vitals ================= */
@@ -262,44 +306,6 @@ public class InstanceDetailService {
         return value == null ? "" : java.net.URLEncoder.encode(value, StandardCharsets.UTF_8);
     }
 
-    /* ================= diagram ================= */
-
-    public InstanceDiagram diagram(String engineId, String instanceId) {
-        EngineConfig engine = engineForRead(engineId);
-        Map<String, Object> historic = requireHistoric(engine, instanceId);
-        String definitionId = str(historic, "processDefinitionId");
-        Map<String, Object> definition = flowable.getProcessDefinition(engine, CallPriority.INTERACTIVE, definitionId);
-        if (definition == null) {
-            throw new ResponseStatusException(
-                    HttpStatus.NOT_FOUND, "process definition " + definitionId + " not found on " + engineId);
-        }
-        String deploymentId = str(definition, "deploymentId");
-        String resourceName = resourceNameOf(definition);
-        String xml = deploymentId == null || resourceName == null
-                ? null
-                : flowable.deploymentResourceData(engine, CallPriority.INTERACTIVE, deploymentId, resourceName);
-        if (xml == null || xml.isBlank()) {
-            throw new ResponseStatusException(
-                    HttpStatus.NOT_FOUND, "BPMN resource for definition " + definitionId + " not found on " + engineId);
-        }
-
-        boolean ended = str(historic, "endTime") != null;
-        List<String> active = ended
-                ? List.of()
-                : currentActivities(engine, instanceId).stream()
-                        .map(CurrentActivity::activityId)
-                        .filter(java.util.Objects::nonNull)
-                        .distinct()
-                        .toList();
-        Lanes lanes = ended ? Lanes.EMPTY : scanInstanceLanes(engine, instanceId);
-        List<String> deadLetterActivities = lanes.deadLetter().stream()
-                .map(job -> failingActivityIdOf(engine, job))
-                .filter(java.util.Objects::nonNull)
-                .distinct()
-                .toList();
-        return new InstanceDiagram(xml, active, deadLetterActivities);
-    }
-
     /**
      * The deployment resource name of a definition. 6.x serializes it only as the
      * {@code resource} URL ({@code …/deployments/{id}/resources/{name}}) — the name is the
@@ -313,94 +319,6 @@ public class InstanceDetailService {
         int at = url.indexOf("/resources/");
         if (at < 0) return null;
         return URLDecoder.decode(url.substring(at + "/resources/".length()), StandardCharsets.UTF_8);
-    }
-
-    /* ================= variables — the typed ledger ================= */
-
-    public InstanceVariables variables(String engineId, String instanceId) {
-        EngineConfig engine = engineForRead(engineId);
-        Map<String, Object> historic = requireHistoric(engine, instanceId);
-        if (str(historic, "endTime") != null) {
-            return historicVariables(engine, instanceId);
-        }
-
-        List<Map<String, Object>> processRows =
-                flowable.listInstanceVariables(engine, CallPriority.INTERACTIVE, instanceId);
-        if (processRows == null) {
-            // Ended between the historic read and now — serve the historic projection.
-            return historicVariables(engine, instanceId);
-        }
-        List<VariableDto> processScope = processRows.stream()
-                .map(row -> typedRow(row, str(row, "scope"), null, null))
-                .sorted(Comparator.comparing(VariableDto::name, Comparator.nullsLast(Comparator.naturalOrder())))
-                .toList();
-
-        // Execution-local segregation (SPEC §4): every non-root execution may hold locals —
-        // multi-instance loop variables live there. Empty scopes are dropped, not rendered.
-        List<ExecutionScope> executionScopes = new ArrayList<>();
-        for (Map<String, Object> execution : flowable.listExecutions(
-                        engine, CallPriority.INTERACTIVE, instanceId, engine.maxPageSizeOrDefault())
-                .dataOrEmpty()) {
-            String executionId = str(execution, "id");
-            if (executionId == null || executionId.equals(instanceId)) continue; // root = process scope
-            List<VariableDto> locals =
-                    flowable.listExecutionLocalVariables(engine, CallPriority.INTERACTIVE, executionId).stream()
-                            .map(row -> typedRow(row, "local", executionId, null))
-                            .sorted(Comparator.comparing(
-                                    VariableDto::name, Comparator.nullsLast(Comparator.naturalOrder())))
-                            .toList();
-            if (!locals.isEmpty()) {
-                executionScopes.add(new ExecutionScope(
-                        executionId, str(execution, "activityId"), str(execution, "parentId"), locals));
-            }
-        }
-        return new InstanceVariables("RUNTIME", processScope, executionScopes);
-    }
-
-    /**
-     * On-demand full value (SPEC §4a: an edit always operates on the fetched full value).
-     * Scope-aware: a blank {@code executionId} reads the process (case) scope; a non-blank one
-     * reads the execution-local ("step-local") variable {@code scope=local} on that node — the
-     * base value the step-local editor stages and CASes against.
-     */
-    public VariableDto variable(String engineId, String instanceId, String name, String executionId) {
-        EngineConfig engine = engineForRead(engineId);
-        requireHistoric(engine, instanceId);
-        boolean local = executionId != null && !executionId.isBlank();
-        Map<String, Object> row = local
-                ? flowable.getExecutionVariable(engine, CallPriority.INTERACTIVE, executionId, name)
-                : flowable.getInstanceVariable(engine, CallPriority.INTERACTIVE, instanceId, name);
-        if (row == null) {
-            throw new ResponseStatusException(
-                    HttpStatus.NOT_FOUND,
-                    local
-                            ? "step-local variable '" + name + "' not found on execution " + executionId
-                            : "variable '" + name + "' not found on running instance " + engineId + ":" + instanceId);
-        }
-        // The full fetch is deliberately uncapped — this IS the "load full value" escape
-        // hatch; the write cap (5 MiB, SPEC §4a) guards the other direction.
-        return new VariableDto(
-                str(row, "name"),
-                str(row, "type"),
-                row.get("value"),
-                false,
-                null,
-                local ? "local" : str(row, "scope"),
-                local ? executionId : null,
-                null);
-    }
-
-    private InstanceVariables historicVariables(EngineConfig engine, String instanceId) {
-        List<VariableDto> rows = new ArrayList<>();
-        for (Map<String, Object> row : flowable.listHistoricVariableInstances(
-                        engine, CallPriority.INTERACTIVE, instanceId, engine.maxPageSizeOrDefault())
-                .dataOrEmpty()) {
-            @SuppressWarnings("unchecked")
-            Map<String, Object> variable = row.get("variable") instanceof Map<?, ?> v ? (Map<String, Object>) v : row;
-            rows.add(typedRow(variable, "global", str(row, "executionId"), str(row, "taskId")));
-        }
-        rows.sort(Comparator.comparing(VariableDto::name, Comparator.nullsLast(Comparator.naturalOrder())));
-        return new InstanceVariables("HISTORIC", rows, List.of());
     }
 
     /**
@@ -439,37 +357,6 @@ public class InstanceDetailService {
         }
     }
 
-    /* ================= jobs — four lanes, kept distinct ================= */
-
-    public InstanceJobs jobs(String engineId, String instanceId) {
-        EngineConfig engine = engineForRead(engineId);
-        requireHistoric(engine, instanceId);
-        return new InstanceJobs(
-                laneRows(engine, instanceId, JobLaneKind.EXECUTABLE),
-                laneRows(engine, instanceId, JobLaneKind.TIMER),
-                laneRows(engine, instanceId, JobLaneKind.SUSPENDED),
-                laneRows(engine, instanceId, JobLaneKind.DEADLETTER));
-    }
-
-    /** Plain-text stacktrace, fetched on expand (SPEC §4) — 404 when the job moved on. */
-    public String jobStacktrace(String engineId, String instanceId, String jobId, JobLaneKind lane) {
-        EngineConfig engine = engineForRead(engineId);
-        requireHistoric(engine, instanceId);
-        String stacktrace = flowable.jobExceptionStacktrace(engine, CallPriority.INTERACTIVE, lane, jobId);
-        if (stacktrace == null) {
-            throw new ResponseStatusException(
-                    HttpStatus.NOT_FOUND,
-                    "no stacktrace for job " + jobId + " in the " + lane + " lane (retried or deleted?)");
-        }
-        return stacktrace;
-    }
-
-    private List<JobDto> laneRows(EngineConfig engine, String instanceId, JobLaneKind lane) {
-        return instanceJobs(engine, instanceId, lane).stream()
-                .map(job -> jobRow(job, lane))
-                .toList();
-    }
-
     static JobDto jobRow(Map<String, Object> job, JobLaneKind lane) {
         Object retries = job.get("retries");
         String handler = str(job, "jobHandlerType");
@@ -488,50 +375,6 @@ public class InstanceDetailService {
                 handler != null ? handler : str(job, "handlerType"));
     }
 
-    /* ============ external-worker jobs — the fifth queue (v1.x #7) ============ */
-
-    /**
-     * External-worker jobs for the instance (read-only). Capability-gated (Flowable ≥ 6.8):
-     * on an older engine the BFF refuses with a ProblemDetail rather than letting the call die
-     * as a confusing 404 at the sibling external-job-api context. The UI never reaches here on
-     * a pre-6.8 engine — it reads the same flag off {@code EngineDto.capabilities} — but the
-     * server stays the gate.
-     */
-    public List<ExternalWorkerJobDto> externalWorkerJobs(String engineId, String instanceId) {
-        EngineConfig engine = engineForRead(engineId);
-        requireExternalWorkerCapability(engine);
-        requireHistoric(engine, instanceId);
-        Map<String, String> filters = new LinkedHashMap<>();
-        filters.put("processInstanceId", instanceId);
-        if (engine.tenantId() != null && !engine.tenantId().isBlank()) {
-            filters.put("tenantId", engine.tenantId());
-        }
-        return externalJobs
-                .listExternalWorkerJobs(engine, CallPriority.INTERACTIVE, filters, 0, engine.maxPageSizeOrDefault())
-                .dataOrEmpty()
-                .stream()
-                .map(InstanceDetailService::externalWorkerRow)
-                .toList();
-    }
-
-    private void requireExternalWorkerCapability(EngineConfig engine) {
-        EngineCapabilities capabilities = registry.healthOf(engine.id()).capabilities();
-        if (capabilities == null) {
-            throw new GuardRefusedException(
-                    HttpStatus.CONFLICT,
-                    "capability-unknown",
-                    "Engine '" + engine.id() + "' has not answered a health probe yet — external-worker support"
-                            + " (Flowable ≥ 6.8) is unverified, so the call is refused rather than sent blind.");
-        }
-        if (!capabilities.externalWorkerJobs()) {
-            throw new GuardRefusedException(
-                    HttpStatus.CONFLICT,
-                    "capability-unavailable",
-                    "Engine '" + engine.id() + "' runs an Unsupported Engine Version for external-worker jobs"
-                            + " (requires Flowable ≥ 6.8) — refused in the BFF, never a confusing engine 404.");
-        }
-    }
-
     static ExternalWorkerJobDto externalWorkerRow(Map<String, Object> job) {
         Object retries = job.get("retries");
         return new ExternalWorkerJobDto(
@@ -547,56 +390,6 @@ public class InstanceDetailService {
                 str(job, "executionId"),
                 str(job, "processDefinitionId"),
                 str(job, "tenantId"));
-    }
-
-    /* ================= tasks — historic ∪ runtime ================= */
-
-    /**
-     * The instance's user tasks, completed AND open (SPEC §4). Historic-first: the
-     * historic-task table carries open tasks as rows with a null endTime, so one leg
-     * already covers the whole lifecycle. The runtime leg then enriches open rows with
-     * live-only state (suspension) and adds any task the history level hides — same
-     * union doctrine as {@link #currentActivities}.
-     */
-    public InstanceTasks tasks(String engineId, String instanceId) {
-        EngineConfig engine = engineForRead(engineId);
-        Map<String, Object> historic = requireHistoric(engine, instanceId);
-
-        Map<String, Map<String, Object>> runtimeById = new LinkedHashMap<>();
-        if (str(historic, "endTime") == null) {
-            for (Map<String, Object> task : flowable.listRuntimeTasks(
-                            engine, CallPriority.INTERACTIVE, instanceId, engine.maxPageSizeOrDefault())
-                    .dataOrEmpty()) {
-                String id = str(task, "id");
-                if (id != null) runtimeById.put(id, task);
-            }
-        }
-
-        long historicTotal = 0;
-        Map<String, TaskDto> rows = new LinkedHashMap<>();
-        try {
-            FlowablePage page = flowable.listHistoricTaskInstances(
-                    engine, CallPriority.INTERACTIVE, instanceId, engine.maxPageSizeOrDefault());
-            historicTotal = page.total();
-            for (Map<String, Object> task : page.dataOrEmpty()) {
-                String id = str(task, "id");
-                if (id == null) continue;
-                rows.put(id, taskRow(task, runtimeById.get(id)));
-            }
-        } catch (Exception ex) {
-            // Task history below audit level (legal engine config) — the runtime leg
-            // still renders the open tasks; degrade, never 500.
-            log.debug("Historic-task leg unavailable on {}: {}", engine.id(), ex.toString());
-        }
-        for (Map.Entry<String, Map<String, Object>> entry : runtimeById.entrySet()) {
-            rows.computeIfAbsent(entry.getKey(), id -> taskRow(null, entry.getValue()));
-        }
-
-        List<TaskDto> tasks = rows.values().stream()
-                .sorted(Comparator.comparing(TaskDto::createTime, Comparator.nullsLast(Comparator.naturalOrder())))
-                .toList();
-        long total = Math.max(historicTotal, tasks.size());
-        return new InstanceTasks(tasks, total, total > tasks.size());
     }
 
     /**
@@ -627,246 +420,6 @@ public class InstanceDetailService {
 
     private static String first(String preferred, String fallback) {
         return preferred != null ? preferred : fallback;
-    }
-
-    /* ================= hierarchy — bounded, both directions ================= */
-
-    public InstanceHierarchy hierarchy(String engineId, String instanceId) {
-        EngineConfig engine = engineForRead(engineId);
-        Map<String, Object> requested = requireHistoric(engine, instanceId);
-        int maxDepth = props.hierarchyMaxDepthOrDefault();
-
-        // UP: walk the superProcessInstanceId chain to the root — one historic GET per
-        // ancestor, cycle-guarded, depth-capped (a real engine cannot produce a cycle;
-        // the guard is doctrine, R-TEST-07).
-        Map<String, Object> root = requested;
-        Set<String> visited = new HashSet<>();
-        visited.add(instanceId);
-        for (int depth = 0; depth < maxDepth; depth++) {
-            String parentId = str(root, "superProcessInstanceId");
-            if (parentId == null || !visited.add(parentId)) break;
-            Map<String, Object> parent =
-                    flowable.getHistoricProcessInstance(engine, CallPriority.INTERACTIVE, parentId);
-            if (parent == null) break; // parent purged from history — current node is the root
-            root = parent;
-        }
-        String rootId = str(root, "id");
-
-        // DOWN: BFS from the root. Children come from ONE historic query per node
-        // (superProcessInstanceId filter), rendered up to the breadth cap; the query total
-        // keeps counts exact beyond it (count-only doctrine, R-SEM-19).
-        Map<String, NodeBuild> builds = new LinkedHashMap<>();
-        NodeBuild rootBuild = new NodeBuild(root, 0);
-        builds.put(rootId, rootBuild);
-        Deque<NodeBuild> queue = new ArrayDeque<>();
-        queue.add(rootBuild);
-        boolean depthLimitReached = false;
-        while (!queue.isEmpty()) {
-            NodeBuild node = queue.poll();
-            FlowablePage page = childrenOf(engine, node.id());
-            node.childTotal = page.total();
-            if (node.depth >= maxDepth) {
-                depthLimitReached |= page.total() > 0;
-                continue;
-            }
-            for (Map<String, Object> child : page.dataOrEmpty()) {
-                if (node.children.size() >= HIERARCHY_BREADTH_CAP || builds.size() >= HIERARCHY_MAX_RENDERED_NODES) {
-                    break;
-                }
-                String childId = str(child, "id");
-                if (childId == null || builds.containsKey(childId)) continue; // cycle guard
-                NodeBuild childBuild = new NodeBuild(child, node.depth + 1);
-                builds.put(childId, childBuild);
-                node.children.add(childBuild);
-                queue.add(childBuild);
-            }
-        }
-
-        // Child failures surface per node (SPEC §4) — count-only DLQ membership per
-        // rendered node, bounded by the render caps above.
-        for (NodeBuild node : builds.values()) {
-            node.hasDeadLetterJobs = deadLetterCount(engine, node.id()) > 0;
-        }
-        return new InstanceHierarchy(
-                instanceId, rootId, rootBuild.toDto(instanceId), depthLimitReached, maxDepth, HIERARCHY_BREADTH_CAP);
-    }
-
-    private FlowablePage childrenOf(EngineConfig engine, String parentInstanceId) {
-        Map<String, Object> body = new LinkedHashMap<>();
-        body.put("superProcessInstanceId", parentInstanceId);
-        body.put("size", Math.min(HIERARCHY_BREADTH_CAP, engine.maxPageSizeOrDefault()));
-        withTenant(engine, body);
-        return flowable.queryHistoricProcessInstances(engine, CallPriority.INTERACTIVE, body);
-    }
-
-    /** Mutable BFS scaffold; the immutable DTO is assembled bottom-up at the end. */
-    private static final class NodeBuild {
-        final Map<String, Object> row;
-        final int depth;
-        final List<NodeBuild> children = new ArrayList<>();
-        long childTotal;
-        boolean hasDeadLetterJobs;
-
-        NodeBuild(Map<String, Object> row, int depth) {
-            this.row = row;
-            this.depth = depth;
-        }
-
-        String id() {
-            return str(row, "id");
-        }
-
-        HierarchyNode toDto(String requestedId) {
-            String definitionId = str(row, "processDefinitionId");
-            return new HierarchyNode(
-                    id(),
-                    str(row, "businessKey"),
-                    definitionKeyOf(definitionId),
-                    str(row, "processDefinitionName"),
-                    definitionVersionOf(definitionId),
-                    str(row, "startTime"),
-                    str(row, "endTime"),
-                    str(row, "endTime") != null,
-                    hasDeadLetterJobs,
-                    id().equals(requestedId),
-                    childTotal,
-                    childTotal > children.size(),
-                    children.stream().map(c -> c.toDto(requestedId)).toList());
-        }
-    }
-
-    /* ================= timeline ================= */
-
-    public InstanceTimeline timeline(String engineId, String instanceId) {
-        EngineConfig engine = engineForRead(engineId);
-        requireHistoric(engine, instanceId);
-        int maxDepth = props.hierarchyMaxDepthOrDefault();
-        // The cycle guard (R-TEST-07 doctrine): a real engine cannot produce a
-        // calledProcessInstanceId cycle, but the visited set makes the recursion total anyway.
-        Set<String> visited = new HashSet<>();
-        visited.add(instanceId);
-        // Global backstop over depth×breadth so a parallel-MI fan-out cannot flood the BFF.
-        int[] budget = {HIERARCHY_MAX_RENDERED_NODES};
-        Level root = timelineLevel(engine, instanceId, 0, maxDepth, visited, budget, engine.maxPageSizeOrDefault());
-        return new InstanceTimeline(root.activities(), root.total(), root.truncated());
-    }
-
-    /** The rows of ONE instance plus its own page total/truncation (fed to the parent's cap flag). */
-    private record Level(List<TimelineActivity> activities, long total, boolean truncated) {}
-
-    /**
-     * Builds one instance's activity rows, recursively nesting each call-activity's called
-     * instance as a sub-lane. Recursion is bounded three ways — depth ({@code maxDepth}),
-     * breadth ({@code pageSize}, the hierarchy cap for children) and a global node
-     * {@code budget} — and cycle-guarded on {@code visited} process-instance ids. Failing
-     * nodes carry a live job state; a dead-lettered async node, whose history row rolled back
-     * with its transaction, is synthesized from the runtime lanes (the phantom-node union).
-     */
-    private Level timelineLevel(
-            EngineConfig engine,
-            String instanceId,
-            int depth,
-            int maxDepth,
-            Set<String> visited,
-            int[] budget,
-            int pageSize) {
-        FlowablePage page = flowable.listHistoricActivities(engine, CallPriority.INTERACTIVE, instanceId, 0, pageSize);
-        List<Map<String, Object>> rows = page.dataOrEmpty();
-        boolean truncated = page.total() > rows.size();
-
-        // Live failure is read from the runtime lanes (the source of truth), NOT from the
-        // historic rows — an async dead-letter leaves no ACT_HI_ACTINST row at all.
-        Map<String, LiveJobState> stateByActivity = liveJobStates(engine, instanceId);
-        Set<String> annotated = new HashSet<>();
-
-        List<TimelineActivity> out = new ArrayList<>(rows.size());
-        for (Map<String, Object> row : rows) {
-            String activityId = str(row, "activityId");
-            LiveJobState state = null;
-            if (activityId != null && str(row, "endTime") == null && stateByActivity.containsKey(activityId)) {
-                state = stateByActivity.get(activityId);
-                annotated.add(activityId);
-            }
-
-            List<TimelineActivity> children = List.of();
-            boolean capped = false;
-            String childInstanceId = str(row, "calledProcessInstanceId");
-            if (childInstanceId != null) {
-                if (depth >= maxDepth || budget[0] <= 0) {
-                    capped = true; // depth or node-budget cap — the drill-out link still stands
-                } else if (visited.add(childInstanceId)) {
-                    budget[0]--;
-                    Level child = timelineLevel(
-                            engine, childInstanceId, depth + 1, maxDepth, visited, budget, HIERARCHY_BREADTH_CAP);
-                    children = child.activities();
-                    capped = child.truncated(); // the child's own page was breadth-truncated
-                }
-                // else: already visited — cycle guard; leave the sub-lane unexpanded, link stands.
-            }
-            out.add(withSubLane(timelineRow(row), state, capped, children));
-        }
-
-        // Phantom-node union: any live failure whose activity produced no annotated row is a
-        // rolled-back async dead-letter — surface it so the failure is never invisible.
-        for (Map.Entry<String, LiveJobState> entry : stateByActivity.entrySet()) {
-            if (annotated.contains(entry.getKey())) continue;
-            out.add(phantomNode(entry.getKey(), entry.getValue(), rows));
-        }
-        return new Level(out, page.total(), truncated);
-    }
-
-    /** activityId → live job state for one instance: dead-letter (FAILED) wins over failing (RETRYING). */
-    private Map<String, LiveJobState> liveJobStates(EngineConfig engine, String instanceId) {
-        Lanes lanes = scanInstanceLanes(engine, instanceId);
-        if (lanes.deadLetter().isEmpty() && lanes.failing().isEmpty()) return Map.of();
-        Map<String, LiveJobState> byActivity = new LinkedHashMap<>();
-        for (Map<String, Object> job : lanes.failing()) {
-            String activityId = failingActivityIdOf(engine, job);
-            if (activityId != null) byActivity.putIfAbsent(activityId, LiveJobState.RETRYING);
-        }
-        for (Map<String, Object> job : lanes.deadLetter()) {
-            String activityId = failingActivityIdOf(engine, job);
-            if (activityId != null) byActivity.put(activityId, LiveJobState.FAILED); // override RETRYING
-        }
-        return byActivity;
-    }
-
-    /**
-     * A synthesized bar for a failing activity with no historic row (async rollback). Borrows
-     * the name/type from any sibling row sharing the activityId (a prior finished attempt);
-     * otherwise the activityId stands alone. Unfinished by construction — it carries no time.
-     */
-    private static TimelineActivity phantomNode(String activityId, LiveJobState state, List<Map<String, Object>> rows) {
-        String name = null;
-        String type = null;
-        for (Map<String, Object> row : rows) {
-            if (activityId.equals(str(row, "activityId"))) {
-                name = str(row, "activityName");
-                type = str(row, "activityType");
-                break;
-            }
-        }
-        return new TimelineActivity(
-                null, activityId, name, type, null, null, null, null, null, null, null, state, false, List.of());
-    }
-
-    private static TimelineActivity withSubLane(
-            TimelineActivity base, LiveJobState state, boolean capped, List<TimelineActivity> children) {
-        return new TimelineActivity(
-                base.id(),
-                base.activityId(),
-                base.activityName(),
-                base.activityType(),
-                base.executionId(),
-                base.startTime(),
-                base.endTime(),
-                base.durationMs(),
-                base.assignee(),
-                base.taskId(),
-                base.calledProcessInstanceId(),
-                state,
-                capped,
-                children);
     }
 
     static TimelineActivity timelineRow(Map<String, Object> row) {
@@ -986,7 +539,8 @@ public class InstanceDetailService {
             Deque<String> next = new ArrayDeque<>();
             while (!frontier.isEmpty()) {
                 String parent = frontier.poll();
-                for (Map<String, Object> child : childrenOf(engine, parent).dataOrEmpty()) {
+                for (Map<String, Object> child :
+                        hierarchyTab.childrenOf(engine, parent).dataOrEmpty()) {
                     String childId = str(child, "id");
                     if (childId == null || !visited.add(childId)) continue;
                     if (str(child, "endTime") == null) {
@@ -1023,7 +577,7 @@ public class InstanceDetailService {
         static final Lanes EMPTY = new Lanes(List.of(), List.of(), List.of());
     }
 
-    private Lanes scanInstanceLanes(EngineConfig engine, String instanceId) {
+    Lanes scanInstanceLanes(EngineConfig engine, String instanceId) {
         List<Map<String, Object>> deadLetter = instanceJobs(engine, instanceId, JobLaneKind.DEADLETTER);
         List<Map<String, Object>> timers = instanceJobs(engine, instanceId, JobLaneKind.TIMER);
         List<Map<String, Object>> failing = new ArrayList<>();
@@ -1036,7 +590,7 @@ public class InstanceDetailService {
         return new Lanes(deadLetter, failing, timers);
     }
 
-    private List<Map<String, Object>> instanceJobs(EngineConfig engine, String instanceId, JobLaneKind lane) {
+    List<Map<String, Object>> instanceJobs(EngineConfig engine, String instanceId, JobLaneKind lane) {
         Map<String, String> filters = new LinkedHashMap<>();
         filters.put("processInstanceId", instanceId);
         if (engine.tenantId() != null && !engine.tenantId().isBlank()) {
@@ -1046,7 +600,7 @@ public class InstanceDetailService {
                 .dataOrEmpty();
     }
 
-    private long deadLetterCount(EngineConfig engine, String instanceId) {
+    long deadLetterCount(EngineConfig engine, String instanceId) {
         Map<String, String> filters = new LinkedHashMap<>();
         filters.put("processInstanceId", instanceId);
         if (engine.tenantId() != null && !engine.tenantId().isBlank()) {
@@ -1065,7 +619,7 @@ public class InstanceDetailService {
      * but its execution still sits at the activity; conversely the historic rows carry
      * names/types/start times the execution tree lacks.
      */
-    private List<CurrentActivity> currentActivities(EngineConfig engine, String instanceId) {
+    List<CurrentActivity> currentActivities(EngineConfig engine, String instanceId) {
         Map<String, CurrentActivity> byActivityId = new LinkedHashMap<>();
         try {
             for (Map<String, Object> row : flowable.listUnfinishedActivities(
@@ -1126,7 +680,7 @@ public class InstanceDetailService {
      * (6.8+); a 6.3-era row falls back to ONE execution lookup — best-effort, a miss just
      * means no marker (never a failed vitals).
      */
-    private String failingActivityIdOf(EngineConfig engine, Map<String, Object> job) {
+    String failingActivityIdOf(EngineConfig engine, Map<String, Object> job) {
         String elementId = str(job, "elementId");
         if (elementId != null) return elementId;
         String executionId = str(job, "executionId");
@@ -1189,7 +743,7 @@ public class InstanceDetailService {
         return historic;
     }
 
-    private static void withTenant(EngineConfig engine, Map<String, Object> body) {
+    static void withTenant(EngineConfig engine, Map<String, Object> body) {
         if (engine.tenantId() != null && !engine.tenantId().isBlank()) {
             body.put("tenantId", engine.tenantId());
         }
@@ -1211,7 +765,7 @@ public class InstanceDetailService {
         }
     }
 
-    private static String str(Map<String, Object> map, String key) {
+    static String str(Map<String, Object> map, String key) {
         Object v = map.get(key);
         return v != null ? v.toString() : null;
     }
