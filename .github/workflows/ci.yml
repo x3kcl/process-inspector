@@ -103,6 +103,8 @@ jobs:
         run: npm ci
       - name: Toolchain majors
         run: node scripts/check-toolchain-majors.mjs
+      - name: AG Grid major
+        run: node scripts/check-ag-grid-major.mjs
       - name: Lint (ESLint strict-type-checked — hard failure, SPEC §10)
         run: npm run lint
       - name: Format check (Prettier — hard failure, SPEC §10)
