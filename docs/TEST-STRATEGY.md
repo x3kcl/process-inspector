@@ -189,6 +189,16 @@ unsupported → BFF rejects with the capability reason AND UI greys with matchin
 "No orphan flags": CI fails when a flag lacks matrix rows. PR CI runs the current-6.x
 column; nightly runs the full cross.
 
+Verified 2026-10-23 with `EngineHealth7IT` (capability flags) plus `Search7IT`,
+`Triage7IT`, `ExternalWorkerJob7IT`, and `Kway7IT` against `flowable/flowable-rest`.
+`GET /management/engine` returns `name`, `resourceUrl`, `exception`, and `version` on both.
+8.0.0 does not start with `7.`; cliffs stay numeric major/minor compares.
+
+| profile | image | `version` | changeState | migration | externalWorkerJobs | scopeType | activityHistory |
+|---|---|---|---|---|---|---|---|
+| flowable-72 | `flowable/flowable-rest:7.2.0` | 7.2.0 | true | true | true | true | true |
+| flowable-80 | `flowable/flowable-rest:8.0.0` | 8.0.0 | true | true | true | true | true |
+
 ## 9. Testability hooks (R-TEST-07 — normative)
 - One `java.time.Clock` bean behind every age/staleness/cache computation; **event timestamps
   always from engine responses**, never BFF receive time; ages floored at 0.

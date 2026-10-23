@@ -136,7 +136,11 @@ cliffs: `changeState` (6.4+), `migration` (execute route only, ~6.5+; there is *
 `migration/validate` REST resource on ANY version — P0 spike 2026-07-09, so the migration
 "preview" is a BFF static model diff, never an engine call; batch shape varies 6.5→7.x),
 `externalWorkerJobs` (6.8+), `scopeType` on job rows (~6.8+), historic-activity
-availability (history level ≥ activity). Capability-flagged features are greyed in the UI
+availability (history level ≥ activity). Probed 2026-10-23 on `flowable-rest:7.2.0`
+(`version` `7.2.0`) and `:8.0.0` (`version` `8.0.0`): `changeState`, `migration`,
+`externalWorkerJobs`, `scopeType`, and `activityHistory` were all true. `8.0.0` does not
+start with `7.`; `fromVersion` already treats major ≥ 7 as past every 6.x cliff.
+Capability-flagged features are greyed in the UI
 **with the reason** and rejected by the BFF — never a confusing engine-side 404 at click time.
 The Stage-0 out-of-scope-dead-letter tally (§2.3, R-SEM-20) is an explicit consumer of
 `scopeType`: it emits `outOfScopeDeadletters = null` (unknown, never a confident zero) where

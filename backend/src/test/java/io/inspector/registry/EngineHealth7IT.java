@@ -68,10 +68,11 @@ class EngineHealth7IT {
                 mapper.readTree(rest.getForObject("/api/engines", String.class)).get(0);
         assertThat(dto.get("id").asText()).isEqualTo("engine-7");
         assertThat(dto.get("reachable").asBoolean()).isTrue();
-        assertThat(dto.get("engineVersion").asText()).startsWith("7.");
+        // 8.0.0 is the same cliff set and does not start with "7." (#459).
+        assertThat(dto.get("engineVersion").asText()).matches("[78]\\..*");
         assertThat(dto.get("healthError").isNull()).isTrue();
 
-        // 7.x passes every version cliff (ARCH §2.5).
+        // 7.x and 8.0 pass every version cliff (ARCH §2.5).
         JsonNode caps = dto.get("capabilities");
         for (String cap :
                 new String[] {"changeState", "migration", "externalWorkerJobs", "scopeType", "activityHistory"}) {
