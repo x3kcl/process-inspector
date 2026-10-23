@@ -16,6 +16,8 @@ import java.net.URISyntaxException;
 import java.nio.file.Files;
 import java.nio.file.Path;
 import java.util.List;
+import java.util.regex.Pattern;
+import java.util.stream.Stream;
 
 /**
  * Size guard for issue #475: a top-level class under {@code backend/src/main} whose source is over
@@ -28,8 +30,20 @@ class MainClassLineLimitArchTest {
 
     static final int MAX_LINES = 800;
 
-    /** Empty on the red commit. Split commit adds dated reasons for classes left over 800 lines. */
-    private static final List<Allowance> ALLOWLIST = List.of();
+    /**
+     * Dated exceptions for classes this change does not split. Each reason names why and points at
+     * #475. The four targets (BulkJobService, InstanceDetailService, SearchService, ProcessApiClient)
+     * are not listed.
+     */
+    private static final List<Allowance> ALLOWLIST = List.of(
+            new Allowance(
+                    "io.inspector.action.CorrectiveActionService",
+                    "2026-10-23: 1565-line corrective-action verb rail, outside the four #475 seams;"
+                            + " splitting it is a separate change (issue #475)"),
+            new Allowance(
+                    "io.inspector.config.InspectorProperties",
+                    "2026-10-23: 1008-line configuration binding, not a service seam;"
+                            + " splitting the property tree risks binding behavior (issue #475)"));
 
     @ArchTest
     static final ArchRule MAIN_CLASSES_STAY_AT_OR_UNDER_800_LINES = classes()
@@ -41,8 +55,18 @@ class MainClassLineLimitArchTest {
                         @Override
                         public void check(JavaClass javaClass, ConditionEvents events) {
                             String name = javaClass.getName();
-                            if (ALLOWLIST.stream()
-                                    .anyMatch(entry -> entry.className().equals(name))) {
+                            Allowance allowed = ALLOWLIST.stream()
+                                    .filter(entry -> entry.className().equals(name))
+                                    .findFirst()
+                                    .orElse(null);
+                            if (allowed != null) {
+                                String reason = allowed.datedReason();
+                                if (!reason.contains("#475") && !reason.contains("#474")) {
+                                    events.add(SimpleConditionEvent.violated(
+                                            javaClass,
+                                            name + " is allowlisted without an issue pointer (#475 or #474): "
+                                                    + reason));
+                                }
                                 return;
                             }
                             Path source = mainSource(javaClass);
@@ -62,11 +86,33 @@ class MainClassLineLimitArchTest {
             .because("issue #475: classes under backend/src/main must stay at or under 800 lines;"
                     + " a dated allowlist entry must name why and point at #475");
 
+    private static final Pattern TOP_LEVEL_TYPE =
+            Pattern.compile("^(?:(?:public|protected|private|abstract|final|sealed|non-sealed|static)\\s+)*"
+                    + "(?:class|interface|enum|record)\\s+(\\w+)\\b");
+
     private static Path mainSource(JavaClass javaClass) {
-        String relative = javaClass.getPackageName().replace('.', '/') + "/" + javaClass.getSimpleName() + ".java";
-        Path root = mainSourceRoot();
-        Path source = root.resolve(relative);
-        return Files.isRegularFile(source) ? source : null;
+        Path pkg = mainSourceRoot().resolve(javaClass.getPackageName().replace('.', '/'));
+        Path direct = pkg.resolve(javaClass.getSimpleName() + ".java");
+        if (Files.isRegularFile(direct)) {
+            return direct;
+        }
+        if (!Files.isDirectory(pkg)) {
+            return null;
+        }
+        try (Stream<Path> files = Files.list(pkg)) {
+            for (Path file : files.filter(path -> path.getFileName().toString().endsWith(".java"))
+                    .toList()) {
+                for (String line : Files.readAllLines(file)) {
+                    var matcher = TOP_LEVEL_TYPE.matcher(line);
+                    if (matcher.find() && javaClass.getSimpleName().equals(matcher.group(1))) {
+                        return file;
+                    }
+                }
+            }
+        } catch (IOException e) {
+            throw new UncheckedIOException(e);
+        }
+        return null;
     }
 
     private static Path mainSourceRoot() {
