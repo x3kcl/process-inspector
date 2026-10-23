@@ -14,6 +14,7 @@ if (idx < 0) {
 
 const line = lines[idx]
 const prev = idx > 0 ? lines[idx - 1] : ''
+const above = idx > 1 ? lines[idx - 2] : ''
 const match = line.match(/"typescript"\s*:\s*"([^"]+)"/)
 if (!match) {
   console.error('typescript decision FAILED: unparseable typescript pin')
@@ -25,7 +26,11 @@ const spec = match[1]
 const version = spec.replace(/^[^\d]*/, '')
 const major = Number(version.split('.')[0])
 const is59 = /^5\.9\.\d+/.test(version)
-const hold = line.includes('ts7-hold:') || prev.includes('ts7-hold:')
+// Prettier puts `"devDependencies": {` between a top-level comment key and the pin.
+const hold =
+  line.includes('ts7-hold:') ||
+  prev.includes('ts7-hold:') ||
+  (/^\s*"devDependencies"\s*:\s*\{\s*$/.test(prev) && above.includes('ts7-hold:'))
 
 if (major === 7) {
   console.log(`typescript ${spec}: major 7`)

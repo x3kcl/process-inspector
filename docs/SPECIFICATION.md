@@ -1303,7 +1303,12 @@ and would rewrite working M1/M2 code for no capability gain); Go/FastAPI/Kotlin 
   against a running BFF) + the singleton `openapi-fetch` client, committed; CI regenerates
   and **fails on diff** — cross-language drift is a build failure *(the drift gate is live
   in CI: the workflow boots the real BFF, regenerates `schema.d.ts`, and fails on any diff)*.
-- **Frontend:** React 19 (≥19.2.7) + TypeScript `strict` + Vite (Node 22 LTS, npm). **TanStack
+- **Frontend:** React 19 (≥19.2.7) + TypeScript **5.9.3** `strict` + Vite (Node 22 LTS, npm).
+  **TypeScript 7 hold (#458):** 7.0.2 was not adopted. `tsc` reports TS2882 on CSS side-effect
+  imports, and `typescript-eslint`@8.62.1 crashes (`ts.Extension` is absent on the native
+  compiler; peer `typescript <6.1.0`). Upstream:
+  [typescript-eslint#10940](https://github.com/typescript-eslint/typescript-eslint/issues/10940).
+  **TanStack
   Query v5** — polling drives all v1 liveness (health strip, drawer); **SSE arrives in v1.x
   with tracked bulk** (R-SEM-14 resolves the earlier v1/v1.x ambiguity; lifecycle contract —
   heartbeat, session binding, id-only events, documented event catalog — lands with it).
@@ -1344,7 +1349,7 @@ and would rewrite working M1/M2 code for no capability gain); Go/FastAPI/Kotlin 
   layered jar). One origin, one session. No GraalVM native.
 - **Agent ergonomics** (from the Claude-expert review): repo `CLAUDE.md` with **scoped**
   build/test commands (`mvn -o test -Dtest=…`, never the full suite in the loop), pinned
-  version floors (Boot ≥3.5, React ≥19.2.7, TS ≥5), and the `.claude/skills/*` doctrine set.
+  version floors (Boot ≥3.5, React ≥19.2.7, TS 5.9.3 — 7.x held, #458), and the `.claude/skills/*` doctrine set.
 - **Dev harness:** dockerized `flowable-rest` engines in **three compose profiles** —
   current 6.x, one pre-6.4/6.5 image (capability cliffs: change-state 6.4+, migration ~6.5+,
   external-worker jobs 6.8+, `scopeType` ~6.8+), and a **Flowable 7.x profile** (the flap
