@@ -16,7 +16,7 @@ export function useTriage() {
     staleTime: 15_000,
   })
   const refresh = useCallback(() => {
-    return queryClient.fetchQuery({
+    return queryClient.query({
       queryKey: ['triage'],
       queryFn: () => fetchTriage(true),
       staleTime: 0,
