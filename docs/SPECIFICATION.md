@@ -1353,7 +1353,10 @@ and would rewrite working M1/M2 code for no capability gain); Go/FastAPI/Kotlin 
 - **Dev harness:** dockerized `flowable-rest` engines in **three compose profiles** —
   current 6.x, one pre-6.4/6.5 image (capability cliffs: change-state 6.4+, migration ~6.5+,
   external-worker jobs 6.8+, `scopeType` ~6.8+), and a **Flowable 7.x profile** (the flap
-  companion app embeds Flowable 7 — see ARCHITECTURE §6). Cliffs are exercised in CI, not
+  companion app embeds Flowable 7 — see ARCHITECTURE §6). CI also runs
+  `flowable/flowable-rest:7.2.0` (`flowable-72`) and `:8.0.0` (`flowable-80`): on 2026-10-23
+  `version` was `7.2.0` and `8.0.0`, and `changeState`, `migration`, `externalWorkerJobs`,
+  `scopeType`, and `activityHistory` were all true. Cliffs are exercised in CI, not
   discovered in prod. The 7.x profile exists for more than capability flags: Flowable 7 is
   a Spring Boot 3 / Jakarta baseline shift, and **standard Spring error responses changed
   shape** — the BFF's error-handling interceptors, and specifically the exception-snippet
