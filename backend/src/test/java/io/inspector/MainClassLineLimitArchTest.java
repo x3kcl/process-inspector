@@ -42,8 +42,9 @@ class MainClassLineLimitArchTest {
                             + " splitting it is a separate change (issue #475)"),
             new Allowance(
                     "io.inspector.config.InspectorProperties",
-                    "2026-10-23: 1008-line configuration binding, not a service seam;"
-                            + " splitting the property tree risks binding behavior (issue #475)"));
+                    "2026-10-23: 1122-line configuration binding after the #476 constraints,"
+                            + " not a service seam; splitting the property tree risks binding behavior"
+                            + " (issue #475)"));
 
     @ArchTest
     static final ArchRule MAIN_CLASSES_STAY_AT_OR_UNDER_800_LINES = classes()
