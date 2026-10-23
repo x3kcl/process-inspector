@@ -30,6 +30,8 @@ jobs:
         run: ./scripts/security-audit.sh
       - name: Shell syntax check (deploy/CI scripts)
         run: ./scripts/shell-syntax-check.sh
+      - name: Node pin (24 LTS)
+        run: ./scripts/check-node-pin.sh
       - name: Prometheus alert rules
         run: bash scripts/check-alert-rules.sh
       - name: Orphan integration-test guard
