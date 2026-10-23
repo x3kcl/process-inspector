@@ -1,11 +1,13 @@
 package io.inspector.client;
 
+import io.inspector.action.GuardRefusedException;
 import io.inspector.client.GuardedCaller.CallPriority;
 import io.inspector.config.EngineApiContexts;
 import io.inspector.config.InspectorProperties.EngineConfig;
 import java.time.Instant;
 import java.util.List;
 import java.util.Map;
+import org.springframework.http.HttpStatus;
 import org.springframework.http.MediaType;
 import org.springframework.stereotype.Component;
 import org.springframework.web.client.HttpClientErrorException;
@@ -572,6 +574,55 @@ public class CmmnApiClient {
                 priority,
                 () -> guarded.readClient(engine).get().uri(uri).retrieve().body(FlowablePage.class));
         return page != null ? page.total() : 0;
+    }
+
+    /**
+     * One CMMN migration POST. {@link CaseMigrationRoute#SINGLE} is
+     * {@code POST /cmmn-runtime/case-instances/{id}/migrate} (6.8 and 7.x). Historic and
+     * by-definition routes throw {@link GuardRefusedException} {@code version-gate} on a non-7.x
+     * engine before any HTTP — the advice maps that to a ProblemDetail naming the version gate.
+     * Callers still capability-gate {@code scopeType} (≥ 6.8) first. Not retried.
+     */
+    public void migrateCase(
+            EngineConfig engine,
+            CallPriority priority,
+            String engineVersion,
+            CaseMigrationRoute route,
+            String id,
+            Map<String, Object> document) {
+        if (route.requires7() && !flowable7(engineVersion)) {
+            String shown = engineVersion == null || engineVersion.isBlank() ? "unknown" : engineVersion.trim();
+            throw new GuardRefusedException(
+                    HttpStatus.CONFLICT,
+                    "version-gate",
+                    "Case migration route " + route.path() + " is behind the Flowable 7.x version gate (engine is "
+                            + shown + "). Refused before any engine call.");
+        }
+        String safe = GuardedCaller.safeId(id);
+        guarded.run(
+                engine,
+                priority,
+                "migrate-case",
+                () -> guarded.writeClient(engine)
+                        .post()
+                        .uri(cmmnApiBase(engine) + route.path(), safe)
+                        .contentType(MediaType.APPLICATION_JSON)
+                        .body(document)
+                        .retrieve()
+                        .toBodilessEntity());
+    }
+
+    /** Major ≥ 7. Unparseable or missing versions fail closed (not 7.x). */
+    static boolean flowable7(String version) {
+        if (version == null || version.isBlank()) {
+            return false;
+        }
+        String major = version.trim().split("\\.", -1)[0];
+        try {
+            return Integer.parseInt(major) >= 7;
+        } catch (NumberFormatException e) {
+            return false;
+        }
     }
 
     public void deleteCmmnDeadLetterJob(EngineConfig engine, CallPriority priority, String jobId) {

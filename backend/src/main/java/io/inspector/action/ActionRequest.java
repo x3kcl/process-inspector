@@ -12,7 +12,8 @@ import java.util.List;
  * the assignee → the task falls back to its candidate groups). {@code task} is the
  * update-task patch (a null field is left alone). {@code link} is an identity-link edit.
  * {@code effectiveAt} schedules suspend-definition / activate-definition (ISO-8601 instant);
- * null means the engine applies the verb now.
+ * null means the engine applies the verb now. {@code toCaseDefinitionId} is the migrate-case
+ * target definition.
  */
 public record ActionRequest(
         String reason,
@@ -31,7 +32,48 @@ public record ActionRequest(
         TaskPatch task,
         IdentityLink link,
         String effectiveAt,
-        PlanItemChange plan) {
+        PlanItemChange plan,
+        String toCaseDefinitionId) {
+
+    /** Pre-#500 body. toCaseDefinitionId stays null. */
+    public ActionRequest(
+            String reason,
+            String ticketId,
+            String confirmToken,
+            String jobId,
+            String taskId,
+            String executionId,
+            VariableEdit variable,
+            List<TypedVariable> variables,
+            EventTrigger event,
+            Boolean includeProcessInstances,
+            String assignee,
+            String dueDate,
+            String jobLane,
+            TaskPatch task,
+            IdentityLink link,
+            String effectiveAt,
+            PlanItemChange plan) {
+        this(
+                reason,
+                ticketId,
+                confirmToken,
+                jobId,
+                taskId,
+                executionId,
+                variable,
+                variables,
+                event,
+                includeProcessInstances,
+                assignee,
+                dueDate,
+                jobLane,
+                task,
+                link,
+                effectiveAt,
+                plan,
+                null);
+    }
 
     /** Pre-#489 body. plan stays null. */
     public ActionRequest(

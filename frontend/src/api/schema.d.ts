@@ -1445,6 +1445,38 @@ export interface paths {
         patch?: never;
         trace?: never;
     };
+    "/api/migration/analyses": {
+        parameters: {
+            query?: never;
+            header?: never;
+            path?: never;
+            cookie?: never;
+        };
+        get?: never;
+        put?: never;
+        post: operations["startAnalysis"];
+        delete?: never;
+        options?: never;
+        head?: never;
+        patch?: never;
+        trace?: never;
+    };
+    "/api/migration/analyses/{id}": {
+        parameters: {
+            query?: never;
+            header?: never;
+            path?: never;
+            cookie?: never;
+        };
+        get: operations["getAnalysis"];
+        put?: never;
+        post?: never;
+        delete?: never;
+        options?: never;
+        head?: never;
+        patch?: never;
+        trace?: never;
+    };
     "/api/migration/cohorts/execute": {
         parameters: {
             query?: never;
@@ -1807,6 +1839,7 @@ export interface components {
             task?: components["schemas"]["TaskPatch"];
             taskId?: string;
             ticketId?: string;
+            toCaseDefinitionId?: string;
             variable?: components["schemas"]["VariableEdit"];
             variables?: components["schemas"]["TypedVariable"][];
         };
@@ -1818,6 +1851,13 @@ export interface components {
             /** Format: int32 */
             engineHttpStatus?: number;
             outcome?: string;
+        };
+        ActivityAggregate: {
+            activityId?: string;
+            /** @enum {string} */
+            code?: "UNMAPPED_ACTIVE_ACTIVITY" | "ACTIVE_SCOPE_REMOVED" | "SCOPE_COLLAPSE_TOKEN_LOSS" | "ACTIVE_IN_REMOVED_SCOPE" | "NESTING_PATH_CHANGED" | "TYPE_CHANGED_SAME_ID" | "BOUNDARY_SUBSCRIPTION_REMOVED" | "BOUNDARY_CLOCK_RESET";
+            /** Format: int32 */
+            instances?: number;
         };
         ActivityDiffEntry: {
             blocker?: boolean;
@@ -1952,6 +1992,10 @@ export interface components {
             rowCapHit?: boolean;
             /** Format: int64 */
             rowsChecked?: number;
+        };
+        BlockedInstance: {
+            instanceId?: string;
+            reason?: string;
         };
         BpmnDiffResponse: {
             added?: components["schemas"]["ElementChange"][];
@@ -2193,6 +2237,43 @@ export interface components {
         CmmnScopeFacet: {
             deadletters?: components["schemas"]["OutOfScopeDeadLetters"];
             lanes?: components["schemas"]["CmmnLaneCounts"];
+        };
+        CohortAnalysisView: {
+            banner?: string;
+            /** Format: int32 */
+            blockerCount?: number;
+            blockers?: components["schemas"]["BlockedInstance"][];
+            boundLabel?: string;
+            byActivity?: components["schemas"]["ActivityAggregate"][];
+            /** Format: int32 */
+            cleanCount?: number;
+            codeCounts?: {
+                [key: string]: number;
+            };
+            /** Format: int64 */
+            cohortTotal?: number;
+            engineId?: string;
+            executableIds?: string[];
+            failure?: string;
+            filter?: components["schemas"]["CohortPreviewRequest"];
+            /** Format: uuid */
+            id?: string;
+            /** Format: int32 */
+            instanceTotal?: number;
+            instances?: components["schemas"]["InstanceRow"][];
+            lowerBound?: boolean;
+            /** Format: int32 */
+            page?: number;
+            sampleInstanceIds?: string[];
+            /** Format: int32 */
+            size?: number;
+            sourceDefinitionId?: string;
+            status?: string;
+            targetDefinitionId?: string;
+            /** Format: int32 */
+            taxonomyVersion?: number;
+            /** Format: int32 */
+            warningCount?: number;
         };
         CohortExecuteRequest: {
             cohort?: components["schemas"]["CohortPreviewRequest"];
@@ -2818,6 +2899,11 @@ export interface components {
             processDefinitionKey?: string;
             processInstanceId?: string;
             startTime?: string;
+        };
+        InstanceRow: {
+            bucket?: string;
+            findings?: components["schemas"]["MigrationFinding"][];
+            instanceId?: string;
         };
         InstanceStatusFlags: {
             ended?: boolean;
@@ -5923,6 +6009,57 @@ export interface operations {
                 };
                 content: {
                     "*/*": components["schemas"]["MetaDto"];
+                };
+            };
+        };
+    };
+    startAnalysis: {
+        parameters: {
+            query: {
+                engineId: string;
+            };
+            header?: never;
+            path?: never;
+            cookie?: never;
+        };
+        requestBody: {
+            content: {
+                "application/json": components["schemas"]["CohortPreviewRequest"];
+            };
+        };
+        responses: {
+            /** @description OK */
+            200: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "*/*": components["schemas"]["CohortAnalysisView"];
+                };
+            };
+        };
+    };
+    getAnalysis: {
+        parameters: {
+            query?: {
+                page?: number;
+                size?: number;
+            };
+            header?: never;
+            path: {
+                id: string;
+            };
+            cookie?: never;
+        };
+        requestBody?: never;
+        responses: {
+            /** @description OK */
+            200: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "*/*": components["schemas"]["CohortAnalysisView"];
                 };
             };
         };

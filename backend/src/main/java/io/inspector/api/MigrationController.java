@@ -1,6 +1,8 @@
 package io.inspector.api;
 
 import io.inspector.action.ActionResult;
+import io.inspector.migration.CohortAnalysisService;
+import io.inspector.migration.CohortAnalysisView;
 import io.inspector.migration.CohortExecuteRequest;
 import io.inspector.migration.CohortExecuteResponse;
 import io.inspector.migration.CohortMigrationService;
@@ -9,8 +11,10 @@ import io.inspector.migration.CohortPreviewResponse;
 import io.inspector.migration.MigrationPreview;
 import io.inspector.migration.MigrationRequest;
 import io.inspector.migration.MigrationService;
+import java.util.UUID;
 import org.springframework.security.access.prepost.PreAuthorize;
 import org.springframework.security.core.Authentication;
+import org.springframework.web.bind.annotation.GetMapping;
 import org.springframework.web.bind.annotation.PathVariable;
 import org.springframework.web.bind.annotation.PostMapping;
 import org.springframework.web.bind.annotation.RequestBody;
@@ -31,10 +35,13 @@ public class MigrationController {
 
     private final MigrationService migration;
     private final CohortMigrationService cohorts;
+    private final CohortAnalysisService analyses;
 
-    public MigrationController(MigrationService migration, CohortMigrationService cohorts) {
+    public MigrationController(
+            MigrationService migration, CohortMigrationService cohorts, CohortAnalysisService analyses) {
         this.migration = migration;
         this.cohorts = cohorts;
+        this.analyses = analyses;
     }
 
     @PostMapping("/instances/{engineId}/{instanceId}/migrate/preview")
@@ -75,5 +82,24 @@ public class MigrationController {
     public CohortExecuteResponse executeCohort(
             @RequestParam String engineId, @RequestBody CohortExecuteRequest request, Authentication authentication) {
         return cohorts.execute(engineId, request, authentication);
+    }
+
+    /** Start a §14 estimate over the S2 cohort filter (#495). Does not migrate. */
+    @PostMapping("/migration/analyses")
+    @PreAuthorize("@rbac.atLeastOn(authentication, 'ADMIN', #engineId)")
+    public CohortAnalysisView startAnalysis(
+            @RequestParam String engineId, @RequestBody CohortPreviewRequest request, Authentication authentication) {
+        return analyses.start(engineId, request, authentication);
+    }
+
+    /** The stored analysis: status, activity × code counts, and one page of the per-instance drill. */
+    @GetMapping("/migration/analyses/{id}")
+    @PreAuthorize("isAuthenticated()")
+    public CohortAnalysisView getAnalysis(
+            @PathVariable UUID id,
+            @RequestParam(defaultValue = "0") int page,
+            @RequestParam(defaultValue = "20") int size,
+            Authentication authentication) {
+        return analyses.get(id, page, size, authentication);
     }
 }
