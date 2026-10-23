@@ -1,8 +1,11 @@
 package io.inspector.client;
 
+import static com.github.tomakehurst.wiremock.client.WireMock.aResponse;
 import static com.github.tomakehurst.wiremock.client.WireMock.get;
 import static com.github.tomakehurst.wiremock.client.WireMock.getRequestedFor;
 import static com.github.tomakehurst.wiremock.client.WireMock.okJson;
+import static com.github.tomakehurst.wiremock.client.WireMock.post;
+import static com.github.tomakehurst.wiremock.client.WireMock.postRequestedFor;
 import static com.github.tomakehurst.wiremock.client.WireMock.urlPathEqualTo;
 import static com.github.tomakehurst.wiremock.core.WireMockConfiguration.options;
 import static org.assertj.core.api.Assertions.assertThat;
@@ -13,6 +16,7 @@ import io.github.resilience4j.bulkhead.BulkheadConfig;
 import io.github.resilience4j.bulkhead.BulkheadRegistry;
 import io.github.resilience4j.circuitbreaker.CircuitBreakerConfig;
 import io.github.resilience4j.circuitbreaker.CircuitBreakerRegistry;
+import io.inspector.action.GuardRefusedException;
 import io.inspector.client.GuardedCaller.CallPriority;
 import io.inspector.config.InspectorProperties.EngineConfig;
 import io.inspector.config.InspectorProperties.Timeouts;
@@ -20,6 +24,7 @@ import io.inspector.support.TestEngines;
 import io.micrometer.core.instrument.simple.SimpleMeterRegistry;
 import java.time.Clock;
 import java.time.Duration;
+import java.util.EnumSet;
 import java.util.Map;
 import org.junit.jupiter.api.AfterEach;
 import org.junit.jupiter.api.BeforeEach;
@@ -121,5 +126,42 @@ class CmmnApiClientTest {
 
         assertThat(job).containsEntry("caseInstanceId", "c1");
         wm.verify(getRequestedFor(urlPathEqualTo("/cmmn-api/cmmn-management/deadletter-jobs/abc-123")));
+    }
+
+    /**
+     * #500: historic and by-definition case migration are 7.x routes. A 6.8 engine is refused in
+     * the BFF (ProblemDetail via {@link GuardRefusedException}, detail names the version gate)
+     * before any HTTP leaves.
+     */
+    @Test
+    void v68RefusesHistoricAndByDefinitionMigrateWithNoHttp() {
+        Map<String, Object> document = Map.of("toCaseDefinitionId", "target-def");
+        for (CaseMigrationRoute route : EnumSet.complementOf(EnumSet.of(CaseMigrationRoute.SINGLE))) {
+            assertThatThrownBy(() -> client.migrateCase(
+                            engine("v68"), CallPriority.INTERACTIVE, "6.8.0", route, "id-1", document))
+                    .isInstanceOf(GuardRefusedException.class)
+                    .hasMessageContaining("version gate")
+                    .hasMessageContaining("6.8.0")
+                    .satisfies(e -> assertThat(((GuardRefusedException) e).code()).isEqualTo("version-gate"));
+        }
+        assertThat(wm.getAllServeEvents()).isEmpty();
+    }
+
+    /** #500: 7.x single-case migrate is one POST to the runtime case path and nothing else. */
+    @Test
+    void v7SingleCaseMigratePostsOnlyTheCaseInstancePath() {
+        wm.stubFor(post(urlPathEqualTo("/cmmn-api/cmmn-runtime/case-instances/case-9/migrate"))
+                .willReturn(aResponse().withStatus(204)));
+
+        client.migrateCase(
+                engine("v7"),
+                CallPriority.INTERACTIVE,
+                "7.1.0",
+                CaseMigrationRoute.SINGLE,
+                "case-9",
+                Map.of("toCaseDefinitionId", "target-def"));
+
+        assertThat(wm.getAllServeEvents()).hasSize(1);
+        wm.verify(postRequestedFor(urlPathEqualTo("/cmmn-api/cmmn-runtime/case-instances/case-9/migrate")));
     }
 }
