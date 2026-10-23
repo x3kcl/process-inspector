@@ -343,6 +343,15 @@ The 2026-07 deferral below assumed an unspiked batch wire. Measured on live `flo
 | `POST cmmn-api/cmmn-repository/case-definitions/{id}/migrate`, `batch-migrate`, `migrate-historic-instances` | Spring **404** (no route) | Flowable **404** `no deployed case definition` — route exists |
 | `POST cmmn-api/cmmn-history/historic-case-instances/{id}/migrate` | Spring **404** | **500** `Cannot find the historic case instance` — route exists |
 
+**BFF single-case door (#500).** `POST /api/cases/{engineId}/{caseInstanceId}/actions/migrate-case`
+is tier 3 / ADMIN, typed **case id** on prod, audit payload `migrate-case/v1`. The pre-check
+compares active plan-item **definition** ids (`planItemDefinitionId`, not the instance id or
+`elementId`) to the target CMMN model, then sends one
+`POST cmmn-runtime/case-instances/{id}/migrate`. By-definition `migrate`, `batch-migrate`,
+`migrate-historic-instances`, `batch-migrate-historic-instances`, and historic
+`historic-case-instances/{id}/migrate` are 7.x only: on 6.x the BFF returns ProblemDetail
+`version-gate` and does not call the engine. Case cohort stays #496.
+
 **Verdict for S4: strategy A.** A filtered cohort cannot be sent to by-definition migrate or
 batch-migrate. Execute is one `POST runtime/process-instances/{id}/migrate` per instance, the
 call single-instance migrate already uses, with the cohort's prod token being the **count**

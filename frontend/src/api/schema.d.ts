@@ -1839,6 +1839,7 @@ export interface components {
             task?: components["schemas"]["TaskPatch"];
             taskId?: string;
             ticketId?: string;
+            toCaseDefinitionId?: string;
             variable?: components["schemas"]["VariableEdit"];
             variables?: components["schemas"]["TypedVariable"][];
         };

@@ -248,6 +248,17 @@ export const VERBS = {
     reversibilityNote: 'terminate is not undone; activate can often be terminated again',
     externalSideEffects: true,
   },
+  migrateCase: {
+    verb: 'migrate-case',
+    label: 'Migrate case',
+    plain: 'move this case onto another case definition',
+    tier: 3,
+    roleFloor: 'ADMIN',
+    reversibility: 'IRREVERSIBLE',
+    reversibilityNote:
+      'migrating back is a fresh forward migration, not an undo — work already done stands',
+    externalSideEffects: true,
+  },
   terminateCase: {
     verb: 'terminate-case',
     label: 'Terminate case',

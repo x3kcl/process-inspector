@@ -235,6 +235,8 @@ describe('TS-VERB-14 — reversibility badge + §5.0 plain labels, on every verb
     expect(VERBS.activate.plain).toBe('resume this case')
     expect(VERBS.editVariable.plain).toBe('change a data value on this case')
     expect(VERBS.terminate.plain).toBe('kill this case permanently')
+    expect(VERBS.migrateCase.plain).toBe('move this case onto another case definition')
+    expect(VERBS.migrateCase.tier).toBe(3)
     expect(VERBS.deleteDeadletter.plain).toBe(
       'discard the failed step (the case can never continue past it on its own)',
     )

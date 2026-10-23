@@ -4,6 +4,7 @@ import static org.assertj.core.api.Assertions.assertThat;
 import static org.assertj.core.api.Assertions.assertThatThrownBy;
 import static org.mockito.ArgumentMatchers.any;
 import static org.mockito.ArgumentMatchers.anyString;
+import static org.mockito.ArgumentMatchers.argThat;
 import static org.mockito.ArgumentMatchers.eq;
 import static org.mockito.Mockito.inOrder;
 import static org.mockito.Mockito.mock;
@@ -16,10 +17,14 @@ import io.inspector.audit.AuditEntry;
 import io.inspector.audit.AuditOutcome;
 import io.inspector.audit.AuditService;
 import io.inspector.audit.ProtectedInstanceRepository;
+import io.inspector.client.CaseMigrationRoute;
 import io.inspector.client.CmmnApiClient;
+import io.inspector.client.FlowablePage;
 import io.inspector.client.GuardedCaller.CallPriority;
 import io.inspector.client.ProcessApiClient;
 import io.inspector.config.InspectorProperties.EngineConfig;
+import io.inspector.config.InspectorProperties.EngineEnvironment;
+import io.inspector.config.InspectorProperties.EngineMode;
 import io.inspector.registry.EngineCapabilities;
 import io.inspector.registry.EngineHealth;
 import io.inspector.registry.EngineRegistry;
@@ -27,6 +32,7 @@ import io.inspector.security.RbacAuthorizer;
 import io.inspector.support.TestEngines;
 import java.nio.charset.StandardCharsets;
 import java.time.Instant;
+import java.util.List;
 import java.util.Map;
 import java.util.Optional;
 import java.util.UUID;
@@ -298,5 +304,131 @@ class CmmnCorrectiveActionServiceTest {
         service.execute(ActionScope.CMMN, ENGINE, CASE, ActionVerb.PLAN_ITEM_ACTION, request, operator);
 
         verify(cmmnClient).planItemAction(eq(engine), eq(CallPriority.INTERACTIVE), eq("pii-1"), eq("trigger"));
+    }
+
+    @Test
+    void migrateCasePostsSingleRouteAfterDefinitionIdPrecheckAndAuditsV1() {
+        when(registry.healthOf(ENGINE))
+                .thenReturn(new EngineHealth(
+                        true,
+                        "6.8.0",
+                        null,
+                        0L,
+                        new EngineCapabilities(true, true, true, true, true),
+                        null,
+                        null,
+                        null));
+        when(cmmnClient.getCmmnCaseInstance(engine, CallPriority.INTERACTIVE, CASE))
+                .thenReturn(Map.of("id", CASE, "businessKey", "BK-1", "caseDefinitionId", "def-1"));
+        when(cmmnClient.listCmmnPlanItemInstances(eq(engine), eq(CallPriority.INTERACTIVE), any(), eq(0), eq(500)))
+                .thenReturn(new FlowablePage(
+                        List.of(
+                                Map.of(
+                                        "id",
+                                        "inst-1",
+                                        "elementId",
+                                        "planItem_svc",
+                                        "planItemDefinitionId",
+                                        "keepAlive",
+                                        "state",
+                                        "active"),
+                                Map.of(
+                                        "id",
+                                        "inst-2",
+                                        "elementId",
+                                        "planItem_old",
+                                        "planItemDefinitionId",
+                                        "removedTask",
+                                        "state",
+                                        "completed")),
+                        2,
+                        0,
+                        500));
+        when(cmmnClient.getCmmnCaseDefinition(engine, CallPriority.INTERACTIVE, "def-2"))
+                .thenReturn(Map.of("id", "def-2", "deploymentId", "dep-1", "resourceName", "case.cmmn"));
+        when(cmmnClient.cmmnDeploymentResourceData(engine, CallPriority.INTERACTIVE, "dep-1", "case.cmmn"))
+                .thenReturn("<planItem id=\"planItem_svc\" definitionRef=\"keepAlive\"/>");
+
+        ActionResult result = service.execute(
+                ActionScope.CMMN, ENGINE, CASE, ActionVerb.MIGRATE_CASE, migrateRequest(null), operator);
+
+        verify(audit)
+                .beginPending(
+                        eq("op"),
+                        eq(ENGINE),
+                        any(),
+                        eq(CASE),
+                        eq("migrate-case"),
+                        any(),
+                        any(),
+                        argThat(payload ->
+                                payload instanceof Map<?, ?> map && "migrate-case/v1".equals(map.get("schema"))),
+                        any());
+        verify(cmmnClient)
+                .migrateCase(
+                        eq(engine),
+                        eq(CallPriority.INTERACTIVE),
+                        eq("6.8.0"),
+                        eq(CaseMigrationRoute.SINGLE),
+                        eq(CASE),
+                        eq(Map.of("toCaseDefinitionId", "def-2")));
+        verify(cmmnClient, never()).migrateCase(any(), any(), any(), eq(CaseMigrationRoute.HISTORIC), any(), any());
+        verify(cmmnClient, never())
+                .migrateCase(any(), any(), any(), eq(CaseMigrationRoute.BY_DEFINITION), any(), any());
+        assertThat(result.outcome()).isEqualTo("ok");
+    }
+
+    @Test
+    void migrateCaseOnProdRequiresTheCaseIdNotTheBusinessKey() {
+        EngineConfig prod = TestEngines.engine(
+                ENGINE, "http://engine.test/flowable-rest/service", EngineEnvironment.PROD, EngineMode.READ_WRITE);
+        when(registry.require(ENGINE)).thenReturn(prod);
+        when(registry.healthOf(ENGINE))
+                .thenReturn(new EngineHealth(
+                        true,
+                        "7.1.0",
+                        null,
+                        0L,
+                        new EngineCapabilities(true, true, true, true, true),
+                        null,
+                        null,
+                        null));
+        when(cmmnClient.getCmmnCaseInstance(prod, CallPriority.INTERACTIVE, CASE))
+                .thenReturn(Map.of("id", CASE, "businessKey", "BK-1", "caseDefinitionId", "def-1"));
+        when(cmmnClient.listCmmnPlanItemInstances(eq(prod), eq(CallPriority.INTERACTIVE), any(), eq(0), eq(500)))
+                .thenReturn(new FlowablePage(List.of(), 0, 0, 500));
+        when(cmmnClient.getCmmnCaseDefinition(prod, CallPriority.INTERACTIVE, "def-2"))
+                .thenReturn(Map.of("id", "def-2", "deploymentId", "dep-1", "resourceName", "case.cmmn"));
+        when(cmmnClient.cmmnDeploymentResourceData(prod, CallPriority.INTERACTIVE, "dep-1", "case.cmmn"))
+                .thenReturn("<case/>");
+
+        assertThatThrownBy(() -> service.execute(
+                        ActionScope.CMMN, ENGINE, CASE, ActionVerb.MIGRATE_CASE, migrateRequest("BK-1"), operator))
+                .isInstanceOf(GuardRefusedException.class)
+                .satisfies(e -> assertThat(((GuardRefusedException) e).code()).isEqualTo("confirm-token-mismatch"));
+        verify(cmmnClient, never()).migrateCase(any(), any(), any(), any(), any(), any());
+        verifyNoInteractions(audit);
+    }
+
+    private static ActionRequest migrateRequest(String confirmToken) {
+        return new ActionRequest(
+                "move this case forward",
+                null,
+                confirmToken,
+                null,
+                null,
+                null,
+                null,
+                null,
+                null,
+                null,
+                null,
+                null,
+                null,
+                null,
+                null,
+                null,
+                null,
+                "def-2");
     }
 }

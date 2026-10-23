@@ -7,11 +7,14 @@ import io.inspector.audit.AuditOutcome;
 import io.inspector.audit.AuditService;
 import io.inspector.audit.BreakGlassActor;
 import io.inspector.audit.ProtectionGuard;
+import io.inspector.client.CaseMigrationRoute;
 import io.inspector.client.CmmnApiClient;
+import io.inspector.client.FlowablePage;
 import io.inspector.client.ForwardedActor;
 import io.inspector.client.GuardedCaller.CallPriority;
 import io.inspector.client.ProcessApiClient;
 import io.inspector.client.ProcessApiClient.JobLaneKind;
+import io.inspector.cmmn.CasePlanDefinitionIds;
 import io.inspector.cmmn.CmmnCapabilities;
 import io.inspector.config.InspectorProperties.EngineConfig;
 import io.inspector.config.InspectorProperties.EngineEnvironment;
@@ -29,6 +32,7 @@ import java.util.LinkedHashMap;
 import java.util.List;
 import java.util.Map;
 import java.util.Objects;
+import java.util.Set;
 import org.springframework.http.HttpStatus;
 import org.springframework.security.core.Authentication;
 import org.springframework.stereotype.Service;
@@ -282,10 +286,12 @@ public class CorrectiveActionService {
 
     /* ------------------------------- guards ------------------------------- */
 
+    /** One page. A wider case is refused rather than migrated on a partial pre-check. */
+    private static final int CASE_MIGRATION_PLAN_ITEM_CAP = 500;
+
     /**
-     * The verbs a CMMN case supports today (Case Inspector Phase 3): the two dead-letter verbs —
-     * retry (tier 0 / RESPONDER) and delete (tier 3 / ADMIN). Both act on the {@code
-     * /cmmn-management} DLQ projection; every other verb is process-instance shaped and refused.
+     * Verbs a CMMN case supports. Anything else is process-shaped and refused before an engine
+     * call. {@code migrate-case} is tier 3 / ADMIN.
      */
     private static final java.util.Set<ActionVerb> CMMN_VERBS = java.util.Set.of(
             ActionVerb.RETRY_JOB,
@@ -296,6 +302,7 @@ public class CorrectiveActionService {
             ActionVerb.CHANGE_PLAN_ITEM,
             ActionVerb.TERMINATE_CASE,
             ActionVerb.DELETE_CASE,
+            ActionVerb.MIGRATE_CASE,
             ActionVerb.EDIT_CASE_VARIABLE);
 
     private void requireTimerReschedule(EngineConfig engine, ActionRequest request) {
@@ -451,6 +458,7 @@ public class CorrectiveActionService {
                         || verb == ActionVerb.CHANGE_PLAN_ITEM
                         || verb == ActionVerb.TERMINATE_CASE
                         || verb == ActionVerb.DELETE_CASE
+                        || verb == ActionVerb.MIGRATE_CASE
                         || verb == ActionVerb.EDIT_CASE_VARIABLE) {
                     return caseOpsTarget(engine, verb, targetId, request);
                 }
@@ -479,8 +487,12 @@ public class CorrectiveActionService {
                 case ADD_PARTICIPANT, REMOVE_PARTICIPANT -> participantTarget(engine, targetId, request, verb, false);
                 case DELETE_HISTORY -> historyTarget(engine, targetId, false);
                 case DELETE_CASE_HISTORY -> historyTarget(engine, targetId, true);
-                case PLAN_ITEM_ACTION, CHANGE_PLAN_ITEM, TERMINATE_CASE, DELETE_CASE, EDIT_CASE_VARIABLE ->
-                    throw notOnProcess(verb);
+                case PLAN_ITEM_ACTION,
+                        CHANGE_PLAN_ITEM,
+                        TERMINATE_CASE,
+                        DELETE_CASE,
+                        MIGRATE_CASE,
+                        EDIT_CASE_VARIABLE -> throw notOnProcess(verb);
                 case UNSTICK_EVENT -> executionTarget(engine, targetId, request);
                 case SUSPEND_DEFINITION, ACTIVATE_DEFINITION -> definitionTarget(engine, targetId, request);
             };
@@ -806,6 +818,30 @@ public class CorrectiveActionService {
             payload.put("planItemInstanceId", request.plan().planItemInstanceId());
             payload.put("definitionId", request.plan().definitionId());
         }
+        if (verb == ActionVerb.MIGRATE_CASE) {
+            String toId = required(request.toCaseDefinitionId(), "toCaseDefinitionId");
+            String fromId = row.get("caseDefinitionId") == null ? null : String.valueOf(row.get("caseDefinitionId"));
+            if (toId.equals(fromId)) {
+                throw new GuardRefusedException(
+                        HttpStatus.CONFLICT,
+                        "same-definition-target",
+                        "Case " + caseId + " already runs definition " + fromId + ". Nothing happened.");
+            }
+            List<String> active = activePlanItemDefinitionIds(engine, caseId);
+            Set<String> model = targetPlanDefinitionIds(engine, toId);
+            List<String> absent = CasePlanDefinitionIds.missing(active, model);
+            if (!absent.isEmpty()) {
+                throw new GuardRefusedException(
+                        HttpStatus.UNPROCESSABLE_ENTITY,
+                        "plan-item-not-in-target",
+                        "Cannot migrate case " + caseId + ": active plan-item definition id(s) " + absent
+                                + " are not in the target case model. Nothing happened.");
+            }
+            payload.put("fromCaseDefinitionId", fromId);
+            payload.put("toCaseDefinitionId", toId);
+            payload.put("activePlanItemDefinitionIds", active);
+            return new Target(payload, caseId, "case id", null);
+        }
         if (verb == ActionVerb.EDIT_CASE_VARIABLE) {
             ActionRequest.VariableEdit edit = requiredEdit(request);
             Map<String, Object> variable =
@@ -823,6 +859,48 @@ public class CorrectiveActionService {
         }
         String businessKey = row.get("businessKey") == null ? caseId : String.valueOf(row.get("businessKey"));
         return new Target(payload, businessKey, "business key", current);
+    }
+
+    private List<String> activePlanItemDefinitionIds(EngineConfig engine, String caseId) {
+        FlowablePage page = cmmnClient.listCmmnPlanItemInstances(
+                engine, CallPriority.INTERACTIVE, Map.of("caseInstanceId", caseId), 0, CASE_MIGRATION_PLAN_ITEM_CAP);
+        List<Map<String, Object>> rows = page == null ? List.of() : page.dataOrEmpty();
+        if (page != null && page.total() > rows.size()) {
+            throw new GuardRefusedException(
+                    HttpStatus.UNPROCESSABLE_ENTITY,
+                    "plan-items-truncated",
+                    "Case " + caseId + " has more plan items than the pre-check read (" + rows.size() + " of "
+                            + page.total() + "). Nothing happened.");
+        }
+        return CasePlanDefinitionIds.activeDefinitionIds(rows);
+    }
+
+    private Set<String> targetPlanDefinitionIds(EngineConfig engine, String caseDefinitionId) {
+        Map<String, Object> definition =
+                cmmnClient.getCmmnCaseDefinition(engine, CallPriority.INTERACTIVE, caseDefinitionId);
+        if (definition == null) {
+            throw new GuardRefusedException(
+                    HttpStatus.NOT_FOUND,
+                    "target-not-deployed",
+                    "Case definition " + caseDefinitionId + " is not deployed. Nothing happened.");
+        }
+        Object deploymentId = definition.get("deploymentId");
+        Object resourceName = definition.get("resourceName");
+        if (deploymentId == null || resourceName == null) {
+            throw new GuardRefusedException(
+                    HttpStatus.UNPROCESSABLE_ENTITY,
+                    "target-model-unavailable",
+                    "Case definition " + caseDefinitionId + " has no CMMN resource to pre-check. Nothing happened.");
+        }
+        String xml = cmmnClient.cmmnDeploymentResourceData(
+                engine, CallPriority.INTERACTIVE, String.valueOf(deploymentId), String.valueOf(resourceName));
+        if (xml == null || xml.isBlank()) {
+            throw new GuardRefusedException(
+                    HttpStatus.UNPROCESSABLE_ENTITY,
+                    "target-model-unavailable",
+                    "Case definition " + caseDefinitionId + " returned no CMMN model. Nothing happened.");
+        }
+        return CasePlanDefinitionIds.definitionIds(xml);
     }
 
     private static String planAction(ActionRequest request, String... allowed) {
@@ -1127,6 +1205,16 @@ public class CorrectiveActionService {
                             planAction(request, "activate", "available", "terminate"));
                 case TERMINATE_CASE -> cmmnClient.terminateCase(engine, CallPriority.INTERACTIVE, targetId);
                 case DELETE_CASE -> cmmnClient.deleteCase(engine, CallPriority.INTERACTIVE, targetId);
+                case MIGRATE_CASE -> {
+                    var health = registry.healthOf(engine.id());
+                    cmmnClient.migrateCase(
+                            engine,
+                            CallPriority.INTERACTIVE,
+                            health == null ? null : health.version(),
+                            CaseMigrationRoute.SINGLE,
+                            targetId,
+                            Map.of("toCaseDefinitionId", required(request.toCaseDefinitionId(), "toCaseDefinitionId")));
+                }
                 case EDIT_CASE_VARIABLE ->
                     cmmnClient.putCaseVariable(
                             engine,
@@ -1178,7 +1266,7 @@ public class CorrectiveActionService {
                 client.deleteHistoricProcessInstance(
                         engine, CallPriority.HOUSEKEEPING, targetId, engineDeleteReason(request));
             case DELETE_CASE_HISTORY -> cmmnClient.deleteHistoricCase(engine, CallPriority.HOUSEKEEPING, targetId);
-            case PLAN_ITEM_ACTION, CHANGE_PLAN_ITEM, TERMINATE_CASE, DELETE_CASE, EDIT_CASE_VARIABLE ->
+            case PLAN_ITEM_ACTION, CHANGE_PLAN_ITEM, TERMINATE_CASE, DELETE_CASE, MIGRATE_CASE, EDIT_CASE_VARIABLE ->
                 throw notOnProcess(verb);
             case EDIT_VARIABLE -> {
                 ActionRequest.VariableEdit edit = request.variable();
@@ -1374,6 +1462,8 @@ public class CorrectiveActionService {
             case DELETE_CASE ->
                 "Case " + targetId
                         + " deleted, including its history. The engine route stores no delete reason. Irreversible.";
+            case MIGRATE_CASE ->
+                "Case " + targetId + " migrated to case definition " + request.toCaseDefinitionId() + ". Irreversible.";
             case EDIT_CASE_VARIABLE ->
                 "Case variable '" + request.variable().name() + "' updated. The old value is in the audit row.";
             case UNSTICK_EVENT ->

@@ -42,6 +42,7 @@ public enum ActionVerb {
     CHANGE_PLAN_ITEM("change-plan-item", 1, Role.OPERATOR, TargetKind.INSTANCE),
     TERMINATE_CASE("terminate-case", 3, Role.ADMIN, TargetKind.INSTANCE),
     DELETE_CASE("delete-case", 3, Role.ADMIN, TargetKind.INSTANCE),
+    MIGRATE_CASE("migrate-case", 3, Role.ADMIN, TargetKind.INSTANCE),
     EDIT_CASE_VARIABLE("edit-case-variable", 1, Role.OPERATOR, TargetKind.INSTANCE),
     SUSPEND_DEFINITION("suspend-definition", 3, Role.ADMIN, TargetKind.DEFINITION),
     ACTIVATE_DEFINITION("activate-definition", 3, Role.ADMIN, TargetKind.DEFINITION);
