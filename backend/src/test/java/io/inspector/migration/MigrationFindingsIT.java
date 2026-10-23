@@ -265,7 +265,7 @@ class MigrationFindingsIT {
 
         ResponseEntity<String> response =
                 execute(engineId, instanceId, boundBody(preview, p.lossyTo(), "try the lossy scope collapse"));
-        assertThat(response.getStatusCode()).isEqualTo(HttpStatus.UNPROCESSABLE_ENTITY);
+        assertThat(response.getStatusCode()).isEqualTo(HttpStatus.UNPROCESSABLE_CONTENT);
         assertThat(mapper.readTree(response.getBody()).path("code").asText()).isEqualTo("scope-collapse-token-loss");
 
         // Refused BEFORE engine contact: the instance is untouched AND no audit row exists (the
@@ -293,7 +293,7 @@ class MigrationFindingsIT {
 
         ResponseEntity<String> response =
                 execute(engineId, instanceId, boundBody(preview, p.renameTo(), "try the lossy scope rename"));
-        assertThat(response.getStatusCode()).isEqualTo(HttpStatus.UNPROCESSABLE_ENTITY);
+        assertThat(response.getStatusCode()).isEqualTo(HttpStatus.UNPROCESSABLE_CONTENT);
         assertThat(mapper.readTree(response.getBody()).path("code").asText()).isEqualTo("scope-collapse-token-loss");
         assertThat(currentDefinitionId(p, instanceId)).isEqualTo(p.renameFrom());
     }
@@ -480,7 +480,7 @@ class MigrationFindingsIT {
 
         ResponseEntity<String> response =
                 execute("engine-a", instanceId, boundBody(preview, p.miTo(), "attempt the MI scope removal"));
-        assertThat(response.getStatusCode()).isEqualTo(HttpStatus.UNPROCESSABLE_ENTITY);
+        assertThat(response.getStatusCode()).isEqualTo(HttpStatus.UNPROCESSABLE_CONTENT);
         assertThat(mapper.readTree(response.getBody()).path("code").asText()).isEqualTo("unmapped-activities");
         assertThat(currentDefinitionId(p, instanceId)).isEqualTo(p.miFrom()); // nothing happened
     }

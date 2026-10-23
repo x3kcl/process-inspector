@@ -169,7 +169,7 @@ class FlowSurgeryIT {
             ResponseEntity<String> refused = as("operator")
                     .postForEntity(
                             "/api/instances/engine-a/" + instanceId + "/change-state/" + phase, body, String.class);
-            assertThat(refused.getStatusCode()).isEqualTo(HttpStatus.UNPROCESSABLE_ENTITY);
+            assertThat(refused.getStatusCode()).isEqualTo(HttpStatus.UNPROCESSABLE_CONTENT);
             JsonNode problem = mapper.readTree(refused.getBody());
             assertThat(problem.path("code").asText()).isEqualTo("multi-instance-body");
             assertThat(problem.path("detail").asText()).contains("miSub").contains("multi-instance");

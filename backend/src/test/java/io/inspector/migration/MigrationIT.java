@@ -243,7 +243,7 @@ class MigrationIT {
         String instanceId = startOn(fromDefId);
 
         ResponseEntity<String> response = preview(instanceId, Map.of("toDefinitionId", otherKeyDefId));
-        assertThat(response.getStatusCode()).isEqualTo(HttpStatus.UNPROCESSABLE_ENTITY);
+        assertThat(response.getStatusCode()).isEqualTo(HttpStatus.UNPROCESSABLE_CONTENT);
         assertThat(mapper.readTree(response.getBody()).path("code").asText()).isEqualTo("cross-key-migration");
     }
 
@@ -344,7 +344,7 @@ class MigrationIT {
         Map<String, Object> body = boundExecuteBody(instanceId, false, "attempt without mapping");
 
         ResponseEntity<String> response = execute("engine-a", instanceId, body);
-        assertThat(response.getStatusCode()).isEqualTo(HttpStatus.UNPROCESSABLE_ENTITY);
+        assertThat(response.getStatusCode()).isEqualTo(HttpStatus.UNPROCESSABLE_CONTENT);
         assertThat(mapper.readTree(response.getBody()).path("code").asText()).isEqualTo("unmapped-activities");
         assertThat(activeActivities(instanceId)).containsExactly("reviewTask"); // nothing happened
     }
