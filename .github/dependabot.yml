@@ -35,7 +35,7 @@ updates:
       minor-and-patch:
         update-types: [minor, patch]
     ignore:
-      # #456 owns the 32 → 36 migration. Patch/minor on 32.x still flow.
+      # #456 landed on 36. Further majors stay blocked; 36.x patch/minor still flow.
       - dependency-name: ag-grid-community
         update-types: [version-update:semver-major]
       - dependency-name: ag-grid-react

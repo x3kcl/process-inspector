@@ -1110,7 +1110,7 @@ button.primary:disabled {
    `.grid-host` and AuditLogPage's `.grid-host.ops-log-grid`), mirroring how the
    `[data-theme='dark']` blocks above apply globally rather than per-component. Values are
    AG Grid Quartz's own `--ag-*` theme variables (see ag-theme-quartz.css), overridden
-   relative to their MEASURED defaults at the installed ag-grid-community version (32.3.9):
+   relative to their MEASURED defaults at the installed ag-grid-community version (36.2.0):
    row-height 42px, header-height 48px, cell-horizontal-padding 16px, font-size 14px — see
    docs/IMPLEMENTATION-PLAN.md's #104 slice 3/6 entry for the full default-vs-compact table
    and the legibility/click-target check performed against ResultsGrid's/AuditLogPage's
