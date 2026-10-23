@@ -20,7 +20,14 @@ const expected = [
 let failed = false
 for (const [name, major] of expected) {
   const raw = deps[name]
-  const found = raw == null ? NaN : Number(String(raw).replace(/^[\^~]/, '').split('.')[0])
+  const found =
+    raw == null
+      ? NaN
+      : Number(
+          String(raw)
+            .replace(/^[\^~]/, '')
+            .split('.')[0],
+        )
   console.log(`${name} ${Number.isNaN(found) ? 'missing' : found}`)
   if (found !== major) failed = true
 }
