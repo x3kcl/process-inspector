@@ -11,6 +11,7 @@ import {
   addPair,
   compileMappings,
   expertIsDirty,
+  parseMappingJson,
   resetToGenerated,
 } from './mappingRules'
 import type { ActivityPair } from './mappingRules'
@@ -27,6 +28,13 @@ const Y = { id: 'y', name: 'Y' }
 const A = { id: 'a', name: 'A' }
 const B = { id: 'b', name: 'B' }
 const MERGED = { id: 'merged', name: 'Merged' }
+
+function textareaValue(element: HTMLElement): string {
+  if (!(element instanceof HTMLTextAreaElement)) {
+    throw new Error('mapping json is not a textarea')
+  }
+  return element.value
+}
 
 function Harness({
   sources,
@@ -92,6 +100,27 @@ describe('migration mapping fan rules (#498)', () => {
   })
 })
 
+describe('parseMappingJson (#498)', () => {
+  it('accepts the three engine forms and refuses many-to-many', () => {
+    expect(parseMappingJson('[{"fromActivityId":"a","toActivityId":"b"}]')).toEqual({
+      ok: true,
+      mappings: [{ fromActivityId: 'a', toActivityId: 'b' }],
+    })
+    expect(parseMappingJson('[{"fromActivityId":"split","toActivityIds":["x","y"]}]')).toEqual({
+      ok: true,
+      mappings: [{ fromActivityId: 'split', toActivityIds: ['x', 'y'] }],
+    })
+    expect(parseMappingJson('[{"fromActivityIds":["a","b"],"toActivityId":"merged"}]')).toEqual({
+      ok: true,
+      mappings: [{ fromActivityIds: ['a', 'b'], toActivityId: 'merged' }],
+    })
+    expect(parseMappingJson('[{"fromActivityIds":["a","b"],"toActivityIds":["x","y"]}]')).toEqual({
+      ok: false,
+      reason: MANY_TO_MANY_REASON,
+    })
+  })
+})
+
 describe('MappingEditor (#498)', () => {
   it('the target select adds a one-to-one mapping the expert pane will submit', () => {
     render(<Harness sources={[REVIEW]} targets={[APPROVE]} />)
@@ -101,8 +130,8 @@ describe('MappingEditor (#498)', () => {
     expect(screen.getByRole('button', { name: 'Remove reviewTask to approveTask' })).toBeTruthy()
 
     fireEvent.click(screen.getByRole('button', { name: 'Expert' }))
-    const box = screen.getByRole('textbox', { name: 'mapping json' }) as HTMLTextAreaElement
-    expect(box.value).toBe(
+    const box = screen.getByRole('textbox', { name: 'mapping json' })
+    expect(textareaValue(box)).toBe(
       resetToGenerated([{ fromActivityId: 'reviewTask', toActivityId: 'approveTask' }]),
     )
   })
@@ -129,8 +158,8 @@ describe('MappingEditor (#498)', () => {
       target: { value: 'y' },
     })
     fireEvent.click(screen.getByRole('button', { name: 'Expert' }))
-    const box = screen.getByRole('textbox', { name: 'mapping json' }) as HTMLTextAreaElement
-    expect(box.value).toBe(
+    const box = screen.getByRole('textbox', { name: 'mapping json' })
+    expect(textareaValue(box)).toBe(
       resetToGenerated([
         { fromActivityId: 'split', toActivityId: 'x' },
         { fromActivityId: 'split', toActivityId: 'y' },
@@ -147,8 +176,8 @@ describe('MappingEditor (#498)', () => {
       target: { value: 'merged' },
     })
     fireEvent.click(screen.getByRole('button', { name: 'Expert' }))
-    const box = screen.getByRole('textbox', { name: 'mapping json' }) as HTMLTextAreaElement
-    expect(box.value).toBe(
+    const box = screen.getByRole('textbox', { name: 'mapping json' })
+    expect(textareaValue(box)).toBe(
       resetToGenerated([
         { fromActivityId: 'a', toActivityId: 'merged' },
         { fromActivityId: 'b', toActivityId: 'merged' },
@@ -177,20 +206,18 @@ describe('MappingEditor (#498)', () => {
       target: { value: 'approveTask' },
     })
     fireEvent.click(screen.getByRole('button', { name: 'Expert' }))
-    const box = screen.getByRole('textbox', { name: 'mapping json' }) as HTMLTextAreaElement
-    const generated = box.value
+    const box = screen.getByRole('textbox', { name: 'mapping json' })
+    const generated = textareaValue(box)
     fireEvent.change(box, {
       target: { value: '[{"fromActivityId":"reviewTask","toActivityId":"tampered"}]' },
     })
     fireEvent.click(screen.getByRole('button', { name: 'Reset to generated' }))
     expect(screen.getByText('Discard unsaved expert edits?')).toBeTruthy()
-    expect(
-      (screen.getByRole('textbox', { name: 'mapping json' }) as HTMLTextAreaElement).value,
-    ).toContain('tampered')
+    expect(textareaValue(screen.getByRole('textbox', { name: 'mapping json' }))).toContain(
+      'tampered',
+    )
     fireEvent.click(screen.getByRole('button', { name: 'Discard' }))
-    expect(
-      (screen.getByRole('textbox', { name: 'mapping json' }) as HTMLTextAreaElement).value,
-    ).toBe(generated)
+    expect(textareaValue(screen.getByRole('textbox', { name: 'mapping json' }))).toBe(generated)
   })
 
   it('labels blocker and warning findings with words', () => {
