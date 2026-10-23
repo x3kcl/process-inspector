@@ -19,13 +19,20 @@ class CohortFindingAggregatorTest {
         Instance both = new Instance(
                 "both",
                 List.of(
-                        finding(Code.UNMAPPED_ACTIVE_ACTIVITY, Severity.BLOCKER_ADVICE, "reviewTask", "nothing to send"),
-                        finding(Code.UNMAPPED_ACTIVE_ACTIVITY, Severity.BLOCKER_ADVICE, "reviewTask", "nothing to send"),
+                        finding(
+                                Code.UNMAPPED_ACTIVE_ACTIVITY,
+                                Severity.BLOCKER_ADVICE,
+                                "reviewTask",
+                                "nothing to send"),
+                        finding(
+                                Code.UNMAPPED_ACTIVE_ACTIVITY,
+                                Severity.BLOCKER_ADVICE,
+                                "reviewTask",
+                                "nothing to send"),
                         finding(Code.TYPE_CHANGED_SAME_ID, Severity.WARNING, "reviewTask", "type changed")));
         Instance loss = new Instance(
                 "loss",
-                List.of(finding(
-                        Code.SCOPE_COLLAPSE_TOKEN_LOSS, Severity.BLOCKER_ADVICE, "scopeA", "two tokens die")));
+                List.of(finding(Code.SCOPE_COLLAPSE_TOKEN_LOSS, Severity.BLOCKER_ADVICE, "scopeA", "two tokens die")));
         Instance also = new Instance(
                 "also",
                 List.of(finding(
@@ -54,7 +61,10 @@ class CohortFindingAggregatorTest {
                         tuple("loss", "two tokens die"),
                         tuple("also", "nothing to send"));
         assertThat(result.byActivity())
-                .extracting(ActivityAggregate::activityId, aggregate -> aggregate.code().name(), ActivityAggregate::instances)
+                .extracting(
+                        ActivityAggregate::activityId,
+                        aggregate -> aggregate.code().name(),
+                        ActivityAggregate::instances)
                 .containsExactlyInAnyOrder(
                         tuple("reviewTask", "UNMAPPED_ACTIVE_ACTIVITY", 2),
                         tuple("reviewTask", "TYPE_CHANGED_SAME_ID", 1),

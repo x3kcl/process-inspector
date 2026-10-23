@@ -3,6 +3,7 @@ package io.inspector.stream;
 import io.inspector.api.MdcPropagatingExecutors;
 import io.inspector.bulk.BulkJobChangedEvent;
 import io.inspector.config.InspectorProperties;
+import io.inspector.migration.MigrationAnalysisChangedEvent;
 import io.micrometer.core.instrument.Counter;
 import io.micrometer.core.instrument.Gauge;
 import io.micrometer.core.instrument.MeterRegistry;
@@ -157,6 +158,15 @@ public class SseHub implements SmartLifecycle {
                 },
                 coalesceMs,
                 TimeUnit.MILLISECONDS);
+    }
+
+    /**
+     * Cohort-analysis progress (#495). Same emitters as bulk — id only, so a listener refetches
+     * the stored row. Not coalesced: the cohort cap is 50 previews.
+     */
+    @EventListener
+    public void onMigrationAnalysisChanged(MigrationAnalysisChangedEvent event) {
+        send("migration-analysis", event.analysisId().toString());
     }
 
     /** Keep-alive ping every 15s so proxies don't reap quiet streams; no-op with no listeners. */

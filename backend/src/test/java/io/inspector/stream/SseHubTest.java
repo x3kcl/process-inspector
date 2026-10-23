@@ -5,6 +5,7 @@ import static org.awaitility.Awaitility.await;
 
 import io.inspector.bulk.BulkJobChangedEvent;
 import io.inspector.config.InspectorProperties;
+import io.inspector.migration.MigrationAnalysisChangedEvent;
 import io.micrometer.core.instrument.simple.SimpleMeterRegistry;
 import java.io.IOException;
 import java.time.Duration;
@@ -36,6 +37,16 @@ class SseHubTest {
         // A standalone emitter buffers sends until a response attaches — the contract
         // asserted here is "the publishing thread survives and keeps the stream".
         hub.onBulkJobChanged(new BulkJobChangedEvent(UUID.randomUUID()));
+
+        assertThat(hub.subscriberCount()).isEqualTo(1);
+    }
+
+    @Test
+    void bridgesMigrationAnalysisOnTheSameHub() {
+        SseHub hub = new SseHub(new SimpleMeterRegistry(), defaultProps());
+        hub.subscribe("viewer");
+
+        hub.onMigrationAnalysisChanged(new MigrationAnalysisChangedEvent(UUID.randomUUID()));
 
         assertThat(hub.subscriberCount()).isEqualTo(1);
     }

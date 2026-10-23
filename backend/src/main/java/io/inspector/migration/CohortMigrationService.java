@@ -66,6 +66,29 @@ public class CohortMigrationService {
         return new CohortPreviewResponse(engineId, fromId, total, truncated, CAP, protectedCount, STRATEGY);
     }
 
+    /**
+     * The instance ids an analysis estimates (#495). Same filter and cap as {@link #preview}.
+     * {@code lowerBound} means the engine reported more running instances than this page holds.
+     */
+    ListedCohort listInstances(String engineId, CohortPreviewRequest request) {
+        EngineConfig engine = registry.require(engineId);
+        String fromId = required(request != null ? request.fromDefinitionId() : null, "fromDefinitionId");
+        FlowablePage page = load(engine, request, fromId);
+        long total = page != null ? page.total() : 0;
+        List<String> ids = new ArrayList<>();
+        for (Map<String, Object> row : page != null ? page.dataOrEmpty() : List.<Map<String, Object>>of()) {
+            String id = str(row, "id");
+            if (id != null) {
+                ids.add(id);
+            }
+        }
+        String target = request.toDefinitionId();
+        return new ListedCohort(fromId, target, List.copyOf(ids), total, total > ids.size());
+    }
+
+    record ListedCohort(
+            String fromDefinitionId, String toDefinitionId, List<String> instanceIds, long total, boolean lowerBound) {}
+
     public CohortExecuteResponse execute(String engineId, CohortExecuteRequest request, Authentication auth) {
         if (request == null || request.cohort() == null) {
             throw new GuardRefusedException(

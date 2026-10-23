@@ -167,4 +167,20 @@ class CohortMigrationServiceTest {
         verify(migration).executeFromCohort(eq("engine-a"), eq("move"), any(), eq(auth));
         verify(migration, never()).execute(any(), any(), any(), any());
     }
+
+    @Test
+    void listsInstanceIdsOnTheSameFilterAndMarksAShortPageAsALowerBound() {
+        when(processes.listRuntimeInstances(
+                        eq(engine), any(), eq("demo:1:x"), isNull(), isNull(), isNull(), isNull(), anyInt()))
+                .thenReturn(new FlowablePage(List.of(Map.of("id", "i1")), 4, 0, 1));
+
+        CohortMigrationService.ListedCohort listed = service.listInstances(
+                "engine-a", new CohortPreviewRequest("demo:1:x", "demo:2:y", null, null, null, null, null, null, null));
+
+        assertThat(listed.instanceIds()).containsExactly("i1");
+        assertThat(listed.total()).isEqualTo(4);
+        assertThat(listed.lowerBound()).isTrue();
+        assertThat(listed.fromDefinitionId()).isEqualTo("demo:1:x");
+        assertThat(listed.toDefinitionId()).isEqualTo("demo:2:y");
+    }
 }

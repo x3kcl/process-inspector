@@ -1055,3 +1055,18 @@ recorders ([M9] and [M10]) and both new refusal tests — backed by a dedicated 
 cross-engine fan-out). The suite runs in CI on the `migration-findings` matrix leg (#362), which
 boots `flowable-6`+`flowable-7` together so a regression of `SCOPE_COLLAPSE_TOKEN_LOSS` cannot
 land green.
+
+### 14.12 Cohort aggregation (#495)
+
+A cohort analysis runs the same preview — the §14 findings, `taxonomyVersion` 2, no extra engine
+call per instance — across the S2 filter (the synchronous page, cap 50). Each instance is counted
+once: any `BLOCKER_ADVICE` is a blocker and is left out of the executable id set, with the finding
+detail as its reason; otherwise a `WARNING` is a warning; otherwise the instance is clean (`INFO`
+does not warn). Aggregates are activity id × finding code, counting distinct instances. The row is
+stored in `migration_analysis` (filter, source, target, taxonomy version, per-code counts, the
+instance ids actually estimated) and a re-GET returns that row, including a paged drill. A cohort
+wider than the page is a lower bound, labelled. The banner stays "Inspector estimate — the engine
+is the only ground truth at execute". Progress is an id-only `migration-analysis` event on the
+existing SSE hub, not a second bus. The job calls `preview`, so the engine reads stay on the
+interactive lane preview already uses. It does not migrate, and it does not call by-definition
+batch-migrate.
