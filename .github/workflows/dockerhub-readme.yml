@@ -32,7 +32,7 @@ jobs:
           username: ${{ secrets.DOCKERHUB_USERNAME }}
           password: ${{ secrets.DOCKERHUB_TOKEN }}
           repository: x3kcl/process-inspector-bff
-          short-description: "Spring Boot 3 BFF for the multi-engine Flowable Process Inspector — REST-only, do-no-harm."
+          short-description: "Spring Boot 4.1 BFF for the multi-engine Flowable Process Inspector — REST-only, do-no-harm."
           readme-filepath: ./docker/dockerhub/process-inspector-bff.md
 
       - name: Sync web overview

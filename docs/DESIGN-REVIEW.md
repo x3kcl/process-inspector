@@ -427,3 +427,9 @@ advisory, different dependency chain).
 
 **Doc deltas:** CLAUDE.md + SPECIFICATION.md §10 stack-pin lines (React 18→19, Router v7→v8).
 Closes #335, closes #310.
+
+## Addendum (2026-10-23) — ADR-001 stack-pin bump: Spring Boot 3.5 → 4.1.1 (#440)
+
+**Trigger:** Boot 3.5 OSS support ends 2026-06-30. The #439 spike (docs/BOOT4-MIGRATION.md) picked **4.1.1** (OSS through 2027-07-31) over 4.0.8 (OSS through 2026-12-31). Java stays 21; Java 25 is #441.
+
+**Pin:** Java 21 / Spring Boot 4.1.x / springdoc 3.1.x. JSON stays on Jackson 2 (`spring-boot-jackson2`, `spring.http.converters.preferred-json-mapper=jackson2`) until Boot 4.3 removes that module. SPECIFICATION §10 and CLAUDE.md carry the same sentence. The ARCHITECTURE §6 error-shape note is unchanged: it describes Flowable 7's Boot 3 error JSON, not this BFF.

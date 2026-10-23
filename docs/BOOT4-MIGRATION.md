@@ -20,14 +20,14 @@ Java stays **21** for #440. Boot 4.1 requires Java 17+. Java 25 is #441, after t
 | Test starter | `spring-boot-starter-test` | `spring-boot-starter-test-classic` for the first green build, then the technology test starters | Classic restores the Boot 3 test classpath. Drop it once the suite compiles without it |
 | Resilience4j | `resilience4j-spring-boot3` 2.4.0 | `resilience4j-spring-boot4` **2.4.0** | Same version line. 2.4.0 is the release that added the Boot 4 artifact (2026-03-14). Its published POM depends on `spring-boot-autoconfigure` 4.0.0 and Spring 7.0.2; that is compatible with a 4.1 app |
 | springdoc | `springdoc-openapi-starter-webmvc-api` 2.8.14 | **3.1.1**, same artifact | 3.1.1's parent is Boot 4.1.0. API-only starter stays; no Swagger UI |
-| JSON | Jackson 2 (`com.fasterxml.jackson`), `jackson-bom` pinned to 2.21.7 | **Keep Jackson 2** for #440 | See the decision below |
+| JSON | Jackson 2 (`com.fasterxml.jackson`), `jackson-bom` pinned to 2.21.7 | **Keep Jackson 2** for #440 | Boot 4.1 renamed the Jackson 2 property to `jackson-2-bom.version` (2.21.5 managed). `jackson-bom.version` is Jackson 3. Pin `jackson-2-bom.version` to 2.21.7 |
 | Tomcat | pin `tomcat.version` 10.1.59 | drop the pin | Boot 4 is Tomcat 11 (Servlet 6.1). The 10.1.x pin cannot carry over |
-| Postgres driver | pin `postgresql.version` 42.7.13 | keep only if the 4.1 BOM is still `< 42.7.13` | Re-measure; do not guess |
+| Postgres driver | pin `postgresql.version` 42.7.13 | drop the pin | Boot 4.1.1 already manages 42.7.13 |
 | Flyway | `flyway-core` + `flyway-database-postgresql`, versions from the BOM | unchanged shape | Do not add a version pin |
 | Log encoder | `logstash-logback-encoder` 7.4 | stay on 7.4 while Jackson 2 stays | 7.4 is a Jackson 2 encoder |
 | WireMock | `wiremock-standalone` 3.13.2 | keep the pin | Not a Boot-managed artifact. Standalone server, not the Spring-Boot integration |
 | ArchUnit | 1.5.1 | keep | JUnit 5 rule engine, no Boot API |
-| Testcontainers | BOM | keep the Boot-managed version | Postgres 16 image tag in the tests is independent of the client library |
+| Testcontainers | BOM (1.x artifacts `junit-jupiter`, `postgresql`) | Boot 4.1 manages **2.0.5** | Artifact ids are `testcontainers-junit-jupiter` and `testcontainers-postgresql`. Java packages are unchanged. The Postgres 16 image tag in the tests is independent |
 | JaCoCo | 0.8.15 | keep for #440 (Java 21) | #441 must confirm 0.8.15 reads class-file version 69 before the JDK 25 image bump |
 
 ## Jackson decision
@@ -76,3 +76,16 @@ Do not edit these in the spike. #440 changes them in the same PR as the parent b
 3. **#441 — Java 25.** Dockerfile, CI `setup-java`, the runner image, `scripts/check-base-image-currency.sh`. Confirm JaCoCo against class-file 69. Check `MaxRAMPercentage` against OPERATIONS §6 memory limits. Then the CLAUDE.md wording.
 
 #440 does not start until this plan is the one being followed. A red nightly on the Boot 4 SHA blocks the merge; a green `ci.yml` alone does not meet #440.
+
+## What the 4.1.1 build also had to rename
+
+Measured while compiling #440. The table above is the plan; these are the breaks it did not name:
+
+- Auto-config exclusions moved: `org.springframework.boot.jdbc.autoconfigure.DataSourceAutoConfiguration`, `org.springframework.boot.hibernate.autoconfigure.HibernateJpaAutoConfiguration`, `org.springframework.boot.flyway.autoconfigure.FlywayAutoConfiguration`. The docker-free profiles exclude those three.
+- `DefaultErrorAttributes` is `org.springframework.boot.webmvc.error.DefaultErrorAttributes`.
+- `TestRestTemplate` is `org.springframework.boot.resttestclient.TestRestTemplate` and is opt-in via `@AutoConfigureTestRestTemplate`. `@AutoConfigureObservability` is `@AutoConfigureMetrics`. `@AutoConfigureMockMvc` is `org.springframework.boot.webmvc.test.autoconfigure.AutoConfigureMockMvc`.
+- `spring-boot-starter-test-classic` stays. Its classic-modules POM depends on every technology test jar and then excludes all of their transitives, so `TestRestTemplate` cannot see `RestTemplateBuilder`. The suite also depends on `spring-boot-starter-webmvc-test` and, because the published Maven POM of `spring-boot-resttestclient` omits it, `spring-boot-restclient` (test scope).
+- `hibernate.hbm2ddl.extra_physical_table_types` still exists on Hibernate 7.4.5. `/actuator/health` still answers. The postgres pin is gone: the 4.1.1 BOM already manages 42.7.13.
+- Flyway auto-config is `spring-boot-flyway`. `spring-boot-starter-data-jpa` does not depend on it, and without it `ddl-auto=validate` runs against an empty database. The module is a direct dependency next to `flyway-core`.
+- Spring 7's `HttpStatus.resolve(422)` is `UNPROCESSABLE_CONTENT`. HTTP round-trip assertions use that constant. Code that still throws `UNPROCESSABLE_ENTITY` is the same 422 on the wire.
+- `RestClient.builder()` detects Jackson 3. `EngineSeed` registers `MappingJackson2HttpMessageConverter` because those calls read Jackson 2 `JsonNode`. The BFF's own `RestClient`s stayed on the Boot `preferred-json-mapper=jackson2` path.

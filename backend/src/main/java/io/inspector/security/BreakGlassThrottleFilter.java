@@ -6,7 +6,8 @@ import jakarta.servlet.http.HttpServletRequest;
 import jakarta.servlet.http.HttpServletResponse;
 import java.io.IOException;
 import java.time.Duration;
-import org.springframework.security.web.util.matcher.AntPathRequestMatcher;
+import org.springframework.http.HttpMethod;
+import org.springframework.security.web.servlet.util.matcher.PathPatternRequestMatcher;
 import org.springframework.security.web.util.matcher.RequestMatcher;
 import org.springframework.web.filter.OncePerRequestFilter;
 
@@ -20,7 +21,8 @@ public class BreakGlassThrottleFilter extends OncePerRequestFilter {
 
     private final BreakGlassThrottle throttle;
     private final String username;
-    private final RequestMatcher matcher = new AntPathRequestMatcher("/break-glass", "POST");
+    private final RequestMatcher matcher =
+            PathPatternRequestMatcher.withDefaults().matcher(HttpMethod.POST, "/break-glass");
 
     public BreakGlassThrottleFilter(BreakGlassThrottle throttle, String username) {
         this.throttle = throttle;

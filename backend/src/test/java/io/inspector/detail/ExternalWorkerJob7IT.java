@@ -13,8 +13,9 @@ import org.junit.jupiter.api.BeforeAll;
 import org.junit.jupiter.api.Test;
 import org.junit.jupiter.api.TestInstance;
 import org.springframework.beans.factory.annotation.Autowired;
+import org.springframework.boot.resttestclient.TestRestTemplate;
+import org.springframework.boot.resttestclient.autoconfigure.AutoConfigureTestRestTemplate;
 import org.springframework.boot.test.context.SpringBootTest;
-import org.springframework.boot.test.web.client.TestRestTemplate;
 import org.springframework.context.annotation.Import;
 import org.springframework.test.context.ActiveProfiles;
 import org.springframework.web.client.RestClient;
@@ -32,6 +33,7 @@ import org.springframework.web.client.RestClient;
 @ActiveProfiles("it7")
 @TestInstance(TestInstance.Lifecycle.PER_CLASS)
 @Import(NoDbTestSupport.class)
+@AutoConfigureTestRestTemplate
 class ExternalWorkerJob7IT {
 
     private static final String ENGINE =

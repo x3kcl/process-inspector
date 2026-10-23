@@ -12,6 +12,7 @@ import java.util.UUID;
 import org.springframework.core.io.ByteArrayResource;
 import org.springframework.core.io.FileSystemResource;
 import org.springframework.http.MediaType;
+import org.springframework.http.converter.json.MappingJackson2HttpMessageConverter;
 import org.springframework.util.LinkedMultiValueMap;
 import org.springframework.util.MultiValueMap;
 import org.springframework.web.client.RestClient;
@@ -100,9 +101,12 @@ public final class EngineSeed {
      * its {@code /process-api} chain admits.
      */
     public static RestClient engineClient(String baseUrl, String username, String password) {
+        // Boot 4's RestClient detects Jackson 3 first. These calls read Jackson 2 JsonNode.
+        MappingJackson2HttpMessageConverter jackson2 = new MappingJackson2HttpMessageConverter();
         return RestClient.builder()
                 .baseUrl(baseUrl)
                 .defaultHeaders(h -> h.setBasicAuth(username, password))
+                .configureMessageConverters(b -> b.registerDefaults().withJsonConverter(jackson2))
                 .build();
     }
 

@@ -18,8 +18,9 @@ import org.junit.jupiter.api.TestInstance;
 import org.junit.jupiter.params.ParameterizedTest;
 import org.junit.jupiter.params.provider.MethodSource;
 import org.springframework.beans.factory.annotation.Autowired;
+import org.springframework.boot.resttestclient.TestRestTemplate;
+import org.springframework.boot.resttestclient.autoconfigure.AutoConfigureTestRestTemplate;
 import org.springframework.boot.test.context.SpringBootTest;
-import org.springframework.boot.test.web.client.TestRestTemplate;
 import org.springframework.http.HttpStatus;
 import org.springframework.http.MediaType;
 import org.springframework.http.ResponseEntity;
@@ -68,6 +69,7 @@ import org.testcontainers.containers.PostgreSQLContainer;
         properties = {"ENGINE_A_PASSWORD=test", "ENGINE_7_PASSWORD=test"})
 @ActiveProfiles("it-findings")
 @TestInstance(TestInstance.Lifecycle.PER_CLASS)
+@AutoConfigureTestRestTemplate
 class MigrationFindingsIT {
 
     private static final String ENGINE_A_URL =
@@ -263,7 +265,7 @@ class MigrationFindingsIT {
 
         ResponseEntity<String> response =
                 execute(engineId, instanceId, boundBody(preview, p.lossyTo(), "try the lossy scope collapse"));
-        assertThat(response.getStatusCode()).isEqualTo(HttpStatus.UNPROCESSABLE_ENTITY);
+        assertThat(response.getStatusCode()).isEqualTo(HttpStatus.UNPROCESSABLE_CONTENT);
         assertThat(mapper.readTree(response.getBody()).path("code").asText()).isEqualTo("scope-collapse-token-loss");
 
         // Refused BEFORE engine contact: the instance is untouched AND no audit row exists (the
@@ -291,7 +293,7 @@ class MigrationFindingsIT {
 
         ResponseEntity<String> response =
                 execute(engineId, instanceId, boundBody(preview, p.renameTo(), "try the lossy scope rename"));
-        assertThat(response.getStatusCode()).isEqualTo(HttpStatus.UNPROCESSABLE_ENTITY);
+        assertThat(response.getStatusCode()).isEqualTo(HttpStatus.UNPROCESSABLE_CONTENT);
         assertThat(mapper.readTree(response.getBody()).path("code").asText()).isEqualTo("scope-collapse-token-loss");
         assertThat(currentDefinitionId(p, instanceId)).isEqualTo(p.renameFrom());
     }
@@ -478,7 +480,7 @@ class MigrationFindingsIT {
 
         ResponseEntity<String> response =
                 execute("engine-a", instanceId, boundBody(preview, p.miTo(), "attempt the MI scope removal"));
-        assertThat(response.getStatusCode()).isEqualTo(HttpStatus.UNPROCESSABLE_ENTITY);
+        assertThat(response.getStatusCode()).isEqualTo(HttpStatus.UNPROCESSABLE_CONTENT);
         assertThat(mapper.readTree(response.getBody()).path("code").asText()).isEqualTo("unmapped-activities");
         assertThat(currentDefinitionId(p, instanceId)).isEqualTo(p.miFrom()); // nothing happened
     }
