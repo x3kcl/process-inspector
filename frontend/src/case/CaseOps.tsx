@@ -20,6 +20,7 @@ export function CaseOps({ engineId, caseInstanceId, businessKey, planItems }: Pr
   const toast = useToast()
   const [reason, setReason] = useState('')
   const [token, setToken] = useState('')
+  const [targetDefinitionId, setTargetDefinitionId] = useState('')
   const [name, setName] = useState('')
   const [nextValue, setNextValue] = useState('')
   const [expected, setExpected] = useState('')
@@ -67,6 +68,24 @@ export function CaseOps({ engineId, caseInstanceId, businessKey, planItems }: Pr
           }}
         />
       </label>
+      <label>
+        Target case definition id{' '}
+        <input
+          value={targetDefinitionId}
+          onChange={(event) => {
+            setTargetDefinitionId(event.target.value)
+          }}
+        />
+      </label>
+      <button
+        type="button"
+        disabled={reason.trim().length < 10 || targetDefinitionId.trim() === '' || action.isPending}
+        onClick={() => {
+          run(VERBS.migrateCase.verb, { toCaseDefinitionId: targetDefinitionId.trim() })
+        }}
+      >
+        {VERBS.migrateCase.label}
+      </button>
       <button
         type="button"
         disabled={reason.trim().length < 10 || action.isPending}
