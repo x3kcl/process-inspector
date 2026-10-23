@@ -101,6 +101,8 @@ jobs:
           cache-dependency-path: frontend/package-lock.json
       - name: Install
         run: npm ci
+      - name: Toolchain majors
+        run: node scripts/check-toolchain-majors.mjs
       - name: Lint (ESLint strict-type-checked — hard failure, SPEC §10)
         run: npm run lint
       - name: Format check (Prettier — hard failure, SPEC §10)
