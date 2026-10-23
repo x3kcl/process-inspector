@@ -51,7 +51,8 @@ the same way on `/management/timer-jobs/{jobId}`.
 6.8+). Verified live: `GET /management/external-worker-jobs` does not exist (6.8 → 404; 7.x →
 *"No endpoint …"*). They live in the **External Worker REST API at the `/external-job-api`
 SIBLING context** (beside `/service`, not under it): `GET …/external-job-api/jobs?processInstanceId=`
-is the READ-ONLY list — standard page envelope; 200 on 6.8/7.x, **404 on pre-6.8** (so its
+is the READ-ONLY list — standard page envelope; 200 on 6.8/7.x/8.0 (8.0.0 via
+`ExternalWorkerJob7IT`, 2026-10-23), **404 on pre-6.8** (so its
 availability tracks the `externalWorkerJobs` capability exactly). Rows carry the worker lock:
 `lockOwner` / `lockExpirationTime` (null until acquired). ⚠ The `POST …/external-job-api/acquire/jobs`
 endpoint of that same API **LOCKS a job** — a mutation that steals it from a real worker; never
