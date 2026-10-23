@@ -70,6 +70,11 @@ spring:
   threads:
     virtual:
       enabled: true   # SPEC §10: blocking style on virtual threads, no WebFlux
+  http:
+    converters:
+      # Boot 4 defaults MVC and RestClient to Jackson 3. The BFF stays on Jackson 2
+      # (spring-boot-jackson2) until the 4.3 removal. See docs/BOOT4-MIGRATION.md.
+      preferred-json-mapper: jackson2
 
   # M4: the BFF-owned Postgres (audit log, notes, protected instances) — the compose
   # `postgres` profile on :5433 for dev. Password via env ref only (iron rule); the

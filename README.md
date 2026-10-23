@@ -35,7 +35,7 @@ instances across **multiple independent Flowable engines** — strictly via the 
 ## Repo layout
 
 ```
-backend/    Spring Boot 3 BFF — Engine Registry, health probe, fan-out search aggregator (M1+M2)
+backend/    Spring Boot 4.1 BFF — Engine Registry, health probe, fan-out search aggregator (M1+M2)
 frontend/   Vite + React + TS — Search panel, AG-Grid results, split-pane shell (M2)
 docker/     Dev harness: compose profiles, seed BPMN (docker/processes/), seed.sh (M0)
 ```

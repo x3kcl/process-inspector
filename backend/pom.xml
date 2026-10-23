@@ -7,7 +7,7 @@
   <parent>
     <groupId>org.springframework.boot</groupId>
     <artifactId>spring-boot-starter-parent</artifactId>
-    <version>3.5.16</version>
+    <version>4.1.1</version>
     <relativePath/>
   </parent>
 
@@ -19,23 +19,13 @@
 
   <properties>
     <java.version>21</java.version>
-    <!-- CVE-2026-54291 (HIGH, pgjdbc <=42.7.11): override spring-boot-starter-parent's
-         managed version until it picks up the fix on its own. -->
-    <postgresql.version>42.7.13</postgresql.version>
-    <!-- CVE-2026-65182 / CVE-2026-65905 / CVE-2026-68525 (all CRITICAL, tomcat-embed-core
-         <=10.1.57): security-constraint bypass, DIGEST-auth replay bypass, and unauthorized
-         access. spring-boot-starter-parent 3.5.16 — the newest 3.5.x — still manages 10.1.55,
-         so there is no Boot patch to wait for; same override pattern as pgjdbc above.
-         NB the advisory names 10.1.58 as the fix, but Apache never published a 10.1.58 to
-         Maven Central (10.1.57 -> 10.1.59); 10.1.59 is the first AVAILABLE version carrying
-         the fixes. Drop this override once Boot's own managed version reaches >=10.1.59. -->
-    <tomcat.version>10.1.59</tomcat.version>
     <!-- CVE-2026-89407 / CVE-2026-89425 (jackson-core) and CVE-2026-68497 / CVE-2026-91776 /
-         CVE-2026-91777 (jackson-databind) — all HIGH, fixed in 2.21.7. Boot 3.5.16 still
-         manages jackson-bom 2.21.4; drop this once Boot's managed version reaches >=2.21.7. -->
-    <jackson-bom.version>2.21.7</jackson-bom.version>
+         CVE-2026-91777 (jackson-databind) — all HIGH, fixed in 2.21.7. Boot 4.1.1 manages
+         the Jackson 2 compatibility BOM at 2.21.5 (property jackson-2-bom.version; jackson-bom.version
+         is Jackson 3). Drop this once the managed Jackson 2 BOM is >=2.21.7. -->
+    <jackson-2-bom.version>2.21.7</jackson-2-bom.version>
     <resilience4j.version>2.4.0</resilience4j.version>
-    <springdoc.version>2.8.14</springdoc.version>
+    <springdoc.version>3.1.1</springdoc.version>
     <wiremock.version>3.13.2</wiremock.version>
     <archunit.version>1.5.1</archunit.version>
     <logstash-logback-encoder.version>7.4</logstash-logback-encoder.version>
@@ -49,7 +39,7 @@
   <dependencies>
     <dependency>
       <groupId>org.springframework.boot</groupId>
-      <artifactId>spring-boot-starter-web</artifactId>
+      <artifactId>spring-boot-starter-webmvc</artifactId>
     </dependency>
     <dependency>
       <groupId>org.springframework.boot</groupId>
@@ -70,6 +60,12 @@
       <groupId>org.springframework.boot</groupId>
       <artifactId>spring-boot-starter-data-jpa</artifactId>
     </dependency>
+    <!-- Boot 4 moved Flyway auto-config out of spring-boot-autoconfigure. The data-jpa
+         starter's Maven POM does not pull this module, so Flyway never runs without it. -->
+    <dependency>
+      <groupId>org.springframework.boot</groupId>
+      <artifactId>spring-boot-flyway</artifactId>
+    </dependency>
     <dependency>
       <groupId>org.flywaydb</groupId>
       <artifactId>flyway-core</artifactId>
@@ -88,7 +84,7 @@
          YAML-driven config + actuator metrics. -->
     <dependency>
       <groupId>io.github.resilience4j</groupId>
-      <artifactId>resilience4j-spring-boot3</artifactId>
+      <artifactId>resilience4j-spring-boot4</artifactId>
       <version>${resilience4j.version}</version>
     </dependency>
     <!-- The Stage 0 triage-aggregation cache (ARCH §2.2, thundering-herd protection).
@@ -128,6 +124,12 @@
       <artifactId>logstash-logback-encoder</artifactId>
       <version>${logstash-logback-encoder.version}</version>
     </dependency>
+    <!-- Jackson 2 bridge (docs/BOOT4-MIGRATION.md). Boot 4's own JSON stack is Jackson 3;
+         this module keeps ObjectMapper and the logstash encoder on Jackson 2 until 4.3. -->
+    <dependency>
+      <groupId>org.springframework.boot</groupId>
+      <artifactId>spring-boot-jackson2</artifactId>
+    </dependency>
     <!-- R-SEM-15: the OpenAPI contract the frontend types are generated from
          (/v3/api-docs → openapi-typescript → frontend/src/api/schema.d.ts). API-only
          starter — no Swagger UI is shipped. -->
@@ -139,7 +141,21 @@
 
     <dependency>
       <groupId>org.springframework.boot</groupId>
-      <artifactId>spring-boot-starter-test</artifactId>
+      <artifactId>spring-boot-starter-test-classic</artifactId>
+      <scope>test</scope>
+    </dependency>
+    <!-- Classic puts technology test jars on the classpath with their transitives stripped.
+         webmvc-test restores RestTemplateBuilder and MockMvc for the slices this suite actually uses. -->
+    <dependency>
+      <groupId>org.springframework.boot</groupId>
+      <artifactId>spring-boot-starter-webmvc-test</artifactId>
+      <scope>test</scope>
+    </dependency>
+    <!-- Boot 4.1's Maven POM for resttestclient omits this (Gradle metadata only).
+         TestRestTemplate's auto-config needs RestTemplateBuilder. -->
+    <dependency>
+      <groupId>org.springframework.boot</groupId>
+      <artifactId>spring-boot-restclient</artifactId>
       <scope>test</scope>
     </dependency>
     <dependency>
@@ -164,17 +180,23 @@
       <artifactId>spring-security-test</artifactId>
       <scope>test</scope>
     </dependency>
+    <dependency>
+      <groupId>org.springframework.boot</groupId>
+      <artifactId>spring-boot-starter-security-test</artifactId>
+      <scope>test</scope>
+    </dependency>
     <!-- Real Postgres for the *IT suite: Flyway migrations run against PG 16 in
          `mvn verify`; `mvn test` stays docker-free (DB autoconfig excluded in the
          docker-free profiles). Versions managed by spring-boot-dependencies. -->
+    <!-- Testcontainers 2 (Boot 4.1 BOM) renamed the modules. Java packages are unchanged. -->
     <dependency>
       <groupId>org.testcontainers</groupId>
-      <artifactId>junit-jupiter</artifactId>
+      <artifactId>testcontainers-junit-jupiter</artifactId>
       <scope>test</scope>
     </dependency>
     <dependency>
       <groupId>org.testcontainers</groupId>
-      <artifactId>postgresql</artifactId>
+      <artifactId>testcontainers-postgresql</artifactId>
       <scope>test</scope>
     </dependency>
   </dependencies>

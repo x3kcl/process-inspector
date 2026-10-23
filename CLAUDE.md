@@ -1,6 +1,6 @@
 # Process Inspector — project instructions
 
-A multi-engine Flowable Process Inspector: Spring Boot 3 BFF (`backend/`) + React/TS SPA
+A multi-engine Flowable Process Inspector: Spring Boot 4 BFF (`backend/`) + React/TS SPA
 (`frontend/`), integrating with Flowable engines **strictly via the V6/V7 REST API**.
 
 ## The docs are the spec — keep them in lockstep
@@ -11,9 +11,11 @@ sections in the same change — see the `spec-sync` skill. Read the relevant ski
 `corrective-actions` for any mutating endpoint, `engine-harness` before integration tests).
 
 ## Stack pins (ADR-001, SPECIFICATION §10)
-- Java **21** / Spring Boot **≥3.5** / Maven. Blocking + **virtual threads**; no WebFlux,
+- Java **21** / Spring Boot **4.1.x** / Maven. Blocking + **virtual threads**; no WebFlux,
   no preview APIs. `RestClient` per engine, wrapped in **Resilience4j** circuit breaker +
-  bulkhead (do-no-harm, SPEC §2). JPA + Flyway + Postgres 16; Caffeine for the triage cache.
+  bulkhead (do-no-harm, SPEC §2). JSON stays on Jackson 2 via `spring-boot-jackson2` and
+  `spring.http.converters.preferred-json-mapper=jackson2` until Boot 4.3 removes that bridge
+  (docs/BOOT4-MIGRATION.md). JPA + Flyway + Postgres 16; Caffeine for the triage cache.
 - React **19** (≥19.2.7) + TypeScript **≥5** `strict` + Vite, Node 24. TanStack Query v5,
   React Router **v8** (≥8.3.0; `RouterProvider` from `react-router/dom`, everything else from
   `react-router`), AG Grid Community, bpmn-js.

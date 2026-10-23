@@ -5,9 +5,10 @@ import static org.assertj.core.api.Assertions.assertThat;
 import io.inspector.support.NoDbTestSupport;
 import org.junit.jupiter.api.Test;
 import org.springframework.beans.factory.annotation.Autowired;
-import org.springframework.boot.test.autoconfigure.actuate.observability.AutoConfigureObservability;
+import org.springframework.boot.micrometer.metrics.test.autoconfigure.AutoConfigureMetrics;
+import org.springframework.boot.resttestclient.TestRestTemplate;
+import org.springframework.boot.resttestclient.autoconfigure.AutoConfigureTestRestTemplate;
 import org.springframework.boot.test.context.SpringBootTest;
-import org.springframework.boot.test.web.client.TestRestTemplate;
 import org.springframework.context.annotation.Import;
 import org.springframework.http.HttpStatus;
 import org.springframework.http.ResponseEntity;
@@ -26,8 +27,9 @@ import org.springframework.test.context.ActiveProfiles;
 // @SpringBootTest disables real metrics export (management.defaults.metrics.export.enabled=false) so
 // tests never ship to a backend — this re-enables it so the Prometheus scrape endpoint is exercised
 // for real, exactly as it registers when the app runs normally.
-@AutoConfigureObservability
+@AutoConfigureMetrics
 @Import(NoDbTestSupport.class)
+@AutoConfigureTestRestTemplate
 class ActuatorEndpointsSpringTest {
 
     @Autowired

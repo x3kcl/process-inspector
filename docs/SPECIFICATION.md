@@ -1287,9 +1287,11 @@ server-rendered templates deny the agent its Playwright feedback loop); full-sta
 TypeScript/NestJS (runner-up: loses Spring Security's OIDC/session/RBAC maturity, team depth,
 and would rewrite working M1/M2 code for no capability gain); Go/FastAPI/Kotlin (no axis won).
 
-- **Backend:** **Java 21 (LTS) / Spring Boot 3.5.x** (bump from 3.3.x before M3) / Maven
+- **Backend:** **Java 21 (LTS) / Spring Boot 4.1.x** / Maven
   (+ enforcer, `mvnw`). `RestClient` per engine over `JdkClientHttpRequestFactory` with
-  registry timeouts — blocking-by-design, **no WebFlux**. **Resilience4j** circuit breaker +
+  registry timeouts — blocking-by-design, **no WebFlux**. JSON is Jackson 2
+  (`spring-boot-jackson2`, `preferred-json-mapper=jackson2`); that bridge is removed in Boot 4.3.
+  **springdoc 3.1.x**. **Resilience4j** circuit breaker +
   bulkhead per engine around every outbound call (§2 do-no-harm); **Caffeine** short-lived
   cache for the triage aggregations. **Virtual threads**
   (`spring.threads.virtual.enabled=true`; virtual-thread-per-task executor + per-engine

@@ -5,7 +5,7 @@ multi-engine tool for support teams to **find, diagnose, and fix** runtime probl
 process instances across many Flowable environments from one UI — strictly over the
 Flowable **V6/V7 REST API**.
 
-This image is the Spring Boot 3 API tier. It pairs with
+This image is the Spring Boot 4.1 API tier. It pairs with
 [`x3kcl/process-inspector-web`](https://hub.docker.com/r/x3kcl/process-inspector-web)
 (the SPA served by nginx). Source & full docs:
 **https://github.com/x3kcl/process-inspector**
@@ -31,7 +31,7 @@ HANDOVER**:
 
 ## Tech (ADR-001)
 
-Java 21 · Spring Boot 3.5+ · blocking + **virtual threads** (no WebFlux) · `RestClient` per
+Java 21 · Spring Boot 4.1.x · blocking + **virtual threads** (no WebFlux) · `RestClient` per
 engine · Resilience4j · Caffeine triage cache · Spring Data JPA + **Flyway** + **Postgres
 16** (insert-only audit repository) · Spring Security dual profile (form/basic for dev,
 **OIDC** for prod) · SSE via `SseEmitter`. It integrates with engines **strictly over REST**

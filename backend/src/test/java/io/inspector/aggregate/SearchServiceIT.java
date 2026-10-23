@@ -15,8 +15,9 @@ import org.junit.jupiter.api.BeforeAll;
 import org.junit.jupiter.api.Test;
 import org.junit.jupiter.api.TestInstance;
 import org.springframework.beans.factory.annotation.Autowired;
+import org.springframework.boot.resttestclient.TestRestTemplate;
+import org.springframework.boot.resttestclient.autoconfigure.AutoConfigureTestRestTemplate;
 import org.springframework.boot.test.context.SpringBootTest;
-import org.springframework.boot.test.web.client.TestRestTemplate;
 import org.springframework.context.annotation.Import;
 import org.springframework.http.HttpStatus;
 import org.springframework.http.ResponseEntity;
@@ -38,6 +39,7 @@ import org.springframework.web.client.RestClient;
 @TestInstance(TestInstance.Lifecycle.PER_CLASS)
 // M4: docker-free profile — DB autoconfig excluded, repositories mocked (NoDbTestSupport).
 @Import(NoDbTestSupport.class)
+@AutoConfigureTestRestTemplate
 class SearchServiceIT {
 
     private static final String ENGINE =
