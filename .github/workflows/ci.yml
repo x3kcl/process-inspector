@@ -96,7 +96,7 @@ jobs:
         run: echo "BFF_PORT=$(scripts/free-port.sh "${PI_BFF_PORT:-8086}")" >> "$GITHUB_ENV"
       - uses: actions/setup-node@v7
         with:
-          node-version: "22"
+          node-version: "24"
           cache: npm
           cache-dependency-path: frontend/package-lock.json
       - name: Install
@@ -196,7 +196,7 @@ jobs:
         run: echo "PI_E2E_PORT=$(scripts/free-port.sh "${PI_E2E_PORT:-4173}")" >> "$GITHUB_ENV"
       - uses: actions/setup-node@v7
         with:
-          node-version: "22"
+          node-version: "24"
           cache: npm
           cache-dependency-path: frontend/package-lock.json
       - name: Install

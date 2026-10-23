@@ -1303,7 +1303,7 @@ and would rewrite working M1/M2 code for no capability gain); Go/FastAPI/Kotlin 
   against a running BFF) + the singleton `openapi-fetch` client, committed; CI regenerates
   and **fails on diff** — cross-language drift is a build failure *(the drift gate is live
   in CI: the workflow boots the real BFF, regenerates `schema.d.ts`, and fails on any diff)*.
-- **Frontend:** React 19 (≥19.2.7) + TypeScript `strict` + Vite (Node 22 LTS, npm). **TanStack
+- **Frontend:** React 19 (≥19.2.7) + TypeScript `strict` + Vite (Node 24 LTS, npm). **TanStack
   Query v5** — polling drives all v1 liveness (health strip, drawer); **SSE arrives in v1.x
   with tracked bulk** (R-SEM-14 resolves the earlier v1/v1.x ambiguity; lifecycle contract —
   heartbeat, session binding, id-only events, documented event catalog — lands with it).

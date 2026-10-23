@@ -3,7 +3,7 @@
 # Build:  docker build -t process-inspector-frontend frontend/
 
 # ---- Stage 1: build the SPA -------------------------------------------------
-FROM node:22-alpine AS build
+FROM node:24-alpine AS build
 WORKDIR /app
 # Dependency layer first so lockfile-only rebuilds reuse the npm ci cache.
 COPY package.json package-lock.json ./

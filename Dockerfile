@@ -20,7 +20,7 @@ RUN mvn -B package -Dskip.surefire.tests=true
 
 # ---- (future) Stage: frontend build ----------------------------------------
 # Placeholder for the Vite build once the SPA ships in this image:
-#   FROM node:22-alpine AS frontend
+#   FROM node:24-alpine AS frontend
 #   COPY frontend/ . && npm ci && npm run build
 # ...then COPY --from=frontend /dist into the runtime image's static resources.
 
