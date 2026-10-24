@@ -77,7 +77,7 @@ jobs:
 
       - name: BFF image tags
         id: meta-bff
-        uses: docker/metadata-action@v5
+        uses: docker/metadata-action@v6
         with:
           images: |
             ghcr.io/${{ github.repository }}-bff
@@ -105,7 +105,7 @@ jobs:
 
       - name: Web image tags
         id: meta-web
-        uses: docker/metadata-action@v5
+        uses: docker/metadata-action@v6
         with:
           images: |
             ghcr.io/${{ github.repository }}-web
