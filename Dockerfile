@@ -5,7 +5,7 @@
 # via SERVER_PORT. Secrets arrive as env vars named by the registry's password-refs.
 
 # ---- Stage 1: backend build ------------------------------------------------
-FROM maven:3.9-eclipse-temurin-21 AS build
+FROM maven:3.9-eclipse-temurin-26 AS build
 WORKDIR /build
 # Dependency layer first: pom-only changes are rare, so the go-offline layer caches.
 COPY backend/pom.xml ./pom.xml
