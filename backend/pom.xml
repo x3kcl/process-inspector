@@ -7,7 +7,7 @@
   <parent>
     <groupId>org.springframework.boot</groupId>
     <artifactId>spring-boot-starter-parent</artifactId>
-    <version>4.1.1</version>
+    <version>4.1.2</version>
     <relativePath/>
   </parent>
 
@@ -32,12 +32,12 @@
          is Jackson 3). Drop this once the managed Jackson 2 BOM is >=2.21.7. -->
     <jackson-2-bom.version>2.21.7</jackson-2-bom.version>
     <resilience4j.version>2.4.0</resilience4j.version>
-    <springdoc.version>3.1.1</springdoc.version>
+    <springdoc.version>3.2.0</springdoc.version>
     <wiremock.version>3.13.2</wiremock.version>
     <archunit.version>1.5.1</archunit.version>
     <logstash-logback-encoder.version>7.4</logstash-logback-encoder.version>
     <spotless.version>3.10.4</spotless.version>
-    <jacoco.version>0.8.15</jacoco.version>
+    <jacoco.version>0.8.16</jacoco.version>
     <!-- CI matrix legs skip the unit suite (already run in the unit job) without
          killing failsafe: -Dskip.surefire.tests=true. -DskipTests would skip both. -->
     <skip.surefire.tests>false</skip.surefire.tests>
