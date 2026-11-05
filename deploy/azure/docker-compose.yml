@@ -1,0 +1,129 @@
+# Slim Azure trial stack for Process Inspector.
+# Two Flowable 6.8 engines + Postgres + BFF + web. UI on :80.
+#
+# Sized for ~8 GiB RAM (Standard_B2ms). Free-tier B1s (1 GiB) is too small.
+# Bring-up: deploy/azure/deploy.sh (cloud-init clones this repo + compose up).
+name: process-inspector-azure
+
+services:
+  engine-a:
+    image: flowable/flowable-rest:6.8.0
+    environment:
+      - FLOWABLE_REST_APP_ADMIN_USER-ID=rest-admin
+      - FLOWABLE_REST_APP_ADMIN_PASSWORD=test
+    volumes:
+      - engine-a-home:/home/flowable
+    networks: [internal]
+    restart: unless-stopped
+    mem_limit: 768m
+
+  engine-b:
+    image: flowable/flowable-rest:6.8.0
+    environment:
+      - FLOWABLE_REST_APP_ADMIN_USER-ID=rest-admin
+      - FLOWABLE_REST_APP_ADMIN_PASSWORD=test
+    volumes:
+      - engine-b-home:/home/flowable
+    networks: [internal]
+    restart: unless-stopped
+    mem_limit: 768m
+
+  postgres:
+    image: postgres:16-alpine
+    environment:
+      - POSTGRES_DB=inspector
+      - POSTGRES_USER=inspector
+      - POSTGRES_PASSWORD=${POSTGRES_PASSWORD:-inspector}
+    volumes:
+      - pgdata:/var/lib/postgresql/data
+    healthcheck:
+      test: ["CMD-SHELL", "pg_isready -h 127.0.0.1 -U inspector -d inspector"]
+      interval: 5s
+      timeout: 3s
+      retries: 24
+    networks: [internal]
+    restart: unless-stopped
+    mem_limit: 256m
+
+  backend:
+    image: ${PI_REGISTRY:-docker.io/x3kcl}/process-inspector-bff:${PI_VERSION:-latest}
+    environment:
+      - SERVER_PORT=8080
+      - INSPECTOR_DB_URL=jdbc:postgresql://postgres:5432/inspector
+      - INSPECTOR_DB_USER=inspector
+      - INSPECTOR_DB_PASSWORD=${POSTGRES_PASSWORD:-inspector}
+      - INSPECTOR_ENGINE_A_BASE_URL=http://engine-a:8080/flowable-rest/service
+      - INSPECTOR_ENGINE_B_BASE_URL=http://engine-b:8080/flowable-rest/service
+      # In-network engines need the same egress rails as the hp04 demo.
+      - INSPECTOR_REGISTRY_EGRESS_ALLOWLIST_0=engine-a
+      - INSPECTOR_REGISTRY_EGRESS_ALLOWLIST_1=engine-b
+      - INSPECTOR_REGISTRY_EGRESS_ALLOWLIST_2=localhost
+      - INSPECTOR_REGISTRY_EGRESS_ALLOWLIST_3=127.0.0.0/8
+      - INSPECTOR_REGISTRY_EGRESS_ALLOWLIST_4=172.28.0.0/16
+      - INSPECTOR_REGISTRY_EGRESS_PORTS_0=8080
+      - ENGINE_A_PASSWORD=test
+      - ENGINE_B_PASSWORD=test
+      - INSPECTOR_DEV_PASSWORD=${INSPECTOR_DEV_PASSWORD:?set INSPECTOR_DEV_PASSWORD}
+    depends_on:
+      postgres:
+        condition: service_healthy
+    healthcheck:
+      test: ["CMD", "wget", "-qO-", "http://127.0.0.1:8080/actuator/health"]
+      interval: 15s
+      timeout: 5s
+      retries: 5
+      start_period: 60s
+    networks: [internal]
+    restart: unless-stopped
+    mem_limit: 1024m
+
+  frontend:
+    image: ${PI_REGISTRY:-docker.io/x3kcl}/process-inspector-web:${PI_VERSION:-latest}
+    ports:
+      - "80:80"
+    depends_on: [backend]
+    healthcheck:
+      test: ["CMD", "wget", "-qO-", "http://127.0.0.1/"]
+      interval: 15s
+      timeout: 5s
+      retries: 5
+      start_period: 20s
+    networks: [internal]
+    restart: unless-stopped
+    mem_limit: 64m
+
+  # One-shot. Instance starts are NOT idempotent — re-running adds another arc set.
+  seed:
+    image: alpine:3.20
+    depends_on: [engine-a, engine-b]
+    volumes:
+      - ${PI_SEED_DIR:-/opt/process-inspector/docker}:/seed:ro
+    entrypoint: ["/bin/sh", "-c"]
+    command:
+      - |
+        set -e
+        apk add --no-cache bash curl python3 >/dev/null
+        for e in engine-a engine-b; do
+          url="http://$$e:8080/flowable-rest/service"
+          echo "waiting for $$e ..."
+          for i in $$(seq 1 90); do
+            if curl -fsS -u rest-admin:test "$$url/repository/deployments?size=1" >/dev/null 2>&1; then
+              echo "$$e up"
+              break
+            fi
+            sleep 2
+          done
+          bash /seed/seed.sh "$$url"
+        done
+        echo "seed done"
+
+networks:
+  internal:
+    ipam:
+      config:
+        - subnet: 172.28.0.0/16
+
+volumes:
+  engine-a-home:
+  engine-b-home:
+  pgdata:

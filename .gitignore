@@ -13,3 +13,6 @@ playwright-report/
 
 # CI-only: the flap master clone the `flap` integration leg builds its harness engine from.
 .flap-src/
+
+# Azure trial deploy (deploy/azure/deploy.sh) — ladder + Postgres passwords.
+deploy/azure/.trial-secrets

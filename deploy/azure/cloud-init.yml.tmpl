@@ -1,0 +1,63 @@
+#cloud-config
+# Rendered by deploy.sh — placeholders: __INSPECTOR_DEV_PASSWORD__ __PI_VERSION__ __PI_GIT_REF__
+package_update: true
+packages:
+  - ca-certificates
+  - curl
+  - git
+  - jq
+  - rsync
+
+write_files:
+  - path: /var/lib/process-inspector/azure.env
+    permissions: "0600"
+    content: |
+      INSPECTOR_DEV_PASSWORD=__INSPECTOR_DEV_PASSWORD__
+      POSTGRES_PASSWORD=__POSTGRES_PASSWORD__
+      PI_VERSION=__PI_VERSION__
+      PI_SEED_DIR=/opt/process-inspector/docker
+
+  - path: /var/lib/process-inspector/boot.sh
+    permissions: "0755"
+    content: |
+      #!/bin/bash
+      set -euo pipefail
+      exec >>/var/log/process-inspector-boot.log 2>&1
+      echo "== boot $(date -Is) =="
+
+      if ! command -v docker >/dev/null; then
+        curl -fsSL https://get.docker.com | sh
+      fi
+      systemctl enable --now docker
+
+      REF="__PI_GIT_REF__"
+      if [ ! -d /opt/process-inspector/.git ]; then
+        rm -rf /opt/process-inspector
+        git clone --depth 1 --branch "$REF" \
+          https://github.com/x3kcl/process-inspector.git /opt/process-inspector
+      fi
+
+      cd /opt/process-inspector/deploy/azure
+      set -a
+      # shellcheck disable=SC1091
+      . /var/lib/process-inspector/azure.env
+      set +a
+      ENV=/var/lib/process-inspector/azure.env
+
+      docker compose --env-file "$ENV" pull
+      docker compose --env-file "$ENV" up -d engine-a engine-b postgres
+      docker compose --env-file "$ENV" up -d backend
+      for i in $(seq 1 60); do
+        if docker compose --env-file "$ENV" exec -T backend \
+            wget -qO- http://127.0.0.1:8080/actuator/health >/dev/null 2>&1; then
+          break
+        fi
+        sleep 5
+      done
+      docker compose --env-file "$ENV" up -d frontend
+      docker compose --env-file "$ENV" run --rm seed || true
+      docker compose --env-file "$ENV" ps
+      echo "== boot done $(date -Is) =="
+
+runcmd:
+  - [bash, /var/lib/process-inspector/boot.sh]
