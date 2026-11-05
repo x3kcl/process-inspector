@@ -16,24 +16,37 @@ Stop or destroy the VM when idle so credit lasts.
 ## Prerequisites
 
 1. Azure free account (or any subscription with quota in the target region).
-2. `az` CLI on the machine that runs `deploy.sh` (Docker wrapper is fine — see below).
-3. Login + subscription selected.
+2. A way to run `az` **that is not device-code login** if Entra **security defaults**
+   are on — those defaults **block device code flow** (`AADSTS530035`). Prefer
+   **Azure Cloud Shell** (below).
+
+## Deploy (recommended): Azure Cloud Shell
+
+Security defaults block `az login --use-device-code`. Cloud Shell is already signed
+in via the browser (MFA works there).
+
+1. Open https://shell.azure.com (Bash) while signed in as the subscription owner.
+2. Confirm the free subscription is selected in the shell banner.
+3. Paste:
 
 ```bash
-az login --use-device-code
-az account list -o table
-az account set --subscription "<name-or-id>"
+curl -fsSL https://raw.githubusercontent.com/x3kcl/process-inspector/cursor/azure-free-deploy-3ab7/deploy/azure/cloud-shell-deploy.sh | bash
 ```
 
-## Deploy
+The script clones this branch and runs `deploy.sh` (creates `rg-process-inspector` +
+a B2ms VM). It prints the public IP and writes passwords under
+`~/process-inspector-azure/deploy/azure/.trial-secrets`.
 
-From the repo root:
+## Deploy (alternate): local `az` after disabling security defaults
+
+Only if you turned **Security defaults → Disabled** in Entra ID → Properties:
 
 ```bash
-deploy/azure/deploy.sh
-# optional overrides:
-#   AZ_LOCATION=switzerlandnorth AZ_VM_SIZE=Standard_B2ms PI_VERSION=latest \
-#   PI_GIT_REF=main deploy/azure/deploy.sh
+az login --use-device-code --tenant <your-tenant-id>
+az account list -o table
+az account set --subscription "<name-or-id>"
+PI_GIT_REF=cursor/azure-free-deploy-3ab7 deploy/azure/deploy.sh
+# optional: AZ_LOCATION=switzerlandnorth AZ_VM_SIZE=Standard_B2ms PI_VERSION=latest
 ```
 
 First run writes `deploy/azure/.trial-secrets` (gitignored) with the ladder sign-in
