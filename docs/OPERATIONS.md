@@ -659,6 +659,50 @@ Isolation on the shared box: its own compose project (deliberately **not** named
 bind-mounted site dir rather than a named volume, and `restart: unless-stopped`. It binds
 `0.0.0.0` on purpose — the box is WireGuard-only and the content is CI telemetry.
 
+### hp04: orphaned MCP containers (#616)
+`.mcp.json` starts `github-mcp-server`, `playwright/mcp` and `postgres-mcp` as `docker run -i --rm`
+children of a Claude session. A session that dies without closing stdin leaves the container
+running (a Chromium per Playwright container, open connections per postgres-mcp). Reap them with
+`scripts/mcp-reap.sh` (operator, on the host):
+
+```bash
+scripts/mcp-reap.sh           # dry run: CONTAINER IMAGE AGE VERDICT, changes nothing
+scripts/mcp-reap.sh --apply   # docker stop the ORPHAN rows only
+```
+
+A container is `live` only when a running `docker run` client for the same image started within
+`MCP_REAP_WINDOW` seconds (default 10) of the container's creation; each client matches one
+container. Anything else is `ORPHAN`. The script only ever looks at those three images, so the
+demo, cryt, nextcloud and immich containers are never listed or stopped. Caveat: a session whose
+MCP server failed to connect (for example the postgres-mcp connect timeout) has no client any
+more and its fresh container reads as ORPHAN, which is correct; but do not `--apply` while you
+are starting sessions, a container still being created can read as an orphan for a second.
+
+### Pilot data pull (#479, #480)
+One read-only pull of what the playbook-demand re-check (#479, feeds #106) and the
+attention-default memo (#480) need from the demo store. Operator, on hp04:
+
+```bash
+scripts/pilot-data-pull.sh ./pilot-data-$(date -u +%F)
+```
+
+It runs `psql` through `docker exec -i process-inspector-demo-postgres-1` with the container's own
+`POSTGRES_*` environment (nothing on the host command line), every query inside
+`BEGIN READ ONLY` with `ON_ERROR_STOP` and a 300 s statement timeout. `PILOT_PG_CONTAINER`
+(and `PILOT_PG_USER`/`PILOT_PG_DB`) override the target, for example to rehearse against the dev
+Postgres `process-inspector-postgres-1`. Output: `00-run-meta.txt`, `01-table-spans.csv`
+(rows and min/max timestamp per table, so the usable span is visible), `playbook/` (the committed
+`mine-playbook-demand.sql` as is, the same with the `DEMO-SEED-WINDOW.md` window and any instance
+touched inside it excluded, an action histogram, the seed-window rows) and `ledger/` (G5 trusted
+current-era span, G1/G2/G4 inputs, RETRYING spells, triage_snapshot spans, raw `incident`,
+`incident_episode`, `incident_occurrence`, `bulk_job`). Exit 1 lists any query that failed.
+
+What to do with the folder: do not commit it (it is demo operational data). Hand it over, then the
+review files are written from it: `docs/reviews/S0-PLAYBOOK-DEMAND-2026-10.md` from `playbook/`
+(verdict from `11-demand-excl-seed.csv`; `10-` is the unfiltered comparison) and
+`docs/reviews/ATTENTION-DEFAULT-2026-10.md` from `ledger/` (G5 in `21-`, replay the raw
+occurrence rows through `scripts/attention-harm-search.py` / the neutrality test).
+
 ## 9. Compose profiles
 Dev engine profiles in `docker/docker-compose.dev.yml`: **`flowable-6`** (6.8.0 pair,
 default via `docker/.env` `COMPOSE_PROFILES`) / **`flowable-7`** (7.1.0, :8083) /
