@@ -18,7 +18,7 @@
   <description>BFF / API aggregator for the Flowable Multi-Instance Process Inspector</description>
 
   <properties>
-    <java.version>21</java.version>
+    <java.version>25</java.version>
     <resilience4j.version>2.4.0</resilience4j.version>
     <springdoc.version>3.2.0</springdoc.version>
     <wiremock.version>3.13.2</wiremock.version>

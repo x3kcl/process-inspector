@@ -79,8 +79,8 @@ public class EngineRegistryStore {
     // guard AccessMappingAdminService uses for the mapping store (S4 review). A {@link ReentrantLock}
     // (issue #327, same treatment as #306's AuditService.chainLock), not {@code synchronized}: each
     // critical section below wraps JDBC (repository.save/delete/findById) plus AuditService calls,
-    // and with spring.threads.virtual.enabled=true on Java 21, synchronized around blocking I/O pins
-    // the carrier thread — a defect class per CLAUDE.md's iron rule. No transaction restructuring
+    // and with spring.threads.virtual.enabled=true on Java 21, synchronized around blocking I/O pinned
+    // the carrier thread (no longer true on Java 25 / JEP 491, #441; the lock stays). No transaction restructuring
     // here: the @Transactional boundary and AuditService's own REQUIRES_NEW commit (already made
     // safe for exactly this call shape by #306) are unchanged, only the lock primitive.
     private final ReentrantLock writeLock = new ReentrantLock();

@@ -29,7 +29,7 @@ works over plain HTTP through the Vite proxy, and needs no broker.
    immediately. Guard every write; on a failure just drop that emitter (do NOT `complete()`
    an errored emitter — it re-flushes and throws a secondary `AsyncRequestNotUsableException`).
    Serialize concurrent writes to the SAME emitter with a per-emitter `java.util.concurrent`
-   `ReentrantLock` — **never `synchronized`**: on Java 21 virtual threads, blocking inside a
+   `ReentrantLock` — **never `synchronized`** (banned by `NoSynchronizedInMainSourceTest`): on Java 21 virtual threads (pre-JEP 491 / Java 25), blocking inside a
    monitor (or contending on one) pins the carrier, and a hub-wide monitor would let one
    stalled browser's write pace every other subscriber AND the publisher (issue #301 — the
    whole point of per-emitter locks is that a stalled tab can only ever hold up its OWN

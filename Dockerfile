@@ -5,7 +5,7 @@
 # via SERVER_PORT. Secrets arrive as env vars named by the registry's password-refs.
 
 # ---- Stage 1: backend build ------------------------------------------------
-FROM maven:3.9-eclipse-temurin-21 AS build
+FROM maven:3.9-eclipse-temurin-25 AS build
 WORKDIR /build
 # Dependency layer first: pom-only changes are rare, so the go-offline layer caches.
 COPY backend/pom.xml ./pom.xml
@@ -25,7 +25,7 @@ RUN mvn -B package -Dskip.surefire.tests=true
 # ...then COPY --from=frontend /dist into the runtime image's static resources.
 
 # ---- Stage 2: runtime --------------------------------------------------------
-FROM eclipse-temurin:21-jre-alpine AS runtime
+FROM eclipse-temurin:25-jre-alpine AS runtime
 # OCI provenance for the registry listing (ghcr.io + Docker Hub). The publish
 # workflows also inject dynamic labels (revision/version) via docker/metadata-action.
 LABEL org.opencontainers.image.title="Process Inspector BFF" \
