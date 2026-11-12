@@ -11,10 +11,18 @@ DASH_HOST="${PI_DASH_HOST:-flapci@172.16.62.253}"
 DASH_DIR="${PI_DASH_DIR:-~/pi-ci-dashboard}"
 remote="$DASH_DIR/html/coverage-history.json"
 
-point="$(bash scripts/ci-coverage-sample.sh 2>/dev/null || echo '{}')"
+# PI_COVERAGE_HIST_FILE=<path> keeps the history in a local file instead of the dashboard
+# host (dry run: no ssh/scp). The sampler's stderr says why it produced nothing (#463).
+LOCAL_HIST="${PI_COVERAGE_HIST_FILE:-}"
+point="$(bash scripts/ci-coverage-sample.sh || echo '{}')"
 if ! jq -e . >/dev/null 2>&1 <<<"$point"; then point='{}'; fi
+if ! jq -e '(.backendLine != null) or (.frontendLine != null)' >/dev/null 2>&1 <<<"$point"; then
+  echo "coverage attach: NO SAMPLE this cycle — nothing appended (reason above)" >&2
+fi
 
-if ! hist="$(ssh -o BatchMode=yes -o ConnectTimeout=10 "$DASH_HOST" \
+if [[ -n "$LOCAL_HIST" ]]; then
+  hist="$(cat "$LOCAL_HIST" 2>/dev/null || echo '[]')"
+elif ! hist="$(ssh -o BatchMode=yes -o ConnectTimeout=10 "$DASH_HOST" \
   "cat $remote 2>/dev/null || echo '[]'")"; then
   echo "coverage attach: history unreadable — left status.json unchanged" >&2
   exit 0
@@ -42,7 +50,11 @@ series="$(jq -c \
   ' <<<"$hist")" || { rm -f "$tmp"; exit 0; }
 
 printf '%s\n' "$series" > "$tmp"
-scp -o BatchMode=yes -o ConnectTimeout=10 "$tmp" "$DASH_HOST:$remote" >/dev/null 2>&1 || true
+if [[ -n "$LOCAL_HIST" ]]; then
+  cp "$tmp" "$LOCAL_HIST"
+elif ! scp -o BatchMode=yes -o ConnectTimeout=10 "$tmp" "$DASH_HOST:$remote" >/dev/null 2>&1; then
+  echo "coverage attach: scp of coverage-history.json FAILED — series not persisted" >&2
+fi
 
 jq --argjson point "$point" --argjson series "$series" \
   '. + {coverage: ($point + {series: $series})}' "$status" > "$tmp.status" \
