@@ -282,7 +282,10 @@ export function InspectPage() {
           keyboard-event testing. */}
       <DetailTabBar active={tab} onSelect={selectTab} />
 
-      <section className="tab-body" role="tabpanel" aria-label={TAB_LABELS[tab]}>
+      {/* tabIndex 0 (APG tabs): a panel that scrolls but holds no focusable control (an ended
+          instance's empty job lanes) must still be keyboard-reachable — axe
+          scrollable-region-focusable, found by the real-stack e2e smoke (#466). */}
+      <section className="tab-body" role="tabpanel" aria-label={TAB_LABELS[tab]} tabIndex={0}>
         <Suspense fallback={<div className="zero-state">Loading {TAB_LABELS[tab]}…</div>}>
           <ActiveTab
             engineId={engineId}

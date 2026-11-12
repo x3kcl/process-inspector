@@ -1,0 +1,17 @@
+{
+  "category": "http://inspector.io/demo",
+  "deploymentId": "e711617b-de72-11f1-9e47-dad7623d9163",
+  "deploymentUrl": "http://localhost:8080/flowable-rest/service/repository/deployments/e711617b-de72-11f1-9e47-dad7623d9163",
+  "description": null,
+  "diagramResource": "http://localhost:8080/flowable-rest/service/repository/deployments/e711617b-de72-11f1-9e47-dad7623d9163/resources/demo-failing-payment.demoFailingPayment.png",
+  "graphicalNotationDefined": true,
+  "id": "demoFailingPayment:1:e71b257e-de72-11f1-9e47-dad7623d9163",
+  "key": "demoFailingPayment",
+  "name": "Demo Failing Payment",
+  "resource": "http://localhost:8080/flowable-rest/service/repository/deployments/e711617b-de72-11f1-9e47-dad7623d9163/resources/demo-failing-payment.bpmn20.xml",
+  "startFormDefined": false,
+  "suspended": false,
+  "tenantId": "",
+  "url": "http://localhost:8080/flowable-rest/service/repository/process-definitions/demoFailingPayment:1:e71b257e-de72-11f1-9e47-dad7623d9163",
+  "version": 1
+}

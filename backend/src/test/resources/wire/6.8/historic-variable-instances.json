@@ -1,0 +1,35 @@
+{
+  "data": [
+    {
+      "executionId": "e5acf040-de72-11f1-a5cc-c2b29413085e",
+      "id": "e5ad3e62-de72-11f1-a5cc-c2b29413085e",
+      "processInstanceId": "e5acf040-de72-11f1-a5cc-c2b29413085e",
+      "processInstanceUrl": "http://localhost:8080/flowable-rest/service/history/historic-process-instances/e5acf040-de72-11f1-a5cc-c2b29413085e",
+      "taskId": null,
+      "variable": {
+        "name": "amount",
+        "scope": "global",
+        "type": "integer",
+        "value": 100
+      }
+    },
+    {
+      "executionId": "e5acf040-de72-11f1-a5cc-c2b29413085e",
+      "id": "e5ad8c84-de72-11f1-a5cc-c2b29413085e",
+      "processInstanceId": "e5acf040-de72-11f1-a5cc-c2b29413085e",
+      "processInstanceUrl": "http://localhost:8080/flowable-rest/service/history/historic-process-instances/e5acf040-de72-11f1-a5cc-c2b29413085e",
+      "taskId": null,
+      "variable": {
+        "name": "divisor",
+        "scope": "global",
+        "type": "integer",
+        "value": 0
+      }
+    }
+  ],
+  "order": "asc",
+  "size": 2,
+  "sort": "variableName",
+  "start": 0,
+  "total": 2
+}

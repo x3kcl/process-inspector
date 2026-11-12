@@ -79,7 +79,7 @@ before the call — a pre-6.8 engine has no such context to answer.
 | Reassign / return-to-team task | `PUT /runtime/tasks/{taskId}` `{"assignee":"<id>"\|null}` — arbitrary assignee, or null to clear it back to candidate groups. The key must be PRESENT (even null) so Flowable treats it as an explicit set, not "leave unchanged". `POST …{"action":"claim"\|"delegate"}` only self-assigns/delegates — not a free reassign. |
 | Complete task w/ data | `POST /runtime/tasks/{taskId}` `{"action":"complete","variables":[…]}` |
 | Edit variables | `PUT /runtime/process-instances/{id}/variables` |
-| Diagram source | `GET /repository/process-definitions/{defId}/resourcedata` (BPMN XML for bpmn-js) |
+| Diagram source | `GET /repository/process-definitions/{defId}/resourcedata` (BPMN XML for bpmn-js). Served, like `…/exception-stacktrace` and deployment `resourcedata`, as `application/octet-stream` with NO charset but UTF-8 bytes (recorded 6.8/7.1): read `byte[]` and decode UTF-8 (`GuardedCaller.utf8`), never `body(String.class)` (ISO-8859-1 mojibake, #464). `GET /repository/deployments/{id}/resources` answers a bare JSON array, not the `{data,total}` page |
 | Migrate one case | `POST /cmmn-api/cmmn-runtime/case-instances/{id}/migrate` `{"toCaseDefinitionId"}` — 6.8 and 7.x. Audit `migrate-case/v1`. Pre-check uses plan-item definition ids |
 | Case migrate by definition, batch, historic | `POST /cmmn-api/cmmn-repository/case-definitions/{id}/migrate`, `…/batch-migrate`, `…/migrate-historic-instances`, `…/batch-migrate-historic-instances`, and `POST /cmmn-api/cmmn-history/historic-case-instances/{id}/migrate` — **7.x only**. On 6.x the BFF returns ProblemDetail `version-gate` and does not call the engine |
 

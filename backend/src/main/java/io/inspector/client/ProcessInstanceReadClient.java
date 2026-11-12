@@ -256,14 +256,14 @@ final class ProcessInstanceReadClient {
      */
     public String jobExceptionStacktrace(EngineConfig engine, CallPriority priority, JobLaneKind lane, String jobId) {
         try {
-            return guarded.call(
+            return GuardedCaller.utf8(guarded.call(
                     engine,
                     priority,
                     () -> guarded.readClient(engine)
                             .get()
                             .uri(lane.path + "/{jobId}/exception-stacktrace", jobId)
                             .retrieve()
-                            .body(String.class));
+                            .body(byte[].class)));
         } catch (HttpClientErrorException.NotFound e) {
             return null;
         }
@@ -592,7 +592,7 @@ final class ProcessInstanceReadClient {
     public String deploymentResourceData(
             EngineConfig engine, CallPriority priority, String deploymentId, String resourceName) {
         try {
-            return guarded.call(
+            return GuardedCaller.utf8(guarded.call(
                     engine,
                     priority,
                     () -> guarded.readClient(engine)
@@ -601,7 +601,7 @@ final class ProcessInstanceReadClient {
                                     .pathSegment(resourceName.split("/"))
                                     .build(deploymentId))
                             .retrieve()
-                            .body(String.class));
+                            .body(byte[].class)));
         } catch (HttpClientErrorException.NotFound e) {
             return null;
         }

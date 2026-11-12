@@ -202,7 +202,9 @@ export function AdminEnginesPage() {
               <th>Mode</th>
               <th>Secret</th>
               <th>Base URL</th>
-              <th />
+              <th>
+                <span className="visually-hidden">Actions</span>
+              </th>
             </tr>
           </thead>
           <tbody>

@@ -1,0 +1,35 @@
+{
+  "data": [
+    {
+      "businessKey": null,
+      "businessStatus": null,
+      "callbackId": null,
+      "callbackType": null,
+      "deleteReason": null,
+      "durationInMillis": 48,
+      "endActivityId": "end",
+      "endTime": "2026-11-12T08:27:28.863Z",
+      "id": "e5cb73fe-de72-11f1-a5cc-c2b29413085e",
+      "name": null,
+      "processDefinitionDescription": null,
+      "processDefinitionId": "demoOrder:1:e57e1807-de72-11f1-a5cc-c2b29413085e",
+      "processDefinitionName": "Demo Order (happy path)",
+      "processDefinitionUrl": "http://localhost:8080/flowable-rest/service/repository/process-definitions/demoOrder:1:e57e1807-de72-11f1-a5cc-c2b29413085e",
+      "propagatedStageInstanceId": null,
+      "referenceId": null,
+      "referenceType": null,
+      "startActivityId": "start",
+      "startTime": "2026-11-12T08:27:28.815Z",
+      "startUserId": "rest-admin",
+      "superProcessInstanceId": null,
+      "tenantId": "",
+      "url": "http://localhost:8080/flowable-rest/service/history/historic-process-instances/e5cb73fe-de72-11f1-a5cc-c2b29413085e",
+      "variables": []
+    }
+  ],
+  "order": "asc",
+  "size": 1,
+  "sort": "processInstanceId",
+  "start": 0,
+  "total": 1
+}

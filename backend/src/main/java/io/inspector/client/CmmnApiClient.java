@@ -498,10 +498,10 @@ public class CmmnApiClient {
         }
         java.net.URI uri = b.build().toUri();
         try {
-            return guarded.call(
+            return GuardedCaller.utf8(guarded.call(
                     engine,
                     priority,
-                    () -> guarded.readClient(engine).get().uri(uri).retrieve().body(String.class));
+                    () -> guarded.readClient(engine).get().uri(uri).retrieve().body(byte[].class)));
         } catch (HttpClientErrorException.NotFound e) {
             return null;
         }

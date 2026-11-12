@@ -16,7 +16,8 @@
     "test": "vitest run",
     "test:coverage": "vitest run --coverage",
     "preview": "vite preview",
-    "e2e": "npm run check:e2e-a11y-coverage && playwright test"
+    "e2e": "npm run check:e2e-a11y-coverage && playwright test",
+    "e2e:real": "npm run check:e2e-a11y-coverage && playwright test -c e2e-real/playwright.config.ts"
   },
   "dependencies": {
     "@codemirror/lang-json": "^6.0.2",

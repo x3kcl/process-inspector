@@ -10,5 +10,5 @@
     "noEmit": true,
     "isolatedModules": true
   },
-  "include": ["src", "e2e"]
+  "include": ["src", "e2e", "e2e-real"]
 }

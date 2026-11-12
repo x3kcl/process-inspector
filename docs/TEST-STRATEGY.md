@@ -14,19 +14,21 @@ Test depth follows product risk, not code size:
 | R4 | **UI flows** | Playwright smoke of FIND→ORIENT→DIAGNOSE→FIX→VERIFY, ≤10 min in PR CI; axe accessibility checks hard-fail |
 
 **Backend line coverage and frontend coverage are CI gates** (issue #463), set a small margin
-under the 2026-10-22 unit-scope measurement so a one-line miss does not flake the build:
+under the latest unit-scope measurement so a one-line miss does not flake the build:
 
-| Gate | Measured 2026-10-22 | Floor |
+| Gate | Measured | Floor |
 |---|---|---|
-| Backend bundle, `mvn test` | 67.9% line / 58.3% branch | 65% line / 56% branch (`jacoco:check` in the `unit` job) |
-| Backend packages already ≥80% line | surgery, config, dto, attention, sibling, stream, bulk, incident, diag, audit, selfheal, ops | 75% line each. Packages under the bundle floor have no package rule (#464) |
+| Backend bundle, `mvn test` | 77.1% line / 63.2% branch (2026-11-12, after #464; was 67.9% / 58.3% on 2026-10-22) | 74% line / 61% branch (`jacoco:check` in the `unit` job) |
+| Backend packages with a package rule | surgery, config, dto, attention, sibling, stream, bulk, incident, diag, audit, selfheal, ops (all ≥80% on 2026-10-22); since #464 also `aggregate` 78.0%, `client` 77.2%, `triage` 95.8%, `security.mapping` 96.8% | 75% line each. Packages under the bundle floor have no package rule |
 | Frontend, `npm run test:coverage` | 57.3% line / 47.4% branch (2026-10-22, after the `queries.ts` and `EditorPanel` tests) | 55% line / 45% branch / 44% functions / 54% statements. `queries.ts` lines ≥90, `EditorPanel.tsx` lines ≥70 |
 
 **Ratchet.** A PR that raises a measured number raises the matching floor in the same PR.
 A floor is not lowered to land a change. The 80% backend / 70% frontend figures above the
-table stay the risk-ranked aspiration; they are not the gate, because several packages
-(`SearchService`'s home `io.inspector.aggregate`, `io.inspector.client`, `io.inspector.security.mapping`)
-are still well under them and a bundle floor at 80% would fail every build. `jacoco.xml` and
+table stay the risk-ranked aspiration; they are not the gate, because a bundle floor at 80% would
+still fail every build. #464 lifted the four core classes (`SearchService` 95%, `ProcessApiClient`
+100%, `TriageAggregationService` 96% line) with rung-2 WireMock tests that replay RECORDED
+flowable-rest 6.8/7.1 documents (`backend/src/test/resources/wire/`, re-recorded by
+`scripts/record-wire-fixtures.sh`); the live status join stays on the dockerized `*IT` rung. `jacoco.xml` and
 `frontend/coverage/coverage-summary.json` are CI artifacts. `scripts/ci-dashboard-push.sh`
 copies the two line totals into `status.json` as a sparkline (one point per green `ci` run
 on main, and one per green nightly). The trend is visible after three of those samples.
@@ -349,6 +351,25 @@ The two current release-gating (P1) open gaps are matrix §C-5 (audit-integrity 
 beyond `FailClosedAuditIT`) and §C-16 (the single canonical-arc E2E behind the per-surface smokes).
 
 ## 12. UAT & soak (R-TEST-08/09)
+**Real-stack e2e smoke (nightly `e2e-real`, issue #466).** Every `frontend/e2e/` spec is
+hermetic (`page.route`), so before #466 nothing automated drove UI → BFF → engine. The
+`frontend/e2e-real/` project (own config, `npm run e2e:real`, NO `page.route`) closes that:
+the nightly job boots `docker/docker-compose.dev.yml` (flowable-6 + postgres) on the slot's
+port block (`scripts/free-port.sh`), runs `smoke-test.sh` + `seed.sh`, starts the BFF jar, and
+Playwright starts Vite against it. `global-setup.ts` starts the suite's OWN fixtures over engine
+REST (never `ACT_*` rows) under a run-unique business-key prefix — one `demoFailingPayment`
+dead-letter, 25 `demoUserTask` instances split over both engines, one FIX-ACME-06
+(`acmeApiOutage`) dead-letter per engine — and every mutating arc filters on that prefix, so
+nothing else on the stack is touched. Arcs (GOAL-CATALOG): engines health strip + registry +
+system page (read-only — "Test connection" moves an engine's lifecycle to `probed`, so the
+smoke never presses it); TS-E2E-01 triage → error class → inspect → fix variable → retry →
+COMPLETED → audit; deep paging to the engines' total; reason-gated bulk Suspend read back via
+search. Dev ladder users only (password `dev`), signed in through the real form. axe scans at
+every settled state (`check-e2e-a11y-coverage.mjs` covers both directories). Serial, no
+retries (a re-run of a mutating arc would act on changed state); waits are Playwright
+auto-waits and bounded `expect.poll`/`toPass` against real state. Failures upload the HTML
+report, traces and the BFF log. Not merge-blocking, like the rest of nightly.
+
 UAT at M6: ≥3 practicing support engineers, scripted incident scenarios from the fixture
 catalog, ≥80% unassisted completion; trust-breaking observations file as Sev1/Sev2. Weekly
 post-M6 soak: 4h mixed load with engine kills + BFF restart mid-bulk; assert breaker cycling,

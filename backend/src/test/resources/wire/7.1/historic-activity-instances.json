@@ -1,0 +1,45 @@
+{
+  "data": [
+    {
+      "activityId": "start",
+      "activityName": null,
+      "activityType": "startEvent",
+      "assignee": null,
+      "calledProcessInstanceId": null,
+      "durationInMillis": 3,
+      "endTime": "2026-11-12T08:27:31.532Z",
+      "executionId": "e76993b5-de72-11f1-9e47-dad7623d9163",
+      "id": "e76993b6-de72-11f1-9e47-dad7623d9163",
+      "processDefinitionId": "demoFailingPayment:1:e71b257e-de72-11f1-9e47-dad7623d9163",
+      "processDefinitionUrl": "http://localhost:8080/flowable-rest/service/repository/process-definitions/demoFailingPayment:1:e71b257e-de72-11f1-9e47-dad7623d9163",
+      "processInstanceId": "e7691e7f-de72-11f1-9e47-dad7623d9163",
+      "processInstanceUrl": "http://localhost:8080/flowable-rest/service/history/historic-process-instances/e7691e7f-de72-11f1-9e47-dad7623d9163",
+      "startTime": "2026-11-12T08:27:31.529Z",
+      "taskId": null,
+      "tenantId": ""
+    },
+    {
+      "activityId": "flow1",
+      "activityName": null,
+      "activityType": "sequenceFlow",
+      "assignee": null,
+      "calledProcessInstanceId": null,
+      "durationInMillis": 0,
+      "endTime": "2026-11-12T08:27:31.533Z",
+      "executionId": "e76993b5-de72-11f1-9e47-dad7623d9163",
+      "id": "e76a2ff7-de72-11f1-9e47-dad7623d9163",
+      "processDefinitionId": "demoFailingPayment:1:e71b257e-de72-11f1-9e47-dad7623d9163",
+      "processDefinitionUrl": "http://localhost:8080/flowable-rest/service/repository/process-definitions/demoFailingPayment:1:e71b257e-de72-11f1-9e47-dad7623d9163",
+      "processInstanceId": "e7691e7f-de72-11f1-9e47-dad7623d9163",
+      "processInstanceUrl": "http://localhost:8080/flowable-rest/service/history/historic-process-instances/e7691e7f-de72-11f1-9e47-dad7623d9163",
+      "startTime": "2026-11-12T08:27:31.533Z",
+      "taskId": null,
+      "tenantId": ""
+    }
+  ],
+  "order": "asc",
+  "size": 2,
+  "sort": "startTime",
+  "start": 0,
+  "total": 2
+}

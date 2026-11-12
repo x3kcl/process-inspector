@@ -3,6 +3,7 @@ package io.inspector.client;
 import io.inspector.client.GuardedCaller.CallPriority;
 import io.inspector.config.InspectorProperties.EngineConfig;
 import java.util.LinkedHashMap;
+import java.util.List;
 import java.util.Map;
 import org.springframework.http.MediaType;
 import org.springframework.web.client.HttpClientErrorException;
@@ -109,14 +110,14 @@ final class ProcessRepositoryClient {
      */
     public String processDefinitionResourceData(EngineConfig engine, CallPriority priority, String definitionId) {
         try {
-            return guarded.call(
+            return GuardedCaller.utf8(guarded.call(
                     engine,
                     priority,
                     () -> guarded.readClient(engine)
                             .get()
                             .uri("/repository/process-definitions/{id}/resourcedata", definitionId)
                             .retrieve()
-                            .body(String.class));
+                            .body(byte[].class)));
         } catch (HttpClientErrorException.NotFound e) {
             return null;
         }
@@ -289,16 +290,23 @@ final class ProcessRepositoryClient {
         }
     }
 
-    /** GET /repository/deployments/{id}/resources. */
+    /**
+     * GET /repository/deployments/{id}/resources. The engine answers a bare JSON ARRAY here, not
+     * the {data,total} page envelope (recorded on 6.8 and 7.1, #464), so the rows are wrapped into a
+     * complete page for callers.
+     */
+    @SuppressWarnings("unchecked")
     public FlowablePage listDeploymentResources(EngineConfig engine, CallPriority priority, String deploymentId) {
-        return guarded.call(
+        List<Map<String, Object>> rows = guarded.call(
                 engine,
                 priority,
                 () -> guarded.readClient(engine)
                         .get()
                         .uri("/repository/deployments/{id}/resources", deploymentId)
                         .retrieve()
-                        .body(FlowablePage.class));
+                        .body(List.class));
+        List<Map<String, Object>> data = rows != null ? rows : List.of();
+        return new FlowablePage(data, data.size(), 0, data.size());
     }
 
     /**
