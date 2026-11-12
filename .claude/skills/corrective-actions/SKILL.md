@@ -42,6 +42,20 @@ composite ID). Partial failure is a NORMAL outcome — the UI shows exactly whic
 failed and offers retry-of-failed-items-only. One audit row per item plus one for the
 bulk envelope.
 
+Bulk rails checklist — a new bulk verb (e.g. `migrate-instance`, #496) ships only when all hold:
+- [ ] Its own submit door with its own scope rule (server-resolved scope, never a browser ID
+      list for a filter/cohort door); converges on `BulkJobService`'s private `submit` (reauth
+      ONCE at submit, protected auto-exclusion → `skipped_protected`, fail-closed envelope).
+- [ ] Reason ≥10 at job level; ticket per engine policy; prod ⇒ typed COUNT of the resolved set.
+- [ ] Per item: the single-target rails via a `…BulkItem` entry that skips ONLY reauth and the
+      per-instance typed token; a compare-and-set against what the operator approved
+      (stale ⇒ `skipped`, never sent); its own audit row.
+- [ ] An open breaker in ANY pre-flight read surfaces as `engine-shedding-load` so the engine
+      group pauses (`not_run`, job INTERRUPTED) instead of burning items as `failed`.
+- [ ] Post-dispatch timeout ⇒ `unknown`; Verify now has a read-only predicate for the verb.
+- [ ] "Continue as new job" works for the verb and cannot widen the original scope.
+- [ ] Rung-4 IT incl. a mid-run breaker trip; SPEC §7 + ARCH §4 rows.
+
 ## 6. Capability gating
 An action needing an endpoint the target engine's Flowable version lacks (probed by
 `EngineHealthService`) is greyed out in the UI per engine AND rejected by the BFF with a

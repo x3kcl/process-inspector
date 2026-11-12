@@ -68,7 +68,10 @@ final class BulkJobRunner {
         job.markRunning();
         host.jobs.saveAndFlush(job);
         host.events.publishEvent(new BulkJobChangedEvent(jobId));
-        ActionVerb verb = ActionVerb.fromPath(job.getVerb()).orElseThrow();
+        // null = migrate-instance, the one bulk verb that is not an ActionVerb (BulkJobService.MIGRATE_VERB).
+        ActionVerb verb = BulkJobService.MIGRATE_VERB.equals(job.getVerb())
+                ? null
+                : ActionVerb.fromPath(job.getVerb()).orElseThrow();
 
         List<BulkJobItem> all = host.items.findByJobIdOrderByOrdinal(jobId);
         // Per-engine fan-out: engines proceed independently (one slow engine must not
@@ -255,6 +258,18 @@ final class BulkJobRunner {
     private boolean dispatchOne(
             BulkJob job, ActionVerb verb, BulkJobItem item, Authentication auth, boolean isBoundedRetry) {
         try {
+            if (verb == null) {
+                // migrate-instance (#496): jobRef is the analysis id holding this item's CAS digest.
+                ActionResult result = host.cohortMigration.dispatch(
+                        item.getJobRef(),
+                        item.getEngineId(),
+                        item.getInstanceId(),
+                        job.getReason(),
+                        job.getTicketId(),
+                        auth);
+                item.settle(BulkJobItem.State.ok, result.deltaStatement(), result.auditId(), host.clock.instant());
+                return false;
+            }
             if (verb == ActionVerb.RETRY_JOB) {
                 dispatchRetry(job, item, auth);
                 return false;
@@ -391,6 +406,7 @@ final class BulkJobRunner {
         // "already resolved" class (R-SEM-09): the target is gone/done — a NORMAL outcome.
         if ("job-gone".equals(e.code())
                 || "instance-not-running".equals(e.code())
+                || "instance-moved-since-preview".equals(e.code())
                 || "task-gone".equals(e.code())
                 || "task-not-active".equals(e.code())
                 || "history-gone".equals(e.code())) {

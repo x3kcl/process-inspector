@@ -235,6 +235,11 @@ jobs:
           - profile: migration-findings
             composeProfiles: "flowable-6,flowable-7,postgres"
             itClass: MigrationFindingsIT
+          # Cohort migration through the bulk machinery (#496): same dual-major stack, own leg so
+          # the required "MigrationFindingsIT" job name stays unchanged.
+          - profile: migration-findings
+            composeProfiles: "flowable-6,flowable-7,postgres"
+            itClass: BulkMigrationIT
     env:
       # Dependabot PRs (#445) run on the slot runners, but that actor's token is read-only and
       # cannot pull the private flap image: that leg's registry steps and the contract's leg skip.

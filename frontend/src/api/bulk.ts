@@ -16,6 +16,8 @@ export type BulkFilterRequest = components['schemas']['BulkFilterRequest']
 // Tier-4 destructive-bulk wizard (SPEC §6/§7, issue #100).
 export type BulkDestructiveRequest = components['schemas']['BulkDestructiveRequest']
 export type BulkDestructivePreview = components['schemas']['BulkDestructivePreview']
+// Cohort migration (#496): completed analyses, never an instance list.
+export type BulkMigrateRequest = components['schemas']['BulkMigrateRequest']
 
 export const BULK_JOBS_KEY = ['bulk-jobs']
 
@@ -177,6 +179,27 @@ export function useSubmitDestructiveBulk() {
   return useMutation<BulkJobDto, ActionError, BulkDestructiveRequest>({
     retry: false,
     mutationFn: submitDestructiveBulk,
+    onSettled: async () => {
+      await queryClient.invalidateQueries({ queryKey: BULK_JOBS_KEY })
+    },
+  })
+}
+
+/**
+ * Cohort migration (#496): the BFF takes each completed analysis's executable set (blockers
+ * removed) and its stored per-instance digests; no instance id crosses the wire.
+ */
+export async function submitBulkMigrate(body: BulkMigrateRequest): Promise<BulkJobDto> {
+  const { data, error, response } = await api.POST('/api/bulk/migrate', { body })
+  if (data === undefined) throw new ActionError(parseActionProblem(response.status, error))
+  return data
+}
+
+export function useSubmitBulkMigrate() {
+  const queryClient = useQueryClient()
+  return useMutation<BulkJobDto, ActionError, BulkMigrateRequest>({
+    retry: false,
+    mutationFn: submitBulkMigrate,
     onSettled: async () => {
       await queryClient.invalidateQueries({ queryKey: BULK_JOBS_KEY })
     },

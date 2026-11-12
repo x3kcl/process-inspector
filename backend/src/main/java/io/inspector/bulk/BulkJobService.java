@@ -12,6 +12,7 @@ import io.inspector.client.ProcessApiClient;
 import io.inspector.client.ProcessApiClient.JobLaneKind;
 import io.inspector.config.InspectorProperties;
 import io.inspector.config.InspectorProperties.EngineConfig;
+import io.inspector.migration.CohortBulkMigration;
 import io.inspector.registry.EngineRegistry;
 import io.inspector.security.reauth.DangerousActionReauthGate;
 import io.micrometer.core.instrument.Gauge;
@@ -64,7 +65,7 @@ public class BulkJobService {
     static final Logger log = LoggerFactory.getLogger(BulkJobService.class);
 
     /** SPEC §7 v1 verb whitelist: queue-state verbs, dispatched via the SELECTION/ERROR_CLASS/FILTER doors. */
-    private static final Set<ActionVerb> BULK_VERBS = Set.of(
+    private static final Set<String> BULK_VERBS = paths(
             ActionVerb.RETRY_JOB,
             ActionVerb.SUSPEND,
             ActionVerb.ACTIVATE,
@@ -80,10 +81,19 @@ public class BulkJobService {
      * resolver; deferred as a documented fast-follow (IMPLEMENTATION-PLAN.md), not silently
      * dropped.
      */
-    private static final Set<ActionVerb> DESTRUCTIVE_BULK_VERBS = Set.of(ActionVerb.TERMINATE_DELETE);
+    private static final Set<String> DESTRUCTIVE_BULK_VERBS = paths(ActionVerb.TERMINATE_DELETE);
 
-    private static final Set<ActionVerb> HISTORY_VERBS =
-            Set.of(ActionVerb.DELETE_HISTORY, ActionVerb.DELETE_CASE_HISTORY);
+    private static final Set<String> HISTORY_VERBS = paths(ActionVerb.DELETE_HISTORY, ActionVerb.DELETE_CASE_HISTORY);
+
+    /**
+     * Cohort migration (#496): not an {@link ActionVerb} — migrate has its own tier-3 rails in
+     * {@link io.inspector.migration.MigrationService}. Only {@link BulkMigrationService} submits it.
+     */
+    static final String MIGRATE_VERB = CohortBulkMigration.VERB;
+
+    private static Set<String> paths(ActionVerb... verbs) {
+        return java.util.Arrays.stream(verbs).map(ActionVerb::path).collect(java.util.stream.Collectors.toSet());
+    }
 
     final BulkJobRepository jobs;
     final BulkJobItemRepository items;
@@ -101,6 +111,7 @@ public class BulkJobService {
     private final BulkJobSubmitter submitter;
     final GuardedCaller guardedCaller;
     final MeterRegistry metrics;
+    final CohortBulkMigration cohortMigration;
     final ExecutorService executor = MdcPropagatingExecutors.newVirtualThreadPerTaskExecutor();
     final Map<UUID, Boolean> cancelRequested = new ConcurrentHashMap<>();
     /**
@@ -151,7 +162,8 @@ public class BulkJobService {
             ApplicationEventPublisher events,
             DangerousActionReauthGate reauth,
             GuardedCaller guardedCaller,
-            MeterRegistry metrics) {
+            MeterRegistry metrics,
+            CohortBulkMigration cohortMigration) {
         this.jobs = jobs;
         this.items = items;
         this.actions = actions;
@@ -166,6 +178,7 @@ public class BulkJobService {
         this.reauth = reauth;
         this.guardedCaller = guardedCaller;
         this.metrics = metrics;
+        this.cohortMigration = cohortMigration;
         // OPERATIONS.md §2 (issue #96): live count of non-terminal jobs — a gauge, not a counter,
         // since RUNNING is a point-in-time state, not a monotonic event.
         Gauge.builder("bulk_jobs_running", jobs, r -> r.countByState(BulkJob.State.RUNNING))
@@ -252,6 +265,27 @@ public class BulkJobService {
                 "Housekeeping supports delete-history and delete-case-history. Nothing happened.");
     }
 
+    /**
+     * Cohort migration (#496), used ONLY by {@link BulkMigrationService}, which has resolved the
+     * targets from completed analyses (or a prior job's not-run/failed items) and run the ADMIN,
+     * typed-count and ticket rails. The filter cap applies: one analysis holds up to 500 instances.
+     */
+    BulkDtos.BulkJobDto submitMigration(
+            BulkDtos.BulkSubmitRequest request,
+            Authentication auth,
+            Map<String, Object> extraEnvelopePayload,
+            String scopeLabel) {
+        return submit(
+                request,
+                auth,
+                extraEnvelopePayload,
+                BulkJob.FILTER_ITEM_CAP,
+                BulkJob.ScopeKind.FILTER,
+                scopeLabel,
+                Set.of(MIGRATE_VERB),
+                "This door submits migrate-instance only. Nothing happened.");
+    }
+
     private BulkDtos.BulkJobDto submit(
             BulkDtos.BulkSubmitRequest request,
             Authentication auth,
@@ -278,7 +312,7 @@ public class BulkJobService {
             int itemCap,
             BulkJob.ScopeKind scopeKind,
             String scopeLabel,
-            Set<ActionVerb> allowedVerbs,
+            Set<String> allowedVerbs,
             String verbRefusalMessage) {
         // Dangerous-set freshness (IDP-SECURITY.md §5, R-SAFE-07): bulk is in the dangerous set
         // regardless of verb tier (it is the guard-tier-4 fan-out), so a stale OAuth2 session
@@ -399,11 +433,12 @@ public class BulkJobService {
                     "Item " + ordinal + " is '" + item.getState() + "' — Verify now applies to unknown outcomes only.");
         }
         BulkJob job = jobs.findById(jobId).orElseThrow();
-        ActionVerb verb = ActionVerb.fromPath(job.getVerb()).orElseThrow();
         EngineConfig engine = registry.require(item.getEngineId());
         Verdict verdict;
         try {
-            verdict = precondition(engine, verb, item, job);
+            verdict = MIGRATE_VERB.equals(job.getVerb())
+                    ? migrated(item)
+                    : precondition(engine, ActionVerb.fromPath(job.getVerb()).orElseThrow(), item, job);
         } catch (RuntimeException e) {
             verdict = new Verdict(null, "engine did not answer the verification read: " + e.getMessage());
         }
@@ -419,6 +454,13 @@ public class BulkJobService {
     }
 
     private record Verdict(BulkJobItem.State reclassifyTo, String evidence) {}
+
+    /** migrate-instance: on the analysis target ⇒ ok; anything else stays unknown with evidence. */
+    private Verdict migrated(BulkJobItem item) {
+        CohortBulkMigration.Verification v =
+                cohortMigration.verify(item.getJobRef(), item.getEngineId(), item.getInstanceId());
+        return new Verdict(v.migrated() ? BulkJobItem.State.ok : null, v.evidence());
+    }
 
     private Verdict precondition(EngineConfig engine, ActionVerb verb, BulkJobItem item, BulkJob job) {
         switch (verb) {
