@@ -70,6 +70,9 @@ public final class StubFlowableEngine implements AutoCloseable {
     // volume) regardless of how many extra size=1 health-probe calls interleave.
     private final Set<Integer> deadletterStartsSeen = ConcurrentHashMap.newKeySet();
     private final AtomicInteger maxDeadletterSizeRequested = new AtomicInteger();
+    // P3 soak (#467): bulk suspend writes acknowledged — corroborates per-item reporting against
+    // what actually reached the engine, never the BFF's own tallies alone.
+    private final AtomicInteger instanceWriteCount = new AtomicInteger();
     private volatile int responseDelayMs = 0;
     private volatile boolean hangForever = false;
 
@@ -111,6 +114,11 @@ public final class StubFlowableEngine implements AutoCloseable {
     /** The largest {@code size} ever requested on the DEADLETTER lane — never the whole volume. */
     public int maxDeadletterSizeRequested() {
         return maxDeadletterSizeRequested.get();
+    }
+
+    /** P3 soak (#467): how many {@code PUT /runtime/process-instances/{id}} writes were answered. */
+    public int instanceWriteCount() {
+        return instanceWriteCount.get();
     }
 
     /** Reusable seam for #298: every subsequent response is delayed this long before answering. */
@@ -193,6 +201,20 @@ public final class StubFlowableEngine implements AutoCloseable {
             writeJson(exchange, 200, Map.of("version", "6.8.0"));
         } else if ("GET".equals(method) && rel.equals("/history/historic-activity-instances")) {
             writeJson(exchange, 200, emptyPage(0));
+        } else if (rel.startsWith("/runtime/process-instances/") && rel.indexOf('/', 27) < 0) {
+            // P3 soak (#467): the suspend/activate verb's server-fresh restatement (GET) and its one
+            // engine write (PUT). Every synthetic DLQ instance is "running" and stays so — the
+            // stub is stateless, so the soak can re-submit the same scope job after job.
+            String id = rel.substring("/runtime/process-instances/".length());
+            if ("GET".equals(method)) {
+                writeJson(exchange, 200, syntheticHistoricRow(id));
+            } else if ("PUT".equals(method)) {
+                exchange.getRequestBody().transferTo(OutputStream.nullOutputStream());
+                instanceWriteCount.incrementAndGet();
+                writeJson(exchange, 200, syntheticHistoricRow(id));
+            } else {
+                writeJson(exchange, 405, Map.of("message", "stub: " + method + " not supported on " + rel));
+            }
         } else if ("POST".equals(method)
                 && (rel.equals("/query/process-instances") || rel.equals("/query/historic-process-instances"))) {
             serveQueryEcho(exchange);

@@ -182,8 +182,40 @@ the scenario mapping (`TS-*`) in its §§2–12.
 |---|---|---|---|---|
 | P1 | 10 stub engines, 3 slow (read-ms−500), 2 timing out | search P95 ≤ read-ms+2s; correct envelope; BFF health P99 <200ms throughout | M2 exit, re-run M6, nightly | ✅ `FanoutPartialFailureIT` (nightly job `fanout-partial-failure-p1`, issue #298) |
 | P2 | 50k-row DLQ vs `dlq-scan-cap` | scan ≤10s, `truncated@cap`, un-scanned never shown healthy | M2 exit, nightly | ✅ `DlqScanCapVolumeIT` (nightly job `dlq-scan-cap-p2`, issue #299) |
-| P3 | 50 SSE clients through a 500-item bulk, 30 min | zero dropped/dup events; heap ±10% | gates the v1.x SSE/bulk item | 🔲 unbuilt (§C-8) |
+| P3 | 50 SSE clients held 20 min while 600-item bulks run back to back (2 stub engines) | see the P3 thresholds below | nightly | 🟡 built: `SseBulkSoakIT` (nightly job `soak-p3`, 30-min budget, issue #467); §C-8 closes after three green nights in a row |
 | P4 | 100 landing loads in 5s | one engine-query round per aggregation (≥99% cache hits); Refresh rate-limit holds | M3 exit | ✅ `perf-scenario-p1.js` (nightly job `perf-p1`, §C-10) |
+
+**P3 thresholds** (`SseBulkSoakIT`, issue #467). The hold is a parameter, `-Dsoak.minutes=<n>`
+(default 3); the nightly runs 20. 50 `viewer` streams on `/api/bulk/events` stay open for the
+whole hold while select-all-matching-filter `suspend` bulks of 600 items (300 synthetic
+dead-letter rows on each of two `StubFlowableEngine`s) run one after another, with a real
+Testcontainers Postgres under the bulk and audit rows. Every number is read from
+`/actuator/prometheus`, the surface the alert rules evaluate:
+
+- **Per-item reporting complete:** every job ends `COMPLETED`, `totalItems` = 600, every item
+  is `ok` with `finishedAt` and `auditId`, and the stubs acknowledged exactly 600 writes per job.
+- **Zero dropped or duplicated events:** every subscriber saw a `bulk-job` event for every job,
+  and all 50 saw the same number of events per job. The hub sends each coalesced flush to every
+  live emitter, so any difference between subscribers is a drop or a duplicate.
+- **Emitters:** `sse_emitters_active` stays at baseline + 50 after every job, and is back at
+  baseline within 60 s of the clients disconnecting (the 15 s heartbeat is what notices them).
+- **No `SseEmitterErrorsSpiking` condition during the hold:** at most 5 increments of
+  `sse_emitter_errors_total` in any 5-minute window, and no `sse_subscriptions_refused_total`.
+  Each subscriber also receives at least `hold/15s − 2` heartbeats.
+- **Heap:** post-GC `jvm_memory_used_bytes{area="heap"}` at the end of the hold is at most 10%
+  above the baseline taken after the second (warm-up) job. The test calls `System.gc()` before
+  each sample; it shares the JVM with the BFF, so a post-GC figure is the leak signal.
+
+The BFF, the stubs and the SSE clients share one JVM. The job therefore needs no slot port block
+and no route from a container back to the runner (hp02's rootless-DinD slots have none). Its only
+docker use is the Testcontainers Postgres, reached from the runner like `container-its`.
+Measured locally on 2026-11-12 (hp04, `-Dsoak.minutes=5`): 307 s held, 38 jobs × 600 items,
+each job settled in about 7.5 s (20 ms stagger, 4 permits per engine). Each subscriber saw 26–27
+`bulk-job` events per job, with no difference between subscribers. Post-GC heap was 85 MiB at
+baseline and 86 MiB at the end (+1.0%). There were 0 emitter errors during the hold. The 50
+disconnects at teardown added 100 to `sse_emitter_errors_total`, two per closed stream; that
+is tracked as #624, and the assertion covers the hold only. Building this suite also showed
+that `inspector.bulk.*` was not binding at all (#623, fixed alongside).
 
 ## 8. Capability matrix (R-TEST — SHOULD)
 Per capability flag × profile: probe detects expected value; supported → verb succeeds E2E;
