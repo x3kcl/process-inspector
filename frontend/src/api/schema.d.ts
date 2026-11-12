@@ -485,6 +485,22 @@ export interface paths {
         patch?: never;
         trace?: never;
     };
+    "/api/bulk/migrate-hierarchy": {
+        parameters: {
+            query?: never;
+            header?: never;
+            path?: never;
+            cookie?: never;
+        };
+        get?: never;
+        put?: never;
+        post: operations["submit_1"];
+        delete?: never;
+        options?: never;
+        head?: never;
+        patch?: never;
+        trace?: never;
+    };
     "/api/bulk/{id}": {
         parameters: {
             query?: never;
@@ -1509,6 +1525,54 @@ export interface paths {
         patch?: never;
         trace?: never;
     };
+    "/api/migration/hierarchy/plans": {
+        parameters: {
+            query?: never;
+            header?: never;
+            path?: never;
+            cookie?: never;
+        };
+        get?: never;
+        put?: never;
+        post: operations["createPlan"];
+        delete?: never;
+        options?: never;
+        head?: never;
+        patch?: never;
+        trace?: never;
+    };
+    "/api/migration/hierarchy/plans/{id}": {
+        parameters: {
+            query?: never;
+            header?: never;
+            path?: never;
+            cookie?: never;
+        };
+        get: operations["getPlan"];
+        put?: never;
+        post?: never;
+        delete?: never;
+        options?: never;
+        head?: never;
+        patch?: never;
+        trace?: never;
+    };
+    "/api/migration/hierarchy/plans/{id}/groups": {
+        parameters: {
+            query?: never;
+            header?: never;
+            path?: never;
+            cookie?: never;
+        };
+        get?: never;
+        put: operations["decideGroup"];
+        post?: never;
+        delete?: never;
+        options?: never;
+        head?: never;
+        patch?: never;
+        trace?: never;
+    };
     "/api/recents": {
         parameters: {
             query?: never;
@@ -2059,7 +2123,10 @@ export interface components {
             instanceId?: string;
             jobRef?: string;
             /** Format: int32 */
+            level?: number;
+            /** Format: int32 */
             ordinal?: number;
+            parentInstanceId?: string;
             state?: string;
         };
         BulkJobDto: {
@@ -2084,6 +2151,14 @@ export interface components {
             /** Format: int32 */
             totalItems?: number;
             verb?: string;
+        };
+        BulkMigrateHierarchyRequest: {
+            /** Format: int32 */
+            confirmedCount?: number;
+            /** Format: uuid */
+            planId?: string;
+            reason?: string;
+            ticketId?: string;
         };
         BulkMigrateRequest: {
             analysisIds?: string[];
@@ -2746,6 +2821,43 @@ export interface components {
             requested?: boolean;
             startTime?: string;
         };
+        HierarchyPlanCreate: {
+            cohort?: components["schemas"]["CohortPreviewRequest"];
+            rootInstanceId?: string;
+        };
+        HierarchyPlanDecide: {
+            definitionId?: string;
+            mappings?: components["schemas"]["MigrationMapping"][];
+            skip?: boolean;
+            toDefinitionId?: string;
+        };
+        HierarchyPlanView: {
+            banner?: string;
+            /** Format: int32 */
+            breadthCap?: number;
+            circularReferences?: components["schemas"]["PlanCircularReference"][];
+            /** Format: date-time */
+            createdAt?: string;
+            createdBy?: string;
+            engineId?: string;
+            executable?: boolean;
+            /** Format: int32 */
+            executableCount?: number;
+            groups?: components["schemas"]["PlanGroupView"][];
+            /** Format: uuid */
+            id?: string;
+            levels?: components["schemas"]["PlanLevelView"][];
+            /** Format: int32 */
+            maxDepth?: number;
+            /** Format: int32 */
+            nodeCap?: number;
+            nodes?: components["schemas"]["PlanNode"][];
+            notExecutableReason?: string;
+            /** Format: int32 */
+            notSentCount?: number;
+            rootInstanceIds?: string[];
+            truncations?: components["schemas"]["PlanTruncation"][];
+        };
         HistoryDeleteRequest: {
             businessKey?: string;
             /** Format: int32 */
@@ -3208,10 +3320,61 @@ export interface components {
             };
             rows?: components["schemas"]["PersonTaskRow"][];
         };
+        PlanCircularReference: {
+            ancestorInstanceId?: string;
+            definitionKey?: string;
+            /** Format: int32 */
+            depth?: number;
+            instanceId?: string;
+        };
+        PlanGroupView: {
+            /** Format: uuid */
+            analysisId?: string;
+            /** Format: int32 */
+            blockerCount?: number;
+            definitionId?: string;
+            definitionKey?: string;
+            /** Format: int32 */
+            executableCount?: number;
+            /** Format: int32 */
+            instanceCount?: number;
+            /** Format: int32 */
+            maxDepth?: number;
+            /** Format: int32 */
+            minDepth?: number;
+            status?: string;
+            targetDefinitionId?: string;
+            /** Format: int32 */
+            version?: number;
+        };
         PlanItemChange: {
             action?: string;
             definitionId?: string;
             planItemInstanceId?: string;
+        };
+        PlanLevelView: {
+            /** Format: int32 */
+            depth?: number;
+            /** Format: int32 */
+            executableCount?: number;
+            /** Format: int32 */
+            instanceCount?: number;
+        };
+        PlanNode: {
+            businessKey?: string;
+            definitionId?: string;
+            /** Format: int32 */
+            depth?: number;
+            instanceId?: string;
+            parentInstanceId?: string;
+        };
+        PlanTruncation: {
+            /** Format: int32 */
+            enumerated?: number;
+            instanceId?: string;
+            kind?: string;
+            /** Format: int64 */
+            total?: number;
         };
         Point: {
             /** Format: int64 */
@@ -4510,6 +4673,30 @@ export interface operations {
         requestBody: {
             content: {
                 "application/json": components["schemas"]["BulkMigrateRequest"];
+            };
+        };
+        responses: {
+            /** @description OK */
+            200: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "*/*": components["schemas"]["BulkJobDto"];
+                };
+            };
+        };
+    };
+    submit_1: {
+        parameters: {
+            query?: never;
+            header?: never;
+            path?: never;
+            cookie?: never;
+        };
+        requestBody: {
+            content: {
+                "application/json": components["schemas"]["BulkMigrateHierarchyRequest"];
             };
         };
         responses: {
@@ -6098,6 +6285,80 @@ export interface operations {
                 };
                 content: {
                     "*/*": components["schemas"]["CohortPreviewResponse"];
+                };
+            };
+        };
+    };
+    createPlan: {
+        parameters: {
+            query: {
+                engineId: string;
+            };
+            header?: never;
+            path?: never;
+            cookie?: never;
+        };
+        requestBody: {
+            content: {
+                "application/json": components["schemas"]["HierarchyPlanCreate"];
+            };
+        };
+        responses: {
+            /** @description OK */
+            200: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "*/*": components["schemas"]["HierarchyPlanView"];
+                };
+            };
+        };
+    };
+    getPlan: {
+        parameters: {
+            query?: never;
+            header?: never;
+            path: {
+                id: string;
+            };
+            cookie?: never;
+        };
+        requestBody?: never;
+        responses: {
+            /** @description OK */
+            200: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "*/*": components["schemas"]["HierarchyPlanView"];
+                };
+            };
+        };
+    };
+    decideGroup: {
+        parameters: {
+            query?: never;
+            header?: never;
+            path: {
+                id: string;
+            };
+            cookie?: never;
+        };
+        requestBody: {
+            content: {
+                "application/json": components["schemas"]["HierarchyPlanDecide"];
+            };
+        };
+        responses: {
+            /** @description OK */
+            200: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "*/*": components["schemas"]["HierarchyPlanView"];
                 };
             };
         };

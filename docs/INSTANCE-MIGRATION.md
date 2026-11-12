@@ -414,6 +414,96 @@ the drawer, INTERRUPTED and verify-now it would otherwise lack.
 Proven by `BulkMigrationIT` (rung 4, 6.8 + 7.1, 202 items, engine-7 breaker forced open mid-run,
 continuation to completion).
 
+### 7.2 Hierarchy-aware migration — children first, then parent (#497)
+A parent and its call-activity children are separate process instances; migrating the parent does
+not touch them (§3, "child executions left on their own definition"). A hierarchy plan migrates the
+whole running tree in **one** bulk job of the same verb, `migrate-instance`: deepest level first,
+the parent last. There is still no cross-instance transaction — each instance is one engine call
+with its own audit row, and a partial result is reported per instance.
+
+**Plan (read-only, stored).** `POST /api/migration/hierarchy/plans?engineId=` with exactly one of
+`rootInstanceId` or `cohort` (the S2 filter; its instances are the roots, resolved server-side).
+The BFF walks the **running** call-activity tree top-down with the Hierarchy tab's own per-node
+read (`POST query/historic-process-instances`, `superProcessInstanceId` + `finished:false`) and
+its caps, and stores the result (`migration_hierarchy_plan`, V28). One read per visited node, so
+the read count is bounded by the node cap however wide a level is.
+
+| Cap | Value | When it is hit |
+|---|---|---|
+| depth | `inspector.hierarchy-max-depth` (10) | children below it are counted, not walked: truncation `depth` |
+| breadth per node | 50, or the engine's `max-page-size` if lower | the node's exact running-child total is recorded: truncation `breadth` |
+| nodes | 500 | the walk stops, no further read: truncation `nodes` |
+| roots | the cohort cap (500) | truncation `roots` |
+
+A plan with any truncation is **not executable** (`hierarchy-plan-truncated`): children-first
+cannot be kept over a tree that was not fully read. A 10k-child multi-instance call activity costs
+one read at its parent and is reported with its exact total; migrate that level as a cohort (§7.1)
+and plan again.
+
+**Circular references.** A node whose definition key is also the key of one of its ancestors (a
+process that calls itself, directly or through others) is listed in `circularReferences`
+(definition key, instance, ancestor instance, depth). It is reported, not skipped: the instance
+tree is still a tree, so these instances stay in the plan and are ordered by their own depth. An
+instance id that comes back under a second parent (not possible on a real engine) is truncation
+`instance-cycle` and the plan is not executable.
+
+**Groups.** The tree is grouped by source definition id (key and version). Each group needs a
+decision: `PUT /api/migration/hierarchy/plans/{id}/groups {definitionId, skip | toDefinitionId?,
+mappings?}`.
+
+| Status | Meaning |
+|---|---|
+| `PENDING` | no decision yet |
+| `ANALYZING` | configured; the estimate is still running |
+| `CONFIGURED` | the estimate finished. `executableCount` instances will be sent, `blockerCount` will not |
+| `ANALYSIS_FAILED` | the estimate stopped (engine unreachable). Configure again |
+| `SKIPPED` | the operator leaves these instances on their version |
+
+Configuring a group runs the cohort analysis (§14.12) over exactly that group's instances — the
+plan's tree is the scope, not a filter — so each instance gets the §14 estimate and a stored
+`activityStateDigest`. Hub's "No instances" status does not exist here: the tree is built from
+running instances, so a definition with none is not in the plan.
+
+**Execution.** `POST /api/bulk/migrate-hierarchy {planId, reason, ticketId?, confirmedCount?}`
+(ADMIN on the plan's engine). Refusals: `hierarchy-plan-truncated`, `hierarchy-plan-incomplete` (a
+group is undecided), `hierarchy-nothing-executable`, and the analysis refusals of §7.1. Every
+instance of a configured group is one item, `jobRef` = its group's analysis id, plus two fields:
+`level` (its depth, the root is 0) and `parentInstanceId` (its nearest ancestor that is also an
+item — a skipped group in between is transparent). All of §7.1's rails apply unchanged (reason,
+ticket, re-auth once, protected auto-exclusion, per-item compare-and-set, `migrate-instance/v2`
+audit per item, pacing, circuit pause, Verify now); prod types the **executable count**.
+
+- **Order.** The runner dispatches one level at a time, deepest first, and starts a level only
+  after every item of the level below is settled. Inside a level the usual permit pool and stagger
+  apply.
+- **A child that did not reach its target blocks its parent.** Before an item is dispatched, every
+  item that names it as parent must have settled `ok`. Otherwise the parent settles `not_run` with
+  the cause: `blocked by child <engine>:<id> (<state>: <the child's own detail>)`. That covers a
+  `failed` child, an `unknown` child (never re-fired, never assumed applied), a `not_run` child
+  (so the block travels up the chain to the root), a `skipped_protected` child, and an instance the
+  analysis blocked — it is listed `not_run` at submit ("not sent — the analysis blocked this
+  instance: …") and never sent. Two `skipped` cases release the parent: the child is no longer
+  running (nothing is left to migrate), or a read of the child shows it already on its target
+  (someone else migrated it).
+- **Never the reverse.** A parent's outcome does not touch its children, which have already
+  settled. Siblings and sibling subtrees are independent.
+- **One audit correlation id.** The envelope row `bulk:migrate-instance` (payload:
+  `hierarchyPlanId`, roots, levels, per-group analysis and target, `circularReferences`) and every
+  item's row carry the submit request's correlation id.
+- **Resume.** "Continue as new job" keeps each item's level and parent. A parent can be continued
+  only together with its unresolved children, or once a read shows them on their target; otherwise
+  `hierarchy-child-unresolved` (409).
+
+Proven by `HierarchyMigrationIT` (rung 4, 6.8 + 7.1): the seeded 3-level tree
+`demoHierarchyRoot` → `demoHierarchyA` → `demoHierarchyB` migrates in one plan with the order
+shown by the audit timestamps and one correlation id; a suspended B leaves A and Root `not_run`
+with the named cause and on their old version, and the continuation finishes the tree in order;
+prod needs the typed count; a 60-child multi-instance level under a 10-row child read is reported
+and the plan refused.
+
+Not built yet: the plan builder UI (tree, per-definition target and mapping, submit). The
+operations drawer shows a hierarchy job's per-level progress.
+
 ### 7.0 Why batch was deferred (2026-07, historical)
 By-definition migration returns an async **`Batch`**; work drains via batch-part jobs and you poll
 `GET /management/batches/{id}` (+ parts). This breaks the single-call doctrine three ways: (a) the

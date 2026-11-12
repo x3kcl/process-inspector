@@ -670,7 +670,11 @@ count to a "≥N" lower bound under a truncated DLQ scan — see `CMMN-SCOPE-PHA
   **Cohort migration (#482) ✔ S2–S4 landed:** filtered cohort count, the stored per-instance
   analysis (#495), and execution as the bulk verb `migrate-instance` over completed analyses
   (#496 — per-instance migrate, digest CAS per item, engine `Batch` unused; the 50-cap synchronous
-  door is gone). S6 dual-canvas mapping editor ✔ (#498). Open: S5 hierarchy-aware plan, S7 CMMN cohort.
+  door is gone). **S5 backend ✔ (#497):** the stored hierarchy plan (bounded tree walk, circular
+  references reported, per-definition groups) and its execution as one children-first
+  `migrate-instance` job (a child that did not reach its target leaves its parent `not_run`), with
+  per-level progress in the operations drawer. S6 dual-canvas mapping editor ✔ (#498). Open: the
+  S5 plan builder UI, S7 CMMN cohort.
 - **Job-lane trend sparklines** on the Stage-0 landing (per-engine dead-letter / timer /
   executable / suspended counts over time) — descoped here from v1.x #4 because v1 exposes
   only _live_ job-lane counts; a trend needs the **R-BAU-08** snapshot/time-series store

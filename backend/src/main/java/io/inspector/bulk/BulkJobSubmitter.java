@@ -45,7 +45,8 @@ final class BulkJobSubmitter {
             BulkJob.ScopeKind scopeKind,
             String scopeLabel,
             Set<String> allowedVerbs,
-            String verbRefusalMessage) {
+            String verbRefusalMessage,
+            Map<String, HierarchyOrder.Placement> placements) {
 
         // Verb paths, not ActionVerb: migrate-instance is a bulk verb but never a single-target
         // ActionVerb (it has its own tier-3 door), so `verb` is null for it.
@@ -155,6 +156,16 @@ final class BulkJobSubmitter {
                         "protected instance (R-SAFE-05) — auto-excluded from bulk",
                         null,
                         host.clock.instant());
+            }
+            // Hierarchy job (#497): the item's place in the tree, and a blocker child listed unsent.
+            HierarchyOrder.Placement place = placements == null
+                    ? null
+                    : placements.get(HierarchyOrder.key(target.engineId(), target.instanceId()));
+            if (place != null) {
+                item.placeInHierarchy(place.level(), place.parentInstanceId());
+                if (place.notSentReason() != null && item.getState() == BulkJobItem.State.pending) {
+                    item.settle(BulkJobItem.State.not_run, place.notSentReason(), null, host.clock.instant());
+                }
             }
             itemRows.add(item);
         }
