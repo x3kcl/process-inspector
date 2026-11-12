@@ -142,3 +142,25 @@ export function useCaseDefinitionMigrate(
     },
   })
 }
+
+/** The single historic-case door (Flowable 7.x only): re-points one ENDED case's history. */
+export function useHistoricCaseMigrate(engineId: string, caseInstanceId: string) {
+  const queryClient = useQueryClient()
+  return useMutation<ActionResult, ActionError, CaseDefinitionMigrationRequest>({
+    retry: false,
+    mutationFn: async (body) => {
+      const { data, error, response } = await api.POST(
+        '/api/cases/{engineId}/{caseInstanceId}/migrate-historic',
+        { params: { path: { engineId, caseInstanceId } }, body },
+      )
+      if (data === undefined) throw new ActionError(parseActionProblem(response.status, error))
+      return data
+    },
+    onSettled: async () => {
+      await Promise.all([
+        queryClient.invalidateQueries({ queryKey: ['case', engineId, caseInstanceId] }),
+        queryClient.invalidateQueries({ queryKey: ['case-definition-versions', engineId] }),
+      ])
+    },
+  })
+}
