@@ -666,7 +666,7 @@ will dial, so runtime CRUD is an **SSRF surface** aimed by the credential-vault 
 - **Trust is earned, not asserted.** An added engine is born DRAFT + read-only, probed with
   **read-only** calls (version + capabilities — never a mutating call), and cannot be enabled
   read-write until a human confirms a good probe. On prod that flip is four-eyes (R-SAFE-08) +
-  typed token. Lifecycle: DRAFT → PROBED/PROBE_FAILED → ACTIVE → DISABLED → REMOVED.
+  typed token. Lifecycle: DRAFT → PROBED/PROBE_FAILED → ACTIVE → DISABLED → REMOVED. A re-probe ("Test connection") of an ACTIVE or DISABLED engine records its outcome but never moves the lifecycle (#609).
 - **The base-URL is validated resolve-then-pin** against a **deploy-config egress allowlist**
   (never editable in-app) with a loopback/link-local/private/metadata (`169.254.169.254`)
   denylist — closing DNS-rebinding, not just check-then-connect. Rejections name the rule and

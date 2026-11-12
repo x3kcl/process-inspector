@@ -24,6 +24,8 @@ import java.util.Optional;
 import java.util.Set;
 import org.junit.jupiter.api.BeforeEach;
 import org.junit.jupiter.api.Test;
+import org.junit.jupiter.params.ParameterizedTest;
+import org.junit.jupiter.params.provider.CsvSource;
 import org.springframework.context.ApplicationEventPublisher;
 import org.springframework.security.core.Authentication;
 import org.springframework.web.server.ResponseStatusException;
@@ -259,6 +261,22 @@ class EngineRegistryStoreWriteTest {
                         eq((Integer) null),
                         eq("probe-failed"),
                         eq(true));
+    }
+
+    @ParameterizedTest
+    @CsvSource({"active,true", "active,false", "disabled,true", "disabled,false"})
+    void record_probe_never_moves_an_enabled_or_disabled_engine_out_of_its_lifecycle(String lifecycle, boolean ok) {
+        // #609: "Test connection" on an ACTIVE engine used to demote it to probed and drop it
+        // from the fleet. The probe is read-only; only the onboarding ramp moves on it.
+        EngineRegistryRow row = rowWithLifecycle("e", lifecycle);
+        when(repo.findByIdAndRemovedAtIsNull("e")).thenReturn(Optional.of(row));
+        when(audit.beginPending(any(), any(), any(), any(), any(), any(), any(), any()))
+                .thenReturn(mock(AuditEntry.class));
+
+        store.recordProbe("e", ok, admin, null, ok ? null : "unreachable");
+
+        assertThat(row.getLifecycle()).isEqualTo(lifecycle);
+        assertThat(row.getLastProbeFailureClass()).isEqualTo(ok ? null : "unreachable");
     }
 
     /* ---------- four-eyes (R-SAFE-08, #91) ---------- */
