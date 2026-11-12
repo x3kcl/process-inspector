@@ -309,6 +309,15 @@ export function MigrateModal({ engineId, instanceId, vitals, engine, onClose }: 
             setExpertText(text)
             setDirty(true)
           }}
+          diagrams={
+            preview.fromDefinitionId !== undefined && targetDefinitionId !== undefined
+              ? {
+                  engineId,
+                  fromDefinitionId: preview.fromDefinitionId,
+                  toDefinitionId: targetDefinitionId,
+                }
+              : undefined
+          }
         />
 
         {warningFindings.length > 0 && (

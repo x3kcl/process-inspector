@@ -3,9 +3,23 @@
 // for the flagged activity → re-check → execute unlocks). Hermetic — every /api call is
 // fulfilled below; the invariant these protect is pre-check-first: the migrate/execute route
 // is NEVER hit, and the migrate button exists only after a CLEAN pre-check.
+import { readFileSync } from 'node:fs'
 import { expect, test } from '@playwright/test'
 import type { Page } from '@playwright/test'
 import { scanA11y } from './a11y'
+
+// The seeded v1→v2 fixture (reviewTask renamed approveTask) — the same files the migration
+// ITs deploy, served as the two definitions' XML for the dual-canvas editor (#498).
+const FIXTURE_XML = {
+  v1: readFileSync(
+    new URL('../../docker/processes/demo-migration-v1.bpmn20.xml', import.meta.url),
+    'utf8',
+  ),
+  v2: readFileSync(
+    new URL('../../docker/processes/demo-migration-v2.bpmn20.xml', import.meta.url),
+    'utf8',
+  ),
+}
 
 const CAPABLE_ENGINE = {
   id: 'eng1',
@@ -160,6 +174,9 @@ async function mockBff(page: Page, engine: object, executed: string[]): Promise<
         const body = route.request().postDataJSON() as { mappings?: unknown[] }
         const mapped = Array.isArray(body.mappings) && body.mappings.length > 0
         await route.fulfill({ json: mapped ? MAPPED_PREVIEW : FLAGGED_PREVIEW })
+      } else if (pathname.startsWith('/api/definitions/eng1/') && pathname.endsWith('/xml')) {
+        const current = decodeURIComponent(pathname).includes('orderFlow:3:abc')
+        await route.fulfill({ json: { xml: current ? FIXTURE_XML.v1 : FIXTURE_XML.v2 } })
       } else if (pathname === '/api/definitions/eng1/orderFlow/versions') {
         await route.fulfill({ json: VERSIONS })
       } else if (pathname.endsWith('/diagram')) {
@@ -245,5 +262,52 @@ test('migrate is pre-check-first: pick version, map the flagged activity, execut
   // Cancel out — the whole arc must leave the engine untouched.
   await check.getByRole('button', { name: 'Cancel', exact: true }).click()
   await expect(check).toHaveCount(0)
+  expect(executed).toEqual([])
+})
+
+test('mapping editor: click-to-map on the two diagrams feeds the pair list (#498)', async ({
+  page,
+}) => {
+  const executed: string[] = []
+  const previews: unknown[] = []
+  page.on('request', (request) => {
+    if (request.url().endsWith('/migrate/preview')) previews.push(request.postDataJSON())
+  })
+  await mockBff(page, CAPABLE_ENGINE, executed)
+  await page.goto('/inspect/eng1/inst-1')
+  await page.getByRole('button', { name: 'Migrate', exact: true }).click()
+  await page.getByRole('button', { name: 'Check mapping →' }).click()
+
+  const check = page.getByRole('dialog', { name: 'Migrate — check the mapping' })
+  await check.getByRole('button', { name: 'Diagrams' }).click()
+  const source = check.getByRole('region', { name: 'Source diagram (current version)' })
+  const target = check.getByRole('region', { name: 'Target diagram (new version)' })
+
+  // The pre-check blocker is overlaid on the source canvas with a glyph + label, not hue.
+  await expect(
+    source.getByRole('img', { name: 'pre-check blocker on this activity' }),
+  ).toBeVisible()
+
+  // data-element-id is diagram-js's own registry attribute — a stable click target.
+  await source.locator('[data-element-id="reviewTask"]').click()
+  await expect(check.getByRole('combobox', { name: 'pair source' })).toHaveValue('reviewTask')
+  await target.locator('[data-element-id="approveTask"]').click()
+  await expect(check.getByRole('combobox', { name: 'pair target' })).toHaveValue('approveTask')
+  await check.getByRole('button', { name: 'Add to map' }).click()
+
+  await expect(
+    check.getByRole('button', { name: 'Remove reviewTask to approveTask' }),
+  ).toBeVisible()
+  await expect(target.getByRole('img', { name: 'mapped' })).toBeVisible()
+  await scanA11y(page, 'migrate mapping editor, diagrams mode with one pair')
+
+  // The re-check proposes exactly the pair the canvases produced; the BFF rebuilds the
+  // wire document from it (the "exact engine request" block shows what it would dispatch).
+  await check.getByRole('button', { name: 'Re-check mapping' }).click()
+  await expect(check.getByRole('button', { name: 'Migrate order-4711 to v5' })).toBeVisible()
+  expect(previews.at(-1)).toMatchObject({
+    toDefinitionId: 'orderFlow:5:e5',
+    mappings: [{ fromActivityId: 'reviewTask', toActivityId: 'approveTask' }],
+  })
   expect(executed).toEqual([])
 })

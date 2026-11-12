@@ -2,6 +2,7 @@ import { useEffect, useRef, useState } from 'react'
 import NavigatedViewer from 'bpmn-js/lib/NavigatedViewer'
 import type Canvas from 'diagram-js/lib/core/Canvas'
 import type Overlays from 'diagram-js/lib/features/overlays/Overlays'
+import type { OverlayAttrs } from 'diagram-js/lib/features/overlays/Overlays'
 import 'bpmn-js/dist/assets/diagram-js.css'
 import 'bpmn-js/dist/assets/bpmn-js.css'
 import 'bpmn-js/dist/assets/bpmn-font/css/bpmn.css'
@@ -22,6 +23,14 @@ export interface DiagramMarkers {
   addedActivityIds?: string[]
   /** Version diff (#483): same id, different name, type, or sequence-flow endpoints. */
   changedActivityIds?: string[]
+  /**
+   * Migration mapping editor (#498): pre-check findings and mapped activities. Stroke style
+   * + glyph + label, never hue alone — blocker ✖ (dotted heavy), warning ! (long dash),
+   * mapped ↦ (badge only, so it stacks with a finding outline).
+   */
+  blockerActivityIds?: string[]
+  warningActivityIds?: string[]
+  mappedActivityIds?: string[]
 }
 
 interface Props {
@@ -280,6 +289,36 @@ function applyMarkers(viewer: NavigatedViewer, markers: DiagramMarkers) {
       })
     } catch {
       // best-effort decoration
+    }
+  }
+  const badges: [string[] | undefined, string, string, string, OverlayAttrs['position']][] = [
+    [
+      markers.blockerActivityIds,
+      'marker-finding-blocker',
+      '✖',
+      'pre-check blocker on this activity',
+      { top: -10, right: 10 },
+    ],
+    [
+      markers.warningActivityIds,
+      'marker-finding-warning',
+      '!',
+      'pre-check warning on this activity',
+      { top: -10, right: 10 },
+    ],
+    [markers.mappedActivityIds, 'marker-mapped', '↦', 'mapped', { bottom: -6, right: 10 }],
+  ]
+  for (const [ids, markerClass, glyph, label, position] of badges) {
+    for (const id of ids ?? []) {
+      try {
+        canvas.addMarker(id, markerClass)
+        overlays.add(id, `${markerClass}-${id}`, {
+          position,
+          html: `<span class="finding-glyph ${markerClass}-glyph" role="img" aria-label="${label}" title="${label}">${glyph}</span>`,
+        })
+      } catch {
+        // best-effort decoration
+      }
     }
   }
   for (const id of markers.siblingOnlyActivityIds ?? []) {

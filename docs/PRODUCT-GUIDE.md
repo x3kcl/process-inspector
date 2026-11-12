@@ -237,6 +237,12 @@ tab-aware (`?tab=timeline`) — paste the link into a ticket.
   version → "Check mapping →" runs the **Inspector pre-check** — honestly bannered "this is
   not a Flowable validation; the engine checks this only when you execute" (the REST API
   exposes no migration validator) → execute with reason (+ typed business key on prod).
+  Activities auto-map cannot solve are mapped in the **mapping editor**: **Table** (a target
+  select per flagged activity — the keyboard path), **Diagrams** (source version left, target
+  right: click a flagged activity, click its target, **Add to map**; ✖ / ! mark pre-check
+  blockers and warnings, ↦ what is mapped), or **Expert** JSON with Reset to generated. One
+  source may map to several targets and several sources to one target; many-to-many is
+  refused with the reason. The BFF rebuilds the engine document from your mapping.
   IRREVERSIBLE; a post-dispatch timeout is UNKNOWN + Verify-now, never auto-retried.
 - A **disabled** engine's detail still renders (read-only, "disabled, not removed" banner);
   only a genuinely unregistered engine says "Unknown engine".

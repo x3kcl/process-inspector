@@ -1,6 +1,6 @@
 // Mapping editor for MigrateModal (#498): table (source → target select), pair list,
-// and expert JSON. Keyboard uses the selects and buttons. No diagram canvas — a second
-// bpmn-js viewer is not mounted here.
+// and expert JSON. Keyboard uses the selects and buttons. With `diagrams` set, a Diagrams
+// mode adds the dual-canvas click-to-map (MappingCanvases) over the same pair list.
 import { useState } from 'react'
 import {
   addPair,
@@ -10,6 +10,9 @@ import {
   resetToGenerated,
 } from './mappingRules'
 import type { ActivityPair } from './mappingRules'
+import { MappingCanvases } from './MappingCanvases'
+import type { MappingDiagrams } from './MappingCanvases'
+import { tryAddPair } from './mappingCanvasModel'
 
 export interface MappingEndpoint {
   id: string
@@ -32,6 +35,8 @@ interface Props {
   onPairsChange: (pairs: ActivityPair[]) => void
   expertText: string | null
   onExpertTextChange: (text: string | null) => void
+  /** Source/target definitions for the Diagrams mode; absent = no Diagrams button. */
+  diagrams?: MappingDiagrams
 }
 
 function endpointLabel(endpoint: MappingEndpoint): string {
@@ -69,12 +74,16 @@ export function MappingEditor({
   onPairsChange,
   expertText,
   onExpertTextChange,
+  diagrams,
 }: Props) {
-  const [mode, setMode] = useState<'table' | 'expert'>(expertText !== null ? 'expert' : 'table')
-  const [pendingDiscard, setPendingDiscard] = useState<'reset' | 'table' | null>(null)
+  const [mode, setMode] = useState<'table' | 'diagram' | 'expert'>(
+    expertText !== null ? 'expert' : 'table',
+  )
+  const [pendingDiscard, setPendingDiscard] = useState<'reset' | 'table' | 'diagram' | null>(null)
   const [extras, setExtras] = useState<Record<string, number>>({})
   const [pairFrom, setPairFrom] = useState('')
   const [pairTo, setPairTo] = useState('')
+  const [refusal, setRefusal] = useState<string | null>(null)
 
   const generated = resetToGenerated(pairs)
   const shown = expertText ?? generated
@@ -102,18 +111,18 @@ export function MappingEditor({
     }
   }
 
-  const applyDiscard = (action: 'reset' | 'table') => {
+  const applyDiscard = (action: 'reset' | 'table' | 'diagram') => {
     if (expertText !== null) onExpertTextChange(null)
     setPendingDiscard(null)
-    if (action === 'table') setMode('table')
+    if (action !== 'reset') setMode(action)
   }
 
-  const requestDiscard = (action: 'reset' | 'table') => {
+  const requestDiscard = (action: 'reset' | 'table' | 'diagram') => {
     if (expertIsDirty(generated, shown)) {
       setPendingDiscard(action)
       return
     }
-    if (action === 'table') setMode('table')
+    if (action !== 'reset') setMode(action)
     else if (expertText !== null) onExpertTextChange(null)
   }
 
@@ -129,6 +138,19 @@ export function MappingEditor({
         >
           Table
         </button>{' '}
+        {diagrams !== undefined && (
+          <>
+            <button
+              type="button"
+              aria-pressed={mode === 'diagram'}
+              onClick={() => {
+                requestDiscard('diagram')
+              }}
+            >
+              Diagrams
+            </button>{' '}
+          </>
+        )}
         <button
           type="button"
           aria-pressed={mode === 'expert'}
@@ -212,7 +234,27 @@ export function MappingEditor({
         </table>
       )}
 
-      {mode === 'table' && (sources.length > 0 || pairs.length > 0) && (
+      {mode === 'diagram' && diagrams !== undefined && (
+        <MappingCanvases
+          {...diagrams}
+          sourceIds={sources.map((source) => source.id)}
+          targetIds={targets.map((target) => target.id)}
+          findings={findings}
+          pairs={pairs}
+          selectedFrom={pairFrom}
+          selectedTo={pairTo}
+          onSelectFrom={(id) => {
+            setPairFrom(id)
+            setRefusal(null)
+          }}
+          onSelectTo={(id) => {
+            setPairTo(id)
+            setRefusal(null)
+          }}
+        />
+      )}
+
+      {mode !== 'expert' && (sources.length > 0 || pairs.length > 0) && (
         <div className="modal-field">
           <span>Pair list</span>
           <ul>
@@ -270,13 +312,24 @@ export function MappingEditor({
                 type="button"
                 disabled={pairFrom === '' || pairTo === ''}
                 onClick={() => {
-                  onPairsChange(addPair(pairs, pairFrom, pairTo))
+                  const added = tryAddPair(pairs, pairFrom, pairTo)
+                  if (!added.ok) {
+                    setRefusal(added.reason)
+                    return
+                  }
+                  setRefusal(null)
+                  onPairsChange(added.pairs)
                   setPairFrom('')
                   setPairTo('')
                 }}
               >
                 Add to map
               </button>
+              {refusal !== null && (
+                <p className="strip-note" role="status">
+                  Not added: {refusal}
+                </p>
+              )}
             </>
           )}
         </div>
