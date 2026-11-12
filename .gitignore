@@ -13,3 +13,7 @@ playwright-report/
 
 # CI-only: the flap master clone the `flap` integration leg builds its harness engine from.
 .flap-src/
+
+# ci-lib: the gate library clone and the gate's own log and verdict
+.ci-lib/
+ci/gate-*

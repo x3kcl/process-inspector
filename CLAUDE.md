@@ -86,3 +86,12 @@ join logic (dockerized engine only — `engine-harness` skill).
   Before creating a PR, run `scripts/ci-runner.sh ensure` — it starts
   the slots if down and fails if a foreign (slot-less) runner is online; with no runner
   online every CI run just queues forever.
+- **Merge flow (ci-lib queue).** `ci.yml` is the ci-lib gate (`ci/manifest.env`, `ci/contract.sh`;
+  library pinned by `CI_LIB_TAG`). A pull request runs the light parts (`lint`, `unit`, `frontend`,
+  `e2e`); once the pull request head is green, label it `queue`. `merge-queue@process-inspector` (hp02,
+  one-minute timer) builds an `mq/**` batch, runs light AND heavy (`docker`, the `integration` legs) on it,
+  fast-forwards `main`, and GitHub shows the pull request as `Merged`. Do not press Merge and do not push
+  `main`: the heavy checks the ruleset requires report on the batch, not on the pull request. A red batch
+  unlabels the culprit with a comment. Reproduce a gate locally with `bash ci/contract.sh ci-light` (or
+  `CI_PART=docker bash ci/contract.sh ci-heavy`). Until the queue is activated (OPERATIONS §8) the
+  admin bypass in RUNBOOK §0 is the only way to land.

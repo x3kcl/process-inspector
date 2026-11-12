@@ -1,16 +1,27 @@
-# Merge gates (OPERATIONS §8): lint, unit ladder, frontend build, image build, and the
-# dockerized-engine integration matrix. Zero-flake doctrine: matrix legs gate on
-# docker/smoke-test.sh (bounded readiness probes) before Maven touches an engine.
+# Merge gates (OPERATIONS §8), run through ci-lib's gate: every job calls `gate.sh ci-light` or
+# `gate.sh ci-heavy` (ci/contract.sh holds what each target runs; ci/manifest.env is the contract).
+#   pull_request        the light parts: lint, unit, frontend, e2e
+#   push to mq/**       a merge-queue batch: the light parts AND the heavy ones (docker, integration)
+# There is no push trigger for main: the merge queue (merge-queue@process-inspector) fast-forwards main
+# to a batch that already passed all of it. Each part is its own job so the check names the main ruleset
+# requires keep their names and the parts run in parallel on the slots (CI_PART picks the part).
+# The library is fetched from Gitea at CI_LIB_TAG by .github/actions/ci-lib with the CI_LIB_TOKEN secret.
+# Zero-flake doctrine: integration legs gate on docker/smoke-test.sh (bounded readiness probes) before
+# Maven touches an engine.
 name: ci
 
 on:
-  push:
-    branches: [main]
   pull_request:
+  push:
+    branches: ['mq/**']
 
+# A batch is never cancelled: the queue reads its run.
 concurrency:
   group: ci-${{ github.ref }}
-  cancel-in-progress: ${{ github.ref != 'refs/heads/main' }}
+  cancel-in-progress: ${{ !startsWith(github.ref, 'refs/heads/mq/') }}
+
+env:
+  CI_LIB_TAG: v0.16
 
 jobs:
   lint:
@@ -23,19 +34,16 @@ jobs:
           distribution: temurin
           java-version: "21"
           cache: maven
-      - name: Spotless check
-        working-directory: backend
-        run: mvn -B spotless:check
-      - name: Security audit (env-ref secrets doctrine)
-        run: ./scripts/security-audit.sh
-      - name: Shell syntax check (deploy/CI scripts)
-        run: ./scripts/shell-syntax-check.sh
-      - name: Node pin (24 LTS)
-        run: ./scripts/check-node-pin.sh
-      - name: Prometheus alert rules
-        run: bash scripts/check-alert-rules.sh
-      - name: Orphan integration-test guard
-        run: bash scripts/check-orphan-its.sh
+      - uses: ./.github/actions/ci-lib
+        with:
+          tag: ${{ env.CI_LIB_TAG }}
+          token: ${{ secrets.CI_LIB_TOKEN }}
+      - name: ci-light (lint — spotless, security audit, shell syntax, node pin, alert rules, orphan ITs)
+        env:
+          CI_PART: lint
+          CI_GATE_HOST: ${{ runner.name }}
+          CI_EVENT: ${{ github.event_name }}
+        run: bash .ci-lib/gate/gate.sh ci-light
 
   unit:
     runs-on: self-hosted
@@ -47,9 +55,16 @@ jobs:
           distribution: temurin
           java-version: "21"
           cache: maven
-      - name: Unit ladder (rungs 1-3 + ArchUnit sleep ban)
-        working-directory: backend
-        run: mvn -B test
+      - uses: ./.github/actions/ci-lib
+        with:
+          tag: ${{ env.CI_LIB_TAG }}
+          token: ${{ secrets.CI_LIB_TOKEN }}
+      - name: ci-light (unit ladder, rungs 1-3 + ArchUnit sleep ban)
+        env:
+          CI_PART: unit
+          CI_GATE_HOST: ${{ runner.name }}
+          CI_EVENT: ${{ github.event_name }}
+        run: bash .ci-lib/gate/gate.sh ci-light
       - name: Upload JaCoCo report
         if: success()
         uses: actions/upload-artifact@v7
@@ -61,9 +76,6 @@ jobs:
   frontend:
     runs-on: self-hosted
     timeout-minutes: 20
-    defaults:
-      run:
-        working-directory: frontend
     services:
       # The OpenAPI drift gate boots the REAL BFF. Engines may be absent (health degrades,
       # boot succeeds — ARCH §2.2), but Postgres is a hard boot dependency (Flyway +
@@ -85,34 +97,31 @@ jobs:
           --health-retries 20
     steps:
       - uses: actions/checkout@v7
-      # Runner slots (docker/ci-runner/docker-compose.yml) carry a disjoint port block as
-      # container env so concurrent jobs never collide; slot-1 values are the fallback for
-      # a slot-less runner. scripts/free-port.sh double-checks the slot's own port is
-      # actually free on THIS host and falls back within the slot's own band otherwise
-      # (#163/#288 — a slot's fixed port can end up permanently squatted by something
-      # unrelated; this makes that self-healing instead of needing a manual reassignment).
-      - name: Resolve the slot port namespace
-        working-directory: .
-        run: echo "BFF_PORT=$(scripts/free-port.sh "${PI_BFF_PORT:-8086}")" >> "$GITHUB_ENV"
       - uses: actions/setup-node@v7
         with:
           node-version: "24"
           cache: npm
           cache-dependency-path: frontend/package-lock.json
-      - name: Install
-        run: npm ci
-      - name: Toolchain majors
-        run: node scripts/check-toolchain-majors.mjs
-      - name: AG Grid major
-        run: node scripts/check-ag-grid-major.mjs
-      - name: TypeScript decision
-        run: node scripts/check-typescript-decision.mjs
-      - name: Lint (ESLint strict-type-checked — hard failure, SPEC §10)
-        run: npm run lint
-      - name: Format check (Prettier — hard failure, SPEC §10)
-        run: npm run format:check
-      - name: Unit tests with coverage floors (vitest)
-        run: npm run test:coverage
+      - uses: actions/setup-java@v6
+        with:
+          distribution: temurin
+          java-version: "21"
+          cache: maven
+      - uses: ./.github/actions/ci-lib
+        with:
+          tag: ${{ env.CI_LIB_TAG }}
+          token: ${{ secrets.CI_LIB_TOKEN }}
+      # ci/contract.sh frontend: toolchain guards, ESLint, Prettier, Vitest with coverage floors,
+      # build (watermark + no-enterprise guards + tsc + vite), then the OpenAPI drift gate (R-SEM-15)
+      # on the BFF port the runner slot owns (PI_BFF_PORT, resolved by scripts/free-port.sh) and the
+      # service's Docker-assigned Postgres port below.
+      - name: ci-light (frontend)
+        env:
+          CI_PART: frontend
+          CI_GATE_HOST: ${{ runner.name }}
+          CI_EVENT: ${{ github.event_name }}
+          INSPECTOR_DB_URL: jdbc:postgresql://localhost:${{ job.services.postgres.ports['5432'] }}/inspector
+        run: bash .ci-lib/gate/gate.sh ci-light
       - name: Upload vitest coverage summary
         if: success()
         uses: actions/upload-artifact@v7
@@ -120,95 +129,32 @@ jobs:
           name: frontend-coverage
           path: frontend/coverage/coverage-summary.json
           retention-days: 14
-      - name: Build (watermark + no-enterprise guards + tsc + vite)
-        run: npm run build
-      # ---- OpenAPI drift gate (R-SEM-15): cross-language drift is a CI failure. ----
-      - uses: actions/setup-java@v6
-        with:
-          distribution: temurin
-          java-version: "21"
-          cache: maven
-      - name: Build BFF jar (tests belong to the unit/integration jobs)
-        working-directory: backend
-        run: mvn -B -DskipTests package
-      - name: Boot BFF in the background (no engines — degraded health is expected)
-        working-directory: backend
-        env:
-          # password-refs must resolve; the engines they authenticate against are absent.
-          ENGINE_A_PASSWORD: unused-in-ci
-          ENGINE_B_PASSWORD: unused-in-ci
-          # Slot remap: the BFF on the runner slot's PI_BFF_PORT (dev default is 8085) and
-          # its DB on the service's Docker-assigned host port, so concurrent dev stacks AND
-          # concurrent CI jobs on other slots all coexist.
-          SERVER_PORT: ${{ env.BFF_PORT }}
-          INSPECTOR_DB_URL: jdbc:postgresql://localhost:${{ job.services.postgres.ports['5432'] }}/inspector
-        run: |
-          JAR=$(ls target/*.jar | head -1)
-          nohup java -jar "$JAR" > /tmp/bff.log 2>&1 &
-          echo $! > /tmp/bff.pid
-      - name: Wait for /v3/api-docs (bounded)
-        run: |
-          for _ in $(seq 1 90); do
-            curl -fsS "http://localhost:${BFF_PORT}/v3/api-docs" > /dev/null && exit 0
-            sleep 2
-          done
-          echo "::error::BFF did not serve /v3/api-docs within 180s"
-          tail -200 /tmp/bff.log
-          exit 1
-      - name: Regenerate the API contract from the running BFF
-        env:
-          INSPECTOR_BFF_URL: http://localhost:${{ env.BFF_PORT }}
-        run: npm run gen:api
-      - name: Drift gate — committed schema must match the live contract
-        run: |
-          git diff --exit-code -- src/api/schema.d.ts || {
-            echo "::error::frontend/src/api/schema.d.ts is stale — run the BFF, 'npm run gen:api', and commit the regenerated schema (never hand-edit it)."
-            exit 1
-          }
-      - name: Dump BFF log
-        if: failure()
-        run: tail -200 /tmp/bff.log || true
-      - name: Reap the background BFF
-        # Defensive hygiene: the EPHEMERAL runner container is torn down and recreated per
-        # job (docker/ci-runner: EPHEMERAL=true + restart:unless-stopped), so a leaked BFF
-        # already cannot survive into the next run — this reaps it within-job regardless of
-        # how the job exited, keeping the host :8086 free the moment the frontend job ends.
-        if: always()
-        run: kill "$(cat /tmp/bff.pid 2>/dev/null)" 2>/dev/null || true
 
   # Playwright + axe (#85, TEST-STRATEGY §1 R4: "axe accessibility checks hard-fail"). The
   # ~17 e2e/*.spec.ts specs are hermetic BY CONSTRUCTION (every /api call is page.route-
-  # fulfilled — see the header comment in any spec) — no BFF, engine, or Postgres needed,
-  # just the plain Vite dev server. Chromium + its OS deps are baked into the CI runner
-  # image (docker/ci-runner/Dockerfile) rather than installed per-job: the runner container
-  # is ephemeral and only /opt/hostedtoolcache survives a restart, so a per-job
-  # `playwright install --with-deps` would re-download the ~200MB browser AND re-run
-  # apt-get for its libs on every single run.
+  # fulfilled) — no BFF, engine, or Postgres needed, just the plain Vite dev server. Chromium
+  # + its OS deps are baked into the CI runner image (docker/ci-runner/Dockerfile).
   e2e:
     runs-on: self-hosted
     timeout-minutes: 15
-    defaults:
-      run:
-        working-directory: frontend
     steps:
       - uses: actions/checkout@v7
-      # Runner slots share the HOST network (network_mode: host) — each slot's Vite dev
-      # server must bind a disjoint port or two concurrent e2e jobs (different PRs, same
-      # instant) collide; slot-1's value is the fallback for a slot-less runner.
-      # scripts/free-port.sh confirms the slot's port is actually free on this host and
-      # falls back within the slot's own band otherwise (see the frontend job's step).
-      - name: Resolve the slot port namespace
-        working-directory: .
-        run: echo "PI_E2E_PORT=$(scripts/free-port.sh "${PI_E2E_PORT:-4173}")" >> "$GITHUB_ENV"
       - uses: actions/setup-node@v7
         with:
           node-version: "24"
           cache: npm
           cache-dependency-path: frontend/package-lock.json
-      - name: Install
-        run: npm ci
-      - name: Playwright + axe (browser baked into the runner image, not installed here)
-        run: npm run e2e
+      - uses: ./.github/actions/ci-lib
+        with:
+          tag: ${{ env.CI_LIB_TAG }}
+          token: ${{ secrets.CI_LIB_TOKEN }}
+      # The slot's Vite port (PI_E2E_PORT) is resolved inside ci/contract.sh e2e.
+      - name: ci-light (e2e)
+        env:
+          CI_PART: e2e
+          CI_GATE_HOST: ${{ runner.name }}
+          CI_EVENT: ${{ github.event_name }}
+        run: bash .ci-lib/gate/gate.sh ci-light
       - name: Upload the HTML report and traces on failure
         if: failure()
         uses: actions/upload-artifact@v7
@@ -219,50 +165,38 @@ jobs:
             frontend/test-results/
           retention-days: 7
 
+  # ---- the heavy parts: a merge-queue batch only ----------------------------------------------
   docker:
+    if: "${{ github.event_name == 'push' && startsWith(github.ref, 'refs/heads/mq/') }}"
     runs-on: self-hosted
     timeout-minutes: 20
     steps:
       - uses: actions/checkout@v7
-      - uses: docker/setup-buildx-action@v4
-      - name: Build BFF image (multi-stage, not pushed)
-        uses: docker/build-push-action@v7
+      - uses: ./.github/actions/ci-lib
         with:
-          context: .
-          push: false
-          cache-from: type=gha
-          # mode=max exported ALL build-stage layers (maven-deps/npm) and GitHub's cache
-          # service uploading them has timed out this job 3x today (once on #337, twice on
-          # #339 head 44ba1ec, run 30211616618 — a single layer write took 630s then the next
-          # hung to the 20m ceiling) despite the image build itself finishing in ~2.5min.
-          # mode=min only exports final-stage layers (small, fast); ignore-error=true means a
-          # slow/broken cache service can never fail an otherwise-green build.
-          cache-to: type=gha,mode=min,ignore-error=true
-      # The web image is a shipping artifact too, and until #412 NOTHING in the merge gate
-      # built it — a PR could break frontend/Dockerfile and merge green, with the breakage
-      # surfacing a day later in the nightly or (worse) at publish-edge time on `main`. The
-      # asymmetry was never a decision, just how the job grew.
-      # Build only, deliberately no Trivy scan: a vulnerability scan in the MERGE gate goes
-      # red the moment upstream publishes a CVE overnight, reddening every open PR for
-      # reasons that have nothing to do with the PR. That is exactly why the BFF image's
-      # scan lives in nightly.yml and not here. Split: build here (does it still build?),
-      # scan nightly (is it still clean?).
-      - name: Build web image (multi-stage, not pushed)
-        uses: docker/build-push-action@v7
-        with:
-          context: frontend
-          push: false
-          cache-from: type=gha
-          # Same mode=min + ignore-error rationale as the BFF step above.
-          cache-to: type=gha,mode=min,ignore-error=true
+          tag: ${{ env.CI_LIB_TAG }}
+          token: ${{ secrets.CI_LIB_TOKEN }}
+      # ci/contract.sh docker: the BFF image and the web image (#412), built and not pushed. Build only,
+      # deliberately no Trivy scan (a new CVE must not redden every open PR; the scan is nightly.yml's).
+      # Plain `docker build` on the slot's daemon: the type=gha layer cache of the old job is gone with
+      # docker/build-push-action (its export timed out this job three times, #337/#339).
+      - name: ci-heavy (docker)
+        env:
+          CI_PART: docker
+          CI_GATE_HOST: ${{ runner.name }}
+          CI_EVENT: ${{ github.event_name }}
+        run: bash .ci-lib/gate/gate.sh ci-heavy
 
   integration:
+    if: "${{ github.event_name == 'push' && startsWith(github.ref, 'refs/heads/mq/') }}"
     runs-on: self-hosted
     timeout-minutes: 20
     strategy:
       fail-fast: false
       matrix:
         include:
+          # Keep the three keys and their order: they spell the job name the ruleset requires. The same
+          # table is IT_LEGS in ci/contract.sh (what `contract.sh ci-heavy` runs with no CI_PART).
           # composeProfiles is explicit on every leg: most are "${profile},postgres", but the
           # dual-major findings leg boots two engine profiles at once (#362). "profile" is the
           # smoke-test.sh / CI_PROJECT alias and may differ from the compose profile set.
@@ -272,8 +206,8 @@ jobs:
           - profile: flowable-7
             composeProfiles: "flowable-7,postgres"
             itClass: EngineHealth7IT,Search7IT,Triage7IT,ExternalWorkerJob7IT,Kway7IT
-          # 7.2 and 8.0 (#459) run the SAME *7IT classes. The resolve step points
-          # PI_ENGINE_7_PORT at this leg's engine so those classes are not forked.
+          # 7.2 and 8.0 (#459) run the SAME *7IT classes. The contract points PI_ENGINE_7_PORT at
+          # this leg's engine so those classes are not forked.
           # EngineVersionCanaryIT rejects a leg that is still talking to 7.1.0.
           - profile: flowable-72
             composeProfiles: "flowable-72,postgres"
@@ -302,95 +236,21 @@ jobs:
             composeProfiles: "flowable-6,flowable-7,postgres"
             itClass: MigrationFindingsIT
     env:
-      # Job-level so EVERY compose invocation (up/exec/logs) sees the same profile set —
-      # CLI --profile flags would scope only the command they're passed to, leaving
-      # logs/exec on the docker/.env default.
-      COMPOSE_PROFILES: ${{ matrix.composeProfiles }}
+      # Dependabot PRs (#445) run on the slot runners, but that actor's token is read-only and
+      # cannot pull the private flap image: that leg's registry steps and the contract's leg skip.
+      SKIP_LEG: ${{ (matrix.profile == 'flap' && github.actor == 'dependabot[bot]') && '1' || '' }}
     steps:
       - uses: actions/checkout@v7
-      # Dependabot PRs (#445) run on the slot runners, but that actor's token is
-      # read-only and cannot pull the private flap image. Job-level `if` cannot
-      # see `matrix` (actionlint / the context-availability table), so the leg
-      # sets SKIP_LEG and the harness steps no-op. Other profiles still run.
-      - name: Skip flap leg for Dependabot
-        if: matrix.profile == 'flap' && github.actor == 'dependabot[bot]'
-        run: echo "SKIP_LEG=1" >> "$GITHUB_ENV"
-      # Self-hosted runners share hp04's Docker daemon with a live demo + interactive dev
-      # stacks, so every published port is remapped off the dev defaults — and each runner
-      # SLOT (docker/ci-runner/docker-compose.yml) carries its own disjoint remap block as
-      # container env so concurrent jobs on different slots never collide either. The
-      # compose file, smoke-test.sh, seed.sh and the IT base-urls all read PI_*_PORT from
-      # the process environment; slot-1 values are the fallback for a slot-less runner.
-      # scripts/free-port.sh double-checks each port is actually free on THIS host and
-      # falls back within the slot's own band otherwise (#163/#288 — a slot's fixed port
-      # can end up permanently squatted by something unrelated; this makes that
-      # self-healing instead of needing a manual reassignment). Windows stay well inside
-      # the ~100-port gap to the next slot's band, and each engine port is resolved
-      # avoiding the ones already picked for its own siblings so two of A/B/7/72/80/legacy can
-      # never collide with each other. flowable-72/80 republish that port as PI_ENGINE_7_PORT.
-      # CI_PROJECT: distinct per-slot compose project (never the dev "process-inspector")
-      # so container names can't clash and teardown only removes THIS job's containers.
-      - name: Resolve the slot port namespace
-        if: env.SKIP_LEG != '1'
-        run: |
-          {
-            a=$(scripts/free-port.sh "${PI_ENGINE_A_PORT:-8691}" 20)
-            b=$(scripts/free-port.sh "${PI_ENGINE_B_PORT:-8692}" 20 "$a")
-            seven=$(scripts/free-port.sh "${PI_ENGINE_7_PORT:-8693}" 20 "$a" "$b")
-            legacy=$(scripts/free-port.sh "${PI_ENGINE_LEGACY_PORT:-8694}" 20 "$a" "$b" "$seven")
-            # Flap has no cross-slot-safe hardcoded default: the old `:-8695` WAS s1's
-            # preferred port, so a stale runner missing PI_ENGINE_FLAP_PORT silently
-            # collided with s1 (PR #364). Derive from the resolved A port (+4 = same
-            # slot band) when the env is absent; recreate the slot to pick up the env.
-            if [ -z "${PI_ENGINE_FLAP_PORT:-}" ]; then
-              echo "WARNING: PI_ENGINE_FLAP_PORT unset — deriving $((a + 4)) from A-port band; recreate the runner slot" >&2
-              flap_pref=$((a + 4))
-            else
-              flap_pref="$PI_ENGINE_FLAP_PORT"
-            fi
-            flap=$(scripts/free-port.sh "$flap_pref" 20 "$a" "$b" "$seven" "$legacy")
-            # Same unset-derivation as flap (#364): a hardcoded s1 port would collide
-            # across slots until every runner is recreated with PI_ENGINE_72/80_PORT.
-            # +5/+6 sit in the same band as flap's +4 (s1: 8696/8697, s2: 8196/8197).
-            if [ -z "${PI_ENGINE_72_PORT:-}" ]; then
-              echo "WARNING: PI_ENGINE_72_PORT unset — deriving $((a + 5)) from A-port band; recreate the runner slot" >&2
-              p72_pref=$((a + 5))
-            else
-              p72_pref="$PI_ENGINE_72_PORT"
-            fi
-            if [ -z "${PI_ENGINE_80_PORT:-}" ]; then
-              echo "WARNING: PI_ENGINE_80_PORT unset — deriving $((a + 6)) from A-port band; recreate the runner slot" >&2
-              p80_pref=$((a + 6))
-            else
-              p80_pref="$PI_ENGINE_80_PORT"
-            fi
-            e72=$(scripts/free-port.sh "$p72_pref" 20 "$a" "$b" "$seven" "$legacy" "$flap")
-            e80=$(scripts/free-port.sh "$p80_pref" 20 "$a" "$b" "$seven" "$legacy" "$flap" "$e72")
-            pg=$(scripts/free-port.sh "${PI_PG_PORT:-5435}" 5)
-            # *7IT and application-it7*.yml read PI_ENGINE_7_PORT. On the 7.2/8.0 legs
-            # that port is this leg's engine, not the 7.1 container (which is not up).
-            case "${{ matrix.profile }}" in
-              flowable-72) it_seven=$e72 ;;
-              flowable-80) it_seven=$e80 ;;
-              *) it_seven=$seven ;;
-            esac
-            echo "PI_ENGINE_A_PORT=$a"
-            echo "PI_ENGINE_B_PORT=$b"
-            echo "PI_ENGINE_7_PORT=$it_seven"
-            echo "PI_ENGINE_72_PORT=$e72"
-            echo "PI_ENGINE_80_PORT=$e80"
-            echo "PI_ENGINE_LEGACY_PORT=$legacy"
-            echo "PI_ENGINE_FLAP_PORT=$flap"
-            echo "PI_PG_PORT=$pg"
-            echo "INSPECTOR_DB_URL=jdbc:postgresql://localhost:${pg}/inspector"
-            echo "CI_PROJECT=pi-ci-s${PI_CI_SLOT:-1}-${{ matrix.profile }}"
-          } >> "$GITHUB_ENV"
       - uses: actions/setup-java@v6
         if: env.SKIP_LEG != '1'
         with:
           distribution: temurin
           java-version: "21"
           cache: maven
+      - uses: ./.github/actions/ci-lib
+        with:
+          tag: ${{ env.CI_LIB_TAG }}
+          token: ${{ secrets.CI_LIB_TOKEN }}
       # Mitigates Docker Hub 429s on shared runner NAT pools; skips cleanly when the
       # secrets are absent (forks, or before they're configured).
       - name: Docker Hub login (rate-limit mitigation)
@@ -403,55 +263,29 @@ jobs:
       # ghcr, for the flap leg's engine. The package is private and grants THIS REPO Actions
       # read access, so the run's own GITHUB_TOKEN suffices — no long-lived PAT in a secret.
       - name: Registry login (ghcr — the flap harness image)
-        if: matrix.profile == 'flap' && github.actor != 'dependabot[bot]'
+        if: matrix.profile == 'flap' && env.SKIP_LEG != '1'
         uses: docker/login-action@v4
         with:
           registry: ghcr.io
           username: ${{ github.actor }}
           password: ${{ secrets.GITHUB_TOKEN }}
       # Pull EVERY run. A self-hosted runner caches images for weeks — that cache once hid a
-      # missing registry permission entirely (the leg "passed" its pull without contacting
-      # ghcr), and it would equally hide a months-old flap. Print what is actually under test.
+      # missing registry permission entirely, and it would equally hide a months-old flap.
       - name: Pull the flap engine (flap republishes :latest on every push to master)
-        if: matrix.profile == 'flap' && github.actor != 'dependabot[bot]'
+        if: matrix.profile == 'flap' && env.SKIP_LEG != '1'
         run: |
           docker pull ghcr.io/x3kcl/flap:latest
           docker image inspect ghcr.io/x3kcl/flap:latest \
             --format 'flap engine under test: {{index .RepoDigests 0}} built {{.Created}}'
-      # Persistent runner: a prior interrupted run may have left CI's own containers behind.
-      # Scoped to $CI_PROJECT — never touches the dev/demo projects.
-      - name: Pre-clean CI harness residue
-        if: env.SKIP_LEG != '1'
-        run: docker compose -p "$CI_PROJECT" -f docker/docker-compose.dev.yml down -v --remove-orphans || true
-      - name: Boot harness (${{ matrix.profile }} + postgres)
-        if: env.SKIP_LEG != '1'
-        run: docker compose -p "$CI_PROJECT" -f docker/docker-compose.dev.yml up -d
-      - name: Wait for engines and postgres (bounded)
-        if: env.SKIP_LEG != '1'
-        run: bash docker/smoke-test.sh ${{ matrix.profile }}
-      # --profile scopes seed to THIS leg's engines. Auto-discover would also hit any
-      # other slot's reachable engines on the shared host (seen when a stale runner
-      # lacked PI_ENGINE_FLAP_PORT and free-port fell back to s1's 8695 — PR #364).
-      - name: Seed demo processes (REST-only, idempotent)
-        if: env.SKIP_LEG != '1'
-        run: bash docker/seed.sh --profile ${{ matrix.profile }}
-      # Rootless-DinD slots keep the job daemon's socket at /run/user/<uid>/docker.sock,
-      # not /var/run/docker.sock — Testcontainers' Ryuk mounts the latter, gets an empty
-      # directory, and dies before it can be inspected (404). Self-detecting and a no-op on
-      # host-socket slots; see the script header for the measurement.
-      - name: Point Testcontainers' Ryuk at the real socket on rootless slots
-        if: env.SKIP_LEG != '1'
-        run: bash scripts/ci-testcontainers-socket.sh >> "$GITHUB_ENV"
-      - name: Integration tests (failsafe, ${{ matrix.itClass }})
-        if: env.SKIP_LEG != '1'
-        working-directory: backend
-        run: mvn -B verify -Dit.test=${{ matrix.itClass }} -Dskip.surefire.tests=true
-      - name: Dump harness logs
-        if: failure() && env.SKIP_LEG != '1'
-        run: docker compose -p "$CI_PROJECT" -f docker/docker-compose.dev.yml logs --no-color --timestamps
-      # Always tear down CI's own project so the persistent runner leaves no residue and
-      # frees the remapped ports for the next leg. Never touches dev/demo (different project).
-      - name: Tear down CI harness
-        if: always() && env.SKIP_LEG != '1'
-        run: docker compose -p "$CI_PROJECT" -f docker/docker-compose.dev.yml down -v --remove-orphans || true
-
+      # ci/contract.sh integration: resolve the slot's port block (scripts/free-port.sh), pre-clean
+      # this leg's own compose project, boot the harness, docker/smoke-test.sh, docker/seed.sh,
+      # point Testcontainers' Ryuk at the real socket on rootless slots, failsafe, always tear down.
+      - name: ci-heavy (integration, ${{ matrix.itClass }})
+        env:
+          CI_PART: integration
+          CI_IT_PROFILE: ${{ matrix.profile }}
+          CI_IT_COMPOSE_PROFILES: ${{ matrix.composeProfiles }}
+          CI_IT_CLASS: ${{ matrix.itClass }}
+          CI_GATE_HOST: ${{ runner.name }}
+          CI_EVENT: ${{ github.event_name }}
+        run: bash .ci-lib/gate/gate.sh ci-heavy
