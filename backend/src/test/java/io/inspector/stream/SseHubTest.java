@@ -64,8 +64,33 @@ class SseHubTest {
 
         await().atMost(Duration.ofSeconds(2))
                 .untilAsserted(() -> assertThat(hub.subscriberCount()).isEqualTo(1));
-        // OPERATIONS.md §2 (issue #96): the dropped write increments sse_emitter_errors_total.
+        // Issue #624: a broken pipe is the client going away — one disconnect, not an error.
+        assertThat(hub.metrics.counter("sse_emitter_disconnects_total").count()).isEqualTo(1.0);
+        assertThat(hub.metrics.counter("sse_emitter_errors_total").count()).isZero();
+    }
+
+    /** Issue #624: a write that fails for any reason other than a gone client is still an error. */
+    @Test
+    void nonDisconnectSendFailureCountsAsAnError() {
+        SeamHub hub = new SeamHub();
+        hub.nextFailsWith = new IllegalStateException("serialization failed");
+        hub.subscribe("viewer");
+
+        hub.heartbeat();
+
+        await().atMost(Duration.ofSeconds(2))
+                .untilAsserted(() -> assertThat(hub.subscriberCount()).isZero());
         assertThat(hub.metrics.counter("sse_emitter_errors_total").count()).isEqualTo(1.0);
+        assertThat(hub.metrics.counter("sse_emitter_disconnects_total").count()).isZero();
+    }
+
+    @Test
+    void clientDisconnectIsAnIoExceptionAnywhereInTheCauseChain() {
+        assertThat(SseHub.isClientDisconnect(new IOException("Broken pipe"))).isTrue();
+        assertThat(SseHub.isClientDisconnect(new IllegalStateException("send failed", new IOException("reset"))))
+                .isTrue();
+        assertThat(SseHub.isClientDisconnect(new IllegalStateException("serialization failed")))
+                .isFalse();
     }
 
     @Test
@@ -192,6 +217,7 @@ class SseHubTest {
     private static final class SeamHub extends SseHub {
         final SimpleMeterRegistry metrics;
         boolean nextIsBroken;
+        RuntimeException nextFailsWith;
         SlowSend nextSlowSend;
         AtomicInteger nextCountsInto;
 
@@ -212,6 +238,16 @@ class SseHubTest {
                     @Override
                     public void send(SseEventBuilder builder) throws IOException {
                         throw new IOException("broken pipe");
+                    }
+                };
+            }
+            RuntimeException failure = nextFailsWith;
+            if (failure != null) {
+                nextFailsWith = null;
+                return new SseEmitter(60_000L) {
+                    @Override
+                    public void send(SseEventBuilder builder) {
+                        throw failure;
                     }
                 };
             }

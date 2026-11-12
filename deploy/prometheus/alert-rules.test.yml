@@ -1,4 +1,5 @@
-# promtool test rules (#472). Covers one existing rule and the new engine-unreachable rule.
+# promtool test rules (#472). Covers one existing rule and the new engine-unreachable rule;
+# #624 adds the SSE pair (disconnects alone never fire SseEmitterErrorsSpiking).
 rule_files:
   - alert-rules.yml
 
@@ -77,3 +78,29 @@ tests:
             exp_annotations:
               summary: "The audit retention purge aborted or was refused"
               runbook: "RUNBOOK.md §7"
+
+  # #624: forty tab closes in five minutes are disconnects, not emitter errors — no alert.
+  - interval: 1m
+    input_series:
+      - series: 'sse_emitter_disconnects_total'
+        values: '0+8x6'
+      - series: 'sse_emitter_errors_total'
+        values: '0+0x6'
+    alert_rule_test:
+      - eval_time: 5m
+        alertname: SseEmitterErrorsSpiking
+        exp_alerts: []
+
+  - interval: 1m
+    input_series:
+      - series: 'sse_emitter_errors_total'
+        values: '0+2x6'
+    alert_rule_test:
+      - eval_time: 5m
+        alertname: SseEmitterErrorsSpiking
+        exp_alerts:
+          - exp_annotations:
+              summary: "SSE emitter errors spiking — clients are degrading to polling"
+              runbook: "RUNBOOK.md §7 — a send failure other than a client disconnect; not user-facing-critical"
+            exp_labels:
+              severity: warning

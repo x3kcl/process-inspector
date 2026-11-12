@@ -78,13 +78,15 @@ groups:
           summary: "Every engine circuit breaker is open"
           runbook: "RUNBOOK.md §2c — BFF egress, not the engines"
 
+      # Counts only send failures that are NOT a client going away (#624): tab closes, navigation
+      # and BFF restarts land in sse_emitter_disconnects_total, which no rule alerts on.
       - alert: SseEmitterErrorsSpiking
         expr: increase(sse_emitter_errors_total[5m]) > 5
         labels:
           severity: warning
         annotations:
           summary: "SSE emitter errors spiking — clients are degrading to polling"
-          runbook: "RUNBOOK.md §7 — usually a reverse-proxy buffering misconfig after a deploy; not user-facing-critical"
+          runbook: "RUNBOOK.md §7 — a send failure other than a client disconnect; not user-facing-critical"
 
       # One engine, not the whole fleet (#472). AllCircuitBreakersOpen stays the egress alarm.
       - alert: EngineUnreachable
