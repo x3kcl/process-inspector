@@ -134,41 +134,32 @@ public class MigrationService {
     }
 
     /**
-     * Cohort item (#482 S4). The cohort door already checked the prod typed <em>count</em>.
-     * Per-item business-key tokens would make a cohort unusable. Every other rail stays.
+     * Bulk item (#496): skips re-auth and the business-key token, which the bulk submit
+     * discharged once (typed COUNT on prod). Every other rail, CAS included, runs per item.
      */
-    public ActionResult executeFromCohort(
+    public ActionResult executeBulkItem(
             String engineId, String instanceId, MigrationRequest request, Authentication auth) {
         return execute(engineId, instanceId, request, auth, false);
     }
 
     private ActionResult execute(
-            String engineId, String instanceId, MigrationRequest request, Authentication auth, boolean confirmToken) {
+            String engineId, String instanceId, MigrationRequest request, Authentication auth, boolean interactive) {
         MigrationPlan plan = plan(engineId, instanceId, request, auth);
         EngineConfig engine = plan.engine();
 
-        // Dangerous-set freshness (IDP-SECURITY.md §5, R-SAFE-07 / issue #295): migrate is tier-3
-        // (SPEC §5) but MIGRATE is not (and can never be) an ActionVerb, so
-        // CorrectiveActionService's `verb.tier() >= 3` branch never covers it — this call is the
-        // fix for that gap. Placed here, right after plan() resolves engine/role/writability (and
-        // re-reads the server-fresh state preview() and execute() share), but BEFORE
-        // assertNotMovedSincePreview/reason/confirm-token, so a stale operator re-authenticates at
-        // verb intent — never after typing the confirm token (⚠️ support-lead; same ordering as
-        // CorrectiveActionService.execute() and AdminAccessController's mapping writes).
-        // Deliberately NOT inside plan(): plan() is shared with preview() (read-only, never
-        // gated — gating it would fight the /api/me hint protocol), so the freshness check can
-        // only live in this execute()-only branch, after plan()'s shared reads have already run.
-        reauth.enforce(auth);
+        // Dangerous-set freshness (IDP-SECURITY.md §5, R-SAFE-07 / #295): migrate is not an
+        // ActionVerb, so this is its tier-3 gate — after plan(), before the confirm token (never
+        // inside plan(), which preview() shares). A bulk item skips it: the submit ran it once.
+        if (interactive) {
+            reauth.enforce(auth);
+        }
 
         assertNotMovedSincePreview(plan, request);
-        // #172: dual-scope, unlike the other two callers of ProtectionGuard — plan() has already
-        // resolved fromKey for the diff/mapping machinery, so checking definition-scope protection
-        // costs nothing extra here (no additional engine round-trip, unlike CorrectiveActionService's
-        // instance-kind verbs or FlowSurgeryService's two callers).
+        // #172: dual-scope — plan() already resolved fromKey, so definition protection is free here.
         protectionGuard.requireUnprotectedOrAdmin(auth, engine.id(), instanceId, plan.fromKey(), MIGRATE_ACTION);
         String reason = requireReason(request.reason());
         String ticketId = ticketPolicy.validate(request.ticketId(), engine.environment());
-        if (confirmToken) {
+        if (interactive) {
             requireConfirmToken(engine, plan, request.confirmToken());
         }
         requireExecutable(plan);
@@ -214,6 +205,15 @@ public class MigrationService {
         int fromVersion = definitionVersionOf(fromDefinitionId);
         String fromTenant = asString(instance.get("tenantId"));
         String businessKey = asString(instance.get("businessKey"));
+        // §5 CAS, definition half, before target resolution (else a moved one reads same-version-target).
+        String expectedFrom = blankToNull(request.expectedFromDefinitionId());
+        if (expectedFrom != null && !expectedFrom.equals(fromDefinitionId)) {
+            throw new GuardRefusedException(
+                    HttpStatus.CONFLICT,
+                    "instance-moved-since-preview",
+                    "Instance " + instanceId + " is now on definition " + fromDefinitionId + ", not the " + expectedFrom
+                            + " you previewed — re-preview and approve the current state. Nothing happened.");
+        }
 
         ResolvedTarget target = resolveTarget(engine, request, fromKey, fromVersion, fromTenant);
         List<MigrationMapping> overrides = validatedOverrides(request.mappingsOrEmpty());
@@ -233,7 +233,7 @@ public class MigrationService {
                     .toList();
             childCount = callActivityChildCount(engine, instanceId);
         } catch (CallNotPermittedException | BulkheadFullException | ResourceAccessException e) {
-            throw engineUnreachablePreFlight(engine);
+            throw preFlightRefusal(engine, e);
         }
 
         return new MigrationPlan(
@@ -270,14 +270,7 @@ public class MigrationService {
                             + " (the compare-and-set that proves the instance hasn't moved). Preview first. Nothing"
                             + " happened.");
         }
-        if (!request.expectedFromDefinitionId().equals(plan.fromDefinitionId())) {
-            throw new GuardRefusedException(
-                    HttpStatus.CONFLICT,
-                    "instance-moved-since-preview",
-                    "Instance " + plan.instanceId() + " is now on definition " + plan.fromDefinitionId()
-                            + ", not the " + request.expectedFromDefinitionId() + " you previewed — re-preview and"
-                            + " approve the current state. Nothing happened.");
-        }
+        // The definition half already ran in plan(), before target resolution.
         if (!request.expectedActivityStateDigest().equals(plan.activityStateDigest())) {
             throw new GuardRefusedException(
                     HttpStatus.CONFLICT,
@@ -364,7 +357,7 @@ public class MigrationService {
                 targetDef = firstOrNull(client.latestProcessDefinitionByKey(engine, CallPriority.INTERACTIVE, fromKey));
             }
         } catch (CallNotPermittedException | BulkheadFullException | ResourceAccessException e) {
-            throw engineUnreachablePreFlight(engine);
+            throw preFlightRefusal(engine, e);
         }
         if (targetDef == null) {
             throw new GuardRefusedException(
@@ -453,7 +446,7 @@ public class MigrationService {
         try {
             instance = client.getRuntimeProcessInstance(engine, CallPriority.INTERACTIVE, instanceId);
         } catch (CallNotPermittedException | BulkheadFullException | ResourceAccessException e) {
-            throw engineUnreachablePreFlight(engine);
+            throw preFlightRefusal(engine, e);
         }
         if (instance == null) {
             throw new GuardRefusedException(
@@ -643,6 +636,17 @@ public class MigrationService {
             }
         }
         return false;
+    }
+
+    /** Open breaker / full bulkhead ⇒ {@code engine-shedding-load}: the bulk runner pauses on it (R-SEM-11). */
+    private static GuardRefusedException preFlightRefusal(EngineConfig engine, RuntimeException e) {
+        if (e instanceof CallNotPermittedException || e instanceof BulkheadFullException) {
+            return new GuardRefusedException(
+                    HttpStatus.SERVICE_UNAVAILABLE,
+                    "engine-shedding-load",
+                    "Engine '" + engine.id() + "' is shedding load (circuit open) — the migration was not sent.");
+        }
+        return engineUnreachablePreFlight(engine);
     }
 
     private static GuardRefusedException engineUnreachablePreFlight(EngineConfig engine) {

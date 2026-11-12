@@ -78,6 +78,13 @@ public final class BulkDtos {
 
     public record HistoryPreview(long count, boolean capped, boolean prodInScope, List<String> sampleIds) {}
 
+    /**
+     * Cohort migration (#496): COMPLETED analyses, never an instance list — the BFF takes each
+     * analysis's executable set (blockers removed) and its stored per-instance CAS digests.
+     * {@code confirmedCount} is required once any analysis engine is prod.
+     */
+    public record BulkMigrateRequest(List<UUID> analysisIds, String reason, String ticketId, Integer confirmedCount) {}
+
     public record BulkDestructiveRequest(
             SearchRequest criteria, String verb, String reason, String ticketId, Integer confirmedCount) {}
 

@@ -32,6 +32,7 @@ import io.inspector.client.ProcessApiClient.JobLaneKind;
 import io.inspector.config.InspectorProperties;
 import io.inspector.config.InspectorProperties.EngineEnvironment;
 import io.inspector.config.InspectorProperties.EngineMode;
+import io.inspector.migration.CohortBulkMigration;
 import io.inspector.registry.EngineRegistry;
 import io.inspector.security.OidcProperties;
 import io.inspector.security.reauth.DangerousActionReauthGate;
@@ -79,6 +80,7 @@ class BulkJobServiceTest {
     private final AuditService audit = mock(AuditService.class);
     private final ProcessApiClient client = mock(ProcessApiClient.class);
     private final GuardedCaller guardedCaller = mock(GuardedCaller.class);
+    private final CohortBulkMigration cohortMigration = mock(CohortBulkMigration.class);
     private final SimpleMeterRegistry metrics = new SimpleMeterRegistry();
     private final Authentication responder = new TestingAuthenticationToken("resp", "n/a", "ROLE_RESPONDER");
 
@@ -158,7 +160,8 @@ class BulkJobServiceTest {
                 event -> {},
                 reauthGate(),
                 guardedCaller,
-                metrics);
+                metrics,
+                cohortMigration);
     }
 
     /**
@@ -585,6 +588,98 @@ class BulkJobServiceTest {
         return new FlowablePage(data, data.size(), 0, data.size());
     }
 
+    /* ---------------- migrate-instance (#496) ---------------- */
+
+    private static final String ANALYSIS = "7d3c6a0e-0000-4000-8000-000000000001";
+
+    private static BulkDtos.BulkSubmitRequest migrateOf(String... instanceIds) {
+        List<BulkDtos.BulkTarget> targets = new ArrayList<>();
+        for (String id : instanceIds) {
+            targets.add(new BulkDtos.BulkTarget(ENGINE, id, ANALYSIS));
+        }
+        return new BulkDtos.BulkSubmitRequest("migrate-instance", "move off the bad deploy", null, null, targets);
+    }
+
+    private void migrateThrows(String instanceId, RuntimeException e) {
+        when(cohortMigration.dispatch(eq(ANALYSIS), eq(ENGINE), eq(instanceId), any(), any(), any()))
+                .thenThrow(e);
+    }
+
+    @Test
+    void migrateItemsDispatchAgainstTheirAnalysisAndKeepEveryOutcomeClass() {
+        when(cohortMigration.dispatch(eq(ANALYSIS), eq(ENGINE), eq("m-ok"), any(), any(), any()))
+                .thenReturn(new ActionResult(UUID.randomUUID(), "c", "ok", 200, "migrated to demo:2"));
+        migrateThrows(
+                "m-moved",
+                new GuardRefusedException(HttpStatus.CONFLICT, "instance-moved-since-preview", "token moved"));
+        migrateThrows(
+                "m-blocked",
+                new GuardRefusedException(HttpStatus.UNPROCESSABLE_ENTITY, "unmapped-activities", "no mapping"));
+        migrateThrows("m-rejected", new EngineRejectedException(UUID.randomUUID(), 400, "activity not found"));
+        migrateThrows(
+                "m-timeout",
+                new OutcomeUnknownException(
+                        UUID.randomUUID(),
+                        new ResourceAccessException("t/o", new HttpTimeoutException("request timed out"))));
+
+        BulkDtos.BulkJobDto submitted = service.submitMigration(
+                migrateOf("m-ok", "m-moved", "m-blocked", "m-rejected", "m-timeout"), responder, Map.of(), "cohort");
+        BulkDtos.BulkJobDto done = awaitFinished(submitted.id());
+
+        assertThat(done.verb()).isEqualTo("migrate-instance");
+        assertThat(done.state()).isEqualTo("COMPLETED");
+        assertThat(done.items())
+                .extracting(BulkDtos.BulkItemDto::state)
+                .containsExactly("ok", "skipped", "failed", "failed", "unknown");
+        assertThat(done.items().get(1).detail()).contains("instance-moved-since-preview");
+        // The job's reason travels to every item; the single-target action door is never used.
+        verify(cohortMigration)
+                .dispatch(eq(ANALYSIS), eq(ENGINE), eq("m-ok"), eq("move off the bad deploy"), any(), eq(responder));
+        verifyNoInteractions(actions);
+    }
+
+    @Test
+    void migrateCircuitOpenPausesTheEngineAndLeavesTheRestNotRun() {
+        service = serviceWith(1, 0, new java.util.concurrent.CopyOnWriteArrayList<>());
+        when(cohortMigration.dispatch(eq(ANALYSIS), eq(ENGINE), eq("m-1"), any(), any(), any()))
+                .thenReturn(new ActionResult(UUID.randomUUID(), "c", "ok", 200, "migrated"));
+        migrateThrows(
+                "m-2",
+                new GuardRefusedException(HttpStatus.SERVICE_UNAVAILABLE, "engine-shedding-load", "circuit open"));
+
+        BulkDtos.BulkJobDto done =
+                awaitFinished(service.submitMigration(migrateOf("m-1", "m-2", "m-3"), responder, Map.of(), "cohort")
+                        .id());
+
+        assertThat(done.state()).isEqualTo("INTERRUPTED");
+        assertThat(done.items()).extracting(BulkDtos.BulkItemDto::state).containsExactly("ok", "failed", "not_run");
+        verify(cohortMigration, never()).dispatch(any(), any(), eq("m-3"), any(), any(), any());
+    }
+
+    @Test
+    void migrateIsRefusedOnTheSelectionDoor() {
+        assertThatThrownBy(() -> service.submit(migrateOf("m-1"), responder))
+                .isInstanceOfSatisfying(
+                        GuardRefusedException.class, e -> assertThat(e.code()).isEqualTo("bulk-verb-not-allowed"));
+    }
+
+    @Test
+    void verifyNowReadsTheMigratedDefinitionAndNeverRefires() {
+        BulkJob job = new BulkJob(UUID.randomUUID(), "admin", Instant.EPOCH, "migrate-instance", null, null, 1, null);
+        job.finish(BulkJob.State.COMPLETED, Instant.EPOCH);
+        jobStore.put(job.getId(), job);
+        BulkJobItem item = new BulkJobItem(job.getId(), 0, ENGINE, "m-1", ANALYSIS, BulkJobItem.State.pending);
+        item.settle(BulkJobItem.State.unknown, "timeout", null, Instant.EPOCH);
+        itemStore.put(job.getId() + "#0", item);
+        when(cohortMigration.verify(ANALYSIS, ENGINE, "m-1"))
+                .thenReturn(new CohortBulkMigration.Verification(true, "verified: instance is on demo:2"));
+
+        BulkDtos.BulkItemDto verified = service.verifyNow(job.getId(), 0);
+
+        assertThat(verified.state()).isEqualTo("ok");
+        verify(cohortMigration, never()).dispatch(any(), any(), any(), any(), any(), any());
+    }
+
     /* ---------------- verify-now (R-SAFE-09) ---------------- */
 
     @Test
@@ -878,7 +973,8 @@ class BulkJobServiceTest {
                 // A fresh registry per instance — this helper builds a SECOND BulkJobService
                 // alongside the @BeforeEach one, and both would otherwise fight over registering
                 // the same bulk_jobs_running gauge id on the shared `metrics` field.
-                new SimpleMeterRegistry());
+                new SimpleMeterRegistry(),
+                cohortMigration);
     }
 
     @Test

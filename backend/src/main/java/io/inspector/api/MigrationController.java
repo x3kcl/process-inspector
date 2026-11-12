@@ -3,8 +3,6 @@ package io.inspector.api;
 import io.inspector.action.ActionResult;
 import io.inspector.migration.CohortAnalysisService;
 import io.inspector.migration.CohortAnalysisView;
-import io.inspector.migration.CohortExecuteRequest;
-import io.inspector.migration.CohortExecuteResponse;
 import io.inspector.migration.CohortMigrationService;
 import io.inspector.migration.CohortPreviewRequest;
 import io.inspector.migration.CohortPreviewResponse;
@@ -74,14 +72,6 @@ public class MigrationController {
     public CohortPreviewResponse previewCohort(
             @RequestParam String engineId, @RequestBody CohortPreviewRequest request) {
         return cohorts.preview(engineId, request);
-    }
-
-    /** Per-instance cohort execute (#482 S4), capped. Prod confirm token is the count. */
-    @PostMapping("/migration/cohorts/execute")
-    @PreAuthorize("@rbac.atLeastOn(authentication, 'ADMIN', #engineId)")
-    public CohortExecuteResponse executeCohort(
-            @RequestParam String engineId, @RequestBody CohortExecuteRequest request, Authentication authentication) {
-        return cohorts.execute(engineId, request, authentication);
     }
 
     /** Start a §14 estimate over the S2 cohort filter (#495). Does not migrate. */
