@@ -17,7 +17,13 @@ import { useLayoutSuggestion } from '../views/useLayoutSuggestion'
 import { ViewChips } from '../views/ViewChips'
 import { useRecordRecentSearch } from '../views/useViewStores'
 import { DepthWallNote } from './DepthWallNote'
-import { GRID_COUNT_PARTIAL_HINT, gridCountIsPartial, gridCountLabel } from './gridCount'
+import {
+  FAILED_SPLIT_HINT,
+  GRID_COUNT_PARTIAL_HINT,
+  failedSplitLabel,
+  gridCountIsPartial,
+  gridCountLabel,
+} from './gridCount'
 import { isFullyDrainedAfterPaging, loadMoreRegionVisible } from './loadMoreState'
 import { summarizePartials } from './partials'
 import { resultsMayBeStale, useLastMutationSettledAt } from './staleness'
@@ -192,6 +198,9 @@ export function SearchPage() {
                     results.data.depthCapped,
                   )}
                 </span>
+                {/* #630: why this FAILED count exceeds the triage tile — parents rolled up
+                    "in subprocess" are rows here but not on the tile. */}
+                <FailedSplit rows={results.data.rows ?? []} />
                 {` · as of ${formatClock(results.dataUpdatedAt)}`}
               </>
             ) : request !== null ? (
@@ -307,5 +316,15 @@ export function SearchPage() {
           )}
       </section>
     </div>
+  )
+}
+
+function FailedSplit({ rows }: { rows: Parameters<typeof failedSplitLabel>[0] }) {
+  const label = failedSplitLabel(rows)
+  if (label === null) return null
+  return (
+    <span className="failed-split" role="note" title={FAILED_SPLIT_HINT}>
+      {` · ${label}`}
+    </span>
   )
 }

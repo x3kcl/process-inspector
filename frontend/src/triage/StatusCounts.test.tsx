@@ -40,3 +40,13 @@ describe('StatusCounts aggregation stamp (#244)', () => {
     expect(screen.getAllByText(/instances/).length).toBeGreaterThan(0)
   })
 })
+
+describe('FAILED tile says what it counts (#630)', () => {
+  it('qualifies FAILED as instances holding a dead-letter job and explains the larger drill-through', () => {
+    renderCounts()
+    const failed = screen.getByText('FAILED').closest('a')
+    expect(failed?.textContent).toMatch(/46 instances with a dead-letter job/)
+    expect(failed?.getAttribute('title')).toMatch(/in subprocess/)
+    expect(failed?.getAttribute('href')).toMatch(/^\/search\?/)
+  })
+})
