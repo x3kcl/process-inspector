@@ -362,8 +362,12 @@ test('mapping editor: the selected source stays visible on a blocker-marked acti
   await check.getByRole('button', { name: 'Diagrams' }).click()
   const source = check.getByRole('region', { name: 'Source diagram (current version)' })
 
-  await expect(source.getByRole('img', { name: 'pre-check blocker on this activity' })).toHaveCount(2)
-  await expect(source.getByRole('img', { name: 'pre-check warning on this activity' })).toBeVisible()
+  await expect(source.getByRole('img', { name: 'pre-check blocker on this activity' })).toHaveCount(
+    2,
+  )
+  await expect(
+    source.getByRole('img', { name: 'pre-check warning on this activity' }),
+  ).toBeVisible()
 
   // The painted outline of an element: stroke colour + width + fill, as computed.
   const look = (id: string) =>
