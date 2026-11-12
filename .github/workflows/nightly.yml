@@ -22,8 +22,8 @@ on:
       triage-drill:
         description: "off runs the suite. red/green only upserts the advisory issue (#447) and skips every other job."
         type: choice
-        options: [off, red, green]
-        default: off
+        options: ["off", red, green]
+        default: "off"  # quoted: YAML 1.1 reads bare off as false (#611)
 
 concurrency:
   group: nightly
@@ -291,7 +291,7 @@ jobs:
           "http://localhost:${PI_ENGINE_B_PORT}/flowable-rest/service"
       - name: Build BFF jar
         working-directory: backend
-        run: mvn -B -DskipTests package
+        run: mvn -B -Dskip.surefire.tests=true package  # -DskipTests is a no-op here (backend/pom.xml binds surefire to skip.surefire.tests)
       - name: Boot BFF in the background, pointed at the seeded engines
         working-directory: backend
         env:
