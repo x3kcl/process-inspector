@@ -440,6 +440,11 @@ exceptions cover the same lockfile advisories via two different tools, and
 `scripts/check-npm-audit-allowlist.mjs` cross-checks both files and fails the run on drift.
 Renew both together.
 
+**Current exceptions (2026-11-12, #442).** `backend/.trivyignore.yaml`: none. `backend/pom.xml`:
+no CVE version pins — Boot 4.1.2 manages the fixed Tomcat/Jackson/Framework lines. Frontend:
+`npm-audit-allowlist.json` and `frontend/.trivyignore.yaml` empty; `package.json` `overrides`
+are in-range floors only (each one is listed with its advisory under `//overrides`).
+
 **Trivy IMAGE scan — the `apk upgrade` cache trap (nightly #66/#67).** The BFF runtime image
 runs `apk upgrade --no-cache` so patched Alpine packages land ahead of eclipse-temurin's own
 next `21-jre-alpine` re-cut. That step's buildkit cache key is the literal command string,
