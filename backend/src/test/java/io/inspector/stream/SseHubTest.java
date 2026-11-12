@@ -3,6 +3,7 @@ package io.inspector.stream;
 import static org.assertj.core.api.Assertions.assertThat;
 import static org.awaitility.Awaitility.await;
 
+import com.fasterxml.jackson.databind.JsonMappingException;
 import io.inspector.bulk.BulkJobChangedEvent;
 import io.inspector.config.InspectorProperties;
 import io.inspector.migration.MigrationAnalysisChangedEvent;
@@ -15,6 +16,7 @@ import java.util.concurrent.CountDownLatch;
 import java.util.concurrent.TimeUnit;
 import java.util.concurrent.atomic.AtomicInteger;
 import org.junit.jupiter.api.Test;
+import org.springframework.http.converter.HttpMessageNotWritableException;
 import org.springframework.web.servlet.mvc.method.annotation.SseEmitter;
 
 /**
@@ -90,6 +92,13 @@ class SseHubTest {
         assertThat(SseHub.isClientDisconnect(new IllegalStateException("send failed", new IOException("reset"))))
                 .isTrue();
         assertThat(SseHub.isClientDisconnect(new IllegalStateException("serialization failed")))
+                .isFalse();
+        // A real Jackson 2 write failure: JsonMappingException IS an IOException, but it is a
+        // converter bug on our side, not a gone client — it must stay an error.
+        assertThat(SseHub.isClientDisconnect(new IllegalStateException(
+                        "send failed",
+                        new HttpMessageNotWritableException(
+                                "Could not write JSON", new JsonMappingException(null, "no serializer")))))
                 .isFalse();
     }
 

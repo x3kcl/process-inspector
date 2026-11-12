@@ -25,6 +25,7 @@ import org.slf4j.Logger;
 import org.slf4j.LoggerFactory;
 import org.springframework.context.SmartLifecycle;
 import org.springframework.context.event.EventListener;
+import org.springframework.http.converter.HttpMessageConversionException;
 import org.springframework.scheduling.annotation.Scheduled;
 import org.springframework.stereotype.Service;
 import org.springframework.web.servlet.mvc.method.annotation.SseEmitter;
@@ -91,24 +92,26 @@ public class SseHub implements SmartLifecycle {
 
     /**
      * OPERATIONS.md §2 (issue #96): {@code sse_emitters_active} (a live gauge over {@link
-     * #subscriberCount()}) and {@code sse_emitter_errors_total} — a spike is RUNBOOK §7's "SSE
-     * emitter errors spiking" alert (clients degrade to polling, not user-facing-critical).
-     * Issue #624: a client that simply went away (tab close, navigation, BFF restart — an
-     * {@link IOException} somewhere in the cause chain) is NOT an error; it counts once in {@code
-     * sse_emitter_disconnects_total} instead. Each dropped emitter counts exactly once, in exactly
-     * one of the two counters, however many paths (failed write, the container's onError) notice
-     * it. {@code sse_subscriptions_refused_total} (issue #301) counts cap refusals — see {@link
-     * #subscribe}.
+     * #subscriberCount()}) and {@code sse_emitter_errors_total} — a send failure on the BFF's own side
+     * (a payload a converter could not write, a send racing the emitter's own completion); a
+     * spike is RUNBOOK §7's SseEmitterErrorsSpiking alert.
+     * Issue #624: a client that went away (tab close, navigation, or a reverse proxy cutting the
+     * stream — an {@link IOException} somewhere in the cause chain) is NOT an error; it counts once
+     * in {@code sse_emitter_disconnects_total} instead (RUNBOOK §7's SseDisconnectChurn). Each
+     * dropped emitter counts exactly once, in exactly one of the two counters, however many paths
+     * (failed write, the container's onError) notice it; a graceful {@link #stop()} completes its
+     * emitters and counts nothing. {@code sse_subscriptions_refused_total} (issue #301) counts cap
+     * refusals — see {@link #subscribe}.
      */
     public SseHub(MeterRegistry metrics, InspectorProperties props) {
         Gauge.builder("sse_emitters_active", this, SseHub::subscriberCount)
                 .description("Live SSE subscriber count")
                 .register(metrics);
         this.errors = Counter.builder("sse_emitter_errors_total")
-                .description("SSE emitters dropped by a send failure other than a client disconnect")
+                .description("SSE emitters dropped by a BFF-side send failure (not a closed stream)")
                 .register(metrics);
         this.disconnects = Counter.builder("sse_emitter_disconnects_total")
-                .description("SSE emitters dropped because the client went away (tab close, navigation, restart)")
+                .description("SSE emitters dropped because the client or a proxy closed the stream")
                 .register(metrics);
         this.refused = Counter.builder("sse_subscriptions_refused_total")
                 .description("SSE subscribe attempts refused because the live subscriber cap was reached")
@@ -301,10 +304,15 @@ public class SseHub implements SmartLifecycle {
     /**
      * A client that went away surfaces as an {@link IOException} (broken pipe, connection reset,
      * Tomcat's ClientAbortException, Spring's AsyncRequestNotUsableException), possibly wrapped
-     * in Spring's IllegalStateException — so walk the cause chain.
+     * in Spring's IllegalStateException — so walk the cause chain. A converter failure is NOT a
+     * disconnect even though Jackson 2's JsonProcessingException is an IOException: stop at an
+     * {@link HttpMessageConversionException} and count it as an error.
      */
     static boolean isClientDisconnect(Throwable cause) {
         for (Throwable t = cause; t != null; t = t.getCause() == t ? null : t.getCause()) {
+            if (t instanceof HttpMessageConversionException) {
+                return false;
+            }
             if (t instanceof IOException) {
                 return true;
             }

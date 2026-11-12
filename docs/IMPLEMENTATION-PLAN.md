@@ -1601,7 +1601,9 @@ covers every engine call uniformly, timed around bulkhead+breaker+HTTP including
 (gauge over `SseHub.subscriberCount()`) + `sse_emitter_errors_total` (incremented on a dropped
 send or an emitter's own `onError`). Issue #624: both paths fire for one closed tab, so each
 dropped emitter is now counted ONCE (the `errored` CAS), and a client disconnect (an `IOException`
-in the cause chain) goes to `sse_emitter_disconnects_total` instead of the error counter. `bulk_jobs_running` (gauge, `BulkJobRepository.countByState`)
+in the cause chain, unless a message converter raised it) goes to `sse_emitter_disconnects_total`
+instead of the error counter. That leaves `SseEmitterErrorsSpiking` for BFF-side send failures
+only; a proxy cutting streams now shows as disconnect churn, alerted by `SseDisconnectChurn`. `bulk_jobs_running` (gauge, `BulkJobRepository.countByState`)
 
 - `bulk_item_outcomes_total` (tagged `state`, tallied once per finished job in the existing
   `closeEnvelope` tally step — semantically identical to counting at each `settle()` call site, one

@@ -1,5 +1,6 @@
 # promtool test rules (#472). Covers one existing rule and the new engine-unreachable rule;
-# #624 adds the SSE pair (disconnects alone never fire SseEmitterErrorsSpiking).
+# #624 adds the SSE pair (disconnects alone never fire SseEmitterErrorsSpiking) and
+# SseDisconnectChurn (a proxy cutting streams fires; ordinary tab closes do not).
 rule_files:
   - alert-rules.yml
 
@@ -100,7 +101,37 @@ tests:
         alertname: SseEmitterErrorsSpiking
         exp_alerts:
           - exp_annotations:
-              summary: "SSE emitter errors spiking — clients are degrading to polling"
-              runbook: "RUNBOOK.md §7 — a send failure other than a client disconnect; not user-facing-critical"
+              summary: "SSE sends failing inside the BFF — affected clients are degrading to polling"
+              runbook: "RUNBOOK.md §7 — a BFF-side send failure, not a proxy or a closed tab; not user-facing-critical"
             exp_labels:
               severity: warning
+
+  # #624: a proxy cutting each of 5 streams every ~2.5 min — 30 disconnects per 15 min against
+  # a ceiling of 3 x 5 — fires once sustained for 10 min.
+  - interval: 1m
+    input_series:
+      - series: 'sse_emitters_active'
+        values: '5x40'
+      - series: 'sse_emitter_disconnects_total'
+        values: '0+2x40'
+    alert_rule_test:
+      - eval_time: 35m
+        alertname: SseDisconnectChurn
+        exp_alerts:
+          - exp_annotations:
+              summary: "SSE streams are being cut and reconnecting in a loop"
+              runbook: "RUNBOOK.md §7 — usually a reverse-proxy timeout or buffering misconfig after a deploy; not user-facing-critical"
+            exp_labels:
+              severity: warning
+
+  # #624: 20 live streams and a tab closing every minute (15 per 15 min, ceiling 60) — no alert.
+  - interval: 1m
+    input_series:
+      - series: 'sse_emitters_active'
+        values: '20x40'
+      - series: 'sse_emitter_disconnects_total'
+        values: '0+1x40'
+    alert_rule_test:
+      - eval_time: 35m
+        alertname: SseDisconnectChurn
+        exp_alerts: []

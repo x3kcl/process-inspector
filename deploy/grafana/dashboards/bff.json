@@ -79,7 +79,7 @@
     {
       "id": 4,
       "type": "timeseries",
-      "title": "SSE errors",
+      "title": "SSE errors and disconnects",
       "datasource": {
         "type": "prometheus",
         "uid": "prometheus"
@@ -93,7 +93,13 @@
       "targets": [
         {
           "refId": "A",
-          "expr": "increase(sse_emitter_errors_total[5m])"
+          "expr": "increase(sse_emitter_errors_total[5m])",
+          "legendFormat": "errors"
+        },
+        {
+          "refId": "B",
+          "expr": "increase(sse_emitter_disconnects_total[5m])",
+          "legendFormat": "disconnects"
         }
       ]
     }

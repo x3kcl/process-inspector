@@ -106,13 +106,14 @@ the verb span.
 ## 3. Who watches the watcher (R-OPS-03)
 The Inspector is probed by **external** monitoring. Alert rules (issue #96,
 `deploy/prometheus/alert-rules.yml` — liveness, `AuditInsertFailures`,
-`AllCircuitBreakersOpen`, `SseEmitterErrorsSpiking`, and `DatabaseConnectionTimeoutsSpiking`
-as the honest proxy for Postgres-unreachable now fire off metrics this app emits;
+`AllCircuitBreakersOpen`, `SseEmitterErrorsSpiking`, `SseDisconnectChurn` (#624), and
+`DatabaseConnectionTimeoutsSpiking` as the honest proxy for Postgres-unreachable now fire off metrics this app emits;
 `InspectorReadinessFailing`/`DiskSpaceHigh` are written but need an exporter this repo does not
 deploy — `blackbox_exporter`/`node_exporter` — see `deploy/README.md`), referencing the same
 contract metric names: `InspectorDown` (liveness probe), readiness failing
 >2m, `audit_insert_failures_total > 0`, Postgres unreachable, disk >80%, SSE emitter errors
-spiking (send failures other than client disconnects, issue #624), **all circuits open simultaneously** (an inspector-side egress problem, not N engine
+spiking (BFF-side send failures only, issue #624), SSE streams cut and reconnecting in a loop
+(`SseDisconnectChurn` — where a proxy fault now shows), **all circuits open simultaneously** (an inspector-side egress problem, not N engine
 failures). No monitoring STACK (Prometheus/Alertmanager) is deployed by this repo's
 `docker/*.yml` — the rule file is the contract to hand to whichever one scrapes
 `/actuator/prometheus` in a real deploy. Paging route: the workflow platform team. Degraded
