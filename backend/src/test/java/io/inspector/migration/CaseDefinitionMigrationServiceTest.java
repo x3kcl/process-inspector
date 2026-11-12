@@ -233,6 +233,43 @@ class CaseDefinitionMigrationServiceTest {
         verifyNoInteractions(audit);
     }
 
+    /** #500 review: the batch pre-check is the only guard, so it must hold for either XML quote. */
+    @Test
+    void batchIsNotSentWhenASingleQuotedSourceModelHasAPlanItemTheTargetDrops() {
+        engineVersion("7.1.0");
+        definitions("reviewTask", "reviewTask");
+        when(cmmn.cmmnDeploymentResourceData(engine, CallPriority.INTERACTIVE, "dep-1", "v1.cmmn"))
+                .thenReturn("<case><planItem id='p1' definitionRef='reviewTask'/>"
+                        + "<planItem id='p2' definitionRef='optionalNote'/></case>");
+
+        assertThatThrownBy(() -> service.migrateBatch(ENGINE, FROM, request(null), admin))
+                .isInstanceOfSatisfying(GuardRefusedException.class, e -> {
+                    assertThat(e.code()).isEqualTo("plan-item-not-in-target");
+                    assertThat(e.getMessage()).contains("optionalNote");
+                });
+        verify(cmmn, never()).migrateCase(any(), any(), any(), any(), any(), any());
+        verifyNoInteractions(audit);
+    }
+
+    /** An empty source set proves nothing about the target: refuse, do not send an unchecked batch. */
+    @Test
+    void batchIsNotSentWhenNoPlanItemDefinitionCanBeReadFromTheSourceModel() {
+        engineVersion("7.1.0");
+        definitions("reviewTask", "reviewTask");
+        when(cmmn.cmmnDeploymentResourceData(engine, CallPriority.INTERACTIVE, "dep-1", "v1.cmmn"))
+                .thenReturn("<case><planItem id=p1 definitionRef=&quot;reviewTask&quot;/></case>");
+
+        assertThatThrownBy(() -> service.migrateBatch(ENGINE, FROM, request(null), admin))
+                .isInstanceOfSatisfying(GuardRefusedException.class, e -> {
+                    assertThat(e.code()).isEqualTo("source-model-unreadable");
+                    assertThat(e.status()).isEqualTo(HttpStatus.UNPROCESSABLE_ENTITY);
+                    assertThat(e.getMessage()).contains(FROM).contains("cohort door");
+                });
+        verify(cmmn, never()).migrateCase(any(), any(), any(), any(), any(), any());
+        verify(cmmn, never()).countRunningCases(any(), any(), any());
+        verifyNoInteractions(audit);
+    }
+
     @Test
     void prodNeedsTheTypedCountOfTheFreshSetAndAnEmptySetIsRefused() {
         prod();

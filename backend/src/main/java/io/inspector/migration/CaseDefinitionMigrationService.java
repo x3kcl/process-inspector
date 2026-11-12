@@ -206,6 +206,16 @@ public class CaseDefinitionMigrationService {
                 engine -> {
                     Versions pair = versionsOf(engine, caseDefinitionId, request);
                     Set<String> removed = new TreeSet<>(precheck.planDefinitionIds(engine, pair.fromId(), pair.from()));
+                    if (removed.isEmpty()) {
+                        // Nothing read from the source proves nothing about the target: fail closed.
+                        throw new GuardRefusedException(
+                                HttpStatus.UNPROCESSABLE_ENTITY,
+                                "source-model-unreadable",
+                                "No plan-item definition could be read from the source case model "
+                                        + pair.fromId() + ", so the batch cannot be checked against the target."
+                                        + " A by-definition batch moves every running case without a per-case"
+                                        + " check. Use the cohort door instead. Nothing happened.");
+                    }
                     removed.removeAll(precheck.planDefinitionIds(engine, pair.toId(), pair.to()));
                     if (!removed.isEmpty()) {
                         throw new GuardRefusedException(

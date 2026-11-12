@@ -542,7 +542,7 @@ Measured 2026-11-12 on live `flowable-rest` **6.8.0** and **7.1.0** with the fix
 | `GET cmmn-runtime/case-instances?caseDefinitionId=` with `businessKey`, `startedAfter`, `startedBefore` | all narrow `total` | same |
 | same with `businessKeyLike` | **ignored**: `total` is the unfiltered set | narrows `total` |
 | `POST cmmn-repository/case-definitions/{id}/batch-migrate` `{toCaseDefinitionId}` | Spring 404 (no route) | **200, empty body.** Every running case of that version, no filter. |
-| the batch record | — | The CMMN API has no batch route. `GET management/batches?batchType=caseMigration&searchKey={source id}` on the **process** API lists it (`searchKey2` = target id, `status` `inProgress` → `completed`, `completeTime` null until then). `GET management/batches/{id}/batch-parts` is a bare array: `scopeId` = case id, `scopeType` `cmmn`, `status` `success`. The parts were `success` within a second; the batch row reached `completed` about 12 s later. A failed part's status string was not captured. |
+| the batch record | — | The CMMN API has no batch route. `GET management/batches?batchType=caseMigration&searchKey={source id}` on the **process** API lists it (`searchKey2` = target id, `status` `inProgress` → `completed`, `completeTime` null until then). `GET management/batches/{id}/batch-parts` is a bare array: `scopeId` = case id, `scopeType` `cmmn`, `status` `success`. The parts were `success` within a second; the batch row reached `completed` about 12 s later. A part the engine cannot apply (a document with `activatePlanItemDefinitions` naming a plan-item definition the target lacks) has `status` **`fail`**, the case stays on the source, `GET management/batch-parts/{id}/batch-part-document` carries `resultStatus` `fail` with the engine's `resultMessage`, and the batch row still reaches `completed` (about 24 s later). `DELETE management/batches/{id}` is 204. |
 | `POST cmmn-history/historic-case-instances/{id}/migrate` on an ended case | Spring 404 | **200.** The historic row carries the target id. |
 | same on a running case | — | **500** `Historic case instance has not ended and can only be migrated with the regular case instance migrate method` |
 | `POST cmmn-repository/case-definitions/{id}/migrate-historic-instances` | Spring 404 | **200.** The ended cases of that version carry the target id. Cases still running on the version stay on it. |
@@ -599,7 +599,7 @@ deployed, same key, not equal), the prod confirmation, a fail-closed audit row w
 
 | BFF door | Engine route | Restatement and prod token | Audit action |
 |---|---|---|---|
-| `POST /api/case-definitions/{engineId}/{caseDefinitionId}/migrate-batch` | `…/batch-migrate` | Count of running cases on the source (0 ⇒ `nothing-to-migrate`). Refused `plan-item-not-in-target` when the target model lacks any plan-item definition of the **source model**: the batch has no per-case check, so only an additive target is sent; anything else goes through the cohort. Prod: typed running count. | `migrate-cases-batch` |
+| `POST /api/case-definitions/{engineId}/{caseDefinitionId}/migrate-batch` | `…/batch-migrate` | Count of running cases on the source (0 ⇒ `nothing-to-migrate`). Refused `plan-item-not-in-target` when the target model lacks any plan-item definition of the **source model**: the batch has no per-case check, so only an additive target is sent; anything else goes through the cohort. The model read is a `definitionRef` scan that accepts either XML quote; a source model it reads nothing from is refused `source-model-unreadable` (422) instead of being sent unchecked. Prod: typed running count. | `migrate-cases-batch` |
 | `POST /api/case-definitions/{engineId}/{caseDefinitionId}/migrate-historic` | `…/migrate-historic-instances` | Count of ended cases on the source. Prod: typed ended count. | `migrate-historic-cases` |
 | `POST /api/cases/{engineId}/{caseInstanceId}/migrate-historic` | `historic-case-instances/{id}/migrate` | The case must be in history and ended (`case-still-running` otherwise). Prod: typed case id. | `migrate-historic-case` |
 
@@ -614,10 +614,17 @@ exposed: the first is the batch without a record to read, the second was not nee
 case key with its RUNNING and ended case counts (count-only), plus `definitionRoutesGate` — null
 on 7.x, otherwise the sentence the UI shows beside the greyed batch and historic controls.
 
-Proven by `CaseMigrationIT` (rung 4, real 6.8 + 7.1): 6.8 single case, 6.8 cohort (blocker never
-sent, out-of-band migrate and a changed plan-item set both `skipped`, typed count on the prod
-twin), 6.8 refusing all three 7.x doors on ids the engine has never seen; 7.1 single case, cohort
-with the `contains` filter, batch, and both historic doors.
+Proven by `CaseMigrationIT` (rung 4, real 6.8 + 7.1, profile `it-case-migration`: the `it-findings`
+registry plus a prod twin of the 7.1 engine): 6.8 single case, 6.8 cohort (blocker never sent,
+out-of-band migrate and a changed plan-item set both `skipped`, typed count on the prod twin),
+"Continue as new job" and "Verify now" for `migrate-case` through `POST /api/bulk` and
+`POST /api/bulk/{id}/items/{n}/verify` (the prior job's rows are written through the BFF's own
+store, because an interrupted job and a lost answer cannot be produced on demand), 6.8 refusing
+all three 7.x doors on ids the engine has never seen; 7.1 single case, cohort with the `contains`
+filter, batch, both historic doors, the batch refused for a single-quoted source model that loses
+a plan item, a failed batch part counted as `fail` with its case named, and the typed
+confirmation of all three doors on the prod twin (count missing, count wrong, case id wrong, then
+the right one).
 
 ### 7.0 Why batch was deferred (2026-07, historical)
 By-definition migration returns an async **`Batch`**; work drains via batch-part jobs and you poll

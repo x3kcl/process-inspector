@@ -78,6 +78,9 @@ export function CaseCohortMigrateModal({
       setAnalysisId(data.id)
     },
   })
+  // A count or an analysis in flight answers for the filter it was sent with: the filter stays
+  // as sent until the answer is in, so the modal never shows one target and submits another.
+  const filterLocked = runPreview.isPending || startAnalysis.isPending
   // The analysis runs in the background; poll the stored row until it settles.
   const analysis = useQuery<CaseCohortAnalysisView, ApiError>({
     queryKey: ['case-migration-analysis', analysisId],
@@ -178,6 +181,7 @@ export function CaseCohortMigrateModal({
         <select
           aria-label="Target version"
           value={toCaseDefinitionId}
+          disabled={filterLocked}
           onChange={(event) => {
             setToCaseDefinitionId(event.target.value)
             reset()
@@ -196,6 +200,7 @@ export function CaseCohortMigrateModal({
         <input
           aria-label="Business key"
           value={businessKey}
+          disabled={filterLocked}
           onChange={(event) => {
             setBusinessKey(event.target.value)
             reset()
@@ -206,7 +211,7 @@ export function CaseCohortMigrateModal({
         <input
           type="checkbox"
           checked={contains}
-          disabled={containsGate !== undefined}
+          disabled={containsGate !== undefined || filterLocked}
           aria-describedby={containsGate !== undefined ? 'case-contains-gate' : undefined}
           onChange={(event) => {
             setContains(event.target.checked)

@@ -98,7 +98,9 @@ test('6.8: the by-definition doors are greyed with the version reason, the cohor
   const historic = row.getByRole('button', { name: 'Migrate ended cases…' })
   await expect(batch).toBeDisabled()
   await expect(historic).toBeDisabled()
-  await expect(batch).toHaveAccessibleDescription(new RegExp(GATE.replace(/[()]/g, '\\$&')))
+  await expect(batch).toHaveAccessibleDescription(
+    new RegExp(GATE.replace(/[.*+?^${}()|[\]\\]/g, '\\$&')),
+  )
   await expect(page.getByRole('note').filter({ hasText: GATE })).toBeVisible()
   await expect(page.getByRole('button', { name: 'Batches' })).toHaveCount(0)
   await scanA11y(page, 'case versions on a 6.8 engine')

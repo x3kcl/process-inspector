@@ -44,4 +44,14 @@ class CasePlanDefinitionIdsTest {
                         CasePlanDefinitionIds.activeDefinitionIds(rows), CasePlanDefinitionIds.definitionIds(xml)))
                 .containsExactly("removedTask");
     }
+
+    /** XML allows either quote (#500 review): a single-quoted model must not read as empty. */
+    @Test
+    void readsSingleQuotedAndSpacedDefinitionRefs() {
+        String xml = "<planItem id='p1' definitionRef='reviewTask'/>"
+                + "<planItem id=\"p2\" definitionRef = \"optionalNote\"/>"
+                + "<planItem id='p3' definitionRef=\n  'it\"s'/>";
+
+        assertThat(CasePlanDefinitionIds.definitionIds(xml)).containsExactly("reviewTask", "optionalNote", "it\"s");
+    }
 }

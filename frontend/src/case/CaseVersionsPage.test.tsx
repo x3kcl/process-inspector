@@ -75,6 +75,16 @@ function renderPage(gate: string | undefined, environment = 'dev') {
           partsByStatus: { fail: 1, success: 2 },
           notSucceededCaseIds: ['case-9'],
         },
+        {
+          batchId: 'b-2',
+          status: 'completed',
+          createTime: '2026-11-12T10:00:00Z',
+          completeTime: '2026-11-12T10:00:30Z',
+          toCaseDefinitionId: 'def-2',
+          parts: 4,
+          partsByStatus: { fail: 3, success: 1 },
+          notSucceededCaseIds: ['case-1', 'case-2'],
+        },
       ])
     return ok({
       id: 'an-1',
@@ -175,6 +185,41 @@ describe('CaseVersionsPage (#500)', () => {
     })
   })
 
+  it('locks the cohort filter while the analysis request is in flight', async () => {
+    renderPage(undefined)
+    await screen.findAllByRole('button', { name: /Migrate cases/ })
+    let release: (value: unknown) => void = () => undefined
+    const answered = post.getMockImplementation()
+    post.mockImplementation((path: string) =>
+      path === '/api/case-migration/analyses'
+        ? new Promise((resolve) => {
+            release = resolve
+          })
+        : (answered?.(path) as unknown),
+    )
+    fireEvent.click(button(/Migrate cases/, 1))
+    fireEvent.click(screen.getByRole('button', { name: 'Preview count' }))
+    await screen.findByText(/3 running cases/)
+    const target = screen.getByLabelText<HTMLSelectElement>('Target version')
+    const key = screen.getByLabelText<HTMLInputElement>('Business key')
+    const contains = screen.getByRole<HTMLInputElement>('checkbox')
+    expect([target.disabled, key.disabled, contains.disabled]).toEqual([false, false, false])
+
+    fireEvent.click(screen.getByRole('button', { name: 'Analyze' }))
+    await waitFor(() => {
+      expect([target.disabled, key.disabled, contains.disabled]).toEqual([true, true, true])
+    })
+
+    release({
+      data: { id: 'an-1', status: 'RUNNING' },
+      error: undefined,
+      response: { status: 200 },
+    })
+    await waitFor(() => {
+      expect([target.disabled, key.disabled, contains.disabled]).toEqual([false, false, false])
+    })
+  })
+
   it('on a 7.x prod engine the batch door needs the typed running count', async () => {
     renderPage(undefined, 'prod')
     await screen.findAllByRole('button', { name: /Migrate cases/ })
@@ -227,6 +272,8 @@ describe('CaseVersionsPage (#500)', () => {
     const table = await screen.findByRole('table', { name: 'Case migration batches' })
     expect(table.textContent).toContain('fail 1 · success 2')
     expect(table.textContent).toContain('not succeeded: case-9')
+    // The id list is a sample: the row says so when the counts show more.
+    expect(table.textContent).toContain('not succeeded (first 2 of 3): case-1, case-2')
   })
 
   it('greys every door for a non-admin', async () => {

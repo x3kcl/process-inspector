@@ -225,12 +225,25 @@ function CaseBatches({
               {Object.entries(batch.partsByStatus ?? {})
                 .map(([status, n]) => `${status} ${String(n)}`)
                 .join(' · ') || '—'}
-              {(batch.notSucceededCaseIds ?? []).length > 0 &&
-                ` · not succeeded: ${(batch.notSucceededCaseIds ?? []).join(', ')}`}
+              {notSucceededText(batch.partsByStatus ?? {}, batch.notSucceededCaseIds ?? [])}
             </td>
           </tr>
         ))}
       </tbody>
     </table>
   )
+}
+
+/** The backend sends a sample of the case ids; say so when the counts show there are more. */
+function notSucceededText(partsByStatus: Record<string, number>, sample: string[]): string {
+  if (sample.length === 0) return ''
+  const total = Object.entries(partsByStatus).reduce(
+    (sum, [status, n]) => (status === 'success' ? sum : sum + n),
+    0,
+  )
+  const label =
+    total > sample.length
+      ? `not succeeded (first ${String(sample.length)} of ${String(total)})`
+      : 'not succeeded'
+  return ` · ${label}: ${sample.join(', ')}`
 }
