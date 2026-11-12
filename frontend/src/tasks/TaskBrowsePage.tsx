@@ -16,7 +16,7 @@ export function TaskBrowsePage() {
   const [assigneeFilter, setAssigneeFilter] = useState('')
   const [candidateGroup, setCandidateGroup] = useState('')
   const [unassigned, setUnassigned] = useState(false)
-  const [overdue, setOverdue] = useState(true)
+  const [overdue, setOverdue] = useState(false)
   const [picked, setPicked] = useState<Record<string, TaskRow>>({})
   const [newAssignee, setNewAssignee] = useState('')
   const [reason, setReason] = useState('')
@@ -49,6 +49,20 @@ export function TaskBrowsePage() {
     },
   })
   const rows = query.data?.rows ?? []
+  const activeFilters = [
+    definitionKey && `definition key "${definitionKey}"`,
+    assigneeFilter && `assignee "${assigneeFilter}"`,
+    candidateGroup && `candidate group "${candidateGroup}"`,
+    unassigned && 'unassigned',
+    overdue && 'overdue',
+  ].filter((entry): entry is string => Boolean(entry))
+  const clearFilters = () => {
+    setDefinitionKey('')
+    setAssigneeFilter('')
+    setCandidateGroup('')
+    setUnassigned(false)
+    setOverdue(false)
+  }
   const selected = Object.values(picked)
   const reasonOk = reason.trim().length >= 10
   const canReassign =
@@ -175,6 +189,19 @@ export function TaskBrowsePage() {
           })}
         </tbody>
       </table>
+      {query.isSuccess && rows.length === 0 && (
+        <p role="status">
+          No open tasks match
+          {activeFilters.length > 0
+            ? ` the active filters: ${activeFilters.join(', ')}.`
+            : '.'}{' '}
+          {activeFilters.length > 0 && (
+            <button type="button" onClick={clearFilters}>
+              Clear filters
+            </button>
+          )}
+        </p>
+      )}
       <p>{selected.length} selected (cap 200).</p>
       <label>
         New assignee{' '}
