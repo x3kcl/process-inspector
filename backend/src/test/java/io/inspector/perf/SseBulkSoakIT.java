@@ -144,9 +144,14 @@ class SseBulkSoakIT {
 
         while (jobIds.size() < WARMUP_JOBS + 1 || Instant.now().isBefore(holdEnd)) {
             Instant jobStart = Instant.now();
+            int jobWritesBefore = STUB_A.instanceWriteCount() + STUB_B.instanceWriteCount();
             String jobId = runOneBulk();
             Duration jobTook = Duration.between(jobStart, Instant.now());
             jobIds.add(jobId);
+            // per-item reporting corroborated at the engine: exactly one write per item, per job
+            assertThat(STUB_A.instanceWriteCount() + STUB_B.instanceWriteCount() - jobWritesBefore)
+                    .as("engine writes acknowledged for job %s", jobId)
+                    .isEqualTo(ITEMS_PER_JOB);
             await("every subscriber saw job " + jobId)
                     .atMost(Duration.ofSeconds(15))
                     .pollInterval(Duration.ofMillis(100))
@@ -174,7 +179,7 @@ class SseBulkSoakIT {
         Duration held = Duration.between(holdStart, Instant.now());
         Metrics end = samples.getLast();
 
-        // ---- per-item reporting corroborated at the engine: exactly one write per item ----
+        // ---- and in total: no stray write between jobs ----
         int writes = STUB_A.instanceWriteCount() + STUB_B.instanceWriteCount() - writesBefore;
         assertThat(writes).isEqualTo(jobIds.size() * ITEMS_PER_JOB);
 
