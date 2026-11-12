@@ -422,7 +422,7 @@ jobs:
         run: bash docker/seed.sh --profile flowable-6
       - name: Build BFF jar
         working-directory: backend
-        run: mvn -B -DskipTests package
+        run: mvn -B -Dskip.surefire.tests=true package  # -DskipTests is a no-op here (backend/pom.xml binds surefire to skip.surefire.tests)
       - name: Boot BFF in the background, pointed at the seeded engines
         working-directory: backend
         env:
