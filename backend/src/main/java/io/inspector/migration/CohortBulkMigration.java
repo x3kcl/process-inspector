@@ -70,6 +70,8 @@ public class CohortBulkMigration {
      */
     public Cohort resolve(UUID analysisId) {
         MigrationAnalysis row = analyses.findById(analysisId)
+                // A case analysis (#500) is not a process analysis: its ids are case ids.
+                .filter(candidate -> !CaseCohortAnalysisService.isCaseAnalysis(candidate))
                 .orElseThrow(() -> new GuardRefusedException(
                         HttpStatus.NOT_FOUND, "analysis-not-found", "No migration analysis " + analysisId + "."));
         if (row.getStatus() != Status.COMPLETED) {

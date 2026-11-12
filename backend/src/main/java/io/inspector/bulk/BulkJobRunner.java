@@ -309,6 +309,18 @@ final class BulkJobRunner {
                 item.settle(BulkJobItem.State.ok, result.deltaStatement(), result.auditId(), host.clock.instant());
                 return false;
             }
+            if (verb == ActionVerb.MIGRATE_CASE) {
+                // migrate-case (#500): jobRef is the case analysis id holding this item's CAS baseline.
+                ActionResult result = host.caseCohortMigration.dispatch(
+                        item.getJobRef(),
+                        item.getEngineId(),
+                        item.getInstanceId(),
+                        job.getReason(),
+                        job.getTicketId(),
+                        auth);
+                item.settle(BulkJobItem.State.ok, result.deltaStatement(), result.auditId(), host.clock.instant());
+                return false;
+            }
             if (verb == ActionVerb.RETRY_JOB) {
                 dispatchRetry(job, item, auth);
                 return false;
@@ -446,6 +458,9 @@ final class BulkJobRunner {
         if ("job-gone".equals(e.code())
                 || "instance-not-running".equals(e.code())
                 || "instance-moved-since-preview".equals(e.code())
+                // migrate-case (#500): the case ended, or already runs the target definition.
+                || "case-not-running".equals(e.code())
+                || "same-definition-target".equals(e.code())
                 || "task-gone".equals(e.code())
                 || "task-not-active".equals(e.code())
                 || "history-gone".equals(e.code())) {

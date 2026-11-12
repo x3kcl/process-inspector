@@ -22,6 +22,7 @@ import io.inspector.client.ProcessApiClient;
 import io.inspector.config.InspectorProperties;
 import io.inspector.config.InspectorProperties.EngineEnvironment;
 import io.inspector.config.InspectorProperties.EngineMode;
+import io.inspector.migration.CaseCohortBulkMigration;
 import io.inspector.migration.CohortBulkMigration;
 import io.inspector.registry.EngineRegistry;
 import io.inspector.security.OidcProperties;
@@ -143,7 +144,8 @@ class HierarchyBulkJobTest {
                 new DangerousActionReauthGate(new OidcProperties(null, false, null), clock),
                 mock(GuardedCaller.class),
                 new SimpleMeterRegistry(),
-                cohortMigration);
+                cohortMigration,
+                mock(CaseCohortBulkMigration.class));
     }
 
     /** One planned instance: {@code parent} is its planned parent, null for the top. */

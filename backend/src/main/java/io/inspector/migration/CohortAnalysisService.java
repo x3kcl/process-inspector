@@ -169,6 +169,8 @@ public class CohortAnalysisService {
 
     public CohortAnalysisView get(UUID id, int page, int size, Authentication auth) {
         MigrationAnalysis row = analyses.findById(id)
+                // A case analysis (#500) has its own read: GET /api/case-migration/analyses/{id}.
+                .filter(candidate -> !CaseCohortAnalysisService.isCaseAnalysis(candidate))
                 .orElseThrow(() -> new GuardRefusedException(
                         HttpStatus.NOT_FOUND, "analysis-not-found", "No migration analysis " + id + "."));
         requireAdmin(auth, row.getEngineId());

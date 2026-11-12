@@ -62,6 +62,16 @@ public final class CasePlanDefinitionIds {
         return absent;
     }
 
+    /**
+     * Order-independent fingerprint of the live plan-item definition ids, repeats included: the
+     * compare-and-set baseline a case-cohort analysis stores per case (#500).
+     */
+    public static String stateDigest(List<String> activeDefinitionIds) {
+        List<String> sorted = new ArrayList<>(activeDefinitionIds == null ? List.<String>of() : activeDefinitionIds);
+        sorted.sort(null);
+        return String.join("|", sorted);
+    }
+
     private static boolean live(Map<String, Object> row) {
         if (row.get("endedTime") != null) {
             return false;
