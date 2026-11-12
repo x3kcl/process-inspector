@@ -66,8 +66,10 @@ log "ci-watch: ${SLUG} @ ${SHA:0:8} (timeout ${TIMEOUT}s, poll ${INTERVAL}s)"
 RUN_ID=""
 find_deadline=$(( $(date +%s) + 90 ))
 while :; do
-  RUN_ID="$(gh_get "${API}/actions/runs?head_sha=${SHA}&per_page=1" \
-    | python3 -c 'import sys,json; r=json.load(sys.stdin)["workflow_runs"]; print(r[0]["id"] if r else "")')"
+  # Several workflows (ci, CodeQL, supply-chain-pr) run per SHA; wait for the `ci` one, not
+  # whichever happened to start first.
+  RUN_ID="$(gh_get "${API}/actions/runs?head_sha=${SHA}&per_page=50" \
+    | python3 -c 'import sys,json; r=[x for x in json.load(sys.stdin)["workflow_runs"] if x["path"].endswith("/ci.yml")]; print(r[0]["id"] if r else "")')"
   [[ -n "$RUN_ID" ]] && break
   if (( $(date +%s) >= find_deadline )); then
     echo "ci-watch: no workflow run found for ${SHA:0:8} within 90s" >&2
