@@ -111,4 +111,17 @@ class EngineSystemInfoServiceTest {
         assertThat(info.tables()).isEmpty();
         assertThat(info.properties()).isNotEmpty();
     }
+
+    @Test
+    void anEmptyTablesAnswerIsLabelledNotShownAsNoTables() throws IOException {
+        // Every engine has tables; an empty body means the answer is unusable, not "no tables".
+        stubEngineAndProperties("7.1");
+        wm.stubFor(
+                get(urlPathEqualTo("/management/tables")).willReturn(aResponse().withStatus(200)));
+
+        EngineSystemInfo info = service.load("wire-engine", true);
+
+        assertThat(info.failures()).containsExactly("tables");
+        assertThat(info.tables()).isEmpty();
+    }
 }

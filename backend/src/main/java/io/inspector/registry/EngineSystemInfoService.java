@@ -110,6 +110,10 @@ public class EngineSystemInfoService {
                     out.add(new TableCount(name.toString(), count instanceof Number n ? n.longValue() : null));
                 }
             }
+            if (out.isEmpty()) {
+                // Every engine has tables: an empty answer is unusable, not "no tables".
+                throw new IllegalStateException("empty /management/tables answer");
+            }
             return out;
         } catch (RuntimeException e) {
             fail(engine, "tables", e, failures);
