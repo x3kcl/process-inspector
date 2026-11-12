@@ -15,7 +15,8 @@ import org.junit.jupiter.api.Test;
 /**
  * Structural guard for CLAUDE.md's Java-21-VT rule (issue #306): with {@code
  * spring.threads.virtual.enabled=true}, {@code synchronized} around blocking I/O pins the
- * carrier thread — a defect class until the JDK 24 bump. Issue #309's ArchUnit spike (see
+ * carrier thread on Java 21. Java 25 (JEP 491, issue #441) no longer pins, but the guard stays:
+ * the codebase standardised on {@code ReentrantLock} for readability and one lock idiom. Issue #309's ArchUnit spike (see
  * docs/TEST-STRATEGY.md §5a) tried to express this as a structural rule and DROPPED it:
  * {@code JavaModifier.SYNCHRONIZED} only sees {@code synchronized} METHODS, not the {@code
  * synchronized (lock) { … }} BLOCKS every real instance used, and ArchUnit's bytecode-level API

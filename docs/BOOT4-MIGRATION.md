@@ -28,7 +28,7 @@ Java stays **21** for #440. Boot 4.1 requires Java 17+. Java 25 is #441, after t
 | WireMock | `wiremock-standalone` 3.13.2 | keep the pin | Not a Boot-managed artifact. Standalone server, not the Spring-Boot integration |
 | ArchUnit | 1.5.1 | keep | JUnit 5 rule engine, no Boot API |
 | Testcontainers | BOM (1.x artifacts `junit-jupiter`, `postgresql`) | Boot 4.1 manages **2.0.5** | Artifact ids are `testcontainers-junit-jupiter` and `testcontainers-postgresql`. Java packages are unchanged. The Postgres 16 image tag in the tests is independent |
-| JaCoCo | 0.8.15 | keep for #440 (Java 21) | #441 must confirm 0.8.15 reads class-file version 69 before the JDK 25 image bump |
+| JaCoCo | 0.8.15 | keep for #440 (Java 21) | #441 confirmed: 0.8.15 instruments class-file version 69 (`mvn test` on Temurin 25.0.4.1, coverage checks met) — no bump |
 
 ## Jackson decision
 
