@@ -44,13 +44,16 @@ final class BulkJobSubmitter {
             int itemCap,
             BulkJob.ScopeKind scopeKind,
             String scopeLabel,
-            Set<ActionVerb> allowedVerbs,
+            Set<String> allowedVerbs,
             String verbRefusalMessage) {
 
-        ActionVerb verb = ActionVerb.fromPath(request.verb() != null ? request.verb() : "")
-                .filter(allowedVerbs::contains)
-                .orElseThrow(() ->
-                        new GuardRefusedException(HttpStatus.BAD_REQUEST, "bulk-verb-not-allowed", verbRefusalMessage));
+        // Verb paths, not ActionVerb: migrate-instance is a bulk verb but never a single-target
+        // ActionVerb (it has its own tier-3 door), so `verb` is null for it.
+        String verbPath = request.verb() != null ? request.verb() : "";
+        if (!allowedVerbs.contains(verbPath)) {
+            throw new GuardRefusedException(HttpStatus.BAD_REQUEST, "bulk-verb-not-allowed", verbRefusalMessage);
+        }
+        ActionVerb verb = ActionVerb.fromPath(verbPath).orElse(null);
         List<BulkDtos.BulkTarget> targets = request.items() != null ? request.items() : List.of();
         if (targets.isEmpty()) {
             throw new GuardRefusedException(
@@ -101,7 +104,7 @@ final class BulkJobSubmitter {
         // fail-closed gate for the whole submission (audit down ⇒ 503, nothing recorded
         // ⇒ nothing dispatched).
         Map<String, Object> payload = new LinkedHashMap<>();
-        payload.put("schema", "bulk/" + verb.path() + "/v1");
+        payload.put("schema", "bulk/" + verbPath + "/v1");
         payload.put("bulkJobId", jobId.toString());
         payload.put("items", targets.size());
         payload.put(
@@ -114,7 +117,7 @@ final class BulkJobSubmitter {
         String engineIds =
                 targets.stream().map(BulkDtos.BulkTarget::engineId).distinct().collect(Collectors.joining(","));
         AuditEntry envelope = host.audit.beginPending(
-                auth.getName(), engineIds, null, null, "bulk:" + verb.path(), reason, request.ticketId(), payload);
+                auth.getName(), engineIds, null, null, "bulk:" + verbPath, reason, request.ticketId(), payload);
 
         // Scope provenance (usability fix E1): SELECTION derives its own label from the
         // ticked count; ERROR_CLASS/FILTER bring their own from the door that resolved them.
@@ -125,7 +128,7 @@ final class BulkJobSubmitter {
                 jobId,
                 auth.getName(),
                 host.clock.instant(),
-                verb.path(),
+                verbPath,
                 reason,
                 request.ticketId(),
                 targets.size(),

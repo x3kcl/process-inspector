@@ -132,7 +132,7 @@ class CohortAnalysisServiceTest {
         assertThat(again.codeCounts()).isEqualTo(started.codeCounts());
         verify(migration, times(3)).preview(eq("engine-a"), any(), any(), eq(auth));
         verify(migration, never()).execute(any(), any(), any(), any());
-        verify(migration, never()).executeFromCohort(any(), any(), any(), any());
+        verify(migration, never()).executeBulkItem(any(), any(), any(), any());
         verify(events, atLeastOnce()).publishEvent(any(MigrationAnalysisChangedEvent.class));
     }
 
@@ -158,7 +158,7 @@ class CohortAnalysisServiceTest {
         assertThat(view.executableIds()).isEmpty();
         assertThat(view.failure()).isEqualTo("engine down");
         verify(migration, never()).preview(eq("engine-a"), eq("i2"), any(), any());
-        verify(migration, never()).executeFromCohort(any(), any(), any(), any());
+        verify(migration, never()).executeBulkItem(any(), any(), any(), any());
     }
 
     @Test

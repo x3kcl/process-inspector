@@ -4,6 +4,7 @@ import io.inspector.bulk.BulkDtos;
 import io.inspector.bulk.BulkErrorClassService;
 import io.inspector.bulk.BulkFilterService;
 import io.inspector.bulk.BulkJobService;
+import io.inspector.bulk.BulkMigrationService;
 import io.inspector.bulk.DestructiveBulkService;
 import io.inspector.bulk.HousekeepingService;
 import io.inspector.security.ReadScopeGate;
@@ -45,6 +46,7 @@ public class BulkController {
     private final BulkFilterService filter;
     private final DestructiveBulkService destructive;
     private final HousekeepingService housekeeping;
+    private final BulkMigrationService migration;
     private final SseHub stream;
     private final ReadScopeGate readScope;
 
@@ -54,6 +56,7 @@ public class BulkController {
             BulkFilterService filter,
             DestructiveBulkService destructive,
             HousekeepingService housekeeping,
+            BulkMigrationService migration,
             SseHub stream,
             ReadScopeGate readScope) {
         this.bulk = bulk;
@@ -61,6 +64,7 @@ public class BulkController {
         this.filter = filter;
         this.destructive = destructive;
         this.housekeeping = housekeeping;
+        this.migration = migration;
         this.stream = stream;
         this.readScope = readScope;
     }
@@ -68,7 +72,23 @@ public class BulkController {
     @PostMapping
     @PreAuthorize("@rbac.atLeast(authentication, 'RESPONDER')")
     public BulkDtos.BulkJobDto submit(@RequestBody BulkDtos.BulkSubmitRequest request, Authentication authentication) {
+        // The drawer's "Continue as new job" re-submits the job's own verb here; a migrate job
+        // continues only through its own rails (ADMIN, prior not-run/failed items only).
+        if (BulkMigrationService.isMigrate(request.verb())) {
+            return migration.continueJob(request, authentication);
+        }
         return bulk.submit(request, authentication);
+    }
+
+    /**
+     * Cohort migration (#496): completed analyses become one tracked bulk job — per-instance
+     * {@code migrate} with the analysis digest as compare-and-set, blockers never sent.
+     */
+    @PostMapping("/migrate")
+    @PreAuthorize("@rbac.atLeast(authentication, 'ADMIN')")
+    public BulkDtos.BulkJobDto submitMigration(
+            @RequestBody BulkDtos.BulkMigrateRequest request, Authentication authentication) {
+        return migration.submit(request, authentication);
     }
 
     /**

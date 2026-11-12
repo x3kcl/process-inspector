@@ -667,6 +667,10 @@ count to a "≥N" lower bound under a truncated DLQ scan — see `CMMN-SCOPE-PHA
   diagram mapping wizard and batch (async `Batch`) stay deferred with typed "MIGRATE" only after
   the single flow proves demand. Builds in parallel with Registry CRUD (INSTANCE-MIGRATION.md §13:
   no Flyway collision — CRUD owns V7, migration adds no table).
+  **Cohort migration (#482) ✔ S2–S4 landed:** filtered cohort count, the stored per-instance
+  analysis (#495), and execution as the bulk verb `migrate-instance` over completed analyses
+  (#496 — per-instance migrate, digest CAS per item, engine `Batch` unused; the 50-cap synchronous
+  door is gone). Open: S5 hierarchy-aware plan, S6 mapping editor follow-ups, S7 CMMN cohort.
 - **Job-lane trend sparklines** on the Stage-0 landing (per-engine dead-letter / timer /
   executable / suspended counts over time) — descoped here from v1.x #4 because v1 exposes
   only _live_ job-lane counts; a trend needs the **R-BAU-08** snapshot/time-series store
