@@ -93,6 +93,7 @@ rec task-identity-links "/runtime/tasks/$TASK/identitylinks"
 rec historic-task-instances "/history/historic-task-instances?processInstanceId=$UT&size=50"
 rec historic-task-instance "/history/historic-task-instances/$TASK"
 rec engine "/management/engine"
+rec management-tables "/management/tables"   # a bare array, not the paged envelope (#627)
 
 # The engine's self-links carry the recording host; normalize so re-records diff cleanly.
 sed -i "s#127\.0\.0\.1:$PORT#localhost:8080#g" "$OUT"/*.json

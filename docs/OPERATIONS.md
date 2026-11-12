@@ -77,7 +77,7 @@ from `INSPECTOR_DEV_PASSWORD`), Grafana with anonymous view on `127.0.0.1:3000`,
 OpenTelemetry collector, and Jaeger. The three dashboards are provisioned. They read the
 metrics above. Cache hit rate is still not a meter, so it is not a panel.
 
-**System info (#509, #510).** `GET /api/engines/{id}/system` returns version, schema properties, and table counts. A viewer gets the version line only. Copy and download live on `/admin/engines/{id}/system`. Executor numbers appear only when the registry row's `metrics_url` is set and passes the egress check. Otherwise the page says the engine does not expose them. A scrape that lacks `flowable_jobs_async_total{type="rejected"}` does not invent a zero.
+**System info (#509, #510).** `GET /api/engines/{id}/system` returns version, schema properties, and table counts. A viewer gets the version line only. `management/tables` answers a bare JSON array on 6.8 and 7.x, not the paged `data` envelope (#627). A section the engine refuses is listed under "Unavailable" and logged once per load as a WARN naming the section, the engine id, and the cause (`System info section 'tables' unavailable for engine …`). Copy and download live on `/admin/engines/{id}/system`. Executor numbers appear only when the registry row's `metrics_url` is set and passes the egress check. Otherwise the page says the engine does not expose them. A scrape that lacks `flowable_jobs_async_total{type="rejected"}` does not invent a zero.
 
 **Throughput (#508).** The strip compares root starts over 10 minutes, 1 hour, and 24 hours with the median of earlier windows of the same width. Tasks and CMMN case starts are the 10-minute tile. No samples yet reads "no history yet".
 

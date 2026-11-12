@@ -86,4 +86,24 @@ class EngineHealth7IT {
         // Sane count, not zero: see EngineHealthIT — loaded runners can outlast the grace.
         assertThat(dto.get("overdueTimers").asLong()).isGreaterThanOrEqualTo(0);
     }
+
+    /** #627: management/tables answers a bare array; the admin view must carry its row counts. */
+    @Test
+    void systemInfoListsTableRowCounts() throws Exception {
+        JsonNode info = mapper.readTree(rest.getForObject("/api/engines/engine-7/system", String.class));
+        assertThat(info.get("failures")).isEmpty();
+        assertThat(info.get("version").asText()).matches("[78]\\..*");
+        assertThat(info.get("properties").size()).isPositive();
+        JsonNode tables = info.get("tables");
+        assertThat(tables.size()).isPositive();
+        boolean found = false;
+        for (JsonNode t : tables) {
+            if ("ACT_RE_PROCDEF".equals(t.get("name").asText())) {
+                found = true;
+                // The BeforeAll deployed demoFailingPayment, so at least one definition row.
+                assertThat(t.get("count").asLong()).isPositive();
+            }
+        }
+        assertThat(found).as("ACT_RE_PROCDEF listed").isTrue();
+    }
 }

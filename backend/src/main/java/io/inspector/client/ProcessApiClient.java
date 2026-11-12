@@ -200,8 +200,8 @@ public class ProcessApiClient {
         return reads.getMap(engine, priority, path);
     }
 
-    public FlowablePage getPage(EngineConfig engine, CallPriority priority, String path) {
-        return reads.getPage(engine, priority, path);
+    public List<Map<String, Object>> getList(EngineConfig engine, CallPriority priority, String path) {
+        return reads.getList(engine, priority, path);
     }
 
     @SuppressWarnings("unchecked")

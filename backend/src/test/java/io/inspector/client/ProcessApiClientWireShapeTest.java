@@ -318,11 +318,11 @@ class ProcessApiClientWireShapeTest {
                 read("engineInfo", "GET", "/management/engine", "engine", c -> c.engineInfo(e, p)),
                 read("getMap", "GET", "/management/engine", "engine", c -> c.getMap(e, p, "/management/engine")),
                 read(
-                        "getPage",
+                        "getList",
                         "GET",
-                        "/repository/deployments",
-                        "deployments",
-                        c -> c.getPage(e, p, "/repository/deployments")),
+                        "/management/tables",
+                        "management-tables",
+                        c -> c.getList(e, p, "/management/tables")),
                 read(
                         "getJob",
                         "GET",

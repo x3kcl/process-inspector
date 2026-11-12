@@ -1,0 +1,397 @@
+[
+  {
+    "count": 5,
+    "name": "ACT_RU_EVENT_SUBSCR",
+    "url": "http://localhost:8080/flowable-rest/service/management/tables/ACT_RU_EVENT_SUBSCR"
+  },
+  {
+    "count": 0,
+    "name": "FLW_EVENT_DEPLOYMENT",
+    "url": "http://localhost:8080/flowable-rest/service/management/tables/FLW_EVENT_DEPLOYMENT"
+  },
+  {
+    "count": 3,
+    "name": "FLW_EV_DATABASECHANGELOG",
+    "url": "http://localhost:8080/flowable-rest/service/management/tables/FLW_EV_DATABASECHANGELOG"
+  },
+  {
+    "count": 0,
+    "name": "ACT_CMMN_HI_MIL_INST",
+    "url": "http://localhost:8080/flowable-rest/service/management/tables/ACT_CMMN_HI_MIL_INST"
+  },
+  {
+    "count": 15,
+    "name": "ACT_CMMN_DATABASECHANGELOG",
+    "url": "http://localhost:8080/flowable-rest/service/management/tables/ACT_CMMN_DATABASECHANGELOG"
+  },
+  {
+    "count": 0,
+    "name": "ACT_RE_MODEL",
+    "url": "http://localhost:8080/flowable-rest/service/management/tables/ACT_RE_MODEL"
+  },
+  {
+    "count": 0,
+    "name": "ACT_APP_DEPLOYMENT_RESOURCE",
+    "url": "http://localhost:8080/flowable-rest/service/management/tables/ACT_APP_DEPLOYMENT_RESOURCE"
+  },
+  {
+    "count": 2,
+    "name": "ACT_CMMN_DEPLOYMENT_RESOURCE",
+    "url": "http://localhost:8080/flowable-rest/service/management/tables/ACT_CMMN_DEPLOYMENT_RESOURCE"
+  },
+  {
+    "count": 5,
+    "name": "ACT_FO_DATABASECHANGELOG",
+    "url": "http://localhost:8080/flowable-rest/service/management/tables/ACT_FO_DATABASECHANGELOG"
+  },
+  {
+    "count": 0,
+    "name": "FLW_RU_BATCH",
+    "url": "http://localhost:8080/flowable-rest/service/management/tables/FLW_RU_BATCH"
+  },
+  {
+    "count": 1,
+    "name": "ACT_CMMN_RU_CASE_INST",
+    "url": "http://localhost:8080/flowable-rest/service/management/tables/ACT_CMMN_RU_CASE_INST"
+  },
+  {
+    "count": 1,
+    "name": "FLW_EV_DATABASECHANGELOGLOCK",
+    "url": "http://localhost:8080/flowable-rest/service/management/tables/FLW_EV_DATABASECHANGELOGLOCK"
+  },
+  {
+    "count": 2,
+    "name": "ACT_ID_PRIV_MAPPING",
+    "url": "http://localhost:8080/flowable-rest/service/management/tables/ACT_ID_PRIV_MAPPING"
+  },
+  {
+    "count": 1,
+    "name": "ACT_ID_PROPERTY",
+    "url": "http://localhost:8080/flowable-rest/service/management/tables/ACT_ID_PROPERTY"
+  },
+  {
+    "count": 76,
+    "name": "ACT_RE_DEPLOYMENT",
+    "url": "http://localhost:8080/flowable-rest/service/management/tables/ACT_RE_DEPLOYMENT"
+  },
+  {
+    "count": 81,
+    "name": "ACT_RE_PROCDEF",
+    "url": "http://localhost:8080/flowable-rest/service/management/tables/ACT_RE_PROCDEF"
+  },
+  {
+    "count": 0,
+    "name": "ACT_ID_GROUP",
+    "url": "http://localhost:8080/flowable-rest/service/management/tables/ACT_ID_GROUP"
+  },
+  {
+    "count": 577,
+    "name": "ACT_HI_VARINST",
+    "url": "http://localhost:8080/flowable-rest/service/management/tables/ACT_HI_VARINST"
+  },
+  {
+    "count": 0,
+    "name": "FLW_EVENT_RESOURCE",
+    "url": "http://localhost:8080/flowable-rest/service/management/tables/FLW_EVENT_RESOURCE"
+  },
+  {
+    "count": 0,
+    "name": "ACT_HI_COMMENT",
+    "url": "http://localhost:8080/flowable-rest/service/management/tables/ACT_HI_COMMENT"
+  },
+  {
+    "count": 1,
+    "name": "ACT_APP_DATABASECHANGELOGLOCK",
+    "url": "http://localhost:8080/flowable-rest/service/management/tables/ACT_APP_DATABASECHANGELOGLOCK"
+  },
+  {
+    "count": 0,
+    "name": "ACT_CMMN_RU_MIL_INST",
+    "url": "http://localhost:8080/flowable-rest/service/management/tables/ACT_CMMN_RU_MIL_INST"
+  },
+  {
+    "count": 2,
+    "name": "ACT_CMMN_RU_PLAN_ITEM_INST",
+    "url": "http://localhost:8080/flowable-rest/service/management/tables/ACT_CMMN_RU_PLAN_ITEM_INST"
+  },
+  {
+    "count": 0,
+    "name": "ACT_DMN_DEPLOYMENT_RESOURCE",
+    "url": "http://localhost:8080/flowable-rest/service/management/tables/ACT_DMN_DEPLOYMENT_RESOURCE"
+  },
+  {
+    "count": 0,
+    "name": "FLW_CHANNEL_DEFINITION",
+    "url": "http://localhost:8080/flowable-rest/service/management/tables/FLW_CHANNEL_DEFINITION"
+  },
+  {
+    "count": 0,
+    "name": "FLW_RU_BATCH_PART",
+    "url": "http://localhost:8080/flowable-rest/service/management/tables/FLW_RU_BATCH_PART"
+  },
+  {
+    "count": 0,
+    "name": "ACT_RU_JOB",
+    "url": "http://localhost:8080/flowable-rest/service/management/tables/ACT_RU_JOB"
+  },
+  {
+    "count": 1,
+    "name": "ACT_RU_EXTERNAL_JOB",
+    "url": "http://localhost:8080/flowable-rest/service/management/tables/ACT_RU_EXTERNAL_JOB"
+  },
+  {
+    "count": 2,
+    "name": "ACT_CMMN_HI_PLAN_ITEM_INST",
+    "url": "http://localhost:8080/flowable-rest/service/management/tables/ACT_CMMN_HI_PLAN_ITEM_INST"
+  },
+  {
+    "count": 0,
+    "name": "ACT_PROCDEF_INFO",
+    "url": "http://localhost:8080/flowable-rest/service/management/tables/ACT_PROCDEF_INFO"
+  },
+  {
+    "count": 1,
+    "name": "ACT_CMMN_CASEDEF",
+    "url": "http://localhost:8080/flowable-rest/service/management/tables/ACT_CMMN_CASEDEF"
+  },
+  {
+    "count": 0,
+    "name": "ACT_RU_SUSPENDED_JOB",
+    "url": "http://localhost:8080/flowable-rest/service/management/tables/ACT_RU_SUSPENDED_JOB"
+  },
+  {
+    "count": 1018,
+    "name": "ACT_RU_EXECUTION",
+    "url": "http://localhost:8080/flowable-rest/service/management/tables/ACT_RU_EXECUTION"
+  },
+  {
+    "count": 0,
+    "name": "FLW_EVENT_DEFINITION",
+    "url": "http://localhost:8080/flowable-rest/service/management/tables/FLW_EVENT_DEFINITION"
+  },
+  {
+    "count": 0,
+    "name": "ACT_RU_ENTITYLINK",
+    "url": "http://localhost:8080/flowable-rest/service/management/tables/ACT_RU_ENTITYLINK"
+  },
+  {
+    "count": 589,
+    "name": "ACT_HI_DETAIL",
+    "url": "http://localhost:8080/flowable-rest/service/management/tables/ACT_HI_DETAIL"
+  },
+  {
+    "count": 0,
+    "name": "ACT_EVT_LOG",
+    "url": "http://localhost:8080/flowable-rest/service/management/tables/ACT_EVT_LOG"
+  },
+  {
+    "count": 2643,
+    "name": "ACT_HI_IDENTITYLINK",
+    "url": "http://localhost:8080/flowable-rest/service/management/tables/ACT_HI_IDENTITYLINK"
+  },
+  {
+    "count": 941,
+    "name": "ACT_RU_IDENTITYLINK",
+    "url": "http://localhost:8080/flowable-rest/service/management/tables/ACT_RU_IDENTITYLINK"
+  },
+  {
+    "count": 1557,
+    "name": "ACT_RU_ACTINST",
+    "url": "http://localhost:8080/flowable-rest/service/management/tables/ACT_RU_ACTINST"
+  },
+  {
+    "count": 0,
+    "name": "ACT_HI_TSK_LOG",
+    "url": "http://localhost:8080/flowable-rest/service/management/tables/ACT_HI_TSK_LOG"
+  },
+  {
+    "count": 1,
+    "name": "ACT_CMMN_DATABASECHANGELOGLOCK",
+    "url": "http://localhost:8080/flowable-rest/service/management/tables/ACT_CMMN_DATABASECHANGELOGLOCK"
+  },
+  {
+    "count": 0,
+    "name": "ACT_APP_APPDEF",
+    "url": "http://localhost:8080/flowable-rest/service/management/tables/ACT_APP_APPDEF"
+  },
+  {
+    "count": 0,
+    "name": "ACT_APP_DEPLOYMENT",
+    "url": "http://localhost:8080/flowable-rest/service/management/tables/ACT_APP_DEPLOYMENT"
+  },
+  {
+    "count": 1,
+    "name": "ACT_ID_USER",
+    "url": "http://localhost:8080/flowable-rest/service/management/tables/ACT_ID_USER"
+  },
+  {
+    "count": 1,
+    "name": "ACT_CO_DATABASECHANGELOGLOCK",
+    "url": "http://localhost:8080/flowable-rest/service/management/tables/ACT_CO_DATABASECHANGELOGLOCK"
+  },
+  {
+    "count": 0,
+    "name": "ACT_HI_ENTITYLINK",
+    "url": "http://localhost:8080/flowable-rest/service/management/tables/ACT_HI_ENTITYLINK"
+  },
+  {
+    "count": 0,
+    "name": "ACT_HI_ATTACHMENT",
+    "url": "http://localhost:8080/flowable-rest/service/management/tables/ACT_HI_ATTACHMENT"
+  },
+  {
+    "count": 178,
+    "name": "ACT_GE_BYTEARRAY",
+    "url": "http://localhost:8080/flowable-rest/service/management/tables/ACT_GE_BYTEARRAY"
+  },
+  {
+    "count": 2,
+    "name": "ACT_CO_DATABASECHANGELOG",
+    "url": "http://localhost:8080/flowable-rest/service/management/tables/ACT_CO_DATABASECHANGELOG"
+  },
+  {
+    "count": 131,
+    "name": "ACT_RU_VARIABLE",
+    "url": "http://localhost:8080/flowable-rest/service/management/tables/ACT_RU_VARIABLE"
+  },
+  {
+    "count": 452,
+    "name": "ACT_RU_TASK",
+    "url": "http://localhost:8080/flowable-rest/service/management/tables/ACT_RU_TASK"
+  },
+  {
+    "count": 0,
+    "name": "ACT_FO_FORM_DEFINITION",
+    "url": "http://localhost:8080/flowable-rest/service/management/tables/ACT_FO_FORM_DEFINITION"
+  },
+  {
+    "count": 0,
+    "name": "ACT_ID_BYTEARRAY",
+    "url": "http://localhost:8080/flowable-rest/service/management/tables/ACT_ID_BYTEARRAY"
+  },
+  {
+    "count": 0,
+    "name": "ACT_ID_TOKEN",
+    "url": "http://localhost:8080/flowable-rest/service/management/tables/ACT_ID_TOKEN"
+  },
+  {
+    "count": 0,
+    "name": "ACT_FO_FORM_RESOURCE",
+    "url": "http://localhost:8080/flowable-rest/service/management/tables/ACT_FO_FORM_RESOURCE"
+  },
+  {
+    "count": 0,
+    "name": "ACT_CMMN_RU_SENTRY_PART_INST",
+    "url": "http://localhost:8080/flowable-rest/service/management/tables/ACT_CMMN_RU_SENTRY_PART_INST"
+  },
+  {
+    "count": 0,
+    "name": "ACT_DMN_DEPLOYMENT",
+    "url": "http://localhost:8080/flowable-rest/service/management/tables/ACT_DMN_DEPLOYMENT"
+  },
+  {
+    "count": 2,
+    "name": "ACT_ID_PRIV",
+    "url": "http://localhost:8080/flowable-rest/service/management/tables/ACT_ID_PRIV"
+  },
+  {
+    "count": 1,
+    "name": "ACT_CMMN_HI_CASE_INST",
+    "url": "http://localhost:8080/flowable-rest/service/management/tables/ACT_CMMN_HI_CASE_INST"
+  },
+  {
+    "count": 1,
+    "name": "ACT_DMN_DATABASECHANGELOGLOCK",
+    "url": "http://localhost:8080/flowable-rest/service/management/tables/ACT_DMN_DATABASECHANGELOGLOCK"
+  },
+  {
+    "count": 0,
+    "name": "ACT_DMN_DECISION",
+    "url": "http://localhost:8080/flowable-rest/service/management/tables/ACT_DMN_DECISION"
+  },
+  {
+    "count": 948,
+    "name": "ACT_HI_PROCINST",
+    "url": "http://localhost:8080/flowable-rest/service/management/tables/ACT_HI_PROCINST"
+  },
+  {
+    "count": 0,
+    "name": "ACT_ID_INFO",
+    "url": "http://localhost:8080/flowable-rest/service/management/tables/ACT_ID_INFO"
+  },
+  {
+    "count": 0,
+    "name": "ACT_ID_MEMBERSHIP",
+    "url": "http://localhost:8080/flowable-rest/service/management/tables/ACT_ID_MEMBERSHIP"
+  },
+  {
+    "count": 0,
+    "name": "ACT_RU_HISTORY_JOB",
+    "url": "http://localhost:8080/flowable-rest/service/management/tables/ACT_RU_HISTORY_JOB"
+  },
+  {
+    "count": 0,
+    "name": "ACT_CO_CONTENT_ITEM",
+    "url": "http://localhost:8080/flowable-rest/service/management/tables/ACT_CO_CONTENT_ITEM"
+  },
+  {
+    "count": 1,
+    "name": "ACT_FO_DATABASECHANGELOGLOCK",
+    "url": "http://localhost:8080/flowable-rest/service/management/tables/ACT_FO_DATABASECHANGELOGLOCK"
+  },
+  {
+    "count": 17,
+    "name": "ACT_RU_DEADLETTER_JOB",
+    "url": "http://localhost:8080/flowable-rest/service/management/tables/ACT_RU_DEADLETTER_JOB"
+  },
+  {
+    "count": 0,
+    "name": "ACT_DMN_HI_DECISION_EXECUTION",
+    "url": "http://localhost:8080/flowable-rest/service/management/tables/ACT_DMN_HI_DECISION_EXECUTION"
+  },
+  {
+    "count": 0,
+    "name": "ACT_FO_FORM_DEPLOYMENT",
+    "url": "http://localhost:8080/flowable-rest/service/management/tables/ACT_FO_FORM_DEPLOYMENT"
+  },
+  {
+    "count": 3401,
+    "name": "ACT_HI_ACTINST",
+    "url": "http://localhost:8080/flowable-rest/service/management/tables/ACT_HI_ACTINST"
+  },
+  {
+    "count": 851,
+    "name": "ACT_HI_TASKINST",
+    "url": "http://localhost:8080/flowable-rest/service/management/tables/ACT_HI_TASKINST"
+  },
+  {
+    "count": 2,
+    "name": "ACT_APP_DATABASECHANGELOG",
+    "url": "http://localhost:8080/flowable-rest/service/management/tables/ACT_APP_DATABASECHANGELOG"
+  },
+  {
+    "count": 1,
+    "name": "ACT_CMMN_DEPLOYMENT",
+    "url": "http://localhost:8080/flowable-rest/service/management/tables/ACT_CMMN_DEPLOYMENT"
+  },
+  {
+    "count": 13,
+    "name": "ACT_GE_PROPERTY",
+    "url": "http://localhost:8080/flowable-rest/service/management/tables/ACT_GE_PROPERTY"
+  },
+  {
+    "count": 0,
+    "name": "ACT_FO_FORM_INSTANCE",
+    "url": "http://localhost:8080/flowable-rest/service/management/tables/ACT_FO_FORM_INSTANCE"
+  },
+  {
+    "count": 8,
+    "name": "ACT_DMN_DATABASECHANGELOG",
+    "url": "http://localhost:8080/flowable-rest/service/management/tables/ACT_DMN_DATABASECHANGELOG"
+  },
+  {
+    "count": 4,
+    "name": "ACT_RU_TIMER_JOB",
+    "url": "http://localhost:8080/flowable-rest/service/management/tables/ACT_RU_TIMER_JOB"
+  }
+]
