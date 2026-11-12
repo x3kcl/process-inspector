@@ -1,0 +1,27 @@
+{
+  "data": [
+    {
+      "correlationId": "e5bea3a3-de72-11f1-a5cc-c2b29413085e",
+      "createTime": "2026-11-12T08:27:28.751+00:00",
+      "dueDate": "2026-11-12T09:27:28.751Z",
+      "elementId": "chargePayment",
+      "elementName": "Charge payment",
+      "exceptionMessage": "Error while evaluating expression: ${amount % divisor}",
+      "executionId": "e5bea3a0-de72-11f1-a5cc-c2b29413085e",
+      "executionUrl": "http://localhost:8080/flowable-rest/service/runtime/executions/e5bea3a0-de72-11f1-a5cc-c2b29413085e",
+      "id": "e5bea3a4-de72-11f1-a5cc-c2b29413085e",
+      "processDefinitionId": "demoFailingRetry:1:e56fe733-de72-11f1-a5cc-c2b29413085e",
+      "processDefinitionUrl": "http://localhost:8080/flowable-rest/service/repository/process-definitions/demoFailingRetry:1:e56fe733-de72-11f1-a5cc-c2b29413085e",
+      "processInstanceId": "e5be7c8a-de72-11f1-a5cc-c2b29413085e",
+      "processInstanceUrl": "http://localhost:8080/flowable-rest/service/runtime/process-instances/e5be7c8a-de72-11f1-a5cc-c2b29413085e",
+      "retries": 9,
+      "tenantId": "",
+      "url": "http://localhost:8080/flowable-rest/service/management/timer-jobs/e5bea3a4-de72-11f1-a5cc-c2b29413085e"
+    }
+  ],
+  "order": "asc",
+  "size": 1,
+  "sort": "id",
+  "start": 0,
+  "total": 1
+}

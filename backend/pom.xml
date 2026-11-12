@@ -300,12 +300,12 @@
                     <limit>
                       <counter>LINE</counter>
                       <value>COVEREDRATIO</value>
-                      <minimum>0.65</minimum>
+                      <minimum>0.74</minimum>
                     </limit>
                     <limit>
                       <counter>BRANCH</counter>
                       <value>COVEREDRATIO</value>
-                      <minimum>0.56</minimum>
+                      <minimum>0.61</minimum>
                     </limit>
                   </limits>
                 </rule>
@@ -324,6 +324,10 @@
                     <include>io.inspector.audit</include>
                     <include>io.inspector.selfheal</include>
                     <include>io.inspector.ops</include>
+                    <include>io.inspector.aggregate</include>
+                    <include>io.inspector.client</include>
+                    <include>io.inspector.triage</include>
+                    <include>io.inspector.security.mapping</include>
                   </includes>
                   <limits>
                     <limit>

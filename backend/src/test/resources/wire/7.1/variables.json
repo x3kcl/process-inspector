@@ -1,0 +1,14 @@
+[
+  {
+    "name": "amount",
+    "scope": "local",
+    "type": "integer",
+    "value": 100
+  },
+  {
+    "name": "divisor",
+    "scope": "local",
+    "type": "integer",
+    "value": 0
+  }
+]

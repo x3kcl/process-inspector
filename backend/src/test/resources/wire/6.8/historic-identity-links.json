@@ -1,0 +1,20 @@
+[
+  {
+    "groupId": null,
+    "processInstanceId": "e5da6826-de72-11f1-a5cc-c2b29413085e",
+    "processInstanceUrl": "http://localhost:8080/flowable-rest/service/history/historic-process-instances/e5da6826-de72-11f1-a5cc-c2b29413085e",
+    "taskId": null,
+    "taskUrl": null,
+    "type": "participant",
+    "userId": "rest-admin"
+  },
+  {
+    "groupId": null,
+    "processInstanceId": "e5da6826-de72-11f1-a5cc-c2b29413085e",
+    "processInstanceUrl": "http://localhost:8080/flowable-rest/service/history/historic-process-instances/e5da6826-de72-11f1-a5cc-c2b29413085e",
+    "taskId": null,
+    "taskUrl": null,
+    "type": "starter",
+    "userId": "rest-admin"
+  }
+]
