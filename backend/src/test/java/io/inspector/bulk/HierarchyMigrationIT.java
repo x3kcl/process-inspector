@@ -22,6 +22,7 @@ import org.junit.jupiter.api.AfterAll;
 import org.junit.jupiter.api.BeforeAll;
 import org.junit.jupiter.api.Test;
 import org.junit.jupiter.api.TestInstance;
+import org.junit.jupiter.api.condition.EnabledIfEnvironmentVariable;
 import org.junit.jupiter.params.ParameterizedTest;
 import org.junit.jupiter.params.provider.ValueSource;
 import org.springframework.beans.factory.annotation.Autowired;
@@ -54,6 +55,13 @@ import org.testcontainers.containers.PostgreSQLContainer;
  *   <li>a forced failure on B leaves A and Root {@code not_run} with the named cause and on their
  *       old version; a continuation of the parent alone is refused; once B is fixed, "Continue as
  *       new job" finishes the tree in the same order;
+ *   <li>a child that is already on its target, or no longer running, BEFORE its group is analysed
+ *       is listed {@code not_run} (never sent) and releases its parent: nothing is left of it to
+ *       migrate;
+ *   <li>a definition that calls itself is reported as a circular reference and still migrated,
+ *       deepest instance first;
+ *   <li>a chain deeper than the depth cap is reported at the node where the walk stopped and the
+ *       plan is refused;
  *   <li>a prod engine needs the typed count of the executable set;
  *   <li>a multi-instance call activity wider than one child read is reported with its exact total
  *       and the plan is refused, not partly executed.
@@ -74,6 +82,9 @@ class HierarchyMigrationIT {
     private static final String ROOT = "demoHierarchyRoot";
     private static final String A = "demoHierarchyA";
     private static final String B = "demoHierarchyB";
+    private static final String RECURSIVE = "demoHierarchyRecursive";
+    private static final Path RECURSIVE_BPMN =
+            Path.of("..", "docker", "processes", "demo-hierarchy-recursive.bpmn20.xml");
     private static final String REASON = "HierarchyMigrationIT move the tree off the bad deploy";
 
     private static final PostgreSQLContainer<?> POSTGRES = new PostgreSQLContainer<>("postgres:16-alpine");
@@ -109,8 +120,8 @@ class HierarchyMigrationIT {
 
     @BeforeAll
     void seed() {
-        legs.put("engine-a", leg(url("PI_ENGINE_A_PORT", "8081"), 3));
-        legs.put("engine-7", leg(url("PI_ENGINE_7_PORT", "8083"), 2));
+        legs.put("engine-a", leg(url("PI_ENGINE_A_PORT", "8081"), 4));
+        legs.put("engine-7", leg(url("PI_ENGINE_7_PORT", "8083"), 3));
         await().atMost(60, TimeUnit.SECONDS)
                 .pollInterval(1, TimeUnit.SECONDS)
                 .until(() -> migrationCapable("engine-a") && migrationCapable("engine-7"));
@@ -263,6 +274,230 @@ class HierarchyMigrationIT {
         assertChildrenFirstByAudit(engineId, second, tree);
     }
 
+    /**
+     * The gap between "plan stored" and "group configured" is minutes or more. A child that was
+     * migrated to the target in that gap is a blocker in its group's analysis (same-version
+     * target), so it is listed and never sent — and it must not hold its parent back.
+     */
+    @ParameterizedTest
+    @ValueSource(strings = {"engine-a", "engine-7"})
+    void aChildAlreadyOnItsTargetBeforeItsAnalysisIsNotSentAndReleasesItsParent(String engineId) throws Exception {
+        Leg leg = legs.get(engineId);
+        Tree tree = leg.trees().get(leg.trees().size() - 1);
+        String planId = createPlan(engineId, tree.root()).path("id").asText();
+
+        // Someone migrates B straight on the engine after the plan was stored.
+        leg.engine()
+                .post()
+                .uri("/runtime/process-instances/" + tree.b() + "/migrate")
+                .contentType(MediaType.APPLICATION_JSON)
+                .body(Map.of(
+                        "toProcessDefinitionId",
+                        leg.to().get(B),
+                        "activityMappings",
+                        List.of(Map.of("fromActivityId", "reviewB", "toActivityId", "approveB"))))
+                .retrieve()
+                .toBodilessEntity();
+        assertThat(definitionOf(leg, tree.b())).isEqualTo(leg.to().get(B));
+
+        JsonNode ready = configureAll(planId, leg);
+        assertThat(ready.path("executableCount").asInt()).isEqualTo(2);
+        assertThat(ready.path("notSentCount").asInt()).isEqualTo(1);
+
+        JsonNode done = awaitTerminal(submit(planId, null));
+
+        assertThat(done.path("state").asText()).isEqualTo("COMPLETED");
+        JsonNode b = item(done, tree.b());
+        assertThat(b.path("state").asText()).isEqualTo("not_run");
+        assertThat(b.path("detail").asText()).contains("not sent — the analysis blocked this instance");
+        assertThat(migrateRows(engineId, tree.b())).isEmpty();
+        assertThat(item(done, tree.a()).path("state").asText()).isEqualTo("ok");
+        assertThat(item(done, tree.root()).path("state").asText()).isEqualTo("ok");
+        assertThat(definitionOf(leg, tree.a())).isEqualTo(leg.to().get(A));
+        assertThat(definitionOf(leg, tree.root())).isEqualTo(leg.to().get(ROOT));
+        assertThat(migrateRow(done, tree.a()).getTs())
+                .isBefore(migrateRow(done, tree.root()).getTs());
+    }
+
+    /**
+     * The same gap, the other way out: the child completed before its group is analysed
+     * ({@code instance-not-running}). This tree runs on the version-2 shape, where A waits on its
+     * own user task after B returns — so A and Root are still running and nothing is left below A
+     * to migrate.
+     */
+    @ParameterizedTest
+    @ValueSource(strings = {"engine-a", "engine-7"})
+    void aChildNoLongerRunningBeforeItsAnalysisIsNotSentAndReleasesItsParent(String engineId) throws Exception {
+        RestClient engine = legs.get(engineId).engine();
+        String root = EngineSeed.startInstance(engine, ROOT, "IT497-gone-" + UUID.randomUUID(), List.of());
+        cleanup.add(() -> EngineSeed.deleteInstanceQuietly(engine, root));
+        String a = EngineSeed.childInstanceOf(engine, root);
+        String b = EngineSeed.childInstanceOf(engine, a);
+        Map<String, String> from = Map.of(
+                ROOT,
+                instanceDefinition(engine, root),
+                A,
+                instanceDefinition(engine, a),
+                B,
+                instanceDefinition(engine, b));
+        // The targets: one more version of each, the same shape, so no mapping is needed.
+        Map<String, String> to = new HashMap<>();
+        for (String key : List.of(B, A, ROOT)) {
+            to.put(key, definitionId(engine, key, EngineSeed.deployNewVersion(engine, key, bpmn(key, 2))));
+        }
+        String planId = createPlan(engineId, root).path("id").asText();
+        assertThat(nodeDepths(plan(planId))).containsOnlyKeys(root, a, b);
+
+        // B completes after the plan was stored: A moves on to its own user task and keeps running.
+        completeOnlyTask(engine, b);
+        await().atMost(30, TimeUnit.SECONDS)
+                .pollInterval(500, TimeUnit.MILLISECONDS)
+                .until(() -> !isRunning(engine, b));
+        assertThat(instanceDefinition(engine, a)).isEqualTo(from.get(A));
+
+        JsonNode ready = configureAll(planId, from, to, null);
+        assertThat(ready.path("executableCount").asInt()).isEqualTo(2);
+        assertThat(ready.path("notSentCount").asInt()).isEqualTo(1);
+
+        JsonNode done = awaitTerminal(submit(planId, null));
+
+        assertThat(done.path("state").asText()).isEqualTo("COMPLETED");
+        JsonNode leaf = item(done, b);
+        assertThat(leaf.path("state").asText()).isEqualTo("not_run");
+        assertThat(leaf.path("detail").asText())
+                .contains("not sent — the analysis blocked this instance")
+                .contains("not running");
+        assertThat(migrateRows(engineId, b)).isEmpty();
+        assertThat(item(done, a).path("state").asText()).isEqualTo("ok");
+        assertThat(item(done, root).path("state").asText()).isEqualTo("ok");
+        assertThat(instanceDefinition(engine, a)).isEqualTo(to.get(A));
+        assertThat(instanceDefinition(engine, root)).isEqualTo(to.get(ROOT));
+        assertThat(migrateRow(done, a).getTs()).isBefore(migrateRow(done, root).getTs());
+    }
+
+    /**
+     * A definition that calls itself: every child's definition key is also its ancestor's. The
+     * plan reports each one, keeps them all, and the job still runs deepest instance first.
+     */
+    @ParameterizedTest
+    @ValueSource(strings = {"engine-a", "engine-7"})
+    void aDefinitionThatCallsItselfIsReportedAsCircularAndStillMigratedDeepestFirst(String engineId) throws Exception {
+        RestClient engine = legs.get(engineId).engine();
+        String from = definitionId(engine, RECURSIVE, EngineSeed.deployNewVersion(engine, RECURSIVE, RECURSIVE_BPMN));
+        String top = EngineSeed.startInstance(
+                engine,
+                RECURSIVE,
+                "IT497-recursive-" + UUID.randomUUID(),
+                List.of(
+                        Map.of("name", "depth", "type", "integer", "value", 0),
+                        Map.of("name", "maxDepth", "type", "integer", "value", 2)));
+        cleanup.add(() -> EngineSeed.deleteInstanceQuietly(engine, top));
+        String middle = EngineSeed.childInstanceOf(engine, top);
+        String deepest = EngineSeed.childInstanceOf(engine, middle);
+        String to = definitionId(engine, RECURSIVE, EngineSeed.deployNewVersion(engine, RECURSIVE, RECURSIVE_BPMN));
+
+        JsonNode plan = createPlan(engineId, top);
+
+        assertThat(nodeDepths(plan))
+                .containsEntry(top, 0)
+                .containsEntry(middle, 1)
+                .containsEntry(deepest, 2)
+                .hasSize(3);
+        assertThat(plan.path("truncations")).isEmpty();
+        Map<String, String> ancestorOf = new HashMap<>();
+        for (JsonNode reference : plan.path("circularReferences")) {
+            assertThat(reference.path("definitionKey").asText()).isEqualTo(RECURSIVE);
+            ancestorOf.put(
+                    reference.path("instanceId").asText(),
+                    reference.path("ancestorInstanceId").asText());
+        }
+        assertThat(ancestorOf)
+                .containsEntry(middle, top)
+                .containsEntry(deepest, middle)
+                .hasSize(2);
+        // One definition, so one group holds all three levels.
+        assertThat(plan.path("groups")).hasSize(1);
+        assertThat(plan.path("groups").get(0).path("instanceCount").asInt()).isEqualTo(3);
+
+        String planId = plan.path("id").asText();
+        ResponseEntity<String> decided = as("admin")
+                .exchange(
+                        "/api/migration/hierarchy/plans/" + planId + "/groups",
+                        HttpMethod.PUT,
+                        new HttpEntity<>(Map.of("definitionId", from, "toDefinitionId", to)),
+                        String.class);
+        assertThat(decided.getStatusCode()).isEqualTo(HttpStatus.OK);
+        await().atMost(120, TimeUnit.SECONDS)
+                .pollInterval(500, TimeUnit.MILLISECONDS)
+                .until(() -> plan(planId).path("executable").asBoolean());
+        assertThat(plan(planId).path("executableCount").asInt()).isEqualTo(3);
+
+        JsonNode done = awaitTerminal(submit(planId, null));
+
+        assertThat(done.path("state").asText()).isEqualTo("COMPLETED");
+        for (String id : List.of(top, middle, deepest)) {
+            assertThat(item(done, id).path("state").asText()).as(id).isEqualTo("ok");
+            assertThat(instanceDefinition(engine, id)).as(id).isEqualTo(to);
+        }
+        assertThat(migrateRow(done, deepest).getTs())
+                .isBefore(migrateRow(done, middle).getTs());
+        assertThat(migrateRow(done, middle).getTs())
+                .isBefore(migrateRow(done, top).getTs());
+        // The envelope audit row carries what the plan reported.
+        AuditEntry envelope = audit.findAll().stream()
+                .filter(row -> "bulk:migrate-instance".equals(row.getAction())
+                        && row.getPayload().contains(done.path("id").asText()))
+                .findFirst()
+                .orElseThrow();
+        assertThat(envelope.getPayload()).contains("circularReferences").contains(deepest);
+    }
+
+    /**
+     * The depth cap on a real chain: the self-calling definition 12 instances deep. The plan holds
+     * depths 0 to 10, says where it stopped, and is refused as a whole.
+     */
+    @ParameterizedTest
+    @ValueSource(strings = {"engine-a", "engine-7"})
+    void aChainDeeperThanTheDepthCapIsReportedAndThePlanRefused(String engineId) throws Exception {
+        RestClient engine = legs.get(engineId).engine();
+        if (EngineSeed.definitionCount(engine, RECURSIVE) == 0) {
+            EngineSeed.deployNewVersion(engine, RECURSIVE, RECURSIVE_BPMN);
+        }
+        String top = EngineSeed.startInstance(
+                engine,
+                RECURSIVE,
+                "IT497-deep-" + UUID.randomUUID(),
+                List.of(
+                        Map.of("name", "depth", "type", "integer", "value", 0),
+                        Map.of("name", "maxDepth", "type", "integer", "value", 11)));
+        cleanup.add(() -> EngineSeed.deleteInstanceQuietly(engine, top));
+
+        JsonNode plan = createPlan(engineId, top);
+
+        int cap = plan.path("maxDepth").asInt();
+        assertThat(cap).isEqualTo(10);
+        Map<String, Integer> depths = nodeDepths(plan);
+        assertThat(depths).hasSize(cap + 1).containsEntry(top, 0);
+        assertThat(depths.values()).containsExactlyInAnyOrder(0, 1, 2, 3, 4, 5, 6, 7, 8, 9, 10);
+        String deepestRead = depths.entrySet().stream()
+                .filter(entry -> entry.getValue() == cap)
+                .map(Map.Entry::getKey)
+                .findFirst()
+                .orElseThrow();
+        assertThat(plan.path("truncations")).hasSize(1);
+        JsonNode truncation = plan.path("truncations").get(0);
+        assertThat(truncation.path("kind").asText()).isEqualTo("depth");
+        assertThat(truncation.path("instanceId").asText()).isEqualTo(deepestRead);
+        assertThat(truncation.path("total").asLong()).isEqualTo(1);
+        assertThat(plan.path("executable").asBoolean()).isFalse();
+        assertThat(plan.path("notExecutableReason").asText()).contains("below the depth cap");
+
+        ResponseEntity<String> refused =
+                post("/api/bulk/migrate-hierarchy", submitBody(plan.path("id").asText(), null));
+        assertThat(refused.getStatusCode()).isEqualTo(HttpStatus.CONFLICT);
+        assertThat(refused.getBody()).contains("hierarchy-plan-truncated");
+    }
+
     @Test
     void aProdEngineNeedsTheTypedCountOfTheExecutableSet() throws Exception {
         // engine-a-prod is the same 6.8 engine registered as prod.
@@ -310,6 +545,58 @@ class HierarchyMigrationIT {
                 .isLessThan(60);
         assertThat(plan.path("nodes")).hasSize(plan.path("breadthCap").asInt() + 1);
 
+        ResponseEntity<String> refused =
+                post("/api/bulk/migrate-hierarchy", submitBody(plan.path("id").asText(), null));
+        assertThat(refused.getStatusCode()).isEqualTo(HttpStatus.CONFLICT);
+        assertThat(refused.getBody()).contains("hierarchy-plan-truncated");
+    }
+
+    /**
+     * On demand, never in CI: the issue's "10k-child multi-instance call activity does not lock
+     * the BFF", measured on a real engine. Starting that many instances takes minutes and bloats
+     * the engine, so run it against a THROWAWAY flowable-rest (INSTANCE-MIGRATION.md §7.2):
+     * {@code PI_ENGINE_A_PORT=<its port> PI_IT_HIERARCHY_WIDE=10000 mvn verify
+     * -Dit.test='HierarchyMigrationIT#aVeryWideLevelCostsOneReadAndIsReportedWithItsExactTotal'}.
+     */
+    @Test
+    @EnabledIfEnvironmentVariable(named = "PI_IT_HIERARCHY_WIDE", matches = "\\d+")
+    void aVeryWideLevelCostsOneReadAndIsReportedWithItsExactTotal() throws Exception {
+        int children = Integer.parseInt(System.getenv("PI_IT_HIERARCHY_WIDE"));
+        RestClient engine = legs.get("engine-a").engine();
+        Path processes = Path.of("..", "docker", "processes");
+        EngineSeed.deployIfMissing(engine, "demoWideChild", processes.resolve("demo-wide-child.bpmn20.xml"));
+        EngineSeed.deployIfMissing(
+                engine, "demoHierarchyFanout", processes.resolve("demo-hierarchy-fanout.bpmn20.xml"));
+        String wide = EngineSeed.startInstance(
+                engine,
+                "demoHierarchyFanout",
+                "IT497-wide-" + children + "-" + UUID.randomUUID(),
+                List.of(Map.of("name", "children", "type", "integer", "value", children)));
+
+        long startedAt = System.nanoTime();
+        JsonNode plan = createPlan("engine-a", wide);
+        long planMs = TimeUnit.NANOSECONDS.toMillis(System.nanoTime() - startedAt);
+
+        JsonNode truncation = plan.path("truncations").get(0);
+        assertThat(truncation.path("kind").asText()).isEqualTo("breadth");
+        assertThat(truncation.path("instanceId").asText()).isEqualTo(wide);
+        assertThat(truncation.path("total").asLong()).isEqualTo(children);
+        assertThat(truncation.path("enumerated").asInt())
+                .isEqualTo(plan.path("breadthCap").asInt());
+        // The parent plus one capped page of children, each child read once for its own children.
+        assertThat(plan.path("nodes")).hasSize(plan.path("breadthCap").asInt() + 1);
+        assertThat(plan.path("executable").asBoolean()).isFalse();
+        assertThat(plan.path("notExecutableReason").asText()).contains(children + " running children");
+        // Bounded by the node count read, not by the level's width.
+        assertThat(planMs)
+                .as("plan over %d children took %d ms", children, planMs)
+                .isLessThan(10_000);
+        System.out.printf(
+                "IT497 wide level: %d children, plan stored in %d ms, %d nodes%n",
+                children, planMs, plan.path("nodes").size());
+        // The BFF still answers while and after the plan was read.
+        assertThat(as("viewer").getForEntity("/api/engines", String.class).getStatusCode())
+                .isEqualTo(HttpStatus.OK);
         ResponseEntity<String> refused =
                 post("/api/bulk/migrate-hierarchy", submitBody(plan.path("id").asText(), null));
         assertThat(refused.getStatusCode()).isEqualTo(HttpStatus.CONFLICT);
@@ -371,12 +658,20 @@ class HierarchyMigrationIT {
 
     /** Configures every definition of the plan to its version 2 and waits for the estimates. */
     private JsonNode configureAll(String planId, Leg leg) throws Exception {
+        return configureAll(
+                planId, leg.from(), leg.to(), List.of(Map.of("fromActivityId", "reviewB", "toActivityId", "approveB")));
+    }
+
+    /** {@code leafMappings} is B's mapping document, null when B's source and target have the same ids. */
+    private JsonNode configureAll(
+            String planId, Map<String, String> from, Map<String, String> to, List<Map<String, String>> leafMappings)
+            throws Exception {
         for (String key : List.of(ROOT, A, B)) {
             Map<String, Object> decision = new HashMap<>();
-            decision.put("definitionId", leg.from().get(key));
-            decision.put("toDefinitionId", leg.to().get(key));
-            if (key.equals(B)) {
-                decision.put("mappings", List.of(Map.of("fromActivityId", "reviewB", "toActivityId", "approveB")));
+            decision.put("definitionId", from.get(key));
+            decision.put("toDefinitionId", to.get(key));
+            if (key.equals(B) && leafMappings != null) {
+                decision.put("mappings", leafMappings);
             }
             ResponseEntity<String> decided = as("admin")
                     .exchange(
@@ -504,10 +799,42 @@ class HierarchyMigrationIT {
         return String.valueOf(data.get(0).get("id"));
     }
 
-    @SuppressWarnings("unchecked")
     private static String definitionOf(Leg leg, String instanceId) {
-        Map<String, Object> instance = leg.engine()
-                .get()
+        return instanceDefinition(leg.engine(), instanceId);
+    }
+
+    private static boolean isRunning(RestClient engine, String instanceId) {
+        try {
+            engine.get()
+                    .uri("/runtime/process-instances/" + instanceId)
+                    .retrieve()
+                    .toBodilessEntity();
+            return true;
+        } catch (org.springframework.web.client.HttpClientErrorException.NotFound gone) {
+            return false;
+        }
+    }
+
+    /** Completes the single open user task of an instance. */
+    @SuppressWarnings("unchecked")
+    private static void completeOnlyTask(RestClient engine, String instanceId) {
+        Map<String, Object> page = engine.get()
+                .uri("/runtime/tasks?processInstanceId=" + instanceId)
+                .retrieve()
+                .body(Map.class);
+        List<Map<String, Object>> tasks = (List<Map<String, Object>>) page.get("data");
+        assertThat(tasks).hasSize(1);
+        engine.post()
+                .uri("/runtime/tasks/" + tasks.get(0).get("id"))
+                .contentType(MediaType.APPLICATION_JSON)
+                .body(Map.of("action", "complete"))
+                .retrieve()
+                .toBodilessEntity();
+    }
+
+    @SuppressWarnings("unchecked")
+    private static String instanceDefinition(RestClient engine, String instanceId) {
+        Map<String, Object> instance = engine.get()
                 .uri("/runtime/process-instances/" + instanceId)
                 .retrieve()
                 .body(Map.class);

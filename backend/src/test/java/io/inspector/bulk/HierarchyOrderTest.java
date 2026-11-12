@@ -4,6 +4,7 @@ import static org.assertj.core.api.Assertions.assertThat;
 import static org.assertj.core.api.Assertions.assertThatThrownBy;
 
 import io.inspector.action.GuardRefusedException;
+import io.inspector.migration.HierarchyPlanService;
 import java.time.Instant;
 import java.util.List;
 import java.util.Map;
@@ -57,15 +58,13 @@ class HierarchyOrderTest {
     }
 
     @Test
-    void aFailedUnknownNotRunOrProtectedChildBlocksItsParentAndNamesTheCause() {
-        for (BulkJobItem.State state : List.of(
-                BulkJobItem.State.failed,
-                BulkJobItem.State.unknown,
-                BulkJobItem.State.not_run,
-                BulkJobItem.State.skipped_protected)) {
+    void aFailedUnknownOrProtectedChildAlwaysBlocksItsParentAndNamesTheCause() {
+        for (BulkJobItem.State state :
+                List.of(BulkJobItem.State.failed, BulkJobItem.State.unknown, BulkJobItem.State.skipped_protected)) {
             BulkJobItem parent = item("a", 1, "root");
             BulkJobItem child = settled(item("b", 2, "a"), state, "engine rejected (500): boom");
 
+            // Even when a read says nothing is left of it: these outcomes need the operator.
             String blocked = HierarchyOrder.blockedBy(parent, List.of(parent, child), c -> true);
 
             assertThat(blocked)
@@ -74,6 +73,33 @@ class HierarchyOrderTest {
                     .contains(state.name())
                     .contains("engine rejected (500): boom");
         }
+    }
+
+    @Test
+    void aChildThatWasNeverSentBlocksItsParentOnlyWhileItStillHasToBeMigrated() {
+        BulkJobItem parent = item("a", 1, "root");
+        // The analysis refused it: it had ended, or was already on the target, before the analysis ran.
+        BulkJobItem neverSent = settled(
+                item("b", 2, "a"),
+                BulkJobItem.State.not_run,
+                "not sent — the analysis blocked this instance: Instance b is not running");
+        // Its own child blocked it.
+        BulkJobItem chained =
+                settled(item("c", 2, "a"), BulkJobItem.State.not_run, "blocked by child engine-a:d (failed: boom)");
+
+        // Still running on the old version: the block holds and names the child.
+        assertThat(HierarchyOrder.blockedBy(parent, List.of(parent, neverSent), child -> false))
+                .contains("blocked by child engine-a:b")
+                .contains("not_run")
+                .contains("Instance b is not running");
+        assertThat(HierarchyOrder.blockedBy(parent, List.of(parent, chained), child -> false))
+                .contains("blocked by child engine-a:c");
+        // A read shows it gone or on its target: nothing is left to migrate below the parent.
+        assertThat(HierarchyOrder.blockedBy(parent, List.of(parent, neverSent, chained), child -> true))
+                .isNull();
+        // The read is per child: one child still on the old version keeps the parent back.
+        assertThat(HierarchyOrder.blockedBy(parent, List.of(parent, neverSent, chained), child -> child == neverSent))
+                .contains("blocked by child engine-a:c");
     }
 
     @Test
@@ -128,5 +154,26 @@ class HierarchyOrderTest {
         assertThat(HierarchyOrder.carryOver(
                         List.of(plain), List.of(new BulkDtos.BulkTarget(ENGINE, "p", "analysis")), child -> false))
                 .isEmpty();
+    }
+
+    @Test
+    void aContinuationKeepsAnAnalysisBlockedItemUnsentAndLetsAParentGoOnceNothingIsLeftBelowIt() {
+        BulkJobItem a = settled(item("a", 1, null), BulkJobItem.State.not_run, "blocked by child engine-a:b");
+        String notSent = HierarchyPlanService.NOT_SENT + ": Instance b is not running";
+        BulkJobItem b = settled(item("b", 2, "a"), BulkJobItem.State.not_run, notSent);
+        List<BulkJobItem> prior = List.of(b, a);
+        BulkDtos.BulkTarget aTarget = new BulkDtos.BulkTarget(ENGINE, "a", "analysis");
+        BulkDtos.BulkTarget bTarget = new BulkDtos.BulkTarget(ENGINE, "b", "analysis");
+
+        // The drawer continues every not-run item: b stays listed and unsent, a keeps its place.
+        assertThat(HierarchyOrder.carryOver(prior, List.of(bTarget, aTarget), child -> false))
+                .containsEntry("engine-a:b", new HierarchyOrder.Placement(2, "a", notSent))
+                .containsEntry("engine-a:a", new HierarchyOrder.Placement(1, null, null));
+        // The parent alone: refused while b still runs on the old version, allowed once b is gone.
+        assertThatThrownBy(() -> HierarchyOrder.carryOver(prior, List.of(aTarget), child -> false))
+                .isInstanceOfSatisfying(
+                        GuardRefusedException.class, e -> assertThat(e.code()).isEqualTo("hierarchy-child-unresolved"));
+        assertThat(HierarchyOrder.carryOver(prior, List.of(aTarget), child -> true))
+                .containsOnlyKeys("engine-a:a");
     }
 }

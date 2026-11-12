@@ -71,6 +71,8 @@ class HierarchyBulkMigrationServiceTest {
                         TestEngines.engine("engine-p", "http://p", EngineEnvironment.PROD, EngineMode.READ_WRITE))));
         service = new HierarchyBulkMigrationService(bulk, plans, registry, rbac, tickets);
         lenient().when(rbac.hasRoleOn(any(), eq(Role.ADMIN), anyString())).thenReturn(true);
+        lenient().when(plans.engineOf(devPlan)).thenReturn("engine-a");
+        lenient().when(plans.engineOf(prodPlan)).thenReturn("engine-p");
         lenient().when(plans.execution(devPlan)).thenReturn(execution(devPlan, "engine-a"));
         lenient().when(plans.execution(prodPlan)).thenReturn(execution(prodPlan, "engine-p"));
     }
@@ -145,6 +147,8 @@ class HierarchyBulkMigrationServiceTest {
         assertThatThrownBy(() -> service.submit(request(devPlan, null), auth))
                 .isInstanceOfSatisfying(
                         GuardRefusedException.class, e -> assertThat(e.code()).isEqualTo("rbac-denied"));
+        // The role check comes before the plan is resolved: its refusals name definitions and instances.
+        verify(plans, never()).execution(any());
         assertThatThrownBy(() -> service.submit(request(null, null), auth))
                 .isInstanceOfSatisfying(
                         GuardRefusedException.class, e -> assertThat(e.code()).isEqualTo("hierarchy-plan-required"));

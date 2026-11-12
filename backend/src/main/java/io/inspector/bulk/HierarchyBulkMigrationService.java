@@ -59,14 +59,15 @@ public class HierarchyBulkMigrationService {
             throw new GuardRefusedException(
                     HttpStatus.BAD_REQUEST, "hierarchy-plan-required", "Name the plan to execute. Nothing happened.");
         }
-        Execution execution = plans.execution(request.planId());
-        String engineId = execution.engineId();
+        // The role check comes first: a plan's refusal text names definitions and instances.
+        String engineId = plans.engineOf(request.planId());
         if (!rbac.hasRoleOn(auth, Role.ADMIN, engineId)) {
             throw new GuardRefusedException(
                     HttpStatus.FORBIDDEN,
                     "rbac-denied",
                     "Hierarchy migration requires ADMIN on engine '" + engineId + "'. Nothing happened.");
         }
+        Execution execution = plans.execution(request.planId());
         EngineEnvironment environment = registry.require(engineId).environment();
         tickets.validate(request.ticketId(), environment);
         boolean prod = environment == EngineEnvironment.PROD;

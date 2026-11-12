@@ -177,9 +177,9 @@ public class BulkMigrationService {
         BulkDtos.BulkSubmitRequest submit = new BulkDtos.BulkSubmitRequest(
                 BulkJobService.MIGRATE_VERB, request.reason(), ticketId, prior.getId(), targets);
         // A hierarchy job (#497) keeps its children-first order, and a parent is continued only
-        // with its unresolved children or once they are on their target.
+        // with its unresolved children or once nothing is left of them to migrate.
         Map<String, HierarchyOrder.Placement> placements =
-                HierarchyOrder.carryOver(priorItems, targets, this::onTarget);
+                HierarchyOrder.carryOver(priorItems, targets, this::nothingLeftToMigrate);
         String continues = " · continues " + prior.getId().toString().substring(0, 8);
         if (placements.isEmpty()) {
             return bulk.submitMigration(
@@ -193,11 +193,13 @@ public class BulkMigrationService {
                 placements);
     }
 
-    /** Read-only: is this prior item's instance on its analysis target now. A failed read is "no". */
-    private boolean onTarget(BulkJobItem item) {
+    /**
+     * Read-only: is this prior item's instance on its analysis target now, or no longer running.
+     * A failed read is "no".
+     */
+    private boolean nothingLeftToMigrate(BulkJobItem item) {
         try {
-            return cohorts.verify(item.getJobRef(), item.getEngineId(), item.getInstanceId())
-                    .migrated();
+            return cohorts.nothingLeftToMigrate(item.getJobRef(), item.getEngineId(), item.getInstanceId());
         } catch (RuntimeException e) {
             return false;
         }

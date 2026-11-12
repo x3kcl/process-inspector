@@ -125,8 +125,8 @@ class HierarchyBulkJobTest {
                         null,
                         null,
                         false));
-        when(cohortMigration.verify(any(), any(), any()))
-                .thenReturn(new CohortBulkMigration.Verification(false, "instance is still on the source"));
+        // Default: every instance is still running on its source definition.
+        when(cohortMigration.nothingLeftToMigrate(any(), any(), any())).thenReturn(false);
         Clock clock = Clock.fixed(NOW, ZoneOffset.UTC);
         service = new BulkJobService(
                 jobs,
@@ -294,5 +294,38 @@ class HierarchyBulkJobTest {
         assertThat(item(done, "a").state()).isEqualTo("not_run");
         assertThat(item(done, "a").detail()).contains("blocked by child engine-a:b");
         assertThat(dispatched).isEmpty();
+    }
+
+    @Test
+    void aChildTheAnalysisBlockedBecauseItHadEndedOrMovedIsListedUnsentAndReleasesItsParent() {
+        // b ended (or was moved to the target) before its group was analysed: the analysis lists it
+        // as a blocker, and the read at dispatch shows nothing is left of it to migrate.
+        when(cohortMigration.nothingLeftToMigrate(ANALYSIS, ENGINE, "b")).thenReturn(true);
+
+        BulkDtos.BulkJobDto done = run(
+                new Planned("b", 2, "a", "not sent — the analysis blocked this instance: Instance b is not running"),
+                new Planned("a", 1, "root", null),
+                new Planned("root", 0, null, null));
+
+        assertThat(done.state()).isEqualTo("COMPLETED");
+        assertThat(item(done, "b").state()).isEqualTo("not_run");
+        assertThat(item(done, "b").detail()).contains("Instance b is not running");
+        assertThat(item(done, "a").state()).isEqualTo("ok");
+        assertThat(item(done, "root").state()).isEqualTo("ok");
+        assertThat(dispatched).containsExactly("a", "root");
+        verify(cohortMigration, never()).dispatch(any(), any(), eq("b"), any(), any(), any());
+    }
+
+    @Test
+    void aFailedChildBlocksItsParentEvenWhenARealReadSaysNothingIsLeft() {
+        // A failed migrate needs the operator: the parent is not released behind their back.
+        when(cohortMigration.nothingLeftToMigrate(any(), any(), any())).thenReturn(true);
+        failures.put("b", new EngineRejectedException(UUID.randomUUID(), 500, "boom"));
+
+        BulkDtos.BulkJobDto done = run(new Planned("b", 2, "a", null), new Planned("a", 1, null, null));
+
+        assertThat(item(done, "b").state()).isEqualTo("failed");
+        assertThat(item(done, "a").state()).isEqualTo("not_run");
+        assertThat(dispatched).containsExactly("b");
     }
 }

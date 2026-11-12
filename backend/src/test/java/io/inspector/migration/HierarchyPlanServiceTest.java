@@ -288,6 +288,22 @@ class HierarchyPlanServiceTest {
                         () -> service.create(ENGINE, new HierarchyPlanRequests.HierarchyPlanCreate("root", null), auth))
                 .isInstanceOfSatisfying(
                         GuardRefusedException.class, e -> assertThat(e.code()).isEqualTo("engine-unreachable"));
+
+        // The engine answers, with an error: a named 502, not a bare 500.
+        org.mockito.Mockito.reset(detail);
+        when(detail.runningChildren(any(), eq("root")))
+                .thenThrow(org.springframework.web.client.HttpServerErrorException.create(
+                        org.springframework.http.HttpStatus.INTERNAL_SERVER_ERROR,
+                        "boom",
+                        org.springframework.http.HttpHeaders.EMPTY,
+                        new byte[0],
+                        null));
+        assertThatThrownBy(
+                        () -> service.create(ENGINE, new HierarchyPlanRequests.HierarchyPlanCreate("root", null), auth))
+                .isInstanceOfSatisfying(GuardRefusedException.class, e -> {
+                    assertThat(e.code()).isEqualTo("engine-read-failed");
+                    assertThat(e.getMessage()).contains("answered 500");
+                });
         assertThat(planStore).isEmpty();
     }
 

@@ -426,7 +426,9 @@ with its own audit row, and a partial result is reported per instance.
 The BFF walks the **running** call-activity tree top-down with the Hierarchy tab's own per-node
 read (`POST query/historic-process-instances`, `superProcessInstanceId` + `finished:false`) and
 its caps, and stores the result (`migration_hierarchy_plan`, V28). One read per visited node, so
-the read count is bounded by the node cap however wide a level is.
+the read count is bounded by the node cap however wide a level is. An engine that does not answer
+during the walk (`engine-unreachable`) or answers with an error (`engine-read-failed`) is a 502
+and no plan is stored.
 
 | Cap | Value | When it is hit |
 |---|---|---|
@@ -465,7 +467,7 @@ plan's tree is the scope, not a filter — so each instance gets the §14 estima
 running instances, so a definition with none is not in the plan.
 
 **Execution.** `POST /api/bulk/migrate-hierarchy {planId, reason, ticketId?, confirmedCount?}`
-(ADMIN on the plan's engine). Refusals: `hierarchy-plan-truncated`, `hierarchy-plan-incomplete` (a
+(ADMIN on the plan's engine, checked before the plan is resolved). Refusals: `hierarchy-plan-truncated`, `hierarchy-plan-incomplete` (a
 group is undecided), `hierarchy-nothing-executable`, and the analysis refusals of §7.1. Every
 instance of a configured group is one item, `jobRef` = its group's analysis id, plus two fields:
 `level` (its depth, the root is 0) and `parentInstanceId` (its nearest ancestor that is also an
@@ -476,30 +478,53 @@ audit per item, pacing, circuit pause, Verify now); prod types the **executable 
 - **Order.** The runner dispatches one level at a time, deepest first, and starts a level only
   after every item of the level below is settled. Inside a level the usual permit pool and stagger
   apply.
-- **A child that did not reach its target blocks its parent.** Before an item is dispatched, every
-  item that names it as parent must have settled `ok`. Otherwise the parent settles `not_run` with
-  the cause: `blocked by child <engine>:<id> (<state>: <the child's own detail>)`. That covers a
-  `failed` child, an `unknown` child (never re-fired, never assumed applied), a `not_run` child
-  (so the block travels up the chain to the root), a `skipped_protected` child, and an instance the
-  analysis blocked — it is listed `not_run` at submit ("not sent — the analysis blocked this
-  instance: …") and never sent. Two `skipped` cases release the parent: the child is no longer
-  running (nothing is left to migrate), or a read of the child shows it already on its target
-  (someone else migrated it).
+- **A child that still has to be migrated blocks its parent.** Before an item is dispatched, every
+  item that names it as parent must have settled `ok`, or have nothing left to migrate (below).
+  Otherwise the parent settles `not_run` with the cause: `blocked by child <engine>:<id> (<state>:
+  <the child's own detail>)`. That covers a `failed` child, an `unknown` child (never re-fired,
+  never assumed applied), a `skipped_protected` child, a `not_run` child (so the block travels up
+  the chain to the root), and an instance the analysis blocked — it is listed `not_run` at submit
+  ("not sent — the analysis blocked this instance: …") and never sent.
+- **Nothing left to migrate releases the parent.** For a child that settled `not_run` or
+  `skipped`, the runner reads the child once, read-only, right before its parent would be
+  dispatched (`GET runtime/process-instances/{id}`): the child is **no longer running**, or it is
+  **already on its target definition** (someone else migrated it). Either way the parent goes. It
+  does not matter when that happened: after the analysis (the per-item compare-and-set skipped
+  it) or **before** it (the plan has no expiry, and a child that ended or was moved between
+  "plan stored" and "group configured" is a blocker in its group's analysis — preview refuses
+  `instance-not-running` or `same-version-target` — so it is listed unsent). A failed read
+  counts as "still to migrate". A `failed`, `unknown` or `skipped_protected` child is never
+  released this way: those outcomes need the operator.
 - **Never the reverse.** A parent's outcome does not touch its children, which have already
   settled. Siblings and sibling subtrees are independent.
 - **One audit correlation id.** The envelope row `bulk:migrate-instance` (payload:
   `hierarchyPlanId`, roots, levels, per-group analysis and target, `circularReferences`) and every
   item's row carry the submit request's correlation id.
-- **Resume.** "Continue as new job" keeps each item's level and parent. A parent can be continued
-  only together with its unresolved children, or once a read shows them on their target; otherwise
-  `hierarchy-child-unresolved` (409).
+- **Resume.** "Continue as new job" keeps each item's level and parent, and an item the analysis
+  blocked stays listed and unsent in the new job. A parent can be continued only together with
+  its unresolved children, or once a read shows them on their target or no longer running;
+  otherwise `hierarchy-child-unresolved` (409).
 
 Proven by `HierarchyMigrationIT` (rung 4, 6.8 + 7.1): the seeded 3-level tree
 `demoHierarchyRoot` → `demoHierarchyA` → `demoHierarchyB` migrates in one plan with the order
 shown by the audit timestamps and one correlation id; a suspended B leaves A and Root `not_run`
 with the named cause and on their old version, and the continuation finishes the tree in order;
-prod needs the typed count; a 60-child multi-instance level under a 10-row child read is reported
-and the plan refused.
+a B that was migrated to its target, or that completed, between "plan stored" and "group
+configured" is listed unsent and A and Root still migrate; a definition that calls itself
+(`demoHierarchyRecursive`, three levels of one definition) is reported in `circularReferences`
+and migrated deepest first; prod needs the typed count; a 60-child multi-instance level under a
+10-row child read is reported and the plan refused; a self-calling chain 12 instances deep is
+cut at the depth cap, reported at the node where the walk stopped, and refused.
+
+The 10k case is an on-demand test in the same class, not a CI leg (starting 10,000 instances
+takes minutes and bloats the engine, so it runs against a throwaway flowable-rest):
+`PI_ENGINE_A_PORT=<port> PI_IT_HIERARCHY_WIDE=10000 mvn verify
+-Dit.test='HierarchyMigrationIT#aVeryWideLevelCostsOneReadAndIsReportedWithItsExactTotal'`
+(fixture `demoHierarchyFanout`, cardinality from the start variable `children`). Measured
+2026-11-12 on flowable-rest 6.8.0 (H2): 10,000 running children under one parent, plan stored in
+0.7 s with 11 nodes (the parent and one 10-row page), truncation `breadth` with `total` 10000,
+the BFF kept answering, and the submit was refused `hierarchy-plan-truncated`. The node cap (500)
+and the `unknown` child are unit-tested only (`HierarchyTreeTest`, `HierarchyBulkJobTest`).
 
 Not built yet: the plan builder UI (tree, per-definition target and mapping, submit). The
 operations drawer shows a hierarchy job's per-level progress.

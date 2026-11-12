@@ -43,6 +43,7 @@ import org.springframework.http.HttpStatus;
 import org.springframework.security.core.Authentication;
 import org.springframework.stereotype.Service;
 import org.springframework.web.client.ResourceAccessException;
+import org.springframework.web.client.RestClientResponseException;
 
 /**
  * The hierarchy migration plan builder (#482 S5 / #497). Read side of "children first, then
@@ -62,6 +63,9 @@ import org.springframework.web.client.ResourceAccessException;
  */
 @Service
 public class HierarchyPlanService {
+
+    /** How an item the analysis blocked reads in the job: listed {@code not_run}, never sent. */
+    public static final String NOT_SENT = "not sent — the analysis blocked this instance";
 
     private static final int REASON_MAX = 300;
 
@@ -122,7 +126,8 @@ public class HierarchyPlanService {
      * One instance of the job. {@code level} is its depth in the tree; {@code parentInstanceId}
      * the nearest ancestor that is also an item (a skipped group in between is transparent);
      * {@code notSentReason} is set when the analysis blocked the instance — it is listed, never
-     * sent, and blocks its parent.
+     * sent, and blocks its parent unless nothing is left of it to migrate (it is no longer
+     * running, or already on its target).
      */
     public record Item(
             String instanceId, String analysisId, int level, String parentInstanceId, String notSentReason) {}
@@ -180,6 +185,12 @@ public class HierarchyPlanService {
                     "engine-unreachable",
                     "Engine '" + engineId + "' did not answer while the call-activity tree was read."
                             + " No plan was stored.");
+        } catch (RestClientResponseException e) {
+            throw new GuardRefusedException(
+                    HttpStatus.BAD_GATEWAY,
+                    "engine-read-failed",
+                    "Engine '" + engineId + "' answered " + e.getStatusCode().value()
+                            + " while the call-activity tree was read. No plan was stored.");
         }
         Payload payload = new Payload(
                 walk.nodes().stream()
@@ -250,6 +261,11 @@ public class HierarchyPlanService {
 
     /* ------------------------------ submit resolution ------------------------------ */
 
+    /** The plan's engine, for the caller's role check before anything about the plan is said. */
+    public String engineOf(UUID id) {
+        return load(id).getEngineId();
+    }
+
     /**
      * Resolves the plan for the bulk door. Refuses a truncated plan, an undecided group, and
      * (through {@link CohortBulkMigration#resolve}) an analysis that is not completed.
@@ -309,8 +325,7 @@ public class HierarchyPlanService {
             String notSent = null;
             if (!cohort.executableIds().contains(node.instanceId())) {
                 String reason = blockerReasons.get(node.definitionId()).get(node.instanceId());
-                notSent = "not sent — the analysis blocked this instance"
-                        + (reason == null || reason.isBlank() ? "." : ": " + clip(reason));
+                notSent = NOT_SENT + (reason == null || reason.isBlank() ? "." : ": " + clip(reason));
             } else {
                 executable++;
             }

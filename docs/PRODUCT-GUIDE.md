@@ -443,7 +443,9 @@ then parent**. The plan lists the tree per level and groups it by definition; fo
 you set a target version and mapping, or skip it. In the job, a parent is migrated only after
 every planned child reached its target. A child that failed, is `unknown`, is protected, or was
 blocked by the pre-check leaves its parent `not run`, and the parent's row names the child and
-the cause; the levels above stay `not run` for the same reason. Fix the cause and use
+the cause; the levels above stay `not run` for the same reason. A child that has ended, or that
+someone already moved to the target version, does not hold its parent back: it is listed as not
+sent and the parent is migrated. Fix the cause and use
 **Continue as new job**: it keeps the order, and it refuses to continue a parent without the
 child that held it back. The drawer shows the progress per level, deepest first. A tree with more
 than 50 running children under one instance, deeper than 10 levels, or larger than 500 instances

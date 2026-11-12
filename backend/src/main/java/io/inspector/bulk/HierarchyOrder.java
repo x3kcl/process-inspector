@@ -1,6 +1,7 @@
 package io.inspector.bulk;
 
 import io.inspector.action.GuardRefusedException;
+import io.inspector.migration.HierarchyPlanService;
 import java.util.ArrayList;
 import java.util.Collection;
 import java.util.HashMap;
@@ -20,11 +21,11 @@ import org.springframework.http.HttpStatus;
  *       dispatched (paced, permit-bounded, like any bulk group) and fully settled before the next
  *       one starts.
  *   <li>{@link #blockedBy}: a parent is dispatched only when every item that names it as parent
- *       reached its target. Any other child outcome blocks it, and the parent settles
- *       {@code not_run} naming that child. Never the reverse: a parent's outcome does not touch
- *       its children, and siblings are independent.
+ *       reached its target, or has nothing left to migrate ({@link #released}). Any other child
+ *       outcome blocks it, and the parent settles {@code not_run} naming that child. Never the
+ *       reverse: a parent's outcome does not touch its children, and siblings are independent.
  *   <li>{@link #carryOver}: "Continue as new job" keeps the order, and refuses a parent whose
- *       child is neither on its target nor part of the continuation.
+ *       child still has something to migrate and is not part of the continuation.
  * </ul>
  *
  * A job with no placed item (every other bulk verb) is one level with nothing blocked.
@@ -60,12 +61,12 @@ final class HierarchyOrder {
     }
 
     /**
-     * The reason {@code item} must not be dispatched, or null when it may go. {@code onTarget}
-     * is the read-only "is this instance on its target definition now" check (Verify now's
-     * predicate); it is asked only for a child that settled {@code skipped}, because that child
-     * may have been moved to the target by someone else.
+     * The reason {@code item} must not be dispatched, or null when it may go. {@code nothingLeft}
+     * is the read-only "is this instance on its target definition now, or no longer running"
+     * check ({@code CohortBulkMigration#nothingLeftToMigrate}); it is asked only for a child that
+     * was never sent ({@code not_run}) or settled {@code skipped}.
      */
-    static String blockedBy(BulkJobItem item, Collection<BulkJobItem> all, Predicate<BulkJobItem> onTarget) {
+    static String blockedBy(BulkJobItem item, Collection<BulkJobItem> all, Predicate<BulkJobItem> nothingLeft) {
         if (item.getLevel() == null) {
             return null;
         }
@@ -75,7 +76,7 @@ final class HierarchyOrder {
                     || !item.getEngineId().equals(child.getEngineId())) {
                 continue;
             }
-            if (!released(child, onTarget)) {
+            if (!released(child, nothingLeft)) {
                 return "blocked by child " + key(child.getEngineId(), child.getInstanceId()) + " ("
                         + child.getState() + cause(child.getDetail())
                         + ") — not attempted. A parent is migrated only after every planned child reached its"
@@ -85,26 +86,37 @@ final class HierarchyOrder {
         return null;
     }
 
-    /** A child releases its parent when it migrated, or when nothing is left of it to migrate. */
-    static boolean released(BulkJobItem child, Predicate<BulkJobItem> onTarget) {
-        if (child.getState() == BulkJobItem.State.ok) {
+    /**
+     * A child releases its parent when it migrated, or when nothing is left of it to migrate: it
+     * is no longer running, or a read shows it on its target. That read is asked for a child that
+     * was never sent ({@code not_run}: the analysis blocked it, or its own child blocked it) and
+     * for a {@code skipped} child — whether the child ended or was moved before its analysis ran
+     * or after. A {@code failed}, {@code unknown} or protected child always blocks.
+     */
+    static boolean released(BulkJobItem child, Predicate<BulkJobItem> nothingLeft) {
+        BulkJobItem.State state = child.getState();
+        if (state == BulkJobItem.State.ok) {
             return true;
         }
-        if (child.getState() != BulkJobItem.State.skipped) {
+        if (state == BulkJobItem.State.not_run) {
+            return nothingLeft.test(child);
+        }
+        if (state != BulkJobItem.State.skipped) {
             return false;
         }
         String detail = child.getDetail();
-        return (detail != null && detail.startsWith("instance-not-running")) || onTarget.test(child);
+        return (detail != null && detail.startsWith("instance-not-running")) || nothingLeft.test(child);
     }
 
     /**
      * Placements for a continuation: each continued item keeps the level and parent it had in
-     * the prior job. A continued parent whose prior child is not continued with it must already be
-     * on its target, else the continuation refuses — it would migrate the parent over a child that
-     * did not move.
+     * the prior job, and an item the analysis blocked stays "listed, never sent". A continued
+     * parent whose prior child is not continued with it must have nothing left to migrate (on its
+     * target, or no longer running), else the continuation refuses — it would migrate the parent
+     * over a child that did not move.
      */
     static Map<String, Placement> carryOver(
-            List<BulkJobItem> prior, List<BulkDtos.BulkTarget> targets, Predicate<BulkJobItem> onTarget) {
+            List<BulkJobItem> prior, List<BulkDtos.BulkTarget> targets, Predicate<BulkJobItem> nothingLeft) {
         Map<String, BulkJobItem> priorByKey = new HashMap<>();
         for (BulkJobItem item : prior) {
             priorByKey.put(key(item.getEngineId(), item.getInstanceId()), item);
@@ -120,25 +132,35 @@ final class HierarchyOrder {
             if (was == null || was.getLevel() == null) {
                 continue;
             }
-            placements.put(key, new Placement(was.getLevel(), was.getParentInstanceId(), null));
+            placements.put(key, new Placement(was.getLevel(), was.getParentInstanceId(), notSentReason(was)));
             for (BulkJobItem child : prior) {
                 if (!was.getInstanceId().equals(child.getParentInstanceId())
                         || !was.getEngineId().equals(child.getEngineId())
                         || continued.contains(key(child.getEngineId(), child.getInstanceId()))) {
                     continue;
                 }
-                if (!released(child, onTarget) && !onTarget.test(child)) {
+                if (!released(child, nothingLeft) && !nothingLeft.test(child)) {
                     throw new GuardRefusedException(
                             HttpStatus.CONFLICT,
                             "hierarchy-child-unresolved",
                             "Instance " + key + " cannot be continued alone: its child "
                                     + key(child.getEngineId(), child.getInstanceId()) + " settled " + child.getState()
-                                    + " and is not on its target. Continue the child with it, or verify the child"
+                                    + " and still has to be migrated. Continue the child with it, or verify the child"
                                     + " first. Nothing happened.");
                 }
             }
         }
         return placements;
+    }
+
+    /** The prior job listed this item unsent because its analysis blocked it: it stays unsent. */
+    private static String notSentReason(BulkJobItem was) {
+        String detail = was.getDetail();
+        return was.getState() == BulkJobItem.State.not_run
+                        && detail != null
+                        && detail.startsWith(HierarchyPlanService.NOT_SENT)
+                ? detail
+                : null;
     }
 
     private static String cause(String detail) {

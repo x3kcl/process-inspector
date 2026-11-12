@@ -672,7 +672,8 @@ count to a "≥N" lower bound under a truncated DLQ scan — see `CMMN-SCOPE-PHA
   (#496 — per-instance migrate, digest CAS per item, engine `Batch` unused; the 50-cap synchronous
   door is gone). **S5 backend ✔ (#497):** the stored hierarchy plan (bounded tree walk, circular
   references reported, per-definition groups) and its execution as one children-first
-  `migrate-instance` job (a child that did not reach its target leaves its parent `not_run`), with
+  `migrate-instance` job (a child that still has to be migrated leaves its parent `not_run`; one
+  that ended or is already on its target does not), with
   per-level progress in the operations drawer. S6 dual-canvas mapping editor ✔ (#498). Open: the
   S5 plan builder UI, S7 CMMN cohort.
 - **Job-lane trend sparklines** on the Stage-0 landing (per-engine dead-letter / timer /
