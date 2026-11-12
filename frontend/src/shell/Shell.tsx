@@ -295,7 +295,14 @@ function useAnyAuthError(): boolean {
   const queryClient = useQueryClient()
   const cache = queryClient.getQueryCache()
   return useSyncExternalStore(
-    (onStoreChange) => cache.subscribe(onStoreChange),
+    // Only `updated`/`removed` can change the answer. `added` fires synchronously when a child
+    // builds its query DURING RENDER (useQuery -> cache.build); forwarding it makes React warn
+    // "Cannot update a component (`Shell`) while rendering ... (`IdentityStrip`)" (#610). A
+    // freshly added query has no error yet, so skipping it never misses a 401.
+    (onStoreChange) =>
+      cache.subscribe((event) => {
+        if (event.type === 'updated' || event.type === 'removed') onStoreChange()
+      }),
     () =>
       cache
         .getAll()
