@@ -120,7 +120,7 @@ export function AuditLogPage() {
           )
         },
       },
-      { headerName: 'Reason', field: 'reason', flex: 1, minWidth: 200, tooltipField: 'reason' },
+      { headerName: 'Reason', field: 'reason', flex: 1, minWidth: 200, tooltip: true },
       {
         headerName: 'Ticket',
         field: 'ticketId',
