@@ -77,7 +77,7 @@ jobs:
 
       - name: BFF image tags
         id: meta-bff
-        uses: docker/metadata-action@v5
+        uses: docker/metadata-action@v6
         with:
           images: |
             ghcr.io/${{ github.repository }}-bff
@@ -105,7 +105,7 @@ jobs:
 
       - name: Web image tags
         id: meta-web
-        uses: docker/metadata-action@v5
+        uses: docker/metadata-action@v6
         with:
           images: |
             ghcr.io/${{ github.repository }}-web
@@ -139,7 +139,7 @@ jobs:
           } | tee -a "$GITHUB_STEP_SUMMARY"
 
       - name: GitHub Release (quick-start compose attached)
-        uses: softprops/action-gh-release@v2
+        uses: softprops/action-gh-release@v3
         with:
           # Explicit so the workflow_call path releases the input tag, not the caller's ref.
           tag_name: ${{ env.RELEASE_TAG }}
