@@ -1,0 +1,30 @@
+name: ci-lib
+description: >-
+  Fetch the ci-lib gate library at a pinned tag into .ci-lib. The library lives on the operator's Gitea
+  (the instance requires sign-in), so the read token comes in as an input, is handed to git through a
+  credential helper that reads it from the environment, and never appears on a command line.
+
+inputs:
+  tag:
+    description: ci-lib tag to clone (the workflow's CI_LIB_TAG).
+    required: true
+  token:
+    description: A Gitea read token for bodo/ci-lib (repository secret CI_LIB_TOKEN).
+    required: true
+
+runs:
+  using: composite
+  steps:
+    - name: Clone ci-lib at ${{ inputs.tag }}
+      shell: bash
+      env:
+        CI_LIB_TAG: ${{ inputs.tag }}
+        CI_LIB_TOKEN: ${{ inputs.token }}
+      run: |
+        if [ -z "$CI_LIB_TOKEN" ]; then
+          echo "::error::CI_LIB_TOKEN is empty — set the repository secret (a Gitea read token for bodo/ci-lib); Dependabot runs read it from the Dependabot secrets."
+          exit 1
+        fi
+        rm -rf .ci-lib
+        git -c credential.helper='!f() { echo username=x-token; echo "password=$CI_LIB_TOKEN"; }; f' \
+          clone --depth 1 -b "$CI_LIB_TAG" http://172.16.62.253:3030/bodo/ci-lib.git .ci-lib
