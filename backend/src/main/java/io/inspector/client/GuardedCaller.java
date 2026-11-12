@@ -376,6 +376,15 @@ public class GuardedCaller {
         return builder.build();
     }
 
+    /**
+     * Decodes a text resource (BPMN/CMMN XML, exception stacktrace) as UTF-8. flowable-rest serves
+     * these as {@code application/octet-stream} with no charset, which Spring's String converter
+     * reads as ISO-8859-1 — mojibake for any non-ASCII name or message (#464).
+     */
+    static String utf8(byte[] body) {
+        return body != null ? new String(body, java.nio.charset.StandardCharsets.UTF_8) : null;
+    }
+
     private static long elapsedMs(long startNanos) {
         return (System.nanoTime() - startNanos) / 1_000_000L;
     }

@@ -1,0 +1,30 @@
+{
+  "data": [
+    {
+      "correlationId": "e7799962-de72-11f1-9e47-dad7623d9163",
+      "createTime": "2026-11-12T08:27:31.655Z",
+      "dueDate": "2026-11-12T09:27:31.654Z",
+      "elementId": "chargePayment",
+      "elementName": "Charge payment",
+      "exceptionMessage": "Error while evaluating expression: ${amount % divisor} with Execution[ id 'e779724f-de72-11f1-9e47-dad7623d9163' ] - definition 'demoFailingRetry:1:e7356442-de72-11f1-9e47-dad7623d9163' - activity 'chargePayment' - parent 'e7794b39-de72-11f1-9e47-dad7623d9163'",
+      "executionId": "e779724f-de72-11f1-9e47-dad7623d9163",
+      "executionUrl": "http://localhost:8080/flowable-rest/service/runtime/executions/e779724f-de72-11f1-9e47-dad7623d9163",
+      "handlerType": "async-continuation",
+      "id": "e7799963-de72-11f1-9e47-dad7623d9163",
+      "lockExpirationTime": null,
+      "lockOwner": null,
+      "processDefinitionId": "demoFailingRetry:1:e7356442-de72-11f1-9e47-dad7623d9163",
+      "processDefinitionUrl": "http://localhost:8080/flowable-rest/service/repository/process-definitions/demoFailingRetry:1:e7356442-de72-11f1-9e47-dad7623d9163",
+      "processInstanceId": "e7794b39-de72-11f1-9e47-dad7623d9163",
+      "processInstanceUrl": "http://localhost:8080/flowable-rest/service/runtime/process-instances/e7794b39-de72-11f1-9e47-dad7623d9163",
+      "retries": 9,
+      "tenantId": "",
+      "url": "http://localhost:8080/flowable-rest/service/management/timer-jobs/e7799963-de72-11f1-9e47-dad7623d9163"
+    }
+  ],
+  "order": "asc",
+  "size": 1,
+  "sort": "id",
+  "start": 0,
+  "total": 1
+}

@@ -1,0 +1,26 @@
+{
+  "data": [
+    {
+      "category": "http://inspector.io/demo",
+      "deploymentId": "e72f49bf-de72-11f1-9e47-dad7623d9163",
+      "deploymentUrl": "http://localhost:8080/flowable-rest/service/repository/deployments/e72f49bf-de72-11f1-9e47-dad7623d9163",
+      "description": null,
+      "diagramResource": "http://localhost:8080/flowable-rest/service/repository/deployments/e72f49bf-de72-11f1-9e47-dad7623d9163/resources/demo-failing-retry.demoFailingRetry.png",
+      "graphicalNotationDefined": true,
+      "id": "demoFailingRetry:1:e7356442-de72-11f1-9e47-dad7623d9163",
+      "key": "demoFailingRetry",
+      "name": "Demo Failing Retry (pinned RETRYING)",
+      "resource": "http://localhost:8080/flowable-rest/service/repository/deployments/e72f49bf-de72-11f1-9e47-dad7623d9163/resources/demo-failing-retry.bpmn20.xml",
+      "startFormDefined": false,
+      "suspended": false,
+      "tenantId": "",
+      "url": "http://localhost:8080/flowable-rest/service/repository/process-definitions/demoFailingRetry:1:e7356442-de72-11f1-9e47-dad7623d9163",
+      "version": 1
+    }
+  ],
+  "order": "asc",
+  "size": 1,
+  "sort": "name",
+  "start": 0,
+  "total": 1
+}

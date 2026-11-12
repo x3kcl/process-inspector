@@ -1,0 +1,8 @@
+[
+  {
+    "group": null,
+    "type": "assignee",
+    "url": "http://localhost:8080/flowable-rest/service/runtime/tasks/e5dadd5c-de72-11f1-a5cc-c2b29413085e/identitylinks/users/rest-admin/assignee",
+    "user": "rest-admin"
+  }
+]

@@ -1,0 +1,16 @@
+[
+  {
+    "contentUrl": "http://localhost:8080/flowable-rest/service/repository/deployments/e547eccc-de72-11f1-a5cc-c2b29413085e/resourcedata/demo-failing-payment.bpmn20.xml",
+    "id": "demo-failing-payment.bpmn20.xml",
+    "mediaType": "text/xml",
+    "type": "processDefinition",
+    "url": "http://localhost:8080/flowable-rest/service/repository/deployments/e547eccc-de72-11f1-a5cc-c2b29413085e/resources/demo-failing-payment.bpmn20.xml"
+  },
+  {
+    "contentUrl": "http://localhost:8080/flowable-rest/service/repository/deployments/e547eccc-de72-11f1-a5cc-c2b29413085e/resourcedata/demo-failing-payment.demoFailingPayment.png",
+    "id": "demo-failing-payment.demoFailingPayment.png",
+    "mediaType": "image/png",
+    "type": "resource",
+    "url": "http://localhost:8080/flowable-rest/service/repository/deployments/e547eccc-de72-11f1-a5cc-c2b29413085e/resources/demo-failing-payment.demoFailingPayment.png"
+  }
+]

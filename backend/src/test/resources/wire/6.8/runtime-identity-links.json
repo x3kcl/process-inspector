@@ -1,0 +1,14 @@
+[
+  {
+    "group": null,
+    "type": "participant",
+    "url": "http://localhost:8080/flowable-rest/service/runtime/process-instances/e5da6826-de72-11f1-a5cc-c2b29413085e/identitylinks/users/rest-admin/participant",
+    "user": "rest-admin"
+  },
+  {
+    "group": null,
+    "type": "starter",
+    "url": "http://localhost:8080/flowable-rest/service/runtime/process-instances/e5da6826-de72-11f1-a5cc-c2b29413085e/identitylinks/users/rest-admin/starter",
+    "user": "rest-admin"
+  }
+]
