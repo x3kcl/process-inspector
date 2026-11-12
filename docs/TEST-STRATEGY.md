@@ -349,6 +349,25 @@ The two current release-gating (P1) open gaps are matrix §C-5 (audit-integrity 
 beyond `FailClosedAuditIT`) and §C-16 (the single canonical-arc E2E behind the per-surface smokes).
 
 ## 12. UAT & soak (R-TEST-08/09)
+**Real-stack e2e smoke (nightly `e2e-real`, issue #466).** Every `frontend/e2e/` spec is
+hermetic (`page.route`), so before #466 nothing automated drove UI → BFF → engine. The
+`frontend/e2e-real/` project (own config, `npm run e2e:real`, NO `page.route`) closes that:
+the nightly job boots `docker/docker-compose.dev.yml` (flowable-6 + postgres) on the slot's
+port block (`scripts/free-port.sh`), runs `smoke-test.sh` + `seed.sh`, starts the BFF jar, and
+Playwright starts Vite against it. `global-setup.ts` starts the suite's OWN fixtures over engine
+REST (never `ACT_*` rows) under a run-unique business-key prefix — one `demoFailingPayment`
+dead-letter, 25 `demoUserTask` instances split over both engines, one FIX-ACME-06
+(`acmeApiOutage`) dead-letter per engine — and every mutating arc filters on that prefix, so
+nothing else on the stack is touched. Arcs (GOAL-CATALOG): engines health strip + registry +
+system page (read-only — "Test connection" moves an engine's lifecycle to `probed`, so the
+smoke never presses it); TS-E2E-01 triage → error class → inspect → fix variable → retry →
+COMPLETED → audit; deep paging to the engines' total; reason-gated bulk Suspend read back via
+search. Dev ladder users only (password `dev`), signed in through the real form. axe scans at
+every settled state (`check-e2e-a11y-coverage.mjs` covers both directories). Serial, no
+retries (a re-run of a mutating arc would act on changed state); waits are Playwright
+auto-waits and bounded `expect.poll`/`toPass` against real state. Failures upload the HTML
+report, traces and the BFF log. Not merge-blocking, like the rest of nightly.
+
 UAT at M6: ≥3 practicing support engineers, scripted incident scenarios from the fixture
 catalog, ≥80% unassisted completion; trust-breaking observations file as Sev1/Sev2. Weekly
 post-M6 soak: 4h mixed load with engine kills + BFF restart mid-bulk; assert breaker cycling,

@@ -362,3 +362,112 @@ jobs:
       - name: Tear down CI harness
         if: always()
         run: docker compose -p "$CI_PROJECT" -f docker/docker-compose.dev.yml down -v --remove-orphans || true
+
+  # Real-stack UI smoke (issue #466, TEST-STRATEGY §12): Playwright → Vite → BFF jar → the
+  # compose engines, with NO page.route — the only automated test that drives UI → BFF → engine.
+  # Same harness steps as engine-its (compose flowable-6 + postgres, smoke-test, seed.sh) and the
+  # same background-jar shape as perf-p1. The suite's global setup starts its OWN fixtures over
+  # engine REST under a run-unique business-key prefix and every mutating arc filters on it.
+  # Chromium is the runner image's baked Playwright browser (docker/ci-runner/Dockerfile
+  # PLAYWRIGHT_VERSION, in lockstep with frontend/package.json); Vite is the config's webServer.
+  e2e-real:
+    runs-on: self-hosted
+    if: github.event_name != 'workflow_dispatch' || !contains(fromJSON('["red","green"]'), inputs.triage-drill)
+    timeout-minutes: 40
+    env:
+      COMPOSE_PROFILES: "flowable-6,postgres"
+      CI_PROJECT: pi-ci-nightly-e2e
+    steps:
+      - uses: actions/checkout@v7
+      # scripts/free-port.sh double-checks each port is actually free on THIS host and falls
+      # back within the slot's own band otherwise (#163/#288). Slot-1 values are the fallback.
+      - name: Resolve the slot port namespace
+        run: |
+          {
+            a=$(scripts/free-port.sh "${PI_ENGINE_A_PORT:-8691}" 20)
+            b=$(scripts/free-port.sh "${PI_ENGINE_B_PORT:-8692}" 20 "$a")
+            pg=$(scripts/free-port.sh "${PI_PG_PORT:-5435}" 5)
+            bff=$(scripts/free-port.sh "${PI_BFF_PORT:-8086}" 20 "$a" "$b")
+            vite=$(scripts/free-port.sh "${PI_E2E_PORT:-4173}" 20)
+            echo "PI_ENGINE_A_PORT=$a"
+            echo "PI_ENGINE_B_PORT=$b"
+            echo "PI_PG_PORT=$pg"
+            echo "PI_BFF_PORT=$bff"
+            echo "PI_E2E_PORT=$vite"
+            echo "INSPECTOR_DB_URL=jdbc:postgresql://localhost:${pg}/inspector"
+          } >> "$GITHUB_ENV"
+      - uses: actions/setup-java@v6
+        with:
+          distribution: temurin
+          java-version: "21"
+          cache: maven
+      - uses: actions/setup-node@v7
+        with:
+          node-version: "24"
+          cache: npm
+          cache-dependency-path: frontend/package-lock.json
+      - name: Docker Hub login (rate-limit mitigation)
+        continue-on-error: true
+        uses: docker/login-action@v4
+        with:
+          username: ${{ secrets.DOCKERHUB_USERNAME }}
+          password: ${{ secrets.DOCKERHUB_TOKEN }}
+      - name: Pre-clean CI harness residue (scoped to $CI_PROJECT)
+        run: docker compose -p "$CI_PROJECT" -f docker/docker-compose.dev.yml down -v --remove-orphans || true
+      - name: Boot harness (flowable-6 + postgres)
+        run: docker compose -p "$CI_PROJECT" -f docker/docker-compose.dev.yml up -d
+      - name: Wait for engines and postgres (bounded)
+        run: bash docker/smoke-test.sh flowable-6
+      - name: Seed demo processes (REST-only, idempotent)
+        run: bash docker/seed.sh --profile flowable-6
+      - name: Build BFF jar
+        working-directory: backend
+        run: mvn -B -DskipTests package
+      - name: Boot BFF in the background, pointed at the seeded engines
+        working-directory: backend
+        env:
+          INSPECTOR_ENGINE_A_BASE_URL: http://localhost:${{ env.PI_ENGINE_A_PORT }}/flowable-rest/service
+          INSPECTOR_ENGINE_B_BASE_URL: http://localhost:${{ env.PI_ENGINE_B_PORT }}/flowable-rest/service
+          ENGINE_A_PASSWORD: test
+          ENGINE_B_PASSWORD: test
+          SERVER_PORT: ${{ env.PI_BFF_PORT }}
+        run: |
+          JAR=$(ls target/*.jar | head -1)
+          nohup java -jar "$JAR" > "$RUNNER_TEMP/bff-e2e.log" 2>&1 &
+          echo $! > "$RUNNER_TEMP/bff-e2e.pid"
+      - name: Wait for /v3/api-docs (bounded)
+        run: |
+          for _ in $(seq 1 90); do
+            curl -fsS "http://localhost:${PI_BFF_PORT}/v3/api-docs" > /dev/null && exit 0
+            sleep 2
+          done
+          echo "::error::BFF did not serve /v3/api-docs within 180s"
+          tail -200 "$RUNNER_TEMP/bff-e2e.log"
+          exit 1
+      - name: Install frontend dependencies
+        working-directory: frontend
+        run: npm ci
+      - name: Real-stack Playwright smoke (frontend/e2e-real)
+        working-directory: frontend
+        env:
+          INSPECTOR_BFF_URL: http://localhost:${{ env.PI_BFF_PORT }}
+        run: npm run e2e:real
+      - name: Upload the HTML report, traces and BFF log on failure
+        if: failure()
+        uses: actions/upload-artifact@v7
+        with:
+          name: playwright-report-real
+          path: |
+            frontend/playwright-report/real/
+            frontend/test-results/real/
+            ${{ runner.temp }}/bff-e2e.log
+          retention-days: 14
+      - name: Reap the background BFF
+        if: always()
+        run: kill "$(cat "$RUNNER_TEMP/bff-e2e.pid" 2>/dev/null)" 2>/dev/null || true
+      - name: Dump harness logs
+        if: failure()
+        run: docker compose -p "$CI_PROJECT" -f docker/docker-compose.dev.yml logs --no-color --timestamps
+      - name: Tear down CI harness
+        if: always()
+        run: docker compose -p "$CI_PROJECT" -f docker/docker-compose.dev.yml down -v --remove-orphans || true

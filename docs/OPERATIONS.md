@@ -405,7 +405,9 @@ npm-audit gate below). The steps live in `.github/actions/supply-chain` so the j
 and no other `supply-chain` issue (#447). `workflow_dispatch` input `triage-drill=red|green`
 exercises the upsert without building images. And a **`perf-p1` job** (k6
 against the seeded FIX-REF-01 reference dataset, asserting the SPEC §2 R-NFR-01/02 latency
-budgets). A red nightly is a morning-routine triage, not a push gate.
+budgets), and an **`e2e-real` job** (#466: Playwright → Vite → BFF jar → flowable-6 engines,
+no `page.route`, `frontend/e2e-real/`; a red run uploads `playwright-report-real` with traces
+and the BFF log — TEST-STRATEGY §12). A red nightly is a morning-routine triage, not a push gate.
 
 **Frontend npm-audit gate — dated-exception allowlist (issue #297).** A bare
 `npm audit --audit-level=high` goes permanently red the instant any high+ advisory has no
