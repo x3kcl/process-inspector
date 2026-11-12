@@ -282,7 +282,12 @@ public class EngineRegistryStore {
             String id, boolean ok, Authentication actor, String detail, String failureClass) {
         String actorName = requireRegistryAdmin(actor);
         EngineRegistryRow row = requireRow(id);
-        String next = ok ? LIFECYCLE_PROBED : LIFECYCLE_PROBE_FAILED;
+        // #609: the probe only moves the onboarding ramp (DRAFT/PROBED/PROBE_FAILED). An ACTIVE or
+        // DISABLED engine keeps its lifecycle; the outcome lives in the audit row + failure class.
+        String current = row.getLifecycle();
+        boolean settled = EngineRegistryMapper.LIFECYCLE_ACTIVE.equals(current)
+                || EngineRegistryMapper.LIFECYCLE_DISABLED.equals(current);
+        String next = settled ? current : (ok ? LIFECYCLE_PROBED : LIFECYCLE_PROBE_FAILED);
         Map<String, Object> payload = new LinkedHashMap<>();
         payload.put("id", id);
         payload.put("from", row.getLifecycle());
