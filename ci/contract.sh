@@ -57,7 +57,7 @@ frontend() {
   fi
   port="" jar="" bffpid=""      # not local: the EXIT trap below runs after this function has returned
   port="$("$ROOT/scripts/free-port.sh" "${PI_BFF_PORT:-8086}")"
-  (cd "$ROOT/backend" && mvn -B -DskipTests package)
+  (cd "$ROOT/backend" && mvn -B -Dskip.surefire.tests=true package)   # not -DskipTests: see Dockerfile
   jar="$(ls "$ROOT"/backend/target/*.jar | head -1)"
   trap '[ -z "$bffpid" ] || kill "$bffpid" 2>/dev/null || true' EXIT      # each part runs in its own subshell
   ENGINE_A_PASSWORD=unused-in-ci ENGINE_B_PASSWORD=unused-in-ci SERVER_PORT="$port" \
