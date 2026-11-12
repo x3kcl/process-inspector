@@ -1452,6 +1452,12 @@ button.primary:disabled {
   font-weight: 400;
   color: var(--color-text-faint);
 }
+/* The header strip sits on the dark topbar in every theme: the faint token is tuned for light
+   surfaces and fails WCAG AA there (1.7:1, found by the real-stack e2e smoke, #466). */
+.topbar .count-unit,
+.topbar .engine-disabled-note {
+  color: var(--color-text-on-dark);
+}
 /* W2 #7 (R-UXQ-12): root-vs-child marker on tree-shaped businessKey results. */
 .child-badge {
   margin-right: 4px;
