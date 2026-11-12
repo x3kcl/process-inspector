@@ -295,10 +295,12 @@ function useAnyAuthError(): boolean {
   const queryClient = useQueryClient()
   const cache = queryClient.getQueryCache()
   return useSyncExternalStore(
-    // Only `updated`/`removed` can change the answer. `added` fires synchronously when a child
-    // builds its query DURING RENDER (useQuery -> cache.build); forwarding it makes React warn
-    // "Cannot update a component (`Shell`) while rendering ... (`IdentityStrip`)" (#610). A
-    // freshly added query has no error yet, so skipping it never misses a 401.
+    // Only `updated`/`removed` can change the answer. Children mounting during render emit
+    // `added` (useQuery -> cache.build) AND `observerResultsUpdated` (the QueryObserver
+    // constructor -> setOptions -> cache.notify, synchronously, even when the query is already
+    // cached); forwarding either makes React warn "Cannot update a component (`Shell`) while
+    // rendering ... (`IdentityStrip`)" (#610). Do NOT widen this to `type !== 'added'`: the
+    // measured offender is `observerResultsUpdated`. Neither event can introduce a new 401.
     (onStoreChange) =>
       cache.subscribe((event) => {
         if (event.type === 'updated' || event.type === 'removed') onStoreChange()

@@ -364,7 +364,7 @@ nothing else on the stack is touched. Arcs (GOAL-CATALOG): engines health strip 
 system page (read-only — "Test connection" moves an engine's lifecycle to `probed`, so the
 smoke never presses it); TS-E2E-01 triage → error class → inspect → fix variable → retry →
 COMPLETED → audit; deep paging to the engines' total; reason-gated bulk Suspend read back via
-search. Dev ladder users only (password `dev`), signed in through the real form. axe scans at
+search; and a console guard (`05-no-render-warnings`, #610) that the real sign-in flip raises no React cross-component update warning — also guarded per-PR by the vitest `Shell.signinFlip.test.tsx` (real `useMe`, 401→200), since e2e-real is nightly-only. Dev ladder users only (password `dev`), signed in through the real form. axe scans at
 every settled state (`check-e2e-a11y-coverage.mjs` covers both directories). Serial, no
 retries (a re-run of a mutating arc would act on changed state); waits are Playwright
 auto-waits and bounded `expect.poll`/`toPass` against real state. Failures upload the HTML
