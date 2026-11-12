@@ -46,8 +46,9 @@ import org.springframework.transaction.support.TransactionTemplate;
  * hash (mutable outcome columns are excluded — they change in place by design). The BFF
  * is a single instance (ARCH §5), so a process-local lock suffices — a {@link ReentrantLock}
  * (issue #306), not {@code synchronized}: with {@code spring.threads.virtual.enabled=true} on
- * Java 21, {@code synchronized} around blocking I/O (the two JDBC round trips per insert) pins
- * the carrier thread and is a defect class until the JDK 24 bump. See {@link #chainLock}'s
+ * Java 21, {@code synchronized} around blocking I/O (the two JDBC round trips per insert) pinned
+ * the carrier thread. Java 25 (JEP 491, issue #441) no longer pins; the lock stays for
+ * readability and the explicit lock/unlock pairing. See {@link #chainLock}'s
  * javadoc for the commit-inside-lock invariant this swap must preserve.
  */
 @Service

@@ -11,7 +11,7 @@ sections in the same change — see the `spec-sync` skill. Read the relevant ski
 `corrective-actions` for any mutating endpoint, `engine-harness` before integration tests).
 
 ## Stack pins (ADR-001, SPECIFICATION §10)
-- Java **21** / Spring Boot **4.1.x** / Maven. Blocking + **virtual threads**; no WebFlux,
+- Java **25** (LTS) / Spring Boot **4.1.x** / Maven. Blocking + **virtual threads**; no WebFlux,
   no preview APIs. `RestClient` per engine, wrapped in **Resilience4j** circuit breaker +
   bulkhead (do-no-harm, SPEC §2). JSON stays on Jackson 2 via `spring-boot-jackson2` and
   `spring.http.converters.preferred-json-mapper=jackson2` until Boot 4.3 removes that bridge
@@ -71,7 +71,7 @@ join logic (dockerized engine only — `engine-harness` skill).
 - Status is derived per ARCHITECTURE §2.3 — never a single unpaged DLQ fetch; never render
   a status derived from truncated data without the badge.
 - Secrets only via env refs (`password-ref`); never in config values, logs, or responses.
-- With `spring.threads.virtual.enabled=true` on Java 21, `synchronized` around any blocking call (JDBC, HTTP) is a defect class until the JDK 24 bump — use `ReentrantLock` instead (issue #306).
+- `synchronized` around blocking calls: on Java 21 with `spring.threads.virtual.enabled=true` it pinned the carrier thread and was a defect class (issue #306), so every lock became a `ReentrantLock` (#327). Since Java 25 (JEP 491, #441) that is no longer required — but the `ReentrantLock`s stay for readability and one lock idiom, and `NoSynchronizedInMainSourceTest` still bans the keyword.
 - Never select, restyle, hide, or remove the bpmn.io watermark (`.bjs-powered-by`) —
   license term (R-GOV-05), enforced by `frontend/scripts/check-bpmn-watermark.mjs` in
   `npm run build`.
@@ -86,3 +86,12 @@ join logic (dockerized engine only — `engine-harness` skill).
   Before creating a PR, run `scripts/ci-runner.sh ensure` — it starts
   the slots if down and fails if a foreign (slot-less) runner is online; with no runner
   online every CI run just queues forever.
+- **Merge flow (ci-lib queue).** `ci.yml` is the ci-lib gate (`ci/manifest.env`, `ci/contract.sh`;
+  library pinned by `CI_LIB_TAG`). A pull request runs the light parts (`lint`, `unit`, `frontend`,
+  `e2e`); once the pull request head is green, label it `queue`. `merge-queue@process-inspector` (hp02,
+  one-minute timer) builds an `mq/**` batch, runs light AND heavy (`docker`, the `integration` legs) on it,
+  fast-forwards `main`, and GitHub shows the pull request as `Merged`. Do not press Merge and do not push
+  `main`: the heavy checks the ruleset requires report on the batch, not on the pull request. A red batch
+  unlabels the culprit with a comment. Reproduce a gate locally with `bash ci/contract.sh ci-light` (or
+  `CI_PART=docker bash ci/contract.sh ci-heavy`). Until the queue is activated (OPERATIONS §8) the
+  admin bypass in RUNBOOK §0 is the only way to land.
