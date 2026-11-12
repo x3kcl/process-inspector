@@ -153,8 +153,47 @@ const MAPPED_PREVIEW = {
   summary: 'Migrate this instance from v3 to v5. All 1 active activity map.',
 }
 
+// Two flagged sources (both carry the blocker finding, as the BFF always attaches one to a
+// FLAGGED_UNMAPPED activity) plus a warning on a third activity — the selection must stay
+// visible ON a blocker-marked source, and the warning gets its own glyph (#498 review).
+const TWO_FLAGGED_PREVIEW = {
+  ...FLAGGED_PREVIEW,
+  activities: [
+    ...FLAGGED_PREVIEW.activities,
+    {
+      fromActivityId: 'start',
+      fromType: 'startEvent',
+      status: 'FLAGGED_UNMAPPED',
+      blocker: true,
+      warning: false,
+      detail: "No activity with id 'start' exists in the target version.",
+      findings: [
+        {
+          code: 'UNMAPPED_ACTIVE_ACTIVITY',
+          severity: 'BLOCKER_ADVICE',
+          activityId: 'start',
+          detail: 'The Inspector cannot build a migration instruction for this activity.',
+        },
+      ],
+    },
+  ],
+  findings: [
+    {
+      code: 'ACTIVE_SCOPE_REMOVED',
+      severity: 'WARNING',
+      activityId: 'end',
+      detail: 'Scope-local state of the removed scope has no target scope.',
+    },
+  ],
+}
+
 /** Fulfills every /api call; records mutating migrate calls so tests assert none fired. */
-async function mockBff(page: Page, engine: object, executed: string[]): Promise<void> {
+async function mockBff(
+  page: Page,
+  engine: object,
+  executed: string[],
+  flagged: object = FLAGGED_PREVIEW,
+): Promise<void> {
   await page.route(
     (url) => url.pathname.startsWith('/api/'),
     async (route) => {
@@ -173,7 +212,7 @@ async function mockBff(page: Page, engine: object, executed: string[]): Promise<
         // Flagged until the operator supplies a mapping; clean once mappings are present.
         const body = route.request().postDataJSON() as { mappings?: unknown[] }
         const mapped = Array.isArray(body.mappings) && body.mappings.length > 0
-        await route.fulfill({ json: mapped ? MAPPED_PREVIEW : FLAGGED_PREVIEW })
+        await route.fulfill({ json: mapped ? MAPPED_PREVIEW : flagged })
       } else if (pathname.startsWith('/api/definitions/eng1/') && pathname.endsWith('/xml')) {
         const current = decodeURIComponent(pathname).includes('orderFlow:3:abc')
         await route.fulfill({ json: { xml: current ? FIXTURE_XML.v1 : FIXTURE_XML.v2 } })
@@ -310,4 +349,59 @@ test('mapping editor: click-to-map on the two diagrams feeds the pair list (#498
     mappings: [{ fromActivityId: 'reviewTask', toActivityId: 'approveTask' }],
   })
   expect(executed).toEqual([])
+})
+
+test('mapping editor: the selected source stays visible on a blocker-marked activity (#498)', async ({
+  page,
+}) => {
+  await mockBff(page, CAPABLE_ENGINE, [], TWO_FLAGGED_PREVIEW)
+  await page.goto('/inspect/eng1/inst-1')
+  await page.getByRole('button', { name: 'Migrate', exact: true }).click()
+  await page.getByRole('button', { name: 'Check mapping →' }).click()
+  const check = page.getByRole('dialog', { name: 'Migrate — check the mapping' })
+  await check.getByRole('button', { name: 'Diagrams' }).click()
+  const source = check.getByRole('region', { name: 'Source diagram (current version)' })
+
+  await expect(source.getByRole('img', { name: 'pre-check blocker on this activity' })).toHaveCount(2)
+  await expect(source.getByRole('img', { name: 'pre-check warning on this activity' })).toBeVisible()
+
+  // The painted outline of an element: stroke colour + width + fill, as computed.
+  const look = (id: string) =>
+    source
+      .locator(`.djs-element[data-element-id="${id}"] .djs-visual > :first-child`)
+      .evaluate((node) => {
+        const style = getComputedStyle(node)
+        return `${style.stroke} ${style.strokeWidth} ${style.fill}`
+      })
+
+  const unselected = await look('reviewTask')
+  await source.locator('[data-element-id="start"]').click()
+  await expect(check.getByRole('combobox', { name: 'pair source' })).toHaveValue('start')
+  await expect.poll(() => look('start')).not.toBe(unselected)
+  const selected = await look('start')
+
+  // Switching the select moves the visible selection: the two flagged sources swap looks.
+  await check.getByRole('combobox', { name: 'pair source' }).selectOption('reviewTask')
+  await expect.poll(() => look('reviewTask')).toBe(selected)
+  expect(await look('start')).toBe(unselected)
+
+  // Adding a pair re-marks the source canvas; the operator's zoom survives it.
+  // The viewport matrix, rounded (diagram-js rewrites the attribute in a shorter form).
+  const viewport = async () =>
+    ((await source.locator('svg .viewport').first().getAttribute('transform')) ?? '')
+      .split(/[^-\d.]+/)
+      .filter((part) => part !== '')
+      .map((part) => Number(part).toFixed(2))
+      .join(' ')
+  const before = await viewport()
+  await source.locator('[data-element-id="end"]').hover()
+  await page.keyboard.down('Control')
+  await page.mouse.wheel(0, -300)
+  await page.keyboard.up('Control')
+  await expect.poll(viewport).not.toBe(before)
+  const zoomed = await viewport()
+  await check.getByRole('combobox', { name: 'pair target' }).selectOption('approveTask')
+  await check.getByRole('button', { name: 'Add to map' }).click()
+  await expect(source.getByRole('img', { name: 'mapped' })).toBeVisible()
+  expect(await viewport()).toBe(zoomed)
 })

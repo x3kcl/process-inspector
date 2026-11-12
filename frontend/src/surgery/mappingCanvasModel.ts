@@ -37,8 +37,10 @@ export function findingMarkerIds(findings: readonly FindingLike[]): {
   for (const finding of findings) {
     const id = finding.activityId
     if (typeof id !== 'string' || id === '') continue
+    // An unrecognised severity (a taxonomy bump ahead of this build) is marked as a
+    // warning, like MigrateModal's callouts: fail toward visible. Only INFO is unmarked.
     if (finding.severity === 'BLOCKER_ADVICE') blocker.add(id)
-    else if (finding.severity === 'WARNING') warning.add(id)
+    else if (finding.severity !== 'INFO') warning.add(id)
   }
   return { blocker: [...blocker], warning: [...warning].filter((id) => !blocker.has(id)) }
 }

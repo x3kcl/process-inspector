@@ -264,6 +264,7 @@ export function MappingEditor({
                 <button
                   type="button"
                   onClick={() => {
+                    setRefusal(null)
                     onPairsChange(
                       pairs.filter(
                         (item) =>
@@ -285,6 +286,7 @@ export function MappingEditor({
                 value={pairFrom}
                 onChange={(event) => {
                   setPairFrom(event.target.value)
+                  setRefusal(null)
                 }}
               >
                 <option value="">choose source…</option>
@@ -299,6 +301,7 @@ export function MappingEditor({
                 value={pairTo}
                 onChange={(event) => {
                   setPairTo(event.target.value)
+                  setRefusal(null)
                 }}
               >
                 <option value="">choose target…</option>

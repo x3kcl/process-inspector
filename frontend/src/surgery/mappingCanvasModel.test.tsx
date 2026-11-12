@@ -13,6 +13,7 @@ import { MANY_TO_MANY_REASON, resetToGenerated } from './mappingRules'
 import type { ActivityPair } from './mappingRules'
 
 const lastMarkers: Record<string, DiagramMarkers> = {}
+const lastSelected: Record<string, string | undefined> = {}
 
 vi.mock('../api/client', async () => {
   const actual = await vi.importActual<typeof import('../api/client')>('../api/client')
@@ -33,13 +34,16 @@ vi.mock('../inspect/DiagramCanvas', () => ({
     xml,
     markers,
     onSelectActivity,
+    selectedActivityId,
   }: {
     xml: string
     markers: DiagramMarkers
     onSelectActivity?: (id: string) => void
+    selectedActivityId?: string
   }) => {
     const side = xml.includes('v1') ? 'source' : 'target'
     lastMarkers[side] = markers
+    lastSelected[side] = selectedActivityId
     return (
       <div>
         {['a', 'b', 'flow1', 'x', 'y'].map((id) => (
@@ -91,9 +95,10 @@ describe('findingMarkerIds / mappedIds (#498)', () => {
         { activityId: 'a', severity: 'WARNING' },
         { activityId: 'b', severity: 'WARNING' },
         { activityId: 'c', severity: 'INFO' },
+        { activityId: 'd', severity: 'SOME_FUTURE_SEVERITY' },
         { activityId: null, severity: 'BLOCKER_ADVICE' },
       ]),
-    ).toEqual({ blocker: ['a'], warning: ['b'] })
+    ).toEqual({ blocker: ['a'], warning: ['b', 'd'] })
   })
 
   it('marks only the selected source’s targets when a source is selected', () => {
@@ -169,6 +174,17 @@ describe('MappingEditor diagrams mode (#498)', () => {
     map('b', 'x')
     expect(screen.getByRole('status').textContent).toContain(MANY_TO_MANY_REASON)
     expect(screen.queryByRole('button', { name: 'Remove b to x' })).toBeNull()
+
+    // Select → canvas direction: the pair selects drive both canvases' selection, and a
+    // changed select clears a stale refusal.
+    fireEvent.change(screen.getByRole('combobox', { name: 'pair source' }), {
+      target: { value: 'a' },
+    })
+    fireEvent.change(screen.getByRole('combobox', { name: 'pair target' }), {
+      target: { value: 'y' },
+    })
+    expect(lastSelected).toEqual({ source: 'a', target: 'y' })
+    expect(screen.queryByRole('status')).toBeNull()
 
     // The expert pane shows exactly the generated fan-out the BFF will be proposed.
     fireEvent.click(screen.getByRole('button', { name: 'Expert' }))

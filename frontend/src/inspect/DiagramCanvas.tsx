@@ -80,6 +80,11 @@ export function DiagramCanvas({
   const prevSelectedRef = useRef<string | undefined>(undefined)
   const prevPickerSourceRef = useRef<string[]>([])
   const prevPickerTargetRef = useRef<string[]>([])
+  // The XML of the last successful import: a re-import of the SAME XML (only the markers
+  // changed) keeps the operator's pan/zoom instead of snapping back to fit-viewport.
+  const importedXmlRef = useRef<string | null>(null)
+  // The id last scrolled into view; a marker-only re-import does not scroll to it again.
+  const scrolledToRef = useRef<string | undefined>(undefined)
   // The click listener is bound ONCE with the viewer; the ref keeps it pointed at the
   // latest callback so a re-render (e.g. fresh marker data) never leaves it stale.
   const onSelectRef = useRef(onSelectActivity)
@@ -105,12 +110,21 @@ export function DiagramCanvas({
     const viewer = viewerRef.current
     if (viewer === null) return
     let cancelled = false
+    let keep: { x: number; y: number; width: number; height: number } | null = null
+    if (importedXmlRef.current === xml) {
+      const { x, y, width, height } = viewer.get<Canvas>('canvas').viewbox()
+      keep = { x, y, width, height }
+    }
     void viewer
       .importXML(xml)
       .then(() => {
         if (cancelled) return
+        importedXmlRef.current = xml
         const canvas = viewer.get<Canvas>('canvas')
-        canvas.zoom('fit-viewport')
+        if (keep === null) {
+          canvas.zoom('fit-viewport')
+          scrolledToRef.current = undefined
+        } else canvas.viewbox(keep)
         // #168 (lower-severity finding, mitigated but not fixed by the diagram already
         // having a plain-text twin elsewhere on the page): bpmn-js injects its own root
         // <svg> with tabindex="0" for keyboard pan/zoom — a real, already-interactive tab
@@ -148,10 +162,14 @@ export function DiagramCanvas({
       }
     }
     prevSelectedRef.current = selectedActivityId
-    if (selectedActivityId === undefined) return
+    if (selectedActivityId === undefined) {
+      scrolledToRef.current = undefined
+      return
+    }
     try {
       canvas.addMarker(selectedActivityId, 'marker-selected')
-      canvas.scrollToElement(selectedActivityId)
+      if (scrolledToRef.current !== selectedActivityId) canvas.scrollToElement(selectedActivityId)
+      scrolledToRef.current = selectedActivityId
     } catch {
       // An id the diagram does not know must not kill the render.
     }

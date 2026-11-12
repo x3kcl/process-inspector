@@ -1751,7 +1751,7 @@ button.primary:disabled {
   stroke-width: 3px !important;
 }
 .diff-glyph {
-  background: var(--color-bg);
+  background: var(--color-page-bg);
   border: 1px solid var(--color-border);
   border-radius: 2px;
   font-size: 12px;
@@ -4557,6 +4557,15 @@ button.skip-link {
   stroke-width: 3px !important;
   stroke-dasharray: 8 3 !important;
 }
+/* The finding outline above out-ranks the generic .marker-selected rule, which hid the
+   selection on every flagged (= every pickable) source. Selected keeps the finding's dash
+   (the finding cue) and adds the selection stroke, a heavier width and a fill — not hue alone. */
+.diagram-canvas .marker-selected.marker-finding-blocker .djs-visual > :first-child,
+.diagram-canvas .marker-selected.marker-finding-warning .djs-visual > :first-child {
+  stroke: var(--color-info) !important;
+  stroke-width: 6px !important;
+  fill: var(--color-info-bg-alt) !important;
+}
 .finding-glyph {
   display: inline-flex;
   align-items: center;
@@ -4565,7 +4574,7 @@ button.skip-link {
   height: 16px;
   border: 1px solid var(--color-border);
   border-radius: 3px;
-  background: var(--color-bg);
+  background: var(--color-page-bg);
   font-weight: 700;
   font-size: 11px;
 }
