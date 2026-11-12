@@ -45,7 +45,9 @@ beforeAll(() => {
     },
   )
 })
-afterEach(cleanup)
+afterEach(() => {
+  cleanup()
+})
 
 describe('Shell sign-in flip (#610)', () => {
   it('raises no cross-component update warning when /api/me flips 401 -> 200', async () => {
@@ -61,7 +63,9 @@ describe('Shell sign-in flip (#610)', () => {
     expect(await screen.findByRole('button', { name: /sign in/i })).not.toBeNull()
     meStatus = 200
     await client.invalidateQueries({ queryKey: ['me'] })
-    await waitFor(() => expect(screen.queryByRole('button', { name: /sign in/i })).toBeNull())
+    await waitFor(() => {
+      expect(screen.queryByRole('button', { name: /sign in/i })).toBeNull()
+    })
     const warned = errors.mock.calls.filter((c) => /Cannot update a component/.test(String(c[0])))
     errors.mockRestore()
     expect(warned).toEqual([])
