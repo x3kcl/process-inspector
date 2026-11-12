@@ -28,7 +28,7 @@ Java stays **21** for #440. Boot 4.1 requires Java 17+. Java 25 is #441, after t
 | WireMock | `wiremock-standalone` 3.13.2 | keep the pin | Not a Boot-managed artifact. Standalone server, not the Spring-Boot integration |
 | ArchUnit | 1.5.1 | keep | JUnit 5 rule engine, no Boot API |
 | Testcontainers | BOM (1.x artifacts `junit-jupiter`, `postgresql`) | Boot 4.1 manages **2.0.5** | Artifact ids are `testcontainers-junit-jupiter` and `testcontainers-postgresql`. Java packages are unchanged. The Postgres 16 image tag in the tests is independent |
-| JaCoCo | 0.8.15 | keep for #440 (Java 21) | #441 must confirm 0.8.15 reads class-file version 69 before the JDK 25 image bump |
+| JaCoCo | 0.8.15 | keep for #440 (Java 21) | #441 confirmed: 0.8.15 instruments class-file version 69 (`mvn test` on Temurin 25.0.4.1, coverage checks met) — no bump |
 
 ## Jackson decision
 
@@ -72,7 +72,7 @@ Do not edit these in the spike. #440 changes them in the same PR as the parent b
 ## Order of work
 
 1. **#440 — Boot 4.1.1 on Java 21.** Parent, starters, `spring-boot-jackson2`, Resilience4j artifact, springdoc 3.1.1, the one `@MockitoBean`, the one request matcher. `mvn test` green, then `ci.yml` on the merge SHA, then a dispatched `nightly.yml` (engine-its, container-its, dlq-scan-cap-p2, fanout-partial-failure-p1, perf-p1) on that same SHA. Acceptance net is the existing IT matrix, not new tests.
-2. **#442 — overrides.** After #440 is green, delete `backend/.trivyignore.yaml` entries CVE-2026-47884 and CVE-2026-47890 once the managed `spring-framework` is ≥ 7.0.9 (the OSS fix those entries name). Drop `tomcat.version`. Drop `jackson-bom.version` and `postgresql.version` only when the BOM meets the comment's floor. Re-justify anything that remains, with an expiry. npm overrides are a separate audit (`npm view` plus `npm audit`); they are not caused by the Boot bump.
+2. **#442 — overrides.** *Done for the backend 2026-11-12 with Boot 4.1.2 (manages Tomcat 11.0.27, jackson-bom 3.1.7, jackson-2-bom 2.21.7, Framework 7.0.10): all three pins and both Trivy ignores removed.* After #440 is green, delete `backend/.trivyignore.yaml` entries CVE-2026-47884 and CVE-2026-47890 once the managed `spring-framework` is ≥ 7.0.9 (the OSS fix those entries name). Drop `tomcat.version`. Drop `jackson-bom.version` and `postgresql.version` only when the BOM meets the comment's floor. Re-justify anything that remains, with an expiry. npm overrides are a separate audit (`npm view` plus `npm audit`); they are not caused by the Boot bump.
 3. **#441 — Java 25.** Dockerfile, CI `setup-java`, the runner image, `scripts/check-base-image-currency.sh`. Confirm JaCoCo against class-file 69. Check `MaxRAMPercentage` against OPERATIONS §6 memory limits. Then the CLAUDE.md wording.
 
 #440 does not start until this plan is the one being followed. A red nightly on the Boot 4 SHA blocks the merge; a green `ci.yml` alone does not meet #440.

@@ -926,8 +926,8 @@ remains v2.
 | **Add / remove participant** | User identity link on a running process or case (`participant` by default). The starter link is shown and cannot be removed. IDM check on add only when IDM is probed present | 1 |
 | **Terminate / delete instance** | Irreversible; runtime state destroyed; **cascade to call-activity children enumerated in the confirm**. The operator reason is sent to the engine as `deleteReason`, prefixed `inspector:<actor>[:ticket]:reason` and capped at 4000 characters. The engine still records the service account as the actor; the Inspector audit log is who asked | 3 |
 | **Delete dead-letter job** | ⚠ Orphans the execution permanently (only rescue afterwards: change-state). ADMIN-only, explicit warning | 3 |
-| **Migrate a cohort** *(#482)* | Same per-instance migrate, for every running instance of one source version that matches the filter (business key, start range, or one variable equals). By-definition `/migrate` and `/batch-migrate` are not used — they ignore an instance list (measured 2026-10-22). Prod types the **count**. Wider than 50 is refused. | 3 |
-| **Analyze a cohort** *(#495)* | Read-only estimate over that same filter: one existing preview per instance, aggregated by activity id × finding code. Blockers (`BLOCKER_ADVICE`) are listed with their reason and excluded from the executable id set. Stored in `migration_analysis`; a re-GET is the stored row. Banner: "Inspector estimate — the engine is the only ground truth at execute". Wider than the page of 50 is a labelled lower bound. Does not migrate. | 3 |
+| **Migrate a cohort** *(#482, #496)* | The bulk verb `migrate-instance` (§7) over one or more completed cohort analyses, on any engines: the same per-instance migrate for each instance of the analysis's executable set. Blocker-carrying instances are never sent; each item asserts the digest its analysis recorded. By-definition `/migrate` and `/batch-migrate` are not used — they ignore an instance list (measured 2026-10-22). Prod types the **count**. | 3 |
+| **Analyze a cohort** *(#495)* | Read-only estimate over a filter (business key, start range, or one variable equals): one existing preview per instance, aggregated by activity id × finding code. Blockers (`BLOCKER_ADVICE`) are listed with their reason and excluded from the executable id set; each instance's `activityStateDigest` is stored for the migrate job. Stored in `migration_analysis`; a re-GET is the stored row. Banner: "Inspector estimate — the engine is the only ground truth at execute". Wider than 500 is a labelled lower bound, which the migrate job refuses. Does not migrate. | 3 |
 | **Migrate instance** *(v2)* | Move instance to another deployed version of the same key. **Inspector static pre-check (NOT an engine validation** — Flowable's REST API exposes no migration validator, P0 spike 2026-07-09): a BFF model diff flags activities that can't auto-map; the engine is the ground truth only at apply. The pre-check emits **typed findings** (INSTANCE-MIGRATION.md §14 — a CLOSED 8-code vocabulary with `taxonomyVersion`, severities `BLOCKER_ADVICE`/`WARNING`/`INFO`), rendered by severity and labelled "BFF estimate — the engine is the only ground truth at execute". Exactly **two** refusals, both 422: document-construction impossibility (a token with no target id and no operator mapping), and **`scope-collapse-token-loss`** — a dissolving subprocess scope holding **two or more live tokens**, where live calibration on 6.8/7.1 measured the engine returning **200 while silently destroying all but one token** (no error, no delete reason, no job), which can park the instance forever at a join whose sibling branch is gone; no mapping can fix it, so the estimate is the only place it can be caught (§14.11). A **single-token** removed scope and a removed **boundary subscription** are WARNINGS, not blockers — the engine accepts both, so blocking them made a legitimate recovery impossible through the BFF. **Findings are advisory-only: green or red, no rail moves.** Honest banner ("this is not a Flowable validation … the engine's own check runs only when you execute"); ADMIN unconditional + typed **business-key** confirm on prod; IRREVERSIBLE, never auto-retried (post-dispatch timeout ⇒ UNKNOWN + verify-now); single first, batch later. See `docs/INSTANCE-MIGRATION.md` | 3 |
 
 Explicitly **not offered** (API honesty, §11): timer *reschedule-to-later* (not exposed by
@@ -1160,6 +1160,16 @@ copy is never identical to an RBAC denial (R-GOV-04, R-SEM-17).
   server-resolved filter at execution, not this snapshot"); PROD typed token = the
   **definition key** (no key in the filter ⇒ the single prod engine id, else `ALL`) —
   never the raceable count.
+- **Cohort migration** (`migrate-instance`, #496, ADMIN, tier 3): `POST /api/bulk/migrate`
+  carrying **completed analysis ids only** (reason ≥10, ticket per policy, prod ⇒ typed count of
+  the executable set) — never a browser-enumerated ID list. Items are each analysis's executable
+  set (blockers never sent); a partial (`lowerBound`) or running analysis refuses. Per item: the
+  full single-instance migrate rails with the analysis's `fromDefinitionId` + `activityStateDigest`
+  as compare-and-set (moved ⇒ `skipped`), audit `migrate-instance/v2`; post-dispatch timeout ⇒
+  `unknown`, Verify now re-reads the instance's definition id. Same pacing, protection skip,
+  circuit pause and INTERRUPTED semantics as every other verb. "Continue as new job" for this verb
+  accepts only the prior job's `not_run`/`failed` items. The selection, error-class and filter
+  doors do not offer it. Detail: INSTANCE-MIGRATION.md §7.1.
 - **Engine protection & live progress** (v1.x #2, normative): dispatch fans out **per
   engine** — a per-engine in-flight permit pool (default 4, shared across concurrent jobs)
   plus a mandatory **250 ms stagger** between dispatch starts (`inspector.bulk.engine-permits`
@@ -1288,7 +1298,7 @@ server-rendered templates deny the agent its Playwright feedback loop); full-sta
 TypeScript/NestJS (runner-up: loses Spring Security's OIDC/session/RBAC maturity, team depth,
 and would rewrite working M1/M2 code for no capability gain); Go/FastAPI/Kotlin (no axis won).
 
-- **Backend:** **Java 21 (LTS) / Spring Boot 4.1.x** / Maven
+- **Backend:** **Java 25 (LTS) / Spring Boot 4.1.x** / Maven
   (+ enforcer, `mvnw`). `RestClient` per engine over `JdkClientHttpRequestFactory` with
   registry timeouts — blocking-by-design, **no WebFlux**. JSON is Jackson 2
   (`spring-boot-jackson2`, `preferred-json-mapper=jackson2`); that bridge is removed in Boot 4.3.

@@ -146,16 +146,13 @@ function TimelineActivityRow({
       : ongoing
         ? 'still running'
         : ''
-  const ariaLabel = [label, activity.activityType, live ? `— ${live.label}` : null]
-    .filter(Boolean)
-    .join(' ')
-
   return (
     <div
       className={`tl-row${ongoing && !phantom ? ' tl-ongoing' : ''}${phantom ? ' tl-phantom-row' : ''}`}
       role="treeitem"
       aria-level={depth + 1}
-      aria-label={ariaLabel}
+      // No aria-label: the name comes from the visible content (name, type, assignee, live
+      // label, duration), so it never drifts from what is shown (axe label-content-name-mismatch).
     >
       <span
         className={`tl-label${depth > 0 ? ' tl-label--nested' : ''}`}

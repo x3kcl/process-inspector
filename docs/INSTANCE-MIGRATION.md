@@ -355,13 +355,53 @@ compares active plan-item **definition** ids (`planItemDefinitionId`, not the in
 `POST cmmn-runtime/case-instances/{id}/migrate`. By-definition `migrate`, `batch-migrate`,
 `migrate-historic-instances`, `batch-migrate-historic-instances`, and historic
 `historic-case-instances/{id}/migrate` are 7.x only: on 6.x the BFF returns ProblemDetail
-`version-gate` and does not call the engine. Case cohort stays #496.
+`version-gate` and does not call the engine. A case cohort is not part of #496 (S7).
 
 **Verdict for S4: strategy A.** A filtered cohort cannot be sent to by-definition migrate or
 batch-migrate. Execute is one `POST runtime/process-instances/{id}/migrate` per instance, the
 call single-instance migrate already uses, with the cohort's prod token being the **count**
-rather than each business key. The synchronous door caps at 50 and refuses a wider set instead
-of migrating a prefix. Engine batch stays unused.
+rather than each business key. Engine batch stays unused.
+
+### 7.1 Cohort execution through the bulk machinery (#496)
+Execution is the bulk verb **`migrate-instance`** — one more verb in the persisted bulk job
+(SPEC §7), not a parallel engine. The 50-cap synchronous door (`POST
+/api/migration/cohorts/execute`) is **removed**: one execution path for every cohort size, with
+the drawer, INTERRUPTED and verify-now it would otherwise lack.
+
+- **Scope = completed analyses (§14.12).** `POST /api/bulk/migrate {analysisIds, reason,
+  ticketId?, confirmedCount?}` (ADMIN on every analysis engine). Each analysis pins one engine,
+  the source and target definition ids and the shared mapping document; the job's items are its
+  **executable set** — an instance whose analysis carries a `BLOCKER_ADVICE` (or that could not be
+  read) is never sent. Several analyses may span engines; an instance in two analyses refuses
+  `analysis-overlap`. One analysis covers up to **500** running instances (`CohortMigrationService.CAP`);
+  a wider cohort is `lowerBound` and refuses `analysis-partial` — narrow the filter. A running,
+  failed or digest-less analysis refuses too. Instances started after the analysis are not in it.
+- **Per-item compare-and-set.** The analysis stores each instance's `activityStateDigest`. Each
+  item runs `MigrationService.executeBulkItem` with `expectedFromDefinitionId` = the analysis source
+  and `expectedActivityStateDigest` = that digest. An instance that moved since the analysis (token
+  moved, or migrated elsewhere — the definition half is asserted before target resolution) refuses
+  `instance-moved-since-preview` → item **`skipped`**. A blocker that appears at dispatch
+  (`unmapped-activities`, `scope-collapse-token-loss`) refuses before any engine contact → `failed`.
+- **Rails.** Reason ≥10 (job level), ticket per engine policy, typed **count** of the executable set
+  when any analysis engine is prod (`bulk-migrate-confirm-count-required` / count drift). Protected
+  instances and definition keys are auto-excluded at submit as `skipped_protected`. Dangerous-set
+  re-auth runs once at submit; each item skips it and the business-key token, every other tier-3
+  rail runs per item. Per-item audit `migrate-instance/v2` plus the `bulk:migrate-instance`
+  envelope (its payload lists the analyses, executable and `blockersNotSent` counts).
+- **Pacing (R-NFR-01).** The bulk per-engine permit pool (4) and 250 ms stagger. An open breaker
+  is `engine-shedding-load` in migrate's pre-flight reads too, so that engine's group pauses and
+  the job ends `INTERRUPTED` with the rest `not_run`.
+- **Outcome classes.** `ok` (the observed definition id is recorded) · `skipped` (moved / no
+  longer running) · `skipped_protected` · `failed` (engine rejected the document, or a pre-flight
+  refusal) · `unknown` (post-dispatch timeout; **Verify now** re-reads the instance's
+  `processDefinitionId`: on the target ⇒ `ok`, else stays `unknown` with evidence) · `not_run`.
+- **Resume.** Only "Continue as new job" / per-item Retry (`POST /api/bulk` with `continuedFrom`):
+  for this verb that door accepts only the prior job's `not_run`/`failed` items with their analysis
+  reference, re-checks ADMIN and reason, inherits the ticket, and does not re-ask the typed count
+  (the original submit attested a superset).
+
+Proven by `BulkMigrationIT` (rung 4, 6.8 + 7.1, 202 items, engine-7 breaker forced open mid-run,
+continuation to completion).
 
 ### 7.0 Why batch was deferred (2026-07, historical)
 By-definition migration returns an async **`Batch`**; work drains via batch-part jobs and you poll
@@ -1073,7 +1113,7 @@ land green.
 ### 14.12 Cohort aggregation (#495)
 
 A cohort analysis runs the same preview — the §14 findings, `taxonomyVersion` 2, no extra engine
-call per instance — across the S2 filter (the synchronous page, cap 50). Each instance is counted
+call per instance — across the S2 filter (one page, cap 500 — #496). Each instance is counted
 once: any `BLOCKER_ADVICE` is a blocker and is left out of the executable id set, with the finding
 detail as its reason; otherwise a `WARNING` is a warning; otherwise the instance is clean (`INFO`
 does not warn). Aggregates are activity id × finding code, counting distinct instances. The row is
@@ -1082,5 +1122,7 @@ instance ids actually estimated) and a re-GET returns that row, including a page
 wider than the page is a lower bound, labelled. The banner stays "Inspector estimate — the engine
 is the only ground truth at execute". Progress is an id-only `migration-analysis` event on the
 existing SSE hub, not a second bus. The job calls `preview`, so the engine reads stay on the
-interactive lane preview already uses. It does not migrate, and it does not call by-definition
-batch-migrate.
+interactive lane preview already uses, one instance at a time. Each previewed instance's
+`activityStateDigest` is stored in the payload (`digests`): it is the compare-and-set baseline the
+bulk `migrate-instance` job asserts per item (§7.1). The analysis itself does not migrate, and it
+does not call by-definition batch-migrate.

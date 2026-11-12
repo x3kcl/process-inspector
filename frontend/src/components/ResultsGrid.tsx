@@ -231,7 +231,7 @@ export function ResultsGrid({
         hide: hiddenColumns.has('currentActivityOrError'),
         flex: 1,
         minWidth: 220,
-        tooltipField: 'currentActivityOrError',
+        tooltip: true,
       },
     ],
     [enginesById, hiddenColumns],
@@ -340,6 +340,9 @@ export function ResultsGrid({
           ref={gridRef}
           rowData={rows}
           columnDefs={columns}
+          // ~11 columns: virtualising them buys nothing, and from ag-grid 36.3 a 0px-wide
+          // (jsdom) viewport would render none of the off-screen ones.
+          suppressColumnVirtualisation
           rowSelection={rowSelection}
           getRowId={(p) => p.data.compositeId ?? p.data.processInstanceId ?? ''}
           onSelectionChanged={onSelectionChanged}

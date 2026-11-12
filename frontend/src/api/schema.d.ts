@@ -469,6 +469,22 @@ export interface paths {
         patch?: never;
         trace?: never;
     };
+    "/api/bulk/migrate": {
+        parameters: {
+            query?: never;
+            header?: never;
+            path?: never;
+            cookie?: never;
+        };
+        get?: never;
+        put?: never;
+        post: operations["submitMigration"];
+        delete?: never;
+        options?: never;
+        head?: never;
+        patch?: never;
+        trace?: never;
+    };
     "/api/bulk/{id}": {
         parameters: {
             query?: never;
@@ -1477,22 +1493,6 @@ export interface paths {
         patch?: never;
         trace?: never;
     };
-    "/api/migration/cohorts/execute": {
-        parameters: {
-            query?: never;
-            header?: never;
-            path?: never;
-            cookie?: never;
-        };
-        get?: never;
-        put?: never;
-        post: operations["executeCohort"];
-        delete?: never;
-        options?: never;
-        head?: never;
-        patch?: never;
-        trace?: never;
-    };
     "/api/migration/cohorts/preview": {
         parameters: {
             query?: never;
@@ -2085,6 +2085,13 @@ export interface components {
             totalItems?: number;
             verb?: string;
         };
+        BulkMigrateRequest: {
+            analysisIds?: string[];
+            /** Format: int32 */
+            confirmedCount?: number;
+            reason?: string;
+            ticketId?: string;
+        };
         BulkSubmitRequest: {
             assignee?: string;
             /** Format: uuid */
@@ -2274,25 +2281,6 @@ export interface components {
             taxonomyVersion?: number;
             /** Format: int32 */
             warningCount?: number;
-        };
-        CohortExecuteRequest: {
-            cohort?: components["schemas"]["CohortPreviewRequest"];
-            confirmToken?: string;
-            /** Format: int64 */
-            expectedCount?: number;
-            reason?: string;
-            ticketId?: string;
-        };
-        CohortExecuteResponse: {
-            /** Format: int64 */
-            count?: number;
-            engineId?: string;
-            items?: components["schemas"]["CohortItemOutcome"][];
-        };
-        CohortItemOutcome: {
-            detail?: string;
-            instanceId?: string;
-            outcome?: string;
         };
         CohortPreviewRequest: {
             businessKey?: string;
@@ -4512,6 +4500,30 @@ export interface operations {
             };
         };
     };
+    submitMigration: {
+        parameters: {
+            query?: never;
+            header?: never;
+            path?: never;
+            cookie?: never;
+        };
+        requestBody: {
+            content: {
+                "application/json": components["schemas"]["BulkMigrateRequest"];
+            };
+        };
+        responses: {
+            /** @description OK */
+            200: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "*/*": components["schemas"]["BulkJobDto"];
+                };
+            };
+        };
+    };
     get: {
         parameters: {
             query?: never;
@@ -6060,32 +6072,6 @@ export interface operations {
                 };
                 content: {
                     "*/*": components["schemas"]["CohortAnalysisView"];
-                };
-            };
-        };
-    };
-    executeCohort: {
-        parameters: {
-            query: {
-                engineId: string;
-            };
-            header?: never;
-            path?: never;
-            cookie?: never;
-        };
-        requestBody: {
-            content: {
-                "application/json": components["schemas"]["CohortExecuteRequest"];
-            };
-        };
-        responses: {
-            /** @description OK */
-            200: {
-                headers: {
-                    [name: string]: unknown;
-                };
-                content: {
-                    "*/*": components["schemas"]["CohortExecuteResponse"];
                 };
             };
         };

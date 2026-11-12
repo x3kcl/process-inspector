@@ -31,7 +31,7 @@ HANDOVER**:
 
 ## Tech (ADR-001)
 
-Java 21 · Spring Boot 4.1.x · blocking + **virtual threads** (no WebFlux) · `RestClient` per
+Java 25 · Spring Boot 4.1.x · blocking + **virtual threads** (no WebFlux) · `RestClient` per
 engine · Resilience4j · Caffeine triage cache · Spring Data JPA + **Flyway** + **Postgres
 16** (insert-only audit repository) · Spring Security dual profile (form/basic for dev,
 **OIDC** for prod) · SSE via `SseEmitter`. It integrates with engines **strictly over REST**

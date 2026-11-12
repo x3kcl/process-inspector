@@ -13,6 +13,7 @@ import io.inspector.security.RbacAuthorizer;
 import io.inspector.security.Role;
 import java.time.Clock;
 import java.util.ArrayList;
+import java.util.LinkedHashMap;
 import java.util.List;
 import java.util.Map;
 import java.util.UUID;
@@ -30,15 +31,18 @@ import org.springframework.stereotype.Service;
  * per instance — the path that already computes §14 findings. No extra engine call, no
  * by-definition migrate.
  *
+ * <p>Each analyzed instance's {@code activityStateDigest} is stored: it is the compare-and-set
+ * baseline the bulk {@code migrate-instance} job asserts per item (#496).
+ *
  * <p>ponytail: instances are previewed one at a time on the interactive lane preview already
- * uses. A BACKGROUND-priority overload of preview would be a second call path. Add a permit
- * pool only if the cohort cap rises past {@link CohortMigrationService#CAP}.
+ * uses — one in-flight read chain per analysis, gentler than the bulk permit pool. A
+ * BACKGROUND-priority overload of preview would be a second call path.
  */
 @Service
 public class CohortAnalysisService {
 
     static final int DEFAULT_PAGE_SIZE = 20;
-    private static final int MAX_PAGE_SIZE = CohortMigrationService.CAP;
+    private static final int MAX_PAGE_SIZE = 50;
 
     private static final Logger log = LoggerFactory.getLogger(CohortAnalysisService.class);
     private static final TypeReference<Map<String, Integer>> CODE_COUNTS = new TypeReference<>() {};
@@ -106,7 +110,8 @@ public class CohortAnalysisService {
                 List.of(),
                 List.of(),
                 List.of(),
-                null);
+                null,
+                Map.of());
         MigrationAnalysis row = new MigrationAnalysis(
                 UUID.randomUUID(),
                 engineId,
@@ -147,6 +152,7 @@ public class CohortAnalysisService {
 
     private void run(MigrationAnalysis row, ListedCohort page, CohortPreviewRequest request, Authentication auth) {
         List<Instance> done = new ArrayList<>();
+        Map<String, String> digests = new LinkedHashMap<>();
         String target = page.toDefinitionId();
         String failure = null;
         boolean stopped = false;
@@ -159,9 +165,12 @@ public class CohortAnalysisService {
                     target = preview.toProcessDefinitionId();
                 }
                 done.add(new Instance(instanceId, findingsOf(preview)));
+                if (preview.activityStateDigest() != null) {
+                    digests.put(instanceId, preview.activityStateDigest());
+                }
             } catch (GuardRefusedException e) {
                 done.add(new Instance(instanceId, List.of(), e.getMessage()));
-                if ("engine-unreachable".equals(e.code())) {
+                if ("engine-unreachable".equals(e.code()) || "engine-shedding-load".equals(e.code())) {
                     failure = e.getMessage();
                     stopped = true;
                     break;
@@ -172,15 +181,16 @@ public class CohortAnalysisService {
                 stopped = true;
                 break;
             }
-            snapshot(row, page, done, target, false, null);
+            snapshot(row, page, done, digests, target, false, null);
         }
-        snapshot(row, page, done, target, stopped, failure);
+        snapshot(row, page, done, digests, target, stopped, failure);
     }
 
     private void snapshot(
             MigrationAnalysis row,
             ListedCohort page,
             List<Instance> done,
+            Map<String, String> digests,
             String target,
             boolean stopped,
             String failure) {
@@ -199,7 +209,8 @@ public class CohortAnalysisService {
                 result.blockers(),
                 result.executableIds(),
                 result.instances(),
-                failure);
+                failure,
+                Map.copyOf(digests));
         row.update(
                 status,
                 blank(target),
@@ -308,7 +319,11 @@ public class CohortAnalysisService {
         }
     }
 
-    /** The drill, the executable set, and the lower-bound label. Counts are also columns. */
+    /**
+     * The drill, the executable set, and the lower-bound label. Counts are also columns.
+     * {@code digests} maps each previewed instance to its {@code activityStateDigest}; null on
+     * a row stored before #496.
+     */
     public record Payload(
             boolean lowerBound,
             String boundLabel,
@@ -320,5 +335,6 @@ public class CohortAnalysisService {
             List<CohortFindingAggregator.BlockedInstance> blockers,
             List<String> executableIds,
             List<CohortFindingAggregator.InstanceRow> instances,
-            String failure) {}
+            String failure,
+            Map<String, String> digests) {}
 }

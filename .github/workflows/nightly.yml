@@ -44,7 +44,7 @@ jobs:
       - uses: actions/setup-java@v6
         with:
           distribution: temurin
-          java-version: "21"
+          java-version: "25"
           cache: maven
       # Mitigates Docker Hub 429s on the shared NAT pool; skips cleanly when secrets are absent.
       - name: Docker Hub login (rate-limit mitigation)
@@ -85,7 +85,7 @@ jobs:
       - uses: actions/setup-java@v6
         with:
           distribution: temurin
-          java-version: "21"
+          java-version: "25"
           cache: maven
       - name: R-TEST-05 P2 — 50k-row DLQ scan-cap volume suite (docker-free)
         working-directory: backend
@@ -110,7 +110,7 @@ jobs:
       - uses: actions/setup-java@v6
         with:
           distribution: temurin
-          java-version: "21"
+          java-version: "25"
           cache: maven
       - name: R-TEST-05 P1 — 10-stub-engine partial-failure fan-out suite (docker-free)
         working-directory: backend
@@ -153,7 +153,7 @@ jobs:
       - uses: actions/setup-java@v6
         with:
           distribution: temurin
-          java-version: "21"
+          java-version: "25"
           cache: maven
       - name: Docker Hub login (rate-limit mitigation)
         continue-on-error: true
@@ -266,7 +266,7 @@ jobs:
       - uses: actions/setup-java@v6
         with:
           distribution: temurin
-          java-version: "21"
+          java-version: "25"
           cache: maven
       - name: Docker Hub login (rate-limit mitigation)
         continue-on-error: true

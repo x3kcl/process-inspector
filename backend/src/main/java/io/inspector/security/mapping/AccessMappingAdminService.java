@@ -39,8 +39,8 @@ public class AccessMappingAdminService {
     // {@link ReentrantLock} (issue #327, same treatment as #306's AuditService.chainLock), not
     // {@code synchronized}: both critical sections below wrap JDBC (proposals.findById/save,
     // audit.beginPending/close), and with spring.threads.virtual.enabled=true on Java 21,
-    // synchronized around blocking I/O pins the carrier thread — a defect class per CLAUDE.md's
-    // iron rule.
+    // synchronized around blocking I/O pinned the carrier thread (no longer true on Java 25 /
+    // JEP 491, #441; the lock stays).
     private final ReentrantLock writeLock = new ReentrantLock();
 
     private final MappingStore store;
