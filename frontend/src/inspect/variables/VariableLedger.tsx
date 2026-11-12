@@ -217,7 +217,9 @@ function LedgerRowView({
               <button
                 type="button"
                 className="copy-btn edit-pencil"
-                aria-label={`edit ${row.entry.name}`}
+                aria-label={
+                  editing ? `close editor for ${row.entry.name}` : `edit ${row.entry.name}`
+                }
                 aria-describedby={gateReason !== null ? `edit-gate-${row.entry.name}` : undefined}
                 disabled={gateReason !== null}
                 title={gateReason ?? 'edit this value'}
