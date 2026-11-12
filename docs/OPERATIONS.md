@@ -442,14 +442,14 @@ Renew both together.
 
 **Trivy IMAGE scan — the `apk upgrade` cache trap (nightly #66/#67).** The BFF runtime image
 runs `apk upgrade --no-cache` so patched Alpine packages land ahead of eclipse-temurin's own
-next `21-jre-alpine` re-cut. That step's buildkit cache key is the literal command string,
+next `25-jre-alpine` re-cut. That step's buildkit cache key is the literal command string,
 which never changes — so with a warm `cache-from: type=gha` the layer is replayed verbatim and
 the "fresh" image silently carries whatever package set was current when the layer was first
 built. Nightly runs 66 and 67 went red on `CVE-2026-14456` (`openssl`/`libcrypto3`/`libssl3`
 3.5.7-r0, fixed in 3.5.8-r0, already published in the Alpine repo) with **every** build layer
 logging `CACHED`: the scanned image was a byte-identical replay of the run-65 build, so no
 number of re-runs could ever have gone green. The runtime stage is therefore **named**
-(`FROM eclipse-temurin:21-jre-alpine AS runtime`) and every workflow that builds a BFF image
+(`FROM eclipse-temurin:25-jre-alpine AS runtime`) and every workflow that builds a BFF image
 for scanning or for publication passes `no-cache-filters: runtime` to
 `docker/build-push-action` — `.github/actions/supply-chain` (called by `nightly.yml` and
 `supply-chain-pr.yml`), `publish-edge.yml` and `release.yml` alike. Scoping it to the runtime stage keeps the expensive maven `build` stage

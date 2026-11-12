@@ -1288,7 +1288,7 @@ server-rendered templates deny the agent its Playwright feedback loop); full-sta
 TypeScript/NestJS (runner-up: loses Spring Security's OIDC/session/RBAC maturity, team depth,
 and would rewrite working M1/M2 code for no capability gain); Go/FastAPI/Kotlin (no axis won).
 
-- **Backend:** **Java 21 (LTS) / Spring Boot 4.1.x** / Maven
+- **Backend:** **Java 25 (LTS) / Spring Boot 4.1.x** / Maven
   (+ enforcer, `mvnw`). `RestClient` per engine over `JdkClientHttpRequestFactory` with
   registry timeouts — blocking-by-design, **no WebFlux**. JSON is Jackson 2
   (`spring-boot-jackson2`, `preferred-json-mapper=jackson2`); that bridge is removed in Boot 4.3.
