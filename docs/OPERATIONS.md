@@ -442,8 +442,8 @@ Renew both together.
 
 **Current exceptions (2026-11-12, #442).** `backend/.trivyignore.yaml`: none. `backend/pom.xml`:
 no CVE version pins — Boot 4.1.2 manages the fixed Tomcat/Jackson/Framework lines. Frontend:
-`npm-audit-allowlist.json` and `frontend/.trivyignore.yaml` empty; `package.json` `overrides`
-are in-range floors only (each one is listed with its advisory under `//overrides`).
+`npm-audit-allowlist.json` and `frontend/.trivyignore.yaml` empty; no `package.json` `overrides`
+(#442: every parent now resolves the patched version on its own).
 
 **Trivy IMAGE scan — the `apk upgrade` cache trap (nightly #66/#67).** The BFF runtime image
 runs `apk upgrade --no-cache` so patched Alpine packages land ahead of eclipse-temurin's own
