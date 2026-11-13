@@ -364,6 +364,8 @@ Answers "what is broken, how much, where" in zero keystrokes:
   states (§3) — as distinct-instance counts harvested from the same capped failure-lane
   scans that feed the error groups (FAILED = instances holding ≥1 dead-letter job; RETRYING
   = instances with withException jobs and none dead-lettered; FAILED wins a collision).
+  The FAILED tile labels itself "instances with a dead-letter job": unlike the grid's FAILED
+  filter it does not include parents FAILED "in subprocess" (#630).
   Statuses collide by doctrine: a FAILED instance is still inside the ACTIVE total — the
   chips are flag tiers, not a partition. **All Stage 0 counts carry the same
   truncation/lower-bound badges as the grid** (R-SEM-12) — the first number an operator
@@ -1432,7 +1434,13 @@ and would rewrite working M1/M2 code for no capability gain); Go/FastAPI/Kotlin 
   total says "loaded so far" (a complete count stays bare — no hedge noise), and the bulk
   filter-scope `~N` discloses that it is the uncapped engine-reported match total and can
   differ from the grid's fetched-row count (#244) — three honestly different numbers, never
-  three bare ones presented as one measurement.
+  three bare ones presented as one measurement. **FAILED tile vs FAILED grid (#630):** the
+  Stage-0 FAILED tile counts instances that hold a dead-letter job themselves ("N instances
+  with a dead-letter job"); the grid's FAILED predicate is `hasDeadLetterJobs ∨
+  failedInSubprocess` (§3), so its drill-through also lists the call-activity parents whose
+  dead-letter sits in a child. Both are right; the grid headline splits them out of the
+  loaded rows' flags ("FAILED: 50 with a dead-letter job + 12 parents failed in subprocess",
+  shown only when a parent row is present), and Stage 0 gains no engine query for it.
 - **Notification budget.** Modals: user-initiated only. Banners: ambient degradation, one
   per scope, update-in-place, never stacked. Toasts: own-action outcomes only, max 3,
   overflow collapses to the drawer, never the sole record. Passive surfaces update silently,

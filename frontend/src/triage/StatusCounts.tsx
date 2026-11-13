@@ -61,6 +61,13 @@ export function StatusCounts({ counts, lowerBound, trends, asOf }: Props) {
   )
 }
 
+// #630: the FAILED tile counts instances holding a dead-letter job THEMSELVES (distinct
+// instances off the DLQ scan). Its drill-through search also lists the call-activity parents
+// whose dead-letter sits in a child ("FAILED · in subprocess"), so the grid can show more rows
+// — say so on the tile instead of leaving one number to read as wrong. No extra Stage 0 query.
+export const FAILED_TILE_HINT =
+  'instances that hold a dead-letter job themselves — the search this opens also lists their call-activity parents ("FAILED · in subprocess"), so it can show more rows'
+
 function StatusTile({
   status,
   count,
@@ -76,16 +83,28 @@ function StatusTile({
     <Link
       className="status-tile status-tile-link"
       to={`/search?${statusDrillParams(status)}`}
-      title={`Search all ${status} instances`}
+      title={status === 'FAILED' ? FAILED_TILE_HINT : `Search all ${status} instances`}
     >
       <span className={`status-chip ${status.toLowerCase()}`}>{status}</span>
-      <Count value={count} lowerBound={lowerBound} />
+      <Count
+        value={count}
+        lowerBound={lowerBound}
+        unit={status === 'FAILED' ? 'instances with a dead-letter job' : undefined}
+      />
       <LaneSparkline trends={trends} lane={status} />
     </Link>
   )
 }
 
-function Count({ value, lowerBound }: { value: number; lowerBound: boolean }) {
+function Count({
+  value,
+  lowerBound,
+  unit = 'instances',
+}: {
+  value: number
+  lowerBound: boolean
+  unit?: string
+}) {
   return (
     <span
       className="tile-count"
@@ -97,7 +116,7 @@ function Count({ value, lowerBound }: { value: number; lowerBound: boolean }) {
       {formatCount(value)}
       {/* W2 #7 (T9): unit token — these tiles count INSTANCES; the header strip's lane
           numbers count JOBS. The two look comparable but aren't. */}
-      <span className="count-unit"> instances</span>
+      <span className="count-unit"> {unit}</span>
     </span>
   )
 }
