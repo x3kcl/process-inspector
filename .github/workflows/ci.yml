@@ -240,6 +240,11 @@ jobs:
           - profile: migration-findings
             composeProfiles: "flowable-6,flowable-7,postgres"
             itClass: BulkMigrationIT
+          # Hierarchy-aware migration (#497): the 3-level call-activity tree on both majors, own
+          # leg for the same reason.
+          - profile: migration-findings
+            composeProfiles: "flowable-6,flowable-7,postgres"
+            itClass: HierarchyMigrationIT
     env:
       # Dependabot PRs (#445) run on the slot runners, but that actor's token is read-only and
       # cannot pull the private flap image: that leg's registry steps and the contract's leg skip.

@@ -85,8 +85,21 @@ final class BulkJobRunner {
         }
         List<CompletableFuture<Void>> runners = new ArrayList<>();
         for (Map.Entry<String, List<BulkJobItem>> group : byEngine.entrySet()) {
+            // A hierarchy job (#497) runs its levels deepest first, each settled before the next;
+            // every other job is one level. A circuit pause stops the levels still to come — it
+            // is checked between levels only, so a one-level job's engine groups stay independent.
             runners.add(CompletableFuture.runAsync(
-                            () -> dispatchEngineGroup(job, verb, group.getKey(), group.getValue(), auth), host.executor)
+                            () -> {
+                                boolean first = true;
+                                for (List<BulkJobItem> level : HierarchyOrder.levels(group.getValue())) {
+                                    if (!first && host.circuitPaused.contains(jobId)) {
+                                        break;
+                                    }
+                                    first = false;
+                                    dispatchEngineGroup(job, verb, group.getKey(), level, all, auth);
+                                }
+                            },
+                            host.executor)
                     .exceptionally(ex -> {
                         // An engine-group failure must never leave the job RUNNING forever.
                         host.log.error("bulk job {} engine group {} failed", jobId, group.getKey(), ex);
@@ -127,7 +140,12 @@ final class BulkJobRunner {
      * the do-no-harm stagger (SPEC §7). The pacer thread sleeps; workers run per item.
      */
     private void dispatchEngineGroup(
-            BulkJob job, ActionVerb verb, String engineId, List<BulkJobItem> group, Authentication auth) {
+            BulkJob job,
+            ActionVerb verb,
+            String engineId,
+            List<BulkJobItem> group,
+            List<BulkJobItem> all,
+            Authentication auth) {
         Semaphore permits = host.enginePermits.computeIfAbsent(
                 engineId, id -> new Semaphore(host.props.bulkOrDefault().enginePermitsOrDefault()));
         long staggerMs = host.props.bulkOrDefault().staggerMsOrDefault();
@@ -139,6 +157,14 @@ final class BulkJobRunner {
         for (BulkJobItem item : group) {
             if (host.cancelRequested.getOrDefault(job.getId(), false) || paused.get()) {
                 break; // stop DISPATCHING — in-flight items keep their outcome (SPEC §7)
+            }
+            // Hierarchy job (#497): a parent whose child still has to be migrated is never sent.
+            String blocked = HierarchyOrder.blockedBy(item, all, this::nothingLeftToMigrate);
+            if (blocked != null) {
+                item.settle(BulkJobItem.State.not_run, blocked, null, host.clock.instant());
+                host.items.saveAndFlush(item);
+                host.events.publishEvent(new BulkJobChangedEvent(job.getId()));
+                continue;
             }
             if (!first) {
                 pace(staggerMs);
@@ -179,6 +205,19 @@ final class BulkJobRunner {
                     "bulk job {} paused dispatch to engine {} — circuit open / bulkhead full; undispatched items held",
                     job.getId(),
                     engineId);
+        }
+    }
+
+    /**
+     * Read-only: is this migrate item's instance on its analysis target now, or no longer running.
+     * A failed read is "no".
+     */
+    private boolean nothingLeftToMigrate(BulkJobItem item) {
+        try {
+            return host.cohortMigration.nothingLeftToMigrate(
+                    item.getJobRef(), item.getEngineId(), item.getInstanceId());
+        } catch (RuntimeException e) {
+            return false;
         }
     }
 

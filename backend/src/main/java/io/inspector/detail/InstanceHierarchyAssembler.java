@@ -92,8 +92,16 @@ final class InstanceHierarchyAssembler {
     }
 
     FlowablePage childrenOf(EngineConfig engine, String parentInstanceId) {
+        return childrenOf(engine, parentInstanceId, false);
+    }
+
+    /** {@code runningOnly}: the same per-node read, unfinished children only (#497 plan builder). */
+    FlowablePage childrenOf(EngineConfig engine, String parentInstanceId, boolean runningOnly) {
         Map<String, Object> body = new LinkedHashMap<>();
         body.put("superProcessInstanceId", parentInstanceId);
+        if (runningOnly) {
+            body.put("finished", false);
+        }
         body.put("size", Math.min(InstanceDetailService.HIERARCHY_BREADTH_CAP, engine.maxPageSizeOrDefault()));
         InstanceDetailService.withTenant(engine, body);
         return host.flowable.queryHistoricProcessInstances(engine, CallPriority.INTERACTIVE, body);

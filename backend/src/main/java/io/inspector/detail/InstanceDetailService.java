@@ -5,6 +5,7 @@ import com.fasterxml.jackson.databind.ObjectMapper;
 import io.inspector.audit.ProtectedInstance;
 import io.inspector.audit.ProtectedInstanceRepository;
 import io.inspector.client.ExternalJobApiClient;
+import io.inspector.client.FlowablePage;
 import io.inspector.client.GuardedCaller.CallPriority;
 import io.inspector.client.ProcessApiClient;
 import io.inspector.client.ProcessApiClient.JobLaneKind;
@@ -72,10 +73,10 @@ public class InstanceDetailService {
     public static final int STRUCTURED_PREVIEW_CAP_BYTES = 256 * 1024;
 
     /** R-SEM-19: max children RENDERED per node; totals stay exact via the query total. */
-    static final int HIERARCHY_BREADTH_CAP = 50;
+    public static final int HIERARCHY_BREADTH_CAP = 50;
 
     /** Backstop over depth×breadth so a pathological tree cannot flood the BFF or the UI. */
-    static final int HIERARCHY_MAX_RENDERED_NODES = 500;
+    public static final int HIERARCHY_MAX_RENDERED_NODES = 500;
 
     private static final ObjectMapper SIZER = new ObjectMapper();
 
@@ -157,6 +158,15 @@ public class InstanceDetailService {
 
     public InstanceHierarchy hierarchy(String engineId, String instanceId) {
         return hierarchyTab.hierarchy(engineId, instanceId);
+    }
+
+    /**
+     * The Hierarchy tab's per-node child read, running children only (#497): one historic query by
+     * {@code superProcessInstanceId}, at most {@link #HIERARCHY_BREADTH_CAP} rows, the exact total
+     * on the page. The migration plan builder walks the tree with it under the tab's own caps.
+     */
+    public FlowablePage runningChildren(EngineConfig engine, String parentInstanceId) {
+        return hierarchyTab.childrenOf(engine, parentInstanceId, true);
     }
 
     public InstanceTimeline timeline(String engineId, String instanceId) {

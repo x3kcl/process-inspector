@@ -169,6 +169,19 @@ public class CohortBulkMigration {
                 : new Verification(false, "instance is still on " + definitionId + " — the migrate did not apply");
     }
 
+    /**
+     * Read-only, never re-fires: is nothing left to migrate for this instance — it is no longer
+     * running, or it is on the analysis target now. This is what releases a hierarchy parent
+     * (#497) over a child that was never sent or was skipped, whether that happened before or
+     * after the child's analysis ran.
+     */
+    public boolean nothingLeftToMigrate(String analysisRef, String engineId, String instanceId) {
+        Cohort cohort = resolve(parse(analysisRef));
+        Map<String, Object> instance =
+                client.getRuntimeProcessInstance(registry.require(engineId), CallPriority.INTERACTIVE, instanceId);
+        return instance == null || cohort.toDefinitionId().equals(String.valueOf(instance.get("processDefinitionId")));
+    }
+
     private static UUID parse(String analysisRef) {
         try {
             return UUID.fromString(analysisRef);

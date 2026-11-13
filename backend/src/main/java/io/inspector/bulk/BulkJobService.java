@@ -245,7 +245,8 @@ public class BulkJobService {
                 scopeLabel,
                 DESTRUCTIVE_BULK_VERBS,
                 "Destructive bulk supports terminate-delete only (delete-deadletter-at-scale is a"
-                        + " documented fast-follow). Nothing happened.");
+                        + " documented fast-follow). Nothing happened.",
+                null);
     }
 
     /** Completed-history deletes. Cap is the filter cap. Per-id dispatch, Stop already cancels the next item. */
@@ -262,7 +263,8 @@ public class BulkJobService {
                 BulkJob.ScopeKind.FILTER,
                 scopeLabel,
                 HISTORY_VERBS,
-                "Housekeeping supports delete-history and delete-case-history. Nothing happened.");
+                "Housekeeping supports delete-history and delete-case-history. Nothing happened.",
+                null);
     }
 
     /**
@@ -275,6 +277,21 @@ public class BulkJobService {
             Authentication auth,
             Map<String, Object> extraEnvelopePayload,
             String scopeLabel) {
+        return submitMigration(request, auth, extraEnvelopePayload, scopeLabel, null);
+    }
+
+    /**
+     * Hierarchy migration (#497), and the continuation of one: the same door as
+     * {@link #submitMigration}, with each item's place in the call-activity tree. The runner
+     * dispatches the deepest level first and never sends a parent whose child did not reach its
+     * target ({@link HierarchyOrder}). {@code placements} is keyed {@code engineId:instanceId}.
+     */
+    BulkDtos.BulkJobDto submitMigration(
+            BulkDtos.BulkSubmitRequest request,
+            Authentication auth,
+            Map<String, Object> extraEnvelopePayload,
+            String scopeLabel,
+            Map<String, HierarchyOrder.Placement> placements) {
         return submit(
                 request,
                 auth,
@@ -283,7 +300,8 @@ public class BulkJobService {
                 BulkJob.ScopeKind.FILTER,
                 scopeLabel,
                 Set.of(MIGRATE_VERB),
-                "This door submits migrate-instance only. Nothing happened.");
+                "This door submits migrate-instance only. Nothing happened.",
+                placements);
     }
 
     private BulkDtos.BulkJobDto submit(
@@ -302,7 +320,8 @@ public class BulkJobService {
                 scopeLabel,
                 BULK_VERBS,
                 "Bulk supports retry-job, suspend, activate, trigger-timer, reassign-task and unassign-task —"
-                        + " destructive bulk goes through the tier-4 wizard. Nothing happened.");
+                        + " destructive bulk goes through the tier-4 wizard. Nothing happened.",
+                null);
     }
 
     private BulkDtos.BulkJobDto submit(
@@ -313,7 +332,8 @@ public class BulkJobService {
             BulkJob.ScopeKind scopeKind,
             String scopeLabel,
             Set<String> allowedVerbs,
-            String verbRefusalMessage) {
+            String verbRefusalMessage,
+            Map<String, HierarchyOrder.Placement> placements) {
         // Dangerous-set freshness (IDP-SECURITY.md §5, R-SAFE-07): bulk is in the dangerous set
         // regardless of verb tier (it is the guard-tier-4 fan-out), so a stale OAuth2 session
         // re-authenticates ONCE — here at SUBMIT, where the session is live — never per persisted
@@ -323,7 +343,15 @@ public class BulkJobService {
         // bypassed by any of them.
         reauth.enforce(auth);
         return submitter.submit(
-                request, auth, extraEnvelopePayload, itemCap, scopeKind, scopeLabel, allowedVerbs, verbRefusalMessage);
+                request,
+                auth,
+                extraEnvelopePayload,
+                itemCap,
+                scopeKind,
+                scopeLabel,
+                allowedVerbs,
+                verbRefusalMessage,
+                placements);
     }
 
     /* ------------------------------- reads ------------------------------- */

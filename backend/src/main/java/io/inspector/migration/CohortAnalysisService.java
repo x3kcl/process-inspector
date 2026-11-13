@@ -99,6 +99,31 @@ public class CohortAnalysisService {
     public CohortAnalysisView start(String engineId, CohortPreviewRequest request, Authentication auth) {
         requireAdmin(auth, engineId);
         ListedCohort page = cohorts.listInstances(engineId, request);
+        return toView(reload(begin(engineId, request, page, auth)), 0, DEFAULT_PAGE_SIZE);
+    }
+
+    /**
+     * Hierarchy plan group (#497): the same per-instance estimate over the instances a stored plan
+     * enumerated for one source definition — the plan's tree is the scope, not a filter. Returns
+     * the analysis id; the run is asynchronous like {@link #start}.
+     */
+    UUID startForInstances(
+            String engineId,
+            String fromDefinitionId,
+            String toDefinitionId,
+            List<MigrationMapping> mappings,
+            List<String> instanceIds,
+            Authentication auth) {
+        requireAdmin(auth, engineId);
+        CohortPreviewRequest request = new CohortPreviewRequest(
+                fromDefinitionId, blank(toDefinitionId), null, null, null, null, null, null, mappings);
+        ListedCohort page = new ListedCohort(
+                fromDefinitionId, blank(toDefinitionId), List.copyOf(instanceIds), instanceIds.size(), false);
+        return begin(engineId, request, page, auth).getId();
+    }
+
+    private MigrationAnalysis begin(
+            String engineId, CohortPreviewRequest request, ListedCohort page, Authentication auth) {
         Payload initial = new Payload(
                 page.lowerBound(),
                 boundLabel(page.lowerBound(), 0, page.total(), null),
@@ -139,7 +164,7 @@ public class CohortAnalysisService {
                 }
             }
         });
-        return toView(reload(row), 0, DEFAULT_PAGE_SIZE);
+        return row;
     }
 
     public CohortAnalysisView get(UUID id, int page, int size, Authentication auth) {

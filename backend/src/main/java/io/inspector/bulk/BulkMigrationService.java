@@ -156,7 +156,8 @@ public class BulkMigrationService {
                         "bulk-job-unknown",
                         "No migrate job " + request.continuedFrom() + ". Nothing happened."));
         Set<String> continuable = new HashSet<>();
-        for (BulkJobItem item : items.findByJobIdOrderByOrdinal(prior.getId())) {
+        List<BulkJobItem> priorItems = items.findByJobIdOrderByOrdinal(prior.getId());
+        for (BulkJobItem item : priorItems) {
             if (item.getState() == BulkJobItem.State.not_run || item.getState() == BulkJobItem.State.failed) {
                 continuable.add(key(item.getEngineId(), item.getInstanceId(), item.getJobRef()));
             }
@@ -175,11 +176,33 @@ public class BulkMigrationService {
         String ticketId = request.ticketId() != null ? request.ticketId() : prior.getTicketId();
         BulkDtos.BulkSubmitRequest submit = new BulkDtos.BulkSubmitRequest(
                 BulkJobService.MIGRATE_VERB, request.reason(), ticketId, prior.getId(), targets);
+        // A hierarchy job (#497) keeps its children-first order, and a parent is continued only
+        // with its unresolved children or once nothing is left of them to migrate.
+        Map<String, HierarchyOrder.Placement> placements =
+                HierarchyOrder.carryOver(priorItems, targets, this::nothingLeftToMigrate);
+        String continues = " · continues " + prior.getId().toString().substring(0, 8);
+        if (placements.isEmpty()) {
+            return bulk.submitMigration(
+                    submit, auth, Map.of("migration", Map.of("continuation", true)), "cohort migrate" + continues);
+        }
         return bulk.submitMigration(
                 submit,
                 auth,
-                Map.of("migration", Map.of("continuation", true)),
-                "cohort migrate · continues " + prior.getId().toString().substring(0, 8));
+                Map.of("migration", Map.of("continuation", true, "hierarchy", true)),
+                "hierarchy migrate" + continues,
+                placements);
+    }
+
+    /**
+     * Read-only: is this prior item's instance on its analysis target now, or no longer running.
+     * A failed read is "no".
+     */
+    private boolean nothingLeftToMigrate(BulkJobItem item) {
+        try {
+            return cohorts.nothingLeftToMigrate(item.getJobRef(), item.getEngineId(), item.getInstanceId());
+        } catch (RuntimeException e) {
+            return false;
+        }
     }
 
     private void requireAdmin(Authentication auth, String engineId) {
