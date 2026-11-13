@@ -616,11 +616,17 @@ final class ProcessInstanceReadClient {
                 () -> guarded.readClient(engine).get().uri(path).retrieve().body(Map.class));
     }
 
-    public FlowablePage getPage(EngineConfig engine, CallPriority priority, String path) {
-        return guarded.call(
+    /**
+     * GET a management list that answers a bare JSON array, not the paged {@code data} envelope
+     * (e.g. /management/tables on 6.8 and 7.x, #627).
+     */
+    @SuppressWarnings("unchecked")
+    public List<Map<String, Object>> getList(EngineConfig engine, CallPriority priority, String path) {
+        List<Map<String, Object>> rows = guarded.call(
                 engine,
                 priority,
-                () -> guarded.readClient(engine).get().uri(path).retrieve().body(FlowablePage.class));
+                () -> guarded.readClient(engine).get().uri(path).retrieve().body(List.class));
+        return rows == null ? List.of() : rows;
     }
 
     /** GET /management/engine — health + version probe. */

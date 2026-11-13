@@ -1,6 +1,5 @@
 package io.inspector.registry;
 
-import io.inspector.client.FlowablePage;
 import io.inspector.client.GuardedCaller.CallPriority;
 import io.inspector.client.ProcessApiClient;
 import io.inspector.config.InspectorProperties.EngineConfig;
@@ -19,9 +18,10 @@ import java.util.ArrayList;
 import java.util.Base64;
 import java.util.List;
 import java.util.Map;
+import org.slf4j.Logger;
+import org.slf4j.LoggerFactory;
 import org.springframework.core.env.Environment;
 import org.springframework.stereotype.Service;
-import org.springframework.web.client.HttpClientErrorException;
 
 /**
  * Management facts for one engine (#509) plus an optional actuator scrape (#510). A missing route
@@ -29,6 +29,8 @@ import org.springframework.web.client.HttpClientErrorException;
  */
 @Service
 public class EngineSystemInfoService {
+
+    private static final Logger log = LoggerFactory.getLogger(EngineSystemInfoService.class);
 
     private static final int MAX_METRICS_BYTES = 256 * 1024;
 
@@ -83,7 +85,7 @@ public class EngineSystemInfoService {
                     ? info.get("version").toString()
                     : null;
         } catch (RuntimeException e) {
-            failures.add("engine");
+            fail(engine, "engine", e, failures);
             return null;
         }
     }
@@ -91,31 +93,38 @@ public class EngineSystemInfoService {
     private Map<String, Object> map(EngineConfig engine, String path, List<String> failures, String label) {
         try {
             return flowable.getMap(engine, CallPriority.INTERACTIVE, path);
-        } catch (HttpClientErrorException.NotFound e) {
-            failures.add(label);
-            return Map.of();
         } catch (RuntimeException e) {
-            failures.add(label);
+            fail(engine, label, e, failures);
             return Map.of();
         }
     }
 
     private List<TableCount> tables(EngineConfig engine, List<String> failures) {
         try {
-            FlowablePage page = flowable.getPage(engine, CallPriority.INTERACTIVE, "/management/tables");
+            // A bare array on 6.8 and 7.x, not the paged envelope (#627).
             List<TableCount> out = new ArrayList<>();
-            for (Map<String, Object> row : page == null ? List.<Map<String, Object>>of() : page.dataOrEmpty()) {
+            for (Map<String, Object> row : flowable.getList(engine, CallPriority.INTERACTIVE, "/management/tables")) {
                 Object name = row.get("name");
                 Object count = row.get("count");
                 if (name != null) {
                     out.add(new TableCount(name.toString(), count instanceof Number n ? n.longValue() : null));
                 }
             }
+            if (out.isEmpty()) {
+                // Every engine has tables: an empty answer is unusable, not "no tables".
+                throw new IllegalStateException("empty /management/tables answer");
+            }
             return out;
         } catch (RuntimeException e) {
-            failures.add("tables");
+            fail(engine, "tables", e, failures);
             return List.of();
         }
+    }
+
+    /** A failed section is labelled on the page and logged with the engine and cause, never swallowed (#627). */
+    private static void fail(EngineConfig engine, String label, RuntimeException e, List<String> failures) {
+        log.warn("System info section '{}' unavailable for engine {}: {}", label, engine.id(), e.toString());
+        failures.add(label);
     }
 
     private ExecutorView executor(EngineConfig engine) {
