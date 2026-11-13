@@ -245,6 +245,11 @@ jobs:
           - profile: migration-findings
             composeProfiles: "flowable-6,flowable-7,postgres"
             itClass: HierarchyMigrationIT
+          # Case migration (#500): single case and cohort on 6.8, plus batch and historic on 7.1.
+          # Same dual-major stack; its own leg so the job names above stay as the ruleset has them.
+          - profile: migration-findings
+            composeProfiles: "flowable-6,flowable-7,postgres"
+            itClass: CaseMigrationIT
     env:
       # Dependabot PRs (#445) run on the slot runners, but that actor's token is read-only and
       # cannot pull the private flap image: that leg's registry steps and the contract's leg skip.

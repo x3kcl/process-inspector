@@ -7,11 +7,10 @@ import io.inspector.api.MdcPropagatingExecutors;
 import io.inspector.audit.AuditService;
 import io.inspector.audit.ProtectedInstanceRepository;
 import io.inspector.client.GuardedCaller;
-import io.inspector.client.GuardedCaller.CallPriority;
 import io.inspector.client.ProcessApiClient;
-import io.inspector.client.ProcessApiClient.JobLaneKind;
 import io.inspector.config.InspectorProperties;
 import io.inspector.config.InspectorProperties.EngineConfig;
+import io.inspector.migration.CaseCohortBulkMigration;
 import io.inspector.migration.CohortBulkMigration;
 import io.inspector.registry.EngineRegistry;
 import io.inspector.security.reauth.DangerousActionReauthGate;
@@ -91,6 +90,9 @@ public class BulkJobService {
      */
     static final String MIGRATE_VERB = CohortBulkMigration.VERB;
 
+    /** Case cohort migration (#500). Only {@link BulkCaseMigrationService} submits it. */
+    static final String MIGRATE_CASE_VERB = CaseCohortBulkMigration.VERB;
+
     private static Set<String> paths(ActionVerb... verbs) {
         return java.util.Arrays.stream(verbs).map(ActionVerb::path).collect(java.util.stream.Collectors.toSet());
     }
@@ -109,9 +111,11 @@ public class BulkJobService {
     private final DangerousActionReauthGate reauth;
     private final BulkJobRunner runner;
     private final BulkJobSubmitter submitter;
+    private final BulkItemVerifier verifier = new BulkItemVerifier(this);
     final GuardedCaller guardedCaller;
     final MeterRegistry metrics;
     final CohortBulkMigration cohortMigration;
+    final CaseCohortBulkMigration caseCohortMigration;
     final ExecutorService executor = MdcPropagatingExecutors.newVirtualThreadPerTaskExecutor();
     final Map<UUID, Boolean> cancelRequested = new ConcurrentHashMap<>();
     /**
@@ -163,7 +167,8 @@ public class BulkJobService {
             DangerousActionReauthGate reauth,
             GuardedCaller guardedCaller,
             MeterRegistry metrics,
-            CohortBulkMigration cohortMigration) {
+            CohortBulkMigration cohortMigration,
+            CaseCohortBulkMigration caseCohortMigration) {
         this.jobs = jobs;
         this.items = items;
         this.actions = actions;
@@ -179,6 +184,7 @@ public class BulkJobService {
         this.guardedCaller = guardedCaller;
         this.metrics = metrics;
         this.cohortMigration = cohortMigration;
+        this.caseCohortMigration = caseCohortMigration;
         // OPERATIONS.md §2 (issue #96): live count of non-terminal jobs — a gauge, not a counter,
         // since RUNNING is a point-in-time state, not a monotonic event.
         Gauge.builder("bulk_jobs_running", jobs, r -> r.countByState(BulkJob.State.RUNNING))
@@ -302,6 +308,28 @@ public class BulkJobService {
                 Set.of(MIGRATE_VERB),
                 "This door submits migrate-instance only. Nothing happened.",
                 placements);
+    }
+
+    /**
+     * Case cohort migration (#500), used ONLY by {@link BulkCaseMigrationService}, which has
+     * resolved the targets from completed case analyses (or a prior job's not-run/failed items)
+     * and run the ADMIN, typed-count and ticket rails. Same cap as {@link #submitMigration}.
+     */
+    BulkDtos.BulkJobDto submitCaseMigration(
+            BulkDtos.BulkSubmitRequest request,
+            Authentication auth,
+            Map<String, Object> extraEnvelopePayload,
+            String scopeLabel) {
+        return submit(
+                request,
+                auth,
+                extraEnvelopePayload,
+                BulkJob.FILTER_ITEM_CAP,
+                BulkJob.ScopeKind.FILTER,
+                scopeLabel,
+                Set.of(MIGRATE_CASE_VERB),
+                "This door submits migrate-case only. Nothing happened.",
+                null);
     }
 
     private BulkDtos.BulkJobDto submit(
@@ -462,13 +490,12 @@ public class BulkJobService {
         }
         BulkJob job = jobs.findById(jobId).orElseThrow();
         EngineConfig engine = registry.require(item.getEngineId());
-        Verdict verdict;
+        BulkItemVerifier.Verdict verdict;
         try {
-            verdict = MIGRATE_VERB.equals(job.getVerb())
-                    ? migrated(item)
-                    : precondition(engine, ActionVerb.fromPath(job.getVerb()).orElseThrow(), item, job);
+            verdict = verifier.verdict(engine, job, item);
         } catch (RuntimeException e) {
-            verdict = new Verdict(null, "engine did not answer the verification read: " + e.getMessage());
+            verdict = new BulkItemVerifier.Verdict(
+                    null, "engine did not answer the verification read: " + e.getMessage());
         }
         if (verdict.reclassifyTo() != null) {
             item.settle(verdict.reclassifyTo(), verdict.evidence(), item.getAuditId(), clock.instant());
@@ -479,94 +506,6 @@ public class BulkJobService {
         items.saveAndFlush(item);
         events.publishEvent(new BulkJobChangedEvent(jobId));
         return BulkDtos.BulkItemDto.of(item);
-    }
-
-    private record Verdict(BulkJobItem.State reclassifyTo, String evidence) {}
-
-    /** migrate-instance: on the analysis target ⇒ ok; anything else stays unknown with evidence. */
-    private Verdict migrated(BulkJobItem item) {
-        CohortBulkMigration.Verification v =
-                cohortMigration.verify(item.getJobRef(), item.getEngineId(), item.getInstanceId());
-        return new Verdict(v.migrated() ? BulkJobItem.State.ok : null, v.evidence());
-    }
-
-    private Verdict precondition(EngineConfig engine, ActionVerb verb, BulkJobItem item, BulkJob job) {
-        switch (verb) {
-            case RETRY_JOB -> {
-                if (item.getJobRef() == null) {
-                    return new Verdict(null, "no job reference recorded — needs L3 review of the audit trail");
-                }
-                Map<String, Object> dlq =
-                        client.getJob(engine, CallPriority.INTERACTIVE, JobLaneKind.DEADLETTER, item.getJobRef());
-                return dlq == null
-                        ? new Verdict(
-                                BulkJobItem.State.ok,
-                                "verified: job " + item.getJobRef() + " is no longer dead-lettered")
-                        : new Verdict(
-                                null,
-                                "job " + item.getJobRef()
-                                        + " is STILL dead-lettered — the retry may not have applied (or it failed"
-                                        + " again); needs L3");
-            }
-            case TRIGGER_TIMER -> {
-                if (item.getJobRef() == null) {
-                    return new Verdict(null, "no timer reference recorded — needs L3 review of the audit trail");
-                }
-                Map<String, Object> timer =
-                        client.getJob(engine, CallPriority.INTERACTIVE, JobLaneKind.TIMER, item.getJobRef());
-                return timer == null
-                        ? new Verdict(BulkJobItem.State.ok, "verified: timer " + item.getJobRef() + " has fired")
-                        : new Verdict(null, "timer " + item.getJobRef() + " is still queued — still-pending");
-            }
-            case SUSPEND, ACTIVATE -> {
-                Map<String, Object> instance =
-                        client.getRuntimeProcessInstance(engine, CallPriority.INTERACTIVE, item.getInstanceId());
-                if (instance == null) {
-                    return new Verdict(null, "instance is no longer running — completed or deleted since; needs L3");
-                }
-                boolean suspended = Boolean.TRUE.equals(instance.get("suspended"));
-                boolean wanted = verb == ActionVerb.SUSPEND;
-                return suspended == wanted
-                        ? new Verdict(
-                                BulkJobItem.State.ok, "verified: instance is " + (suspended ? "suspended" : "active"))
-                        : new Verdict(
-                                null,
-                                "instance is " + (suspended ? "suspended" : "active") + " — the " + verb.path()
-                                        + " likely did not apply; still-pending");
-            }
-            case DELETE_HISTORY -> {
-                Map<String, Object> row =
-                        client.getHistoricProcessInstance(engine, CallPriority.HOUSEKEEPING, item.getInstanceId());
-                if (row == null) {
-                    return new Verdict(BulkJobItem.State.ok, "verified: historic instance is gone");
-                }
-                if (row.get("endTime") == null) {
-                    return new Verdict(null, "instance is still running");
-                }
-                return new Verdict(null, "historic instance is still present");
-            }
-            case REASSIGN_TASK, UNASSIGN_TASK -> {
-                if (item.getJobRef() == null) {
-                    return new Verdict(null, "no task reference recorded — needs L3 review of the audit trail");
-                }
-                Map<String, Object> task = client.getTask(engine, CallPriority.INTERACTIVE, item.getJobRef());
-                if (task == null) {
-                    return new Verdict(BulkJobItem.State.skipped, "task " + item.getJobRef() + " is no longer open");
-                }
-                String assignee = task.get("assignee") != null ? String.valueOf(task.get("assignee")) : null;
-                if (verb == ActionVerb.UNASSIGN_TASK) {
-                    return assignee == null
-                            ? new Verdict(BulkJobItem.State.ok, "verified: task is unassigned")
-                            : new Verdict(null, "task is still assigned to " + assignee);
-                }
-                return job.getAssignee() != null && job.getAssignee().equals(assignee)
-                        ? new Verdict(BulkJobItem.State.ok, "verified: assignee is " + assignee)
-                        : new Verdict(null, "assignee is " + assignee + " — reassign may not have applied");
-            }
-            default -> {
-                return new Verdict(null, "no precondition predicate for '" + verb.path() + "' — needs L3");
-            }
-        }
     }
 
     /* ------------------------------- reconciliation (SPEC §7) ------------------------------- */

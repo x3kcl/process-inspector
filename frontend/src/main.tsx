@@ -50,6 +50,9 @@ const AdminAccessPage = lazy(() =>
 const HousekeepingPage = lazy(() =>
   import('./admin/HousekeepingPage').then((m) => ({ default: m.HousekeepingPage })),
 )
+const CaseVersionsPage = lazy(() =>
+  import('./case/CaseVersionsPage').then((m) => ({ default: m.CaseVersionsPage })),
+)
 const DefinitionVersionsPage = lazy(() =>
   import('./inspect/DefinitionVersionsPage').then((m) => ({ default: m.DefinitionVersionsPage })),
 )
@@ -192,6 +195,11 @@ const router = createBrowserRouter([
       {
         path: 'definitions/:engineId/:key/versions',
         element: lazyRoute(<DefinitionVersionsPage />),
+        errorElement: chunkErrorElement,
+      },
+      {
+        path: 'case-definitions/:engineId/:key/versions',
+        element: lazyRoute(<CaseVersionsPage />),
         errorElement: chunkErrorElement,
       },
       {

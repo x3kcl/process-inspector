@@ -613,7 +613,7 @@ public class CmmnApiClient {
     }
 
     /** Major ≥ 7. Unparseable or missing versions fail closed (not 7.x). */
-    static boolean flowable7(String version) {
+    public static boolean flowable7(String version) {
         if (version == null || version.isBlank()) {
             return false;
         }

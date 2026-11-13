@@ -9,11 +9,11 @@ import io.inspector.audit.BreakGlassActor;
 import io.inspector.audit.ProtectionGuard;
 import io.inspector.client.CaseMigrationRoute;
 import io.inspector.client.CmmnApiClient;
-import io.inspector.client.FlowablePage;
 import io.inspector.client.ForwardedActor;
 import io.inspector.client.GuardedCaller.CallPriority;
 import io.inspector.client.ProcessApiClient;
 import io.inspector.client.ProcessApiClient.JobLaneKind;
+import io.inspector.cmmn.CaseMigrationPrecheck;
 import io.inspector.cmmn.CasePlanDefinitionIds;
 import io.inspector.cmmn.CmmnCapabilities;
 import io.inspector.config.InspectorProperties.EngineConfig;
@@ -68,6 +68,7 @@ public class CorrectiveActionService {
     private final ProtectionGuard protectionGuard;
     private final TicketPolicy ticketPolicy;
     private final DangerousActionReauthGate reauth;
+    private final CaseMigrationPrecheck casePrecheck;
 
     public CorrectiveActionService(
             EngineRegistry registry,
@@ -86,6 +87,7 @@ public class CorrectiveActionService {
         this.protectionGuard = protectionGuard;
         this.ticketPolicy = ticketPolicy;
         this.reauth = reauth;
+        this.casePrecheck = new CaseMigrationPrecheck(cmmnClient);
     }
 
     /**
@@ -111,7 +113,7 @@ public class CorrectiveActionService {
             ActionVerb verb,
             ActionRequest request,
             Authentication auth) {
-        return execute(scope, engineId, targetId, verb, request, auth, false);
+        return execute(scope, engineId, targetId, verb, request, auth, false, null);
     }
 
     /**
@@ -138,7 +140,25 @@ public class CorrectiveActionService {
      */
     public ActionResult executeBulkItem(
             String engineId, String targetId, ActionVerb verb, ActionRequest request, Authentication auth) {
-        return execute(ActionScope.BPMN, engineId, targetId, verb, request, auth, true);
+        return execute(ActionScope.BPMN, engineId, targetId, verb, request, auth, true, null);
+    }
+
+    /**
+     * One item of a case-cohort bulk job (#500): {@code migrate-case} on the CMMN scope with the
+     * same two skips as {@link #executeBulkItem} (re-auth and the typed case id were discharged
+     * once at submit, by the typed COUNT). {@code expected} is the compare-and-set baseline the
+     * cohort analysis stored: a case that left the analyzed definition or whose live plan items
+     * changed since refuses {@code instance-moved-since-preview} before the audit row and before
+     * any engine call, so the runner settles it {@code skipped}.
+     */
+    public ActionResult executeCaseMigrationBulkItem(
+            String engineId,
+            String caseInstanceId,
+            ActionRequest request,
+            Authentication auth,
+            CaseMigrationExpectation expected) {
+        return execute(
+                ActionScope.CMMN, engineId, caseInstanceId, ActionVerb.MIGRATE_CASE, request, auth, true, expected);
     }
 
     private ActionResult execute(
@@ -148,7 +168,8 @@ public class CorrectiveActionService {
             ActionVerb verb,
             ActionRequest request,
             Authentication auth,
-            boolean isBulkItem) {
+            boolean isBulkItem,
+            CaseMigrationExpectation expectedCaseState) {
         EngineConfig engine = registry.require(engineId);
 
         // -- guards: everything above the audit insert refuses with "nothing happened" --
@@ -186,6 +207,9 @@ public class CorrectiveActionService {
         String ticketId = ticketPolicy.validate(request.ticketId(), engine.environment());
 
         Target target = restateTarget(scope, engine, verb, targetId, request);
+        if (expectedCaseState != null) {
+            expectedCaseState.requireUnchanged(targetId, target.auditPayload());
+        }
         // #172/#184: a SECOND protection check, now that the target is server-fresh-restated and
         // may carry a definitionKey the instance-scope check above couldn't cheaply resolve
         // (DEFINITION-kind verbs never had a key to check at all before restateTarget resolved
@@ -285,9 +309,6 @@ public class CorrectiveActionService {
     }
 
     /* ------------------------------- guards ------------------------------- */
-
-    /** One page. A wider case is refused rather than migrated on a partial pre-check. */
-    private static final int CASE_MIGRATION_PLAN_ITEM_CAP = 500;
 
     /**
      * Verbs a CMMN case supports. Anything else is process-shaped and refused before an engine
@@ -827,8 +848,8 @@ public class CorrectiveActionService {
                         "same-definition-target",
                         "Case " + caseId + " already runs definition " + fromId + ". Nothing happened.");
             }
-            List<String> active = activePlanItemDefinitionIds(engine, caseId);
-            Set<String> model = targetPlanDefinitionIds(engine, toId);
+            List<String> active = casePrecheck.activePlanItemDefinitionIds(engine, caseId);
+            Set<String> model = casePrecheck.planDefinitionIds(engine, toId);
             List<String> absent = CasePlanDefinitionIds.missing(active, model);
             if (!absent.isEmpty()) {
                 throw new GuardRefusedException(
@@ -859,48 +880,6 @@ public class CorrectiveActionService {
         }
         String businessKey = row.get("businessKey") == null ? caseId : String.valueOf(row.get("businessKey"));
         return new Target(payload, businessKey, "business key", current);
-    }
-
-    private List<String> activePlanItemDefinitionIds(EngineConfig engine, String caseId) {
-        FlowablePage page = cmmnClient.listCmmnPlanItemInstances(
-                engine, CallPriority.INTERACTIVE, Map.of("caseInstanceId", caseId), 0, CASE_MIGRATION_PLAN_ITEM_CAP);
-        List<Map<String, Object>> rows = page == null ? List.of() : page.dataOrEmpty();
-        if (page != null && page.total() > rows.size()) {
-            throw new GuardRefusedException(
-                    HttpStatus.UNPROCESSABLE_ENTITY,
-                    "plan-items-truncated",
-                    "Case " + caseId + " has more plan items than the pre-check read (" + rows.size() + " of "
-                            + page.total() + "). Nothing happened.");
-        }
-        return CasePlanDefinitionIds.activeDefinitionIds(rows);
-    }
-
-    private Set<String> targetPlanDefinitionIds(EngineConfig engine, String caseDefinitionId) {
-        Map<String, Object> definition =
-                cmmnClient.getCmmnCaseDefinition(engine, CallPriority.INTERACTIVE, caseDefinitionId);
-        if (definition == null) {
-            throw new GuardRefusedException(
-                    HttpStatus.NOT_FOUND,
-                    "target-not-deployed",
-                    "Case definition " + caseDefinitionId + " is not deployed. Nothing happened.");
-        }
-        Object deploymentId = definition.get("deploymentId");
-        Object resourceName = definition.get("resourceName");
-        if (deploymentId == null || resourceName == null) {
-            throw new GuardRefusedException(
-                    HttpStatus.UNPROCESSABLE_ENTITY,
-                    "target-model-unavailable",
-                    "Case definition " + caseDefinitionId + " has no CMMN resource to pre-check. Nothing happened.");
-        }
-        String xml = cmmnClient.cmmnDeploymentResourceData(
-                engine, CallPriority.INTERACTIVE, String.valueOf(deploymentId), String.valueOf(resourceName));
-        if (xml == null || xml.isBlank()) {
-            throw new GuardRefusedException(
-                    HttpStatus.UNPROCESSABLE_ENTITY,
-                    "target-model-unavailable",
-                    "Case definition " + caseDefinitionId + " returned no CMMN model. Nothing happened.");
-        }
-        return CasePlanDefinitionIds.definitionIds(xml);
     }
 
     private static String planAction(ActionRequest request, String... allowed) {

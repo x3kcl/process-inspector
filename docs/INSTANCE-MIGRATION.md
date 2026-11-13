@@ -366,7 +366,7 @@ compares active plan-item **definition** ids (`planItemDefinitionId`, not the in
 `POST cmmn-runtime/case-instances/{id}/migrate`. By-definition `migrate`, `batch-migrate`,
 `migrate-historic-instances`, `batch-migrate-historic-instances`, and historic
 `historic-case-instances/{id}/migrate` are 7.x only: on 6.x the BFF returns ProblemDetail
-`version-gate` and does not call the engine. A case cohort is not part of #496 (S7).
+`version-gate` and does not call the engine. The case cohort and the 7.x doors are §7.3.
 
 **Verdict for S4: strategy A.** A filtered cohort cannot be sent to by-definition migrate or
 batch-migrate. Execute is one `POST runtime/process-instances/{id}/migrate` per instance, the
@@ -528,6 +528,103 @@ and the `unknown` child are unit-tested only (`HierarchyTreeTest`, `HierarchyBul
 
 Not built yet: the plan builder UI (tree, per-definition target and mapping, submit). The
 operations drawer shows a hierarchy job's per-level progress.
+### 7.3 Case migration at scale (#500)
+
+Measured 2026-11-12 on live `flowable-rest` **6.8.0** and **7.1.0** with the fixture
+`demoCaseMigration` (v1: human tasks `reviewTask`, `extraCheck`, `optionalNote`; v2 drops
+`optionalNote`, adds `approveTask`):
+
+| Call | 6.8.0 | 7.1.0 |
+|---|---|---|
+| `GET cmmn-repository/case-definitions/{id}` | No `resourceName` field. The model name is the tail of the `resource` URL (`…/deployments/{id}/resources/{name}`). | same |
+| `POST cmmn-runtime/case-instances/{id}/migrate` `{toCaseDefinitionId}` on a case whose live plan items all exist in the target | **200, empty body.** Case and plan items carry the target definition id. A plan item that is new in the target (`approveTask`) is **not** created. | same |
+| same call on a case with a live plan item the target lacks (`optionalNote`) | **200.** The plan item stays `active` on a model that does not define it and its task keeps the old definition. Completing that task is **500**, terminating the case is **500**, deleting its history is **500**. | **200.** The plan item and its task are gone: live work is ended without an error. |
+| `GET cmmn-runtime/case-instances?caseDefinitionId=` with `businessKey`, `startedAfter`, `startedBefore` | all narrow `total` | same |
+| same with `businessKeyLike` | **ignored**: `total` is the unfiltered set | narrows `total` |
+| `POST cmmn-repository/case-definitions/{id}/batch-migrate` `{toCaseDefinitionId}` | Spring 404 (no route) | **200, empty body.** Every running case of that version, no filter. |
+| the batch record | — | The CMMN API has no batch route. `GET management/batches?batchType=caseMigration&searchKey={source id}` on the **process** API lists it (`searchKey2` = target id, `status` `inProgress` → `completed`, `completeTime` null until then). `GET management/batches/{id}/batch-parts` is a bare array: `scopeId` = case id, `scopeType` `cmmn`, `status` `success`. The parts were `success` within a second; the batch row reached `completed` about 12 s later. A part the engine cannot apply (a document with `activatePlanItemDefinitions` naming a plan-item definition the target lacks) has `status` **`fail`**, the case stays on the source, `GET management/batch-parts/{id}/batch-part-document` carries `resultStatus` `fail` with the engine's `resultMessage`, and the batch row still reaches `completed` (about 24 s later). `DELETE management/batches/{id}` is 204. |
+| `POST cmmn-history/historic-case-instances/{id}/migrate` on an ended case | Spring 404 | **200.** The historic row carries the target id. |
+| same on a running case | — | **500** `Historic case instance has not ended and can only be migrated with the regular case instance migrate method` |
+| `POST cmmn-repository/case-definitions/{id}/migrate-historic-instances` | Spring 404 | **200.** The ended cases of that version carry the target id. Cases still running on the version stay on it. |
+| by-definition `migrate` with `{}` / an unknown target | Spring 404 | 404 `no case definition deployed with key 'null'` / 500 `Cannot find the case definition to migrate to` |
+
+The engine's own batch document also has `activatePlanItemDefinitions`,
+`terminatePlanItemDefinitions`, `moveToAvailablePlanItemDefinitions` and the `changePlanItemIds*`
+lists (7.1 `batch-document`). The Inspector sends `toCaseDefinitionId` only: a case mapping editor
+is not built.
+
+**The pre-check, and why it blocks.** One implementation (`CaseMigrationPrecheck`) for the single
+door, the cohort analysis and the by-definition batch: every live plan-item **definition** id of
+the case must exist in the target model. A miss is a blocker, not advice. Both majors answer 200
+to exactly that shape, 6.8 leaving a case that can no longer be completed or terminated over REST
+and 7.1 ending the plan item silently, so the engine's own rejection cannot be the backstop. The
+single door shipped in #592 read `resourceName` from the definition row and so refused every real
+case with `target-model-unavailable`; it now derives the name from `resource`.
+
+**Case cohort — the same three steps as §7.1, with the CMMN endpoints.**
+
+- `POST /api/case-migration/cohorts/preview?engineId=` counts the running cases of one source
+  version (`fromCaseDefinitionId`, optional exact `businessKey`, `startedAfter`/`startedBefore`).
+  `businessKeyContains` needs 7.x: on 6.x the BFF refuses `version-gate` before the engine, because
+  the engine would silently return every case. Cap 500, strategy `per-case`.
+- `POST /api/case-migration/analyses?engineId=` runs the pre-check per case (the target model is
+  read once). A case is a blocker (its reason, and the missing definition ids counted per id) or
+  clean. The row is stored in `migration_analysis` with `taxonomy_version` **0**: the §14 BPMN
+  taxonomy does not apply to a case, and that value is how the two kinds are told apart. The
+  process analysis read and `POST /api/bulk/migrate` answer 404 for a case row;
+  `GET /api/case-migration/analyses/{id}` answers 404 for a process row. Each clean case's
+  compare-and-set baseline is stored: the source definition id (a column) and the sorted list of
+  its live plan-item definition ids. Source and target must be versions of the same case key.
+- `POST /api/bulk/migrate-cases {analysisIds, reason, ticketId?, confirmedCount?}` is the bulk verb
+  **`migrate-case`**. Same rails as §7.1: ADMIN on every analysis engine, reason ≥10, ticket per
+  engine policy, typed **count** of the executable set once an engine is prod, re-auth once at
+  submit, a partial / running / failed analysis refused, `analysis-overlap`. Each item is the
+  single-case `migrate-case` verb (`CorrectiveActionService#executeCaseMigrationBulkItem`), skipping
+  only re-auth and the typed case id. Before the audit row and before any engine call the
+  server-fresh restatement is compared with the baseline: a different definition or a different
+  live plan-item set refuses `instance-moved-since-preview` → **`skipped`**. A case that ended
+  (`case-not-running`) or already runs the target (`same-definition-target`) is `skipped` too. A
+  blocker that appeared since the analysis (`plan-item-not-in-target`) is `failed`, nothing sent.
+  Audit: one `migrate-case` row per sent case (`migrate-case/v1`) plus the `bulk:migrate-case`
+  envelope. Verify now re-reads the case's definition id. Continue as new job takes only the prior
+  job's `not_run`/`failed` items.
+- Protection (R-SAFE-05) has no case scope (#184), so nothing is auto-excluded for a case job.
+
+**The 7.x-only doors.** Tier 3 each: ADMIN, writable engine, CMMN capability, then the version
+gate — on a non-7.x engine ProblemDetail **`version-gate`** ("… is behind the Flowable 7.x version
+gate: needs Flowable 7.x (engine 'x' is 6.8.0) … Refused before any engine call") before any
+engine read. Then re-auth, reason ≥10, ticket, a server-fresh restatement (source and target
+deployed, same key, not equal), the prod confirmation, a fail-closed audit row with payload
+`migrate-case/v1` (`route`, `enginePath`, from/to ids, the count), ONE engine call, never retried.
+
+| BFF door | Engine route | Restatement and prod token | Audit action |
+|---|---|---|---|
+| `POST /api/case-definitions/{engineId}/{caseDefinitionId}/migrate-batch` | `…/batch-migrate` | Count of running cases on the source (0 ⇒ `nothing-to-migrate`). Refused `plan-item-not-in-target` when the target model lacks any plan-item definition of the **source model**: the batch has no per-case check, so only an additive target is sent; anything else goes through the cohort. The model read is a `definitionRef` scan that accepts either XML quote; a source model it reads nothing from is refused `source-model-unreadable` (422) instead of being sent unchecked. Prod: typed running count. | `migrate-cases-batch` |
+| `POST /api/case-definitions/{engineId}/{caseDefinitionId}/migrate-historic` | `…/migrate-historic-instances` | Count of ended cases on the source. Prod: typed ended count. | `migrate-historic-cases` |
+| `POST /api/cases/{engineId}/{caseInstanceId}/migrate-historic` | `historic-case-instances/{id}/migrate` | The case must be in history and ended (`case-still-running` otherwise). Prod: typed case id. | `migrate-historic-case` |
+
+A batch answers 200 before any case has moved. The result names the batch id it read back and says
+so; `GET /api/case-definitions/{engineId}/{caseDefinitionId}/migration-batches` lists the engine's
+batches from that source with the parts counted by the engine's own status string and a sample of
+the case ids whose part is not `success`. Nothing polls a batch on the operator's behalf except the
+open page. The synchronous by-definition `migrate` and `batch-migrate-historic-instances` are not
+exposed: the first is the batch without a record to read, the second was not needed.
+
+**On-ramp.** `GET /api/case-definitions/{engineId}/{key}/versions`: every deployed version of a
+case key with its RUNNING and ended case counts (count-only), plus `definitionRoutesGate` — null
+on 7.x, otherwise the sentence the UI shows beside the greyed batch and historic controls.
+
+Proven by `CaseMigrationIT` (rung 4, real 6.8 + 7.1, profile `it-case-migration`: the `it-findings`
+registry plus a prod twin of the 7.1 engine): 6.8 single case, 6.8 cohort (blocker never sent,
+out-of-band migrate and a changed plan-item set both `skipped`, typed count on the prod twin),
+"Continue as new job" and "Verify now" for `migrate-case` through `POST /api/bulk` and
+`POST /api/bulk/{id}/items/{n}/verify` (the prior job's rows are written through the BFF's own
+store, because an interrupted job and a lost answer cannot be produced on demand), 6.8 refusing
+all three 7.x doors on ids the engine has never seen; 7.1 single case, cohort with the `contains`
+filter, batch, both historic doors, the batch refused for a single-quoted source model that loses
+a plan item, a failed batch part counted as `fail` with its case named, and the typed
+confirmation of all three doors on the prod twin (count missing, count wrong, case id wrong, then
+the right one).
 
 ### 7.0 Why batch was deferred (2026-07, historical)
 By-definition migration returns an async **`Batch`**; work drains via batch-part jobs and you poll

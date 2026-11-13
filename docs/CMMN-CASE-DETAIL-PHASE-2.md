@@ -278,5 +278,6 @@ No seeded illegal-transition matrix was run on 6.8 and 7.1 in this session. The 
 | `DELETE cmmn-runtime/case-instances/{id}` | none | terminate. No delete reason on the wire |
 | `DELETE cmmn-runtime/case-instances/{id}/delete` | none | deletes the case and its history. No delete reason on the wire |
 | `PUT …/variables/{name}` | `{name,type,value}` | compare-and-set against the live value first |
+| `POST cmmn-runtime/case-instances/{id}/migrate` | `{toCaseDefinitionId}` | `migrate-case`, tier 3. Pre-check on plan-item **definition** ids (`planItemDefinitionId`), not instance ids. Cohort, batch and historic: INSTANCE-MIGRATION.md §7.3 |
 
 `change-plan-item` is OPERATOR, and ADMIN on a prod engine. An illegal transition is the engine's own error, passed through. An ended case still has no historic plan-item timeline on 6.8.

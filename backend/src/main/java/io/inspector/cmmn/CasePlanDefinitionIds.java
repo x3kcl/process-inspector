@@ -16,9 +16,11 @@ import java.util.regex.Pattern;
  */
 public final class CasePlanDefinitionIds {
 
-    // ponytail: definitionRef scan, not a CMMN parser. Ceiling: deployed XML with double-quoted
-    // definitionRef (the harness files). Upgrade: walk GET .../case-definitions/{id}/model.
-    private static final Pattern DEFINITION_REF = Pattern.compile("definitionRef\\s*=\\s*\"([^\"]+)\"");
+    // ponytail: definitionRef scan, not a CMMN parser. XML allows either quote, so both are read;
+    // a model this still cannot read gives an empty set, which refuses: as a target it lacks every
+    // live plan item, as a batch source it is refused outright. Upgrade: walk
+    // GET .../case-definitions/{id}/model.
+    private static final Pattern DEFINITION_REF = Pattern.compile("definitionRef\\s*=\\s*(?:\"([^\"]+)\"|'([^']+)')");
 
     private static final Set<String> ENDED = Set.of("completed", "terminated", "occurred");
 
@@ -31,7 +33,7 @@ public final class CasePlanDefinitionIds {
         }
         Matcher matcher = DEFINITION_REF.matcher(cmmnXml);
         while (matcher.find()) {
-            ids.add(matcher.group(1));
+            ids.add(matcher.group(1) != null ? matcher.group(1) : matcher.group(2));
         }
         return ids;
     }
@@ -60,6 +62,16 @@ public final class CasePlanDefinitionIds {
             }
         }
         return absent;
+    }
+
+    /**
+     * Order-independent fingerprint of the live plan-item definition ids, repeats included: the
+     * compare-and-set baseline a case-cohort analysis stores per case (#500).
+     */
+    public static String stateDigest(List<String> activeDefinitionIds) {
+        List<String> sorted = new ArrayList<>(activeDefinitionIds == null ? List.<String>of() : activeDefinitionIds);
+        sorted.sort(null);
+        return String.join("|", sorted);
     }
 
     private static boolean live(Map<String, Object> row) {

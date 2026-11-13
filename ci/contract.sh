@@ -106,6 +106,7 @@ IT_LEGS=(
   "migration-findings|flowable-6,flowable-7,postgres|MigrationFindingsIT"
   "migration-findings|flowable-6,flowable-7,postgres|BulkMigrationIT"
   "migration-findings|flowable-6,flowable-7,postgres|HierarchyMigrationIT"
+  "migration-findings|flowable-6,flowable-7,postgres|CaseMigrationIT"
 )
 
 integration_leg() { # profile compose-profiles it-classes — runs in a subshell: its env and ports are its own

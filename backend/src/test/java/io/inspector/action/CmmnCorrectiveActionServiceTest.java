@@ -344,8 +344,17 @@ class CmmnCorrectiveActionServiceTest {
                         2,
                         0,
                         500));
+        // The real case-definition row carries no resourceName, only the resource URL (measured
+        // on flowable-rest 6.8.0 and 7.1.0, #500): the pre-check derives the name from it.
         when(cmmnClient.getCmmnCaseDefinition(engine, CallPriority.INTERACTIVE, "def-2"))
-                .thenReturn(Map.of("id", "def-2", "deploymentId", "dep-1", "resourceName", "case.cmmn"));
+                .thenReturn(
+                        Map.of(
+                                "id",
+                                "def-2",
+                                "deploymentId",
+                                "dep-1",
+                                "resource",
+                                "http://engine.test/flowable-rest/cmmn-api/cmmn-repository/deployments/dep-1/resources/case.cmmn"));
         when(cmmnClient.cmmnDeploymentResourceData(engine, CallPriority.INTERACTIVE, "dep-1", "case.cmmn"))
                 .thenReturn("<planItem id=\"planItem_svc\" definitionRef=\"keepAlive\"/>");
 
@@ -406,6 +415,83 @@ class CmmnCorrectiveActionServiceTest {
                         ActionScope.CMMN, ENGINE, CASE, ActionVerb.MIGRATE_CASE, migrateRequest("BK-1"), operator))
                 .isInstanceOf(GuardRefusedException.class)
                 .satisfies(e -> assertThat(((GuardRefusedException) e).code()).isEqualTo("confirm-token-mismatch"));
+        verify(cmmnClient, never()).migrateCase(any(), any(), any(), any(), any(), any());
+        verifyNoInteractions(audit);
+    }
+
+    /** A prod engine with one live plan item {@code keepAlive}, which the target model has. */
+    private EngineConfig prodCaseOnDefOne() {
+        EngineConfig prod = TestEngines.engine(
+                ENGINE, "http://engine.test/flowable-rest/service", EngineEnvironment.PROD, EngineMode.READ_WRITE);
+        when(registry.require(ENGINE)).thenReturn(prod);
+        when(registry.healthOf(ENGINE))
+                .thenReturn(new EngineHealth(
+                        true,
+                        "6.8.0",
+                        null,
+                        0L,
+                        new EngineCapabilities(true, true, true, true, true),
+                        null,
+                        null,
+                        null));
+        when(cmmnClient.getCmmnCaseInstance(prod, CallPriority.INTERACTIVE, CASE))
+                .thenReturn(Map.of("id", CASE, "businessKey", "BK-1", "caseDefinitionId", "def-1"));
+        when(cmmnClient.listCmmnPlanItemInstances(eq(prod), eq(CallPriority.INTERACTIVE), any(), eq(0), eq(500)))
+                .thenReturn(new FlowablePage(
+                        List.of(Map.of("id", "inst-1", "planItemDefinitionId", "keepAlive", "state", "active")),
+                        1,
+                        0,
+                        500));
+        when(cmmnClient.getCmmnCaseDefinition(prod, CallPriority.INTERACTIVE, "def-2"))
+                .thenReturn(Map.of("id", "def-2", "deploymentId", "dep-1", "resourceName", "case.cmmn"));
+        when(cmmnClient.cmmnDeploymentResourceData(prod, CallPriority.INTERACTIVE, "dep-1", "case.cmmn"))
+                .thenReturn("<planItem id=\"planItem_svc\" definitionRef=\"keepAlive\"/>");
+        return prod;
+    }
+
+    @Test
+    void aCohortBulkItemSkipsTheTypedCaseIdAndMigratesWhenTheCaseIsUnchanged() {
+        EngineConfig prod = prodCaseOnDefOne();
+
+        ActionResult result = service.executeCaseMigrationBulkItem(
+                ENGINE, CASE, migrateRequest(null), operator, new CaseMigrationExpectation("def-1", "keepAlive"));
+
+        assertThat(result.outcome()).isEqualTo("ok");
+        verify(cmmnClient)
+                .migrateCase(
+                        eq(prod),
+                        eq(CallPriority.INTERACTIVE),
+                        eq("6.8.0"),
+                        eq(CaseMigrationRoute.SINGLE),
+                        eq(CASE),
+                        eq(Map.of("toCaseDefinitionId", "def-2")));
+    }
+
+    @Test
+    void aCohortBulkItemRefusesBeforeTheAuditRowWhenTheCaseChangedSinceTheAnalysis() {
+        prodCaseOnDefOne();
+
+        // The live plan items differ from what the analysis recorded.
+        assertThatThrownBy(() -> service.executeCaseMigrationBulkItem(
+                        ENGINE,
+                        CASE,
+                        migrateRequest(null),
+                        operator,
+                        new CaseMigrationExpectation("def-1", "keepAlive|reviewTask")))
+                .isInstanceOfSatisfying(
+                        GuardRefusedException.class,
+                        e -> assertThat(e.code()).isEqualTo("instance-moved-since-preview"));
+        // The case runs another definition than the one the analysis pinned.
+        assertThatThrownBy(() -> service.executeCaseMigrationBulkItem(
+                        ENGINE,
+                        CASE,
+                        migrateRequest(null),
+                        operator,
+                        new CaseMigrationExpectation("def-0", "keepAlive")))
+                .isInstanceOfSatisfying(
+                        GuardRefusedException.class,
+                        e -> assertThat(e.code()).isEqualTo("instance-moved-since-preview"));
+
         verify(cmmnClient, never()).migrateCase(any(), any(), any(), any(), any(), any());
         verifyNoInteractions(audit);
     }
