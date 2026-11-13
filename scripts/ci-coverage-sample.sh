@@ -1,5 +1,5 @@
 #!/usr/bin/env bash
-# Read the newest green ci.yml run on main and print coverage totals as JSON.
+# Read the newest green ci.yml run that still has coverage artifacts and print coverage totals as JSON.
 # Best-effort: prints {} when the token, the run, or the artifacts are missing so the
 # dashboard push never dies on this probe. History lives in the pusher, not here.
 #
@@ -11,6 +11,7 @@ REPO="${PI_CI_REPO:-x3kcl/process-inspector}"
 CACHE="${PI_COVERAGE_CACHE:-/tmp/pi-coverage-sample.json}"
 
 if [[ -z "${GITHUB_PERSONAL_ACCESS_TOKEN:-}" ]]; then
+  echo "coverage sample: NONE — GITHUB_PERSONAL_ACCESS_TOKEN not set in this environment (cron)" >&2
   echo '{}'
   exit 0
 fi
@@ -35,13 +36,44 @@ download_zip() {
   curl -fsS --max-time 60 -L -o "$dest" "$loc"
 }
 
-ci_json="$(api "https://api.github.com/repos/$REPO/actions/workflows/ci.yml/runs?branch=main&status=success&per_page=1")"
-ci_id="$(jq -r '.workflow_runs[0].id // empty' <<<"$ci_json" 2>/dev/null || true)"
-sha="$(jq -r '.workflow_runs[0].head_sha // empty' <<<"$ci_json" 2>/dev/null || true)"
+# why <reason>: say loudly on stderr why no sample is produced (#463: the series stayed empty
+# for weeks because the newest green main run had no artifacts and nothing said so).
+why() { echo "coverage sample: NONE — $1" >&2; }
+runs_url="https://api.github.com/repos/$REPO/actions/workflows/ci.yml/runs?status=success&per_page=50"
+runs="$(api "$runs_url")"
+if ! jq -e '.workflow_runs' >/dev/null 2>&1 <<<"$runs"; then
+  why "GitHub API call failed (token scope or network): $runs_url"
+  echo '{}'
+  exit 0
+fi
 nightly_json="$(api "https://api.github.com/repos/$REPO/actions/workflows/nightly.yml/runs?branch=main&status=success&per_page=1")"
 nightly_id="$(jq -r '.workflow_runs[0].id // empty' <<<"$nightly_json" 2>/dev/null || true)"
 
+# ci.yml has no push-to-main trigger since the merge queue (c47aa5a): a batch runs on mq/*, then
+# main is fast-forwarded, so a run "on main" is only the stale pre-queue history. Candidates:
+# green push runs on main or mq/* first, then green pull_request runs; the first one whose
+# jacoco-report AND frontend-coverage artifacts are still live (14-day retention) wins.
+cands="$(jq -r '[.workflow_runs[]
+    | select((.event == "push" and (.head_branch == "main" or (.head_branch | startswith("mq/")))))
+    ] + [.workflow_runs[] | select(.event == "pull_request")]
+  | .[] | "\(.id) \(.head_sha) \(.event)"' <<<"$runs")"
+if [[ -z "$cands" ]]; then
+  why "no green ci.yml run among the newest 50"
+  echo '{}'
+  exit 0
+fi
+
+ci_id="" sha="" ci_event="" arts=""
+while read -r id hsha ev; do
+  [[ -n "$id" ]] || continue
+  a="$(api "https://api.github.com/repos/$REPO/actions/runs/$id/artifacts?per_page=100")"
+  if [[ "$(jq '[.artifacts[]? | select((.name == "jacoco-report" or .name == "frontend-coverage") and (.expired | not))] | length' <<<"$a" 2>/dev/null)" == "2" ]]; then
+    ci_id="$id" sha="$hsha" ci_event="$ev" arts="$a"
+    break
+  fi
+done <<<"$cands"
 if [[ -z "$ci_id" ]]; then
+  why "none of $(wc -l <<<"$cands") green ci runs has live jacoco-report + frontend-coverage artifacts (expired, or not uploaded)"
   echo '{}'
   exit 0
 fi
@@ -56,7 +88,6 @@ if [[ "$cached_id" == "$ci_id" && -f "$CACHE" ]]; then
   exit 0
 fi
 
-arts="$(api "https://api.github.com/repos/$REPO/actions/runs/$ci_id/artifacts?per_page=100")"
 tmp="$(mktemp -d)"
 trap 'rm -rf "$tmp"' EXIT
 
@@ -102,6 +133,7 @@ grab jacoco-report
 grab frontend-coverage
 point="$(parse)"
 if [[ "$point" == "{}" || -z "$point" ]]; then
+  why "run $ci_id artifacts downloaded/parsed to nothing (download redirect or zip layout)"
   echo '{}'
   exit 0
 fi
@@ -109,6 +141,7 @@ jq -nc \
   --argjson point "$point" \
   --argjson ci "$ci_id" \
   --arg sha "$sha" \
+  --arg ev "$ci_event" \
   --arg nightly "${nightly_id:-}" \
-  '$point + {ciRunId: $ci, sha: $sha, nightlyRunId: (if $nightly == "" then null else ($nightly | tonumber) end)}' \
+  '$point + {ciRunId: $ci, sha: $sha, ciEvent: $ev, nightlyRunId: (if $nightly == "" then null else ($nightly | tonumber) end)}' \
   | tee "$CACHE"
