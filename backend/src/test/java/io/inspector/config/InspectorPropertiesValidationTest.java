@@ -20,6 +20,7 @@ import jakarta.validation.Validator;
 import jakarta.validation.ValidatorFactory;
 import java.time.Duration;
 import java.util.List;
+import java.util.Map;
 import java.util.stream.Stream;
 import org.junit.jupiter.api.AfterAll;
 import org.junit.jupiter.api.BeforeAll;
@@ -28,6 +29,8 @@ import org.junit.jupiter.params.ParameterizedTest;
 import org.junit.jupiter.params.provider.Arguments;
 import org.junit.jupiter.params.provider.MethodSource;
 import org.junit.jupiter.params.provider.ValueSource;
+import org.springframework.boot.context.properties.bind.Binder;
+import org.springframework.boot.context.properties.source.MapConfigurationPropertySource;
 
 /** Rung 1: registry validation is pure record logic — no Spring context. */
 class InspectorPropertiesValidationTest {
@@ -190,6 +193,27 @@ class InspectorPropertiesValidationTest {
     void rejectsOutOfRangeKnob(String name, String path, Object invalid, Object boundary) {
         assertThat(paths(invalid)).as(name).contains(path);
         assertThat(paths(boundary)).as(name).doesNotContain(path);
+    }
+
+    /**
+     * Issue #467 (found by the P3 soak): {@code Bulk} has a second convenience constructor, so
+     * without {@code @ConstructorBinding} Spring cannot pick a binding constructor and every
+     * {@code inspector.bulk.*} key was silently ignored — all knobs ran on their code defaults.
+     */
+    @Test
+    void bulkKnobsBindFromConfiguration() {
+        Bulk bulk = new Binder(new MapConfigurationPropertySource(Map.of(
+                        "inspector.bulk.engine-permits", "2",
+                        "inspector.bulk.stagger-ms", "20",
+                        "inspector.bulk.sse-subscriber-cap", "7",
+                        "inspector.bulk.sse-coalesce-ms", "100")))
+                .bind("inspector.bulk", Bulk.class)
+                .orElse(null);
+        assertThat(bulk).as("inspector.bulk.* bound to a Bulk").isNotNull();
+        assertThat(bulk.enginePermitsOrDefault()).isEqualTo(2);
+        assertThat(bulk.staggerMsOrDefault()).isEqualTo(20);
+        assertThat(bulk.sseSubscriberCapOrDefault()).isEqualTo(7);
+        assertThat(bulk.sseCoalesceMsOrDefault()).isEqualTo(100);
     }
 
     @Test

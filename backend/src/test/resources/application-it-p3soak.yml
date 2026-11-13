@@ -1,0 +1,56 @@
+# R-TEST-05 P3 (issue #467, TEST-STRATEGY.md §7): SSE + bulk soak. Two StubFlowableEngine
+# instances (io.inspector.support — the foundation the P1/P2 suites share), each serving
+# P3_DLQ_ROWS synthetic dead-letter rows, so one select-all-matching-filter bulk resolves to a
+# 500+ item job without seeding a real engine (TEST-STRATEGY §10: scale that must never be
+# seeded). Ports are registered by the test via @DynamicPropertySource.
+#
+# REAL-DB profile (like it-actions): bulk jobs, items and the per-item audit rows are the
+# persisted state under soak, so Flyway runs V1__init.sql against a Testcontainers Postgres 16
+# injected by the test. No compose engine, no compose port block.
+inspector:
+  registry:
+    source: config
+  # The sampler/ledger/partition maintainer are off: they add background engine/DB traffic
+  # unrelated to the SSE hub and the bulk permit pool, which is what this soak measures.
+  snapshot:
+    enabled: false
+  incidents:
+    enabled: false
+  audit:
+    partition-maintenance:
+      enabled: false
+  fanout-parallelism: 4
+  bulk:
+    # Production keeps 4 permits / 250ms stagger. A shorter stagger lets one 600-item job settle
+    # in seconds, so a 20-minute hold runs many jobs back to back (the leak-finding pressure).
+    engine-permits: 4
+    stagger-ms: 20
+  engines:
+    - id: soak-a
+      name: "Stub (soak A)"
+      base-url: "http://localhost:${P3_PORT_A}/flowable-rest/service"
+      environment: dev
+      enabled: true
+      mode: read-write
+      auth:
+        type: none
+      max-page-size: 100
+      dlq-scan-cap: 1000
+      timeouts:
+        connect-ms: 1000
+        read-ms: 5000
+        write-ms: 5000
+    - id: soak-b
+      name: "Stub (soak B)"
+      base-url: "http://localhost:${P3_PORT_B}/flowable-rest/service"
+      environment: dev
+      enabled: true
+      mode: read-write
+      auth:
+        type: none
+      max-page-size: 100
+      dlq-scan-cap: 1000
+      timeouts:
+        connect-ms: 1000
+        read-ms: 5000
+        write-ms: 5000

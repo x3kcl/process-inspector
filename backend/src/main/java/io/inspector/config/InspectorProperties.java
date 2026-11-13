@@ -433,6 +433,11 @@ public record InspectorProperties(
             @Min(0) Integer circuitPausePollMs,
             @Min(0) Integer sseSubscriberCap,
             @Min(0) Integer sseCoalesceMs) {
+        // Multiple constructors → Spring cannot infer the binder; pin it to the canonical one.
+        // Without this every inspector.bulk.* key was silently ignored (found by the P3 soak, #467).
+        @ConstructorBinding
+        public Bulk {}
+
         public int enginePermitsOrDefault() {
             return enginePermits != null ? enginePermits : 4;
         }
