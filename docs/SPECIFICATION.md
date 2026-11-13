@@ -753,6 +753,9 @@ PERSON have, across every engine" — the "Bob is on vacation" query. Search sta
 - **Task browser** (`/task-browser`, `GET /api/tasks/browse`) is additive. It filters open tasks
   (definition, assignee, owner, candidate group, unassigned, overdue, created range) and bulk
   reassigns the selection. It does not replace this person search.
+  The page opens with every filter off (Overdue is opt-in) so it shows tasks when tasks exist;
+  an empty result states "No open tasks match the active filters: …" and offers a one-click
+  *Clear filters*.
 
 ### 4e. Incident ledger — persisted failure-class lifecycle *(v2, R-BAU-10 — ★ SHIPPED, S1–S5 landed 2026-07-19, [INCIDENT-LEDGER.md](INCIDENT-LEDGER.md))*
 
