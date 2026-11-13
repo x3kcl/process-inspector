@@ -6,8 +6,8 @@
 #
 # Since the merge queue (ci.yml has no push trigger for main), the green `ci` run is the one on
 # the `mq/**` batch branch; the queue then fast-forwards main to that same commit. This job
-# waits until the commit is on main before it publishes, so :edge never names a commit main
-# does not contain. `main` stays in the branch filter for a ci run that does report on main.
+# waits until that commit IS the main head before it publishes, so :edge never names a commit
+# main does not contain and never moves backwards (a re-run of an old batch run does not match).
 #
 # workflow_dispatch (on main only) publishes the current main head by hand. It exists for a
 # landing that did not go through the queue (the admin bypass, RUNBOOK §0): no batch ran, so
@@ -20,15 +20,23 @@ on:
   workflow_run:
     workflows: [ci]
     types: [completed]
-    branches: [main, 'mq/**']
+    branches: ['mq/**']
   workflow_dispatch:
 
 permissions:
   packages: write
 
-# A newer green main supersedes an in-flight edge build.
+# A newer green main supersedes an in-flight edge build. Workflow-level concurrency is claimed
+# BEFORE the job's `if:` is evaluated, so a run that will only skip (a red batch, a pull
+# request from a branch named mq/...) would still cancel a publish in flight. Such a run gets
+# a group of its own instead. The condition is the job's `if:` below — keep the two in sync.
 concurrency:
-  group: publish-edge
+  group: >-
+    publish-edge-${{
+    ((github.event_name == 'workflow_run' && github.event.workflow_run.event == 'push'
+    && github.event.workflow_run.conclusion == 'success')
+    || (github.event_name == 'workflow_dispatch' && github.ref == 'refs/heads/main'))
+    && 'publish' || github.run_id }}
   cancel-in-progress: true
 
 jobs:
@@ -48,19 +56,21 @@ jobs:
       - uses: actions/checkout@v7
         with:
           ref: ${{ env.GREEN_SHA }}
-      - name: Wait until the green commit is on main
+      - name: Wait until the green commit is the main head
         if: github.event_name == 'workflow_run'
         run: |
           # The queue fast-forwards main right after the batch run turns green. Bounded wait:
-          # 30 tries x 10 s. A batch that never reaches main is not published.
+          # 30 tries x 10 s. Published only when main's head IS this commit: a batch that never
+          # landed, an old batch run that was re-run, or a main that has since moved on is not.
+          head=""
           for _ in $(seq 1 30); do
-            git fetch --quiet --depth=200 origin main
-            if git merge-base --is-ancestor "$GREEN_SHA" FETCH_HEAD 2>/dev/null; then
-              echo "$GREEN_SHA is on main"; exit 0
+            head="$(git ls-remote origin refs/heads/main | cut -f1 || true)"
+            if [ "$head" = "$GREEN_SHA" ]; then
+              echo "$GREEN_SHA is the main head"; exit 0
             fi
             sleep 10
           done
-          echo "::error::$GREEN_SHA did not reach main within 5 minutes; not publishing"
+          echo "::error::main head is ${head:-unknown}, not $GREEN_SHA, after 5 minutes; not publishing"
           exit 1
       - uses: docker/setup-buildx-action@v4
       - name: Log in to ghcr.io

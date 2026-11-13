@@ -27,7 +27,9 @@ Deliverable per OPERATIONS §10 / SPEC §13. Deep background: OPERATIONS.md; who
   The emergency path is the repository-admin bypass on the pull-request rule: an admin can
   merge a pull request when the required checks cannot run. It is not a license to push
   straight to `main`. Turn the bypass off again after the incident. Prefer a revert pull
-  request once the runners are back.
+  request once the runners are back. A bypass merge has no merge-queue batch, so no edge
+  image is built for it: dispatch `publish-edge` on `main` by hand afterwards if the demo or
+  anyone tracking `:edge` needs that commit (OPERATIONS §5).
 
 ## 1. "Inspector down" (liveness failing / connection refused)
 

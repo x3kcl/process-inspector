@@ -232,7 +232,8 @@ push) to Public.
 images to both registries as `:edge` + `:sha-<short7>` (`publish-edge.yml`; `workflow_run`-triggered
 by the `ci` run on the `mq/**` batch branch, so a red batch never ships a build — the green-main
 doctrine applied to publishing). The job waits (bounded, 5 minutes) until the queue has
-fast-forwarded `main` to the batch commit and does not publish a commit `main` does not contain.
+fast-forwarded `main` to the batch commit, and publishes only when that commit is the `main`
+head: a batch that never landed, or a re-run of an old batch run, publishes nothing.
 A landing that bypassed the queue (admin bypass, RUNBOOK §0) has no batch run and therefore no
 image: dispatch `publish-edge` by hand on `main` (Actions → publish-edge → Run workflow), which
 publishes the current `main` head without the heavy checks having gated it. Between the queue
