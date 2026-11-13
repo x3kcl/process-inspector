@@ -1751,7 +1751,7 @@ button.primary:disabled {
   stroke-width: 3px !important;
 }
 .diff-glyph {
-  background: var(--color-bg);
+  background: var(--color-page-bg);
   border: 1px solid var(--color-border);
   border-radius: 2px;
   font-size: 12px;
@@ -4530,4 +4530,51 @@ button.skip-link {
 }
 .shortcut-table kbd {
   font-family: inherit;
+}
+
+/* #498 dual-canvas mapping editor. Findings: stroke style + glyph + label, never hue alone
+   (blocker ✖ dotted heavy, warning ! long dash, mapped ↦ badge only). The bpmn.io
+   watermark is not selected here (R-GOV-05). */
+.mapping-canvas-pair {
+  display: grid;
+  grid-template-columns: repeat(auto-fit, minmax(260px, 1fr));
+  gap: 8px;
+}
+.mapping-canvas-label {
+  margin: 4px 0;
+  font-weight: 600;
+}
+.mapping-canvas .diagram-canvas {
+  height: 30vh;
+  border: 1px solid var(--color-border);
+}
+.diagram-canvas .marker-finding-blocker .djs-visual > :first-child {
+  stroke: var(--color-danger) !important;
+  stroke-width: 4px !important;
+  stroke-dasharray: 2 2 !important;
+}
+.diagram-canvas .marker-finding-warning .djs-visual > :first-child {
+  stroke-width: 3px !important;
+  stroke-dasharray: 8 3 !important;
+}
+/* The finding outline above out-ranks the generic .marker-selected rule, which hid the
+   selection on every flagged (= every pickable) source. Selected keeps the finding's dash
+   (the finding cue) and adds the selection stroke, a heavier width and a fill — not hue alone. */
+.diagram-canvas .marker-selected.marker-finding-blocker .djs-visual > :first-child,
+.diagram-canvas .marker-selected.marker-finding-warning .djs-visual > :first-child {
+  stroke: var(--color-info) !important;
+  stroke-width: 6px !important;
+  fill: var(--color-info-bg-alt) !important;
+}
+.finding-glyph {
+  display: inline-flex;
+  align-items: center;
+  justify-content: center;
+  min-width: 16px;
+  height: 16px;
+  border: 1px solid var(--color-border);
+  border-radius: 3px;
+  background: var(--color-page-bg);
+  font-weight: 700;
+  font-size: 11px;
 }

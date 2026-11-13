@@ -157,14 +157,25 @@ IN:
   **Reset to generated** restores that JSON from the pairs, and unsaved expert text asks for a
   discard confirm. Preview findings are marked **blocker** / **warning** / **info** in words.
   A token-loss blocker still gets no target select (no mapping can fix it).
+- **Dual-canvas click-to-map** (#498, `MappingCanvases.tsx`): a **Diagrams** mode beside
+  Table/Expert mounts two read-only bpmn-js viewers (the shared `DiagramCanvas`) — source
+  definition left, target right. A click on a flagged source activity / a target activity sets
+  the same selection as the pair-list selects (selection sync both ways); **Add to map** adds
+  the pair through the same fan rules, and a pair that would make many-to-many is refused on
+  the spot with the reason (`tryAddPair`). With a source selected, the target canvas marks
+  only that source's targets. Pre-check findings are overlaid on the source canvas — blocker
+  ✖ (dotted heavy stroke), warning ! (long dash; an unrecognised severity is marked as a
+  warning, like the callouts), mapped ↦ — glyph + label, never hue alone. The selected source
+  stays visible on top of its finding outline (selection stroke, heavier width and fill; the
+  finding's dash pattern is kept), and adding or removing a pair keeps the operator's pan/zoom
+  (a marker-only re-import restores the viewbox instead of fitting the viewport).
+  The table stays the keyboard path; the bpmn.io watermark is untouched on both viewers.
 - **Definition-versions on-ramp** (cohort visibility): a version list with per-version runtime
   instance counts ("37 running on v3 · latest v5"), the entry point that makes single-instance
   migration a real tool rather than a demo. **Elevated into slice-1** (UX panel).
 
 OUT (later slices, each its own design; resolves IMPLEMENTATION-PLAN §474-475):
-- **Dual-canvas side-by-side diagram mapping** — still deferred. #498 added the table, the pair
-  list, and expert JSON inside MigrateModal; it does not mount a second bpmn-js viewer. The
-  table and the pair list are keyboard-operable (selects and buttons).
+- ~~Dual-canvas side-by-side diagram mapping~~ — shipped with #498 (Diagrams mode, above).
 - **Batch / by-definition migration** — deferred entirely (see §7).
 - Cross-process-key migration (hard 422 in v2).
 - Cross-tenant target (hard refuse).
@@ -425,8 +436,8 @@ use it.
      targeted `from→to` dropdown appears ONLY for each flagged activity; re-validate after mapping.
   3. Reason (≥10) + typed `MIGRATE` on prod → **Execute** → re-fetch instance state (no optimistic
      update). Show-as-cURL is server-computed.
-- Optional read-only "show diagram (old | new)" disclosure; the dual-canvas mapping EDITOR is
-  deferred to the batch slice.
+- Optional read-only "show diagram (old | new)" disclosure. The dual-canvas mapping editor
+  shipped later with #498 (the **Diagrams** mode of the mapping editor, §1).
 - Capability-gated: greyed with reason on `migration`-false engines; UNCHECKED-labelled on
   validate-gap engines.
 
@@ -473,8 +484,8 @@ use it.
   message chips + honesty/UNCHECKED banners; targeted mapping dropdowns for flagged activities;
   typed-MIGRATE; definition-versions view + entry (b); Playwright e2e (URL-predicate mocks) + one
   live smoke.
-- **LATER (own design docs):** batch/by-definition (async `Batch` poll + per-part audit), full
-  side-by-side diagram mapping editor, cross-key, assignee/variable remap.
+- **LATER (own design docs):** batch/by-definition (async `Batch` poll + per-part audit),
+  cross-key, assignee/variable remap. (The side-by-side diagram mapping editor shipped with #498.)
 
 ## 12. Panel decisions (provenance)
 | # | Decision | Verdict | Voices |
