@@ -25,6 +25,7 @@ import org.slf4j.Logger;
 import org.slf4j.LoggerFactory;
 import org.springframework.context.SmartLifecycle;
 import org.springframework.context.event.EventListener;
+import org.springframework.http.converter.HttpMessageConversionException;
 import org.springframework.scheduling.annotation.Scheduled;
 import org.springframework.stereotype.Service;
 import org.springframework.web.servlet.mvc.method.annotation.SseEmitter;
@@ -58,6 +59,7 @@ public class SseHub implements SmartLifecycle {
 
     private final List<SubscribedEmitter> emitters = new CopyOnWriteArrayList<>();
     private final Counter errors;
+    private final Counter disconnects;
     private final Counter refused;
     private final int subscriberCap;
     private final long coalesceMs;
@@ -90,17 +92,26 @@ public class SseHub implements SmartLifecycle {
 
     /**
      * OPERATIONS.md §2 (issue #96): {@code sse_emitters_active} (a live gauge over {@link
-     * #subscriberCount()}) and {@code sse_emitter_errors_total} — a spike is RUNBOOK §7's "SSE
-     * emitter errors spiking" alert (typically a reverse-proxy buffering misconfig after a
-     * deploy; clients degrade to polling, not user-facing-critical). {@code
-     * sse_subscriptions_refused_total} (issue #301) counts cap refusals — see {@link #subscribe}.
+     * #subscriberCount()}) and {@code sse_emitter_errors_total} — a send failure on the BFF's own side
+     * (a payload a converter could not write, a send racing the emitter's own completion); a
+     * spike is RUNBOOK §7's SseEmitterErrorsSpiking alert.
+     * Issue #624: a client that went away (tab close, navigation, or a reverse proxy cutting the
+     * stream — an {@link IOException} somewhere in the cause chain) is NOT an error; it counts once
+     * in {@code sse_emitter_disconnects_total} instead (RUNBOOK §7's SseDisconnectChurn). Each
+     * dropped emitter counts exactly once, in exactly one of the two counters, however many paths
+     * (failed write, the container's onError) notice it; a graceful {@link #stop()} completes its
+     * emitters and counts nothing. {@code sse_subscriptions_refused_total} (issue #301) counts cap
+     * refusals — see {@link #subscribe}.
      */
     public SseHub(MeterRegistry metrics, InspectorProperties props) {
         Gauge.builder("sse_emitters_active", this, SseHub::subscriberCount)
                 .description("Live SSE subscriber count")
                 .register(metrics);
         this.errors = Counter.builder("sse_emitter_errors_total")
-                .description("SSE emitter writes/registrations dropped due to a broken pipe or timeout")
+                .description("SSE emitters dropped by a BFF-side send failure (not a closed stream)")
+                .register(metrics);
+        this.disconnects = Counter.builder("sse_emitter_disconnects_total")
+                .description("SSE emitters dropped because the client or a proxy closed the stream")
                 .register(metrics);
         this.refused = Counter.builder("sse_subscriptions_refused_total")
                 .description("SSE subscribe attempts refused because the live subscriber cap was reached")
@@ -130,10 +141,9 @@ public class SseHub implements SmartLifecycle {
         SubscribedEmitter subscribed = new SubscribedEmitter(emitter, user, new ReentrantLock(), new AtomicBoolean());
         emitter.onCompletion(() -> emitters.remove(subscribed));
         emitter.onTimeout(() -> emitters.remove(subscribed));
-        emitter.onError(e -> {
-            emitters.remove(subscribed);
-            errors.increment();
-        });
+        // Issue #624: a disconnect is noticed by the failed write in sendToOne AND by Spring's
+        // onError for the same emitter — both go through drop(), whose CAS counts it once.
+        emitter.onError(e -> drop(subscribed, e));
         emitters.add(subscribed);
         log.debug("SSE subscribe by {} — {} live stream(s)", user, emitters.size());
         return emitter;
@@ -266,13 +276,48 @@ public class SseHub implements SmartLifecycle {
             }
             subscribed.emitter().send(SseEmitter.event().name(eventName).data(data));
         } catch (IOException | RuntimeException e) {
-            subscribed.errored().set(true);
-            emitters.remove(subscribed);
-            errors.increment();
-            log.debug("SSE emitter for {} dropped: {}", subscribed.user(), e.toString());
+            drop(subscribed, e);
         } finally {
             subscribed.lock().unlock();
         }
+    }
+
+    /**
+     * Issue #624: the single place a failed emitter leaves the registry and is counted. The
+     * {@code errored} CAS makes it idempotent across the failed write, the container's onError
+     * callback and {@link #stop()} — whichever comes first counts, the rest are no-ops. Never
+     * completes the emitter (see {@link #sendToOne}).
+     */
+    private void drop(SubscribedEmitter subscribed, Throwable cause) {
+        emitters.remove(subscribed);
+        if (!subscribed.errored().compareAndSet(false, true)) {
+            return;
+        }
+        if (isClientDisconnect(cause)) {
+            disconnects.increment();
+        } else {
+            errors.increment();
+        }
+        log.debug("SSE emitter for {} dropped: {}", subscribed.user(), cause.toString());
+    }
+
+    /**
+     * A client that went away surfaces as an {@link IOException} (broken pipe, connection reset,
+     * Tomcat's ClientAbortException, Spring's AsyncRequestNotUsableException), possibly wrapped
+     * in Spring's IllegalStateException — so walk the cause chain. A converter failure is NOT a
+     * disconnect even though Jackson 2's JsonProcessingException is an IOException: stop at an
+     * {@link HttpMessageConversionException} and count it as an error.
+     */
+    static boolean isClientDisconnect(Throwable cause) {
+        for (Throwable t = cause; t != null; t = t.getCause() == t ? null : t.getCause()) {
+            if (t instanceof HttpMessageConversionException) {
+                return false;
+            }
+            if (t instanceof IOException) {
+                return true;
+            }
+        }
+        return false;
     }
 
     private record SubscribedEmitter(SseEmitter emitter, String user, ReentrantLock lock, AtomicBoolean errored) {}

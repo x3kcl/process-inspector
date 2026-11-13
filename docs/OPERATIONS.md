@@ -20,7 +20,8 @@ R-SAFE-06/07 (REQUIREMENTS-REGISTER.md).
 > real scrape, not assumed):** `audit_insert_failures_total` (tagged `site`), per-engine fan-out
 > latency (`engine_fanout_duration_seconds`, tags `engineId`/`leg` — ONE instrumentation site, the
 > `GuardedCaller` chokepoint every facade call runs through), `sse_emitters_active` (gauge) +
-> `sse_emitter_errors_total` (counter), `bulk_jobs_running` (gauge) + `bulk_item_outcomes_total`
+> `sse_emitter_errors_total` + `sse_emitter_disconnects_total` (counters; issue #624 — a client
+> that went away counts once as a disconnect, any other send failure once as an error), `bulk_jobs_running` (gauge) + `bulk_item_outcomes_total`
 > (counter, tagged `state`, tallied once per finished job). **Structured JSON logs** (gated on the
 > `oidc` prod-like profile — dev/test/it-* stay human-readable) **and correlationId MDC
 > propagation across the virtual-thread fan-out** (`MdcPropagatingExecutors`, swapped into every
@@ -41,7 +42,7 @@ R-SAFE-06/07 (REQUIREMENTS-REGISTER.md).
 > tracked separately, not claimed here).
 - `/actuator/prometheus` (auth-gated). Metric set: `audit_insert_failures_total`,
   `engine_fanout_duration_seconds` (tags `engineId`,`leg`), `resilience4j_circuitbreaker_state`,
-  `sse_emitters_active` + `sse_emitter_errors_total`, `bulk_jobs_running` +
+  `sse_emitters_active` + `sse_emitter_errors_total` + `sse_emitter_disconnects_total`, `bulk_jobs_running` +
   `bulk_item_outcomes_total`, `oidc_login_failures_total`, `snapshot_last_success_seconds`,
   `audit_retention_purge_failures_total`, Hikari pool, JVM/virtual-thread pinning. Triage-cache **hit rate**
   (as opposed to age, which `GET /api/diag` reports) remains TARGET, not wired.
@@ -105,13 +106,14 @@ the verb span.
 ## 3. Who watches the watcher (R-OPS-03)
 The Inspector is probed by **external** monitoring. Alert rules (issue #96,
 `deploy/prometheus/alert-rules.yml` — liveness, `AuditInsertFailures`,
-`AllCircuitBreakersOpen`, `SseEmitterErrorsSpiking`, and `DatabaseConnectionTimeoutsSpiking`
-as the honest proxy for Postgres-unreachable now fire off metrics this app emits;
+`AllCircuitBreakersOpen`, `SseEmitterErrorsSpiking`, `SseDisconnectChurn` (#624), and
+`DatabaseConnectionTimeoutsSpiking` as the honest proxy for Postgres-unreachable now fire off metrics this app emits;
 `InspectorReadinessFailing`/`DiskSpaceHigh` are written but need an exporter this repo does not
 deploy — `blackbox_exporter`/`node_exporter` — see `deploy/README.md`), referencing the same
 contract metric names: `InspectorDown` (liveness probe), readiness failing
 >2m, `audit_insert_failures_total > 0`, Postgres unreachable, disk >80%, SSE emitter errors
-spiking, **all circuits open simultaneously** (an inspector-side egress problem, not N engine
+spiking (BFF-side send failures only, issue #624), SSE streams cut and reconnecting in a loop
+(`SseDisconnectChurn` — where a proxy fault now shows), **all circuits open simultaneously** (an inspector-side egress problem, not N engine
 failures). No monitoring STACK (Prometheus/Alertmanager) is deployed by this repo's
 `docker/*.yml` — the rule file is the contract to hand to whichever one scrapes
 `/actuator/prometheus` in a real deploy. Paging route: the workflow platform team. Degraded

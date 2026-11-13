@@ -199,6 +199,8 @@ Testcontainers Postgres under the bulk and audit rows. Every number is read from
   live emitter, so any difference between subscribers is a drop or a duplicate.
 - **Emitters:** `sse_emitters_active` stays at baseline + 50 after every job, and is back at
   baseline within 60 s of the clients disconnecting (the 15 s heartbeat is what notices them).
+  That teardown adds 0 to `sse_emitter_errors_total` and at most 50 to
+  `sse_emitter_disconnects_total`, one per closed stream (#624).
 - **No `SseEmitterErrorsSpiking` condition during the hold:** at most 5 increments of
   `sse_emitter_errors_total` in any 5-minute window, and no `sse_subscriptions_refused_total`.
   Each subscriber also receives at least `hold/15s − 2` heartbeats.
@@ -212,9 +214,11 @@ docker use is the Testcontainers Postgres, reached from the runner like `contain
 Measured locally on 2026-11-12 (hp04, `-Dsoak.minutes=5`): 307 s held, 38 jobs × 600 items,
 each job settled in about 7.5 s (20 ms stagger, 4 permits per engine). Each subscriber saw 26–27
 `bulk-job` events per job, with no difference between subscribers. Post-GC heap was 85 MiB at
-baseline and 86 MiB at the end (+1.0%). There were 0 emitter errors during the hold. The 50
-disconnects at teardown added 100 to `sse_emitter_errors_total`, two per closed stream; that
-is tracked as #624, and the assertion covers the hold only. Building this suite also showed
+baseline and 86 MiB at the end (+1.0%). There were 0 emitter errors during the hold. Since #624 a
+client closing its stream counts once in `sse_emitter_disconnects_total` and never in
+`sse_emitter_errors_total`: a 1-minute run on 2026-11-13 closed 50 streams at teardown and
+recorded 50 disconnects and 0 errors, and the suite asserts no error increase and at most one
+disconnect per stream at teardown. Building this suite also showed
 that `inspector.bulk.*` was not binding at all (#623, fixed alongside).
 
 ## 8. Capability matrix (R-TEST — SHOULD)

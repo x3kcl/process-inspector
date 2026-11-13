@@ -28,6 +28,10 @@ works over plain HTTP through the Vite proxy, and needs no broker.
    emitter list and hands each write off to its own virtual thread; the publisher returns
    immediately. Guard every write; on a failure just drop that emitter (do NOT `complete()`
    an errored emitter — it re-flushes and throws a secondary `AsyncRequestNotUsableException`).
+   A closed tab is seen twice (the failed write AND Spring's `onError`): route both through one
+   CAS-guarded drop so it counts once, and count a client disconnect (an `IOException` in the
+   cause chain, but NOT a converter's `HttpMessageConversionException` — Jackson 2's
+   `JsonProcessingException` is an `IOException` too) apart from a real send error (issue #624).
    Serialize concurrent writes to the SAME emitter with a per-emitter `java.util.concurrent`
    `ReentrantLock` — **never `synchronized`** (banned by `NoSynchronizedInMainSourceTest`): on Java 21 virtual threads (pre-JEP 491 / Java 25), blocking inside a
    monitor (or contending on one) pins the carrier, and a hub-wide monitor would let one

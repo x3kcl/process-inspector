@@ -217,7 +217,7 @@ concept — a scrape target being reachable at all only proves liveness), and `D
 `node_exporter`. Neither exporter is deployed here; the rules are included for completeness and
 should be wired up alongside whichever monitoring stack a real deploy adds, not treated as
 already-live. Everything else (`AuditInsertFailures`, `AllCircuitBreakersOpen`,
-`SseEmitterErrorsSpiking`, and `DatabaseConnectionTimeoutsSpiking` as the honest proxy for
+`SseEmitterErrorsSpiking`, `SseDisconnectChurn` (#624), and `DatabaseConnectionTimeoutsSpiking` as the honest proxy for
 Postgres-unreachable pending a `postgres_exporter`) fires off metrics THIS app already emits.
 
 ## Still to land in S0 (tracked)

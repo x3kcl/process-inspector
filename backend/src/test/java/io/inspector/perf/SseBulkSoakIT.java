@@ -57,7 +57,9 @@ import org.testcontainers.containers.PostgreSQLContainer;
  *       subscribers saw the SAME number of {@code bulk-job} events per job (the hub fans each
  *       coalesced flush out to every live emitter, so any difference is a drop or a dup);</li>
  *   <li>{@code sse_emitters_active} stays at baseline + N for the whole hold, and returns to
- *       baseline once the clients disconnect;</li>
+ *       baseline once the clients disconnect; that teardown adds nothing to
+ *       {@code sse_emitter_errors_total} and at most one {@code sse_emitter_disconnects_total}
+ *       per closed stream (issue #624);</li>
  *   <li>no {@code SseEmitterErrorsSpiking} condition during the hold — at most 5 increments of
  *       {@code sse_emitter_errors_total} in any 5-minute window — and no refused subscription;</li>
  *   <li>post-GC heap ({@code jvm_memory_used_bytes{area="heap"}}) at the end of the hold is
@@ -238,11 +240,18 @@ class SseBulkSoakIT {
                 .pollInterval(Duration.ofMillis(500))
                 .until(() -> scrape().emittersActive == emitterBaseline);
         Metrics after = scrape();
+        // Issue #624: a client closing its stream is a disconnect, counted once — never an error.
+        assertThat(after.emitterErrors - end.emitterErrors)
+                .as("sse_emitter_errors_total increase at teardown")
+                .isZero();
+        assertThat(after.emitterDisconnects - end.emitterDisconnects)
+                .as("sse_emitter_disconnects_total increase at teardown (at most once per stream)")
+                .isLessThanOrEqualTo(SUBSCRIBERS);
 
         log.info(
                 "P3 soak result: held {}s, {} jobs x {} items, {} subscribers, events/job/subscriber {}..{}, "
                         + "heap baseline {} MiB, end {} MiB ({}%), max {} MiB, emitter errors during hold {}, "
-                        + "on disconnect {}",
+                        + "at teardown: errors {}, disconnects {}",
                 held.toSeconds(),
                 jobIds.size(),
                 ITEMS_PER_JOB,
@@ -254,7 +263,8 @@ class SseBulkSoakIT {
                 String.format("%+.1f", 100.0 * (end.heapUsed - heapBaseline) / heapBaseline),
                 heapMax >> 20,
                 (long) (end.emitterErrors - before.emitterErrors),
-                (long) (after.emitterErrors - end.emitterErrors));
+                (long) (after.emitterErrors - end.emitterErrors),
+                (long) (after.emitterDisconnects - end.emitterDisconnects));
     }
 
     /** One select-all-matching-filter suspend over both stubs' FAILED rows; returns once it settled. */
@@ -331,6 +341,7 @@ class SseBulkSoakIT {
         long heap = 0;
         double emitters = Double.NaN;
         double errors = 0;
+        double disconnects = 0;
         double refused = 0;
         for (String line : response.body().split("\n")) {
             if (line.startsWith("#")) {
@@ -342,13 +353,15 @@ class SseBulkSoakIT {
                 emitters = value(line);
             } else if (line.startsWith("sse_emitter_errors_total")) {
                 errors = value(line);
+            } else if (line.startsWith("sse_emitter_disconnects_total")) {
+                disconnects = value(line);
             } else if (line.startsWith("sse_subscriptions_refused_total")) {
                 refused = value(line);
             }
         }
         assertThat(heap).as("jvm_memory_used_bytes{area=heap} is exported").isPositive();
         assertThat(emitters).as("sse_emitters_active is exported").isNotNaN();
-        return new Metrics(Instant.now(), heap, emitters, errors, refused);
+        return new Metrics(Instant.now(), heap, emitters, errors, disconnects, refused);
     }
 
     private static double value(String line) {
@@ -360,7 +373,12 @@ class SseBulkSoakIT {
     }
 
     private record Metrics(
-            Instant at, long heapUsed, double emittersActive, double emitterErrors, double subscriptionsRefused) {}
+            Instant at,
+            long heapUsed,
+            double emittersActive,
+            double emitterErrors,
+            double emitterDisconnects,
+            double subscriptionsRefused) {}
 
     /**
      * A browser-like EventSource: one long-lived {@code text/event-stream} GET with its own
