@@ -228,10 +228,16 @@ Hub; `PI_REGISTRY=ghcr.io/x3kcl` overrides). Auth: the workflow `GITHUB_TOKEN`
 (a Read-&-Write Docker Hub access token) for Docker Hub. One-time after first publish: flip
 both ghcr packages to public visibility, and set both Docker Hub repos (auto-created on first
 push) to Public.
-**Continuous edge builds:** every **green** `ci` run on `main` auto-publishes the same two
+**Continuous edge builds:** every **green** merge-queue batch auto-publishes the same two
 images to both registries as `:edge` + `:sha-<short7>` (`publish-edge.yml`; `workflow_run`-triggered
-so a red main never ships a build — the green-main doctrine applied to publishing). Pinned
-release tags are never moved by edge builds.
+by the `ci` run on the `mq/**` batch branch, so a red batch never ships a build — the green-main
+doctrine applied to publishing). The job waits (bounded, 5 minutes) until the queue has
+fast-forwarded `main` to the batch commit and does not publish a commit `main` does not contain.
+A landing that bypassed the queue (admin bypass, RUNBOOK §0) has no batch run and therefore no
+image: dispatch `publish-edge` by hand on `main` (Actions → publish-edge → Run workflow), which
+publishes the current `main` head without the heavy checks having gated it. Between the queue
+change of 2026-11-12 and this fix (#636) no edge image was built, because `ci` no longer ran on
+`main`; `:edge` stayed at the 2026-10-23 build. Pinned release tags are never moved by edge builds.
 **Docker Hub overviews:** each Docker Hub repo's Overview (long + short description) is
 sourced from `docker/dockerhub/process-inspector-{bff,web}.md` and pushed by
 `dockerhub-readme.yml` (peter-evans/dockerhub-description) on any main push that touches those

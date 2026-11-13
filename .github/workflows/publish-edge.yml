@@ -1,8 +1,18 @@
-# Continuous builds (OPERATIONS §5): after every GREEN ci run on main, publish the two
+# Continuous builds (OPERATIONS §5): after every GREEN merge-queue batch, publish the two
 # shipping images as :edge + :sha-<short7> to BOTH ghcr.io and Docker Hub. Triggered by
-# workflow_run — not push — so a red main never ships an image (the green-main doctrine
+# workflow_run — not push — so a red batch never ships an image (the green-main doctrine
 # applied to publishing). Consumers pinning a released version are never moved by these
 # tags; versioned releases are release.yml / cut-release.yml.
+#
+# Since the merge queue (ci.yml has no push trigger for main), the green `ci` run is the one on
+# the `mq/**` batch branch; the queue then fast-forwards main to that same commit. This job
+# waits until the commit is on main before it publishes, so :edge never names a commit main
+# does not contain. `main` stays in the branch filter for a ci run that does report on main.
+#
+# workflow_dispatch (on main only) publishes the current main head by hand. It exists for a
+# landing that did not go through the queue (the admin bypass, RUNBOOK §0): no batch ran, so
+# nothing else would build the image. The operator who dispatches it vouches for that commit;
+# the heavy checks did not gate it.
 # Requires the DOCKERHUB_USERNAME / DOCKERHUB_TOKEN repo secrets (see release.yml header).
 name: publish-edge
 
@@ -10,7 +20,8 @@ on:
   workflow_run:
     workflows: [ci]
     types: [completed]
-    branches: [main]
+    branches: [main, 'mq/**']
+  workflow_dispatch:
 
 permissions:
   packages: write
@@ -22,17 +33,35 @@ concurrency:
 
 jobs:
   edge:
-    if: github.event.workflow_run.conclusion == 'success'
+    if: >-
+      (github.event_name == 'workflow_run' && github.event.workflow_run.event == 'push'
+      && github.event.workflow_run.conclusion == 'success')
+      || (github.event_name == 'workflow_dispatch' && github.ref == 'refs/heads/main')
     runs-on: self-hosted
     timeout-minutes: 30
     env:
       # The commit the green ci run actually validated — NOT github.sha (which is the
-      # default-branch head at event-delivery time and can already be newer).
-      GREEN_SHA: ${{ github.event.workflow_run.head_sha }}
+      # default-branch head at event-delivery time and can already be newer). On a manual
+      # dispatch there is no triggering run, and github.sha is the dispatched main head.
+      GREEN_SHA: ${{ github.event.workflow_run.head_sha || github.sha }}
     steps:
       - uses: actions/checkout@v7
         with:
           ref: ${{ env.GREEN_SHA }}
+      - name: Wait until the green commit is on main
+        if: github.event_name == 'workflow_run'
+        run: |
+          # The queue fast-forwards main right after the batch run turns green. Bounded wait:
+          # 30 tries x 10 s. A batch that never reaches main is not published.
+          for _ in $(seq 1 30); do
+            git fetch --quiet --depth=200 origin main
+            if git merge-base --is-ancestor "$GREEN_SHA" FETCH_HEAD 2>/dev/null; then
+              echo "$GREEN_SHA is on main"; exit 0
+            fi
+            sleep 10
+          done
+          echo "::error::$GREEN_SHA did not reach main within 5 minutes; not publishing"
+          exit 1
       - uses: docker/setup-buildx-action@v4
       - name: Log in to ghcr.io
         uses: docker/login-action@v4
