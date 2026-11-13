@@ -661,6 +661,8 @@ count to a "≥N" lower bound under a truncated DLQ scan — see `CMMN-SCOPE-PHA
   `audit_entry` for repeated ≥2-verb sequences per R-GOV-08; current data is one week of dev
   traffic (no real pilot deployment yet), so the ≥3-pilot-months/≥10-instances bar cannot be
   evaluated. Do not start the MVP until a re-run against real pilot audit data clears the gate.
+  **Re-run 2026-11-13 — still NOT met** (best signature 6 instances vs ≥10; 2 pilot months, no
+  audited operator action since 2026-08-05): `docs/reviews/S0-PLAYBOOK-DEMAND-2026-11.md`.
 - **Migration** — **panel-reviewed design locked in [INSTANCE-MIGRATION.md](INSTANCE-MIGRATION.md)**:
   single-instance migrate with server-side `migrate/validate` first; slice-1 = auto-map + a
   validator-driven targeted mapping table + the definition-versions on-ramp. The full side-by-side
