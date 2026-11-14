@@ -23,6 +23,8 @@ api() {
     -H "Accept: application/vnd.github+json" -H "X-GitHub-Api-Version: 2022-11-28" "$@"
 }
 jget() { python3 -c "import sys,json; d=json.load(sys.stdin); print($1)"; }
+# an unreadable API answer is exit 2, never 1 (1 means: not green / dropped by the queue)
+apierr() { echo "pr-queue: GitHub API error for #${PR}" >&2; exit 2; }
 
 # state: prints "<sha> <merged> <labelled>"
 state() {
@@ -34,27 +36,30 @@ head_run() {
     '(lambda r: (r[0]["status"]+"/"+(r[0]["conclusion"] or "-")) if r else "none")([x for x in d["workflow_runs"] if x["path"].endswith("/ci.yml")])'
 }
 
-read -r SHA MERGED LABELLED < <(state)
+ST="$(state)" || apierr
+read -r SHA MERGED LABELLED <<<"$ST"
 
 if [[ "$MODE" == status ]]; then
-  echo "pr #${PR}: label=${LABELLED} head=${SHA:0:8} run=$(head_run "$SHA") merged=${MERGED}"
+  RUN="$(head_run "$SHA")" || apierr
+  echo "pr #${PR}: label=${LABELLED} head=${SHA:0:8} run=${RUN} merged=${MERGED}"
   exit 0
 fi
 
 if [[ "$MODE" == label ]]; then
-  RUN="$(head_run "$SHA")"
+  RUN="$(head_run "$SHA")" || apierr
   if [[ "$RUN" != completed/success ]]; then
     echo "pr-queue: head ${SHA:0:8} ci run is '${RUN}', not green; fix it first" >&2
     exit 1
   fi
-  [[ "$LABELLED" == true ]] || api -X POST "${API}/issues/${PR}/labels" -d '{"labels":["queue"]}' >/dev/null
+  [[ "$LABELLED" == true ]] || api -X POST "${API}/issues/${PR}/labels" -d '{"labels":["queue"]}' >/dev/null || apierr
   echo "pr-queue: #${PR} labelled queue (head ${SHA:0:8})"
   exit 0
 fi
 
 deadline=$(( $(date +%s) + ${PQ_TIMEOUT:-3600} ))
 while :; do
-  read -r SHA MERGED LABELLED < <(state)
+  ST="$(state)" || apierr
+  read -r SHA MERGED LABELLED <<<"$ST"
   [[ "$MERGED" == true ]] && { echo "pr-queue: #${PR} merged"; exit 0; }
   if [[ "$LABELLED" != true ]]; then
     echo "pr-queue: #${PR} lost the queue label; last comment:" >&2
