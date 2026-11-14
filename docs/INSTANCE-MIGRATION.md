@@ -526,8 +526,32 @@ takes minutes and bloats the engine, so it runs against a throwaway flowable-res
 the BFF kept answering, and the submit was refused `hierarchy-plan-truncated`. The node cap (500)
 and the `unknown` child are unit-tested only (`HierarchyTreeTest`, `HierarchyBulkJobTest`).
 
-Not built yet: the plan builder UI (tree, per-definition target and mapping, submit). The
-operations drawer shows a hierarchy job's per-level progress.
+**Plan builder (UI).** The Hierarchy tab of a running instance has **Migrate this hierarchy…**
+(ADMIN on the engine; greyed with the reason below that). It opens `HierarchyMigrateModal`, which
+is a thin screen over the routes above and decides nothing itself:
+
+- Opening it stores a plan with `rootInstanceId` = the instance being looked at (its running
+  descendants; not its parents). Closing and reopening reads the tree again into a new plan.
+- The tree is drawn from the plan's `nodes` (instance, definition, level, the group's status).
+  Truncations are listed with where the walk stopped and `enumerated` of `total`; circular
+  references are listed as reported.
+- One block per source definition with the status the plan reports — **Pending** (`PENDING`),
+  **Analyzing…** (`ANALYZING`), **Configured** (`CONFIGURED`, with target version, sent and
+  not-sent counts), **Analysis failed** (`ANALYSIS_FAILED`), **Skipped** (`SKIPPED`) — a target
+  version select (the other deployed versions of that key, latest preselected), an optional
+  mapping, **Configure** and **Skip**. Both can be pressed again to change the decision. While
+  any group is `ANALYZING` the stored plan is re-read once a second.
+- The mapping is the JSON array of the single-instance editor's Expert mode (§1), checked in the
+  browser for shape and again by the BFF. The table and Diagrams modes are not offered here: the
+  plan API returns no per-definition activity list to fill them.
+- Submit is enabled when the plan says `executable`, with the cohort rails (reason, optional
+  ticket, on prod the typed `executableCount`). It sends `{planId, reason, ticketId?,
+  confirmedCount?}` only; `notExecutableReason` is shown verbatim otherwise. The job opens in the
+  operations drawer, which shows its per-level progress.
+
+Pinned by `HierarchyMigrateModal.test.tsx`, `HierarchyTab.test.tsx` and the hermetic Playwright
+spec `e2e/hierarchy-plan.spec.ts`. A cohort-rooted plan (`cohort` instead of `rootInstanceId`) has
+no screen; it stays API-only.
 ### 7.3 Case migration at scale (#500)
 
 Measured 2026-11-12 on live `flowable-rest` **6.8.0** and **7.1.0** with the fixture
