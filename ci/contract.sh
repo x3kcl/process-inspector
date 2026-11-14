@@ -26,6 +26,7 @@ part() { echo; echo "──────── ci/contract.sh $TARGET: $1 ──�
 lint() {
   part lint
   (cd backend && mvn -B spotless:check)
+  bash scripts/contract-selftest.sh
   ./scripts/security-audit.sh
   ./scripts/shell-syntax-check.sh
   ./scripts/check-node-pin.sh
