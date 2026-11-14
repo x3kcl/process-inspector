@@ -1,0 +1,76 @@
+{
+ "mission": "M15",
+ "user": "responder",
+ "tasks": [
+  {
+   "n": 1,
+   "verdict": "yes",
+   "answer": "Dashboard 'Failures by error class' card for PropertyNotFoundException '${healed eq true or selfHealGhost.total gt #}': '22 failing'. States: 'DLQ 22 jobs' (dead-letter, retries exhausted) and 'retrying 0 jobs'. By engine: Engine A demoSelfHealingBaseline v1: 21; Engine B v1: 1. The grid for the class shows '22 instances' (rows seen all FAILED). Note: 'spiking: 23 in the last 10 min.'",
+   "citations": [
+    "22 failing · last seen 4.1 min ago",
+    "DLQ 22 jobs",
+    "retrying 0 jobs",
+    "22 instances"
+   ]
+  },
+  {
+   "n": 2,
+   "verdict": "yes",
+   "answer": "Quote: 'usually self-heals (12/13 past spells, typically ≤ 1 min) — not the 22 dead-lettered (no retries left) · spiking: 23 in the last 10 min.' It is based on history of past failure spells of this class (12 of 13 cleared, typically within a minute), i.e. retry-driven recovery of jobs that still have retries. I'd rely on it only for items still retrying; small sample (13), and the tool itself excludes the dead-lettered ones. Also 'spiking' suggests current behaviour differs.",
+   "citations": [
+    "usually self-heals (12/13 past spells, typically ≤ 1 min) — not the 22 dead-lettered (no retries left) · spiking: 23 in the last 10 min."
+   ]
+  },
+  {
+   "n": 3,
+   "verdict": "yes",
+   "answer": "Do not wait on the 22: all are dead-lettered (DLQ 22 jobs, retrying 0 jobs), so the self-heal claim explicitly does not cover them. I'd retry the dead-lettered items (Retry group on demoSelfHealingBaseline) after considering that the spike (23 in last 10 min) may mean the cause is ongoing. No items are in retrying state, so there is nothing to leave alone for the self-heal reason; the dialog says instances that still hold retries are left alone anyway. Engines are DEV 'Low stakes'. Caveat: dashboard Acknowledge is disabled for me (missing OPERATOR on engine-a) though Retry group opened.",
+   "citations": [
+    "not the 22 dead-lettered (no retries left)",
+    "DLQ 22 jobs",
+    "retrying 0 jobs",
+    "DEV — a development engine. Low stakes.",
+    "Mostly safe: retrying only re-queues the step."
+   ]
+  },
+  {
+   "n": 4,
+   "verdict": "yes",
+   "answer": "Retry group on Engine A opened dialog 'Retry group — run every failed step in this error class again'. It said 'On Engine A (demo): demoSelfHealingBaseline v1', 'The card shows 21 failing instances in this scope. The retry targets the ones currently dead-lettered — the member list is resolved server-side at dispatch ... and the job reports the exact resolved count.' Requires reason 10+ chars; submit disabled ('Reason too short'). I cancelled without typing anything. Engine B's 1 item would need a separate Retry group (not opened); the whole-class count 22 needs filter-scope bulk.",
+   "citations": [
+    "The card shows 21 failing instances in this scope",
+    "Why are you doing this? (required, 10+ characters — saved to the audit trail on every item)",
+    "Capped at 200 instances per bulk job (server-enforced)"
+   ],
+   "interactions": 8
+  }
+ ],
+ "messagesCorpus": [
+  {
+   "quote": "Triage aggregation failed: Not signed in",
+   "tag": "fine"
+  },
+  {
+   "quote": "usually self-heals (12/13 past spells, typically ≤ 1 min) — not the 22 dead-lettered (no retries left) · spiking: 23 in the last 10 min.",
+   "tag": "confusing"
+  },
+  {
+   "quote": "🔒 Requires OPERATOR on every engine in this group — missing on engine-a",
+   "tag": "confusing"
+  },
+  {
+   "quote": "Mostly safe: retrying only re-queues the step. Anything the step does when it runs (emails, payments, calls) is not undone.",
+   "tag": "fine"
+  },
+  {
+   "quote": "🔒 Reason too short — 10+ characters",
+   "tag": "fine"
+  }
+ ],
+ "protocolNotes": [
+  "Dashboard count 22 vs Engine A card 21 + Engine B 1; grid only rendered 15 rows of 22 (virtualised), all FAILED.",
+  "Acknowledge disabled for responder (missing OPERATOR on engine-a) yet Retry group was enabled and opened a dialog; unclear whether submit would be permitted.",
+  "Dialog displays '#' instead of '0' in expression text (gt #), while the sample line shows 'gt 0'.",
+  "Did not confirm any action; cancelled."
+ ]
+}
