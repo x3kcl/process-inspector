@@ -150,12 +150,19 @@ jobs:
           cache-to: type=gha,mode=min,ignore-error=true
 
       - name: Record digests (issue #92 — always attributable to a SHA, never a floating tag)
+        env:
+          # The revision label metadata-action actually emitted, not a re-echo of GREEN_SHA (#654).
+          BFF_REV: ${{ fromJSON(steps.meta-bff.outputs.json).labels['org.opencontainers.image.revision'] }}
+          WEB_REV: ${{ fromJSON(steps.meta-web.outputs.json).labels['org.opencontainers.image.revision'] }}
         run: |
           {
             echo "### edge / sha-${{ steps.src.outputs.short }} image digests ($GREEN_SHA)"
             echo "- BFF: \`ghcr.io/${{ github.repository }}-bff@${{ steps.build-bff.outputs.digest }}\`"
             echo "- web: \`ghcr.io/${{ github.repository }}-web@${{ steps.build-web.outputs.digest }}\`"
-            echo "- image revision label: \`$GREEN_SHA\`"
+            echo "- image revision label: BFF \`$BFF_REV\`, web \`$WEB_REV\`"
             echo
             echo "Pin the demo deploy to these with \`docker/deploy-demo.sh edge\` — see docker/DEMO-DEPLOY.md."
           } | tee -a "$GITHUB_STEP_SUMMARY"
+          if [ "$BFF_REV" != "$GREEN_SHA" ] || [ "$WEB_REV" != "$GREEN_SHA" ]; then
+            echo "::error::image revision label is not $GREEN_SHA (BFF $BFF_REV, web $WEB_REV)"; exit 1
+          fi
