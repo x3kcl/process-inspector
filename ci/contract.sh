@@ -30,6 +30,7 @@ lint() {
   ./scripts/shell-syntax-check.sh
   ./scripts/check-node-pin.sh
   bash scripts/check-alert-rules.sh
+  bash scripts/hooks-selftest.sh
   bash scripts/check-orphan-its.sh
 }
 
