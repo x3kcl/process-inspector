@@ -1,6 +1,10 @@
+import { useState } from 'react'
 import { RawJsonExport } from '../RawJsonExport'
 import { Link } from 'react-router'
+import { roleOn, useMe } from '../../api/me'
 import type { HierarchyNode } from '../../api/model'
+import { ActionHint } from '../../components/ActionHint'
+import { HierarchyMigrateModal } from '../HierarchyMigrateModal'
 import { Ts } from '../../lib/Ts'
 import { useInstanceHierarchy } from '../useInstanceQueries'
 
@@ -16,6 +20,8 @@ interface Props {
  */
 export default function HierarchyTab({ engineId, instanceId }: Props) {
   const query = useInstanceHierarchy(engineId, instanceId)
+  const admin = roleOn(useMe().data, engineId) === 'ADMIN'
+  const [planOpen, setPlanOpen] = useState(false)
 
   if (query.isPending) return <div className="zero-state">Loading the call-activity tree…</div>
   if (query.isError) {
@@ -32,6 +38,36 @@ export default function HierarchyTab({ engineId, instanceId }: Props) {
   return (
     <div className="hierarchy-tab">
       <RawJsonExport data={query.data} filename={`${engineId}-${instanceId}-hierarchy.json`} />
+      {/* #497: the plan builder — this instance and its running call-activity descendants. */}
+      <span className="action-slot">
+        <button
+          type="button"
+          className="copy-btn action-btn"
+          disabled={!admin}
+          aria-describedby={admin ? undefined : 'hierarchy-migrate-hint'}
+          title="Plan a migration of this instance and its running children — children first, then parent"
+          onClick={() => {
+            setPlanOpen(true)
+          }}
+        >
+          Migrate this hierarchy…
+        </button>
+        {!admin && (
+          <ActionHint
+            id="hierarchy-migrate-hint"
+            text="Planning a hierarchy migration needs ADMIN on this engine."
+          />
+        )}
+      </span>
+      {planOpen && (
+        <HierarchyMigrateModal
+          engineId={engineId}
+          rootInstanceId={instanceId}
+          onClose={() => {
+            setPlanOpen(false)
+          }}
+        />
+      )}
       {depthLimitReached && (
         <p className="strip-note">
           Depth limit reached (max {maxDepth ?? '?'} levels rendered) — deeper children exist. Open

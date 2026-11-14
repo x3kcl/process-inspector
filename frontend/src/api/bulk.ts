@@ -205,3 +205,25 @@ export function useSubmitBulkMigrate() {
     },
   })
 }
+
+/** Hierarchy migration (#497): the stored plan id only; the BFF resolves items and order. */
+export type BulkMigrateHierarchyRequest = components['schemas']['BulkMigrateHierarchyRequest']
+
+export async function submitBulkMigrateHierarchy(
+  body: BulkMigrateHierarchyRequest,
+): Promise<BulkJobDto> {
+  const { data, error, response } = await api.POST('/api/bulk/migrate-hierarchy', { body })
+  if (data === undefined) throw new ActionError(parseActionProblem(response.status, error))
+  return data
+}
+
+export function useSubmitBulkMigrateHierarchy() {
+  const queryClient = useQueryClient()
+  return useMutation<BulkJobDto, ActionError, BulkMigrateHierarchyRequest>({
+    retry: false,
+    mutationFn: submitBulkMigrateHierarchy,
+    onSettled: async () => {
+      await queryClient.invalidateQueries({ queryKey: BULK_JOBS_KEY })
+    },
+  })
+}
