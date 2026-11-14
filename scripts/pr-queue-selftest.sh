@@ -49,5 +49,9 @@ fixture success false true;  check "waiting times out" 3 no --watch 7
 fixture success false true;  check "status prints" 0 no --status 7
 fixture success false true; touch "$T/down"; check "API error exits 2" 2 no --watch 7
 fixture success false false; touch "$T/down"; check "API error refuses with 2" 2 no 7
+fixture success false false; check "PR then --status never labels" 0 no 7 --status
+fixture success false false; check "PR then --watch watches" 1 no 7 --watch
+fixture success false false; check "unknown flag exits 2, no call" 2 no 7 --bogus
+[[ -s "$T/calls" ]] && { echo "FAIL unknown flag made an API call"; fail=1; }
 [[ $fail == 0 ]] && echo "pr-queue-selftest: ok"
 exit $fail
