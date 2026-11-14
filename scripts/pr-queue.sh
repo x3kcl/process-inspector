@@ -3,16 +3,23 @@
 # pr-queue.sh — land a pull request through the ci-lib merge queue.
 #
 #   scripts/pr-queue.sh <PR>            refuse unless the head's `ci` run is green, then add the `queue` label
-#   scripts/pr-queue.sh --watch <PR>    block until merged (0), unlabelled by the queue (1, prints its comment), timeout (3)
+#   scripts/pr-queue.sh --watch <PR>    (flag before or after <PR>) block until merged (0), unlabelled by the queue (1, prints its comment), timeout (3)
 #   scripts/pr-queue.sh --status <PR>   print label, head run, merged flag
 #
 # Exit: 0 ok/merged, 1 head not green / queue dropped the PR, 2 usage or API error, 3 watch timeout.
 # curl + $GITHUB_PERSONAL_ACCESS_TOKEN (never echoed). Env: PQ_SLUG, PQ_INTERVAL (30), PQ_TIMEOUT (3600).
 set -euo pipefail
 
-MODE=label
-case "${1:-}" in --watch) MODE=watch; shift ;; --status) MODE=status; shift ;; esac
-PR="${1:?usage: pr-queue.sh [--watch|--status] <PR>}"
+MODE=label PR=""
+USAGE="usage: pr-queue.sh [--watch|--status] <PR>   (flag may come before or after the number)"
+for a in "$@"; do
+  case "$a" in
+    --watch|--status) [[ $MODE == label ]] || { echo "$USAGE" >&2; exit 2; }; MODE="${a#--}" ;;
+    ''|*[!0-9]*) echo "$USAGE" >&2; exit 2 ;;
+    *) [[ -z "$PR" ]] || { echo "$USAGE" >&2; exit 2; }; PR="$a" ;;
+  esac
+done
+[[ -n "$PR" ]] || { echo "$USAGE" >&2; exit 2; }
 : "${GITHUB_PERSONAL_ACCESS_TOKEN:?set GITHUB_PERSONAL_ACCESS_TOKEN}"
 
 ROOT="$(cd "$(dirname "${BASH_SOURCE[0]}")/.." && pwd)"
