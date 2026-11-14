@@ -30,4 +30,10 @@ fd_hits() {
 fd_files() { git diff-tree --no-commit-id --name-only -r "$1"; }
 
 # fd_frozen_reds BASE HEAD -> shas of `test(#N): RED` commits in BASE..HEAD, oldest first
-fd_frozen_reds() { git log --reverse --format=%H -E --grep='^test\(#[0-9]+\): RED([^[:alnum:]_]|$)' "$1..$2"; }
+# (subject only, as ci-lib RED_FROZEN_RE.match: a body line quoting one does not freeze)
+fd_frozen_reds() {
+  git log --reverse --format='%H %s' "$1..$2" | while read -r sha subj; do
+    [[ "$subj" =~ ^test\(#[0-9]+\):\ RED([^[:alnum:]_]|$) ]] && printf '%s\n' "$sha"
+  done
+  return 0
+}
