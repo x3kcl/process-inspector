@@ -53,5 +53,7 @@ fixture success false false; check "PR then --status never labels" 0 no 7 --stat
 fixture success false false; check "PR then --watch watches" 1 no 7 --watch
 fixture success false false; check "unknown flag exits 2, no call" 2 no 7 --bogus
 [[ -s "$T/calls" ]] && { echo "FAIL unknown flag made an API call"; fail=1; }
+grep -q '^usage:' <<<"$out" || { echo "FAIL unknown flag printed no usage line"; fail=1; }
+fixture success false false; check "two mode flags exit 2" 2 no --watch 7 --status
 [[ $fail == 0 ]] && echo "pr-queue-selftest: ok"
 exit $fail
