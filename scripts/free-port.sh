@@ -7,7 +7,7 @@
 # connection on it locally — the same condition that would make `docker compose up`
 # (or any other bind) fail with "port is already allocated".
 #
-# Used by ci.yml/nightly.yml's "Resolve the slot port namespace" steps so a runner
+# Used by ci/contract.sh (the ci-light, ci-heavy and ci-nightly parts) so a runner
 # slot's fixed port block (docker/ci-runner/docker-compose.yml) survives a port on
 # that host being permanently squatted by something else (e.g. issue #163/#288 —
 # an unrelated project's container holding slot s1's engine-B port) without needing
