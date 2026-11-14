@@ -10,3 +10,4 @@ import java.util.List;
  */
 public record ChangeStateRequest(
         String reason, String ticketId, List<String> sourceActivityIds, List<String> targetActivityIds) {}
+// lr-1 refusal probe for #646 (do not land)
