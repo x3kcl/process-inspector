@@ -3,8 +3,9 @@
 Read before your first commit. These rules keep a test you wrote from being bent to fit the code. The doctrine
 behind them is the `tdd` skill (`.claude/skills/tdd/SKILL.md`).
 
-**Status:** the merge-queue checks for these rules arrive with #640. Until then they are doctrine, checked in
-review; the anchors below are what a gate refusal will link.
+**Status:** `lr-1` and `lr-2` are enforced by the merge queue since #646 (`CI_MQ_RED_FIRST=1` in
+`ci/manifest.env`); `lr-3` is checked by `scripts/front-door-check.sh` and in review. Run the check before you
+push: `bash scripts/front-door-check.sh origin/main HEAD --body-file <PR body>`.
 
 Paths the rules read:
 

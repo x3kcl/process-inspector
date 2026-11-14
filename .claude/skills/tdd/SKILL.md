@@ -122,9 +122,12 @@ minute is spent. Then `scripts/ci-local.sh` and the `green-ci` loop.
 - **Enforced on `main` today:** `NoSleepInTestsArchTest`; Spotless and ESLint in CI; the PR lane (`lint`,
   `unit`, `frontend`, `e2e`) green on the head before the `queue` label; the full light + heavy run on every
   merge-queue batch.
-- **Arriving with #640 (not live yet):** the RED commit before the code commit (`lr-1`), the frozen-RED check
-  (`lr-2`), the assertion-weakening check (`lr-3`), the human-only waiver signer (`lr-5`), and the repo hooks.
-  Until #640 lands they are doctrine; follow them anyway — see `docs/landing-rules.md`.
+- **Enforced by the merge queue (`CI_MQ_RED_FIRST=1` in `ci/manifest.env`, #646):** the RED commit before the
+  code commit (`lr-1`, or a `No-RED: <reason>` trailer) and the frozen RED file (`lr-2`). A refused pull
+  request loses the `queue` label with a comment linking `docs/landing-rules.md`. Check before you push:
+  `bash scripts/front-door-check.sh origin/main HEAD --body-file <PR body>`.
+- **Enforced locally only:** the assertion-weakening check (`lr-3`, `scripts/front-door-check.sh`) and the repo
+  hooks (`.claude/settings.json`: Stop runs the touched tests, protected paths refuse an edit).
 - **Doctrine only:** that the RED test actually FAILED for the right reason (the proof line is yours to quote
   honestly), the `RED:` sha line, the four questions above. A pull request whose `backend/src/main` or
   `frontend/src` diff has no test counterpart is sent back in review.

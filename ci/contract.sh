@@ -1,10 +1,11 @@
 #!/usr/bin/env bash
 #
-# ci/contract.sh <ci-light|ci-heavy> — the ci-lib contract (gate.sh runs it; run it by hand to
+# ci/contract.sh <ci-light|ci-heavy|ci-nightly> — the ci-lib contract (gate.sh runs it; run it by hand to
 # reproduce a gate locally).
 #
 #   ci-light  lint · unit · frontend · e2e      what a pull request and a mq/** batch both run
 #   ci-heavy  docker · integration              what only a mq/** batch runs
+#   ci-nightly one part per nightly.yml job     what the nightly runs (CI_PART=<job id>)
 #
 # CI_PART picks one part (a space-separated list works too): the workflow runs each part as its
 # own job so the check names the main ruleset requires (lint, unit, frontend, e2e, docker,
