@@ -449,9 +449,14 @@ sent and the parent is migrated. Fix the cause and use
 **Continue as new job**: it keeps the order, and it refuses to continue a parent without the
 child that held it back. The drawer shows the progress per level, deepest first. A tree with more
 than 50 running children under one instance, deeper than 10 levels, or larger than 500 instances
-is not planned: the plan says where it stopped and how many there are. Today a plan is created
-and submitted through the API (`/api/migration/hierarchy/plans`, `/api/bulk/migrate-hierarchy`);
-the plan screen is not built yet.
+is not planned: the plan says where it stopped and how many there are. Open the plan from the
+parent's **Hierarchy** tab with **Migrate this hierarchy…** (ADMIN): it shows the running tree
+under that instance and one block per definition with its status — Pending, Analyzing…,
+Configured, Analysis failed or Skipped. Pick the target version (and, if activities were renamed,
+paste the mapping as JSON), press **Configure**, or **Skip** to leave that definition on its
+version. **Migrate N** enables once every definition is decided; on prod you type the number of
+instances that will be sent. A plan over a whole cohort of parents is created through the API
+(`/api/migration/hierarchy/plans`).
 
 ## 15. Watermark & licensing note
 

@@ -677,7 +677,8 @@ count to a "≥N" lower bound under a truncated DLQ scan — see `CMMN-SCOPE-PHA
   per-level progress in the operations drawer. S6 dual-canvas mapping editor ✔ (#498).
   **S7 ✔ (#500):** the case cohort as the bulk verb `migrate-case`, the case-versions
   on-ramp, and the 7.x-only by-definition batch and historic doors behind the version gate
-  (INSTANCE-MIGRATION.md §7.3). Open: the S5 plan builder UI.
+  (INSTANCE-MIGRATION.md §7.3). **S5 plan builder UI ✔ (#497):** the Hierarchy tab's
+  **Migrate this hierarchy…** — tree, target + mapping or skip per definition, plan-id submit.
 - **Job-lane trend sparklines** on the Stage-0 landing (per-engine dead-letter / timer /
   executable / suspended counts over time) — descoped here from v1.x #4 because v1 exposes
   only _live_ job-lane counts; a trend needs the **R-BAU-08** snapshot/time-series store
