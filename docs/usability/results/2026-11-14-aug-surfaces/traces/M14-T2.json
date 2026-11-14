@@ -1,0 +1,145 @@
+{
+ "mission": "M14",
+ "user": "viewer",
+ "tasks": [
+  {
+   "n": 1,
+   "verdict": "yes-with-struggle",
+   "answer": "Section 'Failures by error class · 4' has 4 cards in this order: ArithmeticException (47), UnknownHostException/'execution exception' (12), PropertyNotFoundException ${partnerQuota.total} (3), PropertyNotFoundException ${healed eq true or selfHealGhost.total gt #} (22). First pick: ArithmeticException — 47 failing, biggest, last seen 1.4 min ago, no self-heal history, and ranked first. The order is explained only by a hover tooltip (title attribute) on a small 'ranked by attention' label: 'Ordered by the expected cost of waiting: how recently this class was seen and how fast it is growing — classes that reliably clear themselves soon rank lower, and nothing is hidden.' Caveat: I read it from the accessibility tree's title text, not by hovering; a visible-only user sees just 'ranked by attention'. It does not change my pick (it confirms it); it explains why the 22-failing card is last.",
+   "citations": [
+    "Failures by error class · 4",
+    "47 failing · last seen 1.4 min ago · no resolve-time history · no self-heal history.",
+    "ranked by attention",
+    "Ordered by the expected cost of waiting: how recently this class was seen and how fast it is growing — classes that reliably clear themselves soon rank lower, and nothing is hidden."
+   ],
+   "confusion": [
+    "Explanation is hidden in a tooltip behind a vague label 'ranked by attention'; no visible sort-key or score.",
+    "'how fast it is growing' has no visible growth number on any card."
+   ],
+   "firstSignal": "Card order plus 'ranked by attention' label",
+   "interactions": 4
+  },
+  {
+   "n": 2,
+   "verdict": "yes-with-struggle",
+   "answer": "The card's heading line shows code 'UnknownHostException' with the message 'execution exception' (no card is headed by the literal words alone; the message is the 'execution exception'). Beyond numbers: it says 12 failing, last seen 1.4 min ago, 'no resolve-time history · no self-heal history.' i.e. the tool has no data on how long this class takes to resolve or whether it clears itself, so nothing is known about it being transient. It also shows 'DLQ 12 jobs' and 'retrying 0 jobs' = all 12 are dead-lettered, retries exhausted, so they will not recover by themselves; it spans Engine A and B, both acmeApiOutage v1 (6 each). Acknowledge is disabled: 'Requires OPERATOR on every engine in this group — missing on engine-a'. Not understood: what 'no resolve-time history' / 'self-heal history' are measured over (they say no data, yet the Incidents page says '0 of 10 spells observed'); why the message is just 'execution exception' with a host-resolution exception code; 'ranked by attention' gives no individual reason.",
+   "citations": [
+    "UnknownHostException",
+    "execution exception",
+    "12 failing · last seen 1.4 min ago · no resolve-time history · no self-heal history.",
+    "DLQ 12 jobs",
+    "retrying 0 jobs",
+    "sample: execution exception"
+   ],
+   "confusion": [
+    "'no resolve-time history · no self-heal history' absence of data reads like a neutral fact but silently affects ranking.",
+    "'spells' term (seen on Incidents) never defined."
+   ],
+   "firstSignal": "Second article on landing page",
+   "interactions": 1
+  },
+  {
+   "n": 3,
+   "verdict": "yes-with-struggle",
+   "answer": "The execution exception card (2nd) sits higher than the 'healed' card (4th, last). Only reason the screen gives: the healed card says 'usually self-heals (12/13 past spells, typically ≤ 1 min) — not the 22 dead-lettered (no retries left).' and the ranking tooltip says 'classes that reliably clear themselves soon rank lower'. So presumably self-heal history demotes it even though it has more failures (22 vs 12) and same last-seen (1.4 min). The screen never states that this is the reason for this specific pair, so that is inference. Oddity: heading shows '${healed eq true or selfHealGhost.total gt #}' while the sample line shows '... gt 0' (number masked in heading). Also contradictory: 'usually self-heals' beside 'DLQ 22 jobs' / 'retrying 0 jobs' — all 22 are dead-lettered, so waiting does not obviously help.",
+   "citations": [
+    "usually self-heals (12/13 past spells, typically ≤ 1 min) — not the 22 dead-lettered (no retries left).",
+    "DLQ 22 jobs",
+    "classes that reliably clear themselves soon rank lower",
+    "22 failing · last seen 1.4 min ago"
+   ],
+   "confusion": [
+    "Self-heal claim vs. all 22 jobs in DLQ with 0 retrying.",
+    "Heading shows 'gt #' while sample shows 'gt 0'."
+   ],
+   "firstSignal": "4th card summary line",
+   "interactions": 1
+  },
+  {
+   "n": 4,
+   "verdict": "yes-with-struggle",
+   "answer": "Low-to-moderate trust. Less: the page never shows a score, growth rate, or the weights; the explanation is only in a tooltip; the demoted card is a 22-failure class whose 'usually self-heals' claim sits next to 'DLQ 22 jobs' and 'retrying 0 jobs'; most cards say 'no resolve-time history · no self-heal history.' so ranking leans on little data; all cards 'last seen 1.4 min ago' so recency doesn't discriminate. More: tooltip says 'nothing is hidden' and the 'as of' stamp ('server-side aggregation stamp (BFF caches ~20s)') shows data freshness. On a real incident night I would use the order as a hint only and check counts myself. Nothing on screen gives a validation or accuracy figure for the ranking.",
+   "citations": [
+    "nothing is hidden",
+    "server-side aggregation stamp (BFF caches ~20s)",
+    "no resolve-time history · no self-heal history.",
+    "usually self-heals (12/13 past spells, typically ≤ 1 min) — not the 22 dead-lettered (no retries left)."
+   ],
+   "confusion": [
+    "No visible accuracy/validation statement for ranking."
+   ],
+   "firstSignal": "Tooltip text and per-card summary lines",
+   "interactions": 0
+  },
+  {
+   "n": 5,
+   "verdict": "yes",
+   "answer": "No — different structure and different explanation. Incidents ('Incident Ledger · 24') groups by state: Regressed · 3, Open · 3, Quiet · 17, Resolved (1). Within Open the order is ArithmeticException (47), UnknownHostException/'execution exception' (12), PropertyNotFoundException healed-... (22). So the two classes are in the same relative order as the landing page (execution exception above healed), but the healed one is third of three and the ordering is under a state heading; the partnerQuota class appears in Regressed above them, not between. Explanation: every card carries the same 'ranked by attention' label, and the healed card shows 'usually self-heals (12/13 past spells, typically ≤ 1 min)'; but the 'execution exception' card here additionally says 'no reliable self-heal history yet (0 of 10 spells observed)' — a line not on the landing card — and the healed card's extra line differs. The page-level framing is different: 'distinct from the Stage-0 triage cards above, which recompute per poll and forget the moment a class drains' (the 'cards above' don't exist on the Incidents page). Odd: Regressed cards say '15 failing · last seen just now' while the same card says 'last seen Aug 9, 2026, 01:17:40 PM UTC · 96d ago'.",
+   "citations": [
+    "Incident Ledger · 24",
+    "Regressed · 3",
+    "Open · 3",
+    "Quiet · 17",
+    "no reliable self-heal history yet (0 of 10 spells observed)",
+    "usually self-heals (12/13 past spells, typically ≤ 1 min)",
+    "distinct from the Stage-0 triage cards above, which recompute per poll and forget the moment a class drains",
+    "15 failing · last seen just now"
+   ],
+   "confusion": [
+    "Same label 'ranked by attention' but ledger is grouped by state, so rank basis unclear.",
+    "'last seen just now' contradicts 'last seen ... 96d ago'.",
+    "'cards above' reference on a page with no cards above."
+   ],
+   "firstSignal": "Incident Ledger heading",
+   "interactions": 2
+  }
+ ],
+ "messagesCorpus": [
+  {
+   "quote": "Triage aggregation failed: Not signed in",
+   "tag": "fine"
+  },
+  {
+   "quote": "ranked by attention",
+   "tag": "confusing"
+  },
+  {
+   "quote": "Ordered by the expected cost of waiting: how recently this class was seen and how fast it is growing — classes that reliably clear themselves soon rank lower, and nothing is hidden.",
+   "tag": "confusing"
+  },
+  {
+   "quote": "12 failing · last seen 1.4 min ago · no resolve-time history · no self-heal history.",
+   "tag": "confusing"
+  },
+  {
+   "quote": "22 failing · last seen 1.4 min ago · no resolve-time history · usually self-heals (12/13 past spells, typically ≤ 1 min) — not the 22 dead-lettered (no retries left).",
+   "tag": "confusing"
+  },
+  {
+   "quote": "🔒 Requires OPERATOR on every engine in this group — missing on engine-a",
+   "tag": "fine"
+  },
+  {
+   "quote": "🔒 Requires RESPONDER — you are VIEWER",
+   "tag": "fine"
+  },
+  {
+   "quote": "no reliable self-heal history yet (0 of 10 spells observed)",
+   "tag": "confusing"
+  },
+  {
+   "quote": "15 failing · last seen just now ... last seen Aug 9, 2026, 01:17:40 PM UTC · 96d ago",
+   "tag": "confusing"
+  },
+  {
+   "quote": "distinct from the Stage-0 triage cards above, which recompute per poll and forget the moment a class drains",
+   "tag": "confusing"
+  }
+ ],
+ "protocolNotes": [
+  "Setup: no prior session; signed in as viewer/dev. Console showed errors from pre-login 'Not signed in' calls.",
+  "Tooltip text was read from accessibility-tree title attributes, not by hovering; I did not hover. Incidents text read via innerText of main (browser_evaluate, DOM text only, no API).",
+  "Interactions counted as UI actions: sign in, open Incidents; rest were reads of the already-rendered page.",
+  "Task 2 wording: the card headline code is UnknownHostException; 'execution exception' is its message."
+ ]
+}

@@ -1,0 +1,17 @@
+
+Handover note from the night shift: _"`partnerQuota` is back. It was closed as fixed
+yesterday. Before you touch it: find out what was already tried last time and whether any
+of it helped — don't repeat what didn't work."_
+
+1. Find the history of this failure. What state is it in now? Quote the wording.
+2. How many separate outbreaks does the tool record for it? For each one: when it started,
+   how long it lasted, and how it ended. Cite what you read.
+3. During the FIRST outbreak, what was done about it from this tool — what kinds of
+   actions, how many, and by whom? Cite exactly where you found each part. If the tool
+   does not tell you some part of this, say which part.
+4. Did those actions help? What on screen supports your answer?
+5. During the CURRENT outbreak, has anyone done anything about it yet? How do you know?
+6. How sure are you that what you found in task 3 is the complete list — could anything be
+   missing, or counted that does not belong? Quote anything on screen that speaks to this;
+   if nothing does, say so.
+
