@@ -14,8 +14,7 @@ MODE=label PR=""
 USAGE="usage: pr-queue.sh [--watch|--status] <PR>   (flag may come before or after the number)"
 for a in "$@"; do
   case "$a" in
-    --watch) MODE=watch ;;
-    --status) MODE=status ;;
+    --watch|--status) [[ $MODE == label ]] || { echo "$USAGE" >&2; exit 2; }; MODE="${a#--}" ;;
     ''|*[!0-9]*) echo "$USAGE" >&2; exit 2 ;;
     *) [[ -z "$PR" ]] || { echo "$USAGE" >&2; exit 2; }; PR="$a" ;;
   esac
