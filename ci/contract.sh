@@ -33,6 +33,7 @@ lint() {
   bash scripts/check-alert-rules.sh
   bash scripts/hooks-selftest.sh
   bash scripts/check-orphan-its.sh
+  bash scripts/front-door-selftest.sh
 }
 
 unit() {
