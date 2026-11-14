@@ -167,16 +167,148 @@ integration() {
   done
 }
 
+# ---- ci-nightly -------------------------------------------------------------------------------
+# One part per nightly.yml job, named by its job id (CI_PART=<job id>). The workflow keeps the
+# triggers, Java/Node setup, logins, timeouts and artifact uploads; the commands live here.
+# supply-chain is not a part: its logic is marketplace actions (.github/actions/supply-chain).
+# A part that needs docker skips loudly when run by hand without a daemon; in the workflow
+# (CI_EVENT set) an unreachable daemon is red.
+NIGHTLY_COMPOSE=docker/docker-compose.dev.yml
+nightly_docker() { # part — 0 run it, 1 skip it
+  docker info > /dev/null 2>&1 && return 0
+  [ -z "${CI_EVENT:-}" ] || { echo "contract: $1 needs docker and the daemon is unreachable" >&2; exit 1; }
+  echo "contract: SKIPPED $1 — no reachable docker daemon (the nightly runner slot has one)"; return 1
+}
+nightly_ryuk() { # rootless slots: point Testcontainers' Ryuk at the real socket (no-op elsewhere)
+  local tc_env; tc_env="$(bash scripts/ci-testcontainers-socket.sh)"
+  [ -z "$tc_env" ] || export "$tc_env"
+}
+nightly_its() { (cd backend && mvn -B verify -Dskip.surefire.tests=true "$@"); }
+
+nightly_container_its() {
+  part container-its
+  nightly_docker container-its || return 0
+  nightly_ryuk
+  nightly_its -Dit.test=AuditRoleGrantsIT,AuditPartitionCarveIT,AuditPartitionMaintainerIT,AuditRetentionPurgeIT,AuditRetentionPurgerIT,AuditIntegrityIT,SharedViewIT,SharedViewFailClosedIT,SharedViewGovernanceIT,ViewStoreIT,AccessMappingAdminDbIT,MappingStoreDbIT,EngineRegistryStoreIT,EngineRegistryReloadIT,OidcKeycloakIT,IncidentLedgerIT,LedgerNativeQueriesIT,AuditEntryRepositoryScopeIT,AuditEntryRepositoryAttributionIT
+}
+nightly_dlq_scan_cap_p2() { part dlq-scan-cap-p2; nightly_its -Dit.test=DlqScanCapVolumeIT; }
+nightly_fanout_partial_failure_p1() { part fanout-partial-failure-p1; nightly_its -Dit.test=FanoutPartialFailureIT; }
+nightly_soak_p3() {
+  part soak-p3
+  nightly_docker soak-p3 || return 0
+  nightly_ryuk
+  nightly_its -Dit.test=SseBulkSoakIT -Dsoak.minutes=20
+}
+
+# The compose harness (flowable-6 + postgres) of engine-its, perf-p1 and e2e-real, on the slot's
+# ports (#163/#288). The EXIT trap reaps the background BFF, dumps the logs on a red part and
+# always tears the harness down; each part runs in its own subshell.
+NIGHTLY_BFF_PID="" NIGHTLY_BFF_LOG=""
+nightly_cleanup() {
+  local rc=$?
+  if [ -n "$NIGHTLY_BFF_PID" ]; then
+    [ "$rc" = 0 ] || tail -200 "$NIGHTLY_BFF_LOG" || true
+    kill "$NIGHTLY_BFF_PID" 2>/dev/null || true
+  fi
+  [ "$rc" = 0 ] || docker compose -p "$CI_PROJECT" -f "$NIGHTLY_COMPOSE" logs --no-color --timestamps || true
+  docker compose -p "$CI_PROJECT" -f "$NIGHTLY_COMPOSE" down -v --remove-orphans || true
+}
+nightly_harness() { # project a-port b-port pg-port
+  export COMPOSE_PROFILES="flowable-6,postgres" CI_PROJECT="$1"
+  PI_ENGINE_A_PORT=$(scripts/free-port.sh "$2" 20)
+  PI_ENGINE_B_PORT=$(scripts/free-port.sh "$3" 20 "$PI_ENGINE_A_PORT")
+  PI_PG_PORT=$(scripts/free-port.sh "$4" 5)
+  export PI_ENGINE_A_PORT PI_ENGINE_B_PORT PI_PG_PORT INSPECTOR_DB_URL="jdbc:postgresql://localhost:${PI_PG_PORT}/inspector"
+  docker compose -p "$CI_PROJECT" -f "$NIGHTLY_COMPOSE" down -v --remove-orphans || true    # a killed run's residue
+  trap nightly_cleanup EXIT
+  docker compose -p "$CI_PROJECT" -f "$NIGHTLY_COMPOSE" up -d
+  bash docker/smoke-test.sh flowable-6
+}
+nightly_bff() { # log — the BFF jar in the background, pointed at the seeded engines, until /v3/api-docs answers
+  (cd backend && mvn -B -Dskip.surefire.tests=true package)   # not -DskipTests: see Dockerfile
+  NIGHTLY_BFF_LOG="$1"
+  cd backend
+  INSPECTOR_ENGINE_A_BASE_URL="http://localhost:${PI_ENGINE_A_PORT}/flowable-rest/service" \
+  INSPECTOR_ENGINE_B_BASE_URL="http://localhost:${PI_ENGINE_B_PORT}/flowable-rest/service" \
+  ENGINE_A_PASSWORD=test ENGINE_B_PASSWORD=test SERVER_PORT="$PI_BFF_PORT" \
+    nohup java -jar "$(ls target/*.jar | head -1)" > "$NIGHTLY_BFF_LOG" 2>&1 &
+  NIGHTLY_BFF_PID=$!
+  cd "$ROOT"
+  for _ in $(seq 1 90); do
+    curl -fsS "http://localhost:${PI_BFF_PORT}/v3/api-docs" > /dev/null && return 0
+    sleep 2
+  done
+  echo "contract: BFF did not serve /v3/api-docs within 180s" >&2
+  return 1
+}
+
+nightly_engine_its() {
+  part engine-its
+  nightly_docker engine-its || return 0
+  nightly_harness pi-ci-nightly-6 "${PI_ENGINE_A_PORT:-8691}" "${PI_ENGINE_B_PORT:-8692}" "${PI_PG_PORT:-5435}"
+  bash docker/seed.sh --profile flowable-6
+  nightly_ryuk
+  # SelfHealLikelyLaneIT is several minutes of real engine retries; the job's 40 minutes cover it.
+  nightly_its -Dit.test=CorrectiveActionIT,CmmnCorrectiveActionIT,FailClosedAuditIT,FlowSurgeryIT,BulkFilterIT,BulkErrorClassIT,SnapshotSamplerIT,DefinitionVersionsIT,MigrationIT,DetailResolveIT,InstanceTimelineIT,IncidentLedgerArcIT,SelfHealDwellSuppressionIT,SelfHealLikelyLaneIT,SelfHealMixedLaneIT
+}
+
+nightly_perf_p1() {
+  part perf-p1
+  nightly_docker perf-p1 || return 0
+  nightly_harness pi-ci-nightly-perf "${PI_ENGINE_A_PORT:-8695}" "${PI_ENGINE_B_PORT:-8696}" "${PI_PG_PORT:-5436}"
+  PI_BFF_PORT=$(scripts/free-port.sh "${PI_BFF_PORT:-8697}" 20); export PI_BFF_PORT
+  # Full FIX-REF-01 scale; explicit engine URLs (the flowable-6 profile only brings up A+B).
+  python3 docker/seed-reference.py \
+    "http://localhost:${PI_ENGINE_A_PORT}/flowable-rest/service" "http://localhost:${PI_ENGINE_B_PORT}/flowable-rest/service"
+  nightly_bff /tmp/bff-perf.log
+  # k6 as a pinned, checksum-verified BINARY on the runner: a containerised k6 has no route back to
+  # the runner on the rootless-DinD slots (nightly #91). v2.1.0 keeps perf-scenario-p1.js's thresholds calibrated.
+  local ver=2.1.0 sha=295d961ebfca306f295f1133068dcd403a8171c87f387928f5f30b0fbcff858a
+  curl -fsSL "https://github.com/grafana/k6/releases/download/v${ver}/k6-v${ver}-linux-amd64.tar.gz" -o /tmp/k6.tgz
+  echo "${sha}  /tmp/k6.tgz" | sha256sum -c -
+  tar xzf /tmp/k6.tgz -C /tmp
+  install -m 0755 "/tmp/k6-v${ver}-linux-amd64/k6" /tmp/k6
+  /tmp/k6 version
+  # The dev viewer/dev credentials are the k6 script's own defaults (SecurityConfig, !oidc).
+  BASE_URL="http://localhost:${PI_BFF_PORT}" /tmp/k6 run --summary-export=/tmp/k6-summary-p1.json scripts/perf-scenario-p1.js
+}
+
+nightly_e2e_real() {
+  part e2e-real
+  nightly_docker e2e-real || return 0
+  nightly_harness pi-ci-nightly-e2e "${PI_ENGINE_A_PORT:-8691}" "${PI_ENGINE_B_PORT:-8692}" "${PI_PG_PORT:-5435}"
+  PI_BFF_PORT=$(scripts/free-port.sh "${PI_BFF_PORT:-8086}" 20 "$PI_ENGINE_A_PORT" "$PI_ENGINE_B_PORT")
+  PI_E2E_PORT=$(scripts/free-port.sh "${PI_E2E_PORT:-4173}" 20)
+  export PI_BFF_PORT PI_E2E_PORT
+  bash docker/seed.sh --profile flowable-6
+  nightly_bff "${RUNNER_TEMP:-/tmp}/bff-e2e.log"   # the workflow uploads it on a red run
+  cd frontend
+  npm ci
+  INSPECTOR_BFF_URL="http://localhost:${PI_BFF_PORT}" npm run e2e:real
+}
+
+nightly_supply_chain_triage_drill() { # synthetic red/green for #447: upserts the advisory issue only
+  part supply-chain-triage-drill
+  if [ -z "${CI_TRIAGE_DRILL:-}" ]; then
+    echo "contract: SKIPPED supply-chain-triage-drill — CI_TRIAGE_DRILL (red|green) is unset (the workflow's dispatch input sets it)"
+    return 0
+  fi
+  node scripts/supply-chain-triage.mjs --drill "$CI_TRIAGE_DRILL" --file-issue
+}
+
 # ---- dispatch ---------------------------------------------------------------------------------
 case "$TARGET" in
   ci-light) default_parts="lint unit frontend e2e" ;;
   ci-heavy) default_parts="docker_build integration" ;;
-  *) echo "usage: ci/contract.sh ci-light|ci-heavy   (CI_PART=<part> runs one part)" >&2; exit 2 ;;
+  ci-nightly) default_parts="container-its dlq-scan-cap-p2 fanout-partial-failure-p1 soak-p3 engine-its perf-p1 e2e-real" ;;
+  *) echo "usage: ci/contract.sh ci-light|ci-heavy|ci-nightly   (CI_PART=<part> runs one part)" >&2; exit 2 ;;
 esac
 for p in ${CI_PART:-$default_parts}; do
   case "$TARGET:$p" in
     ci-light:lint|ci-light:unit|ci-light:frontend|ci-light:e2e|ci-heavy:integration) ( "$p" ) ;;
     ci-heavy:docker|ci-heavy:docker_build) ( docker_build ) ;;
+    ci-nightly:container-its|ci-nightly:dlq-scan-cap-p2|ci-nightly:fanout-partial-failure-p1|ci-nightly:soak-p3|\
+    ci-nightly:engine-its|ci-nightly:perf-p1|ci-nightly:e2e-real|ci-nightly:supply-chain-triage-drill) ( "nightly_${p//-/_}" ) ;;
     *) echo "contract: '$p' is not a part of $TARGET" >&2; exit 2 ;;
   esac
 done

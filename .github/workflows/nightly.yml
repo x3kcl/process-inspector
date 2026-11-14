@@ -9,6 +9,10 @@
 # NOT merge-blocking: a red nightly is triaged in the morning routine, not a push gate.
 # Runs on the same single self-hosted runner (docker/ci-runner) — serialized after any PR run.
 # Trigger manually to shake it out: Actions → nightly → Run workflow (workflow_dispatch).
+# Each job runs its part through the ci-lib gate (#641): `gate.sh ci-nightly` with CI_PART=<job id>;
+# the commands live in ci/contract.sh (reproduce one with `CI_PART=perf-p1 bash ci/contract.sh ci-nightly`).
+# This file keeps the triggers, toolchain setup, logins, timeouts and artifacts. supply-chain stays
+# on its composite action (marketplace scanners, no shell to move).
 name: nightly
 
 on:
@@ -24,6 +28,9 @@ on:
         type: choice
         options: ["off", red, green]
         default: "off"  # quoted: YAML 1.1 reads bare off as false (#611)
+
+env:
+  CI_LIB_TAG: v0.16   # keep equal to ci.yml
 
 concurrency:
   group: nightly
@@ -53,17 +60,16 @@ jobs:
         with:
           username: ${{ secrets.DOCKERHUB_USERNAME }}
           password: ${{ secrets.DOCKERHUB_TOKEN }}
-      # Rootless-DinD slots keep the job daemon's socket at /run/user/<uid>/docker.sock,
-      # not /var/run/docker.sock — Testcontainers' Ryuk mounts the latter, gets an empty
-      # directory, and dies before it can be inspected (404). Self-detecting and a no-op on
-      # host-socket slots; see the script header for the measurement.
-      - name: Point Testcontainers' Ryuk at the real socket on rootless slots
-        run: bash scripts/ci-testcontainers-socket.sh >> "$GITHUB_ENV"
-      - name: Container ITs (Testcontainers — Postgres / Keycloak, no compose engine)
-        working-directory: backend
-        run: >-
-          mvn -B verify -Dskip.surefire.tests=true
-          -Dit.test=AuditRoleGrantsIT,AuditPartitionCarveIT,AuditPartitionMaintainerIT,AuditRetentionPurgeIT,AuditRetentionPurgerIT,AuditIntegrityIT,SharedViewIT,SharedViewFailClosedIT,SharedViewGovernanceIT,ViewStoreIT,AccessMappingAdminDbIT,MappingStoreDbIT,EngineRegistryStoreIT,EngineRegistryReloadIT,OidcKeycloakIT,IncidentLedgerIT,LedgerNativeQueriesIT,AuditEntryRepositoryScopeIT,AuditEntryRepositoryAttributionIT
+      - uses: ./.github/actions/ci-lib
+        with:
+          tag: ${{ env.CI_LIB_TAG }}
+          token: ${{ secrets.CI_LIB_TOKEN }}
+      - name: ci-nightly (container-its)
+        env:
+          CI_PART: container-its
+          CI_GATE_HOST: ${{ runner.name }}
+          CI_EVENT: ${{ github.event_name }}
+        run: bash .ci-lib/gate/gate.sh ci-nightly
 
   # R-TEST-05 P2 (issue #299, TEST-STRATEGY.md §7): 50k-row DLQ vs dlq-scan-cap, at the
   # documented operating scale — see docs/TRACEABILITY-MATRIX.md §A (R-TEST-05 row). Fully
@@ -87,9 +93,16 @@ jobs:
           distribution: temurin
           java-version: "25"
           cache: maven
-      - name: R-TEST-05 P2 — 50k-row DLQ scan-cap volume suite (docker-free)
-        working-directory: backend
-        run: mvn -B verify -Dskip.surefire.tests=true -Dit.test=DlqScanCapVolumeIT
+      - uses: ./.github/actions/ci-lib
+        with:
+          tag: ${{ env.CI_LIB_TAG }}
+          token: ${{ secrets.CI_LIB_TOKEN }}
+      - name: ci-nightly (dlq-scan-cap-p2)
+        env:
+          CI_PART: dlq-scan-cap-p2
+          CI_GATE_HOST: ${{ runner.name }}
+          CI_EVENT: ${{ github.event_name }}
+        run: bash .ci-lib/gate/gate.sh ci-nightly
 
   # R-TEST-05 P1 (issue #298, TEST-STRATEGY.md §7): "10 stub engines, 3 slow, 2 timing out" —
   # partial-failure fan-out do-no-harm. Same docker-free, self-contained shape as
@@ -112,9 +125,16 @@ jobs:
           distribution: temurin
           java-version: "25"
           cache: maven
-      - name: R-TEST-05 P1 — 10-stub-engine partial-failure fan-out suite (docker-free)
-        working-directory: backend
-        run: mvn -B verify -Dskip.surefire.tests=true -Dit.test=FanoutPartialFailureIT
+      - uses: ./.github/actions/ci-lib
+        with:
+          tag: ${{ env.CI_LIB_TAG }}
+          token: ${{ secrets.CI_LIB_TOKEN }}
+      - name: ci-nightly (fanout-partial-failure-p1)
+        env:
+          CI_PART: fanout-partial-failure-p1
+          CI_GATE_HOST: ${{ runner.name }}
+          CI_EVENT: ${{ github.event_name }}
+        run: bash .ci-lib/gate/gate.sh ci-nightly
 
   # R-TEST-05 P3 (issue #467, TEST-STRATEGY.md §7, TRACEABILITY-MATRIX §C-8): SSE + bulk soak.
   # 50 SSE subscribers held for 20 minutes while 600-item filter bulks run back to back against
@@ -139,11 +159,16 @@ jobs:
         with:
           username: ${{ secrets.DOCKERHUB_USERNAME }}
           password: ${{ secrets.DOCKERHUB_TOKEN }}
-      - name: Point Testcontainers' Ryuk at the real socket on rootless slots
-        run: bash scripts/ci-testcontainers-socket.sh >> "$GITHUB_ENV"
-      - name: R-TEST-05 P3 — SSE + bulk soak, 20-minute hold
-        working-directory: backend
-        run: mvn -B verify -Dskip.surefire.tests=true -Dit.test=SseBulkSoakIT -Dsoak.minutes=20
+      - uses: ./.github/actions/ci-lib
+        with:
+          tag: ${{ env.CI_LIB_TAG }}
+          token: ${{ secrets.CI_LIB_TOKEN }}
+      - name: ci-nightly (soak-p3)
+        env:
+          CI_PART: soak-p3
+          CI_GATE_HOST: ${{ runner.name }}
+          CI_EVENT: ${{ github.event_name }}
+        run: bash .ci-lib/gate/gate.sh ci-nightly
 
   # Engine-dependent ITs: the mutating corrective-action / flow-surgery / migration / bulk rails
   # and the seed-driven detail/timeline/snapshot ITs. Same compose harness the ci.yml matrix
@@ -153,32 +178,8 @@ jobs:
     runs-on: self-hosted
     if: github.event_name != 'workflow_dispatch' || !contains(fromJSON('["red","green"]'), inputs.triage-drill)
     timeout-minutes: 40
-    env:
-      COMPOSE_PROFILES: "flowable-6,postgres"
-      CI_PROJECT: pi-ci-nightly-6
     steps:
       - uses: actions/checkout@v7
-      # Runner slots (docker/ci-runner/docker-compose.yml) carry a disjoint port block as
-      # container env so this job uses its ACTUAL slot's ports, never a hardcoded literal
-      # that may belong to a DIFFERENT slot a concurrent ci.yml PR job is using at the same
-      # time (#163 — this job used to hardcode slot-1's literal values unconditionally,
-      # regardless of which slot actually ran it). Resolved the same way ci.yml's
-      # "integration" job does; slot-1 values are the fallback for a slot-less runner.
-      # scripts/free-port.sh additionally double-checks each port is actually free on THIS
-      # host and falls back within the slot's own band otherwise (#163/#288 — a slot's
-      # fixed port can end up permanently squatted by something unrelated; this makes that
-      # self-healing instead of needing a manual reassignment).
-      - name: Resolve the slot port namespace
-        run: |
-          {
-            a=$(scripts/free-port.sh "${PI_ENGINE_A_PORT:-8691}" 20)
-            b=$(scripts/free-port.sh "${PI_ENGINE_B_PORT:-8692}" 20 "$a")
-            pg=$(scripts/free-port.sh "${PI_PG_PORT:-5435}" 5)
-            echo "PI_ENGINE_A_PORT=$a"
-            echo "PI_ENGINE_B_PORT=$b"
-            echo "PI_PG_PORT=$pg"
-            echo "INSPECTOR_DB_URL=jdbc:postgresql://localhost:${pg}/inspector"
-          } >> "$GITHUB_ENV"
       - uses: actions/setup-java@v6
         with:
           distribution: temurin
@@ -190,35 +191,16 @@ jobs:
         with:
           username: ${{ secrets.DOCKERHUB_USERNAME }}
           password: ${{ secrets.DOCKERHUB_TOKEN }}
-      - name: Pre-clean CI harness residue (scoped to $CI_PROJECT)
-        run: docker compose -p "$CI_PROJECT" -f docker/docker-compose.dev.yml down -v --remove-orphans || true
-      - name: Boot harness (flowable-6 + postgres)
-        run: docker compose -p "$CI_PROJECT" -f docker/docker-compose.dev.yml up -d
-      - name: Wait for engines and postgres (bounded)
-        run: bash docker/smoke-test.sh flowable-6
-      - name: Seed demo processes (REST-only, idempotent)
-        run: bash docker/seed.sh --profile flowable-6
-      # Rootless-DinD slots keep the job daemon's socket at /run/user/<uid>/docker.sock,
-      # not /var/run/docker.sock — Testcontainers' Ryuk mounts the latter, gets an empty
-      # directory, and dies before it can be inspected (404). Self-detecting and a no-op on
-      # host-socket slots; see the script header for the measurement.
-      - name: Point Testcontainers' Ryuk at the real socket on rootless slots
-        run: bash scripts/ci-testcontainers-socket.sh >> "$GITHUB_ENV"
-      - name: Engine ITs (failsafe)
-        working-directory: backend
-        # SelfHealLikelyLaneIT is several minutes of real engine retries. The 40-minute
-        # budget still covers the job: the whole nightly finished in about 20 minutes
-        # on 2026-10-22 before these six classes were added, and container-its already
-        # points Ryuk at the rootless socket via ci-testcontainers-socket.sh.
-        run: >-
-          mvn -B verify -Dskip.surefire.tests=true
-          -Dit.test=CorrectiveActionIT,CmmnCorrectiveActionIT,FailClosedAuditIT,FlowSurgeryIT,BulkFilterIT,BulkErrorClassIT,SnapshotSamplerIT,DefinitionVersionsIT,MigrationIT,DetailResolveIT,InstanceTimelineIT,IncidentLedgerArcIT,SelfHealDwellSuppressionIT,SelfHealLikelyLaneIT,SelfHealMixedLaneIT
-      - name: Dump harness logs
-        if: failure()
-        run: docker compose -p "$CI_PROJECT" -f docker/docker-compose.dev.yml logs --no-color --timestamps
-      - name: Tear down CI harness
-        if: always()
-        run: docker compose -p "$CI_PROJECT" -f docker/docker-compose.dev.yml down -v --remove-orphans || true
+      - uses: ./.github/actions/ci-lib
+        with:
+          tag: ${{ env.CI_LIB_TAG }}
+          token: ${{ secrets.CI_LIB_TOKEN }}
+      - name: ci-nightly (engine-its)
+        env:
+          CI_PART: engine-its
+          CI_GATE_HOST: ${{ runner.name }}
+          CI_EVENT: ${{ github.event_name }}
+        run: bash .ci-lib/gate/gate.sh ci-nightly
 
   # Supply-chain gates (Q9/issue #93, path-filtered PRs in #446). The steps live in
   # .github/actions/supply-chain so this job's name stays `supply-chain` (CI dashboard).
@@ -259,39 +241,27 @@ jobs:
       - uses: actions/setup-node@v7
         with:
           node-version: "24"
-      - name: Upsert the advisory issue from a synthetic result
+      - uses: ./.github/actions/ci-lib
+        with:
+          tag: ${{ env.CI_LIB_TAG }}
+          token: ${{ secrets.CI_LIB_TOKEN }}
+      - name: ci-nightly (supply-chain-triage-drill)
         env:
+          CI_PART: supply-chain-triage-drill
+          CI_GATE_HOST: ${{ runner.name }}
+          CI_EVENT: ${{ github.event_name }}
+          CI_TRIAGE_DRILL: ${{ inputs.triage-drill }}
           GH_TOKEN: ${{ github.token }}
           GITHUB_REPOSITORY: ${{ github.repository }}
           RUN_URL: ${{ github.server_url }}/${{ github.repository }}/actions/runs/${{ github.run_id }}
-        run: node scripts/supply-chain-triage.mjs --drill ${{ inputs.triage-drill }} --file-issue
+        run: bash .ci-lib/gate/gate.sh ci-nightly
 
   perf-p1:
     runs-on: self-hosted
     if: github.event_name != 'workflow_dispatch' || !contains(fromJSON('["red","green"]'), inputs.triage-drill)
     timeout-minutes: 45
-    env:
-      COMPOSE_PROFILES: "flowable-6,postgres"
-      CI_PROJECT: pi-ci-nightly-perf
     steps:
       - uses: actions/checkout@v7
-      # scripts/free-port.sh double-checks each port is actually free on THIS host and
-      # falls back within this job's own band otherwise (#163/#288 — a fixed port can end
-      # up permanently squatted by something unrelated; this makes that self-healing
-      # instead of needing a manual reassignment).
-      - name: Resolve the slot port namespace
-        run: |
-          {
-            a=$(scripts/free-port.sh "${PI_ENGINE_A_PORT:-8695}" 20)
-            b=$(scripts/free-port.sh "${PI_ENGINE_B_PORT:-8696}" 20 "$a")
-            pg=$(scripts/free-port.sh "${PI_PG_PORT:-5436}" 5)
-            bff=$(scripts/free-port.sh "${PI_BFF_PORT:-8697}" 20)
-            echo "PI_ENGINE_A_PORT=$a"
-            echo "PI_ENGINE_B_PORT=$b"
-            echo "PI_PG_PORT=$pg"
-            echo "PI_BFF_PORT=$bff"
-            echo "INSPECTOR_DB_URL=jdbc:postgresql://localhost:${pg}/inspector"
-          } >> "$GITHUB_ENV"
       - uses: actions/setup-java@v6
         with:
           distribution: temurin
@@ -303,75 +273,16 @@ jobs:
         with:
           username: ${{ secrets.DOCKERHUB_USERNAME }}
           password: ${{ secrets.DOCKERHUB_TOKEN }}
-      - name: Pre-clean CI harness residue (scoped to $CI_PROJECT)
-        run: docker compose -p "$CI_PROJECT" -f docker/docker-compose.dev.yml down -v --remove-orphans || true
-      - name: Boot harness (flowable-6 + postgres)
-        run: docker compose -p "$CI_PROJECT" -f docker/docker-compose.dev.yml up -d
-      - name: Wait for engines and postgres (bounded)
-        run: bash docker/smoke-test.sh flowable-6
-      # Full FIX-REF-01 scale (default --scale 1.0): ~27k starts/engine, empirically ~90s/
-      # engine at 32 workers against this harness — comfortably inside the timeout above.
-      # Explicit engine URLs: the flowable-6 profile only brings up A+B, and the script's
-      # own no-args default additionally probes the (here, absent) engine-7/legacy ports.
-      - name: Seed FIX-REF-01 reference dataset (REST-only, idempotent)
-        run: >-
-          python3 docker/seed-reference.py
-          "http://localhost:${PI_ENGINE_A_PORT}/flowable-rest/service"
-          "http://localhost:${PI_ENGINE_B_PORT}/flowable-rest/service"
-      - name: Build BFF jar
-        working-directory: backend
-        run: mvn -B -Dskip.surefire.tests=true package  # -DskipTests is a no-op here (backend/pom.xml binds surefire to skip.surefire.tests)
-      - name: Boot BFF in the background, pointed at the seeded engines
-        working-directory: backend
+      - uses: ./.github/actions/ci-lib
+        with:
+          tag: ${{ env.CI_LIB_TAG }}
+          token: ${{ secrets.CI_LIB_TOKEN }}
+      - name: ci-nightly (perf-p1)
         env:
-          INSPECTOR_ENGINE_A_BASE_URL: http://localhost:${{ env.PI_ENGINE_A_PORT }}/flowable-rest/service
-          INSPECTOR_ENGINE_B_BASE_URL: http://localhost:${{ env.PI_ENGINE_B_PORT }}/flowable-rest/service
-          ENGINE_A_PASSWORD: test
-          ENGINE_B_PASSWORD: test
-          SERVER_PORT: ${{ env.PI_BFF_PORT }}
-        run: |
-          JAR=$(ls target/*.jar | head -1)
-          nohup java -jar "$JAR" > /tmp/bff-perf.log 2>&1 &
-          echo $! > /tmp/bff-perf.pid
-      - name: Wait for /v3/api-docs (bounded)
-        run: |
-          for _ in $(seq 1 90); do
-            curl -fsS "http://localhost:${PI_BFF_PORT}/v3/api-docs" > /dev/null && exit 0
-            sleep 2
-          done
-          echo "::error::BFF did not serve /v3/api-docs within 180s"
-          tail -200 /tmp/bff-perf.log
-          exit 1
-      # k6 runs as a BINARY on the runner, not in a container, because the BFF it measures is
-      # itself a plain `java -jar` ON the runner. A containerised k6 has to cross into the
-      # daemon's network namespace, and on the rootless-dind slots (hp02, rebuilt 2026-09-02)
-      # there is no route back — measured on nightly #91, which probed all three plausible
-      # addresses and was refused by each:
-      #   not reachable: http://localhost:8386 / http://host.docker.internal:8386 / http://172.17.0.1:8386
-      #   Daemon: 28.5.2 security=["name=seccomp,profile=builtin","name=rootless","name=cgroupns"]
-      # So this is not an addressing problem to be solved with a better guess; the hop itself
-      # has to go. Runner labels are identical across hosts, so the job cannot be pinned to a
-      # host-socket slot instead.
-      #
-      # Same k6 version the image shipped (v2.1.0 — `k6 version` confirms the identical
-      # commit), so perf-scenario-p1.js's calibrated thresholds measure what they did before;
-      # it also drops container networking from the CLIENT side of a latency measurement,
-      # which is strictly less noise between k6 and the BFF.
-      - name: Install k6 (pinned, checksum-verified)
-        run: |
-          set -euo pipefail
-          ver=2.1.0
-          sha=295d961ebfca306f295f1133068dcd403a8171c87f387928f5f30b0fbcff858a
-          curl -fsSL "https://github.com/grafana/k6/releases/download/v${ver}/k6-v${ver}-linux-amd64.tar.gz" -o /tmp/k6.tgz
-          echo "${sha}  /tmp/k6.tgz" | sha256sum -c -
-          tar xzf /tmp/k6.tgz -C /tmp
-          install -m 0755 "/tmp/k6-v${ver}-linux-amd64/k6" /tmp/k6
-          /tmp/k6 version
-      # The dev viewer/dev credentials are the k6 script's own defaults (SecurityConfig, !oidc).
-      - name: k6 — P1 latency budgets (SPEC §2, R-NFR-01/02)
-        env:
-          BASE_URL: http://localhost:${{ env.PI_BFF_PORT }}
-        run: /tmp/k6 run --summary-export=/tmp/k6-summary-p1.json scripts/perf-scenario-p1.js
+          CI_PART: perf-p1
+          CI_GATE_HOST: ${{ runner.name }}
+          CI_EVENT: ${{ github.event_name }}
+        run: bash .ci-lib/gate/gate.sh ci-nightly
       - uses: actions/upload-artifact@v7
         if: always()
         with:
@@ -379,18 +290,6 @@ jobs:
           path: /tmp/k6-summary-p1.json
           retention-days: 90
           if-no-files-found: warn
-      - name: Dump BFF log
-        if: failure()
-        run: tail -200 /tmp/bff-perf.log || true
-      - name: Reap the background BFF
-        if: always()
-        run: kill "$(cat /tmp/bff-perf.pid 2>/dev/null)" 2>/dev/null || true
-      - name: Dump harness logs
-        if: failure()
-        run: docker compose -p "$CI_PROJECT" -f docker/docker-compose.dev.yml logs --no-color --timestamps
-      - name: Tear down CI harness
-        if: always()
-        run: docker compose -p "$CI_PROJECT" -f docker/docker-compose.dev.yml down -v --remove-orphans || true
 
   # Real-stack UI smoke (issue #466, TEST-STRATEGY §12): Playwright → Vite → BFF jar → the
   # compose engines, with NO page.route — the only automated test that drives UI → BFF → engine.
@@ -403,28 +302,8 @@ jobs:
     runs-on: self-hosted
     if: github.event_name != 'workflow_dispatch' || !contains(fromJSON('["red","green"]'), inputs.triage-drill)
     timeout-minutes: 40
-    env:
-      COMPOSE_PROFILES: "flowable-6,postgres"
-      CI_PROJECT: pi-ci-nightly-e2e
     steps:
       - uses: actions/checkout@v7
-      # scripts/free-port.sh double-checks each port is actually free on THIS host and falls
-      # back within the slot's own band otherwise (#163/#288). Slot-1 values are the fallback.
-      - name: Resolve the slot port namespace
-        run: |
-          {
-            a=$(scripts/free-port.sh "${PI_ENGINE_A_PORT:-8691}" 20)
-            b=$(scripts/free-port.sh "${PI_ENGINE_B_PORT:-8692}" 20 "$a")
-            pg=$(scripts/free-port.sh "${PI_PG_PORT:-5435}" 5)
-            bff=$(scripts/free-port.sh "${PI_BFF_PORT:-8086}" 20 "$a" "$b")
-            vite=$(scripts/free-port.sh "${PI_E2E_PORT:-4173}" 20)
-            echo "PI_ENGINE_A_PORT=$a"
-            echo "PI_ENGINE_B_PORT=$b"
-            echo "PI_PG_PORT=$pg"
-            echo "PI_BFF_PORT=$bff"
-            echo "PI_E2E_PORT=$vite"
-            echo "INSPECTOR_DB_URL=jdbc:postgresql://localhost:${pg}/inspector"
-          } >> "$GITHUB_ENV"
       - uses: actions/setup-java@v6
         with:
           distribution: temurin
@@ -441,46 +320,16 @@ jobs:
         with:
           username: ${{ secrets.DOCKERHUB_USERNAME }}
           password: ${{ secrets.DOCKERHUB_TOKEN }}
-      - name: Pre-clean CI harness residue (scoped to $CI_PROJECT)
-        run: docker compose -p "$CI_PROJECT" -f docker/docker-compose.dev.yml down -v --remove-orphans || true
-      - name: Boot harness (flowable-6 + postgres)
-        run: docker compose -p "$CI_PROJECT" -f docker/docker-compose.dev.yml up -d
-      - name: Wait for engines and postgres (bounded)
-        run: bash docker/smoke-test.sh flowable-6
-      - name: Seed demo processes (REST-only, idempotent)
-        run: bash docker/seed.sh --profile flowable-6
-      - name: Build BFF jar
-        working-directory: backend
-        run: mvn -B -Dskip.surefire.tests=true package  # -DskipTests is a no-op here (backend/pom.xml binds surefire to skip.surefire.tests)
-      - name: Boot BFF in the background, pointed at the seeded engines
-        working-directory: backend
+      - uses: ./.github/actions/ci-lib
+        with:
+          tag: ${{ env.CI_LIB_TAG }}
+          token: ${{ secrets.CI_LIB_TOKEN }}
+      - name: ci-nightly (e2e-real)
         env:
-          INSPECTOR_ENGINE_A_BASE_URL: http://localhost:${{ env.PI_ENGINE_A_PORT }}/flowable-rest/service
-          INSPECTOR_ENGINE_B_BASE_URL: http://localhost:${{ env.PI_ENGINE_B_PORT }}/flowable-rest/service
-          ENGINE_A_PASSWORD: test
-          ENGINE_B_PASSWORD: test
-          SERVER_PORT: ${{ env.PI_BFF_PORT }}
-        run: |
-          JAR=$(ls target/*.jar | head -1)
-          nohup java -jar "$JAR" > "$RUNNER_TEMP/bff-e2e.log" 2>&1 &
-          echo $! > "$RUNNER_TEMP/bff-e2e.pid"
-      - name: Wait for /v3/api-docs (bounded)
-        run: |
-          for _ in $(seq 1 90); do
-            curl -fsS "http://localhost:${PI_BFF_PORT}/v3/api-docs" > /dev/null && exit 0
-            sleep 2
-          done
-          echo "::error::BFF did not serve /v3/api-docs within 180s"
-          tail -200 "$RUNNER_TEMP/bff-e2e.log"
-          exit 1
-      - name: Install frontend dependencies
-        working-directory: frontend
-        run: npm ci
-      - name: Real-stack Playwright smoke (frontend/e2e-real)
-        working-directory: frontend
-        env:
-          INSPECTOR_BFF_URL: http://localhost:${{ env.PI_BFF_PORT }}
-        run: npm run e2e:real
+          CI_PART: e2e-real
+          CI_GATE_HOST: ${{ runner.name }}
+          CI_EVENT: ${{ github.event_name }}
+        run: bash .ci-lib/gate/gate.sh ci-nightly
       - name: Upload the HTML report, traces and BFF log on failure
         if: failure()
         uses: actions/upload-artifact@v7
@@ -491,12 +340,3 @@ jobs:
             frontend/test-results/real/
             ${{ runner.temp }}/bff-e2e.log
           retention-days: 14
-      - name: Reap the background BFF
-        if: always()
-        run: kill "$(cat "$RUNNER_TEMP/bff-e2e.pid" 2>/dev/null)" 2>/dev/null || true
-      - name: Dump harness logs
-        if: failure()
-        run: docker compose -p "$CI_PROJECT" -f docker/docker-compose.dev.yml logs --no-color --timestamps
-      - name: Tear down CI harness
-        if: always()
-        run: docker compose -p "$CI_PROJECT" -f docker/docker-compose.dev.yml down -v --remove-orphans || true
