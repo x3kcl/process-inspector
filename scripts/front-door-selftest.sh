@@ -110,3 +110,12 @@ echo "Contract-change: $T — oracle was wrong — reviewed-by alice" >"$TMP/bod
 expect "lr-2 Contract-change by a human waives" 0 "lr-2 ok" --body-file "$TMP/body"
 echo "Contract-change: $T — oracle was wrong — reviewed-by claude-bot" >"$TMP/body"
 expect "lr-2 Contract-change by an agent refused" 1 "✗ lr-2" --body-file "$TMP/body"
+
+# lr-3 diffs from the merge-base: assertions the base gained after the branch point are not "dropped".
+repo; commit "test(#4): add" frontend/src/a.test.ts 'expect(x).toEqual(1);\n'
+git branch -q feature
+commit "test(#4): more on base" frontend/src/a.test.ts 'expect(x).toEqual(1);\nexpect(y).toEqual(2);\n'
+BASE_SHA="$(git rev-parse HEAD)"; git checkout -q feature; commit "docs: note" README.md 'x\n'
+out="$(bash "$CHECK" "$BASE_SHA" HEAD 2>&1)"; rc=$?
+if [ "$rc" = 0 ] && grep -q "lr-3 ok" <<<"$out"; then echo "ok   lr-3 branch behind its base passes"
+else echo "FAIL lr-3 branch behind its base passes: rc=$rc"; sed 's/^/    /' <<<"$out"; FAIL=1; fi
