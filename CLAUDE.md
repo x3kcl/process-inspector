@@ -78,8 +78,9 @@ join logic (dockerized engine only — `engine-harness` skill).
 - Spotless + ESLint are CI hard failures — run them before finishing.
 - A change is not done until GitHub Actions is **green on the pull-request head SHA**.
   `main` rejects a direct push (ruleset, #449). Follow the `green-ci` skill: mirror the
-  gates locally (`scripts/ci-local.sh`), open a pull request, then block on
-  `scripts/ci-watch.sh <head-sha>` and fix any red in the SAME session. The admin bypass
+  gates locally (`bash ci/contract.sh ci-light`), open a pull request, then block on
+  `scripts/ci-watch.sh <head-sha>`, fix any red in the SAME session, then land with
+  `scripts/pr-queue.sh <PR>` / `--watch` (`pr-queue` skill). The admin bypass
   is the emergency path in RUNBOOK §0, not the normal flow.
 - CI runs on **dockerized self-hosted runner slots** (`docker/ci-runner/` — each slot owns
   a disjoint harness-port block; jobs serialize within a slot, parallelize across slots).
@@ -88,10 +89,9 @@ join logic (dockerized engine only — `engine-harness` skill).
   online every CI run just queues forever.
 - **Merge flow (ci-lib queue).** `ci.yml` is the ci-lib gate (`ci/manifest.env`, `ci/contract.sh`;
   library pinned by `CI_LIB_TAG`). A pull request runs the light parts (`lint`, `unit`, `frontend`,
-  `e2e`); once the pull request head is green, label it `queue`. `merge-queue@process-inspector` (hp02,
+  `e2e`); once the pull request head is green, `scripts/pr-queue.sh <PR>` labels it `queue` (`--watch` blocks until merged). `merge-queue@process-inspector` (hp02,
   one-minute timer) builds an `mq/**` batch, runs light AND heavy (`docker`, the `integration` legs) on it,
   fast-forwards `main`, and GitHub shows the pull request as `Merged`. Do not press Merge and do not push
   `main`: the heavy checks the ruleset requires report on the batch, not on the pull request. A red batch
   unlabels the culprit with a comment. Reproduce a gate locally with `bash ci/contract.sh ci-light` (or
-  `CI_PART=docker bash ci/contract.sh ci-heavy`). Until the queue is activated (OPERATIONS §8) the
-  admin bypass in RUNBOOK §0 is the only way to land.
+  `CI_PART=docker bash ci/contract.sh ci-heavy`). The admin bypass in RUNBOOK §0 is the emergency path only.

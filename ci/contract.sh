@@ -28,6 +28,7 @@ lint() {
   (cd backend && mvn -B spotless:check)
   ./scripts/security-audit.sh
   ./scripts/shell-syntax-check.sh
+  ./scripts/pr-queue-selftest.sh
   ./scripts/check-node-pin.sh
   bash scripts/check-alert-rules.sh
   bash scripts/hooks-selftest.sh

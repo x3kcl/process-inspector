@@ -1,6 +1,6 @@
 ---
 name: green-ci
-description: A change is not "done" until GitHub Actions is green on the pull-request head. The mirror→PR→watch→fix loop — run the CI gates locally first (scripts/ci-local.sh), then block on the real run (scripts/ci-watch.sh) and auto-fix any red before considering the change successful. Read before opening or merging a pull request. Direct pushes to main are rejected by the ruleset.
+description: A change is not "done" until GitHub Actions is green on the pull-request head. The mirror→PR→watch→fix loop — run the CI gates locally first (bash ci/contract.sh ci-light), open a pull request, block on the head's run (scripts/ci-watch.sh), then land it with scripts/pr-queue.sh. Read before opening or queueing a pull request. Direct pushes to main are rejected by the ruleset.
 ---
 # Keeping CI green (process-inspector)
 
@@ -13,9 +13,9 @@ push (repository ruleset). This skill is the definition of done for a change.
 Read it before you open a pull request, and whenever `main` is red.
 
 ## 🛑 Primary directive
-> **A pull request is not successful until CI passes on GitHub for its head SHA.**
+> **A pull request is not successful until CI passes on GitHub for its head SHA and the queue has landed it.**
 > If that run is red, you own it: diagnose from the run logs, fix, push the branch, and
-> re-watch — in the SAME work session — until it is green. Never merge red, and never
+> re-watch — in the SAME work session — until it is green. Never queue red, and never
 > report a change as "done" without a green run to point to. Direct `git push origin main`
 > is rejected. The admin ruleset bypass is RUNBOOK §0, for emergencies only.
 
@@ -23,64 +23,23 @@ Red `main` blocks every parallel session (this repo has several — see the memo
 a formatting slip that reddens the `frontend` job costs everyone. Catch it locally.
 
 ## The loop
-```
-   ┌─ 0. RUNNER ─────────────────────────────────────────────────┐
-   │  scripts/ci-runner.sh ensure                                  │
-   │  # ≥1 dockerized runner SLOT online (else runs queue forever) │
-   │  # and NO foreign slot-less runner (port-collision hazard).   │
-   └──────────────────────────────────────────────────────────────┘
-              │ slot runners online, no foreign runner
-              ▼
-   ┌─ 1. MIRROR ──────────────────────────────────────────────────┐
-   │  scripts/ci-local.sh            # fast gates, cheapest-first  │
-   │  scripts/ci-local.sh --fix      # auto-apply spotless+prettier│
-   │  scripts/ci-local.sh --full     # + backend unit ladder       │
-   └──────────────────────────────────────────────────────────────┘
-              │ green locally
-              ▼
-   ┌─ 2. PULL REQUEST ────────────────────────────────────────────┐
-   │  git push -u origin HEAD && gh pr create                     │
-   │  # main rejects a direct push (ruleset #449)                 │
-   └──────────────────────────────────────────────────────────────┘
-              │
-              ▼
-   ┌─ 3. WATCH ──────────────────────────────────────────────────┐
-   │  scripts/ci-watch.sh $(git rev-parse HEAD)                    │
-   │  # blocks until the run finishes; exit 0 = green, else dumps  │
-   │  # the failing job's steps + a log tail. Run it backgrounded  │
-   │  # so the harness re-invokes you when the ~15-min matrix ends.│
-   └──────────────────────────────────────────────────────────────┘
-              │ red?
-              ▼
-   ┌─ 4. FIX ────────────────────────────────────────────────────┐
-   │  read the dumped failing step → reproduce the SAME gate       │
-   │  locally (table below) → fix → back to step 1.                │
-   └──────────────────────────────────────────────────────────────┘
-```
+1. `scripts/ci-runner.sh ensure` — at least one runner slot online, no foreign slot-less runner.
+2. Mirror: `bash ci/contract.sh ci-light` (`scripts/ci-local.sh` is a wrapper; `--fix` applies Spotless + Prettier;
+   `CI_PART=lint|unit|frontend|e2e` runs one part). Heavy parts: `CI_PART=docker bash ci/contract.sh ci-heavy`.
+3. Open a pull request (`main` rejects a direct push, ruleset #449).
+4. `scripts/ci-watch.sh <head-sha>` (background it): exit 0 = PR lane green on the head; red dumps the failing step.
+5. Fix a red in the SAME session: reproduce the gate with the contract command, fix, push, re-watch.
+6. `scripts/pr-queue.sh <PR>` then `scripts/pr-queue.sh --watch <PR>`: the queue builds an `mq/**` batch, runs light
+   AND heavy on it and fast-forwards `main`. The batch is the gate; a red batch unlabels the culprit with a comment.
+   See the `pr-queue` skill.
 
 ## The CI gates, and how to reproduce each locally
-`.github/workflows/ci.yml` has five jobs. Map a red job to its local command:
-
-| CI job / step | Reproduce locally | Covered by `ci-local.sh`? |
-|---|---|---|
-| `lint` → Spotless check | `cd backend && mvn -B spotless:check` (fix: `spotless:apply`) | ✅ (fast) |
-| `lint` → Security audit | `./scripts/security-audit.sh` | ✅ (fast) |
-| `frontend` → ESLint | `cd frontend && npm run lint` | ✅ (fast) |
-| `frontend` → Prettier | `cd frontend && npm run format:check` (fix: `npm run format`) | ✅ (fast) |
-| `frontend` → vitest | `cd frontend && npm test` | ✅ (fast) |
-| `frontend` → Build | `cd frontend && npm run build` (watermark+enterprise+tsc+vite) | ✅ (fast) |
-| `frontend` → **OpenAPI drift** | boot the BFF, `npm run gen:api`, `git diff --exit-code src/api/schema.d.ts` | ❌ needs running BFF |
-| `unit` → unit ladder | `cd backend && mvn -B test` | ✅ (`--full`) |
-| `docker` → image build | `docker build .` | ❌ needs docker |
-| `integration` (6/7/legacy) | the **engine-harness** skill: compose up → `smoke-test.sh` → `seed.sh` → `mvn -B verify -Dit.test=…` | ❌ needs the engine matrix |
-
-`ci-local.sh` covers the gates that cause **almost every** real red-main incident (Spotless,
-Prettier, ESLint, tsc, unit tests). The three it can't cover cheaply — the OpenAPI drift gate,
-the Docker image build, and the dockerized integration matrix — are what `ci-watch.sh` is for:
-you let the real run prove them and react to the result. If you changed a backend DTO, run the
-drift gate yourself before pushing (boot the BFF, `npm run gen:api`, commit the regenerated
-`schema.d.ts` — never hand-edit it). If you touched engine-call/join logic, run the relevant
-IT under the engine-harness skill first.
+`ci/contract.sh` is the single definition; `ci.yml` calls it through ci-lib (`CI_LIB_TAG`).
+- PR lane (`ci-light`): `lint` (Spotless, security-audit, shell-syntax, selftests), `unit`, `frontend`
+  (ESLint, Prettier, Vitest, build, OpenAPI drift), `e2e`.
+- Batch only (`ci-heavy`): `docker` image build and the `integration` legs (engine matrix; engine-harness skill).
+  They never report on a pull request, so GitHub's Merge button stays blocked for non-admins: landing is the queue's job.
+If you changed a backend DTO, regenerate `schema.d.ts` from a booted BFF (`npm run gen:api`), never by hand.
 
 ## scripts/ci-runner.sh — the runner slots must exist before the run can
 CI executes on dockerized self-hosted **runner slots** (`docker/ci-runner/`, containers
@@ -128,7 +87,7 @@ isn't yours**. When you fix red `main`:
   the real `npm run format:check` in `frontend/`.
 
 ## Optional: a local pre-push guard (defense in depth)
-`ci-local.sh` is the mechanism; if you want it enforced for **every** push (human or agent),
+`ci-local.sh` (wrapper over the contract) is the mechanism; if you want it enforced for **every** push (human or agent),
 install it as a git hook — opt-in, not committed, because it slows every push:
 ```bash
 printf '#!/usr/bin/env bash\nexec "$(git rev-parse --show-toplevel)/scripts/ci-local.sh"\n' \
@@ -144,5 +103,4 @@ the loop above over relying on the hook — the hook is a backstop, not the plan
 - ❌ Re-run/retry the failing job hoping for green without a diagnosis. The gates are
   deterministic (zero-flake doctrine); a failure is a real defect in the committed code.
 - ❌ Put the PAT in a command line, a log, or the script's args. Env-ref only.
-- ❌ Skip the OpenAPI drift gate after a DTO change because "ci-local was green" — ci-local
-  doesn't run it. Regenerate `schema.d.ts` from a booted BFF and commit it.
+- ❌ Press Merge or push `main` — label through `scripts/pr-queue.sh`; the batch is the gate.

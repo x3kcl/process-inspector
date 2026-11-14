@@ -373,7 +373,7 @@ then calls `release.yml`; the ruleset targets `refs/heads/main` only, so a tag p
 blocked. It is not re-dispatched here: a dispatch cuts a real release and publishes images.
 
 **Merge queue (ci-lib, bodo/ci-lib#177).** `ci.yml` calls the ci-lib gate (`gate.sh ci-light|ci-heavy`; contract in
-`ci/manifest.env` + `ci/contract.sh`, library pinned by `CI_LIB_TAG`, fetched from the operator's Gitea with the
+`ci/manifest.env` + `ci/contract.sh`, library pinned by `CI_LIB_TAG` (v0.17), fetched from the operator's Gitea with the
 `CI_LIB_TOKEN` secret, also under Dependabot secrets). The job ids are the ruleset's check names, unchanged. A pull
 request runs `lint`, `unit`, `frontend`, `e2e` (ci-light); a push to `mq/**` runs those plus `docker` and the
 `integration` legs (ci-heavy), and there is no push trigger for `main` (the queue fast-forwards a batch that already
@@ -381,7 +381,9 @@ passed). `merge-queue@process-inspector` runs on hp02 from a one-minute timer (G
 with a fine-grained token (Contents, Pull requests, Actions on this repository) in
 `~/.config/process-inspector/github-token`, the queue account as a bypass actor on the `main` ruleset, and the `queue`
 label; the unit is installed with ci-lib's `mq/units/activate-repo.sh`. Consequence: `docker` and `integration (...)`
-never report on a pull request, so GitHub's own Merge button stays blocked for non-admins: landing is the queue's job.
+never report on a pull request, so GitHub's own Merge button stays blocked for non-admins: landing is the queue's job: `scripts/pr-queue.sh <PR>` labels a green head, `--watch` blocks until merged.
+Open operator step: ci-lib v0.17 publishes each tag to a public mirror (`publish/mirror_snapshot.py`, hourly cron on a box that can push);
+the `ci-lib` action still fetches from the operator's Gitea until that mirror exists.
 
 **Landed in `.github/workflows/ci.yml` (merge-blocking):** `lint` (Spotless/palantir) ·
 `unit` (backend build + unit suite incl. the **ArchUnit anti-flakiness rule**: `Thread.sleep`

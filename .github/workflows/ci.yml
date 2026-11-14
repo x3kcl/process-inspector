@@ -21,7 +21,7 @@ concurrency:
   cancel-in-progress: ${{ !startsWith(github.ref, 'refs/heads/mq/') }}
 
 env:
-  CI_LIB_TAG: v0.16
+  CI_LIB_TAG: v0.17
 
 jobs:
   lint:
