@@ -37,6 +37,7 @@ cd frontend && npm run build     # type-check + build
 # engines for integration work:
 docker compose -f docker/docker-compose.dev.yml up -d   # :8081/:8082, rest-admin/test
 ```
+Every behaviour change is test-first (RED commit, then GREEN): `tdd` skill + `docs/landing-rules.md`.
 Never run the full test suite inside a red-green loop; never mock Flowable responses for
 join logic (dockerized engine only — `engine-harness` skill).
 
