@@ -2,6 +2,7 @@ package io.inspector.detail;
 
 import static org.assertj.core.api.Assertions.assertThat;
 
+import io.inspector.client.JobRecords;
 import io.inspector.client.ProcessApiClient.JobLaneKind;
 import io.inspector.dto.ExternalWorkerJobDto;
 import io.inspector.dto.InstanceJobs.JobDto;
@@ -102,12 +103,12 @@ class InstanceDetailMappingTest {
     @Test
     void jobRowsCarryTheLaneAndTypedRetries() {
         JobDto dto = InstanceDetailService.jobRow(
-                Map.of(
+                JobRecords.job(Map.of(
                         "id", "j-1",
                         "retries", 0,
                         "createTime", "2026-07-06T09:00:00Z",
                         "exceptionMessage", "/ by zero",
-                        "elementId", "chargePayment"),
+                        "elementId", "chargePayment")),
                 JobLaneKind.DEADLETTER);
         assertThat(dto.lane()).isEqualTo("DEADLETTER");
         assertThat(dto.retries()).isZero();

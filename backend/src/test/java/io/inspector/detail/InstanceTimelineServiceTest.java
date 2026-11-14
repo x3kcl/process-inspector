@@ -10,6 +10,8 @@ import static org.mockito.Mockito.when;
 import io.inspector.client.ExternalJobApiClient;
 import io.inspector.client.FlowablePage;
 import io.inspector.client.GuardedCaller.CallPriority;
+import io.inspector.client.JobPage;
+import io.inspector.client.JobRecords;
 import io.inspector.client.ProcessApiClient;
 import io.inspector.client.ProcessApiClient.JobLaneKind;
 import io.inspector.config.InspectorProperties;
@@ -48,7 +50,7 @@ class InstanceTimelineServiceTest {
         when(registry.resolve(ENGINE)).thenReturn(Optional.of(engine));
         service = serviceWithMaxDepth(null); // null → default depth 10
         // Healthy by default: no jobs on any lane. Individual tests override specific lanes.
-        when(flowable.listJobs(any(), any(), any(), any(), anyInt(), anyInt())).thenReturn(FlowablePage.empty());
+        when(flowable.listJobs(any(), any(), any(), any(), anyInt(), anyInt())).thenReturn(JobPage.empty());
     }
 
     private InstanceDetailService serviceWithMaxDepth(Integer maxDepth) {
@@ -156,7 +158,7 @@ class InstanceTimelineServiceTest {
                         any(),
                         anyInt(),
                         anyInt()))
-                .thenReturn(new FlowablePage(List.of(job), 1, 0, 50));
+                .thenReturn(new JobPage(List.of(JobRecords.job(job)), 1, 0, 50));
     }
 
     private void executableJobs(String instanceId, Map<String, Object> job) {
@@ -167,7 +169,7 @@ class InstanceTimelineServiceTest {
                         any(),
                         anyInt(),
                         anyInt()))
-                .thenReturn(new FlowablePage(List.of(job), 1, 0, 50));
+                .thenReturn(new JobPage(List.of(JobRecords.job(job)), 1, 0, 50));
     }
 
     private static Map<String, Object> callActivityRow(String id, String activityId, String childInstanceId) {

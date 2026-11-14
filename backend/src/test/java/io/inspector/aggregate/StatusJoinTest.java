@@ -1,8 +1,11 @@
 package io.inspector.aggregate;
 
+import static io.inspector.client.JobRecords.job;
 import static org.assertj.core.api.Assertions.assertThat;
 
 import io.inspector.aggregate.StatusJoin.Plan;
+import io.inspector.client.JobRecord;
+import io.inspector.client.JobRecords;
 import io.inspector.dto.InstanceStatusFlags;
 import io.inspector.dto.ProcessInstanceRow;
 import io.inspector.dto.SearchRequest.InstanceStatus;
@@ -128,12 +131,13 @@ class StatusJoinTest {
 
     @Test
     void cmmnScopedJobsAreExcludedFromEveryLeg() {
-        assertThat(StatusJoin.isBpmnJob(Map.of("processInstanceId", "pi-1"))).isTrue();
-        assertThat(StatusJoin.isBpmnJob(Map.of("processInstanceId", "pi-1", "scopeType", "bpmn")))
+        assertThat(StatusJoin.isBpmnJob(job(Map.of("processInstanceId", "pi-1"))))
+                .isTrue();
+        assertThat(StatusJoin.isBpmnJob(job(Map.of("processInstanceId", "pi-1", "scopeType", "bpmn"))))
                 .isTrue();
         // CMMN jobs share the tables: null processInstanceId, or explicit cmmn scope.
-        assertThat(StatusJoin.isBpmnJob(Map.of())).isFalse();
-        assertThat(StatusJoin.isBpmnJob(Map.of("processInstanceId", "pi-1", "scopeType", "cmmn")))
+        assertThat(StatusJoin.isBpmnJob(job(Map.of()))).isFalse();
+        assertThat(StatusJoin.isBpmnJob(job(Map.of("processInstanceId", "pi-1", "scopeType", "cmmn"))))
                 .isFalse();
     }
 
@@ -186,10 +190,10 @@ class StatusJoinTest {
     @Nested
     class FailureFilters {
 
-        final Map<String, Object> job = Map.of(
+        final JobRecord job = JobRecords.job(Map.of(
                 "processInstanceId", "pi-1",
                 "createTime", "2026-07-06T09:14:45.798+00:00", // the engines' offset wire form
-                "exceptionMessage", "Error while evaluating expression: ${amount % divisor}");
+                "exceptionMessage", "Error while evaluating expression: ${amount % divisor}"));
 
         final Instant nineAm = Instant.parse("2026-07-06T09:00:00Z");
         final Instant tenAm = Instant.parse("2026-07-06T10:00:00Z");
@@ -217,7 +221,7 @@ class StatusJoinTest {
 
         @Test
         void aJobWithoutProvableCreateTimeCannotMatchAWindow() {
-            Map<String, Object> noTime = Map.of("processInstanceId", "pi-2", "exceptionMessage", "boom");
+            JobRecord noTime = job(Map.of("processInstanceId", "pi-2", "exceptionMessage", "boom"));
             assertThat(StatusJoin.jobMatchesFailureFilters(noTime, nineAm, null, null))
                     .isFalse();
             // ...but text-only filtering still works without a timestamp
@@ -240,12 +244,12 @@ class StatusJoinTest {
     @Nested
     class SignatureHashFilter {
 
-        private final Map<String, Object> divisorJob1 =
-                Map.of("id", "job-1", "processInstanceId", "pi-1", "exceptionMessage", "/ by zero");
-        private final Map<String, Object> divisorJob2 =
-                Map.of("id", "job-2", "processInstanceId", "pi-2", "exceptionMessage", "/ by zero");
-        private final Map<String, Object> timeoutJob = Map.of(
-                "id", "job-3", "processInstanceId", "pi-3", "exceptionMessage", "connection refused to 10.0.0.7");
+        private final JobRecord divisorJob1 =
+                job(Map.of("id", "job-1", "processInstanceId", "pi-1", "exceptionMessage", "/ by zero"));
+        private final JobRecord divisorJob2 =
+                job(Map.of("id", "job-2", "processInstanceId", "pi-2", "exceptionMessage", "/ by zero"));
+        private final JobRecord timeoutJob = job(Map.of(
+                "id", "job-3", "processInstanceId", "pi-3", "exceptionMessage", "connection refused to 10.0.0.7"));
 
         private String snippetHashOf(String message) {
             return io.inspector.triage.ErrorSignatureNormalizer.normalize(message)

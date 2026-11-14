@@ -4,6 +4,7 @@ import io.github.resilience4j.circuitbreaker.CallNotPermittedException;
 import io.inspector.api.MdcPropagatingExecutors;
 import io.inspector.client.DmnApiClient;
 import io.inspector.client.GuardedCaller.CallPriority;
+import io.inspector.client.JobRecord;
 import io.inspector.client.ProcessApiClient;
 import io.inspector.client.ProcessApiClient.JobLaneKind;
 import io.inspector.config.InspectorProperties.EngineConfig;
@@ -212,13 +213,13 @@ public class EngineHealthService {
         if (executableCount == 0) {
             return null;
         }
-        Map<String, Object> job = flowable.oldestExecutableJob(engine, CallPriority.INTERACTIVE);
+        JobRecord job = flowable.oldestExecutableJob(engine, CallPriority.INTERACTIVE);
         if (job == null) {
             return null;
         }
-        Instant reference = parseFlowableDate(job.get("dueDate"));
+        Instant reference = parseFlowableDate(job.dueDate());
         if (reference == null) {
-            reference = parseFlowableDate(job.get("createTime"));
+            reference = parseFlowableDate(job.createTime());
         }
         if (reference == null) {
             return null;
@@ -237,11 +238,11 @@ public class EngineHealthService {
     }
 
     private Long oldestHistoryAgeSec(EngineConfig engine) {
-        Map<String, Object> job = flowable.oldestHistoryJob(engine, CallPriority.INTERACTIVE);
+        JobRecord job = flowable.oldestHistoryJob(engine, CallPriority.INTERACTIVE);
         if (job == null) {
             return null;
         }
-        Instant created = parseFlowableDate(job.get("createTime"));
+        Instant created = parseFlowableDate(job.createTime());
         if (created == null) {
             return null;
         }

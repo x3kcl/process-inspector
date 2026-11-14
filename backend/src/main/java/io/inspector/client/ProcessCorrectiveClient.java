@@ -21,8 +21,7 @@ final class ProcessCorrectiveClient {
     /* ---------- M4 corrective-action calls (flowable-rest skill §4 catalog) ---------- */
 
     /** GET /management/{lane}/{jobId} — server-fresh job restatement before a job verb. Null = gone. */
-    @SuppressWarnings("unchecked")
-    public Map<String, Object> getJob(EngineConfig engine, CallPriority priority, JobLaneKind lane, String jobId) {
+    public JobRecord getJob(EngineConfig engine, CallPriority priority, JobLaneKind lane, String jobId) {
         try {
             return guarded.call(
                     engine,
@@ -31,7 +30,7 @@ final class ProcessCorrectiveClient {
                             .get()
                             .uri(lane.path + "/{jobId}", jobId)
                             .retrieve()
-                            .body(Map.class));
+                            .body(JobRecord.class));
         } catch (HttpClientErrorException.NotFound e) {
             return null;
         }

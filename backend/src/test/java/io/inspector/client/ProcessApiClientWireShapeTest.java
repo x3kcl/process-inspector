@@ -436,6 +436,19 @@ class ProcessApiClientWireShapeTest {
                                 Map<String, Object> recordedPage = (Map<String, Object>) recorded;
                                 assertThat(page.total()).isEqualTo(((Number) recordedPage.get("total")).longValue());
                                 assertThat(page.dataOrEmpty()).isEqualTo(recordedPage.get("data"));
+                            } else if (result instanceof JobPage page) {
+                                // Typed family (#474): compared field-for-field against the typed recording.
+                                @SuppressWarnings("unchecked")
+                                Map<String, Object> recordedPage = (Map<String, Object>) recorded;
+                                @SuppressWarnings("unchecked")
+                                List<Map<String, Object>> recordedRows =
+                                        (List<Map<String, Object>>) recordedPage.get("data");
+                                assertThat(page.total()).isEqualTo(((Number) recordedPage.get("total")).longValue());
+                                assertThat(page.dataOrEmpty()).isEqualTo(JobRecords.jobs(recordedRows));
+                            } else if (result instanceof JobRecord job) {
+                                @SuppressWarnings("unchecked")
+                                Map<String, Object> recordedJob = (Map<String, Object>) recorded;
+                                assertThat(job).isEqualTo(JobRecords.job(recordedJob));
                             } else {
                                 assertThat(result).isEqualTo(recorded);
                             }
@@ -508,7 +521,7 @@ class ProcessApiClientWireShapeTest {
                     assertThat(client.countJobsIfSupported(engine, p, JobLaneKind.DEADLETTER))
                             .isEqualTo(dlqTotal);
                     assertThat(client.oldestHistoryJob(engine, p))
-                            .isEqualTo(rows(v, "deadletter-jobs").get(0));
+                            .isEqualTo(JobRecords.job(rows(v, "deadletter-jobs").get(0)));
                     assertThat(client.oldestExecutableJob(engine, p)).isNull(); // the recorded lane is empty
                     assertThat(client.countHistoricProcesses(engine, p, after, before, true, true))
                             .isEqualTo(historicTotal);

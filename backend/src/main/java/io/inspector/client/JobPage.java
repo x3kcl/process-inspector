@@ -1,8 +1,10 @@
 package io.inspector.client;
 
+import com.fasterxml.jackson.annotation.JsonIgnoreProperties;
 import java.util.List;
 
 /** One {@code {data:[…], total, start, size}} page of a job lane, typed (#474). */
+@JsonIgnoreProperties(ignoreUnknown = true)
 public record JobPage(List<JobRecord> data, long total, int start, int size) {
     public static JobPage empty() {
         return new JobPage(List.of(), 0, 0, 0);
