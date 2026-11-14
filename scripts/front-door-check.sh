@@ -89,7 +89,8 @@ flush() {
   fi
   rm=0 add=0
 }
-mapfile -t TFILES < <(git diff --name-only "$BASE" "$HEAD_REF" | while IFS= read -r f; do fd_hits "$f" "${TESTS[@]}" && echo "$f"; done)
+MB="$(git merge-base "$BASE" "$HEAD_REF")"
+mapfile -t TFILES < <(git diff --name-only "$MB" "$HEAD_REF" | while IFS= read -r f; do fd_hits "$f" "${TESTS[@]}" && echo "$f"; done)
 if [ "${#TFILES[@]}" -gt 0 ]; then
   while IFS= read -r line; do
     case "$line" in
@@ -100,7 +101,7 @@ if [ "${#TFILES[@]}" -gt 0 ]; then
       -*) grep -qE "$STRONG" <<<"$line" && rm=$((rm + $(grep -oE "$STRONG" <<<"$line" | wc -l))) ;;
       +*) grep -qE "$STRONG" <<<"$line" && add=$((add + $(grep -oE "$STRONG" <<<"$line" | wc -l))) ;;
     esac
-  done < <(git diff -U0 --no-color "$BASE" "$HEAD_REF" -- "${TFILES[@]}")
+  done < <(git diff -U0 --no-color "$MB" "$HEAD_REF" -- "${TFILES[@]}")
   flush
 fi
 verdict lr-3 "$bad"

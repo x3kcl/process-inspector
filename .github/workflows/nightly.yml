@@ -30,7 +30,7 @@ on:
         default: "off"  # quoted: YAML 1.1 reads bare off as false (#611)
 
 env:
-  CI_LIB_TAG: v0.16   # keep equal to ci.yml
+  CI_LIB_TAG: v0.17   # keep equal to ci.yml
 
 concurrency:
   group: nightly
