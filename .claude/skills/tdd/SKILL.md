@@ -34,11 +34,14 @@ test (no Maven, no Docker, no engines) states that explicitly instead of claimin
 Commands for the RED and GREEN runs:
 
 ```bash
-cd backend && mvn -o test -Dtest=TheClassYouAreDriving      # backend, one class
+cd backend && mvn -o test -Dtest=TheClassYouAreDriving -Djacoco.skip=true   # backend, one class
 cd frontend && npx vitest run src/actions/guard.test.ts      # frontend, one file
 cd frontend && npx playwright test e2e/deadletter-delete.spec.ts   # e2e, one spec (BFF + Vite up)
 bash scripts/<x>-selftest.sh                                 # a bash selftest
 ```
+
+`-Djacoco.skip=true` on a scoped Maven run: the JaCoCo coverage `check` is bound to the `test` phase and fails
+a one-class run on coverage even when every test passed.
 
 ## What a RED test must pin — the four questions
 
@@ -106,11 +109,12 @@ will push:
 CLASSES=$(git log --format=%H origin/main..HEAD --grep='^test(#' \
   | xargs -I{} git diff-tree --no-commit-id --name-only -r {} -- backend/src/test/java \
   | grep -oE '[A-Za-z0-9_]+Test\.java$' | sed 's/\.java$//' | sort -u | paste -sd,)
-[ -n "$CLASSES" ] && (cd backend && mvn -o -q test -Dtest="$CLASSES,*ArchTest" -Dsurefire.failIfNoSpecifiedTests=false)
+[ -n "$CLASSES" ] && (cd backend && mvn -o -q test -Dtest="$CLASSES,*ArchTest" -Dsurefire.failIfNoSpecifiedTests=false -Djacoco.skip=true)
 # plus: cd frontend && npx vitest run <each touched *.test.ts(x)>; bash <each touched selftest>
 ```
 
-A red there is a cross-change interaction (shared fixture, test order, a context key) and is fixed before a CI
+Rung-4 `*IT` classes are not in that list (failsafe runs them, not `mvn test`); run a touched IT with the engines
+up (`engine-harness`). A red there is a cross-change interaction (shared fixture, test order, a context key) and is fixed before a CI
 minute is spent. Then `scripts/ci-local.sh` and the `green-ci` loop.
 
 ## Enforced vs doctrine (be honest about which is which)

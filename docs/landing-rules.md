@@ -42,7 +42,7 @@ prefix.
 **Why** A RED test the implementer may edit later can be rewritten until it passes, and then proves nothing.
 
 **Comply up front** Keep code under test out of the RED file: a helper the GREEN commit must change lives in a
-file the RED commit does not touch (for a selftest, a sourced `scripts/lib/*.sh`). If the RED commit left a
+file the RED commit does not touch (for a selftest, a helper script it sources). If the RED commit left a
 test wrong, do not patch it: it is a contract change.
 
 **If you must change it** A line in the pull-request body, one per path, signed by a human reviewer (LR-5):
