@@ -410,6 +410,9 @@ against the seeded FIX-REF-01 reference dataset, asserting the SPEC §2 R-NFR-01
 budgets), and an **`e2e-real` job** (#466: Playwright → Vite → BFF jar → flowable-6 engines,
 no `page.route`, `frontend/e2e-real/`; a red run uploads `playwright-report-real` with traces
 and the BFF log — TEST-STRATEGY §12). A red nightly is a morning-routine triage, not a push gate.
+Every job except `supply-chain` (its composite action) runs its commands through the ci-lib gate,
+`gate.sh ci-nightly` with `CI_PART=<job id>`; they live in `ci/contract.sh`, so a nightly job
+reproduces by hand as `CI_PART=engine-its bash ci/contract.sh ci-nightly` (#641).
 
 **Frontend npm-audit gate — dated-exception allowlist (issue #297).** A bare
 `npm audit --audit-level=high` goes permanently red the instant any high+ advisory has no
