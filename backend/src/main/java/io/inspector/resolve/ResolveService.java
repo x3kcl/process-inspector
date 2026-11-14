@@ -3,6 +3,7 @@ package io.inspector.resolve;
 import io.inspector.api.MdcPropagatingExecutors;
 import io.inspector.client.CmmnApiClient;
 import io.inspector.client.GuardedCaller.CallPriority;
+import io.inspector.client.JobRecord;
 import io.inspector.client.ProcessApiClient;
 import io.inspector.client.ProcessApiClient.JobLaneKind;
 import io.inspector.config.InspectorProperties.EngineConfig;
@@ -180,8 +181,8 @@ public class ResolveService {
 
         // 4. Job — all four lanes; CMMN-scoped jobs (no processInstanceId) are not ours.
         for (JobLaneKind lane : JOB_LANES) {
-            Map<String, Object> job = flowable.getJob(engine, CallPriority.INTERACTIVE, lane, id);
-            pid = job != null ? str(job, "processInstanceId") : null;
+            JobRecord job = flowable.getJob(engine, CallPriority.INTERACTIVE, lane, id);
+            pid = job != null ? job.processInstanceId() : null;
             if (pid != null && !pid.isBlank()) {
                 return matchInstance(engine, MatchKind.JOB, id, pid);
             }

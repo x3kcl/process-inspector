@@ -27,6 +27,8 @@ import io.inspector.audit.ProtectedInstanceRepository;
 import io.inspector.client.FlowablePage;
 import io.inspector.client.GuardedCaller;
 import io.inspector.client.GuardedCaller.CallPriority;
+import io.inspector.client.JobPage;
+import io.inspector.client.JobRecords;
 import io.inspector.client.ProcessApiClient;
 import io.inspector.client.ProcessApiClient.JobLaneKind;
 import io.inspector.config.InspectorProperties;
@@ -587,8 +589,8 @@ class BulkJobServiceTest {
         return org.mockito.ArgumentMatchers.argThat(req -> req != null && jobId.equals(req.jobId()));
     }
 
-    private static FlowablePage page(List<Map<String, Object>> data) {
-        return new FlowablePage(data, data.size(), 0, data.size());
+    private static JobPage page(List<Map<String, Object>> data) {
+        return JobRecords.page(data);
     }
 
     /* ---------------- migrate-instance (#496) ---------------- */
@@ -820,7 +822,7 @@ class BulkJobServiceTest {
         item.settle(BulkJobItem.State.unknown, "timeout", null, Instant.EPOCH);
         itemStore.put(job.getId() + "#0", item);
         when(client.getJob(any(), eq(CallPriority.INTERACTIVE), eq(JobLaneKind.DEADLETTER), eq("dlq-1")))
-                .thenReturn(Map.of("id", "dlq-1"));
+                .thenReturn(JobRecords.job(Map.of("id", "dlq-1")));
 
         BulkDtos.BulkItemDto verified = service.verifyNow(job.getId(), 0);
 

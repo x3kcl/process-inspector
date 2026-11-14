@@ -24,6 +24,7 @@ import io.inspector.audit.ProtectedInstanceRepository;
 import io.inspector.client.CmmnApiClient;
 import io.inspector.client.ForwardedActor;
 import io.inspector.client.GuardedCaller.CallPriority;
+import io.inspector.client.JobRecords;
 import io.inspector.client.ProcessApiClient;
 import io.inspector.client.ProcessApiClient.JobLaneKind;
 import io.inspector.config.InspectorProperties;
@@ -136,7 +137,7 @@ class CorrectiveActionServiceTest {
                 .thenReturn(pendingEntry);
 
         when(client.getJob(any(), eq(CallPriority.INTERACTIVE), eq(JobLaneKind.DEADLETTER), eq("j1")))
-                .thenReturn(Map.of("id", "j1", "processInstanceId", "pi-1", "elementId", "chargeCard"));
+                .thenReturn(JobRecords.job(Map.of("id", "j1", "processInstanceId", "pi-1", "elementId", "chargeCard")));
     }
 
     private static ActionRequest retryRequest() {
@@ -247,7 +248,7 @@ class CorrectiveActionServiceTest {
         // a protected definition is refused even though pi-1 itself was never individually
         // marked protected.
         when(client.getJob(any(), eq(CallPriority.INTERACTIVE), eq(JobLaneKind.DEADLETTER), eq("j1")))
-                .thenReturn(Map.of(
+                .thenReturn(JobRecords.job(Map.of(
                         "id",
                         "j1",
                         "processInstanceId",
@@ -255,7 +256,7 @@ class CorrectiveActionServiceTest {
                         "elementId",
                         "chargeCard",
                         "processDefinitionId",
-                        "payment:3:def-1"));
+                        "payment:3:def-1")));
         when(protectedDefinitions.findById(new io.inspector.audit.ProtectedDefinition.Key(DEV, "payment")))
                 .thenReturn(java.util.Optional.of(new io.inspector.audit.ProtectedDefinition(
                         DEV, "payment", "v3 rollout freeze", "admin", Instant.parse("2026-07-01T00:00:00Z"))));
@@ -272,7 +273,7 @@ class CorrectiveActionServiceTest {
         // The mirror-image control: same protected-definition lookup fires (proving it's not a
         // no-op), but an unprotected key never refuses.
         when(client.getJob(any(), eq(CallPriority.INTERACTIVE), eq(JobLaneKind.DEADLETTER), eq("j1")))
-                .thenReturn(Map.of(
+                .thenReturn(JobRecords.job(Map.of(
                         "id",
                         "j1",
                         "processInstanceId",
@@ -280,7 +281,7 @@ class CorrectiveActionServiceTest {
                         "elementId",
                         "chargeCard",
                         "processDefinitionId",
-                        "payment:3:def-1"));
+                        "payment:3:def-1")));
 
         service.execute(DEV, "pi-1", ActionVerb.RETRY_JOB, retryRequest(), operator);
 
@@ -751,7 +752,7 @@ class CorrectiveActionServiceTest {
     @Test
     void jobBelongingToAnotherInstanceIsRefusedBeforeAudit() {
         when(client.getJob(any(), eq(CallPriority.INTERACTIVE), eq(JobLaneKind.DEADLETTER), eq("j1")))
-                .thenReturn(Map.of("id", "j1", "processInstanceId", "OTHER"));
+                .thenReturn(JobRecords.job(Map.of("id", "j1", "processInstanceId", "OTHER")));
 
         assertThatThrownBy(() -> service.execute(DEV, "pi-1", ActionVerb.RETRY_JOB, retryRequest(), operator))
                 .isInstanceOf(GuardRefusedException.class)

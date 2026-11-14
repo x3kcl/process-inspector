@@ -7,6 +7,7 @@ import io.inspector.audit.ProtectedInstanceRepository;
 import io.inspector.client.ExternalJobApiClient;
 import io.inspector.client.FlowablePage;
 import io.inspector.client.GuardedCaller.CallPriority;
+import io.inspector.client.JobRecord;
 import io.inspector.client.ProcessApiClient;
 import io.inspector.client.ProcessApiClient.JobLaneKind;
 import io.inspector.config.InspectorProperties;
@@ -367,22 +368,21 @@ public class InstanceDetailService {
         }
     }
 
-    static JobDto jobRow(Map<String, Object> job, JobLaneKind lane) {
-        Object retries = job.get("retries");
-        String handler = str(job, "jobHandlerType");
+    static JobDto jobRow(JobRecord job, JobLaneKind lane) {
+        String handler = job.jobHandlerType();
         return new JobDto(
-                str(job, "id"),
+                job.id(),
                 lane.name(),
-                str(job, "createTime"),
-                str(job, "dueDate"),
-                retries instanceof Number n ? n.intValue() : null,
-                str(job, "exceptionMessage"),
-                str(job, "elementId"),
-                str(job, "elementName"),
-                str(job, "executionId"),
-                str(job, "processDefinitionId"),
-                str(job, "tenantId"),
-                handler != null ? handler : str(job, "handlerType"));
+                job.createTime(),
+                job.dueDate(),
+                job.retries(),
+                job.exceptionMessage(),
+                job.elementId(),
+                job.elementName(),
+                job.executionId(),
+                job.processDefinitionId(),
+                job.tenantId(),
+                handler != null ? handler : job.handlerType());
     }
 
     static ExternalWorkerJobDto externalWorkerRow(Map<String, Object> job) {
@@ -522,9 +522,9 @@ public class InstanceDetailService {
         return new InstanceStatusFlags(false, suspended, hasDeadLetter, hasFailing, failedInSubprocess);
     }
 
-    private static List<String> jobIds(List<Map<String, Object>> jobs) {
+    private static List<String> jobIds(List<JobRecord> jobs) {
         return jobs.stream()
-                .map(job -> str(job, "id"))
+                .map(JobRecord::id)
                 .filter(java.util.Objects::nonNull)
                 .toList();
     }
@@ -554,9 +554,9 @@ public class InstanceDetailService {
                     String childId = str(child, "id");
                     if (childId == null || !visited.add(childId)) continue;
                     if (str(child, "endTime") == null) {
-                        Map<String, Object> deadLetter = firstDeadLetterJob(engine, childId);
+                        JobRecord deadLetter = firstDeadLetterJob(engine, childId);
                         if (deadLetter != null) {
-                            return new FailedChild(childId, str(deadLetter, "id"));
+                            return new FailedChild(childId, deadLetter.id());
                         }
                     }
                     next.add(childId);
@@ -567,13 +567,13 @@ public class InstanceDetailService {
         return null;
     }
 
-    private Map<String, Object> firstDeadLetterJob(EngineConfig engine, String instanceId) {
+    private JobRecord firstDeadLetterJob(EngineConfig engine, String instanceId) {
         Map<String, String> filters = new LinkedHashMap<>();
         filters.put("processInstanceId", instanceId);
         if (engine.tenantId() != null && !engine.tenantId().isBlank()) {
             filters.put("tenantId", engine.tenantId());
         }
-        List<Map<String, Object>> rows = flowable.listJobs(
+        List<JobRecord> rows = flowable.listJobs(
                         engine, CallPriority.INTERACTIVE, JobLaneKind.DEADLETTER, filters, 0, 1)
                 .dataOrEmpty();
         return rows.isEmpty() ? null : rows.get(0);
@@ -582,25 +582,24 @@ public class InstanceDetailService {
     /* ================= per-instance lane reads ================= */
 
     /** The failure evidence of ONE instance: dead-letter rows + both withException lanes. */
-    record Lanes(
-            List<Map<String, Object>> deadLetter, List<Map<String, Object>> failing, List<Map<String, Object>> timers) {
+    record Lanes(List<JobRecord> deadLetter, List<JobRecord> failing, List<JobRecord> timers) {
         static final Lanes EMPTY = new Lanes(List.of(), List.of(), List.of());
     }
 
     Lanes scanInstanceLanes(EngineConfig engine, String instanceId) {
-        List<Map<String, Object>> deadLetter = instanceJobs(engine, instanceId, JobLaneKind.DEADLETTER);
-        List<Map<String, Object>> timers = instanceJobs(engine, instanceId, JobLaneKind.TIMER);
-        List<Map<String, Object>> failing = new ArrayList<>();
-        for (Map<String, Object> job : instanceJobs(engine, instanceId, JobLaneKind.EXECUTABLE)) {
-            if (str(job, "exceptionMessage") != null) failing.add(job);
+        List<JobRecord> deadLetter = instanceJobs(engine, instanceId, JobLaneKind.DEADLETTER);
+        List<JobRecord> timers = instanceJobs(engine, instanceId, JobLaneKind.TIMER);
+        List<JobRecord> failing = new ArrayList<>();
+        for (JobRecord job : instanceJobs(engine, instanceId, JobLaneKind.EXECUTABLE)) {
+            if (job.exceptionMessage() != null) failing.add(job);
         }
-        for (Map<String, Object> job : timers) {
-            if (str(job, "exceptionMessage") != null) failing.add(job);
+        for (JobRecord job : timers) {
+            if (job.exceptionMessage() != null) failing.add(job);
         }
         return new Lanes(deadLetter, failing, timers);
     }
 
-    List<Map<String, Object>> instanceJobs(EngineConfig engine, String instanceId, JobLaneKind lane) {
+    List<JobRecord> instanceJobs(EngineConfig engine, String instanceId, JobLaneKind lane) {
         Map<String, String> filters = new LinkedHashMap<>();
         filters.put("processInstanceId", instanceId);
         if (engine.tenantId() != null && !engine.tenantId().isBlank()) {
@@ -667,22 +666,21 @@ public class InstanceDetailService {
     /** SPEC §4: exception first line, failing activity, retries state — null when healthy. */
     private WhyStuck whyStuck(EngineConfig engine, Lanes lanes) {
         if (lanes.deadLetter().isEmpty() && lanes.failing().isEmpty()) return null;
-        Map<String, Object> newestDead = newestByCreateTime(lanes.deadLetter());
-        Map<String, Object> newestFailing = newestByCreateTime(lanes.failing());
-        Map<String, Object> evidence = newestDead != null ? newestDead : newestFailing;
+        JobRecord newestDead = newestByCreateTime(lanes.deadLetter());
+        JobRecord newestFailing = newestByCreateTime(lanes.failing());
+        JobRecord evidence = newestDead != null ? newestDead : newestFailing;
 
-        String exceptionMessage = str(evidence, "exceptionMessage");
-        Object retries = newestFailing != null ? newestFailing.get("retries") : null;
+        String exceptionMessage = evidence.exceptionMessage();
         return new WhyStuck(
                 exceptionMessage == null
                         ? null
                         : exceptionMessage.lines().findFirst().orElse(exceptionMessage),
                 failingActivityIdOf(engine, evidence),
-                str(evidence, "createTime"),
+                evidence.createTime(),
                 lanes.deadLetter().size(),
                 lanes.failing().size(),
-                retries instanceof Number n ? n.intValue() : null,
-                newestFailing != null ? str(newestFailing, "dueDate") : null);
+                newestFailing != null ? newestFailing.retries() : null,
+                newestFailing != null ? newestFailing.dueDate() : null);
     }
 
     /**
@@ -690,10 +688,10 @@ public class InstanceDetailService {
      * (6.8+); a 6.3-era row falls back to ONE execution lookup — best-effort, a miss just
      * means no marker (never a failed vitals).
      */
-    String failingActivityIdOf(EngineConfig engine, Map<String, Object> job) {
-        String elementId = str(job, "elementId");
+    String failingActivityIdOf(EngineConfig engine, JobRecord job) {
+        String elementId = job.elementId();
         if (elementId != null) return elementId;
-        String executionId = str(job, "executionId");
+        String executionId = job.executionId();
         if (executionId == null) return null;
         try {
             Map<String, Object> execution = flowable.getExecution(engine, CallPriority.INTERACTIVE, executionId);
@@ -721,22 +719,17 @@ public class InstanceDetailService {
             // The subscription endpoint is version-dependent — degrade, never fail vitals.
             log.debug("Event-subscription leg unavailable on {}: {}", engine.id(), ex.toString());
         }
-        for (Map<String, Object> timer : lanes.timers()) {
-            if (str(timer, "exceptionMessage") != null) continue; // that's a parked retry, not a wait
+        for (JobRecord timer : lanes.timers()) {
+            if (timer.exceptionMessage() != null) continue; // that's a parked retry, not a wait
             waits.add(new WaitState(
-                    "TIMER",
-                    null,
-                    failingActivityIdOf(engine, timer),
-                    str(timer, "dueDate"),
-                    str(timer, "createTime")));
+                    "TIMER", null, failingActivityIdOf(engine, timer), timer.dueDate(), timer.createTime()));
         }
         return waits;
     }
 
-    private static Map<String, Object> newestByCreateTime(List<Map<String, Object>> jobs) {
+    private static JobRecord newestByCreateTime(List<JobRecord> jobs) {
         return jobs.stream()
-                .max(Comparator.comparing(
-                        job -> str(job, "createTime"), Comparator.nullsFirst(Comparator.naturalOrder())))
+                .max(Comparator.comparing(JobRecord::createTime, Comparator.nullsFirst(Comparator.naturalOrder())))
                 .orElse(null);
     }
 

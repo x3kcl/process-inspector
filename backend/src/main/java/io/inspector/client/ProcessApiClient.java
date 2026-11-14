@@ -61,7 +61,7 @@ public class ProcessApiClient {
         return reads.queryRuntimeProcessInstances(engine, priority, body);
     }
 
-    public FlowablePage listJobs(
+    public JobPage listJobs(
             EngineConfig engine,
             CallPriority priority,
             JobLaneKind lane,
@@ -217,7 +217,7 @@ public class ProcessApiClient {
         return health.countJobsIfSupported(engine, priority, lane);
     }
 
-    public Map<String, Object> oldestHistoryJob(EngineConfig engine, CallPriority priority) {
+    public JobRecord oldestHistoryJob(EngineConfig engine, CallPriority priority) {
         return health.oldestHistoryJob(engine, priority);
     }
 
@@ -276,7 +276,7 @@ public class ProcessApiClient {
         return health.countHistoricTasks(engine, priority, after, before, completed);
     }
 
-    public Map<String, Object> oldestExecutableJob(EngineConfig engine, CallPriority priority) {
+    public JobRecord oldestExecutableJob(EngineConfig engine, CallPriority priority) {
         return health.oldestExecutableJob(engine, priority);
     }
 
@@ -289,7 +289,7 @@ public class ProcessApiClient {
     }
 
     @SuppressWarnings("unchecked")
-    public Map<String, Object> getJob(EngineConfig engine, CallPriority priority, JobLaneKind lane, String jobId) {
+    public JobRecord getJob(EngineConfig engine, CallPriority priority, JobLaneKind lane, String jobId) {
         return actions.getJob(engine, priority, lane, jobId);
     }
 

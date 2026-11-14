@@ -1,5 +1,6 @@
 package io.inspector.aggregate;
 
+import io.inspector.client.JobRecord;
 import io.inspector.dto.InstanceStatusFlags;
 import io.inspector.dto.ProcessInstanceRow;
 import io.inspector.dto.SearchRequest.InstanceStatus;
@@ -67,11 +68,11 @@ final class StatusJoin {
      * engines new enough to serialize {@code scopeType} (~6.8+) — is excluded from every
      * BPMN join leg.
      */
-    static boolean isBpmnJob(Map<String, Object> job) {
-        Object pid = job.get("processInstanceId");
-        if (pid == null || pid.toString().isBlank()) return false;
-        Object scopeType = job.get("scopeType");
-        return scopeType == null || "bpmn".equalsIgnoreCase(scopeType.toString());
+    static boolean isBpmnJob(JobRecord job) {
+        String pid = job.processInstanceId();
+        if (pid == null || pid.isBlank()) return false;
+        String scopeType = job.scopeType();
+        return scopeType == null || "bpmn".equalsIgnoreCase(scopeType);
     }
 
     /**
@@ -81,15 +82,15 @@ final class StatusJoin {
      * resolution, so a filtered-out child never rolls up. A job whose {@code createTime} is
      * missing or unparseable cannot be proven inside a requested window and is excluded.
      */
-    static boolean jobMatchesFailureFilters(Map<String, Object> job, Instant after, Instant before, String errorText) {
+    static boolean jobMatchesFailureFilters(JobRecord job, Instant after, Instant before, String errorText) {
         if (after != null || before != null) {
-            Instant createTime = parseInstant(str(job, "createTime"));
+            Instant createTime = parseInstant(job.createTime());
             if (createTime == null) return false;
             if (after != null && createTime.isBefore(after)) return false;
             if (before != null && createTime.isAfter(before)) return false;
         }
         if (errorText != null && !errorText.isBlank()) {
-            String snippet = str(job, "exceptionMessage");
+            String snippet = job.exceptionMessage();
             if (snippet == null || !snippet.toLowerCase(Locale.ROOT).contains(errorText.toLowerCase(Locale.ROOT))) {
                 return false;
             }
@@ -112,11 +113,11 @@ final class StatusJoin {
      * instances (#270's "Search these instances returns 0"). Making identity snippet-only
      * deletes that failure mode instead of widening a budget against it.
      */
-    static List<Map<String, Object>> filterBySignatureHash(List<Map<String, Object>> jobs, String wantedHash) {
-        List<Map<String, Object>> matched = new ArrayList<>();
-        for (Map<String, Object> job : jobs) {
-            String hash = ErrorSignatureNormalizer.normalize(str(job, "exceptionMessage"))
-                    .hash();
+    static List<JobRecord> filterBySignatureHash(List<JobRecord> jobs, String wantedHash) {
+        List<JobRecord> matched = new ArrayList<>();
+        for (JobRecord job : jobs) {
+            String hash =
+                    ErrorSignatureNormalizer.normalize(job.exceptionMessage()).hash();
             if (hash.equals(wantedHash)) {
                 matched.add(job);
             }

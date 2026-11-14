@@ -6,7 +6,6 @@ import io.inspector.config.InspectorProperties.EngineConfig;
 import java.time.Instant;
 import java.time.temporal.ChronoUnit;
 import java.util.List;
-import java.util.Map;
 import org.springframework.web.client.HttpClientErrorException;
 
 /** Health-strip size=1 totals. Moved from ProcessApiClient (issue #475). */
@@ -46,9 +45,9 @@ final class ProcessHealthClient {
     }
 
     /** Oldest history job (createTime asc), or null when the lane is empty or the route is missing. */
-    public Map<String, Object> oldestHistoryJob(EngineConfig engine, CallPriority priority) {
+    public JobRecord oldestHistoryJob(EngineConfig engine, CallPriority priority) {
         try {
-            FlowablePage page = guarded.call(
+            JobPage page = guarded.call(
                     engine,
                     priority,
                     () -> guarded.readClient(engine)
@@ -59,8 +58,8 @@ final class ProcessHealthClient {
                                     .queryParam("order", "asc")
                                     .build())
                             .retrieve()
-                            .body(FlowablePage.class));
-            List<Map<String, Object>> rows = page != null ? page.dataOrEmpty() : List.of();
+                            .body(JobPage.class));
+            List<JobRecord> rows = page != null ? page.dataOrEmpty() : List.of();
             return rows.isEmpty() ? null : rows.get(0);
         } catch (HttpClientErrorException.NotFound e) {
             return null;
@@ -239,8 +238,8 @@ final class ProcessHealthClient {
     }
 
     /** Oldest executable job row (dueDate asc), or null when the lane is empty. */
-    public Map<String, Object> oldestExecutableJob(EngineConfig engine, CallPriority priority) {
-        FlowablePage page = guarded.call(
+    public JobRecord oldestExecutableJob(EngineConfig engine, CallPriority priority) {
+        JobPage page = guarded.call(
                 engine,
                 priority,
                 () -> guarded.readClient(engine)
@@ -251,8 +250,8 @@ final class ProcessHealthClient {
                                 .queryParam("order", "asc")
                                 .build())
                         .retrieve()
-                        .body(FlowablePage.class));
-        List<Map<String, Object>> rows = page != null ? page.dataOrEmpty() : List.of();
+                        .body(JobPage.class));
+        List<JobRecord> rows = page != null ? page.dataOrEmpty() : List.of();
         return rows.isEmpty() ? null : rows.get(0);
     }
 

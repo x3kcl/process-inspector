@@ -10,6 +10,8 @@ import io.inspector.aggregate.SearchService.Failure;
 import io.inspector.aggregate.SearchService.PageWindow;
 import io.inspector.client.FlowablePage;
 import io.inspector.client.GuardedCaller.CallPriority;
+import io.inspector.client.JobPage;
+import io.inspector.client.JobRecord;
 import io.inspector.client.ProcessApiClient;
 import io.inspector.client.ProcessApiClient.JobLaneKind;
 import io.inspector.config.InspectorProperties;
@@ -303,7 +305,7 @@ final class SearchEnginePlan {
     }
 
     /** M2b BFF-side failure filters over one scan leg's job rows (pure predicate in StatusJoin). */
-    private static List<Map<String, Object>> applyFailureFilters(List<Map<String, Object>> jobs, BffFilters bff) {
+    private static List<JobRecord> applyFailureFilters(List<JobRecord> jobs, BffFilters bff) {
         if (!bff.anyFailureFilter()) return jobs;
         return jobs.stream()
                 .filter(job -> StatusJoin.jobMatchesFailureFilters(
@@ -313,13 +315,13 @@ final class SearchEnginePlan {
 
     /* ================= scan legs ================= */
 
-    private record LaneScan(List<Map<String, Object>> jobs, boolean truncated, int scanned) {
+    private record LaneScan(List<JobRecord> jobs, boolean truncated, int scanned) {
         static LaneScan empty() {
             return new LaneScan(List.of(), false, 0);
         }
 
         LaneScan and(LaneScan other) {
-            List<Map<String, Object>> all = new ArrayList<>(jobs);
+            List<JobRecord> all = new ArrayList<>(jobs);
             all.addAll(other.jobs());
             return new LaneScan(all, truncated || other.truncated(), scanned + other.scanned());
         }
@@ -357,7 +359,7 @@ final class SearchEnginePlan {
         List<String> definitionIds =
                 resolvedDefinitionIds == null ? java.util.Collections.singletonList(null) : resolvedDefinitionIds;
 
-        List<Map<String, Object>> jobs = new ArrayList<>();
+        List<JobRecord> jobs = new ArrayList<>();
         int scanned = 0;
         boolean truncated = false;
         for (String definitionId : definitionIds) {
@@ -372,8 +374,8 @@ final class SearchEnginePlan {
                     truncated = true;
                     break;
                 }
-                FlowablePage page = flowable.listJobs(engine, priority, lane, filters, start, size);
-                List<Map<String, Object>> batch = page.dataOrEmpty();
+                JobPage page = flowable.listJobs(engine, priority, lane, filters, start, size);
+                List<JobRecord> batch = page.dataOrEmpty();
                 scanned += batch.size();
                 jobs.addAll(batch);
                 start += batch.size();
@@ -393,20 +395,17 @@ final class SearchEnginePlan {
      * everything the hash is computed from. One fewer engine call per drilled lane, and the
      * drill can no longer come back empty for a card that is currently failing.
      */
-    private static List<Map<String, Object>> applySignatureFilter(List<Map<String, Object>> jobs, BffFilters bff) {
+    private static List<JobRecord> applySignatureFilter(List<JobRecord> jobs, BffFilters bff) {
         if (bff.signatureHash() == null || jobs.isEmpty()) return jobs;
         return StatusJoin.filterBySignatureHash(jobs, bff.signatureHash());
     }
 
     /** CMMN-filtered fold of job rows into per-instance failure evidence. */
-    private static Map<String, Failure> indexByInstance(List<Map<String, Object>> jobs) {
+    private static Map<String, Failure> indexByInstance(List<JobRecord> jobs) {
         Map<String, Failure> index = new HashMap<>();
-        for (Map<String, Object> job : jobs) {
+        for (JobRecord job : jobs) {
             if (!StatusJoin.isBpmnJob(job)) continue; // shared job tables — drop CMMN scopes
-            index.merge(
-                    str(job, "processInstanceId"),
-                    new Failure(str(job, "createTime"), str(job, "exceptionMessage")),
-                    Failure::merge);
+            index.merge(job.processInstanceId(), new Failure(job.createTime(), job.exceptionMessage()), Failure::merge);
         }
         return index;
     }
@@ -456,7 +455,7 @@ final class SearchEnginePlan {
             Map<String, String> filters = new HashMap<>();
             filters.put("processInstanceId", id);
             tenant(engine).ifPresent(t -> filters.put("tenantId", t));
-            FlowablePage page = flowable.listJobs(
+            JobPage page = flowable.listJobs(
                     engine, priority, JobLaneKind.DEADLETTER, filters, 0, engine.maxPageSizeOrDefault());
             // Same failure-window/error-text/signature semantics as the inverted plan's scan legs.
             Map<String, Failure> perInstance =

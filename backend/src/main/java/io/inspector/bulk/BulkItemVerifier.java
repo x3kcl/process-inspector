@@ -2,6 +2,7 @@ package io.inspector.bulk;
 
 import io.inspector.action.ActionVerb;
 import io.inspector.client.GuardedCaller.CallPriority;
+import io.inspector.client.JobRecord;
 import io.inspector.client.ProcessApiClient.JobLaneKind;
 import io.inspector.config.InspectorProperties.EngineConfig;
 import io.inspector.migration.CaseCohortBulkMigration;
@@ -52,7 +53,7 @@ final class BulkItemVerifier {
                 if (item.getJobRef() == null) {
                     return new Verdict(null, "no job reference recorded — needs L3 review of the audit trail");
                 }
-                Map<String, Object> dlq =
+                JobRecord dlq =
                         host.client.getJob(engine, CallPriority.INTERACTIVE, JobLaneKind.DEADLETTER, item.getJobRef());
                 return dlq == null
                         ? new Verdict(
@@ -68,7 +69,7 @@ final class BulkItemVerifier {
                 if (item.getJobRef() == null) {
                     return new Verdict(null, "no timer reference recorded — needs L3 review of the audit trail");
                 }
-                Map<String, Object> timer =
+                JobRecord timer =
                         host.client.getJob(engine, CallPriority.INTERACTIVE, JobLaneKind.TIMER, item.getJobRef());
                 return timer == null
                         ? new Verdict(BulkJobItem.State.ok, "verified: timer " + item.getJobRef() + " has fired")

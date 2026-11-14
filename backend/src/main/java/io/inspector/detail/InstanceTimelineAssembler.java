@@ -2,6 +2,7 @@ package io.inspector.detail;
 
 import io.inspector.client.FlowablePage;
 import io.inspector.client.GuardedCaller.CallPriority;
+import io.inspector.client.JobRecord;
 import io.inspector.config.InspectorProperties.EngineConfig;
 import io.inspector.detail.InstanceDetailService.Lanes;
 import io.inspector.dto.InstanceTimeline;
@@ -117,11 +118,11 @@ final class InstanceTimelineAssembler {
         Lanes lanes = host.scanInstanceLanes(engine, instanceId);
         if (lanes.deadLetter().isEmpty() && lanes.failing().isEmpty()) return Map.of();
         Map<String, LiveJobState> byActivity = new LinkedHashMap<>();
-        for (Map<String, Object> job : lanes.failing()) {
+        for (JobRecord job : lanes.failing()) {
             String activityId = host.failingActivityIdOf(engine, job);
             if (activityId != null) byActivity.putIfAbsent(activityId, LiveJobState.RETRYING);
         }
-        for (Map<String, Object> job : lanes.deadLetter()) {
+        for (JobRecord job : lanes.deadLetter()) {
             String activityId = host.failingActivityIdOf(engine, job);
             if (activityId != null) byActivity.put(activityId, LiveJobState.FAILED); // override RETRYING
         }

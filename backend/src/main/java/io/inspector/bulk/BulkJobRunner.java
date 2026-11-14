@@ -401,7 +401,7 @@ final class BulkJobRunner {
                             DLQ_JOBS_PER_INSTANCE_CAP)
                     .dataOrEmpty()
                     .stream()
-                    .map(row -> String.valueOf(row.get("id")))
+                    .map(row -> String.valueOf(row.id()))
                     .toList();
         }
         if (jobIds.isEmpty()) {

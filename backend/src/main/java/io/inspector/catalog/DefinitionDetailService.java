@@ -7,6 +7,7 @@ import io.inspector.catalog.DefinitionSubscriptionsResponse.SubscriptionRow;
 import io.inspector.client.CmmnApiClient;
 import io.inspector.client.FlowablePage;
 import io.inspector.client.GuardedCaller.CallPriority;
+import io.inspector.client.JobPage;
 import io.inspector.client.ProcessApiClient;
 import io.inspector.client.ProcessApiClient.JobLaneKind;
 import io.inspector.config.InspectorProperties.EngineConfig;
@@ -91,7 +92,7 @@ public class DefinitionDetailService {
         List<JobLaneCount> lanes = new ArrayList<>();
         for (JobLaneKind lane : JobLaneKind.values()) {
             try {
-                FlowablePage page = processes.listJobs(
+                JobPage page = processes.listJobs(
                         engine, CallPriority.INTERACTIVE, lane, Map.of("processDefinitionId", definitionId), 0, 1);
                 lanes.add(new JobLaneCount(lane.name().toLowerCase(), page != null ? page.total() : 0, false));
             } catch (RuntimeException e) {

@@ -11,6 +11,7 @@ import io.inspector.client.CaseMigrationRoute;
 import io.inspector.client.CmmnApiClient;
 import io.inspector.client.ForwardedActor;
 import io.inspector.client.GuardedCaller.CallPriority;
+import io.inspector.client.JobRecord;
 import io.inspector.client.ProcessApiClient;
 import io.inspector.client.ProcessApiClient.JobLaneKind;
 import io.inspector.cmmn.CaseMigrationPrecheck;
@@ -526,7 +527,7 @@ public class CorrectiveActionService {
     }
 
     private Target jobTarget(EngineConfig engine, JobLaneKind lane, String instanceId, String jobId, ActionVerb verb) {
-        Map<String, Object> job = client.getJob(engine, CallPriority.INTERACTIVE, lane, jobId);
+        JobRecord job = client.getJob(engine, CallPriority.INTERACTIVE, lane, jobId);
         if (job == null) {
             throw new GuardRefusedException(
                     HttpStatus.NOT_FOUND,
@@ -534,8 +535,8 @@ public class CorrectiveActionService {
                     "Job " + jobId + " is no longer in the " + lane.name().toLowerCase() + " lane"
                             + " (already retried, fired or deleted?). Nothing happened.");
         }
-        Object owner = job.get("processInstanceId");
-        if (owner != null && !instanceId.equals(String.valueOf(owner))) {
+        String owner = job.processInstanceId();
+        if (owner != null && !instanceId.equals(owner)) {
             throw new GuardRefusedException(
                     HttpStatus.BAD_REQUEST,
                     "job-instance-mismatch",
@@ -544,10 +545,10 @@ public class CorrectiveActionService {
         Map<String, Object> payload = new LinkedHashMap<>();
         payload.put("schema", verb.path() + "/v1");
         payload.put("jobId", jobId);
-        payload.put("elementId", job.get("elementId"));
-        payload.put("exceptionMessage", job.get("exceptionMessage"));
-        payload.put("dueDate", job.get("dueDate"));
-        if (verb == ActionVerb.RESCHEDULE_TIMER && job.get("exceptionMessage") != null) {
+        payload.put("elementId", job.elementId());
+        payload.put("exceptionMessage", job.exceptionMessage());
+        payload.put("dueDate", job.dueDate());
+        if (verb == ActionVerb.RESCHEDULE_TIMER && job.exceptionMessage() != null) {
             throw new GuardRefusedException(
                     HttpStatus.BAD_REQUEST,
                     "retry-timer",
@@ -555,7 +556,7 @@ public class CorrectiveActionService {
                             + " is a failing job waiting to retry. Reschedule would change that retry. Nothing happened.");
         }
         // #184: free — the job response already carries processDefinitionId.
-        return new Target(payload, jobId, "job id", null, definitionKeyOf(job.get("processDefinitionId")));
+        return new Target(payload, jobId, "job id", null, definitionKeyOf(job.processDefinitionId()));
     }
 
     /**

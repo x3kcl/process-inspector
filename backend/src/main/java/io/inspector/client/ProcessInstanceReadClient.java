@@ -59,7 +59,7 @@ final class ProcessInstanceReadClient {
      * {@code processDefinitionId}, {@code tenantId}. No sort param: {@code createTime}
      * is not an accepted job sort property, and the join legs don't care about order.
      */
-    public FlowablePage listJobs(
+    public JobPage listJobs(
             EngineConfig engine,
             CallPriority priority,
             JobLaneKind lane,
@@ -79,7 +79,7 @@ final class ProcessInstanceReadClient {
                             return b.build();
                         })
                         .retrieve()
-                        .body(FlowablePage.class));
+                        .body(JobPage.class));
     }
 
     /**
