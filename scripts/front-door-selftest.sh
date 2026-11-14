@@ -7,13 +7,14 @@ ROOT="$(cd "$(dirname "${BASH_SOURCE[0]}")/.." && pwd)"
 CHECK="$ROOT/scripts/front-door-check.sh"
 REDSET="$ROOT/scripts/red-set.sh"
 TMP="$(mktemp -d)"
-trap 'rm -rf "$TMP"' EXIT
 FAIL=0 N=0
+# the verdict runs on exit, so cases a later RED commit appends below still count
+trap 'rm -rf "$TMP"; [ "$FAIL" = 0 ] && echo "front-door-selftest: all ok" || echo "front-door-selftest: FAILED"; exit "$FAIL"' EXIT
 
 g() { git -c user.name=t -c user.email=t@t -c commit.gpgsign=false "$@"; }
 # new repo with one base commit; prints nothing, cds into it
 repo() {
-  N=$((N + 1)); mkdir "$TMP/r$N" && cd "$TMP/r$N" || exit 1
+  N=$((N + 1)); mkdir "$TMP/r$N" && cd "$TMP/r$N" || { FAIL=1; exit; }
   g init -q && echo base >README && g add -A && g commit -qm base
 }
 # put FILE CONTENT -> write it (dirs created)
@@ -61,7 +62,13 @@ if [ "$rc" = 0 ]; then echo "ok   manifest code paths override defaults"
 else echo "FAIL manifest code paths override defaults: rc=$rc"; sed 's/^/    /' <<<"$out"; FAIL=1; fi
 
 repo; commit "test(#1): RED — foo" $T 'a\nb\n'; commit "feat: foo" $M 'x\n' $T 'a\nb\nc\n'
-expect "lr-2 appended lines pass" 0 "lr-2 ok"
+expect "lr-2 append in a non-RED commit refused" 1 "✗ lr-2"
+
+repo; commit "test(#1): RED — foo" $T 'a\nb\n'; commit "test(#1): RED — more" $T 'a\nb\nc\n'; commit "feat: foo" $M 'x\n'
+expect "lr-2 append in a later RED commit passes" 0 "lr-2 ok"
+
+repo; commit "test(#1): RED — foo" $T 'a\nb\n'; commit "test(#1): RED — more" $T 'a\nB\nc\n'; commit "feat: foo" $M 'x\n'
+expect "lr-2 later RED editing an earlier case refused" 1 "✗ lr-2"
 
 repo; commit "test(#1): RED — foo" $T 'a\nb\n'; commit "feat: foo" $M 'x\n' $T 'a\nB\n'
 expect "lr-2 edited RED line refused" 1 "✗ lr-2"
@@ -97,5 +104,9 @@ if grep -qx "classes: BarTest" <<<"$out" && grep -qx "vitest: frontend/src/c.tes
    && grep -qx "selftests: scripts/z-selftest.sh" <<<"$out"; then echo "ok   red-set lists RED-touched tests only"
 else echo "FAIL red-set lists RED-touched tests only"; sed 's/^/    /' <<<"$out"; FAIL=1; fi
 
-[ "$FAIL" = 0 ] && echo "front-door-selftest: all ok" || echo "front-door-selftest: FAILED"
-exit "$FAIL"
+
+repo; commit "test(#1): RED — foo" $T 'a\n'; commit "feat: foo" $M 'x\n' $T 'A\n'
+echo "Contract-change: $T — oracle was wrong — reviewed-by alice" >"$TMP/body"
+expect "lr-2 Contract-change by a human waives" 0 "lr-2 ok" --body-file "$TMP/body"
+echo "Contract-change: $T — oracle was wrong — reviewed-by claude-bot" >"$TMP/body"
+expect "lr-2 Contract-change by an agent refused" 1 "✗ lr-2" --body-file "$TMP/body"
