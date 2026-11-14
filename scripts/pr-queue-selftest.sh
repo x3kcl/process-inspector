@@ -11,6 +11,7 @@ while [[ $# -gt 0 ]]; do
   case "$1" in -X) m="$2"; shift ;; http*) u="$1" ;; esac; shift
 done
 echo "$m $u" >> "$FIX/calls"
+[[ -f "$FIX/down" ]] && exit 22
 case "$u" in
   */actions/runs*) cat "$FIX/runs.json" ;;
   */issues/*/comments*) cat "$FIX/comments.json" ;;
@@ -24,7 +25,7 @@ export FIX="$T" PATH="$T/bin:$PATH" GITHUB_PERSONAL_ACCESS_TOKEN=selftest-token 
 fail=0
 # fixture <ci-conclusion> <merged> <labelled>
 fixture() {
-  : > "$T/calls"
+  : > "$T/calls"; rm -f "$T/down"
   local lab='[]'; [[ "$3" == true ]] && lab='[{"name":"queue"}]'
   echo "{\"head\":{\"sha\":\"abc\"},\"merged\":$2,\"labels\":$lab}" > "$T/pull.json"
   echo "{\"workflow_runs\":[{\"path\":\".github/workflows/ci.yml\",\"status\":\"completed\",\"conclusion\":\"$1\"}]}" > "$T/runs.json"
@@ -46,5 +47,7 @@ fixture success true true;   check "merged exits 0" 0 no --watch 7
 fixture success false false; check "unlabelled exits 1" 1 no --watch 7
 fixture success false true;  check "waiting times out" 3 no --watch 7
 fixture success false true;  check "status prints" 0 no --status 7
+fixture success false true; touch "$T/down"; check "API error exits 2" 2 no --watch 7
+fixture success false false; touch "$T/down"; check "API error refuses with 2" 2 no 7
 [[ $fail == 0 ]] && echo "pr-queue-selftest: ok"
 exit $fail
