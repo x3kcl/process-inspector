@@ -37,6 +37,6 @@ ok "stop marker fresh" 0 "$(STUB_RC=1 run)"; [ ! -s "$STUB_LOG" ]; ok "marker sk
 ok "stop mvn missing" 0 "$(PI_STOP_HOOK_MVN=/nonexistent bash "$here/hooks/stop-tests.sh" <<<'{}' >/dev/null 2>&1; echo $?)"
 echo y >>frontend/src/ui/A.tsx; sleep 1; touch frontend/src/ui/A.tsx
 : >"$STUB_LOG"; run >/dev/null; ! grep -q related "$STUB_LOG"; ok "no node_modules -> no vitest" 0 $?
-mkdir frontend/node_modules; : >"$STUB_LOG"; run >/dev/null; grep -q 'vitest related --run frontend/src/ui/A.tsx\|vitest related --run src/ui/A.tsx' "$STUB_LOG"; ok "vitest related" 0 $?
+mkdir frontend/node_modules; rm -f "$(git rev-parse --git-path pi-stop-hook-ran)"; : >"$STUB_LOG"; run >/dev/null; grep -q 'vitest related --run frontend/src/ui/A.tsx\|vitest related --run src/ui/A.tsx' "$STUB_LOG"; ok "vitest related" 0 $?
 echo y >"$t/repo/frontend/node_modules/.x"
 exit $fail
