@@ -5,6 +5,7 @@
 
 FD_TEST_DEFAULT="backend/src/test/ frontend/e2e/ frontend/src/*.test.ts frontend/src/*.test.tsx scripts/*selftest.sh"
 FD_CODE_DEFAULT="backend/src/main/ frontend/src/ scripts/ ci/"
+FD_AGENT_DEFAULT="claude|agent|orchestrator|bot|codex|gpt|gemini|copilot|cursor|aider"
 
 # fd_manifest REF KEY DEFAULT -> the KEY value of ci/manifest.env at REF, DEFAULT when unset
 fd_manifest() {
@@ -32,8 +33,16 @@ fd_files() { git diff-tree --no-commit-id --name-only -r "$1"; }
 # fd_frozen_reds BASE HEAD -> shas of `test(#N): RED` commits in BASE..HEAD, oldest first
 # (subject only, as ci-lib RED_FROZEN_RE.match: a body line quoting one does not freeze)
 fd_frozen_reds() {
-  git log --reverse --format='%H %s' "$1..$2" | while read -r sha subj; do
+  git log --reverse --no-merges --format='%H %s' "$1..$2" | while read -r sha subj; do
     [[ "$subj" =~ ^test\(#[0-9]+\):\ RED([^[:alnum:]_]|$) ]] && printf '%s\n' "$sha"
   done
   return 0
+}
+
+# fd_kept OLD NEW PATH -> rc 0 when every line of PATH at OLD is still at NEW, in order
+# (ci-lib _lines_kept: absent at OLD is kept, absent at NEW is not)
+fd_kept() {
+  git cat-file -e "$1:$3" 2>/dev/null || return 0
+  awk 'FILENAME == ARGV[1] { a[++n] = $0; next } i < n && $0 == a[i + 1] { i++ } END { exit i < n }' \
+    <(git show "$1:$3") <(git show "$2:$3" 2>/dev/null)
 }

@@ -5,7 +5,8 @@
 #
 #   lr-1  a commit touching a code path needs an earlier commit in the range touching a test path
 #         with RED in its subject, or a `No-RED: <reason>` trailer
-#   lr-2  a test-path file a `test(#N): RED` commit touched is identical at HEAD, or only appended to
+#   lr-2  a test-path file a `test(#N): RED` commit touched is identical at HEAD to its last RED copy;
+#         only a later RED commit may append cases (Contract-change signed by a human waives)
 #   lr-3  a test-path hunk that removes strong matchers and adds fewer needs a
 #         `Contract-change: <path> — …` line in the pull-request body (--body-file)
 #
@@ -50,18 +51,32 @@ while read -r sha; do
 done < <(git log --reverse --format=%H "$BASE..$HEAD_REF")
 verdict lr-1 "$bad"
 
-# lr-2 frozen RED: the RED copy must be a line prefix of the HEAD copy
-bad=0
+# lr-2 frozen RED (ci-lib red_frozen_paths): HEAD matches the LAST RED copy byte for byte, each
+# earlier RED copy survives in the next as an in-order subsequence of lines; a human-signed
+# `Contract-change: <path> — <why> — reviewed-by <name>` (PR body or commit body) exempts the path
+AGENT_RE="$(fd_manifest "$BASE" CI_MQ_AGENT_REVIEWER_RE "$FD_AGENT_DEFAULT")"
+git show "$BASE:ci/manifest.env" 2>/dev/null | grep -qx 'CI_MQ_AGENT_REVIEWER_RE=""\{0,1\}' && AGENT_RE=""
+declare -A EXEMPT=() LAST=() BROKE=()
+while read -r p who; do
+  [ -n "$p" ] && ! { [ -n "$AGENT_RE" ] && grep -qiE "$AGENT_RE" <<<"$who"; } && EXEMPT[$p]=1
+done < <({ printf '%s\n' "$BODY"; git log --no-merges --format=%b "$BASE..$HEAD_REF"; } \
+  | sed -nE 's/^Contract-change: ([^[:space:]]+) — .+ — reviewed-by ([^[:space:]]+).*/\1 \2/p')
+ORDER=()
 while read -r sha; do
   [ -n "$sha" ] || continue
   while IFS= read -r f; do
-    fd_hits "$f" "${TESTS[@]}" && git cat-file -e "$sha:$f" 2>/dev/null || continue
-    awk 'FILENAME == ARGV[1] { a[++n] = $0; next } ++m <= n && $0 != a[m] { bad = 1 } END { exit (bad || m < n) }' \
-      <(git show "$sha:$f") <(git show "$HEAD_REF:$f" 2>/dev/null) && continue
-    refuse "lr-2 $f changed after its RED commit ${sha:0:7}; restore it (later commits may only append lines)"
-    bad=1
+    fd_hits "$f" "${TESTS[@]}" && [ -z "${EXEMPT[$f]-}" ] || continue
+    if [ -z "${LAST[$f]-}" ]; then ORDER+=("$f")
+    elif ! fd_kept "${LAST[$f]}" "$sha" "$f"; then BROKE[$f]=1; fi
+    LAST[$f]="$sha"
   done < <(fd_files "$sha")
 done < <(fd_frozen_reds "$BASE" "$HEAD_REF")
+bad=0
+for f in "${ORDER[@]}"; do
+  [ -z "${BROKE[$f]-}" ] && git diff --quiet "${LAST[$f]}" "$HEAD_REF" -- "$f" && continue
+  refuse "lr-2 $f differs from its last RED commit ${LAST[$f]:0:7}; restore it (only a later 'test(#N): RED' commit may append cases) or add a human-signed 'Contract-change: $f — <why> — reviewed-by <name>'"
+  bad=1
+done
 verdict lr-2 "$bad"
 
 # lr-3 no weakened assertion, counted per hunk
