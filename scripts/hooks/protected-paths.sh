@@ -7,12 +7,13 @@ import json, os, re, subprocess, sys
 try:
     data = json.loads(sys.stdin.read())
     ti = data.get("tool_input") or {}
-    path = (ti.get("file_path") or "").replace("\\", "/")
+    path = ti.get("file_path") or ""
     root = subprocess.check_output(["git", "rev-parse", "--show-toplevel"], text=True).strip()
 except Exception:
     sys.exit(0)
 if not path or os.environ.get("PI_HOOK_BYPASS") == "1":
     sys.exit(0)
+path = os.path.realpath(path).replace("\\", "/")
 if path.startswith(root + "/"):
     path = path[len(root) + 1:]
 msg = None

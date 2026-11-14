@@ -41,14 +41,14 @@ if [ -f "$marker" ]; then
 fi
 n=0; [ -f "$blocks" ] && n=$(wc -l <"$blocks" | tr -d ' ')
 if [ "${n:-0}" -ge 3 ]; then
-  echo "stop-tests: warning — 3 red blocks already; not blocking again" >&2
-  exit 0
+  echo "stop-tests: warning — 3 red blocks already; not blocking again (counter reset)" >&2
+  rm -f "$blocks"; exit 0
 fi
 
 log=$(mktemp); red=0
 if [ -n "$names" ]; then
   mvn=${PI_STOP_HOOK_MVN:-mvn}
-  (cd backend && "$mvn" -o -q test -Dtest="$names" -Dsurefire.failIfNoSpecifiedTests=false) >"$log" 2>&1
+  (cd backend && "$mvn" -o -q test -Dtest="$names" -Djacoco.skip=true -Dsurefire.failIfNoSpecifiedTests=false) >"$log" 2>&1
   rc=$?
   [ "$rc" -eq 127 ] && { rm -f "$log"; exit 0; }
   [ "$rc" -ne 0 ] && red=1
@@ -66,4 +66,4 @@ if [ "$red" = 1 ]; then
   tail -n 40 "$log" >&2
   rm -f "$log"; exit 2
 fi
-rm -f "$log"; touch "$marker"; exit 0
+rm -f "$log" "$blocks"; touch "$marker"; exit 0
