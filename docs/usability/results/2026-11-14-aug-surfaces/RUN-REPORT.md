@@ -4,13 +4,15 @@ Catalog v1.0 + the M14–M16 additions from this change · BFF/SPA at `origin/ma
 plus this branch's docs commit · engines engine-a/engine-b (Flowable 6.8) and engine-7 (7.1),
 the dev compose stack · testers: `claude-sonnet-5-5`, naive, briefs only, one browser
 (playwright MCP), run **one at a time** · orchestrated and ground-truth verified by the
-issue's model · 2 testers per mission, 6 traces, 30 graded tasks.
+issue's model · 2 testers per mission, 6 traces, 32 briefed tasks, 30 graded (M15 task 5
+returned by neither tester as a task row, see the protocol slip below).
 
 ## Gate verdict: **PASS on completion, with 2 Sev2 defects filed**
 
 - Exit gate (usability-testing skill): every critical task `canComplete = yes`. Result:
-  **30/30 tasks completed**, 19 `yes`, 11 `yes-with-struggle`, **0 `no`**, 0
-  `blocked-by-environment`.
+  **30/30 graded tasks completed** (of 32 briefed), 19 `yes`, 11 `yes-with-struggle`,
+  **0 `no`**, 0 `blocked-by-environment`. The two ungraded rows are M15 task 5 (the reply
+  to the colleague); the M15 decision itself (tasks 3–4) is graded `yes` for both testers.
 - No tester claimed something the BFF/engine contradicts (ground truth below). Zero
   invisible applies and zero guard bypasses. No tester confirmed a mutation:
   `audit_entry` holds no tester-originated row after staging ended (11:54:22Z).
