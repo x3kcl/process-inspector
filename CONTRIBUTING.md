@@ -9,7 +9,7 @@ Read [docs/START-HERE.md](docs/START-HERE.md) once. Then:
 1. `scripts/ci-runner.sh ensure` so a runner slot is online.
 2. Backend unit tests: `cd backend && mvn -B test`.
 3. Frontend: `cd frontend && npm ci && npm test && npm run lint`.
-4. The cheap mirror of CI: `scripts/ci-local.sh` (add `--fix` for Spotless and Prettier, `--full` for the unit ladder).
+4. The cheap mirror of CI: `bash ci/contract.sh ci-light` (`scripts/ci-local.sh` wraps it; `--fix` applies Spotless and Prettier). Land with `scripts/pr-queue.sh <PR>`.
 5. Open a pull request. Watch it with `scripts/ci-watch.sh <pr-head-sha>`. Merge only when that SHA is green.
 
 Engine integration tests need the compose harness. Read `.claude/skills/engine-harness` before adding one. Seed over REST.
