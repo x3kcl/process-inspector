@@ -446,6 +446,9 @@ gap here: [link]" is the ticket-handover primitive.
   **Collapsible** via a header toggle (state persisted): a small process leaves the fixed-
   height canvas mostly empty, so folding it hands the reclaimed height to the tabs below; a
   tab's "show on diagram" auto-unfolds it.
+- **Layout guarantee**: the detail page scrolls as one page; the diagram canvas height is bounded
+  (`clamp(220px, 38vh, 480px)`) and the tab panel never shrinks below 240 px or becomes a
+  collapsing inner scroller, at any viewport size.
 - **Tabs**: Variables · Errors & Jobs · Tasks · Participants · Executions · Decisions · Hierarchy · Timeline · Audit & Notes —
   each lazy-loaded (IBM's slow-detail lesson).
   - **Variables** — a **typed variable ledger, never a raw JSON dump** (the Flowable
