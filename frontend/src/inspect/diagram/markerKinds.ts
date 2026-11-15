@@ -147,7 +147,8 @@ export const MARKER_KINDS: MarkerKind[] = [
     key: 'completedActivityIds',
     markerClass: 'marker-completed',
     stroke: { color: 'var(--color-success-alt)', width: 2, fill: 'var(--color-success-bg)' },
-    glyph: { text: '✓', className: 'exec-glyph', position: { top: -8, left: -8 } },
+    // left 8: clear of the picker S/T glyph (left -10, 16 px) on the same node.
+    glyph: { text: '✓', className: 'exec-glyph', position: { top: -10, left: 8 } },
     label: 'completed',
     legend: 'completed',
   },
