@@ -419,7 +419,8 @@ public final class AttentionScoreCalculator {
      */
     static double retryingShareFactor(double selfHealFactor, AttentionRationale.DeadLetterEvidence deadLetters) {
         Double share = AttentionRationale.retryingShare(deadLetters);
-        return share == null ? selfHealFactor : 1.0 - share * (1.0 - selfHealFactor);
+        // share == 1 returns S itself: 1 - (1 - S) is not always S in doubles (e.g. a 0.3 floor).
+        return share == null || share == 1.0 ? selfHealFactor : 1.0 - share * (1.0 - selfHealFactor);
     }
 
     /**
