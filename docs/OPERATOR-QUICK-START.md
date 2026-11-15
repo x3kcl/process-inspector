@@ -87,8 +87,10 @@ card. When you meet it:
   card — no hover needed** — e.g. "21 failing · last seen 2 min ago · typically 4 h from
   first sighting to resolve · no self-heal history." Those are the server's own computed
   numbers, not vibes; if a card feels wrongly placed, that line is where you check, not your
-  gut. (The chip itself still carries a hover tooltip explaining what "ranked by attention"
-  means in general — the per-card numbers don't need a hover.)
+  gut. (The ordering rule itself is the line above the cards; the chip repeats it as a
+  hover tooltip.) "No resolve-time history" / "no self-heal history" is the normal state for
+  most classes and does not move the card. On `/incidents`, a class last seen before the
+  model's 28-day window reads "not seen in the last 28 d — nothing recent to rank on." instead.
 - **Nothing is ever hidden.** Every card still renders regardless of score — ordering only
   reshuffles position within a section. Acknowledge/never-hide semantics (R-BAU-01) are
   untouched.
