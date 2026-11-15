@@ -4,6 +4,7 @@
 // into a silently-muted alarm list). Auto-resurfaced groups rejoin the ACTIVE list with
 // their badge; only quiet acknowledgments collapse.
 import type { EngineDto, ErrorGroup } from '../api/model'
+import { AttentionOrderingNote } from '../components/AttentionBadge'
 import { formatCount } from '../lib/format'
 import { splitAcknowledged } from './ackState'
 import { ErrorGroupCard } from './ErrorGroupCard'
@@ -24,6 +25,7 @@ export function ErrorGroupSections({ groups, enginesById, lowerBound, asOf }: Pr
   const { active, acknowledged } = splitAcknowledged(groups)
   return (
     <>
+      <AttentionOrderingNote scores={groups.map((group) => group.attention)} />
       {active.length === 0 && acknowledged.length > 0 && (
         <div className="zero-state">
           Every failure group is acknowledged — see the section below. Acknowledged groups

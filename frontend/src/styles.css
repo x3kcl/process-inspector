@@ -4419,6 +4419,12 @@ button.skip-link {
   font-size: 12px;
   color: var(--color-text-secondary);
 }
+/* #663: the ordering rule + "no … history" gloss, once above the landing's cards. */
+.attention-ordering-note {
+  font-size: 12px;
+  color: var(--color-text-secondary);
+  margin: 4px 0 8px;
+}
 
 .archived-generations-toggle {
   margin: 10px 0;
@@ -4514,6 +4520,12 @@ button.skip-link {
   padding: 6px 10px;
   margin-bottom: 6px;
   font-size: 13px;
+}
+/* #662: the per-episode actions line under the row's dates. */
+.episode-actions {
+  margin-top: 2px;
+  font-size: 12px;
+  color: var(--color-text-secondary);
 }
 .episode-row.episode-live {
   border-left: 3px solid var(--color-danger);
