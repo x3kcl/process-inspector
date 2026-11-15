@@ -1461,6 +1461,7 @@ and would rewrite working M1/M2 code for no capability gain); Go/FastAPI/Kotlin 
   meanwhile), so the common FIND→FIX retry arc costs a handful of key presses instead
   of a full linear Tab traversal of the vitals header, diagram and tablist.
   **axe runs inside the Playwright suite as a CI hard failure.**
+  In dark theme the BPMN/CMMN canvas recolours shapes, labels, flows and arrowheads from the theme tokens (labels ≥ 4.5:1, flows ≥ 3:1 on the canvas) while the state markers (active, dead-letter, selected, diff) stay distinguishable on top (#674).
 - **Time.** Absolute timestamp + explicit offset + relative age, everywhere; user-selected
   display TZ (default browser-local, one-click UTC); "next retry" adds a countdown.
   Machine-facing text — copy-for-ticket, cURL, audit, exports — is **always UTC ISO-8601**.
