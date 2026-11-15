@@ -6,6 +6,7 @@ behind them is the `tdd` skill (`.claude/skills/tdd/SKILL.md`).
 **Status:** `lr-1` and `lr-2` are enforced by the merge queue since #646 (`CI_MQ_RED_FIRST=1` in
 `ci/manifest.env`); `lr-3` is checked by `scripts/front-door-check.sh` and in review. Run the check before you
 push: `bash scripts/front-door-check.sh origin/main HEAD --body-file <PR body>`.
+A landing-rule refusal (`lr-1`, `lr-2`) does NOT remove the label: the queue comments once per head (`mq-red-first:<sha>` / `mq-red-frozen:<sha>`) and waits for a new head; `pr-queue.sh --watch` exits 1 on it.
 
 Paths the rules read:
 

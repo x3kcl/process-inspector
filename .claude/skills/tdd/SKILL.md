@@ -124,7 +124,7 @@ minute is spent. Then `scripts/ci-local.sh` and the `green-ci` loop.
   merge-queue batch.
 - **Enforced by the merge queue (`CI_MQ_RED_FIRST=1` in `ci/manifest.env`, #646):** the RED commit before the
   code commit (`lr-1`, or a `No-RED: <reason>` trailer) and the frozen RED file (`lr-2`). A refused pull
-  request loses the `queue` label with a comment linking `docs/landing-rules.md`. Check before you push:
+  request keeps the `queue` label; the queue comments once per head (linking `docs/landing-rules.md`) and waits for a new head, so push a fix. Check before you push:
   `bash scripts/front-door-check.sh origin/main HEAD --body-file <PR body>`.
 - **Enforced locally only:** the assertion-weakening check (`lr-3`, `scripts/front-door-check.sh`) and the repo
   hooks (`.claude/settings.json`: Stop runs the touched tests, protected paths refuse an edit).

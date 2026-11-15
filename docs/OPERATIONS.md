@@ -379,10 +379,10 @@ blocked. It is not re-dispatched here: a dispatch cuts a real release and publis
 request runs `lint`, `unit`, `frontend`, `e2e` (ci-light); a push to `mq/**` runs those plus `docker` and the
 `integration` legs (ci-heavy), and there is no push trigger for `main` (the queue fast-forwards a batch that already
 passed). `merge-queue@process-inspector` runs on hp02 from a one-minute timer (GitHub cannot reach it, so no webhook),
-with a fine-grained token (Contents, Pull requests, Actions on this repository) in
+with a fine-grained token (Contents, Pull requests, Actions and Issues: Read and write on this repository; Issues is needed to comment, #666) in
 `~/.config/process-inspector/github-token`, the queue account as a bypass actor on the `main` ruleset, and the `queue`
 label; the unit is installed with ci-lib's `mq/units/activate-repo.sh`. Consequence: `docker` and `integration (...)`
-never report on a pull request, so GitHub's own Merge button stays blocked for non-admins: landing is the queue's job: `scripts/pr-queue.sh <PR>` labels a green head, `--watch` blocks until merged.
+never report on a pull request, so GitHub's own Merge button stays blocked for non-admins: landing is the queue's job: `scripts/pr-queue.sh <PR>` labels a green head, `--watch` blocks until merged. A landing-rule refusal (`lr-1`, `lr-2`) does NOT remove the label: the queue comments once per head (`mq-red-first:<sha>` / `mq-red-frozen:<sha>`) and waits for a new head; `pr-queue.sh --watch` exits 1 on it.
 Open operator step: ci-lib v0.17 publishes each tag to a public mirror (`publish/mirror_snapshot.py`, hourly cron on a box that can push);
 the `ci-lib` action still fetches from the operator's Gitea until that mirror exists.
 
