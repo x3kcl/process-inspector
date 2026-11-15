@@ -338,7 +338,11 @@ Answers "what is broken, how much, where" in zero keystrokes:
   "spiking: 40 in the last 10 min". Below the onset `F` is byte-identical to the formula above,
   so the no-history guarantee is untouched; a burst window that was truncated or blind reads
   `factors.burstUnknown` and forces the gate OFF ("recent arrival rate unknown"), which can
-  suppress a promotion but never cause a demotion. The flag ships
+  suppress a promotion but never cause a demotion. **The self-heal demotion `S` covers only the
+  retrying share of a class (#661, ALARM-COST-MODEL.md §4.1c):** `S_eff = 1 − share·(1 − S)`,
+  `share = retrying / (retrying + deadLettered)` on trusted counts (else 1) — dead-lettered
+  members count in full, reversing #388's option-2 rejection; a partial demotion's rationale
+  ends `ranked down for the N retrying only`. The flag ships
   false because the design's numeric data-maturity gate is measured NOT MET (0 of 5 axes);
   flipping it requires re-measuring that gate. **The frontend (#354) renders whatever order it
   is served, never re-sorting Stage-0 cards itself** — the BFF already reorders `errorGroups`
@@ -464,9 +468,9 @@ gap here: [link]" is the ticket-handover primitive.
   sequence flow, `×N` when taken more than once), **completed** nodes (ended and continued,
   or an end event), **armed-not-taken** nodes (ended without continuing — the losing
   catch events of an event-based gateway), and a **duration badge** per node (≥ 1 ms; the
-  slowest of two or more says `slowest`). Active and dead-letter markers win on the same
+  slowest completed node of two or more says `slowest` — never an armed one). Active and dead-letter markers win on the same
   node. A truncated or capped timeline shows a "Route incomplete" badge on the diagram —
-  never a route that silently stops. A failed or pending timeline leaves the diagram as
+  never a route that silently stops. A failed or pending timeline leaves the diagram
   without the overlay. A **Path on / off** toolbar control (not persisted) shows the plain
   model.
 - **Tabs**: Variables · Errors & Jobs · Tasks · Participants · Executions · Decisions · Hierarchy · Timeline · Audit & Notes —

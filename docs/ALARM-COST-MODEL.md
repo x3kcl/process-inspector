@@ -562,6 +562,30 @@ locked frontend/backend parity on `selfHeal.ts` for no proportionate gain (named
 no frontend change — `factors.selfHeal` already carries the amended value and `factors.selfHealLane`
 the lane it came from.
 
+### 4.1c The demotion covers only the retrying share (#661, ★ BUILT)
+
+**Reverses #388's option-2 rejection, on new evidence.** #388 declined to key `S` on the
+retrying share because its failure was read as interpretive, not informational, and fixed the
+copy instead (the `— not the N dead-lettered` suffix, §4.3). The #478 re-certification
+(`docs/usability/results/2026-11-14-aug-surfaces/`, M14/M15) then showed the copy right and the
+score wrong: a `SELF_HEAL_LIKELY` class at 22 failing / DLQ 22 / retrying 0, flooding, ranked
+last of four (`S = 0.253`) while its own card said the rate did not cover those 22 members. A
+dead-lettered member has no retries left, so no self-heal rate speaks for it.
+
+```
+S_eff(c) = 1 − share(c) · (1 − S(c))      S(c) as in §4.1b
+share(c) = retrying / (retrying + deadLettered)     trusted split only (§4.3 / #388 trust rule)
+           untrusted, absent or 0 + 0 ⇒ share = 1   (the whole-class demotion, as before #661)
+```
+
+`share = 0` ⇒ `S_eff = 1` (not demoted; the #661 class ranks by size and spike like any other);
+`share = 1` ⇒ `S_eff = S` exactly; a mixed class lands between (10 retrying / 10 dead-lettered,
+`S = 0.25` ⇒ `0.625`). `factors.selfHeal` carries `S_eff`. When the demotion is partial the
+rationale says which share it covers: `…; ranked down for the N retrying only`. The split exists
+only on the Stage 0 `decorate()` path; `forClass()` (Incident Ledger) has none, so it keeps the
+whole-class demotion — the same known limitation the #388 suffix carries. Still behind
+`inspector.triage.attention.enabled` (default off; #480 / #638 decide the default).
+
 ### 4.2 Interface consumed from track R2 (#347 design / #351 API) — dependency, not duplication
 The score consumes, per `(signatureHash, algoVersion)`:
 

@@ -8,6 +8,7 @@ import io.inspector.client.CmmnApiClient;
 import io.inspector.client.FlowablePage;
 import io.inspector.client.GuardedCaller.CallPriority;
 import io.inspector.client.ProcessApiClient;
+import io.inspector.client.ProcessInstancePage;
 import io.inspector.config.InspectorProperties.EngineConfig;
 import io.inspector.config.InspectorProperties.EngineEnvironment;
 import io.inspector.registry.EngineRegistry;
@@ -157,27 +158,27 @@ public class HousekeepingService {
         for (EngineConfig engine : engines) {
             int start = 0;
             while (hits.size() < BulkJob.FILTER_ITEM_CAP) {
-                FlowablePage page = cases
-                        ? cmmn.listFinishedCases(
-                                engine, CallPriority.HOUSEKEEPING, key, request.businessKey(), before, start, PAGE)
-                        : flowable.listFinishedProcesses(
-                                engine, CallPriority.HOUSEKEEPING, key, request.businessKey(), before, start, PAGE);
-                List<Map<String, Object>> rows = page == null ? List.of() : page.dataOrEmpty();
+                FinishedPage page = cases
+                        ? FinishedPage.ofCases(cmmn.listFinishedCases(
+                                engine, CallPriority.HOUSEKEEPING, key, request.businessKey(), before, start, PAGE))
+                        : FinishedPage.ofProcesses(flowable.listFinishedProcesses(
+                                engine, CallPriority.HOUSEKEEPING, key, request.businessKey(), before, start, PAGE));
+                List<Finished> rows = page.rows();
                 if (rows.isEmpty()) {
                     break;
                 }
-                for (Map<String, Object> row : rows) {
-                    if (row.get("endTime") == null) {
+                for (Finished row : rows) {
+                    if (row.endTime() == null) {
                         continue;
                     }
-                    if (!versionMatches(row, key, request.definitionVersion())) {
+                    if (!versionMatches(row.definitionId(), key, request.definitionVersion())) {
                         continue;
                     }
-                    String businessKey = str(row, "businessKey");
+                    String businessKey = row.businessKey();
                     if (heldBusiness(businessKey)) {
                         refuseHeld(auth, key, businessKey);
                     }
-                    String id = str(row, "id");
+                    String id = row.id();
                     if (id != null) {
                         hits.add(new Hit(engine.id(), id));
                     }
@@ -243,13 +244,43 @@ public class HousekeepingService {
         return false;
     }
 
-    private static boolean versionMatches(Map<String, Object> row, String key, Integer version) {
+    /** One finished row, process or case, reduced to what the sweep reads. */
+    private record Finished(String id, String businessKey, String definitionId, Object endTime) {}
+
+    private record FinishedPage(List<Finished> rows, long total) {
+        static FinishedPage ofProcesses(ProcessInstancePage page) {
+            if (page == null) {
+                return new FinishedPage(List.of(), 0);
+            }
+            return new FinishedPage(
+                    page.dataOrEmpty().stream()
+                            .map(pi -> new Finished(pi.id(), pi.businessKey(), pi.processDefinitionId(), pi.endTime()))
+                            .toList(),
+                    page.total());
+        }
+
+        static FinishedPage ofCases(FlowablePage page) {
+            if (page == null) {
+                return new FinishedPage(List.of(), 0);
+            }
+            return new FinishedPage(
+                    page.dataOrEmpty().stream()
+                            .map(row -> {
+                                String definitionId = str(row, "processDefinitionId");
+                                return new Finished(
+                                        str(row, "id"),
+                                        str(row, "businessKey"),
+                                        definitionId != null ? definitionId : str(row, "caseDefinitionId"),
+                                        row.get("endTime"));
+                            })
+                            .toList(),
+                    page.total());
+        }
+    }
+
+    private static boolean versionMatches(String id, String key, Integer version) {
         if (version == null) {
             return true;
-        }
-        String id = str(row, "processDefinitionId");
-        if (id == null) {
-            id = str(row, "caseDefinitionId");
         }
         if (id == null) {
             return false;

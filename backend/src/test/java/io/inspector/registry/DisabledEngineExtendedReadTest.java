@@ -9,8 +9,9 @@ import static org.mockito.Mockito.when;
 
 import io.inspector.action.GuardRefusedException;
 import io.inspector.client.CmmnApiClient;
-import io.inspector.client.FlowablePage;
 import io.inspector.client.ProcessApiClient;
+import io.inspector.client.ProcessInstancePage;
+import io.inspector.client.ProcessInstanceRecords;
 import io.inspector.cmmn.CaseDetailService;
 import io.inspector.cmmn.CmmnScopeService;
 import io.inspector.config.InspectorProperties;
@@ -75,8 +76,9 @@ class DisabledEngineExtendedReadTest {
         InstanceDetailService detail = mock(InstanceDetailService.class);
         EngineConfig engine = registry.resolveOrNotFound(DISABLED_ENGINE);
         when(detail.requireHistoric(engine, "pi-1"))
-                .thenReturn(Map.of("id", "pi-1", "processDefinitionId", "invoice:2:def-uuid"));
-        when(flowable.queryHistoricProcessInstances(eq(engine), any(), any())).thenReturn(FlowablePage.empty());
+                .thenReturn(ProcessInstanceRecords.instance(
+                        Map.of("id", "pi-1", "processDefinitionId", "invoice:2:def-uuid")));
+        when(flowable.queryHistoricProcessInstances(eq(engine), any(), any())).thenReturn(ProcessInstancePage.empty());
 
         NearestSiblingResponse res =
                 new SiblingDiffService(registry, flowable, detail).nearestSibling(DISABLED_ENGINE, "pi-1");

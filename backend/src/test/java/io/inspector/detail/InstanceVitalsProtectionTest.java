@@ -9,6 +9,7 @@ import io.inspector.audit.ProtectedInstanceRepository;
 import io.inspector.client.ExternalJobApiClient;
 import io.inspector.client.GuardedCaller.CallPriority;
 import io.inspector.client.ProcessApiClient;
+import io.inspector.client.ProcessInstanceRecords;
 import io.inspector.config.InspectorProperties;
 import io.inspector.config.InspectorProperties.EngineConfig;
 import io.inspector.dto.InstanceDetail;
@@ -48,7 +49,7 @@ class InstanceVitalsProtectionTest {
     private void endedInstanceExists() {
         when(registry.resolve(ENGINE)).thenReturn(Optional.of(engine));
         when(flowable.getHistoricProcessInstance(engine, CallPriority.INTERACTIVE, INSTANCE))
-                .thenReturn(Map.of("id", INSTANCE, "endTime", "2026-07-10T09:05:00Z"));
+                .thenReturn(ProcessInstanceRecords.instance(Map.of("id", INSTANCE, "endTime", "2026-07-10T09:05:00Z")));
     }
 
     @Test

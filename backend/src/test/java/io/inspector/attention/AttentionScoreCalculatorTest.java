@@ -530,8 +530,100 @@ class AttentionScoreCalculatorTest {
 
         assertThat(withEvidence.rationale()).contains("— not the 9 dead-lettered (no retries left)");
         assertThat(withoutEvidence.rationale()).doesNotContain("dead-lettered");
-        // The DeadLetterEvidence parameter is copy-only — it must not perturb the score itself.
-        assertThat(withEvidence.score()).isEqualTo(withoutEvidence.score());
+        // #661 reverses #388's "copy-only" contract: 9 dead-lettered / 0 retrying is a class with
+        // no member left that CAN self-heal, so the S demotion does not apply to it at all.
+        assertThat(withEvidence.factors().selfHeal()).isEqualTo(1.0);
+        assertThat(withEvidence.score()).isGreaterThan(withoutEvidence.score());
+    }
+
+    /* ---------------- #661: S demotes only the RETRYING share of a class ---------------- */
+
+    @Test
+    void theIssueTableRecomputedAFullyDeadLetteredLikelyClassIsNotDemotedAtAll() {
+        // selfHealGhost from #661: LIKELY, healing inside one bucket, 22 failing, DLQ 22, retrying 0.
+        SelfHealStats likely = immediateHealer(SelfHealLane.SELF_HEAL_LIKELY, 13, 12);
+        ClassHistory history = arrivals(22);
+
+        AttentionScore ghost = AttentionScoreCalculator.score(
+                22, history, null, likely, CONFIG, NOW, new AttentionRationale.DeadLetterEvidence(22L, 0L, true));
+        AttentionScore noLane = score(22, history, null, null);
+
+        assertThat(ghost.factors().selfHeal()).isEqualTo(1.0);
+        assertThat(ghost.score()).isEqualTo(noLane.score()); // ranks by size and spike like any class
+        assertThat(ghost.rationale()).doesNotContain("ranked down");
+    }
+
+    @Test
+    void aLikelyClassWithEveryMemberRetryingIsDemotedExactlyAsToday() {
+        SelfHealStats likely = immediateHealer(SelfHealLane.SELF_HEAL_LIKELY, 14, 12);
+
+        AttentionScore allRetrying = AttentionScoreCalculator.score(
+                10, arrivals(7), null, likely, CONFIG, NOW, new AttentionRationale.DeadLetterEvidence(0L, 10L, true));
+        AttentionScore today = score(10, arrivals(7), null, likely);
+
+        assertThat(allRetrying.factors().selfHeal()).isEqualTo(0.25);
+        assertThat(allRetrying.score()).isEqualTo(today.score());
+        assertThat(allRetrying.rationale()).doesNotContain("ranked down");
+    }
+
+    @Test
+    void anAllRetryingClassKeepsTheExactSEvenWhereOneMinusOneMinusSRounds() {
+        // A bound floor of 0.3 (a floor > 0.25 binds): 1 - (1 - 0.3) != 0.3 in IEEE doubles.
+        AttentionRationale.DeadLetterEvidence allRetrying = new AttentionRationale.DeadLetterEvidence(0L, 10L, true);
+
+        assertThat(AttentionScoreCalculator.retryingShareFactor(0.3, allRetrying))
+                .isEqualTo(0.3);
+    }
+
+    @Test
+    void aMixedClassIsDemotedOnlyOnItsRetryingShareAndTheRationaleNamesThatShare() {
+        SelfHealStats likely = immediateHealer(SelfHealLane.SELF_HEAL_LIKELY, 14, 12);
+
+        // 10 retrying + 10 dead-lettered: S = 1 - 0.5 * (1 - 0.25) = 0.625, between 0.25 and 1.
+        AttentionScore half = AttentionScoreCalculator.score(
+                20, arrivals(7), null, likely, CONFIG, NOW, new AttentionRationale.DeadLetterEvidence(10L, 10L, true));
+        // 1 retrying + 3 dead-lettered: S = 1 - 0.25 * 0.75 = 0.8125.
+        AttentionScore quarter = AttentionScoreCalculator.score(
+                4, arrivals(7), null, likely, CONFIG, NOW, new AttentionRationale.DeadLetterEvidence(3L, 1L, true));
+
+        assertThat(half.factors().selfHeal()).isCloseTo(0.625, within(1e-12));
+        assertThat(quarter.factors().selfHeal()).isCloseTo(0.8125, within(1e-12));
+        assertThat(half.rationale())
+                .contains("— not the 10 dead-lettered (no retries left); ranked down for the 10 retrying only");
+        assertThat(quarter.rationale()).contains("ranked down for the 1 retrying only");
+    }
+
+    @Test
+    void aPartialDemotionOnAMixedLaneAlsoNamesItsShare() {
+        SelfHealStats mixed = immediateHealer(SelfHealLane.SELF_HEAL_MIXED, 20, 10);
+
+        AttentionScore scored = AttentionScoreCalculator.score(
+                8, arrivals(7), null, mixed, CONFIG, NOW, new AttentionRationale.DeadLetterEvidence(4L, 4L, true));
+
+        assertThat(scored.factors().selfHeal()).isCloseTo(0.75, within(1e-12)); // 1 - 0.5 * 0.5
+        assertThat(scored.rationale()).contains("mixed self-heal record (10/20); ranked down for the 4 retrying only");
+    }
+
+    @Test
+    void untrustedOrAbsentCountsKeepTodaysWholeClassDemotion() {
+        SelfHealStats likely = immediateHealer(SelfHealLane.SELF_HEAL_LIKELY, 14, 12);
+
+        AttentionScore untrusted = AttentionScoreCalculator.score(
+                22, arrivals(7), null, likely, CONFIG, NOW, new AttentionRationale.DeadLetterEvidence(22L, 0L, false));
+        AttentionScore nullSplit = AttentionScoreCalculator.score(
+                22,
+                arrivals(7),
+                null,
+                likely,
+                CONFIG,
+                NOW,
+                new AttentionRationale.DeadLetterEvidence(null, null, false));
+        AttentionScore emptySplit = AttentionScoreCalculator.score(
+                22, arrivals(7), null, likely, CONFIG, NOW, new AttentionRationale.DeadLetterEvidence(0L, 0L, true));
+
+        assertThat(untrusted.factors().selfHeal()).isEqualTo(0.25);
+        assertThat(nullSplit.factors().selfHeal()).isEqualTo(0.25);
+        assertThat(emptySplit.factors().selfHeal()).isEqualTo(0.25);
     }
 
     @Test

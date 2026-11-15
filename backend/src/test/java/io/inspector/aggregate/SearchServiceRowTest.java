@@ -5,6 +5,7 @@ import static org.mockito.Mockito.mock;
 
 import io.inspector.audit.ProtectedInstanceRepository;
 import io.inspector.client.ProcessApiClient;
+import io.inspector.client.ProcessInstanceRecords;
 import io.inspector.config.InspectorProperties;
 import io.inspector.config.InspectorProperties.EngineConfig;
 import io.inspector.dto.InstanceStatusFlags;
@@ -42,7 +43,7 @@ class SearchServiceRowTest {
                 "state", "EXTERNALLY_TERMINATED",
                 "deleteReason", "customer requested cancellation");
 
-        ProcessInstanceRow row = service.row(engine, historic, ENDED, null);
+        ProcessInstanceRow row = service.row(engine, ProcessInstanceRecords.instance(historic), ENDED, null);
 
         assertThat(row.status()).isEqualTo(InstanceStatus.COMPLETED); // chip set/facets must not churn
         assertThat(row.terminationReason()).isEqualTo("customer requested cancellation");
@@ -52,7 +53,7 @@ class SearchServiceRowTest {
     void preSixXEngineWithoutStateFallsBackToDeleteReason() {
         Map<String, Object> historic = Map.of("id", "pid-2", "deleteReason", "deleted via legacy API");
 
-        ProcessInstanceRow row = service.row(engine, historic, ENDED, null);
+        ProcessInstanceRow row = service.row(engine, ProcessInstanceRecords.instance(historic), ENDED, null);
 
         assertThat(row.terminationReason()).isEqualTo("deleted via legacy API");
     }
@@ -61,7 +62,7 @@ class SearchServiceRowTest {
     void aGenuineCompletionHasNoTerminationReason() {
         Map<String, Object> historic = Map.of("id", "pid-3", "state", "COMPLETED");
 
-        ProcessInstanceRow row = service.row(engine, historic, ENDED, null);
+        ProcessInstanceRow row = service.row(engine, ProcessInstanceRecords.instance(historic), ENDED, null);
 
         assertThat(row.status()).isEqualTo(InstanceStatus.COMPLETED);
         assertThat(row.terminationReason()).isNull();
@@ -72,7 +73,7 @@ class SearchServiceRowTest {
         InstanceStatusFlags active = new InstanceStatusFlags(false, false, false, false, false);
         Map<String, Object> historic = Map.of("id", "pid-4", "deleteReason", "ignored while running");
 
-        ProcessInstanceRow row = service.row(engine, historic, active, null);
+        ProcessInstanceRow row = service.row(engine, ProcessInstanceRecords.instance(historic), active, null);
 
         assertThat(row.terminationReason()).isNull();
     }

@@ -10,8 +10,9 @@ import static org.mockito.Mockito.verifyNoInteractions;
 import static org.mockito.Mockito.when;
 
 import io.inspector.client.CmmnApiClient;
-import io.inspector.client.FlowablePage;
 import io.inspector.client.ProcessApiClient;
+import io.inspector.client.ProcessInstancePage;
+import io.inspector.client.ProcessInstanceRecords;
 import io.inspector.config.InspectorProperties.EngineConfig;
 import io.inspector.detail.InstanceDetailService;
 import io.inspector.dto.ResolveResponse;
@@ -53,7 +54,7 @@ class ResolveServiceScopeTest {
         when(flowable.getHistoricTaskInstance(any(), any(), any())).thenReturn(null);
         when(flowable.getJob(any(), any(), any(), any())).thenReturn(null);
         when(flowable.queryHistoricProcessInstances(any(), any(), any()))
-                .thenReturn(new FlowablePage(List.of(), 0, 0, 0));
+                .thenReturn(new ProcessInstancePage(ProcessInstanceRecords.instances(List.of()), 0, 0, 0));
     }
 
     @Test

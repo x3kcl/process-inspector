@@ -3,6 +3,8 @@ package io.inspector.sibling;
 import io.inspector.client.FlowablePage;
 import io.inspector.client.GuardedCaller.CallPriority;
 import io.inspector.client.ProcessApiClient;
+import io.inspector.client.ProcessInstancePage;
+import io.inspector.client.ProcessInstanceRecord;
 import io.inspector.config.InspectorProperties.EngineConfig;
 import io.inspector.detail.InstanceDetailService;
 import io.inspector.dto.InstanceVariables.VariableDto;
@@ -55,8 +57,8 @@ public class SiblingDiffService {
 
     public NearestSiblingResponse nearestSibling(String engineId, String instanceId) {
         EngineConfig engine = registry.resolveOrNotFound(engineId);
-        Map<String, Object> historic = detail.requireHistoric(engine, instanceId);
-        String definitionId = str(historic, "processDefinitionId");
+        ProcessInstanceRecord historic = detail.requireHistoric(engine, instanceId);
+        String definitionId = historic.processDefinitionId();
         String defKey = definitionKeyOf(definitionId);
         Integer defVersion = definitionVersionOf(definitionId);
 
@@ -77,13 +79,13 @@ public class SiblingDiffService {
         body.put("size", NEAREST_CANDIDATE_SCAN);
         withTenant(engine, body);
 
-        FlowablePage page = flowable.queryHistoricProcessInstances(engine, CallPriority.INTERACTIVE, body);
-        List<Map<String, Object>> rows = page.dataOrEmpty();
+        ProcessInstancePage page = flowable.queryHistoricProcessInstances(engine, CallPriority.INTERACTIVE, body);
+        List<ProcessInstanceRecord> rows = page.dataOrEmpty();
         // Every non-self row becomes a picker candidate — the whole scan is already paid for,
         // so offering a choice costs no extra engine I/O. The head stays the auto-suggestion.
         List<SiblingRef> candidates = new ArrayList<>(rows.size());
-        for (Map<String, Object> row : rows) {
-            String candidateId = str(row, "id");
+        for (ProcessInstanceRecord row : rows) {
+            String candidateId = row.id();
             if (candidateId == null || candidateId.equals(instanceId)) continue; // never diff against self
             candidates.add(siblingRef(row));
         }
@@ -98,11 +100,11 @@ public class SiblingDiffService {
 
     public SiblingDiffResponse diff(String engineId, String subjectId, String siblingId) {
         EngineConfig engine = registry.resolveOrNotFound(engineId);
-        Map<String, Object> subjectHistoric = detail.requireHistoric(engine, subjectId);
-        Map<String, Object> siblingHistoric = detail.requireHistoric(engine, siblingId);
+        ProcessInstanceRecord subjectHistoric = detail.requireHistoric(engine, subjectId);
+        ProcessInstanceRecord siblingHistoric = detail.requireHistoric(engine, siblingId);
 
-        boolean sameDefinition = Objects.equals(
-                str(subjectHistoric, "processDefinitionId"), str(siblingHistoric, "processDefinitionId"));
+        boolean sameDefinition =
+                Objects.equals(subjectHistoric.processDefinitionId(), siblingHistoric.processDefinitionId());
 
         List<VariableDto> subjectVars = historicVariableProjection(engine, subjectId);
         List<VariableDto> siblingVars = historicVariableProjection(engine, siblingId);
@@ -302,29 +304,22 @@ public class SiblingDiffService {
         return map;
     }
 
-    private static SiblingRef siblingRef(Map<String, Object> row) {
-        Object duration = row.get("durationInMillis");
-        return new SiblingRef(
-                str(row, "id"),
-                str(row, "businessKey"),
-                str(row, "startTime"),
-                str(row, "endTime"),
-                duration instanceof Number n ? n.longValue() : null);
+    private static SiblingRef siblingRef(ProcessInstanceRecord row) {
+        return new SiblingRef(row.id(), row.businessKey(), row.startTime(), row.endTime(), row.durationInMillis());
     }
 
-    private static InstanceRef instanceRef(Map<String, Object> row) {
-        String definitionId = str(row, "processDefinitionId");
-        Object duration = row.get("durationInMillis");
+    private static InstanceRef instanceRef(ProcessInstanceRecord row) {
+        String definitionId = row.processDefinitionId();
         return new InstanceRef(
-                str(row, "id"),
-                str(row, "businessKey"),
+                row.id(),
+                row.businessKey(),
                 definitionId,
                 definitionKeyOf(definitionId),
                 definitionVersionOf(definitionId),
-                str(row, "startTime"),
-                str(row, "endTime"),
-                duration instanceof Number n ? n.longValue() : null,
-                str(row, "endTime") != null);
+                row.startTime(),
+                row.endTime(),
+                row.durationInMillis(),
+                row.endTime() != null);
     }
 
     private static void withTenant(EngineConfig engine, Map<String, Object> body) {

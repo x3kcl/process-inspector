@@ -23,6 +23,7 @@ import io.inspector.audit.ProtectedInstanceRepository;
 import io.inspector.client.FlowablePage;
 import io.inspector.client.GuardedCaller.CallPriority;
 import io.inspector.client.ProcessApiClient;
+import io.inspector.client.ProcessInstanceRecords;
 import io.inspector.config.InspectorProperties;
 import io.inspector.config.InspectorProperties.EngineEnvironment;
 import io.inspector.config.InspectorProperties.EngineMode;
@@ -127,7 +128,7 @@ class FlowSurgeryServiceTest {
         running.put("processDefinitionId", DEF_ID);
         running.put("suspended", false);
         when(client.getRuntimeProcessInstance(any(), eq(CallPriority.INTERACTIVE), eq("pi-1")))
-                .thenReturn(running);
+                .thenReturn(ProcessInstanceRecords.instance(running));
         when(client.getProcessDefinitionModel(any(), eq(CallPriority.INTERACTIVE), eq(DEF_ID)))
                 .thenReturn(modelJson());
         when(client.processDefinitionResourceData(any(), eq(CallPriority.INTERACTIVE), eq(DEF_ID)))
@@ -211,7 +212,8 @@ class FlowSurgeryServiceTest {
     @Test
     void suspendedInstanceIsBlockedWithActivateFirstGuidance() {
         when(client.getRuntimeProcessInstance(any(), eq(CallPriority.INTERACTIVE), eq("pi-1")))
-                .thenReturn(Map.of("id", "pi-1", "processDefinitionId", DEF_ID, "suspended", true));
+                .thenReturn(ProcessInstanceRecords.instance(
+                        Map.of("id", "pi-1", "processDefinitionId", DEF_ID, "suspended", true)));
 
         assertThatThrownBy(() -> service.previewChangeState(DEV, "pi-1", move(null, "stepOne", "stepTwo"), operator))
                 .isInstanceOf(GuardRefusedException.class)
@@ -377,7 +379,8 @@ class FlowSurgeryServiceTest {
                         0,
                         500));
         when(client.startProcessInstance(any(), any(), any()))
-                .thenReturn(Map.of("id", "pi-new", "processDefinitionId", "demoOrder:4:v4"));
+                .thenReturn(ProcessInstanceRecords.instance(
+                        Map.of("id", "pi-new", "processDefinitionId", "demoOrder:4:v4")));
 
         RestartInstanceResult result =
                 service.restartAsNew(DEV, "pi-dead", new RestartInstanceRequest(REASON, null, false), operator);
@@ -404,7 +407,8 @@ class FlowSurgeryServiceTest {
         when(client.listHistoricVariableInstances(any(), eq(CallPriority.INTERACTIVE), eq("pi-dead"), anyInt()))
                 .thenReturn(new FlowablePage(List.of(), 0, 0, 500));
         when(client.startProcessInstance(any(), any(), any()))
-                .thenReturn(Map.of("id", "pi-new", "processDefinitionId", "demoOrder:3:v3"));
+                .thenReturn(ProcessInstanceRecords.instance(
+                        Map.of("id", "pi-new", "processDefinitionId", "demoOrder:3:v3")));
 
         RestartInstanceResult result =
                 service.restartAsNew(DEV, "pi-dead", new RestartInstanceRequest(REASON, null, true), operator);
@@ -441,7 +445,7 @@ class FlowSurgeryServiceTest {
         historic.put("businessKey", "bk-9");
         historic.put("endTime", "2026-07-06T10:00:00.000Z");
         when(client.getHistoricProcessInstance(any(), eq(CallPriority.INTERACTIVE), eq(instanceId)))
-                .thenReturn(historic);
+                .thenReturn(ProcessInstanceRecords.instance(historic));
     }
 
     private static Map<String, Object> variableRow(

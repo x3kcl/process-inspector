@@ -5,9 +5,10 @@ import com.fasterxml.jackson.databind.ObjectMapper;
 import io.github.resilience4j.bulkhead.BulkheadFullException;
 import io.github.resilience4j.circuitbreaker.CallNotPermittedException;
 import io.inspector.action.GuardRefusedException;
-import io.inspector.client.FlowablePage;
 import io.inspector.client.GuardedCaller.CallPriority;
 import io.inspector.client.ProcessApiClient;
+import io.inspector.client.ProcessInstancePage;
+import io.inspector.client.ProcessInstanceRecord;
 import io.inspector.config.InspectorProperties;
 import io.inspector.config.InspectorProperties.EngineConfig;
 import io.inspector.detail.InstanceDetailService;
@@ -159,7 +160,7 @@ public class HierarchyPlanService {
             List<Member> roots;
             long rootTotal;
             if (rootInstanceId != null) {
-                Map<String, Object> instance =
+                ProcessInstanceRecord instance =
                         client.getRuntimeProcessInstance(engine, CallPriority.INTERACTIVE, rootInstanceId);
                 if (instance == null) {
                     throw new GuardRefusedException(
@@ -168,8 +169,7 @@ public class HierarchyPlanService {
                             "Instance " + rootInstanceId + " is not running on '" + engineId
                                     + "' — a migration plan needs a running root. Nothing happened.");
                 }
-                roots = List.of(
-                        new Member(rootInstanceId, str(instance, "processDefinitionId"), str(instance, "businessKey")));
+                roots = List.of(new Member(rootInstanceId, instance.processDefinitionId(), instance.businessKey()));
                 rootTotal = 1;
             } else {
                 ListedCohort listed = cohorts.listInstances(engineId, cohort);
@@ -209,13 +209,13 @@ public class HierarchyPlanService {
         return view(plan);
     }
 
-    private static HierarchyTree.Page page(FlowablePage page) {
+    private static HierarchyTree.Page page(ProcessInstancePage page) {
         if (page == null) {
             return new HierarchyTree.Page(List.of(), 0);
         }
         List<Member> rows = new ArrayList<>();
-        for (Map<String, Object> row : page.dataOrEmpty()) {
-            rows.add(new Member(str(row, "id"), str(row, "processDefinitionId"), str(row, "businessKey")));
+        for (ProcessInstanceRecord row : page.dataOrEmpty()) {
+            rows.add(new Member(row.id(), row.processDefinitionId(), row.businessKey()));
         }
         return new HierarchyTree.Page(rows, page.total());
     }
@@ -370,10 +370,10 @@ public class HierarchyPlanService {
      * that does not hold every running child throws: the caller must not send the parent.
      */
     public List<String> lateChildren(String analysisRef, String engineId, String instanceId) {
-        FlowablePage page = detail.runningChildren(registry.require(engineId), instanceId);
+        ProcessInstancePage page = detail.runningChildren(registry.require(engineId), instanceId);
         List<String> running = page == null
                 ? List.of()
-                : page.dataOrEmpty().stream().map(row -> str(row, "id")).toList();
+                : page.dataOrEmpty().stream().map(ProcessInstanceRecord::id).toList();
         if (page != null && page.total() > running.size()) {
             throw new IllegalStateException(
                     instanceId + " has " + page.total() + " running children, " + running.size() + " read");
@@ -584,11 +584,6 @@ public class HierarchyPlanService {
 
     private static String blank(String value) {
         return value == null || value.isBlank() ? null : value.trim();
-    }
-
-    private static String str(Map<String, Object> map, String key) {
-        Object value = map.get(key);
-        return value != null ? value.toString() : null;
     }
 
     private Payload payload(HierarchyPlan plan) {

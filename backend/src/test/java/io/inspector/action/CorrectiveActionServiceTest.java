@@ -27,6 +27,7 @@ import io.inspector.client.GuardedCaller.CallPriority;
 import io.inspector.client.JobRecords;
 import io.inspector.client.ProcessApiClient;
 import io.inspector.client.ProcessApiClient.JobLaneKind;
+import io.inspector.client.ProcessInstanceRecords;
 import io.inspector.client.TaskRecords;
 import io.inspector.config.InspectorProperties;
 import io.inspector.config.InspectorProperties.EngineEnvironment;
@@ -331,7 +332,8 @@ class CorrectiveActionServiceTest {
     @Test
     void tierThreeOnProdDemandsTheServerFreshTypedToken() {
         when(client.getRuntimeProcessInstance(any(), eq(CallPriority.INTERACTIVE), eq("pi-1")))
-                .thenReturn(Map.of("id", "pi-1", "businessKey", "ORD-77", "suspended", false));
+                .thenReturn(ProcessInstanceRecords.instance(
+                        Map.of("id", "pi-1", "businessKey", "ORD-77", "suspended", false)));
 
         ActionRequest wrongToken = new ActionRequest(
                 "operator requested teardown", null, "ORD-99", null, null, null, null, null, null, null, null);
@@ -384,7 +386,8 @@ class CorrectiveActionServiceTest {
         // 5 min < window → fresh: re-auth passes and control reaches the tier-3 typed-token rail, which
         // then refuses the wrong token. Proves the gate lets a fresh session through to the next rail.
         when(client.getRuntimeProcessInstance(any(), eq(CallPriority.INTERACTIVE), eq("pi-1")))
-                .thenReturn(Map.of("id", "pi-1", "businessKey", "ORD-77", "suspended", false));
+                .thenReturn(ProcessInstanceRecords.instance(
+                        Map.of("id", "pi-1", "businessKey", "ORD-77", "suspended", false)));
         Authentication fresh = oidcSession(Duration.ofMinutes(5), "ROLE_ADMIN");
         ActionRequest wrongToken = new ActionRequest(
                 "operator requested teardown", null, "ORD-99", null, null, null, null, null, null, null, null);
@@ -404,7 +407,8 @@ class CorrectiveActionServiceTest {
         // against a moving clock (this session is 20 min stale, past the 15-min window) must NOT
         // fire here — proving the fix for the latent per-item reauth-storm bug (issue #100).
         when(client.getRuntimeProcessInstance(any(), eq(CallPriority.INTERACTIVE), eq("pi-1")))
-                .thenReturn(Map.of("id", "pi-1", "businessKey", "ORD-77", "suspended", false));
+                .thenReturn(ProcessInstanceRecords.instance(
+                        Map.of("id", "pi-1", "businessKey", "ORD-77", "suspended", false)));
         Authentication stale = oidcSession(Duration.ofMinutes(20), "ROLE_ADMIN");
         ActionRequest request =
                 new ActionRequest("bulk teardown", null, null, null, null, null, null, null, null, null, null);
@@ -419,7 +423,8 @@ class CorrectiveActionServiceTest {
         // A per-instance business-key token typed once cannot stand for N bulk items — the
         // wizard's own "type the item count" gate at submit is the bulk-shaped equivalent.
         when(client.getRuntimeProcessInstance(any(), eq(CallPriority.INTERACTIVE), eq("pi-1")))
-                .thenReturn(Map.of("id", "pi-1", "businessKey", "ORD-77", "suspended", false));
+                .thenReturn(ProcessInstanceRecords.instance(
+                        Map.of("id", "pi-1", "businessKey", "ORD-77", "suspended", false)));
         ActionRequest noToken =
                 new ActionRequest("bulk teardown", null, null, null, null, null, null, null, null, null, null);
 
@@ -770,7 +775,7 @@ class CorrectiveActionServiceTest {
     @Test
     void suspendDeltaStatementStatesTheDeltaAndNamesTheCompensatingVerb() {
         when(client.getRuntimeProcessInstance(any(), eq(CallPriority.INTERACTIVE), eq("pi-1")))
-                .thenReturn(Map.of("id", "pi-1"));
+                .thenReturn(ProcessInstanceRecords.instance(Map.of("id", "pi-1")));
 
         var result = service.execute(DEV, "pi-1", ActionVerb.SUSPEND, emptyRequest(), operator);
 
@@ -788,7 +793,7 @@ class CorrectiveActionServiceTest {
         // lane, and the BFF never inspects job lanes on this path — so the toast must not
         // assert any lane movement (quiet-lie / R-TEST-03).
         when(client.getRuntimeProcessInstance(any(), eq(CallPriority.INTERACTIVE), eq("pi-1")))
-                .thenReturn(Map.of("id", "pi-1"));
+                .thenReturn(ProcessInstanceRecords.instance(Map.of("id", "pi-1")));
 
         var result = service.execute(DEV, "pi-1", ActionVerb.SUSPEND, emptyRequest(), operator);
 
@@ -798,7 +803,7 @@ class CorrectiveActionServiceTest {
     @Test
     void activateDeltaStatementStatesTheDeltaAndNamesTheCompensatingVerb() {
         when(client.getRuntimeProcessInstance(any(), eq(CallPriority.INTERACTIVE), eq("pi-1")))
-                .thenReturn(Map.of("id", "pi-1"));
+                .thenReturn(ProcessInstanceRecords.instance(Map.of("id", "pi-1")));
 
         var result = service.execute(DEV, "pi-1", ActionVerb.ACTIVATE, emptyRequest(), operator);
 
@@ -814,7 +819,7 @@ class CorrectiveActionServiceTest {
         // Mirror of #117 for the compensating verb: a dead-letter job was never suspended,
         // so "suspended jobs returned to their queues" is equally unverifiable here.
         when(client.getRuntimeProcessInstance(any(), eq(CallPriority.INTERACTIVE), eq("pi-1")))
-                .thenReturn(Map.of("id", "pi-1"));
+                .thenReturn(ProcessInstanceRecords.instance(Map.of("id", "pi-1")));
 
         var result = service.execute(DEV, "pi-1", ActionVerb.ACTIVATE, emptyRequest(), operator);
 
@@ -912,7 +917,7 @@ class CorrectiveActionServiceTest {
     @Test
     void terminatePrefixesDeleteReasonWithActorAndTicket() {
         when(client.getRuntimeProcessInstance(any(), eq(CallPriority.INTERACTIVE), eq("pi-1")))
-                .thenReturn(Map.of("id", "pi-1"));
+                .thenReturn(ProcessInstanceRecords.instance(Map.of("id", "pi-1")));
         ActionRequest request = new ActionRequest(
                 "customer asked to stop this", "INC-1", null, null, null, null, null, null, null, null, null);
 
@@ -929,7 +934,7 @@ class CorrectiveActionServiceTest {
     @Test
     void removeParticipantRefusesTheStarterLink() {
         when(client.getRuntimeProcessInstance(any(), eq(CallPriority.INTERACTIVE), eq("pi-1")))
-                .thenReturn(Map.of("id", "pi-1"));
+                .thenReturn(ProcessInstanceRecords.instance(Map.of("id", "pi-1")));
         ActionRequest request = new ActionRequest(
                 null,
                 null,

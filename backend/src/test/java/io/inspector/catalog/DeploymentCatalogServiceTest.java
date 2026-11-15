@@ -16,6 +16,8 @@ import io.inspector.audit.AuditEntry;
 import io.inspector.audit.AuditService;
 import io.inspector.client.FlowablePage;
 import io.inspector.client.ProcessApiClient;
+import io.inspector.client.ProcessInstancePage;
+import io.inspector.client.ProcessInstanceRecords;
 import io.inspector.config.InspectorProperties;
 import io.inspector.config.InspectorProperties.EngineConfig;
 import io.inspector.config.InspectorProperties.EngineEnvironment;
@@ -82,7 +84,7 @@ class DeploymentCatalogServiceTest {
                         anyInt()))
                 .thenReturn(new FlowablePage(List.of(Map.of("id", "alpha:1", "key", "alpha", "version", 1)), 1, 0, 1));
         when(processes.queryRuntimeProcessInstances(eq(engine), any(), any()))
-                .thenReturn(new FlowablePage(List.of(), 3, 0, 1));
+                .thenReturn(new ProcessInstancePage(ProcessInstanceRecords.instances(List.of()), 3, 0, 1));
 
         assertThatThrownBy(() -> service.delete(
                         "engine-a",

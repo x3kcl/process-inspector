@@ -23,6 +23,7 @@ import io.inspector.audit.ProtectionGuard;
 import io.inspector.client.FlowablePage;
 import io.inspector.client.GuardedCaller.CallPriority;
 import io.inspector.client.ProcessApiClient;
+import io.inspector.client.ProcessInstanceRecords;
 import io.inspector.config.AuditProperties;
 import io.inspector.config.InspectorProperties;
 import io.inspector.config.InspectorProperties.EngineEnvironment;
@@ -134,7 +135,7 @@ class MigrationServiceTest {
         running.put("suspended", false);
         running.put("businessKey", "ORD-77");
         when(client.getRuntimeProcessInstance(any(), eq(CallPriority.INTERACTIVE), eq("pi-1")))
-                .thenReturn(running);
+                .thenReturn(ProcessInstanceRecords.instance(running));
 
         // Default target resolution: no toDefinitionId/toVersion in the request → latest deployed.
         Map<String, Object> targetDef = new HashMap<>();
