@@ -5,6 +5,7 @@
 // active/acknowledged split idiom.
 import { useMemo } from 'react'
 import type { EngineDto } from '../api/model'
+import { Link } from 'react-router'
 import { useEngines } from '../api/useEngines'
 import { formatCount } from '../lib/format'
 import { IncidentCard } from './IncidentCard'
@@ -62,9 +63,10 @@ export function IncidentsPage() {
         {total > 0 && <span className="group-count"> · {formatCount(total)}</span>}
       </h1>
       <p className="strip-note">
-        Persisted history for every failure class ever seen (R-BAU-10) — distinct from the Stage-0
-        triage cards above, which recompute per poll and forget the moment a class drains. An
-        incident here survives across a drain/resolve/regression cycle.
+        Persisted history for every failure class ever seen — distinct from the live “Failures by
+        error class” cards on the <Link to="/">home page</Link>, which recompute per poll and forget
+        the moment a class drains. An incident here survives across a drain/resolve/regression
+        cycle.
       </p>
 
       {truncated && (
