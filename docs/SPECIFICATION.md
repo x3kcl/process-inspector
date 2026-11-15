@@ -338,7 +338,11 @@ Answers "what is broken, how much, where" in zero keystrokes:
   "spiking: 40 in the last 10 min". Below the onset `F` is byte-identical to the formula above,
   so the no-history guarantee is untouched; a burst window that was truncated or blind reads
   `factors.burstUnknown` and forces the gate OFF ("recent arrival rate unknown"), which can
-  suppress a promotion but never cause a demotion. The flag ships
+  suppress a promotion but never cause a demotion. **The self-heal demotion `S` covers only the
+  retrying share of a class (#661, ALARM-COST-MODEL.md §4.1c):** `S_eff = 1 − share·(1 − S)`,
+  `share = retrying / (retrying + deadLettered)` on trusted counts (else 1) — dead-lettered
+  members count in full, reversing #388's option-2 rejection; a partial demotion's rationale
+  ends `ranked down for the N retrying only`. The flag ships
   false because the design's numeric data-maturity gate is measured NOT MET (0 of 5 axes);
   flipping it requires re-measuring that gate. **The frontend (#354) renders whatever order it
   is served, never re-sorting Stage-0 cards itself** — the BFF already reorders `errorGroups`
