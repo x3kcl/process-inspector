@@ -1,6 +1,7 @@
 // #675 timeline durations: ms-precision text, proportional bars, sequenceFlow rows folded.
 import { expect, test } from '@playwright/test'
 import type { Page } from '@playwright/test'
+import { scanA11y } from './a11y'
 
 const ENGINE = { id: 'eng1', name: 'Payments DEV', environment: 'dev', reachable: true }
 
@@ -89,6 +90,8 @@ test('durations are ms-precise, bars proportional, flows folded behind a segment
 }) => {
   await mockBff(page)
   await page.goto('/inspect/eng1/inst1?tab=timeline')
+
+  await scanA11y(page, 'timeline durations tab loaded')
 
   const fast = page.getByRole('treeitem', { name: /Fast step/ })
   await expect(fast).toContainText('143 ms')
