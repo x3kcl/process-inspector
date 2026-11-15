@@ -97,7 +97,14 @@ describe('AuditLogPage W3-1 audit-surface slivers', () => {
     // Draft-only edits must NOT leak into the export — it mirrors what the grid shows.
     fireEvent.change(screen.getByLabelText(/Actor/), { target: { value: 'draft-only' } })
     fireEvent.click(exportButton)
-    expect(downloadMock).toHaveBeenCalledWith({ actor: '', action: '', ticketId: '', since: '' })
+    expect(downloadMock).toHaveBeenCalledWith({
+      actor: '',
+      action: '',
+      ticketId: '',
+      since: '',
+      until: '',
+      engineId: '',
+    })
 
     fireEvent.click(screen.getByRole('button', { name: /^Apply$/ }))
     fireEvent.click(exportButton)

@@ -16,6 +16,9 @@ import org.springframework.data.repository.query.Param;
  */
 public interface AuditEntryRepository extends JpaRepository<AuditEntry, UUID> {
 
+    /** The operations log's "no end" bound — a fixed far future, never a nullable timestamptz. */
+    Instant LOG_OPEN_END = Instant.parse("9999-12-31T00:00:00Z");
+
     /** Per-instance Audit tab: what did the last shift already try (SPEC §9). */
     List<AuditEntry> findByEngineIdAndInstanceIdOrderByTsDesc(String engineId, String instanceId, Pageable page);
 
@@ -25,7 +28,8 @@ public interface AuditEntryRepository extends JpaRepository<AuditEntry, UUID> {
     /**
      * Global operations log (SPEC §9): null string filters mean "any"; {@code since} is
      * mandatory (pass {@code Instant.EPOCH} for "ever") — a nullable timestamptz
-     * parameter is untypable for Postgres ("could not determine data type").
+     * parameter is untypable for Postgres ("could not determine data type"), so an open end is
+     * {@link #LOG_OPEN_END}, not null (#662: the episode row's Ops-log link bounds both ends).
      */
     @Query("""
             select a from AuditEntry a
@@ -33,16 +37,22 @@ public interface AuditEntryRepository extends JpaRepository<AuditEntry, UUID> {
               and (:action is null or a.action = :action)
               and (:engineId is null or a.engineId = :engineId)
               and (:ticketId is null or a.ticketId = :ticketId)
-              and a.ts >= :since
+              and a.ts >= :since and a.ts <= :until
             order by a.ts desc
             """)
-    List<AuditEntry> findLog(
+    List<AuditEntry> findLogWindow(
             @Param("actor") String actor,
             @Param("action") String action,
             @Param("engineId") String engineId,
             @Param("ticketId") String ticketId,
             @Param("since") Instant since,
+            @Param("until") Instant until,
             Pageable page);
+
+    default List<AuditEntry> findLog(
+            String actor, String action, String engineId, String ticketId, Instant since, Pageable page) {
+        return findLogWindow(actor, action, engineId, ticketId, since, LOG_OPEN_END, page);
+    }
 
     /**
      * S2 (R-SAFE-17) scoped variant of {@link #findLog}, used ONLY when read-scope enforcement
@@ -67,15 +77,29 @@ public interface AuditEntryRepository extends JpaRepository<AuditEntry, UUID> {
               and (a.engineId in :readableEngineIds or (a.engineId = '_inspector' and :adminAnywhere = true))
             order by a.ts desc
             """)
-    List<AuditEntry> findLogScoped(
+    List<AuditEntry> findLogScopedWindow(
             @Param("actor") String actor,
             @Param("action") String action,
             @Param("engineId") String engineId,
             @Param("ticketId") String ticketId,
             @Param("since") Instant since,
+            @Param("until") Instant until,
             @Param("readableEngineIds") Collection<String> readableEngineIds,
             @Param("adminAnywhere") boolean adminAnywhere,
             Pageable page);
+
+    default List<AuditEntry> findLogScoped(
+            String actor,
+            String action,
+            String engineId,
+            String ticketId,
+            Instant since,
+            Collection<String> readableEngineIds,
+            boolean adminAnywhere,
+            Pageable page) {
+        return findLogScopedWindow(
+                actor, action, engineId, ticketId, since, LOG_OPEN_END, readableEngineIds, adminAnywhere, page);
+    }
 
     /** The startup/periodic reconciler's sweep set (SPEC §6): stale PENDING → unknown. */
     List<AuditEntry> findByOutcomeAndTsBefore(AuditOutcome outcome, Instant cutoff);
