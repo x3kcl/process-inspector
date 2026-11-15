@@ -4607,3 +4607,85 @@ button.skip-link {
   font-weight: 700;
   font-size: 11px;
 }
+
+/* ---- dark-theme diagram ---- */
+/* bpmn-js / cmmn-js write colours as inline SVG styles, so the theme tokens never reach them.
+   Override shape, label, flow and arrowhead colours from the tokens in BOTH dark paths
+   (media query + explicit data-theme, same duplication as above). Wrapped in :where() so the
+   rules have zero specificity: the marker-* state rules (active, dead-letter, selected, diff,
+   picker, finding) keep winning. Never targets the bpmn.io attribution (R-GOV-05). */
+@media (prefers-color-scheme: dark) {
+  :where(
+    :root:not([data-theme='light'])
+      :is(.diagram-canvas, .case-diagram)
+      .djs-shape
+      .djs-visual
+      > :is(rect, circle, ellipse, polygon)
+  ) {
+    stroke: var(--color-text-secondary) !important;
+    fill: var(--color-bg-subtle) !important;
+  }
+  :where(
+    :root:not([data-theme='light']) :is(.diagram-canvas, .case-diagram) .djs-shape .djs-visual path
+  ) {
+    stroke: var(--color-text-secondary) !important;
+  }
+  :where(
+    :root:not([data-theme='light']) :is(.diagram-canvas, .case-diagram) .djs-visual :is(text, tspan)
+  ) {
+    fill: var(--color-ink) !important;
+  }
+  :where(
+    :root:not([data-theme='light'])
+      :is(.diagram-canvas, .case-diagram)
+      .djs-connection
+      .djs-visual
+      > path
+  ) {
+    stroke: var(--color-text-secondary) !important;
+  }
+  :where(:root:not([data-theme='light']) :is(.diagram-canvas, .case-diagram) marker path) {
+    stroke: var(--color-text-secondary) !important;
+    fill: var(--color-text-secondary) !important;
+  }
+  /* the active marker's literal mint fill would sit under the light label ink */
+  :root:not([data-theme='light'])
+    :is(.diagram-canvas, .case-diagram)
+    .marker-active
+    .djs-visual
+    > :first-child {
+    fill: var(--color-success-bg) !important;
+  }
+}
+:where(
+  :root[data-theme='dark']
+    :is(.diagram-canvas, .case-diagram)
+    .djs-shape
+    .djs-visual
+    > :is(rect, circle, ellipse, polygon)
+) {
+  stroke: var(--color-text-secondary) !important;
+  fill: var(--color-bg-subtle) !important;
+}
+:where(:root[data-theme='dark'] :is(.diagram-canvas, .case-diagram) .djs-shape .djs-visual path) {
+  stroke: var(--color-text-secondary) !important;
+}
+:where(:root[data-theme='dark'] :is(.diagram-canvas, .case-diagram) .djs-visual :is(text, tspan)) {
+  fill: var(--color-ink) !important;
+}
+:where(
+  :root[data-theme='dark'] :is(.diagram-canvas, .case-diagram) .djs-connection .djs-visual > path
+) {
+  stroke: var(--color-text-secondary) !important;
+}
+:where(:root[data-theme='dark'] :is(.diagram-canvas, .case-diagram) marker path) {
+  stroke: var(--color-text-secondary) !important;
+  fill: var(--color-text-secondary) !important;
+}
+:root[data-theme='dark']
+  :is(.diagram-canvas, .case-diagram)
+  .marker-active
+  .djs-visual
+  > :first-child {
+  fill: var(--color-success-bg) !important;
+}
