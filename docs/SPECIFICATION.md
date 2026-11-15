@@ -829,7 +829,10 @@ so history survives DLQ drains:
   endpoint). **Rendered** (#662) on each episode row as one line — count (`≥` when
   truncated), kinds and outcomes, largest first, e.g. "6 actions during this episode:
   retry-job ×6 · ok 6" — with the over-inclusion caveat inline and an "open in Ops log" link
-  to `/audit?since=<startedAt>` (the Ops log seeds its Since filter from `?since=`).
+  to `/audit?since=<startedAt>&until=<endedAt>&engineId=<engine>` — `until` only for a
+  closed episode, `engineId` only when the class sits on exactly one engine (the log filters
+  on one engine). The Ops log seeds its Since / Until / Engine filters from those params, and
+  `GET /api/audit` (+ `/export`) bounds `until` inside the query, never after the capped page.
 - **Timeline**: a per-incident occurrence time-series (total / dead-letter / retrying per
   sampler bucket) powers the detail view's arrival-rate timeline (detail-only — list cards
   carry no series, deliberately avoiding a per-card N+1); truncated samples
