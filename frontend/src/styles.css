@@ -1599,6 +1599,13 @@ button.primary:disabled {
 .definition-key {
   color: var(--color-text-body);
 }
+.definition-detail {
+  padding: 10px 16px;
+}
+.definition-title {
+  margin: 0 0 6px;
+  font-size: 20px;
+}
 .version-count {
   font-variant-numeric: tabular-nums;
   color: var(--color-danger-dark);
@@ -2298,13 +2305,6 @@ button.skip-link {
 }
 
 /* ---- M4 modal frame (SPEC §6): env band, cancel-focused ---- */
-.definition-detail {
-  padding: 10px 16px;
-}
-.definition-title {
-  margin: 0 0 6px;
-  font-size: 20px;
-}
 .modal-backdrop {
   position: fixed;
   inset: 0;
