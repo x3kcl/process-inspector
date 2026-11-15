@@ -79,6 +79,7 @@ public class AuditRetentionPurger {
     /** Daily, first run 1h after startup (never fires inside a short test run). */
     @Scheduled(fixedDelayString = "P1D", initialDelayString = "PT1H")
     public void purge() {
+        purgeExpiredHierarchyPlans();
         int retentionDays = properties.retentionDaysOrDefault();
         LocalDate cutoffDate =
                 LocalDate.ofInstant(clock.instant(), ZoneOffset.UTC).minusDays(retentionDays);
@@ -134,6 +135,27 @@ public class AuditRetentionPurger {
             log.error(
                     "AUDIT_RETENTION_PURGE_ABORTED — config event unrecordable; purge NOT run (fail-closed): {}",
                     e.toString());
+        }
+    }
+
+    /**
+     * Stored hierarchy migration plans past {@code inspector.hierarchy-plan-max-age} (#497): submit
+     * already refuses them. Plain rows, not audit — group rows first (foreign key); a failure is
+     * logged and retried on the next run, and never stops the audit purge.
+     */
+    private void purgeExpiredHierarchyPlans() {
+        Timestamp cutoff = Timestamp.from(clock.instant().minus(inspector.hierarchyPlanMaxAgeOrDefault()));
+        try {
+            jdbc.update(
+                    "DELETE FROM migration_hierarchy_group WHERE plan_id IN"
+                            + " (SELECT id FROM migration_hierarchy_plan WHERE created_at < ?)",
+                    cutoff);
+            int plans = jdbc.update("DELETE FROM migration_hierarchy_plan WHERE created_at < ?", cutoff);
+            if (plans > 0) {
+                log.info("hierarchy plan retention: purged {} plan(s) stored before {}", plans, cutoff.toInstant());
+            }
+        } catch (RuntimeException e) {
+            log.warn("hierarchy plan purge failed — retried on the next run: {}", e.toString());
         }
     }
 

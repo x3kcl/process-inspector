@@ -191,7 +191,8 @@ A value outside these ranges fails startup and the message names the property. N
 code default. `inspector.triage.refresh-min-interval-s` is not checked (zero or negative disables
 the throttle). `self-heal-floor` must be in `[0, 1]`. `burst-exit` must be `<= burst-onset` (both
 `>= 1`). `mttr-clamp-low` must be `<= mttr-clamp-high` (both `>= 0`). Durations:
-`recency-half-life`, `burst-window`, and `self-heal-horizon` are at least one second; `model-ttl`,
+`recency-half-life`, `burst-window`, `self-heal-horizon`, and `hierarchy-plan-max-age` are at least
+one second; `model-ttl`,
 `snapshot.sample-interval`, and `incidents.quiet-window` must be positive; `snapshot.bucket-width`
 is at least one second and is not ordered against the sample interval. A burst window shorter than
 `model-ttl` only logs a warning. Counts and caps: `fanout-parallelism`, `hierarchy-max-depth`,

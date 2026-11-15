@@ -41,7 +41,7 @@ public record InspectorProperties(
         @Valid Snapshot snapshot,
         @Valid Incidents incidents,
         @Valid SelfHeal selfHeal,
-        Duration hierarchyPlanMaxAge,
+        @DurationMin(seconds = 1) Duration hierarchyPlanMaxAge,
         @Valid List<EngineConfig> engines) {
     /** Engine ids are stable slugs used in composite instance IDs (R-SEM-08) — never rename. */
     public static final String ENGINE_ID_PATTERN = "^[a-z0-9][a-z0-9._-]{0,63}$";
@@ -51,9 +51,12 @@ public record InspectorProperties(
         return hierarchyMaxDepth != null ? hierarchyMaxDepth : 10;
     }
 
-    /** How long a stored hierarchy migration plan may be submitted (#497). */
+    /**
+     * How long a stored hierarchy migration plan may be submitted (#497): an older plan is refused
+     * at submit and purged by the daily retention job. The tree it holds is as old as the plan.
+     */
     public Duration hierarchyPlanMaxAgeOrDefault() {
-        return hierarchyPlanMaxAge;
+        return hierarchyPlanMaxAge != null ? hierarchyPlanMaxAge : Duration.ofHours(24);
     }
 
     public Triage triageOrDefault() {

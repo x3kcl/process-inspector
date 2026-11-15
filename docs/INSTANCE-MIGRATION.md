@@ -442,6 +442,14 @@ cannot be kept over a tree that was not fully read. A 10k-child multi-instance c
 one read at its parent and is reported with its exact total; migrate that level as a cohort (§7.1)
 and plan again.
 
+**Expiry.** A stored plan is a snapshot of the tree. A plan older than
+`inspector.hierarchy-plan-max-age` (default `PT24H`, at least one second, rejected at boot
+otherwise) is refused at submit with `hierarchy-plan-expired` (409, "Build a new plan"); a plan of
+exactly that age still submits. The plan view reports it as not executable with the same reason.
+The daily retention job (`AuditRetentionPurger`, also when no audit partition aged out) deletes
+expired plans and their group rows; the group analyses and finished jobs stay. A failed delete is
+logged and retried on the next run.
+
 **Circular references.** A node whose definition key is also the key of one of its ancestors (a
 process that calls itself, directly or through others) is listed in `circularReferences`
 (definition key, instance, ancestor instance, depth). It is reported, not skipped: the instance
@@ -467,7 +475,8 @@ plan's tree is the scope, not a filter — so each instance gets the §14 estima
 running instances, so a definition with none is not in the plan.
 
 **Execution.** `POST /api/bulk/migrate-hierarchy {planId, reason, ticketId?, confirmedCount?}`
-(ADMIN on the plan's engine, checked before the plan is resolved). Refusals: `hierarchy-plan-truncated`, `hierarchy-plan-incomplete` (a
+(ADMIN on the plan's engine, checked before the plan is resolved). Refusals: `hierarchy-plan-expired`,
+`hierarchy-plan-truncated`, `hierarchy-plan-incomplete` (a
 group is undecided), `hierarchy-nothing-executable`, and the analysis refusals of §7.1. Every
 instance of a configured group is one item, `jobRef` = its group's analysis id, plus two fields:
 `level` (its depth, the root is 0) and `parentInstanceId` (its nearest ancestor that is also an
@@ -490,11 +499,24 @@ audit per item, pacing, circuit pause, Verify now); prod types the **executable 
   dispatched (`GET runtime/process-instances/{id}`): the child is **no longer running**, or it is
   **already on its target definition** (someone else migrated it). Either way the parent goes. It
   does not matter when that happened: after the analysis (the per-item compare-and-set skipped
-  it) or **before** it (the plan has no expiry, and a child that ended or was moved between
+  it) or **before** it (a child that ended or was moved between
   "plan stored" and "group configured" is a blocker in its group's analysis — preview refuses
   `instance-not-running` or `same-version-target` — so it is listed unsent). A failed read
   counts as "still to migrate". A `failed`, `unknown` or `skipped_protected` child is never
   released this way: those outcomes need the operator.
+- **Re-read at dispatch: a running child that is not in the plan blocks its parent.** The plan
+  holds the children that ran when it was stored. Right before an item is sent (every item, a leaf
+  too), the runner reads its running children again with the plan's own per-node read. A running
+  child that is neither a node of the stored plan nor an item of the job — started after the plan
+  was stored, for example by the next loop of a sequential call activity — blocks the item: it
+  settles `not_run` with `blocked by running child <engine>:<id> that is not part of the plan`,
+  the block travels up the chain like any other, and siblings continue. A running child of a
+  **skipped** definition is a node of the plan and does not block. The way out is a new plan,
+  which holds the new child. The read fails closed: if it errors, or returns fewer children than
+  the engine counts (more than one page), the item settles `not_run` with `running children could
+  not be re-read`. If the plan row was purged while its job (or a continuation) is still running,
+  only the job's own items count as planned. One extra read per item; a child that starts between
+  this read and the engine call is not seen (there is no cross-instance transaction).
 - **Never the reverse.** A parent's outcome does not touch its children, which have already
   settled. Siblings and sibling subtrees are independent.
 - **One audit correlation id.** The envelope row `bulk:migrate-instance` (payload:
@@ -510,7 +532,9 @@ Proven by `HierarchyMigrationIT` (rung 4, 6.8 + 7.1): the seeded 3-level tree
 shown by the audit timestamps and one correlation id; a suspended B leaves A and Root `not_run`
 with the named cause and on their old version, and the continuation finishes the tree in order;
 a B that was migrated to its target, or that completed, between "plan stored" and "group
-configured" is listed unsent and A and Root still migrate; a definition that calls itself
+configured" is listed unsent and A and Root still migrate; a parent that starts one child per loop
+(`demoHierarchyLoop`) whose second child started after the plan was stored settles `not_run`
+naming that child and stays on its version, and a new plan then migrates it; a definition that calls itself
 (`demoHierarchyRecursive`, three levels of one definition) is reported in `circularReferences`
 and migrated deepest first; prod needs the typed count; a 60-child multi-instance level under a
 10-row child read is reported and the plan refused; a self-calling chain 12 instances deep is
@@ -524,14 +548,17 @@ takes minutes and bloats the engine, so it runs against a throwaway flowable-res
 2026-11-12 on flowable-rest 6.8.0 (H2): 10,000 running children under one parent, plan stored in
 0.7 s with 11 nodes (the parent and one 10-row page), truncation `breadth` with `total` 10000,
 the BFF kept answering, and the submit was refused `hierarchy-plan-truncated`. The node cap (500)
-and the `unknown` child are unit-tested only (`HierarchyTreeTest`, `HierarchyBulkJobTest`).
+and the `unknown` child are unit-tested only (`HierarchyTreeTest`, `HierarchyBulkJobTest`), as are
+the plan expiry boundary (`HierarchyPlanServiceTest`) and the failed re-read; the purge of expired
+plans runs against real Postgres in `AuditRetentionPurgerIT` (nightly).
 
 **Plan builder (UI).** The Hierarchy tab of a running instance has **Migrate this hierarchy…**
 (ADMIN on the engine; greyed with the reason below that). It opens `HierarchyMigrateModal`, which
 is a thin screen over the routes above and decides nothing itself:
 
 - Opening it stores a plan with `rootInstanceId` = the instance being looked at (its running
-  descendants; not its parents). Closing and reopening reads the tree again into a new plan.
+  descendants; not its parents). Closing and reopening reads the tree again into a new plan; the
+  ones left behind expire and are purged (above).
 - The tree is drawn from the plan's `nodes` (instance, definition, level, the group's status).
   Truncations are listed with where the walk stopped and `enumerated` of `total`; circular
   references are listed as reported.
