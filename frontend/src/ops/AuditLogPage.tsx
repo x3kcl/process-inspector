@@ -7,7 +7,7 @@ import { AgGridReact } from 'ag-grid-react'
 import type { CustomCellRendererProps } from 'ag-grid-react'
 import type { ColDef } from 'ag-grid-community'
 import { useQuery } from '@tanstack/react-query'
-import { Link } from 'react-router'
+import { Link, useSearchParams } from 'react-router'
 import { api, ApiError } from '../api/client'
 import { useMe } from '../api/me'
 import { useTicketUrlTemplate } from '../api/meta'
@@ -44,8 +44,11 @@ async function fetchOperationsLog(filters: Filters): Promise<AuditEntryDto[]> {
 }
 
 export function AuditLogPage() {
-  const [draft, setDraft] = useState<Filters>(EMPTY)
-  const [applied, setApplied] = useState<Filters>(EMPTY)
+  // #662: `?since=` deep link (the incident episode row's "open in Ops log").
+  const [searchParams] = useSearchParams()
+  const initial: Filters = { ...EMPTY, since: searchParams.get('since') ?? '' }
+  const [draft, setDraft] = useState<Filters>(initial)
+  const [applied, setApplied] = useState<Filters>(initial)
   const [exportError, setExportError] = useState<string | null>(null)
   const ticketTemplate = useTicketUrlTemplate()
   const me = useMe()
