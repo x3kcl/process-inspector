@@ -567,6 +567,15 @@ class AttentionScoreCalculatorTest {
     }
 
     @Test
+    void anAllRetryingClassKeepsTheExactSEvenWhereOneMinusOneMinusSRounds() {
+        // A bound floor of 0.3 (a floor > 0.25 binds): 1 - (1 - 0.3) != 0.3 in IEEE doubles.
+        AttentionRationale.DeadLetterEvidence allRetrying = new AttentionRationale.DeadLetterEvidence(0L, 10L, true);
+
+        assertThat(AttentionScoreCalculator.retryingShareFactor(0.3, allRetrying))
+                .isEqualTo(0.3);
+    }
+
+    @Test
     void aMixedClassIsDemotedOnlyOnItsRetryingShareAndTheRationaleNamesThatShare() {
         SelfHealStats likely = immediateHealer(SelfHealLane.SELF_HEAL_LIKELY, 14, 12);
 
