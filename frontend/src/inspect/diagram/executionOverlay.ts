@@ -14,7 +14,7 @@ export interface ExecutionOverlay {
   armedNotTaken: string[]
   /** Activity id → summed duration (rows under 1 ms left out). */
   durations: Map<string, number>
-  /** The slowest badged node — only when at least two nodes carry a badge. */
+  /** The slowest completed node — only when at least two nodes carry a badge; never an armed one. */
   slowestId?: string
   /** The timeline was truncated or capped: the route shown may stop early. */
   partial: boolean
@@ -72,10 +72,13 @@ export function executionOverlay(
     ;(continued ? completed : armedNotTaken).push(id)
   }
 
+  // Only completed nodes can be slowest: armed-not-taken catch events last as long as the winner.
   let slowestId: string | undefined
   if (durations.size >= 2) {
-    for (const [id, ms] of durations) {
-      if (slowestId === undefined || ms > (durations.get(slowestId) ?? 0)) slowestId = id
+    for (const id of completed) {
+      const ms = durations.get(id)
+      if (ms !== undefined && (slowestId === undefined || ms > (durations.get(slowestId) ?? 0)))
+        slowestId = id
     }
   }
 
