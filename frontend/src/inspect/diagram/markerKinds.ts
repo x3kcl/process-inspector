@@ -142,7 +142,48 @@ export const MARKER_KINDS: MarkerKind[] = [
     label: 'picked as the target (a fresh token starts here)',
     legend: 'target — fresh token',
   },
+  // #677 execution overlay (from the timeline): route, completion, armed, durations.
+  {
+    key: 'completedActivityIds',
+    markerClass: 'marker-completed',
+    stroke: { color: 'var(--color-success-alt)', width: 2, fill: 'var(--color-success-bg)' },
+    // left 8: clear of the picker S/T glyph (left -10, 16 px) on the same node.
+    glyph: { text: '✓', className: 'exec-glyph', position: { top: -10, left: 8 } },
+    label: 'completed',
+    legend: 'completed',
+  },
+  {
+    key: 'armedActivityIds',
+    markerClass: 'marker-armed',
+    stroke: { color: INK, width: 2, dash: '3 3' },
+    label: 'armed, not taken',
+    legend: 'armed, not taken',
+  },
+  {
+    key: 'takenFlowIds',
+    markerClass: 'marker-taken',
+    stroke: { color: 'var(--color-success-alt)', width: 3 },
+    label: 'route taken',
+    legend: 'route taken',
+  },
+  {
+    key: 'repeatedFlowIds',
+    markerClass: 'marker-taken-repeat',
+    glyph: { text: '×N', className: 'exec-glyph', position: { top: -10, left: 10 } },
+    label: 'times taken',
+    legend: 'route taken N times',
+  },
+  {
+    key: 'durationActivityIds',
+    markerClass: 'marker-duration',
+    glyph: { text: 'ms', className: 'exec-glyph', position: { top: -12, right: 10 } },
+    label: 'step duration',
+    legend: 'step duration',
+  },
 ]
+
+/** Per-id badge text overriding a kind's fixed glyph text (×2, 143 ms), keyed by kind key. */
+export type GlyphTexts = Partial<Record<string, Map<string, string>>>
 
 /** Marker ids per kind key, e.g. `{ ...markers, pickerSourceIds, pickerTargetIds }`. */
 export type MarkerSets = Partial<Record<string, string[] | undefined>>

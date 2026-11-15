@@ -5,8 +5,10 @@ import type ElementRegistry from 'diagram-js/lib/core/ElementRegistry'
 import type Overlays from 'diagram-js/lib/features/overlays/Overlays'
 import { DiagramLegend } from './diagram/DiagramLegend'
 import { DiagramToolbar } from './diagram/DiagramToolbar'
+import type { ExecutionOverlay } from './diagram/executionOverlay'
 import { presentKinds } from './diagram/markerKinds'
-import type { MarkerKind, MarkerSets } from './diagram/markerKinds'
+import type { GlyphTexts, MarkerKind, MarkerSets } from './diagram/markerKinds'
+import { formatDurationMs } from '../lib/format'
 import 'bpmn-js/dist/assets/diagram-js.css'
 import 'bpmn-js/dist/assets/bpmn-js.css'
 import 'bpmn-js/dist/assets/bpmn-font/css/bpmn.css'
@@ -55,6 +57,11 @@ interface Props {
    */
   pickerSourceIds?: string[]
   pickerTargetIds?: string[]
+  /**
+   * #677 execution overlay from the timeline: route taken, completed / armed-not-taken
+   * nodes, duration badges. Absent (timeline pending or failed) = the plain markers only.
+   */
+  execution?: ExecutionOverlay
 }
 
 interface SelectionEvent {
@@ -91,6 +98,7 @@ export function DiagramCanvas({
   selectedActivityId,
   pickerSourceIds,
   pickerTargetIds,
+  execution,
 }: Props) {
   const frameRef = useRef<HTMLDivElement | null>(null)
   const hostRef = useRef<HTMLDivElement | null>(null)
@@ -112,10 +120,37 @@ export function DiagramCanvas({
   const onSelectRef = useRef(onSelectActivity)
   onSelectRef.current = onSelectActivity
 
-  const kinds = useMemo(
-    () => presentKinds({ ...markers, pickerSourceIds, pickerTargetIds }),
-    [markers, pickerSourceIds, pickerTargetIds],
-  )
+  // "Path" on/off (#677): view-only, not persisted.
+  const [showPath, setShowPath] = useState(true)
+  const overlay = showPath ? execution : undefined
+
+  const { sets, texts } = useMemo(() => {
+    const base: MarkerSets = { ...markers, pickerSourceIds, pickerTargetIds }
+    const glyphTexts: GlyphTexts = {}
+    if (overlay === undefined) return { sets: base, texts: glyphTexts }
+    // Active and dead-letter markers win over completed / armed on the same node.
+    const live = new Set([...markers.activeActivityIds, ...markers.deadLetterActivityIds])
+    const repeated = [...overlay.takenFlows].filter(([, count]) => count > 1)
+    glyphTexts.repeatedFlowIds = new Map(repeated.map(([id, count]) => [id, `×${String(count)}`]))
+    glyphTexts.durationActivityIds = new Map(
+      [...overlay.durations].map(([id, ms]) => [
+        id,
+        formatDurationMs(ms) + (id === overlay.slowestId ? ' · slowest' : ''),
+      ]),
+    )
+    return {
+      sets: {
+        ...base,
+        completedActivityIds: overlay.completed.filter((id) => !live.has(id)),
+        armedActivityIds: overlay.armedNotTaken.filter((id) => !live.has(id)),
+        takenFlowIds: [...overlay.takenFlows.keys()],
+        repeatedFlowIds: repeated.map(([id]) => id),
+        durationActivityIds: [...overlay.durations.keys()],
+      },
+      texts: glyphTexts,
+    }
+  }, [markers, pickerSourceIds, pickerTargetIds, overlay])
+  const kinds = useMemo(() => presentKinds(sets), [sets])
 
   // One viewer per mount.
   useEffect(() => {
@@ -179,12 +214,8 @@ export function DiagramCanvas({
     const viewer = viewerRef.current
     if (viewer === null || importGeneration === 0) return
     clearMarkersRef.current?.()
-    clearMarkersRef.current = paintMarkers(viewer, kinds, {
-      ...markers,
-      pickerSourceIds,
-      pickerTargetIds,
-    })
-  }, [kinds, markers, pickerSourceIds, pickerTargetIds, importGeneration])
+    clearMarkersRef.current = paintMarkers(viewer, kinds, sets, texts)
+  }, [kinds, sets, texts, importGeneration])
 
   // Tab→diagram sync (SPEC §4): the selected activity gets its own marker and is scrolled
   // into view only when it is not already fully visible.
@@ -257,7 +288,14 @@ export function DiagramCanvas({
             : undefined
         }
         fullscreen={fullscreen}
+        path={execution === undefined ? undefined : { on: showPath, onChange: setShowPath }}
       />
+      {overlay?.partial === true && (
+        <p className="strip-note diagram-partial" role="status">
+          Route incomplete — the engine page cap truncated the timeline, so the path shown may stop
+          early.
+        </p>
+      )}
       <div className="diagram-canvas" ref={hostRef} />
       <DiagramLegend kinds={kinds} />
     </div>
@@ -285,7 +323,12 @@ function fullyVisible(viewer: NavigatedViewer, id: string): boolean {
  * undo. Best-effort decoration: an id the diagram does not know (collapsed subprocess, stale
  * selection) must not kill the render.
  */
-function paintMarkers(viewer: NavigatedViewer, kinds: MarkerKind[], sets: MarkerSets): () => void {
+function paintMarkers(
+  viewer: NavigatedViewer,
+  kinds: MarkerKind[],
+  sets: MarkerSets,
+  texts: GlyphTexts,
+): () => void {
   const canvas = viewer.get<Canvas>('canvas')
   const overlays = viewer.get<Overlays>('overlays')
   const added: [string, string][] = []
@@ -296,10 +339,12 @@ function paintMarkers(viewer: NavigatedViewer, kinds: MarkerKind[], sets: Marker
         canvas.addMarker(id, kind.markerClass)
         added.push([id, kind.markerClass])
         if (kind.glyph !== undefined) {
+          const text = texts[kind.key]?.get(id)
+          const label = text === undefined ? kind.label : `${kind.label}: ${text}`
           overlayIds.push(
             overlays.add(id, 'diagram-marker', {
               position: kind.glyph.position,
-              html: `<span class="${kind.glyph.className}" role="img" aria-label="${kind.label}" title="${kind.label}">${kind.glyph.text}</span>`,
+              html: `<span class="${kind.glyph.className}" role="img" aria-label="${label}" title="${label}">${text ?? kind.glyph.text}</span>`,
             }),
           )
         }
