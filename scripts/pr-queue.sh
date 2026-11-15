@@ -3,7 +3,7 @@
 # pr-queue.sh — land a pull request through the ci-lib merge queue.
 #
 #   scripts/pr-queue.sh <PR>            refuse unless the head's `ci` run is green, then add the `queue` label
-#   scripts/pr-queue.sh --watch <PR>    (flag before or after <PR>) block until merged (0), unlabelled by the queue (1, prints its comment), timeout (3)
+#   scripts/pr-queue.sh --watch <PR>    (flag before or after <PR>) block until merged (0), unlabelled by the queue or refused with a RED-first/frozen marker for the head (1, prints its comment), timeout (3)
 #   scripts/pr-queue.sh --status <PR>   print label, head run, merged flag
 #
 # Exit: 0 ok/merged, 1 head not green / queue dropped the PR, 2 usage or API error, 3 watch timeout.
@@ -37,6 +37,14 @@ apierr() { echo "pr-queue: GitHub API error for #${PR}" >&2; exit 2; }
 state() {
   api "${API}/pulls/${PR}" | jget 'd["head"]["sha"], str(d["merged"]).lower(), str(any(l["name"]=="queue" for l in d["labels"])).lower()'
 }
+# refusal: the queue keeps the label on a landing-rule refusal and comments once per head; prints that comment (empty if none)
+refusal() {
+  api "${API}/issues/${PR}/comments?per_page=100" | SHA="$1" python3 -c "
+import sys,json,os,re
+m=re.compile(r'mq-red-(first|frozen):'+os.environ['SHA']+r'(?![0-9a-f])')
+c=[x['body'] for x in json.load(sys.stdin) if m.search(x['body'])]
+print(c[-1] if c else '',end='')"
+}
 # head run: "<status>/<conclusion>" of the ci.yml run on a sha
 head_run() {
   api "${API}/actions/runs?head_sha=$1&per_page=50" | jget \
@@ -49,6 +57,10 @@ read -r SHA MERGED LABELLED <<<"$ST"
 if [[ "$MODE" == status ]]; then
   RUN="$(head_run "$SHA")" || apierr
   echo "pr #${PR}: label=${LABELLED} head=${SHA:0:8} run=${RUN} merged=${MERGED}"
+  if [[ "$LABELLED" == true ]]; then
+    REF="$(refusal "$SHA")" || apierr
+    [[ -z "$REF" ]] || echo "refused: $(grep -o 'mq-red-[a-z]*:[0-9a-f]*' <<<"$REF" | tail -1)"
+  fi
   exit 0
 fi
 
@@ -71,6 +83,12 @@ while :; do
   if [[ "$LABELLED" != true ]]; then
     echo "pr-queue: #${PR} lost the queue label; last comment:" >&2
     api "${API}/issues/${PR}/comments?per_page=100" | jget 'd[-1]["body"] if d else "(none)"' >&2
+    exit 1
+  fi
+  REF="$(refusal "$SHA")" || apierr
+  if [[ -n "$REF" ]]; then
+    echo "pr-queue: #${PR} refused by the queue (label kept; push a new head):" >&2
+    echo "$REF"
     exit 1
   fi
   (( $(date +%s) < deadline )) || { echo "pr-queue: timeout waiting for #${PR}" >&2; exit 3; }
