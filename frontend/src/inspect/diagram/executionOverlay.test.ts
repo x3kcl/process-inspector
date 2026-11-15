@@ -143,7 +143,9 @@ describe('executionOverlay', () => {
     const xml = xmlOf(flow('f1', 'a', 'b'), flow('f2', 'b', 'c'))
     const rows = [
       node('a', 'serviceTask', 0.4),
+      taken('f1'),
       node('b', 'serviceTask', 143),
+      taken('f2'),
       node('c', 'endEvent', 1),
     ]
     const two = executionOverlay({ activities: rows }, xml, [])
@@ -153,7 +155,7 @@ describe('executionOverlay', () => {
     ])
     expect(two.slowestId).toBe('b')
 
-    const one = executionOverlay({ activities: rows.slice(0, 2) }, xml, [])
+    const one = executionOverlay({ activities: rows.slice(0, 3) }, xml, [])
     expect([...one.durations]).toEqual([['b', 143]])
     expect(one.slowestId).toBeUndefined()
   })
@@ -176,5 +178,44 @@ describe('executionOverlay', () => {
     )
     expect(overlay.completed).toEqual(['gw', 'catchA'])
     expect(overlay.armedNotTaken).toEqual([])
+  })
+
+  // #693 — the slowest badge never lands on an armed-not-taken node.
+  const gateway = (...rows: ReturnType<typeof node>[]) =>
+    executionOverlay(
+      { activities: rows },
+      xmlOf(
+        flow('f1', 'gw', 'catchA'),
+        flow('f2', 'gw', 'catchB'),
+        flow('f3', 'gw', 'catchC'),
+        flow('f4', 'catchA', 'end'),
+        flow('f5', 'catchB', 'end'),
+        flow('f6', 'catchC', 'end'),
+      ),
+      [],
+    )
+
+  it('slowest: armed catch events (equal or longer) never win over the taken one', () => {
+    const overlay = gateway(
+      node('catchB', 'intermediateCatchEvent', 7200000),
+      node('catchC', 'intermediateCatchEvent', 7200000),
+      node('gw', 'eventBasedGateway', 5),
+      taken('f1'),
+      node('catchA', 'intermediateCatchEvent', 7200000),
+      taken('f4'),
+      node('end', 'endEvent'),
+    )
+    expect(overlay.armedNotTaken).toEqual(['catchB', 'catchC'])
+    expect(overlay.slowestId).toBe('catchA')
+  })
+
+  it('slowest: no completed node with a duration means no slowest badge', () => {
+    const overlay = gateway(
+      node('catchB', 'intermediateCatchEvent', 7200000),
+      node('catchC', 'intermediateCatchEvent', 7200000),
+      node('gw', 'eventBasedGateway'),
+    )
+    expect(overlay.armedNotTaken).toContain('catchB')
+    expect(overlay.slowestId).toBeUndefined()
   })
 })
