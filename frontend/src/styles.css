@@ -4619,6 +4619,14 @@ button.skip-link {
     stroke: var(--color-text-secondary) !important;
     fill: var(--color-text-secondary) !important;
   }
+  /* the active marker's literal mint fill would sit under the light label ink */
+  :root:not([data-theme='light'])
+    :is(.diagram-canvas, .case-diagram)
+    .marker-active
+    .djs-visual
+    > :first-child {
+    fill: var(--color-success-bg) !important;
+  }
 }
 :where(
   :root[data-theme='dark']
@@ -4644,4 +4652,11 @@ button.skip-link {
 :where(:root[data-theme='dark'] :is(.diagram-canvas, .case-diagram) marker path) {
   stroke: var(--color-text-secondary) !important;
   fill: var(--color-text-secondary) !important;
+}
+:root[data-theme='dark']
+  :is(.diagram-canvas, .case-diagram)
+  .marker-active
+  .djs-visual
+  > :first-child {
+  fill: var(--color-success-bg) !important;
 }
