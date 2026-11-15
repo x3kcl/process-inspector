@@ -62,6 +62,8 @@ import org.testcontainers.containers.PostgreSQLContainer;
  *       deepest instance first;
  *   <li>a chain deeper than the depth cap is reported at the node where the walk stopped and the
  *       plan is refused;
+ *   <li>a child started after the plan was stored blocks its parent ({@code not_run}, named
+ *       cause) until a new plan holds it;
  *   <li>a prod engine needs the typed count of the executable set;
  *   <li>a multi-instance call activity wider than one child read is reported with its exact total
  *       and the plan is refused, not partly executed.
@@ -85,6 +87,8 @@ class HierarchyMigrationIT {
     private static final String RECURSIVE = "demoHierarchyRecursive";
     private static final Path RECURSIVE_BPMN =
             Path.of("..", "docker", "processes", "demo-hierarchy-recursive.bpmn20.xml");
+    private static final String LOOP = "demoHierarchyLoop";
+    private static final Path LOOP_BPMN = Path.of("..", "docker", "processes", "demo-hierarchy-loop.bpmn20.xml");
     private static final String REASON = "HierarchyMigrationIT move the tree off the bad deploy";
 
     private static final PostgreSQLContainer<?> POSTGRES = new PostgreSQLContainer<>("postgres:16-alpine");
@@ -498,6 +502,62 @@ class HierarchyMigrationIT {
         assertThat(refused.getBody()).contains("hierarchy-plan-truncated");
     }
 
+    /**
+     * Re-read at dispatch (owner decision 2026-11-15). The parent calls one child per loop; the
+     * child of the first loop is in the plan (its definition skipped), then it completes and the
+     * next loop starts a child the plan does not hold. The parent is not sent over it. A new plan
+     * holds the second child, and the same decisions then move the parent.
+     */
+    @ParameterizedTest
+    @ValueSource(strings = {"engine-a", "engine-7"})
+    void aChildStartedAfterThePlanWasStoredBlocksItsParentUntilANewPlanHoldsIt(String engineId) throws Exception {
+        RestClient engine = legs.get(engineId).engine();
+        EngineSeed.deployIfMissing(
+                engine, "demoWideChild", Path.of("..", "docker", "processes", "demo-wide-child.bpmn20.xml"));
+        String from = definitionId(engine, LOOP, EngineSeed.deployNewVersion(engine, LOOP, LOOP_BPMN));
+        String parent = EngineSeed.startInstance(engine, LOOP, "IT497-late-" + UUID.randomUUID(), List.of());
+        cleanup.add(() -> EngineSeed.deleteInstanceQuietly(engine, parent));
+        String first = runningChildOf(engine, parent);
+        String childDefinition = instanceDefinition(engine, first);
+        String to = definitionId(engine, LOOP, EngineSeed.deployNewVersion(engine, LOOP, LOOP_BPMN));
+
+        String planId = createPlan(engineId, parent).path("id").asText();
+        assertThat(nodeDepths(plan(planId))).containsOnlyKeys(parent, first);
+        skipChildAndConfigureParent(planId, childDefinition, from, to);
+
+        // The first loop's child completes; the parent's next loop starts a second one.
+        completeOnlyTask(engine, first);
+        await().atMost(30, TimeUnit.SECONDS)
+                .pollInterval(500, TimeUnit.MILLISECONDS)
+                .until(() -> {
+                    String running = runningChildOf(engine, parent);
+                    return running != null && !running.equals(first);
+                });
+        String second = runningChildOf(engine, parent);
+
+        JsonNode blocked = awaitTerminal(submit(planId, null));
+
+        assertThat(blocked.path("state").asText()).isEqualTo("COMPLETED");
+        JsonNode item = item(blocked, parent);
+        assertThat(item.path("state").asText()).isEqualTo("not_run");
+        assertThat(item.path("detail").asText())
+                .contains("blocked by running child " + engineId + ":" + second)
+                .contains("not part of the plan");
+        assertThat(instanceDefinition(engine, parent)).isEqualTo(from);
+        assertThat(migrateRows(engineId, parent)).isEmpty();
+
+        // A new plan holds the second child: the same decisions now move the parent.
+        String newPlanId = createPlan(engineId, parent).path("id").asText();
+        assertThat(nodeDepths(plan(newPlanId))).containsOnlyKeys(parent, second);
+        skipChildAndConfigureParent(newPlanId, childDefinition, from, to);
+
+        JsonNode moved = awaitTerminal(submit(newPlanId, null));
+
+        assertThat(item(moved, parent).path("state").asText()).isEqualTo("ok");
+        assertThat(instanceDefinition(engine, parent)).isEqualTo(to);
+        assertThat(instanceDefinition(engine, second)).isEqualTo(childDefinition);
+    }
+
     @Test
     void aProdEngineNeedsTheTypedCountOfTheExecutableSet() throws Exception {
         // engine-a-prod is the same 6.8 engine registered as prod.
@@ -687,6 +747,41 @@ class HierarchyMigrationIT {
         JsonNode ready = plan(planId);
         assertThat(groupStatuses(ready).values()).containsOnly("CONFIGURED");
         return ready;
+    }
+
+    /** Skips the child's definition and configures the parent's: one executable item, the parent. */
+    private void skipChildAndConfigureParent(String planId, String childDefinition, String from, String to)
+            throws Exception {
+        for (Map<String, Object> decision : List.<Map<String, Object>>of(
+                Map.of("definitionId", childDefinition, "skip", true),
+                Map.of("definitionId", from, "toDefinitionId", to))) {
+            ResponseEntity<String> decided = as("admin")
+                    .exchange(
+                            "/api/migration/hierarchy/plans/" + planId + "/groups",
+                            HttpMethod.PUT,
+                            new HttpEntity<>(decision),
+                            String.class);
+            assertThat(decided.getStatusCode()).isEqualTo(HttpStatus.OK);
+        }
+        await().atMost(120, TimeUnit.SECONDS)
+                .pollInterval(500, TimeUnit.MILLISECONDS)
+                .until(() -> plan(planId).path("executable").asBoolean());
+        assertThat(plan(planId).path("executableCount").asInt()).isEqualTo(1);
+    }
+
+    /** The one unfinished call-activity child of a parent, null when there is none right now. */
+    @SuppressWarnings("unchecked")
+    private static String runningChildOf(RestClient engine, String parentInstanceId) {
+        Map<String, Object> page = engine.post()
+                .uri("/query/historic-process-instances")
+                .contentType(MediaType.APPLICATION_JSON)
+                .body(Map.of("superProcessInstanceId", parentInstanceId, "finished", false))
+                .retrieve()
+                .body(Map.class);
+        List<Map<String, Object>> data = (List<Map<String, Object>>) page.get("data");
+        return data == null || data.isEmpty()
+                ? null
+                : String.valueOf(data.get(0).get("id"));
     }
 
     private JsonNode plan(String id) throws Exception {

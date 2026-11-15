@@ -30,6 +30,7 @@ import io.inspector.security.RbacAuthorizer;
 import io.inspector.security.Role;
 import io.inspector.support.TestEngines;
 import java.time.Clock;
+import java.time.Duration;
 import java.time.Instant;
 import java.time.ZoneOffset;
 import java.util.ArrayList;
@@ -492,5 +493,100 @@ class HierarchyPlanServiceTest {
         assertThatThrownBy(() -> service.execution(UUID.randomUUID()))
                 .isInstanceOfSatisfying(
                         GuardRefusedException.class, e -> assertThat(e.code()).isEqualTo("hierarchy-plan-not-found"));
+    }
+
+    /* ------------------------------ plan expiry (#497, 2026-11-15) ------------------------------ */
+
+    /** The three-level plan with every group configured, stored {@code age} before the clock's now. */
+    private UUID configuredPlanStored(Duration age) throws Exception {
+        String tree = planStore.get(threeLevelPlan().id()).getPayload();
+        UUID id = UUID.randomUUID();
+        planStore.put(
+                id,
+                new HierarchyPlan(
+                        id,
+                        ENGINE,
+                        "admin",
+                        Instant.parse("2026-11-12T12:00:00Z").minus(age),
+                        tree));
+        for (Map.Entry<String, String> group :
+                Map.of(ROOT_DEF, "root", A_DEF, "a", B_DEF, "b").entrySet()) {
+            decided(
+                    id,
+                    group.getKey(),
+                    HierarchyPlanGroup.Decision.CONFIGURED,
+                    analysis(MigrationAnalysis.Status.COMPLETED, group.getKey(), List.of(group.getValue()), List.of()));
+        }
+        return id;
+    }
+
+    @Test
+    void aPlanOlderThanTheMaxAgeIsRefusedAtSubmitAndSaysToBuildANewOne() throws Exception {
+        // The default max age is 24h, inclusive: a plan of exactly that age still submits.
+        UUID atTheLimit = configuredPlanStored(Duration.ofHours(24));
+        assertThat(service.execution(atTheLimit).executableCount()).isEqualTo(3);
+        assertThat(service.get(atTheLimit, auth).executable()).isTrue();
+
+        UUID expired = configuredPlanStored(Duration.ofHours(24).plusSeconds(1));
+        assertThatThrownBy(() -> service.execution(expired)).isInstanceOfSatisfying(GuardRefusedException.class, e -> {
+            assertThat(e.code()).isEqualTo("hierarchy-plan-expired");
+            assertThat(e.getMessage()).contains("Build a new plan").contains("Nothing happened");
+        });
+        HierarchyPlanView view = service.get(expired, auth);
+        assertThat(view.executable()).isFalse();
+        assertThat(view.notExecutableReason()).contains("expired").contains("Build a new plan");
+    }
+
+    /* --------------------------- re-read at dispatch (#497, 2026-11-15) --------------------------- */
+
+    /** The plan with only its root group configured; returns the root group's analysis id. */
+    private String rootConfiguredPlan() throws Exception {
+        UUID id = threeLevelPlan().id();
+        UUID rootAnalysis = analysis(MigrationAnalysis.Status.COMPLETED, ROOT_DEF, List.of("root"), List.of());
+        decided(id, ROOT_DEF, HierarchyPlanGroup.Decision.CONFIGURED, rootAnalysis);
+        decided(id, A_DEF, HierarchyPlanGroup.Decision.SKIPPED, null);
+        lenient()
+                .when(groups.findByAnalysisId(any()))
+                .thenAnswer(inv -> groupStore.stream()
+                        .filter(row -> inv.<UUID>getArgument(0).equals(row.getAnalysisId()))
+                        .toList());
+        return rootAnalysis.toString();
+    }
+
+    @Test
+    void theReReadNamesOnlyTheRunningChildrenThePlanDoesNotHold() throws Exception {
+        String analysisRef = rootConfiguredPlan();
+
+        // Unchanged: a is a node of the plan (its group is skipped, so it is not an item).
+        assertThat(service.lateChildren(analysisRef, ENGINE, "root")).isEmpty();
+
+        // The next loop started a2 beside a, then a ended.
+        children("root", row("a", A_DEF), row("a2", A_DEF));
+        assertThat(service.lateChildren(analysisRef, ENGINE, "root")).containsExactly("a2");
+        children("root", row("a2", A_DEF));
+        assertThat(service.lateChildren(analysisRef, ENGINE, "root")).containsExactly("a2");
+        children("root");
+        assertThat(service.lateChildren(analysisRef, ENGINE, "root")).isEmpty();
+    }
+
+    @Test
+    void withoutItsStoredPlanEveryRunningChildIsReported() throws Exception {
+        rootConfiguredPlan();
+
+        // No group row names this analysis: the plan was purged after the job was submitted.
+        assertThat(service.lateChildren(UUID.randomUUID().toString(), ENGINE, "root"))
+                .containsExactly("a");
+    }
+
+    @Test
+    void aChildReadThatDoesNotHoldEveryRunningChildFailsClosed() throws Exception {
+        String analysisRef = rootConfiguredPlan();
+        when(detail.runningChildren(any(), eq("root")))
+                .thenReturn(new FlowablePage(List.of(row("a", A_DEF)), 60, 0, 1));
+
+        assertThatThrownBy(() -> service.lateChildren(analysisRef, ENGINE, "root"))
+                .isInstanceOf(IllegalStateException.class)
+                .hasMessageContaining("60 running children")
+                .hasMessageContaining("1 read");
     }
 }

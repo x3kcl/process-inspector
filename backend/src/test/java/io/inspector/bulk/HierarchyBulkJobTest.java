@@ -24,6 +24,7 @@ import io.inspector.config.InspectorProperties.EngineEnvironment;
 import io.inspector.config.InspectorProperties.EngineMode;
 import io.inspector.migration.CaseCohortBulkMigration;
 import io.inspector.migration.CohortBulkMigration;
+import io.inspector.migration.HierarchyPlanService;
 import io.inspector.registry.EngineRegistry;
 import io.inspector.security.OidcProperties;
 import io.inspector.security.reauth.DangerousActionReauthGate;
@@ -65,6 +66,7 @@ class HierarchyBulkJobTest {
     private final BulkJobItemRepository items = mock(BulkJobItemRepository.class);
     private final AuditService audit = mock(AuditService.class);
     private final CohortBulkMigration cohortMigration = mock(CohortBulkMigration.class);
+    private final HierarchyPlanService hierarchyPlans = mock(HierarchyPlanService.class);
     private final Authentication admin = new TestingAuthenticationToken("admin", "n/a", "ROLE_ADMIN");
 
     private final Map<UUID, BulkJob> jobStore = new ConcurrentHashMap<>();
@@ -145,7 +147,8 @@ class HierarchyBulkJobTest {
                 mock(GuardedCaller.class),
                 new SimpleMeterRegistry(),
                 cohortMigration,
-                mock(CaseCohortBulkMigration.class));
+                mock(CaseCohortBulkMigration.class),
+                hierarchyPlans);
     }
 
     /** One planned instance: {@code parent} is its planned parent, null for the top. */
@@ -328,6 +331,64 @@ class HierarchyBulkJobTest {
 
         assertThat(item(done, "b").state()).isEqualTo("failed");
         assertThat(item(done, "a").state()).isEqualTo("not_run");
+        assertThat(dispatched).containsExactly("b");
+    }
+
+    /* ------------------------ re-read at dispatch (#497, 2026-11-15) ------------------------ */
+
+    @Test
+    void aRunningChildThatIsNotAPlanItemBlocksItsParentNotRunAndSiblingsContinue() {
+        // "late" started under a after the plan was stored: the next loop of a sequential call.
+        when(hierarchyPlans.lateChildren(ANALYSIS, ENGINE, "a")).thenReturn(List.of("late"));
+
+        BulkDtos.BulkJobDto done = run(
+                new Planned("b", 2, "a", null),
+                new Planned("b2", 2, "a2", null),
+                new Planned("a", 1, "root", null),
+                new Planned("a2", 1, "root", null),
+                new Planned("root", 0, null, null));
+
+        assertThat(done.state()).isEqualTo("COMPLETED");
+        assertThat(item(done, "a").state()).isEqualTo("not_run");
+        assertThat(item(done, "a").detail())
+                .contains("blocked by running child engine-a:late")
+                .contains("not part of the plan")
+                .contains("new plan");
+        assertThat(item(done, "root").state()).isEqualTo("not_run");
+        assertThat(item(done, "root").detail()).contains("blocked by child engine-a:a");
+        // Its own planned child moved, and the sibling subtree is independent.
+        assertThat(item(done, "b").state()).isEqualTo("ok");
+        assertThat(item(done, "b2").state()).isEqualTo("ok");
+        assertThat(item(done, "a2").state()).isEqualTo("ok");
+        assertThat(dispatched).containsExactlyInAnyOrder("b", "b2", "a2");
+        verify(cohortMigration, never()).dispatch(any(), any(), eq("a"), any(), any(), any());
+        // A leaf is re-read too: it had no child when the plan was stored.
+        verify(hierarchyPlans).lateChildren(ANALYSIS, ENGINE, "b");
+    }
+
+    @Test
+    void aRunningChildThatIsAnItemOfTheJobIsNotLate() {
+        // The plan row is gone (purged): every running child is reported, and b is an item.
+        when(hierarchyPlans.lateChildren(ANALYSIS, ENGINE, "a")).thenReturn(List.of("b"));
+
+        BulkDtos.BulkJobDto done = run(new Planned("b", 2, "a", null), new Planned("a", 1, null, null));
+
+        assertThat(item(done, "a").state()).isEqualTo("ok");
+        assertThat(dispatched).containsExactly("b", "a");
+        verify(hierarchyPlans).lateChildren(ANALYSIS, ENGINE, "a");
+    }
+
+    @Test
+    void aChildReReadThatFailsBlocksTheParentNotRun() {
+        when(hierarchyPlans.lateChildren(ANALYSIS, ENGINE, "a")).thenThrow(new ResourceAccessException("engine down"));
+
+        BulkDtos.BulkJobDto done = run(new Planned("b", 2, "a", null), new Planned("a", 1, null, null));
+
+        assertThat(item(done, "b").state()).isEqualTo("ok");
+        assertThat(item(done, "a").state()).isEqualTo("not_run");
+        assertThat(item(done, "a").detail())
+                .contains("running children could not be re-read")
+                .contains("engine down");
         assertThat(dispatched).containsExactly("b");
     }
 }

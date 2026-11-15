@@ -24,6 +24,8 @@ import org.springframework.http.HttpStatus;
  *       reached its target, or has nothing left to migrate ({@link #released}). Any other child
  *       outcome blocks it, and the parent settles {@code not_run} naming that child. Never the
  *       reverse: a parent's outcome does not touch its children, and siblings are independent.
+ *   <li>{@link #lateChild}: the parent's running children are read again right before it is sent;
+ *       one that is not an item of the job blocks it the same way.
  *   <li>{@link #carryOver}: "Continue as new job" keeps the order, and refuses a parent whose
  *       child still has something to migrate and is not part of the continuation.
  * </ul>
@@ -81,6 +83,25 @@ final class HierarchyOrder {
                         + child.getState() + cause(child.getDetail())
                         + ") — not attempted. A parent is migrated only after every planned child reached its"
                         + " target.";
+            }
+        }
+        return null;
+    }
+
+    /**
+     * The re-read at dispatch: {@code running} is what {@code HierarchyPlanService#lateChildren}
+     * found under {@code item} now. A running child that is not an item of the job (started after
+     * the plan was stored) blocks it; null when there is none.
+     */
+    static String lateChild(BulkJobItem item, Collection<BulkJobItem> all, List<String> running) {
+        for (String child : running) {
+            boolean planned = all.stream()
+                    .anyMatch(other -> other.getInstanceId().equals(child)
+                            && other.getEngineId().equals(item.getEngineId()));
+            if (!planned) {
+                return "blocked by running child " + key(item.getEngineId(), child)
+                        + " that is not part of the plan (it started after the plan was stored) — not attempted."
+                        + " Build a new plan to migrate it first.";
             }
         }
         return null;
