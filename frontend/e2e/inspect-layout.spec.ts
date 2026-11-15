@@ -2,7 +2,6 @@
 // into a tiny inner scroller and the diagram height is bounded. Hermetic (mocked BFF).
 import { expect, test } from '@playwright/test'
 import type { Page } from '@playwright/test'
-import { scanA11y } from './a11y'
 
 const VITALS = {
   compositeId: 'eng1:inst-1',
@@ -69,7 +68,6 @@ test('1440x900: tab panel is not a collapsed inner scroller', async ({ page }) =
   expect(m.h).toBeGreaterThanOrEqual(240)
   // whole content visible inside the panel: no inner vertical scrolling
   expect(m.scrollH).toBeLessThanOrEqual(m.clientH + 1)
-  await scanA11y(page, 'inspect page at 1440x900 with a long tab')
 })
 
 test('1024x700: tablist is reachable by scrolling .inspect', async ({ page }) => {
@@ -98,4 +96,12 @@ test('1920x1080: diagram canvas height is bounded', async ({ page }) => {
     .first()
     .evaluate((el) => el.clientHeight)
   expect(h).toBeLessThanOrEqual(480)
+})
+
+// Appended RED case (LR-2: a later RED commit only appends): axe on the long-tab page, which
+// also satisfies the per-spec scanA11y() coverage guard without editing the cases above.
+test('1440x900: the long-tab inspect page passes axe', async ({ page }) => {
+  const { scanA11y } = await import('./a11y')
+  await open(page, 1440, 900)
+  await scanA11y(page, 'inspect page at 1440x900 with a long tab')
 })
