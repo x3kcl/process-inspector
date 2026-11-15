@@ -500,6 +500,10 @@ gap here: [link]" is the ticket-handover primitive.
     that node is **synthesized from the live job lanes** rather than read from history —
     otherwise the failure would be invisible on the timeline. (Per-retry gaps are not
     reconstructable from Flowable history — not promised.)
+    Durations print at millisecond precision (`143 ms`, `1.4 s`, `2 m 5 s`), bar length is the
+    row's share of the instance's elapsed span (parallel rows may exceed 100 % together), and
+    `sequenceFlow` rows are folded by default behind a Steps / Steps + flows segmented control
+    that states the hidden count (choice not persisted).
   - **Audit & Notes** — this instance's action history (who/what/when/outcome, old values
     for variable edits, reasons) + free-text notes ("do NOT retry — double-books; tax-service
     fix ETA 9am"). The handover surface.
