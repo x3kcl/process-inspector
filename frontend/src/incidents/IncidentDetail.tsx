@@ -240,7 +240,9 @@ export function IncidentDetail() {
             {episode.actionsDuringEpisode !== undefined && (
               <div className="episode-actions">
                 {episodeActionsLine(episode.actionsDuringEpisode)} ({EPISODE_ACTIONS_CAVEAT}) ·{' '}
-                <Link to={episodeOpsLogHref(episode.startedAt)}>open in Ops log</Link>
+                <Link to={episodeOpsLogHref(episode, Object.keys(incident?.countsByEngine ?? {}))}>
+                  open in Ops log
+                </Link>
               </div>
             )}
           </li>

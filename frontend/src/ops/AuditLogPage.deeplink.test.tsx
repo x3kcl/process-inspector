@@ -1,6 +1,6 @@
 // @vitest-environment jsdom
 // #662: the incident episode row links to /audit?since=<episode start>; the Ops log must open
-// already filtered to that window start.
+// already filtered to that window and engine.
 import { QueryClientProvider, QueryClient } from '@tanstack/react-query'
 import { render, screen, waitFor } from '@testing-library/react'
 import { MemoryRouter } from 'react-router'
@@ -26,10 +26,14 @@ beforeAll(() => {
   )
 })
 
-it('seeds and applies the since filter from the URL', async () => {
+it('seeds and applies the window and engine filters from the URL', async () => {
   // Given / When
   render(
-    <MemoryRouter initialEntries={['/audit?since=2026-08-09T10%3A00%3A00Z']}>
+    <MemoryRouter
+      initialEntries={[
+        '/audit?since=2026-08-09T10%3A00%3A00Z&until=2026-08-09T10%3A05%3A00Z&engineId=engine-a',
+      ]}
+    >
       <QueryClientProvider client={new QueryClient()}>
         <AuditLogPage />
       </QueryClientProvider>
@@ -39,8 +43,17 @@ it('seeds and applies the since filter from the URL', async () => {
   // Then: the request carries it, and the visible filter field shows it.
   await waitFor(() => {
     expect(getMock).toHaveBeenCalledWith('/api/audit', {
-      params: { query: { limit: 500, since: '2026-08-09T10:00:00Z' } },
+      params: {
+        query: {
+          limit: 500,
+          since: '2026-08-09T10:00:00Z',
+          until: '2026-08-09T10:05:00Z',
+          engineId: 'engine-a',
+        },
+      },
     })
   })
   expect(screen.getByDisplayValue('2026-08-09T10:00:00Z')).toBeTruthy()
+  expect(screen.getByDisplayValue('2026-08-09T10:05:00Z')).toBeTruthy()
+  expect(screen.getByDisplayValue('engine-a')).toBeTruthy()
 })

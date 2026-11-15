@@ -49,11 +49,27 @@ describe('episodeActionsLine', () => {
 })
 
 describe('episodeOpsLogHref', () => {
-  it('opens the Ops log from the episode start', () => {
-    expect(episodeOpsLogHref('2026-08-09T10:00:00Z')).toBe('/audit?since=2026-08-09T10%3A00%3A00Z')
+  it('opens the Ops log from the start of an ongoing episode', () => {
+    expect(episodeOpsLogHref({ startedAt: '2026-08-09T10:00:00Z' }, [])).toBe(
+      '/audit?since=2026-08-09T10%3A00%3A00Z',
+    )
+  })
+
+  it('bounds a closed episode to its window and its only engine', () => {
+    expect(
+      episodeOpsLogHref({ startedAt: '2026-08-09T10:00:00Z', endedAt: '2026-08-09T10:05:00Z' }, [
+        'engine-a',
+      ]),
+    ).toBe('/audit?since=2026-08-09T10%3A00%3A00Z&until=2026-08-09T10%3A05%3A00Z&engineId=engine-a')
+  })
+
+  it('leaves the engine open when the class spans several engines', () => {
+    expect(episodeOpsLogHref({ startedAt: '2026-08-09T10:00:00Z' }, ['engine-a', 'engine-b'])).toBe(
+      '/audit?since=2026-08-09T10%3A00%3A00Z',
+    )
   })
 
   it('falls back to the unfiltered log without a start', () => {
-    expect(episodeOpsLogHref(undefined)).toBe('/audit')
+    expect(episodeOpsLogHref({}, ['engine-a'])).toBe('/audit')
   })
 })
