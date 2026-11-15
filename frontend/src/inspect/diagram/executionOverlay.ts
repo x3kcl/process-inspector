@@ -20,16 +20,71 @@ export interface ExecutionOverlay {
   partial: boolean
 }
 
+/** Source activity id → its outgoing sequence-flow ids; null when the XML cannot be read. */
+function outgoingFlows(xml: string | undefined): Map<string, string[]> | null {
+  if (xml === undefined || xml === '') return null
+  const doc = new DOMParser().parseFromString(xml, 'application/xml')
+  if (doc.getElementsByTagName('parsererror').length > 0) return null
+  const out = new Map<string, string[]>()
+  for (const flow of Array.from(doc.getElementsByTagNameNS('*', 'sequenceFlow'))) {
+    const source = flow.getAttribute('sourceRef')
+    const id = flow.getAttribute('id')
+    if (source === null || id === null) continue
+    out.set(source, [...(out.get(source) ?? []), id])
+  }
+  return out
+}
+
 export function executionOverlay(
-  _timeline: InstanceTimeline,
-  _xml: string | undefined,
-  _activeIds: string[],
+  timeline: InstanceTimeline,
+  xml: string | undefined,
+  activeIds: string[],
 ): ExecutionOverlay {
+  const rows = timeline.activities ?? []
+  const takenFlows = new Map<string, number>()
+  const durations = new Map<string, number>()
+  const ended = new Map<string, string | undefined>()
+  for (const row of rows) {
+    const id = row.activityId
+    if (id === undefined) continue
+    if (row.activityType === 'sequenceFlow') {
+      takenFlows.set(id, (takenFlows.get(id) ?? 0) + 1)
+      continue
+    }
+    if (row.endTime !== undefined) ended.set(id, row.activityType)
+    if (row.durationMs !== undefined && row.durationMs >= 1) {
+      durations.set(id, (durations.get(id) ?? 0) + row.durationMs)
+    }
+  }
+
+  const outgoing = outgoingFlows(xml)
+  const active = new Set(activeIds)
+  const completed: string[] = []
+  const armedNotTaken: string[] = []
+  for (const [id, type] of ended) {
+    if (active.has(id)) continue
+    const outs = outgoing?.get(id) ?? []
+    const continued =
+      outgoing === null ||
+      type === 'endEvent' ||
+      outs.length === 0 ||
+      outs.some((flow) => takenFlows.has(flow))
+    ;(continued ? completed : armedNotTaken).push(id)
+  }
+
+  let slowestId: string | undefined
+  if (durations.size >= 2) {
+    for (const [id, ms] of durations) {
+      if (slowestId === undefined || ms > (durations.get(slowestId) ?? 0)) slowestId = id
+    }
+  }
+
   return {
-    takenFlows: new Map(),
-    completed: [],
-    armedNotTaken: [],
-    durations: new Map(),
-    partial: false,
+    takenFlows,
+    completed,
+    armedNotTaken,
+    durations,
+    slowestId,
+    partial: timeline.truncated === true || rows.some((row) => row.isCapped === true),
   }
 }

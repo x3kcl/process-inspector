@@ -2597,6 +2597,36 @@ button.skip-link {
   height: auto;
 }
 
+/* ---- execution overlay ---- */
+/* #677: route / completion / armed / durations from the timeline. Width, dash and glyphs carry
+   the meaning; colour only reinforces. Tokens only, so the dark theme needs no extra rule. */
+.diagram-canvas .marker-completed .djs-visual > :first-child {
+  stroke: var(--color-success-alt) !important;
+  fill: var(--color-success-bg) !important;
+}
+.diagram-canvas .marker-armed .djs-visual > :first-child {
+  stroke: var(--color-ink) !important;
+  stroke-width: 2px !important;
+  stroke-dasharray: 3 3 !important;
+}
+.diagram-canvas .marker-taken .djs-visual > path {
+  stroke: var(--color-success-alt) !important;
+  stroke-width: 3px !important;
+}
+.exec-glyph {
+  background: var(--color-page-bg);
+  color: var(--color-ink);
+  border: 1px solid var(--color-success-alt);
+  border-radius: 2px;
+  font-size: 11px;
+  line-height: 1.2;
+  padding: 0 3px;
+  white-space: nowrap;
+}
+.diagram-partial {
+  margin: 2px 0;
+}
+
 /* ---- segmented control (§4a: never a toggle, never icon-only) ---- */
 .segmented {
   display: inline-flex;

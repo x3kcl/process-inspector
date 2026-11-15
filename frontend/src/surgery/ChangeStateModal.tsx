@@ -18,6 +18,7 @@ import { ModalShell } from '../components/ModalShell'
 import { Segmented } from '../components/Segmented'
 import { useToast } from '../components/toast'
 import { DiagramCanvas } from '../inspect/DiagramCanvas'
+import { useExecutionOverlay } from '../inspect/diagram/useExecutionOverlay'
 import { useInstanceDiagram } from '../inspect/useInstanceQueries'
 import { activityLabel, parseActivityCatalog } from './activityCatalog'
 
@@ -81,6 +82,12 @@ export function ChangeStateModal({
       deadLetterActivityIds: [],
     }),
     [vitals.currentActivities],
+  )
+  const execution = useExecutionOverlay(
+    engineId,
+    instanceId,
+    diagram.data?.xml,
+    diagramMarkers.activeActivityIds,
   )
 
   const toggle = (list: string[], set: (next: string[]) => void, id: string) => {
@@ -233,6 +240,7 @@ export function ChangeStateModal({
               onSelectActivity={onDiagramSelect}
               pickerSourceIds={sources}
               pickerTargetIds={targets}
+              execution={execution}
             />
           </div>
         </div>
