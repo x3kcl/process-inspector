@@ -2,6 +2,7 @@ package io.inspector.audit;
 
 import io.inspector.audit.AuditPartitions.Bounds;
 import io.inspector.config.AuditProperties;
+import io.inspector.config.InspectorProperties;
 import io.micrometer.core.instrument.Counter;
 import io.micrometer.core.instrument.MeterRegistry;
 import java.sql.Timestamp;
@@ -54,14 +55,21 @@ public class AuditRetentionPurger {
     private final JdbcTemplate jdbc;
     private final AuditService audit;
     private final AuditProperties properties;
+    private final InspectorProperties inspector;
     private final Clock clock;
     private final Counter failures;
 
     public AuditRetentionPurger(
-            JdbcTemplate jdbc, AuditService audit, AuditProperties properties, Clock clock, MeterRegistry metrics) {
+            JdbcTemplate jdbc,
+            AuditService audit,
+            AuditProperties properties,
+            InspectorProperties inspector,
+            Clock clock,
+            MeterRegistry metrics) {
         this.jdbc = jdbc;
         this.audit = audit;
         this.properties = properties;
+        this.inspector = inspector;
         this.clock = clock;
         this.failures = Counter.builder("audit_retention_purge_failures_total")
                 .description("Retention purges that aborted, were refused, or could not read the store")
@@ -71,6 +79,7 @@ public class AuditRetentionPurger {
     /** Daily, first run 1h after startup (never fires inside a short test run). */
     @Scheduled(fixedDelayString = "P1D", initialDelayString = "PT1H")
     public void purge() {
+        purgeExpiredHierarchyPlans();
         int retentionDays = properties.retentionDaysOrDefault();
         LocalDate cutoffDate =
                 LocalDate.ofInstant(clock.instant(), ZoneOffset.UTC).minusDays(retentionDays);
@@ -126,6 +135,27 @@ public class AuditRetentionPurger {
             log.error(
                     "AUDIT_RETENTION_PURGE_ABORTED — config event unrecordable; purge NOT run (fail-closed): {}",
                     e.toString());
+        }
+    }
+
+    /**
+     * Stored hierarchy migration plans past {@code inspector.hierarchy-plan-max-age} (#497): submit
+     * already refuses them. Plain rows, not audit — group rows first (foreign key); a failure is
+     * logged and retried on the next run, and never stops the audit purge.
+     */
+    private void purgeExpiredHierarchyPlans() {
+        Timestamp cutoff = Timestamp.from(clock.instant().minus(inspector.hierarchyPlanMaxAgeOrDefault()));
+        try {
+            jdbc.update(
+                    "DELETE FROM migration_hierarchy_group WHERE plan_id IN"
+                            + " (SELECT id FROM migration_hierarchy_plan WHERE created_at < ?)",
+                    cutoff);
+            int plans = jdbc.update("DELETE FROM migration_hierarchy_plan WHERE created_at < ?", cutoff);
+            if (plans > 0) {
+                log.info("hierarchy plan retention: purged {} plan(s) stored before {}", plans, cutoff.toInstant());
+            }
+        } catch (RuntimeException e) {
+            log.warn("hierarchy plan purge failed — retried on the next run: {}", e.toString());
         }
     }
 

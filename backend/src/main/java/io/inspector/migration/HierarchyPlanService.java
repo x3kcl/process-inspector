@@ -267,11 +267,16 @@ public class HierarchyPlanService {
     }
 
     /**
-     * Resolves the plan for the bulk door. Refuses a truncated plan, an undecided group, and
+     * Resolves the plan for the bulk door. Refuses an expired plan, a truncated plan, an undecided
+     * group, and
      * (through {@link CohortBulkMigration#resolve}) an analysis that is not completed.
      */
     public Execution execution(UUID id) {
         HierarchyPlan plan = load(id);
+        if (expired(plan)) {
+            throw new GuardRefusedException(
+                    HttpStatus.CONFLICT, "hierarchy-plan-expired", expiredReason(plan) + " Nothing happened.");
+        }
         Payload payload = payload(plan);
         if (!payload.truncations().isEmpty()) {
             throw new GuardRefusedException(
@@ -355,6 +360,30 @@ public class HierarchyPlanService {
         provenance.put("circularReferences", payload.circularReferences());
         provenance.put("strategy", CohortMigrationService.STRATEGY);
         return new Execution(id, plan.getEngineId(), List.copyOf(items), executable, provenance);
+    }
+
+    /**
+     * The re-read at dispatch (#497): the running children of {@code instanceId} now that the plan
+     * behind {@code analysisRef} does not hold. A child of a skipped definition is a node of the
+     * plan and is not reported. When the plan is no longer stored (purged after its max age) every
+     * running child is reported and the caller keeps the ones that are not items of its job. A read
+     * that does not hold every running child throws: the caller must not send the parent.
+     */
+    public List<String> lateChildren(String analysisRef, String engineId, String instanceId) {
+        FlowablePage page = detail.runningChildren(registry.require(engineId), instanceId);
+        List<String> running = page == null
+                ? List.of()
+                : page.dataOrEmpty().stream().map(row -> str(row, "id")).toList();
+        if (page != null && page.total() > running.size()) {
+            throw new IllegalStateException(
+                    instanceId + " has " + page.total() + " running children, " + running.size() + " read");
+        }
+        Set<String> planned = new HashSet<>();
+        for (HierarchyPlanGroup group : groups.findByAnalysisId(UUID.fromString(analysisRef))) {
+            plans.findById(group.getPlanId())
+                    .ifPresent(plan -> payload(plan).nodes().forEach(node -> planned.add(node.instanceId())));
+        }
+        return running.stream().filter(id -> !planned.contains(id)).toList();
     }
 
     /** The nearest ancestor that is itself an item of the job. */
@@ -449,7 +478,9 @@ public class HierarchyPlanService {
         perDepth.forEach((depth, counts) -> levels.add(new PlanLevelView(depth, counts[0], counts[1])));
 
         String reason = null;
-        if (!payload.truncations().isEmpty()) {
+        if (expired(plan)) {
+            reason = expiredReason(plan);
+        } else if (!payload.truncations().isEmpty()) {
             reason = "The plan does not hold the whole tree (" + truncationSummary(payload.truncations())
                     + "). Migrate the wide level as a cohort, then plan again.";
         } else if (!pending.isEmpty()) {
@@ -488,6 +519,16 @@ public class HierarchyPlanService {
         return plans.findById(id)
                 .orElseThrow(() -> new GuardRefusedException(
                         HttpStatus.NOT_FOUND, "hierarchy-plan-not-found", "No hierarchy migration plan " + id + "."));
+    }
+
+    /** Older than the configured max age; a plan of exactly that age still submits. */
+    private boolean expired(HierarchyPlan plan) {
+        return plan.getCreatedAt().plus(props.hierarchyPlanMaxAgeOrDefault()).isBefore(clock.instant());
+    }
+
+    private String expiredReason(HierarchyPlan plan) {
+        return "Plan " + plan.getId() + " expired: it was stored " + plan.getCreatedAt() + ", more than "
+                + props.hierarchyPlanMaxAgeOrDefault() + " ago, and the tree may have changed. Build a new plan.";
     }
 
     private Map<String, HierarchyPlanGroup> decisions(UUID planId) {

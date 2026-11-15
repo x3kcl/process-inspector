@@ -159,7 +159,7 @@ resilience4j:
 
 inspector:
   # Boot-rejected ranges (#476, docs/OPERATIONS.md): null keeps the code default.
-  # fanout-parallelism >= 1; hierarchy-max-depth >= 1.
+  # fanout-parallelism >= 1; hierarchy-max-depth >= 1; hierarchy-plan-max-age >= 1s.
   # triage.cache-ttl-s >= 1; stacktrace-sample-cap >= 0; ack-resurface-threshold-pct >= 0
   # (a growth percent, not capped at 100). refresh-min-interval-s is unconstrained.
   # attention: recency-half-life, burst-window, self-heal-horizon >= 1s; model-ttl > 0.
@@ -189,6 +189,9 @@ inspector:
   fanout-parallelism: 8
   # superProcessInstanceId chain-walk bound for the failed-in-subprocess roll-up (ARCH §2.3).
   hierarchy-max-depth: 10
+  # A stored hierarchy migration plan older than this is refused at submit (hierarchy-plan-expired)
+  # and deleted by the daily retention job (#497, INSTANCE-MIGRATION.md §7.2).
+  hierarchy-plan-max-age: PT24H
   # Stage 0 triage landing (SPEC §4): aggregation cache TTL (thundering-herd protection),
   # Refresh-bypass throttle, the cap on representative stacktrace fetches per round, and
   # the R-BAU-01 acknowledge auto-resurface threshold (an acknowledged group resurfaces

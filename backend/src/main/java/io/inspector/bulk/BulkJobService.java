@@ -12,6 +12,7 @@ import io.inspector.config.InspectorProperties;
 import io.inspector.config.InspectorProperties.EngineConfig;
 import io.inspector.migration.CaseCohortBulkMigration;
 import io.inspector.migration.CohortBulkMigration;
+import io.inspector.migration.HierarchyPlanService;
 import io.inspector.registry.EngineRegistry;
 import io.inspector.security.reauth.DangerousActionReauthGate;
 import io.micrometer.core.instrument.Gauge;
@@ -116,6 +117,7 @@ public class BulkJobService {
     final MeterRegistry metrics;
     final CohortBulkMigration cohortMigration;
     final CaseCohortBulkMigration caseCohortMigration;
+    final HierarchyPlanService hierarchyPlans;
     final ExecutorService executor = MdcPropagatingExecutors.newVirtualThreadPerTaskExecutor();
     final Map<UUID, Boolean> cancelRequested = new ConcurrentHashMap<>();
     /**
@@ -168,7 +170,8 @@ public class BulkJobService {
             GuardedCaller guardedCaller,
             MeterRegistry metrics,
             CohortBulkMigration cohortMigration,
-            CaseCohortBulkMigration caseCohortMigration) {
+            CaseCohortBulkMigration caseCohortMigration,
+            HierarchyPlanService hierarchyPlans) {
         this.jobs = jobs;
         this.items = items;
         this.actions = actions;
@@ -185,6 +188,7 @@ public class BulkJobService {
         this.metrics = metrics;
         this.cohortMigration = cohortMigration;
         this.caseCohortMigration = caseCohortMigration;
+        this.hierarchyPlans = hierarchyPlans;
         // OPERATIONS.md §2 (issue #96): live count of non-terminal jobs — a gauge, not a counter,
         // since RUNNING is a point-in-time state, not a monotonic event.
         Gauge.builder("bulk_jobs_running", jobs, r -> r.countByState(BulkJob.State.RUNNING))

@@ -245,8 +245,7 @@ final class ProcessCorrectiveClient {
     }
 
     /** GET /runtime/tasks/{taskId} — server-fresh task restatement. Null = gone/completed. */
-    @SuppressWarnings("unchecked")
-    public Map<String, Object> getTask(EngineConfig engine, CallPriority priority, String taskId) {
+    public TaskRecord getTask(EngineConfig engine, CallPriority priority, String taskId) {
         try {
             return guarded.call(
                     engine,
@@ -255,7 +254,7 @@ final class ProcessCorrectiveClient {
                             .get()
                             .uri("/runtime/tasks/{taskId}", taskId)
                             .retrieve()
-                            .body(Map.class));
+                            .body(TaskRecord.class));
         } catch (HttpClientErrorException.NotFound e) {
             return null;
         }

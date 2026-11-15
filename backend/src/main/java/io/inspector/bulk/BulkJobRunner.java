@@ -160,6 +160,9 @@ final class BulkJobRunner {
             }
             // Hierarchy job (#497): a parent whose child still has to be migrated is never sent.
             String blocked = HierarchyOrder.blockedBy(item, all, this::nothingLeftToMigrate);
+            if (blocked == null && item.getLevel() != null) {
+                blocked = lateChild(item, all);
+            }
             if (blocked != null) {
                 item.settle(BulkJobItem.State.not_run, blocked, null, host.clock.instant());
                 host.items.saveAndFlush(item);
@@ -205,6 +208,22 @@ final class BulkJobRunner {
                     "bulk job {} paused dispatch to engine {} — circuit open / bulkhead full; undispatched items held",
                     job.getId(),
                     engineId);
+        }
+    }
+
+    /**
+     * Read-only, hierarchy job (#497): the item's running children are read again right before it
+     * is sent. A failed or incomplete read blocks the item — it is never sent on a guess.
+     */
+    private String lateChild(BulkJobItem item, List<BulkJobItem> all) {
+        try {
+            return HierarchyOrder.lateChild(
+                    item,
+                    all,
+                    host.hierarchyPlans.lateChildren(item.getJobRef(), item.getEngineId(), item.getInstanceId()));
+        } catch (RuntimeException e) {
+            return "running children could not be re-read (" + e.getMessage() + ") — not attempted. A parent is"
+                    + " migrated only when every running child is part of the plan.";
         }
     }
 

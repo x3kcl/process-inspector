@@ -36,6 +36,7 @@ import io.inspector.config.InspectorProperties.EngineEnvironment;
 import io.inspector.config.InspectorProperties.EngineMode;
 import io.inspector.migration.CaseCohortBulkMigration;
 import io.inspector.migration.CohortBulkMigration;
+import io.inspector.migration.HierarchyPlanService;
 import io.inspector.registry.EngineRegistry;
 import io.inspector.security.OidcProperties;
 import io.inspector.security.reauth.DangerousActionReauthGate;
@@ -166,7 +167,8 @@ class BulkJobServiceTest {
                 guardedCaller,
                 metrics,
                 cohortMigration,
-                caseCohortMigration);
+                caseCohortMigration,
+                mock(HierarchyPlanService.class));
     }
 
     /**
@@ -1089,7 +1091,8 @@ class BulkJobServiceTest {
                 // the same bulk_jobs_running gauge id on the shared `metrics` field.
                 new SimpleMeterRegistry(),
                 cohortMigration,
-                caseCohortMigration);
+                caseCohortMigration,
+                mock(HierarchyPlanService.class));
     }
 
     @Test
