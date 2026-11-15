@@ -8,5 +8,6 @@ import java.util.List;
  * ones start. {@code reason} is always required on EXECUTE (tier-2 discipline, SPEC §6);
  * preview accepts the same body without it.
  */
+// lr-1 refusal probe for #666 - do not land
 public record ChangeStateRequest(
         String reason, String ticketId, List<String> sourceActivityIds, List<String> targetActivityIds) {}
