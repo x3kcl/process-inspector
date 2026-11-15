@@ -170,6 +170,14 @@ public final class AttentionRationale {
         return String.join(" · ", clauses) + ".";
     }
 
+    /**
+     * #660: the whole sentence for a ledger class last seen before the model window — no live
+     * count, no recency, because the model holds no evidence for either.
+     */
+    public static String outsideWindow(int windowDays) {
+        return "not seen in the last " + windowDays + " d — nothing recent to rank on.";
+    }
+
     private static String selfHealClause(SelfHealStats selfHeal, DeadLetterEvidence deadLetters) {
         SelfHealLane lane = laneOf(selfHeal);
         if (lane == null || lane == SelfHealLane.INSUFFICIENT_HISTORY) {

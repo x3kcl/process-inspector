@@ -30,7 +30,7 @@ import { attentionRationale } from '../incidents/attention'
 // click, so it contains the operator's own queue wait and is endogenous to the ordering it fed;
 // the score now reads F·R·S. The measured ratio is still SHIPPED on `factors.mttr` and the
 // per-card sentence still quotes its median as evidence — but no copy may say it moved the card.
-const GLOSSARY_SENTENCE =
+export const GLOSSARY_SENTENCE =
   'Ordered by the expected cost of waiting: how recently this class was seen and how fast it is ' +
   'growing — classes that reliably clear themselves soon rank lower, and nothing is hidden.'
 
@@ -53,5 +53,21 @@ export function AttentionBadge({ attention }: Props) {
       {/* #374: visible, not hover-gated — see the file header for why this line exists. */}
       <span className="attention-rationale">{rationale}</span>
     </>
+  )
+}
+
+// #663: the #478 run found the ordering rule above was reachable only by hovering the pill, and
+// that "no resolve-time / self-heal history" read as a warning. Both are stated ONCE, as visible
+// text above the card list, whenever any card carries a server score. The gloss is true by
+// construction: M is not a score term since #399, and an absent self-heal lane reads S = 1.
+export const NO_HISTORY_GLOSS =
+  '“No … history” on a card is the normal state for most classes and does not raise or lower its rank.'
+
+export function AttentionOrderingNote({ scores }: { scores: (AttentionScore | undefined)[] }) {
+  if (!scores.some((score) => attentionRationale(score) !== undefined)) return null
+  return (
+    <p className="attention-ordering-note">
+      {GLOSSARY_SENTENCE} {NO_HISTORY_GLOSS}
+    </p>
   )
 }

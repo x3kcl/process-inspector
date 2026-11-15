@@ -673,6 +673,23 @@ makes, and one of them made a claim the ledger never measured.**
   those rounds and are deliberately not rewritten; the clause they show is superseded by this
   note, and their own subject (the self-heal / dead-letter clauses) is untouched by #399.
 
+**Correction (post-ship, #660 — #478 run, M14).** A ledger class last seen BEFORE the model's
+`arrivals-window-days` window has no in-window row, so it reads `ClassHistory.none()` (age 0) and
+its `/incidents` sentence claimed *"13 failing · last seen just now"* for a RESOLVED class last
+seen 96 d ago, next to the card's own correct "last seen … 96d ago". `forClass()` now takes the
+ledger row's `lastSeen`; when that is older than the window the whole sentence is *"not seen in the
+last 28 d — nothing recent to rank on."* No count, no recency: the model has no evidence for
+either. Score and factors are unchanged (text only); a row inside the window that a stale cached
+model has not picked up yet keeps its normal sentence. Stage 0's `decorate()` path is unaffected —
+every class there is live.
+
+**Correction (post-ship, #663 — #478 run, M14).** The glossary sentence above was still reachable
+only as the pill's hover `title`, and "no … history" read as a warning. The landing now states the
+glossary sentence ONCE as visible text above the card list, followed by *"“No … history” on a card
+is the normal state for most classes and does not raise or lower its rank."* — true by
+construction (M is not a term since #399; an absent lane reads S = 1). Still one line per page,
+not per card.
+
 ## 5. MEASURED BASELINE — pilot-ledger extraction & ordering simulation (auditable)
 
 **Method.** 2026-08-04 ≈ 07:05–07:10 Z, against the live demo `https://pi.naumann.cloud`,
