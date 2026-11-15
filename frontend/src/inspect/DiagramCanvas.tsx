@@ -210,10 +210,15 @@ export function DiagramCanvas({
     }
   }, [selectedActivityId, importGeneration])
 
-  // Full screen changes the host size: tell the canvas, then re-fit.
+  // Full screen changes the host size: tell the canvas, then re-fit. Only the canvas that
+  // enters or leaves full screen reacts — a second canvas on the page keeps its pan/zoom.
   useEffect(() => {
+    let mine = false
     const onChange = () => {
-      setFullscreen(document.fullscreenElement === frameRef.current)
+      const now = document.fullscreenElement === frameRef.current
+      if (!now && !mine) return
+      mine = now
+      setFullscreen(now)
       const canvas = viewerRef.current?.get<Canvas>('canvas')
       if (canvas === undefined) return
       canvas.resized()
