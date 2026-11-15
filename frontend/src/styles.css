@@ -2298,6 +2298,13 @@ button.skip-link {
 }
 
 /* ---- M4 modal frame (SPEC §6): env band, cancel-focused ---- */
+.definition-detail {
+  padding: 10px 16px;
+}
+.definition-title {
+  margin: 0 0 6px;
+  font-size: 20px;
+}
 .modal-backdrop {
   position: fixed;
   inset: 0;
@@ -2314,9 +2321,25 @@ button.skip-link {
   width: 640px;
   max-width: 100%;
   max-height: 90vh;
-  overflow-y: auto;
+  /* Header + action row stay visible; only the body scrolls (#676) — a focused footer
+     button used to scroll the whole card and clip the title. */
+  display: flex;
+  flex-direction: column;
+  overflow: hidden;
   padding: 0 16px 16px;
   border-top: 6px solid var(--color-chip-border-muted);
+}
+.modal-card .modal-header,
+.modal-card .modal-footer {
+  flex: none;
+}
+.modal-card .modal-body {
+  flex: 1 1 auto;
+  min-height: 0;
+  overflow-y: auto;
+}
+.modal-card .modal-body > * {
+  flex-shrink: 0;
 }
 .modal-card.env-band-prod {
   border-top-color: var(--color-danger);

@@ -14,6 +14,7 @@ import { ActionHint } from '../components/ActionHint'
 import { GuardFields } from '../components/GuardFields'
 import { ModalShell } from '../components/ModalShell'
 import { DiagramCanvas } from '../inspect/DiagramCanvas'
+import { Breadcrumbs } from '../shell/Breadcrumbs'
 
 type Detail = components['schemas']['DefinitionDetailResponse']
 type Xml = components['schemas']['DefinitionXmlResponse']
@@ -101,11 +102,14 @@ export function DefinitionDetailPage() {
   const admin = roleOn(me.data, engineId) === 'ADMIN'
   const row = detail.data
   return (
-    <section>
-      <p>
-        <Link to="/definitions">Definitions</Link>
-      </p>
-      <h1>
+    <section className="definition-detail">
+      <Breadcrumbs
+        segments={[
+          { label: 'Definitions', to: '/definitions' },
+          { label: `${row?.key ?? id}${row?.version != null ? ` v${String(row.version)}` : ''}` },
+        ]}
+      />
+      <h1 className="definition-title">
         {row?.key ?? id} {row?.version != null && <>v{row.version}</>}
       </h1>
       {detail.isError && <p role="alert">{detail.error.message}</p>}
