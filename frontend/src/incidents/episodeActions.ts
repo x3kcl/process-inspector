@@ -1,13 +1,34 @@
+// #662: the per-episode corrective-action tally (#358 item 2, EpisodeActionAttributionService)
+// rendered on the incident's episode row. The join is engine + time, so the line always rides
+// with EPISODE_ACTIONS_CAVEAT (RETRYING-RISK-LANE.md §3.3/§10: it can over-include).
 import type { components } from '../api/schema'
 
 type Attribution = components['schemas']['EpisodeActionAttribution']
 
-/** #662 stub — RED. */
-export function episodeActionsLine(_attr: Attribution | undefined): string {
-  return ''
+export const EPISODE_ACTIONS_CAVEAT =
+  'matched by engine and time, so it can include unrelated actions on the same engine'
+
+function tally(counts: Record<string, number> | undefined, suffix: (n: number) => string) {
+  return Object.entries(counts ?? {})
+    .filter(([, n]) => n > 0)
+    .sort((a, b) => b[1] - a[1])
+    .map(([key, n]) => `${key} ${suffix(n)}`)
 }
 
-/** #662 stub — RED. */
-export function episodeOpsLogHref(_startedAt: string | undefined): string {
-  return '/audit'
+export function episodeActionsLine(attr: Attribution | undefined): string {
+  if (attr === undefined) return ''
+  const count = attr.count ?? 0
+  if (count === 0) return 'no actions during this episode'
+  const parts = [
+    ...tally(attr.byVerb, (n) => `×${String(n)}`),
+    ...tally(attr.byOutcome, (n) => String(n)),
+  ]
+  const head = `${attr.truncated === true ? '≥ ' : ''}${String(count)} action${count === 1 ? '' : 's'}`
+  return `${head} during this episode${parts.length > 0 ? ': ' + parts.join(' · ') : ''}`
+}
+
+export function episodeOpsLogHref(startedAt: string | undefined): string {
+  return startedAt === undefined
+    ? '/audit'
+    : `/audit?${new URLSearchParams({ since: startedAt }).toString()}`
 }
