@@ -1708,6 +1708,7 @@ button.primary:disabled {
 }
 .diagram-slot {
   min-height: 220px;
+  flex-shrink: 0;
   border-bottom: 1px solid var(--color-border);
   display: flex;
   flex-direction: column;
@@ -1738,7 +1739,7 @@ button.primary:disabled {
   color: #2f3640;
 }
 .diagram-canvas {
-  height: 45vh;
+  height: clamp(220px, 38vh, 480px);
 }
 /* token + dead-letter markers the viewer applies (never touches the bpmn.io attribution) */
 .diagram-canvas .marker-active .djs-visual > :first-child {
@@ -1801,9 +1802,11 @@ button.primary:disabled {
   margin-bottom: -1px;
 }
 .tab-body {
-  flex: 1;
+  /* #672: grows to its content (never an inner scroller that collapses); .inspect scrolls. */
+  flex: 1 0 auto;
+  min-height: 240px;
   padding: 12px 16px;
-  overflow: auto;
+  overflow-x: auto;
 }
 /* ---- errors & jobs lanes ---- */
 .job-lane {
