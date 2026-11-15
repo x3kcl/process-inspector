@@ -155,6 +155,7 @@ export function DefinitionDetailPage() {
           <button
             key={name}
             type="button"
+            role="tab"
             className="tab-button"
             aria-selected={tab === name}
             onClick={() => {
