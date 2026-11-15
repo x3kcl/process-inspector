@@ -449,6 +449,13 @@ gap here: [link]" is the ticket-handover primitive.
 - **Layout guarantee**: the detail page scrolls as one page; the diagram canvas height is bounded
   (`clamp(220px, 38vh, 480px)`) and the tab panel never shrinks below 240 px or becomes a
   collapsing inner scroller, at any viewport size.
+- **Diagram canvas ergonomics** (every bpmn-js mount — instance, definition, change-state
+  picker, mapping canvases; #673): the first fit is **centred**; a toolbar of text buttons
+  (**Fit · + Zoom in · − Zoom out · Full screen**, the last only where the Fullscreen API
+  exists) names the Ctrl+wheel zoom / drag pan; a **legend** lists only the marker kinds on
+  the canvas (same outline style + glyph, none when unmarked); selecting an activity scrolls
+  only when it is not fully in view; a marker change repaints the live canvas — no
+  re-import, pan/zoom kept.
 - **Tabs**: Variables · Errors & Jobs · Tasks · Participants · Executions · Decisions · Hierarchy · Timeline · Audit & Notes —
   each lazy-loaded (IBM's slow-detail lesson).
   - **Variables** — a **typed variable ledger, never a raw JSON dump** (the Flowable
