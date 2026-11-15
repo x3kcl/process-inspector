@@ -139,7 +139,7 @@ class ProcessApiClientTest {
                 .willReturn(okJson(
                         "{\"data\":[{\"id\":\"t1\",\"assignee\":\"bob\"}],\"total\":1,\"start\":0,\"size\":1}")));
 
-        FlowablePage page = client.listTasksByAssignee(engine, CallPriority.INTERACTIVE, "bob", 200);
+        TaskPage page = client.listTasksByAssignee(engine, CallPriority.INTERACTIVE, "bob", 200);
 
         assertThat(page.dataOrEmpty()).hasSize(1);
         wm.verify(getRequestedFor(urlPathEqualTo("/runtime/tasks"))
@@ -154,7 +154,7 @@ class ProcessApiClientTest {
         wm.stubFor(get(urlPathEqualTo("/runtime/tasks"))
                 .willReturn(okJson("{\"data\":[{\"id\":\"t2\"}],\"total\":1,\"start\":0,\"size\":1}")));
 
-        FlowablePage page = client.listTasksByCandidateUser(engine, CallPriority.INTERACTIVE, "bob", 200);
+        TaskPage page = client.listTasksByCandidateUser(engine, CallPriority.INTERACTIVE, "bob", 200);
 
         assertThat(page.dataOrEmpty()).hasSize(1);
         wm.verify(getRequestedFor(urlPathEqualTo("/runtime/tasks"))

@@ -8,9 +8,10 @@ import static org.mockito.Mockito.mock;
 import static org.mockito.Mockito.verifyNoInteractions;
 import static org.mockito.Mockito.when;
 
-import io.inspector.client.FlowablePage;
 import io.inspector.client.GuardedCaller.CallPriority;
 import io.inspector.client.ProcessApiClient;
+import io.inspector.client.TaskPage;
+import io.inspector.client.TaskRecords;
 import io.inspector.config.InspectorProperties;
 import io.inspector.config.InspectorProperties.EngineConfig;
 import io.inspector.dto.PersonTaskSearchResponse;
@@ -60,10 +61,10 @@ class PersonTaskSearchServiceTest {
         // The SAME task ("t1") comes back on both legs — Flowable does this when an assignee also
         // sits in the candidate list; it must appear exactly once, tagged ASSIGNED (outranks candidate).
         when(flowable.listTasksByAssignee(eq(engineA), eq(CallPriority.INTERACTIVE), eq("bob"), anyInt()))
-                .thenReturn(new FlowablePage(List.of(taskJson("t1", "approval:3:x", "bob")), 1, 0, 1));
+                .thenReturn(TaskRecords.page(List.of(taskJson("t1", "approval:3:x", "bob"))));
         when(flowable.listTasksByCandidateUser(eq(engineA), eq(CallPriority.INTERACTIVE), eq("bob"), anyInt()))
-                .thenReturn(new FlowablePage(
-                        List.of(taskJson("t1", "approval:3:x", "bob"), taskJson("t2", "approval:3:x", null)), 2, 0, 2));
+                .thenReturn(TaskRecords.page(
+                        List.of(taskJson("t1", "approval:3:x", "bob"), taskJson("t2", "approval:3:x", null))));
 
         PersonTaskSearchResponse res = service.search("bob", null, null);
 
@@ -86,13 +87,13 @@ class PersonTaskSearchServiceTest {
     void anUnreachableEngineDegradesWithoutFailingTheWholeSearch() {
         when(registry.all()).thenReturn(List.of(engineA, engineB));
         when(flowable.listTasksByAssignee(eq(engineA), any(), eq("bob"), anyInt()))
-                .thenReturn(new FlowablePage(List.of(taskJson("t1", "approval:3:x", "bob")), 1, 0, 1));
+                .thenReturn(TaskRecords.page(List.of(taskJson("t1", "approval:3:x", "bob"))));
         when(flowable.listTasksByCandidateUser(eq(engineA), any(), eq("bob"), anyInt()))
-                .thenReturn(FlowablePage.empty());
+                .thenReturn(TaskPage.empty());
         when(flowable.listTasksByAssignee(eq(engineB), any(), eq("bob"), anyInt()))
                 .thenThrow(new RuntimeException("engine-b unreachable"));
         when(flowable.listTasksByCandidateUser(eq(engineB), any(), eq("bob"), anyInt()))
-                .thenReturn(FlowablePage.empty());
+                .thenReturn(TaskPage.empty());
 
         PersonTaskSearchResponse res = service.search("bob", null, null);
 
@@ -123,9 +124,9 @@ class PersonTaskSearchServiceTest {
         Map<String, Object> later = taskJson("t-later", "approval:1:x", "bob");
         later.put("dueDate", "2026-07-20T10:00:00.000+0000");
         when(flowable.listTasksByAssignee(eq(engineA), any(), eq("bob"), anyInt()))
-                .thenReturn(new FlowablePage(List.of(later, soon), 2, 0, 2));
+                .thenReturn(TaskRecords.page(List.of(later, soon)));
         when(flowable.listTasksByCandidateUser(eq(engineA), any(), eq("bob"), anyInt()))
-                .thenReturn(FlowablePage.empty());
+                .thenReturn(TaskPage.empty());
 
         PersonTaskSearchResponse res = service.search("bob", null, null);
 

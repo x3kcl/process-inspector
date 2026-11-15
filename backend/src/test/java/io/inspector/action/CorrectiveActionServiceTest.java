@@ -27,6 +27,7 @@ import io.inspector.client.GuardedCaller.CallPriority;
 import io.inspector.client.JobRecords;
 import io.inspector.client.ProcessApiClient;
 import io.inspector.client.ProcessApiClient.JobLaneKind;
+import io.inspector.client.TaskRecords;
 import io.inspector.config.InspectorProperties;
 import io.inspector.config.InspectorProperties.EngineEnvironment;
 import io.inspector.config.InspectorProperties.EngineMode;
@@ -685,7 +686,7 @@ class CorrectiveActionServiceTest {
         task.put("processInstanceId", instanceId);
         task.put("name", "Manual review");
         task.put("assignee", assignee);
-        when(client.getTask(any(), eq(CallPriority.INTERACTIVE), eq("task-9"))).thenReturn(task);
+        when(client.getTask(any(), eq(CallPriority.INTERACTIVE), eq("task-9"))).thenReturn(TaskRecords.task(task));
     }
 
     @Test
@@ -866,7 +867,7 @@ class CorrectiveActionServiceTest {
         task.put("processInstanceId", "pi-1");
         task.put("name", "Manual review");
         task.put("dueDate", "2026-01-01T00:00:00Z");
-        when(client.getTask(any(), eq(CallPriority.INTERACTIVE), eq("task-9"))).thenReturn(task);
+        when(client.getTask(any(), eq(CallPriority.INTERACTIVE), eq("task-9"))).thenReturn(TaskRecords.task(task));
         ActionRequest request = new ActionRequest(
                 null,
                 null,

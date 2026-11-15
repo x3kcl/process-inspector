@@ -468,7 +468,7 @@ final class ProcessInstanceReadClient {
      * engine-side sort: the accepted sort fields differ across 6.x/7.x, so callers order
      * by start time in the BFF.
      */
-    public FlowablePage listHistoricTaskInstances(
+    public TaskPage listHistoricTaskInstances(
             EngineConfig engine, CallPriority priority, String processInstanceId, int size) {
         return guarded.call(
                 engine,
@@ -480,7 +480,7 @@ final class ProcessInstanceReadClient {
                                 .queryParam("size", size)
                                 .build())
                         .retrieve()
-                        .body(FlowablePage.class));
+                        .body(TaskPage.class));
     }
 
     /**
@@ -488,8 +488,7 @@ final class ProcessInstanceReadClient {
      * delegation, claim time. Also the only leg that sees tasks on an engine whose task
      * history is dialed below audit level.
      */
-    public FlowablePage listRuntimeTasks(
-            EngineConfig engine, CallPriority priority, String processInstanceId, int size) {
+    public TaskPage listRuntimeTasks(EngineConfig engine, CallPriority priority, String processInstanceId, int size) {
         return guarded.call(
                 engine,
                 priority,
@@ -500,12 +499,11 @@ final class ProcessInstanceReadClient {
                                 .queryParam("size", size)
                                 .build())
                         .retrieve()
-                        .body(FlowablePage.class));
+                        .body(TaskPage.class));
     }
 
     /** GET /runtime/tasks with the caller's query. Blank values are omitted. Bounded by {@code size}. */
-    public FlowablePage listRuntimeTasks(
-            EngineConfig engine, CallPriority priority, Map<String, String> query, int size) {
+    public TaskPage listRuntimeTasks(EngineConfig engine, CallPriority priority, Map<String, String> query, int size) {
         return guarded.call(
                 engine,
                 priority,
@@ -523,7 +521,7 @@ final class ProcessInstanceReadClient {
                             return builder.build();
                         })
                         .retrieve()
-                        .body(FlowablePage.class));
+                        .body(TaskPage.class));
     }
 
     /**
@@ -531,7 +529,7 @@ final class ProcessInstanceReadClient {
      * whole engine (not scoped to one instance). Feeds person-centric task search (#99, "what is
      * Bob sitting on"). Bounded by {@code size} — never an unpaged fetch.
      */
-    public FlowablePage listTasksByAssignee(EngineConfig engine, CallPriority priority, String assignee, int size) {
+    public TaskPage listTasksByAssignee(EngineConfig engine, CallPriority priority, String assignee, int size) {
         return guarded.call(
                 engine,
                 priority,
@@ -542,7 +540,7 @@ final class ProcessInstanceReadClient {
                                 .queryParam("size", size)
                                 .build())
                         .retrieve()
-                        .body(FlowablePage.class));
+                        .body(TaskPage.class));
     }
 
     /**
@@ -551,7 +549,7 @@ final class ProcessInstanceReadClient {
      * IdentityService resolves group membership when configured; a bare candidate-user link
      * always matches). Feeds person-centric task search (#99). Bounded by {@code size}.
      */
-    public FlowablePage listTasksByCandidateUser(
+    public TaskPage listTasksByCandidateUser(
             EngineConfig engine, CallPriority priority, String candidateUser, int size) {
         return guarded.call(
                 engine,
@@ -563,12 +561,11 @@ final class ProcessInstanceReadClient {
                                 .queryParam("size", size)
                                 .build())
                         .retrieve()
-                        .body(FlowablePage.class));
+                        .body(TaskPage.class));
     }
 
     /** GET /history/historic-task-instances/{id} — task resolution incl. completed tasks. Null = unknown. */
-    @SuppressWarnings("unchecked")
-    public Map<String, Object> getHistoricTaskInstance(EngineConfig engine, CallPriority priority, String taskId) {
+    public TaskRecord getHistoricTaskInstance(EngineConfig engine, CallPriority priority, String taskId) {
         try {
             return guarded.call(
                     engine,
@@ -577,7 +574,7 @@ final class ProcessInstanceReadClient {
                             .get()
                             .uri("/history/historic-task-instances/{id}", taskId)
                             .retrieve()
-                            .body(Map.class));
+                            .body(TaskRecord.class));
         } catch (HttpClientErrorException.NotFound e) {
             return null;
         }
