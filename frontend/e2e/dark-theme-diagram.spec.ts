@@ -213,3 +213,11 @@ test('the bpmn.io watermark is styled identically in both themes', async ({ brow
   }
   expect(styles[1]).toEqual(styles[0])
 })
+
+test('dark theme: the label stays readable on an active-marked activity', async ({ page }) => {
+  await mount(page, 'dark')
+  for (const id of ['approveTask', 'chargeTask', 'plainTask']) {
+    const label = await colour(page, `.diagram-canvas [data-element-id="${id}"] text`, 'fill')
+    expect(contrast(label, await colour(page, taskShape(id), 'fill'))).toBeGreaterThanOrEqual(4.5)
+  }
+})
