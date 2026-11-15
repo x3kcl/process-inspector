@@ -54,6 +54,7 @@ public class InstanceParityService {
         }
         String starter = historic.startUserId();
         if (starter != null
+                && !starter.isBlank()
                 && rows.stream().noneMatch(row -> starter.equals(row.user()) && "starter".equals(row.type()))) {
             rows.add(0, new ParticipantRow(starter, "starter", false));
         }
