@@ -7,4 +7,6 @@ import org.springframework.data.jpa.repository.JpaRepository;
 public interface HierarchyPlanGroupRepository extends JpaRepository<HierarchyPlanGroup, HierarchyPlanGroup.Key> {
 
     List<HierarchyPlanGroup> findByPlanId(UUID planId);
+
+    List<HierarchyPlanGroup> findByAnalysisId(UUID analysisId);
 }

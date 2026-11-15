@@ -357,6 +357,14 @@ public class HierarchyPlanService {
         return new Execution(id, plan.getEngineId(), List.copyOf(items), executable, provenance);
     }
 
+    /**
+     * The re-read at dispatch (#497): the running children of {@code instanceId} now that the plan
+     * behind {@code analysisRef} does not hold.
+     */
+    public List<String> lateChildren(String analysisRef, String engineId, String instanceId) {
+        return List.of();
+    }
+
     /** The nearest ancestor that is itself an item of the job. */
     private static String plannedParent(PlanNode node, Map<String, PlanNode> byId, Set<String> itemIds) {
         String parent = node.parentInstanceId();

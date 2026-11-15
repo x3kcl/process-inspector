@@ -92,6 +92,15 @@ class InspectorPropertiesValidationTest {
     }
 
     @Test
+    void aStoredHierarchyPlanMaySubmitFor24HoursUnlessConfigured() {
+        assertThat(new InspectorProperties(null, null, null, null, null).hierarchyPlanMaxAgeOrDefault())
+                .isEqualTo(Duration.ofHours(24));
+        assertThat(new InspectorProperties(null, null, null, null, null, null, null, Duration.ofHours(1), null)
+                        .hierarchyPlanMaxAgeOrDefault())
+                .isEqualTo(Duration.ofHours(1));
+    }
+
+    @Test
     void timeoutAndThresholdDefaults() {
         EngineConfig engine = TestEngines.engine("defaults", "http://a/x");
         assertThat(engine.timeoutsOrDefault().connect()).isEqualTo(2000);
@@ -262,6 +271,10 @@ class InspectorPropertiesValidationTest {
                         "hierarchyMaxDepth",
                         new InspectorProperties(null, 0, null, null, null),
                         new InspectorProperties(null, 1, null, null, null)),
+                knob(
+                        "hierarchyPlanMaxAge",
+                        new InspectorProperties(null, null, null, null, null, null, null, Duration.ZERO, null),
+                        new InspectorProperties(null, null, null, null, null, null, null, Duration.ofSeconds(1), null)),
                 knob("cacheTtlS", new Triage(0, null, null, null), new Triage(20, null, null, null)),
                 knob("stacktraceSampleCap", new Triage(null, null, -1, null), new Triage(null, null, 0, null)),
                 knob("ackResurfaceThresholdPct", new Triage(null, null, null, -1), new Triage(null, null, null, 200)),

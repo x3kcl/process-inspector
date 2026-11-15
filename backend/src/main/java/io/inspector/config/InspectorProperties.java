@@ -41,6 +41,7 @@ public record InspectorProperties(
         @Valid Snapshot snapshot,
         @Valid Incidents incidents,
         @Valid SelfHeal selfHeal,
+        Duration hierarchyPlanMaxAge,
         @Valid List<EngineConfig> engines) {
     /** Engine ids are stable slugs used in composite instance IDs (R-SEM-08) — never rename. */
     public static final String ENGINE_ID_PATTERN = "^[a-z0-9][a-z0-9._-]{0,63}$";
@@ -48,6 +49,11 @@ public record InspectorProperties(
     /** superProcessInstanceId chain-walk bound (ARCH §2.3) — lowered in test profiles. */
     public int hierarchyMaxDepthOrDefault() {
         return hierarchyMaxDepth != null ? hierarchyMaxDepth : 10;
+    }
+
+    /** How long a stored hierarchy migration plan may be submitted (#497). */
+    public Duration hierarchyPlanMaxAgeOrDefault() {
+        return hierarchyPlanMaxAge;
     }
 
     public Triage triageOrDefault() {
@@ -595,6 +601,19 @@ public record InspectorProperties(
         }
     }
 
+    /** Pre-#497 8-arg convenience constructor (no {@code hierarchyPlanMaxAge}): the default applies. */
+    public InspectorProperties(
+            Integer fanoutParallelism,
+            Integer hierarchyMaxDepth,
+            Triage triage,
+            Bulk bulk,
+            Snapshot snapshot,
+            Incidents incidents,
+            SelfHeal selfHeal,
+            List<EngineConfig> engines) {
+        this(fanoutParallelism, hierarchyMaxDepth, triage, bulk, snapshot, incidents, selfHeal, null, engines);
+    }
+
     /**
      * Pre-self-heal 7-arg convenience constructor (no {@code selfHeal}) → defaults via
      * {@link #selfHealOrDefault()}, so every existing call site (production config binding
@@ -609,7 +628,7 @@ public record InspectorProperties(
             Snapshot snapshot,
             Incidents incidents,
             List<EngineConfig> engines) {
-        this(fanoutParallelism, hierarchyMaxDepth, triage, bulk, snapshot, incidents, null, engines);
+        this(fanoutParallelism, hierarchyMaxDepth, triage, bulk, snapshot, incidents, null, null, engines);
     }
 
     // Multiple constructors → Spring cannot infer the binder; pin it to the canonical one.

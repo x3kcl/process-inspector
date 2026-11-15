@@ -2,6 +2,7 @@ package io.inspector.audit;
 
 import io.inspector.audit.AuditPartitions.Bounds;
 import io.inspector.config.AuditProperties;
+import io.inspector.config.InspectorProperties;
 import io.micrometer.core.instrument.Counter;
 import io.micrometer.core.instrument.MeterRegistry;
 import java.sql.Timestamp;
@@ -54,14 +55,21 @@ public class AuditRetentionPurger {
     private final JdbcTemplate jdbc;
     private final AuditService audit;
     private final AuditProperties properties;
+    private final InspectorProperties inspector;
     private final Clock clock;
     private final Counter failures;
 
     public AuditRetentionPurger(
-            JdbcTemplate jdbc, AuditService audit, AuditProperties properties, Clock clock, MeterRegistry metrics) {
+            JdbcTemplate jdbc,
+            AuditService audit,
+            AuditProperties properties,
+            InspectorProperties inspector,
+            Clock clock,
+            MeterRegistry metrics) {
         this.jdbc = jdbc;
         this.audit = audit;
         this.properties = properties;
+        this.inspector = inspector;
         this.clock = clock;
         this.failures = Counter.builder("audit_retention_purge_failures_total")
                 .description("Retention purges that aborted, were refused, or could not read the store")
