@@ -4,6 +4,7 @@ import static org.assertj.core.api.Assertions.assertThat;
 
 import io.inspector.client.JobRecords;
 import io.inspector.client.ProcessApiClient.JobLaneKind;
+import io.inspector.client.ProcessInstanceRecords;
 import io.inspector.client.TaskRecords;
 import io.inspector.dto.ExternalWorkerJobDto;
 import io.inspector.dto.InstanceJobs.JobDto;
@@ -239,10 +240,13 @@ class InstanceDetailMappingTest {
     void aNormalCompletionHasNoTerminationReason() {
         // state=COMPLETED (6.x+) and no deleteReason → a genuine completion, no badge.
         assertThat(InstanceDetailService.terminationReason(
-                        Map.of("endTime", "2026-07-12T00:00:00Z", "state", "COMPLETED"), true))
+                        ProcessInstanceRecords.instance(
+                                Map.of("endTime", "2026-07-12T00:00:00Z", "state", "COMPLETED")),
+                        true))
                 .isNull();
         // A running instance is never terminated regardless of stray fields.
-        assertThat(InstanceDetailService.terminationReason(Map.of("state", "ACTIVE"), false))
+        assertThat(InstanceDetailService.terminationReason(
+                        ProcessInstanceRecords.instance(Map.of("state", "ACTIVE")), false))
                 .isNull();
     }
 
@@ -253,12 +257,14 @@ class InstanceDetailMappingTest {
         deleted.put("endTime", "2026-07-12T00:00:00Z");
         deleted.put("state", "DELETED");
         deleted.put("deleteReason", "cancelled by ops — duplicate order");
-        assertThat(InstanceDetailService.terminationReason(deleted, true))
+        assertThat(InstanceDetailService.terminationReason(ProcessInstanceRecords.instance(deleted), true))
                 .isEqualTo("cancelled by ops — duplicate order");
 
         // No deleteReason → humanize the historic state so the badge still reads honestly.
         assertThat(InstanceDetailService.terminationReason(
-                        Map.of("endTime", "2026-07-12T00:00:00Z", "state", "EXTERNALLY_TERMINATED"), true))
+                        ProcessInstanceRecords.instance(
+                                Map.of("endTime", "2026-07-12T00:00:00Z", "state", "EXTERNALLY_TERMINATED")),
+                        true))
                 .isEqualTo("externally terminated");
     }
 
@@ -268,9 +274,11 @@ class InstanceDetailMappingTest {
         Map<String, Object> legacy = new HashMap<>();
         legacy.put("endTime", "2026-07-12T00:00:00Z");
         legacy.put("deleteReason", "ACTIVITI_DELETED");
-        assertThat(InstanceDetailService.terminationReason(legacy, true)).isEqualTo("ACTIVITI_DELETED");
+        assertThat(InstanceDetailService.terminationReason(ProcessInstanceRecords.instance(legacy), true))
+                .isEqualTo("ACTIVITI_DELETED");
         // ended, no state, no deleteReason → treat as a normal completion (can't prove otherwise).
-        assertThat(InstanceDetailService.terminationReason(Map.of("endTime", "2026-07-12T00:00:00Z"), true))
+        assertThat(InstanceDetailService.terminationReason(
+                        ProcessInstanceRecords.instance(Map.of("endTime", "2026-07-12T00:00:00Z")), true))
                 .isNull();
     }
 }

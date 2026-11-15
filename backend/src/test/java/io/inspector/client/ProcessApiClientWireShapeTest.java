@@ -461,6 +461,19 @@ class ProcessApiClientWireShapeTest {
                                 @SuppressWarnings("unchecked")
                                 Map<String, Object> recordedTask = (Map<String, Object>) recorded;
                                 assertThat(task).isEqualTo(TaskRecords.task(recordedTask));
+                            } else if (result instanceof ProcessInstancePage page) {
+                                @SuppressWarnings("unchecked")
+                                Map<String, Object> recordedPage = (Map<String, Object>) recorded;
+                                @SuppressWarnings("unchecked")
+                                List<Map<String, Object>> recordedRows =
+                                        (List<Map<String, Object>>) recordedPage.get("data");
+                                assertThat(page.total()).isEqualTo(((Number) recordedPage.get("total")).longValue());
+                                assertThat(page.dataOrEmpty())
+                                        .isEqualTo(ProcessInstanceRecords.instances(recordedRows));
+                            } else if (result instanceof ProcessInstanceRecord instance) {
+                                @SuppressWarnings("unchecked")
+                                Map<String, Object> recordedInstance = (Map<String, Object>) recorded;
+                                assertThat(instance).isEqualTo(ProcessInstanceRecords.instance(recordedInstance));
                             } else {
                                 assertThat(result).isEqualTo(recorded);
                             }
@@ -786,10 +799,10 @@ class ProcessApiClientWireShapeTest {
                     wm.stubFor(request("POST", urlPathEqualTo("/runtime/process-instances"))
                             .willReturn(okJson(text(v, "runtime-process-instance.json"))));
 
-                    Map<String, Object> started = client.startProcessInstance(
+                    ProcessInstanceRecord started = client.startProcessInstance(
                             engine, CallPriority.INTERACTIVE, Map.of("processDefinitionKey", "demoFailingPayment"));
 
-                    assertThat(started).isEqualTo(doc(v, "runtime-process-instance"));
+                    assertThat(started).isEqualTo(ProcessInstanceRecords.instance(doc(v, "runtime-process-instance")));
                     wm.verify(requestedFor("POST", urlPathEqualTo("/runtime/process-instances"))
                             .withRequestBody(equalToJson("{\"processDefinitionKey\":\"demoFailingPayment\"}")));
                 }));

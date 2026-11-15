@@ -12,6 +12,7 @@ import com.fasterxml.jackson.databind.ObjectMapper;
 import io.inspector.action.ActionResult;
 import io.inspector.action.GuardRefusedException;
 import io.inspector.client.ProcessApiClient;
+import io.inspector.client.ProcessInstanceRecords;
 import io.inspector.config.InspectorProperties.EngineConfig;
 import io.inspector.config.InspectorProperties.EngineEnvironment;
 import io.inspector.config.InspectorProperties.EngineMode;
@@ -173,9 +174,9 @@ class CohortBulkMigrationTest {
         EngineConfig engine = TestEngines.engine("engine-a", "http://a", EngineEnvironment.DEV, EngineMode.READ_WRITE);
         when(registry.require("engine-a")).thenReturn(engine);
         when(client.getRuntimeProcessInstance(eq(engine), any(), eq("c1")))
-                .thenReturn(Map.of("processDefinitionId", "demo:2:y"));
+                .thenReturn(ProcessInstanceRecords.instance(Map.of("processDefinitionId", "demo:2:y")));
         when(client.getRuntimeProcessInstance(eq(engine), any(), eq("c2")))
-                .thenReturn(Map.of("processDefinitionId", "demo:1:x"));
+                .thenReturn(ProcessInstanceRecords.instance(Map.of("processDefinitionId", "demo:1:x")));
 
         assertThat(bridge.verify(id.toString(), "engine-a", "c1").migrated()).isTrue();
         CohortBulkMigration.Verification stillOld = bridge.verify(id.toString(), "engine-a", "c2");
@@ -190,9 +191,9 @@ class CohortBulkMigrationTest {
         EngineConfig engine = TestEngines.engine("engine-a", "http://a", EngineEnvironment.DEV, EngineMode.READ_WRITE);
         when(registry.require("engine-a")).thenReturn(engine);
         when(client.getRuntimeProcessInstance(eq(engine), any(), eq("c1")))
-                .thenReturn(Map.of("processDefinitionId", "demo:2:y"));
+                .thenReturn(ProcessInstanceRecords.instance(Map.of("processDefinitionId", "demo:2:y")));
         when(client.getRuntimeProcessInstance(eq(engine), any(), eq("c2")))
-                .thenReturn(Map.of("processDefinitionId", "demo:1:x"));
+                .thenReturn(ProcessInstanceRecords.instance(Map.of("processDefinitionId", "demo:1:x")));
         // "gone" is not in the analysis at all (the analysis blocked it) and the engine has no such instance.
         when(client.getRuntimeProcessInstance(eq(engine), any(), eq("gone"))).thenReturn(null);
 

@@ -5,6 +5,7 @@ import io.inspector.audit.ProtectedInstance;
 import io.inspector.audit.ProtectedInstanceRepository;
 import io.inspector.client.GuardedCaller.CallPriority;
 import io.inspector.client.ProcessApiClient;
+import io.inspector.client.ProcessInstanceRecord;
 import io.inspector.config.InspectorProperties;
 import io.inspector.config.InspectorProperties.EngineConfig;
 import io.inspector.detail.InstanceDetailService;
@@ -532,28 +533,28 @@ public class SearchService {
 
     // Package-private (not private) for SearchServiceRowTest — direct rung-1 coverage of the
     // row-assembly mapping, same testability seam as InstanceDetailService.terminationReason.
-    ProcessInstanceRow row(EngineConfig engine, Map<String, Object> pi, InstanceStatusFlags flags, Failure failure) {
-        String id = str(pi, "id");
-        String definitionId = str(pi, "processDefinitionId");
+    ProcessInstanceRow row(EngineConfig engine, ProcessInstanceRecord pi, InstanceStatusFlags flags, Failure failure) {
+        String id = pi.id();
+        String definitionId = pi.processDefinitionId();
         return new ProcessInstanceRow(
                 engine.id() + ":" + id,
                 engine.id(),
                 engine.name(),
                 engine.accentColor(),
                 id,
-                str(pi, "businessKey"),
+                pi.businessKey(),
                 // Root-vs-child (W2 #7, R-UXQ-12): historic rows serialize the parent id for
                 // call-activity children; null = root. Both plan legs assemble from historic rows.
-                str(pi, "superProcessInstanceId"),
+                pi.superProcessInstanceId(),
                 definitionKeyOf(definitionId),
-                str(pi, "processDefinitionName"),
+                pi.processDefinitionName(),
                 definitionVersionOf(definitionId),
-                str(pi, "tenantId"),
+                pi.tenantId(),
                 "bpmn", // carried from day one for CMMN support (SPEC §3)
                 flags.primaryStatus(),
                 flags,
-                str(pi, "startTime"),
-                str(pi, "endTime"),
+                pi.startTime(),
+                pi.endTime(),
                 failure != null ? failure.failureTime() : null,
                 failure != null ? failure.snippet() : null,
                 null, // protectedInstance filled by markProtected() on the final page

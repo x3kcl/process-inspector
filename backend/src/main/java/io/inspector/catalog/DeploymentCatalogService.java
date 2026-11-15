@@ -10,6 +10,7 @@ import io.inspector.catalog.DeploymentDetailResponse.ContainedDefinition;
 import io.inspector.client.FlowablePage;
 import io.inspector.client.GuardedCaller.CallPriority;
 import io.inspector.client.ProcessApiClient;
+import io.inspector.client.ProcessInstancePage;
 import io.inspector.config.InspectorProperties;
 import io.inspector.config.InspectorProperties.EngineConfig;
 import io.inspector.config.InspectorProperties.EngineEnvironment;
@@ -256,7 +257,7 @@ public class DeploymentCatalogService {
         Map<String, Object> body = new LinkedHashMap<>();
         body.put("processDefinitionId", definitionId);
         body.put("size", 1);
-        FlowablePage page = processes.queryRuntimeProcessInstances(engine, CallPriority.INTERACTIVE, body);
+        ProcessInstancePage page = processes.queryRuntimeProcessInstances(engine, CallPriority.INTERACTIVE, body);
         return page != null ? page.total() : 0;
     }
 

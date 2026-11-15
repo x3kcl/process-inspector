@@ -1,6 +1,7 @@
 package io.inspector.detail;
 
 import io.inspector.client.GuardedCaller.CallPriority;
+import io.inspector.client.ProcessInstanceRecord;
 import io.inspector.config.InspectorProperties.EngineConfig;
 import io.inspector.dto.InstanceVariables;
 import io.inspector.dto.InstanceVariables.ExecutionScope;
@@ -25,8 +26,8 @@ final class InstanceVariablesAssembler {
 
     public InstanceVariables variables(String engineId, String instanceId) {
         EngineConfig engine = host.engineForRead(engineId);
-        Map<String, Object> historic = host.requireHistoric(engine, instanceId);
-        if (InstanceDetailService.str(historic, "endTime") != null) {
+        ProcessInstanceRecord historic = host.requireHistoric(engine, instanceId);
+        if (historic.endTime() != null) {
             return historicVariables(engine, instanceId);
         }
 

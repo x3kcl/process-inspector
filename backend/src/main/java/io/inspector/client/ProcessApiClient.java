@@ -51,12 +51,12 @@ public class ProcessApiClient {
         }
     }
 
-    public FlowablePage queryHistoricProcessInstances(
+    public ProcessInstancePage queryHistoricProcessInstances(
             EngineConfig engine, CallPriority priority, Map<String, Object> body) {
         return reads.queryHistoricProcessInstances(engine, priority, body);
     }
 
-    public FlowablePage queryRuntimeProcessInstances(
+    public ProcessInstancePage queryRuntimeProcessInstances(
             EngineConfig engine, CallPriority priority, Map<String, Object> body) {
         return reads.queryRuntimeProcessInstances(engine, priority, body);
     }
@@ -71,14 +71,12 @@ public class ProcessApiClient {
         return reads.listJobs(engine, priority, lane, filters, start, size);
     }
 
-    @SuppressWarnings("unchecked")
-    public Map<String, Object> getHistoricProcessInstance(
+    public ProcessInstanceRecord getHistoricProcessInstance(
             EngineConfig engine, CallPriority priority, String processInstanceId) {
         return reads.getHistoricProcessInstance(engine, priority, processInstanceId);
     }
 
-    @SuppressWarnings("unchecked")
-    public Map<String, Object> getRuntimeProcessInstance(
+    public ProcessInstanceRecord getRuntimeProcessInstance(
             EngineConfig engine, CallPriority priority, String processInstanceId) {
         return reads.getRuntimeProcessInstance(engine, priority, processInstanceId);
     }
@@ -239,7 +237,7 @@ public class ProcessApiClient {
         return health.countHistoricProcesses(engine, priority, after, before, started, rootOnly, definitionKey);
     }
 
-    public FlowablePage listRuntimeInstances(
+    public ProcessInstancePage listRuntimeInstances(
             EngineConfig engine,
             CallPriority priority,
             String processDefinitionId,
@@ -252,7 +250,7 @@ public class ProcessApiClient {
                 engine, priority, processDefinitionId, businessKey, businessKeyLike, startedAfter, startedBefore, size);
     }
 
-    public FlowablePage listFinishedProcesses(
+    public ProcessInstancePage listFinishedProcesses(
             EngineConfig engine,
             CallPriority priority,
             String definitionKey,
@@ -460,8 +458,7 @@ public class ProcessApiClient {
         repository.migrateInstance(engine, priority, processInstanceId, migrationDocument);
     }
 
-    @SuppressWarnings("unchecked")
-    public Map<String, Object> startProcessInstance(
+    public ProcessInstanceRecord startProcessInstance(
             EngineConfig engine, CallPriority priority, Map<String, Object> body) {
         return repository.startProcessInstance(engine, priority, body);
     }

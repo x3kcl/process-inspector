@@ -1,6 +1,7 @@
 package io.inspector.detail;
 
 import io.inspector.client.EngineCallRecorder;
+import io.inspector.client.ProcessInstanceRecord;
 import io.inspector.config.InspectorProperties.EngineConfig;
 import io.inspector.detail.InstanceDetailService.StatusDerivation;
 import io.inspector.dto.InstanceStatusFlags;
@@ -10,7 +11,6 @@ import io.inspector.dto.StatusEvidence.Leg;
 import java.time.Instant;
 import java.util.ArrayList;
 import java.util.List;
-import java.util.Map;
 import org.springframework.stereotype.Service;
 
 /**
@@ -44,7 +44,7 @@ public class StatusEvidenceService {
         List<EngineCallRecorder.Leg> recorded;
         StatusDerivation derivation;
         try {
-            Map<String, Object> historic = detail.requireHistoric(engine, instanceId);
+            ProcessInstanceRecord historic = detail.requireHistoric(engine, instanceId);
             derivation = detail.deriveStatus(engine, historic);
         } finally {
             recorded = EngineCallRecorder.end();

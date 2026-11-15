@@ -4,6 +4,7 @@ import io.inspector.client.DmnApiClient;
 import io.inspector.client.FlowablePage;
 import io.inspector.client.GuardedCaller.CallPriority;
 import io.inspector.client.ProcessApiClient;
+import io.inspector.client.ProcessInstanceRecord;
 import io.inspector.config.InspectorProperties.EngineConfig;
 import io.inspector.registry.EngineCapabilities;
 import io.inspector.registry.EngineRegistry;
@@ -33,7 +34,7 @@ public class InstanceParityService {
 
     public ParticipantPage participants(String engineId, String instanceId) {
         EngineConfig engine = registry.require(engineId);
-        Map<String, Object> historic =
+        ProcessInstanceRecord historic =
                 flowable.getHistoricProcessInstance(engine, CallPriority.INTERACTIVE, instanceId);
         if (historic == null) {
             throw new ResponseStatusException(HttpStatus.NOT_FOUND, "Unknown instance: " + instanceId);
@@ -51,7 +52,7 @@ public class InstanceParityService {
             String type = first(link, "type");
             rows.add(new ParticipantRow(user, type == null ? "participant" : type, !"starter".equals(type)));
         }
-        String starter = first(historic, "startUserId");
+        String starter = historic.startUserId();
         if (starter != null
                 && rows.stream().noneMatch(row -> starter.equals(row.user()) && "starter".equals(row.type()))) {
             rows.add(0, new ParticipantRow(starter, "starter", false));

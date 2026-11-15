@@ -14,6 +14,7 @@ import io.inspector.client.JobPage;
 import io.inspector.client.JobRecords;
 import io.inspector.client.ProcessApiClient;
 import io.inspector.client.ProcessApiClient.JobLaneKind;
+import io.inspector.client.ProcessInstanceRecords;
 import io.inspector.config.InspectorProperties;
 import io.inspector.config.InspectorProperties.EngineConfig;
 import io.inspector.dto.InstanceTimeline;
@@ -140,7 +141,7 @@ class InstanceTimelineServiceTest {
 
     private void historicExists(String id) {
         when(flowable.getHistoricProcessInstance(engine, CallPriority.INTERACTIVE, id))
-                .thenReturn(Map.of("id", id));
+                .thenReturn(ProcessInstanceRecords.instance(Map.of("id", id)));
     }
 
     @SafeVarargs

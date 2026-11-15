@@ -7,6 +7,7 @@ import io.inspector.action.GuardRefusedException;
 import io.inspector.audit.BreakGlassActor;
 import io.inspector.client.GuardedCaller.CallPriority;
 import io.inspector.client.ProcessApiClient;
+import io.inspector.client.ProcessInstanceRecord;
 import io.inspector.migration.MigrationAnalysis.Status;
 import io.inspector.registry.EngineRegistry;
 import io.inspector.security.RbacAuthorizer;
@@ -160,12 +161,12 @@ public class CohortBulkMigration {
 
     public Verification verify(String analysisRef, String engineId, String instanceId) {
         Cohort cohort = resolve(parse(analysisRef));
-        Map<String, Object> instance =
+        ProcessInstanceRecord instance =
                 client.getRuntimeProcessInstance(registry.require(engineId), CallPriority.INTERACTIVE, instanceId);
         if (instance == null) {
             return new Verification(false, "instance is no longer running — completed or deleted since; needs L3");
         }
-        String definitionId = String.valueOf(instance.get("processDefinitionId"));
+        String definitionId = String.valueOf(instance.processDefinitionId());
         return cohort.toDefinitionId().equals(definitionId)
                 ? new Verification(true, "verified: instance is on " + definitionId)
                 : new Verification(false, "instance is still on " + definitionId + " — the migrate did not apply");
@@ -179,9 +180,9 @@ public class CohortBulkMigration {
      */
     public boolean nothingLeftToMigrate(String analysisRef, String engineId, String instanceId) {
         Cohort cohort = resolve(parse(analysisRef));
-        Map<String, Object> instance =
+        ProcessInstanceRecord instance =
                 client.getRuntimeProcessInstance(registry.require(engineId), CallPriority.INTERACTIVE, instanceId);
-        return instance == null || cohort.toDefinitionId().equals(String.valueOf(instance.get("processDefinitionId")));
+        return instance == null || cohort.toDefinitionId().equals(String.valueOf(instance.processDefinitionId()));
     }
 
     private static UUID parse(String analysisRef) {

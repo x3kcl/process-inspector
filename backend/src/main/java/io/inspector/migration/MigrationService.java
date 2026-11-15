@@ -15,6 +15,8 @@ import io.inspector.client.FlowablePage;
 import io.inspector.client.ForwardedActor;
 import io.inspector.client.GuardedCaller.CallPriority;
 import io.inspector.client.ProcessApiClient;
+import io.inspector.client.ProcessInstancePage;
+import io.inspector.client.ProcessInstanceRecord;
 import io.inspector.config.InspectorProperties.EngineConfig;
 import io.inspector.config.InspectorProperties.EngineEnvironment;
 import io.inspector.config.InspectorProperties.EngineMode;
@@ -199,12 +201,12 @@ public class MigrationService {
         requireMigrationCapability(engine);
         requireWritableEngine(engine);
 
-        Map<String, Object> instance = restateRunningInstance(engine, instanceId);
-        String fromDefinitionId = String.valueOf(instance.get("processDefinitionId"));
+        ProcessInstanceRecord instance = restateRunningInstance(engine, instanceId);
+        String fromDefinitionId = String.valueOf(instance.processDefinitionId());
         String fromKey = definitionKeyOf(fromDefinitionId);
         int fromVersion = definitionVersionOf(fromDefinitionId);
-        String fromTenant = asString(instance.get("tenantId"));
-        String businessKey = asString(instance.get("businessKey"));
+        String fromTenant = instance.tenantId();
+        String businessKey = instance.businessKey();
         // §5 CAS, definition half, before target resolution (else a moved one reads same-version-target).
         String expectedFrom = blankToNull(request.expectedFromDefinitionId());
         if (expectedFrom != null && !expectedFrom.equals(fromDefinitionId)) {
@@ -441,8 +443,8 @@ public class MigrationService {
         }
     }
 
-    private Map<String, Object> restateRunningInstance(EngineConfig engine, String instanceId) {
-        Map<String, Object> instance;
+    private ProcessInstanceRecord restateRunningInstance(EngineConfig engine, String instanceId) {
+        ProcessInstanceRecord instance;
         try {
             instance = client.getRuntimeProcessInstance(engine, CallPriority.INTERACTIVE, instanceId);
         } catch (CallNotPermittedException | BulkheadFullException | ResourceAccessException e) {
@@ -455,7 +457,7 @@ public class MigrationService {
                     "Instance " + instanceId + " is not running on '" + engine.id()
                             + "' (completed or deleted?) — migration needs live executions. Nothing happened.");
         }
-        if (Boolean.TRUE.equals(instance.get("suspended"))) {
+        if (Boolean.TRUE.equals(instance.suspended())) {
             throw new GuardRefusedException(
                     HttpStatus.CONFLICT,
                     "instance-suspended",
@@ -530,16 +532,16 @@ public class MigrationService {
         Map<String, Object> body = new LinkedHashMap<>();
         body.put("superProcessInstanceId", instanceId);
         body.put("size", CHILD_COUNT_CAP_PROBE);
-        FlowablePage page = client.queryRuntimeProcessInstances(engine, CallPriority.INTERACTIVE, body);
+        ProcessInstancePage page = client.queryRuntimeProcessInstances(engine, CallPriority.INTERACTIVE, body);
         return page != null ? (int) page.total() : 0;
     }
 
     /** Re-read the instance to PROVE the migration landed — record the observed definition id. */
     private String observedDefinitionId(EngineConfig engine, String instanceId) {
         try {
-            Map<String, Object> instance =
+            ProcessInstanceRecord instance =
                     client.getRuntimeProcessInstance(engine, CallPriority.INTERACTIVE, instanceId);
-            return instance != null ? asString(instance.get("processDefinitionId")) : "(instance ended)";
+            return instance != null ? instance.processDefinitionId() : "(instance ended)";
         } catch (RuntimeException e) {
             return "(unverified)";
         }

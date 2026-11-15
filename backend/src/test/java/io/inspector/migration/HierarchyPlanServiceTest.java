@@ -13,8 +13,9 @@ import static org.mockito.Mockito.when;
 import com.fasterxml.jackson.databind.ObjectMapper;
 import io.github.resilience4j.circuitbreaker.CallNotPermittedException;
 import io.inspector.action.GuardRefusedException;
-import io.inspector.client.FlowablePage;
 import io.inspector.client.ProcessApiClient;
+import io.inspector.client.ProcessInstancePage;
+import io.inspector.client.ProcessInstanceRecords;
 import io.inspector.config.InspectorProperties;
 import io.inspector.config.InspectorProperties.EngineEnvironment;
 import io.inspector.config.InspectorProperties.EngineMode;
@@ -159,12 +160,14 @@ class HierarchyPlanServiceTest {
     private void children(String parent, Map<String, Object>... rows) {
         lenient()
                 .when(detail.runningChildren(any(), eq(parent)))
-                .thenReturn(new FlowablePage(List.of(rows), rows.length, 0, rows.length));
+                .thenReturn(new ProcessInstancePage(
+                        ProcessInstanceRecords.instances(List.of(rows)), rows.length, 0, rows.length));
     }
 
     /** root → a → b, one instance each. */
     private HierarchyPlanView threeLevelPlan() {
-        when(client.getRuntimeProcessInstance(any(), any(), eq("root"))).thenReturn(row("root", ROOT_DEF));
+        when(client.getRuntimeProcessInstance(any(), any(), eq("root")))
+                .thenReturn(ProcessInstanceRecords.instance(row("root", ROOT_DEF)));
         children("root", row("a", A_DEF));
         children("a", row("b", B_DEF));
         children("b");
@@ -281,7 +284,8 @@ class HierarchyPlanServiceTest {
                 .isInstanceOfSatisfying(
                         GuardRefusedException.class, e -> assertThat(e.code()).isEqualTo("instance-not-running"));
 
-        when(client.getRuntimeProcessInstance(any(), any(), eq("root"))).thenReturn(row("root", ROOT_DEF));
+        when(client.getRuntimeProcessInstance(any(), any(), eq("root")))
+                .thenReturn(ProcessInstanceRecords.instance(row("root", ROOT_DEF)));
         when(detail.runningChildren(any(), eq("root")))
                 .thenThrow(CallNotPermittedException.createCallNotPermittedException(
                         io.github.resilience4j.circuitbreaker.CircuitBreaker.ofDefaults("engine-a")));
@@ -473,13 +477,15 @@ class HierarchyPlanServiceTest {
                         e -> assertThat(e.code()).isEqualTo("hierarchy-nothing-executable"));
 
         // A 10k-child multi-instance level: one read, reported, and the plan cannot be submitted.
-        when(client.getRuntimeProcessInstance(any(), any(), eq("wide"))).thenReturn(row("wide", ROOT_DEF));
+        when(client.getRuntimeProcessInstance(any(), any(), eq("wide")))
+                .thenReturn(ProcessInstanceRecords.instance(row("wide", ROOT_DEF)));
         List<Map<String, Object>> page = new ArrayList<>();
         for (int i = 0; i < 50; i++) {
             page.add(row("mi-" + i, B_DEF));
             children("mi-" + i);
         }
-        when(detail.runningChildren(any(), eq("wide"))).thenReturn(new FlowablePage(page, 10_000, 0, 50));
+        when(detail.runningChildren(any(), eq("wide")))
+                .thenReturn(new ProcessInstancePage(ProcessInstanceRecords.instances(page), 10_000, 0, 50));
         HierarchyPlanView wide =
                 service.create(ENGINE, new HierarchyPlanRequests.HierarchyPlanCreate("wide", null), auth);
         assertThat(wide.executable()).isFalse();
@@ -582,7 +588,8 @@ class HierarchyPlanServiceTest {
     void aChildReadThatDoesNotHoldEveryRunningChildFailsClosed() throws Exception {
         String analysisRef = rootConfiguredPlan();
         when(detail.runningChildren(any(), eq("root")))
-                .thenReturn(new FlowablePage(List.of(row("a", A_DEF)), 60, 0, 1));
+                .thenReturn(
+                        new ProcessInstancePage(ProcessInstanceRecords.instances(List.of(row("a", A_DEF))), 60, 0, 1));
 
         assertThatThrownBy(() -> service.lateChildren(analysisRef, ENGINE, "root"))
                 .isInstanceOf(IllegalStateException.class)

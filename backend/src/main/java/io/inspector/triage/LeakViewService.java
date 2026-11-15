@@ -6,6 +6,7 @@ import io.inspector.api.MdcPropagatingExecutors;
 import io.inspector.client.FlowablePage;
 import io.inspector.client.GuardedCaller.CallPriority;
 import io.inspector.client.ProcessApiClient;
+import io.inspector.client.ProcessInstancePage;
 import io.inspector.config.InspectorProperties;
 import io.inspector.config.InspectorProperties.EngineConfig;
 import io.inspector.dto.LeakViewsResponse;
@@ -251,7 +252,7 @@ public class LeakViewService {
         if (engine.tenantId() != null && !engine.tenantId().isBlank()) {
             body.put("tenantId", engine.tenantId());
         }
-        FlowablePage page = flowable.queryRuntimeProcessInstances(engine, CallPriority.INTERACTIVE, body);
+        ProcessInstancePage page = flowable.queryRuntimeProcessInstances(engine, CallPriority.INTERACTIVE, body);
         return page != null ? page.total() : 0;
     }
 

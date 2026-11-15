@@ -14,6 +14,7 @@ import io.inspector.client.GuardedCaller.CallPriority;
 import io.inspector.client.JobRecord;
 import io.inspector.client.ProcessApiClient;
 import io.inspector.client.ProcessApiClient.JobLaneKind;
+import io.inspector.client.ProcessInstanceRecord;
 import io.inspector.client.TaskRecord;
 import io.inspector.cmmn.CaseMigrationPrecheck;
 import io.inspector.cmmn.CasePlanDefinitionIds;
@@ -596,7 +597,7 @@ public class CorrectiveActionService {
     }
 
     private Target instanceTarget(EngineConfig engine, String instanceId) {
-        Map<String, Object> instance = client.getRuntimeProcessInstance(engine, CallPriority.INTERACTIVE, instanceId);
+        ProcessInstanceRecord instance = client.getRuntimeProcessInstance(engine, CallPriority.INTERACTIVE, instanceId);
         if (instance == null) {
             throw new GuardRefusedException(
                     HttpStatus.NOT_FOUND,
@@ -604,15 +605,15 @@ public class CorrectiveActionService {
                     "Instance " + instanceId + " is not running on '" + engine.id()
                             + "' (completed or already deleted?). Nothing happened.");
         }
-        String businessKey = instance.get("businessKey") != null ? String.valueOf(instance.get("businessKey")) : null;
+        String businessKey = instance.businessKey();
         Map<String, Object> payload = new LinkedHashMap<>();
         payload.put("businessKey", businessKey);
-        payload.put("processDefinitionId", instance.get("processDefinitionId"));
-        payload.put("suspended", instance.get("suspended"));
+        payload.put("processDefinitionId", instance.processDefinitionId());
+        payload.put("suspended", instance.suspended());
         // Typed token = the business key; instances without one fall back to the instance id.
         String token = businessKey != null ? businessKey : instanceId;
         // #184: free — already read into the payload above.
-        return new Target(payload, token, "business key", null, definitionKeyOf(instance.get("processDefinitionId")));
+        return new Target(payload, token, "business key", null, definitionKeyOf(instance.processDefinitionId()));
     }
 
     /**
@@ -794,16 +795,17 @@ public class CorrectiveActionService {
     }
 
     private Target historyTarget(EngineConfig engine, String id, boolean cmmn) {
-        Map<String, Object> row = cmmn
-                ? cmmnClient.getHistoricCmmnCaseInstance(engine, CallPriority.HOUSEKEEPING, id)
-                : client.getHistoricProcessInstance(engine, CallPriority.HOUSEKEEPING, id);
-        if (row == null) {
+        Map<String, Object> caseRow =
+                cmmn ? cmmnClient.getHistoricCmmnCaseInstance(engine, CallPriority.HOUSEKEEPING, id) : null;
+        ProcessInstanceRecord instance =
+                cmmn ? null : client.getHistoricProcessInstance(engine, CallPriority.HOUSEKEEPING, id);
+        if (caseRow == null && instance == null) {
             throw new GuardRefusedException(
                     HttpStatus.NOT_FOUND,
                     "history-gone",
                     (cmmn ? "Case " : "Instance ") + id + " has no historic row. Nothing happened.");
         }
-        if (row.get("endTime") == null) {
+        if ((cmmn ? caseRow.get("endTime") : instance.endTime()) == null) {
             throw new GuardRefusedException(
                     HttpStatus.CONFLICT,
                     "still-running",
@@ -812,7 +814,7 @@ public class CorrectiveActionService {
         Map<String, Object> payload = new LinkedHashMap<>();
         payload.put("schema", cmmn ? "delete-case-history/v1" : "delete-history/v1");
         payload.put("id", id);
-        Object definitionId = row.get(cmmn ? "caseDefinitionId" : "processDefinitionId");
+        Object definitionId = cmmn ? caseRow.get("caseDefinitionId") : instance.processDefinitionId();
         return new Target(payload, id, "instance id", null, definitionKeyOf(definitionId));
     }
 

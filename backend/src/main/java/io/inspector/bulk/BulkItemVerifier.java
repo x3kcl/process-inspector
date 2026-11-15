@@ -4,11 +4,11 @@ import io.inspector.action.ActionVerb;
 import io.inspector.client.GuardedCaller.CallPriority;
 import io.inspector.client.JobRecord;
 import io.inspector.client.ProcessApiClient.JobLaneKind;
+import io.inspector.client.ProcessInstanceRecord;
 import io.inspector.client.TaskRecord;
 import io.inspector.config.InspectorProperties.EngineConfig;
 import io.inspector.migration.CaseCohortBulkMigration;
 import io.inspector.migration.CohortBulkMigration;
-import java.util.Map;
 
 /**
  * Verify-now predicates (R-SAFE-09): one read of live engine state per verb, never a re-fire.
@@ -77,12 +77,12 @@ final class BulkItemVerifier {
                         : new Verdict(null, "timer " + item.getJobRef() + " is still queued — still-pending");
             }
             case SUSPEND, ACTIVATE -> {
-                Map<String, Object> instance =
+                ProcessInstanceRecord instance =
                         host.client.getRuntimeProcessInstance(engine, CallPriority.INTERACTIVE, item.getInstanceId());
                 if (instance == null) {
                     return new Verdict(null, "instance is no longer running — completed or deleted since; needs L3");
                 }
-                boolean suspended = Boolean.TRUE.equals(instance.get("suspended"));
+                boolean suspended = Boolean.TRUE.equals(instance.suspended());
                 boolean wanted = verb == ActionVerb.SUSPEND;
                 return suspended == wanted
                         ? new Verdict(
@@ -93,12 +93,12 @@ final class BulkItemVerifier {
                                         + " likely did not apply; still-pending");
             }
             case DELETE_HISTORY -> {
-                Map<String, Object> row =
+                ProcessInstanceRecord row =
                         host.client.getHistoricProcessInstance(engine, CallPriority.HOUSEKEEPING, item.getInstanceId());
                 if (row == null) {
                     return new Verdict(BulkJobItem.State.ok, "verified: historic instance is gone");
                 }
-                if (row.get("endTime") == null) {
+                if (row.endTime() == null) {
                     return new Verdict(null, "instance is still running");
                 }
                 return new Verdict(null, "historic instance is still present");
