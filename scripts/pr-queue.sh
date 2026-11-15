@@ -4,9 +4,9 @@
 #
 #   scripts/pr-queue.sh <PR>            refuse unless the head's `ci` run is green, then add the `queue` label
 #   scripts/pr-queue.sh --watch <PR>    (flag before or after <PR>) block until merged (0), unlabelled by the queue or refused with a RED-first/frozen marker for the head (1, prints its comment), timeout (3)
-#   scripts/pr-queue.sh --status <PR>   print label, head run, merged flag
+#   scripts/pr-queue.sh --status <PR>   print label, head run, merged flag, and "refused: <marker>" when the queue refused the head
 #
-# Exit: 0 ok/merged, 1 head not green / queue dropped the PR, 2 usage or API error, 3 watch timeout.
+# Exit: 0 ok/merged, 1 head not green / queue dropped or refused the PR, 2 usage or API error, 3 watch timeout.
 # curl + $GITHUB_PERSONAL_ACCESS_TOKEN (never echoed). Env: PQ_SLUG, PQ_INTERVAL (30), PQ_TIMEOUT (3600).
 set -euo pipefail
 
