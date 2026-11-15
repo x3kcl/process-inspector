@@ -350,7 +350,10 @@ Answers "what is broken, how much, where" in zero keystrokes:
   every visible count on the card face can point at a different class than the one the
   ranking actually favors; only a hover reconciled them, which also fails touch/keyboard-only/
   screen-reader readers). The fixed, generic glossary sentence explaining what the ordering
-  mechanism means (not per-card evidence) stays hover-only in the pill's `title`; the badge
+  mechanism means (not per-card evidence) stays in the pill's `title` AND, since #663, is
+  stated ONCE as visible text above the landing's card list together with the gloss that
+  "no … history" is the normal state and does not raise or lower a card's rank
+  (`AttentionOrderingNote`, shown only when some card carries a score); the badge
   renders nothing when `attention` is absent (the shipped, flag-off, expected-today case). No
   ordering toggle exists or was built — the design specifies none (§3.1/§11 describe a single
   server-computed order, not an operator-facing choice). See §4e below for how this reconciles
@@ -813,7 +816,10 @@ so history survives DLQ drains:
   id, actor, or reason), never an exact per-instance join. Fail-closed under R-SAFE-17: the
   block is OMITTED entirely, never narrowed, whenever the incident's own scope projection is
   partial (mirrors this same section's `relatedBulkJobs` issue #329 narrowing, on the same
-  endpoint).
+  endpoint). **Rendered** (#662) on each episode row as one line — count (`≥` when
+  truncated), kinds and outcomes, largest first, e.g. "6 actions during this episode:
+  retry-job ×6 · ok 6" — with the over-inclusion caveat inline and an "open in Ops log" link
+  to `/audit?since=<startedAt>` (the Ops log seeds its Since filter from `?since=`).
 - **Timeline**: a per-incident occurrence time-series (total / dead-letter / retrying per
   sampler bucket) powers the detail view's arrival-rate timeline (detail-only — list cards
   carry no series, deliberately avoiding a per-card N+1); truncated samples
