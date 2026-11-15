@@ -314,7 +314,7 @@ public class IncidentQueryService {
      * partially-scoped caller's rationale must never quote the fleet number (R-SAFE-17).
      */
     private AttentionScore attentionScore(Incident row, long scopedTotal, SelfHealStats stats) {
-        return attention.forClass(row.getSignatureHash(), row.getAlgoVersion(), scopedTotal, stats);
+        return attention.forClass(row.getSignatureHash(), row.getAlgoVersion(), scopedTotal, stats, row.getLastSeen());
     }
 
     /**
