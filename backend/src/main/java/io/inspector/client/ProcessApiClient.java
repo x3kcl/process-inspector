@@ -183,7 +183,6 @@ public class ProcessApiClient {
         return reads.listTasksByCandidateUser(engine, priority, candidateUser, size);
     }
 
-    @SuppressWarnings("unchecked")
     public TaskRecord getHistoricTaskInstance(EngineConfig engine, CallPriority priority, String taskId) {
         return reads.getHistoricTaskInstance(engine, priority, taskId);
     }
@@ -355,7 +354,6 @@ public class ProcessApiClient {
         actions.putExecutionVariable(engine, priority, executionId, name, typedVariable);
     }
 
-    @SuppressWarnings("unchecked")
     public TaskRecord getTask(EngineConfig engine, CallPriority priority, String taskId) {
         return actions.getTask(engine, priority, taskId);
     }
