@@ -4645,6 +4645,7 @@ export interface operations {
                 engineId?: string;
                 ticketId?: string;
                 since?: string;
+                until?: string;
                 limit?: number;
             };
             header?: never;
@@ -4672,6 +4673,7 @@ export interface operations {
                 engineId?: string;
                 ticketId?: string;
                 since?: string;
+                until?: string;
                 limit?: number;
             };
             header?: never;

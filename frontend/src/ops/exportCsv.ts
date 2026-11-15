@@ -9,6 +9,8 @@ export interface LogFilters {
   action: string
   ticketId: string
   since: string
+  until: string
+  engineId: string
 }
 
 /** The export query — the same non-blank filter mapping the JSON log uses. */
@@ -18,6 +20,8 @@ export function exportQuery(filters: LogFilters): Record<string, string> {
   if (filters.action.trim() !== '') query['action'] = filters.action.trim()
   if (filters.ticketId.trim() !== '') query['ticketId'] = filters.ticketId.trim()
   if (filters.since.trim() !== '') query['since'] = filters.since.trim()
+  if (filters.until.trim() !== '') query['until'] = filters.until.trim()
+  if (filters.engineId.trim() !== '') query['engineId'] = filters.engineId.trim()
   return query
 }
 
