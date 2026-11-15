@@ -30,7 +30,7 @@ const EMPTY: Filters = { actor: '', action: '', ticketId: '', since: '', until: 
 
 async function fetchOperationsLog(filters: Filters): Promise<AuditEntryDto[]> {
   const query: Record<string, string | number> = { limit: 500 }
-  for (const [key, value] of Object.entries(filters)) {
+  for (const [key, value] of Object.entries(filters) as [string, string][]) {
     if (value.trim() !== '') query[key] = value.trim()
   }
   const { data, error, response } = await api.GET('/api/audit', { params: { query } })
