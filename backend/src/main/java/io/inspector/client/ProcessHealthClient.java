@@ -95,7 +95,7 @@ final class ProcessHealthClient {
         String beforeIso =
                 before.truncatedTo(java.time.temporal.ChronoUnit.SECONDS).toString();
         try {
-            FlowablePage page = guarded.call(
+            ProcessInstancePage page = guarded.call(
                     engine,
                     priority,
                     () -> guarded.readClient(engine)
@@ -114,7 +114,7 @@ final class ProcessHealthClient {
                                 return builder.build();
                             })
                             .retrieve()
-                            .body(FlowablePage.class));
+                            .body(ProcessInstancePage.class));
             return page != null ? page.total() : 0L;
         } catch (HttpClientErrorException.NotFound e) {
             return null;
@@ -127,7 +127,7 @@ final class ProcessHealthClient {
      * Measured 2026-10-22 on 6.8: exact key, like, startedAfter and startedBefore all narrow
      * {@code total}. The POST query's {@code businessKey} field did not.
      */
-    public FlowablePage listRuntimeInstances(
+    public ProcessInstancePage listRuntimeInstances(
             EngineConfig engine,
             CallPriority priority,
             String processDefinitionId,
@@ -160,11 +160,11 @@ final class ProcessHealthClient {
                             return builder.build();
                         })
                         .retrieve()
-                        .body(FlowablePage.class));
+                        .body(ProcessInstancePage.class));
     }
 
     /** Finished historic process instances. Blank key and business key are omitted. */
-    public FlowablePage listFinishedProcesses(
+    public ProcessInstancePage listFinishedProcesses(
             EngineConfig engine,
             CallPriority priority,
             String definitionKey,
@@ -192,7 +192,7 @@ final class ProcessHealthClient {
                             return builder.build();
                         })
                         .retrieve()
-                        .body(FlowablePage.class));
+                        .body(ProcessInstancePage.class));
     }
 
     /** DELETE /history/historic-process-instances/{id}?deleteReason= */

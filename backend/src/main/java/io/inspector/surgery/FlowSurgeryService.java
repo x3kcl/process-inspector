@@ -15,6 +15,7 @@ import io.inspector.client.FlowablePage;
 import io.inspector.client.ForwardedActor;
 import io.inspector.client.GuardedCaller.CallPriority;
 import io.inspector.client.ProcessApiClient;
+import io.inspector.client.ProcessInstanceRecord;
 import io.inspector.config.InspectorProperties.EngineConfig;
 import io.inspector.config.InspectorProperties.EngineEnvironment;
 import io.inspector.config.InspectorProperties.EngineMode;
@@ -166,8 +167,8 @@ public class FlowSurgeryService {
         List<String> sources = requiredIds(request.sourceActivityIds(), "sourceActivityIds");
         List<String> targets = requiredIds(request.targetActivityIds(), "targetActivityIds");
 
-        Map<String, Object> instance = restateRunningInstance(engine, instanceId);
-        String definitionId = String.valueOf(instance.get("processDefinitionId"));
+        ProcessInstanceRecord instance = restateRunningInstance(engine, instanceId);
+        String definitionId = String.valueOf(instance.processDefinitionId());
 
         BpmnStructure model;
         Set<String> activeActivityIds;
@@ -227,8 +228,8 @@ public class FlowSurgeryService {
         }
     }
 
-    private Map<String, Object> restateRunningInstance(EngineConfig engine, String instanceId) {
-        Map<String, Object> instance;
+    private ProcessInstanceRecord restateRunningInstance(EngineConfig engine, String instanceId) {
+        ProcessInstanceRecord instance;
         try {
             instance = client.getRuntimeProcessInstance(engine, CallPriority.INTERACTIVE, instanceId);
         } catch (CallNotPermittedException | BulkheadFullException | ResourceAccessException e) {
@@ -241,7 +242,7 @@ public class FlowSurgeryService {
                     "Instance " + instanceId + " is not running on '" + engine.id()
                             + "' (completed or deleted?) — a token move needs live executions. Nothing happened.");
         }
-        if (Boolean.TRUE.equals(instance.get("suspended"))) {
+        if (Boolean.TRUE.equals(instance.suspended())) {
             throw new GuardRefusedException(
                     HttpStatus.CONFLICT,
                     "instance-suspended",
@@ -389,7 +390,7 @@ public class FlowSurgeryService {
         // protection now (previously after) — a deliberate, test-unconstrained ordering choice:
         // an inapplicable request (wrong state) is arguably more fundamental than an
         // authorization refusal, and the two are mutually exclusive outcomes either way.
-        Map<String, Object> historic;
+        ProcessInstanceRecord historic;
         try {
             // Restart resurrects DEAD instances only — a live one must be terminated or moved.
             if (client.getRuntimeProcessInstance(engine, CallPriority.INTERACTIVE, instanceId) != null) {
@@ -408,7 +409,7 @@ public class FlowSurgeryService {
                         "Instance " + instanceId + " is unknown on '" + engine.id()
                                 + "' — nothing to restart. Nothing happened.");
             }
-            if (historic.get("endTime") == null) {
+            if (historic.endTime() == null) {
                 throw new GuardRefusedException(
                         HttpStatus.CONFLICT,
                         "instance-not-ended",
@@ -418,7 +419,7 @@ public class FlowSurgeryService {
             throw engineUnreachablePreFlight(engine);
         }
 
-        Object historicDefinitionId = historic.get("processDefinitionId");
+        Object historicDefinitionId = historic.processDefinitionId();
         requireUnprotectedOrAdmin(
                 auth,
                 engine,
@@ -434,7 +435,7 @@ public class FlowSurgeryService {
         Map<String, String> skipped;
         String startDefinitionRef;
         try {
-            String originalDefinitionId = String.valueOf(historic.get("processDefinitionId"));
+            String originalDefinitionId = String.valueOf(historic.processDefinitionId());
             startDefinitionRef = resolveStartDefinition(engine, originalDefinitionId, historic, pinVersion);
 
             Map<String, String> skippedReasons = new LinkedHashMap<>();
@@ -448,7 +449,7 @@ public class FlowSurgeryService {
             } else {
                 startBody.put("processDefinitionKey", startDefinitionRef);
             }
-            Object businessKey = historic.get("businessKey");
+            Object businessKey = historic.businessKey();
             if (businessKey != null) {
                 startBody.put("businessKey", String.valueOf(businessKey));
             }
@@ -479,11 +480,11 @@ public class FlowSurgeryService {
                 payload,
                 engine.auditPayloadOrDefault());
 
-        Map<String, Object> started = dispatchAudited(
+        ProcessInstanceRecord started = dispatchAudited(
                 entry, engineId, () -> client.startProcessInstance(engine, CallPriority.INTERACTIVE, startBody));
 
-        String newInstanceId = String.valueOf(started.get("id"));
-        String newDefinitionId = String.valueOf(started.get("processDefinitionId"));
+        String newInstanceId = String.valueOf(started.id());
+        String newDefinitionId = String.valueOf(started.processDefinitionId());
         audit.close(entry, AuditOutcome.ok, 200, "{\"newProcessInstanceId\":\"" + newInstanceId + "\"}", true);
 
         String delta = "New instance " + newInstanceId + " started on definition " + newDefinitionId
@@ -510,7 +511,7 @@ public class FlowSurgeryService {
      * documented fallback (wire-shape memory, M2a).
      */
     private String resolveStartDefinition(
-            EngineConfig engine, String originalDefinitionId, Map<String, Object> historic, boolean pinVersion) {
+            EngineConfig engine, String originalDefinitionId, ProcessInstanceRecord historic, boolean pinVersion) {
         if (pinVersion) {
             if (client.getProcessDefinition(engine, CallPriority.INTERACTIVE, originalDefinitionId) == null) {
                 throw new GuardRefusedException(
@@ -522,7 +523,7 @@ public class FlowSurgeryService {
             }
             return originalDefinitionId;
         }
-        Object key = historic.get("processDefinitionKey");
+        Object key = historic.processDefinitionKey();
         String definitionKey =
                 key != null ? String.valueOf(key) : originalDefinitionId.split(":", 2)[0];
         FlowablePage latest =

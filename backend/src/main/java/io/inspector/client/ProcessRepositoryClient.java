@@ -175,8 +175,7 @@ final class ProcessRepositoryClient {
      * either {@code processDefinitionId} (version pinned) or {@code processDefinitionKey}
      * (latest) — never both. Returns the engine's instance representation (the new id).
      */
-    @SuppressWarnings("unchecked")
-    public Map<String, Object> startProcessInstance(
+    public ProcessInstanceRecord startProcessInstance(
             EngineConfig engine, CallPriority priority, Map<String, Object> body) {
         return guarded.call(
                 engine,
@@ -188,7 +187,7 @@ final class ProcessRepositoryClient {
                         .contentType(MediaType.APPLICATION_JSON)
                         .body(body)
                         .retrieve()
-                        .body(Map.class));
+                        .body(ProcessInstanceRecord.class));
     }
 
     /**

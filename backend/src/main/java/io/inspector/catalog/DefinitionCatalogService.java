@@ -10,6 +10,7 @@ import io.inspector.client.CmmnApiClient;
 import io.inspector.client.FlowablePage;
 import io.inspector.client.GuardedCaller.CallPriority;
 import io.inspector.client.ProcessApiClient;
+import io.inspector.client.ProcessInstancePage;
 import io.inspector.config.InspectorProperties;
 import io.inspector.config.InspectorProperties.EngineConfig;
 import io.inspector.dto.SearchResponse.EngineResult;
@@ -182,7 +183,7 @@ public class DefinitionCatalogService {
             Map<String, Object> body = new LinkedHashMap<>();
             body.put("processDefinitionId", definitionId);
             body.put("size", 1);
-            FlowablePage page = processes.queryRuntimeProcessInstances(engine, CallPriority.INTERACTIVE, body);
+            ProcessInstancePage page = processes.queryRuntimeProcessInstances(engine, CallPriority.INTERACTIVE, body);
             return new Count(page != null ? page.total() : 0L, false);
         } catch (RuntimeException e) {
             return new Count(null, true);

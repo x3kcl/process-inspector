@@ -8,6 +8,7 @@ import io.inspector.audit.ProtectedDefinitionRepository;
 import io.inspector.client.FlowablePage;
 import io.inspector.client.GuardedCaller.CallPriority;
 import io.inspector.client.ProcessApiClient;
+import io.inspector.client.ProcessInstancePage;
 import io.inspector.config.InspectorProperties.EngineConfig;
 import io.inspector.registry.EngineRegistry;
 import java.util.ArrayList;
@@ -133,7 +134,7 @@ public class DefinitionVersionService {
         Map<String, Object> body = new LinkedHashMap<>();
         body.put("processDefinitionId", definitionId);
         body.put("size", 1);
-        FlowablePage page = client.queryRuntimeProcessInstances(engine, CallPriority.INTERACTIVE, body);
+        ProcessInstancePage page = client.queryRuntimeProcessInstances(engine, CallPriority.INTERACTIVE, body);
         return page != null ? page.total() : 0;
     }
 }

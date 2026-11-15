@@ -5,11 +5,12 @@ import com.fasterxml.jackson.databind.ObjectMapper;
 import io.inspector.audit.ProtectedInstance;
 import io.inspector.audit.ProtectedInstanceRepository;
 import io.inspector.client.ExternalJobApiClient;
-import io.inspector.client.FlowablePage;
 import io.inspector.client.GuardedCaller.CallPriority;
 import io.inspector.client.JobRecord;
 import io.inspector.client.ProcessApiClient;
 import io.inspector.client.ProcessApiClient.JobLaneKind;
+import io.inspector.client.ProcessInstancePage;
+import io.inspector.client.ProcessInstanceRecord;
 import io.inspector.client.TaskRecord;
 import io.inspector.config.InspectorProperties;
 import io.inspector.config.InspectorProperties.EngineConfig;
@@ -167,7 +168,7 @@ public class InstanceDetailService {
      * {@code superProcessInstanceId}, at most {@link #HIERARCHY_BREADTH_CAP} rows, the exact total
      * on the page. The migration plan builder walks the tree with it under the tab's own caps.
      */
-    public FlowablePage runningChildren(EngineConfig engine, String parentInstanceId) {
+    public ProcessInstancePage runningChildren(EngineConfig engine, String parentInstanceId) {
         return hierarchyTab.childrenOf(engine, parentInstanceId, true);
     }
 
@@ -179,8 +180,8 @@ public class InstanceDetailService {
 
     public InstanceDetail vitals(String engineId, String instanceId) {
         EngineConfig engine = engineForRead(engineId);
-        Map<String, Object> historic = requireHistoric(engine, instanceId);
-        boolean ended = str(historic, "endTime") != null;
+        ProcessInstanceRecord historic = requireHistoric(engine, instanceId);
+        boolean ended = historic.endTime() != null;
 
         Lanes lanes = ended ? Lanes.EMPTY : scanInstanceLanes(engine, instanceId);
         InstanceStatusFlags flags = flagsFor(engine, historic, lanes);
@@ -190,30 +191,29 @@ public class InstanceDetailService {
         List<WaitState> waitingFor = ended ? List.of() : waitingFor(engine, instanceId, lanes);
         Integer externalWorkerJobs = ended ? null : externalWorkerCount(engine, instanceId);
 
-        String definitionId = str(historic, "processDefinitionId");
-        Object duration = historic.get("durationInMillis");
+        String definitionId = historic.processDefinitionId();
         Protection protection = protectionOf(engine.id(), instanceId);
         return new InstanceDetail(
                 engine.id() + ":" + instanceId,
                 engine.id(),
                 instanceId,
-                str(historic, "businessKey"),
-                str(historic, "tenantId"),
+                historic.businessKey(),
+                historic.tenantId(),
                 definitionId,
                 definitionKeyOf(definitionId),
-                str(historic, "processDefinitionName"),
+                historic.processDefinitionName(),
                 definitionVersionOf(definitionId),
-                str(historic, "startTime"),
-                str(historic, "endTime"),
-                duration instanceof Number n ? n.longValue() : null,
-                str(historic, "startUserId"),
+                historic.startTime(),
+                historic.endTime(),
+                historic.durationInMillis(),
+                historic.startUserId(),
                 flags,
                 flags.primaryStatus(),
-                str(historic, "superProcessInstanceId"),
+                historic.superProcessInstanceId(),
                 renderTelemetryUrl(
                         engine.telemetryUrlTemplate(),
                         instanceId,
-                        str(historic, "businessKey"),
+                        historic.businessKey(),
                         whyStuck != null ? whyStuck.failureTime() : null),
                 current,
                 whyStuck,
@@ -231,19 +231,19 @@ public class InstanceDetailService {
      * {@code COMPLETED}/{@code EXTERNALLY_TERMINATED}/{@code INTERNALLY_TERMINATED}/{@code DELETED})
      * and/or a {@code deleteReason}. Returns the termination reason (deleteReason preferred, else a
      * humanized state) for a terminated instance, or {@code null} for a normal completion / while
-     * running. No engine-client change — the historic Map already carries these keys.
+     * running. The typed historic row carries both.
      *
      * <p>Public (#166): {@code SearchService} reuses this exact logic for the results-grid row
      * mapping — the grid's status derivation had no termination-reason concept at all and fell
      * back to a plain COMPLETED chip, one derivation site drifting from the other rather than the
      * usual same-logic-in-two-places drift.
      */
-    public static String terminationReason(Map<String, Object> historic, boolean ended) {
+    public static String terminationReason(ProcessInstanceRecord historic, boolean ended) {
         if (!ended) {
             return null;
         }
-        String state = str(historic, "state");
-        String deleteReason = str(historic, "deleteReason");
+        String state = historic.state();
+        String deleteReason = historic.deleteReason();
         boolean hasDeleteReason = deleteReason != null && !deleteReason.isBlank();
         if (state != null && !state.isBlank()) {
             if ("COMPLETED".equalsIgnoreCase(state)) {
@@ -463,7 +463,7 @@ public class InstanceDetailService {
      * failing from count-only lane queries, failedInSubprocess from a bounded child walk
      * with early exit.
      */
-    public InstanceStatusFlags flagsFor(EngineConfig engine, Map<String, Object> historicRow) {
+    public InstanceStatusFlags flagsFor(EngineConfig engine, ProcessInstanceRecord historicRow) {
         return deriveStatus(engine, historicRow).flags();
     }
 
@@ -485,16 +485,17 @@ public class InstanceDetailService {
             String failingChildInstanceId,
             String failingChildJobId) {}
 
-    public StatusDerivation deriveStatus(EngineConfig engine, Map<String, Object> historicRow) {
-        String instanceId = str(historicRow, "id");
-        boolean ended = str(historicRow, "endTime") != null;
+    public StatusDerivation deriveStatus(EngineConfig engine, ProcessInstanceRecord historicRow) {
+        String instanceId = historicRow.id();
+        boolean ended = historicRow.endTime() != null;
         if (ended) {
             return new StatusDerivation(
                     new InstanceStatusFlags(true, false, false, false, false), true, List.of(), List.of(), null, null);
         }
         Lanes lanes = scanInstanceLanes(engine, instanceId);
-        Map<String, Object> runtime = flowable.getRuntimeProcessInstance(engine, CallPriority.INTERACTIVE, instanceId);
-        boolean suspended = runtime != null && Boolean.TRUE.equals(runtime.get("suspended"));
+        ProcessInstanceRecord runtime =
+                flowable.getRuntimeProcessInstance(engine, CallPriority.INTERACTIVE, instanceId);
+        boolean suspended = runtime != null && Boolean.TRUE.equals(runtime.suspended());
         FailedChild failedChild = firstFailedDescendant(engine, instanceId);
         InstanceStatusFlags flags = new InstanceStatusFlags(
                 false,
@@ -511,14 +512,15 @@ public class InstanceDetailService {
                 failedChild != null ? failedChild.jobId() : null);
     }
 
-    private InstanceStatusFlags flagsFor(EngineConfig engine, Map<String, Object> historicRow, Lanes lanes) {
-        String instanceId = str(historicRow, "id");
-        boolean ended = str(historicRow, "endTime") != null;
+    private InstanceStatusFlags flagsFor(EngineConfig engine, ProcessInstanceRecord historicRow, Lanes lanes) {
+        String instanceId = historicRow.id();
+        boolean ended = historicRow.endTime() != null;
         if (ended) {
             return new InstanceStatusFlags(true, false, false, false, false);
         }
-        Map<String, Object> runtime = flowable.getRuntimeProcessInstance(engine, CallPriority.INTERACTIVE, instanceId);
-        boolean suspended = runtime != null && Boolean.TRUE.equals(runtime.get("suspended"));
+        ProcessInstanceRecord runtime =
+                flowable.getRuntimeProcessInstance(engine, CallPriority.INTERACTIVE, instanceId);
+        boolean suspended = runtime != null && Boolean.TRUE.equals(runtime.suspended());
         boolean hasDeadLetter = !lanes.deadLetter().isEmpty();
         boolean hasFailing = !lanes.failing().isEmpty();
         boolean failedInSubprocess = firstFailedDescendant(engine, instanceId) != null;
@@ -552,11 +554,11 @@ public class InstanceDetailService {
             Deque<String> next = new ArrayDeque<>();
             while (!frontier.isEmpty()) {
                 String parent = frontier.poll();
-                for (Map<String, Object> child :
+                for (ProcessInstanceRecord child :
                         hierarchyTab.childrenOf(engine, parent).dataOrEmpty()) {
-                    String childId = str(child, "id");
+                    String childId = child.id();
                     if (childId == null || !visited.add(childId)) continue;
-                    if (str(child, "endTime") == null) {
+                    if (child.endTime() == null) {
                         JobRecord deadLetter = firstDeadLetterJob(engine, childId);
                         if (deadLetter != null) {
                             return new FailedChild(childId, deadLetter.id());
@@ -739,8 +741,8 @@ public class InstanceDetailService {
     /* ================= shared plumbing ================= */
 
     /** The historic anchor row — exists for running AND completed instances. 404 when unknown. */
-    public Map<String, Object> requireHistoric(EngineConfig engine, String instanceId) {
-        Map<String, Object> historic =
+    public ProcessInstanceRecord requireHistoric(EngineConfig engine, String instanceId) {
+        ProcessInstanceRecord historic =
                 flowable.getHistoricProcessInstance(engine, CallPriority.INTERACTIVE, instanceId);
         if (historic == null) {
             throw new ResponseStatusException(

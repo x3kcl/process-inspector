@@ -9,6 +9,7 @@ import io.inspector.audit.ProtectedInstanceRepository;
 import io.inspector.client.ExternalJobApiClient;
 import io.inspector.client.GuardedCaller.CallPriority;
 import io.inspector.client.ProcessApiClient;
+import io.inspector.client.ProcessInstanceRecords;
 import io.inspector.config.InspectorProperties;
 import io.inspector.dto.InstanceDetail;
 import io.inspector.registry.EngineRegistry;
@@ -63,11 +64,11 @@ class DisabledEngineDetailReadTest {
     void vitalsOnADisabledButRegisteredEngineRendersInsteadOf404ing() {
         when(flowable.getHistoricProcessInstance(
                         registry.resolve(DISABLED_ENGINE).orElseThrow(), CallPriority.INTERACTIVE, INSTANCE))
-                .thenReturn(Map.of(
+                .thenReturn(ProcessInstanceRecords.instance(Map.of(
                         "id", INSTANCE,
                         "processDefinitionId", "invoice:3:def-uuid",
                         "startTime", "2026-07-10T09:00:00Z",
-                        "endTime", "2026-07-10T09:05:00Z"));
+                        "endTime", "2026-07-10T09:05:00Z")));
 
         InstanceDetail vitals = service.vitals(DISABLED_ENGINE, INSTANCE);
 

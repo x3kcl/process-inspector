@@ -24,13 +24,14 @@ import io.inspector.audit.AuditEntry;
 import io.inspector.audit.AuditService;
 import io.inspector.audit.ProtectedInstance;
 import io.inspector.audit.ProtectedInstanceRepository;
-import io.inspector.client.FlowablePage;
 import io.inspector.client.GuardedCaller;
 import io.inspector.client.GuardedCaller.CallPriority;
 import io.inspector.client.JobPage;
 import io.inspector.client.JobRecords;
 import io.inspector.client.ProcessApiClient;
 import io.inspector.client.ProcessApiClient.JobLaneKind;
+import io.inspector.client.ProcessInstancePage;
+import io.inspector.client.ProcessInstanceRecords;
 import io.inspector.config.InspectorProperties;
 import io.inspector.config.InspectorProperties.EngineEnvironment;
 import io.inspector.config.InspectorProperties.EngineMode;
@@ -385,11 +386,11 @@ class BulkJobServiceTest {
         // #184: BulkTarget carries no definitionKey (never trust a client-supplied one for a
         // security check) — resolved server-side via the batched processInstanceIds query.
         when(client.queryRuntimeProcessInstances(any(), any(), any()))
-                .thenReturn(new FlowablePage(
-                        List.of(
+                .thenReturn(new ProcessInstancePage(
+                        ProcessInstanceRecords.instances(List.of(
                                 Map.of("id", "pi-1", "processDefinitionId", "demoOrder:1:a"),
                                 Map.of("id", "pi-2", "processDefinitionId", "payment:3:b"),
-                                Map.of("id", "pi-3", "processDefinitionId", "demoOrder:1:a")),
+                                Map.of("id", "pi-3", "processDefinitionId", "demoOrder:1:a"))),
                         3,
                         0,
                         3));

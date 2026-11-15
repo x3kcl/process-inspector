@@ -24,7 +24,7 @@ final class ProcessInstanceReadClient {
     /* ---------- queries ---------- */
 
     /** POST /query/historic-process-instances — the primary search query. */
-    public FlowablePage queryHistoricProcessInstances(
+    public ProcessInstancePage queryHistoricProcessInstances(
             EngineConfig engine, CallPriority priority, Map<String, Object> body) {
         return guarded.call(
                 engine,
@@ -35,11 +35,11 @@ final class ProcessInstanceReadClient {
                         .contentType(MediaType.APPLICATION_JSON)
                         .body(body)
                         .retrieve()
-                        .body(FlowablePage.class));
+                        .body(ProcessInstancePage.class));
     }
 
     /** POST /query/process-instances — runtime query (used for the suspended-ID set). */
-    public FlowablePage queryRuntimeProcessInstances(
+    public ProcessInstancePage queryRuntimeProcessInstances(
             EngineConfig engine, CallPriority priority, Map<String, Object> body) {
         return guarded.call(
                 engine,
@@ -50,7 +50,7 @@ final class ProcessInstanceReadClient {
                         .contentType(MediaType.APPLICATION_JSON)
                         .body(body)
                         .retrieve()
-                        .body(FlowablePage.class));
+                        .body(ProcessInstancePage.class));
     }
 
     /**
@@ -87,8 +87,7 @@ final class ProcessInstanceReadClient {
      * historic row (unlike the runtime one) carries {@code superProcessInstanceId} on every
      * engine version, and exists for ended children too. Null when the id is unknown.
      */
-    @SuppressWarnings("unchecked")
-    public Map<String, Object> getHistoricProcessInstance(
+    public ProcessInstanceRecord getHistoricProcessInstance(
             EngineConfig engine, CallPriority priority, String processInstanceId) {
         try {
             return guarded.call(
@@ -98,7 +97,7 @@ final class ProcessInstanceReadClient {
                             .get()
                             .uri("/history/historic-process-instances/{id}", processInstanceId)
                             .retrieve()
-                            .body(Map.class));
+                            .body(ProcessInstanceRecord.class));
         } catch (HttpClientErrorException.NotFound e) {
             return null;
         }
@@ -109,8 +108,7 @@ final class ProcessInstanceReadClient {
      * runtime query ignores {@code processInstanceIds} (proven on 6.3.1: the unknown field
      * is silently dropped and the query returns UNFILTERED data). 404 = not running.
      */
-    @SuppressWarnings("unchecked")
-    public Map<String, Object> getRuntimeProcessInstance(
+    public ProcessInstanceRecord getRuntimeProcessInstance(
             EngineConfig engine, CallPriority priority, String processInstanceId) {
         try {
             return guarded.call(
@@ -120,7 +118,7 @@ final class ProcessInstanceReadClient {
                             .get()
                             .uri("/runtime/process-instances/{id}", processInstanceId)
                             .retrieve()
-                            .body(Map.class));
+                            .body(ProcessInstanceRecord.class));
         } catch (HttpClientErrorException.NotFound e) {
             return null;
         }

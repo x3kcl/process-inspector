@@ -7,6 +7,7 @@ import io.inspector.client.JobPage;
 import io.inspector.client.JobRecord;
 import io.inspector.client.ProcessApiClient;
 import io.inspector.client.ProcessApiClient.JobLaneKind;
+import io.inspector.client.ProcessInstancePage;
 import io.inspector.config.InspectorProperties;
 import io.inspector.config.InspectorProperties.EngineConfig;
 import io.inspector.dto.EngineDto;
@@ -239,7 +240,7 @@ public class TriageAggregationService {
         body.put("suspended", suspended);
         body.put("size", 1);
         withTenant(engine, body);
-        FlowablePage page = flowable.queryRuntimeProcessInstances(engine, priority, body);
+        ProcessInstancePage page = flowable.queryRuntimeProcessInstances(engine, priority, body);
         return page != null ? page.total() : 0;
     }
 
@@ -248,7 +249,7 @@ public class TriageAggregationService {
         body.put("finished", true);
         body.put("size", 1);
         withTenant(engine, body);
-        FlowablePage page = flowable.queryHistoricProcessInstances(engine, priority, body);
+        ProcessInstancePage page = flowable.queryHistoricProcessInstances(engine, priority, body);
         return page != null ? page.total() : 0;
     }
 

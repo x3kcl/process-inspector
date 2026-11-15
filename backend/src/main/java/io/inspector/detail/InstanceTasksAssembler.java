@@ -1,6 +1,7 @@
 package io.inspector.detail;
 
 import io.inspector.client.GuardedCaller.CallPriority;
+import io.inspector.client.ProcessInstanceRecord;
 import io.inspector.client.TaskPage;
 import io.inspector.client.TaskRecord;
 import io.inspector.config.InspectorProperties.EngineConfig;
@@ -31,10 +32,10 @@ final class InstanceTasksAssembler {
      */
     public InstanceTasks tasks(String engineId, String instanceId) {
         EngineConfig engine = host.engineForRead(engineId);
-        Map<String, Object> historic = host.requireHistoric(engine, instanceId);
+        ProcessInstanceRecord historic = host.requireHistoric(engine, instanceId);
 
         Map<String, TaskRecord> runtimeById = new LinkedHashMap<>();
-        if (InstanceDetailService.str(historic, "endTime") == null) {
+        if (historic.endTime() == null) {
             for (TaskRecord task : host.flowable
                     .listRuntimeTasks(engine, CallPriority.INTERACTIVE, instanceId, engine.maxPageSizeOrDefault())
                     .dataOrEmpty()) {

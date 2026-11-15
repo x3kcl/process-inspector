@@ -6,6 +6,7 @@ import io.inspector.client.GuardedCaller.CallPriority;
 import io.inspector.client.JobRecord;
 import io.inspector.client.ProcessApiClient;
 import io.inspector.client.ProcessApiClient.JobLaneKind;
+import io.inspector.client.ProcessInstanceRecord;
 import io.inspector.client.TaskRecord;
 import io.inspector.config.InspectorProperties.EngineConfig;
 import io.inspector.detail.InstanceDetailService;
@@ -158,7 +159,7 @@ public class ResolveService {
     /** The R-SEM-04 chain on ONE engine — first kind that matches wins. */
     private List<ResolveMatch> resolveOnEngine(EngineConfig engine, String id) {
         // 1. Process instance — the historic GET covers running AND completed instances.
-        Map<String, Object> historic = flowable.getHistoricProcessInstance(engine, CallPriority.INTERACTIVE, id);
+        ProcessInstanceRecord historic = flowable.getHistoricProcessInstance(engine, CallPriority.INTERACTIVE, id);
         if (historic != null) {
             return List.of(match(engine, MatchKind.PROCESS_INSTANCE, id, historic));
         }
@@ -203,7 +204,7 @@ public class ResolveService {
             body.put("tenantId", engine.tenantId());
         }
         List<ResolveMatch> byKey = new ArrayList<>();
-        for (Map<String, Object> row : flowable.queryHistoricProcessInstances(engine, CallPriority.INTERACTIVE, body)
+        for (ProcessInstanceRecord row : flowable.queryHistoricProcessInstances(engine, CallPriority.INTERACTIVE, body)
                 .dataOrEmpty()) {
             byKey.add(match(engine, MatchKind.BUSINESS_KEY, id, row));
         }
@@ -280,16 +281,16 @@ public class ResolveService {
     }
 
     private List<ResolveMatch> matchInstance(EngineConfig engine, MatchKind kind, String matchedId, String pid) {
-        Map<String, Object> historic = flowable.getHistoricProcessInstance(engine, CallPriority.INTERACTIVE, pid);
+        ProcessInstanceRecord historic = flowable.getHistoricProcessInstance(engine, CallPriority.INTERACTIVE, pid);
         if (historic == null) {
             return List.of(); // vanished between the two reads — an acceptable snapshot race
         }
         return List.of(match(engine, kind, matchedId, historic));
     }
 
-    private ResolveMatch match(EngineConfig engine, MatchKind kind, String matchedId, Map<String, Object> historic) {
-        String pid = str(historic, "id");
-        String definitionId = str(historic, "processDefinitionId");
+    private ResolveMatch match(EngineConfig engine, MatchKind kind, String matchedId, ProcessInstanceRecord historic) {
+        String pid = historic.id();
+        String definitionId = historic.processDefinitionId();
         InstanceStatusFlags flags = detail.flagsFor(engine, historic);
         return new ResolveMatch(
                 kind,
@@ -297,11 +298,11 @@ public class ResolveService {
                 pid,
                 engine.id() + ":" + pid,
                 matchedId,
-                str(historic, "businessKey"),
+                historic.businessKey(),
                 definitionKeyOf(definitionId),
                 definitionVersionOf(definitionId),
-                str(historic, "startTime"),
-                str(historic, "endTime"),
+                historic.startTime(),
+                historic.endTime(),
                 flags,
                 flags.primaryStatus());
     }
