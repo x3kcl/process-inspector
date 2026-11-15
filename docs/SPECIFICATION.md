@@ -456,6 +456,16 @@ gap here: [link]" is the ticket-handover primitive.
   the canvas (same outline style + glyph, none when unmarked); selecting an activity scrolls
   only when it is not fully in view; a marker change repaints the live canvas — no
   re-import, pan/zoom kept.
+- **Execution overlay** (instance diagram and change-state picker; #677): fed by the same
+  timeline read (loaded with the page), the canvas shows the **route taken** (each traversed
+  sequence flow, `×N` when taken more than once), **completed** nodes (ended and continued,
+  or an end event), **armed-not-taken** nodes (ended without continuing — the losing
+  catch events of an event-based gateway), and a **duration badge** per node (≥ 1 ms; the
+  slowest of two or more says `slowest`). Active and dead-letter markers win on the same
+  node. A truncated or capped timeline shows a "Route incomplete" badge on the diagram —
+  never a route that silently stops. A failed or pending timeline leaves the diagram as
+  without the overlay. A **Path on / off** toolbar control (not persisted) shows the plain
+  model.
 - **Tabs**: Variables · Errors & Jobs · Tasks · Participants · Executions · Decisions · Hierarchy · Timeline · Audit & Notes —
   each lazy-loaded (IBM's slow-detail lesson).
   - **Variables** — a **typed variable ledger, never a raw JSON dump** (the Flowable
@@ -1441,6 +1451,9 @@ and would rewrite working M1/M2 code for no capability gain); Go/FastAPI/Kotlin 
   co-render the literal `PROD/TEST/DEV` token + distinct border styles; status chips keep
   text at every density; diagram markers use shape+glyph (dead-letter = ⚠ badge), the
   sibling diff differentiates by stroke style + endpoint glyphs, not red/green hue.
+  Execution overlay (#677): route taken = 3 px stroke (+ `×N` badge), completed = tinted
+  fill + `✓` glyph, armed-not-taken = dashed outline, duration = text badge (`slowest` in
+  words); every glyph is `role="img"` + `aria-label`.
   Contrast 4.5:1 text / 3:1 non-text. Every diagram-borne fact has a keyboard-focusable
   textual twin (activity summary list with synced selection); canvas is `role="img"` with a
   generated summary. AG Grid: full keyboard nav; row-open is never mouse-only — Enter on
