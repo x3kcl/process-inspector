@@ -1908,6 +1908,9 @@ button.primary:disabled {
   text-align: right;
   white-space: nowrap;
 }
+.tl-flows {
+  margin: 6px 0;
+}
 /* v1.x #4 sub-lanes: nesting, live-job annotations (SPEC §10a non-hue), truncation, phantoms. */
 .tl-label {
   display: flex;

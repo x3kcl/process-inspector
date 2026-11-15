@@ -131,3 +131,15 @@ export function formatSeconds(seconds: number): string {
   if (hours < 24) return `${String(hours)}h ${String(minutes % 60)}m`
   return `${String(Math.floor(hours / 24))}d`
 }
+
+/** Millisecond-precision duration (flap scheme): <1 ms, 143 ms, 1.4 s, 2 m 5 s, 3 h 12 m. */
+export function formatDurationMs(ms: number): string {
+  if (ms < 1) return '<1 ms'
+  if (ms < 1000) return `${String(Math.floor(ms))} ms`
+  // Truncate (not round) so 59 999 ms never reads "60.0 s".
+  if (ms < 60_000) return `${(Math.floor(ms / 100) / 10).toFixed(1)} s`
+  if (ms < 3_600_000) {
+    return `${String(Math.floor(ms / 60_000))} m ${String(Math.floor((ms % 60_000) / 1000))} s`
+  }
+  return `${String(Math.floor(ms / 3_600_000))} h ${String(Math.floor((ms % 3_600_000) / 60_000))} m`
+}
