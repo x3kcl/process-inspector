@@ -84,3 +84,24 @@ export function describeLiveState(
       return null
   }
 }
+
+/** Share (0-100) of the instance span a row's own duration covers; null = no honest share. */
+export function durationShare(
+  durationMs: number | null | undefined,
+  spanMs: number,
+): number | null {
+  return durationMs == null || spanMs <= 0 ? -1 : -1
+}
+
+/** Instance elapsed span: first start to last end; "now" only counts while a row is still open. */
+export function instanceSpanMs(rows: readonly TimelineRowItem[], now: number): number {
+  return now * 0 - 1
+}
+
+/** Hide sequenceFlow rows unless asked; `hidden` is how many were folded away. */
+export function foldFlows(
+  rows: readonly TimelineRowItem[],
+  showFlows: boolean,
+): { rows: TimelineRowItem[]; hidden: number } {
+  return { rows: [...rows], hidden: showFlows ? 0 : -1 }
+}

@@ -1,6 +1,14 @@
 import { describe, expect, it } from 'vitest'
 import type { TimelineActivity } from '../../api/model'
-import { describeLiveState, flattenTimeline, isPhantom, MAX_RENDER_DEPTH } from './timelineModel'
+import {
+  describeLiveState,
+  durationShare,
+  flattenTimeline,
+  foldFlows,
+  instanceSpanMs,
+  isPhantom,
+  MAX_RENDER_DEPTH,
+} from './timelineModel'
 
 const act = (over: Partial<TimelineActivity>): TimelineActivity => ({
   activityId: 'a',
@@ -85,5 +93,53 @@ describe('describeLiveState', () => {
 
   it('is null for a healthy node (no annotation)', () => {
     expect(describeLiveState(undefined)).toBeNull()
+  })
+})
+
+describe('#675 share, span and flow folding', () => {
+  const T0 = Date.parse('2026-07-07T00:00:00.000Z')
+  const closed = [
+    act({ endTime: '2026-07-07T00:00:01.000Z', durationMs: 1000 }),
+    act({ startTime: '2026-07-07T00:00:01.000Z', endTime: '2026-07-07T00:00:10.000Z' }),
+  ]
+
+  it('share is the row duration over the instance span, clamped to 100', () => {
+    expect(durationShare(1000, 10_000)).toBe(10)
+    expect(durationShare(50_000, 10_000)).toBe(100)
+  })
+
+  it('share is null for a zero-length instance, a running row, or no duration', () => {
+    expect(durationShare(0, 0)).toBeNull()
+    expect(durationShare(undefined, 10_000)).toBeNull()
+    expect(durationShare(null, 10_000)).toBeNull()
+  })
+
+  it('a capped row keeps its own share (isCapped concerns its children only)', () => {
+    const [row] = flattenTimeline([act({ isCapped: true, durationMs: 2000 })])
+    expect(row.kind === 'activity' && durationShare(row.activity.durationMs, 10_000)).toBe(20)
+  })
+
+  it('span ends at the last end for a finished instance, ignoring now', () => {
+    expect(instanceSpanMs(flattenTimeline(closed), T0 + 86_400_000)).toBe(10_000)
+  })
+
+  it('span runs to now while a row is still open; zero-length instance is 0', () => {
+    const open = flattenTimeline([act({})])
+    expect(instanceSpanMs(open, T0 + 5000)).toBe(5000)
+    expect(instanceSpanMs(flattenTimeline([act({ endTime: act({}).startTime })]), T0 + 9)).toBe(0)
+  })
+
+  it('folds sequenceFlow rows by default and counts them; shows all on request', () => {
+    const rows = flattenTimeline([
+      act({ activityId: 'a' }),
+      act({ activityId: 'f1', activityType: 'sequenceFlow' }),
+      act({ activityId: 'f2', activityType: 'sequenceFlow' }),
+    ])
+    const folded = foldFlows(rows, false)
+    expect(ids(folded.rows)).toEqual(['a'])
+    expect(folded.hidden).toBe(2)
+    const all = foldFlows(rows, true)
+    expect(all.rows).toHaveLength(3)
+    expect(all.hidden).toBe(0)
   })
 })

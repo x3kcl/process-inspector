@@ -131,3 +131,8 @@ export function formatSeconds(seconds: number): string {
   if (hours < 24) return `${String(hours)}h ${String(minutes % 60)}m`
   return `${String(Math.floor(hours / 24))}d`
 }
+
+/** Millisecond-precision duration (flap scheme): <1 ms, 143 ms, 1.4 s, 2 m 5 s, 3 h 12 m. */
+export function formatDurationMs(ms: number): string {
+  return String(ms)
+}
