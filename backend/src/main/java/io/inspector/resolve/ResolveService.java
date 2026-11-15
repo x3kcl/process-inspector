@@ -6,6 +6,7 @@ import io.inspector.client.GuardedCaller.CallPriority;
 import io.inspector.client.JobRecord;
 import io.inspector.client.ProcessApiClient;
 import io.inspector.client.ProcessApiClient.JobLaneKind;
+import io.inspector.client.TaskRecord;
 import io.inspector.config.InspectorProperties.EngineConfig;
 import io.inspector.detail.InstanceDetailService;
 import io.inspector.dto.InstanceStatusFlags;
@@ -170,11 +171,11 @@ public class ResolveService {
         }
 
         // 3. Task — runtime first, historic fallback so a completed task still resolves.
-        Map<String, Object> task = flowable.getTask(engine, CallPriority.INTERACTIVE, id);
+        TaskRecord task = flowable.getTask(engine, CallPriority.INTERACTIVE, id);
         if (task == null) {
             task = flowable.getHistoricTaskInstance(engine, CallPriority.INTERACTIVE, id);
         }
-        pid = task != null ? str(task, "processInstanceId") : null;
+        pid = task != null ? task.processInstanceId() : null;
         if (pid != null) {
             return matchInstance(engine, MatchKind.TASK, id, pid);
         }

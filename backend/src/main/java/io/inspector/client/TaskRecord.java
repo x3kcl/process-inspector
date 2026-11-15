@@ -1,5 +1,7 @@
 package io.inspector.client;
 
+import com.fasterxml.jackson.annotation.JsonIgnoreProperties;
+
 /**
  * One user task as {@code /runtime/tasks} or {@code /history/historic-task-instances} serialises
  * it — the typed wire shape of the tasks endpoint family (#474). The runtime row carries
@@ -7,6 +9,7 @@ package io.inspector.client;
  * {@code startTime}, {@code endTime} and {@code durationInMillis}. A field the leg does not
  * serialise is null.
  */
+@JsonIgnoreProperties(ignoreUnknown = true)
 public record TaskRecord(
         String id,
         String name,

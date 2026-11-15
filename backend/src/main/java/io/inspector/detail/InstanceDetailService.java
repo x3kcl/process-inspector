@@ -10,6 +10,7 @@ import io.inspector.client.GuardedCaller.CallPriority;
 import io.inspector.client.JobRecord;
 import io.inspector.client.ProcessApiClient;
 import io.inspector.client.ProcessApiClient.JobLaneKind;
+import io.inspector.client.TaskRecord;
 import io.inspector.config.InspectorProperties;
 import io.inspector.config.InspectorProperties.EngineConfig;
 import io.inspector.dto.ExternalWorkerJobDto;
@@ -407,24 +408,26 @@ public class InstanceDetailService {
      * rows say {@code startTime}, runtime rows say {@code createTime}; only the runtime
      * row knows {@code suspended}. COMPLETED beats SUSPENDED beats ACTIVE.
      */
-    static TaskDto taskRow(Map<String, Object> historic, Map<String, Object> runtime) {
-        Map<String, Object> h = historic != null ? historic : Map.of();
-        Map<String, Object> r = runtime != null ? runtime : Map.of();
-        String endTime = str(h, "endTime");
+    private static final TaskRecord NO_TASK = new TaskRecord(
+            null, null, null, null, null, null, null, null, null, null, null, null, null, null, null, null, null, null);
+
+    static TaskDto taskRow(TaskRecord historic, TaskRecord runtime) {
+        TaskRecord h = historic != null ? historic : NO_TASK;
+        TaskRecord r = runtime != null ? runtime : NO_TASK;
+        String endTime = h.endTime();
         String state = endTime != null
                 ? TaskDto.STATE_COMPLETED
-                : Boolean.TRUE.equals(r.get("suspended")) ? TaskDto.STATE_SUSPENDED : TaskDto.STATE_ACTIVE;
-        Object duration = h.get("durationInMillis");
+                : Boolean.TRUE.equals(r.suspended()) ? TaskDto.STATE_SUSPENDED : TaskDto.STATE_ACTIVE;
         return new TaskDto(
-                first(str(h, "id"), str(r, "id")),
-                first(str(h, "name"), str(r, "name")),
-                first(str(h, "taskDefinitionKey"), str(r, "taskDefinitionKey")),
-                first(str(r, "assignee"), str(h, "assignee")),
-                first(str(r, "owner"), str(h, "owner")),
-                first(str(h, "startTime"), str(r, "createTime")),
+                first(h.id(), r.id()),
+                first(h.name(), r.name()),
+                first(h.taskDefinitionKey(), r.taskDefinitionKey()),
+                first(r.assignee(), h.assignee()),
+                first(r.owner(), h.owner()),
+                first(h.startTime(), r.createTime()),
                 endTime,
-                first(str(h, "dueDate"), str(r, "dueDate")),
-                duration instanceof Number n ? n.longValue() : null,
+                first(h.dueDate(), r.dueDate()),
+                h.durationInMillis(),
                 state);
     }
 

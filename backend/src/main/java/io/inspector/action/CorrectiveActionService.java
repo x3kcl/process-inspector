@@ -14,6 +14,7 @@ import io.inspector.client.GuardedCaller.CallPriority;
 import io.inspector.client.JobRecord;
 import io.inspector.client.ProcessApiClient;
 import io.inspector.client.ProcessApiClient.JobLaneKind;
+import io.inspector.client.TaskRecord;
 import io.inspector.cmmn.CaseMigrationPrecheck;
 import io.inspector.cmmn.CasePlanDefinitionIds;
 import io.inspector.cmmn.CmmnCapabilities;
@@ -683,15 +684,15 @@ public class CorrectiveActionService {
     }
 
     private Target taskTarget(EngineConfig engine, String instanceId, String taskId, ActionRequest request) {
-        Map<String, Object> task = client.getTask(engine, CallPriority.INTERACTIVE, taskId);
+        TaskRecord task = client.getTask(engine, CallPriority.INTERACTIVE, taskId);
         if (task == null) {
             throw new GuardRefusedException(
                     HttpStatus.NOT_FOUND,
                     "task-gone",
                     "Task " + taskId + " is not open (already completed?). Nothing happened.");
         }
-        Object owner = task.get("processInstanceId");
-        if (owner != null && !instanceId.equals(String.valueOf(owner))) {
+        String owner = task.processInstanceId();
+        if (owner != null && !instanceId.equals(owner)) {
             throw new GuardRefusedException(
                     HttpStatus.BAD_REQUEST,
                     "task-instance-mismatch",
@@ -700,10 +701,10 @@ public class CorrectiveActionService {
         Map<String, Object> payload = new LinkedHashMap<>();
         payload.put("schema", "complete-task/v1");
         payload.put("taskId", taskId);
-        payload.put("taskName", task.get("name"));
+        payload.put("taskName", task.name());
         payload.put("variables", auditVariables(request.variables()));
         // #184: free — the task response already carries processDefinitionId.
-        return new Target(payload, taskId, "task id", null, definitionKeyOf(task.get("processDefinitionId")));
+        return new Target(payload, taskId, "task id", null, definitionKeyOf(task.processDefinitionId()));
     }
 
     /**
@@ -714,7 +715,7 @@ public class CorrectiveActionService {
      */
     private Target taskAssignTarget(
             EngineConfig engine, ActionVerb verb, String instanceId, String taskId, ActionRequest request) {
-        Map<String, Object> task = client.getTask(engine, CallPriority.INTERACTIVE, taskId);
+        TaskRecord task = client.getTask(engine, CallPriority.INTERACTIVE, taskId);
         if (task == null) {
             throw new GuardRefusedException(
                     HttpStatus.NOT_FOUND,
@@ -722,14 +723,14 @@ public class CorrectiveActionService {
                     "Task " + taskId + " is not an active user task (completed or already gone?) — an assignee can"
                             + " only be changed on a live task. Nothing happened.");
         }
-        Object owner = task.get("processInstanceId");
-        if (owner != null && !instanceId.equals(String.valueOf(owner))) {
+        String owner = task.processInstanceId();
+        if (owner != null && !instanceId.equals(owner)) {
             throw new GuardRefusedException(
                     HttpStatus.BAD_REQUEST,
                     "task-instance-mismatch",
                     "Task " + taskId + " belongs to instance " + owner + ", not " + instanceId + ".");
         }
-        String oldAssignee = task.get("assignee") != null ? String.valueOf(task.get("assignee")) : null;
+        String oldAssignee = task.assignee();
         String newAssignee = verb == ActionVerb.REASSIGN_TASK
                 ? required(request.assignee(), "assignee").strip()
                 : null;
@@ -739,11 +740,11 @@ public class CorrectiveActionService {
         Map<String, Object> payload = new LinkedHashMap<>();
         payload.put("schema", verb.path() + "/v1");
         payload.put("taskId", taskId);
-        payload.put("taskName", task.get("name"));
+        payload.put("taskName", task.name());
         payload.put("oldAssignee", oldAssignee);
         payload.put("newAssignee", newAssignee);
         // #184: free — the task response already carries processDefinitionId.
-        return new Target(payload, taskId, "task id", null, definitionKeyOf(task.get("processDefinitionId")));
+        return new Target(payload, taskId, "task id", null, definitionKeyOf(task.processDefinitionId()));
     }
 
     /**
@@ -753,29 +754,29 @@ public class CorrectiveActionService {
      */
     private Target taskAdminTarget(
             EngineConfig engine, ActionVerb verb, String instanceId, String taskId, ActionRequest request) {
-        Map<String, Object> task = liveTask(engine, instanceId, taskId);
+        TaskRecord task = liveTask(engine, instanceId, taskId);
         Map<String, Object> payload = new LinkedHashMap<>();
         payload.put("schema", verb.path() + "/v1");
         payload.put("taskId", taskId);
-        payload.put("taskName", task.get("name"));
+        payload.put("taskName", task.name());
         switch (verb) {
             case CLAIM_TASK -> {
                 String assignee = blankToNull(request.assignee());
                 if (assignee != null) {
                     requireIdentity(engine, "users", assignee);
                 }
-                payload.put("oldAssignee", task.get("assignee"));
+                payload.put("oldAssignee", task.assignee());
                 payload.put("newAssignee", assignee);
             }
             case DELEGATE_TASK -> {
                 String assignee = required(request.assignee(), "assignee").strip();
                 requireIdentity(engine, "users", assignee);
-                payload.put("oldAssignee", task.get("assignee"));
+                payload.put("oldAssignee", task.assignee());
                 payload.put("newAssignee", assignee);
             }
             case RESOLVE_TASK -> {
-                Object state = task.get("delegationState");
-                if (state == null || !"pending".equalsIgnoreCase(String.valueOf(state))) {
+                String state = task.delegationState();
+                if (state == null || !"pending".equalsIgnoreCase(state)) {
                     throw new GuardRefusedException(
                             HttpStatus.BAD_REQUEST,
                             "not-delegated",
@@ -785,11 +786,11 @@ public class CorrectiveActionService {
             }
             case UPDATE_TASK -> payload.put("changes", taskChanges(engine, task, request));
             case ADD_IDENTITY_LINK, REMOVE_IDENTITY_LINK -> payload.put("link", checkedLink(engine, verb, request));
-            case DELETE_TASK -> payload.put("processInstanceId", task.get("processInstanceId"));
+            case DELETE_TASK -> payload.put("processInstanceId", task.processInstanceId());
             default -> throw new IllegalStateException("not a task-admin verb: " + verb);
         }
         String token = verb == ActionVerb.DELETE_TASK ? taskId : null;
-        return new Target(payload, token, "task id", null, definitionKeyOf(task.get("processDefinitionId")));
+        return new Target(payload, token, "task id", null, definitionKeyOf(task.processDefinitionId()));
     }
 
     private Target historyTarget(EngineConfig engine, String id, boolean cmmn) {
@@ -966,16 +967,16 @@ public class CorrectiveActionService {
         return prefixed.length() <= 4000 ? prefixed : prefixed.substring(0, 4000);
     }
 
-    private Map<String, Object> liveTask(EngineConfig engine, String instanceId, String taskId) {
-        Map<String, Object> task = client.getTask(engine, CallPriority.INTERACTIVE, taskId);
+    private TaskRecord liveTask(EngineConfig engine, String instanceId, String taskId) {
+        TaskRecord task = client.getTask(engine, CallPriority.INTERACTIVE, taskId);
         if (task == null) {
             throw new GuardRefusedException(
                     HttpStatus.NOT_FOUND,
                     "task-gone",
                     "Task " + taskId + " is not open (already completed?). Nothing happened.");
         }
-        Object owner = task.get("processInstanceId");
-        if (owner != null && !instanceId.equals(String.valueOf(owner))) {
+        String owner = task.processInstanceId();
+        if (owner != null && !instanceId.equals(owner)) {
             throw new GuardRefusedException(
                     HttpStatus.BAD_REQUEST,
                     "task-instance-mismatch",
@@ -999,20 +1000,20 @@ public class CorrectiveActionService {
         }
     }
 
-    private Map<String, Object> taskChanges(EngineConfig engine, Map<String, Object> task, ActionRequest request) {
+    private Map<String, Object> taskChanges(EngineConfig engine, TaskRecord task, ActionRequest request) {
         ActionRequest.TaskPatch patch = request.task();
         if (patch == null) {
             throw missingField("task");
         }
         Map<String, Object> changes = new LinkedHashMap<>();
-        putChange(changes, "name", task, patch.name());
-        putChange(changes, "description", task, patch.description());
-        putChange(changes, "owner", task, patch.owner());
-        putChange(changes, "dueDate", task, patch.dueDate());
-        putChange(changes, "category", task, patch.category());
+        putChange(changes, "name", task.name(), patch.name());
+        putChange(changes, "description", task.description(), patch.description());
+        putChange(changes, "owner", task.owner(), patch.owner());
+        putChange(changes, "dueDate", task.dueDate(), patch.dueDate());
+        putChange(changes, "category", task.category(), patch.category());
         if (patch.priority() != null) {
             Map<String, Object> pair = new LinkedHashMap<>();
-            pair.put("old", task != null ? task.get("priority") : null);
+            pair.put("old", task.priority());
             pair.put("new", patch.priority());
             changes.put("priority", pair);
         }
@@ -1034,13 +1035,12 @@ public class CorrectiveActionService {
         return changes;
     }
 
-    private static void putChange(
-            Map<String, Object> changes, String field, Map<String, Object> task, String incoming) {
+    private static void putChange(Map<String, Object> changes, String field, String old, String incoming) {
         if (incoming == null) {
             return;
         }
         Map<String, Object> pair = new LinkedHashMap<>();
-        pair.put("old", task != null ? task.get(field) : null);
+        pair.put("old", old);
         pair.put("new", incoming);
         changes.put(field, pair);
     }

@@ -4,6 +4,7 @@ import static org.assertj.core.api.Assertions.assertThat;
 
 import io.inspector.client.JobRecords;
 import io.inspector.client.ProcessApiClient.JobLaneKind;
+import io.inspector.client.TaskRecords;
 import io.inspector.dto.ExternalWorkerJobDto;
 import io.inspector.dto.InstanceJobs.JobDto;
 import io.inspector.dto.InstanceTasks.TaskDto;
@@ -120,13 +121,13 @@ class InstanceDetailMappingTest {
     @Test
     void taskRowsMergeHistoricAndRuntimeLegs_runtimeWinsLiveFields() {
         TaskDto merged = InstanceDetailService.taskRow(
-                Map.of(
+                TaskRecords.task(Map.of(
                         "id", "t-1",
                         "name", "Approve order",
                         "taskDefinitionKey", "approveOrder",
                         "assignee", "stale-from-history",
-                        "startTime", "2026-07-06T09:00:00Z"),
-                Map.of("id", "t-1", "assignee", "kermit", "suspended", false));
+                        "startTime", "2026-07-06T09:00:00Z")),
+                TaskRecords.task(Map.of("id", "t-1", "assignee", "kermit", "suspended", false)));
         assertThat(merged.state()).isEqualTo(TaskDto.STATE_ACTIVE);
         assertThat(merged.assignee()).isEqualTo("kermit"); // the LIVE assignee, not the snapshot
         assertThat(merged.createTime()).isEqualTo("2026-07-06T09:00:00Z");
@@ -137,11 +138,11 @@ class InstanceDetailMappingTest {
     @Test
     void completedBeatsSuspended_andHistoricOnlyRowsComplete() {
         TaskDto completed = InstanceDetailService.taskRow(
-                Map.of(
+                TaskRecords.task(Map.of(
                         "id", "t-2",
                         "startTime", "2026-07-06T09:00:00Z",
                         "endTime", "2026-07-06T09:05:00Z",
-                        "durationInMillis", 300000),
+                        "durationInMillis", 300000)),
                 null);
         assertThat(completed.state()).isEqualTo(TaskDto.STATE_COMPLETED);
         assertThat(completed.durationMs()).isEqualTo(300000L);
@@ -150,7 +151,9 @@ class InstanceDetailMappingTest {
     @Test
     void suspendedRuntimeRowsSurfaceAsSuspended_evenWithoutHistory() {
         TaskDto suspended = InstanceDetailService.taskRow(
-                null, Map.of("id", "t-3", "name", "Review", "createTime", "2026-07-06T10:00:00Z", "suspended", true));
+                null,
+                TaskRecords.task(Map.of(
+                        "id", "t-3", "name", "Review", "createTime", "2026-07-06T10:00:00Z", "suspended", true)));
         assertThat(suspended.state()).isEqualTo(TaskDto.STATE_SUSPENDED);
         assertThat(suspended.createTime()).isEqualTo("2026-07-06T10:00:00Z"); // runtime field name
     }

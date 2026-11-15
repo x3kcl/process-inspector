@@ -161,32 +161,30 @@ public class ProcessApiClient {
         return reads.listEventSubscriptions(engine, priority, processInstanceId, size);
     }
 
-    public FlowablePage listHistoricTaskInstances(
+    public TaskPage listHistoricTaskInstances(
             EngineConfig engine, CallPriority priority, String processInstanceId, int size) {
         return reads.listHistoricTaskInstances(engine, priority, processInstanceId, size);
     }
 
-    public FlowablePage listRuntimeTasks(
-            EngineConfig engine, CallPriority priority, String processInstanceId, int size) {
+    public TaskPage listRuntimeTasks(EngineConfig engine, CallPriority priority, String processInstanceId, int size) {
         return reads.listRuntimeTasks(engine, priority, processInstanceId, size);
     }
 
-    public FlowablePage listRuntimeTasks(
-            EngineConfig engine, CallPriority priority, Map<String, String> query, int size) {
+    public TaskPage listRuntimeTasks(EngineConfig engine, CallPriority priority, Map<String, String> query, int size) {
         return reads.listRuntimeTasks(engine, priority, query, size);
     }
 
-    public FlowablePage listTasksByAssignee(EngineConfig engine, CallPriority priority, String assignee, int size) {
+    public TaskPage listTasksByAssignee(EngineConfig engine, CallPriority priority, String assignee, int size) {
         return reads.listTasksByAssignee(engine, priority, assignee, size);
     }
 
-    public FlowablePage listTasksByCandidateUser(
+    public TaskPage listTasksByCandidateUser(
             EngineConfig engine, CallPriority priority, String candidateUser, int size) {
         return reads.listTasksByCandidateUser(engine, priority, candidateUser, size);
     }
 
     @SuppressWarnings("unchecked")
-    public Map<String, Object> getHistoricTaskInstance(EngineConfig engine, CallPriority priority, String taskId) {
+    public TaskRecord getHistoricTaskInstance(EngineConfig engine, CallPriority priority, String taskId) {
         return reads.getHistoricTaskInstance(engine, priority, taskId);
     }
 
@@ -358,7 +356,7 @@ public class ProcessApiClient {
     }
 
     @SuppressWarnings("unchecked")
-    public Map<String, Object> getTask(EngineConfig engine, CallPriority priority, String taskId) {
+    public TaskRecord getTask(EngineConfig engine, CallPriority priority, String taskId) {
         return actions.getTask(engine, priority, taskId);
     }
 

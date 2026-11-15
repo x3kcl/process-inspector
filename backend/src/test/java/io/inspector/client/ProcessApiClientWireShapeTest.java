@@ -449,6 +449,18 @@ class ProcessApiClientWireShapeTest {
                                 @SuppressWarnings("unchecked")
                                 Map<String, Object> recordedJob = (Map<String, Object>) recorded;
                                 assertThat(job).isEqualTo(JobRecords.job(recordedJob));
+                            } else if (result instanceof TaskPage page) {
+                                @SuppressWarnings("unchecked")
+                                Map<String, Object> recordedPage = (Map<String, Object>) recorded;
+                                @SuppressWarnings("unchecked")
+                                List<Map<String, Object>> recordedRows =
+                                        (List<Map<String, Object>>) recordedPage.get("data");
+                                assertThat(page.total()).isEqualTo(((Number) recordedPage.get("total")).longValue());
+                                assertThat(page.dataOrEmpty()).isEqualTo(TaskRecords.tasks(recordedRows));
+                            } else if (result instanceof TaskRecord task) {
+                                @SuppressWarnings("unchecked")
+                                Map<String, Object> recordedTask = (Map<String, Object>) recorded;
+                                assertThat(task).isEqualTo(TaskRecords.task(recordedTask));
                             } else {
                                 assertThat(result).isEqualTo(recorded);
                             }

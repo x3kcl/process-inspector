@@ -4,6 +4,7 @@ import io.inspector.action.ActionVerb;
 import io.inspector.client.GuardedCaller.CallPriority;
 import io.inspector.client.JobRecord;
 import io.inspector.client.ProcessApiClient.JobLaneKind;
+import io.inspector.client.TaskRecord;
 import io.inspector.config.InspectorProperties.EngineConfig;
 import io.inspector.migration.CaseCohortBulkMigration;
 import io.inspector.migration.CohortBulkMigration;
@@ -106,11 +107,11 @@ final class BulkItemVerifier {
                 if (item.getJobRef() == null) {
                     return new Verdict(null, "no task reference recorded — needs L3 review of the audit trail");
                 }
-                Map<String, Object> task = host.client.getTask(engine, CallPriority.INTERACTIVE, item.getJobRef());
+                TaskRecord task = host.client.getTask(engine, CallPriority.INTERACTIVE, item.getJobRef());
                 if (task == null) {
                     return new Verdict(BulkJobItem.State.skipped, "task " + item.getJobRef() + " is no longer open");
                 }
-                String assignee = task.get("assignee") != null ? String.valueOf(task.get("assignee")) : null;
+                String assignee = task.assignee();
                 if (verb == ActionVerb.UNASSIGN_TASK) {
                     return assignee == null
                             ? new Verdict(BulkJobItem.State.ok, "verified: task is unassigned")
