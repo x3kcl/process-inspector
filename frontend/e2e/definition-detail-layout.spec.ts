@@ -127,3 +127,11 @@ for (const size of [
     expect((s?.y ?? 0) + (s?.height ?? 0)).toBeLessThanOrEqual(size.height)
   })
 }
+
+test('definition detail header and tabs pass the axe scan', async ({ page }) => {
+  const { scanA11y } = await import('./a11y')
+  await mockBff(page)
+  await page.goto('/definitions/eng1/orderFlow%3A3%3Aabc')
+  await expect(page.getByRole('navigation', { name: 'Breadcrumb' })).toBeVisible()
+  await scanA11y(page, 'definition detail header')
+})
