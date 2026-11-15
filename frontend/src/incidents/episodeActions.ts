@@ -27,8 +27,11 @@ export function episodeActionsLine(attr: Attribution | undefined): string {
   return `${head} during this episode${parts.length > 0 ? ': ' + parts.join(' · ') : ''}`
 }
 
-export function episodeOpsLogHref(startedAt: string | undefined): string {
-  return startedAt === undefined
+export function episodeOpsLogHref(
+  episode: { startedAt?: string; endedAt?: string },
+  _engineIds: string[],
+): string {
+  return episode.startedAt === undefined
     ? '/audit'
-    : `/audit?${new URLSearchParams({ since: startedAt }).toString()}`
+    : `/audit?${new URLSearchParams({ since: episode.startedAt }).toString()}`
 }
