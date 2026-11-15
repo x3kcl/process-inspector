@@ -202,6 +202,12 @@ public class AttentionScoreService {
         }
     }
 
+    /** #660: {@code lastSeen} is the ledger row's own sighting (stub — RED). */
+    public AttentionScore forClass(
+            String signatureHash, int algoVersion, long liveTotal, SelfHealStats stats, Instant lastSeen) {
+        return forClass(signatureHash, algoVersion, liveTotal, stats);
+    }
+
     /**
      * The Stage 0 dashboard path — the ONLY caller that can ever supply real #388 evidence
      * ({@code forClass()} always passes {@link AttentionRationale.DeadLetterEvidence#ABSENT},
