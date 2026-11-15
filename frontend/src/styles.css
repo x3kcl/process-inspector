@@ -1599,6 +1599,13 @@ button.primary:disabled {
 .definition-key {
   color: var(--color-text-body);
 }
+.definition-detail {
+  padding: 10px 16px;
+}
+.definition-title {
+  margin: 0 0 6px;
+  font-size: 20px;
+}
 .version-count {
   font-variant-numeric: tabular-nums;
   color: var(--color-danger-dark);
@@ -1701,6 +1708,7 @@ button.primary:disabled {
 }
 .diagram-slot {
   min-height: 220px;
+  flex-shrink: 0;
   border-bottom: 1px solid var(--color-border);
   display: flex;
   flex-direction: column;
@@ -1731,7 +1739,7 @@ button.primary:disabled {
   color: #2f3640;
 }
 .diagram-canvas {
-  height: 45vh;
+  height: clamp(220px, 38vh, 480px);
 }
 /* token + dead-letter markers the viewer applies (never touches the bpmn.io attribution) */
 .diagram-canvas .marker-active .djs-visual > :first-child {
@@ -1794,9 +1802,11 @@ button.primary:disabled {
   margin-bottom: -1px;
 }
 .tab-body {
-  flex: 1;
+  /* #672: grows to its content (never an inner scroller that collapses); .inspect scrolls. */
+  flex: 1 0 auto;
+  min-height: 240px;
   padding: 12px 16px;
-  overflow: auto;
+  overflow-x: auto;
 }
 /* ---- errors & jobs lanes ---- */
 .job-lane {
@@ -1907,6 +1917,9 @@ button.primary:disabled {
 .tl-duration {
   text-align: right;
   white-space: nowrap;
+}
+.tl-flows {
+  margin: 6px 0;
 }
 /* v1.x #4 sub-lanes: nesting, live-job annotations (SPEC §10a non-hue), truncation, phantoms. */
 .tl-label {
@@ -2314,9 +2327,25 @@ button.skip-link {
   width: 640px;
   max-width: 100%;
   max-height: 90vh;
-  overflow-y: auto;
+  /* Header + action row stay visible; only the body scrolls (#676) — a focused footer
+     button used to scroll the whole card and clip the title. */
+  display: flex;
+  flex-direction: column;
+  overflow: hidden;
   padding: 0 16px 16px;
   border-top: 6px solid var(--color-chip-border-muted);
+}
+.modal-card .modal-header,
+.modal-card .modal-footer {
+  flex: none;
+}
+.modal-card .modal-body {
+  flex: 1 1 auto;
+  min-height: 0;
+  overflow-y: auto;
+}
+.modal-card .modal-body > * {
+  flex-shrink: 0;
 }
 .modal-card.env-band-prod {
   border-top-color: var(--color-danger);

@@ -2,7 +2,7 @@
 // explicit zone token, a UTC ISO normalizer for hover/aria, a relative age, and a
 // persisted one-click display-zone store (SPEC §10a).
 import { afterEach, describe, expect, it, vi } from 'vitest'
-import { formatRelative, formatSeconds, toUtcIso } from './format'
+import { formatDurationMs, formatRelative, formatSeconds, toUtcIso } from './format'
 
 function stubStorage(initial: Record<string, string> = {}): Map<string, string> {
   const store = new Map(Object.entries(initial))
@@ -160,5 +160,24 @@ describe('formatSeconds (unchanged compact durations)', () => {
     expect(formatSeconds(12 * 60)).toBe('12m')
     expect(formatSeconds(3 * 3600 + 20 * 60)).toBe('3h 20m')
     expect(formatSeconds(5 * 86400)).toBe('5d')
+  })
+})
+
+describe('formatDurationMs (#675)', () => {
+  it.each([
+    [0, '<1 ms'],
+    [0.4, '<1 ms'],
+    [1, '1 ms'],
+    [143, '143 ms'],
+    [999, '999 ms'],
+    [1000, '1.0 s'],
+    [1400, '1.4 s'],
+    [59_999, '59.9 s'],
+    [60_000, '1 m 0 s'],
+    [125_000, '2 m 5 s'],
+    [3_600_000, '1 h 0 m'],
+    [11_520_000, '3 h 12 m'],
+  ])('%s ms -> %s', (ms, text) => {
+    expect(formatDurationMs(ms)).toBe(text)
   })
 })
