@@ -55,5 +55,16 @@ fixture success false false; check "unknown flag exits 2, no call" 2 no 7 --bogu
 [[ -s "$T/calls" ]] && { echo "FAIL unknown flag made an API call"; fail=1; }
 grep -q '^usage:' <<<"$out" || { echo "FAIL unknown flag printed no usage line"; fail=1; }
 fixture success false false; check "two mode flags exit 2" 2 no --watch 7 --status
+# queue refusal comment (label stays): a marker for the CURRENT head ends --watch with 1 and prints the comment
+fixture success false true; echo '[{"body":"merge queue: head abc is not RED-first\nmq-red-first:abc"}]' > "$T/comments.json"
+check "red-first marker for head exits 1" 1 no --watch 7
+grep -q 'not RED-first' <<<"$out" || { echo "FAIL red-first comment not printed"; fail=1; }
+fixture success false true; echo '[{"body":"frozen RED file\nmq-red-frozen:abc"}]' > "$T/comments.json"
+check "red-frozen marker for head exits 1" 1 no --watch 7
+fixture success false true; echo '[{"body":"old\nmq-red-first:def"}]' > "$T/comments.json"
+check "marker for an older head keeps watching" 3 no --watch 7
+fixture success false true; echo '[{"body":"x\nmq-red-first:abc"}]' > "$T/comments.json"
+check "status shows refusal" 0 no --status 7
+grep -q 'refused: mq-red-first:abc' <<<"$out" || { echo "FAIL status lacks refused marker"; fail=1; }
 [[ $fail == 0 ]] && echo "pr-queue-selftest: ok"
 exit $fail

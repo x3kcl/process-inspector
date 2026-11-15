@@ -94,5 +94,5 @@ join logic (dockerized engine only — `engine-harness` skill).
   one-minute timer) builds an `mq/**` batch, runs light AND heavy (`docker`, the `integration` legs) on it,
   fast-forwards `main`, and GitHub shows the pull request as `Merged`. Do not press Merge and do not push
   `main`: the heavy checks the ruleset requires report on the batch, not on the pull request. A red batch
-  unlabels the culprit with a comment. Reproduce a gate locally with `bash ci/contract.sh ci-light` (or
+  unlabels the culprit with a comment; a landing-rule refusal (`lr-1`/`lr-2`) keeps the label, comments once per head and waits for a new head (`--watch` exits 1). Reproduce a gate locally with `bash ci/contract.sh ci-light` (or
   `CI_PART=docker bash ci/contract.sh ci-heavy`). The admin bypass in RUNBOOK §0 is the emergency path only.
