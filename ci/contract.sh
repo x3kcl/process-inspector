@@ -31,6 +31,7 @@ lint() {
   ./scripts/security-audit.sh
   ./scripts/shell-syntax-check.sh
   ./scripts/pr-queue-selftest.sh
+  bash scripts/e2e-netlink-selftest.sh
   ./scripts/check-node-pin.sh
   bash scripts/check-alert-rules.sh
   bash scripts/hooks-selftest.sh
