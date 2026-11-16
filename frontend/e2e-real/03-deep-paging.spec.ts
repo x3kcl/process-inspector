@@ -4,12 +4,12 @@
 import { expect, test } from '@playwright/test'
 import { scanA11y } from '../e2e/a11y'
 import { PAGE_FIXTURES } from './global-setup'
-import { runPrefix, signIn } from './support'
+import { open, runPrefix, signIn } from './support'
 
 test('search with deep paging walks every cursor page across both engines', async ({ page }) => {
   await signIn(page, 'viewer')
   // pageSize is per engine: 5 + 5 on the first page, the rest only through Load more.
-  await page.goto(`/search?status=ACTIVE&businessKeyLike=${runPrefix()}-PAGE&pageSize=5`)
+  await open(page, `/search?status=ACTIVE&businessKeyLike=${runPrefix()}-PAGE&pageSize=5`)
 
   await expect(page.getByText(/^10 instances loaded so far/)).toBeVisible()
   await expect(
