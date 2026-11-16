@@ -306,12 +306,13 @@ Verified 2026-10-23 with `EngineHealth7IT` (capability flags) plus `Search7IT`,
     `AddressTrackerLinux`, and Chromium aborts in-flight requests with `net::ERR_NETWORK_CHANGED`.
     A Vite dev-server page load is ~60 module requests, so one abort leaves the page blank and
     the spec times out on a locator — not CPU load. Evidence (2026-11-12..16): 179 of 180
-    failed-attempt traces in the `playwright-report` artifacts carry the error (the other
-    three artifacts were a missing-browser install); 20 hard-red `e2e` jobs, 19 on hp04, two
-    of them with no other job of this repo on the host; workers are already 1 per slot.
+    failed-attempt traces in the `playwright-report` artifacts carry the error (three more
+    artifacts, left out, were a missing-browser install); 20 hard-red `e2e` jobs, 19 on hp04,
+    two of them with no other job of this repo on the host; workers are already 1 per slot.
     `ci/contract.sh e2e` builds `frontend/e2e/no-netlink.c` (an `LD_PRELOAD` shim that refuses
     `NETLINK_ROUTE` sockets, so Chromium assumes always-online) and `playwright.config.ts`
-    preloads it into the browser process only; `scripts/e2e-netlink-selftest.sh` pins both.
+    preloads it into the browser processes only; `scripts/e2e-netlink-selftest.sh` pins both
+    (run by the `lint` and `e2e` parts).
     Reproduction on hp04, 4 copies in parallel on the slot ports plus a docker network +
     container every ~15 s (~2,300 netlink events): before — 30 flaky / 380, every failed
     trace `ERR_NETWORK_CHANGED`, wall 457–539 s; after — 0 flaky / 380, wall 407–424 s.
