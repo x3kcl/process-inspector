@@ -410,7 +410,6 @@ public class ProcessApiClient {
         actions.executionAction(engine, priority, executionId, body);
     }
 
-    @SuppressWarnings("unchecked")
     public ProcessDefinitionRecord getProcessDefinition(
             EngineConfig engine, CallPriority priority, String definitionId) {
         return repository.getProcessDefinition(engine, priority, definitionId);
@@ -486,7 +485,6 @@ public class ProcessApiClient {
         return repository.listDeployments(engine, priority, nameLike, start, size);
     }
 
-    @SuppressWarnings("unchecked")
     public DeploymentRecord getDeployment(EngineConfig engine, CallPriority priority, String deploymentId) {
         return repository.getDeployment(engine, priority, deploymentId);
     }
