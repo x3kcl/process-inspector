@@ -3297,9 +3297,10 @@ button.skip-link {
   color: #1a4d80;
 }
 /* Re-queued (retry-job + ok) is deliberately amber, NOT green — the step has not
-   succeeded yet, it has only been re-queued (usability round 1, Theme G). */
+   succeeded yet, it has only been re-queued (usability round 1, Theme G). The text token,
+   not the border one: #b7791f on white is 3.64:1, under WCAG AA 4.5:1 (#702). */
 .outcome-requeued {
-  color: var(--color-warning-border);
+  color: var(--color-warning-text);
   font-weight: 700;
 }
 /* Audit rows caught mid-flight (R-SEM-18 PENDING) — a dispatch state, never a verdict. */
