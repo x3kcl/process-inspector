@@ -86,6 +86,12 @@ e2e() {
   cd frontend
   PI_E2E_PORT="$("$ROOT/scripts/free-port.sh" "${PI_E2E_PORT:-4173}")"
   export PI_E2E_PORT
+  # #698: the browser must not see the host's netlink churn (other jobs' docker bridges) — see
+  # e2e/no-netlink.c; playwright.config.ts preloads it into Chromium only.
+  bash "$ROOT/scripts/e2e-netlink-selftest.sh"
+  PI_E2E_NO_NETLINK="$(mktemp -d)/no-netlink.so"
+  cc -shared -fPIC -o "$PI_E2E_NO_NETLINK" e2e/no-netlink.c -ldl
+  export PI_E2E_NO_NETLINK
   npm ci
   npm run e2e
 }
