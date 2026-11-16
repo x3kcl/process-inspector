@@ -427,10 +427,15 @@ class ProcessApiClientWireShapeTest {
                             Object result = c.call().apply(client);
 
                             Object recorded = json(v, c.fixture());
-                            if (result instanceof FlowablePage page && recorded instanceof List<?> bareArray) {
-                                // e.g. /repository/deployments/{id}/resources: the engine answers a bare array.
-                                assertThat(page.dataOrEmpty()).isEqualTo(bareArray);
-                                assertThat(page.total()).isEqualTo(bareArray.size());
+                            if (result instanceof List<?> rows
+                                    && !rows.isEmpty()
+                                    && rows.get(0) instanceof DeploymentResourceRecord
+                                    && recorded instanceof List<?> bareArray) {
+                                // /repository/deployments/{id}/resources: the engine answers a bare array.
+                                @SuppressWarnings("unchecked")
+                                List<Map<String, Object>> recordedRows = (List<Map<String, Object>>) bareArray;
+                                assertThat(rows).isEqualTo(RepositoryRecords.resources(recordedRows));
+                                assertThat(rows.size()).isEqualTo(bareArray.size());
                             } else if (result instanceof FlowablePage page) {
                                 @SuppressWarnings("unchecked")
                                 Map<String, Object> recordedPage = (Map<String, Object>) recorded;
@@ -474,6 +479,31 @@ class ProcessApiClientWireShapeTest {
                                 @SuppressWarnings("unchecked")
                                 Map<String, Object> recordedInstance = (Map<String, Object>) recorded;
                                 assertThat(instance).isEqualTo(ProcessInstanceRecords.instance(recordedInstance));
+                            } else if (result instanceof ProcessDefinitionPage page) {
+                                @SuppressWarnings("unchecked")
+                                Map<String, Object> recordedPage = (Map<String, Object>) recorded;
+                                @SuppressWarnings("unchecked")
+                                List<Map<String, Object>> recordedRows =
+                                        (List<Map<String, Object>>) recordedPage.get("data");
+                                assertThat(page.total()).isEqualTo(((Number) recordedPage.get("total")).longValue());
+                                assertThat(page.dataOrEmpty()).isEqualTo(RepositoryRecords.definitions(recordedRows));
+                            } else if (result instanceof ProcessDefinitionRecord definition) {
+                                @SuppressWarnings("unchecked")
+                                Map<String, Object> recordedDefinition = (Map<String, Object>) recorded;
+                                assertThat(definition).isEqualTo(RepositoryRecords.definition(recordedDefinition));
+                            } else if (result instanceof DeploymentPage page) {
+                                @SuppressWarnings("unchecked")
+                                Map<String, Object> recordedPage = (Map<String, Object>) recorded;
+                                @SuppressWarnings("unchecked")
+                                List<Map<String, Object>> recordedRows =
+                                        (List<Map<String, Object>>) recordedPage.get("data");
+                                assertThat(page.total()).isEqualTo(((Number) recordedPage.get("total")).longValue());
+                                assertThat(page)
+                                        .isEqualTo(RepositoryRecords.deploymentPage(recordedRows, page.total()));
+                            } else if (result instanceof DeploymentRecord deployment) {
+                                @SuppressWarnings("unchecked")
+                                Map<String, Object> recordedDeployment = (Map<String, Object>) recorded;
+                                assertThat(deployment).isEqualTo(RepositoryRecords.deployment(recordedDeployment));
                             } else {
                                 assertThat(result).isEqualTo(recorded);
                             }

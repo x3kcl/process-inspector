@@ -5,6 +5,7 @@ import static org.assertj.core.api.Assertions.assertThat;
 import io.inspector.client.JobRecords;
 import io.inspector.client.ProcessApiClient.JobLaneKind;
 import io.inspector.client.ProcessInstanceRecords;
+import io.inspector.client.RepositoryRecords;
 import io.inspector.client.TaskRecords;
 import io.inspector.dto.ExternalWorkerJobDto;
 import io.inspector.dto.InstanceJobs.JobDto;
@@ -82,8 +83,8 @@ class InstanceDetailMappingTest {
 
     @Test
     void resourceNameFieldWinsWhenTheEngineSerializesIt() {
-        assertThat(InstanceDetailService.resourceNameOf(
-                        Map.of("resourceName", "demoParent.bpmn20.xml", "resource", "http://x/ignored")))
+        assertThat(InstanceDetailService.resourceNameOf(RepositoryRecords.definition(
+                        Map.of("resourceName", "demoParent.bpmn20.xml", "resource", "http://x/ignored"))))
                 .isEqualTo("demoParent.bpmn20.xml");
     }
 
@@ -91,13 +92,16 @@ class InstanceDetailMappingTest {
     void resourceUrlTailIsDecodedIntoTheDeploymentResourceName() {
         assertThat(
                         InstanceDetailService.resourceNameOf(
-                                Map.of(
-                                        "resource",
-                                        "http://host/flowable-rest/service/repository/deployments/42/resources/processes%2Fdemo%20order.bpmn20.xml")))
+                                RepositoryRecords.definition(
+                                        Map.of(
+                                                "resource",
+                                                "http://host/flowable-rest/service/repository/deployments/42/resources/processes%2Fdemo%20order.bpmn20.xml"))))
                 .isEqualTo("processes/demo order.bpmn20.xml");
-        assertThat(InstanceDetailService.resourceNameOf(Map.of("resource", "http://host/no-resources-segment")))
+        assertThat(InstanceDetailService.resourceNameOf(
+                        RepositoryRecords.definition(Map.of("resource", "http://host/no-resources-segment"))))
                 .isNull();
-        assertThat(InstanceDetailService.resourceNameOf(Map.of())).isNull();
+        assertThat(InstanceDetailService.resourceNameOf(RepositoryRecords.definition(Map.of())))
+                .isNull();
     }
 
     /* ---------- job + timeline rows ---------- */

@@ -24,6 +24,7 @@ import io.inspector.client.FlowablePage;
 import io.inspector.client.GuardedCaller.CallPriority;
 import io.inspector.client.ProcessApiClient;
 import io.inspector.client.ProcessInstanceRecords;
+import io.inspector.client.RepositoryRecords;
 import io.inspector.config.AuditProperties;
 import io.inspector.config.InspectorProperties;
 import io.inspector.config.InspectorProperties.EngineEnvironment;
@@ -143,7 +144,7 @@ class MigrationServiceTest {
         targetDef.put("key", "demoMigration");
         targetDef.put("version", 2);
         when(client.latestProcessDefinitionByKey(any(), eq(CallPriority.INTERACTIVE), eq("demoMigration")))
-                .thenReturn(new FlowablePage(List.of(targetDef), 1, 0, 1));
+                .thenReturn(RepositoryRecords.definitionPage(List.of(targetDef)));
 
         // Same fixture BPMN for "from" and "to" — the diff outcome (auto-mapped vs. flagged) is
         // irrelevant to the reauth-ordering tests below; both must simply parse.

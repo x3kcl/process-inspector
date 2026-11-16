@@ -16,6 +16,7 @@ import io.inspector.audit.ProtectedInstanceRepository;
 import io.inspector.client.ProcessApiClient;
 import io.inspector.client.ProcessInstancePage;
 import io.inspector.client.ProcessInstanceRecords;
+import io.inspector.client.RepositoryRecords;
 import io.inspector.config.InspectorProperties.EngineConfig;
 import io.inspector.config.InspectorProperties.EngineEnvironment;
 import io.inspector.config.InspectorProperties.EngineMode;
@@ -57,7 +58,8 @@ class CohortMigrationServiceTest {
 
     @Test
     void compilesExactBusinessKeyOntoTheRuntimeList() {
-        when(processes.getProcessDefinition(eq(engine), any(), eq("demo:1:x"))).thenReturn(Map.of("key", "demo"));
+        when(processes.getProcessDefinition(eq(engine), any(), eq("demo:1:x")))
+                .thenReturn(RepositoryRecords.definition(Map.of("key", "demo")));
         when(protectedDefinitions.findById(any())).thenReturn(Optional.empty());
         when(processes.listRuntimeInstances(
                         eq(engine), any(), eq("demo:1:x"), eq("BK-1"), isNull(), isNull(), isNull(), anyInt()))

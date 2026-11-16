@@ -9,6 +9,7 @@ import io.inspector.client.GuardedCaller.CallPriority;
 import io.inspector.client.JobRecord;
 import io.inspector.client.ProcessApiClient;
 import io.inspector.client.ProcessApiClient.JobLaneKind;
+import io.inspector.client.ProcessDefinitionRecord;
 import io.inspector.client.ProcessInstancePage;
 import io.inspector.client.ProcessInstanceRecord;
 import io.inspector.client.TaskRecord;
@@ -323,10 +324,10 @@ public class InstanceDetailService {
      * {@code resource} URL ({@code …/deployments/{id}/resources/{name}}) — the name is the
      * decoded tail. A plain {@code resourceName} field (newer engines) wins when present.
      */
-    static String resourceNameOf(Map<String, Object> definition) {
-        String plain = str(definition, "resourceName");
+    static String resourceNameOf(ProcessDefinitionRecord definition) {
+        String plain = definition.resourceName();
         if (plain != null && !plain.isBlank()) return plain;
-        String url = str(definition, "resource");
+        String url = definition.resource();
         if (url == null) return null;
         int at = url.indexOf("/resources/");
         if (at < 0) return null;

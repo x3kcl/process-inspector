@@ -10,6 +10,8 @@ import io.inspector.client.GuardedCaller.CallPriority;
 import io.inspector.client.JobPage;
 import io.inspector.client.ProcessApiClient;
 import io.inspector.client.ProcessApiClient.JobLaneKind;
+import io.inspector.client.ProcessDefinitionPage;
+import io.inspector.client.ProcessDefinitionRecord;
 import io.inspector.config.InspectorProperties.EngineConfig;
 import io.inspector.registry.EngineCapabilities;
 import io.inspector.registry.EngineRegistry;
@@ -38,7 +40,7 @@ public class DefinitionDetailService {
 
     public DefinitionDetailResponse detail(String engineId, String definitionId) {
         EngineConfig engine = registry.require(engineId);
-        Map<String, Object> bpmn = processes.getProcessDefinition(engine, CallPriority.INTERACTIVE, definitionId);
+        ProcessDefinitionRecord bpmn = processes.getProcessDefinition(engine, CallPriority.INTERACTIVE, definitionId);
         if (bpmn != null) {
             return bpmnDetail(engine, bpmn);
         }
@@ -122,35 +124,35 @@ public class DefinitionDetailService {
         }
     }
 
-    private DefinitionDetailResponse bpmnDetail(EngineConfig engine, Map<String, Object> row) {
-        String key = str(row, "key");
+    private DefinitionDetailResponse bpmnDetail(EngineConfig engine, ProcessDefinitionRecord row) {
+        String key = row.key();
         List<VersionRef> versions = List.of();
         if (key != null) {
-            FlowablePage page = processes.listProcessDefinitionVersionsDesc(
+            ProcessDefinitionPage page = processes.listProcessDefinitionVersionsDesc(
                     engine, CallPriority.INTERACTIVE, key, 0, DefinitionCatalogService.LIST_CAP);
             int latest = page.dataOrEmpty().isEmpty()
-                    ? number(row.get("version"))
-                    : number(page.dataOrEmpty().get(0).get("version"));
+                    ? number(row.version())
+                    : number(page.dataOrEmpty().get(0).version());
             versions = new ArrayList<>();
-            for (Map<String, Object> version : page.dataOrEmpty()) {
-                int n = number(version.get("version"));
-                versions.add(new VersionRef(str(version, "id"), n, n == latest));
+            for (ProcessDefinitionRecord version : page.dataOrEmpty()) {
+                int n = number(version.version());
+                versions.add(new VersionRef(version.id(), n, n == latest));
             }
             versions.sort(Comparator.comparingInt(VersionRef::version).reversed());
         }
         return new DefinitionDetailResponse(
                 engine.id(),
                 "BPMN",
-                str(row, "id"),
+                row.id(),
                 key,
-                str(row, "name"),
-                number(row.get("version")),
-                bool(row.get("suspended")),
-                str(row, "deploymentId"),
-                str(row, "category"),
-                str(row, "tenantId") != null ? str(row, "tenantId") : engine.tenantId(),
-                str(row, "resourceName"),
-                bool(row.get("graphicalNotationDefined")),
+                row.name(),
+                number(row.version()),
+                bool(row.suspended()),
+                row.deploymentId(),
+                row.category(),
+                row.tenantId() != null ? row.tenantId() : engine.tenantId(),
+                row.resourceName(),
+                bool(row.graphicalNotationDefined()),
                 versions);
     }
 
