@@ -1,0 +1,23 @@
+{
+  "businessKey": "WIRE-474-A",
+  "businessStatus": null,
+  "callbackId": null,
+  "callbackType": null,
+  "caseDefinitionDescription": null,
+  "caseDefinitionId": "824739a6-e1fc-11f1-acb8-7eebefdaa7d9",
+  "caseDefinitionName": "Demo failing case",
+  "caseDefinitionUrl": "http://localhost:8083/flowable-rest/cmmn-api/cmmn-repository/case-definitions/824739a6-e1fc-11f1-acb8-7eebefdaa7d9",
+  "completed": false,
+  "ended": false,
+  "id": "824bcd87-e1fc-11f1-acb8-7eebefdaa7d9",
+  "name": null,
+  "parentId": null,
+  "referenceId": null,
+  "referenceType": null,
+  "startTime": "2026-11-16T20:30:05.921Z",
+  "startUserId": "rest-admin",
+  "state": "active",
+  "tenantId": "",
+  "url": "http://localhost:8083/flowable-rest/cmmn-api/cmmn-runtime/case-instances/824bcd87-e1fc-11f1-acb8-7eebefdaa7d9",
+  "variables": []
+}

@@ -1,0 +1,31 @@
+{
+  "data": [
+    {
+      "businessKey": "WIRE-474-B",
+      "businessStatus": null,
+      "callbackId": null,
+      "callbackType": null,
+      "caseDefinitionDescription": null,
+      "caseDefinitionId": "8239a52b-e1fc-11f1-937e-6aebd179bc16",
+      "caseDefinitionName": "Demo failing case",
+      "caseDefinitionUrl": "http://localhost:8081/flowable-rest/cmmn-api/cmmn-repository/case-definitions/8239a52b-e1fc-11f1-937e-6aebd179bc16",
+      "endTime": "2026-11-16T20:30:26.479Z",
+      "id": "82416d64-e1fc-11f1-937e-6aebd179bc16",
+      "name": null,
+      "referenceId": null,
+      "referenceType": null,
+      "startTime": "2026-11-16T20:30:05.853Z",
+      "startUserId": "rest-admin",
+      "state": "terminated",
+      "superProcessInstanceId": null,
+      "tenantId": "",
+      "url": "http://localhost:8081/flowable-rest/cmmn-api/cmmn-history/historic-case-instances/82416d64-e1fc-11f1-937e-6aebd179bc16",
+      "variables": []
+    }
+  ],
+  "order": "asc",
+  "size": 1,
+  "sort": "caseInstanceId",
+  "start": 0,
+  "total": 1
+}
