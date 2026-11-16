@@ -309,11 +309,17 @@ Verified 2026-10-23 with `EngineHealth7IT` (capability flags) plus `Search7IT`,
     failed-attempt traces in the `playwright-report` artifacts carry the error (three more
     artifacts, left out, were a missing-browser install); 20 hard-red `e2e` jobs, 19 on hp04,
     two of them with no other job of this repo on the host; workers are already 1 per slot.
-    `ci/contract.sh e2e` builds `frontend/e2e/no-netlink.c` (an `LD_PRELOAD` shim that refuses
-    `NETLINK_ROUTE` sockets, so Chromium assumes always-online) and `playwright.config.ts`
-    preloads it into the browser processes only; `scripts/e2e-netlink-selftest.sh` pins both
-    (run by the `lint` and `e2e` parts).
-    Reproduction on hp04, 4 copies in parallel on the slot ports plus a docker network +
+    `ci/contract.sh`'s `e2e_no_netlink` helper builds `frontend/e2e/no-netlink.c` (an
+    `LD_PRELOAD` shim that refuses `NETLINK_ROUTE` sockets, so Chromium assumes always-online);
+    the `e2e` part and the nightly `e2e-real` part both call it (#702: e2e-real brings its own
+    compose engines up on the host network — the same churn), and `playwright.config.ts` and
+    `e2e-real/playwright.config.ts` preload it into the browser processes only;
+    `scripts/e2e-netlink-selftest.sh` pins all of it (run by the `lint` part and the helper).
+    e2e-real's `open()` reload (#705) stays as the second line of defence. Reproduction of the
+    e2e-real suite on hp04 with its own compose project plus a docker network + container every
+    ~15 s: before — 3 aborts logged over 3 runs (each rescued by `open()`; nightly run
+    43975585816 hit 5 and went red); after — 0 `ERR_NETWORK_CHANGED` lines over 3 runs.
+    Hermetic-suite reproduction (#698) on hp04, 4 copies in parallel on the slot ports plus a docker network +
     container every ~15 s (~2,300 netlink events): before — 30 flaky / 380, every failed
     trace `ERR_NETWORK_CHANGED`, wall 457–539 s; after — 0 flaky / 380, wall 407–424 s.
     `retries: 1` stays, and it is not what makes the run green.
