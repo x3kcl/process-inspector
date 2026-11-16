@@ -82,17 +82,22 @@ frontend() {
   }
 }
 
+# #698/#702: the browser must not see the host's netlink churn (docker bridges of other jobs, or of
+# e2e-real's own compose engines) — see frontend/e2e/no-netlink.c; both Playwright configs preload
+# it into Chromium only.
+e2e_no_netlink() {
+  bash "$ROOT/scripts/e2e-netlink-selftest.sh"
+  PI_E2E_NO_NETLINK="$(mktemp -d)/no-netlink.so"
+  cc -shared -fPIC -o "$PI_E2E_NO_NETLINK" "$ROOT/frontend/e2e/no-netlink.c" -ldl
+  export PI_E2E_NO_NETLINK
+}
+
 e2e() {
   part e2e
   cd frontend
   PI_E2E_PORT="$("$ROOT/scripts/free-port.sh" "${PI_E2E_PORT:-4173}")"
   export PI_E2E_PORT
-  # #698: the browser must not see the host's netlink churn (other jobs' docker bridges) — see
-  # e2e/no-netlink.c; playwright.config.ts preloads it into Chromium only.
-  bash "$ROOT/scripts/e2e-netlink-selftest.sh"
-  PI_E2E_NO_NETLINK="$(mktemp -d)/no-netlink.so"
-  cc -shared -fPIC -o "$PI_E2E_NO_NETLINK" e2e/no-netlink.c -ldl
-  export PI_E2E_NO_NETLINK
+  e2e_no_netlink
   npm ci
   npm run e2e
 }
@@ -287,6 +292,7 @@ nightly_perf_p1() {
 nightly_e2e_real() {
   part e2e-real
   nightly_docker e2e-real || return 0
+  e2e_no_netlink
   nightly_harness pi-ci-nightly-e2e "${PI_ENGINE_A_PORT:-8691}" "${PI_ENGINE_B_PORT:-8692}" "${PI_PG_PORT:-5435}"
   PI_BFF_PORT=$(scripts/free-port.sh "${PI_BFF_PORT:-8086}" 20 "$PI_ENGINE_A_PORT" "$PI_ENGINE_B_PORT")
   PI_E2E_PORT=$(scripts/free-port.sh "${PI_E2E_PORT:-4173}" 20)
