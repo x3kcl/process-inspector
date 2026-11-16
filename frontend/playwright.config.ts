@@ -30,6 +30,17 @@ export default defineConfig({
   use: {
     baseURL: `http://localhost:${PORT}`,
     trace: 'retain-on-failure',
+    // #698: CI slots share the host network, so every docker bridge another job creates reaches
+    // Chromium as an address change and it aborts in-flight requests (net::ERR_NETWORK_CHANGED).
+    // ci/contract.sh builds e2e/no-netlink.c; preloaded into the browser process only.
+    launchOptions: process.env.PI_E2E_NO_NETLINK
+      ? {
+          env: {
+            ...(process.env as Record<string, string>),
+            LD_PRELOAD: process.env.PI_E2E_NO_NETLINK,
+          },
+        }
+      : {},
   },
   webServer: {
     command: `npm run dev -- --port ${PORT} --strictPort`,
