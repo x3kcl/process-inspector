@@ -24,6 +24,7 @@ import io.inspector.bulk.BulkCountDriftException;
 import io.inspector.client.CaseMigrationClient;
 import io.inspector.client.CaseMigrationRoute;
 import io.inspector.client.CmmnApiClient;
+import io.inspector.client.CmmnRecords;
 import io.inspector.client.FlowablePage;
 import io.inspector.client.GuardedCaller.CallPriority;
 import io.inspector.config.InspectorProperties.EngineConfig;
@@ -348,7 +349,7 @@ class CaseDefinitionMigrationServiceTest {
         prod();
         engineVersion("7.1.0");
         when(cmmn.getHistoricCmmnCaseInstance(engine, CallPriority.INTERACTIVE, "running"))
-                .thenReturn(Map.of("id", "running", "caseDefinitionId", FROM));
+                .thenReturn(CmmnRecords.caseInstance(Map.of("id", "running", "caseDefinitionId", FROM)));
         assertThatThrownBy(() -> service.migrateHistoricCase(ENGINE, "running", request(null), admin))
                 .isInstanceOfSatisfying(
                         GuardRefusedException.class, e -> assertThat(e.code()).isEqualTo("case-still-running"));
@@ -360,7 +361,8 @@ class CaseDefinitionMigrationServiceTest {
 
         definitions("reviewTask", "reviewTask");
         when(cmmn.getHistoricCmmnCaseInstance(engine, CallPriority.INTERACTIVE, "ended"))
-                .thenReturn(Map.of("id", "ended", "caseDefinitionId", FROM, "endTime", "2026-11-12T10:00:00.000Z"));
+                .thenReturn(CmmnRecords.caseInstance(
+                        Map.of("id", "ended", "caseDefinitionId", FROM, "endTime", "2026-11-12T10:00:00.000Z")));
         assertThatThrownBy(() -> service.migrateHistoricCase(ENGINE, "ended", request(1), admin))
                 .isInstanceOfSatisfying(
                         GuardRefusedException.class, e -> assertThat(e.code()).isEqualTo("confirm-token-mismatch"));

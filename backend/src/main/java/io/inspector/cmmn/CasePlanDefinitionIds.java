@@ -1,10 +1,10 @@
 package io.inspector.cmmn;
 
+import io.inspector.client.PlanItemRecord;
 import java.util.ArrayList;
 import java.util.LinkedHashSet;
 import java.util.List;
 import java.util.Locale;
-import java.util.Map;
 import java.util.Set;
 import java.util.regex.Matcher;
 import java.util.regex.Pattern;
@@ -39,17 +39,17 @@ public final class CasePlanDefinitionIds {
     }
 
     /** Live {@code planItemDefinitionId} values. Blank when the row has none — never the instance id. */
-    public static List<String> activeDefinitionIds(List<Map<String, Object>> rows) {
+    public static List<String> activeDefinitionIds(List<PlanItemRecord> rows) {
         List<String> ids = new ArrayList<>();
         if (rows == null) {
             return ids;
         }
-        for (Map<String, Object> row : rows) {
+        for (PlanItemRecord row : rows) {
             if (!live(row)) {
                 continue;
             }
-            Object def = row.get("planItemDefinitionId");
-            ids.add(def == null ? "" : String.valueOf(def).trim());
+            String def = row.planItemDefinitionId();
+            ids.add(def == null ? "" : def.trim());
         }
         return ids;
     }
@@ -74,11 +74,11 @@ public final class CasePlanDefinitionIds {
         return String.join("|", sorted);
     }
 
-    private static boolean live(Map<String, Object> row) {
-        if (row.get("endedTime") != null) {
+    private static boolean live(PlanItemRecord row) {
+        if (row.endedTime() != null) {
             return false;
         }
-        Object state = row.get("state");
-        return state == null || !ENDED.contains(String.valueOf(state).toLowerCase(Locale.ROOT));
+        String state = row.state();
+        return state == null || !ENDED.contains(state.toLowerCase(Locale.ROOT));
     }
 }

@@ -2,8 +2,9 @@ package io.inspector.cmmn;
 
 import io.inspector.action.GuardRefusedException;
 import io.inspector.client.CmmnApiClient;
-import io.inspector.client.FlowablePage;
 import io.inspector.client.GuardedCaller.CallPriority;
+import io.inspector.client.PlanItemPage;
+import io.inspector.client.PlanItemRecord;
 import io.inspector.config.InspectorProperties.EngineConfig;
 import java.util.List;
 import java.util.Map;
@@ -28,9 +29,9 @@ public final class CaseMigrationPrecheck {
     }
 
     public List<String> activePlanItemDefinitionIds(EngineConfig engine, String caseId) {
-        FlowablePage page = cmmn.listCmmnPlanItemInstances(
+        PlanItemPage page = cmmn.listCmmnPlanItemInstances(
                 engine, CallPriority.INTERACTIVE, Map.of("caseInstanceId", caseId), 0, PLAN_ITEM_CAP);
-        List<Map<String, Object>> rows = page == null ? List.of() : page.dataOrEmpty();
+        List<PlanItemRecord> rows = page == null ? List.of() : page.dataOrEmpty();
         if (page != null && page.total() > rows.size()) {
             throw new GuardRefusedException(
                     HttpStatus.UNPROCESSABLE_ENTITY,

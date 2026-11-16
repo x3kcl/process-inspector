@@ -12,6 +12,7 @@ import io.inspector.audit.AuditOutcome;
 import io.inspector.audit.AuditService;
 import io.inspector.audit.BreakGlassActor;
 import io.inspector.bulk.BulkCountDriftException;
+import io.inspector.client.CaseInstanceRecord;
 import io.inspector.client.CaseMigrationClient;
 import io.inspector.client.CaseMigrationRoute;
 import io.inspector.client.CmmnApiClient;
@@ -280,7 +281,7 @@ public class CaseDefinitionMigrationService {
                 request,
                 auth,
                 engine -> {
-                    Map<String, Object> historic =
+                    CaseInstanceRecord historic =
                             cmmn.getHistoricCmmnCaseInstance(engine, CallPriority.INTERACTIVE, caseInstanceId);
                     if (historic == null) {
                         throw new GuardRefusedException(
@@ -289,20 +290,20 @@ public class CaseDefinitionMigrationService {
                                 "Case " + caseInstanceId + " is not in the history of '" + engine.id()
                                         + "'. Nothing happened.");
                     }
-                    if (historic.get("endTime") == null) {
+                    if (historic.endTime() == null) {
                         throw new GuardRefusedException(
                                 HttpStatus.CONFLICT,
                                 "case-still-running",
                                 "Case " + caseInstanceId + " has not ended. The engine migrates a running case only"
                                         + " through migrate-case. Nothing happened.");
                     }
-                    Versions pair = versionsOf(engine, str(historic.get("caseDefinitionId")), request);
+                    Versions pair = versionsOf(engine, str(historic.caseDefinitionId()), request);
                     return new Plan(pair, 1, "ended", caseInstanceId);
                 },
                 (engine, plan) -> {
-                    Map<String, Object> historic =
+                    CaseInstanceRecord historic =
                             cmmn.getHistoricCmmnCaseInstance(engine, CallPriority.INTERACTIVE, caseInstanceId);
-                    String observed = historic == null ? "(gone)" : str(historic.get("caseDefinitionId"));
+                    String observed = historic == null ? "(gone)" : str(historic.caseDefinitionId());
                     return new Outcome(
                             "{\"observedCaseDefinitionId\":\"" + observed + "\"}",
                             "History of ended case " + caseInstanceId + " re-pointed to case definition " + observed

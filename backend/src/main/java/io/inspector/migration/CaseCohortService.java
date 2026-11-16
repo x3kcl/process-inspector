@@ -1,15 +1,15 @@
 package io.inspector.migration;
 
 import io.inspector.action.GuardRefusedException;
+import io.inspector.client.CaseInstancePage;
+import io.inspector.client.CaseInstanceRecord;
 import io.inspector.client.CaseMigrationClient;
-import io.inspector.client.FlowablePage;
 import io.inspector.client.GuardedCaller.CallPriority;
 import io.inspector.cmmn.CmmnCapabilities;
 import io.inspector.config.InspectorProperties.EngineConfig;
 import io.inspector.registry.EngineRegistry;
 import java.util.ArrayList;
 import java.util.List;
-import java.util.Map;
 import org.springframework.http.HttpStatus;
 import org.springframework.stereotype.Service;
 
@@ -52,7 +52,7 @@ public class CaseCohortService {
                     "A business-key 'contains' filter on cases",
                     "Flowable 6.x ignores businessKeyLike on the case list and would return every case");
         }
-        FlowablePage page = cases.listRunningCases(
+        CaseInstancePage page = cases.listRunningCases(
                 engine,
                 CallPriority.INTERACTIVE,
                 fromId,
@@ -63,9 +63,9 @@ public class CaseCohortService {
                 CAP);
         long total = page != null ? page.total() : 0;
         List<String> ids = new ArrayList<>();
-        for (Map<String, Object> row : page != null ? page.dataOrEmpty() : List.<Map<String, Object>>of()) {
-            if (row.get("id") != null) {
-                ids.add(String.valueOf(row.get("id")));
+        for (CaseInstanceRecord row : page != null ? page.dataOrEmpty() : List.<CaseInstanceRecord>of()) {
+            if (row.id() != null) {
+                ids.add(row.id());
             }
         }
         return new ListedCohort(

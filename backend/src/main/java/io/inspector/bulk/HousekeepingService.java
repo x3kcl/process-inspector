@@ -4,8 +4,8 @@ import io.inspector.action.ActionVerb;
 import io.inspector.audit.AuditService;
 import io.inspector.audit.ProtectedDefinition;
 import io.inspector.audit.ProtectedDefinitionRepository;
+import io.inspector.client.CaseInstancePage;
 import io.inspector.client.CmmnApiClient;
-import io.inspector.client.FlowablePage;
 import io.inspector.client.GuardedCaller.CallPriority;
 import io.inspector.client.ProcessApiClient;
 import io.inspector.client.ProcessInstancePage;
@@ -259,20 +259,13 @@ public class HousekeepingService {
                     page.total());
         }
 
-        static FinishedPage ofCases(FlowablePage page) {
+        static FinishedPage ofCases(CaseInstancePage page) {
             if (page == null) {
                 return new FinishedPage(List.of(), 0);
             }
             return new FinishedPage(
                     page.dataOrEmpty().stream()
-                            .map(row -> {
-                                String definitionId = str(row, "processDefinitionId");
-                                return new Finished(
-                                        str(row, "id"),
-                                        str(row, "businessKey"),
-                                        definitionId != null ? definitionId : str(row, "caseDefinitionId"),
-                                        row.get("endTime"));
-                            })
+                            .map(c -> new Finished(c.id(), c.businessKey(), c.caseDefinitionId(), c.endTime()))
                             .toList(),
                     page.total());
         }
@@ -287,11 +280,6 @@ public class HousekeepingService {
         }
         String prefix = (key == null ? "" : key) + ":" + version + ":";
         return id.startsWith(prefix);
-    }
-
-    private static String str(Map<String, Object> row, String field) {
-        Object value = row.get(field);
-        return value == null ? null : value.toString();
     }
 
     private static String blank(String value) {

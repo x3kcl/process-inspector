@@ -6,6 +6,7 @@ import io.github.resilience4j.bulkhead.BulkheadFullException;
 import io.github.resilience4j.circuitbreaker.CallNotPermittedException;
 import io.inspector.action.GuardRefusedException;
 import io.inspector.api.MdcPropagatingExecutors;
+import io.inspector.client.CaseInstanceRecord;
 import io.inspector.client.CmmnApiClient;
 import io.inspector.client.GuardedCaller.CallPriority;
 import io.inspector.cmmn.CaseMigrationPrecheck;
@@ -218,11 +219,11 @@ public class CaseCohortAnalysisService {
     }
 
     private Analyzed analyze(EngineConfig engine, String caseId, String fromId, Set<String> targetIds) {
-        Map<String, Object> running = cmmn.getCmmnCaseInstance(engine, CallPriority.INTERACTIVE, caseId);
+        CaseInstanceRecord running = cmmn.getCmmnCaseInstance(engine, CallPriority.INTERACTIVE, caseId);
         if (running == null) {
             return new Analyzed(caseId, List.of(), "Case " + caseId + " is no longer running.", null);
         }
-        if (!fromId.equals(String.valueOf(running.get("caseDefinitionId")))) {
+        if (!fromId.equals(String.valueOf(running.caseDefinitionId()))) {
             return new Analyzed(
                     caseId,
                     List.of(),

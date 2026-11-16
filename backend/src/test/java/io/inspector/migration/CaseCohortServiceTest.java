@@ -10,8 +10,9 @@ import static org.mockito.Mockito.verifyNoInteractions;
 import static org.mockito.Mockito.when;
 
 import io.inspector.action.GuardRefusedException;
+import io.inspector.client.CaseInstancePage;
 import io.inspector.client.CaseMigrationClient;
-import io.inspector.client.FlowablePage;
+import io.inspector.client.CmmnRecords;
 import io.inspector.client.GuardedCaller.CallPriority;
 import io.inspector.config.InspectorProperties.EngineConfig;
 import io.inspector.registry.EngineCapabilities;
@@ -53,12 +54,12 @@ class CaseCohortServiceTest {
                         null));
     }
 
-    private static FlowablePage page(int rows, long total) {
+    private static CaseInstancePage page(int rows, long total) {
         List<Map<String, Object>> data = new ArrayList<>();
         for (int i = 0; i < rows; i++) {
             data.add(Map.of("id", "case-" + i));
         }
-        return new FlowablePage(data, total, 0, rows);
+        return CmmnRecords.casePage(data, total);
     }
 
     @Test

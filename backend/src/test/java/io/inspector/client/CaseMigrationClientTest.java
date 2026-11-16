@@ -75,7 +75,7 @@ class CaseMigrationClientTest {
                 .willReturn(okJson("{\"data\":[{\"id\":\"case-1\"},{\"id\":\"case-2\"}],\"total\":7,\"start\":0,"
                         + "\"sort\":\"id\",\"order\":\"asc\",\"size\":2}")));
 
-        FlowablePage page = client.listRunningCases(
+        CaseInstancePage page = client.listRunningCases(
                 engine("list"),
                 CallPriority.INTERACTIVE,
                 "def-1",
@@ -86,7 +86,7 @@ class CaseMigrationClientTest {
                 500);
 
         assertThat(page.total()).isEqualTo(7);
-        assertThat(page.dataOrEmpty()).extracting(row -> row.get("id")).containsExactly("case-1", "case-2");
+        assertThat(page.dataOrEmpty()).extracting(CaseInstanceRecord::id).containsExactly("case-1", "case-2");
         wm.verify(getRequestedFor(urlPathEqualTo("/cmmn-api/cmmn-runtime/case-instances"))
                 .withQueryParam("caseDefinitionId", equalTo("def-1"))
                 .withQueryParam("businessKeyLike", equalTo("%ORDER 7%"))

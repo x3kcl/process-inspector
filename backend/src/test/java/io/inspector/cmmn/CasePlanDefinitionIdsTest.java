@@ -2,6 +2,7 @@ package io.inspector.cmmn;
 
 import static org.assertj.core.api.Assertions.assertThat;
 
+import io.inspector.client.CmmnRecords;
 import java.util.List;
 import java.util.Map;
 import org.junit.jupiter.api.Test;
@@ -41,7 +42,8 @@ class CasePlanDefinitionIdsTest {
         String xml = "<planItem id=\"planItem_svc\" definitionRef=\"keepAlive\"/>";
 
         assertThat(CasePlanDefinitionIds.missing(
-                        CasePlanDefinitionIds.activeDefinitionIds(rows), CasePlanDefinitionIds.definitionIds(xml)))
+                        CasePlanDefinitionIds.activeDefinitionIds(CmmnRecords.planItems(rows)),
+                        CasePlanDefinitionIds.definitionIds(xml)))
                 .containsExactly("removedTask");
     }
 

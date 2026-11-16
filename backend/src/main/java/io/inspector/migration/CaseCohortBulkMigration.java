@@ -8,6 +8,7 @@ import io.inspector.action.ActionVerb;
 import io.inspector.action.CaseMigrationExpectation;
 import io.inspector.action.CorrectiveActionService;
 import io.inspector.action.GuardRefusedException;
+import io.inspector.client.CaseInstanceRecord;
 import io.inspector.client.CmmnApiClient;
 import io.inspector.client.GuardedCaller.CallPriority;
 import io.inspector.migration.MigrationAnalysis.Status;
@@ -141,12 +142,12 @@ public class CaseCohortBulkMigration {
 
     public Verification verify(String analysisRef, String engineId, String caseId) {
         Cohort cohort = resolve(parse(analysisRef));
-        Map<String, Object> running =
+        CaseInstanceRecord running =
                 cmmn.getCmmnCaseInstance(registry.require(engineId), CallPriority.INTERACTIVE, caseId);
         if (running == null) {
             return new Verification(false, "case is no longer running — completed or deleted since; needs L3");
         }
-        String definitionId = String.valueOf(running.get("caseDefinitionId"));
+        String definitionId = String.valueOf(running.caseDefinitionId());
         return cohort.toCaseDefinitionId().equals(definitionId)
                 ? new Verification(true, "verified: case is on " + definitionId)
                 : new Verification(false, "case is still on " + definitionId + " — the migrate did not apply");
