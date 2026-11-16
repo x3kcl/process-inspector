@@ -1,6 +1,7 @@
 package io.inspector.resolve;
 
 import io.inspector.api.MdcPropagatingExecutors;
+import io.inspector.client.CaseInstanceRecord;
 import io.inspector.client.CmmnApiClient;
 import io.inspector.client.GuardedCaller.CallPriority;
 import io.inspector.client.JobRecord;
@@ -236,7 +237,7 @@ public class ResolveService {
      * miss (never fails the resolve).
      */
     private ResolveMatch resolveCmmnCase(EngineConfig engine, String id) {
-        Map<String, Object> caseInstance = cmmnFlowable.getCmmnCaseInstance(engine, CallPriority.INTERACTIVE, id);
+        CaseInstanceRecord caseInstance = cmmnFlowable.getCmmnCaseInstance(engine, CallPriority.INTERACTIVE, id);
         if (caseInstance == null) {
             caseInstance = cmmnFlowable.getHistoricCmmnCaseInstance(engine, CallPriority.INTERACTIVE, id);
         }
@@ -244,9 +245,9 @@ public class ResolveService {
             return null;
         }
         // Historic rows already carry caseDefinitionName; a runtime row needs the by-id lookup.
-        String definitionKey = str(caseInstance, "caseDefinitionKey");
+        String definitionKey = caseInstance.caseDefinitionKey();
         if (definitionKey == null) {
-            String caseDefinitionId = str(caseInstance, "caseDefinitionId");
+            String caseDefinitionId = caseInstance.caseDefinitionId();
             if (caseDefinitionId != null) {
                 try {
                     Map<String, Object> def =
@@ -263,11 +264,11 @@ public class ResolveService {
                 null, // not a process instance — no owning pid
                 null, // no process composite; the case route is built from engineId + case id
                 id,
-                str(caseInstance, "businessKey"),
+                caseInstance.businessKey(),
                 definitionKey,
                 null,
-                str(caseInstance, "startTime"),
-                str(caseInstance, "endTime"),
+                caseInstance.startTime(),
+                caseInstance.endTime(),
                 null,
                 null);
     }

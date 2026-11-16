@@ -19,7 +19,7 @@ import io.inspector.audit.AuditService;
 import io.inspector.audit.ProtectedInstanceRepository;
 import io.inspector.client.CaseMigrationRoute;
 import io.inspector.client.CmmnApiClient;
-import io.inspector.client.FlowablePage;
+import io.inspector.client.CmmnRecords;
 import io.inspector.client.GuardedCaller.CallPriority;
 import io.inspector.client.ProcessApiClient;
 import io.inspector.config.InspectorProperties.EngineConfig;
@@ -114,13 +114,13 @@ class CmmnCorrectiveActionServiceTest {
 
     private void deadLetterJobOnCase(String caseInstanceId) {
         when(cmmnClient.getCmmnDeadLetterJob(engine, CallPriority.INTERACTIVE, JOB))
-                .thenReturn(Map.of(
+                .thenReturn(CmmnRecords.job(Map.of(
                         "id", JOB,
                         "caseInstanceId", caseInstanceId,
                         "caseDefinitionId", "def-uuid",
                         "planItemInstanceId", "pi-1",
                         "elementId", "failingService",
-                        "exceptionMessage", "Unknown property used in expression: ${nonExistentBean.doStuff()}"));
+                        "exceptionMessage", "Unknown property used in expression: ${nonExistentBean.doStuff()}")));
     }
 
     private static ActionRequest retryRequest() {
@@ -281,7 +281,7 @@ class CmmnCorrectiveActionServiceTest {
     void triggerPlanItemCallsThePlanItemRoute() {
         scopeCapable();
         when(cmmnClient.getCmmnCaseInstance(engine, CallPriority.INTERACTIVE, CASE))
-                .thenReturn(Map.of("id", CASE, "businessKey", "BK"));
+                .thenReturn(CmmnRecords.caseInstance(Map.of("id", CASE, "businessKey", "BK")));
         ActionRequest request = new ActionRequest(
                 null,
                 null,
@@ -319,9 +319,10 @@ class CmmnCorrectiveActionServiceTest {
                         null,
                         null));
         when(cmmnClient.getCmmnCaseInstance(engine, CallPriority.INTERACTIVE, CASE))
-                .thenReturn(Map.of("id", CASE, "businessKey", "BK-1", "caseDefinitionId", "def-1"));
+                .thenReturn(CmmnRecords.caseInstance(
+                        Map.of("id", CASE, "businessKey", "BK-1", "caseDefinitionId", "def-1")));
         when(cmmnClient.listCmmnPlanItemInstances(eq(engine), eq(CallPriority.INTERACTIVE), any(), eq(0), eq(500)))
-                .thenReturn(new FlowablePage(
+                .thenReturn(CmmnRecords.planItemPage(
                         List.of(
                                 Map.of(
                                         "id",
@@ -341,9 +342,7 @@ class CmmnCorrectiveActionServiceTest {
                                         "removedTask",
                                         "state",
                                         "completed")),
-                        2,
-                        0,
-                        500));
+                        2));
         // The real case-definition row carries no resourceName, only the resource URL (measured
         // on flowable-rest 6.8.0 and 7.1.0, #500): the pre-check derives the name from it.
         when(cmmnClient.getCmmnCaseDefinition(engine, CallPriority.INTERACTIVE, "def-2"))
@@ -403,9 +402,10 @@ class CmmnCorrectiveActionServiceTest {
                         null,
                         null));
         when(cmmnClient.getCmmnCaseInstance(prod, CallPriority.INTERACTIVE, CASE))
-                .thenReturn(Map.of("id", CASE, "businessKey", "BK-1", "caseDefinitionId", "def-1"));
+                .thenReturn(CmmnRecords.caseInstance(
+                        Map.of("id", CASE, "businessKey", "BK-1", "caseDefinitionId", "def-1")));
         when(cmmnClient.listCmmnPlanItemInstances(eq(prod), eq(CallPriority.INTERACTIVE), any(), eq(0), eq(500)))
-                .thenReturn(new FlowablePage(List.of(), 0, 0, 500));
+                .thenReturn(CmmnRecords.planItemPage(List.of(), 0));
         when(cmmnClient.getCmmnCaseDefinition(prod, CallPriority.INTERACTIVE, "def-2"))
                 .thenReturn(Map.of("id", "def-2", "deploymentId", "dep-1", "resourceName", "case.cmmn"));
         when(cmmnClient.cmmnDeploymentResourceData(prod, CallPriority.INTERACTIVE, "dep-1", "case.cmmn"))
@@ -435,13 +435,11 @@ class CmmnCorrectiveActionServiceTest {
                         null,
                         null));
         when(cmmnClient.getCmmnCaseInstance(prod, CallPriority.INTERACTIVE, CASE))
-                .thenReturn(Map.of("id", CASE, "businessKey", "BK-1", "caseDefinitionId", "def-1"));
+                .thenReturn(CmmnRecords.caseInstance(
+                        Map.of("id", CASE, "businessKey", "BK-1", "caseDefinitionId", "def-1")));
         when(cmmnClient.listCmmnPlanItemInstances(eq(prod), eq(CallPriority.INTERACTIVE), any(), eq(0), eq(500)))
-                .thenReturn(new FlowablePage(
-                        List.of(Map.of("id", "inst-1", "planItemDefinitionId", "keepAlive", "state", "active")),
-                        1,
-                        0,
-                        500));
+                .thenReturn(CmmnRecords.planItemPage(
+                        List.of(Map.of("id", "inst-1", "planItemDefinitionId", "keepAlive", "state", "active")), 1));
         when(cmmnClient.getCmmnCaseDefinition(prod, CallPriority.INTERACTIVE, "def-2"))
                 .thenReturn(Map.of("id", "def-2", "deploymentId", "dep-1", "resourceName", "case.cmmn"));
         when(cmmnClient.cmmnDeploymentResourceData(prod, CallPriority.INTERACTIVE, "dep-1", "case.cmmn"))

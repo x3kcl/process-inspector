@@ -12,7 +12,8 @@ import static org.mockito.Mockito.when;
 
 import io.inspector.action.GuardRefusedException;
 import io.inspector.client.CmmnApiClient;
-import io.inspector.client.FlowablePage;
+import io.inspector.client.CmmnJobPage;
+import io.inspector.client.CmmnRecords;
 import io.inspector.config.InspectorProperties.EngineConfig;
 import io.inspector.dto.CaseDiagram;
 import io.inspector.dto.CasePlanItems;
@@ -87,8 +88,8 @@ class CaseDetailServiceTest {
         job.put("planItemInstanceId", "pi-1");
         job.put("elementId", "failingService"); // the trap: definition id, not the shape key
         when(flowable.listCmmnDeadLetterJobs(any(), any(), any(), anyInt(), anyInt()))
-                .thenReturn(new FlowablePage(List.of(job), 1, 0, 500));
-        when(flowable.listCmmnJobs(any(), any(), any(), anyInt(), anyInt())).thenReturn(FlowablePage.empty());
+                .thenReturn(CmmnRecords.jobPage(List.of(job), 1));
+        when(flowable.listCmmnJobs(any(), any(), any(), anyInt(), anyInt())).thenReturn(CmmnJobPage.empty());
 
         Map<String, CmmnLiveJobState> byPlanItem = service.liveJobStates(engine, "case-1");
 
@@ -104,9 +105,9 @@ class CaseDetailServiceTest {
         Map<String, Object> failed = new HashMap<>();
         failed.put("planItemInstanceId", "pi-1");
         when(flowable.listCmmnJobs(any(), any(), any(), anyInt(), anyInt()))
-                .thenReturn(new FlowablePage(List.of(retrying), 1, 0, 500));
+                .thenReturn(CmmnRecords.jobPage(List.of(retrying), 1));
         when(flowable.listCmmnDeadLetterJobs(any(), any(), any(), anyInt(), anyInt()))
-                .thenReturn(new FlowablePage(List.of(failed), 1, 0, 500));
+                .thenReturn(CmmnRecords.jobPage(List.of(failed), 1));
 
         assertThat(service.liveJobStates(engine, "case-1")).containsEntry("pi-1", CmmnLiveJobState.FAILED);
     }
@@ -115,9 +116,9 @@ class CaseDetailServiceTest {
     void blankPlanItemInstanceIdIsIgnored() {
         Map<String, Object> job = new HashMap<>();
         job.put("planItemInstanceId", "  ");
-        when(flowable.listCmmnJobs(any(), any(), any(), anyInt(), anyInt())).thenReturn(FlowablePage.empty());
+        when(flowable.listCmmnJobs(any(), any(), any(), anyInt(), anyInt())).thenReturn(CmmnJobPage.empty());
         when(flowable.listCmmnDeadLetterJobs(any(), any(), any(), anyInt(), anyInt()))
-                .thenReturn(new FlowablePage(List.of(job), 1, 0, 500));
+                .thenReturn(CmmnRecords.jobPage(List.of(job), 1));
         assertThat(service.liveJobStates(engine, "case-1")).isEmpty();
     }
 
@@ -131,7 +132,8 @@ class CaseDetailServiceTest {
         definition.put("graphicalNotationDefined", true);
         Map<String, Object> caseRow = new HashMap<>();
         caseRow.put("caseDefinitionId", "def-uuid");
-        when(flowable.getHistoricCmmnCaseInstance(any(), any(), eq("case-1"))).thenReturn(caseRow);
+        when(flowable.getHistoricCmmnCaseInstance(any(), any(), eq("case-1")))
+                .thenReturn(CmmnRecords.caseInstance(caseRow));
         when(flowable.getCmmnCaseDefinition(any(), any(), eq("def-uuid"))).thenReturn(definition);
         when(flowable.cmmnDeploymentResourceData(any(), any(), eq("dep-1"), eq("demo.cmmn.xml")))
                 .thenReturn("<definitions/>");
@@ -142,13 +144,13 @@ class CaseDetailServiceTest {
         planItem.put("elementId", "planItem_svc");
         planItem.put("state", "async-active");
         when(flowable.listCmmnPlanItemInstances(any(), any(), any(), anyInt(), anyInt()))
-                .thenReturn(new FlowablePage(List.of(planItem), 1, 0, 100));
+                .thenReturn(CmmnRecords.planItemPage(List.of(planItem), 1));
         Map<String, Object> job = new HashMap<>();
         job.put("planItemInstanceId", "pi-1");
         job.put("elementId", "failingService");
         when(flowable.listCmmnDeadLetterJobs(any(), any(), any(), anyInt(), anyInt()))
-                .thenReturn(new FlowablePage(List.of(job), 1, 0, 500));
-        when(flowable.listCmmnJobs(any(), any(), any(), anyInt(), anyInt())).thenReturn(FlowablePage.empty());
+                .thenReturn(CmmnRecords.jobPage(List.of(job), 1));
+        when(flowable.listCmmnJobs(any(), any(), any(), anyInt(), anyInt())).thenReturn(CmmnJobPage.empty());
 
         CaseDiagram diagram = service.diagram(ENGINE, "case-1");
 
@@ -166,7 +168,8 @@ class CaseDetailServiceTest {
         Map<String, Object> ended = new HashMap<>();
         ended.put("endTime", "2026-07-08T09:00:00.000+00:00");
         ended.put("state", "completed");
-        when(flowable.getHistoricCmmnCaseInstance(any(), any(), eq("case-1"))).thenReturn(ended);
+        when(flowable.getHistoricCmmnCaseInstance(any(), any(), eq("case-1")))
+                .thenReturn(CmmnRecords.caseInstance(ended));
         when(flowable.getCmmnCaseInstance(any(), any(), eq("case-1"))).thenReturn(null);
 
         CasePlanItems planItems = service.planItems(ENGINE, "case-1");
@@ -182,13 +185,15 @@ class CaseDetailServiceTest {
 
     @Test
     void normalizesStateWithoutASuspendedLane() {
-        assertThat(CaseDetailService.normalizeState(Map.of(), null, false)).isEqualTo("ACTIVE");
-        assertThat(CaseDetailService.normalizeState(null, Map.of("state", "completed"), true))
+        assertThat(CaseDetailService.normalizeState(CmmnRecords.caseInstance(Map.of()), null, false))
+                .isEqualTo("ACTIVE");
+        assertThat(CaseDetailService.normalizeState(null, CmmnRecords.caseInstance(Map.of("state", "completed")), true))
                 .isEqualTo("COMPLETED");
-        assertThat(CaseDetailService.normalizeState(null, Map.of("state", "terminated"), true))
+        assertThat(CaseDetailService.normalizeState(
+                        null, CmmnRecords.caseInstance(Map.of("state", "terminated")), true))
                 .isEqualTo("TERMINATED");
         // no state field on the historic row → fall back to endTime presence
-        assertThat(CaseDetailService.normalizeState(null, new HashMap<>(), true))
+        assertThat(CaseDetailService.normalizeState(null, CmmnRecords.caseInstance(Map.of()), true))
                 .isEqualTo("COMPLETED");
     }
 
@@ -223,7 +228,7 @@ class CaseDetailServiceTest {
         row.put("stage", false);
         row.put("createTime", "2026-07-08T12:44:41.634Z");
 
-        CasePlanItem item = CaseDetailService.mapPlanItem(row, CmmnLiveJobState.FAILED);
+        CasePlanItem item = CaseDetailService.mapPlanItem(CmmnRecords.planItem(row), CmmnLiveJobState.FAILED);
 
         assertThat(item.id()).isEqualTo("pi-1");
         assertThat(item.elementId()).isEqualTo("planItem_svc");

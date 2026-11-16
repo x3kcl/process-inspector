@@ -122,9 +122,9 @@ class CmmnApiClientTest {
         wm.stubFor(get(urlPathEqualTo("/cmmn-api/cmmn-management/deadletter-jobs/abc-123"))
                 .willReturn(okJson("{\"id\":\"abc-123\",\"caseInstanceId\":\"c1\"}")));
 
-        Map<String, Object> job = client.getCmmnDeadLetterJob(engine("ok"), CallPriority.INTERACTIVE, "abc-123");
+        CmmnJobRecord job = client.getCmmnDeadLetterJob(engine("ok"), CallPriority.INTERACTIVE, "abc-123");
 
-        assertThat(job).containsEntry("caseInstanceId", "c1");
+        assertThat(job.caseInstanceId()).isEqualTo("c1");
         wm.verify(getRequestedFor(urlPathEqualTo("/cmmn-api/cmmn-management/deadletter-jobs/abc-123")));
     }
 

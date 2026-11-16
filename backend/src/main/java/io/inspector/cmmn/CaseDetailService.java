@@ -1,8 +1,12 @@
 package io.inspector.cmmn;
 
+import io.inspector.client.CaseInstanceRecord;
 import io.inspector.client.CmmnApiClient;
-import io.inspector.client.FlowablePage;
+import io.inspector.client.CmmnJobPage;
+import io.inspector.client.CmmnJobRecord;
 import io.inspector.client.GuardedCaller.CallPriority;
+import io.inspector.client.PlanItemPage;
+import io.inspector.client.PlanItemRecord;
 import io.inspector.config.InspectorProperties.EngineConfig;
 import io.inspector.dto.CaseDetail;
 import io.inspector.dto.CaseDetail.CaseFailing;
@@ -63,19 +67,19 @@ public class CaseDetailService {
     public CaseDetail vitals(String engineId, String caseInstanceId) {
         EngineConfig engine = requireGatedEngine(engineId);
 
-        Map<String, Object> historic =
+        CaseInstanceRecord historic =
                 flowable.getHistoricCmmnCaseInstance(engine, CallPriority.INTERACTIVE, caseInstanceId);
-        Map<String, Object> runtime = flowable.getCmmnCaseInstance(engine, CallPriority.INTERACTIVE, caseInstanceId);
-        Map<String, Object> base = historic != null ? historic : runtime;
+        CaseInstanceRecord runtime = flowable.getCmmnCaseInstance(engine, CallPriority.INTERACTIVE, caseInstanceId);
+        CaseInstanceRecord base = historic != null ? historic : runtime;
         if (base == null) {
             throw new ResponseStatusException(
                     HttpStatus.NOT_FOUND, "CMMN case " + caseInstanceId + " not found on " + engineId);
         }
 
-        boolean ended = historic != null && str(historic, "endTime") != null && runtime == null;
+        boolean ended = historic != null && historic.endTime() != null && runtime == null;
         String state = normalizeState(runtime, historic, ended);
 
-        String caseDefinitionId = str(base, "caseDefinitionId");
+        String caseDefinitionId = base.caseDefinitionId();
         CaseDefinitionRef def = resolveDefinition(engine, caseDefinitionId);
 
         CaseFailing failing = failingSummary(engine, caseInstanceId);
@@ -83,18 +87,18 @@ public class CaseDetailService {
         return new CaseDetail(
                 engineId,
                 caseInstanceId,
-                str(base, "businessKey"),
+                base.businessKey(),
                 state,
                 caseDefinitionId,
                 def.key(),
                 def.name(),
                 def.version(),
-                str(base, "startTime"),
-                str(historic, "endTime"),
-                str(base, "startUserId"),
-                str(base, "superProcessInstanceId"),
-                str(base, "parentId"),
-                str(base, "tenantId"),
+                base.startTime(),
+                historic != null ? historic.endTime() : null,
+                base.startUserId(),
+                base.superProcessInstanceId(),
+                base.parentId(),
+                base.tenantId(),
                 true,
                 ended,
                 failing);
@@ -105,11 +109,11 @@ public class CaseDetailService {
      * runtime case is ACTIVE; otherwise the historic {@code state} (6.8 carries it) distinguishes
      * COMPLETED from TERMINATED; a missing state falls back to endTime presence.
      */
-    static String normalizeState(Map<String, Object> runtime, Map<String, Object> historic, boolean ended) {
+    static String normalizeState(CaseInstanceRecord runtime, CaseInstanceRecord historic, boolean ended) {
         if (runtime != null && !ended) {
             return "ACTIVE";
         }
-        String s = str(historic, "state");
+        String s = historic != null ? historic.state() : null;
         if (s != null && !s.isBlank()) {
             return s.toUpperCase(Locale.ROOT);
         }
@@ -118,22 +122,21 @@ public class CaseDetailService {
 
     /** The "why stuck" summary — present only when the case carries a dead-lettered plan item. */
     private CaseFailing failingSummary(EngineConfig engine, String caseInstanceId) {
-        FlowablePage page = flowable.listCmmnDeadLetterJobs(
+        CmmnJobPage page = flowable.listCmmnDeadLetterJobs(
                 engine, CallPriority.INTERACTIVE, caseFilters(engine, caseInstanceId), 0, 20);
         if (page == null || page.total() == 0) {
             return null;
         }
-        List<Map<String, Object>> rows = page.dataOrEmpty();
-        Map<String, Object> first = rows.isEmpty() ? Map.of() : rows.get(0);
+        List<CmmnJobRecord> rows = page.dataOrEmpty();
+        CmmnJobRecord first = rows.isEmpty() ? null : rows.get(0);
         List<CaseFailing.DeadLetterJobRef> jobs = rows.stream()
-                .map(r -> new CaseFailing.DeadLetterJobRef(
-                        str(r, "id"), str(r, "elementName"), str(r, "exceptionMessage"), intOrNull(r.get("retries"))))
+                .map(r -> new CaseFailing.DeadLetterJobRef(r.id(), r.elementName(), r.exceptionMessage(), r.retries()))
                 .toList();
-        return new CaseFailing((int) page.total(), str(first, "exceptionMessage"), str(first, "elementName"), jobs);
-    }
-
-    private static Integer intOrNull(Object value) {
-        return value instanceof Number n ? n.intValue() : null;
+        return new CaseFailing(
+                (int) page.total(),
+                first != null ? first.exceptionMessage() : null,
+                first != null ? first.elementName() : null,
+                jobs);
     }
 
     /* ============================ diagram ============================ */
@@ -142,8 +145,8 @@ public class CaseDetailService {
     public CaseDiagram diagram(String engineId, String caseInstanceId) {
         EngineConfig engine = requireGatedEngine(engineId);
 
-        Map<String, Object> base = requireCase(engine, engineId, caseInstanceId);
-        String caseDefinitionId = str(base, "caseDefinitionId");
+        CaseInstanceRecord base = requireCase(engine, engineId, caseInstanceId);
+        String caseDefinitionId = base.caseDefinitionId();
         Map<String, Object> definition = caseDefinitionId == null
                 ? null
                 : flowable.getCmmnCaseDefinition(engine, CallPriority.INTERACTIVE, caseDefinitionId);
@@ -198,14 +201,14 @@ public class CaseDetailService {
     /** The plan-item state-machine timeline. Runtime-only (spike Q6): ended cases carry a reason. */
     public CasePlanItems planItems(String engineId, String caseInstanceId) {
         EngineConfig engine = requireGatedEngine(engineId);
-        Map<String, Object> historic =
+        CaseInstanceRecord historic =
                 flowable.getHistoricCmmnCaseInstance(engine, CallPriority.INTERACTIVE, caseInstanceId);
-        Map<String, Object> runtime = flowable.getCmmnCaseInstance(engine, CallPriority.INTERACTIVE, caseInstanceId);
+        CaseInstanceRecord runtime = flowable.getCmmnCaseInstance(engine, CallPriority.INTERACTIVE, caseInstanceId);
         if (historic == null && runtime == null) {
             throw new ResponseStatusException(
                     HttpStatus.NOT_FOUND, "CMMN case " + caseInstanceId + " not found on " + engineId);
         }
-        boolean ended = runtime == null && historic != null && str(historic, "endTime") != null;
+        boolean ended = runtime == null && historic != null && historic.endTime() != null;
         if (ended) {
             return new CasePlanItems(
                     false,
@@ -223,19 +226,19 @@ public class CaseDetailService {
      * case's jobs by {@code planItemInstanceId} (spike Q7) for its {@code liveJobState}.
      */
     private CasePlanItems scanPlanItems(EngineConfig engine, String caseInstanceId) {
-        List<Map<String, Object>> rows = new ArrayList<>();
+        List<PlanItemRecord> rows = new ArrayList<>();
         int pageSize = engine.maxPageSizeOrDefault();
         long total = Long.MAX_VALUE;
         boolean truncated = false;
         for (int start = 0; start < Math.min(total, PLAN_ITEM_SCAN_CAP); start += pageSize) {
             int want = Math.min(pageSize, PLAN_ITEM_SCAN_CAP - start);
-            FlowablePage page = flowable.listCmmnPlanItemInstances(
+            PlanItemPage page = flowable.listCmmnPlanItemInstances(
                     engine, CallPriority.INTERACTIVE, caseFilters(engine, caseInstanceId), start, want);
             if (page == null) {
                 break;
             }
             total = page.total();
-            List<Map<String, Object>> data = page.dataOrEmpty();
+            List<PlanItemRecord> data = page.dataOrEmpty();
             if (data.isEmpty()) {
                 break;
             }
@@ -248,7 +251,7 @@ public class CaseDetailService {
 
         Map<String, CmmnLiveJobState> jobStates = liveJobStates(engine, caseInstanceId);
         List<CasePlanItem> planItems = rows.stream()
-                .map(row -> mapPlanItem(row, jobStates.get(str(row, "id"))))
+                .map(row -> mapPlanItem(row, jobStates.get(row.id())))
                 .toList();
         return new CasePlanItems(true, null, truncated, planItems);
     }
@@ -262,22 +265,22 @@ public class CaseDetailService {
     Map<String, CmmnLiveJobState> liveJobStates(EngineConfig engine, String caseInstanceId) {
         Map<String, CmmnLiveJobState> byPlanItem = new LinkedHashMap<>();
         // RETRYING first, so a later FAILED entry for the same plan item overwrites it (precedence).
-        FlowablePage retrying = flowable.listCmmnJobs(
+        CmmnJobPage retrying = flowable.listCmmnJobs(
                 engine, CallPriority.INTERACTIVE, caseFilters(engine, caseInstanceId), 0, PLAN_ITEM_SCAN_CAP);
         putJobStates(byPlanItem, retrying, CmmnLiveJobState.RETRYING);
-        FlowablePage failed = flowable.listCmmnDeadLetterJobs(
+        CmmnJobPage failed = flowable.listCmmnDeadLetterJobs(
                 engine, CallPriority.INTERACTIVE, caseFilters(engine, caseInstanceId), 0, PLAN_ITEM_SCAN_CAP);
         putJobStates(byPlanItem, failed, CmmnLiveJobState.FAILED);
         return byPlanItem;
     }
 
     private static void putJobStates(
-            Map<String, CmmnLiveJobState> byPlanItem, FlowablePage page, CmmnLiveJobState state) {
+            Map<String, CmmnLiveJobState> byPlanItem, CmmnJobPage page, CmmnLiveJobState state) {
         if (page == null) {
             return;
         }
-        for (Map<String, Object> job : page.dataOrEmpty()) {
-            String planItemInstanceId = str(job, "planItemInstanceId");
+        for (CmmnJobRecord job : page.dataOrEmpty()) {
+            String planItemInstanceId = job.planItemInstanceId();
             if (planItemInstanceId != null && !planItemInstanceId.isBlank()) {
                 byPlanItem.put(planItemInstanceId, state);
             }
@@ -285,24 +288,24 @@ public class CaseDetailService {
     }
 
     /** Maps one runtime plan-item row to the DTO, carrying its joined {@code liveJobState}. */
-    static CasePlanItem mapPlanItem(Map<String, Object> row, CmmnLiveJobState liveJobState) {
+    static CasePlanItem mapPlanItem(PlanItemRecord row, CmmnLiveJobState liveJobState) {
         return new CasePlanItem(
-                str(row, "id"),
-                str(row, "elementId"),
-                str(row, "name"),
-                str(row, "planItemDefinitionType"),
-                str(row, "state"),
-                Boolean.TRUE.equals(row.get("stage")),
-                str(row, "stageInstanceId"),
-                str(row, "createTime"),
-                str(row, "lastAvailableTime"),
-                str(row, "lastEnabledTime"),
-                str(row, "lastStartedTime"),
-                str(row, "completedTime"),
-                str(row, "occurredTime"),
-                str(row, "terminatedTime"),
-                str(row, "exitTime"),
-                str(row, "endedTime"),
+                row.id(),
+                row.elementId(),
+                row.name(),
+                row.planItemDefinitionType(),
+                row.state(),
+                Boolean.TRUE.equals(row.stage()),
+                row.stageInstanceId(),
+                row.createTime(),
+                row.lastAvailableTime(),
+                row.lastEnabledTime(),
+                row.lastStartedTime(),
+                row.completedTime(),
+                row.occurredTime(),
+                row.terminatedTime(),
+                row.exitTime(),
+                row.endedTime(),
                 liveJobState);
     }
 
@@ -314,10 +317,10 @@ public class CaseDetailService {
         return engine;
     }
 
-    private Map<String, Object> requireCase(EngineConfig engine, String engineId, String caseInstanceId) {
-        Map<String, Object> historic =
+    private CaseInstanceRecord requireCase(EngineConfig engine, String engineId, String caseInstanceId) {
+        CaseInstanceRecord historic =
                 flowable.getHistoricCmmnCaseInstance(engine, CallPriority.INTERACTIVE, caseInstanceId);
-        Map<String, Object> base = historic != null
+        CaseInstanceRecord base = historic != null
                 ? historic
                 : flowable.getCmmnCaseInstance(engine, CallPriority.INTERACTIVE, caseInstanceId);
         if (base == null) {

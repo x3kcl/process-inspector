@@ -18,7 +18,7 @@ import io.inspector.action.CaseMigrationExpectation;
 import io.inspector.action.CorrectiveActionService;
 import io.inspector.action.GuardRefusedException;
 import io.inspector.client.CmmnApiClient;
-import io.inspector.client.FlowablePage;
+import io.inspector.client.CmmnRecords;
 import io.inspector.client.GuardedCaller.CallPriority;
 import io.inspector.config.InspectorProperties.EngineConfig;
 import io.inspector.migration.CaseCohortService.ListedCohort;
@@ -124,7 +124,7 @@ class CaseCohortAnalysisServiceTest {
 
     private void runningCase(String caseId, String definitionId, String... livePlanItemDefinitionIds) {
         when(cmmn.getCmmnCaseInstance(engine, CallPriority.INTERACTIVE, caseId))
-                .thenReturn(Map.of("id", caseId, "caseDefinitionId", definitionId));
+                .thenReturn(CmmnRecords.caseInstance(Map.of("id", caseId, "caseDefinitionId", definitionId)));
         List<Map<String, Object>> planItems = new ArrayList<>();
         for (String id : livePlanItemDefinitionIds) {
             planItems.add(Map.of("id", "inst-" + id, "planItemDefinitionId", id, "state", "active"));
@@ -136,7 +136,7 @@ class CaseCohortAnalysisServiceTest {
                         eq(Map.of("caseInstanceId", caseId)),
                         eq(0),
                         anyInt()))
-                .thenReturn(new FlowablePage(planItems, planItems.size(), 0, 500));
+                .thenReturn(CmmnRecords.planItemPage(planItems, planItems.size()));
     }
 
     private static CaseCohortRequest filter() {
@@ -288,7 +288,7 @@ class CaseCohortAnalysisServiceTest {
         assertThat(bridge.verify(view.id().toString(), ENGINE, "clean").migrated())
                 .isFalse();
         when(cmmn.getCmmnCaseInstance(engine, CallPriority.INTERACTIVE, "clean"))
-                .thenReturn(Map.of("id", "clean", "caseDefinitionId", TO));
+                .thenReturn(CmmnRecords.caseInstance(Map.of("id", "clean", "caseDefinitionId", TO)));
         assertThat(bridge.verify(view.id().toString(), ENGINE, "clean").migrated())
                 .isTrue();
         when(cmmn.getCmmnCaseInstance(engine, CallPriority.INTERACTIVE, "clean"))

@@ -34,7 +34,7 @@ public class CaseMigrationClient {
      * agree. {@code businessKeyLike} is honored on 7.x only: 6.8 ignores the parameter and
      * returns the unfiltered set, so the caller must not send it there.
      */
-    public FlowablePage listRunningCases(
+    public CaseInstancePage listRunningCases(
             EngineConfig engine,
             CallPriority priority,
             String caseDefinitionId,
@@ -59,7 +59,7 @@ public class CaseMigrationClient {
         return guarded.call(
                 engine,
                 priority,
-                () -> guarded.readClient(engine).get().uri(uri).retrieve().body(FlowablePage.class));
+                () -> guarded.readClient(engine).get().uri(uri).retrieve().body(CaseInstancePage.class));
     }
 
     /** Count-only ended cases on one case definition ({@code finished=true}, {@code size=1}). */
