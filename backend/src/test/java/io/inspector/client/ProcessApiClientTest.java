@@ -94,10 +94,10 @@ class ProcessApiClientTest {
                         okJson("{\"data\":[{\"id\":\"demoMigration:5:abc\",\"key\":\"demoMigration\",\"version\":5}],"
                                 + "\"total\":1,\"start\":0,\"size\":1}")));
 
-        FlowablePage page =
+        ProcessDefinitionPage page =
                 client.latestProcessDefinitionByKey(engine("latest-engine"), CallPriority.INTERACTIVE, "demoMigration");
 
-        assertThat(page.dataOrEmpty().get(0)).containsEntry("version", 5);
+        assertThat(page.dataOrEmpty().get(0).version()).isEqualTo(5);
         wm.verify(getRequestedFor(urlPathEqualTo("/repository/process-definitions"))
                 .withQueryParam("key", equalTo("demoMigration"))
                 .withQueryParam("latest", equalTo("true"))

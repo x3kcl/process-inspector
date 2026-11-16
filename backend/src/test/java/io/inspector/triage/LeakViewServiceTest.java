@@ -10,10 +10,11 @@ import static org.mockito.Mockito.never;
 import static org.mockito.Mockito.verify;
 import static org.mockito.Mockito.when;
 
-import io.inspector.client.FlowablePage;
 import io.inspector.client.ProcessApiClient;
+import io.inspector.client.ProcessDefinitionPage;
 import io.inspector.client.ProcessInstancePage;
 import io.inspector.client.ProcessInstanceRecords;
+import io.inspector.client.RepositoryRecords;
 import io.inspector.config.InspectorProperties.EngineConfig;
 import io.inspector.dto.LeakViewsResponse;
 import io.inspector.dto.LeakViewsResponse.LeakDefinitionCount;
@@ -50,11 +51,11 @@ class LeakViewServiceTest {
         return new ProcessInstancePage(ProcessInstanceRecords.instances(List.of(Map.of())), total, 0, 1);
     }
 
-    private static FlowablePage defs(int total, String... keys) {
+    private static ProcessDefinitionPage defs(int total, String... keys) {
         List<Map<String, Object>> rows = java.util.Arrays.stream(keys)
                 .<Map<String, Object>>map(k -> Map.of("key", k))
                 .toList();
-        return new FlowablePage(rows, total, 0, 500);
+        return new ProcessDefinitionPage(RepositoryRecords.definitions(rows), total, 0, 500);
     }
 
     private LeakViewService service(ProcessApiClient client, EngineConfig... engines) {

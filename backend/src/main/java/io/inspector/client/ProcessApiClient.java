@@ -86,21 +86,21 @@ public class ProcessApiClient {
         return reads.listUnfinishedActivities(engine, priority, processInstanceId, tenantId, size);
     }
 
-    public FlowablePage listProcessDefinitionsByKey(
+    public ProcessDefinitionPage listProcessDefinitionsByKey(
             EngineConfig engine, CallPriority priority, String key, Integer version, int start, int size) {
         return reads.listProcessDefinitionsByKey(engine, priority, key, version, start, size);
     }
 
-    public FlowablePage listProcessDefinitionVersionsDesc(
+    public ProcessDefinitionPage listProcessDefinitionVersionsDesc(
             EngineConfig engine, CallPriority priority, String key, int start, int size) {
         return reads.listProcessDefinitionVersionsDesc(engine, priority, key, start, size);
     }
 
-    public FlowablePage latestProcessDefinitionByKey(EngineConfig engine, CallPriority priority, String key) {
+    public ProcessDefinitionPage latestProcessDefinitionByKey(EngineConfig engine, CallPriority priority, String key) {
         return reads.latestProcessDefinitionByKey(engine, priority, key);
     }
 
-    public FlowablePage listLatestProcessDefinitions(EngineConfig engine, CallPriority priority, int size) {
+    public ProcessDefinitionPage listLatestProcessDefinitions(EngineConfig engine, CallPriority priority, int size) {
         return reads.listLatestProcessDefinitions(engine, priority, size);
     }
 
@@ -411,7 +411,8 @@ public class ProcessApiClient {
     }
 
     @SuppressWarnings("unchecked")
-    public Map<String, Object> getProcessDefinition(EngineConfig engine, CallPriority priority, String definitionId) {
+    public ProcessDefinitionRecord getProcessDefinition(
+            EngineConfig engine, CallPriority priority, String definitionId) {
         return repository.getProcessDefinition(engine, priority, definitionId);
     }
 
@@ -463,7 +464,7 @@ public class ProcessApiClient {
         return repository.startProcessInstance(engine, priority, body);
     }
 
-    public FlowablePage listProcessDefinitions(
+    public ProcessDefinitionPage listProcessDefinitions(
             EngineConfig engine,
             CallPriority priority,
             String key,
@@ -480,17 +481,18 @@ public class ProcessApiClient {
         return repository.listDefinitionEventSubscriptions(engine, priority, processDefinitionId, size);
     }
 
-    public FlowablePage listDeployments(
+    public DeploymentPage listDeployments(
             EngineConfig engine, CallPriority priority, String nameLike, int start, int size) {
         return repository.listDeployments(engine, priority, nameLike, start, size);
     }
 
     @SuppressWarnings("unchecked")
-    public Map<String, Object> getDeployment(EngineConfig engine, CallPriority priority, String deploymentId) {
+    public DeploymentRecord getDeployment(EngineConfig engine, CallPriority priority, String deploymentId) {
         return repository.getDeployment(engine, priority, deploymentId);
     }
 
-    public FlowablePage listDeploymentResources(EngineConfig engine, CallPriority priority, String deploymentId) {
+    public List<DeploymentResourceRecord> listDeploymentResources(
+            EngineConfig engine, CallPriority priority, String deploymentId) {
         return repository.listDeploymentResources(engine, priority, deploymentId);
     }
 

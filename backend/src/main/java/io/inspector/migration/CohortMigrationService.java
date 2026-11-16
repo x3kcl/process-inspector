@@ -7,6 +7,7 @@ import io.inspector.audit.ProtectedInstance;
 import io.inspector.audit.ProtectedInstanceRepository;
 import io.inspector.client.GuardedCaller.CallPriority;
 import io.inspector.client.ProcessApiClient;
+import io.inspector.client.ProcessDefinitionRecord;
 import io.inspector.client.ProcessInstancePage;
 import io.inspector.client.ProcessInstanceRecord;
 import io.inspector.config.InspectorProperties.EngineConfig;
@@ -168,14 +169,15 @@ public class CohortMigrationService {
     }
 
     private String definitionKey(EngineConfig engine, String definitionId) {
-        Map<String, Object> definition = processes.getProcessDefinition(engine, CallPriority.INTERACTIVE, definitionId);
-        if (definition == null || definition.get("key") == null) {
+        ProcessDefinitionRecord definition =
+                processes.getProcessDefinition(engine, CallPriority.INTERACTIVE, definitionId);
+        if (definition == null || definition.key() == null) {
             throw new GuardRefusedException(
                     HttpStatus.NOT_FOUND,
                     "definition-not-found",
                     "Process definition " + definitionId + " does not exist on '" + engine.id() + "'.");
         }
-        return String.valueOf(definition.get("key"));
+        return definition.key();
     }
 
     private static String required(String value, String field) {

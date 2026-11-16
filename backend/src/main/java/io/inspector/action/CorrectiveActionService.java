@@ -14,6 +14,7 @@ import io.inspector.client.GuardedCaller.CallPriority;
 import io.inspector.client.JobRecord;
 import io.inspector.client.ProcessApiClient;
 import io.inspector.client.ProcessApiClient.JobLaneKind;
+import io.inspector.client.ProcessDefinitionRecord;
 import io.inspector.client.ProcessInstanceRecord;
 import io.inspector.client.TaskRecord;
 import io.inspector.cmmn.CaseMigrationPrecheck;
@@ -1132,19 +1133,20 @@ public class CorrectiveActionService {
     }
 
     private Target definitionTarget(EngineConfig engine, String definitionId, ActionRequest request) {
-        Map<String, Object> definition = client.getProcessDefinition(engine, CallPriority.INTERACTIVE, definitionId);
+        ProcessDefinitionRecord definition =
+                client.getProcessDefinition(engine, CallPriority.INTERACTIVE, definitionId);
         if (definition == null) {
             throw new GuardRefusedException(
                     HttpStatus.NOT_FOUND,
                     "definition-not-found",
                     "Process definition " + definitionId + " does not exist on '" + engine.id() + "'.");
         }
-        String key = String.valueOf(definition.get("key"));
+        String key = String.valueOf(definition.key());
         Map<String, Object> payload = new LinkedHashMap<>();
         payload.put("schema", "suspend-definition/v1");
         payload.put("definitionId", definitionId);
         payload.put("definitionKey", key);
-        payload.put("version", definition.get("version"));
+        payload.put("version", definition.version());
         payload.put("includeProcessInstances", Boolean.TRUE.equals(request.includeProcessInstances()));
         String effectiveAt = normalizedEffectiveAt(request.effectiveAt());
         if (effectiveAt != null) {

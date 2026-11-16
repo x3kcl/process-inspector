@@ -14,10 +14,10 @@ import static org.mockito.Mockito.when;
 import io.inspector.action.GuardRefusedException;
 import io.inspector.audit.AuditEntry;
 import io.inspector.audit.AuditService;
-import io.inspector.client.FlowablePage;
 import io.inspector.client.ProcessApiClient;
 import io.inspector.client.ProcessInstancePage;
 import io.inspector.client.ProcessInstanceRecords;
+import io.inspector.client.RepositoryRecords;
 import io.inspector.config.InspectorProperties;
 import io.inspector.config.InspectorProperties.EngineConfig;
 import io.inspector.config.InspectorProperties.EngineEnvironment;
@@ -72,7 +72,8 @@ class DeploymentCatalogServiceTest {
     void refusesDeleteWhenRunningInstancesExistAndCascadeIsOff() {
         EngineConfig engine = TestEngines.engine("engine-a", "http://a", EngineEnvironment.DEV, EngineMode.READ_WRITE);
         when(registry.require("engine-a")).thenReturn(engine);
-        when(processes.getDeployment(eq(engine), any(), eq("dep-1"))).thenReturn(Map.of("id", "dep-1", "name", "app"));
+        when(processes.getDeployment(eq(engine), any(), eq("dep-1")))
+                .thenReturn(RepositoryRecords.deployment(Map.of("id", "dep-1", "name", "app")));
         when(processes.listProcessDefinitions(
                         eq(engine),
                         any(),
@@ -82,7 +83,8 @@ class DeploymentCatalogServiceTest {
                         eq("dep-1"),
                         anyInt(),
                         anyInt()))
-                .thenReturn(new FlowablePage(List.of(Map.of("id", "alpha:1", "key", "alpha", "version", 1)), 1, 0, 1));
+                .thenReturn(RepositoryRecords.definitionPage(
+                        List.of(Map.of("id", "alpha:1", "key", "alpha", "version", 1))));
         when(processes.queryRuntimeProcessInstances(eq(engine), any(), any()))
                 .thenReturn(new ProcessInstancePage(ProcessInstanceRecords.instances(List.of()), 3, 0, 1));
 
@@ -102,7 +104,8 @@ class DeploymentCatalogServiceTest {
         EngineConfig engine = TestEngines.engine("engine-a", "http://a", EngineEnvironment.DEV, EngineMode.READ_WRITE);
         when(registry.require("engine-a")).thenReturn(engine);
         when(auth.getName()).thenReturn("ada");
-        when(processes.getDeployment(eq(engine), any(), eq("dep-1"))).thenReturn(Map.of("id", "dep-1"));
+        when(processes.getDeployment(eq(engine), any(), eq("dep-1")))
+                .thenReturn(RepositoryRecords.deployment(Map.of("id", "dep-1")));
         when(processes.listProcessDefinitions(
                         eq(engine),
                         any(),
@@ -112,7 +115,7 @@ class DeploymentCatalogServiceTest {
                         eq("dep-1"),
                         anyInt(),
                         anyInt()))
-                .thenReturn(new FlowablePage(List.of(), 0, 0, 0));
+                .thenReturn(RepositoryRecords.definitionPage(List.of()));
         when(audit.beginPending(any(), any(), any(), any(), any(), any(), any(), any()))
                 .thenReturn(entry);
 

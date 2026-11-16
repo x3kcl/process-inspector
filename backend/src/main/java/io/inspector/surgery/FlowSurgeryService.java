@@ -15,6 +15,7 @@ import io.inspector.client.FlowablePage;
 import io.inspector.client.ForwardedActor;
 import io.inspector.client.GuardedCaller.CallPriority;
 import io.inspector.client.ProcessApiClient;
+import io.inspector.client.ProcessDefinitionPage;
 import io.inspector.client.ProcessInstanceRecord;
 import io.inspector.config.InspectorProperties.EngineConfig;
 import io.inspector.config.InspectorProperties.EngineEnvironment;
@@ -526,7 +527,7 @@ public class FlowSurgeryService {
         Object key = historic.processDefinitionKey();
         String definitionKey =
                 key != null ? String.valueOf(key) : originalDefinitionId.split(":", 2)[0];
-        FlowablePage latest =
+        ProcessDefinitionPage latest =
                 client.listProcessDefinitionsByKey(engine, CallPriority.INTERACTIVE, definitionKey, null, 0, 1);
         if (latest == null || latest.total() == 0) {
             throw new GuardRefusedException(

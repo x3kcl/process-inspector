@@ -28,6 +28,7 @@ import io.inspector.client.JobRecords;
 import io.inspector.client.ProcessApiClient;
 import io.inspector.client.ProcessApiClient.JobLaneKind;
 import io.inspector.client.ProcessInstanceRecords;
+import io.inspector.client.RepositoryRecords;
 import io.inspector.client.TaskRecords;
 import io.inspector.config.InspectorProperties;
 import io.inspector.config.InspectorProperties.EngineEnvironment;
@@ -232,7 +233,7 @@ class CorrectiveActionServiceTest {
         // test now.
         when(rbac.hasRoleOn(any(), eq(Role.ADMIN), eq(DEV))).thenReturn(true);
         when(client.getProcessDefinition(any(), eq(CallPriority.INTERACTIVE), eq("payment:3:def-1")))
-                .thenReturn(Map.of("key", "payment", "version", 3));
+                .thenReturn(RepositoryRecords.definition(Map.of("key", "payment", "version", 3)));
         ActionRequest request = new ActionRequest(
                 "investigating a stuck rollout", null, null, null, null, null, null, null, null, null, null);
 

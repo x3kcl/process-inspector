@@ -157,7 +157,7 @@ final class ProcessInstanceReadClient {
      * ONE canonical signature (Engine-client split, #86: collapses 5 telescoping overloads that used
      * to exist here).
      */
-    public FlowablePage listProcessDefinitionsByKey(
+    public ProcessDefinitionPage listProcessDefinitionsByKey(
             EngineConfig engine, CallPriority priority, String key, Integer version, int start, int size) {
         return guarded.call(
                 engine,
@@ -173,7 +173,7 @@ final class ProcessInstanceReadClient {
                             return b.build();
                         })
                         .retrieve()
-                        .body(FlowablePage.class));
+                        .body(ProcessDefinitionPage.class));
     }
 
     /**
@@ -182,7 +182,7 @@ final class ProcessInstanceReadClient {
      * paging prone to missed/duplicated rows under concurrent deploys). {@code page.total()} is
      * the full version count for the key, so the caller can detect truncation.
      */
-    public FlowablePage listProcessDefinitionVersionsDesc(
+    public ProcessDefinitionPage listProcessDefinitionVersionsDesc(
             EngineConfig engine, CallPriority priority, String key, int start, int size) {
         return guarded.call(
                 engine,
@@ -199,7 +199,7 @@ final class ProcessInstanceReadClient {
                             return b.build();
                         })
                         .retrieve()
-                        .body(FlowablePage.class));
+                        .body(ProcessDefinitionPage.class));
     }
 
     /**
@@ -209,7 +209,7 @@ final class ProcessInstanceReadClient {
      * explicitly (used by instance migration's default-target resolution). Empty page when the
      * key is undeployed.
      */
-    public FlowablePage latestProcessDefinitionByKey(EngineConfig engine, CallPriority priority, String key) {
+    public ProcessDefinitionPage latestProcessDefinitionByKey(EngineConfig engine, CallPriority priority, String key) {
         return guarded.call(
                 engine,
                 priority,
@@ -221,7 +221,7 @@ final class ProcessInstanceReadClient {
                                 .queryParam("size", 1)
                                 .build())
                         .retrieve()
-                        .body(FlowablePage.class));
+                        .body(ProcessDefinitionPage.class));
     }
 
     /**
@@ -231,7 +231,7 @@ final class ProcessInstanceReadClient {
      * queries. {@code page.total()} lets the caller detect a key set larger than {@code size}
      * (a lower bound). {@code latest=true} collapses the version history to one row per key.
      */
-    public FlowablePage listLatestProcessDefinitions(EngineConfig engine, CallPriority priority, int size) {
+    public ProcessDefinitionPage listLatestProcessDefinitions(EngineConfig engine, CallPriority priority, int size) {
         return guarded.call(
                 engine,
                 priority,
@@ -242,7 +242,7 @@ final class ProcessInstanceReadClient {
                                 .queryParam("size", size)
                                 .build())
                         .retrieve()
-                        .body(FlowablePage.class));
+                        .body(ProcessDefinitionPage.class));
     }
 
     /**

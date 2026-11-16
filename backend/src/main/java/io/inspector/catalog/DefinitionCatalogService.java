@@ -10,6 +10,8 @@ import io.inspector.client.CmmnApiClient;
 import io.inspector.client.FlowablePage;
 import io.inspector.client.GuardedCaller.CallPriority;
 import io.inspector.client.ProcessApiClient;
+import io.inspector.client.ProcessDefinitionPage;
+import io.inspector.client.ProcessDefinitionRecord;
 import io.inspector.client.ProcessInstancePage;
 import io.inspector.config.InspectorProperties;
 import io.inspector.config.InspectorProperties.EngineConfig;
@@ -142,12 +144,12 @@ public class DefinitionCatalogService {
 
     private EngineSlice load(EngineConfig engine, String key, String nameLike, boolean latestOnly) {
         Boolean latest = latestOnly ? Boolean.TRUE : null;
-        FlowablePage page = processes.listProcessDefinitions(
+        ProcessDefinitionPage page = processes.listProcessDefinitions(
                 engine, CallPriority.INTERACTIVE, blankToNull(key), nameLike, latest, null, 0, LIST_CAP);
         List<CatalogDefinition> rows = new ArrayList<>();
         boolean bounded = page.total() > page.dataOrEmpty().size();
-        for (Map<String, Object> row : page.dataOrEmpty()) {
-            rows.add(toRow(engine, "BPMN", row, countProcess(engine, str(row, "id")), latestOnly));
+        for (ProcessDefinitionRecord row : page.dataOrEmpty()) {
+            rows.add(toRow(engine, row, countProcess(engine, row.id()), latestOnly));
             if (rows.get(rows.size() - 1).countLowerBound()) {
                 bounded = true;
             }
@@ -199,6 +201,24 @@ public class DefinitionCatalogService {
         } catch (RuntimeException e) {
             return new Count(null, true);
         }
+    }
+
+    private CatalogDefinition toRow(EngineConfig engine, ProcessDefinitionRecord row, Count count, boolean latestOnly) {
+        return new CatalogDefinition(
+                engine.id(),
+                "BPMN",
+                row.id(),
+                row.key(),
+                row.name(),
+                row.version() != null ? row.version() : 0,
+                latestOnly,
+                Boolean.TRUE.equals(row.suspended()),
+                row.deploymentId(),
+                row.category(),
+                row.tenantId() != null ? row.tenantId() : engine.tenantId(),
+                count.value(),
+                count.lowerBound(),
+                null);
     }
 
     private CatalogDefinition toRow(

@@ -1,12 +1,12 @@
 package io.inspector.triage;
 
 import io.inspector.api.MdcPropagatingExecutors;
-import io.inspector.client.FlowablePage;
 import io.inspector.client.GuardedCaller.CallPriority;
 import io.inspector.client.JobPage;
 import io.inspector.client.JobRecord;
 import io.inspector.client.ProcessApiClient;
 import io.inspector.client.ProcessApiClient.JobLaneKind;
+import io.inspector.client.ProcessDefinitionPage;
 import io.inspector.client.ProcessInstancePage;
 import io.inspector.config.InspectorProperties;
 import io.inspector.config.InspectorProperties.EngineConfig;
@@ -455,11 +455,12 @@ public class TriageAggregationService {
                 .filter(key -> !key.equals("unknown"))
                 .forEach(defKey -> {
                     try {
-                        FlowablePage page = flowable.listProcessDefinitionsByKey(engine, priority, defKey, null, 0, 50);
+                        ProcessDefinitionPage page =
+                                flowable.listProcessDefinitionsByKey(engine, priority, defKey, null, 0, 50);
                         versionsByKey.put(
                                 defKey,
                                 page.dataOrEmpty().stream()
-                                        .map(def -> String.valueOf(def.get("version")))
+                                        .map(def -> String.valueOf(def.version()))
                                         .toList());
                     } catch (Exception ex) {
                         log.debug("Version zero-fill skipped for {} on {}: {}", defKey, engine.id(), ex.toString());

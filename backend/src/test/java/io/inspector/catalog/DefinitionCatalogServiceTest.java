@@ -12,11 +12,12 @@ import static org.mockito.Mockito.when;
 import io.inspector.audit.ProtectedDefinitionRepository;
 import io.inspector.catalog.DefinitionCatalogResponse.CatalogDefinition;
 import io.inspector.client.CmmnApiClient;
-import io.inspector.client.FlowablePage;
 import io.inspector.client.GuardedCaller.CallPriority;
 import io.inspector.client.ProcessApiClient;
+import io.inspector.client.ProcessDefinitionPage;
 import io.inspector.client.ProcessInstancePage;
 import io.inspector.client.ProcessInstanceRecords;
+import io.inspector.client.RepositoryRecords;
 import io.inspector.config.InspectorProperties;
 import io.inspector.config.InspectorProperties.EngineConfig;
 import io.inspector.registry.EngineHealth;
@@ -188,8 +189,8 @@ class DefinitionCatalogServiceTest {
                         anyInt());
     }
 
-    private static FlowablePage page(List<Map<String, Object>> data) {
-        return new FlowablePage(data, data.size(), 0, data.size());
+    private static ProcessDefinitionPage page(List<Map<String, Object>> data) {
+        return RepositoryRecords.definitionPage(data);
     }
 
     private static Map<String, Object> def(String key, int version, String id) {

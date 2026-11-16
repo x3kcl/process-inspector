@@ -8,12 +8,13 @@ import io.inspector.aggregate.SearchService.BffFilters;
 import io.inspector.aggregate.SearchService.EngineSlice;
 import io.inspector.aggregate.SearchService.Failure;
 import io.inspector.aggregate.SearchService.PageWindow;
-import io.inspector.client.FlowablePage;
 import io.inspector.client.GuardedCaller.CallPriority;
 import io.inspector.client.JobPage;
 import io.inspector.client.JobRecord;
 import io.inspector.client.ProcessApiClient;
 import io.inspector.client.ProcessApiClient.JobLaneKind;
+import io.inspector.client.ProcessDefinitionPage;
+import io.inspector.client.ProcessDefinitionRecord;
 import io.inspector.client.ProcessInstancePage;
 import io.inspector.client.ProcessInstanceRecord;
 import io.inspector.config.InspectorProperties;
@@ -582,10 +583,11 @@ final class SearchEnginePlan {
         int pageSize = engine.maxPageSizeOrDefault();
         int start = 0;
         while (true) {
-            FlowablePage page = flowable.listProcessDefinitionsByKey(engine, priority, key, version, start, pageSize);
-            List<Map<String, Object>> data = page.dataOrEmpty();
-            for (Map<String, Object> def : data) {
-                String id = str(def, "id");
+            ProcessDefinitionPage page =
+                    flowable.listProcessDefinitionsByKey(engine, priority, key, version, start, pageSize);
+            List<ProcessDefinitionRecord> data = page.dataOrEmpty();
+            for (ProcessDefinitionRecord def : data) {
+                String id = def.id();
                 if (id != null) ids.add(id);
             }
             start += data.size();
