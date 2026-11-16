@@ -301,6 +301,21 @@ Verified 2026-10-23 with `EngineHealth7IT` (capability flags) plus `Search7IT`,
   and false-positive). Chromium is baked into the CI runner image
   (`docker/ci-runner/Dockerfile`), not installed per-job — the runner is ephemeral and only
   `/opt/hostedtoolcache` survives a restart.
+  - **Host netlink isolation (#698).** The slots run with `network_mode: host`, so every docker
+    bridge/veth any job or project creates on that host is an address change to Chromium's
+    `AddressTrackerLinux`, and Chromium aborts in-flight requests with `net::ERR_NETWORK_CHANGED`.
+    A Vite dev-server page load is ~60 module requests, so one abort leaves the page blank and
+    the spec times out on a locator — not CPU load. Evidence (2026-11-12..16): 179 of 180
+    failed-attempt traces in the `playwright-report` artifacts carry the error (the other
+    three artifacts were a missing-browser install); 20 hard-red `e2e` jobs, 19 on hp04, two
+    of them with no other job of this repo on the host; workers are already 1 per slot.
+    `ci/contract.sh e2e` builds `frontend/e2e/no-netlink.c` (an `LD_PRELOAD` shim that refuses
+    `NETLINK_ROUTE` sockets, so Chromium assumes always-online) and `playwright.config.ts`
+    preloads it into the browser process only; `scripts/e2e-netlink-selftest.sh` pins both.
+    Reproduction on hp04, 4 copies in parallel on the slot ports plus a docker network +
+    container every ~15 s (~2,300 netlink events): before — 30 flaky / 380, every failed
+    trace `ERR_NETWORK_CHANGED`, wall 457–539 s; after — 0 flaky / 380, wall 407–424 s.
+    `retries: 1` stays, and it is not what makes the run green.
 - Breakers: per-engine test profile (window 2, open 500ms) + WireMock fault/scenario recipes;
   assert cache hits don't count against the breaker.
 - Bulk cancel/UNKNOWN: latch-gated WireMock stub engine (dispatch order made total via
