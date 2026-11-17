@@ -133,8 +133,15 @@ checklist).
   grants are orthogonal and confer no read); a signed-in user with no role anywhere — an
   OIDC user whose groups map to nothing — gets `403 no-engine-role` on every gated read and the
   SPA shows "No access granted yet — ask an Inspector admin". Only `GET /api/me` (who am I),
-  `GET /api/meta` (non-sensitive config), `/actuator/prometheus` (BFF telemetry) and the
-  auth/health/contract doors stay open to them.
+  `GET /api/meta` (non-sensitive config) and the auth/health/contract doors stay open to them.
+  **`METRICS` (#772)** is a third orthogonal fleet grant beside `REGISTRY_ADMIN` and
+  `ACCESS_ADMIN`: it reads the metrics-bearing actuator endpoints (`/actuator/prometheus`,
+  `/actuator/info`) and nothing else — no engine role, no admin page. Those two endpoints need
+  `METRICS` or ADMIN on every engine and tenant (an engine-scoped ADMIN, a lesser rung and the
+  other fleet grants get `403`, unauthenticated `401`); health/liveness/readiness stay open.
+  Granted like the other fleet grants (the `/admin/access` API + UI under four-eyes, the DB store,
+  the optional `inspector.security.metrics-group` IdP group), audited (`grant-add`/`grant-remove`),
+  shown as `metrics` in `GET /api/me`.
   Deployments MAY override the role→verb matrix with per-verb grants
   `(role, verb, engineId, tenantId)`; tooltips cite the missing grant. OIDC delivers
   identity + coarse groups only; the group→scope mapping is BFF-owned, change-audited
