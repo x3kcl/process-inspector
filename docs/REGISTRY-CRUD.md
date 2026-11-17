@@ -289,7 +289,9 @@ ctor to the `all()` accessor.
 
 **Drift is never silent.** When the DB is non-empty and `inspector.engines` YAML is also
 present, DB stays authoritative but boot logs a **per-engine drift report** (added/removed/
-changed vs the YAML), not a generic WARN, and `GET /api/admin/engines/drift` + an admin-UI
+changed vs the YAML), not a generic WARN — each changed engine names its differing fields
+(`baseUrl: yaml=… db=…`; credential refs other than the password-ref name print `<differs>`
+only, never a value; the `/drift` JSON stays id-only) — and `GET /api/admin/engines/drift` + an admin-UI
 badge surface it at runtime — so an operator who edits `prod.yaml` expecting effect sees the
 no-op, instead of a silent divergence. (Blocking startup on YAML≠DB was rejected: it would
 fail every deploy once the table is seeded.)

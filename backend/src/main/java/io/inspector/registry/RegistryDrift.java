@@ -1,5 +1,7 @@
 package io.inspector.registry;
 
+import com.fasterxml.jackson.annotation.JsonIgnore;
+import io.inspector.config.InspectorProperties.Auth;
 import io.inspector.config.InspectorProperties.EngineConfig;
 import java.util.ArrayList;
 import java.util.LinkedHashMap;
@@ -26,15 +28,31 @@ public final class RegistryDrift {
      * @param changed ids in both whose material config diverges (base-URL / environment / mode /
      *                enabled) — a YAML edit that had no effect
      */
-    public record DriftReport(List<String> added, List<String> removed, List<String> changed) {
+    public record DriftReport(
+            List<String> added,
+            List<String> removed,
+            List<String> changed,
+            @JsonIgnore Map<String, List<String>> fields) {
+        public DriftReport(List<String> added, List<String> removed, List<String> changed) {
+            this(added, removed, changed, Map.of());
+        }
+
         public boolean isEmpty() {
             return added.isEmpty() && removed.isEmpty() && changed.isEmpty();
         }
 
-        /** A single-line, id-only summary for the boot WARN — never dumps config values. */
+        /**
+         * A single-line summary for the boot WARN. Changed engines list each differing field with
+         * its YAML and stored value; credential refs print {@code <differs>} only.
+         */
         public String summary() {
+            List<String> shown = new ArrayList<>();
+            for (String id : changed) {
+                List<String> f = fields.get(id);
+                shown.add(f == null ? id : id + f);
+            }
             return "engine registry drift (DB is authoritative; these YAML entries are ignored): added=" + added
-                    + " removed=" + removed + " changed=" + changed;
+                    + " removed=" + removed + " changed=" + shown;
         }
     }
 
@@ -44,12 +62,17 @@ public final class RegistryDrift {
 
         List<String> added = new ArrayList<>();
         List<String> changed = new ArrayList<>();
+        Map<String, List<String>> fields = new LinkedHashMap<>();
         for (var e : yamlById.entrySet()) {
             EngineConfig dbCfg = dbById.get(e.getKey());
             if (dbCfg == null) {
                 added.add(e.getKey());
-            } else if (materiallyDiffers(e.getValue(), dbCfg)) {
-                changed.add(e.getKey());
+            } else {
+                List<String> diffs = differingFields(e.getValue(), dbCfg);
+                if (!diffs.isEmpty()) {
+                    changed.add(e.getKey());
+                    fields.put(e.getKey(), diffs);
+                }
             }
         }
 
@@ -59,15 +82,41 @@ public final class RegistryDrift {
                 removed.add(id);
             }
         }
-        return new DriftReport(added, removed, changed);
+        return new DriftReport(added, removed, changed, fields);
     }
 
     /** Material = what actually changes behaviour; timeouts/caps are intentionally not "drift". */
-    private static boolean materiallyDiffers(EngineConfig yaml, EngineConfig db) {
-        return !Objects.equals(yaml.baseUrl(), db.baseUrl())
-                || yaml.environment() != db.environment()
-                || yaml.modeOrDefault() != db.modeOrDefault()
-                || yaml.enabled() != db.enabled();
+    private static List<String> differingFields(EngineConfig yaml, EngineConfig db) {
+        List<String> out = new ArrayList<>();
+        diff(out, "baseUrl", yaml.baseUrl(), db.baseUrl(), true);
+        diff(out, "environment", yaml.environment(), db.environment(), true);
+        diff(out, "mode", yaml.modeOrDefault(), db.modeOrDefault(), true);
+        diff(out, "enabled", yaml.enabled(), db.enabled(), true);
+        Auth y = yaml.auth();
+        Auth d = db.auth();
+        diff(out, "authType", y == null ? null : y.type(), d == null ? null : d.type(), true);
+        diff(out, "authUsername", y == null ? null : y.username(), d == null ? null : d.username(), true);
+        diff(out, "authPasswordRef", y == null ? null : y.passwordRef(), d == null ? null : d.passwordRef(), true);
+        diff(out, "authTokenRef", y == null ? null : y.tokenRef(), d == null ? null : d.tokenRef(), false);
+        diff(
+                out,
+                "authOauthClientSecretRef",
+                y == null ? null : y.oauthClientSecretRef(),
+                d == null ? null : d.oauthClientSecretRef(),
+                false);
+        diff(
+                out,
+                "authHeaderSecretRef",
+                y == null ? null : y.headerSecretRef(),
+                d == null ? null : d.headerSecretRef(),
+                false);
+        return out;
+    }
+
+    private static void diff(List<String> out, String field, Object yaml, Object db, boolean show) {
+        if (!Objects.equals(yaml, db)) {
+            out.add(field + (show ? ": yaml=" + yaml + " db=" + db : "=<differs>"));
+        }
     }
 
     private static Map<String, EngineConfig> byId(List<EngineConfig> engines) {
