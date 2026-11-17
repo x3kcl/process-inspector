@@ -125,9 +125,9 @@ class CmmnScopeServiceTest {
         when(flowable.listCmmnDeadLetterJobs(any(), any(), any(), anyInt(), anyInt()))
                 .thenReturn(CmmnRecords.jobPage(List.of(rowA1, rowA2, rowB, bpmn), 4));
         when(flowable.getCmmnCaseDefinition(engine, CallPriority.INTERACTIVE, "def-A"))
-                .thenReturn(def("kA", "Case A"));
+                .thenReturn(CmmnRecords.caseDefinition(def("kA", "Case A")));
         when(flowable.getCmmnCaseDefinition(engine, CallPriority.INTERACTIVE, "def-B"))
-                .thenReturn(def("kB", "Case B"));
+                .thenReturn(CmmnRecords.caseDefinition(def("kB", "Case B")));
 
         OutOfScopeDeadLetters result = service.outOfScopeDeadLetters(ENGINE);
 
@@ -185,7 +185,7 @@ class CmmnScopeServiceTest {
                                 cmmnRow("j2", "case-1", "def-A"),
                                 cmmnRow("j3", "case-2", "def-B")),
                         3));
-        when(flowable.getCmmnCaseDefinition(any(), any(), any())).thenReturn(def("k", "n"));
+        when(flowable.getCmmnCaseDefinition(any(), any(), any())).thenReturn(CmmnRecords.caseDefinition(def("k", "n")));
         when(flowable.countHistoricCmmnCaseInstances(any(), any(), eq("active"), any()))
                 .thenReturn(5L);
         when(flowable.countHistoricCmmnCaseInstances(any(), any(), eq("completed"), any()))

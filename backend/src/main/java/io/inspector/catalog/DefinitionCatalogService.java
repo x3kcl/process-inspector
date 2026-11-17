@@ -6,8 +6,9 @@ import io.inspector.api.MdcPropagatingExecutors;
 import io.inspector.audit.ProtectedDefinition;
 import io.inspector.audit.ProtectedDefinitionRepository;
 import io.inspector.catalog.DefinitionCatalogResponse.CatalogDefinition;
+import io.inspector.client.CaseDefinitionPage;
+import io.inspector.client.CaseDefinitionRecord;
 import io.inspector.client.CmmnApiClient;
-import io.inspector.client.FlowablePage;
 import io.inspector.client.GuardedCaller.CallPriority;
 import io.inspector.client.ProcessApiClient;
 import io.inspector.client.ProcessDefinitionPage;
@@ -157,14 +158,14 @@ public class DefinitionCatalogService {
         long reported = page.total();
         if (cmmn(engine)) {
             try {
-                FlowablePage casesPage = cases.listCaseDefinitions(
+                CaseDefinitionPage casesPage = cases.listCaseDefinitions(
                         engine, CallPriority.INTERACTIVE, blankToNull(key), nameLike, latest, LIST_CAP);
                 if (casesPage.total() > casesPage.dataOrEmpty().size()) {
                     bounded = true;
                 }
                 reported += casesPage.total();
-                for (Map<String, Object> row : casesPage.dataOrEmpty()) {
-                    rows.add(toRow(engine, "CMMN", row, countCase(engine, str(row, "id")), latestOnly));
+                for (CaseDefinitionRecord row : casesPage.dataOrEmpty()) {
+                    rows.add(toRow(engine, row, countCase(engine, row.id()), latestOnly));
                     if (rows.get(rows.size() - 1).countLowerBound()) {
                         bounded = true;
                     }
@@ -221,24 +222,19 @@ public class DefinitionCatalogService {
                 null);
     }
 
-    private CatalogDefinition toRow(
-            EngineConfig engine, String kind, Map<String, Object> row, Count count, boolean latestOnly) {
-        String tenant = str(row, "tenantId");
-        if (tenant == null) {
-            tenant = engine.tenantId();
-        }
+    private CatalogDefinition toRow(EngineConfig engine, CaseDefinitionRecord row, Count count, boolean latestOnly) {
         return new CatalogDefinition(
                 engine.id(),
-                kind,
-                str(row, "id"),
-                str(row, "key"),
-                str(row, "name"),
-                number(row.get("version")),
+                "CMMN",
+                row.id(),
+                row.key(),
+                row.name(),
+                row.version() != null ? row.version() : 0,
                 latestOnly,
-                bool(row.get("suspended")),
-                str(row, "deploymentId"),
-                str(row, "category"),
-                tenant,
+                Boolean.TRUE.equals(row.suspended()),
+                row.deploymentId(),
+                row.category(),
+                row.tenantId() != null ? row.tenantId() : engine.tenantId(),
                 count.value(),
                 count.lowerBound(),
                 null);
@@ -327,19 +323,6 @@ public class DefinitionCatalogService {
         }
         String trimmed = name.trim();
         return trimmed.indexOf('%') >= 0 ? trimmed : "%" + trimmed + "%";
-    }
-
-    private static String str(Map<String, Object> map, String key) {
-        Object value = map.get(key);
-        return value != null ? value.toString() : null;
-    }
-
-    private static int number(Object value) {
-        return value instanceof Number n ? n.intValue() : 0;
-    }
-
-    private static boolean bool(Object value) {
-        return Boolean.TRUE.equals(value) || "true".equals(String.valueOf(value));
     }
 
     private static String blankToNull(String value) {

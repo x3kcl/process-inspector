@@ -1,5 +1,6 @@
 package io.inspector.cmmn;
 
+import io.inspector.client.CaseDefinitionRecord;
 import io.inspector.client.CaseInstanceRecord;
 import io.inspector.client.CmmnApiClient;
 import io.inspector.client.CmmnJobPage;
@@ -147,14 +148,14 @@ public class CaseDetailService {
 
         CaseInstanceRecord base = requireCase(engine, engineId, caseInstanceId);
         String caseDefinitionId = base.caseDefinitionId();
-        Map<String, Object> definition = caseDefinitionId == null
+        CaseDefinitionRecord definition = caseDefinitionId == null
                 ? null
                 : flowable.getCmmnCaseDefinition(engine, CallPriority.INTERACTIVE, caseDefinitionId);
         if (definition == null) {
             throw new ResponseStatusException(
                     HttpStatus.NOT_FOUND, "CMMN case definition " + caseDefinitionId + " not found on " + engineId);
         }
-        String deploymentId = str(definition, "deploymentId");
+        String deploymentId = definition.deploymentId();
         String resourceName = resourceNameOf(definition);
         String xml = deploymentId == null || resourceName == null
                 ? null
@@ -164,7 +165,7 @@ public class CaseDetailService {
                     HttpStatus.NOT_FOUND,
                     "CMMN resource for definition " + caseDefinitionId + " not found on " + engineId);
         }
-        boolean graphicalNotationDefined = Boolean.TRUE.equals(definition.get("graphicalNotationDefined"));
+        boolean graphicalNotationDefined = Boolean.TRUE.equals(definition.graphicalNotationDefined());
 
         // Markers come from the RUNTIME plan items joined to the case's jobs (empty for an ended
         // case — the static model still renders). Keyed by the plan item's elementId (the CMMN DI
@@ -346,14 +347,12 @@ public class CaseDetailService {
             return CaseDefinitionRef.UNKNOWN;
         }
         try {
-            Map<String, Object> def =
+            CaseDefinitionRecord def =
                     flowable.getCmmnCaseDefinition(engine, CallPriority.INTERACTIVE, caseDefinitionId);
             if (def == null) {
                 return CaseDefinitionRef.UNKNOWN;
             }
-            Object version = def.get("version");
-            return new CaseDefinitionRef(
-                    str(def, "key"), str(def, "name"), version instanceof Number n ? n.intValue() : null);
+            return new CaseDefinitionRef(def.key(), def.name(), def.version());
         } catch (Exception ex) {
             return CaseDefinitionRef.UNKNOWN;
         }
@@ -369,12 +368,12 @@ public class CaseDetailService {
      * {@code resource} URL ({@code …/deployments/{id}/resources/{name}}); the name is the decoded
      * tail. A plain {@code resourceName} field (if a newer engine adds one) wins.
      */
-    static String resourceNameOf(Map<String, Object> definition) {
-        String plain = str(definition, "resourceName");
+    static String resourceNameOf(CaseDefinitionRecord definition) {
+        String plain = definition.resourceName();
         if (plain != null && !plain.isBlank()) {
             return plain;
         }
-        String url = str(definition, "resource");
+        String url = definition.resource();
         if (url == null) {
             return null;
         }
@@ -395,13 +394,5 @@ public class CaseDetailService {
         EngineConfig engine = registry.require(engineId);
         CmmnCapabilities.requireScopeType(registry, engine);
         return flowable.listCaseIdentityLinks(engine, CallPriority.INTERACTIVE, caseInstanceId);
-    }
-
-    private static String str(Map<String, Object> row, String key) {
-        if (row == null) {
-            return null;
-        }
-        Object v = row.get(key);
-        return v != null ? v.toString() : null;
     }
 }

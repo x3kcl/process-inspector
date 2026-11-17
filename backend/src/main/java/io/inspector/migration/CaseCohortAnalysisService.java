@@ -6,6 +6,7 @@ import io.github.resilience4j.bulkhead.BulkheadFullException;
 import io.github.resilience4j.circuitbreaker.CallNotPermittedException;
 import io.inspector.action.GuardRefusedException;
 import io.inspector.api.MdcPropagatingExecutors;
+import io.inspector.client.CaseDefinitionRecord;
 import io.inspector.client.CaseInstanceRecord;
 import io.inspector.client.CmmnApiClient;
 import io.inspector.client.GuardedCaller.CallPriority;
@@ -181,14 +182,14 @@ public class CaseCohortAnalysisService {
                     "same-definition-target",
                     "Source and target are the same case definition " + fromId + ". Nothing happened.");
         }
-        Map<String, Object> source = precheck.definition(engine, fromId);
-        Map<String, Object> target = precheck.definition(engine, toId);
-        if (source.get("key") == null || !source.get("key").equals(target.get("key"))) {
+        CaseDefinitionRecord source = precheck.definition(engine, fromId);
+        CaseDefinitionRecord target = precheck.definition(engine, toId);
+        if (source.key() == null || !source.key().equals(target.key())) {
             throw new GuardRefusedException(
                     HttpStatus.UNPROCESSABLE_ENTITY,
                     "cross-key-target",
-                    "Case definition " + toId + " (key '" + target.get("key") + "') is not a version of '"
-                            + source.get("key") + "'. Nothing happened.");
+                    "Case definition " + toId + " (key '" + target.key() + "') is not a version of '" + source.key()
+                            + "'. Nothing happened.");
         }
         return precheck.planDefinitionIds(engine, toId, target);
     }

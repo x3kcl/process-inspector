@@ -134,7 +134,8 @@ class CaseDetailServiceTest {
         caseRow.put("caseDefinitionId", "def-uuid");
         when(flowable.getHistoricCmmnCaseInstance(any(), any(), eq("case-1")))
                 .thenReturn(CmmnRecords.caseInstance(caseRow));
-        when(flowable.getCmmnCaseDefinition(any(), any(), eq("def-uuid"))).thenReturn(definition);
+        when(flowable.getCmmnCaseDefinition(any(), any(), eq("def-uuid")))
+                .thenReturn(CmmnRecords.caseDefinition(definition));
         when(flowable.cmmnDeploymentResourceData(any(), any(), eq("dep-1"), eq("demo.cmmn.xml")))
                 .thenReturn("<definitions/>");
 
@@ -209,12 +210,13 @@ class CaseDetailServiceTest {
 
     @Test
     void resourceNameParsesTheUrlTailAndDecodes() {
-        assertThat(CaseDetailService.resourceNameOf(Map.of("resourceName", "a.cmmn.xml")))
+        assertThat(CaseDetailService.resourceNameOf(CmmnRecords.caseDefinition(Map.of("resourceName", "a.cmmn.xml"))))
                 .isEqualTo("a.cmmn.xml");
-        assertThat(CaseDetailService.resourceNameOf(
-                        Map.of("resource", "http://x/cmmn-repository/deployments/d/resources/demo%20case.cmmn.xml")))
+        assertThat(CaseDetailService.resourceNameOf(CmmnRecords.caseDefinition(
+                        Map.of("resource", "http://x/cmmn-repository/deployments/d/resources/demo%20case.cmmn.xml"))))
                 .isEqualTo("demo case.cmmn.xml");
-        assertThat(CaseDetailService.resourceNameOf(new HashMap<>())).isNull();
+        assertThat(CaseDetailService.resourceNameOf(CmmnRecords.caseDefinition(Map.of())))
+                .isNull();
     }
 
     @Test

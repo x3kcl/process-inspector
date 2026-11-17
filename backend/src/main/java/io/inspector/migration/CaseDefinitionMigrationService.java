@@ -12,11 +12,15 @@ import io.inspector.audit.AuditOutcome;
 import io.inspector.audit.AuditService;
 import io.inspector.audit.BreakGlassActor;
 import io.inspector.bulk.BulkCountDriftException;
+import io.inspector.client.BatchPage;
+import io.inspector.client.BatchPartRecord;
+import io.inspector.client.BatchRecord;
+import io.inspector.client.CaseDefinitionPage;
+import io.inspector.client.CaseDefinitionRecord;
 import io.inspector.client.CaseInstanceRecord;
 import io.inspector.client.CaseMigrationClient;
 import io.inspector.client.CaseMigrationRoute;
 import io.inspector.client.CmmnApiClient;
-import io.inspector.client.FlowablePage;
 import io.inspector.client.ForwardedActor;
 import io.inspector.client.GuardedCaller.CallPriority;
 import io.inspector.cmmn.CaseMigrationPrecheck;
@@ -110,25 +114,25 @@ public class CaseDefinitionMigrationService {
         EngineConfig engine = registry.require(engineId);
         CmmnCapabilities.requireScopeType(registry, engine);
         return preFlight(engine, () -> {
-            FlowablePage newest =
+            CaseDefinitionPage newest =
                     cases.listCaseDefinitionVersionsDesc(engine, CallPriority.INTERACTIVE, key, VERSION_CAP);
-            List<Map<String, Object>> definitions = newest != null ? newest.dataOrEmpty() : List.of();
+            List<CaseDefinitionRecord> definitions = newest != null ? newest.dataOrEmpty() : List.of();
             if (definitions.isEmpty()) {
                 throw new GuardRefusedException(
                         HttpStatus.NOT_FOUND,
                         "unknown-definition-key",
                         "No deployed version of case key '" + key + "' exists on '" + engine.id() + "'.");
             }
-            int latest = ((Number) definitions.get(0).get("version")).intValue();
+            int latest = definitions.get(0).version();
             List<CaseDefinitionVersion> versions = new ArrayList<>();
-            for (Map<String, Object> d : definitions) {
-                String id = String.valueOf(d.get("id"));
-                int version = ((Number) d.get("version")).intValue();
+            for (CaseDefinitionRecord d : definitions) {
+                String id = String.valueOf(d.id());
+                int version = d.version();
                 versions.add(new CaseDefinitionVersion(
                         id,
                         version,
-                        d.get("name") != null ? String.valueOf(d.get("name")) : null,
-                        d.get("deploymentId") != null ? String.valueOf(d.get("deploymentId")) : null,
+                        d.name(),
+                        d.deploymentId(),
                         cmmn.countRunningCases(engine, CallPriority.INTERACTIVE, id),
                         cases.countEndedCases(engine, CallPriority.INTERACTIVE, id),
                         version == latest));
@@ -155,10 +159,10 @@ public class CaseDefinitionMigrationService {
             return List.of(); // no batch route below 7.x, so there is nothing to list
         }
         return preFlight(engine, () -> {
-            FlowablePage page =
+            BatchPage page =
                     cases.listCaseMigrationBatches(engine, CallPriority.INTERACTIVE, caseDefinitionId, BATCH_LIST_CAP);
             List<CaseMigrationBatchView> views = new ArrayList<>();
-            for (Map<String, Object> batch : page != null ? page.dataOrEmpty() : List.<Map<String, Object>>of()) {
+            for (BatchRecord batch : page != null ? page.dataOrEmpty() : List.<BatchRecord>of()) {
                 views.add(batchView(engine, batch));
             }
             views.sort(Comparator.comparing(
@@ -168,25 +172,25 @@ public class CaseDefinitionMigrationService {
         });
     }
 
-    private CaseMigrationBatchView batchView(EngineConfig engine, Map<String, Object> batch) {
-        String id = String.valueOf(batch.get("id"));
-        List<Map<String, Object>> parts = cases.listBatchParts(engine, CallPriority.INTERACTIVE, id);
+    private CaseMigrationBatchView batchView(EngineConfig engine, BatchRecord batch) {
+        String id = String.valueOf(batch.id());
+        List<BatchPartRecord> parts = cases.listBatchParts(engine, CallPriority.INTERACTIVE, id);
         Map<String, Integer> byStatus = new TreeMap<>();
         List<String> notSucceeded = new ArrayList<>();
-        for (Map<String, Object> part : parts) {
-            String status = String.valueOf(part.get("status"));
+        for (BatchPartRecord part : parts) {
+            String status = String.valueOf(part.status());
             byStatus.merge(status, 1, Integer::sum);
             if (!PART_SUCCESS.equals(status) && notSucceeded.size() < NOT_SUCCEEDED_SAMPLE) {
-                notSucceeded.add(String.valueOf(part.get("scopeId")));
+                notSucceeded.add(String.valueOf(part.scopeId()));
             }
         }
         return new CaseMigrationBatchView(
                 id,
-                str(batch.get("status")),
-                str(batch.get("createTime")),
-                str(batch.get("completeTime")),
-                str(batch.get("searchKey")),
-                str(batch.get("searchKey2")),
+                batch.status(),
+                batch.createTime(),
+                batch.completeTime(),
+                batch.searchKey(),
+                batch.searchKey2(),
                 parts.size(),
                 byStatus,
                 List.copyOf(notSucceeded));
@@ -411,7 +415,7 @@ public class CaseDefinitionMigrationService {
     /** Source and target: both deployed, the same case key, and not the same version. */
     private Versions versionsOf(EngineConfig engine, String fromId, CaseDefinitionMigrationRequest request) {
         String toId = CaseCohortService.required(request.toCaseDefinitionId(), "toCaseDefinitionId");
-        Map<String, Object> from = cmmn.getCmmnCaseDefinition(engine, CallPriority.INTERACTIVE, fromId);
+        CaseDefinitionRecord from = cmmn.getCmmnCaseDefinition(engine, CallPriority.INTERACTIVE, fromId);
         if (from == null) {
             throw new GuardRefusedException(
                     HttpStatus.NOT_FOUND,
@@ -424,18 +428,19 @@ public class CaseDefinitionMigrationService {
                     "same-definition-target",
                     "Source and target are the same case definition " + fromId + ". Nothing happened.");
         }
-        Map<String, Object> to = precheck.definition(engine, toId);
-        if (from.get("key") == null || !from.get("key").equals(to.get("key"))) {
+        CaseDefinitionRecord to = precheck.definition(engine, toId);
+        if (from.key() == null || !from.key().equals(to.key())) {
             throw new GuardRefusedException(
                     HttpStatus.UNPROCESSABLE_ENTITY,
                     "cross-key-target",
-                    "Case definition " + toId + " (key '" + to.get("key") + "') is not a version of '" + from.get("key")
+                    "Case definition " + toId + " (key '" + to.key() + "') is not a version of '" + from.key()
                             + "'. Nothing happened.");
         }
-        return new Versions(String.valueOf(from.get("key")), fromId, from, toId, to);
+        return new Versions(from.key(), fromId, from, toId, to);
     }
 
-    private record Versions(String key, String fromId, Map<String, Object> from, String toId, Map<String, Object> to) {}
+    private record Versions(
+            String key, String fromId, CaseDefinitionRecord from, String toId, CaseDefinitionRecord to) {}
 
     /** {@code caseId} set means the single historic-case door: the prod token is that id, not a count. */
     private record Plan(Versions pair, long count, String noun, String caseId) {}
@@ -471,13 +476,13 @@ public class CaseDefinitionMigrationService {
 
     /** The batch this call just created: the newest one from this source to this target. */
     private String newestBatchId(EngineConfig engine, Versions pair) {
-        FlowablePage page =
+        BatchPage page =
                 cases.listCaseMigrationBatches(engine, CallPriority.INTERACTIVE, pair.fromId(), BATCH_LIST_CAP);
-        return (page != null ? page.dataOrEmpty() : List.<Map<String, Object>>of())
+        return (page != null ? page.dataOrEmpty() : List.<BatchRecord>of())
                 .stream()
-                        .filter(batch -> pair.toId().equals(str(batch.get("searchKey2"))))
-                        .max(Comparator.comparing(batch -> String.valueOf(batch.get("createTime"))))
-                        .map(batch -> str(batch.get("id")))
+                        .filter(batch -> pair.toId().equals(batch.searchKey2()))
+                        .max(Comparator.comparing(batch -> String.valueOf(batch.createTime())))
+                        .map(BatchRecord::id)
                         .orElse(null);
     }
 

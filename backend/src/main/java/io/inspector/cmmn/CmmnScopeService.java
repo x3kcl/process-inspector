@@ -1,5 +1,6 @@
 package io.inspector.cmmn;
 
+import io.inspector.client.CaseDefinitionRecord;
 import io.inspector.client.CmmnApiClient;
 import io.inspector.client.CmmnJobPage;
 import io.inspector.client.CmmnJobRecord;
@@ -165,12 +166,9 @@ public class CmmnScopeService {
                 continue;
             }
             try {
-                Map<String, Object> def = flowable.getCmmnCaseDefinition(engine, CallPriority.INTERACTIVE, defId);
+                CaseDefinitionRecord def = flowable.getCmmnCaseDefinition(engine, CallPriority.INTERACTIVE, defId);
                 resolved.put(
-                        defId,
-                        def == null
-                                ? CaseDefinitionRef.UNKNOWN
-                                : new CaseDefinitionRef(str(def, "key"), str(def, "name")));
+                        defId, def == null ? CaseDefinitionRef.UNKNOWN : new CaseDefinitionRef(def.key(), def.name()));
             } catch (Exception ex) {
                 resolved.put(defId, CaseDefinitionRef.UNKNOWN);
             }
@@ -204,10 +202,5 @@ public class CmmnScopeService {
                 row.createTime(),
                 row.dueDate(),
                 row.tenantId());
-    }
-
-    private static String str(Map<String, Object> row, String key) {
-        Object v = row.get(key);
-        return v != null ? v.toString() : null;
     }
 }

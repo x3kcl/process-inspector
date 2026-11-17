@@ -136,12 +136,13 @@ class CaseMigrationClientTest {
                         + "\"scopeId\":\"0c510773\",\"subScopeId\":null,\"scopeType\":\"cmmn\","
                         + "\"completeTime\":\"2026-11-12T17:40:19.609Z\",\"status\":\"success\"}]")));
 
-        FlowablePage batches = client.listCaseMigrationBatches(engine("batch"), CallPriority.INTERACTIVE, "def-1", 20);
-        List<Map<String, Object>> parts = client.listBatchParts(engine("batch"), CallPriority.INTERACTIVE, "21153102");
+        BatchPage batches = client.listCaseMigrationBatches(engine("batch"), CallPriority.INTERACTIVE, "def-1", 20);
+        List<BatchPartRecord> parts = client.listBatchParts(engine("batch"), CallPriority.INTERACTIVE, "21153102");
 
-        assertThat(batches.dataOrEmpty().get(0)).containsEntry("searchKey2", "def-2");
+        assertThat(batches.dataOrEmpty().get(0).searchKey2()).isEqualTo("def-2");
         assertThat(parts).hasSize(1);
-        assertThat(parts.get(0)).containsEntry("scopeId", "0c510773").containsEntry("status", "success");
+        assertThat(parts.get(0).scopeId()).isEqualTo("0c510773");
+        assertThat(parts.get(0).status()).isEqualTo("success");
         wm.verify(getRequestedFor(urlPathEqualTo("/management/batches"))
                 .withQueryParam("batchType", equalTo("caseMigration"))
                 .withQueryParam("searchKey", equalTo("def-1")));

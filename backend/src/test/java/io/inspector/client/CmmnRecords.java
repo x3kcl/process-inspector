@@ -38,4 +38,30 @@ public final class CmmnRecords {
     public static CmmnJobPage jobPage(List<? extends Map<String, ?>> wire, long total) {
         return new CmmnJobPage(wire.stream().map(CmmnRecords::job).toList(), total, 0, wire.size());
     }
+
+    public static CaseDefinitionRecord caseDefinition(Map<String, ?> wire) {
+        return wire == null ? null : MAPPER.convertValue(wire, CaseDefinitionRecord.class);
+    }
+
+    public static CaseDefinitionPage caseDefinitionPage(
+            List<? extends Map<String, ?>> wire, long total, int start, int size) {
+        return new CaseDefinitionPage(
+                wire.stream().map(CmmnRecords::caseDefinition).toList(), total, start, size);
+    }
+
+    public static BatchPage batchPage(List<? extends Map<String, ?>> wire, long total, int start, int size) {
+        return new BatchPage(
+                wire.stream()
+                        .map(w -> MAPPER.convertValue(w, BatchRecord.class))
+                        .toList(),
+                total,
+                start,
+                size);
+    }
+
+    public static List<BatchPartRecord> batchParts(List<? extends Map<String, ?>> wire) {
+        return wire.stream()
+                .map(w -> MAPPER.convertValue(w, BatchPartRecord.class))
+                .toList();
+    }
 }

@@ -1,6 +1,7 @@
 package io.inspector.resolve;
 
 import io.inspector.api.MdcPropagatingExecutors;
+import io.inspector.client.CaseDefinitionRecord;
 import io.inspector.client.CaseInstanceRecord;
 import io.inspector.client.CmmnApiClient;
 import io.inspector.client.GuardedCaller.CallPriority;
@@ -250,9 +251,9 @@ public class ResolveService {
             String caseDefinitionId = caseInstance.caseDefinitionId();
             if (caseDefinitionId != null) {
                 try {
-                    Map<String, Object> def =
+                    CaseDefinitionRecord def =
                             cmmnFlowable.getCmmnCaseDefinition(engine, CallPriority.INTERACTIVE, caseDefinitionId);
-                    definitionKey = def != null ? str(def, "key") : null;
+                    definitionKey = def != null ? def.key() : null;
                 } catch (Exception ex) {
                     definitionKey = null; // enrichment miss never fails the resolve
                 }

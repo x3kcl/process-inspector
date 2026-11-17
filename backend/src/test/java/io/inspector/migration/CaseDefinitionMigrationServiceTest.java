@@ -25,7 +25,6 @@ import io.inspector.client.CaseMigrationClient;
 import io.inspector.client.CaseMigrationRoute;
 import io.inspector.client.CmmnApiClient;
 import io.inspector.client.CmmnRecords;
-import io.inspector.client.FlowablePage;
 import io.inspector.client.GuardedCaller.CallPriority;
 import io.inspector.config.InspectorProperties.EngineConfig;
 import io.inspector.config.InspectorProperties.EngineEnvironment;
@@ -120,9 +119,11 @@ class CaseDefinitionMigrationServiceTest {
 
     private void definitions(String sourceRefs, String targetRefs) {
         when(cmmn.getCmmnCaseDefinition(engine, CallPriority.INTERACTIVE, FROM))
-                .thenReturn(Map.of("id", FROM, "key", "demoCase", "deploymentId", "dep-1", "resourceName", "v1.cmmn"));
+                .thenReturn(CmmnRecords.caseDefinition(
+                        Map.of("id", FROM, "key", "demoCase", "deploymentId", "dep-1", "resourceName", "v1.cmmn")));
         when(cmmn.getCmmnCaseDefinition(engine, CallPriority.INTERACTIVE, TO))
-                .thenReturn(Map.of("id", TO, "key", "demoCase", "deploymentId", "dep-2", "resourceName", "v2.cmmn"));
+                .thenReturn(CmmnRecords.caseDefinition(
+                        Map.of("id", TO, "key", "demoCase", "deploymentId", "dep-2", "resourceName", "v2.cmmn")));
         lenient()
                 .when(cmmn.cmmnDeploymentResourceData(engine, CallPriority.INTERACTIVE, "dep-1", "v1.cmmn"))
                 .thenReturn(refs(sourceRefs));
@@ -178,7 +179,7 @@ class CaseDefinitionMigrationServiceTest {
         definitions("reviewTask", "reviewTask,approveTask");
         when(cmmn.countRunningCases(engine, CallPriority.INTERACTIVE, FROM)).thenReturn(3L);
         when(cases.listCaseMigrationBatches(eq(engine), eq(CallPriority.INTERACTIVE), eq(FROM), anyInt()))
-                .thenReturn(new FlowablePage(
+                .thenReturn(CmmnRecords.batchPage(
                         List.of(
                                 Map.of("id", "old", "searchKey2", TO, "createTime", "2026-11-12T10:00:00.000Z"),
                                 Map.of("id", "other", "searchKey2", "def-9", "createTime", "2026-11-12T12:00:00.000Z"),
@@ -308,9 +309,9 @@ class CaseDefinitionMigrationServiceTest {
                         GuardRefusedException.class, e -> assertThat(e.code()).isEqualTo("reason-too-short"));
 
         when(cmmn.getCmmnCaseDefinition(engine, CallPriority.INTERACTIVE, FROM))
-                .thenReturn(Map.of("id", FROM, "key", "demoCase"));
+                .thenReturn(CmmnRecords.caseDefinition(Map.of("id", FROM, "key", "demoCase")));
         when(cmmn.getCmmnCaseDefinition(engine, CallPriority.INTERACTIVE, TO))
-                .thenReturn(Map.of("id", TO, "key", "anotherCase"));
+                .thenReturn(CmmnRecords.caseDefinition(Map.of("id", TO, "key", "anotherCase")));
         assertThatThrownBy(() -> service.migrateHistoric(ENGINE, FROM, request(null), admin))
                 .isInstanceOfSatisfying(
                         GuardRefusedException.class, e -> assertThat(e.code()).isEqualTo("cross-key-target"));
@@ -417,7 +418,7 @@ class CaseDefinitionMigrationServiceTest {
     void theOnRampCountsRunningAndEndedCasesAndNamesTheGateOnASixEightEngine() {
         engineVersion("6.8.0");
         when(cases.listCaseDefinitionVersionsDesc(engine, CallPriority.INTERACTIVE, "demoCase", 50))
-                .thenReturn(new FlowablePage(
+                .thenReturn(CmmnRecords.caseDefinitionPage(
                         List.of(
                                 Map.of("id", TO, "version", 2, "name", "Demo", "deploymentId", "dep-2"),
                                 Map.of("id", FROM, "version", 1, "name", "Demo", "deploymentId", "dep-1")),
@@ -448,7 +449,7 @@ class CaseDefinitionMigrationServiceTest {
     void batchesTallyPartsByTheEnginesOwnStatus() {
         engineVersion("7.1.0");
         when(cases.listCaseMigrationBatches(eq(engine), eq(CallPriority.INTERACTIVE), eq(FROM), anyInt()))
-                .thenReturn(new FlowablePage(
+                .thenReturn(CmmnRecords.batchPage(
                         List.of(Map.of(
                                 "id",
                                 "b-1",
@@ -464,10 +465,10 @@ class CaseDefinitionMigrationServiceTest {
                         0,
                         20));
         when(cases.listBatchParts(engine, CallPriority.INTERACTIVE, "b-1"))
-                .thenReturn(List.of(
+                .thenReturn(CmmnRecords.batchParts(List.of(
                         Map.of("scopeId", "case-1", "status", "success"),
                         Map.of("scopeId", "case-2", "status", "fail"),
-                        Map.of("scopeId", "case-3", "status", "success")));
+                        Map.of("scopeId", "case-3", "status", "success"))));
 
         List<CaseMigrationBatchView> batches = service.batches(ENGINE, FROM);
 

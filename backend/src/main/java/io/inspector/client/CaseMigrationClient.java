@@ -20,8 +20,7 @@ public class CaseMigrationClient {
     /** The {@code batchType} a 7.x engine gives a case-migration batch. */
     public static final String BATCH_TYPE = "caseMigration";
 
-    private static final ParameterizedTypeReference<List<Map<String, Object>>> ROWS =
-            new ParameterizedTypeReference<>() {};
+    private static final ParameterizedTypeReference<List<BatchPartRecord>> ROWS = new ParameterizedTypeReference<>() {};
 
     private final GuardedCaller guarded;
 
@@ -80,7 +79,7 @@ public class CaseMigrationClient {
     }
 
     /** Deployed versions of one case key, newest first. */
-    public FlowablePage listCaseDefinitionVersionsDesc(
+    public CaseDefinitionPage listCaseDefinitionVersionsDesc(
             EngineConfig engine, CallPriority priority, String key, int size) {
         java.net.URI uri = UriComponentsBuilder.fromUriString(
                         CmmnApiClient.cmmnApiBase(engine) + "/cmmn-repository/case-definitions")
@@ -94,7 +93,7 @@ public class CaseMigrationClient {
         return guarded.call(
                 engine,
                 priority,
-                () -> guarded.readClient(engine).get().uri(uri).retrieve().body(FlowablePage.class));
+                () -> guarded.readClient(engine).get().uri(uri).retrieve().body(CaseDefinitionPage.class));
     }
 
     /**
@@ -103,7 +102,7 @@ public class CaseMigrationClient {
      * behind the process API's {@code management/batches} ({@code searchKey} = source definition
      * id, {@code searchKey2} = target — measured on 7.1.0).
      */
-    public FlowablePage listCaseMigrationBatches(
+    public BatchPage listCaseMigrationBatches(
             EngineConfig engine, CallPriority priority, String sourceCaseDefinitionId, int size) {
         return guarded.call(
                 engine,
@@ -116,13 +115,13 @@ public class CaseMigrationClient {
                                 sourceCaseDefinitionId,
                                 size)
                         .retrieve()
-                        .body(FlowablePage.class));
+                        .body(BatchPage.class));
     }
 
     /** One batch's parts: a bare JSON array, one row per case ({@code scopeId}, {@code status}). */
-    public List<Map<String, Object>> listBatchParts(EngineConfig engine, CallPriority priority, String batchId) {
+    public List<BatchPartRecord> listBatchParts(EngineConfig engine, CallPriority priority, String batchId) {
         String id = GuardedCaller.safeId(batchId);
-        List<Map<String, Object>> rows = guarded.call(
+        List<BatchPartRecord> rows = guarded.call(
                 engine,
                 priority,
                 () -> guarded.readClient(engine)
