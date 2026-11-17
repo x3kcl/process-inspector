@@ -8,6 +8,7 @@ import io.inspector.client.ProcessApiClient.JobLaneKind;
 import io.inspector.client.ProcessInstanceRecords;
 import io.inspector.client.RepositoryRecords;
 import io.inspector.client.TaskRecords;
+import io.inspector.client.VariableRecords;
 import io.inspector.dto.ExternalWorkerJobDto;
 import io.inspector.dto.InstanceJobs.JobDto;
 import io.inspector.dto.InstanceTasks.TaskDto;
@@ -30,13 +31,19 @@ class InstanceDetailMappingTest {
     @Test
     void scalarValuesStayTyped_neverStringified() {
         VariableDto integer = InstanceDetailService.typedRow(
-                Map.of("name", "amount", "type", "integer", "value", 100), "global", null, null);
+                VariableRecords.variable(Map.of("name", "amount", "type", "integer", "value", 100)),
+                "global",
+                null,
+                null);
         assertThat(integer.type()).isEqualTo("integer");
         assertThat(integer.value()).isEqualTo(100); // a JSON number, not "100"
         assertThat(integer.truncated()).isFalse();
 
         VariableDto bool = InstanceDetailService.typedRow(
-                Map.of("name", "approved", "type", "boolean", "value", false), "global", null, null);
+                VariableRecords.variable(Map.of("name", "approved", "type", "boolean", "value", false)),
+                "global",
+                null,
+                null);
         assertThat(bool.value()).isEqualTo(false);
     }
 
@@ -46,7 +53,7 @@ class InstanceDetailMappingTest {
         row.put("name", "optionalNote");
         row.put("type", "null");
         row.put("value", null);
-        VariableDto dto = InstanceDetailService.typedRow(row, "global", null, null);
+        VariableDto dto = InstanceDetailService.typedRow(VariableRecords.variable(row), "global", null, null);
         assertThat(dto.name()).isEqualTo("optionalNote");
         assertThat(dto.value()).isNull();
         assertThat(dto.truncated()).isFalse(); // absent by nature, not by cap
@@ -56,14 +63,17 @@ class InstanceDetailMappingTest {
     void structuredValuesOverTheCapShipTruncatedWithTheirSize() {
         String blob = "x".repeat(InstanceDetailService.STRUCTURED_PREVIEW_CAP_BYTES + 1);
         VariableDto big = InstanceDetailService.typedRow(
-                Map.of("name", "payload", "type", "string", "value", blob), "global", null, null);
+                VariableRecords.variable(Map.of("name", "payload", "type", "string", "value", blob)),
+                "global",
+                null,
+                null);
         assertThat(big.truncated()).isTrue();
         assertThat(big.value()).isNull();
         assertThat(big.sizeBytes()).isGreaterThan((long) InstanceDetailService.STRUCTURED_PREVIEW_CAP_BYTES);
 
         Map<String, Object> json = Map.of("inner", "y".repeat(InstanceDetailService.STRUCTURED_PREVIEW_CAP_BYTES));
         VariableDto bigJson = InstanceDetailService.typedRow(
-                Map.of("name", "doc", "type", "json", "value", json), "global", null, null);
+                VariableRecords.variable(Map.of("name", "doc", "type", "json", "value", json)), "global", null, null);
         assertThat(bigJson.truncated()).isTrue();
         assertThat(bigJson.value()).isNull();
     }
@@ -72,7 +82,10 @@ class InstanceDetailMappingTest {
     void structuredValuesUnderTheCapPassThroughWithMeasuredSize() {
         Map<String, Object> json = Map.of("enabled", true, "attempts", 3);
         VariableDto dto = InstanceDetailService.typedRow(
-                Map.of("name", "retryPolicy", "type", "json", "value", json), "local", "exec-9", null);
+                VariableRecords.variable(Map.of("name", "retryPolicy", "type", "json", "value", json)),
+                "local",
+                "exec-9",
+                null);
         assertThat(dto.value()).isEqualTo(json);
         assertThat(dto.truncated()).isFalse();
         assertThat(dto.sizeBytes()).isNotNull().isPositive();

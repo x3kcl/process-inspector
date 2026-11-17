@@ -152,8 +152,7 @@ final class ProcessCorrectiveClient {
     }
 
     /** GET /runtime/process-instances/{id}/variables/{name} — the CAS pre-read (typed row). Null = absent. */
-    @SuppressWarnings("unchecked")
-    public Map<String, Object> getInstanceVariable(
+    public VariableRecord getInstanceVariable(
             EngineConfig engine, CallPriority priority, String processInstanceId, String name) {
         try {
             return guarded.call(
@@ -163,7 +162,7 @@ final class ProcessCorrectiveClient {
                             .get()
                             .uri("/runtime/process-instances/{id}/variables/{name}", processInstanceId, name)
                             .retrieve()
-                            .body(Map.class));
+                            .body(VariableRecord.class));
         } catch (HttpClientErrorException.NotFound e) {
             return null;
         }
@@ -200,8 +199,7 @@ final class ProcessCorrectiveClient {
      * value shadowed down the tree — so the CAS reads the exact row the write will touch.
      * Null = no such local variable (404).
      */
-    @SuppressWarnings("unchecked")
-    public Map<String, Object> getExecutionVariable(
+    public VariableRecord getExecutionVariable(
             EngineConfig engine, CallPriority priority, String executionId, String name) {
         try {
             return guarded.call(
@@ -213,7 +211,7 @@ final class ProcessCorrectiveClient {
                                     .queryParam("scope", "local")
                                     .build(executionId, name))
                             .retrieve()
-                            .body(Map.class));
+                            .body(VariableRecord.class));
         } catch (HttpClientErrorException.NotFound e) {
             return null;
         }

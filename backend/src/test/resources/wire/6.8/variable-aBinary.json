@@ -1,0 +1,7 @@
+{
+  "name": "aBinary",
+  "scope": null,
+  "type": "binary",
+  "value": null,
+  "valueUrl": "http://localhost:8080/flowable-rest/service/runtime/process-instances/206c9be9-e247-11f1-a698-1aed9a8f6094/variables/aBinary/data"
+}

@@ -3,6 +3,7 @@ package io.inspector.sibling;
 import io.inspector.client.ActivityInstancePage;
 import io.inspector.client.ActivityInstanceRecord;
 import io.inspector.client.GuardedCaller.CallPriority;
+import io.inspector.client.HistoricVariableRecord;
 import io.inspector.client.ProcessApiClient;
 import io.inspector.client.ProcessInstancePage;
 import io.inspector.client.ProcessInstanceRecord;
@@ -222,14 +223,12 @@ public class SiblingDiffService {
 
     private List<VariableDto> historicVariableProjection(EngineConfig engine, String instanceId) {
         List<VariableDto> rows = new ArrayList<>();
-        for (Map<String, Object> row : flowable.listHistoricVariableInstances(
+        for (HistoricVariableRecord row : flowable.listHistoricVariableInstances(
                         engine, CallPriority.INTERACTIVE, instanceId, engine.maxPageSizeOrDefault())
                 .dataOrEmpty()) {
-            // 6.x nests the variable under "variable"; newer engines inline it — same as the
-            // detail ledger's historic leg.
-            @SuppressWarnings("unchecked")
-            Map<String, Object> variable = row.get("variable") instanceof Map<?, ?> v ? (Map<String, Object>) v : row;
-            rows.add(InstanceDetailService.typedRow(variable, "global", str(row, "executionId"), str(row, "taskId")));
+            // Nested under "variable" on every recorded engine; a flat row is read from the row
+            // itself — same as the detail ledger's historic leg.
+            rows.add(InstanceDetailService.typedRow(row.envelope(), "global", row.executionId(), row.taskId()));
         }
         return rows;
     }
@@ -342,10 +341,5 @@ public class SiblingDiffService {
         } catch (NumberFormatException e) {
             return null;
         }
-    }
-
-    private static String str(Map<String, Object> map, String key) {
-        Object v = map.get(key);
-        return v != null ? v.toString() : null;
     }
 }

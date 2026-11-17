@@ -21,14 +21,14 @@ final class ProcessHealthClient {
 
     /** Lane count via the size=1 total trick — no rows transferred. */
     public long countJobs(EngineConfig engine, CallPriority priority, JobLaneKind lane) {
-        FlowablePage page = guarded.call(
+        PageTotal page = guarded.call(
                 engine,
                 priority,
                 () -> guarded.readClient(engine)
                         .get()
                         .uri(uri -> uri.path(lane.path).queryParam("size", 1).build())
                         .retrieve()
-                        .body(FlowablePage.class));
+                        .body(PageTotal.class));
         return page != null ? page.total() : 0;
     }
 
@@ -219,7 +219,7 @@ final class ProcessHealthClient {
         String afterIso = after.truncatedTo(ChronoUnit.SECONDS).toString();
         String beforeIso = before.truncatedTo(ChronoUnit.SECONDS).toString();
         try {
-            FlowablePage page = guarded.call(
+            PageTotal page = guarded.call(
                     engine,
                     priority,
                     () -> guarded.readClient(engine)
@@ -230,7 +230,7 @@ final class ProcessHealthClient {
                                     .queryParam(beforeName, beforeIso)
                                     .build())
                             .retrieve()
-                            .body(FlowablePage.class));
+                            .body(PageTotal.class));
             return page != null ? page.total() : 0L;
         } catch (HttpClientErrorException.NotFound e) {
             return null;
@@ -259,7 +259,7 @@ final class ProcessHealthClient {
     public long countOverdueTimers(EngineConfig engine, CallPriority priority, Instant dueBefore) {
         // Whole seconds only: Flowable's date parsing 400s on fractional seconds.
         String dueBeforeIso = dueBefore.truncatedTo(ChronoUnit.SECONDS).toString();
-        FlowablePage page = guarded.call(
+        PageTotal page = guarded.call(
                 engine,
                 priority,
                 () -> guarded.readClient(engine)
@@ -269,7 +269,7 @@ final class ProcessHealthClient {
                                 .queryParam("dueBefore", dueBeforeIso)
                                 .build())
                         .retrieve()
-                        .body(FlowablePage.class));
+                        .body(PageTotal.class));
         return page != null ? page.total() : 0;
     }
 
@@ -289,7 +289,7 @@ final class ProcessHealthClient {
                                     .queryParam("size", 1)
                                     .build())
                             .retrieve()
-                            .body(FlowablePage.class));
+                            .body(PageTotal.class));
             return true;
         } catch (HttpClientErrorException e) {
             return false;

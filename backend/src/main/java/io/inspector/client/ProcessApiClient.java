@@ -133,17 +133,17 @@ public class ProcessApiClient {
         reads.deleteInstanceIdentityLink(engine, priority, processInstanceId, user, type);
     }
 
-    public List<Map<String, Object>> listInstanceVariables(
+    public List<VariableRecord> listInstanceVariables(
             EngineConfig engine, CallPriority priority, String processInstanceId) {
         return reads.listInstanceVariables(engine, priority, processInstanceId);
     }
 
-    public List<Map<String, Object>> listExecutionLocalVariables(
+    public List<VariableRecord> listExecutionLocalVariables(
             EngineConfig engine, CallPriority priority, String executionId) {
         return reads.listExecutionLocalVariables(engine, priority, executionId);
     }
 
-    public FlowablePage listHistoricVariableInstances(
+    public HistoricVariablePage listHistoricVariableInstances(
             EngineConfig engine, CallPriority priority, String processInstanceId, int size) {
         return reads.listHistoricVariableInstances(engine, priority, processInstanceId, size);
     }
@@ -189,17 +189,15 @@ public class ProcessApiClient {
         return reads.deploymentResourceData(engine, priority, deploymentId, resourceName);
     }
 
-    @SuppressWarnings("unchecked")
     public Map<String, Object> getMap(EngineConfig engine, CallPriority priority, String path) {
         return reads.getMap(engine, priority, path);
     }
 
-    public List<Map<String, Object>> getList(EngineConfig engine, CallPriority priority, String path) {
-        return reads.getList(engine, priority, path);
+    public List<TableCountRecord> listTables(EngineConfig engine, CallPriority priority) {
+        return reads.listTables(engine, priority);
     }
 
-    @SuppressWarnings("unchecked")
-    public Map<String, Object> engineInfo(EngineConfig engine, CallPriority priority) {
+    public EngineInfoRecord engineInfo(EngineConfig engine, CallPriority priority) {
         return reads.engineInfo(engine, priority);
     }
 
@@ -282,7 +280,6 @@ public class ProcessApiClient {
         return health.probeActivityHistory(engine, priority);
     }
 
-    @SuppressWarnings("unchecked")
     public JobRecord getJob(EngineConfig engine, CallPriority priority, JobLaneKind lane, String jobId) {
         return actions.getJob(engine, priority, lane, jobId);
     }
@@ -321,8 +318,7 @@ public class ProcessApiClient {
         actions.deleteProcessInstance(engine, priority, processInstanceId, deleteReason);
     }
 
-    @SuppressWarnings("unchecked")
-    public Map<String, Object> getInstanceVariable(
+    public VariableRecord getInstanceVariable(
             EngineConfig engine, CallPriority priority, String processInstanceId, String name) {
         return actions.getInstanceVariable(engine, priority, processInstanceId, name);
     }
@@ -336,8 +332,7 @@ public class ProcessApiClient {
         actions.putInstanceVariable(engine, priority, processInstanceId, name, typedVariable);
     }
 
-    @SuppressWarnings("unchecked")
-    public Map<String, Object> getExecutionVariable(
+    public VariableRecord getExecutionVariable(
             EngineConfig engine, CallPriority priority, String executionId, String name) {
         return actions.getExecutionVariable(engine, priority, executionId, name);
     }
@@ -432,7 +427,6 @@ public class ProcessApiClient {
                 engine, priority, definitionId, action, includeProcessInstances, effectiveAt);
     }
 
-    @SuppressWarnings("unchecked")
     public Map<String, Object> getProcessDefinitionModel(
             EngineConfig engine, CallPriority priority, String definitionId) {
         return repository.getProcessDefinitionModel(engine, priority, definitionId);

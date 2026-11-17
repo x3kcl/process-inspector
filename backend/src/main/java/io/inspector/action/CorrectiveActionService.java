@@ -20,6 +20,7 @@ import io.inspector.client.ProcessApiClient.JobLaneKind;
 import io.inspector.client.ProcessDefinitionRecord;
 import io.inspector.client.ProcessInstanceRecord;
 import io.inspector.client.TaskRecord;
+import io.inspector.client.VariableRecord;
 import io.inspector.cmmn.CaseMigrationPrecheck;
 import io.inspector.cmmn.CasePlanDefinitionIds;
 import io.inspector.cmmn.CmmnCapabilities;
@@ -635,7 +636,7 @@ public class CorrectiveActionService {
         boolean local = executionId != null;
 
         String activityId = null;
-        Map<String, Object> row;
+        VariableRecord row;
         if (local) {
             ExecutionRecord execution = client.getExecution(engine, CallPriority.INTERACTIVE, executionId);
             if (execution == null) {
@@ -671,7 +672,7 @@ public class CorrectiveActionService {
             }
         }
 
-        Object current = row.get("value");
+        Object current = row.value();
         boolean secret = AuditService.isSecretName(edit.name());
         Map<String, Object> payload = new LinkedHashMap<>();
         payload.put("schema", "edit-variable/v1");
@@ -681,7 +682,7 @@ public class CorrectiveActionService {
             payload.put("executionId", executionId);
             payload.put("activityId", activityId);
         }
-        payload.put("valueType", edit.type() != null ? edit.type() : row.get("type"));
+        payload.put("valueType", edit.type() != null ? edit.type() : row.type());
         payload.put("oldValue", secret ? AuditService.REDACTED : current);
         payload.put("expectedOldValue", secret ? AuditService.REDACTED : edit.expectedOldValue());
         payload.put("newValue", secret ? AuditService.REDACTED : edit.value());
@@ -873,15 +874,14 @@ public class CorrectiveActionService {
         }
         if (verb == ActionVerb.EDIT_CASE_VARIABLE) {
             ActionRequest.VariableEdit edit = requiredEdit(request);
-            Map<String, Object> variable =
-                    cmmnClient.getCaseVariable(engine, CallPriority.INTERACTIVE, caseId, edit.name());
+            VariableRecord variable = cmmnClient.getCaseVariable(engine, CallPriority.INTERACTIVE, caseId, edit.name());
             if (variable == null) {
                 throw new GuardRefusedException(
                         HttpStatus.NOT_FOUND,
                         "variable-not-found",
                         "Case variable '" + edit.name() + "' does not exist. Nothing happened.");
             }
-            current = variable.get("value");
+            current = variable.value();
             payload.put("name", edit.name());
             payload.put("oldValue", current);
             payload.put("newValue", edit.value());

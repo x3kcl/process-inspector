@@ -31,6 +31,7 @@ import io.inspector.client.ProcessApiClient.JobLaneKind;
 import io.inspector.client.ProcessInstanceRecords;
 import io.inspector.client.RepositoryRecords;
 import io.inspector.client.TaskRecords;
+import io.inspector.client.VariableRecords;
 import io.inspector.config.InspectorProperties;
 import io.inspector.config.InspectorProperties.EngineEnvironment;
 import io.inspector.config.InspectorProperties.EngineMode;
@@ -296,7 +297,7 @@ class CorrectiveActionServiceTest {
     @Test
     void tierOneRequiresReasonOnProdButNotOnDev() {
         when(client.getInstanceVariable(any(), eq(CallPriority.INTERACTIVE), eq("pi-1"), eq("amount")))
-                .thenReturn(Map.of("name", "amount", "type", "integer", "value", 42));
+                .thenReturn(VariableRecords.variable(Map.of("name", "amount", "type", "integer", "value", 42)));
 
         ActionRequest noReason = new ActionRequest(
                 null,
@@ -507,7 +508,7 @@ class CorrectiveActionServiceTest {
     @Test
     void casMismatchRefusesTheEditAuditsItAndLeavesTheEngineUntouched() {
         when(client.getInstanceVariable(any(), eq(CallPriority.INTERACTIVE), eq("pi-1"), eq("amount")))
-                .thenReturn(Map.of("name", "amount", "type", "integer", "value", 100));
+                .thenReturn(VariableRecords.variable(Map.of("name", "amount", "type", "integer", "value", 100)));
 
         ActionRequest edit = new ActionRequest(
                 "fix poisoned amount",
@@ -533,7 +534,7 @@ class CorrectiveActionServiceTest {
     @Test
     void casToleratesIntegerVersusLongFromTheWire() {
         when(client.getInstanceVariable(any(), eq(CallPriority.INTERACTIVE), eq("pi-1"), eq("amount")))
-                .thenReturn(Map.of("name", "amount", "type", "long", "value", 42L));
+                .thenReturn(VariableRecords.variable(Map.of("name", "amount", "type", "long", "value", 42L)));
 
         ActionRequest edit = new ActionRequest(
                 null,
@@ -575,7 +576,7 @@ class CorrectiveActionServiceTest {
                 .thenReturn(ExecutionRecords.execution(
                         Map.of("id", "exec-7", "processInstanceId", "pi-1", "activityId", "validateLine")));
         when(client.getExecutionVariable(any(), eq(CallPriority.INTERACTIVE), eq("exec-7"), eq("amount")))
-                .thenReturn(Map.of("name", "amount", "type", "integer", "value", 42));
+                .thenReturn(VariableRecords.variable(Map.of("name", "amount", "type", "integer", "value", 42)));
 
         service.execute(DEV, "pi-1", ActionVerb.EDIT_VARIABLE, stepLocalEdit("exec-7", 43, 42), operator);
 
@@ -597,7 +598,7 @@ class CorrectiveActionServiceTest {
                         Map.of("id", "exec-7", "processInstanceId", "pi-1", "activityId", "validateLine")));
         // The local value (99) differs from what the operator saw (42) — CAS must refuse.
         when(client.getExecutionVariable(any(), eq(CallPriority.INTERACTIVE), eq("exec-7"), eq("amount")))
-                .thenReturn(Map.of("name", "amount", "type", "integer", "value", 99));
+                .thenReturn(VariableRecords.variable(Map.of("name", "amount", "type", "integer", "value", 99)));
 
         assertThatThrownBy(() -> service.execute(
                         DEV, "pi-1", ActionVerb.EDIT_VARIABLE, stepLocalEdit("exec-7", 43, 42), operator))

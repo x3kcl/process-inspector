@@ -8,10 +8,10 @@ import static org.mockito.Mockito.mock;
 import static org.mockito.Mockito.when;
 
 import io.inspector.client.ExecutionRecords;
-import io.inspector.client.FlowablePage;
 import io.inspector.client.ProcessApiClient;
 import io.inspector.client.ProcessInstancePage;
 import io.inspector.client.ProcessInstanceRecords;
+import io.inspector.client.VariableRecords;
 import io.inspector.config.InspectorProperties.EngineConfig;
 import io.inspector.detail.InstanceDetailService;
 import io.inspector.dto.InstanceVariables.VariableDto;
@@ -217,11 +217,15 @@ class SiblingDiffServiceTest {
                         "id", "good-42", "processDefinitionId", "payment:3:abc", "endTime", "2026-07-07T08:00:00Z")));
 
         when(flowable.listHistoricVariableInstances(eq(engine), any(), eq("subject-1"), anyInt()))
-                .thenReturn(new FlowablePage(
-                        List.of(Map.of("name", "amount", "type", "integer", "value", 100)), 1, 0, 200));
+                .thenReturn(VariableRecords.historicPage(
+                        List.of(Map.of("variable", Map.of("name", "amount", "type", "integer", "value", 100))),
+                        1,
+                        200));
         when(flowable.listHistoricVariableInstances(eq(engine), any(), eq("good-42"), anyInt()))
-                .thenReturn(new FlowablePage(
-                        List.of(Map.of("name", "amount", "type", "integer", "value", 250)), 1, 0, 200));
+                .thenReturn(VariableRecords.historicPage(
+                        List.of(Map.of("variable", Map.of("name", "amount", "type", "integer", "value", 250))),
+                        1,
+                        200));
         when(flowable.listHistoricActivities(eq(engine), any(), eq("subject-1"), anyInt(), anyInt()))
                 .thenReturn(ExecutionRecords.activityPage(
                         List.of(activityRow("start", 5L), activityRow("charge", null)), 2));

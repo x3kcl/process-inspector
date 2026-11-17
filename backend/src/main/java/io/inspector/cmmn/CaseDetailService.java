@@ -1,6 +1,7 @@
 package io.inspector.cmmn;
 
 import io.inspector.client.CaseDefinitionRecord;
+import io.inspector.client.CaseIdentityLinkRecord;
 import io.inspector.client.CaseInstanceRecord;
 import io.inspector.client.CmmnApiClient;
 import io.inspector.client.CmmnJobPage;
@@ -8,6 +9,7 @@ import io.inspector.client.CmmnJobRecord;
 import io.inspector.client.GuardedCaller.CallPriority;
 import io.inspector.client.PlanItemPage;
 import io.inspector.client.PlanItemRecord;
+import io.inspector.client.VariableRecord;
 import io.inspector.config.InspectorProperties.EngineConfig;
 import io.inspector.dto.CaseDetail;
 import io.inspector.dto.CaseDetail.CaseFailing;
@@ -384,13 +386,13 @@ public class CaseDetailService {
         return URLDecoder.decode(url.substring(at + "/resources/".length()), StandardCharsets.UTF_8);
     }
 
-    public List<Map<String, Object>> variables(String engineId, String caseInstanceId) {
+    public List<VariableRecord> variables(String engineId, String caseInstanceId) {
         EngineConfig engine = registry.require(engineId);
         CmmnCapabilities.requireScopeType(registry, engine);
         return flowable.listCaseVariables(engine, CallPriority.INTERACTIVE, caseInstanceId);
     }
 
-    public List<Map<String, Object>> identityLinks(String engineId, String caseInstanceId) {
+    public List<CaseIdentityLinkRecord> identityLinks(String engineId, String caseInstanceId) {
         EngineConfig engine = registry.require(engineId);
         CmmnCapabilities.requireScopeType(registry, engine);
         return flowable.listCaseIdentityLinks(engine, CallPriority.INTERACTIVE, caseInstanceId);

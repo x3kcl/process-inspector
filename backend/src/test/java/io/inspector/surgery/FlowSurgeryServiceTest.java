@@ -21,11 +21,11 @@ import io.inspector.audit.AuditOutcome;
 import io.inspector.audit.AuditService;
 import io.inspector.audit.ProtectedInstanceRepository;
 import io.inspector.client.ExecutionRecords;
-import io.inspector.client.FlowablePage;
 import io.inspector.client.GuardedCaller.CallPriority;
 import io.inspector.client.ProcessApiClient;
 import io.inspector.client.ProcessInstanceRecords;
 import io.inspector.client.RepositoryRecords;
+import io.inspector.client.VariableRecords;
 import io.inspector.config.InspectorProperties;
 import io.inspector.config.InspectorProperties.EngineEnvironment;
 import io.inspector.config.InspectorProperties.EngineMode;
@@ -370,7 +370,7 @@ class FlowSurgeryServiceTest {
                         any(), eq(CallPriority.INTERACTIVE), eq("demoOrder"), any(), anyInt(), eq(1)))
                 .thenReturn(RepositoryRecords.definitionPage(List.of(Map.of("id", "demoOrder:4:v4"))));
         when(client.listHistoricVariableInstances(any(), eq(CallPriority.INTERACTIVE), eq("pi-dead"), anyInt()))
-                .thenReturn(new FlowablePage(
+                .thenReturn(VariableRecords.historicPage(
                         List.of(
                                 variableRow("amount", "integer", 42, "global", null),
                                 variableRow("initiator", "string", "kermit", "global", null),
@@ -378,7 +378,6 @@ class FlowSurgeryServiceTest {
                                 variableRow("formNote", "string", "task-local", "global", "task-9"),
                                 variableRow("loopLocal", "integer", 1, "local", null)),
                         5,
-                        0,
                         500));
         when(client.startProcessInstance(any(), any(), any()))
                 .thenReturn(ProcessInstanceRecords.instance(
@@ -407,7 +406,7 @@ class FlowSurgeryServiceTest {
         when(client.getProcessDefinition(any(), eq(CallPriority.INTERACTIVE), eq("demoOrder:3:v3")))
                 .thenReturn(RepositoryRecords.definition(Map.of("id", "demoOrder:3:v3")));
         when(client.listHistoricVariableInstances(any(), eq(CallPriority.INTERACTIVE), eq("pi-dead"), anyInt()))
-                .thenReturn(new FlowablePage(List.of(), 0, 0, 500));
+                .thenReturn(VariableRecords.historicPage(List.of(), 0, 500));
         when(client.startProcessInstance(any(), any(), any()))
                 .thenReturn(ProcessInstanceRecords.instance(
                         Map.of("id", "pi-new", "processDefinitionId", "demoOrder:3:v3")));

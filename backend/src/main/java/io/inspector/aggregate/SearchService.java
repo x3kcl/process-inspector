@@ -636,11 +636,6 @@ public class SearchService {
         return s != null && !s.isBlank();
     }
 
-    static String str(Map<String, Object> map, String key) {
-        Object v = map.get(key);
-        return v != null ? v.toString() : null;
-    }
-
     @PreDestroy
     void shutdown() {
         fanout.shutdownNow();

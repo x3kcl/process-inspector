@@ -1,0 +1,14 @@
+[
+  {
+    "group": null,
+    "type": "starter",
+    "url": "http://localhost:8080/flowable-rest/cmmn-api/cmmn-runtime/case-instances/20f469ad-e247-11f1-a698-1aed9a8f6094/identitylinks/users/rest-admin/starter",
+    "user": "rest-admin"
+  },
+  {
+    "group": null,
+    "type": "participant",
+    "url": "http://localhost:8080/flowable-rest/cmmn-api/cmmn-runtime/case-instances/20f469ad-e247-11f1-a698-1aed9a8f6094/identitylinks/users/kermit/participant",
+    "user": "kermit"
+  }
+]

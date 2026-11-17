@@ -7,6 +7,7 @@ import io.inspector.config.InspectorProperties.EngineConfig;
 import java.time.Instant;
 import java.util.List;
 import java.util.Map;
+import org.springframework.core.ParameterizedTypeReference;
 import org.springframework.http.HttpStatus;
 import org.springframework.http.MediaType;
 import org.springframework.stereotype.Component;
@@ -21,6 +22,11 @@ import org.springframework.web.util.UriComponentsBuilder;
  */
 @Component
 public class CmmnApiClient {
+
+    private static final ParameterizedTypeReference<List<VariableRecord>> CASE_VARIABLES =
+            new ParameterizedTypeReference<>() {};
+    private static final ParameterizedTypeReference<List<CaseIdentityLinkRecord>> CASE_IDENTITY_LINKS =
+            new ParameterizedTypeReference<>() {};
 
     private final GuardedCaller guarded;
 
@@ -138,19 +144,18 @@ public class CmmnApiClient {
         }
     }
 
-    @SuppressWarnings("unchecked")
-    public List<Map<String, Object>> listCaseIdentityLinks(
+    public List<CaseIdentityLinkRecord> listCaseIdentityLinks(
             EngineConfig engine, CallPriority priority, String caseInstanceId) {
         String id = GuardedCaller.safeId(caseInstanceId);
         try {
-            List<Map<String, Object>> rows = guarded.call(
+            List<CaseIdentityLinkRecord> rows = guarded.call(
                     engine,
                     priority,
                     () -> guarded.readClient(engine)
                             .get()
                             .uri(cmmnApiBase(engine) + "/cmmn-runtime/case-instances/{id}/identitylinks", id)
                             .retrieve()
-                            .body(List.class));
+                            .body(CASE_IDENTITY_LINKS));
             return rows == null ? List.of() : rows;
         } catch (HttpClientErrorException.NotFound e) {
             return List.of();
@@ -284,27 +289,24 @@ public class CmmnApiClient {
                         .toBodilessEntity());
     }
 
-    @SuppressWarnings("unchecked")
-    public List<Map<String, Object>> listCaseVariables(
-            EngineConfig engine, CallPriority priority, String caseInstanceId) {
+    public List<VariableRecord> listCaseVariables(EngineConfig engine, CallPriority priority, String caseInstanceId) {
         String id = GuardedCaller.safeId(caseInstanceId);
         try {
-            List<Map<String, Object>> rows = guarded.call(
+            List<VariableRecord> rows = guarded.call(
                     engine,
                     priority,
                     () -> guarded.readClient(engine)
                             .get()
                             .uri(cmmnApiBase(engine) + "/cmmn-runtime/case-instances/{id}/variables", id)
                             .retrieve()
-                            .body(List.class));
+                            .body(CASE_VARIABLES));
             return rows == null ? List.of() : rows;
         } catch (HttpClientErrorException.NotFound e) {
             return List.of();
         }
     }
 
-    @SuppressWarnings("unchecked")
-    public Map<String, Object> getCaseVariable(
+    public VariableRecord getCaseVariable(
             EngineConfig engine, CallPriority priority, String caseInstanceId, String name) {
         String id = GuardedCaller.safeId(caseInstanceId);
         try {
@@ -315,7 +317,7 @@ public class CmmnApiClient {
                             .get()
                             .uri(cmmnApiBase(engine) + "/cmmn-runtime/case-instances/{id}/variables/{name}", id, name)
                             .retrieve()
-                            .body(Map.class));
+                            .body(VariableRecord.class));
         } catch (HttpClientErrorException.NotFound e) {
             return null;
         }
@@ -401,10 +403,10 @@ public class CmmnApiClient {
                 .queryParam("size", 1);
         filters.forEach(b::queryParam);
         java.net.URI uri = b.build().toUri();
-        FlowablePage page = guarded.call(
+        PageTotal page = guarded.call(
                 engine,
                 priority,
-                () -> guarded.readClient(engine).get().uri(uri).retrieve().body(FlowablePage.class));
+                () -> guarded.readClient(engine).get().uri(uri).retrieve().body(PageTotal.class));
         return page != null ? page.total() : 0;
     }
 
@@ -422,10 +424,10 @@ public class CmmnApiClient {
                 .build()
                 .toUri();
         try {
-            FlowablePage page = guarded.call(
+            PageTotal page = guarded.call(
                     engine,
                     priority,
-                    () -> guarded.readClient(engine).get().uri(uri).retrieve().body(FlowablePage.class));
+                    () -> guarded.readClient(engine).get().uri(uri).retrieve().body(PageTotal.class));
             return page != null ? page.total() : 0L;
         } catch (org.springframework.web.client.HttpClientErrorException.NotFound e) {
             return null;
@@ -565,10 +567,10 @@ public class CmmnApiClient {
                 .queryParam("size", 1)
                 .build()
                 .toUri();
-        FlowablePage page = guarded.call(
+        PageTotal page = guarded.call(
                 engine,
                 priority,
-                () -> guarded.readClient(engine).get().uri(uri).retrieve().body(FlowablePage.class));
+                () -> guarded.readClient(engine).get().uri(uri).retrieve().body(PageTotal.class));
         return page != null ? page.total() : 0;
     }
 
