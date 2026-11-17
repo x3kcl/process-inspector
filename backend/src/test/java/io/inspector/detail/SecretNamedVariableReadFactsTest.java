@@ -91,7 +91,7 @@ class SecretNamedVariableReadFactsTest {
         assertThat(AuditService.isSecretName("apiToken")).isTrue(); // "token"
         assertThat(AuditService.isSecretName("password")).isTrue();
         assertThat(AuditService.isSecretName("clientSecret")).isTrue(); // "secret"
-        assertThat(AuditService.isSecretName("authorization")).isFalse(); // not on the list
+        assertThat(AuditService.isSecretName("authorization")).isTrue(); // on the list since #741
         // ...and it IS applied to an audit payload (the write side)
         assertThat(AuditService.redact(Map.of("password", "pw-730-plain")))
                 .containsEntry("password", AuditService.REDACTED);

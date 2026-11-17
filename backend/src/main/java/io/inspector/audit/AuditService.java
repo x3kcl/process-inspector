@@ -12,7 +12,6 @@ import java.time.temporal.ChronoUnit;
 import java.util.HexFormat;
 import java.util.LinkedHashMap;
 import java.util.List;
-import java.util.Locale;
 import java.util.Map;
 import java.util.Optional;
 import java.util.Set;
@@ -72,14 +71,6 @@ public class AuditService {
      * dereferences {@code engineId}) are untouched — no migration needed.
      */
     public static final String CONFIG_ENGINE_ID = "_inspector";
-
-    /**
-     * Secret-name denylist (R-AUD-03): variable/field names matching any of these have
-     * their VALUES replaced by «redacted» in audit payloads. Names stay — the skeleton
-     * is the accountability record.
-     */
-    private static final List<String> SECRET_NAME_DENYLIST =
-            List.of("password", "passwd", "secret", "token", "credential", "apikey", "api_key", "api-key");
 
     public static final String REDACTED = "«redacted»";
 
@@ -623,11 +614,7 @@ public class AuditService {
     }
 
     public static boolean isSecretName(String name) {
-        if (name == null) {
-            return false;
-        }
-        String lower = name.toLowerCase(Locale.ROOT);
-        return SECRET_NAME_DENYLIST.stream().anyMatch(lower::contains);
+        return SecretNames.isSecret(name);
     }
 
     static String truncateToBytes(String value, int maxBytes) {

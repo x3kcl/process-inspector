@@ -258,6 +258,11 @@ annotated tag, and *calls* `release.yml` as a reusable workflow — required bec
 ## 6. The audit golden master, operationally (R-AUD-01/02/03)
 - **Fail-closed**: tier ≥1 mutations are not issued if the audit INSERT fails; the error
   names Postgres.
+- **Secret-name masking** (R-AUD-03, #741): values of variables whose name matches the built-in
+  list are replaced by `«redacted»`. Add names with `inspector.secret-names.additional` (list;
+  each 2-64 chars of letters, digits, `_`, `-`; matched as a whole word or camelCase / snake_case
+  segment, e.g. `iban` hits `customerIban`, not `ibanx`). Built-ins cannot be removed; a bad
+  entry fails startup naming the property.
 - DB role: INSERT/SELECT only (REVOKE UPDATE/DELETE) + guard trigger; per-row hash chain,
   **walked and recomputed by a verifier** (`GET /api/admin/audit/integrity`, ADMIN-only,
   itself an audited read — `AuditChainVerifier`, issue #304): it recomputes each row's hash

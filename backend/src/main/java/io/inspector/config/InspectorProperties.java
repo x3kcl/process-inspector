@@ -42,7 +42,8 @@ public record InspectorProperties(
         @Valid Incidents incidents,
         @Valid SelfHeal selfHeal,
         @DurationMin(seconds = 1) Duration hierarchyPlanMaxAge,
-        @Valid List<EngineConfig> engines) {
+        @Valid List<EngineConfig> engines,
+        @Valid SecretNames secretNames) {
     /** Engine ids are stable slugs used in composite instance IDs (R-SEM-08) — never rename. */
     public static final String ENGINE_ID_PATTERN = "^[a-z0-9][a-z0-9._-]{0,63}$";
 
@@ -562,6 +563,10 @@ public record InspectorProperties(
         }
     }
 
+    public SecretNames secretNamesOrDefault() {
+        return secretNames != null ? secretNames : new SecretNames(null);
+    }
+
     public SelfHeal selfHealOrDefault() {
         return selfHeal != null ? selfHeal : new SelfHeal(null, null, null, null);
     }
@@ -675,8 +680,47 @@ public record InspectorProperties(
         this(fanoutParallelism, hierarchyMaxDepth, triage, bulk, null, null, engines);
     }
 
-    /** STUB for the RED commit (#741): no constraints yet. */
-    public record SecretNames(List<String> additional) {}
+    /**
+     * Extra secret-name segments for audit masking (R-AUD-03, #741), on top of the built-ins that
+     * cannot be removed. Letters, digits, {@code _} and {@code -} only, 2-64 chars; no regex.
+     */
+    @Validated
+    public record SecretNames(
+            List<
+                            @NotBlank
+                            @Pattern(
+                                    regexp = "[A-Za-z0-9_-]{2,64}",
+                                    message = "must be 2-64 of letters, digits, _ or -")
+                            String>
+                    additional) {
+        public SecretNames {
+            additional = additional != null ? List.copyOf(additional) : List.of();
+        }
+    }
+
+    /** Pre-#741 9-arg shape (no {@code secretNames}) — keeps existing call sites unchanged. */
+    public InspectorProperties(
+            Integer fanoutParallelism,
+            Integer hierarchyMaxDepth,
+            Triage triage,
+            Bulk bulk,
+            Snapshot snapshot,
+            Incidents incidents,
+            SelfHeal selfHeal,
+            Duration hierarchyPlanMaxAge,
+            List<EngineConfig> engines) {
+        this(
+                fanoutParallelism,
+                hierarchyMaxDepth,
+                triage,
+                bulk,
+                snapshot,
+                incidents,
+                selfHeal,
+                hierarchyPlanMaxAge,
+                engines,
+                null);
+    }
 
     @Validated
     public record EngineConfig(
