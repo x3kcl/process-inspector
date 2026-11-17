@@ -177,7 +177,7 @@ final class ProcessCorrectiveClient {
             CallPriority priority,
             String processInstanceId,
             String name,
-            Map<String, Object> typedVariable) {
+            VariableWriteRequest typedVariable) {
         guarded.run(
                 engine,
                 priority,
@@ -227,7 +227,7 @@ final class ProcessCorrectiveClient {
             CallPriority priority,
             String executionId,
             String name,
-            Map<String, Object> typedVariable) {
+            VariableWriteRequest typedVariable) {
         guarded.run(
                 engine,
                 priority,

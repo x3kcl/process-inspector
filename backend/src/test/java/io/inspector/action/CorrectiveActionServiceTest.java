@@ -589,7 +589,7 @@ class CorrectiveActionServiceTest {
                         eq(CallPriority.INTERACTIVE),
                         eq("exec-7"),
                         eq("amount"),
-                        argThat(body -> "local".equals(body.get("scope"))));
+                        argThat(body -> "local".equals(body.scope())));
         verify(client, never()).putInstanceVariable(any(), any(), anyString(), anyString(), any());
     }
 

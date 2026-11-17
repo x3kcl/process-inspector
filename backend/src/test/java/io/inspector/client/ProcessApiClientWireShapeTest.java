@@ -719,7 +719,7 @@ class ProcessApiClientWireShapeTest {
         String executionId = String.valueOf(doc(v, "execution").get("id"));
         String defId = firstId(v, "process-definitions-by-key");
         String dep = String.valueOf(doc(v, "deployment").get("id"));
-        Map<String, Object> typed = Map.of("name", "divisor", "type", "integer", "value", 1);
+        VariableWriteRequest typed = VariableWriteRequest.of("divisor", "integer", 1);
         return List.of(
                 new Write(
                         "moveDeadLetterJob",

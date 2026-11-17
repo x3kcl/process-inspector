@@ -17,6 +17,7 @@ import io.inspector.client.ExecutionPage;
 import io.inspector.client.ProcessApiClient;
 import io.inspector.client.ProcessInstanceRecords;
 import io.inspector.client.VariableRecord;
+import io.inspector.client.VariableWriteRequest;
 import io.inspector.registry.EngineHealthService;
 import io.inspector.support.NoDbTestSupport;
 import java.nio.charset.StandardCharsets;
@@ -273,7 +274,7 @@ class SecretNamedVariableReadFactsTest {
                         any(),
                         eq(INSTANCE),
                         eq("password"),
-                        eq(Map.of("name", "password", "type", "string", "value", "pw-new-742")));
+                        eq(VariableWriteRequest.of("password", "string", "pw-new-742")));
         assertThat(res.getBody()).doesNotContain("pw-new-742").doesNotContain("pw-730-plain");
     }
 
