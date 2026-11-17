@@ -675,6 +675,9 @@ public record InspectorProperties(
         this(fanoutParallelism, hierarchyMaxDepth, triage, bulk, null, null, engines);
     }
 
+    /** STUB for the RED commit (#741): no constraints yet. */
+    public record SecretNames(List<String> additional) {}
+
     @Validated
     public record EngineConfig(
             @NotBlank @Pattern(regexp = ENGINE_ID_PATTERN, message = "engine id must match " + ENGINE_ID_PATTERN)

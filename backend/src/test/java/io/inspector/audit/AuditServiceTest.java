@@ -243,6 +243,18 @@ class AuditServiceTest {
     }
 
     @Test
+    void redactMasksTheNewSecretNamesButNotLookalikes() {
+        Map<String, Object> payload = new java.util.LinkedHashMap<>();
+        payload.put("authorization", "Bearer abc");
+        payload.put("userPin", "1234");
+        payload.put("shipping", "DHL");
+        Map<String, Object> clean = AuditService.redact(payload);
+        assertThat(clean.get("authorization")).isEqualTo(AuditService.REDACTED);
+        assertThat(clean.get("userPin")).isEqualTo(AuditService.REDACTED);
+        assertThat(clean.get("shipping")).isEqualTo("DHL");
+    }
+
+    @Test
     @SuppressWarnings("unchecked")
     void redactRecursesIntoListsClosingThePreExistingDenylistBypass() {
         // Before the S2 fix, redact() descended into maps only — a secret inside a LIST leaked.
