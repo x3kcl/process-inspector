@@ -28,6 +28,16 @@ export default defineConfig({
     baseURL: `http://localhost:${PORT}`,
     trace: 'retain-on-failure',
     screenshot: 'only-on-failure',
+    // #702: this job brings its own compose engines up on the host network — netlink churn that
+    // makes Chromium abort loads (net::ERR_NETWORK_CHANGED). Same shim as ../playwright.config.ts.
+    launchOptions: process.env.PI_E2E_NO_NETLINK
+      ? {
+          env: {
+            ...(process.env as Record<string, string>),
+            LD_PRELOAD: process.env.PI_E2E_NO_NETLINK,
+          },
+        }
+      : {},
   },
   webServer: {
     command: `npm run dev -- --port ${PORT} --strictPort`,

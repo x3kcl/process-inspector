@@ -4,8 +4,8 @@
 # netlink stream. CI slots share the host network, so every docker bridge another job creates is an
 # address change to Chromium, which aborts in-flight requests with net::ERR_NETWORK_CHANGED (every
 # failed-attempt trace of the red runs carries it). Checks that frontend/e2e/no-netlink.c, preloaded,
-# refuses a NETLINK_ROUTE socket and nothing else, that the contract's e2e part builds and exports it,
-# and that playwright.config.ts preloads it into the browser. ci/contract.sh e2e runs it.
+# refuses a NETLINK_ROUTE socket and nothing else, that the contract's e2e and e2e-real parts build and
+# export it (#702), and that both Playwright configs preload it into the browser. ci/contract.sh e2e runs it.
 set -uo pipefail
 cd "$(dirname "${BASH_SOURCE[0]}")/.."
 fail=0
@@ -28,11 +28,19 @@ else
   no "frontend/e2e/no-netlink.c does not build: $(head -3 "$tmp/cc.err")"
 fi
 
-block="$(sed -n '/^e2e() {$/,/^}$/p' ci/contract.sh)"
-grep -q 'e2e/no-netlink.c' <<< "$block" || no "ci/contract.sh e2e does not build e2e/no-netlink.c"
-grep -q 'export PI_E2E_NO_NETLINK' <<< "$block" || no "ci/contract.sh e2e does not export PI_E2E_NO_NETLINK"
-grep -q 'LD_PRELOAD: process.env.PI_E2E_NO_NETLINK' frontend/playwright.config.ts \
-  || no "frontend/playwright.config.ts does not preload PI_E2E_NO_NETLINK into the browser"
+# #702: one helper builds the shim; the hermetic e2e part and the nightly e2e-real part both call it,
+# and both Playwright configs preload it (e2e-real brings its own compose engines up = the churn).
+fn() { sed -n "/^$1() {\$/,/^}\$/p" ci/contract.sh; }
+helper="$(fn e2e_no_netlink)"
+grep -q 'e2e/no-netlink.c' <<< "$helper" || no "ci/contract.sh e2e_no_netlink does not build e2e/no-netlink.c"
+grep -q 'export PI_E2E_NO_NETLINK' <<< "$helper" || no "ci/contract.sh e2e_no_netlink does not export PI_E2E_NO_NETLINK"
+for part in e2e nightly_e2e_real; do
+  fn "$part" | grep -qE '^[[:space:]]*e2e_no_netlink$' || no "ci/contract.sh $part does not build the shim (e2e_no_netlink)"
+done
+for cfg in frontend/playwright.config.ts frontend/e2e-real/playwright.config.ts; do
+  grep -q 'LD_PRELOAD: process.env.PI_E2E_NO_NETLINK' "$cfg" \
+    || no "$cfg does not preload PI_E2E_NO_NETLINK into the browser"
+done
 
 [ "$fail" = 0 ] && echo "e2e-netlink-selftest: ok"
 exit "$fail"
