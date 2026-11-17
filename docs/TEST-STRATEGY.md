@@ -182,7 +182,7 @@ the scenario mapping (`TS-*`) in its §§2–12.
 |---|---|---|---|---|
 | P1 | 10 stub engines, 3 slow (read-ms−500), 2 timing out | search P95 ≤ read-ms+2s; correct envelope; BFF health P99 <200ms throughout | M2 exit, re-run M6, nightly | ✅ `FanoutPartialFailureIT` (nightly job `fanout-partial-failure-p1`, issue #298) |
 | P2 | 50k-row DLQ vs `dlq-scan-cap` | scan ≤10s, `truncated@cap`, un-scanned never shown healthy | M2 exit, nightly | ✅ `DlqScanCapVolumeIT` (nightly job `dlq-scan-cap-p2`, issue #299) |
-| P3 | 50 SSE clients held 20 min while 600-item bulks run back to back (2 stub engines) | see the P3 thresholds below | nightly | 🟡 built: `SseBulkSoakIT` (nightly job `soak-p3`, 30-min budget, issue #467); §C-8 closes after three green nights in a row |
+| P3 | 50 SSE clients held 20 min while 600-item bulks run back to back (2 stub engines) | see the P3 thresholds below | nightly | ✅ `SseBulkSoakIT` (nightly job `soak-p3`, 30-min budget, issue #467); `soak-p3` green on the scheduled nightlies of 2026-11-14/15/16/17 (runs 43546065067, 43667688011, 43792260642, 44002902846; 21m47s, 21m47s, 21m51s, 21m18s against the 30-min budget); §C-8 closed |
 | P4 | 100 landing loads in 5s | one engine-query round per aggregation (≥99% cache hits); Refresh rate-limit holds | M3 exit | ✅ `perf-scenario-p1.js` (nightly job `perf-p1`, §C-10) |
 
 **P3 thresholds** (`SseBulkSoakIT`, issue #467). The hold is a parameter, `-Dsoak.minutes=<n>`
