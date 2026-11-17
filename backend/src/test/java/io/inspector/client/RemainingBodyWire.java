@@ -29,8 +29,9 @@ import org.springframework.mock.env.MockEnvironment;
  * {@code ExecutionActionBodyWireShapeTest}, {@code PlanItemVerbBodyWireShapeTest}): the real
  * clients against a WireMock engine, the two ways a sent body is pinned, and the adapter for the
  * one client call whose body parameter changes type ({@code executionAction}). Kept out of the
- * frozen RED files so each test states inputs and expected bytes only. The adapter builds the
- * {@code Map.of} bodies {@code CorrectiveActionService.eventBody} sends on {@code main}.
+ * frozen RED files so each test states inputs and expected bytes only. Before the typed record the
+ * adapter built the {@code Map.of} bodies {@code CorrectiveActionService.eventBody} sent on
+ * {@code main}; now it builds the records.
  */
 final class RemainingBodyWire implements AutoCloseable {
 
@@ -67,20 +68,18 @@ final class RemainingBodyWire implements AutoCloseable {
         wm.stop();
     }
 
-    /* ---------- executionAction: main's bodies ---------- */
+    /* ---------- executionAction ---------- */
 
     void messageEvent(String executionId, String messageName) {
-        process.executionAction(
-                engine, P, executionId, Map.of("action", "messageEventReceived", "messageName", messageName));
+        process.executionAction(engine, P, executionId, ExecutionActionRequest.message(messageName));
     }
 
     void signalEvent(String executionId, String signalName) {
-        process.executionAction(
-                engine, P, executionId, Map.of("action", "signalEventReceived", "signalName", signalName));
+        process.executionAction(engine, P, executionId, ExecutionActionRequest.signal(signalName));
     }
 
     void trigger(String executionId) {
-        process.executionAction(engine, P, executionId, Map.of("action", "trigger"));
+        process.executionAction(engine, P, executionId, ExecutionActionRequest.trigger());
     }
 
     /* ---------- pins ---------- */

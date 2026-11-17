@@ -403,7 +403,7 @@ public class ProcessApiClient {
     }
 
     public void executionAction(
-            EngineConfig engine, CallPriority priority, String executionId, Map<String, Object> body) {
+            EngineConfig engine, CallPriority priority, String executionId, ExecutionActionRequest body) {
         actions.executionAction(engine, priority, executionId, body);
     }
 
