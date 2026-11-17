@@ -31,6 +31,7 @@ import io.inspector.client.ProcessApiClient;
 import io.inspector.client.ProcessApiClient.JobLaneKind;
 import io.inspector.client.ProcessInstanceRecords;
 import io.inspector.client.RepositoryRecords;
+import io.inspector.client.TaskField;
 import io.inspector.client.TaskRecords;
 import io.inspector.client.VariableRecords;
 import io.inspector.config.InspectorProperties;
@@ -903,7 +904,7 @@ class CorrectiveActionServiceTest {
                         any(),
                         eq(CallPriority.INTERACTIVE),
                         eq("task-9"),
-                        argThat(body -> "2026-12-01T00:00:00Z".equals(body.get("dueDate"))));
+                        argThat(body -> new TaskField("2026-12-01T00:00:00Z").equals(body.dueDate())));
         assertThat(result.deltaStatement())
                 .contains("dueDate")
                 .contains("2026-01-01T00:00:00Z")

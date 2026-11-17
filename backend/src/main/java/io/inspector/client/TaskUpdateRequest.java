@@ -1,6 +1,12 @@
 package io.inspector.client;
 
-/** The body of PUT /runtime/tasks/{id}. RED stub (#720): carries nothing yet. */
+import com.fasterxml.jackson.annotation.JsonInclude;
+
+/**
+ * The body of PUT /runtime/tasks/{id} (#720). Only the keys present are changed: a null component
+ * is OMITTED, a {@link TaskField} holding null clears the field.
+ */
+@JsonInclude(JsonInclude.Include.NON_NULL)
 public record TaskUpdateRequest(
         TaskField assignee,
         TaskField name,
@@ -10,17 +16,8 @@ public record TaskUpdateRequest(
         TaskField category,
         Integer priority) {
 
-    public TaskUpdateRequest {
-        assignee = null;
-        name = null;
-        description = null;
-        owner = null;
-        dueDate = null;
-        category = null;
-        priority = null;
-    }
-
+    /** Reassign, or clear the assignee with null (return to team). The key is always sent. */
     public static TaskUpdateRequest assignee(String assignee) {
-        return new TaskUpdateRequest(null, null, null, null, null, null, null);
+        return new TaskUpdateRequest(new TaskField(assignee), null, null, null, null, null, null);
     }
 }

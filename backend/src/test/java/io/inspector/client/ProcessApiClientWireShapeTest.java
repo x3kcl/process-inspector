@@ -792,7 +792,7 @@ class ProcessApiClientWireShapeTest {
                         "PUT",
                         "/runtime/tasks/" + taskId,
                         "{\"priority\":80}",
-                        c -> c.putTask(e, p, taskId, Map.of("priority", 80))),
+                        c -> c.putTask(e, p, taskId, new TaskUpdateRequest(null, null, null, null, null, null, 80))),
                 new Write("deleteTask", "DELETE", "/runtime/tasks/" + taskId, null, c -> c.deleteTask(e, p, taskId)),
                 new Write(
                         "addIdentityLink",
