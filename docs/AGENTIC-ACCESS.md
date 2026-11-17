@@ -291,9 +291,12 @@ Mitigations:
 - **Exposure modes for variables** (§5.3), defaulting from the engine's existing
   `audit-payload` setting, so a prod engine with personal data never hands values to an agent
   without an explicit per-engine decision.
-- **Secret-name denylist on agent output.** Today the denylist (`password`, `secret`, `token`,
-  `credential`, `apikey`, …) is applied to audit payloads only; the SPA's variable view shows
-  values. The agent view applies it unconditionally.
+- **Secret-name denylist on agent output.** The denylist (`password`, `secret`, `token`,
+  `credential`, `apikey`, … — SPEC R-AUD-03) masks secret-named variables on every SPA read
+  surface since #742 (SPEC R-AUD-11: `masked: true`, no value; search filters on them refused),
+  so the read tools inherit it from `VariableDto`. Remaining gap the agent view must still close
+  itself: the rule is name-based and top-level — a json variable's nested `password` key is
+  NOT masked, and free text (exception messages, business keys) is never inspected.
 - **No bulk extraction shape:** page caps, rate limit, no CSV/export tool, no "all variables of
   all instances" tool. A determined user can still page through results — at 30 calls/min, in
   the audit log, under their own name.

@@ -498,6 +498,9 @@ gap here: [link]" is the ticket-handover primitive.
     Java objects read-only with an explaining tooltip **plus a "what to do instead" path**
     (copy value, copy-for-ticket pre-filled for the owning dev team) — the row must read
     intentionally locked, never broken (REST cannot round-trip serializables safely).
+    A **secret-named** variable (R-AUD-11) renders the distinct state *"hidden — secret-named"*
+    (text, not colour alone) with its type chip kept, no value, no size and no copy-raw; the
+    per-tab raw-JSON export dumps the same masked form.
     **Size safeguards**: variable values are capped at a byte
     threshold in list responses (truncated preview + "load full value" on demand) — a huge
     JSON payload or base64 blob must crash neither the browser nor the engine; the same cap
@@ -1043,7 +1046,9 @@ cheap — the successful siblings are gone from runtime, so runtime tables are n
 - **Variables** — key-by-key value differences on the **256 KiB capped projection** (the same
   truncated projection the ledger renders); a value over the cap is never fetched in full just
   to compare — the pair is flagged *values differ beyond preview*. Additions, removals and
-  changes carry +/−/± glyphs (never colour alone).
+  changes carry +/−/± glyphs (never colour alone). A secret-named pair (R-AUD-11) is
+  *hidden — secret-named* (`MASKED`) instead of same/changed — the comparison would be a 1-bit
+  oracle on the hidden value; presence on one side only is still reported.
 - **Path** — the activity sequence each instance took; the diverging activity-id sets drive the
   shared diagram, differentiated by **stroke style + endpoint glyphs, not red/green hue**
   (SPEC §10a): the failed run's unique path solid/heavy, the sibling's dashed.
@@ -1304,7 +1309,7 @@ copy is never identical to an RBAC denial (R-GOV-04, R-SEM-17).
 | Status | flag predicates: Active, Completed, Suspended, **Failed**, **Failing (retries left)** — with facet counts |
 | Process definition | key or name; **definition version**; deployment time |
 | Timeframe | `startedAfter/Before` AND **failure time** (DLQ job `createTime`) — "failed in the last hour" must not depend on when the instance started |
-| Business data | `businessKey` (exact + `businessKeyLike`), variables (name/operator/value, `like` supported). ⚠ Variable-value search hits typically-unindexed engine tables (`ACT_RU/HI_VARINST`): the form warns and nudges "narrow by definition"; a per-engine flag can require it. On engines that silently drop the like-filter (6.3-era), `businessKeyLike` degrades to a per-engine error in the envelope — never silently unfiltered rows (ARCH §2.3) |
+| Business data | `businessKey` (exact + `businessKeyLike`), variables (name/operator/value, `like` supported). ⚠ Variable-value search hits typically-unindexed engine tables (`ACT_RU/HI_VARINST`): the form warns and nudges "narrow by definition"; a per-engine flag can require it. A filter on a **secret-named** variable (R-AUD-11) is refused with `secret-variable-filter` before any engine call, whatever the operation — each guess would reveal the value one row-count at a time, and the engine query has no existence-only operation to offer instead. On engines that silently drop the like-filter (6.3-era), `businessKeyLike` degrades to a per-engine error in the envelope — never silently unfiltered rows (ARCH §2.3) |
 | Current activity | activity id/name contains |
 | Error text | substring over exception snippets (BFF-side) |
 | Error signature | `signatureHash` (+ `signatureAlgoVersion`) — the normalized-signature hash (R-SEM-03), the triage card's drill-down; BFF-side over the failure-lane scans as an EXACT match on the job row's own snippet hash. Since algo v2 a card's identity is always its snippet hash (#270), so the drill needs no stacktrace fetch and no sample budget, and can no longer return zero rows for a card that is currently failing. **`signatureAlgoVersion` binds the hash to the normalizer generation that minted it** (#279): a non-current generation matches nothing by construction, so the search short-circuits to zero-with-reason (`signatureGeneration` response field) without touching an engine; an absent stamp (legacy link) is assumed-unknown — still run, still advised (see §4) |
@@ -1349,6 +1354,25 @@ tree rows stay distinguishable (R-UXQ-12 half, usability W2 #7).
   and re-derive every hash after it undetected. HMAC keying would close that gap and is
   tracked separately (issue #311, PO-gated); erasure = skeleton-preserving redaction. Details:
   OPERATIONS.md §6. Never logs secrets.
+- **Secret-named variables in the read view** (R-AUD-11, #742): a variable whose name matches
+  the R-AUD-03 secret-name rule is **masked for every role, VIEWER to ADMIN**, on every
+  surface that carries a variable value — the instance ledger, the single-value read
+  (`GET …/variables/{name}`, process and step-local scope), case variables, the sibling
+  variable diff (both sides; `MASKED` instead of same/changed), restart previews, the raw-JSON
+  export. The wire form is `masked: true` with **no value** (never a placeholder string that
+  could pass for one), no size/truncation facts (they leak the length), the type kept. A search
+  filter on such a variable is refused (`secret-variable-filter`, §8); the action cURL render
+  replaces its new value and any `expectedOldValue` with a placeholder that says so.
+  **Edit-variable keeps working:** the masked single-value read (and each case-variables row)
+  carries an opaque `valueToken` — a keyed HMAC-SHA256 of engine + scope id + name + value,
+  key random per BFF process, so it reveals nothing and does not compare across variables; the
+  edit sends `expectedValueToken` and the BFF compares tokens server-side. An `expectedOldValue`
+  on a secret-named variable is refused (`secret-variable-needs-token`) — a CAS on a guessed
+  value would be an oracle. Preview, outcome message, 409 (`masked: true`, neither value) and
+  audit row show neither the old nor the new value; a BFF restart invalidates tokens (the edit
+  then 409s and the operator re-opens the editor). **Known limit:** name-based and top-level
+  only — a json variable `config` holding a `password` key is **not** masked. Revealing a
+  masked value is not offered (tracked separately).
 - Surfaced four ways: **per-instance tab** (what did the last shift try), **global
   operations log** page (filterable by actor/action/engine/ticketId/time, with a streaming
   **CSV export** over the same filters — R-AUD-08; formula-escaped per R-OPS-08, skeleton
