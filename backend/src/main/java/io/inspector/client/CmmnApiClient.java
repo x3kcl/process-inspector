@@ -330,12 +330,7 @@ public class CmmnApiClient {
     public void putCaseVariable(
             EngineConfig engine, CallPriority priority, String caseInstanceId, String name, String type, Object value) {
         String id = GuardedCaller.safeId(caseInstanceId);
-        Map<String, Object> body = new java.util.LinkedHashMap<>();
-        body.put("name", name);
-        if (type != null) {
-            body.put("type", type);
-        }
-        body.put("value", value);
+        VariableWriteRequest body = VariableWriteRequest.of(name, type, value);
         guarded.run(
                 engine,
                 priority,

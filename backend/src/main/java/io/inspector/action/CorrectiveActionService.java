@@ -27,6 +27,7 @@ import io.inspector.client.TaskField;
 import io.inspector.client.TaskRecord;
 import io.inspector.client.TaskUpdateRequest;
 import io.inspector.client.VariableRecord;
+import io.inspector.client.VariableWriteRequest;
 import io.inspector.cmmn.CaseMigrationPrecheck;
 import io.inspector.cmmn.CasePlanDefinitionIds;
 import io.inspector.cmmn.CmmnCapabilities;
@@ -1280,19 +1281,22 @@ public class CorrectiveActionService {
             case EDIT_VARIABLE -> {
                 ActionRequest.VariableEdit edit = request.variable();
                 String executionId = blankToNull(edit.executionId());
-                Map<String, Object> typed = new LinkedHashMap<>();
-                typed.put("name", edit.name());
-                if (edit.type() != null) {
-                    typed.put("type", edit.type());
-                }
-                typed.put("value", edit.value());
                 if (executionId != null) {
                     // Step-local: write ON the execution node. scope=local keeps the engine from
                     // promoting it to process scope (SPEC §4a; flowable-rest §2).
-                    typed.put("scope", "local");
-                    client.putExecutionVariable(engine, CallPriority.INTERACTIVE, executionId, edit.name(), typed);
+                    client.putExecutionVariable(
+                            engine,
+                            CallPriority.INTERACTIVE,
+                            executionId,
+                            edit.name(),
+                            VariableWriteRequest.local(edit.name(), edit.type(), edit.value()));
                 } else {
-                    client.putInstanceVariable(engine, CallPriority.INTERACTIVE, targetId, edit.name(), typed);
+                    client.putInstanceVariable(
+                            engine,
+                            CallPriority.INTERACTIVE,
+                            targetId,
+                            edit.name(),
+                            VariableWriteRequest.of(edit.name(), edit.type(), edit.value()));
                 }
             }
             case COMPLETE_TASK ->

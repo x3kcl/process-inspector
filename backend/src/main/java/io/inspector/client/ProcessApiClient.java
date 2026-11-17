@@ -333,7 +333,7 @@ public class ProcessApiClient {
             CallPriority priority,
             String processInstanceId,
             String name,
-            Map<String, Object> typedVariable) {
+            VariableWriteRequest typedVariable) {
         actions.putInstanceVariable(engine, priority, processInstanceId, name, typedVariable);
     }
 
@@ -347,7 +347,7 @@ public class ProcessApiClient {
             CallPriority priority,
             String executionId,
             String name,
-            Map<String, Object> typedVariable) {
+            VariableWriteRequest typedVariable) {
         actions.putExecutionVariable(engine, priority, executionId, name, typedVariable);
     }
 
