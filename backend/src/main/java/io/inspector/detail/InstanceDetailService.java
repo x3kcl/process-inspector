@@ -148,6 +148,12 @@ public class InstanceDetailService {
         return variableLedger.variable(engineId, instanceId, name, executionId);
     }
 
+    /** #743: the unmasked row for the audited reveal ({@link VariableRevealService}) only. */
+    io.inspector.client.VariableRecord rawVariable(
+            EngineConfig engine, String instanceId, String name, String executionId) {
+        return variableLedger.rawVariable(engine, instanceId, name, executionId);
+    }
+
     public InstanceJobs jobs(String engineId, String instanceId) {
         return jobLanes.jobs(engineId, instanceId);
     }

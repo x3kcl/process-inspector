@@ -9,6 +9,7 @@ import type { TabProps } from '../InspectPage'
 import { useInstanceVariables, useInstanceVitals } from '../useInstanceQueries'
 import { VariableLedger } from '../variables/VariableLedger'
 import { EditorPanel } from '../variables/editor/EditorPanel'
+import { RevealButton } from '../variables/RevealButton'
 import { editGateReason } from '../variables/editor/editState'
 import type { LedgerRow, VariableEntry } from '../variables/ledger'
 import { buildLedger } from '../variables/ledger'
@@ -85,6 +86,23 @@ export default function VariablesTab({ engineId, instanceId, selectedActivityId 
     })
   }
 
+  // #743: the audited reveal — OPERATOR and above; the reveal reads a RUNNING instance only.
+  const revealGate =
+    role !== null && !roleAtLeast(role, 'OPERATOR')
+      ? `Requires OPERATOR — you are ${role}`
+      : instanceEnded
+        ? 'The instance has ended — reveal reads running instances only'
+        : null
+  const renderReveal = (row: LedgerRow) => (
+    <RevealButton
+      target={{ kind: 'instance', engineId, targetId: instanceId }}
+      name={row.entry.name}
+      executionId={row.entry.executionId}
+      prod={engine?.environment === 'prod'}
+      gateReason={revealGate}
+    />
+  )
+
   return (
     <div className="variables-tab">
       <RawJsonExport data={query.data} filename={`${engineId}-${instanceId}-variables.json`} />
@@ -104,6 +122,7 @@ export default function VariablesTab({ engineId, instanceId, selectedActivityId 
         editGateReason={gateFor}
         editingName={editingRow?.entry.name}
         onEditRow={setEditingRow}
+        renderReveal={renderReveal}
         editorNode={
           editingRow !== null ? (
             <EditorPanel

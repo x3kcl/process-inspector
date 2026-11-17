@@ -447,14 +447,19 @@ public class CorrectiveActionService {
 
     /** SPEC §6 reason ladder: tiers ≥2 always required; tier 1 required on prod; ≥10 chars when present. */
     private String normalizedReason(EngineConfig engine, ActionVerb verb, ActionRequest request) {
-        String reason = blankToNull(request.reason());
-        boolean required = verb.tier() >= 2 || (verb.tier() == 1 && engine.environment() == EngineEnvironment.PROD);
+        return normalizedReason(engine, verb.tier(), verb.path(), request.reason());
+    }
+
+    /** The reason ladder by tier — shared with the audited variable reveal (#743, tier 1). */
+    public static String normalizedReason(EngineConfig engine, int tier, String path, String rawReason) {
+        String reason = blankToNull(rawReason);
+        boolean required = tier >= 2 || (tier == 1 && engine.environment() == EngineEnvironment.PROD);
         if (required && reason == null) {
             throw new GuardRefusedException(
                     HttpStatus.BAD_REQUEST,
                     "reason-required",
-                    "'" + verb.path() + "' (tier " + verb.tier() + ") requires a reason of at least 10 characters"
-                            + (verb.tier() == 1 ? " on a prod engine." : "."));
+                    "'" + path + "' (tier " + tier + ") requires a reason of at least 10 characters"
+                            + (tier == 1 ? " on a prod engine." : "."));
         }
         if (reason != null && reason.length() < 10) {
             throw new GuardRefusedException(

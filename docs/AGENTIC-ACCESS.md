@@ -297,6 +297,9 @@ Mitigations:
   so the read tools inherit it from `VariableDto`. Remaining gap the agent view must still close
   itself: the rule is name-based and top-level — a json variable's nested `password` key is
   NOT masked, and free text (exception messages, business keys) is never inspected.
+- **Reveal is NOT an agent tool.** The audited reveal of a secret-named value (SPEC R-AUD-12,
+  `POST …/variables/{name}/reveal`) is a human, OPERATOR-tier, per-click action; no agent tool
+  wraps it and none may — an agent never receives an unmasked secret-named value.
 - **No bulk extraction shape:** page caps, rate limit, no CSV/export tool, no "all variables of
   all instances" tool. A determined user can still page through results — at 30 calls/min, in
   the audit log, under their own name.

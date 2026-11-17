@@ -75,18 +75,8 @@ final class InstanceVariablesAssembler {
      */
     public VariableDto variable(String engineId, String instanceId, String name, String executionId) {
         EngineConfig engine = host.engineForRead(engineId);
-        host.requireHistoric(engine, instanceId);
         boolean local = executionId != null && !executionId.isBlank();
-        VariableRecord row = local
-                ? host.flowable.getExecutionVariable(engine, CallPriority.INTERACTIVE, executionId, name)
-                : host.flowable.getInstanceVariable(engine, CallPriority.INTERACTIVE, instanceId, name);
-        if (row == null) {
-            throw new ResponseStatusException(
-                    HttpStatus.NOT_FOUND,
-                    local
-                            ? "step-local variable '" + name + "' not found on execution " + executionId
-                            : "variable '" + name + "' not found on running instance " + engineId + ":" + instanceId);
-        }
+        VariableRecord row = rawVariable(engine, instanceId, name, executionId);
         // The full fetch is deliberately uncapped — this IS the "load full value" escape
         // hatch; the write cap (5 MiB, SPEC §4a) guards the other direction.
         // #742: a masked (secret-named) value is replaced by an opaque CAS token — the editor's base.
@@ -101,6 +91,27 @@ final class InstanceVariablesAssembler {
                 null,
                 false,
                 VariableValueToken.issue(engine.id(), local ? executionId : instanceId, row.name(), row.value()));
+    }
+
+    /**
+     * The engine's row for ONE variable — unmasked, so it never leaves the BFF except through the
+     * masking {@link VariableDto} (above) or the audited reveal (#743). 404 like the read.
+     */
+    VariableRecord rawVariable(EngineConfig engine, String instanceId, String name, String executionId) {
+        host.requireHistoric(engine, instanceId);
+        boolean local = executionId != null && !executionId.isBlank();
+        VariableRecord row = local
+                ? host.flowable.getExecutionVariable(engine, CallPriority.INTERACTIVE, executionId, name)
+                : host.flowable.getInstanceVariable(engine, CallPriority.INTERACTIVE, instanceId, name);
+        if (row == null) {
+            throw new ResponseStatusException(
+                    HttpStatus.NOT_FOUND,
+                    local
+                            ? "step-local variable '" + name + "' not found on execution " + executionId
+                            : "variable '" + name + "' not found on running instance " + engine.id() + ":"
+                                    + instanceId);
+        }
+        return row;
     }
 
     private InstanceVariables historicVariables(EngineConfig engine, String instanceId) {
