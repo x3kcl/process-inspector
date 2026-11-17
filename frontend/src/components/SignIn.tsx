@@ -3,12 +3,13 @@ import type { SubmitEvent } from 'react'
 import { useQueryClient } from '@tanstack/react-query'
 import { clearBasicAuth, setBasicAuth } from '../api/auth'
 import { ApiError } from '../api/client'
-import { fetchEngines } from '../api/queries'
+import { fetchMe } from '../api/me'
 import { setSignedOut } from '../api/session'
 
 /**
- * Dev-chain sign-in (SecurityConfig !oidc profile): credentials are validated with one
- * authenticated call, then every query re-runs. Shown whenever any query answers 401.
+ * Dev-chain sign-in (SecurityConfig !oidc profile): credentials are validated with GET /api/me —
+ * open to every signed-in user, so a user with no role gets in and sees the no-access state
+ * (#758) — then every query re-runs. Shown whenever any query answers 401.
  */
 export function SignIn() {
   const queryClient = useQueryClient()
@@ -23,7 +24,7 @@ export function SignIn() {
     setBusy(true)
     setMessage(null)
     setBasicAuth(username, password)
-    void fetchEngines()
+    void fetchMe()
       .then(async () => {
         // Clear any explicit sign-out state (usability W3) BEFORE the refetch, so the form
         // dismisses the moment the credentials validate — not only on a 401 recovery.
