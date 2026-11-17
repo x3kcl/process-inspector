@@ -1,9 +1,11 @@
 # Attention-ordering default — decision memo (#480)
 
 **Date:** 2026-11-13 · **Flag:** `inspector.triage.attention-ordering` (default `false`) ·
-**Product-owner decision: PENDING**
+**Product-owner decision 2026-11-17: KEEP THE DEFAULT OFF** (decided by the product owner
+(Bodo Naumann); `inspector.triage.attention-ordering` stays `false`; gates G1, G2 and G4 are not met;
+re-check when the pilot has closed episodes)
 
-**Recommendation: keep the default OFF.** Do not "extend the pilot" in its current form either:
+**Recommendation (adopted): keep the default OFF.** Do not "extend the pilot" in its current form either:
 the demo ledger has not changed shape since 2026-08-05 and nobody has acted on it since
 2026-09-14, so more calendar time will not move the three gates that are NOT MET (G1, G2, G4).
 They need operators who resolve and acknowledge incidents on a fleet with at least 6 live
@@ -48,8 +50,8 @@ flood gate fired in 10 buckets, all for incident 4. That replay holds R = M = S 
 matches the pilot: every live class was last seen at pull time, there are no closed episodes,
 and no class reaches the R2 spell floor.
 
-**Code checks.** `AttentionScoreCalculator.java` is unchanged since `8d45834` (#402), the commit
-the harm-search port was re-pinned to. The `InspectorProperties.Attention` `*OrDefault()` values
+**Code checks.** `AttentionScoreCalculator.java` was unchanged since `8d45834` (#402), the commit
+the harm-search port was re-pinned to, when this memo was written (changed since by #686, see below). The `InspectorProperties.Attention` `*OrDefault()` values
 (24 h, 28 d, 3, 0.5/2.0, 0.25, PT1H, 10 min, 10/5, 8.0) match the script's `AttentionCfg`.
 `--selftest-only` gives **46 PASS, 0 failures**. `mvn -o test
 -Dtest='AttentionOrderingNeutralityTest,AttentionScoreCalculatorTest'` gives **12/12 and 43/43 green**
@@ -66,6 +68,20 @@ The run reproduces the 2026-08-18 addendum exactly:
 
 The current score still makes the order worse on most synthetic fleets that have the
 evidence the pilot lacks.
+
+## Changed since this memo was written (#686, 2026-11-15)
+
+#686 (#661) keyed the self-heal demotion on the retrying share: `S_eff = 1 - share*(1 - S)`,
+`share = retrying / (retrying + deadLettered)` (ALARM-COST-MODEL §4.1c), instead of demoting the
+whole class. Effect on the numbers here: the G1-G5 gate values and the pilot replay are
+unaffected (gates read the ledger, not the score; the replay holds R = M = S = 1, so `S_eff = 1`
+for any share). The code-check line about `AttentionScoreCalculator.java` is superseded
+(file changed in #686; its `*OrDefault()` defaults are untouched). The harm-search figures
+(54.70 %, 61.02 %, 89.13 %, 0.00 %) are **pre-#686**: `scripts/attention-harm-search.py` has no
+share term and still models the whole-class demotion, so they were not re-run. The new score can
+only demote less than the old one, so they describe the old behaviour; they do not show the
+#686 score to be harmless or harmful. This does not change the decision, which rests on G1, G2
+and G4.
 
 ## Risks
 
