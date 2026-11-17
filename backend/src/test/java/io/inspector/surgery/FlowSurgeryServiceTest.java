@@ -20,6 +20,7 @@ import io.inspector.audit.AuditEntry;
 import io.inspector.audit.AuditOutcome;
 import io.inspector.audit.AuditService;
 import io.inspector.audit.ProtectedInstanceRepository;
+import io.inspector.client.ExecutionRecords;
 import io.inspector.client.FlowablePage;
 import io.inspector.client.GuardedCaller.CallPriority;
 import io.inspector.client.ProcessApiClient;
@@ -135,8 +136,8 @@ class FlowSurgeryServiceTest {
         when(client.processDefinitionResourceData(any(), eq(CallPriority.INTERACTIVE), eq(DEF_ID)))
                 .thenReturn(xml());
         when(client.listExecutions(any(), eq(CallPriority.INTERACTIVE), eq("pi-1"), anyInt()))
-                .thenReturn(new FlowablePage(
-                        List.of(Map.of("id", "pi-1"), Map.of("id", "e-2", "activityId", "stepOne")), 2, 0, 100));
+                .thenReturn(ExecutionRecords.executionPage(
+                        List.of(Map.of("id", "pi-1"), Map.of("id", "e-2", "activityId", "stepOne")), 2));
     }
 
     private static EngineHealth probed(String version) {

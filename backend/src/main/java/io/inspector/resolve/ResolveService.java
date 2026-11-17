@@ -4,6 +4,7 @@ import io.inspector.api.MdcPropagatingExecutors;
 import io.inspector.client.CaseDefinitionRecord;
 import io.inspector.client.CaseInstanceRecord;
 import io.inspector.client.CmmnApiClient;
+import io.inspector.client.ExecutionRecord;
 import io.inspector.client.GuardedCaller.CallPriority;
 import io.inspector.client.JobRecord;
 import io.inspector.client.ProcessApiClient;
@@ -167,8 +168,8 @@ public class ResolveService {
         }
 
         // 2. Execution — a child execution's id maps to its owning instance.
-        Map<String, Object> execution = flowable.getExecution(engine, CallPriority.INTERACTIVE, id);
-        String pid = execution != null ? str(execution, "processInstanceId") : null;
+        ExecutionRecord execution = flowable.getExecution(engine, CallPriority.INTERACTIVE, id);
+        String pid = execution != null ? execution.processInstanceId() : null;
         if (pid != null) {
             return matchInstance(engine, MatchKind.EXECUTION, id, pid);
         }

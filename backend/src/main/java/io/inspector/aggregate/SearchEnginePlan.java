@@ -2,12 +2,12 @@ package io.inspector.aggregate;
 
 import static io.inspector.aggregate.SearchService.likePattern;
 import static io.inspector.aggregate.SearchService.notBlank;
-import static io.inspector.aggregate.SearchService.str;
 
 import io.inspector.aggregate.SearchService.BffFilters;
 import io.inspector.aggregate.SearchService.EngineSlice;
 import io.inspector.aggregate.SearchService.Failure;
 import io.inspector.aggregate.SearchService.PageWindow;
+import io.inspector.client.ActivityInstanceRecord;
 import io.inspector.client.GuardedCaller.CallPriority;
 import io.inspector.client.JobPage;
 import io.inspector.client.JobRecord;
@@ -286,11 +286,11 @@ final class SearchEnginePlan {
         if (openIds.isEmpty()) return Set.of();
         String needle = bff.currentActivity().toLowerCase(Locale.ROOT);
         Map<String, Boolean> hits = parallelPerId(openIds, id -> {
-            for (Map<String, Object> activity : flowable.listUnfinishedActivities(
+            for (ActivityInstanceRecord activity : flowable.listUnfinishedActivities(
                             engine, priority, id, engine.tenantId(), engine.maxPageSizeOrDefault())
                     .dataOrEmpty()) {
-                if (containsIgnoreCase(str(activity, "activityId"), needle)
-                        || containsIgnoreCase(str(activity, "activityName"), needle)) {
+                if (containsIgnoreCase(activity.activityId(), needle)
+                        || containsIgnoreCase(activity.activityName(), needle)) {
                     return true;
                 }
             }

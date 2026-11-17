@@ -20,7 +20,7 @@ import io.inspector.audit.AuditService;
 import io.inspector.audit.ProtectedDefinitionRepository;
 import io.inspector.audit.ProtectedInstanceRepository;
 import io.inspector.audit.ProtectionGuard;
-import io.inspector.client.FlowablePage;
+import io.inspector.client.ExecutionRecords;
 import io.inspector.client.GuardedCaller.CallPriority;
 import io.inspector.client.ProcessApiClient;
 import io.inspector.client.ProcessInstanceRecords;
@@ -158,7 +158,7 @@ class MigrationServiceTest {
                 .thenReturn(xml());
 
         when(client.listExecutions(any(), eq(CallPriority.INTERACTIVE), eq("pi-1"), anyInt()))
-                .thenReturn(new FlowablePage(List.of(Map.of("id", "pi-1", "activityId", "stepOne")), 1, 0, 100));
+                .thenReturn(ExecutionRecords.executionPage(List.of(Map.of("id", "pi-1", "activityId", "stepOne")), 1));
     }
 
     private static EngineHealth probed(String version) {

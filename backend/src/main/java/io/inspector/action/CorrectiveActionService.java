@@ -11,6 +11,7 @@ import io.inspector.client.CaseInstanceRecord;
 import io.inspector.client.CaseMigrationRoute;
 import io.inspector.client.CmmnApiClient;
 import io.inspector.client.CmmnJobRecord;
+import io.inspector.client.ExecutionRecord;
 import io.inspector.client.ForwardedActor;
 import io.inspector.client.GuardedCaller.CallPriority;
 import io.inspector.client.JobRecord;
@@ -636,21 +637,21 @@ public class CorrectiveActionService {
         String activityId = null;
         Map<String, Object> row;
         if (local) {
-            Map<String, Object> execution = client.getExecution(engine, CallPriority.INTERACTIVE, executionId);
+            ExecutionRecord execution = client.getExecution(engine, CallPriority.INTERACTIVE, executionId);
             if (execution == null) {
                 throw new GuardRefusedException(
                         HttpStatus.NOT_FOUND,
                         "execution-gone",
                         "Execution " + executionId + " no longer exists (instance moved on?). Nothing happened.");
             }
-            Object owner = execution.get("processInstanceId");
-            if (owner != null && !instanceId.equals(String.valueOf(owner))) {
+            String owner = execution.processInstanceId();
+            if (owner != null && !instanceId.equals(owner)) {
                 throw new GuardRefusedException(
                         HttpStatus.BAD_REQUEST,
                         "execution-instance-mismatch",
                         "Execution " + executionId + " belongs to instance " + owner + ", not " + instanceId + ".");
             }
-            activityId = execution.get("activityId") != null ? String.valueOf(execution.get("activityId")) : null;
+            activityId = execution.activityId();
             row = client.getExecutionVariable(engine, CallPriority.INTERACTIVE, executionId, edit.name());
             if (row == null) {
                 throw new GuardRefusedException(
@@ -1111,15 +1112,15 @@ public class CorrectiveActionService {
         if (needsName && blankToNull(event.name()) == null) {
             throw missingField("event.name");
         }
-        Map<String, Object> execution = client.getExecution(engine, CallPriority.INTERACTIVE, executionId);
+        ExecutionRecord execution = client.getExecution(engine, CallPriority.INTERACTIVE, executionId);
         if (execution == null) {
             throw new GuardRefusedException(
                     HttpStatus.NOT_FOUND,
                     "execution-gone",
                     "Execution " + executionId + " no longer exists (instance moved on?). Nothing happened.");
         }
-        Object owner = execution.get("processInstanceId");
-        if (owner != null && !instanceId.equals(String.valueOf(owner))) {
+        String owner = execution.processInstanceId();
+        if (owner != null && !instanceId.equals(owner)) {
             throw new GuardRefusedException(
                     HttpStatus.BAD_REQUEST,
                     "execution-instance-mismatch",
@@ -1130,7 +1131,7 @@ public class CorrectiveActionService {
         payload.put("executionId", executionId);
         payload.put("eventType", event.type());
         payload.put("eventName", event.name());
-        payload.put("activityId", execution.get("activityId"));
+        payload.put("activityId", execution.activityId());
         return new Target(payload, null, null, null);
     }
 

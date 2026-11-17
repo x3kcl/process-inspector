@@ -11,6 +11,8 @@ import io.inspector.audit.AuditEntry;
 import io.inspector.audit.AuditOutcome;
 import io.inspector.audit.AuditService;
 import io.inspector.audit.ProtectionGuard;
+import io.inspector.client.ExecutionPage;
+import io.inspector.client.ExecutionRecord;
 import io.inspector.client.FlowablePage;
 import io.inspector.client.ForwardedActor;
 import io.inspector.client.GuardedCaller.CallPriority;
@@ -254,13 +256,13 @@ public class FlowSurgeryService {
     }
 
     private Set<String> activeActivityIds(EngineConfig engine, String instanceId) {
-        FlowablePage executions =
+        ExecutionPage executions =
                 client.listExecutions(engine, CallPriority.INTERACTIVE, instanceId, EXECUTION_FETCH_CAP);
         Set<String> active = new HashSet<>();
-        for (Map<String, Object> execution : executions.dataOrEmpty()) {
-            Object activityId = execution.get("activityId");
+        for (ExecutionRecord execution : executions.dataOrEmpty()) {
+            String activityId = execution.activityId();
             if (activityId != null) {
-                active.add(String.valueOf(activityId));
+                active.add(activityId);
             }
         }
         return active;

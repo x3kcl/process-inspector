@@ -450,8 +450,7 @@ final class ProcessCorrectiveClient {
     }
 
     /** GET /runtime/executions/{executionId} — server-fresh execution restatement. Null = gone. */
-    @SuppressWarnings("unchecked")
-    public Map<String, Object> getExecution(EngineConfig engine, CallPriority priority, String executionId) {
+    public ExecutionRecord getExecution(EngineConfig engine, CallPriority priority, String executionId) {
         try {
             return guarded.call(
                     engine,
@@ -460,7 +459,7 @@ final class ProcessCorrectiveClient {
                             .get()
                             .uri("/runtime/executions/{executionId}", executionId)
                             .retrieve()
-                            .body(Map.class));
+                            .body(ExecutionRecord.class));
         } catch (HttpClientErrorException.NotFound e) {
             return null;
         }

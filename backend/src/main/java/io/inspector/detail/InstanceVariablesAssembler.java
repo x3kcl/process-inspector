@@ -1,5 +1,6 @@
 package io.inspector.detail;
 
+import io.inspector.client.ExecutionRecord;
 import io.inspector.client.GuardedCaller.CallPriority;
 import io.inspector.client.ProcessInstanceRecord;
 import io.inspector.config.InspectorProperties.EngineConfig;
@@ -45,10 +46,10 @@ final class InstanceVariablesAssembler {
         // Execution-local segregation (SPEC §4): every non-root execution may hold locals —
         // multi-instance loop variables live there. Empty scopes are dropped, not rendered.
         List<ExecutionScope> executionScopes = new ArrayList<>();
-        for (Map<String, Object> execution : host.flowable
+        for (ExecutionRecord execution : host.flowable
                 .listExecutions(engine, CallPriority.INTERACTIVE, instanceId, engine.maxPageSizeOrDefault())
                 .dataOrEmpty()) {
-            String executionId = InstanceDetailService.str(execution, "id");
+            String executionId = execution.id();
             if (executionId == null || executionId.equals(instanceId)) continue; // root = process scope
             List<VariableDto> locals =
                     host.flowable.listExecutionLocalVariables(engine, CallPriority.INTERACTIVE, executionId).stream()
@@ -57,11 +58,8 @@ final class InstanceVariablesAssembler {
                                     VariableDto::name, Comparator.nullsLast(Comparator.naturalOrder())))
                             .toList();
             if (!locals.isEmpty()) {
-                executionScopes.add(new ExecutionScope(
-                        executionId,
-                        InstanceDetailService.str(execution, "activityId"),
-                        InstanceDetailService.str(execution, "parentId"),
-                        locals));
+                executionScopes.add(
+                        new ExecutionScope(executionId, execution.activityId(), execution.parentId(), locals));
             }
         }
         return new InstanceVariables("RUNTIME", processScope, executionScopes);

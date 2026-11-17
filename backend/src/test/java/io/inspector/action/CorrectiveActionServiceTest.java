@@ -22,6 +22,7 @@ import io.inspector.audit.BreakGlassActor;
 import io.inspector.audit.ProtectedInstance;
 import io.inspector.audit.ProtectedInstanceRepository;
 import io.inspector.client.CmmnApiClient;
+import io.inspector.client.ExecutionRecords;
 import io.inspector.client.ForwardedActor;
 import io.inspector.client.GuardedCaller.CallPriority;
 import io.inspector.client.JobRecords;
@@ -571,7 +572,8 @@ class CorrectiveActionServiceTest {
     @Test
     void stepLocalEditReadsAndWritesTheExecutionLocalScopeOnly() {
         when(client.getExecution(any(), eq(CallPriority.INTERACTIVE), eq("exec-7")))
-                .thenReturn(Map.of("id", "exec-7", "processInstanceId", "pi-1", "activityId", "validateLine"));
+                .thenReturn(ExecutionRecords.execution(
+                        Map.of("id", "exec-7", "processInstanceId", "pi-1", "activityId", "validateLine")));
         when(client.getExecutionVariable(any(), eq(CallPriority.INTERACTIVE), eq("exec-7"), eq("amount")))
                 .thenReturn(Map.of("name", "amount", "type", "integer", "value", 42));
 
@@ -591,7 +593,8 @@ class CorrectiveActionServiceTest {
     @Test
     void stepLocalCasComparesAgainstTheLocalValueNotTheProcessScope() {
         when(client.getExecution(any(), eq(CallPriority.INTERACTIVE), eq("exec-7")))
-                .thenReturn(Map.of("id", "exec-7", "processInstanceId", "pi-1", "activityId", "validateLine"));
+                .thenReturn(ExecutionRecords.execution(
+                        Map.of("id", "exec-7", "processInstanceId", "pi-1", "activityId", "validateLine")));
         // The local value (99) differs from what the operator saw (42) — CAS must refuse.
         when(client.getExecutionVariable(any(), eq(CallPriority.INTERACTIVE), eq("exec-7"), eq("amount")))
                 .thenReturn(Map.of("name", "amount", "type", "integer", "value", 99));
@@ -608,7 +611,7 @@ class CorrectiveActionServiceTest {
     @Test
     void stepLocalEditRefusesAForeignExecutionBeforeAuditing() {
         when(client.getExecution(any(), eq(CallPriority.INTERACTIVE), eq("exec-7")))
-                .thenReturn(Map.of("id", "exec-7", "processInstanceId", "pi-OTHER"));
+                .thenReturn(ExecutionRecords.execution(Map.of("id", "exec-7", "processInstanceId", "pi-OTHER")));
 
         assertThatThrownBy(() -> service.execute(
                         DEV, "pi-1", ActionVerb.EDIT_VARIABLE, stepLocalEdit("exec-7", 43, 42), operator))
@@ -622,7 +625,7 @@ class CorrectiveActionServiceTest {
     @Test
     void stepLocalEditRefusesWhenTheLocalVariableIsMissing() {
         when(client.getExecution(any(), eq(CallPriority.INTERACTIVE), eq("exec-7")))
-                .thenReturn(Map.of("id", "exec-7", "processInstanceId", "pi-1"));
+                .thenReturn(ExecutionRecords.execution(Map.of("id", "exec-7", "processInstanceId", "pi-1")));
         when(client.getExecutionVariable(any(), eq(CallPriority.INTERACTIVE), eq("exec-7"), eq("amount")))
                 .thenReturn(null);
 

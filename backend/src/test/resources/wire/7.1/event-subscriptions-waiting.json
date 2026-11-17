@@ -1,0 +1,49 @@
+{
+    "data": [
+        {
+            "id": "83804228-e239-11f1-acb8-7eebefdaa7d9",
+            "url": "http://localhost:8083/flowable-rest/service/runtime/event-subscriptions/83804228-e239-11f1-acb8-7eebefdaa7d9",
+            "eventType": "message",
+            "eventName": "wireProbeGo",
+            "activityId": "waitForMessage",
+            "executionId": "837fa5e0-e239-11f1-acb8-7eebefdaa7d9",
+            "executionUrl": "http://localhost:8083/flowable-rest/service/runtime/executions/837fa5e0-e239-11f1-acb8-7eebefdaa7d9",
+            "processInstanceId": "837fa5de-e239-11f1-acb8-7eebefdaa7d9",
+            "processInstanceUrl": "http://localhost:8083/flowable-rest/service/runtime/process-instances/837fa5de-e239-11f1-acb8-7eebefdaa7d9",
+            "processDefinitionId": "wireProbe474:1:8377687c-e239-11f1-acb8-7eebefdaa7d9",
+            "processDefinitionUrl": "http://localhost:8083/flowable-rest/service/repository/process-definitions/wireProbe474:1:8377687c-e239-11f1-acb8-7eebefdaa7d9",
+            "scopeId": null,
+            "scopeType": null,
+            "subScopeId": null,
+            "scopeDefinitionId": null,
+            "created": "2026-11-17T03:46:47.243Z",
+            "configuration": null,
+            "tenantId": ""
+        },
+        {
+            "id": "8380693a-e239-11f1-acb8-7eebefdaa7d9",
+            "url": "http://localhost:8083/flowable-rest/service/runtime/event-subscriptions/8380693a-e239-11f1-acb8-7eebefdaa7d9",
+            "eventType": "signal",
+            "eventName": "wireProbeSignal",
+            "activityId": "waitForSignal",
+            "executionId": "837fccf4-e239-11f1-acb8-7eebefdaa7d9",
+            "executionUrl": "http://localhost:8083/flowable-rest/service/runtime/executions/837fccf4-e239-11f1-acb8-7eebefdaa7d9",
+            "processInstanceId": "837fa5de-e239-11f1-acb8-7eebefdaa7d9",
+            "processInstanceUrl": "http://localhost:8083/flowable-rest/service/runtime/process-instances/837fa5de-e239-11f1-acb8-7eebefdaa7d9",
+            "processDefinitionId": "wireProbe474:1:8377687c-e239-11f1-acb8-7eebefdaa7d9",
+            "processDefinitionUrl": "http://localhost:8083/flowable-rest/service/repository/process-definitions/wireProbe474:1:8377687c-e239-11f1-acb8-7eebefdaa7d9",
+            "scopeId": null,
+            "scopeType": null,
+            "subScopeId": null,
+            "scopeDefinitionId": null,
+            "created": "2026-11-17T03:46:47.244Z",
+            "configuration": null,
+            "tenantId": ""
+        }
+    ],
+    "total": 2,
+    "start": 0,
+    "sort": "id",
+    "order": "asc",
+    "size": 2
+}

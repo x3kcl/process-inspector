@@ -1,6 +1,7 @@
 package io.inspector.sibling;
 
-import io.inspector.client.FlowablePage;
+import io.inspector.client.ActivityInstancePage;
+import io.inspector.client.ActivityInstanceRecord;
 import io.inspector.client.GuardedCaller.CallPriority;
 import io.inspector.client.ProcessApiClient;
 import io.inspector.client.ProcessInstancePage;
@@ -234,25 +235,24 @@ public class SiblingDiffService {
     }
 
     private List<PathActivity> historicPath(EngineConfig engine, String instanceId) {
-        FlowablePage page = flowable.listHistoricActivities(
+        ActivityInstancePage page = flowable.listHistoricActivities(
                 engine, CallPriority.INTERACTIVE, instanceId, 0, engine.maxPageSizeOrDefault());
         List<PathActivity> path = new ArrayList<>();
-        for (Map<String, Object> row : page.dataOrEmpty()) {
+        for (ActivityInstanceRecord row : page.dataOrEmpty()) {
             path.add(pathRow(row));
         }
         return path;
     }
 
-    static PathActivity pathRow(Map<String, Object> row) {
-        Object duration = row.get("durationInMillis");
-        String endTime = str(row, "endTime");
+    static PathActivity pathRow(ActivityInstanceRecord row) {
+        String endTime = row.endTime();
         return new PathActivity(
-                str(row, "activityId"),
-                str(row, "activityName"),
-                str(row, "activityType"),
-                str(row, "startTime"),
+                row.activityId(),
+                row.activityName(),
+                row.activityType(),
+                row.startTime(),
                 endTime,
-                duration instanceof Number n ? n.longValue() : null,
+                row.durationInMillis(),
                 endTime == null);
     }
 

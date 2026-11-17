@@ -1,0 +1,45 @@
+{
+    "data": [
+        {
+            "id": "837fccf7-e239-11f1-acb8-7eebefdaa7d9",
+            "activityId": "waitForMessage",
+            "activityName": "Wait for go",
+            "activityType": "intermediateCatchEvent",
+            "processDefinitionId": "wireProbe474:1:8377687c-e239-11f1-acb8-7eebefdaa7d9",
+            "processDefinitionUrl": "http://localhost:8083/flowable-rest/service/repository/process-definitions/wireProbe474:1:8377687c-e239-11f1-acb8-7eebefdaa7d9",
+            "processInstanceId": "837fa5de-e239-11f1-acb8-7eebefdaa7d9",
+            "processInstanceUrl": "http://localhost:8083/flowable-rest/service/history/historic-process-instances/837fa5de-e239-11f1-acb8-7eebefdaa7d9",
+            "executionId": "837fa5e0-e239-11f1-acb8-7eebefdaa7d9",
+            "taskId": null,
+            "calledProcessInstanceId": null,
+            "assignee": null,
+            "startTime": "2026-11-17T03:46:47.240Z",
+            "endTime": null,
+            "durationInMillis": null,
+            "tenantId": ""
+        },
+        {
+            "id": "83806939-e239-11f1-acb8-7eebefdaa7d9",
+            "activityId": "waitForSignal",
+            "activityName": null,
+            "activityType": "intermediateCatchEvent",
+            "processDefinitionId": "wireProbe474:1:8377687c-e239-11f1-acb8-7eebefdaa7d9",
+            "processDefinitionUrl": "http://localhost:8083/flowable-rest/service/repository/process-definitions/wireProbe474:1:8377687c-e239-11f1-acb8-7eebefdaa7d9",
+            "processInstanceId": "837fa5de-e239-11f1-acb8-7eebefdaa7d9",
+            "processInstanceUrl": "http://localhost:8083/flowable-rest/service/history/historic-process-instances/837fa5de-e239-11f1-acb8-7eebefdaa7d9",
+            "executionId": "837fccf4-e239-11f1-acb8-7eebefdaa7d9",
+            "taskId": null,
+            "calledProcessInstanceId": null,
+            "assignee": null,
+            "startTime": "2026-11-17T03:46:47.244Z",
+            "endTime": null,
+            "durationInMillis": null,
+            "tenantId": ""
+        }
+    ],
+    "total": 2,
+    "start": 0,
+    "sort": "startTime",
+    "order": "asc",
+    "size": 2
+}

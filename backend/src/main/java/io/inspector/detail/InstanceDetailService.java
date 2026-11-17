@@ -4,6 +4,9 @@ import com.fasterxml.jackson.core.JsonProcessingException;
 import com.fasterxml.jackson.databind.ObjectMapper;
 import io.inspector.audit.ProtectedInstance;
 import io.inspector.audit.ProtectedInstanceRepository;
+import io.inspector.client.ActivityInstanceRecord;
+import io.inspector.client.EventSubscriptionRecord;
+import io.inspector.client.ExecutionRecord;
 import io.inspector.client.ExternalJobApiClient;
 import io.inspector.client.GuardedCaller.CallPriority;
 import io.inspector.client.JobRecord;
@@ -435,20 +438,19 @@ public class InstanceDetailService {
         return preferred != null ? preferred : fallback;
     }
 
-    static TimelineActivity timelineRow(Map<String, Object> row) {
-        Object duration = row.get("durationInMillis");
+    static TimelineActivity timelineRow(ActivityInstanceRecord row) {
         return new TimelineActivity(
-                str(row, "id"),
-                str(row, "activityId"),
-                str(row, "activityName"),
-                str(row, "activityType"),
-                str(row, "executionId"),
-                str(row, "startTime"),
-                str(row, "endTime"),
-                duration instanceof Number n ? n.longValue() : null,
-                str(row, "assignee"),
-                str(row, "taskId"),
-                str(row, "calledProcessInstanceId"),
+                row.id(),
+                row.activityId(),
+                row.activityName(),
+                row.activityType(),
+                row.executionId(),
+                row.startTime(),
+                row.endTime(),
+                row.durationInMillis(),
+                row.assignee(),
+                row.taskId(),
+                row.calledProcessInstanceId(),
                 null,
                 false,
                 List.of());
@@ -636,29 +638,28 @@ public class InstanceDetailService {
     List<CurrentActivity> currentActivities(EngineConfig engine, String instanceId) {
         Map<String, CurrentActivity> byActivityId = new LinkedHashMap<>();
         try {
-            for (Map<String, Object> row : flowable.listUnfinishedActivities(
+            for (ActivityInstanceRecord row : flowable.listUnfinishedActivities(
                             engine,
                             CallPriority.INTERACTIVE,
                             instanceId,
                             engine.tenantId(),
                             engine.maxPageSizeOrDefault())
                     .dataOrEmpty()) {
-                String activityId = str(row, "activityId");
+                String activityId = row.activityId();
                 if (activityId == null) continue;
                 byActivityId.putIfAbsent(
                         activityId,
-                        new CurrentActivity(
-                                activityId, str(row, "activityName"), str(row, "activityType"), str(row, "startTime")));
+                        new CurrentActivity(activityId, row.activityName(), row.activityType(), row.startTime()));
             }
         } catch (Exception ex) {
             // History-level below activity (legal engine config) — degrade, never 500.
             log.debug("Unfinished-activity leg unavailable on {}: {}", engine.id(), ex.toString());
         }
         try {
-            for (Map<String, Object> execution : flowable.listExecutions(
+            for (ExecutionRecord execution : flowable.listExecutions(
                             engine, CallPriority.INTERACTIVE, instanceId, engine.maxPageSizeOrDefault())
                     .dataOrEmpty()) {
-                String activityId = str(execution, "activityId");
+                String activityId = execution.activityId();
                 if (activityId == null) continue; // the root execution carries no position
                 byActivityId.putIfAbsent(activityId, new CurrentActivity(activityId, null, null, null));
             }
@@ -699,8 +700,8 @@ public class InstanceDetailService {
         String executionId = job.executionId();
         if (executionId == null) return null;
         try {
-            Map<String, Object> execution = flowable.getExecution(engine, CallPriority.INTERACTIVE, executionId);
-            return execution != null ? str(execution, "activityId") : null;
+            ExecutionRecord execution = flowable.getExecution(engine, CallPriority.INTERACTIVE, executionId);
+            return execution != null ? execution.activityId() : null;
         } catch (Exception ex) {
             return null;
         }
@@ -709,16 +710,16 @@ public class InstanceDetailService {
     private List<WaitState> waitingFor(EngineConfig engine, String instanceId, Lanes lanes) {
         List<WaitState> waits = new ArrayList<>();
         try {
-            for (Map<String, Object> sub : flowable.listEventSubscriptions(
+            for (EventSubscriptionRecord sub : flowable.listEventSubscriptions(
                             engine, CallPriority.INTERACTIVE, instanceId, engine.maxPageSizeOrDefault())
                     .dataOrEmpty()) {
-                String eventType = str(sub, "eventType");
+                String eventType = sub.eventType();
                 waits.add(new WaitState(
                         eventType != null ? eventType.toUpperCase(java.util.Locale.ROOT) : "MESSAGE",
-                        str(sub, "eventName"),
-                        str(sub, "activityId"),
+                        sub.eventName(),
+                        sub.activityId(),
                         null,
-                        str(sub, "created")));
+                        sub.created()));
             }
         } catch (Exception ex) {
             // The subscription endpoint is version-dependent — degrade, never fail vitals.

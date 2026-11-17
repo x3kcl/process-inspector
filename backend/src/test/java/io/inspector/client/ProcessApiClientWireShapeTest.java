@@ -441,6 +441,35 @@ class ProcessApiClientWireShapeTest {
                                 Map<String, Object> recordedPage = (Map<String, Object>) recorded;
                                 assertThat(page.total()).isEqualTo(((Number) recordedPage.get("total")).longValue());
                                 assertThat(page.dataOrEmpty()).isEqualTo(recordedPage.get("data"));
+                            } else if (result instanceof ExecutionPage page) {
+                                @SuppressWarnings("unchecked")
+                                Map<String, Object> recordedPage = (Map<String, Object>) recorded;
+                                @SuppressWarnings("unchecked")
+                                List<Map<String, Object>> recordedRows =
+                                        (List<Map<String, Object>>) recordedPage.get("data");
+                                assertThat(page.total()).isEqualTo(((Number) recordedPage.get("total")).longValue());
+                                assertThat(page).isEqualTo(ExecutionRecords.executionPage(recordedRows, page.total()));
+                            } else if (result instanceof ActivityInstancePage page) {
+                                @SuppressWarnings("unchecked")
+                                Map<String, Object> recordedPage = (Map<String, Object>) recorded;
+                                @SuppressWarnings("unchecked")
+                                List<Map<String, Object>> recordedRows =
+                                        (List<Map<String, Object>>) recordedPage.get("data");
+                                assertThat(page.total()).isEqualTo(((Number) recordedPage.get("total")).longValue());
+                                assertThat(page).isEqualTo(ExecutionRecords.activityPage(recordedRows, page.total()));
+                            } else if (result instanceof EventSubscriptionPage page) {
+                                @SuppressWarnings("unchecked")
+                                Map<String, Object> recordedPage = (Map<String, Object>) recorded;
+                                @SuppressWarnings("unchecked")
+                                List<Map<String, Object>> recordedRows =
+                                        (List<Map<String, Object>>) recordedPage.get("data");
+                                assertThat(page.total()).isEqualTo(((Number) recordedPage.get("total")).longValue());
+                                assertThat(page)
+                                        .isEqualTo(ExecutionRecords.subscriptionPage(recordedRows, page.total()));
+                            } else if (result instanceof ExecutionRecord execution) {
+                                @SuppressWarnings("unchecked")
+                                Map<String, Object> recordedExecution = (Map<String, Object>) recorded;
+                                assertThat(execution).isEqualTo(ExecutionRecords.execution(recordedExecution));
                             } else if (result instanceof JobPage page) {
                                 // Typed family (#474): compared field-for-field against the typed recording.
                                 @SuppressWarnings("unchecked")
