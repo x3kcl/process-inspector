@@ -7,11 +7,14 @@ import io.inspector.client.ProcessApiClient;
 import io.inspector.client.ProcessApiClient.JobLaneKind;
 import io.inspector.config.InspectorProperties.EngineConfig;
 import io.inspector.registry.EngineRegistry;
+import io.inspector.security.ReadScopeGate;
 import java.time.Instant;
 import java.time.temporal.ChronoUnit;
 import java.util.ArrayList;
 import java.util.List;
 import java.util.Map;
+import java.util.Set;
+import org.springframework.security.core.Authentication;
 import org.springframework.web.bind.annotation.GetMapping;
 import org.springframework.web.bind.annotation.RequestMapping;
 import org.springframework.web.bind.annotation.RequestParam;
@@ -20,6 +23,9 @@ import org.springframework.web.bind.annotation.RestController;
 /**
  * Cross-engine job browse (#515). One page per engine, then a local age filter. The total is a
  * lower bound when an engine's page is shorter than its reported total.
+ *
+ * <p>#747 (R-SAFE-17): under read-scope enforcement the fan-out covers only the engines the caller
+ * may read — narrowed silently, like an implicit all-engines search. Off: every enabled engine.
  */
 @RestController
 @RequestMapping("/api/jobs")
@@ -27,23 +33,30 @@ public class JobsExplorerController {
 
     private final EngineRegistry registry;
     private final ProcessApiClient flowable;
+    private final ReadScopeGate readScope;
 
-    public JobsExplorerController(EngineRegistry registry, ProcessApiClient flowable) {
+    public JobsExplorerController(EngineRegistry registry, ProcessApiClient flowable, ReadScopeGate readScope) {
         this.registry = registry;
         this.flowable = flowable;
+        this.readScope = readScope;
     }
 
     @GetMapping
     public JobsPage list(
             @RequestParam(defaultValue = "executable") String lane,
             @RequestParam(required = false) Integer olderThanMinutes,
-            @RequestParam(defaultValue = "20") int size) {
+            @RequestParam(defaultValue = "20") int size,
+            Authentication auth) {
+        Set<String> readable = readScope.readableEngineIds(auth); // null = enforcement off
         JobLaneKind kind = laneOf(lane);
         int pageSize = Math.min(Math.max(size, 1), 50);
         Instant cutoff = olderThanMinutes == null ? null : Instant.now().minus(olderThanMinutes, ChronoUnit.MINUTES);
         List<JobRow> rows = new ArrayList<>();
         List<String> capped = new ArrayList<>();
         for (EngineConfig engine : registry.all()) {
+            if (readable != null && !readable.contains(engine.id())) {
+                continue;
+            }
             try {
                 JobPage page = flowable.listJobs(engine, CallPriority.INTERACTIVE, kind, Map.of(), 0, pageSize);
                 List<JobRecord> data = page == null ? List.of() : page.dataOrEmpty();

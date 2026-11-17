@@ -253,7 +253,9 @@ Answers "what is broken, how much, where" in zero keystrokes:
   the engine list behind the strip carries only the engines the caller may read (a disabled engine
   in scope still lists greyed); a per-engine read of another engine (`/api/engines/{id}/system`)
   answers the same 403 as every other engine-scoped read, and its full properties/table counts
-  need ADMIN on THAT engine (an ADMIN of another engine is refused). Off ⇒ every engine, as before.
+  need ADMIN on THAT engine (an ADMIN of another engine is refused). Off ⇒ every engine, as before —
+  except the full properties/table counts, which need ADMIN on THAT engine with enforcement off too
+  (#747: an admin surface, not a read-scope question; the version line stays open).
 - **Failures grouped by error class** — dead-letter (and RETRYING-tier) jobs grouped by
   **normalized exception signature**, with counts per engine and per definition version
   ("NPE in TaxCalculator — 312 · orders-prod · v47: 312, v46: 0"). **The signature is a
@@ -804,6 +806,15 @@ PERSON have, across every engine" — the "Bob is on vacation" query. Search sta
 - **Task browser** (`/task-browser`, `GET /api/tasks/browse`) is additive. It filters open tasks
   (definition, assignee, owner, candidate group, unassigned, overdue, created range) and bulk
   reassigns the selection. It does not replace this person search.
+  **Scope-filtered reads (R-SAFE-17, issue #747):** under `inspector.security.scope-reads-enforced`
+  the browse (and the jobs explorer, `GET /api/jobs`) covers only the engines the caller may read,
+  narrowed silently like an implicit all-engines search; a task's identity links on any other
+  engine (`/api/tasks/{engineId}/{taskId}/identitylinks`) answer the same 403 as every other
+  engine-scoped read, before any engine call. Off ⇒ every engine, as before. Every controller
+  route that returns per-engine data is scoped by method security naming the engine, by the
+  read-scope gate, or is a named exception — the route sweep and its guard test
+  (`EngineScopedRouteGuardArchTest`) are in ARCHITECTURE §4 (the
+  "Per-engine read scope" note).
   The page opens with every filter off (Overdue is opt-in) so it shows tasks when tasks exist;
   an empty result states "No open tasks match the active filters: …" and offers a one-click
   *Clear filters*.
