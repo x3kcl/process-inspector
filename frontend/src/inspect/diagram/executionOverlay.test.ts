@@ -219,3 +219,74 @@ describe('executionOverlay', () => {
     expect(overlay.slowestId).toBeUndefined()
   })
 })
+
+// #729 — Flowable 6.3 records no sequenceFlow rows at all: the overlay must not read that as
+// "armed, not taken". No flow row anywhere → finished nodes completed, no route, routeUnknown.
+describe('executionOverlay — engine records no sequence flows (#729)', () => {
+  const xml = xmlOf(
+    flow('f1', 'start', 'gw'),
+    flow('fA', 'gw', 'review'),
+    flow('fB', 'gw', 'endSkip'),
+    flow('f2', 'review', 'endDone'),
+  )
+
+  it('zero sequenceFlow rows: every finished node completed, nothing armed, route unknown', () => {
+    const overlay = executionOverlay(
+      {
+        activities: [
+          node('start', 'startEvent'),
+          node('gw', 'exclusiveGateway'),
+          node('review', 'userTask', 5000),
+          node('endDone', 'endEvent'),
+        ],
+      },
+      xml,
+      [],
+    )
+    expect(overlay.completed).toEqual(['start', 'gw', 'review', 'endDone'])
+    expect(overlay.armedNotTaken).toEqual([])
+    expect(overlay.takenFlows.size).toBe(0)
+    expect(overlay.routeUnknown).toBe(true)
+  })
+
+  it('zero sequenceFlow rows, still running: the active node stays out, the rest completed', () => {
+    const overlay = executionOverlay(
+      {
+        activities: [
+          node('start', 'startEvent'),
+          node('gw', 'exclusiveGateway'),
+          node('review', 'userTask', 0, false),
+        ],
+      },
+      xml,
+      ['review'],
+    )
+    expect(overlay.completed).toEqual(['start', 'gw'])
+    expect(overlay.armedNotTaken).toEqual([])
+    expect(overlay.routeUnknown).toBe(true)
+  })
+
+  it('one sequenceFlow row present: today’s rule holds and the route is known', () => {
+    const overlay = executionOverlay(
+      {
+        activities: [
+          node('start', 'startEvent'),
+          taken('f1'),
+          node('gw', 'exclusiveGateway'),
+          node('review', 'userTask'),
+        ],
+      },
+      xml,
+      [],
+    )
+    expect(overlay.completed).toEqual(['start'])
+    expect(overlay.armedNotTaken).toEqual(['gw', 'review'])
+    expect(overlay.routeUnknown).toBe(false)
+  })
+
+  it('empty timeline: nothing finished, route not flagged unknown', () => {
+    const overlay = executionOverlay({ activities: [] }, xml, [])
+    expect(overlay.completed).toEqual([])
+    expect(overlay.routeUnknown).toBe(false)
+  })
+})
