@@ -173,7 +173,7 @@ public class CmmnApiClient {
                         .post()
                         .uri(cmmnApiBase(engine) + "/cmmn-runtime/case-instances/{id}/identitylinks", id)
                         .contentType(MediaType.APPLICATION_JSON)
-                        .body(Map.of("user", user, "type", type))
+                        .body(new InstanceIdentityLinkRequest(user, type))
                         .retrieve()
                         .toBodilessEntity());
     }
