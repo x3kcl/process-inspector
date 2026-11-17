@@ -19,6 +19,7 @@ import io.inspector.client.ProcessApiClient;
 import io.inspector.client.ProcessDefinitionPage;
 import io.inspector.client.ProcessDefinitionRecord;
 import io.inspector.client.ProcessInstancePage;
+import io.inspector.client.ProcessInstanceQuery;
 import io.inspector.client.ProcessInstanceRecord;
 import io.inspector.config.InspectorProperties.EngineConfig;
 import io.inspector.config.InspectorProperties.EngineEnvironment;
@@ -532,10 +533,10 @@ public class MigrationService {
 
     /** Count child instances (call activities) — they are NOT migrated (§3.7 blast-radius). */
     private int callActivityChildCount(EngineConfig engine, String instanceId) {
-        Map<String, Object> body = new LinkedHashMap<>();
-        body.put("superProcessInstanceId", instanceId);
-        body.put("size", CHILD_COUNT_CAP_PROBE);
-        ProcessInstancePage page = client.queryRuntimeProcessInstances(engine, CallPriority.INTERACTIVE, body);
+        var body = ProcessInstanceQuery.builder()
+                .superProcessInstanceId(instanceId)
+                .size(CHILD_COUNT_CAP_PROBE);
+        ProcessInstancePage page = client.queryRuntimeProcessInstances(engine, CallPriority.INTERACTIVE, body.build());
         return page != null ? (int) page.total() : 0;
     }
 

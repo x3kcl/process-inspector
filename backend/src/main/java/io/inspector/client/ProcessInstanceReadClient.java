@@ -28,7 +28,7 @@ final class ProcessInstanceReadClient {
 
     /** POST /query/historic-process-instances — the primary search query. */
     public ProcessInstancePage queryHistoricProcessInstances(
-            EngineConfig engine, CallPriority priority, Map<String, Object> body) {
+            EngineConfig engine, CallPriority priority, ProcessInstanceQuery body) {
         return guarded.call(
                 engine,
                 priority,
@@ -43,7 +43,7 @@ final class ProcessInstanceReadClient {
 
     /** POST /query/process-instances — runtime query (used for the suspended-ID set). */
     public ProcessInstancePage queryRuntimeProcessInstances(
-            EngineConfig engine, CallPriority priority, Map<String, Object> body) {
+            EngineConfig engine, CallPriority priority, ProcessInstanceQuery body) {
         return guarded.call(
                 engine,
                 priority,

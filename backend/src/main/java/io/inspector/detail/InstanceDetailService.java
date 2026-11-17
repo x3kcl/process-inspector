@@ -758,12 +758,6 @@ public class InstanceDetailService {
         return historic;
     }
 
-    static void withTenant(EngineConfig engine, Map<String, Object> body) {
-        if (engine.tenantId() != null && !engine.tenantId().isBlank()) {
-            body.put("tenantId", engine.tenantId());
-        }
-    }
-
     static String definitionKeyOf(String definitionId) {
         if (definitionId == null) return null;
         int i = definitionId.indexOf(':');

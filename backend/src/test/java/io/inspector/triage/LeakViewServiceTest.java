@@ -13,6 +13,7 @@ import static org.mockito.Mockito.when;
 import io.inspector.client.ProcessApiClient;
 import io.inspector.client.ProcessDefinitionPage;
 import io.inspector.client.ProcessInstancePage;
+import io.inspector.client.ProcessInstanceQuery;
 import io.inspector.client.ProcessInstanceRecords;
 import io.inspector.client.RepositoryRecords;
 import io.inspector.config.InspectorProperties.EngineConfig;
@@ -47,6 +48,12 @@ class LeakViewServiceTest {
     private static final java.util.Set<String> ALLOWED_BODY_KEYS =
             java.util.Set.of("processDefinitionKey", "suspended", "startedBefore", "size", "tenantId");
 
+    /** The query as the JSON object the engine receives (#720): unset keys are absent. */
+    @SuppressWarnings("unchecked")
+    private static Map<String, Object> asMap(Object query) {
+        return new com.fasterxml.jackson.databind.ObjectMapper().convertValue(query, Map.class);
+    }
+
     private static ProcessInstancePage count(long total) {
         return new ProcessInstancePage(ProcessInstanceRecords.instances(List.of(Map.of())), total, 0, 1);
     }
@@ -73,7 +80,7 @@ class LeakViewServiceTest {
                 .thenReturn(defs(1, "vacationRequest"));
         when(client.queryRuntimeProcessInstances(any(), any(), any())).thenAnswer(inv -> {
             EngineConfig engine = inv.getArgument(0);
-            Map<String, Object> body = inv.getArgument(2);
+            Map<String, Object> body = asMap(inv.getArgument(2));
             assertThat(body).containsEntry("size", 1); // count-only, NEVER rows (iron rule)
             assertThat(ALLOWED_BODY_KEYS).containsAll(body.keySet());
             return count(totalFor(engine.id(), body));
@@ -114,16 +121,17 @@ class LeakViewServiceTest {
         when(client.listLatestProcessDefinitions(any(), any(), anyInt())).thenReturn(defs(1, "vacationRequest"));
         when(client.queryRuntimeProcessInstances(any(), any(), any())).thenAnswer(inv -> {
             EngineConfig engine = inv.getArgument(0);
-            return count(totalFor(engine.id(), inv.getArgument(2)));
+            return count(totalFor(engine.id(), asMap(inv.getArgument(2))));
         });
 
         service(client, e1).aggregate();
 
-        ArgumentCaptor<Map<String, Object>> bodies = ArgumentCaptor.forClass(Map.class);
+        ArgumentCaptor<ProcessInstanceQuery> bodies = ArgumentCaptor.forClass(ProcessInstanceQuery.class);
         verify(client, org.mockito.Mockito.atLeastOnce()).queryRuntimeProcessInstances(any(), any(), bodies.capture());
         // The one SUSPENDED leg is suspended=true AND uses startedBefore=now−7d — R-SEM-05:
         // age is measured off startTime, the ONLY time the REST API can evaluate.
         List<Map<String, Object>> suspendedLegs = bodies.getAllValues().stream()
+                .map(LeakViewServiceTest::asMap)
                 .filter(b -> Boolean.TRUE.equals(b.get("suspended")))
                 .toList();
         assertThat(suspendedLegs).isNotEmpty();
@@ -145,7 +153,7 @@ class LeakViewServiceTest {
             if (engine.id().equals("e2")) {
                 throw new IllegalStateException("engine e2 is down");
             }
-            return count(totalFor(engine.id(), inv.getArgument(2)));
+            return count(totalFor(engine.id(), asMap(inv.getArgument(2))));
         });
 
         LeakViewsResponse response = service(client, e1, e2).aggregate();
@@ -166,7 +174,7 @@ class LeakViewServiceTest {
         when(client.listLatestProcessDefinitions(any(), any(), anyInt())).thenReturn(defs(9, "vacationRequest"));
         when(client.queryRuntimeProcessInstances(any(), any(), any())).thenAnswer(inv -> {
             EngineConfig engine = inv.getArgument(0);
-            return count(totalFor(engine.id(), inv.getArgument(2)));
+            return count(totalFor(engine.id(), asMap(inv.getArgument(2))));
         });
 
         assertThat(service(client, e1).aggregate().lowerBound()).isTrue();

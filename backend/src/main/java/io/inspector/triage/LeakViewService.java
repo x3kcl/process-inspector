@@ -8,6 +8,7 @@ import io.inspector.client.ProcessApiClient;
 import io.inspector.client.ProcessDefinitionPage;
 import io.inspector.client.ProcessDefinitionRecord;
 import io.inspector.client.ProcessInstancePage;
+import io.inspector.client.ProcessInstanceQuery;
 import io.inspector.config.InspectorProperties;
 import io.inspector.config.InspectorProperties.EngineConfig;
 import io.inspector.dto.LeakViewsResponse;
@@ -243,16 +244,13 @@ public class LeakViewService {
      * leak is exactly a runtime match.
      */
     private long count(EngineConfig engine, String definitionKey, boolean suspended, String startedBefore) {
-        Map<String, Object> body = new LinkedHashMap<>();
-        if (definitionKey != null) {
-            body.put("processDefinitionKey", definitionKey);
-        }
-        body.put("suspended", suspended);
-        body.put("startedBefore", startedBefore);
-        body.put("size", 1);
-        if (engine.tenantId() != null && !engine.tenantId().isBlank()) {
-            body.put("tenantId", engine.tenantId());
-        }
+        ProcessInstanceQuery body = ProcessInstanceQuery.builder()
+                .processDefinitionKey(definitionKey)
+                .suspended(suspended)
+                .startedBefore(startedBefore)
+                .size(1)
+                .tenantId(engine.tenantId())
+                .build();
         ProcessInstancePage page = flowable.queryRuntimeProcessInstances(engine, CallPriority.INTERACTIVE, body);
         return page != null ? page.total() : 0;
     }

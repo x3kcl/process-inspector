@@ -10,13 +10,12 @@ import io.inspector.client.ProcessApiClient;
 import io.inspector.client.ProcessDefinitionPage;
 import io.inspector.client.ProcessDefinitionRecord;
 import io.inspector.client.ProcessInstancePage;
+import io.inspector.client.ProcessInstanceQuery;
 import io.inspector.config.InspectorProperties.EngineConfig;
 import io.inspector.registry.EngineRegistry;
 import java.util.ArrayList;
 import java.util.Comparator;
-import java.util.LinkedHashMap;
 import java.util.List;
-import java.util.Map;
 import org.slf4j.Logger;
 import org.slf4j.LoggerFactory;
 import org.springframework.http.HttpStatus;
@@ -127,9 +126,10 @@ public class DefinitionVersionService {
 
     /** RUNNING instances on ONE definition version — count-only ({@code size=1}, read {@code total}). */
     private long runningInstanceCount(EngineConfig engine, String definitionId) {
-        Map<String, Object> body = new LinkedHashMap<>();
-        body.put("processDefinitionId", definitionId);
-        body.put("size", 1);
+        ProcessInstanceQuery body = ProcessInstanceQuery.builder()
+                .processDefinitionId(definitionId)
+                .size(1)
+                .build();
         ProcessInstancePage page = client.queryRuntimeProcessInstances(engine, CallPriority.INTERACTIVE, body);
         return page != null ? page.total() : 0;
     }

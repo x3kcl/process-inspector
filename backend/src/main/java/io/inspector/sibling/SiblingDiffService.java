@@ -6,6 +6,7 @@ import io.inspector.client.GuardedCaller.CallPriority;
 import io.inspector.client.HistoricVariableRecord;
 import io.inspector.client.ProcessApiClient;
 import io.inspector.client.ProcessInstancePage;
+import io.inspector.client.ProcessInstanceQuery;
 import io.inspector.client.ProcessInstanceRecord;
 import io.inspector.config.InspectorProperties.EngineConfig;
 import io.inspector.detail.InstanceDetailService;
@@ -73,13 +74,13 @@ public class SiblingDiffService {
         // Most recently COMPLETED instance of the SAME definition version. finished=true keeps
         // us in history (runtime has none of these) and encodes "successful" the honest way:
         // it reached an end event instead of dead-lettering.
-        Map<String, Object> body = new LinkedHashMap<>();
-        body.put("processDefinitionId", definitionId);
-        body.put("finished", true);
-        body.put("sort", "endTime");
-        body.put("order", "desc");
-        body.put("size", NEAREST_CANDIDATE_SCAN);
-        withTenant(engine, body);
+        ProcessInstanceQuery body = ProcessInstanceQuery.builder()
+                .processDefinitionId(definitionId)
+                .finished(true)
+                .sort("endTime", "desc")
+                .size(NEAREST_CANDIDATE_SCAN)
+                .tenantId(engine.tenantId())
+                .build();
 
         ProcessInstancePage page = flowable.queryHistoricProcessInstances(engine, CallPriority.INTERACTIVE, body);
         List<ProcessInstanceRecord> rows = page.dataOrEmpty();
@@ -321,12 +322,6 @@ public class SiblingDiffService {
                 row.endTime(),
                 row.durationInMillis(),
                 row.endTime() != null);
-    }
-
-    private static void withTenant(EngineConfig engine, Map<String, Object> body) {
-        if (engine.tenantId() != null && !engine.tenantId().isBlank()) {
-            body.put("tenantId", engine.tenantId());
-        }
     }
 
     static String definitionKeyOf(String definitionId) {

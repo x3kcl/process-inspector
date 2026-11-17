@@ -52,12 +52,12 @@ public class ProcessApiClient {
     }
 
     public ProcessInstancePage queryHistoricProcessInstances(
-            EngineConfig engine, CallPriority priority, Map<String, Object> body) {
+            EngineConfig engine, CallPriority priority, ProcessInstanceQuery body) {
         return reads.queryHistoricProcessInstances(engine, priority, body);
     }
 
     public ProcessInstancePage queryRuntimeProcessInstances(
-            EngineConfig engine, CallPriority priority, Map<String, Object> body) {
+            EngineConfig engine, CallPriority priority, ProcessInstanceQuery body) {
         return reads.queryRuntimeProcessInstances(engine, priority, body);
     }
 

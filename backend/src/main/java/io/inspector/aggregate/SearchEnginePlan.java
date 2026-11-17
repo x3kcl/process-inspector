@@ -16,6 +16,7 @@ import io.inspector.client.ProcessApiClient.JobLaneKind;
 import io.inspector.client.ProcessDefinitionPage;
 import io.inspector.client.ProcessDefinitionRecord;
 import io.inspector.client.ProcessInstancePage;
+import io.inspector.client.ProcessInstanceQuery;
 import io.inspector.client.ProcessInstanceRecord;
 import io.inspector.config.InspectorProperties;
 import io.inspector.config.InspectorProperties.EngineConfig;
@@ -100,10 +101,11 @@ final class SearchEnginePlan {
      * returns no wrong rows either.)
      */
     private boolean businessKeyLikeIgnored(EngineConfig engine) {
-        Map<String, Object> canary = new HashMap<>();
-        canary.put("processBusinessKeyLike", "%__inspector_bkl_canary__%");
-        canary.put("size", 1);
-        tenant(engine).ifPresent(t -> canary.put("tenantId", t));
+        ProcessInstanceQuery canary = ProcessInstanceQuery.builder()
+                .processBusinessKeyLike("%__inspector_bkl_canary__%")
+                .size(1)
+                .tenantId(engine.tenantId())
+                .build();
         return flowable.queryHistoricProcessInstances(engine, CallPriority.INTERACTIVE, canary)
                         .total()
                 > 0;
@@ -163,10 +165,10 @@ final class SearchEnginePlan {
         long total = 0;
         int start = 0;
         while (true) {
-            Map<String, Object> body = historicBody(engine, req, pageSize, definitionIds);
-            body.put("processInstanceIds", List.copyOf(ids));
-            if (start > 0) body.put("start", start);
-            ProcessInstancePage page = flowable.queryHistoricProcessInstances(engine, priority, body);
+            ProcessInstanceQuery.Builder body =
+                    historicBody(engine, req, pageSize, definitionIds).processInstanceIds(List.copyOf(ids));
+            if (start > 0) body.start(start);
+            ProcessInstancePage page = flowable.queryHistoricProcessInstances(engine, priority, body.build());
             List<ProcessInstanceRecord> data = page.dataOrEmpty();
             total = page.total();
 
@@ -223,15 +225,15 @@ final class SearchEnginePlan {
         long total = 0;
         int start = window != null ? window.start() : 0;
         while (true) {
-            Map<String, Object> body = historicBody(engine, req, pageSize, definitionIds);
+            ProcessInstanceQuery.Builder body = historicBody(engine, req, pageSize, definitionIds);
             // Narrow finished when the status OR-set is one-sided (pure optimization).
             boolean wantsOpen = wanted.stream().anyMatch(s -> s != InstanceStatus.COMPLETED);
             boolean wantsCompleted = wanted.contains(InstanceStatus.COMPLETED);
-            if (wantsCompleted && !wantsOpen) body.put("finished", true);
-            else if (wantsOpen && !wantsCompleted) body.put("finished", false);
-            if (start > 0) body.put("start", start);
+            if (wantsCompleted && !wantsOpen) body.finished(true);
+            else if (wantsOpen && !wantsCompleted) body.finished(false);
+            if (start > 0) body.start(start);
 
-            ProcessInstancePage historic = flowable.queryHistoricProcessInstances(engine, priority, body);
+            ProcessInstancePage historic = flowable.queryHistoricProcessInstances(engine, priority, body.build());
             List<ProcessInstanceRecord> data = historic.dataOrEmpty();
             total = historic.total();
             if (exhaustCap != null && total > exhaustCap) {
@@ -424,10 +426,11 @@ final class SearchEnginePlan {
      */
     private Map<String, Boolean> suspendedFlags(EngineConfig engine, Set<String> ids, CallPriority priority) {
         if (ids.isEmpty()) return Map.of();
-        Map<String, Object> body = new HashMap<>();
-        body.put("processInstanceIds", List.copyOf(ids));
-        body.put("size", ids.size());
-        tenant(engine).ifPresent(t -> body.put("tenantId", t));
+        ProcessInstanceQuery body = ProcessInstanceQuery.builder()
+                .processInstanceIds(List.copyOf(ids))
+                .size(ids.size())
+                .tenantId(engine.tenantId())
+                .build();
         ProcessInstancePage page = flowable.queryRuntimeProcessInstances(engine, priority, body);
 
         Map<String, Boolean> byId = new HashMap<>();
@@ -504,10 +507,11 @@ final class SearchEnginePlan {
         for (List<String> chunk : chunks) {
             futures.add(CompletableFuture.runAsync(
                     () -> {
-                        Map<String, Object> body = new HashMap<>();
-                        body.put("processInstanceIds", chunk);
-                        body.put("size", chunk.size());
-                        tenant(engine).ifPresent(t -> body.put("tenantId", t));
+                        ProcessInstanceQuery body = ProcessInstanceQuery.builder()
+                                .processInstanceIds(chunk)
+                                .size(chunk.size())
+                                .tenantId(engine.tenantId())
+                                .build();
                         for (ProcessInstanceRecord row : flowable.queryHistoricProcessInstances(
                                         engine, CallPriority.INTERACTIVE, body)
                                 .dataOrEmpty()) {
@@ -535,41 +539,30 @@ final class SearchEnginePlan {
      * processDefinitionKey/version on historic rows across the version matrix — both are
      * derived from processDefinitionId ({@code key:version:uuid}).
      */
-    private Map<String, Object> historicBody(
+    private ProcessInstanceQuery.Builder historicBody(
             EngineConfig engine, SearchRequest req, int pageSize, List<String> definitionIds) {
-        Map<String, Object> body = new HashMap<>();
+        ProcessInstanceQuery.Builder body = ProcessInstanceQuery.builder();
         if (req.definitionVersion() != null && definitionIds != null && !definitionIds.isEmpty()) {
             // key+version resolve to exactly one deployed definition per engine — push the
             // concrete id down (processDefinitionVersion is not queryable across the matrix).
-            body.put("processDefinitionId", definitionIds.get(0));
+            body.processDefinitionId(definitionIds.get(0));
         } else if (notBlank(req.processDefinitionKey())) {
-            body.put("processDefinitionKey", req.processDefinitionKey());
+            body.processDefinitionKey(req.processDefinitionKey());
         }
-        if (notBlank(req.businessKey())) body.put("processBusinessKey", req.businessKey());
+        if (notBlank(req.businessKey())) body.processBusinessKey(req.businessKey());
         // Substring semantics: wrap unless the caller already sent a % pattern. Engines that
         // silently drop this field were rejected earlier (businessKeyLikeIgnored canary).
-        if (notBlank(req.businessKeyLike())) body.put("processBusinessKeyLike", likePattern(req.businessKeyLike()));
-        if (notBlank(req.startedAfter())) body.put("startedAfter", req.startedAfter());
-        if (notBlank(req.startedBefore())) body.put("startedBefore", req.startedBefore());
-        tenant(engine).ifPresent(t -> body.put("tenantId", t));
+        if (notBlank(req.businessKeyLike())) body.processBusinessKeyLike(likePattern(req.businessKeyLike()));
+        if (notBlank(req.startedAfter())) body.startedAfter(req.startedAfter());
+        if (notBlank(req.startedBefore())) body.startedBefore(req.startedBefore());
+        body.tenantId(engine.tenantId());
         if (req.variables() != null && !req.variables().isEmpty()) {
-            body.put(
-                    "variables",
-                    req.variables().stream()
-                            .map(v -> {
-                                Map<String, Object> m = new HashMap<>();
-                                m.put("name", v.name());
-                                m.put("value", v.value());
-                                m.put("operation", v.operation() != null ? v.operation() : "equals");
-                                if (v.type() != null) m.put("type", v.type());
-                                return m;
-                            })
-                            .toList());
+            body.variables(req.variables().stream()
+                    .map(v -> new ProcessInstanceQuery.VariableFilter(
+                            v.name(), v.value(), v.operation() != null ? v.operation() : "equals", v.type()))
+                    .toList());
         }
-        body.put("size", pageSize);
-        body.put("sort", "startTime");
-        body.put("order", "desc");
-        return body;
+        return body.size(pageSize).sort("startTime", "desc");
     }
 
     /**

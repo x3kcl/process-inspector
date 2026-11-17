@@ -15,6 +15,7 @@ import io.inspector.client.ProcessApiClient;
 import io.inspector.client.ProcessDefinitionPage;
 import io.inspector.client.ProcessDefinitionRecord;
 import io.inspector.client.ProcessInstancePage;
+import io.inspector.client.ProcessInstanceQuery;
 import io.inspector.config.InspectorProperties;
 import io.inspector.config.InspectorProperties.EngineConfig;
 import io.inspector.config.InspectorProperties.EngineEnvironment;
@@ -257,9 +258,10 @@ public class DeploymentCatalogService {
     }
 
     private long runningOn(EngineConfig engine, String definitionId) {
-        Map<String, Object> body = new LinkedHashMap<>();
-        body.put("processDefinitionId", definitionId);
-        body.put("size", 1);
+        ProcessInstanceQuery body = ProcessInstanceQuery.builder()
+                .processDefinitionId(definitionId)
+                .size(1)
+                .build();
         ProcessInstancePage page = processes.queryRuntimeProcessInstances(engine, CallPriority.INTERACTIVE, body);
         return page != null ? page.total() : 0;
     }

@@ -1,12 +1,15 @@
 package io.inspector.client;
 
+import com.fasterxml.jackson.annotation.JsonInclude;
 import java.util.List;
 
 /**
  * The body of POST /query/historic-process-instances and POST /query/process-instances (#720).
- * STUB of the RED commit: the fields and the builder are final, the inclusion rules are not — an
- * unset key still serialises as {@code null} here.
+ * A key the caller did not set is OMITTED, never sent as {@code null}; a value the caller set
+ * goes out as it is — {@code false}, an empty id list, {@code start} 0. Callers that must not ask
+ * an empty question (no ids, no variable filters) decide that before they build.
  */
+@JsonInclude(JsonInclude.Include.NON_NULL)
 public record ProcessInstanceQuery(
         String processDefinitionId,
         String processDefinitionKey,
@@ -25,8 +28,16 @@ public record ProcessInstanceQuery(
         String sort,
         String order) {
 
-    /** One variable predicate: {@code {name, value, operation, type}}. */
-    public record VariableFilter(String name, Object value, String operation, String type) {}
+    /**
+     * One variable predicate. The VALUE stays whatever the caller sent (a long stays a JSON number)
+     * and a null value is SENT; only an unset {@code type} is left out.
+     */
+    @JsonInclude(JsonInclude.Include.ALWAYS)
+    public record VariableFilter(
+            String name,
+            Object value,
+            String operation,
+            @JsonInclude(JsonInclude.Include.NON_NULL) String type) {}
 
     public static Builder builder() {
         return new Builder();

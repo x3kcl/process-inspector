@@ -2,6 +2,7 @@ package io.inspector.detail;
 
 import io.inspector.client.GuardedCaller.CallPriority;
 import io.inspector.client.ProcessInstancePage;
+import io.inspector.client.ProcessInstanceQuery;
 import io.inspector.client.ProcessInstanceRecord;
 import io.inspector.config.InspectorProperties.EngineConfig;
 import io.inspector.dto.InstanceHierarchy;
@@ -98,13 +99,12 @@ final class InstanceHierarchyAssembler {
 
     /** {@code runningOnly}: the same per-node read, unfinished children only (#497 plan builder). */
     ProcessInstancePage childrenOf(EngineConfig engine, String parentInstanceId, boolean runningOnly) {
-        Map<String, Object> body = new LinkedHashMap<>();
-        body.put("superProcessInstanceId", parentInstanceId);
-        if (runningOnly) {
-            body.put("finished", false);
-        }
-        body.put("size", Math.min(InstanceDetailService.HIERARCHY_BREADTH_CAP, engine.maxPageSizeOrDefault()));
-        InstanceDetailService.withTenant(engine, body);
+        ProcessInstanceQuery body = ProcessInstanceQuery.builder()
+                .superProcessInstanceId(parentInstanceId)
+                .finished(runningOnly ? Boolean.FALSE : null)
+                .size(Math.min(InstanceDetailService.HIERARCHY_BREADTH_CAP, engine.maxPageSizeOrDefault()))
+                .tenantId(engine.tenantId())
+                .build();
         return host.flowable.queryHistoricProcessInstances(engine, CallPriority.INTERACTIVE, body);
     }
 

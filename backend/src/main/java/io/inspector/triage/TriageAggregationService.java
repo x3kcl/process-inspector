@@ -8,6 +8,7 @@ import io.inspector.client.ProcessApiClient;
 import io.inspector.client.ProcessApiClient.JobLaneKind;
 import io.inspector.client.ProcessDefinitionPage;
 import io.inspector.client.ProcessInstancePage;
+import io.inspector.client.ProcessInstanceQuery;
 import io.inspector.config.InspectorProperties;
 import io.inspector.config.InspectorProperties.EngineConfig;
 import io.inspector.dto.EngineDto;
@@ -236,27 +237,23 @@ public class TriageAggregationService {
     /* ---------------- status counts: totals only, never rows ---------------- */
 
     private long runtimeTotal(EngineConfig engine, boolean suspended, CallPriority priority) {
-        Map<String, Object> body = new LinkedHashMap<>();
-        body.put("suspended", suspended);
-        body.put("size", 1);
-        withTenant(engine, body);
+        ProcessInstanceQuery body = ProcessInstanceQuery.builder()
+                .suspended(suspended)
+                .size(1)
+                .tenantId(engine.tenantId())
+                .build();
         ProcessInstancePage page = flowable.queryRuntimeProcessInstances(engine, priority, body);
         return page != null ? page.total() : 0;
     }
 
     private long completedTotal(EngineConfig engine, CallPriority priority) {
-        Map<String, Object> body = new LinkedHashMap<>();
-        body.put("finished", true);
-        body.put("size", 1);
-        withTenant(engine, body);
+        ProcessInstanceQuery body = ProcessInstanceQuery.builder()
+                .finished(true)
+                .size(1)
+                .tenantId(engine.tenantId())
+                .build();
         ProcessInstancePage page = flowable.queryHistoricProcessInstances(engine, priority, body);
         return page != null ? page.total() : 0;
-    }
-
-    private static void withTenant(EngineConfig engine, Map<String, Object> body) {
-        if (engine.tenantId() != null && !engine.tenantId().isBlank()) {
-            body.put("tenantId", engine.tenantId());
-        }
     }
 
     /* ---------------- failure-lane scans ---------------- */
