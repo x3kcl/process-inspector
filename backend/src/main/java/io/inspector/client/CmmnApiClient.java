@@ -523,7 +523,7 @@ public class CmmnApiClient {
                         .post()
                         .uri(cmmnApiBase(engine) + "/cmmn-management/deadletter-jobs/{id}", id)
                         .contentType(MediaType.APPLICATION_JSON)
-                        .body(Map.of("action", "move"))
+                        .body(JobActionRequest.move())
                         .retrieve()
                         .toBodilessEntity());
     }
