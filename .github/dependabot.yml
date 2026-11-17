@@ -21,6 +21,10 @@ updates:
       # Boot 4 is a coordinated migration (#439, #440), not a lone parent bump.
       - dependency-name: org.springframework.boot:spring-boot-starter-parent
         update-types: [version-update:semver-major]
+      # 9.x needs Jackson 3 (tools.jackson); main stays on Jackson 2 via spring-boot-jackson2
+      # until the Boot 4.3 / Jackson 3 move (docs/BOOT4-MIGRATION.md, #549). 8.x is the ceiling.
+      - dependency-name: net.logstash.logback:logstash-logback-encoder
+        update-types: [version-update:semver-major]
 
   - package-ecosystem: npm
     directory: /frontend
