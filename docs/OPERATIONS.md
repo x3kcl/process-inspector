@@ -347,6 +347,10 @@ so an access log full of `no-engine-role` names users waiting for a mapping, not
 mapping one of their groups to at least VIEWER on one engine (`/admin/access`, or the mounted
 mapping file); it applies within the reload TTL, no re-login. `GET /api/me`, `GET /api/meta` and
 `/actuator/prometheus` stay readable to any signed-in principal.
+**An admin with no engine role (#771).** A REGISTRY_ADMIN / ACCESS_ADMIN with no role on any engine
+is refused the same reads (`no-engine-role` in the access log) but the SPA lands them on their
+admin page with an "administrative access but no engine role" line, not on a page of refusals. If
+they should see process data, map a group to at least VIEWER on an engine.
 Session policy (R-SAFE-07, built v2 — IDP-SECURITY.md §5): fixation protection (scoped to
 `oidc`/form so the dev Basic-per-XHR SSE isn't orphaned), idle timeout 12 h / absolute 24 h
 (**warn-before-guillotine**, never a takeover over a dirty wizard draft), `HttpOnly; Secure;

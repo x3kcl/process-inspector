@@ -29,3 +29,33 @@ export function NoAccess() {
     </div>
   )
 }
+
+/**
+ * #771: a fleet-grant holder (REGISTRY_ADMIN / ACCESS_ADMIN) with no engine role. The fleet reads
+ * stay refused for them (#761), so the shell mounts nothing that calls them. Decided from
+ * GET /api/me alone; any grant this build does not know about leaves the decision untouched.
+ */
+export function hasAdminOnly(me: MeDto | undefined): boolean {
+  if (me === undefined) return false
+  const role: unknown = me.role
+  return (
+    role === null &&
+    Object.keys(me.engineRoles ?? {}).length === 0 &&
+    me.breakGlass !== true &&
+    (me.registryAdmin === true || me.accessAdmin === true)
+  )
+}
+
+/** The first admin page the user holds a grant for (registry first), or null. */
+export function adminHome(me: MeDto | undefined): string | null {
+  if (me?.registryAdmin === true) return '/admin/engines'
+  return me?.accessAdmin === true ? '/admin/access' : null
+}
+
+export function AdminOnlyNotice() {
+  return (
+    <p className="no-access" role="status">
+      You have administrative access but no engine role, so process data is not shown.
+    </p>
+  )
+}
