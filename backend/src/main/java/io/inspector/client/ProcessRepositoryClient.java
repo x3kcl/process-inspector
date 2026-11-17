@@ -2,7 +2,6 @@ package io.inspector.client;
 
 import io.inspector.client.GuardedCaller.CallPriority;
 import io.inspector.config.InspectorProperties.EngineConfig;
-import java.util.LinkedHashMap;
 import java.util.List;
 import java.util.Map;
 import org.springframework.http.MediaType;
@@ -58,12 +57,8 @@ final class ProcessRepositoryClient {
             String action,
             boolean includeProcessInstances,
             String effectiveAt) {
-        Map<String, Object> body = new LinkedHashMap<>();
-        body.put("action", action);
-        body.put("includeProcessInstances", includeProcessInstances);
-        if (effectiveAt != null) {
-            body.put("date", effectiveAt);
-        }
+        ProcessDefinitionActionRequest body =
+                new ProcessDefinitionActionRequest(action, includeProcessInstances, effectiveAt);
         guarded.run(
                 engine,
                 priority,
@@ -129,7 +124,7 @@ final class ProcessRepositoryClient {
      * {@code startActivityIds}); the service audits it verbatim before dispatch.
      */
     public void changeActivityState(
-            EngineConfig engine, CallPriority priority, String processInstanceId, Map<String, Object> body) {
+            EngineConfig engine, CallPriority priority, String processInstanceId, ChangeActivityStateRequest body) {
         guarded.run(
                 engine,
                 priority,
@@ -176,7 +171,7 @@ final class ProcessRepositoryClient {
      * (latest) — never both. Returns the engine's instance representation (the new id).
      */
     public ProcessInstanceRecord startProcessInstance(
-            EngineConfig engine, CallPriority priority, Map<String, Object> body) {
+            EngineConfig engine, CallPriority priority, StartProcessInstanceRequest body) {
         return guarded.call(
                 engine,
                 priority,

@@ -842,14 +842,7 @@ class ProcessApiClientWireShapeTest {
                         "/runtime/process-instances/" + pid + "/change-state",
                         "{\"cancelActivityIds\":[\"chargePayment\"],\"startActivityIds\":[\"end\"]}",
                         c -> c.changeActivityState(
-                                e,
-                                p,
-                                pid,
-                                Map.of(
-                                        "cancelActivityIds",
-                                        List.of("chargePayment"),
-                                        "startActivityIds",
-                                        List.of("end")))),
+                                e, p, pid, new ChangeActivityStateRequest(List.of("chargePayment"), List.of("end")))),
                 new Write(
                         "migrateInstance",
                         "POST",
@@ -900,7 +893,9 @@ class ProcessApiClientWireShapeTest {
                             .willReturn(okJson(text(v, "runtime-process-instance.json"))));
 
                     ProcessInstanceRecord started = client.startProcessInstance(
-                            engine, CallPriority.INTERACTIVE, Map.of("processDefinitionKey", "demoFailingPayment"));
+                            engine,
+                            CallPriority.INTERACTIVE,
+                            StartProcessInstanceRequest.latest("demoFailingPayment", null, List.of()));
 
                     assertThat(started).isEqualTo(ProcessInstanceRecords.instance(doc(v, "runtime-process-instance")));
                     wm.verify(requestedFor("POST", urlPathEqualTo("/runtime/process-instances"))

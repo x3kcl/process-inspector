@@ -442,7 +442,7 @@ public class ProcessApiClient {
     }
 
     public void changeActivityState(
-            EngineConfig engine, CallPriority priority, String processInstanceId, Map<String, Object> body) {
+            EngineConfig engine, CallPriority priority, String processInstanceId, ChangeActivityStateRequest body) {
         repository.changeActivityState(engine, priority, processInstanceId, body);
     }
 
@@ -455,7 +455,7 @@ public class ProcessApiClient {
     }
 
     public ProcessInstanceRecord startProcessInstance(
-            EngineConfig engine, CallPriority priority, Map<String, Object> body) {
+            EngineConfig engine, CallPriority priority, StartProcessInstanceRequest body) {
         return repository.startProcessInstance(engine, priority, body);
     }
 
