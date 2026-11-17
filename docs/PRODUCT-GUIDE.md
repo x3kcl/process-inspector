@@ -56,6 +56,12 @@ ladder, and a per-engine ADMIN does *not* confer them.
 grant) sees one page: *No access granted yet — ask an Inspector admin*, with Sign out in the
 header. Nothing else loads until an admin maps one of their groups to at least VIEWER somewhere.
 
+**Administrator without an engine role.** A REGISTRY_ADMIN / ACCESS_ADMIN who holds no role on any
+engine lands on their admin page (Engines, else Access) with one line: administrative access but
+no engine role, so process data is not shown. Only the admin pages they hold are in the header; a
+link to any data page shows the same line. A fleet grant is an administrative power, not read
+access — map the person to at least VIEWER on an engine to give them process data.
+
 Deployments may override the role→verb matrix with per-verb grants; the disabled-action
 tooltip cites the missing grant either way. On a **read-only engine** every mutation is
 refused regardless of role — a rollout contract with the engine owner, not a bug.

@@ -61,7 +61,7 @@ public class CaseMigrationController {
     }
 
     @GetMapping("/case-migration/analyses/{id}")
-    @PreAuthorize("isAuthenticated()")
+    @PreAuthorize("@rbac.atLeast(authentication, 'ADMIN')")
     public CaseCohortAnalysisView getAnalysis(@PathVariable UUID id, Authentication authentication) {
         return analyses.get(id, authentication);
     }

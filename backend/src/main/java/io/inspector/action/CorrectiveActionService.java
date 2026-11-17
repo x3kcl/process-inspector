@@ -222,7 +222,17 @@ public class CorrectiveActionService {
         String reason = normalizedReason(engine, verb, request);
         String ticketId = ticketPolicy.validate(request.ticketId(), engine.environment());
 
-        Target target = restateTarget(scope, engine, verb, targetId, request);
+        Target target;
+        try {
+            target = restateTarget(scope, engine, verb, targetId, request);
+        } catch (GuardRefusedException e) {
+            if (ForeignExecutionRefusalAudit.CODE.equals(e.code())) {
+                String foreign =
+                        verb == ActionVerb.EDIT_VARIABLE ? request.variable().executionId() : request.executionId();
+                ForeignExecutionRefusalAudit.record(audit, rbac, auth, engine, targetId, verb, reason, foreign);
+            }
+            throw e;
+        }
         if (expectedCaseState != null) {
             expectedCaseState.requireUnchanged(targetId, target.auditPayload());
         }

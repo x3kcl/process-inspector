@@ -11,7 +11,11 @@ import static org.mockito.Mockito.verify;
 import static org.mockito.Mockito.verifyNoInteractions;
 import static org.mockito.Mockito.when;
 
+import io.inspector.audit.AuditEntry;
+import io.inspector.audit.AuditOutcome;
+import io.inspector.audit.AuditPayloadMode;
 import io.inspector.audit.AuditService;
+import io.inspector.audit.AuditUnavailableException;
 import io.inspector.audit.ProtectedDefinitionRepository;
 import io.inspector.audit.ProtectedInstance;
 import io.inspector.audit.ProtectedInstanceRepository;
@@ -39,6 +43,7 @@ import java.util.Map;
 import java.util.Optional;
 import org.junit.jupiter.api.BeforeEach;
 import org.junit.jupiter.api.Test;
+import org.mockito.ArgumentCaptor;
 import org.springframework.security.authentication.TestingAuthenticationToken;
 import org.springframework.security.core.Authentication;
 
@@ -61,6 +66,8 @@ class ForeignExecutionIdActionTest {
     private final ProtectedDefinitionRepository protectedDefinitions = mock(ProtectedDefinitionRepository.class);
     private final Authentication operator = new TestingAuthenticationToken("op", "n/a", "ROLE_OPERATOR");
 
+    private final AuditEntry pending = mock(AuditEntry.class);
+
     private CorrectiveActionService service;
 
     @BeforeEach
@@ -82,6 +89,8 @@ class ForeignExecutionIdActionTest {
                 new DangerousActionReauthGate(
                         new OidcProperties(null, false, null),
                         Clock.fixed(Instant.parse("2026-11-17T07:00:00Z"), ZoneOffset.UTC)));
+        when(audit.beginPending(any(), any(), any(), any(), any(), any(), any(), any(), any(AuditPayloadMode.class)))
+                .thenReturn(pending);
         when(rbac.hasRoleOn(any(), any(), anyString())).thenReturn(true);
         when(rbac.hasRoleOn(any(), eq(Role.ADMIN), anyString())).thenReturn(false);
         when(protectedInstances.findById(any())).thenReturn(Optional.empty());
@@ -145,7 +154,7 @@ class ForeignExecutionIdActionTest {
                 .satisfies(e -> assertThat(code(e)).isEqualTo("execution-instance-mismatch"))
                 .hasMessageContaining(GUARDED);
         verify(client, never()).putExecutionVariable(any(), any(), anyString(), anyString(), any());
-        verifyNoInteractions(audit);
+        verifyRefusalAudited(ActionVerb.EDIT_VARIABLE);
     }
 
     @Test
@@ -154,6 +163,58 @@ class ForeignExecutionIdActionTest {
                 .isInstanceOf(GuardRefusedException.class)
                 .satisfies(e -> assertThat(code(e)).isEqualTo("execution-instance-mismatch"));
         verify(client, never()).executionAction(any(), any(), anyString(), any());
+        verifyRefusalAudited(ActionVerb.UNSTICK_EVENT);
+    }
+
+    /**
+     * #773: the cross-instance refusal is audited (actor, engine, path instance, verb, the foreign
+     * execution id, failed + reason code) — and carries no variable value.
+     */
+    private void verifyRefusalAudited(ActionVerb verb) {
+        ArgumentCaptor<Map<String, Object>> payload = ArgumentCaptor.captor();
+        verify(audit)
+                .beginPending(
+                        eq("op"),
+                        eq(DEV),
+                        any(),
+                        eq(OPEN),
+                        eq(verb.path()),
+                        any(),
+                        any(),
+                        payload.capture(),
+                        any(AuditPayloadMode.class));
+        assertThat(payload.getValue()).containsEntry("executionId", "ex-guarded");
+        assertThat(payload.getValue().toString()).doesNotContain("43").doesNotContain("42");
+        verify(audit)
+                .close(eq(pending), eq(AuditOutcome.failed), eq(400), eq("execution-instance-mismatch"), eq(false));
+    }
+
+    @Test
+    void aRefusalWhoseAuditWriteFailsIsStillReturnedAsTheRefusal() {
+        when(audit.beginPending(any(), any(), any(), any(), any(), any(), any(), any(), any(AuditPayloadMode.class)))
+                .thenThrow(new AuditUnavailableException(new RuntimeException("db down")));
+
+        assertThatThrownBy(() -> service.execute(DEV, OPEN, ActionVerb.EDIT_VARIABLE, edit("ex-guarded"), operator))
+                .isInstanceOf(GuardRefusedException.class)
+                .satisfies(e -> assertThat(code(e)).isEqualTo("execution-instance-mismatch"));
+        verify(client, never()).putExecutionVariable(any(), any(), anyString(), anyString(), any());
+    }
+
+    @Test
+    void anOrdinaryBadInputOrGoneRefusalIsStillNotAudited() {
+        when(client.getExecution(any(), eq(CallPriority.INTERACTIVE), eq("ex-gone")))
+                .thenReturn(null);
+
+        assertThatThrownBy(() -> service.execute(DEV, OPEN, ActionVerb.EDIT_VARIABLE, edit("ex-gone"), operator))
+                .isInstanceOf(GuardRefusedException.class)
+                .satisfies(e -> assertThat(code(e)).isEqualTo("execution-gone"));
+        assertThatThrownBy(() -> service.execute(
+                        DEV,
+                        OPEN,
+                        ActionVerb.UNSTICK_EVENT,
+                        new ActionRequest("r", null, null, null, null, null, null, null, null, null, null),
+                        operator))
+                .isInstanceOf(GuardRefusedException.class);
         verifyNoInteractions(audit);
     }
 }
