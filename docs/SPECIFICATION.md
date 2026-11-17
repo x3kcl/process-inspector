@@ -1066,7 +1066,7 @@ two dead-letter verbs a co-deployed CMMN case needs — **Retry job** (tier 0 / 
 dead-letter job in the case's "why-stuck" panel, capability-gated on `scopeType` (Flowable ≥ 6.8 —
 older engines are dead-letter-blind on the cmmn context, greyed never hidden). Retry is a tier-0
 inline confirm; delete is a tier-3 typed-confirm modal (required reason ≥ 10 chars; on prod, the
-typed token = the job id) whose blast-radius copy is scope-honest — deleting a dead-letter job orphans its plan item; the rescue is `change-plan-item`. Also on the case route: `plan-item-action` (trigger/enable/disable), `change-plan-item` (activate/available/terminate, ADMIN on prod), `terminate-case` and `delete-case` (tier 3, no engine delete reason), and `edit-case-variable` (compare-and-set). See `docs/CMMN-CASE-DETAIL-PHASE-2.md`.
+typed token = the job id) whose blast-radius copy is scope-honest — deleting a dead-letter job orphans its plan item; the rescue is `change-plan-item`. Also on the case route: `plan-item-action` (trigger/enable/disable), `change-plan-item` (activate/available/terminate, ADMIN on prod), `terminate-case` and `delete-case` (tier 3, no engine delete reason), and `edit-case-variable` (compare-and-set; a null-valued case variable, which 6.8/7.1 list but 404 on the single read, is read from the list for the compare, #718). See `docs/CMMN-CASE-DETAIL-PHASE-2.md`.
 **Case migration** (tier 3 / ADMIN): `migrate-case` moves one running case to another version of
 its case definition (6.8+; typed case id on prod). At scale: a filtered case cohort through the
 bulk machinery (6.8+), and — on Flowable **7.x only** — a batch over every running case of a
