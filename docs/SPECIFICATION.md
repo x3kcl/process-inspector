@@ -253,7 +253,9 @@ Answers "what is broken, how much, where" in zero keystrokes:
   the engine list behind the strip carries only the engines the caller may read (a disabled engine
   in scope still lists greyed); a per-engine read of another engine (`/api/engines/{id}/system`)
   answers the same 403 as every other engine-scoped read, and its full properties/table counts
-  need ADMIN on THAT engine (an ADMIN of another engine is refused). Off ⇒ every engine, as before.
+  need ADMIN on THAT engine (an ADMIN of another engine is refused). Off ⇒ every engine, as before —
+  except the full properties/table counts, which need ADMIN on THAT engine with enforcement off too
+  (#747: an admin surface, not a read-scope question; the version line stays open).
 - **Failures grouped by error class** — dead-letter (and RETRYING-tier) jobs grouped by
   **normalized exception signature**, with counts per engine and per definition version
   ("NPE in TaxCalculator — 312 · orders-prod · v47: 312, v46: 0"). **The signature is a

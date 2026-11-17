@@ -27,8 +27,9 @@ import org.springframework.web.bind.annotation.RestController;
  * and mutation targets keep resolving through the enabled-only registry views.
  *
  * <p>#740 (R-SAFE-17): with read-scope enforcement on, the list carries only engines the caller may
- * read, a per-engine read of any other engine is refused with the method-security 403 every other
- * engine-scoped read answers, and the full system read needs ADMIN on THAT engine. Off: unchanged.
+ * read and a per-engine read of any other engine is refused with the method-security 403 every other
+ * engine-scoped read answers. Off: unchanged. #747: the full system read needs ADMIN on THAT engine
+ * with enforcement on AND off (the engine-agnostic {@code ROLE_ADMIN} no longer opens it).
  */
 @RestController
 @RequestMapping("/api/engines")
@@ -61,7 +62,8 @@ public class EnginesController {
         if (!readable(auth, id)) {
             throw new AccessDeniedException("Access Denied"); // the @PreAuthorize refusal, verbatim
         }
-        boolean admin = gate.enforced() ? rbac.hasRoleOn(auth, Role.ADMIN, id) : hasAuthority(auth, "ROLE_ADMIN");
+        // #747: the full read is an admin surface — ADMIN on THIS engine, enforcement on or off.
+        boolean admin = rbac.hasRoleOn(auth, Role.ADMIN, id);
         return systemInfo.load(id, admin || hasAuthority(auth, RbacAuthorizer.REGISTRY_ADMIN_AUTHORITY));
     }
 
