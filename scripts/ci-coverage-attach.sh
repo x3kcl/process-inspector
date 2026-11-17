@@ -2,7 +2,7 @@
 # Fold a coverage sample + sparkline series into a status.json file in place.
 # The series is a separate file on the dashboard host (coverage-history.json) so a
 # failed read never replaces it with an empty one. One point per new green ci run and
-# one per new green nightly, capped at 30. Missing artifacts leave status.json as-is.
+# one per new green nightly, each source capped at 30 so the frequent ci points never evict the nightly ones (#463). Missing artifacts leave status.json as-is.
 set -uo pipefail
 cd "$(dirname "$0")/.." || exit 2
 
@@ -46,7 +46,8 @@ series="$(jq -c \
         then [{source:"nightly", at:$now, nightlyRunId:$point.nightlyRunId,
                backendLine:$point.backendLine, frontendLine:$point.frontendLine}]
         else [] end) as $nightPoint
-    | ($hist + $ciPoint + $nightPoint)[-30:]
+    | ($hist + $ciPoint + $nightPoint) as $all
+    | ([$all[] | select(.source == "ci")][-30:] + [$all[] | select(.source != "ci")][-30:]) | sort_by(.at)
   ' <<<"$hist")" || { rm -f "$tmp"; exit 0; }
 
 printf '%s\n' "$series" > "$tmp"
