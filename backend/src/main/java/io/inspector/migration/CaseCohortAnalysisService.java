@@ -159,7 +159,11 @@ public class CaseCohortAnalysisService {
 
     public CaseCohortAnalysisView get(UUID id, Authentication auth) {
         MigrationAnalysis row = require(analyses, id);
-        requireAdmin(auth, row.getEngineId());
+        // An ADMIN of another engine is told what an unknown id is told — no existence signal (#773).
+        if (!rbac.hasRoleOn(auth, Role.ADMIN, row.getEngineId())) {
+            throw new GuardRefusedException(
+                    HttpStatus.NOT_FOUND, "analysis-not-found", "No case migration analysis " + id + ".");
+        }
         return toView(row);
     }
 
