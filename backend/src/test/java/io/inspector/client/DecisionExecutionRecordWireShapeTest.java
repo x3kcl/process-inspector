@@ -73,4 +73,16 @@ class DecisionExecutionRecordWireShapeTest {
 
         assertThat(read(fixture, PageTotal.class).total()).isEqualTo(recorded);
     }
+
+    /** #756: the decision audit's ownership check reads the row's owning {@code instanceId}. */
+    @ParameterizedTest
+    @ValueSource(strings = {"6.8", "7.1"})
+    void decisionExecutionNamesItsOwningInstance(String major) {
+        DecisionExecutionRecord row = read(
+                        major + "/dmn-historic-decision-executions.json", DecisionExecutionPage.class)
+                .dataOrEmpty()
+                .get(0);
+
+        assertThat(row.instanceId()).isNotBlank();
+    }
 }

@@ -9,6 +9,7 @@ import static org.mockito.Mockito.when;
 
 import com.fasterxml.jackson.databind.JsonNode;
 import com.fasterxml.jackson.databind.ObjectMapper;
+import io.inspector.client.DecisionExecutionRecord;
 import io.inspector.client.DmnApiClient;
 import io.inspector.client.ProcessApiClient;
 import io.inspector.client.ProcessDefinitionRecord;
@@ -64,6 +65,9 @@ class SecretNamedResidualSurfacesTest {
         audit.put("inputVariableTypes", Map.of("amount", "number", "apiToken", "string"));
         audit.put("decisionResult", List.of(Map.of("ok", "yes", "clientSecret", "cs-742-dmn")));
         when(dmn.auditData(any(), any(), eq("dec-742"))).thenReturn(audit);
+        // #756: the audit is served only for a decision execution of the path instance
+        when(dmn.decisionExecution(any(), any(), eq("dec-742")))
+                .thenReturn(new DecisionExecutionRecord("dec-742", "probe", null, null, false, null, null, "pi-742"));
 
         ResponseEntity<String> res = rest.withBasicAuth("viewer", "dev")
                 .getForEntity("/api/instances/probe-dev/pi-742/decisions/dec-742/audit", String.class);

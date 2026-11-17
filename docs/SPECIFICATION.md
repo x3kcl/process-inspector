@@ -606,6 +606,16 @@ the form couldn't prevent.
   full-value fetch, the CAS pre-check and the write to its owning execution (`scope=local`),
   never the case-wide value; the header, verify sentence and a fixed-order warning line all
   say "step-local", and a same-named case variable is left untouched.
+  **Execution ownership (#756):** every route that names an `executionId` — the step-local
+  read (`GET …/variables/{name}?executionId=`), the audited reveal, `edit-variable`,
+  `unstick-event` and the decision audit (`GET …/decisions/{decisionExecutionId}/audit`, owner =
+  the DMN row's `instanceId`) — first re-reads the execution and refuses one whose `processInstanceId` is
+  not the instance in the path: 400 `execution-instance-mismatch`, before its value is read
+  and before any engine write (Flowable itself answers `/runtime/executions/{id}/…` for any
+  execution). So a protected instance (R-SAFE-05) cannot be edited through its execution id
+  under an unprotected instance's path, and no value or audit row is attributed to the wrong
+  instance. The verbs refuse pre-flight like every guard (nothing audited, nothing happened);
+  the reveal audits the refusal as failed.
 - **Form mode (default) — typed widgets**: *number* with per-subtype range validation and a
   live parsed echo (*"will be stored as integer 42"* — the echo IS the contract); *boolean*
   as a True/False segmented control (**never a toggle** — toggles read as immediate-effect,

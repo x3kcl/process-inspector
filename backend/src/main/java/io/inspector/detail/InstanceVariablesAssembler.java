@@ -1,5 +1,6 @@
 package io.inspector.detail;
 
+import io.inspector.action.GuardRefusedException;
 import io.inspector.audit.VariableValueToken;
 import io.inspector.client.ExecutionRecord;
 import io.inspector.client.GuardedCaller.CallPriority;
@@ -100,6 +101,9 @@ final class InstanceVariablesAssembler {
     VariableRecord rawVariable(EngineConfig engine, String instanceId, String name, String executionId) {
         host.requireHistoric(engine, instanceId);
         boolean local = executionId != null && !executionId.isBlank();
+        if (local) {
+            requireOwnExecution(engine, instanceId, executionId);
+        }
         VariableRecord row = local
                 ? host.flowable.getExecutionVariable(engine, CallPriority.INTERACTIVE, executionId, name)
                 : host.flowable.getInstanceVariable(engine, CallPriority.INTERACTIVE, instanceId, name);
@@ -112,6 +116,23 @@ final class InstanceVariablesAssembler {
                                     + instanceId);
         }
         return row;
+    }
+
+    /**
+     * #756: a step-local {@code executionId} must belong to the instance in the path, or the value of
+     * ANOTHER instance is served (or revealed) under this one — Flowable answers
+     * {@code /runtime/executions/{id}/variables} for any execution. A gone execution falls through to
+     * the read's 404. The one check behind the step-local read and the reveal (#743).
+     */
+    private void requireOwnExecution(EngineConfig engine, String instanceId, String executionId) {
+        ExecutionRecord execution = host.flowable.getExecution(engine, CallPriority.INTERACTIVE, executionId);
+        String owner = execution == null ? null : execution.processInstanceId();
+        if (owner != null && !owner.equals(instanceId)) {
+            throw new GuardRefusedException(
+                    HttpStatus.BAD_REQUEST,
+                    "execution-instance-mismatch",
+                    "Execution " + executionId + " belongs to another instance, not " + instanceId + ".");
+        }
     }
 
     private InstanceVariables historicVariables(EngineConfig engine, String instanceId) {
