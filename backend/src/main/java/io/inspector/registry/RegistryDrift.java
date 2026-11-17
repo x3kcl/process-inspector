@@ -3,6 +3,8 @@ package io.inspector.registry;
 import com.fasterxml.jackson.annotation.JsonIgnore;
 import io.inspector.config.InspectorProperties.Auth;
 import io.inspector.config.InspectorProperties.EngineConfig;
+import java.net.URI;
+import java.net.URISyntaxException;
 import java.util.ArrayList;
 import java.util.LinkedHashMap;
 import java.util.List;
@@ -26,7 +28,7 @@ public final class RegistryDrift {
      * @param added   ids present in YAML but not the DB (a YAML add that had no effect)
      * @param removed ids present in the DB but not YAML (a YAML delete that had no effect)
      * @param changed ids in both whose material config diverges (base-URL / environment / mode /
-     *                enabled) — a YAML edit that had no effect
+     *                enabled / auth type, username and secret refs) — a YAML edit that had no effect
      */
     public record DriftReport(
             List<String> added,
@@ -88,29 +90,41 @@ public final class RegistryDrift {
     /** Material = what actually changes behaviour; timeouts/caps are intentionally not "drift". */
     private static List<String> differingFields(EngineConfig yaml, EngineConfig db) {
         List<String> out = new ArrayList<>();
-        diff(out, "baseUrl", yaml.baseUrl(), db.baseUrl(), true);
+        if (!Objects.equals(yaml.baseUrl(), db.baseUrl())) {
+            String y = safeUrl(yaml.baseUrl());
+            String d = safeUrl(db.baseUrl());
+            out.add(y.equals(d) ? "baseUrl=<differs>" : "baseUrl: yaml=" + y + " db=" + d);
+        }
         diff(out, "environment", yaml.environment(), db.environment(), true);
         diff(out, "mode", yaml.modeOrDefault(), db.modeOrDefault(), true);
         diff(out, "enabled", yaml.enabled(), db.enabled(), true);
-        Auth y = yaml.auth();
-        Auth d = db.auth();
-        diff(out, "authType", y == null ? null : y.type(), d == null ? null : d.type(), true);
-        diff(out, "authUsername", y == null ? null : y.username(), d == null ? null : d.username(), true);
-        diff(out, "authPasswordRef", y == null ? null : y.passwordRef(), d == null ? null : d.passwordRef(), true);
-        diff(out, "authTokenRef", y == null ? null : y.tokenRef(), d == null ? null : d.tokenRef(), false);
-        diff(
-                out,
-                "authOauthClientSecretRef",
-                y == null ? null : y.oauthClientSecretRef(),
-                d == null ? null : d.oauthClientSecretRef(),
-                false);
-        diff(
-                out,
-                "authHeaderSecretRef",
-                y == null ? null : y.headerSecretRef(),
-                d == null ? null : d.headerSecretRef(),
-                false);
+        // A YAML engine without an auth block seeds a row of type none (EngineRegistryMapper).
+        Auth y = yaml.auth() == null ? Auth.none() : yaml.auth();
+        Auth d = db.auth() == null ? Auth.none() : db.auth();
+        diff(out, "authType", y.type(), d.type(), true);
+        diff(out, "authUsername", y.username(), d.username(), true);
+        diff(out, "authPasswordRef", y.passwordRef(), d.passwordRef(), true);
+        diff(out, "authTokenRef", y.tokenRef(), d.tokenRef(), false);
+        diff(out, "authOauthClientSecretRef", y.oauthClientSecretRef(), d.oauthClientSecretRef(), false);
+        diff(out, "authHeaderSecretRef", y.headerSecretRef(), d.headerSecretRef(), false);
         return out;
+    }
+
+    /** scheme://host:port/path only — userinfo, query and fragment can carry credentials. */
+    private static String safeUrl(String url) {
+        if (url == null) {
+            return "null";
+        }
+        try {
+            URI u = new URI(url);
+            if (u.getScheme() == null || u.getHost() == null) {
+                return "<unparseable>";
+            }
+            return u.getScheme() + "://" + u.getHost() + (u.getPort() < 0 ? "" : ":" + u.getPort())
+                    + (u.getRawPath() == null ? "" : u.getRawPath());
+        } catch (URISyntaxException e) {
+            return "<unparseable>";
+        }
     }
 
     private static void diff(List<String> out, String field, Object yaml, Object db, boolean show) {
