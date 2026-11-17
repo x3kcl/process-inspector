@@ -20,7 +20,17 @@ const MIN_REASON = 10
  * component's state only — no query cache — so it is gone on unmount or navigation. One variable
  * per click; nothing reveals in bulk.
  */
-export function RevealButton({ target, name, executionId, prod, gateReason }: Props) {
+export function RevealButton(props: Props) {
+  // Keyed by what is revealed: /inspect/:engineId/:instanceId does not remount the tab when only
+  // the instance changes, so a new target must start empty and a stale in-flight answer is dropped.
+  const { target, name, executionId } = props
+  const key = [target.kind, target.engineId, target.targetId, executionId ?? '', name].join(
+    '\u0000',
+  )
+  return <RevealControl key={key} {...props} />
+}
+
+function RevealControl({ target, name, executionId, prod, gateReason }: Props) {
   const [revealed, setRevealed] = useState<{ value: unknown } | null>(null)
   const [asking, setAsking] = useState(false)
   const [reason, setReason] = useState('')
