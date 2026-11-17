@@ -804,6 +804,15 @@ PERSON have, across every engine" — the "Bob is on vacation" query. Search sta
 - **Task browser** (`/task-browser`, `GET /api/tasks/browse`) is additive. It filters open tasks
   (definition, assignee, owner, candidate group, unassigned, overdue, created range) and bulk
   reassigns the selection. It does not replace this person search.
+  **Scope-filtered reads (R-SAFE-17, issue #747):** under `inspector.security.scope-reads-enforced`
+  the browse (and the jobs explorer, `GET /api/jobs`) covers only the engines the caller may read,
+  narrowed silently like an implicit all-engines search; a task's identity links on any other
+  engine (`/api/tasks/{engineId}/{taskId}/identitylinks`) answer the same 403 as every other
+  engine-scoped read, before any engine call. Off ⇒ every engine, as before. Every controller
+  route that returns per-engine data is scoped by method security naming the engine, by the
+  read-scope gate, or is a named exception — the route sweep and its guard test
+  (`EngineScopedRouteGuardArchTest`) are in ARCHITECTURE §4 (the
+  "Per-engine read scope" note).
   The page opens with every filter off (Overdue is opt-in) so it shows tasks when tasks exist;
   an empty result states "No open tasks match the active filters: …" and offers a one-click
   *Clear filters*.
