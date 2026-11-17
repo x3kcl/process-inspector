@@ -290,3 +290,24 @@ describe('executionOverlay — engine records no sequence flows (#729)', () => {
     expect(overlay.routeUnknown).toBe(false)
   })
 })
+
+describe('executionOverlay — no slowest badge when the route is unknown (#744)', () => {
+  const xml = xmlOf(flow('f1', 'start', 'catchA'), flow('f2', 'start', 'catchB'))
+
+  it('routeUnknown: durations stay but no node gets slowestId', () => {
+    const overlay = executionOverlay(
+      {
+        activities: [
+          node('start', 'startEvent', 5),
+          node('catchA', 'intermediateCatchEvent', 5000),
+          node('catchB', 'intermediateCatchEvent', 9000),
+        ],
+      },
+      xml,
+      [],
+    )
+    expect(overlay.routeUnknown).toBe(true)
+    expect(overlay.durations.get('catchB')).toBe(9000)
+    expect(overlay.slowestId).toBeUndefined()
+  })
+})

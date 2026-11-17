@@ -253,7 +253,9 @@ Answers "what is broken, how much, where" in zero keystrokes:
   the engine list behind the strip carries only the engines the caller may read (a disabled engine
   in scope still lists greyed); a per-engine read of another engine (`/api/engines/{id}/system`)
   answers the same 403 as every other engine-scoped read, and its full properties/table counts
-  need ADMIN on THAT engine (an ADMIN of another engine is refused). Off ⇒ every engine, as before.
+  need ADMIN on THAT engine (an ADMIN of another engine is refused). Off ⇒ every engine, as before —
+  except the full properties/table counts, which need ADMIN on THAT engine with enforcement off too
+  (#747: an admin surface, not a read-scope question; the version line stays open).
 - **Failures grouped by error class** — dead-letter (and RETRYING-tier) jobs grouped by
   **normalized exception signature**, with counts per engine and per definition version
   ("NPE in TaxCalculator — 312 · orders-prod · v47: 312, v46: 0"). **The signature is a
@@ -807,6 +809,15 @@ PERSON have, across every engine" — the "Bob is on vacation" query. Search sta
 - **Task browser** (`/task-browser`, `GET /api/tasks/browse`) is additive. It filters open tasks
   (definition, assignee, owner, candidate group, unassigned, overdue, created range) and bulk
   reassigns the selection. It does not replace this person search.
+  **Scope-filtered reads (R-SAFE-17, issue #747):** under `inspector.security.scope-reads-enforced`
+  the browse (and the jobs explorer, `GET /api/jobs`) covers only the engines the caller may read,
+  narrowed silently like an implicit all-engines search; a task's identity links on any other
+  engine (`/api/tasks/{engineId}/{taskId}/identitylinks`) answer the same 403 as every other
+  engine-scoped read, before any engine call. Off ⇒ every engine, as before. Every controller
+  route that returns per-engine data is scoped by method security naming the engine, by the
+  read-scope gate, or is a named exception — the route sweep and its guard test
+  (`EngineScopedRouteGuardArchTest`) are in ARCHITECTURE §4 (the
+  "Per-engine read scope" note).
   The page opens with every filter off (Overdue is opt-in) so it shows tasks when tasks exist;
   an empty result states "No open tasks match the active filters: …" and offers a one-click
   *Clear filters*.
@@ -998,10 +1009,10 @@ remains v2.
 | **Migrate ended cases' history** *(#500, Flowable 7.x)* | Re-points the history of the ended cases of one version, or of one ended case, to another version of the same case key. Running cases are not touched. Same version gate. Prod types the **ended count** (one case: its id). | 3 |
 | **Migrate instance** *(v2)* | Move instance to another deployed version of the same key. **Inspector static pre-check (NOT an engine validation** — Flowable's REST API exposes no migration validator, P0 spike 2026-07-09): a BFF model diff flags activities that can't auto-map; the engine is the ground truth only at apply. The pre-check emits **typed findings** (INSTANCE-MIGRATION.md §14 — a CLOSED 8-code vocabulary with `taxonomyVersion`, severities `BLOCKER_ADVICE`/`WARNING`/`INFO`), rendered by severity and labelled "BFF estimate — the engine is the only ground truth at execute". Exactly **two** refusals, both 422: document-construction impossibility (a token with no target id and no operator mapping), and **`scope-collapse-token-loss`** — a dissolving subprocess scope holding **two or more live tokens**, where live calibration on 6.8/7.1 measured the engine returning **200 while silently destroying all but one token** (no error, no delete reason, no job), which can park the instance forever at a join whose sibling branch is gone; no mapping can fix it, so the estimate is the only place it can be caught (§14.11). A **single-token** removed scope and a removed **boundary subscription** are WARNINGS, not blockers — the engine accepts both, so blocking them made a legitimate recovery impossible through the BFF. **Findings are advisory-only: green or red, no rail moves.** Honest banner ("this is not a Flowable validation … the engine's own check runs only when you execute"); ADMIN unconditional + typed **business-key** confirm on prod; IRREVERSIBLE, never auto-retried (post-dispatch timeout ⇒ UNKNOWN + verify-now); single first, batch later. See `docs/INSTANCE-MIGRATION.md` | 3 |
 
-Explicitly **not offered** (API honesty, §11): timer *reschedule-to-later* (not exposed by
-open-source REST — the change-state workaround is documented instead), Temporal-style
+Explicitly **not offered** (API honesty, §11): Temporal-style
 reset-to-history-point (impossible on an append-only history), engine-verified change-state
-preview (no dry-run exists).
+preview (no dry-run exists). Timer *reschedule* is offered on Flowable 7.x only and refused on 6.x
+with `timer-reschedule-unsupported` (pinned by `TimerReschedule7IT`).
 
 ### 5.1 Remediation playbooks — fix once, apply to the class *(v2 headline)*
 

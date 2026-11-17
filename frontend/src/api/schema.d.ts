@@ -2058,6 +2058,7 @@ export interface components {
             deltaStatement?: string;
             /** Format: int32 */
             engineHttpStatus?: number;
+            newJobId?: string;
             outcome?: string;
         };
         ActivityAggregate: {

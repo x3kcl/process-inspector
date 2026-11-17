@@ -103,12 +103,13 @@ class EnginesControllerScopeTest {
     }
 
     @Test
-    void unenforcedKeepsTodaysRoleAdminRuleAndFullList() {
+    void unenforcedKeepsTheFullListButTheFullSystemReadNeedsAdminOnThatEngine() {
+        // #747 item 4: ROLE_ADMIN from engine A no longer opens engine B's full system read, even off.
         when(gate.enforced()).thenReturn(false);
 
         controller.system("engine-b", adminOfA);
 
-        verify(systemInfo).load("engine-b", true);
+        verify(systemInfo).load("engine-b", false);
         assertThat(controller.list(adminOfA))
                 .extracting(EngineDto::id)
                 .containsExactly("engine-a", "engine-b", "engine-d");
