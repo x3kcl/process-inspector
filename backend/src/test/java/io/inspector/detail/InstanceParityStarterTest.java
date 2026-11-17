@@ -6,6 +6,7 @@ import static org.mockito.Mockito.mock;
 import static org.mockito.Mockito.when;
 
 import io.inspector.client.DmnApiClient;
+import io.inspector.client.IdentityLinkRecord;
 import io.inspector.client.ProcessApiClient;
 import io.inspector.client.ProcessInstanceRecords;
 import io.inspector.config.InspectorProperties.EngineConfig;
@@ -36,6 +37,25 @@ class InstanceParityStarterTest {
     @Test
     void blankStartUserIdAddsNoStarterRow() {
         assertThat(participantsWithStarter("  ").rows()).isEmpty();
+    }
+
+    @Test
+    void blankLinkFieldsKeepTheFirstNonBlankRule() {
+        when(registry.require("a")).thenReturn(engine);
+        when(flowable.getHistoricProcessInstance(any(), any(), any()))
+                .thenReturn(ProcessInstanceRecords.instance(Map.of("id", "pi-1", "endTime", "2026-11-15T00:00:00Z")));
+        when(flowable.listHistoricIdentityLinks(any(), any(), any()))
+                .thenReturn(List.of(
+                        // historic leg: a blank "user" falls through to "userId"; a blank type reads "participant"
+                        new IdentityLinkRecord(" ", "gonzo", null, null, "", null, "pi-1"),
+                        // a group link names no user at all: no participant row
+                        new IdentityLinkRecord(null, null, null, "admins", "candidate", null, "pi-1"),
+                        new IdentityLinkRecord(null, "kermit", null, null, "starter", null, "pi-1")));
+
+        assertThat(service.participants("a", "pi-1").rows())
+                .containsExactly(
+                        new InstanceParityService.ParticipantRow("gonzo", "participant", true),
+                        new InstanceParityService.ParticipantRow("kermit", "starter", false));
     }
 
     @Test

@@ -112,14 +112,12 @@ public class ProcessApiClient {
         return reads.listExecutions(engine, priority, processInstanceId, size);
     }
 
-    @SuppressWarnings("unchecked")
-    public List<Map<String, Object>> listRuntimeIdentityLinks(
+    public List<IdentityLinkRecord> listRuntimeIdentityLinks(
             EngineConfig engine, CallPriority priority, String processInstanceId) {
         return reads.listRuntimeIdentityLinks(engine, priority, processInstanceId);
     }
 
-    @SuppressWarnings("unchecked")
-    public List<Map<String, Object>> listHistoricIdentityLinks(
+    public List<IdentityLinkRecord> listHistoricIdentityLinks(
             EngineConfig engine, CallPriority priority, String processInstanceId) {
         return reads.listHistoricIdentityLinks(engine, priority, processInstanceId);
     }
@@ -377,8 +375,7 @@ public class ProcessApiClient {
         actions.deleteTask(engine, priority, taskId);
     }
 
-    @SuppressWarnings("unchecked")
-    public List<Map<String, Object>> listIdentityLinks(EngineConfig engine, CallPriority priority, String taskId) {
+    public List<IdentityLinkRecord> listIdentityLinks(EngineConfig engine, CallPriority priority, String taskId) {
         return actions.listIdentityLinks(engine, priority, taskId);
     }
 

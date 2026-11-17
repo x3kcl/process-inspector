@@ -212,7 +212,7 @@ class InstanceDetailMappingTest {
         job.put("createTime", "2026-07-07T13:47:19.498Z");
         job.put("executionId", "exec-9");
 
-        ExternalWorkerJobDto dto = InstanceDetailService.externalWorkerRow(job);
+        ExternalWorkerJobDto dto = InstanceDetailService.externalWorkerRow(JobRecords.job(job));
 
         assertThat(dto.id()).isEqualTo("ew-1");
         assertThat(dto.elementId()).isEqualTo("ext");
@@ -231,7 +231,7 @@ class InstanceDetailMappingTest {
         unacquired.put("retries", 3);
         // lockOwner / lockExpirationTime absent — no worker has picked it up yet.
 
-        ExternalWorkerJobDto dto = InstanceDetailService.externalWorkerRow(unacquired);
+        ExternalWorkerJobDto dto = InstanceDetailService.externalWorkerRow(JobRecords.job(unacquired));
 
         assertThat(dto.lockOwner()).isNull();
         assertThat(dto.lockExpirationTime()).isNull();

@@ -84,11 +84,11 @@ class ExternalJobApiClientTest {
                                 okJson(
                                         "{\"data\":[{\"id\":\"ew-1\",\"lockOwner\":\"worker-3\"}],\"total\":1,\"start\":0,\"size\":50}")));
 
-        FlowablePage page = client.listExternalWorkerJobs(
+        JobPage page = client.listExternalWorkerJobs(
                 engine, CallPriority.INTERACTIVE, java.util.Map.of("processInstanceId", "pi-1"), 0, 50);
 
         assertThat(page.total()).isEqualTo(1);
-        assertThat(page.dataOrEmpty().get(0).get("lockOwner")).isEqualTo("worker-3");
+        assertThat(page.dataOrEmpty().get(0).lockOwner()).isEqualTo("worker-3");
         wm.verify(getRequestedFor(urlPathEqualTo("/flowable-rest/external-job-api/jobs"))
                 .withQueryParam("processInstanceId", equalTo("pi-1")));
     }

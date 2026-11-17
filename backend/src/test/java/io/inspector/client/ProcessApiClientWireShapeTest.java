@@ -466,6 +466,14 @@ class ProcessApiClientWireShapeTest {
                                 @SuppressWarnings("unchecked")
                                 Map<String, Object> recordedTask = (Map<String, Object>) recorded;
                                 assertThat(task).isEqualTo(TaskRecords.task(recordedTask));
+                            } else if (result instanceof List<?> rows
+                                    && !rows.isEmpty()
+                                    && rows.get(0) instanceof IdentityLinkRecord
+                                    && recorded instanceof List<?> bareArray) {
+                                // identity links: the engine answers a bare array (#474).
+                                @SuppressWarnings("unchecked")
+                                List<Map<String, Object>> recordedRows = (List<Map<String, Object>>) bareArray;
+                                assertThat(rows).isEqualTo(IdentityLinkRecords.links(recordedRows));
                             } else if (result instanceof ProcessInstancePage page) {
                                 @SuppressWarnings("unchecked")
                                 Map<String, Object> recordedPage = (Map<String, Object>) recorded;

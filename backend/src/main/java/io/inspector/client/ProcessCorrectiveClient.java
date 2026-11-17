@@ -353,18 +353,17 @@ final class ProcessCorrectiveClient {
     }
 
     /** GET /runtime/tasks/{taskId}/identitylinks. Empty on 404. */
-    @SuppressWarnings("unchecked")
-    public List<Map<String, Object>> listIdentityLinks(EngineConfig engine, CallPriority priority, String taskId) {
+    public List<IdentityLinkRecord> listIdentityLinks(EngineConfig engine, CallPriority priority, String taskId) {
         try {
-            List<Map<String, Object>> rows = guarded.call(
+            IdentityLinkRecord[] rows = guarded.call(
                     engine,
                     priority,
                     () -> guarded.readClient(engine)
                             .get()
                             .uri("/runtime/tasks/{taskId}/identitylinks", taskId)
                             .retrieve()
-                            .body(List.class));
-            return rows == null ? List.of() : rows;
+                            .body(IdentityLinkRecord[].class));
+            return rows == null ? List.of() : List.of(rows);
         } catch (HttpClientErrorException.NotFound e) {
             return List.of();
         }
