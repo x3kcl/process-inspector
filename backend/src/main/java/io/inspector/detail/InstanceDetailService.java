@@ -16,6 +16,7 @@ import io.inspector.client.ProcessDefinitionRecord;
 import io.inspector.client.ProcessInstancePage;
 import io.inspector.client.ProcessInstanceRecord;
 import io.inspector.client.TaskRecord;
+import io.inspector.client.VariableRecord;
 import io.inspector.config.InspectorProperties;
 import io.inspector.config.InspectorProperties.EngineConfig;
 import io.inspector.dto.ExternalWorkerJobDto;
@@ -342,8 +343,8 @@ public class InstanceDetailService {
      * number stays a JSON number — capped at {@value #STRUCTURED_PREVIEW_CAP_BYTES} bytes
      * for structured/text payloads (SPEC §4 size safeguards).
      */
-    public static VariableDto typedRow(Map<String, Object> row, String scope, String executionId, String taskId) {
-        Object value = row.get("value");
+    public static VariableDto typedRow(VariableRecord row, String scope, String executionId, String taskId) {
+        Object value = row.value();
         boolean truncated = false;
         Long sizeBytes = null;
         if (value instanceof String s) {
@@ -361,8 +362,7 @@ public class InstanceDetailService {
                 value = null;
             }
         }
-        return new VariableDto(
-                str(row, "name"), str(row, "type"), value, truncated, sizeBytes, scope, executionId, taskId);
+        return new VariableDto(row.name(), row.type(), value, truncated, sizeBytes, scope, executionId, taskId);
     }
 
     private static long serializedSize(Object value) {
@@ -772,10 +772,5 @@ public class InstanceDetailService {
         } catch (NumberFormatException e) {
             return null;
         }
-    }
-
-    static String str(Map<String, Object> map, String key) {
-        Object v = map.get(key);
-        return v != null ? v.toString() : null;
     }
 }

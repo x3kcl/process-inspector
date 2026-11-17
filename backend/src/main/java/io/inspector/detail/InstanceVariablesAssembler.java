@@ -2,7 +2,9 @@ package io.inspector.detail;
 
 import io.inspector.client.ExecutionRecord;
 import io.inspector.client.GuardedCaller.CallPriority;
+import io.inspector.client.HistoricVariableRecord;
 import io.inspector.client.ProcessInstanceRecord;
+import io.inspector.client.VariableRecord;
 import io.inspector.config.InspectorProperties.EngineConfig;
 import io.inspector.dto.InstanceVariables;
 import io.inspector.dto.InstanceVariables.ExecutionScope;
@@ -10,7 +12,6 @@ import io.inspector.dto.InstanceVariables.VariableDto;
 import java.util.ArrayList;
 import java.util.Comparator;
 import java.util.List;
-import java.util.Map;
 import org.springframework.http.HttpStatus;
 import org.springframework.web.server.ResponseStatusException;
 
@@ -32,14 +33,14 @@ final class InstanceVariablesAssembler {
             return historicVariables(engine, instanceId);
         }
 
-        List<Map<String, Object>> processRows =
+        List<VariableRecord> processRows =
                 host.flowable.listInstanceVariables(engine, CallPriority.INTERACTIVE, instanceId);
         if (processRows == null) {
             // Ended between the historic read and now — serve the historic projection.
             return historicVariables(engine, instanceId);
         }
         List<VariableDto> processScope = processRows.stream()
-                .map(row -> InstanceDetailService.typedRow(row, InstanceDetailService.str(row, "scope"), null, null))
+                .map(row -> InstanceDetailService.typedRow(row, row.scope(), null, null))
                 .sorted(Comparator.comparing(VariableDto::name, Comparator.nullsLast(Comparator.naturalOrder())))
                 .toList();
 
@@ -75,7 +76,7 @@ final class InstanceVariablesAssembler {
         EngineConfig engine = host.engineForRead(engineId);
         host.requireHistoric(engine, instanceId);
         boolean local = executionId != null && !executionId.isBlank();
-        Map<String, Object> row = local
+        VariableRecord row = local
                 ? host.flowable.getExecutionVariable(engine, CallPriority.INTERACTIVE, executionId, name)
                 : host.flowable.getInstanceVariable(engine, CallPriority.INTERACTIVE, instanceId, name);
         if (row == null) {
@@ -88,29 +89,24 @@ final class InstanceVariablesAssembler {
         // The full fetch is deliberately uncapped — this IS the "load full value" escape
         // hatch; the write cap (5 MiB, SPEC §4a) guards the other direction.
         return new VariableDto(
-                InstanceDetailService.str(row, "name"),
-                InstanceDetailService.str(row, "type"),
-                row.get("value"),
+                row.name(),
+                row.type(),
+                row.value(),
                 false,
                 null,
-                local ? "local" : InstanceDetailService.str(row, "scope"),
+                local ? "local" : row.scope(),
                 local ? executionId : null,
                 null);
     }
 
     private InstanceVariables historicVariables(EngineConfig engine, String instanceId) {
         List<VariableDto> rows = new ArrayList<>();
-        for (Map<String, Object> row : host.flowable
+        for (HistoricVariableRecord row : host.flowable
                 .listHistoricVariableInstances(
                         engine, CallPriority.INTERACTIVE, instanceId, engine.maxPageSizeOrDefault())
                 .dataOrEmpty()) {
-            @SuppressWarnings("unchecked")
-            Map<String, Object> variable = row.get("variable") instanceof Map<?, ?> v ? (Map<String, Object>) v : row;
-            rows.add(InstanceDetailService.typedRow(
-                    variable,
-                    "global",
-                    InstanceDetailService.str(row, "executionId"),
-                    InstanceDetailService.str(row, "taskId")));
+            if (row.variable() == null) continue; // every recorded engine nests the envelope
+            rows.add(InstanceDetailService.typedRow(row.variable(), "global", row.executionId(), row.taskId()));
         }
         rows.sort(Comparator.comparing(VariableDto::name, Comparator.nullsLast(Comparator.naturalOrder())));
         return new InstanceVariables("HISTORIC", rows, List.of());

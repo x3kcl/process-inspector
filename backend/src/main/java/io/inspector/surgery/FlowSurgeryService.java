@@ -13,12 +13,14 @@ import io.inspector.audit.AuditService;
 import io.inspector.audit.ProtectionGuard;
 import io.inspector.client.ExecutionPage;
 import io.inspector.client.ExecutionRecord;
-import io.inspector.client.FlowablePage;
 import io.inspector.client.ForwardedActor;
 import io.inspector.client.GuardedCaller.CallPriority;
+import io.inspector.client.HistoricVariablePage;
+import io.inspector.client.HistoricVariableRecord;
 import io.inspector.client.ProcessApiClient;
 import io.inspector.client.ProcessDefinitionPage;
 import io.inspector.client.ProcessInstanceRecord;
+import io.inspector.client.VariableRecord;
 import io.inspector.config.InspectorProperties.EngineConfig;
 import io.inspector.config.InspectorProperties.EngineEnvironment;
 import io.inspector.config.InspectorProperties.EngineMode;
@@ -549,9 +551,9 @@ public class FlowSurgeryService {
      */
     private List<Map<String, Object>> portableHistoricVariables(
             EngineConfig engine, String instanceId, Map<String, String> skipped) {
-        FlowablePage page =
+        HistoricVariablePage page =
                 client.listHistoricVariableInstances(engine, CallPriority.INTERACTIVE, instanceId, VARIABLE_FETCH_CAP);
-        List<Map<String, Object>> rows = page != null ? page.dataOrEmpty() : List.of();
+        List<HistoricVariableRecord> rows = page != null ? page.dataOrEmpty() : List.of();
         if (page != null && page.total() > rows.size()) {
             throw new GuardRefusedException(
                     HttpStatus.UNPROCESSABLE_ENTITY,
@@ -561,18 +563,18 @@ public class FlowSurgeryService {
                             + " nothing happened.");
         }
         List<Map<String, Object>> variables = new ArrayList<>();
-        for (Map<String, Object> row : rows) {
-            if (row.get("taskId") != null) {
+        for (HistoricVariableRecord row : rows) {
+            if (row.taskId() != null) {
                 continue; // task-local — never instance state
             }
-            Object wrapped = row.get("variable");
-            if (!(wrapped instanceof Map<?, ?> variable)) {
+            VariableRecord variable = row.variable();
+            if (variable == null) {
                 continue;
             }
-            String name = String.valueOf(variable.get("name"));
-            String type = variable.get("type") != null ? String.valueOf(variable.get("type")) : null;
-            Object scope = variable.get("scope");
-            if (scope != null && !"global".equals(String.valueOf(scope))) {
+            String name = String.valueOf(variable.name());
+            String type = variable.type();
+            String scope = variable.scope();
+            if (scope != null && !"global".equals(scope)) {
                 continue; // execution-local (e.g. MI loop bookkeeping) — meaningless on a fresh instance
             }
             if (INTRINSIC_VARIABLES.contains(name)) {
@@ -586,7 +588,7 @@ public class FlowSurgeryService {
             Map<String, Object> typed = new LinkedHashMap<>();
             typed.put("name", name);
             typed.put("type", type);
-            typed.put("value", variable.get("value"));
+            typed.put("value", variable.value());
             variables.add(typed);
         }
         return variables;

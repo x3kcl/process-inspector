@@ -182,11 +182,6 @@ public class DefinitionDetailService {
                 "Definition " + definitionId + " does not exist on '" + engineId + "'.");
     }
 
-    private static String str(Map<String, Object> map, String key) {
-        Object value = map.get(key);
-        return value != null ? value.toString() : null;
-    }
-
     private static int number(Object value) {
         return value instanceof Number n ? n.intValue() : 0;
     }

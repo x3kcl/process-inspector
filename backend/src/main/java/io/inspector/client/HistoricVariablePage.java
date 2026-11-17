@@ -1,24 +1,16 @@
 package io.inspector.client;
 
-/** One page of historic variable instances. RED stub (#474): no components yet. */
-public record HistoricVariablePage() {
-    public java.util.List<HistoricVariableRecord> data() {
-        throw new UnsupportedOperationException("#474 RED stub");
+import com.fasterxml.jackson.annotation.JsonIgnoreProperties;
+import java.util.List;
+
+/** One {@code {data:[…], total, start, size}} page of historic variable instances, typed (#474). */
+@JsonIgnoreProperties(ignoreUnknown = true)
+public record HistoricVariablePage(List<HistoricVariableRecord> data, long total, int start, int size) {
+    public static HistoricVariablePage empty() {
+        return new HistoricVariablePage(List.of(), 0, 0, 0);
     }
 
-    public long total() {
-        throw new UnsupportedOperationException("#474 RED stub");
-    }
-
-    public int start() {
-        throw new UnsupportedOperationException("#474 RED stub");
-    }
-
-    public int size() {
-        throw new UnsupportedOperationException("#474 RED stub");
-    }
-
-    public java.util.List<HistoricVariableRecord> dataOrEmpty() {
-        throw new UnsupportedOperationException("#474 RED stub");
+    public List<HistoricVariableRecord> dataOrEmpty() {
+        return data != null ? data : List.of();
     }
 }

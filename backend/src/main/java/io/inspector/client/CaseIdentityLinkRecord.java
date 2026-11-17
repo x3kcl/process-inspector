@@ -1,20 +1,10 @@
 package io.inspector.client;
 
-/** One CMMN case identity link. RED stub (#474): no components yet. */
-public record CaseIdentityLinkRecord() {
-    public String url() {
-        throw new UnsupportedOperationException("#474 RED stub");
-    }
+import com.fasterxml.jackson.annotation.JsonIgnoreProperties;
 
-    public String user() {
-        throw new UnsupportedOperationException("#474 RED stub");
-    }
-
-    public String group() {
-        throw new UnsupportedOperationException("#474 RED stub");
-    }
-
-    public String type() {
-        throw new UnsupportedOperationException("#474 RED stub");
-    }
-}
+/**
+ * One row of {@code /cmmn-runtime/case-instances/{id}/identitylinks} (#474). Exactly the keys the
+ * engine sends: the case-detail read hands these rows on to the SPA as they are.
+ */
+@JsonIgnoreProperties(ignoreUnknown = true)
+public record CaseIdentityLinkRecord(String url, String user, String group, String type) {}

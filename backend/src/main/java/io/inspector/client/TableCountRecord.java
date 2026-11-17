@@ -1,12 +1,7 @@
 package io.inspector.client;
 
-/** One /management/tables row. RED stub (#474): no components yet. */
-public record TableCountRecord() {
-    public String name() {
-        throw new UnsupportedOperationException("#474 RED stub");
-    }
+import com.fasterxml.jackson.annotation.JsonIgnoreProperties;
 
-    public Long count() {
-        throw new UnsupportedOperationException("#474 RED stub");
-    }
-}
+/** One row of the bare-array {@code /management/tables} answer (#627), typed (#474). */
+@JsonIgnoreProperties(ignoreUnknown = true)
+public record TableCountRecord(String name, Long count) {}

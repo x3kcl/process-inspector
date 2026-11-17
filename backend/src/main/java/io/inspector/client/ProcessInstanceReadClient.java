@@ -12,7 +12,10 @@ import org.springframework.web.client.HttpClientErrorException;
 final class ProcessInstanceReadClient {
 
     /** Runtime variable collections answer a BARE JSON array, not the paged envelope. */
-    private static final org.springframework.core.ParameterizedTypeReference<List<Map<String, Object>>> VARIABLE_LIST =
+    private static final org.springframework.core.ParameterizedTypeReference<List<VariableRecord>> VARIABLE_LIST =
+            new org.springframework.core.ParameterizedTypeReference<>() {};
+
+    private static final org.springframework.core.ParameterizedTypeReference<List<TableCountRecord>> TABLE_LIST =
             new org.springframework.core.ParameterizedTypeReference<>() {};
 
     private final GuardedCaller guarded;
@@ -363,7 +366,7 @@ final class ProcessInstanceReadClient {
      * GET /runtime/process-instances/{id}/variables — the typed process-scope rows of a
      * RUNNING instance. Bare array on the wire (not the paged envelope). Null = not running.
      */
-    public List<Map<String, Object>> listInstanceVariables(
+    public List<VariableRecord> listInstanceVariables(
             EngineConfig engine, CallPriority priority, String processInstanceId) {
         try {
             return guarded.call(
@@ -383,7 +386,7 @@ final class ProcessInstanceReadClient {
      * GET /runtime/executions/{id}/variables?scope=local — variables declared ON one
      * execution node (multi-instance loop locals live here, SPEC §4). Bare array.
      */
-    public List<Map<String, Object>> listExecutionLocalVariables(
+    public List<VariableRecord> listExecutionLocalVariables(
             EngineConfig engine, CallPriority priority, String executionId) {
         try {
             return guarded.call(
@@ -405,7 +408,7 @@ final class ProcessInstanceReadClient {
      * GET /history/historic-variable-instances?processInstanceId= — the variables of a
      * COMPLETED instance (runtime endpoints 404 after the end event — flowable-rest skill §2).
      */
-    public FlowablePage listHistoricVariableInstances(
+    public HistoricVariablePage listHistoricVariableInstances(
             EngineConfig engine, CallPriority priority, String processInstanceId, int size) {
         return guarded.call(
                 engine,
@@ -417,7 +420,7 @@ final class ProcessInstanceReadClient {
                                 .queryParam("size", size)
                                 .build())
                         .retrieve()
-                        .body(FlowablePage.class));
+                        .body(HistoricVariablePage.class));
     }
 
     /** GET /history/historic-activity-instances — one timeline page, startTime ascending. */
@@ -611,21 +614,23 @@ final class ProcessInstanceReadClient {
     }
 
     /**
-     * GET a management list that answers a bare JSON array, not the paged {@code data} envelope
-     * (e.g. /management/tables on 6.8 and 7.x, #627).
+     * GET /management/tables — a bare JSON array on 6.8 and 7.x, not the paged {@code data}
+     * envelope (#627).
      */
-    @SuppressWarnings("unchecked")
-    public List<Map<String, Object>> getList(EngineConfig engine, CallPriority priority, String path) {
-        List<Map<String, Object>> rows = guarded.call(
+    public List<TableCountRecord> listTables(EngineConfig engine, CallPriority priority) {
+        List<TableCountRecord> rows = guarded.call(
                 engine,
                 priority,
-                () -> guarded.readClient(engine).get().uri(path).retrieve().body(List.class));
+                () -> guarded.readClient(engine)
+                        .get()
+                        .uri("/management/tables")
+                        .retrieve()
+                        .body(TABLE_LIST));
         return rows == null ? List.of() : rows;
     }
 
     /** GET /management/engine — health + version probe. */
-    @SuppressWarnings("unchecked")
-    public Map<String, Object> engineInfo(EngineConfig engine, CallPriority priority) {
+    public EngineInfoRecord engineInfo(EngineConfig engine, CallPriority priority) {
         return guarded.call(
                 engine,
                 priority,
@@ -633,6 +638,6 @@ final class ProcessInstanceReadClient {
                         .get()
                         .uri("/management/engine")
                         .retrieve()
-                        .body(Map.class));
+                        .body(EngineInfoRecord.class));
     }
 }

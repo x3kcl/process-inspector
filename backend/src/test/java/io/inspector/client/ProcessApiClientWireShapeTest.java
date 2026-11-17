@@ -317,12 +317,7 @@ class ProcessApiClientWireShapeTest {
                         c -> c.getHistoricTaskInstance(e, p, taskId)),
                 read("engineInfo", "GET", "/management/engine", "engine", c -> c.engineInfo(e, p)),
                 read("getMap", "GET", "/management/engine", "engine", c -> c.getMap(e, p, "/management/engine")),
-                read(
-                        "getList",
-                        "GET",
-                        "/management/tables",
-                        "management-tables",
-                        c -> c.getList(e, p, "/management/tables")),
+                read("listTables", "GET", "/management/tables", "management-tables", c -> c.listTables(e, p)),
                 read(
                         "getJob",
                         "GET",
@@ -541,6 +536,49 @@ class ProcessApiClientWireShapeTest {
                                 @SuppressWarnings("unchecked")
                                 Map<String, Object> recordedDeployment = (Map<String, Object>) recorded;
                                 assertThat(deployment).isEqualTo(RepositoryRecords.deployment(recordedDeployment));
+                            } else if (result instanceof VariableRecord variable) {
+                                @SuppressWarnings("unchecked")
+                                Map<String, Object> recordedVariable = (Map<String, Object>) recorded;
+                                assertThat(variable).isEqualTo(VariableRecords.variable(recordedVariable));
+                            } else if (result instanceof List<?> rows
+                                    && !rows.isEmpty()
+                                    && rows.get(0) instanceof VariableRecord
+                                    && recorded instanceof List<?> bareArray) {
+                                // variables: a bare array of envelopes (#474).
+                                @SuppressWarnings("unchecked")
+                                List<Map<String, Object>> recordedRows = (List<Map<String, Object>>) bareArray;
+                                assertThat(rows)
+                                        .isEqualTo(recordedRows.stream()
+                                                .map(VariableRecords::variable)
+                                                .toList());
+                            } else if (result instanceof HistoricVariablePage page) {
+                                @SuppressWarnings("unchecked")
+                                Map<String, Object> recordedPage = (Map<String, Object>) recorded;
+                                @SuppressWarnings("unchecked")
+                                List<Map<String, Object>> recordedRows =
+                                        (List<Map<String, Object>>) recordedPage.get("data");
+                                assertThat(page.total()).isEqualTo(((Number) recordedPage.get("total")).longValue());
+                                assertThat(page.dataOrEmpty())
+                                        .isEqualTo(recordedRows.stream()
+                                                .map(VariableRecords::historicRow)
+                                                .toList());
+                            } else if (result instanceof EngineInfoRecord info) {
+                                @SuppressWarnings("unchecked")
+                                Map<String, Object> recordedInfo = (Map<String, Object>) recorded;
+                                assertThat(info)
+                                        .isEqualTo(new EngineInfoRecord((String) recordedInfo.get("name"), (String)
+                                                recordedInfo.get("version")));
+                            } else if (result instanceof List<?> rows
+                                    && !rows.isEmpty()
+                                    && rows.get(0) instanceof TableCountRecord
+                                    && recorded instanceof List<?> bareArray) {
+                                @SuppressWarnings("unchecked")
+                                List<Map<String, Object>> recordedRows = (List<Map<String, Object>>) bareArray;
+                                assertThat(rows)
+                                        .isEqualTo(recordedRows.stream()
+                                                .map(r -> new TableCountRecord(
+                                                        (String) r.get("name"), ((Number) r.get("count")).longValue()))
+                                                .toList());
                             } else {
                                 assertThat(result).isEqualTo(recorded);
                             }

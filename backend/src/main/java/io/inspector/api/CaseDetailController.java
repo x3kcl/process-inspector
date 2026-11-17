@@ -41,14 +41,14 @@ public class CaseDetailController {
 
     @GetMapping("/variables")
     @PreAuthorize("@rbac.atLeastOn(authentication, 'VIEWER', #engineId)")
-    public java.util.List<java.util.Map<String, Object>> variables(
+    public java.util.List<io.inspector.client.VariableRecord> variables(
             @PathVariable String engineId, @PathVariable String caseInstanceId) {
         return cases.variables(engineId, caseInstanceId);
     }
 
     @GetMapping("/identitylinks")
     @PreAuthorize("@rbac.atLeastOn(authentication, 'VIEWER', #engineId)")
-    public java.util.List<java.util.Map<String, Object>> identityLinks(
+    public java.util.List<io.inspector.client.CaseIdentityLinkRecord> identityLinks(
             @PathVariable String engineId, @PathVariable String caseInstanceId) {
         return cases.identityLinks(engineId, caseInstanceId);
     }

@@ -2,7 +2,6 @@ package io.inspector.client;
 
 import com.fasterxml.jackson.annotation.JsonIgnoreProperties;
 import java.util.List;
-import java.util.Map;
 
 /**
  * One process instance as {@code /runtime/process-instances}, {@code /query/process-instances},
@@ -32,4 +31,4 @@ public record ProcessInstanceRecord(
         String state,
         String startActivityId,
         String endActivityId,
-        List<Map<String, Object>> variables) {}
+        List<VariableRecord> variables) {}

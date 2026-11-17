@@ -136,7 +136,7 @@ public class AdminEnginesController {
         try {
             var info = processApi.engineInfo(engine(row), CallPriority.INTERACTIVE);
             ok = info != null;
-            detail = "version=" + (info != null ? info.get("version") : "?");
+            detail = "version=" + (info != null ? info.version() : "?");
         } catch (RuntimeException e) {
             ok = false;
             detail = e.toString(); // audit only — never surfaced (topology oracle)

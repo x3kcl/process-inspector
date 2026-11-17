@@ -1,24 +1,12 @@
 package io.inspector.client;
 
-/** One historic variable instance row. RED stub (#474): no components yet. */
-public record HistoricVariableRecord() {
-    public String id() {
-        throw new UnsupportedOperationException("#474 RED stub");
-    }
+import com.fasterxml.jackson.annotation.JsonIgnoreProperties;
 
-    public String processInstanceId() {
-        throw new UnsupportedOperationException("#474 RED stub");
-    }
-
-    public String executionId() {
-        throw new UnsupportedOperationException("#474 RED stub");
-    }
-
-    public String taskId() {
-        throw new UnsupportedOperationException("#474 RED stub");
-    }
-
-    public VariableRecord variable() {
-        throw new UnsupportedOperationException("#474 RED stub");
-    }
-}
+/**
+ * One row of {@code /history/historic-variable-instances} (#474): the attribution plus the variable
+ * envelope nested under {@code variable} — on 6.8 and 7.1 alike. {@code taskId} is null on anything
+ * but a task-local variable; a process-scope row's {@code executionId} is the instance id.
+ */
+@JsonIgnoreProperties(ignoreUnknown = true)
+public record HistoricVariableRecord(
+        String id, String processInstanceId, String executionId, String taskId, VariableRecord variable) {}

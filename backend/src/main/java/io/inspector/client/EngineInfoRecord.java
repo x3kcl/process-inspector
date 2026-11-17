@@ -1,12 +1,7 @@
 package io.inspector.client;
 
-/** The /management/engine document. RED stub (#474): no components yet. */
-public record EngineInfoRecord() {
-    public String name() {
-        throw new UnsupportedOperationException("#474 RED stub");
-    }
+import com.fasterxml.jackson.annotation.JsonIgnoreProperties;
 
-    public String version() {
-        throw new UnsupportedOperationException("#474 RED stub");
-    }
-}
+/** The {@code /management/engine} document — the health + version probe (#474). */
+@JsonIgnoreProperties(ignoreUnknown = true)
+public record EngineInfoRecord(String name, String version) {}

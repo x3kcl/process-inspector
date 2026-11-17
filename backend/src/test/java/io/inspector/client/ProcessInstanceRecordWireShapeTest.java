@@ -198,7 +198,8 @@ class ProcessInstanceRecordWireShapeTest {
         assertThat(pi.durationInMillis()).isEqualTo(385L);
         assertThat(pi.superProcessInstanceId()).isEqualTo("0");
         assertThat(pi.variables()).hasSize(2);
-        assertThat(pi.variables().get(0)).containsEntry("name", "amount").containsEntry("value", 42);
-        assertThat(pi.variables().get(1).get("value")).isEqualTo(java.util.Map.of("lines", java.util.List.of(1, 2)));
+        assertThat(pi.variables().get(0).name()).isEqualTo("amount");
+        assertThat(pi.variables().get(0).value()).isEqualTo(42);
+        assertThat(pi.variables().get(1).value()).isEqualTo(java.util.Map.of("lines", java.util.List.of(1, 2)));
     }
 }
