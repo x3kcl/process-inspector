@@ -254,6 +254,10 @@ jobs:
           - profile: migration-findings
             composeProfiles: "flowable-6,flowable-7,postgres"
             itClass: TimerReschedule7IT
+          # Task-admin verbs (#763): every task verb on 6.8 and 7.1, read back on the engines.
+          - profile: migration-findings
+            composeProfiles: "flowable-6,flowable-7,postgres"
+            itClass: TaskAdminVerbsIT
     env:
       # Dependabot PRs (#445) run on the slot runners, but that actor's token is read-only and
       # cannot pull the private flap image: that leg's registry steps and the contract's leg skip.
