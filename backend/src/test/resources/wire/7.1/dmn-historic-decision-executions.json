@@ -1,0 +1,26 @@
+{
+  "data": [
+    {
+      "activityId": "decide",
+      "decisionDefinitionId": "f1fb0b14-e248-11f1-bcae-4a0977946a8d",
+      "decisionKey": "rec474Decision",
+      "decisionName": "Rec 474 decision",
+      "decisionVersion": "1",
+      "deploymentId": "f1f65022-e248-11f1-bcae-4a0977946a8d",
+      "endTime": "2026-11-17T05:37:15.301+00:00",
+      "executionId": "f21c75cc-e248-11f1-bcae-4a0977946a8d",
+      "failed": false,
+      "id": "f224b330-e248-11f1-bcae-4a0977946a8d",
+      "instanceId": "f21c27a8-e248-11f1-bcae-4a0977946a8d",
+      "scopeType": null,
+      "startTime": "2026-11-17T05:37:15.289+00:00",
+      "tenantId": "",
+      "url": "http://localhost:8080/flowable-rest/dmn-api/dmn-history/historic-decision-executions/f224b330-e248-11f1-bcae-4a0977946a8d"
+    }
+  ],
+  "order": "asc",
+  "size": 1,
+  "sort": "startTime",
+  "start": 0,
+  "total": 1
+}
