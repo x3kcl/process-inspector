@@ -12,9 +12,12 @@ import static org.mockito.Mockito.when;
 import io.inspector.audit.ProtectedDefinitionRepository;
 import io.inspector.catalog.DefinitionCatalogResponse.CatalogDefinition;
 import io.inspector.client.CmmnApiClient;
-import io.inspector.client.FlowablePage;
 import io.inspector.client.GuardedCaller.CallPriority;
 import io.inspector.client.ProcessApiClient;
+import io.inspector.client.ProcessDefinitionPage;
+import io.inspector.client.ProcessInstancePage;
+import io.inspector.client.ProcessInstanceRecords;
+import io.inspector.client.RepositoryRecords;
 import io.inspector.config.InspectorProperties;
 import io.inspector.config.InspectorProperties.EngineConfig;
 import io.inspector.registry.EngineHealth;
@@ -86,7 +89,7 @@ class DefinitionCatalogServiceTest {
                         anyInt()))
                 .thenReturn(page(List.of(def("zeta", 1, "zeta:1"))));
         when(processes.queryRuntimeProcessInstances(any(), any(), any()))
-                .thenReturn(new FlowablePage(List.of(), 4, 0, 1));
+                .thenReturn(new ProcessInstancePage(ProcessInstanceRecords.instances(List.of()), 4, 0, 1));
         service = new DefinitionCatalogService(registry, processes, cases, protectedDefinitions, props);
 
         DefinitionCatalogResponse response = service.list(null, null, null, false, null);
@@ -120,7 +123,7 @@ class DefinitionCatalogServiceTest {
                         anyInt()))
                 .thenReturn(page(List.of(def("alpha", 1, "alpha:1"))));
         when(processes.queryRuntimeProcessInstances(any(), eq(CallPriority.INTERACTIVE), any()))
-                .thenReturn(new FlowablePage(List.of(), 0, 0, 1));
+                .thenReturn(new ProcessInstancePage(ProcessInstanceRecords.instances(List.of()), 0, 0, 1));
         service = new DefinitionCatalogService(registry, processes, cases, protectedDefinitions, props);
 
         service.list(null, "alpha", null, true, null);
@@ -186,8 +189,8 @@ class DefinitionCatalogServiceTest {
                         anyInt());
     }
 
-    private static FlowablePage page(List<Map<String, Object>> data) {
-        return new FlowablePage(data, data.size(), 0, data.size());
+    private static ProcessDefinitionPage page(List<Map<String, Object>> data) {
+        return RepositoryRecords.definitionPage(data);
     }
 
     private static Map<String, Object> def(String key, int version, String id) {

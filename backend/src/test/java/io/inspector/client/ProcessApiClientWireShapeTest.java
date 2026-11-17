@@ -317,12 +317,7 @@ class ProcessApiClientWireShapeTest {
                         c -> c.getHistoricTaskInstance(e, p, taskId)),
                 read("engineInfo", "GET", "/management/engine", "engine", c -> c.engineInfo(e, p)),
                 read("getMap", "GET", "/management/engine", "engine", c -> c.getMap(e, p, "/management/engine")),
-                read(
-                        "getList",
-                        "GET",
-                        "/management/tables",
-                        "management-tables",
-                        c -> c.getList(e, p, "/management/tables")),
+                read("listTables", "GET", "/management/tables", "management-tables", c -> c.listTables(e, p)),
                 read(
                         "getJob",
                         "GET",
@@ -427,15 +422,158 @@ class ProcessApiClientWireShapeTest {
                             Object result = c.call().apply(client);
 
                             Object recorded = json(v, c.fixture());
-                            if (result instanceof FlowablePage page && recorded instanceof List<?> bareArray) {
-                                // e.g. /repository/deployments/{id}/resources: the engine answers a bare array.
-                                assertThat(page.dataOrEmpty()).isEqualTo(bareArray);
-                                assertThat(page.total()).isEqualTo(bareArray.size());
-                            } else if (result instanceof FlowablePage page) {
+                            if (result instanceof List<?> rows
+                                    && !rows.isEmpty()
+                                    && rows.get(0) instanceof DeploymentResourceRecord
+                                    && recorded instanceof List<?> bareArray) {
+                                // /repository/deployments/{id}/resources: the engine answers a bare array.
+                                @SuppressWarnings("unchecked")
+                                List<Map<String, Object>> recordedRows = (List<Map<String, Object>>) bareArray;
+                                assertThat(rows).isEqualTo(RepositoryRecords.resources(recordedRows));
+                                assertThat(rows.size()).isEqualTo(bareArray.size());
+                            } else if (result instanceof HistoricVariablePage page) {
                                 @SuppressWarnings("unchecked")
                                 Map<String, Object> recordedPage = (Map<String, Object>) recorded;
+                                @SuppressWarnings("unchecked")
+                                List<Map<String, Object>> recordedRows =
+                                        (List<Map<String, Object>>) recordedPage.get("data");
                                 assertThat(page.total()).isEqualTo(((Number) recordedPage.get("total")).longValue());
-                                assertThat(page.dataOrEmpty()).isEqualTo(recordedPage.get("data"));
+                                assertThat(page.dataOrEmpty())
+                                        .isEqualTo(recordedRows.stream()
+                                                .map(VariableRecords::historicRow)
+                                                .toList());
+                            } else if (result instanceof ExecutionPage page) {
+                                @SuppressWarnings("unchecked")
+                                Map<String, Object> recordedPage = (Map<String, Object>) recorded;
+                                @SuppressWarnings("unchecked")
+                                List<Map<String, Object>> recordedRows =
+                                        (List<Map<String, Object>>) recordedPage.get("data");
+                                assertThat(page.total()).isEqualTo(((Number) recordedPage.get("total")).longValue());
+                                assertThat(page).isEqualTo(ExecutionRecords.executionPage(recordedRows, page.total()));
+                            } else if (result instanceof ActivityInstancePage page) {
+                                @SuppressWarnings("unchecked")
+                                Map<String, Object> recordedPage = (Map<String, Object>) recorded;
+                                @SuppressWarnings("unchecked")
+                                List<Map<String, Object>> recordedRows =
+                                        (List<Map<String, Object>>) recordedPage.get("data");
+                                assertThat(page.total()).isEqualTo(((Number) recordedPage.get("total")).longValue());
+                                assertThat(page).isEqualTo(ExecutionRecords.activityPage(recordedRows, page.total()));
+                            } else if (result instanceof EventSubscriptionPage page) {
+                                @SuppressWarnings("unchecked")
+                                Map<String, Object> recordedPage = (Map<String, Object>) recorded;
+                                @SuppressWarnings("unchecked")
+                                List<Map<String, Object>> recordedRows =
+                                        (List<Map<String, Object>>) recordedPage.get("data");
+                                assertThat(page.total()).isEqualTo(((Number) recordedPage.get("total")).longValue());
+                                assertThat(page)
+                                        .isEqualTo(ExecutionRecords.subscriptionPage(recordedRows, page.total()));
+                            } else if (result instanceof ExecutionRecord execution) {
+                                @SuppressWarnings("unchecked")
+                                Map<String, Object> recordedExecution = (Map<String, Object>) recorded;
+                                assertThat(execution).isEqualTo(ExecutionRecords.execution(recordedExecution));
+                            } else if (result instanceof JobPage page) {
+                                // Typed family (#474): compared field-for-field against the typed recording.
+                                @SuppressWarnings("unchecked")
+                                Map<String, Object> recordedPage = (Map<String, Object>) recorded;
+                                @SuppressWarnings("unchecked")
+                                List<Map<String, Object>> recordedRows =
+                                        (List<Map<String, Object>>) recordedPage.get("data");
+                                assertThat(page.total()).isEqualTo(((Number) recordedPage.get("total")).longValue());
+                                assertThat(page.dataOrEmpty()).isEqualTo(JobRecords.jobs(recordedRows));
+                            } else if (result instanceof JobRecord job) {
+                                @SuppressWarnings("unchecked")
+                                Map<String, Object> recordedJob = (Map<String, Object>) recorded;
+                                assertThat(job).isEqualTo(JobRecords.job(recordedJob));
+                            } else if (result instanceof TaskPage page) {
+                                @SuppressWarnings("unchecked")
+                                Map<String, Object> recordedPage = (Map<String, Object>) recorded;
+                                @SuppressWarnings("unchecked")
+                                List<Map<String, Object>> recordedRows =
+                                        (List<Map<String, Object>>) recordedPage.get("data");
+                                assertThat(page.total()).isEqualTo(((Number) recordedPage.get("total")).longValue());
+                                assertThat(page.dataOrEmpty()).isEqualTo(TaskRecords.tasks(recordedRows));
+                            } else if (result instanceof TaskRecord task) {
+                                @SuppressWarnings("unchecked")
+                                Map<String, Object> recordedTask = (Map<String, Object>) recorded;
+                                assertThat(task).isEqualTo(TaskRecords.task(recordedTask));
+                            } else if (result instanceof List<?> rows
+                                    && !rows.isEmpty()
+                                    && rows.get(0) instanceof IdentityLinkRecord
+                                    && recorded instanceof List<?> bareArray) {
+                                // identity links: the engine answers a bare array (#474).
+                                @SuppressWarnings("unchecked")
+                                List<Map<String, Object>> recordedRows = (List<Map<String, Object>>) bareArray;
+                                assertThat(rows).isEqualTo(IdentityLinkRecords.links(recordedRows));
+                            } else if (result instanceof ProcessInstancePage page) {
+                                @SuppressWarnings("unchecked")
+                                Map<String, Object> recordedPage = (Map<String, Object>) recorded;
+                                @SuppressWarnings("unchecked")
+                                List<Map<String, Object>> recordedRows =
+                                        (List<Map<String, Object>>) recordedPage.get("data");
+                                assertThat(page.total()).isEqualTo(((Number) recordedPage.get("total")).longValue());
+                                assertThat(page.dataOrEmpty())
+                                        .isEqualTo(ProcessInstanceRecords.instances(recordedRows));
+                            } else if (result instanceof ProcessInstanceRecord instance) {
+                                @SuppressWarnings("unchecked")
+                                Map<String, Object> recordedInstance = (Map<String, Object>) recorded;
+                                assertThat(instance).isEqualTo(ProcessInstanceRecords.instance(recordedInstance));
+                            } else if (result instanceof ProcessDefinitionPage page) {
+                                @SuppressWarnings("unchecked")
+                                Map<String, Object> recordedPage = (Map<String, Object>) recorded;
+                                @SuppressWarnings("unchecked")
+                                List<Map<String, Object>> recordedRows =
+                                        (List<Map<String, Object>>) recordedPage.get("data");
+                                assertThat(page.total()).isEqualTo(((Number) recordedPage.get("total")).longValue());
+                                assertThat(page.dataOrEmpty()).isEqualTo(RepositoryRecords.definitions(recordedRows));
+                            } else if (result instanceof ProcessDefinitionRecord definition) {
+                                @SuppressWarnings("unchecked")
+                                Map<String, Object> recordedDefinition = (Map<String, Object>) recorded;
+                                assertThat(definition).isEqualTo(RepositoryRecords.definition(recordedDefinition));
+                            } else if (result instanceof DeploymentPage page) {
+                                @SuppressWarnings("unchecked")
+                                Map<String, Object> recordedPage = (Map<String, Object>) recorded;
+                                @SuppressWarnings("unchecked")
+                                List<Map<String, Object>> recordedRows =
+                                        (List<Map<String, Object>>) recordedPage.get("data");
+                                assertThat(page.total()).isEqualTo(((Number) recordedPage.get("total")).longValue());
+                                assertThat(page)
+                                        .isEqualTo(RepositoryRecords.deploymentPage(recordedRows, page.total()));
+                            } else if (result instanceof DeploymentRecord deployment) {
+                                @SuppressWarnings("unchecked")
+                                Map<String, Object> recordedDeployment = (Map<String, Object>) recorded;
+                                assertThat(deployment).isEqualTo(RepositoryRecords.deployment(recordedDeployment));
+                            } else if (result instanceof VariableRecord variable) {
+                                @SuppressWarnings("unchecked")
+                                Map<String, Object> recordedVariable = (Map<String, Object>) recorded;
+                                assertThat(variable).isEqualTo(VariableRecords.variable(recordedVariable));
+                            } else if (result instanceof List<?> rows
+                                    && !rows.isEmpty()
+                                    && rows.get(0) instanceof VariableRecord
+                                    && recorded instanceof List<?> bareArray) {
+                                // variables: a bare array of envelopes (#474).
+                                @SuppressWarnings("unchecked")
+                                List<Map<String, Object>> recordedRows = (List<Map<String, Object>>) bareArray;
+                                assertThat(rows)
+                                        .isEqualTo(recordedRows.stream()
+                                                .map(VariableRecords::variable)
+                                                .toList());
+                            } else if (result instanceof EngineInfoRecord info) {
+                                @SuppressWarnings("unchecked")
+                                Map<String, Object> recordedInfo = (Map<String, Object>) recorded;
+                                assertThat(info)
+                                        .isEqualTo(new EngineInfoRecord((String) recordedInfo.get("name"), (String)
+                                                recordedInfo.get("version")));
+                            } else if (result instanceof List<?> rows
+                                    && !rows.isEmpty()
+                                    && rows.get(0) instanceof TableCountRecord
+                                    && recorded instanceof List<?> bareArray) {
+                                @SuppressWarnings("unchecked")
+                                List<Map<String, Object>> recordedRows = (List<Map<String, Object>>) bareArray;
+                                assertThat(rows)
+                                        .isEqualTo(recordedRows.stream()
+                                                .map(r -> new TableCountRecord(
+                                                        (String) r.get("name"), ((Number) r.get("count")).longValue()))
+                                                .toList());
                             } else {
                                 assertThat(result).isEqualTo(recorded);
                             }
@@ -508,7 +646,7 @@ class ProcessApiClientWireShapeTest {
                     assertThat(client.countJobsIfSupported(engine, p, JobLaneKind.DEADLETTER))
                             .isEqualTo(dlqTotal);
                     assertThat(client.oldestHistoryJob(engine, p))
-                            .isEqualTo(rows(v, "deadletter-jobs").get(0));
+                            .isEqualTo(JobRecords.job(rows(v, "deadletter-jobs").get(0)));
                     assertThat(client.oldestExecutableJob(engine, p)).isNull(); // the recorded lane is empty
                     assertThat(client.countHistoricProcesses(engine, p, after, before, true, true))
                             .isEqualTo(historicTotal);
@@ -761,10 +899,10 @@ class ProcessApiClientWireShapeTest {
                     wm.stubFor(request("POST", urlPathEqualTo("/runtime/process-instances"))
                             .willReturn(okJson(text(v, "runtime-process-instance.json"))));
 
-                    Map<String, Object> started = client.startProcessInstance(
+                    ProcessInstanceRecord started = client.startProcessInstance(
                             engine, CallPriority.INTERACTIVE, Map.of("processDefinitionKey", "demoFailingPayment"));
 
-                    assertThat(started).isEqualTo(doc(v, "runtime-process-instance"));
+                    assertThat(started).isEqualTo(ProcessInstanceRecords.instance(doc(v, "runtime-process-instance")));
                     wm.verify(requestedFor("POST", urlPathEqualTo("/runtime/process-instances"))
                             .withRequestBody(equalToJson("{\"processDefinitionKey\":\"demoFailingPayment\"}")));
                 }));

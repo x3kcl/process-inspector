@@ -218,7 +218,8 @@ tab-aware (`?tab=timeline`) — paste the link into a ticket.
   - **Hierarchy** — the call-activity tree, both directions, depth-capped (10) and
     breadth-capped (50/node, "+9,950 more") with exact totals; child failures roll up to the
     parent's chip ("FAILED — in subprocess *chargePayment*" deep-links to the failing child —
-    the retry lives on the child, never the parent).
+    the retry lives on the child, never the parent). Migrating a parent together with its
+    running children, children first, is §14b.
   - **Timeline** — historic activities as duration bars, call-activity sub-lanes nested; a
     dead-lettered async step (whose history row rolled back) is synthesized from the live
     lanes so the failure is never invisible; live badges FAILED/RETRYING.
@@ -237,6 +238,12 @@ tab-aware (`?tab=timeline`) — paste the link into a ticket.
   version → "Check mapping →" runs the **Inspector pre-check** — honestly bannered "this is
   not a Flowable validation; the engine checks this only when you execute" (the REST API
   exposes no migration validator) → execute with reason (+ typed business key on prod).
+  Activities auto-map cannot solve are mapped in the **mapping editor**: **Table** (a target
+  select per flagged activity — the keyboard path), **Diagrams** (source version left, target
+  right: click a flagged activity, click its target, **Add to map**; ✖ / ! mark pre-check
+  blockers and warnings, ↦ what is mapped), or **Expert** JSON with Reset to generated. One
+  source may map to several targets and several sources to one target; many-to-many is
+  refused with the reason. The BFF rebuilds the engine document from your mapping.
   IRREVERSIBLE; a post-dispatch timeout is UNKNOWN + Verify-now, never auto-retried.
 - A **disabled** engine's detail still renders (read-only, "disabled, not removed" banner);
   only a genuinely unregistered engine says "Unknown engine".
@@ -429,6 +436,30 @@ shedding load, its remaining instances stay `not run` and the job ends INTERRUPT
 **Continue as new job** in the drawer. A timed-out item is `unknown`; **Verify now** reads the
 instance's current version. More than 500 running instances: narrow the filter. This is not an
 engine batch.
+
+**A parent with call-activity children (#497).** Migrating a parent leaves its children on their
+own version. A hierarchy plan moves the whole running tree in one tracked job, **children first,
+then parent**. The plan lists the tree per level and groups it by definition; for each definition
+you set a target version and mapping, or skip it. In the job, a parent is migrated only after
+every planned child reached its target. A child that failed, is `unknown`, is protected, or was
+blocked by the pre-check leaves its parent `not run`, and the parent's row names the child and
+the cause; the levels above stay `not run` for the same reason. A child that has ended, or that
+someone already moved to the target version, does not hold its parent back: it is listed as not
+sent and the parent is migrated. A child that started after the plan was built (for example the
+next loop of a repeated call) is not in the plan: its parent stays `not run` and the row names
+that child — build a new plan, which includes it. A plan can be submitted for 24 hours (your
+administrator can change this); after that the plan says it expired and you build a new one. Fix the cause and use
+**Continue as new job**: it keeps the order, and it refuses to continue a parent without the
+child that held it back. The drawer shows the progress per level, deepest first. A tree with more
+than 50 running children under one instance, deeper than 10 levels, or larger than 500 instances
+is not planned: the plan says where it stopped and how many there are. Open the plan from the
+parent's **Hierarchy** tab with **Migrate this hierarchy…** (ADMIN): it shows the running tree
+under that instance and one block per definition with its status — Pending, Analyzing…,
+Configured, Analysis failed or Skipped. Pick the target version (and, if activities were renamed,
+paste the mapping as JSON), press **Configure**, or **Skip** to leave that definition on its
+version. **Migrate N** enables once every definition is decided; on prod you type the number of
+instances that will be sent. A plan over a whole cohort of parents is created through the API
+(`/api/migration/hierarchy/plans`).
 
 ## 15. Watermark & licensing note
 

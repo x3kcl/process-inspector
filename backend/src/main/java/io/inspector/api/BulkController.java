@@ -1,5 +1,6 @@
 package io.inspector.api;
 
+import io.inspector.bulk.BulkCaseMigrationService;
 import io.inspector.bulk.BulkDtos;
 import io.inspector.bulk.BulkErrorClassService;
 import io.inspector.bulk.BulkFilterService;
@@ -47,6 +48,7 @@ public class BulkController {
     private final DestructiveBulkService destructive;
     private final HousekeepingService housekeeping;
     private final BulkMigrationService migration;
+    private final BulkCaseMigrationService caseMigration;
     private final SseHub stream;
     private final ReadScopeGate readScope;
 
@@ -57,6 +59,7 @@ public class BulkController {
             DestructiveBulkService destructive,
             HousekeepingService housekeeping,
             BulkMigrationService migration,
+            BulkCaseMigrationService caseMigration,
             SseHub stream,
             ReadScopeGate readScope) {
         this.bulk = bulk;
@@ -65,6 +68,7 @@ public class BulkController {
         this.destructive = destructive;
         this.housekeeping = housekeeping;
         this.migration = migration;
+        this.caseMigration = caseMigration;
         this.stream = stream;
         this.readScope = readScope;
     }
@@ -76,6 +80,9 @@ public class BulkController {
         // continues only through its own rails (ADMIN, prior not-run/failed items only).
         if (BulkMigrationService.isMigrate(request.verb())) {
             return migration.continueJob(request, authentication);
+        }
+        if (BulkCaseMigrationService.isMigrateCase(request.verb())) {
+            return caseMigration.continueJob(request, authentication);
         }
         return bulk.submit(request, authentication);
     }
@@ -89,6 +96,17 @@ public class BulkController {
     public BulkDtos.BulkJobDto submitMigration(
             @RequestBody BulkDtos.BulkMigrateRequest request, Authentication authentication) {
         return migration.submit(request, authentication);
+    }
+
+    /**
+     * Case cohort migration (#500): completed case analyses become one tracked bulk job — one
+     * single-case {@code migrate-case} per case with the analysis baseline as compare-and-set.
+     */
+    @PostMapping("/migrate-cases")
+    @PreAuthorize("@rbac.atLeast(authentication, 'ADMIN')")
+    public BulkDtos.BulkJobDto submitCaseMigration(
+            @RequestBody BulkDtos.BulkMigrateRequest request, Authentication authentication) {
+        return caseMigration.submit(request, authentication);
     }
 
     /**

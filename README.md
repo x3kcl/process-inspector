@@ -103,8 +103,8 @@ INSPECTOR_DEV_PASSWORD=pick-one docker compose -f docker-compose.release.yml up 
 
 New versions are cut from the Actions tab (`cut-release` → patch/minor/major — green-CI
 gated, auto-computes the next semver, tags, publishes, drafts the Release), and every green
-`ci` run on `main` additionally publishes moving `:edge` + `:sha-<short>` images
-(`publish-edge.yml`) for tracking the latest verified build.
+merge-queue batch that lands on `main` additionally publishes moving `:edge` + `:sha-<short>`
+images (`publish-edge.yml`) for tracking the latest verified build.
 
 ### Backend tests
 

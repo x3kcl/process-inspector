@@ -1,7 +1,14 @@
-import { useEffect, useRef, useState } from 'react'
+import { useEffect, useMemo, useRef, useState } from 'react'
 import NavigatedViewer from 'bpmn-js/lib/NavigatedViewer'
 import type Canvas from 'diagram-js/lib/core/Canvas'
+import type ElementRegistry from 'diagram-js/lib/core/ElementRegistry'
 import type Overlays from 'diagram-js/lib/features/overlays/Overlays'
+import { DiagramLegend } from './diagram/DiagramLegend'
+import { DiagramToolbar } from './diagram/DiagramToolbar'
+import type { ExecutionOverlay } from './diagram/executionOverlay'
+import { presentKinds } from './diagram/markerKinds'
+import type { GlyphTexts, MarkerKind, MarkerSets } from './diagram/markerKinds'
+import { formatDurationMs } from '../lib/format'
 import 'bpmn-js/dist/assets/diagram-js.css'
 import 'bpmn-js/dist/assets/bpmn-js.css'
 import 'bpmn-js/dist/assets/bpmn-font/css/bpmn.css'
@@ -22,6 +29,14 @@ export interface DiagramMarkers {
   addedActivityIds?: string[]
   /** Version diff (#483): same id, different name, type, or sequence-flow endpoints. */
   changedActivityIds?: string[]
+  /**
+   * Migration mapping editor (#498): pre-check findings and mapped activities. Stroke style
+   * + glyph + label, never hue alone — blocker ✖ (dotted heavy), warning ! (long dash),
+   * mapped ↦ (badge only, so it stacks with a finding outline).
+   */
+  blockerActivityIds?: string[]
+  warningActivityIds?: string[]
+  mappedActivityIds?: string[]
 }
 
 interface Props {
@@ -42,16 +57,39 @@ interface Props {
    */
   pickerSourceIds?: string[]
   pickerTargetIds?: string[]
+  /**
+   * #677 execution overlay from the timeline: route taken, completed / armed-not-taken
+   * nodes, duration badges. Absent (timeline pending or failed) = the plain markers only.
+   */
+  execution?: ExecutionOverlay
 }
 
 interface SelectionEvent {
   element?: { id?: string }
 }
 
+const ZOOM_STEP = 1.25
+
+/** Centred fit; returns the resulting viewbox key. diagram-js centres on any truthy second
+ *  argument ('auto' in its docs); its typings only admit a Point. */
+function fit(canvas: Canvas): string {
+  canvas.zoom('fit-viewport', 'auto' as unknown as Parameters<Canvas['zoom']>[1])
+  return viewboxKey(canvas)
+}
+
+/** Pan + zoom only: width/height follow the host size, which is what a resize changes. */
+function viewboxKey(canvas: Canvas): string {
+  const { x, y, scale } = canvas.viewbox()
+  return [x, y, scale].join()
+}
+
 /**
  * Read-only bpmn-js viewer (SPEC §4 Stage 2: diagram first, top half). NavigatedViewer =
  * zoom/pan without modeling. The bpmn.io watermark the viewer injects is a license term
  * (R-GOV-05) and is left exactly as rendered — nothing here may touch it.
+ *
+ * Import and decoration are split: `importXML` runs only when `xml` changes; a marker or
+ * picker change repaints on the live canvas (pan/zoom untouched, no flicker).
  */
 export function DiagramCanvas({
   xml,
@@ -60,23 +98,61 @@ export function DiagramCanvas({
   selectedActivityId,
   pickerSourceIds,
   pickerTargetIds,
+  execution,
 }: Props) {
+  const frameRef = useRef<HTMLDivElement | null>(null)
   const hostRef = useRef<HTMLDivElement | null>(null)
   const viewerRef = useRef<NavigatedViewer | null>(null)
-  // Bumped after each successful XML import so the selection effect re-applies its
-  // marker on a fresh canvas (import wipes all markers).
+  // Bumped after each successful XML import so the decoration effects re-apply on the
+  // fresh canvas (import wipes all markers and overlays).
   const [importGeneration, setImportGeneration] = useState(0)
+  const [fullscreen, setFullscreen] = useState(false)
   // React 19 typings dropped the zero-arg useRef<T>() overload — explicit undefined
   // initializer, same runtime behavior as before.
   const prevSelectedRef = useRef<string | undefined>(undefined)
-  const prevPickerSourceRef = useRef<string[]>([])
-  const prevPickerTargetRef = useRef<string[]>([])
+  // Undoes the current decoration; null right after an import (nothing painted yet).
+  const clearMarkersRef = useRef<(() => void) | null>(null)
+  // The viewbox of our last fit: while the operator has not panned/zoomed away from it, a
+  // host resize (the page layout settling after import, full screen) re-fits.
+  const fittedRef = useRef<string | null>(null)
   // The click listener is bound ONCE with the viewer; the ref keeps it pointed at the
   // latest callback so a re-render (e.g. fresh marker data) never leaves it stale.
   const onSelectRef = useRef(onSelectActivity)
   onSelectRef.current = onSelectActivity
 
-  // One viewer per mount; XML re-imports on change.
+  // "Path" on/off (#677): view-only, not persisted.
+  const [showPath, setShowPath] = useState(true)
+  const overlay = showPath ? execution : undefined
+
+  const { sets, texts } = useMemo(() => {
+    const base: MarkerSets = { ...markers, pickerSourceIds, pickerTargetIds }
+    const glyphTexts: GlyphTexts = {}
+    if (overlay === undefined) return { sets: base, texts: glyphTexts }
+    // Active and dead-letter markers win over completed / armed on the same node.
+    const live = new Set([...markers.activeActivityIds, ...markers.deadLetterActivityIds])
+    const repeated = [...overlay.takenFlows].filter(([, count]) => count > 1)
+    glyphTexts.repeatedFlowIds = new Map(repeated.map(([id, count]) => [id, `×${String(count)}`]))
+    glyphTexts.durationActivityIds = new Map(
+      [...overlay.durations].map(([id, ms]) => [
+        id,
+        formatDurationMs(ms) + (id === overlay.slowestId ? ' · slowest' : ''),
+      ]),
+    )
+    return {
+      sets: {
+        ...base,
+        completedActivityIds: overlay.completed.filter((id) => !live.has(id)),
+        armedActivityIds: overlay.armedNotTaken.filter((id) => !live.has(id)),
+        takenFlowIds: [...overlay.takenFlows.keys()],
+        repeatedFlowIds: repeated.map(([id]) => id),
+        durationActivityIds: [...overlay.durations.keys()],
+      },
+      texts: glyphTexts,
+    }
+  }, [markers, pickerSourceIds, pickerTargetIds, overlay])
+  const kinds = useMemo(() => presentKinds(sets), [sets])
+
+  // One viewer per mount.
   useEffect(() => {
     const host = hostRef.current
     if (host === null) return
@@ -86,12 +162,24 @@ export function DiagramCanvas({
       const id = event.element?.id
       if (id !== undefined) onSelectRef.current?.(id)
     })
+    const observer =
+      typeof ResizeObserver === 'undefined'
+        ? null
+        : new ResizeObserver(() => {
+            const canvas = viewer.get<Canvas>('canvas')
+            const untouched = fittedRef.current === viewboxKey(canvas)
+            canvas.resized()
+            if (untouched) fittedRef.current = fit(canvas)
+          })
+    observer?.observe(host)
     return () => {
+      observer?.disconnect()
       viewerRef.current = null
       viewer.destroy()
     }
   }, [])
 
+  // Import ONLY on an XML change; centred fit on every fresh import.
   useEffect(() => {
     const viewer = viewerRef.current
     if (viewer === null) return
@@ -100,8 +188,7 @@ export function DiagramCanvas({
       .importXML(xml)
       .then(() => {
         if (cancelled) return
-        const canvas = viewer.get<Canvas>('canvas')
-        canvas.zoom('fit-viewport')
+        fittedRef.current = fit(viewer.get<Canvas>('canvas'))
         // #168 (lower-severity finding, mitigated but not fixed by the diagram already
         // having a plain-text twin elsewhere on the page): bpmn-js injects its own root
         // <svg> with tabindex="0" for keyboard pan/zoom — a real, already-interactive tab
@@ -110,10 +197,8 @@ export function DiagramCanvas({
         // claim it's a static, non-interactive picture).
         const svg = hostRef.current?.querySelector('svg')
         svg?.setAttribute('aria-label', 'BPMN process diagram — pannable and zoomable canvas')
-        applyMarkers(viewer, markers)
+        clearMarkersRef.current = null
         prevSelectedRef.current = undefined
-        prevPickerSourceRef.current = []
-        prevPickerTargetRef.current = []
         setImportGeneration((generation) => generation + 1)
       })
       .catch(() => {
@@ -122,10 +207,18 @@ export function DiagramCanvas({
     return () => {
       cancelled = true
     }
-  }, [xml, markers])
+  }, [xml])
 
-  // Tab→diagram sync (SPEC §4): the selected activity gets its own marker and is
-  // scrolled into view. Runs after every import (markers are wiped by importXML).
+  // Repaint: remove the previous decoration, apply the current one — no re-import.
+  useEffect(() => {
+    const viewer = viewerRef.current
+    if (viewer === null || importGeneration === 0) return
+    clearMarkersRef.current?.()
+    clearMarkersRef.current = paintMarkers(viewer, kinds, sets, texts)
+  }, [kinds, sets, texts, importGeneration])
+
+  // Tab→diagram sync (SPEC §4): the selected activity gets its own marker and is scrolled
+  // into view only when it is not already fully visible.
   useEffect(() => {
     const viewer = viewerRef.current
     if (viewer === null || importGeneration === 0) return
@@ -142,155 +235,132 @@ export function DiagramCanvas({
     if (selectedActivityId === undefined) return
     try {
       canvas.addMarker(selectedActivityId, 'marker-selected')
-      canvas.scrollToElement(selectedActivityId)
+      if (!fullyVisible(viewer, selectedActivityId)) canvas.scrollToElement(selectedActivityId)
     } catch {
       // An id the diagram does not know must not kill the render.
     }
   }, [selectedActivityId, importGeneration])
 
-  // Issue #102 diagram-click picker sync: two independent multi-select sets, each
-  // diffed against its own previous render so an unrelated re-render never re-adds
-  // markers that are already applied (addMarker on an already-marked element is
-  // harmless but pointless churn).
+  // Full screen changes the host size: tell the canvas, then re-fit. Only the canvas that
+  // enters or leaves full screen reacts — a second canvas on the page keeps its pan/zoom.
   useEffect(() => {
-    const viewer = viewerRef.current
-    if (viewer === null || importGeneration === 0) return
-    const canvas = viewer.get<Canvas>('canvas')
-    const overlays = viewer.get<Overlays>('overlays')
-    syncPickerMarkers(canvas, overlays, {
-      previous: prevPickerSourceRef.current,
-      next: pickerSourceIds ?? [],
-      markerClass: 'marker-picker-source',
-      overlayKey: 'picker-source',
-      glyph: 'S',
-      label: 'picked as the source (token canceled here)',
-    })
-    prevPickerSourceRef.current = pickerSourceIds ?? []
-    syncPickerMarkers(canvas, overlays, {
-      previous: prevPickerTargetRef.current,
-      next: pickerTargetIds ?? [],
-      markerClass: 'marker-picker-target',
-      overlayKey: 'picker-target',
-      glyph: 'T',
-      label: 'picked as the target (a fresh token starts here)',
-    })
-    prevPickerTargetRef.current = pickerTargetIds ?? []
-  }, [pickerSourceIds, pickerTargetIds, importGeneration])
+    let mine = false
+    const onChange = () => {
+      const now = document.fullscreenElement === frameRef.current
+      if (!now && !mine) return
+      mine = now
+      setFullscreen(now)
+      const canvas = viewerRef.current?.get<Canvas>('canvas')
+      if (canvas === undefined) return
+      canvas.resized()
+      fittedRef.current = fit(canvas)
+    }
+    document.addEventListener('fullscreenchange', onChange)
+    return () => {
+      document.removeEventListener('fullscreenchange', onChange)
+    }
+  }, [])
 
-  return <div className="diagram-canvas" ref={hostRef} />
+  const zoomBy = (factor: number) => {
+    const canvas = viewerRef.current?.get<Canvas>('canvas')
+    canvas?.zoom(canvas.zoom() * factor)
+  }
+
+  return (
+    <div className="diagram-frame" ref={frameRef}>
+      <DiagramToolbar
+        onFit={() => {
+          const canvas = viewerRef.current?.get<Canvas>('canvas')
+          if (canvas !== undefined) fittedRef.current = fit(canvas)
+        }}
+        onZoomIn={() => {
+          zoomBy(ZOOM_STEP)
+        }}
+        onZoomOut={() => {
+          zoomBy(1 / ZOOM_STEP)
+        }}
+        onFullscreen={
+          document.fullscreenEnabled
+            ? () => {
+                if (document.fullscreenElement === frameRef.current) void document.exitFullscreen()
+                else void frameRef.current?.requestFullscreen()
+              }
+            : undefined
+        }
+        fullscreen={fullscreen}
+        path={execution === undefined ? undefined : { on: showPath, onChange: setShowPath }}
+      />
+      {overlay?.partial === true && (
+        <p className="strip-note diagram-partial" role="status">
+          Route incomplete — the engine page cap truncated the timeline, so the path shown may stop
+          early.
+        </p>
+      )}
+      <div className="diagram-canvas" ref={hostRef} />
+      <DiagramLegend kinds={kinds} />
+    </div>
+  )
+}
+
+function fullyVisible(viewer: NavigatedViewer, id: string): boolean {
+  const element = viewer.get<ElementRegistry>('elementRegistry').get(id) as
+    { x?: number; y?: number; width?: number; height?: number } | undefined
+  if (element?.x === undefined || element.y === undefined) return false
+  const box = viewer.get<Canvas>('canvas').viewbox()
+  // A fit rounds its scale, so an edge row can poke out by a fraction of a pixel — 2 screen
+  // px of slack keeps a click on such a row from jolting the model.
+  const slack = 2 / box.scale
+  return (
+    element.x >= box.x - slack &&
+    element.y >= box.y - slack &&
+    element.x + (element.width ?? 0) <= box.x + box.width + slack &&
+    element.y + (element.height ?? 0) <= box.y + box.height + slack
+  )
 }
 
 /**
- * Issue #102 diagram-click picker: diffs `next` against `previous` and adds/removes the
- * marker class + a small lettered overlay badge only for ids that actually changed
- * membership — same containment discipline as applyMarkers (an id the diagram doesn't
- * know, e.g. a stale selection surviving a re-import, must not kill the render).
+ * Applies each present marker kind (class + optional role="img" glyph badge) and returns the
+ * undo. Best-effort decoration: an id the diagram does not know (collapsed subprocess, stale
+ * selection) must not kill the render.
  */
-function syncPickerMarkers(
-  canvas: Canvas,
-  overlays: Overlays,
-  opts: {
-    previous: string[]
-    next: string[]
-    markerClass: string
-    overlayKey: string
-    glyph: string
-    label: string
-  },
-) {
-  const { previous, next, markerClass, overlayKey, glyph, label } = opts
-  const nextSet = new Set(next)
-  for (const id of previous) {
-    if (nextSet.has(id)) continue
-    try {
-      canvas.removeMarker(id, markerClass)
-      overlays.remove({ element: id, type: `${overlayKey}-${id}` })
-    } catch {
-      // best-effort decoration
-    }
-  }
-  const previousSet = new Set(previous)
-  for (const id of next) {
-    if (previousSet.has(id)) continue
-    try {
-      canvas.addMarker(id, markerClass)
-      overlays.add(id, `${overlayKey}-${id}`, {
-        position: { top: -10, left: -10 },
-        html: `<span class="picker-glyph ${markerClass}-glyph" role="img" aria-label="${label}" title="${label}">${glyph}</span>`,
-      })
-    } catch {
-      // best-effort decoration
-    }
-  }
-}
-
-function applyMarkers(viewer: NavigatedViewer, markers: DiagramMarkers) {
+function paintMarkers(
+  viewer: NavigatedViewer,
+  kinds: MarkerKind[],
+  sets: MarkerSets,
+  texts: GlyphTexts,
+): () => void {
   const canvas = viewer.get<Canvas>('canvas')
   const overlays = viewer.get<Overlays>('overlays')
-  for (const id of markers.activeActivityIds) {
-    try {
-      canvas.addMarker(id, 'marker-active')
-    } catch {
-      // An id the diagram does not know (collapsed subprocess) must not kill the render.
+  const added: [string, string][] = []
+  const overlayIds: string[] = []
+  for (const kind of kinds) {
+    for (const id of sets[kind.key] ?? []) {
+      try {
+        canvas.addMarker(id, kind.markerClass)
+        added.push([id, kind.markerClass])
+        if (kind.glyph !== undefined) {
+          const text = texts[kind.key]?.get(id)
+          const label = text === undefined ? kind.label : `${kind.label}: ${text}`
+          overlayIds.push(
+            overlays.add(id, 'diagram-marker', {
+              position: kind.glyph.position,
+              html: `<span class="${kind.glyph.className}" role="img" aria-label="${label}" title="${label}">${text ?? kind.glyph.text}</span>`,
+            }),
+          )
+        }
+      } catch {
+        // best-effort decoration
+      }
     }
   }
-  for (const id of markers.deadLetterActivityIds) {
-    try {
-      canvas.addMarker(id, 'marker-deadletter')
-      // #118 item 4: title is mouse-hover-only — role="img" + aria-label is the SVG-overlay
-      // text twin (these are injected as raw HTML via bpmn-js's Overlays API, not JSX, so
-      // they can't use the app's usual .visually-hidden pattern).
-      overlays.add(id, 'deadletter-badge', {
-        position: { top: -10, right: 10 },
-        html: '<span class="dlq-overlay" role="img" aria-label="dead-letter job on this activity" title="dead-letter job on this activity">⚠</span>',
-      })
-    } catch {
-      // Same containment: markers are best-effort decoration over the diagram.
+  return () => {
+    for (const [id, markerClass] of added) {
+      try {
+        canvas.removeMarker(id, markerClass)
+      } catch {
+        // gone with a re-import
+      }
     }
-  }
-  // Divergence overlay (SPEC §5.2): differentiated by stroke style + glyph, not hue.
-  for (const id of markers.subjectOnlyActivityIds ?? []) {
-    try {
-      canvas.addMarker(id, 'marker-diverge-subject')
-      overlays.add(id, `diverge-subject-${id}`, {
-        position: { bottom: -6, left: -6 },
-        html: '<span class="diverge-glyph diverge-glyph-subject" role="img" aria-label="only the failed run took this step" title="only the failed run took this step">▲</span>',
-      })
-    } catch {
-      // best-effort decoration
-    }
-  }
-  for (const id of markers.addedActivityIds ?? []) {
-    try {
-      canvas.addMarker(id, 'marker-diff-added')
-      overlays.add(id, `diff-added-${id}`, {
-        position: { top: -8, left: -8 },
-        html: '<span class="diff-glyph diff-glyph-added" role="img" aria-label="added in this version" title="added in this version">+</span>',
-      })
-    } catch {
-      // best-effort decoration
-    }
-  }
-  for (const id of markers.changedActivityIds ?? []) {
-    try {
-      canvas.addMarker(id, 'marker-diff-changed')
-      overlays.add(id, `diff-changed-${id}`, {
-        position: { top: -8, right: -8 },
-        html: '<span class="diff-glyph diff-glyph-changed" role="img" aria-label="changed between versions" title="changed between versions">~</span>',
-      })
-    } catch {
-      // best-effort decoration
-    }
-  }
-  for (const id of markers.siblingOnlyActivityIds ?? []) {
-    try {
-      canvas.addMarker(id, 'marker-diverge-sibling')
-      overlays.add(id, `diverge-sibling-${id}`, {
-        position: { bottom: -6, left: -6 },
-        html: '<span class="diverge-glyph diverge-glyph-sibling" role="img" aria-label="only the successful sibling took this step" title="only the successful sibling took this step">△</span>',
-      })
-    } catch {
-      // best-effort decoration
-    }
+    for (const overlayId of overlayIds) overlays.remove(overlayId)
   }
 }

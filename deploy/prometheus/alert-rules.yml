@@ -78,13 +78,30 @@ groups:
           summary: "Every engine circuit breaker is open"
           runbook: "RUNBOOK.md §2c — BFF egress, not the engines"
 
+      # #624: since the disconnect split this counts only BFF-side send failures (a converter
+      # that cannot write a payload, a send racing the emitter's own completion). A client OR a
+      # reverse proxy closing the stream is socket I/O and lands in sse_emitter_disconnects_total,
+      # so a proxy fault can no longer fire this rule — SseDisconnectChurn below covers that.
+      # Threshold kept: the benign completion race is at most ~1 per stream per 30 min.
       - alert: SseEmitterErrorsSpiking
         expr: increase(sse_emitter_errors_total[5m]) > 5
         labels:
           severity: warning
         annotations:
-          summary: "SSE emitter errors spiking — clients are degrading to polling"
-          runbook: "RUNBOOK.md §7 — usually a reverse-proxy buffering misconfig after a deploy; not user-facing-critical"
+          summary: "SSE sends failing inside the BFF — affected clients are degrading to polling"
+          runbook: "RUNBOOK.md §7 — a BFF-side send failure, not a proxy or a closed tab; not user-facing-critical"
+
+      # #624: streams closing far faster than tabs do. Each live stream dropped more than three
+      # times in 15 min (floor of 5 streams, so a handful of tab closes never fires) is a reverse
+      # proxy or load balancer cutting SSE streams, and browsers reconnecting in a loop.
+      - alert: SseDisconnectChurn
+        expr: increase(sse_emitter_disconnects_total[15m]) > 3 * clamp_min(max_over_time(sse_emitters_active[15m]), 5)
+        for: 10m
+        labels:
+          severity: warning
+        annotations:
+          summary: "SSE streams are being cut and reconnecting in a loop"
+          runbook: "RUNBOOK.md §7 — usually a reverse-proxy timeout or buffering misconfig after a deploy; not user-facing-critical"
 
       # One engine, not the whole fleet (#472). AllCircuitBreakersOpen stays the egress alarm.
       - alert: EngineUnreachable

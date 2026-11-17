@@ -562,6 +562,30 @@ locked frontend/backend parity on `selfHeal.ts` for no proportionate gain (named
 no frontend change — `factors.selfHeal` already carries the amended value and `factors.selfHealLane`
 the lane it came from.
 
+### 4.1c The demotion covers only the retrying share (#661, ★ BUILT)
+
+**Reverses #388's option-2 rejection, on new evidence.** #388 declined to key `S` on the
+retrying share because its failure was read as interpretive, not informational, and fixed the
+copy instead (the `— not the N dead-lettered` suffix, §4.3). The #478 re-certification
+(`docs/usability/results/2026-11-14-aug-surfaces/`, M14/M15) then showed the copy right and the
+score wrong: a `SELF_HEAL_LIKELY` class at 22 failing / DLQ 22 / retrying 0, flooding, ranked
+last of four (`S = 0.253`) while its own card said the rate did not cover those 22 members. A
+dead-lettered member has no retries left, so no self-heal rate speaks for it.
+
+```
+S_eff(c) = 1 − share(c) · (1 − S(c))      S(c) as in §4.1b
+share(c) = retrying / (retrying + deadLettered)     trusted split only (§4.3 / #388 trust rule)
+           untrusted, absent or 0 + 0 ⇒ share = 1   (the whole-class demotion, as before #661)
+```
+
+`share = 0` ⇒ `S_eff = 1` (not demoted; the #661 class ranks by size and spike like any other);
+`share = 1` ⇒ `S_eff = S` exactly; a mixed class lands between (10 retrying / 10 dead-lettered,
+`S = 0.25` ⇒ `0.625`). `factors.selfHeal` carries `S_eff`. When the demotion is partial the
+rationale says which share it covers: `…; ranked down for the N retrying only`. The split exists
+only on the Stage 0 `decorate()` path; `forClass()` (Incident Ledger) has none, so it keeps the
+whole-class demotion — the same known limitation the #388 suffix carries. Still behind
+`inspector.triage.attention.enabled` (default off; #480 / #638 decide the default).
+
 ### 4.2 Interface consumed from track R2 (#347 design / #351 API) — dependency, not duplication
 The score consumes, per `(signatureHash, algoVersion)`:
 
@@ -648,6 +672,23 @@ makes, and one of them made a claim the ledger never measured.**
   ("typically takes 2 min to resolve", "typically takes 4 h to resolve"). They are the record of
   those rounds and are deliberately not rewritten; the clause they show is superseded by this
   note, and their own subject (the self-heal / dead-letter clauses) is untouched by #399.
+
+**Correction (post-ship, #660 — #478 run, M14).** A ledger class last seen BEFORE the model's
+`arrivals-window-days` window has no in-window row, so it reads `ClassHistory.none()` (age 0) and
+its `/incidents` sentence claimed *"13 failing · last seen just now"* for a RESOLVED class last
+seen 96 d ago, next to the card's own correct "last seen … 96d ago". `forClass()` now takes the
+ledger row's `lastSeen`; when that is older than the window the whole sentence is *"not seen in the
+last 28 d — nothing recent to rank on."* No count, no recency: the model has no evidence for
+either. Score and factors are unchanged (text only); a row inside the window that a stale cached
+model has not picked up yet keeps its normal sentence. Stage 0's `decorate()` path is unaffected —
+every class there is live.
+
+**Correction (post-ship, #663 — #478 run, M14).** The glossary sentence above was still reachable
+only as the pill's hover `title`, and "no … history" read as a warning. The landing now states the
+glossary sentence ONCE as visible text above the card list, followed by *"“No … history” on a card
+is the normal state for most classes and does not raise or lower its rank."* — true by
+construction (M is not a term since #399; an absent lane reads S = 1). Still one line per page,
+not per card.
 
 ## 5. MEASURED BASELINE — pilot-ledger extraction & ordering simulation (auditable)
 

@@ -7,9 +7,14 @@ import io.inspector.audit.AuditOutcome;
 import io.inspector.audit.AuditService;
 import io.inspector.catalog.DeploymentCatalogResponse.CatalogDeployment;
 import io.inspector.catalog.DeploymentDetailResponse.ContainedDefinition;
-import io.inspector.client.FlowablePage;
+import io.inspector.client.DeploymentPage;
+import io.inspector.client.DeploymentRecord;
+import io.inspector.client.DeploymentResourceRecord;
 import io.inspector.client.GuardedCaller.CallPriority;
 import io.inspector.client.ProcessApiClient;
+import io.inspector.client.ProcessDefinitionPage;
+import io.inspector.client.ProcessDefinitionRecord;
+import io.inspector.client.ProcessInstancePage;
 import io.inspector.config.InspectorProperties;
 import io.inspector.config.InspectorProperties.EngineConfig;
 import io.inspector.config.InspectorProperties.EngineEnvironment;
@@ -113,33 +118,32 @@ public class DeploymentCatalogService {
 
     public DeploymentDetailResponse detail(String engineId, String deploymentId) {
         EngineConfig engine = registry.require(engineId);
-        Map<String, Object> deployment = processes.getDeployment(engine, CallPriority.INTERACTIVE, deploymentId);
+        DeploymentRecord deployment = processes.getDeployment(engine, CallPriority.INTERACTIVE, deploymentId);
         if (deployment == null) {
             throw notFound(engineId, deploymentId);
         }
-        FlowablePage definitions = processes.listProcessDefinitions(
+        ProcessDefinitionPage definitions = processes.listProcessDefinitions(
                 engine, CallPriority.INTERACTIVE, null, null, null, deploymentId, 0, LIST_CAP);
         boolean bounded = definitions.total() > definitions.dataOrEmpty().size();
         List<ContainedDefinition> contained = new ArrayList<>();
         long running = 0;
-        for (Map<String, Object> row : definitions.dataOrEmpty()) {
+        for (ProcessDefinitionRecord row : definitions.dataOrEmpty()) {
             Long count = null;
             try {
-                count = runningOn(engine, str(row, "id"));
+                count = runningOn(engine, row.id());
                 running += count;
             } catch (RuntimeException e) {
                 bounded = true;
             }
-            contained.add(new ContainedDefinition(
-                    str(row, "id"), str(row, "key"), str(row, "name"), number(row.get("version")), count));
+            contained.add(new ContainedDefinition(row.id(), row.key(), row.name(), number(row.version()), count));
         }
         List<String> resources = new ArrayList<>();
         try {
-            FlowablePage page = processes.listDeploymentResources(engine, CallPriority.INTERACTIVE, deploymentId);
-            for (Map<String, Object> row : page.dataOrEmpty()) {
-                String name = str(row, "id");
+            for (DeploymentResourceRecord row :
+                    processes.listDeploymentResources(engine, CallPriority.INTERACTIVE, deploymentId)) {
+                String name = row.id();
                 if (name == null) {
-                    name = str(row, "name");
+                    name = row.name();
                 }
                 if (name != null) {
                     resources.add(name);
@@ -151,10 +155,10 @@ public class DeploymentCatalogService {
         return new DeploymentDetailResponse(
                 engineId,
                 deploymentId,
-                str(deployment, "name"),
-                str(deployment, "category"),
-                str(deployment, "tenantId") != null ? str(deployment, "tenantId") : engine.tenantId(),
-                str(deployment, "deploymentTime"),
+                deployment.name(),
+                deployment.category(),
+                deployment.tenantId() != null ? deployment.tenantId() : engine.tenantId(),
+                deployment.deploymentTime(),
                 running,
                 bounded,
                 contained,
@@ -236,15 +240,15 @@ public class DeploymentCatalogService {
     }
 
     private Live liveCount(EngineConfig engine, String deploymentId) {
-        FlowablePage definitions = processes.listProcessDefinitions(
+        ProcessDefinitionPage definitions = processes.listProcessDefinitions(
                 engine, CallPriority.INTERACTIVE, null, null, null, deploymentId, 0, LIST_CAP);
         if (definitions.total() > definitions.dataOrEmpty().size()) {
             return new Live(0, true);
         }
         long running = 0;
-        for (Map<String, Object> row : definitions.dataOrEmpty()) {
+        for (ProcessDefinitionRecord row : definitions.dataOrEmpty()) {
             try {
-                running += runningOn(engine, str(row, "id"));
+                running += runningOn(engine, row.id());
             } catch (RuntimeException e) {
                 return new Live(running, true);
             }
@@ -256,21 +260,21 @@ public class DeploymentCatalogService {
         Map<String, Object> body = new LinkedHashMap<>();
         body.put("processDefinitionId", definitionId);
         body.put("size", 1);
-        FlowablePage page = processes.queryRuntimeProcessInstances(engine, CallPriority.INTERACTIVE, body);
+        ProcessInstancePage page = processes.queryRuntimeProcessInstances(engine, CallPriority.INTERACTIVE, body);
         return page != null ? page.total() : 0;
     }
 
     private List<CatalogDeployment> oneEngine(EngineConfig engine, String nameLike) {
-        FlowablePage page = processes.listDeployments(engine, CallPriority.INTERACTIVE, nameLike, 0, LIST_CAP);
+        DeploymentPage page = processes.listDeployments(engine, CallPriority.INTERACTIVE, nameLike, 0, LIST_CAP);
         List<CatalogDeployment> rows = new ArrayList<>();
-        for (Map<String, Object> row : page.dataOrEmpty()) {
+        for (DeploymentRecord row : page.dataOrEmpty()) {
             rows.add(new CatalogDeployment(
                     engine.id(),
-                    str(row, "id"),
-                    str(row, "name"),
-                    str(row, "category"),
-                    str(row, "tenantId") != null ? str(row, "tenantId") : engine.tenantId(),
-                    str(row, "deploymentTime")));
+                    row.id(),
+                    row.name(),
+                    row.category(),
+                    row.tenantId() != null ? row.tenantId() : engine.tenantId(),
+                    row.deploymentTime()));
         }
         return rows;
     }
@@ -360,11 +364,6 @@ public class DeploymentCatalogService {
         }
         String trimmed = name.trim();
         return trimmed.indexOf('%') >= 0 ? trimmed : "%" + trimmed + "%";
-    }
-
-    private static String str(Map<String, Object> map, String key) {
-        Object value = map.get(key);
-        return value != null ? value.toString() : null;
     }
 
     private static int number(Object value) {

@@ -1,7 +1,9 @@
 package io.inspector.cmmn;
 
+import io.inspector.client.CaseDefinitionRecord;
 import io.inspector.client.CmmnApiClient;
-import io.inspector.client.FlowablePage;
+import io.inspector.client.CmmnJobPage;
+import io.inspector.client.CmmnJobRecord;
 import io.inspector.client.GuardedCaller.CallPriority;
 import io.inspector.config.InspectorProperties.EngineConfig;
 import io.inspector.dto.CmmnDeadLetterJob;
@@ -110,11 +112,11 @@ public class CmmnScopeService {
 
         int cap = engine.dlqScanCapOrDefault();
         int pageSize = engine.maxPageSizeOrDefault();
-        List<Map<String, Object>> cmmnRows = new ArrayList<>();
+        List<CmmnJobRecord> cmmnRows = new ArrayList<>();
         int scanned = 0;
         long total = Long.MAX_VALUE;
         for (int start = 0; start < Math.min(total, cap); start += pageSize) {
-            FlowablePage page = flowable.listCmmnDeadLetterJobs(
+            CmmnJobPage page = flowable.listCmmnDeadLetterJobs(
                     engine, CallPriority.INTERACTIVE, filters, start, Math.min(pageSize, cap - start));
             if (page == null) {
                 break;
@@ -123,7 +125,7 @@ public class CmmnScopeService {
             if (page.dataOrEmpty().isEmpty()) {
                 break;
             }
-            for (Map<String, Object> row : page.dataOrEmpty()) {
+            for (CmmnJobRecord row : page.dataOrEmpty()) {
                 scanned++;
                 if (isCmmnScoped(row)) {
                     cmmnRows.add(row);
@@ -136,7 +138,7 @@ public class CmmnScopeService {
         // (undeployed definition) never fails the slice.
         Map<String, CaseDefinitionRef> definitions = resolveDefinitions(engine, cmmnRows);
         List<CmmnDeadLetterJob> jobs = cmmnRows.stream()
-                .map(row -> map(row, definitions.getOrDefault(str(row, "caseDefinitionId"), CaseDefinitionRef.UNKNOWN)))
+                .map(row -> map(row, definitions.getOrDefault(row.caseDefinitionId(), CaseDefinitionRef.UNKNOWN)))
                 .toList();
 
         // The shared DLQ table (BPMN + CMMN rows) exceeded the cap: CMMN rows may lie past it,
@@ -156,20 +158,17 @@ public class CmmnScopeService {
      * 404 → null) degrades that one entry to {@link CaseDefinitionRef#UNKNOWN}; the scan never
      * fails on enrichment.
      */
-    private Map<String, CaseDefinitionRef> resolveDefinitions(EngineConfig engine, List<Map<String, Object>> rows) {
+    private Map<String, CaseDefinitionRef> resolveDefinitions(EngineConfig engine, List<CmmnJobRecord> rows) {
         Map<String, CaseDefinitionRef> resolved = new LinkedHashMap<>();
-        for (Map<String, Object> row : rows) {
-            String defId = str(row, "caseDefinitionId");
+        for (CmmnJobRecord row : rows) {
+            String defId = row.caseDefinitionId();
             if (defId == null || resolved.containsKey(defId)) {
                 continue;
             }
             try {
-                Map<String, Object> def = flowable.getCmmnCaseDefinition(engine, CallPriority.INTERACTIVE, defId);
+                CaseDefinitionRecord def = flowable.getCmmnCaseDefinition(engine, CallPriority.INTERACTIVE, defId);
                 resolved.put(
-                        defId,
-                        def == null
-                                ? CaseDefinitionRef.UNKNOWN
-                                : new CaseDefinitionRef(str(def, "key"), str(def, "name")));
+                        defId, def == null ? CaseDefinitionRef.UNKNOWN : new CaseDefinitionRef(def.key(), def.name()));
             } catch (Exception ex) {
                 resolved.put(defId, CaseDefinitionRef.UNKNOWN);
             }
@@ -183,31 +182,25 @@ public class CmmnScopeService {
      * by an engine, the intrinsic discriminator still keeps BPMN projections (null case
      * attribution; spike Q1) out of the drawer rather than leaking them.
      */
-    static boolean isCmmnScoped(Map<String, Object> row) {
-        Object caseInstanceId = row.get("caseInstanceId");
-        return caseInstanceId != null && !caseInstanceId.toString().isBlank();
+    static boolean isCmmnScoped(CmmnJobRecord row) {
+        String caseInstanceId = row.caseInstanceId();
+        return caseInstanceId != null && !caseInstanceId.isBlank();
     }
 
-    static CmmnDeadLetterJob map(Map<String, Object> row, CaseDefinitionRef definition) {
-        Object retries = row.get("retries");
+    static CmmnDeadLetterJob map(CmmnJobRecord row, CaseDefinitionRef definition) {
         return new CmmnDeadLetterJob(
-                str(row, "id"),
-                str(row, "caseInstanceId"),
-                str(row, "caseDefinitionId"),
+                row.id(),
+                row.caseInstanceId(),
+                row.caseDefinitionId(),
                 definition.key(),
                 definition.name(),
-                str(row, "planItemInstanceId"),
-                str(row, "elementId"),
-                str(row, "elementName"),
-                retries instanceof Number n ? n.intValue() : null,
-                str(row, "exceptionMessage"),
-                str(row, "createTime"),
-                str(row, "dueDate"),
-                str(row, "tenantId"));
-    }
-
-    private static String str(Map<String, Object> row, String key) {
-        Object v = row.get(key);
-        return v != null ? v.toString() : null;
+                row.planItemInstanceId(),
+                row.elementId(),
+                row.elementName(),
+                row.retries(),
+                row.exceptionMessage(),
+                row.createTime(),
+                row.dueDate(),
+                row.tenantId());
     }
 }

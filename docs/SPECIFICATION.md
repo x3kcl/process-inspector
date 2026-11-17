@@ -338,7 +338,11 @@ Answers "what is broken, how much, where" in zero keystrokes:
   "spiking: 40 in the last 10 min". Below the onset `F` is byte-identical to the formula above,
   so the no-history guarantee is untouched; a burst window that was truncated or blind reads
   `factors.burstUnknown` and forces the gate OFF ("recent arrival rate unknown"), which can
-  suppress a promotion but never cause a demotion. The flag ships
+  suppress a promotion but never cause a demotion. **The self-heal demotion `S` covers only the
+  retrying share of a class (#661, ALARM-COST-MODEL.md §4.1c):** `S_eff = 1 − share·(1 − S)`,
+  `share = retrying / (retrying + deadLettered)` on trusted counts (else 1) — dead-lettered
+  members count in full, reversing #388's option-2 rejection; a partial demotion's rationale
+  ends `ranked down for the N retrying only`. The flag ships
   false because the design's numeric data-maturity gate is measured NOT MET (0 of 5 axes);
   flipping it requires re-measuring that gate. **The frontend (#354) renders whatever order it
   is served, never re-sorting Stage-0 cards itself** — the BFF already reorders `errorGroups`
@@ -350,7 +354,10 @@ Answers "what is broken, how much, where" in zero keystrokes:
   every visible count on the card face can point at a different class than the one the
   ranking actually favors; only a hover reconciled them, which also fails touch/keyboard-only/
   screen-reader readers). The fixed, generic glossary sentence explaining what the ordering
-  mechanism means (not per-card evidence) stays hover-only in the pill's `title`; the badge
+  mechanism means (not per-card evidence) stays in the pill's `title` AND, since #663, is
+  stated ONCE as visible text above the landing's card list together with the gloss that
+  "no … history" is the normal state and does not raise or lower a card's rank
+  (`AttentionOrderingNote`, shown only when some card carries a score); the badge
   renders nothing when `attention` is absent (the shipped, flag-off, expected-today case). No
   ordering toggle exists or was built — the design specifies none (§3.1/§11 describe a single
   server-computed order, not an operator-facing choice). See §4e below for how this reconciles
@@ -446,6 +453,26 @@ gap here: [link]" is the ticket-handover primitive.
   **Collapsible** via a header toggle (state persisted): a small process leaves the fixed-
   height canvas mostly empty, so folding it hands the reclaimed height to the tabs below; a
   tab's "show on diagram" auto-unfolds it.
+- **Layout guarantee**: the detail page scrolls as one page; the diagram canvas height is bounded
+  (`clamp(220px, 38vh, 480px)`) and the tab panel never shrinks below 240 px or becomes a
+  collapsing inner scroller, at any viewport size.
+- **Diagram canvas ergonomics** (every bpmn-js mount — instance, definition, change-state
+  picker, mapping canvases; #673): the first fit is **centred**; a toolbar of text buttons
+  (**Fit · + Zoom in · − Zoom out · Full screen**, the last only where the Fullscreen API
+  exists) names the Ctrl+wheel zoom / drag pan; a **legend** lists only the marker kinds on
+  the canvas (same outline style + glyph, none when unmarked); selecting an activity scrolls
+  only when it is not fully in view; a marker change repaints the live canvas — no
+  re-import, pan/zoom kept.
+- **Execution overlay** (instance diagram and change-state picker; #677): fed by the same
+  timeline read (loaded with the page), the canvas shows the **route taken** (each traversed
+  sequence flow, `×N` when taken more than once), **completed** nodes (ended and continued,
+  or an end event), **armed-not-taken** nodes (ended without continuing — the losing
+  catch events of an event-based gateway), and a **duration badge** per node (≥ 1 ms; the
+  slowest completed node of two or more says `slowest` — never an armed one). Active and dead-letter markers win on the same
+  node. A truncated or capped timeline shows a "Route incomplete" badge on the diagram —
+  never a route that silently stops. A failed or pending timeline leaves the diagram
+  without the overlay. A **Path on / off** toolbar control (not persisted) shows the plain
+  model.
 - **Tabs**: Variables · Errors & Jobs · Tasks · Participants · Executions · Decisions · Hierarchy · Timeline · Audit & Notes —
   each lazy-loaded (IBM's slow-detail lesson).
   - **Variables** — a **typed variable ledger, never a raw JSON dump** (the Flowable
@@ -500,6 +527,10 @@ gap here: [link]" is the ticket-handover primitive.
     that node is **synthesized from the live job lanes** rather than read from history —
     otherwise the failure would be invisible on the timeline. (Per-retry gaps are not
     reconstructable from Flowable history — not promised.)
+    Durations print at millisecond precision (`143 ms`, `1.4 s`, `2 m 5 s`), bar length is the
+    row's share of the instance's elapsed span (parallel rows may exceed 100 % together), and
+    `sequenceFlow` rows are folded by default behind a Steps / Steps + flows segmented control
+    that states the hidden count (choice not persisted).
   - **Audit & Notes** — this instance's action history (who/what/when/outcome, old values
     for variable edits, reasons) + free-text notes ("do NOT retry — double-books; tax-service
     fix ETA 9am"). The handover surface.
@@ -624,6 +655,16 @@ the form couldn't prevent.
   hidden edit affordances; "best effort" serializable editing (no hex view, no base64
   paste); timezone-ambiguous date editing; editing a truncated projection; eager full-blob
   fetch or un-virtualized rendering; bundling the source editor eagerly.
+
+**Same stance in the migration mapping editor (#498, §5 "Migrate instance").** The form is
+the table (source → target selects, keyboard-operable) and the **Diagrams** mode: source
+definition left, target right, two read-only bpmn-js viewers; a click selects the pair's
+source/target — the same selection the table's pair selects hold — and **Add to map** feeds
+the same pair list. Fan-out and fan-in are accepted; a pair that would make a many-to-many
+component is refused on the spot with the reason. Pre-check findings sit on the source canvas
+as glyph + stroke + label (✖ blocker, ! warning; ↦ mapped), never hue alone. The source
+power tool is expert JSON with reset-to-generated. The client only *proposes* the mapping —
+the BFF re-validates it and rebuilds the wire document shown in "exact engine request".
 
 ### The omnibox
 A global input **pinned in the header on every stage** that accepts a paste of anything:
@@ -789,7 +830,13 @@ so history survives DLQ drains:
   id, actor, or reason), never an exact per-instance join. Fail-closed under R-SAFE-17: the
   block is OMITTED entirely, never narrowed, whenever the incident's own scope projection is
   partial (mirrors this same section's `relatedBulkJobs` issue #329 narrowing, on the same
-  endpoint).
+  endpoint). **Rendered** (#662) on each episode row as one line — count (`≥` when
+  truncated), kinds and outcomes, largest first, e.g. "6 actions during this episode:
+  retry-job ×6 · ok 6" — with the over-inclusion caveat inline and an "open in Ops log" link
+  to `/audit?since=<startedAt>&until=<endedAt>&engineId=<engine>` — `until` only for a
+  closed episode, `engineId` only when the class sits on exactly one engine (the log filters
+  on one engine). The Ops log seeds its Since / Until / Engine filters from those params, and
+  `GET /api/audit` (+ `/export`) bounds `until` inside the query, never after the capped page.
 - **Timeline**: a per-incident occurrence time-series (total / dead-letter / retrying per
   sampler bucket) powers the detail view's arrival-rate timeline (detail-only — list cards
   carry no series, deliberately avoiding a per-card N+1); truncated samples
@@ -933,6 +980,11 @@ remains v2.
 | **Delete dead-letter job** | ⚠ Orphans the execution permanently (only rescue afterwards: change-state). ADMIN-only, explicit warning | 3 |
 | **Migrate a cohort** *(#482, #496)* | The bulk verb `migrate-instance` (§7) over one or more completed cohort analyses, on any engines: the same per-instance migrate for each instance of the analysis's executable set. Blocker-carrying instances are never sent; each item asserts the digest its analysis recorded. By-definition `/migrate` and `/batch-migrate` are not used — they ignore an instance list (measured 2026-10-22). Prod types the **count**. | 3 |
 | **Analyze a cohort** *(#495)* | Read-only estimate over a filter (business key, start range, or one variable equals): one existing preview per instance, aggregated by activity id × finding code. Blockers (`BLOCKER_ADVICE`) are listed with their reason and excluded from the executable id set; each instance's `activityStateDigest` is stored for the migrate job. Stored in `migration_analysis`; a re-GET is the stored row. Banner: "Inspector estimate — the engine is the only ground truth at execute". Wider than 500 is a labelled lower bound, which the migrate job refuses. Does not migrate. | 3 |
+| **Migrate a hierarchy** *(#497)* | A parent and its running call-activity descendants in one plan, **children first, then parent** — the bulk verb `migrate-instance` (§7) with an order. The plan is the running tree under one instance or a cohort, read under the Hierarchy caps (depth 10, 50 children per node, 500 nodes) and stored; a tree wider or deeper than the caps is reported with exact totals and refused, not partly migrated. Per source definition the operator configures a target and mapping (one cohort analysis over that definition's instances) or skips it. A child that failed, is unknown, was not run, is protected or was blocked by the analysis leaves its parent `not_run` with the named cause — unless a read shows that a not-run or skipped child is no longer running or already on its target (nothing is left to migrate, whether that happened before or after its analysis); never the reverse; siblings continue. Right before a parent is sent its running children are read again: one that is not in the plan (started after the plan was stored) leaves the parent `not_run` naming it, until a new plan holds it. A stored plan older than `inspector.hierarchy-plan-max-age` (default 24 h) is refused at submit and purged by the retention job. A definition that is also its own ancestor is reported. Prod types the **executable count**. One audit correlation id for the plan. The plan builder opens from the Hierarchy tab of the parent (**Migrate this hierarchy…**, ADMIN): the tree, and per definition its status (Pending · Analyzing… · Configured · Analysis failed · Skipped), a target version, an optional mapping, Configure or Skip; submit sends the stored plan id. | 3 |
+| **Migrate instance** *(v2)* | Move instance to another deployed version of the same key. **Inspector static pre-check (NOT an engine validation** — Flowable's REST API exposes no migration validator, P0 spike 2026-07-09): a BFF model diff flags activities that can't auto-map; the engine is the ground truth only at apply. The pre-check emits **typed findings** (INSTANCE-MIGRATION.md §14 — a CLOSED 8-code vocabulary with `taxonomyVersion`, severities `BLOCKER_ADVICE`/`WARNING`/`INFO`), rendered by severity and labelled "BFF estimate — the engine is the only ground truth at execute". Exactly **two** refusals, both 422: document-construction impossibility (a token with no target id and no operator mapping), and **`scope-collapse-token-loss`** — a dissolving subprocess scope holding **two or more live tokens**, where live calibration on 6.8/7.1 measured the engine returning **200 while silently destroying all but one token** (no error, no delete reason, no job), which can park the instance forever at a join whose sibling branch is gone; no mapping can fix it, so the estimate is the only place it can be caught (§14.11). A **single-token** removed scope and a removed **boundary subscription** are WARNINGS, not blockers — the engine accepts both, so blocking them made a legitimate recovery impossible through the BFF. **Findings are advisory-only: green or red, no rail moves.** Honest banner ("this is not a Flowable validation … the engine's own check runs only when you execute"); ADMIN unconditional + typed **business-key** confirm on prod; IRREVERSIBLE, never auto-retried (post-dispatch timeout ⇒ UNKNOWN + verify-now); single first, batch later. Mapping editor: table, side-by-side **Diagrams** click-to-map (fan-out/fan-in, many-to-many refused with the reason, findings overlaid on the source canvas — §4a), expert JSON; the BFF recomputes the wire document from the proposed mapping. See `docs/INSTANCE-MIGRATION.md` | 3 |
+| **Migrate a case cohort** *(#500)* | The bulk verb `migrate-case` (§7) over completed case analyses: one single-case migrate per clean case of the analysis. The analysis is the single-case pre-check per case — a case with a live plan item whose definition the target model lacks is a blocker, listed with its reason and never sent. Each item asserts the source definition and live plan-item set its analysis recorded. Flowable 6.8+. Prod types the **count**. | 3 |
+| **Batch-migrate cases by definition** *(#500, Flowable 7.x)* | Every running case of one case-definition version, as one engine batch. No filter and no per-case check, so it is sent only when the target model keeps every plan-item definition of the source; otherwise, or when no plan-item definition can be read from the source model, it is refused and the cohort is the way. The engine answers before any case has moved; the batch list shows the per-case result. Greyed with the reason on 6.x and refused by the BFF with `version-gate` before any engine call. Prod types the **running count**. | 3 |
+| **Migrate ended cases' history** *(#500, Flowable 7.x)* | Re-points the history of the ended cases of one version, or of one ended case, to another version of the same case key. Running cases are not touched. Same version gate. Prod types the **ended count** (one case: its id). | 3 |
 | **Migrate instance** *(v2)* | Move instance to another deployed version of the same key. **Inspector static pre-check (NOT an engine validation** — Flowable's REST API exposes no migration validator, P0 spike 2026-07-09): a BFF model diff flags activities that can't auto-map; the engine is the ground truth only at apply. The pre-check emits **typed findings** (INSTANCE-MIGRATION.md §14 — a CLOSED 8-code vocabulary with `taxonomyVersion`, severities `BLOCKER_ADVICE`/`WARNING`/`INFO`), rendered by severity and labelled "BFF estimate — the engine is the only ground truth at execute". Exactly **two** refusals, both 422: document-construction impossibility (a token with no target id and no operator mapping), and **`scope-collapse-token-loss`** — a dissolving subprocess scope holding **two or more live tokens**, where live calibration on 6.8/7.1 measured the engine returning **200 while silently destroying all but one token** (no error, no delete reason, no job), which can park the instance forever at a join whose sibling branch is gone; no mapping can fix it, so the estimate is the only place it can be caught (§14.11). A **single-token** removed scope and a removed **boundary subscription** are WARNINGS, not blockers — the engine accepts both, so blocking them made a legitimate recovery impossible through the BFF. **Findings are advisory-only: green or red, no rail moves.** Honest banner ("this is not a Flowable validation … the engine's own check runs only when you execute"); ADMIN unconditional + typed **business-key** confirm on prod; IRREVERSIBLE, never auto-retried (post-dispatch timeout ⇒ UNKNOWN + verify-now); single first, batch later. See `docs/INSTANCE-MIGRATION.md` | 3 |
 
 Explicitly **not offered** (API honesty, §11): timer *reschedule-to-later* (not exposed by
@@ -1015,6 +1067,13 @@ dead-letter job in the case's "why-stuck" panel, capability-gated on `scopeType`
 older engines are dead-letter-blind on the cmmn context, greyed never hidden). Retry is a tier-0
 inline confirm; delete is a tier-3 typed-confirm modal (required reason ≥ 10 chars; on prod, the
 typed token = the job id) whose blast-radius copy is scope-honest — deleting a dead-letter job orphans its plan item; the rescue is `change-plan-item`. Also on the case route: `plan-item-action` (trigger/enable/disable), `change-plan-item` (activate/available/terminate, ADMIN on prod), `terminate-case` and `delete-case` (tier 3, no engine delete reason), and `edit-case-variable` (compare-and-set). See `docs/CMMN-CASE-DETAIL-PHASE-2.md`.
+**Case migration** (tier 3 / ADMIN): `migrate-case` moves one running case to another version of
+its case definition (6.8+; typed case id on prod). At scale: a filtered case cohort through the
+bulk machinery (6.8+), and — on Flowable **7.x only** — a batch over every running case of a
+version and migration of ended cases' history (by version, or one case). On an older engine the
+7.x controls are greyed with the reason and the BFF refuses with `version-gate` before any engine
+call. The on-ramp is the case-versions page (running and ended counts per version), reached from
+the definitions catalog. See INSTANCE-MIGRATION.md §7.3.
 Only the two scope seams differ from BPMN: the server-fresh restatement reads the job by-id from
 the `/cmmn-management` DLQ (cap-free) and keys ownership on `caseInstanceId`, and the one engine
 call is the `/cmmn-management/deadletter-jobs/{id}` sibling — `POST … {"action":"move"}` for retry,
@@ -1175,6 +1234,28 @@ copy is never identical to an RBAC denial (R-GOV-04, R-SEM-17).
   circuit pause and INTERRUPTED semantics as every other verb. "Continue as new job" for this verb
   accepts only the prior job's `not_run`/`failed` items. The selection, error-class and filter
   doors do not offer it. Detail: INSTANCE-MIGRATION.md §7.1.
+- **Hierarchy migration** (`migrate-instance`, #497, ADMIN, tier 3): `POST
+  /api/bulk/migrate-hierarchy` carrying a **stored plan id only**. Same verb, rails and outcome
+  classes as cohort migration, plus an order: each item carries `level` (depth in the
+  call-activity tree) and `parentInstanceId`; the deepest level is dispatched first and a level
+  starts only when the level below is settled. An item whose child item did not settle `ok` is
+  `not_run` naming that child and its cause. Exception: a `not_run` or `skipped` child that a
+  read at dispatch shows no longer running, or already on its target, releases its parent —
+  also when the child ended or was moved before its group was analysed. A `failed`, `unknown`
+  or protected child never does. Before an item is sent its running children are read again; a
+  running child that is not part of the plan (it started after the plan was stored) settles the
+  item `not_run` naming that child, and so does a re-read that fails. A plan older than
+  `inspector.hierarchy-plan-max-age` (default `PT24H`) is refused (`hierarchy-plan-expired`, 409)
+  and deleted by the daily retention job. A job with blocked parents ends `COMPLETED` with `not_run` items;
+  "Continue as new job" keeps the order and refuses a parent continued without its unresolved
+  child (`hierarchy-child-unresolved`). Detail: INSTANCE-MIGRATION.md §7.2.
+- **Case cohort migration** (`migrate-case`, #500, ADMIN, tier 3): `POST /api/bulk/migrate-cases`
+  carrying **completed case analysis ids only**, with the same submit rails as cohort migration.
+  The analysis is the single-case pre-check per case: a case holding a live plan item whose
+  definition the target model lacks is a blocker and is never sent. Per item: the single-case
+  `migrate-case` rails with the analysis's source definition and live plan-item set as
+  compare-and-set (changed, ended or already on the target ⇒ `skipped`), audit `migrate-case/v1`.
+  Verify now re-reads the case's definition id. Detail: INSTANCE-MIGRATION.md §7.3.
 - **Engine protection & live progress** (v1.x #2, normative): dispatch fans out **per
   engine** — a per-engine in-flight permit pool (default 4, shared across concurrent jobs)
   plus a mandatory **250 ms stagger** between dispatch starts (`inspector.bulk.engine-permits`
@@ -1387,6 +1468,9 @@ and would rewrite working M1/M2 code for no capability gain); Go/FastAPI/Kotlin 
   co-render the literal `PROD/TEST/DEV` token + distinct border styles; status chips keep
   text at every density; diagram markers use shape+glyph (dead-letter = ⚠ badge), the
   sibling diff differentiates by stroke style + endpoint glyphs, not red/green hue.
+  Execution overlay (#677): route taken = 3 px stroke (+ `×N` badge), completed = tinted
+  fill + `✓` glyph, armed-not-taken = dashed outline, duration = text badge (`slowest` in
+  words); every glyph is `role="img"` + `aria-label`.
   Contrast 4.5:1 text / 3:1 non-text. Every diagram-borne fact has a keyboard-focusable
   textual twin (activity summary list with synced selection); canvas is `role="img"` with a
   generated summary. AG Grid: full keyboard nav; row-open is never mouse-only — Enter on
@@ -1407,6 +1491,7 @@ and would rewrite working M1/M2 code for no capability gain); Go/FastAPI/Kotlin 
   meanwhile), so the common FIND→FIX retry arc costs a handful of key presses instead
   of a full linear Tab traversal of the vitals header, diagram and tablist.
   **axe runs inside the Playwright suite as a CI hard failure.**
+  In dark theme the BPMN/CMMN canvas recolours shapes, labels, flows and arrowheads from the theme tokens (labels ≥ 4.5:1, flows ≥ 3:1 on the canvas) while the state markers (active, dead-letter, selected, diff) stay distinguishable on top (#674).
 - **Time.** Absolute timestamp + explicit offset + relative age, everywhere; user-selected
   display TZ (default browser-local, one-click UTC); "next retry" adds a countdown.
   Machine-facing text — copy-for-ticket, cURL, audit, exports — is **always UTC ISO-8601**.

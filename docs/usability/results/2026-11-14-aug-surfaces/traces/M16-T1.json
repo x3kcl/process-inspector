@@ -1,0 +1,121 @@
+{
+ "mission": "M16",
+ "user": "operator",
+ "tasks": [
+  {
+   "n": 1,
+   "verdict": "yes",
+   "answer": "Incident Ledger entry #24 (/incidents/24), PropertyNotFoundException, 'Unknown property used in expression: ${partnerQuota.total}' (definition uxrunPartnerSync, Engine A). State: REGRESSED. It was resolved and reopened by the system: Regressions 1, Last regressed 11:54:22 AM UTC, Last resolved by 'operator — “partner quota config corrected, stuck syncs cleared” · OPS-4711'. 3 failing instances now.",
+   "citations": [
+    "Incidents list: heading 'Regressed · 3', badge 'REGRESSED', 'regressed 1×'",
+    "Detail page: 'State REGRESSED', 'Regressions 1', 'Last resolved by operator — “partner quota config corrected, stuck syncs cleared” · OPS-4711'"
+   ],
+   "interactions": 4,
+   "firstSignal": "Incidents nav link then Regressed section in the Incident Ledger"
+  },
+  {
+   "n": 2,
+   "verdict": "yes",
+   "answer": "Two outbreaks, from the Episodes list on the incident page. (1) Started Nov 14 11:47:11 AM UTC, labelled 5m, ended 11:52:57 AM UTC (about 5m46s by the timestamps), ended by operator resolve with reason 'partner quota config corrected, stuck syncs cleared' · OPS-4711, peak 4, originally OPEN. (2) Ongoing, started 11:54:22 AM UTC (REGRESSED), peak 3, no end. Gap between them is about 1.5 min.",
+   "citations": [
+    "Episodes: '5m — started Nov 14, 2026, 11:47:11 AM UTC · 11m ago (OPEN) · ended Nov 14, 2026, 11:52:57 AM UTC · 5m ago by operator — “partner quota config corrected, stuck syncs cleared” · OPS-4711 · peak 4'",
+    "Episodes: 'ongoing — started Nov 14, 2026, 11:54:22 AM UTC · 3m ago (REGRESSED) · peak 3'"
+   ],
+   "interactions": 1,
+   "firstSignal": "Episodes section on /incidents/24"
+  },
+  {
+   "n": 3,
+   "verdict": "yes-with-struggle",
+   "answer": "Ops log (/audit) rows inside 11:47:11-11:52:57: (a) by operator at 11:49:16 AM, 2 x retry-job on jobs 1cf4be43… and 1cfa639c…, outcome 're-queued', reason 'retry after partner API blip'. (b) by responder at 11:50:17-18 AM, one 'bulk:retry-job' on engine-a plus 4 individual retry-job rows (1cf4be43, 1cfa639c, 1cfef785, 1d03b27e), outcome 're-queued', reason 'mass retry, partner says quota restored'. (c) operator incident-resolve at 11:52:57 AM with reason 'partner quota config corrected, stuck syncs cleared'. So 6 job-retries (2 individual by operator, 4 via 1 bulk by responder), 1 bulk request, 1 resolve. The incident page itself shows only the bulk retry ('COMPLETED retry-job uxrunPartnerSync (all versions) · error class responder · 11:50:17 AM UTC 4 of 4 dispatched · re-queued 4') and the resolve, and the retry shows 'responder'. Not told by the tool: the Ops log targets are job IDs and never name the incident or definition, so linking the 11:49:16 operator retries to partnerQuota is my inference (same job IDs reappear in the bulk retry). The page does not say which person is behind 'responder'/'operator'. The Ticket column does not display a ticket for the retries.",
+   "citations": [
+    "Ops log: 'Nov 14, 2026, 11:49:16 AM UTC · 9m ago operator retry-job engine-a:1cfa639c-… re-queued retry after partner API blip'",
+    "Ops log: 'responder bulk:retry-job engine-a re-queued mass retry, partner says quota restored'",
+    "Ops log header: 'Engine-side history attributes these actions to the shared service account — this log is the authoritative WHO.'",
+    "Incident page 'Recent bulk retries': 'COMPLETED retry-job uxrunPartnerSync (all versions) · error class responder · … 4 of 4 dispatched · re-queued 4'"
+   ],
+   "interactions": 2,
+   "firstSignal": "Ops log nav link, found after the incident page showed only the bulk retry",
+   "wrongTurns": [
+    "Assumed the incident page would list all actions; it showed only the bulk retry and the resolve, so the 2 operator retries and the per-job rows were only in Ops log"
+   ]
+  },
+  {
+   "n": 4,
+   "verdict": "yes",
+   "answer": "No evidence they helped. Retries were 're-queued' (4 of 4 dispatched), which only shows dispatch, not success. After the retries and the resolve at 11:52:57 AM, the same error returned at 11:54:22 AM (about 85s later), recorded as 'incident-regressed' by system, and 3 instances fail again. The resolve reason claimed 'partner quota config corrected', but the regression suggests the root cause was not fixed. The one thing that arguably helped: peak 4 vs 3 failing now, but that is not stated as an effect. The retries 'partner API blip' and 'partner says quota restored' were evidently not the fix, so repeating retries is unlikely to help. The tool offers no success-rate figure: 'no reliable self-heal history yet (0 of 10 spells observed)'.",
+   "citations": [
+    "Ops log: 'Nov 14, 2026, 11:54:22 AM UTC system incident-regressed'",
+    "Episodes: 'ongoing — started Nov 14, 2026, 11:54:22 AM UTC (REGRESSED) · peak 3'",
+    "'4 of 4 dispatched · re-queued 4'",
+    "'no reliable self-heal history yet (0 of 10 spells observed)'"
+   ],
+   "interactions": 1,
+   "firstSignal": "Regression row in Ops log directly after resolve"
+  },
+  {
+   "n": 5,
+   "verdict": "yes",
+   "answer": "No. The Ops log has no operator/responder action after 11:54:22 AM UTC; the only row since is 'system incident-regressed'. The incident page's 'Recent bulk retries' lists only the 11:50:17 bulk retry (first outbreak), and the Last resolved by line is the old resolve. Caveat: I read the log at about 11:58, about 3.5 min into the outbreak, and the log may be filtered or lag; I did not apply the Actor filter.",
+   "citations": [
+    "Ops log top row: 'Nov 14, 2026, 11:54:22 AM UTC · 3m ago system incident-regressed _inspector done'",
+    "Next row down is the 11:52:57 operator resolve, so nothing between"
+   ],
+   "interactions": 0,
+   "firstSignal": "Ops log top rows"
+  },
+  {
+   "n": 6,
+   "verdict": "yes-with-struggle",
+   "answer": "Moderately sure, not fully. Nothing on screen says the list is complete. The only related text is the Ops log header: 'Engine-side history attributes these actions to the shared service account — this log is the authoritative WHO.', which speaks to who, not completeness. The incident page 'Recent bulk retries' label implies it is not exhaustive ('Recent'). Possible missing: actions done outside this tool (the retries cite partner/config changes the tool cannot see, e.g. the 'config corrected' claim, which is not an action logged here). Possible not belonging: Ops log rows are per job ID/engine and carry no incident or definition link, so the 11:49:16 retries and the bulk rows are assumed to be partnerQuota's because of the time window and shared job IDs; the log is global across incidents. I did not check the Ops log filters, pagination, or the instance list to confirm the job IDs belong to uxrunPartnerSync. The 'per job' rows count the 4 bulk-retried jobs twice if counted as bulk plus individual rows, so I counted the bulk row separately.",
+   "citations": [
+    "'Engine-side history attributes these actions to the shared service account — this log is the authoritative WHO.'",
+    "'Recent bulk retries' section heading",
+    "Ops log targets are 'engine-a:<job-id>' with no incident or definition"
+   ],
+   "interactions": 0,
+   "firstSignal": "Ops log header text",
+   "gaveUpWhere": "Did not verify job IDs against the partnerQuota instance list, expected on the incident's 'Search these instances' link"
+  }
+ ],
+ "messagesCorpus": [
+  {
+   "quote": "Persisted history for every failure class ever seen (R-BAU-10) — distinct from the Stage-0 triage cards above, which recompute per poll and forget the moment a class drains. An incident here survives across a drain/resolve/regression cycle.",
+   "tag": "fine"
+  },
+  {
+   "quote": "Triage aggregation failed: Not signed in",
+   "tag": "fine"
+  },
+  {
+   "quote": "Last resolved by operator — “partner quota config corrected, stuck syncs cleared” · OPS-4711",
+   "tag": "fine"
+  },
+  {
+   "quote": "5m — started Nov 14, 2026, 11:47:11 AM UTC · 11m ago (OPEN) · ended Nov 14, 2026, 11:52:57 AM UTC · 5m ago by operator …",
+   "tag": "confusing"
+  },
+  {
+   "quote": "COMPLETED retry-job uxrunPartnerSync (all versions) · error class responder · … 4 of 4 dispatched · re-queued 4",
+   "tag": "confusing"
+  },
+  {
+   "quote": "Engine-side history attributes these actions to the shared service account — this log is the authoritative WHO.",
+   "tag": "fine"
+  },
+  {
+   "quote": "no reliable self-heal history yet (0 of 10 spells observed)",
+   "tag": "fine"
+  },
+  {
+   "quote": "1 instances",
+   "tag": "confusing"
+  }
+ ],
+ "protocolNotes": [
+  "Signed in as operator with no prior session. Did not read source or call the API directly. Extracted page text with browser_evaluate innerText, a read-only DOM read.",
+  "Console showed errors before sign-in ('Not signed in') and none new afterwards.",
+  "I stated expectations in prose before each action, but compressed some. Interaction counts are approximate.",
+  "The Ops log row target IDs were not linked back to the incident, so the tie between operator retries and partnerQuota is inferred from time window and shared job IDs."
+ ]
+}

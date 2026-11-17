@@ -116,4 +116,28 @@ class AuditRetentionPurgerIT {
                 .as("released partition is now purgeable")
                 .isFalse();
     }
+
+    /** #497: an expired hierarchy plan goes with its group rows; a plan inside the max age stays. */
+    @Test
+    void purgesAnExpiredHierarchyPlanWithItsGroupsAndKeepsAFreshOne() {
+        UUID expired = UUID.randomUUID();
+        UUID fresh = UUID.randomUUID();
+        String plan = "INSERT INTO migration_hierarchy_plan (id, engine_id, created_by, created_at, payload)"
+                + " VALUES (?, 'engine-a', 'alice', now() - ?::interval, '{}'::jsonb)";
+        jdbc.update(plan, expired, "25 hours");
+        jdbc.update(plan, fresh, "23 hours");
+        String group =
+                "INSERT INTO migration_hierarchy_group (plan_id, definition_id, decision, decided_by, decided_at)"
+                        + " VALUES (?, 'demo:1:x', 'SKIPPED', 'alice', now())";
+        jdbc.update(group, expired);
+        jdbc.update(group, fresh);
+
+        purger.purge();
+
+        assertThat(jdbc.queryForList("SELECT id FROM migration_hierarchy_plan", UUID.class))
+                .contains(fresh)
+                .doesNotContain(expired);
+        assertThat(jdbc.queryForList("SELECT plan_id FROM migration_hierarchy_group", UUID.class))
+                .containsExactly(fresh);
+    }
 }

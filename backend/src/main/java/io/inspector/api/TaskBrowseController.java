@@ -1,8 +1,10 @@
 package io.inspector.api;
 
-import io.inspector.client.FlowablePage;
 import io.inspector.client.GuardedCaller.CallPriority;
+import io.inspector.client.IdentityLinkRecord;
 import io.inspector.client.ProcessApiClient;
+import io.inspector.client.TaskPage;
+import io.inspector.client.TaskRecord;
 import io.inspector.config.InspectorProperties.EngineConfig;
 import io.inspector.registry.EngineRegistry;
 import java.time.Instant;
@@ -60,22 +62,22 @@ public class TaskBrowseController {
         List<String> capped = new ArrayList<>();
         for (EngineConfig engine : registry.all()) {
             try {
-                FlowablePage page = flowable.listRuntimeTasks(engine, CallPriority.INTERACTIVE, query, pageSize);
-                List<Map<String, Object>> data = page == null ? List.of() : page.dataOrEmpty();
+                TaskPage page = flowable.listRuntimeTasks(engine, CallPriority.INTERACTIVE, query, pageSize);
+                List<TaskRecord> data = page == null ? List.of() : page.dataOrEmpty();
                 if (page != null && page.total() > data.size()) {
                     capped.add(engine.id());
                 }
-                for (Map<String, Object> task : data) {
+                for (TaskRecord task : data) {
                     rows.add(new TaskRow(
                             engine.id(),
-                            str(task, "id"),
-                            str(task, "name"),
-                            str(task, "processInstanceId"),
-                            str(task, "processDefinitionId"),
-                            str(task, "assignee"),
-                            str(task, "owner"),
-                            str(task, "dueDate"),
-                            str(task, "createTime")));
+                            task.id(),
+                            task.name(),
+                            task.processInstanceId(),
+                            task.processDefinitionId(),
+                            task.assignee(),
+                            task.owner(),
+                            task.dueDate(),
+                            task.createTime()));
                 }
             } catch (RuntimeException e) {
                 capped.add(engine.id());
@@ -88,18 +90,12 @@ public class TaskBrowseController {
     public List<IdentityLinkRow> identityLinks(@PathVariable String engineId, @PathVariable String taskId) {
         EngineConfig engine = registry.require(engineId);
         List<IdentityLinkRow> rows = new ArrayList<>();
-        for (Map<String, Object> link : flowable.listIdentityLinks(engine, CallPriority.INTERACTIVE, taskId)) {
-            String user = str(link, "user");
-            String group = str(link, "group");
+        for (IdentityLinkRecord link : flowable.listIdentityLinks(engine, CallPriority.INTERACTIVE, taskId)) {
+            String user = link.user();
             rows.add(new IdentityLinkRow(
-                    user != null ? "users" : "groups", user != null ? user : group, str(link, "type")));
+                    user != null ? "users" : "groups", user != null ? user : link.group(), link.type()));
         }
         return rows;
-    }
-
-    private static String str(Map<String, Object> task, String key) {
-        Object value = task.get(key);
-        return value == null ? null : value.toString();
     }
 
     public record TaskBrowsePage(List<TaskRow> rows, List<String> cappedEngines) {}

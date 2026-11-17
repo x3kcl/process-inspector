@@ -85,6 +85,13 @@ public final class BulkDtos {
      */
     public record BulkMigrateRequest(List<UUID> analysisIds, String reason, String ticketId, Integer confirmedCount) {}
 
+    /**
+     * Hierarchy migration (#497): a stored plan, never an instance list. The BFF takes the plan's
+     * configured groups and their analyses. {@code confirmedCount} is the executable instance
+     * count, required once the plan's engine is prod.
+     */
+    public record BulkMigrateHierarchyRequest(UUID planId, String reason, String ticketId, Integer confirmedCount) {}
+
     public record BulkDestructiveRequest(
             SearchRequest criteria, String verb, String reason, String ticketId, Integer confirmedCount) {}
 
@@ -109,7 +116,9 @@ public final class BulkDtos {
             String state,
             String detail,
             UUID auditId,
-            Instant finishedAt) {
+            Instant finishedAt,
+            Integer level,
+            String parentInstanceId) {
 
         static BulkItemDto of(BulkJobItem item) {
             return new BulkItemDto(
@@ -120,7 +129,9 @@ public final class BulkDtos {
                     item.getState().name(),
                     item.getDetail(),
                     item.getAuditId(),
-                    item.getFinishedAt());
+                    item.getFinishedAt(),
+                    item.getLevel(),
+                    item.getParentInstanceId());
         }
     }
 

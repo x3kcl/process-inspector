@@ -1,0 +1,18 @@
+
+You are on call. A chat message from a colleague: _"`selfHealGhost` errors again — do we
+need to do anything or does that one sort itself out?"_
+
+1. Find this error class in the tool. How many items does the tool say are affected right
+   now, and in which states? Quote the numbers and their labels.
+2. Find whatever the tool says about whether this kind of failure clears up without
+   anyone doing anything. Quote it exactly, then explain in your own words what it is
+   based on and how far you would rely on it.
+3. Decide what you do about this class right now. Be specific about WHICH items (if any)
+   you would act on, which you would leave alone, and why. Cite the on-screen text behind
+   each part of your decision.
+4. If your decision involves acting on some items: find the way to do it and go as far as
+   the final confirmation, then CANCEL — do not confirm. What did the confirmation tell you
+   (how many items, which engine)? If you decided to act on nothing, say what on screen
+   convinced you it is safe to wait.
+5. Reply to your colleague in one or two sentences the tool's own wording would back up.
+

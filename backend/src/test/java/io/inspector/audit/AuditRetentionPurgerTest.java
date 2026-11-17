@@ -7,6 +7,8 @@ import static org.mockito.ArgumentMatchers.anyString;
 import static org.mockito.ArgumentMatchers.argThat;
 import static org.mockito.ArgumentMatchers.contains;
 import static org.mockito.ArgumentMatchers.eq;
+import static org.mockito.ArgumentMatchers.startsWith;
+import static org.mockito.Mockito.inOrder;
 import static org.mockito.Mockito.mock;
 import static org.mockito.Mockito.never;
 import static org.mockito.Mockito.reset;
@@ -14,7 +16,9 @@ import static org.mockito.Mockito.verify;
 import static org.mockito.Mockito.when;
 
 import io.inspector.config.AuditProperties;
+import io.inspector.config.InspectorProperties;
 import io.micrometer.core.instrument.simple.SimpleMeterRegistry;
+import java.sql.Timestamp;
 import java.time.Clock;
 import java.time.Instant;
 import java.time.ZoneOffset;
@@ -22,6 +26,8 @@ import java.util.List;
 import java.util.Map;
 import org.junit.jupiter.api.BeforeEach;
 import org.junit.jupiter.api.Test;
+import org.mockito.InOrder;
+import org.springframework.dao.DataAccessResourceFailureException;
 import org.springframework.jdbc.core.JdbcTemplate;
 import org.springframework.jdbc.core.ResultSetExtractor;
 
@@ -44,7 +50,13 @@ class AuditRetentionPurgerTest {
     void setUp() {
         reset(jdbc, audit);
         metrics = new SimpleMeterRegistry();
-        purger = new AuditRetentionPurger(jdbc, audit, new AuditProperties(null, null, null), clock, metrics);
+        purger = new AuditRetentionPurger(
+                jdbc,
+                audit,
+                new AuditProperties(null, null, null),
+                new InspectorProperties(null, null, null, null, null),
+                clock,
+                metrics);
 
         // One aged-out child + the DEFAULT (never a candidate) + a future month (not expired).
         when(jdbc.queryForList(contains("pg_inherits"), eq(String.class), any()))
@@ -125,5 +137,35 @@ class AuditRetentionPurgerTest {
         verify(jdbc, never()).queryForMap(contains("purge_audit"), any(), any());
         assertThat(metrics.counter("audit_retention_purge_failures_total").count())
                 .isZero();
+    }
+
+    /** #497: a stored hierarchy plan older than the max age (default 24h) goes, group rows first. */
+    @Test
+    void expiredHierarchyPlansArePurgedGroupRowsFirstEvenWhenNoPartitionAgedOut() {
+        when(jdbc.queryForList(contains("pg_inherits"), eq(String.class), any()))
+                .thenReturn(List.of("audit_entry_default"));
+
+        purger.purge();
+
+        // The clock is 2026-07-15T00:00Z; a plan stored before 2026-07-14T00:00Z is older than 24h.
+        Timestamp cutoff = Timestamp.from(Instant.parse("2026-07-14T00:00:00Z"));
+        InOrder order = inOrder(jdbc);
+        order.verify(jdbc).update(startsWith("DELETE FROM migration_hierarchy_group"), eq(cutoff));
+        order.verify(jdbc).update(startsWith("DELETE FROM migration_hierarchy_plan"), eq(cutoff));
+        verify(jdbc, never()).queryForMap(contains("purge_audit"), any(), any());
+    }
+
+    @Test
+    void aPlanPurgeThatFailsDoesNotStopTheAuditPurge() {
+        when(jdbc.update(startsWith("DELETE FROM migration_hierarchy_group"), any(Timestamp.class)))
+                .thenThrow(new DataAccessResourceFailureException("db down"));
+        when(jdbc.queryForMap(contains("purge_audit"), any(), any()))
+                .thenReturn(Map.of("range_from", "2019-06-01", "range_to", "2019-07-01"));
+
+        purger.purge(); // must not throw
+
+        verify(jdbc).update(startsWith("DELETE FROM migration_hierarchy_group"), any(Timestamp.class));
+        verify(jdbc, never()).update(startsWith("DELETE FROM migration_hierarchy_plan"), any(Timestamp.class));
+        verify(jdbc).queryForMap(contains("purge_audit"), eq("audit_entry_2019_06"), any());
     }
 }

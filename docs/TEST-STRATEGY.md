@@ -199,6 +199,8 @@ Testcontainers Postgres under the bulk and audit rows. Every number is read from
   live emitter, so any difference between subscribers is a drop or a duplicate.
 - **Emitters:** `sse_emitters_active` stays at baseline + 50 after every job, and is back at
   baseline within 60 s of the clients disconnecting (the 15 s heartbeat is what notices them).
+  That teardown adds 0 to `sse_emitter_errors_total` and at most 50 to
+  `sse_emitter_disconnects_total`, one per closed stream (#624).
 - **No `SseEmitterErrorsSpiking` condition during the hold:** at most 5 increments of
   `sse_emitter_errors_total` in any 5-minute window, and no `sse_subscriptions_refused_total`.
   Each subscriber also receives at least `hold/15s − 2` heartbeats.
@@ -212,9 +214,11 @@ docker use is the Testcontainers Postgres, reached from the runner like `contain
 Measured locally on 2026-11-12 (hp04, `-Dsoak.minutes=5`): 307 s held, 38 jobs × 600 items,
 each job settled in about 7.5 s (20 ms stagger, 4 permits per engine). Each subscriber saw 26–27
 `bulk-job` events per job, with no difference between subscribers. Post-GC heap was 85 MiB at
-baseline and 86 MiB at the end (+1.0%). There were 0 emitter errors during the hold. The 50
-disconnects at teardown added 100 to `sse_emitter_errors_total`, two per closed stream; that
-is tracked as #624, and the assertion covers the hold only. Building this suite also showed
+baseline and 86 MiB at the end (+1.0%). There were 0 emitter errors during the hold. Since #624 a
+client closing its stream counts once in `sse_emitter_disconnects_total` and never in
+`sse_emitter_errors_total`: a 1-minute run on 2026-11-13 closed 50 streams at teardown and
+recorded 50 disconnects and 0 errors, and the suite asserts no error increase and at most one
+disconnect per stream at teardown. Building this suite also showed
 that `inspector.bulk.*` was not binding at all (#623, fixed alongside).
 
 ## 8. Capability matrix (R-TEST — SHOULD)
@@ -289,6 +293,10 @@ Verified 2026-10-23 with `EngineHealth7IT` (capability flags) plus `Search7IT`,
   smokes assert UI *invariants* (the flow-surgery specs record every `…/execute`/`…/restart`
   request and assert none fired — simulation-first is a tested property, not a convention);
   flows that need REAL engine semantics (drift fixtures above) stay on the live-stack rung.
+  **`@playwright/test` is EXACT-pinned** (no caret) to the chromium baked into the CI runner image
+  (`ARG PLAYWRIGHT_VERSION` in `docker/ci-runner/Dockerfile`). It moves only together with that ARG
+  and a runner image rebuild on EVERY runner host (#707); a lone bump fails every e2e test with
+  "Executable doesn't exist". Dependabot ignores it (`.github/dependabot.yml`).
   The never-mock-Flowable rule governs BFF join logic, not browser-side smokes of
   already-tested BFF contracts. Every spec calls the shared `scanA11y()` helper (`e2e/a11y.ts`,
   wraps `@axe-core/playwright`) at each settled UI state it already asserts against —
@@ -297,6 +305,28 @@ Verified 2026-10-23 with `EngineHealth7IT` (capability flags) plus `Search7IT`,
   and false-positive). Chromium is baked into the CI runner image
   (`docker/ci-runner/Dockerfile`), not installed per-job — the runner is ephemeral and only
   `/opt/hostedtoolcache` survives a restart.
+  - **Host netlink isolation (#698).** The slots run with `network_mode: host`, so every docker
+    bridge/veth any job or project creates on that host is an address change to Chromium's
+    `AddressTrackerLinux`, and Chromium aborts in-flight requests with `net::ERR_NETWORK_CHANGED`.
+    A Vite dev-server page load is ~60 module requests, so one abort leaves the page blank and
+    the spec times out on a locator — not CPU load. Evidence (2026-11-12..16): 179 of 180
+    failed-attempt traces in the `playwright-report` artifacts carry the error (three more
+    artifacts, left out, were a missing-browser install); 20 hard-red `e2e` jobs, 19 on hp04,
+    two of them with no other job of this repo on the host; workers are already 1 per slot.
+    `ci/contract.sh`'s `e2e_no_netlink` helper builds `frontend/e2e/no-netlink.c` (an
+    `LD_PRELOAD` shim that refuses `NETLINK_ROUTE` sockets, so Chromium assumes always-online);
+    the `e2e` part and the nightly `e2e-real` part both call it (#702: e2e-real brings its own
+    compose engines up on the host network — the same churn), and `playwright.config.ts` and
+    `e2e-real/playwright.config.ts` preload it into the browser processes only;
+    `scripts/e2e-netlink-selftest.sh` pins all of it (run by the `lint` part and the helper).
+    e2e-real's `open()` reload (#705) stays as the second line of defence. Reproduction of the
+    e2e-real suite on hp04 with its own compose project plus a docker network + container every
+    ~15 s: before — 3 aborts logged over 3 runs (each rescued by `open()`; nightly run
+    43975585816 hit 5 and went red); after — 0 `ERR_NETWORK_CHANGED` lines over 3 runs.
+    Hermetic-suite reproduction (#698) on hp04, 4 copies in parallel on the slot ports plus a docker network +
+    container every ~15 s (~2,300 netlink events): before — 30 flaky / 380, every failed
+    trace `ERR_NETWORK_CHANGED`, wall 457–539 s; after — 0 flaky / 380, wall 407–424 s.
+    `retries: 1` stays, and it is not what makes the run green.
 - Breakers: per-engine test profile (window 2, open 500ms) + WireMock fault/scenario recipes;
   assert cache hits don't count against the breaker.
 - Bulk cancel/UNKNOWN: latch-gated WireMock stub engine (dispatch order made total via

@@ -24,15 +24,20 @@ import io.inspector.audit.AuditEntry;
 import io.inspector.audit.AuditService;
 import io.inspector.audit.ProtectedInstance;
 import io.inspector.audit.ProtectedInstanceRepository;
-import io.inspector.client.FlowablePage;
 import io.inspector.client.GuardedCaller;
 import io.inspector.client.GuardedCaller.CallPriority;
+import io.inspector.client.JobPage;
+import io.inspector.client.JobRecords;
 import io.inspector.client.ProcessApiClient;
 import io.inspector.client.ProcessApiClient.JobLaneKind;
+import io.inspector.client.ProcessInstancePage;
+import io.inspector.client.ProcessInstanceRecords;
 import io.inspector.config.InspectorProperties;
 import io.inspector.config.InspectorProperties.EngineEnvironment;
 import io.inspector.config.InspectorProperties.EngineMode;
+import io.inspector.migration.CaseCohortBulkMigration;
 import io.inspector.migration.CohortBulkMigration;
+import io.inspector.migration.HierarchyPlanService;
 import io.inspector.registry.EngineRegistry;
 import io.inspector.security.OidcProperties;
 import io.inspector.security.reauth.DangerousActionReauthGate;
@@ -81,6 +86,7 @@ class BulkJobServiceTest {
     private final ProcessApiClient client = mock(ProcessApiClient.class);
     private final GuardedCaller guardedCaller = mock(GuardedCaller.class);
     private final CohortBulkMigration cohortMigration = mock(CohortBulkMigration.class);
+    private final CaseCohortBulkMigration caseCohortMigration = mock(CaseCohortBulkMigration.class);
     private final SimpleMeterRegistry metrics = new SimpleMeterRegistry();
     private final Authentication responder = new TestingAuthenticationToken("resp", "n/a", "ROLE_RESPONDER");
 
@@ -161,7 +167,9 @@ class BulkJobServiceTest {
                 reauthGate(),
                 guardedCaller,
                 metrics,
-                cohortMigration);
+                cohortMigration,
+                caseCohortMigration,
+                mock(HierarchyPlanService.class));
     }
 
     /**
@@ -378,11 +386,11 @@ class BulkJobServiceTest {
         // #184: BulkTarget carries no definitionKey (never trust a client-supplied one for a
         // security check) — resolved server-side via the batched processInstanceIds query.
         when(client.queryRuntimeProcessInstances(any(), any(), any()))
-                .thenReturn(new FlowablePage(
-                        List.of(
+                .thenReturn(new ProcessInstancePage(
+                        ProcessInstanceRecords.instances(List.of(
                                 Map.of("id", "pi-1", "processDefinitionId", "demoOrder:1:a"),
                                 Map.of("id", "pi-2", "processDefinitionId", "payment:3:b"),
-                                Map.of("id", "pi-3", "processDefinitionId", "demoOrder:1:a")),
+                                Map.of("id", "pi-3", "processDefinitionId", "demoOrder:1:a"))),
                         3,
                         0,
                         3));
@@ -584,8 +592,8 @@ class BulkJobServiceTest {
         return org.mockito.ArgumentMatchers.argThat(req -> req != null && jobId.equals(req.jobId()));
     }
 
-    private static FlowablePage page(List<Map<String, Object>> data) {
-        return new FlowablePage(data, data.size(), 0, data.size());
+    private static JobPage page(List<Map<String, Object>> data) {
+        return JobRecords.page(data);
     }
 
     /* ---------------- migrate-instance (#496) ---------------- */
@@ -680,6 +688,115 @@ class BulkJobServiceTest {
         verify(cohortMigration, never()).dispatch(any(), any(), any(), any(), any(), any());
     }
 
+    /* ---------------- migrate-case (#500) ---------------- */
+
+    private static BulkDtos.BulkSubmitRequest migrateCasesOf(String... caseIds) {
+        List<BulkDtos.BulkTarget> targets = new ArrayList<>();
+        for (String id : caseIds) {
+            targets.add(new BulkDtos.BulkTarget(ENGINE, id, ANALYSIS));
+        }
+        return new BulkDtos.BulkSubmitRequest("migrate-case", "move cases off the bad deploy", null, null, targets);
+    }
+
+    private void migrateCaseThrows(String caseId, RuntimeException e) {
+        when(caseCohortMigration.dispatch(eq(ANALYSIS), eq(ENGINE), eq(caseId), any(), any(), any()))
+                .thenThrow(e);
+    }
+
+    @Test
+    void migrateCaseItemsDispatchAgainstTheirAnalysisAndKeepEveryOutcomeClass() {
+        when(caseCohortMigration.dispatch(eq(ANALYSIS), eq(ENGINE), eq("c-ok"), any(), any(), any()))
+                .thenReturn(new ActionResult(UUID.randomUUID(), "c", "ok", 200, "Case c-ok migrated"));
+        migrateCaseThrows(
+                "c-moved",
+                new GuardRefusedException(HttpStatus.CONFLICT, "instance-moved-since-preview", "plan items changed"));
+        migrateCaseThrows("c-ended", new GuardRefusedException(HttpStatus.NOT_FOUND, "case-not-running", "ended"));
+        migrateCaseThrows(
+                "c-there", new GuardRefusedException(HttpStatus.CONFLICT, "same-definition-target", "already there"));
+        migrateCaseThrows(
+                "c-blocked",
+                new GuardRefusedException(HttpStatus.UNPROCESSABLE_ENTITY, "plan-item-not-in-target", "optionalNote"));
+        migrateCaseThrows("c-rejected", new EngineRejectedException(UUID.randomUUID(), 500, "engine said no"));
+        migrateCaseThrows(
+                "c-timeout",
+                new OutcomeUnknownException(
+                        UUID.randomUUID(),
+                        new ResourceAccessException("t/o", new HttpTimeoutException("request timed out"))));
+
+        BulkDtos.BulkJobDto submitted = service.submitCaseMigration(
+                migrateCasesOf("c-ok", "c-moved", "c-ended", "c-there", "c-blocked", "c-rejected", "c-timeout"),
+                responder,
+                Map.of(),
+                "case cohort");
+        BulkDtos.BulkJobDto done = awaitFinished(submitted.id());
+
+        assertThat(done.verb()).isEqualTo("migrate-case");
+        assertThat(done.state()).isEqualTo("COMPLETED");
+        assertThat(done.items())
+                .extracting(BulkDtos.BulkItemDto::state)
+                .containsExactly("ok", "skipped", "skipped", "skipped", "failed", "failed", "unknown");
+        // The job's reason travels to every item; neither the generic BPMN bulk entry nor the
+        // process cohort bridge is used.
+        verify(caseCohortMigration)
+                .dispatch(
+                        eq(ANALYSIS),
+                        eq(ENGINE),
+                        eq("c-ok"),
+                        eq("move cases off the bad deploy"),
+                        any(),
+                        eq(responder));
+        verifyNoInteractions(actions);
+        verifyNoInteractions(cohortMigration);
+    }
+
+    @Test
+    void migrateCaseCircuitOpenPausesTheEngineAndLeavesTheRestNotRun() {
+        service = serviceWith(1, 0, new java.util.concurrent.CopyOnWriteArrayList<>());
+        when(caseCohortMigration.dispatch(eq(ANALYSIS), eq(ENGINE), eq("c-1"), any(), any(), any()))
+                .thenReturn(new ActionResult(UUID.randomUUID(), "c", "ok", 200, "migrated"));
+        migrateCaseThrows(
+                "c-2",
+                new GuardRefusedException(HttpStatus.SERVICE_UNAVAILABLE, "engine-shedding-load", "circuit open"));
+
+        BulkDtos.BulkJobDto done = awaitFinished(
+                service.submitCaseMigration(migrateCasesOf("c-1", "c-2", "c-3"), responder, Map.of(), "case cohort")
+                        .id());
+
+        assertThat(done.state()).isEqualTo("INTERRUPTED");
+        assertThat(done.items()).extracting(BulkDtos.BulkItemDto::state).containsExactly("ok", "failed", "not_run");
+        verify(caseCohortMigration, never()).dispatch(any(), any(), eq("c-3"), any(), any(), any());
+    }
+
+    @Test
+    void migrateCaseIsRefusedOnEveryOtherDoor() {
+        assertThatThrownBy(() -> service.submit(migrateCasesOf("c-1"), responder))
+                .isInstanceOfSatisfying(
+                        GuardRefusedException.class, e -> assertThat(e.code()).isEqualTo("bulk-verb-not-allowed"));
+        assertThatThrownBy(() -> service.submitMigration(migrateCasesOf("c-1"), responder, Map.of(), "cohort"))
+                .isInstanceOfSatisfying(
+                        GuardRefusedException.class, e -> assertThat(e.code()).isEqualTo("bulk-verb-not-allowed"));
+        assertThatThrownBy(() -> service.submitCaseMigration(migrateOf("m-1"), responder, Map.of(), "case cohort"))
+                .isInstanceOfSatisfying(
+                        GuardRefusedException.class, e -> assertThat(e.code()).isEqualTo("bulk-verb-not-allowed"));
+    }
+
+    @Test
+    void verifyNowReadsTheMigratedCaseDefinitionAndNeverRefires() {
+        BulkJob job = new BulkJob(UUID.randomUUID(), "admin", Instant.EPOCH, "migrate-case", null, null, 1, null);
+        job.finish(BulkJob.State.COMPLETED, Instant.EPOCH);
+        jobStore.put(job.getId(), job);
+        BulkJobItem item = new BulkJobItem(job.getId(), 0, ENGINE, "c-1", ANALYSIS, BulkJobItem.State.pending);
+        item.settle(BulkJobItem.State.unknown, "timeout", null, Instant.EPOCH);
+        itemStore.put(job.getId() + "#0", item);
+        when(caseCohortMigration.verify(ANALYSIS, ENGINE, "c-1"))
+                .thenReturn(new CaseCohortBulkMigration.Verification(true, "verified: case is on def-2"));
+
+        BulkDtos.BulkItemDto verified = service.verifyNow(job.getId(), 0);
+
+        assertThat(verified.state()).isEqualTo("ok");
+        verify(caseCohortMigration, never()).dispatch(any(), any(), any(), any(), any(), any());
+    }
+
     /* ---------------- verify-now (R-SAFE-09) ---------------- */
 
     @Test
@@ -708,7 +825,7 @@ class BulkJobServiceTest {
         item.settle(BulkJobItem.State.unknown, "timeout", null, Instant.EPOCH);
         itemStore.put(job.getId() + "#0", item);
         when(client.getJob(any(), eq(CallPriority.INTERACTIVE), eq(JobLaneKind.DEADLETTER), eq("dlq-1")))
-                .thenReturn(Map.of("id", "dlq-1"));
+                .thenReturn(JobRecords.job(Map.of("id", "dlq-1")));
 
         BulkDtos.BulkItemDto verified = service.verifyNow(job.getId(), 0);
 
@@ -974,7 +1091,9 @@ class BulkJobServiceTest {
                 // alongside the @BeforeEach one, and both would otherwise fight over registering
                 // the same bulk_jobs_running gauge id on the shared `metrics` field.
                 new SimpleMeterRegistry(),
-                cohortMigration);
+                cohortMigration,
+                caseCohortMigration,
+                mock(HierarchyPlanService.class));
     }
 
     @Test

@@ -3,6 +3,7 @@
 // lifecycle reason) but were plain unfocusable divs — a keyboard/screen-reader user could
 // never reach them. tabIndex was added; this proves both card variants stay reachable.
 import { cleanup, render, screen } from '@testing-library/react'
+import { MemoryRouter } from 'react-router'
 import { afterEach, describe, expect, it, vi } from 'vitest'
 import type { EngineDto } from '../api/model'
 import { HeaderStrip } from './HeaderStrip'
@@ -22,7 +23,11 @@ async function renderStrip(engines: EngineDto[]) {
     error: null,
     isPending: false,
   } as ReturnType<typeof useEngines>)
-  render(<HeaderStrip />)
+  render(
+    <MemoryRouter>
+      <HeaderStrip />
+    </MemoryRouter>,
+  )
 }
 
 describe('HeaderStrip engine cards (SPEC §4 — U4/#118)', () => {

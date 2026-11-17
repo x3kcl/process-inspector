@@ -13,7 +13,7 @@ import static org.mockito.Mockito.when;
 
 import io.inspector.action.GuardRefusedException;
 import io.inspector.client.CmmnApiClient;
-import io.inspector.client.FlowablePage;
+import io.inspector.client.CmmnRecords;
 import io.inspector.client.GuardedCaller.CallPriority;
 import io.inspector.config.InspectorProperties.EngineConfig;
 import io.inspector.dto.CmmnDeadLetterJob;
@@ -76,10 +76,14 @@ class CmmnScopeServiceTest {
     void discriminatorKeepsOnlyCaseScopedRows() {
         // The cmmn-api DLQ list also projects BPMN dead-letters (shared table) with a null case
         // attribution; only a non-null caseInstanceId marks a CMMN-scoped row (spike Q1).
-        assertThat(CmmnScopeService.isCmmnScoped(row("caseInstanceId", "c-1"))).isTrue();
-        assertThat(CmmnScopeService.isCmmnScoped(row("caseInstanceId", null))).isFalse();
-        assertThat(CmmnScopeService.isCmmnScoped(row("caseInstanceId", "  "))).isFalse();
-        assertThat(CmmnScopeService.isCmmnScoped(new HashMap<>())).isFalse();
+        assertThat(CmmnScopeService.isCmmnScoped(CmmnRecords.job(row("caseInstanceId", "c-1"))))
+                .isTrue();
+        assertThat(CmmnScopeService.isCmmnScoped(CmmnRecords.job(row("caseInstanceId", null))))
+                .isFalse();
+        assertThat(CmmnScopeService.isCmmnScoped(CmmnRecords.job(row("caseInstanceId", "  "))))
+                .isFalse();
+        assertThat(CmmnScopeService.isCmmnScoped(CmmnRecords.job(new HashMap<String, Object>())))
+                .isFalse();
     }
 
     @Test
@@ -96,7 +100,7 @@ class CmmnScopeServiceTest {
         wire.put("createTime", "2026-07-08T08:16:18.882+00:00");
 
         CmmnDeadLetterJob job = CmmnScopeService.map(
-                wire, new CmmnScopeService.CaseDefinitionRef("demoFailingCase", "Demo failing case"));
+                CmmnRecords.job(wire), new CmmnScopeService.CaseDefinitionRef("demoFailingCase", "Demo failing case"));
 
         assertThat(job.id()).isEqualTo("job-1");
         assertThat(job.caseInstanceId()).isEqualTo("case-1");
@@ -119,11 +123,11 @@ class CmmnScopeServiceTest {
         Map<String, Object> rowB = cmmnRow("j3", "case-3", "def-B");
         Map<String, Object> bpmn = cmmnRow("j4", null, "proc-def"); // null caseInstanceId → excluded
         when(flowable.listCmmnDeadLetterJobs(any(), any(), any(), anyInt(), anyInt()))
-                .thenReturn(new FlowablePage(List.of(rowA1, rowA2, rowB, bpmn), 4, 0, 50));
+                .thenReturn(CmmnRecords.jobPage(List.of(rowA1, rowA2, rowB, bpmn), 4));
         when(flowable.getCmmnCaseDefinition(engine, CallPriority.INTERACTIVE, "def-A"))
-                .thenReturn(def("kA", "Case A"));
+                .thenReturn(CmmnRecords.caseDefinition(def("kA", "Case A")));
         when(flowable.getCmmnCaseDefinition(engine, CallPriority.INTERACTIVE, "def-B"))
-                .thenReturn(def("kB", "Case B"));
+                .thenReturn(CmmnRecords.caseDefinition(def("kB", "Case B")));
 
         OutOfScopeDeadLetters result = service.outOfScopeDeadLetters(ENGINE);
 
@@ -141,7 +145,7 @@ class CmmnScopeServiceTest {
     void spendsTheScanCapOnCmmnOnlyViaScopeTypeFilter() {
         health(scopeTypeCapable());
         when(flowable.listCmmnDeadLetterJobs(any(), any(), any(), anyInt(), anyInt()))
-                .thenReturn(new FlowablePage(List.of(), 0, 0, 50));
+                .thenReturn(CmmnRecords.jobPage(List.of(), 0));
 
         service.outOfScopeDeadLetters(ENGINE);
 
@@ -157,7 +161,7 @@ class CmmnScopeServiceTest {
     void anUndeployedDefinitionDegradesToNullNameNeverFailsTheSlice() {
         health(scopeTypeCapable());
         when(flowable.listCmmnDeadLetterJobs(any(), any(), any(), anyInt(), anyInt()))
-                .thenReturn(new FlowablePage(List.of(cmmnRow("j1", "case-1", "gone")), 1, 0, 50));
+                .thenReturn(CmmnRecords.jobPage(List.of(cmmnRow("j1", "case-1", "gone")), 1));
         when(flowable.getCmmnCaseDefinition(engine, CallPriority.INTERACTIVE, "gone"))
                 .thenReturn(null); // 404 → null
 
@@ -175,15 +179,13 @@ class CmmnScopeServiceTest {
         health(scopeTypeCapable());
         // Two dead-letter jobs on ONE case + a third on another → FAILED = 2 DISTINCT cases.
         when(flowable.listCmmnDeadLetterJobs(any(), any(), any(), anyInt(), anyInt()))
-                .thenReturn(new FlowablePage(
+                .thenReturn(CmmnRecords.jobPage(
                         List.of(
                                 cmmnRow("j1", "case-1", "def-A"),
                                 cmmnRow("j2", "case-1", "def-A"),
                                 cmmnRow("j3", "case-2", "def-B")),
-                        3,
-                        0,
-                        50));
-        when(flowable.getCmmnCaseDefinition(any(), any(), any())).thenReturn(def("k", "n"));
+                        3));
+        when(flowable.getCmmnCaseDefinition(any(), any(), any())).thenReturn(CmmnRecords.caseDefinition(def("k", "n")));
         when(flowable.countHistoricCmmnCaseInstances(any(), any(), eq("active"), any()))
                 .thenReturn(5L);
         when(flowable.countHistoricCmmnCaseInstances(any(), any(), eq("completed"), any()))
@@ -204,7 +206,7 @@ class CmmnScopeServiceTest {
     void aLaneQueryFailureDegradesToNullNeverZero() {
         health(scopeTypeCapable());
         when(flowable.listCmmnDeadLetterJobs(any(), any(), any(), anyInt(), anyInt()))
-                .thenReturn(new FlowablePage(List.of(), 0, 0, 50));
+                .thenReturn(CmmnRecords.jobPage(List.of(), 0));
         when(flowable.countHistoricCmmnCaseInstances(any(), any(), eq("active"), any()))
                 .thenReturn(3L);
         when(flowable.countHistoricCmmnCaseInstances(any(), any(), eq("completed"), any()))

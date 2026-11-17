@@ -1,9 +1,14 @@
 package io.inspector.detail;
 
+import io.inspector.client.DecisionExecutionPage;
+import io.inspector.client.DecisionExecutionRecord;
 import io.inspector.client.DmnApiClient;
-import io.inspector.client.FlowablePage;
+import io.inspector.client.ExecutionPage;
+import io.inspector.client.ExecutionRecord;
 import io.inspector.client.GuardedCaller.CallPriority;
+import io.inspector.client.IdentityLinkRecord;
 import io.inspector.client.ProcessApiClient;
+import io.inspector.client.ProcessInstanceRecord;
 import io.inspector.config.InspectorProperties.EngineConfig;
 import io.inspector.registry.EngineCapabilities;
 import io.inspector.registry.EngineRegistry;
@@ -33,26 +38,27 @@ public class InstanceParityService {
 
     public ParticipantPage participants(String engineId, String instanceId) {
         EngineConfig engine = registry.require(engineId);
-        Map<String, Object> historic =
+        ProcessInstanceRecord historic =
                 flowable.getHistoricProcessInstance(engine, CallPriority.INTERACTIVE, instanceId);
         if (historic == null) {
             throw new ResponseStatusException(HttpStatus.NOT_FOUND, "Unknown instance: " + instanceId);
         }
         boolean running = flowable.getRuntimeProcessInstance(engine, CallPriority.INTERACTIVE, instanceId) != null;
-        List<Map<String, Object>> raw = running
+        List<IdentityLinkRecord> raw = running
                 ? flowable.listRuntimeIdentityLinks(engine, CallPriority.INTERACTIVE, instanceId)
                 : flowable.listHistoricIdentityLinks(engine, CallPriority.INTERACTIVE, instanceId);
         List<ParticipantRow> rows = new ArrayList<>();
-        for (Map<String, Object> link : raw) {
-            String user = first(link, "user", "userId");
+        for (IdentityLinkRecord link : raw) {
+            String user = firstNonBlank(link.user(), link.userId());
             if (user == null) {
                 continue;
             }
-            String type = first(link, "type");
+            String type = firstNonBlank(link.type());
             rows.add(new ParticipantRow(user, type == null ? "participant" : type, !"starter".equals(type)));
         }
-        String starter = first(historic, "startUserId");
+        String starter = historic.startUserId();
         if (starter != null
+                && !starter.isBlank()
                 && rows.stream().noneMatch(row -> starter.equals(row.user()) && "starter".equals(row.type()))) {
             rows.add(0, new ParticipantRow(starter, "starter", false));
         }
@@ -61,8 +67,8 @@ public class InstanceParityService {
 
     public ExecutionTreeBuilder.ExecutionTree executions(String engineId, String instanceId) {
         EngineConfig engine = registry.require(engineId);
-        FlowablePage page = flowable.listExecutions(engine, CallPriority.INTERACTIVE, instanceId, PAGE);
-        List<Map<String, Object>> data = page == null ? List.of() : page.dataOrEmpty();
+        ExecutionPage page = flowable.listExecutions(engine, CallPriority.INTERACTIVE, instanceId, PAGE);
+        List<ExecutionRecord> data = page == null ? List.of() : page.dataOrEmpty();
         boolean capped = page != null && page.total() > data.size();
         return ExecutionTreeBuilder.build(data, capped);
     }
@@ -73,19 +79,19 @@ public class InstanceParityService {
         if (caps != null && !caps.dmnHistory()) {
             return DecisionPage.absent();
         }
-        FlowablePage page = dmn.listByProcessInstance(engine, CallPriority.INTERACTIVE, instanceId, PAGE);
+        DecisionExecutionPage page = dmn.listByProcessInstance(engine, CallPriority.INTERACTIVE, instanceId, PAGE);
         if (page == null) {
             return DecisionPage.absent();
         }
         List<DecisionRow> rows = new ArrayList<>();
-        for (Map<String, Object> row : page.dataOrEmpty()) {
+        for (DecisionExecutionRecord row : page.dataOrEmpty()) {
             rows.add(new DecisionRow(
-                    str(row, "id"),
-                    first(row, "decisionKey", "decisionDefinitionKey"),
-                    str(row, "activityId"),
-                    Boolean.TRUE.equals(row.get("failed")),
-                    str(row, "startTime"),
-                    str(row, "endTime")));
+                    row.id(),
+                    firstNonBlank(row.decisionKey(), row.decisionDefinitionKey()),
+                    row.activityId(),
+                    Boolean.TRUE.equals(row.failed()),
+                    row.startTime(),
+                    row.endTime()));
         }
         return new DecisionPage(true, rows, page.total() > rows.size());
     }
@@ -96,14 +102,8 @@ public class InstanceParityService {
         return audit == null ? Map.of() : new LinkedHashMap<>(audit);
     }
 
-    private static String str(Map<String, Object> row, String key) {
-        Object value = row.get(key);
-        return value == null ? null : value.toString();
-    }
-
-    private static String first(Map<String, Object> row, String... keys) {
-        for (String key : keys) {
-            String value = str(row, key);
+    private static String firstNonBlank(String... values) {
+        for (String value : values) {
             if (value != null && !value.isBlank()) {
                 return value;
             }

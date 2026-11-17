@@ -1,5 +1,6 @@
 package io.inspector.detail;
 
+import io.inspector.client.ExecutionRecord;
 import java.util.ArrayList;
 import java.util.LinkedHashMap;
 import java.util.List;
@@ -18,14 +19,14 @@ public final class ExecutionTreeBuilder {
     /** Flat list so the OpenAPI schema stays non-recursive. The UI nests on {@code parentId}. */
     public record ExecutionTree(List<ExecutionNode> nodes, boolean pageCapped, int breadthCap) {}
 
-    public static ExecutionTree build(List<Map<String, Object>> rows, boolean pageCapped) {
+    public static ExecutionTree build(List<ExecutionRecord> rows, boolean pageCapped) {
         Map<String, Mutable> byId = new LinkedHashMap<>();
-        for (Map<String, Object> row : rows) {
-            String id = str(row, "id");
+        for (ExecutionRecord row : rows) {
+            String id = row.id();
             if (id == null) {
                 continue;
             }
-            byId.put(id, new Mutable(id, str(row, "parentId"), str(row, "activityId"), bool(row, "suspended")));
+            byId.put(id, new Mutable(id, row.parentId(), row.activityId(), Boolean.TRUE.equals(row.suspended())));
         }
         List<Mutable> roots = new ArrayList<>();
         for (Mutable node : byId.values()) {
@@ -54,15 +55,6 @@ public final class ExecutionTreeBuilder {
                     node.children.size() > BREADTH_CAP));
             append(node.children, out);
         }
-    }
-
-    private static String str(Map<String, Object> row, String key) {
-        Object value = row.get(key);
-        return value == null ? null : value.toString();
-    }
-
-    private static boolean bool(Map<String, Object> row, String key) {
-        return Boolean.TRUE.equals(row.get(key));
     }
 
     private static final class Mutable {

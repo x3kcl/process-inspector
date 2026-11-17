@@ -7,8 +7,9 @@ import io.inspector.action.GuardRefusedException;
 import io.inspector.audit.AuditEntry;
 import io.inspector.audit.ProtectedDefinition;
 import io.inspector.audit.ProtectedInstance;
-import io.inspector.client.FlowablePage;
 import io.inspector.client.GuardedCaller.CallPriority;
+import io.inspector.client.ProcessInstancePage;
+import io.inspector.client.ProcessInstanceRecord;
 import io.inspector.config.InspectorProperties.EngineConfig;
 import java.util.ArrayList;
 import java.util.HashMap;
@@ -45,7 +46,8 @@ final class BulkJobSubmitter {
             BulkJob.ScopeKind scopeKind,
             String scopeLabel,
             Set<String> allowedVerbs,
-            String verbRefusalMessage) {
+            String verbRefusalMessage,
+            Map<String, HierarchyOrder.Placement> placements) {
 
         // Verb paths, not ActionVerb: migrate-instance is a bulk verb but never a single-target
         // ActionVerb (it has its own tier-3 door), so `verb` is null for it.
@@ -156,6 +158,16 @@ final class BulkJobSubmitter {
                         null,
                         host.clock.instant());
             }
+            // Hierarchy job (#497): the item's place in the tree, and a blocker child listed unsent.
+            HierarchyOrder.Placement place = placements == null
+                    ? null
+                    : placements.get(HierarchyOrder.key(target.engineId(), target.instanceId()));
+            if (place != null) {
+                item.placeInHierarchy(place.level(), place.parentInstanceId());
+                if (place.notSentReason() != null && item.getState() == BulkJobItem.State.pending) {
+                    item.settle(BulkJobItem.State.not_run, place.notSentReason(), null, host.clock.instant());
+                }
+            }
             itemRows.add(item);
         }
         host.items.saveAllAndFlush(itemRows);
@@ -235,12 +247,12 @@ final class BulkJobSubmitter {
             Map<String, Object> body = new HashMap<>();
             body.put("processInstanceIds", List.copyOf(ids));
             body.put("size", ids.size());
-            FlowablePage page = host.client.queryRuntimeProcessInstances(engine, CallPriority.INTERACTIVE, body);
+            ProcessInstancePage page = host.client.queryRuntimeProcessInstances(engine, CallPriority.INTERACTIVE, body);
             Map<String, String> byId = new HashMap<>();
             boolean filterIgnored = page == null || page.total() > ids.size();
             if (page != null) {
-                for (Map<String, Object> pi : page.dataOrEmpty()) {
-                    String id = String.valueOf(pi.get("id"));
+                for (ProcessInstanceRecord pi : page.dataOrEmpty()) {
+                    String id = String.valueOf(pi.id());
                     if (!ids.contains(id)) {
                         filterIgnored = true;
                         break;
@@ -259,7 +271,7 @@ final class BulkJobSubmitter {
             for (String id : ids) {
                 futures.add(CompletableFuture.runAsync(
                         () -> {
-                            Map<String, Object> pi =
+                            ProcessInstanceRecord pi =
                                     host.client.getRuntimeProcessInstance(engine, CallPriority.INTERACTIVE, id);
                             String key = pi != null ? definitionKeyOf(pi) : null;
                             if (key != null) fallback.put(id, key);
@@ -287,10 +299,9 @@ final class BulkJobSubmitter {
         }
     }
 
-    private static String definitionKeyOf(Map<String, Object> instance) {
-        Object definitionId = instance.get("processDefinitionId");
-        if (definitionId == null) return null;
-        String s = String.valueOf(definitionId);
+    private static String definitionKeyOf(ProcessInstanceRecord instance) {
+        String s = instance.processDefinitionId();
+        if (s == null) return null;
         int idx = s.indexOf(':');
         return idx > 0 ? s.substring(0, idx) : s;
     }

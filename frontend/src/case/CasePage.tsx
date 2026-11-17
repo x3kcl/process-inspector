@@ -15,6 +15,7 @@ import { Ts } from '../lib/Ts'
 import { CaseDeleteModal } from './CaseDeleteModal'
 import { CaseDiagramCanvas } from './CaseDiagramCanvas'
 import { PlanItemTimeline } from './PlanItemTimeline'
+import { CaseHistoricMigrate } from './CaseHistoricMigrate'
 import { CaseOps } from './CaseOps'
 import { Breadcrumbs } from '../shell/Breadcrumbs'
 import { caseCrumbs } from '../shell/breadcrumbs'
@@ -339,6 +340,16 @@ export function CasePage() {
             planItems={planItems.data}
           />
         )}
+        {vitals.data?.ended === true &&
+          vitals.data.caseDefinitionKey !== undefined &&
+          vitals.data.caseDefinitionKey !== '' && (
+            <CaseHistoricMigrate
+              engineId={engineId}
+              caseInstanceId={caseInstanceId}
+              caseDefinitionKey={vitals.data.caseDefinitionKey}
+              caseDefinitionId={vitals.data.caseDefinitionId}
+            />
+          )}
         {planItems.isSuccess && <PlanItemTimeline data={planItems.data} />}
       </section>
     </div>

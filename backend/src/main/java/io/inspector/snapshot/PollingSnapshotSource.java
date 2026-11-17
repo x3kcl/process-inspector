@@ -1,10 +1,11 @@
 package io.inspector.snapshot;
 
 import io.inspector.client.CmmnApiClient;
-import io.inspector.client.FlowablePage;
 import io.inspector.client.GuardedCaller.CallPriority;
 import io.inspector.client.ProcessApiClient;
 import io.inspector.client.ProcessApiClient.JobLaneKind;
+import io.inspector.client.ProcessDefinitionPage;
+import io.inspector.client.ProcessDefinitionRecord;
 import io.inspector.config.InspectorProperties;
 import io.inspector.config.InspectorProperties.EngineConfig;
 import io.inspector.dto.TriageDashboardResponse;
@@ -17,7 +18,6 @@ import java.time.Instant;
 import java.util.ArrayList;
 import java.util.LinkedHashSet;
 import java.util.List;
-import java.util.Map;
 import java.util.Optional;
 import java.util.Set;
 import org.springframework.beans.factory.annotation.Autowired;
@@ -188,13 +188,13 @@ public class PollingSnapshotSource implements SnapshotSource {
 
     /** At most 10 latest definition keys. The capped flag is true when the catalog page is not the whole list. */
     private List<DefinitionStart> topStarts(EngineConfig engine, Instant after, Instant now) {
-        FlowablePage page = flowable.listLatestProcessDefinitions(engine, CallPriority.BACKGROUND, 10);
-        List<Map<String, Object>> rows = page == null ? List.of() : page.dataOrEmpty();
+        ProcessDefinitionPage page = flowable.listLatestProcessDefinitions(engine, CallPriority.BACKGROUND, 10);
+        List<ProcessDefinitionRecord> rows = page == null ? List.of() : page.dataOrEmpty();
         boolean capped = page != null && page.total() > rows.size();
         List<DefinitionStart> out = new ArrayList<>();
-        for (Map<String, Object> row : rows) {
-            Object key = row.get("key");
-            if (!(key instanceof String definitionKey) || definitionKey.isBlank()) {
+        for (ProcessDefinitionRecord row : rows) {
+            String definitionKey = row.key();
+            if (definitionKey == null || definitionKey.isBlank()) {
                 continue;
             }
             Long starts = flowable.countHistoricProcesses(

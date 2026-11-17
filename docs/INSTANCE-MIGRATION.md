@@ -157,14 +157,25 @@ IN:
   **Reset to generated** restores that JSON from the pairs, and unsaved expert text asks for a
   discard confirm. Preview findings are marked **blocker** / **warning** / **info** in words.
   A token-loss blocker still gets no target select (no mapping can fix it).
+- **Dual-canvas click-to-map** (#498, `MappingCanvases.tsx`): a **Diagrams** mode beside
+  Table/Expert mounts two read-only bpmn-js viewers (the shared `DiagramCanvas`) — source
+  definition left, target right. A click on a flagged source activity / a target activity sets
+  the same selection as the pair-list selects (selection sync both ways); **Add to map** adds
+  the pair through the same fan rules, and a pair that would make many-to-many is refused on
+  the spot with the reason (`tryAddPair`). With a source selected, the target canvas marks
+  only that source's targets. Pre-check findings are overlaid on the source canvas — blocker
+  ✖ (dotted heavy stroke), warning ! (long dash; an unrecognised severity is marked as a
+  warning, like the callouts), mapped ↦ — glyph + label, never hue alone. The selected source
+  stays visible on top of its finding outline (selection stroke, heavier width and fill; the
+  finding's dash pattern is kept), and adding or removing a pair keeps the operator's pan/zoom
+  (a marker-only re-import restores the viewbox instead of fitting the viewport).
+  The table stays the keyboard path; the bpmn.io watermark is untouched on both viewers.
 - **Definition-versions on-ramp** (cohort visibility): a version list with per-version runtime
   instance counts ("37 running on v3 · latest v5"), the entry point that makes single-instance
   migration a real tool rather than a demo. **Elevated into slice-1** (UX panel).
 
 OUT (later slices, each its own design; resolves IMPLEMENTATION-PLAN §474-475):
-- **Dual-canvas side-by-side diagram mapping** — still deferred. #498 added the table, the pair
-  list, and expert JSON inside MigrateModal; it does not mount a second bpmn-js viewer. The
-  table and the pair list are keyboard-operable (selects and buttons).
+- ~~Dual-canvas side-by-side diagram mapping~~ — shipped with #498 (Diagrams mode, above).
 - **Batch / by-definition migration** — deferred entirely (see §7).
 - Cross-process-key migration (hard 422 in v2).
 - Cross-tenant target (hard refuse).
@@ -355,7 +366,7 @@ compares active plan-item **definition** ids (`planItemDefinitionId`, not the in
 `POST cmmn-runtime/case-instances/{id}/migrate`. By-definition `migrate`, `batch-migrate`,
 `migrate-historic-instances`, `batch-migrate-historic-instances`, and historic
 `historic-case-instances/{id}/migrate` are 7.x only: on 6.x the BFF returns ProblemDetail
-`version-gate` and does not call the engine. A case cohort is not part of #496 (S7).
+`version-gate` and does not call the engine. The case cohort and the 7.x doors are §7.3.
 
 **Verdict for S4: strategy A.** A filtered cohort cannot be sent to by-definition migrate or
 batch-migrate. Execute is one `POST runtime/process-instances/{id}/migrate` per instance, the
@@ -403,6 +414,269 @@ the drawer, INTERRUPTED and verify-now it would otherwise lack.
 Proven by `BulkMigrationIT` (rung 4, 6.8 + 7.1, 202 items, engine-7 breaker forced open mid-run,
 continuation to completion).
 
+### 7.2 Hierarchy-aware migration — children first, then parent (#497)
+A parent and its call-activity children are separate process instances; migrating the parent does
+not touch them (§3, "child executions left on their own definition"). A hierarchy plan migrates the
+whole running tree in **one** bulk job of the same verb, `migrate-instance`: deepest level first,
+the parent last. There is still no cross-instance transaction — each instance is one engine call
+with its own audit row, and a partial result is reported per instance.
+
+**Plan (read-only, stored).** `POST /api/migration/hierarchy/plans?engineId=` with exactly one of
+`rootInstanceId` or `cohort` (the S2 filter; its instances are the roots, resolved server-side).
+The BFF walks the **running** call-activity tree top-down with the Hierarchy tab's own per-node
+read (`POST query/historic-process-instances`, `superProcessInstanceId` + `finished:false`) and
+its caps, and stores the result (`migration_hierarchy_plan`, V28). One read per visited node, so
+the read count is bounded by the node cap however wide a level is. An engine that does not answer
+during the walk (`engine-unreachable`) or answers with an error (`engine-read-failed`) is a 502
+and no plan is stored.
+
+| Cap | Value | When it is hit |
+|---|---|---|
+| depth | `inspector.hierarchy-max-depth` (10) | children below it are counted, not walked: truncation `depth` |
+| breadth per node | 50, or the engine's `max-page-size` if lower | the node's exact running-child total is recorded: truncation `breadth` |
+| nodes | 500 | the walk stops, no further read: truncation `nodes` |
+| roots | the cohort cap (500) | truncation `roots` |
+
+A plan with any truncation is **not executable** (`hierarchy-plan-truncated`): children-first
+cannot be kept over a tree that was not fully read. A 10k-child multi-instance call activity costs
+one read at its parent and is reported with its exact total; migrate that level as a cohort (§7.1)
+and plan again.
+
+**Expiry.** A stored plan is a snapshot of the tree. A plan older than
+`inspector.hierarchy-plan-max-age` (default `PT24H`, at least one second, rejected at boot
+otherwise) is refused at submit with `hierarchy-plan-expired` (409, "Build a new plan"); a plan of
+exactly that age still submits. The plan view reports it as not executable with the same reason.
+The daily retention job (`AuditRetentionPurger`, also when no audit partition aged out) deletes
+expired plans and their group rows; the group analyses and finished jobs stay. A failed delete is
+logged and retried on the next run.
+
+**Circular references.** A node whose definition key is also the key of one of its ancestors (a
+process that calls itself, directly or through others) is listed in `circularReferences`
+(definition key, instance, ancestor instance, depth). It is reported, not skipped: the instance
+tree is still a tree, so these instances stay in the plan and are ordered by their own depth. An
+instance id that comes back under a second parent (not possible on a real engine) is truncation
+`instance-cycle` and the plan is not executable.
+
+**Groups.** The tree is grouped by source definition id (key and version). Each group needs a
+decision: `PUT /api/migration/hierarchy/plans/{id}/groups {definitionId, skip | toDefinitionId?,
+mappings?}`.
+
+| Status | Meaning |
+|---|---|
+| `PENDING` | no decision yet |
+| `ANALYZING` | configured; the estimate is still running |
+| `CONFIGURED` | the estimate finished. `executableCount` instances will be sent, `blockerCount` will not |
+| `ANALYSIS_FAILED` | the estimate stopped (engine unreachable). Configure again |
+| `SKIPPED` | the operator leaves these instances on their version |
+
+Configuring a group runs the cohort analysis (§14.12) over exactly that group's instances — the
+plan's tree is the scope, not a filter — so each instance gets the §14 estimate and a stored
+`activityStateDigest`. Hub's "No instances" status does not exist here: the tree is built from
+running instances, so a definition with none is not in the plan.
+
+**Execution.** `POST /api/bulk/migrate-hierarchy {planId, reason, ticketId?, confirmedCount?}`
+(ADMIN on the plan's engine, checked before the plan is resolved). Refusals: `hierarchy-plan-expired`,
+`hierarchy-plan-truncated`, `hierarchy-plan-incomplete` (a
+group is undecided), `hierarchy-nothing-executable`, and the analysis refusals of §7.1. Every
+instance of a configured group is one item, `jobRef` = its group's analysis id, plus two fields:
+`level` (its depth, the root is 0) and `parentInstanceId` (its nearest ancestor that is also an
+item — a skipped group in between is transparent). All of §7.1's rails apply unchanged (reason,
+ticket, re-auth once, protected auto-exclusion, per-item compare-and-set, `migrate-instance/v2`
+audit per item, pacing, circuit pause, Verify now); prod types the **executable count**.
+
+- **Order.** The runner dispatches one level at a time, deepest first, and starts a level only
+  after every item of the level below is settled. Inside a level the usual permit pool and stagger
+  apply.
+- **A child that still has to be migrated blocks its parent.** Before an item is dispatched, every
+  item that names it as parent must have settled `ok`, or have nothing left to migrate (below).
+  Otherwise the parent settles `not_run` with the cause: `blocked by child <engine>:<id> (<state>:
+  <the child's own detail>)`. That covers a `failed` child, an `unknown` child (never re-fired,
+  never assumed applied), a `skipped_protected` child, a `not_run` child (so the block travels up
+  the chain to the root), and an instance the analysis blocked — it is listed `not_run` at submit
+  ("not sent — the analysis blocked this instance: …") and never sent.
+- **Nothing left to migrate releases the parent.** For a child that settled `not_run` or
+  `skipped`, the runner reads the child once, read-only, right before its parent would be
+  dispatched (`GET runtime/process-instances/{id}`): the child is **no longer running**, or it is
+  **already on its target definition** (someone else migrated it). Either way the parent goes. It
+  does not matter when that happened: after the analysis (the per-item compare-and-set skipped
+  it) or **before** it (a child that ended or was moved between
+  "plan stored" and "group configured" is a blocker in its group's analysis — preview refuses
+  `instance-not-running` or `same-version-target` — so it is listed unsent). A failed read
+  counts as "still to migrate". A `failed`, `unknown` or `skipped_protected` child is never
+  released this way: those outcomes need the operator.
+- **Re-read at dispatch: a running child that is not in the plan blocks its parent.** The plan
+  holds the children that ran when it was stored. Right before an item is sent (every item, a leaf
+  too), the runner reads its running children again with the plan's own per-node read. A running
+  child that is neither a node of the stored plan nor an item of the job — started after the plan
+  was stored, for example by the next loop of a sequential call activity — blocks the item: it
+  settles `not_run` with `blocked by running child <engine>:<id> that is not part of the plan`,
+  the block travels up the chain like any other, and siblings continue. A running child of a
+  **skipped** definition is a node of the plan and does not block. The way out is a new plan,
+  which holds the new child. The read fails closed: if it errors, or returns fewer children than
+  the engine counts (more than one page), the item settles `not_run` with `running children could
+  not be re-read`. If the plan row was purged while its job (or a continuation) is still running,
+  only the job's own items count as planned. One extra read per item; a child that starts between
+  this read and the engine call is not seen (there is no cross-instance transaction).
+- **Never the reverse.** A parent's outcome does not touch its children, which have already
+  settled. Siblings and sibling subtrees are independent.
+- **One audit correlation id.** The envelope row `bulk:migrate-instance` (payload:
+  `hierarchyPlanId`, roots, levels, per-group analysis and target, `circularReferences`) and every
+  item's row carry the submit request's correlation id.
+- **Resume.** "Continue as new job" keeps each item's level and parent, and an item the analysis
+  blocked stays listed and unsent in the new job. A parent can be continued only together with
+  its unresolved children, or once a read shows them on their target or no longer running;
+  otherwise `hierarchy-child-unresolved` (409).
+
+Proven by `HierarchyMigrationIT` (rung 4, 6.8 + 7.1): the seeded 3-level tree
+`demoHierarchyRoot` → `demoHierarchyA` → `demoHierarchyB` migrates in one plan with the order
+shown by the audit timestamps and one correlation id; a suspended B leaves A and Root `not_run`
+with the named cause and on their old version, and the continuation finishes the tree in order;
+a B that was migrated to its target, or that completed, between "plan stored" and "group
+configured" is listed unsent and A and Root still migrate; a parent that starts one child per loop
+(`demoHierarchyLoop`) whose second child started after the plan was stored settles `not_run`
+naming that child and stays on its version, and a new plan then migrates it; a definition that calls itself
+(`demoHierarchyRecursive`, three levels of one definition) is reported in `circularReferences`
+and migrated deepest first; prod needs the typed count; a 60-child multi-instance level under a
+10-row child read is reported and the plan refused; a self-calling chain 12 instances deep is
+cut at the depth cap, reported at the node where the walk stopped, and refused.
+
+The 10k case is an on-demand test in the same class, not a CI leg (starting 10,000 instances
+takes minutes and bloats the engine, so it runs against a throwaway flowable-rest):
+`PI_ENGINE_A_PORT=<port> PI_IT_HIERARCHY_WIDE=10000 mvn verify
+-Dit.test='HierarchyMigrationIT#aVeryWideLevelCostsOneReadAndIsReportedWithItsExactTotal'`
+(fixture `demoHierarchyFanout`, cardinality from the start variable `children`). Measured
+2026-11-12 on flowable-rest 6.8.0 (H2): 10,000 running children under one parent, plan stored in
+0.7 s with 11 nodes (the parent and one 10-row page), truncation `breadth` with `total` 10000,
+the BFF kept answering, and the submit was refused `hierarchy-plan-truncated`. The node cap (500)
+and the `unknown` child are unit-tested only (`HierarchyTreeTest`, `HierarchyBulkJobTest`), as are
+the plan expiry boundary (`HierarchyPlanServiceTest`) and the failed re-read; the purge of expired
+plans runs against real Postgres in `AuditRetentionPurgerIT` (nightly).
+
+**Plan builder (UI).** The Hierarchy tab of a running instance has **Migrate this hierarchy…**
+(ADMIN on the engine; greyed with the reason below that). It opens `HierarchyMigrateModal`, which
+is a thin screen over the routes above and decides nothing itself:
+
+- Opening it stores a plan with `rootInstanceId` = the instance being looked at (its running
+  descendants; not its parents). Closing and reopening reads the tree again into a new plan; the
+  ones left behind expire and are purged (above).
+- The tree is drawn from the plan's `nodes` (instance, definition, level, the group's status).
+  Truncations are listed with where the walk stopped and `enumerated` of `total`; circular
+  references are listed as reported.
+- One block per source definition with the status the plan reports — **Pending** (`PENDING`),
+  **Analyzing…** (`ANALYZING`), **Configured** (`CONFIGURED`, with target version, sent and
+  not-sent counts), **Analysis failed** (`ANALYSIS_FAILED`), **Skipped** (`SKIPPED`) — a target
+  version select (the other deployed versions of that key, latest preselected), an optional
+  mapping, **Configure** and **Skip**. Both can be pressed again to change the decision. While
+  any group is `ANALYZING` the stored plan is re-read once a second.
+- The mapping is the JSON array of the single-instance editor's Expert mode (§1), checked in the
+  browser for shape and again by the BFF. The table and Diagrams modes are not offered here: the
+  plan API returns no per-definition activity list to fill them.
+- Submit is enabled when the plan says `executable`, with the cohort rails (reason, optional
+  ticket, on prod the typed `executableCount`). It sends `{planId, reason, ticketId?,
+  confirmedCount?}` only; `notExecutableReason` is shown verbatim otherwise. The job opens in the
+  operations drawer, which shows its per-level progress.
+
+Pinned by `HierarchyMigrateModal.test.tsx`, `HierarchyTab.test.tsx` and the hermetic Playwright
+spec `e2e/hierarchy-plan.spec.ts`. A cohort-rooted plan (`cohort` instead of `rootInstanceId`) has
+no screen; it stays API-only.
+### 7.3 Case migration at scale (#500)
+
+Measured 2026-11-12 on live `flowable-rest` **6.8.0** and **7.1.0** with the fixture
+`demoCaseMigration` (v1: human tasks `reviewTask`, `extraCheck`, `optionalNote`; v2 drops
+`optionalNote`, adds `approveTask`):
+
+| Call | 6.8.0 | 7.1.0 |
+|---|---|---|
+| `GET cmmn-repository/case-definitions/{id}` | No `resourceName` field. The model name is the tail of the `resource` URL (`…/deployments/{id}/resources/{name}`). | same |
+| `POST cmmn-runtime/case-instances/{id}/migrate` `{toCaseDefinitionId}` on a case whose live plan items all exist in the target | **200, empty body.** Case and plan items carry the target definition id. A plan item that is new in the target (`approveTask`) is **not** created. | same |
+| same call on a case with a live plan item the target lacks (`optionalNote`) | **200.** The plan item stays `active` on a model that does not define it and its task keeps the old definition. Completing that task is **500**, terminating the case is **500**, deleting its history is **500**. | **200.** The plan item and its task are gone: live work is ended without an error. |
+| `GET cmmn-runtime/case-instances?caseDefinitionId=` with `businessKey`, `startedAfter`, `startedBefore` | all narrow `total` | same |
+| same with `businessKeyLike` | **ignored**: `total` is the unfiltered set | narrows `total` |
+| `POST cmmn-repository/case-definitions/{id}/batch-migrate` `{toCaseDefinitionId}` | Spring 404 (no route) | **200, empty body.** Every running case of that version, no filter. |
+| the batch record | — | The CMMN API has no batch route. `GET management/batches?batchType=caseMigration&searchKey={source id}` on the **process** API lists it (`searchKey2` = target id, `status` `inProgress` → `completed`, `completeTime` null until then). `GET management/batches/{id}/batch-parts` is a bare array: `scopeId` = case id, `scopeType` `cmmn`, `status` `success`. The parts were `success` within a second; the batch row reached `completed` about 12 s later. A part the engine cannot apply (a document with `activatePlanItemDefinitions` naming a plan-item definition the target lacks) has `status` **`fail`**, the case stays on the source, `GET management/batch-parts/{id}/batch-part-document` carries `resultStatus` `fail` with the engine's `resultMessage`, and the batch row still reaches `completed` (about 24 s later). `DELETE management/batches/{id}` is 204. |
+| `POST cmmn-history/historic-case-instances/{id}/migrate` on an ended case | Spring 404 | **200.** The historic row carries the target id. |
+| same on a running case | — | **500** `Historic case instance has not ended and can only be migrated with the regular case instance migrate method` |
+| `POST cmmn-repository/case-definitions/{id}/migrate-historic-instances` | Spring 404 | **200.** The ended cases of that version carry the target id. Cases still running on the version stay on it. |
+| by-definition `migrate` with `{}` / an unknown target | Spring 404 | 404 `no case definition deployed with key 'null'` / 500 `Cannot find the case definition to migrate to` |
+
+The engine's own batch document also has `activatePlanItemDefinitions`,
+`terminatePlanItemDefinitions`, `moveToAvailablePlanItemDefinitions` and the `changePlanItemIds*`
+lists (7.1 `batch-document`). The Inspector sends `toCaseDefinitionId` only: a case mapping editor
+is not built.
+
+**The pre-check, and why it blocks.** One implementation (`CaseMigrationPrecheck`) for the single
+door, the cohort analysis and the by-definition batch: every live plan-item **definition** id of
+the case must exist in the target model. A miss is a blocker, not advice. Both majors answer 200
+to exactly that shape, 6.8 leaving a case that can no longer be completed or terminated over REST
+and 7.1 ending the plan item silently, so the engine's own rejection cannot be the backstop. The
+single door shipped in #592 read `resourceName` from the definition row and so refused every real
+case with `target-model-unavailable`; it now derives the name from `resource`.
+
+**Case cohort — the same three steps as §7.1, with the CMMN endpoints.**
+
+- `POST /api/case-migration/cohorts/preview?engineId=` counts the running cases of one source
+  version (`fromCaseDefinitionId`, optional exact `businessKey`, `startedAfter`/`startedBefore`).
+  `businessKeyContains` needs 7.x: on 6.x the BFF refuses `version-gate` before the engine, because
+  the engine would silently return every case. Cap 500, strategy `per-case`.
+- `POST /api/case-migration/analyses?engineId=` runs the pre-check per case (the target model is
+  read once). A case is a blocker (its reason, and the missing definition ids counted per id) or
+  clean. The row is stored in `migration_analysis` with `taxonomy_version` **0**: the §14 BPMN
+  taxonomy does not apply to a case, and that value is how the two kinds are told apart. The
+  process analysis read and `POST /api/bulk/migrate` answer 404 for a case row;
+  `GET /api/case-migration/analyses/{id}` answers 404 for a process row. Each clean case's
+  compare-and-set baseline is stored: the source definition id (a column) and the sorted list of
+  its live plan-item definition ids. Source and target must be versions of the same case key.
+- `POST /api/bulk/migrate-cases {analysisIds, reason, ticketId?, confirmedCount?}` is the bulk verb
+  **`migrate-case`**. Same rails as §7.1: ADMIN on every analysis engine, reason ≥10, ticket per
+  engine policy, typed **count** of the executable set once an engine is prod, re-auth once at
+  submit, a partial / running / failed analysis refused, `analysis-overlap`. Each item is the
+  single-case `migrate-case` verb (`CorrectiveActionService#executeCaseMigrationBulkItem`), skipping
+  only re-auth and the typed case id. Before the audit row and before any engine call the
+  server-fresh restatement is compared with the baseline: a different definition or a different
+  live plan-item set refuses `instance-moved-since-preview` → **`skipped`**. A case that ended
+  (`case-not-running`) or already runs the target (`same-definition-target`) is `skipped` too. A
+  blocker that appeared since the analysis (`plan-item-not-in-target`) is `failed`, nothing sent.
+  Audit: one `migrate-case` row per sent case (`migrate-case/v1`) plus the `bulk:migrate-case`
+  envelope. Verify now re-reads the case's definition id. Continue as new job takes only the prior
+  job's `not_run`/`failed` items.
+- Protection (R-SAFE-05) has no case scope (#184), so nothing is auto-excluded for a case job.
+
+**The 7.x-only doors.** Tier 3 each: ADMIN, writable engine, CMMN capability, then the version
+gate — on a non-7.x engine ProblemDetail **`version-gate`** ("… is behind the Flowable 7.x version
+gate: needs Flowable 7.x (engine 'x' is 6.8.0) … Refused before any engine call") before any
+engine read. Then re-auth, reason ≥10, ticket, a server-fresh restatement (source and target
+deployed, same key, not equal), the prod confirmation, a fail-closed audit row with payload
+`migrate-case/v1` (`route`, `enginePath`, from/to ids, the count), ONE engine call, never retried.
+
+| BFF door | Engine route | Restatement and prod token | Audit action |
+|---|---|---|---|
+| `POST /api/case-definitions/{engineId}/{caseDefinitionId}/migrate-batch` | `…/batch-migrate` | Count of running cases on the source (0 ⇒ `nothing-to-migrate`). Refused `plan-item-not-in-target` when the target model lacks any plan-item definition of the **source model**: the batch has no per-case check, so only an additive target is sent; anything else goes through the cohort. The model read is a `definitionRef` scan that accepts either XML quote; a source model it reads nothing from is refused `source-model-unreadable` (422) instead of being sent unchecked. Prod: typed running count. | `migrate-cases-batch` |
+| `POST /api/case-definitions/{engineId}/{caseDefinitionId}/migrate-historic` | `…/migrate-historic-instances` | Count of ended cases on the source. Prod: typed ended count. | `migrate-historic-cases` |
+| `POST /api/cases/{engineId}/{caseInstanceId}/migrate-historic` | `historic-case-instances/{id}/migrate` | The case must be in history and ended (`case-still-running` otherwise). Prod: typed case id. | `migrate-historic-case` |
+
+A batch answers 200 before any case has moved. The result names the batch id it read back and says
+so; `GET /api/case-definitions/{engineId}/{caseDefinitionId}/migration-batches` lists the engine's
+batches from that source with the parts counted by the engine's own status string and a sample of
+the case ids whose part is not `success`. Nothing polls a batch on the operator's behalf except the
+open page. The synchronous by-definition `migrate` and `batch-migrate-historic-instances` are not
+exposed: the first is the batch without a record to read, the second was not needed.
+
+**On-ramp.** `GET /api/case-definitions/{engineId}/{key}/versions`: every deployed version of a
+case key with its RUNNING and ended case counts (count-only), plus `definitionRoutesGate` — null
+on 7.x, otherwise the sentence the UI shows beside the greyed batch and historic controls.
+
+Proven by `CaseMigrationIT` (rung 4, real 6.8 + 7.1, profile `it-case-migration`: the `it-findings`
+registry plus a prod twin of the 7.1 engine): 6.8 single case, 6.8 cohort (blocker never sent,
+out-of-band migrate and a changed plan-item set both `skipped`, typed count on the prod twin),
+"Continue as new job" and "Verify now" for `migrate-case` through `POST /api/bulk` and
+`POST /api/bulk/{id}/items/{n}/verify` (the prior job's rows are written through the BFF's own
+store, because an interrupted job and a lost answer cannot be produced on demand), 6.8 refusing
+all three 7.x doors on ids the engine has never seen; 7.1 single case, cohort with the `contains`
+filter, batch, both historic doors, the batch refused for a single-quoted source model that loses
+a plan item, a failed batch part counted as `fail` with its case named, and the typed
+confirmation of all three doors on the prod twin (count missing, count wrong, case id wrong, then
+the right one).
+
 ### 7.0 Why batch was deferred (2026-07, historical)
 By-definition migration returns an async **`Batch`**; work drains via batch-part jobs and you poll
 `GET /management/batches/{id}` (+ parts). This breaks the single-call doctrine three ways: (a) the
@@ -425,8 +699,8 @@ use it.
      targeted `from→to` dropdown appears ONLY for each flagged activity; re-validate after mapping.
   3. Reason (≥10) + typed `MIGRATE` on prod → **Execute** → re-fetch instance state (no optimistic
      update). Show-as-cURL is server-computed.
-- Optional read-only "show diagram (old | new)" disclosure; the dual-canvas mapping EDITOR is
-  deferred to the batch slice.
+- Optional read-only "show diagram (old | new)" disclosure. The dual-canvas mapping editor
+  shipped later with #498 (the **Diagrams** mode of the mapping editor, §1).
 - Capability-gated: greyed with reason on `migration`-false engines; UNCHECKED-labelled on
   validate-gap engines.
 
@@ -473,8 +747,8 @@ use it.
   message chips + honesty/UNCHECKED banners; targeted mapping dropdowns for flagged activities;
   typed-MIGRATE; definition-versions view + entry (b); Playwright e2e (URL-predicate mocks) + one
   live smoke.
-- **LATER (own design docs):** batch/by-definition (async `Batch` poll + per-part audit), full
-  side-by-side diagram mapping editor, cross-key, assignee/variable remap.
+- **LATER (own design docs):** batch/by-definition (async `Batch` poll + per-part audit),
+  cross-key, assignee/variable remap. (The side-by-side diagram mapping editor shipped with #498.)
 
 ## 12. Panel decisions (provenance)
 | # | Decision | Verdict | Voices |

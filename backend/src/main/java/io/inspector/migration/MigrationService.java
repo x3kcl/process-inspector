@@ -11,10 +11,15 @@ import io.inspector.audit.AuditEntry;
 import io.inspector.audit.AuditOutcome;
 import io.inspector.audit.AuditService;
 import io.inspector.audit.ProtectionGuard;
-import io.inspector.client.FlowablePage;
+import io.inspector.client.ExecutionPage;
+import io.inspector.client.ExecutionRecord;
 import io.inspector.client.ForwardedActor;
 import io.inspector.client.GuardedCaller.CallPriority;
 import io.inspector.client.ProcessApiClient;
+import io.inspector.client.ProcessDefinitionPage;
+import io.inspector.client.ProcessDefinitionRecord;
+import io.inspector.client.ProcessInstancePage;
+import io.inspector.client.ProcessInstanceRecord;
 import io.inspector.config.InspectorProperties.EngineConfig;
 import io.inspector.config.InspectorProperties.EngineEnvironment;
 import io.inspector.config.InspectorProperties.EngineMode;
@@ -199,12 +204,12 @@ public class MigrationService {
         requireMigrationCapability(engine);
         requireWritableEngine(engine);
 
-        Map<String, Object> instance = restateRunningInstance(engine, instanceId);
-        String fromDefinitionId = String.valueOf(instance.get("processDefinitionId"));
+        ProcessInstanceRecord instance = restateRunningInstance(engine, instanceId);
+        String fromDefinitionId = String.valueOf(instance.processDefinitionId());
         String fromKey = definitionKeyOf(fromDefinitionId);
         int fromVersion = definitionVersionOf(fromDefinitionId);
-        String fromTenant = asString(instance.get("tenantId"));
-        String businessKey = asString(instance.get("businessKey"));
+        String fromTenant = instance.tenantId();
+        String businessKey = instance.businessKey();
         // §5 CAS, definition half, before target resolution (else a moved one reads same-version-target).
         String expectedFrom = blankToNull(request.expectedFromDefinitionId());
         if (expectedFrom != null && !expectedFrom.equals(fromDefinitionId)) {
@@ -345,7 +350,7 @@ public class MigrationService {
      */
     private ResolvedTarget resolveTarget(
             EngineConfig engine, MigrationRequest request, String fromKey, int fromVersion, String fromTenant) {
-        Map<String, Object> targetDef;
+        ProcessDefinitionRecord targetDef;
         try {
             if (request.toDefinitionId() != null && !request.toDefinitionId().isBlank()) {
                 targetDef = client.getProcessDefinition(engine, CallPriority.INTERACTIVE, request.toDefinitionId());
@@ -366,7 +371,7 @@ public class MigrationService {
                     "No matching target version of '" + fromKey + "' is deployed on '" + engine.id()
                             + "'. Nothing happened.");
         }
-        String targetKey = asString(targetDef.get("key"));
+        String targetKey = targetDef.key();
         if (!fromKey.equals(targetKey)) {
             throw new GuardRefusedException(
                     HttpStatus.UNPROCESSABLE_ENTITY,
@@ -374,7 +379,7 @@ public class MigrationService {
                     "Target definition '" + targetKey + "' has a different process key than the instance ('" + fromKey
                             + "') — cross-key migration is out of scope. Nothing happened.");
         }
-        String targetTenant = asString(targetDef.get("tenantId"));
+        String targetTenant = targetDef.tenantId();
         if (!tenantsMatch(fromTenant, targetTenant)) {
             throw new GuardRefusedException(
                     HttpStatus.UNPROCESSABLE_ENTITY,
@@ -382,7 +387,7 @@ public class MigrationService {
                     "Target definition is in tenant '" + targetTenant + "' but the instance is in '" + fromTenant
                             + "' — cross-tenant migration is out of scope. Nothing happened.");
         }
-        int targetVersion = ((Number) targetDef.get("version")).intValue();
+        int targetVersion = targetDef.version();
         if (targetVersion == fromVersion) {
             throw new GuardRefusedException(
                     HttpStatus.CONFLICT,
@@ -390,7 +395,7 @@ public class MigrationService {
                     "The instance already runs version " + fromVersion + " of '" + fromKey
                             + "' — migrating to the same version is a no-op. Nothing happened.");
         }
-        return new ResolvedTarget(asString(targetDef.get("id")), targetVersion);
+        return new ResolvedTarget(targetDef.id(), targetVersion);
     }
 
     /* --------------------------------- guards (cloned) --------------------------------- */
@@ -441,8 +446,8 @@ public class MigrationService {
         }
     }
 
-    private Map<String, Object> restateRunningInstance(EngineConfig engine, String instanceId) {
-        Map<String, Object> instance;
+    private ProcessInstanceRecord restateRunningInstance(EngineConfig engine, String instanceId) {
+        ProcessInstanceRecord instance;
         try {
             instance = client.getRuntimeProcessInstance(engine, CallPriority.INTERACTIVE, instanceId);
         } catch (CallNotPermittedException | BulkheadFullException | ResourceAccessException e) {
@@ -455,7 +460,7 @@ public class MigrationService {
                     "Instance " + instanceId + " is not running on '" + engine.id()
                             + "' (completed or deleted?) — migration needs live executions. Nothing happened.");
         }
-        if (Boolean.TRUE.equals(instance.get("suspended"))) {
+        if (Boolean.TRUE.equals(instance.suspended())) {
             throw new GuardRefusedException(
                     HttpStatus.CONFLICT,
                     "instance-suspended",
@@ -502,7 +507,7 @@ public class MigrationService {
 
     /** Active activity ids WITH repeats (one per active execution) — feeds the diff + the digest. */
     private List<String> activeActivityIds(EngineConfig engine, String instanceId) {
-        FlowablePage executions =
+        ExecutionPage executions =
                 client.listExecutions(engine, CallPriority.INTERACTIVE, instanceId, EXECUTION_FETCH_CAP);
         if (executions.total() > EXECUTION_FETCH_CAP) {
             // A partial view of the active token set would make the diff + digest a lie (missed
@@ -516,10 +521,10 @@ public class MigrationService {
                             + " misleading; nothing happened.");
         }
         List<String> active = new ArrayList<>();
-        for (Map<String, Object> execution : executions.dataOrEmpty()) {
-            Object activityId = execution.get("activityId");
+        for (ExecutionRecord execution : executions.dataOrEmpty()) {
+            String activityId = execution.activityId();
             if (activityId != null) {
-                active.add(String.valueOf(activityId));
+                active.add(activityId);
             }
         }
         return active;
@@ -530,16 +535,16 @@ public class MigrationService {
         Map<String, Object> body = new LinkedHashMap<>();
         body.put("superProcessInstanceId", instanceId);
         body.put("size", CHILD_COUNT_CAP_PROBE);
-        FlowablePage page = client.queryRuntimeProcessInstances(engine, CallPriority.INTERACTIVE, body);
+        ProcessInstancePage page = client.queryRuntimeProcessInstances(engine, CallPriority.INTERACTIVE, body);
         return page != null ? (int) page.total() : 0;
     }
 
     /** Re-read the instance to PROVE the migration landed — record the observed definition id. */
     private String observedDefinitionId(EngineConfig engine, String instanceId) {
         try {
-            Map<String, Object> instance =
+            ProcessInstanceRecord instance =
                     client.getRuntimeProcessInstance(engine, CallPriority.INTERACTIVE, instanceId);
-            return instance != null ? asString(instance.get("processDefinitionId")) : "(instance ended)";
+            return instance != null ? instance.processDefinitionId() : "(instance ended)";
         } catch (RuntimeException e) {
             return "(unverified)";
         }
@@ -604,8 +609,8 @@ public class MigrationService {
         return document;
     }
 
-    private static Map<String, Object> firstOrNull(FlowablePage page) {
-        List<Map<String, Object>> rows = page != null ? page.dataOrEmpty() : List.of();
+    private static ProcessDefinitionRecord firstOrNull(ProcessDefinitionPage page) {
+        List<ProcessDefinitionRecord> rows = page != null ? page.dataOrEmpty() : List.of();
         return rows.isEmpty() ? null : rows.get(0);
     }
 
@@ -619,10 +624,6 @@ public class MigrationService {
 
     private static boolean tenantsMatch(String a, String b) {
         return blankToNull(a) == null ? blankToNull(b) == null : a.equals(b);
-    }
-
-    private static String asString(Object value) {
-        return value == null ? null : String.valueOf(value);
     }
 
     private static String blankToNull(String value) {

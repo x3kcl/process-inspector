@@ -19,6 +19,7 @@ import { talliesLine } from '../ops/outcome'
 import { IncidentBreakdownTable } from './IncidentBreakdownTable'
 import { IncidentTimeline } from './IncidentTimeline'
 import { episodeDurationLabel } from './duration'
+import { EPISODE_ACTIONS_CAVEAT, episodeActionsLine, episodeOpsLogHref } from './episodeActions'
 import { incidentSearchParams } from './drill'
 import { incidentGate } from './gate'
 import { countStripLabel } from './liveness'
@@ -236,6 +237,14 @@ export function IncidentDetail() {
             )}
             {' · peak '}
             {episode.peakTotal ?? 0}
+            {episode.actionsDuringEpisode !== undefined && (
+              <div className="episode-actions">
+                {episodeActionsLine(episode.actionsDuringEpisode)} ({EPISODE_ACTIONS_CAVEAT}) ·{' '}
+                <Link to={episodeOpsLogHref(episode, Object.keys(incident?.countsByEngine ?? {}))}>
+                  open in Ops log
+                </Link>
+              </div>
+            )}
           </li>
         ))}
         {episodes.length === 0 && <li className="zero-state">No episodes recorded.</li>}

@@ -1,7 +1,9 @@
 package io.inspector.detail;
 
-import io.inspector.client.FlowablePage;
 import io.inspector.client.GuardedCaller.CallPriority;
+import io.inspector.client.ProcessInstanceRecord;
+import io.inspector.client.TaskPage;
+import io.inspector.client.TaskRecord;
 import io.inspector.config.InspectorProperties.EngineConfig;
 import io.inspector.dto.InstanceTasks;
 import io.inspector.dto.InstanceTasks.TaskDto;
@@ -30,26 +32,25 @@ final class InstanceTasksAssembler {
      */
     public InstanceTasks tasks(String engineId, String instanceId) {
         EngineConfig engine = host.engineForRead(engineId);
-        Map<String, Object> historic = host.requireHistoric(engine, instanceId);
+        ProcessInstanceRecord historic = host.requireHistoric(engine, instanceId);
 
-        Map<String, Map<String, Object>> runtimeById = new LinkedHashMap<>();
-        if (InstanceDetailService.str(historic, "endTime") == null) {
-            for (Map<String, Object> task : host.flowable
+        Map<String, TaskRecord> runtimeById = new LinkedHashMap<>();
+        if (historic.endTime() == null) {
+            for (TaskRecord task : host.flowable
                     .listRuntimeTasks(engine, CallPriority.INTERACTIVE, instanceId, engine.maxPageSizeOrDefault())
                     .dataOrEmpty()) {
-                String id = InstanceDetailService.str(task, "id");
-                if (id != null) runtimeById.put(id, task);
+                if (task.id() != null) runtimeById.put(task.id(), task);
             }
         }
 
         long historicTotal = 0;
         Map<String, TaskDto> rows = new LinkedHashMap<>();
         try {
-            FlowablePage page = host.flowable.listHistoricTaskInstances(
+            TaskPage page = host.flowable.listHistoricTaskInstances(
                     engine, CallPriority.INTERACTIVE, instanceId, engine.maxPageSizeOrDefault());
             historicTotal = page.total();
-            for (Map<String, Object> task : page.dataOrEmpty()) {
-                String id = InstanceDetailService.str(task, "id");
+            for (TaskRecord task : page.dataOrEmpty()) {
+                String id = task.id();
                 if (id == null) continue;
                 rows.put(id, InstanceDetailService.taskRow(task, runtimeById.get(id)));
             }
@@ -58,7 +59,7 @@ final class InstanceTasksAssembler {
             // still renders the open tasks; degrade, never 500.
             InstanceDetailService.log.debug("Historic-task leg unavailable on {}: {}", engine.id(), ex.toString());
         }
-        for (Map.Entry<String, Map<String, Object>> entry : runtimeById.entrySet()) {
+        for (Map.Entry<String, TaskRecord> entry : runtimeById.entrySet()) {
             rows.computeIfAbsent(entry.getKey(), id -> InstanceDetailService.taskRow(null, entry.getValue()));
         }
 

@@ -11,10 +11,16 @@ import io.inspector.audit.AuditEntry;
 import io.inspector.audit.AuditOutcome;
 import io.inspector.audit.AuditService;
 import io.inspector.audit.ProtectionGuard;
-import io.inspector.client.FlowablePage;
+import io.inspector.client.ExecutionPage;
+import io.inspector.client.ExecutionRecord;
 import io.inspector.client.ForwardedActor;
 import io.inspector.client.GuardedCaller.CallPriority;
+import io.inspector.client.HistoricVariablePage;
+import io.inspector.client.HistoricVariableRecord;
 import io.inspector.client.ProcessApiClient;
+import io.inspector.client.ProcessDefinitionPage;
+import io.inspector.client.ProcessInstanceRecord;
+import io.inspector.client.VariableRecord;
 import io.inspector.config.InspectorProperties.EngineConfig;
 import io.inspector.config.InspectorProperties.EngineEnvironment;
 import io.inspector.config.InspectorProperties.EngineMode;
@@ -166,8 +172,8 @@ public class FlowSurgeryService {
         List<String> sources = requiredIds(request.sourceActivityIds(), "sourceActivityIds");
         List<String> targets = requiredIds(request.targetActivityIds(), "targetActivityIds");
 
-        Map<String, Object> instance = restateRunningInstance(engine, instanceId);
-        String definitionId = String.valueOf(instance.get("processDefinitionId"));
+        ProcessInstanceRecord instance = restateRunningInstance(engine, instanceId);
+        String definitionId = String.valueOf(instance.processDefinitionId());
 
         BpmnStructure model;
         Set<String> activeActivityIds;
@@ -227,8 +233,8 @@ public class FlowSurgeryService {
         }
     }
 
-    private Map<String, Object> restateRunningInstance(EngineConfig engine, String instanceId) {
-        Map<String, Object> instance;
+    private ProcessInstanceRecord restateRunningInstance(EngineConfig engine, String instanceId) {
+        ProcessInstanceRecord instance;
         try {
             instance = client.getRuntimeProcessInstance(engine, CallPriority.INTERACTIVE, instanceId);
         } catch (CallNotPermittedException | BulkheadFullException | ResourceAccessException e) {
@@ -241,7 +247,7 @@ public class FlowSurgeryService {
                     "Instance " + instanceId + " is not running on '" + engine.id()
                             + "' (completed or deleted?) — a token move needs live executions. Nothing happened.");
         }
-        if (Boolean.TRUE.equals(instance.get("suspended"))) {
+        if (Boolean.TRUE.equals(instance.suspended())) {
             throw new GuardRefusedException(
                     HttpStatus.CONFLICT,
                     "instance-suspended",
@@ -252,13 +258,13 @@ public class FlowSurgeryService {
     }
 
     private Set<String> activeActivityIds(EngineConfig engine, String instanceId) {
-        FlowablePage executions =
+        ExecutionPage executions =
                 client.listExecutions(engine, CallPriority.INTERACTIVE, instanceId, EXECUTION_FETCH_CAP);
         Set<String> active = new HashSet<>();
-        for (Map<String, Object> execution : executions.dataOrEmpty()) {
-            Object activityId = execution.get("activityId");
+        for (ExecutionRecord execution : executions.dataOrEmpty()) {
+            String activityId = execution.activityId();
             if (activityId != null) {
-                active.add(String.valueOf(activityId));
+                active.add(activityId);
             }
         }
         return active;
@@ -389,7 +395,7 @@ public class FlowSurgeryService {
         // protection now (previously after) — a deliberate, test-unconstrained ordering choice:
         // an inapplicable request (wrong state) is arguably more fundamental than an
         // authorization refusal, and the two are mutually exclusive outcomes either way.
-        Map<String, Object> historic;
+        ProcessInstanceRecord historic;
         try {
             // Restart resurrects DEAD instances only — a live one must be terminated or moved.
             if (client.getRuntimeProcessInstance(engine, CallPriority.INTERACTIVE, instanceId) != null) {
@@ -408,7 +414,7 @@ public class FlowSurgeryService {
                         "Instance " + instanceId + " is unknown on '" + engine.id()
                                 + "' — nothing to restart. Nothing happened.");
             }
-            if (historic.get("endTime") == null) {
+            if (historic.endTime() == null) {
                 throw new GuardRefusedException(
                         HttpStatus.CONFLICT,
                         "instance-not-ended",
@@ -418,7 +424,7 @@ public class FlowSurgeryService {
             throw engineUnreachablePreFlight(engine);
         }
 
-        Object historicDefinitionId = historic.get("processDefinitionId");
+        Object historicDefinitionId = historic.processDefinitionId();
         requireUnprotectedOrAdmin(
                 auth,
                 engine,
@@ -434,7 +440,7 @@ public class FlowSurgeryService {
         Map<String, String> skipped;
         String startDefinitionRef;
         try {
-            String originalDefinitionId = String.valueOf(historic.get("processDefinitionId"));
+            String originalDefinitionId = String.valueOf(historic.processDefinitionId());
             startDefinitionRef = resolveStartDefinition(engine, originalDefinitionId, historic, pinVersion);
 
             Map<String, String> skippedReasons = new LinkedHashMap<>();
@@ -448,7 +454,7 @@ public class FlowSurgeryService {
             } else {
                 startBody.put("processDefinitionKey", startDefinitionRef);
             }
-            Object businessKey = historic.get("businessKey");
+            Object businessKey = historic.businessKey();
             if (businessKey != null) {
                 startBody.put("businessKey", String.valueOf(businessKey));
             }
@@ -479,11 +485,11 @@ public class FlowSurgeryService {
                 payload,
                 engine.auditPayloadOrDefault());
 
-        Map<String, Object> started = dispatchAudited(
+        ProcessInstanceRecord started = dispatchAudited(
                 entry, engineId, () -> client.startProcessInstance(engine, CallPriority.INTERACTIVE, startBody));
 
-        String newInstanceId = String.valueOf(started.get("id"));
-        String newDefinitionId = String.valueOf(started.get("processDefinitionId"));
+        String newInstanceId = String.valueOf(started.id());
+        String newDefinitionId = String.valueOf(started.processDefinitionId());
         audit.close(entry, AuditOutcome.ok, 200, "{\"newProcessInstanceId\":\"" + newInstanceId + "\"}", true);
 
         String delta = "New instance " + newInstanceId + " started on definition " + newDefinitionId
@@ -510,7 +516,7 @@ public class FlowSurgeryService {
      * documented fallback (wire-shape memory, M2a).
      */
     private String resolveStartDefinition(
-            EngineConfig engine, String originalDefinitionId, Map<String, Object> historic, boolean pinVersion) {
+            EngineConfig engine, String originalDefinitionId, ProcessInstanceRecord historic, boolean pinVersion) {
         if (pinVersion) {
             if (client.getProcessDefinition(engine, CallPriority.INTERACTIVE, originalDefinitionId) == null) {
                 throw new GuardRefusedException(
@@ -522,10 +528,10 @@ public class FlowSurgeryService {
             }
             return originalDefinitionId;
         }
-        Object key = historic.get("processDefinitionKey");
+        Object key = historic.processDefinitionKey();
         String definitionKey =
                 key != null ? String.valueOf(key) : originalDefinitionId.split(":", 2)[0];
-        FlowablePage latest =
+        ProcessDefinitionPage latest =
                 client.listProcessDefinitionsByKey(engine, CallPriority.INTERACTIVE, definitionKey, null, 0, 1);
         if (latest == null || latest.total() == 0) {
             throw new GuardRefusedException(
@@ -545,9 +551,9 @@ public class FlowSurgeryService {
      */
     private List<Map<String, Object>> portableHistoricVariables(
             EngineConfig engine, String instanceId, Map<String, String> skipped) {
-        FlowablePage page =
+        HistoricVariablePage page =
                 client.listHistoricVariableInstances(engine, CallPriority.INTERACTIVE, instanceId, VARIABLE_FETCH_CAP);
-        List<Map<String, Object>> rows = page != null ? page.dataOrEmpty() : List.of();
+        List<HistoricVariableRecord> rows = page != null ? page.dataOrEmpty() : List.of();
         if (page != null && page.total() > rows.size()) {
             throw new GuardRefusedException(
                     HttpStatus.UNPROCESSABLE_ENTITY,
@@ -557,18 +563,18 @@ public class FlowSurgeryService {
                             + " nothing happened.");
         }
         List<Map<String, Object>> variables = new ArrayList<>();
-        for (Map<String, Object> row : rows) {
-            if (row.get("taskId") != null) {
+        for (HistoricVariableRecord row : rows) {
+            if (row.taskId() != null) {
                 continue; // task-local — never instance state
             }
-            Object wrapped = row.get("variable");
-            if (!(wrapped instanceof Map<?, ?> variable)) {
+            VariableRecord variable = row.variable();
+            if (variable == null) {
                 continue;
             }
-            String name = String.valueOf(variable.get("name"));
-            String type = variable.get("type") != null ? String.valueOf(variable.get("type")) : null;
-            Object scope = variable.get("scope");
-            if (scope != null && !"global".equals(String.valueOf(scope))) {
+            String name = String.valueOf(variable.name());
+            String type = variable.type();
+            String scope = variable.scope();
+            if (scope != null && !"global".equals(scope)) {
                 continue; // execution-local (e.g. MI loop bookkeeping) — meaningless on a fresh instance
             }
             if (INTRINSIC_VARIABLES.contains(name)) {
@@ -582,7 +588,7 @@ public class FlowSurgeryService {
             Map<String, Object> typed = new LinkedHashMap<>();
             typed.put("name", name);
             typed.put("type", type);
-            typed.put("value", variable.get("value"));
+            typed.put("value", variable.value());
             variables.add(typed);
         }
         return variables;

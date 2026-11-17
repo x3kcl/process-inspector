@@ -1,0 +1,48 @@
+{
+    "data": [
+        {
+            "id": "837fa5de-e239-11f1-acb8-7eebefdaa7d9",
+            "url": "http://localhost:8083/flowable-rest/service/runtime/executions/837fa5de-e239-11f1-acb8-7eebefdaa7d9",
+            "parentId": null,
+            "parentUrl": null,
+            "superExecutionId": null,
+            "superExecutionUrl": null,
+            "processInstanceId": "837fa5de-e239-11f1-acb8-7eebefdaa7d9",
+            "processInstanceUrl": "http://localhost:8083/flowable-rest/service/runtime/process-instances/837fa5de-e239-11f1-acb8-7eebefdaa7d9",
+            "suspended": false,
+            "activityId": null,
+            "tenantId": ""
+        },
+        {
+            "id": "837fa5e0-e239-11f1-acb8-7eebefdaa7d9",
+            "url": "http://localhost:8083/flowable-rest/service/runtime/executions/837fa5e0-e239-11f1-acb8-7eebefdaa7d9",
+            "parentId": "837fa5de-e239-11f1-acb8-7eebefdaa7d9",
+            "parentUrl": "http://localhost:8083/flowable-rest/service/runtime/executions/837fa5de-e239-11f1-acb8-7eebefdaa7d9",
+            "superExecutionId": null,
+            "superExecutionUrl": null,
+            "processInstanceId": "837fa5de-e239-11f1-acb8-7eebefdaa7d9",
+            "processInstanceUrl": "http://localhost:8083/flowable-rest/service/runtime/process-instances/837fa5de-e239-11f1-acb8-7eebefdaa7d9",
+            "suspended": false,
+            "activityId": "waitForMessage",
+            "tenantId": ""
+        },
+        {
+            "id": "837fccf4-e239-11f1-acb8-7eebefdaa7d9",
+            "url": "http://localhost:8083/flowable-rest/service/runtime/executions/837fccf4-e239-11f1-acb8-7eebefdaa7d9",
+            "parentId": "837fa5de-e239-11f1-acb8-7eebefdaa7d9",
+            "parentUrl": "http://localhost:8083/flowable-rest/service/runtime/executions/837fa5de-e239-11f1-acb8-7eebefdaa7d9",
+            "superExecutionId": null,
+            "superExecutionUrl": null,
+            "processInstanceId": "837fa5de-e239-11f1-acb8-7eebefdaa7d9",
+            "processInstanceUrl": "http://localhost:8083/flowable-rest/service/runtime/process-instances/837fa5de-e239-11f1-acb8-7eebefdaa7d9",
+            "suspended": false,
+            "activityId": "waitForSignal",
+            "tenantId": ""
+        }
+    ],
+    "total": 3,
+    "start": 0,
+    "sort": "processInstanceId",
+    "order": "asc",
+    "size": 3
+}

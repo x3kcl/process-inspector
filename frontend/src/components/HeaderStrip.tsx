@@ -1,4 +1,5 @@
 import { useState } from 'react'
+import { useLocation } from 'react-router'
 import type { EngineDto, ThroughputTile } from '../api/model'
 import { useEngines } from '../api/useEngines'
 import { isInactiveLifecycle, lifecycleGloss } from '../lib/enginePolicy'
@@ -24,8 +25,14 @@ const OLDEST_EXEC_WARN_S = 300
  */
 export function HeaderStrip() {
   const { data, error, isPending } = useEngines()
+  // #690: detail routes get a one-line strip so the diagram and tabs sit higher.
+  const compact = useLocation().pathname.startsWith('/inspect/')
   return (
-    <div className="engine-strip" role="group" aria-label="Engine health">
+    <div
+      className={`engine-strip${compact ? ' engine-strip-compact' : ''}`}
+      role="group"
+      aria-label="Engine health"
+    >
       {isPending && <span className="strip-note">probing engines…</span>}
       {!isPending && error !== null && (
         <span className="strip-note strip-error" role="alert">

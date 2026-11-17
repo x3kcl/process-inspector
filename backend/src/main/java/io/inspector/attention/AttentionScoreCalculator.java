@@ -21,6 +21,7 @@ import java.util.List;
  * M(c) = 1                                            -- estimator retained, ordering input NOT
  *        clamp(medMTTR(c) / medMTTR(fleet), 0.5, 2)   -- still MEASURED, shipped as factors.mttr
  * S(c) = max(1 - p_heal(c)*w(c), floor)               -- neutral 1 with no R2 lane
+ *        scaled to 1 - share(c)*(1 - S(c))            -- #661: share = retrying/(retrying+DLQ)
  *        w(c) = 2^(-t_heal(c) / tau_heal)             -- 0 (neutral S) with no t_heal
  * </pre>
  *
@@ -137,7 +138,8 @@ public final class AttentionScoreCalculator {
     }
 
     /**
-     * #388: the population-aware suffix's own evidence, threaded through to
+     * #388/#661: the dead-letter split — the population-aware suffix AND (since #661) the
+     * retrying share the S demotion is scaled by ({@link #retryingShareFactor}), threaded through to
      * {@link AttentionRationale#sentence}. {@code AttentionScoreService.forClass()} never
      * supplies anything but {@link AttentionRationale.DeadLetterEvidence#ABSENT} (the six-arg
      * overload above) — only its {@code decorate()} dashboard path can derive real evidence from
@@ -167,7 +169,8 @@ public final class AttentionScoreCalculator {
 
         SelfHealLane lane = AttentionRationale.laneOf(selfHeal);
         Long healSeconds = selfHeal != null ? selfHeal.ttsP50Seconds() : null;
-        double selfHealFactor = selfHealFactor(lane, healSeconds, config.selfHealFloor(), config.selfHealHorizon());
+        double selfHealFactor = retryingShareFactor(
+                selfHealFactor(lane, healSeconds, config.selfHealFloor(), config.selfHealHorizon()), deadLetters);
 
         // #399: M is NOT a term here — see the class javadoc. The ratio above is computed for
         // `factors.mttr` (evidence + the retained estimator), never multiplied into the ordering.
@@ -404,6 +407,20 @@ public final class AttentionScoreCalculator {
                     case INSUFFICIENT_HISTORY -> 0.0;
                 };
         return Math.max(floor, 1.0 - pHeal * healTimeliness(ttsP50Seconds, horizon));
+    }
+
+    /**
+     * #661: the demotion covers only the share of a class's members that are still RETRYING —
+     * {@code S_eff = 1 - share · (1 - S)}, {@code share = retrying / (retrying + deadLettered)}.
+     * A dead-lettered member has no retries left, so no self-heal rate speaks for it and it counts
+     * in full; this reverses #388's option-2 rejection on the #478 run's evidence. With no trusted
+     * split (the {@code forClass()} ledger path, a partial scope, a truncated scan, or an empty
+     * split) the share reads 1 — the whole-class demotion shipped before #661.
+     */
+    static double retryingShareFactor(double selfHealFactor, AttentionRationale.DeadLetterEvidence deadLetters) {
+        Double share = AttentionRationale.retryingShare(deadLetters);
+        // share == 1 returns S itself: 1 - (1 - S) is not always S in doubles (e.g. a 0.3 floor).
+        return share == null || share == 1.0 ? selfHealFactor : 1.0 - share * (1.0 - selfHealFactor);
     }
 
     /**

@@ -1,7 +1,8 @@
 package io.inspector.detail;
 
-import io.inspector.client.FlowablePage;
 import io.inspector.client.GuardedCaller.CallPriority;
+import io.inspector.client.ProcessInstancePage;
+import io.inspector.client.ProcessInstanceRecord;
 import io.inspector.config.InspectorProperties.EngineConfig;
 import io.inspector.dto.InstanceHierarchy;
 import io.inspector.dto.InstanceHierarchy.HierarchyNode;
@@ -27,24 +28,24 @@ final class InstanceHierarchyAssembler {
 
     public InstanceHierarchy hierarchy(String engineId, String instanceId) {
         EngineConfig engine = host.engineForRead(engineId);
-        Map<String, Object> requested = host.requireHistoric(engine, instanceId);
+        ProcessInstanceRecord requested = host.requireHistoric(engine, instanceId);
         int maxDepth = host.props.hierarchyMaxDepthOrDefault();
 
         // UP: walk the superProcessInstanceId chain to the root — one historic GET per
         // ancestor, cycle-guarded, depth-capped (a real engine cannot produce a cycle;
         // the guard is doctrine, R-TEST-07).
-        Map<String, Object> root = requested;
+        ProcessInstanceRecord root = requested;
         Set<String> visited = new HashSet<>();
         visited.add(instanceId);
         for (int depth = 0; depth < maxDepth; depth++) {
-            String parentId = InstanceDetailService.str(root, "superProcessInstanceId");
+            String parentId = root.superProcessInstanceId();
             if (parentId == null || !visited.add(parentId)) break;
-            Map<String, Object> parent =
+            ProcessInstanceRecord parent =
                     host.flowable.getHistoricProcessInstance(engine, CallPriority.INTERACTIVE, parentId);
             if (parent == null) break; // parent purged from history — current node is the root
             root = parent;
         }
-        String rootId = InstanceDetailService.str(root, "id");
+        String rootId = root.id();
 
         // DOWN: BFS from the root. Children come from ONE historic query per node
         // (superProcessInstanceId filter), rendered up to the breadth cap; the query total
@@ -57,18 +58,18 @@ final class InstanceHierarchyAssembler {
         boolean depthLimitReached = false;
         while (!queue.isEmpty()) {
             NodeBuild node = queue.poll();
-            FlowablePage page = childrenOf(engine, node.id());
+            ProcessInstancePage page = childrenOf(engine, node.id());
             node.childTotal = page.total();
             if (node.depth >= maxDepth) {
                 depthLimitReached |= page.total() > 0;
                 continue;
             }
-            for (Map<String, Object> child : page.dataOrEmpty()) {
+            for (ProcessInstanceRecord child : page.dataOrEmpty()) {
                 if (node.children.size() >= InstanceDetailService.HIERARCHY_BREADTH_CAP
                         || builds.size() >= InstanceDetailService.HIERARCHY_MAX_RENDERED_NODES) {
                     break;
                 }
-                String childId = InstanceDetailService.str(child, "id");
+                String childId = child.id();
                 if (childId == null || builds.containsKey(childId)) continue; // cycle guard
                 NodeBuild childBuild = new NodeBuild(child, node.depth + 1);
                 builds.put(childId, childBuild);
@@ -91,9 +92,17 @@ final class InstanceHierarchyAssembler {
                 InstanceDetailService.HIERARCHY_BREADTH_CAP);
     }
 
-    FlowablePage childrenOf(EngineConfig engine, String parentInstanceId) {
+    ProcessInstancePage childrenOf(EngineConfig engine, String parentInstanceId) {
+        return childrenOf(engine, parentInstanceId, false);
+    }
+
+    /** {@code runningOnly}: the same per-node read, unfinished children only (#497 plan builder). */
+    ProcessInstancePage childrenOf(EngineConfig engine, String parentInstanceId, boolean runningOnly) {
         Map<String, Object> body = new LinkedHashMap<>();
         body.put("superProcessInstanceId", parentInstanceId);
+        if (runningOnly) {
+            body.put("finished", false);
+        }
         body.put("size", Math.min(InstanceDetailService.HIERARCHY_BREADTH_CAP, engine.maxPageSizeOrDefault()));
         InstanceDetailService.withTenant(engine, body);
         return host.flowable.queryHistoricProcessInstances(engine, CallPriority.INTERACTIVE, body);
@@ -101,32 +110,32 @@ final class InstanceHierarchyAssembler {
 
     /** Mutable BFS scaffold; the immutable DTO is assembled bottom-up at the end. */
     private static final class NodeBuild {
-        final Map<String, Object> row;
+        final ProcessInstanceRecord row;
         final int depth;
         final List<NodeBuild> children = new ArrayList<>();
         long childTotal;
         boolean hasDeadLetterJobs;
 
-        NodeBuild(Map<String, Object> row, int depth) {
+        NodeBuild(ProcessInstanceRecord row, int depth) {
             this.row = row;
             this.depth = depth;
         }
 
         String id() {
-            return InstanceDetailService.str(row, "id");
+            return row.id();
         }
 
         HierarchyNode toDto(String requestedId) {
-            String definitionId = InstanceDetailService.str(row, "processDefinitionId");
+            String definitionId = row.processDefinitionId();
             return new HierarchyNode(
                     id(),
-                    InstanceDetailService.str(row, "businessKey"),
+                    row.businessKey(),
                     InstanceDetailService.definitionKeyOf(definitionId),
-                    InstanceDetailService.str(row, "processDefinitionName"),
+                    row.processDefinitionName(),
                     InstanceDetailService.definitionVersionOf(definitionId),
-                    InstanceDetailService.str(row, "startTime"),
-                    InstanceDetailService.str(row, "endTime"),
-                    InstanceDetailService.str(row, "endTime") != null,
+                    row.startTime(),
+                    row.endTime(),
+                    row.endTime() != null,
                     hasDeadLetterJobs,
                     id().equals(requestedId),
                     childTotal,

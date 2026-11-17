@@ -1,0 +1,13 @@
+[
+  {
+    "name": "stepNull",
+    "scope": "local",
+    "value": null
+  },
+  {
+    "name": "stepLong",
+    "scope": "local",
+    "type": "long",
+    "value": 9007199254740993
+  }
+]

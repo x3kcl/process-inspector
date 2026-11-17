@@ -13,8 +13,10 @@ import static org.mockito.Mockito.when;
 import io.inspector.action.GuardRefusedException;
 import io.inspector.audit.ProtectedDefinitionRepository;
 import io.inspector.audit.ProtectedInstanceRepository;
-import io.inspector.client.FlowablePage;
 import io.inspector.client.ProcessApiClient;
+import io.inspector.client.ProcessInstancePage;
+import io.inspector.client.ProcessInstanceRecords;
+import io.inspector.client.RepositoryRecords;
 import io.inspector.config.InspectorProperties.EngineConfig;
 import io.inspector.config.InspectorProperties.EngineEnvironment;
 import io.inspector.config.InspectorProperties.EngineMode;
@@ -56,11 +58,13 @@ class CohortMigrationServiceTest {
 
     @Test
     void compilesExactBusinessKeyOntoTheRuntimeList() {
-        when(processes.getProcessDefinition(eq(engine), any(), eq("demo:1:x"))).thenReturn(Map.of("key", "demo"));
+        when(processes.getProcessDefinition(eq(engine), any(), eq("demo:1:x")))
+                .thenReturn(RepositoryRecords.definition(Map.of("key", "demo")));
         when(protectedDefinitions.findById(any())).thenReturn(Optional.empty());
         when(processes.listRuntimeInstances(
                         eq(engine), any(), eq("demo:1:x"), eq("BK-1"), isNull(), isNull(), isNull(), anyInt()))
-                .thenReturn(new FlowablePage(List.of(Map.of("id", "i1")), 1, 0, 1));
+                .thenReturn(new ProcessInstancePage(
+                        ProcessInstanceRecords.instances(List.of(Map.of("id", "i1"))), 1, 0, 1));
         when(protectedInstances.findById(any())).thenReturn(Optional.empty());
 
         CohortPreviewResponse response = service.preview(
@@ -87,7 +91,8 @@ class CohortMigrationServiceTest {
     void listsInstanceIdsOnTheSameFilterAndMarksAShortPageAsALowerBound() {
         when(processes.listRuntimeInstances(
                         eq(engine), any(), eq("demo:1:x"), isNull(), isNull(), isNull(), isNull(), anyInt()))
-                .thenReturn(new FlowablePage(List.of(Map.of("id", "i1")), 4, 0, 1));
+                .thenReturn(new ProcessInstancePage(
+                        ProcessInstanceRecords.instances(List.of(Map.of("id", "i1"))), 4, 0, 1));
 
         CohortMigrationService.ListedCohort listed = service.listInstances(
                 "engine-a", new CohortPreviewRequest("demo:1:x", "demo:2:y", null, null, null, null, null, null, null));

@@ -1,0 +1,41 @@
+{
+  "data": [
+    {
+      "category": "http://flowable.org/cmmn",
+      "deploymentId": "6d23501c-e239-11f1-acb8-7eebefdaa7d9",
+      "deploymentUrl": "http://localhost:8080/flowable-rest/cmmn-api/cmmn-repository/deployments/6d23501c-e239-11f1-acb8-7eebefdaa7d9",
+      "description": null,
+      "diagramResource": "http://localhost:8080/flowable-rest/cmmn-api/cmmn-repository/deployments/6d23501c-e239-11f1-acb8-7eebefdaa7d9/resources/demo-case-migration-v2.demoCaseMigration.png",
+      "graphicalNotationDefined": true,
+      "id": "6d2b184f-e239-11f1-acb8-7eebefdaa7d9",
+      "key": "demoCaseMigration",
+      "name": "Demo case migration",
+      "resource": "http://localhost:8080/flowable-rest/cmmn-api/cmmn-repository/deployments/6d23501c-e239-11f1-acb8-7eebefdaa7d9/resources/demo-case-migration-v2.cmmn.xml",
+      "startFormDefined": false,
+      "tenantId": "",
+      "url": "http://localhost:8080/flowable-rest/cmmn-api/cmmn-repository/case-definitions/6d2b184f-e239-11f1-acb8-7eebefdaa7d9",
+      "version": 2
+    },
+    {
+      "category": "http://flowable.org/cmmn",
+      "deploymentId": "6d145bf8-e239-11f1-acb8-7eebefdaa7d9",
+      "deploymentUrl": "http://localhost:8080/flowable-rest/cmmn-api/cmmn-repository/deployments/6d145bf8-e239-11f1-acb8-7eebefdaa7d9",
+      "description": null,
+      "diagramResource": "http://localhost:8080/flowable-rest/cmmn-api/cmmn-repository/deployments/6d145bf8-e239-11f1-acb8-7eebefdaa7d9/resources/demo-case-migration-v1.demoCaseMigration.png",
+      "graphicalNotationDefined": true,
+      "id": "6d1ff4bb-e239-11f1-acb8-7eebefdaa7d9",
+      "key": "demoCaseMigration",
+      "name": "Demo case migration",
+      "resource": "http://localhost:8080/flowable-rest/cmmn-api/cmmn-repository/deployments/6d145bf8-e239-11f1-acb8-7eebefdaa7d9/resources/demo-case-migration-v1.cmmn.xml",
+      "startFormDefined": false,
+      "tenantId": "",
+      "url": "http://localhost:8080/flowable-rest/cmmn-api/cmmn-repository/case-definitions/6d1ff4bb-e239-11f1-acb8-7eebefdaa7d9",
+      "version": 1
+    }
+  ],
+  "order": "desc",
+  "size": 2,
+  "sort": "version",
+  "start": 0,
+  "total": 2
+}

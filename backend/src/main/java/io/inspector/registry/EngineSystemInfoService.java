@@ -1,7 +1,9 @@
 package io.inspector.registry;
 
+import io.inspector.client.EngineInfoRecord;
 import io.inspector.client.GuardedCaller.CallPriority;
 import io.inspector.client.ProcessApiClient;
+import io.inspector.client.TableCountRecord;
 import io.inspector.config.InspectorProperties.EngineConfig;
 import io.inspector.config.RegistryProperties;
 import io.inspector.ops.PrometheusText;
@@ -80,10 +82,8 @@ public class EngineSystemInfoService {
 
     private String version(EngineConfig engine, List<String> failures) {
         try {
-            Map<String, Object> info = flowable.engineInfo(engine, CallPriority.INTERACTIVE);
-            return info != null && info.get("version") != null
-                    ? info.get("version").toString()
-                    : null;
+            EngineInfoRecord info = flowable.engineInfo(engine, CallPriority.INTERACTIVE);
+            return info != null ? info.version() : null;
         } catch (RuntimeException e) {
             fail(engine, "engine", e, failures);
             return null;
@@ -103,11 +103,9 @@ public class EngineSystemInfoService {
         try {
             // A bare array on 6.8 and 7.x, not the paged envelope (#627).
             List<TableCount> out = new ArrayList<>();
-            for (Map<String, Object> row : flowable.getList(engine, CallPriority.INTERACTIVE, "/management/tables")) {
-                Object name = row.get("name");
-                Object count = row.get("count");
-                if (name != null) {
-                    out.add(new TableCount(name.toString(), count instanceof Number n ? n.longValue() : null));
+            for (TableCountRecord row : flowable.listTables(engine, CallPriority.INTERACTIVE)) {
+                if (row.name() != null) {
+                    out.add(new TableCount(row.name(), row.count()));
                 }
             }
             if (out.isEmpty()) {

@@ -203,6 +203,27 @@ public class AttentionScoreService {
     }
 
     /**
+     * #660: {@code lastSeen} is the ledger row's own sighting. A class last seen before the
+     * model's window reads {@code ClassHistory.none()}, and its sentence would then claim "N
+     * failing · last seen just now" — so the rationale states the window instead. The score is
+     * left exactly as computed. A row inside the window but missing from a stale cached model
+     * keeps its normal sentence.
+     */
+    public AttentionScore forClass(
+            String signatureHash, int algoVersion, long liveTotal, SelfHealStats stats, Instant lastSeen) {
+        AttentionScore scored = forClass(signatureHash, algoVersion, liveTotal, stats);
+        Instant since = clock.instant().minus(Duration.ofDays(config.arrivalsWindowDays()));
+        if (scored == null || lastSeen == null || !lastSeen.isBefore(since)) {
+            return scored;
+        }
+        return new AttentionScore(
+                scored.score(),
+                scored.factors(),
+                AttentionRationale.outsideWindow(config.arrivalsWindowDays()),
+                scored.suggestedAckExpirySeconds());
+    }
+
+    /**
      * The Stage 0 dashboard path — the ONLY caller that can ever supply real #388 evidence
      * ({@code forClass()} always passes {@link AttentionRationale.DeadLetterEvidence#ABSENT},
      * by construction, since it has no {@code ErrorGroup}/{@code perEngine} to derive it from).

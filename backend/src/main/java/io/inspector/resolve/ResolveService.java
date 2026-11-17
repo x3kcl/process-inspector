@@ -1,10 +1,16 @@
 package io.inspector.resolve;
 
 import io.inspector.api.MdcPropagatingExecutors;
+import io.inspector.client.CaseDefinitionRecord;
+import io.inspector.client.CaseInstanceRecord;
 import io.inspector.client.CmmnApiClient;
+import io.inspector.client.ExecutionRecord;
 import io.inspector.client.GuardedCaller.CallPriority;
+import io.inspector.client.JobRecord;
 import io.inspector.client.ProcessApiClient;
 import io.inspector.client.ProcessApiClient.JobLaneKind;
+import io.inspector.client.ProcessInstanceRecord;
+import io.inspector.client.TaskRecord;
 import io.inspector.config.InspectorProperties.EngineConfig;
 import io.inspector.detail.InstanceDetailService;
 import io.inspector.dto.InstanceStatusFlags;
@@ -156,32 +162,32 @@ public class ResolveService {
     /** The R-SEM-04 chain on ONE engine — first kind that matches wins. */
     private List<ResolveMatch> resolveOnEngine(EngineConfig engine, String id) {
         // 1. Process instance — the historic GET covers running AND completed instances.
-        Map<String, Object> historic = flowable.getHistoricProcessInstance(engine, CallPriority.INTERACTIVE, id);
+        ProcessInstanceRecord historic = flowable.getHistoricProcessInstance(engine, CallPriority.INTERACTIVE, id);
         if (historic != null) {
             return List.of(match(engine, MatchKind.PROCESS_INSTANCE, id, historic));
         }
 
         // 2. Execution — a child execution's id maps to its owning instance.
-        Map<String, Object> execution = flowable.getExecution(engine, CallPriority.INTERACTIVE, id);
-        String pid = execution != null ? str(execution, "processInstanceId") : null;
+        ExecutionRecord execution = flowable.getExecution(engine, CallPriority.INTERACTIVE, id);
+        String pid = execution != null ? execution.processInstanceId() : null;
         if (pid != null) {
             return matchInstance(engine, MatchKind.EXECUTION, id, pid);
         }
 
         // 3. Task — runtime first, historic fallback so a completed task still resolves.
-        Map<String, Object> task = flowable.getTask(engine, CallPriority.INTERACTIVE, id);
+        TaskRecord task = flowable.getTask(engine, CallPriority.INTERACTIVE, id);
         if (task == null) {
             task = flowable.getHistoricTaskInstance(engine, CallPriority.INTERACTIVE, id);
         }
-        pid = task != null ? str(task, "processInstanceId") : null;
+        pid = task != null ? task.processInstanceId() : null;
         if (pid != null) {
             return matchInstance(engine, MatchKind.TASK, id, pid);
         }
 
         // 4. Job — all four lanes; CMMN-scoped jobs (no processInstanceId) are not ours.
         for (JobLaneKind lane : JOB_LANES) {
-            Map<String, Object> job = flowable.getJob(engine, CallPriority.INTERACTIVE, lane, id);
-            pid = job != null ? str(job, "processInstanceId") : null;
+            JobRecord job = flowable.getJob(engine, CallPriority.INTERACTIVE, lane, id);
+            pid = job != null ? job.processInstanceId() : null;
             if (pid != null && !pid.isBlank()) {
                 return matchInstance(engine, MatchKind.JOB, id, pid);
             }
@@ -201,7 +207,7 @@ public class ResolveService {
             body.put("tenantId", engine.tenantId());
         }
         List<ResolveMatch> byKey = new ArrayList<>();
-        for (Map<String, Object> row : flowable.queryHistoricProcessInstances(engine, CallPriority.INTERACTIVE, body)
+        for (ProcessInstanceRecord row : flowable.queryHistoricProcessInstances(engine, CallPriority.INTERACTIVE, body)
                 .dataOrEmpty()) {
             byKey.add(match(engine, MatchKind.BUSINESS_KEY, id, row));
         }
@@ -233,7 +239,7 @@ public class ResolveService {
      * miss (never fails the resolve).
      */
     private ResolveMatch resolveCmmnCase(EngineConfig engine, String id) {
-        Map<String, Object> caseInstance = cmmnFlowable.getCmmnCaseInstance(engine, CallPriority.INTERACTIVE, id);
+        CaseInstanceRecord caseInstance = cmmnFlowable.getCmmnCaseInstance(engine, CallPriority.INTERACTIVE, id);
         if (caseInstance == null) {
             caseInstance = cmmnFlowable.getHistoricCmmnCaseInstance(engine, CallPriority.INTERACTIVE, id);
         }
@@ -241,14 +247,14 @@ public class ResolveService {
             return null;
         }
         // Historic rows already carry caseDefinitionName; a runtime row needs the by-id lookup.
-        String definitionKey = str(caseInstance, "caseDefinitionKey");
+        String definitionKey = caseInstance.caseDefinitionKey();
         if (definitionKey == null) {
-            String caseDefinitionId = str(caseInstance, "caseDefinitionId");
+            String caseDefinitionId = caseInstance.caseDefinitionId();
             if (caseDefinitionId != null) {
                 try {
-                    Map<String, Object> def =
+                    CaseDefinitionRecord def =
                             cmmnFlowable.getCmmnCaseDefinition(engine, CallPriority.INTERACTIVE, caseDefinitionId);
-                    definitionKey = def != null ? str(def, "key") : null;
+                    definitionKey = def != null ? def.key() : null;
                 } catch (Exception ex) {
                     definitionKey = null; // enrichment miss never fails the resolve
                 }
@@ -260,11 +266,11 @@ public class ResolveService {
                 null, // not a process instance — no owning pid
                 null, // no process composite; the case route is built from engineId + case id
                 id,
-                str(caseInstance, "businessKey"),
+                caseInstance.businessKey(),
                 definitionKey,
                 null,
-                str(caseInstance, "startTime"),
-                str(caseInstance, "endTime"),
+                caseInstance.startTime(),
+                caseInstance.endTime(),
                 null,
                 null);
     }
@@ -278,16 +284,16 @@ public class ResolveService {
     }
 
     private List<ResolveMatch> matchInstance(EngineConfig engine, MatchKind kind, String matchedId, String pid) {
-        Map<String, Object> historic = flowable.getHistoricProcessInstance(engine, CallPriority.INTERACTIVE, pid);
+        ProcessInstanceRecord historic = flowable.getHistoricProcessInstance(engine, CallPriority.INTERACTIVE, pid);
         if (historic == null) {
             return List.of(); // vanished between the two reads — an acceptable snapshot race
         }
         return List.of(match(engine, kind, matchedId, historic));
     }
 
-    private ResolveMatch match(EngineConfig engine, MatchKind kind, String matchedId, Map<String, Object> historic) {
-        String pid = str(historic, "id");
-        String definitionId = str(historic, "processDefinitionId");
+    private ResolveMatch match(EngineConfig engine, MatchKind kind, String matchedId, ProcessInstanceRecord historic) {
+        String pid = historic.id();
+        String definitionId = historic.processDefinitionId();
         InstanceStatusFlags flags = detail.flagsFor(engine, historic);
         return new ResolveMatch(
                 kind,
@@ -295,11 +301,11 @@ public class ResolveService {
                 pid,
                 engine.id() + ":" + pid,
                 matchedId,
-                str(historic, "businessKey"),
+                historic.businessKey(),
                 definitionKeyOf(definitionId),
                 definitionVersionOf(definitionId),
-                str(historic, "startTime"),
-                str(historic, "endTime"),
+                historic.startTime(),
+                historic.endTime(),
                 flags,
                 flags.primaryStatus());
     }
@@ -318,11 +324,6 @@ public class ResolveService {
         } catch (NumberFormatException e) {
             return null;
         }
-    }
-
-    private static String str(Map<String, Object> map, String key) {
-        Object v = map.get(key);
-        return v != null ? v.toString() : null;
     }
 
     @PreDestroy

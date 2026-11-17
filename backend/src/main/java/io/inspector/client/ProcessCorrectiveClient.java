@@ -21,8 +21,7 @@ final class ProcessCorrectiveClient {
     /* ---------- M4 corrective-action calls (flowable-rest skill §4 catalog) ---------- */
 
     /** GET /management/{lane}/{jobId} — server-fresh job restatement before a job verb. Null = gone. */
-    @SuppressWarnings("unchecked")
-    public Map<String, Object> getJob(EngineConfig engine, CallPriority priority, JobLaneKind lane, String jobId) {
+    public JobRecord getJob(EngineConfig engine, CallPriority priority, JobLaneKind lane, String jobId) {
         try {
             return guarded.call(
                     engine,
@@ -31,7 +30,7 @@ final class ProcessCorrectiveClient {
                             .get()
                             .uri(lane.path + "/{jobId}", jobId)
                             .retrieve()
-                            .body(Map.class));
+                            .body(JobRecord.class));
         } catch (HttpClientErrorException.NotFound e) {
             return null;
         }
@@ -153,8 +152,7 @@ final class ProcessCorrectiveClient {
     }
 
     /** GET /runtime/process-instances/{id}/variables/{name} — the CAS pre-read (typed row). Null = absent. */
-    @SuppressWarnings("unchecked")
-    public Map<String, Object> getInstanceVariable(
+    public VariableRecord getInstanceVariable(
             EngineConfig engine, CallPriority priority, String processInstanceId, String name) {
         try {
             return guarded.call(
@@ -164,7 +162,7 @@ final class ProcessCorrectiveClient {
                             .get()
                             .uri("/runtime/process-instances/{id}/variables/{name}", processInstanceId, name)
                             .retrieve()
-                            .body(Map.class));
+                            .body(VariableRecord.class));
         } catch (HttpClientErrorException.NotFound e) {
             return null;
         }
@@ -201,8 +199,7 @@ final class ProcessCorrectiveClient {
      * value shadowed down the tree — so the CAS reads the exact row the write will touch.
      * Null = no such local variable (404).
      */
-    @SuppressWarnings("unchecked")
-    public Map<String, Object> getExecutionVariable(
+    public VariableRecord getExecutionVariable(
             EngineConfig engine, CallPriority priority, String executionId, String name) {
         try {
             return guarded.call(
@@ -214,7 +211,7 @@ final class ProcessCorrectiveClient {
                                     .queryParam("scope", "local")
                                     .build(executionId, name))
                             .retrieve()
-                            .body(Map.class));
+                            .body(VariableRecord.class));
         } catch (HttpClientErrorException.NotFound e) {
             return null;
         }
@@ -246,8 +243,7 @@ final class ProcessCorrectiveClient {
     }
 
     /** GET /runtime/tasks/{taskId} — server-fresh task restatement. Null = gone/completed. */
-    @SuppressWarnings("unchecked")
-    public Map<String, Object> getTask(EngineConfig engine, CallPriority priority, String taskId) {
+    public TaskRecord getTask(EngineConfig engine, CallPriority priority, String taskId) {
         try {
             return guarded.call(
                     engine,
@@ -256,7 +252,7 @@ final class ProcessCorrectiveClient {
                             .get()
                             .uri("/runtime/tasks/{taskId}", taskId)
                             .retrieve()
-                            .body(Map.class));
+                            .body(TaskRecord.class));
         } catch (HttpClientErrorException.NotFound e) {
             return null;
         }
@@ -355,18 +351,17 @@ final class ProcessCorrectiveClient {
     }
 
     /** GET /runtime/tasks/{taskId}/identitylinks. Empty on 404. */
-    @SuppressWarnings("unchecked")
-    public List<Map<String, Object>> listIdentityLinks(EngineConfig engine, CallPriority priority, String taskId) {
+    public List<IdentityLinkRecord> listIdentityLinks(EngineConfig engine, CallPriority priority, String taskId) {
         try {
-            List<Map<String, Object>> rows = guarded.call(
+            IdentityLinkRecord[] rows = guarded.call(
                     engine,
                     priority,
                     () -> guarded.readClient(engine)
                             .get()
                             .uri("/runtime/tasks/{taskId}/identitylinks", taskId)
                             .retrieve()
-                            .body(List.class));
-            return rows == null ? List.of() : rows;
+                            .body(IdentityLinkRecord[].class));
+            return rows == null ? List.of() : List.of(rows);
         } catch (HttpClientErrorException.NotFound e) {
             return List.of();
         }
@@ -453,8 +448,7 @@ final class ProcessCorrectiveClient {
     }
 
     /** GET /runtime/executions/{executionId} — server-fresh execution restatement. Null = gone. */
-    @SuppressWarnings("unchecked")
-    public Map<String, Object> getExecution(EngineConfig engine, CallPriority priority, String executionId) {
+    public ExecutionRecord getExecution(EngineConfig engine, CallPriority priority, String executionId) {
         try {
             return guarded.call(
                     engine,
@@ -463,7 +457,7 @@ final class ProcessCorrectiveClient {
                             .get()
                             .uri("/runtime/executions/{executionId}", executionId)
                             .retrieve()
-                            .body(Map.class));
+                            .body(ExecutionRecord.class));
         } catch (HttpClientErrorException.NotFound e) {
             return null;
         }

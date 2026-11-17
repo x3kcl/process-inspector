@@ -7,13 +7,21 @@ import io.inspector.audit.AuditOutcome;
 import io.inspector.audit.AuditService;
 import io.inspector.audit.BreakGlassActor;
 import io.inspector.audit.ProtectionGuard;
+import io.inspector.client.CaseInstanceRecord;
 import io.inspector.client.CaseMigrationRoute;
 import io.inspector.client.CmmnApiClient;
-import io.inspector.client.FlowablePage;
+import io.inspector.client.CmmnJobRecord;
+import io.inspector.client.ExecutionRecord;
 import io.inspector.client.ForwardedActor;
 import io.inspector.client.GuardedCaller.CallPriority;
+import io.inspector.client.JobRecord;
 import io.inspector.client.ProcessApiClient;
 import io.inspector.client.ProcessApiClient.JobLaneKind;
+import io.inspector.client.ProcessDefinitionRecord;
+import io.inspector.client.ProcessInstanceRecord;
+import io.inspector.client.TaskRecord;
+import io.inspector.client.VariableRecord;
+import io.inspector.cmmn.CaseMigrationPrecheck;
 import io.inspector.cmmn.CasePlanDefinitionIds;
 import io.inspector.cmmn.CmmnCapabilities;
 import io.inspector.config.InspectorProperties.EngineConfig;
@@ -68,6 +76,7 @@ public class CorrectiveActionService {
     private final ProtectionGuard protectionGuard;
     private final TicketPolicy ticketPolicy;
     private final DangerousActionReauthGate reauth;
+    private final CaseMigrationPrecheck casePrecheck;
 
     public CorrectiveActionService(
             EngineRegistry registry,
@@ -86,6 +95,7 @@ public class CorrectiveActionService {
         this.protectionGuard = protectionGuard;
         this.ticketPolicy = ticketPolicy;
         this.reauth = reauth;
+        this.casePrecheck = new CaseMigrationPrecheck(cmmnClient);
     }
 
     /**
@@ -111,7 +121,7 @@ public class CorrectiveActionService {
             ActionVerb verb,
             ActionRequest request,
             Authentication auth) {
-        return execute(scope, engineId, targetId, verb, request, auth, false);
+        return execute(scope, engineId, targetId, verb, request, auth, false, null);
     }
 
     /**
@@ -138,7 +148,25 @@ public class CorrectiveActionService {
      */
     public ActionResult executeBulkItem(
             String engineId, String targetId, ActionVerb verb, ActionRequest request, Authentication auth) {
-        return execute(ActionScope.BPMN, engineId, targetId, verb, request, auth, true);
+        return execute(ActionScope.BPMN, engineId, targetId, verb, request, auth, true, null);
+    }
+
+    /**
+     * One item of a case-cohort bulk job (#500): {@code migrate-case} on the CMMN scope with the
+     * same two skips as {@link #executeBulkItem} (re-auth and the typed case id were discharged
+     * once at submit, by the typed COUNT). {@code expected} is the compare-and-set baseline the
+     * cohort analysis stored: a case that left the analyzed definition or whose live plan items
+     * changed since refuses {@code instance-moved-since-preview} before the audit row and before
+     * any engine call, so the runner settles it {@code skipped}.
+     */
+    public ActionResult executeCaseMigrationBulkItem(
+            String engineId,
+            String caseInstanceId,
+            ActionRequest request,
+            Authentication auth,
+            CaseMigrationExpectation expected) {
+        return execute(
+                ActionScope.CMMN, engineId, caseInstanceId, ActionVerb.MIGRATE_CASE, request, auth, true, expected);
     }
 
     private ActionResult execute(
@@ -148,7 +176,8 @@ public class CorrectiveActionService {
             ActionVerb verb,
             ActionRequest request,
             Authentication auth,
-            boolean isBulkItem) {
+            boolean isBulkItem,
+            CaseMigrationExpectation expectedCaseState) {
         EngineConfig engine = registry.require(engineId);
 
         // -- guards: everything above the audit insert refuses with "nothing happened" --
@@ -186,6 +215,9 @@ public class CorrectiveActionService {
         String ticketId = ticketPolicy.validate(request.ticketId(), engine.environment());
 
         Target target = restateTarget(scope, engine, verb, targetId, request);
+        if (expectedCaseState != null) {
+            expectedCaseState.requireUnchanged(targetId, target.auditPayload());
+        }
         // #172/#184: a SECOND protection check, now that the target is server-fresh-restated and
         // may carry a definitionKey the instance-scope check above couldn't cheaply resolve
         // (DEFINITION-kind verbs never had a key to check at all before restateTarget resolved
@@ -285,9 +317,6 @@ public class CorrectiveActionService {
     }
 
     /* ------------------------------- guards ------------------------------- */
-
-    /** One page. A wider case is refused rather than migrated on a partial pre-check. */
-    private static final int CASE_MIGRATION_PLAN_ITEM_CAP = 500;
 
     /**
      * Verbs a CMMN case supports. Anything else is process-shaped and refused before an engine
@@ -505,7 +534,7 @@ public class CorrectiveActionService {
     }
 
     private Target jobTarget(EngineConfig engine, JobLaneKind lane, String instanceId, String jobId, ActionVerb verb) {
-        Map<String, Object> job = client.getJob(engine, CallPriority.INTERACTIVE, lane, jobId);
+        JobRecord job = client.getJob(engine, CallPriority.INTERACTIVE, lane, jobId);
         if (job == null) {
             throw new GuardRefusedException(
                     HttpStatus.NOT_FOUND,
@@ -513,8 +542,8 @@ public class CorrectiveActionService {
                     "Job " + jobId + " is no longer in the " + lane.name().toLowerCase() + " lane"
                             + " (already retried, fired or deleted?). Nothing happened.");
         }
-        Object owner = job.get("processInstanceId");
-        if (owner != null && !instanceId.equals(String.valueOf(owner))) {
+        String owner = job.processInstanceId();
+        if (owner != null && !instanceId.equals(owner)) {
             throw new GuardRefusedException(
                     HttpStatus.BAD_REQUEST,
                     "job-instance-mismatch",
@@ -523,10 +552,10 @@ public class CorrectiveActionService {
         Map<String, Object> payload = new LinkedHashMap<>();
         payload.put("schema", verb.path() + "/v1");
         payload.put("jobId", jobId);
-        payload.put("elementId", job.get("elementId"));
-        payload.put("exceptionMessage", job.get("exceptionMessage"));
-        payload.put("dueDate", job.get("dueDate"));
-        if (verb == ActionVerb.RESCHEDULE_TIMER && job.get("exceptionMessage") != null) {
+        payload.put("elementId", job.elementId());
+        payload.put("exceptionMessage", job.exceptionMessage());
+        payload.put("dueDate", job.dueDate());
+        if (verb == ActionVerb.RESCHEDULE_TIMER && job.exceptionMessage() != null) {
             throw new GuardRefusedException(
                     HttpStatus.BAD_REQUEST,
                     "retry-timer",
@@ -534,7 +563,7 @@ public class CorrectiveActionService {
                             + " is a failing job waiting to retry. Reschedule would change that retry. Nothing happened.");
         }
         // #184: free — the job response already carries processDefinitionId.
-        return new Target(payload, jobId, "job id", null, definitionKeyOf(job.get("processDefinitionId")));
+        return new Target(payload, jobId, "job id", null, definitionKeyOf(job.processDefinitionId()));
     }
 
     /**
@@ -545,7 +574,7 @@ public class CorrectiveActionService {
      * payload records {@code scope:cmmn} and the case context so the delta is reconstructable.
      */
     private Target cmmnJobTarget(EngineConfig engine, String caseInstanceId, String jobId, ActionVerb verb) {
-        Map<String, Object> job = cmmnClient.getCmmnDeadLetterJob(engine, CallPriority.INTERACTIVE, jobId);
+        CmmnJobRecord job = cmmnClient.getCmmnDeadLetterJob(engine, CallPriority.INTERACTIVE, jobId);
         if (job == null) {
             throw new GuardRefusedException(
                     HttpStatus.NOT_FOUND,
@@ -553,8 +582,8 @@ public class CorrectiveActionService {
                     "CMMN dead-letter job " + jobId + " is no longer in the dead-letter lane"
                             + " (already retried, fired or deleted?). Nothing happened.");
         }
-        Object owner = job.get("caseInstanceId");
-        if (owner != null && !caseInstanceId.equals(String.valueOf(owner))) {
+        String owner = job.caseInstanceId();
+        if (owner != null && !caseInstanceId.equals(owner)) {
             throw new GuardRefusedException(
                     HttpStatus.BAD_REQUEST,
                     "job-case-mismatch",
@@ -565,15 +594,15 @@ public class CorrectiveActionService {
         payload.put("scope", "cmmn");
         payload.put("jobId", jobId);
         payload.put("caseInstanceId", caseInstanceId);
-        payload.put("caseDefinitionId", job.get("caseDefinitionId"));
-        payload.put("planItemInstanceId", job.get("planItemInstanceId"));
-        payload.put("elementId", job.get("elementId"));
-        payload.put("exceptionMessage", job.get("exceptionMessage"));
+        payload.put("caseDefinitionId", job.caseDefinitionId());
+        payload.put("planItemInstanceId", job.planItemInstanceId());
+        payload.put("elementId", job.elementId());
+        payload.put("exceptionMessage", job.exceptionMessage());
         return new Target(payload, jobId, "job id", null);
     }
 
     private Target instanceTarget(EngineConfig engine, String instanceId) {
-        Map<String, Object> instance = client.getRuntimeProcessInstance(engine, CallPriority.INTERACTIVE, instanceId);
+        ProcessInstanceRecord instance = client.getRuntimeProcessInstance(engine, CallPriority.INTERACTIVE, instanceId);
         if (instance == null) {
             throw new GuardRefusedException(
                     HttpStatus.NOT_FOUND,
@@ -581,15 +610,15 @@ public class CorrectiveActionService {
                     "Instance " + instanceId + " is not running on '" + engine.id()
                             + "' (completed or already deleted?). Nothing happened.");
         }
-        String businessKey = instance.get("businessKey") != null ? String.valueOf(instance.get("businessKey")) : null;
+        String businessKey = instance.businessKey();
         Map<String, Object> payload = new LinkedHashMap<>();
         payload.put("businessKey", businessKey);
-        payload.put("processDefinitionId", instance.get("processDefinitionId"));
-        payload.put("suspended", instance.get("suspended"));
+        payload.put("processDefinitionId", instance.processDefinitionId());
+        payload.put("suspended", instance.suspended());
         // Typed token = the business key; instances without one fall back to the instance id.
         String token = businessKey != null ? businessKey : instanceId;
         // #184: free — already read into the payload above.
-        return new Target(payload, token, "business key", null, definitionKeyOf(instance.get("processDefinitionId")));
+        return new Target(payload, token, "business key", null, definitionKeyOf(instance.processDefinitionId()));
     }
 
     /**
@@ -607,23 +636,23 @@ public class CorrectiveActionService {
         boolean local = executionId != null;
 
         String activityId = null;
-        Map<String, Object> row;
+        VariableRecord row;
         if (local) {
-            Map<String, Object> execution = client.getExecution(engine, CallPriority.INTERACTIVE, executionId);
+            ExecutionRecord execution = client.getExecution(engine, CallPriority.INTERACTIVE, executionId);
             if (execution == null) {
                 throw new GuardRefusedException(
                         HttpStatus.NOT_FOUND,
                         "execution-gone",
                         "Execution " + executionId + " no longer exists (instance moved on?). Nothing happened.");
             }
-            Object owner = execution.get("processInstanceId");
-            if (owner != null && !instanceId.equals(String.valueOf(owner))) {
+            String owner = execution.processInstanceId();
+            if (owner != null && !instanceId.equals(owner)) {
                 throw new GuardRefusedException(
                         HttpStatus.BAD_REQUEST,
                         "execution-instance-mismatch",
                         "Execution " + executionId + " belongs to instance " + owner + ", not " + instanceId + ".");
             }
-            activityId = execution.get("activityId") != null ? String.valueOf(execution.get("activityId")) : null;
+            activityId = execution.activityId();
             row = client.getExecutionVariable(engine, CallPriority.INTERACTIVE, executionId, edit.name());
             if (row == null) {
                 throw new GuardRefusedException(
@@ -643,7 +672,7 @@ public class CorrectiveActionService {
             }
         }
 
-        Object current = row.get("value");
+        Object current = row.value();
         boolean secret = AuditService.isSecretName(edit.name());
         Map<String, Object> payload = new LinkedHashMap<>();
         payload.put("schema", "edit-variable/v1");
@@ -653,7 +682,7 @@ public class CorrectiveActionService {
             payload.put("executionId", executionId);
             payload.put("activityId", activityId);
         }
-        payload.put("valueType", edit.type() != null ? edit.type() : row.get("type"));
+        payload.put("valueType", edit.type() != null ? edit.type() : row.type());
         payload.put("oldValue", secret ? AuditService.REDACTED : current);
         payload.put("expectedOldValue", secret ? AuditService.REDACTED : edit.expectedOldValue());
         payload.put("newValue", secret ? AuditService.REDACTED : edit.value());
@@ -661,15 +690,15 @@ public class CorrectiveActionService {
     }
 
     private Target taskTarget(EngineConfig engine, String instanceId, String taskId, ActionRequest request) {
-        Map<String, Object> task = client.getTask(engine, CallPriority.INTERACTIVE, taskId);
+        TaskRecord task = client.getTask(engine, CallPriority.INTERACTIVE, taskId);
         if (task == null) {
             throw new GuardRefusedException(
                     HttpStatus.NOT_FOUND,
                     "task-gone",
                     "Task " + taskId + " is not open (already completed?). Nothing happened.");
         }
-        Object owner = task.get("processInstanceId");
-        if (owner != null && !instanceId.equals(String.valueOf(owner))) {
+        String owner = task.processInstanceId();
+        if (owner != null && !instanceId.equals(owner)) {
             throw new GuardRefusedException(
                     HttpStatus.BAD_REQUEST,
                     "task-instance-mismatch",
@@ -678,10 +707,10 @@ public class CorrectiveActionService {
         Map<String, Object> payload = new LinkedHashMap<>();
         payload.put("schema", "complete-task/v1");
         payload.put("taskId", taskId);
-        payload.put("taskName", task.get("name"));
+        payload.put("taskName", task.name());
         payload.put("variables", auditVariables(request.variables()));
         // #184: free — the task response already carries processDefinitionId.
-        return new Target(payload, taskId, "task id", null, definitionKeyOf(task.get("processDefinitionId")));
+        return new Target(payload, taskId, "task id", null, definitionKeyOf(task.processDefinitionId()));
     }
 
     /**
@@ -692,7 +721,7 @@ public class CorrectiveActionService {
      */
     private Target taskAssignTarget(
             EngineConfig engine, ActionVerb verb, String instanceId, String taskId, ActionRequest request) {
-        Map<String, Object> task = client.getTask(engine, CallPriority.INTERACTIVE, taskId);
+        TaskRecord task = client.getTask(engine, CallPriority.INTERACTIVE, taskId);
         if (task == null) {
             throw new GuardRefusedException(
                     HttpStatus.NOT_FOUND,
@@ -700,14 +729,14 @@ public class CorrectiveActionService {
                     "Task " + taskId + " is not an active user task (completed or already gone?) — an assignee can"
                             + " only be changed on a live task. Nothing happened.");
         }
-        Object owner = task.get("processInstanceId");
-        if (owner != null && !instanceId.equals(String.valueOf(owner))) {
+        String owner = task.processInstanceId();
+        if (owner != null && !instanceId.equals(owner)) {
             throw new GuardRefusedException(
                     HttpStatus.BAD_REQUEST,
                     "task-instance-mismatch",
                     "Task " + taskId + " belongs to instance " + owner + ", not " + instanceId + ".");
         }
-        String oldAssignee = task.get("assignee") != null ? String.valueOf(task.get("assignee")) : null;
+        String oldAssignee = task.assignee();
         String newAssignee = verb == ActionVerb.REASSIGN_TASK
                 ? required(request.assignee(), "assignee").strip()
                 : null;
@@ -717,11 +746,11 @@ public class CorrectiveActionService {
         Map<String, Object> payload = new LinkedHashMap<>();
         payload.put("schema", verb.path() + "/v1");
         payload.put("taskId", taskId);
-        payload.put("taskName", task.get("name"));
+        payload.put("taskName", task.name());
         payload.put("oldAssignee", oldAssignee);
         payload.put("newAssignee", newAssignee);
         // #184: free — the task response already carries processDefinitionId.
-        return new Target(payload, taskId, "task id", null, definitionKeyOf(task.get("processDefinitionId")));
+        return new Target(payload, taskId, "task id", null, definitionKeyOf(task.processDefinitionId()));
     }
 
     /**
@@ -731,29 +760,29 @@ public class CorrectiveActionService {
      */
     private Target taskAdminTarget(
             EngineConfig engine, ActionVerb verb, String instanceId, String taskId, ActionRequest request) {
-        Map<String, Object> task = liveTask(engine, instanceId, taskId);
+        TaskRecord task = liveTask(engine, instanceId, taskId);
         Map<String, Object> payload = new LinkedHashMap<>();
         payload.put("schema", verb.path() + "/v1");
         payload.put("taskId", taskId);
-        payload.put("taskName", task.get("name"));
+        payload.put("taskName", task.name());
         switch (verb) {
             case CLAIM_TASK -> {
                 String assignee = blankToNull(request.assignee());
                 if (assignee != null) {
                     requireIdentity(engine, "users", assignee);
                 }
-                payload.put("oldAssignee", task.get("assignee"));
+                payload.put("oldAssignee", task.assignee());
                 payload.put("newAssignee", assignee);
             }
             case DELEGATE_TASK -> {
                 String assignee = required(request.assignee(), "assignee").strip();
                 requireIdentity(engine, "users", assignee);
-                payload.put("oldAssignee", task.get("assignee"));
+                payload.put("oldAssignee", task.assignee());
                 payload.put("newAssignee", assignee);
             }
             case RESOLVE_TASK -> {
-                Object state = task.get("delegationState");
-                if (state == null || !"pending".equalsIgnoreCase(String.valueOf(state))) {
+                String state = task.delegationState();
+                if (state == null || !"pending".equalsIgnoreCase(state)) {
                     throw new GuardRefusedException(
                             HttpStatus.BAD_REQUEST,
                             "not-delegated",
@@ -763,24 +792,25 @@ public class CorrectiveActionService {
             }
             case UPDATE_TASK -> payload.put("changes", taskChanges(engine, task, request));
             case ADD_IDENTITY_LINK, REMOVE_IDENTITY_LINK -> payload.put("link", checkedLink(engine, verb, request));
-            case DELETE_TASK -> payload.put("processInstanceId", task.get("processInstanceId"));
+            case DELETE_TASK -> payload.put("processInstanceId", task.processInstanceId());
             default -> throw new IllegalStateException("not a task-admin verb: " + verb);
         }
         String token = verb == ActionVerb.DELETE_TASK ? taskId : null;
-        return new Target(payload, token, "task id", null, definitionKeyOf(task.get("processDefinitionId")));
+        return new Target(payload, token, "task id", null, definitionKeyOf(task.processDefinitionId()));
     }
 
     private Target historyTarget(EngineConfig engine, String id, boolean cmmn) {
-        Map<String, Object> row = cmmn
-                ? cmmnClient.getHistoricCmmnCaseInstance(engine, CallPriority.HOUSEKEEPING, id)
-                : client.getHistoricProcessInstance(engine, CallPriority.HOUSEKEEPING, id);
-        if (row == null) {
+        CaseInstanceRecord caseRow =
+                cmmn ? cmmnClient.getHistoricCmmnCaseInstance(engine, CallPriority.HOUSEKEEPING, id) : null;
+        ProcessInstanceRecord instance =
+                cmmn ? null : client.getHistoricProcessInstance(engine, CallPriority.HOUSEKEEPING, id);
+        if (caseRow == null && instance == null) {
             throw new GuardRefusedException(
                     HttpStatus.NOT_FOUND,
                     "history-gone",
                     (cmmn ? "Case " : "Instance ") + id + " has no historic row. Nothing happened.");
         }
-        if (row.get("endTime") == null) {
+        if ((cmmn ? caseRow.endTime() : instance.endTime()) == null) {
             throw new GuardRefusedException(
                     HttpStatus.CONFLICT,
                     "still-running",
@@ -789,7 +819,7 @@ public class CorrectiveActionService {
         Map<String, Object> payload = new LinkedHashMap<>();
         payload.put("schema", cmmn ? "delete-case-history/v1" : "delete-history/v1");
         payload.put("id", id);
-        Object definitionId = row.get(cmmn ? "caseDefinitionId" : "processDefinitionId");
+        Object definitionId = cmmn ? caseRow.caseDefinitionId() : instance.processDefinitionId();
         return new Target(payload, id, "instance id", null, definitionKeyOf(definitionId));
     }
 
@@ -801,7 +831,7 @@ public class CorrectiveActionService {
     }
 
     private Target caseOpsTarget(EngineConfig engine, ActionVerb verb, String caseId, ActionRequest request) {
-        Map<String, Object> row = cmmnClient.getCmmnCaseInstance(engine, CallPriority.INTERACTIVE, caseId);
+        CaseInstanceRecord row = cmmnClient.getCmmnCaseInstance(engine, CallPriority.INTERACTIVE, caseId);
         if (row == null) {
             throw new GuardRefusedException(
                     HttpStatus.NOT_FOUND, "case-not-running", "Case " + caseId + " is not running. Nothing happened.");
@@ -820,15 +850,15 @@ public class CorrectiveActionService {
         }
         if (verb == ActionVerb.MIGRATE_CASE) {
             String toId = required(request.toCaseDefinitionId(), "toCaseDefinitionId");
-            String fromId = row.get("caseDefinitionId") == null ? null : String.valueOf(row.get("caseDefinitionId"));
+            String fromId = row.caseDefinitionId();
             if (toId.equals(fromId)) {
                 throw new GuardRefusedException(
                         HttpStatus.CONFLICT,
                         "same-definition-target",
                         "Case " + caseId + " already runs definition " + fromId + ". Nothing happened.");
             }
-            List<String> active = activePlanItemDefinitionIds(engine, caseId);
-            Set<String> model = targetPlanDefinitionIds(engine, toId);
+            List<String> active = casePrecheck.activePlanItemDefinitionIds(engine, caseId);
+            Set<String> model = casePrecheck.planDefinitionIds(engine, toId);
             List<String> absent = CasePlanDefinitionIds.missing(active, model);
             if (!absent.isEmpty()) {
                 throw new GuardRefusedException(
@@ -844,63 +874,20 @@ public class CorrectiveActionService {
         }
         if (verb == ActionVerb.EDIT_CASE_VARIABLE) {
             ActionRequest.VariableEdit edit = requiredEdit(request);
-            Map<String, Object> variable =
-                    cmmnClient.getCaseVariable(engine, CallPriority.INTERACTIVE, caseId, edit.name());
+            VariableRecord variable = cmmnClient.getCaseVariable(engine, CallPriority.INTERACTIVE, caseId, edit.name());
             if (variable == null) {
                 throw new GuardRefusedException(
                         HttpStatus.NOT_FOUND,
                         "variable-not-found",
                         "Case variable '" + edit.name() + "' does not exist. Nothing happened.");
             }
-            current = variable.get("value");
+            current = variable.value();
             payload.put("name", edit.name());
             payload.put("oldValue", current);
             payload.put("newValue", edit.value());
         }
-        String businessKey = row.get("businessKey") == null ? caseId : String.valueOf(row.get("businessKey"));
+        String businessKey = row.businessKey() == null ? caseId : row.businessKey();
         return new Target(payload, businessKey, "business key", current);
-    }
-
-    private List<String> activePlanItemDefinitionIds(EngineConfig engine, String caseId) {
-        FlowablePage page = cmmnClient.listCmmnPlanItemInstances(
-                engine, CallPriority.INTERACTIVE, Map.of("caseInstanceId", caseId), 0, CASE_MIGRATION_PLAN_ITEM_CAP);
-        List<Map<String, Object>> rows = page == null ? List.of() : page.dataOrEmpty();
-        if (page != null && page.total() > rows.size()) {
-            throw new GuardRefusedException(
-                    HttpStatus.UNPROCESSABLE_ENTITY,
-                    "plan-items-truncated",
-                    "Case " + caseId + " has more plan items than the pre-check read (" + rows.size() + " of "
-                            + page.total() + "). Nothing happened.");
-        }
-        return CasePlanDefinitionIds.activeDefinitionIds(rows);
-    }
-
-    private Set<String> targetPlanDefinitionIds(EngineConfig engine, String caseDefinitionId) {
-        Map<String, Object> definition =
-                cmmnClient.getCmmnCaseDefinition(engine, CallPriority.INTERACTIVE, caseDefinitionId);
-        if (definition == null) {
-            throw new GuardRefusedException(
-                    HttpStatus.NOT_FOUND,
-                    "target-not-deployed",
-                    "Case definition " + caseDefinitionId + " is not deployed. Nothing happened.");
-        }
-        Object deploymentId = definition.get("deploymentId");
-        Object resourceName = definition.get("resourceName");
-        if (deploymentId == null || resourceName == null) {
-            throw new GuardRefusedException(
-                    HttpStatus.UNPROCESSABLE_ENTITY,
-                    "target-model-unavailable",
-                    "Case definition " + caseDefinitionId + " has no CMMN resource to pre-check. Nothing happened.");
-        }
-        String xml = cmmnClient.cmmnDeploymentResourceData(
-                engine, CallPriority.INTERACTIVE, String.valueOf(deploymentId), String.valueOf(resourceName));
-        if (xml == null || xml.isBlank()) {
-            throw new GuardRefusedException(
-                    HttpStatus.UNPROCESSABLE_ENTITY,
-                    "target-model-unavailable",
-                    "Case definition " + caseDefinitionId + " returned no CMMN model. Nothing happened.");
-        }
-        return CasePlanDefinitionIds.definitionIds(xml);
     }
 
     private static String planAction(ActionRequest request, String... allowed) {
@@ -986,16 +973,16 @@ public class CorrectiveActionService {
         return prefixed.length() <= 4000 ? prefixed : prefixed.substring(0, 4000);
     }
 
-    private Map<String, Object> liveTask(EngineConfig engine, String instanceId, String taskId) {
-        Map<String, Object> task = client.getTask(engine, CallPriority.INTERACTIVE, taskId);
+    private TaskRecord liveTask(EngineConfig engine, String instanceId, String taskId) {
+        TaskRecord task = client.getTask(engine, CallPriority.INTERACTIVE, taskId);
         if (task == null) {
             throw new GuardRefusedException(
                     HttpStatus.NOT_FOUND,
                     "task-gone",
                     "Task " + taskId + " is not open (already completed?). Nothing happened.");
         }
-        Object owner = task.get("processInstanceId");
-        if (owner != null && !instanceId.equals(String.valueOf(owner))) {
+        String owner = task.processInstanceId();
+        if (owner != null && !instanceId.equals(owner)) {
             throw new GuardRefusedException(
                     HttpStatus.BAD_REQUEST,
                     "task-instance-mismatch",
@@ -1019,20 +1006,20 @@ public class CorrectiveActionService {
         }
     }
 
-    private Map<String, Object> taskChanges(EngineConfig engine, Map<String, Object> task, ActionRequest request) {
+    private Map<String, Object> taskChanges(EngineConfig engine, TaskRecord task, ActionRequest request) {
         ActionRequest.TaskPatch patch = request.task();
         if (patch == null) {
             throw missingField("task");
         }
         Map<String, Object> changes = new LinkedHashMap<>();
-        putChange(changes, "name", task, patch.name());
-        putChange(changes, "description", task, patch.description());
-        putChange(changes, "owner", task, patch.owner());
-        putChange(changes, "dueDate", task, patch.dueDate());
-        putChange(changes, "category", task, patch.category());
+        putChange(changes, "name", task.name(), patch.name());
+        putChange(changes, "description", task.description(), patch.description());
+        putChange(changes, "owner", task.owner(), patch.owner());
+        putChange(changes, "dueDate", task.dueDate(), patch.dueDate());
+        putChange(changes, "category", task.category(), patch.category());
         if (patch.priority() != null) {
             Map<String, Object> pair = new LinkedHashMap<>();
-            pair.put("old", task != null ? task.get("priority") : null);
+            pair.put("old", task.priority());
             pair.put("new", patch.priority());
             changes.put("priority", pair);
         }
@@ -1054,13 +1041,12 @@ public class CorrectiveActionService {
         return changes;
     }
 
-    private static void putChange(
-            Map<String, Object> changes, String field, Map<String, Object> task, String incoming) {
+    private static void putChange(Map<String, Object> changes, String field, String old, String incoming) {
         if (incoming == null) {
             return;
         }
         Map<String, Object> pair = new LinkedHashMap<>();
-        pair.put("old", task != null ? task.get(field) : null);
+        pair.put("old", old);
         pair.put("new", incoming);
         changes.put(field, pair);
     }
@@ -1126,15 +1112,15 @@ public class CorrectiveActionService {
         if (needsName && blankToNull(event.name()) == null) {
             throw missingField("event.name");
         }
-        Map<String, Object> execution = client.getExecution(engine, CallPriority.INTERACTIVE, executionId);
+        ExecutionRecord execution = client.getExecution(engine, CallPriority.INTERACTIVE, executionId);
         if (execution == null) {
             throw new GuardRefusedException(
                     HttpStatus.NOT_FOUND,
                     "execution-gone",
                     "Execution " + executionId + " no longer exists (instance moved on?). Nothing happened.");
         }
-        Object owner = execution.get("processInstanceId");
-        if (owner != null && !instanceId.equals(String.valueOf(owner))) {
+        String owner = execution.processInstanceId();
+        if (owner != null && !instanceId.equals(owner)) {
             throw new GuardRefusedException(
                     HttpStatus.BAD_REQUEST,
                     "execution-instance-mismatch",
@@ -1145,24 +1131,25 @@ public class CorrectiveActionService {
         payload.put("executionId", executionId);
         payload.put("eventType", event.type());
         payload.put("eventName", event.name());
-        payload.put("activityId", execution.get("activityId"));
+        payload.put("activityId", execution.activityId());
         return new Target(payload, null, null, null);
     }
 
     private Target definitionTarget(EngineConfig engine, String definitionId, ActionRequest request) {
-        Map<String, Object> definition = client.getProcessDefinition(engine, CallPriority.INTERACTIVE, definitionId);
+        ProcessDefinitionRecord definition =
+                client.getProcessDefinition(engine, CallPriority.INTERACTIVE, definitionId);
         if (definition == null) {
             throw new GuardRefusedException(
                     HttpStatus.NOT_FOUND,
                     "definition-not-found",
                     "Process definition " + definitionId + " does not exist on '" + engine.id() + "'.");
         }
-        String key = String.valueOf(definition.get("key"));
+        String key = String.valueOf(definition.key());
         Map<String, Object> payload = new LinkedHashMap<>();
         payload.put("schema", "suspend-definition/v1");
         payload.put("definitionId", definitionId);
         payload.put("definitionKey", key);
-        payload.put("version", definition.get("version"));
+        payload.put("version", definition.version());
         payload.put("includeProcessInstances", Boolean.TRUE.equals(request.includeProcessInstances()));
         String effectiveAt = normalizedEffectiveAt(request.effectiveAt());
         if (effectiveAt != null) {

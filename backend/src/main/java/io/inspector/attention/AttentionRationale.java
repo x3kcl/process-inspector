@@ -153,7 +153,7 @@ public final class AttentionRationale {
                 factors.medianMttrSeconds() != null
                         ? "typically " + humanize(factors.medianMttrSeconds()) + " from first sighting to resolve"
                         : "no resolve-time history");
-        clauses.add(selfHealClause(selfHeal, deadLetters));
+        clauses.add(selfHealClause(selfHeal, deadLetters) + partialShare(factors, deadLetters));
         if (factors.flooding()) {
             // #365: the ABSOLUTE count and the window, never a bare ratio — "spiking 4x" tells an
             // operator nothing about whether to walk over to the console now.
@@ -168,6 +168,14 @@ public final class AttentionRationale {
             clauses.add("recent arrival rate unknown");
         }
         return String.join(" · ", clauses) + ".";
+    }
+
+    /**
+     * #660: the whole sentence for a ledger class last seen before the model window — no live
+     * count, no recency, because the model holds no evidence for either.
+     */
+    public static String outsideWindow(int windowDays) {
+        return "not seen in the last " + windowDays + " d — nothing recent to rank on.";
     }
 
     private static String selfHealClause(SelfHealStats selfHeal, DeadLetterEvidence deadLetters) {
@@ -229,6 +237,35 @@ public final class AttentionRationale {
             return "";
         }
         return " — not the " + deadLetterCount + " dead-lettered (no retries left)";
+    }
+
+    /**
+     * #661: the retrying share of a class, {@code retrying / (retrying + deadLettered)}, or
+     * {@code null} when the split is untrusted, absent or empty — the score then demotes the whole
+     * class, as before #661.
+     */
+    static Double retryingShare(DeadLetterEvidence deadLetters) {
+        if (deadLetters == null || !deadLetters.countsTrusted()) {
+            return null;
+        }
+        Long dead = deadLetters.deadLetterCount();
+        Long retrying = deadLetters.retryingCount();
+        if (dead == null || retrying == null || dead < 0 || retrying < 0 || dead + retrying == 0) {
+            return null;
+        }
+        return (double) retrying / (dead + retrying);
+    }
+
+    /**
+     * #661: when the S demotion covers only PART of the class, say which part — so the card's
+     * position and its copy cannot disagree. Silent at 0 % (no demotion) and 100 % (whole class).
+     */
+    private static String partialShare(AttentionFactors factors, DeadLetterEvidence deadLetters) {
+        Double share = retryingShare(deadLetters);
+        if (share == null || share <= 0.0 || share >= 1.0 || factors.selfHeal() >= 1.0) {
+            return "";
+        }
+        return "; ranked down for the " + deadLetters.retryingCount() + " retrying only";
     }
 
     /**

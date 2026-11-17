@@ -94,10 +94,10 @@ class ProcessApiClientTest {
                         okJson("{\"data\":[{\"id\":\"demoMigration:5:abc\",\"key\":\"demoMigration\",\"version\":5}],"
                                 + "\"total\":1,\"start\":0,\"size\":1}")));
 
-        FlowablePage page =
+        ProcessDefinitionPage page =
                 client.latestProcessDefinitionByKey(engine("latest-engine"), CallPriority.INTERACTIVE, "demoMigration");
 
-        assertThat(page.dataOrEmpty().get(0)).containsEntry("version", 5);
+        assertThat(page.dataOrEmpty().get(0).version()).isEqualTo(5);
         wm.verify(getRequestedFor(urlPathEqualTo("/repository/process-definitions"))
                 .withQueryParam("key", equalTo("demoMigration"))
                 .withQueryParam("latest", equalTo("true"))
@@ -139,7 +139,7 @@ class ProcessApiClientTest {
                 .willReturn(okJson(
                         "{\"data\":[{\"id\":\"t1\",\"assignee\":\"bob\"}],\"total\":1,\"start\":0,\"size\":1}")));
 
-        FlowablePage page = client.listTasksByAssignee(engine, CallPriority.INTERACTIVE, "bob", 200);
+        TaskPage page = client.listTasksByAssignee(engine, CallPriority.INTERACTIVE, "bob", 200);
 
         assertThat(page.dataOrEmpty()).hasSize(1);
         wm.verify(getRequestedFor(urlPathEqualTo("/runtime/tasks"))
@@ -154,7 +154,7 @@ class ProcessApiClientTest {
         wm.stubFor(get(urlPathEqualTo("/runtime/tasks"))
                 .willReturn(okJson("{\"data\":[{\"id\":\"t2\"}],\"total\":1,\"start\":0,\"size\":1}")));
 
-        FlowablePage page = client.listTasksByCandidateUser(engine, CallPriority.INTERACTIVE, "bob", 200);
+        TaskPage page = client.listTasksByCandidateUser(engine, CallPriority.INTERACTIVE, "bob", 200);
 
         assertThat(page.dataOrEmpty()).hasSize(1);
         wm.verify(getRequestedFor(urlPathEqualTo("/runtime/tasks"))

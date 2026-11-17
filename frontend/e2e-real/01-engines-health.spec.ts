@@ -4,7 +4,7 @@
 // takes a live engine out of the active set — not something a smoke may do to a shared stack.
 import { expect, test } from '@playwright/test'
 import { scanA11y } from '../e2e/a11y'
-import { signIn } from './support'
+import { open, signIn } from './support'
 
 test('health strip shows both real engines with live job lanes', async ({ page }) => {
   await signIn(page, 'viewer')
@@ -34,7 +34,7 @@ test('registry admin sees both engines active and reachable, then their system p
   }
   await scanA11y(page, 'admin engines registry')
 
-  await page.goto('/')
+  await open(page, '/')
   await page
     .getByRole('group', { name: 'Engine health' })
     .getByRole('link', { name: 'system' })

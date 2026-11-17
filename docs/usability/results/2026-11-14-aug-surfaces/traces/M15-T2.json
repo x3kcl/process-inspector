@@ -1,0 +1,97 @@
+{
+ "mission": "M15",
+ "user": "responder",
+ "tasks": [
+  {
+   "n": 1,
+   "verdict": "yes",
+   "answer": "selfHealGhost is the PropertyNotFoundException class on the dashboard 'Failures by error class'. Its sample message is '${healed eq true or selfHealGhost.total gt 0}'. The card says '22 failing'. Its two lanes are 'DLQ 22 jobs' (dead-letter, retries exhausted) and 'retrying 0 jobs' (failing, retries left). The 22 split into Engine A (demo) demoSelfHealingBaseline v1: 21, and Engine B (demo) demoSelfHealingBaseline v1: 1.",
+   "citations": [
+    "22 failing · last seen 2.3 min ago",
+    "DLQ 22 jobs",
+    "retrying 0 jobs",
+    "v1: 21",
+    "v1: 1"
+   ],
+   "interactions": 3,
+   "firstSignal": "Dashboard after sign-in, 'Failures by error class · 4'"
+  },
+  {
+   "n": 2,
+   "verdict": "yes",
+   "answer": "The card says 'usually self-heals (12/13 past spells, typically ≤ 1 min) — not the 22 dead-lettered (no retries left).' My reading: it is a historical record of earlier failure spells of this class. 12 of 13 past spells cleared on their own, typically within a minute. That only applies to jobs that still have retries left and can retry themselves. It explicitly excludes dead-lettered jobs, which have no retries left. I would not lean on it for the current 22, because all 22 are dead-lettered and 'retrying' is 0. It is also only 13 samples, and the 13th spell did not heal. The other classes show 'no self-heal history', so this is the only class with a track record.",
+   "citations": [
+    "usually self-heals (12/13 past spells, typically ≤ 1 min) — not the 22 dead-lettered (no retries left).",
+    "dead-letter jobs (retries exhausted)",
+    "failing jobs with retries left"
+   ],
+   "interactions": 0,
+   "firstSignal": "Summary line on the card"
+  },
+  {
+   "n": 3,
+   "verdict": "yes",
+   "answer": "I would act. Nothing is retrying, and the self-heal claim excludes dead-lettered jobs, so waiting will not clear these 22. I would retry the dead-lettered items, using the Retry group for demoSelfHealingBaseline. That covers 21 on Engine A and 1 on Engine B, both DEV engines (low stakes). I would leave alone any instance that has drained or still holds retries. The dialog says those are skipped: 'instances that drained or still hold retries are left alone'. The dialog says retry is 'Mostly safe: retrying only re-queues the step', and side effects of the step are not undone. I would give a reason of at least 10 characters. Caveat: the card says 'Requires OPERATOR on every engine in this group — missing on engine-a', so the Acknowledge button is disabled and my RESPONDER role may not be able to submit on Engine A. I did not test whether submitting would work, since I cancelled.",
+   "citations": [
+    "not the 22 dead-lettered (no retries left)",
+    "retrying 0 jobs",
+    "Mostly safe: retrying only re-queues the step.",
+    "instances that drained or still hold retries are left alone",
+    "🔒 Requires OPERATOR on every engine in this group — missing on engine-a"
+   ],
+   "interactions": 1,
+   "firstSignal": "Card text 'not the 22 dead-lettered'"
+  },
+  {
+   "n": 4,
+   "verdict": "yes",
+   "answer": "I clicked 'Retry group' on Engine A demoSelfHealingBaseline v1 and stopped at the confirmation dialog 'Retry group — run every failed step in this error class again — On Engine A (demo): demoSelfHealingBaseline v1 · error class ...PropertyNotFoundException'. It told me: 'The card shows 21 failing instances in this scope. The retry targets the ones currently dead-lettered — the member list is resolved server-side at dispatch ... and the job reports the exact resolved count.' It also showed 'Capped at 200 instances per bulk job' and required 'Why are you doing this? (required, 10+ characters)'. The submit button was disabled with '🔒 Reason too short — 10+ characters'. So the exact count is only known after dispatch (card figure 21, engine Engine A). I clicked Cancel and nothing was confirmed. Not tested: the Engine B group (1 instance), and whether OPERATOR is enforced at submit.",
+   "citations": [
+    "Retry group — run every failed step in this error class again",
+    "On Engine A (demo):",
+    "The card shows 21 failing instances in this scope.",
+    "Capped at 200 instances per bulk job",
+    "Reason too short — 10+ characters"
+   ],
+   "interactions": 2,
+   "firstSignal": "Retry group button on the engine/definition row"
+  }
+ ],
+ "messagesCorpus": [
+  {
+   "quote": "Triage aggregation failed: Not signed in",
+   "tag": "fine"
+  },
+  {
+   "quote": "usually self-heals (12/13 past spells, typically ≤ 1 min) — not the 22 dead-lettered (no retries left).",
+   "tag": "confusing"
+  },
+  {
+   "quote": "🔒 Requires OPERATOR on every engine in this group — missing on engine-a",
+   "tag": "fine"
+  },
+  {
+   "quote": "Ordered by the expected cost of waiting: how recently this class was seen and how fast it is growing — classes that reliably clear themselves soon rank lower, and nothing is hidden.",
+   "tag": "fine"
+  },
+  {
+   "quote": "The card shows 21 failing instances in this scope. The retry targets the ones currently dead-lettered — the member list is resolved server-side at dispatch (instances that drained or still hold retries are left alone), and the job reports the exact resolved count.",
+   "tag": "fine"
+  },
+  {
+   "quote": "Mostly safe: retrying only re-queues the step. Anything the step does when it runs (emails, payments, calls) is not undone.",
+   "tag": "fine"
+  },
+  {
+   "quote": "🔒 Reason too short — 10+ characters",
+   "tag": "fine"
+  }
+ ],
+ "protocolNotes": [
+  "Signed in as responder (RESPONDER).",
+  "Cancelled at the confirmation dialog; I did not confirm anything.",
+  "The Retry group button is enabled on Engine A even though the card says OPERATOR is missing on engine-a. That is confusing.",
+  "A task-3 caveat: the 'selfHealGhost' name is only visible inside the expression text of the PropertyNotFoundException card. It is not an error-class title.",
+  "Reply to colleague: 'selfHealGhost shows 22 failing, all 22 dead-lettered (DLQ 22, retrying 0). The tool says this class usually self-heals (12/13 past spells) but explicitly not for dead-lettered jobs, so it will not clear on its own. The 22 need a retry (demoSelfHealingBaseline: 21 on Engine A, 1 on Engine B), and Engine A needs OPERATOR.'"
+ ]
+}

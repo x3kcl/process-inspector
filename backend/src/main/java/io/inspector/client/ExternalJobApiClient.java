@@ -43,7 +43,7 @@ public class ExternalJobApiClient {
      * job (stealing it from a real worker), so it is never called. Callers must capability-gate
      * (≥ 6.8) first — on an older engine this base 404s.
      */
-    public FlowablePage listExternalWorkerJobs(
+    public JobPage listExternalWorkerJobs(
             EngineConfig engine, CallPriority priority, Map<String, String> filters, int start, int size) {
         UriComponentsBuilder b = UriComponentsBuilder.fromUriString(externalJobApiBase(engine) + "/jobs")
                 .queryParam("start", start)
@@ -53,6 +53,6 @@ public class ExternalJobApiClient {
         return guarded.call(
                 engine,
                 priority,
-                () -> guarded.readClient(engine).get().uri(uri).retrieve().body(FlowablePage.class));
+                () -> guarded.readClient(engine).get().uri(uri).retrieve().body(JobPage.class));
     }
 }
