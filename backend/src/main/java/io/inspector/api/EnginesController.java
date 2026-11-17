@@ -5,7 +5,10 @@ import io.inspector.registry.EngineRegistry;
 import io.inspector.registry.EngineSystemInfoService;
 import io.inspector.registry.EngineSystemInfoService.EngineSystemInfo;
 import io.inspector.security.RbacAuthorizer;
+import io.inspector.security.ReadScopeGate;
+import io.inspector.security.Role;
 import java.util.List;
+import org.springframework.security.access.AccessDeniedException;
 import org.springframework.security.core.Authentication;
 import org.springframework.security.core.GrantedAuthority;
 import org.springframework.web.bind.annotation.GetMapping;
@@ -22,6 +25,10 @@ import org.springframework.web.bind.annotation.RestController;
  * (lifecycle {@code disabled}/{@code draft}/{@code probe_failed}) so the dashboard renders
  * them greyed-with-reason instead of silently omitting them (R-SEM-17/R-GOV-04). Fan-out
  * and mutation targets keep resolving through the enabled-only registry views.
+ *
+ * <p>#740 (R-SAFE-17): with read-scope enforcement on, the list carries only engines the caller may
+ * read, a per-engine read of any other engine is refused with the method-security 403 every other
+ * engine-scoped read answers, and the full system read needs ADMIN on THAT engine. Off: unchanged.
  */
 @RestController
 @RequestMapping("/api/engines")
@@ -29,15 +36,21 @@ public class EnginesController {
 
     private final EngineRegistry registry;
     private final EngineSystemInfoService systemInfo;
+    private final ReadScopeGate gate;
+    private final RbacAuthorizer rbac;
 
-    public EnginesController(EngineRegistry registry, EngineSystemInfoService systemInfo) {
+    public EnginesController(
+            EngineRegistry registry, EngineSystemInfoService systemInfo, ReadScopeGate gate, RbacAuthorizer rbac) {
         this.registry = registry;
         this.systemInfo = systemInfo;
+        this.gate = gate;
+        this.rbac = rbac;
     }
 
     @GetMapping
-    public List<EngineDto> list() {
+    public List<EngineDto> list(Authentication auth) {
         return registry.allForDisplay().stream()
+                .filter(e -> readable(auth, e.id()))
                 .map(e -> EngineDto.from(e, registry.healthOf(e.id())))
                 .toList();
     }
@@ -45,11 +58,21 @@ public class EnginesController {
     /** Version, properties, and table counts. A viewer gets the version line only (#509). */
     @GetMapping("/{id}/system")
     public EngineSystemInfo system(@PathVariable String id, Authentication auth) {
-        boolean full = auth != null
+        if (!readable(auth, id)) {
+            throw new AccessDeniedException("Access Denied"); // the @PreAuthorize refusal, verbatim
+        }
+        boolean admin = gate.enforced() ? rbac.hasRoleOn(auth, Role.ADMIN, id) : hasAuthority(auth, "ROLE_ADMIN");
+        return systemInfo.load(id, admin || hasAuthority(auth, RbacAuthorizer.REGISTRY_ADMIN_AUTHORITY));
+    }
+
+    private boolean readable(Authentication auth, String engineId) {
+        return !gate.enforced() || gate.canRead(auth, engineId);
+    }
+
+    private static boolean hasAuthority(Authentication auth, String authority) {
+        return auth != null
                 && auth.getAuthorities().stream()
                         .map(GrantedAuthority::getAuthority)
-                        .anyMatch(role ->
-                                role.equals("ROLE_ADMIN") || role.equals(RbacAuthorizer.REGISTRY_ADMIN_AUTHORITY));
-        return systemInfo.load(id, full);
+                        .anyMatch(authority::equals);
     }
 }

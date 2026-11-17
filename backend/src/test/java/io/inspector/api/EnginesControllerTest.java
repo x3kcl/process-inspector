@@ -10,6 +10,8 @@ import io.inspector.config.InspectorProperties.EngineMode;
 import io.inspector.config.InspectorProperties.Timeouts;
 import io.inspector.dto.EngineDto;
 import io.inspector.registry.EngineRegistry;
+import io.inspector.security.ReadScopeGate;
+import io.inspector.security.SecurityProperties;
 import io.inspector.support.TestEngines;
 import java.util.List;
 import org.junit.jupiter.api.Test;
@@ -35,8 +37,11 @@ class EnginesControllerTest {
     }
 
     private static EnginesController controllerOf(EngineConfig... engines) {
-        return new EnginesController(
-                new EngineRegistry(new InspectorProperties(4, 10, null, null, List.of(engines))), null);
+        EngineRegistry registry = new EngineRegistry(new InspectorProperties(4, 10, null, null, List.of(engines)));
+        // #740: read-scope enforcement OFF (the default) — the list is the unfiltered display surface.
+        ReadScopeGate off =
+                new ReadScopeGate(null, registry, new SecurityProperties(null, null, null, null, null, false, null));
+        return new EnginesController(registry, null, off, null);
     }
 
     @Test
@@ -44,7 +49,7 @@ class EnginesControllerTest {
         EnginesController controller = controllerOf(
                 engine("engine-a", true, EngineMode.READ_WRITE), engine("engine-7", false, EngineMode.READ_WRITE));
 
-        List<EngineDto> list = controller.list();
+        List<EngineDto> list = controller.list(null);
 
         assertThat(list).extracting(EngineDto::id).containsExactly("engine-a", "engine-7");
         assertThat(list.get(0).lifecycle()).isEqualTo("active");
@@ -55,7 +60,7 @@ class EnginesControllerTest {
     void list_carries_the_engine_mode_so_read_only_policy_is_visible_before_a_refusal() {
         EnginesController controller = controllerOf(engine("engine-ro", true, EngineMode.READ_ONLY));
 
-        assertThat(controller.list()).singleElement().satisfies(dto -> {
+        assertThat(controller.list(null)).singleElement().satisfies(dto -> {
             assertThat(dto.mode()).isEqualTo("read-only");
             assertThat(dto.lifecycle()).isEqualTo("active");
         });

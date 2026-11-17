@@ -1,5 +1,6 @@
 import { useQuery } from '@tanstack/react-query'
 import { useParams } from 'react-router'
+import { ApiError } from '../api/client'
 import { fetchSystemInfo } from '../api/queries'
 
 /** Version, properties, table counts, and executor scrape status (#509 #510). */
@@ -17,7 +18,14 @@ export function EngineSystemPage() {
     <section className="engine-system">
       <h1>System info {id}</h1>
       {query.isPending && <p>Loading…</p>}
-      {query.error instanceof Error && <p role="alert">{query.error.message}</p>}
+      {query.error instanceof Error && (
+        <p role="alert">
+          {/* #740: the BFF's scoped 403 under read-scope enforcement (R-SAFE-17) */}
+          {query.error instanceof ApiError && query.error.status === 403
+            ? `${id} is outside your access scope.`
+            : query.error.message}
+        </p>
+      )}
       {info !== undefined && (
         <>
           <p>Version: {info.version ?? 'unknown'}</p>

@@ -2,10 +2,13 @@ package io.inspector.api;
 
 import static org.assertj.core.api.Assertions.assertThat;
 import static org.mockito.ArgumentMatchers.any;
+import static org.mockito.ArgumentMatchers.anyString;
+import static org.mockito.ArgumentMatchers.eq;
 import static org.mockito.Mockito.when;
 
 import com.fasterxml.jackson.databind.JsonNode;
 import com.fasterxml.jackson.databind.ObjectMapper;
+import com.fasterxml.jackson.databind.node.ObjectNode;
 import io.inspector.security.ReadScopeGate;
 import io.inspector.security.SecurityProperties;
 import io.inspector.support.NoDbTestSupport;
@@ -25,7 +28,7 @@ import org.springframework.security.core.Authentication;
 import org.springframework.test.context.ActiveProfiles;
 import org.springframework.test.context.bean.override.mockito.MockitoBean;
 
-// #730: pins CURRENT behaviour pending an owner decision — not an endorsement
+// #730 pinned the facts; #740 (decision 1 of #739) turned them into the wanted contract.
 /**
  * Facts for issue #730 claim 1 — is {@code GET /api/engines} scope-filtered? Same rung and seam as
  * {@code IncidentScopeApiSpringTest}: the dev basic-auth ladder is global-scoped, so the
@@ -33,10 +36,10 @@ import org.springframework.test.context.bean.override.mockito.MockitoBean;
  * (enforcement on), or to return {@code null} (enforcement off — the config default). The real
  * grant→readable-set derivation is {@code ReadScopeGateTest}'s job.
  *
- * <p>Pinned today: the engine list ignores the gate either way and lists the out-of-scope engine with
- * the full {@code EngineDto} field set (no base URL, no auth block, no secret-ref name); the per-engine
- * {@code /system} read answers an out-of-scope engine too (version-only for a VIEWER); the triage
- * dashboard's {@code engines} block, by contrast, IS narrowed.
+ * <p>#740: with enforcement ON the engine list carries only engines the caller may read (like the
+ * triage {@code engines} block), and the per-engine {@code /system} read refuses an out-of-scope engine
+ * with the SAME 403 every other method-security refusal answers — also for a user who is ADMIN
+ * elsewhere. With enforcement OFF both answer exactly as before.
  */
 @SpringBootTest(webEnvironment = SpringBootTest.WebEnvironment.RANDOM_PORT)
 @ActiveProfiles("test")
@@ -92,21 +95,19 @@ class EngineListScopeFactsTest {
     }
 
     @Test
-    void enforcedScopedViewerStillSeesEveryEngineInTheEngineList() throws Exception {
-        when(gate.enforced()).thenReturn(true);
-        when(gate.readableEngineIds(any(Authentication.class))).thenReturn(Set.of("probe-dev"));
+    void enforcedScopedViewerSeesOnlyReadableEnginesInTheEngineList() throws Exception {
+        scopedTo("probe-dev");
 
         JsonNode body = getJson("/api/engines");
 
-        assertThat(ids(body)).containsExactly("probe-dev", "probe-prod"); // probe-prod is OUT of scope
-        JsonNode foreign = body.get(1);
-        assertThat(fieldNames(foreign)).isEqualTo(ENGINE_DTO_FIELDS);
-        assertThat(foreign.get("name").asText()).isEqualTo("Probe engine (prod twin)");
-        assertThat(foreign.get("environment").asText()).isEqualTo("prod");
-        assertThat(foreign.get("mode").asText()).isEqualTo("read-only");
-        // never on the wire, in or out of scope: base URL, auth type, any secret-ref name
-        assertThat(foreign.toString())
-                .doesNotContain("baseUrl", "base-url", "localhost:1", "auth", "Ref\"", "password");
+        assertThat(ids(body)).containsExactly("probe-dev"); // probe-prod is OUT of scope: not listed
+        JsonNode own = body.get(0);
+        assertThat(fieldNames(own)).isEqualTo(ENGINE_DTO_FIELDS);
+        assertThat(own.get("name").asText()).isEqualTo("Probe engine (dev twin)");
+        assertThat(own.get("environment").asText()).isEqualTo("dev");
+        assertThat(own.get("mode").asText()).isEqualTo("read-write");
+        // never on the wire: base URL, auth type, any secret-ref name
+        assertThat(body.toString()).doesNotContain("baseUrl", "base-url", "localhost:1", "auth", "Ref\"", "password");
     }
 
     @Test
@@ -121,15 +122,14 @@ class EngineListScopeFactsTest {
     }
 
     @Test
-    void enforcedScopedViewerCanReadTheVersionLineOfAnOutOfScopeEngine() throws Exception {
-        when(gate.enforced()).thenReturn(true);
-        when(gate.readableEngineIds(any(Authentication.class))).thenReturn(Set.of("probe-dev"));
+    void enforcedScopedViewerIsRefusedTheSystemPageOfAnOutOfScopeEngine() throws Exception {
+        scopedTo("probe-dev");
 
-        JsonNode system = getJson("/api/engines/probe-prod/system");
+        ResponseEntity<String> res = viewer().getForEntity("/api/engines/probe-prod/system", String.class);
 
-        assertThat(system.get("engineId").asText()).isEqualTo("probe-prod");
-        assertThat(system.get("metricsStatus").asText()).isEqualTo("version-only");
-        assertThat(system.get("properties").isNull()).isTrue(); // properties/tables are ADMIN-only
+        assertThat(res.getStatusCode()).isEqualTo(HttpStatus.FORBIDDEN);
+        assertThat(refusal(res)).isEqualTo(refusal(scopedReadRefusal()));
+        assertThat(res.getBody()).doesNotContain("version", "metricsStatus"); // no engine facts
     }
 
     @Test
@@ -158,5 +158,86 @@ class EngineListScopeFactsTest {
         Set<String> out = new TreeSet<>();
         node.fieldNames().forEachRemaining(out::add);
         return out;
+    }
+
+    // ---- #740 additions -------------------------------------------------------------------------
+
+    @Test
+    void enforcedScopedViewerReadsTheVersionLineOfItsOwnEngine() throws Exception {
+        scopedTo("probe-dev");
+
+        JsonNode system = getJson("/api/engines/probe-dev/system");
+
+        assertThat(system.get("engineId").asText()).isEqualTo("probe-dev");
+        assertThat(system.get("metricsStatus").asText()).isEqualTo("version-only");
+    }
+
+    @Test
+    void enforcedAdminOfOneEngineIsRefusedTheOtherEnginesSystemPage() throws Exception {
+        // The side finding of #730: ROLE_ADMIN is not tied to an engine, so an admin scoped to
+        // probe-dev read probe-prod's FULL system info (properties, table counts).
+        scopedTo("probe-dev");
+
+        ResponseEntity<String> res = admin().getForEntity("/api/engines/probe-prod/system", String.class);
+
+        assertThat(res.getStatusCode()).isEqualTo(HttpStatus.FORBIDDEN);
+        assertThat(refusal(res)).isEqualTo(refusal(scopedReadRefusal()));
+    }
+
+    @Test
+    void enforcedFleetAdminReadsFullSystemInfoOfEveryEngine() throws Exception {
+        scopedTo("probe-dev", "probe-prod");
+
+        ResponseEntity<String> res = admin().getForEntity("/api/engines/probe-prod/system", String.class);
+
+        assertThat(res.getStatusCode()).isEqualTo(HttpStatus.OK);
+        JsonNode system = mapper.readTree(res.getBody());
+        assertThat(system.get("engineId").asText()).isEqualTo("probe-prod");
+        assertThat(system.get("metricsStatus").asText()).isNotEqualTo("version-only"); // the full read
+        assertThat(ids(admin().getForObject("/api/engines", JsonNode.class)))
+                .containsExactly("probe-dev", "probe-prod");
+    }
+
+    @Test
+    void unenforcedSystemPageIsUnchangedForViewerAndAdmin() throws Exception {
+        when(gate.enforced()).thenReturn(false);
+        when(gate.readableEngineIds(any(Authentication.class))).thenReturn(null);
+
+        JsonNode asViewer = getJson("/api/engines/probe-prod/system");
+        ResponseEntity<String> asAdmin = admin().getForEntity("/api/engines/probe-prod/system", String.class);
+
+        assertThat(asViewer.get("metricsStatus").asText()).isEqualTo("version-only");
+        assertThat(asAdmin.getStatusCode()).isEqualTo(HttpStatus.OK);
+        assertThat(mapper.readTree(asAdmin.getBody()).get("metricsStatus").asText())
+                .isNotEqualTo("version-only");
+    }
+
+    private TestRestTemplate admin() {
+        return rest.withBasicAuth("admin", "dev");
+    }
+
+    /** Emulates a session whose read scope is exactly {@code engineIds} (enforcement on). */
+    private void scopedTo(String... engineIds) {
+        Set<String> readable = Set.of(engineIds);
+        when(gate.enforced()).thenReturn(true);
+        when(gate.readableEngineIds(any(Authentication.class))).thenReturn(readable);
+        when(gate.canRead(any(Authentication.class), anyString())).thenReturn(false);
+        for (String id : engineIds) {
+            when(gate.canRead(any(Authentication.class), eq(id))).thenReturn(true);
+        }
+    }
+
+    /** A method-security 403 every scoped read answers (here: a VIEWER at an ADMIN-floor read door). */
+    private ResponseEntity<String> scopedReadRefusal() {
+        ResponseEntity<String> ref = viewer().getForEntity("/api/admin/audit/integrity", String.class);
+        assertThat(ref.getStatusCode()).isEqualTo(HttpStatus.FORBIDDEN);
+        return ref;
+    }
+
+    /** The refusal minus its per-request fields (request id, request path). */
+    private JsonNode refusal(ResponseEntity<String> res) throws Exception {
+        ObjectNode body = (ObjectNode) mapper.readTree(res.getBody());
+        body.remove(List.of("requestId", "instance", "path", "timestamp"));
+        return body;
     }
 }

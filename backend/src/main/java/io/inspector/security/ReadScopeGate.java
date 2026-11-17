@@ -61,4 +61,20 @@ public class ReadScopeGate {
                 .map(EngineConfig::id)
                 .collect(Collectors.toCollection(LinkedHashSet::new));
     }
+
+    /**
+     * May the caller READ this one engine (#740)? The per-engine twin of {@link #readableEngineIds}
+     * for a path-named read and for the engine DISPLAY list, which also carries disabled engines —
+     * so the engine is resolved over every live row, not just the enabled fan-out set. An unknown id
+     * resolves no tenant: only a global grant overlaps it (the service then answers its 404), a
+     * scoped caller is refused exactly as for an out-of-scope engine — no existence oracle. Off ⇒
+     * true.
+     */
+    public boolean canRead(Authentication auth, String engineId) {
+        if (!enforced()) {
+            return true;
+        }
+        String tenantId = registry.resolve(engineId).map(EngineConfig::tenantId).orElse(null);
+        return rbac.grantsFor(auth).stream().anyMatch(g -> g.overlaps(Role.VIEWER, engineId, tenantId));
+    }
 }
