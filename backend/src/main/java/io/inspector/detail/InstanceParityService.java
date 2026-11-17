@@ -1,6 +1,8 @@
 package io.inspector.detail;
 
 import io.inspector.client.DmnApiClient;
+import io.inspector.client.ExecutionPage;
+import io.inspector.client.ExecutionRecord;
 import io.inspector.client.FlowablePage;
 import io.inspector.client.GuardedCaller.CallPriority;
 import io.inspector.client.ProcessApiClient;
@@ -63,8 +65,8 @@ public class InstanceParityService {
 
     public ExecutionTreeBuilder.ExecutionTree executions(String engineId, String instanceId) {
         EngineConfig engine = registry.require(engineId);
-        FlowablePage page = flowable.listExecutions(engine, CallPriority.INTERACTIVE, instanceId, PAGE);
-        List<Map<String, Object>> data = page == null ? List.of() : page.dataOrEmpty();
+        ExecutionPage page = flowable.listExecutions(engine, CallPriority.INTERACTIVE, instanceId, PAGE);
+        List<ExecutionRecord> data = page == null ? List.of() : page.dataOrEmpty();
         boolean capped = page != null && page.total() > data.size();
         return ExecutionTreeBuilder.build(data, capped);
     }

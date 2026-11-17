@@ -2,6 +2,7 @@ package io.inspector.detail;
 
 import static org.assertj.core.api.Assertions.assertThat;
 
+import io.inspector.client.ExecutionRecords;
 import io.inspector.client.JobRecords;
 import io.inspector.client.ProcessApiClient.JobLaneKind;
 import io.inspector.client.ProcessInstanceRecords;
@@ -185,12 +186,12 @@ class InstanceDetailMappingTest {
 
     @Test
     void timelineRowsKeepTheCallActivityChildLink() {
-        TimelineActivity dto = InstanceDetailService.timelineRow(Map.of(
+        TimelineActivity dto = InstanceDetailService.timelineRow(ExecutionRecords.activity(Map.of(
                 "id", "act-1",
                 "activityId", "callPayment",
                 "activityType", "callActivity",
                 "durationInMillis", 1234,
-                "calledProcessInstanceId", "child-7"));
+                "calledProcessInstanceId", "child-7")));
         assertThat(dto.durationMs()).isEqualTo(1234L);
         assertThat(dto.calledProcessInstanceId()).isEqualTo("child-7");
         assertThat(dto.endTime()).isNull();

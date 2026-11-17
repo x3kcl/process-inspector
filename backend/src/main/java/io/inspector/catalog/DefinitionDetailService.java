@@ -5,7 +5,8 @@ import io.inspector.catalog.DefinitionDetailResponse.VersionRef;
 import io.inspector.catalog.DefinitionJobsResponse.JobLaneCount;
 import io.inspector.catalog.DefinitionSubscriptionsResponse.SubscriptionRow;
 import io.inspector.client.CmmnApiClient;
-import io.inspector.client.FlowablePage;
+import io.inspector.client.EventSubscriptionPage;
+import io.inspector.client.EventSubscriptionRecord;
 import io.inspector.client.GuardedCaller.CallPriority;
 import io.inspector.client.JobPage;
 import io.inspector.client.ProcessApiClient;
@@ -67,18 +68,13 @@ public class DefinitionDetailService {
             }
             throw notFound(engineId, definitionId);
         }
-        FlowablePage page = processes.listDefinitionEventSubscriptions(
+        EventSubscriptionPage page = processes.listDefinitionEventSubscriptions(
                 engine, CallPriority.INTERACTIVE, definitionId, SUBSCRIPTION_CAP);
         List<SubscriptionRow> rows = new ArrayList<>();
-        for (Map<String, Object> row : page.dataOrEmpty()) {
-            String instanceId = str(row, "processInstanceId");
+        for (EventSubscriptionRecord row : page.dataOrEmpty()) {
+            String instanceId = row.processInstanceId();
             rows.add(new SubscriptionRow(
-                    str(row, "id"),
-                    str(row, "eventType"),
-                    str(row, "eventName"),
-                    str(row, "activityId"),
-                    instanceId,
-                    instanceId == null));
+                    row.id(), row.eventType(), row.eventName(), row.activityId(), instanceId, instanceId == null));
         }
         return new DefinitionSubscriptionsResponse("BPMN", rows, page.total() <= rows.size());
     }

@@ -232,7 +232,7 @@ final class ProcessRepositoryClient {
     }
 
     /** GET /runtime/event-subscriptions?processDefinitionId= — start and instance subscriptions. */
-    public FlowablePage listDefinitionEventSubscriptions(
+    public EventSubscriptionPage listDefinitionEventSubscriptions(
             EngineConfig engine, CallPriority priority, String processDefinitionId, int size) {
         return guarded.call(
                 engine,
@@ -244,7 +244,7 @@ final class ProcessRepositoryClient {
                                 .queryParam("size", size)
                                 .build())
                         .retrieve()
-                        .body(FlowablePage.class));
+                        .body(EventSubscriptionPage.class));
     }
 
     /** GET /repository/deployments — name filter and newest-first. */

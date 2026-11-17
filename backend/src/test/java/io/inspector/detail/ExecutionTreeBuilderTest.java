@@ -2,6 +2,7 @@ package io.inspector.detail;
 
 import static org.assertj.core.api.Assertions.assertThat;
 
+import io.inspector.client.ExecutionRecords;
 import java.util.List;
 import java.util.Map;
 import org.junit.jupiter.api.Test;
@@ -16,7 +17,7 @@ class ExecutionTreeBuilderTest {
             rows.add(Map.of("id", "c" + i, "parentId", "root", "activityId", "task", "suspended", false));
         }
 
-        ExecutionTreeBuilder.ExecutionTree tree = ExecutionTreeBuilder.build(rows, true);
+        ExecutionTreeBuilder.ExecutionTree tree = ExecutionTreeBuilder.build(ExecutionRecords.executions(rows), true);
 
         assertThat(tree.pageCapped()).isTrue();
         ExecutionTreeBuilder.ExecutionNode root = tree.nodes().stream()

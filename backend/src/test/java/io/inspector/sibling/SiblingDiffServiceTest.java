@@ -7,6 +7,7 @@ import static org.mockito.ArgumentMatchers.eq;
 import static org.mockito.Mockito.mock;
 import static org.mockito.Mockito.when;
 
+import io.inspector.client.ExecutionRecords;
 import io.inspector.client.FlowablePage;
 import io.inspector.client.ProcessApiClient;
 import io.inspector.client.ProcessInstancePage;
@@ -222,10 +223,11 @@ class SiblingDiffServiceTest {
                 .thenReturn(new FlowablePage(
                         List.of(Map.of("name", "amount", "type", "integer", "value", 250)), 1, 0, 200));
         when(flowable.listHistoricActivities(eq(engine), any(), eq("subject-1"), anyInt(), anyInt()))
-                .thenReturn(
-                        new FlowablePage(List.of(activityRow("start", 5L), activityRow("charge", null)), 2, 0, 200));
+                .thenReturn(ExecutionRecords.activityPage(
+                        List.of(activityRow("start", 5L), activityRow("charge", null)), 2));
         when(flowable.listHistoricActivities(eq(engine), any(), eq("good-42"), anyInt(), anyInt()))
-                .thenReturn(new FlowablePage(List.of(activityRow("start", 5L), activityRow("done", 3L)), 2, 0, 200));
+                .thenReturn(
+                        ExecutionRecords.activityPage(List.of(activityRow("start", 5L), activityRow("done", 3L)), 2));
 
         SiblingDiffResponse res =
                 new SiblingDiffService(registry, flowable, detail).diff("engine-a", "subject-1", "good-42");

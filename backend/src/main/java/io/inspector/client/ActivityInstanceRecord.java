@@ -1,6 +1,14 @@
 package io.inspector.client;
 
-/** One historic activity instance as the history endpoint serialises it (#474). */
+import com.fasterxml.jackson.annotation.JsonIgnoreProperties;
+
+/**
+ * One row of {@code /history/historic-activity-instances} — the typed wire shape of the
+ * historic-activity endpoint family (#474). A taken sequence flow is a row too
+ * ({@code activityType == "sequenceFlow"}); an unfinished activity has a null {@code endTime} and a
+ * null {@code durationInMillis}. Times stay the engine's verbatim strings.
+ */
+@JsonIgnoreProperties(ignoreUnknown = true)
 public record ActivityInstanceRecord(
         String id,
         String activityId,

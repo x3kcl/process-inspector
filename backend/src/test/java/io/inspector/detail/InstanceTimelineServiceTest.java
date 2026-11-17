@@ -7,8 +7,8 @@ import static org.mockito.ArgumentMatchers.eq;
 import static org.mockito.Mockito.mock;
 import static org.mockito.Mockito.when;
 
+import io.inspector.client.ExecutionRecords;
 import io.inspector.client.ExternalJobApiClient;
-import io.inspector.client.FlowablePage;
 import io.inspector.client.GuardedCaller.CallPriority;
 import io.inspector.client.JobPage;
 import io.inspector.client.JobRecords;
@@ -148,7 +148,7 @@ class InstanceTimelineServiceTest {
     private void activities(String instanceId, Map<String, Object>... rows) {
         when(flowable.listHistoricActivities(
                         eq(engine), eq(CallPriority.INTERACTIVE), eq(instanceId), anyInt(), anyInt()))
-                .thenReturn(new FlowablePage(List.of(rows), rows.length, 0, 50));
+                .thenReturn(ExecutionRecords.activityPage(List.of(rows), rows.length));
     }
 
     private void deadLetterJobs(String instanceId, Map<String, Object> job) {

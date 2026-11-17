@@ -131,7 +131,7 @@ final class ProcessInstanceReadClient {
      * 6.3.1/6.8/7.1 (probed live). One page suffices — an instance holds a handful of
      * unfinished activities, not thousands.
      */
-    public FlowablePage listUnfinishedActivities(
+    public ActivityInstancePage listUnfinishedActivities(
             EngineConfig engine, CallPriority priority, String processInstanceId, String tenantId, int size) {
         return guarded.call(
                 engine,
@@ -147,7 +147,7 @@ final class ProcessInstanceReadClient {
                             return b.build();
                         })
                         .retrieve()
-                        .body(FlowablePage.class));
+                        .body(ActivityInstancePage.class));
     }
 
     /**
@@ -274,7 +274,8 @@ final class ProcessInstanceReadClient {
      * (execution-local variable segregation, SPEC §4). One page suffices: an instance holds
      * a handful of executions; the page cap keeps a pathological multi-instance loop bounded.
      */
-    public FlowablePage listExecutions(EngineConfig engine, CallPriority priority, String processInstanceId, int size) {
+    public ExecutionPage listExecutions(
+            EngineConfig engine, CallPriority priority, String processInstanceId, int size) {
         return guarded.call(
                 engine,
                 priority,
@@ -285,7 +286,7 @@ final class ProcessInstanceReadClient {
                                 .queryParam("size", size)
                                 .build())
                         .retrieve()
-                        .body(FlowablePage.class));
+                        .body(ExecutionPage.class));
     }
 
     /** GET /runtime/process-instances/{id}/identitylinks. Empty when the instance is not running. */
@@ -422,7 +423,7 @@ final class ProcessInstanceReadClient {
     }
 
     /** GET /history/historic-activity-instances — one timeline page, startTime ascending. */
-    public FlowablePage listHistoricActivities(
+    public ActivityInstancePage listHistoricActivities(
             EngineConfig engine, CallPriority priority, String processInstanceId, int start, int size) {
         return guarded.call(
                 engine,
@@ -437,7 +438,7 @@ final class ProcessInstanceReadClient {
                                 .queryParam("size", size)
                                 .build())
                         .retrieve()
-                        .body(FlowablePage.class));
+                        .body(ActivityInstancePage.class));
     }
 
     /**
@@ -445,7 +446,7 @@ final class ProcessInstanceReadClient {
      * FOR (message/signal names, SPEC §4 vitals). Not present on every engine version:
      * callers degrade to an empty list on client errors, never fail the vitals.
      */
-    public FlowablePage listEventSubscriptions(
+    public EventSubscriptionPage listEventSubscriptions(
             EngineConfig engine, CallPriority priority, String processInstanceId, int size) {
         return guarded.call(
                 engine,
@@ -457,7 +458,7 @@ final class ProcessInstanceReadClient {
                                 .queryParam("size", size)
                                 .build())
                         .retrieve()
-                        .body(FlowablePage.class));
+                        .body(EventSubscriptionPage.class));
     }
 
     /**

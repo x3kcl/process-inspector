@@ -81,7 +81,7 @@ public class ProcessApiClient {
         return reads.getRuntimeProcessInstance(engine, priority, processInstanceId);
     }
 
-    public FlowablePage listUnfinishedActivities(
+    public ActivityInstancePage listUnfinishedActivities(
             EngineConfig engine, CallPriority priority, String processInstanceId, String tenantId, int size) {
         return reads.listUnfinishedActivities(engine, priority, processInstanceId, tenantId, size);
     }
@@ -108,7 +108,8 @@ public class ProcessApiClient {
         return reads.jobExceptionStacktrace(engine, priority, lane, jobId);
     }
 
-    public FlowablePage listExecutions(EngineConfig engine, CallPriority priority, String processInstanceId, int size) {
+    public ExecutionPage listExecutions(
+            EngineConfig engine, CallPriority priority, String processInstanceId, int size) {
         return reads.listExecutions(engine, priority, processInstanceId, size);
     }
 
@@ -149,12 +150,12 @@ public class ProcessApiClient {
         return reads.listHistoricVariableInstances(engine, priority, processInstanceId, size);
     }
 
-    public FlowablePage listHistoricActivities(
+    public ActivityInstancePage listHistoricActivities(
             EngineConfig engine, CallPriority priority, String processInstanceId, int start, int size) {
         return reads.listHistoricActivities(engine, priority, processInstanceId, start, size);
     }
 
-    public FlowablePage listEventSubscriptions(
+    public EventSubscriptionPage listEventSubscriptions(
             EngineConfig engine, CallPriority priority, String processInstanceId, int size) {
         return reads.listEventSubscriptions(engine, priority, processInstanceId, size);
     }
@@ -401,7 +402,7 @@ public class ProcessApiClient {
     }
 
     @SuppressWarnings("unchecked")
-    public Map<String, Object> getExecution(EngineConfig engine, CallPriority priority, String executionId) {
+    public ExecutionRecord getExecution(EngineConfig engine, CallPriority priority, String executionId) {
         return actions.getExecution(engine, priority, executionId);
     }
 
@@ -475,7 +476,7 @@ public class ProcessApiClient {
         return repository.listProcessDefinitions(engine, priority, key, nameLike, latest, deploymentId, start, size);
     }
 
-    public FlowablePage listDefinitionEventSubscriptions(
+    public EventSubscriptionPage listDefinitionEventSubscriptions(
             EngineConfig engine, CallPriority priority, String processDefinitionId, int size) {
         return repository.listDefinitionEventSubscriptions(engine, priority, processDefinitionId, size);
     }

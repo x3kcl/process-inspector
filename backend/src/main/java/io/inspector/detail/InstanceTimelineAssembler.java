@@ -1,6 +1,7 @@
 package io.inspector.detail;
 
-import io.inspector.client.FlowablePage;
+import io.inspector.client.ActivityInstancePage;
+import io.inspector.client.ActivityInstanceRecord;
 import io.inspector.client.GuardedCaller.CallPriority;
 import io.inspector.client.JobRecord;
 import io.inspector.config.InspectorProperties.EngineConfig;
@@ -59,9 +60,9 @@ final class InstanceTimelineAssembler {
             Set<String> visited,
             int[] budget,
             int pageSize) {
-        FlowablePage page =
+        ActivityInstancePage page =
                 host.flowable.listHistoricActivities(engine, CallPriority.INTERACTIVE, instanceId, 0, pageSize);
-        List<Map<String, Object>> rows = page.dataOrEmpty();
+        List<ActivityInstanceRecord> rows = page.dataOrEmpty();
         boolean truncated = page.total() > rows.size();
 
         // Live failure is read from the runtime lanes (the source of truth), NOT from the
@@ -70,19 +71,17 @@ final class InstanceTimelineAssembler {
         Set<String> annotated = new HashSet<>();
 
         List<TimelineActivity> out = new ArrayList<>(rows.size());
-        for (Map<String, Object> row : rows) {
-            String activityId = InstanceDetailService.str(row, "activityId");
+        for (ActivityInstanceRecord row : rows) {
+            String activityId = row.activityId();
             LiveJobState state = null;
-            if (activityId != null
-                    && InstanceDetailService.str(row, "endTime") == null
-                    && stateByActivity.containsKey(activityId)) {
+            if (activityId != null && row.endTime() == null && stateByActivity.containsKey(activityId)) {
                 state = stateByActivity.get(activityId);
                 annotated.add(activityId);
             }
 
             List<TimelineActivity> children = List.of();
             boolean capped = false;
-            String childInstanceId = InstanceDetailService.str(row, "calledProcessInstanceId");
+            String childInstanceId = row.calledProcessInstanceId();
             if (childInstanceId != null) {
                 if (depth >= maxDepth || budget[0] <= 0) {
                     capped = true; // depth or node-budget cap — the drill-out link still stands
@@ -134,13 +133,14 @@ final class InstanceTimelineAssembler {
      * the name/type from any sibling row sharing the activityId (a prior finished attempt);
      * otherwise the activityId stands alone. Unfinished by construction — it carries no time.
      */
-    private static TimelineActivity phantomNode(String activityId, LiveJobState state, List<Map<String, Object>> rows) {
+    private static TimelineActivity phantomNode(
+            String activityId, LiveJobState state, List<ActivityInstanceRecord> rows) {
         String name = null;
         String type = null;
-        for (Map<String, Object> row : rows) {
-            if (activityId.equals(InstanceDetailService.str(row, "activityId"))) {
-                name = InstanceDetailService.str(row, "activityName");
-                type = InstanceDetailService.str(row, "activityType");
+        for (ActivityInstanceRecord row : rows) {
+            if (activityId.equals(row.activityId())) {
+                name = row.activityName();
+                type = row.activityType();
                 break;
             }
         }

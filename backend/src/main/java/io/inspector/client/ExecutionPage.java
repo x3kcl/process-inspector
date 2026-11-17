@@ -1,14 +1,16 @@
 package io.inspector.client;
 
+import com.fasterxml.jackson.annotation.JsonIgnoreProperties;
 import java.util.List;
 
-/** One page of a ExecutionRecord list, typed (#474). */
+/** One {@code {data:[…], total, start, size}} page of ExecutionRecord rows, typed (#474). */
+@JsonIgnoreProperties(ignoreUnknown = true)
 public record ExecutionPage(List<ExecutionRecord> data, long total, int start, int size) {
     public static ExecutionPage empty() {
-        throw new UnsupportedOperationException("stub (#474)");
+        return new ExecutionPage(List.of(), 0, 0, 0);
     }
 
     public List<ExecutionRecord> dataOrEmpty() {
-        throw new UnsupportedOperationException("stub (#474)");
+        return data != null ? data : List.of();
     }
 }
