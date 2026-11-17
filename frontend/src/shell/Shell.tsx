@@ -25,6 +25,7 @@ import { Omnibox } from './Omnibox'
 import { restoreRouteFocus } from './routeFocus'
 import { ShortcutSheet } from './ShortcutSheet'
 import { useShellShortcuts } from './useShellShortcuts'
+import { hasNoAccess, NoAccess } from './NoAccess'
 
 /**
  * The stage-independent frame (SPEC §4): topbar with the app title, the omnibox (pinned on
@@ -38,9 +39,15 @@ export function Shell() {
   const authError = useAnyAuthError()
   const signedOut = useSignedOut()
   const authRequired = authError || signedOut
+  // #758: GET /api/me decides, before anything gated is called, whether this user holds a role
+  // at all — a user with none gets the no-access page, never a page of 403s. Until me answers,
+  // the surfaces that call gated routes (engine strip, omnibox, the routed page, SSE) wait.
+  const me = useMe()
+  const noAccess = hasNoAccess(me.data)
+  const ready = (me.data !== undefined || me.isError) && !noAccess
   // v2/M4: one-time migration of any v1 localStorage views/recents into the server store, once
   // the user is authenticated (SPEC §8).
-  useLegacyViewMigration(!authRequired)
+  useLegacyViewMigration(!authRequired && ready)
   // Re-auth round-trip landing (IDP-SECURITY.md §5): the dangerous-set challenge is a full-page
   // OIDC redirect, so the pre-redirect route is checkpointed to sessionStorage; on the fresh boot
   // after login we restore it (single-shot, TTL-bounded, same-origin-path-only).
@@ -54,7 +61,7 @@ export function Shell() {
       {/* App-scoped live channel (live-ui-sse): ONE EventSource for every surface — a
           drawer-scoped stream would go deaf while closed. Gated on auth: the stream
           rides the session cookie the first authenticated call establishes. */}
-      <LiveProvider enabled={!authRequired}>
+      <LiveProvider enabled={!authRequired && ready}>
         <OpsDrawerProvider>
           <div className="app">
             {/* #168: the FIRST focusable element on every page — a keyboard-only user hitting
@@ -99,7 +106,7 @@ export function Shell() {
               <RegistryAdminLink />
               <AccessAdminLink />
               <RemediationDemandLink />
-              <Omnibox />
+              {ready && <Omnibox />}
               {/* R-UXQ-03: the one-click display-zone control lives on every stage. */}
               <ZoneToggle />
               {/* R-UXQ-08: the persisted dark-theme control lives on every stage. */}
@@ -108,7 +115,7 @@ export function Shell() {
               <DensityToggle />
               {/* Usability W3: who-am-I + Sign out (dev ladder). Hidden while signed out. */}
               {!authRequired && <IdentityStrip />}
-              <HeaderStrip />
+              {ready && <HeaderStrip />}
             </header>
             {authRequired && <SignIn />}
             {/* The app's ONE <main> landmark (axe landmark-one-main): every route's own
@@ -117,10 +124,10 @@ export function Shell() {
                 focusable, so #main-content would just scroll into view without moving focus)
                 without adding it to the normal Tab order. */}
             <main id="main-content" tabIndex={-1}>
-              <Outlet />
+              {noAccess ? <NoAccess /> : (ready || authRequired) && <Outlet />}
             </main>
             {shortcuts.sheetOpen && <ShortcutSheet onClose={shortcuts.closeSheet} />}
-            <OpsDrawer />
+            {ready && <OpsDrawer />}
           </div>
         </OpsDrawerProvider>
       </LiveProvider>

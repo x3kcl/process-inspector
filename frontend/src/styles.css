@@ -4803,3 +4803,10 @@ button.skip-link {
   > :first-child {
   fill: var(--color-success-bg) !important;
 }
+
+/* #758: signed in, no role on any engine — the page shown instead of every route. */
+.no-access {
+  max-width: 40rem;
+  margin: 48px auto;
+  padding: 0 16px;
+}
