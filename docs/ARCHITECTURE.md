@@ -400,7 +400,8 @@ nobody may "simplify" by exposing an engine directly.
   verbatim). Writes keep a working CAS through `VariableValueToken` (keyed HMAC-SHA256, random
   per-process key — this is a single BFF instance, so no key distribution) issued with the
   masked read and compared server-side. The search value oracle is closed in `SearchService`
-  (both entry points), the cURL render in `ActionCurl`, the 409 in `ActionExceptionHandler`.
+  (both entry points) and `CohortMigrationService`, the DMN audit's verbatim engine JSON is
+  filtered in `InstanceParityService.maskSecretNamed` (outside the record, so named here), the cURL render in `ActionCurl`, the 409 in `ActionExceptionHandler`.
 
 - **Auth (dual profile from M4):** dev = form/basic + session; prod = **OIDC**   (roles from a claim). One session-stateful BFF instance; engine credentials live only in   the BFF process env. **v2 IdP-Security (IDP-SECURITY.md)** wires OIDC for real — **S1 built**: the   `oidc` profile carries a real `oauth2-client` registration (Entra ID pilot / Keycloak; issuer   pinned to one tenant, PKCE, tokens server-side-session-only) and a single authoritative   `OidcGroupResolver` (issuer pinning, non-array-claim rejection, Entra groups-overage   detect-and-legibly-fail) owns the one place a token's groups are trusted, at login and at check   time — hardens the session/transport posture (**S2 built**: idle+absolute session caps,   fixation scoped (`changeSessionId` on `oidc`, `none` on dev-Basic so the SSE isn't orphaned),   `HttpOnly/Secure/SameSite=Lax`, the header set + **fail-closed verb gate**   (`canExecute .orElse(false)` + a pre-`@PreAuthorize` verb-existence 404), CSP enforcing (S5),   HSTS opt-in, CORS off — R-SAFE-07/R-OPS-16).
 

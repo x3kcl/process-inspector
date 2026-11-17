@@ -1359,9 +1359,11 @@ tree rows stay distinguishable (R-UXQ-12 half, usability W2 #7).
   surface that carries a variable value — the instance ledger, the single-value read
   (`GET …/variables/{name}`, process and step-local scope), case variables, the sibling
   variable diff (both sides; `MASKED` instead of same/changed), restart previews, the raw-JSON
-  export. The wire form is `masked: true` with **no value** (never a placeholder string that
+  export, and the DMN decision audit (a secret-named key is dropped from `inputVariables` and
+  `decisionResult` and listed under `maskedVariables`, type kept). The wire form is `masked: true` with **no value** (never a placeholder string that
   could pass for one), no size/truncation facts (they leak the length), the type kept. A search
-  filter on such a variable is refused (`secret-variable-filter`, §8); the action cURL render
+  filter on such a variable is refused (`secret-variable-filter`, §8), and so is a migration
+  cohort filter on one (same code); the action cURL render
   replaces its new value and any `expectedOldValue` with a placeholder that says so.
   **Edit-variable keeps working:** the masked single-value read (and each case-variables row)
   carries an opaque `valueToken` — a keyed HMAC-SHA256 of engine + scope id + name + value,
