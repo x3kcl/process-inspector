@@ -6,7 +6,6 @@ import io.inspector.config.InspectorProperties.EngineConfig;
 import java.time.Instant;
 import java.time.temporal.ChronoUnit;
 import java.util.List;
-import java.util.Map;
 import org.springframework.web.client.HttpClientErrorException;
 
 /** Health-strip size=1 totals. Moved from ProcessApiClient (issue #475). */
@@ -22,14 +21,14 @@ final class ProcessHealthClient {
 
     /** Lane count via the size=1 total trick — no rows transferred. */
     public long countJobs(EngineConfig engine, CallPriority priority, JobLaneKind lane) {
-        FlowablePage page = guarded.call(
+        PageTotal page = guarded.call(
                 engine,
                 priority,
                 () -> guarded.readClient(engine)
                         .get()
                         .uri(uri -> uri.path(lane.path).queryParam("size", 1).build())
                         .retrieve()
-                        .body(FlowablePage.class));
+                        .body(PageTotal.class));
         return page != null ? page.total() : 0;
     }
 
@@ -46,9 +45,9 @@ final class ProcessHealthClient {
     }
 
     /** Oldest history job (createTime asc), or null when the lane is empty or the route is missing. */
-    public Map<String, Object> oldestHistoryJob(EngineConfig engine, CallPriority priority) {
+    public JobRecord oldestHistoryJob(EngineConfig engine, CallPriority priority) {
         try {
-            FlowablePage page = guarded.call(
+            JobPage page = guarded.call(
                     engine,
                     priority,
                     () -> guarded.readClient(engine)
@@ -59,8 +58,8 @@ final class ProcessHealthClient {
                                     .queryParam("order", "asc")
                                     .build())
                             .retrieve()
-                            .body(FlowablePage.class));
-            List<Map<String, Object>> rows = page != null ? page.dataOrEmpty() : List.of();
+                            .body(JobPage.class));
+            List<JobRecord> rows = page != null ? page.dataOrEmpty() : List.of();
             return rows.isEmpty() ? null : rows.get(0);
         } catch (HttpClientErrorException.NotFound e) {
             return null;
@@ -96,7 +95,7 @@ final class ProcessHealthClient {
         String beforeIso =
                 before.truncatedTo(java.time.temporal.ChronoUnit.SECONDS).toString();
         try {
-            FlowablePage page = guarded.call(
+            ProcessInstancePage page = guarded.call(
                     engine,
                     priority,
                     () -> guarded.readClient(engine)
@@ -115,7 +114,7 @@ final class ProcessHealthClient {
                                 return builder.build();
                             })
                             .retrieve()
-                            .body(FlowablePage.class));
+                            .body(ProcessInstancePage.class));
             return page != null ? page.total() : 0L;
         } catch (HttpClientErrorException.NotFound e) {
             return null;
@@ -128,7 +127,7 @@ final class ProcessHealthClient {
      * Measured 2026-10-22 on 6.8: exact key, like, startedAfter and startedBefore all narrow
      * {@code total}. The POST query's {@code businessKey} field did not.
      */
-    public FlowablePage listRuntimeInstances(
+    public ProcessInstancePage listRuntimeInstances(
             EngineConfig engine,
             CallPriority priority,
             String processDefinitionId,
@@ -161,11 +160,11 @@ final class ProcessHealthClient {
                             return builder.build();
                         })
                         .retrieve()
-                        .body(FlowablePage.class));
+                        .body(ProcessInstancePage.class));
     }
 
     /** Finished historic process instances. Blank key and business key are omitted. */
-    public FlowablePage listFinishedProcesses(
+    public ProcessInstancePage listFinishedProcesses(
             EngineConfig engine,
             CallPriority priority,
             String definitionKey,
@@ -193,7 +192,7 @@ final class ProcessHealthClient {
                             return builder.build();
                         })
                         .retrieve()
-                        .body(FlowablePage.class));
+                        .body(ProcessInstancePage.class));
     }
 
     /** DELETE /history/historic-process-instances/{id}?deleteReason= */
@@ -220,7 +219,7 @@ final class ProcessHealthClient {
         String afterIso = after.truncatedTo(ChronoUnit.SECONDS).toString();
         String beforeIso = before.truncatedTo(ChronoUnit.SECONDS).toString();
         try {
-            FlowablePage page = guarded.call(
+            PageTotal page = guarded.call(
                     engine,
                     priority,
                     () -> guarded.readClient(engine)
@@ -231,7 +230,7 @@ final class ProcessHealthClient {
                                     .queryParam(beforeName, beforeIso)
                                     .build())
                             .retrieve()
-                            .body(FlowablePage.class));
+                            .body(PageTotal.class));
             return page != null ? page.total() : 0L;
         } catch (HttpClientErrorException.NotFound e) {
             return null;
@@ -239,8 +238,8 @@ final class ProcessHealthClient {
     }
 
     /** Oldest executable job row (dueDate asc), or null when the lane is empty. */
-    public Map<String, Object> oldestExecutableJob(EngineConfig engine, CallPriority priority) {
-        FlowablePage page = guarded.call(
+    public JobRecord oldestExecutableJob(EngineConfig engine, CallPriority priority) {
+        JobPage page = guarded.call(
                 engine,
                 priority,
                 () -> guarded.readClient(engine)
@@ -251,8 +250,8 @@ final class ProcessHealthClient {
                                 .queryParam("order", "asc")
                                 .build())
                         .retrieve()
-                        .body(FlowablePage.class));
-        List<Map<String, Object>> rows = page != null ? page.dataOrEmpty() : List.of();
+                        .body(JobPage.class));
+        List<JobRecord> rows = page != null ? page.dataOrEmpty() : List.of();
         return rows.isEmpty() ? null : rows.get(0);
     }
 
@@ -260,7 +259,7 @@ final class ProcessHealthClient {
     public long countOverdueTimers(EngineConfig engine, CallPriority priority, Instant dueBefore) {
         // Whole seconds only: Flowable's date parsing 400s on fractional seconds.
         String dueBeforeIso = dueBefore.truncatedTo(ChronoUnit.SECONDS).toString();
-        FlowablePage page = guarded.call(
+        PageTotal page = guarded.call(
                 engine,
                 priority,
                 () -> guarded.readClient(engine)
@@ -270,7 +269,7 @@ final class ProcessHealthClient {
                                 .queryParam("dueBefore", dueBeforeIso)
                                 .build())
                         .retrieve()
-                        .body(FlowablePage.class));
+                        .body(PageTotal.class));
         return page != null ? page.total() : 0;
     }
 
@@ -290,7 +289,7 @@ final class ProcessHealthClient {
                                     .queryParam("size", 1)
                                     .build())
                             .retrieve()
-                            .body(FlowablePage.class));
+                            .body(PageTotal.class));
             return true;
         } catch (HttpClientErrorException e) {
             return false;

@@ -4,10 +4,19 @@ import com.fasterxml.jackson.core.JsonProcessingException;
 import com.fasterxml.jackson.databind.ObjectMapper;
 import io.inspector.audit.ProtectedInstance;
 import io.inspector.audit.ProtectedInstanceRepository;
+import io.inspector.client.ActivityInstanceRecord;
+import io.inspector.client.EventSubscriptionRecord;
+import io.inspector.client.ExecutionRecord;
 import io.inspector.client.ExternalJobApiClient;
 import io.inspector.client.GuardedCaller.CallPriority;
+import io.inspector.client.JobRecord;
 import io.inspector.client.ProcessApiClient;
 import io.inspector.client.ProcessApiClient.JobLaneKind;
+import io.inspector.client.ProcessDefinitionRecord;
+import io.inspector.client.ProcessInstancePage;
+import io.inspector.client.ProcessInstanceRecord;
+import io.inspector.client.TaskRecord;
+import io.inspector.client.VariableRecord;
 import io.inspector.config.InspectorProperties;
 import io.inspector.config.InspectorProperties.EngineConfig;
 import io.inspector.dto.ExternalWorkerJobDto;
@@ -72,10 +81,10 @@ public class InstanceDetailService {
     public static final int STRUCTURED_PREVIEW_CAP_BYTES = 256 * 1024;
 
     /** R-SEM-19: max children RENDERED per node; totals stay exact via the query total. */
-    static final int HIERARCHY_BREADTH_CAP = 50;
+    public static final int HIERARCHY_BREADTH_CAP = 50;
 
     /** Backstop over depth×breadth so a pathological tree cannot flood the BFF or the UI. */
-    static final int HIERARCHY_MAX_RENDERED_NODES = 500;
+    public static final int HIERARCHY_MAX_RENDERED_NODES = 500;
 
     private static final ObjectMapper SIZER = new ObjectMapper();
 
@@ -159,6 +168,15 @@ public class InstanceDetailService {
         return hierarchyTab.hierarchy(engineId, instanceId);
     }
 
+    /**
+     * The Hierarchy tab's per-node child read, running children only (#497): one historic query by
+     * {@code superProcessInstanceId}, at most {@link #HIERARCHY_BREADTH_CAP} rows, the exact total
+     * on the page. The migration plan builder walks the tree with it under the tab's own caps.
+     */
+    public ProcessInstancePage runningChildren(EngineConfig engine, String parentInstanceId) {
+        return hierarchyTab.childrenOf(engine, parentInstanceId, true);
+    }
+
     public InstanceTimeline timeline(String engineId, String instanceId) {
         return timelineTab.timeline(engineId, instanceId);
     }
@@ -167,8 +185,8 @@ public class InstanceDetailService {
 
     public InstanceDetail vitals(String engineId, String instanceId) {
         EngineConfig engine = engineForRead(engineId);
-        Map<String, Object> historic = requireHistoric(engine, instanceId);
-        boolean ended = str(historic, "endTime") != null;
+        ProcessInstanceRecord historic = requireHistoric(engine, instanceId);
+        boolean ended = historic.endTime() != null;
 
         Lanes lanes = ended ? Lanes.EMPTY : scanInstanceLanes(engine, instanceId);
         InstanceStatusFlags flags = flagsFor(engine, historic, lanes);
@@ -178,30 +196,29 @@ public class InstanceDetailService {
         List<WaitState> waitingFor = ended ? List.of() : waitingFor(engine, instanceId, lanes);
         Integer externalWorkerJobs = ended ? null : externalWorkerCount(engine, instanceId);
 
-        String definitionId = str(historic, "processDefinitionId");
-        Object duration = historic.get("durationInMillis");
+        String definitionId = historic.processDefinitionId();
         Protection protection = protectionOf(engine.id(), instanceId);
         return new InstanceDetail(
                 engine.id() + ":" + instanceId,
                 engine.id(),
                 instanceId,
-                str(historic, "businessKey"),
-                str(historic, "tenantId"),
+                historic.businessKey(),
+                historic.tenantId(),
                 definitionId,
                 definitionKeyOf(definitionId),
-                str(historic, "processDefinitionName"),
+                historic.processDefinitionName(),
                 definitionVersionOf(definitionId),
-                str(historic, "startTime"),
-                str(historic, "endTime"),
-                duration instanceof Number n ? n.longValue() : null,
-                str(historic, "startUserId"),
+                historic.startTime(),
+                historic.endTime(),
+                historic.durationInMillis(),
+                historic.startUserId(),
                 flags,
                 flags.primaryStatus(),
-                str(historic, "superProcessInstanceId"),
+                historic.superProcessInstanceId(),
                 renderTelemetryUrl(
                         engine.telemetryUrlTemplate(),
                         instanceId,
-                        str(historic, "businessKey"),
+                        historic.businessKey(),
                         whyStuck != null ? whyStuck.failureTime() : null),
                 current,
                 whyStuck,
@@ -219,19 +236,19 @@ public class InstanceDetailService {
      * {@code COMPLETED}/{@code EXTERNALLY_TERMINATED}/{@code INTERNALLY_TERMINATED}/{@code DELETED})
      * and/or a {@code deleteReason}. Returns the termination reason (deleteReason preferred, else a
      * humanized state) for a terminated instance, or {@code null} for a normal completion / while
-     * running. No engine-client change — the historic Map already carries these keys.
+     * running. The typed historic row carries both.
      *
      * <p>Public (#166): {@code SearchService} reuses this exact logic for the results-grid row
      * mapping — the grid's status derivation had no termination-reason concept at all and fell
      * back to a plain COMPLETED chip, one derivation site drifting from the other rather than the
      * usual same-logic-in-two-places drift.
      */
-    public static String terminationReason(Map<String, Object> historic, boolean ended) {
+    public static String terminationReason(ProcessInstanceRecord historic, boolean ended) {
         if (!ended) {
             return null;
         }
-        String state = str(historic, "state");
-        String deleteReason = str(historic, "deleteReason");
+        String state = historic.state();
+        String deleteReason = historic.deleteReason();
         boolean hasDeleteReason = deleteReason != null && !deleteReason.isBlank();
         if (state != null && !state.isBlank()) {
             if ("COMPLETED".equalsIgnoreCase(state)) {
@@ -311,10 +328,10 @@ public class InstanceDetailService {
      * {@code resource} URL ({@code …/deployments/{id}/resources/{name}}) — the name is the
      * decoded tail. A plain {@code resourceName} field (newer engines) wins when present.
      */
-    static String resourceNameOf(Map<String, Object> definition) {
-        String plain = str(definition, "resourceName");
+    static String resourceNameOf(ProcessDefinitionRecord definition) {
+        String plain = definition.resourceName();
         if (plain != null && !plain.isBlank()) return plain;
-        String url = str(definition, "resource");
+        String url = definition.resource();
         if (url == null) return null;
         int at = url.indexOf("/resources/");
         if (at < 0) return null;
@@ -326,8 +343,8 @@ public class InstanceDetailService {
      * number stays a JSON number — capped at {@value #STRUCTURED_PREVIEW_CAP_BYTES} bytes
      * for structured/text payloads (SPEC §4 size safeguards).
      */
-    public static VariableDto typedRow(Map<String, Object> row, String scope, String executionId, String taskId) {
-        Object value = row.get("value");
+    public static VariableDto typedRow(VariableRecord row, String scope, String executionId, String taskId) {
+        Object value = row.value();
         boolean truncated = false;
         Long sizeBytes = null;
         if (value instanceof String s) {
@@ -345,8 +362,7 @@ public class InstanceDetailService {
                 value = null;
             }
         }
-        return new VariableDto(
-                str(row, "name"), str(row, "type"), value, truncated, sizeBytes, scope, executionId, taskId);
+        return new VariableDto(row.name(), row.type(), value, truncated, sizeBytes, scope, executionId, taskId);
     }
 
     private static long serializedSize(Object value) {
@@ -357,39 +373,37 @@ public class InstanceDetailService {
         }
     }
 
-    static JobDto jobRow(Map<String, Object> job, JobLaneKind lane) {
-        Object retries = job.get("retries");
-        String handler = str(job, "jobHandlerType");
+    static JobDto jobRow(JobRecord job, JobLaneKind lane) {
+        String handler = job.jobHandlerType();
         return new JobDto(
-                str(job, "id"),
+                job.id(),
                 lane.name(),
-                str(job, "createTime"),
-                str(job, "dueDate"),
-                retries instanceof Number n ? n.intValue() : null,
-                str(job, "exceptionMessage"),
-                str(job, "elementId"),
-                str(job, "elementName"),
-                str(job, "executionId"),
-                str(job, "processDefinitionId"),
-                str(job, "tenantId"),
-                handler != null ? handler : str(job, "handlerType"));
+                job.createTime(),
+                job.dueDate(),
+                job.retries(),
+                job.exceptionMessage(),
+                job.elementId(),
+                job.elementName(),
+                job.executionId(),
+                job.processDefinitionId(),
+                job.tenantId(),
+                handler != null ? handler : job.handlerType());
     }
 
-    static ExternalWorkerJobDto externalWorkerRow(Map<String, Object> job) {
-        Object retries = job.get("retries");
+    static ExternalWorkerJobDto externalWorkerRow(JobRecord job) {
         return new ExternalWorkerJobDto(
-                str(job, "id"),
-                str(job, "elementId"),
-                str(job, "elementName"),
-                str(job, "lockOwner"),
-                str(job, "lockExpirationTime"),
-                retries instanceof Number n ? n.intValue() : null,
-                str(job, "exceptionMessage"),
-                str(job, "createTime"),
-                str(job, "dueDate"),
-                str(job, "executionId"),
-                str(job, "processDefinitionId"),
-                str(job, "tenantId"));
+                job.id(),
+                job.elementId(),
+                job.elementName(),
+                job.lockOwner(),
+                job.lockExpirationTime(),
+                job.retries(),
+                job.exceptionMessage(),
+                job.createTime(),
+                job.dueDate(),
+                job.executionId(),
+                job.processDefinitionId(),
+                job.tenantId());
     }
 
     /**
@@ -397,24 +411,26 @@ public class InstanceDetailService {
      * rows say {@code startTime}, runtime rows say {@code createTime}; only the runtime
      * row knows {@code suspended}. COMPLETED beats SUSPENDED beats ACTIVE.
      */
-    static TaskDto taskRow(Map<String, Object> historic, Map<String, Object> runtime) {
-        Map<String, Object> h = historic != null ? historic : Map.of();
-        Map<String, Object> r = runtime != null ? runtime : Map.of();
-        String endTime = str(h, "endTime");
+    private static final TaskRecord NO_TASK = new TaskRecord(
+            null, null, null, null, null, null, null, null, null, null, null, null, null, null, null, null, null, null);
+
+    static TaskDto taskRow(TaskRecord historic, TaskRecord runtime) {
+        TaskRecord h = historic != null ? historic : NO_TASK;
+        TaskRecord r = runtime != null ? runtime : NO_TASK;
+        String endTime = h.endTime();
         String state = endTime != null
                 ? TaskDto.STATE_COMPLETED
-                : Boolean.TRUE.equals(r.get("suspended")) ? TaskDto.STATE_SUSPENDED : TaskDto.STATE_ACTIVE;
-        Object duration = h.get("durationInMillis");
+                : Boolean.TRUE.equals(r.suspended()) ? TaskDto.STATE_SUSPENDED : TaskDto.STATE_ACTIVE;
         return new TaskDto(
-                first(str(h, "id"), str(r, "id")),
-                first(str(h, "name"), str(r, "name")),
-                first(str(h, "taskDefinitionKey"), str(r, "taskDefinitionKey")),
-                first(str(r, "assignee"), str(h, "assignee")),
-                first(str(r, "owner"), str(h, "owner")),
-                first(str(h, "startTime"), str(r, "createTime")),
+                first(h.id(), r.id()),
+                first(h.name(), r.name()),
+                first(h.taskDefinitionKey(), r.taskDefinitionKey()),
+                first(r.assignee(), h.assignee()),
+                first(r.owner(), h.owner()),
+                first(h.startTime(), r.createTime()),
                 endTime,
-                first(str(h, "dueDate"), str(r, "dueDate")),
-                duration instanceof Number n ? n.longValue() : null,
+                first(h.dueDate(), r.dueDate()),
+                h.durationInMillis(),
                 state);
     }
 
@@ -422,20 +438,19 @@ public class InstanceDetailService {
         return preferred != null ? preferred : fallback;
     }
 
-    static TimelineActivity timelineRow(Map<String, Object> row) {
-        Object duration = row.get("durationInMillis");
+    static TimelineActivity timelineRow(ActivityInstanceRecord row) {
         return new TimelineActivity(
-                str(row, "id"),
-                str(row, "activityId"),
-                str(row, "activityName"),
-                str(row, "activityType"),
-                str(row, "executionId"),
-                str(row, "startTime"),
-                str(row, "endTime"),
-                duration instanceof Number n ? n.longValue() : null,
-                str(row, "assignee"),
-                str(row, "taskId"),
-                str(row, "calledProcessInstanceId"),
+                row.id(),
+                row.activityId(),
+                row.activityName(),
+                row.activityType(),
+                row.executionId(),
+                row.startTime(),
+                row.endTime(),
+                row.durationInMillis(),
+                row.assignee(),
+                row.taskId(),
+                row.calledProcessInstanceId(),
                 null,
                 false,
                 List.of());
@@ -450,7 +465,7 @@ public class InstanceDetailService {
      * failing from count-only lane queries, failedInSubprocess from a bounded child walk
      * with early exit.
      */
-    public InstanceStatusFlags flagsFor(EngineConfig engine, Map<String, Object> historicRow) {
+    public InstanceStatusFlags flagsFor(EngineConfig engine, ProcessInstanceRecord historicRow) {
         return deriveStatus(engine, historicRow).flags();
     }
 
@@ -472,16 +487,17 @@ public class InstanceDetailService {
             String failingChildInstanceId,
             String failingChildJobId) {}
 
-    public StatusDerivation deriveStatus(EngineConfig engine, Map<String, Object> historicRow) {
-        String instanceId = str(historicRow, "id");
-        boolean ended = str(historicRow, "endTime") != null;
+    public StatusDerivation deriveStatus(EngineConfig engine, ProcessInstanceRecord historicRow) {
+        String instanceId = historicRow.id();
+        boolean ended = historicRow.endTime() != null;
         if (ended) {
             return new StatusDerivation(
                     new InstanceStatusFlags(true, false, false, false, false), true, List.of(), List.of(), null, null);
         }
         Lanes lanes = scanInstanceLanes(engine, instanceId);
-        Map<String, Object> runtime = flowable.getRuntimeProcessInstance(engine, CallPriority.INTERACTIVE, instanceId);
-        boolean suspended = runtime != null && Boolean.TRUE.equals(runtime.get("suspended"));
+        ProcessInstanceRecord runtime =
+                flowable.getRuntimeProcessInstance(engine, CallPriority.INTERACTIVE, instanceId);
+        boolean suspended = runtime != null && Boolean.TRUE.equals(runtime.suspended());
         FailedChild failedChild = firstFailedDescendant(engine, instanceId);
         InstanceStatusFlags flags = new InstanceStatusFlags(
                 false,
@@ -498,23 +514,24 @@ public class InstanceDetailService {
                 failedChild != null ? failedChild.jobId() : null);
     }
 
-    private InstanceStatusFlags flagsFor(EngineConfig engine, Map<String, Object> historicRow, Lanes lanes) {
-        String instanceId = str(historicRow, "id");
-        boolean ended = str(historicRow, "endTime") != null;
+    private InstanceStatusFlags flagsFor(EngineConfig engine, ProcessInstanceRecord historicRow, Lanes lanes) {
+        String instanceId = historicRow.id();
+        boolean ended = historicRow.endTime() != null;
         if (ended) {
             return new InstanceStatusFlags(true, false, false, false, false);
         }
-        Map<String, Object> runtime = flowable.getRuntimeProcessInstance(engine, CallPriority.INTERACTIVE, instanceId);
-        boolean suspended = runtime != null && Boolean.TRUE.equals(runtime.get("suspended"));
+        ProcessInstanceRecord runtime =
+                flowable.getRuntimeProcessInstance(engine, CallPriority.INTERACTIVE, instanceId);
+        boolean suspended = runtime != null && Boolean.TRUE.equals(runtime.suspended());
         boolean hasDeadLetter = !lanes.deadLetter().isEmpty();
         boolean hasFailing = !lanes.failing().isEmpty();
         boolean failedInSubprocess = firstFailedDescendant(engine, instanceId) != null;
         return new InstanceStatusFlags(false, suspended, hasDeadLetter, hasFailing, failedInSubprocess);
     }
 
-    private static List<String> jobIds(List<Map<String, Object>> jobs) {
+    private static List<String> jobIds(List<JobRecord> jobs) {
         return jobs.stream()
-                .map(job -> str(job, "id"))
+                .map(JobRecord::id)
                 .filter(java.util.Objects::nonNull)
                 .toList();
     }
@@ -539,14 +556,14 @@ public class InstanceDetailService {
             Deque<String> next = new ArrayDeque<>();
             while (!frontier.isEmpty()) {
                 String parent = frontier.poll();
-                for (Map<String, Object> child :
+                for (ProcessInstanceRecord child :
                         hierarchyTab.childrenOf(engine, parent).dataOrEmpty()) {
-                    String childId = str(child, "id");
+                    String childId = child.id();
                     if (childId == null || !visited.add(childId)) continue;
-                    if (str(child, "endTime") == null) {
-                        Map<String, Object> deadLetter = firstDeadLetterJob(engine, childId);
+                    if (child.endTime() == null) {
+                        JobRecord deadLetter = firstDeadLetterJob(engine, childId);
                         if (deadLetter != null) {
-                            return new FailedChild(childId, str(deadLetter, "id"));
+                            return new FailedChild(childId, deadLetter.id());
                         }
                     }
                     next.add(childId);
@@ -557,13 +574,13 @@ public class InstanceDetailService {
         return null;
     }
 
-    private Map<String, Object> firstDeadLetterJob(EngineConfig engine, String instanceId) {
+    private JobRecord firstDeadLetterJob(EngineConfig engine, String instanceId) {
         Map<String, String> filters = new LinkedHashMap<>();
         filters.put("processInstanceId", instanceId);
         if (engine.tenantId() != null && !engine.tenantId().isBlank()) {
             filters.put("tenantId", engine.tenantId());
         }
-        List<Map<String, Object>> rows = flowable.listJobs(
+        List<JobRecord> rows = flowable.listJobs(
                         engine, CallPriority.INTERACTIVE, JobLaneKind.DEADLETTER, filters, 0, 1)
                 .dataOrEmpty();
         return rows.isEmpty() ? null : rows.get(0);
@@ -572,25 +589,24 @@ public class InstanceDetailService {
     /* ================= per-instance lane reads ================= */
 
     /** The failure evidence of ONE instance: dead-letter rows + both withException lanes. */
-    record Lanes(
-            List<Map<String, Object>> deadLetter, List<Map<String, Object>> failing, List<Map<String, Object>> timers) {
+    record Lanes(List<JobRecord> deadLetter, List<JobRecord> failing, List<JobRecord> timers) {
         static final Lanes EMPTY = new Lanes(List.of(), List.of(), List.of());
     }
 
     Lanes scanInstanceLanes(EngineConfig engine, String instanceId) {
-        List<Map<String, Object>> deadLetter = instanceJobs(engine, instanceId, JobLaneKind.DEADLETTER);
-        List<Map<String, Object>> timers = instanceJobs(engine, instanceId, JobLaneKind.TIMER);
-        List<Map<String, Object>> failing = new ArrayList<>();
-        for (Map<String, Object> job : instanceJobs(engine, instanceId, JobLaneKind.EXECUTABLE)) {
-            if (str(job, "exceptionMessage") != null) failing.add(job);
+        List<JobRecord> deadLetter = instanceJobs(engine, instanceId, JobLaneKind.DEADLETTER);
+        List<JobRecord> timers = instanceJobs(engine, instanceId, JobLaneKind.TIMER);
+        List<JobRecord> failing = new ArrayList<>();
+        for (JobRecord job : instanceJobs(engine, instanceId, JobLaneKind.EXECUTABLE)) {
+            if (job.exceptionMessage() != null) failing.add(job);
         }
-        for (Map<String, Object> job : timers) {
-            if (str(job, "exceptionMessage") != null) failing.add(job);
+        for (JobRecord job : timers) {
+            if (job.exceptionMessage() != null) failing.add(job);
         }
         return new Lanes(deadLetter, failing, timers);
     }
 
-    List<Map<String, Object>> instanceJobs(EngineConfig engine, String instanceId, JobLaneKind lane) {
+    List<JobRecord> instanceJobs(EngineConfig engine, String instanceId, JobLaneKind lane) {
         Map<String, String> filters = new LinkedHashMap<>();
         filters.put("processInstanceId", instanceId);
         if (engine.tenantId() != null && !engine.tenantId().isBlank()) {
@@ -622,29 +638,28 @@ public class InstanceDetailService {
     List<CurrentActivity> currentActivities(EngineConfig engine, String instanceId) {
         Map<String, CurrentActivity> byActivityId = new LinkedHashMap<>();
         try {
-            for (Map<String, Object> row : flowable.listUnfinishedActivities(
+            for (ActivityInstanceRecord row : flowable.listUnfinishedActivities(
                             engine,
                             CallPriority.INTERACTIVE,
                             instanceId,
                             engine.tenantId(),
                             engine.maxPageSizeOrDefault())
                     .dataOrEmpty()) {
-                String activityId = str(row, "activityId");
+                String activityId = row.activityId();
                 if (activityId == null) continue;
                 byActivityId.putIfAbsent(
                         activityId,
-                        new CurrentActivity(
-                                activityId, str(row, "activityName"), str(row, "activityType"), str(row, "startTime")));
+                        new CurrentActivity(activityId, row.activityName(), row.activityType(), row.startTime()));
             }
         } catch (Exception ex) {
             // History-level below activity (legal engine config) — degrade, never 500.
             log.debug("Unfinished-activity leg unavailable on {}: {}", engine.id(), ex.toString());
         }
         try {
-            for (Map<String, Object> execution : flowable.listExecutions(
+            for (ExecutionRecord execution : flowable.listExecutions(
                             engine, CallPriority.INTERACTIVE, instanceId, engine.maxPageSizeOrDefault())
                     .dataOrEmpty()) {
-                String activityId = str(execution, "activityId");
+                String activityId = execution.activityId();
                 if (activityId == null) continue; // the root execution carries no position
                 byActivityId.putIfAbsent(activityId, new CurrentActivity(activityId, null, null, null));
             }
@@ -657,22 +672,21 @@ public class InstanceDetailService {
     /** SPEC §4: exception first line, failing activity, retries state — null when healthy. */
     private WhyStuck whyStuck(EngineConfig engine, Lanes lanes) {
         if (lanes.deadLetter().isEmpty() && lanes.failing().isEmpty()) return null;
-        Map<String, Object> newestDead = newestByCreateTime(lanes.deadLetter());
-        Map<String, Object> newestFailing = newestByCreateTime(lanes.failing());
-        Map<String, Object> evidence = newestDead != null ? newestDead : newestFailing;
+        JobRecord newestDead = newestByCreateTime(lanes.deadLetter());
+        JobRecord newestFailing = newestByCreateTime(lanes.failing());
+        JobRecord evidence = newestDead != null ? newestDead : newestFailing;
 
-        String exceptionMessage = str(evidence, "exceptionMessage");
-        Object retries = newestFailing != null ? newestFailing.get("retries") : null;
+        String exceptionMessage = evidence.exceptionMessage();
         return new WhyStuck(
                 exceptionMessage == null
                         ? null
                         : exceptionMessage.lines().findFirst().orElse(exceptionMessage),
                 failingActivityIdOf(engine, evidence),
-                str(evidence, "createTime"),
+                evidence.createTime(),
                 lanes.deadLetter().size(),
                 lanes.failing().size(),
-                retries instanceof Number n ? n.intValue() : null,
-                newestFailing != null ? str(newestFailing, "dueDate") : null);
+                newestFailing != null ? newestFailing.retries() : null,
+                newestFailing != null ? newestFailing.dueDate() : null);
     }
 
     /**
@@ -680,14 +694,14 @@ public class InstanceDetailService {
      * (6.8+); a 6.3-era row falls back to ONE execution lookup — best-effort, a miss just
      * means no marker (never a failed vitals).
      */
-    String failingActivityIdOf(EngineConfig engine, Map<String, Object> job) {
-        String elementId = str(job, "elementId");
+    String failingActivityIdOf(EngineConfig engine, JobRecord job) {
+        String elementId = job.elementId();
         if (elementId != null) return elementId;
-        String executionId = str(job, "executionId");
+        String executionId = job.executionId();
         if (executionId == null) return null;
         try {
-            Map<String, Object> execution = flowable.getExecution(engine, CallPriority.INTERACTIVE, executionId);
-            return execution != null ? str(execution, "activityId") : null;
+            ExecutionRecord execution = flowable.getExecution(engine, CallPriority.INTERACTIVE, executionId);
+            return execution != null ? execution.activityId() : null;
         } catch (Exception ex) {
             return null;
         }
@@ -696,45 +710,40 @@ public class InstanceDetailService {
     private List<WaitState> waitingFor(EngineConfig engine, String instanceId, Lanes lanes) {
         List<WaitState> waits = new ArrayList<>();
         try {
-            for (Map<String, Object> sub : flowable.listEventSubscriptions(
+            for (EventSubscriptionRecord sub : flowable.listEventSubscriptions(
                             engine, CallPriority.INTERACTIVE, instanceId, engine.maxPageSizeOrDefault())
                     .dataOrEmpty()) {
-                String eventType = str(sub, "eventType");
+                String eventType = sub.eventType();
                 waits.add(new WaitState(
                         eventType != null ? eventType.toUpperCase(java.util.Locale.ROOT) : "MESSAGE",
-                        str(sub, "eventName"),
-                        str(sub, "activityId"),
+                        sub.eventName(),
+                        sub.activityId(),
                         null,
-                        str(sub, "created")));
+                        sub.created()));
             }
         } catch (Exception ex) {
             // The subscription endpoint is version-dependent — degrade, never fail vitals.
             log.debug("Event-subscription leg unavailable on {}: {}", engine.id(), ex.toString());
         }
-        for (Map<String, Object> timer : lanes.timers()) {
-            if (str(timer, "exceptionMessage") != null) continue; // that's a parked retry, not a wait
+        for (JobRecord timer : lanes.timers()) {
+            if (timer.exceptionMessage() != null) continue; // that's a parked retry, not a wait
             waits.add(new WaitState(
-                    "TIMER",
-                    null,
-                    failingActivityIdOf(engine, timer),
-                    str(timer, "dueDate"),
-                    str(timer, "createTime")));
+                    "TIMER", null, failingActivityIdOf(engine, timer), timer.dueDate(), timer.createTime()));
         }
         return waits;
     }
 
-    private static Map<String, Object> newestByCreateTime(List<Map<String, Object>> jobs) {
+    private static JobRecord newestByCreateTime(List<JobRecord> jobs) {
         return jobs.stream()
-                .max(Comparator.comparing(
-                        job -> str(job, "createTime"), Comparator.nullsFirst(Comparator.naturalOrder())))
+                .max(Comparator.comparing(JobRecord::createTime, Comparator.nullsFirst(Comparator.naturalOrder())))
                 .orElse(null);
     }
 
     /* ================= shared plumbing ================= */
 
     /** The historic anchor row — exists for running AND completed instances. 404 when unknown. */
-    public Map<String, Object> requireHistoric(EngineConfig engine, String instanceId) {
-        Map<String, Object> historic =
+    public ProcessInstanceRecord requireHistoric(EngineConfig engine, String instanceId) {
+        ProcessInstanceRecord historic =
                 flowable.getHistoricProcessInstance(engine, CallPriority.INTERACTIVE, instanceId);
         if (historic == null) {
             throw new ResponseStatusException(
@@ -763,10 +772,5 @@ public class InstanceDetailService {
         } catch (NumberFormatException e) {
             return null;
         }
-    }
-
-    static String str(Map<String, Object> map, String key) {
-        Object v = map.get(key);
-        return v != null ? v.toString() : null;
     }
 }

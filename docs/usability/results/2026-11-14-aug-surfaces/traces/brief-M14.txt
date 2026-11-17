@@ -1,0 +1,17 @@
+
+First shift on this tool. Nothing is on fire yet; you are getting your bearings on the
+landing page.
+
+1. Open the landing page and find the cards that group failures by error. Pick the one you
+   would look at first and say why. Then find anything the page itself says about why the
+   cards are in the order they are in, quote it, and say whether it changes your pick.
+2. Find the card for `execution exception`. Read everything that card shows without
+   hovering. In your own words: what is the card telling you about this class beyond the
+   raw numbers? Quote the words you are explaining. Name any part you did not understand.
+3. Compare it with `Unknown property used in expression: ${healed eq true or selfHealGhost.total gt 0}`. Which one sits higher on the page, and why, as far
+   as the screen tells you? Cite the text. If you cannot tell from the screen, say so.
+4. How much would you trust this order on a real incident night? Quote anything on screen
+   that makes you trust it more or less. If nothing on screen speaks to it, say so plainly.
+5. Open the Incidents page. Are these two classes in the same relative order there, and do
+   they carry the same explanation? Cite what you saw on both pages.
+

@@ -7,6 +7,7 @@ import io.inspector.config.InspectorProperties.EngineConfig;
 import java.time.Instant;
 import java.util.List;
 import java.util.Map;
+import org.springframework.core.ParameterizedTypeReference;
 import org.springframework.http.HttpStatus;
 import org.springframework.http.MediaType;
 import org.springframework.stereotype.Component;
@@ -21,6 +22,11 @@ import org.springframework.web.util.UriComponentsBuilder;
  */
 @Component
 public class CmmnApiClient {
+
+    private static final ParameterizedTypeReference<List<VariableRecord>> CASE_VARIABLES =
+            new ParameterizedTypeReference<>() {};
+    private static final ParameterizedTypeReference<List<CaseIdentityLinkRecord>> CASE_IDENTITY_LINKS =
+            new ParameterizedTypeReference<>() {};
 
     private final GuardedCaller guarded;
 
@@ -51,7 +57,7 @@ public class CmmnApiClient {
      * ({@code scopeType}, Flowable ≥ 6.8) first: on 6.3.1 the cmmn context exists but is
      * dead-letter-blind (spike Q3), so a call there would silently return a wrong view.
      */
-    public FlowablePage listCmmnDeadLetterJobs(
+    public CmmnJobPage listCmmnDeadLetterJobs(
             EngineConfig engine, CallPriority priority, Map<String, String> filters, int start, int size) {
         UriComponentsBuilder b = UriComponentsBuilder.fromUriString(
                         cmmnApiBase(engine) + "/cmmn-management/deadletter-jobs")
@@ -62,7 +68,7 @@ public class CmmnApiClient {
         return guarded.call(
                 engine,
                 priority,
-                () -> guarded.readClient(engine).get().uri(uri).retrieve().body(FlowablePage.class));
+                () -> guarded.readClient(engine).get().uri(uri).retrieve().body(CmmnJobPage.class));
     }
 
     /**
@@ -76,8 +82,7 @@ public class CmmnApiClient {
      * {@code deadletter-jobs/{id}} path itself. Callers capability-gate ({@code scopeType}, ≥ 6.8)
      * first.
      */
-    @SuppressWarnings("unchecked")
-    public Map<String, Object> getCmmnDeadLetterJob(EngineConfig engine, CallPriority priority, String jobId) {
+    public CmmnJobRecord getCmmnDeadLetterJob(EngineConfig engine, CallPriority priority, String jobId) {
         String id = GuardedCaller.safeId(jobId);
         try {
             return guarded.call(
@@ -87,7 +92,7 @@ public class CmmnApiClient {
                             .get()
                             .uri(cmmnApiBase(engine) + "/cmmn-management/deadletter-jobs/{id}", id)
                             .retrieve()
-                            .body(Map.class));
+                            .body(CmmnJobRecord.class));
         } catch (HttpClientErrorException.NotFound e) {
             return null;
         }
@@ -100,8 +105,7 @@ public class CmmnApiClient {
      * Null when the id is unknown (404) — a definition can be undeployed while its
      * dead-letter jobs linger. Callers resolve DISTINCT ids only (never per job row).
      */
-    @SuppressWarnings("unchecked")
-    public Map<String, Object> getCmmnCaseDefinition(
+    public CaseDefinitionRecord getCmmnCaseDefinition(
             EngineConfig engine, CallPriority priority, String caseDefinitionId) {
         String id = GuardedCaller.safeId(caseDefinitionId);
         try {
@@ -112,7 +116,7 @@ public class CmmnApiClient {
                             .get()
                             .uri(cmmnApiBase(engine) + "/cmmn-repository/case-definitions/{id}", id)
                             .retrieve()
-                            .body(Map.class));
+                            .body(CaseDefinitionRecord.class));
         } catch (HttpClientErrorException.NotFound e) {
             return null;
         }
@@ -124,8 +128,7 @@ public class CmmnApiClient {
      * paste of a Case id from the out-of-scope drawer lands here. Null on 404 (not running — try
      * {@link #getHistoricCmmnCaseInstance}). Callers capability-gate (≥ 6.8) first.
      */
-    @SuppressWarnings("unchecked")
-    public Map<String, Object> getCmmnCaseInstance(EngineConfig engine, CallPriority priority, String caseInstanceId) {
+    public CaseInstanceRecord getCmmnCaseInstance(EngineConfig engine, CallPriority priority, String caseInstanceId) {
         String id = GuardedCaller.safeId(caseInstanceId);
         try {
             return guarded.call(
@@ -135,25 +138,24 @@ public class CmmnApiClient {
                             .get()
                             .uri(cmmnApiBase(engine) + "/cmmn-runtime/case-instances/{id}", id)
                             .retrieve()
-                            .body(Map.class));
+                            .body(CaseInstanceRecord.class));
         } catch (HttpClientErrorException.NotFound e) {
             return null;
         }
     }
 
-    @SuppressWarnings("unchecked")
-    public List<Map<String, Object>> listCaseIdentityLinks(
+    public List<CaseIdentityLinkRecord> listCaseIdentityLinks(
             EngineConfig engine, CallPriority priority, String caseInstanceId) {
         String id = GuardedCaller.safeId(caseInstanceId);
         try {
-            List<Map<String, Object>> rows = guarded.call(
+            List<CaseIdentityLinkRecord> rows = guarded.call(
                     engine,
                     priority,
                     () -> guarded.readClient(engine)
                             .get()
                             .uri(cmmnApiBase(engine) + "/cmmn-runtime/case-instances/{id}/identitylinks", id)
                             .retrieve()
-                            .body(List.class));
+                            .body(CASE_IDENTITY_LINKS));
             return rows == null ? List.of() : rows;
         } catch (HttpClientErrorException.NotFound e) {
             return List.of();
@@ -176,7 +178,7 @@ public class CmmnApiClient {
                         .toBodilessEntity());
     }
 
-    public FlowablePage listFinishedCases(
+    public CaseInstancePage listFinishedCases(
             EngineConfig engine,
             CallPriority priority,
             String definitionKey,
@@ -202,7 +204,7 @@ public class CmmnApiClient {
                                 .build(true)
                                 .toUri())
                         .retrieve()
-                        .body(FlowablePage.class));
+                        .body(CaseInstancePage.class));
     }
 
     /** DELETE historic case. This route takes no delete reason. */
@@ -287,27 +289,24 @@ public class CmmnApiClient {
                         .toBodilessEntity());
     }
 
-    @SuppressWarnings("unchecked")
-    public List<Map<String, Object>> listCaseVariables(
-            EngineConfig engine, CallPriority priority, String caseInstanceId) {
+    public List<VariableRecord> listCaseVariables(EngineConfig engine, CallPriority priority, String caseInstanceId) {
         String id = GuardedCaller.safeId(caseInstanceId);
         try {
-            List<Map<String, Object>> rows = guarded.call(
+            List<VariableRecord> rows = guarded.call(
                     engine,
                     priority,
                     () -> guarded.readClient(engine)
                             .get()
                             .uri(cmmnApiBase(engine) + "/cmmn-runtime/case-instances/{id}/variables", id)
                             .retrieve()
-                            .body(List.class));
+                            .body(CASE_VARIABLES));
             return rows == null ? List.of() : rows;
         } catch (HttpClientErrorException.NotFound e) {
             return List.of();
         }
     }
 
-    @SuppressWarnings("unchecked")
-    public Map<String, Object> getCaseVariable(
+    public VariableRecord getCaseVariable(
             EngineConfig engine, CallPriority priority, String caseInstanceId, String name) {
         String id = GuardedCaller.safeId(caseInstanceId);
         try {
@@ -318,7 +317,7 @@ public class CmmnApiClient {
                             .get()
                             .uri(cmmnApiBase(engine) + "/cmmn-runtime/case-instances/{id}/variables/{name}", id, name)
                             .retrieve()
-                            .body(Map.class));
+                            .body(VariableRecord.class));
         } catch (HttpClientErrorException.NotFound e) {
             return null;
         }
@@ -371,8 +370,7 @@ public class CmmnApiClient {
      * found". Its DTO parallels historic-process-instances (businessKey/startTime/endTime/
      * caseDefinitionId+Name; spike Q2). Null on 404. Callers capability-gate (≥ 6.8) first.
      */
-    @SuppressWarnings("unchecked")
-    public Map<String, Object> getHistoricCmmnCaseInstance(
+    public CaseInstanceRecord getHistoricCmmnCaseInstance(
             EngineConfig engine, CallPriority priority, String caseInstanceId) {
         String id = GuardedCaller.safeId(caseInstanceId);
         try {
@@ -383,7 +381,7 @@ public class CmmnApiClient {
                             .get()
                             .uri(cmmnApiBase(engine) + "/cmmn-history/historic-case-instances/{id}", id)
                             .retrieve()
-                            .body(Map.class));
+                            .body(CaseInstanceRecord.class));
         } catch (HttpClientErrorException.NotFound e) {
             return null;
         }
@@ -405,10 +403,10 @@ public class CmmnApiClient {
                 .queryParam("size", 1);
         filters.forEach(b::queryParam);
         java.net.URI uri = b.build().toUri();
-        FlowablePage page = guarded.call(
+        PageTotal page = guarded.call(
                 engine,
                 priority,
-                () -> guarded.readClient(engine).get().uri(uri).retrieve().body(FlowablePage.class));
+                () -> guarded.readClient(engine).get().uri(uri).retrieve().body(PageTotal.class));
         return page != null ? page.total() : 0;
     }
 
@@ -426,10 +424,10 @@ public class CmmnApiClient {
                 .build()
                 .toUri();
         try {
-            FlowablePage page = guarded.call(
+            PageTotal page = guarded.call(
                     engine,
                     priority,
-                    () -> guarded.readClient(engine).get().uri(uri).retrieve().body(FlowablePage.class));
+                    () -> guarded.readClient(engine).get().uri(uri).retrieve().body(PageTotal.class));
             return page != null ? page.total() : 0L;
         } catch (org.springframework.web.client.HttpClientErrorException.NotFound e) {
             return null;
@@ -447,7 +445,7 @@ public class CmmnApiClient {
      * {@code planItemDefinitionType}, {@code state}, {@code stageInstanceId}, and the lifecycle
      * timestamps. Callers capability-gate (≥ 6.8) first.
      */
-    public FlowablePage listCmmnPlanItemInstances(
+    public PlanItemPage listCmmnPlanItemInstances(
             EngineConfig engine, CallPriority priority, Map<String, String> filters, int start, int size) {
         UriComponentsBuilder b = UriComponentsBuilder.fromUriString(
                         cmmnApiBase(engine) + "/cmmn-runtime/plan-item-instances")
@@ -458,7 +456,7 @@ public class CmmnApiClient {
         return guarded.call(
                 engine,
                 priority,
-                () -> guarded.readClient(engine).get().uri(uri).retrieve().body(FlowablePage.class));
+                () -> guarded.readClient(engine).get().uri(uri).retrieve().body(PlanItemPage.class));
     }
 
     /**
@@ -468,7 +466,7 @@ public class CmmnApiClient {
      * plan item by {@code planItemInstanceId}, exactly like the dead-letter list (spike Q7).
      * Callers capability-gate (≥ 6.8) first.
      */
-    public FlowablePage listCmmnJobs(
+    public CmmnJobPage listCmmnJobs(
             EngineConfig engine, CallPriority priority, Map<String, String> filters, int start, int size) {
         UriComponentsBuilder b = UriComponentsBuilder.fromUriString(cmmnApiBase(engine) + "/cmmn-management/jobs")
                 .queryParam("start", start)
@@ -478,7 +476,7 @@ public class CmmnApiClient {
         return guarded.call(
                 engine,
                 priority,
-                () -> guarded.readClient(engine).get().uri(uri).retrieve().body(FlowablePage.class));
+                () -> guarded.readClient(engine).get().uri(uri).retrieve().body(CmmnJobPage.class));
     }
 
     /**
@@ -541,7 +539,7 @@ public class CmmnApiClient {
      * GET /cmmn-repository/case-definitions — catalog sibling of the process-definition list.
      * Callers capability-gate ({@code scopeType}, ≥ 6.8) first.
      */
-    public FlowablePage listCaseDefinitions(
+    public CaseDefinitionPage listCaseDefinitions(
             EngineConfig engine, CallPriority priority, String key, String nameLike, Boolean latest, int size) {
         UriComponentsBuilder b = UriComponentsBuilder.fromUriString(
                         cmmnApiBase(engine) + "/cmmn-repository/case-definitions")
@@ -559,7 +557,7 @@ public class CmmnApiClient {
         return guarded.call(
                 engine,
                 priority,
-                () -> guarded.readClient(engine).get().uri(uri).retrieve().body(FlowablePage.class));
+                () -> guarded.readClient(engine).get().uri(uri).retrieve().body(CaseDefinitionPage.class));
     }
 
     /** Count-only running cases on one case definition ({@code size=1}, read {@code total}). */
@@ -569,10 +567,10 @@ public class CmmnApiClient {
                 .queryParam("size", 1)
                 .build()
                 .toUri();
-        FlowablePage page = guarded.call(
+        PageTotal page = guarded.call(
                 engine,
                 priority,
-                () -> guarded.readClient(engine).get().uri(uri).retrieve().body(FlowablePage.class));
+                () -> guarded.readClient(engine).get().uri(uri).retrieve().body(PageTotal.class));
         return page != null ? page.total() : 0;
     }
 
@@ -613,7 +611,7 @@ public class CmmnApiClient {
     }
 
     /** Major ≥ 7. Unparseable or missing versions fail closed (not 7.x). */
-    static boolean flowable7(String version) {
+    public static boolean flowable7(String version) {
         if (version == null || version.isBlank()) {
             return false;
         }

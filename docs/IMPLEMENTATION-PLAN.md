@@ -663,14 +663,25 @@ count to a "≥N" lower bound under a truncated DLQ scan — see `CMMN-SCOPE-PHA
   evaluated. Do not start the MVP until a re-run against real pilot audit data clears the gate.
 - **Migration** — **panel-reviewed design locked in [INSTANCE-MIGRATION.md](INSTANCE-MIGRATION.md)**:
   single-instance migrate with server-side `migrate/validate` first; slice-1 = auto-map + a
-  validator-driven targeted mapping table + the definition-versions on-ramp. The full side-by-side
-  diagram mapping wizard and batch (async `Batch`) stay deferred with typed "MIGRATE" only after
+  validator-driven targeted mapping table + the definition-versions on-ramp. The side-by-side
+  diagram mapping editor later shipped with #498; batch (async `Batch`) stays deferred with typed "MIGRATE" only after
   the single flow proves demand. Builds in parallel with Registry CRUD (INSTANCE-MIGRATION.md §13:
   no Flyway collision — CRUD owns V7, migration adds no table).
   **Cohort migration (#482) ✔ S2–S4 landed:** filtered cohort count, the stored per-instance
   analysis (#495), and execution as the bulk verb `migrate-instance` over completed analyses
   (#496 — per-instance migrate, digest CAS per item, engine `Batch` unused; the 50-cap synchronous
-  door is gone). Open: S5 hierarchy-aware plan, S6 mapping editor follow-ups, S7 CMMN cohort.
+  door is gone). **S5 backend ✔ (#497):** the stored hierarchy plan (bounded tree walk, circular
+  references reported, per-definition groups) and its execution as one children-first
+  `migrate-instance` job (a child that still has to be migrated leaves its parent `not_run`; one
+  that ended or is already on its target does not), with
+  per-level progress in the operations drawer. S6 dual-canvas mapping editor ✔ (#498).
+  **S7 ✔ (#500):** the case cohort as the bulk verb `migrate-case`, the case-versions
+  on-ramp, and the 7.x-only by-definition batch and historic doors behind the version gate
+  (INSTANCE-MIGRATION.md §7.3). **S5 plan builder UI ✔ (#497):** the Hierarchy tab's
+  **Migrate this hierarchy…** — tree, target + mapping or skip per definition, plan-id submit.
+  **S5 close-out ✔ (#497, owner decision 2026-11-15):** the re-read at dispatch (a running child
+  that is not in the plan leaves its parent `not_run`) and plan expiry
+  (`inspector.hierarchy-plan-max-age`, default 24 h: refused at submit, purged by the retention job).
 - **Job-lane trend sparklines** on the Stage-0 landing (per-engine dead-letter / timer /
   executable / suspended counts over time) — descoped here from v1.x #4 because v1 exposes
   only _live_ job-lane counts; a trend needs the **R-BAU-08** snapshot/time-series store
@@ -1599,7 +1610,11 @@ single resiliency chokepoint every facade call already runs through, so ONE inst
 covers every engine call uniformly, timed around bulkhead+breaker+HTTP including failure paths
 (a fast-fail on an open breaker is itself a meaningful near-zero sample). `sse_emitters_active`
 (gauge over `SseHub.subscriberCount()`) + `sse_emitter_errors_total` (incremented on a dropped
-send or an emitter's own `onError`). `bulk_jobs_running` (gauge, `BulkJobRepository.countByState`)
+send or an emitter's own `onError`). Issue #624: both paths fire for one closed tab, so each
+dropped emitter is now counted ONCE (the `errored` CAS), and a client disconnect (an `IOException`
+in the cause chain, unless a message converter raised it) goes to `sse_emitter_disconnects_total`
+instead of the error counter. That leaves `SseEmitterErrorsSpiking` for BFF-side send failures
+only; a proxy cutting streams now shows as disconnect churn, alerted by `SseDisconnectChurn`. `bulk_jobs_running` (gauge, `BulkJobRepository.countByState`)
 
 - `bulk_item_outcomes_total` (tagged `state`, tallied once per finished job in the existing
   `closeEnvelope` tally step — semantically identical to counting at each `settle()` call site, one

@@ -20,7 +20,8 @@ R-SAFE-06/07 (REQUIREMENTS-REGISTER.md).
 > real scrape, not assumed):** `audit_insert_failures_total` (tagged `site`), per-engine fan-out
 > latency (`engine_fanout_duration_seconds`, tags `engineId`/`leg` — ONE instrumentation site, the
 > `GuardedCaller` chokepoint every facade call runs through), `sse_emitters_active` (gauge) +
-> `sse_emitter_errors_total` (counter), `bulk_jobs_running` (gauge) + `bulk_item_outcomes_total`
+> `sse_emitter_errors_total` + `sse_emitter_disconnects_total` (counters; issue #624 — a client
+> that went away counts once as a disconnect, any other send failure once as an error), `bulk_jobs_running` (gauge) + `bulk_item_outcomes_total`
 > (counter, tagged `state`, tallied once per finished job). **Structured JSON logs** (gated on the
 > `oidc` prod-like profile — dev/test/it-* stay human-readable) **and correlationId MDC
 > propagation across the virtual-thread fan-out** (`MdcPropagatingExecutors`, swapped into every
@@ -41,7 +42,7 @@ R-SAFE-06/07 (REQUIREMENTS-REGISTER.md).
 > tracked separately, not claimed here).
 - `/actuator/prometheus` (auth-gated). Metric set: `audit_insert_failures_total`,
   `engine_fanout_duration_seconds` (tags `engineId`,`leg`), `resilience4j_circuitbreaker_state`,
-  `sse_emitters_active` + `sse_emitter_errors_total`, `bulk_jobs_running` +
+  `sse_emitters_active` + `sse_emitter_errors_total` + `sse_emitter_disconnects_total`, `bulk_jobs_running` +
   `bulk_item_outcomes_total`, `oidc_login_failures_total`, `snapshot_last_success_seconds`,
   `audit_retention_purge_failures_total`, Hikari pool, JVM/virtual-thread pinning. Triage-cache **hit rate**
   (as opposed to age, which `GET /api/diag` reports) remains TARGET, not wired.
@@ -105,13 +106,14 @@ the verb span.
 ## 3. Who watches the watcher (R-OPS-03)
 The Inspector is probed by **external** monitoring. Alert rules (issue #96,
 `deploy/prometheus/alert-rules.yml` — liveness, `AuditInsertFailures`,
-`AllCircuitBreakersOpen`, `SseEmitterErrorsSpiking`, and `DatabaseConnectionTimeoutsSpiking`
-as the honest proxy for Postgres-unreachable now fire off metrics this app emits;
+`AllCircuitBreakersOpen`, `SseEmitterErrorsSpiking`, `SseDisconnectChurn` (#624), and
+`DatabaseConnectionTimeoutsSpiking` as the honest proxy for Postgres-unreachable now fire off metrics this app emits;
 `InspectorReadinessFailing`/`DiskSpaceHigh` are written but need an exporter this repo does not
 deploy — `blackbox_exporter`/`node_exporter` — see `deploy/README.md`), referencing the same
 contract metric names: `InspectorDown` (liveness probe), readiness failing
 >2m, `audit_insert_failures_total > 0`, Postgres unreachable, disk >80%, SSE emitter errors
-spiking, **all circuits open simultaneously** (an inspector-side egress problem, not N engine
+spiking (BFF-side send failures only, issue #624), SSE streams cut and reconnecting in a loop
+(`SseDisconnectChurn` — where a proxy fault now shows), **all circuits open simultaneously** (an inspector-side egress problem, not N engine
 failures). No monitoring STACK (Prometheus/Alertmanager) is deployed by this repo's
 `docker/*.yml` — the rule file is the contract to hand to whichever one scrapes
 `/actuator/prometheus` in a real deploy. Paging route: the workflow platform team. Degraded
@@ -189,7 +191,8 @@ A value outside these ranges fails startup and the message names the property. N
 code default. `inspector.triage.refresh-min-interval-s` is not checked (zero or negative disables
 the throttle). `self-heal-floor` must be in `[0, 1]`. `burst-exit` must be `<= burst-onset` (both
 `>= 1`). `mttr-clamp-low` must be `<= mttr-clamp-high` (both `>= 0`). Durations:
-`recency-half-life`, `burst-window`, and `self-heal-horizon` are at least one second; `model-ttl`,
+`recency-half-life`, `burst-window`, `self-heal-horizon`, and `hierarchy-plan-max-age` are at least
+one second; `model-ttl`,
 `snapshot.sample-interval`, and `incidents.quiet-window` must be positive; `snapshot.bucket-width`
 is at least one second and is not ordered against the sample interval. A burst window shorter than
 `model-ttl` only logs a warning. Counts and caps: `fanout-parallelism`, `hierarchy-max-depth`,
@@ -228,10 +231,17 @@ Hub; `PI_REGISTRY=ghcr.io/x3kcl` overrides). Auth: the workflow `GITHUB_TOKEN`
 (a Read-&-Write Docker Hub access token) for Docker Hub. One-time after first publish: flip
 both ghcr packages to public visibility, and set both Docker Hub repos (auto-created on first
 push) to Public.
-**Continuous edge builds:** every **green** `ci` run on `main` auto-publishes the same two
+**Continuous edge builds:** every **green** merge-queue batch auto-publishes the same two
 images to both registries as `:edge` + `:sha-<short7>` (`publish-edge.yml`; `workflow_run`-triggered
-so a red main never ships a build — the green-main doctrine applied to publishing). Pinned
-release tags are never moved by edge builds.
+by the `ci` run on the `mq/**` batch branch, so a red batch never ships a build — the green-main
+doctrine applied to publishing). The job waits (bounded, 5 minutes) until the queue has
+fast-forwarded `main` to the batch commit, and publishes only when that commit is the `main`
+head: a batch that never landed, or a re-run of an old batch run, publishes nothing.
+A landing that bypassed the queue (admin bypass, RUNBOOK §0) has no batch run and therefore no
+image: dispatch `publish-edge` by hand on `main` (Actions → publish-edge → Run workflow), which
+publishes the current `main` head without the heavy checks having gated it. Between the queue
+change of 2026-11-12 and this fix (#636) no edge image was built, because `ci` no longer ran on
+`main`; `:edge` stayed at the 2026-10-23 build. Pinned release tags are never moved by edge builds.
 **Docker Hub overviews:** each Docker Hub repo's Overview (long + short description) is
 sourced from `docker/dockerhub/process-inspector-{bff,web}.md` and pushed by
 `dockerhub-readme.yml` (peter-evans/dockerhub-description) on any main push that touches those
@@ -364,15 +374,17 @@ then calls `release.yml`; the ruleset targets `refs/heads/main` only, so a tag p
 blocked. It is not re-dispatched here: a dispatch cuts a real release and publishes images.
 
 **Merge queue (ci-lib, bodo/ci-lib#177).** `ci.yml` calls the ci-lib gate (`gate.sh ci-light|ci-heavy`; contract in
-`ci/manifest.env` + `ci/contract.sh`, library pinned by `CI_LIB_TAG`, fetched from the operator's Gitea with the
+`ci/manifest.env` + `ci/contract.sh`, library pinned by `CI_LIB_TAG` (v0.17), fetched from the operator's Gitea with the
 `CI_LIB_TOKEN` secret, also under Dependabot secrets). The job ids are the ruleset's check names, unchanged. A pull
 request runs `lint`, `unit`, `frontend`, `e2e` (ci-light); a push to `mq/**` runs those plus `docker` and the
 `integration` legs (ci-heavy), and there is no push trigger for `main` (the queue fast-forwards a batch that already
 passed). `merge-queue@process-inspector` runs on hp02 from a one-minute timer (GitHub cannot reach it, so no webhook),
-with a fine-grained token (Contents, Pull requests, Actions on this repository) in
+with a fine-grained token (Contents, Pull requests, Actions and Issues: Read and write on this repository; Issues is needed to comment, #666) in
 `~/.config/process-inspector/github-token`, the queue account as a bypass actor on the `main` ruleset, and the `queue`
 label; the unit is installed with ci-lib's `mq/units/activate-repo.sh`. Consequence: `docker` and `integration (...)`
-never report on a pull request, so GitHub's own Merge button stays blocked for non-admins: landing is the queue's job.
+never report on a pull request, so GitHub's own Merge button stays blocked for non-admins: landing is the queue's job: `scripts/pr-queue.sh <PR>` labels a green head, `--watch` blocks until merged. A landing-rule refusal (`lr-1`, `lr-2`) does NOT remove the label (only a red batch does, with a comment): the queue comments once per head (`mq-red-first:<sha>` / `mq-red-frozen:<sha>`) and waits for a new head; `pr-queue.sh --watch` exits 1 on it.
+Open operator step: ci-lib v0.17 publishes each tag to a public mirror (`publish/mirror_snapshot.py`, hourly cron on a box that can push);
+the `ci-lib` action still fetches from the operator's Gitea until that mirror exists.
 
 **Landed in `.github/workflows/ci.yml` (merge-blocking):** `lint` (Spotless/palantir) ·
 `unit` (backend build + unit suite incl. the **ArchUnit anti-flakiness rule**: `Thread.sleep`
@@ -408,6 +420,9 @@ against the seeded FIX-REF-01 reference dataset, asserting the SPEC §2 R-NFR-01
 budgets), and an **`e2e-real` job** (#466: Playwright → Vite → BFF jar → flowable-6 engines,
 no `page.route`, `frontend/e2e-real/`; a red run uploads `playwright-report-real` with traces
 and the BFF log — TEST-STRATEGY §12). A red nightly is a morning-routine triage, not a push gate.
+Every job except `supply-chain` (its composite action) runs its commands through the ci-lib gate,
+`gate.sh ci-nightly` with `CI_PART=<job id>`; they live in `ci/contract.sh`, so a nightly job
+reproduces by hand as `CI_PART=engine-its bash ci/contract.sh ci-nightly` (#641).
 
 **Frontend npm-audit gate — dated-exception allowlist (issue #297).** A bare
 `npm audit --audit-level=high` goes permanently red the instant any high+ advisory has no

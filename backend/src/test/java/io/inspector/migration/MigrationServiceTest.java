@@ -20,9 +20,11 @@ import io.inspector.audit.AuditService;
 import io.inspector.audit.ProtectedDefinitionRepository;
 import io.inspector.audit.ProtectedInstanceRepository;
 import io.inspector.audit.ProtectionGuard;
-import io.inspector.client.FlowablePage;
+import io.inspector.client.ExecutionRecords;
 import io.inspector.client.GuardedCaller.CallPriority;
 import io.inspector.client.ProcessApiClient;
+import io.inspector.client.ProcessInstanceRecords;
+import io.inspector.client.RepositoryRecords;
 import io.inspector.config.AuditProperties;
 import io.inspector.config.InspectorProperties;
 import io.inspector.config.InspectorProperties.EngineEnvironment;
@@ -134,7 +136,7 @@ class MigrationServiceTest {
         running.put("suspended", false);
         running.put("businessKey", "ORD-77");
         when(client.getRuntimeProcessInstance(any(), eq(CallPriority.INTERACTIVE), eq("pi-1")))
-                .thenReturn(running);
+                .thenReturn(ProcessInstanceRecords.instance(running));
 
         // Default target resolution: no toDefinitionId/toVersion in the request → latest deployed.
         Map<String, Object> targetDef = new HashMap<>();
@@ -142,7 +144,7 @@ class MigrationServiceTest {
         targetDef.put("key", "demoMigration");
         targetDef.put("version", 2);
         when(client.latestProcessDefinitionByKey(any(), eq(CallPriority.INTERACTIVE), eq("demoMigration")))
-                .thenReturn(new FlowablePage(List.of(targetDef), 1, 0, 1));
+                .thenReturn(RepositoryRecords.definitionPage(List.of(targetDef)));
 
         // Same fixture BPMN for "from" and "to" — the diff outcome (auto-mapped vs. flagged) is
         // irrelevant to the reauth-ordering tests below; both must simply parse.
@@ -156,7 +158,7 @@ class MigrationServiceTest {
                 .thenReturn(xml());
 
         when(client.listExecutions(any(), eq(CallPriority.INTERACTIVE), eq("pi-1"), anyInt()))
-                .thenReturn(new FlowablePage(List.of(Map.of("id", "pi-1", "activityId", "stepOne")), 1, 0, 100));
+                .thenReturn(ExecutionRecords.executionPage(List.of(Map.of("id", "pi-1", "activityId", "stepOne")), 1));
     }
 
     private static EngineHealth probed(String version) {

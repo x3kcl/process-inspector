@@ -7,8 +7,11 @@ import static org.mockito.ArgumentMatchers.eq;
 import static org.mockito.Mockito.mock;
 import static org.mockito.Mockito.when;
 
-import io.inspector.client.FlowablePage;
+import io.inspector.client.ExecutionRecords;
 import io.inspector.client.ProcessApiClient;
+import io.inspector.client.ProcessInstancePage;
+import io.inspector.client.ProcessInstanceRecords;
+import io.inspector.client.VariableRecords;
 import io.inspector.config.InspectorProperties.EngineConfig;
 import io.inspector.detail.InstanceDetailService;
 import io.inspector.dto.InstanceVariables.VariableDto;
@@ -152,15 +155,16 @@ class SiblingDiffServiceTest {
         EngineConfig engine = TestEngines.engine("engine-a", "http://engine-a");
         when(registry.resolveOrNotFound("engine-a")).thenReturn(engine);
         when(detail.requireHistoric(eq(engine), eq("subject-1")))
-                .thenReturn(Map.of("id", "subject-1", "processDefinitionId", "payment:3:abc"));
+                .thenReturn(ProcessInstanceRecords.instance(
+                        Map.of("id", "subject-1", "processDefinitionId", "payment:3:abc")));
 
         // endTime-desc page: the subject appears (defensive) then the real winner.
         when(flowable.queryHistoricProcessInstances(eq(engine), any(), any()))
-                .thenReturn(new FlowablePage(
-                        List.of(
+                .thenReturn(new ProcessInstancePage(
+                        ProcessInstanceRecords.instances(List.of(
                                 Map.of("id", "subject-1", "endTime", "2026-07-07T09:00:00Z"),
                                 Map.of("id", "good-42", "businessKey", "ORD-42", "endTime", "2026-07-07T08:00:00Z"),
-                                Map.of("id", "good-41", "businessKey", "ORD-41", "endTime", "2026-07-07T07:00:00Z")),
+                                Map.of("id", "good-41", "businessKey", "ORD-41", "endTime", "2026-07-07T07:00:00Z"))),
                         3,
                         0,
                         25));
@@ -186,8 +190,9 @@ class SiblingDiffServiceTest {
         EngineConfig engine = TestEngines.engine("engine-a", "http://engine-a");
         when(registry.resolveOrNotFound("engine-a")).thenReturn(engine);
         when(detail.requireHistoric(eq(engine), eq("subject-1")))
-                .thenReturn(Map.of("id", "subject-1", "processDefinitionId", "payment:3:abc"));
-        when(flowable.queryHistoricProcessInstances(eq(engine), any(), any())).thenReturn(FlowablePage.empty());
+                .thenReturn(ProcessInstanceRecords.instance(
+                        Map.of("id", "subject-1", "processDefinitionId", "payment:3:abc")));
+        when(flowable.queryHistoricProcessInstances(eq(engine), any(), any())).thenReturn(ProcessInstancePage.empty());
 
         NearestSiblingResponse res =
                 new SiblingDiffService(registry, flowable, detail).nearestSibling("engine-a", "subject-1");
@@ -205,22 +210,28 @@ class SiblingDiffServiceTest {
         EngineConfig engine = TestEngines.engine("engine-a", "http://engine-a");
         when(registry.resolveOrNotFound("engine-a")).thenReturn(engine);
         when(detail.requireHistoric(eq(engine), eq("subject-1")))
-                .thenReturn(Map.of("id", "subject-1", "processDefinitionId", "payment:3:abc", "businessKey", "ORD-1"));
+                .thenReturn(ProcessInstanceRecords.instance(
+                        Map.of("id", "subject-1", "processDefinitionId", "payment:3:abc", "businessKey", "ORD-1")));
         when(detail.requireHistoric(eq(engine), eq("good-42")))
-                .thenReturn(Map.of(
-                        "id", "good-42", "processDefinitionId", "payment:3:abc", "endTime", "2026-07-07T08:00:00Z"));
+                .thenReturn(ProcessInstanceRecords.instance(Map.of(
+                        "id", "good-42", "processDefinitionId", "payment:3:abc", "endTime", "2026-07-07T08:00:00Z")));
 
         when(flowable.listHistoricVariableInstances(eq(engine), any(), eq("subject-1"), anyInt()))
-                .thenReturn(new FlowablePage(
-                        List.of(Map.of("name", "amount", "type", "integer", "value", 100)), 1, 0, 200));
+                .thenReturn(VariableRecords.historicPage(
+                        List.of(Map.of("variable", Map.of("name", "amount", "type", "integer", "value", 100))),
+                        1,
+                        200));
         when(flowable.listHistoricVariableInstances(eq(engine), any(), eq("good-42"), anyInt()))
-                .thenReturn(new FlowablePage(
-                        List.of(Map.of("name", "amount", "type", "integer", "value", 250)), 1, 0, 200));
+                .thenReturn(VariableRecords.historicPage(
+                        List.of(Map.of("variable", Map.of("name", "amount", "type", "integer", "value", 250))),
+                        1,
+                        200));
         when(flowable.listHistoricActivities(eq(engine), any(), eq("subject-1"), anyInt(), anyInt()))
-                .thenReturn(
-                        new FlowablePage(List.of(activityRow("start", 5L), activityRow("charge", null)), 2, 0, 200));
+                .thenReturn(ExecutionRecords.activityPage(
+                        List.of(activityRow("start", 5L), activityRow("charge", null)), 2));
         when(flowable.listHistoricActivities(eq(engine), any(), eq("good-42"), anyInt(), anyInt()))
-                .thenReturn(new FlowablePage(List.of(activityRow("start", 5L), activityRow("done", 3L)), 2, 0, 200));
+                .thenReturn(
+                        ExecutionRecords.activityPage(List.of(activityRow("start", 5L), activityRow("done", 3L)), 2));
 
         SiblingDiffResponse res =
                 new SiblingDiffService(registry, flowable, detail).diff("engine-a", "subject-1", "good-42");

@@ -18,8 +18,8 @@ final class ProcessRepositoryClient {
     }
 
     /** GET /repository/process-definitions/{definitionId} — server-fresh definition restatement. */
-    @SuppressWarnings("unchecked")
-    public Map<String, Object> getProcessDefinition(EngineConfig engine, CallPriority priority, String definitionId) {
+    public ProcessDefinitionRecord getProcessDefinition(
+            EngineConfig engine, CallPriority priority, String definitionId) {
         try {
             return guarded.call(
                     engine,
@@ -28,7 +28,7 @@ final class ProcessRepositoryClient {
                             .get()
                             .uri("/repository/process-definitions/{id}", definitionId)
                             .retrieve()
-                            .body(Map.class));
+                            .body(ProcessDefinitionRecord.class));
         } catch (HttpClientErrorException.NotFound e) {
             return null;
         }
@@ -175,8 +175,7 @@ final class ProcessRepositoryClient {
      * either {@code processDefinitionId} (version pinned) or {@code processDefinitionKey}
      * (latest) — never both. Returns the engine's instance representation (the new id).
      */
-    @SuppressWarnings("unchecked")
-    public Map<String, Object> startProcessInstance(
+    public ProcessInstanceRecord startProcessInstance(
             EngineConfig engine, CallPriority priority, Map<String, Object> body) {
         return guarded.call(
                 engine,
@@ -188,14 +187,14 @@ final class ProcessRepositoryClient {
                         .contentType(MediaType.APPLICATION_JSON)
                         .body(body)
                         .retrieve()
-                        .body(Map.class));
+                        .body(ProcessInstanceRecord.class));
     }
 
     /**
      * GET /repository/process-definitions — the catalog list. Blank filters are omitted so the
      * engine does not treat an empty string as a match. {@code latest} null means every version.
      */
-    public FlowablePage listProcessDefinitions(
+    public ProcessDefinitionPage listProcessDefinitions(
             EngineConfig engine,
             CallPriority priority,
             String key,
@@ -229,11 +228,11 @@ final class ProcessRepositoryClient {
                             return b.build();
                         })
                         .retrieve()
-                        .body(FlowablePage.class));
+                        .body(ProcessDefinitionPage.class));
     }
 
     /** GET /runtime/event-subscriptions?processDefinitionId= — start and instance subscriptions. */
-    public FlowablePage listDefinitionEventSubscriptions(
+    public EventSubscriptionPage listDefinitionEventSubscriptions(
             EngineConfig engine, CallPriority priority, String processDefinitionId, int size) {
         return guarded.call(
                 engine,
@@ -245,11 +244,11 @@ final class ProcessRepositoryClient {
                                 .queryParam("size", size)
                                 .build())
                         .retrieve()
-                        .body(FlowablePage.class));
+                        .body(EventSubscriptionPage.class));
     }
 
     /** GET /repository/deployments — name filter and newest-first. */
-    public FlowablePage listDeployments(
+    public DeploymentPage listDeployments(
             EngineConfig engine, CallPriority priority, String nameLike, int start, int size) {
         return guarded.call(
                 engine,
@@ -270,12 +269,11 @@ final class ProcessRepositoryClient {
                             return b.build();
                         })
                         .retrieve()
-                        .body(FlowablePage.class));
+                        .body(DeploymentPage.class));
     }
 
     /** GET /repository/deployments/{id}. Null when the engine answers 404. */
-    @SuppressWarnings("unchecked")
-    public Map<String, Object> getDeployment(EngineConfig engine, CallPriority priority, String deploymentId) {
+    public DeploymentRecord getDeployment(EngineConfig engine, CallPriority priority, String deploymentId) {
         try {
             return guarded.call(
                     engine,
@@ -284,7 +282,7 @@ final class ProcessRepositoryClient {
                             .get()
                             .uri("/repository/deployments/{id}", deploymentId)
                             .retrieve()
-                            .body(Map.class));
+                            .body(DeploymentRecord.class));
         } catch (HttpClientErrorException.NotFound e) {
             return null;
         }
@@ -292,21 +290,19 @@ final class ProcessRepositoryClient {
 
     /**
      * GET /repository/deployments/{id}/resources. The engine answers a bare JSON ARRAY here, not
-     * the {data,total} page envelope (recorded on 6.8 and 7.1, #464), so the rows are wrapped into a
-     * complete page for callers.
+     * the {data,total} page envelope (recorded on 6.8 and 7.1, #464). Never null.
      */
-    @SuppressWarnings("unchecked")
-    public FlowablePage listDeploymentResources(EngineConfig engine, CallPriority priority, String deploymentId) {
-        List<Map<String, Object>> rows = guarded.call(
+    public List<DeploymentResourceRecord> listDeploymentResources(
+            EngineConfig engine, CallPriority priority, String deploymentId) {
+        DeploymentResourceRecord[] rows = guarded.call(
                 engine,
                 priority,
                 () -> guarded.readClient(engine)
                         .get()
                         .uri("/repository/deployments/{id}/resources", deploymentId)
                         .retrieve()
-                        .body(List.class));
-        List<Map<String, Object>> data = rows != null ? rows : List.of();
-        return new FlowablePage(data, data.size(), 0, data.size());
+                        .body(DeploymentResourceRecord[].class));
+        return rows != null ? List.of(rows) : List.of();
     }
 
     /**

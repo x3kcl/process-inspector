@@ -1,10 +1,13 @@
 package io.inspector.triage;
 
 import io.inspector.api.MdcPropagatingExecutors;
-import io.inspector.client.FlowablePage;
 import io.inspector.client.GuardedCaller.CallPriority;
+import io.inspector.client.JobPage;
+import io.inspector.client.JobRecord;
 import io.inspector.client.ProcessApiClient;
 import io.inspector.client.ProcessApiClient.JobLaneKind;
+import io.inspector.client.ProcessDefinitionPage;
+import io.inspector.client.ProcessInstancePage;
 import io.inspector.config.InspectorProperties;
 import io.inspector.config.InspectorProperties.EngineConfig;
 import io.inspector.dto.EngineDto;
@@ -189,7 +192,7 @@ public class TriageAggregationService {
                 LaneScan result = scan.getValue().get();
                 scanned += result.jobs().size();
                 truncated |= result.truncated();
-                for (Map<String, Object> job : result.jobs()) {
+                for (JobRecord job : result.jobs()) {
                     accumulate(preGroups, job, scan.getKey());
                     String pid = bpmnProcessInstanceId(job);
                     if (pid != null) {
@@ -237,7 +240,7 @@ public class TriageAggregationService {
         body.put("suspended", suspended);
         body.put("size", 1);
         withTenant(engine, body);
-        FlowablePage page = flowable.queryRuntimeProcessInstances(engine, priority, body);
+        ProcessInstancePage page = flowable.queryRuntimeProcessInstances(engine, priority, body);
         return page != null ? page.total() : 0;
     }
 
@@ -246,7 +249,7 @@ public class TriageAggregationService {
         body.put("finished", true);
         body.put("size", 1);
         withTenant(engine, body);
-        FlowablePage page = flowable.queryHistoricProcessInstances(engine, priority, body);
+        ProcessInstancePage page = flowable.queryHistoricProcessInstances(engine, priority, body);
         return page != null ? page.total() : 0;
     }
 
@@ -258,7 +261,7 @@ public class TriageAggregationService {
 
     /* ---------------- failure-lane scans ---------------- */
 
-    private record LaneScan(List<Map<String, Object>> jobs, boolean truncated) {}
+    private record LaneScan(List<JobRecord> jobs, boolean truncated) {}
 
     /**
      * Pages one failure lane to exhaustion, bounded by the engine's {@code dlq-scan-cap}.
@@ -273,11 +276,10 @@ public class TriageAggregationService {
         if (engine.tenantId() != null && !engine.tenantId().isBlank()) {
             filters.put("tenantId", engine.tenantId());
         }
-        List<Map<String, Object>> jobs = new ArrayList<>();
+        List<JobRecord> jobs = new ArrayList<>();
         long total = Long.MAX_VALUE;
         for (int start = 0; start < Math.min(total, cap); start += pageSize) {
-            FlowablePage page =
-                    flowable.listJobs(engine, priority, lane, filters, start, Math.min(pageSize, cap - start));
+            JobPage page = flowable.listJobs(engine, priority, lane, filters, start, Math.min(pageSize, cap - start));
             if (page == null) {
                 break;
             }
@@ -315,16 +317,16 @@ public class TriageAggregationService {
      * no processInstanceId (or an explicit non-bpmn scopeType, ~6.8+) is not ours.
      * Returns the BPMN process-instance id, or null when the job is out of scope.
      */
-    private static String bpmnProcessInstanceId(Map<String, Object> job) {
-        Object pid = job.get("processInstanceId");
-        if (pid == null || pid.toString().isBlank()) {
+    private static String bpmnProcessInstanceId(JobRecord job) {
+        String pid = job.processInstanceId();
+        if (pid == null || pid.isBlank()) {
             return null;
         }
-        Object scopeType = job.get("scopeType");
-        if (scopeType != null && !"bpmn".equalsIgnoreCase(scopeType.toString())) {
+        String scopeType = job.scopeType();
+        if (scopeType != null && !"bpmn".equalsIgnoreCase(scopeType)) {
             return null;
         }
-        return pid.toString();
+        return pid;
     }
 
     /**
@@ -352,12 +354,12 @@ public class TriageAggregationService {
      * marker that conflates all three failure lanes.
      */
     static OutOfScope outOfScopeDeadletters(
-            List<Map<String, Object>> deadLetterJobs, boolean deadletterLaneTruncated, boolean scopeTypeCapable) {
+            List<JobRecord> deadLetterJobs, boolean deadletterLaneTruncated, boolean scopeTypeCapable) {
         if (!scopeTypeCapable) {
             return new OutOfScope(null, false);
         }
         int count = 0;
-        for (Map<String, Object> job : deadLetterJobs) {
+        for (JobRecord job : deadLetterJobs) {
             if (bpmnProcessInstanceId(job) == null) {
                 count++;
             }
@@ -365,16 +367,14 @@ public class TriageAggregationService {
         return new OutOfScope(count, deadletterLaneTruncated);
     }
 
-    private void accumulate(Map<String, PreGroup> preGroups, Map<String, Object> job, JobLaneKind lane) {
+    private void accumulate(Map<String, PreGroup> preGroups, JobRecord job, JobLaneKind lane) {
         if (bpmnProcessInstanceId(job) == null) {
             return;
         }
-        String rawMessage = job.get("exceptionMessage") != null
-                ? job.get("exceptionMessage").toString()
-                : null;
+        String rawMessage = job.exceptionMessage();
         ErrorSignature signature = ErrorSignatureNormalizer.normalize(rawMessage);
         PreGroup group = preGroups.computeIfAbsent(
-                signature.hash(), h -> new PreGroup(signature, rawMessage, String.valueOf(job.get("id")), lane));
+                signature.hash(), h -> new PreGroup(signature, rawMessage, String.valueOf(job.id()), lane));
         if (lane == JobLaneKind.DEADLETTER) {
             group.deadLetter++;
         } else {
@@ -387,9 +387,9 @@ public class TriageAggregationService {
      * No engine serializes definition key/version on job rows — both derive from
      * {@code processDefinitionId} ({@code key:version:uuid}, stable across 6.3.1/6.8/7.1).
      */
-    private static String defVersionKey(Map<String, Object> job) {
-        Object definitionId = job.get("processDefinitionId");
-        String[] parts = definitionId != null ? definitionId.toString().split(":") : new String[0];
+    private static String defVersionKey(JobRecord job) {
+        String definitionId = job.processDefinitionId();
+        String[] parts = definitionId != null ? definitionId.split(":") : new String[0];
         return parts.length >= 2 ? parts[0] + ":v" + parts[1] : "unknown:v?";
     }
 
@@ -455,11 +455,12 @@ public class TriageAggregationService {
                 .filter(key -> !key.equals("unknown"))
                 .forEach(defKey -> {
                     try {
-                        FlowablePage page = flowable.listProcessDefinitionsByKey(engine, priority, defKey, null, 0, 50);
+                        ProcessDefinitionPage page =
+                                flowable.listProcessDefinitionsByKey(engine, priority, defKey, null, 0, 50);
                         versionsByKey.put(
                                 defKey,
                                 page.dataOrEmpty().stream()
-                                        .map(def -> String.valueOf(def.get("version")))
+                                        .map(def -> String.valueOf(def.version()))
                                         .toList());
                     } catch (Exception ex) {
                         log.debug("Version zero-fill skipped for {} on {}: {}", defKey, engine.id(), ex.toString());

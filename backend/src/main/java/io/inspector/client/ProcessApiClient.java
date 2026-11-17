@@ -51,17 +51,17 @@ public class ProcessApiClient {
         }
     }
 
-    public FlowablePage queryHistoricProcessInstances(
+    public ProcessInstancePage queryHistoricProcessInstances(
             EngineConfig engine, CallPriority priority, Map<String, Object> body) {
         return reads.queryHistoricProcessInstances(engine, priority, body);
     }
 
-    public FlowablePage queryRuntimeProcessInstances(
+    public ProcessInstancePage queryRuntimeProcessInstances(
             EngineConfig engine, CallPriority priority, Map<String, Object> body) {
         return reads.queryRuntimeProcessInstances(engine, priority, body);
     }
 
-    public FlowablePage listJobs(
+    public JobPage listJobs(
             EngineConfig engine,
             CallPriority priority,
             JobLaneKind lane,
@@ -71,38 +71,36 @@ public class ProcessApiClient {
         return reads.listJobs(engine, priority, lane, filters, start, size);
     }
 
-    @SuppressWarnings("unchecked")
-    public Map<String, Object> getHistoricProcessInstance(
+    public ProcessInstanceRecord getHistoricProcessInstance(
             EngineConfig engine, CallPriority priority, String processInstanceId) {
         return reads.getHistoricProcessInstance(engine, priority, processInstanceId);
     }
 
-    @SuppressWarnings("unchecked")
-    public Map<String, Object> getRuntimeProcessInstance(
+    public ProcessInstanceRecord getRuntimeProcessInstance(
             EngineConfig engine, CallPriority priority, String processInstanceId) {
         return reads.getRuntimeProcessInstance(engine, priority, processInstanceId);
     }
 
-    public FlowablePage listUnfinishedActivities(
+    public ActivityInstancePage listUnfinishedActivities(
             EngineConfig engine, CallPriority priority, String processInstanceId, String tenantId, int size) {
         return reads.listUnfinishedActivities(engine, priority, processInstanceId, tenantId, size);
     }
 
-    public FlowablePage listProcessDefinitionsByKey(
+    public ProcessDefinitionPage listProcessDefinitionsByKey(
             EngineConfig engine, CallPriority priority, String key, Integer version, int start, int size) {
         return reads.listProcessDefinitionsByKey(engine, priority, key, version, start, size);
     }
 
-    public FlowablePage listProcessDefinitionVersionsDesc(
+    public ProcessDefinitionPage listProcessDefinitionVersionsDesc(
             EngineConfig engine, CallPriority priority, String key, int start, int size) {
         return reads.listProcessDefinitionVersionsDesc(engine, priority, key, start, size);
     }
 
-    public FlowablePage latestProcessDefinitionByKey(EngineConfig engine, CallPriority priority, String key) {
+    public ProcessDefinitionPage latestProcessDefinitionByKey(EngineConfig engine, CallPriority priority, String key) {
         return reads.latestProcessDefinitionByKey(engine, priority, key);
     }
 
-    public FlowablePage listLatestProcessDefinitions(EngineConfig engine, CallPriority priority, int size) {
+    public ProcessDefinitionPage listLatestProcessDefinitions(EngineConfig engine, CallPriority priority, int size) {
         return reads.listLatestProcessDefinitions(engine, priority, size);
     }
 
@@ -110,18 +108,17 @@ public class ProcessApiClient {
         return reads.jobExceptionStacktrace(engine, priority, lane, jobId);
     }
 
-    public FlowablePage listExecutions(EngineConfig engine, CallPriority priority, String processInstanceId, int size) {
+    public ExecutionPage listExecutions(
+            EngineConfig engine, CallPriority priority, String processInstanceId, int size) {
         return reads.listExecutions(engine, priority, processInstanceId, size);
     }
 
-    @SuppressWarnings("unchecked")
-    public List<Map<String, Object>> listRuntimeIdentityLinks(
+    public List<IdentityLinkRecord> listRuntimeIdentityLinks(
             EngineConfig engine, CallPriority priority, String processInstanceId) {
         return reads.listRuntimeIdentityLinks(engine, priority, processInstanceId);
     }
 
-    @SuppressWarnings("unchecked")
-    public List<Map<String, Object>> listHistoricIdentityLinks(
+    public List<IdentityLinkRecord> listHistoricIdentityLinks(
             EngineConfig engine, CallPriority priority, String processInstanceId) {
         return reads.listHistoricIdentityLinks(engine, priority, processInstanceId);
     }
@@ -136,57 +133,54 @@ public class ProcessApiClient {
         reads.deleteInstanceIdentityLink(engine, priority, processInstanceId, user, type);
     }
 
-    public List<Map<String, Object>> listInstanceVariables(
+    public List<VariableRecord> listInstanceVariables(
             EngineConfig engine, CallPriority priority, String processInstanceId) {
         return reads.listInstanceVariables(engine, priority, processInstanceId);
     }
 
-    public List<Map<String, Object>> listExecutionLocalVariables(
+    public List<VariableRecord> listExecutionLocalVariables(
             EngineConfig engine, CallPriority priority, String executionId) {
         return reads.listExecutionLocalVariables(engine, priority, executionId);
     }
 
-    public FlowablePage listHistoricVariableInstances(
+    public HistoricVariablePage listHistoricVariableInstances(
             EngineConfig engine, CallPriority priority, String processInstanceId, int size) {
         return reads.listHistoricVariableInstances(engine, priority, processInstanceId, size);
     }
 
-    public FlowablePage listHistoricActivities(
+    public ActivityInstancePage listHistoricActivities(
             EngineConfig engine, CallPriority priority, String processInstanceId, int start, int size) {
         return reads.listHistoricActivities(engine, priority, processInstanceId, start, size);
     }
 
-    public FlowablePage listEventSubscriptions(
+    public EventSubscriptionPage listEventSubscriptions(
             EngineConfig engine, CallPriority priority, String processInstanceId, int size) {
         return reads.listEventSubscriptions(engine, priority, processInstanceId, size);
     }
 
-    public FlowablePage listHistoricTaskInstances(
+    public TaskPage listHistoricTaskInstances(
             EngineConfig engine, CallPriority priority, String processInstanceId, int size) {
         return reads.listHistoricTaskInstances(engine, priority, processInstanceId, size);
     }
 
-    public FlowablePage listRuntimeTasks(
-            EngineConfig engine, CallPriority priority, String processInstanceId, int size) {
+    public TaskPage listRuntimeTasks(EngineConfig engine, CallPriority priority, String processInstanceId, int size) {
         return reads.listRuntimeTasks(engine, priority, processInstanceId, size);
     }
 
-    public FlowablePage listRuntimeTasks(
-            EngineConfig engine, CallPriority priority, Map<String, String> query, int size) {
+    public TaskPage listRuntimeTasks(EngineConfig engine, CallPriority priority, Map<String, String> query, int size) {
         return reads.listRuntimeTasks(engine, priority, query, size);
     }
 
-    public FlowablePage listTasksByAssignee(EngineConfig engine, CallPriority priority, String assignee, int size) {
+    public TaskPage listTasksByAssignee(EngineConfig engine, CallPriority priority, String assignee, int size) {
         return reads.listTasksByAssignee(engine, priority, assignee, size);
     }
 
-    public FlowablePage listTasksByCandidateUser(
+    public TaskPage listTasksByCandidateUser(
             EngineConfig engine, CallPriority priority, String candidateUser, int size) {
         return reads.listTasksByCandidateUser(engine, priority, candidateUser, size);
     }
 
-    @SuppressWarnings("unchecked")
-    public Map<String, Object> getHistoricTaskInstance(EngineConfig engine, CallPriority priority, String taskId) {
+    public TaskRecord getHistoricTaskInstance(EngineConfig engine, CallPriority priority, String taskId) {
         return reads.getHistoricTaskInstance(engine, priority, taskId);
     }
 
@@ -195,17 +189,15 @@ public class ProcessApiClient {
         return reads.deploymentResourceData(engine, priority, deploymentId, resourceName);
     }
 
-    @SuppressWarnings("unchecked")
     public Map<String, Object> getMap(EngineConfig engine, CallPriority priority, String path) {
         return reads.getMap(engine, priority, path);
     }
 
-    public List<Map<String, Object>> getList(EngineConfig engine, CallPriority priority, String path) {
-        return reads.getList(engine, priority, path);
+    public List<TableCountRecord> listTables(EngineConfig engine, CallPriority priority) {
+        return reads.listTables(engine, priority);
     }
 
-    @SuppressWarnings("unchecked")
-    public Map<String, Object> engineInfo(EngineConfig engine, CallPriority priority) {
+    public EngineInfoRecord engineInfo(EngineConfig engine, CallPriority priority) {
         return reads.engineInfo(engine, priority);
     }
 
@@ -217,7 +209,7 @@ public class ProcessApiClient {
         return health.countJobsIfSupported(engine, priority, lane);
     }
 
-    public Map<String, Object> oldestHistoryJob(EngineConfig engine, CallPriority priority) {
+    public JobRecord oldestHistoryJob(EngineConfig engine, CallPriority priority) {
         return health.oldestHistoryJob(engine, priority);
     }
 
@@ -242,7 +234,7 @@ public class ProcessApiClient {
         return health.countHistoricProcesses(engine, priority, after, before, started, rootOnly, definitionKey);
     }
 
-    public FlowablePage listRuntimeInstances(
+    public ProcessInstancePage listRuntimeInstances(
             EngineConfig engine,
             CallPriority priority,
             String processDefinitionId,
@@ -255,7 +247,7 @@ public class ProcessApiClient {
                 engine, priority, processDefinitionId, businessKey, businessKeyLike, startedAfter, startedBefore, size);
     }
 
-    public FlowablePage listFinishedProcesses(
+    public ProcessInstancePage listFinishedProcesses(
             EngineConfig engine,
             CallPriority priority,
             String definitionKey,
@@ -276,7 +268,7 @@ public class ProcessApiClient {
         return health.countHistoricTasks(engine, priority, after, before, completed);
     }
 
-    public Map<String, Object> oldestExecutableJob(EngineConfig engine, CallPriority priority) {
+    public JobRecord oldestExecutableJob(EngineConfig engine, CallPriority priority) {
         return health.oldestExecutableJob(engine, priority);
     }
 
@@ -288,8 +280,7 @@ public class ProcessApiClient {
         return health.probeActivityHistory(engine, priority);
     }
 
-    @SuppressWarnings("unchecked")
-    public Map<String, Object> getJob(EngineConfig engine, CallPriority priority, JobLaneKind lane, String jobId) {
+    public JobRecord getJob(EngineConfig engine, CallPriority priority, JobLaneKind lane, String jobId) {
         return actions.getJob(engine, priority, lane, jobId);
     }
 
@@ -327,8 +318,7 @@ public class ProcessApiClient {
         actions.deleteProcessInstance(engine, priority, processInstanceId, deleteReason);
     }
 
-    @SuppressWarnings("unchecked")
-    public Map<String, Object> getInstanceVariable(
+    public VariableRecord getInstanceVariable(
             EngineConfig engine, CallPriority priority, String processInstanceId, String name) {
         return actions.getInstanceVariable(engine, priority, processInstanceId, name);
     }
@@ -342,8 +332,7 @@ public class ProcessApiClient {
         actions.putInstanceVariable(engine, priority, processInstanceId, name, typedVariable);
     }
 
-    @SuppressWarnings("unchecked")
-    public Map<String, Object> getExecutionVariable(
+    public VariableRecord getExecutionVariable(
             EngineConfig engine, CallPriority priority, String executionId, String name) {
         return actions.getExecutionVariable(engine, priority, executionId, name);
     }
@@ -357,8 +346,7 @@ public class ProcessApiClient {
         actions.putExecutionVariable(engine, priority, executionId, name, typedVariable);
     }
 
-    @SuppressWarnings("unchecked")
-    public Map<String, Object> getTask(EngineConfig engine, CallPriority priority, String taskId) {
+    public TaskRecord getTask(EngineConfig engine, CallPriority priority, String taskId) {
         return actions.getTask(engine, priority, taskId);
     }
 
@@ -383,8 +371,7 @@ public class ProcessApiClient {
         actions.deleteTask(engine, priority, taskId);
     }
 
-    @SuppressWarnings("unchecked")
-    public List<Map<String, Object>> listIdentityLinks(EngineConfig engine, CallPriority priority, String taskId) {
+    public List<IdentityLinkRecord> listIdentityLinks(EngineConfig engine, CallPriority priority, String taskId) {
         return actions.listIdentityLinks(engine, priority, taskId);
     }
 
@@ -406,8 +393,7 @@ public class ProcessApiClient {
         return actions.probeIdm(engine, priority);
     }
 
-    @SuppressWarnings("unchecked")
-    public Map<String, Object> getExecution(EngineConfig engine, CallPriority priority, String executionId) {
+    public ExecutionRecord getExecution(EngineConfig engine, CallPriority priority, String executionId) {
         return actions.getExecution(engine, priority, executionId);
     }
 
@@ -416,8 +402,8 @@ public class ProcessApiClient {
         actions.executionAction(engine, priority, executionId, body);
     }
 
-    @SuppressWarnings("unchecked")
-    public Map<String, Object> getProcessDefinition(EngineConfig engine, CallPriority priority, String definitionId) {
+    public ProcessDefinitionRecord getProcessDefinition(
+            EngineConfig engine, CallPriority priority, String definitionId) {
         return repository.getProcessDefinition(engine, priority, definitionId);
     }
 
@@ -441,7 +427,6 @@ public class ProcessApiClient {
                 engine, priority, definitionId, action, includeProcessInstances, effectiveAt);
     }
 
-    @SuppressWarnings("unchecked")
     public Map<String, Object> getProcessDefinitionModel(
             EngineConfig engine, CallPriority priority, String definitionId) {
         return repository.getProcessDefinitionModel(engine, priority, definitionId);
@@ -464,13 +449,12 @@ public class ProcessApiClient {
         repository.migrateInstance(engine, priority, processInstanceId, migrationDocument);
     }
 
-    @SuppressWarnings("unchecked")
-    public Map<String, Object> startProcessInstance(
+    public ProcessInstanceRecord startProcessInstance(
             EngineConfig engine, CallPriority priority, Map<String, Object> body) {
         return repository.startProcessInstance(engine, priority, body);
     }
 
-    public FlowablePage listProcessDefinitions(
+    public ProcessDefinitionPage listProcessDefinitions(
             EngineConfig engine,
             CallPriority priority,
             String key,
@@ -482,22 +466,22 @@ public class ProcessApiClient {
         return repository.listProcessDefinitions(engine, priority, key, nameLike, latest, deploymentId, start, size);
     }
 
-    public FlowablePage listDefinitionEventSubscriptions(
+    public EventSubscriptionPage listDefinitionEventSubscriptions(
             EngineConfig engine, CallPriority priority, String processDefinitionId, int size) {
         return repository.listDefinitionEventSubscriptions(engine, priority, processDefinitionId, size);
     }
 
-    public FlowablePage listDeployments(
+    public DeploymentPage listDeployments(
             EngineConfig engine, CallPriority priority, String nameLike, int start, int size) {
         return repository.listDeployments(engine, priority, nameLike, start, size);
     }
 
-    @SuppressWarnings("unchecked")
-    public Map<String, Object> getDeployment(EngineConfig engine, CallPriority priority, String deploymentId) {
+    public DeploymentRecord getDeployment(EngineConfig engine, CallPriority priority, String deploymentId) {
         return repository.getDeployment(engine, priority, deploymentId);
     }
 
-    public FlowablePage listDeploymentResources(EngineConfig engine, CallPriority priority, String deploymentId) {
+    public List<DeploymentResourceRecord> listDeploymentResources(
+            EngineConfig engine, CallPriority priority, String deploymentId) {
         return repository.listDeploymentResources(engine, priority, deploymentId);
     }
 

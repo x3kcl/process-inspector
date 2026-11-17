@@ -1,8 +1,17 @@
+import { useState } from 'react'
 import { RawJsonExport } from '../RawJsonExport'
 import { Link } from 'react-router'
-import { formatDateTime, formatSeconds, useDisplayZone } from '../../lib/format'
+import { formatDateTime, formatDurationMs, useDisplayZone } from '../../lib/format'
 import { useInstanceTimeline } from '../useInstanceQueries'
-import { describeLiveState, flattenTimeline, type TimelineRowItem } from './timelineModel'
+import { Segmented } from '../../components/Segmented'
+import {
+  describeLiveState,
+  durationShare,
+  flattenTimeline,
+  foldFlows,
+  instanceSpanMs,
+  type TimelineRowItem,
+} from './timelineModel'
 
 interface Props {
   engineId: string
@@ -20,6 +29,7 @@ export default function TimelineTab({ engineId, instanceId }: Props) {
   const query = useInstanceTimeline(engineId, instanceId)
   // R-UXQ-03: bar titles format timestamps as plain strings — re-render on the UTC toggle.
   useDisplayZone()
+  const [showFlows, setShowFlows] = useState(false) // not persisted (#675)
 
   if (query.isPending) return <div className="zero-state">Loading the activity timeline…</div>
   if (query.isError) {
@@ -37,8 +47,9 @@ export default function TimelineTab({ engineId, instanceId }: Props) {
       </div>
     )
   }
-  const rows = flattenTimeline(activities)
-  const window = timeWindow(rows)
+  const all = flattenTimeline(activities)
+  const window = timeWindow(all)
+  const { rows, hidden } = foldFlows(all, showFlows)
   return (
     <div className="timeline-tab">
       <RawJsonExport data={query.data} filename={`${engineId}-${instanceId}-timeline.json`} />
@@ -48,6 +59,25 @@ export default function TimelineTab({ engineId, instanceId }: Props) {
           cap truncated this list.
         </p>
       )}
+      <div className="tl-flows">
+        <Segmented
+          ariaLabel="Timeline rows"
+          options={[
+            { value: 'steps', label: 'Steps' },
+            { value: 'all', label: 'Steps + flows' },
+          ]}
+          value={showFlows ? 'all' : 'steps'}
+          onChange={(v) => {
+            setShowFlows(v === 'all')
+          }}
+        />
+        {hidden > 0 && (
+          <span className="value-muted">
+            {' '}
+            {hidden} sequence flow{hidden === 1 ? '' : 's'} hidden
+          </span>
+        )}
+      </div>
       <div
         className="tl-rows"
         role="tree"
@@ -57,6 +87,10 @@ export default function TimelineTab({ engineId, instanceId }: Props) {
           <TimelineRowView key={row.key} row={row} engineId={engineId} window={window} />
         ))}
       </div>
+      <p className="strip-note">
+        Bar length is each row's share of the instance's elapsed time; parallel rows may add up to
+        more than 100 %.
+      </p>
     </div>
   )
 }
@@ -68,18 +102,14 @@ interface TimeWindow {
 
 function timeWindow(rows: TimelineRowItem[]): TimeWindow {
   let min = Number.POSITIVE_INFINITY
-  let max = Number.NEGATIVE_INFINITY
   for (const row of rows) {
     if (row.kind === 'cap-warning') continue // synthesized rows carry no time
     const start = parseTime(row.activity.startTime)
     if (start !== null) min = Math.min(min, start)
-    const end = parseTime(row.activity.endTime)
-    if (end !== null) max = Math.max(max, end)
   }
   // An all-open (or phantom-only) timeline still renders: bars span "now".
   if (!Number.isFinite(min)) min = Date.now()
-  max = Math.max(max, Date.now())
-  return { start: min, span: Math.max(max - min, 1) }
+  return { start: min, span: Math.max(instanceSpanMs(rows, Date.now()), 1) }
 }
 
 function parseTime(iso: string | null | undefined): number | null {
@@ -136,13 +166,14 @@ function TimelineActivityRow({
   const end = parseTime(activity.endTime)
   const ongoing = end === null
   const left = ((start - window.start) / window.span) * 100
-  const width = (((end ?? window.start + window.span) - start) / window.span) * 100
+  const share = durationShare(activity.durationMs, window.span)
+  const width = share ?? (((end ?? window.start + window.span) - start) / window.span) * 100
 
   const label = activity.activityName ?? activity.activityId ?? '?'
   const duration = phantom
     ? 'timing unknown'
     : activity.durationMs !== undefined
-      ? formatSeconds(Math.round(activity.durationMs / 1000))
+      ? formatDurationMs(activity.durationMs)
       : ongoing
         ? 'still running'
         : ''

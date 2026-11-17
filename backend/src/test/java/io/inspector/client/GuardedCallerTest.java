@@ -113,9 +113,9 @@ class GuardedCallerTest {
     void emitsBasicAuthResolvedFromPasswordRef() {
         wm.stubFor(get(urlPathEqualTo("/management/engine")).willReturn(okJson("{\"version\":\"6.8.0\"}")));
 
-        Map<String, Object> info = client.engineInfo(engine("auth-engine"), CallPriority.INTERACTIVE);
+        EngineInfoRecord info = client.engineInfo(engine("auth-engine"), CallPriority.INTERACTIVE);
 
-        assertThat(info).containsEntry("version", "6.8.0");
+        assertThat(info.version()).isEqualTo("6.8.0");
         // base64(rest-admin:test) — the secret comes from the env var NAMED by password-ref
         wm.verify(getRequestedFor(urlPathEqualTo("/management/engine"))
                 .withHeader("Authorization", equalTo("Basic cmVzdC1hZG1pbjp0ZXN0")));
@@ -425,9 +425,9 @@ class GuardedCallerTest {
                 .whenScenarioStateIs("retry")
                 .willReturn(okJson("{\"version\":\"7\"}")));
 
-        Map<String, Object> info = oauthClient.engineInfo(engine, CallPriority.INTERACTIVE);
+        EngineInfoRecord info = oauthClient.engineInfo(engine, CallPriority.INTERACTIVE);
 
-        assertThat(info).containsEntry("version", "7");
+        assertThat(info.version()).isEqualTo("7");
         wm.verify(2, postRequestedFor(urlPathEqualTo("/token")));
         wm.verify(getRequestedFor(urlPathEqualTo("/management/engine"))
                 .withHeader("Authorization", equalTo("Bearer tok-2")));

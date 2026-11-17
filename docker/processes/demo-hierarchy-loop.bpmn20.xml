@@ -1,0 +1,63 @@
+<?xml version="1.0" encoding="UTF-8"?>
+<definitions xmlns="http://www.omg.org/spec/BPMN/20100524/MODEL"
+             xmlns:xsi="http://www.w3.org/2001/XMLSchema-instance"
+             xmlns:flowable="http://flowable.org/bpmn"
+             xmlns:bpmndi="http://www.omg.org/spec/BPMN/20100524/DI"
+             xmlns:omgdc="http://www.omg.org/spec/DD/20100524/DC"
+             xmlns:omgdi="http://www.omg.org/spec/DD/20100524/DI"
+             typeLanguage="http://www.w3.org/2001/XMLSchema"
+             expressionLanguage="http://www.w3.org/1999/XPath"
+             targetNamespace="http://inspector.io/demo">
+
+  <!-- Hierarchy-migration fixture (#497), late child: a parent that calls demoWideChild again and
+       again, one child at a time, until the variable `done` is true. The child parks on a user
+       task; completing it ends that child and the next loop starts a NEW one under the same
+       parent — a running child that a plan stored earlier does not hold. -->
+  <process id="demoHierarchyLoop" name="Hierarchy fixture (one child per loop)" isExecutable="true">
+    <startEvent id="start"/>
+    <sequenceFlow id="flow1" sourceRef="start" targetRef="callChild"/>
+    <callActivity id="callChild" name="Call one child" calledElement="demoWideChild"/>
+    <sequenceFlow id="flow2" sourceRef="callChild" targetRef="again"/>
+    <exclusiveGateway id="again" name="Done?" default="toNextLoop"/>
+    <sequenceFlow id="toNextLoop" sourceRef="again" targetRef="callChild"/>
+    <sequenceFlow id="toEnd" sourceRef="again" targetRef="end">
+      <conditionExpression xsi:type="tFormalExpression">${execution.getVariable('done') == true}</conditionExpression>
+    </sequenceFlow>
+    <endEvent id="end"/>
+  </process>
+
+  <bpmndi:BPMNDiagram id="diag">
+    <bpmndi:BPMNPlane id="plane" bpmnElement="demoHierarchyLoop">
+      <bpmndi:BPMNShape id="s_start" bpmnElement="start">
+        <omgdc:Bounds x="100" y="100" width="30" height="30"/>
+      </bpmndi:BPMNShape>
+      <bpmndi:BPMNShape id="s_callChild" bpmnElement="callChild">
+        <omgdc:Bounds x="180" y="80" width="120" height="70"/>
+      </bpmndi:BPMNShape>
+      <bpmndi:BPMNShape id="s_again" bpmnElement="again" isMarkerVisible="true">
+        <omgdc:Bounds x="350" y="95" width="40" height="40"/>
+      </bpmndi:BPMNShape>
+      <bpmndi:BPMNShape id="s_end" bpmnElement="end">
+        <omgdc:Bounds x="440" y="100" width="30" height="30"/>
+      </bpmndi:BPMNShape>
+      <bpmndi:BPMNEdge id="e_flow1" bpmnElement="flow1">
+        <omgdi:waypoint x="130" y="115"/>
+        <omgdi:waypoint x="180" y="115"/>
+      </bpmndi:BPMNEdge>
+      <bpmndi:BPMNEdge id="e_flow2" bpmnElement="flow2">
+        <omgdi:waypoint x="300" y="115"/>
+        <omgdi:waypoint x="350" y="115"/>
+      </bpmndi:BPMNEdge>
+      <bpmndi:BPMNEdge id="e_toNextLoop" bpmnElement="toNextLoop">
+        <omgdi:waypoint x="370" y="135"/>
+        <omgdi:waypoint x="370" y="190"/>
+        <omgdi:waypoint x="240" y="190"/>
+        <omgdi:waypoint x="240" y="150"/>
+      </bpmndi:BPMNEdge>
+      <bpmndi:BPMNEdge id="e_toEnd" bpmnElement="toEnd">
+        <omgdi:waypoint x="390" y="115"/>
+        <omgdi:waypoint x="440" y="115"/>
+      </bpmndi:BPMNEdge>
+    </bpmndi:BPMNPlane>
+  </bpmndi:BPMNDiagram>
+</definitions>

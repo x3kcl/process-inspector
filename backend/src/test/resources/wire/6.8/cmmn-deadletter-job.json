@@ -1,0 +1,16 @@
+{
+  "caseDefinitionId": "8239a52b-e1fc-11f1-937e-6aebd179bc16",
+  "caseDefinitionUrl": "http://localhost:8081/flowable-rest/cmmn-api/cmmn-repository/case-definitions/8239a52b-e1fc-11f1-937e-6aebd179bc16",
+  "caseInstanceId": "823c644c-e1fc-11f1-937e-6aebd179bc16",
+  "caseInstanceUrl": "http://localhost:8081/flowable-rest/cmmn-api/cmmn-runtime/case-instances/823c644c-e1fc-11f1-937e-6aebd179bc16",
+  "createTime": "2026-11-16T20:30:43.495+00:00",
+  "dueDate": "2026-11-16T20:30:53.495Z",
+  "elementId": "failingService",
+  "elementName": "Failing service",
+  "exceptionMessage": "Unknown property used in expression: ${nonExistentBean.doStuff()}",
+  "id": "823c8b61-e1fc-11f1-937e-6aebd179bc16",
+  "planItemInstanceId": "823c644e-e1fc-11f1-937e-6aebd179bc16",
+  "retries": 0,
+  "tenantId": "",
+  "url": "http://localhost:8081/flowable-rest/cmmn-api/cmmn-management/jobs/823c8b61-e1fc-11f1-937e-6aebd179bc16"
+}

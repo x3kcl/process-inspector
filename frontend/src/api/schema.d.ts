@@ -485,6 +485,38 @@ export interface paths {
         patch?: never;
         trace?: never;
     };
+    "/api/bulk/migrate-cases": {
+        parameters: {
+            query?: never;
+            header?: never;
+            path?: never;
+            cookie?: never;
+        };
+        get?: never;
+        put?: never;
+        post: operations["submitCaseMigration"];
+        delete?: never;
+        options?: never;
+        head?: never;
+        patch?: never;
+        trace?: never;
+    };
+    "/api/bulk/migrate-hierarchy": {
+        parameters: {
+            query?: never;
+            header?: never;
+            path?: never;
+            cookie?: never;
+        };
+        get?: never;
+        put?: never;
+        post: operations["submit_1"];
+        delete?: never;
+        options?: never;
+        head?: never;
+        patch?: never;
+        trace?: never;
+    };
     "/api/bulk/{id}": {
         parameters: {
             query?: never;
@@ -527,6 +559,118 @@ export interface paths {
         get?: never;
         put?: never;
         post: operations["verify"];
+        delete?: never;
+        options?: never;
+        head?: never;
+        patch?: never;
+        trace?: never;
+    };
+    "/api/case-definitions/{engineId}/{caseDefinitionId}/migrate-batch": {
+        parameters: {
+            query?: never;
+            header?: never;
+            path?: never;
+            cookie?: never;
+        };
+        get?: never;
+        put?: never;
+        post: operations["migrateBatch"];
+        delete?: never;
+        options?: never;
+        head?: never;
+        patch?: never;
+        trace?: never;
+    };
+    "/api/case-definitions/{engineId}/{caseDefinitionId}/migrate-historic": {
+        parameters: {
+            query?: never;
+            header?: never;
+            path?: never;
+            cookie?: never;
+        };
+        get?: never;
+        put?: never;
+        post: operations["migrateHistoric"];
+        delete?: never;
+        options?: never;
+        head?: never;
+        patch?: never;
+        trace?: never;
+    };
+    "/api/case-definitions/{engineId}/{caseDefinitionId}/migration-batches": {
+        parameters: {
+            query?: never;
+            header?: never;
+            path?: never;
+            cookie?: never;
+        };
+        get: operations["batches"];
+        put?: never;
+        post?: never;
+        delete?: never;
+        options?: never;
+        head?: never;
+        patch?: never;
+        trace?: never;
+    };
+    "/api/case-definitions/{engineId}/{key}/versions": {
+        parameters: {
+            query?: never;
+            header?: never;
+            path?: never;
+            cookie?: never;
+        };
+        get: operations["versions_1"];
+        put?: never;
+        post?: never;
+        delete?: never;
+        options?: never;
+        head?: never;
+        patch?: never;
+        trace?: never;
+    };
+    "/api/case-migration/analyses": {
+        parameters: {
+            query?: never;
+            header?: never;
+            path?: never;
+            cookie?: never;
+        };
+        get?: never;
+        put?: never;
+        post: operations["startAnalysis_1"];
+        delete?: never;
+        options?: never;
+        head?: never;
+        patch?: never;
+        trace?: never;
+    };
+    "/api/case-migration/analyses/{id}": {
+        parameters: {
+            query?: never;
+            header?: never;
+            path?: never;
+            cookie?: never;
+        };
+        get: operations["getAnalysis_1"];
+        put?: never;
+        post?: never;
+        delete?: never;
+        options?: never;
+        head?: never;
+        patch?: never;
+        trace?: never;
+    };
+    "/api/case-migration/cohorts/preview": {
+        parameters: {
+            query?: never;
+            header?: never;
+            path?: never;
+            cookie?: never;
+        };
+        get?: never;
+        put?: never;
+        post: operations["previewCohort_1"];
         delete?: never;
         options?: never;
         head?: never;
@@ -607,6 +751,22 @@ export interface paths {
         get: operations["identityLinks_2"];
         put?: never;
         post?: never;
+        delete?: never;
+        options?: never;
+        head?: never;
+        patch?: never;
+        trace?: never;
+    };
+    "/api/cases/{engineId}/{caseInstanceId}/migrate-historic": {
+        parameters: {
+            query?: never;
+            header?: never;
+            path?: never;
+            cookie?: never;
+        };
+        get?: never;
+        put?: never;
+        post: operations["migrateHistoricCase"];
         delete?: never;
         options?: never;
         head?: never;
@@ -1509,6 +1669,54 @@ export interface paths {
         patch?: never;
         trace?: never;
     };
+    "/api/migration/hierarchy/plans": {
+        parameters: {
+            query?: never;
+            header?: never;
+            path?: never;
+            cookie?: never;
+        };
+        get?: never;
+        put?: never;
+        post: operations["createPlan"];
+        delete?: never;
+        options?: never;
+        head?: never;
+        patch?: never;
+        trace?: never;
+    };
+    "/api/migration/hierarchy/plans/{id}": {
+        parameters: {
+            query?: never;
+            header?: never;
+            path?: never;
+            cookie?: never;
+        };
+        get: operations["getPlan"];
+        put?: never;
+        post?: never;
+        delete?: never;
+        options?: never;
+        head?: never;
+        patch?: never;
+        trace?: never;
+    };
+    "/api/migration/hierarchy/plans/{id}/groups": {
+        parameters: {
+            query?: never;
+            header?: never;
+            path?: never;
+            cookie?: never;
+        };
+        get?: never;
+        put: operations["decideGroup"];
+        post?: never;
+        delete?: never;
+        options?: never;
+        head?: never;
+        patch?: never;
+        trace?: never;
+    };
     "/api/recents": {
         parameters: {
             query?: never;
@@ -1993,6 +2201,10 @@ export interface components {
             /** Format: int64 */
             rowsChecked?: number;
         };
+        BlockedCase: {
+            caseInstanceId?: string;
+            reason?: string;
+        };
         BlockedInstance: {
             instanceId?: string;
             reason?: string;
@@ -2059,7 +2271,10 @@ export interface components {
             instanceId?: string;
             jobRef?: string;
             /** Format: int32 */
+            level?: number;
+            /** Format: int32 */
             ordinal?: number;
+            parentInstanceId?: string;
             state?: string;
         };
         BulkJobDto: {
@@ -2084,6 +2299,14 @@ export interface components {
             /** Format: int32 */
             totalItems?: number;
             verb?: string;
+        };
+        BulkMigrateHierarchyRequest: {
+            /** Format: int32 */
+            confirmedCount?: number;
+            /** Format: uuid */
+            planId?: string;
+            reason?: string;
+            ticketId?: string;
         };
         BulkMigrateRequest: {
             analysisIds?: string[];
@@ -2110,6 +2333,77 @@ export interface components {
             /** Format: int64 */
             ageSeconds?: number;
             name?: string;
+        };
+        CaseCohortAnalysisView: {
+            banner?: string;
+            /** Format: int32 */
+            blockerCount?: number;
+            blockers?: components["schemas"]["BlockedCase"][];
+            boundLabel?: string;
+            byPlanItem?: components["schemas"]["PlanItemAggregate"][];
+            /** Format: int32 */
+            cleanCount?: number;
+            /** Format: int64 */
+            cohortTotal?: number;
+            engineId?: string;
+            executableIds?: string[];
+            failure?: string;
+            filter?: components["schemas"]["CaseCohortRequest"];
+            /** Format: uuid */
+            id?: string;
+            lowerBound?: boolean;
+            sourceCaseDefinitionId?: string;
+            status?: string;
+            targetCaseDefinitionId?: string;
+        };
+        CaseCohortPreviewResponse: {
+            /** Format: int32 */
+            cap?: number;
+            /** Format: int64 */
+            count?: number;
+            engineId?: string;
+            fromCaseDefinitionId?: string;
+            strategy?: string;
+            truncated?: boolean;
+        };
+        CaseCohortRequest: {
+            businessKey?: string;
+            businessKeyContains?: boolean;
+            fromCaseDefinitionId?: string;
+            startedAfter?: string;
+            startedBefore?: string;
+            toCaseDefinitionId?: string;
+        };
+        CaseDefinitionMigrationRequest: {
+            confirmToken?: string;
+            /** Format: int32 */
+            confirmedCount?: number;
+            reason?: string;
+            ticketId?: string;
+            toCaseDefinitionId?: string;
+        };
+        CaseDefinitionVersion: {
+            caseDefinitionId?: string;
+            deploymentId?: string;
+            /** Format: int64 */
+            endedCaseCount?: number;
+            latest?: boolean;
+            name?: string;
+            /** Format: int64 */
+            runningCaseCount?: number;
+            /** Format: int32 */
+            version?: number;
+        };
+        CaseDefinitionVersionsResponse: {
+            complete?: boolean;
+            definitionRoutesGate?: string;
+            engineId?: string;
+            key?: string;
+            /** Format: int32 */
+            latestVersion?: number;
+            /** Format: int32 */
+            totalVersions?: number;
+            versions?: components["schemas"]["CaseDefinitionVersion"][];
         };
         CaseDetail: {
             businessKey?: string;
@@ -2143,6 +2437,26 @@ export interface components {
             failingElementName?: string;
             firstException?: string;
             jobs?: components["schemas"]["DeadLetterJobRef"][];
+        };
+        CaseIdentityLinkRecord: {
+            group?: string;
+            type?: string;
+            url?: string;
+            user?: string;
+        };
+        CaseMigrationBatchView: {
+            batchId?: string;
+            completeTime?: string;
+            createTime?: string;
+            fromCaseDefinitionId?: string;
+            notSucceededCaseIds?: string[];
+            /** Format: int32 */
+            parts?: number;
+            partsByStatus?: {
+                [key: string]: number;
+            };
+            status?: string;
+            toCaseDefinitionId?: string;
         };
         CasePlanItem: {
             completedTime?: string;
@@ -2746,6 +3060,43 @@ export interface components {
             requested?: boolean;
             startTime?: string;
         };
+        HierarchyPlanCreate: {
+            cohort?: components["schemas"]["CohortPreviewRequest"];
+            rootInstanceId?: string;
+        };
+        HierarchyPlanDecide: {
+            definitionId?: string;
+            mappings?: components["schemas"]["MigrationMapping"][];
+            skip?: boolean;
+            toDefinitionId?: string;
+        };
+        HierarchyPlanView: {
+            banner?: string;
+            /** Format: int32 */
+            breadthCap?: number;
+            circularReferences?: components["schemas"]["PlanCircularReference"][];
+            /** Format: date-time */
+            createdAt?: string;
+            createdBy?: string;
+            engineId?: string;
+            executable?: boolean;
+            /** Format: int32 */
+            executableCount?: number;
+            groups?: components["schemas"]["PlanGroupView"][];
+            /** Format: uuid */
+            id?: string;
+            levels?: components["schemas"]["PlanLevelView"][];
+            /** Format: int32 */
+            maxDepth?: number;
+            /** Format: int32 */
+            nodeCap?: number;
+            nodes?: components["schemas"]["PlanNode"][];
+            notExecutableReason?: string;
+            /** Format: int32 */
+            notSentCount?: number;
+            rootInstanceIds?: string[];
+            truncations?: components["schemas"]["PlanTruncation"][];
+        };
         HistoryDeleteRequest: {
             businessKey?: string;
             /** Format: int32 */
@@ -3208,10 +3559,66 @@ export interface components {
             };
             rows?: components["schemas"]["PersonTaskRow"][];
         };
+        PlanCircularReference: {
+            ancestorInstanceId?: string;
+            definitionKey?: string;
+            /** Format: int32 */
+            depth?: number;
+            instanceId?: string;
+        };
+        PlanGroupView: {
+            /** Format: uuid */
+            analysisId?: string;
+            /** Format: int32 */
+            blockerCount?: number;
+            definitionId?: string;
+            definitionKey?: string;
+            /** Format: int32 */
+            executableCount?: number;
+            /** Format: int32 */
+            instanceCount?: number;
+            /** Format: int32 */
+            maxDepth?: number;
+            /** Format: int32 */
+            minDepth?: number;
+            status?: string;
+            targetDefinitionId?: string;
+            /** Format: int32 */
+            version?: number;
+        };
+        PlanItemAggregate: {
+            /** Format: int32 */
+            cases?: number;
+            planItemDefinitionId?: string;
+        };
         PlanItemChange: {
             action?: string;
             definitionId?: string;
             planItemInstanceId?: string;
+        };
+        PlanLevelView: {
+            /** Format: int32 */
+            depth?: number;
+            /** Format: int32 */
+            executableCount?: number;
+            /** Format: int32 */
+            instanceCount?: number;
+        };
+        PlanNode: {
+            businessKey?: string;
+            definitionId?: string;
+            /** Format: int32 */
+            depth?: number;
+            instanceId?: string;
+            parentInstanceId?: string;
+        };
+        PlanTruncation: {
+            /** Format: int32 */
+            enumerated?: number;
+            instanceId?: string;
+            kind?: string;
+            /** Format: int64 */
+            total?: number;
         };
         Point: {
             /** Format: int64 */
@@ -3681,6 +4088,13 @@ export interface components {
             operation?: string;
             type?: string;
             value?: unknown;
+        };
+        VariableRecord: {
+            name?: string;
+            scope?: string;
+            type?: string;
+            value?: unknown;
+            valueUrl?: string;
         };
         VersionRef: {
             definitionId?: string;
@@ -4244,6 +4658,7 @@ export interface operations {
                 engineId?: string;
                 ticketId?: string;
                 since?: string;
+                until?: string;
                 limit?: number;
             };
             header?: never;
@@ -4271,6 +4686,7 @@ export interface operations {
                 engineId?: string;
                 ticketId?: string;
                 since?: string;
+                until?: string;
                 limit?: number;
             };
             header?: never;
@@ -4524,6 +4940,54 @@ export interface operations {
             };
         };
     };
+    submitCaseMigration: {
+        parameters: {
+            query?: never;
+            header?: never;
+            path?: never;
+            cookie?: never;
+        };
+        requestBody: {
+            content: {
+                "application/json": components["schemas"]["BulkMigrateRequest"];
+            };
+        };
+        responses: {
+            /** @description OK */
+            200: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "*/*": components["schemas"]["BulkJobDto"];
+                };
+            };
+        };
+    };
+    submit_1: {
+        parameters: {
+            query?: never;
+            header?: never;
+            path?: never;
+            cookie?: never;
+        };
+        requestBody: {
+            content: {
+                "application/json": components["schemas"]["BulkMigrateHierarchyRequest"];
+            };
+        };
+        responses: {
+            /** @description OK */
+            200: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "*/*": components["schemas"]["BulkJobDto"];
+                };
+            };
+        };
+    };
     get: {
         parameters: {
             query?: never;
@@ -4587,6 +5051,180 @@ export interface operations {
                 };
                 content: {
                     "*/*": components["schemas"]["BulkItemDto"];
+                };
+            };
+        };
+    };
+    migrateBatch: {
+        parameters: {
+            query?: never;
+            header?: never;
+            path: {
+                engineId: string;
+                caseDefinitionId: string;
+            };
+            cookie?: never;
+        };
+        requestBody: {
+            content: {
+                "application/json": components["schemas"]["CaseDefinitionMigrationRequest"];
+            };
+        };
+        responses: {
+            /** @description OK */
+            200: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "*/*": components["schemas"]["ActionResult"];
+                };
+            };
+        };
+    };
+    migrateHistoric: {
+        parameters: {
+            query?: never;
+            header?: never;
+            path: {
+                engineId: string;
+                caseDefinitionId: string;
+            };
+            cookie?: never;
+        };
+        requestBody: {
+            content: {
+                "application/json": components["schemas"]["CaseDefinitionMigrationRequest"];
+            };
+        };
+        responses: {
+            /** @description OK */
+            200: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "*/*": components["schemas"]["ActionResult"];
+                };
+            };
+        };
+    };
+    batches: {
+        parameters: {
+            query?: never;
+            header?: never;
+            path: {
+                engineId: string;
+                caseDefinitionId: string;
+            };
+            cookie?: never;
+        };
+        requestBody?: never;
+        responses: {
+            /** @description OK */
+            200: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "*/*": components["schemas"]["CaseMigrationBatchView"][];
+                };
+            };
+        };
+    };
+    versions_1: {
+        parameters: {
+            query?: never;
+            header?: never;
+            path: {
+                engineId: string;
+                key: string;
+            };
+            cookie?: never;
+        };
+        requestBody?: never;
+        responses: {
+            /** @description OK */
+            200: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "*/*": components["schemas"]["CaseDefinitionVersionsResponse"];
+                };
+            };
+        };
+    };
+    startAnalysis_1: {
+        parameters: {
+            query: {
+                engineId: string;
+            };
+            header?: never;
+            path?: never;
+            cookie?: never;
+        };
+        requestBody: {
+            content: {
+                "application/json": components["schemas"]["CaseCohortRequest"];
+            };
+        };
+        responses: {
+            /** @description OK */
+            200: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "*/*": components["schemas"]["CaseCohortAnalysisView"];
+                };
+            };
+        };
+    };
+    getAnalysis_1: {
+        parameters: {
+            query?: never;
+            header?: never;
+            path: {
+                id: string;
+            };
+            cookie?: never;
+        };
+        requestBody?: never;
+        responses: {
+            /** @description OK */
+            200: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "*/*": components["schemas"]["CaseCohortAnalysisView"];
+                };
+            };
+        };
+    };
+    previewCohort_1: {
+        parameters: {
+            query: {
+                engineId: string;
+            };
+            header?: never;
+            path?: never;
+            cookie?: never;
+        };
+        requestBody: {
+            content: {
+                "application/json": components["schemas"]["CaseCohortRequest"];
+            };
+        };
+        responses: {
+            /** @description OK */
+            200: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "*/*": components["schemas"]["CaseCohortPreviewResponse"];
                 };
             };
         };
@@ -4711,9 +5349,34 @@ export interface operations {
                     [name: string]: unknown;
                 };
                 content: {
-                    "*/*": {
-                        [key: string]: unknown;
-                    }[];
+                    "*/*": components["schemas"]["CaseIdentityLinkRecord"][];
+                };
+            };
+        };
+    };
+    migrateHistoricCase: {
+        parameters: {
+            query?: never;
+            header?: never;
+            path: {
+                engineId: string;
+                caseInstanceId: string;
+            };
+            cookie?: never;
+        };
+        requestBody: {
+            content: {
+                "application/json": components["schemas"]["CaseDefinitionMigrationRequest"];
+            };
+        };
+        responses: {
+            /** @description OK */
+            200: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "*/*": components["schemas"]["ActionResult"];
                 };
             };
         };
@@ -4759,9 +5422,7 @@ export interface operations {
                     [name: string]: unknown;
                 };
                 content: {
-                    "*/*": {
-                        [key: string]: unknown;
-                    }[];
+                    "*/*": components["schemas"]["VariableRecord"][];
                 };
             };
         };
@@ -6098,6 +6759,80 @@ export interface operations {
                 };
                 content: {
                     "*/*": components["schemas"]["CohortPreviewResponse"];
+                };
+            };
+        };
+    };
+    createPlan: {
+        parameters: {
+            query: {
+                engineId: string;
+            };
+            header?: never;
+            path?: never;
+            cookie?: never;
+        };
+        requestBody: {
+            content: {
+                "application/json": components["schemas"]["HierarchyPlanCreate"];
+            };
+        };
+        responses: {
+            /** @description OK */
+            200: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "*/*": components["schemas"]["HierarchyPlanView"];
+                };
+            };
+        };
+    };
+    getPlan: {
+        parameters: {
+            query?: never;
+            header?: never;
+            path: {
+                id: string;
+            };
+            cookie?: never;
+        };
+        requestBody?: never;
+        responses: {
+            /** @description OK */
+            200: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "*/*": components["schemas"]["HierarchyPlanView"];
+                };
+            };
+        };
+    };
+    decideGroup: {
+        parameters: {
+            query?: never;
+            header?: never;
+            path: {
+                id: string;
+            };
+            cookie?: never;
+        };
+        requestBody: {
+            content: {
+                "application/json": components["schemas"]["HierarchyPlanDecide"];
+            };
+        };
+        responses: {
+            /** @description OK */
+            200: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "*/*": components["schemas"]["HierarchyPlanView"];
                 };
             };
         };

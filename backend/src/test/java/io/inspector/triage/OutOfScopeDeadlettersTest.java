@@ -2,6 +2,7 @@ package io.inspector.triage;
 
 import static org.assertj.core.api.Assertions.assertThat;
 
+import io.inspector.client.JobRecords;
 import io.inspector.triage.TriageAggregationService.OutOfScope;
 import java.util.LinkedHashMap;
 import java.util.List;
@@ -45,7 +46,7 @@ class OutOfScopeDeadlettersTest {
 
     /** A complete (uncapped) DEADLETTER scan of the given rows on a scope-capable engine. */
     private static OutOfScope complete(List<Map<String, Object>> dlq, boolean scopeTypeCapable) {
-        return TriageAggregationService.outOfScopeDeadletters(dlq, false, scopeTypeCapable);
+        return TriageAggregationService.outOfScopeDeadletters(JobRecords.jobs(dlq), false, scopeTypeCapable);
     }
 
     @Test
@@ -84,7 +85,7 @@ class OutOfScopeDeadlettersTest {
     @Test
     void aTruncatedDeadletterScanFloorsTheCount() {
         List<Map<String, Object>> dlq = List.of(bpmnJob("p1"), cmmnOrphanJob("c1"), cmmnOrphanJob("c2"));
-        OutOfScope result = TriageAggregationService.outOfScopeDeadletters(dlq, true, true);
+        OutOfScope result = TriageAggregationService.outOfScopeDeadletters(JobRecords.jobs(dlq), true, true);
         assertThat(result.count()).isEqualTo(2);
         assertThat(result.deadletterTruncated()).isTrue();
     }
@@ -92,7 +93,8 @@ class OutOfScopeDeadlettersTest {
     /** A truncated scan on an engine that cannot discriminate scope stays unknown — no floor. */
     @Test
     void aTruncatedScanOnAnIncapableEngineIsStillNullAndUnfloored() {
-        OutOfScope result = TriageAggregationService.outOfScopeDeadletters(List.of(cmmnOrphanJob("c1")), true, false);
+        OutOfScope result = TriageAggregationService.outOfScopeDeadletters(
+                JobRecords.jobs(List.of(cmmnOrphanJob("c1"))), true, false);
         assertThat(result.count()).isNull();
         assertThat(result.deadletterTruncated()).isFalse();
     }

@@ -21,6 +21,7 @@ import type { TabId } from './tabs'
 import { DEFAULT_TAB, TAB_LABELS, isTabId } from './tabs'
 import { buildErrorTicketText, buildTicketText } from './ticket'
 import { useInstanceDiagram, useInstanceVitals } from './useInstanceQueries'
+import { useExecutionOverlay } from './diagram/useExecutionOverlay'
 
 // Every tab is its own chunk AND mounts (= fetches) only when opened — IBM's slow-detail
 // lesson (SPEC §4). bpmn-js ships with the page chunk; its data still loads lazily.
@@ -540,6 +541,12 @@ function DiagramSlot({
     }),
     [diagram.data, divergence],
   )
+  const execution = useExecutionOverlay(
+    engineId,
+    instanceId,
+    diagram.data?.xml,
+    markers.activeActivityIds,
+  )
   const handleSelect = useCallback(
     (activityId: string) => {
       onSelect(activityId, markers.deadLetterActivityIds.includes(activityId))
@@ -563,6 +570,7 @@ function DiagramSlot({
       markers={markers}
       onSelectActivity={handleSelect}
       selectedActivityId={selectedActivityId}
+      execution={execution}
     />
   )
 }

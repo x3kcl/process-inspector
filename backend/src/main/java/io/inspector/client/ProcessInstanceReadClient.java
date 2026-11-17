@@ -12,7 +12,10 @@ import org.springframework.web.client.HttpClientErrorException;
 final class ProcessInstanceReadClient {
 
     /** Runtime variable collections answer a BARE JSON array, not the paged envelope. */
-    private static final org.springframework.core.ParameterizedTypeReference<List<Map<String, Object>>> VARIABLE_LIST =
+    private static final org.springframework.core.ParameterizedTypeReference<List<VariableRecord>> VARIABLE_LIST =
+            new org.springframework.core.ParameterizedTypeReference<>() {};
+
+    private static final org.springframework.core.ParameterizedTypeReference<List<TableCountRecord>> TABLE_LIST =
             new org.springframework.core.ParameterizedTypeReference<>() {};
 
     private final GuardedCaller guarded;
@@ -24,7 +27,7 @@ final class ProcessInstanceReadClient {
     /* ---------- queries ---------- */
 
     /** POST /query/historic-process-instances — the primary search query. */
-    public FlowablePage queryHistoricProcessInstances(
+    public ProcessInstancePage queryHistoricProcessInstances(
             EngineConfig engine, CallPriority priority, Map<String, Object> body) {
         return guarded.call(
                 engine,
@@ -35,11 +38,11 @@ final class ProcessInstanceReadClient {
                         .contentType(MediaType.APPLICATION_JSON)
                         .body(body)
                         .retrieve()
-                        .body(FlowablePage.class));
+                        .body(ProcessInstancePage.class));
     }
 
     /** POST /query/process-instances — runtime query (used for the suspended-ID set). */
-    public FlowablePage queryRuntimeProcessInstances(
+    public ProcessInstancePage queryRuntimeProcessInstances(
             EngineConfig engine, CallPriority priority, Map<String, Object> body) {
         return guarded.call(
                 engine,
@@ -50,7 +53,7 @@ final class ProcessInstanceReadClient {
                         .contentType(MediaType.APPLICATION_JSON)
                         .body(body)
                         .retrieve()
-                        .body(FlowablePage.class));
+                        .body(ProcessInstancePage.class));
     }
 
     /**
@@ -59,7 +62,7 @@ final class ProcessInstanceReadClient {
      * {@code processDefinitionId}, {@code tenantId}. No sort param: {@code createTime}
      * is not an accepted job sort property, and the join legs don't care about order.
      */
-    public FlowablePage listJobs(
+    public JobPage listJobs(
             EngineConfig engine,
             CallPriority priority,
             JobLaneKind lane,
@@ -79,7 +82,7 @@ final class ProcessInstanceReadClient {
                             return b.build();
                         })
                         .retrieve()
-                        .body(FlowablePage.class));
+                        .body(JobPage.class));
     }
 
     /**
@@ -87,8 +90,7 @@ final class ProcessInstanceReadClient {
      * historic row (unlike the runtime one) carries {@code superProcessInstanceId} on every
      * engine version, and exists for ended children too. Null when the id is unknown.
      */
-    @SuppressWarnings("unchecked")
-    public Map<String, Object> getHistoricProcessInstance(
+    public ProcessInstanceRecord getHistoricProcessInstance(
             EngineConfig engine, CallPriority priority, String processInstanceId) {
         try {
             return guarded.call(
@@ -98,7 +100,7 @@ final class ProcessInstanceReadClient {
                             .get()
                             .uri("/history/historic-process-instances/{id}", processInstanceId)
                             .retrieve()
-                            .body(Map.class));
+                            .body(ProcessInstanceRecord.class));
         } catch (HttpClientErrorException.NotFound e) {
             return null;
         }
@@ -109,8 +111,7 @@ final class ProcessInstanceReadClient {
      * runtime query ignores {@code processInstanceIds} (proven on 6.3.1: the unknown field
      * is silently dropped and the query returns UNFILTERED data). 404 = not running.
      */
-    @SuppressWarnings("unchecked")
-    public Map<String, Object> getRuntimeProcessInstance(
+    public ProcessInstanceRecord getRuntimeProcessInstance(
             EngineConfig engine, CallPriority priority, String processInstanceId) {
         try {
             return guarded.call(
@@ -120,7 +121,7 @@ final class ProcessInstanceReadClient {
                             .get()
                             .uri("/runtime/process-instances/{id}", processInstanceId)
                             .retrieve()
-                            .body(Map.class));
+                            .body(ProcessInstanceRecord.class));
         } catch (HttpClientErrorException.NotFound e) {
             return null;
         }
@@ -133,7 +134,7 @@ final class ProcessInstanceReadClient {
      * 6.3.1/6.8/7.1 (probed live). One page suffices — an instance holds a handful of
      * unfinished activities, not thousands.
      */
-    public FlowablePage listUnfinishedActivities(
+    public ActivityInstancePage listUnfinishedActivities(
             EngineConfig engine, CallPriority priority, String processInstanceId, String tenantId, int size) {
         return guarded.call(
                 engine,
@@ -149,7 +150,7 @@ final class ProcessInstanceReadClient {
                             return b.build();
                         })
                         .retrieve()
-                        .body(FlowablePage.class));
+                        .body(ActivityInstancePage.class));
     }
 
     /**
@@ -159,7 +160,7 @@ final class ProcessInstanceReadClient {
      * ONE canonical signature (Engine-client split, #86: collapses 5 telescoping overloads that used
      * to exist here).
      */
-    public FlowablePage listProcessDefinitionsByKey(
+    public ProcessDefinitionPage listProcessDefinitionsByKey(
             EngineConfig engine, CallPriority priority, String key, Integer version, int start, int size) {
         return guarded.call(
                 engine,
@@ -175,7 +176,7 @@ final class ProcessInstanceReadClient {
                             return b.build();
                         })
                         .retrieve()
-                        .body(FlowablePage.class));
+                        .body(ProcessDefinitionPage.class));
     }
 
     /**
@@ -184,7 +185,7 @@ final class ProcessInstanceReadClient {
      * paging prone to missed/duplicated rows under concurrent deploys). {@code page.total()} is
      * the full version count for the key, so the caller can detect truncation.
      */
-    public FlowablePage listProcessDefinitionVersionsDesc(
+    public ProcessDefinitionPage listProcessDefinitionVersionsDesc(
             EngineConfig engine, CallPriority priority, String key, int start, int size) {
         return guarded.call(
                 engine,
@@ -201,7 +202,7 @@ final class ProcessInstanceReadClient {
                             return b.build();
                         })
                         .retrieve()
-                        .body(FlowablePage.class));
+                        .body(ProcessDefinitionPage.class));
     }
 
     /**
@@ -211,7 +212,7 @@ final class ProcessInstanceReadClient {
      * explicitly (used by instance migration's default-target resolution). Empty page when the
      * key is undeployed.
      */
-    public FlowablePage latestProcessDefinitionByKey(EngineConfig engine, CallPriority priority, String key) {
+    public ProcessDefinitionPage latestProcessDefinitionByKey(EngineConfig engine, CallPriority priority, String key) {
         return guarded.call(
                 engine,
                 priority,
@@ -223,7 +224,7 @@ final class ProcessInstanceReadClient {
                                 .queryParam("size", 1)
                                 .build())
                         .retrieve()
-                        .body(FlowablePage.class));
+                        .body(ProcessDefinitionPage.class));
     }
 
     /**
@@ -233,7 +234,7 @@ final class ProcessInstanceReadClient {
      * queries. {@code page.total()} lets the caller detect a key set larger than {@code size}
      * (a lower bound). {@code latest=true} collapses the version history to one row per key.
      */
-    public FlowablePage listLatestProcessDefinitions(EngineConfig engine, CallPriority priority, int size) {
+    public ProcessDefinitionPage listLatestProcessDefinitions(EngineConfig engine, CallPriority priority, int size) {
         return guarded.call(
                 engine,
                 priority,
@@ -244,7 +245,7 @@ final class ProcessInstanceReadClient {
                                 .queryParam("size", size)
                                 .build())
                         .retrieve()
-                        .body(FlowablePage.class));
+                        .body(ProcessDefinitionPage.class));
     }
 
     /**
@@ -276,7 +277,8 @@ final class ProcessInstanceReadClient {
      * (execution-local variable segregation, SPEC §4). One page suffices: an instance holds
      * a handful of executions; the page cap keeps a pathological multi-instance loop bounded.
      */
-    public FlowablePage listExecutions(EngineConfig engine, CallPriority priority, String processInstanceId, int size) {
+    public ExecutionPage listExecutions(
+            EngineConfig engine, CallPriority priority, String processInstanceId, int size) {
         return guarded.call(
                 engine,
                 priority,
@@ -287,42 +289,40 @@ final class ProcessInstanceReadClient {
                                 .queryParam("size", size)
                                 .build())
                         .retrieve()
-                        .body(FlowablePage.class));
+                        .body(ExecutionPage.class));
     }
 
     /** GET /runtime/process-instances/{id}/identitylinks. Empty when the instance is not running. */
-    @SuppressWarnings("unchecked")
-    public List<Map<String, Object>> listRuntimeIdentityLinks(
+    public List<IdentityLinkRecord> listRuntimeIdentityLinks(
             EngineConfig engine, CallPriority priority, String processInstanceId) {
         try {
-            List<Map<String, Object>> rows = guarded.call(
+            IdentityLinkRecord[] rows = guarded.call(
                     engine,
                     priority,
                     () -> guarded.readClient(engine)
                             .get()
                             .uri("/runtime/process-instances/{id}/identitylinks", processInstanceId)
                             .retrieve()
-                            .body(List.class));
-            return rows == null ? List.of() : rows;
+                            .body(IdentityLinkRecord[].class));
+            return rows == null ? List.of() : List.of(rows);
         } catch (HttpClientErrorException.NotFound e) {
             return List.of();
         }
     }
 
     /** GET /history/historic-process-instances/{id}/identitylinks. Empty on 404. */
-    @SuppressWarnings("unchecked")
-    public List<Map<String, Object>> listHistoricIdentityLinks(
+    public List<IdentityLinkRecord> listHistoricIdentityLinks(
             EngineConfig engine, CallPriority priority, String processInstanceId) {
         try {
-            List<Map<String, Object>> rows = guarded.call(
+            IdentityLinkRecord[] rows = guarded.call(
                     engine,
                     priority,
                     () -> guarded.readClient(engine)
                             .get()
                             .uri("/history/historic-process-instances/{id}/identitylinks", processInstanceId)
                             .retrieve()
-                            .body(List.class));
-            return rows == null ? List.of() : rows;
+                            .body(IdentityLinkRecord[].class));
+            return rows == null ? List.of() : List.of(rows);
         } catch (HttpClientErrorException.NotFound e) {
             return List.of();
         }
@@ -366,7 +366,7 @@ final class ProcessInstanceReadClient {
      * GET /runtime/process-instances/{id}/variables — the typed process-scope rows of a
      * RUNNING instance. Bare array on the wire (not the paged envelope). Null = not running.
      */
-    public List<Map<String, Object>> listInstanceVariables(
+    public List<VariableRecord> listInstanceVariables(
             EngineConfig engine, CallPriority priority, String processInstanceId) {
         try {
             return guarded.call(
@@ -386,7 +386,7 @@ final class ProcessInstanceReadClient {
      * GET /runtime/executions/{id}/variables?scope=local — variables declared ON one
      * execution node (multi-instance loop locals live here, SPEC §4). Bare array.
      */
-    public List<Map<String, Object>> listExecutionLocalVariables(
+    public List<VariableRecord> listExecutionLocalVariables(
             EngineConfig engine, CallPriority priority, String executionId) {
         try {
             return guarded.call(
@@ -408,7 +408,7 @@ final class ProcessInstanceReadClient {
      * GET /history/historic-variable-instances?processInstanceId= — the variables of a
      * COMPLETED instance (runtime endpoints 404 after the end event — flowable-rest skill §2).
      */
-    public FlowablePage listHistoricVariableInstances(
+    public HistoricVariablePage listHistoricVariableInstances(
             EngineConfig engine, CallPriority priority, String processInstanceId, int size) {
         return guarded.call(
                 engine,
@@ -420,11 +420,11 @@ final class ProcessInstanceReadClient {
                                 .queryParam("size", size)
                                 .build())
                         .retrieve()
-                        .body(FlowablePage.class));
+                        .body(HistoricVariablePage.class));
     }
 
     /** GET /history/historic-activity-instances — one timeline page, startTime ascending. */
-    public FlowablePage listHistoricActivities(
+    public ActivityInstancePage listHistoricActivities(
             EngineConfig engine, CallPriority priority, String processInstanceId, int start, int size) {
         return guarded.call(
                 engine,
@@ -439,7 +439,7 @@ final class ProcessInstanceReadClient {
                                 .queryParam("size", size)
                                 .build())
                         .retrieve()
-                        .body(FlowablePage.class));
+                        .body(ActivityInstancePage.class));
     }
 
     /**
@@ -447,7 +447,7 @@ final class ProcessInstanceReadClient {
      * FOR (message/signal names, SPEC §4 vitals). Not present on every engine version:
      * callers degrade to an empty list on client errors, never fail the vitals.
      */
-    public FlowablePage listEventSubscriptions(
+    public EventSubscriptionPage listEventSubscriptions(
             EngineConfig engine, CallPriority priority, String processInstanceId, int size) {
         return guarded.call(
                 engine,
@@ -459,7 +459,7 @@ final class ProcessInstanceReadClient {
                                 .queryParam("size", size)
                                 .build())
                         .retrieve()
-                        .body(FlowablePage.class));
+                        .body(EventSubscriptionPage.class));
     }
 
     /**
@@ -468,7 +468,7 @@ final class ProcessInstanceReadClient {
      * engine-side sort: the accepted sort fields differ across 6.x/7.x, so callers order
      * by start time in the BFF.
      */
-    public FlowablePage listHistoricTaskInstances(
+    public TaskPage listHistoricTaskInstances(
             EngineConfig engine, CallPriority priority, String processInstanceId, int size) {
         return guarded.call(
                 engine,
@@ -480,7 +480,7 @@ final class ProcessInstanceReadClient {
                                 .queryParam("size", size)
                                 .build())
                         .retrieve()
-                        .body(FlowablePage.class));
+                        .body(TaskPage.class));
     }
 
     /**
@@ -488,8 +488,7 @@ final class ProcessInstanceReadClient {
      * delegation, claim time. Also the only leg that sees tasks on an engine whose task
      * history is dialed below audit level.
      */
-    public FlowablePage listRuntimeTasks(
-            EngineConfig engine, CallPriority priority, String processInstanceId, int size) {
+    public TaskPage listRuntimeTasks(EngineConfig engine, CallPriority priority, String processInstanceId, int size) {
         return guarded.call(
                 engine,
                 priority,
@@ -500,12 +499,11 @@ final class ProcessInstanceReadClient {
                                 .queryParam("size", size)
                                 .build())
                         .retrieve()
-                        .body(FlowablePage.class));
+                        .body(TaskPage.class));
     }
 
     /** GET /runtime/tasks with the caller's query. Blank values are omitted. Bounded by {@code size}. */
-    public FlowablePage listRuntimeTasks(
-            EngineConfig engine, CallPriority priority, Map<String, String> query, int size) {
+    public TaskPage listRuntimeTasks(EngineConfig engine, CallPriority priority, Map<String, String> query, int size) {
         return guarded.call(
                 engine,
                 priority,
@@ -523,7 +521,7 @@ final class ProcessInstanceReadClient {
                             return builder.build();
                         })
                         .retrieve()
-                        .body(FlowablePage.class));
+                        .body(TaskPage.class));
     }
 
     /**
@@ -531,7 +529,7 @@ final class ProcessInstanceReadClient {
      * whole engine (not scoped to one instance). Feeds person-centric task search (#99, "what is
      * Bob sitting on"). Bounded by {@code size} — never an unpaged fetch.
      */
-    public FlowablePage listTasksByAssignee(EngineConfig engine, CallPriority priority, String assignee, int size) {
+    public TaskPage listTasksByAssignee(EngineConfig engine, CallPriority priority, String assignee, int size) {
         return guarded.call(
                 engine,
                 priority,
@@ -542,7 +540,7 @@ final class ProcessInstanceReadClient {
                                 .queryParam("size", size)
                                 .build())
                         .retrieve()
-                        .body(FlowablePage.class));
+                        .body(TaskPage.class));
     }
 
     /**
@@ -551,7 +549,7 @@ final class ProcessInstanceReadClient {
      * IdentityService resolves group membership when configured; a bare candidate-user link
      * always matches). Feeds person-centric task search (#99). Bounded by {@code size}.
      */
-    public FlowablePage listTasksByCandidateUser(
+    public TaskPage listTasksByCandidateUser(
             EngineConfig engine, CallPriority priority, String candidateUser, int size) {
         return guarded.call(
                 engine,
@@ -563,12 +561,11 @@ final class ProcessInstanceReadClient {
                                 .queryParam("size", size)
                                 .build())
                         .retrieve()
-                        .body(FlowablePage.class));
+                        .body(TaskPage.class));
     }
 
     /** GET /history/historic-task-instances/{id} — task resolution incl. completed tasks. Null = unknown. */
-    @SuppressWarnings("unchecked")
-    public Map<String, Object> getHistoricTaskInstance(EngineConfig engine, CallPriority priority, String taskId) {
+    public TaskRecord getHistoricTaskInstance(EngineConfig engine, CallPriority priority, String taskId) {
         try {
             return guarded.call(
                     engine,
@@ -577,7 +574,7 @@ final class ProcessInstanceReadClient {
                             .get()
                             .uri("/history/historic-task-instances/{id}", taskId)
                             .retrieve()
-                            .body(Map.class));
+                            .body(TaskRecord.class));
         } catch (HttpClientErrorException.NotFound e) {
             return null;
         }
@@ -617,21 +614,23 @@ final class ProcessInstanceReadClient {
     }
 
     /**
-     * GET a management list that answers a bare JSON array, not the paged {@code data} envelope
-     * (e.g. /management/tables on 6.8 and 7.x, #627).
+     * GET /management/tables — a bare JSON array on 6.8 and 7.x, not the paged {@code data}
+     * envelope (#627).
      */
-    @SuppressWarnings("unchecked")
-    public List<Map<String, Object>> getList(EngineConfig engine, CallPriority priority, String path) {
-        List<Map<String, Object>> rows = guarded.call(
+    public List<TableCountRecord> listTables(EngineConfig engine, CallPriority priority) {
+        List<TableCountRecord> rows = guarded.call(
                 engine,
                 priority,
-                () -> guarded.readClient(engine).get().uri(path).retrieve().body(List.class));
+                () -> guarded.readClient(engine)
+                        .get()
+                        .uri("/management/tables")
+                        .retrieve()
+                        .body(TABLE_LIST));
         return rows == null ? List.of() : rows;
     }
 
     /** GET /management/engine — health + version probe. */
-    @SuppressWarnings("unchecked")
-    public Map<String, Object> engineInfo(EngineConfig engine, CallPriority priority) {
+    public EngineInfoRecord engineInfo(EngineConfig engine, CallPriority priority) {
         return guarded.call(
                 engine,
                 priority,
@@ -639,6 +638,6 @@ final class ProcessInstanceReadClient {
                         .get()
                         .uri("/management/engine")
                         .retrieve()
-                        .body(Map.class));
+                        .body(EngineInfoRecord.class));
     }
 }

@@ -1,12 +1,13 @@
 package io.inspector.detail;
 
 import io.inspector.client.GuardedCaller.CallPriority;
+import io.inspector.client.ProcessDefinitionRecord;
+import io.inspector.client.ProcessInstanceRecord;
 import io.inspector.config.InspectorProperties.EngineConfig;
 import io.inspector.detail.InstanceDetailService.Lanes;
 import io.inspector.dto.InstanceDetail.CurrentActivity;
 import io.inspector.dto.InstanceDiagram;
 import java.util.List;
-import java.util.Map;
 import org.springframework.http.HttpStatus;
 import org.springframework.web.server.ResponseStatusException;
 
@@ -23,15 +24,15 @@ final class InstanceDiagramAssembler {
 
     public InstanceDiagram diagram(String engineId, String instanceId) {
         EngineConfig engine = host.engineForRead(engineId);
-        Map<String, Object> historic = host.requireHistoric(engine, instanceId);
-        String definitionId = InstanceDetailService.str(historic, "processDefinitionId");
-        Map<String, Object> definition =
+        ProcessInstanceRecord historic = host.requireHistoric(engine, instanceId);
+        String definitionId = historic.processDefinitionId();
+        ProcessDefinitionRecord definition =
                 host.flowable.getProcessDefinition(engine, CallPriority.INTERACTIVE, definitionId);
         if (definition == null) {
             throw new ResponseStatusException(
                     HttpStatus.NOT_FOUND, "process definition " + definitionId + " not found on " + engineId);
         }
-        String deploymentId = InstanceDetailService.str(definition, "deploymentId");
+        String deploymentId = definition.deploymentId();
         String resourceName = InstanceDetailService.resourceNameOf(definition);
         String xml = deploymentId == null || resourceName == null
                 ? null
@@ -41,7 +42,7 @@ final class InstanceDiagramAssembler {
                     HttpStatus.NOT_FOUND, "BPMN resource for definition " + definitionId + " not found on " + engineId);
         }
 
-        boolean ended = InstanceDetailService.str(historic, "endTime") != null;
+        boolean ended = historic.endTime() != null;
         List<String> active = ended
                 ? List.of()
                 : host.currentActivities(engine, instanceId).stream()

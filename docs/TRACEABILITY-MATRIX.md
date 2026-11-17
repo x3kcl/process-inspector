@@ -52,7 +52,7 @@ exhaustive scenario→class index.
 | R-SEM-10 bulk = tracked job | TS-BULK-05 | `BulkJobServiceTest` (reconcile sweep), `BulkFilterIT` | L1·L4 | ✅ |
 | R-SEM-11 circuit-open mid-bulk | TS-BULK-06 | `BulkJobServiceTest` (permits/pause/bounded-recovery, issue #101) | L1 | ✅ (bounded wait-and-retry + pause-on-bound-exceeded + INTERRUPTED all rung-1 tested; breaker *transition* L2 WireMock slice against the REAL resilience4j state machine still §C-6 — the rung-1 recovery test mocks `GuardedCaller.isOpen` directly) |
 | R-SEM-12 Stage-0 truncation badges | TS-TRI-08, TS-STAT-12 | FE `honesty.test`, `drill.test`; `cmmn-scope.spec` | UNIT-FE·E2E | ✅ |
-| R-SEM-14 SSE lifecycle contract | TS-BULK-11 | `SseHubTest`, `BulkFilterIT`, `SseBulkSoakIT` (nightly `soak-p3`) | L1·L4·perf | 🟡 P3 soak built; open until three green nights (§C-8) |
+| R-SEM-14 SSE lifecycle contract | TS-BULK-11 | `SseHubTest`, `SseDisconnectSpringTest`, `BulkFilterIT`, `SseBulkSoakIT` (nightly `soak-p3`) | L1·L4·perf | 🟡 P3 soak built; open until three green nights (§C-8) |
 | R-SEM-18 dual-write UNKNOWN | TS-AUD-02, TS-BULK-02 | `AuditServiceTest`, `CorrectiveActionServiceTest`, `FailClosedAuditIT` | L1·L4 | ✅ |
 | R-SEM-19 hierarchy breadth cap | TS-STAT-08, TS-DET-08 | `InstanceTimelineServiceTest`, `InstanceTimelineIT`; FE `timelineModel.test` | L1·L4·UNIT-FE | ✅ |
 | R-SEM-20 CMMN out-of-scope count | TS-STAT-16 | `OutOfScopeDeadlettersTest`, `TriageCmmnScopeIT` (6.8), **`TriageCmmnScopeLegacyIT` (6.3 null gate)** | L1·L4 | ✅ (legacy IT added this pass) |
@@ -153,7 +153,7 @@ Exhaustive TS-* → class(es). `—` = no automated suite yet (see §C). This is
 | TS-RBAC-04 break-glass | `BreakGlassFailureHandlerTest`, `BreakGlassThrottleTest`, `OidcKeycloakIT` | L1·L4 | ✅ (§C-2 closed) |
 | TS-RBAC-05 approval hooks | — | — | 🔲 §C-3 |
 | TS-BULK-01..10 | `BulkJobServiceTest`, `BulkErrorClassServiceTest`, `BulkFilterServiceTest`, `BulkErrorClassIT`, `BulkFilterIT`; FE `intersection.test`/`filterScope.test`; `filter-bulk.spec`/`retry-group.spec` | L1·L4·UNIT-FE·E2E |
-| TS-BULK-11 SSE progress | `SseHubTest`, `BulkFilterIT`, `SseBulkSoakIT` | L1·L4·perf | 🟡 §C-8 (P3 soak built, awaiting three green nights) |
+| TS-BULK-11 SSE progress | `SseHubTest`, `SseDisconnectSpringTest`, `BulkFilterIT`, `SseBulkSoakIT` | L1·L4·perf | 🟡 §C-8 (P3 soak built, awaiting three green nights) |
 | TS-AUD-01..05 | `AuditServiceTest`, `FailClosedAuditIT`, `CorrectiveActionIT` | L1·L4 | 🟡 §C-5 |
 | TS-AUD-06 notes | `ActionRbacGuardSpringTest` (notes floor); `DetailResolveIT` | L3·L4 |
 | TS-AUD-07 shift report | FE `shiftReport.test`, `AuditLogPage.test` | UNIT-FE | 🟡 (E2E leg) |

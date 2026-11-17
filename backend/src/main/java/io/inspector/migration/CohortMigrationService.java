@@ -5,9 +5,11 @@ import io.inspector.audit.ProtectedDefinition;
 import io.inspector.audit.ProtectedDefinitionRepository;
 import io.inspector.audit.ProtectedInstance;
 import io.inspector.audit.ProtectedInstanceRepository;
-import io.inspector.client.FlowablePage;
 import io.inspector.client.GuardedCaller.CallPriority;
 import io.inspector.client.ProcessApiClient;
+import io.inspector.client.ProcessDefinitionRecord;
+import io.inspector.client.ProcessInstancePage;
+import io.inspector.client.ProcessInstanceRecord;
 import io.inspector.config.InspectorProperties.EngineConfig;
 import io.inspector.registry.EngineRegistry;
 import java.util.ArrayList;
@@ -52,7 +54,7 @@ public class CohortMigrationService {
     public CohortPreviewResponse preview(String engineId, CohortPreviewRequest request) {
         EngineConfig engine = registry.require(engineId);
         String fromId = required(request != null ? request.fromDefinitionId() : null, "fromDefinitionId");
-        FlowablePage page = load(engine, request, fromId);
+        ProcessInstancePage page = load(engine, request, fromId);
         long total = page != null ? page.total() : 0;
         boolean truncated = total > CAP;
         long protectedCount = protectedCount(engineId, definitionKey(engine, fromId), page, total);
@@ -66,11 +68,11 @@ public class CohortMigrationService {
     ListedCohort listInstances(String engineId, CohortPreviewRequest request) {
         EngineConfig engine = registry.require(engineId);
         String fromId = required(request != null ? request.fromDefinitionId() : null, "fromDefinitionId");
-        FlowablePage page = load(engine, request, fromId);
+        ProcessInstancePage page = load(engine, request, fromId);
         long total = page != null ? page.total() : 0;
         List<String> ids = new ArrayList<>();
-        for (Map<String, Object> row : page != null ? page.dataOrEmpty() : List.<Map<String, Object>>of()) {
-            String id = str(row, "id");
+        for (ProcessInstanceRecord row : page != null ? page.dataOrEmpty() : List.<ProcessInstanceRecord>of()) {
+            String id = row.id();
             if (id != null) {
                 ids.add(id);
             }
@@ -82,7 +84,7 @@ public class CohortMigrationService {
     record ListedCohort(
             String fromDefinitionId, String toDefinitionId, List<String> instanceIds, long total, boolean lowerBound) {}
 
-    private FlowablePage load(EngineConfig engine, CohortPreviewRequest request, String fromId) {
+    private ProcessInstancePage load(EngineConfig engine, CohortPreviewRequest request, String fromId) {
         String variable = blank(request.variableName());
         boolean variableFilter = variable != null;
         boolean other = blank(request.businessKey()) != null
@@ -123,13 +125,13 @@ public class CohortMigrationService {
     }
 
     /** Definition-key protection counts the whole cohort. Otherwise only the fetched page. */
-    private long protectedCount(String engineId, String key, FlowablePage page, long total) {
+    private long protectedCount(String engineId, String key, ProcessInstancePage page, long total) {
         if (isDefinitionProtected(engineId, key)) {
             return total;
         }
         long n = 0;
-        for (Map<String, Object> row : page != null ? page.dataOrEmpty() : List.<Map<String, Object>>of()) {
-            String id = str(row, "id");
+        for (ProcessInstanceRecord row : page != null ? page.dataOrEmpty() : List.<ProcessInstanceRecord>of()) {
+            String id = row.id();
             if (id != null && isInstanceProtected(engineId, id)) {
                 n++;
             }
@@ -167,14 +169,15 @@ public class CohortMigrationService {
     }
 
     private String definitionKey(EngineConfig engine, String definitionId) {
-        Map<String, Object> definition = processes.getProcessDefinition(engine, CallPriority.INTERACTIVE, definitionId);
-        if (definition == null || definition.get("key") == null) {
+        ProcessDefinitionRecord definition =
+                processes.getProcessDefinition(engine, CallPriority.INTERACTIVE, definitionId);
+        if (definition == null || definition.key() == null) {
             throw new GuardRefusedException(
                     HttpStatus.NOT_FOUND,
                     "definition-not-found",
                     "Process definition " + definitionId + " does not exist on '" + engine.id() + "'.");
         }
-        return String.valueOf(definition.get("key"));
+        return definition.key();
     }
 
     private static String required(String value, String field) {
@@ -186,10 +189,5 @@ public class CohortMigrationService {
 
     private static String blank(String value) {
         return value == null || value.isBlank() ? null : value.trim();
-    }
-
-    private static String str(Map<String, Object> map, String key) {
-        Object value = map.get(key);
-        return value != null ? value.toString() : null;
     }
 }

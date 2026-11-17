@@ -1,9 +1,10 @@
 package io.inspector.aggregate;
 
 import io.inspector.api.MdcPropagatingExecutors;
-import io.inspector.client.FlowablePage;
 import io.inspector.client.GuardedCaller.CallPriority;
 import io.inspector.client.ProcessApiClient;
+import io.inspector.client.TaskPage;
+import io.inspector.client.TaskRecord;
 import io.inspector.config.InspectorProperties;
 import io.inspector.config.InspectorProperties.EngineConfig;
 import io.inspector.dto.PersonTaskSearchResponse;
@@ -121,21 +122,20 @@ public class PersonTaskSearchService {
         int pageSize = engine.maxPageSizeOrDefault();
         Map<String, PersonTaskRow> byTaskId = new LinkedHashMap<>();
 
-        FlowablePage assigned = flowable.listTasksByAssignee(engine, CallPriority.INTERACTIVE, person, pageSize);
+        TaskPage assigned = flowable.listTasksByAssignee(engine, CallPriority.INTERACTIVE, person, pageSize);
         mergeLeg(byTaskId, assigned, engine, PersonTaskRow.MATCH_ASSIGNED);
 
         // candidate leg never overrides a row the assignee leg already placed — directly-assigned
         // outranks claimable when a task happens to carry both.
-        FlowablePage candidate = flowable.listTasksByCandidateUser(engine, CallPriority.INTERACTIVE, person, pageSize);
+        TaskPage candidate = flowable.listTasksByCandidateUser(engine, CallPriority.INTERACTIVE, person, pageSize);
         mergeLeg(byTaskId, candidate, engine, PersonTaskRow.MATCH_CANDIDATE);
 
         return new EngineSlice(new ArrayList<>(byTaskId.values()), assigned.total() + candidate.total());
     }
 
-    private void mergeLeg(
-            Map<String, PersonTaskRow> byTaskId, FlowablePage page, EngineConfig engine, String matchReason) {
-        for (Map<String, Object> t : page.dataOrEmpty()) {
-            String taskId = str(t, "id");
+    private void mergeLeg(Map<String, PersonTaskRow> byTaskId, TaskPage page, EngineConfig engine, String matchReason) {
+        for (TaskRecord t : page.dataOrEmpty()) {
+            String taskId = t.id();
             if (taskId == null || byTaskId.containsKey(taskId)) {
                 continue;
             }
@@ -146,24 +146,24 @@ public class PersonTaskSearchService {
         }
     }
 
-    private PersonTaskRow toRow(EngineConfig engine, Map<String, Object> t, String matchReason) {
-        String taskId = str(t, "id");
+    private PersonTaskRow toRow(EngineConfig engine, TaskRecord t, String matchReason) {
+        String taskId = t.id();
         if (taskId == null) {
             return null;
         }
         // processDefinitionId is "key:version:deploymentId" (SearchService/MigrationService convention).
-        String definitionId = str(t, "processDefinitionId");
+        String definitionId = t.processDefinitionId();
         String definitionKey = definitionId != null ? definitionId.split(":", 2)[0] : null;
         return new PersonTaskRow(
                 engine.id(),
-                str(t, "processInstanceId"),
+                t.processInstanceId(),
                 taskId,
-                str(t, "name"),
-                str(t, "taskDefinitionKey"),
+                t.name(),
+                t.taskDefinitionKey(),
                 definitionKey,
-                str(t, "assignee"),
-                str(t, "createTime"),
-                str(t, "dueDate"),
+                t.assignee(),
+                t.createTime(),
+                t.dueDate(),
                 matchReason);
     }
 
@@ -202,11 +202,6 @@ public class PersonTaskSearchService {
             }
             perEngine.put(requested, EngineResult.failure(why));
         }
-    }
-
-    private static String str(Map<String, Object> map, String key) {
-        Object v = map.get(key);
-        return v != null ? v.toString() : null;
     }
 
     @PreDestroy

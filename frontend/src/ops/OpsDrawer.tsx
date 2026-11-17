@@ -22,6 +22,7 @@ import { problemBanner } from '../actions/problem'
 import { useToast } from '../components/toast'
 import { useLive, useLiveEvent } from '../live/live'
 import { Ts } from '../lib/Ts'
+import { levelLine, levelProgress } from './hierarchyLevels'
 import { outcomeCellLabel, outcomeClassName, outcomeIsDispatchOnly, talliesLine } from './outcome'
 
 export function OpsDrawer() {
@@ -190,6 +191,7 @@ function JobDetail({ jobId }: { jobId: string }) {
         })),
     [items],
   )
+  const levels = useMemo(() => levelProgress(items), [items])
   const offerContinuation =
     job !== undefined &&
     (job.state === 'INTERRUPTED' || job.state === 'CANCELLED' || job.state === 'COMPLETED') &&
@@ -276,10 +278,23 @@ function JobDetail({ jobId }: { jobId: string }) {
           open its live engine evidence, or check the grid in a few minutes.
         </div>
       )}
+      {/* #497: a hierarchy migration runs deepest level first; a parent waits for its children. */}
+      {levels.length > 0 && (
+        <div className="callout" role="note" data-testid="hierarchy-levels">
+          Children first, then parent — a parent is migrated only after every planned child reached
+          its target.
+          <ul>
+            {levels.map((row) => (
+              <li key={row.level}>{levelLine(row)}</li>
+            ))}
+          </ul>
+        </div>
+      )}
       <table className="ledger-table job-items">
         <thead>
           <tr>
             <th scope="col">#</th>
+            {levels.length > 0 && <th scope="col">Level</th>}
             <th scope="col">Instance</th>
             <th scope="col">Outcome</th>
             <th scope="col">Detail</th>
@@ -292,6 +307,7 @@ function JobDetail({ jobId }: { jobId: string }) {
           {items.map((item) => (
             <tr key={item.ordinal} className={`item-${item.state ?? ''}`}>
               <td>{item.ordinal}</td>
+              {levels.length > 0 && <td>{item.level}</td>}
               <td>
                 <code>{`${item.engineId ?? '?'}:${item.instanceId ?? '?'}`}</code>
               </td>

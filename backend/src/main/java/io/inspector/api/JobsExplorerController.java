@@ -1,7 +1,8 @@
 package io.inspector.api;
 
-import io.inspector.client.FlowablePage;
 import io.inspector.client.GuardedCaller.CallPriority;
+import io.inspector.client.JobPage;
+import io.inspector.client.JobRecord;
 import io.inspector.client.ProcessApiClient;
 import io.inspector.client.ProcessApiClient.JobLaneKind;
 import io.inspector.config.InspectorProperties.EngineConfig;
@@ -44,24 +45,24 @@ public class JobsExplorerController {
         List<String> capped = new ArrayList<>();
         for (EngineConfig engine : registry.all()) {
             try {
-                FlowablePage page = flowable.listJobs(engine, CallPriority.INTERACTIVE, kind, Map.of(), 0, pageSize);
-                List<Map<String, Object>> data = page == null ? List.of() : page.dataOrEmpty();
+                JobPage page = flowable.listJobs(engine, CallPriority.INTERACTIVE, kind, Map.of(), 0, pageSize);
+                List<JobRecord> data = page == null ? List.of() : page.dataOrEmpty();
                 if (page != null && page.total() > data.size()) {
                     capped.add(engine.id());
                 }
-                for (Map<String, Object> job : data) {
+                for (JobRecord job : data) {
                     if (cutoff != null && !olderThan(job, cutoff)) {
                         continue;
                     }
                     rows.add(new JobRow(
                             engine.id(),
-                            str(job, "id"),
-                            str(job, "processInstanceId"),
-                            str(job, "elementId"),
-                            str(job, "dueDate"),
-                            str(job, "createTime"),
-                            str(job, "exceptionMessage"),
-                            str(job, "lockOwner")));
+                            job.id(),
+                            job.processInstanceId(),
+                            job.elementId(),
+                            job.dueDate(),
+                            job.createTime(),
+                            job.exceptionMessage(),
+                            job.lockOwner()));
                 }
             } catch (RuntimeException e) {
                 capped.add(engine.id());
@@ -80,8 +81,8 @@ public class JobsExplorerController {
         };
     }
 
-    private static boolean olderThan(Map<String, Object> job, Instant cutoff) {
-        String stamp = str(job, "createTime");
+    private static boolean olderThan(JobRecord job, Instant cutoff) {
+        String stamp = job.createTime();
         if (stamp == null) {
             return false;
         }
@@ -90,11 +91,6 @@ public class JobsExplorerController {
         } catch (RuntimeException e) {
             return false;
         }
-    }
-
-    private static String str(Map<String, Object> job, String key) {
-        Object value = job.get(key);
-        return value == null ? null : value.toString();
     }
 
     public record JobsPage(String lane, List<JobRow> rows, List<String> cappedEngines) {}

@@ -7,6 +7,7 @@ import io.inspector.action.GuardRefusedException;
 import io.inspector.audit.BreakGlassActor;
 import io.inspector.client.GuardedCaller.CallPriority;
 import io.inspector.client.ProcessApiClient;
+import io.inspector.client.ProcessInstanceRecord;
 import io.inspector.migration.MigrationAnalysis.Status;
 import io.inspector.registry.EngineRegistry;
 import io.inspector.security.RbacAuthorizer;
@@ -70,6 +71,8 @@ public class CohortBulkMigration {
      */
     public Cohort resolve(UUID analysisId) {
         MigrationAnalysis row = analyses.findById(analysisId)
+                // A case analysis (#500) is not a process analysis: its ids are case ids.
+                .filter(candidate -> !CaseCohortAnalysisService.isCaseAnalysis(candidate))
                 .orElseThrow(() -> new GuardRefusedException(
                         HttpStatus.NOT_FOUND, "analysis-not-found", "No migration analysis " + analysisId + "."));
         if (row.getStatus() != Status.COMPLETED) {
@@ -158,15 +161,28 @@ public class CohortBulkMigration {
 
     public Verification verify(String analysisRef, String engineId, String instanceId) {
         Cohort cohort = resolve(parse(analysisRef));
-        Map<String, Object> instance =
+        ProcessInstanceRecord instance =
                 client.getRuntimeProcessInstance(registry.require(engineId), CallPriority.INTERACTIVE, instanceId);
         if (instance == null) {
             return new Verification(false, "instance is no longer running — completed or deleted since; needs L3");
         }
-        String definitionId = String.valueOf(instance.get("processDefinitionId"));
+        String definitionId = String.valueOf(instance.processDefinitionId());
         return cohort.toDefinitionId().equals(definitionId)
                 ? new Verification(true, "verified: instance is on " + definitionId)
                 : new Verification(false, "instance is still on " + definitionId + " — the migrate did not apply");
+    }
+
+    /**
+     * Read-only, never re-fires: is nothing left to migrate for this instance — it is no longer
+     * running, or it is on the analysis target now. This is what releases a hierarchy parent
+     * (#497) over a child that was never sent or was skipped, whether that happened before or
+     * after the child's analysis ran.
+     */
+    public boolean nothingLeftToMigrate(String analysisRef, String engineId, String instanceId) {
+        Cohort cohort = resolve(parse(analysisRef));
+        ProcessInstanceRecord instance =
+                client.getRuntimeProcessInstance(registry.require(engineId), CallPriority.INTERACTIVE, instanceId);
+        return instance == null || cohort.toDefinitionId().equals(String.valueOf(instance.processDefinitionId()));
     }
 
     private static UUID parse(String analysisRef) {

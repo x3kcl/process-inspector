@@ -85,8 +85,21 @@ final class BulkJobRunner {
         }
         List<CompletableFuture<Void>> runners = new ArrayList<>();
         for (Map.Entry<String, List<BulkJobItem>> group : byEngine.entrySet()) {
+            // A hierarchy job (#497) runs its levels deepest first, each settled before the next;
+            // every other job is one level. A circuit pause stops the levels still to come — it
+            // is checked between levels only, so a one-level job's engine groups stay independent.
             runners.add(CompletableFuture.runAsync(
-                            () -> dispatchEngineGroup(job, verb, group.getKey(), group.getValue(), auth), host.executor)
+                            () -> {
+                                boolean first = true;
+                                for (List<BulkJobItem> level : HierarchyOrder.levels(group.getValue())) {
+                                    if (!first && host.circuitPaused.contains(jobId)) {
+                                        break;
+                                    }
+                                    first = false;
+                                    dispatchEngineGroup(job, verb, group.getKey(), level, all, auth);
+                                }
+                            },
+                            host.executor)
                     .exceptionally(ex -> {
                         // An engine-group failure must never leave the job RUNNING forever.
                         host.log.error("bulk job {} engine group {} failed", jobId, group.getKey(), ex);
@@ -127,7 +140,12 @@ final class BulkJobRunner {
      * the do-no-harm stagger (SPEC §7). The pacer thread sleeps; workers run per item.
      */
     private void dispatchEngineGroup(
-            BulkJob job, ActionVerb verb, String engineId, List<BulkJobItem> group, Authentication auth) {
+            BulkJob job,
+            ActionVerb verb,
+            String engineId,
+            List<BulkJobItem> group,
+            List<BulkJobItem> all,
+            Authentication auth) {
         Semaphore permits = host.enginePermits.computeIfAbsent(
                 engineId, id -> new Semaphore(host.props.bulkOrDefault().enginePermitsOrDefault()));
         long staggerMs = host.props.bulkOrDefault().staggerMsOrDefault();
@@ -139,6 +157,17 @@ final class BulkJobRunner {
         for (BulkJobItem item : group) {
             if (host.cancelRequested.getOrDefault(job.getId(), false) || paused.get()) {
                 break; // stop DISPATCHING — in-flight items keep their outcome (SPEC §7)
+            }
+            // Hierarchy job (#497): a parent whose child still has to be migrated is never sent.
+            String blocked = HierarchyOrder.blockedBy(item, all, this::nothingLeftToMigrate);
+            if (blocked == null && item.getLevel() != null) {
+                blocked = lateChild(item, all);
+            }
+            if (blocked != null) {
+                item.settle(BulkJobItem.State.not_run, blocked, null, host.clock.instant());
+                host.items.saveAndFlush(item);
+                host.events.publishEvent(new BulkJobChangedEvent(job.getId()));
+                continue;
             }
             if (!first) {
                 pace(staggerMs);
@@ -179,6 +208,35 @@ final class BulkJobRunner {
                     "bulk job {} paused dispatch to engine {} — circuit open / bulkhead full; undispatched items held",
                     job.getId(),
                     engineId);
+        }
+    }
+
+    /**
+     * Read-only, hierarchy job (#497): the item's running children are read again right before it
+     * is sent. A failed or incomplete read blocks the item — it is never sent on a guess.
+     */
+    private String lateChild(BulkJobItem item, List<BulkJobItem> all) {
+        try {
+            return HierarchyOrder.lateChild(
+                    item,
+                    all,
+                    host.hierarchyPlans.lateChildren(item.getJobRef(), item.getEngineId(), item.getInstanceId()));
+        } catch (RuntimeException e) {
+            return "running children could not be re-read (" + e.getMessage() + ") — not attempted. A parent is"
+                    + " migrated only when every running child is part of the plan.";
+        }
+    }
+
+    /**
+     * Read-only: is this migrate item's instance on its analysis target now, or no longer running.
+     * A failed read is "no".
+     */
+    private boolean nothingLeftToMigrate(BulkJobItem item) {
+        try {
+            return host.cohortMigration.nothingLeftToMigrate(
+                    item.getJobRef(), item.getEngineId(), item.getInstanceId());
+        } catch (RuntimeException e) {
+            return false;
         }
     }
 
@@ -270,6 +328,18 @@ final class BulkJobRunner {
                 item.settle(BulkJobItem.State.ok, result.deltaStatement(), result.auditId(), host.clock.instant());
                 return false;
             }
+            if (verb == ActionVerb.MIGRATE_CASE) {
+                // migrate-case (#500): jobRef is the case analysis id holding this item's CAS baseline.
+                ActionResult result = host.caseCohortMigration.dispatch(
+                        item.getJobRef(),
+                        item.getEngineId(),
+                        item.getInstanceId(),
+                        job.getReason(),
+                        job.getTicketId(),
+                        auth);
+                item.settle(BulkJobItem.State.ok, result.deltaStatement(), result.auditId(), host.clock.instant());
+                return false;
+            }
             if (verb == ActionVerb.RETRY_JOB) {
                 dispatchRetry(job, item, auth);
                 return false;
@@ -350,7 +420,7 @@ final class BulkJobRunner {
                             DLQ_JOBS_PER_INSTANCE_CAP)
                     .dataOrEmpty()
                     .stream()
-                    .map(row -> String.valueOf(row.get("id")))
+                    .map(row -> String.valueOf(row.id()))
                     .toList();
         }
         if (jobIds.isEmpty()) {
@@ -407,6 +477,9 @@ final class BulkJobRunner {
         if ("job-gone".equals(e.code())
                 || "instance-not-running".equals(e.code())
                 || "instance-moved-since-preview".equals(e.code())
+                // migrate-case (#500): the case ended, or already runs the target definition.
+                || "case-not-running".equals(e.code())
+                || "same-definition-target".equals(e.code())
                 || "task-gone".equals(e.code())
                 || "task-not-active".equals(e.code())
                 || "history-gone".equals(e.code())) {

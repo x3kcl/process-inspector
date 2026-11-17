@@ -37,7 +37,7 @@ classify() {
 
 scan() {
   local root="$1" named fail=0 line
-  named="$(named_in "$root"/.github/workflows/*.yml)"
+  named="$(named_in "$root"/.github/workflows/*.yml "$root"/ci/contract.sh)"   # ci-nightly lists live in the contract (#641)
   while IFS= read -r -d '' file; do
     line="$(classify "$file" "$named" || true)"
     if [[ -n "$line" ]]; then

@@ -1,0 +1,51 @@
+{
+  "data": [
+    {
+      "correlationId": "7faf3cbb-e239-11f1-9bef-1e278b84a7c9",
+      "createTime": "2026-11-17T03:46:40.840Z",
+      "dueDate": null,
+      "elementId": "chargeViaWorker",
+      "elementName": "Charge via worker",
+      "exceptionMessage": null,
+      "executionId": "7faddd27-e239-11f1-9bef-1e278b84a7c9",
+      "id": "7faf3cbc-e239-11f1-9bef-1e278b84a7c9",
+      "lockExpirationTime": "2026-11-17T03:56:41.075Z",
+      "lockOwner": "wire-worker",
+      "processDefinitionId": "demoExternalWorker:1:7f8e9554-e239-11f1-9bef-1e278b84a7c9",
+      "processInstanceId": "7fadb615-e239-11f1-9bef-1e278b84a7c9",
+      "retries": 3,
+      "scopeDefinitionId": null,
+      "scopeId": null,
+      "scopeType": null,
+      "subScopeId": null,
+      "tenantId": "",
+      "url": "http://localhost:8080/flowable-rest/external-job-api/jobs/7faf3cbc-e239-11f1-9bef-1e278b84a7c9"
+    },
+    {
+      "correlationId": "7fb8d9b3-e239-11f1-9bef-1e278b84a7c9",
+      "createTime": "2026-11-17T03:46:40.903Z",
+      "dueDate": null,
+      "elementId": "chargeViaWorker",
+      "elementName": "Charge via worker",
+      "exceptionMessage": null,
+      "executionId": "7fb8b29f-e239-11f1-9bef-1e278b84a7c9",
+      "id": "7fb8d9b4-e239-11f1-9bef-1e278b84a7c9",
+      "lockExpirationTime": null,
+      "lockOwner": null,
+      "processDefinitionId": "demoExternalWorker:1:7f8e9554-e239-11f1-9bef-1e278b84a7c9",
+      "processInstanceId": "7fb88b8d-e239-11f1-9bef-1e278b84a7c9",
+      "retries": 3,
+      "scopeDefinitionId": null,
+      "scopeId": null,
+      "scopeType": null,
+      "subScopeId": null,
+      "tenantId": "",
+      "url": "http://localhost:8080/flowable-rest/external-job-api/jobs/7fb8d9b4-e239-11f1-9bef-1e278b84a7c9"
+    }
+  ],
+  "order": "asc",
+  "size": 2,
+  "sort": "id",
+  "start": 0,
+  "total": 2
+}

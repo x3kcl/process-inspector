@@ -474,6 +474,26 @@ mission is usability evidence only, never gate evidence (ALARM-COST-MODEL.md §8
 correction note). The run and its verdict must still record which lane(s) were actually
 live that run; `INSUFFICIENT_HISTORY`/`SELF_HEAL_UNLIKELY` remain legitimate, cheaper
 fallbacks when the full staging budget isn't available. Mission: `MISSIONS.md` M13.
+GOAL (/d attention badge in day-to-day use, added 2026-11-14, issue #478): Outside any A/B
+arm, a first-time engineer on a flag-on BFF must read one card's attention badge and
+rationale and restate, in their own words, what the card says beyond its raw counts — and
+say how far the order can be trusted, citing on-screen text (the rationale's "no resolve-time
+history" / "no self-heal history" clauses are the honest thin-evidence signal). Mission:
+`MISSIONS.md` M14 (user `viewer`, entry `/`).
+SUCCESS (/d): cites the visible rationale line verbatim; restates ≥1 non-count ingredient
+correctly; names the thin-evidence clause (or states plainly that nothing on screen speaks to
+trust); notices whether `/` and `/incidents` agree. A rationale clause that contradicts the
+card's own facts (e.g. "last seen just now" on a class the ledger shows as quiet) is a
+product finding, not a tester error.
+GOAL (/e decide on a LIKELY class, added 2026-11-14, issue #478): Given a
+`SELF_HEAL_LIKELY` class with live dead-lettered members and `retrying 0`, a responder must
+decide what to do and get the posture right per /c's #388 exception: the badge describes
+PAST retrying spells; the standing dead-letters will not heal and need normal handling.
+Mission: `MISSIONS.md` M15 (user `responder`, entry `/`).
+SUCCESS (/e): quotes the badge; calls it historic (not a live guarantee); separates the
+dead-lettered members (act/escalate) from future retrying spells (leave); reaches the action
+confirmation for the right members only and cancels; the colleague reply does not promise
+the dead-letters will clear.
 
 ## SAFE — Operator safety & RBAC
 
@@ -1012,6 +1032,16 @@ FIXTURE: staged — the runner must pre-drive a lifecycle so history EXISTS (see
 class over REST, let a sampler cycle open the incident, submit an error-class bulk retry,
 resolve, re-seed to force REGRESSED — the `IncidentLedgerArcIT` arc is the recipe); the
 standard seed alone yields only fresh OPEN incidents with no episodes/retries to read.
+GOAL (/b follow an episode's attributed actions, added 2026-11-14, issue #478): Facing a
+REGRESSED class, an operator must find what was done about its FIRST episode from this tool
+(kinds, count, who), whether it helped, and whether anything has been done in the CURRENT
+episode — and say how complete that picture is — before acting again. Mission:
+`MISSIONS.md` M16 (user `operator`, entry `/`).
+SUCCESS (/b): states the episode count and the first episode's end (resolver, reason,
+ticket); names the inspector actions inside episode 1 (2 single retries + 1 error-class bulk
+retry, all failed again) with a citation for each; states that the current episode has no
+recorded inspector actions; cites an on-screen caveat about completeness (out-of-band engine
+actions are invisible; the engine+time join can over-include). FIXTURE: M16 STAGING.
 
 ## L3 — Deep support
 
@@ -1180,6 +1210,11 @@ browser):
   (a restart, not a live flip) and is invoked explicitly (`missions: ["M13"]`) only under
   the R1 attention-ordering A/B protocol, ALARM-COST-MODEL.md §8 — never mixed into a
   standard nightly/on-demand run, which shares one BFF process across every mission.
+- **M14–M16 (the August-surfaces set, issue #478) are NOT part of the standard set
+  either.** They need the same flag-on BFF restart as M13 arm B plus two staged fixtures
+  (M15's self-heal spells, M16's ledger lifecycle with in-episode actions), and run as one
+  exclusive wave in the order M16 staging → M15 staging → M14 → M15 → M16. First run:
+  `results/2026-11-14-aug-surfaces/`.
 
 **Tester protocol (fed to every tester verbatim, enforced by the evaluator):**
 

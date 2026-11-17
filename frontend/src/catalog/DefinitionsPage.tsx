@@ -147,6 +147,14 @@ function DefinitionRow({ row }: { row: Row }) {
             </Link>
           </>
         )}
+        {row.kind === 'CMMN' && row.key != null && (
+          <>
+            {' · '}
+            <Link to={`/case-definitions/${engineId}/${encodeURIComponent(row.key)}/versions`}>
+              Migrate
+            </Link>
+          </>
+        )}
       </td>
     </tr>
   )

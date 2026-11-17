@@ -84,3 +84,44 @@ export function describeLiveState(
       return null
   }
 }
+
+/** Share (0-100) of the instance span a row's own duration covers; null = no honest share. */
+export function durationShare(
+  durationMs: number | null | undefined,
+  spanMs: number,
+): number | null {
+  if (durationMs == null || spanMs <= 0) return null
+  return Math.min(100, (durationMs / spanMs) * 100)
+}
+
+/** Instance elapsed span: first start to last end; "now" only counts while a row is still open. */
+export function instanceSpanMs(rows: readonly TimelineRowItem[], now: number): number {
+  let min = Number.POSITIVE_INFINITY
+  let max = Number.NEGATIVE_INFINITY
+  let open = false
+  for (const row of rows) {
+    if (row.kind === 'cap-warning') continue
+    const start = Date.parse(row.activity.startTime ?? '')
+    if (!Number.isNaN(start)) {
+      min = Math.min(min, start)
+      if (row.activity.endTime == null) open = true
+    }
+    const end = Date.parse(row.activity.endTime ?? '')
+    if (!Number.isNaN(end)) max = Math.max(max, end)
+  }
+  if (!Number.isFinite(min)) return 0
+  if (open) max = Math.max(max, now)
+  return Math.max(max - min, 0)
+}
+
+/** Hide sequenceFlow rows unless asked; `hidden` is how many were folded away. */
+export function foldFlows(
+  rows: readonly TimelineRowItem[],
+  showFlows: boolean,
+): { rows: TimelineRowItem[]; hidden: number } {
+  if (showFlows) return { rows: [...rows], hidden: 0 }
+  const kept = rows.filter(
+    (r) => r.kind === 'cap-warning' || r.activity.activityType !== 'sequenceFlow',
+  )
+  return { rows: kept, hidden: rows.length - kept.length }
+}

@@ -2,16 +2,21 @@ package io.inspector.aggregate;
 
 import static io.inspector.aggregate.SearchService.likePattern;
 import static io.inspector.aggregate.SearchService.notBlank;
-import static io.inspector.aggregate.SearchService.str;
 
 import io.inspector.aggregate.SearchService.BffFilters;
 import io.inspector.aggregate.SearchService.EngineSlice;
 import io.inspector.aggregate.SearchService.Failure;
 import io.inspector.aggregate.SearchService.PageWindow;
-import io.inspector.client.FlowablePage;
+import io.inspector.client.ActivityInstanceRecord;
 import io.inspector.client.GuardedCaller.CallPriority;
+import io.inspector.client.JobPage;
+import io.inspector.client.JobRecord;
 import io.inspector.client.ProcessApiClient;
 import io.inspector.client.ProcessApiClient.JobLaneKind;
+import io.inspector.client.ProcessDefinitionPage;
+import io.inspector.client.ProcessDefinitionRecord;
+import io.inspector.client.ProcessInstancePage;
+import io.inspector.client.ProcessInstanceRecord;
 import io.inspector.config.InspectorProperties;
 import io.inspector.config.InspectorProperties.EngineConfig;
 import io.inspector.dto.InstanceStatusFlags;
@@ -161,17 +166,17 @@ final class SearchEnginePlan {
             Map<String, Object> body = historicBody(engine, req, pageSize, definitionIds);
             body.put("processInstanceIds", List.copyOf(ids));
             if (start > 0) body.put("start", start);
-            FlowablePage page = flowable.queryHistoricProcessInstances(engine, priority, body);
-            List<Map<String, Object>> data = page.dataOrEmpty();
+            ProcessInstancePage page = flowable.queryHistoricProcessInstances(engine, priority, body);
+            List<ProcessInstanceRecord> data = page.dataOrEmpty();
             total = page.total();
 
             Map<String, Boolean> suspendedById = suspendedFlags(engine, openIds(data), priority);
             Set<String> activityMatched = activityMatches(engine, openIds(data), bff, priority);
 
-            for (Map<String, Object> pi : data) {
-                String id = str(pi, "id");
+            for (ProcessInstanceRecord pi : data) {
+                String id = pi.id();
                 InstanceStatusFlags flags = new InstanceStatusFlags(
-                        str(pi, "endTime") != null,
+                        pi.endTime() != null,
                         suspendedById.getOrDefault(id, false),
                         dlqByInstance.containsKey(id),
                         failingByInstance.containsKey(id),
@@ -226,8 +231,8 @@ final class SearchEnginePlan {
             else if (wantsOpen && !wantsCompleted) body.put("finished", false);
             if (start > 0) body.put("start", start);
 
-            FlowablePage historic = flowable.queryHistoricProcessInstances(engine, priority, body);
-            List<Map<String, Object>> data = historic.dataOrEmpty();
+            ProcessInstancePage historic = flowable.queryHistoricProcessInstances(engine, priority, body);
+            List<ProcessInstanceRecord> data = historic.dataOrEmpty();
             total = historic.total();
             if (exhaustCap != null && total > exhaustCap) {
                 // Exhaustive resolution over a candidate pool this size would N+1-enrich
@@ -236,7 +241,7 @@ final class SearchEnginePlan {
                         + " candidate instances on this engine — over the " + exhaustCap
                         + "-item filter-bulk cap; narrow the filter");
             }
-            for (Map<String, Object> pi : data) rawWindowStartKeys.add(str(pi, "startTime"));
+            for (ProcessInstanceRecord pi : data) rawWindowStartKeys.add(pi.startTime());
             Set<String> open = openIds(data);
 
             Map<String, Boolean> suspendedById = suspendedFlags(engine, open, priority);
@@ -246,10 +251,10 @@ final class SearchEnginePlan {
             Map<String, Failure> dlqByInstance = deadLetterMembership(engine, open, bff, priority);
             Set<String> activityMatched = activityMatches(engine, open, bff, priority);
 
-            for (Map<String, Object> pi : data) {
-                String id = str(pi, "id");
+            for (ProcessInstanceRecord pi : data) {
+                String id = pi.id();
                 InstanceStatusFlags flags = new InstanceStatusFlags(
-                        str(pi, "endTime") != null,
+                        pi.endTime() != null,
                         suspendedById.getOrDefault(id, false),
                         dlqByInstance.containsKey(id),
                         failingByInstance.containsKey(id),
@@ -281,11 +286,11 @@ final class SearchEnginePlan {
         if (openIds.isEmpty()) return Set.of();
         String needle = bff.currentActivity().toLowerCase(Locale.ROOT);
         Map<String, Boolean> hits = parallelPerId(openIds, id -> {
-            for (Map<String, Object> activity : flowable.listUnfinishedActivities(
+            for (ActivityInstanceRecord activity : flowable.listUnfinishedActivities(
                             engine, priority, id, engine.tenantId(), engine.maxPageSizeOrDefault())
                     .dataOrEmpty()) {
-                if (containsIgnoreCase(str(activity, "activityId"), needle)
-                        || containsIgnoreCase(str(activity, "activityName"), needle)) {
+                if (containsIgnoreCase(activity.activityId(), needle)
+                        || containsIgnoreCase(activity.activityName(), needle)) {
                     return true;
                 }
             }
@@ -303,7 +308,7 @@ final class SearchEnginePlan {
     }
 
     /** M2b BFF-side failure filters over one scan leg's job rows (pure predicate in StatusJoin). */
-    private static List<Map<String, Object>> applyFailureFilters(List<Map<String, Object>> jobs, BffFilters bff) {
+    private static List<JobRecord> applyFailureFilters(List<JobRecord> jobs, BffFilters bff) {
         if (!bff.anyFailureFilter()) return jobs;
         return jobs.stream()
                 .filter(job -> StatusJoin.jobMatchesFailureFilters(
@@ -313,13 +318,13 @@ final class SearchEnginePlan {
 
     /* ================= scan legs ================= */
 
-    private record LaneScan(List<Map<String, Object>> jobs, boolean truncated, int scanned) {
+    private record LaneScan(List<JobRecord> jobs, boolean truncated, int scanned) {
         static LaneScan empty() {
             return new LaneScan(List.of(), false, 0);
         }
 
         LaneScan and(LaneScan other) {
-            List<Map<String, Object>> all = new ArrayList<>(jobs);
+            List<JobRecord> all = new ArrayList<>(jobs);
             all.addAll(other.jobs());
             return new LaneScan(all, truncated || other.truncated(), scanned + other.scanned());
         }
@@ -357,7 +362,7 @@ final class SearchEnginePlan {
         List<String> definitionIds =
                 resolvedDefinitionIds == null ? java.util.Collections.singletonList(null) : resolvedDefinitionIds;
 
-        List<Map<String, Object>> jobs = new ArrayList<>();
+        List<JobRecord> jobs = new ArrayList<>();
         int scanned = 0;
         boolean truncated = false;
         for (String definitionId : definitionIds) {
@@ -372,8 +377,8 @@ final class SearchEnginePlan {
                     truncated = true;
                     break;
                 }
-                FlowablePage page = flowable.listJobs(engine, priority, lane, filters, start, size);
-                List<Map<String, Object>> batch = page.dataOrEmpty();
+                JobPage page = flowable.listJobs(engine, priority, lane, filters, start, size);
+                List<JobRecord> batch = page.dataOrEmpty();
                 scanned += batch.size();
                 jobs.addAll(batch);
                 start += batch.size();
@@ -393,20 +398,17 @@ final class SearchEnginePlan {
      * everything the hash is computed from. One fewer engine call per drilled lane, and the
      * drill can no longer come back empty for a card that is currently failing.
      */
-    private static List<Map<String, Object>> applySignatureFilter(List<Map<String, Object>> jobs, BffFilters bff) {
+    private static List<JobRecord> applySignatureFilter(List<JobRecord> jobs, BffFilters bff) {
         if (bff.signatureHash() == null || jobs.isEmpty()) return jobs;
         return StatusJoin.filterBySignatureHash(jobs, bff.signatureHash());
     }
 
     /** CMMN-filtered fold of job rows into per-instance failure evidence. */
-    private static Map<String, Failure> indexByInstance(List<Map<String, Object>> jobs) {
+    private static Map<String, Failure> indexByInstance(List<JobRecord> jobs) {
         Map<String, Failure> index = new HashMap<>();
-        for (Map<String, Object> job : jobs) {
+        for (JobRecord job : jobs) {
             if (!StatusJoin.isBpmnJob(job)) continue; // shared job tables — drop CMMN scopes
-            index.merge(
-                    str(job, "processInstanceId"),
-                    new Failure(str(job, "createTime"), str(job, "exceptionMessage")),
-                    Failure::merge);
+            index.merge(job.processInstanceId(), new Failure(job.createTime(), job.exceptionMessage()), Failure::merge);
         }
         return index;
     }
@@ -426,24 +428,24 @@ final class SearchEnginePlan {
         body.put("processInstanceIds", List.copyOf(ids));
         body.put("size", ids.size());
         tenant(engine).ifPresent(t -> body.put("tenantId", t));
-        FlowablePage page = flowable.queryRuntimeProcessInstances(engine, priority, body);
+        ProcessInstancePage page = flowable.queryRuntimeProcessInstances(engine, priority, body);
 
         Map<String, Boolean> byId = new HashMap<>();
         boolean filterIgnored = page.total() > ids.size();
-        for (Map<String, Object> pi : page.dataOrEmpty()) {
-            String id = str(pi, "id");
+        for (ProcessInstanceRecord pi : page.dataOrEmpty()) {
+            String id = pi.id();
             if (!ids.contains(id)) {
                 filterIgnored = true;
                 break;
             }
-            byId.put(id, Boolean.TRUE.equals(pi.get("suspended")));
+            byId.put(id, Boolean.TRUE.equals(pi.suspended()));
         }
         if (!filterIgnored) return byId;
 
         log.debug("Engine {} ignored processInstanceIds on the runtime query — per-id fallback", engine.id());
         return parallelPerId(ids, id -> {
-            Map<String, Object> pi = flowable.getRuntimeProcessInstance(engine, priority, id);
-            return pi != null && Boolean.TRUE.equals(pi.get("suspended"));
+            ProcessInstanceRecord pi = flowable.getRuntimeProcessInstance(engine, priority, id);
+            return pi != null && Boolean.TRUE.equals(pi.suspended());
         });
     }
 
@@ -456,7 +458,7 @@ final class SearchEnginePlan {
             Map<String, String> filters = new HashMap<>();
             filters.put("processInstanceId", id);
             tenant(engine).ifPresent(t -> filters.put("tenantId", t));
-            FlowablePage page = flowable.listJobs(
+            JobPage page = flowable.listJobs(
                     engine, priority, JobLaneKind.DEADLETTER, filters, 0, engine.maxPageSizeOrDefault());
             // Same failure-window/error-text/signature semantics as the inverted plan's scan legs.
             Map<String, Failure> perInstance =
@@ -476,11 +478,11 @@ final class SearchEnginePlan {
         Map<String, String> parentMap = new HashMap<>();
         Set<String> frontier = new HashSet<>(instanceIds);
         for (int depth = 0; depth < props.hierarchyMaxDepthOrDefault() && !frontier.isEmpty(); depth++) {
-            Map<String, Map<String, Object>> rows = fetchHistoricByIds(engine, frontier);
+            Map<String, ProcessInstanceRecord> rows = fetchHistoricByIds(engine, frontier);
             Set<String> next = new HashSet<>();
             for (String id : frontier) {
-                Map<String, Object> row = rows.get(id);
-                String parent = row != null ? str(row, "superProcessInstanceId") : null;
+                ProcessInstanceRecord row = rows.get(id);
+                String parent = row != null ? row.superProcessInstanceId() : null;
                 parentMap.put(id, parent);
                 if (parent != null && !parentMap.containsKey(parent)) next.add(parent);
             }
@@ -490,14 +492,14 @@ final class SearchEnginePlan {
     }
 
     /** Historic rows by id, chunked to the engine's page cap, chunks fetched in parallel. */
-    private Map<String, Map<String, Object>> fetchHistoricByIds(EngineConfig engine, Collection<String> ids) {
+    private Map<String, ProcessInstanceRecord> fetchHistoricByIds(EngineConfig engine, Collection<String> ids) {
         List<String> all = List.copyOf(ids);
         int chunkSize = engine.maxPageSizeOrDefault();
         List<List<String>> chunks = new ArrayList<>();
         for (int i = 0; i < all.size(); i += chunkSize) {
             chunks.add(all.subList(i, Math.min(i + chunkSize, all.size())));
         }
-        Map<String, Map<String, Object>> byId = new ConcurrentHashMap<>();
+        Map<String, ProcessInstanceRecord> byId = new ConcurrentHashMap<>();
         List<CompletableFuture<Void>> futures = new ArrayList<>();
         for (List<String> chunk : chunks) {
             futures.add(CompletableFuture.runAsync(
@@ -506,10 +508,10 @@ final class SearchEnginePlan {
                         body.put("processInstanceIds", chunk);
                         body.put("size", chunk.size());
                         tenant(engine).ifPresent(t -> body.put("tenantId", t));
-                        for (Map<String, Object> row : flowable.queryHistoricProcessInstances(
+                        for (ProcessInstanceRecord row : flowable.queryHistoricProcessInstances(
                                         engine, CallPriority.INTERACTIVE, body)
                                 .dataOrEmpty()) {
-                            byId.put(str(row, "id"), row);
+                            byId.put(row.id(), row);
                         }
                     },
                     fanout));
@@ -581,10 +583,11 @@ final class SearchEnginePlan {
         int pageSize = engine.maxPageSizeOrDefault();
         int start = 0;
         while (true) {
-            FlowablePage page = flowable.listProcessDefinitionsByKey(engine, priority, key, version, start, pageSize);
-            List<Map<String, Object>> data = page.dataOrEmpty();
-            for (Map<String, Object> def : data) {
-                String id = str(def, "id");
+            ProcessDefinitionPage page =
+                    flowable.listProcessDefinitionsByKey(engine, priority, key, version, start, pageSize);
+            List<ProcessDefinitionRecord> data = page.dataOrEmpty();
+            for (ProcessDefinitionRecord def : data) {
+                String id = def.id();
                 if (id != null) ids.add(id);
             }
             start += data.size();
@@ -594,10 +597,10 @@ final class SearchEnginePlan {
         }
     }
 
-    private static Set<String> openIds(List<Map<String, Object>> historicRows) {
+    private static Set<String> openIds(List<ProcessInstanceRecord> historicRows) {
         Set<String> open = new HashSet<>();
-        for (Map<String, Object> pi : historicRows) {
-            if (str(pi, "endTime") == null) open.add(str(pi, "id"));
+        for (ProcessInstanceRecord pi : historicRows) {
+            if (pi.endTime() == null) open.add(pi.id());
         }
         return open;
     }

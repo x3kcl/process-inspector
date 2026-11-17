@@ -3,14 +3,14 @@
 // reporting per-item completion, then the engines' own state read back through search.
 import { expect, test } from '@playwright/test'
 import { scanA11y } from '../e2e/a11y'
-import { runPrefix, signIn } from './support'
+import { open, runPrefix, signIn } from './support'
 
 test('guarded bulk suspend on the FIX-ACME-06 fixtures, verified through search', async ({
   page,
 }) => {
   const filter = `businessKeyLike=${runPrefix()}-ACME`
   await signIn(page, 'operator')
-  await page.goto(`/search?status=FAILED&definitionKey=acmeApiOutage&${filter}`)
+  await open(page, `/search?status=FAILED&definitionKey=acmeApiOutage&${filter}`)
 
   await page.getByRole('button', { name: 'Select all ~2 matching filter…' }).click()
   const bar = page.getByRole('toolbar', { name: 'bulk actions' })
@@ -35,7 +35,7 @@ test('guarded bulk suspend on the FIX-ACME-06 fixtures, verified through search'
   ).toContainText('COMPLETED', { timeout: 60_000 })
   await scanA11y(page, 'operations drawer after the bulk job')
 
-  await page.goto(`/search?status=SUSPENDED&${filter}`)
+  await open(page, `/search?status=SUSPENDED&${filter}`)
   await expect(page.getByText(/^2 instances ·/)).toBeVisible()
   await scanA11y(page, 'suspended fixtures in the grid')
 })

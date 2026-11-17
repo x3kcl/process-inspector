@@ -8,9 +8,11 @@ import static org.mockito.Mockito.verify;
 import static org.mockito.Mockito.when;
 
 import io.inspector.client.CmmnApiClient;
-import io.inspector.client.FlowablePage;
+import io.inspector.client.CmmnRecords;
 import io.inspector.client.GuardedCaller.CallPriority;
 import io.inspector.client.ProcessApiClient;
+import io.inspector.client.ProcessInstancePage;
+import io.inspector.client.ProcessInstanceRecords;
 import io.inspector.config.InspectorProperties.EngineConfig;
 import io.inspector.detail.InstanceDetailService;
 import io.inspector.dto.ResolveResponse;
@@ -54,7 +56,7 @@ class ResolveServiceTest {
         when(flowable.getHistoricTaskInstance(any(), any(), any())).thenReturn(null);
         when(flowable.getJob(any(), any(), any(), any())).thenReturn(null);
         when(flowable.queryHistoricProcessInstances(any(), any(), any()))
-                .thenReturn(new FlowablePage(List.of(), 0, 0, 0));
+                .thenReturn(new ProcessInstancePage(ProcessInstanceRecords.instances(List.of()), 0, 0, 0));
     }
 
     @Test
@@ -65,9 +67,9 @@ class ResolveServiceTest {
         runningCase.put("caseDefinitionId", "def-uuid");
         runningCase.put("startTime", "2026-07-08T11:19:00.000Z");
         when(cmmnFlowable.getCmmnCaseInstance(engine, CallPriority.INTERACTIVE, CASE_ID))
-                .thenReturn(runningCase);
+                .thenReturn(CmmnRecords.caseInstance(runningCase));
         when(cmmnFlowable.getCmmnCaseDefinition(engine, CallPriority.INTERACTIVE, "def-uuid"))
-                .thenReturn(def("demoFailingCase", "Demo failing case"));
+                .thenReturn(CmmnRecords.caseDefinition(def("demoFailingCase", "Demo failing case")));
 
         ResolveResponse response = service.resolve(CASE_ID, null);
 
@@ -94,7 +96,7 @@ class ResolveServiceTest {
         endedCase.put("caseDefinitionKey", "demoFailingCase"); // historic DTO carries the key
         endedCase.put("endTime", "2026-07-08T12:00:00.000Z");
         when(cmmnFlowable.getHistoricCmmnCaseInstance(engine, CallPriority.INTERACTIVE, CASE_ID))
-                .thenReturn(endedCase);
+                .thenReturn(CmmnRecords.caseInstance(endedCase));
 
         ResolveResponse response = service.resolve(CASE_ID, null);
 

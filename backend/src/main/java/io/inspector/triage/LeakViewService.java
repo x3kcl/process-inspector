@@ -3,9 +3,11 @@ package io.inspector.triage;
 import com.github.benmanes.caffeine.cache.Cache;
 import com.github.benmanes.caffeine.cache.Caffeine;
 import io.inspector.api.MdcPropagatingExecutors;
-import io.inspector.client.FlowablePage;
 import io.inspector.client.GuardedCaller.CallPriority;
 import io.inspector.client.ProcessApiClient;
+import io.inspector.client.ProcessDefinitionPage;
+import io.inspector.client.ProcessDefinitionRecord;
+import io.inspector.client.ProcessInstancePage;
 import io.inspector.config.InspectorProperties;
 import io.inspector.config.InspectorProperties.EngineConfig;
 import io.inspector.dto.LeakViewsResponse;
@@ -201,20 +203,20 @@ public class LeakViewService {
                 return new EngineSlice(true, false, Map.of());
             }
 
-            FlowablePage defs = flowable.listLatestProcessDefinitions(engine, CallPriority.INTERACTIVE, DEFINITION_CAP);
-            List<Map<String, Object>> rows = defs != null ? defs.dataOrEmpty() : List.of();
+            ProcessDefinitionPage defs =
+                    flowable.listLatestProcessDefinitions(engine, CallPriority.INTERACTIVE, DEFINITION_CAP);
+            List<ProcessDefinitionRecord> rows = defs != null ? defs.dataOrEmpty() : List.of();
             boolean truncated = defs != null && defs.total() > rows.size();
 
             // Per-(key,window) count-only queries fan out on the shared virtual-thread pool; the
             // per-engine bulkhead is the do-no-harm ceiling, so this can never flood the engine.
             Map<String, long[]> counts = new LinkedHashMap<>();
             Map<String, Future<long[]>> keyFutures = new LinkedHashMap<>();
-            for (Map<String, Object> row : rows) {
-                Object keyObj = row.get("key");
-                if (keyObj == null || keyObj.toString().isBlank()) {
+            for (ProcessDefinitionRecord row : rows) {
+                String key = row.key();
+                if (key == null || key.isBlank()) {
                     continue;
                 }
-                String key = keyObj.toString();
                 if (counts.containsKey(key) || keyFutures.containsKey(key)) {
                     continue; // latest=true is one row per key, but guard against dupes defensively.
                 }
@@ -251,7 +253,7 @@ public class LeakViewService {
         if (engine.tenantId() != null && !engine.tenantId().isBlank()) {
             body.put("tenantId", engine.tenantId());
         }
-        FlowablePage page = flowable.queryRuntimeProcessInstances(engine, CallPriority.INTERACTIVE, body);
+        ProcessInstancePage page = flowable.queryRuntimeProcessInstances(engine, CallPriority.INTERACTIVE, body);
         return page != null ? page.total() : 0;
     }
 

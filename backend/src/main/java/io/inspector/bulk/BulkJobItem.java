@@ -65,6 +65,14 @@ public class BulkJobItem {
     @Column(name = "finished_at")
     private Instant finishedAt;
 
+    /** Hierarchy job only (#497): depth in the call-activity tree, the root is 0. Deepest runs first. */
+    @Column(name = "level")
+    private Integer level;
+
+    /** Hierarchy job only (#497): the nearest ancestor that is an item of the same job. */
+    @Column(name = "parent_instance_id")
+    private String parentInstanceId;
+
     protected BulkJobItem() {
         // JPA
     }
@@ -76,6 +84,12 @@ public class BulkJobItem {
         this.instanceId = instanceId;
         this.jobRef = jobRef;
         this.state = state;
+    }
+
+    /** Hierarchy job only (#497): set once at submit, before the item is stored. */
+    public void placeInHierarchy(int level, String parentInstanceId) {
+        this.level = level;
+        this.parentInstanceId = parentInstanceId;
     }
 
     public void markDispatched() {
@@ -123,6 +137,14 @@ public class BulkJobItem {
 
     public Instant getFinishedAt() {
         return finishedAt;
+    }
+
+    public Integer getLevel() {
+        return level;
+    }
+
+    public String getParentInstanceId() {
+        return parentInstanceId;
     }
 
     public static class Key implements Serializable {

@@ -7,7 +7,7 @@ import { AgGridReact } from 'ag-grid-react'
 import type { CustomCellRendererProps } from 'ag-grid-react'
 import type { ColDef } from 'ag-grid-community'
 import { useQuery } from '@tanstack/react-query'
-import { Link } from 'react-router'
+import { Link, useSearchParams } from 'react-router'
 import { api, ApiError } from '../api/client'
 import { useMe } from '../api/me'
 import { useTicketUrlTemplate } from '../api/meta'
@@ -18,34 +18,37 @@ import { CopyButton } from '../components/CopyButton'
 import { Ts } from '../lib/Ts'
 import { ticketHref } from '../lib/ticket'
 import { downloadOperationsCsv } from './exportCsv'
+import type { LogFilters } from './exportCsv'
 import { auditOutcomeView } from './outcome'
 import { buildShiftReport, shiftStartIso } from './shiftReport'
 import 'ag-grid-community/styles/ag-grid.css'
 import 'ag-grid-community/styles/ag-theme-quartz.css'
 
-interface Filters {
-  actor: string
-  action: string
-  ticketId: string
-  since: string
-}
+type Filters = LogFilters
 
-const EMPTY: Filters = { actor: '', action: '', ticketId: '', since: '' }
+const EMPTY: Filters = { actor: '', action: '', ticketId: '', since: '', until: '', engineId: '' }
 
 async function fetchOperationsLog(filters: Filters): Promise<AuditEntryDto[]> {
   const query: Record<string, string | number> = { limit: 500 }
-  if (filters.actor.trim() !== '') query['actor'] = filters.actor.trim()
-  if (filters.action.trim() !== '') query['action'] = filters.action.trim()
-  if (filters.ticketId.trim() !== '') query['ticketId'] = filters.ticketId.trim()
-  if (filters.since.trim() !== '') query['since'] = filters.since.trim()
+  for (const [key, value] of Object.entries(filters) as [string, string][]) {
+    if (value.trim() !== '') query[key] = value.trim()
+  }
   const { data, error, response } = await api.GET('/api/audit', { params: { query } })
   if (data === undefined) throw new ApiError(response.status, error)
   return data
 }
 
 export function AuditLogPage() {
-  const [draft, setDraft] = useState<Filters>(EMPTY)
-  const [applied, setApplied] = useState<Filters>(EMPTY)
+  // #662: `?since=&until=&engineId=` deep link (the incident episode row's "open in Ops log").
+  const [searchParams] = useSearchParams()
+  const initial: Filters = {
+    ...EMPTY,
+    since: searchParams.get('since') ?? '',
+    until: searchParams.get('until') ?? '',
+    engineId: searchParams.get('engineId') ?? '',
+  }
+  const [draft, setDraft] = useState<Filters>(initial)
+  const [applied, setApplied] = useState<Filters>(initial)
   const [exportError, setExportError] = useState<string | null>(null)
   const ticketTemplate = useTicketUrlTemplate()
   const me = useMe()
@@ -155,8 +158,7 @@ export function AuditLogPage() {
   // default one; announcing the scope at the moment of copying removes that inference entirely.
   const isMyShiftFilter =
     applied.actor !== '' && applied.actor === (me.data?.username ?? '') && applied.since !== ''
-  const isAnyFilterApplied =
-    applied.actor !== '' || applied.action !== '' || applied.ticketId !== '' || applied.since !== ''
+  const isAnyFilterApplied = Object.values(applied).some((value) => value !== '')
   const shiftReportConfirmLabel = isMyShiftFilter
     ? 'Copied · filtered to your shift ✓'
     : isAnyFilterApplied
@@ -228,6 +230,28 @@ export function AuditLogPage() {
               placeholder="2026-07-06T00:00:00Z"
               onChange={(e) => {
                 setDraft({ ...draft, since: e.target.value })
+              }}
+            />
+          </label>
+          <label>
+            Until (ISO)
+            <input
+              type="text"
+              value={draft.until}
+              placeholder="open"
+              onChange={(e) => {
+                setDraft({ ...draft, until: e.target.value })
+              }}
+            />
+          </label>
+          <label>
+            Engine
+            <input
+              type="text"
+              value={draft.engineId}
+              placeholder="engine-a"
+              onChange={(e) => {
+                setDraft({ ...draft, engineId: e.target.value })
               }}
             />
           </label>

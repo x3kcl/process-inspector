@@ -10,9 +10,10 @@ import static org.mockito.Mockito.when;
 import io.inspector.audit.AuditService;
 import io.inspector.audit.ProtectedDefinitionRepository;
 import io.inspector.client.CmmnApiClient;
-import io.inspector.client.FlowablePage;
 import io.inspector.client.GuardedCaller.CallPriority;
 import io.inspector.client.ProcessApiClient;
+import io.inspector.client.ProcessInstancePage;
+import io.inspector.client.ProcessInstanceRecords;
 import io.inspector.config.InspectorProperties.EngineEnvironment;
 import io.inspector.config.InspectorProperties.EngineMode;
 import io.inspector.registry.EngineRegistry;
@@ -51,10 +52,10 @@ class HousekeepingServiceTest {
         when(rbac.hasRoleOn(any(), eq(Role.ADMIN), eq("dev"))).thenReturn(true);
         when(flowable.listFinishedProcesses(
                         any(), eq(CallPriority.HOUSEKEEPING), any(), any(), any(), anyInt(), anyInt()))
-                .thenReturn(new FlowablePage(
-                        List.of(
+                .thenReturn(new ProcessInstancePage(
+                        ProcessInstanceRecords.instances(List.of(
                                 Map.of("id", "still", "businessKey", "bk"),
-                                Map.of("id", "done", "endTime", "2020-01-01T00:00:00Z")),
+                                Map.of("id", "done", "endTime", "2020-01-01T00:00:00Z"))),
                         2,
                         0,
                         50));

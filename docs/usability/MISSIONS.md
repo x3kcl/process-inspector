@@ -521,10 +521,117 @@ TESTER BRIEF:
 
 ---
 
+## M14 · "What is that line under the card?" — August-surfaces set, config-staged (exclusive) · user `viewer`
+
+COVERS: R-SEM-25/d (reading an attention badge and its rationale in day-to-day use, not the
+A/B arm) · rubrics R-UXQ-05/06. Added 2026-11-14 (issue #478) — the attention badge, the
+visible per-card rationale (#374) and the self-heal lanes shipped in August without a run of
+this loop outside M13's A/B protocol.
+STAGING: like M13 arm B, a BFF process started with `INSPECTOR_TRIAGE_ATTENTION_ORDERING=true`
+(a restart, never a live flip; never the shared standard-run BFF). The standard seed plus the
+M15 self-heal fixture and the M16 ledger fixture provide ≥4 live classes. Runner reads
+`GET /api/triage` and `GET /api/incidents` and fills {{ATTN_HIGH_CLASS}} / {{ATTN_LOW_CLASS}}
+with two live classes where the HIGH one ranks above the LOW one — preferring a pair where
+the higher-ranked class has the SMALLER raw count (the divergent case); if none diverges,
+the runner records "order = count order this run" as a degraded note and picks the top two.
+
+TESTER BRIEF:
+
+> First shift on this tool. Nothing is on fire yet; you are getting your bearings on the
+> landing page.
+>
+> 1. Open the landing page and find the cards that group failures by error. Pick the one you
+>    would look at first and say why. Then find anything the page itself says about why the
+>    cards are in the order they are in, quote it, and say whether it changes your pick.
+> 2. Find the card for `{{ATTN_HIGH_CLASS}}`. Read everything that card shows without
+>    hovering. In your own words: what is the card telling you about this class beyond the
+>    raw numbers? Quote the words you are explaining. Name any part you did not understand.
+> 3. Compare it with `{{ATTN_LOW_CLASS}}`. Which one sits higher on the page, and why, as far
+>    as the screen tells you? Cite the text. If you cannot tell from the screen, say so.
+> 4. How much would you trust this order on a real incident night? Quote anything on screen
+>    that makes you trust it more or less. If nothing on screen speaks to it, say so plainly.
+> 5. Open the Incidents page. Are these two classes in the same relative order there, and do
+>    they carry the same explanation? Cite what you saw on both pages.
+
+---
+
+## M15 · "Will it fix itself?" — August-surfaces set, staged (exclusive) · user `responder`
+
+COVERS: R-SEM-25/e (deciding on a `SELF_HEAL_LIKELY` class: wait vs act, per the #388
+posture rule) · R-SEM-02 (FAILED vs RETRYING mis-triage guard) · rubrics R-UXQ-05/06.
+Added 2026-11-14 (issue #478).
+STAGING: `PI_SEED_SELF_HEALING=1 docker/seed.sh` (the opt-in `demoSelfHealing` +
+`demoSelfHealingBaseline` fixture, ALARM-COST-MODEL.md §8.2 step 5) then ≥10 sequential,
+non-overlapping `demoSelfHealing` spells (businessKey `uxrun-478-heal-<n>`, `healDelay`
+PT20S) until `GET /api/incidents` serves `selfHeal.lane = SELF_HEAL_LIKELY` for the
+`selfHealGhost` class. The baseline's standing dead-letters stay — that is the #388 state
+(LIKELY lane + live dead-letters + retrying 0) the mission grades. Runner fills
+{{HEAL_CLASS}} with the class's on-screen message fragment. The fixture is usability
+evidence only, never gate evidence (RETRYING-RISK-LANE.md §7.2).
+
+TESTER BRIEF:
+
+> You are on call. A chat message from a colleague: _"`{{HEAL_CLASS}}` errors again — do we
+> need to do anything or does that one sort itself out?"_
+>
+> 1. Find this error class in the tool. How many items does the tool say are affected right
+>    now, and in which states? Quote the numbers and their labels.
+> 2. Find whatever the tool says about whether this kind of failure clears up without
+>    anyone doing anything. Quote it exactly, then explain in your own words what it is
+>    based on and how far you would rely on it.
+> 3. Decide what you do about this class right now. Be specific about WHICH items (if any)
+>    you would act on, which you would leave alone, and why. Cite the on-screen text behind
+>    each part of your decision.
+> 4. If your decision involves acting on some items: find the way to do it and go as far as
+>    the final confirmation, then CANCEL — do not confirm. What did the confirmation tell you
+>    (how many items, which engine)? If you decided to act on nothing, say what on screen
+>    convinced you it is safe to wait.
+> 5. Reply to your colleague in one or two sentences the tool's own wording would back up.
+
+---
+
+## M16 · "What did we already try?" — August-surfaces set, staged (exclusive) · user `operator`
+
+COVERS: R-BAU-10/b (following an episode's attributed actions — #358 item 2's per-episode
+`actionsDuringEpisode` aggregate) · R-AUD-09 (attribution caveat) · rubrics R-UXQ-05/06.
+Added 2026-11-14 (issue #478).
+STAGING: runner deploys a run-unique failing definition (`uxrunPartnerSync`, unresolvable
+identifier `partnerQuota`, R1/PT1S) on engine-a, starts 4 instances (`uxrun-m16-1..4`),
+lets the sampler open the incident (episode 1), then — inside episode 1 — `operator` retries
+two of them one by one through the BFF (`retry-job`, reason given), `responder` submits an
+error-class bulk retry over all 4; every retry fails again. The instances are then deleted
+OUT-OF-BAND at the engine (not through the inspector — so no audit row), one absent sampler
+cycle passes, `operator` resolves the incident (reason "partner quota config corrected, stuck
+syncs cleared", ticket OPS-4711), one more absent cycle, then 3 fresh instances regress it
+(episode 2, no inspector actions). Runner fills {{LEDGER_CLASS}} with the on-screen message
+fragment. Ground truth for task 3 is the episode's `actionsDuringEpisode` from
+`GET /api/incidents/{id}` plus the audit log.
+
+TESTER BRIEF:
+
+> Handover note from the night shift: _"`{{LEDGER_CLASS}}` is back. It was closed as fixed
+> yesterday. Before you touch it: find out what was already tried last time and whether any
+> of it helped — don't repeat what didn't work."_
+>
+> 1. Find the history of this failure. What state is it in now? Quote the wording.
+> 2. How many separate outbreaks does the tool record for it? For each one: when it started,
+>    how long it lasted, and how it ended. Cite what you read.
+> 3. During the FIRST outbreak, what was done about it from this tool — what kinds of
+>    actions, how many, and by whom? Cite exactly where you found each part. If the tool
+>    does not tell you some part of this, say which part.
+> 4. Did those actions help? What on screen supports your answer?
+> 5. During the CURRENT outbreak, has anyone done anything about it yet? How do you know?
+> 6. How sure are you that what you found in task 3 is the complete list — could anything be
+>    missing, or counted that does not belong? Quote anything on screen that speaks to this;
+>    if nothing does, say so.
+
+---
+
 ## Placeholder contract (runner fills at stage time)
 
 `{{INCIDENT_CLASS}} {{FAILED_ID}} {{RETRYING_ID}} {{GARBAGE_ID}} {{PARENT_BK}} {{ACTIVE_ID}} {{JSON_ID}}
 {{JSON_LEAF_TASK}} {{OOB_MUTATION_CMD}} {{OOB_RESOLVE_CMD}} {{DEF_NAME}}
 {{LEGACY_ONLY_ID}} {{CMMN_ENGINE}} {{PROTECTED_ID}} {{MIGRATE_ID}} {{TOUCHED_ID}}
-{{SCRATCH_URL}} {{RUN_ID}} {{DUP_KEY}}`
+{{SCRATCH_URL}} {{RUN_ID}} {{DUP_KEY}} {{ATTN_HIGH_CLASS}} {{ATTN_LOW_CLASS}} {{HEAL_CLASS}}
+{{LEDGER_CLASS}}`
 Unresolved placeholders at run time = FIXTURE_DRIFT → mission blocked-by-environment.

@@ -4,7 +4,7 @@
 // Dev-mode Vite serves React's development build, which is where this warning exists.
 import { expect, test } from '@playwright/test'
 import { scanA11y } from '../e2e/a11y'
-import { signIn } from './support'
+import { open, signIn } from './support'
 
 test('sign-in and navigation raise no React cross-component update warning', async ({ page }) => {
   const warnings: string[] = []
@@ -15,9 +15,9 @@ test('sign-in and navigation raise no React cross-component update warning', asy
     }
   })
   await signIn(page, 'viewer')
-  await page.goto('/audit')
+  await open(page, '/audit')
   await expect(page.getByRole('group', { name: 'Signed-in identity' })).toBeVisible()
-  await page.goto('/')
+  await open(page, '/')
   await expect(page.getByRole('group', { name: 'Engine health' })).toBeVisible()
   await scanA11y(page, 'triage landing after sign-in')
   expect(warnings).toEqual([])

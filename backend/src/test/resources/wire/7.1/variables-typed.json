@@ -1,0 +1,71 @@
+[
+  {
+    "name": "aBoolean",
+    "scope": "local",
+    "type": "boolean",
+    "value": false
+  },
+  {
+    "name": "aSmallLong",
+    "scope": "local",
+    "type": "long",
+    "value": 5
+  },
+  {
+    "name": "aJson",
+    "scope": "local",
+    "type": "json",
+    "value": {
+      "a": [
+        1,
+        2,
+        {
+          "b": null
+        }
+      ],
+      "n": 9007199254740993
+    }
+  },
+  {
+    "name": "aString",
+    "scope": "local",
+    "type": "string",
+    "value": "2026-01-02"
+  },
+  {
+    "name": "aNull",
+    "scope": "local",
+    "value": null
+  },
+  {
+    "name": "aBinary",
+    "scope": "local",
+    "type": "binary",
+    "value": null,
+    "valueUrl": "http://localhost:8080/flowable-rest/service/runtime/process-instances/219bcd42-e247-11f1-bf13-26c4c8705bcb/variables/aBinary/data"
+  },
+  {
+    "name": "aLong",
+    "scope": "local",
+    "type": "long",
+    "value": 9007199254740993
+  },
+  {
+    "name": "aDate",
+    "scope": "local",
+    "type": "date",
+    "value": "2026-01-02T03:04:05Z"
+  },
+  {
+    "name": "aDouble",
+    "scope": "local",
+    "type": "double",
+    "value": 1.5
+  },
+  {
+    "name": "anInteger",
+    "scope": "local",
+    "type": "integer",
+    "value": 100
+  }
+]

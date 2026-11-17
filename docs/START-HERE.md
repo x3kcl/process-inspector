@@ -51,7 +51,7 @@ npm run dev
 
 Dev sign-in is the built-in ladder (`viewer`, `responder`, `operator`, `admin`, password `dev`).
 
-Before a pull request, mirror the cheap CI gates with `scripts/ci-local.sh` and make sure a runner slot is up (`scripts/ci-runner.sh ensure`). `main` accepts changes only through a pull request. The admin bypass on the ruleset is the emergency path, written in [RUNBOOK.md](RUNBOOK.md) §0.
+Before a pull request, mirror the CI gates with `bash ci/contract.sh ci-light` and make sure a runner slot is up (`scripts/ci-runner.sh ensure`). `main` accepts changes only through a pull request, landed by the queue (`scripts/pr-queue.sh`). The admin bypass on the ruleset is the emergency path, written in [RUNBOOK.md](RUNBOOK.md) §0.
 
 ## How to change it
 

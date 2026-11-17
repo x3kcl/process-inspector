@@ -1,0 +1,28 @@
+{
+  "data": [
+    {
+      "caseDefinitionId": "824739a6-e1fc-11f1-acb8-7eebefdaa7d9",
+      "caseDefinitionUrl": "http://localhost:8083/flowable-rest/cmmn-api/cmmn-repository/case-definitions/824739a6-e1fc-11f1-acb8-7eebefdaa7d9",
+      "caseInstanceId": "824bcd87-e1fc-11f1-acb8-7eebefdaa7d9",
+      "caseInstanceUrl": "http://localhost:8083/flowable-rest/cmmn-api/cmmn-runtime/case-instances/824bcd87-e1fc-11f1-acb8-7eebefdaa7d9",
+      "createTime": "2026-11-16T20:30:40.463Z",
+      "dueDate": "2026-11-16T20:30:50.463Z",
+      "elementId": "failingService",
+      "elementName": "Failing service",
+      "exceptionMessage": "Unknown property used in expression: ${nonExistentBean.doStuff()} with PlanItemInstance with id: 824bcd89-e1fc-11f1-acb8-7eebefdaa7d9, name: Failing service, definitionId: failingService, state: active, elementId: planItem_svc, caseInstanceId: 824bcd87-e1fc-11f1-acb8-7eebefdaa7d9, caseDefinitionId: 824739a6-e1fc-11f1-acb8-7eebefdaa7d9",
+      "handlerType": "cmmn-async-activate-plan-item-instance",
+      "id": "824c1bac-e1fc-11f1-acb8-7eebefdaa7d9",
+      "lockExpirationTime": null,
+      "lockOwner": null,
+      "planItemInstanceId": "824bcd89-e1fc-11f1-acb8-7eebefdaa7d9",
+      "retries": 0,
+      "tenantId": "",
+      "url": "http://localhost:8083/flowable-rest/cmmn-api/cmmn-management/deadletter-jobs/824c1bac-e1fc-11f1-acb8-7eebefdaa7d9"
+    }
+  ],
+  "order": "asc",
+  "size": 1,
+  "sort": "id",
+  "start": 0,
+  "total": 1
+}

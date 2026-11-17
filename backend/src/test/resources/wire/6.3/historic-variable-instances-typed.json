@@ -1,0 +1,140 @@
+{
+  "data": [
+    {
+      "id": "78467aa6-e24d-11f1-abeb-e6df5d7eaad7",
+      "processInstanceId": "782f701d-e24d-11f1-abeb-e6df5d7eaad7",
+      "processInstanceUrl": "http://localhost:8080/flowable-rest/service/history/historic-process-instances/782f701d-e24d-11f1-abeb-e6df5d7eaad7",
+      "taskId": null,
+      "variable": {
+        "name": "aBinary",
+        "scope": null,
+        "type": "binary",
+        "value": null,
+        "valueUrl": "http://localhost:8080/flowable-rest/service/history/historic-variable-instances/78467aa6-e24d-11f1-abeb-e6df5d7eaad7/data"
+      }
+    },
+    {
+      "id": "782fe54f-e24d-11f1-abeb-e6df5d7eaad7",
+      "processInstanceId": "782f701d-e24d-11f1-abeb-e6df5d7eaad7",
+      "processInstanceUrl": "http://localhost:8080/flowable-rest/service/history/historic-process-instances/782f701d-e24d-11f1-abeb-e6df5d7eaad7",
+      "taskId": null,
+      "variable": {
+        "name": "aBoolean",
+        "scope": null,
+        "type": "boolean",
+        "value": false
+      }
+    },
+    {
+      "id": "78305a89-e24d-11f1-abeb-e6df5d7eaad7",
+      "processInstanceId": "782f701d-e24d-11f1-abeb-e6df5d7eaad7",
+      "processInstanceUrl": "http://localhost:8080/flowable-rest/service/history/historic-process-instances/782f701d-e24d-11f1-abeb-e6df5d7eaad7",
+      "taskId": null,
+      "variable": {
+        "name": "aDate",
+        "scope": null,
+        "type": "date",
+        "value": "2026-01-02T03:04:05Z"
+      }
+    },
+    {
+      "id": "78305a8b-e24d-11f1-abeb-e6df5d7eaad7",
+      "processInstanceId": "782f701d-e24d-11f1-abeb-e6df5d7eaad7",
+      "processInstanceUrl": "http://localhost:8080/flowable-rest/service/history/historic-process-instances/782f701d-e24d-11f1-abeb-e6df5d7eaad7",
+      "taskId": null,
+      "variable": {
+        "name": "aDouble",
+        "scope": null,
+        "type": "double",
+        "value": 1.5
+      }
+    },
+    {
+      "id": "78303377-e24d-11f1-abeb-e6df5d7eaad7",
+      "processInstanceId": "782f701d-e24d-11f1-abeb-e6df5d7eaad7",
+      "processInstanceUrl": "http://localhost:8080/flowable-rest/service/history/historic-process-instances/782f701d-e24d-11f1-abeb-e6df5d7eaad7",
+      "taskId": null,
+      "variable": {
+        "name": "aLong",
+        "scope": null,
+        "type": "long",
+        "value": 9007199254740993
+      }
+    },
+    {
+      "id": "78303375-e24d-11f1-abeb-e6df5d7eaad7",
+      "processInstanceId": "782f701d-e24d-11f1-abeb-e6df5d7eaad7",
+      "processInstanceUrl": "http://localhost:8080/flowable-rest/service/history/historic-process-instances/782f701d-e24d-11f1-abeb-e6df5d7eaad7",
+      "taskId": null,
+      "variable": {
+        "name": "aNull",
+        "scope": null,
+        "value": null
+      }
+    },
+    {
+      "id": "78303371-e24d-11f1-abeb-e6df5d7eaad7",
+      "processInstanceId": "782f701d-e24d-11f1-abeb-e6df5d7eaad7",
+      "processInstanceUrl": "http://localhost:8080/flowable-rest/service/history/historic-process-instances/782f701d-e24d-11f1-abeb-e6df5d7eaad7",
+      "taskId": null,
+      "variable": {
+        "name": "aSmallLong",
+        "scope": null,
+        "type": "long",
+        "value": 5
+      }
+    },
+    {
+      "id": "78303373-e24d-11f1-abeb-e6df5d7eaad7",
+      "processInstanceId": "782f701d-e24d-11f1-abeb-e6df5d7eaad7",
+      "processInstanceUrl": "http://localhost:8080/flowable-rest/service/history/historic-process-instances/782f701d-e24d-11f1-abeb-e6df5d7eaad7",
+      "taskId": null,
+      "variable": {
+        "name": "aString",
+        "scope": null,
+        "type": "string",
+        "value": "2026-01-02"
+      }
+    },
+    {
+      "id": "78305a8d-e24d-11f1-abeb-e6df5d7eaad7",
+      "processInstanceId": "782f701d-e24d-11f1-abeb-e6df5d7eaad7",
+      "processInstanceUrl": "http://localhost:8080/flowable-rest/service/history/historic-process-instances/782f701d-e24d-11f1-abeb-e6df5d7eaad7",
+      "taskId": null,
+      "variable": {
+        "name": "anInteger",
+        "scope": null,
+        "type": "integer",
+        "value": 100
+      }
+    },
+    {
+      "id": "7856803c-e24d-11f1-abeb-e6df5d7eaad7",
+      "processInstanceId": "782f701d-e24d-11f1-abeb-e6df5d7eaad7",
+      "processInstanceUrl": "http://localhost:8080/flowable-rest/service/history/historic-process-instances/782f701d-e24d-11f1-abeb-e6df5d7eaad7",
+      "taskId": null,
+      "variable": {
+        "name": "stepLong",
+        "scope": null,
+        "type": "long",
+        "value": 9007199254740993
+      }
+    },
+    {
+      "id": "7856592a-e24d-11f1-abeb-e6df5d7eaad7",
+      "processInstanceId": "782f701d-e24d-11f1-abeb-e6df5d7eaad7",
+      "processInstanceUrl": "http://localhost:8080/flowable-rest/service/history/historic-process-instances/782f701d-e24d-11f1-abeb-e6df5d7eaad7",
+      "taskId": null,
+      "variable": {
+        "name": "stepNull",
+        "scope": null,
+        "value": null
+      }
+    }
+  ],
+  "order": "asc",
+  "size": 11,
+  "sort": "variableName",
+  "start": 0,
+  "total": 11
+}

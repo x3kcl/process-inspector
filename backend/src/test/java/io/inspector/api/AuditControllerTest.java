@@ -72,7 +72,8 @@ class AuditControllerTest {
         when(rbac.atLeast(auth, "ADMIN")).thenReturn(true);
         when(rbac.hasRoleOn(auth, Role.OPERATOR, "engine-a")).thenReturn(false);
 
-        List<AuditController.AuditEntryDto> dtos = controller.operationsLog(null, null, null, null, null, 100, auth);
+        List<AuditController.AuditEntryDto> dtos =
+                controller.operationsLog(null, null, null, null, null, null, 100, auth);
 
         assertThat(dtos.get(0).payload()).isNotNull(); // config-event row → visible to any ADMIN
         assertThat(dtos.get(1).payload()).isNull(); // engine row → still OPERATOR-gated per engine
@@ -87,7 +88,8 @@ class AuditControllerTest {
         Authentication auth = mock(Authentication.class);
         when(rbac.atLeast(auth, "ADMIN")).thenReturn(false);
 
-        List<AuditController.AuditEntryDto> dtos = controller.operationsLog(null, null, null, null, null, 100, auth);
+        List<AuditController.AuditEntryDto> dtos =
+                controller.operationsLog(null, null, null, null, null, null, 100, auth);
 
         assertThat(dtos.get(0).payload()).isNull();
     }

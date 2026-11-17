@@ -5,9 +5,11 @@ import io.github.resilience4j.circuitbreaker.CallNotPermittedException;
 import io.inspector.action.GuardRefusedException;
 import io.inspector.audit.ProtectedDefinition;
 import io.inspector.audit.ProtectedDefinitionRepository;
-import io.inspector.client.FlowablePage;
 import io.inspector.client.GuardedCaller.CallPriority;
 import io.inspector.client.ProcessApiClient;
+import io.inspector.client.ProcessDefinitionPage;
+import io.inspector.client.ProcessDefinitionRecord;
+import io.inspector.client.ProcessInstancePage;
 import io.inspector.config.InspectorProperties.EngineConfig;
 import io.inspector.registry.EngineRegistry;
 import java.util.ArrayList;
@@ -50,7 +52,7 @@ public class DefinitionVersionService {
 
     public DefinitionVersionsResponse versions(String engineId, String key) {
         EngineConfig engine = registry.require(engineId);
-        FlowablePage newest;
+        ProcessDefinitionPage newest;
         try {
             // The newest VERSION_CAP versions in a STABLE desc order (one page suffices at the cap).
             newest = client.listProcessDefinitionVersionsDesc(engine, CallPriority.INTERACTIVE, key, 0, VERSION_CAP);
@@ -60,7 +62,7 @@ public class DefinitionVersionService {
                     "engine-unreachable",
                     "Engine '" + engine.id() + "' did not answer the version query.");
         }
-        List<Map<String, Object>> definitions = newest != null ? newest.dataOrEmpty() : List.of();
+        List<ProcessDefinitionRecord> definitions = newest != null ? newest.dataOrEmpty() : List.of();
         if (definitions.isEmpty()) {
             throw new GuardRefusedException(
                     HttpStatus.NOT_FOUND,
@@ -69,20 +71,15 @@ public class DefinitionVersionService {
         }
         int totalVersions = (int) newest.total();
         // Desc order → the first row is the latest.
-        int latest = ((Number) definitions.get(0).get("version")).intValue();
+        int latest = definitions.get(0).version();
 
         List<DefinitionVersionsResponse.DefinitionVersion> versions = new ArrayList<>();
         try {
-            for (Map<String, Object> d : definitions) {
-                String id = String.valueOf(d.get("id"));
-                int version = ((Number) d.get("version")).intValue();
+            for (ProcessDefinitionRecord d : definitions) {
+                String id = String.valueOf(d.id());
+                int version = d.version();
                 versions.add(new DefinitionVersionsResponse.DefinitionVersion(
-                        id,
-                        version,
-                        d.get("name") != null ? String.valueOf(d.get("name")) : null,
-                        d.get("deploymentId") != null ? String.valueOf(d.get("deploymentId")) : null,
-                        runningInstanceCount(engine, id),
-                        version == latest));
+                        id, version, d.name(), d.deploymentId(), runningInstanceCount(engine, id), version == latest));
             }
         } catch (CallNotPermittedException | BulkheadFullException | ResourceAccessException e) {
             throw new GuardRefusedException(
@@ -133,7 +130,7 @@ public class DefinitionVersionService {
         Map<String, Object> body = new LinkedHashMap<>();
         body.put("processDefinitionId", definitionId);
         body.put("size", 1);
-        FlowablePage page = client.queryRuntimeProcessInstances(engine, CallPriority.INTERACTIVE, body);
+        ProcessInstancePage page = client.queryRuntimeProcessInstances(engine, CallPriority.INTERACTIVE, body);
         return page != null ? page.total() : 0;
     }
 }

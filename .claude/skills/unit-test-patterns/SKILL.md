@@ -14,12 +14,17 @@ description: TDD ladder for the backend — pure-static tests for join/merge log
 | **MockWebServer stub** | HTTP-client behavior: auth header, timeouts→error envelope, response parsing, per-engine paging caps | `FlowableEngineClient` emits basic-auth from a `password-ref`; read timeout → `perEngine.ok=false`, not an exception |
 | **Cached `@SpringBootTest`** | wiring: registry YAML binding, secret-ref resolution, RBAC route rules, SSE bridge | `inspector.engines` binding rejects a missing env ref at boot; VIEWER gets 403 on `POST /api/.../actions/*` |
 | **Dockerized engine** (→ `engine-harness` skill) | anything touching a REAL Flowable response shape: the DLQ/suspended join, historic fallback, actions, diagram fetch | never mock these |
+| **Frontend: Vitest + Testing Library** | view logic, hooks, components in `frontend/src/**` (`*.test.ts` / `*.test.tsx`); a full user flow climbs to Playwright in `frontend/e2e/` | `src/actions/DestructiveModal.test.tsx`; loop: `cd frontend && npx vitest run <file>` |
+
+The MockWebServer rung is implemented with WireMock here (`WireMockServer`, e.g. `client/ProcessApiClientTest`).
 
 Don't climb a rung for convenience (a `@SpringBootTest` for merge logic couples it to boot
 time and global state). Don't fake a rung either: status-join logic tested only against
 hand-written JSON proves nothing about Flowable's wire shape — that belongs on rung 4.
 
 ## Test-first, red-first
+The cycle, what a RED test must pin, and where the RED proof goes: the `tdd` skill
+(`.claude/skills/tdd/SKILL.md`) and `docs/landing-rules.md`.
 Logic-shaped changes (derivation, merging, filter mapping) get the failing test BEFORE the
 code — rung 1 makes that cheap: the search plan's inputs are three plain collections, so
 fixture-building is trivial. Regression fixes ALWAYS start red: reproduce with a fixture that

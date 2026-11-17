@@ -1,0 +1,45 @@
+<?xml version="1.0" encoding="UTF-8"?>
+<!--
+  Case-migration fixture (#500), version 1 of 2. Three human tasks, all active from the start:
+  reviewTask, extraCheck and optionalNote. Version 2 has no optionalNote, so a case whose
+  optionalNote is still open is a blocker (plan-item-not-in-target) and a case that completed it
+  is clean. Completing extraCheck afterwards changes the live plan-item set without making the
+  case a blocker: the compare-and-set fixture.
+  Deployed over the cmmn-api by CaseMigrationIT only (a new version per run). Flowable 6.8+.
+-->
+<cmmn:definitions xmlns:cmmn="http://www.omg.org/spec/CMMN/20151109/MODEL"
+  xmlns:cmmndi="http://www.omg.org/spec/CMMN/20151109/CMMNDI"
+  xmlns:dc="http://www.omg.org/spec/CMMN/20151109/DC"
+  xmlns:flowable="http://flowable.org/cmmn"
+  targetNamespace="http://flowable.org/cmmn">
+  <cmmn:case id="demoCaseMigration" name="Demo case migration">
+    <cmmn:casePlanModel id="casePlanModel" name="Demo case migration">
+      <cmmn:planItem id="planItem_reviewTask" name="Review" definitionRef="reviewTask"/>
+      <cmmn:planItem id="planItem_extraCheck" name="Extra check" definitionRef="extraCheck"/>
+      <cmmn:planItem id="planItem_optionalNote" name="Optional note" definitionRef="optionalNote"/>
+      <cmmn:humanTask id="reviewTask" name="Review"/>
+      <cmmn:humanTask id="extraCheck" name="Extra check"/>
+      <cmmn:humanTask id="optionalNote" name="Optional note"/>
+    </cmmn:casePlanModel>
+  </cmmn:case>
+  <cmmndi:CMMNDI>
+    <cmmndi:CMMNDiagram id="CMMNDiagram_demoCaseMigration">
+      <cmmndi:CMMNShape id="Shape_casePlanModel" cmmnElementRef="casePlanModel">
+        <dc:Bounds height="260" width="580" x="40" y="40"/>
+        <cmmndi:CMMNLabel/>
+      </cmmndi:CMMNShape>
+      <cmmndi:CMMNShape id="Shape_planItem_reviewTask" cmmnElementRef="planItem_reviewTask">
+        <dc:Bounds height="60" width="120" x="90" y="110"/>
+        <cmmndi:CMMNLabel/>
+      </cmmndi:CMMNShape>
+      <cmmndi:CMMNShape id="Shape_planItem_extraCheck" cmmnElementRef="planItem_extraCheck">
+        <dc:Bounds height="60" width="120" x="250" y="110"/>
+        <cmmndi:CMMNLabel/>
+      </cmmndi:CMMNShape>
+      <cmmndi:CMMNShape id="Shape_planItem_optionalNote" cmmnElementRef="planItem_optionalNote">
+        <dc:Bounds height="60" width="120" x="410" y="110"/>
+        <cmmndi:CMMNLabel/>
+      </cmmndi:CMMNShape>
+    </cmmndi:CMMNDiagram>
+  </cmmndi:CMMNDI>
+</cmmn:definitions>

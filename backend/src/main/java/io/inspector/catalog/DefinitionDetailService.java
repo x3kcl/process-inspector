@@ -4,11 +4,16 @@ import io.inspector.action.GuardRefusedException;
 import io.inspector.catalog.DefinitionDetailResponse.VersionRef;
 import io.inspector.catalog.DefinitionJobsResponse.JobLaneCount;
 import io.inspector.catalog.DefinitionSubscriptionsResponse.SubscriptionRow;
+import io.inspector.client.CaseDefinitionRecord;
 import io.inspector.client.CmmnApiClient;
-import io.inspector.client.FlowablePage;
+import io.inspector.client.EventSubscriptionPage;
+import io.inspector.client.EventSubscriptionRecord;
 import io.inspector.client.GuardedCaller.CallPriority;
+import io.inspector.client.JobPage;
 import io.inspector.client.ProcessApiClient;
 import io.inspector.client.ProcessApiClient.JobLaneKind;
+import io.inspector.client.ProcessDefinitionPage;
+import io.inspector.client.ProcessDefinitionRecord;
 import io.inspector.config.InspectorProperties.EngineConfig;
 import io.inspector.registry.EngineCapabilities;
 import io.inspector.registry.EngineRegistry;
@@ -37,12 +42,12 @@ public class DefinitionDetailService {
 
     public DefinitionDetailResponse detail(String engineId, String definitionId) {
         EngineConfig engine = registry.require(engineId);
-        Map<String, Object> bpmn = processes.getProcessDefinition(engine, CallPriority.INTERACTIVE, definitionId);
+        ProcessDefinitionRecord bpmn = processes.getProcessDefinition(engine, CallPriority.INTERACTIVE, definitionId);
         if (bpmn != null) {
             return bpmnDetail(engine, bpmn);
         }
         if (cmmn(engine)) {
-            Map<String, Object> cmmn = cases.getCmmnCaseDefinition(engine, CallPriority.INTERACTIVE, definitionId);
+            CaseDefinitionRecord cmmn = cases.getCmmnCaseDefinition(engine, CallPriority.INTERACTIVE, definitionId);
             if (cmmn != null) {
                 return cmmnDetail(engine, cmmn);
             }
@@ -64,18 +69,13 @@ public class DefinitionDetailService {
             }
             throw notFound(engineId, definitionId);
         }
-        FlowablePage page = processes.listDefinitionEventSubscriptions(
+        EventSubscriptionPage page = processes.listDefinitionEventSubscriptions(
                 engine, CallPriority.INTERACTIVE, definitionId, SUBSCRIPTION_CAP);
         List<SubscriptionRow> rows = new ArrayList<>();
-        for (Map<String, Object> row : page.dataOrEmpty()) {
-            String instanceId = str(row, "processInstanceId");
+        for (EventSubscriptionRecord row : page.dataOrEmpty()) {
+            String instanceId = row.processInstanceId();
             rows.add(new SubscriptionRow(
-                    str(row, "id"),
-                    str(row, "eventType"),
-                    str(row, "eventName"),
-                    str(row, "activityId"),
-                    instanceId,
-                    instanceId == null));
+                    row.id(), row.eventType(), row.eventName(), row.activityId(), instanceId, instanceId == null));
         }
         return new DefinitionSubscriptionsResponse("BPMN", rows, page.total() <= rows.size());
     }
@@ -91,7 +91,7 @@ public class DefinitionDetailService {
         List<JobLaneCount> lanes = new ArrayList<>();
         for (JobLaneKind lane : JobLaneKind.values()) {
             try {
-                FlowablePage page = processes.listJobs(
+                JobPage page = processes.listJobs(
                         engine, CallPriority.INTERACTIVE, lane, Map.of("processDefinitionId", definitionId), 0, 1);
                 lanes.add(new JobLaneCount(lane.name().toLowerCase(), page != null ? page.total() : 0, false));
             } catch (RuntimeException e) {
@@ -121,52 +121,52 @@ public class DefinitionDetailService {
         }
     }
 
-    private DefinitionDetailResponse bpmnDetail(EngineConfig engine, Map<String, Object> row) {
-        String key = str(row, "key");
+    private DefinitionDetailResponse bpmnDetail(EngineConfig engine, ProcessDefinitionRecord row) {
+        String key = row.key();
         List<VersionRef> versions = List.of();
         if (key != null) {
-            FlowablePage page = processes.listProcessDefinitionVersionsDesc(
+            ProcessDefinitionPage page = processes.listProcessDefinitionVersionsDesc(
                     engine, CallPriority.INTERACTIVE, key, 0, DefinitionCatalogService.LIST_CAP);
             int latest = page.dataOrEmpty().isEmpty()
-                    ? number(row.get("version"))
-                    : number(page.dataOrEmpty().get(0).get("version"));
+                    ? number(row.version())
+                    : number(page.dataOrEmpty().get(0).version());
             versions = new ArrayList<>();
-            for (Map<String, Object> version : page.dataOrEmpty()) {
-                int n = number(version.get("version"));
-                versions.add(new VersionRef(str(version, "id"), n, n == latest));
+            for (ProcessDefinitionRecord version : page.dataOrEmpty()) {
+                int n = number(version.version());
+                versions.add(new VersionRef(version.id(), n, n == latest));
             }
             versions.sort(Comparator.comparingInt(VersionRef::version).reversed());
         }
         return new DefinitionDetailResponse(
                 engine.id(),
                 "BPMN",
-                str(row, "id"),
+                row.id(),
                 key,
-                str(row, "name"),
-                number(row.get("version")),
-                bool(row.get("suspended")),
-                str(row, "deploymentId"),
-                str(row, "category"),
-                str(row, "tenantId") != null ? str(row, "tenantId") : engine.tenantId(),
-                str(row, "resourceName"),
-                bool(row.get("graphicalNotationDefined")),
+                row.name(),
+                number(row.version()),
+                bool(row.suspended()),
+                row.deploymentId(),
+                row.category(),
+                row.tenantId() != null ? row.tenantId() : engine.tenantId(),
+                row.resourceName(),
+                bool(row.graphicalNotationDefined()),
                 versions);
     }
 
-    private DefinitionDetailResponse cmmnDetail(EngineConfig engine, Map<String, Object> row) {
+    private DefinitionDetailResponse cmmnDetail(EngineConfig engine, CaseDefinitionRecord row) {
         return new DefinitionDetailResponse(
                 engine.id(),
                 "CMMN",
-                str(row, "id"),
-                str(row, "key"),
-                str(row, "name"),
-                number(row.get("version")),
-                bool(row.get("suspended")),
-                str(row, "deploymentId"),
-                str(row, "category"),
-                str(row, "tenantId") != null ? str(row, "tenantId") : engine.tenantId(),
-                str(row, "resourceName"),
-                bool(row.get("graphicalNotationDefined")),
+                row.id(),
+                row.key(),
+                row.name(),
+                number(row.version()),
+                bool(row.suspended()),
+                row.deploymentId(),
+                row.category(),
+                row.tenantId() != null ? row.tenantId() : engine.tenantId(),
+                row.resourceName(),
+                bool(row.graphicalNotationDefined()),
                 List.of());
     }
 
@@ -180,11 +180,6 @@ public class DefinitionDetailService {
                 HttpStatus.NOT_FOUND,
                 "definition-not-found",
                 "Definition " + definitionId + " does not exist on '" + engineId + "'.");
-    }
-
-    private static String str(Map<String, Object> map, String key) {
-        Object value = map.get(key);
-        return value != null ? value.toString() : null;
     }
 
     private static int number(Object value) {

@@ -80,7 +80,8 @@ class AdminEnginesProbeTest {
         ProcessApiClient flowable = mock(ProcessApiClient.class);
         Authentication auth = mock(Authentication.class);
         when(store.requireRow("e")).thenReturn(row("e", "https://93.184.216.34/service", "test"));
-        when(flowable.engineInfo(any(), eq(CallPriority.INTERACTIVE))).thenReturn(java.util.Map.of("version", "6.8.0"));
+        when(flowable.engineInfo(any(), eq(CallPriority.INTERACTIVE)))
+                .thenReturn(new io.inspector.client.EngineInfoRecord("default", "6.8.0"));
         when(store.recordProbe(eq("e"), eq(true), any(), any(), any()))
                 .thenReturn(row("e", "https://93.184.216.34/service", "test"));
 

@@ -54,6 +54,10 @@ updates:
       # #458 is an adopt-or-pin evaluation, not an automatic TypeScript 7 PR.
       - dependency-name: typescript
         update-types: [version-update:semver-major]
+      # EXACT-pinned to the chromium baked into the CI runner image: moves only together with
+      # PLAYWRIGHT_VERSION in docker/ci-runner/Dockerfile and a runner image rebuild on every
+      # host (#707). A lone bump fails every e2e test ("Executable doesn't exist").
+      - dependency-name: "@playwright/test"
       # Diagram canvases. Majors are a product change (SPEC watermark + viewer contract).
       - dependency-name: bpmn-js
         update-types: [version-update:semver-major]
