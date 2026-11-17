@@ -1399,7 +1399,9 @@ tree rows stay distinguishable (R-UXQ-12 half, usability W2 #7).
     `rbac-denied` 403. Under `scope-reads-enforced` an out-of-scope engine is refused (403).
   - **Only masked values:** a name that is not secret-named ⇒ 400 `variable-not-secret` (its
     value is already shown); an unknown variable ⇒ the read's 404. Running instances only (the
-    single-value read is runtime-scoped).
+    single-value read is runtime-scoped). A step-local `executionId` must belong to the instance
+    in the path, else 400 `execution-instance-mismatch` (audited) — the row always names the
+    instance the value came from.
   - **Audit, fail-closed:** every reveal is an audit row `reveal-variable` — actor, time,
     engine, instance (or case), payload `name`/`scope`/`executionId`/`scopeType`, reason,
     outcome — and **never the value** (not in the row, the outcome message, the logs or an
