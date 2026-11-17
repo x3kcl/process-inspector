@@ -36,6 +36,10 @@ inspector:
     partition-maintenance:
       enabled: false
   fanout-parallelism: 4
+  # #743: rung-3 suites reveal many times per user per minute; the limit itself is pinned by
+  # VariableRevealRateLimitSpringTest (which lowers it to 2).
+  reveal:
+    max-per-minute: 1000
   engines:
     - id: probe-dev
       name: "Probe engine (dev twin)"
