@@ -1,5 +1,6 @@
 package io.inspector.migration;
 
+import io.inspector.client.MigrationDocument;
 import java.util.LinkedHashMap;
 import java.util.List;
 import java.util.Map;
@@ -96,6 +97,11 @@ public record MigrationMapping(
             }
         }
         return wire;
+    }
+
+    /** The typed migration document the engine receives (#720). */
+    public static MigrationDocument document(String toProcessDefinitionId, List<MigrationMapping> overrides) {
+        return new MigrationDocument(null, List.of());
     }
 
     /** The source activity ids this mapping covers (1 for one-to-*, N for many-to-one). */
