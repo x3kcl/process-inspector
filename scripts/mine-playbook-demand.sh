@@ -2,7 +2,7 @@
 # R-GOV-08 demand-trigger measurement (issue #106 S0 slice) — thin psql wrapper around
 # mine-playbook-demand.sql. Read-only; safe to re-run at any time, e.g. periodically against
 # real pilot production audit data once it exists (current dev audit_entry has no pilot
-# history to evaluate the gate against — see docs/reviews/S0-PLAYBOOK-DEMAND-2026-07.md).
+# history to evaluate the gate against — see docs/reviews/S0-PLAYBOOK-DEMAND-2026-07.md and -2026-11.md).
 #
 # Usage:
 #   scripts/mine-playbook-demand.sh                       # dev defaults below (PG* env vars)
