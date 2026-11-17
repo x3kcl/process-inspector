@@ -9,6 +9,7 @@ import io.inspector.security.ReadScopeGate;
 import io.inspector.security.Role;
 import java.util.List;
 import org.springframework.security.access.AccessDeniedException;
+import org.springframework.security.access.prepost.PreAuthorize;
 import org.springframework.security.core.Authentication;
 import org.springframework.security.core.GrantedAuthority;
 import org.springframework.web.bind.annotation.GetMapping;
@@ -49,6 +50,7 @@ public class EnginesController {
     }
 
     @GetMapping
+    @PreAuthorize("@rbac.atLeast(authentication, 'VIEWER')") // #758: a role on some engine, enforcement on or off
     public List<EngineDto> list(Authentication auth) {
         return registry.allForDisplay().stream()
                 .filter(e -> readable(auth, e.id()))
@@ -58,6 +60,7 @@ public class EnginesController {
 
     /** Version, properties, and table counts. A viewer gets the version line only (#509). */
     @GetMapping("/{id}/system")
+    @PreAuthorize("@rbac.atLeast(authentication, 'VIEWER')") // #758: a role on some engine, enforcement on or off
     public EngineSystemInfo system(@PathVariable String id, Authentication auth) {
         if (!readable(auth, id)) {
             throw new AccessDeniedException("Access Denied"); // the @PreAuthorize refusal, verbatim

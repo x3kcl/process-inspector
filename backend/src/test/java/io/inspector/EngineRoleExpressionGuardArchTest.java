@@ -35,26 +35,9 @@ import org.springframework.web.bind.annotation.RestController;
  */
 class EngineRoleExpressionGuardArchTest {
 
-    private static final String FAN_OUT =
-            "open to any signed-in user with enforcement off; fans out over the registry, narrowed by ReadScopeGate under enforcement only";
-    private static final String PROJECTED =
-            "open to any signed-in user with enforcement off; scope projected by the service (ReadScopeGate) under enforcement only";
-
-    static final Map<String, String> EXCEPTIONS = Map.ofEntries(
-            Map.entry("CatalogController.definitions", FAN_OUT),
-            Map.entry("DeploymentsController.list", FAN_OUT),
-            Map.entry("EnginesController.list", FAN_OUT),
-            Map.entry("EnginesController.system", FAN_OUT),
-            Map.entry("JobsExplorerController.list", FAN_OUT),
-            Map.entry("PersonTaskSearchController.searchByPerson", FAN_OUT),
-            Map.entry("TaskBrowseController.list", FAN_OUT),
-            Map.entry("SearchController.search", FAN_OUT),
-            Map.entry("TriageController.dashboard", PROJECTED),
-            Map.entry("TriageController.leakViews", PROJECTED),
-            Map.entry("TriageController.trends", PROJECTED),
-            Map.entry(
-                    "MeController.me",
-                    "lists the caller's OWN role per engine (same exception as EngineScopedRouteGuardArchTest)"));
+    static final Map<String, String> EXCEPTIONS = Map.ofEntries(Map.entry(
+            "MeController.me",
+            "lists the caller's OWN role per engine (same exception as EngineScopedRouteGuardArchTest)"));
 
     private static final JavaClasses MAIN = new ClassFileImporter()
             .withImportOption(ImportOption.Predefined.DO_NOT_INCLUDE_TESTS)

@@ -338,6 +338,15 @@ env grant or the `mapping-source: file` pin (see RUNBOOK), never break-glass. **
 never blocks:** if Postgres is unreachable *concurrent* with the IdP outage, break-glass audit
 falls back to a **local tamper-evident append-only file sink** (write-success gates the action) —
 the one deliberate fail-closed exception, reconciled to `audit_entry` on recovery.
+**A user with no mapping (#758, R-SAFE-17).** On `oidc`, signing in does not imply a role: a user
+whose groups map to no grant signs in, then sees only "No access granted yet — ask an Inspector
+admin" (their name and Sign out stay in the header). Every data read refuses them, with `403`
+`code: no-engine-role` (the three stored migration analysis/plan reads by id keep their `404` /
+`rbac-denied`) — distinct from a per-engine refusal of a user who holds a role elsewhere —
+so an access log full of `no-engine-role` names users waiting for a mapping, not an attack. Fix it by
+mapping one of their groups to at least VIEWER on one engine (`/admin/access`, or the mounted
+mapping file); it applies within the reload TTL, no re-login. `GET /api/me`, `GET /api/meta` and
+`/actuator/prometheus` stay readable to any signed-in principal.
 Session policy (R-SAFE-07, built v2 — IDP-SECURITY.md §5): fixation protection (scoped to
 `oidc`/form so the dev Basic-per-XHR SSE isn't orphaned), idle timeout 12 h / absolute 24 h
 (**warn-before-guillotine**, never a takeover over a dirty wizard draft), `HttpOnly; Secure;

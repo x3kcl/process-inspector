@@ -31,6 +31,7 @@ public class DeploymentsController {
     }
 
     @GetMapping("/deployments")
+    @PreAuthorize("@rbac.atLeast(authentication, 'VIEWER')") // #758: a role on some engine, enforcement on or off
     public DeploymentCatalogResponse list(
             @RequestParam(required = false) Set<String> engineIds,
             @RequestParam(required = false) String name,

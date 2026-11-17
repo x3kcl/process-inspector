@@ -6,6 +6,7 @@ import io.inspector.dto.SearchResponse;
 import io.inspector.security.ReadScopeGate;
 import java.util.Map;
 import java.util.Set;
+import org.springframework.security.access.prepost.PreAuthorize;
 import org.springframework.security.core.Authentication;
 import org.springframework.web.bind.annotation.PostMapping;
 import org.springframework.web.bind.annotation.RequestBody;
@@ -26,6 +27,7 @@ public class SearchController {
     }
 
     @PostMapping
+    @PreAuthorize("@rbac.atLeast(authentication, 'VIEWER')") // #758: a role on some engine, enforcement on or off
     public SearchResponse search(@RequestBody SearchRequest request, Authentication auth) {
         // The copy-as-cURL uses the URL this request actually arrived on, so the copied
         // command works from wherever the operator is (SPEC Stage 1).

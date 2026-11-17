@@ -49,7 +49,7 @@ export function IdentityStrip() {
       <span className="identity-who">
         <span className="identity-label">Signed in as</span>{' '}
         <strong>{username ?? 'unknown'}</strong>
-        {role !== undefined && role !== '' && <span className="identity-role"> ({role})</span>}
+        {(role ?? '') !== '' && <span className="identity-role"> ({role})</span>}
       </span>
       <button
         type="button"

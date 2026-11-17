@@ -128,7 +128,14 @@ checklist).
   out-of-scope actions with the RBAC reason. Roles are **layered, not binary** (R-SAFE-01):
   `VIEWER` (read-only) → **`RESPONDER`** (tier-0 verbs + unstick + notes — no variable
   writes, no token moves; the L1/L2 runbook tier) → `OPERATOR` (adds tiers 1–2) → `ADMIN`
-  (adds tiers 3–4). Deployments MAY override the role→verb matrix with per-verb grants
+  (adds tiers 3–4). **"Signed in" is not a tier (R-SAFE-17, #758):** every data read needs at
+  least VIEWER on some engine (or a global ladder role — the REGISTRY_ADMIN/ACCESS_ADMIN fleet
+  grants are orthogonal and confer no read); a signed-in user with no role anywhere — an
+  OIDC user whose groups map to nothing — gets `403 no-engine-role` on every gated read and the
+  SPA shows "No access granted yet — ask an Inspector admin". Only `GET /api/me` (who am I),
+  `GET /api/meta` (non-sensitive config), `/actuator/prometheus` (BFF telemetry) and the
+  auth/health/contract doors stay open to them.
+  Deployments MAY override the role→verb matrix with per-verb grants
   `(role, verb, engineId, tenantId)`; tooltips cite the missing grant. OIDC delivers
   identity + coarse groups only; the group→scope mapping is BFF-owned, change-audited
   config (ADR-003 names the pilot IdP and its claim contract). **Mapping storage decided
@@ -826,10 +833,10 @@ PERSON have, across every engine" — the "Bob is on vacation" query. Search sta
   engine-scoped read, before any engine call. Independent of enforcement (#752), that
   identity-links read needs at least VIEWER on the engine (the instance identity-links rule): a
   signed-in user with no role there gets the same 403 with enforcement off too. The fan-out reads
-  still open to any signed-in user with enforcement off (catalog definitions, deployments, engine
-  list/system, jobs explorer, person task search, task browse, instance search, triage
-  dashboard/trends/leak views) are named in
-  `EngineRoleExpressionGuardArchTest`; closing them is a separate decision. Off ⇒ every engine, as before. Every controller
+  (catalog definitions, deployments, engine list/system, jobs explorer, person task search, task
+  browse, instance search, triage dashboard/trends/leak views) need at least VIEWER on some engine,
+  enforcement on or off (#758): a user with no role anywhere gets `403 no-engine-role`; a VIEWER on
+  one engine still reads the whole fleet with enforcement off. Off ⇒ every engine, as before. Every controller
   route that returns per-engine data is scoped by method security naming the engine, by the
   read-scope gate, or is a named exception — the route sweep and its guard test
   (`EngineScopedRouteGuardArchTest`) are in ARCHITECTURE §4 (the
