@@ -1,0 +1,50 @@
+[
+  {
+    "batchId": "21153102-dec0-11f1-acb8-7eebefdaa7d9",
+    "batchType": "caseMigration",
+    "batchUrl": "http://localhost:8080/flowable-rest/service/management/batches/21153102-dec0-11f1-acb8-7eebefdaa7d9",
+    "completeTime": "2026-11-12T17:40:19.609Z",
+    "createTime": "2026-11-12T17:40:19.533Z",
+    "id": "21155813-dec0-11f1-acb8-7eebefdaa7d9",
+    "scopeId": "0c510773-dec0-11f1-acb8-7eebefdaa7d9",
+    "scopeType": "cmmn",
+    "searchKey": "0bbfeae6-dec0-11f1-acb8-7eebefdaa7d9",
+    "searchKey2": "0c0928ea-dec0-11f1-acb8-7eebefdaa7d9",
+    "status": "success",
+    "subScopeId": null,
+    "tenantId": null,
+    "url": "http://localhost:8080/flowable-rest/service/management/batch-parts/21155813-dec0-11f1-acb8-7eebefdaa7d9"
+  },
+  {
+    "batchId": "21153102-dec0-11f1-acb8-7eebefdaa7d9",
+    "batchType": "caseMigration",
+    "batchUrl": "http://localhost:8080/flowable-rest/service/management/batches/21153102-dec0-11f1-acb8-7eebefdaa7d9",
+    "completeTime": "2026-11-12T17:40:19.609Z",
+    "createTime": "2026-11-12T17:40:19.540Z",
+    "id": "21166986-dec0-11f1-acb8-7eebefdaa7d9",
+    "scopeId": "0c4854dd-dec0-11f1-acb8-7eebefdaa7d9",
+    "scopeType": "cmmn",
+    "searchKey": "0bbfeae6-dec0-11f1-acb8-7eebefdaa7d9",
+    "searchKey2": "0c0928ea-dec0-11f1-acb8-7eebefdaa7d9",
+    "status": "success",
+    "subScopeId": null,
+    "tenantId": null,
+    "url": "http://localhost:8080/flowable-rest/service/management/batch-parts/21166986-dec0-11f1-acb8-7eebefdaa7d9"
+  },
+  {
+    "batchId": "21153102-dec0-11f1-acb8-7eebefdaa7d9",
+    "batchType": "caseMigration",
+    "batchUrl": "http://localhost:8080/flowable-rest/service/management/batches/21153102-dec0-11f1-acb8-7eebefdaa7d9",
+    "completeTime": "2026-11-12T17:40:19.609Z",
+    "createTime": "2026-11-12T17:40:19.540Z",
+    "id": "21166989-dec0-11f1-acb8-7eebefdaa7d9",
+    "scopeId": "0c58f6b9-dec0-11f1-acb8-7eebefdaa7d9",
+    "scopeType": "cmmn",
+    "searchKey": "0bbfeae6-dec0-11f1-acb8-7eebefdaa7d9",
+    "searchKey2": "0c0928ea-dec0-11f1-acb8-7eebefdaa7d9",
+    "status": "success",
+    "subScopeId": null,
+    "tenantId": null,
+    "url": "http://localhost:8080/flowable-rest/service/management/batch-parts/21166989-dec0-11f1-acb8-7eebefdaa7d9"
+  }
+]
