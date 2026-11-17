@@ -16,9 +16,10 @@ import { classifyOmniboxInput, decideResolveNavigation, summarizeReachability } 
  * /api/resolve (R-SEM-04): one exact ID match navigates, business keys land on a
  * pre-filtered search, ambiguity renders an explicit picker — never a guess.
  */
-export function Omnibox() {
+/** `enginesEnabled`: false until GET /api/me says the user may read the fleet (#758); the box mounts at once so ⌘K works. */
+export function Omnibox({ enginesEnabled = true }: { enginesEnabled?: boolean }) {
   const navigate = useNavigate()
-  const engines = useEngines()
+  const engines = useEngines(enginesEnabled)
   const [value, setValue] = useState('')
   const [panel, setPanel] = useState<ResolveResponse>()
 

@@ -106,7 +106,7 @@ export function Shell() {
               <RegistryAdminLink />
               <AccessAdminLink />
               <RemediationDemandLink />
-              {ready && <Omnibox />}
+              {!noAccess && <Omnibox enginesEnabled={ready} />}
               {/* R-UXQ-03: the one-click display-zone control lives on every stage. */}
               <ZoneToggle />
               {/* R-UXQ-08: the persisted dark-theme control lives on every stage. */}
