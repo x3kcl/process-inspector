@@ -207,24 +207,24 @@ class TaskVerbBodyWireShapeTest {
     }
 
     @Test
-    void addAGroupLinkSendsGroupIdThenType() {
+    void addAGroupLinkSendsGroupThenType() {
         client.addIdentityLink(engine, P, "t1", "groups", "hr", "candidate");
 
         pins(
                 "POST",
                 "/runtime/tasks/t1/identitylinks",
-                "{\"groupId\":\"hr\",\"type\":\"candidate\"}",
+                "{\"group\":\"hr\",\"type\":\"candidate\"}",
                 TaskIdentityLinkRequest.of("groups", "hr", "candidate"));
     }
 
     @Test
-    void addAUserLinkSendsUserIdThenType() {
+    void addAUserLinkSendsUserThenType() {
         client.addIdentityLink(engine, P, "t1", "users", "kermit", "candidate");
 
         pins(
                 "POST",
                 "/runtime/tasks/t1/identitylinks",
-                "{\"userId\":\"kermit\",\"type\":\"candidate\"}",
+                "{\"user\":\"kermit\",\"type\":\"candidate\"}",
                 TaskIdentityLinkRequest.of("users", "kermit", "candidate"));
     }
 
