@@ -304,13 +304,16 @@ public class CorrectiveActionService {
             }
 
             // -- dual-write close-out (R-SEM-18): a failure HERE is the specialized error --
-            audit.close(entry, AuditOutcome.ok, 200, null, true);
+            // #744: Flowable 7.1 replaces the timer job on reschedule — name the new id when we can.
+            String newJobId =
+                    verb == ActionVerb.RESCHEDULE_TIMER ? replacementTimerJob(engine, targetId, target) : null;
+            audit.close(entry, AuditOutcome.ok, 200, newJobId == null ? null : "newJobId=" + newJobId, true);
             return new ActionResult(
                     entry.getId(),
                     entry.getCorrelationId(),
                     "ok",
                     200,
-                    deltaStatement(verb, targetId, request, target));
+                    deltaStatement(verb, targetId, request, target, newJobId));
         } finally {
             BreakGlassActor.clear();
         }
@@ -1383,15 +1386,47 @@ public class CorrectiveActionService {
     /* ------------------------------- helpers ------------------------------- */
 
     /** The explicit delta statement for the outcome toast (SPEC §6 tier 0 — never a bare "success"). */
-    private static String deltaStatement(ActionVerb verb, String targetId, ActionRequest request, Target target) {
+    /**
+     * The instance's timer job on the same activity after a reschedule, or null when it is not
+     * exactly one other job (or the read fails — the verb already succeeded, never fail it here).
+     */
+    private String replacementTimerJob(EngineConfig engine, String instanceId, Target target) {
+        try {
+            Object oldId = target.auditPayload().get("jobId");
+            Object element = target.auditPayload().get("elementId");
+            var page = client.listJobs(
+                    engine,
+                    CallPriority.INTERACTIVE,
+                    JobLaneKind.TIMER,
+                    Map.of("processInstanceId", instanceId),
+                    0,
+                    50);
+            var same = page.dataOrEmpty().stream()
+                    .filter(j -> !j.id().equals(oldId) && java.util.Objects.equals(j.elementId(), element))
+                    .toList();
+            return same.size() == 1 ? same.get(0).id() : null;
+        } catch (RuntimeException e) {
+            return null;
+        }
+    }
+
+    private static String deltaStatement(
+            ActionVerb verb, String targetId, ActionRequest request, Target target, String newJobId) {
         return switch (verb) {
             case RETRY_JOB ->
                 "Job " + request.jobId() + " moved back to the executable queue; engine-default retries restored."
                         + " The queue move is reversible; the side effects of the executed job are not.";
             case TRIGGER_TIMER -> "Timer job " + request.jobId() + " fired now and took its normal path.";
             case RESCHEDULE_TIMER ->
-                "Timer job " + request.jobId() + " now waits until " + request.dueDate() + " (was "
-                        + target.auditPayload().get("dueDate") + "). Reschedule again to undo.";
+                newJobId != null
+                        ? "Timer job " + newJobId + " (replacing " + request.jobId() + ") now waits until "
+                                + request.dueDate() + " (was "
+                                + target.auditPayload().get("dueDate")
+                                + "). Reschedule job " + newJobId + " again to undo."
+                        : "Timer job " + request.jobId() + " was rescheduled to " + request.dueDate() + " (was "
+                                + target.auditPayload().get("dueDate")
+                                + "). The engine replaced it, so the job id changed:"
+                                + " find the timer on the instance again to undo.";
             case MOVE_TO_HISTORY_JOB -> "Dead-letter job " + request.jobId() + " moved back onto the history queue.";
             case DELETE_JOB ->
                 "Job " + request.jobId() + " deleted from the " + request.jobLane()
