@@ -409,6 +409,20 @@ body {
   flex-wrap: wrap;
   align-items: center;
 }
+/* #690: one line on detail routes — name + alarms only, the lane/throughput detail is on Stage 0. */
+.engine-strip-compact {
+  flex-wrap: nowrap;
+  overflow: hidden;
+}
+.engine-strip-compact .lanes,
+.engine-strip-compact .strip-note,
+.engine-strip-compact .engine-version,
+.engine-strip-compact .engine-system-link {
+  display: none;
+}
+.engine-strip-compact .engine-card {
+  flex-shrink: 0;
+}
 .engine-card {
   display: flex;
   align-items: center;
@@ -2560,6 +2574,7 @@ button.skip-link {
   display: flex;
   align-items: center;
   gap: 4px;
+  margin: 0 16px;
   padding: 4px 0;
 }
 .diagram-toolbar button {
@@ -2580,7 +2595,7 @@ button.skip-link {
   flex-wrap: wrap;
   gap: 4px 14px;
   list-style: none;
-  margin: 4px 0 0;
+  margin: 4px 16px 0;
   padding: 0;
 }
 .diagram-legend li {
