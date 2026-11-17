@@ -26,5 +26,10 @@ done
 # #732: the timer-reschedule IT needs 7.1 (the verb) and 6.8 (the refusal) on one integration leg.
 grep -q '^  "[a-z0-9-]*|flowable-6,flowable-7,postgres|TimerReschedule7IT"$' ci/contract.sh \
   || no "IT_LEGS has no flowable-6,flowable-7 leg for TimerReschedule7IT"
+# #763: the task-admin verbs IT on 6.8 and 7.1 on one leg; its 6.8-only twin in the nightly engine-its list.
+grep -q '^  "[a-z0-9-]*|flowable-6,flowable-7,postgres|TaskAdminVerbsIT"$' ci/contract.sh \
+  || no "IT_LEGS has no flowable-6,flowable-7 leg for TaskAdminVerbsIT"
+grep -q 'nightly_its -Dit.test=.*[=,]TaskAdminVerbs68IT\b' ci/contract.sh \
+  || no "the nightly engine-its list does not run TaskAdminVerbs68IT"
 [ "$fail" = 0 ] && echo "contract-selftest: ok"
 exit "$fail"
