@@ -24,7 +24,7 @@ Java stays **21** for #440. Boot 4.1 requires Java 17+. Java 25 is #441, after t
 | Tomcat | pin `tomcat.version` 10.1.59 | drop the pin | Boot 4 is Tomcat 11 (Servlet 6.1). The 10.1.x pin cannot carry over |
 | Postgres driver | pin `postgresql.version` 42.7.13 | drop the pin | Boot 4.1.1 already manages 42.7.13 |
 | Flyway | `flyway-core` + `flyway-database-postgresql`, versions from the BOM | unchanged shape | Do not add a version pin |
-| Log encoder | `logstash-logback-encoder` 7.4 | stay on 7.4 while Jackson 2 stays | 7.4 is a Jackson 2 encoder |
+| Log encoder | `logstash-logback-encoder` 8.1 | stay on 8.x while Jackson 2 stays | 8.1 is the last Jackson 2 line (needs Jackson ≥2.18, logback ≥1.5.18; BOM gives 2.21.7 / 1.5.38); 9.0 needs Jackson 3 (#549) |
 | WireMock | `wiremock-standalone` 3.13.2 | keep the pin | Not a Boot-managed artifact. Standalone server, not the Spring-Boot integration |
 | ArchUnit | 1.5.1 | keep | JUnit 5 rule engine, no Boot API |
 | Testcontainers | BOM (1.x artifacts `junit-jupiter`, `postgresql`) | Boot 4.1 manages **2.0.5** | Artifact ids are `testcontainers-junit-jupiter` and `testcontainers-postgresql`. Java packages are unchanged. The Postgres 16 image tag in the tests is independent |
@@ -38,7 +38,7 @@ Why not Jackson 3 in the same change:
 
 - 40 production files import `com.fasterxml.jackson`. 14 of them use `ObjectMapper`. Tests add another 63 files.
 - The engine client has 55 `Map<String, Object>` hits and 25 `@SuppressWarnings("unchecked")` sites. Flowable payloads are untyped JSON. A default-mapper change (date format, null inclusion, module discovery) rewrites `/v3/api-docs` and the parse of engine bodies without a compile error.
-- `logstash-logback-encoder` 7.4 does not speak Jackson 3. Moving both in one PR mixes a log-pipeline break with an API-contract break.
+- `logstash-logback-encoder` 9.x speaks only Jackson 3 (7.4/8.x only Jackson 2). Moving both in one PR mixes a log-pipeline break with an API-contract break.
 
 Jackson 3 is a later change, before anyone proposes Boot 4.3. It is not part of #440, #441, or #442.
 

@@ -23,7 +23,7 @@
     <springdoc.version>3.2.0</springdoc.version>
     <wiremock.version>3.13.2</wiremock.version>
     <archunit.version>1.5.1</archunit.version>
-    <logstash-logback-encoder.version>7.4</logstash-logback-encoder.version>
+    <logstash-logback-encoder.version>8.1</logstash-logback-encoder.version>
     <spotless.version>3.11.0</spotless.version>
     <jacoco.version>0.8.16</jacoco.version>
     <!-- CI matrix legs skip the unit suite (already run in the unit job) without
