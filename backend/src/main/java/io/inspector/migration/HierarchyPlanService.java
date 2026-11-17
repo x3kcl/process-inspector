@@ -224,7 +224,10 @@ public class HierarchyPlanService {
 
     public HierarchyPlanView get(UUID id, Authentication auth) {
         HierarchyPlan plan = load(id);
-        requireAdmin(auth, plan.getEngineId());
+        // An ADMIN of another engine is told what an unknown id is told — no existence signal (#773).
+        if (!rbac.hasRoleOn(auth, Role.ADMIN, plan.getEngineId())) {
+            throw notFound(id);
+        }
         return view(plan);
     }
 
@@ -516,9 +519,12 @@ public class HierarchyPlanService {
     /* --------------------------------- helpers --------------------------------- */
 
     private HierarchyPlan load(UUID id) {
-        return plans.findById(id)
-                .orElseThrow(() -> new GuardRefusedException(
-                        HttpStatus.NOT_FOUND, "hierarchy-plan-not-found", "No hierarchy migration plan " + id + "."));
+        return plans.findById(id).orElseThrow(() -> notFound(id));
+    }
+
+    private static GuardRefusedException notFound(UUID id) {
+        return new GuardRefusedException(
+                HttpStatus.NOT_FOUND, "hierarchy-plan-not-found", "No hierarchy migration plan " + id + ".");
     }
 
     /** Older than the configured max age; a plan of exactly that age still submits. */

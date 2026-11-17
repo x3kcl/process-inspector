@@ -84,7 +84,7 @@ public class MigrationController {
 
     /** The stored analysis: status, activity × code counts, and one page of the per-instance drill. */
     @GetMapping("/migration/analyses/{id}")
-    @PreAuthorize("isAuthenticated()")
+    @PreAuthorize("@rbac.atLeast(authentication, 'ADMIN')")
     public CohortAnalysisView getAnalysis(
             @PathVariable UUID id,
             @RequestParam(defaultValue = "0") int page,
