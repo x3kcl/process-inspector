@@ -158,6 +158,10 @@ resilience4j:
         max-wait-duration: 5s
 
 inspector:
+  # Extra secret-name segments masked in audit rows (R-AUD-03, #741); built-ins cannot be removed.
+  # 2-64 chars of letters, digits, _ or -, a letter or digit at both ends. Default: none.
+  # secret-names:
+  #   additional: [iban, tan-code]
   # Boot-rejected ranges (#476, docs/OPERATIONS.md): null keeps the code default.
   # fanout-parallelism >= 1; hierarchy-max-depth >= 1; hierarchy-plan-max-age >= 1s.
   # triage.cache-ttl-s >= 1; stacktrace-sample-cap >= 0; ack-resurface-threshold-pct >= 0

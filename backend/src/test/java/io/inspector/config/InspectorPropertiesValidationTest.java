@@ -497,4 +497,40 @@ class InspectorPropertiesValidationTest {
                 .map(v -> v.getPropertyPath().toString())
                 .toList();
     }
+
+    @ParameterizedTest
+    @ValueSource(
+            strings = {
+                "",
+                " ",
+                "a",
+                "has space",
+                "a.b",
+                "re.*gex",
+                "ä",
+                "xxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxx"
+            })
+    void rejectsBadSecretNameAdditions(String bad) {
+        assertThat(validator.validate(new InspectorProperties.SecretNames(List.of(bad))))
+                .isNotEmpty();
+    }
+
+    @Test
+    void acceptsGoodSecretNameAdditionsAndBindsFromYamlKey() {
+        assertThat(validator.validate(new InspectorProperties.SecretNames(List.of("iban", "tan-code", "x_1"))))
+                .isEmpty();
+        InspectorProperties.SecretNames bound = new Binder(
+                        new MapConfigurationPropertySource(Map.of("inspector.secret-names.additional[0]", "iban")))
+                .bind("inspector.secret-names", InspectorProperties.SecretNames.class)
+                .get();
+        assertThat(bound.additional()).containsExactly("iban");
+    }
+
+    /** Review of #745: an addition must start and end with a letter or digit — "__" matched every name with "__", "_x" matched nothing. */
+    @ParameterizedTest
+    @ValueSource(strings = {"__", "--", "_x", "x-", "-ab-"})
+    void rejectsSecretNameAdditionsWithoutAlphanumericEnds(String bad) {
+        assertThat(validator.validate(new InspectorProperties.SecretNames(List.of(bad))))
+                .isNotEmpty();
+    }
 }
