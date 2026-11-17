@@ -15,6 +15,7 @@ import io.inspector.client.ExecutionPage;
 import io.inspector.client.ExecutionRecord;
 import io.inspector.client.ForwardedActor;
 import io.inspector.client.GuardedCaller.CallPriority;
+import io.inspector.client.MigrationDocument;
 import io.inspector.client.ProcessApiClient;
 import io.inspector.client.ProcessDefinitionPage;
 import io.inspector.client.ProcessDefinitionRecord;
@@ -182,7 +183,7 @@ public class MigrationService {
                 engine.auditPayloadOrDefault());
 
         dispatchAudited(entry, engineId, () -> {
-            client.migrateInstance(engine, CallPriority.INTERACTIVE, instanceId, plan.restBody());
+            client.migrateInstance(engine, CallPriority.INTERACTIVE, instanceId, plan.document());
             return null;
         });
 
@@ -601,15 +602,6 @@ public class MigrationService {
         return valid;
     }
 
-    static Map<String, Object> migrationDocument(String toProcessDefinitionId, List<MigrationMapping> overrides) {
-        Map<String, Object> document = new LinkedHashMap<>();
-        document.put("toProcessDefinitionId", toProcessDefinitionId);
-        document.put(
-                "activityMappings",
-                overrides.stream().map(MigrationMapping::toWire).toList());
-        return document;
-    }
-
     private static ProcessDefinitionRecord firstOrNull(ProcessDefinitionPage page) {
         List<ProcessDefinitionRecord> rows = page != null ? page.dataOrEmpty() : List.of();
         return rows.isEmpty() ? null : rows.get(0);
@@ -700,7 +692,12 @@ public class MigrationService {
         }
 
         Map<String, Object> restBody() {
-            return migrationDocument(target.definitionId(), overrides);
+            return MigrationMapping.restBody(target.definitionId(), overrides);
+        }
+
+        /** The typed body the engine receives — the same document as {@link #restBody()}. */
+        MigrationDocument document() {
+            return MigrationMapping.document(target.definitionId(), overrides);
         }
 
         String summary() {

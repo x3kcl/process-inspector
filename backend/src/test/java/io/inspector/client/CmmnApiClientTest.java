@@ -135,7 +135,7 @@ class CmmnApiClientTest {
      */
     @Test
     void v68RefusesHistoricAndByDefinitionMigrateWithNoHttp() {
-        Map<String, Object> document = Map.of("toCaseDefinitionId", "target-def");
+        CaseMigrationDocument document = new CaseMigrationDocument("target-def");
         for (CaseMigrationRoute route : EnumSet.complementOf(EnumSet.of(CaseMigrationRoute.SINGLE))) {
             assertThatThrownBy(() -> client.migrateCase(
                             engine("v68"), CallPriority.INTERACTIVE, "6.8.0", route, "id-1", document))
@@ -160,7 +160,7 @@ class CmmnApiClientTest {
                 "7.1.0",
                 CaseMigrationRoute.SINGLE,
                 "case-9",
-                Map.of("toCaseDefinitionId", "target-def"));
+                new CaseMigrationDocument("target-def"));
 
         assertThat(wm.getAllServeEvents()).hasSize(1);
         wm.verify(postRequestedFor(urlPathEqualTo("/cmmn-api/cmmn-runtime/case-instances/case-9/migrate")));

@@ -22,6 +22,7 @@ import io.inspector.audit.AuditOutcome;
 import io.inspector.audit.AuditService;
 import io.inspector.bulk.BulkCountDriftException;
 import io.inspector.client.CaseMigrationClient;
+import io.inspector.client.CaseMigrationDocument;
 import io.inspector.client.CaseMigrationRoute;
 import io.inspector.client.CmmnApiClient;
 import io.inspector.client.CmmnRecords;
@@ -197,7 +198,7 @@ class CaseDefinitionMigrationServiceTest {
                         eq("7.1.0"),
                         eq(CaseMigrationRoute.BY_DEFINITION_BATCH),
                         eq(FROM),
-                        eq(Map.of("toCaseDefinitionId", TO)));
+                        eq(new CaseMigrationDocument(TO)));
         verify(audit)
                 .beginPending(
                         eq("admin"),
@@ -340,7 +341,7 @@ class CaseDefinitionMigrationServiceTest {
                         eq("7.1.0"),
                         eq(CaseMigrationRoute.BY_DEFINITION_HISTORIC),
                         eq(FROM),
-                        eq(Map.of("toCaseDefinitionId", TO)));
+                        eq(new CaseMigrationDocument(TO)));
         verify(audit).close(pending, AuditOutcome.ok, 200, "{\"endedCasesLeftOnSource\":0}", true);
         assertThat(result.deltaStatement()).contains("2 ended cases").contains("0 ended case(s) are left");
     }
@@ -379,7 +380,7 @@ class CaseDefinitionMigrationServiceTest {
                         eq("7.1.0"),
                         eq(CaseMigrationRoute.HISTORIC),
                         eq("ended"),
-                        eq(Map.of("toCaseDefinitionId", TO)));
+                        eq(new CaseMigrationDocument(TO)));
         verify(audit)
                 .beginPending(
                         any(),

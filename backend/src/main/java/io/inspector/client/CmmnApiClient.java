@@ -591,7 +591,7 @@ public class CmmnApiClient {
             String engineVersion,
             CaseMigrationRoute route,
             String id,
-            Map<String, Object> document) {
+            CaseMigrationDocument document) {
         if (route.requires7() && !flowable7(engineVersion)) {
             String shown = engineVersion == null || engineVersion.isBlank() ? "unknown" : engineVersion.trim();
             throw new GuardRefusedException(

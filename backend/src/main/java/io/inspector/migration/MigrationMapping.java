@@ -79,7 +79,7 @@ public record MigrationMapping(
         return Form.ONE_TO_ONE;
     }
 
-    /** Serialize to the exact JSON object shape the Flowable migration document expects. */
+    /** The mapping as a map, for the preview DTO and the audit payload — same keys as the typed one. */
     public Map<String, Object> toWire() {
         Map<String, Object> wire = new LinkedHashMap<>();
         switch (form()) {
@@ -101,7 +101,30 @@ public record MigrationMapping(
 
     /** The typed migration document the engine receives (#720). */
     public static MigrationDocument document(String toProcessDefinitionId, List<MigrationMapping> overrides) {
-        return new MigrationDocument(null, List.of());
+        return new MigrationDocument(
+                toProcessDefinitionId,
+                overrides.stream().map(MigrationMapping::typed).toList());
+    }
+
+    /** The same document as a map, for the preview DTO and the audit payload. */
+    public static Map<String, Object> restBody(String toProcessDefinitionId, List<MigrationMapping> overrides) {
+        Map<String, Object> document = new LinkedHashMap<>();
+        document.put("toProcessDefinitionId", toProcessDefinitionId);
+        document.put(
+                "activityMappings",
+                overrides.stream().map(MigrationMapping::toWire).toList());
+        return document;
+    }
+
+    /** This mapping as the engine receives it: only the two keys of its form are set. */
+    private MigrationDocument.ActivityMapping typed() {
+        return switch (form()) {
+            case ONE_TO_ONE -> new MigrationDocument.ActivityMapping(fromActivityId, null, toActivityId, null);
+            case MANY_TO_ONE ->
+                new MigrationDocument.ActivityMapping(null, List.copyOf(fromActivityIds), toActivityId, null);
+            case ONE_TO_MANY ->
+                new MigrationDocument.ActivityMapping(fromActivityId, null, null, List.copyOf(toActivityIds));
+        };
     }
 
     /** The source activity ids this mapping covers (1 for one-to-*, N for many-to-one). */
