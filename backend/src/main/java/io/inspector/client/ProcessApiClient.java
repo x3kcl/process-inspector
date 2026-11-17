@@ -447,10 +447,7 @@ public class ProcessApiClient {
     }
 
     public void migrateInstance(
-            EngineConfig engine,
-            CallPriority priority,
-            String processInstanceId,
-            Map<String, Object> migrationDocument) {
+            EngineConfig engine, CallPriority priority, String processInstanceId, MigrationDocument migrationDocument) {
         repository.migrateInstance(engine, priority, processInstanceId, migrationDocument);
     }
 

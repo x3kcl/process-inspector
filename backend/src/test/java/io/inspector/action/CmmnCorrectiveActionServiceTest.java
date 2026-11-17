@@ -17,6 +17,7 @@ import io.inspector.audit.AuditEntry;
 import io.inspector.audit.AuditOutcome;
 import io.inspector.audit.AuditService;
 import io.inspector.audit.ProtectedInstanceRepository;
+import io.inspector.client.CaseMigrationDocument;
 import io.inspector.client.CaseMigrationRoute;
 import io.inspector.client.CmmnApiClient;
 import io.inspector.client.CmmnRecords;
@@ -380,7 +381,7 @@ class CmmnCorrectiveActionServiceTest {
                         eq("6.8.0"),
                         eq(CaseMigrationRoute.SINGLE),
                         eq(CASE),
-                        eq(Map.of("toCaseDefinitionId", "def-2")));
+                        eq(new CaseMigrationDocument("def-2")));
         verify(cmmnClient, never()).migrateCase(any(), any(), any(), eq(CaseMigrationRoute.HISTORIC), any(), any());
         verify(cmmnClient, never())
                 .migrateCase(any(), any(), any(), eq(CaseMigrationRoute.BY_DEFINITION), any(), any());
@@ -465,7 +466,7 @@ class CmmnCorrectiveActionServiceTest {
                         eq("6.8.0"),
                         eq(CaseMigrationRoute.SINGLE),
                         eq(CASE),
-                        eq(Map.of("toCaseDefinitionId", "def-2")));
+                        eq(new CaseMigrationDocument("def-2")));
     }
 
     @Test

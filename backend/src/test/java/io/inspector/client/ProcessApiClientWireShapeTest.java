@@ -859,8 +859,8 @@ class ProcessApiClientWireShapeTest {
                         "migrateInstance",
                         "POST",
                         "/runtime/process-instances/" + pid + "/migrate",
-                        "{\"toProcessDefinitionId\":\"" + defId + "\"}",
-                        c -> c.migrateInstance(e, p, pid, Map.of("toProcessDefinitionId", defId))),
+                        "{\"toProcessDefinitionId\":\"" + defId + "\",\"activityMappings\":[]}",
+                        c -> c.migrateInstance(e, p, pid, new MigrationDocument(defId, List.of()))),
                 new Write(
                         "deleteHistoricProcessInstance",
                         "DELETE",

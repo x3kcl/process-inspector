@@ -19,6 +19,7 @@ import io.inspector.client.CaseDefinitionPage;
 import io.inspector.client.CaseDefinitionRecord;
 import io.inspector.client.CaseInstanceRecord;
 import io.inspector.client.CaseMigrationClient;
+import io.inspector.client.CaseMigrationDocument;
 import io.inspector.client.CaseMigrationRoute;
 import io.inspector.client.CmmnApiClient;
 import io.inspector.client.ForwardedActor;
@@ -393,7 +394,7 @@ public class CaseDefinitionMigrationService {
                             version,
                             route,
                             routeId,
-                            Map.of("toCaseDefinitionId", plan.pair().toId())));
+                            new CaseMigrationDocument(plan.pair().toId())));
             Outcome outcome;
             try {
                 outcome = observer.apply(engine, plan);

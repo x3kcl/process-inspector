@@ -10,6 +10,7 @@ import io.inspector.audit.ProtectionGuard;
 import io.inspector.audit.SecretNames;
 import io.inspector.audit.VariableValueToken;
 import io.inspector.client.CaseInstanceRecord;
+import io.inspector.client.CaseMigrationDocument;
 import io.inspector.client.CaseMigrationRoute;
 import io.inspector.client.CmmnApiClient;
 import io.inspector.client.CmmnJobRecord;
@@ -1221,7 +1222,7 @@ public class CorrectiveActionService {
                             health == null ? null : health.version(),
                             CaseMigrationRoute.SINGLE,
                             targetId,
-                            Map.of("toCaseDefinitionId", required(request.toCaseDefinitionId(), "toCaseDefinitionId")));
+                            new CaseMigrationDocument(required(request.toCaseDefinitionId(), "toCaseDefinitionId")));
                 }
                 case EDIT_CASE_VARIABLE ->
                     cmmnClient.putCaseVariable(

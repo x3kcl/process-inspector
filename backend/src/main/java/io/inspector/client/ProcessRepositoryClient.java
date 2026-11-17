@@ -148,10 +148,7 @@ final class ProcessRepositoryClient {
      * dispatch and never retries.
      */
     public void migrateInstance(
-            EngineConfig engine,
-            CallPriority priority,
-            String processInstanceId,
-            Map<String, Object> migrationDocument) {
+            EngineConfig engine, CallPriority priority, String processInstanceId, MigrationDocument migrationDocument) {
         guarded.run(
                 engine,
                 priority,
