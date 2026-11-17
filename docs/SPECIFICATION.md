@@ -132,7 +132,11 @@ checklist).
   least VIEWER on some engine (or a global ladder role — the REGISTRY_ADMIN/ACCESS_ADMIN fleet
   grants are orthogonal and confer no read); a signed-in user with no role anywhere — an
   OIDC user whose groups map to nothing — gets `403 no-engine-role` on every gated read and the
-  SPA shows "No access granted yet — ask an Inspector admin". Only `GET /api/me` (who am I),
+  SPA shows "No access granted yet — ask an Inspector admin". A fleet-grant holder with no engine
+  role (#771) is refused the same reads (the floor never widens) and the SPA shows an "admin only"
+  shell instead, decided from `GET /api/me` alone: no engine strip, triage, ops drawer, omnibox or
+  SSE; nav offers only the admin pages they hold; they land on `/admin/engines` (else
+  `/admin/access`) with one line saying they have administrative access but no engine role. Only `GET /api/me` (who am I),
   `GET /api/meta` (non-sensitive config), `/actuator/prometheus` (BFF telemetry) and the
   auth/health/contract doors stay open to them.
   Deployments MAY override the role→verb matrix with per-verb grants
