@@ -1,5 +1,6 @@
 package io.inspector.detail;
 
+import io.inspector.action.GuardRefusedException;
 import io.inspector.audit.SecretNames;
 import io.inspector.client.DecisionExecutionPage;
 import io.inspector.client.DecisionExecutionRecord;
@@ -97,8 +98,21 @@ public class InstanceParityService {
         return new DecisionPage(true, rows, page.total() > rows.size());
     }
 
-    public Map<String, Object> decisionAudit(String engineId, String decisionExecutionId) {
+    public Map<String, Object> decisionAudit(String engineId, String instanceId, String decisionExecutionId) {
         EngineConfig engine = registry.require(engineId);
+        // #756: Flowable serves any decision execution of the engine; only the path instance's own.
+        DecisionExecutionRecord execution =
+                dmn.decisionExecution(engine, CallPriority.INTERACTIVE, decisionExecutionId);
+        if (execution == null) {
+            return Map.of();
+        }
+        if (!instanceId.equals(execution.instanceId())) {
+            throw new GuardRefusedException(
+                    HttpStatus.BAD_REQUEST,
+                    "execution-instance-mismatch",
+                    "Decision execution " + decisionExecutionId + " belongs to another instance, not " + instanceId
+                            + ".");
+        }
         Map<String, Object> audit = dmn.auditData(engine, CallPriority.INTERACTIVE, decisionExecutionId);
         return audit == null ? Map.of() : maskSecretNamed(audit);
     }

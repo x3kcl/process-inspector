@@ -70,6 +70,22 @@ public class DmnApiClient {
         }
     }
 
+    /** One decision execution (its owning {@code instanceId}, #756); null on 404. */
+    public DecisionExecutionRecord decisionExecution(EngineConfig engine, CallPriority priority, String executionId) {
+        try {
+            return guarded.call(
+                    engine,
+                    priority,
+                    () -> guarded.readClient(engine)
+                            .get()
+                            .uri(dmnApiBase(engine) + "/dmn-history/historic-decision-executions/{id}", executionId)
+                            .retrieve()
+                            .body(DecisionExecutionRecord.class));
+        } catch (HttpClientErrorException.NotFound e) {
+            return null;
+        }
+    }
+
     @SuppressWarnings("unchecked")
     public Map<String, Object> auditData(EngineConfig engine, CallPriority priority, String executionId) {
         try {

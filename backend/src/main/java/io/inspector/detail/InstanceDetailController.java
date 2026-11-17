@@ -168,7 +168,7 @@ public class InstanceDetailController {
     @PreAuthorize("@rbac.atLeastOn(authentication, 'VIEWER', #engineId)")
     public java.util.Map<String, Object> decisionAudit(
             @PathVariable String engineId, @PathVariable String instanceId, @PathVariable String decisionExecutionId) {
-        return parity.decisionAudit(engineId, decisionExecutionId);
+        return parity.decisionAudit(engineId, instanceId, decisionExecutionId);
     }
 
     /** Historic activity instances, startTime ascending — the Gantt rows. */
