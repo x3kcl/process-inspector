@@ -431,11 +431,17 @@ class ProcessApiClientWireShapeTest {
                                 List<Map<String, Object>> recordedRows = (List<Map<String, Object>>) bareArray;
                                 assertThat(rows).isEqualTo(RepositoryRecords.resources(recordedRows));
                                 assertThat(rows.size()).isEqualTo(bareArray.size());
-                            } else if (result instanceof FlowablePage page) {
+                            } else if (result instanceof HistoricVariablePage page) {
                                 @SuppressWarnings("unchecked")
                                 Map<String, Object> recordedPage = (Map<String, Object>) recorded;
+                                @SuppressWarnings("unchecked")
+                                List<Map<String, Object>> recordedRows =
+                                        (List<Map<String, Object>>) recordedPage.get("data");
                                 assertThat(page.total()).isEqualTo(((Number) recordedPage.get("total")).longValue());
-                                assertThat(page.dataOrEmpty()).isEqualTo(recordedPage.get("data"));
+                                assertThat(page.dataOrEmpty())
+                                        .isEqualTo(recordedRows.stream()
+                                                .map(VariableRecords::historicRow)
+                                                .toList());
                             } else if (result instanceof ExecutionPage page) {
                                 @SuppressWarnings("unchecked")
                                 Map<String, Object> recordedPage = (Map<String, Object>) recorded;
@@ -550,17 +556,6 @@ class ProcessApiClientWireShapeTest {
                                 assertThat(rows)
                                         .isEqualTo(recordedRows.stream()
                                                 .map(VariableRecords::variable)
-                                                .toList());
-                            } else if (result instanceof HistoricVariablePage page) {
-                                @SuppressWarnings("unchecked")
-                                Map<String, Object> recordedPage = (Map<String, Object>) recorded;
-                                @SuppressWarnings("unchecked")
-                                List<Map<String, Object>> recordedRows =
-                                        (List<Map<String, Object>>) recordedPage.get("data");
-                                assertThat(page.total()).isEqualTo(((Number) recordedPage.get("total")).longValue());
-                                assertThat(page.dataOrEmpty())
-                                        .isEqualTo(recordedRows.stream()
-                                                .map(VariableRecords::historicRow)
                                                 .toList());
                             } else if (result instanceof EngineInfoRecord info) {
                                 @SuppressWarnings("unchecked")

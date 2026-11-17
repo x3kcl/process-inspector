@@ -1,9 +1,10 @@
 package io.inspector.detail;
 
+import io.inspector.client.DecisionExecutionPage;
+import io.inspector.client.DecisionExecutionRecord;
 import io.inspector.client.DmnApiClient;
 import io.inspector.client.ExecutionPage;
 import io.inspector.client.ExecutionRecord;
-import io.inspector.client.FlowablePage;
 import io.inspector.client.GuardedCaller.CallPriority;
 import io.inspector.client.IdentityLinkRecord;
 import io.inspector.client.ProcessApiClient;
@@ -78,19 +79,19 @@ public class InstanceParityService {
         if (caps != null && !caps.dmnHistory()) {
             return DecisionPage.absent();
         }
-        FlowablePage page = dmn.listByProcessInstance(engine, CallPriority.INTERACTIVE, instanceId, PAGE);
+        DecisionExecutionPage page = dmn.listByProcessInstance(engine, CallPriority.INTERACTIVE, instanceId, PAGE);
         if (page == null) {
             return DecisionPage.absent();
         }
         List<DecisionRow> rows = new ArrayList<>();
-        for (Map<String, Object> row : page.dataOrEmpty()) {
+        for (DecisionExecutionRecord row : page.dataOrEmpty()) {
             rows.add(new DecisionRow(
-                    str(row, "id"),
-                    first(row, "decisionKey", "decisionDefinitionKey"),
-                    str(row, "activityId"),
-                    Boolean.TRUE.equals(row.get("failed")),
-                    str(row, "startTime"),
-                    str(row, "endTime")));
+                    row.id(),
+                    firstNonBlank(row.decisionKey(), row.decisionDefinitionKey()),
+                    row.activityId(),
+                    Boolean.TRUE.equals(row.failed()),
+                    row.startTime(),
+                    row.endTime()));
         }
         return new DecisionPage(true, rows, page.total() > rows.size());
     }
@@ -99,21 +100,6 @@ public class InstanceParityService {
         EngineConfig engine = registry.require(engineId);
         Map<String, Object> audit = dmn.auditData(engine, CallPriority.INTERACTIVE, decisionExecutionId);
         return audit == null ? Map.of() : new LinkedHashMap<>(audit);
-    }
-
-    private static String str(Map<String, Object> row, String key) {
-        Object value = row.get(key);
-        return value == null ? null : value.toString();
-    }
-
-    private static String first(Map<String, Object> row, String... keys) {
-        for (String key : keys) {
-            String value = str(row, key);
-            if (value != null && !value.isBlank()) {
-                return value;
-            }
-        }
-        return null;
     }
 
     private static String firstNonBlank(String... values) {

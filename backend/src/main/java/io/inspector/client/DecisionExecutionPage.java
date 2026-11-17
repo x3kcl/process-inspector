@@ -1,12 +1,12 @@
 package io.inspector.client;
 
-/** One page of historic DMN decision executions. RED stub (#474): no components yet. */
-public record DecisionExecutionPage() {
-    public long total() {
-        throw new UnsupportedOperationException("#474 RED stub");
-    }
+import com.fasterxml.jackson.annotation.JsonIgnoreProperties;
+import java.util.List;
 
-    public java.util.List<DecisionExecutionRecord> dataOrEmpty() {
-        throw new UnsupportedOperationException("#474 RED stub");
+/** One {@code {data:[…], total, start, size}} page of historic DMN decision executions, typed (#474). */
+@JsonIgnoreProperties(ignoreUnknown = true)
+public record DecisionExecutionPage(List<DecisionExecutionRecord> data, long total, int start, int size) {
+    public List<DecisionExecutionRecord> dataOrEmpty() {
+        return data != null ? data : List.of();
     }
 }

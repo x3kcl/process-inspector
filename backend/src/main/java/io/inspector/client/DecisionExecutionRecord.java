@@ -1,32 +1,18 @@
 package io.inspector.client;
 
-/** One historic DMN decision execution. RED stub (#474): no components yet. */
-public record DecisionExecutionRecord() {
-    public String id() {
-        throw new UnsupportedOperationException("#474 RED stub");
-    }
+import com.fasterxml.jackson.annotation.JsonIgnoreProperties;
 
-    public String decisionKey() {
-        throw new UnsupportedOperationException("#474 RED stub");
-    }
-
-    public String decisionDefinitionKey() {
-        throw new UnsupportedOperationException("#474 RED stub");
-    }
-
-    public String activityId() {
-        throw new UnsupportedOperationException("#474 RED stub");
-    }
-
-    public Boolean failed() {
-        throw new UnsupportedOperationException("#474 RED stub");
-    }
-
-    public String startTime() {
-        throw new UnsupportedOperationException("#474 RED stub");
-    }
-
-    public String endTime() {
-        throw new UnsupportedOperationException("#474 RED stub");
-    }
-}
+/**
+ * One row of {@code /dmn-api/dmn-history/historic-decision-executions} (#474). 6.8 and 7.1 name the
+ * decision {@code decisionKey}; {@code decisionDefinitionKey} is kept for an engine that serialises
+ * the older name (absent is null). Times stay the engine's verbatim text.
+ */
+@JsonIgnoreProperties(ignoreUnknown = true)
+public record DecisionExecutionRecord(
+        String id,
+        String decisionKey,
+        String decisionDefinitionKey,
+        String activityId,
+        Boolean failed,
+        String startTime,
+        String endTime) {}

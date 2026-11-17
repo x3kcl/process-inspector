@@ -71,10 +71,10 @@ public class CaseMigrationClient {
                 .encode()
                 .buildAndExpand(Map.of("caseDefinitionId", caseDefinitionId))
                 .toUri();
-        FlowablePage page = guarded.call(
+        PageTotal page = guarded.call(
                 engine,
                 priority,
-                () -> guarded.readClient(engine).get().uri(uri).retrieve().body(FlowablePage.class));
+                () -> guarded.readClient(engine).get().uri(uri).retrieve().body(PageTotal.class));
         return page != null ? page.total() : 0;
     }
 

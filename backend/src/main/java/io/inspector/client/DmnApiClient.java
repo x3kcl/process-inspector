@@ -47,7 +47,7 @@ public class DmnApiClient {
     }
 
     /** Null on 401/403/404 — the caller renders "no DMN engine". */
-    public FlowablePage listByProcessInstance(
+    public DecisionExecutionPage listByProcessInstance(
             EngineConfig engine, CallPriority priority, String processInstanceId, int size) {
         try {
             return guarded.call(
@@ -62,7 +62,7 @@ public class DmnApiClient {
                                     .build(true)
                                     .toUri())
                             .retrieve()
-                            .body(FlowablePage.class));
+                            .body(DecisionExecutionPage.class));
         } catch (HttpClientErrorException.NotFound
                 | HttpClientErrorException.Forbidden
                 | HttpClientErrorException.Unauthorized e) {

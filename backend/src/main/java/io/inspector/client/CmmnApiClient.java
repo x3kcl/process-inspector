@@ -403,10 +403,10 @@ public class CmmnApiClient {
                 .queryParam("size", 1);
         filters.forEach(b::queryParam);
         java.net.URI uri = b.build().toUri();
-        FlowablePage page = guarded.call(
+        PageTotal page = guarded.call(
                 engine,
                 priority,
-                () -> guarded.readClient(engine).get().uri(uri).retrieve().body(FlowablePage.class));
+                () -> guarded.readClient(engine).get().uri(uri).retrieve().body(PageTotal.class));
         return page != null ? page.total() : 0;
     }
 
@@ -424,10 +424,10 @@ public class CmmnApiClient {
                 .build()
                 .toUri();
         try {
-            FlowablePage page = guarded.call(
+            PageTotal page = guarded.call(
                     engine,
                     priority,
-                    () -> guarded.readClient(engine).get().uri(uri).retrieve().body(FlowablePage.class));
+                    () -> guarded.readClient(engine).get().uri(uri).retrieve().body(PageTotal.class));
             return page != null ? page.total() : 0L;
         } catch (org.springframework.web.client.HttpClientErrorException.NotFound e) {
             return null;
@@ -567,10 +567,10 @@ public class CmmnApiClient {
                 .queryParam("size", 1)
                 .build()
                 .toUri();
-        FlowablePage page = guarded.call(
+        PageTotal page = guarded.call(
                 engine,
                 priority,
-                () -> guarded.readClient(engine).get().uri(uri).retrieve().body(FlowablePage.class));
+                () -> guarded.readClient(engine).get().uri(uri).retrieve().body(PageTotal.class));
         return page != null ? page.total() : 0;
     }
 
