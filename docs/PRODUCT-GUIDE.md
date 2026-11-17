@@ -52,6 +52,10 @@ ladder, and a per-engine ADMIN does *not* confer them.
 | **ACCESS_ADMIN** (fleet) | `/admin/access` — the group→scope mapping, the most privileged store in the tool. Widening changes need a **second independent ACCESS_ADMIN** (four-eyes) | Platform administrator |
 | **Break-glass** | A sealed emergency ADMIN-global session for IdP outages — never a fleet grant. See §14 | Nobody, until a P1 |
 
+**Signed in is not a role.** Someone who signs in but holds no role on any engine (and no fleet
+grant) sees one page: *No access granted yet — ask an Inspector admin*, with Sign out in the
+header. Nothing else loads until an admin maps one of their groups to at least VIEWER somewhere.
+
 Deployments may override the role→verb matrix with per-verb grants; the disabled-action
 tooltip cites the missing grant either way. On a **read-only engine** every mutation is
 refused regardless of role — a rollout contract with the engine owner, not a bug.
