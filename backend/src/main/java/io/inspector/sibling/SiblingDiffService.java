@@ -151,6 +151,8 @@ public class SiblingDiffService {
                 change = VariableChange.ONLY_IN_SIBLING;
             } else if (o == null) {
                 change = VariableChange.ONLY_IN_SUBJECT;
+            } else if (s.masked() || o.masked()) {
+                change = VariableChange.MASKED; // #742: no same/changed on a secret-named value
             } else if (s.truncated() || o.truncated()) {
                 change = VariableChange.DIFFER_BEYOND_PREVIEW;
             } else if (Objects.equals(s.type(), o.type()) && Objects.equals(s.value(), o.value())) {

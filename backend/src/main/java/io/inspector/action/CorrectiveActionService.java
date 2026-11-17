@@ -7,6 +7,8 @@ import io.inspector.audit.AuditOutcome;
 import io.inspector.audit.AuditService;
 import io.inspector.audit.BreakGlassActor;
 import io.inspector.audit.ProtectionGuard;
+import io.inspector.audit.SecretNames;
+import io.inspector.audit.VariableValueToken;
 import io.inspector.client.CaseInstanceRecord;
 import io.inspector.client.CaseMigrationRoute;
 import io.inspector.client.CmmnApiClient;
@@ -261,11 +263,18 @@ public class CorrectiveActionService {
             // -- CAS pre-check (audited: the last shift must see the refused attempt) --
             if (verb == ActionVerb.EDIT_VARIABLE || verb == ActionVerb.EDIT_CASE_VARIABLE) {
                 Object current = target.currentVariableValue();
-                Object expected = request.variable().expectedOldValue();
-                if (!sameValue(expected, current)) {
+                ActionRequest.VariableEdit edit = request.variable();
+                boolean fresh = SecretNames.isSecret(edit.name())
+                        ? VariableValueToken.matches(
+                                edit.expectedValueToken(),
+                                engineId,
+                                blankToNull(edit.executionId()) != null ? edit.executionId() : targetId,
+                                edit.name(),
+                                current)
+                        : sameValue(edit.expectedOldValue(), current);
+                if (!fresh) {
                     audit.close(entry, AuditOutcome.failed, 409, "CAS conflict: current value differs", false);
-                    throw new CasConflictException(
-                            entry.getId(), request.variable().name(), current, expected);
+                    throw new CasConflictException(entry.getId(), edit.name(), current, edit.expectedOldValue());
                 }
             }
 
@@ -892,9 +901,10 @@ public class CorrectiveActionService {
                         "Case variable '" + edit.name() + "' does not exist. Nothing happened.");
             }
             current = variable.value();
+            boolean secret = SecretNames.isSecret(edit.name());
             payload.put("name", edit.name());
-            payload.put("oldValue", current);
-            payload.put("newValue", edit.value());
+            payload.put("oldValue", secret ? AuditService.REDACTED : current);
+            payload.put("newValue", secret ? AuditService.REDACTED : edit.value());
         }
         String businessKey = row.businessKey() == null ? caseId : row.businessKey();
         return new Target(payload, businessKey, "business key", current);
@@ -1579,6 +1589,17 @@ public class CorrectiveActionService {
         ActionRequest.VariableEdit edit = request.variable();
         if (edit == null || blankToNull(edit.name()) == null) {
             throw missingField("variable.name");
+        }
+        // #742 (R-AUD-11): a secret-named variable is read masked, so its CAS runs on the opaque
+        // token of that read. An expectedOldValue would turn the CAS into a value oracle (a right
+        // guess applies, a wrong one 409s), so it is refused rather than compared.
+        if (SecretNames.isSecret(edit.name())
+                && (edit.expectedOldValue() != null || blankToNull(edit.expectedValueToken()) == null)) {
+            throw new GuardRefusedException(
+                    HttpStatus.BAD_REQUEST,
+                    "secret-variable-needs-token",
+                    "'" + edit.name() + "' is secret-named: send the expectedValueToken from its masked read,"
+                            + " not an expectedOldValue. Nothing happened.");
         }
         return edit;
     }

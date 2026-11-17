@@ -10,6 +10,7 @@ import java.util.UUID;
 public class CasConflictException extends RuntimeException {
 
     private final UUID auditId;
+    private final String variableName;
     private final Object currentValue;
     private final Object expectedOldValue;
 
@@ -17,12 +18,17 @@ public class CasConflictException extends RuntimeException {
         super("Variable '" + variableName + "' changed since you loaded it — the edit was NOT applied."
                 + " Review the fresh value and retry deliberately.");
         this.auditId = auditId;
+        this.variableName = variableName;
         this.currentValue = currentValue;
         this.expectedOldValue = expectedOldValue;
     }
 
     public UUID auditId() {
         return auditId;
+    }
+
+    public String variableName() {
+        return variableName;
     }
 
     public Object currentValue() {

@@ -149,7 +149,8 @@ seeing it → Acknowledge.* Tutorial: [03 — incident lifecycle](tutorials/03-i
   just a named URL.
 - Filter rail (collapses to chips once a search runs): engines, status flags, definition
   key/version, business key (exact + contains), current activity, error text, started/failure
-  time windows, variable predicates (warned as unindexed — narrow by definition). Combination
+  time windows, variable predicates (warned as unindexed — narrow by definition; a predicate on a
+  secret-named variable is refused, `secret-variable-filter`). Combination
   rule: **AND between categories, OR within one** — the compiled-criteria echo below the form
   shows exactly what will run, and "As cURL" gives the equivalent `POST /api/search`. An
   all-blank form disables Search with the reason (nothing would be sent).
@@ -208,6 +209,13 @@ tab-aware (`?tab=timeline`) — paste the link into a ticket.
     changed the value meanwhile you get the three-value conflict panel and "Start over from
     the current value" — there is no overwrite-anyway button. On success the follow-on
     "Retry the failed job?" is offered, never automatic.
+    A variable with a **secret-shaped name** (`password`, `apiToken`, `authorization`,
+    `userPin`, … — the audit denylist, SPEC R-AUD-03) reads *"hidden — secret-named"* for
+    every role, here, in Compare and in the raw-JSON export. You can still change it: the
+    editor shows the current value as hidden, you type the new value blind, and the
+    verification modal shows neither value — the conflict check runs server-side on an opaque
+    token. Only the variable's own name counts: a `password` key inside a JSON variable is not
+    hidden.
   - **Errors & Jobs** — the four job lanes kept distinct (the lane is the diagnosis), plus
     the read-only **external-worker lane** on Flowable 6.8+ (lock owner / expiration).
     Per-job: retries, exception (stacktrace on expand), and the verbs — inline "Retry job

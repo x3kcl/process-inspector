@@ -2,7 +2,11 @@ package io.inspector.action;
 
 import com.fasterxml.jackson.annotation.JsonInclude;
 import com.fasterxml.jackson.core.JsonProcessingException;
+import com.fasterxml.jackson.databind.JsonNode;
 import com.fasterxml.jackson.databind.ObjectMapper;
+import com.fasterxml.jackson.databind.node.ArrayNode;
+import com.fasterxml.jackson.databind.node.ObjectNode;
+import io.inspector.audit.SecretNames;
 
 /**
  * The "Show as cURL" honesty renderer (v1.x #6). Like {@link io.inspector.api.CriteriaEcho},
@@ -39,7 +43,15 @@ public final class ActionCurl {
     public static String render(String url, ActionRequest request) {
         String body;
         try {
-            body = CURL_BODY_MAPPER.writeValueAsString(request != null ? request : ActionRequest.empty());
+            ActionRequest r = request != null ? request : ActionRequest.empty();
+            if (carriesSecretName(r)) {
+                JsonNode tree = CURL_BODY_MAPPER.valueToTree(r);
+                hideSecretValues(tree.get("variable"));
+                if (tree.get("variables") instanceof ArrayNode list) list.forEach(ActionCurl::hideSecretValues);
+                body = CURL_BODY_MAPPER.writeValueAsString(tree);
+            } else {
+                body = CURL_BODY_MAPPER.writeValueAsString(r); // ordinary values: encoded exactly as before
+            }
         } catch (JsonProcessingException e) {
             throw new IllegalStateException("ActionRequest is not serializable", e);
         }
@@ -48,6 +60,27 @@ public final class ActionCurl {
                 + " -H 'Authorization: Basic <your-credentials>'"
                 + " -d '" + shellSingleQuote(body) + "'";
     }
+
+    private static boolean carriesSecretName(ActionRequest r) {
+        return (r.variable() != null && SecretNames.isSecret(r.variable().name()))
+                || (r.variables() != null
+                        && r.variables().stream().anyMatch(v -> v != null && SecretNames.isSecret(v.name())));
+    }
+
+    /**
+     * #742 (R-AUD-11): a secret-named variable's value never appears in the render — neither the
+     * new value nor an expectedOldValue. The placeholder says so; the operator types it in.
+     */
+    private static void hideSecretValues(JsonNode variable) {
+        if (variable instanceof ObjectNode v
+                && SecretNames.isSecret(v.path("name").asText(null))) {
+            for (String field : new String[] {"value", "expectedOldValue"}) {
+                if (v.has(field)) v.put(field, HIDDEN);
+            }
+        }
+    }
+
+    static final String HIDDEN = "<hidden: secret-named variable — type the value yourself>";
 
     /** POSIX single-quote escaping: close, emit an escaped quote, reopen ({@code '\''}). */
     private static String shellSingleQuote(String s) {

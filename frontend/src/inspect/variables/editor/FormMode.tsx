@@ -11,7 +11,32 @@ import type { LeafPath } from './editState'
 
 /* ------------------------------ scalar widgets ------------------------------ */
 
-export function TextWidget({ value, onChange }: { value: string; onChange: (v: string) => void }) {
+export function TextWidget({
+  value,
+  onChange,
+  secret = false,
+}: {
+  value: string
+  onChange: (v: string) => void
+  /** #742: a secret-named variable — the new value is typed blind, never echoed on screen. */
+  secret?: boolean
+}) {
+  if (secret) {
+    return (
+      <div className="edit-widget">
+        <input
+          type="password"
+          className="edit-text"
+          value={value}
+          autoComplete="off"
+          aria-label="new text value"
+          onChange={(event) => {
+            onChange(event.target.value)
+          }}
+        />
+      </div>
+    )
+  }
   return (
     <div className="edit-widget">
       <textarea

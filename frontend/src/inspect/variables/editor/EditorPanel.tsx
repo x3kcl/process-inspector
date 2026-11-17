@@ -31,7 +31,7 @@ import {
   parseNumberInput,
 } from './editState'
 import type { ClearChoice, EditableType, LeafPath } from './editState'
-import { serializedBytes } from '../ledger'
+import { HIDDEN_SECRET, serializedBytes } from '../ledger'
 
 // The source editor is its own chunk (§4a: never bundled eagerly).
 const SourceEditor = lazy(() => import('./SourceEditor'))
@@ -78,7 +78,13 @@ export function EditorPanel({ engineId, instanceId, entry, engine, vitals, onClo
     )
   }
 
-  const originalValue = reseed !== null ? reseed.value : (full.data.value ?? null)
+  // #742: a secret-named variable arrives masked — no value, an opaque CAS token instead.
+  const masked = full.data.masked === true
+  const originalValue = masked
+    ? undefined
+    : reseed !== null
+      ? reseed.value
+      : (full.data.value ?? null)
   const declaredType = full.data.type ?? entry.engineType
 
   return (
@@ -92,8 +98,11 @@ export function EditorPanel({ engineId, instanceId, entry, engine, vitals, onClo
       engine={engine}
       vitals={vitals}
       originalValue={originalValue}
+      valueToken={masked ? full.data.valueToken : undefined}
       declaredType={declaredType}
       onStartOver={(value) => {
+        // A masked value has no value to re-seed from — re-read it for a fresh token.
+        if (masked) void full.refetch()
         setReseed((previous) => ({ value, generation: (previous?.generation ?? 0) + 1 }))
       }}
       onClose={onClose}
@@ -126,6 +135,7 @@ function EditorSession({
   engine,
   vitals,
   originalValue,
+  valueToken,
   declaredType,
   onStartOver,
   onClose,
@@ -136,6 +146,8 @@ function EditorSession({
   engine?: EngineDto
   vitals?: InstanceDetail
   originalValue: unknown
+  /** #742: set ⇔ the variable is masked; the CAS precondition replaces expectedOldValue. */
+  valueToken?: string
   declaredType?: string
   onStartOver: (value: unknown) => void
   onClose: () => void
@@ -223,7 +235,9 @@ function EditorSession({
           name: entry.name,
           type: chosenType,
           value: staged.value,
-          expectedOldValue: originalValue,
+          ...(valueToken !== undefined
+            ? { expectedValueToken: valueToken }
+            : { expectedOldValue: originalValue }),
           // Step-local edits carry the owning execution — the BFF scopes the read/CAS/write
           // to it (SPEC §4a). Absent for process-scope edits.
           executionId: entry.executionId,
@@ -353,7 +367,9 @@ function EditorSession({
       {/* The old value stays visible above the input throughout (§4a). */}
       <div className="editor-old-value">
         <span className="value-pane-label">Current value</span>
-        <pre className="value-body">{renderOld(originalValue)}</pre>
+        <pre className="value-body">
+          {valueToken !== undefined ? HIDDEN_SECRET : renderOld(originalValue)}
+        </pre>
       </div>
 
       <div className="editor-controls">
@@ -424,7 +440,13 @@ function EditorSession({
         </div>
       ) : (
         <div className="editor-widget-slot">
-          {chosenType === 'string' && <TextWidget value={textValue} onChange={setTextValue} />}
+          {chosenType === 'string' && (
+            <TextWidget
+              value={textValue}
+              onChange={setTextValue}
+              secret={valueToken !== undefined}
+            />
+          )}
           {(chosenType === 'integer' ||
             chosenType === 'long' ||
             chosenType === 'short' ||

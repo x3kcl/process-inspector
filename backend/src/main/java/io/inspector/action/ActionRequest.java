@@ -223,11 +223,23 @@ public record ActionRequest(
      * execution node (SPEC §4a, multi-instance loop locals). The scoped read, CAS pre-check
      * and write all follow the executionId when present.
      */
-    public record VariableEdit(String name, String type, Object value, Object expectedOldValue, String executionId) {
+    public record VariableEdit(
+            String name,
+            String type,
+            Object value,
+            Object expectedOldValue,
+            String executionId,
+            // #742: a secret-named variable is read masked — its CAS precondition is the opaque
+            // valueToken of that read, never the old value (which the SPA does not have).
+            String expectedValueToken) {
+
+        public VariableEdit(String name, String type, Object value, Object expectedOldValue, String executionId) {
+            this(name, type, value, expectedOldValue, executionId, null);
+        }
 
         /** Process-scope edit (no execution target) — the pre-step-local call shape. */
         public VariableEdit(String name, String type, Object value, Object expectedOldValue) {
-            this(name, type, value, expectedOldValue, null);
+            this(name, type, value, expectedOldValue, null, null);
         }
     }
 

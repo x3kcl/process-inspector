@@ -5,6 +5,7 @@ import io.inspector.audit.ProtectedDefinition;
 import io.inspector.audit.ProtectedDefinitionRepository;
 import io.inspector.audit.ProtectedInstance;
 import io.inspector.audit.ProtectedInstanceRepository;
+import io.inspector.audit.SecretNames;
 import io.inspector.client.GuardedCaller.CallPriority;
 import io.inspector.client.ProcessApiClient;
 import io.inspector.client.ProcessDefinitionRecord;
@@ -98,6 +99,13 @@ public class CohortMigrationService {
                             + " The engine query that honors variables ignores businessKey.");
         }
         if (variableFilter) {
+            if (SecretNames.isSecret(variable)) { // #742 (R-AUD-11): same value oracle as search
+                throw new GuardRefusedException(
+                        HttpStatus.BAD_REQUEST,
+                        "secret-variable-filter",
+                        "'" + variable + "' is secret-named — its value cannot be filtered on (it would reveal"
+                                + " the value one guess at a time). Nothing was queried.");
+            }
             if (blank(request.variableValue()) == null) {
                 throw new GuardRefusedException(
                         HttpStatus.BAD_REQUEST, "variable-value-required", "A variable filter needs a value.");

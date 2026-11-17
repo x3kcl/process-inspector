@@ -48,6 +48,17 @@ class ActionCurlTest {
         assertThat(curl).contains("-d '{}'");
     }
 
+    @Test
+    void anOrdinaryVariableEditRendersItsValueExactlyAsBeforeTheSecretMasking() {
+        // #742 review: the secret masking must not re-encode ordinary values (a BigDecimal kept its scale).
+        ActionRequest.VariableEdit edit = new ActionRequest.VariableEdit(
+                "amount", "double", new java.math.BigDecimal("12.50"), new java.math.BigDecimal("12.50"));
+        String curl = ActionCurl.render(
+                URL, new ActionRequest(null, null, null, null, null, null, edit, null, null, null, null));
+
+        assertThat(curl).contains("\"value\":12.50,\"expectedOldValue\":12.50");
+    }
+
     private static ActionRequest reassign(String assignee) {
         return new ActionRequest(null, null, null, null, "task-9", null, null, null, null, null, assignee);
     }

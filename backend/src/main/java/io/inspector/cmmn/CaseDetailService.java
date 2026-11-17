@@ -1,5 +1,6 @@
 package io.inspector.cmmn;
 
+import io.inspector.audit.VariableValueToken;
 import io.inspector.client.CaseDefinitionRecord;
 import io.inspector.client.CaseIdentityLinkRecord;
 import io.inspector.client.CaseInstanceRecord;
@@ -9,7 +10,6 @@ import io.inspector.client.CmmnJobRecord;
 import io.inspector.client.GuardedCaller.CallPriority;
 import io.inspector.client.PlanItemPage;
 import io.inspector.client.PlanItemRecord;
-import io.inspector.client.VariableRecord;
 import io.inspector.config.InspectorProperties.EngineConfig;
 import io.inspector.dto.CaseDetail;
 import io.inspector.dto.CaseDetail.CaseFailing;
@@ -17,6 +17,7 @@ import io.inspector.dto.CaseDiagram;
 import io.inspector.dto.CasePlanItems;
 import io.inspector.dto.CasePlanItems.CasePlanItem;
 import io.inspector.dto.CmmnLiveJobState;
+import io.inspector.dto.InstanceVariables.VariableDto;
 import io.inspector.registry.EngineRegistry;
 import java.net.URLDecoder;
 import java.nio.charset.StandardCharsets;
@@ -386,10 +387,26 @@ public class CaseDetailService {
         return URLDecoder.decode(url.substring(at + "/resources/".length()), StandardCharsets.UTF_8);
     }
 
-    public List<VariableRecord> variables(String engineId, String caseInstanceId) {
+    /**
+     * Case variables through the masking choke point ({@link VariableDto}, #742): a secret-named
+     * row ships masked with an opaque CAS token (the case editor has no single-value read).
+     */
+    public List<VariableDto> variables(String engineId, String caseInstanceId) {
         EngineConfig engine = registry.require(engineId);
         CmmnCapabilities.requireScopeType(registry, engine);
-        return flowable.listCaseVariables(engine, CallPriority.INTERACTIVE, caseInstanceId);
+        return flowable.listCaseVariables(engine, CallPriority.INTERACTIVE, caseInstanceId).stream()
+                .map(row -> new VariableDto(
+                        row.name(),
+                        row.type(),
+                        row.value(),
+                        false,
+                        null,
+                        row.scope(),
+                        null,
+                        null,
+                        false,
+                        VariableValueToken.issue(engine.id(), caseInstanceId, row.name(), row.value())))
+                .toList();
     }
 
     public List<CaseIdentityLinkRecord> identityLinks(String engineId, String caseInstanceId) {
