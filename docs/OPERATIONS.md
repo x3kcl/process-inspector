@@ -260,7 +260,7 @@ annotated tag, and *calls* `release.yml` as a reusable workflow — required bec
   names Postgres.
 - **Secret-name masking** (R-AUD-03, #741): values of variables whose name matches the built-in
   list are replaced by `«redacted»`. Add names with `inspector.secret-names.additional` (list;
-  each 2-64 chars of letters, digits, `_`, `-`; matched as a whole word or camelCase / snake_case
+  each 2-64 chars of letters, digits, `_`, `-`, a letter or digit at both ends; matched as a whole word or camelCase / snake_case
   segment, e.g. `iban` hits `customerIban`, not `ibanx`). Built-ins cannot be removed; a bad
   entry fails startup naming the property.
 - DB role: INSERT/SELECT only (REVOKE UPDATE/DELETE) + guard trigger; per-row hash chain,

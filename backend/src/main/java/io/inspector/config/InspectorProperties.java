@@ -682,15 +682,17 @@ public record InspectorProperties(
 
     /**
      * Extra secret-name segments for audit masking (R-AUD-03, #741), on top of the built-ins that
-     * cannot be removed. Letters, digits, {@code _} and {@code -} only, 2-64 chars; no regex.
+     * cannot be removed. Letters, digits, {@code _} and {@code -} only, 2-64 chars, alphanumeric at both
+     * ends; no regex.
      */
     @Validated
     public record SecretNames(
             List<
                             @NotBlank
                             @Pattern(
-                                    regexp = "[A-Za-z0-9_-]{2,64}",
-                                    message = "must be 2-64 of letters, digits, _ or -")
+                                    regexp = "[A-Za-z0-9][A-Za-z0-9_-]{0,62}[A-Za-z0-9]",
+                                    message =
+                                            "must be 2-64 of letters, digits, _ or -, starting and ending with a letter or digit")
                             String>
                     additional) {
         public SecretNames {

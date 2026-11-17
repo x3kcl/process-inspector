@@ -35,9 +35,12 @@ public final class SecretNames {
 
     private static final Set<String> SEGMENTS = Set.of("auth", "pin", "pwd", "session");
 
-    /** Boundaries: any non-alphanumeric run, lower→Upper, ACRONYM→Word, letter↔digit. */
+    /**
+     * Boundaries: any non-alphanumeric run, lower→Upper, ACRONYM→Word (acronym ≥ 2 capitals, so
+     * {@code OAuth} stays one segment), letter↔digit.
+     */
     private static final Pattern SPLIT = Pattern.compile("[^\\p{L}\\p{N}]+|(?<=\\p{Ll})(?=\\p{Lu})"
-            + "|(?<=\\p{Lu})(?=\\p{Lu}\\p{Ll})|(?<=\\p{L})(?=\\p{N})|(?<=\\p{N})(?=\\p{L})");
+            + "|(?<=\\p{Lu}{2})(?=\\p{Lu}\\p{Ll})|(?<=\\p{L})(?=\\p{N})|(?<=\\p{N})(?=\\p{L})");
 
     private static volatile List<String> additional = List.of();
 

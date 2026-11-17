@@ -159,7 +159,7 @@ resilience4j:
 
 inspector:
   # Extra secret-name segments masked in audit rows (R-AUD-03, #741); built-ins cannot be removed.
-  # 2-64 chars of letters, digits, _ or -. Default: none.
+  # 2-64 chars of letters, digits, _ or -, a letter or digit at both ends. Default: none.
   # secret-names:
   #   additional: [iban, tan-code]
   # Boot-rejected ranges (#476, docs/OPERATIONS.md): null keeps the code default.
