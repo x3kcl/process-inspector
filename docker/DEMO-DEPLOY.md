@@ -194,3 +194,11 @@ docker network inspect docker_discovery -f '{{range .Containers}}{{.Name}} {{end
 The static SPA (`/`) is served from disk, so it stays 200 even when the BFF is down — a 504
 on `/` itself points at Traefik↔frontend (network/port), while a page that loads but whose
 data times out points at the BFF (`backend`).
+
+## No registry-admin account on the demo (#629)
+
+The demo deliberately has **no `REGISTRY_ADMIN` account**: it is public-facing and a registry
+admin can retarget engines. Registry drift between `application.yml` and the DB is therefore
+not fixed in-app; the boot drift warning names the differing fields instead
+(e.g. `engine-7[enabled: yaml=false db=true]`). The demo compose sets
+`INSPECTOR_ENGINE_7_ENABLED=true` so the YAML side agrees with the DB row.

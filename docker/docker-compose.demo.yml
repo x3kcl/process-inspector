@@ -276,6 +276,8 @@ services:
       - INSPECTOR_ENGINE_A_BASE_URL=http://engine-a:8080/flowable-rest/service
       - INSPECTOR_ENGINE_B_BASE_URL=http://engine-b:8080/flowable-rest/service
       - INSPECTOR_ENGINE_7_BASE_URL=http://engine-7:8080/flowable-rest/service
+      # #629: the YAML default is enabled=false; the demo runs engine-7, so agree with the DB row.
+      - INSPECTOR_ENGINE_7_ENABLED=true
       # SSRF egress boundary (application.yml `inspector.registry.egress-allowlist`, default
       # [localhost, 127.0.0.0/8]). This is DEPLOY CONFIG and deliberately NOT editable in-app,
       # so a compromised REGISTRY_ADMIN cannot retarget an engine at an arbitrary host.
