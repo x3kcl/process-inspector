@@ -23,6 +23,8 @@ interface Props {
   onEditRow?: (row: LedgerRow | null) => void
   /** The inline editor panel for the editing row (owned by the tab). */
   editorNode?: ReactNode
+  /** #743: the audited reveal control for a masked row (stub). */
+  renderReveal?: (row: LedgerRow) => ReactNode
 }
 
 /**
