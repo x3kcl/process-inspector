@@ -374,7 +374,7 @@ then calls `release.yml`; the ruleset targets `refs/heads/main` only, so a tag p
 blocked. It is not re-dispatched here: a dispatch cuts a real release and publishes images.
 
 **Merge queue (ci-lib, bodo/ci-lib#177).** `ci.yml` calls the ci-lib gate (`gate.sh ci-light|ci-heavy`; contract in
-`ci/manifest.env` + `ci/contract.sh`, library pinned by `CI_LIB_TAG` (v0.17), fetched from the operator's Gitea with the
+`ci/manifest.env` + `ci/contract.sh`, library pinned by `CI_LIB_TAG` (v0.19), fetched from the operator's Gitea with the
 `CI_LIB_TOKEN` secret, also under Dependabot secrets). The job ids are the ruleset's check names, unchanged. A pull
 request runs `lint`, `unit`, `frontend`, `e2e` (ci-light); a push to `mq/**` runs those plus `docker` and the
 `integration` legs (ci-heavy), and there is no push trigger for `main` (the queue fast-forwards a batch that already
@@ -383,8 +383,8 @@ with a fine-grained token (Contents, Pull requests, Actions and Issues: Read and
 `~/.config/process-inspector/github-token`, the queue account as a bypass actor on the `main` ruleset, and the `queue`
 label; the unit is installed with ci-lib's `mq/units/activate-repo.sh`. Consequence: `docker` and `integration (...)`
 never report on a pull request, so GitHub's own Merge button stays blocked for non-admins: landing is the queue's job: `scripts/pr-queue.sh <PR>` labels a green head, `--watch` blocks until merged. A landing-rule refusal (`lr-1`, `lr-2`) does NOT remove the label (only a red batch does, with a comment): the queue comments once per head (`mq-red-first:<sha>` / `mq-red-frozen:<sha>`) and waits for a new head; `pr-queue.sh --watch` exits 1 on it.
-Open operator step: ci-lib v0.17 publishes each tag to a public mirror (`publish/mirror_snapshot.py`, hourly cron on a box that can push);
-the `ci-lib` action still fetches from the operator's Gitea until that mirror exists.
+ci-lib public mirror: decided 2026-11-17 to keep cloning from the operator's Gitea with CI_LIB_TOKEN; nothing of ci-lib is published
+(ci-lib's `publish/mirror_snapshot.py` stays unused).
 
 **Landed in `.github/workflows/ci.yml` (merge-blocking):** `lint` (Spotless/palantir) ·
 `unit` (backend build + unit suite incl. the **ArchUnit anti-flakiness rule**: `Thread.sleep`
@@ -715,7 +715,7 @@ current-era span, G1/G2/G4 inputs, RETRYING spells, triage_snapshot spans, raw `
 What to do with the folder: do not commit it (it is demo operational data). Hand it over, then the
 review files are written from it: `docs/reviews/S0-PLAYBOOK-DEMAND-2026-10.md` from `playbook/`
 (verdict from `11-demand-excl-seed.csv`; `10-` is the unfiltered comparison) and
-`docs/reviews/ATTENTION-DEFAULT-2026-10.md` from `ledger/` (G5 in `21-`, replay the raw
+`docs/reviews/ATTENTION-DEFAULT-2026-11.md` from `ledger/` (G5 in `21-`, replay the raw
 occurrence rows through `scripts/attention-harm-search.py` / the neutrality test).
 
 ## 9. Compose profiles
