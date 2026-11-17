@@ -38,7 +38,7 @@ Why not Jackson 3 in the same change:
 
 - 40 production files import `com.fasterxml.jackson`. 14 of them use `ObjectMapper`. Tests add another 63 files.
 - The engine client has 55 `Map<String, Object>` hits and 25 `@SuppressWarnings("unchecked")` sites. Flowable payloads are untyped JSON. A default-mapper change (date format, null inclusion, module discovery) rewrites `/v3/api-docs` and the parse of engine bodies without a compile error.
-- `logstash-logback-encoder` 9.x does not speak Jackson 3. Moving both in one PR mixes a log-pipeline break with an API-contract break.
+- `logstash-logback-encoder` 9.x speaks only Jackson 3 (7.4/8.x only Jackson 2). Moving both in one PR mixes a log-pipeline break with an API-contract break.
 
 Jackson 3 is a later change, before anyone proposes Boot 4.3. It is not part of #440, #441, or #442.
 
