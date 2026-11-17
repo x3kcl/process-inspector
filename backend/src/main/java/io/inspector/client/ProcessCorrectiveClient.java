@@ -46,7 +46,7 @@ final class ProcessCorrectiveClient {
                         .post()
                         .uri(JobLaneKind.DEADLETTER.path + "/{jobId}", jobId)
                         .contentType(MediaType.APPLICATION_JSON)
-                        .body(Map.of("action", "move"))
+                        .body(JobActionRequest.move())
                         .retrieve()
                         .toBodilessEntity());
     }
@@ -61,7 +61,7 @@ final class ProcessCorrectiveClient {
                         .post()
                         .uri(JobLaneKind.TIMER.path + "/{jobId}", jobId)
                         .contentType(MediaType.APPLICATION_JSON)
-                        .body(Map.of("action", "reschedule", "dueDate", dueDate))
+                        .body(JobActionRequest.reschedule(dueDate))
                         .retrieve()
                         .toBodilessEntity());
     }
@@ -75,7 +75,7 @@ final class ProcessCorrectiveClient {
                         .post()
                         .uri(JobLaneKind.DEADLETTER.path + "/{jobId}", jobId)
                         .contentType(MediaType.APPLICATION_JSON)
-                        .body(Map.of("action", "moveToHistoryJob"))
+                        .body(JobActionRequest.moveToHistoryJob())
                         .retrieve()
                         .toBodilessEntity());
     }
@@ -101,7 +101,7 @@ final class ProcessCorrectiveClient {
                         .post()
                         .uri(JobLaneKind.TIMER.path + "/{jobId}", jobId)
                         .contentType(MediaType.APPLICATION_JSON)
-                        .body(Map.of("action", "move"))
+                        .body(JobActionRequest.move())
                         .retrieve()
                         .toBodilessEntity());
     }
