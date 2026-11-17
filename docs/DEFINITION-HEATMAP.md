@@ -274,7 +274,7 @@ every per-instance read failed, the result is an error envelope, not an empty he
 
 **Lane.** Add a new `CallPriority.AGGREGATE` (`"{id}:aggregate"`, its own breaker based on
 `engine`, bulkhead `max-concurrent-calls: 2`, `max-wait-duration: 5s`). This copies the
-`DEEP_PAGE` reasoning (ARCHITECTURE §2.2, R-NFR-08): the action is user-initiated and heavy
+`DEEP_PAGE` reasoning (ARCHITECTURE §2.2 bulkheads, §2.4 deep paging, R-NFR-08): the action is user-initiated and heavy
 (201–1 001 requests), so it must never take the 8 interactive permits, and an aggregate storm
 must trip its own breaker rather than the interactive one. Reusing `BACKGROUND` (`sampler`)
 would let a heat-map click starve the trend sampler. Reusing `DEEP_PAGE` would couple two
@@ -286,8 +286,9 @@ instance and counts it (§3.4).
 that N concurrent viewers trigger one gather. Grounds: the sample covers *finished* instances
 only, so between two reads it changes only by the instances that finished meanwhile. The
 triage cache's 20 s guards against a thundering herd on live state, which this is not.
-Refresh bypasses the cache and is rate-limited to once a minute per key, like the triage
-Refresh. The response carries `asOf` and `cached`, and the UI shows the age ("as of 4 min
+Refresh bypasses the cache and is rate-limited per key, the same mechanism as the triage
+Refresh (`inspector.triage.refresh-min-interval-s`, 10 s there). Here once a minute, because
+one gather is 200+ engine requests. The response carries `asOf` and `cached`, and the UI shows the age ("as of 4 min
 ago").
 
 **Not on a schedule.** The view is gathered when someone opens the tab. There is no
@@ -323,7 +324,8 @@ so a later "instance against typical" overlay cannot collide:
 | dead-letter `⚠`, blocker `✖`, warning `!` | top −10, right 10 |
 | #677 duration badge | top −12, right 10 |
 | #677 completed `✓` | top −10, left 8 |
-| `×N`, picker `S`/`T`, diff `+`/`~` | top-left |
+| `×N`, picker `S`/`T`, diff `+` | top-left |
+| diff `~` | top −8, right −8 |
 | diverge `▲`/`△` | bottom −6, left −6 |
 | mapped `↦` (migrate modal only) | bottom −6, right 10 |
 | **heat badge (new)** | **bottom 4, right 4, inside the shape**, on tasks, sub-processes and call activities only |
@@ -341,7 +343,8 @@ gateways by the flow layer.
 - Each badge has `role="img"` and an `aria-label`.
 - The **table is the keyboard-focusable textual twin**: per node it shows name, executions,
   instances, hit %, avg, p50, p95, max and share, sortable. Selection is synced with the
-  canvas, as the timeline summary list does on the instance page.
+  canvas, as the Errors & Jobs and Executions tabs do on the instance page
+  (`selectedActivityId`, "Show on diagram").
 - **Flows** (6.8+): taken share as stroke width in three buckets plus a `62 %` label on hover
   and focus. Not drawn when `NO_FLOW_HISTORY`.
 - **Funnel**: horizontal bars with count and percentage as text, one row per end event, plus a
