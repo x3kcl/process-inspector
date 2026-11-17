@@ -3,7 +3,6 @@ package io.inspector.client;
 import io.inspector.client.GuardedCaller.CallPriority;
 import io.inspector.client.ProcessApiClient.JobLaneKind;
 import io.inspector.config.InspectorProperties.EngineConfig;
-import java.util.LinkedHashMap;
 import java.util.List;
 import java.util.Map;
 import org.springframework.http.MediaType;
@@ -260,10 +259,8 @@ final class ProcessCorrectiveClient {
 
     /** POST /runtime/tasks/{taskId} {"action":"complete","variables":[…]} — complete with data. */
     public void completeTask(
-            EngineConfig engine, CallPriority priority, String taskId, List<Map<String, Object>> variables) {
-        Map<String, Object> body = variables == null || variables.isEmpty()
-                ? Map.of("action", "complete")
-                : Map.of("action", "complete", "variables", variables);
+            EngineConfig engine, CallPriority priority, String taskId, List<TaskActionRequest.Variable> variables) {
+        TaskActionRequest body = TaskActionRequest.complete(variables);
         guarded.run(
                 engine,
                 priority,
@@ -284,8 +281,7 @@ final class ProcessCorrectiveClient {
      * an explicit set-to-null rather than "leave unchanged" (flowable-rest §4).
      */
     public void setTaskAssignee(EngineConfig engine, CallPriority priority, String taskId, String assignee) {
-        Map<String, Object> body = new LinkedHashMap<>();
-        body.put("assignee", assignee);
+        TaskUpdateRequest body = TaskUpdateRequest.assignee(assignee);
         guarded.run(
                 engine,
                 priority,
@@ -304,11 +300,7 @@ final class ProcessCorrectiveClient {
      * null, so an empty assignee unclaims. Resolve omits it.
      */
     public void taskAction(EngineConfig engine, CallPriority priority, String taskId, String action, String assignee) {
-        Map<String, Object> body = new LinkedHashMap<>();
-        body.put("action", action);
-        if (assignee != null || "claim".equals(action)) {
-            body.put("assignee", assignee);
-        }
+        TaskActionRequest body = TaskActionRequest.of(action, assignee);
         guarded.run(
                 engine,
                 priority,
@@ -323,7 +315,7 @@ final class ProcessCorrectiveClient {
     }
 
     /** PUT /runtime/tasks/{taskId} — only the keys present in {@code body} are changed. */
-    public void putTask(EngineConfig engine, CallPriority priority, String taskId, Map<String, Object> body) {
+    public void putTask(EngineConfig engine, CallPriority priority, String taskId, TaskUpdateRequest body) {
         guarded.run(
                 engine,
                 priority,
@@ -370,9 +362,7 @@ final class ProcessCorrectiveClient {
     /** POST /runtime/tasks/{taskId}/identitylinks. {@code family} is users or groups. */
     public void addIdentityLink(
             EngineConfig engine, CallPriority priority, String taskId, String family, String identityId, String type) {
-        Map<String, Object> body = new LinkedHashMap<>();
-        body.put("groups".equals(family) ? "groupId" : "userId", identityId);
-        body.put("type", type);
+        TaskIdentityLinkRequest body = TaskIdentityLinkRequest.of(family, identityId, type);
         guarded.run(
                 engine,
                 priority,

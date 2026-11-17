@@ -356,7 +356,7 @@ public class ProcessApiClient {
     }
 
     public void completeTask(
-            EngineConfig engine, CallPriority priority, String taskId, List<Map<String, Object>> variables) {
+            EngineConfig engine, CallPriority priority, String taskId, List<TaskActionRequest.Variable> variables) {
         actions.completeTask(engine, priority, taskId, variables);
     }
 
@@ -368,7 +368,7 @@ public class ProcessApiClient {
         actions.taskAction(engine, priority, taskId, action, assignee);
     }
 
-    public void putTask(EngineConfig engine, CallPriority priority, String taskId, Map<String, Object> body) {
+    public void putTask(EngineConfig engine, CallPriority priority, String taskId, TaskUpdateRequest body) {
         actions.putTask(engine, priority, taskId, body);
     }
 

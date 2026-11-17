@@ -21,7 +21,10 @@ import io.inspector.client.ProcessApiClient;
 import io.inspector.client.ProcessApiClient.JobLaneKind;
 import io.inspector.client.ProcessDefinitionRecord;
 import io.inspector.client.ProcessInstanceRecord;
+import io.inspector.client.TaskActionRequest;
+import io.inspector.client.TaskField;
 import io.inspector.client.TaskRecord;
+import io.inspector.client.TaskUpdateRequest;
 import io.inspector.client.VariableRecord;
 import io.inspector.cmmn.CaseMigrationPrecheck;
 import io.inspector.cmmn.CasePlanDefinitionIds;
@@ -1103,27 +1106,20 @@ public class CorrectiveActionService {
         return body;
     }
 
-    private static Map<String, Object> taskWriteBody(ActionRequest.TaskPatch patch) {
-        Map<String, Object> body = new LinkedHashMap<>();
-        if (patch.name() != null) {
-            body.put("name", blankToNull(patch.name()));
-        }
-        if (patch.description() != null) {
-            body.put("description", blankToNull(patch.description()));
-        }
-        if (patch.owner() != null) {
-            body.put("owner", blankToNull(patch.owner()));
-        }
-        if (patch.dueDate() != null) {
-            body.put("dueDate", blankToNull(patch.dueDate()));
-        }
-        if (patch.category() != null) {
-            body.put("category", blankToNull(patch.category()));
-        }
-        if (patch.priority() != null) {
-            body.put("priority", patch.priority());
-        }
-        return body;
+    private static TaskUpdateRequest taskWriteBody(ActionRequest.TaskPatch patch) {
+        return new TaskUpdateRequest(
+                null,
+                taskField(patch.name()),
+                taskField(patch.description()),
+                taskField(patch.owner()),
+                taskField(patch.dueDate()),
+                taskField(patch.category()),
+                patch.priority());
+    }
+
+    /** Null leaves the field unchanged (key absent); blank clears it (key sent as null). */
+    private static TaskField taskField(String value) {
+        return value == null ? null : new TaskField(blankToNull(value));
     }
 
     private Target executionTarget(EngineConfig engine, String instanceId, ActionRequest request) {
@@ -1382,21 +1378,13 @@ public class CorrectiveActionService {
         };
     }
 
-    private static List<Map<String, Object>> typedVariables(ActionRequest request) {
+    private static List<TaskActionRequest.Variable> typedVariables(ActionRequest request) {
         if (request.variables() == null) {
             return List.of();
         }
-        List<Map<String, Object>> list = new ArrayList<>();
-        for (ActionRequest.TypedVariable variable : request.variables()) {
-            Map<String, Object> typed = new LinkedHashMap<>();
-            typed.put("name", variable.name());
-            if (variable.type() != null) {
-                typed.put("type", variable.type());
-            }
-            typed.put("value", variable.value());
-            list.add(typed);
-        }
-        return list;
+        return request.variables().stream()
+                .map(variable -> new TaskActionRequest.Variable(variable.name(), variable.type(), variable.value()))
+                .toList();
     }
 
     /* ------------------------------- helpers ------------------------------- */
