@@ -131,3 +131,36 @@ test('instance page with the compact engine strip passes axe', async ({ page }) 
   await open(page, 1440, 900)
   await scanA11y(page, 'instance detail polish')
 })
+
+// Review of #711: the compact strip must keep what the full strip alarms on — the engine-status
+// error, a non-zero DLQ lane — and must not clip engines it cannot fit (scroll, not hide).
+async function openWithEngines(page: Page, engines: unknown, status = 200): Promise<void> {
+  await page.setViewportSize({ width: 390, height: 844 })
+  await mockBff(page)
+  await page.route('**/api/engines', (route) => route.fulfill({ status, json: engines }))
+  await page.goto('/inspect/eng1/inst-1')
+  await expect(page.getByRole('group', { name: 'Engine health' })).toBeVisible()
+}
+
+test('compact strip still shows the engine-status error', async ({ page }) => {
+  await openWithEngines(page, { title: 'boom', status: 500 }, 500)
+  await expect(page.getByRole('group', { name: 'Engine health' }).getByRole('alert')).toBeVisible()
+})
+
+test('compact strip still shows a non-zero DLQ lane', async ({ page }) => {
+  const [first, ...rest] = ENGINES
+  await openWithEngines(page, [
+    { ...first, jobLanes: { ...first.jobLanes, deadletter: 4 } },
+    ...rest,
+  ])
+  await expect(page.locator('.engine-strip .lane-alarm')).toBeVisible()
+  await expect(page.locator('.engine-strip .lane:not(.lane-alarm)').first()).toBeHidden()
+})
+
+test('compact strip scrolls instead of clipping engines at narrow width', async ({ page }) => {
+  await openWithEngines(page, ENGINES)
+  const overflowX = await page
+    .getByRole('group', { name: 'Engine health' })
+    .evaluate((el) => getComputedStyle(el).overflowX)
+  expect(overflowX).toBe('auto')
+})
