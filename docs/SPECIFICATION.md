@@ -249,6 +249,11 @@ Answers "what is broken, how much, where" in zero keystrokes:
 - **Engine health strip** — per engine: badge (environment-colored), version, reachability,
   and job-lane counts (executable / timer / suspended / dead-letter) with two derived alarms:
   *oldest executable job age* and *overdue timers* (executor-starvation signals).
+  **Scope-filtered reads (R-SAFE-17, issue #740):** under `inspector.security.scope-reads-enforced`
+  the engine list behind the strip carries only the engines the caller may read (a disabled engine
+  in scope still lists greyed); a per-engine read of another engine (`/api/engines/{id}/system`)
+  answers the same 403 as every other engine-scoped read, and its full properties/table counts
+  need ADMIN on THAT engine (an ADMIN of another engine is refused). Off ⇒ every engine, as before.
 - **Failures grouped by error class** — dead-letter (and RETRYING-tier) jobs grouped by
   **normalized exception signature**, with counts per engine and per definition version
   ("NPE in TaxCalculator — 312 · orders-prod · v47: 312, v46: 0"). **The signature is a
