@@ -16,6 +16,7 @@ import java.util.List;
 import java.util.Map;
 import java.util.Set;
 import org.springframework.security.access.AccessDeniedException;
+import org.springframework.security.access.prepost.PreAuthorize;
 import org.springframework.security.core.Authentication;
 import org.springframework.web.bind.annotation.GetMapping;
 import org.springframework.web.bind.annotation.PathVariable;
@@ -103,6 +104,7 @@ public class TaskBrowseController {
     }
 
     @GetMapping("/api/tasks/{engineId}/{taskId}/identitylinks")
+    @PreAuthorize("@rbac.atLeastOn(authentication, 'VIEWER', #engineId)")
     public List<IdentityLinkRow> identityLinks(
             @PathVariable String engineId, @PathVariable String taskId, Authentication auth) {
         if (readScope.enforced() && !readScope.canRead(auth, engineId)) {

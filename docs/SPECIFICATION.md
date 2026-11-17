@@ -810,7 +810,12 @@ PERSON have, across every engine" — the "Bob is on vacation" query. Search sta
   the browse (and the jobs explorer, `GET /api/jobs`) covers only the engines the caller may read,
   narrowed silently like an implicit all-engines search; a task's identity links on any other
   engine (`/api/tasks/{engineId}/{taskId}/identitylinks`) answer the same 403 as every other
-  engine-scoped read, before any engine call. Off ⇒ every engine, as before. Every controller
+  engine-scoped read, before any engine call. Independent of enforcement (#752), that
+  identity-links read needs at least VIEWER on the engine (the instance identity-links rule): a
+  signed-in user with no role there gets the same 403 with enforcement off too. The fan-out reads
+  still open to any signed-in user with enforcement off (catalog definitions, deployments, engine
+  list/system, jobs explorer, person task search, task browse) are named in
+  `EngineRoleExpressionGuardArchTest`; closing them is a separate decision. Off ⇒ every engine, as before. Every controller
   route that returns per-engine data is scoped by method security naming the engine, by the
   read-scope gate, or is a named exception — the route sweep and its guard test
   (`EngineScopedRouteGuardArchTest`) are in ARCHITECTURE §4 (the
