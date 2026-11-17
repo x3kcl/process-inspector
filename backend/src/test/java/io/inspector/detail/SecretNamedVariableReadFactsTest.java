@@ -17,6 +17,7 @@ import io.inspector.client.ExecutionPage;
 import io.inspector.client.ProcessApiClient;
 import io.inspector.client.ProcessInstanceRecords;
 import io.inspector.client.VariableRecord;
+import io.inspector.registry.EngineHealthService;
 import io.inspector.support.NoDbTestSupport;
 import java.nio.charset.StandardCharsets;
 import java.time.Instant;
@@ -80,6 +81,16 @@ class SecretNamedVariableReadFactsTest {
 
     @MockitoBean
     AuditService audit;
+
+    /**
+     * #756: the scheduled health probe ({@code @Scheduled probeAll}) would call this class's mocked
+     * {@link ProcessApiClient} from the scheduler thread. Mockito keeps the invocation being stubbed
+     * per mock, not per thread, so a probe call landing between {@code when(flowable.x())} and
+     * {@code thenReturn(..)} re-targets the stub ({@code WrongTypeOfReturnValue}). Mocked, the probe
+     * never touches the client in this slice.
+     */
+    @MockitoBean
+    EngineHealthService healthProbe;
 
     @BeforeEach
     void runningInstanceHoldingSecretNamedVariables() {
