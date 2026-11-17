@@ -124,4 +124,12 @@ describe('Shell admin-only state (#771)', () => {
     expect(await screen.findByText('landing page')).not.toBeNull()
     expect(screen.queryByText(/administrative access but no engine role/i)).toBeNull()
   })
+
+  it('a holder of both grants can open the access page too, not only the landing page', async () => {
+    me = { ...REG, accessAdmin: true }
+    renderAt('/admin/access')
+
+    expect(await screen.findByText('access admin')).not.toBeNull()
+    expect(get.mock.calls.map((c) => c[0])).toEqual(['/api/me'])
+  })
 })
