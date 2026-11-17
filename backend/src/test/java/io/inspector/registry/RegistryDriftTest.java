@@ -67,4 +67,28 @@ class RegistryDriftTest {
         // Same material config ⇒ not drift (identical rows).
         assertThat(RegistryDrift.compute(List.of(dbA), List.of(dbA)).isEmpty()).isTrue();
     }
+
+    @Test
+    void summary_names_each_differing_field_and_never_leaks_a_credential() {
+        Auth dbAuth =
+                new Auth(Auth.Type.basic, "u", "PW_REF_DB", "TOK_DB_VALUE", null, null, null, null, null, null, null);
+        Auth yamlAuth = new Auth(
+                Auth.Type.basic, "u", "PW_REF_YAML", "TOK_YAML_VALUE", null, null, null, null, null, null, null);
+        EngineConfig db = TestEngines.builder("engine-7", "http://old/service")
+                .environment(EngineEnvironment.DEV)
+                .auth(dbAuth)
+                .build();
+        EngineConfig yaml = TestEngines.builder("engine-7", "http://new/service")
+                .environment(EngineEnvironment.PROD)
+                .auth(yamlAuth)
+                .build();
+
+        String summary = RegistryDrift.compute(List.of(yaml), List.of(db)).summary();
+
+        assertThat(summary)
+                .contains("engine-7", "baseUrl", "http://new/service", "http://old/service")
+                .contains("environment", "authPasswordRef", "PW_REF_YAML", "PW_REF_DB")
+                .contains("authTokenRef", "<differs>")
+                .doesNotContain("TOK_YAML_VALUE", "TOK_DB_VALUE");
+    }
 }
