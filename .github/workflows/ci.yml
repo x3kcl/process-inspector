@@ -250,6 +250,10 @@ jobs:
           - profile: migration-findings
             composeProfiles: "flowable-6,flowable-7,postgres"
             itClass: CaseMigrationIT
+          # Timer reschedule (#732): the verb on 7.1 and its capability refusal on 6.8, same stack.
+          - profile: migration-findings
+            composeProfiles: "flowable-6,flowable-7,postgres"
+            itClass: TimerReschedule7IT
     env:
       # Dependabot PRs (#445) run on the slot runners, but that actor's token is read-only and
       # cannot pull the private flap image: that leg's registry steps and the contract's leg skip.

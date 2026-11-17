@@ -23,5 +23,8 @@ for job in $(sed -n '/^jobs:/,$ s/^  \([a-z0-9-]*\):$/\1/p' "$wf"); do
   grep -q "gate.sh ci-nightly" <<< "$block" && grep -q "CI_PART: $job\$" <<< "$block" \
     || no "nightly job '$job' does not run 'gate.sh ci-nightly' with CI_PART: $job"
 done
+# #732: the timer-reschedule IT needs 7.1 (the verb) and 6.8 (the refusal) on one integration leg.
+grep -q '^  "[a-z0-9-]*|flowable-6,flowable-7,postgres|TimerReschedule7IT"$' ci/contract.sh \
+  || no "IT_LEGS has no flowable-6,flowable-7 leg for TimerReschedule7IT"
 [ "$fail" = 0 ] && echo "contract-selftest: ok"
 exit "$fail"
