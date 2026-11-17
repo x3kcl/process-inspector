@@ -48,7 +48,10 @@ export function Shell() {
   const ready = (me.data !== undefined || me.isError) && !noAccess && !adminOnly
   const { pathname } = useLocation()
   const home = adminHome(me.data)
-  const adminPageOk = adminOnly && pathname === home
+  const adminPageOk =
+    adminOnly &&
+    ((me.data?.registryAdmin === true && pathname === '/admin/engines') ||
+      (me.data?.accessAdmin === true && pathname === '/admin/access'))
   // v2/M4: one-time migration of any v1 localStorage views/recents into the server store, once
   // the user is authenticated (SPEC §8).
   useLegacyViewMigration(!authRequired && ready)
