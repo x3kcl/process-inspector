@@ -496,8 +496,14 @@ public class CorrectiveActionService {
             return switch (verb) {
                 case RETRY_JOB, DELETE_DEADLETTER, MOVE_TO_HISTORY_JOB ->
                     jobTarget(engine, JobLaneKind.DEADLETTER, targetId, required(request.jobId(), "jobId"), verb);
-                case TRIGGER_TIMER, RESCHEDULE_TIMER ->
+                case TRIGGER_TIMER ->
                     jobTarget(engine, JobLaneKind.TIMER, targetId, required(request.jobId(), "jobId"), verb);
+                case RESCHEDULE_TIMER -> {
+                    // #732: the row carries the requested due date beside the old one (dueDate).
+                    Target t = jobTarget(engine, JobLaneKind.TIMER, targetId, required(request.jobId(), "jobId"), verb);
+                    t.auditPayload().put("newDueDate", request.dueDate());
+                    yield t;
+                }
                 case DELETE_JOB ->
                     jobTarget(engine, deleteLane(request), targetId, required(request.jobId(), "jobId"), verb);
                 case SUSPEND, ACTIVATE, TERMINATE_DELETE -> instanceTarget(engine, targetId);
