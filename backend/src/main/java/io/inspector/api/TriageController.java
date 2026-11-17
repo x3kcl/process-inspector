@@ -11,6 +11,7 @@ import io.inspector.triage.TriageScopeProjector;
 import io.inspector.triage.TriageService;
 import io.inspector.triage.TriageTrendService;
 import java.time.Duration;
+import org.springframework.security.access.prepost.PreAuthorize;
 import org.springframework.security.core.Authentication;
 import org.springframework.web.bind.annotation.GetMapping;
 import org.springframework.web.bind.annotation.RequestMapping;
@@ -61,6 +62,7 @@ public class TriageController {
     }
 
     @GetMapping
+    @PreAuthorize("@rbac.atLeast(authentication, 'VIEWER')") // #758: a role on some engine, enforcement on or off
     public TriageDashboardResponse dashboard(
             @RequestParam(defaultValue = "false") boolean refresh, Authentication auth) {
         // S2 (R-SAFE-17): scope the SHARED cached aggregation to the caller's readable engines as a
@@ -76,6 +78,7 @@ public class TriageController {
     }
 
     @GetMapping("/trends")
+    @PreAuthorize("@rbac.atLeast(authentication, 'VIEWER')") // #758: a role on some engine, enforcement on or off
     public TriageTrendResponse trends(@RequestParam(defaultValue = "24") int hours, Authentication auth) {
         int bounded = Math.max(1, Math.min(hours, MAX_TREND_HOURS));
         // S2 (R-SAFE-17): scoped inline (no shared cache to protect here — see TriageTrendService).
@@ -90,6 +93,7 @@ public class TriageController {
      * a named lower bound, never a failed response).
      */
     @GetMapping("/leak-views")
+    @PreAuthorize("@rbac.atLeast(authentication, 'VIEWER')") // #758: a role on some engine, enforcement on or off
     public LeakViewsResponse leakViews(Authentication auth) {
         // S2 (R-SAFE-17): scope the SHARED cached aggregation post-cache, same doctrine as dashboard().
         return leakViewScopeProjector.project(leakViews.leakViews(), auth);

@@ -14,6 +14,7 @@ import java.util.ArrayList;
 import java.util.List;
 import java.util.Map;
 import java.util.Set;
+import org.springframework.security.access.prepost.PreAuthorize;
 import org.springframework.security.core.Authentication;
 import org.springframework.web.bind.annotation.GetMapping;
 import org.springframework.web.bind.annotation.RequestMapping;
@@ -42,6 +43,7 @@ public class JobsExplorerController {
     }
 
     @GetMapping
+    @PreAuthorize("@rbac.atLeast(authentication, 'VIEWER')") // #758: a role on some engine, enforcement on or off
     public JobsPage list(
             @RequestParam(defaultValue = "executable") String lane,
             @RequestParam(required = false) Integer olderThanMinutes,

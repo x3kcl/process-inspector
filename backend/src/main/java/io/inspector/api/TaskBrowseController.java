@@ -46,6 +46,7 @@ public class TaskBrowseController {
     }
 
     @GetMapping("/api/tasks/browse")
+    @PreAuthorize("@rbac.atLeast(authentication, 'VIEWER')") // #758: a role on some engine, enforcement on or off
     public TaskBrowsePage list(
             @RequestParam(required = false) String processDefinitionKey,
             @RequestParam(required = false) String assignee,

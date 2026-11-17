@@ -4,6 +4,7 @@ import io.inspector.aggregate.PersonTaskSearchService;
 import io.inspector.dto.PersonTaskSearchResponse;
 import io.inspector.security.ReadScopeGate;
 import java.util.Set;
+import org.springframework.security.access.prepost.PreAuthorize;
 import org.springframework.security.core.Authentication;
 import org.springframework.web.bind.annotation.GetMapping;
 import org.springframework.web.bind.annotation.RequestMapping;
@@ -29,6 +30,7 @@ public class PersonTaskSearchController {
     }
 
     @GetMapping
+    @PreAuthorize("@rbac.atLeast(authentication, 'VIEWER')") // #758: a role on some engine, enforcement on or off
     public PersonTaskSearchResponse searchByPerson(
             @RequestParam String person, @RequestParam(required = false) Set<String> engineIds, Authentication auth) {
         if (person.isBlank()) {
