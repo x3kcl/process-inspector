@@ -1035,4 +1035,19 @@ class CorrectiveActionServiceTest {
         assertThat(result.deltaStatement()).contains("job id changed").doesNotContain("Reschedule again to undo");
         verify(audit).close(eq(pendingEntry), eq(AuditOutcome.ok), eq(200), eq(null), eq(true));
     }
+
+    @Test
+    void rescheduleNamesTheReplacementTimerJobInTheResponseDto() {
+        timerRescheduleSetup(
+                List.of(Map.of("id", "j2", "processInstanceId", "pi-1", "elementId", "wait", "dueDate", DUE)));
+
+        ActionResult result = service.execute(DEV, "pi-1", ActionVerb.RESCHEDULE_TIMER, rescheduleRequest(), operator);
+
+        // Via JSON: the wire shape is the contract the SPA reads (#744 — "in the response DTO").
+        assertThat(new com.fasterxml.jackson.databind.ObjectMapper()
+                        .valueToTree(result)
+                        .path("newJobId")
+                        .asText())
+                .isEqualTo("j2");
+    }
 }
