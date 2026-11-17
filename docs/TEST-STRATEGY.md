@@ -293,6 +293,10 @@ Verified 2026-10-23 with `EngineHealth7IT` (capability flags) plus `Search7IT`,
   smokes assert UI *invariants* (the flow-surgery specs record every `…/execute`/`…/restart`
   request and assert none fired — simulation-first is a tested property, not a convention);
   flows that need REAL engine semantics (drift fixtures above) stay on the live-stack rung.
+  **`@playwright/test` is EXACT-pinned** (no caret) to the chromium baked into the CI runner image
+  (`ARG PLAYWRIGHT_VERSION` in `docker/ci-runner/Dockerfile`). It moves only together with that ARG
+  and a runner image rebuild on EVERY runner host (#707); a lone bump fails every e2e test with
+  "Executable doesn't exist". Dependabot ignores it (`.github/dependabot.yml`).
   The never-mock-Flowable rule governs BFF join logic, not browser-side smokes of
   already-tested BFF contracts. Every spec calls the shared `scanA11y()` helper (`e2e/a11y.ts`,
   wraps `@axe-core/playwright`) at each settled UI state it already asserts against —
