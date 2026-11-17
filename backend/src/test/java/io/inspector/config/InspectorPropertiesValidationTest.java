@@ -525,4 +525,12 @@ class InspectorPropertiesValidationTest {
                 .get();
         assertThat(bound.additional()).containsExactly("iban");
     }
+
+    /** Review of #745: an addition must start and end with a letter or digit — "__" matched every name with "__", "_x" matched nothing. */
+    @ParameterizedTest
+    @ValueSource(strings = {"__", "--", "_x", "x-", "-ab-"})
+    void rejectsSecretNameAdditionsWithoutAlphanumericEnds(String bad) {
+        assertThat(validator.validate(new InspectorProperties.SecretNames(List.of(bad))))
+                .isNotEmpty();
+    }
 }

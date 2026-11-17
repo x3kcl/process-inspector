@@ -98,4 +98,19 @@ class SecretNamesTest {
         assertThat(SecretNames.matches("password", extra)).isTrue();
         assertThat(SecretNames.matches("pin", List.of())).isTrue();
     }
+
+    /**
+     * Review of #745: mixed-case {@code OAuth} must behave like {@code oauth} (one segment, no
+     * {@code auth} hit) — a one-letter capital before a Word is not an acronym. {@code tokenizer}
+     * stays a long-name substring hit: accepted over-redaction, stated in SPEC R-AUD-03.
+     */
+    @Test
+    void oauthIsOneSegmentInEveryCaseAndLongNamesStaySubstring() {
+        assertThat(SecretNames.isSecret("OAuth")).isFalse();
+        assertThat(SecretNames.isSecret("OAuthProvider")).isFalse();
+        assertThat(SecretNames.isSecret("myOAuthClient")).isFalse();
+        assertThat(SecretNames.isSecret("PINCode")).isTrue();
+        assertThat(SecretNames.isSecret("IOPin")).isTrue();
+        assertThat(SecretNames.isSecret("tokenizer")).isTrue();
+    }
 }
