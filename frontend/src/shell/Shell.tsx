@@ -1,6 +1,6 @@
 import { useEffect, useRef, useState, useSyncExternalStore } from 'react'
 import { useQueryClient } from '@tanstack/react-query'
-import { Link, Outlet, useLocation, useNavigate } from 'react-router'
+import { Link, Navigate, Outlet, useLocation, useNavigate } from 'react-router'
 import { ApiError } from '../api/client'
 import { useMe } from '../api/me'
 import { isSignedOut, subscribeSignedOut } from '../api/session'
@@ -25,7 +25,7 @@ import { Omnibox } from './Omnibox'
 import { restoreRouteFocus } from './routeFocus'
 import { ShortcutSheet } from './ShortcutSheet'
 import { useShellShortcuts } from './useShellShortcuts'
-import { hasNoAccess, NoAccess } from './NoAccess'
+import { AdminOnlyNotice, adminHome, hasAdminOnly, hasNoAccess, NoAccess } from './NoAccess'
 
 /**
  * The stage-independent frame (SPEC §4): topbar with the app title, the omnibox (pinned on
@@ -44,7 +44,11 @@ export function Shell() {
   // the surfaces that call gated routes (engine strip, omnibox, the routed page, SSE) wait.
   const me = useMe()
   const noAccess = hasNoAccess(me.data)
-  const ready = (me.data !== undefined || me.isError) && !noAccess
+  const adminOnly = hasAdminOnly(me.data)
+  const ready = (me.data !== undefined || me.isError) && !noAccess && !adminOnly
+  const { pathname } = useLocation()
+  const home = adminHome(me.data)
+  const adminPageOk = adminOnly && pathname === home
   // v2/M4: one-time migration of any v1 localStorage views/recents into the server store, once
   // the user is authenticated (SPEC §8).
   useLegacyViewMigration(!authRequired && ready)
@@ -79,34 +83,38 @@ export function Shell() {
                   Flowable Process Inspector
                 </Link>
               </h1>
-              <Link to="/audit" className="topbar-link">
-                Ops log
-              </Link>
-              {/* Person-centric task search (#99): "what is this person sitting on" — VIEWER-floor
+              {!adminOnly && (
+                <>
+                  <Link to="/audit" className="topbar-link">
+                    Ops log
+                  </Link>
+                  {/* Person-centric task search (#99): "what is this person sitting on" — VIEWER-floor
                   read, so it's an always-visible nav entry like Ops log, no role gate needed. */}
-              <Link to="/tasks" className="topbar-link">
-                Find tasks
-              </Link>
-              <Link to="/task-browser" className="topbar-link">
-                Task browser
-              </Link>
-              {/* Incident Ledger (R-BAU-10, INCIDENT-LEDGER.md §8): VIEWER-floor read (the
+                  <Link to="/tasks" className="topbar-link">
+                    Find tasks
+                  </Link>
+                  <Link to="/task-browser" className="topbar-link">
+                    Task browser
+                  </Link>
+                  {/* Incident Ledger (R-BAU-10, INCIDENT-LEDGER.md §8): VIEWER-floor read (the
                   lifecycle verbs are OPERATOR-gated inside the page itself, greyed-never-hidden
                   like every other action) — always-visible like Ops log/Find tasks. */}
-              <Link to="/incidents" className="topbar-link">
-                Incidents
-              </Link>
-              <Link to="/definitions" className="topbar-link">
-                Definitions
-              </Link>
-              <Link to="/deployments" className="topbar-link">
-                Deployments
-              </Link>
-              <HousekeepingLink />
+                  <Link to="/incidents" className="topbar-link">
+                    Incidents
+                  </Link>
+                  <Link to="/definitions" className="topbar-link">
+                    Definitions
+                  </Link>
+                  <Link to="/deployments" className="topbar-link">
+                    Deployments
+                  </Link>
+                  <HousekeepingLink />
+                </>
+              )}
               <RegistryAdminLink />
               <AccessAdminLink />
-              <RemediationDemandLink />
-              {!noAccess && <Omnibox enginesEnabled={ready} />}
+              {!adminOnly && <RemediationDemandLink />}
+              {!noAccess && !adminOnly && <Omnibox enginesEnabled={ready} />}
               {/* R-UXQ-03: the one-click display-zone control lives on every stage. */}
               <ZoneToggle />
               {/* R-UXQ-08: the persisted dark-theme control lives on every stage. */}
@@ -124,7 +132,15 @@ export function Shell() {
                 focusable, so #main-content would just scroll into view without moving focus)
                 without adding it to the normal Tab order. */}
             <main id="main-content" tabIndex={-1}>
-              {noAccess ? <NoAccess /> : (ready || authRequired) && <Outlet />}
+              {adminOnly && pathname === '/' && home !== null && <Navigate to={home} replace />}
+              {adminOnly && <AdminOnlyNotice />}
+              {noAccess ? (
+                <NoAccess />
+              ) : adminOnly ? (
+                adminPageOk && <Outlet />
+              ) : (
+                (ready || authRequired) && <Outlet />
+              )}
             </main>
             {shortcuts.sheetOpen && <ShortcutSheet onClose={shortcuts.closeSheet} />}
             {ready && <OpsDrawer />}
@@ -158,6 +174,8 @@ function HousekeepingLink() {
  */
 function RegistryAdminLink() {
   const me = useMe()
+  // #771: an admin-only shell offers only the pages the user holds a grant for.
+  if (hasAdminOnly(me.data) && me.data?.registryAdmin !== true) return null
   if (me.data?.registryAdmin === true) {
     return (
       <Link to="/admin/engines" className="topbar-link">
@@ -183,6 +201,8 @@ function RegistryAdminLink() {
  */
 function AccessAdminLink() {
   const me = useMe()
+  // #771: an admin-only shell offers only the pages the user holds a grant for.
+  if (hasAdminOnly(me.data) && me.data?.accessAdmin !== true) return null
   if (me.data?.accessAdmin === true) {
     return (
       <Link to="/admin/access" className="topbar-link">
