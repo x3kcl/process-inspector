@@ -296,6 +296,12 @@ export function DiagramCanvas({
           early.
         </p>
       )}
+      {overlay?.routeUnknown === true && (
+        <p className="strip-note diagram-route-unknown" role="status">
+          Route not shown — this engine version does not record the route taken, so finished steps
+          are marked completed without the path between them.
+        </p>
+      )}
       <div className="diagram-canvas" ref={hostRef} />
       <DiagramLegend kinds={kinds} />
     </div>

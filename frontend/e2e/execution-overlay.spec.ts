@@ -216,3 +216,36 @@ test('a failed timeline leaves the active and dead-letter markers as they were',
   await expect(page.getByRole('button', { name: 'Path off' })).toHaveCount(0)
   await scanA11y(page, 'diagram without a timeline')
 })
+
+// #729 — Flowable 6.3 records no sequenceFlow rows: no route, finished nodes completed, and a
+// visible text notice (never colour alone). Axe clean in both themes.
+test('an engine that records no sequence flows: nodes completed, no route, a text notice', async ({
+  page,
+}) => {
+  const noFlows = TIMELINE.activities.filter((r) => r.activityType !== 'sequenceFlow')
+  await mockBff(page, {
+    timeline: { total: noFlows.length, truncated: false, activities: noFlows },
+  })
+  await page.goto('/inspect/eng1/inst-done')
+  await expect(page.locator('.diagram-route-unknown')).toContainText(
+    'does not record the route taken',
+  )
+  await expect(page.locator('.diagram-canvas g.marker-completed').first()).toBeAttached()
+  expect(await marked(page, 'marker-taken')).toEqual([])
+  expect(await marked(page, 'marker-armed')).toEqual([])
+  expect(await marked(page, 'marker-completed')).toEqual(
+    [
+      'catchCancel',
+      'catchPay',
+      'catchTimeout',
+      'endShipped',
+      'gw',
+      'recordOrder',
+      'shipOrder',
+      'start',
+    ].sort(),
+  )
+  await scanA11y(page, 'route-unknown notice (light)')
+  await page.emulateMedia({ colorScheme: 'dark' })
+  await scanA11y(page, 'route-unknown notice (dark)')
+})
