@@ -129,10 +129,12 @@ checklist).
   `VIEWER` (read-only) → **`RESPONDER`** (tier-0 verbs + unstick + notes — no variable
   writes, no token moves; the L1/L2 runbook tier) → `OPERATOR` (adds tiers 1–2) → `ADMIN`
   (adds tiers 3–4). **"Signed in" is not a tier (R-SAFE-17, #758):** every data read needs at
-  least VIEWER on some engine (or a fleet grant); a signed-in user with no role anywhere — an
+  least VIEWER on some engine (or a global ladder role — the REGISTRY_ADMIN/ACCESS_ADMIN fleet
+  grants are orthogonal and confer no read); a signed-in user with no role anywhere — an
   OIDC user whose groups map to nothing — gets `403 no-engine-role` on every gated read and the
   SPA shows "No access granted yet — ask an Inspector admin". Only `GET /api/me` (who am I),
-  `GET /api/meta` (non-sensitive config) and the auth/health/contract doors stay open to them.
+  `GET /api/meta` (non-sensitive config), `/actuator/prometheus` (BFF telemetry) and the
+  auth/health/contract doors stay open to them.
   Deployments MAY override the role→verb matrix with per-verb grants
   `(role, verb, engineId, tenantId)`; tooltips cite the missing grant. OIDC delivers
   identity + coarse groups only; the group→scope mapping is BFF-owned, change-audited
