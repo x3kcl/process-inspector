@@ -18,6 +18,11 @@ export interface ExecutionOverlay {
   slowestId?: string
   /** The timeline was truncated or capped: the route shown may stop early. */
   partial: boolean
+  /**
+   * The timeline carries no sequenceFlow row at all (Flowable 6.3 does not record them, #729):
+   * finished nodes count as completed and no route is drawn, never "armed, not taken".
+   */
+  routeUnknown: boolean
 }
 
 /** Source activity id → its outgoing sequence-flow ids; null when the XML cannot be read. */
@@ -57,7 +62,10 @@ export function executionOverlay(
     }
   }
 
-  const outgoing = outgoingFlows(xml)
+  // An ended start event always leaves by a sequence flow; with no flow row anywhere, the engine
+  // does not record them (Flowable 6.3, #729) and "no flow taken" proves nothing.
+  const routeUnknown = takenFlows.size === 0 && [...ended.values()].includes('startEvent')
+  const outgoing = routeUnknown ? null : outgoingFlows(xml)
   const active = new Set(activeIds)
   const completed: string[] = []
   const armedNotTaken: string[] = []
@@ -89,5 +97,6 @@ export function executionOverlay(
     durations,
     slowestId,
     partial: timeline.truncated === true || rows.some((row) => row.isCapped === true),
+    routeUnknown,
   }
 }

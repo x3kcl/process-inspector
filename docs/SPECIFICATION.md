@@ -470,7 +470,10 @@ gap here: [link]" is the ticket-handover primitive.
   catch events of an event-based gateway), and a **duration badge** per node (≥ 1 ms; the
   slowest completed node of two or more says `slowest` — never an armed one). Active and dead-letter markers win on the same
   node. A truncated or capped timeline shows a "Route incomplete" badge on the diagram —
-  never a route that silently stops. A failed or pending timeline leaves the diagram
+  never a route that silently stops. A timeline with **no `sequenceFlow` row at all** while
+  a start event ended (Flowable 6.3 records no flow rows; #729) is not read as
+  armed-not-taken: every ended node is completed, no route is drawn, and a text notice says
+  this engine version does not record the route taken. A failed or pending timeline leaves the diagram
   without the overlay. A **Path on / off** toolbar control (not persisted) shows the plain
   model.
 - **Tabs**: Variables · Errors & Jobs · Tasks · Participants · Executions · Decisions · Hierarchy · Timeline · Audit & Notes —
@@ -1470,7 +1473,8 @@ and would rewrite working M1/M2 code for no capability gain); Go/FastAPI/Kotlin 
   sibling diff differentiates by stroke style + endpoint glyphs, not red/green hue.
   Execution overlay (#677): route taken = 3 px stroke (+ `×N` badge), completed = tinted
   fill + `✓` glyph, armed-not-taken = dashed outline, duration = text badge (`slowest` in
-  words); every glyph is `role="img"` + `aria-label`.
+  words); every glyph is `role="img"` + `aria-label`; an unrecorded route (#729) is said
+  in a text notice, not by the missing stroke alone.
   Contrast 4.5:1 text / 3:1 non-text. Every diagram-borne fact has a keyboard-focusable
   textual twin (activity summary list with synced selection); canvas is `role="img"` with a
   generated summary. AG Grid: full keyboard nav; row-open is never mouse-only — Enter on
