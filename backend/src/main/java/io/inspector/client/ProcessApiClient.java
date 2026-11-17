@@ -401,7 +401,6 @@ public class ProcessApiClient {
         return actions.probeIdm(engine, priority);
     }
 
-    @SuppressWarnings("unchecked")
     public ExecutionRecord getExecution(EngineConfig engine, CallPriority priority, String executionId) {
         return actions.getExecution(engine, priority, executionId);
     }
