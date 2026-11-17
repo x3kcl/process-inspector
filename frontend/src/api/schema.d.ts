@@ -2438,6 +2438,12 @@ export interface components {
             firstException?: string;
             jobs?: components["schemas"]["DeadLetterJobRef"][];
         };
+        CaseIdentityLinkRecord: {
+            group?: string;
+            type?: string;
+            url?: string;
+            user?: string;
+        };
         CaseMigrationBatchView: {
             batchId?: string;
             completeTime?: string;
@@ -4083,6 +4089,13 @@ export interface components {
             type?: string;
             value?: unknown;
         };
+        VariableRecord: {
+            name?: string;
+            scope?: string;
+            type?: string;
+            value?: unknown;
+            valueUrl?: string;
+        };
         VersionRef: {
             definitionId?: string;
             latest?: boolean;
@@ -5336,9 +5349,7 @@ export interface operations {
                     [name: string]: unknown;
                 };
                 content: {
-                    "*/*": {
-                        [key: string]: unknown;
-                    }[];
+                    "*/*": components["schemas"]["CaseIdentityLinkRecord"][];
                 };
             };
         };
@@ -5411,9 +5422,7 @@ export interface operations {
                     [name: string]: unknown;
                 };
                 content: {
-                    "*/*": {
-                        [key: string]: unknown;
-                    }[];
+                    "*/*": components["schemas"]["VariableRecord"][];
                 };
             };
         };
