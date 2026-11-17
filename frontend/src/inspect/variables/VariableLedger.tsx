@@ -23,7 +23,7 @@ interface Props {
   onEditRow?: (row: LedgerRow | null) => void
   /** The inline editor panel for the editing row (owned by the tab). */
   editorNode?: ReactNode
-  /** #743: the audited reveal control for a masked row (stub). */
+  /** #743: the audited reveal control, rendered beside a masked (secret-named) value only. */
   renderReveal?: (row: LedgerRow) => ReactNode
 }
 
@@ -42,6 +42,7 @@ export function VariableLedger({
   editingName,
   onEditRow,
   editorNode,
+  renderReveal,
 }: Props) {
   // R-UXQ-03: date-typed variable VALUES render via the string pipeline (ledger.ts) —
   // subscribe so the one-click UTC toggle repaints them.
@@ -65,6 +66,7 @@ export function VariableLedger({
           editingName={group.scope === 'process' ? editingName : undefined}
           onEditRow={onEditRow}
           editorNode={editorNode}
+          renderReveal={renderReveal}
         />
       ))}
     </div>
@@ -80,6 +82,7 @@ function LedgerGroupSection({
   editingName,
   onEditRow,
   editorNode,
+  renderReveal,
 }: {
   group: LedgerGroup
   defaultOpen: boolean
@@ -89,6 +92,7 @@ function LedgerGroupSection({
   editingName?: string
   onEditRow?: (row: LedgerRow | null) => void
   editorNode?: ReactNode
+  renderReveal?: (row: LedgerRow) => ReactNode
 }) {
   return (
     <details className="ledger-group" open={defaultOpen}>
@@ -119,6 +123,7 @@ function LedgerGroupSection({
               editing={editingName !== undefined && editingName === row.entry.name}
               onEditRow={onEditRow}
               editorNode={editorNode}
+              renderReveal={renderReveal}
             />
           ))}
         </tbody>
@@ -135,6 +140,7 @@ function LedgerRowView({
   editing,
   onEditRow,
   editorNode,
+  renderReveal,
 }: {
   row: LedgerRow
   onLoadFull?: (row: LedgerRow) => void
@@ -143,6 +149,7 @@ function LedgerRowView({
   editing: boolean
   onEditRow?: (row: LedgerRow | null) => void
   editorNode?: ReactNode
+  renderReveal?: (row: LedgerRow) => ReactNode
 }) {
   const [expanded, setExpanded] = useState(false)
   const gateReason = editGateReason !== undefined ? editGateReason(row) : 'editing not wired'
@@ -175,6 +182,7 @@ function LedgerRowView({
         </td>
         <td className={`ledger-value${row.preview.muted ? ' value-muted' : ''}`}>
           {row.preview.text}
+          {row.entry.masked === true && renderReveal !== undefined && <> {renderReveal(row)}</>}
           {truncatedPending && onLoadFull !== undefined && row.entry.scope === 'process' && (
             <button
               type="button"

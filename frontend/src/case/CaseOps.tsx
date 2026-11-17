@@ -7,6 +7,10 @@ import { useToast } from '../components/toast'
 import type { CasePlanItems } from '../api/model'
 import { flattenPlanItems } from './planItemModel'
 import { HIDDEN_SECRET } from '../inspect/variables/ledger'
+import { RevealButton } from '../inspect/variables/RevealButton'
+import { roleOn, useMe } from '../api/me'
+import { roleAtLeast } from '../actions/catalog'
+import { useEngines } from '../api/useEngines'
 
 interface Props {
   engineId: string
@@ -19,6 +23,10 @@ interface Props {
 export function CaseOps({ engineId, caseInstanceId, businessKey, planItems }: Props) {
   const action = useCaseAction(engineId, caseInstanceId)
   const toast = useToast()
+  const role = roleOn(useMe().data, engineId)
+  const prod = (useEngines().data ?? []).some(
+    (engine) => engine.id === engineId && engine.environment === 'prod',
+  )
   const [reason, setReason] = useState('')
   const [token, setToken] = useState('')
   const [targetDefinitionId, setTargetDefinitionId] = useState('')
@@ -150,6 +158,21 @@ export function CaseOps({ engineId, caseInstanceId, businessKey, planItems }: Pr
           <li key={String(row.name)}>
             {String(row.name)} ={' '}
             {row.masked === true ? HIDDEN_SECRET : JSON.stringify(row.value ?? null)}
+            {row.masked === true && (
+              <>
+                {' '}
+                <RevealButton
+                  target={{ kind: 'case', engineId, targetId: caseInstanceId }}
+                  name={String(row.name)}
+                  prod={prod}
+                  gateReason={
+                    role !== null && !roleAtLeast(role, 'OPERATOR')
+                      ? `Requires OPERATOR — you are ${role}`
+                      : null
+                  }
+                />
+              </>
+            )}
           </li>
         ))}
       </ul>
