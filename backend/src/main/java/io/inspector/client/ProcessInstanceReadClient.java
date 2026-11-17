@@ -339,7 +339,7 @@ final class ProcessInstanceReadClient {
                         .post()
                         .uri("/runtime/process-instances/{id}/identitylinks", processInstanceId)
                         .contentType(MediaType.APPLICATION_JSON)
-                        .body(Map.of("user", user, "type", type))
+                        .body(new InstanceIdentityLinkRequest(user, type))
                         .retrieve()
                         .toBodilessEntity());
     }

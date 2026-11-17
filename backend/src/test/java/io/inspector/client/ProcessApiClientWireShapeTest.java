@@ -835,7 +835,7 @@ class ProcessApiClientWireShapeTest {
                         "PUT",
                         "/runtime/executions/" + executionId,
                         "{\"action\":\"trigger\"}",
-                        c -> c.executionAction(e, p, executionId, Map.of("action", "trigger"))),
+                        c -> c.executionAction(e, p, executionId, ExecutionActionRequest.trigger())),
                 new Write(
                         "suspendOrActivateDefinition",
                         "PUT",

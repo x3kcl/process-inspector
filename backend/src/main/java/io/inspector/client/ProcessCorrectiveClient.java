@@ -4,7 +4,6 @@ import io.inspector.client.GuardedCaller.CallPriority;
 import io.inspector.client.ProcessApiClient.JobLaneKind;
 import io.inspector.config.InspectorProperties.EngineConfig;
 import java.util.List;
-import java.util.Map;
 import org.springframework.http.MediaType;
 import org.springframework.web.client.HttpClientErrorException;
 
@@ -459,13 +458,11 @@ final class ProcessCorrectiveClient {
      * {"action":"signalEventReceived","signalName":…} / {"action":"trigger"}.
      */
     public void executionAction(
-            EngineConfig engine, CallPriority priority, String executionId, Map<String, Object> body) {
-        Object action = body.get("action");
-        String verb = action instanceof String s && !s.isBlank() ? s : "execution-action";
+            EngineConfig engine, CallPriority priority, String executionId, ExecutionActionRequest body) {
         guarded.run(
                 engine,
                 priority,
-                verb,
+                body.action(),
                 () -> guarded.writeClient(engine)
                         .put()
                         .uri("/runtime/executions/{executionId}", executionId)

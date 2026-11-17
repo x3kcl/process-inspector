@@ -14,6 +14,7 @@ import io.inspector.client.CaseMigrationDocument;
 import io.inspector.client.CaseMigrationRoute;
 import io.inspector.client.CmmnApiClient;
 import io.inspector.client.CmmnJobRecord;
+import io.inspector.client.ExecutionActionRequest;
 import io.inspector.client.ExecutionRecord;
 import io.inspector.client.ForwardedActor;
 import io.inspector.client.GuardedCaller.CallPriority;
@@ -1368,13 +1369,11 @@ public class CorrectiveActionService {
         }
     }
 
-    private static Map<String, Object> eventBody(ActionRequest.EventTrigger event) {
+    private static ExecutionActionRequest eventBody(ActionRequest.EventTrigger event) {
         return switch (event.type()) {
-            case ActionRequest.EventTrigger.MESSAGE ->
-                Map.of("action", "messageEventReceived", "messageName", event.name());
-            case ActionRequest.EventTrigger.SIGNAL ->
-                Map.of("action", "signalEventReceived", "signalName", event.name());
-            case ActionRequest.EventTrigger.TRIGGER -> Map.of("action", "trigger");
+            case ActionRequest.EventTrigger.MESSAGE -> ExecutionActionRequest.message(event.name());
+            case ActionRequest.EventTrigger.SIGNAL -> ExecutionActionRequest.signal(event.name());
+            case ActionRequest.EventTrigger.TRIGGER -> ExecutionActionRequest.trigger();
             default ->
                 throw new GuardRefusedException(
                         HttpStatus.BAD_REQUEST,
