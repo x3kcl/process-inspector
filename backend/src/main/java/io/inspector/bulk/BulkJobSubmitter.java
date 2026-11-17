@@ -9,6 +9,7 @@ import io.inspector.audit.ProtectedDefinition;
 import io.inspector.audit.ProtectedInstance;
 import io.inspector.client.GuardedCaller.CallPriority;
 import io.inspector.client.ProcessInstancePage;
+import io.inspector.client.ProcessInstanceQuery;
 import io.inspector.client.ProcessInstanceRecord;
 import io.inspector.config.InspectorProperties.EngineConfig;
 import java.util.ArrayList;
@@ -244,9 +245,10 @@ final class BulkJobSubmitter {
     private Map<String, String> definitionKeysOf(EngineConfig engine, List<BulkDtos.BulkTarget> targets) {
         Set<String> ids = targets.stream().map(BulkDtos.BulkTarget::instanceId).collect(Collectors.toSet());
         try {
-            Map<String, Object> body = new HashMap<>();
-            body.put("processInstanceIds", List.copyOf(ids));
-            body.put("size", ids.size());
+            ProcessInstanceQuery body = ProcessInstanceQuery.builder()
+                    .processInstanceIds(List.copyOf(ids))
+                    .size(ids.size())
+                    .build();
             ProcessInstancePage page = host.client.queryRuntimeProcessInstances(engine, CallPriority.INTERACTIVE, body);
             Map<String, String> byId = new HashMap<>();
             boolean filterIgnored = page == null || page.total() > ids.size();

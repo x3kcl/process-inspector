@@ -170,14 +170,26 @@ class ProcessApiClientWireShapeTest {
                         "POST",
                         "/query/historic-process-instances",
                         "query-historic-process-instances",
-                        c -> c.queryHistoricProcessInstances(e, p, Map.of("finished", true, "size", 1)),
+                        c -> c.queryHistoricProcessInstances(
+                                e,
+                                p,
+                                ProcessInstanceQuery.builder()
+                                        .finished(true)
+                                        .size(1)
+                                        .build()),
                         r -> r.withRequestBody(equalToJson("{\"finished\":true,\"size\":1}"))),
                 new Read(
                         "queryRuntimeProcessInstances",
                         "POST",
                         "/query/process-instances",
                         "query-process-instances",
-                        c -> c.queryRuntimeProcessInstances(e, p, Map.of("suspended", false, "size", 1)),
+                        c -> c.queryRuntimeProcessInstances(
+                                e,
+                                p,
+                                ProcessInstanceQuery.builder()
+                                        .suspended(false)
+                                        .size(1)
+                                        .build()),
                         r -> r.withRequestBody(equalToJson("{\"suspended\":false,\"size\":1}"))),
                 new Read(
                         "listJobs(DEADLETTER)",

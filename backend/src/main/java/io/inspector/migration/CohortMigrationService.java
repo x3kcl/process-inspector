@@ -10,13 +10,12 @@ import io.inspector.client.GuardedCaller.CallPriority;
 import io.inspector.client.ProcessApiClient;
 import io.inspector.client.ProcessDefinitionRecord;
 import io.inspector.client.ProcessInstancePage;
+import io.inspector.client.ProcessInstanceQuery;
 import io.inspector.client.ProcessInstanceRecord;
 import io.inspector.config.InspectorProperties.EngineConfig;
 import io.inspector.registry.EngineRegistry;
 import java.util.ArrayList;
-import java.util.LinkedHashMap;
 import java.util.List;
-import java.util.Map;
 import org.springframework.http.HttpStatus;
 import org.springframework.stereotype.Service;
 
@@ -110,13 +109,12 @@ public class CohortMigrationService {
                 throw new GuardRefusedException(
                         HttpStatus.BAD_REQUEST, "variable-value-required", "A variable filter needs a value.");
             }
-            Map<String, Object> body = new LinkedHashMap<>();
-            body.put("processDefinitionId", fromId);
-            body.put("size", CAP);
-            body.put(
-                    "variables",
-                    List.of(Map.of(
-                            "name", variable, "value", request.variableValue().trim(), "operation", "equals")));
+            ProcessInstanceQuery body = ProcessInstanceQuery.builder()
+                    .processDefinitionId(fromId)
+                    .size(CAP)
+                    .variables(List.of(new ProcessInstanceQuery.VariableFilter(
+                            variable, request.variableValue().trim(), "equals", null)))
+                    .build();
             return processes.queryRuntimeProcessInstances(engine, CallPriority.INTERACTIVE, body);
         }
         String key = blank(request.businessKey());

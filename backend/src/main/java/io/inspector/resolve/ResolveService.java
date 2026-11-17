@@ -9,6 +9,7 @@ import io.inspector.client.GuardedCaller.CallPriority;
 import io.inspector.client.JobRecord;
 import io.inspector.client.ProcessApiClient;
 import io.inspector.client.ProcessApiClient.JobLaneKind;
+import io.inspector.client.ProcessInstanceQuery;
 import io.inspector.client.ProcessInstanceRecord;
 import io.inspector.client.TaskRecord;
 import io.inspector.config.InspectorProperties.EngineConfig;
@@ -198,14 +199,12 @@ public class ResolveService {
         //    routes BUSINESS_KEY kinds to a pre-filtered search (R-SEM-04) — so the list
         //    here is a bounded preview (each match derives full status flags), never an
         //    attempt at completeness.
-        Map<String, Object> body = new LinkedHashMap<>();
-        body.put("processBusinessKey", id);
-        body.put("size", Math.min(BUSINESS_KEY_PREVIEW_CAP, engine.maxPageSizeOrDefault()));
-        body.put("sort", "startTime");
-        body.put("order", "desc");
-        if (engine.tenantId() != null && !engine.tenantId().isBlank()) {
-            body.put("tenantId", engine.tenantId());
-        }
+        ProcessInstanceQuery body = ProcessInstanceQuery.builder()
+                .processBusinessKey(id)
+                .size(Math.min(BUSINESS_KEY_PREVIEW_CAP, engine.maxPageSizeOrDefault()))
+                .sort("startTime", "desc")
+                .tenantId(engine.tenantId())
+                .build();
         List<ResolveMatch> byKey = new ArrayList<>();
         for (ProcessInstanceRecord row : flowable.queryHistoricProcessInstances(engine, CallPriority.INTERACTIVE, body)
                 .dataOrEmpty()) {
