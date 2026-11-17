@@ -116,6 +116,8 @@ class TimerReschedule7IT {
         assertThat(String.valueOf(moved.get("id"))).isNotEqualTo(jobId);
         assertThat(instant(moved.get("dueDate"))).isEqualTo(newDue);
         assertThat(timerJobById(seven, jobId)).isFalse();
+        assertThat(mapper.readTree(response.getBody()).path("newJobId").asText())
+                .isEqualTo(String.valueOf(moved.get("id")));
 
         // …then the instance moves past the timer and ends (timer acquisition runs every ~10s).
         await().atMost(60, TimeUnit.SECONDS)

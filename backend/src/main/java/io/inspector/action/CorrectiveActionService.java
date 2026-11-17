@@ -313,7 +313,8 @@ public class CorrectiveActionService {
                     entry.getCorrelationId(),
                     "ok",
                     200,
-                    deltaStatement(verb, targetId, request, target, newJobId));
+                    deltaStatement(verb, targetId, request, target, newJobId),
+                    newJobId);
         } finally {
             BreakGlassActor.clear();
         }
@@ -1385,7 +1386,6 @@ public class CorrectiveActionService {
 
     /* ------------------------------- helpers ------------------------------- */
 
-    /** The explicit delta statement for the outcome toast (SPEC §6 tier 0 — never a bare "success"). */
     /**
      * The instance's timer job on the same activity after a reschedule, or null when it is not
      * exactly one other job (or the read fails — the verb already succeeded, never fail it here).
@@ -1410,6 +1410,7 @@ public class CorrectiveActionService {
         }
     }
 
+    /** The explicit delta statement for the outcome toast (SPEC §6 tier 0 — never a bare "success"). */
     private static String deltaStatement(
             ActionVerb verb, String targetId, ActionRequest request, Target target, String newJobId) {
         return switch (verb) {
