@@ -5,6 +5,8 @@
 #106 parts 2/3 (record-from-exemplar MVP / replay-as-bulk-job). The build decision stays with
 the product owner.
 
+**Product-owner decision 2026-11-17: stay parked; the span clause cannot be met without real operator traffic.** #106 stays open and parked.
+
 Supersedes the July verdict ([S0-PLAYBOOK-DEMAND-2026-07.md](S0-PLAYBOOK-DEMAND-2026-07.md)),
 which was "not evaluable" for lack of data. This time there is data, and it does not clear the gate.
 
