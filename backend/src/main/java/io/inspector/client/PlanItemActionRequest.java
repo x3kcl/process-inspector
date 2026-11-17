@@ -1,4 +1,14 @@
 package io.inspector.client;
 
-/** The body of a plan-item instance action PUT (#720). Stub: the typed record lands with the refactor. */
-public record PlanItemActionRequest(String action) {}
+import java.util.Objects;
+
+/**
+ * The body of PUT …/cmmn-runtime/plan-item-instances/{id} — {@code trigger}, {@code enable} or
+ * {@code disable} (#720). A null action is refused before any engine byte — as the map body did.
+ */
+public record PlanItemActionRequest(String action) {
+
+    public PlanItemActionRequest {
+        Objects.requireNonNull(action, "action");
+    }
+}

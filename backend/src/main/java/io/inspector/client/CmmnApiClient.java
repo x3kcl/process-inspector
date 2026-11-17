@@ -235,7 +235,7 @@ public class CmmnApiClient {
                         .put()
                         .uri(cmmnApiBase(engine) + "/cmmn-runtime/plan-item-instances/{id}", id)
                         .contentType(MediaType.APPLICATION_JSON)
-                        .body(Map.of("action", action))
+                        .body(new PlanItemActionRequest(action))
                         .retrieve()
                         .toBodilessEntity());
     }
@@ -243,13 +243,7 @@ public class CmmnApiClient {
     public void changePlanItemState(
             EngineConfig engine, CallPriority priority, String caseInstanceId, String definitionId, String action) {
         String id = GuardedCaller.safeId(caseInstanceId);
-        String field =
-                switch (action) {
-                    case "activate" -> "activatePlanItemDefinitionIds";
-                    case "available" -> "moveToAvailablePlanItemDefinitionIds";
-                    case "terminate" -> "terminatePlanItemDefinitionIds";
-                    default -> throw new IllegalArgumentException(action);
-                };
+        ChangePlanItemStateRequest body = ChangePlanItemStateRequest.of(action, definitionId);
         guarded.run(
                 engine,
                 priority,
@@ -258,7 +252,7 @@ public class CmmnApiClient {
                         .post()
                         .uri(cmmnApiBase(engine) + "/cmmn-runtime/case-instances/{id}/change-state", id)
                         .contentType(MediaType.APPLICATION_JSON)
-                        .body(Map.of(field, List.of(definitionId)))
+                        .body(body)
                         .retrieve()
                         .toBodilessEntity());
     }
